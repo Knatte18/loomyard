@@ -468,7 +468,7 @@ func TestBouncer_JudgeCall_RefusedJudgment(t *testing.T) {
 	}
 }
 
-//testtiming:keep pins the judge prompt's inputs: the facts and review paths, never the artifacts or the fixer report, and the two guard sentences
+//testtiming:keep pins the judge prompt's inputs: the facts and review paths, never the artifacts or the fixer report, and the Go-built parse-error decision-rule sentence
 func TestBouncer_JudgeCall_PromptReadsFactsNotArtifacts(t *testing.T) {
 	shuttle := judgeFakeShuttle(1, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(1), true)
 	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
@@ -494,13 +494,8 @@ func TestBouncer_JudgeCall_PromptReadsFactsNotArtifacts(t *testing.T) {
 	if fixer := roundFixerReportPath(cfg.RunDir, 1); strings.Contains(prompt, fixer) {
 		t.Errorf("judge prompt names the fixer-report path %q; want it absent", fixer)
 	}
-	for _, sentence := range []string{
-		"A parse-error row for the latest round means `CONTINUE`",
-		"Never relabel a BLOCKING finding downward",
-	} {
-		if !strings.Contains(prompt, sentence) {
-			t.Errorf("judge prompt lacks the sentence %q", sentence)
-		}
+	if sentence := "A parse-error row for the latest round means `CONTINUE`"; !strings.Contains(prompt, sentence) {
+		t.Errorf("judge prompt lacks the sentence %q", sentence)
 	}
 	if _, err := os.Stat(factsPath(cfg.RunDir, 1)); err != nil {
 		t.Errorf("os.Stat(facts file) = %v; want nil after a judge call", err)

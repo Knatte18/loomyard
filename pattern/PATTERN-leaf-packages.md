@@ -37,6 +37,12 @@ It exposes `Channel`, its two values `ChannelProduction` and `ChannelDev`, and t
 Imports only the standard library.
 It never resolves a working directory, and `Derive` creates nothing on disk.
 
+## `internal/shellguard`
+
+Imports only the standard library, `internal/agentname` and `internal/gateslot`.
+- `internal/agentname` and `internal/gateslot` are admitted for the three environment-variable names the raw go row's pattern names.
+  The `gateslot` admission departs from the header's "never a feature package" for the two constants `gateslot` owns, because declaring each name once outweighs a dependency-free leaf.
+
 ## `internal/segmentcolor`
 
 Imports only the standard library.

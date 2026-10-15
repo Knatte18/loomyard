@@ -3,6 +3,8 @@
 // Provides a neutral registry of available config modules and their templates,
 // used by the config CLI command and callers such as fabric clone.
 // Its second role is marking which modules are hub-wide, so every caller branches on the registry rather than on a module name.
+// The registry also lists every registered engine's config module, reached through shuttleengines so configreg imports no concrete engine.
+// It declares the cross-module key-move table, which carries a key's value from one module's file to another's.
 
 package configreg
 
@@ -10,6 +12,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"sort"
 	"strconv"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
@@ -29,6 +32,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -123,9 +127,13 @@ func Modules() []Module {
 		{Name: "orch", Template: orchengine.ConfigTemplate, Migrate: orchengine.MigrateConfig, CheckLoad: checkLoadNamed(orchengine.LoadConfig, "orch"), Spec: orchengine.ConfigSpec},
 		{Name: "reed", Template: reedengine.ConfigTemplate, CheckLoad: checkLoadNamed(reedengine.LoadConfig, "reed"), Spec: reedengine.ConfigSpec},
 		{Name: "shed", Template: sheddriver.ConfigTemplate, CheckValues: sheddriver.ValidateLocalValues, CheckLoad: checkLoad(sheddriver.LoadConfig), Spec: sheddriver.ConfigSpec},
-		{Name: "shuttle", Template: shuttleengine.ConfigTemplate, OpenMaps: shuttleengine.ConfigOpenMaps(), Migrate: shuttleengine.MigrateConfig, CheckLoad: checkLoadNamed(shuttleengine.LoadConfig, "shuttle"), Spec: shuttleengine.ConfigSpec},
+		{Name: "shuttle", Template: shuttleengine.ConfigTemplate, Migrate: shuttleengine.MigrateConfig, CheckLoad: checkLoadNamed(shuttleengine.LoadConfig, "shuttle"), Spec: shuttleengine.ConfigSpec},
 		{Name: "webster", Template: websterengine.ConfigTemplate, CheckLoad: checkLoadNamed(websterengine.LoadConfig, "webster"), Spec: websterengine.ConfigSpec},
 	}
+	for _, engine := range shuttleengines.ConfigModules() {
+		modules = append(modules, Module{Name: engine.Name, Template: engine.Template, OpenMaps: engine.OpenMaps, Migrate: engine.Migrate, CheckLoad: engine.CheckLoad, Spec: engine.Spec})
+	}
+	sort.Slice(modules, func(i, j int) bool { return modules[i].Name < modules[j].Name })
 	for i := range modules {
 		modules[i] = withLocalBounds(modules[i])
 	}

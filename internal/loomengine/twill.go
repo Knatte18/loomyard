@@ -87,7 +87,8 @@ func discussionLensDirective(layout *lyxcwd.Location, dirs configengine.Dirs, st
 	}
 	return twilldirective.Directive(stencilsDir, twilldirective.Values{
 		ReviewedFiles:         "`" + DiscussionDecisionRecord(layout) + "` and `" + DiscussionSupportLog(layout) + "`",
-		SpawnPoint:            "Once you have written both output files per Step 5 and `lyx loom validate-discussion` passes per Step 6, run this procedure once, before you end your turn:",
+		RelaunchFiles:         "`" + DiscussionDecisionRecord(layout) + "`, `" + DiscussionSupportLog(layout) + "` and `" + DiscussionRelevant(layout) + "`",
+		SpawnPoint:            "Once you have written all three output files per Step 5 and `lyx loom validate-discussion` passes per Step 6, run this procedure once, before you end your turn:",
 		RejectionRule:         "Fix the record, or reject the finding with a one-line reason.",
 		SeverityRule:          "a severity (`BLOCKING`, `MEDIUM` or `LOW`)",
 		RubricPath:            stencilstore.Path(stencilsDir, "loom-rubric-discussion-review"),

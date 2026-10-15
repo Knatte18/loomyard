@@ -33,20 +33,23 @@ func renderFindings[T interface{ Error() string }](items []T) []string {
 // validateDiscussionCmd builds the `validate-discussion` subcommand: the standalone form of the
 // checks Discussion-Write's and Discussion-Burler-Fix's own gate runs, callable by the writer agent
 // before handoff.
+// A darn run's gate check is the darn one, which never reads the relevant list.
 func (c *loomCLI) validateDiscussionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:         "validate-discussion",
 		Short:       "run the checks Discussion-Write's and Discussion-Burler-Fix's own gate runs standalone against the current discussion files",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `validate-discussion runs discussionparser.Validate against the current
-worktree's decision record and support log -- the identical check
-Discussion-Write's and Discussion-Burler-Fix's own gate runs -- and reports the
+		Long: `validate-discussion runs the loom gate's check against the current
+worktree's discussion files -- the identical check Discussion-Write's and
+Discussion-Burler-Fix's own gate runs: the decision record and support log
+check, plus the relevant list check when relevant.md exists -- and reports the
 result as one JSON envelope. It takes no arguments and no flags; it always
 checks the worktree's own discussion files.
 
-On a darn run it is the Darn-Write row's gate check: it also refuses a record
-missing an "Added after Discussion" entry its commit history held, and a clean
-run commits the decision record and support log.
+On a darn run it is the Darn-Write row's gate check and does not read the
+relevant list: it also refuses a record missing an "Added after Discussion"
+entry its commit history held, and a clean run commits the decision record and
+support log.
 
 Example:
   lyx loom validate-discussion`,
@@ -63,10 +66,10 @@ Example:
 			if darn {
 				findings, err = loomshed.ValidateDarnDiscussion(c.env.DecisionRecordPath, c.env.SupportLogPath, c.env.DiscussionHistory)
 			} else {
-				findings, err = discussionparser.Validate(c.env.DecisionRecordPath, c.env.SupportLogPath)
+				findings, err = loomshed.ValidateLoomDiscussion(c.env.DecisionRecordPath, c.env.SupportLogPath, c.env.RelevantPath)
 			}
 			if err != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: validate discussion record "+c.env.DecisionRecordPath+": "+err.Error()))
+				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: validate discussion: "+err.Error()))
 				return nil
 			}
 			if len(findings) > 0 {

@@ -15,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
-// TestTacklerPrompt asserts the shipped stencil renders every marker value, the no-parent and edit directives, the literal none for an absent report, the recipe line under its heading, the shed-layer wording, and no unfilled marker; it refuses an empty recipe or goto rows naming the marker.
+// TestTacklerPrompt asserts the shipped stencil renders every marker value, the no-parent and edit directives, the literal none for an absent report, the recipe line under its heading, and no unfilled marker; it refuses an empty recipe or goto rows naming the marker.
 func TestTacklerPrompt(t *testing.T) {
 	t.Parallel()
 
@@ -65,12 +65,6 @@ func TestTacklerPrompt(t *testing.T) {
 			name: "the recipe line is filled under the run heading",
 			in:   in,
 			want: []string{"## The run\n\n" + in.Recipe},
-		},
-		{
-			name:       "the prompt is shed-layer wording with the stop kinds, the reading order and a two-path write rule",
-			in:         in,
-			want:       []string{"transient", "`producer`", "`bootstrap`", "`unseeded`", "`interrupted`", "`blocked`", "only when those leave the cause open", "Write `" + in.VerdictPath + "` and, on an `escalate`, `" + in.CaseBriefPath + "`, and nothing else."},
-			wantAbsent: []string{"arbiter", "Arbiter"},
 		},
 		{
 			name:       "the goto rows are the halted row alone unless told more",

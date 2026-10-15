@@ -543,6 +543,31 @@ func TestRunner_EngineSetDispatch(t *testing.T) {
 		requireConsulted(t, rig.a, rig.b, "IdleSession")
 	})
 
+	t.Run("Send_and_Interrupt_on_a_live_strand_with_no_record_consult_the_default", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name       string
+			call       func(rig *dispatchRig) error
+			wantMethod string
+		}{
+			{"Send", func(rig *dispatchRig) error { return rig.fx.Runner.Send("strand-1", "hello") }, "IdleSession"},
+			{"Interrupt", func(rig *dispatchRig) error {
+				rig.reed.CaptureQueue = []string{"RUNNING"}
+				return rig.fx.Runner.Interrupt("strand-1")
+			}, "InterruptSequence"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				rig := newDispatchRig(t)
+				rig.reed.StatusQueue = liveStrandStatus(true)
+				// The fake pane never echoes the sent text, so only which engine was consulted is pinned.
+				_ = tt.call(rig)
+				requireConsulted(t, rig.a, rig.b, tt.wantMethod)
+			})
+		}
+	})
+
 	t.Run("the_guid_reads_of_a_guid_with_no_run_record_fail_as_not_a_shuttle_strand", func(t *testing.T) {
 		t.Parallel()
 		rig := newDispatchRig(t)
@@ -574,6 +599,29 @@ func TestRunner_EngineSetDispatch(t *testing.T) {
 			t.Fatalf("ReadEvents() error: %v", err)
 		}
 		requireConsulted(t, rig.a, rig.b, "ParseEvents")
+	})
+
+	t.Run("a_live_strand_with_no_record_is_refused_when_the_default_engine_is_unregistered", func(t *testing.T) {
+		t.Parallel()
+		calls := map[string]func(r *Runner) error{
+			"Runner.Send":      func(r *Runner) error { return r.Send("strand-1", "hello") },
+			"Runner.Interrupt": func(r *Runner) error { return r.Interrupt("strand-1") },
+		}
+		for name, call := range calls {
+			t.Run(name, func(t *testing.T) {
+				t.Parallel()
+				rig := newDispatchRig(t)
+				engines := NewEngineSet("missing", map[string]Engine{"a": rig.a})
+				reed := &fakeReed{CaptureQueue: []string{"RUNNING"}, StatusQueue: liveStrandStatus(true)}
+				fx := newFixture(t, reed, rig.a, withEngines(engines), withConfig(fastConfig), withSeparateRunDir())
+				if err := call(fx.Runner); !errors.Is(err, ErrEngineNotRegistered) {
+					t.Errorf("%s error = %v; want ErrEngineNotRegistered", name, err)
+				}
+				if len(reed.SendKeyCalls) != 0 || len(reed.SendTextCalls) != 0 || len(reed.PasteSubmitCalls) != 0 {
+					t.Errorf("%s reached the pane: keys %+v, texts %+v, pastes %+v", name, reed.SendKeyCalls, reed.SendTextCalls, reed.PasteSubmitCalls)
+				}
+			})
+		}
 	})
 
 	t.Run("a_record_naming_an_unregistered_engine_refuses_every_operation_and_never_blocks_a_stop", func(t *testing.T) {

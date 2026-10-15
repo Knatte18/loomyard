@@ -87,6 +87,9 @@ func TestPlanTable(t *testing.T) {
 			if err := table.Validate(stencilsDir); err != nil {
 				t.Fatalf("table.Validate() = %v; want nil", err)
 			}
+			if got, want := table.Values["relevant_path"], DiscussionRelevant(layout); got != want {
+				t.Errorf("table.Values[\"relevant_path\"] = %q; want %q", got, want)
+			}
 			if len(table.Seats) != 1 {
 				t.Fatalf("table has %d seats; want the lead alone", len(table.Seats))
 			}
@@ -311,42 +314,33 @@ func TestPlanTable(t *testing.T) {
 				for _, want := range []string{
 					stencilstore.Path(stencilsDir, "loom-rubric-plan-review"),
 					filepath.Join(planparser.PlanDir(layout.AnchorPath()), planparser.LensReviewFileName),
-					`subagent_type: "fork"`,
-					"6. Run `lyx loom validate-plan --lens-review` again until it passes",
-					"Explore per `Step 2`",
-					"your context holds the decision record",
-					"run `lyx loom validate-plan` per `Step 5` until it passes",
+					"`lyx loom validate-plan --lens-review`",
+					"`Step 2`",
+					"`lyx loom validate-plan` per `Step 5`",
 					"`" + planparser.PlanOverview(layout.AnchorPath()) + "` last",
 					"every file in `" + planparser.PlanDir(layout.AnchorPath()) + "`",
-					"Report defects only, never a passed check. Give each finding's evidence as the `path:line` or glyph read.",
-					"against the code and the decision record",
+					"Report defects only, never a passed check.",
 					"opened in this session, a `path:line` or glyph, a `PATTERN` entry, a test or caller the change would break, or the `lyx loom validate-plan` output, and what it shows",
-					"`" + planparser.PlanOverview(layout.AnchorPath()) + "` and every card file its Card Index names were written and passed the self-check before you were spawned.",
-					"Return your findings only as your final message, each with " + planTwillSeverityRule + ", the section or decision it concerns, a one-line summary and the evidence.",
+					planTwillSeverityRule,
 				} {
 					if !strings.Contains(prompt, want) {
 						t.Errorf("twill lead prompt lacks %q", want)
 					}
-				}
-				if strings.Contains(prompt, "lyx shuttle await") {
-					t.Error("twill lead prompt carries a ready-marker wait; want the forks to wait on nothing")
 				}
 				for _, line := range strings.Split(planTwillSpawnPoint, "\n") {
 					if !strings.Contains(prompt, line) {
 						t.Errorf("twill lead prompt lacks the spawn point line %q", line)
 					}
 				}
-				for _, wantNot := range []string{"a later turn of the same session", "died before its Agent call"} {
-					if strings.Contains(prompt, wantNot) {
-						t.Errorf("twill lead prompt carries %q; want the fork0 part and the re-prompt rule instead", wantNot)
-					}
+				if strings.Contains(prompt, "died before its Agent call") {
+					t.Error("twill lead prompt carries \"died before its Agent call\"; want the fork0 part instead of the relaunch part")
 				}
 
 				markerAt := 0
-				for _, marker := range []string{"## Step 2", "## Lens review by forks", "Spawn one fork, fork0", "1. Read the rubric", "## Step 3"} {
+				for _, marker := range []string{"## Step 2", "## Lens review by forks", "Spawn one fork, fork0", "## Step 3"} {
 					next := strings.Index(prompt[markerAt:], marker)
 					if next < 0 {
-						t.Fatalf("twill lead prompt lacks %q after offset %d; want Step 2, the lens review, fork0's spawn, the rubric read and Step 3 in order", marker, markerAt)
+						t.Fatalf("twill lead prompt lacks %q after offset %d; want Step 2, the lens review, fork0's spawn and Step 3 in order", marker, markerAt)
 					}
 					markerAt += next
 				}

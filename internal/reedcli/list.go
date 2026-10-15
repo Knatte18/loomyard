@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/spf13/cobra"
 )
 
@@ -90,7 +91,7 @@ func worktreeDirectory(path string) []reedengine.DirectoryRow {
 		logger.Warn("reed list: skipping a worktree whose geometry does not resolve", "path", path, "err", err)
 		return nil
 	}
-	rows, err := reedengine.New(cfg, geom).Directory()
+	rows, err := reedengine.New(cfg, geom, shuttleengines.EnvScrub()).Directory()
 	if err != nil {
 		logger.Warn("reed list: skipping a worktree whose strands cannot be read", "path", path, "err", err)
 		return nil

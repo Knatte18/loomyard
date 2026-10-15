@@ -26,9 +26,11 @@ internal/commentlint: 3
 internal/configcli: 12
 internal/configengine: 18
 internal/configreg: 10
-internal/configsync: 8
+internal/configsync: 9
+internal/creelcli: 4
+internal/creelengine: 11
 internal/darnengine: 4
-internal/discussionparser: 19
+internal/discussionparser: 20
 internal/dotgit: 3
 internal/durfmt: 2
 internal/editdirective: 2
@@ -53,7 +55,7 @@ internal/helpcli: 1
 internal/hibernatecli: 1
 internal/hibernateengine: 4
 internal/hubforge: 7
-internal/hubgeom: 11
+internal/hubgeom: 12
 internal/hubreconcile: 18
 internal/idecli: 2
 internal/ideengine: 4
@@ -108,11 +110,12 @@ internal/shedrun: 25
 internal/shedtransient: 2
 internal/shedverbs: 84
 internal/shell: 14
+internal/shellguard: 3
 internal/shortcutcli: 2
 internal/shuttlecli: 27
 internal/shuttleengine: 178
-internal/shuttleengine/claudeengine: 112
-internal/shuttleengines: 3
+internal/shuttleengine/claudeengine: 113
+internal/shuttleengines: 5
 internal/sleepjournal: 2
 internal/standalonegeom: 7
 internal/standalonestate: 6

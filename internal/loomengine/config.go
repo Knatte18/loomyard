@@ -144,7 +144,7 @@ func DiscussionDecisionRecordRel() string {
 }
 
 // DiscussionDecisionRecord returns the path to the distilled decision record that is the Plan
-// producer's sole input from `_lyx/discussion/`.
+// producer's design input from `_lyx/discussion/`.
 // It shares DiscussionDir's AnchorPath anchoring.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func DiscussionDecisionRecord(l *lyxcwd.Location) string {
@@ -157,6 +157,14 @@ func DiscussionDecisionRecord(l *lyxcwd.Location) string {
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func DiscussionSupportLog(l *lyxcwd.Location) string {
 	return filepath.Join(DiscussionDir(l), "support-log.md")
+}
+
+// DiscussionRelevant returns the path to the Discussion-Write lead's list of the code it read.
+// The list is the plan writer's head start.
+// It shares DiscussionDir's AnchorPath anchoring.
+// Per the Cwd Resolution Invariant, no other package may construct this path.
+func DiscussionRelevant(l *lyxcwd.Location) string {
+	return filepath.Join(DiscussionDir(l), "relevant.md")
 }
 
 // LoomDriverLog returns the path to the detached driver's captured stdout and stderr for this

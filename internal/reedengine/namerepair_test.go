@@ -21,7 +21,12 @@ type fakeNamer struct {
 	drift   bool
 	idle    bool
 	queries [][3]string
+	// text is the rename text's prefix, "/rename " when empty.
+	text string
 }
+
+// untagged is the namer map a strand with no provider tag is repaired through.
+func untagged(f fakeNamer) map[string]fakeNamer { return map[string]fakeNamer{"": f} }
 
 func (f *fakeNamer) SessionNameDrift(sessionID, workdir, want string) bool {
 	f.queries = append(f.queries, [3]string{sessionID, workdir, want})
@@ -30,7 +35,12 @@ func (f *fakeNamer) SessionNameDrift(sessionID, workdir, want string) bool {
 
 func (f *fakeNamer) SessionIdle(string) bool { return f.idle }
 
-func (f *fakeNamer) RenameText(want string) string { return "/rename " + want }
+func (f *fakeNamer) RenameText(want string) string {
+	if f.text == "" {
+		return "/rename " + want
+	}
+	return f.text + want
+}
 
 // encodeTitledPanes renders live in list-panes' wire format, title included.
 func encodeTitledPanes(live []LivePane) string {
@@ -142,11 +152,19 @@ func TestRepairNames_PaneTitle(t *testing.T) {
 func TestRepairNames_SessionName(t *testing.T) {
 	activeClient := "%1 " + strconv.FormatInt(time.Now().Unix(), 10) + "\n"
 	tests := []struct {
-		name       string
-		namer      fakeNamer
-		clients    string
-		clientsErr error
-		wantRename bool
+		name string
+		// provider is the tag on the strand, and namers the session namers by tag the pass repairs through.
+		provider string
+		namers   map[string]fakeNamer
+		// title is the live pane's title, the strand's name when empty.
+		title string
+		// renamedBy is the tag of the namer the rename goes through, the empty tag when unset.
+		renamedBy string
+		// wantTitleRepair is whether the row's pane-title mismatch is repaired by select-pane -T.
+		wantTitleRepair bool
+		clients         string
+		clientsErr      error
+		wantRename      bool
 		// ownWindow anchors the strand own-window and lists its pane only in windowPanes, the session-wide listing.
 		ownWindow   bool
 		windowPanes string
@@ -159,20 +177,48 @@ func TestRepairNames_SessionName(t *testing.T) {
 		// failMsg is the failure line every run before heal logs, and healMsg the recovery line the repair after heal logs.
 		failMsg, healMsg string
 	}{
-		{name: "RenamedOnIdlePane", namer: fakeNamer{drift: true, idle: true}, wantRename: true},
+		{name: "RenamedOnIdlePane", namers: untagged(fakeNamer{drift: true, idle: true}), wantRename: true},
 		{
 			name:        "OwnWindowStrandRenamedFromTheSessionListing",
-			namer:       fakeNamer{drift: true, idle: true},
+			namers:      untagged(fakeNamer{drift: true, idle: true}),
 			wantRename:  true,
 			ownWindow:   true,
 			windowPanes: "@3 1 - %1 0 4321 tc:s:worker\n",
 		},
-		{name: "BusyPaneTypesNothing", namer: fakeNamer{drift: true, idle: false}},
-		{name: "NoDriftTypesNothing", namer: fakeNamer{drift: false, idle: true}},
-		{name: "ActiveOperatorTypesNothing", namer: fakeNamer{drift: true, idle: true}, clients: activeClient},
+		{name: "BusyPaneTypesNothing", namers: untagged(fakeNamer{drift: true, idle: false})},
+		{name: "NoDriftTypesNothing", namers: untagged(fakeNamer{drift: false, idle: true})},
+		{name: "ActiveOperatorTypesNothing", namers: untagged(fakeNamer{drift: true, idle: true}), clients: activeClient},
+		{
+			name:     "TaggedStrandRenamedThroughItsTagsNamer",
+			provider: "claude",
+			namers: map[string]fakeNamer{
+				"claude": {drift: true, idle: true, text: "/claude-rename "},
+				"":       {drift: false, idle: true, text: "/empty-rename "},
+			},
+			renamedBy:  "claude",
+			wantRename: true,
+		},
+		{
+			name: "UntaggedStrandRenamedThroughTheEmptyTagsNamer",
+			namers: map[string]fakeNamer{
+				"claude": {drift: false, idle: true, text: "/claude-rename "},
+				"":       {drift: true, idle: true, text: "/empty-rename "},
+			},
+			wantRename: true,
+		},
+		{
+			name:     "StrandWithoutANamerForItsTagGetsTheTitleRepairOnly",
+			provider: "codex",
+			namers: map[string]fakeNamer{
+				"claude": {drift: true, idle: true},
+				"":       {drift: true, idle: true},
+			},
+			title:           "codex",
+			wantTitleRepair: true,
+		},
 		{
 			name:          "UnreadableClientListStillRenames",
-			namer:         fakeNamer{drift: true, idle: true},
+			namers:        untagged(fakeNamer{drift: true, idle: true}),
 			clientsErr:    errors.New("list-clients failed"),
 			wantRename:    true,
 			failedRuns:    2,
@@ -183,7 +229,7 @@ func TestRepairNames_SessionName(t *testing.T) {
 		},
 		{
 			name:       "FailedCaptureLogsOncePerEpisode",
-			namer:      fakeNamer{drift: true, idle: true},
+			namers:     untagged(fakeNamer{drift: true, idle: true}),
 			wantRename: true,
 			failedRuns: 3,
 			fail:       func(f *fakeTmux) { f.answer("capture-pane", "", errors.New("capture failed")) },
@@ -193,7 +239,7 @@ func TestRepairNames_SessionName(t *testing.T) {
 		},
 		{
 			name:       "FailedRenameLogsOncePerEpisode",
-			namer:      fakeNamer{drift: true, idle: true},
+			namers:     untagged(fakeNamer{drift: true, idle: true}),
 			wantRename: true,
 			failedRuns: 3,
 			fail:       func(f *fakeTmux) { f.answer("load-buffer", "", errors.New("paste failed")) },
@@ -207,12 +253,17 @@ func TestRepairNames_SessionName(t *testing.T) {
 			logs := logcapture.CaptureVerbose(t)
 			logger.SetVerbosity(2)
 			strand := repairStrand("g1", "tc:s:worker", "%1", "sess-1")
+			strand.Provider = tt.provider
 			if tt.ownWindow {
 				strand.Display.Anchor = render.AnchorOwnWindow
 			}
+			title := tt.title
+			if title == "" {
+				title = strand.Name
+			}
 			e, fake := newRepairTestEngine(t,
 				[]Strand{strand},
-				[]LivePane{{ID: "%1", Title: "tc:s:worker"}})
+				[]LivePane{{ID: "%1", Title: title}})
 			if tt.ownWindow {
 				fake.answer("list-panes", "", nil)
 				fake.answerWindowPanes(tt.windowPanes, nil)
@@ -221,7 +272,13 @@ func TestRepairNames_SessionName(t *testing.T) {
 			if tt.fail != nil {
 				tt.fail(fake)
 			}
-			namer := tt.namer
+			fakes := make(map[string]*fakeNamer, len(tt.namers))
+			namers := make(map[string]SessionNamer, len(tt.namers))
+			for tag, f := range tt.namers {
+				f := f
+				fakes[tag] = &f
+				namers[tag] = &f
+			}
 
 			runs := 1 + tt.failedRuns
 			repairedRuns := 0
@@ -231,10 +288,11 @@ func TestRepairNames_SessionName(t *testing.T) {
 					tt.heal(fake)
 				}
 				want := tt.wantRename && (healed || tt.failedRenames)
-				repaired, err := e.repairNames(&namer)
+				repaired, err := e.repairNames(namers)
 				if err != nil {
 					t.Fatalf("repairNames run %d: %v", run, err)
 				}
+				want = want || tt.wantTitleRepair
 				if repaired != want {
 					t.Errorf("repairNames run %d repaired = %v, want %v", run, repaired, want)
 				}
@@ -243,6 +301,16 @@ func TestRepairNames_SessionName(t *testing.T) {
 				}
 			}
 
+			if tt.wantTitleRepair {
+				if sel := fake.ArgvFor("select-pane"); len(sel) != 1 || !reflect.DeepEqual(sel[0], []string{"select-pane", "-t", "%1", "-T", "tc:s:worker"}) {
+					t.Errorf("select-pane calls = %v, want one -T tc:s:worker on %%1", sel)
+				}
+				for tag, f := range fakes {
+					if len(f.queries) != 0 {
+						t.Errorf("namer %q drift queries = %v, want none for a strand tagged %q", tag, f.queries, tt.provider)
+					}
+				}
+			}
 			pastes := fake.ArgvFor("load-buffer")
 			if !tt.wantRename {
 				if len(pastes) != 0 {
@@ -251,12 +319,20 @@ func TestRepairNames_SessionName(t *testing.T) {
 				return
 			}
 			wantQuery := [3]string{"sess-1", e.geom.PaneCwd, "tc:s:worker"}
-			if len(namer.queries) != runs {
-				t.Errorf("drift queries = %v, want %d of [%v]", namer.queries, runs, wantQuery)
-			}
-			for _, query := range namer.queries {
-				if query != wantQuery {
-					t.Errorf("drift query = %v, want %v", query, wantQuery)
+			for tag, f := range fakes {
+				if tag != tt.renamedBy {
+					if len(f.queries) != 0 {
+						t.Errorf("namer %q drift queries = %v, want none", tag, f.queries)
+					}
+					continue
+				}
+				if len(f.queries) != runs {
+					t.Errorf("drift queries = %v, want %d of [%v]", f.queries, runs, wantQuery)
+				}
+				for _, query := range f.queries {
+					if query != wantQuery {
+						t.Errorf("drift query = %v, want %v", query, wantQuery)
+					}
 				}
 			}
 			// A failed capture never reaches the paste, so only the healed run pastes.
@@ -276,10 +352,10 @@ func TestRepairNames_SessionName(t *testing.T) {
 			}
 			wantStdin := make([]string, wantPastes)
 			for i := range wantStdin {
-				wantStdin[i] = "/rename tc:s:worker"
+				wantStdin[i] = fakes[tt.renamedBy].RenameText("tc:s:worker")
 			}
 			if got := fake.StdinFor("load-buffer"); !reflect.DeepEqual(got, wantStdin) {
-				t.Errorf("load-buffer stdin = %q, want the rename text %d times", got, wantPastes)
+				t.Errorf("load-buffer stdin = %q, want %q", got, wantStdin)
 			}
 			if keys := fake.ArgvFor("send-keys"); len(keys) != 0 {
 				t.Errorf("separate send-keys calls = %v, want none, the whole write is one invocation", keys)
@@ -323,7 +399,7 @@ func TestRepairNames_SkipsSessionCheckWithoutNamerOrSessionID(t *testing.T) {
 			[]Strand{repairStrand("g1", "tc:s:worker", "%1", "")},
 			[]LivePane{{ID: "%1", Title: "tc:s:worker"}})
 		namer := &fakeNamer{drift: true, idle: true}
-		if _, err := e.repairNames(namer); err != nil {
+		if _, err := e.repairNames(map[string]SessionNamer{"": namer}); err != nil {
 			t.Fatalf("repairNames: %v", err)
 		}
 		if len(namer.queries) != 0 {

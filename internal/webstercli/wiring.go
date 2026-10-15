@@ -194,8 +194,8 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 	if err != nil {
 		return err
 	}
-	reedEngine := reedengine.New(reedCfg, reedGeom)
-	engines, err := shuttleengines.New(shuttleCfg)
+	reedEngine := reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub())
+	engines, err := shuttleengines.New(shuttleCfg, fabricengine.ConfigDirs(loc))
 	if err != nil {
 		return err
 	}
@@ -295,8 +295,8 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 		return err
 	}
 
-	reedEngine := reedengine.New(reedCfg, reedGeom)
-	engines, err := shuttleengines.New(shuttleCfg)
+	reedEngine := reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub())
+	engines, err := shuttleengines.New(shuttleCfg, configengine.Dirs{Anchor: res.StateDir})
 	if err != nil {
 		return err
 	}

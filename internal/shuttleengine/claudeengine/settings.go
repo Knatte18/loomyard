@@ -9,7 +9,7 @@
 // denying AskUserQuestion in autonomous runs (where there is no operator present to answer it),
 // and recording — never denying — a live AskUserQuestion call in interactive runs so the run loop holds it like any turn end without output.
 // The Bash tool's default stdin is set by the env file Prepare writes (see command.go), not by a hook.
-// A Bash deny refusing the machine sleep commands is installed for every run.
+// The Bash denies render the rows of internal/shellguard's table, which installs the machine sleep, raw go, in-place edit and computed-path rm denies for every run and the python deny unless the run's config switches it off.
 // buildDenyNotice, built from the same standingDenies table so the two cannot drift, is the one-line system-prompt notice announcing each installed deny to the session.
 // Every document also sets `promptSuggestionEnabled` to false: a capture carries no styling,
 // so a greyed suggestion in an empty input box would read as a draft and IdleSession would never pass.
@@ -21,8 +21,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/agentname"
-	"github.com/Knatte18/loomyard/internal/gateslot"
+	"github.com/Knatte18/loomyard/internal/shellguard"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -38,99 +37,6 @@ const steerAskUserQuestionDeny = "you cannot open an interactive dialog here. If
 // steerWebsterForkDeny guards against fork-context deadlock: a fork inherits Master's await-batch loop and polling it would livelock the run.
 // It refuses `lyx webster` commands inside forks (detected by top-level agent_id in the payload). Must contain no single/double quote or backslash (checked at init).
 const steerWebsterForkDeny = "lyx webster verbs belong to the Master session, never a fork. You are an implementer fork: do your batch work and write your report, and do NOT run any lyx webster command (not await-batch, not anything) — polling for the report you must write only deadlocks the run. This call is refused."
-
-// steerPythonDeny refuses a Bash python invocation; it must contain no single/double quote or backslash (checked at init).
-const steerPythonDeny = "lyx agents never run Python; edit files with Edit or Write, search and read with grep, awk, cat or sed -n"
-
-// noticePythonDeny announces the python deny in the same wording as its steer.
-const noticePythonDeny = steerPythonDeny + "."
-
-// commandPositionPattern is the grep -E prefix that puts the pattern after it in command position of the raw PreToolUse payload JSON, with an optional path prefix:
-// right after the "command" key's opening quote, after a JSON-escaped newline, after ; & | ( or a backtick (which also covers $( ),
-// or after one of env, exec, xargs, sudo, time.
-// The shell single quotes around the patterns built on it forbid a single quote in them.
-const commandPositionPattern = `("command"[[:space:]]*:[[:space:]]*"|\\n|[;&|(` + "`" + `]|(^|[^A-Za-z0-9_-])(env|exec|xargs|sudo|time)[[:space:]]+)[[:space:]]*([^[:space:]"\\;&|()` + "`" + `]*/)?`
-
-// pythonCommandPattern is the grep -E pattern the python deny matches against the raw PreToolUse payload JSON.
-// It matches python, python3 or python3.<minor>, optionally path-prefixed, as a whole word in command position.
-const pythonCommandPattern = commandPositionPattern + `python(3(\.[0-9]+)?)?([^A-Za-z0-9_./-]|$)`
-
-// steerInPlaceEditDeny refuses a Bash sed or perl in-place edit; it must contain no single/double quote or backslash (checked at init).
-// It points at the edit directive's rule and does not restate it.
-const steerInPlaceEditDeny = "scripted in-place edits are refused here under the edit directive in your prompt; reading with sed -n is fine"
-
-// noticeInPlaceEditDeny announces the in-place edit deny in the same wording as its steer.
-const noticeInPlaceEditDeny = steerInPlaceEditDeny + "."
-
-// inPlaceEditCommandPattern is the grep -E pattern the in-place edit deny matches against the raw PreToolUse payload JSON.
-// It matches sed or perl in command position, optionally path-prefixed, followed by that command's words up to the next ; & | ) backtick or JSON-escaped newline, then an in-place flag word:
-// for sed, -i or -i<suffix>, a short-flag cluster holding i such as -ni or -Ei, or a -- word that is a prefix of --in-place at least as long as --i, optionally followed by =<suffix>;
-// for perl, a short-flag cluster holding i such as -i, -i.bak or -pi.
-// A short-flag word opens after whitespace with a single dash and letters, so --quiet and --expression= never match as a cluster.
-// GNU sed accepts any unambiguous abbreviation of a long option and no other sed long option starts with --i.
-// It sees static text only, so it is a guardrail and not a barrier:
-// it lets through sed writing by redirection, a w command inside a script, awk, find -exec sed -i, anything behind bash -c, eval or a variable, and anything after a prefix commandPositionPattern does not list.
-// It falsely denies a matching spelling inside a quoted argument, a grep alternation or another payload field, and a perl read whose cluster holds an i, such as perl -Mstrict -ne.
-const inPlaceEditCommandPattern = commandPositionPattern + `(` +
-	`sed[[:space:]]` + inPlaceCommandWordsPattern + `(-[A-Za-z]*i|--i(n(-(p(l(a(c(e)?)?)?)?)?)?)?(=[^[:space:]"\\;&|)` + "`" + `]*)?([[:space:]"\\;&|)` + "`" + `]|$))` +
-	`|perl[[:space:]]` + inPlaceCommandWordsPattern + `-[A-Za-z]*i` +
-	`)`
-
-// inPlaceCommandWordsPattern matches the words of a command between its name and an in-place flag: optionally anything up to the next separator or JSON-escaped newline, ending on whitespace.
-const inPlaceCommandWordsPattern = `(([^;&|)\\` + "`" + `]|\\[^n])*[[:space:]])?`
-
-// steerComputedRmDeny refuses a Bash rm on a computed path; it must contain no single/double quote or backslash (checked at init).
-// It names the literal-path way forward and no scratch place.
-const steerComputedRmDeny = "rm on a computed path, one built from a variable or a command substitution, is refused here because it raises a permission prompt that stalls the run; remove a file by its literal path"
-
-// noticeComputedRmDeny announces the computed-path rm deny in the same wording as its steer.
-const noticeComputedRmDeny = steerComputedRmDeny + "."
-
-// rmCommandPattern is the grep -E pattern matching rm as a whole word in command position of the raw PreToolUse payload JSON.
-const rmCommandPattern = commandPositionPattern + `rm([^A-Za-z0-9_./-]|$)`
-
-// shellExpansionPattern is the grep -E pattern matching a command substitution, $( or a backtick, or a shell variable expansion, $ followed by a letter, a digit, _, {, @ or *.
-// The @ and * take in the positional parameters $@ and $*; the special parameters $$, $?, $# and $! are not matched.
-const shellExpansionPattern = "[$][A-Za-z0-9_{@*(]|`"
-
-// steerSleepDeny refuses a Bash systemctl machine sleep command; it must contain no single/double quote or backslash (checked at init).
-const steerSleepDeny = "the machine sleep commands are refused here; a hibernate goes through lyx hibernate request, which waits until every session is paused, and a pair agent asks its parent session to run it"
-
-// noticeSleepDeny announces the sleep deny in the same wording as its steer.
-const noticeSleepDeny = steerSleepDeny + "."
-
-// sleepCommandPattern is the grep -E pattern the sleep deny matches against the raw PreToolUse payload JSON.
-// It matches systemctl in command position, optionally path-prefixed, followed by any flag words and then one of the verbs sleep, hibernate, suspend, hybrid-sleep or suspend-then-hibernate as a whole word, so hibernate.target is no verb.
-// A word that is not a flag ends the match, so systemctl status and every other verb pass.
-const sleepCommandPattern = commandPositionPattern + `systemctl([[:space:]]+-` + goWordPattern + `)*[[:space:]]+(sleep|hibernate|suspend|hybrid-sleep|suspend-then-hibernate)([^A-Za-z0-9_.-]|$)`
-
-// steerRawGoDeny refuses a Bash go run that bypasses the gate slots; it must contain no single/double quote or backslash (checked at init).
-// It is the gate rule every lyx-spawned session and its forks read, which stencils point at as "the gate rule in your system prompt".
-var steerRawGoDeny = "raw module-wide, tmux-tier and llm-tier go runs are refused here. Gate rule: run lyx gate test in the foreground with the Bash tool timeout set to " + bashMaxTimeoutMS + ", never in the background, for example lyx gate test ./internal/x, and use its --tags flag for a tag. Run every other check in the foreground too, and never cd into the directory you already work in. The slot, strand and prebuilt-binary environment variables belong to lyx, and a command naming any of them is refused"
-
-// noticeRawGoDeny announces the raw go deny in the same wording as its steer.
-var noticeRawGoDeny = steerRawGoDeny + "."
-
-// goSubcommandPattern is the grep -E prefix of a go test, build or vet command: go in command position directly before the subcommand, with an optional -C <dir> between them, then whitespace.
-const goSubcommandPattern = commandPositionPattern + `go[[:space:]]+(-C[[:space:]=]+[^[:space:]]+[[:space:]]+)?`
-
-// goArgumentsPattern matches the rest of a command line after a go subcommand and ends on whitespace: anything up to the next separator or JSON-escaped newline.
-const goArgumentsPattern = `(([^;&|\\]|\\[^n])*[[:space:]])?`
-
-// goWordPattern matches the characters of one command-line word.
-const goWordPattern = `[^[:space:]"\\;&|()` + "`" + `]*`
-
-// rawGoCommandPattern is the grep -E pattern the raw go deny matches against the raw PreToolUse payload JSON.
-// It matches three shapes.
-// A go test, build or vet whose arguments include a word holding ... or the word all.
-// A go test whose -tags value names tmux or llm.
-// Any command naming the slot-inheritance variable, the strand-name variable or the prebuilt-binary variable.
-// It sees static text only, so it is a guardrail and not a barrier:
-// a run hidden behind a script, bash -c, a cd plus a relative pattern it does not cover, or a shell variable passes, as does any raw package-scoped go test.
-// It falsely denies a matching spelling inside a quoted argument, a commit message or a grep.
-const rawGoCommandPattern = `(` + goSubcommandPattern + `(test|build|vet)[[:space:]]` + goArgumentsPattern + `(` + goWordPattern + `\.\.\.` + goWordPattern + `|all)([[:space:]"\\;&|()` + "`" + `]|$))` +
-	`|(` + goSubcommandPattern + `test[[:space:]]` + goArgumentsPattern + `-{1,2}tags[[:space:]=]+[^[:space:];&|]*(tmux|llm))` +
-	`|` + gateslot.InheritEnv + `|` + agentname.StrandNameEnv + `|` + gateslot.PrebuiltLyxEnv
 
 // noticeAgentDeny announces the Agent deny in a non-fork run;
 // it must hold for every session that receives it.
@@ -213,10 +119,11 @@ func denyJSON(steer string) string {
 }
 
 // denyInputs are the run inputs that decide which standing denies a run installs.
-// allowAgentTool is the per-run override (Spec.AllowAgentTool): it removes the Agent deny whatever cfg.ClaudeDenyAgentTool says.
+// allowAgentTool is the per-run override (Spec.AllowAgentTool): it removes the Agent deny whatever claude.DenyAgentTool says.
 type denyInputs struct {
 	interactive    bool
 	cfg            shuttleengine.Config
+	claude         Config
 	forkSubagents  bool
 	allowAgentTool bool
 }
@@ -236,102 +143,101 @@ type standingDeny struct {
 	installed func(denyInputs) bool
 }
 
-// standingDenies lists lyx's denies in the order their PreToolUse entries appear.
+// claudeDenies returns the denies keyed on Claude's own tools and payload fields, in the order their PreToolUse entries appear.
+func claudeDenies() []standingDeny {
+	return []standingDeny{
+		{
+			// Grep the payload for a fork subagent_type; a match exits 0 allowing the call, no
+			// match echoes the deny JSON. Whether the fork carried a name is deliberately NOT
+			// part of this test — a named fork is a defect signal the AUDIT records as
+			// ForkAudit.NamedSpawns for the caller's policy to interpret, never something this
+			// hook refuses mid-run.
+			matcher:   "Agent",
+			command:   fmt.Sprintf(`grep -q '"subagent_type":"fork"' || echo '%s'`, denyJSON(steerAgentNonForkDeny)),
+			steer:     steerAgentNonForkDeny,
+			notice:    noticeAgentForkDeny,
+			installed: func(in denyInputs) bool { return in.claude.DenyAgentTool && !in.allowAgentTool && in.forkSubagents },
+		},
+		{
+			matcher:   "Agent",
+			command:   "echo '" + denyJSON(steerAgentDeny) + "'",
+			steer:     steerAgentDeny,
+			notice:    noticeAgentDeny,
+			installed: func(in denyInputs) bool { return in.claude.DenyAgentTool && !in.allowAgentTool && !in.forkSubagents },
+		},
+		{
+			// Fork-context webster-verb guard: deny `lyx webster` inside forks (detected by top-level agent_id in payload).
+			// Ending with `; true` guarantees exit 0 so non-webster or non-fork calls are allowed.
+			matcher:   "Bash",
+			command:   "in=$(cat); { printf '%s' \"$in\" | grep -q '\"agent_id\"'; } && { printf '%s' \"$in\" | grep -Eq 'lyx[[:space:]]+webster'; } && echo '" + denyJSON(steerWebsterForkDeny) + "'; true",
+			steer:     steerWebsterForkDeny,
+			installed: func(in denyInputs) bool { return in.forkSubagents },
+		},
+		{
+			matcher:   "AskUserQuestion",
+			command:   "echo '" + denyJSON(steerAskUserQuestionDeny) + "'",
+			steer:     steerAskUserQuestionDeny,
+			notice:    noticeAskUserQuestionDeny,
+			installed: func(in denyInputs) bool { return !in.interactive && in.claude.DenyAskUserQuestion },
+		},
+	}
+}
+
+// standingDenies lists lyx's denies in the order their PreToolUse entries appear:
+// the Claude denies, then every shell guard row.
 // An interactive run's AskUserQuestion hook only records, never denies, so it stays outside the table.
-var standingDenies = []standingDeny{
-	{
-		// Grep the payload for a fork subagent_type; a match exits 0 allowing the call, no
-		// match echoes the deny JSON. Whether the fork carried a name is deliberately NOT
-		// part of this test — a named fork is a defect signal the AUDIT records as
-		// ForkAudit.NamedSpawns for the caller's policy to interpret, never something this
-		// hook refuses mid-run.
-		matcher:   "Agent",
-		command:   fmt.Sprintf(`grep -q '"subagent_type":"fork"' || echo '%s'`, denyJSON(steerAgentNonForkDeny)),
-		steer:     steerAgentNonForkDeny,
-		notice:    noticeAgentForkDeny,
-		installed: func(in denyInputs) bool { return in.cfg.ClaudeDenyAgentTool && !in.allowAgentTool && in.forkSubagents },
-	},
-	{
-		matcher:   "Agent",
-		command:   "echo '" + denyJSON(steerAgentDeny) + "'",
-		steer:     steerAgentDeny,
-		notice:    noticeAgentDeny,
-		installed: func(in denyInputs) bool { return in.cfg.ClaudeDenyAgentTool && !in.allowAgentTool && !in.forkSubagents },
-	},
-	{
-		// Fork-context webster-verb guard: deny `lyx webster` inside forks (detected by top-level agent_id in payload).
-		// Ending with `; true` guarantees exit 0 so non-webster or non-fork calls are allowed.
+var standingDenies = append(claudeDenies(), shellGuardDenies()...)
+
+// bashForegroundPhrase is Claude's phrase for running a long command in the foreground, which the raw go row's steer and notice carry.
+var bashForegroundPhrase = "with the Bash tool timeout set to " + bashMaxTimeoutMS
+
+// shellSwitchInstalled maps each shellguard.Switch to whether a run with the given inputs installs the rows hanging on it.
+var shellSwitchInstalled = map[shellguard.Switch]func(denyInputs) bool{
+	shellguard.SwitchNone:       func(denyInputs) bool { return true },
+	shellguard.SwitchDenyPython: func(in denyInputs) bool { return in.cfg.DenyPython },
+}
+
+// shellGuardInstalled reports whether a run with the given inputs installs the shell guard rows hanging on sw; a switch it does not know is not installed.
+func shellGuardInstalled(sw shellguard.Switch, in denyInputs) bool {
+	installed, known := shellSwitchInstalled[sw]
+	return known && installed(in)
+}
+
+// shellGuardDenies renders every shellguard row as a standing deny, in table order.
+func shellGuardDenies() []standingDeny {
+	var denies []standingDeny
+	for _, row := range shellguard.Rows(bashForegroundPhrase) {
+		denies = append(denies, renderShellGuard(row))
+	}
+	return denies
+}
+
+// renderShellGuard wraps a shell guard row as a PreToolUse(Bash) hook entry.
+// A one-pattern row greps the payload once; a row of several patterns greps the payload once per pattern and denies only when all match.
+// Ending with `; true` guarantees exit 0 so a non-match allows the call.
+func renderShellGuard(row shellguard.Row) standingDeny {
+	var command string
+	if len(row.Patterns) == 1 {
+		command = "grep -Eq '" + row.Patterns[0] + "' && echo '" + denyJSON(row.Steer) + "'; true"
+	} else {
+		greps := make([]string, len(row.Patterns))
+		for i, pattern := range row.Patterns {
+			greps[i] = "{ printf '%s' \"$in\" | grep -Eq '" + pattern + "'; }"
+		}
+		command = "in=$(cat); " + strings.Join(greps, " && ") + " && echo '" + denyJSON(row.Steer) + "'; true"
+	}
+	return standingDeny{
 		matcher:   "Bash",
-		command:   "in=$(cat); { printf '%s' \"$in\" | grep -q '\"agent_id\"'; } && { printf '%s' \"$in\" | grep -Eq 'lyx[[:space:]]+webster'; } && echo '" + denyJSON(steerWebsterForkDeny) + "'; true",
-		steer:     steerWebsterForkDeny,
-		installed: func(in denyInputs) bool { return in.forkSubagents },
-	},
-	{
-		matcher:   "AskUserQuestion",
-		command:   "echo '" + denyJSON(steerAskUserQuestionDeny) + "'",
-		steer:     steerAskUserQuestionDeny,
-		notice:    noticeAskUserQuestionDeny,
-		installed: func(in denyInputs) bool { return !in.interactive && in.cfg.ClaudeDenyAskUserQuestion },
-	},
-	{
-		// A guardrail, not a barrier.
-		// The pattern lets through python as an argument, behind bash -c, sh -c or eval, after a prefix it does not list (env FOO=1, nohup, command, timeout), and through a launcher such as py or uv run.
-		// It falsely denies python after a listed separator inside a quoted argument, a heredoc body or another payload field such as description.
-		// Ending with `; true` guarantees exit 0 so a non-match allows the call.
-		matcher:   "Bash",
-		command:   "grep -Eq '" + pythonCommandPattern + "' && echo '" + denyJSON(steerPythonDeny) + "'; true",
-		steer:     steerPythonDeny,
-		notice:    noticePythonDeny,
-		installed: func(in denyInputs) bool { return in.cfg.ClaudeDenyPython },
-	},
-	{
-		// Installed for every run, the orch included, so no session reaches the gate slots around lyx gate test.
-		// A guardrail, not a barrier: rawGoCommandPattern states what it lets through and what it falsely denies.
-		// Ending with `; true` guarantees exit 0 so a non-match allows the call.
-		matcher:   "Bash",
-		command:   "grep -Eq '" + rawGoCommandPattern + "' && echo '" + denyJSON(steerRawGoDeny) + "'; true",
-		steer:     steerRawGoDeny,
-		notice:    noticeRawGoDeny,
-		installed: func(denyInputs) bool { return true },
-	},
-	{
-		// Installed for every run, the orch included, with no config key.
-		// A guardrail, not a barrier: inPlaceEditCommandPattern states what it lets through and what it falsely denies.
-		// Ending with `; true` guarantees exit 0 so a non-match allows the call.
-		matcher:   "Bash",
-		command:   "grep -Eq '" + inPlaceEditCommandPattern + "' && echo '" + denyJSON(steerInPlaceEditDeny) + "'; true",
-		steer:     steerInPlaceEditDeny,
-		notice:    noticeInPlaceEditDeny,
-		installed: func(denyInputs) bool { return true },
-	},
-	{
-		// Refuses before Claude Code raises its statically-unresolvable-target dialog, which shows even in bypass mode and stalls an unwatched run.
-		// Installed for every run, the orch included, with no config key.
-		// Requires rm in command position and an expansion anywhere in the payload.
-		// A guardrail, not a barrier: it falsely denies an rm of a literal path in a command that uses $ elsewhere, a grep alternation naming rm, and a matching spelling in another payload field such as the description.
-		// It lets through a removal behind find -delete, xargs rm with no $, bash -c or a script, and one through the special parameters it does not list ($$, $?, $#, $!).
-		// Ending with `; true` guarantees exit 0 so a non-match allows the call.
-		matcher:   "Bash",
-		command:   "in=$(cat); { printf '%s' \"$in\" | grep -Eq '" + rmCommandPattern + "'; } && { printf '%s' \"$in\" | grep -Eq '" + shellExpansionPattern + "'; } && echo '" + denyJSON(steerComputedRmDeny) + "'; true",
-		steer:     steerComputedRmDeny,
-		notice:    noticeComputedRmDeny,
-		installed: func(denyInputs) bool { return true },
-	},
-	{
-		// Installed for every run, the orch included, with no config key.
-		// A guardrail, not a barrier: bash -c, eval, a shell variable, systemctl start or isolate of a sleep target and other sleep routes such as busctl, dbus-send and rtcwake pass, and a matching spelling inside a quoted argument or another payload field is falsely denied.
-		// Ending with `; true` guarantees exit 0 so a non-match allows the call.
-		matcher:   "Bash",
-		command:   "grep -Eq '" + sleepCommandPattern + "' && echo '" + denyJSON(steerSleepDeny) + "'; true",
-		steer:     steerSleepDeny,
-		notice:    noticeSleepDeny,
-		installed: func(denyInputs) bool { return true },
-	},
+		command:   command,
+		steer:     row.Steer,
+		notice:    row.Notice,
+		installed: func(in denyInputs) bool { return shellGuardInstalled(row.Switch, in) },
+	}
 }
 
 // buildDenyNotice returns the one-line system-prompt notice announcing each deny buildSettings installs under the same inputs, or "" when it installs none.
-func buildDenyNotice(interactive bool, cfg shuttleengine.Config, forkSubagents, allowAgentTool bool) string {
-	in := denyInputs{interactive: interactive, cfg: cfg, forkSubagents: forkSubagents, allowAgentTool: allowAgentTool}
+func buildDenyNotice(interactive bool, cfg shuttleengine.Config, claude Config, forkSubagents, allowAgentTool bool) string {
+	in := denyInputs{interactive: interactive, cfg: cfg, claude: claude, forkSubagents: forkSubagents, allowAgentTool: allowAgentTool}
 	var sentences []string
 	for _, deny := range standingDenies {
 		if deny.notice != "" && deny.installed(in) {
@@ -351,15 +257,15 @@ func recordingCommand(hookEventName, quotedEventsPath string) string {
 	return stamp + "; " + payload
 }
 
-// buildSettings marshals settings.json: a Stop hook and the other recording hooks appending their events to eventsPathPosix, and PreToolUse guardrails per cfg and interactive.
+// buildSettings marshals settings.json: a Stop hook and the other recording hooks appending their events to eventsPathPosix, and PreToolUse guardrails per cfg, claude and interactive.
 // eventsPathPosix must be a git-bash POSIX path (from shuttleengine.PosixPath); it's embedded via shQuote to escape any apostrophes.
-// Agent-tool and AskUserQuestion denies are controlled by cfg; forkSubagents narrows the Agent deny to non-fork subagent types and adds a webster-verb guard,
+// Agent-tool and AskUserQuestion denies are controlled by claude and the python deny by cfg; forkSubagents narrows the Agent deny to non-fork subagent types and adds a webster-verb guard,
 // and allowAgentTool drops the Agent deny entirely while leaving the webster-verb guard keyed on forkSubagents alone.
 // Every SessionStart source is recorded exactly once.
 // A non-empty contextAfterCompaction splits the SessionStart hook in two: one entry records every source but compaction, and the compaction entry records the event and then runs that command verbatim, so its standard output reaches the session's context.
 // Empty gives a single recording entry with no matcher.
 // The recordings print nothing and exit 0, so the PermissionRequest recording answers no request and the SessionStart recording adds nothing to the session's context.
-func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config, forkSubagents, allowAgentTool bool, contextAfterCompaction string) ([]byte, error) {
+func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config, claude Config, forkSubagents, allowAgentTool bool, contextAfterCompaction string) ([]byte, error) {
 	quotedEventsPath := shQuote(eventsPathPosix)
 	recordingHook := func(hookEventName string, alwaysSucceeds bool) []hookEntry {
 		command := recordingCommand(hookEventName, quotedEventsPath)
@@ -390,7 +296,7 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 		}
 	}
 
-	in := denyInputs{interactive: interactive, cfg: cfg, forkSubagents: forkSubagents, allowAgentTool: allowAgentTool}
+	in := denyInputs{interactive: interactive, cfg: cfg, claude: claude, forkSubagents: forkSubagents, allowAgentTool: allowAgentTool}
 	for _, deny := range standingDenies {
 		if deny.installed(in) {
 			doc.Hooks.PreToolUse = append(doc.Hooks.PreToolUse, hookEntry{
@@ -422,6 +328,11 @@ const noticeTextForbiddenChars = steerTextForbiddenChars + "\n\r"
 
 // init panics if any steer constant contains a forbidden character (checked at package load).
 func init() {
+	for _, row := range shellguard.Rows(bashForegroundPhrase) {
+		if _, known := shellSwitchInstalled[row.Switch]; !known {
+			panic(fmt.Sprintf("claudeengine: shellguard row %q hangs on switch %q, which shellGuardInstalled does not know, so the row would stay uninstalled", row.Name, row.Switch))
+		}
+	}
 	for _, deny := range standingDenies {
 		if strings.ContainsAny(deny.steer, steerTextForbiddenChars) {
 			panic(fmt.Sprintf("claudeengine: steer text contains a forbidden character (one of %q), which would break the JSON payload or the echo hook command: %q", steerTextForbiddenChars, deny.steer))

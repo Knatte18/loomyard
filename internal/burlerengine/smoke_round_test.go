@@ -40,6 +40,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
@@ -310,8 +311,8 @@ func TestSmokeBurlerRoundToyFixture(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reed geometry: %v", err)
 	}
-	reedEngine := reedengine.New(reedCfg, reedGeom)
-	runner := shuttleengine.NewRunner(reedEngine, shuttlefake.EngineSet(claudeengine.New()), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+	reedEngine := reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub())
+	runner := shuttleengine.NewRunner(reedEngine, shuttlefake.EngineSet(claudeengine.NewFromConfig(shuttleCfg, fabricengine.ConfigDirs(h.Location))), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 	burlerGeom, err := hubgeom.BurlerGeometry(h.Location)
 	if err != nil {
 		t.Fatalf("burler geometry: %v", err)

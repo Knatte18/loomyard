@@ -310,6 +310,7 @@ func (r *Reed) AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error) {
 		Cmd:       spec.Cmd,
 		ResumeCmd: spec.ResumeCmd,
 		SessionID: spec.SessionID,
+		Provider:  spec.Provider,
 		PaneID:    fmt.Sprintf("%%%d", r.next),
 		Display:   spec.Display,
 	}

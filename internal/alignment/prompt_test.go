@@ -62,7 +62,7 @@ func TestPrompt(t *testing.T) {
 	}{
 		{"parent-review names its brief and fills the pull request as none", parentReview, []string{"# Alignment for `task-a` at `parent-review`", "/attempt/brief.md", "pull request none at `none`"}, nil},
 		{"pr-gate names its pull request and fills the brief as none", prGate, []string{"# Alignment for `task-a` at `pr-gate`", "pull request 42 at `abc1234`", "The brief `none`", "a recorded decision the change breaks"}, nil},
-		{"a darn pr-gate fills an empty plan directory as none and carries darn's measure", prGateDarn, []string{"the plan in `none`", "Added after Discussion", "unrecorded parent correction"}, []string{"a recorded decision the change breaks"}},
+		{"a darn pr-gate fills an empty plan directory as none and carries darn's measure", prGateDarn, []string{"the plan in `none`", "unrecorded parent correction"}, []string{"a recorded decision the change breaks"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

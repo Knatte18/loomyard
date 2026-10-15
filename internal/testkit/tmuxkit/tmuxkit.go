@@ -370,16 +370,16 @@ func startServer(tmux, key string) error {
 	}
 	cmd := exec.Command(tmux, "-f", config, "-L", key, "start-server")
 	cmd.Dir = filepath.Dir(config)
-	cmd.Env = serverEnviron(os.Environ())
+	cmd.Env = ServerEnviron(os.Environ())
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("start tmux server on %q: %w\n%s", key, err, out)
 	}
 	return nil
 }
 
-// serverEnviron returns environ without the variables no pane may inherit from the process that starts the server: Claude's own, and the trace id and agent names of the enclosing strand.
-// The Claude filter is a copy of reedengine.CleanClaudeEnv, which this package cannot import because reedengine's own tests import the kit; a test pins the two together.
-func serverEnviron(environ []string) []string {
+// ServerEnviron returns environ without the variables no pane may inherit from the process that starts the server: Claude's own, and the trace id and agent names of the enclosing strand.
+// The Claude filter is a copy of the engines' declared scrub, which this package cannot import because reedengine's own tests import the kit; a test outside the kit pins the two together.
+func ServerEnviron(environ []string) []string {
 	clean := make([]string, 0, len(environ))
 	for _, entry := range environ {
 		key, _, _ := strings.Cut(entry, "=")

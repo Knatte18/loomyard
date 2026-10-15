@@ -90,6 +90,9 @@ type Env struct {
 	DecisionRecordPath string
 	// SupportLogPath is the told support log path, read by the gate resolver's "discussion" gate.
 	SupportLogPath string
+	// RelevantPath is the told relevant list path.
+	// The gate resolver's "discussion" gate reads it on a loom run.
+	RelevantPath string
 	// DescriptionPath is the told absolute path of the change description, read by the gate
 	// resolver's "description" gate.
 	DescriptionPath string

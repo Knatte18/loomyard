@@ -1058,6 +1058,15 @@ func TestReconcile_FailureNamesItsFile(t *testing.T) {
 			wantInBase: true,
 		},
 		{
+			name: "ReconcileAll on an unparseable shuttle.yaml",
+			run: func(baseDir, boardDir string) error {
+				_, err := ReconcileAll(baseDir, boardDir, Options{})
+				return err
+			},
+			module:     "shuttle",
+			wantInBase: true,
+		},
+		{
 			name: "ReconcileHubWideAt on an unparseable hub file",
 			run: func(baseDir, boardDir string) error {
 				_, err := ReconcileHubWideAt(boardDir, "", HubWideOptions{})
@@ -1099,6 +1108,232 @@ func TestReconcile_FailureNamesItsFile(t *testing.T) {
 			}
 			if !strings.HasPrefix(err.Error(), wantPath+": ") {
 				t.Errorf("message = %q, want it to start with %q", err.Error(), wantPath+": ")
+			}
+		})
+	}
+}
+
+// TestReconcile_MovesKeysAcrossModules pins the declared shuttle-to-claude key move at every reconcile entry point: where the value lands at each layer, what a collision keeps or overwrites, and that a dry run writes nothing and a second pass moves nothing.
+func TestReconcile_MovesKeysAcrossModules(t *testing.T) {
+	t.Parallel()
+	claudeTemplate, _ := configreg.Template("claude")
+	claudeModule, _ := configreg.Lookup("claude")
+	const templateBinary = "${env:LYX_SHUTTLE_CLAUDE:-}"
+	tests := []struct {
+		name string
+		// files maps "<base|board|prime|local>:<module>" to the file's content.
+		files map[string]string
+		// call is "hub" (ReconcileAll over a board dir), "standalone" (ReconcileAll without one) or "board" (ReconcileHubWideAt seeding from the prime).
+		call   string
+		dryRun bool
+		repeat bool
+		// contains and excludes map a file key to substrings its content must and must not hold after the run.
+		contains map[string][]string
+		excludes map[string][]string
+		absent   []string
+		// moved, kept and overwritten are the exact report lines the run must produce across all its results.
+		moved, kept, overwritten []string
+		// loadContains is what claude's resolved base+worktree stack must hold after the run.
+		loadContains string
+		// checkLoadRefuses is the file name claude's loader must refuse naming after the run.
+		checkLoadRefuses string
+	}{
+		{
+			name:     "a repo default moves into a created full claude.yaml",
+			files:    map[string]string{"board:shuttle": "claude: /x\n"},
+			call:     "board",
+			contains: map[string][]string{"board:claude": {"binary: /x", "deny_agent_tool"}},
+			excludes: map[string][]string{"board:shuttle": {"claude: /x"}},
+			moved:    []string{"shuttle.claude -> claude.binary"},
+		},
+		{
+			name:     "a board default seeded from the prime's shuttle.yaml carries the moved value",
+			files:    map[string]string{"prime:shuttle": "claude: /x\n"},
+			call:     "board",
+			contains: map[string][]string{"board:claude": {"binary: /x"}, "prime:shuttle": {"claude: /x"}},
+			excludes: map[string][]string{"board:shuttle": {"claude: /x"}},
+			moved:    []string{"shuttle.claude -> claude.binary"},
+		},
+		{
+			name:     "a worktree layer in a hub moves into a created sparse claude.yaml",
+			files:    map[string]string{"base:shuttle": "claude: /x\n"},
+			call:     "hub",
+			repeat:   true,
+			contains: map[string][]string{"base:claude": {"binary: /x"}},
+			excludes: map[string][]string{"base:claude": {"deny_agent_tool"}},
+			absent:   []string{"base:shuttle"},
+			moved:    []string{"shuttle.claude -> claude.binary"},
+		},
+		{
+			name:     "a local layer moves into a created sparse claude.local.yaml and the emptied source is removed",
+			files:    map[string]string{"local:shuttle": "claude_prompt_cache_ttl: 1h\n"},
+			call:     "hub",
+			contains: map[string][]string{"local:claude": {"prompt_cache_ttl: 1h"}},
+			absent:   []string{"local:shuttle"},
+			moved:    []string{"shuttle.claude_prompt_cache_ttl -> claude.prompt_cache_ttl"},
+		},
+		{
+			name:         "a base target holding the template default is overwritten",
+			files:        map[string]string{"base:shuttle": "claude: /x\n", "base:claude": claudeTemplate()},
+			call:         "standalone",
+			contains:     map[string][]string{"base:claude": {"binary: /x"}},
+			moved:        []string{"shuttle.claude -> claude.binary"},
+			overwritten:  []string{"shuttle.claude: /x replaced claude.binary's template default " + templateBinary},
+			loadContains: "binary: /x",
+		},
+		{
+			name:     "a standalone worktree creates a full claude.yaml from the template",
+			files:    map[string]string{"base:shuttle": "claude: /x\n"},
+			call:     "standalone",
+			contains: map[string][]string{"base:claude": {"binary: /x", "deny_agent_tool"}},
+			moved:    []string{"shuttle.claude -> claude.binary"},
+		},
+		{
+			name:     "a base target holding its own value keeps it",
+			files:    map[string]string{"base:shuttle": "claude: /x\n", "base:claude": "binary: /keep\n"},
+			call:     "standalone",
+			contains: map[string][]string{"base:claude": {"binary: /keep"}},
+			excludes: map[string][]string{"base:claude": {"/x"}},
+			kept:     []string{"shuttle.claude: /x dropped, claude.binary: /keep kept"},
+		},
+		{
+			name:     "a sparse target holding the template default keeps it",
+			files:    map[string]string{"base:shuttle": "claude: /x\n", "base:claude": "binary: " + templateBinary + "\n"},
+			call:     "hub",
+			contains: map[string][]string{"base:claude": {templateBinary}},
+			excludes: map[string][]string{"base:claude": {"/x"}},
+			kept:     []string{"shuttle.claude: /x dropped, claude.binary: " + templateBinary + " kept"},
+		},
+		{
+			name:     "a dry run writes nothing and reports the pending move",
+			files:    map[string]string{"base:shuttle": "claude: /x\n"},
+			call:     "hub",
+			dryRun:   true,
+			contains: map[string][]string{"base:shuttle": {"claude: /x"}},
+			absent:   []string{"base:claude"},
+			moved:    []string{"shuttle.claude -> claude.binary"},
+		},
+		{
+			name:             "a local ttl map is moved verbatim and then refused by claude's loader",
+			files:            map[string]string{"board:claude": claudeTemplate(), "base:reed": "", "local:shuttle": "claude_prompt_cache_ttl:\n  a: 1\n"},
+			call:             "hub",
+			contains:         map[string][]string{"local:claude": {"a: 1"}},
+			absent:           []string{"local:shuttle"},
+			moved:            []string{"shuttle.claude_prompt_cache_ttl -> claude.prompt_cache_ttl"},
+			checkLoadRefuses: "claude.local.yaml",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dirs := map[string]string{"base": t.TempDir(), "board": t.TempDir(), "prime": t.TempDir()}
+			pathOf := func(key string) string {
+				kind, module, _ := strings.Cut(key, ":")
+				if kind == "local" {
+					return configengine.LocalFile(dirs["base"], module)
+				}
+				return configengine.ConfigFile(dirs[kind], module)
+			}
+			for key, content := range tt.files {
+				path := pathOf(key)
+				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+					t.Fatalf("mkdir for %s: %v", key, err)
+				}
+				if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+					t.Fatalf("write %s: %v", key, err)
+				}
+			}
+			run := func() []Result {
+				var results []Result
+				var err error
+				switch tt.call {
+				case "hub":
+					results, err = ReconcileAll(dirs["base"], dirs["board"], Options{Apply: !tt.dryRun})
+				case "standalone":
+					results, err = ReconcileAll(dirs["base"], "", Options{Apply: !tt.dryRun})
+				case "board":
+					results, err = ReconcileHubWideAt(dirs["board"], dirs["prime"], HubWideOptions{Apply: !tt.dryRun, SeedDefaults: true})
+				}
+				if err != nil {
+					t.Fatalf("reconcile: %v", err)
+				}
+				return results
+			}
+			lines := func(results []Result, pick func(Result) []string) []string {
+				var all []string
+				for _, result := range results {
+					for _, line := range pick(result) {
+						if !slices.Contains(all, line) {
+							all = append(all, line)
+						}
+					}
+				}
+				slices.Sort(all)
+				return all
+			}
+			wantLines := func(want []string) []string {
+				slices.Sort(want)
+				return want
+			}
+
+			results := run()
+
+			for name, got := range map[string][]string{
+				"Moved":       lines(results, func(r Result) []string { return r.Moved }),
+				"KeptTarget":  lines(results, func(r Result) []string { return r.KeptTarget }),
+				"Overwritten": lines(results, func(r Result) []string { return r.Overwritten }),
+			} {
+				want := map[string][]string{"Moved": tt.moved, "KeptTarget": tt.kept, "Overwritten": tt.overwritten}[name]
+				if !slices.Equal(got, wantLines(slices.Clone(want))) {
+					t.Errorf("%s lines = %q; want %q", name, got, want)
+				}
+			}
+			for key, wants := range tt.contains {
+				content, err := os.ReadFile(pathOf(key))
+				if err != nil {
+					t.Fatalf("read %s: %v", key, err)
+				}
+				for _, want := range wants {
+					if !strings.Contains(string(content), want) {
+						t.Errorf("%s = %q; want it to contain %q", key, content, want)
+					}
+				}
+			}
+			for key, unwanted := range tt.excludes {
+				content, err := os.ReadFile(pathOf(key))
+				if err != nil {
+					t.Fatalf("read %s: %v", key, err)
+				}
+				for _, bad := range unwanted {
+					if strings.Contains(string(content), bad) {
+						t.Errorf("%s = %q; want it without %q", key, content, bad)
+					}
+				}
+			}
+			for _, key := range tt.absent {
+				if _, err := os.Stat(pathOf(key)); !os.IsNotExist(err) {
+					t.Errorf("%s exists (stat err = %v); want it absent", key, err)
+				}
+			}
+			if tt.loadContains != "" {
+				loaded, err := configengine.Load(configengine.Dirs{Anchor: dirs["base"]}, claudeModule.Spec())
+				if err != nil {
+					t.Fatalf("Load claude: %v", err)
+				}
+				if !strings.Contains(string(loaded), tt.loadContains) {
+					t.Errorf("claude resolves to %q; want it to contain %q", loaded, tt.loadContains)
+				}
+			}
+			if tt.checkLoadRefuses != "" {
+				err := claudeModule.CheckLoad(configengine.Dirs{Anchor: dirs["base"], Board: dirs["board"]})
+				if err == nil || !strings.Contains(err.Error(), tt.checkLoadRefuses) {
+					t.Errorf("claude CheckLoad error = %v; want it to name %q", err, tt.checkLoadRefuses)
+				}
+			}
+			if tt.repeat {
+				if again := lines(run(), func(r Result) []string { return r.Moved }); len(again) > 0 {
+					t.Errorf("second pass Moved = %q; want none", again)
+				}
 			}
 		})
 	}

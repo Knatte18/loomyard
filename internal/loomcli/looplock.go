@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -51,7 +52,7 @@ func battenWatcher(loc *lyxcwd.Location, runID string) func() (int, bool) {
 // readAgentStates returns the reading of every live agent run of the worktree loc as the parent lock's idle rule folds it.
 func readAgentStates(loc *lyxcwd.Location, cfg shuttleengine.Config) func() ([]parentlock.AgentState, error) {
 	return func() ([]parentlock.AgentState, error) {
-		engines, err := shuttleengines.New(cfg)
+		engines, err := shuttleengines.New(cfg, fabricengine.ConfigDirs(loc))
 		if err != nil {
 			return nil, err
 		}

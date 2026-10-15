@@ -53,6 +53,7 @@ const (
 // startsNoTurn marks a send whose text starts no turn, such as a slash command, so no turn start reads as its landing.
 // landingStart is the session-start source whose line confirms a send that starts no turn; it is empty for every other send.
 // keepUnlanded marks a send that never clears a text that did not land, leaving it in the input box.
+// recordless marks a send into a strand no run record names: the run state, directory and events path are empty, so readiness reads the pane alone and no pending-send record is kept.
 type sendContext struct {
 	reed         ReedOps
 	engine       Engine
@@ -67,6 +68,7 @@ type sendContext struct {
 	startsNoTurn bool
 	landingStart SessionStartSource
 	keepUnlanded bool
+	recordless   bool
 	// activityFailures is the runner's operator-activity failure episodes, shared by every send and probe of one runner.
 	activityFailures *logger.EpisodeSet
 }
@@ -103,6 +105,28 @@ func (r *Runner) newSendContext(state RunState, runDir string) (sendContext, err
 		eventsPath: state.EventsPath,
 		cfg:        r.cfg,
 		clock:      r.clock,
+
+		activityFailures: &r.activityFailures,
+	}, nil
+}
+
+// recordlessSendContext returns the context of a verified send into the pane of the live strand guid, which no run record names.
+// It keeps the runner's turn-start hold for the strand and never clears a text that did not land.
+// The send goes through the runner's default engine, and fails with the lookup's error when the set does not hold it.
+func (r *Runner) recordlessSendContext(guid string) (sendContext, error) {
+	engine, _, err := r.engineFor(RunState{})
+	if err != nil {
+		return sendContext{}, err
+	}
+	return sendContext{
+		reed:         r.reed,
+		engine:       engine,
+		guid:         guid,
+		cfg:          r.cfg,
+		clock:        r.clock,
+		hold:         r.holdFor(guid),
+		keepUnlanded: true,
+		recordless:   true,
 
 		activityFailures: &r.activityFailures,
 	}, nil
@@ -473,6 +497,7 @@ func IsDraftHold(err error) bool {
 // pasteVerified writes text into the pane as one paste through reed and confirms it was submitted.
 // The paste carries its trailing Enter when the provider's Enter submits a paste; otherwise the box is settled first, so the guarded Enter lands on a redrawn box.
 // The send's window opens before the paste and is cut to the send's deadline.
+// A send into a strand with no run record keeps no pending-send record, since it has no run directory.
 func pasteVerified(sc sendContext, paster TextPaster, reader InputBoxReader, text string) error {
 	closeAt := sc.clock.Now().Add(submitConfirmTimeout(sc.cfg))
 	if !sc.deadline.IsZero() && sc.deadline.Before(closeAt) {
@@ -486,7 +511,7 @@ func pasteVerified(sc sendContext, paster TextPaster, reader InputBoxReader, tex
 		return fmt.Errorf("shuttle: paste text: %w", err)
 	}
 	err := settleAndConfirmPasted(sc, paster, reader, text, sentAt, closeAt)
-	if errors.Is(err, ErrSentTextInDraft) || errors.Is(err, ErrSubmissionNotLanded) {
+	if !sc.recordless && (errors.Is(err, ErrSentTextInDraft) || errors.Is(err, ErrSubmissionNotLanded)) {
 		if saveErr := savePendingSend(sc.runDir, pendingSend{Text: text, EventsOffset: sentAt}); saveErr != nil {
 			logger.Warn("shuttle: pending send not recorded, a retry may type the text twice", "strandGUID", sc.guid, "error", saveErr)
 		}

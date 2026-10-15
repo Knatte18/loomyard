@@ -51,8 +51,17 @@
 // and the sequence is `/color <name>` typed and submitted, with no leading Escape.
 // A color outside the palette answers no inputs.
 //
+// The engine owns a layered config module, `claude.yaml`, declared in config.go:
+// `binary`, `deny_agent_tool`, `deny_ask_user_question`, `prompt_cache_ttl` and `prompt_cache_ttl_roles`.
+// LoadConfig resolves it through the degrading loader, stacking the template, the repo default, the worktree file and the local override,
+// and a local override may set only the cache lifetimes.
+// It is told its directories and derives none.
+// NewFromConfig takes them, and Prepare, OpenLaunch and PromptCacheLifetime each load claude.yaml through them before anything else,
+// so an invalid file refuses a run start, a resume and an open with the file, the key and the way forward, `lyx config claude`.
+// No other method and neither constructor loads it, and an engine built by New, with zero directories, refuses those three methods.
+//
 // Both lines carry `CLAUDE_CODE_PROMPT_CACHE_TTL`, so a session writes its prompt cache at the TTL its role needs rather than at Claude Code's subscription default.
-// Prepare resolves the value from `Spec.Role` through `shuttle.yaml`'s `claude_prompt_cache_ttl_roles` map, with `claude_prompt_cache_ttl` as the fallback for an empty or unmapped role,
+// Prepare resolves the value from `Spec.Role` through `claude.yaml`'s `prompt_cache_ttl_roles` map, with `prompt_cache_ttl` as the fallback for an empty or unmapped role,
 // and validates the whole configured set to `5m` or `1h` (exact, case-sensitive) before any artifact is written.
 // It logs the resolved value with the role.
 // The value is fixed for the session's life, since a resume line is never rebuilt.
@@ -158,8 +167,9 @@
 // Both the hooks and the notice are built from one deny table in settings.go, so the two cannot drift:
 // each row names its tool matcher, hook command, notice sentence and the run inputs that install it.
 // The webster fork guard has no notice sentence and is not announced.
+// The Bash denies below are not declared here: they render the rows of `internal/shellguard`'s table as PreToolUse(Bash) hooks, every row in table order after the Claude rows.
 // The python row denies a Bash command that runs `python`, `python3` or `python3.<minor>` in command position, in every run mode;
-// `shuttle.yaml`'s `claude_deny_python` switches it off for a Python target repo.
+// `shuttle.yaml`'s `deny_python` switches it off for a Python target repo.
 // It is a guardrail, not a barrier: its hook greps the payload, so a quoted argument or heredoc body can trip it falsely, and python behind `bash -c`, `eval` or a launcher passes.
 //
 // The raw go row keeps a session from reaching the hub's gate slots around `lyx gate test`, and every run installs it, the orch included.

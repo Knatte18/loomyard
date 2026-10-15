@@ -26,18 +26,18 @@ const (
 
 func TestClaudeBinary(t *testing.T) {
 	tests := []struct {
-		name string
-		cfg  shuttleengine.Config
-		want string
+		name   string
+		claude Config
+		want   string
 	}{
-		{"configured", shuttleengine.Config{Claude: `C:\tools\claude.exe`}, `C:\tools\claude.exe`},
-		{"default", shuttleengine.Config{}, "claude"},
+		{"configured", Config{Binary: `C:\tools\claude.exe`}, `C:\tools\claude.exe`},
+		{"default", Config{}, "claude"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := claudeBinary(tt.cfg)
+			got := claudeBinary(tt.claude)
 			if got != tt.want {
-				t.Errorf("claudeBinary(%+v) = %q; want %q", tt.cfg, got, tt.want)
+				t.Errorf("claudeBinary(%+v) = %q; want %q", tt.claude, got, tt.want)
 			}
 		})
 	}
@@ -347,10 +347,12 @@ func TestOpenLaunch(t *testing.T) {
 	sh := shell.ForGOOS()
 	nameRef := "--name " + sh.EnvRef("LYX_STRAND_NAME")
 	tests := []struct {
-		name    string
-		spec    shuttleengine.OpenSpec
-		wantErr string
-		check   func(t *testing.T, launch shuttleengine.Launch)
+		name string
+		spec shuttleengine.OpenSpec
+		// invalidConfig makes the engine load a claude.yaml the loader refuses.
+		invalidConfig bool
+		wantErr       string
+		check         func(t *testing.T, launch shuttleengine.Launch)
 	}{
 		{
 			name: "fresh line",
@@ -392,14 +394,26 @@ func TestOpenLaunch(t *testing.T) {
 		},
 		{name: "an invalid effort is refused", spec: shuttleengine.OpenSpec{Role: "explore", ModelChoice: shuttleengine.ModelChoice{Effort: "turbo"}}, wantErr: "invalid effort"},
 		{name: "a version without a model is refused", spec: shuttleengine.OpenSpec{Role: "explore", ModelChoice: shuttleengine.ModelChoice{Version: "4.5"}}, wantErr: "no model"},
+		{name: "an invalid claude config is refused", spec: shuttleengine.OpenSpec{Role: "explore"}, invalidConfig: true, wantErr: "claude.local.yaml"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			launch, err := New().OpenLaunch(tt.spec, shuttleengine.Config{})
+			engine := engineWith(t, templateConfig(t))
+			if tt.invalidConfig {
+				engine = engineWithInvalidConfig(t)
+			}
+			launch, err := engine.OpenLaunch(tt.spec, shuttleengine.Config{})
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("OpenLaunch() error = %v; want it to contain %q", err, tt.wantErr)
+				}
+				if tt.invalidConfig {
+					for _, want := range invalidConfigWant {
+						if !strings.Contains(err.Error(), want) {
+							t.Errorf("OpenLaunch() error = %q; want it to name %q", err, want)
+						}
+					}
 				}
 				if launch.SessionID != "" {
 					t.Errorf("SessionID = %q; want none from a refused open", launch.SessionID)

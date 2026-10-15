@@ -52,6 +52,11 @@ func StartTime(pid int) (string, bool) {
 	return "", false
 }
 
+// ParentPID reports no parent on Windows, where creel resolves identity from process ancestry on Linux only.
+func ParentPID(pid int) (int, bool) {
+	return 0, false
+}
+
 // TreeCPU reports errors.ErrUnsupported on Windows, which a CPU watchdog reads as no watchdog applying.
 func TreeCPU(root int) ([]ProcessCPU, error) {
 	return nil, errors.ErrUnsupported

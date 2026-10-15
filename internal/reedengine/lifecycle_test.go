@@ -274,6 +274,7 @@ func TestStatus_ReportsSegmentColor(t *testing.T) {
 }
 
 // TestStatus_ReportsOwnWindowStrandsFromTheSessionListing pins that Status reads an own-window strand's pane from the session-wide listing: alive is live, dead is present but not live, and one in no listing is neither.
+// It also pins the pane pid: the listed pid for a live pane, 0 for a dead pane and for one in no listing.
 func TestStatus_ReportsOwnWindowStrandsFromTheSessionListing(t *testing.T) {
 	e := newTestEngine(t)
 	fake := installFakeTmux(t, e)
@@ -311,6 +312,12 @@ func TestStatus_ReportsOwnWindowStrandsFromTheSessionListing(t *testing.T) {
 			t.Errorf("Status of strand %q = %+v, want %+v", s.GUID, got, want[s.GUID])
 		}
 	}
+	wantPanePID := map[string]int{"w": 4323, "alive": 4325, "dead": 0, "gone": 0}
+	for _, s := range result.Strands {
+		if s.PanePID != wantPanePID[s.GUID] {
+			t.Errorf("Status PanePID of strand %q = %d, want %d", s.GUID, s.PanePID, wantPanePID[s.GUID])
+		}
+	}
 }
 
 // TestServerBootEnv_ExcludesTraceID pins that LYX_TRACE_ID is stripped before the tmux server
@@ -318,7 +325,7 @@ func TestStatus_ReportsOwnWindowStrandsFromTheSessionListing(t *testing.T) {
 func TestServerBootEnv_ExcludesTraceID(t *testing.T) {
 	t.Setenv("LYX_TRACE_ID", "somevalue")
 
-	clean, _ := CleanClaudeEnv(os.Environ())
+	clean, _ := testScrub.Apply(os.Environ())
 	sawBeforeStrip := false
 	for _, entry := range clean {
 		if strings.HasPrefix(entry, "LYX_TRACE_ID=") {
@@ -327,10 +334,9 @@ func TestServerBootEnv_ExcludesTraceID(t *testing.T) {
 		}
 	}
 	if !sawBeforeStrip {
-		// CleanClaudeEnv is not expected to strip this on its own — if it's
-		// already gone here, the fixture assumption (LYX_TRACE_ID surviving
-		// CleanClaudeEnv) is broken and the assertion below proves nothing.
-		t.Fatalf("CleanClaudeEnv(os.Environ()) does not contain LYX_TRACE_ID; test fixture assumption broken")
+		// The scrub is not expected to strip this on its own.
+		// If it is already gone here, the fixture assumption (LYX_TRACE_ID surviving the scrub) is broken and the assertion below proves nothing.
+		t.Fatalf("testScrub.Apply(os.Environ()) does not contain LYX_TRACE_ID; test fixture assumption broken")
 	}
 
 	got := stripTraceID(clean)

@@ -27,6 +27,7 @@ func TestStrandOps_RealTmux(t *testing.T) {
 		for _, name := range []string{"top", "middle", "bottom"} {
 			s, err := e.AddStrand(AddSpec{
 				NameOverride: name,
+				Provider:     "claude",
 				Display:      render.Display{Anchor: render.AnchorBelowParent},
 			})
 			if err != nil {
@@ -44,10 +45,14 @@ func TestStrandOps_RealTmux(t *testing.T) {
 
 		replacement, err := e.ReplaceStrand(added[0].GUID, AddSpec{
 			NameOverride: "top",
+			Provider:     "codex",
 			Display:      render.Display{Anchor: render.AnchorBelowParent},
 		})
 		if err != nil {
 			t.Fatalf("ReplaceStrand = %v, want nil", err)
+		}
+		if replacement.Provider != "codex" {
+			t.Errorf("replacement Provider = %q, want codex", replacement.Provider)
 		}
 		if replacement.GUID == added[0].GUID {
 			t.Fatalf("replacement kept the replaced strand's guid %q", replacement.GUID)
@@ -134,7 +139,7 @@ func TestStrandOps_RealTmux(t *testing.T) {
 		if err != nil {
 			t.Fatalf("AddStrand(finished) = %v, want nil", err)
 		}
-		unfinished, err := e.AddStrand(AddSpec{NameOverride: "unfinished", Display: display, DoneWhen: []string{filepath.Join(t.TempDir(), "never-written")}})
+		unfinished, err := e.AddStrand(AddSpec{NameOverride: "unfinished", Provider: "claude", Display: display, DoneWhen: []string{filepath.Join(t.TempDir(), "never-written")}})
 		if err != nil {
 			t.Fatalf("AddStrand(unfinished) = %v, want nil", err)
 		}
@@ -161,6 +166,9 @@ func TestStrandOps_RealTmux(t *testing.T) {
 		relaunched, ok := strandByGUID(after.Strands, unfinished.GUID)
 		if !ok || relaunched.PaneID == "" {
 			t.Errorf("unfinished strand after Resume = (%+v, %v), want it present with a live pane", relaunched, ok)
+		}
+		if relaunched.Provider != "claude" {
+			t.Errorf("relaunched strand Provider = %q, want claude kept", relaunched.Provider)
 		}
 	})
 }

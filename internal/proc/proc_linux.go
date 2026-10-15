@@ -40,6 +40,24 @@ func StartTime(pid int) (string, bool) {
 	return fields[19], true
 }
 
+// ParentPID returns the parent process id of the process identified by pid, field 4 of /proc/<pid>/stat.
+// It reports false for a pid of 0 or below, a process that does not exist and a stat that cannot be parsed.
+func ParentPID(pid int) (int, bool) {
+	if pid <= 0 {
+		return 0, false
+	}
+	fields, ok := statFieldsAfterName(pid)
+	if !ok {
+		return 0, false
+	}
+	// The remainder starts at field 3, so field 4 is the second entry.
+	parent, err := strconv.Atoi(fields[1])
+	if err != nil {
+		return 0, false
+	}
+	return parent, true
+}
+
 // statFieldsAfterName returns the fields of /proc/<pid>/stat that follow the command name, starting at field 3.
 // It reports false when the process does not exist or its stat cannot be parsed.
 func statFieldsAfterName(pid int) ([]string, bool) {

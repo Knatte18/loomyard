@@ -289,10 +289,9 @@
 // constraint, not a burler choice), and no separate tmux pane or window
 // per fork is needed. shuttleengine.Spec.ForkSubagents authorizes this for
 // the run; claudeengine sets CLAUDE_CODE_FORK_SUBAGENT=1 inline on the
-// launch line itself, never on the reed server's own environment, because
-// reedengine.CleanClaudeEnv scrubs CLAUDECODE/CLAUDE_CODE_* from the server
-// env at boot as mandatory hygiene — the launch line runs after that
-// scrub, which is the only place a per-run, staged-rollout flag can ride.
+// launch line itself, never on the reed server's own environment.
+// Reed's server spawn scrubs the keys the engines declare (CLAUDECODE/CLAUDE_CODE_* for claude) from the server env at boot as mandatory hygiene.
+// The launch line runs after that scrub, which is the only place a per-run, staged-rollout flag can ride.
 //
 // Version pinning: CLAUDE_CODE_FORK_SUBAGENT is a staged-rollout flag
 // requiring Claude Code v2.1.117+, and forks must stay UNNAMED — named

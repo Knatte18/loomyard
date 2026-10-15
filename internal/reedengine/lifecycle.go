@@ -70,7 +70,9 @@ type StrandStatus struct {
 	GUID   string
 	Name   string
 	PaneID string
-	Live   bool
+	// PanePID is the pane's process id from the session listing, 0 when the strand's pane is in no listing or is dead.
+	PanePID int
+	Live    bool
 	// Present reports that the strand's binding names a present pane, alive or dead.
 	// Shuttle's stop path decides on it whether a dead strand still has a pane to remove.
 	Present bool
@@ -439,18 +441,14 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		return false, nil, fmt.Errorf("prune out logs: %w", err)
 	}
 
-	// Env hygiene: a spawned server must never inherit this process's own
-	// Claude Code session identity (CleanClaudeEnv is the single documented
-	// chokepoint for that decision).
-	clean, stripped := CleanClaudeEnv(os.Environ())
-	// The tmux server is a long-lived singleton later invocations reattach
-	// to, unlike a one-shot child (board/fabric spawn) that belongs to a
-	// single invocation and should keep inheriting the trace ID. Filtering
-	// LYX_TRACE_ID is therefore kept as its own explicitly-named step, not
-	// folded into CleanClaudeEnv: CleanClaudeEnv's stripped-keys return
-	// value is persisted verbatim into ReedState.StrippedEnv as a
-	// Claude-injected-variable diagnostic, and LYX_TRACE_ID is neither
-	// Claude-injected nor meant to be recorded there.
+	// Env hygiene: a spawned server must never inherit this process's own agent session identity.
+	// The told EnvScrub is the single chokepoint for that decision.
+	clean, stripped := e.scrub.Apply(os.Environ())
+	// The tmux server is a long-lived singleton later invocations reattach to.
+	// A one-shot child (board/fabric spawn) belongs to a single invocation and keeps inheriting the trace ID.
+	// Filtering LYX_TRACE_ID is therefore its own explicitly-named step, not folded into the scrub.
+	// The scrub's stripped-keys return value is persisted verbatim into ReedState.StrippedEnv as an engine-injected-variable diagnostic.
+	// LYX_TRACE_ID is neither engine-injected nor meant to be recorded there.
 	clean = stripTraceID(clean)
 	clean = stripAgentNameEnv(clean)
 	spawnSession := func() error {
@@ -1315,6 +1313,12 @@ func (e *Engine) Status() (StatusResult, error) {
 		// (dead) pane for it.
 		aliveIDs := aliveIDSet(present)
 		presentIDs := liveIDSet(present)
+		alivePIDs := make(map[string]int, len(present))
+		for _, p := range present {
+			if !p.Dead {
+				alivePIDs[p.ID] = p.PID
+			}
+		}
 		// This loop iterates st.Strands only — Selvage is deliberately
 		// never reported as a strand here (it is not one; see
 		// ReedState.SelvagePaneID). Status still succeeds (the session is
@@ -1322,7 +1326,7 @@ func (e *Engine) Status() (StatusResult, error) {
 		// must not "fix" a missing Selvage row by appending one here.
 		strands := make([]StrandStatus, len(st.Strands))
 		for i, s := range st.Strands {
-			strands[i] = StrandStatus{GUID: s.GUID, Name: s.Name, PaneID: s.PaneID, Live: aliveIDs[s.PaneID], Present: presentIDs[s.PaneID], OwnWindow: isOwnWindow(s.Display), Retiring: s.Retiring, Color: e.withColor(s).Color, LyxBin: s.LyxBin}
+			strands[i] = StrandStatus{GUID: s.GUID, Name: s.Name, PaneID: s.PaneID, PanePID: alivePIDs[s.PaneID], Live: aliveIDs[s.PaneID], Present: presentIDs[s.PaneID], OwnWindow: isOwnWindow(s.Display), Retiring: s.Retiring, Color: e.withColor(s).Color, LyxBin: s.LyxBin}
 		}
 
 		result = StatusResult{Session: session, Socket: e.Socket(), Strands: strands}

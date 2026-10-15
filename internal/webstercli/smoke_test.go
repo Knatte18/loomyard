@@ -45,8 +45,8 @@ func realForkSettingsPath(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("load the shipped shuttle template: %v", err)
 	}
-	cfg.ClaudeDenyAgentTool, cfg.ClaudeDenyAskUserQuestion = true, true
-	if _, err := claudeengine.New().Prepare(runDir, spec, cfg); err != nil {
+	engine := claudeengine.NewFromConfig(cfg, configengine.Dirs{Anchor: t.TempDir()})
+	if _, err := engine.Prepare(runDir, spec, cfg); err != nil {
 		t.Fatalf("Prepare fork-mode settings: %v", err)
 	}
 	return filepath.Join(runDir, "settings.json")

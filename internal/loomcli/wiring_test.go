@@ -208,6 +208,9 @@ func TestWire_DefaultConfig(t *testing.T) {
 		if want := loomengine.DiscussionSupportLog(loc); c.env.SupportLogPath != want {
 			t.Errorf("c.env.SupportLogPath = %q; want %q", c.env.SupportLogPath, want)
 		}
+		if want := loomengine.DiscussionRelevant(loc); c.env.RelevantPath != want {
+			t.Errorf("c.env.RelevantPath = %q; want %q", c.env.RelevantPath, want)
+		}
 		if want := shedrun.StatusFile(loc, shedrun.SelfRunID); c.env.StatusPath != want {
 			t.Errorf("c.env.StatusPath = %q; want %q", c.env.StatusPath, want)
 		}
@@ -564,7 +567,7 @@ func TestWire_DiscussionTableEvaluatesToExpectedShape(t *testing.T) {
 			if want := []string{"scribe:prose", "scribe:conversation"}; !reflect.DeepEqual(chair.Skills, want) {
 				t.Errorf("chair.Skills = %v; want %v", chair.Skills, want)
 			}
-			wantOutputs := []string{loomengine.DiscussionDecisionRecord(loc), loomengine.DiscussionSupportLog(loc)}
+			wantOutputs := []string{loomengine.DiscussionDecisionRecord(loc), loomengine.DiscussionSupportLog(loc), loomengine.DiscussionRelevant(loc)}
 			if !reflect.DeepEqual(chair.Outputs, wantOutputs) {
 				t.Errorf("chair.Outputs = %v; want %v", chair.Outputs, wantOutputs)
 			}
@@ -732,6 +735,9 @@ func TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig(t *testing.T) {
 	}
 	if c.env.SupportLogPath != loomengine.DiscussionSupportLog(location) {
 		t.Errorf("env.SupportLogPath = %q; want %q", c.env.SupportLogPath, loomengine.DiscussionSupportLog(location))
+	}
+	if c.env.RelevantPath != loomengine.DiscussionRelevant(location) {
+		t.Errorf("env.RelevantPath = %q; want %q", c.env.RelevantPath, loomengine.DiscussionRelevant(location))
 	}
 	// Every verb on this path is read-only and never invokes the commit-status seam; it is filled anyway,
 	// keeping the two ShedPaths literals structurally identical, per wiring.go's own comment at that site.

@@ -47,15 +47,16 @@ import (
 // for the membership rule: a module belongs here when it has, or is slated to have,
 // a standalone entry point.
 var configStrictnessDegradingSet = map[string]bool{
-	"internal/shuttleengine":  true,
-	"internal/reedengine":     true,
-	"internal/websterengine":  true,
-	"internal/batcher":        true,
-	"internal/orchengine":     true,
-	"internal/loggerconfig":   true,
-	"internal/battenshed":     true,
-	"internal/sheddriver":     true,
-	"internal/languageconfig": true,
+	"internal/shuttleengine":              true,
+	"internal/shuttleengine/claudeengine": true,
+	"internal/reedengine":                 true,
+	"internal/websterengine":              true,
+	"internal/batcher":                    true,
+	"internal/orchengine":                 true,
+	"internal/loggerconfig":               true,
+	"internal/battenshed":                 true,
+	"internal/sheddriver":                 true,
+	"internal/languageconfig":             true,
 }
 
 // configStrictnessStrictSet is the pinned set of module-relative, slash-separated

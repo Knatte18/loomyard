@@ -117,6 +117,16 @@ func TestProcessTreeReads(t *testing.T) {
 		t.Errorf("ListProcesses test process = %+v, found %v; want Exe %q", selfListed, found, executable)
 	}
 
+	if parent, ok := ParentPID(childPID); !ok || parent != os.Getpid() {
+		t.Errorf("ParentPID(child pid) = %d, %v; want %d, true", parent, ok, os.Getpid())
+	}
+	if parent, ok := ParentPID(os.Getpid()); !ok || parent != os.Getppid() {
+		t.Errorf("ParentPID(own pid) = %d, %v; want %d, true", parent, ok, os.Getppid())
+	}
+	if parent, ok := ParentPID(0); ok {
+		t.Errorf("ParentPID(0) = %d, true; want false", parent)
+	}
+
 	tests := []struct {
 		name string
 		pid  int
@@ -132,6 +142,12 @@ func TestProcessTreeReads(t *testing.T) {
 		if got := IsAncestor(tt.pid); got != tt.want {
 			t.Errorf("IsAncestor(%d) (%s) = %v; want %v", tt.pid, tt.name, got, tt.want)
 		}
+	}
+
+	_ = child.Process.Kill()
+	_ = child.Wait()
+	if parent, ok := ParentPID(childPID); ok {
+		t.Errorf("ParentPID(waited-on child pid) = %d, true; want false", parent)
 	}
 }
 

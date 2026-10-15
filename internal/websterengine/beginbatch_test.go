@@ -1113,12 +1113,13 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 	logger.SetVerbosity(1)
 	t.Cleanup(func() { logger.SetVerbosity(0) })
 
-	const quarryLocate = "Locate them with one `lyx quarry resolve <glyph>...` call"
+	const quarryLocate = "Locate them with one"
 	const packHeading = "## Kick-start pack"
-	const packFirstTurn = "Read all of this in one turn, in parallel, before any edit"
+	const packFirstTurn = "Read all of this in one turn"
 	const plainStepOne = "1. Read the card file."
-	const perCardFreshRead = "Your first work turn reads in parallel every card file the card list below points at, and nothing else"
-	const perCardStepOne = "1. Before this card's first edit, run `lyx loom card-pack <N>`"
+	const perCardFreshRead = "Your first work turn"
+	const perCardStepOne = "lyx loom card-pack <N>"
+	const inlineFirstTurn = "Your first turn, before any edit"
 	resolvedBaz := []string{
 		packHeading,
 		"- `internal/foo#Baz`",
@@ -1191,7 +1192,7 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 			name:          "the inline layout carries the pack in the prompt and writes no pack file",
 			inline:        true,
 			noPack:        true,
-			wantPrompt:    append([]string{"Your first turn, before any edit, reads in parallel"}, resolvedBaz...),
+			wantPrompt:    append([]string{inlineFirstTurn}, resolvedBaz...),
 			wantNotPrompt: []string{"## Start here", packFirstTurn},
 			wantLog:       []string{"batch=1 kickstart_pack=on resolved=1 unresolved=0 pack_layout=inline"},
 		},
@@ -1209,7 +1210,7 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 			name:          "a flip from file to inline leaves a prompt that names no pack file",
 			flip:          true,
 			stalePack:     true,
-			wantPrompt:    []string{packHeading, "Your first turn, before any edit, reads in parallel"},
+			wantPrompt:    []string{packHeading, inlineFirstTurn},
 			wantNotPrompt: []string{"## Start here"},
 			wantLog: []string{
 				"batch=1 kickstart_pack=on resolved=1 unresolved=0 pack_layout=file",

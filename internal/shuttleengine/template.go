@@ -11,10 +11,8 @@ import _ "embed"
 var configTemplate string
 
 // ConfigTemplate returns the default YAML template for shuttle configuration.
-// The template uses ${env:VAR:-default} syntax for the run_dir and claude executable path, allowing
-// environment-based overrides while preserving defaults when not set;
-// the remaining keys (poll_interval_ms, liveness_every_n_polls, run_timeout_min, startup_timeout_s,
-// claude_deny_agent_tool, claude_deny_ask_user_question, claude_deny_python) are plain literals.
+// The template uses ${env:VAR:-default} syntax for run_dir, allowing an environment-based override while preserving the default when not set.
+// The remaining keys (poll_interval_ms, liveness_every_n_polls, run_timeout_min, startup_timeout_s, deny_python and the other knobs) are plain literals.
 func ConfigTemplate() string {
 	return configTemplate
 }

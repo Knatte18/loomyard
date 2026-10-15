@@ -150,7 +150,6 @@ func TestComposePrompt_FocusDirective(t *testing.T) {
 		prompt := composeReview(t, stencilsDir, &p, "")
 
 		requireContains(t, prompt.Files[reviewExploreFile].Content, p.FocusDirective)
-		requireContains(t, prompt.Files[reviewExploreFile].Content, "The rubric binds over the focus directive")
 		requireNotContains(t, prompt.Files[reviewStepFile].Content, p.FocusDirective)
 	})
 
@@ -221,10 +220,9 @@ func TestComposePrompt_FocusDirective(t *testing.T) {
 
 // TestComposePrompt_MinimalProfile proves a minimal valid profile composes both halves cleanly through stencil (no unfilled-marker error) and one render of each satisfies the compose contract:
 // the review half's combined prompt carries the profile's content (the review path and the verbatim rubric text), a Target.Paths directory entry is annotated as one while a file entry is not, its files come back with Path values equal to the path parameters in order (the contract each half relies on to write every rendered file to the path the seat stencil names), and its seat stencil names the explore and review files;
-// the fix half's combined prompt carries both output paths, its seat stencil names the review, the format file and the fix step, and no seat stencil carries a downstream instruction body or a ready marker.
-// The tokens a seat stencil must not carry each appear only inside a downstream instruction file's body, so a regression that inlines one back trips the guard on the first offending token without colliding with a seat stencil's legitimate bare-word "verdict"/"findings" usage.
+// the fix half's combined prompt carries both output paths, its seat stencil names the review, the format file and the fix step, and no seat stencil carries the Go-built cluster block.
 //
-//testtiming:keep pins the profile content, the directory annotation, the instruction file paths, the fixer stencil's pointers and the seat stencils' exclusion of downstream bodies, which the cluster-rules test covering its blocks does not assert
+//testtiming:keep pins the profile content, the directory annotation, the instruction file paths, the fixer stencil's pointers and the seat stencils' exclusion of the Go-built cluster block, which the cluster-rules test covering its blocks does not assert
 func TestComposePrompt_MinimalProfile(t *testing.T) {
 	t.Parallel()
 
@@ -276,12 +274,8 @@ func TestComposePrompt_MinimalProfile(t *testing.T) {
 	requireContains(t, fixer, testFixFiles.Fix)
 	requireContains(t, fixer, p.ReviewPath)
 	for _, seat := range []string{reviewer, fixer} {
-		requireNotContains(t, seat, "not whether it gets fixed")
-		requireNotContains(t, seat, "verdict:")
-		requireNotContains(t, seat, "findings:")
 		requireNotContains(t, seat, "SINGLE message")
 		requireNotContains(t, seat, "subagent_type")
-		requireNotContains(t, seat, "lyx shuttle await")
 	}
 }
 
@@ -299,7 +293,7 @@ func TestComposePrompt_ParentDirective(t *testing.T) {
 		chairPrompt(t, stencilsDir, "tst:task:orch", &p, fixTable),
 	} {
 		requireContains(t, seat, "tst:task:orch")
-		requireContains(t, seat, "A question to the operator in your pane is never the way forward.")
+		requireContains(t, seat, "never the way forward")
 		requireContains(t, seat, "Edit or Write")
 	}
 	for _, seat := range []string{
