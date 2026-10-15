@@ -71,7 +71,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-producer-pointer-rule` — Writing an instruction file: it points at another producer's format contract and never duplicates or paraphrases it.
 - `PATTERN-friction-capture` — Halting a loom run or refusing in webster: Go writes a friction note, archived only once a reflection covers it. (test) — [background](pattern/PATTERN-friction-capture.md)
 - `PATTERN-completion-signal` — Finalizing a negative "did this run finish" answer in `internal/shuttleengine`: consult `allOutputFilesExist` first. (test) — [background](pattern/PATTERN-completion-signal.md)
-- `PATTERN-shuttle-provider-seam` — Provider code: `internal/shuttleengine/<engine>`, imported only by `internal/shuttleengines`. (test) — [background](pattern/PATTERN-shuttle-provider-seam.md)
+- `PATTERN-shuttle-provider-seam` — Referencing a provider: its specifics live only under `internal/shuttleengine/<engine>`, and only `internal/shuttleengines` constructs or imports a concrete engine. (test) — [background](pattern/PATTERN-shuttle-provider-seam.md)
 - `PATTERN-shuttle-stop` — Stopping a shuttle run's strand from Go outside `internal/shuttleengine`: only through shuttle's stop verb. (test) — [background](pattern/PATTERN-shuttle-stop.md)
 - `PATTERN-orch-pane-single-writer` — Typing into the orch session from Go: only the orch watcher, idle-gated but for a hub pause's interrupt; other modules queue an `orchengine` notice.
 - `PATTERN-shell-mechanics-seam` — Building a pane-shell command string: only through `internal/shell`, which imports the standard library alone.
