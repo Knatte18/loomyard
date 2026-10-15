@@ -1462,6 +1462,19 @@ func TestRun_MasterSpawn(t *testing.T) {
 			},
 		},
 		{
+			name:  "the told language skills follow the role skills",
+			cards: 1,
+			prepare: func(t *testing.T, fx *runFixture) {
+				fx.Deps.LanguageSkills = []string{"scribe:golang-testing", "scribe:testing"}
+			},
+			check: func(t *testing.T, fx *runFixture) {
+				want := []string{"scribe:prose", "scribe:code-quality", "scribe:testing", "scribe:golang-testing"}
+				if got := fx.Starter.startCalls[0].Skills; !slices.Equal(got, want) {
+					t.Errorf("Spec.Skills = %v; want %v", got, want)
+				}
+			},
+		},
+		{
 			name:  "the recover-batch shell is declared awaited",
 			cards: 1,
 			check: func(t *testing.T, fx *runFixture) {

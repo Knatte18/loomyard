@@ -16,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/friction"
+	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -155,6 +156,9 @@ type RunDeps struct {
 	// Empty means `lyx webster run`; the shed adapter sets "re-step the <row> row".
 	// The reset route ends in it too, since the reset archives the run record and a plain run starts over.
 	ReentryStep string
+
+	// LanguageSkills are the hub's language skills the master loads after roleSkills; empty for none.
+	LanguageSkills []string
 }
 
 // reentryStep returns the step that re-enters the run, defaulting to `lyx webster run`.
@@ -684,7 +688,7 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 		Model:         resolved.Model,
 		Effort:        resolved.Params["effort"],
 		Version:       resolved.Params["version"],
-		Skills:        roleSkills,
+		Skills:        languageconfig.AppendSkills(roleSkills, deps.LanguageSkills),
 		ForkSubagents: true,
 		// The failure ladder backgrounds recover-batch and recovery_timeout_min bounds it, so the wait marker leaves it out.
 		AwaitedShellPrefixes: []string{masterAwaitedShellPrefix},
