@@ -183,6 +183,19 @@ func TestBurlerReviewProducer_Call_RoundScan(t *testing.T) {
 		{name: "an absent run directory starts at round 1", wantRound: 1},
 		{name: "the successor of a judged round", setup: func(t *testing.T, runDir string) { writeJudgedRound(t, runDir, 2) }, wantRound: 3},
 		{
+			name: "the successor of a converged round, as a Webster reroute after an approved episode, is reviewed",
+			setup: func(t *testing.T, runDir string) {
+				writeRoundPair(t, runDir, 2)
+				if err := os.WriteFile(verdictPath(runDir, 2), []byte(bouncerVerdictContent("CONVERGED")), 0o644); err != nil {
+					t.Fatalf("WriteFile(verdict round 2): %v", err)
+				}
+				if err := os.WriteFile(ledgerPath(runDir, 2), []byte(bouncerLedgerContent(2)), 0o644); err != nil {
+					t.Fatalf("WriteFile(ledger round 2): %v", err)
+				}
+			},
+			wantRound: 3,
+		},
+		{
 			name: "stamped, attempt-suffixed and zero-padded names are never adopted",
 			setup: func(t *testing.T, runDir string) {
 				writeJudgedRound(t, runDir, 1)

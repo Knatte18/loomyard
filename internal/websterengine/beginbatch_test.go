@@ -784,11 +784,11 @@ func TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite(t *testing.T) {
 	})
 }
 
-// TestBeginBatch_ReResolvesPlanAtDispatch covers card 32's re-resolution step: a clean plan
-// dispatches as today; a plan with one blocking finding returns ErrPlanDrifted and writes no
-// prompt file; a quarry-unavailable root returns the wrapped infrastructure error rather than
-// ErrPlanDrifted; and an informational-only findings set dispatches normally with the advisory
-// carried on the result.
+// TestBeginBatch_ReResolvesPlanAtDispatch covers card 32's re-resolution step:
+// a clean plan dispatches as today;
+// a plan with a blocking finding returns a PlanConflictError, plan_defect before any batch is begun and tree_moved after, and writes no prompt file;
+// a quarry-unavailable root returns the wrapped infrastructure error rather than ErrPlanConflict;
+// and an informational-only findings set dispatches normally with the advisory carried on the result.
 func TestBeginBatch_ReResolvesPlanAtDispatch(t *testing.T) {
 	t.Run("clean plan dispatches as today", func(t *testing.T) {
 		fx := newBeginFixture(t)
@@ -802,7 +802,7 @@ func TestBeginBatch_ReResolvesPlanAtDispatch(t *testing.T) {
 		}
 	})
 
-	t.Run("blocking finding returns ErrPlanDrifted and writes no prompt file", func(t *testing.T) {
+	t.Run("blocking finding returns a plan_defect PlanConflictError and writes no prompt file", func(t *testing.T) {
 		fx := newBeginFixture(t)
 		// A bare package-qualified symbol in Uses trips bare-symbol-target under the default
 		// glyph-enabled language, a blocking finding.
@@ -811,8 +811,15 @@ func TestBeginBatch_ReResolvesPlanAtDispatch(t *testing.T) {
 		}
 
 		_, err := websterengine.BeginBatch(fx.Deps, 1)
-		if !errors.Is(err, websterengine.ErrPlanDrifted) {
-			t.Fatalf("BeginBatch() error = %v; want errors.Is(err, ErrPlanDrifted)", err)
+		var conflict *websterengine.PlanConflictError
+		if !errors.As(err, &conflict) {
+			t.Fatalf("BeginBatch() error = %v; want errors.As to a *PlanConflictError", err)
+		}
+		if conflict.Batch != 1 || conflict.Cause != websterengine.ConflictCausePlanDefect {
+			t.Errorf("conflict = {Batch: %d, Cause: %q}; want batch 1, cause %q", conflict.Batch, conflict.Cause, websterengine.ConflictCausePlanDefect)
+		}
+		if !strings.Contains(strings.Join(conflict.Findings, "\n"), "bare-symbol-target") {
+			t.Errorf("Findings = %v; want the bare-symbol-target finding", conflict.Findings)
 		}
 		if !strings.Contains(err.Error(), "lyx webster rebaseline --card NN") {
 			t.Errorf("error %q; want it to name `lyx webster rebaseline --card NN`", err.Error())
@@ -822,11 +829,28 @@ func TestBeginBatch_ReResolvesPlanAtDispatch(t *testing.T) {
 			t.Fatalf("ReadDir(%q): %v", fx.PromptDir, readErr)
 		}
 		if len(entries) != 0 {
-			t.Errorf("PromptDir entries = %v; want none written on a plan-drifted refusal", entries)
+			t.Errorf("PromptDir entries = %v; want none written on a plan-conflict refusal", entries)
 		}
 	})
 
-	t.Run("quarry-unavailable root returns the wrapped infrastructure error, not ErrPlanDrifted", func(t *testing.T) {
+	t.Run("blocking finding after a batch is begun returns a tree_moved PlanConflictError", func(t *testing.T) {
+		fx := newBeginFixture(t)
+		fx.Deps.Plan.Cards[1].Uses = []string{"sub.Foo"}
+		fx.Deps.State.Batches = map[int]*websterengine.BatchState{
+			1: {Slug: "json-flag", Kind: "fork"},
+		}
+
+		_, err := websterengine.BeginBatch(fx.Deps, 2)
+		var conflict *websterengine.PlanConflictError
+		if !errors.As(err, &conflict) {
+			t.Fatalf("BeginBatch() error = %v; want errors.As to a *PlanConflictError", err)
+		}
+		if conflict.Cause != websterengine.ConflictCauseTreeMoved {
+			t.Errorf("Cause = %q; want %q once batch 1 is begun", conflict.Cause, websterengine.ConflictCauseTreeMoved)
+		}
+	})
+
+	t.Run("quarry-unavailable root returns the wrapped infrastructure error, not ErrPlanConflict", func(t *testing.T) {
 		fx := newBeginFixture(t)
 		fx.Deps.Geom.WorktreeRoot = filepath.Join(t.TempDir(), "does-not-exist")
 
@@ -834,8 +858,8 @@ func TestBeginBatch_ReResolvesPlanAtDispatch(t *testing.T) {
 		if !errors.Is(err, planglyph.ErrQuarryUnavailable) {
 			t.Fatalf("BeginBatch() error = %v; want errors.Is(err, planglyph.ErrQuarryUnavailable)", err)
 		}
-		if errors.Is(err, websterengine.ErrPlanDrifted) {
-			t.Errorf("BeginBatch() error = %v; want NOT errors.Is(err, ErrPlanDrifted) for an infrastructure failure", err)
+		if errors.Is(err, websterengine.ErrPlanConflict) {
+			t.Errorf("BeginBatch() error = %v; want NOT errors.Is(err, ErrPlanConflict) for an infrastructure failure", err)
 		}
 	})
 
@@ -909,8 +933,8 @@ func TestBeginBatch_AlreadyBuiltCardsAreNotReResolved(t *testing.T) {
 		fx.Deps.State.Batches = map[int]*websterengine.BatchState{}
 
 		_, err := websterengine.BeginBatch(fx.Deps, 2)
-		if !errors.Is(err, websterengine.ErrPlanDrifted) {
-			t.Fatalf("BeginBatch() error = %v; want errors.Is(err, ErrPlanDrifted) while card 1 is still pending", err)
+		if !errors.Is(err, websterengine.ErrPlanConflict) {
+			t.Fatalf("BeginBatch() error = %v; want errors.Is(err, ErrPlanConflict) while card 1 is still pending", err)
 		}
 		if !strings.Contains(err.Error(), "create-already-exists") {
 			t.Errorf("BeginBatch() error = %v; want it to name create-already-exists", err)
@@ -964,7 +988,7 @@ func seedRewritingPlanDir(t *testing.T) string {
 // TestBeginBatch_RestampsFingerprintEvenWhenPlanDrifts is the regression test for the round-4
 // review's R4-02. ValidateDispatch's resolve pass canonicalizes handles — rewriting the plan on
 // disk — and then keeps going, so one call routinely both rewrites and reports a blocking finding.
-// With the re-baseline positioned after the ErrPlanDrifted return, state.json kept the pre-rewrite
+// With the re-baseline positioned after the ErrPlanConflict return, state.json kept the pre-rewrite
 // fingerprint while the plan on disk carried webster's own sanctioned edit, and every later
 // begin-batch refused that edit as a foreign one.
 func TestBeginBatch_RestampsFingerprintEvenWhenPlanDrifts(t *testing.T) {
@@ -981,8 +1005,8 @@ func TestBeginBatch_RestampsFingerprintEvenWhenPlanDrifts(t *testing.T) {
 	fx.Deps.State.PlanFingerprint = seeded
 
 	_, err = websterengine.BeginBatch(fx.Deps, 1)
-	if !errors.Is(err, websterengine.ErrPlanDrifted) {
-		t.Fatalf("BeginBatch() error = %v; want errors.Is(err, ErrPlanDrifted) — the unresolvable glyph must block", err)
+	if !errors.Is(err, websterengine.ErrPlanConflict) {
+		t.Fatalf("BeginBatch() error = %v; want errors.Is(err, ErrPlanConflict) — the unresolvable glyph must block", err)
 	}
 
 	rewritten, readErr := os.ReadFile(filepath.Join(planDir, "01-json-flag.md"))
