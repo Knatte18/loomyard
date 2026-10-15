@@ -43,6 +43,10 @@ the batch's start-SHA in state.json, renders and writes that batch's fork
 prompt (carrying the previous batch's own persisted digest), and returns the
 prompt path Master forwards to its Agent-tool fork call verbatim.
 
+A refusal because the plan's re-resolution against the tree found a blocking
+defect carries "plan_conflict" with its cause: "plan_defect" when no batch is
+begun, "tree_moved" when one is.
+
 Example:
   lyx webster begin-batch 3`,
 		Args: cobra.ExactArgs(1),
@@ -124,8 +128,9 @@ Example:
 					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("%s; additionally, persisting the plan-fingerprint re-baseline this call had already earned failed: %v; %s", err.Error(), saveErr, rebaselineWayForward)))
 					return nil
 				}
-				if errors.Is(err, websterengine.ErrPlanDrifted) {
-					clihelp.SetExit(cmd.Context(), output.ErrFields(out, err.Error(), map[string]any{"plan_drifted": true}))
+				var conflict *websterengine.PlanConflictError
+				if errors.As(err, &conflict) {
+					clihelp.SetExit(cmd.Context(), output.ErrFields(out, err.Error(), map[string]any{"plan_conflict": conflict.Cause}))
 					return nil
 				}
 				if errors.Is(err, websterengine.ErrRecoveryExhausted) {

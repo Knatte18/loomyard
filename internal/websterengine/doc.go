@@ -196,6 +196,7 @@
 // A forthcoming card's Create targets and Rename New sides are excluded from the status check, so a later card that Uses one passes while the fork has landed nothing yet.
 // A terminal batch's cards are never forthcoming: its done-checks proved its targets present.
 // With no begun card, validate runs the whole-plan check set, approval gate included.
+// begin-batch's blocking refusal is a PlanConflictError, the `plan_conflict` class: its cause is `plan_defect` when begun is empty and `tree_moved` otherwise.
 //
 // The bound: drift in a begun, non-terminal card's own targets is reported by none of the three sites.
 // That card was fully validated at its first begin-batch, its bytes stay pinned by its recorded CardHashes, and record-batch and recover-batch still run its done-checks and drift detection.

@@ -361,6 +361,117 @@ func TestBeginBatchCmd_DeleteTargetAlreadyGone(t *testing.T) {
 	}
 }
 
+// TestBeginBatchCmd_PlanConflict proves begin-batch's blocking re-resolution refusal carries the plan_conflict class with its cause, names the rebaseline way forward, never carries plan_drifted, and leaves a refusal note holding the class.
+// The tree_moved cause is an engine decision the command only copies into the envelope, so the engine's own test covers it.
+func TestBeginBatchCmd_PlanConflict(t *testing.T) {
+	tests := []struct {
+		name string
+		// seed shapes the fixture's single Create card before the state is seeded.
+		seed      func(t *testing.T, fx *verbsFixture)
+		wantCause string
+		wantText  []string
+	}{
+		{
+			name: "a Create target that already exists and a bare-symbol Uses, with no batch begun, is a plan_defect",
+			seed: func(t *testing.T, fx *verbsFixture) {
+				gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "add the Create target")
+				plan := onlyCreatePlan("", "internal/only/new.go")
+				plan.Cards[0].Uses = []string{"sub.Foo"}
+				plankit.Write(t, fx.CLI.geom.PlanDir, plan)
+			},
+			wantCause: "plan_defect",
+			wantText:  []string{"create-already-exists", "bare-symbol-target", "lyx webster rebaseline --card NN"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("FABRIC_SKIP_GIT", "1")
+			fx := newVerbsFixture(t)
+			fx.CLI.frictionDir = t.TempDir()
+			tt.seed(t, fx)
+			fx.initState(t)
+
+			var out strings.Builder
+			exitCode := clihelp.Execute(fx.CLI.noteRefusals(fx.CLI.beginBatchCmd()), &out, []string{"1"})
+
+			if exitCode != 1 {
+				t.Fatalf("begin-batch 1 = %d; want 1, output: %s", exitCode, out.String())
+			}
+			got := out.String()
+			for _, want := range append([]string{`"plan_conflict":"` + tt.wantCause + `"`}, tt.wantText...) {
+				if !strings.Contains(got, want) {
+					t.Errorf("output missing %q; got %q", want, got)
+				}
+			}
+			if strings.Contains(got, "plan_drifted") {
+				t.Errorf("output = %q; want no plan_drifted", got)
+			}
+			notes := refusalNotes(t, fx.CLI.frictionDir)
+			note, ok := notes["webster-refusal-begin-batch.md"]
+			if !ok || !strings.Contains(note, "plan_conflict: "+tt.wantCause) {
+				t.Errorf("refusal notes = %v; want webster-refusal-begin-batch.md holding plan_conflict: %s", notes, tt.wantCause)
+			}
+		})
+	}
+}
+
+// TestFingerprintRefusals_CarryPlanDrifted proves record-batch over a begun, non-terminal batch and the terminal pass of recover-batch over a landed recovery each refuse with the plan_drifted flag once the card file is edited past the recorded fingerprint.
+func TestFingerprintRefusals_CarryPlanDrifted(t *testing.T) {
+	tests := []struct {
+		name string
+		// seed brings the fixture to the state the verb refuses from, before the card file is edited.
+		seed func(t *testing.T, fx *verbsFixture, st *websterengine.State)
+		verb func(fx *verbsFixture) *cobra.Command
+		args []string
+	}{
+		{
+			name: "record-batch over a begun batch",
+			seed: func(t *testing.T, fx *verbsFixture, st *websterengine.State) {
+				startSHA := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: add impl")
+				st.Batches[1] = &websterengine.BatchState{Slug: "only", StartSHA: startSHA, Kind: "fork"}
+				st.CurrentBatch = 1
+				if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
+					t.Fatalf("SaveState() error = %v", err)
+				}
+				fx.Engine.Audit = shuttleengine.ForkAudit{
+					Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/fork1.jsonl", ReportReturned: true}},
+				}
+				writeBatchReport(t, fx.CLI.geom.ReportsDir, startSHA)
+			},
+			verb: func(fx *verbsFixture) *cobra.Command { return fx.CLI.recordBatchCmd() },
+			args: []string{"1"},
+		},
+		{
+			name: "recover-batch attaching to a recovery whose report landed",
+			seed: func(t *testing.T, fx *verbsFixture, _ *websterengine.State) {
+				var spawn strings.Builder
+				if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &spawn, []string{"1", "--wait", "1ns"}); code != 0 {
+					t.Fatalf("recover-batch 1 (spawn) = %d; want 0, output: %s", code, spawn.String())
+				}
+				head := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: land the card's Create target")
+				writeBatchReport(t, fx.CLI.geom.ReportsDir, head)
+			},
+			verb: func(fx *verbsFixture) *cobra.Command { return fx.CLI.recoverBatchCmd() },
+			args: []string{"1", "--wait", "1ns"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("FABRIC_SKIP_GIT", "1")
+			fx := newVerbsFixture(t)
+			tt.seed(t, fx, fx.initState(t))
+			plankit.Write(t, fx.CLI.geom.PlanDir, onlyCreatePlan("", "internal/edited/new.go"))
+
+			var out strings.Builder
+			exitCode := clihelp.Execute(tt.verb(fx), &out, tt.args)
+
+			if exitCode != 1 || !strings.Contains(out.String(), `"plan_drifted":true`) {
+				t.Errorf("%s 1 = %d, output %q; want exit 1 carrying plan_drifted", tt.name, exitCode, out.String())
+			}
+		})
+	}
+}
+
 // TestRecordBatchCmd_Envelope proves record-batch's two envelopes over an identical fixture (one
 // new fork transcript already present): the terminal success envelope -- the digest verbatim plus
 // warnings -- once a matching batch report has also landed,
