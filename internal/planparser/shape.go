@@ -92,6 +92,8 @@ const (
 	gateRedundantTarget refGate = "redundant-target"
 	// gateResignTarget is checkResignNotMember's (validate.go) policy: a glyph-shaped re-sign target is kept for a member check; a path-, symbol- or handle-shaped one is the resign-not-member finding, since it names no member with a prior signature.
 	gateResignTarget refGate = "resign-target"
+	// gateEditTestFile is CheckEditTestFile's (edittestfile.go) policy: only a glyph-shaped ref can be a `_test.go` file self glyph under Edit; every other kind is skipped.
+	gateEditTestFile refGate = "edit-test-file"
 )
 
 // allRefKinds is the canonical, complete list of every refKind classify.go's enum declares. The
@@ -186,6 +188,12 @@ var ledger = map[refGate]map[refKind]disposition{
 		refKindSymbol: dispFinding,
 		refKindGlyph:  dispKeep,
 		refKindHandle: dispFinding,
+	},
+	gateEditTestFile: {
+		refKindPath:   dispSkip,
+		refKindSymbol: dispSkip,
+		refKindGlyph:  dispKeep,
+		refKindHandle: dispSkip,
 	},
 }
 
