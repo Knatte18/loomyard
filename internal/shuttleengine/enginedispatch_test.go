@@ -544,6 +544,29 @@ func TestRunner_EngineSetDispatch(t *testing.T) {
 		requireConsulted(t, rig.a, rig.b, "ParseEvents")
 	})
 
+	t.Run("a_live_strand_with_no_record_is_refused_when_the_default_engine_is_unregistered", func(t *testing.T) {
+		t.Parallel()
+		calls := map[string]func(r *Runner) error{
+			"Runner.Send":      func(r *Runner) error { return r.Send("strand-1", "hello") },
+			"Runner.Interrupt": func(r *Runner) error { return r.Interrupt("strand-1") },
+		}
+		for name, call := range calls {
+			t.Run(name, func(t *testing.T) {
+				t.Parallel()
+				rig := newDispatchRig(t)
+				engines := NewEngineSet("missing", map[string]Engine{"a": rig.a})
+				reed := &fakeReed{CaptureQueue: []string{"RUNNING"}, StatusQueue: liveStrandStatus(true)}
+				fx := newFixture(t, reed, rig.a, withEngines(engines), withConfig(fastConfig), withSeparateRunDir())
+				if err := call(fx.Runner); !errors.Is(err, ErrEngineNotRegistered) {
+					t.Errorf("%s error = %v; want ErrEngineNotRegistered", name, err)
+				}
+				if len(reed.SendKeyCalls) != 0 || len(reed.SendTextCalls) != 0 || len(reed.PasteSubmitCalls) != 0 {
+					t.Errorf("%s reached the pane: keys %+v, texts %+v, pastes %+v", name, reed.SendKeyCalls, reed.SendTextCalls, reed.PasteSubmitCalls)
+				}
+			})
+		}
+	})
+
 	t.Run("a_record_naming_an_unregistered_engine_refuses_every_operation_and_never_blocks_a_stop", func(t *testing.T) {
 		t.Parallel()
 		tie := StepTie{StepsDir: "/steps", TraceID: "trace-c"}

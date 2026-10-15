@@ -92,6 +92,19 @@ func assertBadClaudeConfigRefusesOnlyARunStart(t *testing.T, set shuttleengine.E
 		t.Errorf("ReadSessionStates: %v", err)
 	}
 
+	// A strand no run record names is driven without loading engine config, so the refusal is never a config error.
+	shortCfg := cfg
+	shortCfg.SendReadyTimeoutS = 1
+	recordless := shuttleengine.NewRunner(reed, set, dirs.Anchor, dirs.Anchor, shortCfg)
+	for name, call := range map[string]func() error{
+		"Send":      func() error { return recordless.Send("live-guid", "hello") },
+		"Interrupt": func() error { return recordless.Interrupt("live-guid") },
+	} {
+		if err := call(); err != nil && strings.Contains(err.Error(), "claude.local.yaml") {
+			t.Errorf("recordless %s error = %v; want no engine config error", name, err)
+		}
+	}
+
 	spec := shuttleengine.Spec{Prompt: "p", OutputFiles: []string{filepath.Join(dirs.Anchor, "out.md")}}
 	_, err := runner.Start(spec)
 	if err == nil {
