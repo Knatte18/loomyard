@@ -191,6 +191,7 @@ func parseSetFlags(raw []string) ([]yamlengine.KV, error) {
 // syncs on success. Like editOne, but with no editor: configengine.Set performs
 // the write non-interactively in one call.
 // A default-layer file is written at the board dir and committed in _board, a local override is written uncommitted, and a worktree file syncs fabric.
+// A value the module's loader refuses leaves the file as it was.
 func setModule(dirs configDirs, out io.Writer, module string, pairs []yamlengine.KV, sync syncFunc, commit hubCommitFunc) int {
 	// Look up the module;
 	// its declared open maps let --set add or rewrite one entry.
@@ -212,9 +213,9 @@ func setModule(dirs configDirs, out io.Writer, module string, pairs []yamlengine
 		return setLocal(dirs, out, mod, path, pairs)
 	}
 
-	// Call configengine.Set to apply pairs directly, with no editor invocation;
+	// Apply pairs directly, with no editor invocation;
 	// a worktree file under a board is sparse and holds only the keys set.
-	preserved, err := configengine.Set(dirs.engineDirs(), mod.Spec(), configengine.LayerWorktree, pairs)
+	preserved, err := setChecked(dirs.engineDirs(), mod, configengine.LayerWorktree, path, pairs)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -239,10 +240,39 @@ func setModule(dirs configDirs, out io.Writer, module string, pairs []yamlengine
 	return output.Err(out, fmt.Sprintf("edited _lyx/config/%s.yaml but fabric sync failed: %s", module, buf.String()))
 }
 
+// setChecked writes pairs into the layer's file of module at path and checks the result with the module's own loader.
+// A write after which the stack fails to load with an error it did not fail with before is undone, putting path back as it was,
+// and its error names the module and carries the loader's, which names the key.
+// A stack that already failed to load lets a write through that leaves that same failure in place.
+func setChecked(dirs configengine.Dirs, module configreg.Module, layer configengine.Layer, path string, pairs []yamlengine.KV) ([]string, error) {
+	snap, err := snapshotFile(path)
+	if err != nil {
+		return nil, err
+	}
+	before := module.CheckLoad(dirs)
+	preserved, err := configengine.Set(dirs, module.Spec(), layer, pairs)
+	if err != nil {
+		return nil, err
+	}
+	if failure := newLoadFailure(module, dirs, before); failure != nil {
+		return nil, rollBack(path, snap, fmt.Errorf("%w; %s unchanged", failure, path))
+	}
+	return preserved, nil
+}
+
+// newLoadFailure loads module through its own loader under dirs and returns a refusal when it fails with an error other than before, the load's error ahead of the write.
+func newLoadFailure(module configreg.Module, dirs configengine.Dirs, before error) error {
+	after := module.CheckLoad(dirs)
+	if after == nil || (before != nil && before.Error() == after.Error()) {
+		return nil
+	}
+	return fmt.Errorf("the %s config would not load with this value: %w; way forward: --set the key to a value it takes", module.Name, after)
+}
+
 // setLocal writes pairs into a module's local override file at path.
-// A local override is never committed and runs no fabric sync, and a key the local layer refuses leaves the file as it was.
+// A local override is never committed and runs no fabric sync, and a key the local layer refuses, or a value the module's loader refuses, leaves the file as it was.
 func setLocal(dirs configDirs, out io.Writer, mod configreg.Module, path string, pairs []yamlengine.KV) int {
-	preserved, err := configengine.Set(dirs.engineDirs(), mod.Spec(), configengine.LayerLocal, pairs)
+	preserved, err := setChecked(dirs.engineDirs(), mod, configengine.LayerLocal, path, pairs)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -361,10 +391,10 @@ func buildConfigLong() string {
 		"A module may declare an open map, whose keys are the repo's own; --set\n" +
 		"adds or rewrites one entry of it with a scalar value, e.g.\n" +
 		"  lyx config board --set labels.quarry=\"glyphs and the quarry index\"\n" +
+		"A value the module's loader refuses is refused, naming the key.\n" +
 		"Pre-existing config keys not recognized by the current template are\n" +
-		"preserved untouched (never dropped) and reported via a \"preserved\" field\n" +
-		"in the JSON success output; run \"lyx config reconcile\" to actually remove\n" +
-		"them.\n\n" +
+		"preserved and reported via a \"preserved\" field in the JSON success output;\n" +
+		"run \"lyx config reconcile\" to remove them.\n\n" +
 		"--layer default|worktree|local picks the file to print or write: default is the board's\n" +
 		"repo default, committed from the prime; local is an untracked override.\n\n" +
 		"--resolved <module> prints the merged result, each unit's line comment naming the\n" +

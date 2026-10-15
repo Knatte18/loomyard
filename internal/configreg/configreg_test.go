@@ -16,7 +16,7 @@ import (
 )
 
 // TestNames pins the registry's ORDER and shape: every `lyx config` surface (help text, unknown-module error, --print sections, reconcile output, menu numbering) renders it in registry order,
-// so an out-of-sort or repeated entry is user-visible.
+// so an out-of-sort or repeated entry is user-visible, and every module carries a template and a load check.
 // Membership is pinned by TestRegistration_MatchesDeclarers.
 func TestNames(t *testing.T) {
 	t.Parallel()
@@ -34,6 +34,9 @@ func TestNames(t *testing.T) {
 		}
 		if tmpl() == "" {
 			t.Errorf("Template(%q)() is empty; want a non-empty template", name)
+		}
+		if module, _ := Lookup(name); module.CheckLoad == nil {
+			t.Errorf("Lookup(%q).CheckLoad is nil; want the module's loader", name)
 		}
 	}
 }

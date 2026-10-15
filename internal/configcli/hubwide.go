@@ -201,17 +201,23 @@ func reportHubWrite(out io.Writer, module, path string, commitErr, writeErr erro
 }
 
 // setHubWide writes pairs into a hub-wide module's file at the board dir and commits it in _board.
-// The file is validated strictly before the commit and restored on any failure.
+// The file is validated strictly before the commit, then loaded alone through the module's own loader, and restored on any failure.
+// The loader refuses the write only with a failure the file did not already load with.
 func setHubWide(dirs configDirs, out io.Writer, module configreg.Module, pairs []yamlengine.KV, commit hubCommitFunc) int {
 	path := configengine.ConfigFile(dirs.board, module.Name)
+	boardDirs := configengine.Dirs{Board: dirs.board}
 	var preserved []string
 	var writeErr error
 	commitErr := commit(module.Name, func() error {
 		snap, err := snapshotFile(path)
 		if err == nil {
-			preserved, err = configengine.Set(configengine.Dirs{Board: dirs.board}, module.Spec(), configengine.LayerDefault, pairs)
+			before := module.CheckLoad(boardDirs)
+			preserved, err = configengine.Set(boardDirs, module.Spec(), configengine.LayerDefault, pairs)
 			if err == nil {
 				err = validateHubFile(dirs.board, module)
+			}
+			if err == nil {
+				err = newLoadFailure(module, boardDirs, before)
 			}
 			if err != nil {
 				err = rollBack(path, snap, err)
