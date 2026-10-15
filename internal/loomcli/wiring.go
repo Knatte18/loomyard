@@ -545,7 +545,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	if err != nil {
 		return err
 	}
-	defaultEngine, err := engines.Lookup("")
+	auditEngine, err := websterengine.AuditEngineFrom(engines)
 	if err != nil {
 		return err
 	}
@@ -583,7 +583,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	runDeps := websterengine.RunDeps{
 		Starter:    runnerMasterStarter{runner: runner},
 		Stopper:    runner,
-		Engine:     defaultEngine,
+		Engine:     auditEngine,
 		ShuttleCfg: shuttleCfg,
 		Roles:      roles,
 		Config:     websterCfg,

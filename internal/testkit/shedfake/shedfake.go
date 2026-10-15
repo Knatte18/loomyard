@@ -422,7 +422,7 @@ func (f *MergeShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error
 type (
 	masterStarter  struct{ websterengine.MasterStarter }
 	strandStopper  struct{ websterengine.StrandStopper }
-	shuttleEngine  struct{ shuttleengine.Engine }
+	shuttleEngine  struct{ shuttleengine.ForkAuditor }
 	refMatcherSeam struct{ websterengine.RefMatcher }
 	indexSeam      struct{ planindex.Index }
 )

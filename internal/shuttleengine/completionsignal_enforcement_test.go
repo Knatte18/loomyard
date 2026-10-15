@@ -127,10 +127,11 @@ var negativeVerdictMarkers = map[string]bool{
 //     unfinished; all are listed because an AST scan that hand-excluded them would need a second,
 //     unenforceable judgement about which Errorf "counts", and a human looking at a new one costs
 //     less than that.
-//   - finalize [Errorf] x2 — the fork-audit failure, plus the gate-evaluation error finalize itself
-//     returns when run.evaluateGate() fails for an OutcomeDone it is about to finalize. Both fire
+//   - finalize [Errorf] x3 — the fork-audit failure, the refusal to finish a fork-authorized done run
+//     whose engine has no fork audit, plus the gate-evaluation error finalize itself
+//     returns when run.evaluateGate() fails for an OutcomeDone it is about to finalize. All fire
 //     strictly after the run already reached a positive verdict (a done fork-mode run, or a Done
-//     finalize's own gate check), so neither is itself a negative verdict on whether the run
+//     finalize's own gate check), so none is itself a negative verdict on whether the run
 //     finished — they are infrastructure faults surfacing after the fact, the same reasoning the
 //     pre-existing fork-audit entry already carried.
 //   - awaitStartup [Errorf,OutcomeDied] x3 — the three retry-cap arms, each the status-cap teardown
@@ -160,7 +161,7 @@ var auditedNegativeVerdictReturns = map[string]int{
 	"classifyStartupWindow [OutcomeDied]":             1,
 	"collectAttachCandidates [Errorf]":                1,
 	"dispositionCandidate [verdictRespawnEligible]":   2,
-	"finalize [Errorf]":                               2,
+	"finalize [Errorf]":                               3,
 	"leftoverThenAgeVerdict [verdictError]":           1,
 	"leftoverThenAgeVerdict [verdictRespawnEligible]": 3,
 	"normalizeAttachSpec [Errorf]":                    1,

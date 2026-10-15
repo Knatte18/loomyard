@@ -171,14 +171,6 @@ type Engine interface {
 	// ColorSequence returns the key choreography that sets a live session's display color (e.g. `/color <name>` typed and submitted), or no inputs for a provider without one or a color it has no name for.
 	// It lives on the seam because which command string and key sequence color a provider's session is provider grammar.
 	ColorSequence(color segmentcolor.Color) []PaneInput
-	// AuditForks reads the provider's on-disk record of fork subagents for a fork-authorized session (identified by sessionID).
-	// workdir is the pane's actual process cwd. Returns mechanical facts observed with no policy interpretation.
-	// Returns error (not zero ForkAudit) if the provider has no fork concept, so callers can distinguish "no forks" from "cannot audit".
-	AuditForks(sessionID, workdir string) (ForkAudit, error)
-	// AuditForksIncremental is AuditForks for callers that have already processed some fork transcripts and want only new ones.
-	// Parent facts (SpawnCalls, NamedSpawns, ParentWriteCalls, ParentWrites, ParentBashCommands) are always full/cumulative.
-	// Forks holds one ForkReport per transcript not in seenTranscripts; nil seenTranscripts reports every fork transcript (equivalent to AuditForks).
-	AuditForksIncremental(sessionID, workdir string, seenTranscripts map[string]bool) (ForkAudit, error)
 }
 
 // Requirement is one thing a run may require of its engine; the set is closed to the constants below.

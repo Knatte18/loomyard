@@ -27,18 +27,26 @@ func New(cfg shuttleengine.Config) (shuttleengine.EngineSet, error) {
 }
 
 // build constructs one engine per entry of constructors from cfg and returns them as a set whose default is cfg.Engine.
-// It refuses, before returning a set, a cfg.Engine that is not one of the entries.
+// It refuses, before returning a set, a cfg.Engine that is not one of the entries,
+// and an engine that declares fork support through shuttleengine.RequirementSupporter without implementing shuttleengine.ForkAuditor.
 func build(cfg shuttleengine.Config, constructors map[string]constructor) (shuttleengine.EngineSet, error) {
 	engines := make(map[string]shuttleengine.Engine, len(constructors))
+	names := make([]string, 0, len(constructors))
 	for name, construct := range constructors {
 		engines[name] = construct(cfg)
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		supporter, declares := engines[name].(shuttleengine.RequirementSupporter)
+		if !declares || !supporter.Supports(shuttleengine.RequirementForks) {
+			continue
+		}
+		if _, audits := engines[name].(shuttleengine.ForkAuditor); !audits {
+			return shuttleengine.EngineSet{}, fmt.Errorf("shuttle: engine %q declares forks but cannot audit them", name)
+		}
 	}
 	if _, ok := engines[cfg.Engine]; !ok {
-		names := make([]string, 0, len(engines))
-		for name := range engines {
-			names = append(names, name)
-		}
-		sort.Strings(names)
 		return shuttleengine.EngineSet{}, fmt.Errorf(
 			"shuttle: shuttle.yaml's engine: %q names no registered engine; registered engines: %s; way forward: set engine: in shuttle.yaml to one of them",
 			cfg.Engine, strings.Join(names, ", "))

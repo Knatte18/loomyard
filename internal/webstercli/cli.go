@@ -48,7 +48,7 @@ type websterCLI struct {
 	masterStarter websterengine.MasterStarter
 
 	// engine and reed are the constructed claude and reed engines record-batch and recover-batch need directly.
-	engine shuttleengine.Engine
+	engine websterengine.AuditEngine
 	reed   shuttleengine.ReedOps
 
 	// reedUp brings the standalone reed session up, idempotently, and, when watch is true and the

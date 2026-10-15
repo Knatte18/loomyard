@@ -76,7 +76,7 @@ type RecoverDeps struct {
 	State      *State
 	Roles      map[Role]modelspec.Resolved
 	Config     Config
-	Engine     shuttleengine.Engine
+	Engine     AuditEngine
 	Reed       shuttleengine.ReedOps
 	Stopper    StrandStopper
 	ShuttleCfg shuttleengine.Config

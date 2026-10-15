@@ -199,7 +199,7 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 	if err != nil {
 		return err
 	}
-	defaultEngine, err := engines.Lookup("")
+	auditEngine, err := websterengine.AuditEngineFrom(engines)
 	if err != nil {
 		return err
 	}
@@ -211,7 +211,7 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 	runner.SetPause(pauseGeom)
 	runner.SetNotifier(func(line string) error { return orchcli.NotifyPrime(loc, line) })
 
-	c.setRunner(runner, defaultEngine, reedEngine)
+	c.setRunner(runner, auditEngine, reedEngine)
 	c.shuttleCfg = shuttleCfg
 	c.cfg = websterCfg
 	c.roles = roles
@@ -303,7 +303,7 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	if err != nil {
 		return err
 	}
-	defaultEngine, err := engines.Lookup("")
+	auditEngine, err := websterengine.AuditEngineFrom(engines)
 	if err != nil {
 		return err
 	}
@@ -336,7 +336,7 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 		return nil
 	}
 
-	c.setRunner(runner, defaultEngine, reedEngine)
+	c.setRunner(runner, auditEngine, reedEngine)
 	c.shuttleCfg = shuttleCfg
 	c.cfg = websterCfg
 	c.roles = roles
@@ -383,11 +383,11 @@ func configLoadError(file string, cause error) error {
 	}
 }
 
-// setRunner stores runner and its adapted seams (starter, masterStarter) plus the default shuttle engine and the reed engine onto c, shared by both wireHub and wireStandalone so the adaptation is named once.
-func (c *websterCLI) setRunner(runner *shuttleengine.Runner, defaultEngine shuttleengine.Engine, reedEngine shuttleengine.ReedOps) {
+// setRunner stores runner and its adapted seams (starter, masterStarter) plus the default shuttle engine, asserted to audit forks, and the reed engine onto c, shared by both wireHub and wireStandalone so the adaptation is named once.
+func (c *websterCLI) setRunner(runner *shuttleengine.Runner, auditEngine websterengine.AuditEngine, reedEngine shuttleengine.ReedOps) {
 	c.runner = runner
 	c.starter = runner
 	c.masterStarter = runnerMasterStarter{runner: runner}
-	c.engine = defaultEngine
+	c.engine = auditEngine
 	c.reed = reedEngine
 }

@@ -16,6 +16,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 )
 
+// forksWithoutAuditEngine declares RequirementForks through Supports but has no ForkAuditor.
+type forksWithoutAuditEngine struct{ shuttleengine.Engine }
+
+func (forksWithoutAuditEngine) Supports(req shuttleengine.Requirement) bool {
+	return req == shuttleengine.RequirementForks
+}
+
 // loadWithLocalEngine loads a shuttle config over a temp anchor whose local layer file sets engine: bogus.
 func loadWithLocalEngine(t *testing.T) shuttleengine.Config {
 	t.Helper()
@@ -46,24 +53,36 @@ func TestNew(t *testing.T) {
 		t.Fatalf("LoadConfig over the template: %v", err)
 	}
 
+	forksWithoutAudit := map[string]constructor{
+		"nofork": func(shuttleengine.Config) shuttleengine.Engine { return forksWithoutAuditEngine{} },
+	}
+	unregistered := []string{"bogus", "registered engines: claude", "engine: in shuttle.yaml"}
 	tests := []struct {
-		name    string
-		cfg     shuttleengine.Config
-		wantErr bool
+		name         string
+		cfg          shuttleengine.Config
+		constructors map[string]constructor
+		wantErr      []string
 	}{
 		{name: "TemplateConfig", cfg: templateCfg},
-		{name: "UnregisteredEngine", cfg: shuttleengine.Config{Engine: "bogus"}, wantErr: true},
-		{name: "UnregisteredEngineFromLocalLayer", cfg: loadWithLocalEngine(t), wantErr: true},
+		{name: "UnregisteredEngine", cfg: shuttleengine.Config{Engine: "bogus"}, wantErr: unregistered},
+		{name: "UnregisteredEngineFromLocalLayer", cfg: loadWithLocalEngine(t), wantErr: unregistered},
+		{name: "EngineDeclaringForksWithoutAudit", cfg: shuttleengine.Config{Engine: "nofork"}, constructors: forksWithoutAudit, wantErr: []string{`engine "nofork" declares forks but cannot audit them`}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			set, err := New(tt.cfg)
-			if tt.wantErr {
+			var set shuttleengine.EngineSet
+			var err error
+			if tt.constructors != nil {
+				set, err = build(tt.cfg, tt.constructors)
+			} else {
+				set, err = New(tt.cfg)
+			}
+			if tt.wantErr != nil {
 				if err == nil {
-					t.Fatalf("New(%q) accepted an unregistered engine", tt.cfg.Engine)
+					t.Fatalf("New(%q) accepted a set it must refuse", tt.cfg.Engine)
 				}
-				for _, want := range []string{"bogus", "registered engines: claude", "engine: in shuttle.yaml"} {
+				for _, want := range tt.wantErr {
 					if !strings.Contains(err.Error(), want) {
 						t.Errorf("New error %q does not contain %q", err, want)
 					}

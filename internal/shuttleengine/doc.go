@@ -22,7 +22,8 @@
 // shuttleengine defines the Engine interface and its value types, and never imports a concrete
 // engine implementation (the provider-seam import rule, enforced by seam_enforcement_test.go in a
 // later batch) — concrete engines import shuttleengine, not the reverse.
-// Requirement support, resume-context rendering and instruction files are optional capabilities beside Engine, which an engine without them lacks.
+// Requirement support, fork audit, resume-context rendering and instruction files are optional capabilities beside Engine, which an engine without them lacks.
+// A ForkSubagents run whose engine cannot audit forks finishes with its classified result, a nil ForkAudit and an error, and keeps its run directory.
 // Spec.Requires lists what a run requires of its engine, and a ForkSubagents spec requires fork support without listing it.
 // Start checks it right after resolving the spec's engine, and attach checks it against the engine the run's record names unless every output file is already on disk.
 // A refusal wraps ErrRequirementsUnmet and names the way forward:

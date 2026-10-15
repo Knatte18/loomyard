@@ -1668,7 +1668,11 @@ func (run *Run) finalize(outcome Outcome) (Result, error) {
 	}
 
 	if outcome == OutcomeDone && run.state.ForkSubagents {
-		audit, err := run.engine.AuditForks(run.state.SessionID, run.runner.paneCwd)
+		auditor, ok := run.engine.(ForkAuditor)
+		if !ok {
+			return result, fmt.Errorf("shuttle: run %s: engine %q cannot audit the forks its ForkSubagents record authorizes", run.runDir, run.engineName)
+		}
+		audit, err := auditor.AuditForks(run.state.SessionID, run.runner.paneCwd)
 		if err != nil {
 			// The run itself SUCCEEDED and nothing has been cleaned up yet, so the caller gets the
 			// whole classified Result back — identity AND Outcome — not the bare identity().

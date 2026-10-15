@@ -159,7 +159,7 @@ func splitContractPaths(geom Geometry, writes RunWrites, paths []string) (contra
 // contractWritesFor loads the run's write history only when one of paths is a contract file, since no other path needs it.
 // A nil engine yields an empty history, under which a present contract file is never cleared.
 // The error is a link-resolution or audit failure.
-func contractWritesFor(engine shuttleengine.Engine, st *State, geom Geometry, paths []string) (RunWrites, error) {
+func contractWritesFor(engine shuttleengine.ForkAuditor, st *State, geom Geometry, paths []string) (RunWrites, error) {
 	if engine == nil {
 		return RunWrites{}, nil
 	}

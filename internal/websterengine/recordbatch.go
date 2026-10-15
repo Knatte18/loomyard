@@ -190,7 +190,7 @@ type RecordDeps struct {
 	Batches    []batcher.Batch
 	State      *State
 	Config     Config
-	Engine     shuttleengine.Engine
+	Engine     shuttleengine.ForkAuditor
 	Geom       Geometry
 	RefMatcher RefMatcher
 	// ReadOnly classifies a fabric-referencing command as read-only, which makes its finding a policy warning; nil accepts nothing.
