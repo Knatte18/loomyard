@@ -158,6 +158,38 @@ func TestRefCovers(t *testing.T) {
 	}
 }
 
+func TestRefMember(t *testing.T) {
+	t.Parallel()
+
+	goPlan := &planparser.Plan{Language: "go"}
+	tests := []struct {
+		name   string
+		plan   *planparser.Plan
+		ref    string
+		want   string
+		wantOK bool
+	}{
+		{name: "package-unit member glyph", plan: goPlan, ref: "internal/a#Foo", want: "internal/a#Foo", wantOK: true},
+		{name: "file-unit member glyph", plan: goPlan, ref: "internal/a/a.go#Run", want: "internal/a/a.go#Run", wantOK: true},
+		{name: "member handle", plan: goPlan, ref: "plan:internal/a#Foo", want: "internal/a#Foo", wantOK: true},
+		{name: "package self glyph", plan: goPlan, ref: "internal/a#"},
+		{name: "file self glyph", plan: goPlan, ref: "internal/a/a.go#"},
+		{name: "directory path", plan: goPlan, ref: "internal/a"},
+		{name: "unmappable handle", plan: goPlan, ref: "plan:nohash"},
+		{name: "non-Go plan", plan: &planparser.Plan{Language: "none"}, ref: "internal/a#Foo"},
+		{name: "nil plan reads as the default language", plan: nil, ref: "internal/a#Foo", want: "internal/a#Foo", wantOK: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, ok := planparser.RefMember(tt.plan, tt.ref)
+			if got != tt.want || ok != tt.wantOK {
+				t.Errorf("RefMember(%q) = %q, %v; want %q, %v", tt.ref, got, ok, tt.want, tt.wantOK)
+			}
+		})
+	}
+}
+
 func TestRefFile(t *testing.T) {
 	t.Parallel()
 
