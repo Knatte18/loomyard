@@ -215,7 +215,7 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 		{"askuser_only_autonomous", false, true, false, false, true, false, false},
 		{"both_on_autonomous", true, true, false, true, true, false, false},
 		// Interactive runs always carry the non-denying AskUserQuestion
-		// marker entry, regardless of ClaudeDenyAskUserQuestion — the deny
+		// marker entry, regardless of DenyAskUserQuestion — the deny
 		// is autonomous-only and the two are mutually exclusive.
 		{"both_on_interactive_marker_not_deny", true, true, true, true, true, false, false},
 		{"askuser_only_interactive_marker_not_deny", false, true, true, false, true, false, false},
@@ -415,7 +415,7 @@ const (
 // the deny configured off, or the per-run allowance, emits no Agent entry and drops its notice sentence while the AskUserQuestion deny and its sentence stay.
 // Beside the always-installed raw go, in-place edit, computed-rm and sleep denies, the fork-loop-deadlock guard is the only Bash entry any document carries, so no run mode installs a Bash stdin rewrite:
 // a fork-mode run emits a PreToolUse(Bash) hook that greps the payload for a fork-context agent_id AND a `lyx webster` command before denying (with steerWebsterForkDeny), and always exits 0 via the trailing `; true`.
-// The guard is independent of ClaudeDenyAgentTool and of the allowance, and absent entirely when fork mode is off (no Master, so no fork could reach the loop).
+// The guard is independent of DenyAgentTool and of the allowance, and absent entirely when fork mode is off (no Master, so no fork could reach the loop).
 //
 //testtiming:keep pins the Agent and Bash PreToolUse entries for every deny, fork and allowance combination, which its covering test does not assert
 func TestBuildSettings_AgentAndBashHooks(t *testing.T) {
