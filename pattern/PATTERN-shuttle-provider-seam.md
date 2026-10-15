@@ -7,5 +7,7 @@ Provider specifics live only under `internal/shuttleengine/<engine>`, and only `
 - An engine's config module reaches `configreg` only through `internal/shuttleengines`, which lists each registered engine's module for it.
 - An engine's name, a registry key such as `shuttle.yaml`'s `engine: claude` or a `modelspec` engine name, is not a provider specific and may appear outside its directory.
 - An engine's scrub keys, the environment keys reed's server spawn strips, reach reed only through `shuttleengines.EnvScrub()`, which every production `reedengine.New` caller passes.
+- reed's strand provider tag is opaque: shuttle sets it to the run's engine name, reed stores it and never interprets it.
+  An engine's session namer reaches reed's watchdog only through `shuttleengines.SessionNamers()`, keyed by that tag.
 - A `*Run` issued by `Start` or `StartGated` has already resolved its provider's startup probe.
   No caller outside `internal/shuttleengine` probes provider readiness or plays startup-gate keys.

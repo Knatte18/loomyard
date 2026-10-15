@@ -13,6 +13,7 @@
 // Each entry also declares the environment keys its engine's process injects, and EnvScrub returns their union for reed's server spawn,
 // so an engine's scrub keys reach reed through this package alone.
 //
-// SessionNamer lives here for now: reed is provider-blind, so the provider that reads and repairs a session's own name is chosen by this wiring layer.
+// SessionNamers returns each registered engine's session namer keyed by the provider tag shuttle sets on its strands, and also maps the empty tag to the claude engine's namer:
+// reed is provider-blind, so the namer that reads and repairs a session's own name is chosen by this wiring layer, per strand tag.
 // The package is told its Config and never imports internal/lyxcwd.
 package shuttleengines

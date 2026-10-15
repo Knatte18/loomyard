@@ -352,7 +352,7 @@ func enterSession(hub, tmuxPath, sessionName string) (watchedSession, error) {
 		}
 	}()
 	go func() {
-		if err := eng.WatchNames(ctx, shuttleengines.SessionNamer()); err != nil {
+		if err := eng.WatchNames(ctx, shuttleengines.SessionNamers()); err != nil {
 			logger.Debug("reed: watchdog's name repair loop returned", "session", sessionName, "err", err)
 		}
 	}()

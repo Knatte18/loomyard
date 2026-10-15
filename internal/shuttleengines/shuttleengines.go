@@ -155,8 +155,29 @@ func sortedKeys(set map[string]bool) []string {
 	return keys
 }
 
-// SessionNamer returns the provider reed's watchdog uses to read and repair a session's own name.
+// SessionNamers returns the session namers reed's watchdog repairs names through, keyed by the provider tag shuttle sets on a strand.
 // It is the one place a provider is chosen for reed, which stays provider-blind.
-func SessionNamer() reedengine.SessionNamer {
-	return claudeengine.New()
+// The empty tag maps to the claude engine's namer, whatever the default engine is:
+// strands recorded before the tag existed, and strands added outside shuttle, have always been repaired as Claude's.
+func SessionNamers() map[string]reedengine.SessionNamer {
+	engines := make(map[string]shuttleengine.Engine, len(registry))
+	for name, registered := range registry {
+		engines[name] = registered.constructor(shuttleengine.Config{}, configengine.Dirs{})
+	}
+	namers := namersOf(engines)
+	if claude, ok := namers["claude"]; ok {
+		namers[""] = claude
+	}
+	return namers
+}
+
+// namersOf maps each engine that implements reedengine.SessionNamer to its namer, keyed by the engine's name, and skips one that does not.
+func namersOf(engines map[string]shuttleengine.Engine) map[string]reedengine.SessionNamer {
+	namers := make(map[string]reedengine.SessionNamer, len(engines))
+	for name, engine := range engines {
+		if namer, ok := engine.(reedengine.SessionNamer); ok {
+			namers[name] = namer
+		}
+	}
+	return namers
 }

@@ -538,6 +538,7 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 		Role:         spec.Role,
 		NameOverride: spec.NameOverride,
 		Segment:      string(spec.Segment),
+		Provider:     engineName,
 		Parent:       spec.Parent,
 		Cmd:          launch.Cmd,
 		ResumeCmd:    launch.ResumeCmd,

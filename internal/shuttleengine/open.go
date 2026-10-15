@@ -85,6 +85,7 @@ func (r *Runner) Open(spec OpenSpec) (OpenResult, error) {
 	strand, err := r.reed.AddStrand(reedengine.AddSpec{
 		Role:      spec.Role,
 		Segment:   string(spec.Segment),
+		Provider:  engineName,
 		Cmd:       sh.Chain(launch.Cmd, sh.Touch(marker), selfRemove, sh.Exit()),
 		ResumeCmd: sh.Chain(launch.ResumeCmd, sh.Touch(marker), selfRemove, sh.Exit()),
 		SessionID: launch.SessionID,

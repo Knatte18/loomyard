@@ -222,3 +222,39 @@ func TestEnvScrub_MatchesTmuxkitServerEnviron(t *testing.T) {
 		t.Errorf("scrubOf = %+v; want %+v", union, wantUnion)
 	}
 }
+
+// namingEngine is an engine that also implements reedengine.SessionNamer.
+type namingEngine struct{ shuttleengine.Engine }
+
+func (namingEngine) SessionNameDrift(string, string, string) bool { return false }
+
+func (namingEngine) SessionIdle(string) bool { return false }
+
+func (namingEngine) RenameText(want string) string { return want }
+
+// TestSessionNamers pins that the claude tag and the empty tag both map to the claude engine and no other tag is present,
+// and that namersOf maps only the engines that implement a session namer.
+func TestSessionNamers(t *testing.T) {
+	t.Parallel()
+
+	namers := SessionNamers()
+	if len(namers) != 2 {
+		t.Errorf("SessionNamers tags = %v; want exactly claude and the empty tag", namers)
+	}
+	for _, tag := range []string{"claude", ""} {
+		if _, ok := namers[tag].(*claudeengine.Claude); !ok {
+			t.Errorf("SessionNamers[%q] = %T; want *claudeengine.Claude", tag, namers[tag])
+		}
+	}
+
+	got := namersOf(map[string]shuttleengine.Engine{
+		"naming":   namingEngine{},
+		"unnaming": forksWithoutAuditEngine{},
+	})
+	if len(got) != 1 {
+		t.Errorf("namersOf tags = %v; want only naming", got)
+	}
+	if _, ok := got["naming"]; !ok {
+		t.Errorf("namersOf = %v; want the engine implementing SessionNamer under its name", got)
+	}
+}
