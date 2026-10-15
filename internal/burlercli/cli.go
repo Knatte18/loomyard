@@ -27,6 +27,10 @@ type burlerCLI struct {
 	// engine is the constructed burlerengine.Engine the run verb closes over.
 	engine *burlerengine.Engine
 
+	// languageSkills are the hub's language skills a profile marked as a code round has its seats load after burler's own.
+	// wireHub loads them from the hub's language.yaml; wireStandalone leaves them empty.
+	languageSkills []string
+
 	// cwd is the seam cwd resolvePersistentPreRun read via lyxcwd.CwdFrom -- the SAME base wire
 	// resolves --target-dir and --stencils-dir against. It is stored so the run verb resolves
 	// --profile against it too, rather than against the process cwd, which under an in-process

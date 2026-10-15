@@ -59,6 +59,7 @@ func landingDeps(
 	runner *shuttleengine.Runner,
 	cfg landingshed.Config,
 	parentName string,
+	languageSkills []string,
 	verifyWaitMark func(label string, start time.Time) error,
 	stopConflictSession func() (string, error),
 	verify verifySource,
@@ -66,6 +67,7 @@ func landingDeps(
 ) landingshed.Deps {
 	return landingshed.Deps{
 		ParentName:      parentName,
+		LanguageSkills:  languageSkills,
 		WorktreeRoot:    l.WorktreePath(),
 		TaskBranch:      taskBranch,
 		ParentBranch:    parentBranch,

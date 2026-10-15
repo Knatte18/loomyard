@@ -21,6 +21,7 @@ import (
 // model-spec package (resolving the conflict session's model), the stencil store (reading the
 // conflict prompt off disk), the stencil filler (rendering it), and the logger.
 // The segment vocabulary names the conflict session's segment.
+// The language config package is admitted for AppendSkills alone, a pure list merge that reads no file and carries no geometry.
 // internal/logger carries no geometry and opens no seam, so admitting it leaves the Told-Geometry
 // Invariant's actual property intact -- the same call PATTERN-treadle-runner-seam's
 // allowlist already makes.
@@ -29,6 +30,7 @@ var mergeresolveAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/shuttleengine",
 	"github.com/Knatte18/loomyard/internal/modelspec",
 	"github.com/Knatte18/loomyard/internal/editdirective",
+	"github.com/Knatte18/loomyard/internal/languageconfig",
 	"github.com/Knatte18/loomyard/internal/parentdirective",
 	"github.com/Knatte18/loomyard/internal/segmentcolor",
 	"github.com/Knatte18/loomyard/internal/stencilstore",

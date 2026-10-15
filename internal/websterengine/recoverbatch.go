@@ -26,6 +26,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/friction"
+	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -92,6 +93,9 @@ type RecoverDeps struct {
 	// ParentBranch names the run's parent branch for the head cross-check's clean-parent-merge rule;
 	// nil (standalone mode) accepts no merge commit between the report's head_sha and HEAD.
 	ParentBranch ParentBranchFunc
+
+	// LanguageSkills are the hub's language skills the recovery strand loads after roleSkills; empty for none.
+	LanguageSkills []string
 }
 
 // RecoverResult is what one RecoverAwait call hands back: Digest (nil while Running), Running (true if wait elapsed non-terminal), ElapsedS (since spawn), and Warnings (non-fatal substrate-cleanup failures, plus the moved-HEAD notice when only merge commits sit between the report's head_sha and the worktree's HEAD).
@@ -304,7 +308,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		Model:       resolved.Model,
 		Effort:      resolved.Params["effort"],
 		Version:     resolved.Params["version"],
-		Skills:      roleSkills,
+		Skills:      languageconfig.AppendSkills(roleSkills, deps.LanguageSkills),
 		Role:        string(RoleRecovery),
 		Segment:     segmentcolor.Webster,
 		Round:       batchName,

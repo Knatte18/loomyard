@@ -72,10 +72,12 @@ func TestDarnSpec(t *testing.T) {
 		wantInPrompt func(in DarnInputs) []string
 		wantNone     int
 		wantNoParent bool
+		wantSkills   []string
 	}{
 		{
-			name:      "first spawn renders both optional tokens as none",
-			configure: func(in *DarnInputs) {},
+			name:       "first spawn renders both optional tokens as none",
+			configure:  func(in *DarnInputs) {},
+			wantSkills: []string{"scribe:prose", "scribe:code-quality", "scribe:testing"},
 			wantInPrompt: func(in DarnInputs) []string {
 				return []string{"`lyx board get '{\"slug\":\"fix-the-thing\"}'`", in.DescriptionPath, filepath.ToSlash(in.SpecsDir) + "/loom/loom-final-summary-spec.md", in.DecisionRecordPath, in.SupportLogPath, filepath.ToSlash(in.SpecsDir) + "/loom/loom-discussion-spec.md"}
 			},
@@ -93,6 +95,17 @@ func TestDarnSpec(t *testing.T) {
 			wantInPrompt: func(in DarnInputs) []string {
 				return []string{"the cache is never invalidated", "the verify gate failed on TestCache", "the-parent", filepath.Join(in.FrictionDir, "Darn-Write.md")}
 			},
+			wantSkills: []string{"scribe:prose", "scribe:code-quality", "scribe:testing"},
+		},
+		{
+			name: "language skills follow the writer's own, a repeat or an own skill appearing once",
+			configure: func(in *DarnInputs) {
+				in.LanguageSkills = []string{"scribe:golang-testing", "scribe:testing", "scribe:golang-testing"}
+			},
+			wantInPrompt: func(in DarnInputs) []string { return nil },
+			wantNone:     2,
+			wantNoParent: true,
+			wantSkills:   []string{"scribe:prose", "scribe:code-quality", "scribe:testing", "scribe:golang-testing"},
 		},
 	}
 	for _, tt := range tests {
@@ -123,8 +136,8 @@ func TestDarnSpec(t *testing.T) {
 			if want := []string{in.DescriptionPath}; !slices.Equal(lead.Outputs, want) {
 				t.Errorf("lead outputs = %v; want the description alone %v", lead.Outputs, want)
 			}
-			if want := []string{"scribe:prose", "scribe:code-quality"}; !slices.Equal(lead.Skills, want) {
-				t.Errorf("lead skills = %v; want %v", lead.Skills, want)
+			if !slices.Equal(lead.Skills, tt.wantSkills) {
+				t.Errorf("lead skills = %v; want %v", lead.Skills, tt.wantSkills)
 			}
 			if table.Segment != segmentcolor.Darn {
 				t.Errorf("table segment = %q; want %q", table.Segment, segmentcolor.Darn)

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -22,6 +23,17 @@ type Engine struct {
 	cfg         Config
 	stencilsDir string
 	frictionDir string
+	// languageSkills are the hub's language skills a code round's seats load after burlerSkills; empty for none.
+	languageSkills []string
+}
+
+// seatSkills returns the skills every seat of p's half loads:
+// burlerSkills alone, or burlerSkills followed by the engine's language skills when p marks a code round.
+func (e *Engine) seatSkills(p *Profile) []string {
+	if !p.LanguageSkills {
+		return burlerSkills
+	}
+	return languageconfig.AppendSkills(burlerSkills, e.languageSkills)
 }
 
 // New returns an Engine ready to run halves, resolving relative Profile paths
@@ -34,7 +46,8 @@ type Engine struct {
 // burlerengine.Geometry is internal/hubgeom's/internal/standalonegeom's to construct under the
 // Told-Geometry Invariant, so an explicit constructor parameter is the remaining told seam. An empty
 // value means Tier 2 is off for this engine.
-func New(shuttle seatengine.Shuttle, geom Geometry, cfg Config, stencilsDir, frictionDir string) *Engine {
+// languageSkills are the hub's language skills a code round's seats load after burlerSkills, empty for none.
+func New(shuttle seatengine.Shuttle, geom Geometry, cfg Config, stencilsDir, frictionDir string, languageSkills []string) *Engine {
 	seats := seatengine.New(shuttle, seatengine.Geometry{
 		WorktreeRoot: geom.WorktreeRoot,
 		AnchorPath:   geom.AnchorPath,
@@ -43,7 +56,7 @@ func New(shuttle seatengine.Shuttle, geom Geometry, cfg Config, stencilsDir, fri
 		Shortname:    geom.Shortname,
 		Slug:         geom.Slug,
 	})
-	return &Engine{seats: seats, geom: geom, cfg: cfg, stencilsDir: stencilsDir, frictionDir: frictionDir}
+	return &Engine{seats: seats, geom: geom, cfg: cfg, stencilsDir: stencilsDir, frictionDir: frictionDir, languageSkills: languageSkills}
 }
 
 // Half is one half of a round: the identities, last message and kept run directory a caller needs to act on a non-done outcome further.

@@ -480,9 +480,10 @@ func TestBurlerHalfEntries_StrictUnknownKeys(t *testing.T) {
 	}
 }
 
-// TestBurlerHalfEntries_ColorSegment covers the optional color_segment and role_prefix keys both entries take, the two per-segment keys:
-// absent keeps the zero segment, which the engine reads as the review color, a legal segment reaches the profile, and an unknown one is refused naming the key and the legal segments.
+// TestBurlerHalfEntries_ColorSegment covers the optional per-half keys that map onto the profile, color_segment, role_prefix and language-skills:
+// an absent color_segment keeps the zero segment, which the engine reads as the review color, a legal segment reaches the profile, and an unknown one is refused naming the key and the legal segments.
 // A role_prefix reaches the profile, an absent one leaves it empty, and a value that is no role is refused naming the key and the value.
+// language-skills true reaches the profile, and a non-boolean value is refused naming the key.
 func TestBurlerHalfEntries_ColorSegment(t *testing.T) {
 	entries := []struct {
 		name    string
@@ -515,6 +516,20 @@ func TestBurlerHalfEntries_ColorSegment(t *testing.T) {
 			assertErrContains(t, err, "color_segment")
 			assertErrContains(t, err, "teal")
 			assertErrContains(t, err, "merge")
+		})
+		t.Run(e.name+"LanguageSkills", func(t *testing.T) {
+			cfg := e.cfg()
+			cfg["profile"].(map[string]any)["language-skills"] = true
+			profile, _ := e.capture(t, "a-row", cfg, newTestEnv(t))
+			if !profile.LanguageSkills {
+				t.Error("profile.LanguageSkills = false; want true")
+			}
+		})
+		t.Run(e.name+"LanguageSkillsNotBool", func(t *testing.T) {
+			cfg := e.cfg()
+			cfg["profile"].(map[string]any)["language-skills"] = "yes"
+			_, err := e.entry("a-row", cfg, newTestEnv(t))
+			assertErrContains(t, err, "language-skills")
 		})
 		t.Run(e.name+"RolePrefix", func(t *testing.T) {
 			cfg := e.cfg()

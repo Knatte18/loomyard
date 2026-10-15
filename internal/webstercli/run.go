@@ -35,6 +35,8 @@ func (c *websterCLI) runDeps() websterengine.RunDeps {
 		ReadOnly:     fabricengine.IsReadOnlyCommand,
 		FrictionDir:  c.frictionDir,
 		ParentBranch: c.parentBranch,
+
+		LanguageSkills: c.languageSkills,
 	}
 }
 
