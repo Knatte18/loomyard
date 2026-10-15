@@ -13,11 +13,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
-// requirePassEntry fails t unless entry holds model, the 90-second run and the known 1000-fresh, 5000-cache-read reading, with no fork fields.
+// requirePassEntry fails t unless entry holds model, the run's claude engine, the 90-second run and the known 1000-fresh, 5000-cache-read reading, with no fork fields.
 func requirePassEntry(t *testing.T, entry halfUsage, model shuttleengine.ModelChoice, started time.Time) {
 	t.Helper()
 	if entry.Model != model.Model || entry.Effort != model.Effort {
 		t.Errorf("entry model, effort = %q, %q; want %q, %q", entry.Model, entry.Effort, model.Model, model.Effort)
+	}
+	if entry.Engine != "claude" {
+		t.Errorf("entry engine = %q; want %q", entry.Engine, "claude")
 	}
 	if !entry.Start.Equal(started) || !entry.End.Equal(started.Add(90*time.Second)) {
 		t.Errorf("entry start, end = %v, %v; want the pass's times", entry.Start, entry.End)
@@ -38,6 +41,7 @@ func TestBouncer_UsageRecord(t *testing.T) {
 	started := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
 	known := shuttleengine.Result{
 		Outcome:   shuttleengine.OutcomeDone,
+		Engine:    "claude",
 		StartedAt: started,
 		EndedAt:   started.Add(90 * time.Second),
 		Usage:     shuttleengine.SessionUsage{Known: true, Fresh: 1000, CacheRead: 5000},

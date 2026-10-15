@@ -348,6 +348,23 @@ func TestBurlerReviewProducer_Call_ProfileAndOpts(t *testing.T) {
 // It proves the acceptance record carries the result's digest and the review half's usage, fan and lenses are merged into the round's usage record.
 func TestBurlerReviewProducer_Call_AcceptedReviewIsRecorded(t *testing.T) {
 	t.Parallel()
+	for _, tt := range []struct {
+		name   string
+		engine string
+	}{
+		{"a half that ran on an engine", "claude"},
+		{"a half with no engine", ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			requireAcceptedReviewRecorded(t, tt.engine)
+		})
+	}
+}
+
+// requireAcceptedReviewRecorded runs an accepted review whose half names engine and fails t unless the round's usage record holds it, with no `engine:` key when engine is empty.
+func requireAcceptedReviewRecorded(t *testing.T, engine string) {
+	t.Helper()
 	runDir := t.TempDir()
 	spec := newHalfSpec()
 	spec.profile.ClusterFan = "fanX"
@@ -357,7 +374,7 @@ func TestBurlerReviewProducer_Call_AcceptedReviewIsRecorded(t *testing.T) {
 		Outcome: shuttleengine.OutcomeDone,
 		Digest:  "digest-1",
 		Lenses:  []string{"style"},
-		Review:  burlerengine.Half{StartedAt: started, EndedAt: started.Add(time.Minute), Usage: shuttleengine.SessionUsage{Known: true, Fresh: 100, ForkFresh: 25, Forks: 2}},
+		Review:  burlerengine.Half{Engine: engine, StartedAt: started, EndedAt: started.Add(time.Minute), Usage: shuttleengine.SessionUsage{Known: true, Fresh: 100, ForkFresh: 25, Forks: 2}},
 		Gate: &shuttleengine.GateOutcome{Passed: true, Attempts: 1, Entries: []shuttleengine.GateEntryOutcome{
 			{Name: "review", Attempts: 1, Spans: []shuttleengine.GateSpan{{Kind: shuttleengine.GateSpanRework, Start: started, End: started.Add(4 * time.Second)}}},
 		}},
@@ -386,6 +403,16 @@ func TestBurlerReviewProducer_Call_AcceptedReviewIsRecorded(t *testing.T) {
 	}
 	if usage.Review.Forks == nil || *usage.Review.Forks != 2 || usage.Review.ForkFreshShare == nil || *usage.Review.ForkFreshShare != 0.25 {
 		t.Errorf("review usage forks = %v share = %v; want 2 forks and a quarter fresh share", usage.Review.Forks, usage.Review.ForkFreshShare)
+	}
+	if usage.Review.Engine != engine {
+		t.Errorf("review usage engine = %q; want %q", usage.Review.Engine, engine)
+	}
+	raw, err := os.ReadFile(roundUsagePath(runDir, 1))
+	if err != nil {
+		t.Fatalf("ReadFile(usage record) = %v; want nil", err)
+	}
+	if hasEngineKey := strings.Contains(string(raw), "engine:"); hasEngineKey != (engine != "") {
+		t.Errorf("usage record holds an engine key = %v; want %v\n%s", hasEngineKey, engine != "", raw)
 	}
 }
 

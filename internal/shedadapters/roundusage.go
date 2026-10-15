@@ -31,10 +31,12 @@ type roundUsage struct {
 	Judge  []halfUsage `yaml:"judge,omitempty"`
 }
 
-// halfUsage is one half's model, run times and token reading.
+// halfUsage is one half's engine, model, run times and token reading.
+// Engine is the engine the half's run used, absent for a half with no run record.
 // A token field is nil when the reading is unknown, and WallSeconds is nil when either run time is zero, so an unknown value is never rendered as zero.
 // The fork fields are set for the reviewer's half only, when its reading is known.
 type halfUsage struct {
+	Engine          string    `yaml:"engine,omitempty"`
 	Model           string    `yaml:"model"`
 	Effort          string    `yaml:"effort"`
 	Start           time.Time `yaml:"start,omitempty"`
@@ -55,9 +57,11 @@ func roundUsagePath(runDir string, n int) string {
 	return filepath.Join(runDir, fmt.Sprintf("round-%d-usage.yaml", n))
 }
 
-// newHalfUsage builds one half's record from the model it ran on and the half's run times and token reading.
+// newHalfUsage builds one half's record from the model it ran on and the half's engine, run times and token reading.
+// The engine comes from the half, not the choice, so it names the engine that ran even when the choice left it empty.
 func newHalfUsage(model shuttleengine.ModelChoice, half burlerengine.Half) halfUsage {
 	record := halfUsage{
+		Engine:      half.Engine,
 		Model:       model.Model,
 		Effort:      model.Effort,
 		Start:       half.StartedAt,
@@ -78,7 +82,7 @@ func newHalfUsage(model shuttleengine.ModelChoice, half burlerengine.Half) halfU
 // newPassUsage builds the entry of one Bouncer pass from the model it ran on and the shuttle result's run times and token reading.
 // The fork fields stay unset.
 func newPassUsage(model shuttleengine.ModelChoice, result shuttleengine.Result) halfUsage {
-	return newHalfUsage(model, burlerengine.Half{StartedAt: result.StartedAt, EndedAt: result.EndedAt, Usage: result.Usage})
+	return newHalfUsage(model, burlerengine.Half{StartedAt: result.StartedAt, EndedAt: result.EndedAt, Usage: result.Usage, Engine: result.Engine})
 }
 
 // writeRoundUsage renders u as round's usage record under runDir.
