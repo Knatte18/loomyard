@@ -265,8 +265,29 @@ func TestOwnWindow_RealTmux(t *testing.T) {
 		if got := readFollow(); got != "on" {
 			t.Errorf("follow state = %q after the server restart, want the booted session on", got)
 		}
-		if got := currentWindow(); got != reopened {
-			t.Errorf("current window = %q after Resume, want the reopened own window %q", got, reopened)
+		// With follow on, every relaunched own window takes the viewer in turn, so it ends on the last one opened, the highest-index window of an own-window strand, dead or alive.
+		res, err := e.Status()
+		if err != nil {
+			t.Fatalf("Status: %v", err)
+		}
+		windows, err := e.tmux.listSessionWindows(e.SessionName())
+		if err != nil {
+			t.Fatalf("list windows: %v", err)
+		}
+		ownWindows := make(map[string]bool)
+		for _, s := range res.Strands {
+			if s.OwnWindow && s.PaneID != "" {
+				ownWindows[windowOfPane(t, e, s.PaneID)] = true
+			}
+		}
+		newest, newestIndex := "", -1
+		for _, w := range windows {
+			if ownWindows[w.ID] && w.Index > newestIndex {
+				newest, newestIndex = w.ID, w.Index
+			}
+		}
+		if got := currentWindow(); got != newest {
+			t.Errorf("current window = %q after Resume, want the newest relaunched own window %q", got, newest)
 		}
 		setFollow("off")
 		if _, ok := statusOf(finished.GUID); ok {
