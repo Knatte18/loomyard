@@ -86,6 +86,9 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	if cfg.SubmitConfirmTimeoutS != 30 {
 		t.Errorf("SubmitConfirmTimeoutS = %d, want 30", cfg.SubmitConfirmTimeoutS)
 	}
+	if cfg.Engine != "claude" {
+		t.Errorf("Engine = %q, want claude", cfg.Engine)
+	}
 	if cfg.Claude != "" {
 		t.Errorf("Claude = %q, want empty default", cfg.Claude)
 	}
@@ -195,6 +198,58 @@ func TestLoadConfig_PromptCacheTTLKeys(t *testing.T) {
 			}
 			if !maps.Equal(cfg.ClaudePromptCacheTTLRoles, tt.wantRoles) {
 				t.Errorf("ClaudePromptCacheTTLRoles = %v, want %v", cfg.ClaudePromptCacheTTLRoles, tt.wantRoles)
+			}
+		})
+	}
+}
+
+func TestLoadConfig_EngineKey(t *testing.T) {
+	t.Parallel()
+
+	const templateLine = "engine: claude"
+	tests := []struct {
+		name       string
+		engineLine string
+		want       string
+		wantErr    string
+	}{
+		{name: "override loads", engineLine: "engine: other", want: "other"},
+		{name: "absent key resolves the template engine", engineLine: "", want: "claude"},
+		{name: "empty value refused", engineLine: `engine: ""`, wantErr: "engine"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			tmpDir := t.TempDir()
+			// The template line carries a trailing comment, so the row replaces the whole line.
+			var seeded []string
+			for _, line := range strings.Split(shuttleengine.ConfigTemplate(), "\n") {
+				if !strings.HasPrefix(line, templateLine) {
+					seeded = append(seeded, line)
+					continue
+				}
+				if tt.engineLine != "" {
+					seeded = append(seeded, tt.engineLine)
+				}
+			}
+			seedLyxConfig(t, tmpDir, "shuttle", strings.Join(seeded, "\n"))
+
+			cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "shuttle")
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("LoadConfig accepted %q", tt.engineLine)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("error %q does not name the %s key", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if cfg.Engine != tt.want {
+				t.Errorf("Engine = %q, want %q", cfg.Engine, tt.want)
 			}
 		})
 	}
