@@ -172,8 +172,8 @@ the same set plus the plan-unapproved check no gate runs, which this flag alone
 reaches standalone. --rework: the set PR-Rework's own gate runs, the
 format-only checks over the whole new plan plus a check that its first_card
 equals the card number the rework session was told. The default and --rework
-modes include the card-fabric-reference and fabric-vocabulary-name checks;
---require-approved leaves both out.
+modes include the card-fabric-reference, fabric-vocabulary-name and
+edit-test-file checks; --require-approved leaves all three out.
 
 --lens-review: the no-flag checks plus the check that the plan directory's
 lens-review.md holds a recorded lens review, the check set of a twill

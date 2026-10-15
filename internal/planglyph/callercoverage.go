@@ -530,7 +530,7 @@ func insideLaterEditRegion(regions []editRegion, cardNumber int, file string, li
 // uncoveredFinding is the caller-uncovered finding for subject's references at lines of file.
 // It is always blocking, since every reference it reports is resolved to the subject.
 func uncoveredFinding(subject coverageSubject, file string, lines []int) Finding {
-	verb, way := coverageVerbAndWay(subject)
+	verb, way := coverageVerbAndWay(subject, []string{file})
 	return Finding{
 		Check: "caller-uncovered",
 		Card:  subject.card.ID(),
@@ -546,12 +546,12 @@ func uncoveredFinding(subject coverageSubject, file string, lines []int) Finding
 // unresolvedMethodFinding is the informational caller-uncovered finding for a method subject, one per subject: references maps each file onto the lines where its name follows a dot.
 // The receiver of those matches is not resolved, so none is known to call the method.
 func unresolvedMethodFinding(subject coverageSubject, references map[string][]int) Finding {
-	verb, way := coverageVerbAndWay(subject)
 	files := make([]string, 0, len(references))
 	for file := range references {
 		files = append(files, file)
 	}
 	sort.Strings(files)
+	verb, way := coverageVerbAndWay(subject, files)
 	sites := make([]string, len(files))
 	for i, file := range files {
 		sites[i] = fmt.Sprintf("%s at line %s", file, lineList(references[file]))
@@ -569,11 +569,16 @@ func unresolvedMethodFinding(subject coverageSubject, references map[string][]in
 }
 
 // coverageVerbAndWay returns what subject's card does to the member and how a finding about it is cleared.
-func coverageVerbAndWay(subject coverageSubject) (verb, way string) {
-	if subject.deleted {
-		return "deletes", "list the file, or the member glyph whose body holds the reference, on that card or an earlier one"
+// files are the files the finding names; when any ends in _test.go the way offers only the member glyph, since listing a test file under Edit is refused.
+func coverageVerbAndWay(subject coverageSubject, files []string) (verb, way string) {
+	listing := "list the file, or the member glyph whose body holds the reference"
+	if slices.ContainsFunc(files, func(file string) bool { return strings.HasSuffix(file, "_test.go") }) {
+		listing = "list the member glyph whose body holds the reference (a _test.go file is refused under **Edit:** by edit-test-file)"
 	}
-	return "re-signs", "list the file, or the member glyph whose body holds the reference, on that card"
+	if subject.deleted {
+		return "deletes", listing + ", on that card or an earlier one"
+	}
+	return "re-signs", listing + ", on that card"
 }
 
 // lineList renders lines as a comma-separated list.

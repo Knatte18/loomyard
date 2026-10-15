@@ -68,10 +68,7 @@
 // rather than comparing classifyRef's return value itself
 // — never `go doc`, never a process spawn.
 // planparser itself spawns no process and stays tier1-pure per the Test Tier Purity Invariant.
-// glyphref.go holds the sole
-// path->glyph call (glyph.Self) and the sole glyph->path call
-// (Glyph.UnitPath, used only by validate.go's disk-existence checks), per the
-// glyph-conversion-chokepoint Shared Decision;
+// glyphref.go holds the sole path->glyph call (glyph.Self), and Glyph.UnitPath is the sole glyph->path call, per the glyph-conversion-chokepoint Shared Decision.
 // goPackageDir (targetdirs.go) stands beside Glyph.UnitPath as the external-test unit mapping.
 // CardTargetDirs and RefScope call it.
 //
@@ -117,9 +114,10 @@
 //
 // # Checks outside both entry points
 //
-// CheckFirstCard, CheckCardFabricReference and CheckFabricVocabularyName sit outside ValidateFormat and Validate.
+// CheckFirstCard, CheckCardFabricReference, CheckFabricVocabularyName and CheckEditTestFile sit outside ValidateFormat and Validate.
 // Only a caller holding the rework round's first card number, or a matcher for the fabric-reference rule, can run the first two.
 // CheckFabricVocabularyName needs no told input, but the plan index appends it beside CheckCardFabricReference.
+// CheckEditTestFile is appended by the plan index at format and rework validation, and takes the done set so format validation skips a completed card.
 // CheckCardFabricReference scans the raw text the parse step records in Plan.OverviewText and Card.Text, so it reads no file and planparser stays the sole parser.
 //
 // # Entry-line cap

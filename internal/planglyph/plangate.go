@@ -66,6 +66,10 @@ func planGatePass(plan *planparser.Plan, worktreeRoot string, loader typesLoader
 		}
 
 		for _, file := range files {
+			way := "keep the member glyphs and drop the file, or keep the file when the card changes the whole file"
+			if strings.HasSuffix(file, "_test.go") {
+				way = "keep the member glyphs and drop the file, since edit-test-file refuses a _test.go file under Edit"
+			}
 			for _, member := range members {
 				symbols, readable := answerSymbols(answers[member], partitioned[member])
 				if !readable || !slices.ContainsFunc(symbols, func(s quarry.Symbol) bool { return s.File == file }) {
@@ -75,8 +79,8 @@ func planGatePass(plan *planparser.Plan, worktreeRoot string, loader typesLoader
 					Check: "redundant-file-target",
 					Card:  c.ID(),
 					Detail: fmt.Sprintf(
-						"card %d lists the file %q beside %q, which resolves into that file; keep the member glyphs and drop the file, or keep the file when the card changes the whole file",
-						c.Number, file, member,
+						"card %d lists the file %q beside %q, which resolves into that file; %s",
+						c.Number, file, member, way,
 					),
 					Severity: SeverityBlocking,
 					Ref:      member,

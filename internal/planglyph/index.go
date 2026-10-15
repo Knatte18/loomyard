@@ -43,18 +43,22 @@ func (i index) Validate(plan *planparser.Plan, worktreeRoot string) ([]Finding, 
 	return validate(plan, worktreeRoot, i.loader)
 }
 
-// ValidateFormat is the package's ValidateFormatAfter plus the card-fabric-reference and fabric-vocabulary-name findings, which sit outside planparser's entry points.
+// ValidateFormat is the package's ValidateFormatAfter plus the card-fabric-reference, fabric-vocabulary-name and edit-test-file findings, which sit outside planparser's entry points.
+// edit-test-file skips the done cards.
 func (i index) ValidateFormat(plan *planparser.Plan, worktreeRoot string, done []planparser.Card) ([]Finding, error) {
 	findings, err := validateFormatAfter(plan, worktreeRoot, done, i.loader)
 	findings = append(findings, convertAll(planparser.CheckCardFabricReference(plan, i.matcher))...)
-	return append(findings, convertAll(planparser.CheckFabricVocabularyName(plan))...), err
+	findings = append(findings, convertAll(planparser.CheckFabricVocabularyName(plan))...)
+	return append(findings, convertAll(planparser.CheckEditTestFile(plan, done))...), err
 }
 
-// ValidateRework is the package's ValidateRework plus the card-fabric-reference and fabric-vocabulary-name findings.
+// ValidateRework is the package's ValidateRework plus the card-fabric-reference, fabric-vocabulary-name and edit-test-file findings.
+// A rework generation is a fresh plan whose prior cards are archived, so edit-test-file skips no card.
 func (i index) ValidateRework(plan *planparser.Plan, worktreeRoot string, told int) ([]Finding, error) {
 	findings, err := validateRework(plan, worktreeRoot, told, i.loader)
 	findings = append(findings, convertAll(planparser.CheckCardFabricReference(plan, i.matcher))...)
-	return append(findings, convertAll(planparser.CheckFabricVocabularyName(plan))...), err
+	findings = append(findings, convertAll(planparser.CheckFabricVocabularyName(plan))...)
+	return append(findings, convertAll(planparser.CheckEditTestFile(plan, nil))...), err
 }
 
 // ValidateDispatch is the package's ValidateDispatch plus the fabric-vocabulary-name findings of the forthcoming cards.

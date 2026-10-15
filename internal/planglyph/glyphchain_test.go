@@ -535,10 +535,18 @@ func TestGlyphChain_RedundantFile(t *testing.T) {
 		files   map[string]string
 		targets []string
 		want    []findingKey
+		// keepFile is whether the way forward offers keeping the file, which it does for every file but a test file.
+		keepFile bool
 	}{
 		{
-			name:    "file beside a member declared in it",
-			targets: []string{"shapes/shapes.go", "shapes#Func"},
+			name:     "file beside a member declared in it",
+			targets:  []string{"shapes/shapes.go", "shapes#Func"},
+			want:     []findingKey{{"redundant-file-target", "1-card1", SeverityBlocking}},
+			keepFile: true,
+		},
+		{
+			name:    "test file beside a member declared in it",
+			targets: []string{"shapes/shapes_test.go", "shapes#testHelper"},
 			want:    []findingKey{{"redundant-file-target", "1-card1", SeverityBlocking}},
 		},
 		{
@@ -547,13 +555,15 @@ func TestGlyphChain_RedundantFile(t *testing.T) {
 				"parts/a.go": "//go:build linux\n\npackage parts\n\nfunc Part() {}\n",
 				"parts/b.go": "//go:build !linux\n\npackage parts\n\nfunc Part() {}\n",
 			},
-			targets: []string{"parts/a.go", "parts#Part"},
-			want:    []findingKey{{"redundant-file-target", "1-card1", SeverityBlocking}},
+			targets:  []string{"parts/a.go", "parts#Part"},
+			want:     []findingKey{{"redundant-file-target", "1-card1", SeverityBlocking}},
+			keepFile: true,
 		},
 		{
-			name:    "file beside a member listed twice",
-			targets: []string{"shapes/shapes.go", "shapes#Func", "shapes#Func"},
-			want:    []findingKey{{"redundant-file-target", "1-card1", SeverityBlocking}},
+			name:     "file beside a member listed twice",
+			targets:  []string{"shapes/shapes.go", "shapes#Func", "shapes#Func"},
+			want:     []findingKey{{"redundant-file-target", "1-card1", SeverityBlocking}},
+			keepFile: true,
 		},
 		{
 			name:    "file beside a member declared in another file",
@@ -567,6 +577,19 @@ func TestGlyphChain_RedundantFile(t *testing.T) {
 			writeFixtureFiles(t, root, tc.files)
 			_, plan := writeGlyphPlan(t, []string{editCard(tc.targets...)})
 			assertPlanGate(t, plan, root, tc.want)
+
+			formatFindings, err := ValidateFormat(plan, root)
+			if err != nil {
+				t.Fatalf("ValidateFormat(...) returned error: %v", err)
+			}
+			for _, finding := range formatFindings {
+				if finding.Check != "redundant-file-target" {
+					continue
+				}
+				if offersKeep := strings.Contains(finding.Detail, "keep the file when the card changes the whole file"); offersKeep != tc.keepFile {
+					t.Errorf("redundant-file-target detail %q offers keeping the file = %v; want %v", finding.Detail, offersKeep, tc.keepFile)
+				}
+			}
 
 			findings, err := ValidateDispatch(plan, root, nil, nil)
 			if err != nil {
@@ -988,7 +1011,12 @@ func TestGlyphChain_CallerCoverage(t *testing.T) {
 					if want := cmp.Or(tc.subject, "1-card1"); f.Card != want {
 						t.Errorf("caller-uncovered attributed to %q; want the subject's card %s", f.Card, want)
 					}
-					got = append(got, fmt.Sprintf("%s %s", f.Severity, coverageFileOf(f.Detail)))
+					named := coverageFileOf(f.Detail)
+					got = append(got, fmt.Sprintf("%s %s", f.Severity, named))
+					namesTestFile := slices.ContainsFunc(strings.Split(named, ", "), func(file string) bool { return strings.HasSuffix(file, "_test.go") })
+					if offersFile := strings.Contains(f.Detail, "list the file"); offersFile == namesTestFile {
+						t.Errorf("caller-uncovered detail %q offers the file = %v with a test file named = %v; want them to differ", f.Detail, offersFile, namesTestFile)
+					}
 				}
 			}
 			slices.Sort(got)

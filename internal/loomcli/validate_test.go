@@ -382,7 +382,7 @@ func TestValidatePlanCmd_ReworkReportsGateFindingsForFirstCardMismatch(t *testin
 	anchorPath := t.TempDir()
 	worktreeRoot := t.TempDir()
 	plankit.WriteTree(t, worktreeRoot, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
-	c := reworkParityFixture(t, anchorPath, worktreeRoot, 1, "", "", true)
+	c := reworkParityFixture(t, anchorPath, worktreeRoot, 1, "", "", "", true)
 
 	result, err := loomshed.NewReworkPlanGate(c.env.AnchorPath, c.env.WorktreeRoot, c.env.RunScratchDir, planglyph.NewIndex(fabricengine.NewReferenceRule()), c.env.Rework.ReadCommitted)()
 	if err != nil || result.Passed {
