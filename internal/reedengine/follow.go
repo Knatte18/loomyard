@@ -39,7 +39,7 @@ func (e *Engine) FollowRun() error {
 		if err != nil {
 			return err
 		}
-		if err := e.tmux.run("set-option", "-t", exactSessionTarget(e.SessionName()), followSessionOption, "on"); err != nil {
+		if err := e.tmux.run("set-option", "-t", exactSessionWindowTarget(e.SessionName()), followSessionOption, "on"); err != nil {
 			logger.Warn("reed: could not turn the follow state on", "socket", e.Socket(), "session", e.SessionName(), "err", err)
 		}
 		e.selectRelevantWindowLocked(st, nil)
@@ -99,7 +99,7 @@ func followSessionVia(cmd TmuxCmd, session string) error {
 	if err != nil {
 		return fmt.Errorf("list the panes of session %q: %w", session, err)
 	}
-	if err := cmd.run("set-option", "-t", exactSessionTarget(session), followSessionOption, "on"); err != nil {
+	if err := cmd.run("set-option", "-t", exactSessionWindowTarget(session), followSessionOption, "on"); err != nil {
 		return fmt.Errorf("turn follow on for session %q: %w", session, err)
 	}
 	window := followTargetWindow(listing)

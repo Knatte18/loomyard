@@ -137,7 +137,7 @@ func settle() { time.Sleep(doubleClickGap) }
 // setFollow writes @lyx_follow on the session named session.
 func (f *bindingsFixture) setFollow(t *testing.T, session, value string) {
 	t.Helper()
-	if err := f.e.tmux.run("set-option", "-t", "="+session, followSessionOption, value); err != nil {
+	if err := f.e.tmux.run("set-option", "-t", "="+session+":", followSessionOption, value); err != nil {
 		t.Fatalf("set %s %s on %s: %v", followSessionOption, value, session, err)
 	}
 }

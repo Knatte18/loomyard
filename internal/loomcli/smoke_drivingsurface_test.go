@@ -42,7 +42,7 @@ func readFollow(t *testing.T, eng *reedengine.Engine) string {
 // setFollow sets the session option @lyx_follow of eng's session to value.
 func setFollow(t *testing.T, eng *reedengine.Engine, value string) {
 	t.Helper()
-	if out, err := exec.Command(tmuxBinaryPath(t), "-L", eng.Socket(), "set-option", "-t", "="+eng.SessionName(), "@lyx_follow", value).CombinedOutput(); err != nil {
+	if out, err := exec.Command(tmuxBinaryPath(t), "-L", eng.Socket(), "set-option", "-t", "="+eng.SessionName()+":", "@lyx_follow", value).CombinedOutput(); err != nil {
 		t.Fatalf("set @lyx_follow %s: %v; output: %s", value, err, out)
 	}
 }
