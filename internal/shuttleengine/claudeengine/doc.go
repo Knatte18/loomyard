@@ -98,6 +98,8 @@
 // The launch line is `launchPointer`'s rendering in a user text, and its prompt path rides on that entry.
 // A malformed or half-written line is skipped, a vanished transcript fails the read naming its path, and a line without a parseable timestamp has a zero time.
 //
+// The message pricer (MessagePricer) prices one message's neutral usage from its model; the price table is Claude's API list price, with its source cited at the table.
+//
 // The session-signal parse (SessionSignalParser) reads the same events file as ParseEvents but yields a separate stream, in signals.go, and leaves ParseEvents unchanged.
 // A `Stop` line is a turn end with its outstanding tasks read exactly as ParseEvents reads them, a `StopFailure` an API-error turn end, a `UserPromptSubmit` a turn start, a `PreToolUse` for `AskUserQuestion` an ask, a `PermissionRequest` an ask by its hook name alone, a `Notification` by the fixed table `notificationSignalKinds` (`permission_prompt`, `elicitation_dialog` and `elicitation_url_dialog` are asks, `idle_prompt` is an idle notice, and `agent_needs_input`, `elicitation_response` and any other type are skipped), a `SessionEnd` a session end with its reason, and a `SessionStart` a session start carrying the payload's `source` mapped to a provider-neutral one: `startup`, `resume`, `clear` and `compact` to their constants, and any other or missing string to the empty source.
 // The asks that are not events, the ones the dialog notice reads, are the `PermissionRequest` hook and the `permission_prompt`, `elicitation_dialog` and `elicitation_url_dialog` Notifications, a fork's included; the question tool's ask is an event.
