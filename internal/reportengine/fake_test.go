@@ -524,6 +524,16 @@ func (w *world) battenRecord(sha string, hour int, slug string, status shedengin
 	w.repo.commitOnChain(sha, at(hour), map[string]string{recordPaths(w.t, slug).Status: statusJSON(w.t, status)})
 }
 
+// battenSettles commits slug's batten status, exactly status, together with its settle-records file holding records, to the main line at hour.
+// No file is written when there are no records.
+func (w *world) battenSettles(sha string, hour int, slug string, status shedengine.Status, records ...shedrun.SettleRecord) {
+	files := map[string]string{recordPaths(w.t, slug).Status: statusJSON(w.t, status)}
+	if len(records) > 0 {
+		files[recordPaths(w.t, slug).SettleRecords] = settleFile(w.t, records...)
+	}
+	w.repo.commitOnChain(sha, at(hour), files)
+}
+
 // battenDeleted commits the removal of slug's batten status to the main line at hour.
 func (w *world) battenDeleted(sha string, hour int, slug string) {
 	w.repo.commitOnChain(sha, at(hour), nil, recordPaths(w.t, slug).Status)

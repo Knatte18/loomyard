@@ -3,9 +3,12 @@
 package reportengine
 
 import (
+	"encoding/json"
 	"fmt"
+	"maps"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -13,9 +16,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/haltnote"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // secondsAfter returns the time seconds after base.
@@ -76,13 +81,92 @@ func arbiterSpawnedFiles(t *testing.T, slug string, number int, spawned time.Tim
 	return arbiterAttemptFiles(t, slug, number, loomengine.ArbiterAttempt{SpawnedAt: spawned}, "", false)
 }
 
-// alignmentSpawnedFiles returns the files of attempt number of slug's alignment agent at point, spawned at spawned.
-func alignmentSpawnedFiles(t *testing.T, slug, point string, number int, spawned time.Time) map[string]string {
+// alignmentSpawnedFiles returns the files of attempt number of slug's alignment agent at point, spawned at spawned and recording applied.
+func alignmentSpawnedFiles(t *testing.T, slug, point string, number int, spawned time.Time, applied string) map[string]string {
 	t.Helper()
 
 	dir := path.Join(recordPaths(t, slug).Alignment, point, fmt.Sprintf("attempt-%d", number))
 	return map[string]string{
-		path.Join(dir, "attempt.json"): fmt.Sprintf(`{"number":%d,"point":%q,"token":"tok","spawned_at":%q}`, number, point, spawned.Format(time.RFC3339)),
+		path.Join(dir, "attempt.json"): fmt.Sprintf(`{"number":%d,"point":%q,"token":"tok","spawned_at":%q,"applied":%q}`, number, point, spawned.Format(time.RFC3339), applied),
+	}
+}
+
+// stuckAt is a stuck history entry of producer stamped when.
+func stuckAt(producer string, when time.Time) shedengine.HistoryEntry {
+	entry := entryAt(producer, when)
+	entry.Outcome = shedengine.Stuck
+	return entry
+}
+
+// gotoAt is a goto history entry of producer stamped when, written by the caller labelled by.
+func gotoAt(producer string, when time.Time, by string) shedengine.HistoryEntry {
+	entry := entryAt(producer, when)
+	entry.Outcome = shedengine.OutcomeGoto
+	entry.By = by
+	return entry
+}
+
+// settleRecord is a settle record at the stop key (producer, length, state) by settler taking action.
+func settleRecord(producer string, length int, state, settler, action string) shedrun.SettleRecord {
+	return shedrun.SettleRecord{
+		StopKey: shedrun.StopKey{CurrentProducer: producer, HistoryLength: length, State: state},
+		Settler: settler,
+		Action:  action,
+		Outcome: "ok",
+		At:      at(1),
+	}
+}
+
+// settleFile returns the text of a settle-records file holding records.
+func settleFile(t *testing.T, records ...shedrun.SettleRecord) string {
+	t.Helper()
+
+	var lines []string
+	for _, record := range records {
+		data, err := json.Marshal(record)
+		if err != nil {
+			t.Fatalf("marshal settle record: %v", err)
+		}
+		lines = append(lines, string(data))
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
+// blockedNote is the files of the halt note file name for a blocked halt at producer.
+func blockedNote(name, producer string) map[string]string {
+	return haltNoteFiles("", name, haltnote.Note{Producer: producer, State: "blocked", Anomaly: "watchdog", Reason: "stalled"})
+}
+
+// stopRun adds a landed run of slug whose loom history is loom and batten history is batten, with the loom file's settle records and batten's, and extra files in the tagged tree.
+func stopRun(w *world, slug string, loom, batten []shedengine.HistoryEntry, loomRecords, battenRecords []shedrun.SettleRecord, extra map[string]string) {
+	files := mergeFiles(extra)
+	if len(loomRecords) > 0 {
+		files[recordPaths(w.t, slug).SettleRecords] = settleFile(w.t, loomRecords...)
+	}
+	w.battenSettles("bs-"+slug, 2, slug, battenRecordOf(batten...), battenRecords...)
+	landedRunWith(w, slug, "t1", 3, seedText("loom"), loom, files)
+}
+
+// stopsOfKind returns the run's stops of kind.
+func stopsOfKind(run TimingRun, kind string) []TimingStop {
+	var stops []TimingStop
+	for _, stop := range run.Stops {
+		if stop.Kind == kind {
+			stops = append(stops, stop)
+		}
+	}
+	return stops
+}
+
+// wantSettlers asserts the run's stops of kind carry exactly the settlers in order.
+func wantSettlers(t *testing.T, run TimingRun, kind string, want ...string) {
+	t.Helper()
+	var got []string
+	for _, stop := range stopsOfKind(run, kind) {
+		got = append(got, stop.Settler)
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("run %s %s settlers = %v; want %v", run.Slug, kind, got, want)
 	}
 }
 
@@ -223,6 +307,9 @@ func TestComputeTiming(t *testing.T) {
 
 	// run is the run every row below starts from: at(1) is its opening, and each row's stamps are offsets from it.
 	run := at(1)
+
+	// convergenceHalts is the halt count convergence reports over the one row that sets it in its setup and reads it in its check.
+	var convergenceHalts int
 	tests := []struct {
 		name string
 		// since defaults to at(0), and by to BucketDay.
@@ -846,8 +933,8 @@ func TestComputeTiming(t *testing.T) {
 					entryAt(loomshed.NameFinalize, secondsAfter(run, 500)),
 				}
 				extra := mergeFiles(
-					alignmentSpawnedFiles(w.t, "aligned", "pr-gate", 1, secondsAfter(run, 250)),
-					alignmentSpawnedFiles(w.t, "aligned", "parent-review", 1, secondsAfter(run, 120)),
+					alignmentSpawnedFiles(w.t, "aligned", "pr-gate", 1, secondsAfter(run, 250), ""),
+					alignmentSpawnedFiles(w.t, "aligned", "parent-review", 1, secondsAfter(run, 120), ""),
 					parentRoundTimed(1, secondsAfter(run, 150), secondsAfter(run, 300), secondsAfter(run, 160)),
 				)
 				landedRunWith(w, "aligned", "t1", 3, seedText("loom"), loom, extra, batten)
@@ -886,6 +973,297 @@ func TestComputeTiming(t *testing.T) {
 				wantFigure(t, "first day arbiter", first.Attempts.Arbiter, 1, 1800)
 				wantFigure(t, "second day arbiter", second.Attempts.Arbiter, 0, 5400)
 				wantFigure(t, "first day alignment", first.Attempts.Alignment, 0, -1)
+			},
+		},
+		{
+			name: "a bounce reads judge, and a run without the halt-note source has no stop kind while its bounce and a batten-row halt a batten goto by orch moved on still count",
+			setup: func(w *world) {
+				bounced := stuckAt(loomshed.NamePlanBouncer, secondsAfter(run, 200))
+				bounced.RoutedTo = loomshed.NamePlanWrite
+				halted := entryAt(battenrecipe.NameLand, secondsAfter(run, 400))
+				halted.Outcome = shedengine.Stuck
+				stopRun(w, "bounce", []shedengine.HistoryEntry{
+					entryAt(loomshed.NamePreflight, secondsAfter(run, 100)),
+					bounced,
+					entryAt(loomshed.NamePlanWrite, secondsAfter(run, 300)),
+					entryAt(loomshed.NameFinalize, secondsAfter(run, 500)),
+				}, []shedengine.HistoryEntry{
+					entryAt(battenrecipe.NameWorktreeCreate, run),
+					halted,
+					gotoAt(battenrecipe.NameLand, secondsAfter(run, 450), "orch"),
+					entryAt(battenrecipe.NameLand, secondsAfter(run, 600)),
+				}, nil, nil, nil)
+			},
+			check: func(t *testing.T, got TimingReport) {
+				got1 := runOf(t, got, "bounce")
+				wantSettlers(t, got1, StopKindStop)
+				wantSettlers(t, got1, StopKindBounce, SettledByJudge)
+				wantSettlers(t, got1, StopKindBattenHalt, "orch")
+				if len(got.Findings) != 0 {
+					t.Errorf("findings = %+v; want none", got.Findings)
+				}
+			},
+		},
+		{
+			name: "every settler class of a child stop is reached: a go-rule restep or verify-retry, a tackler restep, an applied arbiter attempt, a verify-retry automatic step, and the by of the entry that moved the stop on",
+			setup: func(w *world) {
+				loom := []shedengine.HistoryEntry{
+					entryAt(loomshed.NamePreflight, secondsAfter(run, 100)),
+					stuckAt(loomshed.NamePlanWrite, secondsAfter(run, 990)),
+					entryAt(loomshed.NamePlanWrite, secondsAfter(run, 1100)),
+					stuckAt(loomshed.NameWebster, secondsAfter(run, 1990)),
+					entryAt(loomshed.NameWebster, secondsAfter(run, 2100)),
+					stuckAt(loomshed.NameMergeIn, secondsAfter(run, 2990)),
+					entryAt(loomshed.NameMergeIn, secondsAfter(run, 3200)),
+					stuckAt(loomshed.NamePublish, secondsAfter(run, 3990)),
+					gotoAt(loomshed.NamePublish, secondsAfter(run, 4100), "orch"),
+					stuckAt(loomshed.NameDarnWrite, secondsAfter(run, 4990)),
+					gotoAt(loomshed.NameDarnWrite, secondsAfter(run, 5100), "orch"),
+					stuckAt(loomshed.NameBatchifier, secondsAfter(run, 5990)),
+					gotoAt(loomshed.NameBatchifier, secondsAfter(run, 6100), shedengine.CallerShed),
+					stuckAt(loomshed.NameDiscussionWrite, secondsAfter(run, 6990)),
+					entryAt(loomshed.NameDiscussionWrite, secondsAfter(run, 7100)),
+					stuckAt(loomshed.NameDescribe, secondsAfter(run, 7990)),
+					entryAt(loomshed.NameDescribe, secondsAfter(run, 8100)),
+					entryAt(loomshed.NameFinalize, secondsAfter(run, 8500)),
+				}
+				halted := []string{loomshed.NamePlanWrite, loomshed.NameWebster, loomshed.NameMergeIn, loomshed.NamePublish, loomshed.NameDarnWrite, loomshed.NameBatchifier, loomshed.NameDiscussionWrite, loomshed.NameDescribe}
+				batten := []shedengine.HistoryEntry{entryAt(battenrecipe.NameWorktreeCreate, run)}
+				extra := arbiterAttemptFiles(w.t, "settlers", 1, loomengine.ArbiterAttempt{
+					StopKey:   shedrun.StopKey{CurrentProducer: loomshed.NameMergeIn, State: "blocked"},
+					SpawnedAt: secondsAfter(run, 3100),
+				}, "", true)
+				for k, producer := range halted {
+					batten = append(batten, changeAt("child running → blocked at "+producer, secondsAfter(run, 1000*(k+1))))
+					name := "loom-halt.md"
+					if k > 0 {
+						name = fmt.Sprintf("loom-halt-%d.md", k+1)
+					}
+					extra = mergeFiles(extra, blockedNote(name, producer))
+				}
+				batten = append(batten, entryAt(battenrecipe.NameLand, secondsAfter(run, 8600)))
+				stopRun(w, "settlers", loom, batten, []shedrun.SettleRecord{
+					settleRecord(loomshed.NamePlanWrite, 2, "blocked", shedrun.SettlerGoRule, shedrun.SettleRestep),
+					settleRecord(loomshed.NameWebster, 4, "blocked", shedrun.SettlerTackler, shedrun.SettleRestep),
+					settleRecord(loomshed.NameDarnWrite, 10, "blocked", shedrun.SettlerGoRule, shedrun.SettleMoved),
+					settleRecord(loomshed.NameDescribe, 16, "blocked", shedrun.SettlerGoRule, shedrun.SettleVerifyRetry),
+				}, nil, extra)
+			},
+			check: func(t *testing.T, got TimingReport) {
+				got1 := runOf(t, got, "settlers")
+				wantSettlers(t, got1, StopKindStop, SettledByShed, SettledByTackler, SettledByArbiter, SettledByShed, "orch", SettledByShed, SettledByUnknown, SettledByShed)
+				bucket := bucketOf(t, got, "2026-01-05")
+				want := map[string]int{SettledByShed: 4, SettledByTackler: 1, SettledByArbiter: 1, "orch": 1, SettledByUnknown: 1}
+				if !maps.Equal(bucket.Settlers[StopKindStop], want) {
+					t.Errorf("bucket settlers = %v; want %v", bucket.Settlers[StopKindStop], want)
+				}
+				if len(got.Findings) != 0 {
+					t.Errorf("findings = %+v; want none", got.Findings)
+				}
+			},
+		},
+		{
+			name: "an applied PR-Gate alignment attempt and an applied parent-review alignment record spawned after a stop read alignment",
+			setup: func(w *world) {
+				batten := []shedengine.HistoryEntry{
+					entryAt(battenrecipe.NameWorktreeCreate, run),
+					changeAt("child running → awaiting at "+loomshed.NamePRGate, secondsAfter(run, 1000)),
+					changeAt("child running → blocked at "+loomshed.NamePlanWrite, secondsAfter(run, 2000)),
+					entryAt(battenrecipe.NameLand, secondsAfter(run, 3100)),
+				}
+				extra := mergeFiles(
+					blockedNote("loom-halt.md", loomshed.NamePlanWrite),
+					alignmentSpawnedFiles(w.t, "alignstops", "pr-gate", 1, secondsAfter(run, 1100), "approve"),
+					parentRoundTimed(1, secondsAfter(run, 1500), secondsAfter(run, 2200), secondsAfter(run, 2100)),
+				)
+				stopRun(w, "alignstops", []shedengine.HistoryEntry{
+					entryAt(loomshed.NamePreflight, secondsAfter(run, 100)),
+					entryAt(loomshed.NameFinalize, secondsAfter(run, 3000)),
+				}, batten, nil, nil, extra)
+			},
+			check: func(t *testing.T, got TimingReport) {
+				wantSettlers(t, runOf(t, got, "alignstops"), StopKindStop, SettledByAlignment, SettledByAlignment)
+			},
+		},
+		{
+			name: "a record that settles nothing by itself leaves the stop to the entry that moved it on, here a goto by operator",
+			setup: func(w *world) {
+				producers := []string{loomshed.NamePlanWrite, loomshed.NameWebster, loomshed.NameDescribe, loomshed.NameDarnWrite, loomshed.NameBatchifier, loomshed.NameDiscussionWrite}
+				records := []shedrun.SettleRecord{
+					settleRecord(producers[0], 2, "blocked", shedrun.SettlerGoRule, shedrun.SettleBusyExit),
+					settleRecord(producers[1], 4, "blocked", shedrun.SettlerGoRule, shedrun.SettleRunningExit),
+					settleRecord(producers[2], 6, "blocked", shedrun.SettlerGoRule, shedrun.SettleHandOver),
+					settleRecord(producers[3], 8, "blocked", shedrun.SettlerTackler, shedrun.SettleSpawn),
+					settleRecord(producers[4], 10, "blocked", shedrun.SettlerParent, shedrun.SettleHandBack),
+					settleRecord(producers[5], 12, "blocked", shedrun.SettlerArbiter, shedrun.SettleMoved),
+				}
+				loom := []shedengine.HistoryEntry{entryAt(loomshed.NamePreflight, secondsAfter(run, 50))}
+				batten := []shedengine.HistoryEntry{entryAt(battenrecipe.NameWorktreeCreate, run)}
+				var extra map[string]string
+				for k, producer := range producers {
+					stamp := 1000 * (k + 1)
+					loom = append(loom, stuckAt(producer, secondsAfter(run, stamp-10)), gotoAt(producer, secondsAfter(run, stamp+100), "operator"))
+					batten = append(batten, changeAt("child running → blocked at "+producer, secondsAfter(run, stamp)))
+					name := "loom-halt.md"
+					if k > 0 {
+						name = fmt.Sprintf("loom-halt-%d.md", k+1)
+					}
+					extra = mergeFiles(extra, blockedNote(name, producer))
+				}
+				loom = append(loom, entryAt(loomshed.NameFinalize, secondsAfter(run, 7500)))
+				batten = append(batten, entryAt(battenrecipe.NameLand, secondsAfter(run, 7600)))
+				stopRun(w, "nothing", loom, batten, records, nil, extra)
+			},
+			check: func(t *testing.T, got TimingReport) {
+				wantSettlers(t, runOf(t, got, "nothing"), StopKindStop, "operator", "operator", "operator", "operator", "operator", "operator")
+				if len(got.Findings) != 0 {
+					t.Errorf("findings = %+v; want none", got.Findings)
+				}
+			},
+		},
+		{
+			name: "a note-only stop has no time and is counted in its run's closing bucket, taking its settler from a record naming its producer and state, else from its later entry's by, and a change with no producer reads its later entry's by",
+			setup: func(w *world) {
+				stopRun(w, "noteonly", []shedengine.HistoryEntry{
+					entryAt(loomshed.NamePreflight, secondsAfter(run, 100)),
+					stuckAt(loomshed.NamePlanWrite, secondsAfter(run, 300)),
+					gotoAt(loomshed.NamePlanWrite, secondsAfter(run, 400), "orch"),
+					stuckAt(loomshed.NamePublish, secondsAfter(run, 500)),
+					gotoAt(loomshed.NamePublish, secondsAfter(run, 600), "operator"),
+					gotoAt(loomshed.NameDescribe, secondsAfter(run, 660), "orch"),
+					entryAt(loomshed.NameFinalize, secondsAfter(run, 680)),
+				}, []shedengine.HistoryEntry{
+					entryAt(battenrecipe.NameWorktreeCreate, run),
+					changeAt("child running → blocked", secondsAfter(run, 650)),
+					entryAt(battenrecipe.NameLand, secondsAfter(run, 700)),
+				}, []shedrun.SettleRecord{
+					settleRecord(loomshed.NamePlanWrite, 2, "blocked", shedrun.SettlerGoRule, shedrun.SettleRestep),
+				}, nil, mergeFiles(
+					blockedNote("loom-halt.md", loomshed.NamePlanWrite),
+					blockedNote("loom-halt-2.md", loomshed.NamePublish),
+				))
+			},
+			check: func(t *testing.T, got TimingReport) {
+				got1 := runOf(t, got, "noteonly")
+				wantSettlers(t, got1, StopKindStop, "orch", SettledByShed, "operator")
+				stops := stopsOfKind(got1, StopKindStop)
+				if stops[0].At == nil || stops[1].At != nil || stops[2].At != nil {
+					t.Errorf("stop times = %v, %v, %v; want only the change stop timed", stops[0].At, stops[1].At, stops[2].At)
+				}
+				if bucket := bucketOf(t, got, "2026-01-05"); bucket.Settlers[StopKindStop][SettledByShed] != 1 || bucket.Settlers[StopKindStop]["operator"] != 1 || bucket.Settlers[StopKindStop]["orch"] != 1 {
+					t.Errorf("bucket settlers = %v; want each stop in the bucket of the run's close", bucket.Settlers)
+				}
+			},
+		},
+		{
+			name: "a halt restepped into a second halt before batten observed it reads the second record's settler, and the earlier record folds into it with no finding",
+			setup: func(w *world) {
+				stopRun(w, "restepped", []shedengine.HistoryEntry{
+					entryAt(loomshed.NamePreflight, secondsAfter(run, 100)),
+					stuckAt(loomshed.NameWebster, secondsAfter(run, 200)),
+					stuckAt(loomshed.NameWebster, secondsAfter(run, 300)),
+					entryAt(loomshed.NameWebster, secondsAfter(run, 400)),
+					entryAt(loomshed.NameFinalize, secondsAfter(run, 500)),
+				}, []shedengine.HistoryEntry{
+					entryAt(battenrecipe.NameWorktreeCreate, run),
+					changeAt("child running → blocked at "+loomshed.NameWebster, secondsAfter(run, 350)),
+					entryAt(battenrecipe.NameLand, secondsAfter(run, 600)),
+				}, []shedrun.SettleRecord{
+					settleRecord(loomshed.NameWebster, 2, "blocked", shedrun.SettlerGoRule, shedrun.SettleRestep),
+					settleRecord(loomshed.NameWebster, 3, "blocked", shedrun.SettlerTackler, shedrun.SettleRestep),
+				}, nil, blockedNote("loom-halt.md", loomshed.NameWebster))
+			},
+			check: func(t *testing.T, got TimingReport) {
+				wantSettlers(t, runOf(t, got, "restepped"), StopKindStop, SettledByTackler)
+				if len(got.Findings) != 0 {
+					t.Errorf("findings = %+v; want none", got.Findings)
+				}
+			},
+		},
+		{
+			name: "a batten-file record names only a batten-row halt, counted under batten-halt and not among the stop kind, whose count equals convergence's halt count",
+			setup: func(w *world) {
+				halted := entryAt(battenrecipe.NameLand, secondsAfter(run, 300))
+				halted.Outcome = shedengine.Stuck
+				stopRun(w, "battenfile", []shedengine.HistoryEntry{
+					entryAt(loomshed.NamePreflight, secondsAfter(run, 100)),
+					entryAt(loomshed.NameFinalize, secondsAfter(run, 200)),
+				}, []shedengine.HistoryEntry{
+					entryAt(battenrecipe.NameWorktreeCreate, run),
+					changeAt("child running → blocked at "+loomshed.NamePlanWrite, secondsAfter(run, 150)),
+					halted,
+					entryAt(battenrecipe.NameLand, secondsAfter(run, 400)),
+				}, nil, []shedrun.SettleRecord{
+					settleRecord(battenrecipe.NameLand, 3, "blocked", shedrun.SettlerGoRule, shedrun.SettleRestep),
+				}, blockedNote("loom-halt.md", loomshed.NamePlanWrite))
+				convergence, err := Compute(w.sources(), Options{Since: at(0)})
+				if err != nil {
+					w.t.Fatalf("Compute error = %v", err)
+				}
+				convergenceHalts = len(convergence.Runs[0].Stops)
+			},
+			check: func(t *testing.T, got TimingReport) {
+				got1 := runOf(t, got, "battenfile")
+				wantSettlers(t, got1, StopKindBattenHalt, SettledByShed)
+				if count := len(stopsOfKind(got1, StopKindStop)); count != convergenceHalts || count != 1 {
+					t.Errorf("stop kind count = %d; want convergence's %d, which is 1", count, convergenceHalts)
+				}
+			},
+		},
+		{
+			name: "a loom-file record matching no stop, an undecodable settle line and a batten-file record matching no batten-row halt are findings",
+			setup: func(w *world) {
+				files := mergeFiles(blockedNote("loom-halt.md", loomshed.NamePlanWrite))
+				files[recordPaths(w.t, "unmatched").SettleRecords] = settleFile(w.t, settleRecord(loomshed.NameDescribe, 3, "blocked", shedrun.SettlerGoRule, shedrun.SettleRestep)) + "{bad\n"
+				w.battenSettles("bs-unmatched", 2, "unmatched", battenRecordOf(
+					entryAt(battenrecipe.NameWorktreeCreate, run),
+					changeAt("child running → blocked at "+loomshed.NamePlanWrite, secondsAfter(run, 150)),
+					entryAt(battenrecipe.NameLand, secondsAfter(run, 400)),
+				), settleRecord(battenrecipe.NameLand, 9, "blocked", shedrun.SettlerGoRule, shedrun.SettleRestep))
+				landedRunWith(w, "unmatched", "t1", 3, seedText("loom"), []shedengine.HistoryEntry{
+					entryAt(loomshed.NamePreflight, secondsAfter(run, 100)),
+					entryAt(loomshed.NameFinalize, secondsAfter(run, 200)),
+				}, files)
+			},
+			check: func(t *testing.T, got TimingReport) {
+				var texts []string
+				for _, finding := range got.Findings {
+					texts = append(texts, finding.Error)
+				}
+				for _, want := range []string{"line 2 does not decode", "Describe blocked, history length 3, matches no stop", "in batten's copy: settle record at Land blocked, history length 9, matches no stop"} {
+					if !slices.ContainsFunc(texts, func(text string) bool { return strings.Contains(text, want) }) {
+						t.Errorf("findings = %v; want one containing %q", texts, want)
+					}
+				}
+				if len(got.Findings) != 3 {
+					t.Errorf("findings = %+v; want exactly three", got.Findings)
+				}
+			},
+		},
+		{
+			name: "a stop of a run in flight with no later entry reads open with no finding",
+			live: []string{"openstop"},
+			setup: func(w *world) {
+				start := at(198)
+				w.battenRecord("os-b", 195, "openstop", battenRecordOf(
+					entryAt(battenrecipe.NameWorktreeCreate, start),
+					changeAt("child running → blocked at "+loomshed.NamePlanWrite, secondsAfter(start, 600)),
+				))
+				status := shedengine.Status{
+					State:           shedengine.StateBlocked,
+					CurrentProducer: loomshed.NamePlanWrite,
+					History: []shedengine.HistoryEntry{
+						entryAt(loomshed.NamePreflight, secondsAfter(start, 300)),
+						stuckAt(loomshed.NamePlanWrite, secondsAfter(start, 590)),
+					},
+				}
+				w.pairBranch("openstop", "pf1", at(199), seedStartedAt(start), statusJSON(w.t, status), blockedNote("loom-halt.md", loomshed.NamePlanWrite))
+			},
+			check: func(t *testing.T, got TimingReport) {
+				wantSettlers(t, runOf(t, got, "openstop"), StopKindStop, SettledByOpen)
+				if len(got.Findings) != 0 {
+					t.Errorf("findings = %+v; want none", got.Findings)
+				}
 			},
 		},
 	}

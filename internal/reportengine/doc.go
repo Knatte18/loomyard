@@ -141,9 +141,26 @@
 // In a landed run an attempt spawned outside the span, or with no row after it, has its time absent and adds a finding naming its file; its spawn still counts.
 // A figure's seconds are the summed time of the attempts whose time is known, nil when none is, and an attempt's time lies inside the wait it serves and is reported beside the waits, never added to them.
 //
+// A stop is counted under one of three kinds.
+// stop is a halt or awaiting stop as convergence lists it, so its count matches convergence's: the k-th stop with a change takes the time of the k-th batten change into blocked, failed or awaiting, and a note-only stop carries no time and is counted in the bucket of the run's close; without the halt-note source convergence lists no stop, so the kind is absent and its settler counts are left out.
+// bounce is a loom stuck entry an OnStuck edge bounced, its routed_to set; batten-halt is a batten-row halt as above.
+//
+// Each stop's settler comes from the Go driver's settle records and the history's caller labels.
+// A run's records are two files read through shedrun.ParseSettleRecords, each at its run directory: the loom run's at the archive tag, or at the pair branch tip for a run in flight, and batten's at the commit holding the run's batten record.
+// Only a landed run read by ComputeTiming and a run in flight read their settle files, so convergence reads none; an absent file holds no record, a record not committed at that tip is not there and its stop reads open, and a line that does not decode is a finding naming the file and the line.
+// A record's stop key holds the history length the driven history had when the driver saw the halt, so its last counted entry is the entry that halted.
+// A batten-file record names a batten-row halt when its producer and state equal the halt's and its history length is the 1-based position of the halt's entry in batten's history, and names nothing else.
+// A loom-file record names a child stop with a change when its producer and state equal the stop's and its history length is the greatest among such records whose last counted loom entry is stamped at or before the change, so a halt the Go driver restepped into a second halt before batten observed it reads the second record, and the earlier record folds into the stop with no finding.
+// A note-only stop takes the earliest record of its producer and state no other stop took, and a change whose producer is empty matches no record.
+// Any other record matching no stop is a finding naming the file and the key, except in the loom file of a run without the halt-note source, which lists no stop to match.
+// The settler is the first of these that holds: judge for a bounce; shed when a batten automatic step accounts for the stop or its record is a go-rule restep or verify-retry; tackler for a tackler restep record; arbiter when an applied arbiter attempt for the stop's producer and state was spawned after it; alignment when an applied PR-Gate alignment attempt was spawned after a stop at PR-Gate, or an applied parent-review alignment record after any stop; else the by of the first entry after the stop in the history that moved it on, the loom's for a child stop and batten's for a batten-row halt, with the caller label shed read as shed.
+// A stop whose moving entry carries no by reads unknown, as every entry written before the label existed does, and one with no entry after it in a run in flight reads open.
+// A go-rule record of action moved, busy-exit, running-exit or hand-over, a spawn record, a parent hand-back record and every arbiter record settle nothing by themselves.
+//
 // Buckets are UTC days or ISO weeks from Since, none opening before it.
 // Each interval, wait and sleep is clipped to every bucket it overlaps, and a bucket's time sums over runs, so two parallel runs add two hours to an hour.
 // Each attempt spawn counts in the bucket its spawned_at falls in and its time is clipped to every bucket it overlaps.
+// Each stop counts in the bucket its time falls in under its kind and settler.
 // TimingReport.Phases holds each phase's median over the landed runs holding it whose archive tag is committed in the window; the median of an even count is the mean of the two middle values rounded down, and a run in flight never enters one.
 //
 // # Outputs

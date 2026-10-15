@@ -93,6 +93,9 @@ type TimingRun struct {
 	Waits    map[string]int64 `json:"waits"`
 	Attempts TimingAttempts   `json:"attempts"`
 
+	// Stops lists the run's stops by kind and who settled each.
+	Stops []TimingStop `json:"stops"`
+
 	// committed is the archive tag's committer time, the zero time for a run in flight.
 	committed time.Time
 
@@ -115,15 +118,17 @@ type PhaseMedian struct {
 // TimingBucket is the time of one day or ISO week of the window, summed over the runs overlapping it.
 // Two parallel runs add two hours to an hour, and a phase no run in the bucket holds is absent from Phases.
 // Waits holds every wait kind, and Attempts counts each spawn in the bucket its spawned_at falls in with its time clipped to the bucket.
+// Settlers maps a stop kind to a settler to the count of stops of that kind it settled, each stop in the bucket its time falls in.
 type TimingBucket struct {
-	Label         string           `json:"label"`
-	Start         time.Time        `json:"start"`
-	Runs          int              `json:"runs"`
-	Phases        map[string]int64 `json:"phases"`
-	Waits         map[string]int64 `json:"waits"`
-	Attempts      TimingAttempts   `json:"attempts"`
-	SleepSeconds  int64            `json:"sleep_seconds"`
-	ActiveSeconds int64            `json:"active_seconds"`
+	Label         string                    `json:"label"`
+	Start         time.Time                 `json:"start"`
+	Runs          int                       `json:"runs"`
+	Phases        map[string]int64          `json:"phases"`
+	Waits         map[string]int64          `json:"waits"`
+	Attempts      TimingAttempts            `json:"attempts"`
+	Settlers      map[string]map[string]int `json:"settlers"`
+	SleepSeconds  int64                     `json:"sleep_seconds"`
+	ActiveSeconds int64                     `json:"active_seconds"`
 }
 
 // TimingReport is the result of ComputeTiming.
@@ -167,8 +172,19 @@ func ComputeTiming(src Sources, opts TimingOptions) (TimingReport, error) {
 		return TimingReport{}, err
 	}
 
-	for _, row := range append(scratch.Runs, inFlight...) {
-		run, findings := timeRun(row, opts, src.SnapshotAt)
+	landed := len(scratch.Runs)
+	rows := append(scratch.Runs, inFlight...)
+	for i := range rows {
+		var settleFindings []Finding
+		if i < landed {
+			var err error
+			tag := gitrepo.TagRef{Name: rows[i].Tag, Commit: rows[i].Commit, Committed: rows[i].Committed}
+			if settleFindings, err = rows[i].readSettles(src.Records, tag); err != nil {
+				return TimingReport{}, err
+			}
+		}
+		run, findings := timeRun(rows[i], opts, src.SnapshotAt)
+		findings = append(settleFindings, findings...)
 		if run.Start.IsZero() {
 			report.Findings = append(report.Findings, findings...)
 			continue
@@ -285,12 +301,13 @@ func selectInFlight(src Sources, opts TimingOptions, findings *[]Finding) ([]Run
 		if newest, tagged := newestTag[slug]; tagged {
 			earlier = &newest
 		}
-		snapshots, battenFindings, err := batten.snapshotsOfRun(slug, branch.Name, earlier, src.SnapshotAt)
+		snapshots, recordCommit, battenFindings, err := batten.snapshotsOfRun(slug, branch.Name, earlier, src.SnapshotAt)
 		if err != nil {
 			return nil, err
 		}
 		*findings = append(*findings, battenFindings...)
 		row.battenSnapshots = snapshots
+		row.battenCommit = recordCommit
 		row.Sources[SourceBatten] = len(snapshots) > 0
 
 		tip := gitrepo.TagRef{Name: branch.Name, Commit: branch.Commit, Committed: branch.Committed}
@@ -298,6 +315,11 @@ func selectInFlight(src Sources, opts TimingOptions, findings *[]Finding) ([]Run
 		if err != nil {
 			return nil, err
 		}
+		settleFindings, err := row.readSettles(src.Records, tip)
+		if err != nil {
+			return nil, err
+		}
+		*findings = append(*findings, settleFindings...)
 		stopFindings, err := row.readStops(src.Records, tip)
 		if err != nil {
 			return nil, err
@@ -355,7 +377,7 @@ func bucketWindows(by string, window Interval) []bucketWindow {
 // bucketRuns sums the runs over windows: each row interval and sleep is clipped to every bucket it overlaps, so an interval across midnight splits over both days.
 func bucketRuns(runs []TimingRun, windows []bucketWindow) []TimingBucket {
 	buckets := make([]TimingBucket, 0, len(windows))
-	for _, w := range windows {
+	for i, w := range windows {
 		bucket := TimingBucket{Label: w.label, Start: w.From, Phases: map[string]int64{}, Waits: map[string]int64{}}
 		phaseTime := map[string]time.Duration{}
 		waitTime := map[string]time.Duration{}
@@ -390,6 +412,7 @@ func bucketRuns(runs []TimingRun, windows []bucketWindow) []TimingBucket {
 			bucket.Waits[kind] = int64(waitTime[kind] / time.Second)
 		}
 		bucket.Attempts = attemptsInWindow(attemptParts, w.Interval)
+		bucket.Settlers = settlersInWindow(runs, w.Interval, i == len(windows)-1)
 		bucket.SleepSeconds = int64(sleep / time.Second)
 		bucket.ActiveSeconds = int64(active / time.Second)
 		buckets = append(buckets, bucket)

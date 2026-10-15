@@ -19,6 +19,7 @@ import (
 // battenCommit is a records commit that touched a slug's status file, read.
 // holds is false for a commit that deleted the file or whose file does not decode, the latter also carrying decodeErr.
 type battenCommit struct {
+	sha       string
 	committed time.Time
 	holds     bool
 	status    shedengine.Status
@@ -86,7 +87,7 @@ func (b *battenIndex) commitsOf(slug, statusRel string) ([]battenCommit, error) 
 	}
 	var read []battenCommit
 	for _, commit := range b.touching[slug] {
-		entry := battenCommit{committed: commit.Committed}
+		entry := battenCommit{sha: commit.SHA, committed: commit.Committed}
 		data, err := b.records.FileAtRevision(commit.SHA, statusRel)
 		switch {
 		case errors.Is(err, gitrepo.ErrPathNotAtRevision):
@@ -110,17 +111,17 @@ func (b *battenIndex) commitsOf(slug, statusRel string) ([]battenCommit, error) 
 	return read, nil
 }
 
-// snapshotsOfRun returns the batten status snapshots of the run archived under tag, oldest first, and a finding for each snapshot that does not decode.
+// snapshotsOfRun returns the batten status snapshots of the run archived under tag, oldest first, the commit holding the last of them, and a finding for each snapshot that does not decode.
 // The run's own fresh seed is the newest fresh seed committed after earlier, when there is one, and at or before until; its span runs up to the slug's next fresh seed or to the records tip.
-// No fresh seed in that interval returns no snapshots.
-func (b *battenIndex) snapshotsOfRun(slug, tag string, earlier *time.Time, until time.Time) ([]shedengine.Status, []Finding, error) {
+// No fresh seed in that interval returns no snapshots and an empty commit.
+func (b *battenIndex) snapshotsOfRun(slug, tag string, earlier *time.Time, until time.Time) ([]shedengine.Status, string, []Finding, error) {
 	rels, err := shedrun.TreeRunRels(slug)
 	if err != nil {
-		return nil, nil, err
+		return nil, "", nil, err
 	}
 	commits, err := b.commitsOf(slug, rels.Status)
 	if err != nil {
-		return nil, nil, err
+		return nil, "", nil, err
 	}
 
 	start := -1
@@ -132,7 +133,7 @@ func (b *battenIndex) snapshotsOfRun(slug, tag string, earlier *time.Time, until
 		}
 	}
 	if start < 0 {
-		return nil, nil, nil
+		return nil, "", nil, nil
 	}
 	end := len(commits)
 	for i := start + 1; i < len(commits); i++ {
@@ -144,13 +145,15 @@ func (b *battenIndex) snapshotsOfRun(slug, tag string, earlier *time.Time, until
 
 	var snapshots []shedengine.Status
 	var findings []Finding
+	recordCommit := ""
 	for _, commit := range commits[start:end] {
 		switch {
 		case commit.decodeErr != nil:
 			findings = append(findings, Finding{Tag: tag, File: rels.Status, Error: commit.decodeErr.Error()})
 		case commit.holds:
 			snapshots = append(snapshots, commit.status)
+			recordCommit = commit.sha
 		}
 	}
-	return snapshots, findings, nil
+	return snapshots, recordCommit, findings, nil
 }

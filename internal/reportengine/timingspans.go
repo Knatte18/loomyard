@@ -278,6 +278,8 @@ func timeRun(row RunRow, opts TimingOptions, snapshot time.Time) (TimingRun, []F
 	}
 	attempts, attemptFindings := runAttempts(row, rows, span, sleeps)
 	findings = append(findings, attemptFindings...)
+	stops, stopFindings := runStops(row, rows)
+	findings = append(findings, stopFindings...)
 
 	state := RunStateLanded
 	if row.inFlight {
@@ -294,6 +296,7 @@ func timeRun(row RunRow, opts TimingOptions, snapshot time.Time) (TimingRun, []F
 		Phases:       phases,
 		Waits:        waitSeconds,
 		Attempts:     attempts,
+		Stops:        stops,
 		committed:    row.Committed,
 		span:         span,
 		sleeps:       sleeps,

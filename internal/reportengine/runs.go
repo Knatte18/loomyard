@@ -67,6 +67,13 @@ type RunRow struct {
 	// battenSnapshots are the batten status files in the run's span, oldest first, the last being the run's batten record.
 	battenSnapshots []shedengine.Status
 
+	// battenCommit is the records commit holding the run's batten record, empty without one.
+	battenCommit string
+
+	// childSettles and battenSettles are the settle records read from the loom run's file and from batten's, in file order; only readSettles fills them.
+	childSettles  []shedrun.SettleRecord
+	battenSettles []shedrun.SettleRecord
+
 	// childHistory is the loom history at the run's archive tag, or at the branch tip for a run in flight.
 	childHistory []shedengine.HistoryEntry
 
@@ -161,12 +168,13 @@ func selectRuns(src Sources, opts Options, report *Report) error {
 			childHistory: status.History,
 			startedAt:    seed.StartedAt,
 		}
-		snapshots, battenFindings, err := batten.snapshotsOfRun(slug, tag.Name, earlierCommitted, tag.Committed)
+		snapshots, recordCommit, battenFindings, err := batten.snapshotsOfRun(slug, tag.Name, earlierCommitted, tag.Committed)
 		if err != nil {
 			return err
 		}
 		report.Findings = append(report.Findings, battenFindings...)
 		row.battenSnapshots = snapshots
+		row.battenCommit = recordCommit
 		row.Sources[SourceBatten] = len(snapshots) > 0
 		wakeFindings, err := row.readWakes(src.Records, tag)
 		if err != nil {
