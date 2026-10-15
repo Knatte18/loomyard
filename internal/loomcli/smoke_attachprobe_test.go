@@ -177,7 +177,7 @@ func TestSmokeBurlerReview_AttachesToALiveReviewerInsteadOfRespawning(t *testing
 	if err != nil {
 		t.Fatalf("reed geometry: %v", err)
 	}
-	runner := shuttleengine.NewRunner(reedEngine, &shellLaunchEngine{quietSeconds: 3}, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+	runner := shuttleengine.NewRunner(reedEngine, shuttlefake.EngineSet(&shellLaunchEngine{quietSeconds: 3}), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 
 	live, err := runner.Start(shuttleengine.Spec{
 		Prompt:      "smoke: stand in for a live burler reviewer",
@@ -310,7 +310,7 @@ func TestSmokeLeadSeat_HarvestsAFinishedRunWithReedStateGone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reed geometry: %v", err)
 	}
-	runner := shuttleengine.NewRunner(reedEngine, &shellLaunchEngine{quietSeconds: 1}, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+	runner := shuttleengine.NewRunner(reedEngine, shuttlefake.EngineSet(&shellLaunchEngine{quietSeconds: 1}), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 
 	spec := shuttleengine.Spec{
 		Prompt:      "smoke: stand in for an agent that finishes and is then orphaned",
@@ -408,7 +408,7 @@ func TestSmokeLeadSeat_RerunRemovesTheSupersededStrand(t *testing.T) {
 	// The first two runs stay quiet and never write their outputs;
 	// the fresh run the producer starts writes its output after a second.
 	launchEngine := &shellLaunchEngine{quietSeconds: 600}
-	runner := shuttleengine.NewRunner(reedEngine, launchEngine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+	runner := shuttleengine.NewRunner(reedEngine, shuttlefake.EngineSet(launchEngine), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 
 	spec := shuttleengine.Spec{
 		Prompt:      "smoke: stand in for a producer re-run over a halted session",

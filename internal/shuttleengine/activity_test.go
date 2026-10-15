@@ -58,6 +58,8 @@ type activityRun struct {
 	promptOffset int64
 	// noEventsFile leaves the events file unwritten.
 	noEventsFile bool
+	// engine is the engine name the record carries; empty leaves the record naming none.
+	engine string
 }
 
 func TestReadAgentActivity(t *testing.T) {
@@ -182,7 +184,7 @@ func TestReadAgentActivity(t *testing.T) {
 				engine = signalActivityEngine{engine.(*activityEngine)}
 			}
 
-			got, err := ReadAgentActivity(Config{RunDir: root}, t.TempDir(), engine)
+			got, err := ReadAgentActivity(Config{RunDir: root}, t.TempDir(), singleEngineSet(engine))
 
 			if err != nil {
 				t.Fatalf("ReadAgentActivity error = %v; want nil", err)
@@ -198,7 +200,7 @@ func TestReadAgentActivity(t *testing.T) {
 	}
 
 	t.Run("an absent root returns none", func(t *testing.T) {
-		got, err := ReadAgentActivity(Config{RunDir: filepath.Join(t.TempDir(), "missing")}, t.TempDir(), &fakeEngine{})
+		got, err := ReadAgentActivity(Config{RunDir: filepath.Join(t.TempDir(), "missing")}, t.TempDir(), singleEngineSet(&fakeEngine{}))
 		if err != nil || got != nil {
 			t.Errorf("ReadAgentActivity = (%v, %v); want (nil, nil)", got, err)
 		}
@@ -213,12 +215,59 @@ func TestReadAgentActivity(t *testing.T) {
 		engine := &fakeEngine{ParseEventsFailCount: 3}
 
 		for range 4 {
-			if _, err := ReadAgentActivity(Config{RunDir: root}, t.TempDir(), engine); err != nil {
+			if _, err := ReadAgentActivity(Config{RunDir: root}, t.TempDir(), singleEngineSet(engine)); err != nil {
 				t.Fatal(err)
 			}
 		}
 
 		requireFailureEpisode(t, buf.String(), "could not parse a run's events", 2, "run events parse again")
+	})
+
+	// It captures the process-global logger at Debug, so it runs serially like the test.
+	t.Run("each run is read through the engine its record names", func(t *testing.T) {
+		buf := logcapture.CaptureVerbose(t)
+		logger.SetVerbosity(2)
+		root := t.TempDir()
+		alphaWritten, betaWritten := created.Add(20*time.Minute), created.Add(30*time.Minute)
+		engines := NewEngineSet("alpha", map[string]Engine{
+			"alpha": &activityEngine{fakeEngine: &fakeEngine{}, byMessage: map[string]TurnEndActivity{"turn": {TranscriptModTime: alphaWritten}}},
+			"beta":  &activityEngine{fakeEngine: &fakeEngine{}, byMessage: map[string]TurnEndActivity{"turn": {TranscriptModTime: betaWritten}}},
+		})
+		for name, engine := range map[string]string{"run-a": "alpha", "run-b": "beta", "run-c": "", "run-d": "gamma"} {
+			run := live
+			run.engine = engine
+			writeActivityRun(t, root, name, run, created, eventsWritten)
+		}
+		read := func() []AgentActivity {
+			got, err := ReadAgentActivity(Config{RunDir: root}, t.TempDir(), engines)
+			if err != nil {
+				t.Fatalf("ReadAgentActivity error = %v; want nil", err)
+			}
+			for i := range got {
+				got[i].LastActivity = got[i].LastActivity.UTC()
+			}
+			return got
+		}
+		want := []AgentActivity{
+			{StrandName: "hub:task:driver", LastActivity: alphaWritten},
+			{StrandName: "hub:task:driver", LastActivity: betaWritten},
+			{StrandName: "hub:task:driver", LastActivity: alphaWritten},
+		}
+
+		for range 3 {
+			if got := read(); !reflect.DeepEqual(got, want) {
+				t.Fatalf("ReadAgentActivity = %+v; want %+v (alpha, beta, the default alpha; the gamma run skipped)", got, want)
+			}
+		}
+		rewritten := live
+		rewritten.engine = "beta"
+		writeActivityRun(t, root, "run-d", rewritten, created, eventsWritten)
+		want = append(want, AgentActivity{StrandName: "hub:task:driver", LastActivity: betaWritten})
+		if got := read(); !reflect.DeepEqual(got, want) {
+			t.Errorf("ReadAgentActivity after run-d names beta = %+v; want %+v", got, want)
+		}
+
+		requireEngineSkipEpisode(t, buf.String(), filepath.Join(root, "run-d"))
 	})
 }
 
@@ -232,7 +281,7 @@ func writeActivityRun(t *testing.T, root, name string, run activityRun, created,
 	eventsPath := filepath.Join(runDir, eventsFileName)
 	state := RunState{
 		RunID: name, StrandGUID: "guid-" + name, StrandName: run.strandName, EventsPath: eventsPath,
-		CreatedAt: created.Format(time.RFC3339), Outcome: run.outcome, PID: run.pid, PromptOffset: run.promptOffset,
+		CreatedAt: created.Format(time.RFC3339), Outcome: run.outcome, PID: run.pid, PromptOffset: run.promptOffset, Engine: run.engine,
 	}
 	if err := saveRunState(runDir, state); err != nil {
 		t.Fatal(err)

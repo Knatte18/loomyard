@@ -29,9 +29,11 @@ type RunSessionState struct {
 // ReadSessionStates returns the session state of every run under the run-directory root of anchorPath whose record reads running.
 // The process waiting on a run need not be alive, so a run whose Wait died still shows.
 // A directory that is not a run directory, a run with no record and an undecodable record are skipped, and an undecodable record is logged once per episode.
+// Each run is read through the engine its record names, the set's default for a record naming none;
+// a run whose record names an engine the set does not hold is skipped and logged once per episode.
 // now is the reading's time.
 // An absent root returns no readings and no error.
-func ReadSessionStates(cfg Config, anchorPath string, engine Engine, now time.Time) ([]RunSessionState, error) {
+func ReadSessionStates(cfg Config, anchorPath string, engines EngineSet, now time.Time) ([]RunSessionState, error) {
 	root := runDirRoot(cfg, anchorPath)
 	entries, err := os.ReadDir(root)
 	if os.IsNotExist(err) {
@@ -53,6 +55,10 @@ func ReadSessionStates(cfg Config, anchorPath string, engine Engine, now time.Ti
 		}
 		unreadableFiles.Recover(runDir, "shuttle: run record readable again", "runDir", runDir)
 		if !found || rs.Outcome != runOutcomeRunning {
+			continue
+		}
+		engine, ok := engines.engineOfRun(runDir, rs)
+		if !ok {
 			continue
 		}
 		readings = append(readings, readRunSessionState(rs, engine, now))

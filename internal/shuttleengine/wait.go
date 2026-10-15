@@ -788,7 +788,7 @@ func (run *Run) pollEventsTick() (Outcome, *heldTurnEnd, error) {
 		return run.expiredTurnEnd()
 	}
 
-	events, err := run.runner.engine.ParseEvents(data)
+	events, err := run.engine.ParseEvents(data)
 	if err != nil {
 		return "", nil, err
 	}
@@ -797,7 +797,7 @@ func (run *Run) pollEventsTick() (Outcome, *heldTurnEnd, error) {
 	// retry rather than discarding them unread.
 	run.offset = newOffset
 	guardArmed := run.holdGuard
-	turnStarts := turnStartOffsets(run.runner.engine, data, startOffset)
+	turnStarts := turnStartOffsets(run.engine, data, startOffset)
 	if len(turnStarts) > 0 {
 		run.holdGuard = false
 		run.promptTurnStarted = true
@@ -851,11 +851,11 @@ func (run *Run) armHoldGuard() {
 		return
 	}
 	promptOffset = min(promptOffset, int64(len(data)))
-	if len(turnStartOffsets(run.runner.engine, data[:promptOffset], 0)) == 0 {
+	if len(turnStartOffsets(run.engine, data[:promptOffset], 0)) == 0 {
 		return
 	}
 	run.holdGuard = true
-	if end := min(max(run.offset, promptOffset), int64(len(data))); len(turnStartOffsets(run.runner.engine, data[promptOffset:end], promptOffset)) > 0 {
+	if end := min(max(run.offset, promptOffset), int64(len(data))); len(turnStartOffsets(run.engine, data[promptOffset:end], promptOffset)) > 0 {
 		run.holdGuard, run.promptTurnStarted = false, true
 	}
 }
@@ -1159,7 +1159,7 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time, even
 		return "", nil
 	}
 
-	if eventsProof && run.state.RecordsSessionStarts && turnStartedAfterSessionStart(run.runner.engine, run.state.EventsPath) {
+	if eventsProof && run.state.RecordsSessionStarts && turnStartedAfterSessionStart(run.engine, run.state.EventsPath) {
 		*started = true
 		run.markStarted()
 		return "", nil
@@ -1178,10 +1178,10 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time, even
 	// still-gated pane's last screen is on disk exactly as a ready one's would be.
 	run.lastStartupCapture = capture
 
-	switch run.runner.engine.Startup(capture) {
+	switch run.engine.Startup(capture) {
 	case StartupReady:
 		if run.state.RecordsSessionStarts {
-			recorded, readErr := sessionStartRecorded(run.runner.engine, run.state.EventsPath)
+			recorded, readErr := sessionStartRecorded(run.engine, run.state.EventsPath)
 			switch {
 			case readErr != nil:
 				run.startupHookReason = fmt.Sprintf("the events file %s could not be read for a session-start line: %v", run.state.EventsPath, readErr)
@@ -1203,7 +1203,7 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time, even
 			logger.Debug("shuttle: startup gate dismissal held for the dismissal gap", "strandGUID", run.state.StrandGUID)
 			break
 		}
-		inputs := run.runner.engine.TrustDismissSequence(capture)
+		inputs := run.engine.TrustDismissSequence(capture)
 		sent, err := playInputsSent(run.runner.reed, run.state.StrandGUID, inputs)
 		if sent > 0 {
 			run.dismissed, run.dismissedAt = true, now
@@ -1255,8 +1255,8 @@ type sessionLivenessState struct {
 // An alive reading records the id and answers false, as does an unproven reading, a dead one for an id this wait never read alive and a session end at or before the first-call size.
 // An unreadable events file counts no session end.
 func (run *Run) sessionGone() bool {
-	parser, parses := run.runner.engine.(SessionSignalParser)
-	prober, probes := run.runner.engine.(SessionProber)
+	parser, parses := run.engine.(SessionSignalParser)
+	prober, probes := run.engine.(SessionProber)
 	if !parses || !probes {
 		return false
 	}
@@ -1663,12 +1663,16 @@ func (run *Run) finalize(outcome Outcome) (Result, error) {
 		logger.Warn("shuttle: persist run outcome failed (non-fatal)", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "outcome", recorded, "error", saveErr)
 	}
 
-	if reader, ok := run.runner.engine.(UsageReader); ok && outcome == OutcomeDone {
+	if reader, ok := run.engine.(UsageReader); ok && outcome == OutcomeDone {
 		result.Usage = reader.SessionUsage(run.state.SessionID, run.runner.paneCwd)
 	}
 
 	if outcome == OutcomeDone && run.state.ForkSubagents {
-		audit, err := run.runner.engine.AuditForks(run.state.SessionID, run.runner.paneCwd)
+		auditor, ok := run.engine.(ForkAuditor)
+		if !ok {
+			return result, fmt.Errorf("shuttle: run %s: engine %q cannot audit the forks its ForkSubagents record authorizes", run.runDir, run.engineName)
+		}
+		audit, err := auditor.AuditForks(run.state.SessionID, run.runner.paneCwd)
 		if err != nil {
 			// The run itself SUCCEEDED and nothing has been cleaned up yet, so the caller gets the
 			// whole classified Result back — identity AND Outcome — not the bare identity().

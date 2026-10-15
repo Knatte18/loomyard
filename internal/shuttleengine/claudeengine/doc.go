@@ -48,7 +48,7 @@
 // A `CLAUDE_ENV_FILE` the operator's own environment exports is overridden for lyx-spawned sessions only.
 //
 // ColorSequence is the one place lyx's palette maps to Claude Code's `/color` names: the eight palette colors map to the same-named Claude Code colors,
-// and the sequence is `/color <name>` typed and submitted, with no leading Escape, the way ModelSwitchSequence submits `/model`.
+// and the sequence is `/color <name>` typed and submitted, with no leading Escape.
 // A color outside the palette answers no inputs.
 //
 // Both lines carry `CLAUDE_CODE_PROMPT_CACHE_TTL`, so a session writes its prompt cache at the TTL its role needs rather than at Claude Code's subscription default.

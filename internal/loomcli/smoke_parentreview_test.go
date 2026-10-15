@@ -31,6 +31,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
@@ -114,14 +115,14 @@ func TestSmokeParentReview_NoticeReachesTheWriterPaneAndApproveLetsTheRunThrough
 		t.Fatalf("reed geometry: %v", err)
 	}
 	noticeEngine := &parentNoticeEngine{gateRepromptReadEngine: gateRepromptReadEngine{quietSeconds: 3}, noticePath: noticePath}
-	runner := shuttleengine.NewRunner(reedEngine, noticeEngine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+	runner := shuttleengine.NewRunner(reedEngine, shuttlefake.EngineSet(noticeEngine), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 
 	// The same two closures resolveGateSpec builds for the row's "gates" list.
 	reedCfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: loc.AnchorPath()}, "reed")
 	if err != nil {
 		t.Fatalf("load reed config: %v", err)
 	}
-	prCfg, err := newParentReviewConfig(loc, reedCfg, loomengine.Config{ParentReviewWaitMin: 5}, stencilsDir, noticeEngine, shuttleCfg)
+	prCfg, err := newParentReviewConfig(loc, reedCfg, loomengine.Config{ParentReviewWaitMin: 5}, stencilsDir, shuttlefake.EngineSet(noticeEngine), shuttleCfg)
 	if err != nil {
 		t.Fatalf("newParentReviewConfig: %v", err)
 	}

@@ -57,6 +57,8 @@ type fakeSession struct {
 	interruptErrs []error
 	// settle is the InterruptSettle answer.
 	settle time.Duration
+	// settleErr is returned by every InterruptSettle while set.
+	settleErr error
 }
 
 func (f *fakeSession) SessionState(string) (shuttleengine.RunSessionState, error) {
@@ -78,14 +80,14 @@ func (f *fakeSession) LoadSkills(_ string, skills []string) error {
 	return f.skillsErr
 }
 
-func (f *fakeSession) ClassifySkillLoad(turnEnd shuttleengine.Event, skills []string) (shuttleengine.SkillLoadReport, error) {
+func (f *fakeSession) ClassifySkillLoad(guid string, turnEnd shuttleengine.Event, skills []string) (shuttleengine.SkillLoadReport, error) {
 	if report, ok := f.skillLoads[turnEnd.Message]; ok {
 		return report, nil
 	}
 	return shuttleengine.SkillLoadReport{Verified: true, Loaded: skills}, nil
 }
 
-func (f *fakeSession) CompactedSince(turnEnd shuttleengine.Event, since time.Time) (shuttleengine.CompactionBoundary, bool, error) {
+func (f *fakeSession) CompactedSince(guid string, turnEnd shuttleengine.Event, since time.Time) (shuttleengine.CompactionBoundary, bool, error) {
 	b, ok := f.autoCompact[turnEnd.Message]
 	return b, ok && b.At.After(since), nil
 }
@@ -104,7 +106,7 @@ func (f *fakeSession) ReadEvents(_ string, offset int64) ([]shuttleengine.Event,
 	return append([]shuttleengine.Event(nil), f.events[offset:]...), int64(len(f.events)), nil
 }
 
-func (f *fakeSession) ContextTokens(ev shuttleengine.Event) (shuttleengine.ContextReading, error) {
+func (f *fakeSession) ContextTokens(guid string, ev shuttleengine.Event) (shuttleengine.ContextReading, error) {
 	f.tokenAsks = append(f.tokenAsks, ev.Message)
 	n, ok := f.usage[ev.Message]
 	return shuttleengine.ContextReading{Tokens: n, Known: ok}, nil
@@ -133,7 +135,12 @@ func (f *fakeSession) Interrupt(string) error {
 	return err
 }
 
-func (f *fakeSession) InterruptSettle() time.Duration { return f.settle }
+func (f *fakeSession) InterruptSettle(guid string) (time.Duration, error) {
+	if f.settleErr != nil {
+		return 0, f.settleErr
+	}
+	return f.settle, nil
+}
 
 func (f *fakeSession) Send(_, text string) error {
 	f.calls = append(f.calls, "send:"+text)

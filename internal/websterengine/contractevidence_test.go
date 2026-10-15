@@ -146,28 +146,28 @@ func TestAcceptPendingAudit_ContractFiles(t *testing.T) {
 	tests := []struct {
 		name string
 		// fixture returns the finding's paths and the engine answering the audit.
-		fixture      func(t *testing.T, geom Geometry) ([]string, shuttleengine.Engine)
+		fixture      func(t *testing.T, geom Geometry) ([]string, shuttleengine.ForkAuditor)
 		wantOnAbsent bool
 		// wantRefusal lists what the refusal names; empty expects an accept.
 		wantRefusal func(paths []string) []string
 	}{
 		{
 			name: "absent contract files accept",
-			fixture: func(t *testing.T, geom Geometry) ([]string, shuttleengine.Engine) {
+			fixture: func(t *testing.T, geom Geometry) ([]string, shuttleengine.ForkAuditor) {
 				return []string{OutcomePath(geom.WebsterDir), summaryparser.Path(geom.WebsterDir)}, writesEngine(nil, nil)
 			},
 			wantOnAbsent: true,
 		},
 		{
 			name: "Master writing after the fork accepts",
-			fixture: func(t *testing.T, geom Geometry) ([]string, shuttleengine.Engine) {
+			fixture: func(t *testing.T, geom Geometry) ([]string, shuttleengine.ForkAuditor) {
 				path := writeContractFile(t, geom)
 				return []string{path}, writesEngine([]shuttleengine.WriteEvent{succeeded(path, 2*time.Minute)}, []shuttleengine.WriteEvent{succeeded(path, time.Minute)})
 			},
 		},
 		{
 			name: "the fork writing last refuses naming the delete route",
-			fixture: func(t *testing.T, geom Geometry) ([]string, shuttleengine.Engine) {
+			fixture: func(t *testing.T, geom Geometry) ([]string, shuttleengine.ForkAuditor) {
 				path := writeContractFile(t, geom)
 				return []string{path}, writesEngine([]shuttleengine.WriteEvent{succeeded(path, 0)}, []shuttleengine.WriteEvent{succeeded(path, time.Minute)})
 			},

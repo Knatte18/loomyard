@@ -109,7 +109,7 @@ var acceptAuditHeadRefusal = headRefusal{resetStep: "lyx webster reset --to last
 // A path that is one of the run's two contract files is judged by contractFileStatus before the check, over the write history engine's audit yields (nil engine: none):
 // a cleared one is resolved, and an uncleared one refuses naming the path, why, and the delete route.
 // The returned bool is true when a path was accepted on an absent contract file, so the caller can tell the operator Master must write the files again.
-func AcceptPendingAudit(engine shuttleengine.Engine, st *State, geom Geometry, parentBranch ParentBranchFunc) (accepted []PendingAuditFinding, onAbsentContract bool, err error) {
+func AcceptPendingAudit(engine shuttleengine.ForkAuditor, st *State, geom Geometry, parentBranch ParentBranchFunc) (accepted []PendingAuditFinding, onAbsentContract bool, err error) {
 	pending := st.PendingAuditFindings
 	var paths []string
 	pathless := false

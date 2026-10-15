@@ -27,6 +27,8 @@ type waitRun struct {
 	outputExists bool
 	// marker, when set, is the kind of a wait marker held by the live process.
 	marker string
+	// engine is the engine name the record carries; empty leaves the record naming none.
+	engine string
 }
 
 func TestReadAgentWaits(t *testing.T) {
@@ -59,7 +61,7 @@ func TestReadAgentWaits(t *testing.T) {
 			writeWaitRun(t, root, "run", tt.run, livePID)
 			engine := &readEngine{fakeEngine: &fakeEngine{}}
 
-			got, err := ReadAgentWaits(Config{RunDir: root}, t.TempDir(), engine, now)
+			got, err := ReadAgentWaits(Config{RunDir: root}, t.TempDir(), singleEngineSet(engine), now)
 
 			if err != nil || !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("ReadAgentWaits = (%+v, %v); want (%+v, nil)", got, err, tt.want)
@@ -68,7 +70,7 @@ func TestReadAgentWaits(t *testing.T) {
 	}
 
 	t.Run("an absent root reads empty", func(t *testing.T) {
-		got, err := ReadAgentWaits(Config{RunDir: filepath.Join(t.TempDir(), "missing")}, t.TempDir(), &fakeEngine{}, now)
+		got, err := ReadAgentWaits(Config{RunDir: filepath.Join(t.TempDir(), "missing")}, t.TempDir(), singleEngineSet(&fakeEngine{}), now)
 		if err != nil || got != nil {
 			t.Errorf("ReadAgentWaits = (%v, %v); want (nil, nil)", got, err)
 		}
@@ -94,18 +96,54 @@ func TestReadAgentWaits(t *testing.T) {
 		engine := &readEngine{fakeEngine: &fakeEngine{}}
 
 		for range 3 {
-			if _, err := ReadAgentWaits(Config{RunDir: root}, t.TempDir(), engine, now); err != nil {
+			if _, err := ReadAgentWaits(Config{RunDir: root}, t.TempDir(), singleEngineSet(engine), now); err != nil {
 				t.Fatal(err)
 			}
 		}
 		writeWaitRun(t, root, "live", waitRun{events: startLine, marker: heldWaitLabel}, livePID)
 		writeWaitRun(t, root, "torn", waitRun{events: startLine}, livePID)
-		if _, err := ReadAgentWaits(Config{RunDir: root}, t.TempDir(), engine, now); err != nil {
+		if _, err := ReadAgentWaits(Config{RunDir: root}, t.TempDir(), singleEngineSet(engine), now); err != nil {
 			t.Fatal(err)
 		}
 
 		requireFailureEpisode(t, buf.String(), "skipping an unreadable run record", 2, "run record readable again")
 		requireFailureEpisode(t, buf.String(), "skipping an unreadable wait marker", 2, "wait marker readable again")
+	})
+
+	// It captures the process-global logger at Debug, so it runs serially like the test.
+	t.Run("each run is read through the engine its record names", func(t *testing.T) {
+		buf := logcapture.CaptureVerbose(t)
+		logger.SetVerbosity(2)
+		root := t.TempDir()
+		// Only beta reads the recorded session's process as gone, so a run reads busy or neither by the engine that read it.
+		engines := NewEngineSet("alpha", map[string]Engine{
+			"alpha": &readEngine{fakeEngine: &fakeEngine{}},
+			"beta":  &readEngine{fakeEngine: &fakeEngine{}, livenessByID: map[string]Liveness{"session": LivenessDead}},
+		})
+		for name, engine := range map[string]string{"a": "alpha", "b": "beta", "c": "", "d": "gamma"} {
+			writeWaitRun(t, root, name, waitRun{events: startLine, engine: engine}, livePID)
+		}
+		read := func() []AgentWait {
+			got, err := ReadAgentWaits(Config{RunDir: root}, t.TempDir(), engines, now)
+			if err != nil {
+				t.Fatalf("ReadAgentWaits error = %v; want nil", err)
+			}
+			return got
+		}
+		want := []AgentWait{{StrandName: "strand-a", Busy: true}, {StrandName: "strand-b"}, {StrandName: "strand-c", Busy: true}}
+
+		for range 3 {
+			if got := read(); !reflect.DeepEqual(got, want) {
+				t.Fatalf("ReadAgentWaits = %+v; want %+v (alpha, beta, the default alpha; the gamma run skipped)", got, want)
+			}
+		}
+		writeWaitRun(t, root, "d", waitRun{events: startLine, engine: "beta"}, livePID)
+		want = append(want, AgentWait{StrandName: "strand-d"})
+		if got := read(); !reflect.DeepEqual(got, want) {
+			t.Errorf("ReadAgentWaits after d names beta = %+v; want %+v", got, want)
+		}
+
+		requireEngineSkipEpisode(t, buf.String(), filepath.Join(root, "d"))
 	})
 }
 
@@ -122,7 +160,7 @@ func writeWaitRun(t *testing.T, root, name string, run waitRun, livePID int) {
 	}
 	state := RunState{
 		RunID: name, StrandGUID: "guid-" + name, StrandName: "strand-" + name, SessionID: "session",
-		EventsPath: eventsPath, Outcome: runOutcomeRunning, PID: run.pid, Interactive: run.interactive,
+		EventsPath: eventsPath, Outcome: runOutcomeRunning, PID: run.pid, Interactive: run.interactive, Engine: run.engine,
 	}
 	if run.outputExists {
 		output := filepath.Join(runDir, "report.md")

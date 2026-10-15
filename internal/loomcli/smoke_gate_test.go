@@ -154,7 +154,7 @@ func TestSmokeGate_RepromptsThroughARealPaneAndFixesTheArtifact(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reed geometry: %v", err)
 	}
-	runner := shuttleengine.NewRunner(reedEngine, &gateRepromptReadEngine{quietSeconds: 3}, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+	runner := shuttleengine.NewRunner(reedEngine, shuttlefake.EngineSet(&gateRepromptReadEngine{quietSeconds: 3}), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 
 	spec := shuttleengine.Spec{
 		Prompt:      "smoke: stand in for a re-prompted discussion writer",

@@ -3,13 +3,14 @@
 package orchcli
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/shell"
-	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/spf13/cobra"
 )
 
@@ -44,12 +45,23 @@ does not type the same pointer again.`,
 			}
 			out := cmd.OutOrStdout()
 			index := clihelp.RenderIndex(cmd.Root(), clihelp.AudienceOperator)
+			// The engine is resolved before the pointer is rendered, because rendering records the delivery mark and a verb that cannot deliver must leave none.
+			engine, err := c.engines.Lookup("")
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
+			renderer, ok := engine.(shuttleengine.ResumeContextRenderer)
+			if !ok {
+				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("orch: the engine %q cannot render session-start hook context", c.engines.DefaultName())))
+				return nil
+			}
 			text, err := orchengine.ResumeContext(c.paths, c.stencilsDir, index, time.Now())
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
-			data, err := claudeengine.SessionStartContext(text)
+			data, err := renderer.ResumeContext(text)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil

@@ -30,13 +30,16 @@ type Config struct {
 
 	BackgroundShellWaitMin int `yaml:"background_shell_wait_min"` // Minutes an outstanding background shell of either signal may run before the wait logs it and shows it in the wait marker; it expires nothing. LoadConfig refuses non-positive.
 
-	SubmitSettleMS int `yaml:"submit_settle_ms"` // Interval between the two input-box reads that must agree before a verified send's Enter, and the pause before the /model command's Enter; 0 reads back to back, LoadConfig refuses negative.
+	SubmitSettleMS int `yaml:"submit_settle_ms"` // Interval between the two input-box reads that must agree before a verified send's Enter; 0 reads back to back, LoadConfig refuses negative.
 
 	SubmitRedrawSettleMS int `yaml:"submit_redraw_settle_ms"` // First step of the doubling interval at which the input box is read after an Enter to confirm the send; 0 reads at once, LoadConfig refuses negative.
 
 	SendReadyTimeoutS int `yaml:"send_ready_timeout_s"` // Seconds a verified send waits for an idle session before it fails busy, ending at the run's deadline for a gate send; binds only an engine with the SessionCycler idle reading. LoadConfig refuses non-positive.
 
 	SubmitConfirmTimeoutS int `yaml:"submit_confirm_timeout_s"` // Seconds from the moment a verified send begins typing within which it must be seen to land before it fails, ending at the run's deadline for a gate send; binds only an engine with InputBoxReader. LoadConfig refuses non-positive.
+
+	// Engine names the engine of a spec that names none; it must be a registered engine name, checked where the registry builds the set.
+	Engine string `yaml:"engine"`
 
 	Claude                    string `yaml:"claude"`
 	ClaudeDenyAgentTool       bool   `yaml:"claude_deny_agent_tool"`
@@ -73,6 +76,7 @@ func ConfigSpec() configengine.Spec {
 			"submit_confirm_timeout_s":      configengine.CategoryNone,
 			"submit_settle_ms":              configengine.CategoryNone,
 			"submit_redraw_settle_ms":       configengine.CategoryNone,
+			"engine":                        configengine.CategoryNone,
 			"claude":                        configengine.CategoryExecutable,
 			"claude_deny_agent_tool":        configengine.CategoryGuard,
 			"claude_deny_ask_user_question": configengine.CategoryGuard,
@@ -103,6 +107,10 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 
 	if time.Duration(cfg.PollIntervalMS)*time.Millisecond < pollFloor {
 		logger.Warn("shuttle config: poll_interval_ms is below the floor and is raised to it", "key", "poll_interval_ms", "value", cfg.PollIntervalMS, "floor_ms", pollFloor.Milliseconds())
+	}
+
+	if cfg.Engine == "" {
+		return Config{}, fmt.Errorf("shuttle config: engine must name a registered engine, got an empty value")
 	}
 
 	if cfg.BackgroundShellWaitMin <= 0 {

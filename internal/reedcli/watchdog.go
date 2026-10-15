@@ -28,7 +28,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/cliwire"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -36,6 +35,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/spf13/cobra"
 )
 
@@ -352,7 +352,7 @@ func enterSession(hub, tmuxPath, sessionName string) (watchedSession, error) {
 		}
 	}()
 	go func() {
-		if err := eng.WatchNames(ctx, cliwire.SessionNamer()); err != nil {
+		if err := eng.WatchNames(ctx, shuttleengines.SessionNamer()); err != nil {
 			logger.Debug("reed: watchdog's name repair loop returned", "session", sessionName, "err", err)
 		}
 	}()

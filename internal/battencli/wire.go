@@ -57,7 +57,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/termwindow"
 	"github.com/Knatte18/loomyard/internal/verifytree"
@@ -554,7 +554,7 @@ func readStopReport(taskLocation *lyxcwd.Location) (path string, at time.Time, f
 	return strings.TrimSpace(string(raw)), info.ModTime(), true, nil
 }
 
-// readAgentActivity reads the live agent runs of the task worktree through the shuttle config and a Claude engine, mapped onto battenshed's neutral type,
+// readAgentActivity reads the live agent runs of the task worktree through the shuttle config and its registered engines, mapped onto battenshed's neutral type,
 // and reports whether a Go-side wait is live: a running verify, a parent lock wait, or a shuttle wait that is not a held turn end.
 // A held run is idle at its turn end, so it does not suppress the quiet notice.
 // A lock wait record whose writer is dead is ignored.
@@ -565,12 +565,15 @@ func readAgentActivity(taskLocation *lyxcwd.Location) (runs []battenshed.AgentAc
 	if err != nil {
 		return nil, false, err
 	}
-	engine := claudeengine.NewFromConfig(cfg)
-	readings, err := shuttleengine.ReadAgentActivity(cfg, anchor, engine)
+	engines, err := shuttleengines.New(cfg)
 	if err != nil {
 		return nil, false, err
 	}
-	states := readSessionStatesByStrand(cfg, anchor, engine)
+	readings, err := shuttleengine.ReadAgentActivity(cfg, anchor, engines)
+	if err != nil {
+		return nil, false, err
+	}
+	states := readSessionStatesByStrand(cfg, anchor, engines)
 	for _, reading := range readings {
 		run := battenshed.AgentActivity{Producer: reading.StrandName, LastActivity: reading.LastActivity, APIError: reading.APIError, APIErrorText: reading.APIErrorText}
 		if state, ok := states[reading.StrandName]; ok {
@@ -609,8 +612,8 @@ func readAgentActivity(taskLocation *lyxcwd.Location) (runs []battenshed.AgentAc
 
 // readSessionStatesByStrand reads the session state of every running shuttle run under anchor, keyed by strand name.
 // The states are only logged beside batten's notices, so a failed read is logged at Warn once and yields none.
-func readSessionStatesByStrand(cfg shuttleengine.Config, anchor string, engine shuttleengine.Engine) map[string]shuttleengine.SessionState {
-	readings, err := shuttleengine.ReadSessionStates(cfg, anchor, engine, time.Now())
+func readSessionStatesByStrand(cfg shuttleengine.Config, anchor string, engines shuttleengine.EngineSet) map[string]shuttleengine.SessionState {
+	readings, err := shuttleengine.ReadSessionStates(cfg, anchor, engines, time.Now())
 	if err != nil {
 		logger.Warn("batten: session states unreadable; the notice logs carry none", "anchor", anchor, "cause", err)
 		return nil
@@ -1096,7 +1099,11 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				if err != nil {
 					return err
 				}
-				runner := shuttleengine.NewRunner(reedEngine, claudeengine.NewFromConfig(shuttleCfg), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+				engines, err := shuttleengines.New(shuttleCfg)
+				if err != nil {
+					return err
+				}
+				runner := shuttleengine.NewRunner(reedEngine, engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 				pauseGeom, err := hubgeom.PauseGeometry(taskLocation)
 				if err != nil {
 					return err
