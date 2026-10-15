@@ -1,4 +1,4 @@
-// historyreads.go adds the go-git-only history reads a report over finished runs builds on: TagRefs lists tags by name prefix, Log walks commits from an arbitrary tip, and SubdirsAtRevision lists the directories directly in one directory as of a revision.
+// historyreads.go adds the go-git-only history reads a report over finished runs builds on: TagRefs lists tags by name prefix, BranchRefs lists the local branches, Log walks commits from an arbitrary tip, and SubdirsAtRevision lists the directories directly in one directory as of a revision.
 // No method calls r.run or r.runChecked — all resolve state that is already on disk, which is go-git's side of the package's Client Boundary Invariant.
 
 package gitrepo
@@ -69,6 +69,46 @@ func (r *Repo) TagRefs(prefix string) ([]TagRef, error) {
 			}
 			return found[i].Name < found[j].Name
 		})
+		return found, nil
+	})
+}
+
+// BranchRef is a local branch resolved to the commit at its tip.
+type BranchRef struct {
+	// Name is the branch's short name.
+	Name string
+
+	// Commit is the full hex object name of the commit the branch names.
+	Commit string
+
+	// Committed is that commit's committer time.
+	Committed time.Time
+}
+
+// BranchRefs returns every local branch resolved to its tip commit, sorted by name.
+// A branch whose tip is no commit is an error naming the branch, since a branch git wrote always names one.
+func (r *Repo) BranchRefs() ([]BranchRef, error) {
+	return readGoGit(r, func(repo *git.Repository) ([]BranchRef, error) {
+		branches, err := repo.Branches()
+		if err != nil {
+			return nil, fmt.Errorf("gitrepo: list branches: %w", err)
+		}
+
+		var found []BranchRef
+		err = branches.ForEach(func(ref *plumbing.Reference) error {
+			name := ref.Name().Short()
+			commit, err := repo.CommitObject(ref.Hash())
+			if err != nil {
+				return fmt.Errorf("gitrepo: branch %q tip %s is no commit: %w", name, ref.Hash(), err)
+			}
+			found = append(found, BranchRef{Name: name, Commit: commit.Hash.String(), Committed: commit.Committer.When})
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		sort.Slice(found, func(i, j int) bool { return found[i].Name < found[j].Name })
 		return found, nil
 	})
 }

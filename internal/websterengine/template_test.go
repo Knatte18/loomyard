@@ -606,22 +606,20 @@ func TestTemplates_Composition(t *testing.T) {
 	})
 }
 
-// prePackStepOne and prePackFreshRead are the implementer body's step 1 and FRESH-READ rule as they read before the pack-on texts existed, copied here so a pack-off prompt is pinned to those bytes rather than to the fragments that now carry them.
+// prePackStepOne and prePackFreshRead are the implementer body's step 1 and FRESH-READ rule in their pack-off texts, copied here so a pack-off prompt is pinned to those bytes rather than to the fragments that carry them.
 const (
 	prePackStepOne = "1. Read the card file.\n" +
 		"   It is your whole instruction for that card.\n" +
 		"   If its `**Intent:**` field is empty, fall back to that card's one-line intent from the Card Index in `_lyx/plan/00-overview.md`, matched by the same NN/slug.\n" +
 		"2. A card names"
 	prePackFreshRead = "## The FRESH-READ rule\n\n" +
-		"Inherited context can be stale.\n" +
-		"A file you looked at during orientation — your own, or one Master read before forking you — is not necessarily the version on disk right now: a prior batch's own card commits may have changed it since.\n" +
-		"Before you edit anything, re-read — in THIS turn — every card file this section points you at, plus every file that card's own target list and `Uses:` list name.\n" +
-		"Only your own reads, taken now, are current;\n" +
-		"content you merely inherited is not.\n\n" +
+		"No code reaches you from Master: the plan and the repo's rules you hold stay current for this run, except a rules file a card of this run targets, which you read fresh like code.\n" +
+		"Only your own reads of code, taken in this batch, are current.\n" +
+		"Before you edit anything, read — in THIS turn — every card file this section points you at, plus every file that card's own target list and `Uses:` list name.\n\n" +
 		"## Prior-batch context"
 )
 
-// writePrePackBody rewrites the implementer body in stencilsDir into the body as it stood before the pack:
+// writePrePackBody rewrites the implementer body in stencilsDir into its pack-off form:
 // the quarry text where the locate marker is, the pack-off texts where the card_read and fresh_read markers are, and no pack marker.
 func writePrePackBody(t *testing.T, stencilsDir string) {
 	t.Helper()
@@ -734,7 +732,7 @@ func TestRenderPrompts(t *testing.T) {
 			root, stencilsDir := testLayout(t)
 			text, err := renderFork(alpha, root, stencilsDir, newTestSpecsDir(t), "", 2, "", nil)
 			return promptCheck{text: text, err: err,
-				contains:    []string{testCardGates, testBatchGate, testOutcomePath, testSummaryPath},
+				contains:    []string{testCardGates, testBatchGate, testOutcomePath, testSummaryPath, "the plan's framing and the repo's rules, and no code"},
 				notContains: []string{"{{.card_gates}}", "{{.batch_gate}}", "this card's package's unit tests"}}
 		}},
 		{"recovery carries the card gates and no leftover marker", func(t *testing.T) promptCheck {
@@ -848,13 +846,14 @@ func TestRenderPrompts(t *testing.T) {
 			root, stencilsDir := testLayout(t)
 			text, err := renderRecovery(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", "", "")
 			return promptCheck{text: text, err: err,
-				contains:    []string{"00-overview.md", alpha.Cards[0].SourcePath, "## Your final action: the minimal batch-report"},
-				notContains: []string{"CONSTRAINTS.md", "{{", "## Constraints"}}
+				contains: []string{"00-overview.md", alpha.Cards[0].SourcePath, "## Your final action: the minimal batch-report",
+					"what an in-session fork inherits from Master, the plan's framing and the repo's rules, and no code", "you read per card"},
+				notContains: []string{"CONSTRAINTS.md", "{{", "## Constraints", "Orient to the codebase"}}
 		}},
 		{"recovery carries the PATTERN overview when PATTERN is active", func(t *testing.T) promptCheck {
 			root, stencilsDir := patternActiveLayout(t)
 			text, err := renderRecovery(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", "", "")
-			return promptCheck{text: text, err: err, contains: []string{"some constraints", "## Constraints"}}
+			return promptCheck{text: text, err: err, contains: []string{"some constraints", "## Constraints", "the constraints section above points at, when that section is present"}}
 		}},
 		{"recovery reads PATTERN.md from the told repo root", func(t *testing.T) promptCheck {
 			repoRoot, stencilsDir := patternActiveLayout(t)
@@ -888,7 +887,7 @@ func TestRenderPrompts(t *testing.T) {
 			text, err := renderRecovery(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", "", "")
 			return promptCheck{text: text, err: err, contains: []string{"What the worktree holds\n\nnone\n"}}
 		}},
-		{"fork with a nil pack locates by quarry and renders the pre-pack bytes", func(t *testing.T) promptCheck {
+		{"fork with a nil pack locates by quarry and renders the pack-off bytes", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)
 			specsDir := newTestSpecsDir(t)
 			text, packFile, err := renderForkWithPack(alpha, root, stencilsDir, specsDir, "", 2, "", websterengine.PackLayoutFile, nil)
@@ -963,10 +962,11 @@ func TestRenderPrompts(t *testing.T) {
 					"`" + specsDir + "/loom/loom-plan-spec.md`",
 					"that no listed span covers",
 					"describes the tree before any edit, so after an edit locate code by its text",
+					"No code reaches you from Master",
 					"1. The card file, which your first turn read, is your whole instruction for that card.\n   If its `**Intent:**` field is empty",
 					"read further code, callers or whole files whenever the card needs it",
 				},
-				notContains: []string{"Locate them with one", "{{", "no member glyphs on this card", "#### Unresolved", "Before you edit anything, re-read",
+				notContains: []string{"Locate them with one", "{{", "no member glyphs on this card", "#### Unresolved", "Before you edit anything, read — in THIS turn —",
 					"step 1 read the card's listed spans", "find the member by its glyph's member name", "read that file whole", "is that card's fresh read"},
 				inOrder: []string{
 					"## The FRESH-READ rule",
@@ -1084,6 +1084,7 @@ func TestRenderPrompts(t *testing.T) {
 			return promptCheck{text: text, err: err,
 				contains: []string{
 					"Your first work turn reads in parallel every card file the card list below points at, and nothing else",
+					"No code reaches you from Master",
 					"1. Before this card's first edit, run `lyx loom card-pack <N>` with this card's number, then read in one parallel turn every span it lists, each with the Read tool's `offset` at its start line and a `limit` reaching its end line.\n",
 					"The card pack's line numbers hold until this card's first edit only",
 					"When the `lyx loom card-pack` call fails, every glyph on the card is located that same way.",
@@ -1145,12 +1146,18 @@ func TestRenderPrompts(t *testing.T) {
 		{"master with PATTERN inactive renders no constraints block", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)
 			text, err := renderMaster(seamBatches, root, root, stencilsDir, "", "")
-			return promptCheck{text: text, err: err, notContains: []string{"{{", "## Constraints", "\n\n\n\n"}}
+			const conditionedRead = "the `pattern/` background files the constraints section above points at, when that section is present"
+			if got, want := strings.Count(text, "`pattern/`"), strings.Count(text, conditionedRead); got != want {
+				t.Errorf("master names `pattern/` %d times, %d of them with the condition; want every mention conditioned", got, want)
+			}
+			return promptCheck{text: text, err: err,
+				contains:    []string{"/00-overview.md` once"},
+				notContains: []string{"{{", "## Constraints", "\n\n\n\n", "codebase"}}
 		}},
 		{"master places the PATTERN directive ahead of the first work instruction", func(t *testing.T) promptCheck {
 			root, stencilsDir := patternActiveLayout(t)
 			text, err := renderMaster(seamBatches, root, root, stencilsDir, "", "")
-			return promptCheck{text: text, err: err, inOrder: []string{"some constraints", "## Orientation"}}
+			return promptCheck{text: text, err: err, inOrder: []string{"some constraints", "## Orientation", "points at, when that section is present"}}
 		}},
 		{"master reads PATTERN.md from the told repo root", func(t *testing.T) promptCheck {
 			repoRoot, stencilsDir := patternActiveLayout(t)
@@ -1173,7 +1180,7 @@ func TestRenderPrompts(t *testing.T) {
 			root, stencilsDir := testLayout(t)
 			text, err := renderVerifyFix(reportPath, root, stencilsDir, "")
 			return promptCheck{text: text, err: err,
-				contains:    []string{reportPath, testOutcomePath, testSummaryPath, "`_lyx/plan`"},
+				contains:    []string{reportPath, testOutcomePath, testSummaryPath, "`_lyx/plan`", "That context holds no code"},
 				notContains: []string{"{{"}}
 		}},
 		{"fixer prompt refuses an empty report path", func(t *testing.T) promptCheck {

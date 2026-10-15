@@ -33,6 +33,7 @@ func TestSpecFor_FillsRunIdentityForSlug(t *testing.T) {
 			c := &battenCLI{
 				location:  loc,
 				slug:      "task-a",
+				caller:    "orch",
 				shedPaths: shedbuild.ShedPaths{MaxBounces: 2, MissingStatusWayForward: wayForward},
 			}
 			if err := c.loadRouting(); err != nil {
@@ -43,6 +44,9 @@ func TestSpecFor_FillsRunIdentityForSlug(t *testing.T) {
 
 			if spec.RunID != "task-a" {
 				t.Errorf("RunID = %q, want %q", spec.RunID, "task-a")
+			}
+			if spec.Caller != "orch" {
+				t.Errorf("Caller = %q, want %q", spec.Caller, "orch")
 			}
 			wantSteps := filepath.Join(loc.AnchorPath(), ".lyx", "shed", "task-a", "steps")
 			if spec.StepsDir != wantSteps {

@@ -5,7 +5,7 @@ cmd/lyx: 80
 cmd/testtiming: 21
 contracts/specs: 3
 contracts/stencils: 16
-internal/agentname: 8
+internal/agentname: 9
 internal/alignment: 7
 internal/arbiterstop: 2
 internal/batcher: 9
@@ -30,6 +30,7 @@ internal/configsync: 8
 internal/darnengine: 4
 internal/discussionparser: 19
 internal/dotgit: 3
+internal/durfmt: 2
 internal/editdirective: 2
 internal/envsource: 3
 internal/fabriccli: 21
@@ -86,10 +87,10 @@ internal/preflightshed: 8
 internal/proc: 18
 internal/quarrycli: 7
 internal/reedcli: 40
-internal/reedengine: 266
+internal/reedengine: 269
 internal/reedengine/render: 12
-internal/reportcli: 3
-internal/reportengine: 8
+internal/reportcli: 5
+internal/reportengine: 10
 internal/reviewbudget: 3
 internal/seatengine: 17
 internal/segmentcolor: 4
@@ -103,7 +104,7 @@ internal/shedcli: 17
 internal/sheddriver: 19
 internal/shedengine: 141
 internal/shedrecipe: 103
-internal/shedrun: 24
+internal/shedrun: 25
 internal/shedtransient: 2
 internal/shedverbs: 84
 internal/shell: 14
@@ -111,11 +112,12 @@ internal/shortcutcli: 2
 internal/shuttlecli: 26
 internal/shuttleengine: 172
 internal/shuttleengine/claudeengine: 112
+internal/sleepjournal: 2
 internal/standalonegeom: 7
 internal/standalonestate: 6
 internal/state: 9
 internal/statuscommit: 6
-internal/statuspane: 6
+internal/statuspane: 5
 internal/stencil: 4
 internal/stencilcli: 1
 internal/stencilstore: 18

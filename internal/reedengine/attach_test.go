@@ -287,8 +287,8 @@ func TestAttachArgv_PreflightOnAKnownGoodSession(t *testing.T) {
 		t.Fatalf("AttachArgv() = %v, want the chained argv on this known-good script", want)
 	}
 
-	// The seven bar and border pins plus the pre-existing window-size pin, the window marker and the strand pane's two options.
-	wantSetOptionCalls := 11 + wantShellPins
+	// The seven bar and border pins plus the pre-existing window-size pin, the one follow-command pin (set, or unset when the jump cannot be composed), the build-stamp unset, the window marker and the strand pane's two options.
+	wantSetOptionCalls := 13 + wantShellPins
 	if setOptions := fake.ArgvFor("set-option"); len(setOptions) != wantSetOptionCalls {
 		t.Fatalf("AttachArgv() issued %d set-option calls, want %d: %v", len(setOptions), wantSetOptionCalls, setOptions)
 	}
@@ -422,7 +422,8 @@ func relevantWindowFixture(alphaDead, betaDead bool) (strands []Strand, windows,
 
 // TestAttachArgv_SelectsTheRelevantWindow pins the window selection AttachArgv appends to every argv it returns:
 // `; select-window -t <window>` for the newest live agent window, else the overview, else nothing.
-// A second attach never moves a viewer, so another attached client drops it.
+// Beside another attached client, or a failed client listing, the selection is kept only while the follow state reads on, an unset option included, and dropped while it reads off or its read fails.
+// Attach reads the follow state only then and never writes it.
 func TestAttachArgv_SelectsTheRelevantWindow(t *testing.T) {
 	const cols, rows = 80, 24
 	tests := []struct {
@@ -431,6 +432,9 @@ func TestAttachArgv_SelectsTheRelevantWindow(t *testing.T) {
 		betaDead   bool
 		noOwn      bool
 		clients    string
+		clientsErr error
+		follow     string
+		followErr  error
 		cols, rows int
 		script     func(f *fakeTmux)
 		wantChain  bool
@@ -440,7 +444,11 @@ func TestAttachArgv_SelectsTheRelevantWindow(t *testing.T) {
 		{name: "NewestAgentDeadFallsBackToTheOlderLiveAgent", betaDead: true, cols: cols, rows: rows, wantChain: true, wantWindow: "@1"},
 		{name: "NoLiveAgentFallsBackToTheOverview", alphaDead: true, betaDead: true, cols: cols, rows: rows, wantChain: true, wantWindow: "@3"},
 		{name: "NeitherAgentNorOverviewAppendsNothing", noOwn: true, cols: cols, rows: rows, wantChain: true},
-		{name: "AnotherClientAppendsNothing", clients: "tty0 80 24", cols: cols, rows: rows, wantChain: true},
+		{name: "AnotherClientWithFollowOffAppendsNothing", clients: "tty0 80 24", follow: "off", cols: cols, rows: rows, wantChain: true},
+		{name: "AnotherClientWithFollowUnsetSelectsTheRelevantWindow", clients: "tty0 80 24", follow: "", cols: cols, rows: rows, wantChain: true, wantWindow: "@2"},
+		{name: "AnotherClientWithFollowOnSelectsTheRelevantWindow", clients: "tty0 80 24", follow: "on", cols: cols, rows: rows, wantChain: true, wantWindow: "@2"},
+		{name: "AnotherClientWithAFailedFollowReadAppendsNothing", clients: "tty0 80 24", followErr: errors.New("boom"), cols: cols, rows: rows, wantChain: true},
+		{name: "FailedClientListingWithFollowOnSelectsTheRelevantWindow", clientsErr: errors.New("boom"), follow: "on", cols: cols, rows: rows, wantChain: true, wantWindow: "@2"},
 		{name: "UnknownClientSizeGivesTheBareArgvPlusTheSelection", wantWindow: "@2"},
 		{
 			name: "OnlySelvageInTheStrandsWindowGivesTheBareArgvPlusTheSelection", cols: cols, rows: rows, wantWindow: "@2",
@@ -464,12 +472,29 @@ func TestAttachArgv_SelectsTheRelevantWindow(t *testing.T) {
 			e, fake := newAttachTestEngine(t, strands)
 			fake.answer("list-windows", windows, nil)
 			fake.answerWindowPanes(panes, nil)
-			fake.answer("list-clients", tt.clients, nil)
+			fake.answer("list-clients", tt.clients, tt.clientsErr)
+			otherClient := tt.clients != "" || tt.clientsErr != nil
+			if otherClient {
+				fake.answerFormat("#{@lyx_follow}", tt.follow, tt.followErr)
+			}
 			if tt.script != nil {
 				tt.script(fake)
 			}
 
 			got := e.AttachArgv(tt.cols, tt.rows)
+
+			followReads := 0
+			for _, call := range fake.Calls() {
+				if call[0] == "set-option" && slices.Contains(call, "@lyx_follow") {
+					t.Errorf("attach issued %v, want it never to write the follow state", call)
+				}
+				if call[0] == "display-message" && call[len(call)-1] == "#{@lyx_follow}" {
+					followReads++
+				}
+			}
+			if wantRead := followReads == 1; wantRead != otherClient || followReads > 1 {
+				t.Errorf("follow reads = %d, want one read exactly when another client is attached or the listing failed (%v)", followReads, otherClient)
+			}
 
 			want := wantBareAttachArgv(e)
 			if tt.wantChain {
@@ -489,6 +514,7 @@ func TestAttachArgv_SelectsTheRelevantWindow(t *testing.T) {
 // logger.Warn line per client whose listed size differs from the size this attach was told, none for
 // a matching client, and — in every case — an argv byte-identical to what the same script produces
 // with no attached clients at all, since the warning is a side effect that must never perturb it.
+// That holds while the follow state reads off or no window is relevant, which is when the other client's presence drops the window selection.
 func TestAttachArgv_MultiClientWarning(t *testing.T) {
 	const cols, rows = 80, 24
 
@@ -552,6 +578,8 @@ func TestAttachArgv_MultiClientWarning(t *testing.T) {
 		fake.answer("list-windows", windows, nil)
 		fake.answerWindowPanes(panes, nil)
 		fake.answer("list-clients", "", errors.New("boom"))
+		// A failed listing counts as another client, so follow decides the selection; off drops it.
+		fake.answerFormat("#{@lyx_follow}", "off", nil)
 		buf := logcapture.CaptureVerbose(t)
 
 		got := e.AttachArgv(cols, rows)

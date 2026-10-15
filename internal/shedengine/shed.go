@@ -60,6 +60,9 @@ type Shed struct {
 	// It is told;
 	// the empty string falls back to the run verb that resumes the row.
 	RerouteCapWayForward string
+	// ResumedBy is the caller label of the process stepping this run, recorded when the step resumes a halted run.
+	// It is told and for reports only; the empty string records none.
+	ResumedBy string
 }
 
 // RunOutcome is the whole run's terminal classification.

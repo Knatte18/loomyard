@@ -5,6 +5,8 @@ package shedengine
 import (
 	"bytes"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -34,13 +36,14 @@ func TestStatus_JSONRoundTrip(t *testing.T) {
 		PauseRequested:  true,
 		PauseBefore:     "Plan-Write",
 		PauseAfter:      "Preflight",
+		PendingBy:       "orch",
 		Activity: Activity{
 			Now:  "Plan-Write",
 			Last: "Preflight → done",
 			Wait: "",
 		},
 		History: []HistoryEntry{
-			{Producer: "Preflight", Outcome: Done, Output: "", At: "2026-08-15T09:00:00Z"},
+			{Producer: "Preflight", Outcome: Done, Output: "", At: "2026-08-15T09:00:00Z", By: "driver"},
 			{Producer: "Plan-Write", Outcome: Stuck, Output: "_lyx/plan.md", At: "2026-08-15T09:05:00Z", GateSpans: []GateSpan{
 				{Gate: "plan-parse", Kind: GateSpanKindGate, Start: "2026-08-15T09:04:00.25Z", End: "2026-08-15T09:04:01.5Z"},
 				{Gate: "plan-parse", Kind: GateSpanKindRework, Start: "2026-08-15T09:04:02Z", End: "2026-08-15T09:04:30Z"},
@@ -80,6 +83,21 @@ func TestStatus_JSONRoundTrip(t *testing.T) {
 	}
 	if strings.Contains(string(empty), "pause_before") || strings.Contains(string(empty), "pause_after") {
 		t.Errorf("empty Status marshals as %s; want pause_before and pause_after omitted", empty)
+	}
+	if got.PendingBy != want.PendingBy {
+		t.Errorf("PendingBy = %q; want %q", got.PendingBy, want.PendingBy)
+	}
+	// A record without the caller-label keys decodes with empty values and re-encodes without them.
+	legacy, err := ParseStatusTolerant([]byte(`{"history":[{"producer":"A","outcome":"done","output":"","at":"t"}]}`))
+	if err != nil {
+		t.Fatalf("ParseStatusTolerant(record without caller labels) = %v", err)
+	}
+	reencoded, err := json.Marshal(legacy)
+	if err != nil {
+		t.Fatalf("json.Marshal(legacy) = %v", err)
+	}
+	if legacy.PendingBy != "" || legacy.History[0].By != "" || strings.Contains(string(reencoded), `"by"`) || strings.Contains(string(reencoded), "pending_by") {
+		t.Errorf("record without caller labels = %+v re-encoded as %s; want empty values and no by or pending_by key", legacy, reencoded)
 	}
 	if got.Activity != want.Activity {
 		t.Errorf("Activity = %+v; want %+v", got.Activity, want.Activity)
@@ -140,4 +158,64 @@ func TestState_Valid(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestRecordResumer pins which statuses the waiter's marking touches: halted runs with no label pending, and nothing else.
+func TestRecordResumer(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name        string
+		seed        *Status
+		by          string
+		wantPending string
+	}{
+		{name: "blocked is marked", seed: pendingSeed(StateBlocked, "A", ""), by: "orch", wantPending: "orch"},
+		{name: "failed is marked", seed: pendingSeed(StateFailed, "A", ""), by: "orch", wantPending: "orch"},
+		{name: "awaiting is marked", seed: pendingSeed(StateAwaiting, "A", ""), by: "orch", wantPending: "orch"},
+		{name: "running is left unmarked", seed: pendingSeed(StateRunning, "A", ""), by: "orch"},
+		{name: "paused is left unmarked", seed: pendingSeed(StatePaused, "A", ""), by: "orch"},
+		{name: "the first label stands", seed: pendingSeed(StateBlocked, "A", "orch"), by: "driver", wantPending: "orch"},
+		{name: "an empty label marks nothing", seed: pendingSeed(StateBlocked, "A", ""), by: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			shed, statusPath, _, statusLockPath := newTestShed(t)
+			seedStatus(t, statusPath, statusLockPath, *tt.seed)
+			if err := RecordResumer(statusPath, statusLockPath, tt.by); err != nil {
+				t.Fatalf("RecordResumer(...) = %v; want nil", err)
+			}
+			if got := readStatus(t, shed.StatusPath, statusLockPath); got.PendingBy != tt.wantPending {
+				t.Errorf("PendingBy = %q; want %q", got.PendingBy, tt.wantPending)
+			}
+		})
+	}
+
+	t.Run("an absent status file returns nil and creates none", func(t *testing.T) {
+		t.Parallel()
+		_, statusPath, _, statusLockPath := newTestShed(t)
+		if err := os.MkdirAll(filepath.Dir(statusLockPath), 0o755); err != nil {
+			t.Fatalf("create status lock parent: %v", err)
+		}
+		if err := RecordResumer(statusPath, statusLockPath, "orch"); err != nil {
+			t.Fatalf("RecordResumer(absent) = %v; want nil", err)
+		}
+		if _, err := os.Stat(statusPath); !os.IsNotExist(err) {
+			t.Errorf("os.Stat(status) = %v; want not-exist", err)
+		}
+	})
+
+	t.Run("an undecodable status file returns an error", func(t *testing.T) {
+		t.Parallel()
+		_, statusPath, _, statusLockPath := newTestShed(t)
+		if err := os.MkdirAll(filepath.Dir(statusLockPath), 0o755); err != nil {
+			t.Fatalf("create status lock parent: %v", err)
+		}
+		if err := os.WriteFile(statusPath, []byte("{"), 0o644); err != nil {
+			t.Fatalf("write corrupt status: %v", err)
+		}
+		if err := RecordResumer(statusPath, statusLockPath, "orch"); err == nil {
+			t.Error("RecordResumer(undecodable) = nil; want a read error")
+		}
+	})
 }
