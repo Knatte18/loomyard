@@ -364,8 +364,9 @@ User-facing modules each get one `lyx <module>` namespace:
   `lyx ide spawn <prime>` opens a hub workspace (prime, `_board`, `_portals`) whose `settings` carry the prime's `.vscode/settings.json`.
   The file is lyx-owned and regenerated on each prime spawn, overwriting any edit made in it;
   a task slug still opens its bare folder.
-  The generated `folderOpen` task is now the sequenced reed launch chain (`reed up` → `reed add --if-absent --unless-name orch` → `reed attach`) rather than a bare `claude`, with both binary paths (`lyx`, `claude`) stamped absolute at generation time.
-  The add row's `--unless-name orch` keeps a folder-open on a prime whose state holds an orch strand, live, dormant or hidden, from stacking `claude` below it.
+  The generated `tasks.json` holds one on-demand `reed attach` task, with the `lyx` path stamped absolute at generation time, reached through "Tasks: Run Task";
+  no task runs on folder open, so opening a worktree in VS Code starts no session and no `claude`.
+  `lyx ide spawn` and batten's Seed-IDE row write this config through one shared path.
   `lyx ide spawn` regenerates `tasks.json` on every spawn, overwriting an untracked one, and keeps `settings.json` when present.
   It keeps `.vscode/` out of git through the repository's shared `info/exclude` at the anchor subpath rather than `.gitignore`, and leaves a tracked `tasks.json` alone with a warning.
   `lyx ide spawn` also seeds a `// lyx:begin` … `// lyx:end` block into the user's VS Code `keybindings.json`, forwarding the five Alt keys of reed's tmux bindings to the integrated terminal, and reports the outcome in its JSON result.

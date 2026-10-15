@@ -108,8 +108,8 @@ func checkPrimeWritesHubWorkspace(t *testing.T, h *hubforge.Hub) {
 	}
 }
 
-// checkTaskSlugOpensBareFolder asserts a task spawn launches its bare folder and writes no workspace file,
-// and that SeedTask leaves the keybindings.json alone where Spawn seeds it.
+// checkTaskSlugOpensBareFolder asserts a task spawn launches its bare folder and writes no workspace file.
+// It also asserts SeedTask writes the same on-demand attach task Spawn does, and leaves the keybindings.json alone where Spawn seeds it.
 func checkTaskSlugOpensBareFolder(t *testing.T, h *hubforge.Hub, slug string) {
 	resetPrimeEditorState(t, h)
 	l := h.Location
@@ -126,6 +126,7 @@ func checkTaskSlugOpensBareFolder(t *testing.T, h *hubforge.Hub, slug string) {
 	if err := SeedTask(l, slug); err != nil {
 		t.Fatalf("SeedTask: %v", err)
 	}
+	assertAttachTaskOnly(t, filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel))
 	if _, err := os.Stat(keybindingsPath); !os.IsNotExist(err) {
 		t.Errorf("keybindings.json exists after SeedTask (stat err = %v)", err)
 	}
