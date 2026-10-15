@@ -36,6 +36,14 @@ Plan on it only once you ask your parent to record it and the record carries it.
 Never write such an addition into the plan as an operator addition.
 With no parent recorded, stop and report the addition instead of planning on it.
 
+The same route covers a drop of a decided step that changes this task's own board entry's body or scope.
+Ask your parent to record the drop with `lyx loom decision add` as an `Added after Discussion` entry, and plan without the step only once the record carries that entry.
+With no parent recorded, stop and report the step instead of planning on or without it.
+The route admits a drop of an own-entry step only: no other decided step is dropped through it.
+
+No card changes this task's own board entry's body or scope, because the run's board lock refuses such a change.
+The landing's status write, a `run_settings` write, a card that writes another board entry and a card that changes the board module's code stay allowed.
+
 ## Step 2 — Explore the codebase
 
 Before planning, start from the code the relevant list names, then read the other relevant parts of the codebase: check recent commits, and follow existing patterns and any PATTERN entries in this prompt rather than inventing new ones.

@@ -52,6 +52,13 @@ Do not flag any of the following as a finding:
   A deviation from the amended board entry that the change description names as an unrecorded parent correction is never fixed by revert.
   File it as class `decision` at severity MEDIUM.
   Its fix text tells the fixer to leave the code in place and defer the finding to the run's parent, since its only sound change, recording or refusing the correction with `lyx loom decision add`, is the parent's and lies outside the fixer's write surface.
+- **A step that edits the task's own board entry.**
+  A darn step that changes this task's own board entry's body or scope is a finding, because the run's board lock refuses such a change.
+  A step writing another entry, the entry's status or its `run_settings`, or changing board-module code is not flagged by this bullet.
+  Such a step goes through `lyx board` into the records repository, so the committed diff never shows it: the evidence is a claim in the change description that the run changed this task's own entry's body or scope, read as the writer's claim like the rest of that description.
+  A decision-record step asking for such a change is evidence only of the request.
+  A step left out through the darn writer's own-entry route is no scope finding once the record carries its `Added after Discussion` entry;
+  before then the omission is an unrecorded parent correction, filed under that bullet as a MEDIUM `decision` finding deferred to the parent.
 - **The repository's own rules.**
   The diff follows the target repository's constraints document if it has one, and the docs it names for the kind of change the diff makes land in the same diff.
   A rule written in that document outranks a convention inferred from the surrounding code.
