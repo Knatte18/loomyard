@@ -1,4 +1,4 @@
-// drivewiring.go wires the Go driver's seams to the real run: the loop's step and goto, the status and lock reads, the records and reports, the batten and pause reads, the hand-back, the agents, the worktree reads and the hand-over, plus the detached spawn of a driver.
+// drivewiring.go wires the Go driver's seams to the real run: the loop's step and goto, the status and lock reads, the records and reports, the batten and pause reads, the hand-back, the agents, the worktree reads and the hand-over, plus loom's hidden `drive` verb and the detached spawn of a driver.
 
 package loomcli
 
@@ -16,9 +16,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"github.com/Knatte18/loomyard/internal/arbiterstop"
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/buildvcs"
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -36,6 +39,49 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
+
+// driveRefusal is the refusal of a second Go driver for a run one already drives.
+const driveRefusal = "loom: drive: a Go driver already drives this run; way forward: transient, `lyx loom status` shows the run, and the live driver settles it"
+
+// driveCmd builds the hidden `drive` subcommand.
+func (c *loomCLI) driveCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:         "drive",
+		Hidden:      true,
+		Short:       "drive this worktree's go-seeded loom run, settling its stops by rule (spawned by lyx loom start)",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
+		Long: `drive is the Go driver of a go-seeded loom run, spawned by lyx loom start, by
+lyx loom resume and by a hand-over from a driver of an older build. It steps the
+run through the --until-stop loop, settles each stop by a closed rule table, asks
+a cold tackler agent about a stop no rule settles, and hands everything it cannot
+settle back to the run's parent in a stop report.
+
+It holds the run's driver lock for its whole life, so a second driver refuses at
+once. It removes the park marker and the resume report on start.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if clihelp.ShouldAbort(cmd.Context()) {
+				return nil
+			}
+			ctx := cmd.Context()
+			stale := []string{shedrun.ParkMarker(c.location, c.runID), shedrun.ResumeReport(c.location, c.runID)}
+			clihelp.SetExit(ctx, driveVerb(cmd.OutOrStdout(), shedrun.DriverLock(c.location, c.runID), stale, func(release func() error) error {
+				deps, err := c.goDriverDepsFor(release)
+				if err != nil {
+					return err
+				}
+				return (&goDriver{deps: deps}).run(ctx)
+			}))
+			return nil
+		},
+	}
+}
+
+// driveEnvelopePath composes the path of one saved stop envelope, drive-envelope-<compact-timestamp>-<4-hex>.json beside the run's drive reports.
+func driveEnvelopePath(l *lyxcwd.Location, runID string, now func() time.Time, rand func() string) string {
+	filename := fmt.Sprintf("drive-envelope-%s-%s.json", now().Format(driverReportTimestampLayout), rand())
+	return filepath.Join(shedrun.DriveReportsDir(l, runID), filename)
+}
 
 // The one-line recipe descriptions the tackler's prompt names under its run heading.
 const (
