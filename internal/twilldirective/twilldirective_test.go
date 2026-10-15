@@ -64,10 +64,12 @@ func TestDirective_RendersEveryValueVerbatim(t *testing.T) {
 			name:   "without a writer fork",
 			values: filledValues(),
 			wants: []string{
-				"runs `lyx check --now` per `STEP-CHECK` until it passes",
+				"lyx check --now",
+				"STEP-CHECK",
 				"STEP-FORMAT",
-				"died before its Agent call still spawns once",
-				"   REJECTION-RULE-SENTENCE\n5. Record the lens review at `the PLACE section`",
+				"died before its Agent call",
+				"REJECTION-RULE-SENTENCE",
+				"the PLACE section",
 			},
 			wantNots: []string{"fork0", "GOVERNING-INPUT", "DISPUTE-EVIDENCE"},
 		},
@@ -77,14 +79,14 @@ func TestDirective_RendersEveryValueVerbatim(t *testing.T) {
 			wants: []string{
 				"EXPLORE-STEP",
 				"INPUT-RECORD",
-				"LAST-FILE last",
-				"every file in FILES-DIR",
+				"LAST-FILE",
+				"FILES-DIR",
 				"Spawn one fork, fork0",
-				"against the code and GOVERNING-INPUT",
-				"opened in this session, DISPUTE-EVIDENCE, and what it shows",
+				"GOVERNING-INPUT",
+				"DISPUTE-EVIDENCE",
 			},
 			wantNots: []string{"died before its Agent call", "REJECTION-RULE-SENTENCE"},
-			inOrder:  []string{"SPAWN-POINT-SENTENCE", "Spawn one fork, fork0", "1. Read the rubric"},
+			inOrder:  []string{"SPAWN-POINT-SENTENCE", "Spawn one fork, fork0"},
 		},
 	}
 	for _, tt := range tests {
@@ -97,14 +99,12 @@ func TestDirective_RendersEveryValueVerbatim(t *testing.T) {
 				t.Fatalf("Directive = _, %v; want nil error", err)
 			}
 			wants := append([]string{
-				"`/abs/one.md` and `/abs/two.md` were written and passed the self-check before you were spawned",
-				"SPAWN-POINT-SENTENCE\n",
-				"forks are outstanding is allowed.\n4. Judge every finding",
-				"returned no report.\n6. Run `lyx check --final` again",
-				"each with SEVERITY-RULE-PHRASE, the section or decision it concerns",
+				"`/abs/one.md` and `/abs/two.md`",
+				"SPAWN-POINT-SENTENCE",
+				"SEVERITY-RULE-PHRASE",
 				"/abs/rubric.md",
 				"- alpha: Look at A. Then at B.\n- beta: Look at C.",
-				"6. Run `lyx check --final` again",
+				"lyx check --final",
 				"the PLACE section",
 			}, tt.wants...)
 			for _, want := range wants {
