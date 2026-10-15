@@ -30,6 +30,8 @@
 // Start checks it right after resolving the spec's engine, and attach checks it against the engine the run's record names unless every output file is already on disk.
 // A refusal wraps ErrRequirementsUnmet and names the way forward:
 // at Start, a model alias of an engine that meets the requirements; at attach, ending the live strand with `lyx reed remove` and re-stepping the row once the run record is old enough.
+// The Start refusal carries a generic way forward, naming a model alias or shuttle.yaml's engine, so a refusal no caller wraps still names one.
+// A caller that resolved the role's model from a config key passes the error through ModelKey.Wrap, which replaces the generic way forward with one naming that key.
 //
 // shuttle is told its anchor path and worktree root as plain strings, at Runner construction, and
 // derives neither — internal/lyxcwd is consequently absent from the package's production imports.
