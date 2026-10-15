@@ -68,6 +68,9 @@ type battenCLI struct {
 	shedPaths shedbuild.ShedPaths
 	// slug is the task slug read from the command's own arguments.
 	slug string
+	// caller is the caller label armAt classifies from the strand variable and specFor copies onto the Spec;
+	// empty on a hand-populated receiver, which records none.
+	caller string
 	// routing is the recipe's producer-graph projection armAt loads (loadRouting) and specFor copies
 	// onto the Spec; zero on a hand-populated receiver, which reports no progress.
 	routing shedengine.Routing

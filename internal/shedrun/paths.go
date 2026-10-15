@@ -307,6 +307,8 @@ type RunTreeRels struct {
 	DriveReports string
 	Arbiter      string
 	Alignment    string
+	// SettleRecords is the Go driver's settle-records file.
+	SettleRecords string
 }
 
 // TreeRunRels returns the tree-relative record paths of runID.
@@ -318,12 +320,13 @@ func TreeRunRels(runID string) (RunTreeRels, error) {
 	}
 	dir := path.Join(lyxdirs.LyxDirName, shedDirName, runID)
 	return RunTreeRels{
-		Dir:          dir,
-		Seed:         path.Join(dir, "seed.json"),
-		Status:       path.Join(dir, "status.json"),
-		DriveReports: path.Join(dir, driveReportsDirName),
-		Arbiter:      path.Join(dir, arbiterDirName),
-		Alignment:    path.Join(dir, alignmentDirName),
+		Dir:           dir,
+		Seed:          path.Join(dir, "seed.json"),
+		Status:        path.Join(dir, "status.json"),
+		DriveReports:  path.Join(dir, driveReportsDirName),
+		Arbiter:       path.Join(dir, arbiterDirName),
+		Alignment:     path.Join(dir, alignmentDirName),
+		SettleRecords: path.Join(dir, settleRecordsFileName),
 	}, nil
 }
 

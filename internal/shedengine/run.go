@@ -254,7 +254,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 	// is deliberately conditional: on the ordinary running-to-running path it never fires, so
 	// the loop's one-persist-per-iteration shape is unchanged for every step after the first.
 	if st.State != StateRunning {
-		if err := s.persist(st.CurrentProducer, StateRunning, "", st.History, false, ""); err != nil {
+		if err := s.persistMarked(true, st.CurrentProducer, StateRunning, "", st.History, false, false, "", "", ""); err != nil {
 			return StepResult{}, err
 		}
 	}
@@ -750,10 +750,25 @@ func recordedVerdict(cur, next []HistoryEntry) bool {
 // persistTransient is persist with the transient class and the parent notice the write records, and with the choice to clear pause_before and pause_after.
 // Every write sets Transient and ParentNotice, so a later step never carries a stale class or notice.
 // clearConditions is true only in the persist that records paused for a fired condition; every other write carries a recorded condition through unchanged.
+// A write that appends a history entry hands the pending caller label to the appended entry and clears it; a write that appends none carries the label through.
 func (s *Shed) persistTransient(nextCurrentProducer string, nextState State, nextError string, nextHistory []HistoryEntry, consumePause, clearConditions bool, routedTo string, transient TransientClass, parentNotice string) error {
+	return s.persistMarked(false, nextCurrentProducer, nextState, nextError, nextHistory, consumePause, clearConditions, routedTo, transient, parentNotice)
+}
+
+// persistMarked is persistTransient that, when markResume is true, also records ResumedBy as the pending caller label.
+// It records it only over a blocked, failed or awaiting status with no label pending, so the first label of a resumed run stands and a resume from paused records nothing.
+func (s *Shed) persistMarked(markResume bool, nextCurrentProducer string, nextState State, nextError string, nextHistory []HistoryEntry, consumePause, clearConditions bool, routedTo string, transient TransientClass, parentNotice string) error {
 	err := state.UpdateJSON(s.StatusPath, s.StatusLockPath, func(cur Status, found bool) (Status, error) {
 		if !found {
 			return Status{}, fmt.Errorf("shedengine: status file %q vanished mid-run; Shed refuses to create one", s.StatusPath)
+		}
+		if len(nextHistory) > len(cur.History) && cur.PendingBy != "" {
+			nextHistory = slices.Clone(nextHistory)
+			nextHistory[len(nextHistory)-1].By = cur.PendingBy
+			cur.PendingBy = ""
+		}
+		if markResume && s.ResumedBy != "" && cur.PendingBy == "" && resumableHalt(cur.State) {
+			cur.PendingBy = s.ResumedBy
 		}
 		prevLast := cur.Activity.Last
 		recorded := recordedVerdict(cur.History, nextHistory)

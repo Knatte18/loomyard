@@ -51,7 +51,9 @@ func TestGotoCmd_MovesBlockedRunOntoRow(t *testing.T) {
 	paths := newTestPaths(t)
 	seedBlocked(t, paths, "B")
 
-	cmd := gotoCmd(gotoTexts(), gotoSpec(paths))
+	spec := gotoSpec(paths)
+	spec.Caller = "orch"
+	cmd := gotoCmd(gotoTexts(), spec)
 	if got := cmd.Annotations[clihelp.AudienceAnnotation]; got != clihelp.AudienceOperator {
 		t.Errorf("audience annotation = %q; want the text's %q", got, clihelp.AudienceOperator)
 	}
@@ -74,29 +76,59 @@ func TestGotoCmd_MovesBlockedRunOntoRow(t *testing.T) {
 	if st.CurrentProducer != "A" || st.State != shedengine.StatePaused {
 		t.Errorf("status = %s/%s; want A/paused", st.CurrentProducer, st.State)
 	}
+	if len(st.History) != 1 || st.History[0].By != "orch" {
+		t.Errorf("History = %+v; want one goto entry labelled orch", st.History)
+	}
+
+	t.Run("ByShedOverridesTheCaller", func(t *testing.T) {
+		paths := newTestPaths(t)
+		seedBlocked(t, paths, "B")
+		spec := gotoSpec(paths)
+		spec.Caller = "orch"
+
+		if env, code := execEnvelope(t, gotoCmd(gotoTexts(), spec), []string{"--to", "A", "--by", "shed"}); code != 0 {
+			t.Fatalf("exit code = %d; want 0 (env %v)", code, env)
+		}
+		st, _, err := state.ReadJSONNoMkdir[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
+		if err != nil || len(st.History) != 1 || st.History[0].By != "shed" {
+			t.Errorf("History, err = %+v, %v; want one goto entry labelled shed", st.History, err)
+		}
+	})
 }
 
 // TestGotoCmd_RefusesMissingOrUnknownTarget asserts both refusals end in a way forward listing the valid producer names.
 func TestGotoCmd_RefusesMissingOrUnknownTarget(t *testing.T) {
 	tests := []struct {
-		name string
-		args []string
+		name     string
+		args     []string
+		wantText string
 	}{
-		{name: "NoTo", args: nil},
-		{name: "UnknownRow", args: []string{"--to", "Nope"}},
+		{name: "NoTo", args: nil, wantText: "way forward: re-run goto with --to naming one of: A, B"},
+		{name: "UnknownRow", args: []string{"--to", "Nope"}, wantText: "way forward: re-run goto with --to naming one of: A, B"},
+		{name: "ByOtherThanShed", args: []string{"--to", "B", "--by", "orch"}, wantText: "--by takes only shed"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			paths := newTestPaths(t)
 			seedBlocked(t, paths, "B")
+			before, err := os.ReadFile(paths.StatusPath)
+			if err != nil {
+				t.Fatalf("read status: %v", err)
+			}
 
 			env, code := execEnvelope(t, gotoCmd(gotoTexts(), gotoSpec(paths)), tt.args)
 			if code != 1 {
 				t.Fatalf("exit code = %d; want 1", code)
 			}
 			msg, _ := env["error"].(string)
-			if !strings.Contains(msg, "way forward: re-run goto with --to naming one of: A, B") {
-				t.Errorf("error %q does not end in a way forward listing the valid names %q", msg, "A, B")
+			if !strings.Contains(msg, tt.wantText) {
+				t.Errorf("error %q does not contain %q", msg, tt.wantText)
+			}
+			if tt.name == "ByOtherThanShed" && !strings.HasSuffix(msg, "way forward: re-run goto without --by") {
+				t.Errorf("error %q does not end in the way forward to re-run goto without --by", msg)
+			}
+			if after, _ := os.ReadFile(paths.StatusPath); !bytes.Equal(before, after) {
+				t.Errorf("status file changed on a refusal: %s -> %s", before, after)
 			}
 		})
 	}

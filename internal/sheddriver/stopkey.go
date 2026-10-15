@@ -2,14 +2,13 @@
 
 package sheddriver
 
-import "github.com/Knatte18/loomyard/internal/shedengine"
+import (
+	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
+)
 
 // StopKey identifies a stop: the status file's current producer, history length and state.
-type StopKey struct {
-	CurrentProducer string `json:"current_producer"`
-	HistoryLength   int    `json:"history_length"`
-	State           string `json:"state"`
-}
+type StopKey = shedrun.StopKey
 
 // StopKeyOf reads the stop key off a status.
 func StopKeyOf(st shedengine.Status) StopKey {

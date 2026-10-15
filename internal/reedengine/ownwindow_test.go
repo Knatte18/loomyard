@@ -4,11 +4,13 @@
 package reedengine
 
 import (
+	"errors"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // TestPlanOwnWindowPlacement pins the placement and the group record planOwnWindowPlacement returns for each arrival in a group.
@@ -66,55 +68,49 @@ func TestPlanOwnWindowPlacement(t *testing.T) {
 	}
 }
 
-// TestNewAgentWindowSelected pins which window a viewer leaves for a new agent window: a viewer following the run follows it, one on a window picked by hand stays, and a keep-viewer strand moves no viewer.
+// TestNewAgentWindowSelected pins whether a new agent window takes the viewer: a Focus strand always does, a KeepViewer strand never does, and any other does exactly when the session's follow state reads on.
+// It captures the process-global logger output, so it does not run in parallel.
 func TestNewAgentWindowSelected(t *testing.T) {
-	t.Parallel()
 	own := render.Display{Anchor: render.AnchorOwnWindow}
-	st := &ReedState{Strands: []Strand{
-		{Name: "ly:loom-status", PaneID: "%1", Display: render.Display{Anchor: render.AnchorOverview}},
-		{Name: "ly:driver", PaneID: "%2", Display: own},
-		{Name: "ly:plan", PaneID: "%3", Display: own},
-		{Name: "ly:review", PaneID: "%4", Display: own},
-		{Name: "ly:dying", PaneID: "%5", Display: own},
-		{Name: "ly:driver-2", PaneID: "%6", Display: render.Display{Anchor: render.AnchorBelowParent}},
-	}}
-	windows := []sessionWindow{{ID: "@0", Index: 0}, {ID: "@1", Index: 1}, {ID: "@2", Index: 2}, {ID: "@3", Index: 3}, {ID: "@4", Index: 4}, {ID: "@5", Index: 5}}
-	panes := []windowPane{
-		{WindowID: "@0", PaneID: "%0"},
-		{WindowID: "@0", PaneID: "%6"},
-		{WindowID: "@1", Own: true, PaneID: "%1"},
-		{WindowID: "@2", Own: true, PaneID: "%2"},
-		{WindowID: "@3", Own: true, PaneID: "%3"},
-		{WindowID: "@4", Own: true, PaneID: "%4"},
-		{WindowID: "@5", Own: true, PaneID: "%5", Dead: true},
-	}
 	focus := render.Display{Anchor: render.AnchorOwnWindow, Focus: true}
 	keep := render.Display{Anchor: render.AnchorOwnWindow, KeepViewer: true}
 	tests := []struct {
-		name    string
-		current string
-		display render.Display
-		want    bool
+		name       string
+		display    render.Display
+		follow     string
+		followErr  error
+		want       bool
+		wantRead   bool
+		wantWarned bool
 	}{
-		{name: "a focus strand takes the viewer from the shell", current: "@0", display: focus, want: true},
-		{name: "an unknown current window keeps the viewer", current: "", display: own, want: false},
-		{name: "the overview passes the viewer on", current: "@1", display: own, want: true},
-		{name: "an all-dead agent window passes the viewer on", current: "@5", display: own, want: true},
-		{name: "the newest live agent window passes the viewer on", current: "@4", display: own, want: true},
-		{name: "the driver window passes the viewer on while a newer agent is live", current: "@2", display: own, want: true},
-		{name: "an older live agent window keeps the viewer", current: "@3", display: own, want: false},
-		{name: "the shell keeps the viewer even with a driver pane in it", current: "@0", display: own, want: false},
-		{name: "a keep-viewer strand leaves the viewer on the overview", current: "@1", display: keep, want: false},
-		{name: "a keep-viewer strand leaves the viewer on an all-dead agent window", current: "@5", display: keep, want: false},
-		{name: "a keep-viewer strand leaves the viewer on the newest live agent window", current: "@4", display: keep, want: false},
-		{name: "a keep-viewer strand leaves the viewer on the driver window", current: "@2", display: keep, want: false},
-		{name: "focus wins over keep-viewer", current: "@0", display: render.Display{Anchor: render.AnchorOwnWindow, Focus: true, KeepViewer: true}, want: true},
+		{name: "an unset follow option reads on", display: own, follow: "", want: true, wantRead: true},
+		{name: "follow on takes the viewer", display: own, follow: "on", want: true, wantRead: true},
+		{name: "follow off keeps the viewer", display: own, follow: "off", want: false, wantRead: true},
+		{name: "a failed follow read keeps the viewer and warns", display: own, followErr: errors.New("no server"), want: false, wantRead: true, wantWarned: true},
+		{name: "a focus strand takes the viewer with follow off", display: focus, follow: "off", want: true},
+		{name: "a keep-viewer strand leaves the viewer with follow on", display: keep, follow: "on", want: false},
+		{name: "focus wins over keep-viewer", display: render.Display{Anchor: render.AnchorOwnWindow, Focus: true, KeepViewer: true}, follow: "off", want: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			if got := newAgentWindowSelected(st, windows, panes, tt.current, tt.display); got != tt.want {
-				t.Errorf("newAgentWindowSelected(current %q, display %+v) = %v, want %v", tt.current, tt.display, got, tt.want)
+			e, fake := newAttachTestEngine(t, goodAttachStrands())
+			fake.answerFormat("#{@lyx_follow}", tt.follow, tt.followErr)
+			buf := logcapture.CaptureVerbose(t)
+
+			if got := e.newAgentWindowTakesViewerLocked(tt.display); got != tt.want {
+				t.Errorf("newAgentWindowTakesViewerLocked(%+v) with follow %q, err %v = %v, want %v", tt.display, tt.follow, tt.followErr, got, tt.want)
+			}
+			reads := 0
+			for _, argv := range fake.ArgvFor("display-message") {
+				if argv[len(argv)-1] == "#{@lyx_follow}" {
+					reads++
+				}
+			}
+			if (reads == 1) != tt.wantRead || reads > 1 {
+				t.Errorf("follow reads = %d, want read = %v", reads, tt.wantRead)
+			}
+			if warned := strings.Contains(buf.String(), "could not read the follow state"); warned != tt.wantWarned {
+				t.Errorf("follow-read Warn logged = %v, want %v (log %q)", warned, tt.wantWarned, buf.String())
 			}
 		})
 	}
