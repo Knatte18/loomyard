@@ -11,6 +11,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -44,7 +45,7 @@ func TestBouncer_SeedCall_HappyPath(t *testing.T) {
 	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 
 	ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
-	if ptr != (shedengine.OutputPointer{}) {
+	if !reflect.DeepEqual(ptr, shedengine.OutputPointer{}) {
 		t.Errorf("Call() pointer = %+v; want empty", ptr)
 	}
 	if !shuttle.Called {
@@ -213,7 +214,7 @@ func TestBouncer_SeedCall_SpawnProducedNothingUsable(t *testing.T) {
 			b, cfg := tt.buildBouncer(t)
 
 			ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
-			if ptr != (shedengine.OutputPointer{}) {
+			if !reflect.DeepEqual(ptr, shedengine.OutputPointer{}) {
 				t.Errorf("Call() pointer = %+v; want empty", ptr)
 			}
 

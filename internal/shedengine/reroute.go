@@ -42,7 +42,7 @@ func (s *Shed) rerouteCapWayForward() string {
 func (s *Shed) rerouteStuck(st Status, def ProducerDef, output OutputPointer) (StepResult, error) {
 	at := nowRFC3339()
 	if def.OnReroute == "" {
-		nextHistory := appendOrFold(st.History, HistoryEntry{Producer: def.Name, Outcome: Stuck, Output: output.Path, At: at, GateAttempts: output.GateAttempts, BudgetExempt: output.BudgetExempt})
+		nextHistory := appendOrFold(st.History, HistoryEntry{Producer: def.Name, Outcome: Stuck, Output: output.Path, At: at, GateAttempts: output.GateAttempts, GateSpans: output.GateSpans, BudgetExempt: output.BudgetExempt})
 		failErr := fmt.Errorf("shedengine: producer %q returned a reroute verdict but has no OnReroute", def.Name)
 		if persistErr := s.persist(st.CurrentProducer, StateFailed, failErr.Error(), nextHistory, false, ""); persistErr != nil {
 			return StepResult{}, errors.Join(failErr, persistErr)
@@ -52,7 +52,7 @@ func (s *Shed) rerouteStuck(st Status, def ProducerDef, output OutputPointer) (S
 
 	count := rerouteCount(st.History, def.Name)
 	if count < rerouteCap {
-		nextHistory := appendOrFold(st.History, HistoryEntry{Producer: def.Name, Outcome: OutcomeReroute, Output: output.Path, At: at, GateAttempts: output.GateAttempts, RoutedTo: def.OnReroute})
+		nextHistory := appendOrFold(st.History, HistoryEntry{Producer: def.Name, Outcome: OutcomeReroute, Output: output.Path, At: at, GateAttempts: output.GateAttempts, GateSpans: output.GateSpans, RoutedTo: def.OnReroute})
 		next, reason, err := s.routedState(def)
 		if err != nil {
 			return StepResult{}, err
@@ -63,7 +63,7 @@ func (s *Shed) rerouteStuck(st Status, def ProducerDef, output OutputPointer) (S
 		return StepResult{Producer: def.Name, Outcome: Stuck, Output: output.Path, Next: def.OnReroute, State: next, Reason: reason, History: nextHistory}, nil
 	}
 
-	nextHistory := appendOrFold(st.History, HistoryEntry{Producer: def.Name, Outcome: Stuck, Output: output.Path, At: at, GateAttempts: output.GateAttempts, BudgetExempt: true, RerouteCapped: true})
+	nextHistory := appendOrFold(st.History, HistoryEntry{Producer: def.Name, Outcome: Stuck, Output: output.Path, At: at, GateAttempts: output.GateAttempts, GateSpans: output.GateSpans, BudgetExempt: true, RerouteCapped: true})
 	reason := fmt.Sprintf("reroute cap reached: %s rerouted to %s %d times since its last done; %s; way forward: %s", def.Name, def.OnReroute, count, stuckReason(output.Reason), s.rerouteCapWayForward())
 	if err := s.persist(st.CurrentProducer, StateBlocked, reason, nextHistory, false, ""); err != nil {
 		return StepResult{}, err

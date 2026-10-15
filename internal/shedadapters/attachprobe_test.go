@@ -12,6 +12,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -264,7 +265,7 @@ func TestBouncer_SeedCall_ProbesForALiveSeed(t *testing.T) {
 			}
 
 			ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
-			if ptr != (shedengine.OutputPointer{}) {
+			if !reflect.DeepEqual(ptr, shedengine.OutputPointer{}) {
 				t.Errorf("Call() pointer = %+v; want empty", ptr)
 			}
 			if !attach.AttachCalled {
