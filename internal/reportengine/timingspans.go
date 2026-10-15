@@ -115,11 +115,7 @@ func mergeRows(row RunRow) ([]timedRow, []Finding) {
 		return rows
 	}
 
-	var battenHistory []shedengine.HistoryEntry
-	if n := len(row.battenSnapshots); n > 0 {
-		battenHistory = row.battenSnapshots[n-1].History
-	}
-	loom, batten := build(row.childHistory, false), build(battenHistory, true)
+	loom, batten := build(row.childHistory, false), build(latestBattenHistory(row), true)
 
 	merged := make([]timedRow, 0, len(loom)+len(batten))
 	for len(loom) > 0 || len(batten) > 0 {
@@ -273,6 +269,16 @@ func timeRun(row RunRow, opts TimingOptions, snapshot time.Time) (TimingRun, []F
 		}
 	}
 
+	netByKind := netWaits(clipWaits(runWaits(row, rows, span.To), span), sleeps)
+	waitSeconds := map[string]int64{}
+	var waitUnion []Interval
+	for _, kind := range timingWaitKinds {
+		waitSeconds[kind] = int64(lengthOf(netByKind[kind]) / time.Second)
+		waitUnion = append(waitUnion, netByKind[kind]...)
+	}
+	attempts, attemptFindings := runAttempts(row, rows, span, sleeps)
+	findings = append(findings, attemptFindings...)
+
 	state := RunStateLanded
 	if row.inFlight {
 		state = RunStateInFlight
@@ -286,12 +292,16 @@ func timeRun(row RunRow, opts TimingOptions, snapshot time.Time) (TimingRun, []F
 		SpanSeconds:  int64(span.length() / time.Second),
 		SleepSeconds: int64(lengthOf(sleeps) / time.Second),
 		Phases:       phases,
+		Waits:        waitSeconds,
+		Attempts:     attempts,
 		committed:    row.Committed,
 		span:         span,
 		sleeps:       sleeps,
 		parts:        parts,
+		waitParts:    netByKind,
+		waitUnion:    waitUnion,
 	}
-	run.ActiveSeconds = run.SpanSeconds - run.SleepSeconds
+	run.ActiveSeconds = run.SpanSeconds - run.SleepSeconds - int64(lengthOf(waitUnion)/time.Second)
 	return run, findings
 }
 

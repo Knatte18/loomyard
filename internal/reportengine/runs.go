@@ -8,6 +8,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/alignment"
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
@@ -87,6 +88,9 @@ type RunRow struct {
 	// parentRounds are the parent-review rounds that decoded, and arbiterRecords the arbiter attempts that did.
 	parentRounds   []parentreview.Round
 	arbiterRecords []loomengine.ArbiterRecord
+
+	// alignmentAttempts are the alignment attempts that decoded, each with Dir set to its tree-relative directory.
+	alignmentAttempts []alignment.Attempt
 }
 
 // PartialRun is a tag that names a run which did not finish as a full loom run, with the reason.

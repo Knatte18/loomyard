@@ -88,6 +88,11 @@ type TimingRun struct {
 	ActiveSeconds int64             `json:"active_seconds"`
 	Phases        map[string]*int64 `json:"phases"`
 
+	// Waits maps every wait kind to its net seconds, and Attempts holds the arbiter and alignment attempts that served the waits.
+	// Active, the waits and sleep add up to the span.
+	Waits    map[string]int64 `json:"waits"`
+	Attempts TimingAttempts   `json:"attempts"`
+
 	// committed is the archive tag's committer time, the zero time for a run in flight.
 	committed time.Time
 
@@ -95,6 +100,10 @@ type TimingRun struct {
 	span   Interval
 	sleeps []Interval
 	parts  []phasedInterval
+
+	// waitParts are the net wait intervals per kind, and waitUnion the union of every kind's.
+	waitParts map[string][]Interval
+	waitUnion []Interval
 }
 
 // PhaseMedian is the median seconds of one phase over the landed runs holding it.
@@ -105,11 +114,14 @@ type PhaseMedian struct {
 
 // TimingBucket is the time of one day or ISO week of the window, summed over the runs overlapping it.
 // Two parallel runs add two hours to an hour, and a phase no run in the bucket holds is absent from Phases.
+// Waits holds every wait kind, and Attempts counts each spawn in the bucket its spawned_at falls in with its time clipped to the bucket.
 type TimingBucket struct {
 	Label         string           `json:"label"`
 	Start         time.Time        `json:"start"`
 	Runs          int              `json:"runs"`
 	Phases        map[string]int64 `json:"phases"`
+	Waits         map[string]int64 `json:"waits"`
+	Attempts      TimingAttempts   `json:"attempts"`
 	SleepSeconds  int64            `json:"sleep_seconds"`
 	ActiveSeconds int64            `json:"active_seconds"`
 }
@@ -344,17 +356,24 @@ func bucketWindows(by string, window Interval) []bucketWindow {
 func bucketRuns(runs []TimingRun, windows []bucketWindow) []TimingBucket {
 	buckets := make([]TimingBucket, 0, len(windows))
 	for _, w := range windows {
-		bucket := TimingBucket{Label: w.label, Start: w.From, Phases: map[string]int64{}}
+		bucket := TimingBucket{Label: w.label, Start: w.From, Phases: map[string]int64{}, Waits: map[string]int64{}}
 		phaseTime := map[string]time.Duration{}
+		waitTime := map[string]time.Duration{}
+		var attemptParts []attemptPart
 		var sleep, active time.Duration
 		for _, run := range runs {
+			attemptParts = append(attemptParts, run.Attempts.parts...)
 			if !overlaps(run.span, w.Interval) {
 				continue
 			}
 			bucket.Runs++
 			sleepIn := lengthOf(clipIntervals(run.sleeps, w.Interval))
 			sleep += sleepIn
-			active += lengthOf(clipIntervals([]Interval{run.span}, w.Interval)) - sleepIn
+			waitIn := lengthOf(clipIntervals(run.waitUnion, w.Interval))
+			active += lengthOf(clipIntervals([]Interval{run.span}, w.Interval)) - sleepIn - waitIn
+			for kind, parts := range run.waitParts {
+				waitTime[kind] += lengthOf(clipIntervals(parts, w.Interval))
+			}
 			for phase, seconds := range run.Phases {
 				if seconds != nil {
 					phaseTime[phase] += 0
@@ -367,6 +386,10 @@ func bucketRuns(runs []TimingRun, windows []bucketWindow) []TimingBucket {
 		for phase, held := range phaseTime {
 			bucket.Phases[phase] = int64(held / time.Second)
 		}
+		for _, kind := range timingWaitKinds {
+			bucket.Waits[kind] = int64(waitTime[kind] / time.Second)
+		}
+		bucket.Attempts = attemptsInWindow(attemptParts, w.Interval)
 		bucket.SleepSeconds = int64(sleep / time.Second)
 		bucket.ActiveSeconds = int64(active / time.Second)
 		buckets = append(buckets, bucket)

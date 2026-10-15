@@ -123,8 +123,27 @@
 // Without the batten source land is nil and setup holds the loom rows alone.
 //
 // TimingOptions.Sleeps, unioned and clipped to the span, is the run's sleep, and every row interval loses the part a sleep covers, so the phases plus the sleep sum to the span.
+//
+// A wait is time the run spent on someone else, an interval of one kind, listed here in the order an overlap is credited to them:
+// parent_review, a parent-review round from its request's opened_at to its verdict's recorded_at;
+// pr_gate, a batten change of the child into awaiting at PR-Gate;
+// escalation, a change into awaiting at any other row;
+// halt, a change into blocked or failed.
+// A change's wait runs from batten's entry for it to the next row of either history stamped after it.
+// A batten-row halt is an entry at one of batten's own rows, never Run-Shed, that is an awaiting outcome or a stuck outcome no OnStuck edge bounced (its routed_to is empty); it is a wait of kind escalation when awaiting and halt otherwise, from its entry to the next row.
+// A batten stuck entry written before routed_to existed has it empty even when an edge bounced it, so an older batten record reads such a bounce as a batten-row halt.
+// A wait with no later row and no verdict runs to the span's close, which is Sources.SnapshotAt for a run in flight, so an open wait there runs to the snapshot with no finding; a parent-review round with no request opens no wait.
+// Each wait is clipped to the span, sleep comes out first, and then each kind's union loses every earlier kind's, so overlapping waits count once under the kind listed first and a sleep inside a wait counts as sleep alone.
+// Waits stay inside their phase's time; a run's active seconds are its span less sleep less every net wait, so active, the waits and sleep sum to the span.
+//
+// An attempt is one spawn: every arbiter attempt, every PR-Gate alignment attempt and every parent-review round's alignment record.
+// Its time runs, net of sleep, from its spawned_at to the first row of either history stamped after it, or to the span's close in a run in flight.
+// In a landed run an attempt spawned outside the span, or with no row after it, has its time absent and adds a finding naming its file; its spawn still counts.
+// A figure's seconds are the summed time of the attempts whose time is known, nil when none is, and an attempt's time lies inside the wait it serves and is reported beside the waits, never added to them.
+//
 // Buckets are UTC days or ISO weeks from Since, none opening before it.
-// Each interval and sleep is clipped to every bucket it overlaps, and a bucket's time sums over runs, so two parallel runs add two hours to an hour.
+// Each interval, wait and sleep is clipped to every bucket it overlaps, and a bucket's time sums over runs, so two parallel runs add two hours to an hour.
+// Each attempt spawn counts in the bucket its spawned_at falls in and its time is clipped to every bucket it overlaps.
 // TimingReport.Phases holds each phase's median over the landed runs holding it whose archive tag is committed in the window; the median of an even count is the mean of the two middle values rounded down, and a run in flight never enters one.
 //
 // # Outputs
