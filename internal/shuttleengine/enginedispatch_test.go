@@ -543,27 +543,39 @@ func TestRunner_EngineSetDispatch(t *testing.T) {
 		requireConsulted(t, rig.a, rig.b, "IdleSession")
 	})
 
-	t.Run("Send_and_Interrupt_on_a_live_strand_with_no_record_consult_the_default", func(t *testing.T) {
+	t.Run("Send_and_Interrupt_on_a_live_strand_with_no_record_consult_the_engine_its_provider_tag_names", func(t *testing.T) {
 		t.Parallel()
 		tests := []struct {
 			name       string
+			provider   string
 			call       func(rig *dispatchRig) error
 			wantMethod string
+			wantUsed   string
 		}{
-			{"Send", func(rig *dispatchRig) error { return rig.fx.Runner.Send("strand-1", "hello") }, "IdleSession"},
-			{"Interrupt", func(rig *dispatchRig) error {
+			{"Send_untagged", "", func(rig *dispatchRig) error { return rig.fx.Runner.Send("strand-1", "hello") }, "IdleSession", "a"},
+			{"Send_tagged_b", "b", func(rig *dispatchRig) error { return rig.fx.Runner.Send("strand-1", "hello") }, "IdleSession", "b"},
+			{"Interrupt_untagged", "", func(rig *dispatchRig) error {
 				rig.reed.CaptureQueue = []string{"RUNNING"}
 				return rig.fx.Runner.Interrupt("strand-1")
-			}, "InterruptSequence"},
+			}, "InterruptSequence", "a"},
+			{"Interrupt_tagged_b", "b", func(rig *dispatchRig) error {
+				rig.reed.CaptureQueue = []string{"RUNNING"}
+				return rig.fx.Runner.Interrupt("strand-1")
+			}, "InterruptSequence", "b"},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
 				rig := newDispatchRig(t)
 				rig.reed.StatusQueue = liveStrandStatus(true)
+				rig.reed.StatusQueue[0].Strands[0].Provider = tt.provider
 				// The fake pane never echoes the sent text, so only which engine was consulted is pinned.
 				_ = tt.call(rig)
-				requireConsulted(t, rig.a, rig.b, tt.wantMethod)
+				used, other := rig.a, rig.b
+				if tt.wantUsed == "b" {
+					used, other = rig.b, rig.a
+				}
+				requireConsulted(t, used, other, tt.wantMethod)
 			})
 		}
 	})

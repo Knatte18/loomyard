@@ -112,9 +112,10 @@ func (r *Runner) newSendContext(state RunState, runDir string) (sendContext, err
 
 // recordlessSendContext returns the context of a verified send into the pane of the live strand guid, which no run record names.
 // It keeps the runner's turn-start hold for the strand and never clears a text that did not land.
-// The send goes through the runner's default engine, and fails with the lookup's error when the set does not hold it.
-func (r *Runner) recordlessSendContext(guid string) (sendContext, error) {
-	engine, _, err := r.engineFor(RunState{})
+// The send goes through the engine provider names, the strand's provider tag, or the runner's default engine for an empty tag,
+// and fails with the lookup's error when the set does not hold it.
+func (r *Runner) recordlessSendContext(guid, provider string) (sendContext, error) {
+	engine, _, err := r.engineFor(RunState{Engine: provider})
 	if err != nil {
 		return sendContext{}, err
 	}
