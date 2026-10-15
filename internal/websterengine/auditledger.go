@@ -15,7 +15,6 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // AuditWarning is one recorded warning: the finding's identity, its class, and the detail line.
@@ -106,10 +105,10 @@ var acceptAuditHeadRefusal = headRefusal{resetStep: "lyx webster reset --to last
 // It never saves;
 // the caller holds the state-mutation lease and saves.
 //
-// A path that is one of the run's two contract files is judged by contractFileStatus before the check, over the write history engine's audit yields (nil engine: none):
+// A path that is one of the run's two contract files is judged by contractFileStatus before the check, over the write history engines' audit yields (nil engines: none):
 // a cleared one is resolved, and an uncleared one refuses naming the path, why, and the delete route.
 // The returned bool is true when a path was accepted on an absent contract file, so the caller can tell the operator Master must write the files again.
-func AcceptPendingAudit(engine shuttleengine.ForkAuditor, st *State, geom Geometry, parentBranch ParentBranchFunc) (accepted []PendingAuditFinding, onAbsentContract bool, err error) {
+func AcceptPendingAudit(engines AuditEngines, st *State, geom Geometry, parentBranch ParentBranchFunc) (accepted []PendingAuditFinding, onAbsentContract bool, err error) {
 	pending := st.PendingAuditFindings
 	var paths []string
 	pathless := false
@@ -139,7 +138,7 @@ func AcceptPendingAudit(engine shuttleengine.ForkAuditor, st *State, geom Geomet
 			return nil, false, err
 		}
 	}
-	writes, err := contractWritesFor(engine, st, geom, paths)
+	writes, err := contractWritesFor(engines, st, geom, paths)
 	if err != nil {
 		return nil, false, err
 	}

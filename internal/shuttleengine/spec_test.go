@@ -121,7 +121,7 @@ func TestSpec_Validate(t *testing.T) {
 		},
 		{
 			name: "nonsense effort is neither rejected nor changed",
-			spec: Spec{Prompt: "do the thing", OutputFiles: []string{"other.md"}, Effort: "not-a-real-effort-value"},
+			spec: Spec{Prompt: "do the thing", OutputFiles: []string{"other.md"}, ModelChoice: ModelChoice{Effort: "not-a-real-effort-value"}},
 			check: func(t *testing.T, s *Spec) {
 				if s.Effort != "not-a-real-effort-value" {
 					t.Errorf("Effort = %q, want unchanged %q", s.Effort, "not-a-real-effort-value")
@@ -139,7 +139,7 @@ func TestSpec_Validate(t *testing.T) {
 		},
 		{
 			name: "version is neither rejected nor changed",
-			spec: Spec{Prompt: "do the thing", OutputFiles: []string{"other.md"}, Version: "4.5"},
+			spec: Spec{Prompt: "do the thing", OutputFiles: []string{"other.md"}, ModelChoice: ModelChoice{Version: "4.5"}},
 			check: func(t *testing.T, s *Spec) {
 				if s.Version != "4.5" {
 					t.Errorf("Version = %q, want unchanged %q", s.Version, "4.5")
@@ -148,7 +148,7 @@ func TestSpec_Validate(t *testing.T) {
 		},
 		{
 			name: "nonsense version is neither rejected nor changed",
-			spec: Spec{Prompt: "do the thing", OutputFiles: []string{"third.md"}, Version: "weird"},
+			spec: Spec{Prompt: "do the thing", OutputFiles: []string{"third.md"}, ModelChoice: ModelChoice{Version: "weird"}},
 			check: func(t *testing.T, s *Spec) {
 				if s.Version != "weird" {
 					t.Errorf("Version = %q, want unchanged %q", s.Version, "weird")

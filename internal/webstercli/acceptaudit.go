@@ -90,7 +90,7 @@ Example:
 				return nil
 			}
 
-			pending, onAbsentContract, err := websterengine.AcceptPendingAudit(c.engine, st, c.geom, c.parentBranch)
+			pending, onAbsentContract, err := websterengine.AcceptPendingAudit(c.engines, st, c.geom, c.parentBranch)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil

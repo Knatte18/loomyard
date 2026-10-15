@@ -7,9 +7,10 @@
 //
 // A Table holds the ordered Seats and what they share: the role prefix, the loom segment, the chair's gate, the round that names every run directory, the timeout, the chair's interactivity and the marker values every seat's stencil takes.
 // An empty Round keeps the default run-directory naming.
-// A Seat names its stencil, its model choice, the files it reads (Inputs) and writes (Outputs), its skills and its own marker values.
+// A Seat names its stencil, its model choice, engine included, the files it reads (Inputs) and writes (Outputs), its skills and its own marker values.
 // An advisor Seat may also carry its own Gate, which adds a check to that advisor's run, and ForkSubagents, which authorizes the seat's session to spawn in-session fork subagents.
 // The engine audits no fork, so the caller that sets ForkSubagents owns the fork audit.
+// A Seat also lists the Requires its engine must meet and the ModelKey its model came from: the spec adds peer messaging for a table of more than one seat, whose seats message each other, and a start refusal for an unmet requirement is wrapped with the seat's key so it names the config key to change.
 // An advisor may be Required, with an Accept hook that judges its terminal result: a step then depends on that advisor's accepted output before its chair goes on.
 // A required advisor's held turn end still notifies the parent, where every other advisor holds quietly.
 // The first seat is the lead, which the engine also calls the chair, and it carries no name; every later seat carries a name the table's builder takes from a recipe or config, valid under ValidateSeatName.

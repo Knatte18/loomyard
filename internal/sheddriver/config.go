@@ -12,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 //go:embed template.yaml
@@ -196,10 +197,8 @@ func ResolveTackler(cfg Config, o Override, reg modelspec.Registry) (TacklerSett
 		maxSpawns = *o.TacklerMaxSpawns
 	}
 	return TacklerSettings{
-		Model:     resolved.Model,
-		Effort:    resolved.Params["effort"],
-		Version:   resolved.Params["version"],
-		Timeout:   timeout,
-		MaxSpawns: maxSpawns,
+		ModelChoice: shuttleengine.NewModelChoice(resolved),
+		Timeout:     timeout,
+		MaxSpawns:   maxSpawns,
 	}, nil
 }

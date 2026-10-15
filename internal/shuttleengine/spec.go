@@ -34,26 +34,8 @@ type Spec struct {
 	// relative entries and rewrites this slice in place with the resolved
 	// absolute paths.
 	OutputFiles []string
-	// Model, when non-empty, selects a specific provider model; empty
-	// defers to the engine/provider default.
-	Model string
-	// Effort, when non-empty, selects a reasoning-effort override; empty
-	// defers to the engine/provider default. Effort values are provider
-	// vocabulary — validate does NOT inspect this field at all (neither
-	// defaulting nor rejecting it); the engine is the sole validator, since
-	// only it knows which values its provider realizes. A non-empty value
-	// the engine cannot realize is a hard error from the engine (see
-	// claudeengine's validateEffort), not from Spec.validate.
-	Effort string
-	// Version, when non-empty, selects a version pin the provider engine
-	// realizes by translating (Model, Version) into a provider-specific
-	// model id; empty means no pin. Version values are provider
-	// vocabulary — validate does NOT inspect this field at all (neither
-	// defaulting nor rejecting it); the engine is the sole validator, since
-	// only it knows which values its provider realizes. A (Model, Version)
-	// pair the engine cannot realize is a hard error from the engine (see
-	// claudeengine's resolveModelID), not from Spec.validate.
-	Version string
+	// ModelChoice is the engine and the model, effort and version the run uses.
+	ModelChoice
 	// ForkSubagents, when true, authorizes this run to spawn in-session fork
 	// subagents: the engine must realize the authorization (an env flag, a
 	// hook shape — whatever its provider needs) or hard-error if it cannot.
@@ -154,9 +136,6 @@ type Spec struct {
 	// The engine runs it verbatim inside the provider's hook shell, at a compaction of this run and on no other session event.
 	// Empty for every run but the one that sets it; validate does not inspect it.
 	ContextAfterCompaction string
-	// Engine is the registered engine name the run uses, empty for the engine set's default.
-	// Start refuses a name the set does not hold; validate does not inspect it.
-	Engine string
 	// Requires lists what the run requires of its engine, from the closed set of Requirement constants.
 	// Start refuses an unknown entry and an engine that does not meet every entry, and attach checks the engine the run's record names the same way.
 	// A ForkSubagents spec requires RequirementForks without listing it, and duplicates are harmless.

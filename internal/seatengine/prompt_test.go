@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // promptGeometry returns a geometry whose stencils directory holds the shipped seat blocks and the test seat stencils.
@@ -31,7 +32,7 @@ func promptTable() Table {
 	table.Interactive = true
 	table.Values = map[string]string{"topic": "the topic"}
 	table.Seats[0].Inputs = []string{"/w/a1.md", "/w/a2.md"}
-	table.Seats[0].Model, table.Seats[0].Effort, table.Seats[0].Version = "opus", "high", "5"
+	table.Seats[0].ModelChoice = shuttleengine.ModelChoice{Engine: "claude", Model: "opus", Effort: "high", Version: "5"}
 	table.Seats[0].Skills = []string{"scribe:prose"}
 	table.Seats[1].Inputs = []string{"/w/in.md"}
 	table.Seats[1].Values = map[string]string{"focus": "the focus"}
@@ -136,8 +137,8 @@ func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
 	if chairSpec.Prompt != chairPrompt || !slices.Equal(chairSpec.OutputFiles, []string{"/w/out.md"}) {
 		t.Errorf("chair spec prompt/outputs = %q / %v, want the prompt and the chair's outputs", chairSpec.Prompt, chairSpec.OutputFiles)
 	}
-	if chairSpec.Model != "opus" || chairSpec.Effort != "high" || chairSpec.Version != "5" {
-		t.Errorf("chair spec model triple = %q/%q/%q, want opus/high/5", chairSpec.Model, chairSpec.Effort, chairSpec.Version)
+	if chairSpec.Engine != "claude" || chairSpec.Model != "opus" || chairSpec.Effort != "high" || chairSpec.Version != "5" {
+		t.Errorf("chair spec engine/model triple = %q/%q/%q/%q, want claude/opus/high/5", chairSpec.Engine, chairSpec.Model, chairSpec.Effort, chairSpec.Version)
 	}
 	if !chairSpec.Interactive || chairSpec.KeepPane || chairSpec.QuietHold {
 		t.Errorf("chair spec Interactive/KeepPane/QuietHold = %v/%v/%v, want true/false/false", chairSpec.Interactive, chairSpec.KeepPane, chairSpec.QuietHold)
@@ -170,6 +171,18 @@ func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
 	}
 	if got := seatSpec(oneSeat, oneSeat.Seats[0], "").Role; got != "multi" || oneSeatNames[""] != "ly:task:multi" {
 		t.Errorf("one-seat table role %q and strand %q, want the prefix alone", got, oneSeatNames[""])
+	}
+	if got := seatSpec(oneSeat, oneSeat.Seats[0], "").Requires; len(got) != 0 {
+		t.Errorf("lone seat spec Requires = %v, want none", got)
+	}
+	wantPeers := []shuttleengine.Requirement{shuttleengine.RequirementPeerMessaging}
+	if !slices.Equal(chairSpec.Requires, wantPeers) || !slices.Equal(advisorSpec.Requires, wantPeers) {
+		t.Errorf("table spec Requires = chair %v, advisor %v; want %v on both", chairSpec.Requires, advisorSpec.Requires, wantPeers)
+	}
+	wakeSeat := table.Seats[0]
+	wakeSeat.Requires = []shuttleengine.Requirement{shuttleengine.RequirementBackgroundWake}
+	if got, want := seatSpec(table, wakeSeat, "").Requires, []shuttleengine.Requirement{shuttleengine.RequirementBackgroundWake, shuttleengine.RequirementPeerMessaging}; !slices.Equal(got, want) {
+		t.Errorf("seat spec Requires with its own background-wake = %v, want %v", got, want)
 	}
 	requiredSpec := seatSpec(table, Seat{Name: advisorName(1), Required: true}, "")
 	if requiredSpec.QuietHold || !requiredSpec.KeepPane {

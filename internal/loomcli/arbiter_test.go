@@ -129,7 +129,7 @@ func newArbiterFixture(t *testing.T, producer string, state shedengine.State) *a
 		},
 		stopEnvelope:     `{"ok":false,"kind":"","transient":""}`,
 		escalationCause:  shedadapters.EscalationCircling,
-		settings:         loomengine.ArbiterSettings{Model: "claude-resolved", Effort: "high", Version: "v1", Timeout: 30 * time.Minute, MaxSpawns: 3},
+		settings:         loomengine.ArbiterSettings{ModelChoice: shuttleengine.ModelChoice{Model: "claude-resolved", Effort: "high", Version: "v1"}, Timeout: 30 * time.Minute, MaxSpawns: 3},
 		fake:             &arbiterFake{runGUID: "guid-1"},
 		interruptPolicy:  map[string]string{},
 		producerRowNames: []string{"Plan-Write", "Plan-Bouncer", loomshed.NamePublish, "PR-Gate"},

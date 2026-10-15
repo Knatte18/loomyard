@@ -276,7 +276,7 @@ func TestSmokeTurnsLongBackgroundShell(t *testing.T) {
 		Prompt: fmt.Sprintf("Run the shell command `sleep 90` with the Bash tool's run_in_background option, then end your turn at once without writing any file. "+
 			"When you are told the command finished, write exactly DONE to %s and end your turn.", output),
 		OutputFiles: []string{output},
-		Model:       smokeClaudeModel,
+		ModelChoice: shuttleengine.ModelChoice{Model: smokeClaudeModel},
 	})
 	requireOutstanding(t, w.awaitTurnEnds(1)[0], shuttleengine.BackgroundShell)
 	w.finishDone()
@@ -291,7 +291,7 @@ func TestSmokeTurnsShellFinishesMidTurn(t *testing.T) {
 		Prompt: fmt.Sprintf("Do all of this in one turn, without ending it in between: run `sleep 5` with the Bash tool's run_in_background option, "+
 			"then run `sleep 30` in the foreground, then write exactly DONE to %s, then end your turn.", output),
 		OutputFiles: []string{output},
-		Model:       smokeClaudeModel,
+		ModelChoice: shuttleengine.ModelChoice{Model: smokeClaudeModel},
 	})
 	w.finishDone()
 	ends := w.turnEnds()
@@ -311,7 +311,7 @@ func TestSmokeTurnsMonitor(t *testing.T) {
 		Prompt: fmt.Sprintf("Use the Monitor tool to watch the command `sleep 60; echo finished`, then end your turn at once without writing any file. "+
 			"When the monitor reports finished, write exactly DONE to %s and end your turn.", output),
 		OutputFiles: []string{output},
-		Model:       smokeClaudeModel,
+		ModelChoice: shuttleengine.ModelChoice{Model: smokeClaudeModel},
 	})
 	requireOutstanding(t, w.awaitTurnEnds(1)[0], shuttleengine.BackgroundShell)
 	w.finishDone()
@@ -325,7 +325,7 @@ func TestSmokeTurnsFork(t *testing.T) {
 		Prompt: fmt.Sprintf("Launch one forked subagent with the Agent tool, subagent_type fork, in the background, whose whole task is to run `sleep 45` and reply OK. "+
 			"Then end your turn at once without writing any file. When the fork returns, write exactly DONE to %s and end your turn.", output),
 		OutputFiles:   []string{output},
-		Model:         smokeClaudeModel,
+		ModelChoice:   shuttleengine.ModelChoice{Model: smokeClaudeModel},
 		ForkSubagents: true,
 	})
 	requireOutstanding(t, w.awaitTurnEnds(1)[0], shuttleengine.BackgroundFork)
@@ -341,7 +341,7 @@ func TestSmokeTurnsForkPermissionAsk(t *testing.T) {
 		Prompt: fmt.Sprintf("Launch one forked subagent with the Agent tool, subagent_type fork, whose whole task is to run the one Bash command `rm -f ./smoke-ask-$$` and reply OK. "+
 			"Then wait for it. When the fork returns, write exactly DONE to %s and end your turn.", output),
 		OutputFiles:   []string{output},
-		Model:         smokeClaudeModel,
+		ModelChoice:   shuttleengine.ModelChoice{Model: smokeClaudeModel},
 		ForkSubagents: true,
 	})
 	w.awaitSignal(shuttleengine.SessionSignalAsk, false)
@@ -359,7 +359,7 @@ func TestSmokeTurnsMessageMidTurn(t *testing.T) {
 	w := startTurnScenario(t, hub, shuttleengine.Spec{
 		Prompt:      fmt.Sprintf("Run `sleep 40` in the foreground, then write exactly DONE to %s, then end your turn.", output),
 		OutputFiles: []string{output},
-		Model:       smokeClaudeModel,
+		ModelChoice: shuttleengine.ModelChoice{Model: smokeClaudeModel},
 	})
 	time.Sleep(15 * time.Second)
 	if err := w.run.Send(shuttleengine.WithMessageTail("Say in one line what you are doing.")); err != nil {
@@ -375,7 +375,7 @@ func TestSmokeTurnsSkillLoad(t *testing.T) {
 	w := startTurnScenario(t, hub, shuttleengine.Spec{
 		Prompt:      fmt.Sprintf("Write exactly DONE to %s, then end your turn.", output),
 		OutputFiles: []string{output},
-		Model:       smokeClaudeModel,
+		ModelChoice: shuttleengine.ModelChoice{Model: smokeClaudeModel},
 		Skills:      []string{"scribe:prose"},
 	})
 	w.finishDone()
@@ -392,7 +392,7 @@ func TestSmokeTurnsCompact(t *testing.T) {
 		Prompt: fmt.Sprintf("Run the shell command `sleep 60` with the Bash tool's run_in_background option, then end your turn at once without writing any file. "+
 			"When you are told the command finished, write exactly DONE to %s and end your turn.", output),
 		OutputFiles: []string{output},
-		Model:       smokeClaudeModel,
+		ModelChoice: shuttleengine.ModelChoice{Model: smokeClaudeModel},
 	})
 	requireOutstanding(t, w.awaitTurnEnds(1)[0], shuttleengine.BackgroundShell)
 	if err := hub.runner.CompactSession(w.run.StrandGUID(), ""); err != nil {
@@ -410,7 +410,7 @@ func TestSmokeTurnsSessionHooks(t *testing.T) {
 	w := startTurnScenario(t, hub, shuttleengine.Spec{
 		Prompt:      "Reply with one short line saying READY, and write no file.",
 		OutputFiles: []string{output},
-		Model:       smokeClaudeModel,
+		ModelChoice: shuttleengine.ModelChoice{Model: smokeClaudeModel},
 		Interactive: true,
 	})
 
@@ -636,7 +636,7 @@ func TestSmokeTurnsHookCapture(t *testing.T) {
 	w := startTurnScenario(t, hub, shuttleengine.Spec{
 		Prompt:         "Reply with one short line saying READY, and write no file.",
 		OutputFiles:    []string{output},
-		Model:          smokeClaudeModel,
+		ModelChoice:    shuttleengine.ModelChoice{Model: smokeClaudeModel},
 		Interactive:    true,
 		KeepPane:       true,
 		PermissionMode: "prompt",

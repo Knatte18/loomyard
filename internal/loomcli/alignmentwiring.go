@@ -43,7 +43,7 @@ func alignmentSettings(cfg loomengine.Config, registry modelspec.Registry) (alig
 	if err != nil {
 		return alignment.Settings{}, err
 	}
-	return alignment.Settings{Model: resolved.Model, Effort: resolved.Effort, Version: resolved.Version, Timeout: resolved.Timeout}, nil
+	return alignment.Settings{ModelChoice: resolved.ModelChoice, Timeout: resolved.Timeout}, nil
 }
 
 // hubBoardTasks returns the production board read: every task of the hub's board, opened on each call.

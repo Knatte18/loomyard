@@ -28,10 +28,12 @@ func TestEngine_Review_TableShape(t *testing.T) {
 	t.Parallel()
 
 	opts := RunOpts{
-		Review:  ModelChoice{Model: "haiku", Effort: "low", Version: "5"},
-		Fix:     ModelChoice{Model: "opus", Effort: "high"},
+		Review:  shuttleengine.ModelChoice{Engine: "b", Model: "haiku", Effort: "low", Version: "5"},
+		Fix:     shuttleengine.ModelChoice{Model: "opus", Effort: "high"},
 		Timeout: 5 * time.Minute,
 		Round:   "1",
+
+		ReviewKey: shuttleengine.ModelKey{Module: "loom", Key: "fan_review"},
 	}
 	tests := []struct {
 		name           string
@@ -94,14 +96,17 @@ func TestEngine_Review_TableShape(t *testing.T) {
 			if !slices.Equal(spec.Skills, tt.wantSkills) {
 				t.Errorf("spec.Skills = %v; want %v", spec.Skills, tt.wantSkills)
 			}
-			if spec.Model != opts.Review.Model || spec.Effort != opts.Review.Effort || spec.Version != opts.Review.Version {
-				t.Errorf("spec model = (%q, %q, %q); want %+v", spec.Model, spec.Effort, spec.Version, opts.Review)
+			if spec.ModelChoice != opts.Review {
+				t.Errorf("spec model choice = %+v; want %+v", spec.ModelChoice, opts.Review)
 			}
 			if spec.Timeout != opts.Timeout || spec.Round != opts.Round || spec.Interactive {
 				t.Errorf("spec timeout %v, round %q, interactive %v; want %v, %q, false", spec.Timeout, spec.Round, spec.Interactive, opts.Timeout, opts.Round)
 			}
 			if spec.ForkSubagents != tt.wantForkFlag {
 				t.Errorf("spec.ForkSubagents = %v; want %v", spec.ForkSubagents, tt.wantForkFlag)
+			}
+			if seat := p.reviewTable(opts, nil, nil).Seats[0]; seat.ModelKey != opts.ReviewKey {
+				t.Errorf("reviewer seat ModelKey = %+v; want opts.ReviewKey %+v", seat.ModelKey, opts.ReviewKey)
 			}
 			gate := shuttle.gates[tt.wantRole]
 			if len(gate) != 1 || gate[0].Name != "review" || !gate[0].PassOnCap || gate[0].Attempts != reviewGateAttempts {
@@ -140,8 +145,10 @@ func TestEngine_Review_Outcomes(t *testing.T) {
 		// wantGateReason is the Reason of the reviewer's Gate the result must carry, and wantNilGate marks a reviewer that never ran gated.
 		wantGateReason string
 		wantNilGate    bool
+		// wantEngine is the engine the reviewer's half must carry from the scripted result.
+		wantEngine string
 	}{
-		{name: "an accepted blocking review", script: halfScript{result: done, writes: blockingReview}, wantOutcome: shuttleengine.OutcomeDone, wantVerdict: VerdictBlocking, wantFindings: 1},
+		{name: "an accepted blocking review", script: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Engine: "claude"}, writes: blockingReview}, wantOutcome: shuttleengine.OutcomeDone, wantVerdict: VerdictBlocking, wantFindings: 1, wantEngine: "claude"},
 		{name: "an accepted approved review", script: halfScript{result: done, writes: approvedReview}, wantOutcome: shuttleengine.OutcomeDone, wantVerdict: VerdictApproved},
 		{name: "a review missing a finding's fix is refused by the strict parse", script: halfScript{result: done, writes: noFixReview}, wantOutcome: shuttleengine.OutcomeDone, wantErrText: "missing a non-empty fix"},
 		{name: "an unparseable review is refused", script: halfScript{result: done, writes: malformedReview}, wantOutcome: shuttleengine.OutcomeDone, wantErrText: "round reached done but its review file is invalid"},
@@ -182,6 +189,9 @@ func TestEngine_Review_Outcomes(t *testing.T) {
 			}
 			if (got.Gate == nil) != tt.wantNilGate || (got.Gate != nil && got.Gate.Reason != tt.wantGateReason) {
 				t.Errorf("Gate = %+v; want the reviewer's gate with reason %q, nil %v", got.Gate, tt.wantGateReason, tt.wantNilGate)
+			}
+			if got.Review.Engine != tt.wantEngine {
+				t.Errorf("Review.Engine = %q; want %q", got.Review.Engine, tt.wantEngine)
 			}
 			if got.Verdict != tt.wantVerdict || len(got.Findings) != tt.wantFindings {
 				t.Errorf("verdict %q with %d findings; want %q with %d", got.Verdict, len(got.Findings), tt.wantVerdict, tt.wantFindings)

@@ -22,14 +22,9 @@ const (
 	tacklerCauseCaseBrief = "case-brief"
 )
 
-// TacklerSettings is the tackler role's resolved model settings, timeout and spawn budget, threaded onto the tackler session's launch spec.
+// TacklerSettings is the tackler role's resolved model choice, timeout and spawn budget, threaded onto the tackler session's launch spec.
 type TacklerSettings struct {
-	// Model is the resolved provider-side model string.
-	Model string
-	// Effort is the resolved "effort" parameter, empty when unset.
-	Effort string
-	// Version is the resolved "version" parameter, empty when unset.
-	Version string
+	shuttleengine.ModelChoice
 	// Timeout is how long one tackler spawn may run.
 	Timeout time.Duration
 	// MaxSpawns is how many tackler spawns a run may use; zero turns the tackler off.

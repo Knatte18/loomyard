@@ -195,6 +195,9 @@ func TestReflect_OneNote_SpawnsAndArchives(t *testing.T) {
 		t.Fatalf("Shuttle.Run called %d times; want 1", len(shuttle.Specs))
 	}
 	spec := shuttle.Specs[0]
+	if spec.Engine != "claude" {
+		t.Errorf("Spec.Engine = %q; want %q", spec.Engine, "claude")
+	}
 	if spec.Model != "sonnet" {
 		t.Errorf("Spec.Model = %q; want %q", spec.Model, "sonnet")
 	}
@@ -218,6 +221,9 @@ func TestReflect_OneNote_SpawnsAndArchives(t *testing.T) {
 	}
 	if len(spec.OutputFiles) == 0 {
 		t.Error("Spec.OutputFiles is empty; want at least one entry")
+	}
+	if len(spec.Requires) != 0 {
+		t.Errorf("Spec.Requires = %v; want none", spec.Requires)
 	}
 	if !strings.Contains(spec.Prompt, deps.FrictionDir) {
 		t.Errorf("Spec.Prompt does not name the friction directory %q", deps.FrictionDir)
