@@ -314,8 +314,8 @@ func TestBurlerReviewProducer_Call_ProfileAndOpts(t *testing.T) {
 	spec.profile.PriorReviews = []string{"template-review.md"}
 	spec.opts = burlerengine.RunOpts{Timeout: 7 * time.Minute}
 	spec.models = burlerengine.RoundModels{
-		Review: []burlerengine.ModelChoice{{Model: "r1"}, {Model: "r2"}, {Model: "r3"}},
-		Fix:    []burlerengine.ModelChoice{{Model: "f1"}},
+		Review: []shuttleengine.ModelChoice{{Model: "r1"}, {Model: "r2"}, {Model: "r3"}},
+		Fix:    []shuttleengine.ModelChoice{{Model: "f1"}},
 	}
 	runner := &shedfake.BurlerHalfRunner{ReviewResults: []burlerengine.ReviewResult{reviewDone("d")}}
 	p := newReviewProducer(t, runDir, runner, spec)
@@ -351,7 +351,7 @@ func TestBurlerReviewProducer_Call_AcceptedReviewIsRecorded(t *testing.T) {
 	runDir := t.TempDir()
 	spec := newHalfSpec()
 	spec.profile.ClusterFan = "fanX"
-	spec.models = burlerengine.RoundModels{Review: []burlerengine.ModelChoice{{Model: "reviewer", Effort: "low"}}}
+	spec.models = burlerengine.RoundModels{Review: []shuttleengine.ModelChoice{{Model: "reviewer", Effort: "low"}}}
 	started := time.Date(2026, 8, 16, 15, 0, 0, 0, time.UTC)
 	result := burlerengine.ReviewResult{
 		Outcome: shuttleengine.OutcomeDone,

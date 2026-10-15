@@ -85,8 +85,8 @@ func (p *Profile) segment() segmentcolor.Segment {
 // zero values defer to engine/config default.
 type RunOpts struct {
 	// Review and Fix are the reviewer's and the fixer's model choices.
-	Review  ModelChoice
-	Fix     ModelChoice
+	Review  shuttleengine.ModelChoice
+	Fix     shuttleengine.ModelChoice
 	Timeout time.Duration
 	Round   string
 	// NoteID is the caller-supplied friction-note stem for this round --

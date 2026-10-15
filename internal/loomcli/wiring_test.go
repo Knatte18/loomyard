@@ -17,7 +17,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
@@ -34,6 +33,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
@@ -869,25 +869,25 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	// Each Bouncer row takes its segment's resolved pair: the template's judge is sonnet of effort medium.
 	wantBouncerModels := map[string]shedadapters.BouncerModels{
 		loomshed.NameDiscussionBouncer: {
-			Seed:  burlerengine.ModelChoice{Model: "haiku", Effort: "low"},
-			Judge: burlerengine.ModelChoice{Model: "sonnet", Effort: "medium"},
+			Seed:  shuttleengine.ModelChoice{Engine: "claude", Model: "haiku", Effort: "low"},
+			Judge: shuttleengine.ModelChoice{Engine: "claude", Model: "sonnet", Effort: "medium"},
 		},
 		loomshed.NamePlanBouncer: {
-			Seed:  burlerengine.ModelChoice{Model: "haiku", Effort: "low"},
-			Judge: burlerengine.ModelChoice{Model: "opus", Effort: "high"},
+			Seed:  shuttleengine.ModelChoice{Engine: "claude", Model: "haiku", Effort: "low"},
+			Judge: shuttleengine.ModelChoice{Engine: "claude", Model: "opus", Effort: "high"},
 		},
 		loomshed.NameWebsterBouncer: {
-			Seed:  burlerengine.ModelChoice{Model: "opus", Effort: "low"},
-			Judge: burlerengine.ModelChoice{Model: "sonnet", Effort: "medium"},
+			Seed:  shuttleengine.ModelChoice{Engine: "claude", Model: "opus", Effort: "low"},
+			Judge: shuttleengine.ModelChoice{Engine: "claude", Model: "sonnet", Effort: "medium"},
 		},
 		// The merge review and the darn recipe's Darn-Review perch take Webster-Review's pair.
 		loomshed.NameMergeBouncer: {
-			Seed:  burlerengine.ModelChoice{Model: "opus", Effort: "low"},
-			Judge: burlerengine.ModelChoice{Model: "sonnet", Effort: "medium"},
+			Seed:  shuttleengine.ModelChoice{Engine: "claude", Model: "opus", Effort: "low"},
+			Judge: shuttleengine.ModelChoice{Engine: "claude", Model: "sonnet", Effort: "medium"},
 		},
 		loomshed.NameDarnBouncer: {
-			Seed:  burlerengine.ModelChoice{Model: "opus", Effort: "low"},
-			Judge: burlerengine.ModelChoice{Model: "sonnet", Effort: "medium"},
+			Seed:  shuttleengine.ModelChoice{Engine: "claude", Model: "opus", Effort: "low"},
+			Judge: shuttleengine.ModelChoice{Engine: "claude", Model: "sonnet", Effort: "medium"},
 		},
 	}
 	if !reflect.DeepEqual(c.env.RowBouncerModels, wantBouncerModels) {

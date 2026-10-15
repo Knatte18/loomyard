@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
@@ -161,8 +161,8 @@ func newBouncerFixture(t *testing.T, opts ...bouncerFixtureOpt) *bouncerFixture 
 		}
 	} else {
 		cfg.Models = BouncerModels{
-			Seed:  burlerengine.ModelChoice{Model: "claude-seed", Effort: "low", Version: "v1"},
-			Judge: burlerengine.ModelChoice{Model: "claude-judge", Effort: "high", Version: "v2"},
+			Seed:  shuttleengine.ModelChoice{Engine: "s", Model: "claude-seed", Effort: "low", Version: "v1"},
+			Judge: shuttleengine.ModelChoice{Engine: "j", Model: "claude-judge", Effort: "high", Version: "v2"},
 		}
 	}
 	return &bouncerFixture{t: t, Config: cfg, StencilsDir: cfg.StencilsDir}

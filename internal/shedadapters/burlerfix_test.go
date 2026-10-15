@@ -125,7 +125,7 @@ func TestBurlerFixProducer_Call_FinishedFixIsRecorded(t *testing.T) {
 			}
 			spec := newHalfSpec()
 			spec.opts = burlerengine.RunOpts{Timeout: 3 * time.Minute, Gate: shuttleengine.GateSpec{{Name: "verify", Attempts: 1}}}
-			spec.models = burlerengine.RoundModels{Fix: []burlerengine.ModelChoice{{Model: "f1"}, {Model: "f2"}}}
+			spec.models = burlerengine.RoundModels{Fix: []shuttleengine.ModelChoice{{Model: "f1"}, {Model: "f2"}}}
 			runner := &shedfake.BurlerHalfRunner{FixResults: []burlerengine.FixResult{tt.result}}
 			p := newFixProducer(t, runDir, runner, spec)
 

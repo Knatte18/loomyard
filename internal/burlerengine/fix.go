@@ -63,7 +63,7 @@ func (p *Profile) fixTable(opts RunOpts, values map[string]string, skills []stri
 		Seats: []seatengine.Seat{
 			{
 				Stencil:     "burler-template-fixer",
-				ModelChoice: shuttleengine.ModelChoice{Model: opts.Fix.Model, Effort: opts.Fix.Effort, Version: opts.Fix.Version},
+				ModelChoice: opts.Fix,
 				Inputs:      []string{p.ReviewPath},
 				Outputs:     []string{p.FixerReportPath},
 				Skills:      skills,

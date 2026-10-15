@@ -12,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
@@ -264,16 +265,16 @@ func TestBurlerHalfEntries_EnvFallback(t *testing.T) {
 			t.Run("RowOmitsTakesEnvValues", func(t *testing.T) {
 				env := newTestEnv(t)
 				env.ReviewModels = burlerengine.RoundModels{
-					Review: []burlerengine.ModelChoice{{Model: "env-model", Effort: "env-effort"}},
-					Fix:    []burlerengine.ModelChoice{{Model: "env-fix-model", Effort: "env-fix-effort"}},
+					Review: []shuttleengine.ModelChoice{{Model: "env-model", Effort: "env-effort"}},
+					Fix:    []shuttleengine.ModelChoice{{Model: "env-fix-model", Effort: "env-fix-effort"}},
 				}
 				env.ReviewTimeout = 45 * time.Second
 
 				_, opts := half.capture(t, "a-row", half.cfg(), env)
-				if want := (burlerengine.ModelChoice{Model: "env-model", Effort: "env-effort"}); opts.Review != want {
+				if want := (shuttleengine.ModelChoice{Model: "env-model", Effort: "env-effort"}); opts.Review != want {
 					t.Errorf("opts.Review = %+v; want %+v", opts.Review, want)
 				}
-				if want := (burlerengine.ModelChoice{Model: "env-fix-model", Effort: "env-fix-effort"}); opts.Fix != want {
+				if want := (shuttleengine.ModelChoice{Model: "env-fix-model", Effort: "env-fix-effort"}); opts.Fix != want {
 					t.Errorf("opts.Fix = %+v; want %+v", opts.Fix, want)
 				}
 				if opts.Timeout != 45*time.Second {
@@ -284,13 +285,13 @@ func TestBurlerHalfEntries_EnvFallback(t *testing.T) {
 			t.Run("RowMapEntryReplacesEnvModelsForItsOwnRowOnly", func(t *testing.T) {
 				env := newTestEnv(t)
 				env.ReviewModels = burlerengine.RoundModels{
-					Review: []burlerengine.ModelChoice{{Model: "env-model"}},
-					Fix:    []burlerengine.ModelChoice{{Model: "env-fix-model"}},
+					Review: []shuttleengine.ModelChoice{{Model: "env-model"}},
+					Fix:    []shuttleengine.ModelChoice{{Model: "env-fix-model"}},
 				}
 				env.RowReviewModels = map[string]burlerengine.RoundModels{
 					"a-row": {
-						Review: []burlerengine.ModelChoice{{Model: "row-model"}},
-						Fix:    []burlerengine.ModelChoice{{Model: "row-fix-model"}},
+						Review: []shuttleengine.ModelChoice{{Model: "row-model"}},
+						Fix:    []shuttleengine.ModelChoice{{Model: "row-fix-model"}},
 					},
 				}
 
@@ -321,7 +322,7 @@ func TestBurlerHalfEntries_EnvFallback(t *testing.T) {
 
 			t.Run("BothAbsentLeavesZeroValues", func(t *testing.T) {
 				_, opts := half.capture(t, "a-row", half.cfg(), newTestEnv(t))
-				if opts.Review != (burlerengine.ModelChoice{}) || opts.Fix != (burlerengine.ModelChoice{}) {
+				if opts.Review != (shuttleengine.ModelChoice{}) || opts.Fix != (shuttleengine.ModelChoice{}) {
 					t.Errorf("opts models = (%+v, %+v); want the zero choices", opts.Review, opts.Fix)
 				}
 				if opts.Timeout != 0 {

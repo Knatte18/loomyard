@@ -28,8 +28,8 @@ func TestEngine_Review_TableShape(t *testing.T) {
 	t.Parallel()
 
 	opts := RunOpts{
-		Review:  ModelChoice{Model: "haiku", Effort: "low", Version: "5"},
-		Fix:     ModelChoice{Model: "opus", Effort: "high"},
+		Review:  shuttleengine.ModelChoice{Engine: "b", Model: "haiku", Effort: "low", Version: "5"},
+		Fix:     shuttleengine.ModelChoice{Model: "opus", Effort: "high"},
 		Timeout: 5 * time.Minute,
 		Round:   "1",
 	}
@@ -94,8 +94,8 @@ func TestEngine_Review_TableShape(t *testing.T) {
 			if !slices.Equal(spec.Skills, tt.wantSkills) {
 				t.Errorf("spec.Skills = %v; want %v", spec.Skills, tt.wantSkills)
 			}
-			if spec.Model != opts.Review.Model || spec.Effort != opts.Review.Effort || spec.Version != opts.Review.Version {
-				t.Errorf("spec model = (%q, %q, %q); want %+v", spec.Model, spec.Effort, spec.Version, opts.Review)
+			if spec.ModelChoice != opts.Review {
+				t.Errorf("spec model choice = %+v; want %+v", spec.ModelChoice, opts.Review)
 			}
 			if spec.Timeout != opts.Timeout || spec.Round != opts.Round || spec.Interactive {
 				t.Errorf("spec timeout %v, round %q, interactive %v; want %v, %q, false", spec.Timeout, spec.Round, spec.Interactive, opts.Timeout, opts.Round)

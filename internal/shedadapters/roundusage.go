@@ -56,7 +56,7 @@ func roundUsagePath(runDir string, n int) string {
 }
 
 // newHalfUsage builds one half's record from the model it ran on and the half's run times and token reading.
-func newHalfUsage(model burlerengine.ModelChoice, half burlerengine.Half) halfUsage {
+func newHalfUsage(model shuttleengine.ModelChoice, half burlerengine.Half) halfUsage {
 	record := halfUsage{
 		Model:       model.Model,
 		Effort:      model.Effort,
@@ -77,7 +77,7 @@ func newHalfUsage(model burlerengine.ModelChoice, half burlerengine.Half) halfUs
 
 // newPassUsage builds the entry of one Bouncer pass from the model it ran on and the shuttle result's run times and token reading.
 // The fork fields stay unset.
-func newPassUsage(model burlerengine.ModelChoice, result shuttleengine.Result) halfUsage {
+func newPassUsage(model shuttleengine.ModelChoice, result shuttleengine.Result) halfUsage {
 	return newHalfUsage(model, burlerengine.Half{StartedAt: result.StartedAt, EndedAt: result.EndedAt, Usage: result.Usage})
 }
 

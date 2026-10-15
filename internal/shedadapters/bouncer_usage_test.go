@@ -8,14 +8,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
 // requirePassEntry fails t unless entry holds model, the 90-second run and the known 1000-fresh, 5000-cache-read reading, with no fork fields.
-func requirePassEntry(t *testing.T, entry halfUsage, model burlerengine.ModelChoice, started time.Time) {
+func requirePassEntry(t *testing.T, entry halfUsage, model shuttleengine.ModelChoice, started time.Time) {
 	t.Helper()
 	if entry.Model != model.Model || entry.Effort != model.Effort {
 		t.Errorf("entry model, effort = %q, %q; want %q, %q", entry.Model, entry.Effort, model.Model, model.Effort)

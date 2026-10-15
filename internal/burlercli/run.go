@@ -179,8 +179,8 @@ the config default.`,
 			}
 
 			opts := burlerengine.RunOpts{
-				Review:  burlerengine.ModelChoice{Model: reviewModel, Effort: reviewEffort},
-				Fix:     burlerengine.ModelChoice{Model: fixModel, Effort: fixEffort},
+				Review:  shuttleengine.ModelChoice{Model: reviewModel, Effort: reviewEffort},
+				Fix:     shuttleengine.ModelChoice{Model: fixModel, Effort: fixEffort},
 				Timeout: timeout,
 				Round:   round,
 			}

@@ -839,6 +839,9 @@ fixer-report-path: reviews/fixer-report.md
 		got := map[string][2]string{}
 		for _, spec := range shuttle.specs {
 			got[spec.Role] = [2]string{spec.Model, spec.Effort}
+			if spec.Engine != "" {
+				t.Errorf("%s spec engine = %q; want empty, the default engine", spec.Role, spec.Engine)
+			}
 		}
 		want := map[string][2]string{reviewChairRole: {"rm", "re"}, fixChairRole: {"fm", "fe"}}
 		if len(got) != len(want) || got[reviewChairRole] != want[reviewChairRole] || got[fixChairRole] != want[fixChairRole] {
