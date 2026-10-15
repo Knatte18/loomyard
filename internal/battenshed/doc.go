@@ -60,7 +60,8 @@
 // A driver that is alive but parked -- a provider waiting on an interactive prompt its launcher never answered -- or that stops of its own accord with the run still non-terminal is told apart from a working one only by the quiet window, or by an API-error notice when the stall is one; an operator attaches to the child's session to tell the cases apart.
 //
 // A batten run starts with "lyx batten run <slug>" in a terminal, or with "--window" in its own tmux window of the orch's reed session, which returns at once.
-// The tmux window lives as long as the reed session, and a second batten for the slug is refused by the run's own lock inside the window, in batten's own log.
+// The tmux window lives as long as the reed session, and a second batten for the slug is refused by the run's own driver lock inside the window, in batten's own log.
+// "lyx batten run" steps the lifecycle through the Go driver, so an unexpected stop meets the driver's rule table and a cold tackler before the orch, and the driver lock refuses a second run for the slug.
 //
 // Between Seed-Child and Run-Shed, three switched rows run shedadapters' switched producer: Open-Window opens the operator's terminal window attached to the pair's reed session, Seed-IDE writes the pair's VS Code colour and .vscode/ config, and Open-IDE opens VS Code on the pair.
 // Each runs its action only when its batten.yaml flag is on, open_window, seed_ide and open_ide in turn, of which only open_ide is off by default, and is Done either way, a failed action only warning.
