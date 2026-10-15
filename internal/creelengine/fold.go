@@ -99,6 +99,8 @@ type withheldEntry struct {
 type reminderEntry struct {
 	At   time.Time
 	Step int
+	// Unread is the ids the reminder listed, oldest first.
+	Unread []int64
 }
 
 // LogEntry is one event as the log verb shows it: ids, parties, time and subject, never a body.
@@ -205,7 +207,7 @@ func (p *pool) apply(rec record, day string) {
 	case eventPosted:
 		p.applyPosted(rec, day)
 	case eventReminded:
-		p.reminders[rec.To] = reminderEntry{At: rec.At, Step: rec.Step}
+		p.reminders[rec.To] = reminderEntry{At: rec.At, Step: rec.Step, Unread: rec.Unread}
 	case eventRead:
 		p.applyRead(rec)
 		// A read with no id only makes a program's mailbox known and is no event for the log.

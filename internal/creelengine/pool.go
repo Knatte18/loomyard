@@ -40,6 +40,10 @@ type Store struct {
 	waiters  map[waitKey][]*Waiter
 	wakeHook func(receiver string)
 	wakes    []string
+	// mailSeq counts the posts, replies, forwards, returns and injects that put something new in the pool.
+	mailSeq uint64
+	// agedWritten maps an inject id to the consumed seconds its last aged event recorded.
+	agedWritten map[int64]int64
 }
 
 // OpenStore folds the journal under geom.JournalDir into a pool and opens the journal for appending.
@@ -54,7 +58,7 @@ func OpenStore(geom Geometry, delivery Delivery, clock Clock) (*Store, error) {
 	}
 	return &Store{
 		geom: geom, delivery: delivery, clock: clock, state: state, writer: writer,
-		reserved: map[int64]string{}, waiters: map[waitKey][]*Waiter{},
+		reserved: map[int64]string{}, waiters: map[waitKey][]*Waiter{}, agedWritten: map[int64]int64{},
 	}, nil
 }
 

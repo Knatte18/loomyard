@@ -40,6 +40,7 @@ func (s *Store) deliverMailLocked(id int64, receiver string) error {
 		return err
 	}
 	s.answerLocked(waitKey{kind: waitHolder, holder: receiver}, Outcome{Kind: OutcomeMail})
+	s.mailSeq++
 	s.wakeLocked(receiver)
 	return nil
 }
@@ -354,6 +355,7 @@ func (s *Store) inject(sender Sender, receiver, text string, ttl time.Duration, 
 				return err
 			}
 		}
+		s.mailSeq++
 		s.wakeLocked(target.Name)
 		return nil
 	})

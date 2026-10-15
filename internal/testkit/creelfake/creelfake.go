@@ -270,20 +270,30 @@ func (c *Clock) Waits() []time.Duration {
 // AwaitWaits blocks until at least n durations have been passed to After and returns all of them.
 // It gives up after a real ten seconds and returns what it has, so a test that never reaches n fails on its own assertion instead of hanging.
 func (c *Clock) AwaitWaits(n int) []time.Duration {
+	return c.AwaitWaitsWhere(n, nil)
+}
+
+// AwaitWaitsWhere is AwaitWaits counting and returning only the durations keep accepts, in order; a nil keep accepts all.
+// It tells apart the waits of loops that share the clock.
+func (c *Clock) AwaitWaitsWhere(n int, keep func(time.Duration) bool) []time.Duration {
 	deadline := time.After(10 * time.Second)
 	for {
 		c.mu.Lock()
-		if len(c.waits) >= n {
-			waits := append([]time.Duration(nil), c.waits...)
-			c.mu.Unlock()
-			return waits
+		var kept []time.Duration
+		for _, wait := range c.waits {
+			if keep == nil || keep(wait) {
+				kept = append(kept, wait)
+			}
 		}
 		changed := c.changed
 		c.mu.Unlock()
+		if len(kept) >= n {
+			return kept
+		}
 		select {
 		case <-changed:
 		case <-deadline:
-			return c.Waits()
+			return kept
 		}
 	}
 }

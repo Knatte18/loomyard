@@ -38,6 +38,8 @@ var unboundedWaitFiles = []string{
 	"internal/shedverbs/loop.go",
 	"internal/shedverbs/loopwatchdog.go",
 	"internal/statuspane/pane.go",
+	"internal/creelengine/deliver.go",
+	"internal/creelengine/sweep.go",
 }
 
 // oneShotMarker opens the comment that lets a sub-second literal through on its own line, followed by the reason.

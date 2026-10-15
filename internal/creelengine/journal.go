@@ -91,6 +91,8 @@ type record struct {
 	Notice string `json:"notice,omitempty"`
 	// Step is the reminder backoff step of a reminded record.
 	Step int `json:"step,omitempty"`
+	// Unread is the set of message ids a reminded record reminded about.
+	Unread []int64 `json:"unread,omitempty"`
 	// Of names the entry a carried record snapshots: posted for a message or inject, held for a hold.
 	Of string `json:"of,omitempty"`
 	// OrigAt is the time a carried entry was first recorded, and ReceiverAt the time its returned message ended unread.
