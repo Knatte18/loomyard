@@ -1,8 +1,9 @@
 // engine.go defines the provider seam: the Engine interface every LLM adapter implements,
 // and the plain value types that cross it (Launch, PaneInput, Event, StartupState, Outcome).
-// shuttleengine owns this seam and never imports a concrete engine — the provider-seam import rule,
-// enforced by seam_enforcement_test.go — so a second provider only ever needs to satisfy Engine,
-// never touch the run loop or CLI machinery.
+// shuttleengine owns this seam and never imports a concrete engine;
+// only internal/shuttleengines and an engine's own directory do.
+// That is the provider-seam import rule, enforced by seam_enforcement_test.go.
+// A further provider only ever needs to satisfy Engine and register in internal/shuttleengines, never touch the run loop or CLI machinery.
 
 package shuttleengine
 
@@ -136,6 +137,7 @@ const (
 // import rule);
 // concrete engines (e.g.
 // claudeengine) import shuttleengine and satisfy this interface.
+// Only internal/shuttleengines constructs or imports them.
 type Engine interface {
 	// Prepare writes provider-specific artifacts (prompt file, settings/hooks) and returns opaque Launch command strings.
 	Prepare(runDir string, spec Spec, cfg Config) (Launch, error)

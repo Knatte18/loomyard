@@ -20,8 +20,8 @@
 // Stop and teardown resolve no engine, so a record naming an unregistered engine never blocks them.
 // The verdict/output contract is provider-invariant, which is what makes engines swappable:
 // shuttleengine defines the Engine interface and its value types, and never imports a concrete
-// engine implementation (the provider-seam import rule, enforced by seam_enforcement_test.go in a
-// later batch) — concrete engines import shuttleengine, not the reverse.
+// engine implementation — concrete engines import shuttleengine, not the reverse.
+// Only internal/shuttleengines and an engine's own directory import a concrete engine (the provider-seam import rule, enforced module-wide by seam_enforcement_test.go).
 // Requirement support, fork audit, resume-context rendering and instruction files are optional capabilities beside Engine, which an engine without them lacks.
 // A ForkSubagents run whose engine cannot audit forks finishes with its classified result, a nil ForkAudit and an error, and keeps its run directory.
 // Spec.Requires lists what a run requires of its engine, and a ForkSubagents spec requires fork support without listing it.
