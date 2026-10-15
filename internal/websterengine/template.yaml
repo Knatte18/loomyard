@@ -5,3 +5,4 @@ master_timeout_min: 480  # minutes the Master session's own shuttle spawn is all
 recovery_timeout_min: 60  # minutes since spawn after which the cold recovery strand with no report and no live strand classifies dead (dead_reason: timeout); the batch_timeout_min analog, applying only to recover-batch, whose call blocks until a terminal digest or this timeout
 verify_gate_attempts: 3  # attempts the plan-level verify gate on Merriam's strand gives Merriam to make the plan's verify pass before the gate stops the run
 kickstart_pack: true  # renders the batch's resolved member glyphs into each fork prompt; every begin-batch reads it afresh; turn it off with `lyx config webster --set kickstart_pack=false`
+kickstart_pack_file: true  # picks the pack's layout: its own file, or inline in the fork prompt; every begin-batch reads it afresh; flip it with `lyx config webster --set kickstart_pack_file=false`

@@ -88,6 +88,7 @@ func TestLoadConfig(t *testing.T) {
 		RecoveryTimeoutMin: 60,
 		VerifyGateAttempts: 3,
 		KickstartPack:      true,
+		KickstartPackFile:  true,
 	}
 	absentKnobs := websterengine.Config{
 		Master:             "sonnet",
@@ -97,6 +98,7 @@ func TestLoadConfig(t *testing.T) {
 		RecoveryTimeoutMin: 60,
 		VerifyGateAttempts: 3,
 		KickstartPack:      true,
+		KickstartPackFile:  true,
 	}
 	tests := []struct {
 		name string
@@ -108,7 +110,7 @@ func TestLoadConfig(t *testing.T) {
 	}{
 		{
 			name: "overrides round-trip",
-			body: "master: opus[effort=high]\nrecovery: opus[effort=max]\nself_fix_cap: 5\nmaster_timeout_min: 120\nrecovery_timeout_min: 30\nverify_gate_attempts: 4\nkickstart_pack: false\n",
+			body: "master: opus[effort=high]\nrecovery: opus[effort=max]\nself_fix_cap: 5\nmaster_timeout_min: 120\nrecovery_timeout_min: 30\nverify_gate_attempts: 4\nkickstart_pack: false\nkickstart_pack_file: false\n",
 			want: websterengine.Config{
 				Master:             "opus[effort=high]",
 				Recovery:           "opus[effort=max]",
@@ -117,6 +119,7 @@ func TestLoadConfig(t *testing.T) {
 				RecoveryTimeoutMin: 30,
 				VerifyGateAttempts: 4,
 				KickstartPack:      false,
+				KickstartPackFile:  false,
 			},
 		},
 		{
@@ -169,6 +172,11 @@ func TestLoadConfig(t *testing.T) {
 		{
 			name:       "a kickstart_pack that is not a boolean is invalid",
 			body:       "master: sonnet\nrecovery: opus\nself_fix_cap: 2\nmaster_timeout_min: 480\nrecovery_timeout_min: 60\nverify_gate_attempts: 3\nkickstart_pack: maybe\n",
+			wantErrKey: "webster config",
+		},
+		{
+			name:       "a kickstart_pack_file that is not a boolean is invalid",
+			body:       "master: sonnet\nrecovery: opus\nself_fix_cap: 2\nmaster_timeout_min: 480\nrecovery_timeout_min: 60\nverify_gate_attempts: 3\nkickstart_pack_file: maybe\n",
 			wantErrKey: "webster config",
 		},
 		{
