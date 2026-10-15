@@ -6,7 +6,7 @@
 | ([ $tools[] | select(.name == "Bash") | (.input.command // "") | [splits("&&|\\|\\||;|\\n")] | .[] | sub("^\\s+"; "") ]) as $segments
 | def shell($pattern): [ $segments[] | select(test($pattern)) ] | length;
   [ $session,
-    ([ $tools[] | select(.name == "Write" and ((.input.file_path // "") | test("(^|/)" + $plan + "[0-9][0-9]-"))) ] | length),
+    ([ $tools[] | select(.name == "Write" and ((.input.file_path // "") | test("(^|/)" + $plan + "[0-9][0-9]-.*\\.md$"))) ] | length),
     shell("^lyx (quarry|glyph)"),
     ([ $tools[] | select(.name == "Grep") ] | length) + shell("^(git )?(grep|rg)( |$)"),
     ([ $tools[] | select(.name == "Read") ] | length) + shell("^(cat|sed -n|head|tail|nl|awk) ")
