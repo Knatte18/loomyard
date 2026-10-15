@@ -21,9 +21,6 @@ const (
 		"Once you have written the plan per Step 3 and Step 4 and `lyx loom validate-plan` passes per Step 5, run this procedure once, before you end your turn.\n" +
 		"Add this line to every fork's prompt, after the fork boilerplate and before its lens text, as the one addition to it: \"Report defects only, never a passed check. Give each finding's evidence as the `path:line` or glyph read.\""
 
-	// planTwillRejectionRule is the Plan-Write host's rejection rule, rendered verbatim into the twill directive.
-	planTwillRejectionRule = "Fix the plan, or reject the finding. A rejection of a `BLOCKING` or `MEDIUM` finding cites the code read to reject it: a `path:line` or glyph opened in this session and what it shows against the finding. Such a finding you cannot refute from code you have read is fixed. Keeping a waiver, a deferral or an unplanned test against such a finding is a rejection and needs the same citation. A `LOW` finding is rejected with a one-line reason."
-
 	// planTwillSeverityRule is the Plan-Write host's severity rule, rendered verbatim into the twill directive.
 	planTwillSeverityRule = "a severity (`BLOCKING` when the plan as written fails its verify or ships a wrong behavior, `MEDIUM` when a decision, criterion or branch goes unreached or untested, `LOW` otherwise)"
 )
@@ -59,7 +56,8 @@ func planLensDirective(layout *lyxcwd.Location, dirs configengine.Dirs, stencils
 	return twilldirective.Directive(stencilsDir, twilldirective.Values{
 		ReviewedFiles:         "`" + planparser.PlanOverview(anchorPath) + "` and every card file its Card Index names",
 		SpawnPoint:            planTwillSpawnPoint,
-		RejectionRule:         planTwillRejectionRule,
+		GoverningInput:        "the decision record",
+		DisputeEvidence:       "a `path:line` or glyph, a `PATTERN` entry, a test or caller the change would break, or the `lyx loom validate-plan` output",
 		SeverityRule:          planTwillSeverityRule,
 		RubricPath:            stencilstore.Path(stencilsDir, "loom-rubric-plan-review"),
 		Lenses:                lenses,
@@ -82,7 +80,8 @@ func discussionLensDirective(layout *lyxcwd.Location, dirs configengine.Dirs, st
 	return twilldirective.Directive(stencilsDir, twilldirective.Values{
 		ReviewedFiles:         "`" + DiscussionDecisionRecord(layout) + "` and `" + DiscussionSupportLog(layout) + "`",
 		SpawnPoint:            "Once you have written both output files per Step 5 and `lyx loom validate-discussion` passes per Step 6, run this procedure once, before you end your turn:",
-		RejectionRule:         "Fix the record, or reject the finding with a one-line reason.",
+		GoverningInput:        "the board entry",
+		DisputeEvidence:       "the board entry, the discussion spec, the rubric, a `PATTERN` entry, the `lyx loom validate-discussion` output, or a coarse code read within your Step 2 bound, with no `path:line` required",
 		SeverityRule:          "a severity (`BLOCKING`, `MEDIUM` or `LOW`)",
 		RubricPath:            stencilstore.Path(stencilsDir, "loom-rubric-discussion-review"),
 		Lenses:                lenses,

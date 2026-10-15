@@ -354,6 +354,9 @@ func TestDiscussionTable(t *testing.T) {
 			if has := strings.Contains(prompts[""], "## Lens review by forks"); has != tt.wantDirective {
 				t.Errorf("lead prompt carries the twill block = %v; want %v", has, tt.wantDirective)
 			}
+			if has := strings.Contains(prompts[""], "against the code and the board entry"); has != tt.wantDirective {
+				t.Errorf("lead prompt carries the host's governing input = %v; want %v", has, tt.wantDirective)
+			}
 			for _, advisor := range discussionTableAdvisors {
 				if strings.Contains(prompts[advisor.Name], "## Lens review by forks") {
 					t.Errorf("advisor %q prompt carries the twill block; want the advisors never to fork", advisor.Name)
@@ -437,9 +440,10 @@ func TestDiscussionTable(t *testing.T) {
 					"runs `lyx loom validate-discussion` per `Step 6` until it passes",
 					"6. Run `lyx loom validate-discussion` again until it passes",
 					"per `Step 5`",
-					"The writer wrote `" + DiscussionDecisionRecord(layout) + "` and `" + DiscussionSupportLog(layout) + "` and passed its self-check before spawning you.",
+					"`" + DiscussionDecisionRecord(layout) + "` and `" + DiscussionSupportLog(layout) + "` were written and passed the self-check before you were spawned.",
 					"Once you have written both output files per Step 5 and `lyx loom validate-discussion` passes per Step 6, run this procedure once, before you end your turn:",
-					"Fix the record, or reject the finding with a one-line reason.",
+					"against the code and the board entry",
+					"opened in this session, the board entry, the discussion spec, the rubric, a `PATTERN` entry, the `lyx loom validate-discussion` output, or a coarse code read within your Step 2 bound, with no `path:line` required, and what it shows",
 					"each with a severity (`BLOCKING`, `MEDIUM` or `LOW`), the section or decision it concerns",
 				} {
 					if !strings.Contains(prompt, want) {
@@ -448,6 +452,9 @@ func TestDiscussionTable(t *testing.T) {
 				}
 				if strings.Contains(prompt, "lyx shuttle await") {
 					t.Error("twill lead prompt carries a ready-marker wait; want the forks to wait on nothing")
+				}
+				if strings.Contains(prompt, "a later turn of the same session") {
+					t.Error("twill lead prompt carries the retired never-respawn sentence; want the re-prompt rule")
 				}
 
 				modeRulesAt := strings.Index(prompt, modeRules(true))

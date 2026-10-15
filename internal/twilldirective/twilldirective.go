@@ -29,8 +29,10 @@ type Values struct {
 	ReviewedFiles string
 	// SpawnPoint is the sentence that opens the procedure and says when the writer runs it, rendered verbatim.
 	SpawnPoint string
-	// RejectionRule is the sentence that says how the writer may reject a finding, rendered verbatim.
-	RejectionRule string
+	// GoverningInput is the phrase naming the input a finding's premise is weighed against, rendered verbatim after "against the code and".
+	GoverningInput string
+	// DisputeEvidence is the phrase listing the evidence kinds a dispute cites, rendered verbatim after "opened in this session,".
+	DisputeEvidence string
 	// SeverityRule is the phrase that tells each fork how to grade a finding, rendered verbatim after "each with".
 	SeverityRule string
 	// RubricPath is the rubric the writer reads before spawning.
@@ -56,7 +58,8 @@ func Directive(stencilsDir string, v Values) (string, error) {
 	values := map[string]string{
 		"reviewed_files":           v.ReviewedFiles,
 		"spawn_point":              v.SpawnPoint,
-		"rejection_rule":           v.RejectionRule,
+		"governing_input":          v.GoverningInput,
+		"dispute_evidence":         v.DisputeEvidence,
 		"severity_rule":            v.SeverityRule,
 		"rubric_path":              v.RubricPath,
 		"lens_list":                bulletList(v.Lenses, func(l Lens) string { return l.Name + ": " + strings.Join(strings.Fields(l.Text), " ") }),

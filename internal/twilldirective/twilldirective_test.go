@@ -14,7 +14,8 @@ func filledValues() Values {
 	return Values{
 		ReviewedFiles:         "`/abs/one.md` and `/abs/two.md`",
 		SpawnPoint:            "SPAWN-POINT-SENTENCE",
-		RejectionRule:         "REJECTION-RULE-SENTENCE",
+		GoverningInput:        "GOVERNING-INPUT",
+		DisputeEvidence:       "DISPUTE-EVIDENCE",
 		SeverityRule:          "SEVERITY-RULE-PHRASE",
 		RubricPath:            "/abs/rubric.md",
 		Lenses:                []Lens{{Name: "alpha", Text: "Look at A.\nThen at B.\n"}, {Name: "beta", Text: "Look at C."}},
@@ -36,9 +37,10 @@ func TestDirective_RendersEveryValueVerbatim(t *testing.T) {
 		t.Fatalf("Directive = _, %v; want nil error", err)
 	}
 	for _, want := range []string{
-		"wrote `/abs/one.md` and `/abs/two.md` and passed",
+		"`/abs/one.md` and `/abs/two.md` were written and passed the self-check before you were spawned",
 		"SPAWN-POINT-SENTENCE\n",
-		"REJECTION-RULE-SENTENCE",
+		"against the code and GOVERNING-INPUT",
+		"opened in this session, DISPUTE-EVIDENCE, and what it shows",
 		"each with SEVERITY-RULE-PHRASE, the section or decision it concerns",
 		"/abs/rubric.md",
 		"- alpha: Look at A. Then at B.\n- beta: Look at C.",
@@ -73,7 +75,8 @@ func TestDirective_MissingValueNamesTheMarker(t *testing.T) {
 	}{
 		{"ReviewedFiles", func(v *Values) { v.ReviewedFiles = "" }, "reviewed_files"},
 		{"SpawnPoint", func(v *Values) { v.SpawnPoint = "" }, "spawn_point"},
-		{"RejectionRule", func(v *Values) { v.RejectionRule = "" }, "rejection_rule"},
+		{"GoverningInput", func(v *Values) { v.GoverningInput = "" }, "governing_input"},
+		{"DisputeEvidence", func(v *Values) { v.DisputeEvidence = "" }, "dispute_evidence"},
 		{"SeverityRule", func(v *Values) { v.SeverityRule = "" }, "severity_rule"},
 		{"FinalSelfCheckCommand", func(v *Values) { v.FinalSelfCheckCommand = "" }, "final_self_check_command"},
 		{"Lenses", func(v *Values) { v.Lenses = nil }, "lens_list"},

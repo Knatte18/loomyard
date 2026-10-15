@@ -311,7 +311,9 @@ func TestPlanTable(t *testing.T) {
 					"Step 3 and Step 4",
 					strings.SplitN(planTwillSpawnPoint, "\n", 2)[0],
 					"Report defects only, never a passed check. Give each finding's evidence as the `path:line` or glyph read.",
-					planTwillRejectionRule,
+					"against the code and the decision record",
+					"opened in this session, a `path:line` or glyph, a `PATTERN` entry, a test or caller the change would break, or the `lyx loom validate-plan` output, and what it shows",
+					"`" + planparser.PlanOverview(layout.AnchorPath()) + "` and every card file its Card Index names were written and passed the self-check before you were spawned.",
 					"Return your findings only as your final message, each with " + planTwillSeverityRule + ", the section or decision it concerns, a one-line summary and the evidence.",
 				} {
 					if !strings.Contains(prompt, want) {
@@ -320,6 +322,9 @@ func TestPlanTable(t *testing.T) {
 				}
 				if strings.Contains(prompt, "lyx shuttle await") {
 					t.Error("twill lead prompt carries a ready-marker wait; want the forks to wait on nothing")
+				}
+				if strings.Contains(prompt, "a later turn of the same session") {
+					t.Error("twill lead prompt carries the retired never-respawn sentence; want the re-prompt rule")
 				}
 
 				stepTwoAt := strings.Index(prompt, "## Step 2")

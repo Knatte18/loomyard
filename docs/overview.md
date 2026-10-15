@@ -528,7 +528,7 @@ User-facing modules each get one `lyx <module>` namespace:
   The first is the advisors: with `discussion_advisors` empty, the default, the lead interviews and writes the same two files alone, deciding each question itself;
   with one `{name, model}` entry per advisor, the lead is a chair while the advisors study the task, the board, the code and PATTERN in parallel.
   Each advisor is a seat named by its entry, answers the chair over the session message channel, and writes a notes file `advisor-<name>.md` beside the discussion files.
-  The second is the lens forks: with `discussion_lenses` naming a `burler.yaml` fan, the lead settles its design, writes and self-checks the record, forks itself once per lens of that fan, takes the forks' findings in and finalises.
+  The second is the lens forks: with `discussion_lenses` naming a `burler.yaml` fan, the lead settles its design, writes and self-checks the record, forks itself once per lens of that fan, judges each finding as a critical fixer, records its disposition and finalises.
   The forks review the record their inherited context holds, without reading it again, and only the lead forks, never an advisor.
   Both axes together are valid: advisors with the lead's lens forks.
   A `loom.yaml` that still holds the retired `discussion_producer` or `plan_producer` key is rewritten when the hub's config is reconciled: `twill` becomes the twill fan in the new lens key, every other value an empty one, and `discussion_advisors` is set to match, the retired `seats` entries becoming `advisor-<n>` for the operator to rename.
@@ -536,7 +536,7 @@ User-facing modules each get one `lyx <module>` namespace:
   The lead opens with `contracts/stencils/loom/loom-template-discussion-chair.md`, which includes the discussion stencil whole and adds the advisors section, worded to cover a lead with no advisors too, so a table without advisors runs the lead alone, deciding each question itself; each advisor opens with `contracts/stencils/loom/loom-template-discussion-advisor.md`.
   The row keeps its name, gates and routing whatever the two keys hold.
   The Planner producer, the same way (`contracts/stencils/loom/loom-template-plan.md`), composed by `internal/loomengine`'s `prompt.go` + `plan.go`.
-  With `plan_lenses` naming a `burler.yaml` fan, the plan writer explores, writes and self-checks the plan, forks itself once per lens of that fan, takes the forks' findings in, records them in `lens-review.md` and rejects a `BLOCKING` or `MEDIUM` finding only with a cited code read.
+  With `plan_lenses` naming a `burler.yaml` fan, the plan writer explores, writes and self-checks the plan, forks itself once per lens of that fan, judges each finding as a critical fixer, and records each disposition in `lens-review.md`.
   It runs `validate-plan --lens-review` as its last self-check, and its gate refuses Done until `lens-review.md` holds the lens review.
   The row keeps its name, `gates` key and routing while a fork-authorized run's plan gate also requires the lens review.
   Plan has no advisor key.
