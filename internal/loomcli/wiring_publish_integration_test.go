@@ -76,6 +76,7 @@ func TestWire_Real_PublishRejectedPushNamesRemoteTip(t *testing.T) {
 		"",
 		nil,
 		nil,
+		nil,
 		planVerifySource(location),
 		parentLockDeps(location, shedrun.SelfRunID, "", ""),
 	)

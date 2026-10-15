@@ -439,6 +439,7 @@ func (c *loomCLI) loomPreRun(ctx context.Context) error {
 		c.runner,
 		c.landingCfg,
 		c.parentName,
+		nil,
 		driverWaitMark(c.reed.Status, c.reed.SetWaitMark),
 		conflictSessionStopper(c.reed.Status, c.runner.StopStrand),
 		c.verifySource(),
