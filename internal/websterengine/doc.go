@@ -540,6 +540,11 @@
 // So a record exists only when the latest begin-batch of the call refused with `plan_conflict`.
 // A begun batch removes the routed file under the state-mutation lease.
 // A failed removal or write is logged at Warn and changes no refusal, class or outcome.
+// Under loom, the Webster producer claims the record when Master ends stuck (ClaimConflictRoute) and decides three ways:
+// findings that differ, as a set, from the routed file's are new, so the claim rewrites the routed file and the stuck outcome reroutes to plan review;
+// findings equal to the routed file's are a recurrence, and the stuck outcome halts for a hand edit of the named pending cards;
+// no record, or one naming no finding line, claims nothing.
+// A read or write error is returned, and the producer then halts rather than reroutes.
 //
 // # The verify-gate fixer fork
 //
