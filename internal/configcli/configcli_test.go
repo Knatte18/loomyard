@@ -23,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // fakeEditor returns a fake EditorFunc that writes the given valid YAML
@@ -1075,6 +1076,19 @@ func TestDispatchLayers(t *testing.T) {
 			check: func(t *testing.T, fx hubFixture, out string) {
 				if _, err := os.Stat(configengine.ConfigFile(fx.worktree, "webster")); !os.IsNotExist(err) {
 					t.Errorf("worktree webster.yaml exists after a refused value; stat err = %v", err)
+				}
+			},
+		},
+		{
+			name: "worktree layer sets kickstart_pack_per_card false and the loader reads it back", module: "webster", layer: "worktree",
+			setFlags: []string{"kickstart_pack_per_card=false"}, seedBoard: websterTemplate(), wantSyncs: 1,
+			check: func(t *testing.T, fx hubFixture, out string) {
+				cfg, err := websterengine.LoadConfig(configengine.Dirs{Anchor: fx.worktree, Board: fx.board}, "webster")
+				if err != nil {
+					t.Fatalf("LoadConfig() error = %v; want nil", err)
+				}
+				if cfg.KickstartPackPerCard {
+					t.Errorf("KickstartPackPerCard = true; want false after --set kickstart_pack_per_card=false")
 				}
 			},
 		},

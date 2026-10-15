@@ -107,11 +107,11 @@ rather than booting substrate it cannot reach.`,
 		// emits a JSON error envelope instead of falling through to cobra's plain-text help.
 		RunE: clihelp.GroupRunE,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			// Guard: skip cwd/location/config resolution entirely when the reed group command itself is invoked (bare listing or unknown-subcommand error path via GroupRunE), or when the watchdog daemon or the switch verb is invoked.
+			// Guard: skip cwd/location/config resolution entirely when the reed group command itself is invoked (bare listing or unknown-subcommand error path via GroupRunE), or when the watchdog daemon, the switch verb or the follow verb is invoked.
 			// The daemon is told its hub path on its own flags and must never be reached through c.eng.
 			// Letting it run the normal pre-run would make it refuse to start outside a worktree and hold a geometry it must not use.
-			// switch is told its socket and client the same way.
-			if cmd.Name() == "reed" || cmd.Name() == "watchdog" || cmd.Name() == "switch" {
+			// switch is told its socket and client the same way, and follow its socket and session.
+			if cmd.Name() == "reed" || cmd.Name() == "watchdog" || cmd.Name() == "switch" || cmd.Name() == "follow" {
 				return nil
 			}
 
@@ -158,7 +158,7 @@ rather than booting substrate it cannot reach.`,
 		},
 	}
 
-	parent.AddCommand(c.upCmd(), c.downCmd(), c.addCmd(), c.removeCmd(), c.statusCmd(), c.resumeCmd(), c.attachCmd(), c.watchdogCmd(), c.listCmd(), c.switchCmd())
+	parent.AddCommand(c.upCmd(), c.downCmd(), c.addCmd(), c.removeCmd(), c.statusCmd(), c.resumeCmd(), c.attachCmd(), c.watchdogCmd(), c.listCmd(), c.switchCmd(), c.followCmd())
 
 	return parent
 }

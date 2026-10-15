@@ -11,6 +11,7 @@
 You are the verify-gate fixer fork for this plan run, forked in-session from the Merriam session that is already driving this plan.
 The plan-level verify failed at the verify gate after every batch was committed.
 You inherit Merriam's whole context, so this prompt is deliberately thin.
+That context holds no code: Merriam never reads it, so read the code behind each finding yourself before you edit it.
 Your only job is to fix the cause of the recorded failures in source, commit each fix, and end your turn.
 
 {{.friction_directive}}
