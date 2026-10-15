@@ -15,7 +15,10 @@ import (
 )
 
 // runVerbs executes args against a bare parent carrying c's verbs, noted through addVerbs or raw, and returns the exit code and output.
-func runVerbs(c *websterCLI, noted bool, args ...string) (int, string) {
+// The bare CLI carries no geometry, so its scratch directory is a temporary one, which keeps begin-batch's conflict-record removal off the test's working directory.
+func runVerbs(t *testing.T, c *websterCLI, noted bool, args ...string) (int, string) {
+	t.Helper()
+	c.geom.ScratchDir = t.TempDir()
 	parent := &cobra.Command{Use: "webster", RunE: clihelp.GroupRunE}
 	if noted {
 		c.addVerbs(parent)
@@ -74,8 +77,8 @@ func TestNoteRefusals_ArgumentRefusals_WriteOneNoteEach(t *testing.T) {
 			c, _ := newTestCLI(t)
 			c.frictionDir = dir
 
-			rawCode, rawOut := runVerbs(c, false, tc.args...)
-			code, out := runVerbs(c, true, tc.args...)
+			rawCode, rawOut := runVerbs(t, c, false, tc.args...)
+			code, out := runVerbs(t, c, true, tc.args...)
 
 			if code != rawCode || out != rawOut {
 				t.Errorf("noted run = (%d, %q); want the unwrapped (%d, %q)", code, out, rawCode, rawOut)
@@ -168,7 +171,7 @@ func TestAddVerbs_ValidateRefusal_WritesNoNote(t *testing.T) {
 	c, _ := newTestCLI(t)
 	c.frictionDir = dir
 
-	code, out := runVerbs(c, true, "validate")
+	code, out := runVerbs(t, c, true, "validate")
 
 	if code != 1 || !strings.Contains(out, `"ok":false`) {
 		t.Fatalf("validate on a missing plan = (%d, %q); want a refusal with exit 1", code, out)
@@ -200,8 +203,8 @@ func TestNoteRefusals_UnusableFrictionDir_KeepsExitAndEnvelope(t *testing.T) {
 			c.frictionDir = tc.frictionDir
 			args := []string{"begin-batch", "x"}
 
-			rawCode, rawOut := runVerbs(c, false, args...)
-			code, out := runVerbs(c, true, args...)
+			rawCode, rawOut := runVerbs(t, c, false, args...)
+			code, out := runVerbs(t, c, true, args...)
 
 			if code != rawCode || out != rawOut {
 				t.Errorf("noted run = (%d, %q); want the unwrapped (%d, %q)", code, out, rawCode, rawOut)

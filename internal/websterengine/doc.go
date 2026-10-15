@@ -530,6 +530,17 @@
 // The accepted rebaseline's warning is logged once at Warn, leads RunResult.Warnings, opens a stuck outcome's reason and every error Run returns afterwards, and the plan refusals that follow it (validation, zero batches, quarry) wrap ErrAutoRebaseline too.
 // `--fresh` beside the option keeps its archive path and runs no rebaseline, and a run without the option keeps ErrFingerprintMismatch.
 //
+// # The plan-conflict record
+//
+// begin-batch leaves two never-tracked files in the scratch directory (`.lyx/webster/`), never under `_lyx`, so no sync carries them:
+// the conflict record `plan-conflict.md`, naming the batch, the cause and each blocking finding, and the last-routed conflict `plan-conflict-routed.md`, holding the findings of the conflict last routed to plan review.
+// Their paths are ConflictRecordPath and RoutedConflictPath, and ConflictRecordRel is the record's anchor-relative path for recipe text.
+// The record is bounded to one Webster call:
+// Run removes it on entry once it holds run.lock, and begin-batch removes it as its first step, then writes it only when it refuses with a PlanConflictError and the plan-fingerprint re-baseline persisted.
+// So a record exists only when the latest begin-batch of the call refused with `plan_conflict`.
+// A begun batch removes the routed file under the state-mutation lease.
+// A failed removal or write is logged at Warn and changes no refusal, class or outcome.
+//
 // # The verify-gate fixer fork
 //
 // A gate failure reaches Merriam as a `Gate findings recorded at …` message naming the verify-gate report (VerifyGateReportPath).
