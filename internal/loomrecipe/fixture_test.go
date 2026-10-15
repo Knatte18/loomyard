@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -194,7 +195,7 @@ func (f *fakeWebsterRun) run(deps websterengine.RunDeps, _ websterengine.RunOpti
 // The overview it writes is unapproved, mirroring the plan stencil's own "you never self-approve" rule: the real Plan-Write producer can never emit an approved plan,
 // and a fake writer that did would hand the review gate a plan the production writer can never produce -- Plan-Bouncer's approve_seam is what flips the flag, not this row.
 // On spec.Role == "describe" it writes a valid change description.
-// On spec.Role == "bouncer-judge" it writes the verdict, ledger, and focus files named by spec.OutputFiles, in that fixed order -- see writeBouncerJudge for the shape each carries.
+// On a spec.Role ending in "bouncer-judge", whatever segment prefix leads it, it writes the verdict, ledger, and focus files named by spec.OutputFiles, in that fixed order -- see writeBouncerJudge for the shape each carries.
 // There is no "bouncer-seed" branch: shedadapters.seedCall calls ensureFocus(1) regardless of what the spawn reported, synthesizing an empty-but-parsing focus file when none is on disk,
 // so the default no-write-by-role branch below is already correct for the seed pass.
 // Otherwise (row 3's branch) it keeps the discussion behaviour: when writeOutputs is true, it writes both discussion output files from the received Spec.OutputFiles, creating any missing parent directory.
@@ -241,7 +242,7 @@ func countSeatRole(seats *shedfake.SeatRunner, prefix string) int {
 
 // runLoomShuttle is newLoomShuttle's per-role dispatch.
 func runLoomShuttle(planDir string, writeOutputs bool, spec shuttleengine.Spec) (shuttleengine.Result, error) {
-	if spec.Role == "bouncer-judge" {
+	if strings.HasSuffix(spec.Role, "bouncer-judge") {
 		return writeBouncerJudge(spec, "CONVERGED")
 	}
 	if err := writeLoomOutputs(planDir, writeOutputs, spec.Role, spec.OutputFiles); err != nil {
@@ -334,7 +335,7 @@ func blockBouncerJudge(env shedrecipe.Env) {
 	shuttle := env.Shuttle.(*shedfake.Shuttle)
 	dispatch := shuttle.RunFn
 	shuttle.RunFn = func(spec shuttleengine.Spec) (shuttleengine.Result, error) {
-		if spec.Role == "bouncer-judge" {
+		if strings.HasSuffix(spec.Role, "bouncer-judge") {
 			return writeBouncerJudge(spec, "CONTINUE")
 		}
 		return dispatch(spec)
@@ -347,7 +348,7 @@ func designWrongBouncerJudge(env shedrecipe.Env) {
 	shuttle := env.Shuttle.(*shedfake.Shuttle)
 	dispatch := shuttle.RunFn
 	shuttle.RunFn = func(spec shuttleengine.Spec) (shuttleengine.Result, error) {
-		if spec.Role != "bouncer-judge" {
+		if !strings.HasSuffix(spec.Role, "bouncer-judge") {
 			return dispatch(spec)
 		}
 		result, err := writeBouncerJudge(spec, "CONTINUE")
@@ -366,11 +367,11 @@ func designWrongBouncerJudge(env shedrecipe.Env) {
 	}
 }
 
-// countRole reports how many of shuttle's Run calls carried spec.Role == role.
+// countRole reports how many of shuttle's Run calls carried a spec.Role ending in role.
 func countRole(shuttle *shedfake.Shuttle, role string) int {
 	count := 0
 	for _, spec := range shuttle.Specs {
-		if spec.Role == role {
+		if strings.HasSuffix(spec.Role, role) {
 			count++
 		}
 	}

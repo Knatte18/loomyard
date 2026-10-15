@@ -12,6 +12,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -217,23 +218,41 @@ func TestBouncer_EntryProbe_AttachErrorNeitherClearsNorSettles(t *testing.T) {
 	assertNoArchivedRunDirSibling(t, cfg.RunDir)
 }
 
-// TestBouncer_EntryProbe_SpecNamesTheJudgesOwnOutputFiles pins what the probe matches on.
+// TestBouncer_EntryProbe_SpecNamesTheJudgesOwnOutputFiles pins what the probe matches on, and the role it carries.
 // shuttleengine.Attach set-matches a persisted run.json's OutputFiles and nothing else, so a probe naming any other set -- the seed pass's single focus file, or a Burler row's review or fixer-report file -- silently matches nothing and is indistinguishable from no agent being alive at all.
+// The probe's role is the judge's own, led by the configured role prefix.
 //
 //testtiming:keep pins the OutputFiles set the judge's entry probe names, which no other test reads off the recorded attach spec
 func TestBouncer_EntryProbe_SpecNamesTheJudgesOwnOutputFiles(t *testing.T) {
-	attach := &shedfake.Shuttle{AttachFound: false, Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	b, cfg := newBouncerFixture(t, withShuttle(attach)).Build()
-	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
-		round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("CONTINUE"), ledger: bouncerLedgerContent(1),
-	}})
+	tests := []struct {
+		name       string
+		rolePrefix string
+		wantRole   string
+	}{
+		{"unprefixed", "", bouncerJudgeRole},
+		{"prefixed", "plan", "plan-" + bouncerJudgeRole},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attach := &shedfake.Shuttle{AttachFound: false, Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+			fx := newBouncerFixture(t, withShuttle(attach))
+			fx.Config.RolePrefix = tt.rolePrefix
+			b, cfg := fx.Build()
+			layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
+				round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("CONTINUE"), ledger: bouncerLedgerContent(1),
+			}})
 
-	shedfake.CallOK(t, b)
+			shedfake.CallOK(t, b)
 
-	want := []string{verdictPath(cfg.RunDir, 1), ledgerPath(cfg.RunDir, 1), focusPath(cfg.RunDir, 2)}
-	got := attach.GotAttachSpec.OutputFiles
-	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
-		t.Errorf("attach spec OutputFiles = %v; want %v", got, want)
+			want := []string{verdictPath(cfg.RunDir, 1), ledgerPath(cfg.RunDir, 1), focusPath(cfg.RunDir, 2)}
+			got := attach.GotAttachSpec.OutputFiles
+			if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
+				t.Errorf("attach spec OutputFiles = %v; want %v", got, want)
+			}
+			if attach.GotAttachSpec.Role != tt.wantRole {
+				t.Errorf("attach spec Role = %q; want %q", attach.GotAttachSpec.Role, tt.wantRole)
+			}
+		})
 	}
 }
 
@@ -264,7 +283,7 @@ func TestBouncer_SeedCall_ProbesForALiveSeed(t *testing.T) {
 			}
 
 			ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
-			if ptr != (shedengine.OutputPointer{}) {
+			if !reflect.DeepEqual(ptr, shedengine.OutputPointer{}) {
 				t.Errorf("Call() pointer = %+v; want empty", ptr)
 			}
 			if !attach.AttachCalled {

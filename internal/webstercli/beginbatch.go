@@ -14,6 +14,7 @@ import (
 	"strconv"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -43,6 +44,10 @@ the batch's start-SHA in state.json, renders and writes that batch's fork
 prompt (carrying the previous batch's own persisted digest), and returns the
 prompt path Master forwards to its Agent-tool fork call verbatim.
 
+A refusal because the plan's re-resolution against the tree found a blocking
+defect carries "plan_conflict" with its cause: "plan_defect" when no batch is
+begun, "tree_moved" when one is.
+
 Example:
   lyx webster begin-batch 3`,
 		Args: cobra.ExactArgs(1),
@@ -51,6 +56,11 @@ Example:
 
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
+			}
+
+			// A record exists only when the latest begin-batch refused with a plan conflict, so every other refusal leaves none.
+			if err := websterengine.RemoveConflictRecord(c.geom.ScratchDir); err != nil {
+				logger.Warn("webstercli: stale plan-conflict record not removed", "err", err)
 			}
 
 			batchNumber, err := strconv.Atoi(args[0])
@@ -117,6 +127,14 @@ Example:
 				// releasing the lease; every other mutation on this path is still deliberately
 				// dropped, and an unchanged fingerprint writes nothing at all.
 				saveErr := persistPlanFingerprintRebaseline(c.geom, st, fingerprintBefore)
+				var conflict *websterengine.PlanConflictError
+				isConflict := errors.As(err, &conflict)
+				// A failed persist prints the combined refusal with no class, so it leaves no record.
+				if saveErr == nil && isConflict {
+					if recordErr := websterengine.WriteConflictRecord(c.geom.ScratchDir, conflict); recordErr != nil {
+						logger.Warn("webstercli: plan-conflict record not written", "err", recordErr)
+					}
+				}
 				_ = mutateLock.Release()
 				mutateHeld = false
 
@@ -124,8 +142,8 @@ Example:
 					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("%s; additionally, persisting the plan-fingerprint re-baseline this call had already earned failed: %v; %s", err.Error(), saveErr, rebaselineWayForward)))
 					return nil
 				}
-				if errors.Is(err, websterengine.ErrPlanDrifted) {
-					clihelp.SetExit(cmd.Context(), output.ErrFields(out, err.Error(), map[string]any{"plan_drifted": true}))
+				if isConflict {
+					clihelp.SetExit(cmd.Context(), output.ErrFields(out, err.Error(), map[string]any{"plan_conflict": conflict.Cause}))
 					return nil
 				}
 				if errors.Is(err, websterengine.ErrRecoveryExhausted) {
@@ -141,6 +159,10 @@ Example:
 				mutateHeld = false
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
+			}
+			// The batch begun, any conflict last routed to plan review is history.
+			if err := websterengine.RemoveRoutedConflict(c.geom.ScratchDir); err != nil {
+				logger.Warn("webstercli: routed plan-conflict file not removed", "err", err)
 			}
 			// The state phase is over; release the lease before the fabric
 			// push below so a network-slow push never serializes another

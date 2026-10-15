@@ -292,7 +292,7 @@ func (p *BurlerReviewProducer) acceptedExit(ctx context.Context, round int, resu
 	if err != nil {
 		logger.Warn("shedadapters: burler review's usage record was not written", "producer", p.name, "engine", burlerReviewEngineLabel, "round", round, "error", err)
 	}
-	return shedengine.Stuck, shedengine.OutputPointer{Path: roundReviewPath(p.runDir, round), BudgetExempt: true}, nil
+	return shedengine.Stuck, shedengine.OutputPointer{Path: roundReviewPath(p.runDir, round), GateAttempts: gateAttemptsPointer(result.Gate), GateSpans: gateSpansOf(result.Gate), BudgetExempt: true}, nil
 }
 
 // reviewHalfUsage builds the review half's usage record from the model it ran on and the half's identity, with the reviewer's fork reading when it is known.

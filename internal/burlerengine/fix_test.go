@@ -76,6 +76,8 @@ func TestEngine_Fix_TableShapeAndFiles(t *testing.T) {
 	p.FocusDirective = "focus.md"
 	p.PriorReviews = []string{"prior-review.md"}
 	p.Segment = segmentcolor.Merge
+	p.RolePrefix = "merge"
+	fixRole := "merge-" + fixHalfRole
 	shuttle := &fakeShuttle{fix: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, writes: "nothing fixed"}}
 	e := newEngineForTest(t, root, shuttle)
 
@@ -95,10 +97,10 @@ func TestEngine_Fix_TableShapeAndFiles(t *testing.T) {
 	if got.Outcome != shuttleengine.OutcomeDone || got.Skipped {
 		t.Errorf("Fix() outcome %q skipped %v; want done and not skipped, since the review holds a finding", got.Outcome, got.Skipped)
 	}
-	if want := []string{fixHalfRole}; !slices.Equal(shuttle.started, want) {
+	if want := []string{fixRole}; !slices.Equal(shuttle.started, want) {
 		t.Fatalf("started seats = %v; want %v, the one chair", shuttle.started, want)
 	}
-	spec := shuttle.specs[fixHalfRole]
+	spec := shuttle.specs[fixRole]
 	if want := []string{filepath.Join(root, "fixer-report.md")}; !slices.Equal(spec.OutputFiles, want) {
 		t.Errorf("spec.OutputFiles = %v; want %v", spec.OutputFiles, want)
 	}
@@ -111,7 +113,7 @@ func TestEngine_Fix_TableShapeAndFiles(t *testing.T) {
 	if spec.Timeout != opts.Timeout || spec.Round != opts.Round {
 		t.Errorf("spec timeout %v round %q; want %v and %q", spec.Timeout, spec.Round, opts.Timeout, opts.Round)
 	}
-	gate := shuttle.gates[fixHalfRole]
+	gate := shuttle.gates[fixRole]
 	if len(gate) != 1 || gate[0].Name != "build" {
 		t.Fatalf("gate = %+v; want the opts' one entry", gate)
 	}

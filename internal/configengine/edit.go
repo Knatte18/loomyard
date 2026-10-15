@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"gopkg.in/yaml.v3"
@@ -25,8 +26,8 @@ import (
 type EditorFunc func(path string) error
 
 // ErrAborted is the sentinel error returned when an edit is aborted.
-// On abort, Edit leaves the filesystem in its pre-call state (removes scaffolded files, leaves
-// pre-existing files unchanged).
+// On abort, Edit removes a scaffolded file and leaves a pre-existing file with what the editor left.
+// On an empty or whitespace-only result a pre-existing file is put back to its previous bytes instead.
 var ErrAborted = errors.New("config edit aborted")
 
 // resolveEditor picks the editor command as a binary plus the arguments that precede the path.
@@ -149,11 +150,21 @@ func Edit(dirs Dirs, spec Spec, layer Layer, edit EditorFunc) error {
 // it scaffolds path from template when absent (creating its parent directory), runs the editor,
 // and loops on a YAML parse error.
 // An unchanged unparseable save returns ErrAborted, and any abort removes a file EditPath scaffolded.
+// An empty or whitespace-only result is an abort too, checked before the YAML parse: a pre-existing file is written back to the bytes it held on entry.
 // Validation is syntactic only.
 func EditPath(path, template string, edit EditorFunc) error {
 	scaffolded, err := scaffoldIfMissing(path, filepath.Dir(path), template)
 	if err != nil {
 		return err
+	}
+
+	// The bytes a pre-existing file held on entry: an empty result restores these, never a later pass's.
+	entryBytes, err := os.ReadFile(path)
+	if err != nil {
+		if scaffolded {
+			_ = os.Remove(path)
+		}
+		return fmt.Errorf("read config file: %w", err)
 	}
 
 	// Loop until valid YAML is saved or edit is aborted.
@@ -182,6 +193,16 @@ func EditPath(path, template string, edit EditorFunc) error {
 				_ = os.Remove(path)
 			}
 			return fmt.Errorf("read config file after edit: %w", err)
+		}
+
+		// An empty or whitespace-only result is never saved over a layer; a comment-only one is not empty.
+		if strings.TrimSpace(string(postEditBytes)) == "" {
+			if scaffolded {
+				_ = os.Remove(path)
+			} else {
+				_ = os.WriteFile(path, entryBytes, 0o644)
+			}
+			return ErrAborted
 		}
 
 		var config map[string]any

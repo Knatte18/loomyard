@@ -135,7 +135,8 @@ func TestWebsterProducer_CommitsTheRunRecordOnDoneOnly(t *testing.T) {
 				commit = nil
 			}
 			fake := &fakeWebsterRun{outcome: tt.outcome}
-			p := NewWebsterProducer("Webster", configengine.Dirs{Anchor: anchorPath}, fake.run, websterengine.RunDeps{}, commit)
+			deps := websterengine.RunDeps{Geom: websterengine.Geometry{ScratchDir: t.TempDir()}}
+			p := NewWebsterProducer("Webster", configengine.Dirs{Anchor: anchorPath}, fake.run, deps, commit)
 			outcome, _, err := p.Call(context.Background())
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("Call() error = %v; want error %v", err, tt.wantErr)
@@ -163,7 +164,8 @@ func TestWebsterProducer_PassesStuckReasonThrough(t *testing.T) {
 	run := func(websterengine.RunDeps, websterengine.RunOptions) (websterengine.RunResult, error) {
 		return websterengine.RunResult{Outcome: "stuck", StuckReason: "batch 03 exhausted recovery"}, nil
 	}
-	p := NewWebsterProducer("Webster", configengine.Dirs{Anchor: anchorPath}, run, websterengine.RunDeps{}, func() error { return nil })
+	deps := websterengine.RunDeps{Geom: websterengine.Geometry{ScratchDir: t.TempDir()}}
+	p := NewWebsterProducer("Webster", configengine.Dirs{Anchor: anchorPath}, run, deps, func() error { return nil })
 	pointer := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 	if pointer.Reason != "batch 03 exhausted recovery" {
 		t.Errorf("Call() Reason = %q; want the run's StuckReason", pointer.Reason)

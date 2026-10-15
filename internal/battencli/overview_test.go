@@ -4,6 +4,7 @@ package battencli
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
@@ -67,12 +69,12 @@ func TestRenderOverview(t *testing.T) {
 					Batten: foundStatus(shedengine.StateBlocked, "Publish", shedengine.HistoryEntry{At: stamp(minutesAgo(10)), LastAt: stamp(minutesAgo(5))}),
 				},
 				{
-					Slug: "alpha", StartedAt: minutesAgo(120), PairExists: true, Session: "alpha-s",
+					Slug: "alpha", StartedAt: minutesAgo(120), PairExists: true, Session: "alpha-s", Recipe: shedrun.RecipeBatten,
 					Batten: foundStatus(shedengine.StateRunning, "Land", shedengine.HistoryEntry{At: stamp(minutesAgo(45))}),
 				},
 			},
 			want: []string{
-				"alpha  running  Land     45m  2h00m  alpha-s",
+				"alpha  running  7. Land  45m  2h00m  alpha-s",
 				"beta   blocked  Publish  5m   1h00m  beta-s",
 			},
 		},
@@ -92,9 +94,9 @@ func TestRenderOverview(t *testing.T) {
 		{
 			name: "a run creating its worktree shows before its pair exists",
 			runs: []overviewRun{
-				{Slug: "new", StartedAt: minutesAgo(5), Session: "new-s", Batten: foundStatus(shedengine.StateRunning, battenrecipe.NameWorktreeCreate)},
+				{Slug: "new", StartedAt: minutesAgo(5), Session: "new-s", Recipe: shedrun.RecipeBatten, Batten: foundStatus(shedengine.StateRunning, battenrecipe.NameWorktreeCreate)},
 			},
-			want: []string{"new  running  Worktree-Create  5m  5m  new-s"},
+			want: []string{"new  running  1. Worktree-Create  5m  5m  new-s"},
 		},
 		{
 			name: "a seeded run with no status, or whose first status poll failed, shows as starting with no stage",
@@ -117,36 +119,68 @@ func TestRenderOverview(t *testing.T) {
 			want: []string{"bad  failed  Publish  10m  10m  bad-s"},
 		},
 		{
-			name: "a run in Run-Shed shows the child's producer and its time",
+			name: "a run in Run-Shed shows the child's producer, numbered under Run-Shed's number, and its time",
 			runs: []overviewRun{
 				{
-					Slug: "run", StartedAt: minutesAgo(100), PairExists: true, Session: "run-s",
+					Slug: "run", StartedAt: minutesAgo(100), PairExists: true, Session: "run-s", Recipe: shedrun.RecipeBatten, ChildRecipe: shedrun.RecipeLoom,
 					Batten: foundStatus(shedengine.StateRunning, battenrecipe.NameRunShed, shedengine.HistoryEntry{At: stamp(minutesAgo(90))}),
 					Child:  foundStatus(shedengine.StateRunning, "Plan-Write", shedengine.HistoryEntry{At: stamp(minutesAgo(30))}),
 				},
 			},
-			want: []string{"run  running  Plan-Write  30m  1h40m  run-s"},
+			want: []string{"run  running  6.5 Plan-Write  30m  1h40m  run-s"},
+		},
+		{
+			name: "a child row in a review segment takes its segment's number",
+			runs: []overviewRun{
+				{
+					Slug: "run", StartedAt: minutesAgo(100), PairExists: true, Session: "run-s", Recipe: shedrun.RecipeBatten, ChildRecipe: shedrun.RecipeLoom,
+					Batten: foundStatus(shedengine.StateRunning, battenrecipe.NameRunShed, shedengine.HistoryEntry{At: stamp(minutesAgo(90))}),
+					Child:  foundStatus(shedengine.StateRunning, "Plan-Burler-Review", shedengine.HistoryEntry{At: stamp(minutesAgo(30))}),
+				},
+			},
+			want: []string{"run  running  6.6 Plan-Burler-Review  30m  1h40m  run-s"},
+		},
+		{
+			name: "a child row shows alone when the child recipe is unknown or does not hold it, and a run with an unreadable seed shows the name alone",
+			runs: []overviewRun{
+				{
+					Slug: "a-unknown", StartedAt: minutesAgo(100), PairExists: true, Session: "s", Recipe: shedrun.RecipeBatten,
+					Batten: foundStatus(shedengine.StateRunning, battenrecipe.NameRunShed, shedengine.HistoryEntry{At: stamp(minutesAgo(90))}),
+					Child:  foundStatus(shedengine.StateRunning, "Plan-Write", shedengine.HistoryEntry{At: stamp(minutesAgo(30))}),
+				},
+				{
+					Slug: "b-missing", StartedAt: minutesAgo(99), PairExists: true, Session: "s", Recipe: shedrun.RecipeBatten, ChildRecipe: shedrun.RecipeLoom,
+					Batten: foundStatus(shedengine.StateRunning, battenrecipe.NameRunShed, shedengine.HistoryEntry{At: stamp(minutesAgo(90))}),
+					Child:  foundStatus(shedengine.StateRunning, "Elsewhere", shedengine.HistoryEntry{At: stamp(minutesAgo(30))}),
+				},
+				{Slug: "c-unreadable-seed", StartedAt: minutesAgo(98), PairExists: true, Session: "s", Batten: foundStatus(shedengine.StateRunning, "Land")},
+			},
+			want: []string{
+				"a-unknown          running  Plan-Write  30m    1h40m  s",
+				"b-missing          running  Elsewhere   30m    1h39m  s",
+				"c-unreadable-seed  running  Land        1h38m  1h38m  s",
+			},
 		},
 		{
 			name: "a child with no history takes batten's last entry as its stage start",
 			runs: []overviewRun{
 				{
-					Slug: "run", StartedAt: minutesAgo(100), PairExists: true, Session: "run-s",
+					Slug: "run", StartedAt: minutesAgo(100), PairExists: true, Session: "run-s", Recipe: shedrun.RecipeBatten, ChildRecipe: shedrun.RecipeLoom,
 					Batten: foundStatus(shedengine.StateRunning, battenrecipe.NameRunShed, shedengine.HistoryEntry{At: stamp(minutesAgo(40))}),
 					Child:  foundStatus(shedengine.StateRunning, "Plan-Write"),
 				},
 			},
-			want: []string{"run  running  Plan-Write  40m  1h40m  run-s"},
+			want: []string{"run  running  6.5 Plan-Write  40m  1h40m  run-s"},
 		},
 		{
 			name: "a run in Run-Shed whose child status is not found shows batten's producer",
 			runs: []overviewRun{
 				{
-					Slug: "run", StartedAt: minutesAgo(100), PairExists: true, Session: "run-s",
+					Slug: "run", StartedAt: minutesAgo(100), PairExists: true, Session: "run-s", Recipe: shedrun.RecipeBatten,
 					Batten: foundStatus(shedengine.StateRunning, battenrecipe.NameRunShed, shedengine.HistoryEntry{At: stamp(minutesAgo(20))}),
 				},
 			},
-			want: []string{"run  running  Run-Shed  20m  1h40m  run-s"},
+			want: []string{"run  running  6. Run-Shed  20m  1h40m  run-s"},
 		},
 		{
 			name: "an unreadable status shows beside a normal line, and so does an unreadable child",
@@ -337,14 +371,27 @@ func TestOverviewSource_ReadsThePrimesRunsFromDisk(t *testing.T) {
 	pauseRecordPath := filepath.Join(t.TempDir(), "pause.json")
 	source := newOverviewSource(prime, pauseRecordPath, overviewThresholds{}, func() time.Time { return overviewNow })
 	source.childStatus = func(string) (string, error) { return childStatusPath, nil }
+	childPair := locationkit.Location(t.TempDir(), "run-a", ".")
+	source.childPair = func(string) (*lyxcwd.Location, error) { return childPair, nil }
+	if err := shedrun.WriteSeed(childPair, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo}); err != nil {
+		t.Fatal(err)
+	}
 
 	want := []string{
-		"run-a       running  Plan-Write  2h00m  2h00m  run-a",
-		"run-b       running  Plan        1h00m  1h00m  run-b",
-		"future-key  running  Plan        -      -      future-key",
+		"run-a       running  6.5 Plan-Write  2h00m  2h00m  run-a",
+		"run-b       running  Plan            1h00m  1h00m  run-b",
+		"future-key  running  Plan            -      -      future-key",
 	}
 	if diff := cmp.Diff(want, source.frame().Lines); diff != "" {
 		t.Fatalf("first frame mismatch (-want +got):\n%s", diff)
+	}
+
+	// A seed is write-once, so run-a keeps its child number from the cached recipe once the seed file is gone.
+	if err := os.Remove(shedrun.SeedFile(childPair, shedrun.SelfRunID)); err != nil {
+		t.Fatal(err)
+	}
+	if diff := cmp.Diff(want, source.frame().Lines); diff != "" {
+		t.Fatalf("frame after the child seed is removed mismatch (-want +got):\n%s", diff)
 	}
 
 	// The child's file goes and run-b's status turns undecodable: run-a falls back to batten's producer, and run-b keeps its line for one frame.
@@ -353,9 +400,9 @@ func TestOverviewSource_ReadsThePrimesRunsFromDisk(t *testing.T) {
 	}
 	writeOverviewFile(t, runBStatus, []byte("{not json"), minutesAgo(40))
 	want = []string{
-		"run-a       running  Run-Shed  2h00m  2h00m  run-a",
-		"run-b       running  Plan      1h00m  1h00m  run-b",
-		"future-key  running  Plan      -      -      future-key",
+		"run-a       running  6. Run-Shed  2h00m  2h00m  run-a",
+		"run-b       running  Plan         1h00m  1h00m  run-b",
+		"future-key  running  Plan         -      -      future-key",
 	}
 	if diff := cmp.Diff(want, source.frame().Lines); diff != "" {
 		t.Errorf("second frame mismatch (-want +got):\n%s", diff)
@@ -379,9 +426,9 @@ func TestOverviewSource_ReadsThePrimesRunsFromDisk(t *testing.T) {
 	}
 	writeOverviewFile(t, pauseRecordPath, record, minutesAgo(1))
 	want = []string{
-		"run-a       paused 10m  Run-Shed  2h00m  2h00m  run-a",
-		"run-b       paused 4m   Plan      1h00m  1h00m  run-b",
-		"future-key  paused 4m   Plan      -      -      future-key",
+		"run-a       paused 10m  6. Run-Shed  2h00m  2h00m  run-a",
+		"run-b       paused 4m   Plan         1h00m  1h00m  run-b",
+		"future-key  paused 4m   Plan         -      -      future-key",
 	}
 	if diff := cmp.Diff(want, source.frame().Lines); diff != "" {
 		t.Errorf("fourth frame mismatch (-want +got):\n%s", diff)
@@ -390,12 +437,42 @@ func TestOverviewSource_ReadsThePrimesRunsFromDisk(t *testing.T) {
 	// A record that does not decode never blanks the pane.
 	writeOverviewFile(t, pauseRecordPath, []byte("{not json"), minutesAgo(1))
 	want = []string{
-		"run-a       running  Run-Shed  2h00m  2h00m  run-a",
-		"run-b       running  Plan      1h00m  1h00m  run-b",
-		"future-key  running  Plan      -      -      future-key",
+		"run-a       running  6. Run-Shed  2h00m  2h00m  run-a",
+		"run-b       running  Plan         1h00m  1h00m  run-b",
+		"future-key  running  Plan         -      -      future-key",
 	}
 	if diff := cmp.Diff(want, source.frame().Lines); diff != "" {
 		t.Errorf("fifth frame mismatch (-want +got):\n%s", diff)
+	}
+
+	// A child pair with no seed, and a pair that cannot be resolved, each leave the child row alone.
+	hub2 := t.TempDir()
+	prime2 := locationkit.Location(hub2, "prime", ".")
+	for _, slug := range []string{"run-c", "run-d"} {
+		if err := shedrun.WriteSeed(prime2, slug, shedrun.Seed{Recipe: shedrun.RecipeBatten, Driver: shedrun.DriverGo, StartedAt: stamp(minutesAgo(120))}); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(fabricengine.WorktreePath(prime2, slug), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		writeOverviewStatus(t, shedrun.StatusFile(prime2, slug), shedengine.Status{State: shedengine.StateRunning, CurrentProducer: battenrecipe.NameRunShed}, minutesAgo(100))
+	}
+	writeOverviewStatus(t, childStatusPath, shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Plan-Write"}, minutesAgo(100))
+	seedless := locationkit.Location(t.TempDir(), "run-c", ".")
+	source2 := newOverviewSource(prime2, pauseRecordPath, overviewThresholds{}, func() time.Time { return overviewNow })
+	source2.childStatus = func(string) (string, error) { return childStatusPath, nil }
+	source2.childPair = func(slug string) (*lyxcwd.Location, error) {
+		if slug == "run-d" {
+			return nil, errors.New("no pair")
+		}
+		return seedless, nil
+	}
+	want = []string{
+		"run-c  running  Plan-Write  2h00m  2h00m  run-c",
+		"run-d  running  Plan-Write  2h00m  2h00m  run-d",
+	}
+	if diff := cmp.Diff(want, source2.frame().Lines); diff != "" {
+		t.Errorf("seedless child frame mismatch (-want +got):\n%s", diff)
 	}
 }
 

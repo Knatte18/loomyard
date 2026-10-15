@@ -55,7 +55,7 @@ func (p *Profile) fixTable(opts RunOpts, values map[string]string) seatengine.Ta
 		fixGate = append(fixGate, entry)
 	}
 	return seatengine.Table{
-		RolePrefix: fixRolePrefix,
+		RolePrefix: p.rolePrefix(fixRolePrefix),
 		Segment:    p.segment(),
 		Gate:       fixGate,
 		Round:      opts.Round,

@@ -31,15 +31,16 @@ import (
 // bouncerEngineLabel is the short engine label this producer's log lines and error text carry.
 const bouncerEngineLabel = "bouncer"
 
-// bouncerJudgeRole is the shuttleengine.Spec.Role every judge pass carries, pinned as a constant
+// bouncerJudgeRole is the base of the shuttleengine.Spec.Role every judge pass carries, pinned as a constant
 // because the judge spawn and the entry-time probe for a live judge must describe the same run for
 // a logged attach to be attributable to the pass that started it.
+// The role is an identity field kept equal between the two for attribution; Attach matches on OutputFiles.
 // The judge's specs name the review segment.
 const bouncerJudgeRole = "bouncer-judge"
 
-// bouncerSeedRole is the shuttleengine.Spec.Role every seed pass carries, pinned as a constant for
+// bouncerSeedRole is the base of the shuttleengine.Spec.Role every seed pass carries, pinned as a constant for
 // exactly the reason bouncerJudgeRole is: the seed spawn and the re-bounce branch's probe for a live
-// seed must describe the same run, because Attach matches on the role, round, and OutputFiles alone.
+// seed must describe the same run, and Attach matches on the round and OutputFiles.
 // A literal in one place and a constant in the other is how the two silently stop matching.
 // The seed's specs name the review segment.
 const bouncerSeedRole = "bouncer-seed"
@@ -170,6 +171,9 @@ type BouncerConfig struct {
 	// ColorSegment is the segment the seed and judge sessions, and the probes that attach to them, are colored by.
 	// The zero value keeps segmentcolor.Review.
 	ColorSegment segmentcolor.Segment
+	// RolePrefix leads the seed and judge sessions' roles, as `<RolePrefix>-bouncer-seed` and `<RolePrefix>-bouncer-judge`.
+	// The zero value keeps the roles unprefixed.
+	RolePrefix string
 }
 
 // Bouncer is the shedadapters adapter implementing the generic review-gate producer: it composes
@@ -493,6 +497,15 @@ func (b *Bouncer) colorSegment() segmentcolor.Segment {
 	return b.cfg.ColorSegment
 }
 
+// role returns base led by the configured RolePrefix, or base alone when there is none.
+// Every spawn and probe spec names its role through it, so a spawn and its probe always carry the same role.
+func (b *Bouncer) role(base string) string {
+	if b.cfg.RolePrefix == "" {
+		return base
+	}
+	return b.cfg.RolePrefix + "-" + base
+}
+
 // awaitLiveJudge probes for a still-live judge run for round and, when it finds one, waits on it
 // before returning its result and true; a not-found probe returns false, and an attach error is returned to the
 // caller rather than swallowed, since a probe that could not determine liveness must never be read
@@ -509,7 +522,7 @@ func (b *Bouncer) colorSegment() segmentcolor.Segment {
 func (b *Bouncer) awaitLiveJudge(round int) (shuttleengine.Result, bool, error) {
 	spec := shuttleengine.Spec{
 		OutputFiles: judgeOutputs(b.cfg.RunDir, round),
-		Role:        bouncerJudgeRole,
+		Role:        b.role(bouncerJudgeRole),
 		Segment:     b.colorSegment(),
 		Round:       strconv.Itoa(round),
 	}
@@ -530,13 +543,12 @@ func (b *Bouncer) awaitLiveJudge(round int) (shuttleengine.Result, bool, error) 
 // caller rather than swallowed, since a probe that could not determine liveness must never be read
 // as "nothing is running" -- the same rule awaitLiveJudge follows for the judge spec.
 //
-// The spec it probes on carries only what Attach matches: the seed pass's own OutputFiles, role, and
-// round. It must stay byte-identical to runSeedSpawn's spec in those three fields, because Attach
-// matches on them alone and a divergence would silently make every probe here report not-found.
+// The spec it probes on carries only what the probe needs: the seed pass's own OutputFiles, which Attach matches on, and the role and round, identity fields kept equal for attribution.
+// It must stay byte-identical to runSeedSpawn's spec in those three fields, so a divergence cannot make a logged attach unattributable.
 func (b *Bouncer) awaitLiveSeed() (shuttleengine.Result, bool, error) {
 	spec := shuttleengine.Spec{
 		OutputFiles: []string{focusPath(b.cfg.RunDir, 1)},
-		Role:        bouncerSeedRole,
+		Role:        b.role(bouncerSeedRole),
 		Segment:     b.colorSegment(),
 		Round:       "1",
 	}
@@ -1227,7 +1239,7 @@ func (b *Bouncer) runSeedSpawn(focusPathValue string) error {
 		Model:       b.cfg.Models.Seed.Model,
 		Effort:      b.cfg.Models.Seed.Effort,
 		Version:     b.cfg.Models.Seed.Version,
-		Role:        bouncerSeedRole,
+		Role:        b.role(bouncerSeedRole),
 		Segment:     b.colorSegment(),
 		Round:       "1",
 		Skills:      bouncerSeedSkills,
@@ -1359,7 +1371,7 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 		Model:       b.cfg.Models.Judge.Model,
 		Effort:      b.cfg.Models.Judge.Effort,
 		Version:     b.cfg.Models.Judge.Version,
-		Role:        bouncerJudgeRole,
+		Role:        b.role(bouncerJudgeRole),
 		Segment:     b.colorSegment(),
 		Round:       strconv.Itoa(n),
 		Skills:      bouncerJudgeSkills,

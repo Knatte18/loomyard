@@ -87,9 +87,35 @@ func cardNumberOf(name string) string {
 	return num
 }
 
-// ErrPlanDrifted is the sentinel BeginBatch returns when the dispatch-boundary re-resolution (planindex.Index.ValidateDispatch, called against deps.Geom.WorktreeRoot with the completed cards excluded) reports a non-empty blocking findings set — webster's own sentinel, per the webster-owns-its-own-domain-types decision, so a caller distinguishes this refusal from ErrFingerprintMismatch via errors.Is.
+// ErrPlanConflict is the sentinel a *PlanConflictError unwraps to: the dispatch-boundary re-resolution (planindex.Index.ValidateDispatch, called against deps.Geom.WorktreeRoot with the completed cards excluded) reported a non-empty blocking findings set — webster's own sentinel, per the webster-owns-its-own-domain-types decision, so a caller distinguishes this refusal from ErrFingerprintMismatch via errors.Is.
 // Dispatching a pack built on a re-resolve that failed is strictly worse than not dispatching.
-var ErrPlanDrifted = errors.New("webster: plan re-resolution at begin-batch reported a blocking finding")
+var ErrPlanConflict = errors.New("webster: plan re-resolution at begin-batch reported a blocking finding")
+
+// The two causes a PlanConflictError carries, and the only values its Cause takes.
+const (
+	// ConflictCausePlanDefect is a conflict found while no batch was begun: the approved plan contradicts the tree before any work started.
+	ConflictCausePlanDefect = "plan_defect"
+	// ConflictCauseTreeMoved is a conflict found after a batch was begun: the tree moved under the plan.
+	ConflictCauseTreeMoved = "tree_moved"
+)
+
+// PlanConflictError is the refusal BeginBatch returns when the dispatch-boundary re-resolution reports blocking findings.
+// Batch is the batch whose begin was refused.
+// Cause is ConflictCausePlanDefect or ConflictCauseTreeMoved.
+// Findings is every blocking finding as Finding.Error renders it, in the order the re-resolution reported them.
+type PlanConflictError struct {
+	Batch    int
+	Cause    string
+	Findings []string
+}
+
+// Error renders the refusal with its class and cause, the findings and the way forward.
+func (e *PlanConflictError) Error() string {
+	return fmt.Sprintf("%s (plan_conflict: %s): %s; way forward: edit the plan so the named cards match the tree, run \"lyx webster rebaseline --card NN\" naming each card you edited, then begin-batch %02d again", ErrPlanConflict.Error(), e.Cause, strings.Join(e.Findings, "; "), e.Batch)
+}
+
+// Unwrap returns ErrPlanConflict, so errors.Is identifies the refusal.
+func (e *PlanConflictError) Unwrap() error { return ErrPlanConflict }
 
 // BeginDeps carries every seam BeginBatch needs, so a test can fake each one independently:
 // Plan is the already-parsed plan;
@@ -124,7 +150,7 @@ type BeginResult struct {
 	// or — on a re-begin over a record that already carries one — that earlier value,
 	// so it stays the HEAD from before the batch's first fork.
 	StartSHA string
-	// Advisories is every informational finding the dispatch-boundary re-resolution (planindex.Index.ValidateDispatch) reported, rendered via Finding.Error, so an operator sees them without the run stopping — a non-empty blocking findings set never reaches this far, since it returns ErrPlanDrifted instead.
+	// Advisories is every informational finding the dispatch-boundary re-resolution (planindex.Index.ValidateDispatch) reported, rendered via Finding.Error, so an operator sees them without the run stopping — a non-empty blocking findings set never reaches this far, since it returns ErrPlanConflict instead.
 	Advisories []string
 	// ArchivedReport is the path a report left with no begin-batch record was archived to, empty when there was none.
 	ArchivedReport string
@@ -492,7 +518,12 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		}
 	}
 	if len(blocking) > 0 {
-		return nil, fmt.Errorf("%w: %s; way forward: edit the plan so the named cards match the tree, run \"lyx webster rebaseline --card NN\" naming each card you edited, then begin-batch %02d again", ErrPlanDrifted, strings.Join(blocking, "; "), batchNumber)
+		// begun is computed before this call records its batch, so a first begin of batch 1 has none begun (plan_defect) and a re-begin of a recorded batch has it begun (tree_moved).
+		cause := ConflictCauseTreeMoved
+		if len(begun) == 0 {
+			cause = ConflictCausePlanDefect
+		}
+		return nil, &PlanConflictError{Batch: batchNumber, Cause: cause, Findings: blocking}
 	}
 
 	batch, err := findBatch(deps.Batches, batchNumber)

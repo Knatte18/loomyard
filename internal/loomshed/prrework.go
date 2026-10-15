@@ -141,12 +141,12 @@ func (p *prRework) Call(ctx context.Context) (shedengine.Outcome, shedengine.Out
 			return stuck("no pending rejection and no committed rework round; run " + reworkRejectCommand)
 		}
 		// A crash after the record's removal but before Shed persisted Done.
-		return p.finish(false)
+		return p.finish(false, shedengine.OutputPointer{})
 	}
 
 	identity := rejectionIdentity(pending.HeadSHA, pending.RejectedAt)
 	if committed[identity] {
-		return p.finish(true)
+		return p.finish(true, shedengine.OutputPointer{})
 	}
 
 	round, inFlight, err := p.roundFor(committed)
@@ -172,7 +172,7 @@ func (p *prRework) Call(ctx context.Context) (shedengine.Outcome, shedengine.Out
 	}
 	if rec.Class != "" {
 		// The session finished and the round was classified before the round commit was interrupted, so only the commit remains.
-		return p.commitRound()
+		return p.commitRound(shedengine.OutputPointer{})
 	}
 
 	told := ReworkTold{FirstCard: rec.FirstCard, PriorPlanDir: filepath.Join(roundDir, reworkPriorDir, reworkPriorPlan)}
@@ -183,7 +183,11 @@ func (p *prRework) Call(ctx context.Context) (shedengine.Outcome, shedengine.Out
 
 	plan, err := planparser.ParsePlan(p.deps.PlanDir)
 	if err != nil {
-		return stuck("rework plan does not parse: " + err.Error())
+		return shedengine.Stuck, shedengine.OutputPointer{
+			Reason:       "rework plan does not parse: " + err.Error(),
+			GateAttempts: pointer.GateAttempts,
+			GateSpans:    pointer.GateSpans,
+		}, nil
 	}
 	rec.Class = ReworkClassRequired
 	if planparser.ReviewExempt(plan) {
@@ -192,15 +196,15 @@ func (p *prRework) Call(ctx context.Context) (shedengine.Outcome, shedengine.Out
 	if err := p.finishRound(roundDir, rec, pointer.Path); err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
-	return p.commitRound()
+	return p.commitRound(pointer)
 }
 
-// commitRound commits the classified round, then removes the pending rejection and returns Done.
-func (p *prRework) commitRound() (shedengine.Outcome, shedengine.OutputPointer, error) {
+// commitRound commits the classified round, then removes the pending rejection and returns Done carrying gated's gate fields.
+func (p *prRework) commitRound(gated shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := p.deps.Commit(); err != nil {
 		return "", shedengine.OutputPointer{}, fmt.Errorf("loomshed: %s: commit rework round: %w", p.name, err)
 	}
-	return p.finish(true)
+	return p.finish(true, gated)
 }
 
 // checkSeams names the first unwired seam; the constructor returns the bare seam interface and so has no error to refuse a nil through.
@@ -227,13 +231,14 @@ func (p *prRework) checkSeams() error {
 
 // finish runs the last step: when clear, remove the pending record, then Done.
 // The absent-record crash path calls it with clear false, since that record is already gone.
-func (p *prRework) finish(clear bool) (shedengine.Outcome, shedengine.OutputPointer, error) {
+// The Done pointer carries only gated's GateAttempts and GateSpans, so its Path stays empty.
+func (p *prRework) finish(clear bool, gated shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if clear {
 		if err := p.deps.ClearRejection(); err != nil {
 			return "", shedengine.OutputPointer{}, fmt.Errorf("loomshed: %s: clear rejection: %w", p.name, err)
 		}
 	}
-	return shedengine.Done, shedengine.OutputPointer{}, nil
+	return shedengine.Done, shedengine.OutputPointer{GateAttempts: gated.GateAttempts, GateSpans: gated.GateSpans}, nil
 }
 
 // stuck returns a Stuck verdict carrying reason.

@@ -37,12 +37,14 @@ func TestEngine_Review_TableShape(t *testing.T) {
 		name         string
 		clusterFan   string
 		segment      segmentcolor.Segment
+		rolePrefix   string
 		wantSegment  segmentcolor.Segment
+		wantRole     string
 		wantForkFlag bool
 	}{
-		{name: "solo reviewer", wantSegment: segmentcolor.Review},
-		{name: "cluster reviewer", clusterFan: "standard", wantSegment: segmentcolor.Review, wantForkFlag: true},
-		{name: "merge-segment reviewer", segment: segmentcolor.Merge, wantSegment: segmentcolor.Merge},
+		{name: "solo reviewer", wantSegment: segmentcolor.Review, wantRole: reviewHalfRole},
+		{name: "cluster reviewer", clusterFan: "standard", wantSegment: segmentcolor.Review, wantRole: reviewHalfRole, wantForkFlag: true},
+		{name: "merge-segment reviewer", segment: segmentcolor.Merge, rolePrefix: "merge", wantSegment: segmentcolor.Merge, wantRole: "merge-" + reviewHalfRole},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -50,16 +52,17 @@ func TestEngine_Review_TableShape(t *testing.T) {
 			root, p := newEngineTestProfile(t)
 			p.ClusterFan = tt.clusterFan
 			p.Segment = tt.segment
+			p.RolePrefix = tt.rolePrefix
 			shuttle := doneReview(approvedReview)
 			e := newEngineWith(t, Geometry{WorktreeRoot: root, AnchorPath: root}, clusterTestConfig, shuttle)
 
 			// A cluster reviewer with no fork audit is refused after the spawn; the spec is what this test reads.
 			_, _ = e.Review(p, opts)
 
-			if want := []string{reviewHalfRole}; !slices.Equal(shuttle.started, want) {
+			if want := []string{tt.wantRole}; !slices.Equal(shuttle.started, want) {
 				t.Fatalf("started seats = %v; want %v, the one chair", shuttle.started, want)
 			}
-			spec := shuttle.specs[reviewHalfRole]
+			spec := shuttle.specs[tt.wantRole]
 			if spec.Prompt == "" {
 				t.Errorf("spec.Prompt = \"\"; want non-empty")
 			}
@@ -81,7 +84,7 @@ func TestEngine_Review_TableShape(t *testing.T) {
 			if spec.ForkSubagents != tt.wantForkFlag {
 				t.Errorf("spec.ForkSubagents = %v; want %v", spec.ForkSubagents, tt.wantForkFlag)
 			}
-			gate := shuttle.gates[reviewHalfRole]
+			gate := shuttle.gates[tt.wantRole]
 			if len(gate) != 1 || gate[0].Name != "review" || !gate[0].PassOnCap || gate[0].Attempts != reviewGateAttempts {
 				t.Errorf("gate = %+v; want the one review-parse entry that passes on its cap", gate)
 			}
@@ -115,19 +118,22 @@ func TestEngine_Review_Outcomes(t *testing.T) {
 		wantNotStart bool
 		wantAudit    *shuttleengine.ForkAudit
 		wantWarnings int
+		// wantGateReason is the Reason of the reviewer's Gate the result must carry, and wantNilGate marks a reviewer that never ran gated.
+		wantGateReason string
+		wantNilGate    bool
 	}{
 		{name: "an accepted blocking review", script: halfScript{result: done, writes: blockingReview}, wantOutcome: shuttleengine.OutcomeDone, wantVerdict: VerdictBlocking, wantFindings: 1},
 		{name: "an accepted approved review", script: halfScript{result: done, writes: approvedReview}, wantOutcome: shuttleengine.OutcomeDone, wantVerdict: VerdictApproved},
 		{name: "a review missing a finding's fix is refused by the strict parse", script: halfScript{result: done, writes: noFixReview}, wantOutcome: shuttleengine.OutcomeDone, wantErrText: "missing a non-empty fix"},
 		{name: "an unparseable review is refused", script: halfScript{result: done, writes: malformedReview}, wantOutcome: shuttleengine.OutcomeDone, wantErrText: "round reached done but its review file is invalid"},
-		{name: "a failed review gate is an error", script: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Reason: "spent"}}, writes: blockingReview}, wantOutcome: shuttleengine.OutcomeDone, wantErrText: "review gate failed"},
+		{name: "a failed review gate is an error", script: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Reason: "spent"}}, writes: blockingReview}, wantOutcome: shuttleengine.OutcomeDone, wantErrText: "review gate failed", wantGateReason: "spent"},
 		{name: "a violating cluster audit is refused with the audit kept", script: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, ForkAudit: violatingAudit}, writes: approvedReview}, clusterFan: "standard", wantOutcome: shuttleengine.OutcomeDone, wantErrText: "write/edit tool call", wantAudit: violatingAudit},
 		{name: "a clean cluster audit passes its warnings through", script: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, ForkAudit: cleanAudit}, writes: approvedReview}, clusterFan: "standard", wantOutcome: shuttleengine.OutcomeDone, wantVerdict: VerdictApproved, wantAudit: cleanAudit, wantWarnings: 1},
-		{name: "a reviewer that died", script: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}}, wantOutcome: shuttleengine.OutcomeDied},
-		{name: "a reviewer that timed out", script: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}}, wantOutcome: shuttleengine.OutcomeTimeout},
-		{name: "a provider that never came up is a not-started death", script: halfScript{startErr: notStarted}, wantOutcome: shuttleengine.OutcomeDied, wantNotStart: true},
-		{name: "any other start error is wrapped", script: halfScript{startErr: errors.New("reed: add strand failed")}, wantErrText: "burler: shuttle run: "},
-		{name: "a timed-out reviewer that cannot be stopped is ErrHalfNotStopped", script: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}}, stopErr: errors.New("reed unreachable"), wantOutcome: shuttleengine.OutcomeTimeout, wantErrIs: ErrHalfNotStopped},
+		{name: "a reviewer that died", script: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}}, wantOutcome: shuttleengine.OutcomeDied, wantNilGate: true},
+		{name: "a reviewer that timed out", script: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}}, wantOutcome: shuttleengine.OutcomeTimeout, wantNilGate: true},
+		{name: "a provider that never came up is a not-started death", script: halfScript{startErr: notStarted}, wantOutcome: shuttleengine.OutcomeDied, wantNotStart: true, wantNilGate: true},
+		{name: "any other start error is wrapped", script: halfScript{startErr: errors.New("reed: add strand failed")}, wantErrText: "burler: shuttle run: ", wantNilGate: true},
+		{name: "a timed-out reviewer that cannot be stopped is ErrHalfNotStopped", script: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}}, stopErr: errors.New("reed unreachable"), wantOutcome: shuttleengine.OutcomeTimeout, wantErrIs: ErrHalfNotStopped, wantNilGate: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -154,6 +160,9 @@ func TestEngine_Review_Outcomes(t *testing.T) {
 			}
 			if got.NotStarted != tt.wantNotStart || (tt.wantNotStart && got.Review.StartError == "") {
 				t.Errorf("NotStarted = %v, StartError = %q; want NotStarted %v with the start error", got.NotStarted, got.Review.StartError, tt.wantNotStart)
+			}
+			if (got.Gate == nil) != tt.wantNilGate || (got.Gate != nil && got.Gate.Reason != tt.wantGateReason) {
+				t.Errorf("Gate = %+v; want the reviewer's gate with reason %q, nil %v", got.Gate, tt.wantGateReason, tt.wantNilGate)
 			}
 			if got.Verdict != tt.wantVerdict || len(got.Findings) != tt.wantFindings {
 				t.Errorf("verdict %q with %d findings; want %q with %d", got.Verdict, len(got.Findings), tt.wantVerdict, tt.wantFindings)

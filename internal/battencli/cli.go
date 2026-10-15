@@ -14,6 +14,7 @@
 // The first line is the orch session's: its latest context tokens against the soft and hard thresholds, its cycle phase and cycle count, with `watcher down` appended once the watcher has exited; no state file draws no orch line, and a state file unreadable on two polls in a row shows `orch  state unreadable`.
 // Below it come the batten runs in flight, one line each: the slug, batten's state, the stage, the time in that stage, the run's age and the pair's reed session.
 // A run shows while batten's state is not done and its pair exists or is being created; a run with a seed and no status shows as `starting`; the stage is the task worktree's current producer while batten is in Run-Shed and that status is found, and batten's own producer otherwise.
+// The stage cell carries the stage's entry number from the recipe, `7. Land` for a batten stage and `6.5 Plan-Write` for a child stage under Run-Shed's number 6; a stage whose number cannot be read shows its name alone.
 // A running, batten-paused or starting run a live pause covers shows `paused <minutes>` in its state cell, the minutes since that pause began.
 // Runs are ordered by the seed's start time and then slug, those with no readable start last.
 // The pane polls each second and backs off while nothing changes, which holds because every time renders in whole minutes.
