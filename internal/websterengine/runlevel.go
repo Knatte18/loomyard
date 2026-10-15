@@ -201,6 +201,8 @@ type RunResult struct {
 	// Warnings carries every non-fatal observation accumulated this run — never a failure.
 	// Mirrors RecordResult.Warnings' shape and contract: the verify gate's flaky notice, and the audit warnings.
 	Warnings []string
+	// Gate is Merriam's run's gate outcome, a 1:1 passthrough of the shuttle result's Gate with the verify gate's entry among its entries; nil when Merriam's run was not gated.
+	Gate *shuttleengine.GateOutcome
 }
 
 // hasBlockingFinding reports whether findings carries at least one planindex.SeverityBlocking entry, mirroring internal/loomshed/planvalidate.go's own hasBlockingFinding and internal/loomcli/validate.go's own planFindingsHaveBlocking: severity, not finding count, decides the verdict on every side of this parity, and Run's own pre-flight gate is the real gate the other three mirror.
@@ -365,6 +367,11 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 		return RunResult{}, fmt.Errorf("%w: %q (run.lock held); way forward: wait for it to finish, or check `lyx webster status`", ErrRunBusy, deps.Geom.ScratchDir)
 	}
 	defer runLock.Release()
+
+	// A record is bounded to one Webster call, and the removal sits behind the lock so a refused-busy Run never removes the live run's record.
+	if err := RemoveConflictRecord(deps.Geom.ScratchDir); err != nil {
+		logger.Warn("websterengine: stale plan-conflict record not removed", "err", err)
+	}
 
 	// The overview frame is hashed from the bytes this parse accepts, so a file changing after the parse cannot make the frame unreadable.
 	var overview []byte
@@ -788,6 +795,7 @@ func finishMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summar
 	if mapErr != nil {
 		return RunResult{}, mapErr
 	}
+	runResult.Gate = result.Gate
 	entryWarnings := freshWarnings
 	if rebaselineWarning != "" {
 		entryWarnings = append([]string{rebaselineWarning}, freshWarnings...)

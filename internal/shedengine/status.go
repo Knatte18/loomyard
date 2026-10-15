@@ -47,6 +47,28 @@ type Activity struct {
 	Wait string `json:"wait"`
 }
 
+// The kinds of GateSpan.Kind.
+const (
+	// GateSpanKindGate is one run of a gate entry's closure.
+	GateSpanKindGate = "gate"
+	// GateSpanKindHeld is the time a gate entry was pending and held the run.
+	GateSpanKindHeld = "held"
+	// GateSpanKindRework is the time from a delivered re-prompt to the writer's next arrival or the run's end.
+	GateSpanKindRework = "rework"
+)
+
+// GateSpan is one span of a gate entry, as a history entry stores it.
+// It is a plain struct of strings so shedengine imports nothing for it.
+type GateSpan struct {
+	// Gate is the gate entry's name as recorded.
+	Gate string `json:"gate"`
+	// Kind is one of the GateSpanKind constants.
+	Kind string `json:"kind"`
+	// Start and End are RFC 3339 UTC times with fractional seconds, so a sub-second span keeps its length.
+	Start string `json:"start"`
+	End   string `json:"end"`
+}
+
 // HistoryEntry is one producer call's durable record, and the element type of Result.History.
 // A budget-exempt Stuck folds into an immediately preceding identical exempt Stuck rather than appending,
 // so one entry can stand for a run of consecutive calls.
@@ -62,6 +84,9 @@ type HistoryEntry struct {
 	// its value is 0 (a gate that passed on the first try), since 0 is a meaningful, distinct
 	// verdict from "ungated" and collapsing the two would silently lose it.
 	GateAttempts *int `json:"gate_attempts,omitempty"`
+	// GateSpans are the time spans this call's gate entries took, in the order they started.
+	// A status file written before the field existed decodes as nil, and a nil list is not written.
+	GateSpans []GateSpan `json:"gate_spans,omitempty"`
 	// BudgetExempt is true on a Stuck entry the producer marked as not counted against the bounce budget.
 	// A status file written before the field existed decodes as false and counts as before.
 	BudgetExempt bool `json:"budget_exempt,omitempty"`

@@ -23,7 +23,7 @@ type editStep struct {
 	leave bool
 }
 
-// TestEdit pins the editing loop: a missing file is scaffolded from the template before the editor runs, invalid YAML re-opens the editor, an editor that leaves invalid YAML unchanged or fails aborts with ErrAborted and removes only a file Edit scaffolded, and a base directory without _lyx/ is refused with the not-initialized error before any editor runs.
+// TestEdit pins the editing loop: a missing file is scaffolded from the template before the editor runs, invalid YAML re-opens the editor, an editor that leaves invalid YAML unchanged or fails aborts with ErrAborted and removes only a file Edit scaffolded, an empty or whitespace-only result aborts and restores the entry bytes of a pre-existing file while a comment-only one saves, and a base directory without _lyx/ is refused with the not-initialized error before any editor runs.
 func TestEdit(t *testing.T) {
 	t.Parallel()
 	const template = "key1: value1\nkey2: value2\n"
@@ -51,12 +51,38 @@ func TestEdit(t *testing.T) {
 		localExisting string
 	}{
 		{
-			name:     "missing worktree file under a board is scaffolded empty",
-			state:    baseLyx,
-			board:    true,
-			steps:    []editStep{{leave: true}},
-			wantSaw:  "",
-			wantFile: ptr(""),
+			name:        "missing worktree file under a board is scaffolded empty and an editor that leaves it empty aborts and removes it",
+			state:       baseLyx,
+			board:       true,
+			steps:       []editStep{{leave: true}},
+			wantSaw:     "",
+			wantAborted: true,
+		},
+		{
+			name:        "an empty write over a pre-existing file aborts and restores it",
+			state:       baseWithFile,
+			steps:       []editStep{{write: ""}},
+			wantAborted: true,
+			wantFile:    ptr(original),
+		},
+		{
+			name:        "an invalid write then an empty one restores the entry bytes, not the invalid ones",
+			state:       baseWithFile,
+			steps:       []editStep{{write: invalid}, {write: ""}},
+			wantAborted: true,
+			wantFile:    ptr(original),
+		},
+		{
+			name:        "a whitespace-only write over a template scaffold aborts and removes the file",
+			state:       baseLyx,
+			steps:       []editStep{{write: " \n\t\n"}},
+			wantAborted: true,
+		},
+		{
+			name:     "a comment-only write over a pre-existing file saves",
+			state:    baseWithFile,
+			steps:    []editStep{{write: "# nothing yet\n"}},
+			wantFile: ptr("# nothing yet\n"),
 		},
 		{
 			name:     "local edit of an open key is kept",

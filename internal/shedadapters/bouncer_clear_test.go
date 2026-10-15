@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -86,7 +87,7 @@ func TestBouncer_Clear_ApprovedRunDirClearsAndReseeds(t *testing.T) {
 	}
 
 	ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
-	if ptr != (shedengine.OutputPointer{}) {
+	if !reflect.DeepEqual(ptr, shedengine.OutputPointer{}) {
 		t.Errorf("Call() pointer = %+v; want empty", ptr)
 	}
 	if !shuttle.AttachCalled {
@@ -317,7 +318,7 @@ func TestBouncer_Clear_AfterCommitFailureSubsequentCallClears(t *testing.T) {
 	if outcome != "" {
 		t.Errorf("Call() (first) outcome = %q; want empty alongside a non-nil error", outcome)
 	}
-	if ptr != (shedengine.OutputPointer{}) {
+	if !reflect.DeepEqual(ptr, shedengine.OutputPointer{}) {
 		t.Errorf("Call() (first) pointer = %+v; want empty", ptr)
 	}
 	if _, err := os.Stat(verdictPath(cfg.RunDir, 1)); err != nil {
@@ -331,7 +332,7 @@ func TestBouncer_Clear_AfterCommitFailureSubsequentCallClears(t *testing.T) {
 	if outcome != shedengine.Stuck {
 		t.Errorf("Call() (second) outcome = %q; want %q (the still-CONVERGED directory clears and re-seeds)", outcome, shedengine.Stuck)
 	}
-	if ptr != (shedengine.OutputPointer{}) {
+	if !reflect.DeepEqual(ptr, shedengine.OutputPointer{}) {
 		t.Errorf("Call() (second) pointer = %+v; want empty", ptr)
 	}
 	if commitCalls != 1 {
@@ -414,7 +415,7 @@ func TestBouncer_Clear_EndToEndSequence(t *testing.T) {
 	if outcome != shedengine.Stuck {
 		t.Errorf("Call() (re-entry) outcome = %q; want %q (a seed call)", outcome, shedengine.Stuck)
 	}
-	if ptr != (shedengine.OutputPointer{}) {
+	if !reflect.DeepEqual(ptr, shedengine.OutputPointer{}) {
 		t.Errorf("Call() (re-entry) pointer = %+v; want empty", ptr)
 	}
 	if !reentrySeedShuttle.Called {

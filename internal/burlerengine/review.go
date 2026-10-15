@@ -37,6 +37,8 @@ type ReviewResult struct {
 	ClusterWarnings []string
 	// NotStarted is true when the reviewer's provider never came up, so a producer can tell that from an agent that died mid-run.
 	NotStarted bool
+	// Gate is a 1:1 passthrough of the reviewer's shuttleengine.Result.Gate, the review-parse entry's report; nil when the reviewer never ran gated.
+	Gate *shuttleengine.GateOutcome
 }
 
 // ErrReviewChanged reports that the review file no longer holds the bytes the review half accepted, so the fix half refuses to act on it.
@@ -47,7 +49,7 @@ var ErrReviewChanged = errors.New("burler: the review file changed after it was 
 // values carries the marker values the seat's stencil is filled from.
 func (p *Profile) reviewTable(opts RunOpts, values map[string]string) seatengine.Table {
 	return seatengine.Table{
-		RolePrefix: reviewRolePrefix,
+		RolePrefix: p.rolePrefix(reviewRolePrefix),
 		Segment:    p.segment(),
 		Gate:       shuttleengine.GateSpec{ReviewGateEntry(p.ReviewPath)},
 		Round:      opts.Round,
@@ -168,6 +170,7 @@ func reviewResultOf(p *Profile, reviewer shuttleengine.Result) ReviewResult {
 		Outcome:    reviewer.Outcome,
 		ReviewPath: p.ReviewPath,
 		Review:     halfOf(reviewer, "", ""),
+		Gate:       reviewer.Gate,
 	}
 	for _, lens := range p.clusterLenses {
 		result.Lenses = append(result.Lenses, lens.Name)

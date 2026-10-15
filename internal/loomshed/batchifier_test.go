@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -32,7 +33,7 @@ func TestBatchifier_Call(t *testing.T) {
 
 		b := NewBatchifier("Batchifier", configengine.Dirs{Anchor: anchorPath})
 		pointer := shedfake.RequireOutcome(t, b, shedengine.Done)
-		if pointer != (shedengine.OutputPointer{}) {
+		if !reflect.DeepEqual(pointer, shedengine.OutputPointer{}) {
 			t.Errorf("Call() pointer = %+v; want empty", pointer)
 		}
 	})

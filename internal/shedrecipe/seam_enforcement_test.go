@@ -45,6 +45,8 @@ var shedrecipeAllowedImports = []string{
 	// internal/configengine is imported for the told Dirs type the batcher-backed rows load through; it resolves no geometry.
 	"github.com/Knatte18/loomyard/internal/configengine",
 	"github.com/Knatte18/loomyard/internal/shuttleengine",
+	// internal/agentname is imported to validate a row's role_prefix; it forms no name here.
+	"github.com/Knatte18/loomyard/internal/agentname",
 }
 
 // shedrecipeDeniedLyxcwdImport is the exact import path the Shed Recipe Registry Invariant excludes

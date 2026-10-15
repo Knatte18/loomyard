@@ -19,13 +19,16 @@ func exemptStuck(producer, output, at string) HistoryEntry {
 
 func intPtr(v int) *int { return &v }
 
-// cloneHistory deep-copies history, including GateAttempts pointees.
+// cloneHistory deep-copies history, including GateAttempts pointees and GateSpans lists.
 func cloneHistory(h []HistoryEntry) []HistoryEntry {
 	out := make([]HistoryEntry, len(h))
 	copy(out, h)
 	for i := range out {
 		if out[i].GateAttempts != nil {
 			out[i].GateAttempts = intPtr(*out[i].GateAttempts)
+		}
+		if out[i].GateSpans != nil {
+			out[i].GateSpans = append([]GateSpan(nil), out[i].GateSpans...)
 		}
 	}
 	return out
@@ -37,16 +40,25 @@ func TestAppendOrFold_Folds(t *testing.T) {
 		e.GateAttempts = intPtr(n)
 		return e
 	}
+	spanned := func(e HistoryEntry, span GateSpan) HistoryEntry {
+		e.GateSpans = []GateSpan{span}
+		return e
+	}
+	first := GateSpan{Gate: "g", Kind: GateSpanKindGate, Start: "s1", End: "e1"}
+	second := GateSpan{Gate: "g", Kind: GateSpanKindRework, Start: "s2", End: "e2"}
 	tests := []struct {
 		name        string
 		entries     []HistoryEntry
 		wantRepeats int
 		wantLastAt  string
+		wantSpans   []GateSpan
 	}{
 		{"consecutive exempt stucks fold into the first entry",
-			[]HistoryEntry{exemptStuck("Wait", "x", "t1"), exemptStuck("Wait", "x", "t2"), exemptStuck("Wait", "x", "t3")}, 2, "t3"},
+			[]HistoryEntry{exemptStuck("Wait", "x", "t1"), exemptStuck("Wait", "x", "t2"), exemptStuck("Wait", "x", "t3")}, 2, "t3", nil},
 		{"equal gate attempts fold",
-			[]HistoryEntry{withGate(exemptStuck("Wait", "x", "t1"), 2), withGate(exemptStuck("Wait", "x", "t2"), 2)}, 1, "t2"},
+			[]HistoryEntry{withGate(exemptStuck("Wait", "x", "t1"), 2), withGate(exemptStuck("Wait", "x", "t2"), 2)}, 1, "t2", nil},
+		{"the folded entry's spans append to the first's in order",
+			[]HistoryEntry{withGate(spanned(exemptStuck("Wait", "x", "t1"), first), 2), withGate(spanned(exemptStuck("Wait", "x", "t2"), second), 2)}, 1, "t2", []GateSpan{first, second}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -60,6 +72,9 @@ func TestAppendOrFold_Folds(t *testing.T) {
 			}
 			if h[0].At != "t1" || h[0].Repeats != tt.wantRepeats || h[0].LastAt != tt.wantLastAt {
 				t.Errorf("entry = %+v; want At t1, Repeats %d, LastAt %s", h[0], tt.wantRepeats, tt.wantLastAt)
+			}
+			if !reflect.DeepEqual(h[0].GateSpans, tt.wantSpans) {
+				t.Errorf("GateSpans = %+v; want %+v", h[0].GateSpans, tt.wantSpans)
 			}
 		})
 	}
@@ -137,8 +152,15 @@ func TestAppendOrFold_FoldThenDoneThenStuckAppendsFresh(t *testing.T) {
 func TestAppendOrFold_InputUnchanged(t *testing.T) {
 	gated := exemptStuck("Wait", "x", "t1")
 	gated.GateAttempts = intPtr(1)
+	// The input's span list has spare capacity, so a fold that appended in place would write through it.
+	gated.GateSpans = append(make([]GateSpan, 0, 4), GateSpan{Gate: "g", Kind: GateSpanKindGate, Start: "s1", End: "e1"})
 	for name, entry := range map[string]HistoryEntry{
-		"fold":   func() HistoryEntry { e := exemptStuck("Wait", "x", "t2"); e.GateAttempts = intPtr(1); return e }(),
+		"fold": func() HistoryEntry {
+			e := exemptStuck("Wait", "x", "t2")
+			e.GateAttempts = intPtr(1)
+			e.GateSpans = []GateSpan{{Gate: "g", Kind: GateSpanKindHeld, Start: "s2", End: "e2"}}
+			return e
+		}(),
 		"append": {Producer: "Wait", Outcome: Done, At: "t2"},
 	} {
 		h := []HistoryEntry{{Producer: "A", Outcome: Done, At: "t0"}, gated}
@@ -146,6 +168,9 @@ func TestAppendOrFold_InputUnchanged(t *testing.T) {
 		got := appendOrFold(h, entry)
 		if !reflect.DeepEqual(h, before) {
 			t.Errorf("%s: input = %+v; want unchanged %+v", name, h, before)
+		}
+		if spare := h[1].GateSpans[:2]; spare[1] != (GateSpan{}) {
+			t.Errorf("%s: input's span array was written past its length: %+v", name, spare)
 		}
 		if len(h) > 0 && len(got) > 0 && &got[0] == &h[0] {
 			t.Errorf("%s: result shares backing array with input", name)

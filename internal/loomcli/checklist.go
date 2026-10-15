@@ -71,6 +71,9 @@ type checklistVisit struct {
 	output       string
 	gateAttempts *int
 	folds        int
+	// hasGateSpans is true when the entry carried a gate span list, however short; gateLines are the gate lines drawn under the visit.
+	hasGateSpans bool
+	gateLines    []string
 }
 
 // checklistVisits is the time, visit count and visit log the history gives one row.
@@ -181,13 +184,16 @@ func readChecklistPaused(recordPath, slug string, now time.Time) []pauserecord.I
 }
 
 // renderChecklist returns the checklist frame, top to bottom:
-// one line per row of the recipe in recipe order, each visited row's visit lines under it, then the history-only rows the same way, marked checklistNotInRecipe;
+// one line per row of the recipe in recipe order, each visited row's visit lines under it, each followed by its gate lines, then the history-only rows the same way, marked checklistNotInRecipe;
 // a review segment, drawn by checklistReviewBlock at the place of its first row, takes the place of its rows' own lines;
-// each arbiter attempt standing right after the line of the history entry its stop key names, in every list the frame draws, and the others after the last row;
+// each arbiter attempt standing right after the line, and the gate lines, of the history entry its stop key names, in every list the frame draws, and the others after the last row;
 // with in.rowsErr set, the single line checklistRecipeBroken and then every visit line in history order, each naming its row;
 // the state line, without the wait the wait line carries; and the wait line.
 // in.startedAt is the run's seed time, where its first visit starts; an empty or unparsable value starts it at the first entry's own time.
 // in.paused is left out of every visit's time.
+// A row's total is drawn to the second unless one of its visits is the open one, and then in whole minutes.
+// A gate row's refusal marks the visit of the row it bounced to as rework for it, and the gate row's line adds the sum of those visits; the recipe-unreadable list attributes none.
+// Each recipe entry carries the number loomrecipe.EntryNumbers gives it after its box; a history-only row and the recipe-unreadable lines carry none.
 func renderChecklist(in checklistInput, now time.Time) statuspane.Frame {
 	stateLine := shedverbs.UnavailableLine(checklistLabel)
 	if in.poll.Found {
@@ -210,7 +216,10 @@ func renderChecklist(in checklistInput, now time.Time) statuspane.Frame {
 			if visit.isGoto {
 				continue
 			}
-			lines = append(lines, "  "+checklistVisitLine(visit, visit.row))
+			lines = append(lines, "  "+checklistVisitLine(visit, visit.row, ""))
+			for _, gate := range visit.gateLines {
+				lines = append(lines, "    "+gate)
+			}
 			for _, arbiter := range arbiters.linesAfter(visit.index) {
 				lines = append(lines, "  "+arbiter)
 			}
@@ -231,6 +240,7 @@ func renderChecklist(in checklistInput, now time.Time) statuspane.Frame {
 		}
 	}
 
+	numbers := loomrecipe.EntryNumbers(in.rows)
 	recipeRow := make(map[string]loomrecipe.RecipeRow, len(in.rows))
 	reviewSegment := map[string]bool{}
 	for _, row := range in.rows {
@@ -239,6 +249,11 @@ func renderChecklist(in checklistInput, now time.Time) statuspane.Frame {
 			reviewSegment[row.Segment] = true
 		}
 	}
+	perched := map[string]bool{}
+	for _, row := range in.rows {
+		perched[row.Name] = reviewSegment[row.Segment]
+	}
+	rework := checklistRework(history, perched)
 
 	var lines []string
 	drawnSegment := map[string]bool{}
@@ -246,23 +261,29 @@ func renderChecklist(in checklistInput, now time.Time) statuspane.Frame {
 		if row, ok := recipeRow[name]; ok && reviewSegment[row.Segment] {
 			if !drawnSegment[row.Segment] {
 				drawnSegment[row.Segment] = true
-				lines = append(lines, checklistReviewBlock(row.Segment, in.rows, history, status, arbiters)...)
+				lines = append(lines, checklistReviewBlock(row.Segment, numbers[name], in.rows, history, status, arbiters)...)
 			}
 			continue
 		}
-		line := checklistBox(name, visits[name], status) + " " + name
+		line := checklistBox(name, visits[name], status) + " " + checklistEntryName(numbers[name], name)
 		if v := visits[name]; v.visits > 0 {
-			line += " " + statuspane.FormatMinutes(v.spent)
+			line += " " + checklistTime(v.spent, slices.ContainsFunc(v.log, checklistVisitIsOpen))
 			if v.visits > 1 {
 				line += fmt.Sprintf(" x%d", v.visits)
 			}
+		}
+		if total, refused := rework.total[name]; refused {
+			line += " rework " + checklistTime(total, rework.includesOpen[name])
 		}
 		if !inRecipe[name] {
 			line += " " + checklistNotInRecipe
 		}
 		lines = append(lines, line)
 		for _, visit := range visits[name].log {
-			lines = append(lines, "  "+checklistVisitLine(visit, ""))
+			lines = append(lines, "  "+checklistVisitLine(visit, "", rework.forVisit[visit.index]))
+			for _, gate := range visit.gateLines {
+				lines = append(lines, "    "+gate)
+			}
 			for _, arbiter := range arbiters.linesAfter(visit.index) {
 				lines = append(lines, "  "+arbiter)
 			}
@@ -272,10 +293,14 @@ func renderChecklist(in checklistInput, now time.Time) statuspane.Frame {
 	return statuspane.Frame{Lines: append(lines, stateLine, waitLine)}
 }
 
-// checklistBlockLine is one visit line of a review block and the status history index of the entry it shows, -1 for the open visit.
+// checklistBlockLine is one visit line of a review block, the status history index of the entry it shows (-1 for the open visit) and the time the line spent.
+// open is true for the open visit, and gateLines are the gate lines drawn right under the line.
 type checklistBlockLine struct {
-	text  string
-	index int
+	text      string
+	index     int
+	spent     time.Duration
+	open      bool
+	gateLines []string
 }
 
 // checklistRound is one opened round of a review block: its number and the lines under it, in the order they ran.
@@ -284,15 +309,78 @@ type checklistRound struct {
 	lines  []checklistBlockLine
 }
 
+// total returns the round's time as "<time>": the sum of its lines' spent, in whole minutes when the round holds the open visit and to the second otherwise.
+func (r checklistRound) total() string {
+	var spent time.Duration
+	open := false
+	for _, line := range r.lines {
+		spent += line.spent
+		open = open || line.open
+	}
+	return checklistTime(spent, open)
+}
+
+// checklistEntryName renders name behind its entry number as "<number>. <name>"; a name with no number, number 0, stands bare.
+func checklistEntryName(number int, name string) string {
+	if number == 0 {
+		return name
+	}
+	return fmt.Sprintf("%d. %s", number, name)
+}
+
+// checklistReworkSet is the rework the refusals of gate rows caused.
+// forVisit maps the history index of a rework visit, -1 for the open visit, to the gate row it was rework for.
+// total is each gate row's summed rework time, and includesOpen holds the gate rows whose total includes the open visit.
+type checklistReworkSet struct {
+	forVisit     map[int]string
+	total        map[string]time.Duration
+	includesOpen map[string]bool
+}
+
+// checklistRework attributes rework to gate rows by walking the history-order visits once.
+// A gate refusal is a visit that ended bounced, of a row not in perched, the rows of review segments, whose rework the round totals already show.
+// Its rework visit is the next visit when that is a visit, not a goto, of the routed-to row; the open visit is the last visit.
+func checklistRework(history []checklistVisit, perched map[string]bool) checklistReworkSet {
+	set := checklistReworkSet{forVisit: map[int]string{}, total: map[string]time.Duration{}, includesOpen: map[string]bool{}}
+	for i := 0; i+1 < len(history); i++ {
+		refusal, next := history[i], history[i+1]
+		if refusal.isGoto || refusal.outcome != checklistBouncedWord || perched[refusal.row] {
+			continue
+		}
+		if next.isGoto || next.row != refusal.routedTo {
+			continue
+		}
+		set.forVisit[next.index] = refusal.row
+		set.total[refusal.row] += next.spent
+		set.includesOpen[refusal.row] = set.includesOpen[refusal.row] || checklistVisitIsOpen(next)
+	}
+	return set
+}
+
+// checklistVisitIsOpen reports whether visit is the current producer's open visit.
+func checklistVisitIsOpen(visit checklistVisit) bool {
+	return visit.index < 0
+}
+
+// checklistTime renders spent in whole minutes when it includes the open visit and to the second when it is closed, so a frame changes at most once a minute.
+func checklistTime(spent time.Duration, includesOpen bool) string {
+	if includesOpen {
+		return statuspane.FormatMinutes(spent)
+	}
+	return statuspane.FormatSeconds(spent)
+}
+
 // checklistReviewBlock renders a review segment, a recipe segment holding a Bouncer row, as one block from the history-order visits.
-// The heading reads "<box> <segment> <time> rounds <n>"; an unvisited segment is the single line "[ ] <segment>".
-// Under it come the lines placed before any round opened, then each opened round in the order opened as "  round <n>" with its lines, and last a Bouncer done that ends the segment.
+// The heading reads "<box> <number>. <segment> <time> rounds <n>"; an unvisited segment is the single line "[ ] <number>. <segment>".
+// number is the segment's entry number, which its rounds and their lines do not carry.
+// Under it come the lines placed before any round opened, then each opened round in the order opened as "  round <n> <time>", the sum of its lines' time, with its lines, and last a Bouncer done that ends the segment.
+// A time that includes the open visit is drawn in whole minutes and every other time to the second.
 // A review-row entry, the row a Bouncer row's OnStuck names, opens or joins the round its output names through shedadapters.OutputRound.
 // A bounced Bouncer line waits and stands first in the next round that opens.
 // A fix-row entry, a goto into the segment, a reroute into the segment and a Bouncer entry that routes nowhere stand as the last line of the round in progress, or before round 1.
 // The open visit of a segment row opens the round after the last when a bounced Bouncer line waits, and otherwise joins the round in progress.
-// Each line is followed by the arbiter lines placed after its history entry.
-func checklistReviewBlock(segment string, rows []loomrecipe.RecipeRow, visits []checklistVisit, status shedengine.Status, arbiters *checklistArbiterPlacement) []string {
+// Each line is followed by its gate lines and then the arbiter lines placed after its history entry.
+func checklistReviewBlock(segment string, number int, rows []loomrecipe.RecipeRow, visits []checklistVisit, status shedengine.Status, arbiters *checklistArbiterPlacement) []string {
 	inSegment := map[string]bool{}
 	bouncers := map[string]bool{}
 	reviewRows := map[string]bool{}
@@ -308,15 +396,17 @@ func checklistReviewBlock(segment string, rows []loomrecipe.RecipeRow, visits []
 	}
 
 	var spent time.Duration
+	segmentOpen := false
 	visitCount := map[string]int{}
 	for _, visit := range visits {
 		if !visit.isGoto && inSegment[visit.row] {
 			spent += visit.spent
+			segmentOpen = segmentOpen || checklistVisitIsOpen(visit)
 			visitCount[visit.row]++
 		}
 	}
 	if len(visitCount) == 0 {
-		return []string{checklistBoxNotReached + " " + segment}
+		return []string{checklistBoxNotReached + " " + checklistEntryName(number, segment)}
 	}
 	box := checklistBoxDone
 	for _, row := range rows {
@@ -351,7 +441,7 @@ func checklistReviewBlock(segment string, rows []loomrecipe.RecipeRow, visits []
 		rounds[current].lines = append(rounds[current].lines, line)
 	}
 	for _, visit := range visits {
-		line := checklistBlockLine{text: checklistVisitLine(visit, visit.row), index: visit.index}
+		line := checklistBlockLine{text: checklistVisitLine(visit, visit.row, ""), index: visit.index, spent: visit.spent, open: checklistVisitIsOpen(visit), gateLines: visit.gateLines}
 		switch {
 		case visit.isGoto:
 			if inSegment[visit.row] {
@@ -400,19 +490,22 @@ func checklistReviewBlock(segment string, rows []loomrecipe.RecipeRow, visits []
 		placeInProgress(line)
 	}
 
-	lines := []string{fmt.Sprintf("%s %s %s rounds %d", box, segment, statuspane.FormatMinutes(spent), len(rounds))}
+	lines := []string{fmt.Sprintf("%s %s %s rounds %d", box, checklistEntryName(number, segment), checklistTime(spent, segmentOpen), len(rounds))}
 	lines = appendChecklistBlockLines(lines, "  ", before, arbiters)
 	for _, round := range rounds {
-		lines = append(lines, fmt.Sprintf("  round %d", round.number))
+		lines = append(lines, fmt.Sprintf("  round %d %s", round.number, round.total()))
 		lines = appendChecklistBlockLines(lines, "    ", round.lines, arbiters)
 	}
 	return appendChecklistBlockLines(lines, "  ", closing, arbiters)
 }
 
-// appendChecklistBlockLines appends each of block to lines at indent, each followed by the arbiter lines placed after its history entry.
+// appendChecklistBlockLines appends each of block to lines at indent, each followed by its gate lines, two spaces deeper, and then the arbiter lines placed after its history entry.
 func appendChecklistBlockLines(lines []string, indent string, block []checklistBlockLine, arbiters *checklistArbiterPlacement) []string {
 	for _, line := range block {
 		lines = append(lines, indent+line.text)
+		for _, gate := range line.gateLines {
+			lines = append(lines, indent+"  "+gate)
+		}
 		for _, arbiter := range arbiters.linesAfter(line.index) {
 			lines = append(lines, indent+arbiter)
 		}
@@ -540,14 +633,15 @@ func (p *checklistArbiterPlacement) endLines() []string {
 	return append(lines, p.unreadable...)
 }
 
-// checklistVisitLine renders one visit as "<start> <spent> <outcome>", then " x<n>" for a folded entry, " <output>" when it has one and " gate attempts <n>" when gated.
+// checklistVisitLine renders one visit as "<start> <spent> <outcome>", the time to the second except for the open visit's in whole minutes, then " x<n>" for a folded entry, " <output>" when it has one and " gate attempts <n>" when gated and the entry carried no gate span list.
 // A non-empty row is written before the outcome, for a list that does not sit under the row's own line.
-func checklistVisitLine(visit checklistVisit, row string) string {
+// A non-empty reworkFor, the gate row whose refusal the visit was rework for, ends the line as " rework for <reworkFor>".
+func checklistVisitLine(visit checklistVisit, row string, reworkFor string) string {
 	start := checklistUnknownStart
 	if visit.startKnown {
 		start = visit.start.UTC().Format("15:04")
 	}
-	line := start + " " + statuspane.FormatMinutes(visit.spent)
+	line := start + " " + checklistTime(visit.spent, checklistVisitIsOpen(visit))
 	if row != "" {
 		line += " " + row
 	}
@@ -558,10 +652,57 @@ func checklistVisitLine(visit checklistVisit, row string) string {
 	if visit.output != "" {
 		line += " " + visit.output
 	}
-	if visit.gateAttempts != nil {
+	if visit.gateAttempts != nil && !visit.hasGateSpans {
 		line += fmt.Sprintf(" gate attempts %d", *visit.gateAttempts)
 	}
+	if reworkFor != "" {
+		line += " rework for " + reworkFor
+	}
 	return line
+}
+
+// checklistGateLines renders the gate spans of one history entry as one line per gate entry, in the order each name first appears: "gate <name> <gate time>", then " refused <n> rework <rework time>" when the entry re-prompted.
+// The gate time is the sum of the name's gate and held spans and the rework time the sum of its rework spans; n counts the rework spans.
+// Each span counts its end less its start, less paused within it, floored at zero; a span whose start or end does not parse counts zero.
+// Every span is closed, so both times are drawn to the second.
+func checklistGateLines(spans []shedengine.GateSpan, paused []pauserecord.Interval) []string {
+	type gateTotals struct {
+		gate, rework time.Duration
+		refusals     int
+	}
+	var names []string
+	totals := map[string]*gateTotals{}
+	for _, span := range spans {
+		t, seen := totals[span.Gate]
+		if !seen {
+			t = &gateTotals{}
+			totals[span.Gate] = t
+			names = append(names, span.Gate)
+		}
+		var counted time.Duration
+		start, startKnown := parseChecklistTime(span.Start)
+		end, endKnown := parseChecklistTime(span.End)
+		if startKnown && endKnown && end.After(start) {
+			counted = end.Sub(start) - pauserecord.Excluded(paused, start, end)
+		}
+		counted = max(counted, 0)
+		if span.Kind == shedengine.GateSpanKindRework {
+			t.rework += counted
+			t.refusals++
+			continue
+		}
+		t.gate += counted
+	}
+	var lines []string
+	for _, name := range names {
+		t := totals[name]
+		line := "gate " + name + " " + statuspane.FormatSeconds(t.gate)
+		if t.refusals > 0 {
+			line += fmt.Sprintf(" refused %d rework %s", t.refusals, statuspane.FormatSeconds(t.rework))
+		}
+		lines = append(lines, line)
+	}
+	return lines
 }
 
 // checklistWaitLine is the frame's last line: the full reason the run waits, as `lyx loom status` gives it.
@@ -664,6 +805,8 @@ func checklistVisitsOf(status shedengine.Status, startedAt string, paused []paus
 			output:       entry.Output,
 			gateAttempts: entry.GateAttempts,
 			folds:        1 + entry.Repeats,
+			hasGateSpans: entry.GateSpans != nil,
+			gateLines:    checklistGateLines(entry.GateSpans, paused),
 		})
 		if endKnown {
 			prevEnd, prevKnown = end, true

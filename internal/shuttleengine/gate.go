@@ -1,11 +1,14 @@
-// gate.go declares the gate contract: the exported types a caller uses to attach mechanical validators to a gated run and read its report (Gate, GateEntry, GateSpec, GateResult, GateOutcome, GateEntryOutcome, GateEntryState), plus the package-private helpers the run loop (run.go, wait.go) spends them through.
+// gate.go declares the gate contract: the exported types a caller uses to attach mechanical validators to a gated run and read its report (Gate, GateEntry, GateSpec, GateResult, GateOutcome, GateEntryOutcome, GateEntryState, GateSpan, GateSpanKind), plus the package-private helpers the run loop (run.go, wait.go) spends them through.
 // It inherits the Shuttle Provider-Seam Invariant (doc.go): the gate loop asks "is a new event in"
 // only through the existing Engine.ParseEvents seam, and knows nothing about any provider's own hook
 // payloads.
 
 package shuttleengine
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 // gateFindingsFileName is the file name a failed gate's findings are written to inside the run
 // directory, overwritten by every subsequent failed attempt.
@@ -109,6 +112,28 @@ type GateEntryOutcome struct {
 	Attempts int
 	// State is the entry's state at the final arrival.
 	State GateEntryState
+	// Spans are the time spans this entry took on the run clock, in the order they started; nil when none was recorded.
+	Spans []GateSpan
+}
+
+// GateSpanKind names what a GateSpan measured.
+type GateSpanKind string
+
+const (
+	// GateSpanGate is one run of the entry's closure.
+	GateSpanGate GateSpanKind = "gate"
+	// GateSpanHeld is the time the entry was pending and held the run.
+	GateSpanHeld GateSpanKind = "held"
+	// GateSpanRework is the time from a delivered re-prompt for the entry to the writer's next arrival or the run's end.
+	GateSpanRework GateSpanKind = "rework"
+)
+
+// GateSpan is one span of a gate entry, measured on the run clock.
+// A span whose End reads before its Start is kept as recorded.
+type GateSpan struct {
+	Kind  GateSpanKind
+	Start time.Time
+	End   time.Time
 }
 
 // GateOutcome is a gated run's 1:1 gate report, carried on Result.Gate.
@@ -131,6 +156,39 @@ type GateOutcome struct {
 	// Reason is the Findings text of the terminal failing result, empty otherwise.
 	// It rides the outcome because finalize deletes the run directory and the findings file with it, so a terminal entry's explanation reaches the producer only here.
 	Reason string
+}
+
+// endReworkSpans ends every open rework span at at.
+func (run *Run) endReworkSpans(at time.Time) {
+	for i, since := range run.gateReworkSince {
+		if since.IsZero() {
+			continue
+		}
+		run.gateSpans[i] = append(run.gateSpans[i], GateSpan{Kind: GateSpanRework, Start: since, End: at})
+		run.gateReworkSince[i] = time.Time{}
+	}
+}
+
+// closeGateSpans ends the open held span, if any, at at.
+func (run *Run) closeGateSpans(at time.Time) {
+	if run.gateHeldAt < 0 || run.gateHeldAt >= len(run.gateSpans) {
+		return
+	}
+	run.gateSpans[run.gateHeldAt] = append(run.gateSpans[run.gateHeldAt], GateSpan{Kind: GateSpanHeld, Start: run.gateHeldSince, End: at})
+	run.gateHeldAt = -1
+}
+
+// withGateSpans returns a copy of outcome whose entries carry copies of the run's spans, so the memoised verdict is never written through.
+func (run *Run) withGateSpans(outcome *GateOutcome) *GateOutcome {
+	stamped := *outcome
+	stamped.Entries = make([]GateEntryOutcome, len(outcome.Entries))
+	copy(stamped.Entries, outcome.Entries)
+	for i := range stamped.Entries {
+		if i < len(run.gateSpans) && len(run.gateSpans[i]) != 0 {
+			stamped.Entries[i].Spans = append([]GateSpan(nil), run.gateSpans[i]...)
+		}
+	}
+	return &stamped
 }
 
 // gateRepromptText returns the default single-line re-prompt text Wait sends the agent after a failed gate

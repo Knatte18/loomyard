@@ -28,4 +28,11 @@
 // Its table is told rather than built from Config: Env.DiscussionTable is a closure the caller supplies, evaluated once per call, because building the table needs a location this package may not import.
 // The row's "gates" key is stamped onto each table the closure returns, so the gate guards the lead whatever table the closure builds.
 // When the gates hold an enabled "parent-review" entry, the producer's fresh-spawn preparation opens the next review round before any stale output is archived and before any seat starts; a resumed live lead continues the latest round.
+//
+// # The review segment rows
+//
+// The Bouncer, BurlerReview and BurlerFix rows each take the optional keys "color_segment" and "role_prefix".
+// "color_segment" names the loom segment their sessions are colored by.
+// "role_prefix" leads their sessions' roles, as <prefix>-bouncer-seed, <prefix>-bouncer-judge, <prefix>-burler-review and <prefix>-burler-fix, so reed's strand, window and bar names tell the segments apart;
+// a value agentname.ValidateRole rejects is refused when the row is built, before any spawn.
 package shedrecipe

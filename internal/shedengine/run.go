@@ -301,6 +301,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 			Output:       output.Path,
 			At:           nowRFC3339(),
 			GateAttempts: output.GateAttempts,
+			GateSpans:    output.GateSpans,
 			BudgetExempt: outcome == Stuck && (output.BudgetExempt || output.Halt),
 			RoutedTo:     routedTo,
 		})
@@ -601,15 +602,20 @@ func segmentEnders(producers []ProducerDef, def ProducerDef) []string {
 }
 
 // appendOrFold returns a fresh copy of history with entry recorded: folded into the last element when both are budget-exempt Stucks with the same Producer, Output, GateAttempts and RoutedTo, else appended unchanged.
-// A fold keeps the last element's At, increments its Repeats, and sets its LastAt to entry.At;
-// the last element's own Repeats/LastAt never take part in the match.
-// It never writes through history's backing array.
+// A fold keeps the last element's At, increments its Repeats, sets its LastAt to entry.At and appends entry's GateSpans to the last element's own;
+// the last element's own Repeats/LastAt and spans never take part in the match.
+// It never writes through history's backing array or its entries' span arrays.
 func appendOrFold(history []HistoryEntry, entry HistoryEntry) []HistoryEntry {
 	next := make([]HistoryEntry, len(history), len(history)+1)
 	copy(next, history)
 	if n := len(next); n > 0 && foldsInto(next[n-1], entry) {
 		next[n-1].Repeats++
 		next[n-1].LastAt = entry.At
+		if len(entry.GateSpans) != 0 {
+			spans := make([]GateSpan, 0, len(next[n-1].GateSpans)+len(entry.GateSpans))
+			spans = append(spans, next[n-1].GateSpans...)
+			next[n-1].GateSpans = append(spans, entry.GateSpans...)
+		}
 		return next
 	}
 	return append(next, entry)

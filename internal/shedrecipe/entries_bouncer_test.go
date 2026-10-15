@@ -222,8 +222,9 @@ func TestBouncerEntry_ReportNamePinning(t *testing.T) {
 	}
 }
 
-// TestBouncerEntry_EnvJudgeFallback covers where a Bouncer row's models come from:
+// TestBouncerEntry_EnvJudgeFallback covers where a Bouncer row's models and roles come from:
 // the row takes its env.RowBouncerModels entry's seed triple on the seed spawn and its judge triple on the judge spawn, never the Review* values and never another row's entry.
+// It also pins the role each spawn carries, led by the row's role_prefix when set, and that the attach probe before the spawn carries the same role.
 // shedadapters.BouncerConfig's cfg field is unexported and this is a
 // different package, so the triples are asserted through behaviour instead: one Call is
 // driven against the entry's producer with the shedfake.Shuttle already on newTestEnv's Env, and the
@@ -233,15 +234,19 @@ func TestBouncerEntry_EnvJudgeFallback(t *testing.T) {
 	judge := burlerengine.ModelChoice{Model: "judge-model", Effort: "judge-effort", Version: "judge-version"}
 
 	// callAndCaptureSpec constructs the "review-bounce" Bouncer entry over an Env carrying distinct seed and judge triples.
-	// It optionally writes round 1's review report so the Call judges instead of seeding, and returns the one recorded shuttleengine.Spec.
-	callAndCaptureSpec := func(t *testing.T, writeReport bool) shuttleengine.Spec {
+	// It optionally writes round 1's review report so the Call judges instead of seeding, sets the extra config keys, and returns the one recorded shuttleengine.Spec and the spec of the attach probe before it.
+	callAndCaptureSpec := func(t *testing.T, writeReport bool, extra Config) (spawn, attach shuttleengine.Spec) {
 		t.Helper()
 		env := newTestEnv(t)
 		env.RowBouncerModels["review-bounce"] = shedadapters.BouncerModels{Seed: seed, Judge: judge}
 		writeStencil(t, env.StencilsDir, "bouncer-template-seed", "seed template, no markers\n")
 		writeStencil(t, env.StencilsDir, "bouncer-template-judge", "judge template, no markers\n")
 
-		producer, err := bouncerEntry("review-bounce", minimalBouncerConfig(t, env), env)
+		cfg := minimalBouncerConfig(t, env)
+		for key, value := range extra {
+			cfg[key] = value
+		}
+		producer, err := bouncerEntry("review-bounce", cfg, env)
 		if err != nil {
 			t.Fatalf("bouncerEntry() error = %v; want nil", err)
 		}
@@ -259,23 +264,29 @@ func TestBouncerEntry_EnvJudgeFallback(t *testing.T) {
 		if len(fake.Specs) != 1 {
 			t.Fatalf("len(fake.Specs) = %d; want 1", len(fake.Specs))
 		}
-		return fake.Specs[0]
+		return fake.Specs[0], fake.GotAttachSpec
 	}
 
 	tests := []struct {
 		name        string
 		writeReport bool
+		extra       Config
 		wantRole    string
 		want        burlerengine.ModelChoice
 	}{
-		{"SeedSpawnTakesTheRowsSeedTriple", false, "bouncer-seed", seed},
-		{"JudgeSpawnTakesTheRowsJudgeTriple", true, "bouncer-judge", judge},
+		{"SeedSpawnTakesTheRowsSeedTriple", false, nil, "bouncer-seed", seed},
+		{"JudgeSpawnTakesTheRowsJudgeTriple", true, nil, "bouncer-judge", judge},
+		{"SeedSpawnLeadsItsRoleWithTheRolePrefix", false, Config{"role_prefix": "plan"}, "plan-bouncer-seed", seed},
+		{"JudgeSpawnLeadsItsRoleWithTheRolePrefix", true, Config{"role_prefix": "plan"}, "plan-bouncer-judge", judge},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			spec := callAndCaptureSpec(t, tt.writeReport)
+			spec, attach := callAndCaptureSpec(t, tt.writeReport, tt.extra)
 			if spec.Role != tt.wantRole {
 				t.Fatalf("spec.Role = %q; want %q", spec.Role, tt.wantRole)
+			}
+			if attach.Role != tt.wantRole {
+				t.Errorf("attach spec Role = %q; want %q, the spawn's role", attach.Role, tt.wantRole)
 			}
 			got := burlerengine.ModelChoice{Model: spec.Model, Effort: spec.Effort, Version: spec.Version}
 			if got != tt.want {
@@ -441,6 +452,15 @@ func TestBouncerEntry_ConstructionFailures(t *testing.T) {
 		_, err := bouncerEntry("review-bounce", cfg, env)
 		assertErrContains(t, err, "color_segment")
 		assertErrContains(t, err, "teal")
+	})
+
+	t.Run("InvalidRolePrefix", func(t *testing.T) {
+		env := newTestEnv(t)
+		cfg := minimalBouncerConfig(t, env)
+		cfg["role_prefix"] = "Plan!"
+		_, err := bouncerEntry("review-bounce", cfg, env)
+		assertErrContains(t, err, "role_prefix")
+		assertErrContains(t, err, "Plan!")
 	})
 
 	t.Run("NonBooleanBlockingEscalates", func(t *testing.T) {
