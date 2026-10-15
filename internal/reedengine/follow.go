@@ -24,3 +24,23 @@ func (e *Engine) followingLocked() bool {
 	}
 	return strings.TrimSpace(out) != "off"
 }
+
+// FollowRun turns the session's follow state on and selects the relevant window: the newest live agent window, else the overview, else nothing.
+// It returns the no-session and state-load errors; a failed option write is logged at Warn and the select still runs, and a failed listing or select is logged and never fails the call.
+// It sets one session option and selects one window of the engine's own session, and persists no state.
+func (e *Engine) FollowRun() error {
+	return e.withOpLock(func() error {
+		if err := e.requireSessionLocked(); err != nil {
+			return err
+		}
+		st, err := e.loadOrInitStateLocked()
+		if err != nil {
+			return err
+		}
+		if err := e.tmux.run("set-option", "-t", exactSessionTarget(e.SessionName()), followSessionOption, "on"); err != nil {
+			logger.Warn("reed: could not turn the follow state on", "socket", e.Socket(), "session", e.SessionName(), "err", err)
+		}
+		e.selectRelevantWindowLocked(st, nil)
+		return nil
+	})
+}

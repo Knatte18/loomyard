@@ -358,6 +358,8 @@
 // A new agent window is selected by openOwnWindowLocked, for an own-window strand and never the overview, when newAgentWindowSelected holds: always for a Focus strand, never for one whose display sets only KeepViewer, otherwise exactly when the follow state reads on; it then carries no @lyx_unseen.
 // With follow on, a new agent window takes the viewer wherever it is, the shell included; with follow off, it leaves the viewer where it is.
 // Opening a window never changes the follow state.
+// FollowRun is the one engine operation that turns follow on: under the operation lock it sets the option on and selects the relevant window, the newest live agent window, else the overview, else nothing, for whichever client views the session.
+// It persists no state, a failed option write is logged and the select still runs, and AddStrand, ReplaceStrand, Resume and Up never call it.
 // Every client of a session shares its current window, so the one select-window moves each attached client.
 // A viewed window ending, by RemoveStrand, by ReplaceStrand and by reconcile ending an orphan own window (selectRelevantWindowIfCurrentLocked), moves a viewer on it to the relevant window among those left, never the shell, and with none left to tmux; this move neither reads nor changes the follow state.
 // A viewer elsewhere is never moved, and a strand leaving a shared window that stays open ends no window and switches nothing.

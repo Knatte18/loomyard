@@ -372,17 +372,17 @@ func (e *Engine) selectRelevantWindowIfCurrentLocked(st *ReedState, ending []str
 	e.selectRelevantWindowLocked(st, ending)
 }
 
-// selectRelevantWindowLocked selects relevantWindow among the session's windows not in ending, for a viewer already known to be on one of them.
+// selectRelevantWindowLocked selects relevantWindow among the session's windows not in ending, for a viewer on one of ending, or for any viewer when ending is empty.
 // Every failure is logged and never fails the step.
 func (e *Engine) selectRelevantWindowLocked(st *ReedState, ending []string) {
 	windows, err := e.tmux.listSessionWindows(e.SessionName())
 	if err != nil {
-		logger.Warn("reed: could not list the session's windows, a viewer may be left on a window that ends", "socket", e.Socket(), "session", e.SessionName(), "err", err)
+		logger.Warn("reed: could not list the session's windows, the viewer is left where it is", "socket", e.Socket(), "session", e.SessionName(), "err", err)
 		return
 	}
 	panes, err := e.tmux.listWindowPanes(e.SessionName())
 	if err != nil {
-		logger.Warn("reed: could not list the session's panes, a viewer may be left on a window that ends", "socket", e.Socket(), "session", e.SessionName(), "err", err)
+		logger.Warn("reed: could not list the session's panes, the viewer is left where it is", "socket", e.Socket(), "session", e.SessionName(), "err", err)
 		return
 	}
 	endingSet := make(map[string]bool, len(ending))
