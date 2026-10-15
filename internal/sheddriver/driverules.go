@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 )
 
@@ -183,7 +184,7 @@ func binaryEligible(stop Stop) bool {
 func repairCount(records []SettleRecord, key StopKey) int {
 	count := 0
 	for _, record := range records {
-		if record.Action == SettleRestep && record.StopKey == key {
+		if record.Action == shedrun.SettleRestep && record.StopKey == key {
 			count++
 		}
 	}

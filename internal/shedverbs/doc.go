@@ -36,6 +36,9 @@
 // A transient error gets one immediate re-step, reported as restep.
 //
 // RunUntilStop and RunGoto are the exported entries an in-process driver calls: the same bodies the step --until-stop and goto verbs run after their flags are parsed.
+// The goto and step bodies record Spec.Caller, the caller label, on the history; RunGoto and RunUntilStop take the label as an explicit argument.
+// The goto verb's hidden --by flag admits shed alone, the label of lyx's own automatic steps; any other value is refused before the status file is read.
+// The package reads no environment and imports nothing to classify a caller; the arming module fills Spec.Caller.
 // LastStepBuildChanged reads whether the last step ran on a known build other than the one passed, which an in-process driver judges against the lyx on disk.
 //
 // The final envelope is the stop step's short envelope plus a loop object whose keys are closed:

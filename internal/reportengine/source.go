@@ -4,6 +4,7 @@ package reportengine
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
@@ -46,10 +47,17 @@ type Sources struct {
 
 	// Tags are the archive tags of the records repository, oldest commit first.
 	Tags []gitrepo.TagRef
+
+	// Branches are the local branches of the records repository, each resolved to its tip, sorted by name.
+	Branches []gitrepo.BranchRef
+
+	// SnapshotAt is the UTC time the snapshot was taken, after its last ref was resolved.
+	SnapshotAt time.Time
 }
 
-// Open builds a reader per repository of g, resolves each branch tip once and lists the archive tags once.
-// A branch that does not resolve is an error naming it.
+// Open builds a reader per repository of g, resolves each branch tip once, and lists the archive tags and the records repository's local branches once.
+// It stamps SnapshotAt after the last ref is resolved.
+// A branch that does not resolve is an error naming it, and so is a failed listing.
 func Open(g Geometry) (Sources, error) {
 	code, records, board := gitrepo.New(g.CodeRepo), gitrepo.New(g.RecordsRepo), gitrepo.New(g.BoardRepo)
 
@@ -69,6 +77,10 @@ func Open(g Geometry) (Sources, error) {
 	if err != nil {
 		return Sources{}, fmt.Errorf("reportengine: list archive tags: %w", err)
 	}
+	branches, err := records.BranchRefs()
+	if err != nil {
+		return Sources{}, fmt.Errorf("reportengine: list records branches: %w", err)
+	}
 
 	return Sources{
 		Code:          code,
@@ -81,6 +93,8 @@ func Open(g Geometry) (Sources, error) {
 		RecordsTip:    recordsTip,
 		BoardTip:      boardTip,
 		Tags:          tags,
+		Branches:      branches,
+		SnapshotAt:    time.Now().UTC(),
 	}, nil
 }
 

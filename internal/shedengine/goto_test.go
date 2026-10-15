@@ -2,6 +2,7 @@ package shedengine
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -41,9 +42,12 @@ func TestGoto_MovesBlockedRunToTarget(t *testing.T) {
 	seed.PauseRequested = true
 	seed.PauseBefore = "B"
 	seed.PauseAfter = "A"
+	seed.PendingBy = "driver"
 	seedStatus(t, shed.StatusPath, shed.StatusLockPath, seed)
 
-	returned, err := Goto(gotoRequest(shed, "A"))
+	req := gotoRequest(shed, "A")
+	req.By = "orch"
+	returned, err := Goto(req)
 	if err != nil {
 		t.Fatalf("Goto(...) = _, %v; want nil error", err)
 	}
@@ -65,6 +69,25 @@ func TestGoto_MovesBlockedRunToTarget(t *testing.T) {
 	if got.Activity.Now != "A" || got.Activity.Last != "A → goto" {
 		t.Errorf("Activity = %+v; want Now A, Last %q", got.Activity, "A → goto")
 	}
+	if got.History[0].By != "orch" || got.PendingBy != "" {
+		t.Errorf("History[0].By, PendingBy = %q, %q; want orch, empty", got.History[0].By, got.PendingBy)
+	}
+
+	t.Run("EmptyByWritesNoKey", func(t *testing.T) {
+		shed, _, _ := gotoShed(t)
+		seedStatus(t, shed.StatusPath, shed.StatusLockPath, *seedWith(StateBlocked, "B"))
+		written, err := Goto(gotoRequest(shed, "A"))
+		if err != nil {
+			t.Fatalf("Goto(...) = _, %v; want nil error", err)
+		}
+		data, err := json.Marshal(written.History[0])
+		if err != nil {
+			t.Fatalf("json.Marshal(entry) = %v", err)
+		}
+		if strings.Contains(string(data), `"by"`) {
+			t.Errorf("goto entry = %s; want no by key", data)
+		}
+	})
 }
 
 func TestGoto_RunLockHeldRefusesAndLeavesFile(t *testing.T) {
@@ -441,6 +464,17 @@ func TestRelaunch(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "target clears a pending label and writes no by", seed: pendingSeed(StateBlocked, "B", "orch"), target: "A", wantAdmits: 1,
+			check: func(t *testing.T, got Status) {
+				if got.PendingBy != "" {
+					t.Errorf("PendingBy = %q; want cleared", got.PendingBy)
+				}
+				if len(got.History) != 1 || got.History[0].By != "" {
+					t.Errorf("History = %+v; want one goto entry with no By", got.History)
+				}
+			},
+		},
 		{name: "no target writes the status unchanged", seed: seedWith(StateBlocked, "B"), wantAdmits: 1},
 		{name: "target in effect writes the status unchanged", seed: seedWith(StateBlocked, "B"), target: "A", admitInEffect: true, wantAdmits: 1},
 	}
@@ -508,6 +542,13 @@ func TestRelaunch(t *testing.T) {
 			}
 		})
 	}
+}
+
+// pendingSeed returns seedWith's status carrying a pending caller label.
+func pendingSeed(s State, currentProducer, pendingBy string) *Status {
+	seed := seedWith(s, currentProducer)
+	seed.PendingBy = pendingBy
+	return seed
 }
 
 // seedWith returns a seed status in the given state at the given current producer, with every pause condition set.

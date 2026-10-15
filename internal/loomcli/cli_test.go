@@ -279,9 +279,13 @@ func TestSpecFor_ScratchAndFrictionDir(t *testing.T) {
 	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 
 	t.Run("ScratchDirFromLocationAndRunID", func(t *testing.T) {
-		c := &loomCLI{location: loc, runID: "self"}
-		if got, want := c.specFor("step").ScratchDir, shedrun.ScratchDir(loc, "self"); got != want {
+		c := &loomCLI{location: loc, runID: "self", caller: "orch"}
+		spec := c.specFor("step")
+		if got, want := spec.ScratchDir, shedrun.ScratchDir(loc, "self"); got != want {
 			t.Errorf("specFor(step).ScratchDir = %q; want %q", got, want)
+		}
+		if spec.Caller != "orch" {
+			t.Errorf("specFor(step).Caller = %q; want orch", spec.Caller)
 		}
 	})
 

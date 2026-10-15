@@ -1,6 +1,7 @@
 // Package reportengine computes the read-only report behind `lyx report convergence`: per finished run and per ISO week, what woke the orch, what stopped and repaired runs, and how the parent branch's landings fared.
 // Every figure comes from records lyx already writes, each read from git objects through a tolerant parse in the package that owns its format.
 // A record a run lacks is reported absent, never as zero.
+// ComputeTiming is the second compute entry, over the same snapshot: where each run's time went, per phase and per day or week.
 //
 // # Told geometry
 //
@@ -10,8 +11,9 @@
 //
 // # One ref snapshot
 //
-// Open resolves each branch tip and lists the archive tags once.
-// Every later read names those tips and tags, so a report sees one history while runs land concurrently.
+// Open resolves each branch tip, lists the archive tags and lists the records repository's local branches (Sources.Branches) once, then stamps the UTC time the snapshot was taken (Sources.SnapshotAt).
+// Every later read names those tips, tags and branches, so a report sees one history while runs land concurrently.
+// Compute reads neither Branches nor SnapshotAt.
 // Compute works over Sources, whose Reader per repository a test replaces with an in-memory fake.
 //
 // # The run unit
@@ -95,9 +97,77 @@
 // A share is fresh over fresh plus aged, separately for fix and unmapped landings.
 // Report.Absent counts, per source, the selected runs lacking it.
 //
+// # Timing
+//
+// ComputeTiming is the second compute entry, over the same Sources snapshot.
+// It is told its options and runs no process and reads no clock: its window runs from TimingOptions.Since to Sources.SnapshotAt, and a Since after the snapshot gives an empty report with no bucket.
+// A record that does not decode is a Finding, and a figure a run's records lack is nil, never zero.
+//
+// A landed run is exactly a full run as run selection picks it, read once with its seed, status and batten snapshots; a partial run enters neither the run table nor any bucket.
+// A run in flight is a pair records branch of Sources.Branches: a branch other than the records branch whose name is the one fabricengine.RecordsBranchName forms from a slug.
+// A branch whose tip is the commit of one of its slug's archive tags is landed and skipped; one whose slug TimingOptions.Live names is in flight; any other is abandoned and left out with a finding.
+// A pair not seeded yet, or seeded to another recipe, is left out silently.
+// A run in flight takes the batten snapshots committed after its slug's newest archive tag, so a reused slug never reads an earlier run's.
+// A run enters the report when its span overlaps the window.
+//
+// A run's span opens at the first entry of its batten record, else at the seed's started_at, else at the first loom row with a finding saying so.
+// The loom history and the batten record's history merge in stamp order, each keeping its own order, a row's stamp being its last_at when set, else its at.
+// Each row's interval runs from the latest stamp so far, the span's opening for the first row, to its own stamp, so a batten row between two loom rows splits their gap.
+// A stamp earlier than the latest, or none, gives a zero interval and a finding.
+// The span closes at the last stamp of either history, or at Sources.SnapshotAt for a run in flight, whose trailing interval counts under the phase of its loom status's current producer.
+//
+// Each interval counts under one phase of a closed table.
+// setup holds every batten row before batten's first Run-Shed entry and loom's Preflight and Loom-Preflight; discussion every Discussion row; plan every Plan row and Batchifier; webster every Webster row and Describe; merge every Merge row; publish-finalize Publish, PR-Align, PR-Gate, PR-Rework, every Darn row, Finalize and Friction-Reflect; land every batten row other than Run-Shed after batten's first Run-Shed entry.
+// A Run-Shed entry records the child's state changes and counts under the phase of the producer its change names, else of the latest loom row before it, else under setup.
+// Any other row counts under other and adds a finding.
+// Without the batten source land is nil and setup holds the loom rows alone.
+//
+// TimingOptions.Sleeps, unioned and clipped to the span, is the run's sleep, and every row interval loses the part a sleep covers, so the phases plus the sleep sum to the span.
+//
+// A wait is time the run spent on someone else, an interval of one kind, listed here in the order an overlap is credited to them:
+// parent_review, a parent-review round from its request's opened_at to its verdict's recorded_at;
+// pr_gate, a batten change of the child into awaiting at PR-Gate;
+// escalation, a change into awaiting at any other row;
+// halt, a change into blocked or failed.
+// A change's wait runs from batten's entry for it to the next row of either history stamped after it.
+// A batten-row halt is an entry at one of batten's own rows, never Run-Shed, that is an awaiting outcome or a stuck outcome no OnStuck edge bounced (its routed_to is empty); it is a wait of kind escalation when awaiting and halt otherwise, from its entry to the next row.
+// A batten stuck entry written before routed_to existed has it empty even when an edge bounced it, so an older batten record reads such a bounce as a batten-row halt.
+// A wait with no later row and no verdict runs to the span's close, which is Sources.SnapshotAt for a run in flight, so an open wait there runs to the snapshot with no finding; a parent-review round with no request opens no wait.
+// Each wait is clipped to the span, sleep comes out first, and then each kind's union loses every earlier kind's, so overlapping waits count once under the kind listed first and a sleep inside a wait counts as sleep alone.
+// Waits stay inside their phase's time; a run's active seconds are its span less sleep less every net wait, so active, the waits and sleep sum to the span.
+//
+// An attempt is one spawn: every arbiter attempt, every PR-Gate alignment attempt and every parent-review round's alignment record.
+// Its time runs, net of sleep, from its spawned_at to the first row of either history stamped after it, or to the span's close in a run in flight.
+// In a landed run an attempt spawned outside the span, or with no row after it, has its time absent and adds a finding naming its file; its spawn still counts.
+// A figure's seconds are the summed time of the attempts whose time is known, nil when none is, and an attempt's time lies inside the wait it serves and is reported beside the waits, never added to them.
+//
+// A stop is counted under one of three kinds.
+// stop is a halt or awaiting stop as convergence lists it, so its count matches convergence's: the k-th stop with a change takes the time of the k-th batten change into blocked, failed or awaiting, and a note-only stop carries no time and is counted in the bucket of the run's close; without the halt-note source convergence lists no stop, so the kind is absent and its settler counts are left out.
+// bounce is a loom stuck entry an OnStuck edge bounced, its routed_to set; batten-halt is a batten-row halt as above.
+//
+// Each stop's settler comes from the Go driver's settle records and the history's caller labels.
+// A run's records are two files read through shedrun.ParseSettleRecords, each at its run directory: the loom run's at the archive tag, or at the pair branch tip for a run in flight, and batten's at the commit holding the run's batten record.
+// Only a landed run read by ComputeTiming and a run in flight read their settle files, so convergence reads none; an absent file holds no record, a record not committed at that tip is not there and its stop reads open, and a line that does not decode is a finding naming the file and the line.
+// A record's stop key holds the history length the driven history had when the driver saw the halt, so its last counted entry is the entry that halted.
+// A batten-file record names a batten-row halt when its producer and state equal the halt's and its history length is the 1-based position of the halt's entry in batten's history, and names nothing else.
+// A loom-file record names a child stop with a change when its producer and state equal the stop's and its history length is the greatest among such records whose last counted loom entry is stamped at or before the change, so a halt the Go driver restepped into a second halt before batten observed it reads the second record, and the earlier record folds into the stop with no finding.
+// A note-only stop takes the earliest record of its producer and state no other stop took, and a change whose producer is empty matches no record.
+// Any other record matching no stop is a finding naming the file and the key, except in the loom file of a run without the halt-note source, which lists no stop to match.
+// The settler is the first of these that holds: judge for a bounce; shed when a batten automatic step accounts for the stop or its record is a go-rule restep or verify-retry; tackler for a tackler restep record; arbiter when an applied arbiter attempt for the stop's producer and state was spawned after it; alignment when an applied PR-Gate alignment attempt was spawned after a stop at PR-Gate, or an applied parent-review alignment record after any stop; else the by of the first entry after the stop in the history that moved it on, the loom's for a child stop and batten's for a batten-row halt, with the caller label shed read as shed.
+// A stop whose moving entry carries no by reads unknown, as every entry written before the label existed does, and one with no entry after it in a run in flight reads open.
+// A go-rule record of action moved, busy-exit, running-exit or hand-over, a spawn record, a parent hand-back record and every arbiter record settle nothing by themselves.
+//
+// Buckets are UTC days or ISO weeks from Since, none opening before it.
+// Each interval, wait and sleep is clipped to every bucket it overlaps, and a bucket's time sums over runs, so two parallel runs add two hours to an hour.
+// Each attempt spawn counts in the bucket its spawned_at falls in and its time is clipped to every bucket it overlaps.
+// Each stop counts in the bucket its time falls in under its kind and settler.
+// TimingReport.Phases holds each phase's median over the landed runs holding it whose archive tag is committed in the window; the median of an even count is the mean of the two middle values rounded down, and a run in flight never enters one.
+//
 // # Outputs
 //
 // The JSON envelope is the Report itself: selection, runs, partial, landings, weeks, absent and findings.
 // RenderMarkdown renders the same fields as the selection and one table per board question: wakes per run, recurring stop and failure classes, the fresh-code fix share, and review rounds per segment.
 // A nil figure renders as no data.
+// RenderTimingMarkdown renders a TimingReport as the selection and sleep note, then four tables: runs (span, active, each wait kind, sleep, each phase and the attempt counts with their time), phase medians, time per bucket, and stops per settler per bucket.
+// Every duration is spelled through durfmt.FormatSeconds, with seconds below a day and as 2d03h from a day on.
 package reportengine
