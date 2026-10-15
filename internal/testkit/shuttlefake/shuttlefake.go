@@ -47,7 +47,6 @@ type Engine struct {
 	InterruptSequenceFn     func() []shuttleengine.PaneInput
 	TrustDismissSequenceFn  func(capture string) []shuttleengine.PaneInput
 	ComposeSendFn           func(text string) []shuttleengine.PaneInput
-	ModelSwitchSequenceFn   func(model string) []shuttleengine.PaneInput
 	ColorSequenceFn         func(color segmentcolor.Color) []shuttleengine.PaneInput
 	SkillLoadMessageFn      func(skills []string) string
 	ClassifySkillLoadFn     func(turnEnd shuttleengine.Event, skills []string) shuttleengine.SkillLoadReport
@@ -178,14 +177,6 @@ func (e *Engine) ClassifySkillLoad(turnEnd shuttleengine.Event, skills []string)
 // DefaultSkillLoadTimeout answers a bound of one second.
 func (e *Engine) DefaultSkillLoadTimeout() time.Duration {
 	return time.Second
-}
-
-// ModelSwitchSequence answers ModelSwitchSequenceFn, else no inputs.
-func (e *Engine) ModelSwitchSequence(model string) []shuttleengine.PaneInput {
-	if e.ModelSwitchSequenceFn != nil {
-		return e.ModelSwitchSequenceFn(model)
-	}
-	return nil
 }
 
 // ColorSequence answers ColorSequenceFn, else no inputs.

@@ -24,7 +24,7 @@ func TestEngine_InertDefaults(t *testing.T) {
 	if got := e.Startup("x"); got != shuttleengine.StartupReady {
 		t.Errorf("Startup = %v, want StartupReady", got)
 	}
-	if e.InterruptSequence() != nil || e.TrustDismissSequence("x") != nil || e.ComposeSend("x") != nil || e.ModelSwitchSequence("x") != nil || e.ColorSequence("blue") != nil {
+	if e.InterruptSequence() != nil || e.TrustDismissSequence("x") != nil || e.ComposeSend("x") != nil || e.ColorSequence("blue") != nil {
 		t.Error("key sequences must default to no inputs")
 	}
 	if audit, err := e.AuditForks("s", "w"); err != nil || audit.SpawnCalls != 0 {
@@ -104,7 +104,6 @@ func TestEngine_Overrides(t *testing.T) {
 			InterruptSequenceFn:    func() []shuttleengine.PaneInput { return in },
 			TrustDismissSequenceFn: func(c string) []shuttleengine.PaneInput { return []shuttleengine.PaneInput{{Text: c}} },
 			ComposeSendFn:          func(s string) []shuttleengine.PaneInput { return []shuttleengine.PaneInput{{Text: s}} },
-			ModelSwitchSequenceFn:  func(m string) []shuttleengine.PaneInput { return []shuttleengine.PaneInput{{Text: m}} },
 			ColorSequenceFn: func(c segmentcolor.Color) []shuttleengine.PaneInput {
 				return []shuttleengine.PaneInput{{Text: string(c)}}
 			},
@@ -117,9 +116,6 @@ func TestEngine_Overrides(t *testing.T) {
 		}
 		if got := e.ComposeSend("hi"); got[0].Text != "hi" {
 			t.Errorf("ComposeSend = %v", got)
-		}
-		if got := e.ModelSwitchSequence("m"); got[0].Text != "m" {
-			t.Errorf("ModelSwitchSequence = %v", got)
 		}
 		if got := e.ColorSequence(segmentcolor.Cyan); got[0].Text != "cyan" {
 			t.Errorf("ColorSequence = %v", got)

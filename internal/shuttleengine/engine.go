@@ -165,9 +165,6 @@ type Engine interface {
 	TrustDismissSequence(capture string) []PaneInput
 	// ComposeSend returns the key choreography that submits text as a new turn (e.g. clearing auto-suggest before typing).
 	ComposeSend(text string) []PaneInput
-	// ModelSwitchSequence returns the key choreography that switches a live session's model (e.g. `/model <name>` typed and submitted).
-	// It lives on the seam because which command string and key sequence switch a provider's model is provider grammar.
-	ModelSwitchSequence(model string) []PaneInput
 	// ColorSequence returns the key choreography that sets a live session's display color (e.g. `/color <name>` typed and submitted), or no inputs for a provider without one or a color it has no name for.
 	// It lives on the seam because which command string and key sequence color a provider's session is provider grammar.
 	ColorSequence(color segmentcolor.Color) []PaneInput
