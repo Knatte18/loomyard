@@ -192,6 +192,7 @@ func readChecklistPaused(recordPath, slug string, now time.Time) []pauserecord.I
 // in.startedAt is the run's seed time, where its first visit starts; an empty or unparsable value starts it at the first entry's own time.
 // in.paused is left out of every visit's time.
 // A row's total is drawn to the second unless one of its visits is the open one, and then in whole minutes.
+// A gate row's refusal marks the visit of the row it bounced to as rework for it, and the gate row's line adds the sum of those visits; the recipe-unreadable list attributes none.
 // Each recipe entry carries the number loomrecipe.EntryNumbers gives it after its box; a history-only row and the recipe-unreadable lines carry none.
 func renderChecklist(in checklistInput, now time.Time) statuspane.Frame {
 	stateLine := shedverbs.UnavailableLine(checklistLabel)
@@ -215,7 +216,7 @@ func renderChecklist(in checklistInput, now time.Time) statuspane.Frame {
 			if visit.isGoto {
 				continue
 			}
-			lines = append(lines, "  "+checklistVisitLine(visit, visit.row))
+			lines = append(lines, "  "+checklistVisitLine(visit, visit.row, ""))
 			for _, gate := range visit.gateLines {
 				lines = append(lines, "    "+gate)
 			}
@@ -248,6 +249,11 @@ func renderChecklist(in checklistInput, now time.Time) statuspane.Frame {
 			reviewSegment[row.Segment] = true
 		}
 	}
+	perched := map[string]bool{}
+	for _, row := range in.rows {
+		perched[row.Name] = reviewSegment[row.Segment]
+	}
+	rework := checklistRework(history, perched)
 
 	var lines []string
 	drawnSegment := map[string]bool{}
@@ -266,12 +272,15 @@ func renderChecklist(in checklistInput, now time.Time) statuspane.Frame {
 				line += fmt.Sprintf(" x%d", v.visits)
 			}
 		}
+		if total, refused := rework.total[name]; refused {
+			line += " rework " + checklistTime(total, rework.includesOpen[name])
+		}
 		if !inRecipe[name] {
 			line += " " + checklistNotInRecipe
 		}
 		lines = append(lines, line)
 		for _, visit := range visits[name].log {
-			lines = append(lines, "  "+checklistVisitLine(visit, ""))
+			lines = append(lines, "  "+checklistVisitLine(visit, "", rework.forVisit[visit.index]))
 			for _, gate := range visit.gateLines {
 				lines = append(lines, "    "+gate)
 			}
@@ -317,6 +326,35 @@ func checklistEntryName(number int, name string) string {
 		return name
 	}
 	return fmt.Sprintf("%d. %s", number, name)
+}
+
+// checklistReworkSet is the rework the refusals of gate rows caused.
+// forVisit maps the history index of a rework visit, -1 for the open visit, to the gate row it was rework for.
+// total is each gate row's summed rework time, and includesOpen holds the gate rows whose total includes the open visit.
+type checklistReworkSet struct {
+	forVisit     map[int]string
+	total        map[string]time.Duration
+	includesOpen map[string]bool
+}
+
+// checklistRework attributes rework to gate rows by walking the history-order visits once.
+// A gate refusal is a visit that ended bounced, of a row not in perched, the rows of review segments, whose rework the round totals already show.
+// Its rework visit is the next visit when that is a visit, not a goto, of the routed-to row; the open visit is the last visit.
+func checklistRework(history []checklistVisit, perched map[string]bool) checklistReworkSet {
+	set := checklistReworkSet{forVisit: map[int]string{}, total: map[string]time.Duration{}, includesOpen: map[string]bool{}}
+	for i := 0; i+1 < len(history); i++ {
+		refusal, next := history[i], history[i+1]
+		if refusal.isGoto || refusal.outcome != checklistBouncedWord || perched[refusal.row] {
+			continue
+		}
+		if next.isGoto || next.row != refusal.routedTo {
+			continue
+		}
+		set.forVisit[next.index] = refusal.row
+		set.total[refusal.row] += next.spent
+		set.includesOpen[refusal.row] = set.includesOpen[refusal.row] || checklistVisitIsOpen(next)
+	}
+	return set
 }
 
 // checklistVisitIsOpen reports whether visit is the current producer's open visit.
@@ -403,7 +441,7 @@ func checklistReviewBlock(segment string, number int, rows []loomrecipe.RecipeRo
 		rounds[current].lines = append(rounds[current].lines, line)
 	}
 	for _, visit := range visits {
-		line := checklistBlockLine{text: checklistVisitLine(visit, visit.row), index: visit.index, spent: visit.spent, open: checklistVisitIsOpen(visit), gateLines: visit.gateLines}
+		line := checklistBlockLine{text: checklistVisitLine(visit, visit.row, ""), index: visit.index, spent: visit.spent, open: checklistVisitIsOpen(visit), gateLines: visit.gateLines}
 		switch {
 		case visit.isGoto:
 			if inSegment[visit.row] {
@@ -597,7 +635,8 @@ func (p *checklistArbiterPlacement) endLines() []string {
 
 // checklistVisitLine renders one visit as "<start> <spent> <outcome>", the time to the second except for the open visit's in whole minutes, then " x<n>" for a folded entry, " <output>" when it has one and " gate attempts <n>" when gated and the entry carried no gate span list.
 // A non-empty row is written before the outcome, for a list that does not sit under the row's own line.
-func checklistVisitLine(visit checklistVisit, row string) string {
+// A non-empty reworkFor, the gate row whose refusal the visit was rework for, ends the line as " rework for <reworkFor>".
+func checklistVisitLine(visit checklistVisit, row string, reworkFor string) string {
 	start := checklistUnknownStart
 	if visit.startKnown {
 		start = visit.start.UTC().Format("15:04")
@@ -615,6 +654,9 @@ func checklistVisitLine(visit checklistVisit, row string) string {
 	}
 	if visit.gateAttempts != nil && !visit.hasGateSpans {
 		line += fmt.Sprintf(" gate attempts %d", *visit.gateAttempts)
+	}
+	if reworkFor != "" {
+		line += " rework for " + reworkFor
 	}
 	return line
 }
