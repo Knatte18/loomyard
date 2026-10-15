@@ -83,7 +83,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-role-skills-typed` — Loading a spawned session's skill: its spawner names it on the launch spec and lyx delivers it, on the launch line or typed; no stencil asks for one. (test)
 - `PATTERN-parent-directive` — Writing a spawned role's top-level stencil: it renders the parent directive. (test) — [background](pattern/PATTERN-parent-directive.md)
 - `PATTERN-edit-directive` — Writing a spawned role's opening stencil: it renders `internal/editdirective`'s directive; orch stencils are exempt. (test) — [background](pattern/PATTERN-edit-directive.md)
-- `PATTERN-spawn-color` — Coloring a spawned session: its spawning module names a segment on the launch spec. — [background](pattern/PATTERN-spawn-color.md)
+- `PATTERN-spawn-color` — Coloring a spawned session: its spawner names a segment on the launch spec. — [background](pattern/PATTERN-spawn-color.md)
 - `PATTERN-wait-mark-display-only` — Marking a wait on screen: set the wait marks only through reed's `SetWaitMark`; no Go decision reads them. — [background](pattern/PATTERN-wait-mark-display-only.md)
 - `PATTERN-spawn-observability` — Starting a real OS process from a `lyx` command: log the spawn, and the teardown where it waits, via `internal/logger`. — [background](pattern/PATTERN-spawn-observability.md)
 
