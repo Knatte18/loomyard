@@ -32,15 +32,23 @@ type ConfigModule struct {
 	CheckLoad func(configengine.Dirs) error
 }
 
-// entry pairs a registered engine's constructor with its config module.
+// entry pairs a registered engine's constructor with its config module and the environment keys it declares scrubbed.
 type entry struct {
 	constructor constructor
 	config      ConfigModule
+	scrub       reedengine.EnvScrub
+}
+
+// claudeScrub is the claude engine's declared scrub.
+func claudeScrub() reedengine.EnvScrub {
+	names, prefixes := claudeengine.ScrubbedEnv()
+	return reedengine.EnvScrub{Names: names, Prefixes: prefixes}
 }
 
 // registry maps each registered engine name to its entry.
 var registry = map[string]entry{
 	"claude": {
+		scrub: claudeScrub(),
 		constructor: func(cfg shuttleengine.Config, dirs configengine.Dirs) shuttleengine.Engine {
 			return claudeengine.NewFromConfig(cfg, dirs)
 		},
@@ -114,6 +122,37 @@ func Names() []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+// EnvScrub returns the environment keys every registered engine declares a spawned process must not inherit.
+// It is the one route from an engine's declaration to reed's server spawn, and it is never empty while an engine is registered.
+func EnvScrub() reedengine.EnvScrub {
+	return scrubOf(registry)
+}
+
+// scrubOf returns the union of the entries' scrub declarations, sorted and deduplicated.
+func scrubOf(entries map[string]entry) reedengine.EnvScrub {
+	names := map[string]bool{}
+	prefixes := map[string]bool{}
+	for _, registered := range entries {
+		for _, name := range registered.scrub.Names {
+			names[name] = true
+		}
+		for _, prefix := range registered.scrub.Prefixes {
+			prefixes[prefix] = true
+		}
+	}
+	return reedengine.EnvScrub{Names: sortedKeys(names), Prefixes: sortedKeys(prefixes)}
+}
+
+// sortedKeys returns the keys of set in ascending order.
+func sortedKeys(set map[string]bool) []string {
+	keys := make([]string, 0, len(set))
+	for key := range set {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // SessionNamer returns the provider reed's watchdog uses to read and repair a session's own name.

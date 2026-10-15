@@ -111,7 +111,7 @@ provider specifics.`,
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
-			reedEngine := reedengine.New(reedCfg, reedGeom)
+			reedEngine := reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub())
 			engines, err := shuttleengines.New(shuttleCfg, fabricengine.ConfigDirs(layout))
 			if err != nil {
 				output.Err(out, err.Error())

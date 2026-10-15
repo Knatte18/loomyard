@@ -105,7 +105,7 @@ func (c *loomCLI) stopStepRuns(tie shuttleengine.StepTie) (shuttleengine.StepSto
 		if err != nil {
 			return shuttleengine.StepStopReport{}, err
 		}
-		runner = shuttleengine.NewRunner(reedengine.New(reedCfg, reedGeom), engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+		runner = shuttleengine.NewRunner(reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub()), engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 	}
 	return runner.StopStepRuns(tie)
 }

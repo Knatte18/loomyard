@@ -318,7 +318,7 @@ func TestStatus_ReportsOwnWindowStrandsFromTheSessionListing(t *testing.T) {
 func TestServerBootEnv_ExcludesTraceID(t *testing.T) {
 	t.Setenv("LYX_TRACE_ID", "somevalue")
 
-	clean, _ := CleanClaudeEnv(os.Environ())
+	clean, _ := testScrub.Apply(os.Environ())
 	sawBeforeStrip := false
 	for _, entry := range clean {
 		if strings.HasPrefix(entry, "LYX_TRACE_ID=") {
@@ -327,10 +327,9 @@ func TestServerBootEnv_ExcludesTraceID(t *testing.T) {
 		}
 	}
 	if !sawBeforeStrip {
-		// CleanClaudeEnv is not expected to strip this on its own — if it's
-		// already gone here, the fixture assumption (LYX_TRACE_ID surviving
-		// CleanClaudeEnv) is broken and the assertion below proves nothing.
-		t.Fatalf("CleanClaudeEnv(os.Environ()) does not contain LYX_TRACE_ID; test fixture assumption broken")
+		// The scrub is not expected to strip this on its own.
+		// If it is already gone here, the fixture assumption (LYX_TRACE_ID surviving the scrub) is broken and the assertion below proves nothing.
+		t.Fatalf("testScrub.Apply(os.Environ()) does not contain LYX_TRACE_ID; test fixture assumption broken")
 	}
 
 	got := stripTraceID(clean)

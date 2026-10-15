@@ -10,6 +10,9 @@
 // Each registry entry carries its engine's config module as plain data, and ConfigModules lists them sorted by name for the config registry,
 // so an engine's config module reaches that registry through this package alone.
 //
+// Each entry also declares the environment keys its engine's process injects, and EnvScrub returns their union for reed's server spawn,
+// so an engine's scrub keys reach reed through this package alone.
+//
 // SessionNamer lives here for now: reed is provider-blind, so the provider that reads and repairs a session's own name is chosen by this wiring layer.
 // The package is told its Config and never imports internal/lyxcwd.
 package shuttleengines

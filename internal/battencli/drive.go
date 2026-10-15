@@ -327,7 +327,7 @@ func (c *battenCLI) loadedTacklerDeps() (sheddriver.TacklerDeps, error) {
 	if err != nil {
 		return sheddriver.TacklerDeps{}, err
 	}
-	runner := shuttleengine.NewRunner(reedengine.New(reedConfig, reedGeometry), engines, reedGeometry.AnchorPath, reedGeometry.WorktreeRoot, shuttleConfig)
+	runner := shuttleengine.NewRunner(reedengine.New(reedConfig, reedGeometry, shuttleengines.EnvScrub()), engines, reedGeometry.AnchorPath, reedGeometry.WorktreeRoot, shuttleConfig)
 	runner.SetPause(pauseGeometry)
 	runner.SetNotifier(func(line string) error {
 		_, err := orchengine.QueueNotice(orchcli.PrimePaths(location), line, time.Now())

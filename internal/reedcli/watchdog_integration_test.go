@@ -29,6 +29,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
@@ -60,7 +61,7 @@ func bootWatchdogEngine(t *testing.T, worktreeRoot string) *reedengine.Engine {
 	if err != nil {
 		t.Fatalf("reed geometry: %v", err)
 	}
-	eng := reedengine.New(cfg, geom)
+	eng := reedengine.New(cfg, geom, shuttleengines.EnvScrub())
 	if _, err := eng.Up(); err != nil {
 		t.Fatalf("eng.Up(): %v", err)
 	}
@@ -443,7 +444,7 @@ func TestWatchdogDaemon(t *testing.T) {
 		if err != nil {
 			t.Fatalf("reed geometry: %v", err)
 		}
-		offEng := reedengine.New(offCfg, geom)
+		offEng := reedengine.New(offCfg, geom, shuttleengines.EnvScrub())
 		if _, err := offEng.Up(); err != nil {
 			t.Fatalf("offEng.Up() (re-up with watchdog: off): %v", err)
 		}

@@ -161,7 +161,7 @@ Every verb runs from the hub's prime worktree only.`,
 			if err != nil {
 				return fail(err)
 			}
-			reed := reedengine.New(reedCfg, reedGeom)
+			reed := reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub())
 
 			c.location = location
 			c.cfg = orchCfg

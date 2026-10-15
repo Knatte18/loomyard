@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 // forksWithoutAuditEngine declares RequirementForks through Supports but has no ForkAuditor.
@@ -187,5 +188,37 @@ func TestNames_EqualModelspecEngineNames(t *testing.T) {
 	modelspec.EngineNames()[0] = "overwritten"
 	if got, want := Names(), modelspec.EngineNames(); !reflect.DeepEqual(got, want) {
 		t.Errorf("after overwriting a returned slice, Names() = %v; want modelspec.EngineNames() = %v", got, want)
+	}
+}
+
+// TestEnvScrub_MatchesTmuxkitServerEnviron pins the registered engines' scrub against the kit's server-environment filter, and the union over several entries as sorted and deduplicated.
+func TestEnvScrub_MatchesTmuxkitServerEnviron(t *testing.T) {
+	t.Parallel()
+
+	environ := []string{
+		"HOME=/home/x", "CLAUDECODE=1", "CLAUDE_CODE_ENTRYPOINT=cli", "CLAUDE_CODEX=keep",
+		"LYX_TRACE_ID=abc", "LYX_STRAND_NAME=ab:orch", "LYX_PARENT=ab:driver", "LYX_OTHER=keep", "PATH=/bin",
+	}
+
+	clean, _ := EnvScrub().Apply(environ)
+	var want []string
+	for _, entry := range clean {
+		switch strings.SplitN(entry, "=", 2)[0] {
+		case "LYX_TRACE_ID", "LYX_STRAND_NAME", "LYX_PARENT":
+		default:
+			want = append(want, entry)
+		}
+	}
+	if got := tmuxkit.ServerEnviron(environ); !reflect.DeepEqual(got, want) {
+		t.Errorf("tmuxkit.ServerEnviron = %q; want %q", got, want)
+	}
+
+	union := scrubOf(map[string]entry{
+		"one": {scrub: reedengine.EnvScrub{Names: []string{"B", "A"}, Prefixes: []string{"Y_", "X_"}}},
+		"two": {scrub: reedengine.EnvScrub{Names: []string{"B", "C"}, Prefixes: []string{"X_"}}},
+	})
+	wantUnion := reedengine.EnvScrub{Names: []string{"A", "B", "C"}, Prefixes: []string{"X_", "Y_"}}
+	if !reflect.DeepEqual(union, wantUnion) {
+		t.Errorf("scrubOf = %+v; want %+v", union, wantUnion)
 	}
 }

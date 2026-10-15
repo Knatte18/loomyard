@@ -27,6 +27,9 @@
 // absence buys is that reed never RESOLVES its own coordinates — not
 // isolation from the package that does.
 //
+// reedengine is told, as an EnvScrub passed to New, the environment keys its tmux server spawn must not inherit.
+// The server is shared by every strand, so the teller passes the keys of every registered engine, and reedengine carries no provider's names itself.
+//
 // internal/fabricengine became a direct production import when
 // spawnwatchdog.go landed (SpawnWatchdog calls fabricengine.HubScratchDir).
 // That does not relax the Told-Geometry Invariant: the invariant bars a

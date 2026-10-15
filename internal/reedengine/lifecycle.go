@@ -439,18 +439,14 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		return false, nil, fmt.Errorf("prune out logs: %w", err)
 	}
 
-	// Env hygiene: a spawned server must never inherit this process's own
-	// Claude Code session identity (CleanClaudeEnv is the single documented
-	// chokepoint for that decision).
-	clean, stripped := CleanClaudeEnv(os.Environ())
-	// The tmux server is a long-lived singleton later invocations reattach
-	// to, unlike a one-shot child (board/fabric spawn) that belongs to a
-	// single invocation and should keep inheriting the trace ID. Filtering
-	// LYX_TRACE_ID is therefore kept as its own explicitly-named step, not
-	// folded into CleanClaudeEnv: CleanClaudeEnv's stripped-keys return
-	// value is persisted verbatim into ReedState.StrippedEnv as a
-	// Claude-injected-variable diagnostic, and LYX_TRACE_ID is neither
-	// Claude-injected nor meant to be recorded there.
+	// Env hygiene: a spawned server must never inherit this process's own agent session identity.
+	// The told EnvScrub is the single chokepoint for that decision.
+	clean, stripped := e.scrub.Apply(os.Environ())
+	// The tmux server is a long-lived singleton later invocations reattach to.
+	// A one-shot child (board/fabric spawn) belongs to a single invocation and keeps inheriting the trace ID.
+	// Filtering LYX_TRACE_ID is therefore its own explicitly-named step, not folded into the scrub.
+	// The scrub's stripped-keys return value is persisted verbatim into ReedState.StrippedEnv as an engine-injected-variable diagnostic.
+	// LYX_TRACE_ID is neither engine-injected nor meant to be recorded there.
 	clean = stripTraceID(clean)
 	clean = stripAgentNameEnv(clean)
 	spawnSession := func() error {

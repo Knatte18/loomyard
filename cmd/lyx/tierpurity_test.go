@@ -34,6 +34,7 @@ var allowedSpawners = []scankit.Entry{
 	{Key: "cmd/lyx/rawgitmutation_test.go", Why: "contains the banned `gitexec.Run`/`exec.Command` token strings as its own scan data (Fabric Git Invariant raw-git-mutation guard)"},
 	{Key: "cmd/lyx/checkedcall_test.go", Why: "contains the banned `gitexec.RunGit`/`exec.Command` token strings as its own scan data (gitexec Checked-Call Invariant guard)"},
 	{Key: "internal/reedengine/socketfile_test.go", Why: "references the kit's spawn-free BindStaleSocket, which binds and closes a datagram socket file and starts no server"},
+	{Key: "internal/shuttleengines/shuttleengines_test.go", Why: "references the kit's spawn-free ServerEnviron, a pure environment filter that starts no server"},
 	{Key: "cmd/lyx/spawnobservability_test.go", Why: "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (Live-Substrate Spawn Observability guard)"},
 }
 

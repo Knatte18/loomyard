@@ -69,7 +69,7 @@ func newTestEngine(t *testing.T) *Engine {
 		// Two configured segments; any other segment key resolves to no color.
 		SegmentColors: map[string]string{"review": "orange", "plan": "cyan"},
 	}
-	return New(cfg, geom)
+	return New(cfg, geom, testScrub)
 }
 
 //testtiming:keep pins the lock file living under the anchor path's .lyx, not the worktree root's, for a subpath-anchored fixture, and a second acquisition succeeding after release; its covering tests run this code without asserting it
@@ -100,7 +100,7 @@ func TestWithOpLock_PathIsUnderDotLyx(t *testing.T) {
 		CollapsedRows: 2,
 		MinFullRows:   3,
 	}
-	e := New(cfg, geom)
+	e := New(cfg, geom, testScrub)
 
 	var sawPath string
 	err := e.withOpLock(func() error {
@@ -197,7 +197,7 @@ func TestEngine_SocketAndSessionName(t *testing.T) {
 		LogsDir:      filepath.Join(hub, "logs"),
 		HubPath:      hub,
 	}
-	e := New(Config{}, geom)
+	e := New(Config{}, geom, testScrub)
 
 	wantSocket := ServerName(hub)
 	if got := e.Socket(); got != wantSocket {
@@ -208,6 +208,13 @@ func TestEngine_SocketAndSessionName(t *testing.T) {
 	if got := e.SessionName(); got != wantSession {
 		t.Errorf("SessionName() = %q, want %q", got, wantSession)
 	}
+
+	defer func() {
+		if recover() == nil {
+			t.Error("New over an empty EnvScrub did not panic")
+		}
+	}()
+	New(Config{}, geom, EnvScrub{})
 }
 
 // TestWithOpLock_ReportsALockFileRemovedMidOperation is the regression guard for the R5 review's
@@ -341,7 +348,7 @@ func TestWithTryOpLock_ToldGeometryValidationFailureLeavesTheLockFileUntouched(t
 	e := New(Config{
 		Tmux:  filepath.Join(hub, "does-not-exist-tmux.exe"),
 		Shell: filepath.Join(hub, "does-not-exist-shell.exe"),
-	}, geom)
+	}, geom, testScrub)
 
 	acquired, err := e.withTryOpLock(func() error {
 		t.Fatal("withTryOpLock() called fn despite a told-geometry validation failure")

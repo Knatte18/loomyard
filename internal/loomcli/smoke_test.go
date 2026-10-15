@@ -46,6 +46,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
@@ -144,7 +145,7 @@ func probeReedEngine(t *testing.T, loc *lyxcwd.Location) *reedengine.Engine {
 	if err != nil {
 		t.Fatalf("reed geometry: %v", err)
 	}
-	return reedengine.New(reedCfg, reedGeom)
+	return reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub())
 }
 
 // waitRunLockFree polls until loc's run lock and driver lock are both observably free, or fails the test after timeout.

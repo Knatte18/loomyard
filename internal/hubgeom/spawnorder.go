@@ -12,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 )
 
 // spawnCandidate is one worktree of the hub with what its place in spawn order is decided by.
@@ -107,5 +108,5 @@ func reviveWorktree(l *lyxcwd.Location) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return reedengine.New(cfg, geom).Revive()
+	return reedengine.New(cfg, geom, shuttleengines.EnvScrub()).Revive()
 }

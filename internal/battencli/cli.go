@@ -51,6 +51,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/termwindow"
 	"github.com/spf13/cobra"
 )
@@ -437,7 +438,7 @@ func (c *battenCLI) openWindowInPrimeSession(name string, lyxArgs []string) (ree
 	if err != nil {
 		return reedengine.WindowResult{}, err
 	}
-	return reedengine.New(reedCfg, reedGeom).OpenWindow(name, lyxArgs)
+	return reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub()).OpenWindow(name, lyxArgs)
 }
 
 // windowRefusal words err from opening slug's window as a refusal that names its way forward.
