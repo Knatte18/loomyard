@@ -822,6 +822,22 @@ func TestDispatchHubWideBoard(t *testing.T) {
 			},
 		},
 		{
+			name: "an empty editor result commits nothing and leaves the hub file",
+			editor: func(fx hubFixture) configengine.EditorFunc {
+				return fakeEditor(" \n", nil)
+			},
+			wantCode: 1,
+			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
+				if hubFile != seeded {
+					t.Errorf("hub file changed on an empty editor result; got %q", hubFile)
+				}
+				if _, err := os.Stat(configengine.StagingFile(fx.worktree, "board")); !os.IsNotExist(err) {
+					t.Errorf("staging file remains after an aborted edit; stat err = %v", err)
+				}
+				assertJSONErrContains(t, out, "aborted")
+			},
+		},
+		{
 			name: "hub file changed while the editor was open is refused and the staging copy kept",
 			editor: func(fx hubFixture) configengine.EditorFunc {
 				return func(path string) error {
