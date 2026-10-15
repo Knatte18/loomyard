@@ -1,0 +1,2 @@
+{"type":"user","timestamp":"2026-10-14T09:07:10.000Z","message":{"content":"The heading # Webster implementer job is in this message, but the first tool call reads no prompt file."}}
+{"type":"assistant","timestamp":"2026-10-14T09:07:11.000Z","message":{"id":"m1","content":[{"type":"tool_use","id":"t1","name":"Grep","input":{"pattern":"foo","path":"@WORKTREE@/pkg"}}],"usage":{"input_tokens":10,"cache_creation_input_tokens":40,"output_tokens":1000,"cache_read_input_tokens":100000}}}

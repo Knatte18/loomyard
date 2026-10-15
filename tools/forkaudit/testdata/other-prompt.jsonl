@@ -1,0 +1,4 @@
+{"type":"user","timestamp":"2026-10-14T09:08:10.000Z","message":{"content":"Read this file and do exactly what it says: @WORKTREE@/.lyx/webster/prompts/other.md"}}
+{"type":"assistant","timestamp":"2026-10-14T09:08:11.000Z","message":{"id":"m1","content":[{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"@WORKTREE@/.lyx/webster/prompts/other.md"}}],"usage":{"input_tokens":10,"cache_creation_input_tokens":40,"output_tokens":1000,"cache_read_input_tokens":100000}}}
+{"type":"user","timestamp":"2026-10-14T09:08:12.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"     1\t# Another job\n     2\tThis prompt carries no Webster heading."}]}}
+{"type":"assistant","timestamp":"2026-10-14T09:08:13.000Z","message":{"id":"m2","content":[{"type":"text","text":"This is not a # Webster implementer job prompt."}],"usage":{"input_tokens":10,"cache_creation_input_tokens":40,"output_tokens":1000,"cache_read_input_tokens":100000}}}

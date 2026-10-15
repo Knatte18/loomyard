@@ -1,0 +1,2 @@
+{"type":"user","timestamp":"2026-10-14T09:11:10.000Z","message":{"content":"Write one plan card."}}
+{"type":"assistant","timestamp":"2026-10-14T09:11:11.000Z","message":{"id":"m1","content":[{"type":"tool_use","id":"t1","name":"Write","input":{"file_path":"@WORKTREE@/_lyx/plan/01-alpha.md","content":"# Card 1"}}]}}
