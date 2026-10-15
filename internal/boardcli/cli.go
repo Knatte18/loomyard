@@ -336,7 +336,7 @@ func storeVerbs(board func() *boardengine.Board) []*cobra.Command {
 		Short:       "create or update a single task",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Create or update a task identified by its slug.
-The write still succeeds when it gives a task a new depends_on entry another open task waits on and the two share a module label; the envelope's "notice" then names the sibling, the dependency and the labels.
+The envelope's "notice" names any open task sharing a new depends_on entry and a module label.
 
 Required field:
   "slug"       string — unique task identifier
@@ -410,7 +410,7 @@ Example:
 		Long: `Create or update multiple tasks in one atomic write.
 An absent or empty "tasks" array is an error. Each task element uses the same fields as
 "lyx board upsert" ("slug" required per element).
-The write still succeeds when it gives a task a new depends_on entry another open task waits on and the two share a module label; the envelope's "notice" then names the sibling, the dependency and the labels.
+The envelope's "notice" names any open task sharing a new depends_on entry and a module label.
 
 Required wrapper field:
   "tasks" array — one or more task objects (each with "slug" required)
@@ -650,7 +650,7 @@ Examples:
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Remove tasks, upsert a task, and optionally set status in one atomic write.
 The inner "set_status" object takes what the standalone "set-status" command takes.
-The write still succeeds when it gives a task a new depends_on entry another open task waits on and the two share a module label; the envelope's "notice" then names the sibling, the dependency and the labels.
+The envelope's "notice" names any open task sharing a new depends_on entry and a module label.
 
 Fields:
   "remove_slugs" array  — slug strings to remove (optional; omit to skip)
@@ -769,7 +769,7 @@ Example:
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Replace the full depends_on list for a task wholesale.
 An absent "depends_on" is an error; an explicit [] clears the list.
-The write still succeeds when it gives a task a new depends_on entry another open task waits on and the two share a module label; the envelope's "notice" then names the sibling, the dependency and the labels.
+The envelope's "notice" names any open task sharing a new depends_on entry and a module label.
 
 Fields:
   "slug"       string  — task slug (mutually exclusive with "id")
