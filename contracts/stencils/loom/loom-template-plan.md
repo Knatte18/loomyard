@@ -153,8 +153,6 @@ A new test file is a `**Create:**` path, written only for a surface no existing 
 A `_test.go` path under `**Edit:**` is refused by `edit-test-file` in `{{.specs_dir}}/loom/loom-plan-spec.md`, which holds the way forward.
 A card names an existing test function, fake or helper it changes as a member glyph, for example `internal/x#TestFoo` or `internal/x#fakeClock`.
 A new test function is a `**Create:**` declaration with a `plan:` handle whose unit is the package directory, or `<dir>_test` for an external test package, never a file, so the plan does not pin the file a new test goes in.
-A new test function in an existing file is a `**Create:**` declaration with a `plan:` handle.
-A new test file is a `**Create:**` path.
 A card whose new tests reuse an existing test's setup, or call existing test helpers or fakes, names those members as glyphs under `**Uses:**`.
 Listing a file or a package beside a member of it on one card is refused: `redundant-package-target` and `redundant-file-target` in `{{.specs_dir}}/loom/loom-plan-spec.md` say what counts and the way forward.
 
