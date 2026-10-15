@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 )
 
@@ -27,7 +28,7 @@ func TestDecideDrive(t *testing.T) {
 		return Stop{OK: true, State: "awaiting", LoopState: "awaiting", ParentNotice: notice}
 	}
 	restepRecord := func(key StopKey) SettleRecord {
-		return SettleRecord{StopKey: key, Action: SettleRestep}
+		return SettleRecord{StopKey: key, Action: shedrun.SettleRestep}
 	}
 
 	tests := []struct {
@@ -72,7 +73,7 @@ func TestDecideDrive(t *testing.T) {
 				restepRecord(interruptedStop("").Key()),
 				restepRecord(interruptedStop("").Key()),
 				restepRecord(StopKey{CurrentProducer: "Other", HistoryLength: 1, State: "failed"}),
-				{StopKey: interruptedStop("").Key(), Action: SettleHandBack},
+				{StopKey: interruptedStop("").Key(), Action: shedrun.SettleHandBack},
 			},
 			want: driveActionTackler,
 		},

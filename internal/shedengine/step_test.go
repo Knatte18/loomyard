@@ -329,12 +329,20 @@ func TestStep_AlreadyDone(t *testing.T) {
 
 func TestStep_ResumeFromHaltedStates(t *testing.T) {
 	tests := []struct {
-		name  string
-		state State
+		name      string
+		state     State
+		resumedBy string
+		// exemptStuck makes the producer return a budget-exempt Stuck that folds into the seeded last entry.
+		exemptStuck bool
+		wantBy      string
+		wantPending string
 	}{
-		{"StateBlocked", StateBlocked},
-		{"StateFailed", StateFailed},
-		{"StatePaused", StatePaused},
+		{name: "StateBlocked", state: StateBlocked, resumedBy: "orch", wantBy: "orch"},
+		{name: "StateFailed", state: StateFailed, resumedBy: "orch", wantBy: "orch"},
+		{name: "StateAwaiting", state: StateAwaiting, resumedBy: "orch", wantBy: "orch"},
+		{name: "StatePaused", state: StatePaused, resumedBy: "orch"},
+		{name: "EmptyResumedBy", state: StateBlocked},
+		{name: "FoldKeepsLabelPending", state: StateBlocked, resumedBy: "orch", exemptStuck: true, wantPending: "orch"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -345,17 +353,30 @@ func TestStep_ResumeFromHaltedStates(t *testing.T) {
 			seed := commonSeed("A")
 			seed.State = tt.state
 			seed.Error = "seeded halt for resume test"
+			if tt.exemptStuck {
+				producer.fn = func(context.Context) (Outcome, OutputPointer, error) {
+					return Stuck, OutputPointer{BudgetExempt: true}, nil
+				}
+				shed.Producers[0].OnStuck = "A"
+				seed.History = []HistoryEntry{{Producer: "A", Outcome: Stuck, At: "2026-01-01T00:00:00Z", BudgetExempt: true, RoutedTo: "A"}}
+			}
+			shed.ResumedBy = tt.resumedBy
 			seedStatus(t, statusPath, statusLockPath, seed)
 
 			res, err := shed.Step(context.Background())
 			if err != nil {
 				t.Fatalf("Step(...) = _, %v; want nil error", err)
 			}
-			if res.State != StateDone {
+			if !tt.exemptStuck && res.State != StateDone {
 				t.Errorf("State = %q; want %q", res.State, StateDone)
 			}
 			if producer.calls != 1 {
 				t.Errorf("producer.calls = %d; want 1 -- the producer must be called and the resume write must fire", producer.calls)
+			}
+			got := readStatus(t, statusPath, statusLockPath)
+			last := got.History[len(got.History)-1]
+			if last.By != tt.wantBy || got.PendingBy != tt.wantPending {
+				t.Errorf("last entry By, PendingBy = %q, %q; want %q, %q", last.By, got.PendingBy, tt.wantBy, tt.wantPending)
 			}
 		})
 	}

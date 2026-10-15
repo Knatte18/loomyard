@@ -93,7 +93,7 @@ func HoldReading(location *lyxcwd.Location, status shedengine.Status) (battenshe
 		if records[i].StopKey != key {
 			continue
 		}
-		if records[i].Action == sheddriver.SettleHandOver {
+		if records[i].Action == shedrun.SettleHandOver {
 			reading.HandOverAt = records[i].At
 		}
 		break

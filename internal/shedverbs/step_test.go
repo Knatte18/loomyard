@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/state"
 )
 
 func stepTexts() VerbTexts {
@@ -270,9 +271,10 @@ func TestStepCmd_PreStepErrorReachesKindAndSkipsBuildShed(t *testing.T) {
 // both the passthrough and told-message forms.
 func TestStepCmd_BusyTreatment(t *testing.T) {
 	paths := newTestPaths(t)
-	seedStatus(t, paths, "Only")
+	seedBlocked(t, paths, "Only")
 
 	spec := &Spec{
+		Caller:          "orch",
 		StepBusyKind:    KindBusy,
 		StepBusyMessage: "step: another driver already holds the run lock",
 		BuildShed: func() (*shedengine.Shed, error) {
@@ -303,6 +305,10 @@ func TestStepCmd_BusyTreatment(t *testing.T) {
 	}
 	if env["error"] != spec.StepBusyMessage {
 		t.Errorf("error = %v; want %q", env["error"], spec.StepBusyMessage)
+	}
+	st, _, err := state.ReadJSONNoMkdir[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
+	if err != nil || st.PendingBy != "" {
+		t.Errorf("PendingBy, err = %q, %v; want empty after the busy refusal", st.PendingBy, err)
 	}
 }
 
@@ -849,6 +855,31 @@ func TestStepCmd_SuccessEnvelopeCarriesIdentityAndProgress(t *testing.T) {
 			t.Errorf("progress = %v; want the compact %v without remaining", got, wantCompact)
 		}
 	})
+
+	// A step resuming a blocked run records the caller label on the entry it appends, and none when the caller is empty.
+	for _, tt := range []struct {
+		name, caller, wantBy string
+	}{
+		{name: "ResumeRecordsCaller", caller: "orch", wantBy: "orch"},
+		{name: "ResumeWithoutCallerRecordsNone"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			paths := newTestPaths(t)
+			seedBlocked(t, paths, "A")
+			spec := &Spec{Routing: routing, BuildShed: build(paths), Caller: tt.caller}
+
+			if env, code := execEnvelope(t, stepCmd(stepTexts(), spec), nil); code != 0 {
+				t.Fatalf("exit code = %d; want 0 (%v)", code, env)
+			}
+			st, _, err := state.ReadJSONNoMkdir[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
+			if err != nil {
+				t.Fatalf("re-read status: %v", err)
+			}
+			if len(st.History) != 1 || st.History[0].By != tt.wantBy || st.PendingBy != "" {
+				t.Errorf("History, PendingBy = %+v, %q; want one entry with By %q and nothing pending", st.History, st.PendingBy, tt.wantBy)
+			}
+		})
+	}
 
 	t.Run("Unarmed", func(t *testing.T) {
 		paths := newTestPaths(t)
