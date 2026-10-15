@@ -26,6 +26,8 @@ type OpenResult struct {
 	StrandGUID string
 	StrandName string
 	SessionID  string
+	// Engine is the resolved name of the engine the session opened under; Open writes no run record, so this is where it is recorded.
+	Engine string
 }
 
 // openMarkerPath returns the exit marker an opened session touches when its provider ends, under anchorPath's shuttle-open directory and named by token.
@@ -38,7 +40,8 @@ func openMarkerPath(anchorPath, token string) string {
 // Its pane line runs the provider, then writes the exit marker, asks reed to remove the strand and exits the shell, so ending the session closes its window;
 // when the self-removal fails the strand stays as a dead pane until `lyx reed remove`, and a resume drops it through the marker instead of relaunching it.
 // It writes no run directory, no run record and no output file.
-// A runner whose pause geometry is covered refuses the open before anything is created, and an engine without SessionOpener refuses it too.
+// spec.Engine names the engine, empty for the set's default;
+// an unregistered name, a covered pause geometry and an engine without SessionOpener each refuse the open before anything is created.
 // Bound: one interactive session per call, in the caller's own worktree under its settings, never a turn; nothing caps the count.
 func (r *Runner) Open(spec OpenSpec) (OpenResult, error) {
 	if r.toldErr != nil {
@@ -46,6 +49,10 @@ func (r *Runner) Open(spec OpenSpec) (OpenResult, error) {
 	}
 	if spec.Role == "" {
 		return OpenResult{}, errors.New("shuttle: open: the role must not be empty")
+	}
+	engine, engineName, err := r.engineFor(RunState{Engine: spec.Engine})
+	if err != nil {
+		return OpenResult{}, err
 	}
 	if r.pause.RecordPath != "" {
 		coverage, err := pauserecord.ReadCoverage(r.pause.RecordPath, r.pause.Slug, r.clock.Now())
@@ -55,9 +62,9 @@ func (r *Runner) Open(spec OpenSpec) (OpenResult, error) {
 			return OpenResult{}, pauserecord.CoveredError(coverage.Entry, r.pause.Slug, "re-run lyx shuttle open")
 		}
 	}
-	opener, ok := r.engine.(SessionOpener)
+	opener, ok := engine.(SessionOpener)
 	if !ok {
-		return OpenResult{}, errors.New("shuttle: open: the engine cannot open a session with no prompt")
+		return OpenResult{}, fmt.Errorf("shuttle: open: the engine %q cannot open a session with no prompt", engineName)
 	}
 	launch, err := opener.OpenLaunch(spec, r.cfg)
 	if err != nil {
@@ -88,6 +95,6 @@ func (r *Runner) Open(spec OpenSpec) (OpenResult, error) {
 		return OpenResult{}, fmt.Errorf("shuttle: open: add the strand: %w", err)
 	}
 
-	logger.Info("shuttle: opened session", "strandGUID", strand.GUID, "strandName", strand.Name, "role", spec.Role, "sessionID", launch.SessionID, "marker", marker)
-	return OpenResult{StrandGUID: strand.GUID, StrandName: strand.Name, SessionID: launch.SessionID}, nil
+	logger.Info("shuttle: opened session", "strandGUID", strand.GUID, "strandName", strand.Name, "role", spec.Role, "sessionID", launch.SessionID, "marker", marker, "engine", engineName)
+	return OpenResult{StrandGUID: strand.GUID, StrandName: strand.Name, SessionID: launch.SessionID, Engine: engineName}, nil
 }

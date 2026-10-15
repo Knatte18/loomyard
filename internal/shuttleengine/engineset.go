@@ -59,6 +59,20 @@ func (s EngineSet) engineOfRun(runDir string, rs RunState) (Engine, bool) {
 	return engine, true
 }
 
+// engineFor resolves the engine rs names and the name it resolved to, the default's name for a record naming none.
+// A name the runner's set does not hold returns the lookup's error.
+func (r *Runner) engineFor(rs RunState) (Engine, string, error) {
+	engine, err := r.engines.Lookup(rs.Engine)
+	if err != nil {
+		return nil, "", err
+	}
+	name := rs.Engine
+	if name == "" {
+		name = r.engines.DefaultName()
+	}
+	return engine, name, nil
+}
+
 // Names returns the registered engine names, sorted.
 func (s EngineSet) Names() []string {
 	names := make([]string, 0, len(s.engines))

@@ -131,7 +131,11 @@ func (r *Runner) attach(spec Spec, gate GateSpec, removeSuperseded bool) (*Run, 
 	if err != nil {
 		if finished, ok := soleFinishedCandidate(candidates, normalized); ok {
 			logger.Warn("shuttle: attach: harvesting a finished run despite an unreadable reed state file", "runDir", finished.runDir, "strandGUID", finished.state.StrandGUID, "error", err, "seeAlso", "lyx reed status")
-			return r.reconstruct(finished, normalized, gate), true, nil
+			run, err := r.reconstruct(finished, normalized, gate)
+			if err != nil {
+				return nil, false, err
+			}
+			return run, true, nil
 		}
 		warnAttachCandidates(candidates, "shuttle: attach: load reed state failed", err)
 		return nil, false, fmt.Errorf("shuttle: attach: load reed state at %s: %w — an absent or unreadable strand table is not evidence any run is dead; check \"lyx reed status\"", dotLyxDir, err)
@@ -139,7 +143,11 @@ func (r *Runner) attach(spec Spec, gate GateSpec, removeSuperseded bool) (*Run, 
 	if st == nil {
 		if finished, ok := soleFinishedCandidate(candidates, normalized); ok {
 			logger.Warn("shuttle: attach: harvesting a finished run despite an absent reed state file", "runDir", finished.runDir, "strandGUID", finished.state.StrandGUID, "seeAlso", "lyx reed status")
-			return r.reconstruct(finished, normalized, gate), true, nil
+			run, err := r.reconstruct(finished, normalized, gate)
+			if err != nil {
+				return nil, false, err
+			}
+			return run, true, nil
 		}
 		warnAttachCandidates(candidates, "shuttle: attach: no reed state file", nil)
 		return nil, false, fmt.Errorf("shuttle: attach: no reed state file at %s — an absent strand table is not evidence any of the %d matching run dir(s) are dead; check \"lyx reed status\"", dotLyxDir, len(candidates))
@@ -151,7 +159,11 @@ func (r *Runner) attach(spec Spec, gate GateSpec, removeSuperseded bool) (*Run, 
 	if err != nil {
 		if finished, ok := soleFinishedCandidate(candidates, normalized); ok {
 			logger.Warn("shuttle: attach: harvesting a finished run despite a failing reed status", "runDir", finished.runDir, "strandGUID", finished.state.StrandGUID, "error", err, "seeAlso", "lyx reed status")
-			return r.reconstruct(finished, normalized, gate), true, nil
+			run, err := r.reconstruct(finished, normalized, gate)
+			if err != nil {
+				return nil, false, err
+			}
+			return run, true, nil
 		}
 		warnAttachCandidates(candidates, "shuttle: attach: reed status failed", err)
 		return nil, false, fmt.Errorf("shuttle: attach: reed status: %w — check \"lyx reed status\"", err)
@@ -195,7 +207,11 @@ func (r *Runner) attach(spec Spec, gate GateSpec, removeSuperseded bool) (*Run, 
 			chosen.state.StrandName = strand.Name
 		}
 	}
-	return r.reconstruct(chosen, normalized, gate), true, nil
+	run, err := r.reconstruct(chosen, normalized, gate)
+	if err != nil {
+		return nil, false, err
+	}
+	return run, true, nil
 }
 
 // removeSupersededStrands removes the strand of each candidate that reed tracks as live or as an own-window strand with a dead pane,
@@ -271,7 +287,18 @@ func soleFinishedCandidate(candidates []attachCandidate, spec Spec) (attachCandi
 // gate is set on the reconstructed handle, so a resumed run is gated exactly as a fresh RunGated one
 // is — the gate travels with AttachGated's own caller-told GateSpec, never with anything read off the
 // persisted candidate.
-func (r *Runner) reconstruct(candidate attachCandidate, normalized Spec, gate GateSpec) *Run {
+//
+// The run is driven through the engine the candidate's record names, and the call fails with the lookup's error when the set does not hold it.
+// When normalized names an engine that resolves to a different name, the record's engine wins because the live session belongs to it, and a Warn names both.
+func (r *Runner) reconstruct(candidate attachCandidate, normalized Spec, gate GateSpec) (*Run, error) {
+	engine, engineName, err := r.engineFor(candidate.state)
+	if err != nil {
+		return nil, err
+	}
+	if _, specEngineName, specErr := r.engineFor(RunState{Engine: normalized.Engine}); specErr == nil && specEngineName != engineName {
+		logger.Warn("shuttle: attach: the spec names a different engine than the run's record, driving the run through the record's", "runDir", candidate.runDir, "specEngine", specEngineName, "recordEngine", engineName)
+	}
+
 	// A legacy asking candidate is reset to running so the run's own finalize records its verdict.
 	// With a recorded AskingOffset it replays from there and counts that old ask as notified:
 	// the parent already saw that run halt, so the ask is neither read nor notified again.
@@ -305,8 +332,10 @@ func (r *Runner) reconstruct(candidate attachCandidate, normalized Spec, gate Ga
 		spec: normalized,
 		// runDir and state come from the matched candidate, so Wait reads the persisted EventsPath,
 		// StrandGUID, and SessionID.
-		runDir: candidate.runDir,
-		state:  state,
+		runDir:     candidate.runDir,
+		state:      state,
+		engine:     engine,
+		engineName: engineName,
 		// offset starts at the prompt offset, deliberately replaying every event of the run's own turns:
 		// seeding at EOF would mean a terminal Stop that landed while the driver was down is never observed, converting a completed step into an OutcomeTimeout failure —
 		// and a replayed backlog ending in an ask is read as a held turn end.
@@ -323,9 +352,9 @@ func (r *Runner) reconstruct(candidate attachCandidate, normalized Spec, gate Ga
 
 	// Live-Substrate Spawn Observability invariant: a re-attach to a live agent is as instrumented as
 	// a spawn.
-	logger.Info("shuttle: run attached", "runDir", candidate.runDir, "strandGUID", candidate.state.StrandGUID, "sessionID", candidate.state.SessionID)
+	logger.Info("shuttle: run attached", "runDir", candidate.runDir, "strandGUID", candidate.state.StrandGUID, "sessionID", candidate.state.SessionID, "engine", engineName)
 
-	return run
+	return run, nil
 }
 
 // normalizeAttachSpec returns a normalized copy of spec, performing exactly three of

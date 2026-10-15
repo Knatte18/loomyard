@@ -153,6 +153,9 @@ type Spec struct {
 	// The engine runs it verbatim inside the provider's hook shell, at a compaction of this run and on no other session event.
 	// Empty for every run but the one that sets it; validate does not inspect it.
 	ContextAfterCompaction string
+	// Engine is the registered engine name the run uses, empty for the engine set's default.
+	// Start refuses a name the set does not hold; validate does not inspect it.
+	Engine string
 }
 
 // validate normalizes s in place and reports an error if it is not
