@@ -78,7 +78,11 @@
 // A window carrying @lyx_hidden still gets no button, and no Go decision reads @strand_color or @lyx_unseen.
 // Line 2 lists the sessions, then the follow button, a range=user|follow button labelled follow that sits left of the time, lit green while the current session's @lyx_follow is not off and unlit while it is.
 //
-// The navigation bindings (bindings.go) are root-table bindings on the hub's reed server, issued by pinBindingsLocked at the end of the geometry pins, so boot and every attach pre-flight pin them and a server booted by an older lyx gets them at its next attach.
+// The navigation bindings (bindings.go) are root-table bindings on the hub's reed server, issued by pinBindingsLocked at the end of the geometry pins, so boot and every attach pre-flight pin them.
+// The pin stamps the server-global option @lyx_bindings_build with the pinning build's VCS commit time and revision label, and unsets it for a binary with no VCS stamp.
+// Every op under the blocking op lock reads the stamp before its step and re-pins the bindings when it is absent, unparseable or names another build whose commit time is not after the running one's, so a deployed lyx reaches a running server at its first reed op.
+// Bound: an older build never re-pins over a newer one's stamp, so a long-lived process of an older lyx cannot restore stale bindings, and an unstamped binary never re-pins; two builds of one commit time, such as a dirty build and its commit's clean one, can re-pin over each other.
+// The watchdog's try-lock re-apply and the name-repair loop never re-pin, and the global status-bar options still refresh only at boot and attach.
 // Alt+z zooms or unzooms a strand pane or Selvage in the strands' window, and does nothing in any other window;
 // Alt+Up and Alt+Down step to the previous or next window in index order, in every window and wrapping with tmux's own window wrap: a step that lands on a window carrying @lyx_hidden goes on, forward to the session's first window, the overview, and back to the strands' window, the shell, which is one conditional step since hidden windows sit after the shell (on psmux, where the order is best-effort, a step may land on a hidden window);
 // Alt+Left and Alt+Right run `lyx reed switch --prev|--next` in the background through run-shell, naming the absolute path of the `lyx` that pinned them (panebin.go's composeSwitchCommand), never PATH's;

@@ -1,11 +1,16 @@
 // bindings_test.go pins bindingArgvs's output: the five Alt keys and the status click, each a root-table binding, and no other key.
+// It also pins the bindings' build stamp and the op lock's re-pin of a server an older build pinned.
 
 package reedengine
 
 import (
+	"errors"
 	"slices"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/Knatte18/loomyard/internal/buildvcs"
 )
 
 func TestBindingArgvs_BindsTheFiveAltKeysAndTheStatusClickInTheRootTableOnly(t *testing.T) {
@@ -142,4 +147,144 @@ func clickBranchCommand(t *testing.T, click []string, rangeType string) string {
 		t.Fatalf("click binding %q has no branch for range %q", click, rangeType)
 	}
 	return click[at+1]
+}
+
+// TestBindingsBuildStamp pins the bindings' build stamp: when a stamp is stale, what the pin writes, and the op lock re-pinning a server an older build pinned.
+func TestBindingsBuildStamp(t *testing.T) {
+	t.Parallel()
+
+	commitTime := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
+	running := buildvcs.Identity{Revision: "474fb6680aaaabbbbccccddddeeeeffff0000111", Time: commitTime}
+	older := buildvcs.Identity{Revision: "675728800aaaabbbbccccddddeeeeffff0000111", Time: commitTime.Add(-time.Hour)}
+	newer := buildvcs.Identity{Revision: "999999999aaaabbbbccccddddeeeeffff0000111", Time: commitTime.Add(time.Hour)}
+	dirty := buildvcs.Identity{Revision: running.Revision, Modified: true, Time: commitTime}
+
+	t.Run("StaleRule", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name    string
+			stamp   string
+			running buildvcs.Identity
+			want    bool
+		}{
+			{"Empty", "", running, true},
+			{"Garbled", "not-a-stamp", running, true},
+			{"UnparseableTime", "yesterday 474fb6680aaa", running, true},
+			{"Own", bindingsBuildStamp(running), running, false},
+			{"OwnWithTrailingNewline", bindingsBuildStamp(running) + "\n", running, false},
+			{"Older", bindingsBuildStamp(older), running, true},
+			{"Newer", bindingsBuildStamp(newer), running, false},
+			{"SameCommitTimeOtherBuild", bindingsBuildStamp(dirty), running, true},
+			{"UnstampedRunning_Empty", "", buildvcs.Identity{}, false},
+			{"UnstampedRunning_Older", bindingsBuildStamp(older), buildvcs.Identity{}, false},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				if got := bindingsStale(tt.stamp, tt.running); got != tt.want {
+					t.Errorf("bindingsStale(%q, %v) = %v; want %v", tt.stamp, tt.running, got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("PinWritesStamp", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name  string
+			build buildvcs.Identity
+			want  []string
+		}{
+			{"Stamped", running, []string{"set-option", "-g", bindingsBuildOption, "2026-10-15T12:00:00Z 474fb6680aaa"}},
+			{"Unstamped", buildvcs.Identity{}, []string{"set-option", "-gu", bindingsBuildOption}},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				e := newTestEngine(t)
+				e.build = tt.build
+				fake := installFakeTmux(t, e)
+
+				e.pinBindingsLocked()
+
+				var got [][]string
+				for _, call := range fake.ArgvFor("set-option") {
+					if slices.Contains(call, bindingsBuildOption) {
+						got = append(got, call)
+					}
+				}
+				if want := [][]string{tt.want}; !slices.EqualFunc(got, want, slices.Equal[[]string]) {
+					t.Errorf("pinBindingsLocked stamp writes = %q; want %q", got, want)
+				}
+			})
+		}
+	})
+
+	t.Run("OpLockRepinsStaleBindings", func(t *testing.T) {
+		t.Parallel()
+		readFailed := errors.New("no server running")
+		tests := []struct {
+			name       string
+			build      buildvcs.Identity
+			stamp      string
+			readErr    error
+			wantRepin  bool
+			wantStamps int
+		}{
+			{"OlderBuildPinned", running, bindingsBuildStamp(older), nil, true, 1},
+			{"NoStamp", running, "", nil, true, 1},
+			{"OwnBuildPinned", running, bindingsBuildStamp(running), nil, false, 0},
+			{"NewerBuildPinned", running, bindingsBuildStamp(newer), nil, false, 0},
+			{"ReadFails", running, "", readFailed, false, 0},
+			{"UnstampedRunning", buildvcs.Identity{}, bindingsBuildStamp(older), nil, false, 0},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				e := newTestEngine(t)
+				e.build = tt.build
+				fake := installFakeTmux(t, e)
+				stampFormat := "#{" + bindingsBuildOption + "}"
+				fake.answerFormat(stampFormat, tt.stamp, tt.readErr)
+
+				bindKeysBeforeStep := -1
+				err := e.withOpLock(func() error {
+					bindKeysBeforeStep = fake.Count("bind-key")
+					return nil
+				})
+				if err != nil {
+					t.Fatalf("withOpLock() = %v; want nil", err)
+				}
+
+				if got := bindKeysBeforeStep > 0; got != tt.wantRepin {
+					t.Errorf("withOpLock issued %d bind-key calls before its step; want a re-pin %v", bindKeysBeforeStep, tt.wantRepin)
+				}
+				if got := fake.Count("bind-key"); got != bindKeysBeforeStep {
+					t.Errorf("withOpLock issued %d bind-key calls in all, %d before its step; want none after it", got, bindKeysBeforeStep)
+				}
+				stamps := 0
+				for _, call := range fake.ArgvFor("set-option") {
+					if slices.Contains(call, bindingsBuildOption) {
+						stamps++
+					}
+				}
+				if stamps != tt.wantStamps {
+					t.Errorf("withOpLock wrote the build stamp %d times; want %d", stamps, tt.wantStamps)
+				}
+				reads := 0
+				for _, call := range fake.ArgvFor("display-message") {
+					if call[len(call)-1] == stampFormat {
+						reads++
+					}
+				}
+				wantReads := 0
+				if tt.build.Revision != "" {
+					wantReads = 1
+				}
+				if reads != wantReads {
+					t.Errorf("withOpLock read the build stamp %d times; want %d", reads, wantReads)
+				}
+			})
+		}
+	})
 }

@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/buildvcs"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 )
@@ -47,6 +48,8 @@ type Engine struct {
 	calleeFailures logger.EpisodeSet
 	// stateLoadNotices remembers the last binding clear a state load logged, since a clear is never saved and so repeats on every load.
 	stateLoadNotices stateLoadNotices
+	// build is this binary's VCS identity, which the navigation bindings' build stamp names.
+	build buildvcs.Identity
 }
 
 // New builds an Engine for the given Config and Geometry.
@@ -59,6 +62,7 @@ func New(cfg Config, geom Geometry) *Engine {
 		tmux: NewTmuxCmd(cfg.Tmux, geom.SocketKey),
 
 		warnOut: os.Stderr,
+		build:   buildvcs.Running(),
 	}
 }
 
@@ -99,6 +103,8 @@ func (e *Engine) ShellPath() string {
 // liveness, then MkdirAll, then the lock. The worktree-root liveness check runs LAST among the
 // three validators, deliberately: it is the only one that touches the filesystem, so the two cheap
 // contract refusals should still fire first on a geometry that is wrong in several ways at once.
+// Under the lock and ahead of fn, it re-pins the server's navigation bindings when an older build pinned them,
+// so a deployed binary reaches a running server at its first op.
 func (e *Engine) withOpLock(fn func() error) error {
 	if err := validateToldTmuxIdentity(e.geom); err != nil {
 		return err
@@ -135,6 +141,7 @@ func (e *Engine) withOpLock(fn func() error) error {
 			"socket", e.Socket(), "lock", lockPath, "err", heldErr)
 	}
 
+	e.repinStaleBindingsLocked()
 	opErr := fn()
 	if heldErr != nil {
 		return opErr
