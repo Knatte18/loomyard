@@ -390,6 +390,14 @@ type Run struct {
 	// Both live in memory for this run only.
 	gateFails []int
 	gateSent  []int
+	// gateSpans holds the closed spans of each entry, index-aligned with gate and sized with gateFails.
+	// gateReworkSince is the start of each entry's open rework span, zero when none.
+	// gateHeldAt is the entry whose held span is open, -1 when none, and gateHeldSince is when it opened.
+	// All live in memory for this run only, so an attached run starts them afresh.
+	gateSpans       [][]GateSpan
+	gateReworkSince []time.Time
+	gateHeldAt      int
+	gateHeldSince   time.Time
 	// gatePending reports that the last real evaluation stopped at a pending entry, whose index is gatePendingAt;
 	// gatePendingSend and gatePendingWayForward carry that result's Send and SendFailedWayForward.
 	// Every real evaluation resets all four, and the pending memo itself is cleared by Wait's helper, so a poll-tick re-evaluation reads fresh closure state.
