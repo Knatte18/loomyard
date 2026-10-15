@@ -241,7 +241,7 @@ func (c *battenCLI) tacklerDepsFor(settings sheddriver.TacklerSettings, shuttle 
 				return false, err
 			}
 			for _, record := range records {
-				if record.StopKey == key && record.Action == sheddriver.SettleHandBack && record.At.After(spawned) {
+				if record.StopKey == key && record.Action == shedrun.SettleHandBack && record.At.After(spawned) {
 					return true, nil
 				}
 			}
