@@ -24,6 +24,9 @@ const rowNoticeRetrySpacing = 30 * time.Second
 // rowNoticeFailurePrefix leads the marker line recording the history length of the last failure episode noticed.
 const rowNoticeFailurePrefix = "failure "
 
+// rowNoticeHandBackPrefix leads the marker line recording the history length of the last stop the driver's hand-back noticed.
+const rowNoticeHandBackPrefix = "handback "
+
 // runMarkerSuffixes names every marker that must last exactly one batten run, by file-name suffix.
 // ClearRunMarkers removes them all where batten seeds a fresh status.
 var runMarkerSuffixes = []string{
@@ -189,6 +192,30 @@ func (n rowNotifier) failed(ctx context.Context, step, reason string) {
 	if n.send(ctx, line) && historyLen >= 0 {
 		n.setMarkerLine(rowNoticeFailurePrefix, marker)
 	}
+}
+
+// HandBackNotice sends line for the stop at the batten row producer, whose stop key's history length is historyLen, and reports whether it was queued.
+// It sends nothing when the row's marker holds `failure <historyLen-1>`, the row's own notice of this stop, since a row records the length it read before its halting entry was appended.
+// It also sends nothing for `handback <historyLen>`, an earlier hand-back of the same stop by a driver that restarted.
+// Otherwise it sends through the row's own notifier, so the line reaches the notice log and is retried as a row notice is, and a queued line records `handback <historyLen>`.
+// A nil deps.Notify or a cancelled context sends nothing.
+func HandBackNotice(ctx context.Context, deps RowNoticeDeps, slug, scratchDir, producer string, historyLen int, line string) bool {
+	if deps.Notify == nil || ctx.Err() != nil {
+		return false
+	}
+	notifier := newRowNotifier(producer, slug, scratchDir, deps)
+	failureMarker := rowNoticeFailurePrefix + strconv.Itoa(historyLen-1)
+	handBackMarker := rowNoticeHandBackPrefix + strconv.Itoa(historyLen)
+	for _, existing := range notifier.readMarker() {
+		if existing == failureMarker || existing == handBackMarker {
+			return false
+		}
+	}
+	if !notifier.send(ctx, line) {
+		return false
+	}
+	notifier.setMarkerLine(rowNoticeHandBackPrefix, handBackMarker)
+	return true
 }
 
 // send appends line to the notice log, then makes at most noticeMaxAttempts attempts, rowNoticeRetrySpacing apart, to queue it, and reports whether it was queued.
