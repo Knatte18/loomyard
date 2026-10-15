@@ -67,6 +67,8 @@ type record struct {
 	ID int64 `json:"id,omitempty"`
 	// From is the sender of a posted record.
 	From string `json:"from,omitempty"`
+	// Envelope is what creel saw of an EXTERNAL sender: parent process, terminal and working directory.
+	Envelope string `json:"envelope,omitempty"`
 	// To is the receiver or holder the record concerns.
 	To string `json:"to,omitempty"`
 	// By is the party that acted: the reader, forwarder or hold owner.

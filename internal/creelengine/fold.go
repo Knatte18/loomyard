@@ -32,6 +32,8 @@ type Message struct {
 	ID int64
 	// From is the original sender and never changes.
 	From string
+	// Envelope is what creel saw of an EXTERNAL sender; empty for any other.
+	Envelope string
 	// Holder is who the message is with now.
 	Holder string
 	// Path lists the forwarders the message passed through, oldest first.
@@ -99,8 +101,8 @@ type reminderEntry struct {
 	Step int
 }
 
-// logEntry is one event as the log verb shows it: ids, parties, time and subject, never a body.
-type logEntry struct {
+// LogEntry is one event as the log verb shows it: ids, parties, time and subject, never a body.
+type LogEntry struct {
 	Day      string
 	Event    string
 	At       time.Time
@@ -123,7 +125,7 @@ type pool struct {
 	reminders map[string]reminderEntry
 	// programs holds the program senders whose mailbox is known, from their first post or read.
 	programs map[string]bool
-	events   []logEntry
+	events   []LogEntry
 	// maxID is the largest id any record or high-water record carried.
 	maxID int64
 }
@@ -206,6 +208,10 @@ func (p *pool) apply(rec record, day string) {
 		p.reminders[rec.To] = reminderEntry{At: rec.At, Step: rec.Step}
 	case eventRead:
 		p.applyRead(rec)
+		// A read with no id only makes a program's mailbox known and is no event for the log.
+		if rec.ID == 0 {
+			return
+		}
 	case eventForwarded:
 		if msg := p.messages[rec.ID]; msg != nil {
 			msg.Path = append(msg.Path, rec.By)
@@ -277,7 +283,7 @@ func (p *pool) applyPosted(rec record, day string) {
 		kind = kindMail
 	}
 	p.messages[rec.ID] = &Message{
-		ID: rec.ID, From: rec.From, Holder: rec.To, Kind: kind,
+		ID: rec.ID, From: rec.From, Envelope: rec.Envelope, Holder: rec.To, Kind: kind,
 		Subject: firstLine(rec.Body), Body: rec.Body, ReplyTo: rec.ReplyTo,
 		Posted: rec.At, Status: StatusUnread, origin: day,
 	}
@@ -317,7 +323,7 @@ func (p *pool) applyCarried(rec record, day string) {
 				kind = kindMail
 			}
 			p.messages[rec.ID] = &Message{
-				ID: rec.ID, From: rec.From, Holder: rec.To, Path: rec.Path, Kind: kind,
+				ID: rec.ID, From: rec.From, Envelope: rec.Envelope, Holder: rec.To, Path: rec.Path, Kind: kind,
 				Subject: firstLine(rec.Body), Body: rec.Body, ReplyTo: rec.ReplyTo,
 				Posted: rec.OrigAt, Status: StatusUnread,
 				EndedUnreadBy: rec.Receiver, EndedUnreadAt: rec.ReceiverAt, origin: day,
@@ -341,8 +347,8 @@ func (p *pool) setOutcome(id int64, outcome string) {
 }
 
 // logEntryFor builds the log line of rec: parties and subject from the message or inject it concerns, never a body.
-func (p *pool) logEntryFor(rec record, day string) logEntry {
-	entry := logEntry{
+func (p *pool) logEntryFor(rec record, day string) LogEntry {
+	entry := LogEntry{
 		Day: day, Event: rec.Event, At: rec.At, ID: rec.ID,
 		From: rec.From, To: rec.To, By: rec.By, Receiver: rec.Receiver, Notice: rec.Notice,
 	}
@@ -366,7 +372,7 @@ func (p *pool) carryRecords(cutoffDay string, now time.Time) []record {
 	for _, msg := range p.messages {
 		if msg.origin < cutoffDay && msg.Status == StatusUnread {
 			carried = append(carried, record{
-				Event: eventCarried, At: now, Of: eventPosted, ID: msg.ID, From: msg.From, To: msg.Holder,
+				Event: eventCarried, At: now, Of: eventPosted, ID: msg.ID, From: msg.From, Envelope: msg.Envelope, To: msg.Holder,
 				Kind: msg.Kind, Body: msg.Body, ReplyTo: msg.ReplyTo, Path: msg.Path,
 				Receiver: msg.EndedUnreadBy, ReceiverAt: msg.EndedUnreadAt, OrigAt: msg.Posted,
 			})
