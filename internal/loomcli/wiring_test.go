@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -995,6 +996,65 @@ func TestWire_MergeReviewSeams(t *testing.T) {
 	}
 	if tip, found, err := landingshed.ReadReviewedTip(landingshed.MergeReviewedPath(scratchDir)); err != nil || !found || tip != "m9" {
 		t.Errorf("reviewed tip = %q, %v, %v; want m9 recorded", tip, found, err)
+	}
+}
+
+// TestWire_LanguageSkills asserts wire loads the hub's language.yaml once and tells the list to the Webster deps and the darn writer's table, and that an unusable file halts wire with the module's way forward.
+func TestWire_LanguageSkills(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		content string
+		// wantErr is the text the wire error must contain; empty means wire succeeds with wantSkills.
+		wantErr    string
+		wantSkills []string
+	}{
+		{
+			name:       "a listed language reaches the Webster deps and the darn writer after its own",
+			content:    "skills:\n  - scribe:golang-comments\n  - scribe:golang-testing\n",
+			wantSkills: []string{"scribe:golang-comments", "scribe:golang-testing"},
+		},
+		{
+			name:    "an empty entry halts wire naming skills and the way forward",
+			content: "skills: [\"\"]\n",
+			wantErr: "lyx config language",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			loc := hubLocation(t, "pair", ".")
+			seedDarnHubConfig(t, loc.HubPath, `"go test ./..."`, "5")
+			languagePath := configengine.ConfigFile(fabricengine.BoardDir(loc.HubPath), "language")
+			if err := os.WriteFile(languagePath, []byte(tt.content), 0o644); err != nil {
+				t.Fatalf("WriteFile(%q) = %v; want nil", languagePath, err)
+			}
+			c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeDarn}
+
+			err := c.wire(loc, loc.AnchorPath())
+
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) || !strings.Contains(err.Error(), "skills") {
+					t.Fatalf("wire() = %v; want an error naming skills and %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("wire() = %v; want nil", err)
+			}
+			if !slices.Equal(c.languageSkills, tt.wantSkills) || !slices.Equal(c.runDeps.LanguageSkills, tt.wantSkills) {
+				t.Errorf("languageSkills = %v, runDeps.LanguageSkills = %v; want %v", c.languageSkills, c.runDeps.LanguageSkills, tt.wantSkills)
+			}
+			table, err := c.env.DarnTable(loomshed.DarnTold{})
+			if err != nil {
+				t.Fatalf("DarnTable() = %v; want nil", err)
+			}
+			want := append([]string{"scribe:prose", "scribe:code-quality", "scribe:testing"}, tt.wantSkills...)
+			if got := table.Chair().Skills; !slices.Equal(got, want) {
+				t.Errorf("darn writer skills = %v; want %v", got, want)
+			}
+		})
 	}
 }
 

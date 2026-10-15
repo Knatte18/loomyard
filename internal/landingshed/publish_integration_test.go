@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/google/go-github/v75/github"
@@ -140,6 +141,37 @@ func mergeInAt(t *testing.T, taskWorktree string) landingshed.Deps {
 	}
 	shedfake.RequireOutcome(t, m, shedengine.Done)
 	return deps
+}
+
+// TestMergeIn_ConflictSessionLoadsLanguageSkills drives Merge-In over a real pair whose branches conflict on one file, and asserts the one conflict session it spawns loads the told language skills after its own.
+func TestMergeIn_ConflictSessionLoadsLanguageSkills(t *testing.T) {
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	taskWorktree := h.PrimeWorktree()
+
+	gitkit.MustRun(t, taskWorktree, "git", "checkout", "-q", "-b", "task-branch")
+	gitkit.CommitFile(t, taskWorktree, "conflict.txt", "task content\n", "task: add conflict.txt")
+	gitkit.MustRun(t, taskWorktree, "git", "checkout", "-q", "main")
+	gitkit.CommitFile(t, taskWorktree, "conflict.txt", "parent content\n", "main: add conflict.txt")
+	gitkit.MustRun(t, taskWorktree, "git", "checkout", "-q", "task-branch")
+
+	shuttle := resolutionShuttle(taskWorktree, "resolved content\n", "conflict.txt")
+	deps := newMergeInDepsAt(t, taskWorktree)
+	deps.StencilsDir = seedConflictStencil(t)
+	deps.Shuttle = shuttle
+	deps.LanguageSkills = []string{"scribe:golang-testing"}
+
+	m, err := landingshed.NewMergeIn(deps)
+	if err != nil {
+		t.Fatalf("NewMergeIn() error = %v; want nil", err)
+	}
+	shedfake.RequireOutcome(t, m, shedengine.Done)
+
+	if len(shuttle.Specs) != 1 {
+		t.Fatalf("fake shuttle Run() called %d time(s); want exactly 1 conflict-resolution session", len(shuttle.Specs))
+	}
+	if want := []string{"scribe:prose", "scribe:code-quality", "scribe:golang-testing"}; !slices.Equal(shuttle.Specs[0].Skills, want) {
+		t.Errorf("conflict session Skills = %v; want %v", shuttle.Specs[0].Skills, want)
+	}
 }
 
 // TestPublish_MergesInCleanlyBeforeCreatingPullRequest drives Merge-In and then Publish against a real pair:

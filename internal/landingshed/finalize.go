@@ -111,15 +111,16 @@ func NewFinalize(deps Deps) (*Finalize, error) {
 	}
 
 	res, err := mergeresolve.New(mergeresolve.Deps{
-		Fabric:       fabricHandle,
-		Shuttle:      deps.Shuttle,
-		WorktreeRoot: deps.WorktreeRoot,
-		ScratchDir:   deps.ScratchDir,
-		StencilsDir:  deps.StencilsDir,
-		ParentName:   deps.ParentName,
-		ConflictSpec: deps.Config.Conflict,
-		Registry:     deps.Registry,
-		Timeout:      time.Duration(deps.Config.ConflictTimeoutMin) * time.Minute,
+		Fabric:         fabricHandle,
+		Shuttle:        deps.Shuttle,
+		WorktreeRoot:   deps.WorktreeRoot,
+		ScratchDir:     deps.ScratchDir,
+		StencilsDir:    deps.StencilsDir,
+		ParentName:     deps.ParentName,
+		LanguageSkills: deps.LanguageSkills,
+		ConflictSpec:   deps.Config.Conflict,
+		Registry:       deps.Registry,
+		Timeout:        time.Duration(deps.Config.ConflictTimeoutMin) * time.Minute,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("landingshed: NewFinalize: build resolver: %w", err)

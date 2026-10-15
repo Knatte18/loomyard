@@ -91,8 +91,9 @@
 // The orch is colored like every other strand, and the watcher stays the single writer into its pane:
 // the launch spec names the coordinator segment and leaves the color to the caller,
 // and the watcher types the strand's palette color, read from reed's strand status, on the first tick after binding whose idle probe passes, before anything else that tick types.
-// The mark that the color is pending is held in memory, so a restarted watcher types it again, which is harmless.
-// A failed color typing is logged and dropped, since the color is display only.
+// Each color typing that lands, at start or in a reload, records in State the strand and State.LaunchedAt it was typed for.
+// Binding sets the color pending only when those differ from the bound session's, so a watcher that re-execs onto a new binary types no color into a session already showing it.
+// A failed color typing is logged and dropped, records nothing, and is typed again by the next watcher that binds, since the color is display only.
 // Every provider and reed interaction goes through the Session seam, so the state machine runs against a fake in unit tests.
 //
 // # Idle rules

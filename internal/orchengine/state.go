@@ -95,6 +95,11 @@ type State struct {
 	// A hub pause that began at or before it never interrupts this session.
 	LaunchedAt time.Time `json:"launched_at"`
 
+	// ColorStrand and ColorLaunchedAt are the Strand and LaunchedAt the strand's color was last typed for; empty and zero until it was.
+	// A watcher binding to a session they match types no start color, since that session already shows it.
+	ColorStrand     string    `json:"color_strand"`
+	ColorLaunchedAt time.Time `json:"color_launched_at"`
+
 	// CompactionBaseline is the time of the newest compaction boundary already handled, or the launch time of the session;
 	// only a boundary after it triggers a reload.
 	CompactionBaseline time.Time `json:"compaction_baseline"`

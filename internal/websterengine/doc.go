@@ -447,7 +447,8 @@
 // from a fork's own thin RenderForkPrompt, since the recovery strand
 // inherits no session context (see the fork-context-hygiene Shared
 // Decision).
-// The master and the recovery strand both load `scribe:prose`, `scribe:code-quality` and `scribe:testing` through their spawn spec's skills (`roleSkills`), and their opening prompts render the parent directive (internal/parentdirective) from Geometry.ParentName, which hubgeom.WebsterGeometry fills from the worktree's origin record.
+// The master and the recovery strand both load `scribe:prose`, `scribe:code-quality` and `scribe:testing` through their spawn spec's skills (`roleSkills`), followed by the hub's language skills from the `RunDeps.LanguageSkills` and `RecoverDeps.LanguageSkills` their wiring loads.
+// Their opening prompts render the parent directive (internal/parentdirective) from Geometry.ParentName, which hubgeom.WebsterGeometry fills from the worktree's origin record.
 // Forks get no skills and no directive: they inherit the master's context.
 // The recovery prompt also carries a block of the worktree's uncommitted paths (the optional uncommitted_paths marker, `none` on a clean tree), taken from UncommittedPaths when the strand is spawned.
 // Each path is grouped by the run's write evidence (loadRunWrites), which covers Master, every fork and every recovery session: "Written by this run" is the earlier attempt's unfinished work, which the strand keeps as its starting point after checking it against the card, and "Not written by this run", which includes every path the evidence cannot attribute, the strand leaves untouched and never stages or commits.
@@ -607,7 +608,7 @@
 //
 // # A broken config stops Master
 //
-// A verb whose `webster.yaml` or `batcher.yaml` is present with content that fails to parse or validate refuses in the CLI's pre-run, before its body, with `config_invalid: true`;
+// A verb whose `webster.yaml`, `batcher.yaml` or the hub's `language.yaml` is present with content that fails to parse or validate refuses in the CLI's pre-run, before its body, with `config_invalid: true`;
 // `LoadConfig` marks those failures `configengine.ErrInvalid`, and the refusal changes no state, report or plan.
 // Master's failure ladder has a rung for it: a refusal carrying `config_invalid` from any verb ends the run with `outcome: stuck` quoting the refusal, without calling another verb.
 // A config file that exists but cannot be read refuses with no `config_invalid` and a transient way forward, so it never stops a run through that rung.

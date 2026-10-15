@@ -1119,6 +1119,26 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 			},
 		},
 		{
+			name: "no language list spawns the strand with the role skills alone",
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				requireSpawned(t, spawned, err)
+				if want := []string{"scribe:prose", "scribe:code-quality", "scribe:testing"}; !slices.Equal(fx.Engine.LastSpec.Skills, want) {
+					t.Errorf("recovery spec Skills = %v; want %v", fx.Engine.LastSpec.Skills, want)
+				}
+			},
+		},
+		{
+			name:  "a told language list follows the role skills",
+			setup: func(fx *recoverFixture) { fx.Deps.LanguageSkills = []string{"scribe:golang-testing"} },
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				requireSpawned(t, spawned, err)
+				want := []string{"scribe:prose", "scribe:code-quality", "scribe:testing", "scribe:golang-testing"}
+				if !slices.Equal(fx.Engine.LastSpec.Skills, want) {
+					t.Errorf("recovery spec Skills = %v; want %v", fx.Engine.LastSpec.Skills, want)
+				}
+			},
+		},
+		{
 			name: "a spawn over a prior recovery raises the count and records HEAD as its start",
 			setup: func(fx *recoverFixture) {
 				fx.Deps.State.Batches[1] = &websterengine.BatchState{Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead", Recoveries: 1, RecoveryStartSHA: fx.Git.head, StartSHA: fx.Git.head, RecoverySessions: []string{"earlier-session"}}
