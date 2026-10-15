@@ -60,6 +60,11 @@ Imports only the standard library, `internal/logger`, `internal/stencil` and `in
 
 Imports only the standard library.
 
+## `internal/sleepjournal`
+
+Imports only the standard library.
+It spawns no process: each caller runs `journalctl` itself and wraps the clause `Read` returns in its own note.
+
 ## `internal/dotgit`
 
 Imports only the standard library.

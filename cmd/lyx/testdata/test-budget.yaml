@@ -112,6 +112,7 @@ internal/shortcutcli: 2
 internal/shuttlecli: 26
 internal/shuttleengine: 172
 internal/shuttleengine/claudeengine: 112
+internal/sleepjournal: 2
 internal/standalonegeom: 7
 internal/standalonestate: 6
 internal/state: 9
