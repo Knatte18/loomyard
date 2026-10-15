@@ -327,7 +327,7 @@ type planParityCase struct {
 // and no gate answers to that flag.
 //
 // The fixtures are: a clean approved plan, a clean unapproved plan, a format-invalid plan, an absent
-// plan directory, a glyph-not-resolving plan, an informational-only plan, and a quarry-unavailable
+// plan directory, a glyph-not-resolving plan, an informational-only plan, a plan listing a test file under Edit, and a quarry-unavailable
 // plan.
 //
 // The Unapproved case is the load-bearing one: it must expect done, not stuck, because that is
@@ -477,6 +477,34 @@ func TestGateParity_PlanGate(t *testing.T) {
 			},
 			wantGate: verdictDone,
 			wantCLI:  verdictDone,
+		},
+		{
+			// EditTestFile pins edit-test-file from a card file's plain test-file path under Edit, through ParsePlan's canonicalization into a file self glyph, to both the plan gate and the verb.
+			name: "EditTestFile",
+			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
+				plankit.WriteTree(t, worktreeRoot, map[string]string{"sub/a_test.go": "package sub\n\nimport \"testing\"\n\nfunc TestA(t *testing.T) {}\n"})
+				plankit.Write(t, planparser.PlanDir(anchorPath), plankit.Plan{
+					Approved: true,
+					Language: "go",
+					Cards: []plankit.Card{{
+						Number:        1,
+						Slug:          "validate-fixture",
+						Summary:       "a minimal fixture card",
+						Groups:        []plankit.Group{{Label: "Edit", Targets: []string{"sub/a_test.go"}}},
+						Intent:        "minimal fixture card for validate-plan tests.",
+						ImpactSummary: "Touches the test file.",
+						Commit:        "1: validate-fixture",
+					}},
+				})
+				return &loomCLI{env: shedrecipe.Env{
+					PlanIndex:    planglyph.NewIndex(fabricengine.NewReferenceRule()),
+					AnchorPath:   anchorPath,
+					WorktreeRoot: worktreeRoot,
+				}}
+			},
+			wantGate:    verdictStuck,
+			wantCLI:     verdictStuck,
+			wantFinding: "edit-test-file",
 		},
 		{
 			// QuarryUnavailable points both sides at a worktreeRoot that is not a repository, under
@@ -661,11 +689,17 @@ func TestGateParity_DescriptionGate(t *testing.T) {
 	}
 }
 
-// reworkParityFixture writes a one-card language: go plan under anchorPath, a new generation whose card is numbered cardNumber (with first_card: cardNumber above 1) and creates newpkg#Bar, also using uses when it is non-empty and carrying verify as its verify: section when that is non-empty, and returns a *loomCLI whose committed-file seam serves a one-card generation (card 1 creating sub#Foo) as the plan at HEAD -- or nothing at all when committed is false.
+// reworkParityFixture writes a one-card language: go plan under anchorPath, a new generation whose card is numbered cardNumber (with first_card: cardNumber above 1) and creates newpkg#Bar, also using uses and editing edit when each is non-empty and carrying verify as its verify: section when that is non-empty, and returns a *loomCLI whose committed-file seam serves a one-card generation (card 1 creating sub#Foo) as the plan at HEAD -- or nothing at all when committed is false.
 // The told number is therefore 2.
 // It is duplicated from internal/loomshed/gates_test.go's seedReworkGlyphPlan.
-func reworkParityFixture(t *testing.T, anchorPath, worktreeRoot string, cardNumber int, uses, verify string, committed bool) *loomCLI {
+func reworkParityFixture(t *testing.T, anchorPath, worktreeRoot string, cardNumber int, uses, edit, verify string, committed bool) *loomCLI {
 	t.Helper()
+	groups := []plankit.Group{{Label: "Create", Targets: []string{"newpkg#Bar"}}}
+	impactSummary := ""
+	if edit != "" {
+		groups = append(groups, plankit.Group{Label: "Edit", Targets: []string{edit}})
+		impactSummary = "Touches the edited file."
+	}
 	var usesTargets []string
 	if uses != "" {
 		usesTargets = []string{uses}
@@ -685,12 +719,13 @@ func reworkParityFixture(t *testing.T, anchorPath, worktreeRoot string, cardNumb
 		Framing:   "Framing.",
 		Sections:  sections,
 		Cards: []plankit.Card{{
-			Number:  cardNumber,
-			Slug:    "new-card",
-			Summary: fmt.Sprintf("placeholder card %d", cardNumber),
-			Groups:  []plankit.Group{{Label: "Create", Targets: []string{"newpkg#Bar"}}},
-			Uses:    usesTargets,
-			Intent:  "new generation card.",
+			Number:        cardNumber,
+			Slug:          "new-card",
+			Summary:       fmt.Sprintf("placeholder card %d", cardNumber),
+			Groups:        groups,
+			Uses:          usesTargets,
+			Intent:        "new generation card.",
+			ImpactSummary: impactSummary,
 		}},
 	})
 
@@ -724,30 +759,35 @@ func reworkParityFixture(t *testing.T, anchorPath, worktreeRoot string, cardNumb
 }
 
 // TestGateParity_ReworkPlanGate drives NewReworkPlanGate and the validate-plan verb's --rework mode over the same fixture set and asserts the two mapped verdicts agree.
-// The cases are a clean whole new plan numbered from the told card (done), a first_card differing from the told number (stuck), a card using a missing symbol (stuck), and a plan with nothing committed at HEAD (error).
+// The cases are a clean whole new plan numbered from the told card (done), a first_card differing from the told number (stuck), a card using a missing symbol (stuck), a card listing a test file under Edit (stuck), and a plan with nothing committed at HEAD (error).
 func TestGateParity_ReworkPlanGate(t *testing.T) {
 	cases := []struct {
 		name       string
 		cardNumber int
 		uses       string
+		edit       string
 		verify     string
 		committed  bool
 		want       parityVerdict
 		// wantFinding, when set, is a substring both the gate's findings and the verb's envelope must carry.
 		wantFinding string
 	}{
-		{"WholePlanFromToldCard", 2, "", "", true, verdictDone, ""},
-		{"FirstCardMismatch", 1, "", "", true, verdictStuck, ""},
-		{"CardBlocking", 2, "sub#Missing", "", true, verdictStuck, ""},
-		{"FabricReference", 2, "", fabricReferenceCommand, true, verdictStuck, "card-fabric-reference"},
-		{"NothingCommitted", 2, "", "", false, verdictError, ""},
+		{"WholePlanFromToldCard", 2, "", "", "", true, verdictDone, ""},
+		{"FirstCardMismatch", 1, "", "", "", true, verdictStuck, ""},
+		{"CardBlocking", 2, "sub#Missing", "", "", true, verdictStuck, ""},
+		{"FabricReference", 2, "", "", fabricReferenceCommand, true, verdictStuck, "card-fabric-reference"},
+		{"EditTestFile", 2, "", "sub/a_test.go", "", true, verdictStuck, "edit-test-file"},
+		{"NothingCommitted", 2, "", "", "", false, verdictError, ""},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			anchorPath := t.TempDir()
 			worktreeRoot := t.TempDir()
-			plankit.WriteTree(t, worktreeRoot, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
-			c := reworkParityFixture(t, anchorPath, worktreeRoot, tt.cardNumber, tt.uses, tt.verify, tt.committed)
+			plankit.WriteTree(t, worktreeRoot, map[string]string{
+				"sub/a.go":      "package sub\n\nfunc Foo() {}\n",
+				"sub/a_test.go": "package sub\n\nimport \"testing\"\n\nfunc TestA(t *testing.T) {}\n",
+			})
+			c := reworkParityFixture(t, anchorPath, worktreeRoot, tt.cardNumber, tt.uses, tt.edit, tt.verify, tt.committed)
 
 			result, err := loomshed.NewReworkPlanGate(c.env.AnchorPath, c.env.WorktreeRoot, c.env.RunScratchDir, planglyph.NewIndex(fabricengine.NewReferenceRule()), c.env.Rework.ReadCommitted)()
 			pv := producerVerdict(result, err)

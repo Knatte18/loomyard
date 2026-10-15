@@ -80,7 +80,7 @@ Each card lives in its own file, and the file's content is:
    ```markdown
    **Edit:**
    - `internal/boardcli#newListCmd`
-   - `list_test.go`
+   - `internal/boardcli#TestList`
    ```
 
    A card whose targets span two labels carries both groups, one after the other, each with its own sub-bullets:
@@ -168,7 +168,7 @@ The overview frontmatter's optional `language:` key gates this alphabet: `"go"` 
 This is a deliberate, partial deviation from the design doc's own classification clause.
 The design doc resolves ambiguity "against ground truth (`go doc` for a symbol, file existence for a path)";
 this spec takes that clause in its **shape half only** — a process spawn (`go doc`) is barred from tier1 by the Test Tier Purity Invariant and would stop the parser being a leaf (the Planparser Sole-Parser Invariant).
-The **file-existence half survives**, but at validation time rather than classification time, as the `path-missing` check below — existence never decides an entry's shape, only whether a path- or self-glyph-shaped entry's target is satisfied. `internal/planparser` itself never calls `quarry.Resolve` or any other `quarry.Repo` method — that belongs to `internal/planglyph`, the resolve-backed layer above it — and it performs exactly one glyph conversion in each direction: `glyph.Self` (path -> glyph, at canonicalization time) and `Glyph.UnitPath` (glyph -> path, used only by the two disk-existence checks below on a **self** glyph; a member glyph is skipped by both, since member existence is `internal/planglyph`'s resolve-backed business, not this package's), plus one sanctioned adjustment of a Go unit string: `goPackageDir` maps quarry's external-test pseudo-unit `<dir>_test` to its package directory, so no derived gate argument names a `_test` directory.
+The **file-existence half survives**, but at validation time rather than classification time, as the `path-missing` check below — existence never decides an entry's shape, only whether a path- or self-glyph-shaped entry's target is satisfied. `internal/planparser` itself never calls `quarry.Resolve` or any other `quarry.Repo` method — that belongs to `internal/planglyph`, the resolve-backed layer above it — and it performs exactly one glyph conversion in each direction: `glyph.Self` (path -> glyph, at canonicalization time) and `Glyph.UnitPath` (glyph -> path; the disk-existence checks `card-path-malformed` and `path-missing` below skip a member glyph, since member existence is `internal/planglyph`'s resolve-backed business, not this package's), plus one sanctioned adjustment of a Go unit string: `goPackageDir` maps quarry's external-test pseudo-unit `<dir>_test` to its package directory, so no derived gate argument names a `_test` directory.
 
 **Known limitation:** an unexported symbol reference whose final dot-segment happens to be all-lowercase (e.g. `shedrecipe.lookup`) misclassifies as a path under rule 3, and surfaces as a loud `path-missing` finding rather than a silent misparse.
 The author resolves it by writing the exported name (as a glyph), or by `//`-escaping the entry so it is unambiguously a path.
@@ -369,6 +369,7 @@ The rows that name `internal/planglyph` as their emitter are an exception: that 
 `card-fabric-reference` is the other exception: it is a `planparser` function outside both entry points, which the plan index appends to its own format validation.
 `done-card-edited` is the third: `loomshed.ValidatePlan` appends it after the index's validation.
 `fabric-vocabulary-name` is the fourth: it is a `planparser` function outside both entry points, which the plan index appends to its format, rework and dispatch validation.
+`edit-test-file` is the fifth: it is a `planparser` function outside both entry points, which the plan index appends to its format and rework validation.
 The rows below stay in one fixed order regardless of which entry point runs them, and `plan-unapproved` keeps its position-three slot in that order even though it alone belongs to the wider entry point:
 
 1. `format-unrecognized` — `format:` is a recognized version (currently only `5`); else refuse to run.
@@ -516,6 +517,14 @@ The rows below stay in one fixed order regardless of which entry point runs them
     Its way forward is to correct the Verify line.
     It runs right after `verify-module-wide` in `Validate` and `ValidateFormat`, under any `language:`, and both plan gates, `lyx loom validate-plan` and dispatch report it; dispatch drops a finding against a completed card.
     It only refuses: it misses an argument behind a variable or inside `bash -c`, an argument after an unplaceable `cd` or `-C` or after a `cd` in a pipeline stage or after `||`, an import path, a module-wide pattern whose stem exists and a `.go` file argument, and a directory an earlier card deletes is left to that card's own verify run.
+43. `edit-test-file` — a file self glyph in a card's `**Edit:**` group whose path ends in `_test.go`.
+    Only `Edit` groups are read, so a `Create`, `Delete`, `Rename`, `Move`, `Prosa` or `Custom` group and `Uses` never trip it, and neither does a member glyph, a `plan:` handle or a path with no extension, since a card file's plain `x_test.go` path is canonicalized into its file self glyph at parse time.
+    A path with a segment the go tool ignores (`testdata`, `vendor`, and names starting with `.` or `_`), the file name included, is exempt, since no test there is compiled.
+    One blocking finding per entry, attributed to the card, with `Ref` the entry.
+    Its way forward is to name each existing test function, fake or helper the card changes as a member glyph under `**Edit:**`, to declare each new one as a `**Create:**` `plan:` handle on the package directory (or on `<dir>_test` for an external test package), to keep a new test file a `**Create:**` path, and, for a change confined to the file's header such as its build constraint, to name every member of that file.
+    Skipped under `language: none`, whose plan forgoes every glyph check and has neither a self glyph to read nor a member glyph or handle to name.
+    It reads plan text only, so it fires whether or not the file exists, and only refuses.
+    The plan index appends it to its format and rework validation, so both plan gates and `lyx loom validate-plan`'s default and `--rework` modes report it; format validation skips a done card, rework skips none because a rework generation is a fresh plan whose prior cards are archived, and dispatch, `--require-approved` and webster's own `validate` verb do not run it.
 
 One further check, `rework-first-card`, is outside both entry points and has no row above.
 Only the rework gate runs it: `planglyph.ValidateRework` runs it after the format-only set, and it reports a `first_card:` that differs from the card number Go told the rework session to start at.
