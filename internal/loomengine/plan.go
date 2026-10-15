@@ -1,8 +1,9 @@
 // plan.go implements PlanTable, the Plan-Write row's seat-table builder.
 // Like the Discussion producer (discussion.go), the Plan producer is not a Go module — it is a
 // prompt/profile fed to the seat engine, one lead seat producing one artifact.
-// Its sole input is `_lyx/discussion/decision-record.md` (see layout.DiscussionDecisionRecord);
-// it never reads the support log and never reads the board.
+// The decision record, `_lyx/discussion/decision-record.md` (see layout.DiscussionDecisionRecord), is its design input;
+// `_lyx/discussion/relevant.md` is its head start on the code when present, never scope.
+// It reads nothing else from `_lyx/discussion/`, never the support log, and never reads the board.
 // Its output is a plan-format flat-card plan written into `_lyx/plan/`: one `NN-<card-slug>.md`
 // per card plus `00-overview.md`, written LAST as the run's done-sentinel (see
 // contracts/specs/loom-plan-spec.md).
@@ -98,6 +99,7 @@ func PlanTable(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir, spe
 		Timeout:    time.Duration(cfg.PlanTimeoutMin) * time.Minute,
 		Values: map[string]string{
 			"decision_record_path": DiscussionDecisionRecord(layout),
+			"relevant_path":        DiscussionRelevant(layout),
 			"plan_dir":             planparser.PlanDir(layout.AnchorPath()),
 			"overview_path":        overviewPath,
 			"specs_dir":            specsDir,
