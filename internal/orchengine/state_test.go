@@ -83,6 +83,75 @@ func TestSaveLoadState_RoundTrip(t *testing.T) {
 }
 
 //testtiming:keep pins the write, probe and clear round trip of the cycle request marker, which its covering test does not assert
+func TestPeekState(t *testing.T) {
+	p := testPaths(t)
+
+	_, found, err := PeekState(p)
+	if err != nil || found {
+		t.Fatalf("PeekState of an absent file = found %v, err %v; want false, nil", found, err)
+	}
+	for _, path := range []string{p.Dir, p.StateLockPath} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("PeekState of an absent file left %s behind (stat err %v)", path, err)
+		}
+	}
+
+	want := State{
+		Strand:            "g1",
+		Phase:             PhaseCompacting,
+		LastContextTokens: 212500,
+		LastContextKnown:  true,
+		CycleCount:        3,
+		WatcherExit:       "bye",
+	}
+	if err := SaveState(p, want); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+	if err := os.Remove(p.StateLockPath); err != nil {
+		t.Fatalf("remove the state lock: %v", err)
+	}
+	got, found, err := PeekState(p)
+	if err != nil || !found {
+		t.Fatalf("PeekState = found %v, err %v; want true, nil", found, err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("PeekState = %+v, want %+v", got, want)
+	}
+	if _, err := os.Stat(p.StateLockPath); !os.IsNotExist(err) {
+		t.Errorf("PeekState created the state lock (stat err %v)", err)
+	}
+
+	saved, err := os.ReadFile(p.StatePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	withFutureKey := strings.Replace(string(saved), "{", `{"future_key":1,`, 1)
+	if err := os.WriteFile(p.StatePath, []byte(withFutureKey), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, found, err = PeekState(p)
+	if err != nil || !found || !reflect.DeepEqual(got, want) {
+		t.Errorf("PeekState with an unknown key = %+v, found %v, err %v; want %+v, true, nil", got, found, err, want)
+	}
+
+	if err := os.WriteFile(p.StatePath, []byte("{not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := PeekState(p); err == nil {
+		t.Error("PeekState of undecodable JSON returned no error")
+	}
+
+	if err := os.Remove(p.StatePath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(p.StatePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := PeekState(p); err == nil {
+		t.Error("PeekState of a directory returned no error")
+	}
+}
+
 func TestCycleRequest_WriteProbeClear(t *testing.T) {
 	p := testPaths(t)
 	if err := ClearCycleRequest(p); err != nil {
