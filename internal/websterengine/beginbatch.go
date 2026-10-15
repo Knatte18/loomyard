@@ -376,6 +376,7 @@ func existingReportRemedy(number int, recorded *BatchState, retry bool) (string,
 // a parse error degrades to deps.Plan and batch.Cards instead, with a Warn, so building the pack never refuses the batch.
 // An index error is a Warn too, and the degraded pack the index returned is kept.
 // The logged resolved and unresolved counts are distinct refs across the batch, so a ref listed under two cards counts once.
+// The line's last key, pack_layout, is `file` or `inline` by deps.Config.KickstartPackFile when a pack is built, and `none` on every line where none is.
 func buildKickstartPack(deps BeginDeps, index planindex.Index, batch batcher.Batch, number int) []planindex.CardPack {
 	logPack := func(state string, pack []planindex.CardPack) {
 		resolved, unresolved := make(map[string]bool), make(map[string]bool)
@@ -387,7 +388,14 @@ func buildKickstartPack(deps BeginDeps, index planindex.Index, batch batcher.Bat
 				unresolved[u.Ref] = true
 			}
 		}
-		logger.Info("webster: kickstart pack", "batch", number, "kickstart_pack", state, "resolved", len(resolved), "unresolved", len(unresolved))
+		layout := "none"
+		if state == "on" {
+			layout = "inline"
+			if deps.Config.KickstartPackFile {
+				layout = "file"
+			}
+		}
+		logger.Info("webster: kickstart pack", "batch", number, "kickstart_pack", state, "resolved", len(resolved), "unresolved", len(unresolved), "pack_layout", layout)
 	}
 	if !deps.Config.KickstartPack {
 		logPack("off", nil)

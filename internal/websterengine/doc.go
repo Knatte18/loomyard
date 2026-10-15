@@ -181,8 +181,9 @@
 // and the card and batch gates, which run every card's tests, catch reasoning over stale content.
 //
 // Every begin-batch logs one Info line, `webster: kickstart pack`.
-// Its keys are batch, kickstart_pack (`on`, `off`, `language-none` or `empty`), resolved and unresolved.
-// The last two count distinct refs across the batch, so a ref listed under two cards counts once, and stay 0 when no pack is built.
+// Its keys are batch, kickstart_pack (`on`, `off`, `language-none` or `empty`), resolved, unresolved and pack_layout (`file`, `inline` or `none`).
+// The resolved and unresolved counts are distinct refs across the batch, so a ref listed under two cards counts once, and stay 0 when no pack is built.
+// pack_layout is `none` on every line where no pack was built.
 // The `kickstart_pack` key of webster.yaml switches the pack on and off, so runs with and without it can be compared;
 // each begin-batch reads it afresh, so a flip applies from the next call on.
 //
