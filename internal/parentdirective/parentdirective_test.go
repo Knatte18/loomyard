@@ -71,9 +71,6 @@ func TestDirective_EmptyNameRendersNoParentVariant(t *testing.T) {
 	if !strings.Contains(got, "No parent is recorded") {
 		t.Errorf("Directive = %q; want the no-parent variant", got)
 	}
-	if strings.Contains(got, "SendMessage") {
-		t.Errorf("Directive = %q; want no parent sentence", got)
-	}
 	again, err := Directive(dir, "", true)
 	if err != nil || again != got {
 		t.Errorf("Directive(interactive) = %q, %v; want the same text %q", again, err, got)

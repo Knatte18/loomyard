@@ -3,6 +3,8 @@
 `internal/agentname` is the sole former, parser and validator of agent names, and imports the standard library only.
 
 - A full name is `<shortname>:<role>` in the prime and in a standalone run, and `<shortname>:<slug>:<role>` in a task worktree.
+- A program sender is `<shortname>:<NAME>` with an upper-case name matching `[A-Z][A-Z0-9_]*`, formed and parsed by `FormatProgram` and `ParseProgram`.
+  `EXTERNAL` is the reserved name of a sender creel cannot place; strand names are still formed once by reed.
 - Reed forms it once, in `AddStrand` under its state lock, and stores it in the strand record, which is the only key delivery and lookup resolve through.
   Pane titles and Claude session names are display mirrors.
 - The module that spawns an agent owns its role name as a constant declared in that module, never as an inline literal in the spawn spec.

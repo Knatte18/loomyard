@@ -56,7 +56,7 @@ Do not flag any of the following as a finding:
 - **Test economy.**
   `PATTERN-test-economy` holds the rule; each of these is a finding, and each names what grounds it:
   - a test the merge made redundant with another, naming the covering test;
-  - a behavior of the interaction with no coverage, naming the uncovered behavior.
+  - a behavior of the interaction with no coverage, naming the uncovered behavior; a stencil's static prose is exempt.
 
 ## Finding class
 

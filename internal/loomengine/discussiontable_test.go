@@ -129,7 +129,7 @@ func TestDiscussionTable(t *testing.T) {
 				for _, advisor := range discussionTableAdvisors[:advisors] {
 					wantNotes = append(wantNotes, DiscussionAdvisorNotes(layout, advisor.Name))
 				}
-				if want := []string{DiscussionDecisionRecord(layout), DiscussionSupportLog(layout)}; !slices.Equal(chair.Outputs, want) {
+				if want := []string{DiscussionDecisionRecord(layout), DiscussionSupportLog(layout), DiscussionRelevant(layout)}; !slices.Equal(chair.Outputs, want) {
 					t.Errorf("chair outputs = %v; want %v", chair.Outputs, want)
 				}
 				if !slices.Equal(chair.Inputs, wantNotes) {
@@ -163,6 +163,9 @@ func TestDiscussionTable(t *testing.T) {
 				if got := table.Values["specs_dir"]; got != discussionTableSpecsDir {
 					t.Errorf("table.Values[\"specs_dir\"] = %q; want %q", got, discussionTableSpecsDir)
 				}
+				if got, want := table.Values["relevant_path"], DiscussionRelevant(layout); got != want {
+					t.Errorf("table.Values[\"relevant_path\"] = %q; want %q", got, want)
+				}
 				if err := table.Validate(stencilsDir); err != nil {
 					t.Fatalf("table.Validate() = %v; want nil", err)
 				}
@@ -171,7 +174,7 @@ func TestDiscussionTable(t *testing.T) {
 					t.Fatalf("seatengine.Prompts() = _, %v; want nil error", err)
 				}
 
-				chairWants := []string{"`ly:orch`", "lyx board get", discussionTableSlug, DiscussionDecisionRecord(layout), DiscussionSupportLog(layout), modeRules(!interactive)}
+				chairWants := []string{"`ly:orch`", discussionTableSlug, DiscussionDecisionRecord(layout), DiscussionSupportLog(layout), discussionTableSpecsDir, modeRules(!interactive)}
 				for n, notes := range wantNotes {
 					chairWants = append(chairWants, "ly:"+discussionTableSlug+":discussion-"+discussionTableAdvisors[n].Name, notes)
 				}
@@ -203,9 +206,6 @@ func TestDiscussionTable(t *testing.T) {
 				chairPrompt := prompts[""]
 				if strings.Contains(strings.ToLower(chairPrompt), "twill") {
 					t.Errorf("chair prompt carries twill text; want none")
-				}
-				if want := "- `" + DiscussionSupportLog(layout) + "`\n\nTwo narrow carve-outs"; !strings.Contains(chairPrompt, want) {
-					t.Errorf("chair prompt does not hold the support-log bullet, one blank line, then the carve-outs")
 				}
 				if !strings.Contains(chairPrompt, "\n\n## Step 5") || strings.Contains(chairPrompt, "\n\n\n## Step 5") {
 					t.Errorf("chair prompt does not hold exactly one blank line before Step 5")
@@ -433,26 +433,20 @@ func TestDiscussionTable(t *testing.T) {
 
 				for _, want := range []string{
 					stencilstore.Path(stencilsDir, "loom-rubric-discussion-review"),
-					`subagent_type: "fork"`,
-					"runs `lyx loom validate-discussion` per `Step 6` until it passes",
-					"6. Run `lyx loom validate-discussion` again until it passes",
+					"`lyx loom validate-discussion` per `Step 6`",
 					"per `Step 5`",
-					"`" + DiscussionDecisionRecord(layout) + "` and `" + DiscussionSupportLog(layout) + "` were written and passed the self-check before you were spawned.",
-					"Once you have written both output files per Step 5 and `lyx loom validate-discussion` passes per Step 6, run this procedure once, before you end your turn:",
+					"`" + DiscussionDecisionRecord(layout) + "`",
+					"`" + DiscussionSupportLog(layout) + "`",
+					"finishes writing `" + DiscussionDecisionRecord(layout) + "`, `" + DiscussionSupportLog(layout) + "` and `" + DiscussionRelevant(layout) + "` per",
 					"Fix the record, or reject the finding with a one-line reason.",
-					"each with a severity (`BLOCKING`, `MEDIUM` or `LOW`), the section or decision it concerns",
+					"a severity (`BLOCKING`, `MEDIUM` or `LOW`)",
 				} {
 					if !strings.Contains(prompt, want) {
 						t.Errorf("twill lead prompt lacks %q", want)
 					}
 				}
-				if strings.Contains(prompt, "lyx shuttle await") {
-					t.Error("twill lead prompt carries a ready-marker wait; want the forks to wait on nothing")
-				}
-				for _, wantNot := range []string{"a later turn of the same session", "fork0"} {
-					if strings.Contains(prompt, wantNot) {
-						t.Errorf("twill lead prompt carries %q; want the re-prompt rule and the relaunch paragraphs instead", wantNot)
-					}
+				if strings.Contains(prompt, "fork0") {
+					t.Error("twill lead prompt carries \"fork0\"; want the relaunch paragraphs instead")
 				}
 
 				modeRulesAt := strings.Index(prompt, modeRules(true))

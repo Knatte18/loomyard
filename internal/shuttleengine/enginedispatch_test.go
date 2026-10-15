@@ -486,6 +486,31 @@ func TestRunner_EngineSetDispatch(t *testing.T) {
 		requireConsulted(t, rig.a, rig.b, "IdleSession")
 	})
 
+	t.Run("Send_and_Interrupt_on_a_live_strand_with_no_record_consult_the_default", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name       string
+			call       func(rig *dispatchRig) error
+			wantMethod string
+		}{
+			{"Send", func(rig *dispatchRig) error { return rig.fx.Runner.Send("strand-1", "hello") }, "IdleSession"},
+			{"Interrupt", func(rig *dispatchRig) error {
+				rig.reed.CaptureQueue = []string{"RUNNING"}
+				return rig.fx.Runner.Interrupt("strand-1")
+			}, "InterruptSequence"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				rig := newDispatchRig(t)
+				rig.reed.StatusQueue = liveStrandStatus(true)
+				// The fake pane never echoes the sent text, so only which engine was consulted is pinned.
+				_ = tt.call(rig)
+				requireConsulted(t, rig.a, rig.b, tt.wantMethod)
+			})
+		}
+	})
+
 	t.Run("the_guid_reads_of_a_guid_with_no_run_record_fail_as_not_a_shuttle_strand", func(t *testing.T) {
 		t.Parallel()
 		rig := newDispatchRig(t)

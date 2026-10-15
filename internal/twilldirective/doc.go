@@ -10,7 +10,7 @@
 // Exactly one judge part is rendered, each from its own stencil: the critical fixer for a host that asks for it through Values.CriticalJudge, where the writer disputes a finding on a cited ground, fixes it with its own change, or fixes it as proposed, and otherwise the judge that fixes or rejects each finding by the host's rejection rule.
 // Each fork's boilerplate tells it to review the written files through its lens as its inherited context holds them, without reading them again, and return its findings as its final message.
 // Spawning after the write, rather than before it, lets the forks start on the finished files with nothing to wait for.
-// The block is host-neutral: every host-specific value (the reviewed files, the spawn point, the rejection rule, for a host that asks for the critical judge the input a finding's premise is weighed against and the evidence kinds a dispute cites, the severity rule, the rubric, the lenses, the steps, the self-check command and the place the review is recorded) arrives through Values, so a later host can render it with its own values.
+// The block is host-neutral: every host-specific value (the reviewed files, the spawn point, the rejection rule, for a host without a writer fork the files a relaunched writer finishes, for a host that asks for the critical judge the input a finding's premise is weighed against and the evidence kinds a dispute cites, the severity rule, the rubric, the lenses, the steps, the self-check command and the place the review is recorded) arrives through Values, so a later host can render it with its own values.
 //
 // # Who renders it
 //

@@ -70,7 +70,9 @@ type StrandStatus struct {
 	GUID   string
 	Name   string
 	PaneID string
-	Live   bool
+	// PanePID is the pane's process id from the session listing, 0 when the strand's pane is in no listing or is dead.
+	PanePID int
+	Live    bool
 	// Present reports that the strand's binding names a present pane, alive or dead.
 	// Shuttle's stop path decides on it whether a dead strand still has a pane to remove.
 	Present bool
@@ -1311,6 +1313,12 @@ func (e *Engine) Status() (StatusResult, error) {
 		// (dead) pane for it.
 		aliveIDs := aliveIDSet(present)
 		presentIDs := liveIDSet(present)
+		alivePIDs := make(map[string]int, len(present))
+		for _, p := range present {
+			if !p.Dead {
+				alivePIDs[p.ID] = p.PID
+			}
+		}
 		// This loop iterates st.Strands only — Selvage is deliberately
 		// never reported as a strand here (it is not one; see
 		// ReedState.SelvagePaneID). Status still succeeds (the session is
@@ -1318,7 +1326,7 @@ func (e *Engine) Status() (StatusResult, error) {
 		// must not "fix" a missing Selvage row by appending one here.
 		strands := make([]StrandStatus, len(st.Strands))
 		for i, s := range st.Strands {
-			strands[i] = StrandStatus{GUID: s.GUID, Name: s.Name, PaneID: s.PaneID, Live: aliveIDs[s.PaneID], Present: presentIDs[s.PaneID], OwnWindow: isOwnWindow(s.Display), Retiring: s.Retiring, Color: e.withColor(s).Color, LyxBin: s.LyxBin}
+			strands[i] = StrandStatus{GUID: s.GUID, Name: s.Name, PaneID: s.PaneID, PanePID: alivePIDs[s.PaneID], Live: aliveIDs[s.PaneID], Present: presentIDs[s.PaneID], OwnWindow: isOwnWindow(s.Display), Retiring: s.Retiring, Color: e.withColor(s).Color, LyxBin: s.LyxBin}
 		}
 
 		result = StatusResult{Session: session, Socket: e.Socket(), Strands: strands}

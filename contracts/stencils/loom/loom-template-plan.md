@@ -21,8 +21,12 @@ You never interview, never ask, and have no review logic of your own.
 ## Step 1 — Read the decision record
 
 Read `{{.decision_record_path}}`.
-This is your **sole** input — never read the support log or the board.
+This is your only source of design and scope — never read the support log or the board.
 If the file is missing or empty, STOP and report that rather than inventing scope.
+
+Then read `{{.relevant_path}}` if it exists.
+It lists the files and members the Discussion read and found relevant, as a head start for Step 2: it never adds scope, and `{{.specs_dir}}/loom/loom-discussion-spec.md` defines its format.
+A missing list is not an error; explore as Step 2 says.
 
 An entry between `<!-- lyx:carry-over … -->` marker lines in `## Open risks` lists review findings the closing round's fixer fixed or disputed, unseen by a fresh reviewer; the entry's fixer report says which.
 Check each one against the code while you explore, and never plan an entry as scope.
@@ -34,7 +38,7 @@ With no parent recorded, stop and report the addition instead of planning on it.
 
 ## Step 2 — Explore the codebase
 
-Before planning, read the relevant parts of the codebase: check recent commits, and follow existing patterns and any PATTERN entries in this prompt rather than inventing new ones.
+Before planning, start from the code the relevant list names, then read the other relevant parts of the codebase: check recent commits, and follow existing patterns and any PATTERN entries in this prompt rather than inventing new ones.
 
 ### Look up glyphs with `lyx quarry` — never spell one from memory
 
@@ -70,6 +74,7 @@ Each card is the smallest change that:
 3. **Carries the coverage for the behavior it introduces** — the card's own targets include the test that covers it (`PATTERN-test-economy`).
    `verify:` commands are no substitute for test coverage;
    only pure refactors/renames may rely on existing tests instead.
+   A stencil's static prose is not behavior a test covers.
 4. **Greps for reworded messages** — a card that changes a user-visible message or error text greps the repository for the old text, and every test asserting it joins that card's targets.
    A stale exact-string assertion then fails on the card that reworded it, under that card's own gate, not at the plan-level gate.
 

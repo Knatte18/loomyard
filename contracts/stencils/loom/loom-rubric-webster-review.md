@@ -77,12 +77,15 @@ Do not flag any of the following as a finding:
   This rubric checks compliance with the target repository's own standard, not loomyard's.
 - **Per-card mechanical check.**
   Confirm every one of the card's own groups' type-specific mechanical checks actually ran and passed, each against that group's own targets, not just the first label's — the AST-script-plus-grep for a `Rename` group, `assert-no-callers` for a `Delete` group, per the per-type table in `{{.specs_dir}}/loom/loom-plan-spec.md` — not merely that the diff compiles and its tests pass.
+- **Stencil wording.**
+  A diff that changes a stencil is read against the measuring stick, the plan card's `Intent`; a rule the card did not ask to change that the diff drops, weakens or contradicts is a finding.
 - **Test economy.**
   `PATTERN-test-economy` holds the rule; each of these is a finding, and each names what grounds it:
   - a new test that duplicates an existing test's coverage, naming the covering test;
   - a per-helper test the public surface's test already covers, naming that public-surface test;
   - a review-fix test added for a finding that was not a coverage gap, naming that finding;
-  - a behavior the diff adds with no coverage, naming the uncovered behavior.
+  - a new assertion on a stencil's static prose, naming the assertion;
+  - a behavior the diff adds with no coverage, naming the uncovered behavior; a stencil's static prose is exempt.
 
   A redundancy finding is raised only by naming the existing test that covers the behavior, so it cannot block on a vague suspicion.
 

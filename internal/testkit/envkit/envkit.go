@@ -217,6 +217,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		RunScratchDir:      mustMkdir(t, filepath.Join(dir, "run-scratch")),
 		DecisionRecordPath: filepath.Join(dir, "decision-record.md"),
 		SupportLogPath:     filepath.Join(dir, "support-log.md"),
+		RelevantPath:       filepath.Join(dir, "relevant.md"),
 		DescriptionPath:    filepath.Join(dir, "description.md"),
 		Shuttle:            &shedfake.Shuttle{},
 		Burler:             &shedfake.BurlerHalfRunner{},

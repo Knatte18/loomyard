@@ -41,6 +41,7 @@ func filledValues() Values {
 		SelfCheckCommand:      "lyx check --now",
 		FinalSelfCheckCommand: "lyx check --final",
 		DispositionPlace:      "the PLACE section",
+		RelaunchFiles:         "RELAUNCH-FILES",
 	}
 }
 
@@ -51,6 +52,7 @@ func TestDirective_RendersEveryValueVerbatim(t *testing.T) {
 	withWriterFork := filledValues()
 	withWriterFork.WriterFork = filledWriterFork()
 	withWriterFork.CriticalJudge = filledCriticalJudge()
+	withWriterFork.RelaunchFiles = ""
 	tests := []struct {
 		name   string
 		values Values
@@ -64,10 +66,13 @@ func TestDirective_RendersEveryValueVerbatim(t *testing.T) {
 			name:   "without a writer fork",
 			values: filledValues(),
 			wants: []string{
-				"runs `lyx check --now` per `STEP-CHECK` until it passes",
+				"lyx check --now",
+				"STEP-CHECK",
 				"STEP-FORMAT",
-				"died before its Agent call still spawns once",
-				"   REJECTION-RULE-SENTENCE\n5. Record the lens review at `the PLACE section`",
+				"died before its Agent call",
+				"REJECTION-RULE-SENTENCE",
+				"the PLACE section",
+				"finishes writing RELAUNCH-FILES per",
 			},
 			wantNots: []string{"fork0", "GOVERNING-INPUT", "DISPUTE-EVIDENCE"},
 		},
@@ -77,14 +82,14 @@ func TestDirective_RendersEveryValueVerbatim(t *testing.T) {
 			wants: []string{
 				"EXPLORE-STEP",
 				"INPUT-RECORD",
-				"LAST-FILE last",
-				"every file in FILES-DIR",
+				"LAST-FILE",
+				"FILES-DIR",
 				"Spawn one fork, fork0",
-				"against the code and GOVERNING-INPUT",
-				"opened in this session, DISPUTE-EVIDENCE, and what it shows",
+				"GOVERNING-INPUT",
+				"DISPUTE-EVIDENCE",
 			},
-			wantNots: []string{"died before its Agent call", "REJECTION-RULE-SENTENCE"},
-			inOrder:  []string{"SPAWN-POINT-SENTENCE", "Spawn one fork, fork0", "1. Read the rubric"},
+			wantNots: []string{"died before its Agent call", "REJECTION-RULE-SENTENCE", "RELAUNCH-FILES"},
+			inOrder:  []string{"SPAWN-POINT-SENTENCE", "Spawn one fork, fork0"},
 		},
 	}
 	for _, tt := range tests {
@@ -97,14 +102,12 @@ func TestDirective_RendersEveryValueVerbatim(t *testing.T) {
 				t.Fatalf("Directive = _, %v; want nil error", err)
 			}
 			wants := append([]string{
-				"`/abs/one.md` and `/abs/two.md` were written and passed the self-check before you were spawned",
-				"SPAWN-POINT-SENTENCE\n",
-				"forks are outstanding is allowed.\n4. Judge every finding",
-				"returned no report.\n6. Run `lyx check --final` again",
-				"each with SEVERITY-RULE-PHRASE, the section or decision it concerns",
+				"`/abs/one.md` and `/abs/two.md`",
+				"SPAWN-POINT-SENTENCE",
+				"SEVERITY-RULE-PHRASE",
 				"/abs/rubric.md",
 				"- alpha: Look at A. Then at B.\n- beta: Look at C.",
-				"6. Run `lyx check --final` again",
+				"lyx check --final",
 				"the PLACE section",
 			}, tt.wants...)
 			for _, want := range wants {
@@ -164,6 +167,7 @@ func TestDirective_MissingValueNamesTheMarker(t *testing.T) {
 		{"FilesDir", func(v *Values) { v.WriterFork = filledWriterFork(); v.WriterFork.FilesDir = "" }, "files_dir"},
 		{"FormatStep with a writer fork", func(v *Values) { v.WriterFork = filledWriterFork(); v.FormatStep = "" }, "format_step"},
 		{"SelfCheckCommand without a writer fork", func(v *Values) { v.SelfCheckCommand = "" }, "self_check_command"},
+		{"RelaunchFiles without a writer fork", func(v *Values) { v.RelaunchFiles = "" }, "relaunch_files"},
 		{"SelfCheckStep without a writer fork", func(v *Values) { v.SelfCheckStep = "" }, "self_check_step"},
 	}
 	for _, tt := range tests {

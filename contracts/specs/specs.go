@@ -26,8 +26,8 @@ var LoomPlanSpec []byte
 //go:embed loom-final-summary-spec.md
 var LoomFinalSummarySpec []byte
 
-// LoomDiscussionSpec is the decision-record and support-log format contract's shipped-default content.
-// Every writer of the two files writes against its format, and internal/discussionparser checks it.
+// LoomDiscussionSpec is the decision-record, support-log and relevant-list format contract's shipped-default content.
+// Every writer of the three files writes against its format, and internal/discussionparser checks it.
 //
 //go:embed loom-discussion-spec.md
 var LoomDiscussionSpec []byte

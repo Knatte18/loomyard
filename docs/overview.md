@@ -298,6 +298,8 @@ github.com/Knatte18/loomyard/
 ├── internal/tenderengine/        the pause, resume, revive and status sequences over seams: the entry, the grace, the Esc, the resume line and the revive line
 ├── internal/hibernatecli/        the `lyx hibernate` commands (`request`, `cancel`, `status` and the hidden `watch`), their hub wiring and the daemon and `systemctl` spawns
 ├── internal/hibernateengine/     the hibernate request file and the submit, cancel, status and daemon sequences over seams
+├── internal/creelcli/            the `lyx creel` commands (`post`, `inject`, `interrupt`, `forward`, `read`, `inbox`, `log`, `hold`, `release` and the hidden `daemon`), their hub wiring and the delivery adapter over reed and shuttle
+├── internal/creelengine/         the per-hub message daemon: the journal-folded pool of mail and queued injects, sender identity, reminders, injects, holds, the removed-holder sweep and the socket protocol, over a delivery seam
 ├── internal/output/              shared JSON output
 ├── internal/modelspec/           model-spec parser + models.yaml registry leaf
 ├── internal/pattern/             PATTERN directive leaf (root PATTERN.md inlined per role) + format checker
@@ -430,6 +432,10 @@ User-facing modules each get one `lyx <module>` namespace:
   Only the orch or an external caller may request or cancel; an agent asks its parent session.
   Bounds: the daemon waits a fixed window for the pause to confirm and for the wake, and fails the request, leaving its reason in the file, when either runs out.
   ✅ Implemented. See the `internal/hibernateengine` and `internal/hibernatecli` package documentation.
+- **creel** — the per-hub message daemon, the one way to reach an agent: mail an agent pulls with a reminder typed at its idle, and lines injected into its pane (`internal/creelcli` + `internal/creelengine`; `lyx creel post`, `inject`, `interrupt`, `forward`, `read`, `inbox`, `log`, `hold` and `release`, from any worktree of the hub, and the hidden `lyx creel daemon`).
+  The first verb of a hub starts its daemon, which folds its pool from an append-only journal, names a sender from the connecting process's ancestry, and delivers through shuttle only into a pane that reads idle.
+  No other module sends through creel until `creel-notices` lands.
+  ✅ Implemented. See the `internal/creelengine` and `internal/creelcli` package documentation.
 - **gate** — the one sanctioned route for an agent's slotted `go test`: it waits for a free slot of the hub-wide gate pool, runs `go test` inside it under the slot's `-p` cap and exits with go's code, or with 75 when the hub stays busy past `cli_wait_sec` (`internal/gatecli`; `lyx gate test [-C <dir>] [--tags <tags>] <packages...> [-- <go test flags>]`). A run inside a slot an enclosing gate run holds takes no second one, and a target outside every hub runs unslotted. A Go test binary that keeps a core busy past `busy_quit_sec` gets one SIGQUIT, so its goroutine stacks reach the log long before go test's own timeout. ✅ Implemented. See the `internal/gatecli` package documentation.
 - **quarry** — the planner's only source of glyph spellings: four read-only repository queries over the current worktree's own glyph alphabet, each delegating to a `planglyph` wrapper and emitting quarry's own rendering verbatim, with no repository-path flag on any of them (`internal/quarrycli`; `lyx quarry toc|glyphs|resolve|expand`).
   `toc` answers a table-of-contents query for a path;
@@ -438,9 +444,9 @@ User-facing modules each get one `lyx <module>` namespace:
   `expand` reports a type glyph's own head plus every member whose owner chain begins with it.
   `delta` and `name` are deliberately absent — both are pipeline-internal, and `name` in an agent's hands is a glyph-spelling machine, the one thing the copied-verbatim rule exists to prevent.
   `quarrycli` is a named CLI/Cobra Invariant package-naming deviation: it imports `internal/planglyph`, not a `quarryengine`. ✅ Implemented.
-- **discussionparser** — the sole reader of `_lyx/discussion/`'s on-disk format (the decision record's required sections and the support log's existence);
+- **discussionparser** — the sole reader of `_lyx/discussion/`'s on-disk format (the decision record's required sections, the support log's existence and the relevant list's format);
   it takes told absolute paths and declares no location of its own — deliberately unlike `planparser`, because `loomengine`'s accessors take a `*lyxcwd.Location`, which this stdlib-only leaf may not import.
-  Consumed by `loomshed.NewDiscussionGate` (the Discussion-Write and Discussion-Burler-Fix rows' own gates), `loomshed.NewDarnDiscussionGate` (the Darn-Write row's gate) and by the `lyx loom validate-discussion` verb (`internal/discussionparser`). ✅ Implemented.
+  Consumed by `loomshed.ValidateLoomDiscussion` and through it `loomshed.NewDiscussionGate` (the Discussion-Write and Discussion-Burler-Fix rows' own gates), `loomshed.NewDarnDiscussionGate` (the Darn-Write row's gate) and by the `lyx loom validate-discussion` verb (`internal/discussionparser`). ✅ Implemented.
 - **summaryparser** — the sole declarer of the final-summary artifact's filename and the sole parser of its format (see [loom-final-summary-spec.md](../contracts/specs/loom-final-summary-spec.md));
   it takes told paths and declares no directory of its own, and is stdlib-only so neither consumer depends on a producer.
   Consumed by `internal/landingshed`'s `Publish` and `Finalize`, by `internal/websterengine`, by the `description` gate on loom's `Describe` row, and by the `lyx loom validate-description` verb (`internal/summaryparser`). ✅ Implemented.
@@ -481,6 +487,7 @@ User-facing modules each get one `lyx <module>` namespace:
   and a legacy `_lyx/shed/self/` still resolves.
   `pause` records a `--before` or `--after` condition and refuses bare, naming `lyx pause` for stopping the agents.
   `validate-discussion` runs the same checks Discussion-Write's and Discussion-Burler-Fix's own gates run, standalone, exiting 0 on a clean gate and 1 otherwise, with findings in the failure envelope so a writer agent can self-check before handing off.
+  A loom run also checks the relevant list when it exists; a darn run never reads it.
   On a darn run the verb also checks the record's history for dropped `Added after Discussion` entries and commits the decision record and support log on a clean run.
   `decision add [<slug>] --by parent|operator --title <t> --decision <d> --rationale <r>` appends one design call made after the Discussion to the decision record under an `Added after Discussion` heading, re-runs the discussion check (restoring the record on a finding) and commits the record.
   The verb also works on a darn run once Darn-Write has committed its record, even while Darn-Write runs, under three checks: the record equals its committed copy, it holds every `Added after Discussion` entry its history held, and the committed record holds the appended entry afterwards.
