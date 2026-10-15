@@ -48,8 +48,7 @@ type judgeInputs struct {
 	VerdictPath         string
 	PreviousHandoffPath string
 	HandoffPath         string
-	Model               string
-	Effort              string
+	Choice              shuttleengine.ModelChoice
 	// StencilsDir is the absolute stencils directory runCircling and
 	// runMilestone read their prompt from via stencilstore.Read, told by the
 	// caller rather than derived — see Options.StencilsDir.
@@ -89,7 +88,7 @@ func runCircling(sh Shuttle, name string, in judgeInputs) (JudgeVerdict, string,
 		parentdirective.MarkerName: directive,
 		editdirective.MarkerName:   editDirective,
 	}
-	return runJudgeCall(sh, name, template, values, framingCircling, in.Round, in.Model, in.Effort, JudgeProgressing, "circling judge")
+	return runJudgeCall(sh, name, template, values, framingCircling, in.Round, in.Choice, JudgeProgressing, "circling judge")
 }
 
 // runMilestone spawns the milestone continuation-gate progress judge. Fail-safe
@@ -121,7 +120,7 @@ func runMilestone(sh Shuttle, name string, in judgeInputs) (JudgeVerdict, string
 		parentdirective.MarkerName: directive,
 		editdirective.MarkerName:   editDirective,
 	}
-	return runJudgeCall(sh, name, template, values, framingMilestone, in.Round, in.Model, in.Effort, JudgeContinue, "milestone judge")
+	return runJudgeCall(sh, name, template, values, framingMilestone, in.Round, in.Choice, JudgeContinue, "milestone judge")
 }
 
 // previousHandoffMarker renders a judgeInputs.PreviousHandoffPath value into
@@ -141,7 +140,7 @@ func previousHandoffMarker(path string) string {
 // reads and parses the verdict file. Every failure point degrades to
 // (fallback, "", false) rather than an error, logging the call's name and
 // cause. ok is true only on the success path.
-func runJudgeCall(sh Shuttle, name string, template []byte, values map[string]string, framing judgeFraming, round int, model, effort string, fallback JudgeVerdict, label string) (JudgeVerdict, string, bool) {
+func runJudgeCall(sh Shuttle, name string, template []byte, values map[string]string, framing judgeFraming, round int, choice shuttleengine.ModelChoice, fallback JudgeVerdict, label string) (JudgeVerdict, string, bool) {
 	prompt, err := stencil.Fill(template, values)
 	if err != nil {
 		logger.Warn(name+": "+label+" failed, defaulting to "+string(fallback), "round", round, "cause", err)
@@ -151,7 +150,7 @@ func runJudgeCall(sh Shuttle, name string, template []byte, values map[string]st
 	spec := shuttleengine.Spec{
 		Prompt:      string(prompt),
 		OutputFiles: []string{values["verdict_path"], values["handoff_path"]},
-		ModelChoice: shuttleengine.ModelChoice{Model: model, Effort: effort},
+		ModelChoice: choice,
 		Role:        judgeRole,
 		Segment:     segmentcolor.Review,
 		Skills:      judgeSkills,

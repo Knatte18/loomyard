@@ -188,8 +188,7 @@ func TestEngine_AttemptInputPopulation(t *testing.T) {
 		Gate:        Gate{Mode: GateCommand, Command: []string{"make", "test"}},
 		GateDir:     gateDir,
 		RoundCaps:   []int{5},
-		Model:       "opus",
-		Effort:      "high",
+		Attempt:     shuttleengine.ModelChoice{Engine: "b", Model: "opus", Effort: "high"},
 		Timeout:     5 * time.Minute,
 	}
 
@@ -241,11 +240,10 @@ func TestEngine_AttemptInputPopulation(t *testing.T) {
 		t.Errorf("round2 attempt2 PriorFixerReports = %v; want identical to attempt1's %v", round2Attempt2.PriorFixerReports, round2Attempt1.PriorFixerReports)
 	}
 
-	// Tuning passthrough: every attempt carries Profile's Model/Effort/
-	// Timeout unchanged.
+	// Tuning passthrough: every attempt carries Profile's Attempt choice and Timeout unchanged.
 	for i, call := range fr.calls {
-		if call.Model != "opus" || call.Effort != "high" || call.Timeout != 5*time.Minute {
-			t.Errorf("call %d tuning = (Model=%q Effort=%q Timeout=%s); want (\"opus\", \"high\", 5m)", i, call.Model, call.Effort, call.Timeout)
+		if call.Choice != p.Attempt || call.Timeout != 5*time.Minute {
+			t.Errorf("call %d tuning = (Choice=%+v Timeout=%s); want (%+v, 5m)", i, call.Choice, call.Timeout, p.Attempt)
 		}
 	}
 
@@ -1278,7 +1276,7 @@ func TestRunTargeting_FailSafe(t *testing.T) {
 			seedPath := filepath.Join(runDir, "round-3-seed.md")
 			sh := tt.shSet(seedPath)
 
-			content, ok := runTargeting(newTestStencilsDir(t), "", sh, "gate", 3, "/run/round-2-handoff.md", seedPath, "opus", "high")
+			content, ok := runTargeting(newTestStencilsDir(t), "", sh, "gate", 3, "/run/round-2-handoff.md", seedPath, shuttleengine.ModelChoice{Model: "opus", Effort: "high"})
 			if ok {
 				t.Errorf("runTargeting() ok = true; want false")
 			}

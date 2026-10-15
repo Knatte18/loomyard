@@ -297,7 +297,7 @@ The chair is red and the table is blue; they must match.
 		PriorReviews: []string{round1Path, round2Path},
 		VerdictPath:  verdictPath,
 		HandoffPath:  handoffPath,
-		Model:        "haiku",
+		Choice:       shuttleengine.ModelChoice{Model: "haiku"},
 		StencilsDir:  stencilsDir,
 	})
 

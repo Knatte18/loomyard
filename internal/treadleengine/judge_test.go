@@ -68,7 +68,7 @@ func TestSpawnedRoles_SkillAndParentDirective(t *testing.T) {
 			runMilestone(sh, "gate", judgeInputs{Round: 5, HardCap: 10, PriorReviews: []string{"/run/round-4-review.md"}, VerdictPath: filepath.Join(dir, "mv.md"), HandoffPath: filepath.Join(dir, "mh.md"), StencilsDir: stencilsDir, ParentName: parent})
 		},
 		"targeting": func(sh *fakeJudgeShuttle, stencilsDir, parent string) {
-			runTargeting(stencilsDir, parent, sh, "gate", 3, "", filepath.Join(dir, "seed.md"), "", "")
+			runTargeting(stencilsDir, parent, sh, "gate", 3, "", filepath.Join(dir, "seed.md"), shuttleengine.ModelChoice{})
 		},
 	}
 
@@ -92,6 +92,9 @@ func TestSpawnedRoles_SkillAndParentDirective(t *testing.T) {
 				}
 				if got := sh.spec.Skills; len(got) != 1 || got[0] != "scribe:prose" {
 					t.Errorf("spec.Skills = %v; want [scribe:prose]", got)
+				}
+				if len(sh.spec.Requires) != 0 {
+					t.Errorf("spec.Requires = %v; want none", sh.spec.Requires)
 				}
 				if !strings.Contains(sh.spec.Prompt, "Edit or Write") {
 					t.Error("prompt lacks the edit directive's \"Edit or Write\" sentence")
@@ -129,8 +132,7 @@ rationale: the same nil-check finding recurs in rounds 2 and 4
 			VerdictPath:         verdictPath,
 			PreviousHandoffPath: "/run/round-2-handoff.md",
 			HandoffPath:         handoffPath,
-			Model:               "haiku",
-			Effort:              "low",
+			Choice:              shuttleengine.ModelChoice{Engine: "b", Model: "haiku", Effort: "low"},
 			StencilsDir:         newTestStencilsDir(t),
 		}
 		verdict, rationale, ok := runCircling(sh, "gate", in)
@@ -149,6 +151,9 @@ rationale: the same nil-check finding recurs in rounds 2 and 4
 		}
 		if sh.spec.Role != "judge" {
 			t.Errorf("runCircling() spec.Role = %q; want %q", sh.spec.Role, "judge")
+		}
+		if sh.spec.Engine != "b" {
+			t.Errorf("runCircling() spec.Engine = %q; want %q", sh.spec.Engine, "b")
 		}
 		if sh.spec.Model != "haiku" {
 			t.Errorf("runCircling() spec.Model = %q; want %q", sh.spec.Model, "haiku")
@@ -292,8 +297,7 @@ rationale: the same two findings oscillate every round
 			PreviousHandoffPath: "/run/round-1-handoff.md",
 			HandoffPath:         handoffPath,
 			StencilsDir:         newTestStencilsDir(t),
-			Model:               "haiku",
-			Effort:              "low",
+			Choice:              shuttleengine.ModelChoice{Engine: "b", Model: "haiku", Effort: "low"},
 		}
 		verdict, rationale, ok := runMilestone(sh, "gate", in)
 
@@ -308,6 +312,9 @@ rationale: the same two findings oscillate every round
 		}
 		if sh.spec.Role != "judge" {
 			t.Errorf("runMilestone() spec.Role = %q; want %q", sh.spec.Role, "judge")
+		}
+		if sh.spec.Engine != "b" {
+			t.Errorf("runMilestone() spec.Engine = %q; want %q", sh.spec.Engine, "b")
 		}
 		if sh.spec.Model != "haiku" {
 			t.Errorf("runMilestone() spec.Model = %q; want %q", sh.spec.Model, "haiku")

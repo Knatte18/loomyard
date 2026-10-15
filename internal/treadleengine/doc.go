@@ -122,6 +122,12 @@
 // never an error — a missed targeting call only costs the round the
 // guidance it would have added, never correctness.
 //
+// # Model choices
+//
+// Profile.Judge and Profile.Attempt are the two shuttleengine.ModelChoices, engine included:
+// Judge goes on the circling, milestone and targeting spawns, and Attempt reaches each attempt as AttemptInput.Choice.
+// Treadle declares no requirement on either spawn.
+//
 // # Skills and the parent directive
 //
 // The spawned roles (judge, targeting) each load `scribe:prose` through the spec's Skills before the prompt is delivered.
