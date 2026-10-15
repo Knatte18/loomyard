@@ -7,23 +7,31 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/orchcli"
+	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/statuspane"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // overviewNow is the instant minute offsets in the overview tests count back from.
 var overviewNow = time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+
+// orchThresholds are the known thresholds the orch line tests draw against.
+var orchThresholds = overviewThresholds{Soft: 300000, Hard: 400000, Known: true}
 
 // minutesAgo returns the instant the given number of minutes before overviewNow.
 func minutesAgo(minutes int) time.Time {
@@ -47,9 +55,11 @@ func TestRenderOverview(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name string
-		runs []overviewRun
-		want []string
+		name       string
+		orch       orchStatePoll
+		thresholds overviewThresholds
+		runs       []overviewRun
+		want       []string
 	}{
 		{
 			name: "two runs are ordered by start with their six fields, oldest first",
@@ -232,11 +242,63 @@ func TestRenderOverview(t *testing.T) {
 			name: "no runs renders the one line",
 			want: []string{"no runs in flight"},
 		},
+		{
+			name:       "a found idle orch state draws its line above the runs, tokens rounded down to thousands",
+			orch:       orchStatePoll{Found: true, State: orchengine.State{Phase: orchengine.PhaseIdle, LastContextTokens: 212999, LastContextKnown: true, CycleCount: 3}},
+			thresholds: orchThresholds,
+			runs: []overviewRun{
+				{Slug: "beta", StartedAt: minutesAgo(60), PairExists: true, Session: "beta-s", Batten: foundStatus(shedengine.StateRunning, "Plan")},
+				{Slug: "alpha", StartedAt: minutesAgo(120), PairExists: true, Session: "alpha-s", Batten: foundStatus(shedengine.StateRunning, "Land")},
+			},
+			want: []string{
+				"orch  212k / soft 300k / hard 400k  idle  cycles 3",
+				"alpha  running  Land  2h00m  2h00m  alpha-s",
+				"beta   running  Plan  1h00m  1h00m  beta-s",
+			},
+		},
+		{
+			name:       "an unknown reading draws - for the tokens and the phase as persisted",
+			orch:       orchStatePoll{Found: true, State: orchengine.State{Phase: orchengine.PhaseCompacting}},
+			thresholds: orchThresholds,
+			want:       []string{"orch  - / soft 300k / hard 400k  compacting  cycles 0", "no runs in flight"},
+		},
+		{
+			name:       "999 tokens draw plain",
+			orch:       orchStatePoll{Found: true, State: orchengine.State{Phase: orchengine.PhaseIdle, LastContextTokens: 999, LastContextKnown: true}},
+			thresholds: orchThresholds,
+			want:       []string{"orch  999 / soft 300k / hard 400k  idle  cycles 0", "no runs in flight"},
+		},
+		{
+			name:       "1000 tokens draw as 1k",
+			orch:       orchStatePoll{Found: true, State: orchengine.State{Phase: orchengine.PhaseIdle, LastContextTokens: 1000, LastContextKnown: true}},
+			thresholds: orchThresholds,
+			want:       []string{"orch  1k / soft 300k / hard 400k  idle  cycles 0", "no runs in flight"},
+		},
+		{
+			name:       "an exited watcher ends the line with watcher down",
+			orch:       orchStatePoll{Found: true, State: orchengine.State{Phase: orchengine.PhaseIdle, LastContextTokens: 212500, LastContextKnown: true, CycleCount: 3, WatcherExit: "bye"}},
+			thresholds: orchThresholds,
+			want:       []string{"orch  212k / soft 300k / hard 400k  idle  cycles 3  watcher down", "no runs in flight"},
+		},
+		{
+			name: "unknown thresholds draw -",
+			orch: orchStatePoll{Found: true, State: orchengine.State{Phase: orchengine.PhaseIdle, LastContextTokens: 212500, LastContextKnown: true, CycleCount: 3}},
+			want: []string{"orch  212k / soft - / hard -  idle  cycles 3", "no runs in flight"},
+		},
+		{
+			name:       "an unreadable orch state draws the broken line above the runs",
+			orch:       orchStatePoll{Unreadable: true},
+			thresholds: orchThresholds,
+			runs: []overviewRun{
+				{Slug: "a", StartedAt: minutesAgo(30), PairExists: true, Session: "s", Batten: foundStatus(shedengine.StateRunning, "Plan")},
+			},
+			want: []string{"orch  state unreadable", "a  running  Plan  30m  30m  s"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := renderOverview(tt.runs, overviewNow)
+			got := renderOverview(tt.orch, tt.thresholds, tt.runs, overviewNow)
 			if diff := cmp.Diff(tt.want, got); diff != "" {
 				t.Errorf("renderOverview mismatch (-want +got):\n%s", diff)
 			}
@@ -307,7 +369,7 @@ func TestOverviewSource_ReadsThePrimesRunsFromDisk(t *testing.T) {
 	}
 
 	pauseRecordPath := filepath.Join(t.TempDir(), "pause.json")
-	source := newOverviewSource(prime, pauseRecordPath, func() time.Time { return overviewNow })
+	source := newOverviewSource(prime, pauseRecordPath, overviewThresholds{}, func() time.Time { return overviewNow })
 	source.childStatus = func(string) (string, error) { return childStatusPath, nil }
 	childPair := locationkit.Location(t.TempDir(), "run-a", ".")
 	source.childPair = func(string) (*lyxcwd.Location, error) { return childPair, nil }
@@ -397,7 +459,7 @@ func TestOverviewSource_ReadsThePrimesRunsFromDisk(t *testing.T) {
 	}
 	writeOverviewStatus(t, childStatusPath, shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Plan-Write"}, minutesAgo(100))
 	seedless := locationkit.Location(t.TempDir(), "run-c", ".")
-	source2 := newOverviewSource(prime2, pauseRecordPath, func() time.Time { return overviewNow })
+	source2 := newOverviewSource(prime2, pauseRecordPath, overviewThresholds{}, func() time.Time { return overviewNow })
 	source2.childStatus = func(string) (string, error) { return childStatusPath, nil }
 	source2.childPair = func(slug string) (*lyxcwd.Location, error) {
 		if slug == "run-d" {
@@ -411,5 +473,120 @@ func TestOverviewSource_ReadsThePrimesRunsFromDisk(t *testing.T) {
 	}
 	if diff := cmp.Diff(want, source2.frame().Lines); diff != "" {
 		t.Errorf("seedless child frame mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestOverviewSource_DrawsTheOrchLine(t *testing.T) {
+	t.Parallel()
+
+	prime := locationkit.Location(t.TempDir(), "prime", ".")
+	orchPaths := orchcli.PrimePaths(prime)
+	source := newOverviewSource(prime, filepath.Join(t.TempDir(), "pause.json"), orchThresholds, func() time.Time { return overviewNow })
+
+	writeState := func(state orchengine.State, modTime time.Time) {
+		t.Helper()
+		data, err := json.Marshal(state)
+		if err != nil {
+			t.Fatal(err)
+		}
+		writeOverviewFile(t, orchPaths.StatePath, data, modTime)
+	}
+	idle := orchengine.State{Phase: orchengine.PhaseIdle, LastContextTokens: 212500, LastContextKnown: true, CycleCount: 3}
+	idleLine := "orch  212k / soft 300k / hard 400k  idle  cycles 3"
+	exited := idle
+	exited.WatcherExit = "bye"
+	exitedLine := idleLine + "  watcher down"
+	noRuns := "no runs in flight"
+
+	check := func(frame string, want ...string) {
+		t.Helper()
+		if diff := cmp.Diff(want, source.frame().Lines); diff != "" {
+			t.Errorf("%s mismatch (-want +got):\n%s", frame, diff)
+		}
+	}
+
+	check("frame 1, no state file", noRuns)
+	if _, err := os.Stat(orchPaths.Dir); !os.IsNotExist(err) {
+		t.Errorf("polling an absent state created %s (stat err %v)", orchPaths.Dir, err)
+	}
+
+	writeOverviewFile(t, orchPaths.StatePath, []byte("{not json"), minutesAgo(50))
+	check("frame 2, first failure with no good state", noRuns)
+
+	writeState(idle, minutesAgo(40))
+	check("frame 3, good state", idleLine, noRuns)
+
+	writeState(orchengine.State{Phase: orchengine.PhaseIdle, LastContextTokens: 100000, LastContextKnown: true}, minutesAgo(40))
+	check("frame 4, unchanged modification time is not re-read", idleLine, noRuns)
+
+	writeOverviewFile(t, orchPaths.StatePath, []byte("{not json"), minutesAgo(30))
+	check("frame 5, first failure keeps the last good line", idleLine, noRuns)
+	check("frame 6, repeat of the failed modification time", "orch  state unreadable", noRuns)
+
+	writeState(exited, minutesAgo(20))
+	check("frame 7, watcher down", exitedLine, noRuns)
+
+	writeOverviewFile(t, orchPaths.StatePath, []byte("{not json"), minutesAgo(10))
+	check("frame 8, a good decode cleared the failure count", exitedLine, noRuns)
+
+	if _, err := os.Stat(orchPaths.StateLockPath); !os.IsNotExist(err) {
+		t.Errorf("polling took or created the state lock (stat err %v)", err)
+	}
+
+	if err := os.RemoveAll(orchPaths.Dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(orchPaths.Dir, []byte("not a directory"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	check("frame 10, a stat failure with no modification time is a second failure", "orch  state unreadable", noRuns)
+
+	if err := os.Remove(orchPaths.Dir); err != nil {
+		t.Fatal(err)
+	}
+	writeState(idle, minutesAgo(5))
+	runsDir := filepath.Dir(filepath.Dir(shedrun.SeedFile(prime, "x")))
+	if err := os.MkdirAll(filepath.Dir(runsDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(runsDir, []byte("not a directory"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	check("frame 11, the orch line draws above runs unreadable", idleLine, "runs unreadable")
+
+	if err := os.Remove(orchPaths.StatePath); err != nil {
+		t.Fatal(err)
+	}
+	check("frame 12, an absent state draws no orch line", "runs unreadable")
+}
+
+// TestLoadOverviewThresholds does not call t.Parallel: logcapture redirects the process-global logger.
+func TestLoadOverviewThresholds(t *testing.T) {
+	tests := []struct {
+		name string
+		// config is the orch.yaml content; empty writes none.
+		config   string
+		want     overviewThresholds
+		wantWarn bool
+	}{
+		{name: "no orch.yaml resolves the template thresholds", want: overviewThresholds{Soft: 300000, Hard: 400000, Known: true}},
+		{name: "an invalid orch.yaml returns the unknown thresholds and warns", config: "cycle_mode: bogus\n", want: overviewThresholds{}, wantWarn: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logs := logcapture.Capture(t)
+			prime := locationkit.Location(t.TempDir(), "prime", ".")
+			if tt.config != "" {
+				writeOverviewFile(t, configengine.ConfigFile(prime.AnchorPath(), "orch"), []byte(tt.config), overviewNow)
+			}
+
+			got := loadOverviewThresholds(prime)
+			if got != tt.want {
+				t.Errorf("loadOverviewThresholds = %+v, want %+v", got, tt.want)
+			}
+			if warned := strings.Contains(logs.String(), "WARN"); warned != tt.wantWarn {
+				t.Errorf("warned = %v, want %v; log:\n%s", warned, tt.wantWarn, logs.String())
+			}
+		})
 	}
 }
