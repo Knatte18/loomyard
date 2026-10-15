@@ -189,6 +189,7 @@ func readChecklistPaused(recordPath, slug string, now time.Time) []pauserecord.I
 // in.startedAt is the run's seed time, where its first visit starts; an empty or unparsable value starts it at the first entry's own time.
 // in.paused is left out of every visit's time.
 // A row's total is drawn to the second unless one of its visits is the open one, and then in whole minutes.
+// Each recipe entry carries the number loomrecipe.EntryNumbers gives it after its box; a history-only row and the recipe-unreadable lines carry none.
 func renderChecklist(in checklistInput, now time.Time) statuspane.Frame {
 	stateLine := shedverbs.UnavailableLine(checklistLabel)
 	if in.poll.Found {
@@ -232,6 +233,7 @@ func renderChecklist(in checklistInput, now time.Time) statuspane.Frame {
 		}
 	}
 
+	numbers := loomrecipe.EntryNumbers(in.rows)
 	recipeRow := make(map[string]loomrecipe.RecipeRow, len(in.rows))
 	reviewSegment := map[string]bool{}
 	for _, row := range in.rows {
@@ -247,11 +249,11 @@ func renderChecklist(in checklistInput, now time.Time) statuspane.Frame {
 		if row, ok := recipeRow[name]; ok && reviewSegment[row.Segment] {
 			if !drawnSegment[row.Segment] {
 				drawnSegment[row.Segment] = true
-				lines = append(lines, checklistReviewBlock(row.Segment, in.rows, history, status, arbiters)...)
+				lines = append(lines, checklistReviewBlock(row.Segment, numbers[name], in.rows, history, status, arbiters)...)
 			}
 			continue
 		}
-		line := checklistBox(name, visits[name], status) + " " + name
+		line := checklistBox(name, visits[name], status) + " " + checklistEntryName(numbers[name], name)
 		if v := visits[name]; v.visits > 0 {
 			line += " " + checklistTime(v.spent, slices.ContainsFunc(v.log, checklistVisitIsOpen))
 			if v.visits > 1 {
@@ -299,6 +301,14 @@ func (r checklistRound) total() string {
 	return checklistTime(spent, open)
 }
 
+// checklistEntryName renders name behind its entry number as "<number>. <name>"; a name with no number, number 0, stands bare.
+func checklistEntryName(number int, name string) string {
+	if number == 0 {
+		return name
+	}
+	return fmt.Sprintf("%d. %s", number, name)
+}
+
 // checklistVisitIsOpen reports whether visit is the current producer's open visit.
 func checklistVisitIsOpen(visit checklistVisit) bool {
 	return visit.index < 0
@@ -313,7 +323,8 @@ func checklistTime(spent time.Duration, includesOpen bool) string {
 }
 
 // checklistReviewBlock renders a review segment, a recipe segment holding a Bouncer row, as one block from the history-order visits.
-// The heading reads "<box> <segment> <time> rounds <n>"; an unvisited segment is the single line "[ ] <segment>".
+// The heading reads "<box> <number>. <segment> <time> rounds <n>"; an unvisited segment is the single line "[ ] <number>. <segment>".
+// number is the segment's entry number, which its rounds and their lines do not carry.
 // Under it come the lines placed before any round opened, then each opened round in the order opened as "  round <n> <time>", the sum of its lines' time, with its lines, and last a Bouncer done that ends the segment.
 // A time that includes the open visit is drawn in whole minutes and every other time to the second.
 // A review-row entry, the row a Bouncer row's OnStuck names, opens or joins the round its output names through shedadapters.OutputRound.
@@ -321,7 +332,7 @@ func checklistTime(spent time.Duration, includesOpen bool) string {
 // A fix-row entry, a goto into the segment, a reroute into the segment and a Bouncer entry that routes nowhere stand as the last line of the round in progress, or before round 1.
 // The open visit of a segment row opens the round after the last when a bounced Bouncer line waits, and otherwise joins the round in progress.
 // Each line is followed by the arbiter lines placed after its history entry.
-func checklistReviewBlock(segment string, rows []loomrecipe.RecipeRow, visits []checklistVisit, status shedengine.Status, arbiters *checklistArbiterPlacement) []string {
+func checklistReviewBlock(segment string, number int, rows []loomrecipe.RecipeRow, visits []checklistVisit, status shedengine.Status, arbiters *checklistArbiterPlacement) []string {
 	inSegment := map[string]bool{}
 	bouncers := map[string]bool{}
 	reviewRows := map[string]bool{}
@@ -347,7 +358,7 @@ func checklistReviewBlock(segment string, rows []loomrecipe.RecipeRow, visits []
 		}
 	}
 	if len(visitCount) == 0 {
-		return []string{checklistBoxNotReached + " " + segment}
+		return []string{checklistBoxNotReached + " " + checklistEntryName(number, segment)}
 	}
 	box := checklistBoxDone
 	for _, row := range rows {
@@ -431,7 +442,7 @@ func checklistReviewBlock(segment string, rows []loomrecipe.RecipeRow, visits []
 		placeInProgress(line)
 	}
 
-	lines := []string{fmt.Sprintf("%s %s %s rounds %d", box, segment, checklistTime(spent, segmentOpen), len(rounds))}
+	lines := []string{fmt.Sprintf("%s %s %s rounds %d", box, checklistEntryName(number, segment), checklistTime(spent, segmentOpen), len(rounds))}
 	lines = appendChecklistBlockLines(lines, "  ", before, arbiters)
 	for _, round := range rounds {
 		lines = append(lines, fmt.Sprintf("  round %d %s", round.number, round.total()))
