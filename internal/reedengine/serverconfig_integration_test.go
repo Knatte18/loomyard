@@ -48,7 +48,7 @@ func newHubEngine(t *testing.T, hubDir, worktree string, configure func(cfg *Con
 		NameShortname: "tc",
 		NameSlug:      "tslug",
 	}
-	return New(cfg, geom)
+	return New(cfg, geom, testScrub)
 }
 
 // bootOwnServer runs Up on e and returns its error.

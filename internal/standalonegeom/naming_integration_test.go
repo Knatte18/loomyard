@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/standalonegeom"
 	"github.com/Knatte18/loomyard/internal/standalonestate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
@@ -44,7 +45,7 @@ func TestNaming_StandaloneStrandIsShortnameAndRoleWithNoParent(t *testing.T) {
 		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Tmux, err)
 	}
 
-	e := reedengine.New(cfg, standalonegeom.ReedGeometry(target, stateDir, hash8))
+	e := reedengine.New(cfg, standalonegeom.ReedGeometry(target, stateDir, hash8), shuttleengines.EnvScrub())
 	tmuxkit.KillOnCleanup(t, cfg.Tmux, "lyx-"+hash8)
 	t.Cleanup(func() {
 		_, _ = e.Down()

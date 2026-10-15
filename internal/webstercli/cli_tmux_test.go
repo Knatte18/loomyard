@@ -15,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/standalonegeom"
 	"github.com/Knatte18/loomyard/internal/standalonestate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
@@ -76,7 +77,7 @@ func tearDownStandaloneReed(t *testing.T, target, stateDir, hash8 string) {
 		if err != nil {
 			cfg = reedengine.Config{}
 		}
-		if _, err := reedengine.New(cfg, standalonegeom.ReedGeometry(target, stateDir, hash8)).Down(); err != nil {
+		if _, err := reedengine.New(cfg, standalonegeom.ReedGeometry(target, stateDir, hash8), shuttleengines.EnvScrub()).Down(); err != nil {
 			t.Errorf("tearing down the standalone reed session for %q: %v; a leaked tmux server survives this test", target, err)
 		}
 	})

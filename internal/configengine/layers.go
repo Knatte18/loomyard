@@ -4,6 +4,7 @@
 package configengine
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -59,6 +60,8 @@ const (
 // HubWide marks a module whose file lives at the hub only;
 // WholeEntries makes each top-level key one unit, open to the local layer.
 // Categories classifies the template by dotted path: an entry covers its own path and every path under it.
+// RetiredKeys are the dotted keys the module no longer reads, each mapped to the category it held as a template key;
+// they stay out of Categories and OpenMaps, the local layer admits them by that category, and a load drops them from the stacked document.
 type Spec struct {
 	Name         string
 	Template     []byte
@@ -66,6 +69,7 @@ type Spec struct {
 	HubWide      bool
 	WholeEntries bool
 	Categories   map[string]Category
+	RetiredKeys  map[string]Category
 }
 
 // LocalFile returns the path of a module's local override file under anchor:
@@ -143,8 +147,77 @@ func coveringCategory(spec Spec, path string) (Category, bool) {
 	return category, found
 }
 
+// retiredCovering returns the longest retired key equal to path or a dotted prefix of it, its category, and whether any covers path.
+func retiredCovering(spec Spec, path string) (string, Category, bool) {
+	best := ""
+	var category Category
+	found := false
+	for key, keyCategory := range spec.RetiredKeys {
+		if path != key && !strings.HasPrefix(path, key+".") {
+			continue
+		}
+		if !found || len(key) > len(best) {
+			best, category, found = key, keyCategory, true
+		}
+	}
+	return best, category, found
+}
+
+// dropRetired removes from doc every retired key of the spec, at its dotted path, keeping every other key and comment.
+// A document that holds none is returned byte for byte.
+func dropRetired(doc []byte, spec Spec) ([]byte, error) {
+	if len(spec.RetiredKeys) == 0 || len(strings.TrimSpace(string(doc))) == 0 {
+		return doc, nil
+	}
+	var parsed yaml.Node
+	if err := yaml.Unmarshal(doc, &parsed); err != nil {
+		return nil, MarkInvalid(err)
+	}
+	if parsed.Kind != yaml.DocumentNode || len(parsed.Content) == 0 {
+		return doc, nil
+	}
+	dropped := false
+	for key := range spec.RetiredKeys {
+		if removeKey(parsed.Content[0], strings.Split(key, ".")) {
+			dropped = true
+		}
+	}
+	if !dropped {
+		return doc, nil
+	}
+	var out bytes.Buffer
+	encoder := yaml.NewEncoder(&out)
+	encoder.SetIndent(2)
+	if err := encoder.Encode(&parsed); err != nil {
+		return nil, fmt.Errorf("marshal %s config without retired keys: %w", spec.Name, err)
+	}
+	if err := encoder.Close(); err != nil {
+		return nil, fmt.Errorf("marshal %s config without retired keys: %w", spec.Name, err)
+	}
+	return out.Bytes(), nil
+}
+
+// removeKey deletes the mapping entry at the key path under node and reports whether one was removed.
+func removeKey(node *yaml.Node, path []string) bool {
+	if node.Kind != yaml.MappingNode {
+		return false
+	}
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		if node.Content[i].Value != path[0] {
+			continue
+		}
+		if len(path) == 1 {
+			node.Content = append(node.Content[:i], node.Content[i+2:]...)
+			return true
+		}
+		return removeKey(node.Content[i+1], path[1:])
+	}
+	return false
+}
+
 // ValidateLocal checks a local override document against the spec.
-// Every unit path must exist in the template, or be a top-level key when the spec holds whole entries;
+// A unit a retired key covers is judged by that key's category alone: CategoryNone admits it with no shape check, any other category refuses it.
+// Every other unit path must exist in the template, or be a top-level key when the spec holds whole entries;
 // its shape, mapping or not, must match the template's where the template holds the path;
 // and the longest category entry covering it must be CategoryNone, a hub-wide module also refusing a path no entry covers.
 // A failure is marked [ErrInvalid] and names the key; an empty or comment-only document passes.
@@ -165,6 +238,12 @@ func ValidateLocal(spec Spec, doc []byte) error {
 	}
 
 	for _, path := range paths {
+		if _, retiredCategory, retired := retiredCovering(spec, path); retired {
+			if retiredCategory != CategoryNone {
+				return MarkInvalid(fmt.Errorf("key %q is %s and cannot be set in a local override", path, retiredCategory))
+			}
+			continue
+		}
 		templateValue := nodeAt(&templateNode, path)
 		if templateValue == nil && !spec.WholeEntries {
 			return MarkInvalid(fmt.Errorf("key %q is not in the %s template", path, spec.Name))

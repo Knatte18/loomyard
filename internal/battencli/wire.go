@@ -565,7 +565,7 @@ func readAgentActivity(taskLocation *lyxcwd.Location) (runs []battenshed.AgentAc
 	if err != nil {
 		return nil, false, err
 	}
-	engines, err := shuttleengines.New(cfg)
+	engines, err := shuttleengines.New(cfg, fabricengine.ConfigDirs(taskLocation))
 	if err != nil {
 		return nil, false, err
 	}
@@ -804,7 +804,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 		if err != nil {
 			return nil, err
 		}
-		return reedengine.New(reedCfg, reedGeom).Directory()
+		return reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub()).Directory()
 	}
 
 	env := shedrecipe.Env{
@@ -1019,7 +1019,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					if err != nil {
 						return reedengine.StatusResult{}, err
 					}
-					return reedengine.New(reedCfg, reedGeom).Status()
+					return reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub()).Status()
 				})
 			},
 			DriverStrand: func(ctx context.Context) (battenshed.ChildDriverStrand, error) {
@@ -1040,7 +1040,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					if err != nil {
 						return nil, err
 					}
-					return reedengine.New(reedCfg, reedGeom).Directory()
+					return reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub()).Directory()
 				})
 			},
 			// ArbiterInFlight reads the task worktree's in-flight arbiter marker against the pair's reed directory.
@@ -1094,12 +1094,12 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				if err != nil {
 					return err
 				}
-				reedEngine := reedengine.New(reedCfg, reedGeom)
+				reedEngine := reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub())
 				rows, err := reedEngine.Directory()
 				if err != nil {
 					return err
 				}
-				engines, err := shuttleengines.New(shuttleCfg)
+				engines, err := shuttleengines.New(shuttleCfg, fabricengine.ConfigDirs(taskLocation))
 				if err != nil {
 					return err
 				}

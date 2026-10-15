@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 )
 
 // RemoveQuietWait is the quiet-wait bound `lyx fabric remove` passes.
@@ -363,7 +364,7 @@ func (t *Teardown) reedEngine(task *lyxcwd.Location) (*reedengine.Engine, error)
 	if err != nil {
 		return nil, err
 	}
-	return reedengine.New(cfg, geom), nil
+	return reedengine.New(cfg, geom, shuttleengines.EnvScrub()), nil
 }
 
 // probeQuiet answers whether the present task worktree's driver is quiet: the run lock, the loop lock and the Go-driver lock are free, and the driver strand is absent, dead, retiring or parked.

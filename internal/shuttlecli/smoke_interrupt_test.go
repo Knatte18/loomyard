@@ -44,6 +44,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -51,6 +52,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
@@ -328,8 +330,8 @@ func newSmokeRunner(t *testing.T) (*shuttleengine.Runner, shuttleengine.Engine, 
 	if err != nil {
 		t.Fatalf("reed geometry: %v", err)
 	}
-	reedEngine := reedengine.New(reedCfg, reedGeom)
-	engine := claudeengine.New()
+	reedEngine := reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub())
+	engine := claudeengine.NewFromConfig(shuttleCfg, fabricengine.ConfigDirs(layout))
 	runner := shuttleengine.NewRunner(reedEngine, shuttlefake.EngineSet(engine), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 	return runner, engine, reedEngine, shuttleCfg
 }

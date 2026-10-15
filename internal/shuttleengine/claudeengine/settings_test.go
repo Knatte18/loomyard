@@ -4,12 +4,14 @@ package claudeengine
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shell"
+	"github.com/Knatte18/loomyard/internal/shellguard"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -47,7 +49,7 @@ func TestBuildSettings_PromptSuggestionOff(t *testing.T) {
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
-			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, shuttleengine.Config{}, tt.fork, false, "")
+			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, shuttleengine.Config{}, Config{}, tt.fork, false, "")
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -88,7 +90,7 @@ func TestBuildSettings_RecordingHooks(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			data, err := buildSettings(tt.eventsPath, false, shuttleengine.Config{}, false, false, "")
+			data, err := buildSettings(tt.eventsPath, false, shuttleengine.Config{}, Config{}, false, false, "")
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -155,7 +157,7 @@ func TestBuildSettings_SessionStartHook(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			data, err := buildSettings("/c/run/events.jsonl", false, shuttleengine.Config{}, false, false, tt.command)
+			data, err := buildSettings("/c/run/events.jsonl", false, shuttleengine.Config{}, Config{}, false, false, tt.command)
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -213,7 +215,7 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 		{"askuser_only_autonomous", false, true, false, false, true, false, false},
 		{"both_on_autonomous", true, true, false, true, true, false, false},
 		// Interactive runs always carry the non-denying AskUserQuestion
-		// marker entry, regardless of ClaudeDenyAskUserQuestion — the deny
+		// marker entry, regardless of DenyAskUserQuestion — the deny
 		// is autonomous-only and the two are mutually exclusive.
 		{"both_on_interactive_marker_not_deny", true, true, true, true, true, false, false},
 		{"askuser_only_interactive_marker_not_deny", false, true, true, false, true, false, false},
@@ -225,8 +227,9 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := shuttleengine.Config{ClaudeDenyAgentTool: tt.agentDeny, ClaudeDenyAskUserQuestion: tt.askUserDeny, ClaudeDenyPython: tt.pythonDeny}
-			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, cfg, tt.fork, false, "")
+			cfg := shuttleengine.Config{DenyPython: tt.pythonDeny}
+			claude := Config{DenyAgentTool: tt.agentDeny, DenyAskUserQuestion: tt.askUserDeny}
+			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, cfg, claude, tt.fork, false, "")
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -290,11 +293,11 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 			}
 			pythonInstalled, rawGoInstalled, inPlaceInstalled, computedRmInstalled, sleepInstalled := false, false, false, false, false
 			for _, command := range matcherCommands(doc, "Bash") {
-				pythonInstalled = pythonInstalled || strings.Contains(command, steerPythonDeny)
-				rawGoInstalled = rawGoInstalled || strings.Contains(command, steerRawGoDeny)
-				inPlaceInstalled = inPlaceInstalled || strings.Contains(command, steerInPlaceEditDeny)
-				computedRmInstalled = computedRmInstalled || strings.Contains(command, steerComputedRmDeny)
-				sleepInstalled = sleepInstalled || strings.Contains(command, steerSleepDeny)
+				pythonInstalled = pythonInstalled || strings.Contains(command, shellRow(t, "python").Steer)
+				rawGoInstalled = rawGoInstalled || strings.Contains(command, shellRow(t, "raw-go").Steer)
+				inPlaceInstalled = inPlaceInstalled || strings.Contains(command, shellRow(t, "in-place-edit").Steer)
+				computedRmInstalled = computedRmInstalled || strings.Contains(command, shellRow(t, "computed-rm").Steer)
+				sleepInstalled = sleepInstalled || strings.Contains(command, shellRow(t, "machine-sleep").Steer)
 			}
 			if pythonInstalled != tt.pythonDeny {
 				t.Errorf("python Bash PreToolUse entry present = %v; want %v (preToolUse: %v)", pythonInstalled, tt.pythonDeny, preToolUse)
@@ -317,6 +320,45 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 				t.Errorf("PreToolUse = %v with no denies/marker configured; want only the raw go, in-place edit, computed-rm and sleep denies", preToolUse)
 			}
 		})
+	}
+}
+
+// shellRow returns the shellguard.Rows(bashForegroundPhrase) row named name, failing the test when none has it.
+func shellRow(t *testing.T, name string) shellguard.Row {
+	t.Helper()
+	for _, row := range shellguard.Rows(bashForegroundPhrase) {
+		if row.Name == name {
+			return row
+		}
+	}
+	t.Fatalf("shellguard.Rows has no row named %q", name)
+	return shellguard.Row{}
+}
+
+// TestStandingDenies_RenderEveryShellGuardRow pins that every shell guard row has exactly one standingDenies entry with matcher Bash, its steer and notice and the command shape of its pattern count, in table order after the Claude rows.
+func TestStandingDenies_RenderEveryShellGuardRow(t *testing.T) {
+	t.Parallel()
+
+	rows := shellguard.Rows(bashForegroundPhrase)
+	claudeCount := len(claudeDenies())
+	if len(standingDenies) != claudeCount+len(rows) {
+		t.Fatalf("standingDenies has %d entries; want %d Claude entries plus %d shell guard rows", len(standingDenies), claudeCount, len(rows))
+	}
+	for i, row := range rows {
+		deny := standingDenies[claudeCount+i]
+		if deny.matcher != "Bash" || deny.steer != row.Steer || deny.notice != row.Notice {
+			t.Errorf("standingDenies[%d] = {%q, steer %q, notice %q}; want the %q row's Bash entry with its steer and notice", claudeCount+i, deny.matcher, deny.steer, deny.notice, row.Name)
+		}
+		multiPattern := strings.HasPrefix(deny.command, "in=$(cat); ")
+		if multiPattern != (len(row.Patterns) > 1) {
+			t.Errorf("%q command = %q; want the several-pattern shape exactly when the row has several patterns", row.Name, deny.command)
+		}
+		if got := strings.Count(deny.command, "grep -Eq '"); got != len(row.Patterns) {
+			t.Errorf("%q command greps %d times; want one grep per pattern (%d)", row.Name, got, len(row.Patterns))
+		}
+		if !strings.HasSuffix(deny.command, "echo '"+denyJSON(row.Steer)+"'; true") {
+			t.Errorf("%q command = %q; want it to end with its deny JSON and `; true`", row.Name, deny.command)
+		}
 	}
 }
 
@@ -367,22 +409,22 @@ const (
 	agentHookForkConditional
 )
 
-// TestBuildSettings_AgentAndBashHooks covers how cfg.ClaudeDenyAgentTool, forkSubagents and the per-run Agent allowance decide the Agent and Bash PreToolUse entries.
+// TestBuildSettings_AgentAndBashHooks covers how claude.DenyAgentTool, forkSubagents and the per-run Agent allowance decide the Agent and Bash PreToolUse entries.
 // Fork mode on with the deny configured replaces the blanket Agent deny with the conditional grep hook;
 // fork mode off leaves the blanket deny;
 // the deny configured off, or the per-run allowance, emits no Agent entry and drops its notice sentence while the AskUserQuestion deny and its sentence stay.
 // Beside the always-installed raw go, in-place edit, computed-rm and sleep denies, the fork-loop-deadlock guard is the only Bash entry any document carries, so no run mode installs a Bash stdin rewrite:
 // a fork-mode run emits a PreToolUse(Bash) hook that greps the payload for a fork-context agent_id AND a `lyx webster` command before denying (with steerWebsterForkDeny), and always exits 0 via the trailing `; true`.
-// The guard is independent of ClaudeDenyAgentTool and of the allowance, and absent entirely when fork mode is off (no Master, so no fork could reach the loop).
+// The guard is independent of DenyAgentTool and of the allowance, and absent entirely when fork mode is off (no Master, so no fork could reach the loop).
 //
 //testtiming:keep pins the Agent and Bash PreToolUse entries for every deny, fork and allowance combination, which its covering test does not assert
 func TestBuildSettings_AgentAndBashHooks(t *testing.T) {
 	t.Parallel()
 
-	denyBoth := shuttleengine.Config{ClaudeDenyAgentTool: true, ClaudeDenyAskUserQuestion: true}
+	denyBoth := Config{DenyAgentTool: true, DenyAskUserQuestion: true}
 	tests := []struct {
 		name          string
-		cfg           shuttleengine.Config
+		claude        Config
 		interactive   bool
 		fork          bool
 		allowAgent    bool
@@ -390,19 +432,19 @@ func TestBuildSettings_AgentAndBashHooks(t *testing.T) {
 		wantBashGuard bool
 		wantAskDeny   bool
 	}{
-		{name: "fork_on_replaces_blanket_deny", cfg: shuttleengine.Config{ClaudeDenyAgentTool: true}, fork: true, wantAgent: agentHookForkConditional, wantBashGuard: true},
-		{name: "fork_off_keeps_blanket_deny", cfg: shuttleengine.Config{ClaudeDenyAgentTool: true}, wantAgent: agentHookBlanketDeny},
-		{name: "deny_off_and_fork_on_emits_no_agent_entry_but_keeps_bash_guard", cfg: shuttleengine.Config{}, fork: true, wantAgent: agentHookNone, wantBashGuard: true},
-		{name: "autonomous", cfg: denyBoth, wantAgent: agentHookBlanketDeny, wantAskDeny: true},
-		{name: "interactive", cfg: denyBoth, interactive: true, wantAgent: agentHookBlanketDeny},
-		{name: "allow_agent_without_fork", cfg: denyBoth, allowAgent: true, wantAgent: agentHookNone, wantAskDeny: true},
-		{name: "allow_agent_with_fork_keeps_bash_guard", cfg: denyBoth, fork: true, allowAgent: true, wantAgent: agentHookNone, wantBashGuard: true, wantAskDeny: true},
+		{name: "fork_on_replaces_blanket_deny", claude: Config{DenyAgentTool: true}, fork: true, wantAgent: agentHookForkConditional, wantBashGuard: true},
+		{name: "fork_off_keeps_blanket_deny", claude: Config{DenyAgentTool: true}, wantAgent: agentHookBlanketDeny},
+		{name: "deny_off_and_fork_on_emits_no_agent_entry_but_keeps_bash_guard", claude: Config{}, fork: true, wantAgent: agentHookNone, wantBashGuard: true},
+		{name: "autonomous", claude: denyBoth, wantAgent: agentHookBlanketDeny, wantAskDeny: true},
+		{name: "interactive", claude: denyBoth, interactive: true, wantAgent: agentHookBlanketDeny},
+		{name: "allow_agent_without_fork", claude: denyBoth, allowAgent: true, wantAgent: agentHookNone, wantAskDeny: true},
+		{name: "allow_agent_with_fork_keeps_bash_guard", claude: denyBoth, fork: true, allowAgent: true, wantAgent: agentHookNone, wantBashGuard: true, wantAskDeny: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, tt.cfg, tt.fork, tt.allowAgent, "")
+			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, shuttleengine.Config{}, tt.claude, tt.fork, tt.allowAgent, "")
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -429,13 +471,13 @@ func TestBuildSettings_AgentAndBashHooks(t *testing.T) {
 			var bashCommands, rawGoCommands, inPlaceCommands, computedRmCommands, sleepCommands []string
 			for _, command := range matcherCommands(doc, "Bash") {
 				switch {
-				case strings.Contains(command, steerRawGoDeny):
+				case strings.Contains(command, shellRow(t, "raw-go").Steer):
 					rawGoCommands = append(rawGoCommands, command)
-				case strings.Contains(command, steerInPlaceEditDeny):
+				case strings.Contains(command, shellRow(t, "in-place-edit").Steer):
 					inPlaceCommands = append(inPlaceCommands, command)
-				case strings.Contains(command, steerComputedRmDeny):
+				case strings.Contains(command, shellRow(t, "computed-rm").Steer):
 					computedRmCommands = append(computedRmCommands, command)
-				case strings.Contains(command, steerSleepDeny):
+				case strings.Contains(command, shellRow(t, "machine-sleep").Steer):
 					sleepCommands = append(sleepCommands, command)
 				default:
 					bashCommands = append(bashCommands, command)
@@ -475,7 +517,7 @@ func TestBuildSettings_AgentAndBashHooks(t *testing.T) {
 			}
 
 			askCommands := matcherCommands(doc, "AskUserQuestion")
-			notice := buildDenyNotice(tt.interactive, tt.cfg, tt.fork, tt.allowAgent)
+			notice := buildDenyNotice(tt.interactive, shuttleengine.Config{}, tt.claude, tt.fork, tt.allowAgent)
 			if tt.allowAgent {
 				if strings.Contains(notice, noticeAgentDeny) || strings.Contains(notice, noticeAgentForkDeny) {
 					t.Errorf("notice = %q; want no Agent sentence under AllowAgentTool", notice)
@@ -502,8 +544,8 @@ func TestBuildSettings_AgentAndBashHooks(t *testing.T) {
 // so a prompt over the old 30000-byte bound launches and prompt.md holds all of it.
 // Only a pointer over maxLaunchPromptBytes, reached by a pathological run-directory path, is rejected, before any run artifact is written.
 func TestPrepare_PromptLaunchLimit(t *testing.T) {
-	cfg := templateConfig(t)
-	c := New()
+	cfg := shuttleengine.Config{}
+	c := engineWith(t, templateConfig(t))
 
 	t.Run("LargePrompt_LaunchesWithPointer", func(t *testing.T) {
 		runDir := t.TempDir()
@@ -554,11 +596,11 @@ func TestPrepare_PromptLaunchLimit(t *testing.T) {
 func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
 	runDir := t.TempDir()
 	spec := shuttleengine.Spec{Prompt: "do the thing", Interactive: false}
-	cfg := templateConfig(t)
-	cfg.ClaudeDenyAgentTool, cfg.ClaudeDenyAskUserQuestion = true, true
+	claude := templateConfig(t)
+	claude.DenyAgentTool, claude.DenyAskUserQuestion = true, true
 
-	c := New()
-	launch, err := c.Prepare(runDir, spec, cfg)
+	c := engineWith(t, claude)
+	launch, err := c.Prepare(runDir, spec, shuttleengine.Config{})
 	if err != nil {
 		t.Fatalf("Prepare() error: %v", err)
 	}
@@ -633,8 +675,9 @@ func TestBuildDenyNotice_MatchesInstalledDenies(t *testing.T) {
 			for _, pythonDeny := range []bool{false, true} {
 				for _, interactive := range []bool{false, true} {
 					for _, fork := range []bool{false, true} {
-						cfg := shuttleengine.Config{ClaudeDenyAgentTool: agentDeny, ClaudeDenyAskUserQuestion: askUserDeny, ClaudeDenyPython: pythonDeny}
-						data, err := buildSettings("/c/run/events.jsonl", interactive, cfg, fork, false, "")
+						cfg := shuttleengine.Config{DenyPython: pythonDeny}
+						claude := Config{DenyAgentTool: agentDeny, DenyAskUserQuestion: askUserDeny}
+						data, err := buildSettings("/c/run/events.jsonl", interactive, cfg, claude, fork, false, "")
 						if err != nil {
 							t.Fatalf("buildSettings() error: %v", err)
 						}
@@ -651,7 +694,7 @@ func TestBuildDenyNotice_MatchesInstalledDenies(t *testing.T) {
 							}
 						}
 						want := strings.Join(wantSentences, " ")
-						notice := buildDenyNotice(interactive, cfg, fork, false)
+						notice := buildDenyNotice(interactive, cfg, claude, fork, false)
 						if notice != want {
 							t.Errorf("agent=%v ask=%v python=%v interactive=%v fork=%v: notice = %q; want the sentences of the installed denies %q", agentDeny, askUserDeny, pythonDeny, interactive, fork, notice, want)
 						}
@@ -672,20 +715,21 @@ func TestBuildDenyNotice_MatchesInstalledDenies(t *testing.T) {
 //
 //testtiming:keep pins the fork-subagent and Agent-unavailable wording of the notice, which its covering test does not assert
 func TestBuildDenyNotice_SentenceContent(t *testing.T) {
-	cfg := shuttleengine.Config{ClaudeDenyAgentTool: true, ClaudeDenyAskUserQuestion: true}
-	forkNotice := buildDenyNotice(false, cfg, true, false)
+	cfg := shuttleengine.Config{}
+	claude := Config{DenyAgentTool: true, DenyAskUserQuestion: true}
+	forkNotice := buildDenyNotice(false, cfg, claude, true, false)
 	if !strings.Contains(forkNotice, "fork subagents") || !strings.Contains(forkNotice, "never spawns further subagents") {
 		t.Errorf("fork notice = %q; want it to name fork subagents as permitted and forbid a fork spawning more", forkNotice)
 	}
-	nonFork := buildDenyNotice(false, cfg, false, false)
-	for name, notice := range map[string]string{"autonomous": nonFork, "interactive": buildDenyNotice(true, cfg, false, false), "fork": forkNotice} {
-		if !strings.Contains(notice, noticeInPlaceEditDeny) {
+	nonFork := buildDenyNotice(false, cfg, claude, false, false)
+	for name, notice := range map[string]string{"autonomous": nonFork, "interactive": buildDenyNotice(true, cfg, claude, false, false), "fork": forkNotice} {
+		if !strings.Contains(notice, shellRow(t, "in-place-edit").Notice) {
 			t.Errorf("%s notice = %q; want it to contain the in-place edit sentence", name, notice)
 		}
-		if !strings.Contains(notice, noticeComputedRmDeny) {
+		if !strings.Contains(notice, shellRow(t, "computed-rm").Notice) {
 			t.Errorf("%s notice = %q; want it to contain the computed-rm sentence", name, notice)
 		}
-		if !strings.Contains(notice, noticeSleepDeny) {
+		if !strings.Contains(notice, shellRow(t, "machine-sleep").Notice) {
 			t.Errorf("%s notice = %q; want it to contain the sleep sentence", name, notice)
 		}
 	}
@@ -705,5 +749,54 @@ func TestBuildDenyNotice_SentenceContent(t *testing.T) {
 	}
 	if !strings.Contains(nonFork, "final message") {
 		t.Errorf("notice = %q; want the AskUserQuestion final-message channel", nonFork)
+	}
+}
+
+// TestBuildSettings_MatchesGolden pins the settings document and deny notice byte for byte across every combination of the six deny inputs.
+func TestBuildSettings_MatchesGolden(t *testing.T) {
+	t.Parallel()
+	type golden struct {
+		Settings string `json:"settings"`
+		Notice   string `json:"notice"`
+	}
+	raw, err := os.ReadFile(filepath.Join("testdata", "settings-golden.json"))
+	if err != nil {
+		t.Fatalf("read golden: %v", err)
+	}
+	var want map[string]golden
+	if err := json.Unmarshal(raw, &want); err != nil {
+		t.Fatalf("unmarshal golden: %v", err)
+	}
+
+	rendered := map[string]bool{}
+	for mask := 0; mask < 64; mask++ {
+		bit := func(position int) bool { return mask&(1<<position) != 0 }
+		interactive, fork, allowAgent := bit(0), bit(1), bit(2)
+		cfg := shuttleengine.Config{DenyPython: bit(5)}
+		claude := Config{DenyAgentTool: bit(3), DenyAskUserQuestion: bit(4)}
+		label := fmt.Sprintf("interactive=%t fork=%t allowAgent=%t denyAgent=%t denyAsk=%t denyPython=%t",
+			interactive, fork, allowAgent, claude.DenyAgentTool, claude.DenyAskUserQuestion, cfg.DenyPython)
+		rendered[label] = true
+
+		entry, ok := want[label]
+		if !ok {
+			t.Errorf("golden lacks %q", label)
+			continue
+		}
+		settings, err := buildSettings("/c/run/events.jsonl", interactive, cfg, claude, fork, allowAgent, "")
+		if err != nil {
+			t.Fatalf("buildSettings(%s): %v", label, err)
+		}
+		if string(settings) != entry.Settings {
+			t.Errorf("settings differ for %q:\ngot  %s\nwant %s", label, settings, entry.Settings)
+		}
+		if notice := buildDenyNotice(interactive, cfg, claude, fork, allowAgent); notice != entry.Notice {
+			t.Errorf("notice differs for %q:\ngot  %q\nwant %q", label, notice, entry.Notice)
+		}
+	}
+	for label := range want {
+		if !rendered[label] {
+			t.Errorf("golden holds %q, which the test does not render", label)
+		}
 	}
 }

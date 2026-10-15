@@ -1,7 +1,8 @@
 // claudeengine.go defines the Claude type and its compile-time assertion against
 // shuttleengine.Engine.
-// The type carries only its two settles and the reading clock, fixed at construction,
-// and every method it implements is a pure function of its arguments, those settles and that clock (see command.go, settings.go, events.go, startup.go), which is what makes the whole adapter hermetically testable without tmux or a real claude process.
+// The type carries its two settles, the reading clock and the told Dirs, fixed at construction.
+// Prepare, OpenLaunch and PromptCacheLifetime read claude.yaml through those Dirs,
+// and every other method it implements is a pure function of its arguments, those settles and that clock (see command.go, settings.go, events.go, startup.go), which keeps the adapter hermetically testable without tmux or a real claude process.
 
 package claudeengine
 
@@ -14,6 +15,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -26,10 +28,13 @@ const defaultSubmitSettleMS = 300
 const defaultSubmitRedrawSettleMS = 300
 
 // Claude implements shuttleengine.Engine for the Claude Code CLI.
-// Its methods are pure functions of their arguments, its settle fields and its clock, fixed at construction,
+// Prepare, OpenLaunch and PromptCacheLifetime read claude.yaml through the Dirs fixed at construction;
+// every other method is a pure function of its arguments, its settle fields and its clock,
 // so a Claude is safe to share across concurrent runs.
 // The one piece of shared mutable state is nameReads, which remembers the session ids whose name-read failure was already warned about.
 type Claude struct {
+	// dirs locate the layered claude.yaml; the zero value makes the config-reading methods refuse, so an engine built by New serves reading uses only.
+	dirs configengine.Dirs
 	// now is the clock the activity reading takes the time of a fork's pending tool call from.
 	now func() time.Time
 	// submitSettleMS is the pause between typed text and the Enter that submits it.
@@ -48,8 +53,19 @@ func New() *Claude {
 }
 
 // NewFromConfig returns a Claude engine whose submit settle is cfg.SubmitSettleMS and whose redraw settle is cfg.SubmitRedrawSettleMS.
-func NewFromConfig(cfg shuttleengine.Config) *Claude {
-	return &Claude{now: time.Now, submitSettleMS: cfg.SubmitSettleMS, submitRedrawSettleMS: cfg.SubmitRedrawSettleMS, nameReads: &nameReadWarnings{}}
+// The engine reads claude.yaml from the layers dirs locate.
+func NewFromConfig(cfg shuttleengine.Config, dirs configengine.Dirs) *Claude {
+	return &Claude{dirs: dirs, now: time.Now, submitSettleMS: cfg.SubmitSettleMS, submitRedrawSettleMS: cfg.SubmitRedrawSettleMS, nameReads: &nameReadWarnings{}}
+}
+
+// loadConfigOrRefuse loads claude.yaml from dirs.
+// A load error keeps configengine's text naming the file and key and its invalid mark, and gains the way forward.
+func loadConfigOrRefuse(dirs configengine.Dirs) (Config, error) {
+	claude, err := LoadConfig(dirs)
+	if err != nil {
+		return Config{}, fmt.Errorf("claudeengine: %w; way forward: correct or remove the key in the file the error names, with lyx config claude --layer <default|worktree|local> (or --set for a value)", err)
+	}
+	return claude, nil
 }
 
 // Compile-time proof that Claude satisfies the provider seam.
@@ -86,8 +102,13 @@ func validateSessionID(id string) error {
 // Prepare writes prompt.md, settings.json and the Bash env file bash-env.sh into runDir and returns the Launch command strings.
 // The launch line carries a pointer to prompt.md rather than the prompt, so a prompt of any size launches.
 // A spec that names skills carries the skill-load message on the launch line instead and returns the pointer as Launch.PromptLine, for shuttle to send after the skills load.
-// It validates spec.Effort, spec.Model, spec.PermissionMode, spec.ResumeSessionID and the prompt-cache TTL config before writing any artifacts.
+// It loads claude.yaml, then validates spec.Effort, spec.Model, spec.PermissionMode, spec.ResumeSessionID and the prompt-cache TTL config before writing any artifacts.
 func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
+	claude, err := loadConfigOrRefuse(c.dirs)
+	if err != nil {
+		return shuttleengine.Launch{}, err
+	}
+
 	// Reject unrealizable effort before any artifact is written (claude ignores bad efforts at launch).
 	if err := validateEffort(spec.Effort); err != nil {
 		return shuttleengine.Launch{}, err
@@ -106,7 +127,7 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 	}
 
 	// Resolve the role's prompt-cache TTL once, so both lines carry the same value, before any artifact is written.
-	promptCacheTTL, err := resolvePromptCacheTTL(spec.Role, cfg)
+	promptCacheTTL, err := resolvePromptCacheTTL(spec.Role, claude)
 	if err != nil {
 		return shuttleengine.Launch{}, err
 	}
@@ -163,7 +184,7 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 		}
 	}
 
-	settingsJSON, err := buildSettings(eventsPathForHook, spec.Interactive, cfg, spec.ForkSubagents, spec.AllowAgentTool, spec.ContextAfterCompaction)
+	settingsJSON, err := buildSettings(eventsPathForHook, spec.Interactive, cfg, claude, spec.ForkSubagents, spec.AllowAgentTool, spec.ContextAfterCompaction)
 	if err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("build settings: %w", err)
 	}
@@ -181,8 +202,8 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 		return shuttleengine.Launch{}, fmt.Errorf("write env file: %w", err)
 	}
 
-	bin := claudeBinary(cfg)
-	notice := buildDenyNotice(spec.Interactive, cfg, spec.ForkSubagents, spec.AllowAgentTool)
+	bin := claudeBinary(claude)
+	notice := buildDenyNotice(spec.Interactive, cfg, claude, spec.ForkSubagents, spec.AllowAgentTool)
 	// sh selects pane-shell mechanics per OS (pwsh on Windows, posix elsewhere).
 	sh := shell.ForGOOS()
 	// A spec that names skills launches with the load message as its first turn, and the pointer goes out after the skills as Launch.PromptLine.

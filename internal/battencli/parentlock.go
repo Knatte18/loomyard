@@ -90,7 +90,7 @@ func readAgentStates(taskLocation *lyxcwd.Location) ([]parentlock.AgentState, er
 	if err != nil {
 		return nil, err
 	}
-	engines, err := shuttleengines.New(cfg)
+	engines, err := shuttleengines.New(cfg, fabricengine.ConfigDirs(taskLocation))
 	if err != nil {
 		return nil, err
 	}

@@ -101,7 +101,7 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 	// entry would advertise that LYX is in use, and a warp→weft junction must never
 	// leave a tracked artifact behind in the user's repo.
 	//
-	// ReconcileAll returns one Result per registered module, each reporting whether that module's own file was written (or, for a retired hub-wide copy, deleted).
+	// ReconcileAll returns the results of its declared key moves first, then one Result per registered module, each reporting whether that module's own file was written (or, for a retired hub-wide copy, deleted).
 	// Record one KindFileWritten per Result whose Applied is true, not one entry for the call as a whole, so every changed per-worktree config file is individually covered.
 	results, err := configsync.ReconcileAll(res.WeftBase, res.BoardDir, configsync.Options{Apply: true})
 	if err != nil {

@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/Knatte18/loomyard/contracts/recipes"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -130,10 +132,21 @@ func TestNewParentReviewConfig_KeepAliveInterval(t *testing.T) {
 			if err != nil {
 				t.Fatalf("load the shipped shuttle template: %v", err)
 			}
-			shuttleCfg.ClaudePromptCacheTTL = tt.defaultTTL
-			shuttleCfg.ClaudePromptCacheTTLRoles = tt.roles
+			anchor := t.TempDir()
+			claudeYAML, err := yaml.Marshal(claudeengine.Config{PromptCacheTTL: tt.defaultTTL, PromptCacheTTLRoles: tt.roles})
+			if err != nil {
+				t.Fatalf("marshal claude config: %v", err)
+			}
+			claudePath := configengine.ConfigFile(anchor, "claude")
+			if err := os.MkdirAll(filepath.Dir(claudePath), 0o755); err != nil {
+				t.Fatalf("mkdir claude config dir: %v", err)
+			}
+			if err := os.WriteFile(claudePath, claudeYAML, 0o644); err != nil {
+				t.Fatalf("write claude.yaml: %v", err)
+			}
 			loomCfg := loomengine.Config{ParentReviewWaitMin: 60}
-			cfg, err := newParentReviewConfig(loc, reedengine.Config{}, loomCfg, t.TempDir(), shuttlefake.EngineSet(claudeengine.NewFromConfig(shuttleCfg)), shuttleCfg)
+			engine := claudeengine.NewFromConfig(shuttleCfg, configengine.Dirs{Anchor: anchor})
+			cfg, err := newParentReviewConfig(loc, reedengine.Config{}, loomCfg, t.TempDir(), shuttlefake.EngineSet(engine), shuttleCfg)
 			if err != nil {
 				t.Fatalf("newParentReviewConfig = %v; want nil", err)
 			}

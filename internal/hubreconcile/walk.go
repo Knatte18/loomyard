@@ -362,7 +362,8 @@ func worktreeErrorFor(worktree string, err error) *WorktreeError {
 func logResult(worktree string, result configsync.Result) {
 	logger.Info("hubreconcile: config changed", "worktree", worktree, "module", result.Module,
 		"added", result.Added, "removed", result.Removed, "migrated", result.Migrated,
-		"stripped", result.Stripped, "inherited", result.Inherited)
+		"stripped", result.Stripped, "inherited", result.Inherited,
+		"moved", result.Moved, "keptTarget", result.KeptTarget, "overwritten", result.Overwritten)
 }
 
 // fileExists reports whether path names an existing file.

@@ -49,10 +49,12 @@ func TestSmokeStart_NeverAttachesAndAddsNoOperatorStrand(t *testing.T) {
 	// A stub provider lets the llm-driven start's driver launch reach readiness,
 	// so the verb reaches its success envelope.
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	stubPath := writeStubDriverScript(t)
 	hubforge.SeedConfig(t, h, map[string]string{
+		"claude":  claudeConfigWithBinary(stubPath),
 		"loom":    fastDeadlineLoomConfig(),
 		"reed":    reedengine.ConfigTemplate(),
-		"shuttle": driverShuttleConfig(t, writeStubDriverScript(t)),
+		"shuttle": driverShuttleConfig(t),
 		"webster": websterengine.ConfigTemplate(),
 	})
 	const slug = "loom-smoke-start-task"

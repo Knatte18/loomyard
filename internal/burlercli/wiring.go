@@ -138,8 +138,8 @@ func (c *burlerCLI) wireHub(loc *lyxcwd.Location, stencilsDirOverride, targetDir
 	if err != nil {
 		return err
 	}
-	reedEngine := reedengine.New(reedCfg, reedGeom)
-	engines, err := shuttleengines.New(shuttleCfg)
+	reedEngine := reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub())
+	engines, err := shuttleengines.New(shuttleCfg, fabricengine.ConfigDirs(loc))
 	if err != nil {
 		return err
 	}
@@ -201,10 +201,10 @@ func (c *burlerCLI) wireStandalone(cwd, stencilsDirOverride, targetDirFlag strin
 	}
 
 	reedGeom := standalonegeom.ReedGeometry(res.Target, res.StateDir, res.Hash8)
-	reedEngine := reedengine.New(reedCfg, reedGeom)
+	reedEngine := reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub())
 	// Standalone's anchor (the derived state directory) is deliberately outside its worktree root
 	// (the target), which NewRunner's containment assertion would refuse -- NewDetachedRunner stays.
-	engines, err := shuttleengines.New(shuttleCfg)
+	engines, err := shuttleengines.New(shuttleCfg, configengine.Dirs{Anchor: res.StateDir})
 	if err != nil {
 		return err
 	}

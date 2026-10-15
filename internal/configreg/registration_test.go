@@ -71,58 +71,83 @@ func declaresConfigTemplate(file *ast.File) bool {
 	return false
 }
 
-// registeredPackages returns the module-relative directory of every package whose ConfigTemplate configreg.go's Modules() references.
+// registeredPackages returns the module-relative directory of every package whose ConfigTemplate configreg.go's Modules() references or shuttleengines.go's registry holds.
+// An engine's config module reaches Modules() through that registry.
 func registeredPackages(t *testing.T) map[string]bool {
 	t.Helper()
 	registered := map[string]bool{}
-	found := false
-	scankit.Walk(t, scankit.Options{Roots: []string{"internal/configreg"}, Shallow: true}, func(f *scankit.File) {
-		if path.Base(f.Rel) != "configreg.go" {
-			return
-		}
-		found = true
-		file := f.AST(t, 0)
-		importPaths := map[string]string{}
-		for _, imp := range file.Imports {
-			p, err := strconv.Unquote(imp.Path.Value)
-			if err != nil {
-				t.Fatalf("configreg.go: bad import %s: %v", imp.Path.Value, err)
+	found := map[string]bool{}
+	registrars := []struct {
+		root, file string
+	}{
+		{"internal/configreg", "configreg.go"},
+		{"internal/shuttleengines", "shuttleengines.go"},
+	}
+	for _, registrar := range registrars {
+		scankit.Walk(t, scankit.Options{Roots: []string{registrar.root}, Shallow: true}, func(f *scankit.File) {
+			if path.Base(f.Rel) != registrar.file {
+				return
 			}
-			name := path.Base(p)
-			if imp.Name != nil {
-				name = imp.Name.Name
+			found[registrar.file] = true
+			file := f.AST(t, 0)
+			importPaths := map[string]string{}
+			for _, imp := range file.Imports {
+				p, err := strconv.Unquote(imp.Path.Value)
+				if err != nil {
+					t.Fatalf("%s: bad import %s: %v", registrar.file, imp.Path.Value, err)
+				}
+				name := path.Base(p)
+				if imp.Name != nil {
+					name = imp.Name.Name
+				}
+				importPaths[name] = p
 			}
-			importPaths[name] = p
-		}
-		for _, decl := range file.Decls {
-			fn, ok := decl.(*ast.FuncDecl)
-			if !ok || fn.Recv != nil || fn.Name.Name != "Modules" {
-				continue
+			for _, decl := range file.Decls {
+				// configreg.go lists templates in Modules(); shuttleengines.go holds them in its registry, a package-level var.
+				switch d := decl.(type) {
+				case *ast.FuncDecl:
+					if registrar.file != "configreg.go" || d.Recv != nil || d.Name.Name != "Modules" {
+						continue
+					}
+					collectTemplatePackages(t, d.Body, importPaths, registered)
+				case *ast.GenDecl:
+					if registrar.file != "shuttleengines.go" || d.Tok != token.VAR {
+						continue
+					}
+					collectTemplatePackages(t, d, importPaths, registered)
+				}
 			}
-			ast.Inspect(fn.Body, func(n ast.Node) bool {
-				sel, ok := n.(*ast.SelectorExpr)
-				if !ok || sel.Sel.Name != templateIdentity {
-					return true
-				}
-				ident, ok := sel.X.(*ast.Ident)
-				if !ok {
-					return true
-				}
-				p, ok := importPaths[ident.Name]
-				if !ok || !strings.HasPrefix(p, modulePrefix) {
-					t.Errorf("Modules() references %s.%s, which is not a module-local import", ident.Name, templateIdentity)
-					return true
-				}
-				registered[strings.TrimPrefix(p, modulePrefix)] = true
-				return true
-			})
+		})
+	}
+	for _, registrar := range registrars {
+		if !found[registrar.file] {
+			t.Fatalf("%s not found", registrar.file)
 		}
-	})
-	if !found {
-		t.Fatal("configreg.go not found")
 	}
 	if len(registered) == 0 {
 		t.Fatal("Modules() references no ConfigTemplate")
 	}
 	return registered
+}
+
+// collectTemplatePackages records into registered the package of every ConfigTemplate selector under root, resolving import names through importPaths.
+func collectTemplatePackages(t *testing.T, root ast.Node, importPaths map[string]string, registered map[string]bool) {
+	t.Helper()
+	ast.Inspect(root, func(n ast.Node) bool {
+		sel, ok := n.(*ast.SelectorExpr)
+		if !ok || sel.Sel.Name != templateIdentity {
+			return true
+		}
+		ident, ok := sel.X.(*ast.Ident)
+		if !ok {
+			return true
+		}
+		p, ok := importPaths[ident.Name]
+		if !ok || !strings.HasPrefix(p, modulePrefix) {
+			t.Errorf("registry references %s.%s, which is not a module-local import", ident.Name, templateIdentity)
+			return true
+		}
+		registered[strings.TrimPrefix(p, modulePrefix)] = true
+		return true
+	})
 }

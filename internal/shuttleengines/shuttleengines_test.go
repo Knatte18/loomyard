@@ -8,12 +8,16 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 // forksWithoutAuditEngine declares RequirementForks through Supports but has no ForkAuditor.
@@ -23,25 +27,94 @@ func (forksWithoutAuditEngine) Supports(req shuttleengine.Requirement) bool {
 	return req == shuttleengine.RequirementForks
 }
 
+// writeLocalLayer writes content as module's local layer file under anchor.
+func writeLocalLayer(t *testing.T, anchor, module, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(anchor, lyxdirs.LyxDirName), 0o755); err != nil {
+		t.Fatalf("mkdir _lyx: %v", err)
+	}
+	localFile := configengine.LocalFile(anchor, module)
+	if err := os.MkdirAll(filepath.Dir(localFile), 0o755); err != nil {
+		t.Fatalf("mkdir local dir: %v", err)
+	}
+	if err := os.WriteFile(localFile, []byte(content), 0o644); err != nil {
+		t.Fatalf("write local file: %v", err)
+	}
+}
+
 // loadWithLocalEngine loads a shuttle config over a temp anchor whose local layer file sets engine: bogus.
 func loadWithLocalEngine(t *testing.T) shuttleengine.Config {
 	t.Helper()
 	anchor := t.TempDir()
-	if err := os.Mkdir(filepath.Join(anchor, lyxdirs.LyxDirName), 0o755); err != nil {
-		t.Fatalf("mkdir _lyx: %v", err)
-	}
-	localFile := configengine.LocalFile(anchor, "shuttle")
-	if err := os.MkdirAll(filepath.Dir(localFile), 0o755); err != nil {
-		t.Fatalf("mkdir local dir: %v", err)
-	}
-	if err := os.WriteFile(localFile, []byte("engine: bogus\n"), 0o644); err != nil {
-		t.Fatalf("write local file: %v", err)
-	}
+	writeLocalLayer(t, anchor, "shuttle", "engine: bogus\n")
 	cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: anchor}, "shuttle")
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
 	return cfg
+}
+
+// invalidClaudeConfigFixture builds a temp anchor whose claude.local.yaml holds a key the local layer refuses.
+// The anchor's shuttle.local.yaml holds two prompt-cache roles, and the fixture returns the shuttle config loaded over it.
+func invalidClaudeConfigFixture(t *testing.T) (shuttleengine.Config, configengine.Dirs) {
+	t.Helper()
+	anchor := t.TempDir()
+	writeLocalLayer(t, anchor, "claude", "binary: /x\n")
+	writeLocalLayer(t, anchor, "shuttle", "claude_prompt_cache_ttl_roles:\n  alpha: 5m\n  beta: 1h\n")
+	dirs := configengine.Dirs{Anchor: anchor}
+	cfg, err := shuttleengine.LoadConfig(dirs, "shuttle")
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	return cfg, dirs
+}
+
+// assertBadClaudeConfigRefusesOnlyARunStart pins that a claude.yaml the local layer refuses stops a run start.
+// Stopping a strand and reading activity, waits and session states still work.
+func assertBadClaudeConfigRefusesOnlyARunStart(t *testing.T, set shuttleengine.EngineSet, cfg shuttleengine.Config, dirs configengine.Dirs) {
+	t.Helper()
+	reed := &shuttlefake.Reed{Strands: []reedengine.StrandStatus{{GUID: "live-guid", Name: "alpha", Live: true}}}
+	runner := shuttleengine.NewRunner(reed, set, dirs.Anchor, dirs.Anchor, cfg)
+
+	if err := runner.StopStrand("live-guid"); err != nil {
+		t.Fatalf("StopStrand: %v", err)
+	}
+	if got, want := reed.RemovedGUIDs, []string{"live-guid"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("RemovedGUIDs = %v; want %v", got, want)
+	}
+	if _, err := shuttleengine.ReadAgentActivity(cfg, dirs.Anchor, set); err != nil {
+		t.Errorf("ReadAgentActivity: %v", err)
+	}
+	if _, err := shuttleengine.ReadAgentWaits(cfg, dirs.Anchor, set, time.Now()); err != nil {
+		t.Errorf("ReadAgentWaits: %v", err)
+	}
+	if _, err := shuttleengine.ReadSessionStates(cfg, dirs.Anchor, set, time.Now()); err != nil {
+		t.Errorf("ReadSessionStates: %v", err)
+	}
+
+	// A strand no run record names is driven without loading engine config, so the refusal is never a config error.
+	shortCfg := cfg
+	shortCfg.SendReadyTimeoutS = 1
+	recordless := shuttleengine.NewRunner(reed, set, dirs.Anchor, dirs.Anchor, shortCfg)
+	for name, call := range map[string]func() error{
+		"Send":      func() error { return recordless.Send("live-guid", "hello") },
+		"Interrupt": func() error { return recordless.Interrupt("live-guid") },
+	} {
+		if err := call(); err != nil && strings.Contains(err.Error(), "claude.local.yaml") {
+			t.Errorf("recordless %s error = %v; want no engine config error", name, err)
+		}
+	}
+
+	spec := shuttleengine.Spec{Prompt: "p", OutputFiles: []string{filepath.Join(dirs.Anchor, "out.md")}}
+	_, err := runner.Start(spec)
+	if err == nil {
+		t.Fatal("Start accepted a run over an invalid claude.yaml")
+	}
+	for _, want := range []string{"claude.local.yaml", "binary"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("Start error %q does not contain %q", err, want)
+		}
+	}
 }
 
 // TestNew pins the set the template config builds and the refusal of an engine name no layer may smuggle in.
@@ -54,16 +127,23 @@ func TestNew(t *testing.T) {
 	}
 
 	forksWithoutAudit := map[string]constructor{
-		"nofork": func(shuttleengine.Config) shuttleengine.Engine { return forksWithoutAuditEngine{} },
+		"nofork": func(shuttleengine.Config, configengine.Dirs) shuttleengine.Engine { return forksWithoutAuditEngine{} },
 	}
 	unregistered := []string{"bogus", "registered engines: claude", "engine: in shuttle.yaml"}
+	invalidClaudeCfg, invalidClaudeDirs := invalidClaudeConfigFixture(t)
 	tests := []struct {
 		name         string
 		cfg          shuttleengine.Config
+		dirs         configengine.Dirs
 		constructors map[string]constructor
 		wantErr      []string
+		// after, when set, runs against the built set.
+		after func(t *testing.T, set shuttleengine.EngineSet)
 	}{
 		{name: "TemplateConfig", cfg: templateCfg},
+		{name: "InvalidEngineConfig", cfg: invalidClaudeCfg, dirs: invalidClaudeDirs, after: func(t *testing.T, set shuttleengine.EngineSet) {
+			assertBadClaudeConfigRefusesOnlyARunStart(t, set, invalidClaudeCfg, invalidClaudeDirs)
+		}},
 		{name: "UnregisteredEngine", cfg: shuttleengine.Config{Engine: "bogus"}, wantErr: unregistered},
 		{name: "UnregisteredEngineFromLocalLayer", cfg: loadWithLocalEngine(t), wantErr: unregistered},
 		{name: "EngineDeclaringForksWithoutAudit", cfg: shuttleengine.Config{Engine: "nofork"}, constructors: forksWithoutAudit, wantErr: []string{`engine "nofork" declares forks but cannot audit them`}},
@@ -74,9 +154,9 @@ func TestNew(t *testing.T) {
 			var set shuttleengine.EngineSet
 			var err error
 			if tt.constructors != nil {
-				set, err = build(tt.cfg, tt.constructors)
+				set, err = build(tt.cfg, tt.dirs, tt.constructors)
 			} else {
-				set, err = New(tt.cfg)
+				set, err = New(tt.cfg, tt.dirs)
 			}
 			if tt.wantErr != nil {
 				if err == nil {
@@ -102,6 +182,9 @@ func TestNew(t *testing.T) {
 			if got, want := set.Names(), []string{"claude"}; !reflect.DeepEqual(got, want) {
 				t.Errorf("Names() = %v; want %v", got, want)
 			}
+			if tt.after != nil {
+				tt.after(t, set)
+			}
 		})
 	}
 }
@@ -118,5 +201,73 @@ func TestNames_EqualModelspecEngineNames(t *testing.T) {
 	modelspec.EngineNames()[0] = "overwritten"
 	if got, want := Names(), modelspec.EngineNames(); !reflect.DeepEqual(got, want) {
 		t.Errorf("after overwriting a returned slice, Names() = %v; want modelspec.EngineNames() = %v", got, want)
+	}
+}
+
+// TestEnvScrub_MatchesTmuxkitServerEnviron pins the registered engines' scrub against the kit's server-environment filter, and the union over several entries as sorted and deduplicated.
+func TestEnvScrub_MatchesTmuxkitServerEnviron(t *testing.T) {
+	t.Parallel()
+
+	environ := []string{
+		"HOME=/home/x", "CLAUDECODE=1", "CLAUDE_CODE_ENTRYPOINT=cli", "CLAUDE_CODEX=keep",
+		"LYX_TRACE_ID=abc", "LYX_STRAND_NAME=ab:orch", "LYX_PARENT=ab:driver", "LYX_OTHER=keep", "PATH=/bin",
+	}
+
+	clean, _ := EnvScrub().Apply(environ)
+	var want []string
+	for _, entry := range clean {
+		switch strings.SplitN(entry, "=", 2)[0] {
+		case "LYX_TRACE_ID", "LYX_STRAND_NAME", "LYX_PARENT":
+		default:
+			want = append(want, entry)
+		}
+	}
+	if got := tmuxkit.ServerEnviron(environ); !reflect.DeepEqual(got, want) {
+		t.Errorf("tmuxkit.ServerEnviron = %q; want %q", got, want)
+	}
+
+	union := scrubOf(map[string]entry{
+		"one": {scrub: reedengine.EnvScrub{Names: []string{"B", "A"}, Prefixes: []string{"Y_", "X_"}}},
+		"two": {scrub: reedengine.EnvScrub{Names: []string{"B", "C"}, Prefixes: []string{"X_"}}},
+	})
+	wantUnion := reedengine.EnvScrub{Names: []string{"A", "B", "C"}, Prefixes: []string{"X_", "Y_"}}
+	if !reflect.DeepEqual(union, wantUnion) {
+		t.Errorf("scrubOf = %+v; want %+v", union, wantUnion)
+	}
+}
+
+// namingEngine is an engine that also implements reedengine.SessionNamer.
+type namingEngine struct{ shuttleengine.Engine }
+
+func (namingEngine) SessionNameDrift(string, string, string) bool { return false }
+
+func (namingEngine) SessionIdle(string) bool { return false }
+
+func (namingEngine) RenameText(want string) string { return want }
+
+// TestSessionNamers pins that the claude tag and the empty tag both map to the claude engine and no other tag is present,
+// and that namersOf maps only the engines that implement a session namer.
+func TestSessionNamers(t *testing.T) {
+	t.Parallel()
+
+	namers := SessionNamers()
+	if len(namers) != 2 {
+		t.Errorf("SessionNamers tags = %v; want exactly claude and the empty tag", namers)
+	}
+	for _, tag := range []string{"claude", ""} {
+		if _, ok := namers[tag].(*claudeengine.Claude); !ok {
+			t.Errorf("SessionNamers[%q] = %T; want *claudeengine.Claude", tag, namers[tag])
+		}
+	}
+
+	got := namersOf(map[string]shuttleengine.Engine{
+		"naming":   namingEngine{},
+		"unnaming": forksWithoutAuditEngine{},
+	})
+	if len(got) != 1 {
+		t.Errorf("namersOf tags = %v; want only naming", got)
+	}
+	if _, ok := got["naming"]; !ok {
+		t.Errorf("namersOf = %v; want the engine implementing SessionNamer under its name", got)
 	}
 }

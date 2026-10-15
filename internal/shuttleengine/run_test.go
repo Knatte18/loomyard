@@ -236,6 +236,7 @@ func TestRunner_Start_HappyPath(t *testing.T) {
 		want := reedengine.AddSpec{
 			Role:      "reviewer",
 			Segment:   "review",
+			Provider:  "fake",
 			Parent:    "parent-guid",
 			Cmd:       "launch-cmd",
 			ResumeCmd: "resume-cmd",

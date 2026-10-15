@@ -84,8 +84,8 @@ func TestRunner_Open(t *testing.T) {
 			t.Fatalf("AddStrand calls = %v; want one", reed.AddStrandCalls)
 		}
 		add := reed.AddStrandCalls[0]
-		if add.Role != "explore" || add.NameOverride != "" || add.Segment != "review" || add.SessionID != "session-9" {
-			t.Errorf("AddStrand spec = %+v; want role explore, no name override, segment review, the launch's session id", add)
+		if add.Role != "explore" || add.NameOverride != "" || add.Segment != "review" || add.SessionID != "session-9" || add.Provider != "fake" {
+			t.Errorf("AddStrand spec = %+v; want role explore, no name override, segment review, the launch's session id, the engine's name as provider", add)
 		}
 		if add.Display != (render.Display{Anchor: render.AnchorOwnWindow}) {
 			t.Errorf("Display = %+v; want the own-window anchor alone", add.Display)

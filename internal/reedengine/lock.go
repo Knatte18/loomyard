@@ -50,16 +50,23 @@ type Engine struct {
 	stateLoadNotices stateLoadNotices
 	// build is this binary's VCS identity, which the navigation bindings' build stamp names.
 	build buildvcs.Identity
+	// scrub is the set of environment keys the tmux server spawn must not inherit.
+	scrub EnvScrub
 }
 
-// New builds an Engine for the given Config and Geometry.
+// New builds an Engine for the given Config, Geometry and EnvScrub.
 // The caller owns populating every Geometry field; New validates none of them.
 // hubgeom.ReedGeometry is the hub-mode answer.
-func New(cfg Config, geom Geometry) *Engine {
+// New panics when scrub holds no name and no prefix: an engine registry always declares keys, so an empty set is a wiring defect.
+func New(cfg Config, geom Geometry, scrub EnvScrub) *Engine {
+	if len(scrub.Names) == 0 && len(scrub.Prefixes) == 0 {
+		panic("reedengine: New needs a non-empty EnvScrub")
+	}
 	return &Engine{
-		cfg:  cfg,
-		geom: geom,
-		tmux: NewTmuxCmd(cfg.Tmux, geom.SocketKey),
+		cfg:   cfg,
+		geom:  geom,
+		scrub: scrub,
+		tmux:  NewTmuxCmd(cfg.Tmux, geom.SocketKey),
 
 		warnOut: os.Stderr,
 		build:   buildvcs.Running(),

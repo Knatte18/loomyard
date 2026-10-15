@@ -640,7 +640,7 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 		NameShortname: "tc",
 		NameSlug:      "tslug",
 	}
-	e := New(cfg, geom)
+	e := New(cfg, geom, testScrub)
 
 	// Registered before the Down cleanup so it runs after it (cleanups run last-in-first-out).
 	// It is the belt-and-suspenders guard against a leaked scratch server on a genuine test failure that never reached RemoveStrand, and it removes the server's socket file.
@@ -758,7 +758,7 @@ func TestDeadSelvagePaneIsHealedByUpWithoutCorruptingLayout(t *testing.T) {
 		NameShortname: "tc",
 		NameSlug:      "tslug",
 	}
-	e := New(cfg, geom)
+	e := New(cfg, geom, testScrub)
 
 	tmuxkit.KillOnCleanup(t, cfg.Tmux, geom.SocketKey)
 	t.Cleanup(func() {

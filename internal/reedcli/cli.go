@@ -24,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/spf13/cobra"
 )
 
@@ -151,7 +152,7 @@ rather than booting substrate it cannot reach.`,
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
-			c.eng = reedengine.New(cfg, reedGeom)
+			c.eng = reedengine.New(cfg, reedGeom, shuttleengines.EnvScrub())
 			c.hubPath = location.HubPath
 			c.anchorPath = location.AnchorPath()
 			return nil

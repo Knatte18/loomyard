@@ -81,17 +81,12 @@ exit 0
 	return path
 }
 
-// integrationDriverShuttleConfig returns shuttle's shipped config template with the claude key
-// pointed at stubPath -- this file's whole point is proving a real production spawn returns without
-// waiting, so the provider path must resolve to a real (if stubbed) executable.
-// It also probes startup every poll (liveness_every_n_polls: 1, 500ms) instead of the template's every
-// tenth (5s): shuttle's startup step probes once immediately, before the stub has printed its ready
-// marker, then sleeps a whole probe interval, so at the shipped cadence Start returns no sooner than
-// 5s regardless of how fast the provider is ready -- longer than the stub's settle delay, which this
-// file's assertion measures against.
-func integrationDriverShuttleConfig(stubPath string) string {
+// integrationDriverShuttleConfig returns shuttle's shipped config template probing startup every poll (liveness_every_n_polls: 1, 500ms) instead of the template's every tenth (5s).
+// Shuttle's startup step probes once immediately, before the stub has printed its ready marker, then sleeps a whole probe interval.
+// At the shipped cadence Start therefore returns no sooner than 5s regardless of how fast the provider is ready.
+// That is longer than the stub's settle delay this file's assertion measures against.
+func integrationDriverShuttleConfig() string {
 	cfg := shuttleengine.ConfigTemplate()
-	cfg = strings.Replace(cfg, "claude: ${env:LYX_SHUTTLE_CLAUDE:-}", "claude: "+stubPath, 1)
 	return strings.Replace(cfg, "liveness_every_n_polls: 10 ", "liveness_every_n_polls: 1 ", 1)
 }
 
@@ -120,8 +115,9 @@ func TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver(t *testing.
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.SeedConfig(t, h, map[string]string{
+		"claude":  claudeConfigWithBinary(stubPath),
 		"reed":    reedengine.ConfigTemplate(),
-		"shuttle": integrationDriverShuttleConfig(stubPath),
+		"shuttle": integrationDriverShuttleConfig(),
 		"webster": websterengine.ConfigTemplate(),
 	})
 	const slug = "loom-integration-driver-task"

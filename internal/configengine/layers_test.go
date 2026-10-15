@@ -135,8 +135,31 @@ func TestLoad_LayerStack(t *testing.T) {
 		strictErr string
 		// wantFill is the keys of the one template fill line; empty means no fill line.
 		wantFill string
-		want     map[string]string
+		// retired is the spec's retired keys, and wantAbsent the top-level keys the resolved document must lack.
+		retired    map[string]configengine.Category
+		wantAbsent []string
+		want       map[string]string
 	}{
+		{
+			name: "retired keys of the worktree and local layers resolve as absent",
+			files: map[configengine.Layer]string{
+				configengine.LayerDefault:  fullDefault,
+				configengine.LayerWorktree: "gone: 1\nport: 5\n",
+				configengine.LayerLocal:    "gone_map:\n  a: 1\nname: l\n",
+			},
+			retired:    map[string]configengine.Category{"gone": configengine.CategoryNone, "gone_map": configengine.CategoryNone},
+			wantAbsent: []string{"gone", "gone_map"},
+			want:       map[string]string{"name": "l", "port": "5", "nested": "map[deep:2]", "list": "[x y]", "run": "sh"},
+		},
+		{
+			name: "a dotted retired key drops only its own entry",
+			files: map[configengine.Layer]string{
+				configengine.LayerDefault:  fullDefault,
+				configengine.LayerWorktree: "nested:\n  deep: 3\n  gone: 1\n",
+			},
+			retired: map[string]configengine.Category{"nested.gone": configengine.CategoryNone},
+			want:    map[string]string{"nested": "map[deep:3]"},
+		},
 		{
 			name:     "template fills every depth the layers lack",
 			files:    map[configengine.Layer]string{configengine.LayerDefault: "name: d\n"},
@@ -254,6 +277,7 @@ func TestLoad_LayerStack(t *testing.T) {
 			}
 			spec := layerSpec()
 			spec.HubWide = tc.hubWide
+			spec.RetiredKeys = tc.retired
 
 			var resolved []byte
 			if tc.strictErr != "" {
@@ -294,6 +318,11 @@ func TestLoad_LayerStack(t *testing.T) {
 					t.Errorf("%s = %q; want %q\nresolved:\n%s", key, got[key], want, resolved)
 				}
 			}
+			for _, key := range tc.wantAbsent {
+				if _, held := got[key]; held {
+					t.Errorf("resolved document holds retired key %q\nresolved:\n%s", key, resolved)
+				}
+			}
 		})
 	}
 }
@@ -311,12 +340,29 @@ func TestValidateLocal(t *testing.T) {
 		Categories:   map[string]configengine.Category{"sonnet": configengine.CategoryNone},
 	}
 
+	retired := layerSpec()
+	retired.RetiredKeys = map[string]configengine.Category{
+		"gone_scalar": configengine.CategoryNone,
+		"gone_map":    configengine.CategoryNone,
+		"gone_guard":  configengine.CategoryGuard,
+		"gone_run":    configengine.CategoryExecutable,
+		"old":         configengine.CategoryGuard,
+		"old.open":    configengine.CategoryNone,
+	}
+
 	tests := []struct {
 		name    string
 		spec    configengine.Spec
 		doc     string
 		wantErr string
 	}{
+		{name: "retired none scalar", spec: retired, doc: "gone_scalar: 1\n"},
+		{name: "units under a retired none map", spec: retired, doc: "gone_map:\n  a: 1\n  b: 2\n"},
+		{name: "retired none key holding a mapping the template never held", spec: retired, doc: "gone_scalar:\n  a: 1\n"},
+		{name: "retired guard key", spec: retired, doc: "gone_guard: x\n", wantErr: "gone_guard"},
+		{name: "retired executable key", spec: retired, doc: "gone_run: x\n", wantErr: "gone_run"},
+		{name: "longest retired key admits its none entry", spec: retired, doc: "old:\n  open:\n    a: 1\n"},
+		{name: "longest retired key refuses the guard remainder", spec: retired, doc: "old:\n  shut: 1\n", wantErr: "old"},
 		{name: "empty document", spec: layerSpec(), doc: ""},
 		{name: "comment-only document", spec: layerSpec(), doc: "# nothing\n"},
 		{name: "unclassified keys of a per-worktree module", spec: layerSpec(), doc: "name: x\nport: 81\n"},

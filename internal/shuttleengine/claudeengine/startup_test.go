@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -376,8 +377,8 @@ func TestComposeSend(t *testing.T) {
 		redrawSettle time.Duration
 	}{
 		{"default settle", New(), 300 * time.Millisecond},
-		{"configured settle", NewFromConfig(shuttleengine.Config{SubmitSettleMS: 120, SubmitRedrawSettleMS: 80}), 80 * time.Millisecond},
-		{"zero redraw settle reads at once", NewFromConfig(shuttleengine.Config{SubmitSettleMS: 120}), 0},
+		{"configured settle", NewFromConfig(shuttleengine.Config{SubmitSettleMS: 120, SubmitRedrawSettleMS: 80}, configengine.Dirs{}), 80 * time.Millisecond},
+		{"zero redraw settle reads at once", NewFromConfig(shuttleengine.Config{SubmitSettleMS: 120}, configengine.Dirs{}), 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

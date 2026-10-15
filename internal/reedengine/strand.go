@@ -46,6 +46,8 @@ type AddSpec struct {
 	DoneWhen []string
 	// Segment is stamped verbatim onto the new strand's Segment.
 	Segment string
+	// Provider is stamped verbatim onto the new strand's Provider.
+	Provider string
 }
 
 // Removed reports every strand RemoveStrand deleted: the target plus its whole cascaded descendant
@@ -371,6 +373,7 @@ func (e *Engine) addStrandLocked(st *ReedState, spec AddSpec) (Strand, error) {
 		Display:   spec.Display,
 		DoneWhen:  spec.DoneWhen,
 		Segment:   spec.Segment,
+		Provider:  spec.Provider,
 	})
 	strand := &st.Strands[len(st.Strands)-1]
 

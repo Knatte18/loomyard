@@ -334,7 +334,7 @@ func enterSession(hub, tmuxPath, sessionName string) (watchedSession, error) {
 		return watchedSession{}, err
 	}
 	cfg.Tmux = tmuxPath
-	eng := reedengine.New(cfg, geom)
+	eng := reedengine.New(cfg, geom, shuttleengines.EnvScrub())
 
 	// A worktree reaches the daemon's discovery loop only after "lyx reed up" already booted it,
 	// and that boot already validated cfg.Watchdog loudly (ensureServerAndSessionLocked), so the
@@ -352,7 +352,7 @@ func enterSession(hub, tmuxPath, sessionName string) (watchedSession, error) {
 		}
 	}()
 	go func() {
-		if err := eng.WatchNames(ctx, shuttleengines.SessionNamer()); err != nil {
+		if err := eng.WatchNames(ctx, shuttleengines.SessionNamers()); err != nil {
 			logger.Debug("reed: watchdog's name repair loop returned", "session", sessionName, "err", err)
 		}
 	}()

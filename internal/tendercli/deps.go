@@ -145,8 +145,8 @@ func newShuttlePair(location *lyxcwd.Location) (shuttlePair, error) {
 	if err != nil {
 		return shuttlePair{}, err
 	}
-	reed := reedengine.New(reedCfg, reedGeom)
-	engines, err := shuttleengines.New(shuttleCfg)
+	reed := reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub())
+	engines, err := shuttleengines.New(shuttleCfg, configDirs)
 	if err != nil {
 		return shuttlePair{}, err
 	}

@@ -10,6 +10,7 @@ import (
 
 // allowedImports are the only non-stdlib import paths production code in this package may use.
 var allowedImports = []string{
+	"github.com/Knatte18/loomyard/internal/configengine",
 	"github.com/Knatte18/loomyard/internal/shuttleengine",
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine",
 	"github.com/Knatte18/loomyard/internal/reedengine",
