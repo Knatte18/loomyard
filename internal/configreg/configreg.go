@@ -59,6 +59,9 @@ type Module struct {
 	// CheckValues, when non-nil, checks the values of a local-layer document after its keys pass configengine.ValidateLocal.
 	// It checks only the keys its module names, and returns an error marked configengine.ErrInvalid that names the key.
 	CheckValues func(document []byte) error
+	// CheckLoad runs the module's own loader over the layer stack under dirs and returns its error, discarding the loaded config.
+	// Every module sets it, so a write can be checked against exactly what a later reader refuses.
+	CheckLoad func(dirs configengine.Dirs) error
 	// Spec returns the module's own layered-load spec: its name, template, open maps, hub-wide flag and per-key classification.
 	Spec func() configengine.Spec
 	// LocalKeys are the keys of a hub-wide module a local override may set, derived from Spec.
@@ -80,6 +83,22 @@ func withLocalBounds(m Module) Module {
 	return m
 }
 
+// checkLoad adapts a loader to Module.CheckLoad.
+func checkLoad[T any](load func(configengine.Dirs) (T, error)) func(configengine.Dirs) error {
+	return func(dirs configengine.Dirs) error {
+		_, err := load(dirs)
+		return err
+	}
+}
+
+// checkLoadNamed adapts a loader that takes its module name to Module.CheckLoad.
+func checkLoadNamed[T any](load func(configengine.Dirs, string) (T, error), module string) func(configengine.Dirs) error {
+	return func(dirs configengine.Dirs) error {
+		_, err := load(dirs, module)
+		return err
+	}
+}
+
 // Modules returns the ordered list of all available config modules, each with its name and template
 // function.
 // The order is ALPHABETICAL and every caller-visible surface (help text, errors, menu numbering)
@@ -87,21 +106,21 @@ func withLocalBounds(m Module) Module {
 // Keep new entries in sort order.
 func Modules() []Module {
 	modules := []Module{
-		{Name: "batcher", Template: batcher.ConfigTemplate, OpenMaps: batcher.ConfigOpenMaps(), Migrate: batcher.MigrateConfig, Spec: batcher.ConfigSpec},
-		{Name: "batten", Template: battenshed.ConfigTemplate, Spec: battenshed.ConfigSpec},
-		{Name: "board", Template: boardengine.ConfigTemplate, OpenMaps: boardengine.ConfigOpenMaps(), HubWide: true, Spec: boardengine.ConfigSpec},
-		{Name: "burler", Template: burlerengine.ConfigTemplate, SeedOnly: true, Spec: burlerengine.ConfigSpec},
-		{Name: "darn", Template: darnengine.ConfigTemplate, HubWide: true, CheckValues: darnengine.ValidateLocalValues, Spec: darnengine.ConfigSpec},
-		{Name: "fabric", Template: fabricengine.ConfigTemplate, HubWide: true, Spec: fabricengine.ConfigSpec},
-		{Name: "gate", Template: gateslot.ConfigTemplate, HubWide: true, Spec: gateslot.ConfigSpec},
-		{Name: "landing", Template: landingshed.ConfigTemplate, HubWide: true, SeedsFromPrime: true, Spec: landingshed.ConfigSpec},
-		{Name: "logger", Template: loggerconfig.ConfigTemplate, Spec: loggerconfig.ConfigSpec},
-		{Name: "loom", Template: loomengine.ConfigTemplate, OpenMaps: loomengine.ConfigOpenMaps(), Migrate: loomengine.MigrateConfig, CheckValues: loomengine.ValidateLocalValues, Spec: loomengine.ConfigSpec},
-		{Name: "models", Template: modelspec.ConfigTemplate, SeedOnly: true, Spec: modelspec.ConfigSpec},
-		{Name: "orch", Template: orchengine.ConfigTemplate, Migrate: orchengine.MigrateConfig, Spec: orchengine.ConfigSpec},
-		{Name: "reed", Template: reedengine.ConfigTemplate, Spec: reedengine.ConfigSpec},
-		{Name: "shuttle", Template: shuttleengine.ConfigTemplate, OpenMaps: shuttleengine.ConfigOpenMaps(), Migrate: shuttleengine.MigrateConfig, Spec: shuttleengine.ConfigSpec},
-		{Name: "webster", Template: websterengine.ConfigTemplate, Spec: websterengine.ConfigSpec},
+		{Name: "batcher", Template: batcher.ConfigTemplate, OpenMaps: batcher.ConfigOpenMaps(), Migrate: batcher.MigrateConfig, CheckLoad: checkLoad(batcher.Active), Spec: batcher.ConfigSpec},
+		{Name: "batten", Template: battenshed.ConfigTemplate, CheckLoad: checkLoad(battenshed.LoadConfig), Spec: battenshed.ConfigSpec},
+		{Name: "board", Template: boardengine.ConfigTemplate, OpenMaps: boardengine.ConfigOpenMaps(), HubWide: true, CheckLoad: checkLoadNamed(boardengine.LoadConfig, "board"), Spec: boardengine.ConfigSpec},
+		{Name: "burler", Template: burlerengine.ConfigTemplate, SeedOnly: true, CheckLoad: checkLoad(burlerengine.LoadConfig), Spec: burlerengine.ConfigSpec},
+		{Name: "darn", Template: darnengine.ConfigTemplate, HubWide: true, CheckValues: darnengine.ValidateLocalValues, CheckLoad: checkLoadNamed(darnengine.LoadConfig, "darn"), Spec: darnengine.ConfigSpec},
+		{Name: "fabric", Template: fabricengine.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(fabricengine.LoadConfig), Spec: fabricengine.ConfigSpec},
+		{Name: "gate", Template: gateslot.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(gateslot.LoadConfig), Spec: gateslot.ConfigSpec},
+		{Name: "landing", Template: landingshed.ConfigTemplate, HubWide: true, SeedsFromPrime: true, CheckLoad: checkLoadNamed(landingshed.LoadConfig, "landing"), Spec: landingshed.ConfigSpec},
+		{Name: "logger", Template: loggerconfig.ConfigTemplate, CheckLoad: checkLoad(loggerconfig.Load), Spec: loggerconfig.ConfigSpec},
+		{Name: "loom", Template: loomengine.ConfigTemplate, OpenMaps: loomengine.ConfigOpenMaps(), Migrate: loomengine.MigrateConfig, CheckValues: loomengine.ValidateLocalValues, CheckLoad: checkLoadNamed(loomengine.LoadConfig, "loom"), Spec: loomengine.ConfigSpec},
+		{Name: "models", Template: modelspec.ConfigTemplate, SeedOnly: true, CheckLoad: checkLoad(modelspec.LoadRegistry), Spec: modelspec.ConfigSpec},
+		{Name: "orch", Template: orchengine.ConfigTemplate, Migrate: orchengine.MigrateConfig, CheckLoad: checkLoadNamed(orchengine.LoadConfig, "orch"), Spec: orchengine.ConfigSpec},
+		{Name: "reed", Template: reedengine.ConfigTemplate, CheckLoad: checkLoadNamed(reedengine.LoadConfig, "reed"), Spec: reedengine.ConfigSpec},
+		{Name: "shuttle", Template: shuttleengine.ConfigTemplate, OpenMaps: shuttleengine.ConfigOpenMaps(), Migrate: shuttleengine.MigrateConfig, CheckLoad: checkLoadNamed(shuttleengine.LoadConfig, "shuttle"), Spec: shuttleengine.ConfigSpec},
+		{Name: "webster", Template: websterengine.ConfigTemplate, CheckLoad: checkLoadNamed(websterengine.LoadConfig, "webster"), Spec: websterengine.ConfigSpec},
 	}
 	for i := range modules {
 		modules[i] = withLocalBounds(modules[i])
