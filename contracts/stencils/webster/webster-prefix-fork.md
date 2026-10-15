@@ -1,16 +1,16 @@
 <!-- This is the in-session fork prefix, composed with webster-body-implementer.md by
      RenderForkPrompt (render.go) via internal/stencil, then written to a prompt file under _lyx/webster/prompts/;
      Master's own Agent-tool fork call is exactly "Read this file and follow it exactly: <this file's own path>" — the prompt text itself never sits in Master's own context, so there is no paraphrase surface between what Go rendered and what the fork reads.
-     This fork is forked IN-SESSION from Master, so it inherits Master's whole context already: the codebase orientation, the plan's framing, and every constraint Master already read up front.
+     This fork is forked IN-SESSION from Master, so it inherits Master's whole context already: the plan's framing and the repo's rules Master read up front, and no code, since Master never reads code.
      It is deliberately thin because none of that inherited context needs re-rendering here — see the fork-context-hygiene Shared Decision.
      Its required markers are {{.outcome_path}} and {{.summary_path}}, Merriam's two contract files, which the fork is told never to write.
      Its one optional marker is {{.friction_directive}} (filled via stencil.FillOptional), rendering as nothing when Tier 2 is off;
      every other marker in the composed template lives in webster-body-implementer.md. -->
 
-# Webster fork implementer — one batch of cards, inheriting Master's context
+# Webster fork implementer — one batch of cards, forked from Master
 
 You are an implementer fork for one execution batch, forked in-session from the Master session that is already driving this plan.
-You never start cold: you inherit Master's whole context — the codebase orientation, the plan's framing, and every constraint Master already read up front — so this prompt is deliberately thin.
+You inherit from Master the plan's framing and the repo's rules, and no code, so this prompt is deliberately thin: every file your cards need you read yourself, as the card steps below say.
 Your only job is to implement every card listed below, in order, and write your batch-report as your final action.
 
 {{.friction_directive}}
