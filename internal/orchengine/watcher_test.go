@@ -1382,7 +1382,7 @@ func TestWatcher_HeldInjectionRecordsReasonLogsOncePerChangeWithinAHoldAndTypedL
 	if st := e.state(); st.Stuck != "" {
 		t.Errorf("Stuck = %q after the step was typed, want cleared", st.Stuck)
 	}
-	for _, want := range []string{"orch: injection typed", "step=plugins", "waited=7s"} {
+	for _, want := range []string{"orch: injection typed", "step=start-color", "step=plugins", "waited=7s"} {
 		if !strings.Contains(buf.String(), want) {
 			t.Errorf("log lacks %q:\n%s", want, buf.String())
 		}
@@ -2268,11 +2268,33 @@ func TestWatcher_StartTypesTheColorOnTheFirstIdleTickOnly(t *testing.T) {
 	}
 	e.assertNoCalls()
 
-	// A restarted watcher types it again, which is harmless.
+	// A watcher restarted on the same session, as a re-exec onto a new binary is, types nothing.
 	e.w = e.newWatcher()
 	e.tick()
+	if e.s.colors != 1 {
+		t.Fatalf("colors = %d, want the restarted watcher to type nothing", e.s.colors)
+	}
+
+	// A new launch on the strand types it once again.
+	e.setState(func(st *State) { st.LaunchedAt = st.LaunchedAt.Add(time.Minute) })
+	e.w = e.newWatcher()
+	e.tick()
+	e.tick()
 	if e.s.colors != 2 {
-		t.Fatalf("colors = %d, want the restarted watcher to type it again", e.s.colors)
+		t.Fatalf("colors = %d, want the color typed once for the new launch", e.s.colors)
+	}
+
+	// A failed typing records nothing, so a restarted watcher types it again.
+	e.setState(func(st *State) { st.LaunchedAt = st.LaunchedAt.Add(time.Minute) })
+	e.s.colorErr = errBoom
+	e.w = e.newWatcher()
+	e.tick()
+	e.s.colorErr = nil
+	e.w = e.newWatcher()
+	e.tick()
+	e.tick()
+	if e.s.colors != 4 {
+		t.Fatalf("colors = %d, want the failed color dropped and typed again after a restart", e.s.colors)
 	}
 }
 
@@ -2301,7 +2323,7 @@ func TestWatcher_RestartMidColorStepTypesItOnceWhenIdle(t *testing.T) {
 	e := newWatchEnv(t)
 	e.reachClearing()
 	e.tick() // color typed
-	e.setState(func(st *State) { st.ReloadStep, st.ReloadTypedAt = ReloadStepColor, time.Time{} })
+	e.setState(func(st *State) { st.ReloadStep, st.ReloadTypedAt, st.ColorStrand = ReloadStepColor, time.Time{}, "" })
 	before := e.s.colors
 	e.w = e.newWatcher()
 	e.s.idle = false
@@ -2316,6 +2338,13 @@ func TestWatcher_RestartMidColorStepTypesItOnceWhenIdle(t *testing.T) {
 	}
 	if st := e.state(); st.ReloadStep != ReloadStepPlugins {
 		t.Errorf("state = %+v, want the move to the plugins step", st)
+	}
+
+	// The color step's typing counts as typed for the session, so a re-exec types no start color.
+	e.w = e.newWatcher()
+	e.tick()
+	if e.s.colors != before+1 {
+		t.Errorf("colors typed = %d, want no start color after the color step", e.s.colors-before)
 	}
 }
 

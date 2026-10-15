@@ -87,8 +87,7 @@ type Watcher struct {
 	// It is memory only: a restarted watcher finds the boundary again at its next turn end, since the baseline has not moved.
 	compactedAt time.Time
 
-	// colorPending is true from binding to a strand until the first idle tick types the strand's color.
-	// It is memory only: a restarted watcher types the color again, which is harmless.
+	// colorPending is true from binding to a session the color was not yet typed for until the first idle tick types it.
 	colorPending bool
 
 	started bool   // Whether the cursor has been initialised from state.
@@ -364,19 +363,28 @@ func (w *Watcher) typeStartColor(st *State) error {
 		return nil
 	}
 	w.colorPending = false
-	return nil
+	if !colorTyped(*st) {
+		return nil
+	}
+	w.logTyped(*st, "start-color")
+	return w.save(*st)
 }
 
 // typeColor types the strand's color and logs a failure instead of returning it, so the color never wedges a start or a reload.
 // held is true when the session held the write, so the caller keeps the color pending and tries again on a later tick.
+// A typing that lands records the strand and launch in st, for the caller to save.
 func (w *Watcher) typeColor(st *State) (held bool) {
 	err := w.session.TypeColor(st.Strand)
 	held, saveErr := w.heldTyping(st, "color", err)
 	if saveErr != nil {
 		logger.Warn("orch: recording the held strand color failed", "strandGUID", st.Strand, "cause", saveErr)
 	}
-	if !held && err != nil {
+	switch {
+	case held:
+	case err != nil:
 		logger.Warn("orch: typing the strand color failed", "strandGUID", st.Strand, "cause", err)
+	default:
+		st.ColorStrand, st.ColorLaunchedAt = st.Strand, st.LaunchedAt
 	}
 	return held
 }
@@ -388,13 +396,13 @@ func (w *Watcher) initCursor(st State) (State, error) {
 	w.started, w.strand = true, st.Strand
 	w.newest, w.seen, w.replaying = nil, phaseEvents{}, false
 	w.compactedAt = time.Time{}
-	w.colorPending = true
 	w.idleDisagreement, w.hasIdleDisagreement = idleStatePair{}, false
 	w.lastHeld, w.heldSince, w.heldWaited, w.sessionStartLogged = "", time.Time{}, 0, time.Time{}
 	w.lastSendHeld = ""
 	switch {
 	case st.Phase == PhaseIdle:
 		w.cursor = st.LastInjectionOffset
+		w.colorPending = !colorTyped(st)
 		return st, nil
 	case st.PhaseStrand != st.Strand:
 		st = ResetForFreshLaunch(st, st.Strand, w.clock.Now())
@@ -404,7 +412,13 @@ func (w *Watcher) initCursor(st State) (State, error) {
 		w.cursor = st.PhaseEventsOffset
 		w.replaying = true
 	}
+	w.colorPending = !colorTyped(st)
 	return st, w.save(st)
+}
+
+// colorTyped reports whether st records the strand's color as typed for its current strand and launch.
+func colorTyped(st State) bool {
+	return st.ColorStrand == st.Strand && st.ColorLaunchedAt.Equal(st.LaunchedAt)
 }
 
 // toIdle returns st to idle, persisting the cursor read through and forgetting the newest event,
