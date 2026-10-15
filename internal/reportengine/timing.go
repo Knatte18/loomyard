@@ -389,8 +389,9 @@ func bucketRuns(runs []TimingRun, windows []bucketWindow) []TimingBucket {
 				waitTime[kind] += lengthOf(clipIntervals(parts, w.Interval))
 			}
 			for phase, seconds := range run.Phases {
-				if seconds != nil {
-					phaseTime[phase] += 0
+				// A phase the run holds but spends no time on in this bucket stays present as 0.
+				if _, seen := phaseTime[phase]; seconds != nil && !seen {
+					phaseTime[phase] = 0
 				}
 			}
 			for _, part := range run.parts {
