@@ -244,6 +244,8 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 			{"set-option", "-w", "-t", target, "window-size", "latest"},
 			// The fixture's tmux binary does not resolve, so the follow jump line is unset.
 			{"set-option", "-gu", "@lyx_follow_command"},
+			// The test binary carries no VCS stamp, so the bindings' build stamp is unset.
+			{"set-option", "-gu", "@lyx_bindings_build"},
 		}
 		if !slices.EqualFunc(calls, wantOptions, slices.Equal[[]string]) {
 			t.Errorf("pinGeometryOptionsLocked set-option calls = %v, want %v", calls, wantOptions)
@@ -263,15 +265,18 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 			{"set-option", "-t", target, "default-shell", "/bin/sh"},
 			{"set-option", "-t", target, "default-command", "/bin/sh"},
 		}
-		wantLast := []string{"set-option", "-gu", "@lyx_follow_command"}
-		if len(calls) < len(wantTail)+1 {
-			t.Fatalf("pinGeometryOptionsLocked set-option calls = %v, want at least the window-size pin, the two shell pins and the follow-command unset", calls)
+		wantLast := [][]string{
+			{"set-option", "-gu", "@lyx_follow_command"},
+			{"set-option", "-gu", "@lyx_bindings_build"},
 		}
-		if got := calls[len(calls)-1]; !slices.Equal(got, wantLast) {
-			t.Errorf("last set-option call = %v, want the follow-command unset %v", got, wantLast)
+		if len(calls) < len(wantTail)+len(wantLast) {
+			t.Fatalf("pinGeometryOptionsLocked set-option calls = %v, want at least the window-size pin, the two shell pins, the follow-command unset and the build-stamp unset", calls)
 		}
-		if got := calls[len(calls)-1-len(wantTail) : len(calls)-1]; !slices.EqualFunc(got, wantTail, slices.Equal[[]string]) {
-			t.Errorf("pinGeometryOptionsLocked set-option calls = %v, want them to end, before the follow-command unset, with the window-size pin and the two session-scoped shell pins %v", calls, wantTail)
+		if got := calls[len(calls)-len(wantLast):]; !slices.EqualFunc(got, wantLast, slices.Equal[[]string]) {
+			t.Errorf("last set-option calls = %v, want the follow-command and build-stamp unsets %v", got, wantLast)
+		}
+		if got := calls[len(calls)-len(wantLast)-len(wantTail) : len(calls)-len(wantLast)]; !slices.EqualFunc(got, wantTail, slices.Equal[[]string]) {
+			t.Errorf("pinGeometryOptionsLocked set-option calls = %v, want them to end, before the follow-command and build-stamp unsets, with the window-size pin and the two session-scoped shell pins %v", calls, wantTail)
 		}
 
 		fake = installFakeTmux(t, e)
@@ -364,7 +369,7 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()), "")
 		calls := fake.ArgvFor("set-option")
 
-		const wantCalls = 9
+		const wantCalls = 10
 		if len(calls) != wantCalls {
 			t.Fatalf("pinGeometryOptionsLocked issued %d set-option calls despite one erroring, want all %d still attempted: %v", len(calls), wantCalls, calls)
 		}
@@ -390,8 +395,8 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 				setOptionCalls++
 			}
 		}
-		if setOptionCalls != 9 {
-			t.Errorf("pinGeometryOptionsLocked calls = %v, want 9 set-option calls (the seven bar and border options, window-size and the follow-command pin)", calls)
+		if setOptionCalls != 10 {
+			t.Errorf("pinGeometryOptionsLocked calls = %v, want 10 set-option calls (the seven bar and border options, window-size, the follow-command pin and the build stamp)", calls)
 		}
 	})
 
@@ -452,8 +457,8 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 
 		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()), "")
 
-		if setOptionCalls := fake.Count("set-option"); setOptionCalls != 9 {
-			t.Errorf("set-option calls = %d, want 9 (all preceding pins still attempted despite the later set-hook error)", setOptionCalls)
+		if setOptionCalls := fake.Count("set-option"); setOptionCalls != 10 {
+			t.Errorf("set-option calls = %d, want 10 (all preceding pins still attempted despite the later set-hook error)", setOptionCalls)
 		}
 		// The unseen-clear pin and the resize-hook unset are both attempted while each errors.
 		if wantHooks, setHookErrors := 1+unseenClearPinCount(), fake.Count("set-hook"); setHookErrors != wantHooks {

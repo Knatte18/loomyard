@@ -287,8 +287,8 @@ func TestAttachArgv_PreflightOnAKnownGoodSession(t *testing.T) {
 		t.Fatalf("AttachArgv() = %v, want the chained argv on this known-good script", want)
 	}
 
-	// The seven bar and border pins plus the pre-existing window-size pin, the one follow-command pin (set, or unset when the jump cannot be composed), the window marker and the strand pane's two options.
-	wantSetOptionCalls := 12 + wantShellPins
+	// The seven bar and border pins plus the pre-existing window-size pin, the one follow-command pin (set, or unset when the jump cannot be composed), the build-stamp unset, the window marker and the strand pane's two options.
+	wantSetOptionCalls := 13 + wantShellPins
 	if setOptions := fake.ArgvFor("set-option"); len(setOptions) != wantSetOptionCalls {
 		t.Fatalf("AttachArgv() issued %d set-option calls, want %d: %v", len(setOptions), wantSetOptionCalls, setOptions)
 	}
