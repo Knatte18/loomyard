@@ -18,6 +18,7 @@
 // shuttleengine defines the Engine interface and its value types, and never imports a concrete
 // engine implementation (the provider-seam import rule, enforced by seam_enforcement_test.go in a
 // later batch) — concrete engines import shuttleengine, not the reverse.
+// Requirement support, resume-context rendering and instruction files are optional capabilities beside Engine, which an engine without them lacks.
 //
 // shuttle is told its anchor path and worktree root as plain strings, at Runner construction, and
 // derives neither — internal/lyxcwd is consequently absent from the package's production imports.

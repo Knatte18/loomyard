@@ -181,6 +181,53 @@ type Engine interface {
 	AuditForksIncremental(sessionID, workdir string, seenTranscripts map[string]bool) (ForkAudit, error)
 }
 
+// Requirement is one thing a run may require of its engine; the set is closed to the constants below.
+type Requirement string
+
+// Requirements a run may state of its engine.
+const (
+	// RequirementForks: the engine's sessions can spawn fork subagents.
+	RequirementForks Requirement = "forks"
+	// RequirementPeerMessaging: the engine's sessions can message peer sessions.
+	RequirementPeerMessaging Requirement = "peer-messaging"
+	// RequirementBackgroundWake: the engine's sessions wake on the completion of their own background work.
+	RequirementBackgroundWake Requirement = "background-wake"
+)
+
+// RequirementSupporter is an optional capability beside Engine: the provider's answer to whether it meets a Requirement.
+// An engine without it meets no requirement.
+type RequirementSupporter interface {
+	// Supports reports whether the engine meets req.
+	Supports(req Requirement) bool
+}
+
+// ForkAuditor is an optional capability beside Engine: the provider's read of its on-disk record of fork subagents.
+// An engine without it has no fork audit.
+type ForkAuditor interface {
+	// AuditForks reads the provider's on-disk record of fork subagents for a fork-authorized session (identified by sessionID).
+	// workdir is the pane's actual process cwd. Returns mechanical facts observed with no policy interpretation.
+	// Returns error (not zero ForkAudit) if the provider has no fork concept, so callers can distinguish "no forks" from "cannot audit".
+	AuditForks(sessionID, workdir string) (ForkAudit, error)
+	// AuditForksIncremental is AuditForks for callers that have already processed some fork transcripts and want only new ones.
+	// Parent facts (SpawnCalls, NamedSpawns, ParentWriteCalls, ParentWrites, ParentBashCommands) are always full/cumulative.
+	// Forks holds one ForkReport per transcript not in seenTranscripts; nil seenTranscripts reports every fork transcript (equivalent to AuditForks).
+	AuditForksIncremental(sessionID, workdir string, seenTranscripts map[string]bool) (ForkAudit, error)
+}
+
+// ResumeContextRenderer is an optional capability beside Engine: the provider's rendering of resume text as its session-start hook output.
+// An engine without it has no session-start context to render.
+type ResumeContextRenderer interface {
+	// ResumeContext renders text as the provider's session-start hook output.
+	ResumeContext(text string) ([]byte, error)
+}
+
+// InstructionFileLister is an optional capability beside Engine: the names of the files the provider loads as project instructions.
+// An engine without it has no project instruction files.
+type InstructionFileLister interface {
+	// InstructionFiles returns the file names the provider loads as project instructions.
+	InstructionFiles() []string
+}
+
 // SessionResumer is an optional capability beside Engine: the provider's check that an existing session may be resumed by a new run.
 // Runner.start requires it of an Engine whenever a spec carries a ResumeSessionID, so no run resumes a session unchecked.
 // It is separate from Engine for the same reason SessionCycler is: most implementers and test fakes never resume a session.

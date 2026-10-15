@@ -110,7 +110,7 @@ internal/shell: 14
 internal/shortcutcli: 2
 internal/shuttlecli: 26
 internal/shuttleengine: 174
-internal/shuttleengine/claudeengine: 112
+internal/shuttleengine/claudeengine: 113
 internal/standalonegeom: 7
 internal/standalonestate: 6
 internal/state: 9
