@@ -303,6 +303,7 @@ github.com/Knatte18/loomyard/
 ├── internal/pattern/             PATTERN directive leaf (root PATTERN.md inlined per role) + format checker
 ├── internal/friction/            the Tier 2 friction-note directive leaf, consumed by webster, burler, and loom
 ├── internal/shell/               provider-invariant pane-shell mechanics leaf (pwsh + posix)
+├── internal/shellguard/          the one neutral table of the guards lyx installs against shell commands, rendered by each engine
 ├── internal/commentlint/        the comment line-break lint: fixed-column wraps in the `//` comment blocks a diff creates, over a told worktree and base
 ├── internal/patternlint/        the PATTERN headroom lint: growth of the overview past its headroom line, over a told worktree and base
 ├── internal/impactset/          the round gate's impacted-set command: the packages a diff reaches over the import graph, plus the `//lyx:guard` tests, or a fallback reason to run the full verify

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shell"
+	"github.com/Knatte18/loomyard/internal/shellguard"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -291,11 +292,11 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 			}
 			pythonInstalled, rawGoInstalled, inPlaceInstalled, computedRmInstalled, sleepInstalled := false, false, false, false, false
 			for _, command := range matcherCommands(doc, "Bash") {
-				pythonInstalled = pythonInstalled || strings.Contains(command, steerPythonDeny)
-				rawGoInstalled = rawGoInstalled || strings.Contains(command, steerRawGoDeny)
-				inPlaceInstalled = inPlaceInstalled || strings.Contains(command, steerInPlaceEditDeny)
-				computedRmInstalled = computedRmInstalled || strings.Contains(command, steerComputedRmDeny)
-				sleepInstalled = sleepInstalled || strings.Contains(command, steerSleepDeny)
+				pythonInstalled = pythonInstalled || strings.Contains(command, shellRow(t, "python").Steer)
+				rawGoInstalled = rawGoInstalled || strings.Contains(command, shellRow(t, "raw-go").Steer)
+				inPlaceInstalled = inPlaceInstalled || strings.Contains(command, shellRow(t, "in-place-edit").Steer)
+				computedRmInstalled = computedRmInstalled || strings.Contains(command, shellRow(t, "computed-rm").Steer)
+				sleepInstalled = sleepInstalled || strings.Contains(command, shellRow(t, "machine-sleep").Steer)
 			}
 			if pythonInstalled != tt.pythonDeny {
 				t.Errorf("python Bash PreToolUse entry present = %v; want %v (preToolUse: %v)", pythonInstalled, tt.pythonDeny, preToolUse)
@@ -318,6 +319,45 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 				t.Errorf("PreToolUse = %v with no denies/marker configured; want only the raw go, in-place edit, computed-rm and sleep denies", preToolUse)
 			}
 		})
+	}
+}
+
+// shellRow returns the shellguard.Rows(bashForegroundPhrase) row named name, failing the test when none has it.
+func shellRow(t *testing.T, name string) shellguard.Row {
+	t.Helper()
+	for _, row := range shellguard.Rows(bashForegroundPhrase) {
+		if row.Name == name {
+			return row
+		}
+	}
+	t.Fatalf("shellguard.Rows has no row named %q", name)
+	return shellguard.Row{}
+}
+
+// TestStandingDenies_RenderEveryShellGuardRow pins that every shell guard row has exactly one standingDenies entry with matcher Bash, its steer and notice and the command shape of its pattern count, in table order after the Claude rows.
+func TestStandingDenies_RenderEveryShellGuardRow(t *testing.T) {
+	t.Parallel()
+
+	rows := shellguard.Rows(bashForegroundPhrase)
+	claudeCount := len(claudeDenies())
+	if len(standingDenies) != claudeCount+len(rows) {
+		t.Fatalf("standingDenies has %d entries; want %d Claude entries plus %d shell guard rows", len(standingDenies), claudeCount, len(rows))
+	}
+	for i, row := range rows {
+		deny := standingDenies[claudeCount+i]
+		if deny.matcher != "Bash" || deny.steer != row.Steer || deny.notice != row.Notice {
+			t.Errorf("standingDenies[%d] = {%q, steer %q, notice %q}; want the %q row's Bash entry with its steer and notice", claudeCount+i, deny.matcher, deny.steer, deny.notice, row.Name)
+		}
+		multiPattern := strings.HasPrefix(deny.command, "in=$(cat); ")
+		if multiPattern != (len(row.Patterns) > 1) {
+			t.Errorf("%q command = %q; want the several-pattern shape exactly when the row has several patterns", row.Name, deny.command)
+		}
+		if got := strings.Count(deny.command, "grep -Eq '"); got != len(row.Patterns) {
+			t.Errorf("%q command greps %d times; want one grep per pattern (%d)", row.Name, got, len(row.Patterns))
+		}
+		if !strings.HasSuffix(deny.command, "echo '"+denyJSON(row.Steer)+"'; true") {
+			t.Errorf("%q command = %q; want it to end with its deny JSON and `; true`", row.Name, deny.command)
+		}
 	}
 }
 
@@ -430,13 +470,13 @@ func TestBuildSettings_AgentAndBashHooks(t *testing.T) {
 			var bashCommands, rawGoCommands, inPlaceCommands, computedRmCommands, sleepCommands []string
 			for _, command := range matcherCommands(doc, "Bash") {
 				switch {
-				case strings.Contains(command, steerRawGoDeny):
+				case strings.Contains(command, shellRow(t, "raw-go").Steer):
 					rawGoCommands = append(rawGoCommands, command)
-				case strings.Contains(command, steerInPlaceEditDeny):
+				case strings.Contains(command, shellRow(t, "in-place-edit").Steer):
 					inPlaceCommands = append(inPlaceCommands, command)
-				case strings.Contains(command, steerComputedRmDeny):
+				case strings.Contains(command, shellRow(t, "computed-rm").Steer):
 					computedRmCommands = append(computedRmCommands, command)
-				case strings.Contains(command, steerSleepDeny):
+				case strings.Contains(command, shellRow(t, "machine-sleep").Steer):
 					sleepCommands = append(sleepCommands, command)
 				default:
 					bashCommands = append(bashCommands, command)
@@ -680,13 +720,13 @@ func TestBuildDenyNotice_SentenceContent(t *testing.T) {
 	}
 	nonFork := buildDenyNotice(false, cfg, false, false)
 	for name, notice := range map[string]string{"autonomous": nonFork, "interactive": buildDenyNotice(true, cfg, false, false), "fork": forkNotice} {
-		if !strings.Contains(notice, noticeInPlaceEditDeny) {
+		if !strings.Contains(notice, shellRow(t, "in-place-edit").Notice) {
 			t.Errorf("%s notice = %q; want it to contain the in-place edit sentence", name, notice)
 		}
-		if !strings.Contains(notice, noticeComputedRmDeny) {
+		if !strings.Contains(notice, shellRow(t, "computed-rm").Notice) {
 			t.Errorf("%s notice = %q; want it to contain the computed-rm sentence", name, notice)
 		}
-		if !strings.Contains(notice, noticeSleepDeny) {
+		if !strings.Contains(notice, shellRow(t, "machine-sleep").Notice) {
 			t.Errorf("%s notice = %q; want it to contain the sleep sentence", name, notice)
 		}
 	}

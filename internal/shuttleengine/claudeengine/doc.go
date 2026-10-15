@@ -158,6 +158,7 @@
 // Both the hooks and the notice are built from one deny table in settings.go, so the two cannot drift:
 // each row names its tool matcher, hook command, notice sentence and the run inputs that install it.
 // The webster fork guard has no notice sentence and is not announced.
+// The Bash denies below are not declared here: they render the rows of `internal/shellguard`'s table as PreToolUse(Bash) hooks, every row in table order after the Claude rows.
 // The python row denies a Bash command that runs `python`, `python3` or `python3.<minor>` in command position, in every run mode;
 // `shuttle.yaml`'s `claude_deny_python` switches it off for a Python target repo.
 // It is a guardrail, not a barrier: its hook greps the payload, so a quoted argument or heredoc body can trip it falsely, and python behind `bash -c`, `eval` or a launcher passes.
