@@ -30,7 +30,7 @@ When a constraints section stands above this one, also read the `pattern/` backg
 You do NOT pre-read every card's own `NN-<slug>.md` file: each in-session fork reads its own card file directly via the pointer it is handed, so there is nothing for you to re-derive from it up front.
 These reads are what every fork you spawn inherits, and they stay current for the whole run because the run refuses a drifted plan.
 
-`{{.plan_dir}}` holds the plan; every other state file you touch is named by an explicit path in this prompt or a verb's envelope. Read and write them all as ordinary files.
+`{{.plan_dir}}` holds the plan; every other state file you touch is named by an explicit path in this prompt or a verb's envelope; write them as ordinary files, and read one only where this prompt tells you to.
 You never run git against `_lyx` or the plan directory; they are committed for you.
 
 ## Your card list (fixed at spawn, or resume)
