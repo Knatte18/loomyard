@@ -31,7 +31,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -204,15 +203,6 @@ func ReworkDeps(t testing.TB, dir string) loomshed.PRReworkDeps {
 func FullEnv(t testing.TB) shedrecipe.Env {
 	t.Helper()
 	dir := t.TempDir()
-	specOver := func(prompt, output string) func() (shuttleengine.Spec, error) {
-		return func() (shuttleengine.Spec, error) {
-			return shuttleengine.Spec{
-				Prompt:      prompt,
-				OutputFiles: []string{filepath.Join(dir, output)},
-			}, nil
-		}
-	}
-
 	return shedrecipe.Env{
 		Cwd:                mustMkdir(t, filepath.Join(dir, "cwd")),
 		AnchorPath:         mustMkdir(t, filepath.Join(dir, "anchor")),
@@ -243,25 +233,41 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		WebsterRun: func(websterengine.RunDeps, websterengine.RunOptions) (websterengine.RunResult, error) {
 			return websterengine.RunResult{}, nil
 		},
-		WebsterDeps:    shedfake.WebsterSeams(),
-		CommitWebster:  func() error { return nil },
-		Landing:        LandingDeps(mustMkdir(t, filepath.Join(dir, "landing"))),
-		DiscussionSpec: specOver("test discussion prompt", "discussion-output.md"),
+		WebsterDeps:   shedfake.WebsterSeams(),
+		CommitWebster: func() error { return nil },
+		Landing:       LandingDeps(mustMkdir(t, filepath.Join(dir, "landing"))),
 		DiscussionTable: func() (seatengine.Table, error) {
 			return seatengine.Table{
 				RolePrefix: "discussion",
 				Segment:    segmentcolor.Discussion,
 				Seats: []seatengine.Seat{{
-					Name:    seatengine.RoleChair,
 					Stencil: "loom-template-discussion-chair",
 					Outputs: []string{filepath.Join(dir, "discussion-output.md")},
 				}},
 			}, nil
 		},
-		CommitDiscussion:   func() error { return nil },
-		DescribeSpec:       specOver("test describe prompt", "description.md"),
-		CommitDescription:  func() error { return nil },
-		PlanSpec:           specOver("test plan prompt", "plan-output.md"),
+		CommitDiscussion: func() error { return nil },
+		DescribeTable: func() (seatengine.Table, error) {
+			return seatengine.Table{
+				RolePrefix: "describe",
+				Segment:    segmentcolor.Describe,
+				Seats: []seatengine.Seat{{
+					Stencil: "landing-template-describe",
+					Outputs: []string{filepath.Join(dir, "description.md")},
+				}},
+			}, nil
+		},
+		CommitDescription: func() error { return nil },
+		PlanTable: func() (seatengine.Table, error) {
+			return seatengine.Table{
+				RolePrefix: "plan",
+				Segment:    segmentcolor.Plan,
+				Seats: []seatengine.Seat{{
+					Stencil: "loom-template-plan",
+					Outputs: []string{filepath.Join(dir, "plan-output.md")},
+				}},
+			}, nil
+		},
 		CommitPlan:         func() error { return nil },
 		ApprovePlan:        func() error { return nil },
 		SkipPlanReview:     func() (bool, error) { return false, nil },
@@ -270,19 +276,27 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		MergeReview:        func() string { return "none" },
 		CarryOver:          func(discussionparser.CarryOver) error { return nil },
 		ReflectFriction:    func() string { return "skipped" },
-		ReworkSpec: func(loomshed.ReworkTold) (shuttleengine.Spec, error) {
-			return shuttleengine.Spec{
-				Prompt:      "test rework prompt",
-				OutputFiles: []string{filepath.Join(dir, "rework-coverage.md")},
+		ReworkTable: func(loomshed.ReworkTold) (seatengine.Table, error) {
+			return seatengine.Table{
+				RolePrefix: "rework",
+				Segment:    segmentcolor.Webster,
+				Seats: []seatengine.Seat{{
+					Stencil: "loom-template-rework",
+					Outputs: []string{filepath.Join(dir, "rework-coverage.md")},
+				}},
 			}, nil
 		},
 		Rework:               ReworkDeps(t, dir),
 		DarnVerifyAttempts:   3,
 		DarnReviewMaxBounces: 1,
-		DarnSpec: func(loomshed.DarnTold) (shuttleengine.Spec, error) {
-			return shuttleengine.Spec{
-				Prompt:      "test darn prompt",
-				OutputFiles: []string{filepath.Join(dir, "darn-description.md")},
+		DarnTable: func(loomshed.DarnTold) (seatengine.Table, error) {
+			return seatengine.Table{
+				RolePrefix: "darn",
+				Segment:    segmentcolor.Darn,
+				Seats: []seatengine.Seat{{
+					Stencil: "darn-template-write",
+					Outputs: []string{filepath.Join(dir, "darn-description.md")},
+				}},
 			}, nil
 		},
 		Darn: loomshed.DarnDeps{

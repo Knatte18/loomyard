@@ -19,7 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -40,8 +40,20 @@ func (noFindingsPlanIndex) ValidateFormat(*planparser.Plan, string, []planparser
 	return nil, nil
 }
 
+// writeStencilFile writes content to the on-disk location stencilstore.Read(dir, name) resolves name to, creating any parent directory the family convention requires.
+func writeStencilFile(t *testing.T, dir, name, content string) {
+	t.Helper()
+	path := stencilstore.Path(dir, name)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir stencil parent %s: %v", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write stencil %s: %v", path, err)
+	}
+}
+
 // newTestEnv builds an Env whose every path field is an absolute path derived from a single t.TempDir(), one subdirectory per field: a directory field (Cwd, WorktreeRoot, StencilsDir, SpecsDir, RunRoot, AnchorPath, ScratchDir) is created with os.MkdirAll, while a file field (StatusPath, StatusLockPath, DecisionRecordPath, SupportLogPath, PrimeLock.Path) is left as a joined path nobody creates.
-// It fills Shuttle and Burler with shedfake's fakes and WebsterRun with this file's fake, fills WebsterDeps with shedfake.WebsterSeams, fills DiscussionSpec with a closure returning a shuttleengine.Spec over one absolute output path under the same temp root, fills DiscussionTable with a closure returning a one-chair seatengine.Table over one absolute output path under the same temp root, fills CommitDiscussion with a closure returning nil, fills PlanSpec with a closure returning a shuttleengine.Spec over one absolute output path under the same temp root, fills CommitPlan with a closure returning nil, leaves Landing zero, and leaves Now nil.
+// It fills Shuttle and Burler with shedfake's fakes and WebsterRun with this file's fake, fills WebsterDeps with shedfake.WebsterSeams, fills DiscussionTable with a closure returning a one-chair seatengine.Table over one absolute output path under the same temp root, fills CommitDiscussion with a closure returning nil, fills PlanTable with a closure returning a one-lead seatengine.Table over one absolute output path under the same temp root, fills CommitPlan with a closure returning nil, leaves Landing zero, and leaves Now nil.
 //
 // It also fills the six batten fields: a non-empty Slug, CreateWorktree returning nil, InnerRun
 // and Teardown whose own closures return nil or zero values, and a PrimeLock whose Path sits under
@@ -97,30 +109,25 @@ func newTestEnv(t *testing.T) Env {
 		ReflectFriction:    func() string { return "skipped" },
 		WebsterDeps:        shedfake.WebsterSeams(),
 		PlanIndex:          placeholderIndex{},
-		DiscussionSpec: func() (shuttleengine.Spec, error) {
-			return shuttleengine.Spec{
-				Prompt:      "test discussion prompt",
-				OutputFiles: []string{filepath.Join(dir, "discussion-output.md")},
-				Interactive: false,
-			}, nil
-		},
 		DiscussionTable: func() (seatengine.Table, error) {
 			return seatengine.Table{
 				RolePrefix: "discussion",
 				Segment:    segmentcolor.Discussion,
 				Seats: []seatengine.Seat{{
-					Name:    seatengine.RoleChair,
 					Stencil: "loom-template-discussion-chair",
 					Outputs: []string{filepath.Join(dir, "discussion-output.md")},
 				}},
 			}, nil
 		},
 		CommitDiscussion: func() error { return nil },
-		PlanSpec: func() (shuttleengine.Spec, error) {
-			return shuttleengine.Spec{
-				Prompt:      "test plan prompt",
-				OutputFiles: []string{filepath.Join(dir, "plan-output.md")},
-				Interactive: false,
+		PlanTable: func() (seatengine.Table, error) {
+			return seatengine.Table{
+				RolePrefix: "plan",
+				Segment:    segmentcolor.Plan,
+				Seats: []seatengine.Seat{{
+					Stencil: "loom-template-plan",
+					Outputs: []string{filepath.Join(dir, "plan-output.md")},
+				}},
 			}, nil
 		},
 		CommitPlan: func() error { return nil },

@@ -37,7 +37,7 @@ func (e *Engine) Probe(table Table) (LiveTable, error) {
 	}
 	advisors := make(map[string]Handle)
 	for _, seat := range table.Seats {
-		if seat.Name == RoleChair {
+		if seat.Name == leadName {
 			continue
 		}
 		handle, found, err := e.probeSeat(table, seat, nil)
@@ -105,7 +105,7 @@ func (e *Engine) Resume(table Table, live LiveTable) (Result, error) {
 	ender := newStepEnder()
 	var advisors []*seatRun
 	for _, seat := range table.Seats {
-		if seat.Name == RoleChair {
+		if seat.Name == leadName {
 			continue
 		}
 		outputs := e.absolute(seat.Outputs)

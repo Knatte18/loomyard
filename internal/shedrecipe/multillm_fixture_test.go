@@ -77,16 +77,16 @@ func TestMultiLLMFixtureRecipe_BuildsAndRunsAgainstFakeSeats(t *testing.T) {
 	}
 	want := []seatengine.Seat{
 		{
-			Name: seatengine.RoleChair, Stencil: "seatfixture-chair", Model: "claude-opus-test", Effort: "high",
+			Stencil: "seatfixture-chair", Model: "claude-opus-test", Effort: "high",
 			Inputs:  []string{filepath.Join(root, "in/spec.md"), filepath.Join(root, "seats/advisor-1.md"), filepath.Join(root, "seats/advisor-2.md")},
 			Outputs: []string{chairOutput},
 		},
 		{
-			Name: seatengine.AdvisorName(1), Stencil: "seatfixture-advisor", Model: "claude-opus-test", Effort: "high",
+			Name: "advisor-1", Stencil: "seatfixture-advisor", Model: "claude-opus-test", Effort: "high",
 			Outputs: []string{filepath.Join(root, "seats/advisor-1.md")},
 		},
 		{
-			Name: seatengine.AdvisorName(2), Stencil: "seatfixture-advisor", Model: "claude-opus-test", Effort: "high",
+			Name: "advisor-2", Stencil: "seatfixture-advisor", Model: "claude-opus-test", Effort: "high",
 			Outputs: []string{filepath.Join(root, "seats/advisor-2.md")},
 		},
 	}

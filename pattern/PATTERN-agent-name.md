@@ -8,6 +8,8 @@
 - The module that spawns an agent owns its role name as a constant declared in that module, never as an inline literal in the spawn spec.
   There is no shared list of roles, and `agentname`'s role set stays open.
   `cmd/lyx/spawnrole_test.go` is a tripwire that fails a `shuttleengine.Spec` or `reedengine.AddSpec` composite literal whose `Role` is a string literal.
+- A seat table's role is its prefix, declared in the spawning module, and its lead's role is the prefix alone.
+  A later seat's role suffix may come from the recipe or config, bounded by the role grammar and by the table's uniqueness check.
 - A full name never names a tmux session or socket, since tmux rewrites `:` and `.` there.
 - A run's parent is the worktree its pair was created from, recorded once in fabric's origin record.
   Its agent name is resolved at use as the orch role's name in that worktree through `internal/agentname`, and is never stored in a seed or read from the caller's environment.

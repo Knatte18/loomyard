@@ -9,9 +9,11 @@ package loomengine
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -19,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/yamlengine"
 	"gopkg.in/yaml.v3"
 )
 
@@ -90,11 +93,8 @@ func templateConfig() Config {
 		Discussion:               "opus[medium]",
 		DiscussionTimeoutMin:     480,
 		DiscussionInteractive:    false,
-		DiscussionProducer:       "single",
-		DiscussionAdvisors:       ModelSpecList{"sonnet[high]"},
 		Plan:                     "opus[medium]",
 		PlanTimeoutMin:           120,
-		PlanProducer:             "single",
 		Review:                   ModelSpecList{"opus[medium]"},
 		Fix:                      ModelSpecList{"opus[medium]"},
 		DiscussionReview:         ModelSpecList{""},
@@ -215,29 +215,9 @@ review_timeout_min: 240
 			mutate: func(c *Config) { c.DiscussionInteractive = true },
 		},
 		{
-			name:   "discussion_producer seats",
-			values: map[string]string{"discussion_producer": "seats"},
-			mutate: func(c *Config) { c.DiscussionProducer = "seats" },
-		},
-		{
-			name:   "discussion_producer twill",
-			values: map[string]string{"discussion_producer": "twill"},
-			mutate: func(c *Config) { c.DiscussionProducer = "twill" },
-		},
-		{
-			name:   "plan_producer twill",
-			values: map[string]string{"plan_producer": "twill"},
-			mutate: func(c *Config) { c.PlanProducer = "twill" },
-		},
-		{
-			name:   "empty plan_producer reads as single",
-			values: map[string]string{"plan_producer": `""`},
-			mutate: func(c *Config) { c.PlanProducer = "single" },
-		},
-		{
-			name:   "discussion_advisors as an empty string means no advisors",
-			values: map[string]string{"discussion_advisors": `""`},
-			mutate: func(c *Config) { c.DiscussionAdvisors = nil },
+			name:   "discussion_lenses and plan_lenses name the template fans",
+			values: map[string]string{"discussion_lenses": "twill-discussion", "plan_lenses": "twill-plan"},
+			mutate: func(c *Config) { c.DiscussionLenses, c.PlanLenses = "twill-discussion", "twill-plan" },
 		},
 		{
 			name:   "bare discussion_advisors key is null and means no advisors",
@@ -250,19 +230,16 @@ review_timeout_min: 240
 			mutate: func(c *Config) { c.DiscussionAdvisors = nil },
 		},
 		{
-			name:   "discussion_advisors as a list of one empty string means no advisors",
-			values: map[string]string{"discussion_advisors": `[""]`},
-			mutate: func(c *Config) { c.DiscussionAdvisors = nil },
+			name:   "discussion_advisors as one named entry",
+			values: map[string]string{"discussion_advisors": "[{name: critic, model: \"opus[low]\"}]"},
+			mutate: func(c *Config) { c.DiscussionAdvisors = DiscussionAdvisorList{{Name: "critic", Model: "opus[low]"}} },
 		},
 		{
-			name:   "discussion_advisors as one model-spec",
-			values: map[string]string{"discussion_advisors": "opus[low]"},
-			mutate: func(c *Config) { c.DiscussionAdvisors = ModelSpecList{"opus[low]"} },
-		},
-		{
-			name:   "discussion_advisors as a two-entry list",
-			values: map[string]string{"discussion_advisors": "\n  - sonnet[low]\n  - opus[high]"},
-			mutate: func(c *Config) { c.DiscussionAdvisors = ModelSpecList{"sonnet[low]", "opus[high]"} },
+			name:   "discussion_advisors as a two-entry block list",
+			values: map[string]string{"discussion_advisors": "\n  - name: critic\n    model: sonnet[low]\n  - name: skeptic\n    model: opus[high]"},
+			mutate: func(c *Config) {
+				c.DiscussionAdvisors = DiscussionAdvisorList{{Name: "critic", Model: "sonnet[low]"}, {Name: "skeptic", Model: "opus[high]"}}
+			},
 		},
 		{
 			name:   "empty friction turns Tier 2 off",
@@ -565,6 +542,28 @@ func loomTemplateWith(t *testing.T, overrides string) string {
 	return b.String()
 }
 
+// TestSetDiscussionAdvisors_LoadsBack verifies a discussion_advisors list of name and model mappings written through configengine.Set loads back as those advisors.
+func TestSetDiscussionAdvisors_LoadsBack(t *testing.T) {
+	t.Parallel()
+	baseDir := t.TempDir()
+	seedLoomConfig(t, baseDir, ConfigTemplate())
+	dirs := configengine.Dirs{Anchor: baseDir}
+	spec := ConfigSpec()
+	pairs := []yamlengine.KV{{Key: "discussion_advisors", Value: `[{name: critic, model: "sonnet[high]"}]`}}
+	if _, err := configengine.Set(dirs, spec, configengine.BaseLayer(dirs, spec), pairs); err != nil {
+		t.Fatalf("Set() = _, %v; want nil error", err)
+	}
+
+	got, err := LoadConfig(dirs, "loom")
+	if err != nil {
+		t.Fatalf("LoadConfig() = _, %v; want nil error", err)
+	}
+	want := DiscussionAdvisorList{{Name: "critic", Model: "sonnet[high]"}}
+	if !reflect.DeepEqual(got.DiscussionAdvisors, want) {
+		t.Errorf("DiscussionAdvisors = %+v; want %+v", got.DiscussionAdvisors, want)
+	}
+}
+
 // TestLoadConfig_Refuses verifies each invalid loom.yaml is refused at load time, naming the offending key:
 // an ungrammatical model-spec (rather than being silently carried into a producer's spawn site), a parent_review_wait_min or review key below one (the sibling timeouts' "0 defers to shuttle" carve-out does not apply to them) with the way forward, a negative timeout (which would otherwise surface only when the producer it governs first spawns), and a set fan key beside an unparseable burler.yaml.
 func TestLoadConfig_Refuses(t *testing.T) {
@@ -595,12 +594,17 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"set discussion_fan with a malformed burler.yaml", "discussion_fan", "standard", []string{"burler: config file ", "parse doc YAML", "fix burler.yaml, or set the key to empty"}, malformedBurlerYAML},
 		{"malformed fan_review spec", "fan_review", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
 		{"empty fan_review list", "fan_review", "[]", []string{"empty", "a non-empty list of model-specs"}, ""},
-		{"unknown discussion_producer", "discussion_producer", "sideways", []string{`"single"`, `"seats"`, `"twill"`}, ""},
-		{"unknown plan_producer", "plan_producer", "sideways", []string{`"single"`, `"twill"`, "set it to"}, ""},
-		{"empty discussion_advisors entry beside another", "discussion_advisors", `["", "sonnet[high]"]`, []string{"entry 1", advisorWayForward}, ""},
-		{"malformed discussion_advisors entry", "discussion_advisors", `["opus[effort"]`, []string{"entry 1", advisorWayForward}, ""},
-		{"unknown discussion_advisors alias", "discussion_advisors", `["sonnet[high]", "ghost"]`, []string{"entry 2", "ghost", advisorWayForward}, ""},
+		{"string discussion_advisors entry", "discussion_advisors", `["sonnet[high]"]`, []string{"entry 1", advisorEntryWayForward}, ""},
+		{"string discussion_advisors entry after a mapping", "discussion_advisors", `[{name: critic, model: "sonnet[high]"}, "sonnet[low]"]`, []string{"entry 2", advisorEntryWayForward}, ""},
+		{"blank discussion_advisors name", "discussion_advisors", `[{name: "", model: "sonnet[high]"}]`, []string{"entry 1", "missing or blank", advisorWayForward}, ""},
+		{"discussion_advisors entry without a name", "discussion_advisors", `[{model: "sonnet[high]"}]`, []string{"entry 1", "missing or blank", advisorWayForward}, ""},
+		{"duplicate discussion_advisors name", "discussion_advisors", `[{name: critic, model: "sonnet[high]"}, {name: critic, model: "sonnet[low]"}]`, []string{"entry 2", `"critic"`, "repeats entry 1", advisorWayForward}, ""},
+		{"numeric discussion_advisors name", "discussion_advisors", `[{name: "2", model: "sonnet[high]"}]`, []string{"entry 1", `"2"`, "no seat name", advisorWayForward}, ""},
+		{"malformed discussion_advisors model", "discussion_advisors", `[{name: critic, model: "opus[effort"}]`, []string{"entry 1", advisorWayForward}, ""},
+		{"discussion_advisors entry without a model", "discussion_advisors", `[{name: critic}]`, []string{"entry 1", advisorWayForward}, ""},
+		{"unknown discussion_advisors alias", "discussion_advisors", `[{name: critic, model: "sonnet[high]"}, {name: skeptic, model: ghost}]`, []string{"entry 2", "ghost", advisorWayForward}, ""},
 		{"mapping discussion_advisors value", "discussion_advisors", "\n  model: opus", []string{"line ", advisorWayForward}, ""},
+		{"scalar discussion_advisors value", "discussion_advisors", `"sonnet[high]"`, []string{"line ", advisorWayForward}, ""},
 		{"mapping review value", "review", "\n  model: opus", []string{"a non-empty list of model-specs"}, ""},
 		{"mapping inside a fix list", "fix", "\n  - model: opus", []string{"a non-empty list of model-specs"}, ""},
 		{"malformed judge spec", "judge", `"sonnet[medium"`, nil, ""},
@@ -731,7 +735,7 @@ func TestLoadConfig_Refuses(t *testing.T) {
 	t.Run("a malformed models.yaml refuses advisors and is never read for none", func(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
-		writeLoomConfigWithKey(t, dir, "discussion_advisors", `["sonnet[high]"]`)
+		writeLoomConfigWithKey(t, dir, "discussion_advisors", `[{name: critic, model: "sonnet[high]"}]`)
 		modelsPath := filepath.Join(dir, "_lyx", "config", "models.yaml")
 		if err := os.WriteFile(modelsPath, []byte("sonnet: [unclosed\n"), 0o644); err != nil {
 			t.Fatalf("WriteFile(%q) = %v; want nil", modelsPath, err)
@@ -833,6 +837,212 @@ func TestLoadConfig_NotInitialized(t *testing.T) {
 	if err.Error() != want {
 		t.Errorf("LoadConfig() error = %q; want %q", err.Error(), want)
 	}
+}
+
+// oldFormatLoomYAML returns the shipped template with its two lens keys swapped for the retired producer keys in producerLines, and advisorsLine, when non-empty, as its discussion_advisors line.
+func oldFormatLoomYAML(advisorsLine, producerLines string) string {
+	var b strings.Builder
+	for _, line := range strings.Split(strings.TrimSuffix(ConfigTemplate(), "\n"), "\n") {
+		key, _, _ := strings.Cut(line, ":")
+		switch {
+		case key == "discussion_lenses" || key == "plan_lenses":
+			continue
+		case key == "discussion_advisors" && advisorsLine != "":
+			line = advisorsLine
+		}
+		b.WriteString(line + "\n")
+	}
+	return b.String() + producerLines
+}
+
+// TestMigrateConfig pins the loom.yaml migration: each retired producer value becomes its lens key, discussion_advisors is rewritten or emptied to match, comments and other keys are carried, the step_idle_timeout_min floor still applies, a migrated or producer-free document is returned unchanged, and a migrated stack of layers loads with the advisors each layer's migration left.
+func TestMigrateConfig(t *testing.T) {
+	t.Parallel()
+	const (
+		replacedDiscussion = `discussion_producer: %s replaced by discussion_lenses: %q`
+		replacedPlan       = `plan_producer: %s replaced by plan_lenses: %q`
+		renamed            = "discussion_advisors: %d string entries rewritten as {name: advisor-<n>, model: <entry>}; rename each advisor to its seat name"
+		lowerLayer         = "discussion_producer was seats and discussion_advisors is not set here, so its advisors come from a lower layer whose migration may have emptied them; set discussion_advisors to a list of {name, model} entries"
+	)
+	tests := []struct {
+		name         string
+		input        string
+		want         string
+		wantRewrites []string
+	}{
+		{
+			name:  "twill sets the lens fan and, with no list, turns the advisors off",
+			input: "discussion_producer: twill\n",
+			want:  "discussion_lenses: twill-discussion\ndiscussion_advisors: []\n",
+			wantRewrites: []string{
+				`discussion_producer: twill replaced by discussion_lenses: "twill-discussion"`,
+				"discussion_advisors: set to [] because discussion_producer was twill",
+			},
+		},
+		{
+			name:  "single empties its advisors",
+			input: "discussion_producer: single\ndiscussion_advisors: [\"sonnet[high]\"]\n",
+			want:  "discussion_lenses: \"\"\ndiscussion_advisors: []\n",
+			wantRewrites: []string{
+				`discussion_producer: single replaced by discussion_lenses: ""`,
+				"discussion_advisors: emptied because discussion_producer was single",
+			},
+		},
+		{
+			name:  "single with an already empty list reports only the key",
+			input: "discussion_producer: single\ndiscussion_advisors: []\n",
+			want:  "discussion_lenses: \"\"\ndiscussion_advisors: []\n",
+			wantRewrites: []string{
+				`discussion_producer: single replaced by discussion_lenses: ""`,
+			},
+		},
+		{
+			name:  "an unknown producer value reads as single",
+			input: "discussion_producer: sideways\n",
+			want:  "discussion_lenses: \"\"\ndiscussion_advisors: []\n",
+			wantRewrites: []string{
+				`discussion_producer: sideways replaced by discussion_lenses: ""`,
+				"discussion_advisors: set to [] because discussion_producer was sideways",
+			},
+		},
+		{
+			name:  "seats names each string entry advisor-n",
+			input: "discussion_producer: seats\ndiscussion_advisors:\n  - sonnet[high]\n  - opus[low]\n",
+			want:  "discussion_lenses: \"\"\ndiscussion_advisors:\n  - name: advisor-1\n    model: sonnet[high]\n  - name: advisor-2\n    model: opus[low]\n",
+			wantRewrites: []string{
+				`discussion_producer: seats replaced by discussion_lenses: ""`,
+				fmt.Sprintf(renamed, 2),
+			},
+		},
+		{
+			name:  "seats keeps the quoting of a flow entry",
+			input: "discussion_producer: seats\ndiscussion_advisors: [\"sonnet[high]\"]\n",
+			want:  "discussion_lenses: \"\"\ndiscussion_advisors:\n  - name: advisor-1\n    model: \"sonnet[high]\"\n",
+			wantRewrites: []string{
+				`discussion_producer: seats replaced by discussion_lenses: ""`,
+				fmt.Sprintf(renamed, 1),
+			},
+		},
+		{
+			name:  "seats with an empty list leaves it empty",
+			input: "discussion_producer: seats\ndiscussion_advisors: []\n",
+			want:  "discussion_lenses: \"\"\ndiscussion_advisors: []\n",
+			wantRewrites: []string{
+				`discussion_producer: seats replaced by discussion_lenses: ""`,
+			},
+		},
+		{
+			name:  "seats with no list of its own says where its advisors come from",
+			input: "discussion_producer: seats\n",
+			want:  "discussion_lenses: \"\"\n",
+			wantRewrites: []string{
+				`discussion_producer: seats replaced by discussion_lenses: ""`,
+				lowerLayer,
+			},
+		},
+		{
+			name:         "plan twill sets the plan lens fan",
+			input:        "plan_producer: twill\n",
+			want:         "plan_lenses: twill-plan\n",
+			wantRewrites: []string{fmt.Sprintf(replacedPlan, "twill", "twill-plan")},
+		},
+		{
+			name:         "plan single and empty turn the forks off",
+			input:        "plan_producer: single\n",
+			want:         "plan_lenses: \"\"\n",
+			wantRewrites: []string{fmt.Sprintf(replacedPlan, "single", "")},
+		},
+		{
+			name:         "an empty plan producer turns the forks off",
+			input:        "plan_producer: \"\"\n",
+			want:         "plan_lenses: \"\"\n",
+			wantRewrites: []string{fmt.Sprintf(replacedPlan, "", "")},
+		},
+		{
+			name:  "comments and other keys are carried and the floor still applies",
+			input: "# head\nstep_idle_timeout_min: 0\ndiscussion_producer: twill # the writer\nplan: opus[medium]\n",
+			want:  "# head\nstep_idle_timeout_min: 1\ndiscussion_lenses: twill-discussion # the writer\nplan: opus[medium]\ndiscussion_advisors: []\n",
+			wantRewrites: []string{
+				"step_idle_timeout_min: raised from 0 to 1",
+				fmt.Sprintf(replacedDiscussion, "twill", "twill-discussion"),
+				"discussion_advisors: set to [] because discussion_producer was twill",
+			},
+		},
+		{
+			name:  "a migrated document is unchanged on a second pass",
+			input: "discussion_lenses: twill-discussion\ndiscussion_advisors:\n  - name: advisor-1\n    model: sonnet[high]\nplan_lenses: \"\"\n",
+			want:  "discussion_lenses: twill-discussion\ndiscussion_advisors:\n  - name: advisor-1\n    model: sonnet[high]\nplan_lenses: \"\"\n",
+		},
+		{
+			name:  "a sparse document with string entries and no producer is left for the load to refuse",
+			input: "discussion_advisors: [\"sonnet[high]\"]\n",
+			want:  "discussion_advisors: [\"sonnet[high]\"]\n",
+		},
+		{name: "an empty document is unchanged", input: "", want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, rewrites, err := MigrateConfig([]byte(tt.input))
+			if err != nil {
+				t.Fatalf("MigrateConfig() = _, _, %v; want nil error", err)
+			}
+			if string(got) != tt.want {
+				t.Errorf("MigrateConfig() output:\n%s\nwant:\n%s", got, tt.want)
+			}
+			if !slices.Equal(rewrites, tt.wantRewrites) {
+				t.Errorf("MigrateConfig() rewrites = %q; want %q", rewrites, tt.wantRewrites)
+			}
+			again, againRewrites, err := MigrateConfig(got)
+			if err != nil {
+				t.Fatalf("MigrateConfig(second pass) = _, _, %v; want nil error", err)
+			}
+			if string(again) != string(got) || againRewrites != nil {
+				t.Errorf("MigrateConfig(second pass) = %q, %q; want the bytes unchanged and no rewrites", again, againRewrites)
+			}
+		})
+	}
+
+	t.Run("a document that does not parse is marked invalid", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := MigrateConfig([]byte("discussion_producer: [unclosed\n"))
+		if !errors.Is(err, configengine.ErrInvalid) {
+			t.Errorf("MigrateConfig() error = %v; want it marked configengine.ErrInvalid", err)
+		}
+	})
+
+	t.Run("migrated layers load with the advisors each layer's migration left", func(t *testing.T) {
+		t.Parallel()
+		hub, _, err := MigrateConfig([]byte(oldFormatLoomYAML(`discussion_advisors: ["sonnet[high]"]`, "discussion_producer: seats\nplan_producer: twill\n")))
+		if err != nil {
+			t.Fatalf("MigrateConfig(hub) = _, _, %v; want nil error", err)
+		}
+		worktree, _, err := MigrateConfig([]byte("discussion_producer: twill\n"))
+		if err != nil {
+			t.Fatalf("MigrateConfig(worktree) = _, _, %v; want nil error", err)
+		}
+
+		alone := t.TempDir()
+		seedLoomConfig(t, alone, string(hub))
+		got, err := LoadConfig(configengine.Dirs{Anchor: alone}, "loom")
+		if err != nil {
+			t.Fatalf("LoadConfig(migrated hub file) = _, %v; want nil error", err)
+		}
+		if want := (DiscussionAdvisorList{{Name: "advisor-1", Model: "sonnet[high]"}}); !reflect.DeepEqual(got.DiscussionAdvisors, want) || got.DiscussionLenses != "" || got.PlanLenses != "twill-plan" {
+			t.Errorf("LoadConfig(migrated hub file) advisors/lenses/plan lenses = %v/%q/%q; want %v, no discussion lenses and twill-plan", got.DiscussionAdvisors, got.DiscussionLenses, got.PlanLenses, want)
+		}
+
+		board, anchor := t.TempDir(), t.TempDir()
+		seedLoomConfig(t, board, string(hub))
+		seedLoomConfig(t, anchor, string(worktree))
+		got, err = LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "loom")
+		if err != nil {
+			t.Fatalf("LoadConfig(migrated stack) = _, %v; want nil error", err)
+		}
+		if got.DiscussionAdvisors != nil || got.DiscussionLenses != "twill-discussion" || got.PlanLenses != "twill-plan" {
+			t.Errorf("LoadConfig(migrated stack) advisors/lenses/plan lenses = %v/%q/%q; want no advisors, twill-discussion and twill-plan", got.DiscussionAdvisors, got.DiscussionLenses, got.PlanLenses)
+		}
+	})
 }
 
 // TestLoomDriverLogAndBootstrapLock covers LoomDriverLog and LoomBootstrapLock at both an unanchored and a subpath-anchored *lyxcwd.Location, hand-built rather than spawned.
@@ -990,9 +1200,9 @@ func containsConfigKey(text, key string) bool {
 	return false
 }
 
-// TestMigrateConfig pins what MigrateConfig rewrites: an old-schema document, recognised by its skip_merge_review key, has each zero per-perch budget turned to null and skip_merge_review true turned to merge_max_bounces: 0 before the key goes;
+// TestMigrateConfig_RetiresSkipMergeReview pins what MigrateConfig rewrites for skip_merge_review: an old-schema document, recognised by its skip_merge_review key, has each zero per-perch budget turned to null and skip_merge_review true turned to merge_max_bounces: 0 before the key goes;
 // a document without the key keeps its zeros as the zero-rounds meaning; a second run changes nothing, a below-floor step_idle_timeout_min is still raised, and an unparseable document is refused.
-func TestMigrateConfig(t *testing.T) {
+func TestMigrateConfig_RetiresSkipMergeReview(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name      string

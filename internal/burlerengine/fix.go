@@ -62,7 +62,6 @@ func (p *Profile) fixTable(opts RunOpts, values map[string]string) seatengine.Ta
 		Timeout:    opts.Timeout,
 		Seats: []seatengine.Seat{
 			{
-				Name:    seatengine.RoleChair,
 				Stencil: "burler-template-fixer",
 				Model:   opts.Fix.Model,
 				Effort:  opts.Fix.Effort,

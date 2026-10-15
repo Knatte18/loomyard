@@ -1,9 +1,9 @@
 // build_engines_test.go holds one test asserting every name shedrecipe.Names() returns is
 // buildable from a recipe given a sufficiently filled environment. It is deliberately not
 // filesystem-free: the bouncer and burler-round engines create the run directory they resolve, and
-// the bouncer and single-LLM engines eagerly read their configured stencil. Restricting the
-// assertion to the ten effect-free engines was rejected -- it would drop exactly the three
-// engines whose config shapes are the most complex, which is the coverage most worth having.
+// the bouncer engine eagerly reads its configured stencil.
+// Restricting the assertion to the effect-free engines was rejected:
+// it would drop exactly the engines whose config shapes are the most complex, which is the coverage most worth having.
 
 package shedbuild
 
@@ -13,25 +13,24 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
 // engineMinimalConfig maps an engine name to its minimal Config, covering only the engines that need one.
-// They are SingleLLM, Bouncer, BurlerReview, BurlerFix and MultiLLM, whose chair and advisor both take the stencil name and the "opus" alias FullEnv's Models carries.
+// They are Bouncer, BurlerReview, BurlerFix and MultiLLM, whose lead and advisor both take a stencil name and the "opus" alias FullEnv's Models carries.
 // Every other engine takes no config at all and are given none in this test,
 // since a non-empty config block on any of them is an error from the constructor. All three
 // lifecycle engines join them: WorktreeCreate and WorktreeTeardown take no Config keys at
 // all, and Loom-Run's own two Config keys (poll_interval_s, poll_attempts) both default, so an
 // empty Config block is legal there too.
 //
-// DiscussionWrite, DiscussionSeats and PlanWrite are three of them: each wraps a producer behind its own commit decorator.
-// Its Spec or table arrives as an injected Env closure (DiscussionSpec, DiscussionTable or PlanSpec) rather than as recipe Config.
+// DiscussionWrite and PlanWrite are two of them: each wraps a producer behind its own commit decorator.
+// Its Spec or table arrives as an injected Env closure (DiscussionTable or PlanTable) rather than as recipe Config.
 // It therefore has no config keys of its own, and its seams are filled by envkit.FullEnv instead.
-func engineMinimalConfig(stencilName, rubricStencilName string) map[string]map[string]any {
+// leadStencilName names the MultiLLM lead's stencil, which includes seat-directive-chair.
+// advisorStencilName names the MultiLLM advisor's stencil.
+func engineMinimalConfig(advisorStencilName, leadStencilName, rubricStencilName string) map[string]map[string]any {
 	return map[string]map[string]any{
-		"SingleLLM": {
-			"stencil":      stencilName,
-			"output_files": []string{"out/singlellm.md"},
-		},
 		"Bouncer": {
 			"run_subdir":     "review-segment",
 			"artifact_paths": []string{"out/artifact.md"},
@@ -51,15 +50,14 @@ func engineMinimalConfig(stencilName, rubricStencilName string) map[string]map[s
 			"segment": "plan",
 			"seats": []any{
 				map[string]any{
-					"name":    "chair",
-					"stencil": stencilName,
+					"stencil": leadStencilName,
 					"model":   "opus",
 					"inputs":  []string{"out/advisor.md"},
 					"outputs": []string{"out/chair.md"},
 				},
 				map[string]any{
 					"name":    "advisor-1",
-					"stencil": stencilName,
+					"stencil": advisorStencilName,
 					"model":   "opus",
 					"outputs": []string{"out/advisor.md"},
 				},
@@ -75,12 +73,15 @@ func engineMinimalConfig(stencilName, rubricStencilName string) map[string]map[s
 func TestBuild_EveryRegisteredEngineBuilds(t *testing.T) {
 	env := envkit.FullEnv(t)
 
-	const singleLLMStencil = "singlellm-coverage"
+	const advisorStencil = "advisor-coverage"
 	const bouncerRubricStencil = "bouncer-coverage"
-	writeStencilFile(t, env.StencilsDir, singleLLMStencil, "Body text with no markers.\n")
+	const multiLLMLeadStencil = "multillm-lead-coverage"
+	stencilkit.SeedInto(t, env.StencilsDir)
+	writeStencilFile(t, env.StencilsDir, multiLLMLeadStencil, `{{template "seat-directive-chair"}}`+"\n")
+	writeStencilFile(t, env.StencilsDir, advisorStencil, "Body text with no markers.\n")
 	writeStencilFile(t, env.StencilsDir, bouncerRubricStencil, "Rubric body with no markers.\n")
 
-	configByEngine := engineMinimalConfig(singleLLMStencil, bouncerRubricStencil)
+	configByEngine := engineMinimalConfig(advisorStencil, multiLLMLeadStencil, bouncerRubricStencil)
 	env.RowBouncerModels = map[string]shedadapters.BouncerModels{"Row-Bouncer": {}}
 
 	for _, name := range shedrecipe.Names() {

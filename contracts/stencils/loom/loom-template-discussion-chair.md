@@ -1,7 +1,8 @@
-<!-- This is the chair's opening prompt when the Discussion-Write row runs as a seat table (loom.yaml's discussion_producer: seats).
-     internal/seatengine is its only filler, through stencil.FillWith, from the chair's value map.
+<!-- This is the lead's opening prompt: the Discussion-Write row always runs as a seat table, with one advisor per entry of loom.yaml's discussion_advisors and the lead alone when it is empty.
+     Two independent axes shape the table: the advisors are seats of their own, and loom.yaml's discussion_lenses, when set, has the lead alone fork its lens review.
+     internal/seatengine is its only filler, through stencil.FillWith, from the lead's value map.
      It declares no marker of its own; every marker reaches it through the two blocks it includes, each rendered whole from that same map:
-     loom-template-discussion, the single writer's prompt, and seat-directive-chair. -->
+     loom-template-discussion, the interview prompt, and seat-directive-chair. -->
 
 {{template "loom-template-discussion"}}
 {{template "seat-directive-chair"}}

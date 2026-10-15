@@ -2,10 +2,10 @@
 // are: NewPlanWrite's post-Done commit decoration, and NewPlanDirRotator's stale-plan-directory
 // rotation.
 // The split is the subject, not an accident of layout. The rotation used to run as a step inside the
-// decorator's own Call, i.e. before the wrapped SingleLLMProducer's attach probe, which moved
+// decorator's own Call, i.e. before the wrapped MultiLLMProducer's attach probe, which moved
 // 00-overview.md out from under a live plan agent on every resume. It is now the producer's
 // prepareFreshSpawn hook and runs only once that probe has found nothing to attach to -- the
-// ordering guard for that lives in internal/shedadapters/singlellm_test.go, where the probe is.
+// ordering guard for that lives in internal/shedadapters/multillm_test.go, where the probe is.
 // No test in this file spawns a process, keeping the file tier 1 per the Test Tier Purity Invariant.
 
 package loomshed

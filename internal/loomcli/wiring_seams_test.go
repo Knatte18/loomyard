@@ -27,7 +27,7 @@ var intentionallyNil = map[string]string{
 	"Landing.Alignment.Config":            "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.Alignment.Session":           "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.Alignment.Snapshot":          "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
-	"DarnSpec":                            "darn-only seam, filled by wire for a darn seed",
+	"DarnTable":                           "darn-only seam, filled by wire for a darn seed",
 	"Darn.ReadRejection":                  "darn-only seam, filled by wire for a darn seed",
 	"Darn.ClearRejection":                 "darn-only seam, filled by wire for a darn seed",
 	"Darn.Commit":                         "darn-only seam, filled by wire for a darn seed",

@@ -1,7 +1,7 @@
 <!-- This is the loom Plan producer's autonomous prompt. It is shipped as an embedded default in the
      top-level stencils package (stencils/stencils.go), seeded to <hub>/_board/_lyx/stencils/loom/
-     and read from there at call time by composePlanPrompt (plan.go) via internal/stencil, then handed
-     to shuttle as the plan agent's entire instruction set.
+     and read from there at call time by internal/seatengine, which fills it from the lead's value map that loomengine.PlanTable builds (plan.go),
+     then hands it to shuttle as the plan agent's entire instruction set.
      Every marker below is a top-level {{.X}} substitution;
      stencil.FillOptional requires the three original ones non-empty and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go). pattern_directive and friction_directive are the two optional markers: each is filled via stencil.FillOptional and renders as nothing when its own tier is inactive (PATTERN for pattern_directive, Tier 2 for friction_directive).
      parent_directive is a third optional marker, rendered by internal/parentdirective.

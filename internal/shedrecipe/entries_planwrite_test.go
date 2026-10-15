@@ -1,7 +1,5 @@
-// entries_planwrite_test.go covers planWriteEntry: its construction-time validation over Config
-// and the four injected/told Env fields it reads, and one full Call proving the injected
-// SpecSource, the shuttle, and the commit closure are all reached and the outcome mapping is
-// preserved untouched.
+// entries_planwrite_test.go covers planWriteEntry: its construction-time validation over Config and the Env fields it reads,
+// and the Calls proving the told table is evaluated once, carries the row's gate, reaches the seat runner with the prior-plan amendment on a fresh spawn only, and the commit closure fires.
 
 package shedrecipe
 
@@ -13,29 +11,44 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/seatengine"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
+// withPlanTable fills env.PlanTable with a one-lead table writing output and returns the count of times the source was evaluated.
+func withPlanTable(env *Env, output string) *int {
+	evaluations := 0
+	env.PlanTable = func() (seatengine.Table, error) {
+		evaluations++
+		return seatengine.Table{
+			RolePrefix: "plan",
+			Segment:    segmentcolor.Plan,
+			Seats:      []seatengine.Seat{{Stencil: "loom-template-plan", Outputs: []string{output}}},
+		}, nil
+	}
+	return &evaluations
+}
+
 // TestPlanWriteEntry_ConstructionFailures covers the three seams planWriteEntry requires, the
 // AnchorPath root it validates, and the Config rejection every entry in this package performs
 // first. A bare zero-value assignment on a copy of newTestEnv(t)'s Env follows
-// entries_discussionwrite_test.go's precedent: PlanSpec and CommitPlan are both concrete named func
-// types, so env.PlanSpec = nil already boxes as a typed-nil when it reaches requireSeam's any
+// entries_discussionwrite_test.go's precedent: PlanTable and CommitPlan are both concrete named func
+// types, so env.PlanTable = nil already boxes as a typed-nil when it reaches requireSeam's any
 // parameter, making the plain-nil branch unreachable and a second "typed-nil versus untyped-nil"
 // variant unnecessary.
 func TestPlanWriteEntry_ConstructionFailures(t *testing.T) {
-	t.Run("NilPlanSpec", func(t *testing.T) {
+	t.Run("NilPlanTable", func(t *testing.T) {
 		env := newTestEnv(t)
-		env.PlanSpec = nil
+		env.PlanTable = nil
 		_, err := planWriteEntry("Row", Config{}, env)
 		if err == nil {
-			t.Fatalf("planWriteEntry() error = nil; want non-nil when Env.PlanSpec is nil")
+			t.Fatalf("planWriteEntry() error = nil; want non-nil when Env.PlanTable is nil")
 		}
-		if !strings.Contains(err.Error(), "PlanWrite") || !strings.Contains(err.Error(), "PlanSpec") {
-			t.Errorf("planWriteEntry() error = %v; want it to name entry %q and field %q", err, "PlanWrite", "PlanSpec")
+		if !strings.Contains(err.Error(), "PlanWrite") || !strings.Contains(err.Error(), "PlanTable") {
+			t.Errorf("planWriteEntry() error = %v; want it to name entry %q and field %q", err, "PlanWrite", "PlanTable")
 		}
 	})
 
@@ -51,15 +64,15 @@ func TestPlanWriteEntry_ConstructionFailures(t *testing.T) {
 		}
 	})
 
-	t.Run("NilShuttle", func(t *testing.T) {
+	t.Run("NilSeats", func(t *testing.T) {
 		env := newTestEnv(t)
-		env.Shuttle = nil
+		env.Seats = nil
 		_, err := planWriteEntry("Row", Config{}, env)
 		if err == nil {
-			t.Fatalf("planWriteEntry() error = nil; want non-nil when Env.Shuttle is nil")
+			t.Fatalf("planWriteEntry() error = nil; want non-nil when Env.Seats is nil")
 		}
-		if !strings.Contains(err.Error(), "PlanWrite") || !strings.Contains(err.Error(), "Shuttle") {
-			t.Errorf("planWriteEntry() error = %v; want it to name entry %q and field %q", err, "PlanWrite", "Shuttle")
+		if !strings.Contains(err.Error(), "PlanWrite") || !strings.Contains(err.Error(), "Seats") {
+			t.Errorf("planWriteEntry() error = %v; want it to name entry %q and field %q", err, "PlanWrite", "Seats")
 		}
 	})
 
@@ -113,100 +126,134 @@ func TestPlanWriteEntry_HappyPath(t *testing.T) {
 	}
 }
 
-// TestPlanWriteEntry_CallDone drives the happy-path producer's Call once against a shedfake.Shuttle
-// reporting Done, and asserts the injected SpecSource was evaluated, the returned
-// OutputPointer.Path equals the Spec's first OutputFiles entry, and the injected commit closure
-// fired exactly once. env.AnchorPath from newTestEnv is a real directory that contains no plan
-// directory, so the decorator's rotation is a legitimate absent-directory no-op here.
+// TestPlanWriteEntry_CallDone drives the happy-path producer's Call once against a done lead.
+// It asserts the told table was evaluated once and reached the seat runner with the row's gate, the returned OutputPointer.Path is the lead's first output, and the injected commit closure fired exactly once.
+// env.AnchorPath from newTestEnv is a real directory that contains no plan directory, so the rotation is a legitimate absent-directory no-op here.
 func TestPlanWriteEntry_CallDone(t *testing.T) {
+	t.Parallel()
 	env := newTestEnv(t)
-
-	var gotSpec shuttleengine.Spec
-	env.PlanSpec = func() (shuttleengine.Spec, error) {
-		gotSpec = shuttleengine.Spec{
-			Prompt:      "plan prompt",
-			OutputFiles: []string{filepath.Join(env.AnchorPath, "00-overview.md")},
-			Interactive: false,
-		}
-		return gotSpec, nil
-	}
+	output := filepath.Join(env.AnchorPath, "00-overview.md")
+	evaluations := withPlanTable(&env, output)
 	commitCalls := 0
 	env.CommitPlan = func() error {
 		commitCalls++
 		return nil
 	}
+	fake := &shedfake.SeatRunner{Results: []seatengine.Result{leadDoneResult(output)}}
+	env.Seats = fake
 
-	producer, err := planWriteEntry("Row", Config{}, env)
+	producer, err := planWriteEntry("Row", gatesCfg("plan", 2), env)
 	if err != nil {
 		t.Fatalf("planWriteEntry() error = %v; want nil", err)
 	}
-
-	fake := env.Shuttle.(*shedfake.Shuttle)
-	fake.Result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
-
 	pointer := shedfake.RequireOutcome(t, producer, shedengine.Done)
-	if len(fake.Specs) != 1 {
-		t.Fatalf("fake.Specs has %d entries; want 1 -- the injected SpecSource must have been evaluated", len(fake.Specs))
+
+	if *evaluations != 1 {
+		t.Errorf("table source evaluated %d times; want 1", *evaluations)
 	}
-	if pointer.Path != gotSpec.OutputFiles[0] {
-		t.Errorf("Call() OutputPointer.Path = %q; want %q", pointer.Path, gotSpec.OutputFiles[0])
+	if len(fake.GotTables) != 1 {
+		t.Fatalf("seat runner saw %d tables; want 1", len(fake.GotTables))
+	}
+	gate := fake.GotTables[0].Gate
+	if len(gate) != 1 || gate[0].Name != "plan" || gate[0].Attempts != 2 || gate[0].Forked == nil {
+		t.Errorf("table gate = %+v; want one \"plan\" entry with 2 attempts and the lens-review closure", gate)
+	}
+	if pointer.Path != output {
+		t.Errorf("Call() OutputPointer.Path = %q; want the lead's first output %q", pointer.Path, output)
 	}
 	if commitCalls != 1 {
 		t.Errorf("commit closure invoked %d times; want exactly 1", commitCalls)
 	}
 }
 
-// TestPlanWriteEntry_CallAppendsPriorPlanBlock seeds a stale plan file under env.AnchorPath and a minimal prior-plan stencil into env.StencilsDir, then asserts one Call hands the shuttle a spec whose prompt is the composed prompt followed by the rendered block.
+// TestPlanWriteEntry_CallAppendsPriorPlanBlock seeds a stale plan file under env.AnchorPath and a minimal prior-plan stencil into env.StencilsDir.
+// A fresh spawn archives the stale plan and hands the seat runner a table whose Amendment is the rendered block;
+// a live lead resumes with the stale plan left in place, no table run, and a table that carries no amendment.
 func TestPlanWriteEntry_CallAppendsPriorPlanBlock(t *testing.T) {
-	env := newTestEnv(t)
-	writeStencil(t, env.StencilsDir, "loom-template-prior-plan", "PRIOR {{.archive_dir}}\n{{.moved_files}}\n")
-
-	planDir := planparser.PlanDir(env.AnchorPath)
-	if err := os.MkdirAll(planDir, 0o755); err != nil {
-		t.Fatalf("mkdir %s: %v", planDir, err)
-	}
-	if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte("stale"), 0o644); err != nil {
-		t.Fatalf("write stale plan: %v", err)
-	}
-
-	env.PlanSpec = func() (shuttleengine.Spec, error) {
-		return shuttleengine.Spec{
-			Prompt:      "plan prompt",
-			OutputFiles: []string{filepath.Join(planDir, "00-overview.md")},
-		}, nil
-	}
-	env.CommitPlan = func() error { return nil }
-	var archived []string
-	env.Rework.ArchiveWebster = func(dest string) error {
-		archived = append(archived, dest)
-		return nil
-	}
-
-	producer, err := planWriteEntry("Row", Config{}, env)
-	if err != nil {
-		t.Fatalf("planWriteEntry() error = %v; want nil", err)
-	}
-	fake := env.Shuttle.(*shedfake.Shuttle)
-	fake.Result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
-
-	if _, _, err := producer.Call(context.Background()); err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if len(fake.Specs) != 1 {
-		t.Fatalf("fake.Specs has %d entries; want 1", len(fake.Specs))
-	}
-	if len(archived) != 1 || filepath.Base(archived[0]) != "webster" || filepath.Dir(filepath.Dir(archived[0])) != planDir {
-		t.Errorf("ArchiveWebster calls = %v; want one call into an archive directory's webster subdirectory under %s", archived, planDir)
-	}
-	prompt := fake.Specs[0].Prompt
-	if !strings.HasPrefix(prompt, "plan prompt\n") {
-		t.Errorf("prompt = %q; want it to start with the composed prompt", prompt)
-	}
-	for _, want := range []string{"PRIOR " + planDir, "`00-overview.md`"} {
-		if !strings.Contains(prompt, want) {
-			t.Errorf("prompt = %q; want it to contain %q", prompt, want)
+	t.Parallel()
+	seedStalePlan := func(t *testing.T) (env Env, planDir string, archived *[]string) {
+		t.Helper()
+		env = newTestEnv(t)
+		writeStencil(t, env.StencilsDir, "loom-template-prior-plan", "PRIOR {{.archive_dir}}\n{{.moved_files}}\n")
+		planDir = planparser.PlanDir(env.AnchorPath)
+		if err := os.MkdirAll(planDir, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", planDir, err)
 		}
+		if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte("stale"), 0o644); err != nil {
+			t.Fatalf("write stale plan: %v", err)
+		}
+		withPlanTable(&env, filepath.Join(planDir, "00-overview.md"))
+		env.CommitPlan = func() error { return nil }
+		archived = new([]string)
+		env.Rework.ArchiveWebster = func(dest string) error {
+			*archived = append(*archived, dest)
+			return nil
+		}
+		return env, planDir, archived
 	}
+
+	t.Run("FreshSpawnCarriesTheBlockAsAmendment", func(t *testing.T) {
+		t.Parallel()
+		env, planDir, archived := seedStalePlan(t)
+		fake := &shedfake.SeatRunner{Results: []seatengine.Result{leadDoneResult(filepath.Join(planDir, "00-overview.md"))}}
+		env.Seats = fake
+
+		producer, err := planWriteEntry("Row", Config{}, env)
+		if err != nil {
+			t.Fatalf("planWriteEntry() error = %v; want nil", err)
+		}
+		if _, _, err := producer.Call(context.Background()); err != nil {
+			t.Fatalf("Call() error = %v; want nil", err)
+		}
+
+		if len(fake.GotTables) != 1 {
+			t.Fatalf("seat runner saw %d tables; want 1", len(fake.GotTables))
+		}
+		if len(*archived) != 1 || filepath.Base((*archived)[0]) != "webster" || filepath.Dir(filepath.Dir((*archived)[0])) != planDir {
+			t.Errorf("ArchiveWebster calls = %v; want one call into an archive directory's webster subdirectory under %s", *archived, planDir)
+		}
+		amendment := fake.GotTables[0].Amendment
+		if !strings.HasPrefix(amendment, "\n") {
+			t.Errorf("amendment = %q; want it to start with a blank line", amendment)
+		}
+		for _, want := range []string{"PRIOR " + planDir, "`00-overview.md`"} {
+			if !strings.Contains(amendment, want) {
+				t.Errorf("amendment = %q; want it to contain %q", amendment, want)
+			}
+		}
+	})
+
+	t.Run("LiveLeadResumesWithoutRotatingOrAmending", func(t *testing.T) {
+		t.Parallel()
+		env, planDir, archived := seedStalePlan(t)
+		output := filepath.Join(planDir, "00-overview.md")
+		fake := &shedfake.SeatRunner{
+			LiveTables:    []seatengine.LiveTable{{Chair: liveSeatLead}},
+			ResumeResults: []seatengine.Result{leadDoneResult(output)},
+		}
+		env.Seats = fake
+
+		producer, err := planWriteEntry("Row", Config{}, env)
+		if err != nil {
+			t.Fatalf("planWriteEntry() error = %v; want nil", err)
+		}
+		if _, _, err := producer.Call(context.Background()); err != nil {
+			t.Fatalf("Call() error = %v; want nil", err)
+		}
+
+		if got, err := os.ReadFile(output); err != nil || string(got) != "stale" {
+			t.Errorf("plan overview = %q, %v; want the stale file left in place", got, err)
+		}
+		if len(*archived) != 0 {
+			t.Errorf("ArchiveWebster calls = %v; want none for a resume", *archived)
+		}
+		if len(fake.GotTables) != 0 {
+			t.Errorf("seat runner ran %d tables; want none for a resume", len(fake.GotTables))
+		}
+		if len(fake.GotResumeTables) != 1 || fake.GotResumeTables[0].Amendment != "" {
+			t.Errorf("resumed tables = %+v; want one carrying no amendment", fake.GotResumeTables)
+		}
+	})
 }
 
 // TestPlanWriteEntry_GateConfig covers the "gates" Config key planWriteEntry resolves through resolveGateSpec:

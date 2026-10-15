@@ -1,7 +1,7 @@
 // Package shedadapters holds the shedengine.ShedProducer adapters that let a Shed-built
 // product drive shuttle, Webster, the two halves of a burlerengine round, a seatengine table of seats, and the generic review-gate
 // Bouncer as ordinary producers in its own flat producer list.
-// SingleLLMProducer wraps one shuttleengine run, WebsterProducer wraps one websterengine
+// WebsterProducer wraps one websterengine
 // multi-spawn run, BurlerReviewProducer and BurlerFixProducer each wrap one half of a burlerengine round, a reviewer strand or a fixer strand, and MultiLLMProducer wraps one seatengine table, a chair strand and its advisors' strands, as a single Shed
 // row: each of these is a thin translation layer over an already-shipped engine, never a
 // second implementation of that engine's own loop.
@@ -15,23 +15,6 @@
 // and the Bouncer alone also onto Awaiting, the hand-off to the run's parent when its judge finds the review circling or its bounce budget is spent;
 // the adapters report the output pointer differently because they report success differently:
 //
-//   - SingleLLMProducer: shuttleengine.OutcomeDone maps to Done, reporting the first entry of the
-//     evaluated Spec's OutputFiles as the pointer's path.
-//     OutcomeDied and OutcomeTimeout are engine-level errors, not Stuck.
-//     Before any of this, SingleLLMProducer.Call probes shuttleengine's Attach seam for a still-live,
-//     never-terminated run matching the evaluated Spec -- on every call and regardless of mode, not
-//     only when spec.Interactive is set. Archiving renames the very files a live agent may be about
-//     to write, so the probe runs before archiving anything: a found run's Result is mapped through
-//     this identical outcome switch, and a not-found probe falls through to the unchanged
-//     archive-then-run path. The probe applies to the PlanWrite and generic SingleLLM rows too, not
-//     only DiscussionWrite.
-//     A caller's own destructive preparation for a fresh agent -- rotating a stale output directory
-//     aside, say -- rides the constructor's prepareFreshSpawn seam and runs on that not-found branch,
-//     between the probe and the archive.
-//     The text it returns is appended verbatim to the prompt of the spec handed to the fresh run (and to no other spec),
-//     so the new session can be told what the preparation did;
-//     an empty amendment changes nothing.
-//     It deliberately cannot be a decorator wrapping this producer: a decorator runs before Call and therefore before the probe, which is the same archive-before-probe hazard stated above, reintroduced one layer up.
 //   - WebsterProducer: Webster's own "done" outcome maps to Done, reporting Webster's summary path
 //     (summaryparser.Path) as the pointer's path.
 //     Its run is handed two options: Fresh is always false, and AutoRebaseline is always true, so a plan changed between steps is rebaselined on entry.
@@ -51,10 +34,10 @@
 //     engine-level error, not Stuck, because the Bouncer tells its seed call from its judge call by
 //     the round artifacts on disk, and a failed half returning Stuck with no review written would
 //     be misread as a seed call.
-//   - MultiLLMProducer: the chair's result maps exactly as SingleLLMProducer's single run does:
+//   - MultiLLMProducer: the chair's result maps as follows:
 //     shuttleengine.OutcomeDone maps to Done with the chair's first output as the pointer's path,
 //     a done chair whose gate failed maps to Stuck with that pointer and the gate's attempts and reason,
-//     and OutcomeDied and OutcomeTimeout are engine-level errors, wrapping shuttleengine.ErrNotStarted when the chair's provider never came up.
+//     and OutcomeDied and OutcomeTimeout are engine-level errors, wrapping shuttleengine.ErrNotStarted when the chair's provider never came up and carrying the start error's text when shuttle reported one.
 //     The advisors' results are logged and never judged, since an advisor's death weakens nothing the chair decided.
 //     Before archiving anything Call probes the table's seats through its SeatRunner: a live chair is resumed and its result mapped,
 //     and otherwise the probe has stopped every live advisor, so Call archives every seat's stale outputs and runs the table fresh.
@@ -149,22 +132,15 @@
 // Each New... constructor also takes a name string, used only as a log field and in error text --
 // never compared, parsed, or used for control flow -- because Call(ctx) carries no identity of its
 // own, and two instances of the same adapter type in one producer list is the expected shape.
-// SingleLLMProducer additionally takes an injected clock, a nil now defaulting to the real
+// MultiLLMProducer additionally takes an injected clock, a nil now defaulting to the real
 // time.Now; the injected clock resolves only the archive filename's same-second collision suffix,
 // never Shed's own history[].at field.
-// BurlerReviewProducer and BurlerFixProducer are told an absolute run directory and an already-constructed half runner, and take the
-// same injected clock SingleLLMProducer does, resolving only the archive filename's same-second
-// collision suffix the same way.
-// MultiLLMProducer is told a seatengine.Table and an already-constructed SeatRunner, and takes the same injected clock for the same purpose.
+// BurlerReviewProducer and BurlerFixProducer are told an absolute run directory and an already-constructed half runner, and take the same injected clock, resolving only the archive filename's same-second collision suffix the same way.
+// MultiLLMProducer is told a seatengine.Table and an already-constructed SeatRunner.
 // NewMultiLLMProducerSourced is told a TableSource instead of a table: the source builds the table once per Call, so stencils and directives are read at call time.
-// Bouncer's own told inputs are RunDir, StencilsDir, the resolved seed and judge pairs,
-// and the report-name convention as a function. NewBouncer is the package's one validating,
-// error-returning constructor, in contrast with the two
-// that return a bare pointer: NewSingleLLMProducer, whose Spec is validated downstream by
-// shuttleengine, and NewWebsterProducer. NewBouncer takes the error-returning shape because
-// BouncerConfig carries eleven inputs with real invariants, two of which must be absolute paths,
-// and validating lazily at first Call would turn a wiring typo into a mid-run failure in an
-// unattended segment.
+// Bouncer's own told inputs are RunDir, StencilsDir, the resolved seed and judge pairs, and the report-name convention as a function.
+// NewBouncer is the package's one validating, error-returning constructor, in contrast with the constructors that return a bare pointer: the MultiLLMProducer constructors, whose table is validated downstream by seatengine, and NewWebsterProducer.
+// NewBouncer takes the error-returning shape because BouncerConfig carries eleven inputs with real invariants, two of which must be absolute paths, and validating lazily at first Call would turn a wiring typo into a mid-run failure in an unattended segment.
 //
 // # The round-artifact convention
 //
@@ -238,7 +214,7 @@
 // This exception exists because converting a finished success into the context error would make Shed
 // record no history entry for it, so the next Call would archive a valid artifact and pay for the
 // same LLM session twice; a finished artifact and a paid-for session are never discarded.
-// For SingleLLMProducer and WebsterProducer, this principle applies as-is.
+// For MultiLLMProducer and WebsterProducer, this principle applies as-is.
 // For the Bouncer, the genuine-success exception covers a *harvested* verdict, not only a
 // shuttleengine completion: a verdict and ledger that both exist and parse are returned as their
 // mapped outcome and pointer even when the run that produced them reported an error, a non-done
@@ -258,11 +234,13 @@
 // Every adapter answers the same question before it starts anything: is an agent for this exact
 // step still alive? They answer it in different ways, and the difference is the engine's, not a
 // policy choice here.
-// SingleLLMProducer and Bouncer call shuttleengine's Attach seam with the step's own OutputFiles and wait on a match.
+// Bouncer calls shuttleengine's Attach seam with the step's own OutputFiles and waits on a match.
 // The Bouncer does so on its seed pass, on its judge pass, on the re-bounce, and once more at Call entry (see below).
 // The review row and the fix row each probe their half through their runner (see below).
 // MultiLLMProducer probes its table's seats through its SeatRunner: with the chair live it resumes the table, and otherwise the probe has already stopped every live advisor, so the archive that follows runs beside no live seat.
 // A MultiLLMProducer built with a fresh-spawn preparation runs it on the fresh path only, after the probe and before the archive; its error fails the call with nothing archived and no seat started.
+// The preparation returns a prompt amendment beside its error, which the producer sets on a copy of the table as its Amendment so the seat engine appends it to the lead's prompt; the resume path neither runs the preparation nor amends.
+// The preparation cannot be a decorator wrapping the producer: a decorator runs before Call and therefore before the probe, so it would archive files a live agent is about to write.
 // WebsterProducer inherits websterengine's own entry-time reclaim, which stops a leftover Master rather than attaching to it.
 //
 // "Every mode" is meant literally, and was not always true. The re-bounce -- an already-seeded
@@ -342,9 +320,9 @@
 //
 // # Limitations
 //
-// Neither SingleLLMProducer nor WebsterProducer installs a mid-run cancellation bridge, so a cancel
+// Neither MultiLLMProducer nor WebsterProducer installs a mid-run cancellation bridge, so a cancel
 // is observed only once the run reaches a terminal outcome or its own configured deadline elapses --
-// bounded by the shuttle spec's own timeout for SingleLLMProducer, and by Webster's own whole-run
+// bounded by the table's own timeout for MultiLLMProducer, and by Webster's own whole-run
 // timeout for WebsterProducer.
 // The Burler rows and Bouncer likewise install no mid-run cancellation bridge: the Burler rows because
 // burlerengine exposes no pause seam (so a cancel is observed only once the half reaches a terminal

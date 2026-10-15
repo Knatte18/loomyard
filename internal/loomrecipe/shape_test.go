@@ -89,7 +89,7 @@ var wantProducerTable = []wantProducerRow{
 }
 
 // testEnv builds a shedrecipe.Env/shedbuild.ShedPaths pair from envkit.FullEnv, whose path fields are absolute paths under one t.TempDir().
-// It seeds the bouncer stencils and swaps in the webster run fake, the non-writing loom shuttle and the loom burler, so the discussion and plan paths this builder points at stay absent on disk.
+// It seeds the bouncer stencils and swaps in the webster run fake, the non-writing loom shuttle and seat runner and the loom burler, so the discussion and plan paths this builder points at stay absent on disk.
 // ApprovePlan stays FullEnv's non-nil no-op: this file's subject is the constructed producer table and its routing graph, never a driven run, so nothing here reads the plan's approval flag.
 func testEnv(t *testing.T) (shedrecipe.Env, shedbuild.ShedPaths) {
 	t.Helper()
@@ -100,6 +100,7 @@ func testEnv(t *testing.T) (shedrecipe.Env, shedbuild.ShedPaths) {
 	env.ParentReview = testParentReviewConfig(dir, env.DecisionRecordPath, env.SupportLogPath)
 	env.WebsterRun = (&fakeWebsterRun{}).run
 	env.Shuttle = newLoomShuttle("", false)
+	env.Seats = newLoomSeats("", false)
 	env.Burler = newLoomBurler(t)
 	env.Now = func() time.Time { return time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) }
 
@@ -208,8 +209,8 @@ func TestNew_PassesShedValidation(t *testing.T) {
 
 	// Drive Run to exercise (*Shed).validate() indirectly, since it is unexported: a validation
 	// error (a typo'd OnStuck, a duplicate name, two lock paths naming one file) surfaces as Run
-	// returning a non-nil error before it ever reads the status file. Row 3's fake shuttle
-	// deliberately writes nothing (env.Shuttle is a non-writing newLoomShuttle), so
+	// returning a non-nil error before it ever reads the status file.
+	// Row 3's fake seat runner deliberately writes nothing (env.Seats is a non-writing newLoomSeats), so
 	// Discussion-Write's own gate -- which reads exactly the two files the fake did not write --
 	// fails on its very first (and, per the "every test fake evaluates the gate once" decision,
 	// only) evaluation. Discussion-Write carries no on_stuck, so that single failed gate blocks the

@@ -41,10 +41,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
 // shellLaunchEngine is a shuttleengine.Engine that launches a plain shell script instead of a provider session.
@@ -178,7 +182,7 @@ func TestSmokeBurlerReview_AttachesToALiveReviewerInsteadOfRespawning(t *testing
 	live, err := runner.Start(shuttleengine.Spec{
 		Prompt:      "smoke: stand in for a live burler reviewer",
 		OutputFiles: []string{reviewPath},
-		Role:        "burler-review-chair",
+		Role:        "burler-review",
 		Round:       "1",
 		Timeout:     2 * time.Minute,
 	})
@@ -237,23 +241,52 @@ func TestSmokeBurlerReview_AttachesToALiveReviewerInsteadOfRespawning(t *testing
 	}
 }
 
-// TestSmokeSingleLLM_HarvestsAFinishedRunWithReedStateGone is the live-substrate guard for crucible
-// round opus5-high-r7's F1: Attach's reed-state gates must consult the run's file contract before
-// refusing, so a producer whose agent already finished advances instead of hard-failing the step.
+// newLeadSeatProducer returns a MultiLLMProducer over a one-seat table whose lead declares outputFile under the role prefix "discussion" and round "1", run by a seat engine over runner.
+// The lead's stencil is a one-line stencil written into a stencilkit-seeded directory.
+func newLeadSeatProducer(t *testing.T, reedGeom reedengine.Geometry, runner *shuttleengine.Runner, outputFile string) *shedadapters.MultiLLMProducer {
+	t.Helper()
+	stencilsDir := t.TempDir()
+	stencilkit.SeedInto(t, stencilsDir)
+	const leadStencil = "smoke-lead"
+	leadPath := stencilstore.Path(stencilsDir, leadStencil)
+	if err := os.MkdirAll(filepath.Dir(leadPath), 0o755); err != nil {
+		t.Fatalf("mkdir stencil parent %s: %v", filepath.Dir(leadPath), err)
+	}
+	if err := os.WriteFile(leadPath, []byte("smoke: stand in for a lead seat.\n"), 0o644); err != nil {
+		t.Fatalf("write stencil %s: %v", leadPath, err)
+	}
+
+	table := seatengine.Table{
+		RolePrefix: "discussion",
+		Round:      "1",
+		Timeout:    2 * time.Minute,
+		Seats:      []seatengine.Seat{{Stencil: leadStencil, Outputs: []string{outputFile}}},
+	}
+	seats := seatengine.New(seatengine.RunnerShuttle(runner), seatengine.Geometry{
+		WorktreeRoot: reedGeom.WorktreeRoot,
+		AnchorPath:   reedGeom.AnchorPath,
+		StencilsDir:  stencilsDir,
+		Shortname:    reedGeom.NameShortname,
+		Slug:         reedGeom.NameSlug,
+	})
+	return shedadapters.NewMultiLLMProducerSourced("Discussion-Write", func() (seatengine.Table, error) { return table, nil }, seats, nil, nil)
+}
+
+// TestSmokeLeadSeat_HarvestsAFinishedRunWithReedStateGone is the live-substrate guard for crucible round opus5-high-r7's F1:
+// Attach's reed-state gates must consult the run's file contract before refusing,
+// so a producer whose agent already finished advances instead of hard-failing the step.
 //
-// It exists as a smoke test on top of internal/shuttleengine's own hermetic coverage because the
-// defect's cost is only visible at the composed layer. Attach returning an error is not obviously
-// wrong in isolation -- an unreadable strand table genuinely is a problem worth reporting -- but
-// SingleLLMProducer.Call turns that error into a hard Shed step failure over work that was already
-// finished and sitting on disk, and nothing then removes the run directory, so every later resume
-// re-refuses identically. Reproduced in exactly this shape against the real built binary before the
-// fix.
+// It exists as a smoke test on top of internal/shuttleengine's own hermetic coverage because the defect's cost is only visible at the composed layer.
+// Attach returning an error is not obviously wrong in isolation, since an unreadable strand table genuinely is a problem worth reporting.
+// But the seat producer turns that error into a hard Shed step failure over work that was already finished and sitting on disk, and nothing then removes the run directory, so every later resume re-refuses identically.
+// The defect was reproduced in exactly this shape against the real built binary before the fix.
+// The stand-in run is started by runner.Start, as a run started before the seat producer existed was,
+// so the producer must attach to it instead of respawning.
 //
-// The substitution is the same one this file's other test makes and no more: a stub Engine launching
-// a shell script instead of a provider. Everything Attach reads -- a real run.json written by a real
-// Start, real output files, and reed's own real state file -- is genuine, and ZERO provider
-// subprocesses are spawned.
-func TestSmokeSingleLLM_HarvestsAFinishedRunWithReedStateGone(t *testing.T) {
+// The substitution is the same one this file's other test makes and no more: a stub Engine launching a shell script instead of a provider.
+// Everything Attach reads is genuine: a real run.json written by a real Start, real output files, and reed's own real state file.
+// ZERO provider subprocesses are spawned.
+func TestSmokeLeadSeat_HarvestsAFinishedRunWithReedStateGone(t *testing.T) {
 	tmuxBinaryPath(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
@@ -312,13 +345,7 @@ func TestSmokeSingleLLM_HarvestsAFinishedRunWithReedStateGone(t *testing.T) {
 		t.Fatalf("remove reed state: %v", err)
 	}
 
-	producer := shedadapters.NewSingleLLMProducer(
-		"Discussion-Write",
-		func() (shuttleengine.Spec, error) { return spec, nil },
-		runner,
-		nil,
-		nil,
-	)
+	producer := newLeadSeatProducer(t, reedGeom, runner, outputFile)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
@@ -346,13 +373,14 @@ func TestSmokeSingleLLM_HarvestsAFinishedRunWithReedStateGone(t *testing.T) {
 	}
 }
 
-// TestSmokeSingleLLM_RerunRemovesTheSupersededStrand is the live-substrate guard for re-running a producer over a halted run:
+// TestSmokeLeadSeat_RerunRemovesTheSupersededStrand is the live-substrate guard for re-running a producer over a halted run:
 // the earlier run's record sits at a terminal outcome with its shell strand still live,
 // and the producer's fresh run must not start beside it.
 // A live strand with other output files, standing in for another producer's agent, survives.
+// That strand takes the role "other", since the seat engine refuses a lead whose strand name another live strand holds.
 //
 // The stub Engine and the real Runner, reed session and tmux panes are the ones this file's other tests use.
-func TestSmokeSingleLLM_RerunRemovesTheSupersededStrand(t *testing.T) {
+func TestSmokeLeadSeat_RerunRemovesTheSupersededStrand(t *testing.T) {
 	tmuxBinaryPath(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
@@ -397,6 +425,7 @@ func TestSmokeSingleLLM_RerunRemovesTheSupersededStrand(t *testing.T) {
 
 	otherSpec := spec
 	otherSpec.OutputFiles = []string{otherOutputFile}
+	otherSpec.Role = "other"
 	other, err := runner.Start(otherSpec)
 	if err != nil {
 		t.Fatalf("start the other-outputs stand-in run: %v", err)
@@ -414,13 +443,7 @@ func TestSmokeSingleLLM_RerunRemovesTheSupersededStrand(t *testing.T) {
 	markRunTerminal(t, runRoot, halted.StrandGUID(), "timeout")
 
 	launchEngine.quietSeconds = 1
-	producer := shedadapters.NewSingleLLMProducer(
-		"Discussion-Write",
-		func() (shuttleengine.Spec, error) { return spec, nil },
-		runner,
-		nil,
-		nil,
-	)
+	producer := newLeadSeatProducer(t, reedGeom, runner, outputFile)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()

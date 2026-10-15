@@ -78,6 +78,7 @@
 //
 // A row may name one OnReroute row, forward or backward and across segments.
 // A Stuck verdict whose OutputPointer.Reroute is set takes that edge instead of OnStuck: the run moves to the target and a history entry with outcome OutcomeReroute and the target in routed_to records it.
+// A Stuck verdict that takes its row's OnStuck edge records the target in routed_to on its own Stuck entry, so a reader can tell a bounce from a halt; the outcome stays stuck and the bounce count ignores the field.
 // A reroute spends no bounce budget, and like a goto it ends the episode of every row sharing its target's Segment.
 // A row reroutes at most rerouteCap (three) times since its latest Done or its latest reroute-cap halt; the next reroute halts blocked at the row with a budget-exempt Stuck entry marked reroute_capped and a reason starting "reroute cap reached", whose trailing way forward is the told Shed.RerouteCapWayForward.
 // Resuming that halt grants three more reroutes, because the capped entry resets the count.

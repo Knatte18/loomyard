@@ -510,7 +510,7 @@ func stepRunSettings(t *testing.T, f *cliFixture) {
 		{name: "an unknown module", payload: `{"slug":"bad","run_settings":{"bogus":{"x":1}}}`, wantErr: []string{"bogus"}},
 		{name: "a key absent from the template", payload: `{"slug":"bad","run_settings":{"loom":{"no_such_key":1}}}`, wantErr: []string{"loom", "no_such_key"}},
 		{name: "a shape mismatch", payload: `{"slug":"bad","run_settings":{"loom":{"review_max_bounces":{"a":1}}}}`, wantErr: []string{"loom", "review_max_bounces"}},
-		{name: "a closed key", payload: `{"slug":"bad","run_settings":{"loom":{"discussion_producer":"single"}}}`, wantErr: []string{"loom", "discussion_producer"}},
+		{name: "a closed key", payload: `{"slug":"bad","run_settings":{"loom":{"discussion_advisors":[{"name":"critic","model":"sonnet[low]"}]}}}`, wantErr: []string{"loom", "discussion_advisors"}},
 	}
 	for _, tt := range refusals {
 		t.Run("refuses "+tt.name, func(t *testing.T) {

@@ -36,6 +36,7 @@ const (
 	smokeChairStencil   = "seatsmoke-chair"
 	smokeAdvisorStencil = "seatsmoke-advisor"
 	smokeRolePrefix     = "smoke"
+	smokeAdvisorName    = "critic"
 )
 
 // copyTestdataStencil copies testdata/<file> into stencilsDir as the stencil called name.
@@ -110,12 +111,12 @@ func TestSmokeSeatsChairAsksAdvisor(t *testing.T) {
 		Segment:    segmentcolor.Plan,
 		Timeout:    8 * time.Minute,
 		Seats: []seatengine.Seat{
-			{Name: seatengine.RoleChair, Stencil: smokeChairStencil, Inputs: []string{advisorOutput}, Outputs: []string{chairOutput}},
-			{Name: seatengine.AdvisorName(1), Stencil: smokeAdvisorStencil, Outputs: []string{advisorOutput}},
+			{Stencil: smokeChairStencil, Inputs: []string{advisorOutput}, Outputs: []string{chairOutput}},
+			{Name: smokeAdvisorName, Stencil: smokeAdvisorStencil, Outputs: []string{advisorOutput}},
 		},
 	}
 
-	advisorStrand, err := agentname.Format(reedGeom.NameShortname, reedGeom.NameSlug, seatengine.SeatRole(smokeRolePrefix, seatengine.AdvisorName(1)))
+	advisorStrand, err := agentname.Format(reedGeom.NameShortname, reedGeom.NameSlug, seatengine.SeatRole(smokeRolePrefix, smokeAdvisorName))
 	if err != nil {
 		t.Fatalf("format advisor strand name: %v", err)
 	}

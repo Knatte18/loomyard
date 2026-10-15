@@ -1,5 +1,5 @@
 // names.go declares RecipeEngines, the derived engine set the cross-consumer coverage guard in
-// internal/shedrecipe trusts, and RowNames, a recipe's row names in file order.
+// internal/shedrecipe trusts, and RowNames and Rows, a recipe's row names and rows in file order.
 
 package loomrecipe
 
@@ -12,11 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// discussionSeatsEngine is the engine New gives the Discussion-Write row when env.DiscussionSeats is true.
-const discussionSeatsEngine = "DiscussionSeats"
-
-// RecipeEngines parses recipes.LoomRecipe and recipes.DarnRecipe, collects each row's engine name, adds discussionSeatsEngine, de-duplicates, and returns the result sorted.
-// discussionSeatsEngine joins the set because New substitutes it for the Discussion-Write row's engine, so a loom row can reach it.
+// RecipeEngines parses recipes.LoomRecipe and recipes.DarnRecipe, collects each row's engine name, de-duplicates, and returns the result sorted.
 // Both recipes are the loom module's, so the set is their union.
 // It exists as the input to the cross-consumer coverage guard, which
 // unions every recipe consumer's engine set -- deriving the set from the recipe rather than
@@ -27,8 +23,8 @@ const discussionSeatsEngine = "DiscussionSeats"
 // package, since a recipe that fails to parse is a build-time defect in an embedded file rather
 // than a runtime condition.
 func RecipeEngines() []string {
-	seen := map[string]bool{discussionSeatsEngine: true}
-	engines := []string{discussionSeatsEngine}
+	seen := map[string]bool{}
+	var engines []string
 	for _, source := range [][]byte{recipes.LoomRecipe, recipes.DarnRecipe} {
 		recipe, err := shedbuild.Parse(source)
 		if err != nil {
@@ -47,9 +43,32 @@ func RecipeEngines() []string {
 	return engines
 }
 
+// RecipeRow is one recipe row as a status reader needs it.
+// Bouncer is true when the row's engine is the Bouncer.
+type RecipeRow struct {
+	Name    string
+	Segment string
+	OnStuck string
+	Bouncer bool
+}
+
 // RowNames returns the row names of the named recipe in file order: shedrun.RecipeLoom is the loom recipe and shedrun.RecipeDarn the darn recipe.
 // Any other recipe name is refused with an error naming it.
 func RowNames(recipe string) ([]string, error) {
+	rows, err := Rows(recipe)
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(rows))
+	for _, row := range rows {
+		names = append(names, row.Name)
+	}
+	return names, nil
+}
+
+// Rows returns the rows of the named recipe in file order: shedrun.RecipeLoom is the loom recipe and shedrun.RecipeDarn the darn recipe.
+// Any other recipe name is refused with an error naming it.
+func Rows(recipe string) ([]RecipeRow, error) {
 	var source []byte
 	switch recipe {
 	case shedrun.RecipeLoom:
@@ -63,9 +82,9 @@ func RowNames(recipe string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("loomrecipe: parse the %s recipe: %w", recipe, err)
 	}
-	names := make([]string, 0, len(parsed.Producers))
+	rows := make([]RecipeRow, 0, len(parsed.Producers))
 	for _, row := range parsed.Producers {
-		names = append(names, row.Name)
+		rows = append(rows, RecipeRow{Name: row.Name, Segment: row.Segment, OnStuck: row.OnStuck, Bouncer: row.Engine == bouncerEngine})
 	}
-	return names, nil
+	return rows, nil
 }

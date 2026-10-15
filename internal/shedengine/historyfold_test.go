@@ -71,6 +71,11 @@ func TestAppendOrFold_Appends(t *testing.T) {
 		e.GateAttempts = intPtr(n)
 		return e
 	}
+	routed := func(target string) HistoryEntry {
+		e := exemptStuck("Wait", "x", "t2")
+		e.RoutedTo = target
+		return e
+	}
 	counted := exemptStuck("Wait", "x", "t1")
 	counted.BudgetExempt = false
 	tests := []struct {
@@ -92,6 +97,8 @@ func TestAppendOrFold_Appends(t *testing.T) {
 		{"gate nil vs set", []HistoryEntry{exemptStuck("Wait", "x", "t1")}, gated(1)},
 		{"gate set vs nil", []HistoryEntry{gated(1)}, exemptStuck("Wait", "x", "t2")},
 		{"gate differs", []HistoryEntry{gated(1)}, gated(2)},
+		{"routed to differs", []HistoryEntry{routed("A")}, routed("B")},
+		{"routed to set vs empty", []HistoryEntry{exemptStuck("Wait", "x", "t1")}, routed("A")},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -169,6 +176,16 @@ func TestEpisodeStuckCount_FoldedEqualsUnfolded(t *testing.T) {
 	wait := ProducerDef{Name: "Wait"}
 	if got, want := episodeStuckCount(folded, wait, nil), episodeStuckCount(calls, wait, nil); got != want {
 		t.Errorf("folded count = %d; want %d", got, want)
+	}
+
+	routedCalls := cloneHistory(calls)
+	for i := range routedCalls {
+		if routedCalls[i].Outcome == Stuck {
+			routedCalls[i].RoutedTo = "Review"
+		}
+	}
+	if got, want := episodeStuckCount(routedCalls, wait, nil), episodeStuckCount(calls, wait, nil); got != want {
+		t.Errorf("count with routed_to on stuck entries = %d; want %d, the count without it", got, want)
 	}
 }
 

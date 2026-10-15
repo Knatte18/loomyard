@@ -1,6 +1,6 @@
 // planwrite.go implements the Plan-Write row's two halves: NewPlanWrite, the post-Done commit
 // decorator it shares with Discussion-Write, and NewPlanDirRotator, the stale-plan-directory rotation
-// that runs as the wrapped SingleLLMProducer's fresh-spawn preparation rather than as a step ahead of
+// that runs as the wrapped seat producer's fresh-spawn preparation rather than as a step ahead of
 // it.
 
 package loomshed
@@ -27,14 +27,13 @@ const archiveTimestampFormat = "20060102T150405Z"
 // planWrite decorates inner with a post-Done commit step: once inner.Call reports Done with a nil
 // error, planWrite invokes commit before returning that same verdict to the caller.
 //
-// It carries no rotation of its own, deliberately. Rotating the plan directory is destructive to the
-// very files a live plan agent may be mid-write on, so it belongs after the wrapped
-// SingleLLMProducer's attach probe, never before its Call -- see NewPlanDirRotator.
+// It carries no rotation of its own, deliberately.
+// Rotating the plan directory is destructive to the very files a live plan lead may be mid-write on,
+// so it belongs after the wrapped seat producer's probe of the lead, never before its Call -- see NewPlanDirRotator.
 //
-// planWrite does not consult entryErr or cancelErr itself. inner (a
-// *shedadapters.SingleLLMProducer in practice) already entry-checks the context as its first act, so
-// a second check here would be duplicate work at the same seam; the wrapped producer owns the whole
-// cancellation obligation.
+// planWrite does not consult entryErr or cancelErr itself.
+// inner (a *shedadapters.MultiLLMProducer in practice) already entry-checks the context as its first act,
+// so a second check here would be duplicate work at the same seam; the wrapped producer owns the whole cancellation obligation.
 //
 // It is deliberately a distinct type from discussionWrite rather than a shared one, even though the
 // two now carry identical logic: internal/loomrecipe's shape_test asserts the concrete producer type
@@ -59,7 +58,7 @@ func NewPlanWrite(name string, inner shedengine.ShedProducer, commit func() erro
 // Call implements shedengine.ShedProducer: it calls p.inner.Call(ctx) exactly once and returns its
 // three results verbatim whenever the error is non-nil or pointer.Path is empty. The commit seam
 // fires whenever the wrapped producer reports a non-empty output pointer with a nil error -- Done or
-// a gate-failed Stuck, the only two outcomes the wrapped *shedadapters.SingleLLMProducer can report
+// a gate-failed Stuck, the only two outcomes the wrapped *shedadapters.MultiLLMProducer can report
 // with a non-empty pointer -- and the returned triple is (outcome, pointer, nil) rather than being
 // forced to Done.
 //
@@ -98,19 +97,19 @@ func (p *planWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 // files into a fresh archive-<stamp>[-N] subdirectory under it, resolving that directory from
 // anchorPath via planparser.PlanDir. A nil now defaults to time.Now.
 //
-// The returned closure is handed to shedadapters.NewSingleLLMProducer as its prepareFreshSpawn hook,
-// so it runs only once the attach probe has established that no live agent is writing into that
+// The returned closure is handed to shedadapters.NewMultiLLMProducerSourced as its prepareFreshSpawn hook,
+// so it runs only once the seat probe has established that no live lead is writing into that
 // directory. Running it unconditionally ahead of the producer -- which is what this rotation used to
-// do, as a step inside the decorator's own Call -- moves 00-overview.md, the Plan spec's sole
-// declared output file, out from under an agent the very next line then attaches to: shuttle's Wait
-// polls for bare existence at the spec's paths, so a plan that was finished never classifies Done
+// do, as a step inside the decorator's own Call -- moves 00-overview.md, the lead's sole
+// declared output file, out from under a lead the very next line then resumes: shuttle's Wait
+// polls for bare existence at the lead's output paths, so a plan that was finished never classifies Done
 // and times out into a hard run failure instead.
 //
 // Only files move, never directories, so a second rotation can never nest a previous archive
 // directory inside a new one. An absent plan directory, or one with no top-level .md file to move,
 // is a no-op with a nil error and creates nothing.
 //
-// The closure's string result is the prompt amendment SingleLLMProducer appends to the respawned session's prompt: empty when nothing moved, otherwise a blank line followed by loomengine.PriorPlanBlock naming the archive directory and the moved files,
+// The closure's string result is the prompt amendment the seat producer sets as the table's Amendment, which the seat engine appends to the respawned lead's prompt: empty when nothing moved, otherwise a blank line followed by loomengine.PriorPlanBlock naming the archive directory and the moved files,
 // so the new session knows where the prior plan went.
 // The lens review file, planparser.LensReviewFileName, moves with the other files but is never named in the block;
 // when it is the only stale file, the rotation still moves it and returns an empty amendment, since there is no plan to carry forward.

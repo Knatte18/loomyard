@@ -122,17 +122,13 @@ func (e *gateRepromptReadEngine) ComposeSend(text string) []shuttleengine.PaneIn
 	return []shuttleengine.PaneInput{{Text: text, Submit: true}}
 }
 
-// TestSmokeGate_RepromptsThroughARealPaneAndFixesTheArtifact proves the one thing no untagged test
-// can: a real agent, re-prompted through a real pane after a deliberately-invalid first artifact,
-// fixes it and the row reports Done.
+// TestSmokeGate_RepromptsThroughARealPaneAndFixesTheArtifact proves the one thing no untagged test can:
+// a real agent, re-prompted through a real pane after a deliberately-invalid first artifact, fixes it and the row reports Done.
 //
-// It runs loomshed.NewDiscussionGate -- the same closure a gated Discussion-Write row builds through
-// resolveGateSpec -- over a real shuttleengine.Runner's RunGated, with gateRepromptReadEngine
-// standing in for the provider exactly as shellLaunchEngine does in smoke_attachprobe_test.go, and
-// asserts the run reaches a passed-gate shuttleengine.OutcomeDone -- the shape a gated
-// SingleLLMProducer.Call (internal/shedadapters/singlellm.go's mapOutcome) maps onto shedengine.Done
-// -- that the gate's reported Attempts is at least 1, and that the artifact on disk passes the same
-// gate closure afterwards.
+// It runs loomshed.NewDiscussionGate, the same closure a gated Discussion-Write row builds through resolveGateSpec, over a real shuttleengine.Runner's RunGated.
+// gateRepromptReadEngine stands in for the provider exactly as shellLaunchEngine does in smoke_attachprobe_test.go.
+// It asserts the run reaches a passed-gate shuttleengine.OutcomeDone, the shape a gated MultiLLMProducer.Call maps onto shedengine.Done.
+// It also asserts that the gate's reported Attempts is at least 1, and that the artifact on disk passes the same gate closure afterwards.
 func TestSmokeGate_RepromptsThroughARealPaneAndFixesTheArtifact(t *testing.T) {
 	tmuxBinaryPath(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)

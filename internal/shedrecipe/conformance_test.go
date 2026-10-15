@@ -49,7 +49,6 @@ func minimalEntries() map[string]minimalEntry {
 		"LoomPreflight":   {newTestEnv, emptyConfig},
 		"Batchifier":      {newTestEnv, emptyConfig},
 		"DiscussionWrite": {newTestEnv, emptyConfig},
-		"DiscussionSeats": {newTestEnv, emptyConfig},
 		"Describe": {
 			env: newDescribeTestEnv,
 			cfg: func(*testing.T, Env) Config { return gatesCfg("description", 3) },
@@ -57,13 +56,6 @@ func minimalEntries() map[string]minimalEntry {
 		"PlanWrite": {newTestEnv, emptyConfig},
 		"Stub":      {newTestEnv, emptyConfig},
 		"Webster":   {newTestEnv, emptyConfig},
-		"SingleLLM": {
-			env: func(t *testing.T) Env {
-				env, _ := validSingleLLMEnv(t)
-				return env
-			},
-			cfg: func(*testing.T, Env) Config { return validSingleLLMConfig("singlellm-valid") },
-		},
 		"Bouncer": {
 			env: newTestEnv,
 			cfg: minimalBouncerConfig,
@@ -79,7 +71,7 @@ func minimalEntries() map[string]minimalEntry {
 		"MultiLLM": {
 			env: func(t *testing.T) Env {
 				env := newTestEnv(t)
-				writeStencilFile(t, env.StencilsDir, "multillm-seat", "Body text with no markers.\n")
+				writeMultiLLMStencils(t, env)
 				return env
 			},
 			cfg: func(*testing.T, Env) Config { return validMultiLLMConfig() },

@@ -12,19 +12,19 @@
 This replaces the earlier Go literal `internal/loomshed.New()` used to build directly.
 
 Motivation: several rows are already pure `Engine + Config` in spirit, exactly the shape a declarative recipe expresses cleanly — but not `Discussion-Write`, which turns out not to fit that mold.
-Its Spec also carries per-run values a static recipe `Config` cannot hold — the task slug and the mode-rules block — plus a model and timeout resolved from the `discussion` role's own config rather than from recipe strings.
-That is why it ships as its own `DiscussionWrite` registry entry, over an injected `shedadapters.SpecSource` closure, rather than as a `SingleLLM` row.
-The same row has a second producer, the `DiscussionSeats` entry: a chair and its advisors on `MultiLLMProducer`, over a table told through `Env.DiscussionTable` instead of a Spec.
-It carries the row's gates on the chair and, for an enabled `parent-review` entry, the same fresh-spawn preparation.
-The recipe file names `DiscussionWrite` only; `internal/loomrecipe` substitutes `DiscussionSeats` for the row's engine when `Env.DiscussionSeats` is set, so the built row may carry either engine.
-`Plan-Write` is the second such row: its Spec is resolved from the `plan` role's own model-spec and timeout rather than from recipe strings, and building it needs a `*lyxcwd.Location` to build the plan paths, so it ships as its own `PlanWrite` entry for the same reason.
+Its table also carries per-run values a static recipe `Config` cannot hold — the task slug and the mode-rules block — plus a model and timeout resolved from the `discussion` role's own config rather than from recipe strings.
+That is why it ships as its own `DiscussionWrite` registry entry, over an injected `shedadapters.TableSource` closure, rather than as a `MultiLLM` row.
+The entry runs the lead and its advisors, when the table has any, on `MultiLLMProducer`, over a table told through `Env.DiscussionTable`.
+It carries the row's gates on the lead and, for an enabled `parent-review` entry, the fresh-spawn preparation that opens the next review round.
+The recipe file names `DiscussionWrite`, and the built row carries that engine whatever `discussion_advisors` and `discussion_lenses` hold.
+`Plan-Write` is the second such row: its seat table is resolved from the `plan` role's own model-spec and timeout rather than from recipe strings, and building it needs a `*lyxcwd.Location` to build the plan paths, so it ships as its own `PlanWrite` entry for the same reason.
 The question the discussion worked through was whether the *other* rows (the loom-specific ones — `Loom-Preflight`, `Batchifier`) resist this shape, and the answer was no: they don't need to be reusable to fit the pattern, they just need a name in the same registry as everything else — a bespoke, single-consumer `Engine` is exactly as valid a registry entry as a widely-shared one.
 
 ## What's in a recipe row
 
 - **`Name`** — the row's identifier, same as today (`shedengine.ProducerDef.Name`).
 - **`Engine`** — a name looked up in a registry mapping engine-name strings to `ShedProducer`-constructing functions. **Restricted to names already implementing `shedengine.ShedProducer`** — deliberately not "any Go module": every row today, shared adapter or loom-specific type alike, already satisfies the interface (the Shed Producer-Seam Invariant requires it to sit in a `ProducerDef` at all), so this restriction costs nothing and keeps the recipe-builder simple (registry lookup + fixed-signature constructor call, no reflection, no handling of arbitrary shapes).
-- **`Config`** — the row's static, portable configuration (e.g. which rubric stencil, which prompt template). **Never contains absolute paths.** This is what lets one `Engine` (e.g. `SingleLLMProducer`) serve many rows — the row-to-row difference lives entirely in `Config`.
+- **`Config`** — the row's static, portable configuration (e.g. which rubric stencil, which prompt template). **Never contains absolute paths.** This is what lets one `Engine` (e.g. `MultiLLMProducer`) serve many rows — the row-to-row difference lives entirely in `Config`.
 - **`OnDone` / `OnStuck`** — same routing semantics as today's `ProducerDef` fields, unchanged.
 - **`OnReroute`** — the one row a Stuck verdict that asks for a reroute goes to; empty means the row cannot reroute.
   Its target may sit in another segment, and `shedengine`'s validation refuses one naming no row in the list or the row itself.
@@ -52,9 +52,10 @@ A `Bouncer` row's optional `carry_over` key is a scalar naming the row's own rev
 It follows the same two rules as `commit_seam` and `skip_seam`: absent leaves the seam nil, and a present key naming a closure the `Env` does not carry is a construction error.
 The value is the segment name the entry is filed under, so a recipe test pins it equal to the row's `segment`.
 
-A `MultiLLM` row runs one chair and its advisors as seats.
+A `MultiLLM` row runs one lead and its advisors as seats.
 Its keys are `role`, `segment` and `seats`, and the optional `gates`, `timeout_min`, `interactive` and `tokens`.
-Each `seats` element carries `name`, `stencil`, `model` and `outputs`, and the optional `inputs`, `skills` and `values`; `inputs` and `outputs` are worktree-relative paths.
+Each `seats` element carries `stencil`, `model` and `outputs`, and the optional `inputs`, `skills` and `values`; `inputs` and `outputs` are worktree-relative paths.
+The first `seats` element is the lead and carries no `name`; every later element requires a unique `name` starting with a letter.
 A seat's `model` is a model-spec string resolved against `Env.Models`, the run-wide registry, and an unknown alias is a construction error naming the seat.
 The row drives `Env.Seats`, and a nil seam is a construction error.
 
