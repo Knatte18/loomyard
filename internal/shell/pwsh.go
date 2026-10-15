@@ -76,6 +76,11 @@ func (pwshShell) ScriptExt() string {
 	return ".ps1"
 }
 
+// DiscardLineKey returns the empty string: PSReadLine's discard key is Escape, and an Escape right before typed text reads as an Alt chord with its first character.
+func (pwshShell) DiscardLineKey() string {
+	return ""
+}
+
 // Chain joins parts with "; ", dropping empty parts. See chainStatements.
 func (p pwshShell) Chain(parts ...string) string {
 	return chainStatements(parts...)
