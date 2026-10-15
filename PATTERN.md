@@ -67,7 +67,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 ## Agents and prompts
 
 - `PATTERN-agent-name` — Forming an agent name: only `internal/agentname`, once by reed. — [background](pattern/PATTERN-agent-name.md)
-- `PATTERN-creel-store` — Writing the creel journal or reaching a pane from creel: only the creel daemon in `internal/creelengine` writes it, and that engine reaches a pane only through its `Delivery` seam. (test) — [background](pattern/PATTERN-creel-store.md)
+- `PATTERN-creel-store` — Writing the creel journal or reaching a pane: only `internal/creelengine` writes it and reaches a pane, only via its `Delivery` seam. (test) — [background](pattern/PATTERN-creel-store.md)
 - `PATTERN-stencil-ownership` — Reading a prompt or spec: at call time via `internal/stencilstore` from a told directory, never embedded. — [background](pattern/PATTERN-stencil-ownership.md)
 - `PATTERN-producer-pointer-rule` — Writing an instruction file: it points at another producer's format contract and never duplicates or paraphrases it.
 - `PATTERN-friction-capture` — Halting a loom run or refusing in webster: Go writes a friction note, archived only once a reflection covers it. (test) — [background](pattern/PATTERN-friction-capture.md)
