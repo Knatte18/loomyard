@@ -187,6 +187,12 @@
 // The `kickstart_pack` key of webster.yaml switches the pack on and off, so runs with and without it can be compared;
 // each begin-batch reads it afresh, so a flip applies from the next call on.
 //
+// CardPackMarkdown renders one card's subsection alone, against the tree as it stands at the call, for the read-only `lyx loom card-pack` verb.
+// It parses the plan afresh and reuses the batch pack's subsection rendering, so the text is byte-identical to that card's subsection in a batch pack.
+// A refusal, which ends in the locate fallback as its way forward, logs nothing;
+// a rendered pack logs one Info line, `webster: card pack`, with keys card, resolved and unresolved, the last two counted as distinct refs.
+// An index error is a Warn and keeps the degraded pack.
+//
 // # one dispatch scope for begin-batch, run entry and validate
 //
 // A plan describes intended change, so re-resolving a card whose work may already have landed reports the plan working as designed as a defect.

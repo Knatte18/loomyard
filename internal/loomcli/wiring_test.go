@@ -658,6 +658,7 @@ func TestVerbUsesLightweightWiring(t *testing.T) {
 		{"ValidatePlan", "validate-plan", true},
 		{"LintComments", "lint-comments", true},
 		{"LintPattern", "lint-pattern", true},
+		{"CardPack", "card-pack", true},
 		{"Fmt", "fmt", true},
 		{"InsertCard", "insert-card", true},
 		{"RemoveCard", "remove-card", true},
@@ -717,6 +718,9 @@ func TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig(t *testing.T) {
 	}
 	if c.env.WorktreeRoot != location.WorktreePath() {
 		t.Errorf("env.WorktreeRoot = %q; want %q", c.env.WorktreeRoot, location.WorktreePath())
+	}
+	if c.env.StencilsDir != fabricengine.StencilsDir(location.HubPath) {
+		t.Errorf("env.StencilsDir = %q; want %q", c.env.StencilsDir, fabricengine.StencilsDir(location.HubPath))
 	}
 	if c.env.DecisionRecordPath != loomengine.DiscussionDecisionRecord(location) {
 		t.Errorf("env.DecisionRecordPath = %q; want %q", c.env.DecisionRecordPath, loomengine.DiscussionDecisionRecord(location))

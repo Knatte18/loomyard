@@ -94,6 +94,17 @@
 // A write that fails stops the call, naming `written` and `failed`.
 // The rows are in `contracts/specs/refusal-spec.md`.
 //
+// # Card pack verb
+//
+// `lyx loom card-pack <card>` prints one plan card's kick-start pack as plain markdown on stdout, with no envelope: the card's pointer path as a heading, its member glyphs each with the file, line span and signature of its declarations, and its unresolved refs.
+// It resolves against the worktree as it stands when called, committed or not, so the spans are the current ones, and its subsection is byte-identical to that card's subsection in a batch pack.
+// `websterengine.CardPackMarkdown` holds the logic and `cardPackCmd` only parses the argument, so the verb reads the plan afresh and no webster state.
+// The bound: it mutates no webster, plan or tracked state and holds no lock; beyond stdout it writes only through `internal/logger`.
+// A card number the plan lacks, a plan that does not parse and a missing plan directory are refused with a way forward, the locate fallback; a standalone run's plan lives in its state directory, so the verb never works there.
+// It reads only path fields and the index, so it joins the lightweight wiring, which fills the stencils directory for it, and its argument is a card number, never a run-id.
+// It is a `lyx loom` verb because the claudeengine hook refuses every `lyx webster` command from a fork.
+// The rows are in `contracts/specs/refusal-spec.md`.
+//
 // # Validate plan lens review
 //
 // `lyx loom validate-plan --lens-review` runs the flag-less check set plus the check that the plan directory's `lens-review.md` holds a recorded lens review, the check set of a twill Plan-Write run's own gate.

@@ -293,6 +293,7 @@ var WebsterFragmentPackSectionInline []byte
 var WebsterFragmentPackRead []byte
 
 // WebsterFragmentPackCard is webster's shipped-default per-card subsection of the kick-start pack, one of which is filled into the pack section's pack_cards marker for each card of the batch.
+// Rendering one card alone is the output of `lyx loom card-pack`.
 //
 //go:embed webster/webster-fragment-pack-card.md
 var WebsterFragmentPackCard []byte
