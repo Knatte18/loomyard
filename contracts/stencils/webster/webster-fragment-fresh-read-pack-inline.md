@@ -1,5 +1,5 @@
 <!-- This is the inline-layout FRESH-READ rule for webster's implementer prompt.
-     RenderForkPrompt reads it through stencilstore when begin-batch built a kick-start pack and kickstart_pack_file is false;
+     RenderForkPrompt reads it through stencilstore when begin-batch built a kick-start pack and kickstart_pack_per_card is false and kickstart_pack_file is false;
      the text, with this banner and the trailing newline stripped, fills the required fresh_read marker of webster-body-implementer.
      It is the measurement baseline: its text is the 1e39afc10^ text and changes only when the layout comparison itself is meant to change, never to mirror an edit to the file-layout fragments.
      It carries no marker. -->
