@@ -1,0 +1,64 @@
+arm	forks	runs	cards	distinct spans (sum)
+pf	24	10	93	813
+raf	31	14	134	980
+
+metric (median over forks unless noted)	pf	raf
+forks that opened the pack file (of n)	24 of 24	0 of 31
+pack read in assistant turn (median; turn 1 = prompt read)	2	-
+pack read before first edit	24 of 24	0 of 31
+pack read opened in a turn with other calls	4	0
+distinct spans per fork	32.5	32
+distinct spans per card	7.5	6.8
+span reached before 1st edit, share (strict, per-fork median)	24%	17%
+span reached before 1st edit, share (strict, pooled)	27%	20%
+span file touched before 1st edit, share (file-level, per-fork median)	26%	18%
+span file touched before 1st edit, share (file-level, pooled)	30%	21%
+spans reached in the first work turn, share (strict, pooled)	4%	1%
+spans reached in the first work turn, share (file-level, pooled)	4%	1%
+max spans first reached in one turn (median)	5	3
+forks reaching >=50% of spans (strict) before 1st edit	6 of 24	3 of 31
+first work turn: parallel calls (median)	2	3
+first work turn: forks with >=3 parallel calls	7 of 24	16 of 31
+first work turn: forks with exactly 1 call	11 of 24	10 of 31
+turn of first edit (median)	7	6
+calls before first edit, raw (median)	9.5	8
+calls before first edit, net of pack-file read (median)	8.5	8
+calls before first edit, net, per card (median)	1.92	1.83
+ex_tools (exploration calls) / card, raw	5.1	5.75
+ex_net (exploration calls, minus pack-file read) / card	4.83	5.75
+rfull (whole reads) / card	3.04	2.17
+rfull_net (minus pack-file read) / card	2.83	2.17
+rpart (partial reads) / card	8.13	8.4
+grep / card	8.92	8
+gmem (member greps) / card	6.5	5
+quarry lookups / card	0	0
+forks with quarry > 0	0	0
+tools total / card	37.33	32.8
+turns / card	19.5	15
+output tokens / card	15950.1	12621.25
+fresh input tokens / card	44156.23	39354.8
+cache read / card	3137188	2504043
+
+pooled per card (sum / sum of cards)	pf	raf
+ex_tools pooled/card	5.84	5.53
+ex_net pooled/card	5.58	5.53
+rfull pooled/card	3.26	2.29
+rfull_net pooled/card	3	2.29
+rpart pooled/card	9.4	8.63
+grep pooled/card	9.34	8.24
+gmem pooled/card	6.12	5.68
+quarry pooled/card	0	0
+tools pooled/card	41.23	34.61
+turns pooled/card	20.15	16.4
+out pooled/card	18013.17	14558.45
+fresh_in pooled/card	55375.63	42696.9
+cache_read pooled/card	3762040.78	3103287.64
+edits pooled/card	21.63	17.34
+
+edits (Edit/MultiEdit) total	2012	2323
+edits to files with no span in the pack	539 (27%)	624 (27%)
+forks with any such edit	24 of 24	30 of 31
+writes total / to files with no span	129 / 106	132 / 130
+pack_res per fork (median)	33.5	33
+pack_unres per fork (median)	8.5	13
+cards per fork (median)	4	5

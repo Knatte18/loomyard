@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // TestNew_ShapeMatchesRecipe builds the embedded recipe through New from testEnv(t) and asserts row order and concrete Producer type against wantProducerTable.
@@ -347,6 +348,38 @@ func TestEntryNumbers(t *testing.T) {
 	if got := EntryNumbers(nil); len(got) != 0 {
 		t.Errorf("EntryNumbers(nil) = %v; want empty", got)
 	}
+}
+
+// TestRecipe_WebsterReroutesToPlanReview pins the edge a Webster plan conflict travels: the Webster row reroutes to Plan-Burler-Review, whose fasit instructions name the conflict record by the path websterengine declares.
+func TestRecipe_WebsterReroutesToPlanReview(t *testing.T) {
+	env, paths := testEnv(t)
+	shed, err := New(env, paths)
+	if err != nil {
+		t.Fatalf("New() error = %v; want nil", err)
+	}
+	for _, p := range shed.Producers {
+		if p.Name == loomshed.NameWebster && p.OnReroute != loomshed.NamePlanBurlerReview {
+			t.Errorf("Webster.OnReroute = %q; want %q", p.OnReroute, loomshed.NamePlanBurlerReview)
+		}
+	}
+
+	recipe, err := shedbuild.Parse(recipes.LoomRecipe)
+	if err != nil {
+		t.Fatalf("shedbuild.Parse() error = %v; want nil", err)
+	}
+	for _, row := range recipe.Producers {
+		if row.Name != loomshed.NamePlanBurlerReview {
+			continue
+		}
+		profile, _ := row.Config["profile"].(map[string]any)
+		fasit, _ := profile["fasit"].(map[string]any)
+		instructions, _ := fasit["instructions"].(string)
+		if !strings.Contains(instructions, websterengine.ConflictRecordRel()) {
+			t.Errorf("Plan-Burler-Review fasit instructions = %q; want them to name %q", instructions, websterengine.ConflictRecordRel())
+		}
+		return
+	}
+	t.Fatalf("recipe has no %q row", loomshed.NamePlanBurlerReview)
 }
 
 // TestRecipe_PublishRoutesThroughPRGate pins the review fix-back routing: Publish hands to PR-Align, which hands to the gate with no on_stuck and no segment, the gate lands on Finalize or bounces to the rework row, the rework row re-enters Webster, both rows share segment PR-Review, and the main line still ends at Friction-Reflect.

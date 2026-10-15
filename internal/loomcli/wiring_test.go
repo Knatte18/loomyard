@@ -993,3 +993,14 @@ func TestWire_MergeReviewSeams(t *testing.T) {
 		t.Errorf("reviewed tip = %q, %v, %v; want m9 recorded", tip, found, err)
 	}
 }
+
+// TestLoomRerouteCapWayForward_IsRowNeutral proves the reroute-cap clause serves every row's cap halt: it names the resume verb, the parent-branch cause and the hand edit of the named pending cards of a Webster plan conflict.
+func TestLoomRerouteCapWayForward_IsRowNeutral(t *testing.T) {
+	t.Parallel()
+
+	for _, want := range []string{`lyx loom resume`, "parent branch has settled", "named pending cards are edited by hand"} {
+		if !strings.Contains(loomRerouteCapWayForward, want) {
+			t.Errorf("loomRerouteCapWayForward = %q; want it to contain %q", loomRerouteCapWayForward, want)
+		}
+	}
+}

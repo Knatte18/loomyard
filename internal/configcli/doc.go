@@ -25,6 +25,8 @@
 // The bound: it guards a mistaken write, not a determined agent, so a direct file write to the board dir's config, an environment cleared without naming the variable, and an unset hidden behind a script still pass.
 //
 // With a module name, `lyx config <module>` opens the file in the editor ($VISUAL, then $EDITOR, then `code --wait` when `code` is on PATH, then notepad on Windows or nano and then vi elsewhere) through `configengine.Edit`.
+// An editor result that is empty or whitespace-only aborts the edit and leaves the layer, or the hub file, unchanged: the report is `aborted: <path> unchanged`, with no commit and no sync.
+// Removing the file stays the way to clear a sparse layer.
 // With no module and neither `--print` nor `--set`, it prints its help, which names `reconcile` and every known module, and resolves no cwd.
 // An argument that is neither a subcommand nor a module is refused as an unknown subcommand.
 //
@@ -34,6 +36,12 @@
 // Unlike bare `lyx config`, it resolves a cwd.
 //
 // `--print` writes the on-disk YAML verbatim, for one module or for all of them, and never opens an editor.
+//
+// Every editor path refuses when the command's input is not a terminal, and writes nothing:
+// `lyx config <module>` on any layer and `lyx config menu` return a refusal whose way forward is `lyx config <module> --print` to read and `lyx config <module> --set key=value` to write.
+// The refusal comes before the layer is dispatched, the hub-write guard is consulted, a file is scaffolded or the editor runs, and `menu` refuses before it lists or reads a choice.
+// `--print` and `--set` need no terminal and are unaffected.
+// The bound: the guard stops a caller with no terminal, such as an agent's shell; a caller with a terminal and an editor that exits at once is covered by the empty-result abort above.
 //
 // `--set key=value` (repeatable) writes values through `configengine.Set` with no editor and syncs once.
 // A key under one of the module's declared open maps (`configreg.Module.OpenMaps`) adds or rewrites one entry with a scalar value, as in `lyx config board --set labels.quarry="glyphs and the quarry index"`.

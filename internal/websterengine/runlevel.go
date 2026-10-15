@@ -368,6 +368,11 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	}
 	defer runLock.Release()
 
+	// A record is bounded to one Webster call, and the removal sits behind the lock so a refused-busy Run never removes the live run's record.
+	if err := RemoveConflictRecord(deps.Geom.ScratchDir); err != nil {
+		logger.Warn("websterengine: stale plan-conflict record not removed", "err", err)
+	}
+
 	// The overview frame is hashed from the bytes this parse accepts, so a file changing after the parse cannot make the frame unreadable.
 	var overview []byte
 	plan, err := planparser.ParsePlanFrom(deps.Geom.PlanDir, func(name string) ([]byte, error) {
