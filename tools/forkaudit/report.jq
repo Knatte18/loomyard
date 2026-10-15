@@ -1,7 +1,8 @@
 # report.jq renders the report body from the slurped per-fork records, one markdown line per output string.
 # Arguments: $markers, the marker table's rows (arm and agreeing trace values) in table order;
 # $batches and $traces, the contents of batches.tsv and traces.tsv, which join each record to its resolved batch and trace layout;
-# $pack_check, whether to render the pack-correctness section, with $pack_rows and $missed_rows, the contents of pack-check.tsv and missed-files.tsv.
+# $pack_check, whether to render the pack-correctness section, with $pack_rows and $missed_rows, the contents of pack-check.tsv and missed-files.tsv;
+# $plan_on, whether to render the plan glyph-use section, with $plan_runs, $plan_cards, $plan_refs and $plan_writers, the contents of the plan-*.tsv files.
 # Rows and arms sort by arm (marker-table order, then any other arm name alphabetically), run, start time and agent id,
 # so two runs over the same input differ only in the generation-time line.
 #
@@ -72,7 +73,17 @@ def tsv_rows($raw): $raw | split("\n") | map(select(length > 0) | split("\t"));
 | ["correct", "correct-decl", "stale", "wrong", "nofile", "notree", "unchecked"] as $classes
 | (tsv_rows($pack_rows) | group_by(.[0]) | map({key: .[0][0], value: .}) | from_entries) as $span_rows
 | (tsv_rows($missed_rows) | group_by(.[0]) | map({key: .[0][0], value: .}) | from_entries) as $missed_by_fork
+| (tsv_rows($plan_runs)) as $plan_run_rows
+| ([$plan_run_rows[] | select(.[1] != "-" and .[2] != "-") | .[0]]) as $counted_runs
+| (tsv_rows($plan_cards)) as $plan_card_rows
+| (tsv_rows($plan_refs)) as $plan_ref_rows
+| (tsv_rows($plan_writers) | map({key: .[0], value: .}) | from_entries) as $writer_by_run
 | def class_counts($rows): [$classes[] as $c | ($rows | map(select(.[7] == $c)) | length)];
+  # The counted runs having at least one fork in arm $a; a run whose forks span several arms counts under each.
+  def arm_runs($a): [$counted_runs[] | select(. as $r | ($by[$a] | map(.proj) | index($r)) != null)];
+  # The reference counts of kind $kind per card of run $r.
+  def card_counts($r; $kind):
+    [$plan_card_rows[] | select(.[0] == $r) | .[2] as $c | ([$plan_ref_rows[] | select(.[0] == $r and .[2] == $c and .[4] == $kind)] | length)];
   def row($label; c): [$label] + [$present[] | . as $a | $by[$a] | c];
   [
     ["exploration calls, raw", "ex_tools"], ["exploration calls, net", "ex_net"],
@@ -147,5 +158,26 @@ def tsv_rows($raw): $raw | split("\n") | map(select(length > 0) | split("\t"));
       + ["", "### Missed-file list", ""]
       + table(["agent", "file", "edits", "writes", "reads", "existed"];
           [$recs | sort_by([.agent])[] | . as $r | ($missed_by_fork[$r.rel] // []) | sort_by(.[2])[] | [$r.agent, .[2], .[3], .[4], .[5], .[6]]])
+    else [] end)
+  + (if $plan_on then
+      ([$present[] | select(arm_runs(.) | length > 0)]) as $plan_arms
+      | ["", "## Plan glyph use", "", "### Reference kinds per card, median", ""]
+        + table(["kind"] + $plan_arms;
+            [("glyph", "planhandle", "bare_file", "bare_dir") as $kind
+             | [({"glyph": "glyph references", "planhandle": "plan: handles", "bare_file": "bare files", "bare_dir": "bare directories"}[$kind])]
+               + [$plan_arms[] | . as $a | [arm_runs($a)[] | card_counts(.; $kind)[]] | if length == 0 then null else med end | n2]])
+        + ["", "### Plan writers, per arm", ""]
+        + table(["metric"] + $plan_arms;
+            [(["plan writers", null], ["quarry calls", 3], ["greps", 4], ["reads", 5]) as [$label, $column]
+             | if $column == null
+               then [$label] + [$plan_arms[] | arm_runs(.) | length]
+               else ([$label + ", pooled"] + [$plan_arms[] | . as $a | [arm_runs($a)[] | $writer_by_run[.][$column] | tonumber] | add])
+                    , ([$label + ", median per writer"] + [$plan_arms[] | . as $a | [arm_runs($a)[] | $writer_by_run[.][$column] | tonumber] | med | n2])
+               end])
+        + (if ($plan_run_rows | map(select(.[1] == "-" or .[2] == "-")) | length) > 0
+           then ["", "### Runs not counted", ""]
+                + [$plan_run_rows[] | select(.[1] == "-") | "- run \(.[0]): no records commit found"]
+                + [$plan_run_rows[] | select(.[1] != "-" and .[2] == "-") | "- run \(.[0]): no plan-writer session found"]
+           else [] end)
     else [] end)
 ) | .[]

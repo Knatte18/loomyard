@@ -19,6 +19,7 @@
 #                       (default the repo root's sibling named after the repo root plus the records suffix).
 #   --pack-check        add the pack-correctness section; it takes no value.
 #   --code <dir>        the code repository the packs are checked against (default the repo root).
+#   --plan              add the plan glyph-use section; it takes no value and needs --records but not --code.
 #   --out <path>        the report file (default .scratch/fork-audit.md under the repo root).
 #   --work <dir>        the work directory for intermediate files (default .scratch/fork-audit under the repo root).
 # Exactly one of --since and --runs is required, and --until needs --since.
@@ -78,10 +79,20 @@
 # A missing --code or --records directory exits 1 naming it, --code first, before the work directory is touched.
 # The report header names the resolved --code path.
 #
+# Plan glyph use (--plan): batch resolution runs for every fork, and a missing --records directory exits 1 naming it.
+# For each run with forks in the report, the plan cards are read from the records repository at the newest commit on the run's refs
+# that touches the state path, and each card's references under Edit, Create, Move, Delete, Rename and Uses
+# are counted by kind: glyph, plan: handle, bare file and bare directory; a bullet under any other label is skipped.
+# The run's plan writer is its top-level session transcript (never a subagent) with the most plan card writes,
+# ties broken by the lower session id; its quarry calls, greps and reads are counted.
+# A run whose records commit or plan-writer session is not found gets one line saying which and counts in no table.
+# A run whose forks span several arms counts under each of those arms.
+#
 # Intermediate files in --work: projects.txt (matched project directories), candidates.txt (candidate transcripts),
 # webster-files.txt (candidates holding the job heading), records.jsonl (one record per kept fork),
 # batches.tsv (each fork's resolved batch), traces.tsv (each cross-checked fork's trace layout),
-# and under --pack-check pack-entries.tsv (every pack entry), pack-check.tsv (one class per span entry) and missed-files.tsv.
+# under --pack-check pack-entries.tsv (every pack entry), pack-check.tsv (one class per span entry) and missed-files.tsv,
+# and under --plan plan-runs.tsv, plan-cards.tsv, plan-refs.tsv and plan-writers.tsv (the chosen writer of each run).
 # The report body is rendered from records.jsonl by report.jq:
 # a samples table, a pack-use table, an arm comparison table, the quartiles of net exploration calls per card and a per-fork table.
 # A fork lacking a metric is left out of that metric's median and pooled value, and a cell shows its sample size when that is
@@ -115,7 +126,8 @@ date -d @0 > /dev/null 2>&1 || { echo "forkaudit: missing command: GNU date" >&2
 
 MARKER_FILE=".forkaudit-work"
 # The script's own intermediate files in --work; a run clears exactly these.
-WORK_FILES=(projects.txt candidates.txt webster-files.txt records.jsonl batches.tsv traces.tsv pack-entries.tsv pack-check.tsv missed-files.tsv)
+WORK_FILES=(projects.txt candidates.txt webster-files.txt records.jsonl batches.tsv traces.tsv pack-entries.tsv pack-check.tsv missed-files.tsv
+          plan-runs.tsv plan-cards.tsv plan-refs.tsv plan-writers.tsv)
 # The heading that marks a Webster implementer prompt.
 JOB_HEADING='# Webster implementer job'
 
@@ -128,6 +140,7 @@ Options:
   --records <dir>    records repository (default the repo root's sibling named after it plus the records suffix)
   --pack-check       add the pack-correctness section (needs --code and --records)
   --code <dir>       code repository the pack is checked against (default the repo root)
+  --plan             add the plan glyph-use section (needs --records)
   --out <path>       report file (default .scratch/fork-audit.md under the repo root)
   --work <dir>       work directory (default .scratch/fork-audit under the repo root)
 EOF
@@ -146,11 +159,15 @@ fail() {
 
 original_args=("$@")
 since="" until_date="" runs="" projects="${HOME:-}/.claude/projects" hub="" records="" code="" out="" work=""
-since_set=0 until_set=0 runs_set=0 pack_check=0
+since_set=0 until_set=0 runs_set=0 pack_check=0 plan=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --pack-check)
       pack_check=1
+      shift
+      ;;
+    --plan)
+      plan=1
       shift
       ;;
     --since|--until|--runs|--projects|--hub|--records|--code|--out|--work)
@@ -200,6 +217,10 @@ code="$(realpath -m "${code:-$repo_root}")"
 resolve_all=0
 if [ "$pack_check" = 1 ]; then
   [ -d "$code" ] || fail "--code directory does not exist: $code"
+  [ -d "$records" ] || fail "--records directory does not exist: $records"
+  resolve_all=1
+fi
+if [ "$plan" = 1 ]; then
   [ -d "$records" ] || fail "--records directory does not exist: $records"
   resolve_all=1
 fi
@@ -317,6 +338,11 @@ dropped_count="$(jq -s 'map(.dropped) | add // 0' "$work/records.jsonl")"
 # One letter of the suffix is bracketed so --glob matches that one branch and does not append /*.
 # batches.tsv columns: transcript path relative to --projects, run, fork start, batch, card count, start sha, commit, spawn second, cards.
 # traces.tsv columns: transcript path relative to --projects, batch, pack_layout of the last trace line before the fork's start.
+# set_run_ref_globs sets ref_globs to the git log arguments that select only run $1's records refs.
+set_run_ref_globs() {
+  ref_globs=("--glob=refs/heads/$1$branch_glob" "--glob=refs/remotes/origin/$1$branch_glob" "--glob=refs/tags/archive/$1/*")
+}
+
 declare -A batch_start_sha
 : > "$work/batches.tsv"
 : > "$work/traces.tsv"
@@ -332,7 +358,7 @@ if [ "$records_found" = 1 ]; then
     if [ "${#trace_files[@]}" -eq 0 ] && [ "$resolve_all" = 0 ]; then
       continue
     fi
-    ref_globs=("--glob=refs/heads/$fork_run$branch_glob" "--glob=refs/remotes/origin/$fork_run$branch_glob" "--glob=refs/tags/archive/$fork_run/*")
+    set_run_ref_globs "$fork_run"
     start_epoch="$(date -u -d "$fork_start" +%s)"
     resolved=""
     for offset in 1 2 3 4 5 6; do
@@ -438,6 +464,59 @@ if [ "$pack_check" = 1 ]; then
   done < <(jq -r '[.rel, .proj] | @tsv' "$work/records.jsonl")
 fi
 
+# Plan glyph use (--plan): per run with forks in the report, the plan cards are read from the records repository
+# at the newest commit on the run's refs that touches the state path, and each card's references under
+# Edit, Create, Move, Delete, Rename and Uses are classed glyph, plan: handle, bare file or bare directory.
+# The run's plan writer is its top-level session (never a subagent) with the most plan card writes, ties broken by the lower session id.
+# plan-runs.tsv: run, records commit, plan-writer session; a dash marks what was not found, and a run missing either counts in no table.
+# plan-cards.tsv: run, commit, card.
+# plan-refs.tsv: run, commit, card, label, kind, reference.
+# plan-writers.tsv: run, session, plan card writes, quarry calls, greps, reads.
+: > "$work/plan-runs.tsv"
+: > "$work/plan-cards.tsv"
+: > "$work/plan-refs.tsv"
+: > "$work/plan-writers.tsv"
+if [ "$plan" = 1 ]; then
+  while IFS= read -r plan_run; do
+    set_run_ref_globs "$plan_run"
+    plan_commit="$(git -C "$records" log -1 --format=%H "${ref_globs[@]}" -- "$STATE_PATH" 2> /dev/null)"
+    if [ -z "$plan_commit" ]; then
+      printf '%s\t-\t-\n' "$plan_run" >> "$work/plan-runs.tsv"
+      continue
+    fi
+    while IFS= read -r plan_file; do
+      card_name="$(basename "$plan_file" .md)"
+      printf '%s\t%s\t%s\n' "$plan_run" "$plan_commit" "$card_name" >> "$work/plan-cards.tsv"
+      git -C "$records" show "$plan_commit:$plan_file" | awk -v run="$plan_run" -v commit="$plan_commit" -v card="$card_name" '
+        /^\*\*[A-Za-z]+:\*\*/ { label = $0; sub(/^\*\*/, "", label); sub(/:\*\*.*/, "", label); next }
+        /^- `/ {
+          if (label !~ /^(Edit|Create|Move|Delete|Rename|Uses)$/) next
+          reference = $0; sub(/^- `/, "", reference); sub(/`.*/, "", reference)
+          if (reference ~ /^plan:/) { kind = "planhandle" }
+          else if (reference ~ /#/) { kind = "glyph" }
+          else { base = reference; sub(/.*\//, "", base); if (reference ~ /\/$/ || base !~ /\./) { kind = "bare_dir" } else { kind = "bare_file" } }
+          print run "\t" commit "\t" card "\t" label "\t" kind "\t" reference
+        }' >> "$work/plan-refs.tsv"
+    done < <(git -C "$records" ls-tree -r --name-only "$plan_commit" -- "$PLAN_DIR" | grep -v '/00-overview')
+    writer_rows=""
+    shopt -s nullglob
+    sessions=("$projects/$hub_encoded-$plan_run"/*.jsonl)
+    shopt -u nullglob
+    for session_file in "${sessions[@]}"; do
+      session_row="$(jq -n -R -r --arg session "$(basename "$session_file" .jsonl)" --arg plan "$PLAN_DIR" -f "$script_dir/plan-writer.jq" "$session_file")" \
+        || fail "cannot read session: $session_file"
+      writer_rows+="$session_row"$'\n'
+    done
+    writer_row="$(printf '%s' "$writer_rows" | awk -F'\t' '$2 > 0' | sort -t$'\t' -k2,2nr -k1,1 | head -1)"
+    if [ -z "$writer_row" ]; then
+      printf '%s\t%s\t-\n' "$plan_run" "$plan_commit" >> "$work/plan-runs.tsv"
+      continue
+    fi
+    printf '%s\t%s\t%s\n' "$plan_run" "$plan_commit" "${writer_row%%$'\t'*}" >> "$work/plan-runs.tsv"
+    printf '%s\t%s\n' "$plan_run" "$writer_row" >> "$work/plan-writers.tsv"
+  done < <(jq -r '.proj' "$work/records.jsonl" | sort -u)
+fi
+
 write_header() {
   local project_dir
   echo "# Webster fork read audit"
@@ -482,6 +561,9 @@ markers_json="$(jq -n -c --arg mode arms --arg run "" --arg rel "" --arg plan ""
     jq -s -r --argjson markers "$markers_json" --rawfile batches "$work/batches.tsv" --rawfile traces "$work/traces.tsv" \
       --argjson pack_check "$([ "$pack_check" = 1 ] && echo true || echo false)" \
       --rawfile pack_rows "$work/pack-check.tsv" --rawfile missed_rows "$work/missed-files.tsv" \
+      --argjson plan_on "$([ "$plan" = 1 ] && echo true || echo false)" \
+      --rawfile plan_runs "$work/plan-runs.tsv" --rawfile plan_cards "$work/plan-cards.tsv" \
+      --rawfile plan_refs "$work/plan-refs.tsv" --rawfile plan_writers "$work/plan-writers.tsv" \
       -f "$script_dir/report.jq" "$work/records.jsonl" || fail "cannot render the report"
   fi
 } > "$report_tmp"

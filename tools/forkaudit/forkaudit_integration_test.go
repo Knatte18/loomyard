@@ -227,6 +227,8 @@ type forkFixture struct {
 	session string
 	// agent is the agent id; the transcript is named agent-<agent>.jsonl.
 	agent string
+	// topLevel places the transcript as a top-level session, <session>.jsonl, instead of a subagent transcript.
+	topLevel bool
 	// modTime is the transcript's modification time; zero means two minutes after the fixture's first line.
 	modTime time.Time
 	// truncate appends a half-written JSON line.
@@ -253,6 +255,9 @@ func placeForks(t *testing.T, projects, hub string, forks []forkFixture) {
 			text += `{"type":"assistant","message":{"id":"m`
 		}
 		path := filepath.Join(projects, encodedHub+"-"+fork.run, fork.session, "subagents", "agent-"+fork.agent+".jsonl")
+		if fork.topLevel {
+			path = filepath.Join(projects, encodedHub+"-"+fork.run, fork.session+".jsonl")
+		}
 		writeFile(t, path, text)
 		modTime := fork.modTime
 		if modTime.IsZero() {
@@ -491,6 +496,10 @@ func TestForkauditRefusals(t *testing.T) {
 			prepare: func(t *testing.T, d *auditDirs) ([]string, []string) {
 				return d.args("--since", "2026-10-14", "--pack-check", "--records", filepath.Join(d.base, "absent-records")), nil
 			}},
+		{name: "plan with a missing records directory", wantExit: 1, wantStderr: []string{"--records"},
+			prepare: func(t *testing.T, d *auditDirs) ([]string, []string) {
+				return d.args("--since", "2026-10-14", "--plan", "--records", filepath.Join(d.base, "absent-records")), nil
+			}},
 		{name: "work under a read-only parent", denial: true, wantExit: 1, wantStderr: []string{"--work", "not writable"},
 			prepare: func(t *testing.T, d *auditDirs) ([]string, []string) {
 				parent := filepath.Join(d.base, "parent")
@@ -672,6 +681,11 @@ func TestForkauditReport(t *testing.T) {
 				if got := []string{quartiles["n"], quartiles["min"], quartiles["q1"], quartiles["median"], quartiles["q3"], quartiles["max"]}; !slices.Equal(got, []string{"2", "3.5", "3.5", "4", "4", "4"}) {
 					t.Errorf("file arm quartile row = %v, want n=2 and 3.5 3.5 4 4 4", got)
 				}
+				for _, heading := range []string{"Pack correctness at batch start", "Plan glyph use"} {
+					if strings.Contains(report, heading) {
+						t.Errorf("report holds the %q section although its flag is not given", heading)
+					}
+				}
 			}},
 		{name: "a second run replaces the first report with an identical one",
 			prepare: func(t *testing.T, d *auditDirs) []string {
@@ -820,7 +834,15 @@ func recordsRepo(t *testing.T, runs []recordsRun) string {
 	for _, run := range runs {
 		branch := run.name + recordsSuffix(t)
 		gitkit.Git(t, dir, "checkout", "-b", branch, "main")
-		gitkit.CommitFileOnBranch(t, dir, branch, statePath, stateText(t, run), "state of "+run.name)
+		paths := []string{statePath}
+		writeFile(t, filepath.Join(dir, statePath), stateText(t, run))
+		for name, content := range run.planCards {
+			rel := filepath.Join(lyxdirs.LyxDirName, "plan", name)
+			writeFile(t, filepath.Join(dir, rel), content)
+			paths = append(paths, rel)
+		}
+		gitkit.Git(t, dir, append([]string{"add", "--"}, paths...)...)
+		gitkit.Git(t, dir, "commit", "-m", "state of "+run.name)
 		gitkit.Git(t, dir, "checkout", "main")
 		switch run.kind {
 		case "local":
@@ -1135,5 +1157,65 @@ func TestForkauditPackCheck(t *testing.T) {
 	byArm := rowWhere(t, tableRows(t, report, "### Missed files by arm"), "arm", "file")
 	if got := []string{byArm["missed files"], byArm["existed"], byArm["absent"], byArm["unknown"]}; !slices.Equal(got, []string{"5", "1", "1", "3"}) {
 		t.Errorf("file arm missed files, existed, absent, unknown = %v, want 5 1 1 3", got)
+	}
+}
+
+func TestForkauditPlanSection(t *testing.T) {
+	t.Parallel()
+	d := newAuditDirs(t)
+	records := recordsRepo(t, []recordsRun{
+		{name: "alpha", kind: "local", planCards: map[string]string{
+			"00-overview.md": "# Plan\n\n**Edit:**\n- `internal/ignored#One`\n",
+			"01-alpha.md": "# Card 1\n\n**Create:**\n- `pkg/new.go`\n- `plan:pkg#Added` -> `func Added()`\n\n" +
+				"**Edit:**\n- `pkg/a.go`\n- `internal/x#Thing`\n\n**Uses:**\n- `internal/y#Helper`\n- `internal/dir/`\n\n" +
+				"**Verify:**\n- `lyx gate test ./pkg`\n",
+			"02-beta.md": "# Card 2\n\n**Edit:**\n- `internal/x#Thing`\n- `internal/z#Other`\n- `internal/z#Third`\n- `docs/overview.md`\n",
+		}},
+		{name: "alpha-two", kind: "local"},
+	})
+	placeForks(t, d.projects, d.hub, []forkFixture{
+		{fixture: "fork-file", run: "alpha", session: "s-alpha", agent: "ffile"},
+		{fixture: "fork-raf", run: "alpha", session: "s-alpha", agent: "fraf"},
+		{fixture: "plan-writer-main", run: "alpha", session: "s-a-main", topLevel: true},
+		{fixture: "plan-writer-tie", run: "alpha", session: "s-b-tie", topLevel: true},
+		{fixture: "plan-writer-minor", run: "alpha", session: "s-c-minor", topLevel: true},
+		{fixture: "fork-inline", run: "alpha-two", session: "s-two", agent: "finline"},
+		{fixture: "plan-writer-main", run: "alpha-two", session: "s-two", agent: "pwmain"},
+		{fixture: "fork-none", run: "gamma", session: "s-gamma", agent: "fnone"},
+	})
+	missingCode := filepath.Join(d.base, "absent-code")
+	stdout, stderr, exit := runForkaudit(t, nil, d.args("--since", "2026-10-13", "--records", records, "--plan", "--code", missingCode)...)
+	if exit != 0 {
+		t.Fatalf("exit = %d, want 0; stderr: %s", exit, stderr)
+	}
+	content, err := os.ReadFile(d.out)
+	if err != nil || stdout != d.out+"\n" {
+		t.Fatalf("report at %q: %v, stdout %q", d.out, err, stdout)
+	}
+	report := string(content)
+	if header := tableCells(t, report, "### Reference kinds per card, median")[0]; !slices.Equal(header, []string{"kind", "file", "raf"}) {
+		t.Errorf("reference table columns = %v, want kind, file, raf: only run alpha is counted", header)
+	}
+	kinds := tableRows(t, report, "### Reference kinds per card, median")
+	for kind, want := range map[string]string{"glyph references": "2.5", "plan: handles": "0.5", "bare files": "1.5", "bare directories": "0.5"} {
+		row := rowWhere(t, kinds, "kind", kind)
+		if row["file"] != want || row["raf"] != want {
+			t.Errorf("%s per card = file %q, raf %q; want %q for both arms", kind, row["file"], row["raf"], want)
+		}
+	}
+	writers := tableRows(t, report, "### Plan writers, per arm")
+	for metric, want := range map[string]string{
+		"plan writers": "1", "quarry calls, pooled": "3", "quarry calls, median per writer": "3",
+		"greps, pooled": "3", "greps, median per writer": "3", "reads, pooled": "5", "reads, median per writer": "5",
+	} {
+		row := rowWhere(t, writers, "metric", metric)
+		if row["file"] != want || row["raf"] != want {
+			t.Errorf("%s = file %q, raf %q; want %q for both arms", metric, row["file"], row["raf"], want)
+		}
+	}
+	for _, want := range []string{"- run alpha-two: no plan-writer session found\n", "- run gamma: no records commit found\n"} {
+		if !strings.Contains(report, want) {
+			t.Errorf("report lacks the line %q:\n%s", want, report)
+		}
 	}
 }
