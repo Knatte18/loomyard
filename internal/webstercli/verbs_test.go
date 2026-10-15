@@ -122,7 +122,7 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 		return shuttleengine.Launch{Cmd: "fake-launch-cmd", SessionID: fmt.Sprintf("fake-session-%d", engine.PrepareCalls)}, nil
 	}
 	shuttleCfg := shuttleengine.Config{RunDir: filepath.Join(t.TempDir(), "runs"), RunTimeoutMin: 60, StartupTimeoutS: 30}
-	runner := shuttleengine.NewRunner(reed, engine, layout.AnchorPath(), layout.WorktreePath(), shuttleCfg)
+	runner := shuttleengine.NewRunner(reed, shuttlefake.EngineSet(engine), layout.AnchorPath(), layout.WorktreePath(), shuttleCfg)
 
 	roles := map[websterengine.Role]modelspec.Resolved{
 		websterengine.RoleMaster:   {Engine: "claude", Model: "master-model", Params: map[string]string{}},

@@ -13,8 +13,8 @@ import (
 )
 
 // sessionCycler returns the engine's SessionCycler capability, or an error naming it when the engine lacks it.
-func (r *Runner) sessionCycler() (SessionCycler, error) {
-	cycler, ok := r.engine.(SessionCycler)
+func (r *Runner) sessionCycler(engine Engine) (SessionCycler, error) {
+	cycler, ok := engine.(SessionCycler)
 	if !ok {
 		return nil, fmt.Errorf("shuttle: the engine does not implement the SessionCycler capability (ContextTokens, CompactedSince, IdleSession, ClearSessionSequence, CompactSessionSequence, ReloadPluginsSequence), so it cannot cycle a session")
 	}
@@ -22,8 +22,8 @@ func (r *Runner) sessionCycler() (SessionCycler, error) {
 }
 
 // skillLoader returns the engine's SkillLoader capability, or an error naming it when the engine lacks it.
-func (r *Runner) skillLoader() (SkillLoader, error) {
-	loader, ok := r.engine.(SkillLoader)
+func (r *Runner) skillLoader(engine Engine) (SkillLoader, error) {
+	loader, ok := engine.(SkillLoader)
 	if !ok {
 		return nil, fmt.Errorf("shuttle: the engine does not implement the SkillLoader capability (SkillLoadMessage, ClassifySkillLoad, DefaultSkillLoadTimeout), so it cannot load a skill")
 	}
@@ -36,23 +36,39 @@ func (r *Runner) LoadSkills(guid string, skills []string) error {
 	if r.toldErr != nil {
 		return r.toldErr
 	}
-	loader, err := r.skillLoader()
-	if err != nil {
-		return err
-	}
 	state, runDir, err := FindRun(r.cfg, r.anchorPath, guid)
 	if err != nil {
 		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
 	}
-	return sendVerified(r.newSendContext(state, runDir), loader.SkillLoadMessage(skills))
+	engine, _, err := r.engineFor(state)
+	if err != nil {
+		return err
+	}
+	loader, err := r.skillLoader(engine)
+	if err != nil {
+		return err
+	}
+	sc, err := r.newSendContext(state, runDir)
+	if err != nil {
+		return err
+	}
+	return sendVerified(sc, loader.SkillLoadMessage(skills))
 }
 
-// ClassifySkillLoad returns the engine's classification of the load turn of skills that turnEnd ended.
-func (r *Runner) ClassifySkillLoad(turnEnd Event, skills []string) (SkillLoadReport, error) {
+// ClassifySkillLoad returns the classification, by the engine the run identified by guid records, of the load turn of skills that turnEnd ended.
+func (r *Runner) ClassifySkillLoad(guid string, turnEnd Event, skills []string) (SkillLoadReport, error) {
 	if r.toldErr != nil {
 		return SkillLoadReport{}, r.toldErr
 	}
-	loader, err := r.skillLoader()
+	state, _, err := FindRun(r.cfg, r.anchorPath, guid)
+	if err != nil {
+		return SkillLoadReport{}, fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
+	}
+	engine, _, err := r.engineFor(state)
+	if err != nil {
+		return SkillLoadReport{}, err
+	}
+	loader, err := r.skillLoader(engine)
 	if err != nil {
 		return SkillLoadReport{}, err
 	}
@@ -70,6 +86,10 @@ func (r *Runner) ReadEvents(guid string, offset int64) ([]Event, int64, error) {
 	if err != nil {
 		return nil, offset, fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
 	}
+	engine, _, err := r.engineFor(state)
+	if err != nil {
+		return nil, offset, err
+	}
 	data, newOffset, err := readEventsFrom(state.EventsPath, offset)
 	if err != nil {
 		return nil, offset, err
@@ -77,7 +97,7 @@ func (r *Runner) ReadEvents(guid string, offset int64) ([]Event, int64, error) {
 	if len(data) == 0 {
 		return nil, offset, nil
 	}
-	events, err := r.engine.ParseEvents(data)
+	events, err := engine.ParseEvents(data)
 	if err != nil {
 		return nil, offset, err
 	}
@@ -93,7 +113,11 @@ func (r *Runner) SessionState(guid string) (RunSessionState, error) {
 	if err != nil {
 		return RunSessionState{}, fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
 	}
-	return readRunSessionState(rs, r.engine, r.clock.Now()), nil
+	engine, _, err := r.engineFor(rs)
+	if err != nil {
+		return RunSessionState{}, err
+	}
+	return readRunSessionState(rs, engine, r.clock.Now()), nil
 }
 
 // SessionState returns the session state of this run, the same reading Runner.SessionState gives for its strand guid.
@@ -102,26 +126,42 @@ func (run *Run) SessionState() (RunSessionState, error) {
 	return run.runner.SessionState(run.StrandGUID())
 }
 
-// ContextTokens returns the provider's context usage as of turnEnd, via the engine's SessionCycler.
+// ContextTokens returns the provider's context usage as of turnEnd, via the SessionCycler of the engine the run identified by guid records.
 // A reading with Known false means usage could not be read.
-func (r *Runner) ContextTokens(turnEnd Event) (ContextReading, error) {
+func (r *Runner) ContextTokens(guid string, turnEnd Event) (ContextReading, error) {
 	if r.toldErr != nil {
 		return ContextReading{}, r.toldErr
 	}
-	cycler, err := r.sessionCycler()
+	state, _, err := FindRun(r.cfg, r.anchorPath, guid)
+	if err != nil {
+		return ContextReading{}, fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
+	}
+	engine, _, err := r.engineFor(state)
+	if err != nil {
+		return ContextReading{}, err
+	}
+	cycler, err := r.sessionCycler(engine)
 	if err != nil {
 		return ContextReading{}, err
 	}
 	return cycler.ContextTokens(turnEnd), nil
 }
 
-// CompactedSince returns the newest compaction boundary after since in the transcript turnEnd names, with the turn ends that follow it, via the engine's SessionCycler.
+// CompactedSince returns the newest compaction boundary after since in the transcript turnEnd names, with the turn ends that follow it, via the SessionCycler of the engine the run identified by guid records.
 // found is false when there is none or the transcript could not be read.
-func (r *Runner) CompactedSince(turnEnd Event, since time.Time) (CompactionBoundary, bool, error) {
+func (r *Runner) CompactedSince(guid string, turnEnd Event, since time.Time) (CompactionBoundary, bool, error) {
 	if r.toldErr != nil {
 		return CompactionBoundary{}, false, r.toldErr
 	}
-	cycler, err := r.sessionCycler()
+	state, _, err := FindRun(r.cfg, r.anchorPath, guid)
+	if err != nil {
+		return CompactionBoundary{}, false, fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
+	}
+	engine, _, err := r.engineFor(state)
+	if err != nil {
+		return CompactionBoundary{}, false, err
+	}
+	cycler, err := r.sessionCycler(engine)
 	if err != nil {
 		return CompactionBoundary{}, false, err
 	}
@@ -134,12 +174,21 @@ func (r *Runner) CompactedSince(turnEnd Event, since time.Time) (CompactionBound
 // a ready reading is idle and a held one is not idle with its Reason, and the runner keeps one turn-start hold per strand across calls.
 // A ready reading beside a pane that does not show the provider idle still answers idle, and logs the disagreement with the pane's last lines at Debug.
 // An unknown reading, and a strand with no run record, fall back to the pane probe, which logs the cause at Debug.
+// The engine is the one the run's record names, the set's default for a strand with no record.
 // TooShort is filled only for an answer that is not idle.
 func (r *Runner) SessionIdle(guid string) (IdleProbe, error) {
 	if r.toldErr != nil {
 		return IdleProbe{}, r.toldErr
 	}
-	cycler, err := r.sessionCycler()
+	state, runDir, findErr := FindRun(r.cfg, r.anchorPath, guid)
+	if findErr != nil {
+		state = RunState{}
+	}
+	engine, _, err := r.engineFor(state)
+	if err != nil {
+		return IdleProbe{}, err
+	}
+	cycler, err := r.sessionCycler(engine)
 	if err != nil {
 		return IdleProbe{}, err
 	}
@@ -150,8 +199,12 @@ func (r *Runner) SessionIdle(guid string) (IdleProbe, error) {
 	if err != nil {
 		return IdleProbe{}, fmt.Errorf("shuttle: capture strand %q's pane to probe idleness: %w", guid, err)
 	}
-	if state, runDir, findErr := FindRun(r.cfg, r.anchorPath, guid); findErr == nil {
-		reading := sessionReadiness(r.newSendContext(state, runDir), cycler, r.holdFor(guid), capture)
+	if findErr == nil {
+		sc, err := r.newSendContext(state, runDir)
+		if err != nil {
+			return IdleProbe{}, err
+		}
+		reading := sessionReadiness(sc, cycler, r.holdFor(guid), capture)
 		switch {
 		case reading.ready:
 			if !cycler.IdleSession(capture) {
@@ -179,15 +232,22 @@ func (r *Runner) SessionIdle(guid string) (IdleProbe, error) {
 // sendSessionSequence sends the sequence that sequenceFor returns for the cycler into the live pane of the run identified by guid, through the guarded send path.
 // A non-empty landing makes a session-start line of that source the send's confirmation.
 func (r *Runner) sendSessionSequence(guid string, landing SessionStartSource, sequenceFor func(SessionCycler) []PaneInput) error {
-	cycler, err := r.sessionCycler()
-	if err != nil {
-		return err
-	}
 	state, runDir, err := FindRun(r.cfg, r.anchorPath, guid)
 	if err != nil {
 		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
 	}
-	sc := r.newSendContext(state, runDir)
+	engine, _, err := r.engineFor(state)
+	if err != nil {
+		return err
+	}
+	cycler, err := r.sessionCycler(engine)
+	if err != nil {
+		return err
+	}
+	sc, err := r.newSendContext(state, runDir)
+	if err != nil {
+		return err
+	}
 	sc.hold = r.holdFor(guid)
 	sc.landingStart = landing
 	return sendSequence(sc, sequenceFor(cycler))
@@ -222,7 +282,10 @@ func (r *Runner) TypeColor(guid string, color segmentcolor.Color) error {
 	if err != nil {
 		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
 	}
-	sc := r.newSendContext(state, runDir)
+	sc, err := r.newSendContext(state, runDir)
+	if err != nil {
+		return err
+	}
 	sc.hold = r.holdFor(guid)
 	return typeColor(sc, color)
 }

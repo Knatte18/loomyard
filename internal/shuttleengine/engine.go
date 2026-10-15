@@ -1,8 +1,9 @@
 // engine.go defines the provider seam: the Engine interface every LLM adapter implements,
 // and the plain value types that cross it (Launch, PaneInput, Event, StartupState, Outcome).
-// shuttleengine owns this seam and never imports a concrete engine — the provider-seam import rule,
-// enforced by seam_enforcement_test.go — so a second provider only ever needs to satisfy Engine,
-// never touch the run loop or CLI machinery.
+// shuttleengine owns this seam and never imports a concrete engine;
+// only internal/shuttleengines and an engine's own directory do.
+// That is the provider-seam import rule, enforced by seam_enforcement_test.go.
+// A further provider only ever needs to satisfy Engine and register in internal/shuttleengines, never touch the run loop or CLI machinery.
 
 package shuttleengine
 
@@ -136,6 +137,7 @@ const (
 // import rule);
 // concrete engines (e.g.
 // claudeengine) import shuttleengine and satisfy this interface.
+// Only internal/shuttleengines constructs or imports them.
 type Engine interface {
 	// Prepare writes provider-specific artifacts (prompt file, settings/hooks) and returns opaque Launch command strings.
 	Prepare(runDir string, spec Spec, cfg Config) (Launch, error)
@@ -165,12 +167,34 @@ type Engine interface {
 	TrustDismissSequence(capture string) []PaneInput
 	// ComposeSend returns the key choreography that submits text as a new turn (e.g. clearing auto-suggest before typing).
 	ComposeSend(text string) []PaneInput
-	// ModelSwitchSequence returns the key choreography that switches a live session's model (e.g. `/model <name>` typed and submitted).
-	// It lives on the seam because which command string and key sequence switch a provider's model is provider grammar.
-	ModelSwitchSequence(model string) []PaneInput
 	// ColorSequence returns the key choreography that sets a live session's display color (e.g. `/color <name>` typed and submitted), or no inputs for a provider without one or a color it has no name for.
 	// It lives on the seam because which command string and key sequence color a provider's session is provider grammar.
 	ColorSequence(color segmentcolor.Color) []PaneInput
+}
+
+// Requirement is one thing a run may require of its engine; the set is closed to the constants below.
+type Requirement string
+
+// Requirements a run may state of its engine.
+const (
+	// RequirementForks: the engine's sessions can spawn fork subagents.
+	RequirementForks Requirement = "forks"
+	// RequirementPeerMessaging: the engine's sessions can message peer sessions.
+	RequirementPeerMessaging Requirement = "peer-messaging"
+	// RequirementBackgroundWake: the engine's sessions wake on the completion of their own background work.
+	RequirementBackgroundWake Requirement = "background-wake"
+)
+
+// RequirementSupporter is an optional capability beside Engine: the provider's answer to whether it meets a Requirement.
+// An engine without it meets no requirement.
+type RequirementSupporter interface {
+	// Supports reports whether the engine meets req.
+	Supports(req Requirement) bool
+}
+
+// ForkAuditor is an optional capability beside Engine: the provider's read of its on-disk record of fork subagents.
+// An engine without it has no fork audit.
+type ForkAuditor interface {
 	// AuditForks reads the provider's on-disk record of fork subagents for a fork-authorized session (identified by sessionID).
 	// workdir is the pane's actual process cwd. Returns mechanical facts observed with no policy interpretation.
 	// Returns error (not zero ForkAudit) if the provider has no fork concept, so callers can distinguish "no forks" from "cannot audit".
@@ -179,6 +203,20 @@ type Engine interface {
 	// Parent facts (SpawnCalls, NamedSpawns, ParentWriteCalls, ParentWrites, ParentBashCommands) are always full/cumulative.
 	// Forks holds one ForkReport per transcript not in seenTranscripts; nil seenTranscripts reports every fork transcript (equivalent to AuditForks).
 	AuditForksIncremental(sessionID, workdir string, seenTranscripts map[string]bool) (ForkAudit, error)
+}
+
+// ResumeContextRenderer is an optional capability beside Engine: the provider's rendering of resume text as its session-start hook output.
+// An engine without it has no session-start context to render.
+type ResumeContextRenderer interface {
+	// ResumeContext renders text as the provider's session-start hook output.
+	ResumeContext(text string) ([]byte, error)
+}
+
+// InstructionFileLister is an optional capability beside Engine: the names of the files the provider loads as project instructions.
+// An engine without it has no project instruction files.
+type InstructionFileLister interface {
+	// InstructionFiles returns the file names the provider loads as project instructions.
+	InstructionFiles() []string
 }
 
 // SessionResumer is an optional capability beside Engine: the provider's check that an existing session may be resumed by a new run.
@@ -201,6 +239,8 @@ type OpenSpec struct {
 	Version string
 	// Segment is the loom segment the session's window is colored by.
 	Segment segmentcolor.Segment
+	// Engine is the registered engine name the session opens under, empty for the engine set's default.
+	Engine string
 }
 
 // SessionOpener is an optional capability beside Engine: the provider's way of opening a named interactive session with no prompt.

@@ -22,7 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/tenderengine"
 )
@@ -125,7 +125,7 @@ func HubDeps(location *lyxcwd.Location, strand string) (tenderengine.Deps, []str
 type shuttlePair struct {
 	location *lyxcwd.Location
 	cfg      shuttleengine.Config
-	engine   shuttleengine.Engine
+	engines  shuttleengine.EngineSet
 	reed     *reedengine.Engine
 	runner   *shuttleengine.Runner
 }
@@ -146,13 +146,16 @@ func newShuttlePair(location *lyxcwd.Location) (shuttlePair, error) {
 		return shuttlePair{}, err
 	}
 	reed := reedengine.New(reedCfg, reedGeom)
-	engine := claudeengine.NewFromConfig(shuttleCfg)
+	engines, err := shuttleengines.New(shuttleCfg)
+	if err != nil {
+		return shuttlePair{}, err
+	}
 	return shuttlePair{
 		location: location,
 		cfg:      shuttleCfg,
-		engine:   engine,
+		engines:  engines,
 		reed:     reed,
-		runner:   shuttleengine.NewRunner(reed, engine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg),
+		runner:   shuttleengine.NewRunner(reed, engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg),
 	}, nil
 }
 
@@ -161,7 +164,7 @@ func (p shuttlePair) Slug() string { return p.location.WorktreeName }
 
 // Sessions lists the pair's running runs whose strand reed reports live.
 func (p shuttlePair) Sessions() ([]tenderengine.SessionInfo, error) {
-	readings, err := shuttleengine.ReadSessionStates(p.cfg, p.location.AnchorPath(), p.engine, time.Now())
+	readings, err := shuttleengine.ReadSessionStates(p.cfg, p.location.AnchorPath(), p.engines, time.Now())
 	if err != nil || len(readings) == 0 {
 		return nil, err
 	}
@@ -180,7 +183,7 @@ func (p shuttlePair) Sessions() ([]tenderengine.SessionInfo, error) {
 
 // State reads the session state of the running run with the strand guid, or the zero state when the strand has none.
 func (p shuttlePair) State(guid string) (shuttleengine.SessionState, error) {
-	readings, err := shuttleengine.ReadSessionStates(p.cfg, p.location.AnchorPath(), p.engine, time.Now())
+	readings, err := shuttleengine.ReadSessionStates(p.cfg, p.location.AnchorPath(), p.engines, time.Now())
 	if err != nil {
 		return shuttleengine.SessionState{}, err
 	}
@@ -224,7 +227,9 @@ func (p shuttlePair) PaneRunningTurn(guid string) (bool, error) {
 }
 
 // InterruptSettle is how long after an interrupt key the strand's pane needs before it is read again.
-func (p shuttlePair) InterruptSettle() time.Duration { return p.runner.InterruptSettle() }
+func (p shuttlePair) InterruptSettle(guid string) (time.Duration, error) {
+	return p.runner.InterruptSettle(guid)
+}
 
 // Live reports whether reed tracks the strand with a live pane.
 func (p shuttlePair) Live(guid string) (bool, error) {

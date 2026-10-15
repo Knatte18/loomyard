@@ -71,7 +71,12 @@ func (w *Watcher) handleHubEntry(entry pauserecord.Entry, record pauserecord.Rec
 		return nil
 	}
 	if firstKey, waiting := w.pauseFirstEsc[key]; waiting {
-		if now.Sub(firstKey) < w.session.InterruptSettle() {
+		settle, err := w.session.InterruptSettle(st.Strand)
+		if err != nil {
+			logger.Warn("orch: interrupt settle unreadable, waiting none", "strandGUID", st.Strand, "err", err)
+			settle = 0
+		}
+		if now.Sub(firstKey) < settle {
 			return nil
 		}
 		delete(w.pauseFirstEsc, key)

@@ -27,6 +27,8 @@ internal/configcli: 12
 internal/configengine: 18
 internal/configreg: 10
 internal/configsync: 8
+internal/creelcli: 4
+internal/creelengine: 11
 internal/darnengine: 4
 internal/discussionparser: 19
 internal/dotgit: 3
@@ -53,7 +55,7 @@ internal/helpcli: 1
 internal/hibernatecli: 1
 internal/hibernateengine: 4
 internal/hubforge: 7
-internal/hubgeom: 11
+internal/hubgeom: 12
 internal/hubreconcile: 18
 internal/idecli: 2
 internal/ideengine: 4
@@ -110,8 +112,9 @@ internal/shedverbs: 84
 internal/shell: 14
 internal/shortcutcli: 2
 internal/shuttlecli: 26
-internal/shuttleengine: 172
+internal/shuttleengine: 177
 internal/shuttleengine/claudeengine: 112
+internal/shuttleengines: 3
 internal/sleepjournal: 2
 internal/standalonegeom: 7
 internal/standalonestate: 6
@@ -144,7 +147,7 @@ internal/verifyrun: 4
 internal/verifytree: 7
 internal/vscode: 12
 internal/webstercli: 81
-internal/websterengine: 202
+internal/websterengine: 203
 internal/weftname: 1
 internal/yamlengine: 19
 tools/codestats: 9

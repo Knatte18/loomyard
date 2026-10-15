@@ -43,7 +43,7 @@ type ResetDeps struct {
 	// State is the loaded state.json, nil when the run has none.
 	State *State
 	// Engine audits the run's sessions for the writes the dirt check exempts.
-	Engine shuttleengine.Engine
+	Engine shuttleengine.ForkAuditor
 	// Reed answers whether a recovery strand is live; nil leaves the live-strand refusal of report-head unchecked.
 	Reed shuttleengine.ReedOps
 	// ParentBranch names the branch the run merges its parent in from; nil or an error leaves the parent-branch refusal unchecked.

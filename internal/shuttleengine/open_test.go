@@ -102,8 +102,8 @@ func TestRunner_Open(t *testing.T) {
 		if want := sh.Chain("resume-cmd", sh.Touch(marker), selfRemove, "exit"); add.ResumeCmd != want {
 			t.Errorf("ResumeCmd = %q; want %q", add.ResumeCmd, want)
 		}
-		if result != (OpenResult{StrandGUID: "guid-1", StrandName: "ly:task:explore", SessionID: "session-9"}) {
-			t.Errorf("result = %+v; want the strand's guid and name and the session id", result)
+		if result != (OpenResult{StrandGUID: "guid-1", StrandName: "ly:task:explore", SessionID: "session-9", Engine: "fake"}) {
+			t.Errorf("result = %+v; want the strand's guid and name, the session id and the default engine's name", result)
 		}
 		if _, err := os.Stat(fx.RunRoot); !os.IsNotExist(err) {
 			t.Errorf("run-directory root stat err = %v; want it absent, since an open writes no run directory", err)

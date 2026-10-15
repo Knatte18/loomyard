@@ -1,7 +1,6 @@
 // startup.go implements Startup (classifying a pane's capture during the launch window) and the
-// fixed key-choreography sequences — InterruptSequence, ComposeSend, and ModelSwitchSequence — that
-// the run loop and long-lived callers send into a pane to interrupt a turn, resume one, or switch
-// the session's active model.
+// fixed key-choreography sequences — InterruptSequence and ComposeSend — that
+// the run loop and long-lived callers send into a pane to interrupt a turn or resume one.
 // All are pure over a capture string / literal text — the classification heuristics were proven
 // live against a real claude TUI (docs/research/reed-hooks-exploration.md and reedcli's
 // dismissTrust).
@@ -354,16 +353,4 @@ func (c *Claude) ComposeSend(text string) []shuttleengine.PaneInput {
 // TypeSequence returns the choreography that types text as claude's next turn without submitting it, the text step alone: the caller sends the Enter itself once the input box has settled.
 func (c *Claude) TypeSequence(text string) []shuttleengine.PaneInput {
 	return []shuttleengine.PaneInput{{Text: text}}
-}
-
-// ModelSwitchSequence returns the key choreography that switches a live claude session's model: the
-// `/model <name>` slash command.
-// It sends NO leading Escape (injected mid-tool-call, Escape there interrupts the tool and aborts the turn).
-// The text and the Enter are two paced steps,
-// so the Enter lands outside the typing burst.
-func (c *Claude) ModelSwitchSequence(model string) []shuttleengine.PaneInput {
-	return []shuttleengine.PaneInput{
-		{Text: "/model " + model, SettleMS: c.submitSettleMS},
-		{Key: "Enter"},
-	}
 }

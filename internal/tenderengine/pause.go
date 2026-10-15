@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -379,14 +380,20 @@ func guardedKey(deps Deps, entry pauserecord.Entry, s session, report *PauseRepo
 	return keyRefused
 }
 
-// settle waits the longest interrupt settle among sessions once, and waits not at all for none.
+// settle waits the longest interrupt settle among the sessions whose settle resolved once, and waits not at all for none.
+// A session whose settle fails is logged at Warn and adds nothing to the wait.
 func settle(deps Deps, sessions []session) {
 	if len(sessions) == 0 {
 		return
 	}
 	var longest time.Duration
 	for _, s := range sessions {
-		longest = max(longest, s.pair.InterruptSettle())
+		wait, err := s.pair.InterruptSettle(s.GUID)
+		if err != nil {
+			logger.Warn("tender: interrupt settle unreadable, waiting none for the session", "strand", s.Strand, "err", err)
+			continue
+		}
+		longest = max(longest, wait)
 	}
 	deps.Sleep(longest)
 }

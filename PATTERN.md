@@ -4,12 +4,12 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 
 ## Paths and geometry
 
-- `PATTERN-cwd-resolution` — Resolving a cwd or worktree root: only `internal/lyxcwd` does it, and nothing else calls `os.Getwd` or `git rev-parse --show-toplevel`. — [background](pattern/PATTERN-cwd-resolution.md)
+- `PATTERN-cwd-resolution` — Resolving a cwd or worktree root: only `internal/lyxcwd` does; nothing else calls `os.Getwd` or `git rev-parse`. — [background](pattern/PATTERN-cwd-resolution.md)
 - `PATTERN-told-geometry` — Writing an engine: it is handed the absolute paths it works on and derives none, so it never imports `internal/lyxcwd`. — [background](pattern/PATTERN-told-geometry.md)
 - `PATTERN-lyxdirs-single-declarer` — Naming `_lyx` or `.lyx` in a path: only `internal/lyxdirs` declares them, bar one variable block heading a `tools/` script.
 - `PATTERN-lyx-temp-root` — Creating a temp file or directory: under `internal/lyxtemp`'s run directory, never in `os.TempDir()`. (test) — [background](pattern/PATTERN-lyx-temp-root.md)
-- `PATTERN-durable-vs-ephemeral-state` — Adding a file: tracked content lives under `_lyx`, anything never tracked under `.lyx` at the mirrored subpath. — [background](pattern/PATTERN-durable-vs-ephemeral-state.md)
-- `PATTERN-hub-containment` — Linking hub-level containers: `_board`, `_portals` and `_launchers` are reachable from the hub only, never junctioned into a worktree. — [background](pattern/PATTERN-hub-containment.md)
+- `PATTERN-durable-vs-ephemeral-state` — Adding a file: tracked under `_lyx`, never-tracked under `.lyx`, same subpath. — [background](pattern/PATTERN-durable-vs-ephemeral-state.md)
+- `PATTERN-hub-containment` — Linking hub-level containers: from the hub only, never junctioned into a worktree. — [background](pattern/PATTERN-hub-containment.md)
 - `PATTERN-hub-wide-config` — A hub-level config module: `HubWide` in `configreg`, its file on the board only. — [background](pattern/PATTERN-hub-wide-config.md)
 - `PATTERN-hub-suffix` — Touching hub naming: `-LYXHUB` is the sole hub container suffix, and no code parses, trims or recognises the retired `-HUB`. (test) — [background](pattern/PATTERN-hub-suffix.md)
 
@@ -56,22 +56,23 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-treadle-runner-seam` — Importing into `internal/treadleengine`: never `burlerengine` or an `internal/*cli` package, and only its allowlist, not `lyxcwd`.
 - `PATTERN-plan-generation` — Archiving a plan: `_lyx/plan/`'s top-level files hold one generation; a retired one moves to `round-<N>/prior-generation/`. — [background](pattern/PATTERN-plan-generation.md)
 - `PATTERN-ref-shape-registry` — Classifying a plan ref or `plan:` handle: `internal/planparser` alone declares and decides. (test) — [background](pattern/PATTERN-ref-shape-registry.md)
-- `PATTERN-glyph-conversion-chokepoint` — Converting glyphs and paths: only through `glyph`'s converters, plus `planparser`'s one external-test unit mapping. — [background](pattern/PATTERN-glyph-conversion-chokepoint.md)
+- `PATTERN-glyph-conversion-chokepoint` — Converting glyphs and paths: only via `glyph`. — [background](pattern/PATTERN-glyph-conversion-chokepoint.md)
 - `PATTERN-gate-self-check-parity` — Adding a mechanical gate: its closure and its CLI self-check call one package function and land in one task. — [background](pattern/PATTERN-gate-self-check-parity.md)
 - `PATTERN-verified-tree` — Running a verify command: through `verifytree.Verify` only. (test) — [background](pattern/PATTERN-verified-tree.md)
 - `PATTERN-gate-slot` — Running a gate build or test: only in a `-p`-capped hub slot of `internal/gateslot`.
 - `PATTERN-batcher-registry` — Choosing webster's execution unit: the batch the active `batcher.yaml` profile derives via `internal/batcher`. — [background](pattern/PATTERN-batcher-registry.md)
 - `PATTERN-review-round` — Review and fix round: review accepted on disk before any edit, each finding fixed or disputed, end on a verdict. — [background](pattern/PATTERN-review-round.md)
-- `PATTERN-sole-parsers` — Parsing plan, discussion, summary, recipe or halt note: only `planparser`, `discussionparser`, `summaryparser`, `shedbuild`, `haltnote`. (test) — [background](pattern/PATTERN-sole-parsers.md)
+- `PATTERN-sole-parsers` — Parsing plan, discussion, summary, recipe or halt note: only its sole parser. (test) — [background](pattern/PATTERN-sole-parsers.md)
 
 ## Agents and prompts
 
 - `PATTERN-agent-name` — Forming an agent name: only `internal/agentname`, once by reed. — [background](pattern/PATTERN-agent-name.md)
+- `PATTERN-creel-store` — Writing the creel journal or reaching a pane: only `internal/creelengine` writes it and reaches a pane, only via its `Delivery` seam. (test) — [background](pattern/PATTERN-creel-store.md)
 - `PATTERN-stencil-ownership` — Reading a prompt or spec: at call time via `internal/stencilstore` from a told directory, never embedded. — [background](pattern/PATTERN-stencil-ownership.md)
 - `PATTERN-producer-pointer-rule` — Writing an instruction file: it points at another producer's format contract and never duplicates or paraphrases it.
 - `PATTERN-friction-capture` — Halting a loom run or refusing in webster: Go writes a friction note, archived only once a reflection covers it. (test) — [background](pattern/PATTERN-friction-capture.md)
 - `PATTERN-completion-signal` — Finalizing a negative "did this run finish" answer in `internal/shuttleengine`: consult `allOutputFilesExist` first. (test) — [background](pattern/PATTERN-completion-signal.md)
-- `PATTERN-shuttle-provider-seam` — Referencing a provider: its specifics live only under `internal/shuttleengine/claudeengine`. — [background](pattern/PATTERN-shuttle-provider-seam.md)
+- `PATTERN-shuttle-provider-seam` — Referencing a provider: its specifics live only under `internal/shuttleengine/<engine>`, and only `internal/shuttleengines` constructs or imports a concrete engine. (test) — [background](pattern/PATTERN-shuttle-provider-seam.md)
 - `PATTERN-shuttle-stop` — Stopping a shuttle run's strand from Go outside `internal/shuttleengine`: only through shuttle's stop verb. (test) — [background](pattern/PATTERN-shuttle-stop.md)
 - `PATTERN-orch-pane-single-writer` — Typing into the orch session from Go: only the orch watcher, idle-gated but for a hub pause's interrupt; other modules queue an `orchengine` notice.
 - `PATTERN-shell-mechanics-seam` — Building a pane-shell command string: only through `internal/shell`, which imports the standard library alone.
@@ -79,8 +80,8 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-guarded-interrupt` — Sending an agent pane the interrupt key: only shuttle's two pane guards; `Runner.Inject` refuses it. — [background](pattern/PATTERN-guarded-interrupt.md)
 - `PATTERN-pane-binary-resolution` — Creating a strand pane or detached `lyx` window in reed: resolve `lyx` via `panebin.go` only. (test) — [background](pattern/PATTERN-pane-binary-resolution.md)
 - `PATTERN-role-skills-typed` — Loading a spawned session's skill: its spawner names it on the launch spec and lyx delivers it, on the launch line or typed; no stencil asks for one. (test)
-- `PATTERN-parent-directive` — Writing a spawned role's top-level stencil: it renders the parent directive; no stencil tells an agent to ask the operator. (test) — [background](pattern/PATTERN-parent-directive.md)
-- `PATTERN-edit-directive` — Writing a spawned role's opening stencil: it renders the edit directive through `internal/editdirective`; the orch stencils are exempt. (test) — [background](pattern/PATTERN-edit-directive.md)
+- `PATTERN-parent-directive` — Writing a spawned role's top-level stencil: render the parent directive, never send an agent to the operator. (test) — [background](pattern/PATTERN-parent-directive.md)
+- `PATTERN-edit-directive` — Writing a spawned role's opening stencil: render the edit directive via `internal/editdirective`. (test) — [background](pattern/PATTERN-edit-directive.md)
 - `PATTERN-spawn-color` — Coloring a spawned session: its spawning module names a segment on the launch spec, and no stencil asks an agent to set a color. — [background](pattern/PATTERN-spawn-color.md)
 - `PATTERN-wait-mark-display-only` — Marking a wait on screen: set the wait marks only through reed's `SetWaitMark`; no Go decision reads them. — [background](pattern/PATTERN-wait-mark-display-only.md)
 - `PATTERN-spawn-observability` — Starting a real OS process from a `lyx` command: log the spawn, and the teardown where it waits, via `internal/logger`. — [background](pattern/PATTERN-spawn-observability.md)

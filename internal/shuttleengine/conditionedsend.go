@@ -38,7 +38,10 @@ func (r *Runner) SendConditioned(guid, text string, want SendCondition) (turnSta
 	if err != nil {
 		return false, fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
 	}
-	sc := r.newSendContext(state, runDir)
+	sc, err := r.newSendContext(state, runDir)
+	if err != nil {
+		return false, err
+	}
 	sc.keepUnlanded = true
 	if err := conditionedReading(sc, want); err != nil {
 		return false, err
