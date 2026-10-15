@@ -53,7 +53,7 @@ internal/helpcli: 1
 internal/hibernatecli: 1
 internal/hibernateengine: 4
 internal/hubforge: 7
-internal/hubgeom: 11
+internal/hubgeom: 12
 internal/hubreconcile: 18
 internal/idecli: 2
 internal/ideengine: 4
