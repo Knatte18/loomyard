@@ -273,6 +273,7 @@ func TestStatus_ReportsSegmentColor(t *testing.T) {
 }
 
 // TestStatus_ReportsOwnWindowStrandsFromTheSessionListing pins that Status reads an own-window strand's pane from the session-wide listing: alive is live, dead is present but not live, and one in no listing is neither.
+// It also pins the pane pid: the listed pid for a live pane, 0 for a dead pane and for one in no listing.
 func TestStatus_ReportsOwnWindowStrandsFromTheSessionListing(t *testing.T) {
 	e := newTestEngine(t)
 	fake := installFakeTmux(t, e)
@@ -308,6 +309,12 @@ func TestStatus_ReportsOwnWindowStrandsFromTheSessionListing(t *testing.T) {
 	for _, s := range result.Strands {
 		if got := (shape{s.Live, s.Present, s.OwnWindow}); got != want[s.GUID] {
 			t.Errorf("Status of strand %q = %+v, want %+v", s.GUID, got, want[s.GUID])
+		}
+	}
+	wantPanePID := map[string]int{"w": 4323, "alive": 4325, "dead": 0, "gone": 0}
+	for _, s := range result.Strands {
+		if s.PanePID != wantPanePID[s.GUID] {
+			t.Errorf("Status PanePID of strand %q = %d, want %d", s.GUID, s.PanePID, wantPanePID[s.GUID])
 		}
 	}
 }
