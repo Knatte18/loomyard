@@ -4,6 +4,7 @@ package orchengine
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -150,6 +151,25 @@ func TestWatcher_HubPauseInterruptsAtGraceEndHoldsAndQueuesTheResumeLine(t *test
 			}
 			if got := e.orchSessions(); !reflect.DeepEqual(got, ownedBy) {
 				t.Errorf("orch sessions in the entry = %+v; want %+v", got, ownedBy)
+			}
+		}},
+		{"an unreadable settle waits none, sends the second Esc to a still-busy orch on the next tick and logs one Warn naming the strand", func(t *testing.T, e *watchEnv) {
+			logs := logcapture.CaptureVerbose(t)
+			e.s.settleErr = errors.New("no such run")
+			e.s.idle = false
+			e.tick()
+			e.pauseHub("EXTERNAL", pauseGrace)
+			e.clock.advance(pauseGrace)
+			e.tick()
+			e.tick()
+			if n := e.callCount(interruptCall); n != 2 {
+				t.Errorf("interrupts = %d; want 2, the second without a settle", n)
+			}
+			if got := strings.Count(logs.String(), "interrupt settle unreadable"); got != 1 {
+				t.Errorf("settle Warn lines = %d; want 1; logs: %s", got, logs.String())
+			}
+			if !strings.Contains(logs.String(), "s1") {
+				t.Errorf("logs do not name the strand s1: %s", logs.String())
 			}
 		}},
 		{"an orch idle at the settled re-probe gets no second Esc", func(t *testing.T, e *watchEnv) {

@@ -110,8 +110,9 @@ internal/shedverbs: 84
 internal/shell: 14
 internal/shortcutcli: 2
 internal/shuttlecli: 26
-internal/shuttleengine: 172
+internal/shuttleengine: 177
 internal/shuttleengine/claudeengine: 112
+internal/shuttleengines: 3
 internal/sleepjournal: 2
 internal/standalonegeom: 7
 internal/standalonestate: 6
@@ -144,7 +145,7 @@ internal/verifyrun: 4
 internal/verifytree: 7
 internal/vscode: 12
 internal/webstercli: 81
-internal/websterengine: 202
+internal/websterengine: 203
 internal/weftname: 1
 internal/yamlengine: 19
 tools/codestats: 9

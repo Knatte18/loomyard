@@ -42,7 +42,7 @@ Example:
 			}
 			out := cmd.OutOrStdout()
 
-			readings, err := shuttleengine.ReadSessionStates(c.cfg, c.anchorPath, c.engine, time.Now())
+			readings, err := shuttleengine.ReadSessionStates(c.cfg, c.anchorPath, c.engines, time.Now())
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil

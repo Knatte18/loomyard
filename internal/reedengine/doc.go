@@ -254,7 +254,7 @@
 // The window is the reed.yaml key `operator_quiet_s` (seconds, default 5; a zero or negative value takes the default, as does a materialized reed.yaml lacking the key until `lyx config reconcile` writes it).
 // No attached client, or clients on other panes only, answer not active, and a failed listing is returned as the error for the caller to decide on.
 // The hub watchdog daemon retires and respawns itself when the `lyx` binary it started from is replaced (reedcli's watchdog verb owns the check and calls SpawnWatchdog for the successor), and a daemon started before that check existed is ended once by hand after the deploy.
-// The hub watchdog daemon runs a name-repair tick (namerepair.go) beside its resize loop: it resets a drifted pane title itself and repairs a drifted provider session name through the SessionNamer seam, which the provider package implements and cliwire fills.
+// The hub watchdog daemon runs a name-repair tick (namerepair.go) beside its resize loop: it resets a drifted pane title itself and repairs a drifted provider session name through the SessionNamer seam, which the provider package implements and `internal/shuttleengines` fills.
 // The session-name repair types the rename only into an idle pane with no active operator, and does it with one paste-submit under the op lock it already holds; an active operator defers the repair to the next tick, and an unreadable client list does not hold it.
 // The name-repair tick backs off: its wait starts at ten seconds, doubles through NextWakeCadence up to a minute across passes that repair nothing, and returns to ten seconds after a pass that repaired a title or a session name.
 // NextWakeCadence is the one backoff rule the daemon's loops share.

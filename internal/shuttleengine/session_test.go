@@ -120,10 +120,10 @@ func TestRunner_SessionMethods_ErrorOnPlainEngine(t *testing.T) {
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
 	runner := newFixture(t, reed, &fakeEngine{}, withStrand("strand-1")).Runner
 
-	if _, err := runner.ContextTokens(Event{}); err == nil {
+	if _, err := runner.ContextTokens("strand-1", Event{}); err == nil {
 		t.Error("ContextTokens on a plain engine = nil error")
 	}
-	if _, _, err := runner.CompactedSince(Event{}, time.Time{}); err == nil || !strings.Contains(err.Error(), "SessionCycler") {
+	if _, _, err := runner.CompactedSince("strand-1", Event{}, time.Time{}); err == nil || !strings.Contains(err.Error(), "SessionCycler") {
 		t.Errorf("CompactedSince on a plain engine = %v, want an error naming SessionCycler", err)
 	}
 	if _, err := runner.SessionIdle("strand-1"); err == nil {
@@ -675,7 +675,7 @@ func TestRunner_LoadSkillsAndClassifySkillLoad_DriveTheEngine(t *testing.T) {
 	if len(reed.SendTextCalls) != 1 || reed.SendTextCalls[0].Text != "LOAD:a,b" || !reed.SendTextCalls[0].Submit {
 		t.Errorf("SendTextCalls = %+v; want the engine's one-turn load message", reed.SendTextCalls)
 	}
-	got, err := runner.ClassifySkillLoad(Event{Kind: EventStop}, []string{"a", "b"})
+	got, err := runner.ClassifySkillLoad("strand-1", Event{Kind: EventStop}, []string{"a", "b"})
 	if err != nil || !reflect.DeepEqual(got, want) {
 		t.Errorf("ClassifySkillLoad = %+v, %v; want %+v, nil", got, err, want)
 	}
@@ -686,7 +686,7 @@ func TestRunner_LoadSkillsAndClassifySkillLoad_ErrorOnPlainEngine(t *testing.T) 
 	if err := runner.LoadSkills("strand-1", []string{"a"}); err == nil || !strings.Contains(err.Error(), "SkillLoader") {
 		t.Errorf("LoadSkills error = %v; want one naming SkillLoader", err)
 	}
-	if _, err := runner.ClassifySkillLoad(Event{Kind: EventStop}, []string{"a"}); err == nil || !strings.Contains(err.Error(), "SkillLoader") {
+	if _, err := runner.ClassifySkillLoad("strand-1", Event{Kind: EventStop}, []string{"a"}); err == nil || !strings.Contains(err.Error(), "SkillLoader") {
 		t.Errorf("ClassifySkillLoad error = %v; want one naming SkillLoader", err)
 	}
 }

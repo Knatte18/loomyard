@@ -18,7 +18,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/spf13/cobra"
 )
@@ -86,6 +89,7 @@ func newTestCLI(t *testing.T, fake *fakeStrands) *orchCLI {
 	return &orchCLI{
 		cfg:         orchengine.Config{ThresholdTokens: 1234},
 		strands:     fake,
+		engines:     shuttleengine.NewEngineSet("claude", map[string]shuttleengine.Engine{"claude": claudeengine.New()}),
 		indexRunner: func(string) (string, error) { return fakeRunnerIndex, nil },
 		paths: orchengine.Paths{
 			Dir:              dir,
@@ -327,8 +331,12 @@ func TestResumeContext_PrintsHookJSONPerPhaseAndFailsWithoutMark(t *testing.T) {
 		state orchengine.State
 		// breakStencil removes the reload stencil, so a render of the idle pointer fails.
 		breakStencil bool
-		want         func(c *orchCLI) string
-		wantErr      bool
+		// fakeEngine swaps the receiver's engine set for a fake engine without the resume-context capability.
+		fakeEngine bool
+		want       func(c *orchCLI) string
+		wantErr    bool
+		// wantErrContains, when set, is a substring the error envelope's error text must carry.
+		wantErrContains string
 	}{
 		{name: "resuming prints the pending pointer", state: orchengine.State{Strand: "g1", Phase: orchengine.PhaseResuming, PendingResume: "read the note"},
 			want: func(*orchCLI) string { return "read the note" }},
@@ -349,6 +357,8 @@ func TestResumeContext_PrintsHookJSONPerPhaseAndFailsWithoutMark(t *testing.T) {
 				return text
 			}},
 		{name: "a missing stencil is a JSON error and writes no mark", state: orchengine.State{Strand: "g1", Phase: orchengine.PhaseIdle}, breakStencil: true, wantErr: true},
+		{name: "an engine without the capability is a JSON error and writes no mark", state: orchengine.State{Strand: "g1", Phase: orchengine.PhaseResuming, PendingResume: "read the note"},
+			fakeEngine: true, wantErr: true, wantErrContains: "fake"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -358,6 +368,9 @@ func TestResumeContext_PrintsHookJSONPerPhaseAndFailsWithoutMark(t *testing.T) {
 			c.paths.ResumeMarkPath = filepath.Join(c.paths.Dir, "resume-mark")
 			c.paths.RolePath = filepath.Join(c.paths.Dir, "role.md")
 			c.stencilsDir = stencilkit.Seed(t)
+			if tt.fakeEngine {
+				c.engines = shuttlefake.EngineSet(&shuttlefake.Engine{})
+			}
 			if err := orchengine.SaveState(c.paths, tt.state); err != nil {
 				t.Fatal(err)
 			}
@@ -389,6 +402,9 @@ func TestResumeContext_PrintsHookJSONPerPhaseAndFailsWithoutMark(t *testing.T) {
 			if tt.wantErr {
 				if code != 1 || env["ok"] != false || markFound {
 					t.Errorf("exit = %d, env = %v, mark found = %v; want a JSON error and no mark", code, env, markFound)
+				}
+				if message, _ := env["error"].(string); !strings.Contains(message, tt.wantErrContains) {
+					t.Errorf("error = %q; want it to contain %q", message, tt.wantErrContains)
 				}
 				return
 			}

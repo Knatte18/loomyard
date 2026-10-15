@@ -15,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 )
 
 // childParentLock builds the parent lock seams of the task pair for slug, over the lock store under boardDir.
@@ -90,7 +90,11 @@ func readAgentStates(taskLocation *lyxcwd.Location) ([]parentlock.AgentState, er
 	if err != nil {
 		return nil, err
 	}
-	waits, err := shuttleengine.ReadAgentWaits(cfg, anchor, claudeengine.NewFromConfig(cfg), time.Now())
+	engines, err := shuttleengines.New(cfg)
+	if err != nil {
+		return nil, err
+	}
+	waits, err := shuttleengine.ReadAgentWaits(cfg, anchor, engines, time.Now())
 	if err != nil {
 		return nil, err
 	}

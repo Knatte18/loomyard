@@ -1277,51 +1277,65 @@ func TestRun_Wait_ForkAudit(t *testing.T) {
 // leaving the strand and run dir in place exactly as a mechanism failure does, a caller had nothing
 // left to tell the two apart with.
 func TestRun_Wait_ForkAuditFailure_KeepsTheClassifiedOutcome(t *testing.T) {
-	runDir := t.TempDir()
-	eventsPath := filepath.Join(runDir, "events.jsonl")
-	outputFile := filepath.Join(runDir, "out.md")
-	if err := os.WriteFile(outputFile, []byte("result"), 0o644); err != nil {
-		t.Fatalf("seed output file: %v", err)
+	// auditHidden wraps an Engine in a struct that exposes only the Engine interface, hiding the audit methods of the engine inside.
+	type auditHidden struct{ Engine }
+	tests := []struct {
+		name       string
+		wrap       func(*fakeEngine) Engine
+		wantErrHas string
+	}{
+		{"an audit error", func(e *fakeEngine) Engine { return e }, "audit forks for session"},
+		{"an engine that cannot audit", func(e *fakeEngine) Engine { return auditHidden{e} }, `engine "fake" cannot audit the forks its ForkSubagents record authorizes`},
 	}
-	if err := os.WriteFile(eventsPath, []byte("STOP:done\n"), 0o644); err != nil {
-		t.Fatalf("seed events: %v", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runDir := t.TempDir()
+			eventsPath := filepath.Join(runDir, "events.jsonl")
+			outputFile := filepath.Join(runDir, "out.md")
+			if err := os.WriteFile(outputFile, []byte("result"), 0o644); err != nil {
+				t.Fatalf("seed output file: %v", err)
+			}
+			if err := os.WriteFile(eventsPath, []byte("STOP:done\n"), 0o644); err != nil {
+				t.Fatalf("seed events: %v", err)
+			}
 
-	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
-	engine := &fakeEngine{
-		StartupScript: []StartupState{StartupReady},
-		AuditForksErr: errors.New("read parent transcript: no such file or directory"),
-	}
-	fx := newFixture(t, reed, engine, withConfig(fastConfig))
-	fc := newFakeClock(time.Now())
-	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
-		withRunDir(runDir),
-		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath, ForkSubagents: true}),
-		withRunClock(fc, fc.Now().Add(time.Minute)))
+			reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
+			engine := &fakeEngine{
+				StartupScript: []StartupState{StartupReady},
+				AuditForksErr: errors.New("read parent transcript: no such file or directory"),
+			}
+			fx := newFixture(t, reed, tt.wrap(engine), withConfig(fastConfig))
+			fc := newFakeClock(time.Now())
+			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
+				withRunDir(runDir),
+				withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath, ForkSubagents: true}),
+				withRunClock(fc, fc.Now().Add(time.Minute)))
 
-	result, err := run.Wait()
-	if err == nil {
-		t.Fatalf("Wait() error = nil; want the audit failure surfaced")
-	}
-	if !strings.Contains(err.Error(), "audit forks for session") {
-		t.Errorf("Wait() error = %v; want it to name the fork audit", err)
-	}
-	if result.Outcome != OutcomeDone {
-		t.Errorf("Outcome = %q; want %q — the run satisfied the file contract before the audit was attempted", result.Outcome, OutcomeDone)
-	}
-	if result.StrandGUID != "strand-1" || result.SessionID != "session-1" || result.RunDir != runDir {
-		t.Errorf("identity = (%q, %q, %q); want (%q, %q, %q)", result.StrandGUID, result.SessionID, result.RunDir, "strand-1", "session-1", runDir)
-	}
-	if result.ForkAudit != nil {
-		t.Errorf("Result.ForkAudit = %+v; want nil — nil is what \"not audited\" means", result.ForkAudit)
-	}
-	// The audit failure must not have triggered the done-outcome cleanup: both the strand and the
-	// run dir have to survive for the caller to diagnose what the audit could not read.
-	if len(reed.RemoveStrandCalls) != 0 {
-		t.Errorf("RemoveStrand calls = %+v; want none — an audit failure must not tear the run down", reed.RemoveStrandCalls)
-	}
-	if _, statErr := os.Stat(runDir); statErr != nil {
-		t.Errorf("run dir removed after an audit failure: %v", statErr)
+			result, err := run.Wait()
+			if err == nil {
+				t.Fatalf("Wait() error = nil; want the audit failure surfaced")
+			}
+			if !strings.Contains(err.Error(), tt.wantErrHas) {
+				t.Errorf("Wait() error = %v; want it to contain %q", err, tt.wantErrHas)
+			}
+			if result.Outcome != OutcomeDone {
+				t.Errorf("Outcome = %q; want %q — the run satisfied the file contract before the audit was attempted", result.Outcome, OutcomeDone)
+			}
+			if result.StrandGUID != "strand-1" || result.SessionID != "session-1" || result.RunDir != runDir {
+				t.Errorf("identity = (%q, %q, %q); want (%q, %q, %q)", result.StrandGUID, result.SessionID, result.RunDir, "strand-1", "session-1", runDir)
+			}
+			if result.ForkAudit != nil {
+				t.Errorf("Result.ForkAudit = %+v; want nil — nil is what \"not audited\" means", result.ForkAudit)
+			}
+			// The audit failure must not have triggered the done-outcome cleanup: both the strand and the
+			// run dir have to survive for the caller to diagnose what the audit could not read.
+			if len(reed.RemoveStrandCalls) != 0 {
+				t.Errorf("RemoveStrand calls = %+v; want none — an audit failure must not tear the run down", reed.RemoveStrandCalls)
+			}
+			if _, statErr := os.Stat(runDir); statErr != nil {
+				t.Errorf("run dir removed after an audit failure: %v", statErr)
+			}
+		})
 	}
 }
 

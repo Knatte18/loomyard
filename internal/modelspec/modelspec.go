@@ -48,6 +48,8 @@
 //	spec.Version = resolved.Params["version"]
 package modelspec
 
+import "sort"
+
 // Spec is one parsed model-spec string, in exactly one of two shapes:
 //
 //   - Alias form: Alias is non-empty; Engine and Model are both empty. Resolving
@@ -138,4 +140,15 @@ var bracketKeys = map[string]string{
 // already-known engine (e.g. a new Claude model) needs no change here.
 var knownEngines = map[string]bool{
 	"claude": true,
+}
+
+// EngineNames returns the closed set of provider engine names, sorted.
+// The slice is a copy, so a caller cannot change the set.
+func EngineNames() []string {
+	names := make([]string, 0, len(knownEngines))
+	for name := range knownEngines {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }

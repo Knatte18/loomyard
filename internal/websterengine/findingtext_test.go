@@ -24,13 +24,13 @@ func TestPendingFindingsText(t *testing.T) {
 	tests := []struct {
 		name string
 		// fixture builds the engine and findings over geom and returns the clause wanted, "" to skip it.
-		fixture func(t *testing.T, geom Geometry) (engine shuttleengine.Engine, items []findingItem, wantClause, wantWay string)
+		fixture func(t *testing.T, geom Geometry) (engine shuttleengine.ForkAuditor, items []findingItem, wantClause, wantWay string)
 		reentry string
 	}{
 		{
 			name:    "board-model findings golden",
 			reentry: "lyx webster run",
-			fixture: func(t *testing.T, geom Geometry) (shuttleengine.Engine, []findingItem, string, string) {
+			fixture: func(t *testing.T, geom Geometry) (shuttleengine.ForkAuditor, []findingItem, string, string) {
 				outcome := writeContractFile(t, geom)
 				summary := summaryparser.Path(geom.WebsterDir)
 				state := filepath.Join(geom.WebsterDir, "state.json")
@@ -54,7 +54,7 @@ func TestPendingFindingsText(t *testing.T) {
 		{
 			name:    "a contract file a fork wrote last ends in one re-entry step after its delete",
 			reentry: "re-step the loom row",
-			fixture: func(t *testing.T, geom Geometry) (shuttleengine.Engine, []findingItem, string, string) {
+			fixture: func(t *testing.T, geom Geometry) (shuttleengine.ForkAuditor, []findingItem, string, string) {
 				outcome := writeContractFile(t, geom)
 				engine := writesEngine(nil, []shuttleengine.WriteEvent{succeeded(outcome, time.Minute)})
 				items := []findingItem{{Class: "fork-contract-write", Detail: fmt.Sprintf("fork wrote %q", outcome), Paths: []string{outcome}}}
@@ -64,7 +64,7 @@ func TestPendingFindingsText(t *testing.T) {
 		{
 			name:    "a contract file Master wrote last needs no delete",
 			reentry: "lyx webster run",
-			fixture: func(t *testing.T, geom Geometry) (shuttleengine.Engine, []findingItem, string, string) {
+			fixture: func(t *testing.T, geom Geometry) (shuttleengine.ForkAuditor, []findingItem, string, string) {
 				outcome := writeContractFile(t, geom)
 				engine := writesEngine([]shuttleengine.WriteEvent{succeeded(outcome, 2*time.Minute)}, []shuttleengine.WriteEvent{succeeded(outcome, time.Minute)})
 				items := []findingItem{{Class: "fork-contract-write", Detail: fmt.Sprintf("fork wrote %q", outcome), Paths: []string{outcome}}}
@@ -74,7 +74,7 @@ func TestPendingFindingsText(t *testing.T) {
 		{
 			name:    "a pathless finding takes the reset route and ends in the re-entry step",
 			reentry: "re-step the loom row",
-			fixture: func(t *testing.T, geom Geometry) (shuttleengine.Engine, []findingItem, string, string) {
+			fixture: func(t *testing.T, geom Geometry) (shuttleengine.ForkAuditor, []findingItem, string, string) {
 				items := []findingItem{{Class: "fabric-reference", Detail: "ran lyx fabric"}}
 				return nil, items,
 					"1 correctness finding(s): 1) fabric-reference: ran lyx fabric (the finding names no path)",

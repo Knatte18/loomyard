@@ -24,10 +24,11 @@ type AgentWait struct {
 // ReadAgentWaits returns one reading per run under the run-directory root of anchorPath whose record reads running and whose waiting process is alive.
 // A run is Waiting when its own wait marker is live and is the held turn end, or when its session state is asking or idle-stalled.
 // A run is Busy when its session state is busy and it is not waiting; every other state is neither.
-// The session state is the fold ReadSessionStates reads, at now.
+// The session state is the fold ReadSessionStates reads, at now, through the engine the run's record names, the set's default for a record naming none.
 // A directory that is not a run directory, a run with no record, a run that is not live and an unreadable record are skipped, and an unreadable record is logged once per episode.
+// A run whose record names an engine the set does not hold is skipped the same way, so it reads as neither busy nor waiting.
 // An absent root returns no readings and no error.
-func ReadAgentWaits(cfg Config, anchorPath string, engine Engine, now time.Time) ([]AgentWait, error) {
+func ReadAgentWaits(cfg Config, anchorPath string, engines EngineSet, now time.Time) ([]AgentWait, error) {
 	root := runDirRoot(cfg, anchorPath)
 	entries, err := os.ReadDir(root)
 	if os.IsNotExist(err) {
@@ -49,6 +50,10 @@ func ReadAgentWaits(cfg Config, anchorPath string, engine Engine, now time.Time)
 		}
 		unreadableFiles.Recover(runDir, "shuttle: run record readable again", "runDir", runDir)
 		if !found || !runIsLive(rs) {
+			continue
+		}
+		engine, ok := engines.engineOfRun(runDir, rs)
+		if !ok {
 			continue
 		}
 		session := readRunSessionState(rs, engine, now)

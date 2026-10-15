@@ -26,7 +26,7 @@ type RunWrites struct {
 // The Master sessions are State.MasterSessionID then each batch record's SessionID in batch-number order;
 // the recovery sessions follow, each batch's RecoverySessions in batch-number order; both are deduplicated, an empty id skipped, and each id is audited once.
 // It reads only; an audit error is returned naming the session.
-func loadRunWrites(engine shuttleengine.Engine, st *State, worktree string) (RunWrites, error) {
+func loadRunWrites(engine shuttleengine.ForkAuditor, st *State, worktree string) (RunWrites, error) {
 	var writes RunWrites
 	if st == nil {
 		return writes, nil

@@ -35,8 +35,8 @@ func (s runnerSession) ReadEvents(guid string, offset int64) ([]shuttleengine.Ev
 }
 
 // ContextTokens delegates to Runner.ContextTokens.
-func (s runnerSession) ContextTokens(turnEnd shuttleengine.Event) (shuttleengine.ContextReading, error) {
-	return s.runner.ContextTokens(turnEnd)
+func (s runnerSession) ContextTokens(guid string, turnEnd shuttleengine.Event) (shuttleengine.ContextReading, error) {
+	return s.runner.ContextTokens(guid, turnEnd)
 }
 
 // SessionIdle delegates to Runner.SessionIdle, which captures the pane through tmux.
@@ -63,7 +63,9 @@ func (s runnerSession) Interrupt(guid string) error {
 }
 
 // InterruptSettle delegates to Runner.InterruptSettle.
-func (s runnerSession) InterruptSettle() time.Duration { return s.runner.InterruptSettle() }
+func (s runnerSession) InterruptSettle(guid string) (time.Duration, error) {
+	return s.runner.InterruptSettle(guid)
+}
 
 // ClearSession delegates to Runner.ClearSession, which types into the pane through tmux.
 func (s runnerSession) ClearSession(guid string) error {
@@ -100,13 +102,13 @@ func (s runnerSession) LoadSkills(guid string, skills []string) error {
 }
 
 // ClassifySkillLoad delegates to Runner.ClassifySkillLoad.
-func (s runnerSession) ClassifySkillLoad(turnEnd shuttleengine.Event, skills []string) (shuttleengine.SkillLoadReport, error) {
-	return s.runner.ClassifySkillLoad(turnEnd, skills)
+func (s runnerSession) ClassifySkillLoad(guid string, turnEnd shuttleengine.Event, skills []string) (shuttleengine.SkillLoadReport, error) {
+	return s.runner.ClassifySkillLoad(guid, turnEnd, skills)
 }
 
 // CompactedSince delegates to Runner.CompactedSince.
-func (s runnerSession) CompactedSince(turnEnd shuttleengine.Event, since time.Time) (shuttleengine.CompactionBoundary, bool, error) {
-	return s.runner.CompactedSince(turnEnd, since)
+func (s runnerSession) CompactedSince(guid string, turnEnd shuttleengine.Event, since time.Time) (shuttleengine.CompactionBoundary, bool, error) {
+	return s.runner.CompactedSince(guid, turnEnd, since)
 }
 
 // CompactSession delegates to Runner.CompactSession, which types into the pane through tmux.

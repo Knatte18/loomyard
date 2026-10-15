@@ -63,7 +63,7 @@ func TestNewRunner_RefusesUnusableToldPaths(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			runner := NewRunner(&fakeReed{}, &fakeEngine{}, tt.anchorPath, tt.worktreeRoot, Config{RunTimeoutMin: 5})
+			runner := NewRunner(&fakeReed{}, singleEngineSet(&fakeEngine{}), tt.anchorPath, tt.worktreeRoot, Config{RunTimeoutMin: 5})
 
 			if tt.wantIn == "" {
 				if runner.toldErr != nil {
@@ -123,7 +123,7 @@ func TestNewDetachedRunner_RefusesUnusableToldPaths(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			runner := NewDetachedRunner(&fakeReed{}, &fakeEngine{}, tt.anchorPath, tt.worktreeRoot, tt.paneCwd, Config{RunTimeoutMin: 5})
+			runner := NewDetachedRunner(&fakeReed{}, singleEngineSet(&fakeEngine{}), tt.anchorPath, tt.worktreeRoot, tt.paneCwd, Config{RunTimeoutMin: 5})
 
 			if _, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}}); err == nil || !strings.Contains(err.Error(), tt.wantIn) {
 				t.Errorf("Start() error = %v; want it to name %q", err, tt.wantIn)
@@ -164,7 +164,7 @@ func TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions(t *test
 		t.Run(tt.name, func(t *testing.T) {
 			reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 			engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd"}}
-			runner := NewDetachedRunner(reed, engine, anchor, worktree, tt.paneCwd, Config{RunTimeoutMin: 5})
+			runner := NewDetachedRunner(reed, singleEngineSet(engine), anchor, worktree, tt.paneCwd, Config{RunTimeoutMin: 5})
 			readyStart(reed, engine)
 
 			if _, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}}); err != nil {
@@ -203,7 +203,7 @@ func TestRunner_StartGated_CarriesNoDoneWhen(t *testing.T) {
 func TestRunner_Start_HappyPath(t *testing.T) {
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "launch-cmd", ResumeCmd: "resume-cmd", SessionID: "session-1"}}
-	fx := newFixture(t, reed, engine, withConfig(fastConfig))
+	fx := newFixture(t, reed, supportingEngine{fakeEngine: engine, supported: []Requirement{RequirementForks}}, withConfig(fastConfig))
 	runner, anchorPath := fx.Runner, fx.Anchor
 	readyStart(reed, engine)
 
@@ -738,7 +738,7 @@ func TestRunner_Start_SweepSkipsEntirelyWithoutReedState(t *testing.T) {
 			keptDir := seedRun(t, shuttleRoot, "kept-run", "some-other-strand")
 			setDirMTime(t, keptDir, time.Now(), 10*time.Minute)
 
-			runner := NewRunner(reed, engine, anchorPath, worktree, cfg)
+			runner := NewRunner(reed, singleEngineSet(engine), anchorPath, worktree, cfg)
 			readyStart(reed, engine)
 			run, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}})
 			if err != nil {
@@ -838,8 +838,8 @@ func TestRun_Interrupt_PlaysEscape(t *testing.T) {
 			if !tt.viaRunner {
 				return
 			}
-			if got := runner.InterruptSettle(); got != 2*time.Second {
-				t.Errorf("InterruptSettle() = %v; want 2s", got)
+			if got, settleErr := runner.InterruptSettle("strand-1"); settleErr != nil || got != 2*time.Second {
+				t.Errorf("InterruptSettle() = %v, %v; want 2s, nil", got, settleErr)
 			}
 			running, runningErr := runner.PaneRunningTurn("strand-1")
 			if tt.wantErr == boom {

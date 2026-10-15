@@ -44,8 +44,8 @@ func (run *Run) watchDialog() {
 	if run.runner.notifier == nil || run.spec.Interactive {
 		return
 	}
-	parser, canParse := run.runner.engine.(SessionSignalParser)
-	_, canRead := run.runner.engine.(InputBoxReader)
+	parser, canParse := run.engine.(SessionSignalParser)
+	_, canRead := run.engine.(InputBoxReader)
 	if !canParse || !canRead {
 		return
 	}
@@ -59,7 +59,7 @@ func (run *Run) watchDialog() {
 		return
 	}
 	run.failures.Recover("dialog capture", "shuttle: capture pane for the dialog watch works again", "strandGUID", run.state.StrandGUID)
-	box := readBox(run.runner.engine, capture)
+	box := readBox(run.engine, capture)
 	switch {
 	case box.tooShort:
 		return

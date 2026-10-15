@@ -52,6 +52,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
+	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -329,7 +330,7 @@ func newSmokeRunner(t *testing.T) (*shuttleengine.Runner, shuttleengine.Engine, 
 	}
 	reedEngine := reedengine.New(reedCfg, reedGeom)
 	engine := claudeengine.New()
-	runner := shuttleengine.NewRunner(reedEngine, engine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+	runner := shuttleengine.NewRunner(reedEngine, shuttlefake.EngineSet(engine), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 	return runner, engine, reedEngine, shuttleCfg
 }
 

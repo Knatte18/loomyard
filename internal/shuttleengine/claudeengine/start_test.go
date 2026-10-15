@@ -48,7 +48,7 @@ func TestStart_LoneEOLMarkBoxTakesStartupSends(t *testing.T) {
 
 	claude := New()
 	cfg := shuttleengine.Config{PollIntervalMS: 1000, LivenessEveryNPolls: 1, RunTimeoutMin: 60, StartupTimeoutS: 30, BackgroundShellWaitMin: 10}
-	runner := shuttleengine.NewRunner(reed, cannedLaunchEngine{claude}, worktree, worktree, cfg)
+	runner := shuttleengine.NewRunner(reed, shuttlefake.EngineSet(cannedLaunchEngine{claude}), worktree, worktree, cfg)
 	runner.SetClock(&virtualClock{now: time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)})
 
 	spec := shuttleengine.Spec{

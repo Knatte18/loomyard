@@ -36,8 +36,6 @@ var cliwireAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/buildvcs",
 	"github.com/Knatte18/loomyard/contracts/stencils",
 	"github.com/Knatte18/loomyard/contracts/specs",
-	"github.com/Knatte18/loomyard/internal/reedengine",
-	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine",
 }
 
 // cliwireDeniedLyxcwdImport is the exact import path the Told-Geometry Invariant excludes from this

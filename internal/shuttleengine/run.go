@@ -25,16 +25,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 )
 
-// Runner is the provider-invariant run loop: it drives one Engine implementation over the file
+// Runner is the provider-invariant run loop: it drives the Engine implementations of its set over the file
 // contract through the ReedOps seam, so a caller (review, loom) constructs exactly one Runner per
-// (reed, engine, anchorPath, worktreeRoot, paneCwd, cfg) combination and calls Start/Run for every
+// (reed, engines, anchorPath, worktreeRoot, paneCwd, cfg) combination and calls Start/Run for every
 // agent spawn.
 // Runner is told its anchor path, worktree root, and pane cwd as plain strings and derives none of
 // them;
 // populating all three with usable absolute paths is the caller's obligation.
 type Runner struct {
-	reed         ReedOps
-	engine       Engine
+	reed ReedOps
+	// engines is the set of engines the runner can drive, resolved per run by Start and Open and by each run's record afterwards.
+	engines      EngineSet
 	anchorPath   string
 	worktreeRoot string
 	// paneCwd is the pane's own process cwd that the fork audit derives the provider's transcript
@@ -125,8 +126,9 @@ func (r *Runner) SetClock(c Clock) {
 	r.clock = c
 }
 
-// NewRunner returns a Runner ready to start runs against reed and engine, scoped to anchorPath and
-// worktreeRoot and cfg's tuning knobs.
+// NewRunner returns a Runner that starts runs against reed and the engines of the set.
+// It is scoped to anchorPath and worktreeRoot and cfg's tuning knobs.
+// A set whose default engine does not resolve is held on the same verdict as an unusable told path.
 // NewRunner is told anchorPath and worktreeRoot as plain strings and derives neither;
 // populating both with usable absolute paths is the caller's obligation.
 // paneCwd is derived here rather than told: it is set to a copy of anchorPath, which is hub
@@ -135,15 +137,16 @@ func (r *Runner) SetClock(c Clock) {
 // worktree root rather than the anchor.
 // The pair is validated here (see validateToldPaths) and an unusable one is reported by every
 // public method rather than by this constructor, which stays total.
-func NewRunner(reed ReedOps, engine Engine, anchorPath, worktreeRoot string, cfg Config) *Runner {
+func NewRunner(reed ReedOps, engines EngineSet, anchorPath, worktreeRoot string, cfg Config) *Runner {
+	_, engineErr := engines.Lookup("")
 	return &Runner{
 		reed:         reed,
-		engine:       engine,
+		engines:      engines,
 		anchorPath:   anchorPath,
 		worktreeRoot: worktreeRoot,
 		paneCwd:      anchorPath,
 		cfg:          cfg,
-		toldErr:      validateToldPaths(anchorPath, worktreeRoot),
+		toldErr:      errors.Join(validateToldPaths(anchorPath, worktreeRoot), engineErr),
 		clock:        realClock{},
 	}
 }
@@ -165,15 +168,16 @@ func NewRunner(reed ReedOps, engine Engine, anchorPath, worktreeRoot string, cfg
 // tests.
 // Like NewRunner it stays total — the verdict is held on toldErr and surfaced by every public entry
 // point, never returned from the constructor.
-func NewDetachedRunner(reed ReedOps, engine Engine, anchorPath, worktreeRoot, paneCwd string, cfg Config) *Runner {
+func NewDetachedRunner(reed ReedOps, engines EngineSet, anchorPath, worktreeRoot, paneCwd string, cfg Config) *Runner {
+	_, engineErr := engines.Lookup("")
 	return &Runner{
 		reed:         reed,
-		engine:       engine,
+		engines:      engines,
 		anchorPath:   anchorPath,
 		worktreeRoot: worktreeRoot,
 		paneCwd:      paneCwd,
 		cfg:          cfg,
-		toldErr:      validateDetachedToldPaths(anchorPath, worktreeRoot, paneCwd),
+		toldErr:      errors.Join(validateDetachedToldPaths(anchorPath, worktreeRoot, paneCwd), engineErr),
 		clock:        realClock{},
 	}
 }
@@ -302,6 +306,9 @@ type Run struct {
 	spec   Spec
 	runDir string
 	state  RunState
+	// engine is the engine the run is driven through, and engineName its resolved name.
+	engine     Engine
+	engineName string
 	// recordMu guards stopMarked, state.Outcome and every save of state, so a stop from another goroutine never interleaves with Wait's record writes.
 	recordMu sync.Mutex
 	// stopMarked reports that Stop recorded a stop on this handle, which makes finalize store the stop outcome instead of the classified one.
@@ -483,13 +490,20 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 	if err := spec.validate(r.worktreeRoot, r.cfg); err != nil {
 		return nil, Result{}, err
 	}
+	engine, engineName, err := r.engineFor(RunState{Engine: spec.Engine})
+	if err != nil {
+		return nil, Result{}, err
+	}
+	if err := r.checkRequirementsAtStart(spec, engine, engineName); err != nil {
+		return nil, Result{}, err
+	}
 	if len(spec.Skills) > 0 {
-		if _, err := r.skillLoader(); err != nil {
+		if _, err := r.skillLoader(engine); err != nil {
 			return nil, Result{}, fmt.Errorf("shuttle: spec names skills %v: %w", spec.Skills, err)
 		}
 	}
 
-	resumeWarning, err := r.checkResume(spec)
+	resumeWarning, err := r.checkResume(spec, engine)
 	if err != nil {
 		return nil, Result{}, err
 	}
@@ -506,7 +520,7 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 		return nil, Result{}, fmt.Errorf("shuttle: start run: %w", err)
 	}
 
-	launch, err := r.engine.Prepare(runDir, spec, r.cfg)
+	launch, err := engine.Prepare(runDir, spec, r.cfg)
 	if err != nil {
 		_ = os.RemoveAll(runDir)
 		return nil, Result{}, fmt.Errorf("shuttle: prepare run: %w", err)
@@ -582,6 +596,7 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 		PromptLine:           launch.PromptLine,
 		Step:                 r.step,
 		ForkSubagents:        spec.ForkSubagents,
+		Engine:               engineName,
 	}
 	if err := saveRunState(runDir, state); err != nil {
 		// The strand registered and its pane is already launching, but
@@ -599,18 +614,20 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 		return nil, Result{}, fmt.Errorf("shuttle: save run state: %w", err)
 	}
 
-	logger.Info("shuttle: run started", "runDir", runDir, "strandGUID", strand.GUID, "sessionID", launch.SessionID, "role", spec.Role, "round", spec.Round, "forkSubagents", spec.ForkSubagents)
+	logger.Info("shuttle: run started", "runDir", runDir, "strandGUID", strand.GUID, "sessionID", launch.SessionID, "role", spec.Role, "round", spec.Round, "forkSubagents", spec.ForkSubagents, "engine", engineName)
 
 	clk := r.clock
 	createdAt := clk.Now()
 	run := &Run{
-		runner:   r,
-		spec:     spec,
-		runDir:   runDir,
-		state:    state,
-		clock:    clk,
-		deadline: createdAt.Add(spec.Timeout),
-		gate:     gate,
+		runner:     r,
+		spec:       spec,
+		runDir:     runDir,
+		state:      state,
+		engine:     engine,
+		engineName: engineName,
+		clock:      clk,
+		deadline:   createdAt.Add(spec.Timeout),
+		gate:       gate,
 
 		createdAt:     createdAt,
 		resumeWarning: resumeWarning,
@@ -665,7 +682,7 @@ func (run *Run) loadSkillsThenPrompt(promptLine string, color segmentcolor.Color
 	if len(run.spec.Skills) == 0 {
 		run.typeStartupColor(color)
 	} else {
-		loader, err := run.runner.skillLoader()
+		loader, err := run.runner.skillLoader(run.engine)
 		if err != nil {
 			return run.abandonStartup(OutcomeDied, err)
 		}
@@ -701,7 +718,7 @@ func (run *Run) loadSkillsThenPrompt(promptLine string, color segmentcolor.Color
 		}
 	}
 	if err := sendVerified(run.newSendContext(), promptLine); err != nil {
-		if errors.Is(err, ErrSubmissionNotLanded) && turnStartedSince(run.runner.engine, run.state.EventsPath, sentAt) {
+		if errors.Is(err, ErrSubmissionNotLanded) && turnStartedSince(run.engine, run.state.EventsPath, sentAt) {
 			return Result{}, nil
 		}
 		return run.abandonStartup(OutcomeDied, fmt.Errorf("shuttle: deliver the prompt after loading skills: %w", err))
@@ -718,7 +735,7 @@ func (run *Run) DeliverPendingPrompt() (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("shuttle: read the run record in %s to deliver a pending prompt: %w", run.runDir, err)
 	}
-	if !found || record.PromptLine == "" || turnStartedSince(run.runner.engine, record.EventsPath, record.PromptOffset) {
+	if !found || record.PromptLine == "" || turnStartedSince(run.engine, record.EventsPath, record.PromptOffset) {
 		return false, nil
 	}
 	if record.PromptOffset == 0 {
@@ -796,7 +813,7 @@ func (run *Run) loadSkillTurn(loader SkillLoader, skills []string, timeout time.
 	for {
 		data, newOffset, err := readEventsFrom(run.state.EventsPath, run.offset)
 		if err == nil && len(data) > 0 {
-			events, perr := run.runner.engine.ParseEvents(data)
+			events, perr := run.engine.ParseEvents(data)
 			if perr == nil {
 				run.offset = newOffset
 				for _, ev := range events {
@@ -819,14 +836,14 @@ func (run *Run) loadSkillTurn(loader SkillLoader, skills []string, timeout time.
 	}
 }
 
-// checkResume runs the engine's SessionResumer check for a spec that resumes an existing session, against the runner's pane cwd.
+// checkResume runs engine's SessionResumer check for a spec that resumes an existing session, against the runner's pane cwd.
 // It returns the check's warning, empty for a spec with no ResumeSessionID.
 // An engine without the capability is an error, so no run resumes a session unchecked.
-func (r *Runner) checkResume(spec Spec) (string, error) {
+func (r *Runner) checkResume(spec Spec, engine Engine) (string, error) {
 	if spec.ResumeSessionID == "" {
 		return "", nil
 	}
-	resumer, ok := r.engine.(SessionResumer)
+	resumer, ok := engine.(SessionResumer)
 	if !ok {
 		return "", fmt.Errorf("shuttle: resume check: the engine does not implement the SessionResumer capability (CheckResume), so it cannot resume a session")
 	}
@@ -955,7 +972,7 @@ func (r *Runner) sweepOrphansOpportunistic() {
 // Send is issued;
 // the redirect is delivered but the same Wait call won't observe it.
 func (run *Run) Interrupt() error {
-	return guardedInterrupt(run.runner.reed, run.runner.engine, run.clock, run.state.StrandGUID)
+	return guardedInterrupt(run.runner.reed, run.engine, run.clock, run.state.StrandGUID)
 }
 
 // Send types text as run's next turn.
@@ -998,19 +1015,36 @@ func (r *Runner) Interrupt(guid string) error {
 	if r.toldErr != nil {
 		return r.toldErr
 	}
-	if _, _, err := FindRun(r.cfg, r.anchorPath, guid); err != nil {
+	state, _, err := FindRun(r.cfg, r.anchorPath, guid)
+	if err != nil {
 		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
 	}
-	return guardedInterrupt(r.reed, r.engine, r.clock, guid)
+	engine, _, err := r.engineFor(state)
+	if err != nil {
+		return err
+	}
+	return guardedInterrupt(r.reed, engine, r.clock, guid)
 }
 
-// InterruptSettle returns how long after an interrupt key the pane needs before it is read again, or 0 for an engine that does not say.
+// InterruptSettle returns how long after an interrupt key the pane of the run identified by guid needs before it is read again, or 0 for an engine that does not say.
 // A caller that retries an interrupt waits at least this long after its first key.
-func (r *Runner) InterruptSettle() time.Duration {
-	if guard, ok := r.engine.(InterruptGuard); ok {
-		return guard.InterruptSettle()
+// It fails when guid is not a shuttle strand or its record names an engine the set does not hold.
+func (r *Runner) InterruptSettle(guid string) (time.Duration, error) {
+	if r.toldErr != nil {
+		return 0, r.toldErr
 	}
-	return 0
+	state, _, err := FindRun(r.cfg, r.anchorPath, guid)
+	if err != nil {
+		return 0, fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
+	}
+	engine, _, err := r.engineFor(state)
+	if err != nil {
+		return 0, err
+	}
+	if guard, ok := engine.(InterruptGuard); ok {
+		return guard.InterruptSettle(), nil
+	}
+	return 0, nil
 }
 
 // PaneRunningTurn reports whether the pane of the run identified by guid shows a running turn, from one fresh capture.
@@ -1019,13 +1053,18 @@ func (r *Runner) PaneRunningTurn(guid string) (bool, error) {
 	if r.toldErr != nil {
 		return false, r.toldErr
 	}
-	if _, _, err := FindRun(r.cfg, r.anchorPath, guid); err != nil {
+	state, _, err := FindRun(r.cfg, r.anchorPath, guid)
+	if err != nil {
 		return false, fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
+	}
+	engine, _, err := r.engineFor(state)
+	if err != nil {
+		return false, err
 	}
 	if err := requireLiveStrand(r.reed, guid); err != nil {
 		return false, err
 	}
-	guard, ok := r.engine.(InterruptGuard)
+	guard, ok := engine.(InterruptGuard)
 	if !ok {
 		return false, fmt.Errorf("shuttle: the engine has no running-turn reading for strand %q", guid)
 	}
@@ -1050,7 +1089,11 @@ func (r *Runner) Send(guid, text string) error {
 	if err != nil {
 		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
 	}
-	return sendVerified(r.newSendContext(state, runDir), text)
+	sc, err := r.newSendContext(state, runDir)
+	if err != nil {
+		return err
+	}
+	return sendVerified(sc, text)
 }
 
 // Inject plays inputs into the live pane of the run identified by guid, without needing an
@@ -1066,11 +1109,16 @@ func (r *Runner) Inject(guid string, inputs []PaneInput) error {
 	if len(inputs) == 0 {
 		return fmt.Errorf("shuttle: Inject: inputs must not be empty — there is nothing to deliver")
 	}
-	if err := refuseInterruptKey(r.engine, inputs); err != nil {
+	state, _, err := FindRun(r.cfg, r.anchorPath, guid)
+	if err != nil {
+		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
+	}
+	engine, _, err := r.engineFor(state)
+	if err != nil {
 		return err
 	}
-	if _, _, err := FindRun(r.cfg, r.anchorPath, guid); err != nil {
-		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
+	if err := refuseInterruptKey(engine, inputs); err != nil {
+		return err
 	}
 	if err := requireLiveStrand(r.reed, guid); err != nil {
 		return err

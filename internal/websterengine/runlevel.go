@@ -124,7 +124,7 @@ type MasterStarter interface {
 type RunDeps struct {
 	Starter    MasterStarter
 	Stopper    StrandStopper
-	Engine     shuttleengine.Engine
+	Engine     shuttleengine.ForkAuditor
 	ShuttleCfg shuttleengine.Config
 	Roles      map[Role]modelspec.Resolved
 	Config     Config
@@ -1104,7 +1104,7 @@ var ErrPendingAuditFindings = errors.New("webster: correctness findings from an 
 
 // pendingAuditFindingsError wraps ErrPendingAuditFindings with the pending findings clause and the way forward pendingFindingsText builds.
 // The way forward is judged over the write history engine's audit of st's sessions yields, and ends in reentry on the accept-audit route.
-func pendingAuditFindingsError(engine shuttleengine.Engine, st *State, geom Geometry, reentry string) error {
+func pendingAuditFindingsError(engine shuttleengine.ForkAuditor, st *State, geom Geometry, reentry string) error {
 	items := make([]findingItem, len(st.PendingAuditFindings))
 	for i, f := range st.PendingAuditFindings {
 		items[i] = findingItem{Class: f.Class, Detail: f.Detail, Paths: f.Paths}
@@ -1119,7 +1119,7 @@ func pendingAuditFindingsError(engine shuttleengine.Engine, st *State, geom Geom
 // pendingFindingsText renders the findings clause and the way forward for items, the text a run-exit stuck reason and the pending-findings refusal share.
 // The write history is loaded only when a path is a contract file.
 // The error is a link-resolution, audit or git probe failure.
-func pendingFindingsText(engine shuttleengine.Engine, st *State, geom Geometry, items []findingItem, reentry string) (clause, wayForward string, err error) {
+func pendingFindingsText(engine shuttleengine.ForkAuditor, st *State, geom Geometry, items []findingItem, reentry string) (clause, wayForward string, err error) {
 	var paths []string
 	pathless := false
 	for _, it := range items {
@@ -1223,7 +1223,7 @@ func pendingPathsWayForward(geom Geometry, st *State, writes RunWrites, paths []
 // its warning says so.
 // A batch record with Uncheckable entries counts as a pending finding: its SuspectPaths join the path check,
 // and it adds its own drop warning.
-func freshPendingDrop(engine shuttleengine.Engine, geom Geometry, st *State, opts RunOptions) (drop bool, warnings []string, err error) {
+func freshPendingDrop(engine shuttleengine.ForkAuditor, geom Geometry, st *State, opts RunOptions) (drop bool, warnings []string, err error) {
 	if !opts.Fresh || st == nil || !hasPendingFindings(st) {
 		return false, nil, nil
 	}

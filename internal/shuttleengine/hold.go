@@ -82,7 +82,7 @@ const apiErrorContinueLine = "[lyx] Your last turn ended on an API error while t
 // RunState.APIContinued is persisted before typing, and the line goes through the guarded paste-submit; a send that fails, ErrSessionBusy included, is logged at Info and the stall is held and notified as any other.
 // A held turn end that is not an API error clears RunState.APIContinued, so the flag spans exactly the turn the continue resumed.
 func (run *Run) continueAPIErrorStall(held *heldTurnEnd) bool {
-	reading := readRunSessionState(run.state, run.runner.engine, run.clock.Now())
+	reading := readRunSessionState(run.state, run.engine, run.clock.Now())
 	if reading.State.Cause != SessionCauseAPIError {
 		run.setAPIContinued(false)
 		return false

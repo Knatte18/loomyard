@@ -85,7 +85,7 @@ func TestShuttlePairReadings(t *testing.T) {
 			pair := shuttlePair{
 				location: &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "p1"},
 				cfg:      shuttleengine.Config{RunDir: runDir},
-				engine:   &signalEngine{Engine: &shuttlefake.Engine{}, signals: tt.signals},
+				engines:  shuttlefake.EngineSet(&signalEngine{Engine: &shuttlefake.Engine{}, signals: tt.signals}),
 			}
 
 			busy, err := pair.Busy("g-a")

@@ -431,15 +431,6 @@ func (e *fakeEngine) ComposeSend(text string) []PaneInput {
 	}
 }
 
-// ModelSwitchSequence returns a canonical Escape-then-submit-model-command choreography — fixed,
-// not scripted, so tests assert against it directly.
-func (e *fakeEngine) ModelSwitchSequence(model string) []PaneInput {
-	return []PaneInput{
-		{Key: "Escape"},
-		{Text: "MODEL:" + model, Submit: true},
-	}
-}
-
 // ColorSequence returns a canonical submit-color-command choreography — fixed, not scripted, so tests assert against it directly — or no inputs when NoColorInputs is set.
 func (e *fakeEngine) ColorSequence(color segmentcolor.Color) []PaneInput {
 	if e.NoColorInputs {

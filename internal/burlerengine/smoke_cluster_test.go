@@ -30,6 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
+	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 )
 
 // clusterSmokeTimeout is the generous, explicit per-run timeout both cluster
@@ -138,7 +139,7 @@ func newClusterSmokeEngine(t *testing.T) (*burlerengine.Engine, *hubforge.Hub) {
 		t.Fatalf("reed geometry: %v", err)
 	}
 	reedEngine := reedengine.New(reedCfg, reedGeom)
-	runner := shuttleengine.NewRunner(reedEngine, claudeengine.New(), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+	runner := shuttleengine.NewRunner(reedEngine, shuttlefake.EngineSet(claudeengine.New()), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 	cfg := burlerengine.Config{Lenses: clusterSmokeLenses, Fans: clusterSmokeFans}
 	burlerGeom, err := hubgeom.BurlerGeometry(h.Location)
 	if err != nil {

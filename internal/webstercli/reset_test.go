@@ -58,7 +58,7 @@ func newResetFixture(t *testing.T, h *hubforge.Hub, slug string) *resetFixture {
 		}}, nil
 	}}
 	reed := &shuttlefake.Reed{}
-	runner := shuttleengine.NewRunner(reed, engine, loc.AnchorPath(), checkout, shuttleengine.Config{RunDir: t.TempDir(), RunTimeoutMin: 60, StartupTimeoutS: 30})
+	runner := shuttleengine.NewRunner(reed, shuttlefake.EngineSet(engine), loc.AnchorPath(), checkout, shuttleengine.Config{RunDir: t.TempDir(), RunTimeoutMin: 60, StartupTimeoutS: 30})
 	c := &websterCLI{
 		engine:     engine,
 		reed:       reed,

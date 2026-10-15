@@ -102,7 +102,7 @@ func (run *Run) logSessionState(outcome Outcome, refreshFacts bool) {
 	if !shadow.active {
 		return
 	}
-	parser, ok := run.runner.engine.(SessionSignalParser)
+	parser, ok := run.engine.(SessionSignalParser)
 	if !ok {
 		run.logSessionUnavailable("the engine cannot parse session signals", nil)
 		return
@@ -145,7 +145,7 @@ func (run *Run) logSessionState(outcome Outcome, refreshFacts bool) {
 				markerSignals = append(markerSignals, *signal)
 			}
 		}
-		shadow.facts, shadow.factsRead = readSessionFacts(record, run.runner.engine, markerSignals, now), true
+		shadow.facts, shadow.factsRead = readSessionFacts(record, run.engine, markerSignals, now), true
 	}
 	facts := shadow.facts
 	facts.Interactive = run.spec.Interactive

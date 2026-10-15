@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // fakePair is a Pair whose sessions answer scripted busy readings.
@@ -47,10 +48,11 @@ type fakePair struct {
 	noTurnStart    map[string]bool
 	// onConditioned runs inside SendConditioned before it returns, outside the lock.
 	onConditioned func(guid string)
-	// settle is the InterruptSettle answer.
-	settle   time.Duration
-	producer string
-	running  bool
+	// settle is the InterruptSettle answer, and settleErr fails it while set.
+	settle    time.Duration
+	settleErr error
+	producer  string
+	running   bool
 	// onInterrupt runs after an interrupt is recorded, outside the lock.
 	onInterrupt func(guid string)
 	// onPaneRead runs after a pane reading is counted, outside the lock.
@@ -124,7 +126,12 @@ func (p *fakePair) PaneRunningTurn(guid string) (bool, error) {
 	return running, err
 }
 
-func (p *fakePair) InterruptSettle() time.Duration { return p.settle }
+func (p *fakePair) InterruptSettle(string) (time.Duration, error) {
+	if p.settleErr != nil {
+		return 0, p.settleErr
+	}
+	return p.settle, nil
+}
 
 func (p *fakePair) Interrupt(guid string) error {
 	p.mu.Lock()
@@ -442,6 +449,39 @@ func TestPause(t *testing.T) {
 			}
 			if got := e.clock.elapsed(); got != 4*time.Second {
 				t.Errorf("clock ran %s; want exactly 2 settles", got)
+			}
+		}},
+		{"a session whose settle fails is logged at Warn and adds nothing to the settle, and none waits when every settle fails", func(t *testing.T) {
+			logs := logcapture.CaptureVerbose(t)
+			pa := newPair("p1", "a")
+			pb := newPair("p2", "b")
+			pa.busy["g-a"], pb.busy["g-b"] = []bool{true}, []bool{true}
+			pa.paneRunning["g-a"], pb.paneRunning["g-b"] = true, true
+			pb.settleErr = errors.New("no such run")
+			e := newEnv(t, pa, pb)
+
+			e.pause("", 0)
+
+			if got := e.clock.elapsed(); got != 4*time.Second {
+				t.Errorf("clock ran %s; want exactly 2s once per pass from the resolved settle", got)
+			}
+			if got := strings.Count(logs.String(), "interrupt settle unreadable"); got != 2 {
+				t.Errorf("settle Warn lines = %d; want one per pass; logs: %s", got, logs.String())
+			}
+			if !strings.Contains(logs.String(), "strand=b") || strings.Contains(logs.String(), "strand=a") {
+				t.Errorf("logs = %s; want the Warn to name strand b alone", logs.String())
+			}
+
+			pa = newPair("p1", "a")
+			pa.busy["g-a"] = []bool{true}
+			pa.paneRunning["g-a"] = true
+			pa.settleErr = errors.New("no such run")
+			e = newEnv(t, pa)
+
+			e.pause("", 0)
+
+			if got := e.clock.elapsed(); got != 0 {
+				t.Errorf("clock ran %s with every settle failing; want it unmoved", got)
 			}
 		}},
 		{"a second Esc whose settle leaves no running turn on the pane is interrupted", func(t *testing.T) {

@@ -48,9 +48,15 @@ type fixtureSettings struct {
 	clk            Clock
 	guid           string
 	separateRunDir bool
+	engines        *EngineSet
 }
 
 type fixtureOpt func(*fixtureSettings)
+
+// withEngines builds the Runner over engines instead of the one engine newFixture is handed.
+func withEngines(engines EngineSet) fixtureOpt {
+	return func(s *fixtureSettings) { s.engines = &engines }
+}
 
 // withConfig sets the Runner's Config, defaultConfig otherwise.
 func withConfig(cfg Config) fixtureOpt {
@@ -88,7 +94,11 @@ func newFixture(t *testing.T, reed ReedOps, engine Engine, opts ...fixtureOpt) *
 	if s.separateRunDir {
 		s.cfg.RunDir = t.TempDir()
 	}
-	fx.Runner = NewRunner(reed, engine, fx.Anchor, fx.Worktree, s.cfg)
+	engines := singleEngineSet(engine)
+	if s.engines != nil {
+		engines = *s.engines
+	}
+	fx.Runner = NewRunner(reed, engines, fx.Anchor, fx.Worktree, s.cfg)
 	fx.Runner.SetClock(s.clk)
 	fx.DotLyx = filepath.Join(fx.Anchor, lyxdirs.DotLyxDirName)
 	fx.RunRoot = runDirRoot(s.cfg, fx.Anchor)
@@ -171,15 +181,21 @@ func (fx *fixture) newRun(spec Spec, opts ...runOpt) *Run {
 	if s.runDir == "" {
 		s.runDir = fx.t.TempDir()
 	}
+	engine, engineName, err := fx.Runner.engineFor(RunState{})
+	if err != nil {
+		fx.t.Fatalf("resolve the fixture's default engine: %v", err)
+	}
 	return &Run{
-		runner:   fx.Runner,
-		spec:     spec,
-		runDir:   s.runDir,
-		state:    s.state,
-		clock:    s.clk,
-		deadline: s.deadline,
-		gate:     s.gate,
-		offset:   s.offset,
+		runner:     fx.Runner,
+		spec:       spec,
+		runDir:     s.runDir,
+		state:      s.state,
+		engine:     engine,
+		engineName: engineName,
+		clock:      s.clk,
+		deadline:   s.deadline,
+		gate:       s.gate,
+		offset:     s.offset,
 
 		createdAt: s.clk.Now(),
 	}

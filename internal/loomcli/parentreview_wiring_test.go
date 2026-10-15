@@ -86,7 +86,7 @@ func TestNewParentReviewConfig_ReviewerFromResolver(t *testing.T) {
 					t.Fatalf("WriteShortname = %v; want nil", err)
 				}
 			}
-			cfg, err := newParentReviewConfig(loc, reedengine.Config{}, loomengine.Config{ParentReviewWaitMin: 5}, t.TempDir(), &shuttlefake.Engine{}, shuttleengine.Config{})
+			cfg, err := newParentReviewConfig(loc, reedengine.Config{}, loomengine.Config{ParentReviewWaitMin: 5}, t.TempDir(), shuttlefake.EngineSet(&shuttlefake.Engine{}), shuttleengine.Config{})
 			if err != nil {
 				t.Fatalf("newParentReviewConfig = %v; want nil", err)
 			}
@@ -133,7 +133,7 @@ func TestNewParentReviewConfig_KeepAliveInterval(t *testing.T) {
 			shuttleCfg.ClaudePromptCacheTTL = tt.defaultTTL
 			shuttleCfg.ClaudePromptCacheTTLRoles = tt.roles
 			loomCfg := loomengine.Config{ParentReviewWaitMin: 60}
-			cfg, err := newParentReviewConfig(loc, reedengine.Config{}, loomCfg, t.TempDir(), claudeengine.NewFromConfig(shuttleCfg), shuttleCfg)
+			cfg, err := newParentReviewConfig(loc, reedengine.Config{}, loomCfg, t.TempDir(), shuttlefake.EngineSet(claudeengine.NewFromConfig(shuttleCfg)), shuttleCfg)
 			if err != nil {
 				t.Fatalf("newParentReviewConfig = %v; want nil", err)
 			}

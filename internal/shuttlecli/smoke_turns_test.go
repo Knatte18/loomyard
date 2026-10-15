@@ -30,6 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
+	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 )
 
 // turnScenarioTimeout bounds each scenario's run and every wait on it.
@@ -414,7 +415,7 @@ func TestSmokeTurnsSessionHooks(t *testing.T) {
 	})
 
 	w.awaitSignal(shuttleengine.SessionSignalIdleNotice, false)
-	readings, err := shuttleengine.ReadSessionStates(hub.cfg, hub.prime, hub.engine, time.Now())
+	readings, err := shuttleengine.ReadSessionStates(hub.cfg, hub.prime, shuttlefake.EngineSet(hub.engine), time.Now())
 	if err != nil {
 		t.Fatalf("ReadSessionStates: %v", err)
 	}

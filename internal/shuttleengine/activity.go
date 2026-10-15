@@ -54,10 +54,12 @@ var unreadableFiles logger.EpisodeSet
 // A run is live when its record reads running and the pid of the process that waits on it is alive.
 // A directory that is not a run directory, a run with no record, an undecodable record and a run that is not live are skipped,
 // and an undecodable record is logged once per episode so one torn file cannot hide another run.
-// A run's events past its prompt offset are parsed through engine, and the newest turn end among them is handed to engine's ActivityReader;
+// Each run is read through the engine its record names, the set's default for a record naming none:
+// its events past its prompt offset are parsed through that engine, and the newest turn end among them is handed to the engine's ActivityReader;
 // a run with no turn end yet, or an engine without the capability, is judged by its events file alone.
+// A run whose record names an engine the set does not hold is skipped and logged once per episode.
 // An absent root returns no readings and no error.
-func ReadAgentActivity(cfg Config, anchorPath string, engine Engine) ([]AgentActivity, error) {
+func ReadAgentActivity(cfg Config, anchorPath string, engines EngineSet) ([]AgentActivity, error) {
 	root := runDirRoot(cfg, anchorPath)
 	entries, err := os.ReadDir(root)
 	if os.IsNotExist(err) {
@@ -66,7 +68,6 @@ func ReadAgentActivity(cfg Config, anchorPath string, engine Engine) ([]AgentAct
 	if err != nil {
 		return nil, err
 	}
-	reader, _ := engine.(ActivityReader)
 	var readings []AgentActivity
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -82,6 +83,11 @@ func ReadAgentActivity(cfg Config, anchorPath string, engine Engine) ([]AgentAct
 		if !found || !runIsLive(rs) {
 			continue
 		}
+		engine, ok := engines.engineOfRun(runDir, rs)
+		if !ok {
+			continue
+		}
+		reader, _ := engine.(ActivityReader)
 		readings = append(readings, readRunActivity(rs, engine, reader))
 	}
 	return readings, nil
