@@ -171,7 +171,7 @@ func TestDiscussionTable(t *testing.T) {
 					t.Fatalf("seatengine.Prompts() = _, %v; want nil error", err)
 				}
 
-				chairWants := []string{"`ly:orch`", "lyx board get", discussionTableSlug, DiscussionDecisionRecord(layout), DiscussionSupportLog(layout), modeRules(!interactive)}
+				chairWants := []string{"`ly:orch`", "lyx board get", discussionTableSlug, DiscussionDecisionRecord(layout), DiscussionSupportLog(layout), discussionTableSpecsDir, modeRules(!interactive)}
 				for n, notes := range wantNotes {
 					chairWants = append(chairWants, "ly:"+discussionTableSlug+":discussion-"+discussionTableAdvisors[n].Name, notes)
 				}
