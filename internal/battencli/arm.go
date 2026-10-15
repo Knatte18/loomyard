@@ -430,8 +430,43 @@ func (c *battenCLI) specFor(verb string) shedverbs.Spec {
 		spec.RunID = shedrun.ResolveRunID(c.location, c.slug)
 	}
 	spec.Routing = c.routing
+	spec.Hooks.InterruptPolicyFor = battenInterruptPolicy
+	if c.location != nil {
+		spec.Loop = battenLoopSpec(c.location, c.slug)
+	}
 
 	return spec
+}
+
+// battenLoopSpec builds the loop arming of the batten run slug under location.
+// It leaves IdleTimeout zero and Activity nil: Run-Shed waits idle by design, so the watchdog stays disarmed and a wedged step is ended only by the operator's pause or by ending the detached loop job.
+func battenLoopSpec(location *lyxcwd.Location, slug string) shedverbs.LoopSpec {
+	executable, err := os.Executable()
+	if err != nil {
+		logger.Warn("battencli: could not resolve the running binary, so the loop has no executable", "error", err.Error())
+	}
+	return shedverbs.LoopSpec{
+		LockPath:     shedrun.LoopLock(location, slug),
+		PIDPath:      shedrun.LoopPIDFile(location, slug),
+		LogPath:      shedrun.LoopLog(location, slug),
+		EnvelopePath: shedrun.LoopEnvelope(location, slug),
+		JobName:      shedrun.LoopJobName(location, slug),
+		Delivered:    func(loopID string) string { return shedrun.LoopDelivered(location, slug, loopID) },
+		StopFiles: func(traceID string) (string, string) {
+			return shedrun.StepTraceCopy(location, slug, traceID), shedrun.StepStderr(location, slug, traceID)
+		},
+		TraceFiles: func(traceID string) ([]string, error) { return logger.TraceFilesFor(logger.TraceDir(), traceID) },
+		Executable: executable,
+	}
+}
+
+// battenInterruptPolicy answers the interrupt policy of a step that ended without an envelope at row:
+// Run-Shed, whose wait reattaches to the child run, is stepped again under the repair cap, and a step at any other row, the empty name included, hands back.
+func battenInterruptPolicy(row string) string {
+	if row == battenrecipe.NameRunShed {
+		return shedverbs.InterruptPolicyReinvoke
+	}
+	return shedverbs.InterruptPolicyHandback
 }
 
 // Arm is battencli's exported resolution entry point, for batten's own subtree: it constructs a

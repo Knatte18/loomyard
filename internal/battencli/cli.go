@@ -204,6 +204,8 @@ Example:
 forward from its persisted current producer, seeding a fresh run first when
 none is persisted yet -- the single-producer primitive an external
 supervisor drives one call at a time.
+With --until-stop, step runs the step loop to the run's next stop, the entry
+"lyx batten run" drives.
 
 The run-id positional is required in practice, even though cobra accepts
 its absence: prime hosts many slug-addressed batten runs, so an omitted
