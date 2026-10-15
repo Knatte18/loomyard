@@ -194,6 +194,7 @@
 // Every strand pane reed creates resolves `lyx` to the binary that spawned it, because launchStrandLocked prepends that binary's directory to the pane's PATH and exports LYX_BIN to its absolute path as shell statements.
 // The composed line, prelude and launch command together, is written to the strand's launch script,
 // and the typed send-keys line sources it in the pane shell's own scope, so the prelude still runs after the pane shell's profile.
+// The shell dialect's discard-line key (`C-u` on POSIX, none on PowerShell) is sent ahead of that line, so input that reached the booting pane first, such as a viewer's keystrokes or a terminal reply after a window switch, never prefixes it.
 // The strand records that absolute path as `Strand.LyxBin` at every launch and relaunch, and reed's status reports it.
 // The composition lives in panebin.go and is reached from the one chokepoint, so the property holds
 // by construction for every present and future AddStrand caller including Resume's replay. The
@@ -349,7 +350,7 @@
 // An automatic window switch happens only at three points, each deciding from reed state, window ids, strand roles and pane liveness alone, never from @lyx_unseen, @lyx_hidden or a wait mark, and none moves a viewer off the shell or an older live agent window the operator picked by hand.
 // relevantWindow is the target of two of them: among the listed windows not about to end, the highest-index agent window holding a pane that is not dead, else the overview strand's window, else none.
 // Attach (attachWindowSelectionLocked, resolved by AttachArgv right after the shell check) appends `; select-window -t <relevant window>` to every argv it returns, and appends nothing when another client is attached or a listing fails.
-// A new agent window is selected by openOwnWindowLocked, for an own-window strand and never the overview, when newAgentWindowSelected holds: always for a Focus strand, otherwise only when the viewer is on the overview window, on an agent window whose every pane is dead, on the relevant window as listed before the new one opens, or on a window holding a live own-window pane of a strand whose role is the driver role; it then carries no @lyx_unseen.
+// A new agent window is selected by openOwnWindowLocked, for an own-window strand and never the overview, when newAgentWindowSelected holds: always for a Focus strand, never for one whose display sets only KeepViewer, otherwise only when the viewer is on the overview window, on an agent window whose every pane is dead, on the relevant window as listed before the new one opens, or on a window holding a live own-window pane of a strand whose role is the driver role; it then carries no @lyx_unseen.
 // So an attached viewer follows the newest agent window as strands spawn, and a viewer the operator moved to another window stays there.
 // Every client of a session shares its current window, so the one select-window moves each attached client.
 // A viewed window ending, by RemoveStrand, by ReplaceStrand and by reconcile ending an orphan own window (selectRelevantWindowIfCurrentLocked), moves a viewer on it to the relevant window among those left, never the shell, and with none left to tmux.

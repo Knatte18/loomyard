@@ -64,6 +64,11 @@ func (posixShell) ScriptExt() string {
 	return ".sh"
 }
 
+// DiscardLineKey returns "C-u", which erases the pending line both in the tty's canonical mode, before the shell's line editor starts, and in readline's unix-line-discard.
+func (posixShell) DiscardLineKey() string {
+	return "C-u"
+}
+
 // Chain joins parts with "; ", dropping empty parts. See chainStatements.
 func (p posixShell) Chain(parts ...string) string {
 	return chainStatements(parts...)

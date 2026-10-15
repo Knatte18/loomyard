@@ -130,8 +130,9 @@ the provider default.`,
 				Round:       round,
 				Parent:      parent,
 				Display: render.Display{
-					Anchor: render.Anchor(anchor),
-					Focus:  focus,
+					Anchor:     render.Anchor(anchor),
+					Focus:      focus,
+					KeepViewer: !focus,
 				},
 				Timeout:  timeout,
 				KeepPane: keepPane,
@@ -169,7 +170,7 @@ the provider default.`,
 	cmd.Flags().StringVar(&round, "round", "", "round token used to fill the strand-name template")
 	cmd.Flags().StringVar(&parent, "parent", "", "parent strand's guid")
 	cmd.Flags().StringVar(&anchor, "anchor", string(render.AnchorOwnWindow), "placement: own-window|below-parent|hidden")
-	cmd.Flags().BoolVar(&focus, "focus", true, "give this strand tmux input focus")
+	cmd.Flags().BoolVar(&focus, "focus", true, "give this strand tmux input focus; false never moves the viewer to its window")
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, "wall-clock deadline before an in-progress run is classified as timed out (0 = config default)")
 	cmd.Flags().BoolVar(&keepPane, "keep-pane", false, `leave the strand and its pane alive after a "done" outcome`)
 
