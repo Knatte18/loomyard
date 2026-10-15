@@ -82,7 +82,6 @@ func TestSaveLoadState_RoundTrip(t *testing.T) {
 	}
 }
 
-//testtiming:keep pins the write, probe and clear round trip of the cycle request marker, which its covering test does not assert
 func TestPeekState(t *testing.T) {
 	p := testPaths(t)
 
@@ -152,6 +151,7 @@ func TestPeekState(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins the write, probe and clear round trip of the cycle request marker, which its covering test does not assert
 func TestCycleRequest_WriteProbeClear(t *testing.T) {
 	p := testPaths(t)
 	if err := ClearCycleRequest(p); err != nil {
