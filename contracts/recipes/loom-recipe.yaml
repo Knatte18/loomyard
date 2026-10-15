@@ -392,6 +392,8 @@ producers:
         # tool-use is required: the round reads _lyx/shed/<slug>/status.json and runs read-only git to
         # obtain the diff, which is its entire subject.
         tool-use: true
+        # The round reviews code, so its seats load the hub's language skills after their own.
+        language-skills: true
         # No cluster-fan key: Webster-Review stays solo, because fork reviewers are read-only and
         # may never run any git command, which burlerengine's fork boilerplate states and its own
         # round audit enforces, so under a fan the forks could not reach a subject that exists
@@ -424,6 +426,8 @@ producers:
         # the fixer finds its files from the review's findings and the gate's findings alone.
         # fix-scope: source, for the reason the review row gives.
         fix-scope: source
+        # The round fixes code, so its seat loads the hub's language skills after its own.
+        language-skills: true
 
   - name: Describe
     engine: Describe
@@ -505,6 +509,8 @@ producers:
         # fix-scope: source, for the reason Webster-Burler-Review gives.
         fix-scope: source
         tool-use: true
+        # The round reviews code, so its seats load the hub's language skills after their own.
+        language-skills: true
         # No cluster-fan key: the subject exists only through read-only git, which a fan's forks may not run.
       # No model/effort key: model choice lives in loom.yaml's review and fix keys only.
       # No timeout_s key, for the same Env fallback reason as Merge-Bouncer.
@@ -529,6 +535,8 @@ producers:
         # No target key, for the reason Webster-Burler-Fix gives.
         # fix-scope: source, for the reason the review row gives.
         fix-scope: source
+        # The round fixes code, so its seat loads the hub's language skills after its own.
+        language-skills: true
 
   # Publish pushes the task branch and opens or refreshes the pull request, after the push-time
   # publish_verify. A moved parent reroutes it to Merge-In.

@@ -126,6 +126,8 @@ producers:
         # tool-use is required: the round runs read-only git to obtain the diff and reads the board
         # entry.
         tool-use: true
+        # The round reviews code, so its seats load the hub's language skills after their own.
+        language-skills: true
         # No cluster-fan key: fork reviewers may run no git, and the subject exists only through git.
 
   - name: Darn-Burler-Fix
@@ -148,6 +150,8 @@ producers:
         # No target key: a diff names no file, so the fixer finds its files from the review's
         # findings and the gate's findings alone.
         fix-scope: source
+        # The round fixes code, so its seat loads the hub's language skills after its own.
+        language-skills: true
 
   # Describe writes the change description from the final diff, replacing the writer's own.
   - name: Describe
