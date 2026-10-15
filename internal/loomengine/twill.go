@@ -18,8 +18,8 @@ const (
 	// planTwillSpawnPoint is the Plan-Write host's spawn point, rendered verbatim into the twill directive.
 	// It overrides the plan template's opening line, which says the producer has no review logic of its own.
 	planTwillSpawnPoint = "This lens review is the one review step you run on your own plan: it overrides this prompt's opening line, which says you have no review logic of your own.\n" +
-		"Once you have written the plan per Step 3 and Step 4 and `lyx loom validate-plan` passes per Step 5, run this procedure once, before you end your turn.\n" +
-		"Add this line to every fork's prompt, after the fork boilerplate and before its lens text, as the one addition to it: \"Report defects only, never a passed check. Give each finding's evidence as the `path:line` or glyph read.\""
+		"Once fork0's plan is read and `lyx loom validate-plan` passes per the fork0 steps below, run this procedure once, before you end your turn.\n" +
+		"Add this line to every lens fork's prompt, after the fork boilerplate and before its lens text, as the one addition to it: \"Report defects only, never a passed check. Give each finding's evidence as the `path:line` or glyph read.\""
 
 	// planTwillSeverityRule is the Plan-Write host's severity rule, rendered verbatim into the twill directive.
 	planTwillSeverityRule = "a severity (`BLOCKING` when the plan as written fails its verify or ships a wrong behavior, `MEDIUM` when a decision, criterion or branch goes unreached or untested, `LOW` otherwise)"
@@ -66,6 +66,12 @@ func planLensDirective(layout *lyxcwd.Location, dirs configengine.Dirs, stencils
 		SelfCheckCommand:      "lyx loom validate-plan",
 		FinalSelfCheckCommand: "lyx loom validate-plan --lens-review",
 		DispositionPlace:      "`" + filepath.Join(planparser.PlanDir(anchorPath), planparser.LensReviewFileName) + "`",
+		WriterFork: &twilldirective.WriterFork{
+			ExploreStep: "Step 2",
+			InputRecord: "the decision record",
+			LastFile:    "`" + planparser.PlanOverview(anchorPath) + "`",
+			FilesDir:    "`" + planparser.PlanDir(anchorPath) + "`",
+		},
 	})
 }
 

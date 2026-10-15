@@ -453,8 +453,10 @@ func TestDiscussionTable(t *testing.T) {
 				if strings.Contains(prompt, "lyx shuttle await") {
 					t.Error("twill lead prompt carries a ready-marker wait; want the forks to wait on nothing")
 				}
-				if strings.Contains(prompt, "a later turn of the same session") {
-					t.Error("twill lead prompt carries the retired never-respawn sentence; want the re-prompt rule")
+				for _, wantNot := range []string{"a later turn of the same session", "fork0"} {
+					if strings.Contains(prompt, wantNot) {
+						t.Errorf("twill lead prompt carries %q; want the re-prompt rule and the relaunch paragraphs instead", wantNot)
+					}
 				}
 
 				modeRulesAt := strings.Index(prompt, modeRules(true))

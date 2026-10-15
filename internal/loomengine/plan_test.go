@@ -305,11 +305,12 @@ func TestPlanTable(t *testing.T) {
 					stencilstore.Path(stencilsDir, "loom-rubric-plan-review"),
 					filepath.Join(planparser.PlanDir(layout.AnchorPath()), planparser.LensReviewFileName),
 					`subagent_type: "fork"`,
-					"runs `lyx loom validate-plan` per `Step 5` until it passes",
 					"6. Run `lyx loom validate-plan --lens-review` again until it passes",
-					"Once you have written the plan per Step 3 and Step 4 and `lyx loom validate-plan` passes per Step 5, run this procedure once",
-					"Step 3 and Step 4",
-					strings.SplitN(planTwillSpawnPoint, "\n", 2)[0],
+					"Explore per `Step 2`",
+					"your context holds the decision record",
+					"run `lyx loom validate-plan` per `Step 5` until it passes",
+					"`" + planparser.PlanOverview(layout.AnchorPath()) + "` last",
+					"every file in `" + planparser.PlanDir(layout.AnchorPath()) + "`",
 					"Report defects only, never a passed check. Give each finding's evidence as the `path:line` or glyph read.",
 					"against the code and the decision record",
 					"opened in this session, a `path:line` or glyph, a `PATTERN` entry, a test or caller the change would break, or the `lyx loom validate-plan` output, and what it shows",
@@ -323,15 +324,24 @@ func TestPlanTable(t *testing.T) {
 				if strings.Contains(prompt, "lyx shuttle await") {
 					t.Error("twill lead prompt carries a ready-marker wait; want the forks to wait on nothing")
 				}
-				if strings.Contains(prompt, "a later turn of the same session") {
-					t.Error("twill lead prompt carries the retired never-respawn sentence; want the re-prompt rule")
+				for _, line := range strings.Split(planTwillSpawnPoint, "\n") {
+					if !strings.Contains(prompt, line) {
+						t.Errorf("twill lead prompt lacks the spawn point line %q", line)
+					}
+				}
+				for _, wantNot := range []string{"a later turn of the same session", "died before its Agent call"} {
+					if strings.Contains(prompt, wantNot) {
+						t.Errorf("twill lead prompt carries %q; want the fork0 part and the re-prompt rule instead", wantNot)
+					}
 				}
 
-				stepTwoAt := strings.Index(prompt, "## Step 2")
-				headingAt := strings.Index(prompt, "## Lens review by forks")
-				stepThreeAt := strings.Index(prompt, "## Step 3")
-				if stepTwoAt < 0 || headingAt < stepTwoAt || stepThreeAt < headingAt {
-					t.Errorf("Step 2 at %d, lens review at %d, Step 3 at %d; want the lens review between Step 2 and Step 3", stepTwoAt, headingAt, stepThreeAt)
+				markerAt := 0
+				for _, marker := range []string{"## Step 2", "## Lens review by forks", "Spawn one fork, fork0", "1. Read the rubric", "## Step 3"} {
+					next := strings.Index(prompt[markerAt:], marker)
+					if next < 0 {
+						t.Fatalf("twill lead prompt lacks %q after offset %d; want Step 2, the lens review, fork0's spawn, the rubric read and Step 3 in order", marker, markerAt)
+					}
+					markerAt += next
 				}
 			})
 		}

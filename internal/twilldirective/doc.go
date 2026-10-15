@@ -5,6 +5,8 @@
 // # What it says
 //
 // Directive renders the lens review procedure, which the writer runs once its files are written and its self-check passes: it reads its rubric, spawns one fork per lens in one message and judges the findings the forks return.
+// A host may ask for a writer-fork part through Values.WriterFork: one fork, fork0, then writes the reviewed files while the writer explores before it and reviews what it wrote after.
+// The part replaces the relaunch paragraphs, which a host without a writer fork keeps; exactly one of the two is rendered, each from its own stencil.
 // The writer judges each finding as a critical fixer: it disputes the finding on a cited ground, fixes it with its own change, or fixes it as proposed.
 // Each fork's boilerplate tells it to review the written files through its lens as its inherited context holds them, without reading them again, and return its findings as its final message.
 // Spawning after the write, rather than before it, lets the forks start on the finished files with nothing to wait for.
