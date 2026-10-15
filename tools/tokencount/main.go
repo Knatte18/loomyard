@@ -41,6 +41,8 @@
 // which lyx sets to the strand name (ly:<slug>:burler), with a trailing -N dropped, so
 // burler-2 counts as burler. A sub-agent counts under its parent's role with "+sub"
 // appended, and a session without a title counts as "untitled".
+// A role ending in -chair, the role a seat table's lead carried before seats were named, counts under the role without that suffix, so burler-review-chair counts as burler-review and a report spanning the rename sums each role once.
+// A seat named chair after the rename counts under its table's lead role too.
 //
 // One API message can appear on several transcript lines, and a fork repeats its
 // parent's context, so usage is counted once per message id within a run.
@@ -122,6 +124,13 @@
 // The idle row is the span minus the union of every working interval of the run, orch sessions left out, so it holds parent review, gate-slot waits, a parked driver and Go-only work.
 // The orch row's time cells are blank, and the "All runs" table sums each run's figures per role, idle and span, with no union across runs.
 //
+// Every time figure leaves out machine sleep: a suspend or hibernate is no time at all, neither working nor idle.
+// The sleeps are read once from the systemd journal, `journalctl -t systemd-sleep`, each running from systemd-sleep's "Performing sleep operation" entry to the next "System returned from sleep operation" entry of the same operation and boot.
+// A working interval loses the part a sleep covers, and the span, the idle row and the Producers table's elapsed and idle count awake time only;
+// each run's section names the sleep left out of its span, and "All runs" the sum.
+// With journalctl absent or failing, or no sleep in its journal, as on Windows, nothing is left out and the report's header says why.
+// -no-sleep reads no journal and counts sleep as time.
+//
 // The span is the window the time figures are measured over.
 // It runs from the archived seed's started_at, or from the run's earliest transcript line without one.
 // That start is bounded below by the commit date of the slug's next-older archive tag, unless -no-cutoff is set, and above by the end of the first history entry.
@@ -130,8 +139,9 @@
 // A run whose worktree still exists, or with no tag or no status at its tag, uses its transcript window instead and prints no Producers table.
 //
 // The Producers table splits the span by shed history entry: each entry owns the interval from the latest end before it to its own end.
-// So the elapsed figures sum to the span, and a row's elapsed holds any wait before the row started.
-// A row's idle is the part of its elapsed in which no session of the run was in a turn.
+// So the elapsed figures sum to the awake span, and a row's elapsed holds any wait before the row started.
+// A row's idle is the part of its elapsed in which no session of the run was in a turn, and its active time is elapsed minus idle.
+// The share is a row's active time over the table's summed active time, and rows are ordered by active time, so a parked row cannot top the table.
 // "All runs" sums the table per producer over the runs that have one.
 //
 // Right after the "All runs" section, before the per-run sections, comes the "Orchestrator" section: the hub orchestrator's own session, which runs in the prime and spans many runs, charged to the counted runs.
@@ -194,6 +204,7 @@ func run(args []string, stdout io.Writer) error {
 	calibrate := fs.String("calibrate", "", "add the calibration section for this batcher.yaml profile")
 	configDir := fs.String("config", "", "directory whose batcher.yaml holds the profile (default: the current directory)")
 	noCutoff := fs.Bool("no-cutoff", false, "turn off the archive-tag cutoff, so every transcript in each slug's project directory counts")
+	noSleep := fs.Bool("no-sleep", false, "read no journal and count machine sleep as time")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -242,6 +253,11 @@ func run(args []string, stdout io.Writer) error {
 		}
 	}
 
+	var sleeps []Interval
+	sleepNote := "Machine sleep counts as time: -no-sleep is set.\n"
+	if !*noSleep {
+		sleeps, sleepNote = journalSleeps()
+	}
 	report := Report{}
 	for _, slug := range slugs {
 		running, err := inFlight(*hub, slug)
@@ -268,6 +284,7 @@ func run(args []string, stdout io.Writer) error {
 				r.useShedRecord(*record)
 			}
 		}
+		r.subtractSleeps(sleeps)
 		report.Runs = append(report.Runs, r)
 	}
 	orch, err := CountOrch(projectDir(*projects, wd), report.Runs)
@@ -307,7 +324,7 @@ func run(args []string, stdout io.Writer) error {
 	if *noCutoff {
 		cutoffNote = "The archive-tag cutoff is off: every transcript in each slug's project directory counts.\n"
 	}
-	fmt.Fprintf(w, "# Token usage and time by role\n\nGenerated %s for %s.\n%s%s\n", time.Now().Format("2006-01-02 15:04"), counted, cutoffNote, skippedNote)
+	fmt.Fprintf(w, "# Token usage and time by role\n\nGenerated %s for %s.\n%s%s%s\n", time.Now().Format("2006-01-02 15:04"), counted, cutoffNote, sleepNote, skippedNote)
 	if err := report.WriteMarkdown(w); err != nil {
 		return err
 	}
