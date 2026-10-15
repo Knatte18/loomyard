@@ -19,13 +19,20 @@ func filledWriterFork() *WriterFork {
 	}
 }
 
-// filledValues returns a Values with every field set but WriterFork.
+// filledCriticalJudge returns a CriticalJudge with every field set.
+func filledCriticalJudge() *CriticalJudge {
+	return &CriticalJudge{
+		GoverningInput:  "GOVERNING-INPUT",
+		DisputeEvidence: "DISPUTE-EVIDENCE",
+	}
+}
+
+// filledValues returns a Values with every field set but WriterFork and CriticalJudge.
 func filledValues() Values {
 	return Values{
 		ReviewedFiles:         "`/abs/one.md` and `/abs/two.md`",
 		SpawnPoint:            "SPAWN-POINT-SENTENCE",
-		GoverningInput:        "GOVERNING-INPUT",
-		DisputeEvidence:       "DISPUTE-EVIDENCE",
+		RejectionRule:         "REJECTION-RULE-SENTENCE",
 		SeverityRule:          "SEVERITY-RULE-PHRASE",
 		RubricPath:            "/abs/rubric.md",
 		Lenses:                []Lens{{Name: "alpha", Text: "Look at A.\nThen at B.\n"}, {Name: "beta", Text: "Look at C."}},
@@ -43,6 +50,7 @@ func TestDirective_RendersEveryValueVerbatim(t *testing.T) {
 
 	withWriterFork := filledValues()
 	withWriterFork.WriterFork = filledWriterFork()
+	withWriterFork.CriticalJudge = filledCriticalJudge()
 	tests := []struct {
 		name   string
 		values Values
@@ -59,8 +67,9 @@ func TestDirective_RendersEveryValueVerbatim(t *testing.T) {
 				"runs `lyx check --now` per `STEP-CHECK` until it passes",
 				"STEP-FORMAT",
 				"died before its Agent call still spawns once",
+				"   REJECTION-RULE-SENTENCE\n5. Record the lens review at `the PLACE section`",
 			},
-			wantNots: []string{"fork0"},
+			wantNots: []string{"fork0", "GOVERNING-INPUT", "DISPUTE-EVIDENCE"},
 		},
 		{
 			name:   "with a writer fork",
@@ -71,8 +80,10 @@ func TestDirective_RendersEveryValueVerbatim(t *testing.T) {
 				"LAST-FILE last",
 				"every file in FILES-DIR",
 				"Spawn one fork, fork0",
+				"against the code and GOVERNING-INPUT",
+				"opened in this session, DISPUTE-EVIDENCE, and what it shows",
 			},
-			wantNots: []string{"died before its Agent call"},
+			wantNots: []string{"died before its Agent call", "REJECTION-RULE-SENTENCE"},
 			inOrder:  []string{"SPAWN-POINT-SENTENCE", "Spawn one fork, fork0", "1. Read the rubric"},
 		},
 	}
@@ -88,8 +99,8 @@ func TestDirective_RendersEveryValueVerbatim(t *testing.T) {
 			wants := append([]string{
 				"`/abs/one.md` and `/abs/two.md` were written and passed the self-check before you were spawned",
 				"SPAWN-POINT-SENTENCE\n",
-				"against the code and GOVERNING-INPUT",
-				"opened in this session, DISPUTE-EVIDENCE, and what it shows",
+				"forks are outstanding is allowed.\n4. Judge every finding",
+				"returned no report.\n6. Run `lyx check --final` again",
 				"each with SEVERITY-RULE-PHRASE, the section or decision it concerns",
 				"/abs/rubric.md",
 				"- alpha: Look at A. Then at B.\n- beta: Look at C.",
@@ -141,8 +152,9 @@ func TestDirective_MissingValueNamesTheMarker(t *testing.T) {
 	}{
 		{"ReviewedFiles", func(v *Values) { v.ReviewedFiles = "" }, "reviewed_files"},
 		{"SpawnPoint", func(v *Values) { v.SpawnPoint = "" }, "spawn_point"},
-		{"GoverningInput", func(v *Values) { v.GoverningInput = "" }, "governing_input"},
-		{"DisputeEvidence", func(v *Values) { v.DisputeEvidence = "" }, "dispute_evidence"},
+		{"GoverningInput", func(v *Values) { v.CriticalJudge = filledCriticalJudge(); v.CriticalJudge.GoverningInput = "" }, "governing_input"},
+		{"DisputeEvidence", func(v *Values) { v.CriticalJudge = filledCriticalJudge(); v.CriticalJudge.DisputeEvidence = "" }, "dispute_evidence"},
+		{"RejectionRule without a critical judge", func(v *Values) { v.RejectionRule = "" }, "rejection_rule"},
 		{"SeverityRule", func(v *Values) { v.SeverityRule = "" }, "severity_rule"},
 		{"FinalSelfCheckCommand", func(v *Values) { v.FinalSelfCheckCommand = "" }, "final_self_check_command"},
 		{"Lenses", func(v *Values) { v.Lenses = nil }, "lens_list"},
@@ -178,6 +190,8 @@ func TestDirective_MissingStencilNamesIt(t *testing.T) {
 
 	withWriterFork := filledValues()
 	withWriterFork.WriterFork = filledWriterFork()
+	withCriticalJudge := filledValues()
+	withCriticalJudge.CriticalJudge = filledCriticalJudge()
 	tests := []struct {
 		name    string
 		values  Values
@@ -190,6 +204,10 @@ func TestDirective_MissingStencilNamesIt(t *testing.T) {
 		{"the relaunch part without a writer fork", filledValues(), relaunchStencil, false},
 		{"the relaunch part with a writer fork", withWriterFork, relaunchStencil, true},
 		{"the writer-fork part without a writer fork", filledValues(), writerForkStencil, true},
+		{"the critical-judge part with a critical judge", withCriticalJudge, criticalJudgeStencil, false},
+		{"the plain-judge part without a critical judge", filledValues(), plainJudgeStencil, false},
+		{"the plain-judge part with a critical judge", withCriticalJudge, plainJudgeStencil, true},
+		{"the critical-judge part without a critical judge", filledValues(), criticalJudgeStencil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

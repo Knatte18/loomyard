@@ -56,8 +56,6 @@ func planLensDirective(layout *lyxcwd.Location, dirs configengine.Dirs, stencils
 	return twilldirective.Directive(stencilsDir, twilldirective.Values{
 		ReviewedFiles:         "`" + planparser.PlanOverview(anchorPath) + "` and every card file its Card Index names",
 		SpawnPoint:            planTwillSpawnPoint,
-		GoverningInput:        "the decision record",
-		DisputeEvidence:       "a `path:line` or glyph, a `PATTERN` entry, a test or caller the change would break, or the `lyx loom validate-plan` output",
 		SeverityRule:          planTwillSeverityRule,
 		RubricPath:            stencilstore.Path(stencilsDir, "loom-rubric-plan-review"),
 		Lenses:                lenses,
@@ -66,6 +64,10 @@ func planLensDirective(layout *lyxcwd.Location, dirs configengine.Dirs, stencils
 		SelfCheckCommand:      "lyx loom validate-plan",
 		FinalSelfCheckCommand: "lyx loom validate-plan --lens-review",
 		DispositionPlace:      "`" + filepath.Join(planparser.PlanDir(anchorPath), planparser.LensReviewFileName) + "`",
+		CriticalJudge: &twilldirective.CriticalJudge{
+			GoverningInput:  "the decision record",
+			DisputeEvidence: "a `path:line` or glyph, a `PATTERN` entry, a test or caller the change would break, or the `lyx loom validate-plan` output",
+		},
 		WriterFork: &twilldirective.WriterFork{
 			ExploreStep: "Step 2",
 			InputRecord: "the decision record",
@@ -86,8 +88,7 @@ func discussionLensDirective(layout *lyxcwd.Location, dirs configengine.Dirs, st
 	return twilldirective.Directive(stencilsDir, twilldirective.Values{
 		ReviewedFiles:         "`" + DiscussionDecisionRecord(layout) + "` and `" + DiscussionSupportLog(layout) + "`",
 		SpawnPoint:            "Once you have written both output files per Step 5 and `lyx loom validate-discussion` passes per Step 6, run this procedure once, before you end your turn:",
-		GoverningInput:        "the board entry",
-		DisputeEvidence:       "the board entry, the discussion spec, the rubric, a `PATTERN` entry, the `lyx loom validate-discussion` output, or a coarse code read within your Step 2 bound, with no `path:line` required",
+		RejectionRule:         "Fix the record, or reject the finding with a one-line reason.",
 		SeverityRule:          "a severity (`BLOCKING`, `MEDIUM` or `LOW`)",
 		RubricPath:            stencilstore.Path(stencilsDir, "loom-rubric-discussion-review"),
 		Lenses:                lenses,

@@ -354,9 +354,6 @@ func TestDiscussionTable(t *testing.T) {
 			if has := strings.Contains(prompts[""], "## Lens review by forks"); has != tt.wantDirective {
 				t.Errorf("lead prompt carries the twill block = %v; want %v", has, tt.wantDirective)
 			}
-			if has := strings.Contains(prompts[""], "against the code and the board entry"); has != tt.wantDirective {
-				t.Errorf("lead prompt carries the host's governing input = %v; want %v", has, tt.wantDirective)
-			}
 			for _, advisor := range discussionTableAdvisors {
 				if strings.Contains(prompts[advisor.Name], "## Lens review by forks") {
 					t.Errorf("advisor %q prompt carries the twill block; want the advisors never to fork", advisor.Name)
@@ -442,8 +439,7 @@ func TestDiscussionTable(t *testing.T) {
 					"per `Step 5`",
 					"`" + DiscussionDecisionRecord(layout) + "` and `" + DiscussionSupportLog(layout) + "` were written and passed the self-check before you were spawned.",
 					"Once you have written both output files per Step 5 and `lyx loom validate-discussion` passes per Step 6, run this procedure once, before you end your turn:",
-					"against the code and the board entry",
-					"opened in this session, the board entry, the discussion spec, the rubric, a `PATTERN` entry, the `lyx loom validate-discussion` output, or a coarse code read within your Step 2 bound, with no `path:line` required, and what it shows",
+					"Fix the record, or reject the finding with a one-line reason.",
 					"each with a severity (`BLOCKING`, `MEDIUM` or `LOW`), the section or decision it concerns",
 				} {
 					if !strings.Contains(prompt, want) {
