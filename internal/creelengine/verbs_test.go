@@ -57,7 +57,11 @@ func strand(name string) creelengine.Sender { return creelengine.StrandSender(na
 func program(name string) creelengine.Sender { return creelengine.ProgramSender(name) }
 
 func external() creelengine.Sender {
-	return creelengine.ExternalSender("ly", "pts/4", "claude", "/home/me/Code/x")
+	sender, err := creelengine.ExternalSender("ly", "pts/4", "claude", "/home/me/Code/x")
+	if err != nil {
+		panic(err)
+	}
+	return sender
 }
 
 func (e *env) post(t *testing.T, from creelengine.Sender, to, body string) int64 {

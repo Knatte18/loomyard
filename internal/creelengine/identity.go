@@ -34,7 +34,7 @@ func resolveSender(peerPID int, claim Claim, shortname string, strands []Strand,
 		return Sender{}, err
 	}
 	if goos != "linux" {
-		return resolveFromEnvironment(claim, shortname, program), nil
+		return resolveFromEnvironment(claim, shortname, program)
 	}
 	pane, unreadable := paneOfPeer(peerPID, strands, strandsErr, parentPID)
 	if pane != nil {
@@ -58,7 +58,7 @@ func resolveSender(peerPID int, claim Claim, shortname string, strands []Strand,
 	if program != "" {
 		return ProgramSender(program), nil
 	}
-	return externalFromClaim(claim, shortname), nil
+	return externalFromClaim(claim, shortname)
 }
 
 // checkProgramClaim validates a program claim: a well-formed upper-case name under this hub's shortname that is not EXTERNAL.
@@ -81,17 +81,17 @@ func checkProgramClaim(claim Claim, shortname string) (string, error) {
 }
 
 // resolveFromEnvironment is identity off Linux: the strand name when it is one of this hub, else the program claim, else EXTERNAL.
-func resolveFromEnvironment(claim Claim, shortname, program string) Sender {
+func resolveFromEnvironment(claim Claim, shortname, program string) (Sender, error) {
 	if name, err := agentname.Parse(claim.StrandName); err == nil && name.Shortname == shortname {
-		return StrandSender(claim.StrandName)
+		return StrandSender(claim.StrandName), nil
 	}
 	if program != "" {
-		return ProgramSender(program)
+		return ProgramSender(program), nil
 	}
 	return externalFromClaim(claim, shortname)
 }
 
-func externalFromClaim(claim Claim, shortname string) Sender {
+func externalFromClaim(claim Claim, shortname string) (Sender, error) {
 	return ExternalSender(shortname, claim.Terminal, claim.ParentProcess, claim.WorkingDir)
 }
 

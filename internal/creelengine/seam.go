@@ -4,6 +4,7 @@ package creelengine
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
@@ -82,11 +83,16 @@ func StrandSender(name string) Sender { return Sender{Name: name, Kind: KindStra
 func ProgramSender(name string) Sender { return Sender{Name: name, Kind: KindProgram} }
 
 // ExternalSender returns the EXTERNAL sender of a hub with the envelope creel saw.
-func ExternalSender(shortname, terminal, parentProcess, workingDir string) Sender {
-	return Sender{
-		Name: shortname + ":" + agentname.External, Kind: KindExternal,
-		Terminal: terminal, ParentProcess: parentProcess, WorkingDir: workingDir,
+// It returns an error when the shortname is not a valid one.
+func ExternalSender(shortname, terminal, parentProcess, workingDir string) (Sender, error) {
+	name, err := agentname.FormatProgram(shortname, agentname.External)
+	if err != nil {
+		return Sender{}, fmt.Errorf("creel: cannot name the EXTERNAL sender: %w", err)
 	}
+	return Sender{
+		Name: name, Kind: KindExternal,
+		Terminal: terminal, ParentProcess: parentProcess, WorkingDir: workingDir,
+	}, nil
 }
 
 // Envelope renders what creel saw of an EXTERNAL sender as "parent, terminal, directory", leaving out what is empty.

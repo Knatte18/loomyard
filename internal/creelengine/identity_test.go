@@ -23,7 +23,10 @@ func TestResolveSender(t *testing.T) {
 		return parent, ok
 	}
 	envelope := Claim{Terminal: "pts/4", ParentProcess: "claude", WorkingDir: "/home/me/x"}
-	external := ExternalSender("ly", "pts/4", "claude", "/home/me/x")
+	external, err := ExternalSender("ly", "pts/4", "claude", "/home/me/x")
+	if err != nil {
+		t.Fatalf("ExternalSender: %v", err)
+	}
 	withClaim := func(base Claim, strandName, program string) Claim {
 		base.StrandName, base.Program = strandName, program
 		return base
@@ -79,4 +82,14 @@ func TestResolveSender(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("InvalidShortnameCannotNameAnExternalSender", func(t *testing.T) {
+		t.Parallel()
+		for _, goos := range []string{linux, mac} {
+			got, err := resolveSender(5000, envelope, "LY", strands, nil, parentPID, goos)
+			if err == nil || !strings.Contains(err.Error(), "shortname") {
+				t.Errorf("resolveSender(%s, shortname LY) = %+v, %v; want a shortname error", goos, got, err)
+			}
+		}
+	})
 }
