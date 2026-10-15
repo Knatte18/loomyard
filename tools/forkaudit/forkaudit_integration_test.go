@@ -483,6 +483,14 @@ func TestForkauditRefusals(t *testing.T) {
 				}
 				return d.args("--since", "2026-10-13"), nil
 			}},
+		{name: "pack check with a missing code directory", wantExit: 1, wantStderr: []string{"--code"},
+			prepare: func(t *testing.T, d *auditDirs) ([]string, []string) {
+				return d.args("--since", "2026-10-14", "--pack-check", "--code", filepath.Join(d.base, "absent-code"), "--records", tempDir(t)), nil
+			}},
+		{name: "pack check with a missing records directory", wantExit: 1, wantStderr: []string{"--records"},
+			prepare: func(t *testing.T, d *auditDirs) ([]string, []string) {
+				return d.args("--since", "2026-10-14", "--pack-check", "--records", filepath.Join(d.base, "absent-records")), nil
+			}},
 		{name: "work under a read-only parent", denial: true, wantExit: 1, wantStderr: []string{"--work", "not writable"},
 			prepare: func(t *testing.T, d *auditDirs) ([]string, []string) {
 				parent := filepath.Join(d.base, "parent")
@@ -1035,5 +1043,97 @@ func TestForkauditTraceCrossCheck(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// codeRepo builds a code repository in which pkg/a.go and docs/b.md put each span of the fork-file fixture in its intended class.
+// It returns the repository and its head sha.
+func codeRepo(t *testing.T) (dir, head string) {
+	t.Helper()
+	dir = tempDir(t)
+	gitkit.Git(t, dir, "init", "-b", "main")
+	lines := make([]string, 21)
+	lines[0] = "package pkg"
+	lines[2] = "// Correct is declared on the next line."
+	lines[3] = "func Correct() {"
+	lines[4] = "}"
+	lines[6] = "func Declared(y string) {"
+	lines[7] = "}"
+	lines[19] = "func Stale() {"
+	lines[20] = "}"
+	gitkit.CommitFile(t, dir, "pkg/a.go", strings.Join(lines, "\n")+"\n", "a")
+	gitkit.CommitFile(t, dir, "pkg/extra.go", "package pkg\n", "extra")
+	head = gitkit.CommitFile(t, dir, "docs/b.md", "# Doc B\n\nText without the heading.\n", "b")
+	return dir, head
+}
+
+func TestForkauditPackCheck(t *testing.T) {
+	t.Parallel()
+	d := newAuditDirs(t)
+	code, head := codeRepo(t)
+	const absentSHA = "ffffffffffffffffffffffffffffffffffffffff"
+	spawned := func(fixture string) string {
+		return forkStart(t, fixture).Add(-3 * time.Second).UTC().Format("2006-01-02T15:04:05Z")
+	}
+	records := recordsRepo(t, []recordsRun{
+		{name: "alpha", kind: "local", batches: []batchFixture{
+			{number: 1, cards: []string{"01-alpha", "02-beta"}, startSHA: head, spawnedAt: spawned("fork-file")},
+			{number: 2, cards: []string{"04-delta"}, startSHA: head, spawnedAt: spawned("fork-raf")},
+		}},
+		{name: "beta", kind: "local", batches: []batchFixture{
+			{number: 1, cards: []string{"01-alpha", "02-beta"}, startSHA: absentSHA, spawnedAt: spawned("fork-file")},
+		}},
+	})
+	placeForks(t, d.projects, d.hub, []forkFixture{
+		{fixture: "fork-file", run: "alpha", session: "s-alpha", agent: "ffile"},
+		{fixture: "fork-file-noedit", run: "alpha", session: "s-alpha", agent: "fnoedit"},
+		{fixture: "fork-raf", run: "alpha", session: "s-alpha", agent: "fraf"},
+		{fixture: "fork-file", run: "beta", session: "s-beta", agent: "bfile"},
+	})
+	stdout, stderr, exit := runForkaudit(t, nil, d.args("--since", "2026-10-13", "--records", records, "--pack-check", "--code", code)...)
+	if exit != 0 {
+		t.Fatalf("exit = %d, want 0; stderr: %s", exit, stderr)
+	}
+	content, err := os.ReadFile(d.out)
+	if err != nil || stdout != d.out+"\n" {
+		t.Fatalf("report at %q: %v, stdout %q", d.out, err, stdout)
+	}
+	report := string(content)
+	if !strings.Contains(report, "- Code: `"+code+"`\n") {
+		t.Errorf("report header does not name --code:\n%s", report)
+	}
+	counts := map[string]map[string]string{
+		"agent-ffile":   {"correct": "1", "correct-decl": "1", "stale": "1", "wrong": "1", "nofile": "1", "notree": "0", "unchecked": "1", "stale shifts": "8"},
+		"agent-fraf":    {"correct": "1", "correct-decl": "0", "stale": "0", "wrong": "0", "nofile": "0", "notree": "0", "unchecked": "0"},
+		"agent-fnoedit": {"correct": "0", "notree": "1"},
+		"agent-bfile":   {"correct": "0", "notree": "6"},
+	}
+	perFork := tableRows(t, report, "### Span entries by class, per fork")
+	for agent, want := range counts {
+		row := rowWhere(t, perFork, "agent", agent)
+		for column, cell := range want {
+			if row[column] != cell {
+				t.Errorf("%s %s = %q, want %q", agent, column, row[column], cell)
+			}
+		}
+	}
+	type missed struct{ agent, file, edits, writes, reads, existed string }
+	var gotMissed []missed
+	for _, row := range tableRows(t, report, "### Missed-file list") {
+		gotMissed = append(gotMissed, missed{row["agent"], row["file"], row["edits"], row["writes"], row["reads"], row["existed"]})
+	}
+	wantMissed := []missed{
+		{"agent-bfile", "pkg/extra.go", "1", "0", "0", "unknown"},
+		{"agent-bfile", "pkg/new.go", "0", "1", "0", "unknown"},
+		{"agent-ffile", "pkg/extra.go", "1", "0", "0", "yes"},
+		{"agent-ffile", "pkg/new.go", "0", "1", "0", "no"},
+		{"agent-fnoedit", "pkg/other.go", "0", "0", "1", "unknown"},
+	}
+	if !slices.Equal(gotMissed, wantMissed) {
+		t.Errorf("missed-file list = %v, want %v", gotMissed, wantMissed)
+	}
+	byArm := rowWhere(t, tableRows(t, report, "### Missed files by arm"), "arm", "file")
+	if got := []string{byArm["missed files"], byArm["existed"], byArm["absent"], byArm["unknown"]}; !slices.Equal(got, []string{"5", "1", "1", "3"}) {
+		t.Errorf("file arm missed files, existed, absent, unknown = %v, want 5 1 1 3", got)
 	}
 }

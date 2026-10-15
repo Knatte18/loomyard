@@ -1,6 +1,7 @@
 # report.jq renders the report body from the slurped per-fork records, one markdown line per output string.
 # Arguments: $markers, the marker table's rows (arm and agreeing trace values) in table order;
-# $batches and $traces, the contents of batches.tsv and traces.tsv, which join each record to its resolved batch and trace layout.
+# $batches and $traces, the contents of batches.tsv and traces.tsv, which join each record to its resolved batch and trace layout;
+# $pack_check, whether to render the pack-correctness section, with $pack_rows and $missed_rows, the contents of pack-check.tsv and missed-files.tsv.
 # Rows and arms sort by arm (marker-table order, then any other arm name alphabetically), run, start time and agent id,
 # so two runs over the same input differ only in the generation-time line.
 #
@@ -68,7 +69,11 @@ def tsv_rows($raw): $raw | split("\n") | map(select(length > 0) | split("\t"));
 | ($known - $present) as $absent
 | ([$recs | sort_by([(.arm | armkey), .proj, .start, .agent])[] | select(.check == "disagrees")]) as $disagreements
 | ([$recs[] | select(.check == "unrecognized") | .trace] | unique) as $unrecognized
-| def row($label; c): [$label] + [$present[] | . as $a | $by[$a] | c];
+| ["correct", "correct-decl", "stale", "wrong", "nofile", "notree", "unchecked"] as $classes
+| (tsv_rows($pack_rows) | group_by(.[0]) | map({key: .[0][0], value: .}) | from_entries) as $span_rows
+| (tsv_rows($missed_rows) | group_by(.[0]) | map({key: .[0][0], value: .}) | from_entries) as $missed_by_fork
+| def class_counts($rows): [$classes[] as $c | ($rows | map(select(.[7] == $c)) | length)];
+  def row($label; c): [$label] + [$present[] | . as $a | $by[$a] | c];
   [
     ["exploration calls, raw", "ex_tools"], ["exploration calls, net", "ex_net"],
     ["whole-file reads, raw", "rfull"], ["whole-file reads, net", "rfull_net"],
@@ -125,4 +130,22 @@ def tsv_rows($raw): $raw | split("\n") | map(select(length > 0) | split("\t"));
           .spans_strict_pre, .spans_file_pre, .spans_strict_first, .pre_edit, .pre_edit_net, .ex_net,
           .rfull_net, .rpart, .grep, .quarry, .turns, (.out / 1000 | round), (.cache_read / 1e6 * 10 | round / 10), .edits, .edits_out, .dropped,
           .batch, .trace, .check]])
+  + (if $pack_check then
+      ["", "## Pack correctness at batch start", "", "### Span entries by class, pooled per arm", ""]
+      + table(["arm", "forks", "spans"] + $classes;
+          [$present[] | . as $a | [$by[$a][] | $span_rows[.rel] // [] | .[]] as $rows | [$a, ($by[$a] | length), ($rows | length)] + class_counts($rows)])
+      + ["", "### Span entries by class, per fork", ""]
+      + table(["arm", "run", "agent"] + $classes + ["stale shifts"];
+          [$recs | sort_by([(.arm | armkey), .proj, .start, .agent])[]
+           | ($span_rows[.rel] // []) as $rows
+           | [.arm, .proj, .agent] + class_counts($rows)
+             + [($rows | map(select(.[7] == "stale") | .[8]) | if length == 0 then null else join(", ") end)]])
+      + ["", "### Missed files by arm", "", "Files a fork edited, wrote or read that its pack gave no span for, split by whether they existed at the batch's start.", ""]
+      + table(["arm", "missed files", "existed", "absent", "unknown"];
+          [$present[] | . as $a | [$by[$a][] | $missed_by_fork[.rel] // [] | .[]] as $rows
+           | [$a, ($rows | length)] + [("yes", "no", "unknown") as $e | ($rows | map(select(.[6] == $e)) | length)]])
+      + ["", "### Missed-file list", ""]
+      + table(["agent", "file", "edits", "writes", "reads", "existed"];
+          [$recs | sort_by([.agent])[] | . as $r | ($missed_by_fork[$r.rel] // []) | sort_by(.[2])[] | [$r.agent, .[2], .[3], .[4], .[5], .[6]]])
+    else [] end)
 ) | .[]

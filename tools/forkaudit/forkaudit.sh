@@ -17,6 +17,8 @@
 #   --hub <dir>         the hub whose worktrees are audited (default the repo root's parent).
 #   --records <dir>     the records repository holding the webster state history
 #                       (default the repo root's sibling named after the repo root plus the records suffix).
+#   --pack-check        add the pack-correctness section; it takes no value.
+#   --code <dir>        the code repository the packs are checked against (default the repo root).
 #   --out <path>        the report file (default .scratch/fork-audit.md under the repo root).
 #   --work <dir>        the work directory for intermediate files (default .scratch/fork-audit under the repo root).
 # Exactly one of --since and --runs is required, and --until needs --since.
@@ -65,9 +67,21 @@
 # A fork with no trace file, no resolved batch or no trace line before its start has no cross-check.
 # A missing records repository only disables the cross-check, and the report header says so.
 #
+# Pack correctness (--pack-check): batch resolution runs for every fork, not only those with a trace file.
+# Each span entry of a fork's pack, from the pack file it read or from its prompt's inline pack, is checked against the file
+# at the batch's start sha in --code, with git cat-file and git show only, and classed
+# correct (the signature text lies inside the span), correct-decl (a declaration of the name lies inside it, Go files only),
+# stale (found elsewhere in the file, with the line shift), wrong (file present, name absent, Go files only),
+# unchecked (a non-Go file whose signature text was not found), nofile (file absent at the sha)
+# or notree (batch unresolved, or the sha is not in --code).
+# Files a fork edited, wrote or read that its pack gave no span for are listed with whether they existed at the sha.
+# A missing --code or --records directory exits 1 naming it, --code first, before the work directory is touched.
+# The report header names the resolved --code path.
+#
 # Intermediate files in --work: projects.txt (matched project directories), candidates.txt (candidate transcripts),
 # webster-files.txt (candidates holding the job heading), records.jsonl (one record per kept fork),
-# batches.tsv (each fork's resolved batch) and traces.tsv (each cross-checked fork's trace layout).
+# batches.tsv (each fork's resolved batch), traces.tsv (each cross-checked fork's trace layout),
+# and under --pack-check pack-entries.tsv (every pack entry), pack-check.tsv (one class per span entry) and missed-files.tsv.
 # The report body is rendered from records.jsonl by report.jq:
 # a samples table, a pack-use table, an arm comparison table, the quartiles of net exploration calls per card and a per-fork table.
 # A fork lacking a metric is left out of that metric's median and pooled value, and a cell shows its sample size when that is
@@ -101,7 +115,7 @@ date -d @0 > /dev/null 2>&1 || { echo "forkaudit: missing command: GNU date" >&2
 
 MARKER_FILE=".forkaudit-work"
 # The script's own intermediate files in --work; a run clears exactly these.
-WORK_FILES=(projects.txt candidates.txt webster-files.txt records.jsonl batches.tsv traces.tsv)
+WORK_FILES=(projects.txt candidates.txt webster-files.txt records.jsonl batches.tsv traces.tsv pack-entries.tsv pack-check.tsv missed-files.tsv)
 # The heading that marks a Webster implementer prompt.
 JOB_HEADING='# Webster implementer job'
 
@@ -112,6 +126,8 @@ Options:
   --projects <dir>   Claude Code projects directory (default $HOME/.claude/projects)
   --hub <dir>        hub whose worktrees are audited (default the repo root's parent)
   --records <dir>    records repository (default the repo root's sibling named after it plus the records suffix)
+  --pack-check       add the pack-correctness section (needs --code and --records)
+  --code <dir>       code repository the pack is checked against (default the repo root)
   --out <path>       report file (default .scratch/fork-audit.md under the repo root)
   --work <dir>       work directory (default .scratch/fork-audit under the repo root)
 EOF
@@ -129,11 +145,15 @@ fail() {
 }
 
 original_args=("$@")
-since="" until_date="" runs="" projects="${HOME:-}/.claude/projects" hub="" records="" out="" work=""
-since_set=0 until_set=0 runs_set=0
+since="" until_date="" runs="" projects="${HOME:-}/.claude/projects" hub="" records="" code="" out="" work=""
+since_set=0 until_set=0 runs_set=0 pack_check=0
 while [ $# -gt 0 ]; do
   case "$1" in
-    --since|--until|--runs|--projects|--hub|--records|--out|--work)
+    --pack-check)
+      pack_check=1
+      shift
+      ;;
+    --since|--until|--runs|--projects|--hub|--records|--code|--out|--work)
       [ $# -ge 2 ] || usage_error "$1 needs a value"
       case "$1" in
         --since) since="$2"; since_set=1 ;;
@@ -142,6 +162,7 @@ while [ $# -gt 0 ]; do
         --projects) projects="$2" ;;
         --hub) hub="$2" ;;
         --records) records="$2" ;;
+        --code) code="$2" ;;
         --out) out="$2" ;;
         --work) work="$2" ;;
       esac
@@ -175,6 +196,13 @@ repo_root="$(realpath -m "$repo_root")"
 projects="$(realpath -m "$projects")"
 hub="$(realpath -m "${hub:-$repo_root/..}")"
 records="$(realpath -m "${records:-$repo_root$RECORDS_SUFFIX}")"
+code="$(realpath -m "${code:-$repo_root}")"
+resolve_all=0
+if [ "$pack_check" = 1 ]; then
+  [ -d "$code" ] || fail "--code directory does not exist: $code"
+  [ -d "$records" ] || fail "--records directory does not exist: $records"
+  resolve_all=1
+fi
 out_explicit=1
 if [ -z "$out" ]; then
   out="$repo_root/.scratch/fork-audit.md"
@@ -289,7 +317,7 @@ dropped_count="$(jq -s 'map(.dropped) | add // 0' "$work/records.jsonl")"
 # One letter of the suffix is bracketed so --glob matches that one branch and does not append /*.
 # batches.tsv columns: transcript path relative to --projects, run, fork start, batch, card count, start sha, commit, spawn second, cards.
 # traces.tsv columns: transcript path relative to --projects, batch, pack_layout of the last trace line before the fork's start.
-resolve_all=0
+declare -A batch_start_sha
 : > "$work/batches.tsv"
 : > "$work/traces.tsv"
 records_found=0
@@ -323,6 +351,7 @@ if [ "$records_found" = 1 ]; then
       continue
     fi
     IFS=$'\t' read -r commit batch card_count start_sha spawn_second batch_cards <<< "$resolved"
+    batch_start_sha["$fork_rel"]="$start_sha"
     printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$fork_rel" "$fork_run" "$fork_start" "$batch" "$card_count" "$start_sha" "$commit" "$spawn_second" "$batch_cards" >> "$work/batches.tsv"
     [ "${#trace_files[@]}" -gt 0 ] || continue
     start_ns="$(date -u -d "$fork_start" +%s%N)"
@@ -340,6 +369,75 @@ if [ "$records_found" = 1 ]; then
   done < <(jq -r '[.rel, .proj, .start] | @tsv' "$work/records.jsonl")
 fi
 
+# classify_span prints `class<TAB>detail` for one pack span entry, checked against the code repository at the batch's start sha.
+# correct: the signature text lies inside the span; correct-decl: a declaration of its name lies inside it (Go files only);
+# stale: found elsewhere in the file, detail is the line shift; wrong: file present, name absent (Go files only);
+# unchecked: a non-Go file whose signature text was not found; nofile: the file is absent at the sha;
+# notree: the batch is unresolved or the sha is not in the code repository.
+classify_span() {
+  local sha="$1" file="$2" first="$3" last="$4" signature="$5" is_go=0
+  [[ "$file" == *.go ]] && is_go=1
+  if [ -z "$sha" ] || ! git -C "$code" cat-file -e "$sha^{commit}" 2> /dev/null; then
+    printf 'notree\t-\n'
+    return
+  fi
+  if ! git -C "$code" cat-file -e "$sha:$file" 2> /dev/null; then
+    printf 'nofile\t-\n'
+    return
+  fi
+  git -C "$code" show "$sha:$file" | SIGNATURE="$signature" awk -v first="$first" -v last="$last" -v is_go="$is_go" '
+    function decl(text, name) {
+      return (text ~ ("^func (\\([^)]*\\) )?" name "[(\\[]") || text ~ ("^(type|const|var) " name "([^A-Za-z0-9_]|$)") || text ~ ("^[ \t]+" name "([ \t]+[^ \t(]|[ \t]*=|[ \t]*$)"))
+    }
+    BEGIN {
+      signature = ENVIRON["SIGNATURE"]
+      stripped = signature
+      if (stripped ~ /^func \(/) { sub(/^func \([^)]*\) /, "", stripped) } else { sub(/^(func|type|const|var) /, "", stripped) }
+      match(stripped, /^[A-Za-z0-9_]+/)
+      name = substr(stripped, 1, RLENGTH)
+    }
+    { text[NR] = $0 }
+    END {
+      for (i = first; i <= last && i <= NR; i++) { if (index(text[i], signature) > 0) { print "correct\t0"; exit } }
+      if (is_go) { for (i = first; i <= last && i <= NR; i++) { if (name != "" && decl(text[i], name)) { print "correct-decl\t0"; exit } } }
+      for (i = 1; i <= NR; i++) { if (index(text[i], signature) > 0 || (is_go && name != "" && decl(text[i], name))) { print "stale\t" (i - first); exit } }
+      if (is_go) { print "wrong\t" name } else { print "unchecked\t-" }
+    }'
+}
+
+# Pack correctness: every span entry of each fork's pack is classed, and the files the fork edited, wrote or read
+# that its pack gave no span for are listed with whether they existed at the batch's start.
+# pack-entries.tsv holds every fork's pack entries, pack-check.tsv one row per span entry
+# (columns: transcript path, run, card, glyph, file, first line, last line, class, detail) and
+# missed-files.tsv one row per missed file (columns: transcript path, run, file, edits, writes, reads, existed).
+: > "$work/pack-entries.tsv"
+: > "$work/pack-check.tsv"
+: > "$work/missed-files.tsv"
+if [ "$pack_check" = 1 ]; then
+  declare -A span_files
+  while IFS=$'\t' read -r fork_rel fork_run; do
+    transcript="$projects/$fork_rel"
+    sha="${batch_start_sha[$fork_rel]:-}"
+    entries="$(jq -n -R -r --arg rel "$fork_rel" -f "$script_dir/pack-entries.jq" "$transcript")" || fail "cannot read pack entries: $transcript"
+    [ -z "$entries" ] || printf '%s\n' "$entries" >> "$work/pack-entries.tsv"
+    while IFS=$'\t' read -r _ card kind glyph file first last signature; do
+      [ "$kind" = span ] || continue
+      span_files["$fork_rel|$file"]=1
+      IFS=$'\t' read -r class detail <<< "$(classify_span "$sha" "$file" "$first" "$last" "$signature")"
+      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$fork_rel" "$fork_run" "$card" "$glyph" "$file" "$first" "$last" "$class" "$detail" >> "$work/pack-check.tsv"
+    done <<< "$entries"
+    while IFS=$'\t' read -r _ touched edits writes reads; do
+      [ -z "${span_files["$fork_rel|$touched"]:-}" ] || continue
+      existed=unknown
+      if [ -n "$sha" ] && git -C "$code" cat-file -e "$sha^{commit}" 2> /dev/null; then
+        if git -C "$code" cat-file -e "$sha:$touched" 2> /dev/null; then existed=yes; else existed=no; fi
+      fi
+      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$fork_rel" "$fork_run" "$touched" "$edits" "$writes" "$reads" "$existed" >> "$work/missed-files.tsv"
+    done < <(jq -n -R -r --arg rel "$fork_rel" --arg prefix "$hub/$fork_run/" --arg record_root "$RUN_RECORD_ROOT" --arg logs_root "$LOGS_ROOT" \
+      -f "$script_dir/touched-files.jq" "$transcript")
+  done < <(jq -r '[.rel, .proj] | @tsv' "$work/records.jsonl")
+fi
+
 write_header() {
   local project_dir
   echo "# Webster fork read audit"
@@ -351,6 +449,9 @@ write_header() {
   echo "- Hub: \`$hub\`"
   echo "- Work: \`$work\`"
   echo "- Records: \`$records\`"
+  if [ "$pack_check" = 1 ]; then
+    echo "- Code: \`$code\`"
+  fi
   if [ "$records_found" = 0 ]; then
     echo "- No cross-check: records repo $records not found."
   fi
@@ -379,6 +480,8 @@ markers_json="$(jq -n -c --arg mode arms --arg run "" --arg rel "" --arg plan ""
     echo "No Webster implementer forks matched."
   else
     jq -s -r --argjson markers "$markers_json" --rawfile batches "$work/batches.tsv" --rawfile traces "$work/traces.tsv" \
+      --argjson pack_check "$([ "$pack_check" = 1 ] && echo true || echo false)" \
+      --rawfile pack_rows "$work/pack-check.tsv" --rawfile missed_rows "$work/missed-files.tsv" \
       -f "$script_dir/report.jq" "$work/records.jsonl" || fail "cannot render the report"
   fi
 } > "$report_tmp"
