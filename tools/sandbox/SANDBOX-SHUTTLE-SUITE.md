@@ -270,8 +270,8 @@ The state model is in shadow mode, so a mismatch is a finding about the reading,
 At the agent's next idle moment a one-line reminder naming the sender appears typed in its pane; the reminder is not repeated while the agent works.
 Asking the agent to run `lyx creel read` prints the message with its sender and body, and a second `lyx creel read` prints that nothing is unread.
 `lyx creel inject <strand name> "say INJECTED" --wait` types the line into the pane at idle and exits 0 with `"outcome":"injected"`.
-`lyx creel log --id <id>` lists the message's events (`posted`, `read`) with their times and subject, and no event carries the message body.
-A reminder typed into a busy turn, a line typed twice, or a body in the log is a real failure here.
+`lyx creel log --id <id>` lists the message's events (`posted`, `read`) with their times and subject, and no event has a body field.
+A reminder typed into a busy turn, a line typed twice, or a body field in the log is a real failure here.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
