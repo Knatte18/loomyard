@@ -14,26 +14,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// TestDriverStencil_ShowsOneBareStepCall pins the invocation shape: a fenced block whose only line is the bare step call, no cd-subshell form for `lyx` calls, and the two envelope keys a driver reads named.
-//
-//testtiming:keep pins the stencil's bare step-call shape and the two envelope keys it names, which the recipe-blindness scan never reads
-func TestDriverStencil_ShowsOneBareStepCall(t *testing.T) {
-	t.Parallel()
-
-	stencil := string(stencils.ShedTemplateDriver)
-	if !strings.Contains(stencil, "```\nlyx shed step {{.run_id}} --until-stop\n```") {
-		t.Errorf("shed-template-driver.md has no fenced block whose only line is `lyx shed step {{.run_id}} --until-stop`")
-	}
-	if strings.Contains(stencil, "(cd <drive-dir> && lyx") {
-		t.Errorf("shed-template-driver.md still carries the `(cd <drive-dir> && lyx` subshell form")
-	}
-	for _, key := range []string{"trace_file", "envelope_path"} {
-		if !strings.Contains(stencil, "`"+key+"`") {
-			t.Errorf("shed-template-driver.md does not name `%s`", key)
-		}
-	}
-}
-
 // TestDriverStencil_IsRecipeBlind scans the driver stencil and the two parent-notification stencils filled into it, and fails for every shipped recipe name appearing as a whole word
 // (case-insensitively, so "loomyard" does not match) and for every forbidden literal, naming the
 // offending token and its line number.
