@@ -332,6 +332,7 @@ func (run *Run) Wait() (Result, error) {
 				return run.finalizeAndRemoveDiedWindow(outcome)
 			} else if outcome == OutcomeDone {
 				// A gated Done is the writer's turn boundary: let the shared helper judge it.
+				run.endReworkSpans(run.clock.Now())
 				run.gateAtBoundary = true
 				run.startCleared = false
 				run.unsentReprompt = false
@@ -534,6 +535,7 @@ func (run *Run) handleGatedBoundary() (Result, bool, error) {
 	run.gateAtBoundary = false
 	run.gateFails[failed]++
 	run.gateSent[failed]++
+	run.gateReworkSince[failed] = run.clock.Now()
 	for i, entry := range verdict.Entries {
 		if entry.State == GateEntryPassed {
 			run.gateFails[i] = 0
@@ -1477,7 +1479,12 @@ func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 	if len(run.gateFails) != len(run.gate) {
 		run.gateFails = make([]int, len(run.gate))
 		run.gateSent = make([]int, len(run.gate))
+		run.gateSpans = make([][]GateSpan, len(run.gate))
+		run.gateReworkSince = make([]time.Time, len(run.gate))
+		run.gateHeldAt = -1
 	}
+	// While a held span is open, no entry of the gate records a gate span, so no two spans of one entry overlap.
+	heldAtStart := run.gateHeldAt >= 0
 	for _, entry := range run.gate {
 		if entry.Final != nil && !entry.PassOnCap && !entry.MayHold {
 			return nil, gateEntryError(entry.Name, "sets Final but is not pass_on_cap")
@@ -1512,10 +1519,15 @@ func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 				closure = entry.Final
 			}
 			run.beginGateWait(entry.Name)
+			closureStart := run.clock.Now()
 			result, err := closure()
+			closureEnd := run.clock.Now()
 			run.endGateWait()
 			if err != nil {
 				return nil, err
+			}
+			if !heldAtStart {
+				run.gateSpans[i] = append(run.gateSpans[i], GateSpan{Kind: GateSpanGate, Start: closureStart, End: closureEnd})
 			}
 			if result.Pending {
 				if !entry.PassOnCap && !entry.MayHold {
@@ -1562,6 +1574,15 @@ func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 	if !outcome.Passed {
 		outcome.FindingsPath = findingsPath
 		outcome.Reason = reason
+	}
+
+	evaluationEnd := run.clock.Now()
+	if run.gateHeldAt >= 0 && run.gateHeldAt != pendingAt {
+		run.closeGateSpans(evaluationEnd)
+	}
+	if pendingAt >= 0 && run.gateHeldAt < 0 {
+		run.gateHeldAt = pendingAt
+		run.gateHeldSince = evaluationEnd
 	}
 
 	run.gateVerdict = outcome
@@ -1617,9 +1638,15 @@ func (run *Run) finalize(outcome Outcome) (Result, error) {
 	}
 
 	if outcome == OutcomeDone {
+		// Rework spans still open end before the final evaluation, so its gate span never overlaps them.
+		run.endReworkSpans(result.EndedAt)
 		gateOutcome, err := run.evaluateGate(true)
 		if err != nil {
 			return result, fmt.Errorf("shuttle: gate: %w", err)
+		}
+		if gateOutcome != nil {
+			run.closeGateSpans(result.EndedAt)
+			gateOutcome = run.withGateSpans(gateOutcome)
 		}
 		result.Gate = gateOutcome
 	}

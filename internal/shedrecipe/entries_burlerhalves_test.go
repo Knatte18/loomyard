@@ -480,8 +480,9 @@ func TestBurlerHalfEntries_StrictUnknownKeys(t *testing.T) {
 	}
 }
 
-// TestBurlerHalfEntries_ColorSegment covers the optional color_segment key both entries take:
+// TestBurlerHalfEntries_ColorSegment covers the optional color_segment and role_prefix keys both entries take, the two per-segment keys:
 // absent keeps the zero segment, which the engine reads as the review color, a legal segment reaches the profile, and an unknown one is refused naming the key and the legal segments.
+// A role_prefix reaches the profile, an absent one leaves it empty, and a value that is no role is refused naming the key and the value.
 func TestBurlerHalfEntries_ColorSegment(t *testing.T) {
 	entries := []struct {
 		name    string
@@ -514,6 +515,27 @@ func TestBurlerHalfEntries_ColorSegment(t *testing.T) {
 			assertErrContains(t, err, "color_segment")
 			assertErrContains(t, err, "teal")
 			assertErrContains(t, err, "merge")
+		})
+		t.Run(e.name+"RolePrefix", func(t *testing.T) {
+			cfg := e.cfg()
+			cfg["role_prefix"] = "plan"
+			profile, _ := e.capture(t, "a-row", cfg, newTestEnv(t))
+			if profile.RolePrefix != "plan" {
+				t.Errorf("profile.RolePrefix = %q; want %q", profile.RolePrefix, "plan")
+			}
+		})
+		t.Run(e.name+"RolePrefixAbsent", func(t *testing.T) {
+			profile, _ := e.capture(t, "a-row", e.cfg(), newTestEnv(t))
+			if profile.RolePrefix != "" {
+				t.Errorf("profile.RolePrefix = %q; want empty", profile.RolePrefix)
+			}
+		})
+		t.Run(e.name+"RolePrefixInvalid", func(t *testing.T) {
+			cfg := e.cfg()
+			cfg["role_prefix"] = "Plan!"
+			_, err := e.entry("a-row", cfg, newTestEnv(t))
+			assertErrContains(t, err, "role_prefix")
+			assertErrContains(t, err, "Plan!")
 		})
 	}
 }

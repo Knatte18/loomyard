@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -33,6 +34,15 @@ func appendEventsLine(t *testing.T, path, line string) {
 	}
 }
 
+// spanKinds returns the kinds of spans, in order.
+func spanKinds(spans []GateSpan) []GateSpanKind {
+	kinds := make([]GateSpanKind, len(spans))
+	for i, span := range spans {
+		kinds[i] = span.Kind
+	}
+	return kinds
+}
+
 // repromptCaptureSequence returns the n*3 fakeReed.CaptureQueue entries a test expects across n
 // Send() calls that each succeed on their first delivery poll: per call, a probe capture (answers
 // requireReadyAgentPane), a clean baseline capture (answers sendVerified's pre-send snapshot, holding
@@ -51,7 +61,7 @@ func repromptCaptureSequence(findingsPath string, n int) []string {
 // attempts, and leaves cleanup identical to an ungated run's; a zero-value GateSpec, which every
 // ungated run supplies, leaves Result.Gate nil and cleans up the same way.
 //
-//testtiming:keep pins that a gate passing on the first Done sends nothing and charges no attempt, that a zero GateSpec leaves Result.Gate nil, and that both clean the run dir
+//testtiming:keep pins that a gate passing on the first Done sends nothing and charges no attempt, that it reports one gate span the closure's length without writing it through the memoised verdict, that a zero GateSpec leaves Result.Gate nil, and that both clean the run dir
 func TestGate_FirstDoneSettlesWithoutReprompt(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -70,15 +80,18 @@ func TestGate_FirstDoneSettlesWithoutReprompt(t *testing.T) {
 				t.Fatalf("seed events: %v", err)
 			}
 
+			fc := newFakeClock(time.Now())
 			gateCalls := 0
+			var closureAt time.Time
 			gate := func() (GateResult, error) {
 				gateCalls++
+				closureAt = fc.Now()
+				fc.asleep(3 * time.Second)
 				return GateResult{Passed: true}, nil
 			}
 
 			reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
 			fx := newFixture(t, reed, &fakeEngine{}, withConfig(gateConfig))
-			fc := newFakeClock(time.Now())
 			opts := []runOpt{
 				withRunDir(runDir),
 				withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
@@ -105,6 +118,13 @@ func TestGate_FirstDoneSettlesWithoutReprompt(t *testing.T) {
 				}
 				if gateCalls != 1 {
 					t.Errorf("gate closure invoked %d times, want 1", gateCalls)
+				}
+				wantSpans := []GateSpan{{Kind: GateSpanGate, Start: closureAt, End: closureAt.Add(3 * time.Second)}}
+				if result.Gate != nil && !reflect.DeepEqual(result.Gate.Entries[0].Spans, wantSpans) {
+					t.Errorf("Spans = %+v, want %+v", result.Gate.Entries[0].Spans, wantSpans)
+				}
+				if run.gateVerdict == nil || run.gateVerdict.Entries[0].Spans != nil {
+					t.Errorf("memoised verdict = %+v, want one holding no spans", run.gateVerdict)
 				}
 			} else if result.Gate != nil {
 				t.Errorf("Gate = %+v, want nil for an ungated run", result.Gate)
@@ -398,7 +418,7 @@ func TestGate_EvaluateOncePerAttempt_Memoized(t *testing.T) {
 // loop ends there rather than retrying, and the failed send charges no attempt.
 // A pane that swallows the input fails the send after it was typed; a renderer returning two lines fails it before anything is typed.
 //
-//testtiming:keep pins that a failed re-prompt send ends the loop without a retry and charges no attempt, and that an invalid rendered line sends nothing
+//testtiming:keep pins that a failed re-prompt send ends the loop without a retry and charges no attempt or rework span, and that an invalid rendered line sends nothing
 func TestGate_SendFailsMidLoop_EndsLoopWithAttemptsSoFar(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -453,73 +473,117 @@ func TestGate_SendFailsMidLoop_EndsLoopWithAttemptsSoFar(t *testing.T) {
 			if len(reed.SendTextCalls) != tt.wantSendCalls {
 				t.Errorf("SendText calls = %d, want %d (no retry after a failed send)", len(reed.SendTextCalls), tt.wantSendCalls)
 			}
+			if result.Gate != nil {
+				if got := spanKinds(result.Gate.Entries[0].Spans); !reflect.DeepEqual(got, []GateSpanKind{GateSpanGate}) {
+					t.Errorf("span kinds = %v, want one gate span and no rework span (a failed send opens none)", got)
+				}
+			}
 		})
 	}
 }
 
-// TestGate_DeadlineExpiresBetweenAttempts covers the run deadline expiring mid-loop, after one
-// successful re-prompt: the loop stops, the deadline's own Done classification runs the gate once
-// more, and the reported Attempts stays honest about the one send that preceded it.
+// TestGate_DeadlineExpiresBetweenAttempts covers a run ending mid-loop, after one successful re-prompt, by the run deadline or by a lost session.
+// The loop stops, the Done classification runs the gate once more, the reported Attempts stays honest about the one send that preceded it, and the rework span is closed at the run's end.
 //
-//testtiming:keep pins that a deadline expiring after one re-prompt runs the gate once more through the deadline's own Done, with Attempts still honest at one
+//testtiming:keep pins that a deadline expiring or a session lost after one re-prompt runs the gate once more through its own Done, with Attempts still honest at one and the rework span closed at the run's end
 func TestGate_DeadlineExpiresBetweenAttempts(t *testing.T) {
-	runDir := t.TempDir()
-	eventsPath := filepath.Join(runDir, eventsFileName)
-	outputFile := filepath.Join(runDir, "out.md")
-	touchOutputFile(t, outputFile)
-	if err := os.WriteFile(eventsPath, []byte("STOP:turn1\n"), 0o644); err != nil {
-		t.Fatalf("seed events: %v", err)
+	live := liveStrandStatus(true)[0]
+	notTracked := reedengine.StatusResult{Strands: nil}
+	tests := []struct {
+		name string
+		cfg  Config
+		// statusQueue is consumed FIFO by reed's Status, the last entry repeating.
+		statusQueue []reedengine.StatusResult
+		// deadlineOffset is where the run deadline sits relative to the clock's start.
+		deadlineOffset time.Duration
+		// endsBeforeDeadline reports that the run must end before the deadline, so it did not end through the deadline branch.
+		endsBeforeDeadline bool
+	}{
+		{
+			// PollIntervalMS's 1s Sleep after the one successful re-prompt crosses the 2ms-out deadline,
+			// so the SECOND tick's deadline check trips with no further event ever appended.
+			name:           "the deadline expires after the re-prompt",
+			cfg:            Config{PollIntervalMS: 1000, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30},
+			statusQueue:    liveStrandStatus(true),
+			deadlineOffset: 2 * time.Millisecond,
+		},
+		{
+			name:               "the session is lost after the re-prompt",
+			cfg:                Config{PollIntervalMS: 1000, LivenessEveryNPolls: 1, StartupTimeoutS: 0},
+			statusQueue:        []reedengine.StatusResult{live, live, live, live, notTracked},
+			deadlineOffset:     time.Hour,
+			endsBeforeDeadline: true,
+		},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runDir := t.TempDir()
+			eventsPath := filepath.Join(runDir, eventsFileName)
+			outputFile := filepath.Join(runDir, "out.md")
+			touchOutputFile(t, outputFile)
+			if err := os.WriteFile(eventsPath, []byte("STOP:turn1\n"), 0o644); err != nil {
+				t.Fatalf("seed events: %v", err)
+			}
 
-	findingsPath := filepath.Join(runDir, gateFindingsFileName)
-	gateCalls := 0
-	gate := func() (GateResult, error) {
-		gateCalls++
-		return GateResult{Passed: false, Findings: "still bad"}, nil
-	}
+			findingsPath := filepath.Join(runDir, gateFindingsFileName)
+			gateCalls := 0
+			gate := func() (GateResult, error) {
+				gateCalls++
+				return GateResult{Passed: false, Findings: "still bad"}, nil
+			}
 
-	reed := &fakeReed{
-		StatusQueue:  liveStrandStatus(true),
-		CaptureQueue: repromptCaptureSequence(findingsPath, 1),
-	}
-	engine := readyAgentEngine()
-	// PollIntervalMS's 1s Sleep after the one successful re-prompt crosses the 2ms-out deadline
-	// below, so the SECOND tick's deadline check trips with no further event ever appended.
-	fx := newFixture(t, reed, engine, withConfig(Config{PollIntervalMS: 1000, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30}))
-	stubInputSleep(t)
+			reed := &fakeReed{
+				StatusQueue:  tt.statusQueue,
+				CaptureQueue: repromptCaptureSequence(findingsPath, 1),
+			}
+			fx := newFixture(t, reed, readyAgentEngine(), withConfig(tt.cfg))
+			stubInputSleep(t)
 
-	fc := newFakeClock(time.Now())
-	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
-		withRunDir(runDir),
-		withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
-		withRunClock(fc, fc.Now().Add(2*time.Millisecond)),
-		withRunGate(GateSpec{{Gate: gate, Attempts: 3}}))
+			fc := newFakeClock(time.Now())
+			deadline := fc.Now().Add(tt.deadlineOffset)
+			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
+				withRunDir(runDir),
+				withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
+				withRunClock(fc, deadline),
+				withRunGate(GateSpec{{Gate: gate, Attempts: 3}}))
 
-	result, err := run.Wait()
-	if err != nil {
-		t.Fatalf("Wait() error: %v", err)
-	}
-	if result.Outcome != OutcomeDone {
-		t.Errorf("Outcome = %q, want %q", result.Outcome, OutcomeDone)
-	}
-	if result.Gate == nil || result.Gate.Passed {
-		t.Errorf("Gate = %+v, want a failed verdict", result.Gate)
-	}
-	if result.Gate != nil && result.Gate.Attempts != 1 {
-		t.Errorf("Attempts = %d, want 1 (the one re-prompt sent before the deadline expired)", result.Gate.Attempts)
-	}
-	if gateCalls != 2 {
-		t.Errorf("gate closure invoked %d times, want 2 (the failed attempt, then once more on the deadline's own Done)", gateCalls)
-	}
-	if len(reed.SendTextCalls) != 1 {
-		t.Errorf("SendText calls = %d, want 1 (the deadline path never sends)", len(reed.SendTextCalls))
+			result, err := run.Wait()
+			if err != nil {
+				t.Fatalf("Wait() error: %v", err)
+			}
+			if result.Outcome != OutcomeDone {
+				t.Errorf("Outcome = %q, want %q", result.Outcome, OutcomeDone)
+			}
+			if result.Gate == nil || result.Gate.Passed {
+				t.Fatalf("Gate = %+v, want a failed verdict", result.Gate)
+			}
+			if result.Gate.Attempts != 1 {
+				t.Errorf("Attempts = %d, want 1 (the one re-prompt sent before the run ended)", result.Gate.Attempts)
+			}
+			if gateCalls != 2 {
+				t.Errorf("gate closure invoked %d times, want 2 (the failed attempt, then once more on the run's own Done)", gateCalls)
+			}
+			if len(reed.SendTextCalls) != 1 {
+				t.Errorf("SendText calls = %d, want 1 (the run's end never sends)", len(reed.SendTextCalls))
+			}
+			spans := result.Gate.Entries[0].Spans
+			if got := spanKinds(spans); !reflect.DeepEqual(got, []GateSpanKind{GateSpanGate, GateSpanRework, GateSpanGate}) {
+				t.Fatalf("span kinds = %v, want gate, rework, gate", got)
+			}
+			if !spans[1].End.Equal(result.EndedAt) {
+				t.Errorf("rework span ends at %v, want result.EndedAt %v (closed at finalize)", spans[1].End, result.EndedAt)
+			}
+			if tt.endsBeforeDeadline && !result.EndedAt.Before(deadline) {
+				t.Errorf("EndedAt = %v, want before the deadline %v", result.EndedAt, deadline)
+			}
+		})
 	}
 }
 
 // TestAttach_GateThreading covers a resumed run's gate: AttachGated gates it exactly as a fresh
 // RunGated run is gated, and the plain Attach entry point never carries a gate.
 //
-//testtiming:keep pins that AttachGated gates a resumed run exactly as a fresh one is gated, that plain Attach leaves Result.Gate nil, and that the recorded fork authorization, not the attaching spec, chooses the gate closure and the fork audit
+//testtiming:keep pins that AttachGated gates a resumed run exactly as a fresh one is gated and starts its gate spans afresh, that plain Attach leaves Result.Gate nil, and that the recorded fork authorization, not the attaching spec, chooses the gate closure and the fork audit
 func TestAttach_GateThreading(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -595,6 +659,10 @@ func TestAttach_GateThreading(t *testing.T) {
 			}
 			if gateCalls != wantGate || forkedCalls != wantForkedCalls {
 				t.Errorf("Gate invoked %d times and Forked %d times; want %d and %d", gateCalls, forkedCalls, wantGate, wantForkedCalls)
+			}
+			// Spans live in the wait loop's memory, so the attached run reports only the gate span of its own evaluation.
+			if got := spanKinds(result.Gate.Entries[0].Spans); !reflect.DeepEqual(got, []GateSpanKind{GateSpanGate}) {
+				t.Errorf("span kinds = %v; want only the attached run's own gate span", got)
 			}
 			wantAudits := 0
 			if tt.recordedFork {
@@ -870,6 +938,20 @@ func TestGate_UnsentRepromptRetries(t *testing.T) {
 			}
 			if result.Gate == nil || result.Gate.Attempts != tt.wantAttempts {
 				t.Errorf("Gate = %+v, want %d attempts spent", result.Gate, tt.wantAttempts)
+			}
+			// A failed or unlanded send opens no rework span; the delivery that landed opens exactly one.
+			reworks := 0
+			for _, span := range result.Gate.Entries[0].Spans {
+				if span.Kind != GateSpanRework {
+					continue
+				}
+				reworks++
+				if span.Start.Before(rig.reed.typedAt) {
+					t.Errorf("rework span starts at %v, before the first text was typed at %v", span.Start, rig.reed.typedAt)
+				}
+			}
+			if reworks != tt.wantAttempts {
+				t.Errorf("rework spans = %d, want %d", reworks, tt.wantAttempts)
 			}
 			if tt.wantTypedMin > 0 && rig.reed.typedAt.Sub(rig.start) < tt.wantTypedMin {
 				t.Errorf("first text typed %v after the start, want at least %v", rig.reed.typedAt.Sub(rig.start), tt.wantTypedMin)

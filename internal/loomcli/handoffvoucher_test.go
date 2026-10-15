@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
+	"reflect"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -132,7 +132,7 @@ func TestObserveEntry_ConsumesHandoffVoucherIntoObservation(t *testing.T) {
 		t.Errorf("observeEntry first call: Vouched = false; want true -- a matching voucher must suppress the crash signature")
 	}
 
-	if !slices.Equal(first.History, history) {
+	if !reflect.DeepEqual(first.History, history) {
 		t.Errorf("observeEntry first call: History = %v; want every entry %v", first.History, history)
 	}
 	if !first.VoucherFound || first.VoucherHistoryLength != len(history) || first.VoucherState != shedengine.StateRunning {

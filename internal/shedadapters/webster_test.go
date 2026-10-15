@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
@@ -45,8 +48,12 @@ func (f *fakeWebsterRunner) run(deps websterengine.RunDeps, opts websterengine.R
 // arrives during the run. The run is never asked for a fresh start: RunOptions.Fresh is false as a
 // safety property, not a default.
 //
-//testtiming:keep pins that a done run returns the summary as pointer, is never asked for a fresh start, and survives a cancellation during the run
+//testtiming:keep pins that a done run returns the summary as pointer carrying its gate count and spans, is never asked for a fresh start, and survives a cancellation during the run
 func TestWebsterProducer_OutcomeDone(t *testing.T) {
+	started := time.Date(2026, 8, 16, 15, 0, 0, 0, time.UTC)
+	gate := &shuttleengine.GateOutcome{Passed: true, Attempts: 1, Entries: []shuttleengine.GateEntryOutcome{
+		{Name: "verify", Attempts: 1, Spans: []shuttleengine.GateSpan{{Kind: shuttleengine.GateSpanGate, Start: started, End: started.Add(90 * time.Second)}}},
+	}}
 	tests := []struct {
 		name            string
 		cancelDuringRun bool
@@ -60,7 +67,7 @@ func TestWebsterProducer_OutcomeDone(t *testing.T) {
 			deps := websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: dir}}
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			fake := &fakeWebsterRunner{result: websterengine.RunResult{Outcome: "done"}}
+			fake := &fakeWebsterRunner{result: websterengine.RunResult{Outcome: "done", Gate: gate}}
 			if tt.cancelDuringRun {
 				fake.duringRun = cancel
 			}
@@ -76,6 +83,10 @@ func TestWebsterProducer_OutcomeDone(t *testing.T) {
 			wantPath := summaryparser.Path(dir)
 			if ptr.Path != wantPath {
 				t.Errorf("Call() pointer = %q; want %q", ptr.Path, wantPath)
+			}
+			wantSpans := []shedengine.GateSpan{{Gate: "verify", Kind: shedengine.GateSpanKindGate, Start: "2026-08-16T15:00:00Z", End: "2026-08-16T15:01:30Z"}}
+			if ptr.GateAttempts == nil || *ptr.GateAttempts != 1 || !reflect.DeepEqual(ptr.GateSpans, wantSpans) {
+				t.Errorf("Call() pointer gate attempts %v and spans %+v; want 1 and %+v", ptr.GateAttempts, ptr.GateSpans, wantSpans)
 			}
 			if fake.calls != 1 {
 				t.Errorf("runner calls = %d; want 1", fake.calls)
@@ -124,8 +135,14 @@ func requireWebsterFile(t *testing.T, filePath, want string) {
 
 // TestWebsterProducer_OutcomeStuck proves a stuck outcome maps by the conflict record it follows:
 // no record is a plain Stuck with the stuck reason, a new conflict is a Reroute, and a repeated one, a record naming no finding or an unreadable or unwritable file is a plain Stuck.
+// Every mapping carries the run's gate count and spans.
 func TestWebsterProducer_OutcomeStuck(t *testing.T) {
 	const stuckReason = "cards ran out"
+	started := time.Date(2026, 8, 16, 15, 0, 0, 0, time.UTC)
+	gate := &shuttleengine.GateOutcome{Passed: false, Attempts: 2, Entries: []shuttleengine.GateEntryOutcome{
+		{Name: "verify", Attempts: 2, Spans: []shuttleengine.GateSpan{{Kind: shuttleengine.GateSpanRework, Start: started, End: started.Add(time.Minute)}}},
+	}}
+	wantSpans := []shedengine.GateSpan{{Gate: "verify", Kind: shedengine.GateSpanKindRework, Start: "2026-08-16T15:00:00Z", End: "2026-08-16T15:01:00Z"}}
 	tests := []struct {
 		name string
 		// seed shapes the scratch directory before the run.
@@ -213,13 +230,16 @@ func TestWebsterProducer_OutcomeStuck(t *testing.T) {
 			if tt.seed != nil {
 				tt.seed(t, scratch, deps)
 			}
-			fake := &fakeWebsterRunner{result: websterengine.RunResult{Outcome: "stuck", StuckReason: stuckReason, BatchesDone: 3}}
+			fake := &fakeWebsterRunner{result: websterengine.RunResult{Outcome: "stuck", StuckReason: stuckReason, BatchesDone: 3, Gate: gate}}
 			p := NewWebsterProducer("loom", fake.run, deps)
 
 			ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 
 			if ptr.Path != "" || ptr.Reroute != tt.wantReroute {
 				t.Errorf("Call() pointer = %+v; want empty Path and Reroute %v", ptr, tt.wantReroute)
+			}
+			if ptr.GateAttempts == nil || *ptr.GateAttempts != 2 || !reflect.DeepEqual(ptr.GateSpans, wantSpans) {
+				t.Errorf("Call() pointer gate attempts %v and spans %+v; want 2 and %+v", ptr.GateAttempts, ptr.GateSpans, wantSpans)
 			}
 			if tt.wantReason != "" && ptr.Reason != tt.wantReason {
 				t.Errorf("Call() Reason = %q; want %q", ptr.Reason, tt.wantReason)
@@ -448,7 +468,7 @@ func TestWebsterProducer_CancelledDuringRun_StuckPausedAndErrorBecomeContextErro
 			if outcome == shedengine.Stuck {
 				t.Errorf("Call() outcome = %q; want the cancellation error, not %q", outcome, shedengine.Stuck)
 			}
-			if ptr != (shedengine.OutputPointer{}) {
+			if !reflect.DeepEqual(ptr, shedengine.OutputPointer{}) {
 				t.Errorf("Call() pointer = %+v; want empty", ptr)
 			}
 		})

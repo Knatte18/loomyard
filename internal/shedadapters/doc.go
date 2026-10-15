@@ -23,12 +23,14 @@
 //     a conflict whose findings are new asks for a reroute (OutputPointer.Reroute) to the row's on_reroute target, a record repeating the last routed findings stays a plain Stuck that names the hand edit, and no record, an unreadable one or a failed write stays a plain Stuck with Master's reason.
 //     The error outcomes never consult the record and never reroute.
 //     Any other outcome value reaching Call is an engine-level error.
+//     It is a gate carrier: its done and its stuck pointers carry the gate count and spans of Merriam's run, the verify gate's entry included.
 //   - BurlerReviewProducer and BurlerFixProducer: a finished half -- shuttleengine.OutcomeDone reached within the bounded
 //     retry -- maps to Stuck, never Done, reporting the round's own review path as the pointer.
 //     That Stuck is a routine hand-off, the review row's to the fix row and the fix row's to the segment's Bouncer via OnStuck, never a real stuck
 //     condition: a half producer has no independent notion of "finished," only the judge does.
 //     Every hand-on, a finished half and an unjudged highest round, is BudgetExempt, so the Bouncer row's own budget check is the segment's one budget on judged rounds.
 //     The fix row's gate-failed exit is counted against its own MaxBounces.
+//     Both rows are gate carriers: the review row's hand-on pointer carries the gate count and spans of the reviewer's review-parse gate, for a spawned and a resumed review alike, and the fix row's gate-failed and finished-fix pointers carry the fixer's.
 //     A round names two strands, the reviewer's and the fixer's, one per row, and each attempt picks its half's model from BurlerHalfDeps.Models for the round.
 //     A runner error wrapping burlerengine.ErrHalfNotStopped returns without archiving and without the retry, since a live half may still write the round's files.
 //     Before archiving or spawning, each row probes its half and resumes or respawns by what is live (see "Every spawning adapter probes for a live agent first").
@@ -69,6 +71,7 @@
 //     Roles: the judge and the seed spawn each load the `scribe:prose` skill (bouncerJudgeSkills, bouncerSeedSkills),
 //     and both prompts carry the parent directive that parentdirective.Directive renders from BouncerConfig.ParentName, in its non-interactive form;
 //     an empty ParentName renders the no-parent variant.
+//     The seed and judge sessions carry the roles bouncer-seed and bouncer-judge, each led by BouncerConfig.RolePrefix and a hyphen when one is configured, in the spawn and in the probe that attaches to it.
 //     The escalation brief and the parent notice are read by the parent, not by a spawned role, and carry no directive.
 //     Escalation: a CONTINUE or CIRCLING round escalates to the run's parent instead of halting for a human, for one of three causes.
 //     Soft-cap rule: the soft cap is reached when the BouncerConfig.Bounces seam reports count >= budget, the comparison Shed applies.

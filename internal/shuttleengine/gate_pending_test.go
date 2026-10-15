@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -84,15 +85,18 @@ func scriptedPending(calls *int, script ...GateResult) Gate {
 	}
 }
 
-//testtiming:keep pins that a pending gate sends its carried text exactly once, charges no attempt, and settles done
+//testtiming:keep pins that a pending gate sends its carried text exactly once, charges no attempt, settles done, and records one gate span then one held span for the held entry and a single gate span for an entry listed before it
 func TestGatePending_HoldsSendsOnceAndPasses(t *testing.T) {
-	var calls int
+	var calls, aCalls int
 	gate := scriptedPending(&calls,
 		GateResult{Pending: true, Send: pendingSendText},
 		GateResult{Pending: true},
 		GateResult{Passed: true},
 	)
-	f := newPendingFixture(t, GateSpec{{Name: "parent-review", Gate: gate, Attempts: 3, PassOnCap: true}}, sendCaptures(pendingSendText),
+	f := newPendingFixture(t, GateSpec{
+		{Name: "a", Gate: scriptedGate(&aCalls, true), Attempts: 3},
+		{Name: "parent-review", Gate: gate, Attempts: 3, PassOnCap: true},
+	}, sendCaptures(pendingSendText),
 		appendArrival("STOP:turn2"))
 
 	result, err := f.run.Wait()
@@ -108,9 +112,22 @@ func TestGatePending_HoldsSendsOnceAndPasses(t *testing.T) {
 	if len(f.reed.SendTextCalls) != 1 || f.reed.SendTextCalls[0].Text != pendingSendText {
 		t.Errorf("SendText calls = %+v, want the carried text exactly once", f.reed.SendTextCalls)
 	}
-	wantStates(t, result.Gate, GateEntryPassed)
+	wantStates(t, result.Gate, GateEntryPassed, GateEntryPassed)
 	if result.Gate.Attempts != 0 {
 		t.Errorf("Attempts = %d, want 0 (a pending send is not a re-prompt)", result.Gate.Attempts)
+	}
+	if aCalls != 3 {
+		t.Errorf("entry a ran %d times, want 3 (every evaluation)", aCalls)
+	}
+	if got := spanKinds(result.Gate.Entries[0].Spans); !reflect.DeepEqual(got, []GateSpanKind{GateSpanGate}) {
+		t.Errorf("a span kinds = %v, want one gate span (none during the hold)", got)
+	}
+	spans := result.Gate.Entries[1].Spans
+	if got := spanKinds(spans); !reflect.DeepEqual(got, []GateSpanKind{GateSpanGate, GateSpanHeld}) {
+		t.Fatalf("parent-review span kinds = %v, want gate then held", got)
+	}
+	if spans[1].Start.Before(spans[0].End) || spans[1].End.Before(spans[1].Start) {
+		t.Errorf("spans = %+v, want the held span to start no earlier than the gate span's end", spans)
 	}
 }
 
@@ -166,7 +183,7 @@ func TestGatePending_FailedSendWarnsAndStaysPending(t *testing.T) {
 	}
 }
 
-//testtiming:keep pins that mid-turn ticks never re-evaluate the gate and that a deadline finalize reads Final rather than Gate, leaving the entry waiting
+//testtiming:keep pins that mid-turn ticks never re-evaluate the gate, that a deadline finalize reads Final rather than Gate and leaves the entry waiting, and that the entry's spans are one gate span then a held span ending at the run's end, with no gate span for the Final evaluation
 func TestGatePending_MidTurnTicksNeverReevaluate_DeadlineUsesFinal(t *testing.T) {
 	var gateCalls, forkedCalls, finalCalls int
 	gate := scriptedPending(&gateCalls, GateResult{Pending: true, Send: pendingSendText})
@@ -196,6 +213,13 @@ func TestGatePending_MidTurnTicksNeverReevaluate_DeadlineUsesFinal(t *testing.T)
 	wantStates(t, result.Gate, GateEntryWaiting)
 	if !result.Gate.Passed {
 		t.Errorf("Gate.Passed = false, want true: a waiting PassOnCap entry counts like a let-through one")
+	}
+	spans := result.Gate.Entries[0].Spans
+	if got := spanKinds(spans); !reflect.DeepEqual(got, []GateSpanKind{GateSpanGate, GateSpanHeld}) {
+		t.Fatalf("span kinds = %v, want gate then held (the Final evaluation adds no gate span)", got)
+	}
+	if !spans[1].End.Equal(result.EndedAt) {
+		t.Errorf("held span ends at %v, want result.EndedAt %v", spans[1].End, result.EndedAt)
 	}
 }
 

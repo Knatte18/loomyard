@@ -242,7 +242,7 @@ func TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet(t *testing.T) {
 	}
 }
 
-// TestRowNames_FollowEachRecipesRowOrder pins that each recipe's names and rows equal its shedbuild.Parse rows in file order, and that a recipe the loom module does not own is refused.
+// TestRowNames_FollowEachRecipesRowOrder pins that each recipe's names and rows equal its shedbuild.Parse rows in file order, and that an unknown recipe name is refused.
 func TestRowNames_FollowEachRecipesRowOrder(t *testing.T) {
 	for _, tt := range []struct {
 		recipe string
@@ -250,6 +250,7 @@ func TestRowNames_FollowEachRecipesRowOrder(t *testing.T) {
 	}{
 		{shedrun.RecipeLoom, recipes.LoomRecipe},
 		{shedrun.RecipeDarn, recipes.DarnRecipe},
+		{shedrun.RecipeBatten, recipes.BattenRecipe},
 	} {
 		t.Run(tt.recipe, func(t *testing.T) {
 			parsed, err := shedbuild.Parse(tt.source)
@@ -289,9 +290,63 @@ func TestRowNames_FollowEachRecipesRowOrder(t *testing.T) {
 		"RowNames": func(recipe string) error { _, err := RowNames(recipe); return err },
 		"Rows":     func(recipe string) error { _, err := Rows(recipe); return err },
 	} {
-		if err := call(shedrun.RecipeBatten); err == nil || !strings.Contains(err.Error(), shedrun.RecipeBatten) {
-			t.Errorf("%s(%q) error = %v; want a refusal naming the recipe", name, shedrun.RecipeBatten, err)
+		if err := call("no-such-recipe"); err == nil || !strings.Contains(err.Error(), "no-such-recipe") {
+			t.Errorf("%s(%q) error = %v; want a refusal naming the recipe", name, "no-such-recipe", err)
 		}
+	}
+}
+
+// TestEntryNumbers pins the entry numbering on the shipped recipes and on a constructed one.
+func TestEntryNumbers(t *testing.T) {
+	numbersOf := func(t *testing.T, recipe string) map[string]int {
+		t.Helper()
+		rows, err := Rows(recipe)
+		if err != nil {
+			t.Fatalf("Rows(%q) = %v", recipe, err)
+		}
+		return EntryNumbers(rows)
+	}
+	for _, tt := range []struct {
+		name   string
+		recipe string
+		want   map[string]int
+	}{
+		{"loom", shedrun.RecipeLoom, map[string]int{
+			"Preflight": 1, "Discussion-Write": 3,
+			"Discussion-Bouncer": 4, "Discussion-Burler-Review": 4, "Discussion-Burler-Fix": 4,
+			"Plan-Write":   5,
+			"Plan-Bouncer": 6, "Plan-Burler-Review": 6, "Plan-Burler-Fix": 6,
+			"PR-Gate": 15, "PR-Rework": 16,
+		}},
+		{"batten", shedrun.RecipeBatten, map[string]int{"Run-Shed": 6, "Land": 7}},
+		{"darn", shedrun.RecipeDarn, map[string]int{"Darn-Bouncer": 3, "Darn-Burler-Review": 3, "Darn-Burler-Fix": 3}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got := numbersOf(t, tt.recipe)
+			for row, want := range tt.want {
+				if got[row] != want {
+					t.Errorf("EntryNumbers(%s)[%q] = %d; want %d", tt.recipe, row, got[row], want)
+				}
+			}
+		})
+	}
+
+	constructed := []RecipeRow{
+		{Name: "A"},
+		{Name: "B", Segment: "S"},
+		{Name: "C", Segment: "S"},
+		{Name: "D", Segment: "R", Bouncer: true},
+		{Name: "E", Segment: "R"},
+	}
+	want := map[string]int{"A": 1, "B": 2, "C": 3, "D": 4, "E": 4}
+	if got := EntryNumbers(constructed); !reflect.DeepEqual(got, want) {
+		t.Errorf("EntryNumbers(constructed) = %v; want %v", got, want)
+	}
+	if _, ok := EntryNumbers(constructed)["missing"]; ok {
+		t.Error("EntryNumbers(constructed) has a key for a row not among the rows")
+	}
+	if got := EntryNumbers(nil); len(got) != 0 {
+		t.Errorf("EntryNumbers(nil) = %v; want empty", got)
 	}
 }
 

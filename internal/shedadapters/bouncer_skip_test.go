@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"reflect"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -35,7 +36,7 @@ func TestBouncer_Skip_TrueSpawnsNothingAndApprovesBeforeCommit(t *testing.T) {
 	}
 
 	ptr := shedfake.RequireOutcome(t, b, shedengine.Done)
-	if ptr != (shedengine.OutputPointer{}) {
+	if !reflect.DeepEqual(ptr, shedengine.OutputPointer{}) {
 		t.Errorf("Call() pointer = %+v; want empty", ptr)
 	}
 	if shuttle.Called || shuttle.AttachCalled {
@@ -117,7 +118,7 @@ func TestBouncer_Skip_FailingApproveSkipsCommit(t *testing.T) {
 	if outcome != "" {
 		t.Errorf("Call() outcome = %q; want empty alongside a non-nil error", outcome)
 	}
-	if ptr != (shedengine.OutputPointer{}) {
+	if !reflect.DeepEqual(ptr, shedengine.OutputPointer{}) {
 		t.Errorf("Call() pointer = %+v; want empty", ptr)
 	}
 	if commitCalls != 0 {
