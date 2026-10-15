@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -208,7 +207,7 @@ func ComputeTiming(src Sources, opts TimingOptions) (TimingReport, error) {
 }
 
 // selectInFlight returns the runs of live pairs, read from the records branches in src.Branches.
-// Only a pair records branch counts: a branch other than src.RecordsBranch whose name is the one fabricengine.RecordsBranchName forms from a slug.
+// Only a pair records branch counts: a branch other than src.RecordsBranch whose name fabricengine.WeftWarpSlug parses into a slug.
 // A branch whose tip is the commit of one of its slug's archive tags is landed and skipped; a branch whose slug opts.Live names is in flight; any other is abandoned, left out with a finding.
 // A pair not seeded yet, or seeded to another recipe, is left out silently, and a record that does not decode is a finding.
 func selectInFlight(src Sources, opts TimingOptions, findings *[]Finding) ([]RunRow, error) {
@@ -238,7 +237,7 @@ func selectInFlight(src Sources, opts TimingOptions, findings *[]Finding) ([]Run
 		if branch.Name == src.RecordsBranch {
 			continue
 		}
-		slug, parsed := pairSlug(branch.Name)
+		slug, parsed := fabricengine.WeftWarpSlug(branch.Name)
 		if !parsed || taggedTips[slug][branch.Commit] {
 			continue
 		}
@@ -334,13 +333,6 @@ func selectInFlight(src Sources, opts TimingOptions, findings *[]Finding) ([]Run
 		rows = append(rows, row)
 	}
 	return rows, nil
-}
-
-// pairSlug returns the slug whose pair records branch is named branch, and false when branch is no such name or names an empty slug.
-// The records branch name suffix is read off RecordsBranchName, the one place that forms it.
-func pairSlug(branch string) (string, bool) {
-	slug, ok := strings.CutSuffix(branch, fabricengine.RecordsBranchName(""))
-	return slug, ok && slug != ""
 }
 
 // bucketWindow is one day or ISO week of the report's window, clipped to it.
