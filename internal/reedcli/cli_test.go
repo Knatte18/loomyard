@@ -69,7 +69,7 @@ func TestRunCLI_NotAGitRepo(t *testing.T) {
 	}
 }
 
-// TestRunCLI_Switch_RefusesBadFlagsAndNeedsNoRepository verifies that switch refuses a missing or doubled direction and a missing --client with a JSON error and a non-zero exit.
+// TestRunCLI_Switch_RefusesBadFlagsAndNeedsNoRepository verifies that switch refuses a missing or doubled direction and a missing --client, and follow refuses a missing --socket, --session or --tmux, with a JSON error and a non-zero exit.
 // It runs from a directory that is not a git repository, so a refusal naming the flag, not lyxcwd.Resolve's not-a-git-repository error, proves the verb skips the root pre-run's resolution.
 func TestRunCLI_Switch_RefusesBadFlagsAndNeedsNoRepository(t *testing.T) {
 	tests := []struct {
@@ -80,6 +80,9 @@ func TestRunCLI_Switch_RefusesBadFlagsAndNeedsNoRepository(t *testing.T) {
 		{name: "neither direction", args: []string{"switch", "--socket", "/tmp/s", "--client", "c", "--tmux", "tmux"}, wantErr: "--next and --prev"},
 		{name: "both directions", args: []string{"switch", "--next", "--prev", "--socket", "/tmp/s", "--client", "c", "--tmux", "tmux"}, wantErr: "--next and --prev"},
 		{name: "missing client", args: []string{"switch", "--next", "--socket", "/tmp/s", "--tmux", "tmux"}, wantErr: "--client"},
+		{name: "follow missing session", args: []string{"follow", "--socket", "/tmp/s", "--tmux", "tmux"}, wantErr: "--session"},
+		{name: "follow missing socket", args: []string{"follow", "--session", "s", "--tmux", "tmux"}, wantErr: "--socket"},
+		{name: "follow missing tmux", args: []string{"follow", "--socket", "/tmp/s", "--session", "s"}, wantErr: "--tmux"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

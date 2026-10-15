@@ -262,12 +262,24 @@ func TestWindowOrder_RealTmux(t *testing.T) {
 		if got := agentNames(); !slices.Equal(got, agents) {
 			t.Errorf("agent windows = %v, want %v unchanged and in start order", got, agents)
 		}
-		marks, err := e.tmux.output("display-message", "-p", "-t", windowOfPane(t, e, overview.PaneID), "[#{@lyx_own}][#{@lyx_unseen}][#{@strand_color}]")
+		marks, err := e.tmux.output("display-message", "-p", "-t", windowOfPane(t, e, overview.PaneID), "[#{@lyx_own}][#{@lyx_unseen}][#{@strand_color}][#{@lyx_overview}]")
 		if err != nil {
 			t.Fatalf("read the overview window marks: %v", err)
 		}
-		if got := strings.TrimSpace(marks); got != "[1][][]" {
-			t.Errorf("overview window marks = %q, want the own marker alone", got)
+		if got := strings.TrimSpace(marks); got != "[1][][][1]" {
+			t.Errorf("overview window marks = %q, want the own and overview markers alone", got)
+		}
+		for _, w := range listed {
+			if w.Name == overviewWindowName || w.Name == shellWindowName || w.Hidden {
+				continue
+			}
+			agentMark, err := e.tmux.output("display-message", "-p", "-t", w.ID, "#{@lyx_overview}")
+			if err != nil {
+				t.Fatalf("read the overview marker of window %s: %v", w.Name, err)
+			}
+			if got := strings.TrimSpace(agentMark); got != "" {
+				t.Errorf("agent window %s @lyx_overview = %q, want it unset", w.Name, got)
+			}
 		}
 	})
 

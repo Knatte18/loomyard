@@ -258,6 +258,74 @@ func TestFollow_RealTmux(t *testing.T) {
 		}
 	})
 
+	socketPath := func() string {
+		t.Helper()
+		return display(session, "#{socket_path}")
+	}
+
+	var alpha, beta Strand
+	t.Run("FollowSessionTurnsFollowOnAndSelectsTheNewestAgent", func(t *testing.T) {
+		shell := shellWindow()
+		setFollow("off")
+		alpha = addOwn("alpha")
+		beta = addOwn("beta")
+		selectWindow(shell)
+
+		if err := FollowSession(e.cfg.Tmux, socketPath(), e.SessionName()); err != nil {
+			t.Fatalf("FollowSession: %v", err)
+		}
+
+		assertFollow("on")
+		assertAllClientsOn(windowOfPane(t, e, beta.PaneID), "FollowSession with live agents")
+	})
+
+	t.Run("FollowSessionWithOnlyTheOverviewSelectsIt", func(t *testing.T) {
+		shell := shellWindow()
+		remove(beta)
+		remove(alpha)
+		setFollow("off")
+		selectWindow(shell)
+
+		if err := FollowSession(e.cfg.Tmux, socketPath(), e.SessionName()); err != nil {
+			t.Fatalf("FollowSession: %v", err)
+		}
+
+		assertFollow("on")
+		overviewWindow := windowOfPane(t, e, overview.PaneID)
+		if got := display(overviewWindow, "#{"+overviewWindowOption+"}"); got != "1" {
+			t.Errorf("overview window %s = %q, want the real overview marker 1", overviewWindowOption, got)
+		}
+		assertAllClientsOn(overviewWindow, "FollowSession with only the overview")
+	})
+
+	t.Run("FollowSessionWithNoAgentOrOverviewSelectsNothing", func(t *testing.T) {
+		shell := shellWindow()
+		remove(overview)
+		setFollow("off")
+		selectWindow(shell)
+
+		if err := FollowSession(e.cfg.Tmux, socketPath(), e.SessionName()); err != nil {
+			t.Fatalf("FollowSession: %v", err)
+		}
+
+		assertFollow("on")
+		assertAllClientsOn(shell, "FollowSession with no agent or overview")
+	})
+
+	t.Run("FollowSessionOnAnUnknownSessionFailsAndChangesNothing", func(t *testing.T) {
+		setFollow("off")
+		before := currentWindow()
+
+		if err := FollowSession(e.cfg.Tmux, socketPath(), "no-such-session"); err == nil {
+			t.Error("FollowSession on an unknown session = nil, want an error")
+		}
+
+		assertFollow("off")
+		if got := currentWindow(); got != before {
+			t.Errorf("current window = %s, want %s unchanged", got, before)
+		}
+	})
+
 	t.Run("NoSessionIsAnError", func(t *testing.T) {
 		e.tmux.execHook = nil
 		if err := e.tmux.run("kill-session", "-t", exactSessionTarget(e.SessionName())); err != nil {

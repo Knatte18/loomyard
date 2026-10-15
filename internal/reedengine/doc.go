@@ -57,6 +57,11 @@
 // SwitchClient (switch.go) is the engine-less function behind `lyx reed switch`: it addresses a told server by socket path and issues list-sessions, display-message and switch-client on it, and nothing else.
 // It is the only reed code that issues switch-client.
 //
+// FollowSession (follow.go) is the engine-less function behind `lyx reed follow`: it addresses a told session of a told server by socket path and issues list-panes, set-option @lyx_follow on and, when a window is relevant, select-window, and nothing else.
+// It reads no working directory, config or state, so it picks the window from tmux facts alone: the highest-index window carrying @lyx_own and not @lyx_overview that holds a pane that is not dead, else the window carrying @lyx_overview, else none.
+// openOwnWindowLocked sets the window option @lyx_overview beside @lyx_own on an overview window, so that rule can tell the overview from an agent window; an overview window opened by an older lyx carries no marker and counts as an agent window, which it can win only when no other agent is live, the same outcome as the overview fallback.
+// A failed listing, which is how an unknown session answers, returns an error before any write, a failed option write returns before any select, and a failed select returns an error naming the window.
+//
 // Every strand pane carries the user options @strand (the role segment of its name, or the full name when it does not parse) and @strand_color (the tmux color of its segment, unset when it has none),
 // and the strand window carries @lyx_strands.
 // Launch sets the pane options and boot marks the strand window; every attach pre-flight marks the window and re-asserts both pane options on every strand bound to a live pane, so a session or strand spawned by an older lyx gets them at its next attach.
@@ -358,7 +363,7 @@
 // A new agent window is selected by openOwnWindowLocked, for an own-window strand and never the overview, when newAgentWindowSelected holds: always for a Focus strand, never for one whose display sets only KeepViewer, otherwise exactly when the follow state reads on; it then carries no @lyx_unseen.
 // With follow on, a new agent window takes the viewer wherever it is, the shell included; with follow off, it leaves the viewer where it is.
 // Opening a window never changes the follow state.
-// FollowRun is the one engine operation that turns follow on: under the operation lock it sets the option on and selects the relevant window, the newest live agent window, else the overview, else nothing, for whichever client views the session.
+// FollowRun is the one engine operation that turns follow on, beside the engine-less FollowSession: under the operation lock it sets the option on and selects the relevant window, the newest live agent window, else the overview, else nothing, for whichever client views the session.
 // It persists no state, a failed option write is logged and the select still runs, and AddStrand, ReplaceStrand, Resume and Up never call it.
 // Every client of a session shares its current window, so the one select-window moves each attached client.
 // A viewed window ending, by RemoveStrand, by ReplaceStrand and by reconcile ending an orphan own window (selectRelevantWindowIfCurrentLocked), moves a viewer on it to the relevant window among those left, never the shell, and with none left to tmux; this move neither reads nor changes the follow state.
