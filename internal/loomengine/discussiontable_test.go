@@ -129,7 +129,7 @@ func TestDiscussionTable(t *testing.T) {
 				for _, advisor := range discussionTableAdvisors[:advisors] {
 					wantNotes = append(wantNotes, DiscussionAdvisorNotes(layout, advisor.Name))
 				}
-				if want := []string{DiscussionDecisionRecord(layout), DiscussionSupportLog(layout)}; !slices.Equal(chair.Outputs, want) {
+				if want := []string{DiscussionDecisionRecord(layout), DiscussionSupportLog(layout), DiscussionRelevant(layout)}; !slices.Equal(chair.Outputs, want) {
 					t.Errorf("chair outputs = %v; want %v", chair.Outputs, want)
 				}
 				if !slices.Equal(chair.Inputs, wantNotes) {
@@ -162,6 +162,9 @@ func TestDiscussionTable(t *testing.T) {
 
 				if got := table.Values["specs_dir"]; got != discussionTableSpecsDir {
 					t.Errorf("table.Values[\"specs_dir\"] = %q; want %q", got, discussionTableSpecsDir)
+				}
+				if got, want := table.Values["relevant_path"], DiscussionRelevant(layout); got != want {
+					t.Errorf("table.Values[\"relevant_path\"] = %q; want %q", got, want)
 				}
 				if err := table.Validate(stencilsDir); err != nil {
 					t.Fatalf("table.Validate() = %v; want nil", err)
