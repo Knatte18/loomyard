@@ -728,12 +728,13 @@ func TestPriorityRoundTrip(t *testing.T) {
 		{"run status", func() error { return b.SetRunStatus("lo", boardengine.RunStatus("running", "Webster")) }},
 		{"clear status", func() error { return b.SetStatus("lo", nil) }},
 		{"promote", func() error { _, err := b.Promote("hi"); return err }},
-		{"set-deps", func() error { return b.SetDeps("lo", []string{"hi"}) }},
+		{"set-deps", func() error { _, err := b.SetDeps("lo", []string{"hi"}); return err }},
 		{"batch", func() error {
-			return b.UpsertTasksBatch([]map[string]any{{"slug": "hi", "brief": "batched"}, {"slug": "lo", "brief": "batched"}})
+			_, err := b.UpsertTasksBatch([]map[string]any{{"slug": "hi", "brief": "batched"}, {"slug": "lo", "brief": "batched"}})
+			return err
 		}},
 		{"merge", func() error {
-			_, err := b.MergeTasks([]string{"gone"}, map[string]any{"slug": "hi", "body": "merged"}, &boardengine.MergeStatusUpdate{Selector: "lo", Status: strPtr("active")})
+			_, _, err := b.MergeTasks([]string{"gone"}, map[string]any{"slug": "hi", "body": "merged"}, &boardengine.MergeStatusUpdate{Selector: "lo", Status: strPtr("active")})
 			return err
 		}},
 		{"prune", func() error { _, err := b.Prune(true); return err }},
@@ -750,7 +751,7 @@ func TestPriorityRoundTrip(t *testing.T) {
 		}
 	}
 
-	if _, err := b.MergeTasks(nil, map[string]any{"slug": "hi", "priority": "urgent"}, nil); err == nil || !strings.Contains(err.Error(), `"urgent"`) {
+	if _, _, err := b.MergeTasks(nil, map[string]any{"slug": "hi", "priority": "urgent"}, nil); err == nil || !strings.Contains(err.Error(), `"urgent"`) {
 		t.Errorf("MergeTasks(priority urgent) err = %v; want a refusal naming the value", err)
 	}
 
@@ -800,7 +801,7 @@ func TestEntryDates(t *testing.T) {
 			if err := b.SetStatus("a", nil); err != nil {
 				return err
 			}
-			_, err := b.MergeTasks([]string{"a"}, map[string]any{"slug": "c", "title": "C", "labels": bugLabels}, nil)
+			_, _, err := b.MergeTasks([]string{"a"}, map[string]any{"slug": "c", "title": "C", "labels": bugLabels}, nil)
 			return err
 		}, "c", backfilled, start.Add(5 * time.Hour)},
 		{"new note", func() error {

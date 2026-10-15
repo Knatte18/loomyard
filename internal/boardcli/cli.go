@@ -460,7 +460,7 @@ Example:
 				tasks[i] = m
 			}
 
-			if err := board().UpsertTasksBatch(tasks); err != nil {
+			if _, err := board().UpsertTasksBatch(tasks); err != nil {
 				return outputError(out, err.Error())
 			}
 			return outputSuccessWithCount(out, len(tasks), strings.Join(notices, "\n"))
@@ -745,7 +745,7 @@ Example:
 				if err != nil {
 					return outputError(out, err.Error())
 				}
-				task, err := board().MergeTasks(removeSlugs, upsertFields, setStatusPtr)
+				task, _, err := board().MergeTasks(removeSlugs, upsertFields, setStatusPtr)
 				if err != nil {
 					return outputError(out, err.Error())
 				}
@@ -803,7 +803,7 @@ Example:
 				dependsOn = []string{}
 			}
 
-			if err := board().SetDeps(selector, dependsOn); err != nil {
+			if _, err := board().SetDeps(selector, dependsOn); err != nil {
 				return outputError(out, err.Error())
 			}
 			return outputSuccess(out)
