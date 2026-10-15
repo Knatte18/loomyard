@@ -4,6 +4,7 @@ package claudeengine
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -705,5 +706,53 @@ func TestBuildDenyNotice_SentenceContent(t *testing.T) {
 	}
 	if !strings.Contains(nonFork, "final message") {
 		t.Errorf("notice = %q; want the AskUserQuestion final-message channel", nonFork)
+	}
+}
+
+// TestBuildSettings_MatchesGolden pins the settings document and deny notice byte for byte across every combination of the six deny inputs.
+func TestBuildSettings_MatchesGolden(t *testing.T) {
+	t.Parallel()
+	type golden struct {
+		Settings string `json:"settings"`
+		Notice   string `json:"notice"`
+	}
+	raw, err := os.ReadFile(filepath.Join("testdata", "settings-golden.json"))
+	if err != nil {
+		t.Fatalf("read golden: %v", err)
+	}
+	var want map[string]golden
+	if err := json.Unmarshal(raw, &want); err != nil {
+		t.Fatalf("unmarshal golden: %v", err)
+	}
+
+	rendered := map[string]bool{}
+	for mask := 0; mask < 64; mask++ {
+		bit := func(position int) bool { return mask&(1<<position) != 0 }
+		interactive, fork, allowAgent := bit(0), bit(1), bit(2)
+		cfg := shuttleengine.Config{ClaudeDenyAgentTool: bit(3), ClaudeDenyAskUserQuestion: bit(4), ClaudeDenyPython: bit(5)}
+		label := fmt.Sprintf("interactive=%t fork=%t allowAgent=%t denyAgent=%t denyAsk=%t denyPython=%t",
+			interactive, fork, allowAgent, cfg.ClaudeDenyAgentTool, cfg.ClaudeDenyAskUserQuestion, cfg.ClaudeDenyPython)
+		rendered[label] = true
+
+		entry, ok := want[label]
+		if !ok {
+			t.Errorf("golden lacks %q", label)
+			continue
+		}
+		settings, err := buildSettings("/c/run/events.jsonl", interactive, cfg, fork, allowAgent, "")
+		if err != nil {
+			t.Fatalf("buildSettings(%s): %v", label, err)
+		}
+		if string(settings) != entry.Settings {
+			t.Errorf("settings differ for %q:\ngot  %s\nwant %s", label, settings, entry.Settings)
+		}
+		if notice := buildDenyNotice(interactive, cfg, fork, allowAgent); notice != entry.Notice {
+			t.Errorf("notice differs for %q:\ngot  %q\nwant %q", label, notice, entry.Notice)
+		}
+	}
+	for label := range want {
+		if !rendered[label] {
+			t.Errorf("golden holds %q, which the test does not render", label)
+		}
 	}
 }
