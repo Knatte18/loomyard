@@ -59,7 +59,7 @@ func resolveModelChoice(raw string, reg modelspec.Registry) (model, effort, vers
 	return resolved.Model, resolved.Params["effort"], resolved.Params["version"], nil
 }
 
-// DiscussionTable builds the seatengine.Table of one Discussion-Write run: a lead that writes the decision record and the support log, and one advisor per entry of cfg.DiscussionAdvisors, named by the entry, that writes its notes file for the lead to read.
+// DiscussionTable builds the seatengine.Table of one Discussion-Write run: a lead that writes the decision record, the support log and the relevant list, and one advisor per entry of cfg.DiscussionAdvisors, named by the entry, that writes its notes file for the lead to read.
 // When cfg.DiscussionLenses is set the lead alone is authorized to spawn fork subagents and carries the twill lens review directive, whose fan is resolved through burler.yaml under dirs; the advisors never fork.
 // The seats' opening stencils are read at call time from stencilsDir, the lead's prompt points at the format spec under specsDir, and every seat's parent directive is rendered by the seat engine from its geometry.
 // The table carries no gate; the producer entry sets it.
@@ -126,7 +126,7 @@ func DiscussionTable(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDi
 		Effort:        chairEffort,
 		Version:       chairVersion,
 		Inputs:        notes,
-		Outputs:       []string{DiscussionDecisionRecord(layout), DiscussionSupportLog(layout)},
+		Outputs:       []string{DiscussionDecisionRecord(layout), DiscussionSupportLog(layout), DiscussionRelevant(layout)},
 		Skills:        discussionSkills,
 		Values:        leadValues,
 		ForkSubagents: forks,
@@ -142,6 +142,7 @@ func DiscussionTable(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDi
 			"specs_dir":            specsDir,
 			"decision_record_path": DiscussionDecisionRecord(layout),
 			"support_log_path":     DiscussionSupportLog(layout),
+			"relevant_path":        DiscussionRelevant(layout),
 			"mode_rules":           discussionModeRules(!cfg.DiscussionInteractive, len(cfg.DiscussionAdvisors) > 0),
 			"pattern_directive":    patternDirective,
 			friction.MarkerName:    frictionDirective,

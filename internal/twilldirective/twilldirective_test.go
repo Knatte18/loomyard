@@ -41,6 +41,7 @@ func filledValues() Values {
 		SelfCheckCommand:      "lyx check --now",
 		FinalSelfCheckCommand: "lyx check --final",
 		DispositionPlace:      "the PLACE section",
+		RelaunchFiles:         "RELAUNCH-FILES",
 	}
 }
 
@@ -51,6 +52,7 @@ func TestDirective_RendersEveryValueVerbatim(t *testing.T) {
 	withWriterFork := filledValues()
 	withWriterFork.WriterFork = filledWriterFork()
 	withWriterFork.CriticalJudge = filledCriticalJudge()
+	withWriterFork.RelaunchFiles = ""
 	tests := []struct {
 		name   string
 		values Values
@@ -70,6 +72,7 @@ func TestDirective_RendersEveryValueVerbatim(t *testing.T) {
 				"died before its Agent call",
 				"REJECTION-RULE-SENTENCE",
 				"the PLACE section",
+				"finishes writing RELAUNCH-FILES per",
 			},
 			wantNots: []string{"fork0", "GOVERNING-INPUT", "DISPUTE-EVIDENCE"},
 		},
@@ -85,7 +88,7 @@ func TestDirective_RendersEveryValueVerbatim(t *testing.T) {
 				"GOVERNING-INPUT",
 				"DISPUTE-EVIDENCE",
 			},
-			wantNots: []string{"died before its Agent call", "REJECTION-RULE-SENTENCE"},
+			wantNots: []string{"died before its Agent call", "REJECTION-RULE-SENTENCE", "RELAUNCH-FILES"},
 			inOrder:  []string{"SPAWN-POINT-SENTENCE", "Spawn one fork, fork0"},
 		},
 	}
@@ -164,6 +167,7 @@ func TestDirective_MissingValueNamesTheMarker(t *testing.T) {
 		{"FilesDir", func(v *Values) { v.WriterFork = filledWriterFork(); v.WriterFork.FilesDir = "" }, "files_dir"},
 		{"FormatStep with a writer fork", func(v *Values) { v.WriterFork = filledWriterFork(); v.FormatStep = "" }, "format_step"},
 		{"SelfCheckCommand without a writer fork", func(v *Values) { v.SelfCheckCommand = "" }, "self_check_command"},
+		{"RelaunchFiles without a writer fork", func(v *Values) { v.RelaunchFiles = "" }, "relaunch_files"},
 		{"SelfCheckStep without a writer fork", func(v *Values) { v.SelfCheckStep = "" }, "self_check_step"},
 	}
 	for _, tt := range tests {

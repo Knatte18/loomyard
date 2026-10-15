@@ -60,6 +60,8 @@ type Values struct {
 	FinalSelfCheckCommand string
 	// DispositionPlace names where the writer records the lens review.
 	DispositionPlace string
+	// RelaunchFiles is the phrase naming the files a relaunched writer finishes writing, rendered verbatim with the host's own backticks; read only when WriterFork is nil.
+	RelaunchFiles string
 	// WriterFork, when set, has one fork write the reviewed files and replaces the relaunch paragraphs; nil asks for no writer fork.
 	WriterFork *WriterFork
 	// CriticalJudge, when set, has the writer judge each finding as a critical fixer; nil asks for the plain judge, which needs RejectionRule.
@@ -117,7 +119,7 @@ func Directive(stencilsDir string, v Values) (string, error) {
 		}
 		values["writer_fork"] = part + "\n\n"
 	} else {
-		part, err := fillPart(stencilsDir, relaunchStencil, values, nil)
+		part, err := fillPart(stencilsDir, relaunchStencil, mergedValues(values, map[string]string{"relaunch_files": v.RelaunchFiles}), nil)
 		if err != nil {
 			return "", err
 		}

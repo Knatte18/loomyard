@@ -296,6 +296,7 @@ func (c *loomCLI) wireLightweight(location *lyxcwd.Location, cwd string) {
 	c.env.StencilsDir = fabricengine.StencilsDir(location.HubPath)
 	c.env.DecisionRecordPath = loomengine.DiscussionDecisionRecord(location)
 	c.env.SupportLogPath = loomengine.DiscussionSupportLog(location)
+	c.env.RelevantPath = loomengine.DiscussionRelevant(location)
 	c.env.DescriptionPath = summaryparser.Path(loomengine.LandingDir(location))
 	c.env.Rework.ReadCommitted = committedAnchoredReader(location)
 	if c.recipe == shedrun.RecipeDarn {
@@ -674,6 +675,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		StatusLockPath:     statusLockPath,
 		DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),
 		SupportLogPath:     loomengine.DiscussionSupportLog(location),
+		RelevantPath:       loomengine.DiscussionRelevant(location),
 		ParentName:         c.parentName,
 		WebsterDeps:        runDeps,
 		PlanIndex:          websterGeom.Index,

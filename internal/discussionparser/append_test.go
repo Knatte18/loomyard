@@ -56,15 +56,22 @@ func TestAppendDecision_AppendsAtEndOfDecisionsSection(t *testing.T) {
 		"## Decisions\n\n```\n## Not a heading\n```\n", 1)
 
 	tests := []struct {
-		name  string
-		prior string
-		want  string
+		name     string
+		prior    string
+		relevant string
+		want     string
 	}{
 		{
 			// The entry follows the section's last non-blank line; the blank line before the next H2 stays.
 			name:  "followed by further sections",
 			prior: middleBefore + middleAfter,
 			want:  strings.TrimSuffix(middleBefore, "\n") + wantEntry + "\n" + middleAfter,
+		},
+		{
+			name:     "a malformed relevant list beside the record is ignored",
+			prior:    middleBefore + middleAfter,
+			relevant: "a stray paragraph line\n",
+			want:     strings.TrimSuffix(middleBefore, "\n") + wantEntry + "\n" + middleAfter,
 		},
 		{name: "decisions is the last section", prior: decisionsLast.String(), want: decisionsLast.String() + wantEntry},
 		{name: "last line has no trailing newline", prior: unterminated, want: unterminated + "\n" + wantEntry},
@@ -77,7 +84,13 @@ func TestAppendDecision_AppendsAtEndOfDecisionsSection(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			decisionPath, supportPath := writeFixture(t, t.TempDir(), tt.prior, "log")
+			dir := t.TempDir()
+			decisionPath, supportPath := writeFixture(t, dir, tt.prior, "log")
+			if tt.relevant != "" {
+				if err := os.WriteFile(filepath.Join(dir, "relevant.md"), []byte(tt.relevant), 0o644); err != nil {
+					t.Fatalf("write relevant list: %v", err)
+				}
+			}
 
 			findings, err := AppendDecision(decisionPath, supportPath, addedDecision())
 			if err != nil || len(findings) != 0 {

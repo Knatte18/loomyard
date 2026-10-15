@@ -130,7 +130,7 @@ func TestSmokeParentReview_NoticeReachesTheWriterPaneAndApproveLetsTheRunThrough
 	prCfg.ReviewerLive = nil
 	reviewGate, reviewFinal := parentreview.NewGate(prCfg)
 	gates := shuttleengine.GateSpec{
-		{Name: "discussion", Gate: loomshed.NewDiscussionGate(decisionRecordPath, supportLogPath), Attempts: 3},
+		{Name: "discussion", Gate: loomshed.NewDiscussionGate(decisionRecordPath, supportLogPath, filepath.Join(filepath.Dir(supportLogPath), "relevant.md")), Attempts: 3},
 		{Name: "parent-review", Gate: reviewGate, Final: reviewFinal, Attempts: 1, PassOnCap: true},
 	}
 	spec := shuttleengine.Spec{

@@ -52,7 +52,7 @@ func writeStencilFile(t *testing.T, dir, name, content string) {
 	}
 }
 
-// newTestEnv builds an Env whose every path field is an absolute path derived from a single t.TempDir(), one subdirectory per field: a directory field (Cwd, WorktreeRoot, StencilsDir, SpecsDir, RunRoot, AnchorPath, ScratchDir) is created with os.MkdirAll, while a file field (StatusPath, StatusLockPath, DecisionRecordPath, SupportLogPath, PrimeLock.Path) is left as a joined path nobody creates.
+// newTestEnv builds an Env whose every path field is an absolute path derived from a single t.TempDir(), one subdirectory per field: a directory field (Cwd, WorktreeRoot, StencilsDir, SpecsDir, RunRoot, AnchorPath, ScratchDir) is created with os.MkdirAll, while a file field (StatusPath, StatusLockPath, DecisionRecordPath, SupportLogPath, RelevantPath, PrimeLock.Path) is left as a joined path nobody creates.
 // It fills Shuttle and Burler with shedfake's fakes and WebsterRun with this file's fake, fills WebsterDeps with shedfake.WebsterSeams, fills DiscussionTable with a closure returning a one-chair seatengine.Table over one absolute output path under the same temp root, fills CommitDiscussion with a closure returning nil, fills PlanTable with a closure returning a one-lead seatengine.Table over one absolute output path under the same temp root, fills CommitPlan with a closure returning nil, leaves Landing zero, and leaves Now nil.
 //
 // It also fills the six batten fields: a non-empty Slug, CreateWorktree returning nil, InnerRun
@@ -99,6 +99,7 @@ func newTestEnv(t *testing.T) Env {
 		RunRoot:            mustMkdir("anchor/run-root"),
 		DecisionRecordPath: filepath.Join(dir, "decision-record.md"),
 		SupportLogPath:     filepath.Join(dir, "support-log.md"),
+		RelevantPath:       filepath.Join(dir, "relevant.md"),
 		Shuttle:            &shedfake.Shuttle{},
 		Burler:             &shedfake.BurlerHalfRunner{},
 		Seats:              &shedfake.SeatRunner{},

@@ -116,7 +116,7 @@ func TestNewDiscussionGate(t *testing.T) {
 		dir := t.TempDir()
 		decisionRecordPath, supportLogPath := writeDiscussionFixture(t, dir, validDecisionRecord, "support log")
 
-		gate := NewDiscussionGate(decisionRecordPath, supportLogPath)
+		gate := NewDiscussionGate(decisionRecordPath, supportLogPath, filepath.Join(dir, "relevant.md"))
 		result, err := gate()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil", err)
@@ -129,7 +129,7 @@ func TestNewDiscussionGate(t *testing.T) {
 		}
 	})
 
-	// The gate reads the decision record and the support log only, so an advisor's notes file beside them is never judged.
+	// The gate reads the decision record, the support log and the relevant list, so an advisor's notes file beside them is never judged.
 	t.Run("AdvisorNotesAreNotRead", func(t *testing.T) {
 		dir := t.TempDir()
 		decisionRecordPath, supportLogPath := writeDiscussionFixture(t, dir, validDecisionRecord, "support log")
@@ -137,7 +137,7 @@ func TestNewDiscussionGate(t *testing.T) {
 			t.Fatalf("write advisor notes: %v", err)
 		}
 
-		result, err := NewDiscussionGate(decisionRecordPath, supportLogPath)()
+		result, err := NewDiscussionGate(decisionRecordPath, supportLogPath, filepath.Join(dir, "relevant.md"))()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil", err)
 		}
@@ -152,7 +152,7 @@ func TestNewDiscussionGate(t *testing.T) {
 		decisionRecordPath, supportLogPath := writeDiscussionFixture(t, dir, withoutGoal, "support log")
 
 		buf := logcapture.Capture(t)
-		gate := NewDiscussionGate(decisionRecordPath, supportLogPath)
+		gate := NewDiscussionGate(decisionRecordPath, supportLogPath, filepath.Join(dir, "relevant.md"))
 		result, err := gate()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil", err)
@@ -177,6 +177,27 @@ func TestNewDiscussionGate(t *testing.T) {
 		}
 	})
 
+	// A malformed relevant list fails the gate alongside the decision record's own findings, which come first.
+	t.Run("RelevantFindingsFollowTheRecordFindings", func(t *testing.T) {
+		dir := t.TempDir()
+		withoutGoal := strings.Replace(validDecisionRecord, "## Goal\n\nGoal text.\n\n", "", 1)
+		decisionRecordPath, supportLogPath := writeDiscussionFixture(t, dir, withoutGoal, "support log")
+		relevantPath := filepath.Join(dir, "relevant.md")
+		if err := os.WriteFile(relevantPath, []byte("a stray paragraph line\n"), 0o644); err != nil {
+			t.Fatalf("write relevant list: %v", err)
+		}
+
+		result, err := NewDiscussionGate(decisionRecordPath, supportLogPath, relevantPath)()
+		if err != nil {
+			t.Fatalf("gate() error = %v; want nil", err)
+		}
+		sectionAt := strings.Index(result.Findings, "discussion-section-missing")
+		strayAt := strings.Index(result.Findings, "relevant-stray-line")
+		if result.Passed || sectionAt < 0 || strayAt < sectionAt {
+			t.Errorf("gate() = %+v; want a failure naming discussion-section-missing before relevant-stray-line", result)
+		}
+	})
+
 	// ErrorReturnsRatherThanAFailedGate is the case a validator error is returned rather than reported
 	// as a failed gate: a decision record that is a directory is the error fixture the existing
 	// validate tests already use (discussionvalidate_test.go's
@@ -189,7 +210,7 @@ func TestNewDiscussionGate(t *testing.T) {
 			t.Fatalf("mkdir decision record: %v", err)
 		}
 
-		gate := NewDiscussionGate(decisionRecordPath, supportLogPath)
+		gate := NewDiscussionGate(decisionRecordPath, supportLogPath, filepath.Join(dir, "relevant.md"))
 		result, err := gate()
 		if err == nil {
 			t.Fatalf("gate() error = nil; want a non-nil error (decision record path is a directory)")

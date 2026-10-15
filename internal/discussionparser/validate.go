@@ -1,5 +1,6 @@
-// validate.go implements Validate, the discussion gate's complete machine check set: both
-// `_lyx/discussion/` files exist, and the decision record carries every required H2 section.
+// validate.go implements Validate, the discussion gate's decision record and support log check:
+// both `_lyx/discussion/` files exist, and the decision record carries every required H2 section.
+// The loom gate's other check is CheckRelevant, and a darn run runs Validate alone.
 // It backs both gated discussion sites -- Discussion-Write's own gate and Discussion-Burler-Fix's own
 // fix-step gate, both built by internal/loomshed's NewDiscussionGate -- and the standalone
 // `lyx loom validate-discussion` verb, per the Gate Self-Check Parity Invariant, so extracting it
@@ -50,6 +51,7 @@ var requiredDiscussionSections = []string{
 
 // Validate checks that decisionRecordPath and supportLogPath both exist, and that
 // decisionRecordPath carries every section in requiredDiscussionSections.
+// It never reads the relevant list, which CheckRelevant checks.
 //
 // The checks run in a fixed order, and an error from an earlier check always wins over a finding a
 // later check would have produced, because the later check never runs: first, os.Stat

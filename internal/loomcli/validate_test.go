@@ -70,7 +70,8 @@ var requiredDiscussionSectionsForTest = []string{
 }
 
 // decisionRecordFixture writes decisionContent and supportContent under dir, and returns a *loomCLI
-// wired only with the two discussion path fields validateDiscussionCmd's RunE reads.
+// wired only with the three discussion path fields validateDiscussionCmd's RunE reads.
+// RelevantPath is relevant.md under dir, left unwritten.
 func decisionRecordFixture(t *testing.T, dir, decisionContent, supportContent string, writeSupport bool) *loomCLI {
 	t.Helper()
 
@@ -88,7 +89,16 @@ func decisionRecordFixture(t *testing.T, dir, decisionContent, supportContent st
 	return &loomCLI{env: shedrecipe.Env{
 		DecisionRecordPath: decisionPath,
 		SupportLogPath:     supportPath,
+		RelevantPath:       filepath.Join(dir, "relevant.md"),
 	}}
+}
+
+// writeStrayRelevant writes a relevant list holding one paragraph line, which CheckRelevant refuses as a stray line, to path.
+func writeStrayRelevant(t *testing.T, path string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte("a stray paragraph line\n"), 0o644); err != nil {
+		t.Fatalf("write relevant list: %v", err)
+	}
 }
 
 // allDiscussionSectionsContent returns a decision record body carrying every heading in
@@ -118,7 +128,7 @@ func darnRecordFixture(t *testing.T, dir, record string, versions [][]byte, comm
 	return c
 }
 
-//testtiming:keep pins validate-discussion's exit code, ok value and findings key and text over a clean record, an absent support log, a missing heading and an unreadable decision record, and a darn run's commit count, dropped added entry and commit failure way forward; the parity test compares verdicts alone
+//testtiming:keep pins validate-discussion's exit code, ok value and findings key and text over a clean record, an absent support log, a missing heading, an unreadable decision record, a malformed relevant list and an unreadable relevant list, and a darn run's commit count, dropped added entry, commit failure way forward and disregard of a malformed relevant list; the parity test compares verdicts alone
 func TestValidateDiscussionCmd(t *testing.T) {
 	var commits int
 	tests := []struct {
@@ -195,6 +205,41 @@ func TestValidateDiscussionCmd(t *testing.T) {
 			wantOK:       false,
 			wantFindings: true,
 			wantContains: "## Constraints",
+		},
+		{
+			name: "Findings_RelevantMalformed",
+			build: func(dir string) *loomCLI {
+				c := decisionRecordFixture(t, dir, allDiscussionSectionsContent(), "support log body", true)
+				writeStrayRelevant(t, c.env.RelevantPath)
+				return c
+			},
+			wantExit:     1,
+			wantFindings: true,
+			wantContains: "relevant-stray-line",
+		},
+		{
+			name: "Darn_MalformedRelevantIgnored",
+			build: func(dir string) *loomCLI {
+				record := allDiscussionSectionsContent() + addedDecisionEntryForTest
+				c := darnRecordFixture(t, dir, record, [][]byte{[]byte(record)}, &commits, nil)
+				writeStrayRelevant(t, c.env.RelevantPath)
+				return c
+			},
+			wantExit:    0,
+			wantOK:      true,
+			wantCommits: 1,
+		},
+		{
+			name: "IOFault_RelevantIsDirectory",
+			build: func(dir string) *loomCLI {
+				c := decisionRecordFixture(t, dir, allDiscussionSectionsContent(), "support log body", true)
+				if err := os.Mkdir(c.env.RelevantPath, 0o755); err != nil {
+					t.Fatalf("mkdir relevant list: %v", err)
+				}
+				return c
+			},
+			wantExit:     1,
+			wantContains: "loom: validate discussion: ",
 		},
 		{
 			name: "IOFault_DecisionRecordIsDirectory",

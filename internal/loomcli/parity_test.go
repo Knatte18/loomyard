@@ -134,6 +134,26 @@ func TestGateParity_DiscussionGate(t *testing.T) {
 			want: verdictError,
 		},
 		{
+			name: "Stuck_RelevantMalformed",
+			build: func(t *testing.T, dir string) *loomCLI {
+				c := decisionRecordFixture(t, dir, allDiscussionSectionsContent(), "support log body", true)
+				writeStrayRelevant(t, c.env.RelevantPath)
+				return c
+			},
+			want: verdictStuck,
+		},
+		{
+			name: "Error_RelevantIsDirectory",
+			build: func(t *testing.T, dir string) *loomCLI {
+				c := decisionRecordFixture(t, dir, allDiscussionSectionsContent(), "support log body", true)
+				if err := os.Mkdir(c.env.RelevantPath, 0o755); err != nil {
+					t.Fatalf("mkdir relevant list: %v", err)
+				}
+				return c
+			},
+			want: verdictError,
+		},
+		{
 			name: "Darn_Clean",
 			build: func(t *testing.T, dir string) *loomCLI {
 				record := allDiscussionSectionsContent() + addedDecisionEntryForTest
@@ -155,7 +175,7 @@ func TestGateParity_DiscussionGate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			c := tc.build(t, t.TempDir())
 
-			gate := loomshed.NewDiscussionGate(c.env.DecisionRecordPath, c.env.SupportLogPath)
+			gate := loomshed.NewDiscussionGate(c.env.DecisionRecordPath, c.env.SupportLogPath, c.env.RelevantPath)
 			if c.env.DiscussionHistory != nil {
 				gate = loomshed.NewDarnDiscussionGate(c.env.DecisionRecordPath, c.env.SupportLogPath, c.env.DiscussionHistory, c.env.CommitDiscussion)
 			}

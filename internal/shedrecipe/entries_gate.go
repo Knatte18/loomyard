@@ -27,6 +27,7 @@ var gateEntryKeys = []string{"name", "attempts", "pass_on_cap"}
 //
 // Each element carries a required "name", resolved against a closed six-value vocabulary:
 // "discussion" requires env.DecisionRecordPath and env.SupportLogPath to pass requireAbsRoot and returns loomshed.NewDiscussionGate over them, or, when env.DiscussionHistory is set, loomshed.NewDarnDiscussionGate over them, the history seam and a non-nil env.CommitDiscussion;
+// on a loom run, where env.DiscussionHistory is unset, "discussion" also requires env.RelevantPath to pass requireAbsRoot and passes it to the gate;
 // "plan" requires env.AnchorPath, env.WorktreeRoot and a non-nil env.PlanIndex and returns loomshed.NewPlanGate over them;
 // "rework-plan" requires the same two roots and index plus a non-nil env.Rework.ReadCommitted and returns loomshed.NewReworkPlanGate over them;
 // "description" requires env.DescriptionPath to pass requireAbsRoot and returns landingshed.NewDescriptionGate over it;
@@ -185,7 +186,10 @@ func resolvePlainGateClosure(entry, row string, index int, name string, env Env)
 			}
 			return loomshed.NewDarnDiscussionGate(env.DecisionRecordPath, env.SupportLogPath, env.DiscussionHistory, env.CommitDiscussion), nil
 		}
-		return loomshed.NewDiscussionGate(env.DecisionRecordPath, env.SupportLogPath), nil
+		if err := requireAbsRoot(entry, "RelevantPath", env.RelevantPath); err != nil {
+			return nil, err
+		}
+		return loomshed.NewDiscussionGate(env.DecisionRecordPath, env.SupportLogPath, env.RelevantPath), nil
 	case "plan":
 		if err := requireAbsRoot(entry, "AnchorPath", env.AnchorPath); err != nil {
 			return nil, err

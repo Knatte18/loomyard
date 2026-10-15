@@ -15,7 +15,7 @@ import (
 // TestDiscussionPaths pins the discussion directory, the decision record, the support log and the advisor notes at the anchor, and that DiscussionDirRel is the relative form DiscussionDir composes from.
 // The anchored row's AnchorRel differs from "." to prove the accessors follow the anchored subpath, not the bare worktree root; the unanchored row's anchor path equals the worktree path.
 //
-//testtiming:keep pins the exact discussion directory, decision record and support log paths at an anchored and an unanchored location, which the covering spec tests only pass through unasserted
+//testtiming:keep pins the exact discussion directory, decision record, support log and relevant list paths at an anchored and an unanchored location, which the covering spec tests only pass through unasserted
 func TestDiscussionPaths(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -48,6 +48,9 @@ func TestDiscussionPaths(t *testing.T) {
 			}
 			if got, want := DiscussionSupportLog(l), filepath.Join(wantDir, "support-log.md"); got != want {
 				t.Errorf("DiscussionSupportLog() = %q; want %q", got, want)
+			}
+			if got, want := DiscussionRelevant(l), filepath.Join(wantDir, "relevant.md"); got != want {
+				t.Errorf("DiscussionRelevant() = %q; want %q", got, want)
 			}
 			if got, want := DiscussionAdvisorNotes(l, "critic"), filepath.Join(wantDir, "advisor-critic.md"); got != want {
 				t.Errorf("DiscussionAdvisorNotes(critic) = %q; want %q", got, want)
