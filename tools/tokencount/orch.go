@@ -5,11 +5,11 @@ package main
 import (
 	"fmt"
 	"io"
-	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // orchRole is the role of the hub orchestrator's sessions.
@@ -56,9 +56,10 @@ type orchMessage struct {
 	Cost  Cost
 }
 
-// CountOrch tallies the orch sessions in the prime's project directory dir, each session whose latest custom title has role orch, and their sub-agents, charging every message to runs.
-// Usage is counted once per message id, and only messages timestamped within the span of the runs' active windows count.
-func CountOrch(dir string, runs []RunTally) (OrchTally, error) {
+// CountOrch tallies the orch sessions the engines in reads recorded under the prime worktree, each session whose strand name has role orch, and their forks, charging every message to runs.
+// Usage is counted once per engine and message key, and only messages timestamped within the span of the runs' active windows count.
+// It fails when an engine fails to locate or read a session.
+func CountOrch(reads ReadSet, prime string, runs []RunTally) (OrchTally, error) {
 	tally := OrchTally{Charges: map[string]*OrchCharge{}}
 	slugPatterns := map[string]*regexp.Regexp{}
 	for _, run := range runs {
@@ -78,39 +79,28 @@ func CountOrch(dir string, runs []RunTally) (OrchTally, error) {
 		return tally, nil
 	}
 
-	sessions, err := filepath.Glob(filepath.Join(dir, "*.jsonl"))
+	located, err := locateSessions(reads, prime)
 	if err != nil {
 		return OrchTally{}, err
 	}
-	sort.Strings(sessions)
 	seen := map[string]bool{}
-	for _, session := range sessions {
-		title, err := latestTitle(session)
+	for _, l := range located {
+		session, err := readLocated(reads, l)
 		if err != nil {
 			return OrchTally{}, err
 		}
-		if roleOf(title) != orchRole {
+		if roleOf(session.Main.Name) != orchRole {
 			continue
 		}
-		_, messages, err := tally.readTranscript(session, seen)
-		if err != nil {
-			return OrchTally{}, err
-		}
+		pricer := reads[l.engine].Pricer
+		_, messages := tally.readTranscript(l.engine, pricer, session.Main, seen)
 		tally.Main.add(messages)
 		for _, m := range messages {
 			tally.chargeByTime(m, runs)
 		}
 
-		subs, err := filepath.Glob(filepath.Join(strings.TrimSuffix(session, ".jsonl"), "subagents", "*.jsonl"))
-		if err != nil {
-			return OrchTally{}, err
-		}
-		sort.Strings(subs)
-		for _, sub := range subs {
-			prompt, messages, err := tally.readTranscript(sub, seen)
-			if err != nil {
-				return OrchTally{}, err
-			}
+		for _, forkRead := range session.Forks {
+			prompt, messages := tally.readTranscript(l.engine, pricer, forkRead, seen)
 			tally.Sub.add(messages)
 			var named []string
 			for slug, pattern := range slugPatterns {
@@ -130,36 +120,29 @@ func CountOrch(dir string, runs []RunTally) (OrchTally, error) {
 	return tally, nil
 }
 
-// readTranscript returns the text of an orch transcript's first user message that holds text, and its assistant messages not already in seen and whose last line is timestamped within the tally's span.
-func (tally *OrchTally) readTranscript(path string, seen map[string]bool) (string, []orchMessage, error) {
+// readTranscript returns the text of an orch transcript's first user entry that holds text, and its messages not already in seen and timestamped within the tally's span.
+// Each message is priced through the pricer of the engine that read it.
+func (tally *OrchTally) readTranscript(engine string, pricer shuttleengine.MessagePricer, read shuttleengine.TranscriptRead, seen map[string]bool) (string, []orchMessage) {
 	prompt := ""
-	var usageLines []line
-	err := eachLine(path, func(l line) {
-		if prompt == "" && l.Type == "user" && l.Message != nil {
-			prompt = strings.Join(userTexts(l.Message.Content), "\n")
-		}
-		if isUsageLine(l) {
-			usageLines = append(usageLines, l)
-		}
-	})
-	if err != nil {
-		return "", nil, err
-	}
-	lastLines, _ := lastLinePerMessage(usageLines)
 	var messages []orchMessage
-	for _, l := range lastLines {
-		id := messageKey(l)
+	for _, e := range read.Entries {
+		if prompt == "" && e.Role == shuttleengine.EntryUser {
+			prompt = strings.Join(e.UserTexts, "\n")
+		}
+		if e.Usage == nil {
+			continue
+		}
+		id := messageKey(engine, e)
 		if seen[id] {
 			continue
 		}
 		seen[id] = true
-		at, err := time.Parse(time.RFC3339Nano, l.Timestamp)
-		if err != nil || at.Before(tally.From) || at.After(tally.To) {
+		if e.At.IsZero() || e.At.Before(tally.From) || e.At.After(tally.To) {
 			continue
 		}
-		messages = append(messages, orchMessage{At: at, Usage: *l.Message.Usage, Cost: messageCost(l.Message.Model, *l.Message.Usage)})
+		messages = append(messages, orchMessage{At: e.At, Usage: usageOf(*e.Usage), Cost: messageCost(pricer, e.Model, *e.Usage)})
 	}
-	return prompt, messages, nil
+	return prompt, messages
 }
 
 // chargeByTime splits a message equally among the runs whose active window holds its timestamp, or leaves it unattributed when none does.

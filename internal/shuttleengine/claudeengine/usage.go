@@ -5,16 +5,18 @@
 // either a main-chain assistant usage entry or a compaction boundary, so a long transcript costs one small read.
 // The reader degrades to "usage unknown" on every failure and never errors, since the transcript format is a Claude Code internal.
 // It also implements shuttleengine.UsageReader: SessionUsage sums a finished session's tokens from its transcript and its fork transcripts.
-// All payload and transcript shape knowledge stays in this file, per the Shuttle Provider-Seam Invariant.
+// The transcript shape knowledge stays in this package, the parse here and the locator in transcriptread.go.
 package claudeengine
 
 import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -277,7 +279,7 @@ func (c *Claude) SessionUsage(sessionID, workdir string) shuttleengine.SessionUs
 	if err != nil {
 		return shuttleengine.SessionUsage{}
 	}
-	parent, err := transcriptTokens(filepath.Join(projectDir, sessionID+".jsonl"), false, nil)
+	parent, err := parseTranscript(filepath.Join(projectDir, sessionID+".jsonl"), sessionID, false, nil)
 	if err != nil {
 		return shuttleengine.SessionUsage{}
 	}
@@ -288,92 +290,327 @@ func (c *Claude) SessionUsage(sessionID, workdir string) shuttleengine.SessionUs
 		return shuttleengine.SessionUsage{}
 	}
 
-	reading := shuttleengine.SessionUsage{Known: true, Fresh: int64(parent.fresh), CacheRead: int64(parent.cacheRead)}
+	parentFresh, parentCacheRead := parent.tokens()
+	reading := shuttleengine.SessionUsage{Known: true, Fresh: int64(parentFresh), CacheRead: int64(parentCacheRead)}
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".jsonl") {
 			continue
 		}
-		fork, err := transcriptTokens(filepath.Join(subagentsDir, entry.Name()), true, parent.messageIDs)
+		fork, err := parseTranscript(filepath.Join(subagentsDir, entry.Name()), sessionID+"/"+entry.Name(), true, parent.countedIDs)
 		if err != nil {
 			return shuttleengine.SessionUsage{}
 		}
+		forkFresh, forkCacheRead := fork.tokens()
 		reading.Forks++
-		reading.ForkFresh += int64(fork.fresh)
-		reading.ForkCacheRead += int64(fork.cacheRead)
+		reading.ForkFresh += int64(forkFresh)
+		reading.ForkCacheRead += int64(forkCacheRead)
 	}
 	reading.Fresh += reading.ForkFresh
 	reading.CacheRead += reading.ForkCacheRead
 	return reading
 }
 
-// tokenSum is the usage sum of one transcript with the ids of the messages it counted.
-type tokenSum struct {
-	fresh, cacheRead int
-	messageIDs       map[string]struct{}
+// launchLine matches the launch line lyx types into a session, capturing the prompt file's path.
+var launchLine = regexp.MustCompile(`(?m)^Read (.+) in full first; it is your complete, authoritative instructions\.\s*$`)
+
+// claudeUsage is the usage record of a Claude transcript message.
+type claudeUsage struct {
+	Input         int `json:"input_tokens"`
+	CacheCreation int `json:"cache_creation_input_tokens"`
+	CacheRead     int `json:"cache_read_input_tokens"`
+	Output        int `json:"output_tokens"`
+	// CacheCreationSplit breaks the cache write down by lifetime.
+	CacheCreationSplit struct {
+		OneHour int `json:"ephemeral_1h_input_tokens"`
+	} `json:"cache_creation"`
 }
 
-// transcriptTokens sums the assistant usage of the transcript at path: fresh is input plus cache-creation plus output tokens, cacheRead is cache-read tokens.
-// Sidechain entries count only when includeSidechain is set, as a fork transcript needs.
-// Every message whose id is in skipIDs is skipped, since a fork transcript replays the parent's spawning message as its first entry.
-// A message counts once however many transcript lines carry it, its last line winning since it carries the final usage.
-// Malformed lines are skipped, and an unreadable file is an error.
-func transcriptTokens(path string, includeSidechain bool, skipIDs map[string]struct{}) (tokenSum, error) {
+// claudeMessage is the message a user or assistant transcript line carries.
+type claudeMessage struct {
+	ID         string          `json:"id"`
+	Model      string          `json:"model"`
+	StopReason string          `json:"stop_reason"`
+	Content    json.RawMessage `json:"content"`
+	Usage      *claudeUsage    `json:"usage"`
+}
+
+// claudeRecord is the part of a transcript line the parse reads.
+type claudeRecord struct {
+	Type      string `json:"type"`
+	UUID      string `json:"uuid"`
+	Timestamp string `json:"timestamp"`
+	// IsSidechain marks a line written by a sub-agent rather than the main chain.
+	IsSidechain bool `json:"isSidechain"`
+	// IsCompactSummary marks the user line that holds a compaction's summary.
+	IsCompactSummary bool           `json:"isCompactSummary"`
+	CustomTitle      string         `json:"customTitle"`
+	Message          *claudeMessage `json:"message"`
+}
+
+// endsTurn reports whether the record ends its session's turn: an assistant line whose stop reason is not tool_use, or a user line that interrupts the turn or holds a local command's output.
+func (r claudeRecord) endsTurn() bool {
+	if r.Message == nil {
+		return false
+	}
+	switch r.Type {
+	case "assistant":
+		return r.Message.StopReason != "" && r.Message.StopReason != "tool_use"
+	case "user":
+		for _, text := range recordUserTexts(r.Message.Content) {
+			if strings.HasPrefix(text, "[Request interrupted by user") || strings.HasPrefix(text, "<local-command-stdout>") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// startsTurn reports whether the record starts a turn: a user line holding text and no tool result, other than a line that ends a turn or a compaction summary.
+func (r claudeRecord) startsTurn() bool {
+	if r.Type != "user" || r.Message == nil || r.IsCompactSummary || r.endsTurn() {
+		return false
+	}
+	var text string
+	if json.Unmarshal(r.Message.Content, &text) == nil {
+		return true
+	}
+	var items []struct {
+		Type string `json:"type"`
+	}
+	if json.Unmarshal(r.Message.Content, &items) != nil {
+		return false
+	}
+	hasText := false
+	for _, item := range items {
+		switch item.Type {
+		case "tool_result":
+			return false
+		case "text":
+			hasText = true
+		}
+	}
+	return hasText
+}
+
+// recordUserTexts returns the text of a user message's content, which is a string or a list of items, the text items of which count.
+func recordUserTexts(content json.RawMessage) []string {
+	var text string
+	if json.Unmarshal(content, &text) == nil {
+		return []string{text}
+	}
+	var items []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(content, &items) != nil {
+		return nil
+	}
+	var texts []string
+	for _, item := range items {
+		if item.Type == "text" {
+			texts = append(texts, item.Text)
+		}
+	}
+	return texts
+}
+
+// recordToolCalls returns every tool call in an assistant message's content, classed by what it does.
+func recordToolCalls(content json.RawMessage) []shuttleengine.ToolCall {
+	var items []struct {
+		Type  string `json:"type"`
+		ID    string `json:"id"`
+		Name  string `json:"name"`
+		Input struct {
+			Command  string `json:"command"`
+			FilePath string `json:"file_path"`
+		} `json:"input"`
+	}
+	if json.Unmarshal(content, &items) != nil {
+		return nil
+	}
+	var calls []shuttleengine.ToolCall
+	for _, item := range items {
+		if item.Type != "tool_use" {
+			continue
+		}
+		call := shuttleengine.ToolCall{ID: item.ID, Kind: shuttleengine.ToolOther}
+		switch item.Name {
+		case "Bash":
+			call.Kind, call.Command = shuttleengine.ToolShell, item.Input.Command
+		case "Read":
+			call.Kind, call.Path = shuttleengine.ToolFileRead, item.Input.FilePath
+		}
+		calls = append(calls, call)
+	}
+	return calls
+}
+
+// recordToolResults returns every tool result in a user message's content, which is a string or a list of items;
+// a tool result's own content is likewise a string or a list of text items, joined by newlines.
+func recordToolResults(content json.RawMessage) []shuttleengine.ToolResult {
+	var items []struct {
+		Type      string          `json:"type"`
+		ToolUseID string          `json:"tool_use_id"`
+		Content   json.RawMessage `json:"content"`
+	}
+	if json.Unmarshal(content, &items) != nil {
+		return nil
+	}
+	var results []shuttleengine.ToolResult
+	for _, item := range items {
+		if item.Type != "tool_result" {
+			continue
+		}
+		var text string
+		if json.Unmarshal(item.Content, &text) == nil {
+			results = append(results, shuttleengine.ToolResult{CallID: item.ToolUseID, Text: text})
+			continue
+		}
+		var parts []struct {
+			Text string `json:"text"`
+		}
+		if json.Unmarshal(item.Content, &parts) != nil {
+			continue
+		}
+		joined := make([]string, 0, len(parts))
+		for _, part := range parts {
+			joined = append(joined, part.Text)
+		}
+		results = append(results, shuttleengine.ToolResult{CallID: item.ToolUseID, Text: strings.Join(joined, "\n")})
+	}
+	return results
+}
+
+// parsedTranscript is one Claude transcript read: its user and assistant entries, its name, its start and its repeat count.
+type parsedTranscript struct {
+	entries []shuttleengine.TranscriptEntry
+	// name is the latest non-empty customTitle of a custom-title line.
+	name string
+	// started is the time of the first line whose timestamp parses, whatever the line's type.
+	started time.Time
+	// repeats counts the assistant lines folded into their message's last line, plus every line of a skipped message.
+	repeats int
+	// countedIDs holds the ids of the messages that carry usage, the set a fork's parse skips.
+	countedIDs map[string]struct{}
+}
+
+// tokens sums the usage the entries carry: fresh is input plus cache-creation plus output tokens, cacheRead is cache-read tokens.
+func (p parsedTranscript) tokens() (fresh, cacheRead int) {
+	for _, entry := range p.entries {
+		if entry.Usage != nil {
+			fresh += entry.Usage.Input + entry.Usage.CacheWrite + entry.Usage.Output
+			cacheRead += entry.Usage.CacheRead
+		}
+	}
+	return fresh, cacheRead
+}
+
+// parseTranscript reads the transcript at path into entries for every user and assistant line.
+// Sidechain lines get an entry only when includeSidechain is set, as a fork transcript needs.
+// transcriptKey names the transcript among all the engine records and keeps the keys of id-less lines unique across transcripts.
+// An assistant line whose message id is in skipIDs carries no usage, since a fork transcript replays the parent's spawning message as its first entry.
+// A message streamed over several lines carries usage on its last line only, since the earlier lines hold a partial output count.
+// Malformed lines, a half-written last line included, are skipped, and an unreadable file is an error.
+func parseTranscript(path, transcriptKey string, includeSidechain bool, skipIDs map[string]struct{}) (parsedTranscript, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return tokenSum{}, err
+		return parsedTranscript{}, err
 	}
 	defer f.Close()
 
-	type messageUsage struct{ fresh, cacheRead int }
-	byID := map[string]messageUsage{}
-	var anonymous []messageUsage
+	parsed := parsedTranscript{countedIDs: map[string]struct{}{}}
+	lastUsageEntry := map[string]int{}
 
 	reader := bufio.NewReader(f)
-	for {
+	for lineNumber := 1; ; lineNumber++ {
 		line, readErr := reader.ReadBytes('\n')
 		if readErr != nil && readErr != io.EOF {
-			return tokenSum{}, readErr
+			return parsedTranscript{}, readErr
 		}
-		var e struct {
-			Type        string `json:"type"`
-			IsSidechain bool   `json:"isSidechain"`
-			Message     struct {
-				ID    string `json:"id"`
-				Usage *struct {
-					Input         int `json:"input_tokens"`
-					CacheCreation int `json:"cache_creation_input_tokens"`
-					CacheRead     int `json:"cache_read_input_tokens"`
-					Output        int `json:"output_tokens"`
-				} `json:"usage"`
-			} `json:"message"`
-		}
-		if json.Unmarshal(bytes.TrimSpace(line), &e) == nil && e.Type == "assistant" && e.Message.Usage != nil && (includeSidechain || !e.IsSidechain) {
-			usage := messageUsage{
-				fresh:     e.Message.Usage.Input + e.Message.Usage.CacheCreation + e.Message.Usage.Output,
-				cacheRead: e.Message.Usage.CacheRead,
+		var record claudeRecord
+		if json.Unmarshal(bytes.TrimSpace(line), &record) == nil {
+			at, timeErr := time.Parse(time.RFC3339Nano, record.Timestamp)
+			if parsed.started.IsZero() && timeErr == nil {
+				parsed.started = at
 			}
-			_, skipped := skipIDs[e.Message.ID]
-			switch {
-			case e.Message.ID == "":
-				anonymous = append(anonymous, usage)
-			case !skipped:
-				byID[e.Message.ID] = usage
+			if record.Type == "custom-title" && record.CustomTitle != "" {
+				parsed.name = record.CustomTitle
+			}
+			if (record.Type == "user" || record.Type == "assistant") && (includeSidechain || !record.IsSidechain) {
+				entry := newTranscriptEntry(record, transcriptKey, lineNumber)
+				if timeErr == nil {
+					entry.At = at
+				}
+				parsed.addEntry(entry, record, skipIDs, lastUsageEntry)
 			}
 		}
 		if readErr == io.EOF {
 			break
 		}
 	}
+	return parsed, nil
+}
 
-	sum := tokenSum{messageIDs: make(map[string]struct{}, len(byID))}
-	for id, usage := range byID {
-		sum.messageIDs[id] = struct{}{}
-		sum.fresh += usage.fresh
-		sum.cacheRead += usage.cacheRead
+// newTranscriptEntry builds the entry of a user or assistant record, with no time and no usage.
+func newTranscriptEntry(record claudeRecord, transcriptKey string, lineNumber int) shuttleengine.TranscriptEntry {
+	var message claudeMessage
+	if record.Message != nil {
+		message = *record.Message
 	}
-	for _, usage := range anonymous {
-		sum.fresh += usage.fresh
-		sum.cacheRead += usage.cacheRead
+	entry := shuttleengine.TranscriptEntry{
+		Role:       shuttleengine.EntryRole(record.Type),
+		StartsTurn: record.startsTurn(),
+		EndsTurn:   record.endsTurn(),
+		Model:      message.Model,
 	}
-	return sum, nil
+	switch {
+	case message.ID != "":
+		entry.MessageKey = message.ID
+	case record.UUID != "":
+		entry.MessageKey = record.UUID
+	default:
+		entry.MessageKey = fmt.Sprintf("line:%s:%d", transcriptKey, lineNumber)
+	}
+	if record.Type == "assistant" {
+		entry.ToolCalls = recordToolCalls(message.Content)
+		return entry
+	}
+	entry.UserTexts = recordUserTexts(message.Content)
+	entry.ToolResults = recordToolResults(message.Content)
+	for _, text := range entry.UserTexts {
+		if match := launchLine.FindStringSubmatch(text); match != nil {
+			entry.PromptPath = match[1]
+			break
+		}
+	}
+	return entry
+}
+
+// addEntry appends entry and settles its usage: a skipped message's line adds a repeat and carries none,
+// and a line of a message already seen takes the usage over from the earlier line, which adds a repeat and loses it.
+// lastUsageEntry maps a message key to the index of the entry carrying that message's usage.
+func (p *parsedTranscript) addEntry(entry shuttleengine.TranscriptEntry, record claudeRecord, skipIDs map[string]struct{}, lastUsageEntry map[string]int) {
+	if record.Type == "assistant" && record.Message != nil {
+		message := record.Message
+		if _, skipped := skipIDs[message.ID]; skipped {
+			p.repeats++
+		} else if message.Usage != nil {
+			if previous, seen := lastUsageEntry[entry.MessageKey]; seen {
+				p.entries[previous].Usage = nil
+				p.repeats++
+			}
+			lastUsageEntry[entry.MessageKey] = len(p.entries)
+			entry.Usage = &shuttleengine.MessageUsage{
+				Input:             message.Usage.Input,
+				CacheWrite:        message.Usage.CacheCreation,
+				CacheWriteOneHour: message.Usage.CacheCreationSplit.OneHour,
+				CacheRead:         message.Usage.CacheRead,
+				Output:            message.Usage.Output,
+			}
+			if message.ID != "" {
+				p.countedIDs[message.ID] = struct{}{}
+			}
+		}
+	}
+	p.entries = append(p.entries, entry)
 }

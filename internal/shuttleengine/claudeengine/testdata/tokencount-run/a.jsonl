@@ -1,0 +1,5 @@
+{"type":"custom-title","customTitle":"ly:my-task:burler"}
+{"type":"assistant","message":{"id":"m1","model":"sonnet","usage":{"input_tokens":1,"output_tokens":2,"cache_creation_input_tokens":0,"cache_read_input_tokens":3}}}
+{"type":"assistant","message":{"id":"m1","model":"sonnet","usage":{"input_tokens":1,"output_tokens":2,"cache_creation_input_tokens":0,"cache_read_input_tokens":3}}}
+not json
+{"type":"custom-title","customTitle":"ly:my-task:burler-2"}

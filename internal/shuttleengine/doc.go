@@ -230,6 +230,11 @@
 // Run.finalize fills Result.Usage from it for a done run, and Result.StartedAt and Result.EndedAt for every run;
 // an engine without the capability leaves Usage unknown, and nothing about the outcome changes.
 //
+// Record reading: the optional TranscriptReader and MessagePricer capabilities, with InstructionFileLister, read an engine's finished records with no run and no shuttle config.
+// TranscriptReader locates a worktree's sessions and reads each, forks included, as provider-neutral TranscriptEntry values with a per-message MessageUsage.
+// The reader keeps every provider rule and its consumer keeps every lyx-format rule.
+// RecordReads bundles one engine's three capabilities, nil where it lacks one, and is what internal/shuttleengines hands out.
+//
 // Segment color: Spec.Segment names the loom segment the spawning module gives its role, and Runner.start forwards it to reed, which resolves the segment's palette color on the strand it returns.
 // After startup confirms the provider ready, and for a spec that names skills after the first load turn, which the launch line carries, start plays Engine.ColorSequence for that color into the strand's pane;
 // an engine without a color command, a strand without a color and a spec with ColorByCaller type nothing.

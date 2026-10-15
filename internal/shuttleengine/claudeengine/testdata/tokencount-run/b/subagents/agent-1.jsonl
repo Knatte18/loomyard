@@ -1,0 +1,7 @@
+{"type":"user","timestamp":"2026-01-02T03:04:05.5Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t","content":"no pointer here"}]}}
+{"type":"assistant","message":{"id":"m2","model":"sonnet","usage":{"input_tokens":1,"output_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":1}}}
+{"type":"assistant","message":{"id":"m3","model":"opus","usage":{"input_tokens":1,"output_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":5}}}
+{"type":"assistant","message":{"id":"m3","model":"opus","usage":{"input_tokens":1,"output_tokens":4,"cache_creation_input_tokens":0,"cache_read_input_tokens":5}}}
+{"type":"user","timestamp":"2026-01-02T03:04:06Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t","content":[{"type":"text","text":"1\t# Webster fork\n58\t- `_lyx/plan/01-alpha.md`\n59\t- `_lyx/plan/02-beta.md`\n60\t- `_lyx/plan/00-overview.md`\n70\t- `_lyx/plan/03-gamma.md`: go test ./...\n"}]}]}}
+{"type":"assistant","message":{"id":"m5","model":"opus","usage":{"input_tokens":1,"output_tokens":2,"cache_creation_input_tokens":0,"cache_read_input_tokens":9}}}
+{"type":"user","timestamp":"2026-01-02T03:04:07Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t","content":"- `_lyx/plan/04-delta.md`"}]}}

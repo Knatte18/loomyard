@@ -50,7 +50,7 @@ func TestCalibrateGitBackedMatchesInMemory(t *testing.T) {
 	gitkit.Git(t, dir, "rm", "-r", "-q", "_lyx/plan")
 	write("internal/a/a.go", lines(100))
 	// The base tree also holds the files a run's Merriam base is computed from.
-	write("CLAUDE.md", lines(claudeLines))
+	write("INSTRUCTIONS.md", lines(instructionLines))
 	write("PATTERN.md", lines(patternLines))
 	write(directiveStencilPath, directiveStencil)
 	write(masterTemplatePath, lines(templateLines))
@@ -83,11 +83,12 @@ func TestCalibrateGitBackedMatchesInMemory(t *testing.T) {
 	transcript := fork(started, 10, 220, "01-c1")
 	transcript.File = "agent-1.jsonl"
 	runs := []RunTally{{
-		Slug: "alpha", BaseSHA: baseSHA, Forks: []ForkTally{transcript},
+		Slug: "alpha", BaseSHA: baseSHA, WebsterEngine: fakeEngine, Forks: []ForkTally{transcript},
 		Merriams: []MerriamStart{{Session: "w.jsonl", Started: started, StartContext: 20000}},
 	}}
 
-	got, err := Calibrate(runs, "fit", configDir, repo, repo)
+	calibrationReads := fakeReadSet(newFakeTranscripts())
+	got, err := Calibrate(runs, "fit", configDir, repo, repo, calibrationReads)
 	if err != nil {
 		t.Fatalf("Calibrate over git: %v", err)
 	}
@@ -106,7 +107,7 @@ func TestCalibrateGitBackedMatchesInMemory(t *testing.T) {
 		files: map[string]string{baseSHA + ":internal/a/a.go": lines(100)},
 	}
 	withBaseFiles(memBase.files, baseSHA)
-	want, err := Calibrate(runs, "fit", configDir, memHistory, memBase)
+	want, err := Calibrate(runs, "fit", configDir, memHistory, memBase, calibrationReads)
 	if err != nil {
 		t.Fatalf("Calibrate in memory: %v", err)
 	}
@@ -147,23 +148,23 @@ func TestCalibrateGitBackedMatchesInMemory(t *testing.T) {
 	}
 
 	// run drives the same calibration end to end: the one repository flag names the fixture, whose directory is also the code repository.
-	hub, projects := t.TempDir(), t.TempDir()
-	sessions := projectDir(projects, filepath.Join(hub, "alpha"))
+	hub := t.TempDir()
 	forkStart := started.UTC().Format(time.RFC3339Nano)
-	writeLines(t, filepath.Join(sessions, "w.jsonl"),
-		`{"type":"custom-title","customTitle":"ly:alpha:webster"}`,
-		bashUse(t, "begin", "lyx "+"webster begin-batch 1"),
-		toolResultFor("begin", forkStart, jsonString(t, `{"batch":"01-c1","start_sha":"`+baseSHA+`"}`)),
-	)
-	writeLines(t, filepath.Join(sessions, "w", "subagents", "agent-1.jsonl"),
-		toolResult(forkStart, jsonString(t, "- `_lyx/plan/01-c1.md`")),
-		assistant("m0", "opus", 1, 9),
-		assistant("m1", "opus", 1, 219),
-	)
+	reads := oneEngine(filepath.Join(hub, "alpha"), sessionOf(
+		readOf("w.jsonl", "ly:alpha:webster",
+			bashUse("begin", "lyx "+"webster begin-batch 1"),
+			toolResultFor("begin", forkStart, `{"batch":"01-c1","start_sha":"`+baseSHA+`"}`),
+		),
+		readOf("agent-1.jsonl", "",
+			toolResult(forkStart, "- `_lyx/plan/01-c1.md`"),
+			assistant("m0", "model-a", 1, 9),
+			assistant("m1", "model-a", 1, 219),
+		),
+	))
 	t.Chdir(dir)
 	var report bytes.Buffer
-	args := []string{"-" + repositoryFlag, dir, "-calibrate", "fit", "-config", configDir, "-hub", hub, "-projects", projects, "alpha"}
-	if err := run(args, &report); err != nil {
+	args := []string{"-" + repositoryFlag, dir, "-calibrate", "fit", "-config", configDir, "-hub", hub, "alpha"}
+	if err := run(args, &report, reads); err != nil {
 		t.Fatalf("run: %v", err)
 	}
 	peakLine := fmt.Sprintf("| alpha | 01-c1 | 1 | %.0f | 220 | %.3f | 100 | 210 | 2.100 |", wantEstimate, 220/wantEstimate)

@@ -2,7 +2,8 @@
 
 // time_integration_test.go checks that run reads each finished run's archived shed status from a real git repository's archive tags,
 // and that with no slugs named it counts only full loom runs and says in the header which it counted and skipped.
-// It also checks that -no-cutoff counts every transcript and keeps the span from the seed's start.
+// It also checks that -no-cutoff counts every located session and keeps the span from the seed's start,
+// and that the header names an engine that has no transcript reader.
 
 package main
 
@@ -17,11 +18,12 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 func TestRunReadsArchivedShedStatus(t *testing.T) {
 	t.Parallel()
-	records, hub, projects := t.TempDir(), t.TempDir(), t.TempDir()
+	records, hub := t.TempDir(), t.TempDir()
 	gitkit.Git(t, records, "init", "-b", "main")
 
 	// commit writes files into the records and commits them with the given committer date, returning the commit.
@@ -87,32 +89,54 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(hub, "live"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// The done slug's counted transcript starts after its older tag's date and the live slug's after its newest tag's date;
+	// readsFor builds a read set of the fake engine over the slugs' sessions.
+	// The done slug's counted session starts after its older tag's date and the live slug's after its newest tag's date;
 	// the solo slug has one tag and no worktree, so no bound.
-	// An earlier transcript of each bounded slug starts before that date and is left out.
-	for slug, hour := range map[string]string{"done": "10", "live": "13", "solo": "08", "full": "11"} {
-		at := func(minute string) string { return "2026-01-01T" + hour + ":" + minute + ":00Z" }
-		writeLines(t, filepath.Join(projectDir(projects, filepath.Join(hub, slug)), "a.jsonl"),
-			`{"type":"custom-title","customTitle":"ly:`+slug+`:burler"}`,
-			userAt(t, at("00"), "go"),
-			stamped(at("02"), `"end_turn"`),
-			userAt(t, at("08"), "again"),
-			stamped(at("10"), `"end_turn"`),
-		)
-	}
-	for slug, started := range map[string]string{"done": "2026-01-01T08:00:00Z", "live": "2026-01-01T11:00:00Z"} {
-		writeLines(t, filepath.Join(projectDir(projects, filepath.Join(hub, slug)), "earlier.jsonl"),
-			`{"type":"custom-title","customTitle":"ly:`+slug+`:burler"}`,
-			userAt(t, started, "earlier run"),
-		)
+	// An earlier session of each bounded slug starts before that date and is left out.
+	// The slugs are touched done, live, full, solo from newest to oldest, which orders the default selection.
+	// The early slug's sessions are written only when early is set: its older tag and newest tag bound nothing under -no-cutoff,
+	// and the default selection must not see it.
+	now := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
+	readsFor := func(early bool) ReadSet {
+		fake := newFakeTranscripts()
+		ages := map[string]time.Duration{"done": time.Hour, "live": 2 * time.Hour, "full": 3 * time.Hour, "solo": 4 * time.Hour}
+		for slug, hour := range map[string]string{"done": "10", "live": "13", "solo": "08", "full": "11"} {
+			at := func(minute string) string { return "2026-01-01T" + hour + ":" + minute + ":00Z" }
+			fake.add(filepath.Join(hub, slug), now.Add(-ages[slug]), sessionOf(readOf("a.jsonl", "ly:"+slug+":burler",
+				userAt(at("00"), "go"),
+				stamped(at("02"), true),
+				userAt(at("08"), "again"),
+				stamped(at("10"), true),
+			)))
+		}
+		for slug, started := range map[string]string{"done": "2026-01-01T08:00:00Z", "live": "2026-01-01T11:00:00Z"} {
+			fake.add(filepath.Join(hub, slug), now.Add(-ages[slug]), sessionOf(readOf("earlier.jsonl", "ly:"+slug+":burler",
+				userAt(started, "earlier run"),
+			)))
+		}
+		if early {
+			fake.add(filepath.Join(hub, "early"), now, sessionOf(readOf("a.jsonl", "ly:early:burler",
+				userAt("2026-01-01T10:00:00Z", "go"),
+				stamped("2026-01-01T10:02:00Z", true),
+				userAt("2026-01-01T10:08:00Z", "again"),
+				stamped("2026-01-01T10:10:00Z", true),
+			)))
+			fake.add(filepath.Join(hub, "early"), now, sessionOf(readOf("none.jsonl", "ly:early:burler",
+				assistant("untimed", "model-a", 1, 1),
+			)))
+		}
+		return fakeReadSet(fake)
 	}
 	gitkit.Git(t, records, "tag", "archive/solo/eeeeeee", older)
 
 	reportPath := filepath.Join(t.TempDir(), "report.md")
 	var stdout bytes.Buffer
+	// An engine with no transcript reader sits beside the fake one.
 	// -no-sleep keeps the host's journal out of the figures.
-	args := []string{"-hub", hub, "-projects", projects, "-" + repositoryFlag, records, "-out", reportPath, "-no-sleep", "done", "live", "solo"}
-	if err := run(args, &stdout); err != nil {
+	withBlind := readsFor(false)
+	withBlind["blind"] = shuttleengine.RecordReads{}
+	args := []string{"-hub", hub, "-" + repositoryFlag, records, "-out", reportPath, "-no-sleep", "done", "live", "solo"}
+	if err := run(args, &stdout, withBlind); err != nil {
 		t.Fatalf("run: %v", err)
 	}
 	data, err := os.ReadFile(reportPath)
@@ -147,30 +171,19 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 		t.Errorf("one-tag run = %q; want its transcript counted and no left-out line", soloPart)
 	}
 	const sleepOffLine = "Machine sleep counts as time: -no-sleep is set.\n"
-	if !strings.Contains(report, " for done, live, solo.\n"+sleepOffLine+"\n") {
-		t.Errorf("report header lacks the named slugs as given:\n%s", report)
+	const blindLine = "Not counted, no transcript reader: blind.\n"
+	if !strings.Contains(report, " for done, live, solo.\n"+sleepOffLine+blindLine+"\n") {
+		t.Errorf("report header lacks the named slugs as given and the engine without a reader:\n%s", report)
 	}
-	const cutoffOffLine = "The archive-tag cutoff is off: every transcript in each slug's project directory counts.\n"
+	const cutoffOffLine = "The archive-tag cutoff is off: every located session of each slug counts.\n"
 	if strings.Contains(report, cutoffOffLine) {
 		t.Errorf("report without -no-cutoff holds the cutoff-off line:\n%s", report)
 	}
 
 	// With no slugs named, the default walks the runs newest session first and counts only full loom runs:
 	// done stopped before Finalize and live is in flight, so both are skipped ahead of full.
-	for slug, age := range map[string]time.Duration{"done": time.Hour, "live": 2 * time.Hour, "full": 3 * time.Hour, "solo": 4 * time.Hour} {
-		sessions, err := filepath.Glob(filepath.Join(projectDir(projects, filepath.Join(hub, slug)), "*.jsonl"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		touched := time.Now().Add(-age)
-		for _, s := range sessions {
-			if err := os.Chtimes(s, touched, touched); err != nil {
-				t.Fatal(err)
-			}
-		}
-	}
 	var defaulted bytes.Buffer
-	if err := run([]string{"-hub", hub, "-projects", projects, "-" + repositoryFlag, records, "-no-sleep", "-last", "1"}, &defaulted); err != nil {
+	if err := run([]string{"-hub", hub, "-" + repositoryFlag, records, "-no-sleep", "-last", "1"}, &defaulted, readsFor(false)); err != nil {
 		t.Fatalf("run with no slugs: %v", err)
 	}
 	wantHeader := " for the 1 most recent full loom runs: full.\n" + sleepOffLine + "Skipped 2 more recent runs that are not full loom runs: done, live.\n\n"
@@ -179,29 +192,16 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 	}
 
 	emptyHub := t.TempDir()
-	err = run([]string{"-hub", emptyHub, "-projects", projects, "-" + repositoryFlag, records}, &defaulted)
-	wantErr := "no full loom runs of " + emptyHub + " under " + projects + "; name the slugs to count a partial run"
+	err = run([]string{"-hub", emptyHub, "-" + repositoryFlag, records}, &defaulted, readsFor(false))
+	wantErr := "no full loom runs of " + emptyHub + " from engines " + fakeEngine + "; name the slugs to count a partial run"
 	if err == nil || err.Error() != wantErr {
 		t.Errorf("run with no full loom run = %v; want %q", err, wantErr)
 	}
 
-	// Written after the default runs above, so early's sessions change neither their order nor their skipped header.
-	// Under -no-cutoff the earlier transcripts and the untimestamped one count, and the span keeps the seed's start instead of the older tag's date.
-	earlyDir := projectDir(projects, filepath.Join(hub, "early"))
-	writeLines(t, filepath.Join(earlyDir, "a.jsonl"),
-		`{"type":"custom-title","customTitle":"ly:early:burler"}`,
-		userAt(t, "2026-01-01T10:00:00Z", "go"),
-		stamped("2026-01-01T10:02:00Z", `"end_turn"`),
-		userAt(t, "2026-01-01T10:08:00Z", "again"),
-		stamped("2026-01-01T10:10:00Z", `"end_turn"`),
-	)
-	writeLines(t, filepath.Join(earlyDir, "none.jsonl"),
-		`{"type":"custom-title","customTitle":"ly:early:burler"}`,
-		assistant("untimed", "claude-sonnet-4-5", 1, 1),
-	)
+	// Under -no-cutoff the earlier sessions and the untimestamped one count, and the span keeps the seed's start instead of the older tag's date.
 	noCutoffPath := filepath.Join(t.TempDir(), "no-cutoff.md")
-	args = []string{"-hub", hub, "-projects", projects, "-" + repositoryFlag, records, "-out", noCutoffPath, "-no-cutoff", "-no-sleep", "done", "live", "early"}
-	if err := run(args, &stdout); err != nil {
+	args = []string{"-hub", hub, "-" + repositoryFlag, records, "-out", noCutoffPath, "-no-cutoff", "-no-sleep", "done", "live", "early"}
+	if err := run(args, &stdout, readsFor(true)); err != nil {
 		t.Fatalf("run with -no-cutoff: %v", err)
 	}
 	data, err = os.ReadFile(noCutoffPath)
@@ -210,7 +210,10 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 	}
 	report = string(data)
 	if !strings.Contains(report, " for done, live, early.\n"+cutoffOffLine+sleepOffLine+"\n") {
-		t.Errorf("-no-cutoff report header lacks the cutoff-off line after the counted runs:\n%s", report)
+		t.Errorf("-no-cutoff report header lacks the cutoff-off line after the counted runs and any no-reader line:\n%s", report)
+	}
+	if strings.Contains(report, "Not counted, no transcript reader:") {
+		t.Errorf("report of an all-readable engine set names an engine without a reader:\n%s", report)
 	}
 	if strings.Contains(report, "left out") {
 		t.Errorf("-no-cutoff report leaves transcripts out:\n%s", report)
