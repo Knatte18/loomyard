@@ -170,6 +170,15 @@
 // Each begin-batch reads the key afresh, so a flip applies from the next call on;
 // a pack file an earlier file-layout call of the same batch wrote stays on disk, and the inline prompt never names it.
 //
+// The `kickstart_pack_per_card` key of webster.yaml, true by default, picks the per-card layout and overrides `kickstart_pack_file`, which then decides between the file and inline layouts only when the key is false.
+// It applies in a hub geometry, where the anchor and the worktree are one directory (packLayoutOf);
+// a standalone geometry keeps the layout `kickstart_pack_file` picks, because `lyx loom card-pack` is a hub-only verb and every call of it would refuse.
+// In the per-card layout the card files are the batch overview: the fork's first work turn reads every card file and nothing else.
+// Step 1 of each card then runs `lyx loom card-pack <N>` and reads the listed spans in one parallel turn before that card's first edit, so the spans are resolved against the tree as it stands at the card's start, earlier cards' edits included.
+// begin-batch writes no pack file, the prompt carries none of the pack's entries, and it ends with a `## Start here` section sending the fork to its card files.
+// The sandbox rule also lists `lyx loom card-pack` among the always-allowed commands, through the optional `card_pack_allowed` marker every other prompt fills empty.
+// begin-batch still builds the batch pack, so the off, language-none and empty outcomes and the counts keep their batch-start meaning.
+//
 // The locate step, step 1 of the implementer body and its FRESH-READ rule are markers, locate, card_read and fresh_read, filled per mode by renderLocate and renderReadRules.
 // Without a pack the fragments carry the text as it stood before, so a fork without a pack and every recovery prompt render the bytes they did before the pack existed.
 // With a pack the locate step says the fork's first turn read the listed spans, says every line number obtained before the first edit holds before any edit only, and keeps the quarry or grep path for an unresolved member glyph;
@@ -181,7 +190,7 @@
 // and the card and batch gates, which run every card's tests, catch reasoning over stale content.
 //
 // Every begin-batch logs one Info line, `webster: kickstart pack`.
-// Its keys are batch, kickstart_pack (`on`, `off`, `language-none` or `empty`), resolved, unresolved and pack_layout (`file`, `inline` or `none`).
+// Its keys are batch, kickstart_pack (`on`, `off`, `language-none` or `empty`), resolved, unresolved and pack_layout (`file`, `inline`, `card` or `none`).
 // The resolved and unresolved counts are distinct refs across the batch, so a ref listed under two cards counts once, and stay 0 when no pack is built.
 // pack_layout is `none` on every line where no pack was built.
 // The `kickstart_pack` key of webster.yaml switches the pack on and off, so runs with and without it can be compared;

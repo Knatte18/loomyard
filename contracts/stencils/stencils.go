@@ -257,7 +257,7 @@ var WebsterFragmentLocatePackInline []byte
 //go:embed webster/webster-fragment-card-read-plain.md
 var WebsterFragmentCardReadPlain []byte
 
-// WebsterFragmentCardReadPack is webster's shipped-default pack-on first step of each card, filled into the shared implementer-job body's card_read marker when the fork prompt carries a kick-start pack.
+// WebsterFragmentCardReadPack is webster's shipped-default pack-on first step of each card, filled into the shared implementer-job body's card_read marker when the fork prompt carries a kick-start pack in the file or inline layout.
 //
 //go:embed webster/webster-fragment-card-read-pack.md
 var WebsterFragmentCardReadPack []byte
@@ -287,7 +287,7 @@ var WebsterFragmentPackSection []byte
 //go:embed webster/webster-fragment-pack-section-inline.md
 var WebsterFragmentPackSectionInline []byte
 
-// WebsterFragmentPackRead is webster's shipped-default pack read line, filled into the shared implementer-job body's kickstart_pack marker so the fork prompt ends by sending the fork to its kick-start pack file.
+// WebsterFragmentPackRead is webster's shipped-default pack read line, filled into the shared implementer-job body's kickstart_pack marker in the file layout alone so the fork prompt ends by sending the fork to its kick-start pack file.
 //
 //go:embed webster/webster-fragment-pack-read.md
 var WebsterFragmentPackRead []byte
@@ -297,6 +297,31 @@ var WebsterFragmentPackRead []byte
 //
 //go:embed webster/webster-fragment-pack-card.md
 var WebsterFragmentPackCard []byte
+
+// WebsterFragmentFreshReadPackCard is webster's shipped-default per-card FRESH-READ rule, filled into the shared implementer-job body's fresh_read marker when the fork prompt carries the per-card kick-start pack layout.
+//
+//go:embed webster/webster-fragment-fresh-read-pack-card.md
+var WebsterFragmentFreshReadPackCard []byte
+
+// WebsterFragmentCardReadPackCard is webster's shipped-default per-card first step of each card, filled into the shared implementer-job body's card_read marker when the fork prompt carries the per-card layout.
+//
+//go:embed webster/webster-fragment-card-read-pack-card.md
+var WebsterFragmentCardReadPackCard []byte
+
+// WebsterFragmentLocatePackCard is webster's shipped-default per-card locate fragment, filled into the shared implementer-job body's locate marker when the fork prompt carries the per-card layout.
+//
+//go:embed webster/webster-fragment-locate-pack-card.md
+var WebsterFragmentLocatePackCard []byte
+
+// WebsterFragmentPackStartCard is webster's shipped-default closing section of the per-card layout, filled into the shared implementer-job body's kickstart_pack marker so the fork prompt ends by sending the fork to its card files.
+//
+//go:embed webster/webster-fragment-pack-start-card.md
+var WebsterFragmentPackStartCard []byte
+
+// WebsterFragmentCardPackAllowed is webster's shipped-default sandbox-rule addition of the per-card layout, filled into the shared implementer-job body's card_pack_allowed marker so `lyx loom card-pack` joins the always-allowed commands.
+//
+//go:embed webster/webster-fragment-card-pack-allowed.md
+var WebsterFragmentCardPackAllowed []byte
 
 // WebsterFragmentPackUnresolved is webster's shipped-default unresolved list of a card's pack subsection, filled into the card subsection's pack_unresolved marker when the card has unresolved refs.
 //
@@ -564,6 +589,11 @@ var entries = []registryEntry{
 	{"webster-fragment-pack-card", &WebsterFragmentPackCard},
 	{"webster-fragment-pack-unresolved", &WebsterFragmentPackUnresolved},
 	{"webster-fragment-pack-empty", &WebsterFragmentPackEmpty},
+	{"webster-fragment-fresh-read-pack-card", &WebsterFragmentFreshReadPackCard},
+	{"webster-fragment-card-read-pack-card", &WebsterFragmentCardReadPackCard},
+	{"webster-fragment-locate-pack-card", &WebsterFragmentLocatePackCard},
+	{"webster-fragment-pack-start-card", &WebsterFragmentPackStartCard},
+	{"webster-fragment-card-pack-allowed", &WebsterFragmentCardPackAllowed},
 	{"webster-fragment-guard-scan-error", &WebsterFragmentGuardScanError},
 	{"webster-fragment-guard-too-long", &WebsterFragmentGuardTooLong},
 	{"webster-fragment-guard-fix", &WebsterFragmentGuardFix},
