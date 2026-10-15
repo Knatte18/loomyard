@@ -162,6 +162,11 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantInvalid: true,
 		},
 		{
+			name:     "a loom tackler_max_spawns of 4 survives loom's Migrate as 4",
+			settings: map[string]any{"loom": map[string]any{"tackler_max_spawns": float64(4)}},
+			wantDocs: map[string]string{"loom": "tackler_max_spawns: 4\n"},
+		},
+		{
 			name:     "darn's tackler_max_spawns of 0 is open to run settings",
 			settings: map[string]any{"darn": map[string]any{"tackler_max_spawns": float64(0)}},
 			wantDocs: map[string]string{"darn": "tackler_max_spawns: 0\n"},
