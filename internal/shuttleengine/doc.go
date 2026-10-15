@@ -23,6 +23,10 @@
 // engine implementation (the provider-seam import rule, enforced by seam_enforcement_test.go in a
 // later batch) — concrete engines import shuttleengine, not the reverse.
 // Requirement support, resume-context rendering and instruction files are optional capabilities beside Engine, which an engine without them lacks.
+// Spec.Requires lists what a run requires of its engine, and a ForkSubagents spec requires fork support without listing it.
+// Start checks it right after resolving the spec's engine, and attach checks it against the engine the run's record names unless every output file is already on disk.
+// A refusal wraps ErrRequirementsUnmet and names the way forward:
+// at Start, a model alias of an engine that meets the requirements; at attach, ending the live strand with `lyx reed remove` and re-stepping the row once the run record is old enough.
 //
 // shuttle is told its anchor path and worktree root as plain strings, at Runner construction, and
 // derives neither — internal/lyxcwd is consequently absent from the package's production imports.

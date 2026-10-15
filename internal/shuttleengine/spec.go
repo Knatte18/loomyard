@@ -156,6 +156,11 @@ type Spec struct {
 	// Engine is the registered engine name the run uses, empty for the engine set's default.
 	// Start refuses a name the set does not hold; validate does not inspect it.
 	Engine string
+	// Requires lists what the run requires of its engine, from the closed set of Requirement constants.
+	// Start refuses an unknown entry and an engine that does not meet every entry, and attach checks the engine the run's record names the same way.
+	// A ForkSubagents spec requires RequirementForks without listing it, and duplicates are harmless.
+	// validate does not inspect it.
+	Requires []Requirement
 }
 
 // validate normalizes s in place and reports an error if it is not

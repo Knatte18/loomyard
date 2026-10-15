@@ -109,7 +109,7 @@ internal/shedverbs: 84
 internal/shell: 14
 internal/shortcutcli: 2
 internal/shuttlecli: 26
-internal/shuttleengine: 176
+internal/shuttleengine: 177
 internal/shuttleengine/claudeengine: 113
 internal/shuttleengines: 3
 internal/standalonegeom: 7

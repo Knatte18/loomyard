@@ -207,6 +207,12 @@ func (r *Runner) attach(spec Spec, gate GateSpec, removeSuperseded bool) (*Run, 
 			chosen.state.StrandName = strand.Name
 		}
 	}
+	// A finished run is harvested without the requirements check: its harvest drives no further turn.
+	if !allOutputFilesExist(chosen.state.OutputFiles) {
+		if err := r.checkRequirementsAtAttach(normalized, chosen, minAge); err != nil {
+			return nil, false, err
+		}
+	}
 	run, err := r.reconstruct(chosen, normalized, gate)
 	if err != nil {
 		return nil, false, err

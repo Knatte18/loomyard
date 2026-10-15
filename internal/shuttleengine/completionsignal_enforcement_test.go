@@ -186,7 +186,9 @@ var auditedNegativeVerdictReturns = map[string]int{
 // pollEventsTick's second site counts an ungated waiting turn end with nothing outstanding as a Done only after consulting the files.
 // The last site is stopOutcome, whose stopped answer consults the files first.
 // checkLivenessTick holds a third site, its gone-session branch, which consults the files before answering died.
+// attach holds a site that skips the requirements check for a run whose files are all on disk, since harvesting it drives no further turn.
 var auditedFileContractCallSites = map[string]int{
+	"attach":                          1,
 	"awaitStartup":                    2,
 	"checkLivenessTick":               3,
 	"classifyDeadlineExpiry":          1,

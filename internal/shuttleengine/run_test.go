@@ -203,7 +203,7 @@ func TestRunner_StartGated_CarriesNoDoneWhen(t *testing.T) {
 func TestRunner_Start_HappyPath(t *testing.T) {
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "launch-cmd", ResumeCmd: "resume-cmd", SessionID: "session-1"}}
-	fx := newFixture(t, reed, engine, withConfig(fastConfig))
+	fx := newFixture(t, reed, supportingEngine{fakeEngine: engine, supported: []Requirement{RequirementForks}}, withConfig(fastConfig))
 	runner, anchorPath := fx.Runner, fx.Anchor
 	readyStart(reed, engine)
 

@@ -447,7 +447,7 @@ func TestRunner_EngineSetDispatch(t *testing.T) {
 		logs := logcapture.Capture(t)
 		rig := newDispatchRig(t)
 		rig.start("b")
-		state, _ := rig.record()
+		state, runDir := rig.record()
 		rig.writeEvents(state)
 		seedPresentReedState(t, rig.fx.DotLyx)
 		out := filepath.Join(rig.fx.Worktree, "out.md")
@@ -459,7 +459,14 @@ func TestRunner_EngineSetDispatch(t *testing.T) {
 			t.Fatalf("Attach() found = %v, error = %v; want the live run found", found, err)
 		}
 		requireConsulted(t, rig.b, rig.a, "ParseEvents")
-		if got := countLevelLines(logs.String(), "WARN", "the spec names a different engine"); got != 1 {
+		// The captured log is process-wide, so only the lines naming this run's directory belong to this attach.
+		var ownLines []string
+		for _, line := range strings.Split(logs.String(), "\n") {
+			if strings.Contains(line, runDir) {
+				ownLines = append(ownLines, line)
+			}
+		}
+		if got := countLevelLines(strings.Join(ownLines, "\n"), "WARN", "the spec names a different engine"); got != 1 {
 			t.Errorf("WARN lines naming the engine mismatch = %d; want 1; log: %s", got, logs.String())
 		}
 		for _, name := range []string{"specEngine=a", "recordEngine=b"} {
