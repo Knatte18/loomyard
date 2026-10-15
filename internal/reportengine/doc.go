@@ -10,8 +10,9 @@
 //
 // # One ref snapshot
 //
-// Open resolves each branch tip and lists the archive tags once.
-// Every later read names those tips and tags, so a report sees one history while runs land concurrently.
+// Open resolves each branch tip, lists the archive tags and lists the records repository's local branches (Sources.Branches) once, then stamps the UTC time the snapshot was taken (Sources.SnapshotAt).
+// Every later read names those tips, tags and branches, so a report sees one history while runs land concurrently.
+// Compute reads neither Branches nor SnapshotAt.
 // Compute works over Sources, whose Reader per repository a test replaces with an in-memory fake.
 //
 // # The run unit
