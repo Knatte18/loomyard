@@ -249,16 +249,26 @@ func TestCountRun(t *testing.T) {
 		assistant("m7", "opus", 1, 2),
 	)
 	writeLines(t, filepath.Join(dir, "c.jsonl"), assistant("m4", "haiku", 1, 0))
+	// A lead titled before seats were named counts under the lead's present role.
+	writeLines(t, filepath.Join(dir, "d.jsonl"),
+		`{"type":"custom-title","customTitle":"ly:my-task:burler-review-chair-2"}`,
+		assistant("m8", "sonnet", 1, 0),
+	)
+	writeLines(t, filepath.Join(dir, "e.jsonl"),
+		`{"type":"custom-title","customTitle":"ly:my-task:burler-review"}`,
+		assistant("m9", "sonnet", 2, 0),
+	)
 
 	run, err := CountRun(dir, "my-task", time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := map[string]Usage{
-		"burler":      {Input: 1, Output: 2, CacheRead: 3},
-		"webster":     {Input: 1, Output: 1, CacheRead: 1},
-		"webster+sub": {Input: 4, Output: 10, CacheRead: 18},
-		"untitled":    {Input: 1, Output: 1},
+		"burler":        {Input: 1, Output: 2, CacheRead: 3},
+		"burler-review": {Input: 2, Output: 3},
+		"webster":       {Input: 1, Output: 1, CacheRead: 1},
+		"webster+sub":   {Input: 4, Output: 10, CacheRead: 18},
+		"untitled":      {Input: 1, Output: 1},
 	}
 	if len(run.Roles) != len(want) {
 		t.Fatalf("roles = %v, want %d roles", run.Roles, len(want))
@@ -427,7 +437,7 @@ func TestCountRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"## my-task", "## All runs", "| webster+sub | 3 | 10 | 0 | 18 | 4 | 0.0M | 70.5% |", "opus: 3, sonnet: 1",
+		"## my-task", "## All runs", "| webster+sub | 3 | 10 | 0 | 18 | 4 | 0.0M | 58.0% |", "opus: 3, sonnet: 1",
 		"## Webster forks\n\n| run | cards | start context | messages | peak context | weight |\n|---|---|---|---|---|---|\n" +
 			"| my-task | 01-alpha, 02-beta | 6 | 2 | 10 | 0.0M |\n| my-task | unattributed | 3 | 1 | 3 | 0.0M |\n| my-task | unattributed | 3 | 1 | 3 | 0.0M |\n",
 	} {
@@ -637,8 +647,8 @@ func TestShedRecordSpanAndProducers(t *testing.T) {
 			wantFrom: at("09:58:00"),
 			wantTo:   at("10:12:00"),
 			wantRows: []ProducerRow{
-				{"Publish", 1, 6 * time.Minute, 4 * time.Minute},
 				{"Plan", 2, 5 * time.Minute, 3 * time.Minute},
+				{"Publish", 1, 6 * time.Minute, 4 * time.Minute},
 				{"Bouncer", 1, 3 * time.Minute, 3 * time.Minute},
 			},
 			wantIdle: 10 * time.Minute,
@@ -738,7 +748,7 @@ func TestShedRecordSpanAndProducers(t *testing.T) {
 	report := buf.String()
 	all, rest, _ := strings.Cut(report, "## full\n")
 	perFull, perBare, _ := strings.Cut(rest, "## bare\n")
-	row := "| Publish | 1 | 6m0s | 4m0s | 42.9% |"
+	row := "| Publish | 1 | 6m0s | 4m0s | 2m0s | 50.0% |"
 	for name, section := range map[string]string{"All runs": all, "full": perFull} {
 		if !strings.Contains(section, "### Producers") || !strings.Contains(section, row) {
 			t.Errorf("%s section lacks the Producers table row %q:\n%s", name, row, section)
@@ -754,5 +764,41 @@ func TestShedRecordSpanAndProducers(t *testing.T) {
 	}
 	if strings.Contains(strings.SplitN(buf.String(), "## bare\n", 2)[0], "### Producers") {
 		t.Errorf("All runs section prints a Producers table with no record:\n%s", buf.String())
+	}
+
+	// A sleep 10:01-10:09 is no time at all: it leaves the span, both working intervals it straddles and every Producers row.
+	slept := counted(t)
+	slept.useShedRecord(*rec)
+	slept.subtractSleeps([]Interval{{at("10:01:00"), at("10:09:00")}})
+	wantRows := []ProducerRow{
+		{"Plan", 2, 3 * time.Minute, 2 * time.Minute},
+		{"Publish", 1, 3 * time.Minute, 2 * time.Minute},
+		{"Bouncer", 1, 0, 0},
+	}
+	if got := slept.Producers(); !slices.Equal(got, wantRows) {
+		t.Errorf("Producers() with a sleep = %v; want %v", got, wantRows)
+	}
+	for name, c := range map[string]struct{ got, want time.Duration }{
+		"AwakeSpan()":      {slept.AwakeSpan(), 6 * time.Minute},
+		"Slept()":          {slept.Slept(), 8 * time.Minute},
+		"Idle()":           {slept.Idle(), 4 * time.Minute},
+		"RoleTime(burler)": {slept.RoleTime("burler"), 2 * time.Minute},
+	} {
+		if c.got != c.want {
+			t.Errorf("%s with a sleep = %v; want %v", name, c.got, c.want)
+		}
+	}
+	buf.Reset()
+	if err := (Report{Runs: []RunTally{slept}}).WriteMarkdown(&buf); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"Every time figure leaves out machine sleep, 8m0s over these runs.\n",
+		"Machine sleep left out of the span: 8m0s.\n",
+		"| idle | | | | | | | | 4m0s | 66.7% | | |",
+	} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("report with a sleep lacks %q:\n%s", want, buf.String())
+		}
 	}
 }
