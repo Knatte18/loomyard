@@ -110,6 +110,52 @@ func Parse(name string) (Name, error) {
 	return n, nil
 }
 
+// External is the reserved program-sender name of a sender that cannot be placed.
+const External = "EXTERNAL"
+
+func isUpper(c byte) bool { return c >= 'A' && c <= 'Z' }
+
+func validateProgramName(name string) error {
+	ok := name != "" && isUpper(name[0])
+	for i := 1; ok && i < len(name); i++ {
+		ok = isUpper(name[i]) || isDigit(name[i]) || name[i] == '_'
+	}
+	if !ok {
+		return fmt.Errorf("agent program name %q is invalid: must match [A-Z][A-Z0-9_]*", name)
+	}
+	return nil
+}
+
+// FormatProgram validates the shortname and the upper-case program name and joins them as "<shortname>:<NAME>".
+// A program sender is a non-strand sender such as a batten row; the upper-case name tells it from a strand role.
+func FormatProgram(shortname, name string) (string, error) {
+	if err := ValidateShortname(shortname); err != nil {
+		return "", err
+	}
+	if err := validateProgramName(name); err != nil {
+		return "", err
+	}
+	return shortname + sep + name, nil
+}
+
+// ParseProgram accepts exactly two segments whose second is an upper-case program name and returns them.
+func ParseProgram(full string) (shortname, name string, err error) {
+	parts := strings.Split(full, sep)
+	if len(parts) != 2 {
+		return "", "", fmt.Errorf("agent program name %q is invalid: want <shortname>:<NAME>", full)
+	}
+	if _, err := FormatProgram(parts[0], parts[1]); err != nil {
+		return "", "", fmt.Errorf("agent program name %q: %w", full, err)
+	}
+	return parts[0], parts[1], nil
+}
+
+// IsProgram reports whether full parses as a program sender, External included.
+func IsProgram(full string) bool {
+	_, _, err := ParseProgram(full)
+	return err == nil
+}
+
 // TaskSlug returns the slug of a strand name that parses and carries one.
 // It returns the empty string for an empty name, a slug-free name such as the hub orch's, and a name that does not parse.
 func TaskSlug(strandName string) string {

@@ -23,6 +23,27 @@ func TestFormatParseRoundTrip(t *testing.T) {
 		if err != nil || n != (Name{tt.shortname, tt.slug, tt.role}) || n.String() != got {
 			t.Fatalf("Parse(%q) = %+v, %v", got, n, err)
 		}
+		if IsProgram(got) {
+			t.Errorf("IsProgram(%q) = true; want false for a strand name", got)
+		}
+	}
+
+	programs := []struct{ shortname, name, want string }{
+		{"ly", "BATTEN", "ly:BATTEN"},
+		{"ly", External, "ly:EXTERNAL"},
+	}
+	for _, tt := range programs {
+		got, err := FormatProgram(tt.shortname, tt.name)
+		if err != nil || got != tt.want {
+			t.Fatalf("FormatProgram(%q,%q) = %q, %v; want %q", tt.shortname, tt.name, got, err, tt.want)
+		}
+		shortname, name, err := ParseProgram(got)
+		if err != nil || shortname != tt.shortname || name != tt.name {
+			t.Fatalf("ParseProgram(%q) = %q, %q, %v", got, shortname, name, err)
+		}
+		if !IsProgram(got) {
+			t.Errorf("IsProgram(%q) = false; want true", got)
+		}
 	}
 }
 
@@ -46,6 +67,19 @@ func TestValidationRejections(t *testing.T) {
 		if _, err := Parse(name); err == nil {
 			t.Errorf("Parse(%q) accepted", name)
 		}
+	}
+	for _, name := range []string{"ly:batten", "ly:x:BATTEN", "LY:BATTEN"} {
+		if _, _, err := ParseProgram(name); err == nil {
+			t.Errorf("ParseProgram(%q) accepted", name)
+		}
+	}
+	for _, tt := range [][2]string{{"ly", "batten"}, {"ly", "BAT-TEN"}, {"LY", "BATTEN"}} {
+		if _, err := FormatProgram(tt[0], tt[1]); err == nil {
+			t.Errorf("FormatProgram(%q,%q) accepted", tt[0], tt[1])
+		}
+	}
+	if _, err := Parse("ly:BATTEN"); err == nil {
+		t.Error("Parse accepted a program name")
 	}
 	if _, err := Format("ly", "bad slug", "orch"); err == nil {
 		t.Error("Format accepted bad slug")
