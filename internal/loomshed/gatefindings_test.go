@@ -48,7 +48,7 @@ func TestDiscussionGate_FailureSurfacesItsFindings(t *testing.T) {
 	}
 
 	buf := logcapture.Capture(t)
-	gate := NewDiscussionGate(decisionRecord, supportLog)
+	gate := NewDiscussionGate(decisionRecord, supportLog, filepath.Join(dir, "relevant.md"))
 
 	result, err := gate()
 	if err != nil {
