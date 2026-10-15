@@ -1,6 +1,7 @@
 package loomcli
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
@@ -71,6 +72,11 @@ func TestDriverSpec(t *testing.T) {
 	t.Run("ForkSubagents", func(t *testing.T) {
 		if !got.ForkSubagents {
 			t.Error("driverSpec().ForkSubagents = false; want true -- the driver forks itself once at a failure stop")
+		}
+	})
+	t.Run("Requires", func(t *testing.T) {
+		if want := []shuttleengine.Requirement{shuttleengine.RequirementBackgroundWake}; !slices.Equal(got.Requires, want) {
+			t.Errorf("driverSpec().Requires = %v; want %v -- the driver runs its loop and arbiter as background jobs and wakes on them", got.Requires, want)
 		}
 	})
 	t.Run("Role", func(t *testing.T) {

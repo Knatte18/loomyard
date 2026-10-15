@@ -718,6 +718,8 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 		ModelChoice:   choice,
 		Skills:        languageconfig.AppendSkills(roleSkills, deps.LanguageSkills),
 		ForkSubagents: true,
+		// The Master stencil ends its turn after each backgrounded fork and backgrounded recover-batch and wakes on their completion.
+		Requires: []shuttleengine.Requirement{shuttleengine.RequirementBackgroundWake},
 		// The failure ladder backgrounds recover-batch and recovery_timeout_min bounds it, so the wait marker leaves it out.
 		AwaitedShellPrefixes: []string{masterAwaitedShellPrefix},
 		Role:                 MerriamStrandRole,
@@ -733,6 +735,10 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	gate := append(slices.Clone(deps.Gate), shuttleengine.GateEntry{Name: verifyGateName, Gate: verifyGate, Attempts: deps.Config.VerifyGateAttempts, Reprompt: verifyGateReprompt(verifyFixPromptPath)})
 	handle, err := deps.Starter.StartMaster(spec, gate)
 	if err != nil {
+		err = shuttleengine.ModelKey{Module: "webster", Key: "master"}.Wrap(err)
+		if errors.Is(err, shuttleengine.ErrRequirementsUnmet) {
+			return RunResult{}, fmt.Errorf("webster: start master: %w", err)
+		}
 		return RunResult{}, fmt.Errorf("webster: start master: %w; way forward: transient, re-run `lyx webster run`", err)
 	}
 

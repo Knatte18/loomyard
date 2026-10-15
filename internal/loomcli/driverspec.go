@@ -35,6 +35,7 @@ var driverSkills = []string{}
 // --dangerously-skip-permissions flag and the operator-prompt deny an unattended session needs.
 // ForkSubagents is true, so the claude engine permits fork subagents and still denies every other subagent type:
 // at an error or interrupted stop the driver spawns one fork of itself to read the traces and repair, which keeps the trace material out of the driver's own context.
+// Requires is background-wake: the driver stencil runs its loop and arbiter as background jobs and wakes on them.
 // Role is the literal "driver", which is what the run directory
 // records and what makes a driver run distinguishable from a producer round. Round is empty, because
 // a driver is not one round of anything. Parent is empty, because the driver is top-level and the
@@ -61,6 +62,7 @@ func driverSpec(prompt string, reportPath string, choice shuttleengine.ModelChoi
 		NameOverride:  driverStrandDisplayName,
 		Interactive:   false,
 		ForkSubagents: true,
+		Requires:      []shuttleengine.Requirement{shuttleengine.RequirementBackgroundWake},
 		Role:          driverRole,
 		Segment:       segmentcolor.Coordinator,
 		Round:         "",

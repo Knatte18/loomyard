@@ -155,6 +155,9 @@ rationale: the same nil-check finding recurs in rounds 2 and 4
 		if sh.spec.Engine != "b" {
 			t.Errorf("runCircling() spec.Engine = %q; want %q", sh.spec.Engine, "b")
 		}
+		if len(sh.spec.Requires) != 0 {
+			t.Errorf("runCircling() spec.Requires = %v; want none", sh.spec.Requires)
+		}
 		if sh.spec.Model != "haiku" {
 			t.Errorf("runCircling() spec.Model = %q; want %q", sh.spec.Model, "haiku")
 		}

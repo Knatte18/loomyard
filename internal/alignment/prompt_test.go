@@ -141,6 +141,9 @@ func TestSpec(t *testing.T) {
 	if got.Role != Role || got.Segment != segmentcolor.Review || got.NameOverride != "" {
 		t.Errorf("Spec() role, segment, name = %q, %q, %q; want %q, %q and no override", got.Role, got.Segment, got.NameOverride, Role, segmentcolor.Review)
 	}
+	if len(got.Requires) != 0 {
+		t.Errorf("Spec().Requires = %v; want none", got.Requires)
+	}
 	if got.Interactive || got.ForkSubagents || got.Parent != "" {
 		t.Errorf("Spec() interactive, fork subagents, parent = %v, %v, %q; want false, false and empty", got.Interactive, got.ForkSubagents, got.Parent)
 	}

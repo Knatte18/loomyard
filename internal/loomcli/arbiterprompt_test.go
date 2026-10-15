@@ -119,6 +119,9 @@ func TestArbiterSpec(t *testing.T) {
 	if got.Segment != segmentcolor.Coordinator {
 		t.Errorf("arbiterSpec().Segment = %q; want %q", got.Segment, segmentcolor.Coordinator)
 	}
+	if len(got.Requires) != 0 {
+		t.Errorf("arbiterSpec().Requires = %v; want none", got.Requires)
+	}
 	if got.Interactive || got.ForkSubagents || got.Parent != "" {
 		t.Errorf("arbiterSpec() interactive, fork subagents, parent = %v, %v, %q; want false, false, empty", got.Interactive, got.ForkSubagents, got.Parent)
 	}

@@ -100,7 +100,7 @@ func (c *loomCLI) startLLMDriverArm(driverAction driverStrandAction, driverGUID 
 
 	run, err := c.driverStarter.StartDriver(spec)
 	if err != nil {
-		return nil, err
+		return nil, shuttleengine.ModelKey{Module: "loom", Key: "driver"}.Wrap(err)
 	}
 	// Per the Live-Substrate Spawn Observability invariant, logged exactly as the go arm's own
 	// detached spawn already is. StartDriver already guarantees readiness, so this single line
