@@ -33,6 +33,7 @@
 package battencli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -68,10 +69,8 @@ type battenCLI struct {
 	// routing is the recipe's producer-graph projection armAt loads (loadRouting) and specFor copies
 	// onto the Spec; zero on a hand-populated receiver, which reports no progress.
 	routing shedengine.Routing
-	// abandonedSession is the value the Teardown.Shutdown seam records on the receiver -- carried
-	// here rather than only returned from the seam, so the run verb can surface it on the envelope
-	// after the Shed's own Run has returned.
-	abandonedSession string
+	// untilStop, when non-nil, replaces the shared --until-stop loop as what the run verb's driver steps the run through, so the run verb is testable without a detached loop.
+	untilStop func(ctx context.Context, attempt string) ([]byte, error)
 	// spec is the shedverbs.Spec the pre-run fills in place (arm.go) and the shedverbs verbs read
 	// at run time. It is always non-nil after construction, so Command() can hand the same
 	// pointer to shedverbs.Verbs before the pre-run has ever run.
@@ -83,7 +82,7 @@ type battenCLI struct {
 	driverFlag string
 	// childDriverFlag is driverFlag's sibling for --child-driver, the value armSeed writes into the
 	// auto-seeded seed's params.child_driver, and only when childDriverFlagSet. Empty means "unset":
-	// the child then takes the task's driver_kind.
+	// the child then takes its recipe's driver_kind, then shed.yaml's.
 	childDriverFlag string
 	// driverFlagSet records whether the operator typed --driver, rather than cobra filling the
 	// field with its StringVar default.
@@ -133,6 +132,10 @@ which is the everyday resume path. A slug already done refuses on the
 envelope, naming "lyx batten cleanup --apply" and the leftover branches to
 delete to run it again.
 
+The Go driver meets an unexpected stop with its rule table and a cold tackler
+agent before the orch sees it; a second run for the slug is refused while the
+first holds the driver lock.
+
 The run-id positional is required in practice, even though cobra accepts
 its absence: prime hosts many slug-addressed batten runs, so an omitted
 run-id refuses by name rather than defaulting to "self".
@@ -140,8 +143,7 @@ run-id refuses by name rather than defaulting to "self".
 With --window, the same run starts in its own tmux window of the prime's reed
 session and the verb returns at once with the window's id and name; the tmux
 window lives as long as the reed session. A window of that name with a live run
-is reported and nothing is started; a second batten for the slug is refused by
-the run's own lock inside the window and read from batten's own log.
+is reported and nothing is started.
 
 The run's Open-Window row opens one desktop terminal window, titled with the
 slug, running "lyx reed attach" in the task worktree once the task's own run is
@@ -149,8 +151,8 @@ seeded there and before it is spawned: Konsole on Linux, Windows Terminal into
 WSL on WSL. batten.yaml's open_window switches it, and --window turns it on for
 that run. The envelope's terminal_window field names the launcher, or says no
 window is opened when this machine has none. A run resumed past that row opens
-no window. The Seed-IDE and Open-IDE rows after it write the task worktree's VS
-Code config and open VS Code on it, switched by seed_ide and open_ide.
+no window. The Seed-IDE and Open-IDE rows after it write the worktree's VS Code
+config and open VS Code, switched by seed_ide and open_ide.
 
 Example:
   lyx batten run some-slug
@@ -204,6 +206,8 @@ Example:
 forward from its persisted current producer, seeding a fresh run first when
 none is persisted yet -- the single-producer primitive an external
 supervisor drives one call at a time.
+With --until-stop, step runs the step loop to the run's next stop, the entry
+"lyx batten run" drives.
 
 The run-id positional is required in practice, even though cobra accepts
 its absence: prime hosts many slug-addressed batten runs, so an omitted
@@ -293,19 +297,18 @@ Example:
 	// "llm" -- the child's own recipe capability is checked when that child's seed is written, not
 	// here.
 	runVerb.Flags().StringVar(&c.driverFlag, "driver", shedrun.DriverGo, "the run's own driver (batten has no bootstrap verb, so \"llm\" is refused)")
-	runVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", "", "the driver the task worktree's own inner run uses; unset, the task's driver_kind")
+	runVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", "", "the driver the task worktree's own inner run uses; unset, the child recipe's driver_kind, then shed.yaml's")
 	runVerb.Flags().BoolVar(&c.windowFlag, "window", false, "start the same run in its own tmux window of the prime's reed session and return at once, and have its Open-Window row open a terminal window attached to the task worktree whatever batten.yaml's open_window says")
 	runVerb.Flags().BoolVar(&c.openTerminalFlag, openTerminalFlagName, false, "turn the Open-Window row on for this run whatever batten.yaml's open_window says; --window passes it")
 	_ = runVerb.Flags().MarkHidden(openTerminalFlagName)
-	originalRunE := runVerb.RunE
 	runVerb.RunE = func(cmd *cobra.Command, args []string) error {
 		if !c.windowFlag {
-			return originalRunE(cmd, args)
+			return c.driveRun(cmd)
 		}
 		return c.runInWindow(cmd)
 	}
 	stepVerb.Flags().StringVar(&c.driverFlag, "driver", shedrun.DriverGo, "the run's own driver (batten has no bootstrap verb, so \"llm\" is refused)")
-	stepVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", "", "the driver the task worktree's own inner run uses; unset, the task's driver_kind")
+	stepVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", "", "the driver the task worktree's own inner run uses; unset, the child recipe's driver_kind, then shed.yaml's")
 
 	parent.AddCommand(runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, lockCommand(), c.cleanupCmd(), c.overviewCmd())
 

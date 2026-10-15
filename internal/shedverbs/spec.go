@@ -25,6 +25,17 @@ type AbsentDisposition struct {
 	RefuseMessage string
 }
 
+// InterruptPolicyReinvoke and InterruptPolicyHandback are the two closed policy words an InterruptPolicyFor hook answers with.
+// There is no third word: the hook's empty return is the caller's signal that a row carries no entry at all.
+const (
+	// InterruptPolicyReinvoke means an external supervisor may safely re-step immediately after an interruption:
+	// the row's adapter reattaches to a still-live agent rather than spawning a second one, so a re-step never double-spawns.
+	InterruptPolicyReinvoke = "reinvoke"
+	// InterruptPolicyHandback means an external supervisor should hand the stop back rather than re-stepping:
+	// the row's adapter reclaims (kills) a leftover agent rather than attaching to it, so a re-step restarts in-flight work instead of resuming it.
+	InterruptPolicyHandback = "handback"
+)
+
 // Hooks carries the module-specific extension points the generic verb bodies call at fixed
 // points in their own sequence. Every field is nil-by-default and skipped when nil, so a module
 // that needs none of them may leave the whole struct at its zero value.
@@ -63,7 +74,9 @@ type Hooks struct {
 	// a nil hook yields the empty string.
 	AfterStep func(ctx context.Context, res shedengine.StepResult, stepErr error) string
 	// InterruptPolicyFor resolves the interrupt policy for a producer name, keyed by the step
-	// body's own res.Next. A nil hook yields the empty string, which is the caller's "no entry"
+	// body's own res.Next.
+	// It answers InterruptPolicyReinvoke or InterruptPolicyHandback;
+	// a nil hook yields the empty string, which is the caller's "no entry"
 	// signal and never a third policy word -- a recipe with no policy table therefore yields an
 	// empty next_interrupt_policy.
 	InterruptPolicyFor func(row string) string

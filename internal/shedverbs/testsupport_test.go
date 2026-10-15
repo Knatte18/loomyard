@@ -17,7 +17,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/spf13/cobra"
@@ -56,10 +55,17 @@ func seedStatus(t *testing.T, paths testPaths, current string) {
 	}
 }
 
-// stubRow returns a ProducerDef over loomshed.NewStub(name), terminal (empty OnDone): the fake
-// shed's ordinary, no-LLM, no-tmux, no-git happy-path row.
+// stubRow returns a ProducerDef named name whose producer reports Done, terminal (empty OnDone):
+// the fake shed's ordinary, no-LLM, no-tmux, no-git happy-path row.
 func stubRow(name string) shedengine.ProducerDef {
-	return shedengine.ProducerDef{Name: name, Producer: loomshed.NewStub(name)}
+	return shedengine.ProducerDef{Name: name, Producer: &funcProducer{
+		call: func(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
+			if err := ctx.Err(); err != nil {
+				return "", shedengine.OutputPointer{}, err
+			}
+			return shedengine.Done, shedengine.OutputPointer{}, nil
+		},
+	}}
 }
 
 // funcProducer is a controllable fake ShedProducer for the cases a plain Stub row cannot drive: a

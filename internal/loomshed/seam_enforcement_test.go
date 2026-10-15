@@ -62,6 +62,9 @@ var loomshedAllowedImports = []string{
 	// internal/gitrepo is the go-git read that checks a Publish failure record's merge commit.
 	// It is told the worktree and resolves no geometry.
 	"github.com/Knatte18/loomyard/internal/gitrepo",
+	// internal/shedverbs is imported for the two interrupt-policy words and no behaviour.
+	// It imports no lyxcwd, so the told-geometry membership holds.
+	"github.com/Knatte18/loomyard/internal/shedverbs",
 }
 
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {

@@ -21,7 +21,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-config-layers` — Resolving a module's config: only `configengine` reads, stacks and locates layer files; `configreg` sets keys closed to the local layer. — [background](pattern/PATTERN-config-layers.md)
 - `PATTERN-binary-change-reconcile` — Reconciling a hub's config after a binary change: only through `hubreconcile.Ensure`, which owns the build stamp and the hub lock.
 - `PATTERN-refusal-way-forward` — Adding a webster, shed or loom refusal: name the way forward, land its spec row with it, add a test. — [background](pattern/PATTERN-refusal-way-forward.md)
-- `PATTERN-no-denied-recovery` — Naming a step in a refusal, stencil or spec: never a command the agents' settings deny; lyx does it. (test) — [background](pattern/PATTERN-no-denied-recovery.md)
+- `PATTERN-no-denied-recovery` — Naming a step in a refusal, stencil or spec: never a command the agents' settings deny. (test) — [background](pattern/PATTERN-no-denied-recovery.md)
 
 ## Fabric and git
 
@@ -29,7 +29,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-fabric-git` — Running git on warp or weft: only `internal/fabricengine`, in-process, never raw git. — [background](pattern/PATTERN-fabric-git.md)
 - `PATTERN-fabric-destruction-chokepoint` — Destroying anything in fabric: only `internal/fabricengine/destroy.go`. — [background](pattern/PATTERN-fabric-destruction-chokepoint.md)
 - `PATTERN-fabric-write-containment` — Writing under `_launchers` or `_portals` from `fabricengine`: through an `os.Root` rooted at the hub, never raw `os.MkdirAll`, `os.WriteFile` or `fslink`.
-- `PATTERN-push-both-sides` — Pushing run records from Go: the pair's code branch goes along; the prime sends records only. — [background](pattern/PATTERN-push-both-sides.md)
+- `PATTERN-push-both-sides` — Pushing run records from Go: the pair's code branch goes along. — [background](pattern/PATTERN-push-both-sides.md)
 - `PATTERN-mutation-record` — Adding a mutating fabric verb: it fills a `*Mutations` record, and its result embeds `MutationRecord` under fixed envelope keys. — [background](pattern/PATTERN-mutation-record.md)
 - `PATTERN-pair-teardown` — Tearing down a pair: only through `internal/pairteardown`, which ends the pair's reed session before any worktree is removed. (test) — [background](pattern/PATTERN-pair-teardown.md)
 - `PATTERN-batten-bookend` — Creating or destroying a task worktree: the producer never runs from inside it, and session shutdown precedes removal in one row. — [background](pattern/PATTERN-batten-bookend.md)
@@ -47,6 +47,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-shed-producer-seam` — Importing into `internal/shedengine`: only stdlib, `state` and `lock`, and its status and lock paths are caller-supplied.
 - `PATTERN-shed-recipe-registry` — Registering a shed producer: one `map[string]Constructor` in `internal/shedrecipe`, reached through `Lookup`/`Names`, with no `init()`, no `Register`, no `lyxcwd`.
 - `PATTERN-shed-verb-set` — Adding a run, step, status, pause or goto verb: the generic bodies live in `internal/shedverbs` only. (test) — [background](pattern/PATTERN-shed-verb-set.md)
+- `PATTERN-shed-driver` — Driving a shed run in Go, deciding its stops or spawning a tackler: only `internal/sheddriver`, told its paths and seams. (test) — [background](pattern/PATTERN-shed-driver.md)
 - `PATTERN-shed-run-directory` — Touching run directories or `seed.json`: `internal/shedrun` alone declares their paths, ids and `Seed`. — [background](pattern/PATTERN-shed-run-directory.md)
 - `PATTERN-tolerant-records` — Go-written JSON records: never refuse an unknown key; rewrite via `internal/state`. (test) — [background](pattern/PATTERN-tolerant-records.md)
 - `PATTERN-transient-stop` — Marking a failure transient: the `internal/shedengine` mark, set only at a producer or step-bootstrap boundary. — [background](pattern/PATTERN-transient-stop.md)
@@ -57,7 +58,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-ref-shape-registry` — Classifying a plan ref or `plan:` handle: `internal/planparser` alone declares and decides. (test) — [background](pattern/PATTERN-ref-shape-registry.md)
 - `PATTERN-glyph-conversion-chokepoint` — Converting glyphs and paths: only through `glyph`'s converters, plus `planparser`'s one external-test unit mapping. — [background](pattern/PATTERN-glyph-conversion-chokepoint.md)
 - `PATTERN-gate-self-check-parity` — Adding a mechanical gate: its closure and its CLI self-check call one package function and land in one task. — [background](pattern/PATTERN-gate-self-check-parity.md)
-- `PATTERN-verified-tree` — Running a verify command: through `verifytree.Verify` only, never on a dirty tree, skipping only on a record of HEAD's tree. (test) — [background](pattern/PATTERN-verified-tree.md)
+- `PATTERN-verified-tree` — Running a verify command: through `verifytree.Verify` only. (test) — [background](pattern/PATTERN-verified-tree.md)
 - `PATTERN-gate-slot` — Running a gate build or test: only in a `-p`-capped hub slot of `internal/gateslot`.
 - `PATTERN-batcher-registry` — Choosing webster's execution unit: the batch the active `batcher.yaml` profile derives via `internal/batcher`. — [background](pattern/PATTERN-batcher-registry.md)
 - `PATTERN-review-round` — Review and fix round: review accepted on disk before any edit, each finding fixed or disputed, end on a verdict. — [background](pattern/PATTERN-review-round.md)
@@ -65,7 +66,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 
 ## Agents and prompts
 
-- `PATTERN-agent-name` — Forming an agent name: only `internal/agentname`, once by reed; the spawner owns the role prefix, config a later seat's suffix. — [background](pattern/PATTERN-agent-name.md)
+- `PATTERN-agent-name` — Forming an agent name: only `internal/agentname`, once by reed. — [background](pattern/PATTERN-agent-name.md)
 - `PATTERN-stencil-ownership` — Reading a prompt or spec: at call time via `internal/stencilstore` from a told directory, never embedded. — [background](pattern/PATTERN-stencil-ownership.md)
 - `PATTERN-producer-pointer-rule` — Writing an instruction file: it points at another producer's format contract and never duplicates or paraphrases it.
 - `PATTERN-friction-capture` — Halting a loom run or refusing in webster: Go writes a friction note, archived only once a reflection covers it. (test) — [background](pattern/PATTERN-friction-capture.md)
@@ -102,7 +103,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 ## Testing
 
 - `PATTERN-test-economy` — Writing a test: it pins public-surface behavior no test covers yet, else it extends one. — [background](pattern/PATTERN-test-economy.md)
-- `PATTERN-test-speed` — Writing a test: lowest fitting tier of four, `llm` files alone reach an LLM, inject clocks, `t.Parallel` by default. (test) — [background](pattern/PATTERN-test-speed.md)
+- `PATTERN-test-speed` — Writing a test: lowest fitting tier, injected clocks, `t.Parallel` by default. (test) — [background](pattern/PATTERN-test-speed.md)
 - `PATTERN-test-isolation` — Testing a package: git spawners use `gitkit.HermeticGitEnv()`; tagged packages run through `tmuxkit.Main`. (test) — [background](pattern/PATTERN-test-isolation.md)
 - `PATTERN-testkit` — Sharing test support between packages: one kit under `internal/testkit/<kit>/`, imported only from tests, never duplicated. (test) — [background](pattern/PATTERN-testkit.md)
 - `PATTERN-hubforge-fixtures` — A hub fixture no fake can test: `hubforge` via `fabriccli.CloneAndWire`, never hand-assembled or wrapped. — [background](pattern/PATTERN-hubforge-fixtures.md)

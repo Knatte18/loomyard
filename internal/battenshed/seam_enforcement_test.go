@@ -26,6 +26,7 @@ var battenshedAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/logger",
 	"github.com/Knatte18/loomyard/internal/parentlock",
 	"github.com/Knatte18/loomyard/internal/pauserecord",
+	"github.com/Knatte18/loomyard/internal/sheddriver",
 }
 
 // battenshedDeniedLyxcwdImport is the exact import path the Told-Geometry Invariant excludes

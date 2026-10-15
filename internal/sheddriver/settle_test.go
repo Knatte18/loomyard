@@ -1,6 +1,6 @@
 // settle_test.go — untagged Tier-1 tests for the Go driver's settle records, over a temp file.
 
-package loomengine
+package sheddriver
 
 import (
 	"os"
@@ -14,14 +14,14 @@ import (
 func TestSettleRecords(t *testing.T) {
 	t.Parallel()
 	first := SettleRecord{
-		StopKey: ArbiterStopKey{CurrentProducer: "Plan-Write", HistoryLength: 2, State: "blocked"},
+		StopKey: StopKey{CurrentProducer: "Plan-Write", HistoryLength: 2, State: "blocked"},
 		Settler: SettlerGoRule,
 		Action:  SettleRestep,
 		Outcome: "ok",
 		At:      time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
 	}
 	second := SettleRecord{
-		StopKey: ArbiterStopKey{CurrentProducer: "Publish", HistoryLength: 5, State: "blocked"},
+		StopKey: StopKey{CurrentProducer: "Publish", HistoryLength: 5, State: "blocked"},
 		Settler: SettlerGoRule,
 		Action:  SettleVerifyRetry,
 		Outcome: "spent",

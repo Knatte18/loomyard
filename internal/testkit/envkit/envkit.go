@@ -390,7 +390,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		},
 		SeedChild: battenshed.SeedChildDeps{
 			ReadBoardType:        func(context.Context) (string, error) { return "loom", nil },
-			ChildDriver:          func() (string, error) { return "claude", nil },
+			ChildDriver:          func(string) (string, error) { return "claude", nil },
 			ReadRunSettings:      func(context.Context) (map[string]any, error) { return nil, nil },
 			PrepareRunSettings:   func(map[string]any) (map[string][]byte, error) { return nil, nil },
 			WriteLocalOverride:   func(context.Context, string, []byte) error { return nil },

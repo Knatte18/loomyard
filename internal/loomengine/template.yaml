@@ -33,10 +33,10 @@ driver: sonnet[medium]  # model-spec for the model that runs an llm-driven run's
 arbiter: opus[high]  # model-spec for the arbiter, the cold agent a run's driver asks to settle a stop it cannot (see contracts/specs/llm-model-spec.md); empty takes opus[high]
 arbiter_timeout_min: 30  # minutes one arbiter spawn is allowed to run; 0 takes 30
 arbiter_max_spawns: 3  # arbiter spawns a run may use; 0 turns the arbiter off, so every eligible stop escalates to the run's parent as without it
-driver_kind: llm  # the driver a task's loom run is seeded with when nothing typed one: llm or go; a seeded run keeps its recorded driver
-tackler: haiku  # model-spec for the tackler, the cold agent a Go driver asks to settle a stop its rules do not (see contracts/specs/llm-model-spec.md); empty takes haiku
-tackler_timeout_min: 10  # minutes one tackler spawn is allowed to run; 0 takes 10
-tackler_max_spawns: 4  # tackler spawns a run may use; 0 turns the tackler off, so every stop it would take hands back
+driver_kind: ""  # overrides shed.yaml's driver_kind for a loom run, llm or go; empty inherits shed.yaml; a seeded run keeps its recorded driver
+tackler: ""  # overrides shed.yaml's tackler model-spec for a loom run (see contracts/specs/llm-model-spec.md); empty inherits shed.yaml
+tackler_timeout_min: 0  # overrides shed.yaml's tackler_timeout_min for a loom run; 0 inherits shed.yaml
+tackler_max_spawns: ~  # overrides shed.yaml's tackler_max_spawns for a loom run; null inherits shed.yaml, and a set 0 turns the tackler off for loom
 alignment: opus[high]  # model-spec for the alignment agent, the cold agent that settles a parent review or a PR-Gate itself unless it finds an overlap or a question it cannot settle (see contracts/specs/llm-model-spec.md); empty takes opus[high]
 alignment_timeout_min: 20  # minutes one alignment spawn is allowed to run; 0 takes 20, and the resolved value must stay below parent_review_wait_min
 skip_alignment: false  # true sends parent review and PR-Gate to the run's parent exactly as before the alignment agent

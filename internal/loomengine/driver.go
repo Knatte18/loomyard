@@ -13,7 +13,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/modelspec"
-	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // LoomDriverStrandName is the loom driver session's own strand's stable identity, the role the hub addresses as "<slug>:driver".
@@ -99,65 +98,6 @@ func ArbiterTimeout(cfg Config) time.Duration {
 		return time.Duration(cfg.ArbiterTimeoutMin) * time.Minute
 	}
 	return arbiterDefaultTimeout
-}
-
-// tacklerDefaultModelSpec is the model-spec an empty tackler key takes.
-const tacklerDefaultModelSpec = "haiku"
-
-// tacklerDefaultTimeout is the timeout a zero tackler_timeout_min takes.
-const tacklerDefaultTimeout = 10 * time.Minute
-
-// TacklerSettings is the tackler role's resolved model settings, timeout and spawn budget, threaded onto the tackler session's launch spec.
-type TacklerSettings struct {
-	// Model is the resolved provider-side model string.
-	Model string
-	// Effort is the resolved "effort" parameter, empty when unset.
-	Effort string
-	// Version is the resolved "version" parameter, empty when unset.
-	Version string
-	// Timeout is how long one tackler spawn may run.
-	Timeout time.Duration
-	// MaxSpawns is how many tackler spawns a run may use; zero turns the tackler off.
-	MaxSpawns int
-}
-
-// ResolveTackler parses and resolves the tackler role's model-spec from cfg through reg.
-// An empty cfg.Tackler takes haiku and a zero cfg.TacklerTimeoutMin takes 10 minutes;
-// cfg.TacklerMaxSpawns passes through.
-// A spec that does not parse or resolve is an error naming the tackler key.
-func ResolveTackler(cfg Config, reg modelspec.Registry) (TacklerSettings, error) {
-	specText := cfg.Tackler
-	if specText == "" {
-		specText = tacklerDefaultModelSpec
-	}
-	spec, err := modelspec.Parse(specText)
-	if err != nil {
-		return TacklerSettings{}, fmt.Errorf("loom: ResolveTackler: tackler role model-spec: %w", err)
-	}
-	resolved, err := reg.Resolve(spec)
-	if err != nil {
-		return TacklerSettings{}, fmt.Errorf("loom: ResolveTackler: tackler role model-spec: %w", err)
-	}
-
-	timeout := tacklerDefaultTimeout
-	if cfg.TacklerTimeoutMin > 0 {
-		timeout = time.Duration(cfg.TacklerTimeoutMin) * time.Minute
-	}
-	return TacklerSettings{
-		Model:     resolved.Model,
-		Effort:    resolved.Params["effort"],
-		Version:   resolved.Params["version"],
-		Timeout:   timeout,
-		MaxSpawns: cfg.TacklerMaxSpawns,
-	}, nil
-}
-
-// ResolveDriverKind returns the driver a task's loom run is seeded with when nothing typed one: shedrun.DriverLLM for an empty cfg.DriverKind, and the configured value otherwise.
-func ResolveDriverKind(cfg Config) string {
-	if cfg.DriverKind == "" {
-		return shedrun.DriverLLM
-	}
-	return cfg.DriverKind
 }
 
 // alignmentDefaultModelSpec is the model-spec an empty alignment key takes.

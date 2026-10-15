@@ -363,9 +363,9 @@ type SeedChildDeps struct {
 	// ReadBoardType returns the Board task's own "recipe" field, evaluated fresh on every Call -- never captured at wiring time -- so a recipe corrected after prime was seeded is still honoured.
 	// The empty string means "loom".
 	ReadBoardType func(ctx context.Context) (string, error)
-	// ChildDriver returns the child's driver: the prime seed's typed child_driver, else the task's driver_kind.
-	// SeedChild calls it after the local overrides are written, so the task's driver_kind is read from the layer just written.
-	ChildDriver func() (string, error)
+	// ChildDriver returns the child's driver for the recipe SeedChild resolved: the prime seed's typed child_driver, else the child recipe's driver_kind, else shed.yaml's.
+	// SeedChild calls it after the local overrides are written, so the recipe's driver_kind is read from the layer just written.
+	ChildDriver func(recipe string) (string, error)
 	// ReadRunSettings returns the Board task's run settings, module name to that module's keys, evaluated fresh on every Call.
 	ReadRunSettings func(ctx context.Context) (map[string]any, error)
 	// PrepareRunSettings returns each module the settings name as its migrated local-layer document.

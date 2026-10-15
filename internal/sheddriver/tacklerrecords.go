@@ -1,9 +1,8 @@
 // tackler.go declares the records of a run's tackler and their readers and writers:
 // the role name, the verdict words, the worktree snapshot an attempt is judged against, one attempt's directory contents (attempt.json, prompt.md, verdict.yaml, case-brief.md, envelope.json and the applied mark) and the ephemeral in-flight marker.
 // Every function takes the directory or path it works on; internal/shedrun declares where those live.
-// The records sit in this package, not in loomcli, so battencli reads the marker and matches tackler strands without importing another CLI package.
 
-package loomengine
+package sheddriver
 
 import (
 	"bytes"
@@ -55,7 +54,7 @@ func (s WorktreeSnapshot) Equal(other WorktreeSnapshot) bool {
 // TacklerAttempt is attempt.json: the record the Go driver writes before it spawns a tackler, so the attempt counts against the spawn budget whatever happens next.
 type TacklerAttempt struct {
 	Number       int              `json:"number"`
-	StopKey      ArbiterStopKey   `json:"stop_key"`
+	StopKey      StopKey          `json:"stop_key"`
 	PauseBefore  string           `json:"pause_before"`
 	PauseAfter   string           `json:"pause_after"`
 	Snapshot     WorktreeSnapshot `json:"snapshot"`
@@ -71,18 +70,18 @@ type TacklerAttempt struct {
 
 // WriteTacklerAttempt creates the attempt directory dir and writes a as its attempt.json.
 func WriteTacklerAttempt(dir string, a TacklerAttempt) error {
-	return writeArbiterJSON(filepath.Join(dir, tacklerAttemptFileName), a)
+	return writeRecordJSON(filepath.Join(dir, tacklerAttemptFileName), a)
 }
 
 // ReadTacklerAttempt reads the attempt.json in dir, and sets the result's Dir to dir.
 func ReadTacklerAttempt(dir string) (TacklerAttempt, error) {
 	var a TacklerAttempt
-	found, err := readArbiterJSON(filepath.Join(dir, tacklerAttemptFileName), &a)
+	found, err := readRecordJSON(filepath.Join(dir, tacklerAttemptFileName), &a)
 	if err != nil {
 		return TacklerAttempt{}, err
 	}
 	if !found {
-		return TacklerAttempt{}, fmt.Errorf("loom: tackler attempt directory %q has no %s", dir, tacklerAttemptFileName)
+		return TacklerAttempt{}, fmt.Errorf("sheddriver:tackler attempt directory %q has no %s", dir, tacklerAttemptFileName)
 	}
 	a.Dir = dir
 	return a, nil
@@ -97,7 +96,7 @@ func ListTacklerAttempts(tacklerDir string) ([]TacklerAttempt, error) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("loom: read tackler directory: %w", err)
+		return nil, fmt.Errorf("sheddriver:read tackler directory: %w", err)
 	}
 	var attempts []TacklerAttempt
 	for _, entry := range entries {
@@ -112,6 +111,28 @@ func ListTacklerAttempts(tacklerDir string) ([]TacklerAttempt, error) {
 	}
 	slices.SortFunc(attempts, func(a, b TacklerAttempt) int { return a.Number - b.Number })
 	return attempts, nil
+}
+
+// NewestTacklerAttempt returns the newest attempt directory recorded for key under tacklerDir, empty when there is none, and whether that attempt carries the applied mark.
+func NewestTacklerAttempt(tacklerDir string, key StopKey) (dir string, applied bool, err error) {
+	attempts, err := ListTacklerAttempts(tacklerDir)
+	if err != nil {
+		return "", false, err
+	}
+	for i := len(attempts) - 1; i >= 0; i-- {
+		if attempts[i].StopKey == key {
+			dir = attempts[i].Dir
+			break
+		}
+	}
+	if dir == "" {
+		return "", false, nil
+	}
+	applied, err = TacklerApplied(dir)
+	if err != nil {
+		return "", false, err
+	}
+	return dir, applied, nil
 }
 
 // TacklerPromptPath names the prompt.md of the attempt directory dir.
@@ -145,18 +166,18 @@ func ReadTacklerVerdict(path string) (TacklerVerdict, bool, error) {
 		return TacklerVerdict{}, false, nil
 	}
 	if err != nil {
-		return TacklerVerdict{}, false, fmt.Errorf("loom: read tackler verdict %q: %w", path, err)
+		return TacklerVerdict{}, false, fmt.Errorf("sheddriver:read tackler verdict %q: %w", path, err)
 	}
 	var v TacklerVerdict
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	decoder.KnownFields(true)
 	if err := decoder.Decode(&v); err != nil {
-		return TacklerVerdict{}, false, fmt.Errorf("loom: parse tackler verdict %q: %w", path, err)
+		return TacklerVerdict{}, false, fmt.Errorf("sheddriver:parse tackler verdict %q: %w", path, err)
 	}
 	switch v.Verdict {
 	case TacklerVerdictResume, TacklerVerdictHandBack, TacklerVerdictEscalate:
 	default:
-		return TacklerVerdict{}, false, fmt.Errorf("loom: tackler verdict %q: verdict %q is none of %q, %q or %q", path, v.Verdict, TacklerVerdictResume, TacklerVerdictHandBack, TacklerVerdictEscalate)
+		return TacklerVerdict{}, false, fmt.Errorf("sheddriver:tackler verdict %q: verdict %q is none of %q, %q or %q", path, v.Verdict, TacklerVerdictResume, TacklerVerdictHandBack, TacklerVerdictEscalate)
 	}
 	return v, true, nil
 }
@@ -177,13 +198,13 @@ type TacklerEnvelope struct {
 
 // WriteTacklerEnvelope writes e at path, creating its directory.
 func WriteTacklerEnvelope(path string, e TacklerEnvelope) error {
-	return writeArbiterJSON(path, e)
+	return writeRecordJSON(path, e)
 }
 
 // ReadTacklerEnvelope reads the envelope at path; an absent file returns found false.
 func ReadTacklerEnvelope(path string) (TacklerEnvelope, bool, error) {
 	var e TacklerEnvelope
-	found, err := readArbiterJSON(path, &e)
+	found, err := readRecordJSON(path, &e)
 	if err != nil || !found {
 		return TacklerEnvelope{}, false, err
 	}
@@ -193,10 +214,10 @@ func ReadTacklerEnvelope(path string) (TacklerEnvelope, bool, error) {
 // MarkTacklerApplied writes the applied mark in the attempt directory dir, recording that the re-launch consumed the attempt.
 func MarkTacklerApplied(dir string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("loom: create tackler attempt directory: %w", err)
+		return fmt.Errorf("sheddriver:create tackler attempt directory: %w", err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, tacklerAppliedFileName), nil, 0o644); err != nil {
-		return fmt.Errorf("loom: write tackler applied mark: %w", err)
+		return fmt.Errorf("sheddriver:write tackler applied mark: %w", err)
 	}
 	return nil
 }
@@ -208,7 +229,7 @@ func TacklerApplied(dir string) (bool, error) {
 		return false, nil
 	}
 	if err != nil {
-		return false, fmt.Errorf("loom: stat tackler applied mark: %w", err)
+		return false, fmt.Errorf("sheddriver:stat tackler applied mark: %w", err)
 	}
 	return true, nil
 }
@@ -222,13 +243,13 @@ type TacklerMarker struct {
 
 // WriteTacklerMarker writes m at path, creating its directory.
 func WriteTacklerMarker(path string, m TacklerMarker) error {
-	return writeArbiterJSON(path, m)
+	return writeRecordJSON(path, m)
 }
 
 // ReadTacklerMarker reads the marker at path; an absent file returns found false.
 func ReadTacklerMarker(path string) (TacklerMarker, bool, error) {
 	var m TacklerMarker
-	found, err := readArbiterJSON(path, &m)
+	found, err := readRecordJSON(path, &m)
 	if err != nil || !found {
 		return TacklerMarker{}, false, err
 	}
@@ -238,7 +259,7 @@ func ReadTacklerMarker(path string) (TacklerMarker, bool, error) {
 // RemoveTacklerMarker removes the marker at path; an absent one is not an error.
 func RemoveTacklerMarker(path string) error {
 	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("loom: remove tackler marker: %w", err)
+		return fmt.Errorf("sheddriver:remove tackler marker: %w", err)
 	}
 	return nil
 }

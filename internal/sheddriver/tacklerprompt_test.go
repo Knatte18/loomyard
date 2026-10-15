@@ -1,25 +1,28 @@
 // tacklerprompt_test.go — untagged Tier-1 tests for the tackler's prompt and launch spec composers.
 
-package loomcli
+package sheddriver
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
-// TestTacklerPrompt asserts the shipped stencil renders every marker value, the no-parent and edit directives, the literal none for an absent report, and no unfilled marker.
+// TestTacklerPrompt asserts the shipped stencil renders every marker value, the no-parent and edit directives, the literal none for an absent report, the recipe line under its heading, the shed-layer wording, and no unfilled marker; it refuses an empty recipe or goto rows naming the marker.
 func TestTacklerPrompt(t *testing.T) {
 	t.Parallel()
 
-	in := tacklerPromptInput{
+	in := TacklerPromptInput{
 		RunID:         "operator-surface",
 		Slug:          "operator-surface-task",
+		Recipe:        "loom: a phased task run (discussion, plan, webster's coded batches, reviews, landing)",
+		GotoRows:      "`Plan-Bouncer`",
 		Worktree:      "/hub/wt",
 		EnvelopePath:  "/hub/wt/.lyx/envelope.json",
 		ReportPath:    "/hub/wt/.lyx/report.md",
@@ -32,33 +35,79 @@ func TestTacklerPrompt(t *testing.T) {
 	}
 	noReport := in
 	noReport.ReportPath = ""
+	routedFrom := in
+	routedFrom.GotoRows = "`Plan-Bouncer` or `Plan-Write`"
+	noRecipe := in
+	noRecipe.Recipe = ""
+	noGotoRows := in
+	noGotoRows.GotoRows = ""
 	cases := []struct {
 		name string
-		in   tacklerPromptInput
+		in   TacklerPromptInput
 		want []string
+		// wantAbsent are phrases the rendered prompt must not carry.
+		wantAbsent []string
+		// wantErr is the text the refusal names; empty rows expect a prompt.
+		wantErr string
 	}{
 		{
 			name: "every marker value",
 			in:   in,
-			want: []string{in.RunID, in.Slug, in.Worktree, in.EnvelopePath, in.ReportPath, in.TraceCopy, in.StderrPath, in.TraceDir, in.DriverLog, in.VerdictPath, in.CaseBriefPath},
+			want: []string{in.RunID, in.Slug, in.Recipe, in.GotoRows, in.Worktree, in.EnvelopePath, in.ReportPath, in.TraceCopy, in.StderrPath, in.TraceDir, in.DriverLog, in.VerdictPath, in.CaseBriefPath},
 		},
 		{
 			name: "absent report reads none",
 			in:   noReport,
 			want: []string{"stop report so far `none`"},
 		},
+		{
+			name: "the recipe line is filled under the run heading",
+			in:   in,
+			want: []string{"## The run\n\n" + in.Recipe},
+		},
+		{
+			name:       "the prompt is shed-layer wording with the stop kinds, the reading order and a two-path write rule",
+			in:         in,
+			want:       []string{"transient", "`producer`", "`bootstrap`", "`unseeded`", "`interrupted`", "`blocked`", "only when those leave the cause open", "Write `" + in.VerdictPath + "` and, on an `escalate`, `" + in.CaseBriefPath + "`, and nothing else."},
+			wantAbsent: []string{"arbiter", "Arbiter"},
+		},
+		{
+			name:       "the goto rows are the halted row alone unless told more",
+			in:         in,
+			want:       []string{"the only rows it may name are `Plan-Bouncer`."},
+			wantAbsent: []string{"Plan-Write"},
+		},
+		{
+			name: "a told routed-from row is named beside the current row",
+			in:   routedFrom,
+			want: []string{"the only rows it may name are `Plan-Bouncer` or `Plan-Write`."},
+		},
+		{name: "an empty recipe is refused naming its marker", in: noRecipe, wantErr: "recipe"},
+		{name: "empty goto rows are refused naming their marker", in: noGotoRows, wantErr: "goto_rows"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			dir := seededStencils(t)
+			dir := filepath.Join(t.TempDir(), "stencils")
+			stencilkit.SeedInto(t, dir)
 			got, err := tacklerPrompt(dir, tc.in)
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("tacklerPrompt() error = %v; want it to name %q", err, tc.wantErr)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatalf("tacklerPrompt() error = %v; want nil", err)
 			}
 			for _, want := range tc.want {
 				if !strings.Contains(got, want) {
 					t.Errorf("tacklerPrompt() does not carry %q", want)
+				}
+			}
+			for _, absent := range tc.wantAbsent {
+				if strings.Contains(got, absent) {
+					t.Errorf("tacklerPrompt() carries %q; want it absent", absent)
 				}
 			}
 			directive, err := parentdirective.Directive(dir, "", false)
@@ -87,7 +136,7 @@ func TestTacklerSpec(t *testing.T) {
 	const prompt = "settle the stop"
 	const verdictPath = "/hub/wt/_lyx/shed/run/tackler/attempt-1/verdict.yaml"
 	const caseBriefPath = "/hub/wt/_lyx/shed/run/tackler/attempt-1/case-brief.md"
-	settings := loomengine.TacklerSettings{Model: "claude-resolved-model-id", Effort: "low", Version: "v9", Timeout: 10 * time.Minute, MaxSpawns: 4}
+	settings := TacklerSettings{Model: "claude-resolved-model-id", Effort: "low", Version: "v9", Timeout: 10 * time.Minute, MaxSpawns: 4}
 
 	got := tacklerSpec(prompt, verdictPath, caseBriefPath, settings)
 
@@ -103,8 +152,8 @@ func TestTacklerSpec(t *testing.T) {
 	if got.Timeout != settings.Timeout {
 		t.Errorf("tacklerSpec().Timeout = %v; want %v", got.Timeout, settings.Timeout)
 	}
-	if got.Role != loomengine.TacklerRole {
-		t.Errorf("tacklerSpec().Role = %q; want %q", got.Role, loomengine.TacklerRole)
+	if got.Role != TacklerRole {
+		t.Errorf("tacklerSpec().Role = %q; want %q", got.Role, TacklerRole)
 	}
 	if got.NameOverride != "" {
 		t.Errorf("tacklerSpec().NameOverride = %q; want empty so a second attempt numbers its role", got.NameOverride)

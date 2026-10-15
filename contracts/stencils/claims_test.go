@@ -207,12 +207,6 @@ var wordingClaims = []stencilClaims{
 		wantNone("the arbiter moves and resumes nothing itself and messages no session",
 			"lyx loom goto", "lyx loom resume", "lyx loom approve", "lyx loom reject", "lyx loom review", "SendMessage"),
 	)},
-	{"loom-template-tackler.md", LoomTemplateTackler, joinClaims(
-		wantAll("the verdict file, the escalate case brief, the three verdict words and the marked hypothesis reach the agent",
-			"{{.verdict_path}}", "{{.case_brief_path}}", "hand-back", "escalate", "resume", "hypothesis"),
-		wantNone("the tackler moves and resumes nothing itself and messages no session",
-			"SendMessage", "lyx loom goto", "lyx loom resume", "lyx loom approve", "lyx loom reject", "lyx shed goto"),
-	)},
 	{"loom-template-alignment.md", LoomTemplateAlignment, joinClaims(
 		wantAll("the agent reads the peers and the board, writes its two files, escalates with a question, lists superseded entries and names the bookkeeping file that does not escalate",
 			"lyx loom peers", "lyx board list", "{{.verdict_path}}", "{{.report_path}}", "escalate", "question", "superseded", "test-budget.yaml"),
@@ -1044,6 +1038,19 @@ var wordingClaims = []stencilClaims{
 		{mustNot: "reading the artifact", why: "the driver reads no artifact between steps"},
 		{mustNot: "Baseline", why: "the driver reads no baseline status before the loop"},
 	}},
+	{"shed-template-tackler.md", ShedTemplateTackler, joinClaims(
+		wantAll("the verdict file, the escalate case brief, the three verdict words and the marked hypothesis reach the agent",
+			"{{.verdict_path}}", "{{.case_brief_path}}", "hand-back", "escalate", "resume", "hypothesis"),
+		wantAll("the recipe line and the goto rows arrive through their markers, so the recipe-blind body names neither",
+			"{{.recipe}}", "{{.goto_rows}}"),
+		wantAll("the stop kinds the rule table hands the tackler are listed, each with how it looks and its usual verdict",
+			"transient", "producer", "bootstrap", "unseeded", "interrupted", "blocked"),
+		wantAll("the child traces are read only when the stop envelope, report, trace copy and stderr leave the cause open", "only when"),
+		wantNone("the tackler is shed-layer and names no arbiter",
+			"arbiter"),
+		wantNone("the tackler moves and resumes nothing itself and messages no session",
+			"SendMessage", "lyx loom goto", "lyx loom resume", "lyx loom approve", "lyx loom reject", "lyx shed goto"),
+	)},
 	{"shed-template-driver-guide.md", ShedTemplateDriverGuide, []claim{
 		{must: "Stranded-branch exception", why: "the guide holds the one raw-git mutation"},
 		{must: "Repair cap", why: "the guide states the repair cap the driver's key refers to"},

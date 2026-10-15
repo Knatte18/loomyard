@@ -63,11 +63,6 @@ var LoomTemplateRework []byte
 //go:embed loom/loom-template-arbiter.md
 var LoomTemplateArbiter []byte
 
-// LoomTemplateTackler is the loom tackler's shipped-default opening prompt: the cold session that settles one stop the Go driver's rules could not, or escalates it to the arbiter.
-//
-//go:embed loom/loom-template-tackler.md
-var LoomTemplateTackler []byte
-
 // LoomTemplateAlignment is the alignment agent's shipped-default opening prompt: the cold session that settles one parent review or PR-Gate, or escalates it to the run's parent.
 //
 //go:embed loom/loom-template-alignment.md
@@ -442,6 +437,11 @@ var ShedTemplateDriverNotify []byte
 //go:embed shed/shed-template-driver-notify-watched.md
 var ShedTemplateDriverNotifyWatched []byte
 
+// ShedTemplateTackler is the shed tackler's shipped-default opening prompt: the cold session that settles one stop the shed driver's rules could not, or escalates it to a stronger agent or the run's parent.
+//
+//go:embed shed/shed-template-tackler.md
+var ShedTemplateTackler []byte
+
 // ParentDirectiveParent is the shared parent directive's shipped-default variant for a run with a recorded parent.
 //
 //go:embed parent/parent-directive-parent.md
@@ -516,7 +516,6 @@ var entries = []registryEntry{
 	{"loom-template-plan", &LoomTemplatePlan},
 	{"loom-template-rework", &LoomTemplateRework},
 	{"loom-template-arbiter", &LoomTemplateArbiter},
-	{"loom-template-tackler", &LoomTemplateTackler},
 	{"loom-template-alignment", &LoomTemplateAlignment},
 	{"loom-fragment-pr-gate-loom", &LoomFragmentPRGateLoom},
 	{"loom-fragment-pr-gate-darn", &LoomFragmentPRGateDarn},
@@ -590,6 +589,7 @@ var entries = []registryEntry{
 	{"shed-template-driver-guide", &ShedTemplateDriverGuide},
 	{"shed-template-driver-notify", &ShedTemplateDriverNotify},
 	{"shed-template-driver-notify-watched", &ShedTemplateDriverNotifyWatched},
+	{"shed-template-tackler", &ShedTemplateTackler},
 	{"parent-directive-parent", &ParentDirectiveParent},
 	{"parent-directive-operator-ban", &ParentDirectiveOperatorBan},
 	{"parent-directive-none", &ParentDirectiveNone},
@@ -608,7 +608,7 @@ var entries = []registryEntry{
 var roleOpeningStencils = map[string][]string{
 	"driver":             {"shed-template-driver"},
 	"arbiter":            {"loom-template-arbiter"},
-	"tackler":            {"loom-template-tackler"},
+	"tackler":            {"shed-template-tackler"},
 	"alignment":          {"loom-template-alignment"},
 	"discussion":         {"loom-template-discussion-chair"},
 	"discussion-advisor": {"loom-template-discussion-advisor"},

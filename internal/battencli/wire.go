@@ -50,6 +50,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -653,7 +654,7 @@ func syncWatchedMarker(marker string, watched bool, content []byte) (bool, error
 
 // readTacklerAsArbiterMarker reads the tackler marker at path as the arbiter marker of the same attempt, strand and deadline, so one reader serves both in-flight seams.
 func readTacklerAsArbiterMarker(path string) (loomengine.ArbiterMarker, bool, error) {
-	marker, found, err := loomengine.ReadTacklerMarker(path)
+	marker, found, err := sheddriver.ReadTacklerMarker(path)
 	if err != nil || !found {
 		return loomengine.ArbiterMarker{}, false, err
 	}
@@ -878,9 +879,6 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				if err != nil {
 					return "", teardownRefusal(err, slug)
 				}
-				// Recorded onto the receiver, not only returned: the run verb reads it back after
-				// the Shed's own Run has returned, to surface it on the success envelope.
-				c.abandonedSession = res.AbandonedSession
 				return res.AbandonedSession, nil
 			},
 			Remove: func(ctx context.Context) error {
@@ -1138,11 +1136,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				if err != nil {
 					return false, err
 				}
-				records, err := loomengine.ReadSettleRecords(shedrun.SettleRecordsFile(loomengine.LoomFrictionDir(taskLocation)))
-				if err != nil {
-					return false, err
-				}
-				return loomengine.GoVerifyRetrySpent(records), nil
+				return childGoVerifyRetrySpent(taskLocation)
 			},
 			// ChildBuildChanged reads the lyx on disk, which a deploy replaces under this running batten, and compares it with the build the child's last step recorded.
 			ChildBuildChanged: func() (string, bool, error) {
@@ -1223,9 +1217,9 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				}
 				return task.Recipe, nil
 			},
-			// ChildDriver is the "child_driver" param of prime's own seed when the operator typed one, otherwise the task's resolved driver_kind (childDriverFrom).
-			// The kind is read from the task worktree's loom config, loaded strictly, and SeedChild calls this after writing that worktree's local layer, so a driver_kind from the run settings is seen.
-			ChildDriver: func() (string, error) {
+			// ChildDriver is the "child_driver" param of prime's own seed when the operator typed one, otherwise the child recipe's resolved driver_kind (childDriverFrom).
+			// The kind is read from the task worktree's config layers, and SeedChild calls this after writing that worktree's local layer, so a driver_kind from the run settings is seen.
+			ChildDriver: func(recipe string) (string, error) {
 				seed, found, err := shedrun.ReadSeed(location, slug)
 				if err != nil {
 					return "", err
@@ -1235,11 +1229,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					if err != nil {
 						return "", err
 					}
-					cfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(taskLocation), "loom")
-					if err != nil {
-						return "", err
-					}
-					return loomengine.ResolveDriverKind(cfg), nil
+					return childDriverKind(fabricengine.ConfigDirs(taskLocation), recipe)
 				})
 			},
 			// ReadRunSettings opens the Board fresh on every Call, as ReadBoardType does, and returns the task's run_settings.

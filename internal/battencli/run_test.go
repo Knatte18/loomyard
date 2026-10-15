@@ -8,12 +8,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/spf13/cobra"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/battenshed"
@@ -25,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -81,7 +85,7 @@ func newFakeReceiver(t *testing.T, shutdown func(ctx context.Context) (string, e
 		// recipe registry's own non-nil-field validation does not refuse before the verb body runs.
 		SeedChild: battenshed.SeedChildDeps{
 			ReadBoardType:        func(ctx context.Context) (string, error) { return "", nil },
-			ChildDriver:          func() (string, error) { return "", nil },
+			ChildDriver:          func(string) (string, error) { return "", nil },
 			ReadRunSettings:      func(ctx context.Context) (map[string]any, error) { return nil, nil },
 			PrepareRunSettings:   func(settings map[string]any) (map[string][]byte, error) { return nil, nil },
 			WriteLocalOverride:   func(ctx context.Context, module string, document []byte) error { return nil },
@@ -116,7 +120,51 @@ func newFakeReceiver(t *testing.T, shutdown func(ctx context.Context) (string, e
 		Act:     func(context.Context) error { return nil },
 	}
 	c.env.OpenWindow, c.env.SeedIDE, c.env.OpenIDE = off, off, off
+	c.untilStop = inProcessUntilStop(t, c)
 	return c
+}
+
+// stopEnvelope renders the --until-stop envelope of a step that ended with the run in state at producer, after historyLength history entries.
+func stopEnvelope(t *testing.T, fields map[string]any, state, producer string, historyLength int) []byte {
+	t.Helper()
+	fields["state"] = state
+	fields["loop"] = map[string]any{"current_producer": producer, "history_length": historyLength, "state": state}
+	raw, err := json.Marshal(fields)
+	if err != nil {
+		t.Fatalf("encode the stop envelope: %v", err)
+	}
+	return raw
+}
+
+// inProcessUntilStop returns a step seam that runs c's shed in-process until it stops, in place of the detached --until-stop loop, and renders the envelope the driver parses.
+// A stop is ok with the run's state and the loop's position; a run held by another process is the kind-busy error envelope; any other failure is an error envelope with no kind, which the driver hands back without a tackler.
+func inProcessUntilStop(t *testing.T, c *battenCLI) func(ctx context.Context, attempt string) ([]byte, error) {
+	t.Helper()
+	return func(ctx context.Context, _ string) ([]byte, error) {
+		shed, err := battenrecipe.New(c.env, c.shedPaths)
+		if err != nil {
+			return nil, err
+		}
+		result, runErr := shed.Run(ctx)
+		switch {
+		case errors.Is(runErr, shedengine.ErrShedBusy):
+			return stopEnvelope(t, map[string]any{"ok": false, "kind": shedverbs.KindBusy, "error": runErr.Error()}, "", "", 0), nil
+		case runErr != nil:
+			status, _, err := c.readRunStatus()
+			if err != nil {
+				return nil, err
+			}
+			return stopEnvelope(t, map[string]any{"ok": false, "error": runErr.Error()}, string(status.State), status.CurrentProducer, len(status.History)), nil
+		}
+		return stopEnvelope(t, map[string]any{"ok": true, "reason": result.Reason}, string(result.Outcome), result.HaltedProducer, len(result.History)), nil
+	}
+}
+
+// runCommand returns the run verb as "lyx batten run" mounts it: the shedverbs run command with its body replaced by driveRun.
+func runCommand(c *battenCLI) *cobra.Command {
+	cmd := battenVerbCommand(c, "run")
+	cmd.RunE = func(cmd *cobra.Command, _ []string) error { return c.driveRun(cmd) }
+	return cmd
 }
 
 // writeStatus writes st as c's status file, unlocked -- the test owns the file outright before the
@@ -129,34 +177,59 @@ func writeStatus(t *testing.T, c *battenCLI, st shedengine.Status) {
 }
 
 // TestRunCmd_ResumeDispositions covers StateRunning, StateBlocked, StateFailed and StatePaused, each resuming silently from the persisted current producer, and an absent status file, which is a fresh start and not a refusal: every fake succeeds trivially, so the whole run completes and the verb reports success, with a history_length key matching the persisted history.
+// A run whose status carries a pause_after naming the first row stops paused, and the driver hands it back with no tackler; a run whose row fails again ends in an error envelope carrying the status error.
 func TestRunCmd_ResumeDispositions(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name  string
-		state shedengine.State
+		name        string
+		state       shedengine.State
+		producer    string
+		pauseAfter  string
+		lockErr     error
+		wantOutcome string
+		wantError   string
 	}{
-		{"running", shedengine.StateRunning},
-		{"blocked", shedengine.StateBlocked},
-		{"failed", shedengine.StateFailed},
-		{"paused", shedengine.StatePaused},
-		{"absent_status_file", ""},
+		{name: "running", state: shedengine.StateRunning, wantOutcome: "done"},
+		{name: "blocked", state: shedengine.StateBlocked, wantOutcome: "done"},
+		{name: "failed", state: shedengine.StateFailed, wantOutcome: "done"},
+		{name: "paused", state: shedengine.StatePaused, wantOutcome: "done"},
+		{name: "absent_status_file", wantOutcome: "done"},
+		{name: "pause_after_the_first_row", state: shedengine.StateRunning, pauseAfter: battenrecipe.NameWorktreeCreate, wantOutcome: "paused"},
+		{name: "failed_again", state: shedengine.StateFailed, producer: battenrecipe.NameWorktreeTeardown, lockErr: errors.New("prime lock unavailable"), wantError: "prime lock unavailable"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
 			c := newFakeReceiver(t, nil)
+			if tt.lockErr != nil {
+				c.env.PrimeLock.Acquire = func() (func() error, bool, error) { return nil, false, tt.lockErr }
+			}
 			if tt.state != "" {
+				producer := tt.producer
+				if producer == "" {
+					producer = battenrecipe.NameWorktreeCreate
+				}
 				writeStatus(t, c, shedengine.Status{
-					CurrentProducer: battenrecipe.NameWorktreeCreate,
+					CurrentProducer: producer,
 					State:           tt.state,
+					PauseAfter:      tt.pauseAfter,
 				})
 			}
 
 			var out bytes.Buffer
-			exitCode := clihelp.Execute(battenVerbCommand(c, "run"), &out, []string{c.slug})
+			exitCode := clihelp.Execute(runCommand(c), &out, []string{c.slug})
 
+			if tt.wantError != "" {
+				if exitCode != 1 {
+					t.Fatalf("run(%s) exit code = %d; want 1; output: %s", tt.name, exitCode, out.String())
+				}
+				if !strings.Contains(out.String(), `"ok":false`) || !strings.Contains(out.String(), tt.wantError) {
+					t.Errorf("run(%s) output = %q; want an error envelope carrying %q", tt.name, out.String(), tt.wantError)
+				}
+				return
+			}
 			if exitCode != 0 {
 				t.Fatalf("run(%s) exit code = %d; want 0; output: %s", tt.name, exitCode, out.String())
 			}
@@ -164,10 +237,13 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 				t.Errorf("run(%s) output missing ok:true envelope; got: %q", tt.name, out.String())
 			}
 
-			// The envelope's history_length key, free from the generic body's own len(result.History), matches the run's own persisted history length.
+			// The envelope's history_length key matches the run's own persisted history length.
 			var envelope map[string]any
 			if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
 				t.Fatalf("decode envelope: %v; output: %s", err, out.String())
+			}
+			if envelope["outcome"] != tt.wantOutcome {
+				t.Errorf("run(%s) envelope[\"outcome\"] = %v; want %q", tt.name, envelope["outcome"], tt.wantOutcome)
 			}
 			st, found, err := state.ReadJSONNoMkdir[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
 			if err != nil || !found {
@@ -198,7 +274,7 @@ func TestRunCmd_StateDoneRefusesNamingTheRunDir(t *testing.T) {
 	})
 
 	var out bytes.Buffer
-	exitCode := clihelp.Execute(battenVerbCommand(c, "run"), &out, []string{c.slug})
+	exitCode := clihelp.Execute(runCommand(c), &out, []string{c.slug})
 
 	if exitCode != 1 {
 		t.Fatalf("run() exit code = %d; want 1; output: %s", exitCode, out.String())
@@ -217,30 +293,67 @@ func TestRunCmd_StateDoneRefusesNamingTheRunDir(t *testing.T) {
 	}
 }
 
-// TestRunCmd_HeldRunLockRefusesNamingTheLockPath takes the per-slug run lock in the test itself,
-// before invoking the verb, and asserts the verb refuses on the envelope naming the lock path
-// without waiting.
+// TestRunCmd_HeldRunLockRefusesNamingTheLockPath takes a lock in the test itself, before invoking the verb, and asserts the verb refuses on the envelope without waiting.
+// A held run lock, whether the step meets it or the driver's recheck finds it, refuses naming the run lock path; a held driver lock refuses with the batten driver refusal.
 func TestRunCmd_HeldRunLockRefusesNamingTheLockPath(t *testing.T) {
-	c := newFakeReceiver(t, nil)
-	writeStatus(t, c, shedengine.Status{
-		CurrentProducer: battenrecipe.NameWorktreeCreate,
-		State:           shedengine.StateBlocked,
-	})
-
-	held, err := lock.AcquireWriteLock(c.shedPaths.LockPath)
-	if err != nil {
-		t.Fatalf("acquire run lock in test: %v", err)
+	tests := []struct {
+		name string
+		// heldLock returns the lock path the test holds.
+		heldLock func(c *battenCLI) string
+		// stepReportsBlocked replaces the in-process step with one that ends blocked, so the driver's recheck is what finds the held run lock.
+		stepReportsBlocked bool
+		want               func(c *battenCLI) string
+	}{
+		{
+			name:     "the step finds the run lock held",
+			heldLock: func(c *battenCLI) string { return c.shedPaths.LockPath },
+			want:     func(c *battenCLI) string { return c.shedPaths.LockPath },
+		},
+		{
+			name:               "the recheck finds the run running elsewhere",
+			heldLock:           func(c *battenCLI) string { return c.shedPaths.LockPath },
+			stepReportsBlocked: true,
+			want:               func(c *battenCLI) string { return c.shedPaths.LockPath },
+		},
+		{
+			name:     "a batten driver holds the driver lock",
+			heldLock: func(c *battenCLI) string { return battenDriveLock(c.location, c.slug).Path },
+			want:     func(*battenCLI) string { return battenDriveRefusal },
+		},
 	}
-	t.Cleanup(func() { _ = held.Release() })
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := newFakeReceiver(t, nil)
+			writeStatus(t, c, shedengine.Status{
+				CurrentProducer: battenrecipe.NameWorktreeCreate,
+				State:           shedengine.StateBlocked,
+			})
+			if tt.stepReportsBlocked {
+				c.untilStop = func(context.Context, string) ([]byte, error) {
+					return stopEnvelope(t, map[string]any{"ok": true}, string(shedengine.StateBlocked), battenrecipe.NameWorktreeCreate, 0), nil
+				}
+			}
 
-	var out bytes.Buffer
-	exitCode := clihelp.Execute(battenVerbCommand(c, "run"), &out, []string{c.slug})
+			lockPath := tt.heldLock(c)
+			if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+				t.Fatalf("create the lock directory: %v", err)
+			}
+			held, err := lock.AcquireWriteLock(lockPath)
+			if err != nil {
+				t.Fatalf("acquire the lock in test: %v", err)
+			}
+			t.Cleanup(func() { _ = held.Release() })
 
-	if exitCode != 1 {
-		t.Fatalf("run() exit code = %d; want 1; output: %s", exitCode, out.String())
-	}
-	if !strings.Contains(out.String(), c.shedPaths.LockPath) {
-		t.Errorf("run() output = %q; want it to name the lock path %q", out.String(), c.shedPaths.LockPath)
+			var out bytes.Buffer
+			exitCode := clihelp.Execute(runCommand(c), &out, []string{c.slug})
+
+			if exitCode != 1 {
+				t.Fatalf("run() exit code = %d; want 1; output: %s", exitCode, out.String())
+			}
+			if want := tt.want(c); !strings.Contains(out.String(), want) {
+				t.Errorf("run() output = %q; want it to carry %q", out.String(), want)
+			}
+		})
 	}
 }
 
@@ -257,19 +370,15 @@ func TestRunCmd_AbandonedSessionKey(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var c *battenCLI
-			shutdown := func(ctx context.Context) (string, error) {
-				c.abandonedSession = tt.abandonedSession
-				return tt.abandonedSession, nil
-			}
-			c = newFakeReceiver(t, shutdown)
+			shutdown := func(ctx context.Context) (string, error) { return tt.abandonedSession, nil }
+			c := newFakeReceiver(t, shutdown)
 			writeStatus(t, c, shedengine.Status{
 				CurrentProducer: battenrecipe.NameWorktreeTeardown,
 				State:           shedengine.StateBlocked,
 			})
 
 			var out bytes.Buffer
-			exitCode := clihelp.Execute(battenVerbCommand(c, "run"), &out, []string{c.slug})
+			exitCode := clihelp.Execute(runCommand(c), &out, []string{c.slug})
 			if exitCode != 0 {
 				t.Fatalf("run() exit code = %d; want 0; output: %s", exitCode, out.String())
 			}

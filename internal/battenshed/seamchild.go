@@ -1,5 +1,5 @@
 // seamchild.go implements NewSeedChild, the producer that seeds the task worktree's own inner shed run.
-// The recipe derives from the Board task's own type, and the driver is the prime seed's typed child_driver, else the task's driver_kind.
+// The recipe derives from the Board task's own type, and the driver is the prime seed's typed child_driver, else the recipe's driver_kind, then shed.yaml's.
 
 package battenshed
 
@@ -18,7 +18,7 @@ import (
 const defaultChildRecipe = "loom"
 
 // seedChildProducer writes, commits and pushes the child worktree's own seed file, deriving its
-// recipe from the Board task's own type and its driver from the prime seed's typed child_driver, else the task's driver_kind.
+// recipe from the Board task's own type and its driver from the prime seed's typed child_driver, else the recipe's driver_kind, then shed.yaml's.
 type seedChildProducer struct {
 	name       string
 	slug       string
@@ -28,7 +28,7 @@ type seedChildProducer struct {
 
 var _ shedengine.ShedProducer = (*seedChildProducer)(nil)
 
-// NewSeedChild returns a shedengine.ShedProducer that reads the Board task's own type and the child's driver, which is the prime seed's typed child_driver, else the task's driver_kind, then writes, commits and pushes the child worktree's own seed.
+// NewSeedChild returns a shedengine.ShedProducer that reads the Board task's own type and the child's driver, which is the prime seed's typed child_driver, else the recipe's driver_kind, then shed.yaml's, then writes, commits and pushes the child worktree's own seed.
 //
 // name is told rather than hardcoded because a second producer list may name this row
 // independently. slug is used only as a log field and in stuck-reason text -- never compared,
@@ -91,7 +91,7 @@ func (p *seedChildProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 		return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 	}
 
-	driver, err := p.deps.ChildDriver()
+	driver, err := p.deps.ChildDriver(recipe)
 	if err != nil {
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
