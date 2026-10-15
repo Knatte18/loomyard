@@ -893,6 +893,7 @@ func TestDispatchLayers(t *testing.T) {
 	t.Parallel()
 
 	loomTemplate, _ := configreg.Template("loom")
+	websterTemplate, _ := configreg.Template("webster")
 	taskSession, err := agentname.Format("ly", "task-a", "loom")
 	if err != nil {
 		t.Fatalf("agentname.Format: %v", err)
@@ -989,6 +990,73 @@ func TestDispatchLayers(t *testing.T) {
 				data, err := os.ReadFile(configengine.ConfigFile(fx.worktree, "loom"))
 				if err != nil || string(data) != "review_max_bounces: 2\n" {
 					t.Errorf("worktree loom.yaml = %q, %v; want only the key set", data, err)
+				}
+			},
+		},
+		{
+			name: "local layer refuses a value the loader rejects naming the key and leaves no file", module: "loom", layer: "local",
+			setFlags: []string{`plan=["opus[medium]", "sonnet[high]"]`}, seedBoard: loomTemplate(), wantCode: 1, wantErr: `loom config key "plan"`,
+			check: func(t *testing.T, fx hubFixture, out string) {
+				if _, err := os.Stat(configengine.LocalFile(fx.worktree, "loom")); !os.IsNotExist(err) {
+					t.Errorf("local loom.yaml exists after a refused value; stat err = %v", err)
+				}
+			},
+		},
+		{
+			name: "local layer refusing a value puts the present file back", module: "loom", layer: "local",
+			setFlags: []string{"plan=opus[medium] x"}, seedBoard: loomTemplate(), seedLocal: "review_max_bounces: 5\n", wantCode: 1, wantErr: `loom config key "plan"`,
+			check: func(t *testing.T, fx hubFixture, out string) {
+				data, err := os.ReadFile(configengine.LocalFile(fx.worktree, "loom"))
+				if err != nil || string(data) != "review_max_bounces: 5\n" {
+					t.Errorf("local loom.yaml = %q, %v; want the file as seeded", data, err)
+				}
+			},
+		},
+		{
+			name: "local layer still writes a per-round list the loader takes", module: "loom", layer: "local",
+			setFlags: []string{`plan_review=["opus[medium]", "sonnet[high]"]`}, seedBoard: loomTemplate(),
+			check: func(t *testing.T, fx hubFixture, out string) {
+				data, err := os.ReadFile(configengine.LocalFile(fx.worktree, "loom"))
+				if err != nil || string(data) != "plan_review: [\"opus[medium]\", \"sonnet[high]\"]\n" {
+					t.Errorf("local loom.yaml = %q, %v; want plan_review as a list", data, err)
+				}
+			},
+		},
+		{
+			name: "a write onto a stack already failing to load the same way still goes through", module: "loom", layer: "local",
+			setFlags: []string{"review_max_bounces=2"}, seedBoard: loomTemplate(), seedLocal: "plan: opus[medium] x\n",
+			check: func(t *testing.T, fx hubFixture, out string) {
+				data, err := os.ReadFile(configengine.LocalFile(fx.worktree, "loom"))
+				if err != nil || !strings.Contains(string(data), "review_max_bounces: 2") {
+					t.Errorf("local loom.yaml = %q, %v; want review_max_bounces: 2", data, err)
+				}
+			},
+		},
+		{
+			name: "worktree layer refuses a value the loader rejects and never syncs", module: "loom",
+			setFlags: []string{`plan=["opus[medium]", "sonnet[high]"]`}, seedBoard: loomTemplate(), wantCode: 1, wantErr: `loom config key "plan"`,
+			check: func(t *testing.T, fx hubFixture, out string) {
+				if _, err := os.Stat(configengine.ConfigFile(fx.worktree, "loom")); !os.IsNotExist(err) {
+					t.Errorf("worktree loom.yaml exists after a refused value; stat err = %v", err)
+				}
+			},
+		},
+		{
+			name: "worktree layer refuses a kickstart_pack_file that is not a boolean and never syncs", module: "webster",
+			setFlags: []string{"kickstart_pack_file=maybe"}, seedBoard: websterTemplate(), wantCode: 1, wantErr: "webster config",
+			check: func(t *testing.T, fx hubFixture, out string) {
+				if _, err := os.Stat(configengine.ConfigFile(fx.worktree, "webster")); !os.IsNotExist(err) {
+					t.Errorf("worktree webster.yaml exists after a refused value; stat err = %v", err)
+				}
+			},
+		},
+		{
+			name: "default layer refuses a value the loader rejects and leaves the board file as it was", module: "loom", layer: "default",
+			setFlags: []string{`plan=["opus[medium]", "sonnet[high]"]`}, seedBoard: loomTemplate(), wantCode: 1, wantErr: `loom config key "plan"`, wantCommits: 1,
+			check: func(t *testing.T, fx hubFixture, out string) {
+				data, _ := os.ReadFile(configengine.ConfigFile(fx.board, "loom"))
+				if string(data) != loomTemplate() {
+					t.Errorf("board loom.yaml changed by a refused value")
 				}
 			},
 		},

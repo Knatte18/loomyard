@@ -323,14 +323,14 @@ func relevantWindow(st *ReedState, windows []sessionWindow, panes []windowPane, 
 }
 
 // newAgentWindowSelected reports whether a new agent window takes the viewer who is on window current, deciding from the windows and panes listed before it opens.
-// A focus strand always does.
+// A strand whose display sets Focus always does, and one that sets only KeepViewer never does.
 // Any other takes it from the overview window, from an agent window whose every pane is dead, from the relevant window and from a window holding a live driver pane, so a viewer following the run follows the newest agent.
 // The shell, an older live agent window and any other window keep the viewer, since an operator moved there by hand.
-func newAgentWindowSelected(st *ReedState, windows []sessionWindow, panes []windowPane, current string, focus bool) bool {
-	if focus {
+func newAgentWindowSelected(st *ReedState, windows []sessionWindow, panes []windowPane, current string, display render.Display) bool {
+	if display.Focus {
 		return true
 	}
-	if current == "" {
+	if display.KeepViewer || current == "" {
 		return false
 	}
 	live, bound, overview := agentWindowPanes(st, panes, nil)
@@ -360,11 +360,11 @@ func driverWindows(st *ReedState, panes []windowPane) map[string]bool {
 }
 
 // newAgentWindowTakesViewerLocked reports whether a new agent window opened now takes the viewer, reading the session's current window, windows and panes before the window exists.
-// A focus strand needs no read.
+// A display setting Focus or KeepViewer needs no read.
 // A failed read keeps the viewer and is logged at Warn.
-func (e *Engine) newAgentWindowTakesViewerLocked(st *ReedState, focus bool) bool {
-	if focus {
-		return true
+func (e *Engine) newAgentWindowTakesViewerLocked(st *ReedState, display render.Display) bool {
+	if display.Focus || display.KeepViewer {
+		return newAgentWindowSelected(st, nil, nil, "", display)
 	}
 	current, err := e.currentWindowLocked()
 	if err != nil {
@@ -381,7 +381,7 @@ func (e *Engine) newAgentWindowTakesViewerLocked(st *ReedState, focus bool) bool
 		logger.Warn("reed: could not list the session's panes, a new agent window keeps the viewer where it is", "socket", e.Socket(), "session", e.SessionName(), "err", err)
 		return false
 	}
-	return newAgentWindowSelected(st, windows, panes, current, false)
+	return newAgentWindowSelected(st, windows, panes, current, display)
 }
 
 // currentWindowLocked returns the id of the session's current window.

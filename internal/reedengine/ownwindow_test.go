@@ -66,7 +66,7 @@ func TestPlanOwnWindowPlacement(t *testing.T) {
 	}
 }
 
-// TestNewAgentWindowSelected pins which window a viewer leaves for a new agent window: a viewer following the run follows it, and one on a window picked by hand stays.
+// TestNewAgentWindowSelected pins which window a viewer leaves for a new agent window: a viewer following the run follows it, one on a window picked by hand stays, and a keep-viewer strand moves no viewer.
 func TestNewAgentWindowSelected(t *testing.T) {
 	t.Parallel()
 	own := render.Display{Anchor: render.AnchorOwnWindow}
@@ -88,26 +88,33 @@ func TestNewAgentWindowSelected(t *testing.T) {
 		{WindowID: "@4", Own: true, PaneID: "%4"},
 		{WindowID: "@5", Own: true, PaneID: "%5", Dead: true},
 	}
+	focus := render.Display{Anchor: render.AnchorOwnWindow, Focus: true}
+	keep := render.Display{Anchor: render.AnchorOwnWindow, KeepViewer: true}
 	tests := []struct {
 		name    string
 		current string
-		focus   bool
+		display render.Display
 		want    bool
 	}{
-		{name: "a focus strand takes the viewer from the shell", current: "@0", focus: true, want: true},
-		{name: "an unknown current window keeps the viewer", current: "", want: false},
-		{name: "the overview passes the viewer on", current: "@1", want: true},
-		{name: "an all-dead agent window passes the viewer on", current: "@5", want: true},
-		{name: "the newest live agent window passes the viewer on", current: "@4", want: true},
-		{name: "the driver window passes the viewer on while a newer agent is live", current: "@2", want: true},
-		{name: "an older live agent window keeps the viewer", current: "@3", want: false},
-		{name: "the shell keeps the viewer even with a driver pane in it", current: "@0", want: false},
+		{name: "a focus strand takes the viewer from the shell", current: "@0", display: focus, want: true},
+		{name: "an unknown current window keeps the viewer", current: "", display: own, want: false},
+		{name: "the overview passes the viewer on", current: "@1", display: own, want: true},
+		{name: "an all-dead agent window passes the viewer on", current: "@5", display: own, want: true},
+		{name: "the newest live agent window passes the viewer on", current: "@4", display: own, want: true},
+		{name: "the driver window passes the viewer on while a newer agent is live", current: "@2", display: own, want: true},
+		{name: "an older live agent window keeps the viewer", current: "@3", display: own, want: false},
+		{name: "the shell keeps the viewer even with a driver pane in it", current: "@0", display: own, want: false},
+		{name: "a keep-viewer strand leaves the viewer on the overview", current: "@1", display: keep, want: false},
+		{name: "a keep-viewer strand leaves the viewer on an all-dead agent window", current: "@5", display: keep, want: false},
+		{name: "a keep-viewer strand leaves the viewer on the newest live agent window", current: "@4", display: keep, want: false},
+		{name: "a keep-viewer strand leaves the viewer on the driver window", current: "@2", display: keep, want: false},
+		{name: "focus wins over keep-viewer", current: "@0", display: render.Display{Anchor: render.AnchorOwnWindow, Focus: true, KeepViewer: true}, want: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := newAgentWindowSelected(st, windows, panes, tt.current, tt.focus); got != tt.want {
-				t.Errorf("newAgentWindowSelected(current %q, focus %v) = %v, want %v", tt.current, tt.focus, got, tt.want)
+			if got := newAgentWindowSelected(st, windows, panes, tt.current, tt.display); got != tt.want {
+				t.Errorf("newAgentWindowSelected(current %q, display %+v) = %v, want %v", tt.current, tt.display, got, tt.want)
 			}
 		})
 	}

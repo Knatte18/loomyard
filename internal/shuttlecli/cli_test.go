@@ -340,25 +340,35 @@ var errSpecCaptured = errors.New("specCapturingEngine: spec captured")
 // startupPending answers every capture as a pane that never becomes ready.
 func startupPending(string) shuttleengine.StartupState { return shuttleengine.StartupPending }
 
-// TestRunCmd_EffortFlag proves --effort lands in the shuttleengine.Spec run builds, mirroring how --model is wired: a real *shuttleengine.Runner over a spec-capturing Engine fake and an inert reed fake lets the test drive runCmd()'s RunE directly and inspect the Spec the engine's Prepare was actually called with, without a live tmux/claude session.
+// TestRunCmd_EffortAndFocusFlags proves --effort and --focus land in the shuttleengine.Spec run builds, mirroring how --model is wired: a real *shuttleengine.Runner over a spec-capturing Engine fake and an inert reed fake lets the test drive runCmd()'s RunE directly and inspect the Spec the engine's Prepare was actually called with, without a live tmux/claude session.
+// --focus=false keeps the viewer where it is, and the default takes focus.
 // Prepare fails before Runner.Start reaches reed.AddStrand, so the reed fake is never exercised.
 // That failure happens before any strand exists, so the error envelope must carry none of the run-identity fields (guid, sessionId, runDir) rather than three empty strings.
-func TestRunCmd_EffortFlag(t *testing.T) {
+func TestRunCmd_EffortAndFocusFlags(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name       string
-		args       []string
-		wantEffort string
+		name           string
+		args           []string
+		wantEffort     string
+		wantFocus      bool
+		wantKeepViewer bool
 	}{
 		{
 			name:       "EffortFlagSet",
 			args:       []string{"--prompt", "do the thing", "--output-file", "out.md", "--effort", "high"},
 			wantEffort: "high",
+			wantFocus:  true,
 		},
 		{
-			name:       "EffortFlagOmitted",
+			name:       "EffortAndFocusFlagsOmitted",
 			args:       []string{"--prompt", "do the thing", "--output-file", "out.md"},
 			wantEffort: "",
+			wantFocus:  true,
+		},
+		{
+			name:           "FocusFalseKeepsTheViewer",
+			args:           []string{"--prompt", "do the thing", "--output-file", "out.md", "--focus=false"},
+			wantKeepViewer: true,
 		},
 	}
 
@@ -393,6 +403,9 @@ func TestRunCmd_EffortFlag(t *testing.T) {
 			}
 			if engine.LastSpec.Effort != tt.wantEffort {
 				t.Errorf("Spec.Effort = %q; want %q", engine.LastSpec.Effort, tt.wantEffort)
+			}
+			if display := engine.LastSpec.Display; display.Focus != tt.wantFocus || display.KeepViewer != tt.wantKeepViewer {
+				t.Errorf("Spec.Display = %+v; want Focus %v and KeepViewer %v", display, tt.wantFocus, tt.wantKeepViewer)
 			}
 
 			envelope := parseSingleEnvelope(t, out.Bytes())

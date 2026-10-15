@@ -98,6 +98,31 @@ func unionIntervals(set []Interval) []Interval {
 	return merged
 }
 
+// withoutIntervals returns the union of set less every part the union of cut covers.
+func withoutIntervals(set, cut []Interval) []Interval {
+	cuts := unionIntervals(cut)
+	var rest []Interval
+	for _, i := range unionIntervals(set) {
+		from := i.From
+		for _, c := range cuts {
+			if !c.From.Before(i.To) {
+				break
+			}
+			if !c.To.After(from) {
+				continue
+			}
+			if c.From.After(from) {
+				rest = append(rest, Interval{from, c.From})
+			}
+			from = c.To
+		}
+		if i.To.After(from) {
+			rest = append(rest, Interval{from, i.To})
+		}
+	}
+	return rest
+}
+
 // covered returns how much of window the union of set covers.
 func covered(set []Interval, window Interval) time.Duration {
 	var total time.Duration
@@ -247,6 +272,8 @@ type RunTally struct {
 	Span Interval
 	// Working is the union of every transcript's working intervals.
 	Working []Interval
+	// Sleeps are the machine's sleeps, which every time figure of the run leaves out.
+	Sleeps []Interval
 	// Shed is the shed record read from the run's archive tag, nil when no shed status was read.
 	Shed *ShedRecord
 	// Bound is the lower bound applied to the run's transcripts, zero for none.
@@ -264,9 +291,33 @@ func (run RunTally) RoleTime(role string) time.Duration {
 	return covered(t.Working, run.Span)
 }
 
-// Idle is the run's span minus the time any session of the run was in a turn.
+// Idle is the run's awake span minus the time any session of the run was in a turn.
 func (run RunTally) Idle() time.Duration {
-	return run.Span.Duration() - covered(run.Working, run.Span)
+	return run.AwakeSpan() - covered(run.Working, run.Span)
+}
+
+// AwakeSpan is the run's span less the machine's sleeps in it.
+func (run RunTally) AwakeSpan() time.Duration {
+	return run.awake(run.Span)
+}
+
+// Slept is how much of the run's span the machine slept.
+func (run RunTally) Slept() time.Duration {
+	return covered(run.Sleeps, run.Span)
+}
+
+// awake returns window's duration less the machine's sleeps in it.
+func (run RunTally) awake(window Interval) time.Duration {
+	return window.Duration() - covered(run.Sleeps, window)
+}
+
+// subtractSleeps records the machine's sleeps on the run and removes the parts they cover from every working interval, the run's and each role's.
+func (run *RunTally) subtractSleeps(sleeps []Interval) {
+	run.Sleeps = unionIntervals(sleeps)
+	run.Working = withoutIntervals(run.Working, run.Sleeps)
+	for _, tally := range run.Roles {
+		tally.Working = withoutIntervals(tally.Working, run.Sleeps)
+	}
 }
 
 // Cost is the run's estimated cost, summed over its roles.
@@ -574,12 +625,15 @@ func projectDir(projects, worktree string) string {
 
 var trailingNumber = regexp.MustCompile(`-\d+$`)
 
-// roleOf turns a strand name into its role: the last colon-separated part, without a -N suffix.
+// leadSuffix ends the role a seat table's lead carried before seats were named, `<prefix>-chair`; the lead's role is now the prefix alone.
+const leadSuffix = "-chair"
+
+// roleOf turns a strand name into its role: the last colon-separated part, without a -N suffix and then without the pre-rename lead suffix.
 func roleOf(title string) string {
 	if title == "" {
 		return "untitled"
 	}
-	return trailingNumber.ReplaceAllString(title[strings.LastIndex(title, ":")+1:], "")
+	return strings.TrimSuffix(trailingNumber.ReplaceAllString(title[strings.LastIndex(title, ":")+1:], ""), leadSuffix)
 }
 
 // ArchiveTag is one archive tag of a finished run: its name, the commit it names and that commit's committer date.
@@ -926,10 +980,12 @@ func (r Report) WriteMarkdown(w io.Writer) error {
 		orchTotal = &OrchCharge{}
 	}
 	totalTimes := tableTime{Roles: map[string]time.Duration{}}
+	var slept time.Duration
 	for _, run := range r.Runs {
 		duplicates += run.Duplicates
 		totalTimes.Idle += run.Idle()
-		totalTimes.Span += run.Span.Duration()
+		totalTimes.Span += run.AwakeSpan()
+		slept += run.Slept()
 		for role := range run.Roles {
 			totalTimes.Roles[role] += run.RoleTime(role)
 		}
@@ -964,9 +1020,12 @@ func (r Report) WriteMarkdown(w io.Writer) error {
 	fmt.Fprintln(w, "Idle is the time no session of the run is in a turn, which holds parent review, PR-Gate, gate-slot waits, a parked driver and Go-only work such as verify and push.")
 	fmt.Fprintln(w, "Time shares can sum past 100% where sessions overlap, a `+sub` row overlapping its parent.")
 	fmt.Fprintln(w, "The union of working time plus idle is the span.")
+	if slept > 0 {
+		fmt.Fprintf(w, "Every time figure leaves out machine sleep, %s over these runs.\n", slept.Round(time.Second))
+	}
 	fmt.Fprintln(w)
-	if rows, span := sumProducers(r.Runs); len(rows) > 0 {
-		writeProducers(w, rows, span)
+	if rows := sumProducers(r.Runs); len(rows) > 0 {
+		writeProducers(w, rows)
 	}
 	var cost Cost
 	for _, t := range total {
@@ -988,7 +1047,7 @@ func (r Report) WriteMarkdown(w io.Writer) error {
 		if r.Orch != nil {
 			charge = r.Orch.Charges[run.Slug]
 		}
-		times := tableTime{Roles: map[string]time.Duration{}, Idle: run.Idle(), Span: run.Span.Duration()}
+		times := tableTime{Roles: map[string]time.Duration{}, Idle: run.Idle(), Span: run.AwakeSpan()}
 		for role := range run.Roles {
 			times.Roles[role] = run.RoleTime(role)
 		}
@@ -996,8 +1055,11 @@ func (r Report) WriteMarkdown(w io.Writer) error {
 		if run.LeftOut > 0 {
 			fmt.Fprintf(w, "Session transcripts left out: %d; they started before the slug's previous run ended, at %s.\n\n", run.LeftOut, run.Bound.Format(time.RFC3339))
 		}
+		if slept := run.Slept(); slept > 0 {
+			fmt.Fprintf(w, "Machine sleep left out of the span: %s.\n\n", slept.Round(time.Second))
+		}
 		if run.Shed != nil {
-			writeProducers(w, run.Producers(), run.Span.Duration())
+			writeProducers(w, run.Producers())
 		} else {
 			fmt.Fprintln(w, "No shed status was read, so the span is the transcript window and no Producers table is printed.")
 			fmt.Fprintln(w)

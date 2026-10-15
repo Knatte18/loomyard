@@ -38,7 +38,11 @@ func TestDisplayMarshalsWithoutRetiredKeys(t *testing.T) {
 		t.Errorf("marshalled Display %s carries a size key for a zero Size", raw)
 	}
 
-	want := Display{Anchor: AnchorTop, Size: Size{Kind: SizeContent, ShareNum: 1, ShareDen: 3, MinRows: 3}}
+	if strings.Contains(string(raw), "keepViewer") {
+		t.Errorf("marshalled Display %s carries a keepViewer key for a false KeepViewer", raw)
+	}
+
+	want := Display{Anchor: AnchorTop, KeepViewer: true, Size: Size{Kind: SizeContent, ShareNum: 1, ShareDen: 3, MinRows: 3}}
 	raw, err = json.Marshal(want)
 	if err != nil {
 		t.Fatalf("Marshal content Display: %v", err)

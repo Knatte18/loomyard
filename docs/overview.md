@@ -345,6 +345,7 @@ User-facing modules each get one `lyx <module>` namespace:
   `lyx config <module> --set key=value` (repeatable) writes one or more config values directly with no editor invocation, for scripts/agents that need a non-interactive path.
   A key under a module's declared open map adds or rewrites one entry, e.g. `lyx config board --set labels.quarry="glyphs and the quarry index"`.
   A key that takes one value or a per-round list, such as loom's `review` and `plan_review`, is written as a list when its value starts with `[`, e.g. `lyx config loom --set 'plan_review=["opus[medium]", "sonnet[high]"]'`, and a bracketed value that is not a list of scalars is refused.
+  Every `--set` write is then loaded through the module's own loader, and a value it refuses, such as a list given to loom's single-model `plan`, is refused naming the key with the file left as it was.
   A module resolves key by key through the embedded template, the repo default at `<BoardDir>/_lyx/config/<module>.yaml`, the worktree's sparse file and the untracked local override at `<anchor>/.lyx/config/<module>.local.yaml`; see [internal/configengine](../internal/configengine/doc.go).
   `lyx config --layer default|worktree|local` picks the layer a verb addresses, and `lyx config <module> --resolved` prints the merged result with each unit annotated by its layer.
   A board task's `run_settings` reach the pair's local layer at batten's Seed-Child, bounded by `configreg`'s `LocalKeys` and `LocalDenied`. ✅ Implemented.
@@ -364,8 +365,9 @@ User-facing modules each get one `lyx <module>` namespace:
   `lyx ide spawn <prime>` opens a hub workspace (prime, `_board`, `_portals`) whose `settings` carry the prime's `.vscode/settings.json`.
   The file is lyx-owned and regenerated on each prime spawn, overwriting any edit made in it;
   a task slug still opens its bare folder.
-  The generated `folderOpen` task is now the sequenced reed launch chain (`reed up` → `reed add --if-absent --unless-name orch` → `reed attach`) rather than a bare `claude`, with both binary paths (`lyx`, `claude`) stamped absolute at generation time.
-  The add row's `--unless-name orch` keeps a folder-open on a prime whose state holds an orch strand, live, dormant or hidden, from stacking `claude` below it.
+  The generated `tasks.json` holds one on-demand `reed attach` task, with the `lyx` path stamped absolute at generation time, reached through "Tasks: Run Task";
+  no task runs on folder open, so opening a worktree in VS Code starts no session and no `claude`.
+  `lyx ide spawn` and batten's Seed-IDE row write this config through one shared path.
   `lyx ide spawn` regenerates `tasks.json` on every spawn, overwriting an untracked one, and keeps `settings.json` when present.
   It keeps `.vscode/` out of git through the repository's shared `info/exclude` at the anchor subpath rather than `.gitignore`, and leaves a tracked `tasks.json` alone with a warning.
   `lyx ide spawn` also seeds a `// lyx:begin` … `// lyx:end` block into the user's VS Code `keybindings.json`, forwarding the five Alt keys of reed's tmux bindings to the integrated terminal, and reports the outcome in its JSON result.
@@ -538,7 +540,7 @@ User-facing modules each get one `lyx <module>` namespace:
   The lead opens with `contracts/stencils/loom/loom-template-discussion-chair.md`, which includes the discussion stencil whole and adds the advisors section, worded to cover a lead with no advisors too, so a table without advisors runs the lead alone, deciding each question itself; each advisor opens with `contracts/stencils/loom/loom-template-discussion-advisor.md`.
   The row keeps its name, gates and routing whatever the two keys hold.
   The Planner producer, the same way (`contracts/stencils/loom/loom-template-plan.md`), composed by `internal/loomengine`'s `prompt.go` + `plan.go`.
-  With `plan_lenses` naming a `burler.yaml` fan, the plan writer explores, writes and self-checks the plan, forks itself once per lens of that fan, takes the forks' findings in, records them in `lens-review.md` and rejects a `BLOCKING` or `MEDIUM` finding only with a cited code read.
+  With `plan_lenses` naming a `burler.yaml` fan, the plan writer explores, has one fork (fork0) write and self-check the plan, reads the plan in full and self-checks it, forks itself once per lens of that fan, judges each finding as a critical fixer, and records each disposition in `lens-review.md`.
   It runs `validate-plan --lens-review` as its last self-check, and its gate refuses Done until `lens-review.md` holds the lens review.
   The row keeps its name, `gates` key and routing while a fork-authorized run's plan gate also requires the lens review.
   Plan has no advisor key.

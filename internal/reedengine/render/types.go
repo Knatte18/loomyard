@@ -76,6 +76,9 @@ type Display struct {
 	// focus. At most one strand is expected to set Focus; if several do,
 	// render breaks the tie by picking the bottom-most.
 	Focus bool `json:"focus"`
+	// KeepViewer marks an own-window strand whose new window never takes the viewer, where an unset one may follow the run onto it.
+	// Focus wins when both are set.
+	KeepViewer bool `json:"keepViewer,omitempty"`
 	// Size declares the strand's height rule.
 	// A strand that declares nothing is SizePositional and marshals no size key.
 	Size Size `json:"size,omitzero"`
