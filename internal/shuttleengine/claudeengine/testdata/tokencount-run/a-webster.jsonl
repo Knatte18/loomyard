@@ -1,0 +1,3 @@
+{"type":"custom-title","customTitle":"ly:my-task:webster"}
+{"type":"assistant","message":{"id":"use-late","content":[{"type":"tool_use","id":"late","name":"Bash","input":{"command":"lyx webster begin-batch 2"}}]}}
+{"type":"user","timestamp":"2026-01-02T03:20:00Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"late","content":"{\"batch\":\"02-beta\",\"start_sha\":\"late000\"}"}]}}

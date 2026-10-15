@@ -1,0 +1,2 @@
+{"type":"user","timestamp":"2026-01-02T03:15:00Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t","content":"no pointer here"}]}}
+{"type":"assistant","message":{"id":"m7","model":"opus","usage":{"input_tokens":1,"output_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":2}}}
