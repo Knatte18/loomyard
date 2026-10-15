@@ -33,11 +33,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/cliwire"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -190,6 +192,14 @@ func TestWire_StandaloneMode(t *testing.T) {
 	stateDir := filepath.Join(stateHome, "lyx", hash8For(t, target))
 	defaultPlanDir := filepath.Join(stateDir, "_lyx", "plan")
 	seedStandalonePlanDir(t, defaultPlanDir)
+	// A worktree language.yaml that standalone wiring must never read.
+	targetConfigDir := filepath.Join(target, "_lyx", "config")
+	if err := os.MkdirAll(targetConfigDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v; want nil", targetConfigDir, err)
+	}
+	if err := os.WriteFile(filepath.Join(targetConfigDir, "language.yaml"), []byte("skills:\n  - scribe:a\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(language.yaml) = %v; want nil", err)
+	}
 
 	c := &websterCLI{}
 	// loc is nil for both causes preflight.ResolveMode folds into ModeStandalone (a plain downloaded repository and an unresolvable cwd): wire consults mode alone to choose the branch.
@@ -241,6 +251,9 @@ func TestWire_StandaloneMode(t *testing.T) {
 	}
 	if c.frictionDir != "" {
 		t.Errorf("c.frictionDir = %q; want \"\" in standalone mode", c.frictionDir)
+	}
+	if len(c.languageSkills) != 0 {
+		t.Errorf("c.languageSkills = %v; want empty in standalone, which reads no language.yaml", c.languageSkills)
 	}
 
 	if pause := c.runner.PauseGeometry(); !strings.HasPrefix(pause.RecordPath, stateDir) || pause.Slug != "" {
@@ -668,6 +681,77 @@ func TestWireHub_FrictionDirResolution(t *testing.T) {
 			t.Errorf("c.frictionDir = %q; want \"\" when loom.yaml cannot be loaded", c.frictionDir)
 		}
 	})
+}
+
+// TestWireHub_LanguageSkills asserts hub wiring loads the hub's language.yaml once and tells the list to both the master's and the recovery strand's deps, and that an unusable file refuses with the module's own way forward.
+// Writing the file creates the board directory, so every other module wireHub loads resolves from an absent board default and wire reaches the language load in every row.
+func TestWireHub_LanguageSkills(t *testing.T) {
+	tests := []struct {
+		name         string
+		fileContents string
+		wantSkills   []string
+		wantRefusal  bool
+	}{
+		{
+			name:         "ListedSkillsReachRunAndRecoverDeps",
+			fileContents: "skills:\n  - scribe:golang-comments\n  - scribe:golang-testing\n",
+			wantSkills:   []string{"scribe:golang-comments", "scribe:golang-testing"},
+		},
+		{
+			name:         "EntryWithLeadingSpaceIsRefused",
+			fileContents: "skills:\n  - \" scribe:golang-comments\"\n",
+			wantRefusal:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hub := t.TempDir()
+			loc := hubLocation(t, hub, "pair", ".")
+			configDir := filepath.Join(fabricengine.BoardDir(hub), "_lyx", "config")
+			if err := os.MkdirAll(configDir, 0o755); err != nil {
+				t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
+			}
+			if err := os.WriteFile(filepath.Join(configDir, "language.yaml"), []byte(tt.fileContents), 0o644); err != nil {
+				t.Fatalf("WriteFile(language.yaml) = %v; want nil", err)
+			}
+
+			c := &websterCLI{}
+			err := c.wire(loc, preflight.ModeHub, "", "", "", "")
+
+			if tt.wantRefusal {
+				var refusal configLoadRefusal
+				if !errors.As(err, &refusal) {
+					t.Fatalf("wire() = %v; want a configLoadRefusal", err)
+				}
+				if !refusal.invalid {
+					t.Error("refusal.invalid = false; want true, so the refusal carries config_invalid")
+				}
+				for _, want := range []string{"language.yaml", "skills", "lyx config language"} {
+					if !strings.Contains(refusal.message, want) {
+						t.Errorf("refusal message = %q; want it to contain %q", refusal.message, want)
+					}
+				}
+				if strings.Contains(refusal.message, "under _lyx/config") {
+					t.Errorf("refusal message = %q; want no worktree _lyx/config clause for a hub-wide file", refusal.message)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("wire() = %v; want nil", err)
+			}
+			if !slices.Equal(c.languageSkills, tt.wantSkills) {
+				t.Errorf("c.languageSkills = %v; want %v", c.languageSkills, tt.wantSkills)
+			}
+			if got := c.runDeps().LanguageSkills; !slices.Equal(got, tt.wantSkills) {
+				t.Errorf("runDeps().LanguageSkills = %v; want %v", got, tt.wantSkills)
+			}
+			if got := c.recoverDeps(nil, nil, nil).LanguageSkills; !slices.Equal(got, tt.wantSkills) {
+				t.Errorf("recoverDeps().LanguageSkills = %v; want %v", got, tt.wantSkills)
+			}
+		})
+	}
 }
 
 // TestReedUpSeam_WatcherLifecycle pins the standalone reedUp seam's lifecycle contract -- the one
