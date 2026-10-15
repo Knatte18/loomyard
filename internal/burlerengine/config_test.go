@@ -145,7 +145,7 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 
 	cfg := loadSeededConfig(t)
 
-	const wantLenses = 22
+	const wantLenses = 23
 	if len(cfg.Lenses) != wantLenses {
 		t.Errorf("seeded template has %d lenses; want %d", len(cfg.Lenses), wantLenses)
 	}
@@ -160,7 +160,7 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 			}
 		}
 	}
-	for fanName, wantEntries := range map[string]int{"standard": 5, "full": 8, "discussion": 5, "plan": 5, "twill-discussion": 6, "twill-plan": 4} {
+	for fanName, wantEntries := range map[string]int{"standard": 5, "full": 8, "discussion": 5, "plan": 5, "twill-discussion": 6, "twill-plan": 5} {
 		entries, ok := cfg.Fans[fanName]
 		if !ok {
 			t.Errorf("seeded template is missing fan %q", fanName)
@@ -173,7 +173,7 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 		"discussion":       {"generic", "goal-scope", "pattern-fit", "scenarios", "leanness"},
 		"plan":             {"generic", "decision-coverage", "card-structure", "verify-tests", "pattern-fit"},
 		"twill-discussion": {"premises", "goal-scope", "board-fit", "pattern-fit", "scenarios", "leanness"},
-		"twill-plan":       {"criteria-coverage", "row-reachability", "forced-edits", "test-economy"},
+		"twill-plan":       {"criteria-coverage", "branch-coverage", "row-reachability", "forced-edits", "test-economy"},
 	}
 	for fanName, wantOrder := range wantOrders {
 		lenses, err := ResolveFan(Config{}, fanName)
@@ -184,6 +184,16 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 			if lenses[i].Name != wantName {
 				t.Errorf("ResolveFan(%s)[%d].Name = %q; want %q", fanName, i, lenses[i].Name, wantName)
 			}
+		}
+	}
+
+	for lensName, wantSentence := range map[string]string{
+		"branch-coverage":   "A branch no planned row reaches is a finding.",
+		"forced-edits":      "a registration no card lists is a finding",
+		"criteria-coverage": "uses the operand the record names, not a near one",
+	} {
+		if text := strings.Join(strings.Fields(cfg.Lenses[lensName]), " "); !strings.Contains(text, wantSentence) {
+			t.Errorf("lens %q text = %q; want it to contain %q", lensName, text, wantSentence)
 		}
 	}
 

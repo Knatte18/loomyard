@@ -11,7 +11,9 @@
 // settle is what flips `approved` to `true`, immediately before its commit seam fires.
 //
 // With plan_lenses set the lead carries the twill directive rendered into the plan template between Step 2 and Step 3, and fork subagents are authorized.
-// The directive's lenses come from the burler.yaml fan plan_lenses names, the writer spawns the forks once its plan is written and passes the self-check, so they review the plan their inherited context holds, and the writer records the lens review in the plan directory's lens-review.md.
+// The directive's lenses come from the burler.yaml fan plan_lenses names.
+// The lead explores, spawns one fork, fork0, to write the plan, reads the finished plan in full and self-checks it, then spawns the lens forks and judges their findings as a critical fixer.
+// The forks hold the exploration and the plan but not fork0's reasoning, and the lead records the lens review in the plan directory's lens-review.md.
 // The writer runs `lyx loom validate-plan --lens-review` as its final self-check, and the row's gate requires a recorded lens-review.md for a run whose lead was authorized to fork.
 // The lead sets ForkSubagents, so the writer may spawn subagents of type fork.
 // While the shuttle config's claude_deny_agent_tool is true, the Agent hook admits fork subagents only and refuses every other subagent type; with it false no Agent hook is installed.

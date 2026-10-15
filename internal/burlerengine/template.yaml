@@ -139,8 +139,17 @@ lenses:
     criterion the plan argues holds without a test, waives or defers is a
     finding, and so is a decision, failure exit or branch the record names
     that no row reaches. Apply the Plan-Review rubric's "Fidelity to the
-    answer key". Report anything else you notice too — emphasis, never
-    exclusion.
+    answer key". Check that each path, comparison or default a card states
+    uses the operand the record names, not a near one, such as the current
+    directory's parent where the record names the worktree's parent. Report
+    anything else you notice too — emphasis, never exclusion.
+  branch-coverage: |
+    Focus on branch coverage: list every branch and exit the cards' Intents
+    introduce or change, whether or not the decision record names it (error
+    returns, early returns, refusals, a loop's or scan's end without a match,
+    a default case), and for each find the planned test row that reaches it.
+    A branch no planned row reaches is a finding. Report anything else you
+    notice too — emphasis, never exclusion.
   row-reachability: |
     Focus on whether each planned test row can do what the card says: open
     every test function a card extends or names, and the fakes, fixtures and
@@ -160,8 +169,10 @@ lenses:
     package is the package clause of the file the Intent puts it in, an
     external `_test` package included, and that each listed glyph is the one
     `lyx quarry` gives. Apply the Plan-Review rubric's "Member glyphs on an
-    `Edit` card" and "The re-sign arrow". Report anything else you notice too
-    — emphasis, never exclusion.
+    `Edit` card" and "The re-sign arrow". A new type, function or executor
+    that must be registered in a table or list, such as a guard table, is a
+    forced edit, and a registration no card lists is a finding. Report
+    anything else you notice too — emphasis, never exclusion.
   test-economy: |
     Focus on test economy: for every new top-level test and every new row,
     open the test file it lands in and the existing tests of the same
@@ -209,6 +220,7 @@ fans:
     - leanness
   twill-plan:
     - criteria-coverage
+    - branch-coverage
     - row-reachability
     - forced-edits
     - test-economy
