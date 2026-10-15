@@ -56,6 +56,10 @@ Imports only the standard library, `internal/logger`, `internal/stencil` and `in
 - `internal/logger` is admitted because the marker-absent helper logs rather than returning a bool for seven callers to duplicate.
   `internal/friction` already pulls `logger` transitively through `internal/stencilstore`, so the admission widens nothing in practice.
 
+## `internal/durfmt`
+
+Imports only the standard library.
+
 ## `internal/dotgit`
 
 Imports only the standard library.

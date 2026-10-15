@@ -262,7 +262,7 @@ github.com/Knatte18/loomyard/
 ├── internal/sheddriver/          the shed layer's Go driver: its settle loop, rule table and hand-back, the tackler agent call, and the `shed` config module, told its paths and seams by the arming module
 ├── internal/shedcli/             the `lyx shed` subtree: a named-recipe arming table for the loom, darn and batten recipes plus the three CLI seams that register it under the lyx root
 ├── internal/statuscommit/        the shared per-transition status commit core (skip while mid-merge, commit hard-errors, push warns) that `loomcli` and `battencli` wrap
-├── internal/statuspane/          the pane mechanics the runs overview and the gate checklist share: a redraw-in-place pane loop, a lock-free status-file reader and the panes' two time formats, minute-resolution for growing times and second-resolution for closed spans
+├── internal/statuspane/          the pane mechanics the runs overview and the gate checklist share: a redraw-in-place pane loop and a lock-free status-file reader
 ├── internal/landingshed/         landing's four general ShedProducers, Publish, PR-Align, PR-Gate and Finalize, shared by reference across producer lists
 ├── internal/darnengine/          the darn recipe's hub-wide `darn.yaml` config and the verify command every darn verify reads
 ├── internal/languageconfig/      the hub-wide `language.yaml` config: the skills every code role loads after its own
@@ -276,6 +276,7 @@ github.com/Knatte18/loomyard/
 ├── internal/preflight/           orchestrator-agnostic tier-1/tier-2 precondition checks (geometry, worktree-pair cleanliness, Fabric readiness/sync) + the shared Report result type
 ├── internal/lyxcwd/              cwd resolution entry gate (the sole owner of cwd resolution, nothing else)
 ├── internal/dotgit/              the one `.git` parser (git dir, common dir, repository test, walk-up to a worktree root), a stdlib-only leaf
+├── internal/durfmt/              the duration formats the status panes and the timing report share, minute-resolution for growing times and second-resolution for closed spans, a stdlib-only leaf
 ├── internal/lyxdirs/             the two directory-name tokens (`_lyx` durable, `.lyx` ephemeral), a zero-import leaf
 ├── internal/buildinfo/           the ldflags-stamped build channel, a zero-import leaf
 ├── internal/buildvcs/            the running binary's VCS identity, a stdlib-only leaf
