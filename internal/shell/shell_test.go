@@ -262,21 +262,26 @@ func TestShell_EnvRef(t *testing.T) {
 	}
 }
 
-func TestShell_ScriptExt(t *testing.T) {
+// TestShell_ScriptExtAndDiscardLineKey pins each dialect's sourced-script extension and its discard-line key, which pwsh leaves empty.
+func TestShell_ScriptExtAndDiscardLineKey(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name string
-		sh   Shell
-		want string
+		name        string
+		sh          Shell
+		wantExt     string
+		wantDiscard string
 	}{
-		{"pwsh", Pwsh(), ".ps1"},
-		{"posix", Posix(), ".sh"},
+		{"pwsh", Pwsh(), ".ps1", ""},
+		{"posix", Posix(), ".sh", "C-u"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := tt.sh.ScriptExt(); got != tt.want {
-				t.Errorf("%s ScriptExt() = %q; want %q", tt.name, got, tt.want)
+			if got := tt.sh.ScriptExt(); got != tt.wantExt {
+				t.Errorf("%s ScriptExt() = %q; want %q", tt.name, got, tt.wantExt)
+			}
+			if got := tt.sh.DiscardLineKey(); got != tt.wantDiscard {
+				t.Errorf("%s DiscardLineKey() = %q; want %q", tt.name, got, tt.wantDiscard)
 			}
 		})
 	}
