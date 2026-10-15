@@ -16,6 +16,8 @@ const (
 	readinessReasonNoInputBox = "no input box is on screen; a menu or picker may be open"
 	// sessionCauseReleasedTurn is the cause of the idle-stalled state a turn start reads as once its hold released.
 	sessionCauseReleasedTurn = "released-turn"
+	// sessionCauseNoRunRecord is the cause of the unknown reading of a strand no run record names.
+	sessionCauseNoRunRecord = "no-run-record"
 )
 
 // readiness is one reading of whether a session can take typed input.
@@ -96,11 +98,15 @@ func judgeReadiness(state SessionState, unmatched bool, box boxReading) readines
 }
 
 // sessionReadiness reads the readiness of the strand sc names from capture, its pane just captured.
+// A recordless context reads unknown with cause no-run-record, so the caller takes the pane-only reading.
 // It folds the run's session state at the context's clock; an unknown state settles nothing, so the reading is unknown without a look at the box.
 // Otherwise it decides through hold whether an unmatched turn start still holds, and reads the box.
 // A turn start whose hold released, by a later turn end, a reported interrupt, a later session start or the pane reading idle for turnStartIdleOverride, no longer counts as a running turn;
 // a turn start the engine reads in flight is not released by the idle pane.
 func sessionReadiness(sc sendContext, cycler SessionCycler, hold *turnStartHold, capture string) readiness {
+	if sc.recordless {
+		return judgeReadiness(SessionState{Name: SessionUnknown, Cause: sessionCauseNoRunRecord}, false, boxReading{})
+	}
 	now := sc.clock.Now()
 	state := readRunSessionState(sc.state, sc.engine, now).State
 	if state.Name == SessionUnknown {

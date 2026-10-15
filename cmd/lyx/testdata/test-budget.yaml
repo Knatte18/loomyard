@@ -27,6 +27,8 @@ internal/configcli: 12
 internal/configengine: 18
 internal/configreg: 10
 internal/configsync: 8
+internal/creelcli: 4
+internal/creelengine: 11
 internal/darnengine: 4
 internal/discussionparser: 19
 internal/dotgit: 3
@@ -53,7 +55,7 @@ internal/helpcli: 1
 internal/hibernatecli: 1
 internal/hibernateengine: 4
 internal/hubforge: 7
-internal/hubgeom: 11
+internal/hubgeom: 12
 internal/hubreconcile: 18
 internal/idecli: 2
 internal/ideengine: 4

@@ -257,6 +257,24 @@ The state model is in shadow mode, so a mismatch is a finding about the reading,
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
+---
+
+### S9 -- Creel delivers mail and injects into a hand-added strand
+
+**Covers:** creel
+
+**Goal:** "Post a message to an interactive agent that was added by hand, watch its reminder get typed once the agent is idle, have the agent read the message, inject a line into it, and confirm the log shows the events without any body."
+
+**Watch:** Add a strand with `lyx reed add --cmd claude` and let it reach its idle prompt.
+`lyx creel post <strand name> "please say READ"` prints one JSON envelope with the message `id`, and the first creel verb of the hub starts its daemon by itself.
+At the agent's next idle moment a one-line reminder naming the sender appears typed in its pane; the reminder is not repeated while the agent works.
+Asking the agent to run `lyx creel read` prints the message with its sender and body, and a second `lyx creel read` prints that nothing is unread.
+`lyx creel inject <strand name> "say INJECTED" --wait` types the line into the pane at idle and exits 0 with `"outcome":"injected"`.
+`lyx creel log --id <id>` lists the message's events (`posted`, `read`) with their times and subject, and no event has a body field.
+A reminder typed into a busy turn, a line typed twice, or a body field in the log is a real failure here.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -269,6 +287,7 @@ S1: <OK|WARN|FAIL> -- <one-line note if not OK>
 S2: <OK|WARN|FAIL> -- <one-line note if not OK>
 S3: <OK|WARN|FAIL> -- <one-line note if not OK>
 S8: <OK|WARN|FAIL> -- <one-line note if not OK>
+S9: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```
