@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -730,5 +731,46 @@ func TestStateCmd_ListsRunningRunsAndNarrowsByStrand(t *testing.T) {
 	empty := run("--strand", "no-such-strand")
 	if runs, ok := empty["runs"].([]any); !ok || len(runs) != 0 || empty["ok"] != true {
 		t.Errorf("--strand with no match = %v; want ok with an empty runs list", empty)
+	}
+}
+
+// TestOpenCmd_ModelAliasEngine pins that `open --model` hands Open the engine its alias resolves to:
+// neither engine of the set has a session opener, so the refusal names the engine Open was given.
+func TestOpenCmd_ModelAliasEngine(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name       string
+		args       []string
+		wantEngine string
+	}{
+		{"an alias of the claude engine", []string{"--role", "explore", "--model", "opus"}, `"claude"`},
+		{"no model leaves the set's default", []string{"--role", "explore"}, `"fake"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			worktreeRoot := t.TempDir()
+			engines := shuttleengine.NewEngineSet(shuttlefake.EngineName, map[string]shuttleengine.Engine{
+				shuttlefake.EngineName: &shuttlefake.Engine{},
+				"claude":               &shuttlefake.Engine{},
+			})
+			runner := shuttleengine.NewRunner(&shuttlefake.Reed{}, engines, worktreeRoot, worktreeRoot, shuttleengine.Config{RunTimeoutMin: 30})
+			c := &shuttleCLI{runner: runner, configDirs: configengine.Dirs{Anchor: t.TempDir()}}
+			cmd := c.openCmd()
+			var out bytes.Buffer
+			cmd.SetOut(&out)
+			cmd.SetArgs(tt.args)
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("cmd.Execute() error: %v; output: %s", err, out.String())
+			}
+
+			envelope := parseSingleEnvelope(t, out.Bytes())
+			if ok, _ := envelope["ok"].(bool); ok {
+				t.Errorf("envelope ok = true; want the open refusal; output: %s", out.String())
+			}
+			if got, _ := envelope["error"].(string); !strings.Contains(got, "cannot open a session") || !strings.Contains(got, tt.wantEngine) {
+				t.Errorf("envelope error = %q; want the open refusal naming engine %s", got, tt.wantEngine)
+			}
+		})
 	}
 }

@@ -125,8 +125,8 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 	runner := shuttleengine.NewRunner(reed, shuttlefake.EngineSet(engine), layout.AnchorPath(), layout.WorktreePath(), shuttleCfg)
 
 	roles := map[websterengine.Role]modelspec.Resolved{
-		websterengine.RoleMaster:   {Engine: "claude", Model: "master-model", Params: map[string]string{}},
-		websterengine.RoleRecovery: {Engine: "claude", Model: "recovery-model", Params: map[string]string{}},
+		websterengine.RoleMaster:   {Model: "master-model", Params: map[string]string{}},
+		websterengine.RoleRecovery: {Model: "recovery-model", Params: map[string]string{}},
 	}
 
 	// The default (empty) batcher name resolves to the identity batchifier

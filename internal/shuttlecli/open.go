@@ -61,7 +61,7 @@ Example:
 					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("--model: %v", err)))
 					return nil
 				}
-				spec.Model, spec.Effort, spec.Version = resolved.Model, resolved.Params["effort"], resolved.Params["version"]
+				spec.ModelChoice = shuttleengine.NewModelChoice(resolved)
 			}
 
 			result, err := c.runner.Open(spec)

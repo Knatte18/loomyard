@@ -151,8 +151,7 @@ func runJudgeCall(sh Shuttle, name string, template []byte, values map[string]st
 	spec := shuttleengine.Spec{
 		Prompt:      string(prompt),
 		OutputFiles: []string{values["verdict_path"], values["handoff_path"]},
-		Model:       model,
-		Effort:      effort,
+		ModelChoice: shuttleengine.ModelChoice{Model: model, Effort: effort},
 		Role:        judgeRole,
 		Segment:     segmentcolor.Review,
 		Skills:      judgeSkills,

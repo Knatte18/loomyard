@@ -68,8 +68,7 @@ func runTargeting(stencilsDir, parentName string, sh Shuttle, name string, round
 	spec := shuttleengine.Spec{
 		Prompt:      string(prompt),
 		OutputFiles: []string{seedPath},
-		Model:       model,
-		Effort:      effort,
+		ModelChoice: shuttleengine.ModelChoice{Model: model, Effort: effort},
 		Role:        targetingRole,
 		Segment:     segmentcolor.Review,
 		Skills:      targetingSkills,

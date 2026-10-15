@@ -256,6 +256,9 @@ type Result struct {
 	StrandGUID           string
 	LastAssistantMessage string
 	RunDir               string
+	// Engine is the resolved name of the engine the run was driven through: the record's engine, or the engine set's default name for a record naming none.
+	// It is empty only on the zero Result of a Start refused before a run exists.
+	Engine string
 	// ForkAudit is populated only when the run's record carries fork authorization, the run classified OutcomeDone, and the audit itself succeeded; nil otherwise.
 	// The Spec that started this Call does not decide it.
 	// A nil ForkAudit therefore always reads as "not audited" and never as "audited, found nothing".

@@ -100,9 +100,7 @@ func buildConflictSpec(deps Deps, paths []string, attempt int) (shuttleengine.Sp
 	return shuttleengine.Spec{
 		Prompt:      string(prompt),
 		OutputFiles: []string{reportPath},
-		Model:       resolved.Model,
-		Effort:      resolved.Params["effort"],
-		Version:     resolved.Params["version"],
+		ModelChoice: shuttleengine.NewModelChoice(resolved),
 		Interactive: false,
 		Role:        ConflictRole,
 		Segment:     segmentcolor.Landing,

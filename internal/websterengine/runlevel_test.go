@@ -208,8 +208,8 @@ func newRunFixtureOver(t *testing.T, numCards int, worktree string, git webstere
 	shuttleCfg := shuttleengine.Config{RunDir: shuttleRunRoot, RunTimeoutMin: 60, StartupTimeoutS: 30}
 
 	roles := map[websterengine.Role]modelspec.Resolved{
-		websterengine.RoleMaster:   {Engine: "claude", Model: "master-model", Params: map[string]string{}},
-		websterengine.RoleRecovery: {Engine: "claude", Model: "recovery-model", Params: map[string]string{"effort": "high"}},
+		websterengine.RoleMaster:   {Model: "master-model", Params: map[string]string{}},
+		websterengine.RoleRecovery: {Model: "recovery-model", Params: map[string]string{"effort": "high"}},
 	}
 
 	// Select("") is the right call here rather than Active: the fixture's

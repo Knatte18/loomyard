@@ -692,9 +692,7 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 		// reaches its summary.md final action never falsely reads as
 		// finished.
 		OutputFiles:   []string{outcomePath, summaryPath},
-		Model:         resolved.Model,
-		Effort:        resolved.Params["effort"],
-		Version:       resolved.Params["version"],
+		ModelChoice:   shuttleengine.NewModelChoice(resolved),
 		Skills:        languageconfig.AppendSkills(roleSkills, deps.LanguageSkills),
 		ForkSubagents: true,
 		// The failure ladder backgrounds recover-batch and recovery_timeout_min bounds it, so the wait marker leaves it out.

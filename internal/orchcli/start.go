@@ -66,8 +66,7 @@ func (c *orchCLI) orchSpec(prompt string, now time.Time) shuttleengine.Spec {
 	return shuttleengine.Spec{
 		Prompt:         prompt,
 		OutputFiles:    []string{sentinel},
-		Model:          c.cfg.Model,
-		Effort:         c.cfg.Effort,
+		ModelChoice:    shuttleengine.ModelChoice{Model: c.cfg.Model, Effort: c.cfg.Effort},
 		Interactive:    true,
 		PermissionMode: c.cfg.PermissionMode,
 		AllowAgentTool: true,

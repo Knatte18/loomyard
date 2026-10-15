@@ -95,8 +95,8 @@ func newRecoverFixtureOver(t *testing.T, worktree string, git websterengine.Git)
 	runner := shuttleengine.NewRunner(reed, shuttlefake.EngineSet(engine), worktree, worktree, shuttleCfg)
 
 	roles := map[websterengine.Role]modelspec.Resolved{
-		websterengine.RoleMaster:   {Engine: "claude", Model: "master-model", Params: map[string]string{}},
-		websterengine.RoleRecovery: {Engine: "claude", Model: "recovery-model", Params: map[string]string{"effort": "high"}},
+		websterengine.RoleMaster:   {Model: "master-model", Params: map[string]string{}},
+		websterengine.RoleRecovery: {Model: "recovery-model", Params: map[string]string{"effort": "high"}},
 	}
 
 	reportsDir := t.TempDir()

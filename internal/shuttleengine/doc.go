@@ -15,7 +15,9 @@
 // A Claude engine now;
 // Gemini etc. later.
 // A Runner takes an EngineSet, which internal/shuttleengines builds from shuttle.yaml's `engine:` key.
-// Start and Open resolve Spec.Engine and OpenSpec.Engine, empty meaning the set's default, and record the name in run.json's `engine` (in OpenResult for Open).
+// Spec and OpenSpec embed ModelChoice, which holds the engine, model, effort and version, so a construction sets `ModelChoice: choice` and a read such as spec.Engine works through promotion.
+// Start and Open resolve the choice's Engine, empty meaning the set's default, and record the name in run.json's `engine` (in OpenResult for Open).
+// Result.Engine is the resolved name of the engine the run was driven through, the set's default name for a record naming none.
 // Every other engine-consulting operation resolves the engine its run's record names, an absent key reading as the default and an unregistered name being refused with the lookup's error.
 // Stop and teardown resolve no engine, so a record naming an unregistered engine never blocks them.
 // The verdict/output contract is provider-invariant, which is what makes engines swappable:

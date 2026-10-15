@@ -54,7 +54,7 @@ func (r *requiresRig) start(spec Spec) (*Run, error) {
 // startRecord starts a plain-engine run without requirements and rewrites its record to carry forkSubagents.
 func (r *requiresRig) startRecord(forkSubagents bool) (runDir string) {
 	r.t.Helper()
-	if _, err := r.start(Spec{Engine: "plain"}); err != nil {
+	if _, err := r.start(Spec{ModelChoice: ModelChoice{Engine: "plain"}}); err != nil {
 		r.t.Fatalf("Start(plain) error: %v", err)
 	}
 	state, runDir, err := FindRun(r.fx.Runner.cfg, r.fx.Anchor, "strand-1")
@@ -82,11 +82,11 @@ func TestRunner_Requires(t *testing.T) {
 	}{
 		{"an unknown requirement", Spec{Requires: []Requirement{"telepathy"}},
 			[]string{`shuttle: start: unknown requirement "telepathy"; known requirements: forks, peer-messaging, background-wake`}},
-		{"a requirement the engine does not meet names the engine, the requirement and the meeting engine", Spec{Engine: "wake", Requires: []Requirement{RequirementBackgroundWake, RequirementPeerMessaging}},
+		{"a requirement the engine does not meet names the engine, the requirement and the meeting engine", Spec{ModelChoice: ModelChoice{Engine: "wake"}, Requires: []Requirement{RequirementBackgroundWake, RequirementPeerMessaging}},
 			[]string{`engine "wake"`, "peer-messaging", "engines that meet them all: full", startWayForward}},
-		{"a ForkSubagents spec on an engine without forks", Spec{Engine: "wake", ForkSubagents: true},
+		{"a ForkSubagents spec on an engine without forks", Spec{ModelChoice: ModelChoice{Engine: "wake"}, ForkSubagents: true},
 			[]string{`engine "wake"`, "forks", "engines that meet them all: full", startWayForward}},
-		{"an engine without the capability meets nothing", Spec{Engine: "plain", Requires: []Requirement{RequirementBackgroundWake}},
+		{"an engine without the capability meets nothing", Spec{ModelChoice: ModelChoice{Engine: "plain"}, Requires: []Requirement{RequirementBackgroundWake}},
 			[]string{`engine "plain"`, "background-wake", "engines that meet them all: full, wake", startWayForward}},
 	}
 	for _, tt := range startRefusals {

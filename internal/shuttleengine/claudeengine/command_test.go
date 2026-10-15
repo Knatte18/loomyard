@@ -354,7 +354,7 @@ func TestOpenLaunch(t *testing.T) {
 	}{
 		{
 			name: "fresh line",
-			spec: shuttleengine.OpenSpec{Role: "explore", Model: "opus", Effort: "high"},
+			spec: shuttleengine.OpenSpec{Role: "explore", ModelChoice: shuttleengine.ModelChoice{Model: "opus", Effort: "high"}},
 			check: func(t *testing.T, launch shuttleengine.Launch) {
 				for _, want := range []string{"--session-id " + sh.Quote(launch.SessionID), nameRef, "--model " + sh.Quote("opus"), "--effort " + sh.Quote("high")} {
 					if !strings.Contains(launch.Cmd, want) {
@@ -373,7 +373,7 @@ func TestOpenLaunch(t *testing.T) {
 		},
 		{
 			name: "resume falls back to a fresh start",
-			spec: shuttleengine.OpenSpec{Role: "explore", Model: "opus"},
+			spec: shuttleengine.OpenSpec{Role: "explore", ModelChoice: shuttleengine.ModelChoice{Model: "opus"}},
 			check: func(t *testing.T, launch shuttleengine.Launch) {
 				resumeLine := strings.Replace(launch.Cmd, "--session-id", "--resume", 1)
 				if want := sh.OrElse(resumeLine, launch.Cmd); launch.ResumeCmd != want {
@@ -390,8 +390,8 @@ func TestOpenLaunch(t *testing.T) {
 				}
 			},
 		},
-		{name: "an invalid effort is refused", spec: shuttleengine.OpenSpec{Role: "explore", Effort: "turbo"}, wantErr: "invalid effort"},
-		{name: "a version without a model is refused", spec: shuttleengine.OpenSpec{Role: "explore", Version: "4.5"}, wantErr: "no model"},
+		{name: "an invalid effort is refused", spec: shuttleengine.OpenSpec{Role: "explore", ModelChoice: shuttleengine.ModelChoice{Effort: "turbo"}}, wantErr: "invalid effort"},
+		{name: "a version without a model is refused", spec: shuttleengine.OpenSpec{Role: "explore", ModelChoice: shuttleengine.ModelChoice{Version: "4.5"}}, wantErr: "no model"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

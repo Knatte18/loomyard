@@ -672,6 +672,12 @@ func TestBuildConflictSpec_SkillsAndParentDirective(t *testing.T) {
 			if spec.Segment != segmentcolor.Landing {
 				t.Errorf("Segment = %q; want %q", spec.Segment, segmentcolor.Landing)
 			}
+			if spec.Engine != "claude" {
+				t.Errorf("Engine = %q; want %q, the conflict alias's engine", spec.Engine, "claude")
+			}
+			if len(spec.Requires) != 0 {
+				t.Errorf("Requires = %v; want none, merge-resolve declares nothing", spec.Requires)
+			}
 		})
 	}
 }

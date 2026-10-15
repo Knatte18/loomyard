@@ -305,9 +305,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 	spec := shuttleengine.Spec{
 		Prompt:      string(prompt),
 		OutputFiles: []string{reportPath},
-		Model:       resolved.Model,
-		Effort:      resolved.Params["effort"],
-		Version:     resolved.Params["version"],
+		ModelChoice: shuttleengine.NewModelChoice(resolved),
 		Skills:      languageconfig.AppendSkills(roleSkills, deps.LanguageSkills),
 		Role:        string(RoleRecovery),
 		Segment:     segmentcolor.Webster,

@@ -61,8 +61,8 @@ func TestPrepare_RejectedBeforeArtifacts(t *testing.T) {
 		// wantTTLAdvice asserts the error names the accepted TTL values and the file to fix.
 		wantTTLAdvice bool
 	}{
-		{name: "bad_effort", spec: shuttleengine.Spec{Effort: "bogus"}, cfg: templateConfig(t), wantErrContains: "bogus"},
-		{name: "dashed_model_with_version", spec: shuttleengine.Spec{Model: "claude-sonnet-4-5", Version: "4.5"}, cfg: templateConfig(t), wantErrContains: ""},
+		{name: "bad_effort", spec: shuttleengine.Spec{ModelChoice: shuttleengine.ModelChoice{Effort: "bogus"}}, cfg: templateConfig(t), wantErrContains: "bogus"},
+		{name: "dashed_model_with_version", spec: shuttleengine.Spec{ModelChoice: shuttleengine.ModelChoice{Model: "claude-sonnet-4-5", Version: "4.5"}}, cfg: templateConfig(t), wantErrContains: ""},
 		{name: "permission_prompt_on_autonomous", spec: shuttleengine.Spec{PermissionMode: "prompt"}, cfg: templateConfig(t), wantErrContains: ""},
 		{name: "permission_unknown_value", spec: shuttleengine.Spec{PermissionMode: "yolo", Interactive: true}, cfg: templateConfig(t), wantErrContains: ""},
 		{name: "session_id_too_short", spec: shuttleengine.Spec{ResumeSessionID: "0a1b2c3d-4e5f-4a6b-8c7d"}, cfg: templateConfig(t), wantErrContains: ""},
@@ -165,9 +165,9 @@ func TestPrepare_ThreadsSpecIntoLaunchCmds(t *testing.T) {
 		onLaunch    flagExpectation
 		onBothLines flagExpectation
 	}{
-		{name: "valid_effort", spec: shuttleengine.Spec{Effort: "high"}, cfg: templateConfig(t), onLaunch: flagExpectation{present: []string{"--effort 'high'"}}},
+		{name: "valid_effort", spec: shuttleengine.Spec{ModelChoice: shuttleengine.ModelChoice{Effort: "high"}}, cfg: templateConfig(t), onLaunch: flagExpectation{present: []string{"--effort 'high'"}}},
 		{name: "empty_effort", spec: shuttleengine.Spec{}, cfg: templateConfig(t), onLaunch: flagExpectation{absent: []string{"--effort"}}},
-		{name: "model_and_version", spec: shuttleengine.Spec{Model: "sonnet", Version: "4.5"}, cfg: templateConfig(t), onLaunch: flagExpectation{present: []string{"--model 'claude-sonnet-4-5'"}}},
+		{name: "model_and_version", spec: shuttleengine.Spec{ModelChoice: shuttleengine.ModelChoice{Model: "sonnet", Version: "4.5"}}, cfg: templateConfig(t), onLaunch: flagExpectation{present: []string{"--model 'claude-sonnet-4-5'"}}},
 		{name: "fork_subagents_on", spec: shuttleengine.Spec{ForkSubagents: true}, cfg: templateConfig(t), onLaunch: flagExpectation{present: []string{"CLAUDE_CODE_FORK_SUBAGENT"}}},
 		{name: "fork_subagents_off", spec: shuttleengine.Spec{ForkSubagents: false}, cfg: templateConfig(t), onLaunch: flagExpectation{absent: []string{"CLAUDE_CODE_FORK_SUBAGENT"}}},
 		{
@@ -264,8 +264,7 @@ func TestPrepare_ResumeSessionID(t *testing.T) {
 		ResumeSessionID: id,
 		PermissionMode:  "bypass",
 		Interactive:     true,
-		Model:           "opus",
-		Effort:          "high",
+		ModelChoice:     shuttleengine.ModelChoice{Model: "opus", Effort: "high"},
 	}
 	runDir := t.TempDir()
 	launch, err := New().Prepare(runDir, spec, templateConfig(t))

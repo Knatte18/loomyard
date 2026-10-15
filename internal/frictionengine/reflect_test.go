@@ -195,6 +195,9 @@ func TestReflect_OneNote_SpawnsAndArchives(t *testing.T) {
 		t.Fatalf("Shuttle.Run called %d times; want 1", len(shuttle.Specs))
 	}
 	spec := shuttle.Specs[0]
+	if spec.Engine != "claude" {
+		t.Errorf("Spec.Engine = %q; want %q", spec.Engine, "claude")
+	}
 	if spec.Model != "sonnet" {
 		t.Errorf("Spec.Model = %q; want %q", spec.Model, "sonnet")
 	}
