@@ -434,6 +434,7 @@ func TestDiscussionTable(t *testing.T) {
 					"per `Step 5`",
 					"`" + DiscussionDecisionRecord(layout) + "`",
 					"`" + DiscussionSupportLog(layout) + "`",
+					"finishes writing `" + DiscussionDecisionRecord(layout) + "`, `" + DiscussionSupportLog(layout) + "` and `" + DiscussionRelevant(layout) + "` per",
 					"Fix the record, or reject the finding with a one-line reason.",
 					"a severity (`BLOCKING`, `MEDIUM` or `LOW`)",
 				} {

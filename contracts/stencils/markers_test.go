@@ -32,7 +32,7 @@ func TestStencils_TopLevelMarkers(t *testing.T) {
 		{"twill-judge-critical", TwillJudgeCritical, []string{"disposition_place", "dispute_evidence", "governing_input"}},
 		{"twill-judge-plain", TwillJudgePlain, []string{"disposition_place", "rejection_rule"}},
 		{"twill-writer-fork", TwillWriterFork, []string{"disposition_place", "explore_step", "files_dir", "format_step", "input_record", "last_file", "reviewed_files", "self_check_command", "self_check_step"}},
-		{"twill-relaunch", TwillRelaunch, []string{"disposition_place", "format_step", "self_check_command", "self_check_step"}},
+		{"twill-relaunch", TwillRelaunch, []string{"disposition_place", "format_step", "relaunch_files", "self_check_command", "self_check_step"}},
 		{"webster-fragment-locate-quarry", WebsterFragmentLocateQuarry, nil},
 		{"webster-fragment-locate-pack", WebsterFragmentLocatePack, []string{"specs_dir"}},
 		{"webster-fragment-locate-pack-inline", WebsterFragmentLocatePackInline, []string{"specs_dir"}},
