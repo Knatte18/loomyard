@@ -3,11 +3,14 @@
 // Engine is inert until a field or func override scripts it, and records what Prepare was handed.
 // Reed keeps a mutex-guarded strand table, so a test sees the liveness a real reed would report.
 // Neither fake asserts anything or takes a testing.TB; a test reads the recorded fields and asserts itself.
+// The kit also holds a golden of a Claude reading in neutral types, TokencountRunReads.
 //
 // internal/shuttleengine's own tests keep their richer in-package fake, because the import cycle forbids this kit there.
 package shuttlefake
 
 import (
+	_ "embed"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -63,6 +66,20 @@ var (
 	_ shuttleengine.InterruptGuard     = (*Engine)(nil)
 	_ shuttleengine.RewindPickerReader = (*Engine)(nil)
 )
+
+//go:embed tokencount-run-reads.json
+var tokencountRunReadsJSON []byte
+
+// TokencountRunReads returns the reading of a located tokencount run in neutral types, one SessionRead per session in located order.
+// It is the golden of the Claude reader over its tokencount-run transcripts, and the reads a tokencount test feeds through a fake reader.
+// It panics when the embedded file does not decode, since the file is the kit's own.
+func TokencountRunReads() []shuttleengine.SessionRead {
+	var reads []shuttleengine.SessionRead
+	if err := json.Unmarshal(tokencountRunReadsJSON, &reads); err != nil {
+		panic(fmt.Sprintf("shuttlefake: decode tokencount-run-reads.json: %v", err))
+	}
+	return reads
+}
 
 // EngineName is the name EngineSet registers its engine under, and the default of the set it returns.
 const EngineName = "fake"

@@ -73,6 +73,9 @@ Challenge the problem itself, not just the proposed solution — "is this the ri
 **Design the full scope now.**
 Never propose an MVP phase or an "add this later" deferral — that is not this task's call to make.
 Apply YAGNI: do not design for a hypothetical requirement nobody asked for.
+**Leave this task's own board entry alone.**
+No decision asks the run to change this task's own board entry's body or scope, through `lyx board` or otherwise, because the run's board lock refuses such a change.
+The landing's status write, a `run_settings` write, a decision to file or change another board entry and a change to the board module's code are outside this rule.
 
 ## Step 4 — How to get answers
 

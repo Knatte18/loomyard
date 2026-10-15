@@ -1,0 +1,546 @@
+[
+  {
+    "Main": {
+      "ID": "a-webster.jsonl",
+      "Name": "ly:my-task:webster",
+      "Started": "2026-01-02T03:20:00Z",
+      "Repeats": 0,
+      "Entries": [
+        {
+          "At": "0001-01-01T00:00:00Z",
+          "Role": "assistant",
+          "StartsTurn": false,
+          "EndsTurn": false,
+          "MessageKey": "use-late",
+          "Model": "",
+          "Usage": null,
+          "UserTexts": null,
+          "ToolCalls": [
+            {
+              "ID": "late",
+              "Kind": "shell",
+              "Command": "lyx webster begin-batch 2",
+              "Path": ""
+            }
+          ],
+          "ToolResults": null,
+          "PromptPath": ""
+        },
+        {
+          "At": "2026-01-02T03:20:00Z",
+          "Role": "user",
+          "StartsTurn": false,
+          "EndsTurn": false,
+          "MessageKey": "line:a-webster.jsonl:3",
+          "Model": "",
+          "Usage": null,
+          "UserTexts": null,
+          "ToolCalls": null,
+          "ToolResults": [
+            {
+              "CallID": "late",
+              "Text": "{\"batch\":\"02-beta\",\"start_sha\":\"late000\"}"
+            }
+          ],
+          "PromptPath": ""
+        }
+      ]
+    },
+    "Forks": [
+      {
+        "ID": "agent-3.jsonl",
+        "Name": "",
+        "Started": "2026-01-02T03:15:00Z",
+        "Repeats": 0,
+        "Entries": [
+          {
+            "At": "2026-01-02T03:15:00Z",
+            "Role": "user",
+            "StartsTurn": false,
+            "EndsTurn": false,
+            "MessageKey": "line:a-webster.jsonl/agent-3.jsonl:1",
+            "Model": "",
+            "Usage": null,
+            "UserTexts": null,
+            "ToolCalls": null,
+            "ToolResults": [
+              {
+                "CallID": "t",
+                "Text": "no pointer here"
+              }
+            ],
+            "PromptPath": ""
+          },
+          {
+            "At": "0001-01-01T00:00:00Z",
+            "Role": "assistant",
+            "StartsTurn": false,
+            "EndsTurn": false,
+            "MessageKey": "m7",
+            "Model": "opus",
+            "Usage": {
+              "Input": 1,
+              "CacheWrite": 0,
+              "CacheWriteOneHour": 0,
+              "CacheRead": 2,
+              "Output": 1
+            },
+            "UserTexts": null,
+            "ToolCalls": null,
+            "ToolResults": null,
+            "PromptPath": ""
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Main": {
+      "ID": "a.jsonl",
+      "Name": "ly:my-task:burler-2",
+      "Started": "0001-01-01T00:00:00Z",
+      "Repeats": 1,
+      "Entries": [
+        {
+          "At": "0001-01-01T00:00:00Z",
+          "Role": "assistant",
+          "StartsTurn": false,
+          "EndsTurn": false,
+          "MessageKey": "m1",
+          "Model": "sonnet",
+          "Usage": null,
+          "UserTexts": null,
+          "ToolCalls": null,
+          "ToolResults": null,
+          "PromptPath": ""
+        },
+        {
+          "At": "0001-01-01T00:00:00Z",
+          "Role": "assistant",
+          "StartsTurn": false,
+          "EndsTurn": false,
+          "MessageKey": "m1",
+          "Model": "sonnet",
+          "Usage": {
+            "Input": 1,
+            "CacheWrite": 0,
+            "CacheWriteOneHour": 0,
+            "CacheRead": 3,
+            "Output": 2
+          },
+          "UserTexts": null,
+          "ToolCalls": null,
+          "ToolResults": null,
+          "PromptPath": ""
+        }
+      ]
+    },
+    "Forks": null
+  },
+  {
+    "Main": {
+      "ID": "b.jsonl",
+      "Name": "ly:my-task:webster",
+      "Started": "2026-01-02T02:00:00Z",
+      "Repeats": 0,
+      "Entries": [
+        {
+          "At": "0001-01-01T00:00:00Z",
+          "Role": "assistant",
+          "StartsTurn": false,
+          "EndsTurn": false,
+          "MessageKey": "use-refused",
+          "Model": "",
+          "Usage": null,
+          "UserTexts": null,
+          "ToolCalls": [
+            {
+              "ID": "refused",
+              "Kind": "shell",
+              "Command": "lyx webster begin-batch 1",
+              "Path": ""
+            }
+          ],
+          "ToolResults": null,
+          "PromptPath": ""
+        },
+        {
+          "At": "2026-01-02T02:00:00Z",
+          "Role": "user",
+          "StartsTurn": false,
+          "EndsTurn": false,
+          "MessageKey": "line:b.jsonl:3",
+          "Model": "",
+          "Usage": null,
+          "UserTexts": null,
+          "ToolCalls": null,
+          "ToolResults": [
+            {
+              "CallID": "refused",
+              "Text": "{\"ok\":false,\"error\":\"paused\"}"
+            }
+          ],
+          "PromptPath": ""
+        },
+        {
+          "At": "0001-01-01T00:00:00Z",
+          "Role": "assistant",
+          "StartsTurn": false,
+          "EndsTurn": false,
+          "MessageKey": "use-other",
+          "Model": "",
+          "Usage": null,
+          "UserTexts": null,
+          "ToolCalls": [
+            {
+              "ID": "other",
+              "Kind": "shell",
+              "Command": "git log",
+              "Path": ""
+            }
+          ],
+          "ToolResults": null,
+          "PromptPath": ""
+        },
+        {
+          "At": "2026-01-02T02:30:00Z",
+          "Role": "user",
+          "StartsTurn": false,
+          "EndsTurn": false,
+          "MessageKey": "line:b.jsonl:5",
+          "Model": "",
+          "Usage": null,
+          "UserTexts": null,
+          "ToolCalls": null,
+          "ToolResults": [
+            {
+              "CallID": "other",
+              "Text": "{\"start_sha\":\"unrelated\"}"
+            }
+          ],
+          "PromptPath": ""
+        },
+        {
+          "At": "0001-01-01T00:00:00Z",
+          "Role": "assistant",
+          "StartsTurn": false,
+          "EndsTurn": false,
+          "MessageKey": "use-early",
+          "Model": "",
+          "Usage": null,
+          "UserTexts": null,
+          "ToolCalls": [
+            {
+              "ID": "early",
+              "Kind": "shell",
+              "Command": "lyx webster begin-batch 1",
+              "Path": ""
+            }
+          ],
+          "ToolResults": null,
+          "PromptPath": ""
+        },
+        {
+          "At": "2026-01-02T03:00:00Z",
+          "Role": "user",
+          "StartsTurn": false,
+          "EndsTurn": false,
+          "MessageKey": "line:b.jsonl:7",
+          "Model": "",
+          "Usage": null,
+          "UserTexts": null,
+          "ToolCalls": null,
+          "ToolResults": [
+            {
+              "CallID": "early",
+              "Text": "{\"batch\":\"01-alpha\",\"start_sha\":\"early00\"}"
+            }
+          ],
+          "PromptPath": ""
+        },
+        {
+          "At": "0001-01-01T00:00:00Z",
+          "Role": "assistant",
+          "StartsTurn": false,
+          "EndsTurn": false,
+          "MessageKey": "m2",
+          "Model": "sonnet",
+          "Usage": {
+            "Input": 1,
+            "CacheWrite": 0,
+            "CacheWriteOneHour": 0,
+            "CacheRead": 1,
+            "Output": 1
+          },
+          "UserTexts": null,
+          "ToolCalls": null,
+          "ToolResults": null,
+          "PromptPath": ""
+        }
+      ]
+    },
+    "Forks": [
+      {
+        "ID": "agent-1.jsonl",
+        "Name": "",
+        "Started": "2026-01-02T03:04:05.5Z",
+        "Repeats": 2,
+        "Entries": [
+          {
+            "At": "2026-01-02T03:04:05.5Z",
+            "Role": "user",
+            "StartsTurn": false,
+            "EndsTurn": false,
+            "MessageKey": "line:b.jsonl/agent-1.jsonl:1",
+            "Model": "",
+            "Usage": null,
+            "UserTexts": null,
+            "ToolCalls": null,
+            "ToolResults": [
+              {
+                "CallID": "t",
+                "Text": "no pointer here"
+              }
+            ],
+            "PromptPath": ""
+          },
+          {
+            "At": "0001-01-01T00:00:00Z",
+            "Role": "assistant",
+            "StartsTurn": false,
+            "EndsTurn": false,
+            "MessageKey": "m2",
+            "Model": "sonnet",
+            "Usage": null,
+            "UserTexts": null,
+            "ToolCalls": null,
+            "ToolResults": null,
+            "PromptPath": ""
+          },
+          {
+            "At": "0001-01-01T00:00:00Z",
+            "Role": "assistant",
+            "StartsTurn": false,
+            "EndsTurn": false,
+            "MessageKey": "m3",
+            "Model": "opus",
+            "Usage": null,
+            "UserTexts": null,
+            "ToolCalls": null,
+            "ToolResults": null,
+            "PromptPath": ""
+          },
+          {
+            "At": "0001-01-01T00:00:00Z",
+            "Role": "assistant",
+            "StartsTurn": false,
+            "EndsTurn": false,
+            "MessageKey": "m3",
+            "Model": "opus",
+            "Usage": {
+              "Input": 1,
+              "CacheWrite": 0,
+              "CacheWriteOneHour": 0,
+              "CacheRead": 5,
+              "Output": 4
+            },
+            "UserTexts": null,
+            "ToolCalls": null,
+            "ToolResults": null,
+            "PromptPath": ""
+          },
+          {
+            "At": "2026-01-02T03:04:06Z",
+            "Role": "user",
+            "StartsTurn": false,
+            "EndsTurn": false,
+            "MessageKey": "line:b.jsonl/agent-1.jsonl:5",
+            "Model": "",
+            "Usage": null,
+            "UserTexts": null,
+            "ToolCalls": null,
+            "ToolResults": [
+              {
+                "CallID": "t",
+                "Text": "1\t# Webster fork\n58\t- `_lyx/plan/01-alpha.md`\n59\t- `_lyx/plan/02-beta.md`\n60\t- `_lyx/plan/00-overview.md`\n70\t- `_lyx/plan/03-gamma.md`: go test ./...\n"
+              }
+            ],
+            "PromptPath": ""
+          },
+          {
+            "At": "0001-01-01T00:00:00Z",
+            "Role": "assistant",
+            "StartsTurn": false,
+            "EndsTurn": false,
+            "MessageKey": "m5",
+            "Model": "opus",
+            "Usage": {
+              "Input": 1,
+              "CacheWrite": 0,
+              "CacheWriteOneHour": 0,
+              "CacheRead": 9,
+              "Output": 2
+            },
+            "UserTexts": null,
+            "ToolCalls": null,
+            "ToolResults": null,
+            "PromptPath": ""
+          },
+          {
+            "At": "2026-01-02T03:04:07Z",
+            "Role": "user",
+            "StartsTurn": false,
+            "EndsTurn": false,
+            "MessageKey": "line:b.jsonl/agent-1.jsonl:7",
+            "Model": "",
+            "Usage": null,
+            "UserTexts": null,
+            "ToolCalls": null,
+            "ToolResults": [
+              {
+                "CallID": "t",
+                "Text": "- `_lyx/plan/04-delta.md`"
+              }
+            ],
+            "PromptPath": ""
+          }
+        ]
+      },
+      {
+        "ID": "agent-2.jsonl",
+        "Name": "",
+        "Started": "2026-01-02T03:10:00Z",
+        "Repeats": 0,
+        "Entries": [
+          {
+            "At": "2026-01-02T03:10:00Z",
+            "Role": "user",
+            "StartsTurn": false,
+            "EndsTurn": false,
+            "MessageKey": "line:b.jsonl/agent-2.jsonl:1",
+            "Model": "",
+            "Usage": null,
+            "UserTexts": null,
+            "ToolCalls": null,
+            "ToolResults": [
+              {
+                "CallID": "t",
+                "Text": "- `docs/plan.md`"
+              }
+            ],
+            "PromptPath": ""
+          },
+          {
+            "At": "0001-01-01T00:00:00Z",
+            "Role": "assistant",
+            "StartsTurn": false,
+            "EndsTurn": false,
+            "MessageKey": "m6",
+            "Model": "sonnet",
+            "Usage": {
+              "Input": 1,
+              "CacheWrite": 0,
+              "CacheWriteOneHour": 0,
+              "CacheRead": 2,
+              "Output": 3
+            },
+            "UserTexts": null,
+            "ToolCalls": null,
+            "ToolResults": null,
+            "PromptPath": ""
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Main": {
+      "ID": "c.jsonl",
+      "Name": "",
+      "Started": "0001-01-01T00:00:00Z",
+      "Repeats": 0,
+      "Entries": [
+        {
+          "At": "0001-01-01T00:00:00Z",
+          "Role": "assistant",
+          "StartsTurn": false,
+          "EndsTurn": false,
+          "MessageKey": "m4",
+          "Model": "haiku",
+          "Usage": {
+            "Input": 1,
+            "CacheWrite": 0,
+            "CacheWriteOneHour": 0,
+            "CacheRead": 0,
+            "Output": 1
+          },
+          "UserTexts": null,
+          "ToolCalls": null,
+          "ToolResults": null,
+          "PromptPath": ""
+        }
+      ]
+    },
+    "Forks": null
+  },
+  {
+    "Main": {
+      "ID": "d.jsonl",
+      "Name": "ly:my-task:burler-review-chair-2",
+      "Started": "0001-01-01T00:00:00Z",
+      "Repeats": 0,
+      "Entries": [
+        {
+          "At": "0001-01-01T00:00:00Z",
+          "Role": "assistant",
+          "StartsTurn": false,
+          "EndsTurn": false,
+          "MessageKey": "m8",
+          "Model": "sonnet",
+          "Usage": {
+            "Input": 1,
+            "CacheWrite": 0,
+            "CacheWriteOneHour": 0,
+            "CacheRead": 0,
+            "Output": 1
+          },
+          "UserTexts": null,
+          "ToolCalls": null,
+          "ToolResults": null,
+          "PromptPath": ""
+        }
+      ]
+    },
+    "Forks": null
+  },
+  {
+    "Main": {
+      "ID": "e.jsonl",
+      "Name": "ly:my-task:burler-review",
+      "Started": "0001-01-01T00:00:00Z",
+      "Repeats": 0,
+      "Entries": [
+        {
+          "At": "0001-01-01T00:00:00Z",
+          "Role": "assistant",
+          "StartsTurn": false,
+          "EndsTurn": false,
+          "MessageKey": "m9",
+          "Model": "sonnet",
+          "Usage": {
+            "Input": 1,
+            "CacheWrite": 0,
+            "CacheWriteOneHour": 0,
+            "CacheRead": 0,
+            "Output": 2
+          },
+          "UserTexts": null,
+          "ToolCalls": null,
+          "ToolResults": null,
+          "PromptPath": ""
+        }
+      ]
+    },
+    "Forks": null
+  }
+]

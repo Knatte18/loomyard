@@ -86,9 +86,9 @@ func lines(n int) string { return strings.Repeat("x\n", n) }
 
 // The base files of a based run hold these many lines each.
 const (
-	claudeLines   = 3
-	patternLines  = 4
-	templateLines = 5
+	instructionLines = 3
+	patternLines     = 4
+	templateLines    = 5
 )
 
 // directiveStencil is the orchestrator directive stencil of a based run: a banner, a line before and after the PATTERN overview marker.
@@ -98,18 +98,19 @@ const directiveStencil = "<!-- banner -->\n\nhead\n{{.pattern_overview}}\ntail\n
 func renderedDirective() string { return "head\n" + lines(patternLines) + "\ntail\n" }
 
 // withBaseFiles adds the files a run's Merriam base is computed from to the base tree at sha:
-// CLAUDE.md, PATTERN.md, the orchestrator directive stencil and the Master template.
+// INSTRUCTIONS.md, the fake engine's first instruction file, PATTERN.md, the orchestrator directive stencil and the Master template.
+// LOCAL.md, the fake engine's second instruction file, is untracked and so never at a base commit.
 func withBaseFiles(files map[string]string, sha string) {
-	files[sha+":CLAUDE.md"] = lines(claudeLines)
+	files[sha+":INSTRUCTIONS.md"] = lines(instructionLines)
 	files[sha+":PATTERN.md"] = lines(patternLines)
 	files[sha+":"+directiveStencilPath] = directiveStencil
 	files[sha+":"+masterTemplatePath] = lines(templateLines)
 }
 
 // knownBaseContext is the context the seeded profiles (a context_per_line of 1) price for a based run whose plan renders overview:
-// the lines of the overview, CLAUDE.md, the rendered directive and the Master template, plus the fixed system-prompt context.
+// the lines of the overview, INSTRUCTIONS.md, the rendered directive and the Master template, plus the fixed system-prompt context.
 func knownBaseContext(overview string) float64 {
-	base := websterengine.MerriamBaseOf(overview, lines(claudeLines), renderedDirective(), lines(templateLines))
+	base := websterengine.MerriamBaseOf(overview, lines(instructionLines), renderedDirective(), lines(templateLines))
 	return float64(base.Lines) + base.Fixed
 }
 
@@ -234,7 +235,8 @@ func TestCalibrate(t *testing.T) {
 		{Slug: "badplan", BaseSHA: "basebad", Forks: []ForkTally{fork(firstFork, 10, 1, "01-c1")}},
 	}
 
-	got, err := Calibrate(runs, "fit", configDir, history, base)
+	reads := fakeReadSet(newFakeTranscripts())
+	got, err := Calibrate(runs, "fit", configDir, history, base, reads)
 	if err != nil {
 		t.Fatalf("Calibrate: %v", err)
 	}
@@ -328,7 +330,7 @@ func TestCalibrate(t *testing.T) {
 	t.Run("peak rows are priced at each fork's own position", func(t *testing.T) {
 		t.Parallel()
 		// The grow profile is fit with a batch_growth of 5, so alpha's forks at positions 1 to 4 estimate 110, 65, 70 and 75, each with an estimated growth of the same 100, 50, 50 and 50 once its own start is taken off.
-		grown, err := Calibrate(runs[:1], "grow", configDir, history, base)
+		grown, err := Calibrate(runs[:1], "grow", configDir, history, base, reads)
 		if err != nil {
 			t.Fatalf("Calibrate: %v", err)
 		}
@@ -347,9 +349,9 @@ func TestCalibrate(t *testing.T) {
 		t.Parallel()
 		basedHistory, basedBase, baseContext := basedRunFixture("delta", map[int]string{1: "internal/a/a.go"}, firstFork)
 		basedBase.files["basedelta:internal/a/a.go"] = lines(100)
-		basedRuns := []RunTally{{Slug: "delta", BaseSHA: "basedelta", Forks: []ForkTally{fork(firstFork, int(baseContext)+10, int(baseContext)+220, "01-c1")}}}
+		basedRuns := []RunTally{{Slug: "delta", BaseSHA: "basedelta", WebsterEngine: fakeEngine, Forks: []ForkTally{fork(firstFork, int(baseContext)+10, int(baseContext)+220, "01-c1")}}}
 
-		based, err := Calibrate(basedRuns, "fit", configDir, basedHistory, basedBase)
+		based, err := Calibrate(basedRuns, "fit", configDir, basedHistory, basedBase, reads)
 		if err != nil {
 			t.Fatalf("Calibrate: %v", err)
 		}
@@ -365,17 +367,17 @@ func TestCalibrate(t *testing.T) {
 	t.Run("a Merriam session measured at its prompt Read writes the fixed-context section", func(t *testing.T) {
 		t.Parallel()
 		basedHistory, basedBase, _ := basedRunFixture("eps", map[int]string{1: "internal/a/a.go"}, firstFork)
-		runs := []RunTally{{Slug: "eps", BaseSHA: "baseeps", Merriams: []MerriamStart{
+		runs := []RunTally{{Slug: "eps", BaseSHA: "baseeps", WebsterEngine: fakeEngine, Merriams: []MerriamStart{
 			{Session: "m1.jsonl", Started: firstFork, StartContext: 20000},
 			{Session: "m2.jsonl", Started: firstFork.Add(time.Hour), StartContext: 19000},
 		}}}
 
-		measured, err := Calibrate(runs, "fit", configDir, basedHistory, basedBase)
+		measured, err := Calibrate(runs, "fit", configDir, basedHistory, basedBase, reads)
 		if err != nil {
 			t.Fatalf("Calibrate: %v", err)
 		}
-		// The measured lines are CLAUDE.md, the Master template and the directive with its wrapper, not the raw PATTERN.md.
-		wantLines := claudeLines + templateLines + strings.Count(renderedDirective(), "\n")
+		// The measured lines are INSTRUCTIONS.md, the Master template and the directive with its wrapper, not the raw PATTERN.md.
+		wantLines := instructionLines + templateLines + strings.Count(renderedDirective(), "\n")
 		wantRows := []FixedRow{{Run: "eps", Session: "m1.jsonl", Measured: 20000, Lines: wantLines, Fixed: float64(20000 - wantLines)}}
 		if !slices.Equal(measured.Fixed.Rows, wantRows) {
 			t.Errorf("fixed rows = %+v; want %+v", measured.Fixed.Rows, wantRows)
@@ -402,17 +404,71 @@ func TestCalibrate(t *testing.T) {
 		}
 	})
 
+	t.Run("the Webster session engine names the instruction files the base and fixed lines count", func(t *testing.T) {
+		t.Parallel()
+		engineReads := ReadSet{
+			fakeEngine: fakeReadSet(newFakeTranscripts())[fakeEngine],
+			"bare":     {},
+			"extra":    {Instructions: fakeInstructions{"INSTRUCTIONS.md", "EXTRA.md"}},
+		}
+		const extraLines = 7
+		withoutInstructions := []string{renderedDirective(), lines(templateLines)}
+		withInstructions := slices.Concat([]string{lines(instructionLines)}, withoutInstructions)
+		tests := []struct {
+			name   string
+			engine string
+			// extraFile is added to the run's base commit beside INSTRUCTIONS.md.
+			extraFile string
+			wantTexts []string
+		}{
+			{"Fake_ReadsItsFileAndNotTheAbsentOne", fakeEngine, "", withInstructions},
+			{"NoWebsterEngine", "", "", withoutInstructions},
+			{"EngineAbsentFromTheReadSet", "ghost", "", withoutInstructions},
+			{"EngineWithoutInstructions", "bare", "", withoutInstructions},
+			{"EngineNamingASecondTrackedFile", "extra", "EXTRA.md", slices.Concat(withInstructions, []string{lines(extraLines)})},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				plan := planWith(map[int]string{1: "internal/a/a.go"})
+				basedHistory, basedBase, _ := basedRunFixture("theta", map[int]string{1: "internal/a/a.go"}, firstFork)
+				basedBase.files["basetheta:internal/a/a.go"] = lines(100)
+				if tt.extraFile != "" {
+					basedBase.files["basetheta:"+tt.extraFile] = lines(extraLines)
+				}
+				runs := []RunTally{{
+					Slug: "theta", BaseSHA: "basetheta", WebsterEngine: tt.engine,
+					Forks:    []ForkTally{fork(firstFork, 100, 200, "01-c1")},
+					Merriams: []MerriamStart{{Session: "m1.jsonl", Started: firstFork, StartContext: 20000}},
+				}}
+
+				got, err := Calibrate(runs, "fit", configDir, basedHistory, basedBase, engineReads)
+				if err != nil {
+					t.Fatalf("Calibrate: %v", err)
+				}
+				wantBase := websterengine.MerriamBaseOf(append([]string{plan["00-overview.md"]}, tt.wantTexts...)...)
+				if len(got.Starts) != 1 || !got.Starts[0].HasBase || !near(got.Starts[0].Base, float64(wantBase.Lines)+wantBase.Fixed) {
+					t.Errorf("starts = %+v; want one row with base %v", got.Starts, float64(wantBase.Lines)+wantBase.Fixed)
+				}
+				wantLines := websterengine.MerriamBaseOf(tt.wantTexts...).Lines
+				if len(got.Fixed.Rows) != 1 || got.Fixed.Rows[0].Lines != wantLines {
+					t.Errorf("fixed rows = %+v; want one row of %d lines", got.Fixed.Rows, wantLines)
+				}
+			})
+		}
+	})
+
 	t.Run("a run with PATTERN.md but no directive stencil is a skip in both sections", func(t *testing.T) {
 		t.Parallel()
 		unstencilledHistory, unstencilledBase, _ := basedRunFixture("zeta", map[int]string{1: "internal/a/a.go"}, firstFork)
 		delete(unstencilledBase.files, "basezeta:"+directiveStencilPath)
 		runs := []RunTally{{
-			Slug: "zeta", BaseSHA: "basezeta",
+			Slug: "zeta", BaseSHA: "basezeta", WebsterEngine: fakeEngine,
 			Forks:    []ForkTally{fork(firstFork, 100, 200, "01-c1")},
 			Merriams: []MerriamStart{{Session: "m1.jsonl", Started: firstFork, StartContext: 20000}},
 		}}
 
-		unstencilled, err := Calibrate(runs, "fit", configDir, unstencilledHistory, unstencilledBase)
+		unstencilled, err := Calibrate(runs, "fit", configDir, unstencilledHistory, unstencilledBase, reads)
 		if err != nil {
 			t.Fatalf("Calibrate: %v", err)
 		}
@@ -444,7 +500,7 @@ func TestCalibrate(t *testing.T) {
 			fork(firstFork, 10, 30, "01-c1"),
 			fork(firstFork.Add(time.Minute), 10, 90, "02-c2"),
 		}}}
-		flat, err := Calibrate(flatRuns, "fit", configDir, flatHistory, flatBase)
+		flat, err := Calibrate(flatRuns, "fit", configDir, flatHistory, flatBase, reads)
 		if err != nil {
 			t.Fatalf("Calibrate: %v", err)
 		}
@@ -554,11 +610,11 @@ func TestCalibrateStartFit(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			runs := []RunTally{{Slug: "r", BaseSHA: "baser", Forks: tt.forks}}
+			runs := []RunTally{{Slug: "r", BaseSHA: "baser", WebsterEngine: fakeEngine, Forks: tt.forks}}
 			if tt.orphan != nil {
 				runs = append(runs, RunTally{Slug: "orphan", Forks: tt.orphan})
 			}
-			got, err := Calibrate(runs, "grow", configDir, history, base)
+			got, err := Calibrate(runs, "grow", configDir, history, base, fakeReadSet(newFakeTranscripts()))
 			if err != nil {
 				t.Fatalf("Calibrate: %v", err)
 			}
@@ -599,7 +655,7 @@ func TestCalibrateFailsOnAnUnusableProfile(t *testing.T) {
 
 	configDir := t.TempDir()
 	seedProfile(t, configDir)
-	_, err := Calibrate(nil, "absent", configDir, fakeHistory{}, fakeBase{})
+	_, err := Calibrate(nil, "absent", configDir, fakeHistory{}, fakeBase{}, fakeReadSet(newFakeTranscripts()))
 	if err == nil || !strings.Contains(err.Error(), "batcher.yaml") {
 		t.Errorf("Calibrate with an absent profile error = %v; want one naming batcher.yaml", err)
 	}

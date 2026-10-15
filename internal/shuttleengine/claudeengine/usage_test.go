@@ -251,6 +251,11 @@ func assistantLine(id string, sidechain bool, input, cacheCreation, cacheRead, o
 		sidechain, id, input, cacheCreation, cacheRead, output)
 }
 
+// idlessLine builds one transcript line of an assistant message with no id and no uuid, carrying the given input and cache-read tokens and one output token.
+func idlessLine(input, cacheRead int) string {
+	return fmt.Sprintf(`{"type":"assistant","isSidechain":false,"message":{"usage":{"input_tokens":%d,"cache_creation_input_tokens":0,"cache_read_input_tokens":%d,"output_tokens":1}}}`, input, cacheRead)
+}
+
 // TestSessionUsage_SumsParentAndForks covers the session-usage reading over fixture transcripts: a message repeated across lines counts once and sidechain and malformed lines are skipped, forks are summed into the totals and broken out, a session without a subagents directory has zero forks, and a missing transcript reads unknown.
 // It runs serially because it sets the process-global HOME.
 func TestSessionUsage_SumsParentAndForks(t *testing.T) {
@@ -276,7 +281,11 @@ func TestSessionUsage_SumsParentAndForks(t *testing.T) {
 		parent       []string
 		forks        map[string][]string
 		noTranscript bool
-		want         shuttleengine.SessionUsage
+		// forkDirs are directories created under subagents/ beside the fork transcripts.
+		forkDirs []string
+		// subagentsIsFile makes the subagents path a regular file.
+		subagentsIsFile bool
+		want            shuttleengine.SessionUsage
 	}{
 		{
 			name:   "repeated message lines count once",
@@ -297,6 +306,30 @@ func TestSessionUsage_SumsParentAndForks(t *testing.T) {
 			noTranscript: true,
 			want:         shuttleengine.SessionUsage{},
 		},
+		{
+			name:   "id-less parent lines without uuids all count",
+			parent: []string{idlessLine(1, 5), idlessLine(1, 5)},
+			want:   shuttleengine.SessionUsage{Known: true, Fresh: 4, CacheRead: 10},
+		},
+		{
+			name:   "an id-less fork line without a uuid counts",
+			parent: []string{assistantLine("m1", false, 1, 10, 100, 5)},
+			forks:  map[string][]string{"a.jsonl": {idlessLine(2, 7)}},
+			want:   shuttleengine.SessionUsage{Known: true, Fresh: 16 + 3, CacheRead: 100 + 7, Forks: 1, ForkFresh: 3, ForkCacheRead: 7},
+		},
+		{
+			name:     "a directory named like a fork transcript is not a fork",
+			parent:   parentLines,
+			forks:    map[string][]string{"a.jsonl": forkLines("f1", 4, 40)},
+			forkDirs: []string{"b.jsonl"},
+			want:     shuttleengine.SessionUsage{Known: true, Fresh: 16 + 29 + 5, CacheRead: 300 + 40, Forks: 1, ForkFresh: 5, ForkCacheRead: 40},
+		},
+		{
+			name:            "a subagents path that is a file reads unknown",
+			parent:          parentLines,
+			subagentsIsFile: true,
+			want:            shuttleengine.SessionUsage{},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -306,8 +339,22 @@ func TestSessionUsage_SumsParentAndForks(t *testing.T) {
 			if !tt.noTranscript {
 				writeParentTranscript(t, projectDir, sessionID, tt.parent)
 			}
+			subagentsDir := filepath.Join(projectDir, sessionID, "subagents")
 			for name, lines := range tt.forks {
-				writeForkTranscript(t, filepath.Join(projectDir, sessionID, "subagents"), name, lines)
+				writeForkTranscript(t, subagentsDir, name, lines)
+			}
+			for _, name := range tt.forkDirs {
+				if err := os.MkdirAll(filepath.Join(subagentsDir, name), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tt.subagentsIsFile {
+				if err := os.MkdirAll(filepath.Dir(subagentsDir), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(subagentsDir, []byte("x"), 0o644); err != nil {
+					t.Fatal(err)
+				}
 			}
 
 			if got := New().SessionUsage(sessionID, workdir); got != tt.want {

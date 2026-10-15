@@ -93,7 +93,8 @@ See [PATTERN.md](../PATTERN.md) for details.
 Two doc classes, opposite lifecycles:
 
 - **Module designs** for **planned, not-yet-built** modules live in their board entry's body;
-  when the module lands, the entry's design moves into the package's `doc.go` and the implementation and tests become the source of truth.
+  the task building the module writes the design into the package's `doc.go` and leaves its own entry's body and scope unchanged;
+  the landing marks the entry done and the board prune removes it, and the implementation and tests become the source of truth.
   A module's purpose and key design rationale then live in its Go package header comment, next to the code it documents.
 - **Durable Go-to-Go contract docs** (`contracts/specs/`) pin cross-module schemas a real consumer honors — they are **kept**, not deleted on landing: `loom-status-spec.md`, `webster-spec.md`, `llm-model-spec.md`, `loom-final-summary-spec.md`, `loom-plan-spec.md`. LLM-facing producer format contracts (what `Discussion-Write`/`Plan-Write` must write) live in the producer's own stencil under `contracts/stencils/`, not as a separate doc — see the Documentation Lifecycle's stencil-vs-doc split.
 

@@ -1,6 +1,5 @@
-// Command tokencount reads Claude Code's session transcripts for a set of task runs and
-// writes a markdown report of their token use and time per run and per role, each role summed
-// over all runs first.
+// Command tokencount reads the session transcripts of a set of task runs through the shuttle engines that recorded them.
+// It writes a markdown report of their token use and time per run and per role, each role summed over all runs first.
 //
 //	go run ./tools/tokencount
 //	go run ./tools/tokencount -last 10
@@ -22,37 +21,35 @@
 // a run stopped partway, such as a bench pair parked after Discussion-Write, or a run of another recipe, would count as one whose later steps cost nothing.
 // The report's header names the runs counted and, when the default skipped more recent runs that are not full loom runs, names those on one line.
 // Slugs named on the command line are counted as given, full loom runs or not.
-// Claude Code keeps a worktree's sessions in ~/.claude/projects/<encoded path>/, one
-// <session>.jsonl per session, and a session's sub-agents (the Webster master's forks)
-// in <session>/subagents/*.jsonl.
+// Sessions are found per worktree by every registered shuttle engine that can locate them, and read through the engine that found them;
+// a session's forks (the Webster master's sub-agents) are read with it.
+// An engine that cannot read transcripts is named in the report's header line "Not counted, no transcript reader:".
+// Absence contributes nothing, while an engine's failure to locate or read a session fails the count, naming the session and the engine.
 //
-// A slug's earlier runs share its worktree path, so they share its project directory, and a run counts only the transcripts that started after the slug's previous run.
+// A slug's earlier runs share its worktree path, so they share its located sessions, and a run counts only the sessions that started after the slug's previous run.
 // The run's lower bound is the commit date of the slug's newest archive tag for a run in flight, whose worktree <hub>/<slug> exists.
 // For a finished run it is the commit date of the next-older tag, and the bound is absent when the slug has no such tag, which counts every transcript.
-// A main-session transcript is judged by the earliest timestamp of its user and assistant lines, and one with no such line is left out when a bound exists and counted under -no-cutoff.
-// A left-out transcript adds nothing to tokens, cost, working intervals, the session count, the Webster forks, the Merriam starts, the run's begin-batch base or its transcript window, and neither do its sub-agents.
+// A main-session transcript is judged by the earliest timestamp of its user and assistant entries, and one with no such entry is left out when a bound exists and counted under -no-cutoff.
+// A left-out transcript adds nothing to tokens, cost, working intervals, the session count, the Webster forks, the Merriam starts, the run's begin-batch base or its transcript window, and neither do its forks.
 // The run's section reports how many were left out and the bound's date.
-// -no-cutoff drops the bound for every run, so a slug's earlier runs that share its project directory feed every figure the bound gates (tokens, cost, working intervals, the session count, the Webster forks, the Merriam starts, the begin-batch base, the transcript window and with it the orch charge), and it drops the next-older tag's clamp on the span start.
+// -no-cutoff drops the bound for every run, so a slug's earlier runs that share its worktree path feed every figure the bound gates (tokens, cost, working intervals, the session count, the Webster forks, the Merriam starts, the begin-batch base, the transcript window and with it the orch charge), and it drops the next-older tag's clamp on the span start.
 // With -calibrate the base and Merriam rows may come from an earlier run.
 // The plan, read from the newest plan commit before the run's first Webster fork, may be an earlier run's, and with it the peak table, the start table's base and the identity card counts, or the run may be listed with "no plan commit before the first fork".
 // A span start taken from the earliest transcript when the seed has no started_at may be an earlier run's.
 //
-// A session's role is the part after the last colon of its latest custom-title line,
-// which lyx sets to the strand name (ly:<slug>:burler), with a trailing -N dropped, so
-// burler-2 counts as burler. A sub-agent counts under its parent's role with "+sub"
-// appended, and a session without a title counts as "untitled".
+// A session's role is the part after the last colon of its name, the strand name its engine read (ly:<slug>:burler), with a trailing -N dropped, so burler-2 counts as burler.
+// A fork counts under its parent's role with "+sub" appended, and a session without a name counts as "untitled".
 // A role ending in -chair, the role a seat table's lead carried before seats were named, counts under the role without that suffix, so burler-review-chair counts as burler-review and a report spanning the rename sums each role once.
 // A seat named chair after the rename counts under its table's lead role too.
 //
-// One API message can appear on several transcript lines, and a fork repeats its
-// parent's context, so usage is counted once per message id within a run.
-// A message's usage is read from its last line in a transcript: a sub-agent transcript records a streamed message's earlier lines with a partial output_tokens.
+// A message can be recorded in several transcripts, so usage is counted once per engine and message key within a run;
+// the engine collapses a message it recorded over several records into one, and a repeat it collapsed counts as a duplicate.
 //
-// One fork is one sub-agent transcript of a session whose role is webster;
+// One fork is one fork transcript of a session whose role is webster;
 // the report's "Webster forks" section lists every such fork of every run, by run as listed and then by start time, with the cards it ran, its start context, its counted messages, its peak context and its weight.
 // A fork's start context is the input + cache write + cache read of its first counted message, the context Merriam held when it spawned the fork, and its peak context is the largest such sum of any counted message;
-// the fork also records the file name of the webster session transcript its own transcript sits under, its Merriam session.
-// A fork's cards are read from its prompt, never from commit times: the prompt is the first tool result in the fork's transcript holding a card pointer line, a "- `<path>/NN-<slug>.md`" bullet with nothing after the closing backtick (a Read result's line-number prefix is ignored), and the cards are every such line of that one result.
+// the fork also records the name of the webster session transcript its own transcript sits under, its Merriam session.
+// A fork's cards are read from its prompt, never from commit times: the prompt is the first tool result in the fork's transcript holding a card pointer line, a "- `<path>/NN-<slug>.md`" bullet with nothing after the closing backtick (a file read's line-number prefix is ignored), and the cards are every such line of that one result.
 // A fork whose transcript has no such result is listed as unattributed.
 //
 // With -calibrate <profile> the report gains a "Calibration (<profile>)" section of two tables, each row a fork that names cards.
@@ -64,7 +61,7 @@
 //
 // A fork's position is one plus the card-naming forks before it in the same Merriam session, by start time, so a resumed session restarts its positions at 1.
 // The start table gives each fork's measured start context beside the run's computed Merriam base and the start the profile estimates for its position, base + orientation + (position - 1) x batch_growth.
-// A run's base is websterengine.MerriamBaseOf over CLAUDE.md, the repository's copy of the Master template, and the orchestrator PATTERN directive rendered from the directive stencil and PATTERN.md, each at the run's base commit, and the run's 00-overview.md from its plan commit, priced at the profile's context_per_line.
+// A run's base is websterengine.MerriamBaseOf over the instruction files of the engine that located the run's Webster session, the repository's copy of the Master template, and the orchestrator PATTERN directive rendered from the directive stencil and PATTERN.md, each at the run's base commit, and the run's 00-overview.md from its plan commit, priced at the profile's context_per_line.
 // A run whose plan or base commit cannot be read keeps its rows, listed with the reason it has no base.
 // Below it the section prints the least-squares fit of orientation and batch_growth, the measured start minus the base over position - 1 across the forks of the runs that have a base, beside the profile's values, with its residual spread: the 75th over the 25th percentile of each fork's measured start over its fitted start.
 // With fewer than two distinct positions among those forks it prints "not fitted" with that reason, and a negative fitted coefficient is printed and marked unusable, since batcher.yaml refuses a negative weight.
@@ -85,8 +82,8 @@
 // A spread is the 75th percentile of the ratios over the 25th, both interpolated linearly between the closest ranks.
 //
 // The calibration section also ends with a "Merriam fixed context" subsection, which re-measures websterengine's merriamFixedContext.
-// A Merriam session is a webster-role session, and its start context is the input + cache write + cache read of the first assistant message after the result of its Read of the prompt file named by the launch line lyx types.
-// For each run's first Merriam session by start time, the subsection gives the measured start, the line count of the texts MerriamBase counts but the plan overview (CLAUDE.md, the Master template and the rendered directive; CLAUDE.local.md is assumed absent), and the fixed context left once those lines are priced at context_per_line.
+// A Merriam session is a webster-role session, and its start context is the input + cache write + cache read of the first assistant message after the result of its read of the prompt file named by the launch line lyx types.
+// For each run's first Merriam session by start time, the subsection gives the measured start, the line count of the texts MerriamBase counts but the plan overview (the Webster session engine's instruction files, the Master template and the rendered directive; the engine is the one that located the run's first webster-role session, and every webster-role session of a run is assumed to have run under one engine; an untracked instruction file is assumed absent), and the fixed context left once those lines are priced at context_per_line.
 // Below the table it gives the median and the 25th and 75th percentiles of the fixed figures beside the current constant.
 // A session with no measured start, a run whose texts cannot be reconstructed, and every later session of a run (a resume, a refresh or a re-launch starts with prior conversation or a compaction summary in context) are listed with their reasons.
 //
@@ -110,15 +107,14 @@
 // When the orchestrator was counted, the "All runs" table and each run's table end with an orch row: the orch weight and cost charged to the table's runs, the "Orchestrator" section's attributed part, never its unattributed rest;
 // its weight counts in the table's total, so its share is orch's percentage of all the weight spent on those runs.
 //
-// The est. cost column prices each message at its model's Claude API list price, from the price table in cost.go, which cites its source;
-// a cache write is priced by its lifetime, five minutes or one hour, as the transcript's usage splits it, and a model with a long-prompt rate card, Haiku 5.5 above 100K tokens of input + cache write + cache read, is priced per message on the card its prompt selects.
-// A message with usage whose model the table lacks is unpriced, never free: its cell reads "unpriced" or "$x + unpriced", and the "All runs" section names the unpriced models.
+// The est. cost column prices each message through the pricing capability of the engine that read it, the engine owning its provider's price table;
+// a message from an engine without one is unpriced.
+// A message with usage that no price was found for is unpriced, never free: its cell reads "unpriced" or "$x + unpriced", and the "All runs" section names the unpriced models.
 //
 // The time and time share columns give a role's working time and its percentage of the table's span.
-// Time is turn time: a session works from a user or assistant line until the line that ends its turn.
-// That is an assistant line whose stop_reason is set and not tool_use, a user line holding an interrupt marker, or a user line holding a <local-command-stdout> output.
-// A turn-start line is a user line holding text and no tool result, other than a line that ends a turn and other than a compaction's summary line.
-// The interval into a turn-start line is idle, since a crash and --resume leave the gap before the resume's prompt, and so is an interval longer than the 30-minute stall cap, three times the harness's ten-minute cap on a foreground Bash call.
+// Time is turn time: a session works from a user or assistant entry until the entry that ends its turn.
+// Which entries end or start a turn is the engine's reading: an entry that ends a turn is a final assistant answer, an interrupt or a local command's output, and an entry that starts one is the user's own prompt.
+// The interval into a turn-start entry is idle, since a crash and --resume leave the gap before the resume's prompt, and so is an interval longer than the 30-minute stall cap, three times the harness's ten-minute cap on a foreground Bash call.
 // Either makes the whole interval idle, never a clipped part of it.
 // A role's time is the union of its transcripts' working intervals clipped to the span, a sub-agent's transcripts counting under <role>+sub.
 // The idle row is the span minus the union of every working interval of the run, orch sessions left out, so it holds parent review, gate-slot waits, a parked driver and Go-only work.
@@ -165,6 +161,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 )
 
 // repositoryFlag is the name of the one flag naming the repository that holds the archive tags, plan commits and webster records.
@@ -188,22 +185,22 @@ func resolveHub(hub, wd, weft string) (string, error) {
 }
 
 func main() {
-	if err := run(os.Args[1:], os.Stdout); err != nil {
+	if err := run(os.Args[1:], os.Stdout, shuttleengines.RecordReaders()); err != nil {
 		fmt.Fprintln(os.Stderr, "tokencount:", err)
 		os.Exit(1)
 	}
 }
 
-func run(args []string, stdout io.Writer) error {
+// run counts the runs args name, or the most recent full loom runs, through the engines in reads, and writes the report to stdout or to the -out file.
+func run(args []string, stdout io.Writer, reads ReadSet) error {
 	fs := flag.NewFlagSet("tokencount", flag.ContinueOnError)
 	hub := fs.String("hub", "", "hub directory holding the task worktrees (default: parent of the current directory)")
-	projects := fs.String("projects", "", "Claude Code projects directory (default: ~/.claude/projects)")
 	out := fs.String("out", "", "write the report to this file instead of stdout")
 	last := fs.Int("last", 6, "with no slugs named, count this many of the most recently active full loom runs")
 	weft := fs.String(repositoryFlag, "", "the prime's fabric repository holding the archive tags of finished runs, the runs' plan commits and webster records (default: the current worktree's weft sibling)")
 	calibrate := fs.String("calibrate", "", "add the calibration section for this batcher.yaml profile")
 	configDir := fs.String("config", "", "directory whose batcher.yaml holds the profile (default: the current directory)")
-	noCutoff := fs.Bool("no-cutoff", false, "turn off the archive-tag cutoff, so every transcript in each slug's project directory counts")
+	noCutoff := fs.Bool("no-cutoff", false, "turn off the archive-tag cutoff, so every located session of each slug counts")
 	noSleep := fs.Bool("no-sleep", false, "read no journal and count machine sleep as time")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -216,13 +213,7 @@ func run(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if *projects == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return err
-		}
-		*projects = filepath.Join(home, ".claude", "projects")
-	}
+	readable, unreadable := reads.engines()
 	slugs := fs.Args()
 	if *weft == "" {
 		loc, err := lyxcwd.Resolve(wd)
@@ -240,12 +231,12 @@ func run(args []string, stdout io.Writer) error {
 	var skippedNote string
 	if len(slugs) == 0 {
 		var skipped []string
-		slugs, skipped, err = recentRuns(*projects, *hub, filepath.Base(wd), finished, fabric, *last)
+		slugs, skipped, err = recentRuns(reads, *hub, filepath.Base(wd), finished, fabric, *last)
 		if err != nil {
 			return err
 		}
 		if len(slugs) == 0 {
-			return fmt.Errorf("no full loom runs of %s under %s; name the slugs to count a partial run", *hub, *projects)
+			return fmt.Errorf("no full loom runs of %s from engines %s; name the slugs to count a partial run", *hub, strings.Join(readable, ", "))
 		}
 		counted = fmt.Sprintf("the %d most recent full loom runs: %s", len(slugs), strings.Join(slugs, ", "))
 		if len(skipped) > 0 {
@@ -268,7 +259,7 @@ func run(args []string, stdout io.Writer) error {
 		if !*noCutoff {
 			bound = runBound(finished[slug], running)
 		}
-		r, err := CountRun(projectDir(*projects, filepath.Join(*hub, slug)), slug, bound)
+		r, err := CountRun(reads, filepath.Join(*hub, slug), slug, bound)
 		if err != nil {
 			return err
 		}
@@ -287,7 +278,7 @@ func run(args []string, stdout io.Writer) error {
 		r.subtractSleeps(sleeps)
 		report.Runs = append(report.Runs, r)
 	}
-	orch, err := CountOrch(projectDir(*projects, wd), report.Runs)
+	orch, err := CountOrch(reads, wd, report.Runs)
 	if err != nil {
 		return err
 	}
@@ -299,7 +290,7 @@ func run(args []string, stdout io.Writer) error {
 		if *configDir == "" {
 			*configDir = wd
 		}
-		c, err := Calibrate(report.Runs, *calibrate, *configDir, fabric, gitrepo.New(wd))
+		c, err := Calibrate(report.Runs, *calibrate, *configDir, fabric, gitrepo.New(wd), reads)
 		if err != nil {
 			return err
 		}
@@ -322,9 +313,13 @@ func run(args []string, stdout io.Writer) error {
 	}
 	var cutoffNote string
 	if *noCutoff {
-		cutoffNote = "The archive-tag cutoff is off: every transcript in each slug's project directory counts.\n"
+		cutoffNote = "The archive-tag cutoff is off: every located session of each slug counts.\n"
 	}
-	fmt.Fprintf(w, "# Token usage and time by role\n\nGenerated %s for %s.\n%s%s%s\n", time.Now().Format("2006-01-02 15:04"), counted, cutoffNote, sleepNote, skippedNote)
+	var unreadableNote string
+	if len(unreadable) > 0 {
+		unreadableNote = fmt.Sprintf("Not counted, no transcript reader: %s.\n", strings.Join(unreadable, ", "))
+	}
+	fmt.Fprintf(w, "# Token usage and time by role\n\nGenerated %s for %s.\n%s%s%s%s\n", time.Now().Format("2006-01-02 15:04"), counted, cutoffNote, sleepNote, unreadableNote, skippedNote)
 	if err := report.WriteMarkdown(w); err != nil {
 		return err
 	}

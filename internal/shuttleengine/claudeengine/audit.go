@@ -100,19 +100,11 @@ func (c *Claude) AuditForksIncremental(sessionID, workdir string, seenTranscript
 // claudeProjectDirFor derives the ~/.claude/projects/<encoded-workdir> directory,
 // encoding workdir by replacing non-alphanumeric bytes with '-'.
 func claudeProjectDirFor(workdir string) (string, error) {
-	home, err := claudeHomeDir()
+	projects, err := projectsRoot()
 	if err != nil {
-		return "", fmt.Errorf("claudeengine: resolve home dir: %w", err)
+		return "", err
 	}
-
-	encoded := []byte(workdir)
-	for i, b := range encoded {
-		isAlnum := (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9')
-		if !isAlnum {
-			encoded[i] = '-'
-		}
-	}
-	return filepath.Join(home, ".claude", "projects", string(encoded)), nil
+	return projectDirUnder(projects, workdir), nil
 }
 
 // claudeHomeDir resolves the home directory Claude Code uses for ~/.claude/projects/,
