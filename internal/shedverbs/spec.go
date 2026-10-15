@@ -213,4 +213,7 @@ type Spec struct {
 	EnsureStatusLockDir bool
 	// Loop is the told arming of step's --until-stop mode; its zero value means the recipe arms no loop.
 	Loop LoopSpec
+	// Caller is the caller label of the process the verbs run in, recorded on the goto entry and on the entry a resume appends.
+	// It is for reports only; the empty string records none.
+	Caller string
 }

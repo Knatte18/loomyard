@@ -280,8 +280,9 @@ func refuseUnarmedLoop(out io.Writer) int {
 
 // RunUntilStop is the body of `step --until-stop` after its flags are parsed, the entry an in-process driver calls and the cobra verb runs.
 // It refuses a recipe that arms no loop; for a non-empty attempt it consumes the arbiter attempt through Hooks.ConsumeAttempt before anything is read or spawned, refusing a nil hook, a busy run and a hook error with the attempt on the envelope; and then waits on the loop.
+// Before the loop is spawned it records by, the caller label, as the pending label of a halted run; a failure to record is logged and the loop is spawned anyway, since the label is for reports only.
 // It prints the one envelope on out and returns the exit code.
-func RunUntilStop(ctx context.Context, spec *Spec, argv []string, attempt string, out io.Writer) int {
+func RunUntilStop(ctx context.Context, spec *Spec, argv []string, attempt, by string, out io.Writer) int {
 	if spec.Loop.EnvelopePath == "" {
 		return refuseUnarmedLoop(out)
 	}
@@ -296,6 +297,9 @@ func RunUntilStop(ctx context.Context, spec *Spec, argv []string, attempt string
 			}
 			return refuseArbiterAttempt(out, attempt, err.Error())
 		}
+	}
+	if err := shedengine.RecordResumer(spec.StatusPath, spec.StatusLockPath, by); err != nil {
+		logger.Warn("shed: caller label not recorded", "error", err.Error())
 	}
 	return runUntilStop(ctx, spec, argv, out)
 }
@@ -338,7 +342,7 @@ func stepCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 					clihelp.SetExit(ctx, runLoop(ctx, spec, loopID, argv, cmd.OutOrStdout()))
 					return nil
 				}
-				clihelp.SetExit(ctx, RunUntilStop(ctx, spec, argv, attempt, cmd.OutOrStdout()))
+				clihelp.SetExit(ctx, RunUntilStop(ctx, spec, argv, attempt, spec.Caller, cmd.OutOrStdout()))
 				return nil
 			}
 
@@ -377,6 +381,7 @@ func stepCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 				return nil
 			}
 
+			shed.ResumedBy = spec.Caller
 			res, err := shed.Step(ctx)
 			if err != nil {
 				friction := ""

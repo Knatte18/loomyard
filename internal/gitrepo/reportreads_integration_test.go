@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -126,6 +127,42 @@ func TestReportReads(t *testing.T) {
 			none, err := repo.TagRefs("nope/")
 			if err != nil || len(none) != 0 {
 				t.Errorf("TagRefs(nope/) = (%+v, %v); want none", none, err)
+			}
+		}},
+		{"BranchRefs lists the local branches by name and errors on a tip that is no commit", func(t *testing.T) {
+			gitkit.Git(t, dir, "branch", "pair/x", shaA)
+			gitkit.Git(t, dir, "branch", "pair/y", shaB)
+
+			got, err := repo.BranchRefs()
+			if err != nil {
+				t.Fatalf("BranchRefs error = %v", err)
+			}
+			want := []gitrepo.BranchRef{
+				{Name: "main", Commit: shaF, Committed: mustParseDate(t, dateF)},
+				{Name: "pair/x", Commit: shaA, Committed: mustParseDate(t, dateA)},
+				{Name: "pair/y", Commit: shaB, Committed: mustParseDate(t, dateB)},
+				{Name: "side", Commit: shaS, Committed: mustParseDate(t, dateS)},
+			}
+			if len(got) != len(want) {
+				t.Fatalf("BranchRefs() = %+v; want %+v", got, want)
+			}
+			for i := range want {
+				if got[i].Name != want[i].Name || got[i].Commit != want[i].Commit || !got[i].Committed.Equal(want[i].Committed) {
+					t.Errorf("BranchRefs()[%d] = %+v; want %+v", i, got[i], want[i])
+				}
+			}
+
+			blob := gitkit.Git(t, dir, "rev-parse", "HEAD:docs/x.md")
+			// git update-ref refuses a non-commit under refs/heads, so the loose ref is written directly.
+			blobbyRef := filepath.Join(dir, ".git", "refs", "heads", "blobby")
+			if err := os.WriteFile(blobbyRef, []byte(blob+"\n"), 0o644); err != nil {
+				t.Fatalf("write the blob branch ref: %v", err)
+			}
+			if _, err := repo.BranchRefs(); err == nil || !strings.Contains(err.Error(), `"blobby"`) {
+				t.Errorf("BranchRefs() over a branch at a blob error = %v; want one naming blobby", err)
+			}
+			if err := os.Remove(blobbyRef); err != nil {
+				t.Fatalf("remove the blob branch ref: %v", err)
 			}
 		}},
 		{"Log walks from a tip as the query shapes it", func(t *testing.T) {

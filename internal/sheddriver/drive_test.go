@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // driveTestEpoch is the time the scripted history is laid out from.
@@ -132,7 +133,7 @@ func TestGoDriver_Settle(t *testing.T) {
 		return ArbiterOutcome{Resume: verdict == "resume", Verdict: verdict, Role: arbiterTestRole, Reason: "because", Question: "which way?", Attempt: attempt, AttemptDir: dir, VerdictPath: dir + "/verdict.yaml"}
 	}
 	repairSeed := func(key StopKey) []SettleRecord {
-		record := SettleRecord{StopKey: key, Settler: SettlerGoRule, Action: SettleRestep}
+		record := SettleRecord{StopKey: key, Settler: shedrun.SettlerGoRule, Action: shedrun.SettleRestep}
 		return []SettleRecord{record, record}
 	}
 	gotoMoved := shedengine.Status{
@@ -212,51 +213,51 @@ func TestGoDriver_Settle(t *testing.T) {
 		},
 		{
 			name: "busy exits with a busy-exit record and parks nothing", steps: []func(*testing.T) []byte{busy}, runLockHeld: true,
-			wantCalls: []string{"step"}, wantActions: []string{SettleBusyExit}, wantExit: ExitBusy,
+			wantCalls: []string{"step"}, wantActions: []string{shedrun.SettleBusyExit}, wantExit: ExitBusy,
 		},
 		{
 			name: "paused with an empty reason writes the friction note and parks", steps: []func(*testing.T) []byte{paused("")},
-			wantCalls: []string{"step", "note"}, wantActions: []string{SettleHandBack}, wantReports: 1, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
+			wantCalls: []string{"step", "note"}, wantActions: []string{shedrun.SettleHandBack}, wantReports: 1, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
 		},
 		{
 			name: "paused with a reason writes no note", steps: []func(*testing.T) []byte{paused("pause requested")},
-			wantCalls: []string{"step"}, wantActions: []string{SettleHandBack}, wantReports: 1, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
+			wantCalls: []string{"step"}, wantActions: []string{shedrun.SettleHandBack}, wantReports: 1, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
 		},
 		{
 			name: "awaiting with no notice parks", steps: []func(*testing.T) []byte{awaiting("")},
-			wantCalls: []string{"step"}, wantActions: []string{SettleHandBack}, wantReports: 1, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
+			wantCalls: []string{"step"}, wantActions: []string{shedrun.SettleHandBack}, wantReports: 1, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
 		},
 		{
 			name: "awaiting with a notice relays it and parks", steps: []func(*testing.T) []byte{awaiting("review is ready")}, orchRecorded: true,
-			wantCalls: []string{"step"}, wantActions: []string{SettleHandBack}, wantReports: 1, wantParked: true, wantNotifies: 1, wantHandBack: true, wantExit: ExitHandBack,
+			wantCalls: []string{"step"}, wantActions: []string{shedrun.SettleHandBack}, wantReports: 1, wantParked: true, wantNotifies: 1, wantHandBack: true, wantExit: ExitHandBack,
 		},
 		{
 			name:  "unwatched verify halt with a matching record goes to its target once, and a second such halt parks",
 			steps: []func(*testing.T) []byte{verifyHalt, verifyHalt}, statuses: []shedengine.Status{verifyHaltStatus(), verifyHaltStatus()}, haltTarget: "Build",
 			wantCalls:   []string{"step", "goto:Build", "step"},
-			wantActions: []string{SettleVerifyRetry, SettleHandBack}, wantReports: 1, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
+			wantActions: []string{shedrun.SettleVerifyRetry, shedrun.SettleHandBack}, wantReports: 1, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
 		},
 		{
 			name: "watched verify halt parks with no goto", steps: []func(*testing.T) []byte{verifyHalt}, statuses: []shedengine.Status{verifyHaltStatus()},
 			haltTarget: "Build", watched: true, orchRecorded: true,
-			wantCalls: []string{"step"}, wantActions: []string{SettleHandBack}, wantReports: 1, wantParked: true, wantNotifies: 1, wantHandBack: true, wantExit: ExitHandBack,
+			wantCalls: []string{"step"}, wantActions: []string{shedrun.SettleHandBack}, wantReports: 1, wantParked: true, wantNotifies: 1, wantHandBack: true, wantExit: ExitHandBack,
 		},
 		{
 			name: "verify halt whose retry another actor spent parks with no goto", steps: []func(*testing.T) []byte{verifyHalt}, statuses: []shedengine.Status{verifyHaltStatus()},
 			haltTarget: "Build", retrySpentElsewhere: true,
-			wantCalls: []string{"step"}, wantActions: []string{SettleHandBack}, wantReports: 1, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
+			wantCalls: []string{"step"}, wantActions: []string{shedrun.SettleHandBack}, wantReports: 1, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
 		},
 		{
 			name: "verify halt with a retry record from an earlier process parks with no goto", steps: []func(*testing.T) []byte{verifyHalt}, statuses: []shedengine.Status{verifyHaltStatus()},
 			haltTarget: "Build",
-			settleSeed: []SettleRecord{{StopKey: StopKey{CurrentProducer: verifyTestRow, HistoryLength: 1, State: "blocked"}, Settler: SettlerGoRule, Action: SettleVerifyRetry}},
-			wantCalls:  []string{"step"}, wantActions: []string{SettleVerifyRetry, SettleHandBack}, wantReports: 1, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
+			settleSeed: []SettleRecord{{StopKey: StopKey{CurrentProducer: verifyTestRow, HistoryLength: 1, State: "blocked"}, Settler: shedrun.SettlerGoRule, Action: shedrun.SettleVerifyRetry}},
+			wantCalls:  []string{"step"}, wantActions: []string{shedrun.SettleVerifyRetry, shedrun.SettleHandBack}, wantReports: 1, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
 		},
 		{
 			name: "a verify halt that matches no record drives no goto and reaches the tackler", steps: []func(*testing.T) []byte{verifyHalt}, statuses: []shedengine.Status{verifyHaltStatus()},
 			tacklerReturns: tacklerOutcome(TacklerVerdictHandBack, 1),
 			wantCalls:      []string{"step", "tackler", "snapshot", "snapshot"},
-			wantActions:    []string{SettleSpawn, SettleHandBack}, wantSettlers: []string{SettlerTackler, SettlerParent},
+			wantActions:    []string{shedrun.SettleSpawn, shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerTackler, shedrun.SettlerParent},
 			wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
 			wantReportHas: map[int][]string{2: {"what now?", "tackler attempt 1: verdict hand-back", "Friction directory: /loom-friction"}},
 		},
@@ -264,56 +265,56 @@ func TestGoDriver_Settle(t *testing.T) {
 			name:  "a transient stop calls the tackler once, and its resume is consumed then re-stepped",
 			steps: []func(*testing.T) []byte{transientFailure, done}, tacklerReturns: tacklerOutcome(TacklerVerdictResume, 1),
 			wantCalls:   []string{"step", "tackler", "snapshot", "snapshot", "consume:tackler/1", "step", "commit-records"},
-			wantActions: []string{SettleSpawn, SettleRestep}, wantSettlers: []string{SettlerTackler, SettlerTackler}, wantReports: 1, wantExit: ExitDone,
+			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleRestep}, wantSettlers: []string{shedrun.SettlerTackler, shedrun.SettlerTackler}, wantReports: 1, wantExit: ExitDone,
 		},
 		{
 			name:  "a third reinvoke failure reaches the tackler, and a hand-back parks with its question",
 			steps: []func(*testing.T) []byte{interrupted}, settleSeed: repairSeed(StopKey{CurrentProducer: "Build", HistoryLength: 2, State: "running"}),
 			tacklerReturns: tacklerOutcome(TacklerVerdictHandBack, 1),
 			wantCalls:      []string{"step", "tackler", "snapshot", "snapshot"},
-			wantActions:    []string{SettleRestep, SettleRestep, SettleSpawn, SettleHandBack},
-			wantSettlers:   []string{SettlerGoRule, SettlerGoRule, SettlerTackler, SettlerParent},
+			wantActions:    []string{shedrun.SettleRestep, shedrun.SettleRestep, shedrun.SettleSpawn, shedrun.SettleHandBack},
+			wantSettlers:   []string{shedrun.SettlerGoRule, shedrun.SettlerGoRule, shedrun.SettlerTackler, shedrun.SettlerParent},
 			wantReports:    2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack, wantReportHas: map[int][]string{2: {"what now?"}},
 		},
 		{
 			name:  "a tackler escalate calls the arbiter with the case brief, and the arbiter's resume steps with its attempt number",
 			steps: []func(*testing.T) []byte{transientFailure, done}, tacklerReturns: tacklerOutcome(TacklerVerdictEscalate, 1), arbiterReturns: arbiterOutcome("resume", 1),
 			wantCalls:    []string{"step", "tackler", "snapshot", "snapshot", "arbiter:tackler/1/case-brief.md", "step:1", "commit-records"},
-			wantActions:  []string{SettleSpawn, SettleSpawn, SettleRestep},
-			wantSettlers: []string{SettlerTackler, SettlerArbiter, SettlerArbiter}, wantReports: 2, wantExit: ExitDone,
+			wantActions:  []string{shedrun.SettleSpawn, shedrun.SettleSpawn, shedrun.SettleRestep},
+			wantSettlers: []string{shedrun.SettlerTackler, shedrun.SettlerArbiter, shedrun.SettlerArbiter}, wantReports: 2, wantExit: ExitDone,
 		},
 		{
 			name:  "an escalate at an unseeded error hands back when the arbiter refuses it as not eligible",
 			steps: []func(*testing.T) []byte{unseededFailure}, tacklerReturns: tacklerOutcome(TacklerVerdictEscalate, 1), arbiterErr: errors.New("arbiter: the stop is not eligible"),
 			wantCalls:    []string{"step", "tackler", "snapshot", "snapshot", "arbiter:tackler/1/case-brief.md"},
-			wantActions:  []string{SettleSpawn, SettleHandBack},
-			wantSettlers: []string{SettlerTackler, SettlerParent}, wantReports: 3, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
+			wantActions:  []string{shedrun.SettleSpawn, shedrun.SettleHandBack},
+			wantSettlers: []string{shedrun.SettlerTackler, shedrun.SettlerParent}, wantReports: 3, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
 			wantReportHas: map[int][]string{3: {"the arbiter refused the stop: arbiter: the stop is not eligible"}},
 		},
 		{
 			name:  "tackler_max_spawns 0 hands back with no agent started and no spawn record",
 			steps: []func(*testing.T) []byte{transientFailure}, tacklerErr: fmt.Errorf("%w: tackler_max_spawns: 0 turns the tackler off", ErrTacklerUnavailable),
-			wantCalls: []string{"step", "tackler"}, wantActions: []string{SettleHandBack}, wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
+			wantCalls: []string{"step", "tackler"}, wantActions: []string{shedrun.SettleHandBack}, wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
 			wantReportHas: map[int][]string{2: {"tackler_max_spawns: 0"}},
 		},
 		{
 			name:  "an arbiter off refusal at an awaiting stop with a notice still relays it",
 			steps: []func(*testing.T) []byte{awaiting("review is ready")}, escalation: true, orchRecorded: true, arbiterErr: errors.New("arbiter: arbiter_max_spawns: 0 turns the arbiter off"),
-			wantCalls: []string{"step", "arbiter:"}, wantActions: []string{SettleHandBack}, wantReports: 2, wantParked: true, wantNotifies: 1, wantHandBack: true, wantExit: ExitHandBack,
+			wantCalls: []string{"step", "arbiter:"}, wantActions: []string{shedrun.SettleHandBack}, wantReports: 2, wantParked: true, wantNotifies: 1, wantHandBack: true, wantExit: ExitHandBack,
 		},
 		{
 			name:  "a resume whose consume is refused as moved is acted on as a new stop",
 			steps: []func(*testing.T) []byte{transientFailure, done}, tacklerReturns: tacklerOutcome(TacklerVerdictResume, 1), consumeErr: errors.New("the run moved since the tackler spawned"),
 			statusSeq:   []shedengine.Status{driveStatusFor(t, transientFailure(t)), driveStatusFor(t, transientFailure(t)), gotoMoved},
 			wantCalls:   []string{"step", "tackler", "snapshot", "snapshot", "consume:tackler/1", "step", "commit-records"},
-			wantActions: []string{SettleSpawn, SettleMoved}, wantSettlers: []string{SettlerTackler, SettlerGoRule}, wantReports: 1, wantExit: ExitDone,
+			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleMoved}, wantSettlers: []string{shedrun.SettlerTackler, shedrun.SettlerGoRule}, wantReports: 1, wantExit: ExitDone,
 		},
 		{
 			name:  "an orch goto during the tackler wait discards the verdict, notes the change and re-steps",
 			steps: []func(*testing.T) []byte{transientFailure, done}, tacklerReturns: tacklerOutcome(TacklerVerdictResume, 1),
 			statusSeq:   []shedengine.Status{driveStatusFor(t, transientFailure(t)), gotoMoved},
 			wantCalls:   []string{"step", "tackler", "step", "commit-records"},
-			wantActions: []string{SettleSpawn, SettleMoved}, wantSettlers: []string{SettlerTackler, SettlerGoRule}, wantReports: 1, wantExit: ExitDone,
+			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleMoved}, wantSettlers: []string{shedrun.SettlerTackler, shedrun.SettlerGoRule}, wantReports: 1, wantExit: ExitDone,
 			wantReportHas: map[int][]string{1: {"The run moved while the tackler worked"}},
 		},
 		{
@@ -321,28 +322,28 @@ func TestGoDriver_Settle(t *testing.T) {
 			steps: []func(*testing.T) []byte{transientFailure}, tacklerReturns: tacklerOutcome(TacklerVerdictResume, 1),
 			currentSnap: WorktreeSnapshot{Head: "b"}, attemptSnap: WorktreeSnapshot{Head: "a"},
 			wantCalls:   []string{"step", "tackler", "snapshot", "snapshot"},
-			wantActions: []string{SettleSpawn, SettleHandBack}, wantSettlers: []string{SettlerTackler, SettlerParent},
+			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerTackler, shedrun.SettlerParent},
 			wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack, wantReportHas: map[int][]string{2: {"cause tampered"}},
 		},
 		{
 			name:  "a stop key returning after an applied tackler resume goes to the arbiter",
 			steps: []func(*testing.T) []byte{blocked}, openKey: &blockedKey, openTackler: "tackler/1", openApplied: true, arbiterReturns: arbiterOutcome("hand-on", 1),
 			wantCalls:   []string{"step", "arbiter:"},
-			wantActions: []string{SettleSpawn, SettleHandBack}, wantSettlers: []string{SettlerArbiter, SettlerParent},
+			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerArbiter, shedrun.SettlerParent},
 			wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack, wantReportHas: map[int][]string{2: {"which way?", "arbiter attempt 1: verdict hand-on"}},
 		},
 		{
 			name:  "a status moved to an awaiting stop with a pending escalation calls the arbiter with a readable envelope",
 			steps: []func(*testing.T) []byte{blocked}, statusSeq: []shedengine.Status{awaitingStatus}, escalation: true, arbiterReturns: arbiterOutcome("hand-on", 1),
 			wantCalls:   []string{"step", "arbiter:"},
-			wantActions: []string{SettleMoved, SettleSpawn, SettleHandBack}, wantSettlers: []string{SettlerGoRule, SettlerArbiter, SettlerParent},
+			wantActions: []string{shedrun.SettleMoved, shedrun.SettleSpawn, shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerGoRule, shedrun.SettlerArbiter, shedrun.SettlerParent},
 			wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
 		},
 		{
 			name:  "an awaiting stop with a pending escalation calls the arbiter, and a hand-on parks with the notice relayed",
 			steps: []func(*testing.T) []byte{awaiting("review is ready")}, escalation: true, orchRecorded: true, arbiterReturns: arbiterOutcome("hand-on", 1),
 			wantCalls:   []string{"step", "arbiter:"},
-			wantActions: []string{SettleSpawn, SettleHandBack}, wantSettlers: []string{SettlerArbiter, SettlerParent},
+			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerArbiter, shedrun.SettlerParent},
 			wantReports: 2, wantParked: true, wantNotifies: 2, wantHandBack: true, wantExit: ExitHandBack,
 		},
 		{
@@ -353,117 +354,117 @@ func TestGoDriver_Settle(t *testing.T) {
 				envelope.AttemptDir = "reuse"
 				return envelope
 			}(),
-			wantCalls: []string{"tackler", "snapshot", "snapshot"}, wantActions: []string{SettleHandBack}, wantSettlers: []string{SettlerParent}, wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
+			wantCalls: []string{"tackler", "snapshot", "snapshot"}, wantActions: []string{shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerParent}, wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
 		},
 		{
 			name:  "a halted run with an open applied tackler attempt goes to the arbiter, never consumes it, and writes no spawn record for a reused arbiter attempt",
 			steps: []func(*testing.T) []byte{}, initialStatus: &blockedStatus, restartAttempt: true, openKey: &blockedKey, openTackler: "tackler/1", openArbiter: "arbiter/1", openApplied: true,
 			arbiterReturns: arbiterOutcome("hand-on", 1),
-			wantCalls:      []string{"arbiter:"}, wantActions: []string{SettleHandBack}, wantSettlers: []string{SettlerParent}, wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
+			wantCalls:      []string{"arbiter:"}, wantActions: []string{shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerParent}, wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
 		},
 		{
 			name:  "a halted run with an open arbiter attempt and no tackler attempt reads the arbiter's stop envelope and calls the arbiter before any step",
 			steps: []func(*testing.T) []byte{}, initialStatus: &awaitingStatus, restartArbiter: true, openKey: &awaitingKey, openArbiter: "arbiter/1", escalation: true,
 			arbiterReturns: arbiterOutcome("hand-on", 1),
-			wantCalls:      []string{"attempt-envelope", "arbiter:"}, wantActions: []string{SettleHandBack}, wantSettlers: []string{SettlerParent}, wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
+			wantCalls:      []string{"attempt-envelope", "arbiter:"}, wantActions: []string{shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerParent}, wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
 		},
 		{
 			name:  "an attempt a later hand-back closed steps first, and the tackler judges only the next stop",
 			steps: []func(*testing.T) []byte{blockedLater}, initialStatus: &blockedStatus, restartAttempt: true, openKey: &blockedKey, openTackler: "tackler/1",
 			settleSeed: []SettleRecord{
-				{StopKey: blockedKey, Settler: SettlerTackler, Action: SettleSpawn, At: driveTestEpoch},
-				{StopKey: blockedKey, Settler: SettlerParent, Action: SettleHandBack, At: driveTestEpoch.Add(time.Minute)},
+				{StopKey: blockedKey, Settler: shedrun.SettlerTackler, Action: shedrun.SettleSpawn, At: driveTestEpoch},
+				{StopKey: blockedKey, Settler: shedrun.SettlerParent, Action: shedrun.SettleHandBack, At: driveTestEpoch.Add(time.Minute)},
 			},
 			tacklerReturns: tacklerOutcome(TacklerVerdictHandBack, 2),
 			wantCalls:      []string{"step", "tackler", "snapshot", "snapshot"},
-			wantActions:    []string{SettleSpawn, SettleHandBack, SettleSpawn, SettleHandBack},
-			wantSettlers:   []string{SettlerTackler, SettlerParent, SettlerTackler, SettlerParent}, wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
+			wantActions:    []string{shedrun.SettleSpawn, shedrun.SettleHandBack, shedrun.SettleSpawn, shedrun.SettleHandBack},
+			wantSettlers:   []string{shedrun.SettlerTackler, shedrun.SettlerParent, shedrun.SettlerTackler, shedrun.SettlerParent}, wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
 		},
 		{
 			name: "a pause covering the slug starts no tackler until the hold returns", steps: []func(*testing.T) []byte{transientFailure},
 			pauseCovered: []bool{true}, tacklerReturns: tacklerOutcome(TacklerVerdictHandBack, 1),
 			wantCalls:   []string{"step", "hold", "tackler", "snapshot", "snapshot"},
-			wantActions: []string{SettleSpawn, SettleHandBack}, wantSettlers: []string{SettlerTackler, SettlerParent},
+			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerTackler, shedrun.SettlerParent},
 			wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
 		},
 		{
 			name: "a pause covering the slug starts no arbiter until the hold returns", steps: []func(*testing.T) []byte{awaiting("")}, escalation: true,
 			pauseCovered: []bool{true}, arbiterReturns: arbiterOutcome("hand-on", 1),
 			wantCalls:   []string{"step", "hold", "arbiter:"},
-			wantActions: []string{SettleSpawn, SettleHandBack}, wantSettlers: []string{SettlerArbiter, SettlerParent},
+			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerArbiter, shedrun.SettlerParent},
 			wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
 		},
 		{
 			name:  "a changed build on a clean tree records the hand-over, parks, notifies before releasing the lock, spawns and exits",
 			steps: []func(*testing.T) []byte{blocked}, buildChanged: true, orchRecorded: true,
 			wantCalls: []string{"step", "release", "spawn:" + wiredExecutable}, wantOrder: []string{"notify", "release", "spawn"},
-			wantActions: []string{SettleHandOver}, wantSettlers: []string{SettlerGoRule}, wantBuild: "newbuild1234",
+			wantActions: []string{shedrun.SettleHandOver}, wantSettlers: []string{shedrun.SettlerGoRule}, wantBuild: "newbuild1234",
 			wantReports: 1, wantParked: true, wantNotifies: 1, wantExit: ExitHandOver,
 		},
 		{
 			name:  "the same stop key and build a second time does not hand over again and goes to the tackler",
 			steps: []func(*testing.T) []byte{blocked}, buildChanged: true, tacklerReturns: tacklerOutcome(TacklerVerdictHandBack, 1),
-			settleSeed:  []SettleRecord{{StopKey: blockedKey, Settler: SettlerGoRule, Action: SettleHandOver, Build: "newbuild1234"}},
+			settleSeed:  []SettleRecord{{StopKey: blockedKey, Settler: shedrun.SettlerGoRule, Action: shedrun.SettleHandOver, Build: "newbuild1234"}},
 			wantCalls:   []string{"step", "tackler", "snapshot", "snapshot"},
-			wantActions: []string{SettleHandOver, SettleSpawn, SettleHandBack},
+			wantActions: []string{shedrun.SettleHandOver, shedrun.SettleSpawn, shedrun.SettleHandBack},
 			wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
 		},
 		{
 			name: "a dirty tree hands back naming its paths and spawns nothing", steps: []func(*testing.T) []byte{blocked}, buildChanged: true, dirty: []string{"a.go", "b.go"},
-			wantCalls: []string{"step"}, wantActions: []string{SettleHandBack}, wantReports: 1, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
+			wantCalls: []string{"step"}, wantActions: []string{shedrun.SettleHandBack}, wantReports: 1, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
 			wantReportHas: map[int][]string{1: {"a.go, b.go"}},
 		},
 		{
 			name: "a failing successor spawn leaves the report and the park marker on disk", steps: []func(*testing.T) []byte{blocked}, buildChanged: true, spawnErr: errors.New("no such binary"),
-			wantCalls: []string{"step", "release", "spawn:" + wiredExecutable}, wantActions: []string{SettleHandOver}, wantBuild: "newbuild1234", wantReports: 1, wantParked: true, wantExit: ExitHandOver,
+			wantCalls: []string{"step", "release", "spawn:" + wiredExecutable}, wantActions: []string{shedrun.SettleHandOver}, wantBuild: "newbuild1234", wantReports: 1, wantParked: true, wantExit: ExitHandOver,
 		},
 		{
 			name: "an awaiting stop is not binary-eligible and takes its usual hand-back", steps: []func(*testing.T) []byte{awaiting("")}, buildChanged: true,
-			wantCalls: []string{"step"}, wantActions: []string{SettleHandBack}, wantReports: 1, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
+			wantCalls: []string{"step"}, wantActions: []string{shedrun.SettleHandBack}, wantReports: 1, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
 		},
 		{
 			name: "a pause covering the slug holds the hand-over until the hold returns", steps: []func(*testing.T) []byte{blocked}, buildChanged: true, pauseCovered: []bool{true},
-			wantCalls: []string{"step", "hold", "release", "spawn:" + wiredExecutable}, wantActions: []string{SettleHandOver}, wantBuild: "newbuild1234", wantReports: 1, wantParked: true, wantExit: ExitHandOver,
+			wantCalls: []string{"step", "hold", "release", "spawn:" + wiredExecutable}, wantActions: []string{shedrun.SettleHandOver}, wantBuild: "newbuild1234", wantReports: 1, wantParked: true, wantExit: ExitHandOver,
 		},
 		{
 			name: "interrupted under reinvoke re-steps and writes restep records", steps: []func(*testing.T) []byte{interrupted, interrupted, done},
-			wantCalls: []string{"step", "step", "step", "commit-records"}, wantActions: []string{SettleRestep, SettleRestep}, wantExit: ExitDone,
+			wantCalls: []string{"step", "step", "step", "commit-records"}, wantActions: []string{shedrun.SettleRestep, shedrun.SettleRestep}, wantExit: ExitDone,
 		},
 		{
 			name: "a status showing a goto entry re-steps with no note and no park", steps: []func(*testing.T) []byte{blocked, done},
 			statuses:  []shedengine.Status{gotoMoved, driveStatusFor(t, done(t))},
-			wantCalls: []string{"step", "step", "commit-records"}, wantActions: []string{SettleMoved}, wantExit: ExitDone,
+			wantCalls: []string{"step", "step", "commit-records"}, wantActions: []string{shedrun.SettleMoved}, wantExit: ExitDone,
 		},
 		{
 			name: "a status showing running exits with a running-exit record", steps: []func(*testing.T) []byte{blocked},
 			statuses:  []shedengine.Status{{State: shedengine.StateRunning, CurrentProducer: "Build"}},
-			wantCalls: []string{"step"}, wantActions: []string{SettleRunningExit}, wantExit: ExitRunningElsewhere,
+			wantCalls: []string{"step"}, wantActions: []string{shedrun.SettleRunningExit}, wantExit: ExitRunningElsewhere,
 		},
 		{
 			name: "a run lock held by another process exits with a running-exit record", steps: []func(*testing.T) []byte{blocked}, runLockHeld: true,
-			wantCalls: []string{"step"}, wantActions: []string{SettleRunningExit}, wantExit: ExitRunningElsewhere,
+			wantCalls: []string{"step"}, wantActions: []string{shedrun.SettleRunningExit}, wantExit: ExitRunningElsewhere,
 		},
 		{
 			name: "a pause covering the slug holds the re-step until it lifts", steps: []func(*testing.T) []byte{interrupted, done}, pauseCovered: []bool{true},
-			wantCalls: []string{"step", "hold", "step", "commit-records"}, wantActions: []string{SettleRestep}, wantExit: ExitDone,
+			wantCalls: []string{"step", "hold", "step", "commit-records"}, wantActions: []string{shedrun.SettleRestep}, wantExit: ExitDone,
 		},
 		{
 			name: "a pause covering an unwatched verify halt holds the goto", steps: []func(*testing.T) []byte{verifyHalt, done},
 			statuses: []shedengine.Status{verifyHaltStatus(), driveStatusFor(t, done(t))}, haltTarget: "Build", pauseCovered: []bool{true},
-			wantCalls: []string{"step", "hold", "goto:Build", "step", "commit-records"}, wantActions: []string{SettleVerifyRetry}, wantExit: ExitDone,
+			wantCalls: []string{"step", "hold", "goto:Build", "step", "commit-records"}, wantActions: []string{shedrun.SettleVerifyRetry}, wantExit: ExitDone,
 		},
 		{
 			name:  "no arbiter: a returned tackler resume hands back with no arbiter call",
 			steps: []func(*testing.T) []byte{blocked}, openKey: &blockedKey, openTackler: "tackler/1", openApplied: true, noArbiter: true,
 			wantCalls:   []string{"step"},
-			wantActions: []string{SettleHandBack}, wantSettlers: []string{SettlerParent},
+			wantActions: []string{shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerParent},
 			wantReports: 1, wantParked: true, wantHandBack: true, wantExit: ExitHandBack, wantReportHas: map[int][]string{1: {"no arbiter is wired: hand back"}},
 		},
 		{
 			name:  "no arbiter: a tackler escalate hands back and the stop report's question names the case brief",
 			steps: []func(*testing.T) []byte{transientFailure}, tacklerReturns: tacklerOutcome(TacklerVerdictEscalate, 1), noArbiter: true,
 			wantCalls:   []string{"step", "tackler", "snapshot", "snapshot"},
-			wantActions: []string{SettleSpawn, SettleHandBack}, wantSettlers: []string{SettlerTackler, SettlerParent},
+			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerTackler, shedrun.SettlerParent},
 			wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
 			wantReportHas: map[int][]string{2: {"no stronger agent is wired; read its case brief at tackler/1/case-brief.md"}},
 		},
@@ -471,14 +472,14 @@ func TestGoDriver_Settle(t *testing.T) {
 			name:  "no hand-over seam: a blocked stop whose last step ran another build goes to the tackler with no successor spawned",
 			steps: []func(*testing.T) []byte{blocked}, buildChanged: true, noHandOver: true, tacklerReturns: tacklerOutcome(TacklerVerdictHandBack, 1),
 			wantCalls:   []string{"step", "tackler", "snapshot", "snapshot"},
-			wantActions: []string{SettleSpawn, SettleHandBack}, wantSettlers: []string{SettlerTackler, SettlerParent},
+			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerTackler, shedrun.SettlerParent},
 			wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
 		},
 		{
 			name:  "no verify seam: a blocked stop goes to the tackler, never a goto",
 			steps: []func(*testing.T) []byte{verifyHalt}, statuses: []shedengine.Status{verifyHaltStatus()}, haltTarget: "Build", noVerify: true, tacklerReturns: tacklerOutcome(TacklerVerdictHandBack, 1),
 			wantCalls:   []string{"step", "tackler", "snapshot", "snapshot"},
-			wantActions: []string{SettleSpawn, SettleHandBack}, wantSettlers: []string{SettlerTackler, SettlerParent},
+			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerTackler, shedrun.SettlerParent},
 			wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
 		},
 		{
@@ -486,7 +487,7 @@ func TestGoDriver_Settle(t *testing.T) {
 			steps: []func(*testing.T) []byte{transientFailure, done}, tacklerReturns: tacklerOutcome(TacklerVerdictResume, 1), noTamper: true,
 			currentSnap: WorktreeSnapshot{Head: "b"}, attemptSnap: WorktreeSnapshot{Head: "a"},
 			wantCalls:   []string{"step", "tackler", "consume:tackler/1", "step", "commit-records"},
-			wantActions: []string{SettleSpawn, SettleRestep}, wantSettlers: []string{SettlerTackler, SettlerTackler}, wantReports: 1, wantExit: ExitDone,
+			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleRestep}, wantSettlers: []string{shedrun.SettlerTackler, shedrun.SettlerTackler}, wantReports: 1, wantExit: ExitDone,
 		},
 		{
 			name:      "no commit seam: a done run exits with no commit",
@@ -753,8 +754,8 @@ func TestGoDriver_Settle(t *testing.T) {
 			}
 			if tt.wantHandBack {
 				last := records[len(records)-1]
-				if last.Action != SettleHandBack || last.Settler != SettlerParent {
-					t.Errorf("last settle record = %+v; want a hand-back with settler %q", last, SettlerParent)
+				if last.Action != shedrun.SettleHandBack || last.Settler != shedrun.SettlerParent {
+					t.Errorf("last settle record = %+v; want a hand-back with settler %q", last, shedrun.SettlerParent)
 				}
 			}
 			if reports != tt.wantReports {

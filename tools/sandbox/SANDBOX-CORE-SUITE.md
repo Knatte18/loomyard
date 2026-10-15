@@ -346,6 +346,9 @@ Does `lyx pause no-such-slug` refuse and list the slugs that have a pair, and do
 Does `lyx report convergence --format markdown` print the four section headings, each opening a table or `no data`?
 Does `lyx report convergence --fresh-days 0` refuse, naming the flag?
 Does `lyx report convergence` run from a task worktree instead refuse, name the prime worktree and say to re-run it there?
+Does `lyx report timing` from the prime print one `{"ok":true}` envelope holding `runs`, `phases`, `buckets` and `sleep_note`?
+Does `lyx report timing --format markdown` print its four section headings?
+Does `lyx report timing --by month` refuse, naming the flag?
 Is anything on disk or in the hub's history different afterwards?
 
 **Verdict:** `OK` / `WARN` / `FAIL`

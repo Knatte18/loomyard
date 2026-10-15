@@ -14,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/durfmt"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -239,7 +240,7 @@ func overviewSince(start, now time.Time) string {
 	if start.IsZero() {
 		return overviewUnknown
 	}
-	return statuspane.FormatMinutes(now.Sub(start))
+	return durfmt.FormatMinutes(now.Sub(start))
 }
 
 // padRight pads s with spaces to width runes.

@@ -47,17 +47,23 @@ func marshalStatus(t *testing.T, status shedengine.Status) string {
 	return string(data)
 }
 
-func TestConvergence_RefusesOutsideThePrimeThenReportsTheSeededRun(t *testing.T) {
+func TestReportVerbs_RefuseOutsideThePrimeThenReportTheSeededRun(t *testing.T) {
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: ".", Pairs: []string{hubforge.TemplatePairSlug}})
 	slug := hubforge.TemplatePairSlug
 
-	run := func(cwd string, args ...string) (string, int) {
+	// The seeded run's stamps lie an hour apart and end an hour before the test starts, inside the timing verb's default window.
+	testStart := time.Now().UTC().Truncate(time.Second)
+	runStart := testStart.Add(-3 * time.Hour)
+	stamp := func(hours int) string { return runStart.Add(time.Duration(hours) * time.Hour).Format(time.RFC3339) }
+
+	runVerb := func(verb, cwd string, args ...string) (string, int) {
 		var out bytes.Buffer
-		code := RunCLIIn(cwd, &out, append([]string{"convergence"}, args...))
+		code := RunCLIIn(cwd, &out, append([]string{verb}, args...))
 		return out.String(), code
 	}
+	run := func(cwd string, args ...string) (string, int) { return runVerb("convergence", cwd, args...) }
 	primeName, err := fabricengine.PrimeName(h.Location)
 	if err != nil {
 		t.Fatalf("prime name: %v", err)
@@ -99,8 +105,8 @@ func TestConvergence_RefusesOutsideThePrimeThenReportsTheSeededRun(t *testing.T)
 	}
 
 	battenStatus := shedengine.Status{State: shedengine.StateDone, CurrentProducer: battenrecipe.NameWorktreeTeardown, History: []shedengine.HistoryEntry{
-		{Producer: battenrecipe.NameWorktreeCreate, Outcome: shedengine.Done},
-		{Producer: battenrecipe.NameLand, Outcome: shedengine.Done},
+		{Producer: battenrecipe.NameWorktreeCreate, Outcome: shedengine.Done, At: stamp(0)},
+		{Producer: battenrecipe.NameLand, Outcome: shedengine.Done, At: stamp(2)},
 	}}
 	writeFile(t, shedrun.StatusFile(h.Location, slug), marshalStatus(t, battenStatus))
 	if _, committed, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), h.Location, []string{shedrun.StatusRel(h.Location, slug)}, "test: batten record", fabricengine.SyncOptions{SkipPush: true}); err != nil || !committed {
@@ -117,8 +123,8 @@ func TestConvergence_RefusesOutsideThePrimeThenReportsTheSeededRun(t *testing.T)
 	if err != nil {
 		t.Fatalf("resolve the pair: %v", err)
 	}
-	loomStatus := shedengine.Status{State: shedengine.StateDone, History: []shedengine.HistoryEntry{{Producer: loomshed.NameFinalize, Outcome: shedengine.Done}}}
-	writeFile(t, shedrun.SeedFile(pairLocation, slug), fmt.Sprintf(`{"recipe":%q,"driver":"go"}`, shedrun.RecipeLoom))
+	loomStatus := shedengine.Status{State: shedengine.StateDone, History: []shedengine.HistoryEntry{{Producer: loomshed.NameFinalize, Outcome: shedengine.Done, At: stamp(1)}}}
+	writeFile(t, shedrun.SeedFile(pairLocation, slug), fmt.Sprintf(`{"recipe":%q,"driver":"go","started_at":%q}`, shedrun.RecipeLoom, stamp(0)))
 	writeFile(t, shedrun.StatusFile(pairLocation, slug), marshalStatus(t, loomStatus))
 	writeFile(t, loomengine.DiscussionDecisionRecord(pairLocation), "# Decision record\n\n## Decisions\n\n### Added after Discussion (alice): a call with no date\n")
 	fabric, err := fabricengine.Open(pairLocation)
@@ -189,6 +195,56 @@ func TestConvergence_RefusesOutsideThePrimeThenReportsTheSeededRun(t *testing.T)
 	for _, heading := range []string{reportengine.HeadingWakes, reportengine.HeadingStops, reportengine.HeadingFreshFixes, reportengine.HeadingRounds} {
 		if !strings.Contains(out, heading) {
 			t.Errorf("markdown report lacks the heading %q:\n%s", heading, out)
+		}
+	}
+
+	out, code = runVerb("timing", h.PairCodeWorktree(slug))
+	if code != 1 {
+		t.Errorf("timing from the pair's worktree: exit %d, output %s; want a refusal with exit 1", code, out)
+	}
+	envelope.RequireErr(t, out, primeName)
+	envelope.RequireErr(t, out, "lyx report timing")
+
+	out, code = runVerb("timing", h.PrimeWorktree())
+	timing := envelope.RequireOK(t, out)
+	if code != 0 {
+		t.Fatalf("timing from the prime: exit %d, output %s", code, out)
+	}
+	timedRuns, _ := timing.Raw["runs"].([]any)
+	if len(timedRuns) != 1 {
+		t.Fatalf("timing runs = %v; want the one landed run", timing.Raw["runs"])
+	}
+	timed, _ := timedRuns[0].(map[string]any)
+	if timed["tag"] != fabricengine.ArchiveTagPrefix+slug+"/"+tipSHA[:12] || timed["state"] != reportengine.RunStateLanded {
+		t.Errorf("timing run = %v; want the landed run under the seeded archive tag", timed)
+	}
+	if phases, _ := timed["phases"].(map[string]any); len(phases) == 0 {
+		t.Errorf("timing run phases = %v; want a phases object", timed["phases"])
+	}
+	if note, _ := timing.Raw["sleep_note"].(string); note == "" {
+		t.Errorf("timing sleep_note = %v; want a note", timing.Raw["sleep_note"])
+	}
+	for _, finding := range timing.Raw["findings"].([]any) {
+		if text := fmt.Sprint(finding); strings.Contains(text, fabricengine.RecordsBranchName(slug)) && strings.Contains(text, "abandoned") {
+			t.Errorf("timing finding %v names the live pair's records branch as abandoned", finding)
+		}
+	}
+
+	out, code = runVerb("timing", h.PrimeWorktree(), "--since", "2999-01-01")
+	future := envelope.RequireOK(t, out)
+	futureRuns, _ := future.Raw["runs"].([]any)
+	futureBuckets, _ := future.Raw["buckets"].([]any)
+	if code != 0 || len(futureRuns) != 0 || len(futureBuckets) != 0 {
+		t.Errorf("timing --since 2999-01-01: exit %d, runs %v, buckets %v; want exit 0 and neither", code, future.Raw["runs"], future.Raw["buckets"])
+	}
+
+	out, code = runVerb("timing", h.PrimeWorktree(), "--format", "markdown")
+	if code != 0 {
+		t.Fatalf("timing markdown: exit %d, output %s", code, out)
+	}
+	for _, heading := range []string{reportengine.HeadingTimingRuns, reportengine.HeadingTimingPhases, reportengine.HeadingTimingBuckets, reportengine.HeadingTimingSettlers} {
+		if !strings.Contains(out, heading) {
+			t.Errorf("timing markdown lacks the heading %q:\n%s", heading, out)
 		}
 	}
 }

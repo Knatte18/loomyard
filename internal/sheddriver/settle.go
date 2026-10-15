@@ -1,53 +1,23 @@
-// settle.go declares the Go driver's settle records and their appender and reader:
+// settle.go declares the Go driver's appender and reader of the settle-records file:
 // one JSON line per action the driver takes at a stop, in the told settle-records file.
 // The repair cap, the one verify retry and the one hand-over per build are counted from these records, so a restarted driver keeps every cap.
 
 package sheddriver
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
-)
-
-// The settlers a record names: who decided the action.
-const (
-	SettlerGoRule  = "go-rule"
-	SettlerTackler = "tackler"
-	SettlerArbiter = "arbiter"
-	SettlerParent  = "parent"
-)
-
-// The actions a record names: what the driver did at the stop.
-const (
-	SettleRestep      = "restep"
-	SettleVerifyRetry = "verify-retry"
-	SettleHandOver    = "hand-over"
-	SettleSpawn       = "spawn"
-	SettleHandBack    = "hand-back"
-	SettleBusyExit    = "busy-exit"
-	SettleRunningExit = "running-exit"
-	SettleMoved       = "moved"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // SettleRecord is one line of the settle-records file.
-// Build is the build identity the action was taken under and Target the row or verb it aimed at; each is omitted when empty.
-type SettleRecord struct {
-	StopKey StopKey   `json:"stop_key"`
-	Settler string    `json:"settler"`
-	Action  string    `json:"action"`
-	Outcome string    `json:"outcome"`
-	At      time.Time `json:"at"`
-	Build   string    `json:"build,omitempty"`
-	Target  string    `json:"target,omitempty"`
-}
+type SettleRecord = shedrun.SettleRecord
 
 // AppendSettleRecord appends r as one JSON line to the file at path, creating the file and its directory.
 func AppendSettleRecord(path string, r SettleRecord) error {
@@ -82,17 +52,9 @@ func ReadSettleRecords(path string) ([]SettleRecord, error) {
 	if err != nil {
 		return nil, fmt.Errorf("sheddriver:read settle records %q: %w", path, err)
 	}
-	var records []SettleRecord
-	for _, line := range bytes.Split(data, []byte{'\n'}) {
-		if len(bytes.TrimSpace(line)) == 0 {
-			continue
-		}
-		var record SettleRecord
-		if err := json.Unmarshal(line, &record); err != nil {
-			logger.Warn("settle records: skipped a line that does not decode", "path", path, "error", err)
-			continue
-		}
-		records = append(records, record)
+	records, skipped := shedrun.ParseSettleRecords(data)
+	for _, skip := range skipped {
+		logger.Warn("settle records: skipped a line that does not decode", "path", path, "error", skip)
 	}
 	return records, nil
 }
@@ -100,7 +62,7 @@ func ReadSettleRecords(path string) ([]SettleRecord, error) {
 // GoVerifyRetrySpent reports whether any record is a verify retry, the one read the Go driver and a publish retry share.
 func GoVerifyRetrySpent(records []SettleRecord) bool {
 	for _, record := range records {
-		if record.Action == SettleVerifyRetry {
+		if record.Action == shedrun.SettleVerifyRetry {
 			return true
 		}
 	}

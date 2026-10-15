@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
@@ -46,13 +47,18 @@ func childHead(taskLocation *lyxcwd.Location) (string, error) {
 	return fab.HeadSHA()
 }
 
-// childGoto runs `lyx loom goto --to <target>` in the task worktree and folds the child's output into a failure through childSpawnError.
+// childGotoArgv returns the arguments childGoto spawns the lyx executable with: `loom goto --to <target> --by shed`, so the automatic retry labels its goto as lyx's own.
+func childGotoArgv(target string) []string {
+	return []string{"loom", "goto", "--to", target, "--by", shedengine.CallerShed}
+}
+
+// childGoto runs `lyx loom goto --to <target> --by shed` in the task worktree and folds the child's output into a failure through childSpawnError.
 func childGoto(ctx context.Context, taskLocation *lyxcwd.Location, slug, target string) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err
 	}
-	cmd := exec.CommandContext(ctx, exe, "loom", "goto", "--to", target)
+	cmd := exec.CommandContext(ctx, exe, childGotoArgv(target)...)
 	cmd.Dir = taskLocation.AnchorPath()
 	var childOutput bytes.Buffer
 	cmd.Stdout = &childOutput

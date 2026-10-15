@@ -29,6 +29,8 @@ type GotoRequest struct {
 	MissingStatusWayForward string
 	// PauseWayForward is the told command the busy and running-run refusals name to stop the run at a boundary; see Shed.PauseWayForward.
 	PauseWayForward string
+	// By is the caller label recorded on the goto entry; empty records none.
+	By string
 }
 
 // Goto moves a halted run onto the Target row and leaves it paused.
@@ -93,7 +95,8 @@ func Goto(req GotoRequest) (Status, error) {
 		cur.PauseRequested = false
 		cur.PauseBefore = ""
 		cur.PauseAfter = ""
-		cur.History = append(cur.History, HistoryEntry{Producer: req.Target, Outcome: OutcomeGoto, At: nowRFC3339()})
+		cur.PendingBy = ""
+		cur.History = append(cur.History, HistoryEntry{Producer: req.Target, Outcome: OutcomeGoto, At: nowRFC3339(), By: req.By})
 		cur.Activity = composeActivity(req.Target, cur.History, StatePaused, "", "")
 		written = cur
 		return cur, nil
@@ -197,6 +200,7 @@ func Relaunch(req RelaunchRequest) (Status, error) {
 			cur.State = StatePaused
 			cur.Error = ""
 			cur.Transient = ""
+			cur.PendingBy = ""
 			cur.History = append(cur.History, HistoryEntry{Producer: req.Target, Outcome: OutcomeGoto, At: nowRFC3339()})
 			cur.Activity = composeActivity(req.Target, cur.History, StatePaused, "", "")
 		}
@@ -207,6 +211,38 @@ func Relaunch(req RelaunchRequest) (Status, error) {
 		return Status{}, err
 	}
 	return written, nil
+}
+
+// resumableHalt reports whether s is a halt a step resumes from with a record of who resumed it: blocked, failed or awaiting.
+func resumableHalt(s State) bool {
+	return s == StateBlocked || s == StateFailed || s == StateAwaiting
+}
+
+// RecordResumer records by as the pending caller label of the status file at statusPath, under the status lock.
+// It marks only a blocked, failed or awaiting run with no label pending already, so the first label of a resumed run stands while its loop children step it on.
+// A non-empty by is the only mark; an empty one writes nothing, and neither does any other state.
+// An absent status file returns nil, since the step that follows refuses that itself, and a status file that does not decode returns the read error.
+// It takes no run lock and the label is for reports only.
+func RecordResumer(statusPath, statusLockPath, by string) error {
+	if by == "" {
+		return nil
+	}
+	cur, found, err := state.ReadJSONNoMkdir[Status](statusPath, statusLockPath)
+	if err != nil {
+		return fmt.Errorf("shedengine: read status file %q: %w", statusPath, err)
+	}
+	if !found || !resumableHalt(cur.State) || cur.PendingBy != "" {
+		return nil
+	}
+	return state.UpdateJSON(statusPath, statusLockPath, func(cur Status, found bool) (Status, error) {
+		if !found {
+			return Status{}, fmt.Errorf("shedengine: status file %q vanished mid-record; Shed refuses to create one", statusPath)
+		}
+		if resumableHalt(cur.State) && cur.PendingBy == "" {
+			cur.PendingBy = by
+		}
+		return cur, nil
+	})
 }
 
 // gotoAdmitted returns the reference row's name and every admitted goto target in list order.

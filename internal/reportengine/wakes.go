@@ -258,6 +258,9 @@ func (row *RunRow) readAlignmentWakes(records Reader, tag gitrepo.TagRef) ([]Fin
 				continue
 			}
 
+			attempt.Dir = attemptDir
+			row.alignmentAttempts = append(row.alignmentAttempts, attempt)
+
 			word := verdictNone
 			if verdict != nil {
 				word = verdict.Verdict

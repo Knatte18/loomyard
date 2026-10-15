@@ -721,6 +721,8 @@ func TestLoop_RefusalsBeforeAnyStep(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fx := newLoopFixture(t, continuing("B", 1))
+			fx.setStatus("A", shedengine.StateBlocked, 0)
+			fx.spec.Caller = "orch"
 			if tt.unarm {
 				fx.spec.Loop = LoopSpec{}
 			}
@@ -754,6 +756,9 @@ func TestLoop_RefusalsBeforeAnyStep(t *testing.T) {
 			if _, present := env["arbiter_attempt"]; present != tt.wantAttempt || (tt.wantAttempt && env["arbiter_attempt"] != "3") {
 				t.Errorf("arbiter_attempt = %v (present %v); want 3 present %v", env["arbiter_attempt"], present, tt.wantAttempt)
 			}
+			if pending := fx.readStatus().PendingBy; pending != "" {
+				t.Errorf("PendingBy = %q; want empty, since a refused waiter records no label", pending)
+			}
 		})
 	}
 }
@@ -761,6 +766,8 @@ func TestLoop_RefusalsBeforeAnyStep(t *testing.T) {
 // TestLoop_ArbiterAttemptConsumedByTheWaiter pins the one path no refusal covers: a ConsumeAttempt returning nil runs once with the flag's value before the loop is spawned or any child started, and neither the loop nor its children carry the attempt.
 func TestLoop_ArbiterAttemptConsumedByTheWaiter(t *testing.T) {
 	w := newWaitWorld(t, halting(shedengine.StateAwaiting, "", 1))
+	w.setStatus("A", shedengine.StateBlocked, 0)
+	w.spec.Caller = "orch"
 	var consumed []string
 	var spawnedBeforeHook, childrenBeforeHook int
 	w.spec.Hooks.ConsumeAttempt = func(_ context.Context, attempt string) error {
@@ -770,13 +777,18 @@ func TestLoop_ArbiterAttemptConsumedByTheWaiter(t *testing.T) {
 		return nil
 	}
 	var loopArgv []string
+	var pendingAtSpawn string
 	w.spec.Loop.Spawn = func(argv []string) (<-chan struct{}, error) {
 		loopArgv = argv
+		pendingAtSpawn = w.readStatus().PendingBy
 		return w.spawnDetached(argv)
 	}
 
 	var printed bytes.Buffer
 	code := clihelp.Execute(stepCmd(stepTexts(), w.spec), &printed, []string{"--" + UntilStopFlag, "--" + ArbiterAttemptFlag, "3"})
+	if pendingAtSpawn != "orch" {
+		t.Errorf("PendingBy at spawn time = %q; want orch, recorded by the waiter before any loop or child starts", pendingAtSpawn)
+	}
 
 	if code != 0 || !strings.Contains(printed.String(), `"stop":"halted"`) {
 		t.Fatalf("exit %d, output %q; want the loop to run to its halted stop", code, printed.String())
@@ -789,6 +801,24 @@ func TestLoop_ArbiterAttemptConsumedByTheWaiter(t *testing.T) {
 			t.Errorf("argv %v carries the arbiter attempt; want it dropped", argv)
 		}
 	}
+
+	t.Run("UndecodableStatusStillSpawnsTheLoop", func(t *testing.T) {
+		w := newWaitWorld(t, halting(shedengine.StateAwaiting, "", 1))
+		w.spec.Caller = "orch"
+		if err := os.WriteFile(w.paths.StatusPath, []byte("{"), 0o644); err != nil {
+			t.Fatalf("corrupt status: %v", err)
+		}
+		spawns := 0
+		w.spec.Loop.Spawn = func(argv []string) (<-chan struct{}, error) {
+			spawns++
+			return w.spawnDetached(argv)
+		}
+
+		clihelp.Execute(stepCmd(stepTexts(), w.spec), &bytes.Buffer{}, []string{"--" + UntilStopFlag})
+		if spawns != 1 {
+			t.Errorf("loop spawned %d times; want 1, since a label that cannot be recorded never stops the loop", spawns)
+		}
+	})
 }
 
 // childArgvs lists the command line of each request.

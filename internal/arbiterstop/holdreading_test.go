@@ -122,7 +122,7 @@ func (f *holdFixture) chtimes(path string, at time.Time) {
 func (f *holdFixture) settle(key sheddriver.StopKey, action string, at time.Time) {
 	f.t.Helper()
 	path := shedrun.SettleRecords(f.location, shedrun.SelfRunID)
-	if err := sheddriver.AppendSettleRecord(path, sheddriver.SettleRecord{StopKey: key, Settler: sheddriver.SettlerGoRule, Action: action, At: at}); err != nil {
+	if err := sheddriver.AppendSettleRecord(path, sheddriver.SettleRecord{StopKey: key, Settler: shedrun.SettlerGoRule, Action: action, At: at}); err != nil {
 		f.t.Fatal(err)
 	}
 }
@@ -206,17 +206,17 @@ func TestHoldReading(t *testing.T) {
 		{
 			name: "a newest hand-over settle record at the key fills HandOverAt", producer: "Plan-Write", state: shedengine.StateBlocked,
 			setup: func(f *holdFixture, key sheddriver.StopKey) {
-				f.settle(key, sheddriver.SettleHandBack, holdBase)
-				f.settle(key, sheddriver.SettleHandOver, handOnAt)
-				f.settle(otherKey, sheddriver.SettleHandBack, appliedAt)
+				f.settle(key, shedrun.SettleHandBack, holdBase)
+				f.settle(key, shedrun.SettleHandOver, handOnAt)
+				f.settle(otherKey, shedrun.SettleHandBack, appliedAt)
 			},
 			want: withHandOver,
 		},
 		{
 			name: "a newer hand-back at the key leaves HandOverAt zero", producer: "Plan-Write", state: shedengine.StateBlocked,
 			setup: func(f *holdFixture, key sheddriver.StopKey) {
-				f.settle(key, sheddriver.SettleHandOver, holdBase)
-				f.settle(key, sheddriver.SettleHandBack, handOnAt)
+				f.settle(key, shedrun.SettleHandOver, holdBase)
+				f.settle(key, shedrun.SettleHandBack, handOnAt)
 			},
 			want: eligible,
 		},

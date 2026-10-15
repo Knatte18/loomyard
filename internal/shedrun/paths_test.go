@@ -209,12 +209,13 @@ func TestRunsRootRel(t *testing.T) {
 
 	rels, err := TreeRunRels("my-slug")
 	wantRels := RunTreeRels{
-		Dir:          filepath.ToSlash(RunDirRel(l, "my-slug")),
-		Seed:         filepath.ToSlash(SeedRel(l, "my-slug")),
-		Status:       filepath.ToSlash(StatusRel(l, "my-slug")),
-		DriveReports: filepath.ToSlash(DriveReportsRel(l, "my-slug")),
-		Arbiter:      filepath.ToSlash(ArbiterRel(l, "my-slug")),
-		Alignment:    filepath.ToSlash(AlignmentRel(l, "my-slug")),
+		Dir:           filepath.ToSlash(RunDirRel(l, "my-slug")),
+		Seed:          filepath.ToSlash(SeedRel(l, "my-slug")),
+		Status:        filepath.ToSlash(StatusRel(l, "my-slug")),
+		DriveReports:  filepath.ToSlash(DriveReportsRel(l, "my-slug")),
+		Arbiter:       filepath.ToSlash(ArbiterRel(l, "my-slug")),
+		Alignment:     filepath.ToSlash(AlignmentRel(l, "my-slug")),
+		SettleRecords: filepath.ToSlash(filepath.Join(RunDirRel(l, "my-slug"), settleRecordsFileName)),
 	}
 	if err != nil || rels != wantRels {
 		t.Errorf("TreeRunRels(%q) = %+v, %v; want %+v, nil", "my-slug", rels, err, wantRels)

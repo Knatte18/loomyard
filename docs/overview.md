@@ -237,8 +237,8 @@ github.com/Knatte18/loomyard/
 ├── internal/reedcli/             the reed CLI command
 ├── internal/reedengine/          the reed domain kernel (overlay + strand bookkeeping)
 ├── internal/reedengine/render/   pure display-vocabulary leaf (layout = Rules(strands))
-├── internal/reportcli/           the report CLI command (`lyx report convergence`, the read-only convergence report, prime only)
-├── internal/reportengine/        the report domain kernel (finished runs, wakes, stops, repairs, review rounds and landings, read from git objects)
+├── internal/reportcli/           the report CLI command (`lyx report convergence`, the read-only convergence report, and `lyx report timing`, the read-only timing report, prime only)
+├── internal/reportengine/        the report domain kernel (finished runs, wakes, stops, repairs, review rounds and landings for convergence, and per-run time, waits, attempts and stop settlers for timing, read from git objects)
 ├── internal/orchcli/             the orch CLI command
 ├── internal/orchengine/          the orch domain kernel (config, stencil renders, persisted state, cycle state machine)
 ├── internal/ghissuescli/         the ghissues CLI command
@@ -262,7 +262,7 @@ github.com/Knatte18/loomyard/
 ├── internal/sheddriver/          the shed layer's Go driver: its settle loop, rule table and hand-back, the tackler agent call, and the `shed` config module, told its paths and seams by the arming module
 ├── internal/shedcli/             the `lyx shed` subtree: a named-recipe arming table for the loom, darn and batten recipes plus the three CLI seams that register it under the lyx root
 ├── internal/statuscommit/        the shared per-transition status commit core (skip while mid-merge, commit hard-errors, push warns) that `loomcli` and `battencli` wrap
-├── internal/statuspane/          the pane mechanics the runs overview and the gate checklist share: a redraw-in-place pane loop, a lock-free status-file reader and the panes' two time formats, minute-resolution for growing times and second-resolution for closed spans
+├── internal/statuspane/          the pane mechanics the runs overview and the gate checklist share: a redraw-in-place pane loop and a lock-free status-file reader
 ├── internal/landingshed/         landing's four general ShedProducers, Publish, PR-Align, PR-Gate and Finalize, shared by reference across producer lists
 ├── internal/darnengine/          the darn recipe's hub-wide `darn.yaml` config and the verify command every darn verify reads
 ├── internal/languageconfig/      the hub-wide `language.yaml` config: the skills every code role loads after its own
@@ -276,6 +276,8 @@ github.com/Knatte18/loomyard/
 ├── internal/preflight/           orchestrator-agnostic tier-1/tier-2 precondition checks (geometry, worktree-pair cleanliness, Fabric readiness/sync) + the shared Report result type
 ├── internal/lyxcwd/              cwd resolution entry gate (the sole owner of cwd resolution, nothing else)
 ├── internal/dotgit/              the one `.git` parser (git dir, common dir, repository test, walk-up to a worktree root), a stdlib-only leaf
+├── internal/durfmt/              the duration formats the status panes and the timing report share, minute-resolution for growing times and second-resolution for closed spans, a stdlib-only leaf
+├── internal/sleepjournal/        the machine's suspends and hibernates read from systemd-sleep's journal entries, spawning no process, a stdlib-only leaf
 ├── internal/lyxdirs/             the two directory-name tokens (`_lyx` durable, `.lyx` ephemeral), a zero-import leaf
 ├── internal/buildinfo/           the ldflags-stamped build channel, a zero-import leaf
 ├── internal/buildvcs/            the running binary's VCS identity, a stdlib-only leaf
@@ -406,8 +408,10 @@ User-facing modules each get one `lyx <module>` namespace:
   The segments run in order and each calls its owner's own cleanup in-process: `lyx batten cleanup`, `lyx board prune`, `lyx orch cleanup`, the prime's `.scratch/` children older than 14 days that no open board entry cites, logger's trace retention sweep, and the temp root's sweep of dead owners' run directories.
   A failing segment never stops the later ones.
   ✅ Implemented. See the `internal/cleanupcli` package documentation.
-- **report** — the read-only convergence report (`internal/reportcli` + `internal/reportengine`; `lyx report convergence [--since <date>] [--fresh-days <n>] [--format json|markdown]`, prime only).
-  It reports, per finished run and per ISO week, what woke the orch, what stopped and repaired runs, how many review rounds each segment took and how landings fared, from records lyx already writes.
+- **report** — the read-only convergence and timing reports (`internal/reportcli` + `internal/reportengine`; `lyx report convergence [--since <date>] [--fresh-days <n>] [--format json|markdown]` and `lyx report timing [--since <date>] [--by day|week] [--format json|markdown]`, prime only).
+  The convergence report says, per finished run and per ISO week, what woke the orch, what stopped and repaired runs, how many review rounds each segment took and how landings fared.
+  The timing report says where run time went, per run, per phase and per day or week, with machine sleep and waits apart and who settled each stop.
+  Both read records lyx already writes.
   ✅ Implemented. See the `internal/reportengine` package documentation.
 - **tender** — the one ordered pause that makes the hub safe to suspend within seconds (`internal/tendercli` + `internal/tenderengine`; `lyx tender pause [<slug>] [--grace <seconds>]`, `lyx tender resume [<slug>]`, `lyx tender revive [<slug>]` and `lyx tender status`, from any worktree of the hub; `lyx pause` and `lyx p`, and `lyx resume` and `lyx r`, are shortcuts for the first two verbs).
   `lyx tender pause` records an entry, waits a short grace for busy agent sessions and network operations to finish, interrupts every covered session still in a running turn with Esc and holds every path that would start agent or network work; the orchestrator is interrupted by its own watcher at the grace end.

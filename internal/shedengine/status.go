@@ -69,6 +69,9 @@ type GateSpan struct {
 	End   string `json:"end"`
 }
 
+// CallerShed is the caller label of lyx's own automatic steps: the Go driver and batten.
+const CallerShed = "shed"
+
 // HistoryEntry is one producer call's durable record, and the element type of Result.History.
 // A budget-exempt Stuck folds into an immediately preceding identical exempt Stuck rather than appending,
 // so one entry can stand for a run of consecutive calls.
@@ -102,6 +105,9 @@ type HistoryEntry struct {
 	// RerouteCapped is true on the Stuck entry of a reroute-cap halt, which resets the row's reroute count.
 	// A status file written before the field existed decodes as false.
 	RerouteCapped bool `json:"reroute_capped,omitempty"`
+	// By is the caller label of the goto or resume that wrote this entry, empty on every other entry.
+	// A status file written before the field existed decodes as empty.
+	By string `json:"by,omitempty"`
 }
 
 // Status is the whole status file.
@@ -120,7 +126,10 @@ type Status struct {
 	Transient string `json:"transient,omitempty"`
 	// ParentNotice is the one-line notice an awaiting producer handed for the run's parent, empty on every other write.
 	// A status file written before the field existed decodes as empty.
-	ParentNotice   string `json:"parent_notice,omitempty"`
+	ParentNotice string `json:"parent_notice,omitempty"`
+	// PendingBy is the caller label of a step that resumed a halted run, waiting for the next appended history entry to carry it.
+	// A status file written before the field existed decodes as empty.
+	PendingBy      string `json:"pending_by,omitempty"`
 	PauseRequested bool   `json:"pause_requested"`
 	// PauseBefore names the row the run pauses before running, empty when none is recorded.
 	PauseBefore string `json:"pause_before,omitempty"`

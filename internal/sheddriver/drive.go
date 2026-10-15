@@ -24,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 )
 
@@ -238,7 +239,7 @@ func (d *goDriver) settleStop(ctx context.Context, stop Stop) (attempt string, e
 		case driveActionDone:
 			return "", true, d.finishDone(stop)
 		case driveActionBusyExit:
-			d.settle(stop, SettlerGoRule, SettleBusyExit, decision.Rule, "")
+			d.settle(stop, shedrun.SettlerGoRule, shedrun.SettleBusyExit, decision.Rule, "")
 			logger.Info("sheddriver: drive: another holder has the run; exiting", "run", d.deps.RunID, "holder", stop.Error)
 			d.exit = ExitBusy
 			return "", true, nil
@@ -265,7 +266,7 @@ func (d *goDriver) settleStop(ctx context.Context, stop Stop) (attempt string, e
 
 		switch decision.Action {
 		case driveActionRestep:
-			d.settle(stop, SettlerGoRule, SettleRestep, decision.Rule, "")
+			d.settle(stop, shedrun.SettlerGoRule, shedrun.SettleRestep, decision.Rule, "")
 			return "", false, nil
 		case driveActionTackler, driveActionArbiter:
 			var moved Stop
@@ -283,7 +284,7 @@ func (d *goDriver) settleStop(ctx context.Context, stop Stop) (attempt string, e
 			stop = moved
 			continue
 		case driveActionVerifyGoto:
-			d.settle(stop, SettlerGoRule, SettleVerifyRetry, decision.Rule, facts.VerifyTarget)
+			d.settle(stop, shedrun.SettlerGoRule, shedrun.SettleVerifyRetry, decision.Rule, facts.VerifyTarget)
 			if err := d.deps.Goto(ctx, facts.VerifyTarget); err != nil {
 				logger.Warn("sheddriver: drive: the verify goto was refused; rechecking the run", "run", d.deps.RunID, "target", facts.VerifyTarget, "error", err)
 				moved, movedExit, recheckErr := d.recheck(stop)
@@ -312,7 +313,7 @@ func (d *goDriver) settleStop(ctx context.Context, stop Stop) (attempt string, e
 // handedOver reports whether the settle records hold a hand-over for key under the build labelled build.
 func handedOver(records []SettleRecord, key StopKey, build string) bool {
 	for _, record := range records {
-		if record.StopKey == key && record.Action == SettleHandOver && record.Build == build {
+		if record.StopKey == key && record.Action == shedrun.SettleHandOver && record.Build == build {
 			return true
 		}
 	}
@@ -342,7 +343,7 @@ func (d *goDriver) handOver(ctx context.Context, stop Stop) error {
 	}
 
 	build := onDisk.Label()
-	record := SettleRecord{StopKey: stop.Key(), Settler: SettlerGoRule, Action: SettleHandOver, Outcome: "handed over to a fresh driver", At: d.deps.Now(), Build: build}
+	record := SettleRecord{StopKey: stop.Key(), Settler: shedrun.SettlerGoRule, Action: shedrun.SettleHandOver, Outcome: "handed over to a fresh driver", At: d.deps.Now(), Build: build}
 	if err := AppendSettleRecord(d.deps.SettlePath, record); err != nil {
 		return d.handBackAs(stop, driveHandBack{Rules: []string{"recording the hand-over: " + err.Error()}}, "the hand-over could not be recorded")
 	}
@@ -449,7 +450,7 @@ func (d *goDriver) tackle(ctx context.Context, stop Stop) (next Stop, exit bool,
 		return Stop{}, true, d.handBackAs(stop, driveHandBack{Rules: []string{"the tackler could not judge the stop: " + err.Error()}}, "the tackler was unavailable or refused the stop")
 	}
 	if envelope.AttemptDir != before {
-		d.settle(stop, SettlerTackler, SettleSpawn, "tackler spawned", fmt.Sprintf("attempt-%d", envelope.Attempt))
+		d.settle(stop, shedrun.SettlerTackler, shedrun.SettleSpawn, "tackler spawned", fmt.Sprintf("attempt-%d", envelope.Attempt))
 	}
 	note := driveAttemptNote{Role: TacklerRole, Number: envelope.Attempt, Verdict: envelope.Verdict, Cause: envelope.Cause, VerdictPath: envelope.VerdictPath}
 	d.attempts = append(d.attempts, note)
@@ -491,7 +492,7 @@ func (d *goDriver) tackle(ctx context.Context, stop Stop) (next Stop, exit bool,
 			}
 			return Stop{}, true, d.handBackAs(stop, driveHandBack{Rules: []string{"the tackler's resume was refused: " + err.Error()}}, "the tackler's resume was refused")
 		}
-		d.settle(stop, SettlerTackler, SettleRestep, "tackler resume", envelope.Goto)
+		d.settle(stop, shedrun.SettlerTackler, shedrun.SettleRestep, "tackler resume", envelope.Goto)
 		stop.Restep = true
 		return stop, false, nil
 	case TacklerVerdictEscalate:
@@ -537,7 +538,7 @@ func (d *goDriver) arbitrate(ctx context.Context, stop Stop, caseBriefPath strin
 		return Stop{}, true, d.handBackAs(stop, driveHandBack{Relay: relay, Rules: []string{"the arbiter refused the stop: " + err.Error()}}, "the arbiter refused the stop")
 	}
 	if outcome.AttemptDir != before {
-		d.settle(stop, SettlerArbiter, SettleSpawn, "arbiter spawned", fmt.Sprintf("attempt-%d", outcome.Attempt))
+		d.settle(stop, shedrun.SettlerArbiter, shedrun.SettleSpawn, "arbiter spawned", fmt.Sprintf("attempt-%d", outcome.Attempt))
 	}
 	d.attempts = append(d.attempts, driveAttemptNote{Role: outcome.Role, Number: outcome.Attempt, Verdict: outcome.Verdict, Cause: outcome.Cause, VerdictPath: outcome.VerdictPath})
 
@@ -549,7 +550,7 @@ func (d *goDriver) arbitrate(ctx context.Context, stop Stop, caseBriefPath strin
 	}
 
 	if outcome.Resume {
-		d.settle(stop, SettlerArbiter, SettleRestep, "arbiter resume", outcome.Goto)
+		d.settle(stop, shedrun.SettlerArbiter, shedrun.SettleRestep, "arbiter resume", outcome.Goto)
 		d.pendingAttempt = strconv.Itoa(outcome.Attempt)
 		stop.Restep = true
 		return stop, false, nil
@@ -676,12 +677,12 @@ func (d *goDriver) resumeOpenAttempt(ctx context.Context) (stop Stop, found bool
 func attemptClosed(records []SettleRecord, key StopKey) bool {
 	var spawned time.Time
 	for _, record := range records {
-		if record.StopKey == key && record.Action == SettleSpawn && record.At.After(spawned) {
+		if record.StopKey == key && record.Action == shedrun.SettleSpawn && record.At.After(spawned) {
 			spawned = record.At
 		}
 	}
 	for _, record := range records {
-		if record.StopKey == key && record.Action == SettleHandBack && record.At.After(spawned) {
+		if record.StopKey == key && record.Action == shedrun.SettleHandBack && record.At.After(spawned) {
 			return true
 		}
 	}
@@ -765,7 +766,7 @@ func (d *goDriver) recheck(stop Stop) (next Stop, exit bool, err error) {
 		return Stop{}, false, fmt.Errorf("probing the run lock: %w", err)
 	}
 	if held || (status.State == shedengine.StateRunning && stop.Key().State != string(shedengine.StateRunning)) {
-		d.settle(stop, SettlerGoRule, SettleRunningExit, "another process is running the run", "")
+		d.settle(stop, shedrun.SettlerGoRule, shedrun.SettleRunningExit, "another process is running the run", "")
 		logger.Info("sheddriver: drive: the run is running elsewhere; exiting", "run", d.deps.RunID, "lock_held", held, "state", status.State)
 		d.exit = ExitRunningElsewhere
 		return stop, true, nil
@@ -775,7 +776,7 @@ func (d *goDriver) recheck(stop Stop) (next Stop, exit bool, err error) {
 	}
 
 	if n := len(status.History); n > 0 && status.History[n-1].Outcome == shedengine.OutcomeGoto {
-		d.settle(stop, SettlerGoRule, SettleMoved, "an orch goto moved the run: re-step", status.CurrentProducer)
+		d.settle(stop, shedrun.SettlerGoRule, shedrun.SettleMoved, "an orch goto moved the run: re-step", status.CurrentProducer)
 		moved := stopFromStatus(status)
 		moved.Restep = true
 		return moved, false, nil
@@ -796,7 +797,7 @@ func (d *goDriver) recheck(stop Stop) (next Stop, exit bool, err error) {
 	}
 	moved.Raw = raw
 	moved.EnvelopePath = path
-	d.settle(stop, SettlerGoRule, SettleMoved, "the run moved to another stop: decide it afresh", status.CurrentProducer)
+	d.settle(stop, shedrun.SettlerGoRule, shedrun.SettleMoved, "the run moved to another stop: decide it afresh", status.CurrentProducer)
 	return moved, false, nil
 }
 
@@ -863,7 +864,7 @@ func (d *goDriver) handBackStop(stop Stop, decision driveDecision, cause error) 
 
 // handBackAs records the hand-back in the settle records, with outcome as its reason, and leaves the stop report, the park and the parent's notices.
 func (d *goDriver) handBackAs(stop Stop, h driveHandBack, outcome string) error {
-	d.settle(stop, SettlerParent, SettleHandBack, outcome, "")
+	d.settle(stop, shedrun.SettlerParent, shedrun.SettleHandBack, outcome, "")
 	return d.handBack(stop, h)
 }
 

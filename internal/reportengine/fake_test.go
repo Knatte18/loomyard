@@ -439,10 +439,18 @@ type world struct {
 	repo *fakeRepo
 	tags []gitrepo.TagRef
 
+	// branches are the pair records branches the world holds, beside the main line's own branch.
+	branches []gitrepo.BranchRef
+
 	// code is the parent branch's repository and board the board's, each a main line.
 	code  *fakeRepo
 	board *fakeRepo
 }
+
+// recordsBranchName and snapshotAt are the name of the records main line's branch and the time the world's snapshot is taken.
+const recordsBranchName = "records"
+
+var snapshotAt = at(200)
 
 // newWorld returns a world whose records, parent and board main lines each hold one empty base commit, so every tip exists.
 func newWorld(t *testing.T) *world {
@@ -516,6 +524,16 @@ func (w *world) battenRecord(sha string, hour int, slug string, status shedengin
 	w.repo.commitOnChain(sha, at(hour), map[string]string{recordPaths(w.t, slug).Status: statusJSON(w.t, status)})
 }
 
+// battenSettles commits slug's batten status, exactly status, together with its settle-records file holding records, to the main line at hour.
+// No file is written when there are no records.
+func (w *world) battenSettles(sha string, hour int, slug string, status shedengine.Status, records ...shedrun.SettleRecord) {
+	files := map[string]string{recordPaths(w.t, slug).Status: statusJSON(w.t, status)}
+	if len(records) > 0 {
+		files[recordPaths(w.t, slug).SettleRecords] = settleFile(w.t, records...)
+	}
+	w.repo.commitOnChain(sha, at(hour), files)
+}
+
 // battenDeleted commits the removal of slug's batten status to the main line at hour.
 func (w *world) battenDeleted(sha string, hour int, slug string) {
 	w.repo.commitOnChain(sha, at(hour), nil, recordPaths(w.t, slug).Status)
@@ -553,14 +571,35 @@ func (w *world) finishedRun(slug, sha string, hour int) {
 	w.tag(slug, sha, at(hour), seedText("loom"), statusText(w.t, "Plan-Write", "Finalize"))
 }
 
-// sources returns the Sources the world presents, its tags ordered as an archive tag listing orders them.
+// pairBranch adds the records branch of slug's pair: a commit off the main line at when holding the given seed, status and extra files, named sha.
+// An empty seed or status text leaves that file out.
+func (w *world) pairBranch(slug, sha string, when time.Time, seed, status string, extra map[string]string) {
+	rels := recordPaths(w.t, slug)
+	files := mergeFiles(extra)
+	if seed != "" {
+		files[rels.Seed] = seed
+	}
+	if status != "" {
+		files[rels.Status] = status
+	}
+	w.repo.commitOffChainOn(sha, "", when, "", files)
+	w.branches = append(w.branches, gitrepo.BranchRef{Name: fabricengine.RecordsBranchName(slug), Commit: sha, Committed: when})
+}
+
+// sources returns the Sources the world presents, its tags ordered as an archive tag listing orders them and its branches by name.
 func (w *world) sources() Sources {
 	tags := slices.Clone(w.tags)
 	sort.SliceStable(tags, func(i, j int) bool { return tags[i].Committed.Before(tags[j].Committed) })
 	tipOf := func(repo *fakeRepo) string { return repo.chain[len(repo.chain)-1] }
+	recordsTip := tipOf(w.repo)
+	branches := append([]gitrepo.BranchRef{{Name: recordsBranchName, Commit: recordsTip, Committed: w.repo.commits[recordsTip].committed}}, w.branches...)
+	sort.Slice(branches, func(i, j int) bool { return branches[i].Name < branches[j].Name })
 	return Sources{
 		Code: w.code, Records: w.repo, Board: w.board,
-		ParentTip: tipOf(w.code), RecordsTip: tipOf(w.repo), BoardTip: tipOf(w.board),
-		Tags: tags,
+		RecordsBranch: recordsBranchName,
+		ParentTip:     tipOf(w.code), RecordsTip: recordsTip, BoardTip: tipOf(w.board),
+		Tags:       tags,
+		Branches:   branches,
+		SnapshotAt: snapshotAt,
 	}
 }

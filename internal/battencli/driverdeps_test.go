@@ -3,13 +3,17 @@
 package battencli
 
 import (
+	"errors"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/sheddriver"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/shedverbs"
+	"github.com/Knatte18/loomyard/internal/state"
 )
 
 // TestBattenDriverDeps asserts a batten run's driver is armed with exactly the seams its rule table needs and no more.
@@ -103,5 +107,57 @@ func TestBattenDriverDeps(t *testing.T) {
 	markers, err := filepath.Glob(filepath.Join(c.env.ScratchDir, "*row-notice"))
 	if err != nil || len(markers) > 0 {
 		t.Errorf("Notify(paused stop) left row notice markers %v (glob error %v); want none", markers, err)
+	}
+
+	if got, want := childGotoArgv("Merge-In"), []string{"loom", "goto", "--to", "Merge-In", "--by", "shed"}; !slices.Equal(got, want) {
+		t.Errorf("childGotoArgv(Merge-In) = %v; want %v", got, want)
+	}
+
+	// The goto and step seams label the run shed: the goto on the entry it appends, the step as the label pending before the loop is spawned.
+	if err := c.loadRouting(); err != nil {
+		t.Fatalf("loadRouting: %v", err)
+	}
+	c.untilStop = nil
+	first, last := c.routing.Producers[0].Name, c.routing.Producers[len(c.routing.Producers)-1].Name
+	c.spec = &shedverbs.Spec{
+		StatusPath:     c.shedPaths.StatusPath,
+		LockPath:       c.shedPaths.LockPath,
+		StatusLockPath: c.shedPaths.StatusLockPath,
+		Routing:        c.routing,
+		Loop: shedverbs.LoopSpec{
+			LockPath:     filepath.Join(filepath.Dir(c.shedPaths.StatusPath), "loop.lock"),
+			PIDPath:      filepath.Join(filepath.Dir(c.shedPaths.StatusPath), "loop.pid"),
+			EnvelopePath: filepath.Join(filepath.Dir(c.shedPaths.StatusPath), "loop-envelope.json"),
+			Spawn:        func([]string) (<-chan struct{}, error) { return nil, errors.New("no loop in a test") },
+		},
+	}
+	seedBlocked := func() {
+		t.Helper()
+		blocked := shedengine.Status{CurrentProducer: last, State: shedengine.StateBlocked, History: []shedengine.HistoryEntry{}}
+		if err := state.WriteJSON(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, blocked); err != nil {
+			t.Fatalf("seed blocked status: %v", err)
+		}
+	}
+	readStatus := func() shedengine.Status {
+		t.Helper()
+		st, _, err := state.ReadJSONNoMkdir[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
+		if err != nil {
+			t.Fatalf("read status: %v", err)
+		}
+		return st
+	}
+	seedBlocked()
+	if err := deps.Goto(t.Context(), first); err != nil {
+		t.Fatalf("deps.Goto(%s) = %v; want nil", first, err)
+	}
+	if st := readStatus(); len(st.History) != 1 || st.History[0].By != shedengine.CallerShed {
+		t.Errorf("History = %+v; want one goto entry by %q", st.History, shedengine.CallerShed)
+	}
+	seedBlocked()
+	if _, err := deps.Step(t.Context(), ""); err != nil {
+		t.Fatalf("deps.Step = _, %v; want the envelope the refused spawn printed", err)
+	}
+	if st := readStatus(); st.PendingBy != shedengine.CallerShed {
+		t.Errorf("PendingBy = %q; want %q", st.PendingBy, shedengine.CallerShed)
 	}
 }

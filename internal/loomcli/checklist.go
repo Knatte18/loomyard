@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/durfmt"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
@@ -365,9 +366,9 @@ func checklistVisitIsOpen(visit checklistVisit) bool {
 // checklistTime renders spent in whole minutes when it includes the open visit and to the second when it is closed, so a frame changes at most once a minute.
 func checklistTime(spent time.Duration, includesOpen bool) string {
 	if includesOpen {
-		return statuspane.FormatMinutes(spent)
+		return durfmt.FormatMinutes(spent)
 	}
-	return statuspane.FormatSeconds(spent)
+	return durfmt.FormatSeconds(spent)
 }
 
 // checklistReviewBlock renders a review segment, a recipe segment holding a Bouncer row, as one block from the history-order visits.
@@ -696,9 +697,9 @@ func checklistGateLines(spans []shedengine.GateSpan, paused []pauserecord.Interv
 	var lines []string
 	for _, name := range names {
 		t := totals[name]
-		line := "gate " + name + " " + statuspane.FormatSeconds(t.gate)
+		line := "gate " + name + " " + durfmt.FormatSeconds(t.gate)
 		if t.refusals > 0 {
-			line += fmt.Sprintf(" refused %d rework %s", t.refusals, statuspane.FormatSeconds(t.rework))
+			line += fmt.Sprintf(" refused %d rework %s", t.refusals, durfmt.FormatSeconds(t.rework))
 		}
 		lines = append(lines, line)
 	}

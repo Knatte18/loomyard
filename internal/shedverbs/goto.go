@@ -16,8 +16,9 @@ import (
 
 // RunGoto is the body of `goto` once the target is known, the entry an in-process driver calls and the cobra verb runs.
 // It runs the PreGoto hook, makes the status-lock directory when the spec asks, and moves the run onto target through shedengine.Goto over the spec's paths.
+// by is the caller label recorded on the goto entry; the empty string records none.
 // It returns the moved status, or the first error, which wraps shedengine.ErrShedBusy when another holder has the run.
-func RunGoto(ctx context.Context, spec *Spec, target string) (shedengine.Status, error) {
+func RunGoto(ctx context.Context, spec *Spec, target, by string) (shedengine.Status, error) {
 	if spec.Hooks.PreGoto != nil {
 		if err := spec.Hooks.PreGoto(ctx, target); err != nil {
 			return shedengine.Status{}, err
@@ -36,6 +37,7 @@ func RunGoto(ctx context.Context, spec *Spec, target string) (shedengine.Status,
 		StatusLockPath: spec.StatusLockPath,
 		Producers:      spec.Routing.Producers,
 		Target:         target,
+		By:             by,
 
 		RunID:                   spec.RunID,
 		MissingStatusWayForward: spec.MissingStatusWayForward,
@@ -58,6 +60,15 @@ func gotoCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
 
+			by := spec.Caller
+			if flagBy, _ := cmd.Flags().GetString("by"); flagBy != "" {
+				if flagBy != shedengine.CallerShed {
+					clihelp.SetExit(ctx, output.Err(out, "goto --by takes only "+shedengine.CallerShed+", the label of lyx's own automatic steps; way forward: re-run goto without --by"))
+					return nil
+				}
+				by = flagBy
+			}
+
 			target, _ := cmd.Flags().GetString("to")
 			if target == "" {
 				names := make([]string, len(spec.Routing.Producers))
@@ -68,7 +79,7 @@ func gotoCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 				return nil
 			}
 
-			st, err := RunGoto(ctx, spec, target)
+			st, err := RunGoto(ctx, spec, target, by)
 			if err != nil {
 				if errors.Is(err, shedengine.ErrShedBusy) {
 					clihelp.SetExit(ctx, output.ErrFields(out, err.Error(), map[string]any{"kind": shedengine.ShedBusyKind}))
@@ -88,5 +99,7 @@ func gotoCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 		},
 	}
 	cmd.Flags().String("to", "", "the producer row to move the run onto")
+	cmd.Flags().String("by", "", "the caller label lyx's own automatic steps record; accepts "+shedengine.CallerShed+" alone")
+	_ = cmd.Flags().MarkHidden("by")
 	return cmd
 }

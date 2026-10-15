@@ -1,9 +1,11 @@
 // cli.go builds the cobra command tree for the report module and the RunCLI/RunCLIIn seams that wire it into the standard io.Writer-based call contract.
 // The convergence verb validates its flags, resolves the prime's geometry once, and hands it to the report engine.
+// The prime resolution both verbs share lives here too.
 
 package reportcli
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"time"
@@ -30,17 +32,41 @@ const (
 	defaultFreshDays = 3
 )
 
-// Command returns the cobra command for the report module: the bare `report` group and its one verb.
+// Command returns the cobra command for the report module: the bare `report` group and its two verbs, convergence and timing.
 func Command() *cobra.Command {
 	report := &cobra.Command{
 		Use:   "report",
 		Short: "read-only reports over the hub's records and history",
 		Long: `report holds the read-only reports lyx computes from the records it already
-writes. Every verb runs from the hub's prime worktree only and changes nothing.`,
+writes: convergence, which asks whether the orch's work converges, and timing,
+which asks where run time went. Every verb runs from the hub's prime worktree
+only and changes nothing.`,
 		RunE: clihelp.GroupRunE,
 	}
 	report.AddCommand(convergenceCommand())
+	report.AddCommand(timingCommand())
 	return report
+}
+
+// resolvePrime resolves the cwd the context carries to the hub's prime worktree for the verb named verb.
+// Each refusal names `lyx report <verb>`: a cwd that is no worktree, a worktree that is not drivable, and a worktree that is not the prime.
+func resolvePrime(ctx context.Context, verb string) (*lyxcwd.Location, error) {
+	cwd, err := lyxcwd.CwdFrom(ctx)
+	if err != nil {
+		return nil, err
+	}
+	location, err := lyxcwd.Resolve(cwd)
+	if err != nil {
+		return nil, err
+	}
+	if err := fabricengine.RequireDrivableWorktree(location); err != nil {
+		return nil, fmt.Errorf("report: lyx report %s runs from the hub's prime worktree only: %w", verb, err)
+	}
+	primeName, primeNameErr := fabricengine.PrimeName(location)
+	if err := refuseNonPrime(verb, location.WorktreeName, primeName, primeNameErr); err != nil {
+		return nil, err
+	}
+	return location, nil
 }
 
 // convergenceCommand returns the `report convergence` verb.
@@ -85,19 +111,8 @@ Example:
 				return fail(err)
 			}
 
-			cwd, err := lyxcwd.CwdFrom(ctx)
+			location, err := resolvePrime(ctx, "convergence")
 			if err != nil {
-				return fail(err)
-			}
-			location, err := lyxcwd.Resolve(cwd)
-			if err != nil {
-				return fail(err)
-			}
-			if err := fabricengine.RequireDrivableWorktree(location); err != nil {
-				return fail(fmt.Errorf("report: lyx report convergence runs from the hub's prime worktree only: %w", err))
-			}
-			primeName, primeNameErr := fabricengine.PrimeName(location)
-			if err := refuseNonPrime(location.WorktreeName, primeName, primeNameErr); err != nil {
 				return fail(err)
 			}
 

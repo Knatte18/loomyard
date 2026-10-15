@@ -37,6 +37,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/frictionengine"
@@ -176,6 +177,7 @@ func (c *loomCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec, e
 // location.AnchorPath() for wireLightweight/wire's own cwd parameter, since cwd is provably equal to
 // AnchorPath() after a successful resolve (see lyxcwd.Location's own doc comment).
 func (c *loomCLI) armAt(location *lyxcwd.Location, verb string, args []string) (shedverbs.Spec, error) {
+	c.caller = agentname.CallerLabel(os.Getenv(agentname.StrandNameEnv))
 	if err := c.resolveRunID(location, verb, args); err != nil {
 		return shedverbs.Spec{}, err
 	}
@@ -315,6 +317,7 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 	}
 
 	spec.FrictionDir = c.frictionDir
+	spec.Caller = c.caller
 	// The nil guard keeps the untagged tests that call specFor on a hand-populated receiver with no
 	// location working.
 	if c.location != nil {
