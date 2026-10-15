@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
@@ -322,66 +321,25 @@ func relevantWindow(st *ReedState, windows []sessionWindow, panes []windowPane, 
 	return ""
 }
 
-// newAgentWindowSelected reports whether a new agent window takes the viewer who is on window current, deciding from the windows and panes listed before it opens.
-// A strand whose display sets Focus always does, and one that sets only KeepViewer never does.
-// Any other takes it from the overview window, from an agent window whose every pane is dead, from the relevant window and from a window holding a live driver pane, so a viewer following the run follows the newest agent.
-// The shell, an older live agent window and any other window keep the viewer, since an operator moved there by hand.
-func newAgentWindowSelected(st *ReedState, windows []sessionWindow, panes []windowPane, current string, display render.Display) bool {
+// newAgentWindowSelected reports whether a new agent window takes the viewer, given the follow state.
+// A display setting Focus always does, one setting only KeepViewer never does, and any other does exactly when following.
+func newAgentWindowSelected(display render.Display, following bool) bool {
 	if display.Focus {
 		return true
 	}
-	if display.KeepViewer || current == "" {
+	if display.KeepViewer {
 		return false
 	}
-	live, bound, overview := agentWindowPanes(st, panes, nil)
-	return current == overview || (bound[current] && !live[current]) ||
-		current == relevantWindow(st, windows, panes, nil) || driverWindows(st, panes)[current]
+	return following
 }
 
-// driverWindows returns each agent window holding a pane that is not dead and is bound to an own-window strand whose role is the driver role.
-// A driver placed in the strands' window yields none, so the shell window never passes the viewer on.
-func driverWindows(st *ReedState, panes []windowPane) map[string]bool {
-	driverPanes := make(map[string]bool)
-	for _, s := range st.Strands {
-		if s.PaneID == "" || s.Display.Anchor != render.AnchorOwnWindow {
-			continue
-		}
-		if parsed, err := agentname.Parse(s.Name); err == nil && agentname.MatchesRole(parsed.Role, agentname.RoleDriver) {
-			driverPanes[s.PaneID] = true
-		}
-	}
-	windows := make(map[string]bool)
-	for _, p := range panes {
-		if driverPanes[p.PaneID] && !p.Dead {
-			windows[p.WindowID] = true
-		}
-	}
-	return windows
-}
-
-// newAgentWindowTakesViewerLocked reports whether a new agent window opened now takes the viewer, reading the session's current window, windows and panes before the window exists.
-// A display setting Focus or KeepViewer needs no read.
-// A failed read keeps the viewer and is logged at Warn.
-func (e *Engine) newAgentWindowTakesViewerLocked(st *ReedState, display render.Display) bool {
+// newAgentWindowTakesViewerLocked reports whether a new agent window opened now takes the viewer.
+// A display setting Focus or KeepViewer decides with no read; any other reads the follow state.
+func (e *Engine) newAgentWindowTakesViewerLocked(display render.Display) bool {
 	if display.Focus || display.KeepViewer {
-		return newAgentWindowSelected(st, nil, nil, "", display)
+		return newAgentWindowSelected(display, false)
 	}
-	current, err := e.currentWindowLocked()
-	if err != nil {
-		logger.Warn("reed: could not read the current window, a new agent window keeps the viewer where it is", "socket", e.Socket(), "session", e.SessionName(), "err", err)
-		return false
-	}
-	windows, err := e.tmux.listSessionWindows(e.SessionName())
-	if err != nil {
-		logger.Warn("reed: could not list the session's windows, a new agent window keeps the viewer where it is", "socket", e.Socket(), "session", e.SessionName(), "err", err)
-		return false
-	}
-	panes, err := e.tmux.listWindowPanes(e.SessionName())
-	if err != nil {
-		logger.Warn("reed: could not list the session's panes, a new agent window keeps the viewer where it is", "socket", e.Socket(), "session", e.SessionName(), "err", err)
-		return false
-	}
-	return newAgentWindowSelected(st, windows, panes, current, display)
+	return newAgentWindowSelected(display, e.followingLocked())
 }
 
 // currentWindowLocked returns the id of the session's current window.

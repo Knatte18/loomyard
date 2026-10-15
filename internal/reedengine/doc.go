@@ -62,6 +62,7 @@
 // Launch sets the pane options and boot marks the strand window; every attach pre-flight marks the window and re-asserts both pane options on every strand bound to a live pane, so a session or strand spawned by an older lyx gets them at its next attach.
 // The Selvage pane carries the user option @lyx_console (consolePaneOption), set when it is split and re-asserted by every attach pre-flight.
 // The options are display only: the status bar and the key bindings read them, no Go decision does, and Selvage never gets @strand or @strand_color.
+// The session option @lyx_follow is the one decision-bearing session option reed reads; @strand, @strand_color, @lyx_unseen and the wait marks stay display only.
 // A strand's Segment is an opaque field its spawner names through AddSpec.Segment; reed reads it only to look up the segment's color, which the strand an add or replace returns and Status carry as Color.
 // An own window gets a status-bar button on line 1 in its segment's color, read from the window options @lyx_own and @strand_color, labelled with the window name and carrying its panes' wait marks.
 // The button is lit while the window is current, and otherwise that color on dark grey, underscored while the window carries @lyx_unseen.
@@ -347,13 +348,17 @@
 // An invalid window_split or window_share_max never refuses a removal: the layout is skipped and the key is reported in Removed.ConfigWarning.
 //
 // Focus rules: an agent window is a window holding a pane bound to an own-window strand; the overview, the shell and hidden windows are not agent windows.
-// An automatic window switch happens only at three points, each deciding from reed state, window ids, strand roles and pane liveness alone, never from @lyx_unseen, @lyx_hidden or a wait mark, and none moves a viewer off the shell or an older live agent window the operator picked by hand.
+// The follow state is the session option @lyx_follow (followSessionOption): boot sets it on off Windows, and it is off only while it reads off, so an unset option, as on Windows or in a session booted by an older lyx, reads on.
+// followingLocked reads it, and a failed read counts as off for that one decision and is logged at Warn, so a broken read never moves a viewer.
+// It is the one decision-bearing session option reed reads.
+// An automatic window switch happens only at three points, each deciding from reed state, window ids, strand roles, pane liveness and the follow state alone, never from @lyx_unseen, @lyx_hidden or a wait mark.
 // relevantWindow is the target of two of them: among the listed windows not about to end, the highest-index agent window holding a pane that is not dead, else the overview strand's window, else none.
 // Attach (attachWindowSelectionLocked, resolved by AttachArgv right after the shell check) appends `; select-window -t <relevant window>` to every argv it returns, and appends nothing when another client is attached or a listing fails.
-// A new agent window is selected by openOwnWindowLocked, for an own-window strand and never the overview, when newAgentWindowSelected holds: always for a Focus strand, never for one whose display sets only KeepViewer, otherwise only when the viewer is on the overview window, on an agent window whose every pane is dead, on the relevant window as listed before the new one opens, or on a window holding a live own-window pane of a strand whose role is the driver role; it then carries no @lyx_unseen.
-// So an attached viewer follows the newest agent window as strands spawn, and a viewer the operator moved to another window stays there.
+// A new agent window is selected by openOwnWindowLocked, for an own-window strand and never the overview, when newAgentWindowSelected holds: always for a Focus strand, never for one whose display sets only KeepViewer, otherwise exactly when the follow state reads on; it then carries no @lyx_unseen.
+// With follow on, a new agent window takes the viewer wherever it is, the shell included; with follow off, it leaves the viewer where it is.
+// Opening a window never changes the follow state.
 // Every client of a session shares its current window, so the one select-window moves each attached client.
-// A viewed window ending, by RemoveStrand, by ReplaceStrand and by reconcile ending an orphan own window (selectRelevantWindowIfCurrentLocked), moves a viewer on it to the relevant window among those left, never the shell, and with none left to tmux.
+// A viewed window ending, by RemoveStrand, by ReplaceStrand and by reconcile ending an orphan own window (selectRelevantWindowIfCurrentLocked), moves a viewer on it to the relevant window among those left, never the shell, and with none left to tmux; this move neither reads nor changes the follow state.
 // A viewer elsewhere is never moved, and a strand leaving a shared window that stays open ends no window and switches nothing.
 // An automatic switch races an operator's own window change by at most one switch.
 //

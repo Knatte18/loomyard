@@ -163,6 +163,10 @@ func TestBar_LineOneButtonsFollowTheWindowZoomAndWaitMarks(t *testing.T) {
 	}
 
 	// An own window gets a button in its segment's color, underscored until the operator first selects it.
+	// Follow is off first, since a session that follows the run would select the new window and leave it with no unseen mark.
+	if err := e.tmux.run("set-option", "-t", exactSessionWindowTarget(e.SessionName()), followSessionOption, "off"); err != nil {
+		t.Fatalf("set %s off: %v", followSessionOption, err)
+	}
 	scout, err := e.AddStrand(AddSpec{NameOverride: "scout", Segment: "review", Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorOwnWindow}})
 	if err != nil {
 		t.Fatalf("AddStrand(scout): %v", err)

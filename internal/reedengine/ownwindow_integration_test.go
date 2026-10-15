@@ -52,6 +52,18 @@ func TestOwnWindow_RealTmux(t *testing.T) {
 		t.Helper()
 		return display(exactSessionWindowTarget(e.SessionName()), "#{window_id}")
 	}
+	// A booted session follows the run, which would move the viewer on every add, so the steps keep it off unless a step names the follow state.
+	setFollow := func(value string) {
+		t.Helper()
+		if err := e.tmux.run("set-option", "-t", exactSessionWindowTarget(e.SessionName()), followSessionOption, value); err != nil {
+			t.Fatalf("set %s %s: %v", followSessionOption, value, err)
+		}
+	}
+	readFollow := func() string {
+		t.Helper()
+		return display(exactSessionWindowTarget(e.SessionName()), "#{"+followSessionOption+"}")
+	}
+	setFollow("off")
 	activePane := func() string {
 		t.Helper()
 		return display(exactSessionWindowTarget(e.SessionName()), "#{pane_id}")
@@ -250,9 +262,13 @@ func TestOwnWindow_RealTmux(t *testing.T) {
 		if reopened == strandWindow() {
 			t.Errorf("relaunched own-window pane is in the strands' window %s, want a window of its own", reopened)
 		}
-		if got := currentWindow(); got == reopened {
-			t.Errorf("current window = %q after Resume, want it not the reopened own window", got)
+		if got := readFollow(); got != "on" {
+			t.Errorf("follow state = %q after the server restart, want the booted session on", got)
 		}
+		if got := currentWindow(); got != reopened {
+			t.Errorf("current window = %q after Resume, want the reopened own window %q", got, reopened)
+		}
+		setFollow("off")
 		if _, ok := statusOf(finished.GUID); ok {
 			t.Errorf("finished strand %s survived Resume, want it dropped instead of relaunched", finished.GUID)
 		}
@@ -495,23 +511,31 @@ func TestOwnWindow_RealTmux(t *testing.T) {
 		return s
 	}
 
+	// The move off an ending window neither reads nor changes the follow state, so it runs with follow on and with follow off.
 	t.Run("RemoveMovesAViewerOnTheEndingWindowToTheNewestLiveAgent", func(t *testing.T) {
-		older := addOwn("older")
-		viewed := addOwn("viewed")
-		if err := e.tmux.run("select-window", "-t", windowOfPane(t, e, viewed.PaneID)); err != nil {
-			t.Fatalf("select-window: %v", err)
-		}
+		t.Cleanup(func() { setFollow("off") })
+		for _, follow := range []string{"on", "off"} {
+			setFollow(follow)
+			older := addOwn("older")
+			viewed := addOwn("viewed")
+			if err := e.tmux.run("select-window", "-t", windowOfPane(t, e, viewed.PaneID)); err != nil {
+				t.Fatalf("select-window: %v", err)
+			}
 
-		if _, err := e.RemoveStrand(viewed.GUID, false); err != nil {
-			t.Fatalf("RemoveStrand: %v", err)
-		}
+			if _, err := e.RemoveStrand(viewed.GUID, false); err != nil {
+				t.Fatalf("RemoveStrand: %v", err)
+			}
 
-		want := windowOfPane(t, e, older.PaneID)
-		if got := currentWindow(); got != want {
-			t.Errorf("current window = %q after removing the viewed strand, want the older live agent's window %q and never the strands' window %q", got, want, strandWindow())
-		}
-		if _, err := e.RemoveStrand(older.GUID, false); err != nil {
-			t.Fatalf("RemoveStrand(older): %v", err)
+			want := windowOfPane(t, e, older.PaneID)
+			if got := currentWindow(); got != want {
+				t.Errorf("follow %s: current window = %q after removing the viewed strand, want the older live agent's window %q and never the strands' window %q", follow, got, want, strandWindow())
+			}
+			if got := readFollow(); got != follow {
+				t.Errorf("follow state = %q after the removal, want %q unchanged", got, follow)
+			}
+			if _, err := e.RemoveStrand(older.GUID, false); err != nil {
+				t.Fatalf("RemoveStrand(older): %v", err)
+			}
 		}
 	})
 
