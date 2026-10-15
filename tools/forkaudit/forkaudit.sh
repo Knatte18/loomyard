@@ -56,6 +56,13 @@
 # A transcript that cannot be read exits 1 naming it.
 # Each fork's arm is the pack layout its prompt shows, taken from the marker table at the head of extract.jq.
 # A task that adds a Webster pack layout adds its marker row there in the same task.
+# A fork of the card arm, the per-card layout, reads no pack file and has no inline pack:
+# its pack is the results of its successful `lyx loom card-pack` calls, each resolved against the tree as it stood at that call.
+#
+# Card pack count: for every kept fork whose worktree has a trace file, the script counts the `msg="webster: card pack"` lines
+# of those files logged between the fork's first and last transcript line, whether or not a batch resolves, and writes card-traces.tsv.
+# The report shows a fork's card-pack calls beside that count and lists a fork whose two differ.
+# A fork with no trace file has no count.
 #
 # Cross-check: the prompt decides a fork's arm, and begin-batch's `webster: kickstart pack` trace line cross-checks it.
 # For each fork whose worktree (the hub plus the run name) has a trace file under its logs directory,
@@ -69,12 +76,14 @@
 # A missing records repository only disables the cross-check, and the report header says so.
 #
 # Pack correctness (--pack-check): batch resolution runs for every fork, not only those with a trace file.
-# Each span entry of a fork's pack, from the pack file it read or from its prompt's inline pack, is checked against the file
+# Each span entry of a fork's pack, from the pack file it read, from its prompt's inline pack or, for the card arm, from its first card-pack call alone, is checked against the file
 # at the batch's start sha in --code, with git cat-file and git show only, and classed
 # correct (the signature text lies inside the span), correct-decl (a declaration of the name lies inside it, Go files only),
 # stale (found elsewhere in the file, with the line shift), wrong (file present, name absent, Go files only),
 # unchecked (a non-Go file whose signature text was not found), nofile (file absent at the sha)
 # or notree (batch unresolved, or the sha is not in --code).
+# A card-arm fork's later card-pack calls were resolved against trees the start sha does not hold, so their span lines are rows of kind later:
+# they count as a pack span for the missed-file list below and are never graded.
 # Files a fork edited, wrote or read that its pack gave no span for are listed with whether they existed at the sha.
 # A missing --code or --records directory exits 1 naming it, --code first, before the work directory is touched.
 # The report header names the resolved --code path.
@@ -90,7 +99,7 @@
 #
 # Intermediate files in --work: projects.txt (matched project directories), candidates.txt (candidate transcripts),
 # webster-files.txt (candidates holding the job heading), records.jsonl (one record per kept fork),
-# batches.tsv (each fork's resolved batch), traces.tsv (each cross-checked fork's trace layout),
+# batches.tsv (each fork's resolved batch), traces.tsv (each cross-checked fork's trace layout), card-traces.tsv (each traced fork's card pack count),
 # under --pack-check pack-entries.tsv (every pack entry), pack-check.tsv (one class per span entry) and missed-files.tsv,
 # and under --plan plan-runs.tsv, plan-cards.tsv, plan-refs.tsv and plan-writers.tsv (the chosen writer of each run).
 # The report body is rendered from records.jsonl by report.jq:
@@ -126,7 +135,7 @@ date -d @0 > /dev/null 2>&1 || { echo "forkaudit: missing command: GNU date" >&2
 
 MARKER_FILE=".forkaudit-work"
 # The script's own intermediate files in --work; a run clears exactly these.
-WORK_FILES=(projects.txt candidates.txt webster-files.txt records.jsonl batches.tsv traces.tsv pack-entries.tsv pack-check.tsv missed-files.tsv
+WORK_FILES=(projects.txt candidates.txt webster-files.txt records.jsonl batches.tsv traces.tsv card-traces.tsv pack-entries.tsv pack-check.tsv missed-files.tsv
           plan-runs.tsv plan-cards.tsv plan-refs.tsv plan-writers.tsv)
 # The heading that marks a Webster implementer prompt.
 JOB_HEADING='# Webster implementer job'
@@ -395,6 +404,27 @@ if [ "$records_found" = 1 ]; then
   done < <(jq -r '[.rel, .proj, .start] | @tsv' "$work/records.jsonl")
 fi
 
+# card-traces.tsv columns: transcript path relative to --projects, the count of `msg="webster: card pack"` trace lines logged between the fork's first and last transcript line.
+# The pass covers every kept fork whose worktree has a trace file and needs neither the records repository nor a resolved batch.
+: > "$work/card-traces.tsv"
+while IFS=$'\t' read -r fork_rel fork_run fork_start fork_end; do
+  shopt -s nullglob
+  card_trace_files=("$hub/$fork_run/$LOGS_DIR"/trace-*.log)
+  shopt -u nullglob
+  [ "${#card_trace_files[@]}" -gt 0 ] || continue
+  start_ns="$(date -u -d "$fork_start" +%s%N)"
+  end_ns="$(date -u -d "$fork_end" +%s%N)"
+  card_lines=0
+  while IFS= read -r trace_line; do
+    [[ "$trace_line" =~ time=([^[:space:]]+) ]] || continue
+    line_ns="$(date -u -d "${BASH_REMATCH[1]}" +%s%N 2> /dev/null)" || continue
+    if [ "$line_ns" -ge "$start_ns" ] && [ "$line_ns" -le "$end_ns" ]; then
+      card_lines=$((card_lines + 1))
+    fi
+  done < <(grep -h -F 'msg="webster: card pack"' "${card_trace_files[@]}")
+  printf '%s\t%s\n' "$fork_rel" "$card_lines" >> "$work/card-traces.tsv"
+done < <(jq -r '[.rel, .proj, .start, .end] | @tsv' "$work/records.jsonl")
+
 # classify_span prints `class<TAB>detail` for one pack span entry, checked against the code repository at the batch's start sha.
 # correct: the signature text lies inside the span; correct-decl: a declaration of its name lies inside it (Go files only);
 # stale: found elsewhere in the file, detail is the line shift; wrong: file present, name absent (Go files only);
@@ -447,8 +477,8 @@ if [ "$pack_check" = 1 ]; then
     entries="$(jq -n -R -r --arg rel "$fork_rel" -f "$script_dir/pack-entries.jq" "$transcript")" || fail "cannot read pack entries: $transcript"
     [ -z "$entries" ] || printf '%s\n' "$entries" >> "$work/pack-entries.tsv"
     while IFS=$'\t' read -r _ card kind glyph file first last signature; do
+      case "$kind" in span | later) span_files["$fork_rel|$file"]=1 ;; esac
       [ "$kind" = span ] || continue
-      span_files["$fork_rel|$file"]=1
       IFS=$'\t' read -r class detail <<< "$(classify_span "$sha" "$file" "$first" "$last" "$signature")"
       printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$fork_rel" "$fork_run" "$card" "$glyph" "$file" "$first" "$last" "$class" "$detail" >> "$work/pack-check.tsv"
     done <<< "$entries"
@@ -558,7 +588,7 @@ markers_json="$(jq -n -c --arg mode arms --arg run "" --arg rel "" --arg plan ""
   if [ "$fork_count" -eq 0 ]; then
     echo "No Webster implementer forks matched."
   else
-    jq -s -r --argjson markers "$markers_json" --rawfile batches "$work/batches.tsv" --rawfile traces "$work/traces.tsv" \
+    jq -s -r --argjson markers "$markers_json" --rawfile batches "$work/batches.tsv" --rawfile traces "$work/traces.tsv" --rawfile card_traces "$work/card-traces.tsv" \
       --argjson pack_check "$([ "$pack_check" = 1 ] && echo true || echo false)" \
       --rawfile pack_rows "$work/pack-check.tsv" --rawfile missed_rows "$work/missed-files.tsv" \
       --argjson plan_on "$([ "$plan" = 1 ] && echo true || echo false)" \
