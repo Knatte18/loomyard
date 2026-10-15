@@ -1020,7 +1020,9 @@ func (r Report) WriteMarkdown(w io.Writer) error {
 	fmt.Fprintln(w, "Idle is the time no session of the run is in a turn, which holds parent review, PR-Gate, gate-slot waits, a parked driver and Go-only work such as verify and push.")
 	fmt.Fprintln(w, "Time shares can sum past 100% where sessions overlap, a `+sub` row overlapping its parent.")
 	fmt.Fprintln(w, "The union of working time plus idle is the span.")
-	fmt.Fprintf(w, "Every time figure leaves out machine sleep, %s over these runs.\n", slept.Round(time.Second))
+	if slept > 0 {
+		fmt.Fprintf(w, "Every time figure leaves out machine sleep, %s over these runs.\n", slept.Round(time.Second))
+	}
 	fmt.Fprintln(w)
 	if rows := sumProducers(r.Runs); len(rows) > 0 {
 		writeProducers(w, rows)

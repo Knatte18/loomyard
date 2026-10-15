@@ -754,6 +754,9 @@ func TestShedRecordSpanAndProducers(t *testing.T) {
 			t.Errorf("%s section lacks the Producers table row %q:\n%s", name, row, section)
 		}
 	}
+	if strings.Contains(report, "leaves out machine sleep") {
+		t.Errorf("report with no sleep subtracted claims a sleep subtraction:\n%s", report)
+	}
 	noStatus := "No shed status was read, so the span is the transcript window and no Producers table is printed."
 	if !strings.Contains(perBare, noStatus) || strings.Contains(perBare, "### Producers") {
 		t.Errorf("bare section = %q; want the no-status line and no table", perBare)
