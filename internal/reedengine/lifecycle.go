@@ -596,7 +596,8 @@ func (e *Engine) pinBootOptionsLocked(mouse, shellPath string) error {
 // Everywhere but Windows, `-f /dev/null` follows them, so the server reads none of the operator's `~/.tmux.conf`; a running server ignores the flag.
 // `-c` pins new-session's pane default cwd to the told pane spawn directory, even though the server process's own cwd has moved to the logs directory.
 // The configured shell is the first pane's trailing command.
-// Off Windows, two `set-option` commands chain after it in the same invocation, so the new session is pinned `destroy-unattached off` and tagged `@lyx_reed_session` before any operator config could act.
+// Off Windows, three `set-option` commands chain after it in the same invocation, so the new session is pinned `destroy-unattached off`, tagged `@lyx_reed_session` and set `@lyx_follow on` before any operator config could act.
+// On Windows the follow option stays unset, which reads on.
 func (e *Engine) serverSpawnArgv(goos string, debugArgs []string) []string {
 	argv := append([]string{}, debugArgs...)
 	if goos != "windows" {
@@ -617,6 +618,7 @@ func (e *Engine) serverSpawnArgv(goos string, debugArgs []string) []string {
 	return append(argv,
 		";", "set-option", "-t", target, "destroy-unattached", "off",
 		";", "set-option", "-t", target, reedSessionOption, "on",
+		";", "set-option", "-t", target, followSessionOption, "on",
 	)
 }
 

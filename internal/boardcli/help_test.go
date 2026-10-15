@@ -29,7 +29,7 @@ func runHelp(t *testing.T, args ...string) string {
 // TestHelpSchema_LeafCommands asserts that each board leaf command's --help output contains the documented field names for the post-batch-1 schema and does not contain any removed token (id_or_slug, phase, group).
 // Every slug-taking verb's help also states the limit formatted from boardengine.MaxSlugLength, so the sentence cannot drift from validation.
 //
-//testtiming:keep pins every leaf command's documented field names, removed tokens and slug-limit sentence in --help, which its covering test does not assert
+//testtiming:keep pins every leaf command's documented field names, removed tokens, the slug-limit sentence and the sibling-warning sentence in --help, which its covering test does not assert
 func TestHelpSchema_LeafCommands(t *testing.T) {
 	t.Parallel()
 	// removedTokens are field names that were present in the old schema and must
@@ -57,6 +57,7 @@ func TestHelpSchema_LeafCommands(t *testing.T) {
 				"labels",
 				"recipe",
 				"priority",
+				"notice",
 				"Example",
 			},
 			mustNotContain: []string{"deferred", "tier", `"type"`},
@@ -64,7 +65,7 @@ func TestHelpSchema_LeafCommands(t *testing.T) {
 		{
 			name:        "upsert-batch",
 			args:        []string{"upsert-batch"},
-			mustContain: []string{"tasks", "slug", "Example"},
+			mustContain: []string{"tasks", "slug", "notice", "Example"},
 		},
 		{
 			name:        "set-status",
@@ -91,13 +92,14 @@ func TestHelpSchema_LeafCommands(t *testing.T) {
 				"slug",
 				"id",
 				"status",
+				"notice",
 				"Example",
 			},
 		},
 		{
 			name:        "set-deps",
 			args:        []string{"set-deps"},
-			mustContain: []string{"slug", "depends_on", "Example"},
+			mustContain: []string{"slug", "depends_on", "notice", "Example"},
 		},
 		{
 			name:           "promote",

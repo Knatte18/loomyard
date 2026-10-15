@@ -202,6 +202,7 @@ A correctness halt clears only on evidence that HEAD and every suspect path matc
 | goto on a running run | `goto` names a run whose status is running | correctness halt | the recipe's pause then `lyx shed step <run-id>` leaves the run paused at its next producer boundary, `lyx shed pause <run-id> --after <current_producer>` for a loom run and `lyx batten pause <slug>` for a batten run, then re-run goto |
 | goto target past the current row | `goto` names a row after the run's current row, or a target the awaiting narrowing excludes | correctness halt | re-run goto with --to naming one of: `<admitted rows>` |
 | goto target unknown | `goto` has no `--to`, or the target names no producer | correctness halt | re-run goto with `--to` naming one of the producers the message lists |
+| goto caller label refused | `goto` carries a `--by` other than `shed`, the label of lyx's own automatic steps, and leaves the status file untouched | correctness halt | re-run goto without `--by` |
 | pause target unknown | `pause --before` or `--after` names a target that is no producer of the recipe | correctness halt | re-run pause with `--before` or `--after` naming one of the producers the message lists |
 | pause flags contradictory | `pause --clear` is given beside `--before` or `--after` | correctness halt | run `pause --clear` alone, then `pause --before` or `--after` |
 | status watch as JSON | `status` is given both `--watch` and `--json` | correctness halt | drop `--json`, or drop `--watch` for the JSON envelope |
@@ -325,6 +326,10 @@ The `validate-*` verbs' findings envelopes are each verb's verdict on its artifa
 | peers show: own slug | `lyx loom peers show` names the caller's own slug | correctness halt | read your own records in this worktree |
 | peers show: unknown record | `lyx loom peers show` gets a `--record` other than `decision` or `plan` | correctness halt | pass `--record decision` or `--record plan` |
 | peers show: record not yet written | `lyx loom peers show` names a peer that does not hold the record yet | correctness halt | `lyx loom peers` shows which records exist |
+| card-pack: argument not a card number | `lyx loom card-pack` gets an argument that is not an integer, or is `0` | correctness halt | locate the card's glyphs with "lyx quarry resolve" or a grep |
+| card-pack: unknown card number | `lyx loom card-pack` names a number no card of the plan carries | correctness halt | locate the card's glyphs with "lyx quarry resolve" or a grep |
+| card-pack: plan directory missing | `lyx loom card-pack` finds no plan directory under the anchor, as in a standalone run, whose plan lives in its state directory | correctness halt | locate the card's glyphs with "lyx quarry resolve" or a grep |
+| card-pack: plan does not parse | `lyx loom card-pack` finds the plan in the plan directory failing to parse | correctness halt | locate the card's glyphs with "lyx quarry resolve" or a grep |
 | decision: unknown slug | `lyx loom decision add` names a slug with no worktree in the hub | correctness halt | pass the task's slug as listed by `lyx board list` |
 | commit-records: probe or commit failed | the merge-state probe or the commit fails | transient | transient, re-run `lyx loom commit-records` |
 | commit-records: push rejected | the commit landed locally but a remote rejected the push of the records or the task branch, alone or beside another failure | transient | merge the remote branch into the local branch in the worktree the error names, or clear what a remote rule objects to, then run `lyx fabric push` or re-run `lyx loom commit-records`; a session lyx refuses the verb from reports status: FAILED and the orch runs it |
@@ -413,7 +418,7 @@ The `validate-*` verbs' findings envelopes are each verb's verdict on its artifa
 | fmt: no file named | `lyx loom fmt` runs with no argument | correctness halt | run "lyx loom fmt <file>..." with the Go files to format |
 | fmt: a named file refused | `lyx loom fmt` names a path that does not exist, lies outside the worktree (a symlink resolving outside it included), does not end in `.go`, cannot be read or does not parse; the envelope's `refused` lists each and nothing is written | correctness halt | name only .go files inside this worktree that parse, then re-run "lyx loom fmt" |
 | fmt: write failed partway | `lyx loom fmt` fails to write a formatted file after checking every named file; the envelope names `written` and `failed` | transient | re-run "lyx loom fmt" with the same files once the write error is fixed; a formatted file is left untouched |
-| raw I/O | `stat`, `mkdir`, `read`, `write`, `rename` or `remove` of a status, seed, lock, park marker or records file, of the plan directory's card and overview files or of the renumber journal fails, or the card verbs' run-record read or webster lease fails | transient | re-run the refused verb; nothing is mutated |
+| raw I/O | `stat`, `mkdir`, `read`, `write`, `rename` or `remove` of a status, seed, lock, park marker or records file, of the plan directory's card and overview files, of the plan directory itself in `lyx loom card-pack` or of the renumber journal fails, or a read of a pack fragment stencil in `lyx loom card-pack` fails, or the card verbs' run-record read or webster lease fails | transient | re-run the refused verb; nothing is mutated |
 
 ## gate
 

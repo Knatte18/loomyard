@@ -34,6 +34,8 @@
 // TacklerDir is the durable directory of a run's tackler attempts, TacklerRel its anchor-relative form and TacklerAttemptDir one attempt's directory (attempt-<N>, 1-based).
 // TacklerMarker is the ephemeral in-flight marker under ScratchDir.
 // SettleRecords is the Go driver's settle-record file under a run's directory, beside its drive reports.
+// The settle-record format is declared here too: SettleRecord, StopKey, the settler and action names, and ParseSettleRecords, the tolerant decoder that skips a line that does not decode and reports it by line number.
+// The Go driver appends and reads the file.
 //
 // The batten-watched marker's format is declared here too.
 // BattenWatchedContent renders the pid on the first line and, when known, the prime's batten scratch directory and the Run-Shed row's name on the next two.

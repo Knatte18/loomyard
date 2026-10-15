@@ -273,7 +273,7 @@ func placeForks(t *testing.T, projects, hub string, forks []forkFixture) {
 	}
 }
 
-// mainForks is the placement most report rows share: run alpha holds three forks and three non-forks, run alpha-two four forks.
+// mainForks is the placement most report rows share: run alpha holds three forks and three non-forks, run alpha-two five forks, one of every arm.
 func mainForks() []forkFixture {
 	return []forkFixture{
 		{fixture: "fork-file", run: "alpha", session: "s-alpha", agent: "ffile"},
@@ -285,6 +285,7 @@ func mainForks() []forkFixture {
 		{fixture: "fork-inline", run: "alpha-two", session: "s-two", agent: "finline"},
 		{fixture: "fork-none", run: "alpha-two", session: "s-two", agent: "fnone"},
 		{fixture: "fork-unknown", run: "alpha-two", session: "s-two", agent: "funknown"},
+		{fixture: "fork-card", run: "alpha-two", session: "s-two", agent: "fcard"},
 		{fixture: "fork-raf", run: "alpha-two", session: "s-two", agent: "rafcut", truncate: true, modTime: time.Date(2026, 10, 14, 9, 20, 0, 0, time.UTC)},
 	}
 }
@@ -599,9 +600,9 @@ func TestForkauditReport(t *testing.T) {
 			},
 			check: func(t *testing.T, d auditDirs, args []string, report string) {
 				for _, want := range []string{
-					"- Candidates found: 10",
-					"- Transcripts holding the job heading: 9",
-					"- Forks kept: 7",
+					"- Candidates found: 11",
+					"- Transcripts holding the job heading: 10",
+					"- Forks kept: 8",
 					"- Transcript lines dropped as unparsable: 1",
 				} {
 					if !strings.Contains(report, want+"\n") {
@@ -610,6 +611,7 @@ func TestForkauditReport(t *testing.T) {
 				}
 				samples := tableRows(t, report, "## Samples")
 				wantSamples := map[string][3]string{
+					"card":    {"1", "1", "2"},
 					"file":    {"2", "1", "3"},
 					"raf":     {"2", "2", "2"},
 					"inline":  {"1", "1", "1"},
@@ -714,10 +716,13 @@ func TestForkauditReport(t *testing.T) {
 				if !strings.Contains(report, "- Forks kept: 3\n") {
 					t.Errorf("want 3 forks kept:\n%s", report)
 				}
-				if !strings.Contains(report, "Arms with no forks: inline, none, unknown.") {
+				if !strings.Contains(report, "Arms with no forks: card, inline, none, unknown.") {
 					t.Errorf("report does not name the arms with no forks:\n%s", report)
 				}
-				for _, agent := range []string{"agent-finline", "agent-fnone", "agent-funknown", "agent-rafcut"} {
+				if strings.Contains(report, "Card arm:") {
+					t.Errorf("report holds a card arm note although no card fork is in it:\n%s", report)
+				}
+				for _, agent := range []string{"agent-finline", "agent-fnone", "agent-funknown", "agent-fcard", "agent-rafcut"} {
 					if strings.Contains(report, agent) {
 						t.Errorf("report holds %s from the other run", agent)
 					}
@@ -881,11 +886,20 @@ type traceSpec struct {
 	before time.Duration
 }
 
+// traceTimeLayout is the time format of a trace line, written with a local UTC offset.
+const traceTimeLayout = "2006-01-02T15:04:05.000-07:00"
+
 // traceLine renders a `webster: kickstart pack` trace line logged spec.before ahead of start, with a local UTC offset.
 func traceLine(start time.Time, spec traceSpec) string {
 	logged := start.Add(-spec.before).In(time.FixedZone("local", 2*3600))
 	return fmt.Sprintf(`time=%s level=INFO msg="webster: kickstart pack" trace=abc batch=%d kickstart_pack=on resolved=1 unresolved=0 pack_layout=%s`,
-		logged.Format("2006-01-02T15:04:05.000-07:00"), spec.batch, spec.layout)
+		logged.Format(traceTimeLayout), spec.batch, spec.layout)
+}
+
+// cardPackLine renders a `webster: card pack` trace line logged after past start, in traceLine's time format.
+func cardPackLine(start time.Time, after time.Duration) string {
+	logged := start.Add(after).In(time.FixedZone("local", 2*3600))
+	return fmt.Sprintf(`time=%s level=INFO msg="webster: card pack" trace=abc card=1 resolved=1 unresolved=1`, logged.Format(traceTimeLayout))
 }
 
 // writeTrace writes a trace file with a header record and lines into the logs directory of the worktree <hub>/<run>.
@@ -910,6 +924,8 @@ type traceCase struct {
 	// noTraceFile leaves the worktree without a trace file.
 	noTraceFile bool
 	trace       []traceSpec
+	// cardPacks is how many `webster: card pack` lines the trace file holds, each logged 1 second after the fork's start.
+	cardPacks int
 	// want maps per-fork table columns to the expected cells.
 	want map[string]string
 }
@@ -921,6 +937,8 @@ type traceRow struct {
 	missingRecords bool
 	// wantReport lists substrings of the report.
 	wantReport []string
+	// wantNotReport lists substrings the report lacks.
+	wantNotReport []string
 	// wantCrossChecked maps an arm to its cross-checked count in the samples table.
 	wantCrossChecked map[string]string
 }
@@ -936,7 +954,7 @@ func TestForkauditTraceCrossCheck(t *testing.T) {
 			{fixture: "fork-raf", run: "ra", kind: "local", batch: 1, trace: oneLine("inline"),
 				want: map[string]string{"arm": "raf", "batch": "1", "trace": "inline", "cross-check": "agrees"}},
 			{fixture: "fork-file", run: "rb", kind: "local", batch: 1, trace: oneLine("file"),
-				want: map[string]string{"arm": "file", "batch": "1", "trace": "file", "cross-check": "agrees"}},
+				want: map[string]string{"arm": "file", "batch": "1", "trace": "file", "cross-check": "agrees", "card packs": "-"}},
 			{fixture: "fork-none", run: "rc", kind: "local", batch: 1, trace: oneLine("none"),
 				want: map[string]string{"arm": "none", "batch": "1", "trace": "none", "cross-check": "agrees"}},
 		}, wantCrossChecked: map[string]string{"raf": "1", "file": "1", "none": "1"}},
@@ -995,6 +1013,33 @@ func TestForkauditTraceCrossCheck(t *testing.T) {
 			{fixture: "fork-file", run: "rs", trace: oneLine("file"),
 				want: map[string]string{"batch": "-", "trace": "-", "cross-check": "-"}},
 		}, wantReport: []string{"No cross-check: records repo "}},
+		{name: "the card arm reads its spans from card-pack results and counts its card pack lines", cases: []traceCase{
+			{fixture: "fork-card", run: "rt", kind: "local", batch: 1, cardPacks: 2, trace: oneLine("card"),
+				want: map[string]string{
+					"arm": "card", "trace": "card", "cross-check": "agrees", "card packs": "2/2", "spans": "3", "strict before edit": "1",
+					"strict in first turn": "-", "calls before edit": "3", "net before edit": "2", "net exploration": "2",
+				}},
+		}, wantReport: []string{
+			"Card arm: a span counts as reached when read after the card-pack call that lists it",
+			"Card arm: the first work turn reads card files only",
+			"Card arm: strict before edit and file-level before edit use the window",
+		}, wantNotReport: []string{"Card pack disagreements:"}},
+		{name: "a card fork whose trace says file disagrees", cases: []traceCase{
+			{fixture: "fork-card", run: "ru", kind: "local", batch: 1, cardPacks: 2, trace: oneLine("file"),
+				want: map[string]string{"arm": "card", "trace": "file", "cross-check": "disagrees"}},
+		}},
+		{name: "a card fork with no card pack line traced is listed with the two counts", cases: []traceCase{
+			{fixture: "fork-card", run: "rv", kind: "local", batch: 1, trace: oneLine("card"),
+				want: map[string]string{"card packs": "2/0"}},
+		}, wantReport: []string{"Card pack disagreements:", "- agent-rv (rv): card-pack calls 2, traced 0"}},
+		{name: "a card fork without a trace file has no card pack count", cases: []traceCase{
+			{fixture: "fork-card", run: "rw", kind: "local", batch: 1, noTraceFile: true,
+				want: map[string]string{"card packs": "2/-"}},
+		}, wantNotReport: []string{"Card pack disagreements:"}},
+		{name: "a card fork whose batch does not resolve still counts its card pack lines", cases: []traceCase{
+			{fixture: "fork-card", run: "rx", kind: "local", batch: 1, spawnLead: 20 * time.Second, cardPacks: 2, trace: oneLine("card"),
+				want: map[string]string{"batch": "-", "card packs": "2/2"}},
+		}},
 	}
 	for _, row := range rows {
 		t.Run(row.name, func(t *testing.T) {
@@ -1023,6 +1068,9 @@ func TestForkauditTraceCrossCheck(t *testing.T) {
 					var lines []string
 					for _, spec := range c.trace {
 						lines = append(lines, traceLine(start, spec))
+					}
+					for range c.cardPacks {
+						lines = append(lines, cardPackLine(start, time.Second))
 					}
 					writeTrace(t, d.hub, c.run, lines)
 				}
@@ -1056,6 +1104,11 @@ func TestForkauditTraceCrossCheck(t *testing.T) {
 			for _, want := range row.wantReport {
 				if !strings.Contains(report, want) {
 					t.Errorf("report lacks %q:\n%s", want, report)
+				}
+			}
+			for _, notWant := range row.wantNotReport {
+				if strings.Contains(report, notWant) {
+					t.Errorf("report holds %q:\n%s", notWant, report)
 				}
 			}
 			samples := tableRows(t, report, "## Samples")
@@ -1101,6 +1154,7 @@ func TestForkauditPackCheck(t *testing.T) {
 		{name: "alpha", kind: "local", batches: []batchFixture{
 			{number: 1, cards: []string{"01-alpha", "02-beta"}, startSHA: head, spawnedAt: spawned("fork-file")},
 			{number: 2, cards: []string{"04-delta"}, startSHA: head, spawnedAt: spawned("fork-raf")},
+			{number: 3, cards: []string{"01-alpha", "02-beta"}, startSHA: head, spawnedAt: spawned("fork-card")},
 		}},
 		{name: "beta", kind: "local", batches: []batchFixture{
 			{number: 1, cards: []string{"01-alpha", "02-beta"}, startSHA: absentSHA, spawnedAt: spawned("fork-file")},
@@ -1110,6 +1164,7 @@ func TestForkauditPackCheck(t *testing.T) {
 		{fixture: "fork-file", run: "alpha", session: "s-alpha", agent: "ffile"},
 		{fixture: "fork-file-noedit", run: "alpha", session: "s-alpha", agent: "fnoedit"},
 		{fixture: "fork-raf", run: "alpha", session: "s-alpha", agent: "fraf"},
+		{fixture: "fork-card", run: "alpha", session: "s-alpha", agent: "fcard"},
 		{fixture: "fork-file", run: "beta", session: "s-beta", agent: "bfile"},
 	})
 	stdout, stderr, exit := runForkaudit(t, nil, d.args("--since", "2026-10-13", "--records", records, "--pack-check", "--code", code)...)
@@ -1124,9 +1179,14 @@ func TestForkauditPackCheck(t *testing.T) {
 	if !strings.Contains(report, "- Code: `"+code+"`\n") {
 		t.Errorf("report header does not name --code:\n%s", report)
 	}
+	if !strings.Contains(report, "Card arm: its spans here come from its first card-pack call only") {
+		t.Errorf("report lacks the card arm's pack correctness note:\n%s", report)
+	}
 	counts := map[string]map[string]string{
-		"agent-ffile":   {"correct": "1", "correct-decl": "1", "stale": "1", "wrong": "1", "nofile": "1", "notree": "0", "unchecked": "1", "stale shifts": "8"},
-		"agent-fraf":    {"correct": "1", "correct-decl": "0", "stale": "0", "wrong": "0", "nofile": "0", "notree": "0", "unchecked": "0"},
+		"agent-ffile": {"correct": "1", "correct-decl": "1", "stale": "1", "wrong": "1", "nofile": "1", "notree": "0", "unchecked": "1", "stale shifts": "8"},
+		"agent-fraf":  {"correct": "1", "correct-decl": "0", "stale": "0", "wrong": "0", "nofile": "0", "notree": "0", "unchecked": "0"},
+		// The card fork's second card-pack call lists a stale span that is never graded, and its unresolved ref counts in no class.
+		"agent-fcard":   {"correct": "1", "stale": "0"},
 		"agent-fnoedit": {"correct": "0", "notree": "1"},
 		"agent-bfile":   {"correct": "0", "notree": "6"},
 	}

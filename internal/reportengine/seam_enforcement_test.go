@@ -26,6 +26,7 @@ var allowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/shedadapters",
 	"github.com/Knatte18/loomyard/internal/discussionparser",
 	"github.com/Knatte18/loomyard/internal/boardengine",
+	"github.com/Knatte18/loomyard/internal/durfmt",
 }
 
 // TestToldGeometryInvariant_AllowlistOnly verifies the import allowlist, which excludes internal/lyxcwd, and that no allowed path goes unused.

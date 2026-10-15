@@ -38,6 +38,7 @@
 //   - anything else: hand back.
 //
 // The settle records at `shedrun.SettleRecords` hold one line per action taken at a stop.
+// The record format and its tolerant decoder are declared in `internal/shedrun`; this package appends and reads the file, and `SettleRecord` and `StopKey` are aliases of the types declared there.
 // The repair cap, the one verify retry, the one hand-over per build and the open tackler attempt are counted from them, so a restarted driver keeps every cap.
 //
 // # Seams a recipe fills

@@ -106,6 +106,17 @@
 // A halting outcome wins and leaves pause_after recorded, and so does a producer error.
 // The fired step's Reason reads "paused before <target>, as requested" or "paused after <target>, as requested".
 //
+// # Caller labels
+//
+// A history entry's by is the caller label of the goto or resume that wrote it, and the status file's pending_by is the label of a step that resumed a halted run, waiting for the next appended entry to carry it.
+// Goto writes its GotoRequest.By on the goto entry and clears pending_by; Relaunch clears pending_by and writes no by.
+// A step resuming a blocked, failed or awaiting run sets pending_by to Shed.ResumedBy, and RecordResumer does the same for a loop's waiter before its children step; a resume from paused records nothing.
+// The first label stands: nothing sets pending_by while one is pending, so the waiter's label survives its loop children, each with its own.
+// The next write that appends a history entry hands pending_by to that entry and clears it; a write that appends none carries it through.
+// CallerShed is the label of lyx's own automatic steps.
+// The labels are for reports only: no Go decision reads by, pending_by or ResumedBy, and the refusals of goto and step do not change.
+// Shed takes the label as a plain string and imports nothing to classify it.
+//
 // # Told, never derived
 //
 // Shed is told StatusPath, LockPath, and StatusLockPath and derives none of them; it resolves no cwd

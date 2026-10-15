@@ -45,7 +45,7 @@ func TestReadChildPublishFailure_MapsTheRecord(t *testing.T) {
 func TestChildGoVerifyRetrySpent_ReadsThePerRunRecords(t *testing.T) {
 	t.Parallel()
 
-	retry := sheddriver.SettleRecord{Settler: sheddriver.SettlerGoRule, Action: sheddriver.SettleVerifyRetry}
+	retry := sheddriver.SettleRecord{Settler: shedrun.SettlerGoRule, Action: shedrun.SettleVerifyRetry}
 	newLocation := func() *lyxcwd.Location {
 		return &lyxcwd.Location{RepoName: "example", HubPath: t.TempDir(), WorktreeName: "a-slug", AnchorRel: "."}
 	}

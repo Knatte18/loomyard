@@ -37,6 +37,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/frictionengine"
@@ -87,8 +88,8 @@ func genericShedVerb(verb string) bool {
 // Tier 1 despite arm itself needing lyxcwd.Resolve's real git spawn.
 func (c *loomCLI) resolveRunID(location *lyxcwd.Location, verb string, args []string) error {
 	runID := shedrun.SelfRunID
-	// reject's one positional argument is its review file, insert-card's and remove-card's first is a card position, and fmt's arguments are the Go files to format; none is a run-id.
-	if len(args) > 0 && verb != "reject" && verb != "insert-card" && verb != "remove-card" && verb != "fmt" {
+	// reject's one positional argument is its review file, insert-card's and remove-card's first is a card position, card-pack's is a card number, and fmt's arguments are the Go files to format; none is a run-id.
+	if len(args) > 0 && verb != "reject" && verb != "insert-card" && verb != "remove-card" && verb != "card-pack" && verb != "fmt" {
 		runID = args[0]
 	}
 	c.runID = runID
@@ -176,6 +177,7 @@ func (c *loomCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec, e
 // location.AnchorPath() for wireLightweight/wire's own cwd parameter, since cwd is provably equal to
 // AnchorPath() after a successful resolve (see lyxcwd.Location's own doc comment).
 func (c *loomCLI) armAt(location *lyxcwd.Location, verb string, args []string) (shedverbs.Spec, error) {
+	c.caller = agentname.CallerLabel(os.Getenv(agentname.StrandNameEnv))
 	if err := c.resolveRunID(location, verb, args); err != nil {
 		return shedverbs.Spec{}, err
 	}
@@ -315,6 +317,7 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 	}
 
 	spec.FrictionDir = c.frictionDir
+	spec.Caller = c.caller
 	// The nil guard keeps the untagged tests that call specFor on a hand-populated receiver with no
 	// location working.
 	if c.location != nil {
