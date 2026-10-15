@@ -1,6 +1,6 @@
 // spawn.go implements the ide entry point Spawn (`ide spawn`), and its two halves for a task pair, SeedTask and OpenTask.
 // It assigns a title-bar color, generates the worktree's .vscode/ config, and launches VS Code;
-// it regenerates the interactive chain on every call and keeps .vscode/ out of git through info/exclude.
+// it regenerates tasks.json on every call and keeps .vscode/ out of git through info/exclude.
 // A task slug opens its bare folder.
 // The prime instead opens a lyx-generated hub workspace (prime, _board, _portals) under <hub>/_launchers/<AnchorRel>, regenerated on every prime spawn.
 
@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 
@@ -29,7 +28,7 @@ var CodeLauncher = vscode.Launch
 // It defaults to vscode.UserKeybindingsPath and is exported so that tests in other packages can point it at a temporary file.
 var KeybindingsPath = vscode.UserKeybindingsPath
 
-// Spawn regenerates a worktree's interactive .vscode/ chain on every call and launches VS Code.
+// Spawn regenerates a worktree's .vscode/ config on every call and launches VS Code.
 // It keeps .vscode/ out of git through info/exclude and never writes a .gitignore;
 // a tracked .vscode/tasks.json is left alone with a warning, and the launch still happens.
 // A task slug launches its bare folder <hub>/<slug>/<AnchorRel> and writes no workspace file.
@@ -41,7 +40,7 @@ var KeybindingsPath = vscode.UserKeybindingsPath
 func Spawn(l *lyxcwd.Location, slug string) (vscode.KeybindingsResult, error) {
 	worktreeDir, color, primeName, primeResolved := resolveSpawnTarget(l, slug, targetUnknown)
 
-	if err := writeInteractiveConfig(l, worktreeDir, slug, color); err != nil {
+	if err := writeWorktreeConfig(l, worktreeDir, slug, color); err != nil {
 		return vscode.KeybindingsResult{}, err
 	}
 
@@ -59,11 +58,11 @@ func Spawn(l *lyxcwd.Location, slug string) (vscode.KeybindingsResult, error) {
 	return keybindings, CodeLauncher(openDir)
 }
 
-// SeedTask writes task slug's title-bar color and interactive .vscode/ chain, as Spawn does for a task pair, and launches nothing.
+// SeedTask writes task slug's title-bar color and .vscode/ config, as Spawn does for a task pair, and launches nothing.
 // It leaves the user's keybindings.json alone.
 func SeedTask(l *lyxcwd.Location, slug string) error {
 	worktreeDir, color, _, _ := resolveSpawnTarget(l, slug, targetTask)
-	return writeInteractiveConfig(l, worktreeDir, slug, color)
+	return writeWorktreeConfig(l, worktreeDir, slug, color)
 }
 
 // OpenTask launches VS Code on task slug's bare folder, as Spawn does for a task pair, and writes nothing.
@@ -71,12 +70,11 @@ func OpenTask(l *lyxcwd.Location, slug string) error {
 	return CodeLauncher(filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel))
 }
 
-// writeInteractiveConfig writes the interactive chain's config through writeVSCodeConfig, stamping in the absolute lyx and claude paths.
-// Each path degrades to the empty string on error so vscode.WriteConfig's own bare-name fallback rule applies.
-func writeInteractiveConfig(l *lyxcwd.Location, worktreeDir, slug, color string) error {
+// writeWorktreeConfig writes the worktree's .vscode/ config through writeVSCodeConfig, stamping in the absolute lyx path.
+// The path degrades to the empty string on error so vscode.WriteConfig's own bare-name fallback rule applies.
+func writeWorktreeConfig(l *lyxcwd.Location, worktreeDir, slug, color string) error {
 	lyxPath, _ := os.Executable()
-	claudePath, _ := exec.LookPath("claude")
-	return writeVSCodeConfig(l, worktreeDir, slug, color, lyxPath, claudePath, vscode.TaskChainInteractive)
+	return writeVSCodeConfig(l, worktreeDir, slug, color, lyxPath)
 }
 
 // seedKeybindings seeds the user's keybindings.json through the KeybindingsPath seam; a path it cannot resolve is a skip.
@@ -88,10 +86,10 @@ func seedKeybindings() vscode.KeybindingsResult {
 	return vscode.SeedKeybindings(keybindingsPath)
 }
 
-// writeVSCodeConfig keeps .vscode/ out of git and writes the chain's config at the worktree's anchor.
+// writeVSCodeConfig keeps .vscode/ out of git and writes the .vscode/ config at the worktree's anchor.
 // When .vscode/tasks.json is already tracked, it logs one warning and writes neither file nor the exclude line.
 // Otherwise it first adds an anchored .vscode line to the shared info/exclude, then calls vscode.WriteConfig.
-func writeVSCodeConfig(l *lyxcwd.Location, worktreeDir, slug, color, lyxPath, claudePath string, chain vscode.TaskChain) error {
+func writeVSCodeConfig(l *lyxcwd.Location, worktreeDir, slug, color, lyxPath string) error {
 	tasksRel := path.Join(filepath.ToSlash(l.AnchorRel), ".vscode", "tasks.json")
 	tracked, err := fabricengine.PathTracked(worktreeDir, tasksRel)
 	if err != nil {
@@ -108,7 +106,7 @@ func writeVSCodeConfig(l *lyxcwd.Location, worktreeDir, slug, color, lyxPath, cl
 	if changed {
 		logger.Info("excluded .vscode/ from git", "slug", slug, "exclude", excludePath)
 	}
-	if err := vscode.WriteConfig(worktreeDir, l.AnchorRel, slug, color, lyxPath, claudePath, chain); err != nil {
+	if err := vscode.WriteConfig(worktreeDir, l.AnchorRel, slug, color, lyxPath); err != nil {
 		return fmt.Errorf("write vscode config: %w", err)
 	}
 	return nil

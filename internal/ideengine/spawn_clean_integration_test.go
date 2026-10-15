@@ -1,6 +1,6 @@
 //go:build integration
 
-// spawn_clean_integration_test.go holds the interactive-chain Spawn checks that run against task pairs and the prime of one hubforge hub:
+// spawn_clean_integration_test.go holds the .vscode/ config Spawn checks that run against task pairs and the prime of one hubforge hub:
 // a clean tree through info/exclude, the overwrite of an untracked tasks.json and the tracked-tasks.json skip.
 // Each check is a step of a scenario in spawn_scenario_integration_test.go, which names why they run serially.
 
@@ -61,37 +61,18 @@ func commitFile(t *testing.T, dir, rel, content string) {
 	gitkit.Git(t, dir, "commit", "-m", "add "+rel)
 }
 
-// assertInteractiveChain fails the test unless anchorDir's tasks.json is the interactive chain with absolute commands and --unless-name orch on the add row.
-func assertInteractiveChain(t *testing.T, anchorDir string) {
+// assertAttachTaskOnly fails the test unless anchorDir's tasks.json holds only the on-demand reed attach task, with an absolute command and no folder-open trigger.
+func assertAttachTaskOnly(t *testing.T, anchorDir string) {
 	t.Helper()
-	var add map[string]any
-	labels := map[string]bool{}
-	for _, task := range readTasks(t, anchorDir) {
-		labels[task["label"].(string)] = true
-		if command, ok := task["command"].(string); ok && !filepath.IsAbs(command) {
-			t.Errorf("task %v command = %q; want an absolute path", task["label"], command)
-		}
-		if task["label"] == "reed add claude" {
-			add = task
-		}
+	tasks := readTasks(t, anchorDir)
+	if len(tasks) != 1 || tasks[0]["label"] != "reed attach" {
+		t.Fatalf("tasks = %v; want the single reed attach task", tasks)
 	}
-	for _, want := range []string{"reed up", "reed add claude", "reed attach", "Start Claude"} {
-		if !labels[want] {
-			t.Errorf("missing task %q in %v", want, labels)
-		}
+	if command, _ := tasks[0]["command"].(string); !filepath.IsAbs(command) {
+		t.Errorf("reed attach command = %q; want an absolute path", command)
 	}
-	if add == nil {
-		t.Fatalf("no reed add claude task")
-	}
-	var args []string
-	for _, a := range add["args"].([]any) {
-		args = append(args, a.(string))
-	}
-	joined := strings.Join(args, " ")
-	for _, want := range []string{"--if-absent", "--unless-name orch", "--name claude", "--focus"} {
-		if !strings.Contains(joined, want) {
-			t.Errorf("reed add claude args = %v; missing %q", args, want)
-		}
+	if runOptions, ok := tasks[0]["runOptions"]; ok {
+		t.Errorf("reed attach carries runOptions %v; want none, so opening the folder runs nothing", runOptions)
 	}
 }
 
@@ -126,7 +107,7 @@ func checkTaskPairStaysClean(t *testing.T, h *hubforge.Hub, slug, gitignore stri
 	if !wantExclude && !bytes.Equal(excludeBefore, excludeAfter) {
 		t.Errorf("info/exclude changed:\n%s", excludeAfter)
 	}
-	assertInteractiveChain(t, anchorDir)
+	assertAttachTaskOnly(t, anchorDir)
 }
 
 // checkOverwritesTasksKeepsSettings asserts an untracked tasks.json holding an old chain is replaced and an existing settings.json is untouched.
@@ -151,7 +132,7 @@ func checkOverwritesTasksKeepsSettings(t *testing.T, h *hubforge.Hub, slug strin
 		t.Fatalf("Spawn: %v", err)
 	}
 
-	assertInteractiveChain(t, filepath.Dir(vscodeDir))
+	assertAttachTaskOnly(t, filepath.Dir(vscodeDir))
 	got, err := os.ReadFile(filepath.Join(vscodeDir, "settings.json"))
 	if err != nil {
 		t.Fatalf("read settings: %v", err)
