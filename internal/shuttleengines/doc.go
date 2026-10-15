@@ -6,6 +6,9 @@
 // It refuses a config whose engine: key names no registered engine, whichever config layer set it.
 // Names lists the registered names, which equal modelspec's closed set of engine names.
 //
+// Each registry entry carries its engine's config module as plain data, and ConfigModules lists them sorted by name for the config registry,
+// so an engine's config module reaches that registry through this package alone.
+//
 // SessionNamer lives here for now: reed is provider-blind, so the provider that reads and repairs a session's own name is chosen by this wiring layer.
 // The package is told its Config and never imports internal/lyxcwd.
 package shuttleengines

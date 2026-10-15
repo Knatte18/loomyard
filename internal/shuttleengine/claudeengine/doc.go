@@ -51,6 +51,12 @@
 // and the sequence is `/color <name>` typed and submitted, with no leading Escape.
 // A color outside the palette answers no inputs.
 //
+// The engine owns a layered config module, `claude.yaml`, declared in config.go:
+// `binary`, `deny_agent_tool`, `deny_ask_user_question`, `prompt_cache_ttl` and `prompt_cache_ttl_roles`.
+// LoadConfig resolves it through the degrading loader, stacking the template, the repo default, the worktree file and the local override,
+// and a local override may set only the cache lifetimes.
+// It is told its directories and derives none.
+//
 // Both lines carry `CLAUDE_CODE_PROMPT_CACHE_TTL`, so a session writes its prompt cache at the TTL its role needs rather than at Claude Code's subscription default.
 // Prepare resolves the value from `Spec.Role` through `shuttle.yaml`'s `claude_prompt_cache_ttl_roles` map, with `claude_prompt_cache_ttl` as the fallback for an empty or unmapped role,
 // and validates the whole configured set to `5m` or `1h` (exact, case-sensitive) before any artifact is written.

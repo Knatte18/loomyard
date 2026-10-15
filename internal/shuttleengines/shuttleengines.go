@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
@@ -15,15 +16,63 @@ import (
 // constructor builds one engine from the shuttle config.
 type constructor func(cfg shuttleengine.Config) shuttleengine.Engine
 
-// registry maps each registered engine name to its constructor.
-var registry = map[string]constructor{
-	"claude": func(cfg shuttleengine.Config) shuttleengine.Engine { return claudeengine.NewFromConfig(cfg) },
+// ConfigModule is one engine's config module as plain data, so the config registry can list it without importing the engine.
+type ConfigModule struct {
+	// Name is the module identifier and its file's base name.
+	Name string
+	// Template returns the module's default YAML template.
+	Template func() string
+	// OpenMaps are the template's dotted paths whose entries belong to the operator.
+	OpenMaps []string
+	// Migrate, when non-nil, rewrites a present file's bytes before reconcile compares them to the template.
+	Migrate func(existing []byte) ([]byte, []string, error)
+	// Spec returns the module's layered-load spec.
+	Spec func() configengine.Spec
+	// CheckLoad runs the module's own loader under dirs and returns its error, discarding the loaded config.
+	CheckLoad func(configengine.Dirs) error
+}
+
+// entry pairs a registered engine's constructor with its config module.
+type entry struct {
+	constructor constructor
+	config      ConfigModule
+}
+
+// registry maps each registered engine name to its entry.
+var registry = map[string]entry{
+	"claude": {
+		constructor: func(cfg shuttleengine.Config) shuttleengine.Engine { return claudeengine.NewFromConfig(cfg) },
+		config: ConfigModule{
+			Name:     "claude",
+			Template: claudeengine.ConfigTemplate,
+			OpenMaps: claudeengine.ConfigOpenMaps(),
+			Spec:     claudeengine.ConfigSpec,
+			CheckLoad: func(dirs configengine.Dirs) error {
+				_, err := claudeengine.LoadConfig(dirs)
+				return err
+			},
+		},
+	},
 }
 
 // New builds the set of every registered engine from cfg, with cfg.Engine as the default.
 // It refuses a cfg.Engine that names no registered engine.
 func New(cfg shuttleengine.Config) (shuttleengine.EngineSet, error) {
-	return build(cfg, registry)
+	constructors := make(map[string]constructor, len(registry))
+	for name, registered := range registry {
+		constructors[name] = registered.constructor
+	}
+	return build(cfg, constructors)
+}
+
+// ConfigModules returns every registered engine's config module, sorted by name.
+func ConfigModules() []ConfigModule {
+	modules := make([]ConfigModule, 0, len(registry))
+	for _, registered := range registry {
+		modules = append(modules, registered.config)
+	}
+	sort.Slice(modules, func(i, j int) bool { return modules[i].Name < modules[j].Name })
+	return modules
 }
 
 // build constructs one engine per entry of constructors from cfg and returns them as a set whose default is cfg.Engine.

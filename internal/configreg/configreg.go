@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"sort"
 	"strconv"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
@@ -29,6 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -126,6 +128,10 @@ func Modules() []Module {
 		{Name: "shuttle", Template: shuttleengine.ConfigTemplate, OpenMaps: shuttleengine.ConfigOpenMaps(), Migrate: shuttleengine.MigrateConfig, CheckLoad: checkLoadNamed(shuttleengine.LoadConfig, "shuttle"), Spec: shuttleengine.ConfigSpec},
 		{Name: "webster", Template: websterengine.ConfigTemplate, CheckLoad: checkLoadNamed(websterengine.LoadConfig, "webster"), Spec: websterengine.ConfigSpec},
 	}
+	for _, engine := range shuttleengines.ConfigModules() {
+		modules = append(modules, Module{Name: engine.Name, Template: engine.Template, OpenMaps: engine.OpenMaps, Migrate: engine.Migrate, CheckLoad: engine.CheckLoad, Spec: engine.Spec})
+	}
+	sort.Slice(modules, func(i, j int) bool { return modules[i].Name < modules[j].Name })
 	for i := range modules {
 		modules[i] = withLocalBounds(modules[i])
 	}
