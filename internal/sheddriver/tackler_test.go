@@ -1,6 +1,6 @@
-// tackler_test.go — untagged Tier-1 tests for the Go driver's tackler call, over the arbiter's fake shuttle, a fixed clock and a fake pause reader.
+// tackler_test.go — untagged Tier-1 tests for the shed driver's tackler call, over a scripted agent shuttle, a fixed clock and a fake pause reader.
 
-package loomcli
+package sheddriver
 
 import (
 	"errors"
@@ -11,11 +11,74 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
+
+// agentFake is a scripted AgentShuttle: it records every call and runs the scripted hooks inside Wait and AttachIfLive, where the real agent would write its verdict.
+// It is declared here and not in a test kit because a kit importing this package would be an import cycle.
+type agentFake struct {
+	starts       []shuttleengine.Spec
+	attaches     []shuttleengine.Spec
+	stoppedGUIDs []string
+	runStops     int
+
+	startErr   error
+	runGUID    string
+	onWait     func(spec shuttleengine.Spec)
+	waitResult shuttleengine.Result
+	waitErr    error
+
+	attachFound  bool
+	attachErr    error
+	attachResult shuttleengine.Result
+	onAttach     func(spec shuttleengine.Spec)
+}
+
+func (f *agentFake) Start(spec shuttleengine.Spec) (AgentRun, error) {
+	if f.startErr != nil {
+		return nil, f.startErr
+	}
+	f.starts = append(f.starts, spec)
+	return &agentFakeRun{fake: f, spec: spec}, nil
+}
+
+func (f *agentFake) AttachIfLive(spec shuttleengine.Spec) (shuttleengine.Result, bool, error) {
+	f.attaches = append(f.attaches, spec)
+	if f.onAttach != nil {
+		f.onAttach(spec)
+	}
+	return f.attachResult, f.attachFound, f.attachErr
+}
+
+func (f *agentFake) StopStrand(guid string) error {
+	f.stoppedGUIDs = append(f.stoppedGUIDs, guid)
+	return nil
+}
+
+type agentFakeRun struct {
+	fake *agentFake
+	spec shuttleengine.Spec
+}
+
+func (r *agentFakeRun) Wait() (shuttleengine.Result, error) {
+	if r.fake.onWait != nil {
+		r.fake.onWait(r.spec)
+	}
+	result := r.fake.waitResult
+	if result.Outcome == "" {
+		result.Outcome = shuttleengine.OutcomeDone
+	}
+	return result, r.fake.waitErr
+}
+
+func (r *agentFakeRun) Stop() error {
+	r.fake.runStops++
+	return nil
+}
+
+func (r *agentFakeRun) StrandGUID() string { return r.fake.runGUID }
 
 // tacklerFixture is one temp run directory with the tackler call's seams over it.
 type tacklerFixture struct {
@@ -23,15 +86,17 @@ type tacklerFixture struct {
 	root string
 	now  time.Time
 
-	status     shedengine.Status
-	settings   loomengine.TacklerSettings
-	fake       *arbiterFake
-	snapshot   sheddriver.WorktreeSnapshot
-	paused     time.Duration
-	closed     func(spawned time.Time) bool
-	producers  []string
-	envelope   string
-	reportPath string
+	status         shedengine.Status
+	settings       TacklerSettings
+	fake           *agentFake
+	snapshot       WorktreeSnapshot
+	paused         time.Duration
+	closed         func(spawned time.Time) bool
+	producers      []string
+	envelope       string
+	reportPath     string
+	gotoRoutedFrom bool
+	noSnapshot     bool
 }
 
 const tacklerTestRun = "operator-surface"
@@ -51,12 +116,13 @@ func newTacklerFixture(t *testing.T) *tacklerFixture {
 				{Producer: "Plan-Write", Outcome: shedengine.Done},
 			},
 		},
-		settings:   loomengine.TacklerSettings{Model: "claude-resolved", Effort: "low", Version: "v1", Timeout: 10 * time.Minute, MaxSpawns: 2},
-		fake:       &arbiterFake{runGUID: "guid-1"},
-		snapshot:   sheddriver.WorktreeSnapshot{Head: "abc123", Branch: "task", Dirty: map[string]string{"a.go": "h1"}},
-		producers:  []string{"Plan-Draft", "Plan-Write", "Plan-Bouncer", "PR-Gate"},
-		envelope:   filepath.Join(root, "stop-envelope.json"),
-		reportPath: filepath.Join(root, "report.md"),
+		settings:       TacklerSettings{Model: "claude-resolved", Effort: "low", Version: "v1", Timeout: 10 * time.Minute, MaxSpawns: 2},
+		fake:           &agentFake{runGUID: "guid-1"},
+		snapshot:       WorktreeSnapshot{Head: "abc123", Branch: "task", Dirty: map[string]string{"a.go": "h1"}},
+		producers:      []string{"Plan-Draft", "Plan-Write", "Plan-Bouncer", "PR-Gate"},
+		envelope:       filepath.Join(root, "stop-envelope.json"),
+		reportPath:     filepath.Join(root, "report.md"),
+		gotoRoutedFrom: true,
 	}
 }
 
@@ -66,39 +132,46 @@ func (f *tacklerFixture) attemptDir(n int) string {
 	return filepath.Join(f.tacklerDir(), "attempt-"+string(rune('0'+n)))
 }
 
-func (f *tacklerFixture) deps() tacklerDeps {
+func (f *tacklerFixture) deps() TacklerDeps {
 	producers := make([]shedengine.ProducerDef, len(f.producers))
 	for i, name := range f.producers {
 		producers[i] = shedengine.ProducerDef{Name: name}
 	}
-	return tacklerDeps{
-		Closed: func(_ sheddriver.StopKey, spawned time.Time) (bool, error) {
+	stencilsDir := filepath.Join(f.t.TempDir(), "stencils")
+	stencilkit.SeedInto(f.t, stencilsDir)
+	deps := TacklerDeps{
+		Closed: func(_ StopKey, spawned time.Time) (bool, error) {
 			return f.closed != nil && f.closed(spawned), nil
 		},
-		ReadStatus:   func() (shedengine.Status, bool, error) { return f.status, true, nil },
-		Settings:     f.settings,
-		TacklerDir:   f.tacklerDir(),
-		AttemptDir:   f.attemptDir,
-		MarkerPath:   f.markerPath(),
-		Producers:    producers,
-		Snapshot:     func() (sheddriver.WorktreeSnapshot, error) { return f.snapshot, nil },
-		PausedWithin: func(_, _ time.Time) (time.Duration, error) { return f.paused, nil },
-		Prompt: tacklerPromptInput{
+		ReadStatus:     func() (shedengine.Status, bool, error) { return f.status, true, nil },
+		Settings:       f.settings,
+		TacklerDir:     f.tacklerDir(),
+		AttemptDir:     f.attemptDir,
+		MarkerPath:     f.markerPath(),
+		Producers:      producers,
+		PausedWithin:   func(_, _ time.Time) (time.Duration, error) { return f.paused, nil },
+		Recipe:         "test: a recipe for the tackler tests",
+		GotoRoutedFrom: f.gotoRoutedFrom,
+		Prompt: TacklerPromptInput{
 			Slug:      "operator-surface-task",
 			Worktree:  f.root,
 			TraceDir:  filepath.Join(f.root, "traces"),
 			DriverLog: filepath.Join(f.root, "driver.log"),
 		},
-		StencilsDir: seededStencils(f.t),
+		StencilsDir: stencilsDir,
 		Shuttle:     f.fake,
 		Now:         func() time.Time { return f.now },
 	}
+	if !f.noSnapshot {
+		deps.Snapshot = func() (WorktreeSnapshot, error) { return f.snapshot, nil }
+	}
+	return deps
 }
 
 // settle runs one call over the fixture's seams.
-func (f *tacklerFixture) settle() (sheddriver.TacklerEnvelope, error) {
+func (f *tacklerFixture) settle() (TacklerEnvelope, error) {
 	f.t.Helper()
-	call, err := newTacklerCall(f.deps(), tacklerInput{
+	call, err := NewTacklerCall(f.deps(), TacklerInput{
 		RunID:        tacklerTestRun,
 		EnvelopePath: f.envelope,
 		ReportPath:   f.reportPath,
@@ -106,22 +179,22 @@ func (f *tacklerFixture) settle() (sheddriver.TacklerEnvelope, error) {
 		StderrPath:   filepath.Join(f.root, "step.stderr.log"),
 	})
 	if err != nil {
-		f.t.Fatalf("newTacklerCall() error = %v; want nil", err)
+		f.t.Fatalf("NewTacklerCall() error = %v; want nil", err)
 	}
-	return call.settle()
+	return call.Settle()
 }
 
 // priorAttempt writes an attempt for the fixture's current stop, with its deadline offset from now.
-func (f *tacklerFixture) priorAttempt(number int, deadlineIn time.Duration) sheddriver.TacklerAttempt {
+func (f *tacklerFixture) priorAttempt(number int, deadlineIn time.Duration) TacklerAttempt {
 	f.t.Helper()
-	attempt := sheddriver.TacklerAttempt{
+	attempt := TacklerAttempt{
 		Number:     number,
-		StopKey:    sheddriver.StopKeyOf(f.status),
+		StopKey:    StopKeyOf(f.status),
 		SpawnedAt:  f.now.Add(-5 * time.Minute),
 		Deadline:   f.now.Add(deadlineIn),
 		StrandGUID: "old-guid",
 	}
-	if err := sheddriver.WriteTacklerAttempt(f.attemptDir(number), attempt); err != nil {
+	if err := WriteTacklerAttempt(f.attemptDir(number), attempt); err != nil {
 		f.t.Fatal(err)
 	}
 	attempt.Dir = f.attemptDir(number)
@@ -164,35 +237,40 @@ func TestTacklerCall_SpawnPath(t *testing.T) {
 		{
 			name:    "tackler_max_spawns 0 starts nothing",
 			setup:   func(f *tacklerFixture) { f.settings.MaxSpawns = 0 },
-			wantErr: errTacklerUnavailable, wantErrText: "tackler_max_spawns: 0",
+			wantErr: ErrTacklerUnavailable, wantErrText: "tackler_max_spawns: 0",
 		},
 		{
 			name: "spent budget starts nothing",
 			setup: func(f *tacklerFixture) {
 				f.settings.MaxSpawns = 1
-				other := sheddriver.TacklerAttempt{Number: 1, StopKey: sheddriver.StopKey{CurrentProducer: "PR-Gate", HistoryLength: 1, State: "awaiting"}}
-				if err := sheddriver.WriteTacklerAttempt(f.attemptDir(1), other); err != nil {
+				other := TacklerAttempt{Number: 1, StopKey: StopKey{CurrentProducer: "PR-Gate", HistoryLength: 1, State: "awaiting"}}
+				if err := WriteTacklerAttempt(f.attemptDir(1), other); err != nil {
 					t.Fatal(err)
 				}
 			},
-			wantErr: errTacklerUnavailable, wantErrText: "spawn budget spent", keepsTacklerDir: true,
+			wantErr: ErrTacklerUnavailable, wantErrText: "spawn budget spent", keepsTacklerDir: true,
 		},
 		{
 			name:        "fresh stop records the attempt before the start and concludes the verdict",
 			setup:       func(f *tacklerFixture) {},
-			wantVerdict: sheddriver.TacklerVerdictResume, wantStarts: 1,
+			wantVerdict: TacklerVerdictResume, wantStarts: 1,
+		},
+		{
+			name:        "a recipe wiring no snapshot records an empty one",
+			setup:       func(f *tacklerFixture) { f.noSnapshot = true },
+			wantVerdict: TacklerVerdictResume, wantStarts: 1,
 		},
 		{
 			name:      "start error reads hand-back died",
 			setup:     func(f *tacklerFixture) { f.fake.startErr = errors.New("no pane") },
-			wantCause: arbiterCauseDied, wantVerdict: sheddriver.TacklerVerdictHandBack,
+			wantCause: CauseDied, wantVerdict: TacklerVerdictHandBack,
 		},
 		{
 			name: "timeout with no paused time stops the strand",
 			setup: func(f *tacklerFixture) {
 				f.fake.waitResult = shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}
 			},
-			wantCause: arbiterCauseTimeout, wantVerdict: sheddriver.TacklerVerdictHandBack, wantStarts: 1, wantStops: 1,
+			wantCause: CauseTimeout, wantVerdict: TacklerVerdictHandBack, wantStarts: 1, wantStops: 1,
 		},
 		{
 			name: "timeout over a paused window re-attaches with the deadline moved out",
@@ -201,7 +279,7 @@ func TestTacklerCall_SpawnPath(t *testing.T) {
 				f.fake.waitResult = shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}
 				f.fake.attachFound = true
 			},
-			wantVerdict: sheddriver.TacklerVerdictResume, wantStarts: 1, wantAttach: 1,
+			wantVerdict: TacklerVerdictResume, wantStarts: 1, wantAttach: 1,
 		},
 	}
 	for _, tt := range tests {
@@ -211,19 +289,19 @@ func TestTacklerCall_SpawnPath(t *testing.T) {
 			tt.setup(f)
 
 			type captured struct {
-				attempt sheddriver.TacklerAttempt
-				marker  sheddriver.TacklerMarker
+				attempt TacklerAttempt
+				marker  TacklerMarker
 				prompt  string
 			}
 			var atWait captured
 			var attachSpec shuttleengine.Spec
 			writeVerdict := func() {
-				writeTacklerFile(t, sheddriver.TacklerVerdictPath(f.attemptDir(1)), tacklerResumeVerdict)
+				writeTacklerFile(t, TacklerVerdictPath(f.attemptDir(1)), tacklerResumeVerdict)
 			}
 			f.fake.onWait = func(shuttleengine.Spec) {
-				atWait.attempt, _ = sheddriver.ReadTacklerAttempt(f.attemptDir(1))
-				atWait.marker, _, _ = sheddriver.ReadTacklerMarker(f.markerPath())
-				data, _ := os.ReadFile(sheddriver.TacklerPromptPath(f.attemptDir(1)))
+				atWait.attempt, _ = ReadTacklerAttempt(f.attemptDir(1))
+				atWait.marker, _, _ = ReadTacklerMarker(f.markerPath())
+				data, _ := os.ReadFile(TacklerPromptPath(f.attemptDir(1)))
 				atWait.prompt = string(data)
 				if f.fake.waitResult.Outcome == "" {
 					writeVerdict()
@@ -257,10 +335,10 @@ func TestTacklerCall_SpawnPath(t *testing.T) {
 			if len(f.fake.starts) != tt.wantStarts || f.fake.runStops != tt.wantStops || len(f.fake.attaches) != tt.wantAttach {
 				t.Errorf("starts, run stops, attaches = %d, %d, %d; want %d, %d, %d", len(f.fake.starts), f.fake.runStops, len(f.fake.attaches), tt.wantStarts, tt.wantStops, tt.wantAttach)
 			}
-			if _, found, _ := sheddriver.ReadTacklerMarker(f.markerPath()); found {
+			if _, found, _ := ReadTacklerMarker(f.markerPath()); found {
 				t.Error("marker still present after the call finished; want it removed")
 			}
-			if stored, found, err := sheddriver.ReadTacklerEnvelope(sheddriver.TacklerEnvelopePath(f.attemptDir(1))); err != nil || !found || stored != envelope {
+			if stored, found, err := ReadTacklerEnvelope(TacklerEnvelopePath(f.attemptDir(1))); err != nil || !found || stored != envelope {
 				t.Errorf("envelope.json = %+v, found %v, error %v; want the returned envelope %+v", stored, found, err, envelope)
 			}
 			if tt.wantStarts == 0 {
@@ -268,18 +346,22 @@ func TestTacklerCall_SpawnPath(t *testing.T) {
 			}
 
 			spec := f.fake.starts[0]
-			verdictPath := sheddriver.TacklerVerdictPath(f.attemptDir(1))
-			if spec.Role != sheddriver.TacklerRole || !reflect.DeepEqual(spec.OutputFiles, []string{verdictPath}) || spec.Model != "claude-resolved" || spec.Timeout != 10*time.Minute {
+			verdictPath := TacklerVerdictPath(f.attemptDir(1))
+			if spec.Role != TacklerRole || !reflect.DeepEqual(spec.OutputFiles, []string{verdictPath}) || spec.Model != "claude-resolved" || spec.Timeout != 10*time.Minute {
 				t.Errorf("spec = role %q, outputs %v, model %q, timeout %v; want the tackler role over %q, the resolved model and 10m", spec.Role, spec.OutputFiles, spec.Model, spec.Timeout, verdictPath)
 			}
-			wantAttempt := sheddriver.TacklerAttempt{
-				Number: 1, StopKey: sheddriver.StopKeyOf(f.status), Snapshot: f.snapshot, SpawnedAt: f.now, Deadline: f.now.Add(10 * time.Minute),
+			wantSnapshot := f.snapshot
+			if f.noSnapshot {
+				wantSnapshot = WorktreeSnapshot{}
+			}
+			wantAttempt := TacklerAttempt{
+				Number: 1, StopKey: StopKeyOf(f.status), Snapshot: wantSnapshot, SpawnedAt: f.now, Deadline: f.now.Add(10 * time.Minute),
 				StrandGUID: "guid-1", EnvelopePath: f.envelope, ReportPath: f.reportPath, Dir: f.attemptDir(1),
 			}
 			if !reflect.DeepEqual(atWait.attempt, wantAttempt) {
 				t.Errorf("attempt.json at the wait = %+v; want %+v", atWait.attempt, wantAttempt)
 			}
-			if want := (sheddriver.TacklerMarker{Attempt: 1, StrandGUID: "guid-1", Deadline: f.now.Add(10 * time.Minute)}); atWait.marker != want {
+			if want := (TacklerMarker{Attempt: 1, StrandGUID: "guid-1", Deadline: f.now.Add(10 * time.Minute)}); atWait.marker != want {
 				t.Errorf("marker at the wait = %+v; want %+v", atWait.marker, want)
 			}
 			if atWait.prompt != spec.Prompt || !strings.Contains(spec.Prompt, verdictPath) || !strings.Contains(spec.Prompt, f.envelope) {
@@ -290,7 +372,7 @@ func TestTacklerCall_SpawnPath(t *testing.T) {
 				if attachSpec.Timeout != wantDeadline.Sub(f.now) {
 					t.Errorf("re-attach timeout = %v; want %v, the deadline moved out by the paused time", attachSpec.Timeout, wantDeadline.Sub(f.now))
 				}
-				if moved, _ := sheddriver.ReadTacklerAttempt(f.attemptDir(1)); !moved.Deadline.Equal(wantDeadline) {
+				if moved, _ := ReadTacklerAttempt(f.attemptDir(1)); !moved.Deadline.Equal(wantDeadline) {
 					t.Errorf("attempt.json deadline = %v; want %v", moved.Deadline, wantDeadline)
 				}
 			}
@@ -304,7 +386,7 @@ func TestTacklerCall_Rerun(t *testing.T) {
 
 	tests := []struct {
 		name  string
-		setup func(f *tacklerFixture, attempt sheddriver.TacklerAttempt)
+		setup func(f *tacklerFixture, attempt TacklerAttempt)
 		// wantErr is the sentinel the call returns; empty rows expect an envelope.
 		wantErr error
 		// deadlinePassed gives the prior attempt a deadline a minute behind the clock.
@@ -318,67 +400,67 @@ func TestTacklerCall_Rerun(t *testing.T) {
 	}{
 		{
 			name: "verdict on disk is returned with no start",
-			setup: func(f *tacklerFixture, attempt sheddriver.TacklerAttempt) {
-				writeTacklerFile(t, sheddriver.TacklerVerdictPath(attempt.Dir), tacklerResumeVerdict)
+			setup: func(f *tacklerFixture, attempt TacklerAttempt) {
+				writeTacklerFile(t, TacklerVerdictPath(attempt.Dir), tacklerResumeVerdict)
 			},
 			wantAttempt: 1,
 		},
 		{
 			name: "live attempt within its deadline is attached for the remaining time",
-			setup: func(f *tacklerFixture, attempt sheddriver.TacklerAttempt) {
+			setup: func(f *tacklerFixture, attempt TacklerAttempt) {
 				f.fake.attachFound = true
 				f.fake.onAttach = func(shuttleengine.Spec) {
-					writeTacklerFile(t, sheddriver.TacklerVerdictPath(attempt.Dir), tacklerResumeVerdict)
+					writeTacklerFile(t, TacklerVerdictPath(attempt.Dir), tacklerResumeVerdict)
 				}
 			},
 			wantAttempt: 1, wantAttaches: 1, wantTimeout: 5 * time.Minute,
 		},
 		{
 			name: "attempt with no live run and no verdict reads hand-back missing",
-			setup: func(f *tacklerFixture, attempt sheddriver.TacklerAttempt) {
+			setup: func(f *tacklerFixture, attempt TacklerAttempt) {
 				f.fake.attachFound = false
 			},
-			wantAttempt: 1, wantAttaches: 1, wantTimeout: 5 * time.Minute, wantCause: arbiterCauseMissing,
+			wantAttempt: 1, wantAttaches: 1, wantTimeout: 5 * time.Minute, wantCause: CauseMissing,
 		},
 		{
 			name: "marker past its deadline is stopped and reads hand-back timeout",
-			setup: func(f *tacklerFixture, attempt sheddriver.TacklerAttempt) {
-				marker := sheddriver.TacklerMarker{Attempt: attempt.Number, StrandGUID: "marker-guid", Deadline: f.now.Add(-time.Minute)}
-				if err := sheddriver.WriteTacklerMarker(f.markerPath(), marker); err != nil {
+			setup: func(f *tacklerFixture, attempt TacklerAttempt) {
+				marker := TacklerMarker{Attempt: attempt.Number, StrandGUID: "marker-guid", Deadline: f.now.Add(-time.Minute)}
+				if err := WriteTacklerMarker(f.markerPath(), marker); err != nil {
 					t.Fatal(err)
 				}
 			},
 			deadlinePassed: true,
-			wantAttempt:    1, wantCause: arbiterCauseTimeout, wantStopped: []string{"marker-guid"},
+			wantAttempt:    1, wantCause: CauseTimeout, wantStopped: []string{"marker-guid"},
 		},
 		{
-			name: "applied attempt returns errTacklerResumeReturned",
-			setup: func(f *tacklerFixture, attempt sheddriver.TacklerAttempt) {
-				writeTacklerFile(t, sheddriver.TacklerVerdictPath(attempt.Dir), tacklerResumeVerdict)
-				if err := sheddriver.MarkTacklerApplied(attempt.Dir); err != nil {
+			name: "applied attempt returns ErrTacklerResumeReturned",
+			setup: func(f *tacklerFixture, attempt TacklerAttempt) {
+				writeTacklerFile(t, TacklerVerdictPath(attempt.Dir), tacklerResumeVerdict)
+				if err := MarkTacklerApplied(attempt.Dir); err != nil {
 					t.Fatal(err)
 				}
 			},
-			wantErr: errTacklerResumeReturned,
+			wantErr: ErrTacklerResumeReturned,
 		},
 		{
 			name: "attempt already handed to the parent is skipped for a fresh one",
-			setup: func(f *tacklerFixture, attempt sheddriver.TacklerAttempt) {
-				writeTacklerFile(t, sheddriver.TacklerVerdictPath(attempt.Dir), tacklerHandBackVerdict)
+			setup: func(f *tacklerFixture, attempt TacklerAttempt) {
+				writeTacklerFile(t, TacklerVerdictPath(attempt.Dir), tacklerHandBackVerdict)
 				f.closed = func(time.Time) bool { return true }
 				f.fake.onWait = func(shuttleengine.Spec) {
-					writeTacklerFile(t, sheddriver.TacklerVerdictPath(f.attemptDir(2)), tacklerResumeVerdict)
+					writeTacklerFile(t, TacklerVerdictPath(f.attemptDir(2)), tacklerResumeVerdict)
 				}
 			},
 			wantAttempt: 2, wantStarts: 1,
 		},
 		{
 			name: "attempt already handed to the parent still counts toward the budget",
-			setup: func(f *tacklerFixture, attempt sheddriver.TacklerAttempt) {
+			setup: func(f *tacklerFixture, attempt TacklerAttempt) {
 				f.settings.MaxSpawns = 1
 				f.closed = func(time.Time) bool { return true }
 			},
-			wantErr: errTacklerUnavailable,
+			wantErr: ErrTacklerUnavailable,
 		},
 	}
 	for _, tt := range tests {
@@ -426,70 +508,81 @@ func TestTacklerCall_VerdictOutcomes(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name        string
-		verdict     string
-		caseBrief   string
-		state       shedengine.State
-		wantVerdict string
-		wantCause   string
-		wantGoto    string
-		wantBrief   bool
+		name      string
+		verdict   string
+		caseBrief string
+		state     shedengine.State
+		// noRoutedFrom leaves GotoRoutedFrom false, so a goto may name only the current row.
+		noRoutedFrom bool
+		wantVerdict  string
+		wantCause    string
+		wantGoto     string
+		wantBrief    bool
 	}{
-		{name: "resume at an error stop", verdict: tacklerResumeVerdict, wantVerdict: sheddriver.TacklerVerdictResume},
+		{name: "resume at an error stop", verdict: tacklerResumeVerdict, wantVerdict: TacklerVerdictResume},
 		{
 			name: "resume with a goto to the current row", verdict: "verdict: resume\nreason: r\ngoto: Plan-Bouncer\n",
-			wantVerdict: sheddriver.TacklerVerdictResume, wantGoto: "Plan-Bouncer",
+			wantVerdict: TacklerVerdictResume, wantGoto: "Plan-Bouncer",
 		},
 		{
 			name: "resume with a goto to the last history entry's producer", verdict: "verdict: resume\nreason: r\ngoto: Plan-Write\n",
-			wantVerdict: sheddriver.TacklerVerdictResume, wantGoto: "Plan-Write",
+			wantVerdict: TacklerVerdictResume, wantGoto: "Plan-Write",
+		},
+		{
+			name: "resume with a goto to the routed-from row when the recipe forbids it", verdict: "verdict: resume\nreason: r\ngoto: Plan-Write\n", noRoutedFrom: true,
+			wantVerdict: TacklerVerdictHandBack, wantCause: CausePrecondition,
+		},
+		{
+			name: "resume with a goto to the current row when the recipe forbids the routed-from row", verdict: "verdict: resume\nreason: r\ngoto: Plan-Bouncer\n", noRoutedFrom: true,
+			wantVerdict: TacklerVerdictResume, wantGoto: "Plan-Bouncer",
 		},
 		{
 			name: "resume with a goto to another earlier row", verdict: "verdict: resume\nreason: r\ngoto: Plan-Draft\n",
-			wantVerdict: sheddriver.TacklerVerdictHandBack, wantCause: arbiterCausePrecondition,
+			wantVerdict: TacklerVerdictHandBack, wantCause: CausePrecondition,
 		},
 		{
 			name: "resume with a goto the shed refuses", verdict: "verdict: resume\nreason: r\ngoto: Plan-Bouncer\n", state: shedengine.StateAwaiting,
-			wantVerdict: sheddriver.TacklerVerdictHandBack, wantCause: arbiterCausePrecondition,
+			wantVerdict: TacklerVerdictHandBack, wantCause: CausePrecondition,
 		},
 		{
 			name: "resume at a blocked stop without a goto", verdict: tacklerResumeVerdict, state: shedengine.StateBlocked,
-			wantVerdict: sheddriver.TacklerVerdictHandBack, wantCause: arbiterCausePrecondition,
+			wantVerdict: TacklerVerdictHandBack, wantCause: CausePrecondition,
 		},
-		{name: "hand-back with a question", verdict: tacklerHandBackVerdict, wantVerdict: sheddriver.TacklerVerdictHandBack},
+		{name: "hand-back with a question", verdict: tacklerHandBackVerdict, wantVerdict: TacklerVerdictHandBack},
 		{
 			name: "hand-back without a question", verdict: "verdict: hand-back\nreason: r\n",
-			wantVerdict: sheddriver.TacklerVerdictHandBack, wantCause: tacklerCauseQuestion,
+			wantVerdict: TacklerVerdictHandBack, wantCause: tacklerCauseQuestion,
 		},
 		{
 			name: "escalate with an empty case brief", verdict: "verdict: escalate\nreason: r\n", caseBrief: "",
-			wantVerdict: sheddriver.TacklerVerdictHandBack, wantCause: tacklerCauseCaseBrief,
+			wantVerdict: TacklerVerdictHandBack, wantCause: tacklerCauseCaseBrief,
 		},
 		{
 			name: "escalate with no case brief file", verdict: "verdict: escalate\nreason: r\n", caseBrief: "<absent>",
-			wantVerdict: sheddriver.TacklerVerdictHandBack, wantCause: tacklerCauseCaseBrief,
+			wantVerdict: TacklerVerdictHandBack, wantCause: tacklerCauseCaseBrief,
 		},
 		{
 			name: "escalate with a case brief", verdict: "verdict: escalate\nreason: r\n", caseBrief: "# Case\nhypothesis: the build is stale\n",
-			wantVerdict: sheddriver.TacklerVerdictEscalate, wantBrief: true,
+			wantVerdict: TacklerVerdictEscalate, wantBrief: true,
 		},
 		{
 			name: "undecodable verdict", verdict: "verdict: [unclosed\n",
-			wantVerdict: sheddriver.TacklerVerdictHandBack, wantCause: arbiterCauseUnparseable,
+			wantVerdict: TacklerVerdictHandBack, wantCause: CauseUnparseable,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			f := newTacklerFixture(t)
+			f.gotoRoutedFrom = !tt.noRoutedFrom
 			if tt.state != "" {
 				f.status.State = tt.state
 			}
 			f.fake.onWait = func(shuttleengine.Spec) {
 				dir := f.attemptDir(1)
-				writeTacklerFile(t, sheddriver.TacklerVerdictPath(dir), tt.verdict)
+				writeTacklerFile(t, TacklerVerdictPath(dir), tt.verdict)
 				if tt.caseBrief != "<absent>" && strings.HasPrefix(tt.verdict, "verdict: escalate") {
-					writeTacklerFile(t, sheddriver.TacklerCaseBriefPath(dir), tt.caseBrief)
+					writeTacklerFile(t, TacklerCaseBriefPath(dir), tt.caseBrief)
 				}
 			}
 
@@ -503,13 +596,20 @@ func TestTacklerCall_VerdictOutcomes(t *testing.T) {
 			}
 			wantBriefPath := ""
 			if tt.wantBrief {
-				wantBriefPath = sheddriver.TacklerCaseBriefPath(f.attemptDir(1))
+				wantBriefPath = TacklerCaseBriefPath(f.attemptDir(1))
 			}
 			if envelope.CaseBriefPath != wantBriefPath {
 				t.Errorf("envelope case brief path = %q; want %q", envelope.CaseBriefPath, wantBriefPath)
 			}
 			if tt.wantCause != "" && envelope.Question == "" {
 				t.Error("a hand-back the call made carries no question for the run's parent")
+			}
+			prompt, readErr := os.ReadFile(TacklerPromptPath(f.attemptDir(1)))
+			if readErr != nil {
+				t.Fatalf("read the spawn's prompt file: %v", readErr)
+			}
+			if got := strings.Contains(string(prompt), "`Plan-Write`"); got == tt.noRoutedFrom {
+				t.Errorf("prompt names the routed-from row = %v with noRoutedFrom %v; want it named exactly when the recipe allows it", got, tt.noRoutedFrom)
 			}
 		})
 	}

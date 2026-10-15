@@ -26,35 +26,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// The causes an envelope carries when the verb, not the agent, made the verdict hand-on.
-const (
-	arbiterCauseTimeout      = "timeout"
-	arbiterCauseDied         = "died"
-	arbiterCauseMissing      = "missing"
-	arbiterCauseUnparseable  = "unparseable"
-	arbiterCausePrecondition = "precondition"
-)
-
-// arbiterRun is the handle of a started arbiter.
-type arbiterRun interface {
-	// Wait blocks until the arbiter ends and classifies how.
-	Wait() (shuttleengine.Result, error)
-	// Stop ends the arbiter's strand and records the stop.
-	Stop() error
-	// StrandGUID names the arbiter's strand.
-	StrandGUID() string
-}
-
-// arbiterShuttle is the part of shuttle the verb drives.
-type arbiterShuttle interface {
-	// Start launches spec and returns its handle.
-	Start(spec shuttleengine.Spec) (arbiterRun, error)
-	// AttachIfLive waits on a live run matching spec's output files, and reports false when none is live.
-	AttachIfLive(spec shuttleengine.Spec) (shuttleengine.Result, bool, error)
-	// StopStrand ends the strand guid names and records the stop.
-	StopStrand(guid string) error
-}
-
 // arbiterInput is what the verb's command line carries.
 type arbiterInput struct {
 	// RunID is the run whose stop is judged.
@@ -89,7 +60,7 @@ type arbiterDeps struct {
 	Prompt      arbiterPromptInput
 	StencilsDir string
 	// Shuttle starts, attaches to and stops the arbiter.
-	Shuttle arbiterShuttle
+	Shuttle sheddriver.AgentShuttle
 	// Now is the clock.
 	Now func() time.Time
 	// RelaunchRunID is the run id the re-launch line names.
@@ -208,13 +179,13 @@ func (c *arbiterCall) settleExisting(attempt loomengine.ArbiterAttempt) (loomeng
 	now := c.deps.Now()
 	switch {
 	case markerFound && marker.Attempt == attempt.Number && !now.Before(marker.Deadline):
-		return c.stopAndHandOn(attempt, marker.StrandGUID, arbiterCauseTimeout, "the arbiter ran past its deadline")
+		return c.stopAndHandOn(attempt, marker.StrandGUID, sheddriver.CauseTimeout, "the arbiter ran past its deadline")
 	case markerFound && marker.Attempt == attempt.Number:
-		return c.attachAndConclude(attempt, marker.StrandGUID, marker.Deadline.Sub(now), arbiterCauseDied)
+		return c.attachAndConclude(attempt, marker.StrandGUID, marker.Deadline.Sub(now), sheddriver.CauseDied)
 	case attempt.Deadline.After(now):
-		return c.attachAndConclude(attempt, attempt.StrandGUID, attempt.Deadline.Sub(now), arbiterCauseMissing)
+		return c.attachAndConclude(attempt, attempt.StrandGUID, attempt.Deadline.Sub(now), sheddriver.CauseMissing)
 	}
-	return c.handOn(attempt, arbiterCauseMissing, "the arbiter left no verdict")
+	return c.handOn(attempt, sheddriver.CauseMissing, "the arbiter left no verdict")
 }
 
 // attachAndConclude waits on the live arbiter of attempt for at most remaining and concludes the attempt.
@@ -325,13 +296,13 @@ func (c *arbiterCall) concludeWait(attempt loomengine.ArbiterAttempt, result shu
 	}
 	switch {
 	case waitErr != nil:
-		return c.stopRunAndHandOn(attempt, stop, guid, arbiterCauseDied, fmt.Sprintf("waiting on the arbiter failed: %v", waitErr))
+		return c.stopRunAndHandOn(attempt, stop, guid, sheddriver.CauseDied, fmt.Sprintf("waiting on the arbiter failed: %v", waitErr))
 	case result.Outcome == shuttleengine.OutcomeTimeout:
-		return c.stopRunAndHandOn(attempt, stop, guid, arbiterCauseTimeout, "the arbiter ran past its deadline")
+		return c.stopRunAndHandOn(attempt, stop, guid, sheddriver.CauseTimeout, "the arbiter ran past its deadline")
 	case result.Outcome != shuttleengine.OutcomeDone:
-		return c.stopRunAndHandOn(attempt, stop, guid, arbiterCauseDied, fmt.Sprintf("the arbiter ended %s without a verdict", result.Outcome))
+		return c.stopRunAndHandOn(attempt, stop, guid, sheddriver.CauseDied, fmt.Sprintf("the arbiter ended %s without a verdict", result.Outcome))
 	}
-	return c.handOn(attempt, arbiterCauseMissing, "the arbiter finished without writing a verdict")
+	return c.handOn(attempt, sheddriver.CauseMissing, "the arbiter finished without writing a verdict")
 }
 
 // stopAndHandOn stops the strand guid names through shuttle's stop verb, logs it and reads the attempt as a hand-on with cause.
@@ -353,14 +324,14 @@ func (c *arbiterCall) stopRunAndHandOn(attempt loomengine.ArbiterAttempt, stop f
 func (c *arbiterCall) conclude(attempt loomengine.ArbiterAttempt) (loomengine.ArbiterEnvelope, error) {
 	verdict, found, err := loomengine.ReadArbiterVerdict(loomengine.ArbiterVerdictPath(attempt.Dir))
 	if err != nil {
-		return c.handOn(attempt, arbiterCauseUnparseable, err.Error())
+		return c.handOn(attempt, sheddriver.CauseUnparseable, err.Error())
 	}
 	if !found {
-		return c.handOn(attempt, arbiterCauseMissing, "the arbiter left no verdict")
+		return c.handOn(attempt, sheddriver.CauseMissing, "the arbiter left no verdict")
 	}
 	if verdict.Verdict == loomengine.ArbiterVerdictResume {
 		if problem := c.resumePrecondition(verdict); problem != "" {
-			return c.handOn(attempt, arbiterCausePrecondition, problem)
+			return c.handOn(attempt, sheddriver.CausePrecondition, problem)
 		}
 	}
 	envelope := loomengine.ArbiterEnvelope{
@@ -425,30 +396,6 @@ func (c *arbiterCall) finish(envelope loomengine.ArbiterEnvelope) (loomengine.Ar
 		return loomengine.ArbiterEnvelope{}, err
 	}
 	return envelope, nil
-}
-
-// runnerArbiterShuttle adapts the shuttle runner to arbiterShuttle.
-type runnerArbiterShuttle struct {
-	runner *shuttleengine.Runner
-}
-
-// Start launches spec through the runner and returns the started run.
-func (s runnerArbiterShuttle) Start(spec shuttleengine.Spec) (arbiterRun, error) {
-	run, err := s.runner.Start(spec)
-	if err != nil {
-		return nil, err
-	}
-	return run, nil
-}
-
-// AttachIfLive waits on a live run matching spec's output files.
-func (s runnerArbiterShuttle) AttachIfLive(spec shuttleengine.Spec) (shuttleengine.Result, bool, error) {
-	return s.runner.AttachIfLive(spec)
-}
-
-// StopStrand ends the strand guid names through shuttle's stop verb.
-func (s runnerArbiterShuttle) StopStrand(guid string) error {
-	return s.runner.StopStrand(guid)
 }
 
 // arbiterCmd builds the `arbiter` subcommand.
@@ -530,7 +477,7 @@ func (c *loomCLI) arbiterDepsFor() (arbiterDeps, error) {
 			DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),
 			SupportLogPath:     loomengine.DiscussionSupportLog(location),
 		},
-		Shuttle:       runnerArbiterShuttle{runner: c.runner},
+		Shuttle:       sheddriver.RunnerShuttle{Runner: c.runner},
 		Now:           time.Now,
 		RelaunchRunID: runID,
 	}, nil

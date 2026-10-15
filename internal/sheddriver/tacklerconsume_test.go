@@ -1,6 +1,6 @@
 // tacklerconsume_test.go — untagged Tier-1 tests for consuming a tackler's resume verdict, over a real status file in a temp dir.
 
-package loomcli
+package sheddriver
 
 import (
 	"os"
@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
 )
@@ -23,8 +22,8 @@ func TestConsumeTacklerAttempt(t *testing.T) {
 		State:           shedengine.StateBlocked,
 		History:         []shedengine.HistoryEntry{{Producer: "Plan-Write", Outcome: shedengine.Done}, {Producer: "Plan-Bouncer", Outcome: shedengine.Done}},
 	}
-	resumeEnvelope := sheddriver.TacklerEnvelope{Verdict: sheddriver.TacklerVerdictResume, Reason: "safe"}
-	gotoPlanWriteEnvelope := sheddriver.TacklerEnvelope{Verdict: sheddriver.TacklerVerdictResume, Reason: "safe", Goto: "Plan-Write"}
+	resumeEnvelope := TacklerEnvelope{Verdict: TacklerVerdictResume, Reason: "safe"}
+	gotoPlanWriteEnvelope := TacklerEnvelope{Verdict: TacklerVerdictResume, Reason: "safe", Goto: "Plan-Write"}
 	// verdictInEffect leaves the run as the verdict's own goto to Plan-Write would.
 	verdictInEffect := func(st *shedengine.Status) {
 		st.History = append(st.History, shedengine.HistoryEntry{Producer: "Plan-Write", Outcome: shedengine.OutcomeGoto})
@@ -34,7 +33,7 @@ func TestConsumeTacklerAttempt(t *testing.T) {
 	tests := []struct {
 		name string
 		// envelope is written as envelope.json unless nil.
-		envelope *sheddriver.TacklerEnvelope
+		envelope *TacklerEnvelope
 		applied  bool
 		// mutate changes the status file after the attempt recorded its stop key and pause conditions.
 		mutate      func(st *shedengine.Status)
@@ -46,11 +45,11 @@ func TestConsumeTacklerAttempt(t *testing.T) {
 		{name: "missing envelope", wantErr: "unusable: the tackler call left no envelope"},
 		{
 			name:     "hand-back envelope",
-			envelope: &sheddriver.TacklerEnvelope{Verdict: sheddriver.TacklerVerdictHandBack, Reason: "r", Question: "q"}, wantErr: "not a resume",
+			envelope: &TacklerEnvelope{Verdict: TacklerVerdictHandBack, Reason: "r", Question: "q"}, wantErr: "not a resume",
 		},
 		{
 			name:     "resume envelope carrying a cause",
-			envelope: &sheddriver.TacklerEnvelope{Verdict: sheddriver.TacklerVerdictResume, Cause: arbiterCausePrecondition}, wantErr: "not a resume",
+			envelope: &TacklerEnvelope{Verdict: TacklerVerdictResume, Cause: CausePrecondition}, wantErr: "not a resume",
 		},
 		{name: "already applied", envelope: &resumeEnvelope, applied: true, wantErr: "already applied"},
 		{
@@ -88,7 +87,7 @@ func TestConsumeTacklerAttempt(t *testing.T) {
 		{name: "resume without a goto leaves the status as it was", envelope: &resumeEnvelope, wantProduce: "Plan-Bouncer"},
 		{
 			name:     "resume with a goto moves the run",
-			envelope: &sheddriver.TacklerEnvelope{Verdict: sheddriver.TacklerVerdictResume, Reason: "safe", Goto: "Plan-Write"}, wantProduce: "Plan-Write",
+			envelope: &TacklerEnvelope{Verdict: TacklerVerdictResume, Reason: "safe", Goto: "Plan-Write"}, wantProduce: "Plan-Write",
 		},
 	}
 	for _, tt := range tests {
@@ -106,16 +105,16 @@ func TestConsumeTacklerAttempt(t *testing.T) {
 			if err := state.WriteJSON(statusPath, statusLock, baseStatus); err != nil {
 				t.Fatal(err)
 			}
-			if err := sheddriver.WriteTacklerAttempt(attemptDir, sheddriver.TacklerAttempt{Number: 1, StopKey: sheddriver.StopKeyOf(baseStatus)}); err != nil {
+			if err := WriteTacklerAttempt(attemptDir, TacklerAttempt{Number: 1, StopKey: StopKeyOf(baseStatus)}); err != nil {
 				t.Fatal(err)
 			}
 			if tt.envelope != nil {
-				if err := sheddriver.WriteTacklerEnvelope(sheddriver.TacklerEnvelopePath(attemptDir), *tt.envelope); err != nil {
+				if err := WriteTacklerEnvelope(TacklerEnvelopePath(attemptDir), *tt.envelope); err != nil {
 					t.Fatal(err)
 				}
 			}
 			if tt.applied {
-				if err := sheddriver.MarkTacklerApplied(attemptDir); err != nil {
+				if err := MarkTacklerApplied(attemptDir); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -128,13 +127,13 @@ func TestConsumeTacklerAttempt(t *testing.T) {
 			}
 			producers := []shedengine.ProducerDef{{Name: "Plan-Write"}, {Name: "Plan-Bouncer"}, {Name: "Publish"}}
 
-			err := consumeTacklerAttempt(attemptDir, shedengine.RelaunchRequest{StatusPath: statusPath, LockPath: runLock, StatusLockPath: statusLock, Producers: producers, RunID: "self"})
+			err := ConsumeTacklerAttempt(attemptDir, shedengine.RelaunchRequest{StatusPath: statusPath, LockPath: runLock, StatusLockPath: statusLock, Producers: producers, RunID: "self"})
 
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) || !strings.Contains(err.Error(), attemptDir) || !strings.Contains(err.Error(), "way forward:") {
 					t.Fatalf("consume error = %v; want it to contain %q, the attempt directory and a way forward", err, tt.wantErr)
 				}
-				if applied, _ := sheddriver.TacklerApplied(attemptDir); applied != tt.applied {
+				if applied, _ := TacklerApplied(attemptDir); applied != tt.applied {
 					t.Errorf("applied mark = %v after a refusal; want %v, as before the call", applied, tt.applied)
 				}
 				got, _, readErr := state.ReadJSON[shedengine.Status](statusPath, statusLock)
@@ -150,7 +149,7 @@ func TestConsumeTacklerAttempt(t *testing.T) {
 			if err != nil {
 				t.Fatalf("consume error = %v; want nil", err)
 			}
-			if applied, _ := sheddriver.TacklerApplied(attemptDir); !applied {
+			if applied, _ := TacklerApplied(attemptDir); !applied {
 				t.Error("applied mark is absent after a consumed attempt; want it written")
 			}
 			got, _, readErr := state.ReadJSON[shedengine.Status](statusPath, statusLock)

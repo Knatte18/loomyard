@@ -284,7 +284,7 @@ func TestGoDriver_Settle(t *testing.T) {
 		},
 		{
 			name:  "tackler_max_spawns 0 hands back with no agent started and no spawn record",
-			steps: []func(*testing.T) []byte{transientFailure}, tacklerErr: fmt.Errorf("%w: tackler_max_spawns: 0 turns the tackler off", errTacklerUnavailable),
+			steps: []func(*testing.T) []byte{transientFailure}, tacklerErr: fmt.Errorf("%w: tackler_max_spawns: 0 turns the tackler off", sheddriver.ErrTacklerUnavailable),
 			wantCalls: []string{"step", "tackler"}, wantActions: []string{sheddriver.SettleHandBack}, wantReports: 2, wantParked: true, wantHandBack: true,
 			wantReportHas: map[int][]string{2: {"tackler_max_spawns: 0"}},
 		},

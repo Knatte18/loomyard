@@ -64,7 +64,7 @@ func TestConsumeArbiterAttempt(t *testing.T) {
 		},
 		{
 			name:        "verdict file says resume under a precondition hand-on envelope",
-			envelope:    &loomengine.ArbiterEnvelope{Verdict: loomengine.ArbiterVerdictHandOn, Cause: arbiterCausePrecondition, Reason: "r", Question: "q"},
+			envelope:    &loomengine.ArbiterEnvelope{Verdict: loomengine.ArbiterVerdictHandOn, Cause: sheddriver.CausePrecondition, Reason: "r", Question: "q"},
 			verdictYAML: arbiterResumeVerdict, wantErr: "not a resume",
 		},
 		{name: "already applied", envelope: &resumeEnvelope, applied: true, wantErr: "already applied"},

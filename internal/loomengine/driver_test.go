@@ -11,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 )
 
 // TestResolveDriver verifies ResolveDriver resolves an alias to its provider model id, lifting
@@ -120,7 +121,7 @@ func TestResolveTackler(t *testing.T) {
 	if err != nil {
 		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 	}
-	settingsOf := func(text string) TacklerSettings {
+	settingsOf := func(text string) sheddriver.TacklerSettings {
 		t.Helper()
 		spec, err := modelspec.Parse(text)
 		if err != nil {
@@ -130,7 +131,7 @@ func TestResolveTackler(t *testing.T) {
 		if err != nil {
 			t.Fatalf("reg.Resolve(%q) = _, %v; want nil error", text, err)
 		}
-		return TacklerSettings{Model: resolved.Model, Effort: resolved.Params["effort"], Version: resolved.Params["version"]}
+		return sheddriver.TacklerSettings{Model: resolved.Model, Effort: resolved.Params["effort"], Version: resolved.Params["version"]}
 	}
 
 	tests := []struct {

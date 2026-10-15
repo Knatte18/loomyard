@@ -37,6 +37,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
+// The one-line recipe descriptions the tackler's prompt names under its run heading.
+const (
+	loomTacklerRecipe = "loom: a phased task run (discussion, plan, webster's coded batches, reviews, landing)"
+	darnTacklerRecipe = "darn: a one-writer task run (one darn writer session, its review, verify and landing)"
+)
+
 // goDriverDepsFor assembles the Go driver's seams for the run the pre-run armed.
 // release is the driver lock's early release, which the hand-over calls before it spawns its successor.
 // Every closure reads on demand, and the on-disk lyx path is resolved once, here.
@@ -62,7 +68,11 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (goDriverDeps, error) {
 	verifyPaths := verifytree.NewPaths(location.WorktreePath(), verifytree.Dir(location.AnchorPath()))
 	pauseGeometry := func() (pauserecord.Geometry, error) { return hubgeom.PauseGeometry(location) }
 
-	tacklerDeps := tacklerDeps{
+	tacklerRecipe := loomTacklerRecipe
+	if c.recipe == shedrun.RecipeDarn {
+		tacklerRecipe = darnTacklerRecipe
+	}
+	tacklerDeps := sheddriver.TacklerDeps{
 		Closed: func(key sheddriver.StopKey, spawned time.Time) (bool, error) {
 			records, err := sheddriver.ReadSettleRecords(settlePath)
 			if err != nil {
@@ -93,14 +103,16 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (goDriverDeps, error) {
 			}
 			return pauserecord.Excluded(coverage.Intervals, from, to), nil
 		},
-		Prompt: tacklerPromptInput{
+		Recipe:         tacklerRecipe,
+		GotoRoutedFrom: true,
+		Prompt: sheddriver.TacklerPromptInput{
 			Slug:      seedSlug(location.WorktreeName),
 			Worktree:  location.WorktreePath(),
 			TraceDir:  logger.TraceDir(),
 			DriverLog: loomengine.LoomDriverLog(location),
 		},
 		StencilsDir: c.runDeps.Geom.StencilsDir,
-		Shuttle:     runnerArbiterShuttle{runner: c.runner},
+		Shuttle:     sheddriver.RunnerShuttle{Runner: c.runner},
 		Now:         time.Now,
 	}
 
@@ -182,14 +194,14 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (goDriverDeps, error) {
 		},
 		WriteFrictionNote: func(stop driveStop) error { return writeDrivePausedNote(c.frictionDir, runID, stop) },
 		Tackler: func(stop driveStop, reportPath string) (sheddriver.TacklerEnvelope, error) {
-			call, err := newTacklerCall(tacklerDeps, tacklerInput{RunID: runID, EnvelopePath: stop.EnvelopePath, ReportPath: reportPath, TraceCopy: stop.TraceCopy, StderrPath: stop.StderrPath})
+			call, err := sheddriver.NewTacklerCall(tacklerDeps, sheddriver.TacklerInput{RunID: runID, EnvelopePath: stop.EnvelopePath, ReportPath: reportPath, TraceCopy: stop.TraceCopy, StderrPath: stop.StderrPath})
 			if err != nil {
 				return sheddriver.TacklerEnvelope{}, err
 			}
-			return call.settle()
+			return call.Settle()
 		},
 		ConsumeTackler: func(attemptDir string) error {
-			return consumeTacklerAttempt(attemptDir, shedengine.RelaunchRequest{
+			return sheddriver.ConsumeTacklerAttempt(attemptDir, shedengine.RelaunchRequest{
 				StatusPath:              c.shedPaths.StatusPath,
 				LockPath:                c.shedPaths.LockPath,
 				StatusLockPath:          c.shedPaths.StatusLockPath,

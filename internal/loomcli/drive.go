@@ -410,7 +410,7 @@ func (d *goDriver) tackle(ctx context.Context, stop driveStop) (next driveStop, 
 
 	envelope, err := d.deps.Tackler(stop, reportPath)
 	switch {
-	case errors.Is(err, errTacklerResumeReturned):
+	case errors.Is(err, sheddriver.ErrTacklerResumeReturned):
 		return d.arbitrate(ctx, stop, "")
 	case err != nil:
 		return driveStop{}, true, d.handBackAs(stop, driveHandBack{Rules: []string{"the tackler could not judge the stop: " + err.Error()}}, "the tackler was unavailable or refused the stop")

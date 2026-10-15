@@ -23,7 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// arbiterFake is a scripted arbiterShuttle: it records every call and runs the scripted hooks inside Wait and AttachIfLive, where the real arbiter would write its verdict.
+// arbiterFake is a scripted sheddriver.AgentShuttle: it records every call and runs the scripted hooks inside Wait and AttachIfLive, where the real arbiter would write its verdict.
 type arbiterFake struct {
 	starts       []shuttleengine.Spec
 	attaches     []shuttleengine.Spec
@@ -42,7 +42,7 @@ type arbiterFake struct {
 	onAttach     func(spec shuttleengine.Spec)
 }
 
-func (f *arbiterFake) Start(spec shuttleengine.Spec) (arbiterRun, error) {
+func (f *arbiterFake) Start(spec shuttleengine.Spec) (sheddriver.AgentRun, error) {
 	if f.startErr != nil {
 		return nil, f.startErr
 	}
@@ -507,7 +507,7 @@ func TestArbiterVerb_Rerun(t *testing.T) {
 					t.Fatal(err)
 				}
 			},
-			wantStopped: []string{"old-guid"}, wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: arbiterCauseTimeout,
+			wantStopped: []string{"old-guid"}, wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CauseTimeout,
 		},
 		{
 			name: "an attach error stops the strand and reads died", deadlineIn: 20 * time.Minute,
@@ -518,7 +518,7 @@ func TestArbiterVerb_Rerun(t *testing.T) {
 				}
 				f.fake.attachErr = errors.New("reed unreachable")
 			},
-			wantAttaches: 1, wantAttachAfter: 20 * time.Minute, wantStopped: []string{"old-guid"}, wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: arbiterCauseDied,
+			wantAttaches: 1, wantAttachAfter: 20 * time.Minute, wantStopped: []string{"old-guid"}, wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CauseDied,
 		},
 		{
 			name: "a marked attempt with no live strand reads died", deadlineIn: 20 * time.Minute,
@@ -528,7 +528,7 @@ func TestArbiterVerb_Rerun(t *testing.T) {
 					t.Fatal(err)
 				}
 			},
-			wantAttaches: 1, wantAttachAfter: 20 * time.Minute, wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: arbiterCauseDied,
+			wantAttaches: 1, wantAttachAfter: 20 * time.Minute, wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CauseDied,
 		},
 		{
 			name: "an attempt with no marker whose strand is live attaches and waits", deadlineIn: 5 * time.Minute,
@@ -541,12 +541,12 @@ func TestArbiterVerb_Rerun(t *testing.T) {
 		{
 			name: "an attempt with no marker, no live strand and no verdict reads missing", deadlineIn: 5 * time.Minute,
 			setup:        func(f *arbiterFixture, attempt loomengine.ArbiterAttempt) {},
-			wantAttaches: 1, wantAttachAfter: 5 * time.Minute, wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: arbiterCauseMissing,
+			wantAttaches: 1, wantAttachAfter: 5 * time.Minute, wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CauseMissing,
 		},
 		{
 			name: "an attempt past its deadline with no marker reads missing without attaching", deadlineIn: -time.Minute,
 			setup:       func(f *arbiterFixture, attempt loomengine.ArbiterAttempt) {},
-			wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: arbiterCauseMissing,
+			wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CauseMissing,
 		},
 		{
 			name: "a finished unapplied verdict returns without starting", deadlineIn: -time.Minute,
@@ -671,35 +671,35 @@ func TestArbiterVerb_VerdictOutcomes(t *testing.T) {
 		},
 		{
 			name: "no verdict file reads missing", producer: "Plan-Write", state: shedengine.StateBlocked,
-			wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: arbiterCauseMissing,
+			wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CauseMissing,
 		},
 		{
 			name: "an unparseable verdict reads unparseable", producer: "Plan-Write", state: shedengine.StateBlocked,
-			verdict: "verdict: [", wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: arbiterCauseUnparseable,
+			verdict: "verdict: [", wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CauseUnparseable,
 		},
 		{
 			name: "a resume at an escalation with no pending decision", producer: "Plan-Bouncer", state: shedengine.StateAwaiting,
 			verdict: arbiterResumeVerdict, setup: func(f *arbiterFixture) { f.escalationOpen = true },
-			wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: arbiterCausePrecondition,
+			wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CausePrecondition,
 		},
 		{
 			name: "a resume at a blocked stop with no goto target", producer: "Plan-Write", state: shedengine.StateBlocked,
-			verdict: arbiterResumeVerdict, wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: arbiterCausePrecondition,
+			verdict: arbiterResumeVerdict, wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CausePrecondition,
 		},
 		{
 			name: "a resume naming a goto target past the current row", producer: "Plan-Write", state: shedengine.StateBlocked,
 			verdict:     "verdict: resume\nreason: skip ahead\ngoto: PR-Gate\n",
-			wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: arbiterCausePrecondition,
+			wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CausePrecondition,
 		},
 		{
 			name: "a timeout stops the run and reads hand-on", producer: "Plan-Write", state: shedengine.StateBlocked,
 			waitResult:  shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout},
-			wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: arbiterCauseTimeout, wantRunStops: 1,
+			wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CauseTimeout, wantRunStops: 1,
 		},
 		{
 			name: "a died run stops and reads hand-on", producer: "Plan-Write", state: shedengine.StateBlocked,
 			waitResult:  shuttleengine.Result{Outcome: shuttleengine.OutcomeDied},
-			wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: arbiterCauseDied, wantRunStops: 1,
+			wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CauseDied, wantRunStops: 1,
 		},
 	}
 	for _, tt := range tests {

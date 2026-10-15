@@ -1,16 +1,15 @@
 // tacklerconsume.go consumes a tackler's resume verdict when the Go driver re-launches a run on it:
 // it checks the run against the attempt under the status lock, marks the attempt applied and performs the verdict's goto.
 
-package loomcli
+package sheddriver
 
 import (
 	"fmt"
 
-	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// consumeTacklerAttempt applies the tackler attempt held in attemptDir to the run base addresses.
+// ConsumeTacklerAttempt applies the tackler attempt held in attemptDir to the run base addresses.
 // It reads the attempt record and the call's validated envelope.json, never the agent's verdict.yaml.
 // Before taking any lock it refuses an attempt whose envelope is missing or unparseable, whose verdict is not a resume or carries a cause, and one already applied.
 // It then calls shedengine.Relaunch with the envelope's goto target and an Admit that refuses, under the status lock, unless the run is in the state the tackler left:
@@ -19,25 +18,25 @@ import (
 // Admit writes the applied mark before the goto is performed, so the mark and the move land under one hold of the status lock.
 // A resume with no goto relaunches with an empty target, which leaves the status unchanged.
 // Every refusal names the attempt directory and the way forward: the driver acts on the refused stop as a new stop, or reports it in the stop report and the run's parent decides.
-func consumeTacklerAttempt(attemptDir string, base shedengine.RelaunchRequest) error {
+func ConsumeTacklerAttempt(attemptDir string, base shedengine.RelaunchRequest) error {
 	refuse := func(format string, args ...any) error {
-		return fmt.Errorf("loom: tackler attempt %s: "+format+"; way forward: act on the refused stop as a new stop, or report it in the stop report and the run's parent decides", append([]any{attemptDir}, args...)...)
+		return fmt.Errorf("sheddriver: tackler attempt %s: "+format+"; way forward: act on the refused stop as a new stop, or report it in the stop report and the run's parent decides", append([]any{attemptDir}, args...)...)
 	}
 
-	attempt, err := sheddriver.ReadTacklerAttempt(attemptDir)
+	attempt, err := ReadTacklerAttempt(attemptDir)
 	if err != nil {
 		return refuse("unusable: %v", err)
 	}
-	envelope, found, err := sheddriver.ReadTacklerEnvelope(sheddriver.TacklerEnvelopePath(attemptDir))
+	envelope, found, err := ReadTacklerEnvelope(TacklerEnvelopePath(attemptDir))
 	switch {
 	case err != nil:
 		return refuse("unusable: %v", err)
 	case !found:
 		return refuse("unusable: the tackler call left no envelope")
-	case envelope.Verdict != sheddriver.TacklerVerdictResume || envelope.Cause != "":
+	case envelope.Verdict != TacklerVerdictResume || envelope.Cause != "":
 		return refuse("unusable: the validated verdict is %q with cause %q, not a resume", envelope.Verdict, envelope.Cause)
 	}
-	applied, err := sheddriver.TacklerApplied(attemptDir)
+	applied, err := TacklerApplied(attemptDir)
 	if err != nil {
 		return refuse("unusable: %v", err)
 	}
@@ -48,11 +47,11 @@ func consumeTacklerAttempt(attemptDir string, base shedengine.RelaunchRequest) e
 	request := base
 	request.Target = envelope.Goto
 	request.Admit = func(current shedengine.Status) (bool, error) {
-		inEffect, reason := admitRelaunch(current, attempt.StopKey, attempt.PauseBefore, attempt.PauseAfter, request.Target, "tackler")
+		inEffect, reason := AdmitRelaunch(current, attempt.StopKey, attempt.PauseBefore, attempt.PauseAfter, request.Target, "tackler")
 		if reason != "" {
 			return false, refuse("%s", reason)
 		}
-		return inEffect, sheddriver.MarkTacklerApplied(attemptDir)
+		return inEffect, MarkTacklerApplied(attemptDir)
 	}
 	_, err = shedengine.Relaunch(request)
 	return err

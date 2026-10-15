@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
@@ -107,43 +108,29 @@ const tacklerDefaultModelSpec = "haiku"
 // tacklerDefaultTimeout is the timeout a zero tackler_timeout_min takes.
 const tacklerDefaultTimeout = 10 * time.Minute
 
-// TacklerSettings is the tackler role's resolved model settings, timeout and spawn budget, threaded onto the tackler session's launch spec.
-type TacklerSettings struct {
-	// Model is the resolved provider-side model string.
-	Model string
-	// Effort is the resolved "effort" parameter, empty when unset.
-	Effort string
-	// Version is the resolved "version" parameter, empty when unset.
-	Version string
-	// Timeout is how long one tackler spawn may run.
-	Timeout time.Duration
-	// MaxSpawns is how many tackler spawns a run may use; zero turns the tackler off.
-	MaxSpawns int
-}
-
 // ResolveTackler parses and resolves the tackler role's model-spec from cfg through reg.
 // An empty cfg.Tackler takes haiku and a zero cfg.TacklerTimeoutMin takes 10 minutes;
 // cfg.TacklerMaxSpawns passes through.
 // A spec that does not parse or resolve is an error naming the tackler key.
-func ResolveTackler(cfg Config, reg modelspec.Registry) (TacklerSettings, error) {
+func ResolveTackler(cfg Config, reg modelspec.Registry) (sheddriver.TacklerSettings, error) {
 	specText := cfg.Tackler
 	if specText == "" {
 		specText = tacklerDefaultModelSpec
 	}
 	spec, err := modelspec.Parse(specText)
 	if err != nil {
-		return TacklerSettings{}, fmt.Errorf("loom: ResolveTackler: tackler role model-spec: %w", err)
+		return sheddriver.TacklerSettings{}, fmt.Errorf("loom: ResolveTackler: tackler role model-spec: %w", err)
 	}
 	resolved, err := reg.Resolve(spec)
 	if err != nil {
-		return TacklerSettings{}, fmt.Errorf("loom: ResolveTackler: tackler role model-spec: %w", err)
+		return sheddriver.TacklerSettings{}, fmt.Errorf("loom: ResolveTackler: tackler role model-spec: %w", err)
 	}
 
 	timeout := tacklerDefaultTimeout
 	if cfg.TacklerTimeoutMin > 0 {
 		timeout = time.Duration(cfg.TacklerTimeoutMin) * time.Minute
 	}
-	return TacklerSettings{
+	return sheddriver.TacklerSettings{
 		Model:     resolved.Model,
 		Effort:    resolved.Params["effort"],
 		Version:   resolved.Params["version"],
