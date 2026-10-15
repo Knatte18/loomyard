@@ -9,7 +9,6 @@ import (
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 )
@@ -224,11 +223,11 @@ func decideDrive(stop driveStop, facts driveFacts) driveDecision {
 		return driveDecision{Action: driveActionArbiter, Rule: "a tackler resume returned to the same stop: the arbiter decides"}
 	case !stop.OK && stop.Transient != "":
 		return driveDecision{Action: driveActionTackler, Rule: "a transient error that outlived its re-step: the tackler decides"}
-	case stop.Kind == shedverbs.KindInterrupted && stop.InterruptPolicy == loomshed.InterruptPolicyReinvoke && facts.RepairCount < driveRepairCap:
+	case stop.Kind == shedverbs.KindInterrupted && stop.InterruptPolicy == shedverbs.InterruptPolicyReinvoke && facts.RepairCount < driveRepairCap:
 		return driveDecision{Action: driveActionRestep, Rule: "an interrupted step under the reinvoke policy: re-step"}
-	case stop.Kind == shedverbs.KindInterrupted && (stop.InterruptPolicy == loomshed.InterruptPolicyHandback || stop.InterruptPolicy == ""):
+	case stop.Kind == shedverbs.KindInterrupted && (stop.InterruptPolicy == shedverbs.InterruptPolicyHandback || stop.InterruptPolicy == ""):
 		return driveDecision{Action: driveActionHandBack, Rule: "an interrupted step under the handback policy: hand back"}
-	case isTacklerKind(stop.Kind) && !stop.OK, stop.Kind == shedverbs.KindInterrupted && stop.InterruptPolicy == loomshed.InterruptPolicyReinvoke, state == string(shedengine.StateBlocked):
+	case isTacklerKind(stop.Kind) && !stop.OK, stop.Kind == shedverbs.KindInterrupted && stop.InterruptPolicy == shedverbs.InterruptPolicyReinvoke, state == string(shedengine.StateBlocked):
 		return driveDecision{Action: driveActionTackler, Rule: "no rule settles the stop: the tackler decides"}
 	}
 	return driveDecision{Action: driveActionHandBack, Rule: "no rule names the stop: hand back"}

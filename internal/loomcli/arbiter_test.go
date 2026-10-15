@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -270,7 +271,7 @@ func TestArbiterVerb_SpawnPath(t *testing.T) {
 		{name: "bootstrap error", producer: "Plan-Write", state: shedengine.StateFailed, envelope: `{"kind":"bootstrap"}`},
 		{
 			name: "interrupted under reinvoke", producer: "Plan-Write", state: shedengine.StateFailed, envelope: `{"kind":"interrupted"}`,
-			setup: func(f *arbiterFixture) { f.interruptPolicy["Plan-Write"] = loomshed.InterruptPolicyReinvoke },
+			setup: func(f *arbiterFixture) { f.interruptPolicy["Plan-Write"] = shedverbs.InterruptPolicyReinvoke },
 		},
 		{name: "transient failure that failed twice", producer: "Plan-Write", state: shedengine.StateFailed, envelope: `{"kind":"busy","transient":"network"}`},
 		{name: "blocked stop", producer: "Plan-Write", state: shedengine.StateBlocked},
@@ -319,7 +320,7 @@ func TestArbiterVerb_SpawnPath(t *testing.T) {
 		{name: "error envelope with no kind refused", producer: "Plan-Write", state: shedengine.StateFailed, wantRefusal: "carries no kind", wantNoSpawn: true},
 		{
 			name: "interrupted under handback refused", producer: "Plan-Write", state: shedengine.StateFailed, envelope: `{"kind":"interrupted"}`,
-			setup:       func(f *arbiterFixture) { f.interruptPolicy["Plan-Write"] = loomshed.InterruptPolicyHandback },
+			setup:       func(f *arbiterFixture) { f.interruptPolicy["Plan-Write"] = shedverbs.InterruptPolicyHandback },
 			wantRefusal: "whose policy hands back", wantNoSpawn: true,
 		},
 		{

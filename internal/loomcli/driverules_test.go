@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 )
@@ -65,11 +64,11 @@ func TestDecideDrive(t *testing.T) {
 		{name: "changed build at a stop no build could change", stop: awaitingStop(""), facts: driveFacts{BuildChanged: true}, want: driveActionHandBack},
 		{name: "tackler resume returned to the same stop goes to the arbiter", stop: blockedStop, facts: driveFacts{ResumeReturned: true}, want: driveActionArbiter},
 		{name: "transient error goes to the tackler", stop: errorStop(shedverbs.KindProducer, "network"), want: driveActionTackler},
-		{name: "interrupted under reinvoke re-steps", stop: interruptedStop(loomshed.InterruptPolicyReinvoke), want: driveActionRestep},
-		{name: "second reinvoke failure re-steps", stop: interruptedStop(loomshed.InterruptPolicyReinvoke), facts: driveFacts{RepairCount: 1}, want: driveActionRestep},
-		{name: "third reinvoke failure goes to the tackler", stop: interruptedStop(loomshed.InterruptPolicyReinvoke), facts: driveFacts{RepairCount: driveRepairCap}, want: driveActionTackler},
+		{name: "interrupted under reinvoke re-steps", stop: interruptedStop(shedverbs.InterruptPolicyReinvoke), want: driveActionRestep},
+		{name: "second reinvoke failure re-steps", stop: interruptedStop(shedverbs.InterruptPolicyReinvoke), facts: driveFacts{RepairCount: 1}, want: driveActionRestep},
+		{name: "third reinvoke failure goes to the tackler", stop: interruptedStop(shedverbs.InterruptPolicyReinvoke), facts: driveFacts{RepairCount: driveRepairCap}, want: driveActionTackler},
 		{
-			name: "repair count is the restep records of the stop key only", stop: interruptedStop(loomshed.InterruptPolicyReinvoke),
+			name: "repair count is the restep records of the stop key only", stop: interruptedStop(shedverbs.InterruptPolicyReinvoke),
 			records: []loomengine.SettleRecord{
 				restepRecord(interruptedStop("").key()),
 				restepRecord(interruptedStop("").key()),
@@ -78,7 +77,7 @@ func TestDecideDrive(t *testing.T) {
 			},
 			want: driveActionTackler,
 		},
-		{name: "interrupted under handback hands back", stop: interruptedStop(loomshed.InterruptPolicyHandback), want: driveActionHandBack},
+		{name: "interrupted under handback hands back", stop: interruptedStop(shedverbs.InterruptPolicyHandback), want: driveActionHandBack},
 		{name: "interrupted with an empty policy hands back", stop: interruptedStop(""), want: driveActionHandBack},
 		{name: "producer error goes to the tackler", stop: errorStop(shedverbs.KindProducer, ""), want: driveActionTackler},
 		{name: "bootstrap error goes to the tackler", stop: errorStop(shedverbs.KindBootstrap, ""), want: driveActionTackler},

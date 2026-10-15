@@ -5,7 +5,11 @@
 
 package loomshed
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/Knatte18/loomyard/internal/shedverbs"
+)
 
 func TestInterruptPolicyFor(t *testing.T) {
 	tests := []struct {
@@ -13,14 +17,14 @@ func TestInterruptPolicyFor(t *testing.T) {
 		row  string
 		want string
 	}{
-		{"webster handback", NameWebster, InterruptPolicyHandback},
-		{"gate reinvoke", NamePreflight, InterruptPolicyReinvoke},
-		{"writer reinvoke", NameDiscussionWrite, InterruptPolicyReinvoke},
-		{"batchifier reinvoke", NameBatchifier, InterruptPolicyReinvoke},
-		{"bouncer reinvoke", NameDiscussionBouncer, InterruptPolicyReinvoke},
-		{"burler review reinvoke", NameDiscussionBurlerReview, InterruptPolicyReinvoke},
-		{"burler fix reinvoke", NameDarnBurlerFix, InterruptPolicyReinvoke},
-		{"darn reinvoke", NameDarnWrite, InterruptPolicyReinvoke},
+		{"webster handback", NameWebster, shedverbs.InterruptPolicyHandback},
+		{"gate reinvoke", NamePreflight, shedverbs.InterruptPolicyReinvoke},
+		{"writer reinvoke", NameDiscussionWrite, shedverbs.InterruptPolicyReinvoke},
+		{"batchifier reinvoke", NameBatchifier, shedverbs.InterruptPolicyReinvoke},
+		{"bouncer reinvoke", NameDiscussionBouncer, shedverbs.InterruptPolicyReinvoke},
+		{"burler review reinvoke", NameDiscussionBurlerReview, shedverbs.InterruptPolicyReinvoke},
+		{"burler fix reinvoke", NameDarnBurlerFix, shedverbs.InterruptPolicyReinvoke},
+		{"darn reinvoke", NameDarnWrite, shedverbs.InterruptPolicyReinvoke},
 		{"empty name", "", ""},
 		{"unknown name", "Not-A-Real-Row", ""},
 	}
@@ -38,8 +42,8 @@ func TestInterruptPolicyFor(t *testing.T) {
 //testtiming:keep pins that every policy value is a declared constant, which TestArchivedWebsterDirs never asserts
 func TestInterruptPolicies_ClosedVocabulary(t *testing.T) {
 	for row, policy := range InterruptPolicies {
-		if policy != InterruptPolicyReinvoke && policy != InterruptPolicyHandback {
-			t.Errorf("InterruptPolicies[%q] = %q; want %q or %q", row, policy, InterruptPolicyReinvoke, InterruptPolicyHandback)
+		if policy != shedverbs.InterruptPolicyReinvoke && policy != shedverbs.InterruptPolicyHandback {
+			t.Errorf("InterruptPolicies[%q] = %q; want %q or %q", row, policy, shedverbs.InterruptPolicyReinvoke, shedverbs.InterruptPolicyHandback)
 		}
 	}
 }

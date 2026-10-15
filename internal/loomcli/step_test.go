@@ -34,8 +34,8 @@ func TestStepEnvelope_NextInterruptPolicyMatchesTable(t *testing.T) {
 		next string
 		want string
 	}{
-		{"ReinvokeRow", loomshed.NamePlanWrite, loomshed.InterruptPolicyReinvoke},
-		{"HandbackRow", loomshed.NameWebster, loomshed.InterruptPolicyHandback},
+		{"ReinvokeRow", loomshed.NamePlanWrite, shedverbs.InterruptPolicyReinvoke},
+		{"HandbackRow", loomshed.NameWebster, shedverbs.InterruptPolicyHandback},
 		{"EmptyNext", "", ""},
 	}
 

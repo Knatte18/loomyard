@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -34,10 +35,10 @@ func TestStatusCmd_EnvelopeKeySet(t *testing.T) {
 		wantPolicy      string
 		covered         bool
 	}{
-		{"HandbackForWebster", loomshed.NameWebster, loomshed.InterruptPolicyHandback, false},
-		{"ReinvokeForAnotherRow", loomshed.NameDiscussionWrite, loomshed.InterruptPolicyReinvoke, false},
+		{"HandbackForWebster", loomshed.NameWebster, shedverbs.InterruptPolicyHandback, false},
+		{"ReinvokeForAnotherRow", loomshed.NameDiscussionWrite, shedverbs.InterruptPolicyReinvoke, false},
 		{"EmptyForUnknownRow", "not-a-real-row", "", false},
-		{"PausedSinceForACoveredRun", loomshed.NameWebster, loomshed.InterruptPolicyHandback, true},
+		{"PausedSinceForACoveredRun", loomshed.NameWebster, shedverbs.InterruptPolicyHandback, true},
 	}
 
 	for _, tt := range tests {
