@@ -1,6 +1,6 @@
 // gates.go implements this package's gate closures: NewDiscussionGate, NewDarnDiscussionGate, NewPlanGate, NewLensReviewPlanGate and NewReworkPlanGate.
 // Each is the gate half of the Gate Self-Check Parity Invariant -- each calls the identical package
-// function its CLI self-check verb does (discussionparser.Validate, ValidateDarnDiscussion, ValidatePlan, ValidatePlanLensReview and
+// function its CLI self-check verb does (ValidateLoomDiscussion, ValidateDarnDiscussion, ValidatePlan, ValidatePlanLensReview and
 // ValidateReworkPlan, respectively), so the operator's own self-check verb and the automated gate can never disagree
 // about what "valid" means.
 
@@ -87,13 +87,14 @@ func hasBlockingFinding(findings []planindex.Finding) bool {
 }
 
 // NewDiscussionGate returns the Discussion-Write row's gate closure: a shuttleengine.Gate that
-// calls discussionparser.Validate(decisionRecordPath, supportLogPath) once and maps the result onto
-// the gate contract.
+// calls ValidateLoomDiscussion(decisionRecordPath, supportLogPath, relevantPath) once.
+// It maps the result onto the gate contract.
 //
-// Both paths are told rather than derived, because loomengine's own accessors for them take a
+// The three paths are told rather than derived, because loomengine's own accessors for them take a
 // *lyxcwd.Location this package may not import.
+// A relevantPath nobody wrote passes, since the relevant list is optional.
 //
-// A non-nil error from Validate is returned verbatim alongside the zero shuttleengine.GateResult: a
+// A non-nil error from ValidateLoomDiscussion is returned verbatim alongside the zero shuttleengine.GateResult: a
 // gate that could not read the artifact has found no defect to re-prompt over, it is an
 // infrastructure fault, and it must never burn an attempt or reach the LLM. A non-empty findings
 // slice produces GateResult{Passed: false, Findings: formatDiscussionFindings(findings)} and a nil
@@ -101,9 +102,9 @@ func hasBlockingFinding(findings []planindex.Finding) bool {
 // formatted findings -- that warn line is the only durable record of why an artifact was refused,
 // because the findings file itself lives in the ephemeral run directory finalize deletes on the Done
 // cleanup. An empty slice produces GateResult{Passed: true} and a nil error.
-func NewDiscussionGate(decisionRecordPath, supportLogPath string) shuttleengine.Gate {
+func NewDiscussionGate(decisionRecordPath, supportLogPath, relevantPath string) shuttleengine.Gate {
 	return func() (shuttleengine.GateResult, error) {
-		findings, err := discussionparser.Validate(decisionRecordPath, supportLogPath)
+		findings, err := ValidateLoomDiscussion(decisionRecordPath, supportLogPath, relevantPath)
 		if err != nil {
 			return shuttleengine.GateResult{}, err
 		}
@@ -115,6 +116,22 @@ func NewDiscussionGate(decisionRecordPath, supportLogPath string) shuttleengine.
 		logger.Warn("loomshed: discussion gate failed validation", "gate", "Discussion-Gate", "decisionRecord", decisionRecordPath, "findings", formatted)
 		return shuttleengine.GateResult{Passed: false, Findings: formatted}, nil
 	}
+}
+
+// ValidateLoomDiscussion is the loom run's discussion check: discussionparser.Validate's decision record and support log check, then discussionparser.CheckRelevant's relevant list check.
+// CheckRelevant runs even when Validate finds defects, so one re-prompt names every defect, and the findings are Validate's followed by CheckRelevant's.
+// A missing relevant list adds no finding.
+// Either function's error is returned as is, with nil findings.
+func ValidateLoomDiscussion(decisionRecordPath, supportLogPath, relevantPath string) ([]discussionparser.Finding, error) {
+	findings, err := discussionparser.Validate(decisionRecordPath, supportLogPath)
+	if err != nil {
+		return nil, err
+	}
+	relevantFindings, err := discussionparser.CheckRelevant(relevantPath)
+	if err != nil {
+		return nil, err
+	}
+	return append(findings, relevantFindings...), nil
 }
 
 // ValidateDarnDiscussion is the darn run's discussion check: discussionparser.Validate's section check, then the history check.

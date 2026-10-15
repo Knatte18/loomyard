@@ -86,6 +86,9 @@ func TestPlanTable(t *testing.T) {
 			if err := table.Validate(stencilsDir); err != nil {
 				t.Fatalf("table.Validate() = %v; want nil", err)
 			}
+			if got, want := table.Values["relevant_path"], DiscussionRelevant(layout); got != want {
+				t.Errorf("table.Values[\"relevant_path\"] = %q; want %q", got, want)
+			}
 			if len(table.Seats) != 1 {
 				t.Fatalf("table has %d seats; want the lead alone", len(table.Seats))
 			}

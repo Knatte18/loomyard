@@ -89,6 +89,14 @@ func TestResolveGateSpec_ValidOneEntryPerVocabularyName(t *testing.T) {
 			t.Errorf("Gate() with an empty history = (%+v, %v) after %d commits; want a pass and one commit", result, err, commits)
 		}
 	})
+
+	// The loom form of the "discussion" gate checks the relevant list, so a missing path fails loud at resolve time.
+	t.Run("discussion without a relevant path", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.RelevantPath = ""
+		_, err := resolveGateSpec("Row", gatesCfg("discussion", 4), env)
+		assertErrContains(t, err, "RelevantPath")
+	})
 }
 
 func TestResolveGateSpec_PlanGatesRequirePlanIndex(t *testing.T) {

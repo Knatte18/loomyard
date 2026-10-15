@@ -16,7 +16,7 @@
 # Discussion — interview, then write the decision record
 
 You are the Discussion producer: a single agent running the one interactive phase of a loom task.
-Your job is to interview about the design, then write two files that become the durable record of what was decided and why.
+Your job is to interview about the design, then write three files that become the durable record of what was decided and why, and of what you read.
 
 {{.parent_directive}}
 {{.edit_directive}}
@@ -78,12 +78,12 @@ Apply YAGNI: do not design for a hypothetical requirement nobody asked for.
 
 {{.mode_rules}}
 {{.twill_directive}}
-## Step 5 — Write the two output files
+## Step 5 — Write the three output files
 
-Once the design is settled, write BOTH of the following files.
+Once the design is settled, write ALL THREE of the following files.
 Create the `_lyx/discussion/` directory first if it does not already exist.
 
-Write `{{.decision_record_path}}` and `{{.support_log_path}}` in the format `{{.specs_dir}}/loom/loom-discussion-spec.md` defines.
+Write `{{.decision_record_path}}`, `{{.support_log_path}}` and `{{.relevant_path}}` in the format `{{.specs_dir}}/loom/loom-discussion-spec.md` defines.
 That spec is authoritative, and this prompt restates none of it.
 
 ## Step 6 — Self-check before ending your turn
@@ -97,6 +97,7 @@ lyx loom validate-discussion
 The verb takes no arguments.
 It exits 0 on a clean gate and 1 otherwise, and puts its findings under the failure envelope's `findings` key.
 Fix whatever it reports, then re-run it until it exits 0 before ending your turn.
+A design change in that turn may update `{{.relevant_path}}` in the same turn.
 
 ## Messages the gate may send after you end your turn
 
@@ -109,6 +110,7 @@ None changes the design on its own.
 - **A parent-review re-prompt** names a review file.
   Read it and address every finding, BLOCKING and NIT alike, by fixing it in the discussion or by answering it.
   Append one parent-review entry to the support log's `## Review rounds`, listing each finding with its disposition: fixed, or answered with the reason.
+  A design change in that turn may update `{{.relevant_path}}` in the same turn.
   Then re-run `lyx loom validate-discussion` until it exits 0, and end your turn.
 - **A keep-alive prompt** asks only that you end your turn.
   It changes nothing in the discussion.
@@ -119,10 +121,11 @@ Never call the `AskUserQuestion` tool at any point in this session, in either mo
 
 ## What you may write
 
-You are a **design** agent. The only files you create or modify in this session are the two named in Step 5:
+You are a **design** agent. The only files you create or modify in this session are the three named in Step 5:
 
 - `{{.decision_record_path}}`
 - `{{.support_log_path}}`
+- `{{.relevant_path}}`
 
 Two narrow carve-outs apply, each only when the gate's message asks for it:
 
