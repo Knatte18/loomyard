@@ -76,8 +76,9 @@ func TestEngine_Fix_TableShapeAndFiles(t *testing.T) {
 	p.FocusDirective = "focus.md"
 	p.PriorReviews = []string{"prior-review.md"}
 	p.Segment = segmentcolor.Merge
+	p.LanguageSkills = true
 	shuttle := &fakeShuttle{fix: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, writes: "nothing fixed"}}
-	e := newEngineForTest(t, root, shuttle)
+	e := New(shuttle, Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug"}, Config{}, newTestStencilsDir(t), "", []string{"scribe:golang-testing"})
 
 	var gateCalls int
 	opts := RunOpts{
@@ -110,6 +111,9 @@ func TestEngine_Fix_TableShapeAndFiles(t *testing.T) {
 	}
 	if spec.Timeout != opts.Timeout || spec.Round != opts.Round {
 		t.Errorf("spec timeout %v round %q; want %v and %q", spec.Timeout, spec.Round, opts.Timeout, opts.Round)
+	}
+	if want := []string{"scribe:prose", "scribe:code-quality", "scribe:testing", "scribe:golang-testing"}; !slices.Equal(spec.Skills, want) {
+		t.Errorf("spec.Skills = %v; want %v", spec.Skills, want)
 	}
 	gate := shuttle.gates[fixHalfRole]
 	if len(gate) != 1 || gate[0].Name != "build" {
@@ -270,6 +274,8 @@ func TestEngine_ProbeFix_And_ResumeFix(t *testing.T) {
 				}
 			}
 			e := newEngineForTest(t, root, shuttle)
+			e.languageSkills = []string{"scribe:golang-testing"}
+			p.LanguageSkills = true
 
 			half, err := e.ProbeFix(p, RunOpts{Timeout: time.Minute})
 			if err != nil {
@@ -280,6 +286,9 @@ func TestEngine_ProbeFix_And_ResumeFix(t *testing.T) {
 			}
 			if spec := shuttle.probeSpecs[fixHalfRole]; !slices.Equal(spec.OutputFiles, []string{filepath.Join(root, "fixer-report.md")}) || spec.Timeout != time.Minute {
 				t.Errorf("probe spec outputs %v timeout %v; want the fixer report and the opts' timeout", spec.OutputFiles, spec.Timeout)
+			}
+			if want := append(slices.Clone(burlerSkills), "scribe:golang-testing"); !slices.Equal(shuttle.probeSpecs[fixHalfRole].Skills, want) {
+				t.Errorf("probe spec skills = %v; want %v", shuttle.probeSpecs[fixHalfRole].Skills, want)
 			}
 			if tt.wantState != HalfLive {
 				if _, err := e.ResumeFix(p, RunOpts{}, digest, half); err == nil || !strings.Contains(err.Error(), "needs the fix half live") {

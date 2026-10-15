@@ -315,7 +315,7 @@ func TestSmokeBurlerRoundToyFixture(t *testing.T) {
 	if err != nil {
 		t.Fatalf("burler geometry: %v", err)
 	}
-	engine := burlerengine.New(seatengine.RunnerShuttle(runner), burlerGeom, burlerengine.Config{}, fabricengine.StencilsDir(h.Location.HubPath), "")
+	engine := burlerengine.New(seatengine.RunnerShuttle(runner), burlerGeom, burlerengine.Config{}, fabricengine.StencilsDir(h.Location.HubPath), "", nil)
 
 	opts := burlerengine.RunOpts{Timeout: 5 * time.Minute}
 	review, err := engine.Review(profile, opts)

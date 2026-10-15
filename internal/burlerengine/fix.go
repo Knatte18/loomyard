@@ -45,8 +45,8 @@ type FixResult struct {
 
 // fixTable builds the fix half's one-seat table for p under opts: the fixer as the chair, gated by opts.Gate with every entry wrapped by repairReportBeforeGate.
 // The fixer reads the review file, writes the fixer-report and never forks.
-// values carries the marker values the seat's stencil is filled from.
-func (p *Profile) fixTable(opts RunOpts, values map[string]string) seatengine.Table {
+// values carries the marker values the seat's stencil is filled from, and skills the skills the seat loads.
+func (p *Profile) fixTable(opts RunOpts, values map[string]string, skills []string) seatengine.Table {
 	// A fresh copy, so the caller's slice is never mutated;
 	// off entries are wrapped too, since they never run and the wrap is harmless there.
 	fixGate := make(shuttleengine.GateSpec, 0, len(opts.Gate))
@@ -68,7 +68,7 @@ func (p *Profile) fixTable(opts RunOpts, values map[string]string) seatengine.Ta
 				Version: opts.Fix.Version,
 				Inputs:  []string{p.ReviewPath},
 				Outputs: []string{p.FixerReportPath},
-				Skills:  burlerSkills,
+				Skills:  skills,
 				Values:  values,
 			},
 		},
@@ -135,7 +135,7 @@ func (e *Engine) Fix(p Profile, opts RunOpts, digest string) (FixResult, error) 
 		return FixResult{}, err
 	}
 
-	seats, err := e.seats.Run(p.fixTable(opts, prompt.Values))
+	seats, err := e.seats.Run(p.fixTable(opts, prompt.Values, e.seatSkills(&p)))
 	return e.concludeFix(&p, opts, digest, seats, err)
 }
 
@@ -195,7 +195,7 @@ func (e *Engine) ProbeFix(p Profile, opts RunOpts) (LiveHalf, error) {
 	if err := p.validateFix(e.geom.WorktreeRoot); err != nil {
 		return LiveHalf{}, err
 	}
-	table := p.fixTable(opts, fixSeatValues(&p, fixFilesIn(e.probeDirOf())))
+	table := p.fixTable(opts, fixSeatValues(&p, fixFilesIn(e.probeDirOf())), e.seatSkills(&p))
 	return e.probeHalf(table, p.FixerReportPath)
 }
 
@@ -231,7 +231,7 @@ func (e *Engine) ResumeFix(p Profile, opts RunOpts, digest string, live LiveHalf
 		}
 	}
 
-	table := p.fixTable(opts, fixSeatValues(&p, fixFilesIn(e.probeDirOf())))
+	table := p.fixTable(opts, fixSeatValues(&p, fixFilesIn(e.probeDirOf())), e.seatSkills(&p))
 	seats, err := e.seats.Resume(table, *live.table)
 	return e.concludeFix(&p, opts, digest, seats, err)
 }

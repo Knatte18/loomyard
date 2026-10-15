@@ -34,15 +34,31 @@ func TestEngine_Review_TableShape(t *testing.T) {
 		Round:   "1",
 	}
 	tests := []struct {
-		name         string
-		clusterFan   string
-		segment      segmentcolor.Segment
-		wantSegment  segmentcolor.Segment
-		wantForkFlag bool
+		name           string
+		clusterFan     string
+		segment        segmentcolor.Segment
+		languageSkills []string
+		codeRound      bool
+		wantSegment    segmentcolor.Segment
+		wantForkFlag   bool
+		wantSkills     []string
 	}{
-		{name: "solo reviewer", wantSegment: segmentcolor.Review},
-		{name: "cluster reviewer", clusterFan: "standard", wantSegment: segmentcolor.Review, wantForkFlag: true},
-		{name: "merge-segment reviewer", segment: segmentcolor.Merge, wantSegment: segmentcolor.Merge},
+		{name: "solo reviewer", wantSegment: segmentcolor.Review, wantSkills: burlerSkills},
+		{name: "cluster reviewer", clusterFan: "standard", wantSegment: segmentcolor.Review, wantForkFlag: true, wantSkills: burlerSkills},
+		{name: "merge-segment reviewer", segment: segmentcolor.Merge, wantSegment: segmentcolor.Merge, wantSkills: burlerSkills},
+		{
+			name:           "code round",
+			languageSkills: []string{"scribe:golang-testing", "scribe:testing"},
+			codeRound:      true,
+			wantSegment:    segmentcolor.Review,
+			wantSkills:     []string{"scribe:prose", "scribe:code-quality", "scribe:testing", "scribe:golang-testing"},
+		},
+		{
+			name:           "non-code round with a language list",
+			languageSkills: []string{"scribe:golang-testing", "scribe:testing"},
+			wantSegment:    segmentcolor.Review,
+			wantSkills:     burlerSkills,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -50,8 +66,9 @@ func TestEngine_Review_TableShape(t *testing.T) {
 			root, p := newEngineTestProfile(t)
 			p.ClusterFan = tt.clusterFan
 			p.Segment = tt.segment
+			p.LanguageSkills = tt.codeRound
 			shuttle := doneReview(approvedReview)
-			e := newEngineWith(t, Geometry{WorktreeRoot: root, AnchorPath: root}, clusterTestConfig, shuttle)
+			e := New(shuttle, Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug"}, clusterTestConfig, newTestStencilsDir(t), "", tt.languageSkills)
 
 			// A cluster reviewer with no fork audit is refused after the spawn; the spec is what this test reads.
 			_, _ = e.Review(p, opts)
@@ -69,8 +86,8 @@ func TestEngine_Review_TableShape(t *testing.T) {
 			if spec.Segment != tt.wantSegment {
 				t.Errorf("spec.Segment = %q; want %q", spec.Segment, tt.wantSegment)
 			}
-			if want := []string{"scribe:prose", "scribe:code-quality", "scribe:testing"}; !slices.Equal(spec.Skills, want) {
-				t.Errorf("spec.Skills = %v; want %v", spec.Skills, want)
+			if !slices.Equal(spec.Skills, tt.wantSkills) {
+				t.Errorf("spec.Skills = %v; want %v", spec.Skills, tt.wantSkills)
 			}
 			if spec.Model != opts.Review.Model || spec.Effort != opts.Review.Effort || spec.Version != opts.Review.Version {
 				t.Errorf("spec model = (%q, %q, %q); want %+v", spec.Model, spec.Effort, spec.Version, opts.Review)
@@ -222,6 +239,8 @@ func TestEngine_ProbeReview_And_ResumeReview(t *testing.T) {
 				}
 			}
 			e := newEngineForTest(t, root, shuttle)
+			e.languageSkills = []string{"scribe:golang-testing"}
+			p.LanguageSkills = true
 
 			half, err := e.ProbeReview(p, RunOpts{Timeout: time.Minute})
 			if err != nil {
@@ -232,6 +251,9 @@ func TestEngine_ProbeReview_And_ResumeReview(t *testing.T) {
 			}
 			if spec := shuttle.probeSpecs[reviewHalfRole]; !slices.Equal(spec.OutputFiles, []string{filepath.Join(root, "review.md")}) || spec.Timeout != time.Minute {
 				t.Errorf("probe spec outputs %v timeout %v; want the review file and the opts' timeout", spec.OutputFiles, spec.Timeout)
+			}
+			if want := append(slices.Clone(burlerSkills), "scribe:golang-testing"); !slices.Equal(shuttle.probeSpecs[reviewHalfRole].Skills, want) {
+				t.Errorf("probe spec skills = %v; want %v", shuttle.probeSpecs[reviewHalfRole].Skills, want)
 			}
 			if len(shuttle.started) != 0 {
 				t.Errorf("ProbeReview started %v; want nothing started", shuttle.started)

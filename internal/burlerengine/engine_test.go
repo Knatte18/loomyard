@@ -374,7 +374,7 @@ func newEngineWith(t *testing.T, geom Geometry, cfg Config, shuttle *fakeShuttle
 	if geom.Shortname == "" {
 		geom.Shortname, geom.Slug = "tst", "slug"
 	}
-	return New(shuttle, geom, cfg, newTestStencilsDir(t), "")
+	return New(shuttle, geom, cfg, newTestStencilsDir(t), "", nil)
 }
 
 const (

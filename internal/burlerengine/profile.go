@@ -57,6 +57,9 @@ type Profile struct {
 	FocusDirective string
 	// Segment is the segment both halves' sessions are colored by; the zero value keeps segmentcolor.Review.
 	Segment segmentcolor.Segment
+	// LanguageSkills marks a code round: when true, every seat of the half loads burlerSkills followed by the engine's language skills; when false, burlerSkills alone.
+	// It only adds skills to a seat's load turn and changes no rubric, lens, fan or gate.
+	LanguageSkills bool
 }
 
 // segment returns the segment the round's sessions are colored by.
