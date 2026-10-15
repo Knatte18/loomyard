@@ -162,6 +162,14 @@
 // the batch-report section still names the report as the fork's last action.
 // Without a pack no pack file is written and the prompt ends with the batch-report section.
 //
+// The `kickstart_pack_file` key of webster.yaml, true by default, picks the layout of a built pack.
+// True is the file layout described above.
+// False is the inline layout: the `1e39afc10^` text, kept in three frozen fragments, the inline locate step, the inline FRESH-READ rule carrying the one-turn read, and the inline pack section.
+// The pack section sits between the per-card steps and the sandbox rule, in the body's kickstart_pack_inline marker, with no pack file and no `## Start here` line.
+// A prompt without a pack, and the recovery prompt, render the same bytes under either value.
+// Each begin-batch reads the key afresh, so a flip applies from the next call on;
+// a pack file an earlier file-layout call of the same batch wrote stays on disk, and the inline prompt never names it.
+//
 // The locate step, step 1 of the implementer body and its FRESH-READ rule are markers, locate, card_read and fresh_read, filled per mode by renderLocate and renderReadRules.
 // Without a pack the fragments carry the text as it stood before, so a fork without a pack and every recovery prompt render the bytes they did before the pack existed.
 // With a pack the locate step says the fork's first turn read the listed spans, says every line number obtained before the first edit holds before any edit only, and keeps the quarry or grep path for an unresolved member glyph;
@@ -173,8 +181,9 @@
 // and the card and batch gates, which run every card's tests, catch reasoning over stale content.
 //
 // Every begin-batch logs one Info line, `webster: kickstart pack`.
-// Its keys are batch, kickstart_pack (`on`, `off`, `language-none` or `empty`), resolved and unresolved.
-// The last two count distinct refs across the batch, so a ref listed under two cards counts once, and stay 0 when no pack is built.
+// Its keys are batch, kickstart_pack (`on`, `off`, `language-none` or `empty`), resolved, unresolved and pack_layout (`file`, `inline` or `none`).
+// The resolved and unresolved counts are distinct refs across the batch, so a ref listed under two cards counts once, and stay 0 when no pack is built.
+// pack_layout is `none` on every line where no pack was built.
 // The `kickstart_pack` key of webster.yaml switches the pack on and off, so runs with and without it can be compared;
 // each begin-batch reads it afresh, so a flip applies from the next call on.
 //

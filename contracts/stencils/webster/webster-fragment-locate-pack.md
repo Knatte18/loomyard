@@ -1,5 +1,5 @@
 <!-- This is the pack locate fragment for webster's fork prompt.
-     RenderForkPrompt reads it through stencilstore when begin-batch built a kick-start pack, fills its one marker, strips this banner and trailing newline,
+     RenderForkPrompt reads it through stencilstore when begin-batch built a kick-start pack in the file layout (kickstart_pack_file true), fills its one marker, strips this banner and trailing newline,
      and fills the text into the required locate marker of webster-body-implementer, in place of the quarry locate fragment.
      The one marker is specs_dir, the deployed specs directory the card grammar lives in. -->
 

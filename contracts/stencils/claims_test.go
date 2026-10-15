@@ -582,6 +582,8 @@ var wordingClaims = []stencilClaims{
 			"{{.locate}}", "{{.kickstart_pack}}"),
 		wantAll("the pack read line ends the body, after the batch-report section, since the end of a prompt is what an agent acts on first",
 			"never a slot-busy exit.{{.kickstart_pack}}\n"),
+		wantAll("the inline pack section sits after the per-card closing paragraph and before the sandbox rule, as at 1e39afc10^",
+			"do not continue to a later card on top of a broken one.{{.kickstart_pack_inline}}\n\n## The sandbox rule"),
 		wantAll("the fork runs from its working directory, never backgrounds a call, and runs a gate step and a card verify line as foreground calls under the gate rule in its system prompt",
 			"## Where and how you run commands",
 			"Your session's working directory already is the worktree root, `{{.worktree_root}}`: run every Bash command from there",
@@ -636,6 +638,11 @@ var wordingClaims = []stencilClaims{
 		wantAll("card grammar is pointed at in the deployed spec through the marker and never restated",
 			"`{{.specs_dir}}/loom/loom-plan-spec.md`"),
 	)},
+	{"webster-fragment-locate-pack-inline.md", WebsterFragmentLocatePackInline, joinClaims(
+		wantAll("the inline layout's locate text says the pack below was read in the first turn, and points at the deployed spec through the marker",
+			"   The kick-start pack below lists, under each card's path, where each member glyph on that card is, and your first turn read every listed span.",
+			"`{{.specs_dir}}/loom/loom-plan-spec.md`"),
+	)},
 	{"webster-fragment-card-read-plain.md", WebsterFragmentCardReadPlain, joinClaims(
 		wantAll("a fork without a pack reads the card file and falls back to the Card Index intent when the card's own is empty, in the words the body carried before the pack",
 			"Read the card file.\n",
@@ -667,6 +674,12 @@ var wordingClaims = []stencilClaims{
 		wantNone("the per-card step-1 fresh read and the earlier-card whole-file rule are gone",
 			"(step 1) is that card's fresh read", "step 1's whole-file read", "an earlier card of this batch edited"),
 		wantAll("only the fork's own reads are current", "Only your own reads, taken now, are current;"),
+	)},
+	{"webster-fragment-fresh-read-pack-inline.md", WebsterFragmentFreshReadPackInline, joinClaims(
+		wantAll("the inline layout's rule carries the one-turn read itself: every card file and every listed span in the first turn, a shared span once, and an Edit-only rule for a file already edited",
+			"Your first turn, before any edit, reads in parallel every card file the card list below points at and every span the kick-start pack lists under every card",
+			"A span listed under several cards is read once.",
+			"Change a file you have already edited in this batch only with the Edit tool, never by rewriting it whole with the Write tool from content read before that edit."),
 	)},
 	{"webster-fragment-pack-empty.md", WebsterFragmentPackEmpty, joinClaims(
 		wantAll("a card that names no member glyph says so in one line", "no member glyphs on this card"),
@@ -702,6 +715,13 @@ var wordingClaims = []stencilClaims{
 			"locate every unresolved member glyph of every card with `lyx quarry resolve` or a grep, then read its file whole",
 			"A `plan:` handle in an unresolved list names a member a card creates, so it is never located."),
 		wantAll("after the read the fork returns to its prompt's cards", "Then go back to your prompt and implement its cards."),
+	)},
+	{"webster-fragment-pack-section-inline.md", WebsterFragmentPackSectionInline, joinClaims(
+		wantAll("the inline section opens with the pack heading and sits each card's subsection under its path in the card list above",
+			"## Kick-start pack\n\nThe member glyphs on each card of this batch, resolved against the tree at the batch's start.",
+			"that card's path in the card list above"),
+		wantNone("the inline section carries no read instruction, the first-turn read lives in the FRESH-READ rule",
+			"Read all of this in one turn", "Then go back to your prompt"),
 	)},
 	{"webster-fragment-pack-read.md", WebsterFragmentPackRead, joinClaims(
 		wantAll("the fork prompt's last line sends the fork to its pack file, named through the marker",

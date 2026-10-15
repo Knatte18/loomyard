@@ -44,6 +44,10 @@ type Config struct {
 	// KickstartPack true renders the batch's resolved member glyphs into the fork prompt;
 	// false renders the fork prompt as it was before the pack.
 	KickstartPack bool `yaml:"kickstart_pack"`
+	// KickstartPackFile true renders the pack in its own file, `<batch>-pack.md`, with the fork prompt ending on the `## Start here` read line;
+	// false renders the pack inline in the fork prompt and writes no pack file.
+	// It has an effect only when a pack is built.
+	KickstartPackFile bool `yaml:"kickstart_pack_file"`
 }
 
 // ConfigSpec returns webster's layered-load spec.
@@ -60,6 +64,7 @@ func ConfigSpec() configengine.Spec {
 			"recovery_timeout_min": configengine.CategoryNone,
 			"verify_gate_attempts": configengine.CategoryNone,
 			"kickstart_pack":       configengine.CategoryNone,
+			"kickstart_pack_file":  configengine.CategoryNone,
 		},
 	}
 }

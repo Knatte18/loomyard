@@ -1101,7 +1101,15 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 		prepare  func(index *fakeIndex)
 		// cardHeadings are card file base names whose pointer bullet and pack subsection heading the prompt must hold.
 		cardHeadings []string
-		// noPack says begin-batch builds no pack, so it writes no pack file.
+		// inline sets kickstart_pack_file false before the first call.
+		inline bool
+		// flip makes the case call begin-batch once, flip kickstart_pack_file and call it again, and assert on the second call's files.
+		flip bool
+		// stalePack says the pack file the first call wrote is still on disk after the second, which names neither the read line nor the pack path, so the needles are checked against the prompt alone.
+		stalePack bool
+		// layoutBlind makes the case call begin-batch again with kickstart_pack_file flipped and require the same prompt bytes and still no pack file.
+		layoutBlind bool
+		// noPack says begin-batch writes no pack file.
 		noPack bool
 		// wantPrompt and wantNotPrompt are needles the prompt file followed by the pack file has and lacks.
 		wantPrompt    []string
@@ -1114,14 +1122,14 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 			cardHeadings:  []string{"01-json-flag.md"},
 			wantPrompt:    append([]string{packFirstTurn}, resolvedBaz...),
 			wantNotPrompt: []string{quarryLocate, plainStepOne},
-			wantLog:       []string{"batch=1 kickstart_pack=on resolved=1 unresolved=0"},
+			wantLog:       []string{"batch=1 kickstart_pack=on resolved=1 unresolved=0 pack_layout=file"},
 		},
 		{
 			name:         "a glyph two cards of the batch name is counted once",
 			oneBatch:     true,
 			cardHeadings: []string{"01-json-flag.md", "02-list-tests.md"},
 			wantPrompt:   resolvedBaz,
-			wantLog:      []string{"batch=1 kickstart_pack=on resolved=1 unresolved=0"},
+			wantLog:      []string{"batch=1 kickstart_pack=on resolved=1 unresolved=0 pack_layout=file"},
 		},
 		{
 			name:     "an unresolved ref two cards list is counted once",
@@ -1136,15 +1144,45 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 				}
 				index.packErr = fmt.Errorf("%w: pack boom", planglyph.ErrQuarryUnavailable)
 			},
-			wantLog: []string{"batch=1 kickstart_pack=on resolved=0 unresolved=1"},
+			wantLog: []string{"batch=1 kickstart_pack=on resolved=0 unresolved=1 pack_layout=file"},
+		},
+		{
+			name:          "the inline layout carries the pack in the prompt and writes no pack file",
+			inline:        true,
+			noPack:        true,
+			wantPrompt:    append([]string{"Your first turn, before any edit, reads in parallel"}, resolvedBaz...),
+			wantNotPrompt: []string{"## Start here", packFirstTurn},
+			wantLog:       []string{"batch=1 kickstart_pack=on resolved=1 unresolved=0 pack_layout=inline"},
+		},
+		{
+			name:       "a flip from inline to file writes the pack file",
+			inline:     true,
+			flip:       true,
+			wantPrompt: append([]string{packFirstTurn}, resolvedBaz...),
+			wantLog: []string{
+				"batch=1 kickstart_pack=on resolved=1 unresolved=0 pack_layout=inline",
+				"batch=1 kickstart_pack=on resolved=1 unresolved=0 pack_layout=file",
+			},
+		},
+		{
+			name:          "a flip from file to inline leaves a prompt that names no pack file",
+			flip:          true,
+			stalePack:     true,
+			wantPrompt:    []string{packHeading, "Your first turn, before any edit, reads in parallel"},
+			wantNotPrompt: []string{"## Start here"},
+			wantLog: []string{
+				"batch=1 kickstart_pack=on resolved=1 unresolved=0 pack_layout=file",
+				"batch=1 kickstart_pack=on resolved=1 unresolved=0 pack_layout=inline",
+			},
 		},
 		{
 			name:          "switch off renders the quarry locate step",
 			off:           true,
 			noPack:        true,
+			layoutBlind:   true,
 			wantPrompt:    []string{quarryLocate, plainStepOne},
 			wantNotPrompt: []string{packHeading, packFirstTurn},
-			wantLog:       []string{"batch=1 kickstart_pack=off resolved=0 unresolved=0"},
+			wantLog:       []string{"batch=1 kickstart_pack=off resolved=0 unresolved=0 pack_layout=none"},
 		},
 		{
 			name:          "a plan without a glyph language renders as switch off",
@@ -1152,7 +1190,7 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 			noPack:        true,
 			wantPrompt:    []string{quarryLocate, plainStepOne},
 			wantNotPrompt: []string{packHeading, packFirstTurn},
-			wantLog:       []string{"batch=1 kickstart_pack=language-none resolved=0 unresolved=0"},
+			wantLog:       []string{"batch=1 kickstart_pack=language-none resolved=0 unresolved=0 pack_layout=none"},
 		},
 		{
 			name: "a pack with no entry on any card renders as switch off",
@@ -1168,7 +1206,7 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 			noPack:        true,
 			wantPrompt:    []string{quarryLocate, plainStepOne},
 			wantNotPrompt: []string{packHeading, packFirstTurn},
-			wantLog:       []string{"batch=1 kickstart_pack=empty resolved=0 unresolved=0"},
+			wantLog:       []string{"batch=1 kickstart_pack=empty resolved=0 unresolved=0 pack_layout=none"},
 		},
 		{
 			name: "an unavailable index degrades every entry to unresolved",
@@ -1182,7 +1220,7 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 			wantLog: []string{
 				"level=WARN",
 				"pack boom",
-				"batch=1 kickstart_pack=on resolved=0 unresolved=1",
+				"batch=1 kickstart_pack=on resolved=0 unresolved=1 pack_layout=file",
 			},
 		},
 		{
@@ -1199,7 +1237,7 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 			wantLog: []string{
 				"level=WARN",
 				"could not re-parse the plan",
-				"batch=1 kickstart_pack=on resolved=1 unresolved=1",
+				"batch=1 kickstart_pack=on resolved=1 unresolved=1 pack_layout=file",
 			},
 		},
 	}
@@ -1241,6 +1279,7 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 				fx.Deps.Batches = []batcher.Batch{{Cards: plan.Cards}}
 			}
 			fx.Deps.Config.KickstartPack = !tt.off
+			fx.Deps.Config.KickstartPackFile = !tt.inline
 			if tt.prepare != nil {
 				tt.prepare(fx.Deps.Geom.Index.(*fakeIndex))
 			}
@@ -1249,20 +1288,41 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 			if err != nil {
 				t.Fatalf("BeginBatch() error = %v; want nil", err)
 			}
+			firstPrompt, err := os.ReadFile(result.PromptPath)
+			if err != nil {
+				t.Fatalf("read the first prompt file: %v", err)
+			}
+			if tt.flip || tt.layoutBlind {
+				fx.Deps.Config.KickstartPackFile = !fx.Deps.Config.KickstartPackFile
+				result, err = websterengine.BeginBatch(fx.Deps, 1)
+				if err != nil {
+					t.Fatalf("second BeginBatch() error = %v; want nil", err)
+				}
+			}
 
 			prompt, err := os.ReadFile(result.PromptPath)
 			if err != nil {
 				t.Fatalf("read the prompt file: %v", err)
 			}
+			if tt.layoutBlind && string(prompt) != string(firstPrompt) {
+				t.Errorf("prompt differs after flipping kickstart_pack_file; want the same bytes")
+			}
 			packPath := strings.TrimSuffix(result.PromptPath, ".md") + "-pack.md"
 			packFile, err := os.ReadFile(packPath)
 			readLine := "Now read `" + packPath + "` and do what it says.\n"
-			if tt.noPack {
+			switch {
+			case tt.stalePack:
+				if err != nil {
+					t.Fatalf("read the stale pack file: %v", err)
+				}
+				requireNotContains(t, string(prompt), readLine)
+				requireNotContains(t, string(prompt), packPath)
+			case tt.noPack:
 				if !os.IsNotExist(err) {
 					t.Errorf("read the pack file %s: error = %v; want it absent", packPath, err)
 				}
 				requireNotContains(t, string(prompt), readLine)
-			} else {
+			default:
 				if err != nil {
 					t.Fatalf("read the pack file: %v", err)
 				}
@@ -1271,6 +1331,9 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 				}
 			}
 			text := string(prompt) + string(packFile)
+			if tt.stalePack {
+				text = string(prompt)
+			}
 			for _, needle := range tt.wantPrompt {
 				requireContains(t, text, needle)
 			}

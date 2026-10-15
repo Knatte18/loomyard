@@ -136,11 +136,16 @@ func readFragment(stencilsDir, name string) (string, error) {
 
 // renderLocate returns the text filled into the body's locate marker:
 // the pack fragment, with specsDir filled in, when packOn, and the quarry fragment otherwise.
-func renderLocate(stencilsDir, specsDir string, packOn bool) (string, error) {
+// With packOn, inline picks the frozen inline-layout pack fragment over the file-layout one; inline is ignored when packOn is false.
+func renderLocate(stencilsDir, specsDir string, packOn, inline bool) (string, error) {
 	if !packOn {
 		return readFragment(stencilsDir, "webster-fragment-locate-quarry")
 	}
-	raw, err := stencilstore.Read(stencilsDir, "webster-fragment-locate-pack")
+	name := "webster-fragment-locate-pack"
+	if inline {
+		name += "-inline"
+	}
+	raw, err := stencilstore.Read(stencilsDir, name)
 	if err != nil {
 		return "", err
 	}
@@ -153,7 +158,9 @@ func renderLocate(stencilsDir, specsDir string, packOn bool) (string, error) {
 
 // renderReadRules returns the texts filled into the body's card_read and fresh_read markers:
 // the pack-on fragments when packOn, and the pack-off fragments, which carry the text as it stood before the pack, otherwise.
-func renderReadRules(stencilsDir string, packOn bool) (cardRead, freshRead string, err error) {
+// With packOn, inline fills fresh_read from the frozen inline-layout fragment, which carries the one-turn read; card_read is the same pack-on fragment in both layouts.
+// inline is ignored when packOn is false.
+func renderReadRules(stencilsDir string, packOn, inline bool) (cardRead, freshRead string, err error) {
 	mode := "plain"
 	if packOn {
 		mode = "pack"
@@ -162,7 +169,11 @@ func renderReadRules(stencilsDir string, packOn bool) (cardRead, freshRead strin
 	if err != nil {
 		return "", "", err
 	}
-	freshRead, err = readFragment(stencilsDir, "webster-fragment-fresh-read-"+mode)
+	freshName := "webster-fragment-fresh-read-" + mode
+	if packOn && inline {
+		freshName += "-inline"
+	}
+	freshRead, err = readFragment(stencilsDir, freshName)
 	if err != nil {
 		return "", "", err
 	}
@@ -182,10 +193,12 @@ func renderPackRead(stencilsDir, packPath string) (string, error) {
 	return strings.TrimRight(string(filled), "\r\n"), nil
 }
 
-// renderPackSection renders the kick-start pack file's content from stencilsDir:
-// the one-turn read instruction, then one subsection per card of pack, in slice order and joined by a blank line, each under the card's pointer path in planDirDisplay (see renderCardPack).
-func renderPackSection(stencilsDir string, pack []planindex.CardPack, planDirDisplay string) (string, error) {
-	raw, err := stencilstore.Read(stencilsDir, "webster-fragment-pack-section")
+// renderPackSection renders the kick-start pack section from the stencil sectionStencil in stencilsDir:
+// in the file layout, "webster-fragment-pack-section", the pack file's content with the one-turn read instruction first;
+// in the inline layout, "webster-fragment-pack-section-inline", the prompt's inline section, which has no read instruction.
+// Either way one subsection per card of pack follows, in slice order and joined by a blank line, each under the card's pointer path in planDirDisplay (see renderCardPack).
+func renderPackSection(stencilsDir, sectionStencil string, pack []planindex.CardPack, planDirDisplay string) (string, error) {
+	raw, err := stencilstore.Read(stencilsDir, sectionStencil)
 	if err != nil {
 		return "", err
 	}
@@ -306,28 +319,31 @@ func cardPointerPath(c planparser.Card, planDirDisplay string) string {
 // batchGate is the caller-rendered batch package list and gate (renderBatchGate), filled into the body's required batch_gate marker.
 // outcomePath and summaryPath are Merriam's two contract files, filled into the fork prefix's outcome_path and summary_path markers so the fork is told never to write them.
 // pack is the batch's kick-start pack, one entry per card, or nil to render the prompt without one.
-// A non-nil pack swaps in the pack-on fragments and ends the prompt with a line sending the fork to packPath.
-// It also returns packFile, the content the caller writes to packPath: the one-turn read instruction and a subsection per card.
-// A nil pack renders the pack-off fragments, leaves the prompt's end empty and returns a nil packFile.
+// A non-nil pack swaps in the pack-on fragments and renders in the layout packFileLayout picks.
+// With packFileLayout true the prompt ends with a line sending the fork to packPath, and packFile, the content the caller writes to packPath, holds the one-turn read instruction and a subsection per card.
+// With packFileLayout false the prompt carries the pack inline, in the kickstart_pack_inline marker between the per-card steps and the sandbox rule, with its read instruction in the fresh-read rule, and packFile is nil.
+// A nil pack renders the pack-off fragments, leaves both pack markers empty and returns a nil packFile, whichever packFileLayout is.
 // The plan is not a parameter, per the fork-context-hygiene rule.
-func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, reportPath, planDir, promptWorktreeRoot, stencilsDir, specsDir, outcomePath, summaryPath string, selfFixCap int, notePath, packPath string, pack []planindex.CardPack) (prompt, packFile []byte, err error) {
+func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, reportPath, planDir, promptWorktreeRoot, stencilsDir, specsDir, outcomePath, summaryPath string, selfFixCap int, notePath, packPath string, packFileLayout bool, pack []planindex.CardPack) (prompt, packFile []byte, err error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
 		digestLine = noPrecedingBatchDigest
 	}
 
 	planDirDisplay := masterPlanDirDisplay(promptWorktreeRoot, planDir)
-	locate, err := renderLocate(stencilsDir, specsDir, pack != nil)
+	inline := pack != nil && !packFileLayout
+	locate, err := renderLocate(stencilsDir, specsDir, pack != nil, inline)
 	if err != nil {
 		return nil, nil, fmt.Errorf("webster: render fork locate step: %w", err)
 	}
-	cardRead, freshRead, err := renderReadRules(stencilsDir, pack != nil)
+	cardRead, freshRead, err := renderReadRules(stencilsDir, pack != nil, inline)
 	if err != nil {
 		return nil, nil, fmt.Errorf("webster: render fork read rules: %w", err)
 	}
-	var packRead string
-	if pack != nil {
-		section, err := renderPackSection(stencilsDir, pack, planDirDisplay)
+	var packRead, packInline string
+	switch {
+	case pack != nil && packFileLayout:
+		section, err := renderPackSection(stencilsDir, "webster-fragment-pack-section", pack, planDirDisplay)
 		if err != nil {
 			return nil, nil, fmt.Errorf("webster: render kick-start pack: %w", err)
 		}
@@ -338,6 +354,13 @@ func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, rep
 		}
 		// The marker ends the body's last line, so the read line brings its own blank-line separation and an empty fill leaves no byte.
 		packRead = "\n\n" + line
+	case inline:
+		section, err := renderPackSection(stencilsDir, "webster-fragment-pack-section-inline", pack, planDirDisplay)
+		if err != nil {
+			return nil, nil, fmt.Errorf("webster: render inline kick-start pack: %w", err)
+		}
+		// The marker ends a line of the body, so the section brings its own blank-line separation and an empty fill leaves no byte.
+		packInline = "\n\n" + section
 	}
 
 	directive, err := friction.Directive(notePath, stencilsDir, friction.RoleImplementer)
@@ -347,28 +370,29 @@ func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, rep
 	}
 
 	values := map[string]string{
-		"card_pointers":     renderCardPointers(batch.Cards, planDirDisplay),
-		"card_gates":        cardGates,
-		"batch_gate":        batchGate,
-		"report_path":       reportPath,
-		"self_fix_cap":      fmt.Sprintf("%d", selfFixCap),
-		"worktree_root":     promptWorktreeRoot,
-		"prev_digest":       digestLine,
-		"specs_dir":         specsDir,
-		"outcome_path":      outcomePath,
-		"summary_path":      summaryPath,
-		"locate":            locate,
-		"card_read":         cardRead,
-		"fresh_read":        freshRead,
-		"kickstart_pack":    packRead,
-		friction.MarkerName: directive,
+		"card_pointers":         renderCardPointers(batch.Cards, planDirDisplay),
+		"card_gates":            cardGates,
+		"batch_gate":            batchGate,
+		"report_path":           reportPath,
+		"self_fix_cap":          fmt.Sprintf("%d", selfFixCap),
+		"worktree_root":         promptWorktreeRoot,
+		"prev_digest":           digestLine,
+		"specs_dir":             specsDir,
+		"outcome_path":          outcomePath,
+		"summary_path":          summaryPath,
+		"locate":                locate,
+		"card_read":             cardRead,
+		"fresh_read":            freshRead,
+		"kickstart_pack":        packRead,
+		"kickstart_pack_inline": packInline,
+		friction.MarkerName:     directive,
 	}
 	template, err := composeForkTemplate(stencilsDir)
 	if err != nil {
 		return nil, nil, fmt.Errorf("webster: read fork template: %w", err)
 	}
 	friction.WarnIfMarkerAbsent(template, "webster-prefix-fork", directive)
-	prompt, err = stencil.FillOptional(template, values, []string{"kickstart_pack", friction.MarkerName})
+	prompt, err = stencil.FillOptional(template, values, []string{"kickstart_pack", "kickstart_pack_inline", friction.MarkerName})
 	if err != nil {
 		return nil, nil, fmt.Errorf("webster: fill fork template: %w", err)
 	}
@@ -409,11 +433,11 @@ func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest,
 		uncommittedLine = "none"
 	}
 
-	locate, err := renderLocate(stencilsDir, specsDir, false)
+	locate, err := renderLocate(stencilsDir, specsDir, false, false)
 	if err != nil {
 		return nil, fmt.Errorf("webster: render recovery locate step: %w", err)
 	}
-	cardRead, freshRead, err := renderReadRules(stencilsDir, false)
+	cardRead, freshRead, err := renderReadRules(stencilsDir, false, false)
 	if err != nil {
 		return nil, fmt.Errorf("webster: render recovery read rules: %w", err)
 	}
@@ -464,7 +488,7 @@ func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest,
 		return nil, fmt.Errorf("webster: read recovery template: %w", err)
 	}
 	friction.WarnIfMarkerAbsent(template, "webster-prefix-recovery", frictionDirective)
-	prompt, err := stencil.FillOptional(template, values, []string{"pattern_directive", "failure_digest", "uncommitted_paths", "kickstart_pack", friction.MarkerName, parentdirective.MarkerName})
+	prompt, err := stencil.FillOptional(template, values, []string{"pattern_directive", "failure_digest", "uncommitted_paths", "kickstart_pack", "kickstart_pack_inline", friction.MarkerName, parentdirective.MarkerName})
 	if err != nil {
 		return nil, fmt.Errorf("webster: fill recovery template: %w", err)
 	}

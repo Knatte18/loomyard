@@ -893,6 +893,7 @@ func TestDispatchLayers(t *testing.T) {
 	t.Parallel()
 
 	loomTemplate, _ := configreg.Template("loom")
+	websterTemplate, _ := configreg.Template("webster")
 	taskSession, err := agentname.Format("ly", "task-a", "loom")
 	if err != nil {
 		t.Fatalf("agentname.Format: %v", err)
@@ -1037,6 +1038,15 @@ func TestDispatchLayers(t *testing.T) {
 			check: func(t *testing.T, fx hubFixture, out string) {
 				if _, err := os.Stat(configengine.ConfigFile(fx.worktree, "loom")); !os.IsNotExist(err) {
 					t.Errorf("worktree loom.yaml exists after a refused value; stat err = %v", err)
+				}
+			},
+		},
+		{
+			name: "worktree layer refuses a kickstart_pack_file that is not a boolean and never syncs", module: "webster",
+			setFlags: []string{"kickstart_pack_file=maybe"}, seedBoard: websterTemplate(), wantCode: 1, wantErr: "webster config",
+			check: func(t *testing.T, fx hubFixture, out string) {
+				if _, err := os.Stat(configengine.ConfigFile(fx.worktree, "webster")); !os.IsNotExist(err) {
+					t.Errorf("worktree webster.yaml exists after a refused value; stat err = %v", err)
 				}
 			},
 		},
