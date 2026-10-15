@@ -119,10 +119,11 @@ func denyJSON(steer string) string {
 }
 
 // denyInputs are the run inputs that decide which standing denies a run installs.
-// allowAgentTool is the per-run override (Spec.AllowAgentTool): it removes the Agent deny whatever cfg.ClaudeDenyAgentTool says.
+// allowAgentTool is the per-run override (Spec.AllowAgentTool): it removes the Agent deny whatever claude.DenyAgentTool says.
 type denyInputs struct {
 	interactive    bool
 	cfg            shuttleengine.Config
+	claude         Config
 	forkSubagents  bool
 	allowAgentTool bool
 }
@@ -155,14 +156,14 @@ func claudeDenies() []standingDeny {
 			command:   fmt.Sprintf(`grep -q '"subagent_type":"fork"' || echo '%s'`, denyJSON(steerAgentNonForkDeny)),
 			steer:     steerAgentNonForkDeny,
 			notice:    noticeAgentForkDeny,
-			installed: func(in denyInputs) bool { return in.cfg.ClaudeDenyAgentTool && !in.allowAgentTool && in.forkSubagents },
+			installed: func(in denyInputs) bool { return in.claude.DenyAgentTool && !in.allowAgentTool && in.forkSubagents },
 		},
 		{
 			matcher:   "Agent",
 			command:   "echo '" + denyJSON(steerAgentDeny) + "'",
 			steer:     steerAgentDeny,
 			notice:    noticeAgentDeny,
-			installed: func(in denyInputs) bool { return in.cfg.ClaudeDenyAgentTool && !in.allowAgentTool && !in.forkSubagents },
+			installed: func(in denyInputs) bool { return in.claude.DenyAgentTool && !in.allowAgentTool && !in.forkSubagents },
 		},
 		{
 			// Fork-context webster-verb guard: deny `lyx webster` inside forks (detected by top-level agent_id in payload).
@@ -177,7 +178,7 @@ func claudeDenies() []standingDeny {
 			command:   "echo '" + denyJSON(steerAskUserQuestionDeny) + "'",
 			steer:     steerAskUserQuestionDeny,
 			notice:    noticeAskUserQuestionDeny,
-			installed: func(in denyInputs) bool { return !in.interactive && in.cfg.ClaudeDenyAskUserQuestion },
+			installed: func(in denyInputs) bool { return !in.interactive && in.claude.DenyAskUserQuestion },
 		},
 	}
 }
@@ -235,8 +236,8 @@ func renderShellGuard(row shellguard.Row) standingDeny {
 }
 
 // buildDenyNotice returns the one-line system-prompt notice announcing each deny buildSettings installs under the same inputs, or "" when it installs none.
-func buildDenyNotice(interactive bool, cfg shuttleengine.Config, forkSubagents, allowAgentTool bool) string {
-	in := denyInputs{interactive: interactive, cfg: cfg, forkSubagents: forkSubagents, allowAgentTool: allowAgentTool}
+func buildDenyNotice(interactive bool, cfg shuttleengine.Config, claude Config, forkSubagents, allowAgentTool bool) string {
+	in := denyInputs{interactive: interactive, cfg: cfg, claude: claude, forkSubagents: forkSubagents, allowAgentTool: allowAgentTool}
 	var sentences []string
 	for _, deny := range standingDenies {
 		if deny.notice != "" && deny.installed(in) {
@@ -256,15 +257,15 @@ func recordingCommand(hookEventName, quotedEventsPath string) string {
 	return stamp + "; " + payload
 }
 
-// buildSettings marshals settings.json: a Stop hook and the other recording hooks appending their events to eventsPathPosix, and PreToolUse guardrails per cfg and interactive.
+// buildSettings marshals settings.json: a Stop hook and the other recording hooks appending their events to eventsPathPosix, and PreToolUse guardrails per cfg, claude and interactive.
 // eventsPathPosix must be a git-bash POSIX path (from shuttleengine.PosixPath); it's embedded via shQuote to escape any apostrophes.
-// Agent-tool and AskUserQuestion denies are controlled by cfg; forkSubagents narrows the Agent deny to non-fork subagent types and adds a webster-verb guard,
+// Agent-tool and AskUserQuestion denies are controlled by claude and the python deny by cfg; forkSubagents narrows the Agent deny to non-fork subagent types and adds a webster-verb guard,
 // and allowAgentTool drops the Agent deny entirely while leaving the webster-verb guard keyed on forkSubagents alone.
 // Every SessionStart source is recorded exactly once.
 // A non-empty contextAfterCompaction splits the SessionStart hook in two: one entry records every source but compaction, and the compaction entry records the event and then runs that command verbatim, so its standard output reaches the session's context.
 // Empty gives a single recording entry with no matcher.
 // The recordings print nothing and exit 0, so the PermissionRequest recording answers no request and the SessionStart recording adds nothing to the session's context.
-func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config, forkSubagents, allowAgentTool bool, contextAfterCompaction string) ([]byte, error) {
+func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config, claude Config, forkSubagents, allowAgentTool bool, contextAfterCompaction string) ([]byte, error) {
 	quotedEventsPath := shQuote(eventsPathPosix)
 	recordingHook := func(hookEventName string, alwaysSucceeds bool) []hookEntry {
 		command := recordingCommand(hookEventName, quotedEventsPath)
@@ -295,7 +296,7 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 		}
 	}
 
-	in := denyInputs{interactive: interactive, cfg: cfg, forkSubagents: forkSubagents, allowAgentTool: allowAgentTool}
+	in := denyInputs{interactive: interactive, cfg: cfg, claude: claude, forkSubagents: forkSubagents, allowAgentTool: allowAgentTool}
 	for _, deny := range standingDenies {
 		if deny.installed(in) {
 			doc.Hooks.PreToolUse = append(doc.Hooks.PreToolUse, hookEntry{

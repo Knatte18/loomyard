@@ -13,7 +13,7 @@ import (
 )
 
 // writeClaudeLayer writes document to path, creating its directory.
-func writeClaudeLayer(t *testing.T, path, document string) {
+func writeClaudeLayer(t testing.TB, path, document string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(path), err)

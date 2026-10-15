@@ -120,6 +120,7 @@ func TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver(t *testing.
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.SeedConfig(t, h, map[string]string{
+		"claude":  claudeConfigWithBinary(stubPath),
 		"reed":    reedengine.ConfigTemplate(),
 		"shuttle": integrationDriverShuttleConfig(stubPath),
 		"webster": websterengine.ConfigTemplate(),

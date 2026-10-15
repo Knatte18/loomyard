@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -117,7 +118,7 @@ func newLiveFixture(t *testing.T, orchCfg string, extraCfg map[string]string) *l
 		prime:      prime,
 		paths:      orchPaths(h.Location),
 		reed:       reed,
-		runner:     shuttleengine.NewRunner(reed, shuttlefake.EngineSet(claudeengine.New()), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg),
+		runner:     shuttleengine.NewRunner(reed, shuttlefake.EngineSet(claudeengine.NewFromConfig(shuttleCfg, fabricengine.ConfigDirs(h.Location))), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg),
 		shuttleCfg: shuttleCfg,
 	}
 	t.Cleanup(func() {

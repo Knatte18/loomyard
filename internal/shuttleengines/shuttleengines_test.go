@@ -8,12 +8,15 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 )
 
 // forksWithoutAuditEngine declares RequirementForks through Supports but has no ForkAuditor.
@@ -23,25 +26,81 @@ func (forksWithoutAuditEngine) Supports(req shuttleengine.Requirement) bool {
 	return req == shuttleengine.RequirementForks
 }
 
+// writeLocalLayer writes content as module's local layer file under anchor.
+func writeLocalLayer(t *testing.T, anchor, module, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(anchor, lyxdirs.LyxDirName), 0o755); err != nil {
+		t.Fatalf("mkdir _lyx: %v", err)
+	}
+	localFile := configengine.LocalFile(anchor, module)
+	if err := os.MkdirAll(filepath.Dir(localFile), 0o755); err != nil {
+		t.Fatalf("mkdir local dir: %v", err)
+	}
+	if err := os.WriteFile(localFile, []byte(content), 0o644); err != nil {
+		t.Fatalf("write local file: %v", err)
+	}
+}
+
 // loadWithLocalEngine loads a shuttle config over a temp anchor whose local layer file sets engine: bogus.
 func loadWithLocalEngine(t *testing.T) shuttleengine.Config {
 	t.Helper()
 	anchor := t.TempDir()
-	if err := os.Mkdir(filepath.Join(anchor, lyxdirs.LyxDirName), 0o755); err != nil {
-		t.Fatalf("mkdir _lyx: %v", err)
-	}
-	localFile := configengine.LocalFile(anchor, "shuttle")
-	if err := os.MkdirAll(filepath.Dir(localFile), 0o755); err != nil {
-		t.Fatalf("mkdir local dir: %v", err)
-	}
-	if err := os.WriteFile(localFile, []byte("engine: bogus\n"), 0o644); err != nil {
-		t.Fatalf("write local file: %v", err)
-	}
+	writeLocalLayer(t, anchor, "shuttle", "engine: bogus\n")
 	cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: anchor}, "shuttle")
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
 	return cfg
+}
+
+// invalidClaudeConfigFixture builds a temp anchor whose claude.local.yaml holds a key the local layer refuses.
+// The anchor's shuttle.local.yaml holds two prompt-cache roles, and the fixture returns the shuttle config loaded over it.
+func invalidClaudeConfigFixture(t *testing.T) (shuttleengine.Config, configengine.Dirs) {
+	t.Helper()
+	anchor := t.TempDir()
+	writeLocalLayer(t, anchor, "claude", "binary: /x\n")
+	writeLocalLayer(t, anchor, "shuttle", "claude_prompt_cache_ttl_roles:\n  alpha: 5m\n  beta: 1h\n")
+	dirs := configengine.Dirs{Anchor: anchor}
+	cfg, err := shuttleengine.LoadConfig(dirs, "shuttle")
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	return cfg, dirs
+}
+
+// assertBadClaudeConfigRefusesOnlyARunStart pins that a claude.yaml the local layer refuses stops a run start.
+// Stopping a strand and reading activity, waits and session states still work.
+func assertBadClaudeConfigRefusesOnlyARunStart(t *testing.T, set shuttleengine.EngineSet, cfg shuttleengine.Config, dirs configengine.Dirs) {
+	t.Helper()
+	reed := &shuttlefake.Reed{Strands: []reedengine.StrandStatus{{GUID: "live-guid", Name: "alpha", Live: true}}}
+	runner := shuttleengine.NewRunner(reed, set, dirs.Anchor, dirs.Anchor, cfg)
+
+	if err := runner.StopStrand("live-guid"); err != nil {
+		t.Fatalf("StopStrand: %v", err)
+	}
+	if got, want := reed.RemovedGUIDs, []string{"live-guid"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("RemovedGUIDs = %v; want %v", got, want)
+	}
+	if _, err := shuttleengine.ReadAgentActivity(cfg, dirs.Anchor, set); err != nil {
+		t.Errorf("ReadAgentActivity: %v", err)
+	}
+	if _, err := shuttleengine.ReadAgentWaits(cfg, dirs.Anchor, set, time.Now()); err != nil {
+		t.Errorf("ReadAgentWaits: %v", err)
+	}
+	if _, err := shuttleengine.ReadSessionStates(cfg, dirs.Anchor, set, time.Now()); err != nil {
+		t.Errorf("ReadSessionStates: %v", err)
+	}
+
+	spec := shuttleengine.Spec{Prompt: "p", OutputFiles: []string{filepath.Join(dirs.Anchor, "out.md")}}
+	_, err := runner.Start(spec)
+	if err == nil {
+		t.Fatal("Start accepted a run over an invalid claude.yaml")
+	}
+	for _, want := range []string{"claude.local.yaml", "binary"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("Start error %q does not contain %q", err, want)
+		}
+	}
 }
 
 // TestNew pins the set the template config builds and the refusal of an engine name no layer may smuggle in.
@@ -54,16 +113,23 @@ func TestNew(t *testing.T) {
 	}
 
 	forksWithoutAudit := map[string]constructor{
-		"nofork": func(shuttleengine.Config) shuttleengine.Engine { return forksWithoutAuditEngine{} },
+		"nofork": func(shuttleengine.Config, configengine.Dirs) shuttleengine.Engine { return forksWithoutAuditEngine{} },
 	}
 	unregistered := []string{"bogus", "registered engines: claude", "engine: in shuttle.yaml"}
+	invalidClaudeCfg, invalidClaudeDirs := invalidClaudeConfigFixture(t)
 	tests := []struct {
 		name         string
 		cfg          shuttleengine.Config
+		dirs         configengine.Dirs
 		constructors map[string]constructor
 		wantErr      []string
+		// after, when set, runs against the built set.
+		after func(t *testing.T, set shuttleengine.EngineSet)
 	}{
 		{name: "TemplateConfig", cfg: templateCfg},
+		{name: "InvalidEngineConfig", cfg: invalidClaudeCfg, dirs: invalidClaudeDirs, after: func(t *testing.T, set shuttleengine.EngineSet) {
+			assertBadClaudeConfigRefusesOnlyARunStart(t, set, invalidClaudeCfg, invalidClaudeDirs)
+		}},
 		{name: "UnregisteredEngine", cfg: shuttleengine.Config{Engine: "bogus"}, wantErr: unregistered},
 		{name: "UnregisteredEngineFromLocalLayer", cfg: loadWithLocalEngine(t), wantErr: unregistered},
 		{name: "EngineDeclaringForksWithoutAudit", cfg: shuttleengine.Config{Engine: "nofork"}, constructors: forksWithoutAudit, wantErr: []string{`engine "nofork" declares forks but cannot audit them`}},
@@ -74,9 +140,9 @@ func TestNew(t *testing.T) {
 			var set shuttleengine.EngineSet
 			var err error
 			if tt.constructors != nil {
-				set, err = build(tt.cfg, tt.constructors)
+				set, err = build(tt.cfg, tt.dirs, tt.constructors)
 			} else {
-				set, err = New(tt.cfg)
+				set, err = New(tt.cfg, tt.dirs)
 			}
 			if tt.wantErr != nil {
 				if err == nil {
@@ -101,6 +167,9 @@ func TestNew(t *testing.T) {
 			}
 			if got, want := set.Names(), []string{"claude"}; !reflect.DeepEqual(got, want) {
 				t.Errorf("Names() = %v; want %v", got, want)
+			}
+			if tt.after != nil {
+				tt.after(t, set)
 			}
 		})
 	}

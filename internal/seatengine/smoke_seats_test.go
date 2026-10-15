@@ -94,7 +94,7 @@ func TestSmokeSeatsChairAsksAdvisor(t *testing.T) {
 		t.Fatalf("reed geometry: %v", err)
 	}
 	reedEngine := reedengine.New(reedCfg, reedGeom)
-	runner := shuttleengine.NewRunner(reedEngine, shuttlefake.EngineSet(claudeengine.New()), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+	runner := shuttleengine.NewRunner(reedEngine, shuttlefake.EngineSet(claudeengine.NewFromConfig(shuttleCfg, fabricengine.ConfigDirs(h.Location))), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 	engine := seatengine.New(seatengine.RunnerShuttle(runner), seatengine.Geometry{
 		WorktreeRoot: h.Location.WorktreePath(),
 		AnchorPath:   h.Location.AnchorPath(),

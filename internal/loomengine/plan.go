@@ -16,7 +16,7 @@
 // The forks hold the exploration and the plan but not fork0's reasoning, and the lead records the lens review in the plan directory's lens-review.md.
 // The writer runs `lyx loom validate-plan --lens-review` as its final self-check, and the row's gate requires a recorded lens-review.md for a run whose lead was authorized to fork.
 // The lead sets ForkSubagents, so the writer may spawn subagents of type fork.
-// While the shuttle config's claude_deny_agent_tool is true, the Agent hook admits fork subagents only and refuses every other subagent type; with it false no Agent hook is installed.
+// While claude.yaml's deny_agent_tool is true, the Agent hook admits fork subagents only and refuses every other subagent type; with it false no Agent hook is installed.
 // Forks run on the writer's model, read-only and without the Agent tool by the stencil's boilerplate.
 // The plan gates and the Plan-Review segment still bound what lands in the plan.
 // With plan_lenses empty the prompt keeps its bytes and ForkSubagents stays false.

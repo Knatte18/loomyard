@@ -541,7 +541,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	}
 	c.parentName = reedGeom.ParentName
 	reedEngine := reedengine.New(reedCfg, reedGeom)
-	engines, err := shuttleengines.New(shuttleCfg)
+	engines, err := shuttleengines.New(shuttleCfg, fabricengine.ConfigDirs(location))
 	if err != nil {
 		return err
 	}

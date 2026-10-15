@@ -323,7 +323,7 @@ func (c *battenCLI) loadedTacklerDeps() (sheddriver.TacklerDeps, error) {
 	if err != nil {
 		return sheddriver.TacklerDeps{}, err
 	}
-	engines, err := shuttleengines.New(shuttleConfig)
+	engines, err := shuttleengines.New(shuttleConfig, dirs)
 	if err != nil {
 		return sheddriver.TacklerDeps{}, err
 	}

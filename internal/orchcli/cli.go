@@ -166,7 +166,7 @@ Every verb runs from the hub's prime worktree only.`,
 			c.location = location
 			c.cfg = orchCfg
 			c.shuttleCfg = shuttleCfg
-			engines, err := shuttleengines.New(shuttleCfg)
+			engines, err := shuttleengines.New(shuttleCfg, fabricengine.ConfigDirs(location))
 			if err != nil {
 				return fail(err)
 			}

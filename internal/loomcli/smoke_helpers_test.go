@@ -30,6 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -78,6 +79,7 @@ func newWiredPairFixture(t *testing.T) (h *hubforge.Hub, loc *lyxcwd.Location, w
 
 	h = hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.SeedConfig(t, h, map[string]string{
+		"claude":  claudeConfigWithBinary(providerlessBinary),
 		"loom":    fastDeadlineLoomConfig(),
 		"reed":    reedengine.ConfigTemplate(),
 		"shuttle": providerlessShuttleConfig(),
@@ -111,9 +113,23 @@ func newWiredPairFixture(t *testing.T) (h *hubforge.Hub, loc *lyxcwd.Location, w
 // zero-subprocess claim true by construction instead of by hope.
 func providerlessShuttleConfig() string {
 	cfg := shuttleengine.ConfigTemplate()
-	cfg = strings.Replace(cfg, "claude: ${env:LYX_SHUTTLE_CLAUDE:-}", "claude: /nonexistent/lyx-smoke-has-no-provider", 1)
+	cfg = strings.Replace(cfg, "claude: ${env:LYX_SHUTTLE_CLAUDE:-}", "claude: "+providerlessBinary, 1)
 	cfg = strings.Replace(cfg, "startup_timeout_s: 90", "startup_timeout_s: 2", 1)
 	return cfg
+}
+
+// providerlessBinary is a provider path that cannot exist, which keeps a fixture from starting a real session.
+const providerlessBinary = "/nonexistent/lyx-smoke-has-no-provider"
+
+// claudeConfigWithBinary returns claude.yaml's shipped template with its binary: value pointed at binary, so a fixture seeding it launches that executable rather than the real claude on PATH.
+// It panics when the template no longer holds the line it rewrites, so drift fails loudly.
+func claudeConfigWithBinary(binary string) string {
+	const binaryValue = "binary: ${env:LYX_SHUTTLE_CLAUDE:-}"
+	template := claudeengine.ConfigTemplate()
+	if !strings.Contains(template, binaryValue) {
+		panic("claude config template drift: " + binaryValue + " not found")
+	}
+	return strings.Replace(template, binaryValue, "binary: "+binary, 1)
 }
 
 // fastDeadlineLoomConfig returns loom's shipped config template with the discussion producer's
@@ -247,6 +263,7 @@ func newBadReedUpFixture(t *testing.T, seed func(*testing.T, *lyxcwd.Location)) 
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.SeedConfig(t, h, map[string]string{
+		"claude":  claudeConfigWithBinary(providerlessBinary),
 		"loom":    fastDeadlineLoomConfig(),
 		"reed":    strings.Join(lines, "\n"),
 		"shuttle": providerlessShuttleConfig(),

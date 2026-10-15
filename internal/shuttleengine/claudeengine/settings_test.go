@@ -49,7 +49,7 @@ func TestBuildSettings_PromptSuggestionOff(t *testing.T) {
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
-			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, shuttleengine.Config{}, tt.fork, false, "")
+			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, shuttleengine.Config{}, Config{}, tt.fork, false, "")
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -90,7 +90,7 @@ func TestBuildSettings_RecordingHooks(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			data, err := buildSettings(tt.eventsPath, false, shuttleengine.Config{}, false, false, "")
+			data, err := buildSettings(tt.eventsPath, false, shuttleengine.Config{}, Config{}, false, false, "")
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -157,7 +157,7 @@ func TestBuildSettings_SessionStartHook(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			data, err := buildSettings("/c/run/events.jsonl", false, shuttleengine.Config{}, false, false, tt.command)
+			data, err := buildSettings("/c/run/events.jsonl", false, shuttleengine.Config{}, Config{}, false, false, tt.command)
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -227,8 +227,9 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := shuttleengine.Config{ClaudeDenyAgentTool: tt.agentDeny, ClaudeDenyAskUserQuestion: tt.askUserDeny, ClaudeDenyPython: tt.pythonDeny}
-			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, cfg, tt.fork, false, "")
+			cfg := shuttleengine.Config{ClaudeDenyPython: tt.pythonDeny}
+			claude := Config{DenyAgentTool: tt.agentDeny, DenyAskUserQuestion: tt.askUserDeny}
+			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, cfg, claude, tt.fork, false, "")
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -408,7 +409,7 @@ const (
 	agentHookForkConditional
 )
 
-// TestBuildSettings_AgentAndBashHooks covers how cfg.ClaudeDenyAgentTool, forkSubagents and the per-run Agent allowance decide the Agent and Bash PreToolUse entries.
+// TestBuildSettings_AgentAndBashHooks covers how claude.DenyAgentTool, forkSubagents and the per-run Agent allowance decide the Agent and Bash PreToolUse entries.
 // Fork mode on with the deny configured replaces the blanket Agent deny with the conditional grep hook;
 // fork mode off leaves the blanket deny;
 // the deny configured off, or the per-run allowance, emits no Agent entry and drops its notice sentence while the AskUserQuestion deny and its sentence stay.
@@ -420,10 +421,10 @@ const (
 func TestBuildSettings_AgentAndBashHooks(t *testing.T) {
 	t.Parallel()
 
-	denyBoth := shuttleengine.Config{ClaudeDenyAgentTool: true, ClaudeDenyAskUserQuestion: true}
+	denyBoth := Config{DenyAgentTool: true, DenyAskUserQuestion: true}
 	tests := []struct {
 		name          string
-		cfg           shuttleengine.Config
+		claude        Config
 		interactive   bool
 		fork          bool
 		allowAgent    bool
@@ -431,19 +432,19 @@ func TestBuildSettings_AgentAndBashHooks(t *testing.T) {
 		wantBashGuard bool
 		wantAskDeny   bool
 	}{
-		{name: "fork_on_replaces_blanket_deny", cfg: shuttleengine.Config{ClaudeDenyAgentTool: true}, fork: true, wantAgent: agentHookForkConditional, wantBashGuard: true},
-		{name: "fork_off_keeps_blanket_deny", cfg: shuttleengine.Config{ClaudeDenyAgentTool: true}, wantAgent: agentHookBlanketDeny},
-		{name: "deny_off_and_fork_on_emits_no_agent_entry_but_keeps_bash_guard", cfg: shuttleengine.Config{}, fork: true, wantAgent: agentHookNone, wantBashGuard: true},
-		{name: "autonomous", cfg: denyBoth, wantAgent: agentHookBlanketDeny, wantAskDeny: true},
-		{name: "interactive", cfg: denyBoth, interactive: true, wantAgent: agentHookBlanketDeny},
-		{name: "allow_agent_without_fork", cfg: denyBoth, allowAgent: true, wantAgent: agentHookNone, wantAskDeny: true},
-		{name: "allow_agent_with_fork_keeps_bash_guard", cfg: denyBoth, fork: true, allowAgent: true, wantAgent: agentHookNone, wantBashGuard: true, wantAskDeny: true},
+		{name: "fork_on_replaces_blanket_deny", claude: Config{DenyAgentTool: true}, fork: true, wantAgent: agentHookForkConditional, wantBashGuard: true},
+		{name: "fork_off_keeps_blanket_deny", claude: Config{DenyAgentTool: true}, wantAgent: agentHookBlanketDeny},
+		{name: "deny_off_and_fork_on_emits_no_agent_entry_but_keeps_bash_guard", claude: Config{}, fork: true, wantAgent: agentHookNone, wantBashGuard: true},
+		{name: "autonomous", claude: denyBoth, wantAgent: agentHookBlanketDeny, wantAskDeny: true},
+		{name: "interactive", claude: denyBoth, interactive: true, wantAgent: agentHookBlanketDeny},
+		{name: "allow_agent_without_fork", claude: denyBoth, allowAgent: true, wantAgent: agentHookNone, wantAskDeny: true},
+		{name: "allow_agent_with_fork_keeps_bash_guard", claude: denyBoth, fork: true, allowAgent: true, wantAgent: agentHookNone, wantBashGuard: true, wantAskDeny: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, tt.cfg, tt.fork, tt.allowAgent, "")
+			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, shuttleengine.Config{}, tt.claude, tt.fork, tt.allowAgent, "")
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -516,7 +517,7 @@ func TestBuildSettings_AgentAndBashHooks(t *testing.T) {
 			}
 
 			askCommands := matcherCommands(doc, "AskUserQuestion")
-			notice := buildDenyNotice(tt.interactive, tt.cfg, tt.fork, tt.allowAgent)
+			notice := buildDenyNotice(tt.interactive, shuttleengine.Config{}, tt.claude, tt.fork, tt.allowAgent)
 			if tt.allowAgent {
 				if strings.Contains(notice, noticeAgentDeny) || strings.Contains(notice, noticeAgentForkDeny) {
 					t.Errorf("notice = %q; want no Agent sentence under AllowAgentTool", notice)
@@ -543,8 +544,8 @@ func TestBuildSettings_AgentAndBashHooks(t *testing.T) {
 // so a prompt over the old 30000-byte bound launches and prompt.md holds all of it.
 // Only a pointer over maxLaunchPromptBytes, reached by a pathological run-directory path, is rejected, before any run artifact is written.
 func TestPrepare_PromptLaunchLimit(t *testing.T) {
-	cfg := templateConfig(t)
-	c := New()
+	cfg := shuttleengine.Config{}
+	c := engineWith(t, templateConfig(t))
 
 	t.Run("LargePrompt_LaunchesWithPointer", func(t *testing.T) {
 		runDir := t.TempDir()
@@ -595,11 +596,11 @@ func TestPrepare_PromptLaunchLimit(t *testing.T) {
 func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
 	runDir := t.TempDir()
 	spec := shuttleengine.Spec{Prompt: "do the thing", Interactive: false}
-	cfg := templateConfig(t)
-	cfg.ClaudeDenyAgentTool, cfg.ClaudeDenyAskUserQuestion = true, true
+	claude := templateConfig(t)
+	claude.DenyAgentTool, claude.DenyAskUserQuestion = true, true
 
-	c := New()
-	launch, err := c.Prepare(runDir, spec, cfg)
+	c := engineWith(t, claude)
+	launch, err := c.Prepare(runDir, spec, shuttleengine.Config{})
 	if err != nil {
 		t.Fatalf("Prepare() error: %v", err)
 	}
@@ -674,8 +675,9 @@ func TestBuildDenyNotice_MatchesInstalledDenies(t *testing.T) {
 			for _, pythonDeny := range []bool{false, true} {
 				for _, interactive := range []bool{false, true} {
 					for _, fork := range []bool{false, true} {
-						cfg := shuttleengine.Config{ClaudeDenyAgentTool: agentDeny, ClaudeDenyAskUserQuestion: askUserDeny, ClaudeDenyPython: pythonDeny}
-						data, err := buildSettings("/c/run/events.jsonl", interactive, cfg, fork, false, "")
+						cfg := shuttleengine.Config{ClaudeDenyPython: pythonDeny}
+						claude := Config{DenyAgentTool: agentDeny, DenyAskUserQuestion: askUserDeny}
+						data, err := buildSettings("/c/run/events.jsonl", interactive, cfg, claude, fork, false, "")
 						if err != nil {
 							t.Fatalf("buildSettings() error: %v", err)
 						}
@@ -692,7 +694,7 @@ func TestBuildDenyNotice_MatchesInstalledDenies(t *testing.T) {
 							}
 						}
 						want := strings.Join(wantSentences, " ")
-						notice := buildDenyNotice(interactive, cfg, fork, false)
+						notice := buildDenyNotice(interactive, cfg, claude, fork, false)
 						if notice != want {
 							t.Errorf("agent=%v ask=%v python=%v interactive=%v fork=%v: notice = %q; want the sentences of the installed denies %q", agentDeny, askUserDeny, pythonDeny, interactive, fork, notice, want)
 						}
@@ -713,13 +715,14 @@ func TestBuildDenyNotice_MatchesInstalledDenies(t *testing.T) {
 //
 //testtiming:keep pins the fork-subagent and Agent-unavailable wording of the notice, which its covering test does not assert
 func TestBuildDenyNotice_SentenceContent(t *testing.T) {
-	cfg := shuttleengine.Config{ClaudeDenyAgentTool: true, ClaudeDenyAskUserQuestion: true}
-	forkNotice := buildDenyNotice(false, cfg, true, false)
+	cfg := shuttleengine.Config{}
+	claude := Config{DenyAgentTool: true, DenyAskUserQuestion: true}
+	forkNotice := buildDenyNotice(false, cfg, claude, true, false)
 	if !strings.Contains(forkNotice, "fork subagents") || !strings.Contains(forkNotice, "never spawns further subagents") {
 		t.Errorf("fork notice = %q; want it to name fork subagents as permitted and forbid a fork spawning more", forkNotice)
 	}
-	nonFork := buildDenyNotice(false, cfg, false, false)
-	for name, notice := range map[string]string{"autonomous": nonFork, "interactive": buildDenyNotice(true, cfg, false, false), "fork": forkNotice} {
+	nonFork := buildDenyNotice(false, cfg, claude, false, false)
+	for name, notice := range map[string]string{"autonomous": nonFork, "interactive": buildDenyNotice(true, cfg, claude, false, false), "fork": forkNotice} {
 		if !strings.Contains(notice, shellRow(t, "in-place-edit").Notice) {
 			t.Errorf("%s notice = %q; want it to contain the in-place edit sentence", name, notice)
 		}
@@ -769,9 +772,10 @@ func TestBuildSettings_MatchesGolden(t *testing.T) {
 	for mask := 0; mask < 64; mask++ {
 		bit := func(position int) bool { return mask&(1<<position) != 0 }
 		interactive, fork, allowAgent := bit(0), bit(1), bit(2)
-		cfg := shuttleengine.Config{ClaudeDenyAgentTool: bit(3), ClaudeDenyAskUserQuestion: bit(4), ClaudeDenyPython: bit(5)}
+		cfg := shuttleengine.Config{ClaudeDenyPython: bit(5)}
+		claude := Config{DenyAgentTool: bit(3), DenyAskUserQuestion: bit(4)}
 		label := fmt.Sprintf("interactive=%t fork=%t allowAgent=%t denyAgent=%t denyAsk=%t denyPython=%t",
-			interactive, fork, allowAgent, cfg.ClaudeDenyAgentTool, cfg.ClaudeDenyAskUserQuestion, cfg.ClaudeDenyPython)
+			interactive, fork, allowAgent, claude.DenyAgentTool, claude.DenyAskUserQuestion, cfg.ClaudeDenyPython)
 		rendered[label] = true
 
 		entry, ok := want[label]
@@ -779,14 +783,14 @@ func TestBuildSettings_MatchesGolden(t *testing.T) {
 			t.Errorf("golden lacks %q", label)
 			continue
 		}
-		settings, err := buildSettings("/c/run/events.jsonl", interactive, cfg, fork, allowAgent, "")
+		settings, err := buildSettings("/c/run/events.jsonl", interactive, cfg, claude, fork, allowAgent, "")
 		if err != nil {
 			t.Fatalf("buildSettings(%s): %v", label, err)
 		}
 		if string(settings) != entry.Settings {
 			t.Errorf("settings differ for %q:\ngot  %s\nwant %s", label, settings, entry.Settings)
 		}
-		if notice := buildDenyNotice(interactive, cfg, fork, allowAgent); notice != entry.Notice {
+		if notice := buildDenyNotice(interactive, cfg, claude, fork, allowAgent); notice != entry.Notice {
 			t.Errorf("notice differs for %q:\ngot  %q\nwant %q", label, notice, entry.Notice)
 		}
 	}

@@ -44,6 +44,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -329,7 +330,7 @@ func newSmokeRunner(t *testing.T) (*shuttleengine.Runner, shuttleengine.Engine, 
 		t.Fatalf("reed geometry: %v", err)
 	}
 	reedEngine := reedengine.New(reedCfg, reedGeom)
-	engine := claudeengine.New()
+	engine := claudeengine.NewFromConfig(shuttleCfg, fabricengine.ConfigDirs(layout))
 	runner := shuttleengine.NewRunner(reedEngine, shuttlefake.EngineSet(engine), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 	return runner, engine, reedEngine, shuttleCfg
 }
