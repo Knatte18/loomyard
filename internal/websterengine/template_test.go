@@ -1145,12 +1145,18 @@ func TestRenderPrompts(t *testing.T) {
 		{"master with PATTERN inactive renders no constraints block", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)
 			text, err := renderMaster(seamBatches, root, root, stencilsDir, "", "")
-			return promptCheck{text: text, err: err, notContains: []string{"{{", "## Constraints", "\n\n\n\n"}}
+			const conditionedRead = "the `pattern/` background files the constraints section above points at, when that section is present"
+			if got, want := strings.Count(text, "`pattern/`"), strings.Count(text, conditionedRead); got != want {
+				t.Errorf("master names `pattern/` %d times, %d of them with the condition; want every mention conditioned", got, want)
+			}
+			return promptCheck{text: text, err: err,
+				contains:    []string{"/00-overview.md` once"},
+				notContains: []string{"{{", "## Constraints", "\n\n\n\n", "codebase"}}
 		}},
 		{"master places the PATTERN directive ahead of the first work instruction", func(t *testing.T) promptCheck {
 			root, stencilsDir := patternActiveLayout(t)
 			text, err := renderMaster(seamBatches, root, root, stencilsDir, "", "")
-			return promptCheck{text: text, err: err, inOrder: []string{"some constraints", "## Orientation"}}
+			return promptCheck{text: text, err: err, inOrder: []string{"some constraints", "## Orientation", "points at, when that section is present"}}
 		}},
 		{"master reads PATTERN.md from the told repo root", func(t *testing.T) promptCheck {
 			repoRoot, stencilsDir := patternActiveLayout(t)
