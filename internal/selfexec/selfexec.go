@@ -69,23 +69,8 @@ func newWatcher(path string, stat func(string) (identity, error), exec func(path
 // Check re-stats the recorded path and replaces the process with it when the binary there differs from the one the process started from on two consecutive checks.
 // A process whose exec succeeds does not return.
 func (w *Watcher) Check() {
-	if !w.hasStart {
-		return
-	}
-	current, err := w.stat(w.path)
-	if err != nil {
-		logger.Debug("selfexec: could not stat the executable; treating it as unchanged", "path", w.path, "err", err)
-		w.hasPrevious = false
-		return
-	}
-	if current == w.start {
-		w.hasPrevious = false
-		return
-	}
-	seenTwice := w.hasPrevious && w.previous == current
-	w.previous = current
-	w.hasPrevious = true
-	if !seenTwice || (w.hasFailed && w.failed == current) {
+	current, changed := w.changedTwice()
+	if !changed || (w.hasFailed && w.failed == current) {
 		return
 	}
 	logger.Info("selfexec: the binary changed on disk; the process replaces itself", "path", w.path)
@@ -94,4 +79,35 @@ func (w *Watcher) Check() {
 		w.failed = current
 		w.hasFailed = true
 	}
+}
+
+// Replaced re-stats the recorded path and reports whether the binary there differs from the one the process started from on two consecutive calls.
+// It never execs, so a process that exits on a replaced binary instead of re-execing uses it in place of Check.
+func (w *Watcher) Replaced() bool {
+	if _, changed := w.changedTwice(); !changed {
+		return false
+	}
+	logger.Info("selfexec: the binary changed on disk", "path", w.path)
+	return true
+}
+
+// changedTwice re-stats the recorded path, updates the previous-identity state and reports the current identity with whether it differs from the start identity on this call and the one before.
+func (w *Watcher) changedTwice() (identity, bool) {
+	if !w.hasStart {
+		return identity{}, false
+	}
+	current, err := w.stat(w.path)
+	if err != nil {
+		logger.Debug("selfexec: could not stat the executable; treating it as unchanged", "path", w.path, "err", err)
+		w.hasPrevious = false
+		return identity{}, false
+	}
+	if current == w.start {
+		w.hasPrevious = false
+		return current, false
+	}
+	seenTwice := w.hasPrevious && w.previous == current
+	w.previous = current
+	w.hasPrevious = true
+	return current, seenTwice
 }

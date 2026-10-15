@@ -8,6 +8,7 @@ package shuttleengine
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -766,6 +767,20 @@ func liveStrandStatus(live bool) []reedengine.StatusResult {
 	}
 }
 
+// assertNoPendingSendRecord fails when a pending-send record exists under runRoot or in the test's working directory, where a send with an empty run directory would write one.
+func assertNoPendingSendRecord(t *testing.T, runRoot string) {
+	t.Helper()
+	if _, err := os.Stat(pendingSendFileName); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("%s in the working directory: stat error %v, want it absent", pendingSendFileName, err)
+	}
+	_ = filepath.WalkDir(runRoot, func(path string, entry fs.DirEntry, err error) error {
+		if err == nil && entry.Name() == pendingSendFileName {
+			t.Errorf("pending-send record %s exists, want none for a strand with no run record", path)
+		}
+		return nil
+	})
+}
+
 // readyAgentEngine returns a fakeEngine whose Startup classification sticks
 // at StartupReady — the pane state requireReadyAgentPane demands before any
 // Interrupt/Send key is played, so tests of the key choreography itself pass
@@ -785,6 +800,7 @@ func TestRun_Interrupt_PlaysEscape(t *testing.T) {
 		name        string
 		script      []StartupState
 		viaRunner   bool
+		recordless  bool
 		captures    []string
 		captureErrs []error
 		wantKeys    int
@@ -792,6 +808,8 @@ func TestRun_Interrupt_PlaysEscape(t *testing.T) {
 		wantMsg     string
 		wantRunning bool
 	}{
+		{name: "recordless strand showing a running turn gets one Escape", script: []StartupState{StartupReady}, viaRunner: true, recordless: true, captures: []string{"RUNNING"}, wantKeys: 1},
+		{name: "recordless strand showing no running turn gets no key", script: []StartupState{StartupReady}, viaRunner: true, recordless: true, captures: []string{"idle"}, wantErr: ErrNoRunningTurn, wantMsg: "lyx shuttle send"},
 		{name: "ready pane showing a running turn", script: []StartupState{StartupReady}, captures: []string{"RUNNING"}, wantKeys: 1, wantRunning: true},
 		{name: "ready probe retries a transient boot", script: []StartupState{StartupPending, StartupReady}, captures: []string{"RUNNING"}, wantKeys: 1, wantRunning: true},
 		{name: "runner interrupt into a running turn", script: []StartupState{StartupReady}, viaRunner: true, captures: []string{"RUNNING"}, wantKeys: 1, wantRunning: true},
@@ -807,7 +825,10 @@ func TestRun_Interrupt_PlaysEscape(t *testing.T) {
 			engine := &fakeEngine{StartupScript: tt.script, Settle: 2 * time.Second}
 			var err error
 			var runner *Runner
-			if tt.viaRunner {
+			if tt.recordless {
+				runner = newFixture(t, reed, engine, withConfig(Config{})).Runner
+				err = runner.Interrupt("strand-1")
+			} else if tt.viaRunner {
 				runner = newFixture(t, reed, engine, withConfig(Config{}), withStrand("strand-1")).Runner
 				err = runner.Interrupt("strand-1")
 			} else {
@@ -835,7 +856,7 @@ func TestRun_Interrupt_PlaysEscape(t *testing.T) {
 			if len(reed.SendTextCalls) != 0 {
 				t.Errorf("SendText calls = %+v, want none", reed.SendTextCalls)
 			}
-			if !tt.viaRunner {
+			if !tt.viaRunner || tt.recordless {
 				return
 			}
 			if got, settleErr := runner.InterruptSettle("strand-1"); settleErr != nil || got != 2*time.Second {
@@ -1084,7 +1105,48 @@ func TestRun_InterruptAndSend_RefuseDeadOrUntrackedStrand(t *testing.T) {
 				t.Errorf("keys reached the pane despite refusal: SendKey=%+v SendText=%+v", reed.SendKeyCalls, reed.SendTextCalls)
 			}
 		})
+		t.Run(tt.name+"/viaRecordlessRunner", func(t *testing.T) {
+			reed := &fakeReed{StatusQueue: tt.status}
+			runner := newFixture(t, reed, &fakeEngine{}, withConfig(Config{})).Runner
+			for verb, call := range map[string]func() error{
+				"Interrupt": func() error { return runner.Interrupt("strand-1") },
+				"Send":      func() error { return runner.Send("strand-1", "still there?") },
+			} {
+				reed.StatusQueue = tt.status
+				err := call()
+				if err == nil || !strings.Contains(err.Error(), "not a shuttle strand") || !strings.Contains(err.Error(), tt.wantIn) {
+					t.Errorf("Runner.%s() error = %v; want it to name \"not a shuttle strand\" and %q", verb, err, tt.wantIn)
+				}
+			}
+			if len(reed.SendKeyCalls) != 0 || len(reed.SendTextCalls) != 0 {
+				t.Errorf("keys reached the pane despite refusal: SendKey=%+v SendText=%+v", reed.SendKeyCalls, reed.SendTextCalls)
+			}
+		})
 	}
+
+	t.Run("an unreadable run record beside a live strand is never driven pane-only", func(t *testing.T) {
+		reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
+		fx := newFixture(t, reed, readyAgentEngine(), withConfig(Config{}))
+		damaged := filepath.Join(fx.RunRoot, "damaged")
+		if err := os.MkdirAll(damaged, 0o755); err != nil {
+			t.Fatalf("mkdir damaged run dir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(damaged, runStateFileName), []byte("{not json"), 0o644); err != nil {
+			t.Fatalf("write damaged run.json: %v", err)
+		}
+		for verb, call := range map[string]func() error{
+			"Interrupt": func() error { return fx.Runner.Interrupt("strand-1") },
+			"Send":      func() error { return fx.Runner.Send("strand-1", "still there?") },
+		} {
+			reed.StatusQueue = liveStrandStatus(true)
+			if err := call(); err == nil || !strings.Contains(err.Error(), "could not be read") || errors.Is(err, ErrNoRunRecord) {
+				t.Errorf("Runner.%s() error = %v; want the unreadable-run-directories answer, not ErrNoRunRecord", verb, err)
+			}
+		}
+		if len(reed.SendKeyCalls) != 0 || len(reed.SendTextCalls) != 0 {
+			t.Errorf("the pane was touched: SendKey=%+v SendText=%+v", reed.SendKeyCalls, reed.SendTextCalls)
+		}
+	})
 }
 
 func TestRun_InterruptAndSend_RefuseAgentlessShellPane(t *testing.T) {
@@ -1736,7 +1798,15 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 		strayBox string
 		// wantRecord asserts the failure recorded the pending send.
 		wantRecord bool
+		// recordless sends through a Runner whose run root holds no record of the strand, and asserts no pending-send record exists anywhere.
+		recordless bool
 	}{
+		{name: "recordless: a landed paste keeps no pending-send record", text: shortPasted, pasteSubmits: true, recordless: true, wantSubmit: true},
+		{
+			name: "recordless: a box still holding the text when the window closes is not cleared", text: shortPasted, pasteSubmits: true, recordless: true,
+			scripted: []inputBoxAnswer{box(shortPasted)},
+			wantErr:  "the send did not land", wantIs: []error{ErrSubmissionNotLanded}, wantNotLand: true, wantKeys: keys("Enter", "Enter", "Enter", "Enter", "Enter", "Enter", "Enter", "Enter", "Enter", "Enter", "Enter"), wantSubmit: true,
+		},
 		{
 			name: "a residue character beside the pasted text fails without a key of its own and records the send", text: shortPasted, pasteSubmits: true,
 			strayBox: "+", swallowFor: ms(500),
@@ -1794,9 +1864,18 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 				engine = &pasteEngine{tuiEngine: newTUIEngine(), pasteSubmits: tt.pasteSubmits}
 			}
 			cfg := Config{SubmitSettleMS: 100, SubmitConfirmTimeoutS: 30, SendReadyTimeoutS: 60}
-			run := newFixture(t, reed, engine, withConfig(cfg)).newRun(Spec{}, withRunEvents(""), withRunClock(clock, clock.Now().Add(time.Hour)))
-
-			err := run.Send(tt.text)
+			fx := newFixture(t, reed, engine, withConfig(cfg), withClock(clock))
+			var run *Run
+			var err error
+			if tt.recordless {
+				err = fx.Runner.Send("strand-1", tt.text)
+			} else {
+				run = fx.newRun(Spec{}, withRunEvents(""), withRunClock(clock, clock.Now().Add(time.Hour)))
+				err = run.Send(tt.text)
+			}
+			if tt.recordless {
+				assertNoPendingSendRecord(t, fx.RunRoot)
+			}
 			if tt.wantErr == "" {
 				if err != nil {
 					t.Fatalf("Send() error: %v, want the paste confirmed", err)
@@ -1849,7 +1928,10 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 		retryText string
 		// wantPastes is how many pastes both sends made together.
 		wantPastes int
+		// recordless sends through a Runner with no run record; the unlanded text stays in the box, so the second send over a not-idle pane holding it fails as a draft hold.
+		recordless bool
 	}{
+		{name: "recordless: an unlanded text stays in the box and holds the next send", firstBox: box(retriedText), retryText: retriedText, wantPastes: 1, recordless: true},
 		{name: "a landed send leaves no record", firstBox: box(""), retryText: retriedText, wantPastes: 2},
 		{
 			name:     "text left in the draft with a turn started since types nothing on the retry",
@@ -1876,6 +1958,23 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 			boxEngine := &inputBoxEngine{fakeEngine: readyAgentEngine(), boxes: []inputBoxAnswer{tt.firstBox}, settle: ms(100)}
 			engine := &scriptedPasteEngine{clearableBoxEngine: &clearableBoxEngine{inputBoxEngine: boxEngine}, pasteSubmits: true}
 			cfg := Config{SubmitSettleMS: 100, SubmitConfirmTimeoutS: 30, SendReadyTimeoutS: 60}
+			if tt.recordless {
+				fx := newFixture(t, base, engine, withConfig(cfg), withClock(clock))
+				if err := fx.Runner.Send("strand-1", retriedText); !errors.Is(err, ErrSubmissionNotLanded) {
+					t.Fatalf("first Send() error = %v, want ErrSubmissionNotLanded", err)
+				}
+				base.CaptureQueue = []string{"BUSY"}
+				err := fx.Runner.Send("strand-1", tt.retryText)
+				var busy *SessionBusyError
+				if !errors.As(err, &busy) || !busy.Draft {
+					t.Fatalf("second Send() error = %v, want a *SessionBusyError with Draft set", err)
+				}
+				if len(base.PasteSubmitCalls) != tt.wantPastes {
+					t.Errorf("PasteSubmit calls = %+v, want %d", base.PasteSubmitCalls, tt.wantPastes)
+				}
+				assertNoPendingSendRecord(t, fx.RunRoot)
+				return
+			}
 			run := newFixture(t, base, engine, withConfig(cfg)).newRun(Spec{}, withRunEvents(""), withRunClock(clock, clock.Now().Add(time.Hour)))
 
 			_ = run.Send(retriedText)
@@ -1963,6 +2062,8 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 		// reader also gives it an input-box reader, for a row that fails before anything is typed.
 		reading, reader bool
 		viaRunner       bool
+		// recordless, with viaRunner, builds the runner's fixture without a run record naming the strand.
+		recordless bool
 		// activeQueue and activityErr script the fake reed's operator-activity answers.
 		activeQueue []bool
 		activityErr error
@@ -1997,6 +2098,8 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 		{name: "idle pane types at once", wantTypedMax: 0},
 		{name: "running turn turns idle then types", idleAfter: 3 * time.Second, busyFrame: "working (esc to interrupt)", wantTypedMin: 3 * time.Second, wantTypedMax: 5 * time.Second},
 		{name: "runner send waits as run send does", idleAfter: 3 * time.Second, busyFrame: "working (esc to interrupt)", viaRunner: true, wantTypedMin: 3 * time.Second, wantTypedMax: 5 * time.Second},
+		{name: "recordless runner send takes the pane that turns idle inside the window", idleAfter: 3 * time.Second, busyFrame: "working (esc to interrupt)", viaRunner: true, recordless: true, wantTypedMin: 3 * time.Second, wantTypedMax: 5 * time.Second},
+		{name: "recordless runner send fails busy on a pane that stays not idle", idleAfter: never, busyFrame: "working", viaRunner: true, recordless: true, wantBusy: []string{"the pane is not idle"}},
 		{name: "draft that never clears fails busy", reader: true, idleAfter: never, busyFrame: "earlier output\n❯ a half-typed draft", wantBusy: []string{"the pane is not idle", "a half-typed draft"}, wantDraft: true},
 		{name: "failed final capture is said so", idleAfter: never, busyFrame: "working", failCaptureAfter: 59 * time.Second, wantBusy: []string{"the final pane capture failed"}},
 		{name: "a busy pane under a clock that never advances fails busy at the poll count", idleAfter: never, busyFrame: "working", frozen: true, wantBusy: []string{"the pane is not idle"}},
@@ -2058,7 +2161,11 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 
 			var err error
 			if tt.viaRunner {
-				fx := newFixture(t, reed, engine, withConfig(cfg), withClock(clock), withStrand("strand-1"))
+				opts := []fixtureOpt{withConfig(cfg), withClock(clock)}
+				if !tt.recordless {
+					opts = append(opts, withStrand("strand-1"))
+				}
+				fx := newFixture(t, reed, engine, opts...)
 				err = fx.Runner.Send("strand-1", "hello")
 			} else {
 				var runClock Clock = clock

@@ -11,6 +11,7 @@ A temp file or directory lyx or its tests create lives in the process run direct
 - `tmuxkit.Main` removes the run directory after a test binary's run, and `lyx`'s `main` removes it on normal exit.
 - `Root.Sweep` removes the run directories of dead owners: a child past the creation grace of 10 minutes whose lock the sweep can take, or that has none.
   It never reads inside a live run directory and never touches an unprefixed entry, a file or a link.
+- Creel's per-hub socket `creel-<shortname>-<h>.sock` is a long-lived file directly in the root beside the run directories, and `Root.Sweep` touches no unprefixed entry, so it never removes it.
 - Bound: a killed process skips its removal, and its directory waits for the next start's sweep once the OS has released the lock.
 - The scan in `cmd/lyx/baretemp_test.go` fails a call `os.MkdirTemp` or `os.CreateTemp` whose first argument is `""` or `os.TempDir()` in any Go file outside `internal/lyxtemp`, production or test.
   `t.TempDir()` and a dir naming any other directory stay allowed.

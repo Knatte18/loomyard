@@ -1016,7 +1016,12 @@ func (r *Runner) Interrupt(guid string) error {
 		return r.toldErr
 	}
 	state, _, err := FindRun(r.cfg, r.anchorPath, guid)
-	if err != nil {
+	if errors.Is(err, ErrNoRunRecord) {
+		if liveErr := requireLiveStrand(r.reed, guid); liveErr != nil {
+			return notShuttleOrLiveStrandError(guid, liveErr)
+		}
+		state = RunState{}
+	} else if err != nil {
 		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
 	}
 	engine, _, err := r.engineFor(state)
@@ -1086,6 +1091,16 @@ func (r *Runner) Send(guid, text string) error {
 		return err
 	}
 	state, runDir, err := FindRun(r.cfg, r.anchorPath, guid)
+	if errors.Is(err, ErrNoRunRecord) {
+		if liveErr := requireLiveStrand(r.reed, guid); liveErr != nil {
+			return notShuttleOrLiveStrandError(guid, liveErr)
+		}
+		sc, err := r.recordlessSendContext(guid)
+		if err != nil {
+			return err
+		}
+		return sendVerified(sc, text)
+	}
 	if err != nil {
 		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
 	}
@@ -1094,6 +1109,11 @@ func (r *Runner) Send(guid, text string) error {
 		return err
 	}
 	return sendVerified(sc, text)
+}
+
+// notShuttleOrLiveStrandError is the refusal of a guid that no run record names and reed does not track as a live strand.
+func notShuttleOrLiveStrandError(guid string, liveErr error) error {
+	return fmt.Errorf("shuttle: %q is not a shuttle strand and not a live reed strand: %w", guid, liveErr)
 }
 
 // Inject plays inputs into the live pane of the run identified by guid, without needing an
@@ -1341,12 +1361,12 @@ func deliveredBelowBaseline(current, baseline paneNeedleScan) bool {
 
 // sendVerified waits for an idle session, then types text and verifies delivery.
 // A busy session fails the send with ErrSessionBusy before anything is typed.
-// On the paste path a retry of a text whose pending-send record shows it went out types nothing.
+// On the paste path a retry of a text whose pending-send record shows it went out types nothing; a strand with no run record keeps no such record.
 func sendVerified(sc sendContext, text string) error {
 	if err := awaitIdleSession(sc); err != nil {
 		return err
 	}
-	if _, ok := sc.engine.(TextPaster); ok {
+	if _, ok := sc.engine.(TextPaster); ok && !sc.recordless {
 		if _, readsBox := sc.engine.(InputBoxReader); readsBox {
 			if _, cycles := sc.engine.(SessionCycler); cycles && retryLanded(sc, text) {
 				return nil

@@ -20,10 +20,11 @@ import (
 func (c *shuttleCLI) sendCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:         "send <guid> <text>",
-		Short:       "type a one-line update into a shuttle run's pane as its next turn",
+		Short:       "type a one-line update into a shuttle run's or live reed strand's pane as its next turn",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
 		Long: `send plays the engine's compose-and-submit choreography into the strand
-identified by <guid>, typing <text> as its next turn. <text> must be a
+identified by <guid>, a shuttle run's or a live reed strand's with no run
+record, typing <text> as its next turn. <text> must be a
 single line: the file contract carries multiline updates — write a file and
 send a one-line pointer to it (e.g. "read updated-task.md and continue").
 The fixed message tail "Answer briefly, then continue your task." is appended

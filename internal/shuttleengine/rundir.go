@@ -23,6 +23,16 @@ import (
 // runStateFileName is the run.json file name inside a per-run directory.
 const runStateFileName = "run.json"
 
+// ErrNoRunRecord marks a strand guid that no run record names: the run directory root is absent, or every run.json was read and none names the guid.
+// A run directory that could not be read does not wrap it, since that guid may name a recorded run whose run.json is damaged.
+var ErrNoRunRecord = errors.New("shuttle: no run record names the strand")
+
+// noRunRecordError carries a not-found answer's full wording while satisfying errors.Is(err, ErrNoRunRecord).
+type noRunRecordError struct{ msg string }
+
+func (e noRunRecordError) Error() string { return e.msg }
+func (e noRunRecordError) Unwrap() error { return ErrNoRunRecord }
+
 // newRunID returns a 128-bit random identifier, hex-encoded, generated from
 // crypto/rand — the same recipe as reedengine's newGUID. This is the
 // directory-naming identity for one shuttle run; it is distinct from the
@@ -235,7 +245,7 @@ func findRunByStrand(root, guid string) (RunState, string, error) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return RunState{}, "", fmt.Errorf("shuttle: no run found for strand %q: run dir root does not exist", guid)
+			return RunState{}, "", noRunRecordError{fmt.Sprintf("shuttle: no run found for strand %q: run dir root does not exist", guid)}
 		}
 		return RunState{}, "", fmt.Errorf("read run dir root: %w", err)
 	}
@@ -264,7 +274,7 @@ func findRunByStrand(root, guid string) (RunState, string, error) {
 			"shuttle: no run found for strand %q, but %d run director%s under %s could not be read — if this guid names a run that is still live, its run.json is damaged rather than absent, and its agent is still in its pane; inspect those directories before treating the guid as unknown",
 			guid, unreadable, pluralDirectorySuffix(unreadable), root)
 	}
-	return RunState{}, "", fmt.Errorf("shuttle: no run found for strand %q", guid)
+	return RunState{}, "", noRunRecordError{fmt.Sprintf("shuttle: no run found for strand %q", guid)}
 }
 
 // pluralDirectorySuffix returns the suffix that completes "director" for count: "y" for one,

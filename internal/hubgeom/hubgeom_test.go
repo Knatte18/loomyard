@@ -9,9 +9,11 @@ package hubgeom
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -261,6 +263,61 @@ func TestReconcileGeometry(t *testing.T) {
 				t.Errorf("ReconcileGeometry() = (%+v, %v); want (%+v, %v)", got, ok, want, tt.wantGeometry)
 			}
 		})
+	}
+}
+
+// TestCreelGeometry pins every creel geometry field, that one hub gives one socket path, that two hubs of one shortname get different ones,
+// and that a hub with no shortname record is refused naming it.
+func TestCreelGeometry(t *testing.T) {
+	t.Parallel()
+
+	newHub := func(t *testing.T, name, shortname string) string {
+		t.Helper()
+		hub := filepath.Join(t.TempDir(), name)
+		mkdir(t, fabricengine.BoardDir(hub))
+		if shortname != "" {
+			writeFile(t, filepath.Join(fabricengine.BoardDir(hub), fabricengine.ShortnameFileName), shortname+"\n")
+		}
+		return hub
+	}
+	tempRoot := filepath.Join(t.TempDir(), "root")
+
+	hub := newHub(t, "a-LYXHUB", "abc")
+	got, err := CreelGeometry(hub, tempRoot)
+	if err != nil {
+		t.Fatalf("CreelGeometry(%q) = %v", hub, err)
+	}
+	stateDir := filepath.Join(fabricengine.HubScratchDir(hub), lyxdirs.CreelDirName)
+	want := creelengine.Geometry{
+		HubPath:    hub,
+		Shortname:  "abc",
+		StateDir:   stateDir,
+		JournalDir: filepath.Join(stateDir, "journal"),
+		LockPath:   filepath.Join(stateDir, "daemon.lock"),
+		SocketPath: filepath.Join(tempRoot, creelengine.SocketName("abc", hub)),
+	}
+	if got != want {
+		t.Errorf("CreelGeometry(%q) = %+v; want %+v", hub, got, want)
+	}
+
+	again, err := CreelGeometry(hub, tempRoot)
+	if err != nil || again.SocketPath != got.SocketPath {
+		t.Errorf("CreelGeometry(%q) again = (%q, %v); want socket %q", hub, again.SocketPath, err, got.SocketPath)
+	}
+
+	other := newHub(t, "b-LYXHUB", "abc")
+	otherGeometry, err := CreelGeometry(other, tempRoot)
+	if err != nil {
+		t.Fatalf("CreelGeometry(%q) = %v", other, err)
+	}
+	if otherGeometry.SocketPath == got.SocketPath {
+		t.Errorf("two hubs of one shortname share socket path %q", got.SocketPath)
+	}
+
+	bare := newHub(t, "c-LYXHUB", "")
+	_, err = CreelGeometry(bare, tempRoot)
+	if err == nil || !strings.Contains(err.Error(), fabricengine.ShortnameFileName) || !strings.Contains(err.Error(), bare) {
+		t.Errorf("CreelGeometry(no shortname) error = %v; want one naming %s and the hub", err, fabricengine.ShortnameFileName)
 	}
 }
 

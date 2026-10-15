@@ -21,3 +21,6 @@ const PauseDirName = "pause"
 
 // HibernateDirName is the directory under the hub's board-level DotLyxDirName that holds the hibernate request, its lock and the daemon's log.
 const HibernateDirName = "hibernate"
+
+// CreelDirName is the directory under the hub's board-level DotLyxDirName that holds creel's journal and the daemon lock.
+const CreelDirName = "creel"
