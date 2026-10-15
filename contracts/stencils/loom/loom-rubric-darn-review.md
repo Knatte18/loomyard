@@ -60,10 +60,13 @@ Do not flag any of the following as a finding:
   A comment's line breaks and wrapping are never a finding; the gate's `lyx loom lint-comments` alone checks them.
 - **The change description.**
   A claim in `_lyx/landing/summary.md` that the diff does not bear out is a finding.
+- **Stencil wording.**
+  A diff that changes a stencil is read against the measuring stick, the board entry as the decision record's added entries amend it; a rule the entry did not ask to change that the diff drops, weakens or contradicts is a finding.
 - **Test economy.**
   `PATTERN-test-economy` holds the rule; each of these is a finding, and each names what grounds it:
   - a new test that duplicates an existing test's coverage, naming the covering test;
-  - a behavior the diff adds with no coverage, naming the uncovered behavior.
+  - a new assertion on a stencil's static prose, naming the assertion;
+  - a behavior the diff adds with no coverage, naming the uncovered behavior; a stencil's static prose is exempt.
 
   A redundancy finding is raised only by naming the existing test that covers the behavior, so it cannot block on a vague suspicion.
 

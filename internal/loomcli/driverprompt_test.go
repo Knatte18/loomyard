@@ -106,13 +106,13 @@ func TestDriverPrompt_ParentNotifyRuleFollowsWatched(t *testing.T) {
 		{
 			name:    "watched",
 			watched: true,
-			want:    []string{"`parent_notice`", "a question you cannot settle yourself", "`friction: failed`", "Never message the parent that the run stopped, halted or finished"},
+			want:    []string{"Never message the parent that the run stopped, halted or finished"},
 			wantNot: []string{"At every escalation"},
 		},
 		{
 			name:    "unwatched",
 			watched: false,
-			want:    []string{"`parent_notice`", "`friction: failed`", "At every escalation"},
+			want:    []string{"At every escalation"},
 			wantNot: []string{"Never message the parent that the run stopped"},
 		},
 	}

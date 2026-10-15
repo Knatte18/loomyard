@@ -1,7 +1,6 @@
 // rubric_test.go pins the marker allowlist the two Bouncer stencils' {{.rubric}} interpolation depends on for every rubric:
 // a rubric may carry the specs_dir, stencils_dir, publish_failure, webster_record and merge_review markers and nothing else, and only the Webster-Review rubric renders the Publish failure note, only the Plan-Review rubric renders the webster run record and only the Merge-Review rubric renders the merge record note -- the old no-marker-at-all rule relaxed to the same shape rather than deleted, because a third marker is still invisible to the fill at the value-interpolation site and must still fail loudly.
-// It additionally pins that the markers render successfully through the production render helper and that both review rubrics name their writer's deployed stencil path.
-// The rubrics' wording is pinned in claims_test.go.
+// It additionally pins that the markers render successfully through the production render helper, that the rubrics carrying the specs_dir marker render its value, and that both review rubrics name their writer's deployed stencil path.
 
 package stencils
 
@@ -34,12 +33,14 @@ func TestLoomRubrics(t *testing.T) {
 		def  []byte
 		// writer is the stencil the rendered rubric must name; empty for a rubric that names none.
 		writer string
+		// namesSpecs is whether the rubric carries the specs_dir marker, so its rendered text holds the specs directory.
+		namesSpecs bool
 	}{
-		{"loom-rubric-discussion-review", LoomRubricDiscussionReview, "loom-template-discussion"},
-		{"loom-rubric-plan-review", LoomRubricPlanReview, "loom-template-plan"},
-		{"loom-rubric-webster-review", LoomRubricWebsterReview, ""},
-		{"loom-rubric-darn-review", LoomRubricDarnReview, ""},
-		{"loom-rubric-merge-review", LoomRubricMergeReview, ""},
+		{"loom-rubric-discussion-review", LoomRubricDiscussionReview, "loom-template-discussion", true},
+		{"loom-rubric-plan-review", LoomRubricPlanReview, "loom-template-plan", true},
+		{"loom-rubric-webster-review", LoomRubricWebsterReview, "", true},
+		{"loom-rubric-darn-review", LoomRubricDarnReview, "", false},
+		{"loom-rubric-merge-review", LoomRubricMergeReview, "", true},
 	}
 
 	for _, tt := range tests {
@@ -80,6 +81,9 @@ func TestLoomRubrics(t *testing.T) {
 			}
 			if carriesMerge := strings.Contains(got, merge); carriesMerge != (tt.name == "loom-rubric-merge-review") {
 				t.Errorf("rendered %s carries the merge review note = %v; only the Merge-Review rubric carries the marker", tt.name, carriesMerge)
+			}
+			if carriesSpecs := strings.Contains(got, "/abs/specs/dir"); carriesSpecs != tt.namesSpecs {
+				t.Errorf("rendered %s carries the specs directory = %v; want %v", tt.name, carriesSpecs, tt.namesSpecs)
 			}
 			if tt.writer == "" {
 				return

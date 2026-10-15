@@ -105,7 +105,7 @@ func TestReworkTable(t *testing.T) {
 					t.Errorf("lead prompt does not contain %q", want)
 				}
 			}
-			for _, want := range []string{"`first_card: 4`", "numbered from 4 upward", "lyx loom validate-plan --rework"} {
+			for _, want := range []string{"`first_card: 4`"} {
 				if !strings.Contains(prompt, want) {
 					t.Errorf("lead prompt does not contain %q", want)
 				}

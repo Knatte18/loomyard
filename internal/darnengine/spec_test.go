@@ -79,7 +79,7 @@ func TestDarnSpec(t *testing.T) {
 			configure:  func(in *DarnInputs) {},
 			wantSkills: []string{"scribe:prose", "scribe:code-quality", "scribe:testing"},
 			wantInPrompt: func(in DarnInputs) []string {
-				return []string{"`lyx board get '{\"slug\":\"fix-the-thing\"}'`", in.DescriptionPath, filepath.ToSlash(in.SpecsDir) + "/loom/loom-final-summary-spec.md", in.DecisionRecordPath, in.SupportLogPath, filepath.ToSlash(in.SpecsDir) + "/loom/loom-discussion-spec.md"}
+				return []string{"fix-the-thing", in.DescriptionPath, filepath.ToSlash(in.SpecsDir), in.DecisionRecordPath, in.SupportLogPath}
 			},
 			wantNone:     2,
 			wantNoParent: true,

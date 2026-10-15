@@ -81,14 +81,14 @@ func TestRenderPointers_OneLineNamingTheirPaths(t *testing.T) {
 		want   []string
 	}{
 		{"start", func() (string, error) { return RenderStartPrompt(dir, testRolePath) }, []string{testRolePath}},
-		{"adopt", func() (string, error) { return RenderAdoptPrompt(dir, testRolePath) }, []string{testRolePath, "none is re-armed"}},
+		{"adopt", func() (string, error) { return RenderAdoptPrompt(dir, testRolePath) }, []string{testRolePath}},
 		{"resume", func() (string, error) { return RenderResumePrompt(dir, testRolePath, "/tmp/h/one.md") }, []string{testRolePath, "/tmp/h/one.md"}},
 		{"reload", func() (string, error) { return RenderReloadPrompt(dir, testRolePath) }, []string{testRolePath}},
 		{"compact focus", func() (string, error) { return RenderCompactFocus(dir) }, nil},
 		{"handoff", func() (string, error) { return RenderHandoffInstruction(dir, "/tmp/h/one.md", testNoteTemplatePath) }, []string{"/tmp/h/one.md", testNoteTemplatePath}},
 		{"soft", func() (string, error) {
 			return RenderSoftHandoffInstruction(dir, "/tmp/h/one.md", testNoteTemplatePath)
-		}, []string{"/tmp/h/one.md", testNoteTemplatePath, "DEFER"}},
+		}, []string{"/tmp/h/one.md", testNoteTemplatePath}},
 	}
 	for _, c := range cases {
 		got, err := c.render()
@@ -102,9 +102,6 @@ func TestRenderPointers_OneLineNamingTheirPaths(t *testing.T) {
 			if !strings.Contains(got, want) {
 				t.Errorf("%s: missing %q: %q", c.name, want, got)
 			}
-		}
-		if strings.Contains(got, "watcher") || strings.Contains(got, "re-arming") {
-			t.Errorf("%s: must not ask for watchers: %q", c.name, got)
 		}
 	}
 }

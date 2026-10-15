@@ -82,7 +82,7 @@ func TestProducerSpecs_SkillsAndParentDirective(t *testing.T) {
 		}, parent)
 	}
 
-	const operatorBan = "A question to the operator in your pane is never the way forward."
+	const operatorBan = "never the way forward"
 	build := map[string]func(parent string) ([]string, string, error){
 		"discussion-interactive": func(parent string) ([]string, string, error) { return leadOf(true, parent) },
 		"discussion-autonomous":  func(parent string) ([]string, string, error) { return leadOf(false, parent) },

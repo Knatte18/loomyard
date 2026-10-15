@@ -1,14 +1,4 @@
-// template_test.go pins webster's producer prompt assets (webster-template-master, the composed
-// fork/recovery templates, and webster-body-verify-fix) against the Go contracts they key off
-// of — the template-parser-co-versioning decision applied here: the master template's digest-field
-// bullet list is pinned against webster's own Digest field set and order, the outcome-file bullet
-// list against the outcome schema, and the fork/recovery templates' report-schema section against
-// the minimal fork-return contract's field set (status, head_sha, deviations) — all as
-// literal-statement and exact-field-list assertions, plus stencil.Fill/ FillOptional round-trips proving every
-// required marker and RenderForkPrompt/RenderRecoveryPrompt round-trips proving the
-// fork-context-hygiene Shared Decision: a thin in-session fork prompt that injects nothing already
-// inherited from Master, a full cold-start recovery prompt, and card content delivered by a
-// SourcePath pointer rather than inlined fields.
+// template_test.go pins the master template's digest-field and outcome-key lists against webster's Go definitions, the marker sets through stencil.Fill/FillOptional round-trips, the composition of the fork and recovery templates, and the rendered prompts' Go-filled values and Go-chosen fragments.
 // Every asset is read at call time via stencilstore.Read from a stencils directory this file seeds itself: newTestStencilsDir seeds a t.TempDir() through `stencilkit`, per the runtime-read-not-embed Shared Decision.
 // Every test here is untagged and spawn-free: no subprocess exec, no git, no fixture trees (beyond
 // a plain t.TempDir() PATTERN.md fixture and the seeded stencils t.TempDir() itself) — only
@@ -190,10 +180,7 @@ func requireContains(t *testing.T, text, needle string) {
 }
 
 // requireNotContains fails the test, naming the forbidden needle, if text
-// contains it — the negative half of requireContains, used to pin the
-// absence of every dropped batch-era concept (oversized, chain, ## Scope) and every
-// concept the fork-context-hygiene Shared Decision moved out of the thin
-// fork prompt (## Shared Decisions, ## Rename mechanic).
+// contains it — the negative half of requireContains.
 func requireNotContains(t *testing.T, text, needle string) {
 	t.Helper()
 	if strings.Contains(text, needle) {
@@ -606,19 +593,6 @@ func TestTemplates_Composition(t *testing.T) {
 	})
 }
 
-// prePackStepOne and prePackFreshRead are the implementer body's step 1 and FRESH-READ rule in their pack-off texts, copied here so a pack-off prompt is pinned to those bytes rather than to the fragments that carry them.
-const (
-	prePackStepOne = "1. Read the card file.\n" +
-		"   It is your whole instruction for that card.\n" +
-		"   If its `**Intent:**` field is empty, fall back to that card's one-line intent from the Card Index in `_lyx/plan/00-overview.md`, matched by the same NN/slug.\n" +
-		"2. A card names"
-	prePackFreshRead = "## The FRESH-READ rule\n\n" +
-		"No code reaches you from Master: the plan and the repo's rules you hold stay current for this run, except a rules file a card of this run targets, which you read fresh like code.\n" +
-		"Only your own reads of code, taken in this batch, are current.\n" +
-		"Before you edit anything, read — in THIS turn — every card file this section points you at, plus every file that card's own target list and `Uses:` list name.\n\n" +
-		"## Prior-batch context"
-)
-
 // writePrePackBody rewrites the implementer body in stencilsDir into its pack-off form:
 // the quarry text where the locate marker is, the pack-off texts where the card_read and fresh_read markers are, and no pack marker.
 func writePrePackBody(t *testing.T, stencilsDir string) {
@@ -647,53 +621,6 @@ func writePrePackBody(t *testing.T, stencilsDir string) {
 		t.Fatalf("WriteFile(%q) = %v; want nil", bodyPath, err)
 	}
 }
-
-// multipartPackFile is the pack file of the "fork with a resolved multipart pack" row as it was rendered before the layout switch existed, copied here so the file layout stays pinned to those bytes whatever the render helpers do.
-const multipartPackFile = "## Kick-start pack\n\n" +
-	"Read all of this in one turn, in parallel, before any edit: every card file your prompt's card list points at, and every span this file lists under every card, each span with the Read tool's `offset` at its start line and a `limit` reaching its end line.\n" +
-	"A span listed under several cards is read once.\n" +
-	"After that turn and still before any edit, read whole every existing file any card's target list or `Uses:` list names that no listed span covers, such as a plain path or a self glyph's file.\n" +
-	"Also before any edit, locate every unresolved member glyph of every card with `lyx quarry resolve` or a grep, then read its file whole.\n" +
-	"A `plan:` handle in an unresolved list names a member a card creates, so it is never located.\n" +
-	"Then go back to your prompt and implement its cards.\n\n" +
-	"The member glyphs on each card of this batch, resolved against the tree at the batch's start.\n" +
-	"Each card's subsection sits under a heading that is that card's path in your prompt's card list.\n" +
-	"Each entry gives the glyph, then one line per declaration with its file, line span and signature, and the card's unresolved refs come after its entries.\n\n" +
-	"### `_lyx/plan/01-alpha.md`\n\n" +
-	"- `internal/foo#Bar`\n" +
-	"  - `internal/foo/a.go:3-5` — func Bar()\n" +
-	"  - `internal/foo/b.go:7-9` — func (x X) Bar()\n" +
-	"- `internal/foo#Baz`\n" +
-	"  - `internal/foo/a.go:11-12` — func Baz()\n\n" +
-	"### `_lyx/plan/02-beta.md`\n\n" +
-	"- `internal/foo#Baz`\n" +
-	"  - `internal/foo/c.go:1-2` — func Baz()\n"
-
-// The inline-layout texts as `git show 1e39afc10^:contracts/stencils/webster/<fragment>.md` gives them, banner and trailing newline stripped, so the inline prompt is pinned to those bytes whatever the fragments do.
-// inlineLocateBody keeps its {{.specs_dir}} marker.
-const (
-	inlineFreshReadBody = "Inherited context can be stale.\n" +
-		"A file you looked at during orientation — your own, or one Master read before forking you — is not necessarily the version on disk right now: a prior batch's own card commits may have changed it since.\n" +
-		"Only your own reads, taken now, are current;\n" +
-		"content you merely inherited is not.\n" +
-		"Your first turn, before any edit, reads in parallel every card file the card list below points at and every span the kick-start pack lists under every card, each span with the Read tool's `offset` at its start line and a `limit` reaching its end line.\n" +
-		"A span listed under several cards is read once.\n" +
-		"After that turn and still before any edit, read whole every existing file any card's target list or `Uses:` list names that no listed span covers, such as a plain path or a self glyph's file.\n" +
-		"Also before any edit, locate every unresolved member glyph of every card with `lyx quarry resolve` or a grep, then read its file whole.\n" +
-		"A `plan:` handle in an unresolved list names a member a card creates, so it is never located.\n" +
-		"Change a file you have already edited in this batch only with the Edit tool, never by rewriting it whole with the Write tool from content read before that edit."
-	inlineLocateBody = "   The kick-start pack below lists, under each card's path, where each member glyph on that card is, and your first turn read every listed span.\n" +
-		"   Do not call `lyx quarry resolve`, and do not grep, for a resolved entry.\n" +
-		"   Every line number you obtained before your first edit, the pack's listed lines and the lines a `lyx quarry resolve` call or grep returned while locating an unresolved glyph, describes the tree before any edit, so after an edit locate code by its text and never read by any such line.\n" +
-		"   The pack is a kick-start, not a complete list, so read further code, callers or whole files whenever the card needs it.\n" +
-		"   A `plan:` entry names a member a card creates and does not resolve yet, so there is nothing to locate.\n" +
-		"   An unresolved member glyph is located with `lyx quarry resolve` or a grep, since a member glyph names a package, not a file.\n" +
-		"   Card grammar is in `{{.specs_dir}}/loom/loom-plan-spec.md`."
-	inlinePackSectionHead = "## Kick-start pack\n\n" +
-		"The member glyphs on each card of this batch, resolved against the tree at the batch's start.\n" +
-		"Each card's subsection sits under a heading that is that card's path in the card list above.\n" +
-		"Each entry gives the glyph, then one line per declaration with its file, line span and signature, and the card's unresolved refs come after its entries.\n\n"
-)
 
 // dropInlineMarker rewrites the implementer body in stencilsDir into the body as it stood before the inline layout: without the kickstart_pack_inline marker.
 func dropInlineMarker(t *testing.T, stencilsDir string) {
@@ -732,17 +659,17 @@ func TestRenderPrompts(t *testing.T) {
 			root, stencilsDir := testLayout(t)
 			text, err := renderFork(alpha, root, stencilsDir, newTestSpecsDir(t), "", 2, "", nil)
 			return promptCheck{text: text, err: err,
-				contains:    []string{testCardGates, testBatchGate, testOutcomePath, testSummaryPath, "the plan's framing and the repo's rules, and no code"},
-				notContains: []string{"{{.card_gates}}", "{{.batch_gate}}", "this card's package's unit tests"}}
+				contains:    []string{testCardGates, testBatchGate, testOutcomePath, testSummaryPath},
+				notContains: []string{"{{.card_gates}}", "{{.batch_gate}}"}}
 		}},
 		{"recovery carries the card gates and no leftover marker", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)
 			text, err := renderRecovery(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", "", "")
 			return promptCheck{text: text, err: err,
 				contains:    []string{testCardGates, testBatchGate},
-				notContains: []string{"{{.card_gates}}", "{{.batch_gate}}", "this card's package's unit tests"}}
+				notContains: []string{"{{.card_gates}}", "{{.batch_gate}}"}}
 		}},
-		{"fork self-fix section counts card-caused failures", func(t *testing.T) promptCheck {
+		{"fork self-fix section carries the self-fix cap", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)
 			text, err := renderFork(alpha, root, stencilsDir, newTestSpecsDir(t), "", 7, "", nil)
 			if err != nil {
@@ -753,14 +680,7 @@ func TestRenderPrompts(t *testing.T) {
 				t.Fatalf("rendered prompt has no \"## Bounded self-fix, then stop\" section")
 			}
 			section, _, _ := strings.Cut(rest, "\n## ")
-			return promptCheck{text: section, contains: []string{
-				"at most `7` in-session fix attempts",
-				"in any other test run you make, counts as that card's gate failure when the card's change caused it",
-				"the failing test exercises code or files the card changed",
-				"a repo scan or enforcement test flags a file the card wrote",
-				"under the same `7`-attempt bound as any gate failure, and report `status: FAILED` when the bound runs out",
-				"A failure the card did not cause is never yours to fix and never a `FAILED` on its own: name it in your final reply to Master",
-			}}
+			return promptCheck{text: section, contains: []string{"`7`"}}
 		}},
 		{"fork renders the first-batch sentinel for an empty prevDigest", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)
@@ -846,14 +766,13 @@ func TestRenderPrompts(t *testing.T) {
 			root, stencilsDir := testLayout(t)
 			text, err := renderRecovery(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", "", "")
 			return promptCheck{text: text, err: err,
-				contains: []string{"00-overview.md", alpha.Cards[0].SourcePath, "## Your final action: the minimal batch-report",
-					"what an in-session fork inherits from Master, the plan's framing and the repo's rules, and no code", "you read per card"},
-				notContains: []string{"CONSTRAINTS.md", "{{", "## Constraints", "Orient to the codebase"}}
+				contains:    []string{alpha.Cards[0].SourcePath},
+				notContains: []string{"{{", "## Constraints"}}
 		}},
 		{"recovery carries the PATTERN overview when PATTERN is active", func(t *testing.T) promptCheck {
 			root, stencilsDir := patternActiveLayout(t)
 			text, err := renderRecovery(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", "", "")
-			return promptCheck{text: text, err: err, contains: []string{"some constraints", "## Constraints", "the constraints section above points at, when that section is present"}}
+			return promptCheck{text: text, err: err, contains: []string{"some constraints", "## Constraints"}}
 		}},
 		{"recovery reads PATTERN.md from the told repo root", func(t *testing.T) promptCheck {
 			repoRoot, stencilsDir := patternActiveLayout(t)
@@ -916,8 +835,7 @@ func TestRenderPrompts(t *testing.T) {
 				t.Errorf("nil-pack fork prompt differs from the prompt of a body with the pack-off texts in place of the markers")
 			}
 			return promptCheck{text: text, err: err,
-				contains:    []string{"Locate them with one `lyx quarry resolve <glyph>...` call", "A `plan:` handle names a member the card creates and does not resolve yet.", prePackStepOne, prePackFreshRead},
-				notContains: []string{"## Kick-start pack", "The kick-start pack file lists", "## Start here", testPackPath}}
+				notContains: []string{"## Kick-start pack", "## Start here", testPackPath}}
 		}},
 		{"fork with a resolved multipart pack lists each declaration and locates by the pack", func(t *testing.T) promptCheck {
 			beta := cardWithSourcePath(2, "beta", "add the second flag")
@@ -940,7 +858,7 @@ func TestRenderPrompts(t *testing.T) {
 			text, err := renderForkPromptAndPack(t, twoCards, root, stencilsDir, specsDir, pack)
 
 			// The file layout is byte-identical to the one rendered before the inline layout existed:
-			// the prompt equals the one of a body without the inline marker, and the pack file equals a literal copied from a render before the layout switch.
+			// the prompt and the pack file equal the render of a body without the inline marker.
 			prompt, packFile, fileErr := renderForkWithPack(twoCards, root, stencilsDir, specsDir, "", 2, "", websterengine.PackLayoutFile, pack)
 			_, noInlineDir := testLayout(t)
 			dropInlineMarker(t, noInlineDir)
@@ -948,34 +866,20 @@ func TestRenderPrompts(t *testing.T) {
 			if fileErr == nil && strings.Contains(prompt, "lyx loom card-pack") {
 				t.Errorf("file-layout prompt holds the per-card verb %q", "lyx loom card-pack")
 			}
-			if fileErr == nil && noInlineErr == nil {
-				if prompt != wantPrompt || packFile != wantPackFile {
-					t.Errorf("file-layout render differs from the render of a body without the kickstart_pack_inline marker")
-				}
-				if packFile != multipartPackFile {
-					t.Errorf("pack file = %q; want the pre-switch literal %q", packFile, multipartPackFile)
-				}
+			if fileErr == nil && noInlineErr == nil && (prompt != wantPrompt || packFile != wantPackFile) {
+				t.Errorf("file-layout render differs from the render of a body without the kickstart_pack_inline marker")
 			}
 			return promptCheck{text: text, err: err,
-				contains: []string{
-					"   The kick-start pack file lists, under each card's path, where each member glyph on that card is, and your first turn read every listed span.\n",
-					"`" + specsDir + "/loom/loom-plan-spec.md`",
-					"that no listed span covers",
-					"describes the tree before any edit, so after an edit locate code by its text",
-					"No code reaches you from Master",
-					"1. The card file, which your first turn read, is your whole instruction for that card.\n   If its `**Intent:**` field is empty",
-					"read further code, callers or whole files whenever the card needs it",
-				},
-				notContains: []string{"Locate them with one", "{{", "no member glyphs on this card", "#### Unresolved", "Before you edit anything, read — in THIS turn —",
-					"step 1 read the card's listed spans", "find the member by its glyph's member name", "read that file whole", "is that card's fresh read"},
+				contains:    []string{specsDir},
+				notContains: []string{"Locate them with one", "{{", "no member glyphs on this card", "#### Unresolved"},
 				inOrder: []string{
 					"## The FRESH-READ rule",
-					"set out by the kick-start pack file the last line of this prompt names",
+					"set out by the kick-start pack file",
 					"- `_lyx/plan/01-alpha.md`",
 					"- `_lyx/plan/02-beta.md`",
 					"## Your final action: the minimal batch-report",
 					"## Start here",
-					"## Kick-start pack\n\nRead all of this in one turn, in parallel, before any edit",
+					"## Kick-start pack",
 					"### `_lyx/plan/01-alpha.md`",
 					"- `internal/foo#Bar`",
 					"  - `internal/foo/a.go:3-5` — func Bar()",
@@ -1013,7 +917,6 @@ func TestRenderPrompts(t *testing.T) {
 			root, stencilsDir := testLayout(t)
 			text, err := renderForkPromptAndPack(t, alpha, root, stencilsDir, newTestSpecsDir(t), pack)
 			return promptCheck{text: text, err: err,
-				contains: []string{"Read all of this in one turn, in parallel, before any edit"},
 				inOrder: []string{
 					"### `_lyx/plan/01-alpha.md`",
 					"\nnone\n",
@@ -1025,7 +928,7 @@ func TestRenderPrompts(t *testing.T) {
 			root, stencilsDir := testLayout(t)
 			text, err := renderForkPromptAndPack(t, alpha, root, stencilsDir, newTestSpecsDir(t), []planindex.CardPack{{Card: alpha.Cards[0]}})
 			return promptCheck{text: text, err: err,
-				contains:    []string{"The kick-start pack file lists, under each card's path, where each member glyph on that card is", "Read all of this in one turn, in parallel, before any edit", "## Kick-start pack", "no member glyphs on this card"},
+				contains:    []string{"## Kick-start pack", "no member glyphs on this card"},
 				notContains: []string{"#### Unresolved"}}
 		}},
 		{"fork with a card of only plan: handles renders the empty line and lists the handle", func(t *testing.T) promptCheck {
@@ -1035,7 +938,7 @@ func TestRenderPrompts(t *testing.T) {
 			return promptCheck{text: text, err: err,
 				inOrder: []string{"no member glyphs on this card", "#### Unresolved", "- `plan:internal/foo#New` — a member this batch creates"}}
 		}},
-		{"fork with an inline pack carries the 1e39afc10^ texts and the pack before the sandbox rule", func(t *testing.T) promptCheck {
+		{"fork with an inline pack carries the inline fragments and the pack before the sandbox rule", func(t *testing.T) promptCheck {
 			pack := []planindex.CardPack{{Card: alpha.Cards[0], Pack: planindex.Pack{Resolved: []planindex.PackEntry{
 				{Glyph: "internal/foo#Baz", Declarations: []planindex.PackDeclaration{{File: "internal/foo/c.go", Start: 1, End: 2, Signature: "func Baz()"}}},
 			}}}}
@@ -1046,15 +949,9 @@ func TestRenderPrompts(t *testing.T) {
 				t.Errorf("inline fork rendered a pack file %q; want none", packFile)
 			}
 			return promptCheck{text: text, err: err,
-				contains: []string{
-					"## The FRESH-READ rule\n\n" + inlineFreshReadBody + "\n\n## Prior-batch context",
-					"in exactly the targets its type labels name.\n" + strings.ReplaceAll(inlineLocateBody, "{{.specs_dir}}", specsDir) + "\n3. Run each step",
-					"on top of a broken one.\n\n" + inlinePackSectionHead + "### `_lyx/plan/01-alpha.md`",
-					"1. The card file, which your first turn read, is your whole instruction for that card.\n",
-				},
+				contains:    []string{"Your first turn, before any edit, reads in parallel", "The kick-start pack below lists", "which your first turn read", specsDir},
 				notContains: []string{"## Start here", testPackPath, "kick-start pack file", "Read all of this in one turn", "{{", "1. Read the card file.", "lyx loom card-pack"},
 				inOrder: []string{
-					"on top of a broken one.",
 					"## Kick-start pack",
 					"### `_lyx/plan/01-alpha.md`",
 					"  - `internal/foo/c.go:1-2` — func Baz()",
@@ -1082,20 +979,12 @@ func TestRenderPrompts(t *testing.T) {
 				t.Errorf("per-card fork rendered a pack file %q; want none", packFile)
 			}
 			return promptCheck{text: text, err: err,
-				contains: []string{
-					"Your first work turn reads in parallel every card file the card list below points at, and nothing else",
-					"No code reaches you from Master",
-					"1. Before this card's first edit, run `lyx loom card-pack <N>` with this card's number, then read in one parallel turn every span it lists, each with the Read tool's `offset` at its start line and a `limit` reaching its end line.\n",
-					"The card pack's line numbers hold until this card's first edit only",
-					"When the `lyx loom card-pack` call fails, every glyph on the card is located that same way.",
-					"`" + specsDir + "/loom/loom-plan-spec.md`",
-					"`lyx loom lint-comments`, `lyx loom lint-pattern`, `lyx loom card-pack` and `lyx quarry resolve` are always allowed",
-				},
+				contains:    []string{"Your first work turn", "lyx loom card-pack <N>", specsDir, ", `lyx loom card-pack`"},
 				notContains: []string{"## Kick-start pack", "internal/foo#Baz", "internal/foo/c.go", testPackPath, "{{", "kick-start pack file"},
 				inOrder: []string{
 					"## The FRESH-READ rule",
 					"## Your final action: the minimal batch-report",
-					"## Start here\n\nNow read every card file the card list points at, in one parallel turn, and then begin the first card at its step 1.\n",
+					"## Start here",
 				}}
 		}},
 		{"fork with a per-card pack refuses a missing per-card start stencil", func(t *testing.T) promptCheck {
@@ -1119,20 +1008,17 @@ func TestRenderPrompts(t *testing.T) {
 				t.Errorf("recovery prompt differs from the prompt of a body with the pack-off texts in place of the markers")
 			}
 			return promptCheck{text: text, err: err,
-				contains:    []string{"Locate them with one `lyx quarry resolve <glyph>...` call", prePackStepOne, prePackFreshRead},
-				notContains: []string{"## Kick-start pack", "The kick-start pack file lists", "## Start here", "lyx loom card-pack"}}
+				notContains: []string{"## Kick-start pack", "## Start here", "lyx loom card-pack"}}
 		}},
 		{"master never fills worktree_root", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)
 			text, err := renderMaster(seamBatches, root, root, stencilsDir, "", "")
 			return promptCheck{text: text, err: err, notContains: []string{"worktree_root", root}}
 		}},
-		{"master names the fixer prompt and carries no integration fork", func(t *testing.T) promptCheck {
+		{"master names the fixer prompt", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)
 			text, err := renderMaster(seamBatches, root, root, stencilsDir, "", "")
-			return promptCheck{text: text, err: err,
-				contains:    []string{testVerifyFixPromptPath, "Gate findings recorded at", "## Verify gate fixes"},
-				notContains: []string{"integration fork", "integration.yaml"}}
+			return promptCheck{text: text, err: err, contains: []string{testVerifyFixPromptPath}}
 		}},
 		{"master lists the batches in the sequenced order it was handed", func(t *testing.T) promptCheck {
 			batches := []batcher.Batch{
@@ -1146,18 +1032,13 @@ func TestRenderPrompts(t *testing.T) {
 		{"master with PATTERN inactive renders no constraints block", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)
 			text, err := renderMaster(seamBatches, root, root, stencilsDir, "", "")
-			const conditionedRead = "the `pattern/` background files the constraints section above points at, when that section is present"
-			if got, want := strings.Count(text, "`pattern/`"), strings.Count(text, conditionedRead); got != want {
-				t.Errorf("master names `pattern/` %d times, %d of them with the condition; want every mention conditioned", got, want)
-			}
 			return promptCheck{text: text, err: err,
-				contains:    []string{"/00-overview.md` once"},
-				notContains: []string{"{{", "## Constraints", "\n\n\n\n", "codebase"}}
+				notContains: []string{"{{", "## Constraints", "\n\n\n\n"}}
 		}},
 		{"master places the PATTERN directive ahead of the first work instruction", func(t *testing.T) promptCheck {
 			root, stencilsDir := patternActiveLayout(t)
 			text, err := renderMaster(seamBatches, root, root, stencilsDir, "", "")
-			return promptCheck{text: text, err: err, inOrder: []string{"some constraints", "## Orientation", "points at, when that section is present"}}
+			return promptCheck{text: text, err: err, inOrder: []string{"some constraints", "## Orientation"}}
 		}},
 		{"master reads PATTERN.md from the told repo root", func(t *testing.T) promptCheck {
 			repoRoot, stencilsDir := patternActiveLayout(t)
@@ -1180,7 +1061,7 @@ func TestRenderPrompts(t *testing.T) {
 			root, stencilsDir := testLayout(t)
 			text, err := renderVerifyFix(reportPath, root, stencilsDir, "")
 			return promptCheck{text: text, err: err,
-				contains:    []string{reportPath, testOutcomePath, testSummaryPath, "`_lyx/plan`", "That context holds no code"},
+				contains:    []string{reportPath, testOutcomePath, testSummaryPath, "_lyx/plan"},
 				notContains: []string{"{{"}}
 		}},
 		{"fixer prompt refuses an empty report path", func(t *testing.T) promptCheck {

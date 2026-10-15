@@ -9,6 +9,9 @@ The general rules live in `scribe:testing` and `scribe:golang-testing`; this ent
 - A new test function or file must cover a behavior no existing test covers.
   Otherwise the case becomes a row in an existing table-driven test, or an assertion in an existing test of that behavior.
 - Many items of one kind (refusals, claims, rows, verbs) are covered by one table-driven or contract-level test, not one test each.
+- No test pins a stencil's static prose.
+  A stencil test may pin only a marker set, a Fill round-trip or a Go-filled marker's position, a value Go fills, reads or names, a fragment Go chooses, or a rule across a stencil family;
+  review guards the wording.
 - A review fix adds a test only when the finding is a coverage gap; for any other finding it corrects the existing test that asserted the wrong thing.
 - A redundant test is a finding exactly as a missing one is.
   The finding names the existing test that already covers the behavior, so it stays grounded and fixable by folding or deleting.

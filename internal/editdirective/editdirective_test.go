@@ -9,7 +9,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
-// TestDirective_RendersTheRuleWithoutBannerOrMarkers covers the seeded stencil: the rule's key phrases are present, with no marker and no leading comment.
+// TestDirective_RendersTheRuleWithoutBannerOrMarkers covers the seeded stencil: the rule's anchor phrase is present, with no marker and no leading comment.
 func TestDirective_RendersTheRuleWithoutBannerOrMarkers(t *testing.T) {
 	t.Parallel()
 	dir := stencilkit.Seed(t)
@@ -18,10 +18,8 @@ func TestDirective_RendersTheRuleWithoutBannerOrMarkers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Directive = _, %v; want nil error", err)
 	}
-	for _, want := range []string{"Edit or Write", "replace_all", "never `sed -i`", "never `perl -i`", "never `awk`", "never `python`", "`sed -n`", "`.scratch/`", "`lyx loom fmt <file>`"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("Directive = %q; want it to contain %q", got, want)
-		}
+	if !strings.Contains(got, "Edit or Write") {
+		t.Errorf("Directive = %q; want it to contain %q", got, "Edit or Write")
 	}
 	if strings.Contains(got, "{{") {
 		t.Errorf("Directive = %q; want no marker", got)

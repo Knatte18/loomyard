@@ -1,5 +1,5 @@
 // template_test.go proves each of the shipped half-prompt assets actually fills through stencil with its own required marker subset, that the two optional directives of the explore step render cleanly empty and placed ahead of its first work instruction, and that the compose functions read a half prompt from disk at call time.
-// The assets' load-bearing statements and the seat stencils' exclusion of downstream bodies are pinned from full compose renders in prompt_test.go (PATTERN-review-round's machine half).
+// The Go-built blocks and the seat stencils' exclusion of the cluster block are pinned from full compose renders in prompt_test.go.
 // The assets are read from the top-level stencils package's exported embedded defaults (stencils.BurlerTemplateReviewer etc.) rather than this package's own now-deleted package-private vars — a cross-package import, not a rename, since the compose functions themselves read their prompts from disk at call time via stencilstore.Read (see prompt.go).
 
 package burlerengine

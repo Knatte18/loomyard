@@ -35,7 +35,7 @@ func newTestStencilsDir(t *testing.T) string {
 // TestDirective_PerRole covers all five roles against an active PATTERN.md whose overview is deliberately malformed, since format violations are the checker's job, not Directive's.
 // Each role's directive is non-empty, carries the overview verbatim, begins with its own "##" heading (so an inactive render leaves no orphan heading behind), and holds no leftover banner:
 // stencilstore.Read does not strip a leading banner and the value never passes through stencil.Fill's banner strip, so Directive itself must strip it, and the seeded fixture's real banner makes that check bite.
-// The directive points at the literal relative background directory, never an interpolated absolute path or `_lyx/`, and equals the embedded default with its banner stripped and its overview marker filled.
+// The directive points at the literal relative background directory and equals the embedded default with its banner stripped and its overview marker filled.
 // That last check is a cheap tripwire against a stencil file drifting from the embedded default, not proof a relocation was faithful.
 // The five directives are pairwise distinct.
 // Against a stencils directory that carries none of the pattern stencils, each role fails loud with a non-nil error naming its missing stencil.
@@ -77,11 +77,8 @@ func TestDirective_PerRole(t *testing.T) {
 			if strings.Contains(strings.Replace(got, overview, "", 1), "<!--") {
 				t.Errorf("Directive(%v) = %q; want no leftover \"<!--\" banner content", tt.role, got)
 			}
-			if !strings.Contains(got, "under pattern/ ") || !strings.Contains(got, patternDirName+"/") {
+			if !strings.Contains(got, patternDirName+"/") {
 				t.Errorf("Directive(%v) = %q; want the literal background pointer %q", tt.role, got, patternDirName+"/")
-			}
-			if strings.Contains(got, "_lyx/") {
-				t.Errorf("Directive(%v) = %q; want no _lyx/ pointer", tt.role, got)
 			}
 			filled, err := stencil.Fill([]byte(stencil.StripLeadingComment(string(tt.embeddedDefault))), map[string]string{"pattern_overview": overview})
 			if err != nil {

@@ -55,7 +55,7 @@ Do not flag any of the following as a finding:
   A private supporting type, or a constructor inseparable from its type, belongs in the other symbol's card;
   a symbol that is part of a module's public surface, or reused across packages, gets its own card even when one card is its only consumer, and a helper serving one surface is bundled into that surface's card.
 - **Test economy.**
-  A card that plans a new test function or file for behavior an existing test already covers, or one test per symbol, is a finding; `PATTERN-test-economy` holds the rule.
+  A card that plans a new test function or file for behavior an existing test already covers, or one test per symbol, is a finding; so is a card that plans an assertion on a stencil's static prose; `PATTERN-test-economy` holds the rule.
   The finding names the existing test that covers the behavior, or, for a per-symbol test, the public-surface test that covers the symbol;
   a vague "seems redundant" is not a finding.
 - **Member glyphs on an `Edit` card.**

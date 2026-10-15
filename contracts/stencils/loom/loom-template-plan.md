@@ -70,6 +70,7 @@ Each card is the smallest change that:
 3. **Carries the coverage for the behavior it introduces** — the card's own targets include the test that covers it (`PATTERN-test-economy`).
    `verify:` commands are no substitute for test coverage;
    only pure refactors/renames may rely on existing tests instead.
+   A stencil's static prose is not behavior a test covers.
 4. **Greps for reworded messages** — a card that changes a user-visible message or error text greps the repository for the old text, and every test asserting it joins that card's targets.
    A stale exact-string assertion then fails on the card that reworded it, under that card's own gate, not at the plan-level gate.
 
