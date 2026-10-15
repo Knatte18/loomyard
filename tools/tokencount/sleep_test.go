@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"slices"
 	"strconv"
 	"strings"
@@ -57,6 +58,29 @@ func TestParseSleepJournal(t *testing.T) {
 			}
 			if !slices.EqualFunc(got, tt.want, func(a, b Interval) bool { return a.From.Equal(b.From) && a.To.Equal(b.To) }) {
 				t.Errorf("parseSleepJournal = %v; want %v", got, tt.want)
+			}
+		})
+	}
+
+	// The header line names why a sleep is or is not left out.
+	notes := []struct {
+		name     string
+		out      []byte
+		runErr   error
+		wantNote string
+		wantLen  int
+	}{
+		{name: "a failing journalctl", runErr: errors.New("exit status 1"), wantNote: "No machine sleep is left out of the time figures: journalctl failed: exit status 1.\n"},
+		{name: "an empty journal", wantNote: "No machine sleep is left out of the time figures: the journal records no systemd-sleep operation.\n"},
+		{name: "a line that does not decode", out: []byte("{\n"), wantNote: "No machine sleep is left out of the time figures: journal line \"{\" does not decode: unexpected end of JSON input.\n"},
+		{name: "a recorded sleep", out: []byte(enter(1, "b1", "hibernate") + "\n" + leave(9, "b1", "hibernate") + "\n"), wantNote: "Machine sleep, read from the systemd journal, is left out of every time figure.\n", wantLen: 1},
+	}
+	for _, tt := range notes {
+		t.Run("note for "+tt.name, func(t *testing.T) {
+			t.Parallel()
+			sleeps, note := sleepsFromJournal(tt.out, tt.runErr)
+			if note != tt.wantNote || len(sleeps) != tt.wantLen {
+				t.Errorf("sleepsFromJournal = %d sleeps, %q; want %d sleeps, %q", len(sleeps), note, tt.wantLen, tt.wantNote)
 			}
 		})
 	}

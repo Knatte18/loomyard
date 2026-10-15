@@ -28,8 +28,13 @@ func journalSleeps() ([]Interval, string) {
 		return nil, "No machine sleep is left out of the time figures: journalctl is not on PATH.\n"
 	}
 	out, err := exec.Command(path, "-t", "systemd-sleep", "-o", "json", "--output-fields=MESSAGE,_BOOT_ID", "--no-pager").Output()
-	if err != nil {
-		return nil, fmt.Sprintf("No machine sleep is left out of the time figures: journalctl failed: %v.\n", err)
+	return sleepsFromJournal(out, err)
+}
+
+// sleepsFromJournal maps the output and exit error of the journalctl run to the sleeps and the report line journalSleeps returns.
+func sleepsFromJournal(out []byte, runErr error) ([]Interval, string) {
+	if runErr != nil {
+		return nil, fmt.Sprintf("No machine sleep is left out of the time figures: journalctl failed: %v.\n", runErr)
 	}
 	sleeps, err := parseSleepJournal(out)
 	if err != nil {
