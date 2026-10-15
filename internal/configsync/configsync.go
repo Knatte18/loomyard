@@ -45,6 +45,7 @@ const (
 )
 
 // Result represents the reconciliation result for a single config module.
+// A key-move result instead reports one file the move changed, and a module may appear in a move result and in its own reconcile result.
 type Result struct {
 	// Module is the name of the config module (e.g., "board", "worktree", "fabric").
 	Module string
@@ -86,6 +87,15 @@ type Result struct {
 	// After the strip the worktree resolves each of them to the default's value, so the operator can pin the old value with lyx config.
 	// Set only by ReconcileAll, together with Stripped.
 	Inherited []string
+	// Moved lists, sorted, the declared key moves that changed this file, each as "<source module>.<source key> -> <target module>.<target key>".
+	// Set only by a key move, on a dry run too.
+	Moved []string
+	// KeptTarget lists, sorted, each move whose source value was dropped because the target already held its own, as "<source>: <value> dropped, <target>: <value> kept".
+	// Set only by a key move, on a dry run too.
+	KeptTarget []string
+	// Overwritten lists, sorted, each move whose source value replaced the target's template default, as "<source>: <value> replaced <target>'s template default <value>".
+	// Set only by a key move, on a dry run too.
+	Overwritten []string
 }
 
 // Options configures ReconcileAll.
@@ -249,9 +259,18 @@ func retireHubWideCopy(module, baseDir, boardDir string, apply bool) (Result, er
 // In a hub, a worktree without the sparse marker has each per-worktree module's worktree file compared with the layers below it, and the keys that add nothing are reported as Stripped, with the keys the repo default adds as Inherited;
 // the comparison runs only when every per-worktree module's repo default exists.
 // Only with opts.Migrate and opts.Apply are the files stripped and the marker written, after them.
+// The declared key moves run first, at the worktree layer and then the local layer, and their results lead the returned slice.
 // When opts.Apply is false, files are never written or removed.
 func ReconcileAll(baseDir, boardDir string, opts Options) ([]Result, error) {
-	var results []Result
+	results, err := moveKeys(baseDir, "", configengine.LayerWorktree, boardDir == "", opts.Apply)
+	if err != nil {
+		return nil, err
+	}
+	localMoves, err := moveKeys(baseDir, "", configengine.LayerLocal, false, opts.Apply)
+	if err != nil {
+		return nil, err
+	}
+	results = append(results, localMoves...)
 
 	pending := pendingMigration(baseDir, boardDir)
 	if pending != nil {
@@ -516,9 +535,18 @@ func primeConfig(primeBaseDir, module string) []byte {
 // An absent per-worktree default is seeded only under opts.SeedDefaults, from the prime's copy when it exists and parses, else from the template;
 // without it the default stays absent.
 // Legacy files are pruned only when opts.Apply succeeds.
+// The declared key moves run first at the board dir as a base layer, and their results lead the returned slice;
+// under opts.SeedDefaults an absent board source is the prime's copy, so a default seeded in the same pass carries the moved values.
 // When opts.Apply is false, nothing is written or removed.
 func ReconcileHubWideAt(boardDir, primeBaseDir string, opts HubWideOptions) ([]Result, error) {
-	var results []Result
+	seedDir := ""
+	if opts.SeedDefaults {
+		seedDir = primeBaseDir
+	}
+	results, err := moveKeys(boardDir, seedDir, configengine.LayerDefault, true, opts.Apply)
+	if err != nil {
+		return nil, err
+	}
 
 	for _, m := range configreg.Modules() {
 		cfgPath := configengine.ConfigFile(boardDir, m.Name)

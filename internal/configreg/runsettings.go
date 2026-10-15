@@ -31,9 +31,11 @@ func (e *RunSettingsError) Unwrap() error {
 
 // PrepareRunSettings migrates and validates a task's run settings, decoded from JSON as module name to an object of that module's keys.
 // It returns each named module's local-layer YAML document, and drops a module whose object is empty.
+// A key a declared move relocated (see KeyMoves) is first rewritten into its target module's object.
 // Every refusal is a [*RunSettingsError]; value semantics are left to the module's load.
 // A nil or empty settings returns an empty map.
 func PrepareRunSettings(settings map[string]any) (map[string][]byte, error) {
+	settings = moveRunSettings(settings)
 	names := make([]string, 0, len(settings))
 	for name := range settings {
 		names = append(names, name)

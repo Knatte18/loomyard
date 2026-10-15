@@ -64,6 +64,8 @@ func TestConfigReconcileInGitRepo(t *testing.T) {
 		seedModuleConfig(t, tmpDir, "loom", originalContent)
 		const retiredBatcher = "profiles:\n  cautious:\n    batchifier: cost\n    weights:\n      master_base: 52000\n"
 		seedModuleConfig(t, tmpDir, "batcher", retiredBatcher)
+		const movableShuttle = "claude: /x\n"
+		seedModuleConfig(t, tmpDir, "shuttle", movableShuttle)
 
 		code, result := runReconcileCLI(t, tmpDir)
 
@@ -88,6 +90,23 @@ func TestConfigReconcileInGitRepo(t *testing.T) {
 		}
 		if content, err := os.ReadFile(configengine.ConfigFile(tmpDir, "batcher")); err != nil || string(content) != retiredBatcher {
 			t.Errorf("batcher.yaml = %q, %v; want it unchanged by a dry run", content, err)
+		}
+		pendingMoves := false
+		allModules, _ := result["modules"].([]any)
+		for _, entry := range allModules {
+			moved, _ := entry.(map[string]any)["moved"].([]any)
+			if slices.Contains(moved, any("shuttle.claude -> claude.binary")) {
+				pendingMoves = true
+			}
+		}
+		if !pendingMoves {
+			t.Errorf("no module entry reports the pending move shuttle.claude -> claude.binary; result = %v", result)
+		}
+		if content, err := os.ReadFile(configengine.ConfigFile(tmpDir, "shuttle")); err != nil || string(content) != movableShuttle {
+			t.Errorf("shuttle.yaml = %q, %v; want it unchanged by a dry run", content, err)
+		}
+		if _, err := os.Stat(configengine.ConfigFile(tmpDir, "claude")); !os.IsNotExist(err) {
+			t.Errorf("claude.yaml written by a dry run (stat err = %v)", err)
 		}
 		if _, has := reconcileModule(t, result, "reed")["migrated"]; has {
 			t.Error("reed module entry carries migrated; want it omitted without a migration")

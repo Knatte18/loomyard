@@ -500,7 +500,30 @@ func TestEnsure_FailedWalkNamesTheFileAndLeavesTheTreeAsItWas(t *testing.T) {
 		// module is the module whose "lyx config" the message names; empty when the failure names no module.
 		module string
 		repair func(t *testing.T, h *hubforge.Hub)
+		// afterRepair, when set, checks the pair after the repaired walk.
+		afterRepair func(t *testing.T, h *hubforge.Hub)
 	}{
+		{
+			name: "a declared key move is undone with the failed walk and committed by the repaired one",
+			breakConfig: func(t *testing.T, h *hubforge.Hub) (string, string, string) {
+				records := h.PairRecordsSibling("pair-a")
+				// The stale pair holds every module's template; without its claude.yaml the move has a file to create.
+				gitkit.Git(t, records, "rm", "-q", filepath.ToSlash(configengine.ConfigFileRel("claude")))
+				gitkit.Git(t, records, "commit", "-q", "-m", "fixture: pair without claude.yaml")
+				gitkit.CommitFile(t, records, configengine.ConfigFileRel("shuttle"), "claude: /x\n", "fixture: shuttle.yaml with a movable key")
+				gitkit.CommitFile(t, records, configengine.ConfigFileRel("loom"), "a: [unclosed\n", "fixture: broken loom.yaml")
+				pair := h.PairCodeWorktree("pair-a")
+				return pair, records, configengine.ConfigFile(pair, "loom")
+			},
+			module: "loom",
+			repair: func(t *testing.T, h *hubforge.Hub) { commitTemplate(t, h.PairRecordsSibling("pair-a"), "loom") },
+			afterRepair: func(t *testing.T, h *hubforge.Hub) {
+				content, err := os.ReadFile(configengine.ConfigFile(h.PairCodeWorktree("pair-a"), "claude"))
+				if err != nil || !strings.Contains(string(content), "binary: /x") {
+					t.Errorf("claude.yaml = %q, %v; want the moved binary after the repaired walk", content, err)
+				}
+			},
+		},
 		{
 			name: "unparseable pair config",
 			breakConfig: func(t *testing.T, h *hubforge.Hub) (string, string, string) {
@@ -596,6 +619,9 @@ func TestEnsure_FailedWalkNamesTheFileAndLeavesTheTreeAsItWas(t *testing.T) {
 			assertClean(t, repo)
 			if retiredKeyPresent(t, h.PairCodeWorktree("pair-a")) {
 				t.Errorf("retired key still present in the pair after the repaired walk")
+			}
+			if tc.afterRepair != nil {
+				tc.afterRepair(t, h)
 			}
 		})
 	}
