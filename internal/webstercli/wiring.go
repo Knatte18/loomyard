@@ -28,7 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/standalonegeom"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -195,8 +195,15 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 		return err
 	}
 	reedEngine := reedengine.New(reedCfg, reedGeom)
-	claudeEngine := claudeengine.NewFromConfig(shuttleCfg)
-	runner := shuttleengine.NewRunner(reedEngine, claudeEngine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+	engines, err := shuttleengines.New(shuttleCfg)
+	if err != nil {
+		return err
+	}
+	defaultEngine, err := engines.Lookup("")
+	if err != nil {
+		return err
+	}
+	runner := shuttleengine.NewRunner(reedEngine, engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 	pauseGeom, err := hubgeom.PauseGeometry(loc)
 	if err != nil {
 		return err
@@ -204,7 +211,7 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 	runner.SetPause(pauseGeom)
 	runner.SetNotifier(func(line string) error { return orchcli.NotifyPrime(loc, line) })
 
-	c.setRunner(runner, claudeEngine, reedEngine)
+	c.setRunner(runner, defaultEngine, reedEngine)
 	c.shuttleCfg = shuttleCfg
 	c.cfg = websterCfg
 	c.roles = roles
@@ -292,8 +299,15 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	}
 
 	reedEngine := reedengine.New(reedCfg, reedGeom)
-	claudeEngine := claudeengine.NewFromConfig(shuttleCfg)
-	runner := shuttleengine.NewDetachedRunner(reedEngine, claudeEngine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, reedGeom.PaneCwd, shuttleCfg)
+	engines, err := shuttleengines.New(shuttleCfg)
+	if err != nil {
+		return err
+	}
+	defaultEngine, err := engines.Lookup("")
+	if err != nil {
+		return err
+	}
+	runner := shuttleengine.NewDetachedRunner(reedEngine, engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, reedGeom.PaneCwd, shuttleCfg)
 	runner.SetPause(standalonegeom.PauseGeometry(res.StateDir))
 
 	// Standalone's reed session lives on its own derived geometry, which no CLI verb can reach —
@@ -322,7 +336,7 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 		return nil
 	}
 
-	c.setRunner(runner, claudeEngine, reedEngine)
+	c.setRunner(runner, defaultEngine, reedEngine)
 	c.shuttleCfg = shuttleCfg
 	c.cfg = websterCfg
 	c.roles = roles
@@ -369,11 +383,11 @@ func configLoadError(file string, cause error) error {
 	}
 }
 
-// setRunner stores runner and its adapted seams (starter, masterStarter) plus the claude/reed engines onto c, shared by both wireHub and wireStandalone so the adaptation is named once.
-func (c *websterCLI) setRunner(runner *shuttleengine.Runner, claudeEngine shuttleengine.Engine, reedEngine shuttleengine.ReedOps) {
+// setRunner stores runner and its adapted seams (starter, masterStarter) plus the default shuttle engine and the reed engine onto c, shared by both wireHub and wireStandalone so the adaptation is named once.
+func (c *websterCLI) setRunner(runner *shuttleengine.Runner, defaultEngine shuttleengine.Engine, reedEngine shuttleengine.ReedOps) {
 	c.runner = runner
 	c.starter = runner
 	c.masterStarter = runnerMasterStarter{runner: runner}
-	c.engine = claudeEngine
+	c.engine = defaultEngine
 	c.reed = reedEngine
 }

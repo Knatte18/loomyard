@@ -31,7 +31,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -316,7 +316,11 @@ func (c *battenCLI) loadedTacklerDeps() (sheddriver.TacklerDeps, error) {
 	if err != nil {
 		return sheddriver.TacklerDeps{}, err
 	}
-	runner := shuttleengine.NewRunner(reedengine.New(reedConfig, reedGeometry), claudeengine.NewFromConfig(shuttleConfig), reedGeometry.AnchorPath, reedGeometry.WorktreeRoot, shuttleConfig)
+	engines, err := shuttleengines.New(shuttleConfig)
+	if err != nil {
+		return sheddriver.TacklerDeps{}, err
+	}
+	runner := shuttleengine.NewRunner(reedengine.New(reedConfig, reedGeometry), engines, reedGeometry.AnchorPath, reedGeometry.WorktreeRoot, shuttleConfig)
 	runner.SetPause(pauseGeometry)
 	runner.SetNotifier(func(line string) error {
 		_, err := orchengine.QueueNotice(orchcli.PrimePaths(location), line, time.Now())

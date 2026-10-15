@@ -43,7 +43,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/statuscommit"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
@@ -375,9 +375,9 @@ func writeCarryOver(location *lyxcwd.Location, entry discussionparser.CarryOver)
 // a resolver error is a wiring error.
 // ReviewerLive is nil, so the gate treats the reviewer as live, while the parent names no worktree (no parent);
 // otherwise it reads the parent worktree's reed session through reedCfg.
-// KeepAlive is the writer's prompt-cache lifetime as engine answers it for shuttleCfg, less a minute;
+// KeepAlive is the writer's prompt-cache lifetime as the set's default engine answers it for shuttleCfg, less a minute;
 // a lifetime error logs a Warn and leaves pings off, since the writer's own spawn refuses the same config with its advice.
-func newParentReviewConfig(location *lyxcwd.Location, reedCfg reedengine.Config, cfg loomengine.Config, stencilsDir string, engine shuttleengine.Engine, shuttleCfg shuttleengine.Config) (parentreview.GateConfig, error) {
+func newParentReviewConfig(location *lyxcwd.Location, reedCfg reedengine.Config, cfg loomengine.Config, stencilsDir string, engines shuttleengine.EngineSet, shuttleCfg shuttleengine.Config) (parentreview.GateConfig, error) {
 	parent, err := hubgeom.ResolveParent(location)
 	if err != nil {
 		return parentreview.GateConfig{}, fmt.Errorf("loom: resolve the parent review reviewer: %w", err)
@@ -393,7 +393,11 @@ func newParentReviewConfig(location *lyxcwd.Location, reedCfg reedengine.Config,
 	supportLog := loomengine.DiscussionSupportLog(location)
 	waitBound := time.Duration(cfg.ParentReviewWaitMin) * time.Minute
 	var keepAlive time.Duration
-	lifetime, err := engine.PromptCacheLifetime(shuttleengine.Spec{Role: loomengine.DiscussionWriterRole()}, shuttleCfg)
+	var lifetime time.Duration
+	defaultEngine, err := engines.Lookup("")
+	if err == nil {
+		lifetime, err = defaultEngine.PromptCacheLifetime(shuttleengine.Spec{Role: loomengine.DiscussionWriterRole()}, shuttleCfg)
+	}
 	if err != nil {
 		logger.Warn("parent review keep-alive off: the writer's prompt-cache lifetime cannot be resolved", "slug", slug, "error", err.Error())
 	} else {
@@ -537,8 +541,15 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	}
 	c.parentName = reedGeom.ParentName
 	reedEngine := reedengine.New(reedCfg, reedGeom)
-	claudeEngine := claudeengine.NewFromConfig(shuttleCfg)
-	runner := shuttleengine.NewRunner(reedEngine, claudeEngine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+	engines, err := shuttleengines.New(shuttleCfg)
+	if err != nil {
+		return err
+	}
+	defaultEngine, err := engines.Lookup("")
+	if err != nil {
+		return err
+	}
+	runner := shuttleengine.NewRunner(reedEngine, engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 	pauseGeom, err := hubgeom.PauseGeometry(location)
 	if err != nil {
 		return err
@@ -572,7 +583,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	runDeps := websterengine.RunDeps{
 		Starter:    runnerMasterStarter{runner: runner},
 		Stopper:    runner,
-		Engine:     claudeEngine,
+		Engine:     defaultEngine,
 		ShuttleCfg: shuttleCfg,
 		Roles:      roles,
 		Config:     websterCfg,
@@ -621,7 +632,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		},
 	}
 
-	parentReviewCfg, err := newParentReviewConfig(location, reedCfg, loomCfg, websterGeom.StencilsDir, claudeEngine, shuttleCfg)
+	parentReviewCfg, err := newParentReviewConfig(location, reedCfg, loomCfg, websterGeom.StencilsDir, engines, shuttleCfg)
 	if err != nil {
 		return err
 	}

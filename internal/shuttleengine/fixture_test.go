@@ -88,7 +88,7 @@ func newFixture(t *testing.T, reed ReedOps, engine Engine, opts ...fixtureOpt) *
 	if s.separateRunDir {
 		s.cfg.RunDir = t.TempDir()
 	}
-	fx.Runner = NewRunner(reed, engine, fx.Anchor, fx.Worktree, s.cfg)
+	fx.Runner = NewRunner(reed, singleEngineSet(engine), fx.Anchor, fx.Worktree, s.cfg)
 	fx.Runner.SetClock(s.clk)
 	fx.DotLyx = filepath.Join(fx.Anchor, lyxdirs.DotLyxDirName)
 	fx.RunRoot = runDirRoot(s.cfg, fx.Anchor)

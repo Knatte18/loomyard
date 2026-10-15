@@ -125,7 +125,6 @@ func HubDeps(location *lyxcwd.Location, strand string) (tenderengine.Deps, []str
 type shuttlePair struct {
 	location *lyxcwd.Location
 	cfg      shuttleengine.Config
-	engine   shuttleengine.Engine
 	engines  shuttleengine.EngineSet
 	reed     *reedengine.Engine
 	runner   *shuttleengine.Runner
@@ -151,17 +150,12 @@ func newShuttlePair(location *lyxcwd.Location) (shuttlePair, error) {
 	if err != nil {
 		return shuttlePair{}, err
 	}
-	engine, err := engines.Lookup("")
-	if err != nil {
-		return shuttlePair{}, err
-	}
 	return shuttlePair{
 		location: location,
 		cfg:      shuttleCfg,
-		engine:   engine,
 		engines:  engines,
 		reed:     reed,
-		runner:   shuttleengine.NewRunner(reed, engine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg),
+		runner:   shuttleengine.NewRunner(reed, engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg),
 	}, nil
 }
 

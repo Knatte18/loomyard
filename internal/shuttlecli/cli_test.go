@@ -45,7 +45,7 @@ func (c *fakeClock) Sleep(d time.Duration) {
 
 // newFakeClockRunner is shuttleengine.NewRunner with a fake clock installed, at the floor poll interval.
 func newFakeClockRunner(reed shuttleengine.ReedOps, engine shuttleengine.Engine, anchorPath, worktreeRoot string) *shuttleengine.Runner {
-	runner := shuttleengine.NewRunner(reed, engine, anchorPath, worktreeRoot, shuttleengine.Config{RunTimeoutMin: 30, PollIntervalMS: 1000, LivenessEveryNPolls: 1, StartupTimeoutS: 1})
+	runner := shuttleengine.NewRunner(reed, shuttlefake.EngineSet(engine), anchorPath, worktreeRoot, shuttleengine.Config{RunTimeoutMin: 30, PollIntervalMS: 1000, LivenessEveryNPolls: 1, StartupTimeoutS: 1})
 	runner.SetClock(&fakeClock{now: time.Now()})
 	return runner
 }
@@ -383,7 +383,7 @@ func TestRunCmd_EffortAndFocusFlags(t *testing.T) {
 			if err := os.MkdirAll(anchorPath, 0o755); err != nil {
 				t.Fatalf("mkdir anchor path: %v", err)
 			}
-			runner := shuttleengine.NewRunner(&shuttlefake.Reed{}, engine, anchorPath, worktreeRoot, shuttleengine.Config{RunTimeoutMin: 30})
+			runner := shuttleengine.NewRunner(&shuttlefake.Reed{}, shuttlefake.EngineSet(engine), anchorPath, worktreeRoot, shuttleengine.Config{RunTimeoutMin: 30})
 
 			c := &shuttleCLI{runner: runner}
 			cmd := c.runCmd()

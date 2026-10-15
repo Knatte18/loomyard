@@ -21,7 +21,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/verifytree"
@@ -102,7 +101,11 @@ func (c *loomCLI) stopStepRuns(tie shuttleengine.StepTie) (shuttleengine.StepSto
 		if err != nil {
 			return shuttleengine.StepStopReport{}, err
 		}
-		runner = shuttleengine.NewRunner(reedengine.New(reedCfg, reedGeom), claudeengine.NewFromConfig(shuttleCfg), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+		engines, err := shuttleengines.New(shuttleCfg)
+		if err != nil {
+			return shuttleengine.StepStopReport{}, err
+		}
+		runner = shuttleengine.NewRunner(reedengine.New(reedCfg, reedGeom), engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 	}
 	return runner.StopStepRuns(tie)
 }

@@ -14,6 +14,7 @@
 // completion edge, locate the output.
 // A Claude engine now;
 // Gemini etc. later.
+// A Runner takes an EngineSet, which internal/shuttleengines builds from shuttle.yaml's `engine:` key.
 // The verdict/output contract is provider-invariant, which is what makes engines swappable:
 // shuttleengine defines the Engine interface and its value types, and never imports a concrete
 // engine implementation (the provider-seam import rule, enforced by seam_enforcement_test.go in a

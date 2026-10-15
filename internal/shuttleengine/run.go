@@ -33,7 +33,10 @@ import (
 // them;
 // populating all three with usable absolute paths is the caller's obligation.
 type Runner struct {
-	reed         ReedOps
+	reed ReedOps
+	// engines is the set of engines the runner can drive.
+	engines EngineSet
+	// engine is the set's default engine, resolved once by the constructors.
 	engine       Engine
 	anchorPath   string
 	worktreeRoot string
@@ -125,8 +128,9 @@ func (r *Runner) SetClock(c Clock) {
 	r.clock = c
 }
 
-// NewRunner returns a Runner ready to start runs against reed and engine, scoped to anchorPath and
-// worktreeRoot and cfg's tuning knobs.
+// NewRunner returns a Runner that starts runs against reed and the engines of the set.
+// It is scoped to anchorPath and worktreeRoot and cfg's tuning knobs.
+// A set whose default engine does not resolve is held on the same verdict as an unusable told path.
 // NewRunner is told anchorPath and worktreeRoot as plain strings and derives neither;
 // populating both with usable absolute paths is the caller's obligation.
 // paneCwd is derived here rather than told: it is set to a copy of anchorPath, which is hub
@@ -135,15 +139,17 @@ func (r *Runner) SetClock(c Clock) {
 // worktree root rather than the anchor.
 // The pair is validated here (see validateToldPaths) and an unusable one is reported by every
 // public method rather than by this constructor, which stays total.
-func NewRunner(reed ReedOps, engine Engine, anchorPath, worktreeRoot string, cfg Config) *Runner {
+func NewRunner(reed ReedOps, engines EngineSet, anchorPath, worktreeRoot string, cfg Config) *Runner {
+	engine, engineErr := engines.Lookup("")
 	return &Runner{
 		reed:         reed,
+		engines:      engines,
 		engine:       engine,
 		anchorPath:   anchorPath,
 		worktreeRoot: worktreeRoot,
 		paneCwd:      anchorPath,
 		cfg:          cfg,
-		toldErr:      validateToldPaths(anchorPath, worktreeRoot),
+		toldErr:      errors.Join(validateToldPaths(anchorPath, worktreeRoot), engineErr),
 		clock:        realClock{},
 	}
 }
@@ -165,15 +171,17 @@ func NewRunner(reed ReedOps, engine Engine, anchorPath, worktreeRoot string, cfg
 // tests.
 // Like NewRunner it stays total — the verdict is held on toldErr and surfaced by every public entry
 // point, never returned from the constructor.
-func NewDetachedRunner(reed ReedOps, engine Engine, anchorPath, worktreeRoot, paneCwd string, cfg Config) *Runner {
+func NewDetachedRunner(reed ReedOps, engines EngineSet, anchorPath, worktreeRoot, paneCwd string, cfg Config) *Runner {
+	engine, engineErr := engines.Lookup("")
 	return &Runner{
 		reed:         reed,
+		engines:      engines,
 		engine:       engine,
 		anchorPath:   anchorPath,
 		worktreeRoot: worktreeRoot,
 		paneCwd:      paneCwd,
 		cfg:          cfg,
-		toldErr:      validateDetachedToldPaths(anchorPath, worktreeRoot, paneCwd),
+		toldErr:      errors.Join(validateDetachedToldPaths(anchorPath, worktreeRoot, paneCwd), engineErr),
 		clock:        realClock{},
 	}
 }

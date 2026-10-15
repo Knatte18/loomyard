@@ -27,14 +27,13 @@ import (
 )
 
 // shuttleCLI is the receiver every shuttle verb hangs off of;
-// runner, cfg, anchorPath, engines and engine are populated by PersistentPreRunE.
+// runner, cfg, anchorPath and engines are populated by PersistentPreRunE.
 // The read-only verbs read through cfg, anchorPath and engines directly.
 type shuttleCLI struct {
 	runner     *shuttleengine.Runner
 	cfg        shuttleengine.Config
 	anchorPath string
 	engines    shuttleengine.EngineSet
-	engine     shuttleengine.Engine
 	// pause is the pair's pause geometry, set by PersistentPreRunE; send refuses into a covered strand through it.
 	pause pauserecord.Geometry
 	// configDirs are the config layers both configs load from, set by PersistentPreRunE; open resolves its model registry through them.
@@ -119,14 +118,8 @@ provider specifics.`,
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
-			engine, err := engines.Lookup("")
-			if err != nil {
-				output.Err(out, err.Error())
-				clihelp.Abort(ctx, 1)
-				return nil
-			}
-			c.cfg, c.anchorPath, c.engines, c.engine = shuttleCfg, reedGeom.AnchorPath, engines, engine
-			c.runner = shuttleengine.NewRunner(reedEngine, c.engine, c.anchorPath, reedGeom.WorktreeRoot, c.cfg)
+			c.cfg, c.anchorPath, c.engines = shuttleCfg, reedGeom.AnchorPath, engines
+			c.runner = shuttleengine.NewRunner(reedEngine, c.engines, c.anchorPath, reedGeom.WorktreeRoot, c.cfg)
 			pauseGeom, err := hubgeom.PauseGeometry(layout)
 			if err != nil {
 				output.Err(out, err.Error())
