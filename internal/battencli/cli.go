@@ -132,9 +132,9 @@ which is the everyday resume path. A slug already done refuses on the
 envelope, naming "lyx batten cleanup --apply" and the leftover branches to
 delete to run it again.
 
-run drives the lifecycle through the Go driver: an unexpected stop meets the
-driver's rule table and a cold tackler agent before it is handed to the orch,
-and a second run for the slug is refused while the first holds the driver lock.
+The Go driver meets an unexpected stop with its rule table and a cold tackler
+agent before the orch sees it; a second run for the slug is refused while the
+first holds the driver lock.
 
 The run-id positional is required in practice, even though cobra accepts
 its absence: prime hosts many slug-addressed batten runs, so an omitted
@@ -143,8 +143,7 @@ run-id refuses by name rather than defaulting to "self".
 With --window, the same run starts in its own tmux window of the prime's reed
 session and the verb returns at once with the window's id and name; the tmux
 window lives as long as the reed session. A window of that name with a live run
-is reported and nothing is started; a second batten for the slug is refused by
-the run's own lock inside the window and read from batten's own log.
+is reported and nothing is started.
 
 The run's Open-Window row opens one desktop terminal window, titled with the
 slug, running "lyx reed attach" in the task worktree once the task's own run is
@@ -152,8 +151,8 @@ seeded there and before it is spawned: Konsole on Linux, Windows Terminal into
 WSL on WSL. batten.yaml's open_window switches it, and --window turns it on for
 that run. The envelope's terminal_window field names the launcher, or says no
 window is opened when this machine has none. A run resumed past that row opens
-no window. The Seed-IDE and Open-IDE rows after it write the task worktree's VS
-Code config and open VS Code on it, switched by seed_ide and open_ide.
+no window. The Seed-IDE and Open-IDE rows after it write the worktree's VS Code
+config and open VS Code, switched by seed_ide and open_ide.
 
 Example:
   lyx batten run some-slug
