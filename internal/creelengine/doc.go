@@ -72,8 +72,8 @@
 // A reminder lists at most five messages, cuts a subject at 80 runes and counts the rest; the subject is the first line of the body, inside « » with control characters replaced, so it cannot pose as an instruction.
 // A new unread set is reminded at once, and an unchanged set after a backoff that starts at five minutes and doubles to an hour.
 //
-// read returns the caller's unread messages oldest first, narrowed to one sender by --from, and --all adds the read messages still retained.
-// The unread ones are reserved until the client acknowledges them on the same connection, and only then are they journaled as read, so a client that dies before writing them leaves them unread.
+// read returns the caller's unread messages oldest first: plain read the oldest one and every other unread message from its sender, --from every unread message from that sender, and --all every unread message.
+// They are reserved until the client acknowledges them on the same connection, and only then are they journaled as read, so a client that dies before writing them leaves them unread.
 // An EXTERNAL caller holds no mail and is refused.
 // read --wait first waits until the caller holds unread mail, and a program's first read makes its mailbox known.
 // inbox counts the caller's unread messages per sender and marks nothing read.

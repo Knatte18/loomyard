@@ -174,22 +174,36 @@ func TestStore_Mail(t *testing.T) {
 			wantBodies(t, e.readBodies(t, program(batten), "", false), "now known")
 		}},
 		{"Read_SetsAndInbox", func(t *testing.T, e *env) {
-			e.post(t, strand(alpha), beta, "a1")
 			e.post(t, program(batten), beta, "b1")
+			e.post(t, strand(alpha), beta, "a1")
+			e.post(t, program(batten), beta, "b2")
 			e.post(t, strand(alpha), beta, "a2")
+			e.post(t, strand(alpha), beta, "a3")
 			inbox, err := e.store.Inbox(strand(beta))
 			if err != nil {
 				t.Fatalf("Inbox: %v", err)
 			}
-			wantInbox := []creelengine.InboxEntry{{From: batten, Unread: 1}, {From: alpha, Unread: 2}}
+			wantInbox := []creelengine.InboxEntry{{From: batten, Unread: 2}, {From: alpha, Unread: 3}}
 			if !reflect.DeepEqual(inbox.Senders, wantInbox) || inbox.Withheld {
 				t.Errorf("Inbox = %+v; want senders %v and nothing withheld", inbox, wantInbox)
 			}
-			wantBodies(t, e.readBodies(t, strand(beta), alpha, false), "a1", "a2")
-			wantBodies(t, e.readBodies(t, strand(beta), "", false), "b1")
+			wantBodies(t, e.readBodies(t, strand(beta), "", false), "b1", "b2")
+			inbox, err = e.store.Inbox(strand(beta))
+			wantInbox = []creelengine.InboxEntry{{From: alpha, Unread: 3}}
+			if err != nil || !reflect.DeepEqual(inbox.Senders, wantInbox) {
+				t.Errorf("Inbox after the first read = %+v, %v; want senders %v", inbox, err, wantInbox)
+			}
+			wantBodies(t, e.readBodies(t, strand(beta), "", false), "a1", "a2", "a3")
 			wantBodies(t, e.readBodies(t, strand(beta), "", false))
-			wantBodies(t, e.readBodies(t, strand(beta), "", true), "a1", "b1", "a2")
-			wantBodies(t, e.readBodies(t, strand(beta), batten, true), "b1")
+			e.post(t, strand(alpha), beta, "a4")
+			e.post(t, program(batten), beta, "b3")
+			e.post(t, strand(alpha), beta, "a5")
+			wantBodies(t, e.readBodies(t, strand(beta), batten, false), "b3")
+			e.post(t, program(batten), beta, "b4")
+			wantBodies(t, e.readBodies(t, strand(beta), batten, true), "b4")
+			e.post(t, program(batten), beta, "b5")
+			wantBodies(t, e.readBodies(t, strand(beta), "", true), "a4", "a5", "b5")
+			wantBodies(t, e.readBodies(t, strand(beta), "", true))
 			inbox, err = e.store.Inbox(strand(beta))
 			if err != nil || len(inbox.Senders) != 0 {
 				t.Errorf("Inbox after reading everything = %+v, %v; want an empty set", inbox, err)

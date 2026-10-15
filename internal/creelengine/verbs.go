@@ -5,6 +5,7 @@ package creelengine
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -118,7 +119,7 @@ func (s *Store) Reply(sender Sender, id int64, text string) (int64, error) {
 	return replyID, err
 }
 
-// Reading is the set of messages a read handed out; its unread ones are reserved until Ack or Release.
+// Reading is the set of messages a read handed out; they are unread messages, reserved until Ack or Release.
 type Reading struct {
 	// Messages are the messages handed out, oldest first.
 	Messages []Message
@@ -127,8 +128,9 @@ type Reading struct {
 	ids      []int64
 }
 
-// Read returns the caller's unread mail, oldest first, narrowed to one sender by from; all adds the read messages still retained.
-// The unread ones are reserved so a concurrent read by the same holder skips them.
+// Read returns the caller's unread mail, oldest first, that no other read has reserved.
+// With neither from nor all it is the oldest message and every other one from its sender; with from it is every message from that sender; with all it is every message, narrowed to from when that is set.
+// They are reserved so a concurrent read by the same holder skips them.
 // A program sender's first read makes its mailbox known.
 func (s *Store) Read(sender Sender, from string, all bool) (*Reading, error) {
 	if sender.Kind == KindExternal {
@@ -141,18 +143,15 @@ func (s *Store) Read(sender Sender, from string, all bool) (*Reading, error) {
 				return err
 			}
 		}
-		for _, msg := range s.unreadLocked(sender.Name, from) {
+		unread := s.unreadLocked(sender.Name, from)
+		if from == "" && !all && len(unread) > 0 {
+			oldestSender := unread[0].From
+			unread = slices.DeleteFunc(unread, func(msg *Message) bool { return msg.From != oldestSender })
+		}
+		for _, msg := range unread {
 			s.reserved[msg.ID] = sender.Name
 			reading.ids = append(reading.ids, msg.ID)
 			reading.Messages = append(reading.Messages, *msg)
-		}
-		if all {
-			for _, msg := range s.state.messages {
-				if msg.Holder == sender.Name && msg.Status == StatusRead && (from == "" || msg.From == from) {
-					reading.Messages = append(reading.Messages, *msg)
-				}
-			}
-			sort.Slice(reading.Messages, func(i, j int) bool { return reading.Messages[i].ID < reading.Messages[j].ID })
 		}
 		return nil
 	})

@@ -293,8 +293,22 @@ func TestDaemon_Protocol(t *testing.T) {
 			if again := mustCall(t, c, creelengine.Request{Verb: creelengine.VerbRead}); len(again.Messages) != 0 {
 				t.Errorf("a read after the acked one = %d messages; want none", len(again.Messages))
 			}
-			if all := mustCall(t, c, creelengine.Request{Verb: creelengine.VerbRead, All: true}); len(all.Messages) != 1 {
-				t.Errorf("read --all = %d messages; want the acked one still retained", len(all.Messages))
+		}},
+		{"ReadAllHandsOutEveryUnreadMessageFromEverySender", false, func(t *testing.T, r *rig) {
+			r.start()
+			batten := r.client(programClaim("ly:BATTEN"), nil, creelfake.NewClock(epoch))
+			mustCall(t, batten, creelengine.Request{Verb: creelengine.VerbRead})
+			external := r.client(externalClaim(), nil, creelfake.NewClock(epoch))
+			mustCall(t, external, creelengine.Request{Verb: creelengine.VerbPost, Receiver: "ly:BATTEN", Text: "from the external"})
+			carter := r.client(programClaim("ly:CARTER"), nil, creelfake.NewClock(epoch))
+			mustCall(t, carter, creelengine.Request{Verb: creelengine.VerbPost, Receiver: "ly:BATTEN", Text: "from carter"})
+			got := mustCall(t, batten, creelengine.Request{Verb: creelengine.VerbRead, All: true})
+			var bodies []string
+			for _, msg := range got.Messages {
+				bodies = append(bodies, msg.Body)
+			}
+			if want := []string{"from the external", "from carter"}; !slices.Equal(bodies, want) {
+				t.Errorf("read --all = %q; want %q", bodies, want)
 			}
 		}},
 		{"ReadWaitReturnsOnceAPostArrives", true, func(t *testing.T, r *rig) {

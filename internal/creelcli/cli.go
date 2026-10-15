@@ -390,12 +390,12 @@ func readCmd() *cobra.Command {
 		Use:         "read",
 		Short:       "print the messages left for the caller and mark them read",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
-		Long: `read prints every unread message left for the caller, each with its sender,
-envelope and body, and then marks them read. With nothing unread it says so
-and exits 0.
+		Long: `read prints the oldest unread message left for the caller and every other
+unread message from its sender, each with its sender, envelope and body, and
+then marks them read. With nothing unread it says so and exits 0.
 
---from limits it to one sender, --all adds the read messages still kept, and
---wait waits for unread mail, up to --timeout, before it reads.
+--from prints every unread message from one sender, --all prints every unread
+message, and --wait waits for unread mail, up to --timeout, before it reads.
 
 Example:
   lyx creel read
@@ -425,7 +425,7 @@ Example:
 		},
 	}
 	cmd.Flags().StringVar(&from, "from", "", "read only the messages from this sender")
-	cmd.Flags().BoolVar(&all, "all", false, "include the read messages still kept")
+	cmd.Flags().BoolVar(&all, "all", false, "read every unread message, not only the oldest sender's")
 	cmd.Flags().BoolVar(&wait, "wait", false, "wait for unread mail before reading")
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, "give up waiting after this long, 0 for never")
 	return cmd
