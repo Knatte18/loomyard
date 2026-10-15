@@ -1,14 +1,13 @@
-// driverules.go holds the Go driver's closed rule table as pure functions:
+// driverules.go holds the shed driver's closed rule table as pure functions:
 // the stop it acts on, parsed from the loop's envelope or built from a status, the disk facts the loop reads before deciding, and the one decision the table returns.
 // No branch reads a row or recipe name or the reason text; each reads the envelope's fields, its kind, its transient class and the facts.
 
-package loomcli
+package sheddriver
 
 import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 )
@@ -16,9 +15,9 @@ import (
 // driveRepairCap is how many re-steps of one interrupted stop the driver makes before the tackler is asked.
 const driveRepairCap = 2
 
-// driveStop is what the loop's envelope says about one stop, or what a status says when the driver acts on a stop it did not step to.
+// Stop is what the loop's envelope says about one stop, or what a status says when the driver acts on a stop it did not step to.
 // The loop-object fields are empty for a stop built from a status, and Raw holds the envelope bytes verbatim.
-type driveStop struct {
+type Stop struct {
 	OK           bool
 	State        string
 	Reason       string
@@ -46,7 +45,7 @@ type driveStop struct {
 
 // parseDriveStop decodes the envelope shedverbs.RunUntilStop prints.
 // An unknown key is tolerated, and bytes that do not decode are refused.
-func parseDriveStop(envelope []byte) (driveStop, error) {
+func parseDriveStop(envelope []byte) (Stop, error) {
 	var decoded struct {
 		OK           bool   `json:"ok"`
 		State        string `json:"state"`
@@ -69,9 +68,9 @@ func parseDriveStop(envelope []byte) (driveStop, error) {
 		} `json:"loop"`
 	}
 	if err := json.Unmarshal(envelope, &decoded); err != nil {
-		return driveStop{}, fmt.Errorf("loom: drive: the loop's stop envelope does not decode: %w", err)
+		return Stop{}, fmt.Errorf("sheddriver: drive: the loop's stop envelope does not decode: %w", err)
 	}
-	return driveStop{
+	return Stop{
 		OK:              decoded.OK,
 		State:           decoded.State,
 		Reason:          decoded.Reason,
@@ -95,8 +94,8 @@ func parseDriveStop(envelope []byte) (driveStop, error) {
 
 // stopFromStatus builds the stop the driver acts on from a status alone.
 // It has FromStatus set, no kind and no reason; a failed status reads as an error stop.
-func stopFromStatus(st shedengine.Status) driveStop {
-	return driveStop{
+func stopFromStatus(st shedengine.Status) Stop {
+	return Stop{
 		OK:              st.State != shedengine.StateFailed,
 		State:           string(st.State),
 		Transient:       st.Transient,
@@ -109,18 +108,18 @@ func stopFromStatus(st shedengine.Status) driveStop {
 	}
 }
 
-// key is the stop key the stop left: the loop's current producer, history length and state, falling back to the top-level state.
-func (s driveStop) key() sheddriver.StopKey {
+// Key is the stop key the stop left: the loop's current producer, history length and state, falling back to the top-level state.
+func (s Stop) Key() StopKey {
 	state := s.LoopState
 	if state == "" {
 		state = s.State
 	}
-	return sheddriver.StopKey{CurrentProducer: s.CurrentProducer, HistoryLength: s.HistoryLength, State: state}
+	return StopKey{CurrentProducer: s.CurrentProducer, HistoryLength: s.HistoryLength, State: state}
 }
 
 // driveFacts carries the disk reads the loop makes before deciding.
 type driveFacts struct {
-	// EscalationPending is true when the arbiter verb would admit the awaiting stop: its eligibility, not mere pendency of an escalation.
+	// EscalationPending is true when the arbiter would admit the awaiting stop: its eligibility, not mere pendency of an escalation.
 	EscalationPending bool
 	// VerifyMatches is true when the Publish failure record matches the halt; VerifyTarget is the row it names.
 	VerifyMatches bool
@@ -166,8 +165,8 @@ type driveDecision struct {
 
 // binaryEligible reports whether a newer on-disk build could change what happens at the stop:
 // a blocked stop, a producer, bootstrap, unseeded or interrupted error, or a transient error.
-func binaryEligible(stop driveStop) bool {
-	if stop.key().State == string(shedengine.StateBlocked) {
+func binaryEligible(stop Stop) bool {
+	if stop.Key().State == string(shedengine.StateBlocked) {
 		return true
 	}
 	if stop.OK {
@@ -181,10 +180,10 @@ func binaryEligible(stop driveStop) bool {
 }
 
 // repairCount counts the restep settle records of the stop key.
-func repairCount(records []sheddriver.SettleRecord, key sheddriver.StopKey) int {
+func repairCount(records []SettleRecord, key StopKey) int {
 	count := 0
 	for _, record := range records {
-		if record.Action == sheddriver.SettleRestep && record.StopKey == key {
+		if record.Action == SettleRestep && record.StopKey == key {
 			count++
 		}
 	}
@@ -192,8 +191,8 @@ func repairCount(records []sheddriver.SettleRecord, key sheddriver.StopKey) int 
 }
 
 // decideDrive returns the first row of the rule table that matches the stop, and a hand-back when none does.
-func decideDrive(stop driveStop, facts driveFacts) driveDecision {
-	state := stop.key().State
+func decideDrive(stop Stop, facts driveFacts) driveDecision {
+	state := stop.Key().State
 	switch {
 	case stop.OK && state == string(shedengine.StateDone):
 		return driveDecision{Action: driveActionDone, Rule: "the run is done"}

@@ -1,6 +1,6 @@
-// drivehandback_test.go — untagged Tier-1 tests for the Go driver's hand-back: the parent messages, the stop report, the commit and the park marker, over fake seams in a temp worktree.
+// drivehandback_test.go — untagged Tier-1 tests for the shed driver's hand-back: the parent messages, the stop report and the park, over fake seams in a temp worktree.
 
-package loomcli
+package sheddriver
 
 import (
 	"errors"
@@ -10,8 +10,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/Knatte18/loomyard/internal/sheddriver"
 )
 
 // TestDriveNotices pins what a hand-back tells its parent under each notify rule: the notice verbatim, the question line, the friction-failed done line and the run-id line, each ending in the tail.
@@ -19,8 +17,8 @@ func TestDriveNotices(t *testing.T) {
 	t.Parallel()
 
 	const tail = " Answer briefly, then continue your task."
-	awaiting := driveStop{OK: true, State: "awaiting", LoopState: "awaiting"}
-	done := driveStop{OK: true, State: "done", LoopState: "done"}
+	awaiting := Stop{OK: true, State: "awaiting", LoopState: "awaiting"}
+	done := Stop{OK: true, State: "done", LoopState: "done"}
 	generic := "Run run-1 stopped; stop report /r.md." + tail
 	question := "Run run-1 stopped with a question; stop report /r.md. Question: widen the task?" + tail
 	friction := "Run run-1 is done but reported friction: failed; stop report /r.md." + tail
@@ -40,7 +38,7 @@ func TestDriveNotices(t *testing.T) {
 		{name: "watched awaiting without a notice sends nothing", h: driveHandBack{Stop: awaiting}, watched: true},
 		{name: "unwatched awaiting without a notice sends the run-id line", h: driveHandBack{Stop: awaiting}, want: []string{generic}},
 		{name: "unwatched done without friction sends nothing", h: driveHandBack{Stop: done}},
-		{name: "watched verify halt sends the unwatched line", h: driveHandBack{Stop: driveStop{OK: true, State: "blocked", LoopState: "blocked"}, WatchedVerifyLine: true}, watched: true, want: []string{generic}},
+		{name: "watched verify halt sends the unwatched line", h: driveHandBack{Stop: Stop{OK: true, State: "blocked", LoopState: "blocked"}, WatchedVerifyLine: true}, watched: true, want: []string{generic}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -62,28 +60,34 @@ func TestDriveNotices(t *testing.T) {
 	}
 }
 
-// TestDriveHandBack covers handBackRun over fake notify, orch-lookup and commit seams in a temp worktree:
-// what the stop report holds, how a failed send and a missing orch strand read, that the commit runs and the park marker holds the report path, that a failed commit still writes the marker, and that a friction-failed done reports without parking.
+// TestDriveHandBack covers handBackRun over fake notify, orch-lookup and park seams in a temp worktree:
+// what the stop report holds, how a declined send, a failed send and a missing orch strand read, that the park runs after the report is written and its error is the hand-back's, and that a friction-failed done reports without parking.
 func TestDriveHandBack(t *testing.T) {
 	t.Parallel()
 
 	baseHandBack := driveHandBack{
 		RunID:    "run-1",
-		Stop:     driveStop{OK: true, State: "awaiting", LoopState: "awaiting"},
+		Stop:     Stop{OK: true, State: "awaiting", LoopState: "awaiting"},
 		Question: "widen the task?",
 	}
-	frictionDone := driveHandBack{RunID: "run-1", Stop: driveStop{OK: true, State: "done", LoopState: "done"}, DoneFrictionFailed: true}
+	frictionDone := driveHandBack{RunID: "run-1", Stop: Stop{OK: true, State: "done", LoopState: "done"}, DoneFrictionFailed: true}
 	tests := []struct {
 		name         string
 		h            driveHandBack
 		orchRecorded bool
 		notifyErr    error
-		commitErr    error
+		// notifyDeclines makes Notify report sent false with no error.
+		notifyDeclines bool
+		parkErr        error
 		// wantReport lists the substrings the written report holds.
 		wantReport []string
 		wantSent   int
-		// wantParked is true when the commit runs and the park marker is written.
+		// wantParked is true when Park is called with the report path.
 		wantParked bool
+		// wantErr is the text the hand-back's error holds; empty rows expect none.
+		wantErr string
+		// noFrictionDir leaves the report's friction directory empty.
+		noFrictionDir bool
 	}{
 		{
 			name: "report holds the run, reason, rules, attempts, question and directories", h: baseHandBack, orchRecorded: true,
@@ -102,8 +106,16 @@ func TestDriveHandBack(t *testing.T) {
 			wantReport: []string{"not queued, no orch strand recorded: Run run-1 stopped with a question"}, wantParked: true,
 		},
 		{
-			name: "failing commit still writes the park marker", h: baseHandBack, orchRecorded: true, commitErr: errors.New("disk full"),
-			wantReport: []string{"sent: Run run-1 stopped with a question"}, wantSent: 1, wantParked: true,
+			name: "an empty friction directory reads none", h: baseHandBack, orchRecorded: true, noFrictionDir: true,
+			wantReport: []string{"Friction directory: none"}, wantSent: 1, wantParked: true,
+		},
+		{
+			name: "a notice the recipe declines reads not sent", h: baseHandBack, orchRecorded: true, notifyDeclines: true,
+			wantReport: []string{"not sent, the recipe sends none at this stop: Run run-1 stopped with a question"}, wantSent: 1, wantParked: true,
+		},
+		{
+			name: "a park that fails is the hand-back's error after the report is written", h: baseHandBack, orchRecorded: true, parkErr: errors.New("marker unwritable"),
+			wantReport: []string{"sent: Run run-1 stopped with a question"}, wantSent: 1, wantParked: true, wantErr: "marker unwritable",
 		},
 		{
 			name: "friction-failed done writes the report with its send line and parks nothing", h: frictionDone, orchRecorded: true,
@@ -115,21 +127,22 @@ func TestDriveHandBack(t *testing.T) {
 			t.Parallel()
 			root := t.TempDir()
 			var sent []string
-			var commits int
-			deps := driveParkDeps{
+			var parked []string
+			deps := HandBackDeps{
 				ReportPath: filepath.Join(root, "drive-reports", "report.md"),
-				Commit: commitStatusDeps{
-					MergeActive: func() (bool, error) { return false, nil },
-					Commit:      func(string) error { commits++; return tt.commitErr },
-					Push:        func() error { return nil },
-				},
-				MarkerPath: filepath.Join(root, "scratch", "driver-parked"),
-				Notify: func(line string) error {
+				Notify: func(_ Stop, line string) (bool, error) {
 					sent = append(sent, line)
-					return tt.notifyErr
+					return !tt.notifyDeclines, tt.notifyErr
 				},
 				OrchRecorded: func() (bool, error) { return tt.orchRecorded, nil },
-				Now:          func() time.Time { return time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC) },
+				Park: func(reportPath string) error {
+					if _, err := os.Stat(reportPath); err != nil {
+						t.Errorf("Park ran before the stop report was written: %v", err)
+					}
+					parked = append(parked, reportPath)
+					return tt.parkErr
+				},
+				Now: func() time.Time { return time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC) },
 			}
 			h := tt.h
 			h.ReportPath = deps.ReportPath
@@ -139,16 +152,23 @@ func TestDriveHandBack(t *testing.T) {
 				Progress:      "step 2 of 5",
 				Reason:        "the review needs a decision",
 				Rules:         []string{"an awaiting stop: planned hand-back"},
-				Attempts:      []driveAttemptNote{{Role: sheddriver.TacklerRole, Number: 1, Verdict: sheddriver.TacklerVerdictHandBack, Cause: "timeout", VerdictPath: "/t/verdict.yaml"}},
+				Attempts:      []driveAttemptNote{{Role: TacklerRole, Number: 1, Verdict: TacklerVerdictHandBack, Cause: "timeout", VerdictPath: "/t/verdict.yaml"}},
 				Question:      h.Question,
 				FrictionDir:   "/friction",
 				RepairDir:     "/repair",
 			}
 
+			if tt.noFrictionDir {
+				report.FrictionDir = ""
+			}
+
 			err := handBackRun(deps, h, report, true)
 
-			if err != nil {
+			if tt.wantErr == "" && err != nil {
 				t.Fatalf("handBackRun() error = %v; want nil", err)
+			}
+			if tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)) {
+				t.Fatalf("handBackRun() error = %v; want it to hold %q", err, tt.wantErr)
 			}
 			data, readErr := os.ReadFile(deps.ReportPath)
 			if readErr != nil {
@@ -162,18 +182,12 @@ func TestDriveHandBack(t *testing.T) {
 			if len(sent) != tt.wantSent {
 				t.Errorf("notices queued = %d; want %d", len(sent), tt.wantSent)
 			}
-			marker, markerErr := os.ReadFile(deps.MarkerPath)
+			wantParks := 0
 			if tt.wantParked {
-				if commits != 1 {
-					t.Errorf("commits = %d; want 1", commits)
-				}
-				if markerErr != nil || string(marker) != deps.ReportPath {
-					t.Errorf("park marker = %q, error %v; want the report path %q", marker, markerErr, deps.ReportPath)
-				}
-				return
+				wantParks = 1
 			}
-			if commits != 0 || !errors.Is(markerErr, os.ErrNotExist) {
-				t.Errorf("commits = %d, marker error = %v; want no commit and no park marker", commits, markerErr)
+			if len(parked) != wantParks || (wantParks == 1 && parked[0] != deps.ReportPath) {
+				t.Errorf("Park calls = %q; want %d, with the report path %q", parked, wantParks, deps.ReportPath)
 			}
 		})
 	}

@@ -65,12 +65,21 @@ once. It removes the park marker and the resume report on start.`,
 			}
 			ctx := cmd.Context()
 			stale := []string{shedrun.ParkMarker(c.location, c.runID), shedrun.ResumeReport(c.location, c.runID)}
-			clihelp.SetExit(ctx, driveVerb(cmd.OutOrStdout(), shedrun.DriverLock(c.location, c.runID), stale, func(release func() error) error {
+			driveLock := sheddriver.DriveLock{
+				Path:        shedrun.DriverLock(c.location, c.runID),
+				Stale:       stale,
+				Refusal:     driveRefusal,
+				RetryClause: "re-run lyx loom drive or lyx loom start",
+			}
+			clihelp.SetExit(ctx, sheddriver.DriveVerb(cmd.OutOrStdout(), driveLock, func(release func() error) (map[string]any, error) {
 				deps, err := c.goDriverDepsFor(release)
 				if err != nil {
-					return err
+					return nil, err
 				}
-				return (&goDriver{deps: deps}).run(ctx)
+				if _, err := sheddriver.Run(ctx, deps); err != nil {
+					return nil, err
+				}
+				return map[string]any{"drove": true}, nil
 			}))
 			return nil
 		},
@@ -92,18 +101,18 @@ const (
 // goDriverDepsFor assembles the Go driver's seams for the run the pre-run armed.
 // release is the driver lock's early release, which the hand-over calls before it spawns its successor.
 // Every closure reads on demand, and the on-disk lyx path is resolved once, here.
-func (c *loomCLI) goDriverDepsFor(release func() error) (goDriverDeps, error) {
+func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error) {
 	arbiterDeps, err := c.arbiterDepsFor()
 	if err != nil {
-		return goDriverDeps{}, err
+		return sheddriver.Deps{}, err
 	}
 	tacklerSettings, err := loomengine.ResolveTackler(c.cfg, c.registry)
 	if err != nil {
-		return goDriverDeps{}, err
+		return sheddriver.Deps{}, err
 	}
 	executable, err := os.Executable()
 	if err != nil {
-		return goDriverDeps{}, fmt.Errorf("loom: drive: resolve the lyx executable: %w", err)
+		return sheddriver.Deps{}, fmt.Errorf("loom: drive: resolve the lyx executable: %w", err)
 	}
 
 	location := c.location
@@ -162,7 +171,7 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (goDriverDeps, error) {
 		Now:         time.Now,
 	}
 
-	deps := goDriverDeps{
+	deps := sheddriver.Deps{
 		RunID: runID,
 		Step: func(ctx context.Context, attempt string) ([]byte, error) {
 			var envelope bytes.Buffer
@@ -187,28 +196,6 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (goDriverDeps, error) {
 		},
 		SettlePath:  settlePath,
 		FrictionDir: loomengine.LoomFrictionDir(location),
-		EscalationPending: func(producer string) (bool, error) {
-			return arbiterstop.EscalationEligible(producer, arbiterDeps.Stop), nil
-		},
-		VerifyRecord: func() (battenshed.ChildPublishFailure, bool, error) {
-			record, found, err := verifytree.ReadPublishFailure(verifyPaths)
-			if err != nil || !found {
-				return battenshed.ChildPublishFailure{}, false, err
-			}
-			return battenshed.ChildPublishFailure{Row: record.Row, Head: record.Head, Target: record.Target, WrittenAt: record.WrittenAt}, true, nil
-		},
-		Head: func() (string, error) {
-			fab, err := fabricengine.Open(location)
-			if err != nil {
-				return "", err
-			}
-			return fab.HeadSHA()
-		},
-		VerifyRows: []string{loomshed.NameMergeIn, loomshed.NamePublish},
-		Watch: func() (battenWatch, bool) {
-			return readBattenWatch(shedrun.BattenWatchedMarker(location, c.runID), proc.IsAlive)
-		},
-		BattenRetrySpent: func(w battenWatch) (bool, error) { return battenshed.PublishRetrySpent(w.ScratchDir, w.Producer) },
 		Pause: func(now time.Time) (pauserecord.Coverage, error) {
 			geometry, err := pauseGeometry()
 			if err != nil {
@@ -224,11 +211,12 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (goDriverDeps, error) {
 			return pauserecord.WaitUncovered(ctx, geometry.RecordPath, geometry.Slug, pauserecord.Waiter{})
 		},
 		NewReportPath: func() string { return driverReportPath(location, c.runID, time.Now, reportRand) },
-		Park: driveParkDeps{
-			Commit:       loomCommitStatusDeps(location, c.runID),
-			MarkerPath:   shedrun.ParkMarker(location, runID),
-			Notify:       func(line string) error { return orchcli.NotifyPrime(location, line) },
+		HandBack: sheddriver.HandBackDeps{
+			Notify: func(_ sheddriver.Stop, line string) (bool, error) {
+				return true, orchcli.NotifyPrime(location, line)
+			},
 			OrchRecorded: func() (bool, error) { return primeOrchRecorded(location) },
+			Park:         loomPark(loomCommitStatusDeps(location, c.runID), shedrun.ParkMarker(location, runID)),
 			Now:          time.Now,
 		},
 		CommitRecords: func() error {
@@ -238,8 +226,8 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (goDriverDeps, error) {
 			}
 			return nil
 		},
-		WriteFrictionNote: func(stop driveStop) error { return writeDrivePausedNote(c.frictionDir, runID, stop) },
-		Tackler: func(stop driveStop, reportPath string) (sheddriver.TacklerEnvelope, error) {
+		WriteFrictionNote: func(stop sheddriver.Stop) error { return writeDrivePausedNote(c.frictionDir, runID, stop) },
+		Tackler: func(stop sheddriver.Stop, reportPath string) (sheddriver.TacklerEnvelope, error) {
 			call, err := sheddriver.NewTacklerCall(tacklerDeps, sheddriver.TacklerInput{RunID: runID, EnvelopePath: stop.EnvelopePath, ReportPath: reportPath, TraceCopy: stop.TraceCopy, StderrPath: stop.StderrPath})
 			if err != nil {
 				return sheddriver.TacklerEnvelope{}, err
@@ -256,35 +244,115 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (goDriverDeps, error) {
 				MissingStatusWayForward: c.shedPaths.MissingStatusWayForward,
 			})
 		},
-		Arbiter: func(envelopePath, reportPath, caseBriefPath string) (loomengine.ArbiterEnvelope, error) {
-			call, err := newArbiterCall(arbiterDeps, arbiterInput{RunID: runID, EnvelopePath: envelopePath, ReportPath: reportPath, CaseBriefPath: caseBriefPath})
-			if err != nil {
-				return loomengine.ArbiterEnvelope{}, err
-			}
-			return call.settle()
-		},
-		Snapshot: func() (sheddriver.WorktreeSnapshot, error) { return worktreeSnapshot(location) },
 		OpenAttempts: func(key sheddriver.StopKey) (string, string, bool, error) {
 			return newestAttemptsFor(shedrun.TacklerDir(location, c.runID), shedrun.ArbiterDir(location, c.runID), key)
 		},
-		AttemptSnapshot: func(tacklerDir string) (sheddriver.WorktreeSnapshot, error) {
-			attempt, err := sheddriver.ReadTacklerAttempt(tacklerDir)
-			return attempt.Snapshot, err
-		},
-		OnDiskBuild: func() (buildvcs.Identity, error) { return buildvcs.OfFile(executable) },
-		BuildChanged: func(onDisk buildvcs.Identity) bool {
-			return shedverbs.LastStepBuildChanged(c.spec.StepsDir, onDisk)
-		},
-		DirtyPaths:  func() ([]string, error) { return dirtyPathsOutsideRecords(location, c.runID) },
-		ReleaseLock: release,
-		Executable:  executable,
-		SpawnSuccessor: func(executable string) error {
-			_, err := c.spawnGoDriverFrom(executable)
-			return err
-		},
 		Now: time.Now,
+		Watched: func() bool {
+			_, alive := readBattenWatch(shedrun.BattenWatchedMarker(location, c.runID), proc.IsAlive)
+			return alive
+		},
+		Arbiter: &sheddriver.ArbiterSeam{
+			EscalationPending: func(producer string) (bool, error) {
+				return arbiterstop.EscalationEligible(producer, arbiterDeps.Stop), nil
+			},
+			Judge: func(envelopePath, reportPath, caseBriefPath string) (sheddriver.ArbiterOutcome, error) {
+				call, err := newArbiterCall(arbiterDeps, arbiterInput{RunID: runID, EnvelopePath: envelopePath, ReportPath: reportPath, CaseBriefPath: caseBriefPath})
+				if err != nil {
+					return sheddriver.ArbiterOutcome{}, err
+				}
+				envelope, err := call.settle()
+				if err != nil {
+					return sheddriver.ArbiterOutcome{}, err
+				}
+				return sheddriver.ArbiterOutcome{
+					Resume:      envelope.Verdict == loomengine.ArbiterVerdictResume,
+					Reason:      envelope.Reason,
+					Question:    envelope.Question,
+					Goto:        envelope.Goto,
+					Cause:       envelope.Cause,
+					Attempt:     envelope.Attempt,
+					AttemptDir:  envelope.AttemptDir,
+					VerdictPath: envelope.VerdictPath,
+					Verdict:     envelope.Verdict,
+					Role:        loomengine.ArbiterRole,
+				}, nil
+			},
+			AttemptEnvelope: func(attemptDir string) (string, error) {
+				attempt, err := loomengine.ReadArbiterAttempt(attemptDir)
+				return attempt.EnvelopePath, err
+			},
+		},
+		Verify: &sheddriver.VerifySeam{
+			Halt: func() (bool, string, error) { return publishHaltMatches(location, verifyPaths, readStatus) },
+			RetrySpentElsewhere: func() (bool, error) {
+				watch, _ := readBattenWatch(shedrun.BattenWatchedMarker(location, c.runID), proc.IsAlive)
+				if watch.ScratchDir == "" {
+					return false, nil
+				}
+				return battenshed.PublishRetrySpent(watch.ScratchDir, watch.Producer)
+			},
+		},
+		HandOver: &sheddriver.HandOverSeam{
+			OnDiskBuild: func() (buildvcs.Identity, error) { return buildvcs.OfFile(executable) },
+			BuildChanged: func(onDisk buildvcs.Identity) bool {
+				return shedverbs.LastStepBuildChanged(c.spec.StepsDir, onDisk)
+			},
+			DirtyPaths:  func() ([]string, error) { return dirtyPathsOutsideRecords(location, c.runID) },
+			ReleaseLock: release,
+			Executable:  executable,
+			SpawnSuccessor: func(executable string) error {
+				_, err := c.spawnGoDriverFrom(executable)
+				return err
+			},
+		},
+		Tamper: &sheddriver.TamperSeam{
+			Snapshot: func() (sheddriver.WorktreeSnapshot, error) { return worktreeSnapshot(location) },
+			AttemptSnapshot: func(tacklerDir string) (sheddriver.WorktreeSnapshot, error) {
+				attempt, err := sheddriver.ReadTacklerAttempt(tacklerDir)
+				return attempt.Snapshot, err
+			},
+		},
 	}
 	return deps, nil
+}
+
+// publishHaltMatches reports whether the Publish failure record matches the blocked stop the status shows, and the row the record names.
+// A run with no failure record matches nothing.
+func publishHaltMatches(location *lyxcwd.Location, verifyPaths verifytree.Paths, readStatus func() (shedengine.Status, bool, error)) (bool, string, error) {
+	record, found, err := verifytree.ReadPublishFailure(verifyPaths)
+	if err != nil || !found {
+		return false, "", err
+	}
+	failure := battenshed.ChildPublishFailure{Row: record.Row, Head: record.Head, Target: record.Target, WrittenAt: record.WrittenAt}
+	fab, err := fabricengine.Open(location)
+	if err != nil {
+		return false, "", err
+	}
+	head, err := fab.HeadSHA()
+	if err != nil {
+		return false, "", err
+	}
+	status, statusFound, err := readStatus()
+	if err != nil || !statusFound {
+		return false, "", fmt.Errorf("reading the status to match the failure record: found %t: %v", statusFound, err)
+	}
+	return battenshed.RecordMatchesHalt(failure, head, status, []string{loomshed.NameMergeIn, loomshed.NamePublish}), failure.Target, nil
+}
+
+// loomPark returns loom's Park seam: it commits the run's records and writes the park marker holding reportPath, through commitAndPark.
+// A failed commit is logged and the marker is still written; only a marker that does not hold reportPath afterwards is an error.
+func loomPark(commit commitStatusDeps, markerPath string) func(reportPath string) error {
+	return func(reportPath string) error {
+		var envelope bytes.Buffer
+		if code := commitAndPark(&envelope, commit, markerPath, reportPath); code != 0 {
+			logger.Warn("loom: drive: commit of the run records failed or the park marker was not written", "envelope", strings.TrimSpace(envelope.String()))
+			if marker, err := os.ReadFile(markerPath); err != nil || string(marker) != reportPath {
+				return fmt.Errorf("loom: drive: the park marker %s was not written: %s", markerPath, strings.TrimSpace(envelope.String()))
+			}
+		}
+		return nil
+	}
 }
 
 // primeOrchRecorded reports whether the hub's prime has an orch strand recorded to receive notices.
@@ -306,7 +374,7 @@ func primeOrchRecorded(location *lyxcwd.Location) (bool, error) {
 
 // writeDrivePausedNote writes the `go-driver-paused` friction note for a paused stop that carries no reason, naming the stop, its producer and its envelope.
 // It is a no-op when frictionDir is empty, which is Tier 2 off.
-func writeDrivePausedNote(frictionDir, runID string, stop driveStop) error {
+func writeDrivePausedNote(frictionDir, runID string, stop sheddriver.Stop) error {
 	if frictionDir == "" {
 		return nil
 	}
@@ -317,7 +385,7 @@ func writeDrivePausedNote(frictionDir, runID string, stop driveStop) error {
 	}
 	var b strings.Builder
 	b.WriteString("the Go driver found run " + runID + " paused with no reason at " + stop.CurrentProducer + "\n\n")
-	b.WriteString("state: " + stop.key().State + "\n")
+	b.WriteString("state: " + stop.Key().State + "\n")
 	b.WriteString("current_producer: " + stop.CurrentProducer + "\n")
 	b.WriteString("history_entries: " + fmt.Sprint(stop.HistoryLength) + "\n")
 	b.WriteString("envelope: " + stop.EnvelopePath + "\n")
@@ -386,20 +454,9 @@ func dirtyPathsOutsideRecords(location *lyxcwd.Location, runID string) ([]string
 
 // newestAttemptsFor names the newest tackler and arbiter attempt directories recorded for key, empty when there is none, and whether the tackler attempt carries the applied mark.
 func newestAttemptsFor(tacklerDir, arbiterDir string, key sheddriver.StopKey) (tackler, arbiter string, tacklerApplied bool, err error) {
-	tacklers, err := sheddriver.ListTacklerAttempts(tacklerDir)
+	tackler, tacklerApplied, err = sheddriver.NewestTacklerAttempt(tacklerDir, key)
 	if err != nil {
 		return "", "", false, err
-	}
-	for i := len(tacklers) - 1; i >= 0; i-- {
-		if tacklers[i].StopKey == key {
-			tackler = tacklers[i].Dir
-			break
-		}
-	}
-	if tackler != "" {
-		if tacklerApplied, err = sheddriver.TacklerApplied(tackler); err != nil {
-			return "", "", false, err
-		}
 	}
 	arbiters, err := loomengine.ListArbiterAttempts(arbiterDir)
 	if err != nil {

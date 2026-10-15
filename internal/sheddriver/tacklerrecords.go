@@ -113,6 +113,28 @@ func ListTacklerAttempts(tacklerDir string) ([]TacklerAttempt, error) {
 	return attempts, nil
 }
 
+// NewestTacklerAttempt returns the newest attempt directory recorded for key under tacklerDir, empty when there is none, and whether that attempt carries the applied mark.
+func NewestTacklerAttempt(tacklerDir string, key StopKey) (dir string, applied bool, err error) {
+	attempts, err := ListTacklerAttempts(tacklerDir)
+	if err != nil {
+		return "", false, err
+	}
+	for i := len(attempts) - 1; i >= 0; i-- {
+		if attempts[i].StopKey == key {
+			dir = attempts[i].Dir
+			break
+		}
+	}
+	if dir == "" {
+		return "", false, nil
+	}
+	applied, err = TacklerApplied(dir)
+	if err != nil {
+		return "", false, err
+	}
+	return dir, applied, nil
+}
+
 // TacklerPromptPath names the prompt.md of the attempt directory dir.
 func TacklerPromptPath(dir string) string { return filepath.Join(dir, tacklerPromptFileName) }
 
