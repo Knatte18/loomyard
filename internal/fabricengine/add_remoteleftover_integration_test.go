@@ -270,6 +270,7 @@ func TestAdd_WarpFastForwardableLeftoverProceeds(t *testing.T) {
 	if _, err := topology.Add(h.Location, slug, fabricengine.AddOptions{}); err != nil {
 		t.Fatalf("re-Add: %v", err)
 	}
+	pushNewPair(t, h, slug)
 	newTip := gitkit.RevParse(t, fabricengine.WorktreePath(h.Location, slug), "HEAD")
 	out, err := gitexec.Run([]string{"rev-parse", "refs/heads/" + slug}, h.CodeBare)
 	if err != nil {
@@ -282,7 +283,7 @@ func TestAdd_WarpFastForwardableLeftoverProceeds(t *testing.T) {
 
 // TestAdd_SkipPushSkipsLeftoverProbes covers the origin-only-weft setup re-added under SkipPush: origin is not consulted,
 // so both branches fork.
-// Origin's warp branch stays unchanged only because step 11's ungated push re-pushes the same prime HEAD the first Add pushed.
+// Origin's warp branch stays unchanged because Add pushes nothing and AddPairWith skips its push under SkipPush.
 func TestAdd_SkipPushSkipsLeftoverProbes(t *testing.T) {
 	t.Parallel()
 
@@ -345,23 +346,31 @@ func TestAdd_DivergedArchivedWeftLeftoverReplaced(t *testing.T) {
 	if err != nil {
 		t.Fatalf("re-Add: %v", err)
 	}
+	// Add replaced the leftover itself; the caller's later push lands the new weft branch where it was.
+	if gitkit.BranchExists(t, h.RecordsBare, weftBranch) {
+		t.Errorf("origin weft branch %q still present after Add; want the archived leftover deleted and nothing pushed", weftBranch)
+	}
+	var deleted bool
+	for _, m := range res.Mutations.Entries() {
+		deleted = deleted || (m.Kind == fabricengine.KindRemoteBranchDeleted && m.Target == weftBranch)
+	}
+	if !deleted {
+		t.Errorf("record %+v carries no remote_branch_deleted entry for %q", res.Mutations.Entries(), weftBranch)
+	}
+	pushNewPair(t, h, slug)
 	newTip := gitkit.RevParse(t, fabricengine.RecordsWorktreePath(h.Location, slug), "HEAD")
 	if got := gitkit.RevParse(t, h.RecordsBare, weftBranch); got != newTip {
 		t.Errorf("origin weft branch = %s; want new local weft tip %s", got, newTip)
 	}
 	requireArchiveCovers(t, h.RecordsBare, slug, oldTip)
+}
 
-	deleted, pushed := -1, -1
-	for i, m := range res.Mutations.Entries() {
-		switch {
-		case m.Kind == fabricengine.KindRemoteBranchDeleted && m.Target == weftBranch:
-			deleted = i
-		case m.Kind == fabricengine.KindBranchPushed && m.Target == weftBranch:
-			pushed = i
-		}
-	}
-	if deleted < 0 || pushed < 0 || deleted > pushed {
-		t.Errorf("record order: remote_branch_deleted at %d, weft branch_pushed at %d; want deleted before pushed", deleted, pushed)
+// pushNewPair pushes the pair Add just created for slug in the foreground, standing in for the detached push a production caller spawns.
+func pushNewPair(t *testing.T, h *hubforge.Hub, slug string) {
+	t.Helper()
+
+	if _, err := fabricengine.CoalescePushBothAt(fabricengine.WorktreePath(h.Location, slug), fabricengine.RecordsWorktreePath(h.Location, slug), fabricengine.SyncOptions{}); err != nil {
+		t.Fatalf("push the new pair %q: %v", slug, err)
 	}
 }
 
@@ -384,6 +393,7 @@ func TestAdd_ArchivedAncestorWeftLeftoverReplaced(t *testing.T) {
 	if _, err := topology.Add(h.Location, slug, fabricengine.AddOptions{}); err != nil {
 		t.Fatalf("re-Add: %v", err)
 	}
+	pushNewPair(t, h, slug)
 	newTip := gitkit.RevParse(t, fabricengine.RecordsWorktreePath(h.Location, slug), "HEAD")
 	if got := gitkit.RevParse(t, h.RecordsBare, weftBranch); got != newTip {
 		t.Errorf("origin weft branch = %s; want new local weft tip %s", got, newTip)

@@ -61,11 +61,11 @@ func resolveModelChoice(raw string, reg modelspec.Registry) (model, effort, vers
 
 // DiscussionTable builds the seatengine.Table of one Discussion-Write run: a lead that writes the decision record and the support log, and one advisor per entry of cfg.DiscussionAdvisors, named by the entry, that writes its notes file for the lead to read.
 // When cfg.DiscussionLenses is set the lead alone is authorized to spawn fork subagents and carries the twill lens review directive, whose fan is resolved through burler.yaml under dirs; the advisors never fork.
-// The seats' opening stencils are read at call time from stencilsDir, and every seat's parent directive is rendered by the seat engine from its geometry.
+// The seats' opening stencils are read at call time from stencilsDir, the lead's prompt points at the format spec under specsDir, and every seat's parent directive is rendered by the seat engine from its geometry.
 // The table carries no gate; the producer entry sets it.
 // A lead with no advisors decides each question itself, as its prompt says.
 // A PATTERN directive or Tier 2 friction directive that cannot be rendered is left empty, the friction failure logged, and never fails the table.
-func DiscussionTable(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir string, cfg Config, reg modelspec.Registry, slug string) (seatengine.Table, error) {
+func DiscussionTable(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir, specsDir string, cfg Config, reg modelspec.Registry, slug string) (seatengine.Table, error) {
 	if slug == "" {
 		return seatengine.Table{}, fmt.Errorf("loom: DiscussionTable: slug must not be empty")
 	}
@@ -139,6 +139,7 @@ func DiscussionTable(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDi
 		Interactive: cfg.DiscussionInteractive,
 		Values: map[string]string{
 			"slug":                 slug,
+			"specs_dir":            specsDir,
 			"decision_record_path": DiscussionDecisionRecord(layout),
 			"support_log_path":     DiscussionSupportLog(layout),
 			"mode_rules":           discussionModeRules(!cfg.DiscussionInteractive, len(cfg.DiscussionAdvisors) > 0),

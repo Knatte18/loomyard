@@ -25,11 +25,13 @@ var wantDarnProducerTable = []wantProducerRow{
 	{loomshed.NameDescribe, "Describe", reflect.TypeOf(loomshed.NewDiscussionWrite("", nil, nil))},
 	{loomshed.NameMergeIn, "MergeIn", reflect.TypeOf(&landingshed.MergeIn{})},
 	{loomshed.NamePublish, "Publish", reflect.TypeOf(&landingshed.Publish{})},
+	{loomshed.NamePRAlign, "PRAlign", reflect.TypeOf(&landingshed.PRAlign{})},
 	{loomshed.NamePRGate, "PRGate", reflect.TypeOf(&landingshed.PRGate{})},
 	{loomshed.NameFinalize, "Finalize", reflect.TypeOf(&landingshed.Finalize{})},
 	{loomshed.NameFrictionReflect, "FrictionReflect", frictionReflectProducerType()},
 }
 
+// TestNewDarn_RowsMatchTheDarnTable pins the darn recipe's rows against wantDarnProducerTable in order, and that the Darn-Burler-Review row's fasit instructions name the amended board entry, the writer's claim and the deferral of an unrecorded parent correction.
 func TestNewDarn_RowsMatchTheDarnTable(t *testing.T) {
 	env, paths := testEnv(t)
 	shed, err := NewDarn(env, paths)
@@ -58,9 +60,26 @@ func TestNewDarn_RowsMatchTheDarnTable(t *testing.T) {
 			t.Errorf("recipe row %q engine = %q; want %q", want.name, recipe.Producers[i].Engine, want.engine)
 		}
 	}
+
+	var fasit string
+	for _, row := range recipe.Producers {
+		if row.Name != loomshed.NameDarnBurlerReview {
+			continue
+		}
+		profile, _ := row.Config["profile"].(map[string]any)
+		fasitConfig, _ := profile["fasit"].(map[string]any)
+		fasit, _ = fasitConfig["instructions"].(string)
+	}
+	for _, want := range []string{
+		"Added after Discussion", "claim", "unrecorded parent correction", "decision", "MEDIUM", "leave the code",
+	} {
+		if !strings.Contains(fasit, want) {
+			t.Errorf("Darn-Burler-Review fasit instructions lack %q; got %q", want, fasit)
+		}
+	}
 }
 
-// TestNewDarn_Routing pins PR-Gate's bounce to Darn-Write inside PR-Review, the Darn-Review perch, then Describe and Merge-In between Darn-Write and Publish with the review budget on all three perch rows, the reroute edge of the three landing rows back to Merge-In, and a review budget of 0 routing Darn-Write straight to Merge-In.
+// TestNewDarn_Routing pins PR-Gate's bounce to Darn-Write inside PR-Review, the Darn-Review perch, then Describe and Merge-In between Darn-Write and Publish with the review budget on all three perch rows, PR-Align between Publish and PR-Gate with no segment and no on_stuck, the reroute edge of the three landing rows back to Merge-In, and a review budget of 0 routing Darn-Write straight to Merge-In.
 func TestNewDarn_Routing(t *testing.T) {
 	build := func(t *testing.T, reviewBudget int) map[string]shedengine.ProducerDef {
 		t.Helper()
@@ -99,6 +118,10 @@ func TestNewDarn_Routing(t *testing.T) {
 		if mergeIn := rows[loomshed.NameMergeIn]; mergeIn.OnDone != loomshed.NamePublish || mergeIn.OnStuck != "" {
 			t.Errorf("Merge-In OnDone/OnStuck = %q/%q; want %q/empty, with no merge perch", mergeIn.OnDone, mergeIn.OnStuck, loomshed.NamePublish)
 		}
+		publish, align := rows[loomshed.NamePublish], rows[loomshed.NamePRAlign]
+		if publish.OnDone != loomshed.NamePRAlign || align.OnDone != loomshed.NamePRGate || align.OnStuck != "" || align.Segment != "" {
+			t.Errorf("Publish OnDone = %q, PR-Align OnDone/OnStuck/Segment = %q/%q/%q; want %q, %q/empty/empty", publish.OnDone, align.OnDone, align.OnStuck, align.Segment, loomshed.NamePRAlign, loomshed.NamePRGate)
+		}
 		for _, row := range []string{loomshed.NamePublish, loomshed.NamePRGate, loomshed.NameFinalize} {
 			if got := rows[row].OnReroute; got != loomshed.NameMergeIn {
 				t.Errorf("%s OnReroute = %q; want %q", row, got, loomshed.NameMergeIn)
@@ -132,7 +155,7 @@ func TestDarnVerifyBudget(t *testing.T) {
 			}
 		}
 		want := map[string]map[any]any{
-			loomshed.NameDarnWrite:     {"verify": 7, "description": 3},
+			loomshed.NameDarnWrite:     {"discussion": 3, "verify": 7, "description": 3},
 			loomshed.NameDarnBurlerFix: {"verify": 7},
 			loomshed.NameDescribe:      {"description": 3},
 		}

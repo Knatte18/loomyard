@@ -317,7 +317,7 @@ func TestArbiterAppliedAndMarkerRemoval(t *testing.T) {
 	}
 }
 
-// TestArbiterPaths pins the three file names inside an attempt directory.
+// TestArbiterPaths pins the four file names inside an attempt directory.
 func TestArbiterPaths(t *testing.T) {
 	t.Parallel()
 	dir := filepath.Join("a", "attempt-1")
@@ -325,6 +325,7 @@ func TestArbiterPaths(t *testing.T) {
 		ArbiterPromptPath(dir):   "prompt.md",
 		ArbiterVerdictPath(dir):  "verdict.yaml",
 		ArbiterEnvelopePath(dir): "envelope.json",
+		ArbiterAppliedPath(dir):  "applied",
 	} {
 		if got != filepath.Join(dir, want) {
 			t.Errorf("path = %q; want %q under the attempt directory", got, want)

@@ -691,6 +691,45 @@ func TestBouncerEntry_SkipSeam(t *testing.T) {
 		assertErrContains(t, err, "SkipMergeReview")
 	})
 
+	t.Run("ZeroRoundsApprovesAtOnce", func(t *testing.T) {
+		env := newTestEnv(t)
+		shuttle := judgeSeamShuttle()
+		env.Shuttle = shuttle
+		env.SkipPlanReview = func() (bool, error) { return false, nil }
+		approveCalls, commitCalls := 0, 0
+		env.ApprovePlan = func() error { approveCalls++; return nil }
+		env.CommitPlan = func() error { commitCalls++; return nil }
+		cfg := minimalBouncerConfig(t, env)
+		cfg["zero_rounds"] = true
+		cfg["approve_seam"] = "plan"
+		cfg["commit_seam"] = "plan"
+		cfg["skip_seam"] = "rework-exempt"
+
+		producer, err := bouncerEntry("review-bounce", cfg, env)
+		if err != nil {
+			t.Fatalf("bouncerEntry() error = %v; want nil", err)
+		}
+		outcome, _, err := producer.Call(context.Background())
+		if err != nil || outcome != shedengine.Done {
+			t.Fatalf("Call() = %q, %v; want Done, nil (a zero-round Bouncer settles with no review)", outcome, err)
+		}
+		if approveCalls != 1 || commitCalls != 1 {
+			t.Errorf("ApprovePlan calls = %d, CommitPlan calls = %d; want 1 and 1", approveCalls, commitCalls)
+		}
+		if shuttle.Called {
+			t.Error("shuttle started; want no seed or judge spawn from a zero-round Bouncer")
+		}
+	})
+
+	t.Run("NonBooleanZeroRoundsFails", func(t *testing.T) {
+		env := newTestEnv(t)
+		cfg := minimalBouncerConfig(t, env)
+		cfg["zero_rounds"] = "yes"
+
+		_, err := bouncerEntry("review-bounce", cfg, env)
+		assertErrContains(t, err, "zero_rounds")
+	})
+
 	t.Run("UnknownValueFails", func(t *testing.T) {
 		env := newTestEnv(t)
 		cfg := minimalBouncerConfig(t, env)

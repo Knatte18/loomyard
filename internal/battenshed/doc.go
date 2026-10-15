@@ -2,6 +2,7 @@
 // seeding its own inner run, running that run inside it to a terminal state, landing it into the prime, and tearing it down.
 // Any producer list may name them by reference, the same way internal/landingshed frames its own
 // two producers.
+// It also declares batten's config module, batten.yaml (config.go).
 //
 // Told-geometry tier: this package takes every absolute path it operates on from its caller and
 // has no direct production import of internal/lyxcwd, per PATTERN-told-geometry.
@@ -39,6 +40,12 @@
 // its notice goes when the driver strand has ended, or three minutes passed with no report, or ten minutes passed since the report with no decision record.
 // A live arbiter or tackler in flight holds the notice of a halted or awaiting child, so the orch is not told "report none yet" for a stop either may settle:
 // the hold ends when the marker is gone, its strand is dead, or its deadline plus the report wait has passed, and the rules above decide again.
+// The eligible-stop hold holds the notice of a blocked or awaiting child whose stop the arbiter may settle, read through the ArbiterStop seam, until the arbiter has handed on or no arbiter will settle it:
+// it ends at the applied mark of the stop's attempt, at the moment the arbiter was seen off, at a park marker written after the stop (unless the Go driver handed the run over at the stop), at the attempt's hand-on, or at the backstop, the later of the stop plus one spawn's timeout plus the report wait and the attempt's deadline plus the report wait.
+// A stop with the arbiter off or no spawns left and no attempt is never held, and error stops keep the marker hold alone.
+// The report wait is then counted from the later of the stop and the hold's end.
+// The start comes from the status file and every end from a record, so a batten restart neither resets the start nor loses the end;
+// after the arbiter was switched off, a restarted batten takes its own first observation.
 // When a resume moves the child back to running the episode ends and no notice goes; after a hand-on the marker is gone and the driver's stop report qualifies.
 // A done child sends no notice: a landing that succeeds needs nothing from the orch.
 // A resume the child refuses because its parked driver's pane holds a draft, an active operator or another busy reading (a spawn error wrapping ErrChildDriverBusy) is retried like a not-parked one, without a deadline, until the resume lands, the child leaves awaiting or batten is paused or stopped.
@@ -54,8 +61,12 @@
 //
 // A batten run starts with "lyx batten run <slug>" in a terminal, or with "--window" in its own tmux window of the orch's reed session, which returns at once.
 // The tmux window lives as long as the reed session, and a second batten for the slug is refused by the run's own lock inside the window, in batten's own log.
-// "--window" also asks the run to open the operator's terminal window: the InnerRun row opens it once per run through its OpenTerminal seam, after the child's first successful spawn, gated by a once-marker in its scratch directory.
-// Batten resets the marker when it seeds a fresh batten status, so a resume keeps it and a re-spawned child opens no second window.
+//
+// Between Seed-Child and Run-Shed, three switched rows run shedadapters' switched producer: Open-Window opens the operator's terminal window attached to the pair's reed session, Seed-IDE writes the pair's VS Code colour and .vscode/ config, and Open-IDE opens VS Code on the pair.
+// Each runs its action only when its batten.yaml flag is on, open_window, seed_ide and open_ide in turn, of which only open_ide is off by default, and is Done either way, a failed action only warning.
+// The flags are read from the pair's own config stack when the row runs, after Seed-Child has written the task's run settings into the pair's local layer, so a task's run_settings sets them per task.
+// "--window" passes the hidden "--open-terminal", which turns Open-Window on for that run whatever batten.yaml says.
+// A run resumed past Open-Window opens no window.
 //
 // The InnerRun row waits on its child inside its call rather than returning once per poll.
 // Every poll_interval_s it stats the child's status file, and decodes it when its modification time differs from the last decode or notice_probe_s has passed.

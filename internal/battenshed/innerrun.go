@@ -86,23 +86,6 @@ const decisionActedFileSuffix = "-decision-acted"
 // doneSeenFileSuffix is the fixed suffix of the marker recording when the producer first saw the child done, joined onto the producer's own name.
 const doneSeenFileSuffix = "-done-seen"
 
-// terminalOpenedFileSuffix is the fixed suffix of the marker recording that the producer already opened the terminal window this run, joined onto the producer's own name.
-const terminalOpenedFileSuffix = "-terminal-opened"
-
-// TerminalOpenedFile returns the path of the once-marker written after the terminal window open was attempted.
-func TerminalOpenedFile(scratchDir, producer string) string {
-	return filepath.Join(scratchDir, producer+terminalOpenedFileSuffix)
-}
-
-// ClearTerminalOpened removes the once-marker so the next run opens a terminal window again.
-// An absent marker is not an error.
-func ClearTerminalOpened(scratchDir, producer string) error {
-	if err := os.Remove(TerminalOpenedFile(scratchDir, producer)); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("battenshed: %s: clear terminal-opened marker: %w", producer, err)
-	}
-	return nil
-}
-
 // decisionActedFile returns the path of the marker holding the decision identity already resumed on and the child's history length at that resume;
 // a one-line marker reads as the old layout.
 func decisionActedFile(scratchDir, producer string) string {
@@ -241,7 +224,7 @@ func logAttempt(first bool, msg string, args ...any) {
 // A nil deps.ChildBuildChanged or deps.ChildDirtyPaths switches the binary re-step off.
 // A nil deps.PauseRequested resolves to never paused, and a nil deps.Pause to never covered by a pause record.
 // An empty deps.VerifyRows, or a nil deps.PublishFailure, deps.ChildHead or deps.Goto, switches the automatic verify retry off.
-// A nil deps.MarkWatched resolves to reporting not held, a nil deps.Activity to reporting no live run and no live wait, and a nil deps.ArbiterInFlight to reporting no arbiter.
+// A nil deps.MarkWatched resolves to reporting not held, a nil deps.Activity to reporting no live run and no live wait, a nil deps.ArbiterInFlight to reporting no arbiter and a nil deps.ArbiterStop to a reading that is not eligible.
 // A nil deps.ParentLock switches the parent lock step and the stale-base resume off.
 func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duration, scratchDir string, driverExitGrace time.Duration) shedengine.ShedProducer {
 	if pollInterval < pollFloor {
@@ -260,6 +243,9 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 	if deps.ArbiterInFlight == nil {
 		deps.ArbiterInFlight = func(context.Context) (ChildArbiter, bool, error) { return ChildArbiter{}, false, nil }
 	}
+	if deps.ArbiterStop == nil {
+		deps.ArbiterStop = func(context.Context, shedengine.Status) (ChildArbiterStop, error) { return ChildArbiterStop{}, nil }
+	}
 	if deps.Activity == nil {
 		deps.Activity = func(context.Context) ([]AgentActivity, bool, error) { return nil, false, nil }
 	}
@@ -272,9 +258,6 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 	if deps.Awake == nil {
 		origin := time.Now()
 		deps.Awake = func() time.Duration { return time.Since(origin) }
-	}
-	if deps.OpenTerminal == nil {
-		deps.OpenTerminal = func(context.Context) error { return nil }
 	}
 	notices := deps.Notify != nil
 	if deps.Notify == nil {
@@ -340,8 +323,6 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 // The full disposition table, evaluated top to bottom: a spawn as above (logging both Live-Substrate
 // Spawn Observability lines around deps.Spawn), then one more read;
 // deps.Spawn returning an error is a hard error, not Stuck, since a failed spawn is mechanism failure, not an ordinary wait, and the next Call retries it; still no status file after a successful spawn is a hard error naming the spawn that returned success without producing one.
-// After a successful spawn, whether here or in the approved-resume arm, Call opens the operator's terminal window through deps.OpenTerminal once per run: a once-marker under scratchDir (TerminalOpenedFile) gates it, batten clears the marker when it seeds a fresh batten status and never here, and an open error is only warned about, never changing the row's outcome.
-// A failed spawn returns before the open.
 // Any Call that finds the child in a state other than done first removes a leftover done-seen marker, so a marker from an earlier run of the same slug never shortens a later wait.
 // Any Call that finds the child out of a halted state likewise removes the halt-warned marker, which ends the halt episode.
 // Once the child's state is settled, the wait runs the notice step (noticeStep) on entry and at every check: informational only, one notice per condition per episode, never changing the outcome below.
@@ -432,7 +413,6 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 			return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: spawn inner shed run (resuming this run retries the spawn): %w", p.name, spawnErr)
 		}
 		recordSpawnConfirmed(p.name, p.slug, p.scratchDir, confirmedPath)
-		p.openTerminalOnce(ctx)
 
 		baseline = statusModTime(statusPath)
 		status, found, err = p.deps.ReadStatus(statusPath, statusLockPath)
@@ -1016,7 +996,6 @@ func (p *innerRunProducer) resumeAwaitingChild(ctx context.Context, w *childWait
 	p.driverBusyNoticed = false
 	w.busyReason, w.busyKey = "", ""
 	recordSpawnConfirmed(p.name, p.slug, p.scratchDir, SpawnConfirmedFile(p.scratchDir, p.name))
-	p.openTerminalOnce(ctx)
 	return true, nil
 }
 
@@ -1121,26 +1100,6 @@ func (p *innerRunProducer) driverLocksHeld(ctx context.Context) bool {
 	}
 	p.seamRecovered(failChildLockRead)
 	return false
-}
-
-// openTerminalOnce opens the operator's terminal window through deps.OpenTerminal unless the once-marker already exists.
-// An open error is logged rather than escalated, and the marker is written whatever the outcome, so a failed open is not retried;
-// a marker write failure is logged too, since a lost marker costs only one extra window.
-func (p *innerRunProducer) openTerminalOnce(ctx context.Context) {
-	markerPath := TerminalOpenedFile(p.scratchDir, p.name)
-	if _, err := os.Stat(markerPath); err == nil {
-		return
-	}
-	if err := p.deps.OpenTerminal(ctx); err != nil {
-		logger.Warn("battenshed: open terminal window failed", "producer", p.name, "slug", p.slug, "error", err)
-	}
-	if err := os.MkdirAll(p.scratchDir, 0o755); err != nil {
-		logger.Warn("battenshed: create scratch directory for terminal-opened marker failed", "producer", p.name, "slug", p.slug, "scratchDir", p.scratchDir, "error", err)
-		return
-	}
-	if err := os.WriteFile(markerPath, []byte("opened\n"), 0o644); err != nil {
-		logger.Warn("battenshed: write terminal-opened marker failed", "producer", p.name, "slug", p.slug, "path", markerPath, "error", err)
-	}
 }
 
 // spawnConfirmed reports whether the spawn-confirmation marker at path names this process's own pid.

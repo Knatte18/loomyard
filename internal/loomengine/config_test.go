@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"gopkg.in/yaml.v3"
 )
 
 // seedLoomConfig creates <baseDir>/_lyx/config/loom.yaml with the given contents.
@@ -83,6 +84,8 @@ func writeLoomConfigWithKeys(t *testing.T, baseDir string, values map[string]str
 	seedLoomConfig(t, baseDir, b.String())
 }
 
+func intPtr(v int) *int { return &v }
+
 // templateConfig is the Config the shipped template's own values load to.
 func templateConfig() Config {
 	return Config{
@@ -123,16 +126,15 @@ func templateConfig() Config {
 		ReviewCirclingCheckpoint: 3,
 		ReviewMaxBounces:         3,
 		ReviewHardMaxBounces:     4,
-		DiscussionMaxBounces:     0,
-		PlanMaxBounces:           0,
-		WebsterMaxBounces:        0,
+		DiscussionMaxBounces:     nil,
+		PlanMaxBounces:           nil,
+		WebsterMaxBounces:        nil,
 		DiscussionAutoAccept:     false,
 		PlanAutoAccept:           false,
 		WebsterAutoAccept:        false,
-		MergeMaxBounces:          1,
+		MergeMaxBounces:          intPtr(1),
 		MergeHardMaxBounces:      0,
 		MergeAutoAccept:          true,
-		SkipMergeReview:          false,
 	}
 }
 
@@ -155,6 +157,7 @@ review_timeout_min: 240
 		values   map[string]string
 		burler   string
 		mutate   func(*Config)
+		wantSoft map[Perch]int
 	}{
 		{name: "template defaults", mutate: func(*Config) {}},
 		{
@@ -330,14 +333,26 @@ review_timeout_min: 240
 				"discussion_auto_accept": "true", "plan_auto_accept": "true", "webster_auto_accept": "true",
 			},
 			mutate: func(c *Config) {
-				c.DiscussionMaxBounces, c.PlanMaxBounces, c.WebsterMaxBounces = 1, 2, 4
+				c.DiscussionMaxBounces, c.PlanMaxBounces, c.WebsterMaxBounces = intPtr(1), intPtr(2), intPtr(4)
 				c.DiscussionAutoAccept, c.PlanAutoAccept, c.WebsterAutoAccept = true, true, true
 			},
 		},
 		{
 			name:   "explicit merge perch keys",
-			values: map[string]string{"merge_max_bounces": "0", "merge_auto_accept": "false", "skip_merge_review": "true"},
-			mutate: func(c *Config) { c.MergeMaxBounces, c.MergeAutoAccept, c.SkipMergeReview = 0, false, true },
+			values: map[string]string{"merge_max_bounces": "0", "merge_auto_accept": "false"},
+			mutate: func(c *Config) { c.MergeMaxBounces, c.MergeAutoAccept = intPtr(0), false },
+		},
+		{
+			name:     "a zero per-perch budget loads as zero rounds, not as null",
+			values:   map[string]string{"plan_max_bounces": "0"},
+			mutate:   func(c *Config) { c.PlanMaxBounces = intPtr(0) },
+			wantSoft: map[Perch]int{PerchPlan: 0, PerchDiscussion: 3},
+		},
+		{
+			name:     "a zero run-wide budget gives every null perch zero rounds",
+			values:   map[string]string{"review_max_bounces": "0"},
+			mutate:   func(c *Config) { c.ReviewMaxBounces = 0 },
+			wantSoft: map[Perch]int{PerchDiscussion: 0, PerchPlan: 0, PerchWebster: 0, PerchMerge: 1},
 		},
 		{
 			name:   "checkpoint above budget",
@@ -398,6 +413,11 @@ review_timeout_min: 240
 			}
 			if !reflect.DeepEqual(got, want) {
 				t.Errorf("LoadConfig() = %+v; want %+v", got, want)
+			}
+			for perch, soft := range tt.wantSoft {
+				if resolved := got.Caps(perch).Soft; resolved != soft {
+					t.Errorf("Caps(%s).Soft = %d; want %d", perch, resolved, soft)
+				}
 			}
 		})
 	}
@@ -589,12 +609,11 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"negative parent_review_wait_min", "parent_review_wait_min", "-1", []string{"attempts: 0"}, ""},
 		{"zero review_circling_checkpoint", "review_circling_checkpoint", "0", []string{positiveIntegerForward}, ""},
 		{"negative review_circling_checkpoint", "review_circling_checkpoint", "-1", []string{positiveIntegerForward}, ""},
-		{"zero review_max_bounces", "review_max_bounces", "0", []string{positiveIntegerForward}, ""},
-		{"negative review_max_bounces", "review_max_bounces", "-1", []string{positiveIntegerForward}, ""},
-		{"negative discussion_max_bounces", "discussion_max_bounces", "-1", []string{"must not be negative", "set it to 0 to take review_max_bounces"}, ""},
-		{"negative plan_max_bounces", "plan_max_bounces", "-1", []string{"must not be negative", "set it to 0 to take review_max_bounces"}, ""},
-		{"negative webster_max_bounces", "webster_max_bounces", "-1", []string{"must not be negative", "set it to 0 to take review_max_bounces"}, ""},
-		{"negative merge_max_bounces", "merge_max_bounces", "-1", []string{"must not be negative", "set it to 0 to take review_max_bounces"}, ""},
+		{"negative review_max_bounces", "review_max_bounces", "-1", []string{"must not be negative", "set it to 0 for no review round, or to a positive integer"}, ""},
+		{"negative discussion_max_bounces", "discussion_max_bounces", "-1", []string{"must not be negative", "set it to 0 for no review round, to a positive integer, or to null to take review_max_bounces"}, ""},
+		{"negative plan_max_bounces", "plan_max_bounces", "-1", []string{"must not be negative", "or to null to take review_max_bounces"}, ""},
+		{"negative webster_max_bounces", "webster_max_bounces", "-1", []string{"must not be negative", "or to null to take review_max_bounces"}, ""},
+		{"negative merge_max_bounces", "merge_max_bounces", "-1", []string{"must not be negative", "or to null to take review_max_bounces"}, ""},
 		{"zero review_hard_max_bounces", "review_hard_max_bounces", "0", []string{"must be at least 1", "lyx config loom --set review_hard_max_bounces=<n>", `lyx loom resume`}, ""},
 		{"negative discussion_hard_max_bounces", "discussion_hard_max_bounces", "-1", []string{"set it to 0 to take review_hard_max_bounces", "lyx config loom --set discussion_hard_max_bounces=<n>", `lyx loom resume`}, ""},
 		{"negative plan_hard_max_bounces", "plan_hard_max_bounces", "-1", []string{"set it to 0 to take review_hard_max_bounces", "lyx config loom --set plan_hard_max_bounces=<n>", `lyx loom resume`}, ""},
@@ -1156,4 +1175,88 @@ func containsConfigKey(text, key string) bool {
 		}
 	}
 	return false
+}
+
+// TestMigrateConfig_RetiresSkipMergeReview pins what MigrateConfig rewrites for skip_merge_review: an old-schema document, recognised by its skip_merge_review key, has each zero per-perch budget turned to null and skip_merge_review true turned to merge_max_bounces: 0 before the key goes;
+// a document without the key keeps its zeros as the zero-rounds meaning; a second run changes nothing, a below-floor step_idle_timeout_min is still raised, and an unparseable document is refused.
+func TestMigrateConfig_RetiresSkipMergeReview(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		document  string
+		wantLines []string
+		wantKeys  map[string]any
+		wantGone  []string
+	}{
+		{
+			name:      "an old-schema zero becomes null and the skip key goes",
+			document:  "skip_merge_review: false\nplan_max_bounces: 0\nwebster_max_bounces: 2\n",
+			wantLines: []string{"plan_max_bounces: 0 rewritten to null, which takes review_max_bounces", "skip_merge_review: removed"},
+			wantKeys:  map[string]any{"plan_max_bounces": nil, "webster_max_bounces": 2},
+			wantGone:  []string{"skip_merge_review"},
+		},
+		{
+			name:      "skip_merge_review true becomes a merge budget of 0",
+			document:  "skip_merge_review: true\nmerge_max_bounces: 1\n",
+			wantLines: []string{"skip_merge_review: true rewritten to merge_max_bounces: 0", "skip_merge_review: removed"},
+			wantKeys:  map[string]any{"merge_max_bounces": 0},
+			wantGone:  []string{"skip_merge_review"},
+		},
+		{
+			name:      "skip_merge_review true over a zero merge budget rewrites it twice",
+			document:  "skip_merge_review: true\nmerge_max_bounces: 0\n",
+			wantLines: []string{"merge_max_bounces: 0 rewritten to null, which takes review_max_bounces", "skip_merge_review: true rewritten to merge_max_bounces: 0", "skip_merge_review: removed"},
+			wantKeys:  map[string]any{"merge_max_bounces": 0},
+			wantGone:  []string{"skip_merge_review"},
+		},
+		{
+			name:     "a document without skip_merge_review keeps its zero",
+			document: "plan_max_bounces: 0\n",
+			wantKeys: map[string]any{"plan_max_bounces": 0},
+		},
+		{
+			name:      "a below-floor step_idle_timeout_min is still raised",
+			document:  "step_idle_timeout_min: 0\n",
+			wantLines: []string{"step_idle_timeout_min: raised from 0 to 1"},
+			wantKeys:  map[string]any{"step_idle_timeout_min": 1},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, lines, err := MigrateConfig([]byte(tt.document))
+			if err != nil {
+				t.Fatalf("MigrateConfig() error = %v; want nil", err)
+			}
+			if !reflect.DeepEqual(lines, tt.wantLines) {
+				t.Errorf("MigrateConfig() lines = %q; want %q", lines, tt.wantLines)
+			}
+			var decoded map[string]any
+			if err := yaml.Unmarshal(got, &decoded); err != nil {
+				t.Fatalf("decode migrated %q: %v", got, err)
+			}
+			for key, want := range tt.wantKeys {
+				if value, present := decoded[key]; !present || value != want {
+					t.Errorf("migrated %s = %v, present %v; want %v", key, value, present, want)
+				}
+			}
+			for _, key := range tt.wantGone {
+				if _, present := decoded[key]; present {
+					t.Errorf("migrated document still holds %s", key)
+				}
+			}
+
+			again, againLines, err := MigrateConfig(got)
+			if err != nil || len(againLines) != 0 || string(again) != string(got) {
+				t.Errorf("second MigrateConfig() = %q, %q, %v; want the same bytes and no lines", again, againLines, err)
+			}
+		})
+	}
+
+	t.Run("an unparseable document is refused", func(t *testing.T) {
+		t.Parallel()
+		if _, _, err := MigrateConfig([]byte("plan_max_bounces: [\n")); !errors.Is(err, configengine.ErrInvalid) {
+			t.Errorf("MigrateConfig() error = %v; want configengine.ErrInvalid", err)
+		}
+	})
 }

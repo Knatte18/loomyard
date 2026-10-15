@@ -163,7 +163,7 @@ func (c *loomCLI) darnReviewBudget() (int, error) {
 	return template.ReviewMaxBounces, nil
 }
 
-// wireDarn fills the Env fields a darn run reads beyond the ones wire fills for every recipe, and replaces the loom DescribeTable with the darn one, which reads no decision record or run record.
+// wireDarn fills the Env fields a darn run reads beyond the ones wire fills for every recipe, and replaces the loom DescribeTable with the darn one, which reads the decision record but no run record.
 // It loads the hub-wide darn.yaml strictly and reads its verify command once, so start, run, step and resume refuse an absent or empty command before any row builds.
 func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, frictionDir string, landingCfg landingshed.Config, registry modelspec.Registry) error {
 	dirs := fabricengine.ConfigDirs(location)
@@ -190,16 +190,20 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 		return loomrecipe.DarnRouting(cfg.ReviewMaxBounces)
 	})
 	c.env.Darn = darnDeps(location, c.runID, c.env.VerifyDir)
+	// The history seam turns the Darn-Write row's "discussion" gate into the darn gate.
+	c.env.DiscussionHistory = discussionHistory(location)
 	c.env.DarnTable = func(told loomshed.DarnTold) (seatengine.Table, error) {
 		return darnengine.DarnTable(darnengine.DarnInputs{
-			StencilsDir:       stencilsDir,
-			SpecsDir:          specsDir,
-			WorktreeRoot:      location.WorktreePath(),
-			FrictionDir:       frictionDir,
-			Slug:              seedSlug(location.WorktreeName),
-			DescriptionPath:   summaryparser.Path(loomengine.LandingDir(location)),
-			RejectionFindings: told.RejectionFindings,
-			PriorWork:         told.PriorWork,
+			StencilsDir:        stencilsDir,
+			SpecsDir:           specsDir,
+			WorktreeRoot:       location.WorktreePath(),
+			FrictionDir:        frictionDir,
+			Slug:               seedSlug(location.WorktreeName),
+			DescriptionPath:    summaryparser.Path(loomengine.LandingDir(location)),
+			DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),
+			SupportLogPath:     loomengine.DiscussionSupportLog(location),
+			RejectionFindings:  told.RejectionFindings,
+			PriorWork:          told.PriorWork,
 		}, cfg, registry)
 	}
 	reviewSubdir, isBouncer, err := loomrecipe.BouncerRunSubdir(loomshed.NameDarnBouncer)
@@ -220,12 +224,13 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 			return seatengine.Table{}, err
 		}
 		return landingshed.DarnDescribeTable(landingshed.DarnDescribeInputs{
-			StencilsDir:     stencilsDir,
-			ReviewDir:       filepath.Join(loomengine.LoomReviewsDir(location), reviewSubdir),
-			DescriptionPath: summaryparser.Path(loomengine.LandingDir(location)),
-			TaskBranch:      taskBranch,
-			ParentBranch:    parentBranch,
-			Slug:            seedSlug(location.WorktreeName),
+			StencilsDir:        stencilsDir,
+			ReviewDir:          filepath.Join(loomengine.LoomReviewsDir(location), reviewSubdir),
+			DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),
+			DescriptionPath:    summaryparser.Path(loomengine.LandingDir(location)),
+			TaskBranch:         taskBranch,
+			ParentBranch:       parentBranch,
+			Slug:               seedSlug(location.WorktreeName),
 		}, landingCfg, registry)
 	}
 

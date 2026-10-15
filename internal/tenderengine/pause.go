@@ -33,6 +33,10 @@ type PauseRequest struct {
 	Slug string
 	// Grace is how long busy sessions and network operations get to finish before the Esc.
 	Grace time.Duration
+	// Added, when set, is called once with the entry the pause adds, right after the record update and before the grace's first poll, so no Esc has gone yet.
+	// A scope that already had a live entry adds none and calls no Added.
+	// An error ends the pause at once with it wrapped; the entry stays live.
+	Added func(entry pauserecord.Entry) error
 }
 
 // PauseReport is what a pause did and what it left held.
@@ -89,6 +93,7 @@ type session struct {
 
 // Pause runs the pause sequence.
 // The entry is on disk before the first Esc, and each session is recorded in it before its Esc.
+// The Added callback runs after the entry is on disk and before the grace.
 func Pause(deps Deps, req PauseRequest) (PauseReport, error) {
 	scope := pauserecord.ScopeHub
 	if req.Slug != "" {
@@ -121,6 +126,11 @@ func Pause(deps Deps, req PauseRequest) (PauseReport, error) {
 		return report, err
 	}
 	report.PausedAt, report.GraceEnd = entry.PausedAt, entry.GraceEnd
+	if req.Added != nil && !report.AlreadyPaused {
+		if err := req.Added(entry); err != nil {
+			return report, fmt.Errorf("pause: report the added entry: %w", err)
+		}
+	}
 
 	covered, err := coveredSessions(deps, scope)
 	if err != nil {

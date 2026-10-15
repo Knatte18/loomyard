@@ -18,6 +18,10 @@
 # StateFailed at Run-Shed with the run halted; a halted child is no longer such a return, only a
 # mechanism failure is.
 #
+# Open-Window, Seed-IDE and Open-IDE each run their action only when their batten.yaml flag is
+# on, and are Done either way: a failed action only warns. They follow Seed-Child because that row
+# writes the task's run_settings into the pair's local config layer, which their flags are read from.
+#
 # Land runs after Run-Shed's Done: under the hub's land lock it pulls the prime, runs the hub-wide
 # deploy command, prunes the board and names the tasks the landing made ready. It carries no
 # on_stuck and no max_bounces: a failed Land step, or a pause honoured during its waits, halts
@@ -38,6 +42,18 @@ producers:
 
   - name: Seed-Child
     engine: SeedChild
+    on_done: Open-Window
+
+  - name: Open-Window
+    engine: OpenWindow
+    on_done: Seed-IDE
+
+  - name: Seed-IDE
+    engine: SeedIDE
+    on_done: Open-IDE
+
+  - name: Open-IDE
+    engine: OpenIDE
     on_done: Run-Shed
 
   - name: Run-Shed

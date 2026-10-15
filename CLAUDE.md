@@ -68,9 +68,9 @@ These are conversational shorthands; never rename code, files or docs to them un
 ## Watching runs
 
 The operator watches each run in its own terminal window, never in VS Code.
-`lyx batten run <slug> --window` opens it once the task's run is spawned: Konsole on Linux, Windows Terminal into WSL on WSL, titled with the slug and running `lyx reed attach` in the pair.
+Batten's `Open-Window` row opens it once the task's run is seeded in the new pair, switched by `batten.yaml`'s `open_window` and forced on by `lyx batten run <slug> --window`: Konsole on Linux, Windows Terminal into WSL on WSL, titled with the slug and running `lyx reed attach` in the pair.
 Where no launcher is known, its output says no window was opened.
-VS Code opens only when the operator asks for it.
+VS Code opens only when the operator asks for it, through `lyx ide` or `batten.yaml`'s `open_ide`.
 
 ## Filesystem links
 

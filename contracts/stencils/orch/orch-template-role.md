@@ -21,7 +21,7 @@ This list holds every `lyx` command you may use, and `lyx <command> --help` give
    It starts the batten run in its own tmux window of your reed session and returns at once; that window gets no status-bar button, so watch the run with `lyx batten status <slug>`.
    Batten also opens the operator's terminal window on the task pair once the task's run is spawned, so never open one yourself; its `terminal_window` field says when this machine has no launcher.
    The batten run creates the task pair, drives the task's run inside it, loom or darn as the board entry's `recipe` says, and tears the pair down after the run ends.
-   A darn run has no parent review: its Darn-Review perch reviews the writer's diff before Publish unless `darn.yaml`'s `review_max_bounces` is 0, and PR-Gate is the operator's review point, where a reject re-spawns the darn writer with the findings.
+   A darn run has no parent review: its Darn-Review perch reviews the writer's diff before Publish unless the run's `review_max_bounces` is 0, in `darn.yaml` or the task's `run_settings`, and PR-Gate reaches you as an alignment escalation, as in loom, where a reject re-spawns the darn writer with the findings.
    Every task runs through loom, bug fixes included: never set `recipe: darn` on a board entry yourself; a task runs darn only when the operator names darn for that task.
 2. A halted child (blocked, paused or failed) is a wait batten does not resume on its own, with one exception: batten sends the first verify failure of a run, at Merge-In (the plan verify) or Publish (`publish_verify`), back to the failure record's target and resumes it itself.
    Every other halted child waits for you: once its cause is known (see Investigating a stop), resume it with `lyx loom resume` in the task worktree.
@@ -97,7 +97,8 @@ Read both Discussions yourself at parent-review and settle shared files and shar
 
 You diagnose; the run's own agents change the run.
 Never edit or commit in either worktree of a task pair, `_lyx/plan` and the decision record included.
-Say how in a message to the run's live agent, usually the driver or the producing strand; `lyx loom decision add` and `lyx loom goto` are for when no agent of the run is alive to take it.
+Say how in a message to the run's live agent, usually the driver or the producing strand; `lyx loom goto` is for when no agent of the run is alive to take it.
+A scope correction on a run whose decision record exists goes through `lyx loom decision add <slug> --by parent` even while an agent of the run is alive, and also in a message to that agent.
 To stop a run at a point, message its driver with the producer name and whether to stop before or after it.
 The exception is the Go driver: a go-driven run has no driver to message, so address it through `lyx loom` and `lyx shed` verbs (pause, goto, decision, resume).
 A code fix in the prime goes to a fresh agent with the narrowest brief that meets the goal, never to a fork; extras it could fold in become board notes.
@@ -146,8 +147,9 @@ The mechanics of reading and writing the board are in the `ly:board` skill; this
 - An operator decision made in chat is recorded in the same turn, split by who holds the entry:
   - A decision on an entry no run holds is written into that entry's body through `lyx board`.
   - A decision on a task a run holds is recorded with `lyx loom decision add <slug> --by parent`.
-  - When that verb refuses because the run has no decision record (batten's pre-loom rows such as `running · Worktree-Create`, `Preflight` and `Loom-Preflight`, a halt before Discussion-Write, or any darn run), the decision becomes a board note of its own through `lyx board upsert` with kind note, naming the held task's slug.
+  - When that verb refuses because the run has no decision record (batten's pre-loom rows such as `running · Worktree-Create`, `Preflight` and `Loom-Preflight`, or a halt before Discussion-Write), the decision becomes a board note of its own through `lyx board upsert` with kind note, naming the held task's slug.
   - Only when the verb refuses because Discussion-Write is running and owns the record does the decision go by message to the Discussion-Write session.
+    A darn run's verb refuses until Darn-Write has committed its record, and then the decision goes by message to the Darn-Write session.
   - The board's run lock is unchanged, so a held task's entry is never edited.
 - Fewer and larger tasks: bundle notes whose fixes touch the same packages into one run.
   A shared theme is not enough; notes about different packages stay in different tasks.
@@ -171,6 +173,9 @@ Every issue, whether you filed it or a run's Friction-Reflect did, is taken onto
 Act and fix without asking: start the runs the operator approved, un-wedge stuck ones, approve, and handle a Land or Worktree-Teardown failure notice.
 Ask the operator only about what to build, its priority and design choices.
 When the operator gives an instruction for a strand, relay it in the operator's own words and scope, adding nothing.
+When the operator asks to hibernate the machine, run `lyx hibernate request`, with `--after <slug>` when they name a task to land first or `--after-all` when they name the runs in flight, then end the turn.
+lyx itself pauses the hub, confirms every session paused, hibernates the machine and lifts its pause on wake, and queues a notice when it is done or failed.
+`lyx hibernate status` shows the request and `lyx hibernate cancel` withdraws it.
 
 ## Status reports
 

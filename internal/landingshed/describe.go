@@ -94,6 +94,8 @@ type DarnDescribeInputs struct {
 	StencilsDir string
 	// ReviewDir is the review perch's run directory, read only for the findings of a round the review passed unconverged.
 	ReviewDir string
+	// DecisionRecordPath is the decision record the darn writer wrote, read beside the board entry for the scope and decisions the description covers.
+	DecisionRecordPath string
 	// DescriptionPath is the file the agent writes: the change description.
 	DescriptionPath string
 	// TaskBranch is the branch whose diff the description covers.
@@ -143,12 +145,13 @@ func DescribeTable(in DescribeInputs, cfg Config, reg modelspec.Registry) (seate
 	return table, nil
 }
 
-// DarnDescribeTable builds the seatengine.Table of the Describe session of a darn run, which describes the diff from the board entry with no decision record or run record to read.
+// DarnDescribeTable builds the seatengine.Table of the Describe session of a darn run, which describes the diff from the board entry and the decision record, and still reads no run record.
 // It is DescribeTable's twin in every other respect: the model and timeout come from cfg's describe keys, the role, segment and skills are the same, and an empty required field or a missing stencil is an error.
 func DarnDescribeTable(in DarnDescribeInputs, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
 	required := []struct{ name, value string }{
 		{"StencilsDir", in.StencilsDir},
 		{"ReviewDir", in.ReviewDir},
+		{"DecisionRecordPath", in.DecisionRecordPath},
 		{"DescriptionPath", in.DescriptionPath},
 		{"TaskBranch", in.TaskBranch},
 		{"ParentBranch", in.ParentBranch},
@@ -164,11 +167,12 @@ func DarnDescribeTable(in DarnDescribeInputs, cfg Config, reg modelspec.Registry
 	}
 
 	table, err := describeSessionTable(darnDescribeStencilName, in.DescriptionPath, map[string]string{
-		"slug":             in.Slug,
-		"review_dir":       in.ReviewDir,
-		"description_path": in.DescriptionPath,
-		"task_branch":      in.TaskBranch,
-		"parent_branch":    in.ParentBranch,
+		"slug":                 in.Slug,
+		"review_dir":           in.ReviewDir,
+		"decision_record_path": in.DecisionRecordPath,
+		"description_path":     in.DescriptionPath,
+		"task_branch":          in.TaskBranch,
+		"parent_branch":        in.ParentBranch,
 	}, cfg, reg)
 	if err != nil {
 		return seatengine.Table{}, fmt.Errorf("landingshed: DarnDescribeTable: %w", err)

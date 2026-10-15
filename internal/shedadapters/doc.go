@@ -92,7 +92,7 @@
 //     A continue recorded at or past it is moved aside (the escalation record, its parent notice and then the decision file, each to a timestamped sibling no reader opens)
 //     and the round re-escalates with cause `hard-cap`, the third cause beside budget and circling.
 //     An escalation at or past the hard cap, whatever its cause, carries the accept-only Reason and the bouncer-fragment-decide-capped decide step; below it the Reason and the bouncer-fragment-decide-open step offer accept and continue.
-//     PendingCirclingDecision and PendingEscalation read a run directory's latest round: the first reports a decision file not yet settled, the second a Bouncer-written escalation, with its round and brief path, that no decision file answers.
+//     PendingCirclingDecision, PendingEscalation and PendingEscalationCause read a run directory's latest round: the first reports a decision file not yet settled, the second a Bouncer-written escalation, with its round and brief path, that no decision file answers, and the third the same escalation with its cause and brief path.
 //     Auto-accept: a Bouncer told BouncerConfig.AutoAccept settles a spent budget as an accept instead of running the soft-cap rule.
 //     It fires at the soft cap alone, also over a CIRCLING verdict, and only on a harvest, the judge having written the verdict in this call, over a round with no decision and no escalation record.
 //     A replay and a round BlockingEscalates sends to the rule (an open BLOCKING entry, or an unreadable ledger) go to the rule instead.
@@ -310,6 +310,13 @@
 // A finished fix whose gate failed archives the review, fixer report and acceptance record and returns a counted Stuck with an empty path, so the Bouncer's next round reviews afresh.
 // A review that changed after acceptance archives the same three and ends with the same way forward.
 // Any other failure archives the fixer report alone, keeping the accepted review and its record so a resume re-spawns the fixer without re-running the reviewer.
+//
+// # The switched producer
+//
+// SwitchedProducer wraps no engine: it is one told action behind one told flag, built under the OpenWindow, SeedIDE and OpenIDE registry engines, for operator conveniences a run must never halt over.
+// A flag that is off is Done without acting, a flag that is on acts once and is Done even when the action fails, with a warning, and a flag that cannot be read is an error.
+// The recipe's owner supplies both seams, so the flag lives in that owner's config and the producer knows no key name.
+// Bound: a failed action is skipped silently but for its warning, and the next row runs as if it had succeeded.
 //
 // # Limitations
 //

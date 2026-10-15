@@ -99,6 +99,30 @@ type ChildArbiter struct {
 	Alive bool
 }
 
+// ChildArbiterStop is the reading of the facts batten's eligible-stop hold decides on at a halted stop of the child.
+// It carries the arbiter rule's answer as a bool and holds no copy of the rule.
+type ChildArbiterStop struct {
+	// Eligible reports whether the arbiter verb would admit the stop.
+	// It is read from the arbiter eligibility rule over the status file, the escalation record and the verify record.
+	Eligible bool
+	// On reports whether the child's arbiter_max_spawns is above 0, read from the child's loom config.
+	On bool
+	// Timeout is one arbiter spawn's resolved timeout, read from the child's loom config.
+	Timeout time.Duration
+	// SpawnsLeft reports whether the run's attempt records in its arbiter directory are fewer than arbiter_max_spawns.
+	SpawnsLeft bool
+	// Attempt reports whether an attempt exists at the stop's key; the fields below describe the newest such attempt.
+	Attempt bool
+	// AttemptDeadline is the attempt's deadline, read from its attempt record.
+	AttemptDeadline time.Time
+	// HandOnAt is the write time of the attempt's envelope when that envelope carries verdict hand-on, and zero otherwise.
+	HandOnAt time.Time
+	// AppliedAt is the write time of the attempt's applied mark, and zero when the mark is absent.
+	AppliedAt time.Time
+	// HandOverAt is the time of the newest settle record at the stop's key when that record's action is hand-over, and zero otherwise.
+	HandOverAt time.Time
+}
+
 // InnerRunDeps carries every told value and injected closure NewInnerRun needs: spawning the
 // inner shed run, resolving and reading its persisted status, and the sleep seam a test replaces
 // to keep the poll interval out of real time.
@@ -168,10 +192,6 @@ type InnerRunDeps struct {
 	// A nil Awake resolves in NewInnerRun to Go's monotonic reading, measured from an origin taken at construction.
 	// That reading stops during suspend on Linux and macOS; on Windows it keeps running, so a nil Awake there leaves the idle clocks counting suspended time as before.
 	Awake func() time.Duration
-	// OpenTerminal opens a terminal window on the task worktree with the child's session attached.
-	// Call invokes it at most once per run, after a spawn that returned success; its error is only warned about and never changes the row's outcome.
-	// A nil OpenTerminal resolves to a no-op returning nil in NewInnerRun, the same way a nil Sleep resolves.
-	OpenTerminal func(ctx context.Context) error
 	// Notify hands one run notice line to whoever tells the orch, queued behind a seam so this package never imports the orch, and reports whether the line was queued.
 	// A notice is recorded as sent only when it was queued.
 	// The wait invokes it once per condition per episode (see notice.go) and retries an error or an unqueued line at most once per notice probe and at most three times; its failure is only warned about and never changes the row's outcome.
@@ -191,6 +211,11 @@ type InnerRunDeps struct {
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
 	// A nil ArbiterInFlight resolves to reporting none in NewInnerRun.
 	ArbiterInFlight func(ctx context.Context) (arbiter ChildArbiter, found bool, err error)
+	// ArbiterStop reads the facts the eligible-stop hold decides on for the child's halted stop status.
+	// The state-changed notice of a blocked or awaiting child is held while the arbiter may still settle the stop.
+	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
+	// A nil ArbiterStop resolves to a reading that is not eligible in NewInnerRun.
+	ArbiterStop func(ctx context.Context, status shedengine.Status) (ChildArbiterStop, error)
 	// NoticeQuiet is how long a running child's agents may all stay idle, with its driver strand alive and no wait marker live, before the row sends a quiet notice.
 	// Zero disables the quiet notice.
 	NoticeQuiet time.Duration
@@ -360,7 +385,7 @@ type SeedChildDeps struct {
 	// CommitSeed commits the just-written seed file. A non-nil error is Stuck: it names why a
 	// commit failed, a condition a human can act on.
 	CommitSeed func(ctx context.Context) error
-	// PushSeed pushes the just-committed seed. A non-nil error is only warned about and never
+	// PushSeed starts the push of the just-committed seed and need not wait for it to land. A non-nil error is only warned about and never
 	// changes SeedChild's verdict: an offline machine must not halt a run, and the next push on
 	// this pair catches the branch up.
 	PushSeed func(ctx context.Context) error

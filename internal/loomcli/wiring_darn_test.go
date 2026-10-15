@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -60,6 +61,9 @@ func TestWire_DarnRecipe(t *testing.T) {
 		if c.env.VerifyMergeBase == nil {
 			t.Error("c.env.VerifyMergeBase is nil after wire() of a darn seed; want the merge base reader")
 		}
+		if c.env.DiscussionHistory == nil {
+			t.Error("c.env.DiscussionHistory is nil after wire() of a darn seed; want the history seam")
+		}
 		if !c.env.VerifyWholeDiff {
 			t.Error("c.env.VerifyWholeDiff = false after wire() of a darn seed; want true")
 		}
@@ -83,12 +87,38 @@ func TestWire_DarnRecipe(t *testing.T) {
 		}
 	})
 
+	t.Run("a local darn override sets the run's budget and hard cap", func(t *testing.T) {
+		t.Parallel()
+		loc := hubLocation(t, "pair", ".")
+		seedDarnHubConfig(t, loc.HubPath, `"go test ./..."`, "3")
+		localPath := configengine.LocalFile(loc.AnchorPath(), "darn")
+		if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(localPath), err)
+		}
+		if err := os.WriteFile(localPath, []byte("review_max_bounces: 2\nreview_hard_max_bounces: 3\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile(%q) = %v; want nil", localPath, err)
+		}
+		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeDarn}
+		if err := c.wire(loc, loc.AnchorPath()); err != nil {
+			t.Fatalf("wire() = %v; want nil", err)
+		}
+		if c.env.DarnReviewMaxBounces != 2 {
+			t.Errorf("c.env.DarnReviewMaxBounces = %d; want the local 2", c.env.DarnReviewMaxBounces)
+		}
+		if got := c.env.RowHardMaxBounces[loomshed.NameDarnBouncer]; got != 3 {
+			t.Errorf("c.env.RowHardMaxBounces[%q] = %d; want the local 3", loomshed.NameDarnBouncer, got)
+		}
+	})
+
 	t.Run("a loom seed leaves the darn seams nil", func(t *testing.T) {
 		t.Parallel()
 		loc := hubLocation(t, "pair", ".")
 		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeLoom}
 		if err := c.wire(loc, loc.AnchorPath()); err != nil {
 			t.Fatalf("wire() = %v; want nil", err)
+		}
+		if c.env.DiscussionHistory != nil {
+			t.Error("a loom seed filled c.env.DiscussionHistory; want nil")
 		}
 		if c.env.DarnTable != nil || c.env.Darn.Commit != nil || c.env.VerifyMergeBase != nil || c.env.VerifyWholeDiff || c.env.DarnVerifyAttempts != 0 {
 			t.Errorf("a loom seed filled a darn seam: DarnTable nil = %v, Darn.Commit nil = %v, VerifyMergeBase nil = %v, VerifyWholeDiff = %v, DarnVerifyAttempts = %d", c.env.DarnTable == nil, c.env.Darn.Commit == nil, c.env.VerifyMergeBase == nil, c.env.VerifyWholeDiff, c.env.DarnVerifyAttempts)
@@ -214,7 +244,7 @@ func TestRecipeRouting(t *testing.T) {
 		t.Run("recipe "+tt.recipe, func(t *testing.T) {
 			t.Parallel()
 			c := &loomCLI{recipe: tt.recipe, darnCfg: &darnengine.Config{ReviewMaxBounces: 3}}
-			c.cfg.ReviewMaxBounces = 3
+			c.cfg.ReviewMaxBounces, c.cfg.ReviewHardMaxBounces = 3, 4
 			routing, err := c.recipeRouting()
 			if err != nil {
 				t.Fatalf("recipeRouting() = %v; want nil", err)

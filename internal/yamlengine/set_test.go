@@ -6,13 +6,40 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 const (
 	openMapSetTemplate = "name: tmpl\nlabels: {}\n"
 	preservedMarker    = "# preserved (not in current template)"
 	listKeyTemplate    = "require_pr_to_base: [\"main\"] # bases\nsquash: true\n"
+	nullBudgetTemplate = "plan_max_bounces: ~\nreview_max_bounces: 1\n"
+	roundListTemplate  = "plan_review: \"\" # rounds\n"
 )
+
+func intPointer(v int) *int { return &v }
+
+// assertDecodesAsInts fails unless merged decodes each key of want into an *int equal to want's entry, nil included.
+func assertDecodesAsInts(t *testing.T, merged []byte, want map[string]*int) {
+	t.Helper()
+	if want == nil {
+		return
+	}
+	var got map[string]*int
+	if err := yaml.Unmarshal(merged, &got); err != nil {
+		t.Fatalf("decode %q: %v", merged, err)
+	}
+	for key, wantValue := range want {
+		gotValue, present := got[key]
+		switch {
+		case !present:
+			t.Errorf("%q does not hold %q", merged, key)
+		case (gotValue == nil) != (wantValue == nil), gotValue != nil && *gotValue != *wantValue:
+			t.Errorf("%s decodes as %v; want %v", key, gotValue, wantValue)
+		}
+	}
+}
 
 // TestSetValues pins what a successful SetValues merges: the requested values land byte-for-byte, every other key keeps its existing value or its template default, template comments and key order survive, an orphan top-level key is preserved whole and reported, list keys and open maps are set whole, and a second call on the merged output reproduces it.
 func TestSetValues(t *testing.T) {
@@ -28,6 +55,7 @@ func TestSetValues(t *testing.T) {
 		contains      []string
 		notContains   []string
 		inOrder       []string
+		wantInts      map[string]*int
 	}{
 		{
 			name:       "value with equals signs round-trips",
@@ -128,12 +156,51 @@ func TestSetValues(t *testing.T) {
 			contains: []string{"a: new a", "x: new x", "name: mine"},
 		},
 		{
+			name:     "scalar-or-list key takes a quoted flow list",
+			template: roundListTemplate,
+			pairs:    []KV{{Key: "plan_review", Value: `["opus[medium]", "sonnet[high]"]`}},
+			openMaps: []string{"plan_review"},
+			contains: []string{`plan_review: ["opus[medium]", "sonnet[high]"] # rounds`},
+		},
+		{
+			name:       "scalar-or-list key holding a list takes a scalar",
+			template:   roundListTemplate,
+			existing:   "plan_review: [\"opus[high]\"]\n",
+			pairs:      []KV{{Key: "plan_review", Value: "sonnet[high]"}},
+			openMaps:   []string{"plan_review"},
+			wantValues: map[string]string{"plan_review": "sonnet[high]"},
+		},
+		{
+			name:     "scalar-or-list key takes the empty list",
+			template: roundListTemplate,
+			pairs:    []KV{{Key: "plan_review", Value: "[]"}},
+			openMaps: []string{"plan_review"},
+			contains: []string{"plan_review: [] # rounds"},
+		},
+		{
 			name:        "open map on an empty template writes a block mapping",
 			template:    openMapSetTemplate,
 			pairs:       []KV{{Key: "labels.x", Value: "new x"}},
 			openMaps:    []string{"labels"},
 			contains:    []string{"  x: new x"},
 			notContains: []string{"{"},
+		},
+		{
+			name:        "an integer set over a null leaf reads back as the integer",
+			template:    nullBudgetTemplate,
+			pairs:       []KV{{Key: "plan_max_bounces", Value: "2"}},
+			contains:    []string{"plan_max_bounces: 2"},
+			notContains: []string{"!!null"},
+			wantInts:    map[string]*int{"plan_max_bounces": intPointer(2)},
+		},
+		{
+			name:        "a spelled null set over an integer leaf reads back as null",
+			template:    nullBudgetTemplate,
+			existing:    "plan_max_bounces: 2\n",
+			pairs:       []KV{{Key: "plan_max_bounces", Value: "~"}},
+			contains:    []string{"plan_max_bounces: ~"},
+			notContains: []string{"!!int"},
+			wantInts:    map[string]*int{"plan_max_bounces": nil},
 		},
 	}
 
@@ -167,6 +234,7 @@ func TestSetValues(t *testing.T) {
 					t.Errorf("SetValues() merged = %q; want it not to contain %q", merged, unwanted)
 				}
 			}
+			assertDecodesAsInts(t, result.Merged, tt.wantInts)
 			previous := -1
 			for _, want := range tt.inOrder {
 				at := strings.Index(merged, want)
@@ -258,6 +326,35 @@ func TestSetValues_Refusals(t *testing.T) {
 			pair:     KV{Key: "labels.x", Value: "v"},
 			openMaps: []string{"labels"},
 			want:     []string{"labels", "map of name to description"},
+		},
+		{
+			name:     "unquoted bracketed entries for a scalar-or-list key",
+			template: roundListTemplate,
+			pair:     KV{Key: "plan_review", Value: "[opus[medium], sonnet[high]]"},
+			openMaps: []string{"plan_review"},
+			want:     []string{"plan_review", `["opus[medium]", "sonnet[high]"]`},
+		},
+		{
+			name:     "nested list for a scalar-or-list key",
+			template: roundListTemplate,
+			pair:     KV{Key: "plan_review", Value: "[[a], b]"},
+			openMaps: []string{"plan_review"},
+			want:     []string{"plan_review", "flow list of scalars"},
+		},
+		{
+			name:     "text after the closing bracket for a scalar-or-list key",
+			template: roundListTemplate,
+			pair:     KV{Key: "plan_review", Value: `["a"] trailing`},
+			openMaps: []string{"plan_review"},
+			want:     []string{"plan_review", "flow list of scalars"},
+		},
+		{
+			name:     "scalar at a mapping open map whose file value is a list",
+			template: openMapSetTemplate,
+			existing: "labels:\n  - a\n",
+			pair:     KV{Key: "labels", Value: "x"},
+			openMaps: []string{"labels"},
+			want:     []string{"labels"},
 		},
 	}
 

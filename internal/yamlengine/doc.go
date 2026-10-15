@@ -39,6 +39,10 @@
 //     A list at P is an error naming P;
 //     the list is never converted.
 //     Known lists each open map as P.<name>.
+//   - SetValues and SetSparse set P itself when P holds a scalar or a list, not a mapping, replacing it whole with the shape the value spells:
+//     a value starting with [ is a YAML flow list of scalars, and any other value a string.
+//     A bracketed value that is not such a list is refused, never written as a string.
+//     A module declares a key that takes one value or a list, such as a per-round model list, this way.
 //
 // Only declared paths change behaviour.
 // The shape check on P belongs to the module that declares it, in its own decode.

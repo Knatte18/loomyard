@@ -356,11 +356,11 @@ func buildConfigLong() string {
 		"  lyx config board --set design_prefix=foo- --set readme=Home.md\n" +
 		"A list-valued key takes a YAML flow list and is replaced whole, e.g.\n" +
 		"  lyx config landing --set 'require_pr_to_base=[]'\n" +
+		"A per-round model key takes one value or a list with quoted entries, e.g.\n" +
+		"  lyx config loom --set 'plan_review=[\"opus[medium]\", \"sonnet[high]\"]'\n" +
 		"A module may declare an open map, whose keys are the repo's own; --set\n" +
 		"adds or rewrites one entry of it with a scalar value, e.g.\n" +
 		"  lyx config board --set labels.quarry=\"glyphs and the quarry index\"\n" +
-		"Removing an entry stays an editor edit, and a list-shaped value must be\n" +
-		"rewritten as a map in the editor before --set can reach it.\n" +
 		"Pre-existing config keys not recognized by the current template are\n" +
 		"preserved untouched (never dropped) and reported via a \"preserved\" field\n" +
 		"in the JSON success output; run \"lyx config reconcile\" to actually remove\n" +

@@ -78,7 +78,7 @@ func TestProducerSpecs_SkillsAndParentDirective(t *testing.T) {
 		discussionCfg := cfg
 		discussionCfg.DiscussionInteractive = interactive
 		return leadOfTable(func(stencilsDir string) (seatengine.Table, error) {
-			return DiscussionTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, discussionCfg, reg, "add-json-flag")
+			return DiscussionTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), discussionCfg, reg, "add-json-flag")
 		}, parent)
 	}
 

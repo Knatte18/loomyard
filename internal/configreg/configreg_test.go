@@ -68,13 +68,13 @@ func TestModules_SeedOnlyAndHubWideFlags(t *testing.T) {
 func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 	t.Parallel()
 	wantLocalKeys := map[string][]string{
-		"darn":    {"verify_attempts", "writer", "writer_timeout_min"},
+		"darn":    {"review_hard_max_bounces", "review_max_bounces", "verify_attempts", "writer", "writer_timeout_min"},
 		"landing": {"conflict", "conflict_timeout_min", "describe", "describe_timeout_min"},
 	}
 	wantLocalDenied := map[string][]string{
 		"reed":    {"debug_log", "mouse", "shell", "tmux", "tmux_conf"},
 		"shuttle": {"claude", "claude_deny_agent_tool", "claude_deny_ask_user_question", "claude_deny_python", "run_dir"},
-		"loom":    {"alignment", "alignment_pr_approve", "discussion_advisors", "discussion_auto_accept", "discussion_fan", "discussion_lenses", "merge_auto_accept", "parent_review_wait_min", "plan_auto_accept", "plan_fan", "plan_lenses", "skip_alignment", "skip_merge_review", "webster_auto_accept"},
+		"loom":    {"alignment", "alignment_pr_approve", "discussion_advisors", "discussion_auto_accept", "discussion_fan", "discussion_lenses", "merge_auto_accept", "parent_review_wait_min", "plan_auto_accept", "plan_fan", "plan_lenses", "skip_alignment", "webster_auto_accept"},
 		"burler":  {"fans", "lenses"},
 	}
 	for _, m := range Modules() {
@@ -137,7 +137,7 @@ func TestModules_LocalLayerRefusals(t *testing.T) {
 		wantKey string
 		allowed bool
 	}{
-		{"darn", "review_max_bounces: 0\n", "review_max_bounces", false},
+		{"darn", "review_max_bounces: 0\n", "review_max_bounces", true},
 		{"landing", "require_pr_to_base: false\n", "require_pr_to_base", false},
 		{"reed", "mouse: true\n", "mouse", false},
 		{"loom", "discussion_advisors:\n  - name: critic\n    model: sonnet[low]\n", "discussion_advisors", false},

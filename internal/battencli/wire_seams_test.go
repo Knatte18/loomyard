@@ -283,17 +283,26 @@ func TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree(t *testing.T) {
 	if runs, _, err := c.env.InnerRun.Activity(context.Background()); err == nil || runs != nil || !strings.Contains(err.Error(), "a-slug") {
 		t.Errorf("Activity() runs=%v, error=%v; want the absent-worktree refusal naming the slug", runs, err)
 	}
-
-	// The terminal window seam exists only on a run asked for one, and locates the task worktree before any launcher runs.
-	if c.env.InnerRun.OpenTerminal != nil {
-		t.Errorf("OpenTerminal is set on a run without --open-terminal; want nil")
+	if reading, err := c.env.InnerRun.ArbiterStop(context.Background(), shedengine.Status{}); err == nil || reading.Eligible || !strings.Contains(err.Error(), "a-slug") {
+		t.Errorf("ArbiterStop() eligible=%v, error=%v; want the absent-worktree refusal naming the slug", reading.Eligible, err)
 	}
+
+	// Every switched row reads its flag from the task worktree, and the window opens on it, so each refuses before any launcher runs.
+	for name, enabled := range map[string]func() (bool, error){"OpenWindow": c.env.OpenWindow.Enabled, "SeedIDE": c.env.SeedIDE.Enabled, "OpenIDE": c.env.OpenIDE.Enabled} {
+		if on, err := enabled(); err == nil || on || !strings.Contains(err.Error(), "a-slug") {
+			t.Errorf("%s.Enabled() = %v, %v; want the absent-worktree refusal naming the slug", name, on, err)
+		}
+	}
+	if err := c.env.OpenWindow.Act(context.Background()); err == nil || !strings.Contains(err.Error(), "a-slug") {
+		t.Errorf("OpenWindow.Act() error = %v; want the absent-worktree refusal naming the slug", err)
+	}
+	// --open-terminal turns the window on without reading the task worktree's flag.
 	asked := &battenCLI{openTerminalFlag: true}
 	if err := asked.wire(location, "a-slug"); err != nil {
 		t.Fatalf("wire() error = %v; want nil", err)
 	}
-	if err := asked.env.InnerRun.OpenTerminal(context.Background()); err == nil || !strings.Contains(err.Error(), "a-slug") {
-		t.Errorf("OpenTerminal() error = %v; want the absent-worktree refusal naming the slug", err)
+	if on, err := asked.env.OpenWindow.Enabled(); err != nil || !on {
+		t.Errorf("OpenWindow.Enabled() under --open-terminal = %v, %v; want true, nil", on, err)
 	}
 }
 

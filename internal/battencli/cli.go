@@ -100,12 +100,14 @@ type battenCLI struct {
 	terminalLauncher func() (string, error)
 	// openTerminalFlag carries "run"'s hidden --open-terminal value, which --window passes to the run it starts.
 	openTerminalFlag bool
+	// terminalOpener, when non-nil, replaces this machine's terminal launcher as what the Open-Window row opens its window on dir through, so the open is testable without a desktop.
+	terminalOpener func(dir, title string) error
 }
 
 // windowNamePrefix starts the name of the window "lyx batten run <slug> --window" opens, ahead of the slug.
 const windowNamePrefix = "batten:"
 
-// openTerminalFlagName names the hidden run flag that makes Run-Shed open a terminal window attached to the task worktree once it spawns the task's run.
+// openTerminalFlagName names the hidden run flag that turns the Open-Window row on for the run, whatever batten.yaml's open_window says.
 const openTerminalFlagName = "open-terminal"
 
 // battenVerbTexts carries batten's four shedverbs-driven verbs' Use/Short/Long text.
@@ -141,12 +143,14 @@ window lives as long as the reed session. A window of that name with a live run
 is reported and nothing is started; a second batten for the slug is refused by
 the run's own lock inside the window and read from batten's own log.
 
---window also opens one desktop terminal window, titled with the slug, running
-"lyx reed attach" in the task worktree once the run has spawned the task's own
-run there: Konsole on Linux, Windows Terminal into WSL on WSL. The envelope's
-terminal_window field names the launcher, or says no window is opened when this
-machine has none. A run that already opened its terminal window never opens a
-second one.
+The run's Open-Window row opens one desktop terminal window, titled with the
+slug, running "lyx reed attach" in the task worktree once the task's own run is
+seeded there and before it is spawned: Konsole on Linux, Windows Terminal into
+WSL on WSL. batten.yaml's open_window switches it, and --window turns it on for
+that run. The envelope's terminal_window field names the launcher, or says no
+window is opened when this machine has none. A run resumed past that row opens
+no window. The Seed-IDE and Open-IDE rows after it write the task worktree's VS
+Code config and open VS Code on it, switched by seed_ide and open_ide.
 
 Example:
   lyx batten run some-slug
@@ -290,8 +294,8 @@ Example:
 	// here.
 	runVerb.Flags().StringVar(&c.driverFlag, "driver", shedrun.DriverGo, "the run's own driver (batten has no bootstrap verb, so \"llm\" is refused)")
 	runVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", "", "the driver the task worktree's own inner run uses; unset, the task's driver_kind")
-	runVerb.Flags().BoolVar(&c.windowFlag, "window", false, "start the same run in its own tmux window of the prime's reed session and return at once, and open a terminal window attached to the task worktree once the run reaches it")
-	runVerb.Flags().BoolVar(&c.openTerminalFlag, openTerminalFlagName, false, "open a terminal window attached to the task worktree once the task's run spawns; --window passes it")
+	runVerb.Flags().BoolVar(&c.windowFlag, "window", false, "start the same run in its own tmux window of the prime's reed session and return at once, and have its Open-Window row open a terminal window attached to the task worktree whatever batten.yaml's open_window says")
+	runVerb.Flags().BoolVar(&c.openTerminalFlag, openTerminalFlagName, false, "turn the Open-Window row on for this run whatever batten.yaml's open_window says; --window passes it")
 	_ = runVerb.Flags().MarkHidden(openTerminalFlagName)
 	originalRunE := runVerb.RunE
 	runVerb.RunE = func(cmd *cobra.Command, args []string) error {
@@ -388,7 +392,7 @@ func (c *battenCLI) runInWindow(cmd *cobra.Command) error {
 		}
 	}
 	launcherName, launcherErr := resolveLauncher()
-	terminalWindow := fmt.Sprintf("opens through %s once the task's run is spawned in the task worktree", launcherName)
+	terminalWindow := fmt.Sprintf("opens through %s at the Open-Window row", launcherName)
 	if launcherErr != nil {
 		terminalWindow = fmt.Sprintf("none opened: %v", launcherErr)
 	} else {

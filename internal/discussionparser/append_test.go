@@ -219,3 +219,82 @@ func TestParseAddedDecisions(t *testing.T) {
 		})
 	}
 }
+
+// TestCheckAddedDecisionsKept asserts a record is held to every added entry its history held: each dropped entry is one finding naming its heading, an entry with the same title on another date is distinct, an unparseable heading in the record is a finding, and one in a history version contributes nothing.
+func TestCheckAddedDecisionsKept(t *testing.T) {
+	t.Parallel()
+
+	entry := func(date, title string) string {
+		return "\n### Added after Discussion (alice, " + date + "): " + title + "\n\nDecision: d.\n\nRationale: r.\n"
+	}
+	record := func(entries ...string) []byte {
+		return []byte("## Decisions\n" + strings.Join(entries, ""))
+	}
+	heading := func(date, title string) string {
+		return "### Added after Discussion (alice, " + date + "): " + title
+	}
+
+	tests := []struct {
+		name         string
+		record       []byte
+		versions     [][]byte
+		wantHeadings []string
+		wantParseErr bool
+	}{
+		{name: "no versions", record: record(entry("2026-03-01", "one"))},
+		{
+			name:     "a version whose entry the record keeps",
+			record:   record(entry("2026-03-01", "one")),
+			versions: [][]byte{record(entry("2026-03-01", "one"))},
+		},
+		{
+			name:         "two entries in history and the record dropping one",
+			record:       record(entry("2026-03-01", "one")),
+			versions:     [][]byte{record(entry("2026-03-01", "one"), entry("2026-03-02", "two"))},
+			wantHeadings: []string{heading("2026-03-02", "two")},
+		},
+		{
+			name:         "the same title on another date is a distinct entry",
+			record:       record(entry("2026-03-02", "one")),
+			versions:     [][]byte{record(entry("2026-03-01", "one"))},
+			wantHeadings: []string{heading("2026-03-01", "one")},
+		},
+		{
+			name:         "dropped entries come in order of first appearance across versions",
+			record:       record(),
+			versions:     [][]byte{record(entry("2026-03-02", "two")), record(entry("2026-03-01", "one"), entry("2026-03-02", "two"))},
+			wantHeadings: []string{heading("2026-03-02", "two"), heading("2026-03-01", "one")},
+		},
+		{
+			name:         "an unparseable heading in the record is a finding",
+			record:       []byte("## Decisions\n\n### Added after Discussion (alice): t\n"),
+			versions:     [][]byte{record(entry("2026-03-01", "one"))},
+			wantParseErr: true,
+		},
+		{
+			name:     "an unparseable heading in a version contributes nothing",
+			record:   record(),
+			versions: [][]byte{[]byte("## Decisions\n\n### Added after Discussion (alice): t\n")},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := CheckAddedDecisionsKept(tt.record, tt.versions)
+			if tt.wantParseErr {
+				if len(got) != 1 || got[0].Check != checkAddedDecisionDropped || !strings.Contains(got[0].Detail, "line 3") {
+					t.Fatalf("CheckAddedDecisionsKept() = %+v; want one finding carrying the parse error naming line 3", got)
+				}
+				return
+			}
+			if len(got) != len(tt.wantHeadings) {
+				t.Fatalf("CheckAddedDecisionsKept() = %+v; want %d findings", got, len(tt.wantHeadings))
+			}
+			for i, want := range tt.wantHeadings {
+				if got[i].Check != checkAddedDecisionDropped || !strings.Contains(got[i].Detail, want) {
+					t.Errorf("finding %d = %+v; want check %q naming %q", i, got[i], checkAddedDecisionDropped, want)
+				}
+			}
+		})
+	}
+}

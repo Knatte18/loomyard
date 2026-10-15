@@ -3,7 +3,8 @@
      Every marker below is a top-level {{.X}} substitution and every one is required non-empty:
      {{.point}} is `parent-review` or `pr-gate`, which selects the read and judge lists below,
      {{.slug}} the task whose run is judged, {{.worktree}} the directory every command runs in,
-     {{.decision_record_path}}, {{.support_log_path}} and {{.plan_dir}} the task's discussion and plan,
+     {{.decision_record_path}}, {{.support_log_path}} and {{.plan_dir}} the task's discussion and plan ({{.plan_dir}} reads `none` for a run with no plan),
+     {{.pr_gate_measure}} the pr-gate measure, a registered fragment the run's wiring tells,
      {{.brief_path}} the parent-review brief, {{.pr_number}} the pull request and {{.head_sha}} its head (each the literal `none` when the point has none),
      {{.parent_branch}} the branch the run lands on,
      {{.verdict_path}} and {{.report_path}} the only two files the agent writes, {{.review_format_path}} the format of the report,
@@ -48,8 +49,8 @@ At `parent-review`, judge the design against the board entry's goal and Done-whe
 A scope deviation is a goal or Done-when point left out, work that belongs to another entry, or a direction the entry rules out.
 Design details are not yours to judge; the review segment right after you reviews those.
 
-At `pr-gate`, judge the run against its board entry's goal and the decisions recorded in the decision record, including the open risks carried over from `Merge-Review`.
-A scope deviation is a change the goal does not call for, a goal point the change leaves out, or a recorded decision the change breaks.
+At `pr-gate`, read the open risks the review segments carried over into the decision record as part of the run.
+{{.pr_gate_measure}}
 
 At both points, also check overlap with every other run `lyx loom peers` lists and with the parent's commits it lists.
 

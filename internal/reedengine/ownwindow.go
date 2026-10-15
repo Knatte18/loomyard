@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
@@ -321,10 +322,11 @@ func relevantWindow(st *ReedState, windows []sessionWindow, panes []windowPane, 
 	return ""
 }
 
-// newAgentWindowSelected reports whether a new agent window takes the viewer who is on window current.
-// A focus strand always does; any other takes it only from the overview window or from an agent window whose every pane is dead.
-// The shell, a live agent window and any other window keep the viewer.
-func newAgentWindowSelected(st *ReedState, panes []windowPane, current string, focus bool) bool {
+// newAgentWindowSelected reports whether a new agent window takes the viewer who is on window current, deciding from the windows and panes listed before it opens.
+// A focus strand always does.
+// Any other takes it from the overview window, from an agent window whose every pane is dead, from the relevant window and from a window holding a live driver pane, so a viewer following the run follows the newest agent.
+// The shell, an older live agent window and any other window keep the viewer, since an operator moved there by hand.
+func newAgentWindowSelected(st *ReedState, windows []sessionWindow, panes []windowPane, current string, focus bool) bool {
 	if focus {
 		return true
 	}
@@ -332,10 +334,32 @@ func newAgentWindowSelected(st *ReedState, panes []windowPane, current string, f
 		return false
 	}
 	live, bound, overview := agentWindowPanes(st, panes, nil)
-	return current == overview || (bound[current] && !live[current])
+	return current == overview || (bound[current] && !live[current]) ||
+		current == relevantWindow(st, windows, panes, nil) || driverWindows(st, panes)[current]
 }
 
-// newAgentWindowTakesViewerLocked reports whether a new agent window opened now takes the viewer, reading the session's current window and panes before the window exists.
+// driverWindows returns each agent window holding a pane that is not dead and is bound to an own-window strand whose role is the driver role.
+// A driver placed in the strands' window yields none, so the shell window never passes the viewer on.
+func driverWindows(st *ReedState, panes []windowPane) map[string]bool {
+	driverPanes := make(map[string]bool)
+	for _, s := range st.Strands {
+		if s.PaneID == "" || s.Display.Anchor != render.AnchorOwnWindow {
+			continue
+		}
+		if parsed, err := agentname.Parse(s.Name); err == nil && agentname.MatchesRole(parsed.Role, agentname.RoleDriver) {
+			driverPanes[s.PaneID] = true
+		}
+	}
+	windows := make(map[string]bool)
+	for _, p := range panes {
+		if driverPanes[p.PaneID] && !p.Dead {
+			windows[p.WindowID] = true
+		}
+	}
+	return windows
+}
+
+// newAgentWindowTakesViewerLocked reports whether a new agent window opened now takes the viewer, reading the session's current window, windows and panes before the window exists.
 // A focus strand needs no read.
 // A failed read keeps the viewer and is logged at Warn.
 func (e *Engine) newAgentWindowTakesViewerLocked(st *ReedState, focus bool) bool {
@@ -347,12 +371,17 @@ func (e *Engine) newAgentWindowTakesViewerLocked(st *ReedState, focus bool) bool
 		logger.Warn("reed: could not read the current window, a new agent window keeps the viewer where it is", "socket", e.Socket(), "session", e.SessionName(), "err", err)
 		return false
 	}
+	windows, err := e.tmux.listSessionWindows(e.SessionName())
+	if err != nil {
+		logger.Warn("reed: could not list the session's windows, a new agent window keeps the viewer where it is", "socket", e.Socket(), "session", e.SessionName(), "err", err)
+		return false
+	}
 	panes, err := e.tmux.listWindowPanes(e.SessionName())
 	if err != nil {
 		logger.Warn("reed: could not list the session's panes, a new agent window keeps the viewer where it is", "socket", e.Socket(), "session", e.SessionName(), "err", err)
 		return false
 	}
-	return newAgentWindowSelected(st, panes, current, false)
+	return newAgentWindowSelected(st, windows, panes, current, false)
 }
 
 // currentWindowLocked returns the id of the session's current window.

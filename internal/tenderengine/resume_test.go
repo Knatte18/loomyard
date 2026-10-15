@@ -134,6 +134,49 @@ func TestResume(t *testing.T) {
 				t.Errorf("live entries = %+v; want the hub entry untouched", live)
 			}
 		}},
+		{"a lift by identity lifts the hub entry alone, gives its sessions their line and leaves a slug entry live", func(t *testing.T) {
+			p1 := newPair("p1", "a")
+			e := newEnv(t, p1, newPair("p2"))
+			hub := hubEntry(e.clock.Now(), recorded("p1", "a"), pauserecord.Session{GUID: "orch-guid", Orch: true})
+			slug := pauserecord.Entry{Scope: "p2", PausedAt: e.clock.Now(), GraceEnd: e.clock.Now(), Caller: "EXTERNAL", Sessions: []pauserecord.Session{}}
+			e.seedLive(hub, slug)
+
+			report, err := Lift(e.deps(), EntryRef{Scope: hub.Scope, Caller: hub.Caller, PausedAt: hub.PausedAt})
+
+			if err != nil || !reflect.DeepEqual(report.Resumed, []string{pauserecord.ScopeHub}) || !reflect.DeepEqual(report.Lines, []string{"a"}) || !report.OrchLeftToWatcher {
+				t.Fatalf("report %+v, err %v; want the hub entry lifted, a given its line and the orch left to its watcher", report, err)
+			}
+			if !reflect.DeepEqual(p1.sends, []string{"g-a"}) {
+				t.Errorf("sends = %v; want one line for a", p1.sends)
+			}
+			if live := e.record().Live; len(live) != 1 || live[0].Scope != "p2" {
+				t.Errorf("live entries = %+v; want the p2 entry alone", live)
+			}
+		}},
+		{"a lift whose ref matches no live entry resumes nothing and sends nothing", func(t *testing.T) {
+			later := newFakeClock().Now().Add(time.Hour)
+			refs := []struct {
+				name string
+				ref  EntryRef
+			}{
+				{"an entry no longer live while a later hub entry stands", EntryRef{Scope: pauserecord.ScopeHub, Caller: "EXTERNAL", PausedAt: later.Add(-time.Minute)}},
+				{"the live entry's scope and time under another caller", EntryRef{Scope: pauserecord.ScopeHub, Caller: "someone-else", PausedAt: later}},
+			}
+			for _, tc := range refs {
+				p := newPair("p1", "a")
+				e := newEnv(t, p)
+				e.seedLive(hubEntry(later, recorded("p1", "a")))
+
+				report, err := Lift(e.deps(), tc.ref)
+
+				if err != nil || len(report.Resumed)+len(report.Lines)+len(report.Moved)+len(report.NoLine) != 0 || len(p.sends) != 0 {
+					t.Errorf("%s: report %+v, err %v, sends %v; want nothing lifted", tc.name, report, err, p.sends)
+				}
+				if live := e.record().Live; len(live) != 1 || len(live[0].Sessions) != 1 {
+					t.Errorf("%s: live entries = %+v; want the hub entry live with its session", tc.name, live)
+				}
+			}
+		}},
 		{"resuming nothing succeeds with nothing resumed", func(t *testing.T) {
 			e := newEnv(t, newPair("p1"))
 			for _, slug := range []string{"", "p1"} {

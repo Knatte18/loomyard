@@ -28,6 +28,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -49,6 +50,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
+	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -102,7 +104,8 @@ producers:
 // The wait's sleep is a counter and the pause seam reports a pause from the first check on, so a stubbed child that never changes makes the wait return after one check; a test that wants a longer wait replaces either.
 func wireForHub(t *testing.T, h *hubforge.Hub, slug string, readStatus func(statusPath, statusLockPath string) (shedengine.Status, bool, error)) *battenCLI {
 	t.Helper()
-	c := &battenCLI{location: h.Location}
+	// The Open-Window row opens no desktop window from a test.
+	c := &battenCLI{location: h.Location, terminalOpener: func(dir, title string) error { return nil }}
 	if err := c.wire(h.Location, slug); err != nil {
 		t.Fatalf("wire(%s): %v", slug, err)
 	}
@@ -186,6 +189,7 @@ func pathExists(path string) bool {
 // TestBattenIntegration_RunReconcilesTheHubBeforeAndThePairAfterCreating pins both reconcile calls of `lyx batten run`.
 // With a fresh stamp the first call is a no-op, so the new pair losing the prime's retired key can only come from the unconditional pair call after the create row.
 // Against an absent stamp, `arm` for run reconciles ahead of armAt's non-prime refusal and its auto-seed.
+// The create row opens no terminal window; on the new pair the switched rows read batten.yaml's template flags, the Open-Window seam opens the window on the pair, and the Seed-IDE seam writes the pair's VS Code config and leaves the pair clean.
 func TestBattenIntegration_RunReconcilesTheHubBeforeAndThePairAfterCreating(t *testing.T) {
 	t.Parallel()
 
@@ -207,12 +211,52 @@ func TestBattenIntegration_RunReconcilesTheHubBeforeAndThePairAfterCreating(t *t
 	retired := strings.Replace(batcher.Template(), "orientation: 31400", "master_base: 52000", 1)
 	gitkit.CommitFile(t, h.PrimeRecords(), configengine.ConfigFileRel("batcher"), retired, "fixture: retired key")
 
-	c := wireForHub(t, h, slug, nil)
+	var opened []string
+	c := &battenCLI{location: h.Location, terminalOpener: func(dir, title string) error {
+		opened = append(opened, dir+" "+title)
+		return nil
+	}}
+	if err := c.wire(h.Location, slug); err != nil {
+		t.Fatalf("wire(%s): %v", slug, err)
+	}
 	if err := c.env.CreateWorktree(context.Background()); err != nil {
 		t.Fatalf("CreateWorktree: %v", err)
 	}
 
 	pair := h.PairCodeWorktree(slug)
+	if err := c.env.CreateWorktree(context.Background()); err != nil {
+		t.Fatalf("CreateWorktree re-entered on the complete pair: %v", err)
+	}
+	if len(opened) != 0 {
+		t.Errorf("terminal windows opened by the create row = %q; want none", opened)
+	}
+	for name, want := range map[string]struct {
+		action shedadapters.SwitchedAction
+		on     bool
+	}{"OpenWindow": {c.env.OpenWindow, true}, "SeedIDE": {c.env.SeedIDE, true}, "OpenIDE": {c.env.OpenIDE, false}} {
+		if on, err := want.action.Enabled(); err != nil || on != want.on {
+			t.Errorf("%s.Enabled() = %v, %v; want %v, nil from batten.yaml's template", name, on, err, want.on)
+		}
+	}
+	if err := c.env.OpenWindow.Act(context.Background()); err != nil {
+		t.Fatalf("OpenWindow.Act: %v", err)
+	}
+	if want := []string{pair + " " + slug}; !slices.Equal(opened, want) {
+		t.Errorf("terminal windows opened = %q; want %q", opened, want)
+	}
+	if err := c.env.SeedIDE.Act(context.Background()); err != nil {
+		t.Fatalf("SeedIDE.Act: %v", err)
+	}
+	if !pathExists(filepath.Join(pair, ".vscode", "tasks.json")) {
+		t.Errorf("SeedIDE.Act wrote no .vscode/tasks.json in %s", pair)
+	}
+	if status := gitkit.GitStatusPorcelain(t, pair); status != "" {
+		t.Errorf("new pair's task worktree is dirty after the IDE seed:\n%s", status)
+	}
+	// The create row spawns the new pair's push once, and the re-entered row on the complete pair spawns none.
+	if got := pairPushCounts.count(pair); got != 1 {
+		t.Errorf("pair pushes spawned for %s = %d; want 1", pair, got)
+	}
 	if data, err := os.ReadFile(configengine.ConfigFile(pair, "batcher")); err != nil || strings.Contains(string(data), "master_base") {
 		t.Errorf("new pair's batcher.yaml still carries the retired key (err %v)", err)
 	}
@@ -424,7 +468,7 @@ func stepRealReadStatus_OnAFreshPairReportsAbsentRatherThanErroring(t *testing.T
 	}
 }
 
-// stepFourRowRun_SeedsChildCommitsAndTearsDown drives a spawn stub plus a read-status answering StateDone through the whole row list one row at a time: Worktree-Create, Seed-Child, Run-Shed, Land, Worktree-Teardown.
+// stepFourRowRun_SeedsChildCommitsAndTearsDown drives a spawn stub plus a read-status answering StateDone through the whole row list one row at a time: Worktree-Create, Seed-Child, the three switched rows, Run-Shed, Land, Worktree-Teardown.
 // It asserts the pair exists on disk after the create row, that the child's own _lyx/shed/<slug>/seed.json exists after the seed row, names the Board task's own "type" as its recipe, carries the pair's recorded parent branch as params.parent, and is committed (not merely written) on the child's own records pair, and that the pair is gone after the teardown row.
 // It runs once per recipe a child may run.
 func stepFourRowRun_SeedsChildCommitsAndTearsDown(t *testing.T, h *hubforge.Hub) {
@@ -493,6 +537,16 @@ func fourRowRunForRecipe(t *testing.T, h *hubforge.Hub, recipe string) {
 	committedData := gitShow(t, recordsPath, "HEAD:"+seedRel)
 	if !bytes.Equal(committedData, seedData) {
 		t.Errorf("committed seed at HEAD:%s = %q; want it to match the working-tree seed %q", seedRel, committedData, seedData)
+	}
+
+	for _, row := range []string{battenrecipe.NameOpenWindow, battenrecipe.NameSeedIDE, battenrecipe.NameOpenIDE} {
+		step, err := shed.Step(ctx)
+		if err != nil || step.Producer != row || step.Outcome != shedengine.Done {
+			t.Fatalf("Step (%s) = producer %q outcome %q, %v; want %q Done", row, step.Producer, step.Outcome, err, row)
+		}
+	}
+	if !pathExists(filepath.Join(pairPath, ".vscode", "settings.json")) {
+		t.Errorf("Seed-IDE wrote no .vscode/settings.json in %s", pairPath)
 	}
 
 	if _, err := shed.Step(ctx); err != nil {
@@ -1338,6 +1392,18 @@ func stepStopReport_ReadsTheParkMarkersContentAndTime(t *testing.T, h *hubforge.
 	if err != nil {
 		t.Fatalf("resolve child location: %v", err)
 	}
+	// The Go driver's start report is written before its tackler or arbiter runs; it is no park marker, so it cannot end the eligible-stop hold.
+	reportsDir := shedrun.DriveReportsDir(childLocation, shedrun.SelfRunID)
+	if err := os.MkdirAll(reportsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(reportsDir, "drive-1.md"), []byte("start report\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if path, _, found, err := c.env.InnerRun.StopReport(); err != nil || found {
+		t.Fatalf("StopReport() = %q, found=%v, %v with only a drive report on disk; want none", path, found, err)
+	}
+
 	marker := shedrun.ParkMarker(childLocation, shedrun.SelfRunID)
 	if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
 		t.Fatal(err)

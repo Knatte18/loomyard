@@ -19,7 +19,7 @@ func TestRegistry_NamesAndDefaults(t *testing.T) {
 
 	reg := Registry()
 
-	want := []string{"loom-plan-spec", "loom-final-summary-spec"}
+	want := []string{"loom-plan-spec", "loom-final-summary-spec", "loom-discussion-spec"}
 	got := reg.Names()
 	if len(got) != len(want) {
 		t.Fatalf("Registry().Names() = %v; want %v", got, want)
@@ -46,9 +46,8 @@ func TestRegistry_NamesAndDefaults(t *testing.T) {
 	}
 }
 
-// TestRegistry_RelPathPlacesBothUnderLoomFamily verifies stencilstore.RelPath places both
-// registered names under one loom/ family directory -- the assertion that fails loudly if a future
-// rename reintroduces a one-file family directory.
+// TestRegistry_RelPathPlacesBothUnderLoomFamily verifies stencilstore.RelPath places every registered spec under one loom/ family directory.
+// It fails loudly if a future rename reintroduces a one-file family directory.
 func TestRegistry_RelPathPlacesBothUnderLoomFamily(t *testing.T) {
 	tests := []struct {
 		name string
@@ -56,6 +55,7 @@ func TestRegistry_RelPathPlacesBothUnderLoomFamily(t *testing.T) {
 	}{
 		{"loom-plan-spec", "loom/loom-plan-spec.md"},
 		{"loom-final-summary-spec", "loom/loom-final-summary-spec.md"},
+		{"loom-discussion-spec", "loom/loom-discussion-spec.md"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

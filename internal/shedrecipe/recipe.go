@@ -110,7 +110,7 @@ type Env struct {
 	// It is set on each row of a segment holding a Bouncer row, because the recipe declares no max_bounces there.
 	ReviewMaxBounces int
 	// RowMaxBounces is the bounce budget of each review segment, keyed by the segment's Bouncer row name as RowBouncerModels is, read by loomrecipe alone.
-	// A nil map, a missing entry and 0 take ReviewMaxBounces.
+	// A nil map and a missing entry take ReviewMaxBounces, and an entry of 0 gives the perch zero rounds.
 	RowMaxBounces map[string]int
 	// RowAutoAccept is the auto-accept flag of each Bouncer row, keyed by row name; a nil map and a missing entry mean false.
 	// A Bouncer told true accepts a harvested round at a spent bounce budget instead of running the soft-cap rule.
@@ -165,9 +165,13 @@ type Env struct {
 	// It arrives as a closure rather than as recipe Config because building the table needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing directly.
 	// It is named per-producer rather than carried in a generic keyed map because Env already carries per-producer named fields.
 	DiscussionTable shedadapters.TableSource
-	// CommitDiscussion is the injected closure that commits the discussion output directory,
-	// invoked by the commit decorator of every entry that wraps a discussion producer on a Done outcome.
+	// CommitDiscussion is the injected closure that commits the discussion output directory.
+	// The commit decorator of every entry that wraps a discussion producer invokes it on a Done outcome.
+	// The "discussion" gate invokes it when it passes on a darn run.
 	CommitDiscussion func() error
+	// DiscussionHistory returns every committed version of the decision record, newest first.
+	// Only the darn wiring sets it, together with CommitDiscussion; nil on a loom run, where the "discussion" gate resolves to the loom form.
+	DiscussionHistory func() ([][]byte, error)
 	// DescribeTable is the injected shedadapters.TableSource the Describe entry evaluates once per Call.
 	// It arrives as a closure rather than as recipe Config because building the table needs the fabric's landing geometry, which the Shed Recipe Registry Invariant bars this package from deriving;
 	// internal/loomcli's wire() is what supplies it.
@@ -198,8 +202,6 @@ type Env struct {
 	// MergeReview returns the merge record note the Merge-Review rubric renders, read by the BurlerReview and Bouncer entries each time a segment builds its producers.
 	// Nil renders `none`.
 	MergeReview func() string
-	// MergeReviewOff is loom.yaml's skip_merge_review, which routes the recipe's Merge-In row straight to Publish.
-	MergeReviewOff bool
 	// CarryOver is the injected closure that writes and commits one review segment's carry-over entry into the decision record, read by the Bouncer entry's carry_over key.
 	// It is run-wide, and the entry the Bouncer passes names its own segment.
 	CarryOver func(discussionparser.CarryOver) error
@@ -269,4 +271,11 @@ type Env struct {
 	// PrimeLock is the told hub-scoped advisory lock WorktreeCreate and WorktreeTeardown both
 	// acquire, read by those two bookend entries only.
 	PrimeLock battenshed.PrimeLock
+
+	// OpenWindow is the switched seam pair the OpenWindow entry reads: the run's flag and the opening of its terminal window.
+	OpenWindow shedadapters.SwitchedAction
+	// SeedIDE is the switched seam pair the SeedIDE entry reads: the run's flag and the writing of the pair's IDE config.
+	SeedIDE shedadapters.SwitchedAction
+	// OpenIDE is the switched seam pair the OpenIDE entry reads: the run's flag and the opening of the IDE on the pair.
+	OpenIDE shedadapters.SwitchedAction
 }

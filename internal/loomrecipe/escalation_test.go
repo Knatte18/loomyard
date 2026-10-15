@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -40,7 +41,7 @@ func newEscalationShed(t *testing.T) (*shedengine.Shed, string, *shedfake.Burler
 		if err != nil || !found {
 			return 0, 0, false, err
 		}
-		routing, err := Routing(budgetEscalationBudget, nil, false)
+		routing, err := Routing(budgetEscalationBudget, nil)
 		if err != nil {
 			return 0, 0, false, err
 		}
@@ -72,8 +73,8 @@ func (p *haltingProducer) Call(context.Context) (shedengine.Outcome, shedengine.
 	return shedengine.Stuck, shedengine.OutputPointer{Reason: "halting fake"}, nil
 }
 
-// TestEscalation_DarnPerchRuleContinuesThenHardCapAcceptReachesDescribe drives a darn run's Darn-Review perch past darn.yaml's default budget of 1 under a hard cap of 2, with no decision record on disk:
-// the soft-cap rule continues round 1 automatically, the Bouncer escalates at the hard cap to the parent with a rendered brief instead of blocking, writes no decision record, and an accept settles the perch onto Describe.
+// TestEscalation_DarnPerchRuleContinuesThenHardCapAcceptReachesDescribe drives a darn run's Darn-Review perch past darn.yaml's default budget of 1 under a hard cap of 2:
+// the soft-cap rule continues round 1 automatically, the Bouncer escalates at the hard cap to the parent with a rendered brief instead of blocking, and an accept settles the perch onto Describe and files the open finding under Darn-Review.
 func TestEscalation_DarnPerchRuleContinuesThenHardCapAcceptReachesDescribe(t *testing.T) {
 	env, paths := testEnv(t)
 	// A round's review path must sit under the anchor.
@@ -85,6 +86,11 @@ func TestEscalation_DarnPerchRuleContinuesThenHardCapAcceptReachesDescribe(t *te
 		t.Fatalf("Seed(): %v", err)
 	}
 	designWrongBouncerJudge(env)
+	var carried []discussionparser.CarryOver
+	env.CarryOver = func(entry discussionparser.CarryOver) error {
+		carried = append(carried, entry)
+		return nil
+	}
 	env.RowHardMaxBounces = map[string]int{loomshed.NameDarnBouncer: 2}
 	env.SegmentBounces = func(row string) (int, int, bool, error) {
 		st, found, err := state.ReadJSONNoMkdir[shedengine.Status](env.StatusPath, env.StatusLockPath)
@@ -127,9 +133,6 @@ func TestEscalation_DarnPerchRuleContinuesThenHardCapAcceptReachesDescribe(t *te
 	if st, _, err := state.ReadJSONNoMkdir[shedengine.Status](env.StatusPath, env.StatusLockPath); err != nil || st.ParentNotice == "" {
 		t.Errorf("status ParentNotice = %q, %v; want the Bouncer's one-line notice", st.ParentNotice, err)
 	}
-	if _, err := os.Stat(env.DecisionRecordPath); !errors.Is(err, fs.ErrNotExist) {
-		t.Errorf("Stat(decision record) = %v; want not-exist, since a darn run has none", err)
-	}
 
 	if _, cause, err := shedadapters.RecordCirclingDecision(runDir, shedadapters.CirclingAccept); err != nil || cause != shedadapters.EscalationHardCap {
 		t.Fatalf("RecordCirclingDecision(accept) = _, %q, %v; want %q, nil", cause, err, shedadapters.EscalationHardCap)
@@ -141,8 +144,8 @@ func TestEscalation_DarnPerchRuleContinuesThenHardCapAcceptReachesDescribe(t *te
 	if result.HaltedProducer != loomshed.NameDescribe || describe.calls != 1 {
 		t.Errorf("Run() after accept halted at %q with Describe called %d times; want it to settle the perch and run Describe once", result.HaltedProducer, describe.calls)
 	}
-	if _, err := os.Stat(env.DecisionRecordPath); !errors.Is(err, fs.ErrNotExist) {
-		t.Errorf("Stat(decision record) after accept = %v; want not-exist", err)
+	if len(carried) != 1 || carried[0].Segment != "Darn-Review" || len(carried[0].Findings) != 1 || carried[0].Findings[0].Key != "design-gap" {
+		t.Errorf("carry-over entries = %+v; want one for Darn-Review holding the open design-gap finding", carried)
 	}
 }
 
@@ -274,7 +277,7 @@ func TestEscalation_PerchBudgetOneWithAutoAccept(t *testing.T) {
 				if err != nil || !found {
 					return 0, 0, false, err
 				}
-				routing, err := Routing(env.ReviewMaxBounces, rowBudgets, false)
+				routing, err := Routing(env.ReviewMaxBounces, rowBudgets)
 				if err != nil {
 					return 0, 0, false, err
 				}
