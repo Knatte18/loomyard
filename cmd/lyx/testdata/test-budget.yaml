@@ -63,7 +63,7 @@ internal/logger: 37
 internal/loggerconfig: 3
 internal/loomcli: 237
 internal/loomengine: 58
-internal/loomrecipe: 54
+internal/loomrecipe: 55
 internal/loomshed: 76
 internal/lyxcwd: 23
 internal/lyxtemp: 7

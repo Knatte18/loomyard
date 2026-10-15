@@ -22,6 +22,9 @@
 // A budget of 0 turns the perch off: both route `Darn-Write`'s Done straight to Publish, so a run reaches neither the perch's rows nor the `Describe` row after them, and the writer's own change description stands.
 // DarnRetiredRows maps the writer row's former name, `Darn`, onto `Darn-Write`, so the caller can carry a darn run parked under the old name across with shedengine.RenameProducers.
 //
+// Rows and RowNames serve the loom, darn and batten recipes, and EntryNumbers numbers any recipe's rows for the panes that draw them:
+// a review segment is one entry and every other row its own, so a recipe added to Rows is numbered with no change to its readers.
+//
 // This package sits above internal/loomshed rather than inside it because internal/shedrecipe's
 // registry already imports loomshed for six of its constructors -- a loomshed -> shedbuild ->
 // shedrecipe -> loomshed production import cycle would not compile.
