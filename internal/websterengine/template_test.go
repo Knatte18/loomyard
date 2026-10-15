@@ -846,13 +846,14 @@ func TestRenderPrompts(t *testing.T) {
 			root, stencilsDir := testLayout(t)
 			text, err := renderRecovery(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", "", "")
 			return promptCheck{text: text, err: err,
-				contains:    []string{"00-overview.md", alpha.Cards[0].SourcePath, "## Your final action: the minimal batch-report"},
-				notContains: []string{"CONSTRAINTS.md", "{{", "## Constraints"}}
+				contains: []string{"00-overview.md", alpha.Cards[0].SourcePath, "## Your final action: the minimal batch-report",
+					"what an in-session fork inherits from Master, the plan's framing and the repo's rules, and no code", "you read per card"},
+				notContains: []string{"CONSTRAINTS.md", "{{", "## Constraints", "Orient to the codebase"}}
 		}},
 		{"recovery carries the PATTERN overview when PATTERN is active", func(t *testing.T) promptCheck {
 			root, stencilsDir := patternActiveLayout(t)
 			text, err := renderRecovery(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", "", "")
-			return promptCheck{text: text, err: err, contains: []string{"some constraints", "## Constraints"}}
+			return promptCheck{text: text, err: err, contains: []string{"some constraints", "## Constraints", "the constraints section above points at, when that section is present"}}
 		}},
 		{"recovery reads PATTERN.md from the told repo root", func(t *testing.T) promptCheck {
 			repoRoot, stencilsDir := patternActiveLayout(t)

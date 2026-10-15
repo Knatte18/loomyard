@@ -781,6 +781,11 @@ var wordingClaims = []stencilClaims{
 			"You continue from the committed tree plus the uncommitted work listed under \"What the worktree holds\" below, not from scratch."),
 		wantAll("a path no session of the run wrote is left untouched and never staged or committed, so the strand cannot sweep foreign work into its commits",
 			"Under \"Not written by this run\": leave it untouched, and never stage or commit it."),
+		wantAll("the cold strand orients to what an in-session fork inherits, the overview and the rules, and reads its code per card",
+			"the `pattern/` background files the constraints section above points at, when that section is present",
+			"you read per card",
+			"what an in-session fork inherits from Master, the plan's framing and the repo's rules, and no code"),
+		wantNone("the retired up-front codebase orientation", "Orient to the codebase", "exactly like an in-session fork already holds it from Master"),
 		droppedConceptClaims(),
 	)},
 	{"webster-body-verify-fix.md", WebsterBodyVerifyFix, joinClaims(
