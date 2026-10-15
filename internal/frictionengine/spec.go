@@ -31,7 +31,7 @@ var frictionSkills = []string{"scribe:prose"}
 // of note file names the scan found, and reportPath is the agent's mandatory output file.
 //
 // It follows mergeresolve.buildConflictSpec's exact resolution shape: modelspec.Parse(deps.FrictionSpec),
-// then deps.Registry.Resolve(parsed), then Model/Effort/Version off the resolved value. The prompt is
+// then deps.Registry.Resolve(parsed), then shuttleengine.NewModelChoice(resolved). The prompt is
 // read from deps.StencilsDir via stencilstore.Read and filled with stencil.Fill — never composed from
 // a Go string literal, per the Stencil Ownership Invariant.
 //
