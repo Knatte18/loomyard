@@ -1,0 +1,42 @@
+arm	n	runs	cards
+base_off	114	43	512
+base_on	41	15	180
+mid	9	3	42
+raf	29	13	125
+
+metric	base_off	base_on	mid	raf
+pre_edit raw med	7	7	7	8
+pre_edit/card med	1.6	1.8	1.2	1.8
+ex_tools/card med	5.2	5.8	6	5.8
+ex_grep/card med	4	3.2	3.5	2.8
+ex_reads/card med	5.7	6	7	5.3
+gmem/card med	6.5	5.5	4	5
+grep/card med	9.9	9	6.8	7.7
+quarry/card med	0	0	0	0
+rfull/card med	3.5	2.8	2.6	2
+rpart/card med	8.3	9.3	6.5	7.8
+reads/card med	12.3	12	10.3	9.8
+tools/card med	30.6	36.5	36.5	32.5
+turns/card med	17.4	18.2	17.3	14.7
+out/card med	13190.5	13570.4	12600	11556.6
+fresh_in/card med	40679.5	42966.8	41304.8	39127.7
+cache_read/card med	2781616.8	3244738.7	2846784.5	2402766.3
+ex_tools pooled/card	5.9	5.9	6.9	5.5
+rfull pooled/card	3.7	3	2.7	2.2
+rpart pooled/card	9.4	10.6	8.9	8.5
+grep pooled/card	9.9	9.5	9	8.1
+reads pooled/card	13.1	13.5	11.5	10.6
+turns pooled/card	18.4	20.3	16.6	16
+out pooled/card	13749.4	16801.3	13364.4	14070.5
+rfull_pre raw med	3	3	3	5
+rpart_pre raw med	4	4	6	3
+grep_pre raw med	4	3	5	3
+quarry_pre raw med	0	0	0	0
+forks w/ quarry>0	19	1	0	0
+pack_res med	-	39	28	31
+pack_unres med	-	0	11	13
+pack_res/card med	-	8.7	6	7.2
+pack_unres/card med	-	0	2.2	3.5
+unres share pooled	-	0%	36%	35%
+pack_res==0 forks	0	0	0	0
+edits/fork med	61.5	70	98	65
