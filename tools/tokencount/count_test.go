@@ -2,116 +2,224 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 )
 
-func writeLines(t *testing.T, path string, lines ...string) {
-	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
+// fakeEngine is the name of the engine oneEngine and fakeReadSet register.
+const fakeEngine = "fake"
+
+// fakeRates are the fake engine's USD per million tokens of every kind, by model.
+var fakeRates = fakePricer{"model-a": 20, "model-b": 10}
+
+// fakeTranscripts is an in-memory transcript reader: located sessions keyed by worktree and session reads keyed by session Ref.
+// A locateErr fails every locate, and a readErrs entry fails the read of its Ref.
+type fakeTranscripts struct {
+	located   map[string][]shuttleengine.LocatedSession
+	reads     map[string]shuttleengine.SessionRead
+	locateErr error
+	readErrs  map[string]error
+}
+
+func newFakeTranscripts() fakeTranscripts {
+	return fakeTranscripts{
+		located:  map[string][]shuttleengine.LocatedSession{},
+		reads:    map[string]shuttleengine.SessionRead{},
+		readErrs: map[string]error{},
 	}
-	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
-		t.Fatal(err)
+}
+
+// add locates read under worktree with the given modification time; its Ref is the worktree and the main read's ID.
+func (f fakeTranscripts) add(worktree string, modified time.Time, read shuttleengine.SessionRead) {
+	located := shuttleengine.LocatedSession{
+		TranscriptRef: shuttleengine.TranscriptRef{ID: read.Main.ID, Ref: worktree + "/" + read.Main.ID},
+		Modified:      modified,
 	}
+	for _, fork := range read.Forks {
+		located.Forks = append(located.Forks, shuttleengine.TranscriptRef{ID: fork.ID, Ref: located.Ref + "/" + fork.ID})
+	}
+	f.located[worktree] = append(f.located[worktree], located)
+	f.reads[located.Ref] = read
 }
 
-func assistant(id, model string, out, read int) string {
-	return `{"type":"assistant","message":{"id":"` + id + `","model":"` + model +
-		`","usage":{"input_tokens":1,"output_tokens":` + strconv.Itoa(out) +
-		`,"cache_creation_input_tokens":0,"cache_read_input_tokens":` + strconv.Itoa(read) + `}}}`
+func (f fakeTranscripts) LocateSessions(worktree string) ([]shuttleengine.LocatedSession, error) {
+	if f.locateErr != nil {
+		return nil, f.locateErr
+	}
+	return slices.Clone(f.located[worktree]), nil
 }
 
-// toolResult is a user transcript line at ts holding one tool result whose content is contentJSON, a JSON string or list.
-func toolResult(ts, contentJSON string) string {
-	return toolResultFor("t", ts, contentJSON)
+func (f fakeTranscripts) ReadSession(s shuttleengine.LocatedSession) (shuttleengine.SessionRead, error) {
+	if err := f.readErrs[s.Ref]; err != nil {
+		return shuttleengine.SessionRead{}, err
+	}
+	read, ok := f.reads[s.Ref]
+	if !ok {
+		return shuttleengine.SessionRead{}, fs.ErrNotExist
+	}
+	return read, nil
 }
 
-// toolResultFor is toolResult answering the tool use with the given id.
-func toolResultFor(useID, ts, contentJSON string) string {
-	return `{"type":"user","timestamp":"` + ts + `","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"` + useID + `","content":` + contentJSON + `}]}}`
+// fakePricer prices a message at its model's USD per million tokens of every kind, and has no price for another model.
+type fakePricer map[string]float64
+
+func (p fakePricer) PriceMessage(model string, u shuttleengine.MessageUsage) (float64, bool) {
+	rate, ok := p[model]
+	if !ok {
+		return 0, false
+	}
+	return rate * float64(u.Input+u.CacheWrite+u.CacheRead+u.Output) / 1e6, true
 }
 
-// bashUse is an assistant transcript line holding one Bash tool use of command.
-func bashUse(t *testing.T, id, command string) string {
-	t.Helper()
-	return `{"type":"assistant","message":{"id":"use-` + id + `","content":[{"type":"tool_use","id":"` + id + `","name":"Bash","input":{"command":` + jsonString(t, command) + `}}]}}`
+// fakeInstructions is an in-memory instruction file lister.
+type fakeInstructions []string
+
+func (f fakeInstructions) InstructionFiles() []string { return f }
+
+// fakeInstructionFiles are the instruction file names the fake engine lists, the second of which no base commit holds.
+var fakeInstructionFiles = fakeInstructions{"INSTRUCTIONS.md", "LOCAL.md"}
+
+// fakeReadSet is a read set of one engine named fakeEngine, reading through fake, pricing at fakeRates and listing fakeInstructionFiles.
+func fakeReadSet(fake fakeTranscripts) ReadSet {
+	return ReadSet{fakeEngine: {Transcripts: fake, Pricer: fakeRates, Instructions: fakeInstructionFiles}}
 }
 
-func jsonString(t *testing.T, s string) string {
-	t.Helper()
-	b, err := json.Marshal(s)
+// oneEngine is a one-engine read set whose engine located every given session under worktree.
+func oneEngine(worktree string, sessions ...shuttleengine.SessionRead) ReadSet {
+	fake := newFakeTranscripts()
+	for _, session := range sessions {
+		fake.add(worktree, time.Time{}, session)
+	}
+	return fakeReadSet(fake)
+}
+
+// stampOf parses an RFC 3339 test timestamp.
+func stampOf(ts string) time.Time {
+	at, err := time.Parse(time.RFC3339Nano, ts)
 	if err != nil {
-		t.Fatal(err)
+		panic(err)
 	}
-	return string(b)
+	return at
 }
 
-// stamped is an assistant transcript line at ts with the given stop reason.
-func stamped(ts, stopReason string) string {
-	return `{"type":"assistant","timestamp":"` + ts + `","message":{"id":"` + ts + `","stop_reason":` + stopReason + `,"usage":{"input_tokens":1,"output_tokens":1}}}`
+// readOf is a transcript read named name whose Started is its first timestamped entry.
+func readOf(id, name string, entries ...shuttleengine.TranscriptEntry) shuttleengine.TranscriptRead {
+	read := shuttleengine.TranscriptRead{ID: id, Name: name, Entries: entries}
+	for _, e := range entries {
+		if !e.At.IsZero() {
+			read.Started = e.At
+			break
+		}
+	}
+	return read
 }
 
-// userAt is a user transcript line at ts holding text.
-func userAt(t *testing.T, ts, text string) string {
-	t.Helper()
-	return `{"type":"user","timestamp":"` + ts + `","message":{"role":"user","content":` + jsonString(t, text) + `}}`
+// sessionOf is a session read of a main transcript and its forks.
+func sessionOf(main shuttleengine.TranscriptRead, forks ...shuttleengine.TranscriptRead) shuttleengine.SessionRead {
+	return shuttleengine.SessionRead{Main: main, Forks: forks}
+}
+
+// assistant is an assistant entry of message id with one input token, out output tokens and read cache-read tokens.
+func assistant(id, model string, out, read int) shuttleengine.TranscriptEntry {
+	return shuttleengine.TranscriptEntry{
+		Role: shuttleengine.EntryAssistant, MessageKey: id, Model: model,
+		Usage: &shuttleengine.MessageUsage{Input: 1, Output: out, CacheRead: read},
+	}
+}
+
+// toolResult is a user entry at ts holding one tool result with the given text.
+func toolResult(ts, text string) shuttleengine.TranscriptEntry {
+	return toolResultFor("t", ts, text)
+}
+
+// toolResultFor is toolResult answering the tool call with the given id.
+func toolResultFor(useID, ts, text string) shuttleengine.TranscriptEntry {
+	return shuttleengine.TranscriptEntry{
+		At: stampOf(ts), Role: shuttleengine.EntryUser,
+		ToolResults: []shuttleengine.ToolResult{{CallID: useID, Text: text}},
+	}
+}
+
+// bashUse is an assistant entry holding one shell call of command.
+func bashUse(id, command string) shuttleengine.TranscriptEntry {
+	return shuttleengine.TranscriptEntry{
+		Role: shuttleengine.EntryAssistant, MessageKey: "use-" + id,
+		ToolCalls: []shuttleengine.ToolCall{{ID: id, Kind: shuttleengine.ToolShell, Command: command}},
+	}
+}
+
+// stamped is an assistant entry at ts, ending its turn when endsTurn is set.
+func stamped(ts string, endsTurn bool) shuttleengine.TranscriptEntry {
+	return shuttleengine.TranscriptEntry{
+		At: stampOf(ts), Role: shuttleengine.EntryAssistant, MessageKey: ts, EndsTurn: endsTurn,
+		Usage: &shuttleengine.MessageUsage{Input: 1, Output: 1},
+	}
+}
+
+// userAt is a user entry at ts holding text, which starts a turn.
+func userAt(ts, text string) shuttleengine.TranscriptEntry {
+	return shuttleengine.TranscriptEntry{At: stampOf(ts), Role: shuttleengine.EntryUser, StartsTurn: true, UserTexts: []string{text}}
 }
 
 func TestRunTimeByRole(t *testing.T) {
 	t.Parallel()
-	const endTurn, toolUse = `"end_turn"`, `"tool_use"`
-	build := func(t *testing.T, sessions map[string][]string) RunTally {
+	build := func(t *testing.T, sessions ...shuttleengine.SessionRead) RunTally {
 		t.Helper()
-		dir := t.TempDir()
-		for name, lines := range sessions {
-			writeLines(t, filepath.Join(dir, name), lines...)
-		}
-		run, err := CountRun(dir, "r", time.Time{})
+		run, err := CountRun(oneEngine("/hub/r", sessions...), "/hub/r", "r", time.Time{})
 		if err != nil {
 			t.Fatal(err)
 		}
 		return run
 	}
-	title := func(role string) string { return `{"type":"custom-title","customTitle":"ly:r:` + role + `"}` }
+	burler := func(id string, entries ...shuttleengine.TranscriptEntry) shuttleengine.TranscriptRead {
+		return readOf(id, "ly:r:burler", entries...)
+	}
+	// ending is a user entry that ends its turn, such as an interrupt or a local command's output.
+	ending := func(ts, text string) shuttleengine.TranscriptEntry {
+		e := userAt(ts, text)
+		e.StartsTurn, e.EndsTurn = false, true
+		return e
+	}
 
 	// burler: two turns of 1m and 2m with a 10m gap, then an interrupted turn of 1m followed by 5m of idle and a typed local command.
-	// tool: a tool_use turn whose result arrives 3m later counts the gap.
-	// An overlapping second burler session adds only its uncovered tail, and a sub-agent counts under burler+sub.
-	run := build(t, map[string][]string{
-		"a.jsonl": {
-			title("burler"),
-			userAt(t, "2026-01-01T00:00:00Z", "go"),
-			stamped("2026-01-01T00:01:00Z", endTurn),
-			userAt(t, "2026-01-01T00:11:00Z", "again"),
-			stamped("2026-01-01T00:13:00Z", endTurn),
-			userAt(t, "2026-01-01T00:14:00Z", "third"),
-			userAt(t, "2026-01-01T00:15:00Z", "[Request interrupted by user]"),
-			userAt(t, "2026-01-01T00:20:00Z", "<local-command-stdout>ok</local-command-stdout>"),
-			userAt(t, "2026-01-01T00:30:00Z", "late"),
-			stamped("2026-01-01T00:31:00Z", toolUse),
-			toolResult("2026-01-01T00:34:00Z", jsonString(t, "done")),
-			stamped("2026-01-01T00:35:00Z", endTurn),
-		},
-		"b.jsonl": {
-			title("burler"),
-			userAt(t, "2026-01-01T00:32:00Z", "overlap"),
-			stamped("2026-01-01T00:37:00Z", endTurn),
-		},
-		"a/subagents/s.jsonl": {
-			userAt(t, "2026-01-01T00:40:00Z", "sub"),
-			stamped("2026-01-01T00:42:00Z", endTurn),
-		},
-	})
+	// tool: a tool call turn whose result arrives 3m later counts the gap.
+	// An overlapping second burler session adds only its uncovered tail, and a fork counts under burler+sub.
+	run := build(t,
+		sessionOf(
+			burler("a.jsonl",
+				userAt("2026-01-01T00:00:00Z", "go"),
+				stamped("2026-01-01T00:01:00Z", true),
+				userAt("2026-01-01T00:11:00Z", "again"),
+				stamped("2026-01-01T00:13:00Z", true),
+				userAt("2026-01-01T00:14:00Z", "third"),
+				ending("2026-01-01T00:15:00Z", "interrupted"),
+				ending("2026-01-01T00:20:00Z", "local command output"),
+				userAt("2026-01-01T00:30:00Z", "late"),
+				stamped("2026-01-01T00:31:00Z", false),
+				toolResult("2026-01-01T00:34:00Z", "done"),
+				stamped("2026-01-01T00:35:00Z", true),
+			),
+			readOf("s.jsonl", "",
+				userAt("2026-01-01T00:40:00Z", "sub"),
+				stamped("2026-01-01T00:42:00Z", true),
+			),
+		),
+		sessionOf(burler("b.jsonl",
+			userAt("2026-01-01T00:32:00Z", "overlap"),
+			stamped("2026-01-01T00:37:00Z", true),
+		)),
+	)
 	min := time.Minute
 	// burler turns: 0-1, 11-13, 14-15, 30-35 and 32-37 unioned to 30-37.
 	if got, want := run.RoleTime("burler"), (1+2+1+7)*min; got != want {
@@ -144,24 +252,21 @@ func TestRunTimeByRole(t *testing.T) {
 	}
 
 	// An interval into a turn-start line, or longer than the stall cap, is idle whole; the rest of a session still counts.
-	done := jsonString(t, "done")
-	compactSummary := `{"type":"user","isCompactSummary":true,"timestamp":"2026-01-01T00:05:00Z","message":{"role":"user","content":` + jsonString(t, "summary") + `}}`
+	const done = "done"
 	for _, c := range []struct {
-		name  string
-		lines []string
-		work  time.Duration
-		idle  time.Duration
+		name    string
+		entries []shuttleengine.TranscriptEntry
+		work    time.Duration
+		idle    time.Duration
 	}{
-		{"prompt an hour after a tool_use", []string{stamped("2026-01-01T00:00:00Z", toolUse), userAt(t, "2026-01-01T01:00:00Z", "p"), stamped("2026-01-01T01:01:00Z", endTurn)}, min, 60 * min},
-		{"prompt an hour after a tool_result", []string{toolResult("2026-01-01T00:00:00Z", done), userAt(t, "2026-01-01T01:00:00Z", "p"), stamped("2026-01-01T01:01:00Z", endTurn)}, min, 60 * min},
-		{"tool_result 32 hours after its tool_use", []string{stamped("2026-01-01T00:00:00Z", toolUse), toolResult("2026-01-02T08:00:00Z", done), stamped("2026-01-02T08:01:00Z", endTurn)}, min, 32 * 60 * min},
-		{"assistant line an hour after a tool_result", []string{toolResult("2026-01-01T00:00:00Z", done), stamped("2026-01-01T01:00:00Z", endTurn)}, 0, 60 * min},
-		{"tool_result 20 minutes after its tool_use", []string{stamped("2026-01-01T00:00:00Z", toolUse), toolResult("2026-01-01T00:20:00Z", done), stamped("2026-01-01T00:21:00Z", endTurn)}, 21 * min, 0},
-		{"interrupt marker under the cap", []string{stamped("2026-01-01T00:00:00Z", toolUse), userAt(t, "2026-01-01T00:10:00Z", "[Request interrupted by user]")}, 10 * min, 0},
-		{"user text a second after a tool_result", []string{toolResult("2026-01-01T00:00:00Z", done), userAt(t, "2026-01-01T00:00:01Z", "queued"), stamped("2026-01-01T00:00:30Z", endTurn)}, 29 * time.Second, time.Second},
-		{"compact summary after its command", []string{userAt(t, "2026-01-01T00:00:00Z", "<command-name>/compact</command-name>"), compactSummary, stamped("2026-01-01T00:06:00Z", endTurn)}, 6 * min, 0},
+		{"prompt an hour after a tool call", []shuttleengine.TranscriptEntry{stamped("2026-01-01T00:00:00Z", false), userAt("2026-01-01T01:00:00Z", "p"), stamped("2026-01-01T01:01:00Z", true)}, min, 60 * min},
+		{"prompt an hour after a tool result", []shuttleengine.TranscriptEntry{toolResult("2026-01-01T00:00:00Z", done), userAt("2026-01-01T01:00:00Z", "p"), stamped("2026-01-01T01:01:00Z", true)}, min, 60 * min},
+		{"tool result 32 hours after its tool call", []shuttleengine.TranscriptEntry{stamped("2026-01-01T00:00:00Z", false), toolResult("2026-01-02T08:00:00Z", done), stamped("2026-01-02T08:01:00Z", true)}, min, 32 * 60 * min},
+		{"assistant entry an hour after a tool result", []shuttleengine.TranscriptEntry{toolResult("2026-01-01T00:00:00Z", done), stamped("2026-01-01T01:00:00Z", true)}, 0, 60 * min},
+		{"tool result 20 minutes after its tool call", []shuttleengine.TranscriptEntry{stamped("2026-01-01T00:00:00Z", false), toolResult("2026-01-01T00:20:00Z", done), stamped("2026-01-01T00:21:00Z", true)}, 21 * min, 0},
+		{"user text a second after a tool result", []shuttleengine.TranscriptEntry{toolResult("2026-01-01T00:00:00Z", done), userAt("2026-01-01T00:00:01Z", "queued"), stamped("2026-01-01T00:00:30Z", true)}, 29 * time.Second, time.Second},
 	} {
-		got := build(t, map[string][]string{"a.jsonl": append([]string{title("burler")}, c.lines...)})
+		got := build(t, sessionOf(burler("a.jsonl", c.entries...)))
 		if w := got.RoleTime("burler"); w != c.work {
 			t.Errorf("%s: RoleTime(burler) = %v; want %v", c.name, w, c.work)
 		}
@@ -171,8 +276,8 @@ func TestRunTimeByRole(t *testing.T) {
 	}
 
 	// Two runs whose working intervals overlap in wall-clock time sum per role and in idle, and share the summed span.
-	one := build(t, map[string][]string{"a.jsonl": {title("burler"), userAt(t, "2026-01-01T00:00:00Z", "x"), stamped("2026-01-01T00:02:00Z", endTurn), userAt(t, "2026-01-01T00:04:00Z", "y")}})
-	two := build(t, map[string][]string{"a.jsonl": {title("burler"), userAt(t, "2026-01-01T00:01:00Z", "x"), stamped("2026-01-01T00:03:00Z", endTurn), userAt(t, "2026-01-01T00:05:00Z", "y")}})
+	one := build(t, sessionOf(burler("a.jsonl", userAt("2026-01-01T00:00:00Z", "x"), stamped("2026-01-01T00:02:00Z", true), userAt("2026-01-01T00:04:00Z", "y"))))
+	two := build(t, sessionOf(burler("a.jsonl", userAt("2026-01-01T00:01:00Z", "x"), stamped("2026-01-01T00:03:00Z", true), userAt("2026-01-01T00:05:00Z", "y"))))
 	buf.Reset()
 	if err := (Report{Runs: []RunTally{one, two}}).WriteMarkdown(&buf); err != nil {
 		t.Fatal(err)
@@ -193,73 +298,14 @@ func TestRunTimeByRole(t *testing.T) {
 
 func TestCountRun(t *testing.T) {
 	t.Parallel()
-	projects := t.TempDir()
-	worktree := "/hub/my-task"
-	dir := projectDir(projects, worktree)
-	if filepath.Base(dir) != "-hub-my-task" {
-		t.Fatalf("projectDir = %s, want -hub-my-task", filepath.Base(dir))
+	// The main run is the Claude reader's own reading of its tokencount-run transcripts, served by the fake.
+	const worktree = "/hub/my-task"
+	claude := newFakeTranscripts()
+	for _, read := range shuttlefake.TokencountRunReads() {
+		claude.add(worktree, time.Time{}, read)
 	}
 
-	writeLines(t, filepath.Join(dir, "a.jsonl"),
-		`{"type":"custom-title","customTitle":"ly:my-task:burler"}`,
-		assistant("m1", "sonnet", 2, 3),
-		assistant("m1", "sonnet", 2, 3), // the same message on a second line
-		`not json`,
-		`{"type":"custom-title","customTitle":"ly:my-task:burler-2"}`,
-	)
-	// Two successful begin-batch pairs, the later-timestamped one in the file that sorts first.
-	// The refusal envelope and the unrelated result mentioning start_sha precede the earliest pair.
-	writeLines(t, filepath.Join(dir, "a-webster.jsonl"),
-		`{"type":"custom-title","customTitle":"ly:my-task:webster"}`,
-		bashUse(t, "late", "lyx webster begin-batch 2"),
-		toolResultFor("late", "2026-01-02T03:20:00Z", jsonString(t, `{"batch":"02-beta","start_sha":"late000"}`)),
-	)
-	writeLines(t, filepath.Join(dir, "b.jsonl"),
-		`{"type":"custom-title","customTitle":"ly:my-task:webster"}`,
-		bashUse(t, "refused", "lyx webster begin-batch 1"),
-		toolResultFor("refused", "2026-01-02T02:00:00Z", jsonString(t, `{"ok":false,"error":"paused"}`)),
-		bashUse(t, "other", "git log"),
-		toolResultFor("other", "2026-01-02T02:30:00Z", jsonString(t, `{"start_sha":"unrelated"}`)),
-		bashUse(t, "early", "lyx webster begin-batch 1"),
-		toolResultFor("early", "2026-01-02T03:00:00Z", `[{"type":"text","text":`+jsonString(t, `{"batch":"01-alpha","start_sha":"early00"}`)+`}]`),
-		assistant("m2", "sonnet", 1, 1),
-	)
-	prompt := "1\t# Webster fork\n" +
-		"58\t- `_lyx/plan/01-alpha.md`\n" +
-		"59\t- `_lyx/plan/02-beta.md`\n" +
-		"60\t- `_lyx/plan/00-overview.md`\n" +
-		"70\t- `_lyx/plan/03-gamma.md`: go test ./...\n"
-	writeLines(t, filepath.Join(dir, "b", "subagents", "agent-1.jsonl"),
-		toolResult("2026-01-02T03:04:05.5Z", jsonString(t, "no pointer here")),
-		assistant("m2", "sonnet", 1, 1), // the parent's context repeated in the fork
-		// A streamed message's first line carries a partial output_tokens; its last line holds the message's usage.
-		assistant("m3", "opus", 1, 5),
-		assistant("m3", "opus", 4, 5),
-		toolResult("2026-01-02T03:04:06Z", `[{"type":"text","text":`+jsonString(t, prompt)+`}]`),
-		assistant("m5", "opus", 2, 9),
-		toolResult("2026-01-02T03:04:07Z", jsonString(t, "- `_lyx/plan/04-delta.md`")),
-	)
-	writeLines(t, filepath.Join(dir, "b", "subagents", "agent-2.jsonl"),
-		toolResult("2026-01-02T03:10:00Z", jsonString(t, "- `docs/plan.md`")),
-		assistant("m6", "sonnet", 3, 2),
-	)
-	// A fork under a second webster session.
-	writeLines(t, filepath.Join(dir, "a-webster", "subagents", "agent-3.jsonl"),
-		toolResult("2026-01-02T03:15:00Z", jsonString(t, "no pointer here")),
-		assistant("m7", "opus", 1, 2),
-	)
-	writeLines(t, filepath.Join(dir, "c.jsonl"), assistant("m4", "haiku", 1, 0))
-	// A lead titled before seats were named counts under the lead's present role.
-	writeLines(t, filepath.Join(dir, "d.jsonl"),
-		`{"type":"custom-title","customTitle":"ly:my-task:burler-review-chair-2"}`,
-		assistant("m8", "sonnet", 1, 0),
-	)
-	writeLines(t, filepath.Join(dir, "e.jsonl"),
-		`{"type":"custom-title","customTitle":"ly:my-task:burler-review"}`,
-		assistant("m9", "sonnet", 2, 0),
-	)
-
-	run, err := CountRun(dir, "my-task", time.Time{})
+	run, err := CountRun(fakeReadSet(claude), worktree, "my-task", time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,64 +331,100 @@ func TestCountRun(t *testing.T) {
 	if run.BaseSHA != "early00" {
 		t.Errorf("BaseSHA = %q, want the earliest successful begin-batch envelope's early00", run.BaseSHA)
 	}
+	if run.WebsterEngine != fakeEngine {
+		t.Errorf("WebsterEngine = %q, want %q, the engine that located the webster session", run.WebsterEngine, fakeEngine)
+	}
 
-	noBase := projectDir(projects, "/hub/no-base")
-	writeLines(t, filepath.Join(noBase, "w.jsonl"),
-		`{"type":"custom-title","customTitle":"ly:no-base:webster"}`,
-		bashUse(t, "refused", "lyx webster begin-batch 1"),
-		toolResultFor("refused", "2026-01-02T02:00:00Z", jsonString(t, `{"ok":false,"error":"paused"}`)),
+	// A key repeated across two sessions of one engine counts once and adds one to Duplicates.
+	const dedupeTree = "/hub/dedupe"
+	shared := func() shuttleengine.TranscriptEntry {
+		return timedAssistant("shared", "model-a", "2026-01-02T10:00:00Z", 5)
+	}
+	dedupe := oneEngine(dedupeTree,
+		sessionOf(readOf("p.jsonl", "ly:dedupe:burler", shared())),
+		sessionOf(readOf("q.jsonl", "ly:dedupe:burler", shared(), timedAssistant("own", "model-a", "2026-01-02T10:01:00Z", 7))),
 	)
-	bare, err := CountRun(noBase, "no-base", time.Time{})
+	deduped, err := CountRun(dedupe, dedupeTree, "dedupe", time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := deduped.Roles["burler"]; got.Usage.Output != 12 || got.Sessions != 2 || deduped.Duplicates != 1 {
+		t.Errorf("same-engine repeat: burler output = %d over %d sessions, Duplicates = %d; want 12 over 2 sessions, 1", got.Usage.Output, got.Sessions, deduped.Duplicates)
+	}
+	if deduped.WebsterEngine != "" {
+		t.Errorf("WebsterEngine = %q for a run with no webster session; want empty", deduped.WebsterEngine)
+	}
+	// A second engine on the same worktree counts beside the first, and the same key under each engine counts twice.
+	second := newFakeTranscripts()
+	second.add(dedupeTree, time.Time{}, sessionOf(readOf("r.jsonl", "ly:dedupe:burler", shared())))
+	dedupe["second"] = shuttleengine.RecordReads{Transcripts: second, Pricer: fakeRates}
+	// An engine with no session there beside engines with sessions counts the others.
+	dedupe["empty"] = shuttleengine.RecordReads{Transcripts: newFakeTranscripts()}
+	twoEngines, err := CountRun(dedupe, dedupeTree, "dedupe", time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := twoEngines.Roles["burler"]; got.Usage.Output != 17 || got.Sessions != 3 || twoEngines.Duplicates != 1 {
+		t.Errorf("two engines: burler output = %d over %d sessions, Duplicates = %d; want 17 over 3 sessions, 1", got.Usage.Output, got.Sessions, twoEngines.Duplicates)
+	}
+
+	bare, err := CountRun(oneEngine("/hub/no-base", sessionOf(readOf("w.jsonl", "ly:no-base:webster",
+		bashUse("refused", "lyx webster begin-batch 1"),
+		toolResultFor("refused", "2026-01-02T02:00:00Z", `{"ok":false,"error":"paused"}`),
+		// A begin-batch result without a timestamp does not set the base.
+		bashUse("untimed", "lyx webster begin-batch 2"),
+		shuttleengine.TranscriptEntry{Role: shuttleengine.EntryUser, ToolResults: []shuttleengine.ToolResult{{CallID: "untimed", Text: `{"start_sha":"untimed0"}`}}},
+	))), "/hub/no-base", "no-base", time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if bare.BaseSHA != "" {
-		t.Errorf("BaseSHA = %q, want empty for a run with no successful begin-batch pair", bare.BaseSHA)
+		t.Errorf("BaseSHA = %q, want empty for a run with no successful timestamped begin-batch pair", bare.BaseSHA)
 	}
 
-	// Two Merriam sessions, the earlier-started one in the file that sorts last.
-	// The first holds the skill-load turn and its assistant messages before the launch line, then the prompt Read.
-	merriams := projectDir(projects, "/hub/merriams")
-	launch := func(ts, path string) string {
-		return `{"type":"user","timestamp":"` + ts + `","message":{"role":"user","content":"Read ` + path + ` in full first; it is your complete, authoritative instructions."}}`
+	// Two Merriam sessions, the earlier-started one in the read that sorts last.
+	// The first holds the skill-load turn and its assistant messages before the launch line, then the prompt read.
+	launch := func(ts, path string) shuttleengine.TranscriptEntry {
+		e := userAt(ts, "Read "+path+" in full first")
+		e.PromptPath = path
+		return e
 	}
-	readUse := func(id, useID, path string, cacheRead int) string {
-		return `{"type":"assistant","message":{"id":"` + id + `","content":[{"type":"tool_use","id":"` + useID + `","name":"Read","input":{"file_path":"` + path + `"}}],` +
-			`"usage":{"input_tokens":1,"output_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":` + strconv.Itoa(cacheRead) + `}}}`
+	readUse := func(id, useID, path string, cacheRead int) shuttleengine.TranscriptEntry {
+		e := assistant(id, "model-a", 1, cacheRead)
+		e.ToolCalls = []shuttleengine.ToolCall{{ID: useID, Kind: shuttleengine.ToolFileRead, Path: path}}
+		return e
 	}
-	writeLines(t, filepath.Join(merriams, "z-first.jsonl"),
-		`{"type":"custom-title","customTitle":"ly:merriams:webster"}`,
-		`{"type":"user","timestamp":"2026-01-02T01:00:00Z","message":{"role":"user","content":[{"type":"text","text":"load the skills"}]}}`,
-		assistant("s1", "opus", 1, 100),
-		launch("2026-01-02T01:00:05Z", "/p/prompt.md"),
-		readUse("s2", "other", "/p/other.md", 150),
-		toolResultFor("other", "2026-01-02T01:00:06Z", jsonString(t, "other")),
-		readUse("s3", "prompt", "/p/prompt.md", 200),
-		toolResultFor("prompt", "2026-01-02T01:00:07Z", jsonString(t, "prompt")),
-		assistant("s4", "opus", 1, 300),
-		assistant("s5", "opus", 1, 400),
+	const merriamName = "ly:merriams:webster"
+	merriams := oneEngine("/hub/merriams",
+		sessionOf(readOf("z-first.jsonl", merriamName,
+			userAt("2026-01-02T01:00:00Z", "load the skills"),
+			assistant("s1", "model-a", 1, 100),
+			launch("2026-01-02T01:00:05Z", "/p/prompt.md"),
+			readUse("s2", "other", "/p/other.md", 150),
+			toolResultFor("other", "2026-01-02T01:00:06Z", "other"),
+			readUse("s3", "prompt", "/p/prompt.md", 200),
+			toolResultFor("prompt", "2026-01-02T01:00:07Z", "prompt"),
+			assistant("s4", "model-a", 1, 300),
+			assistant("s5", "model-a", 1, 400),
+		)),
+		sessionOf(readOf("a-second.jsonl", merriamName,
+			launch("2026-01-02T02:00:00Z", "/p/prompt.md"),
+			assistant("t1", "model-a", 1, 100),
+		)),
+		sessionOf(readOf("m-list.jsonl", merriamName,
+			launch("2026-01-02T03:00:00Z", "/p/list.md"),
+			readUse("u1", "list", "/p/list.md", 100),
+			toolResultFor("list", "2026-01-02T03:00:01Z", "prompt"),
+			assistant("u2", "model-a", 1, 500),
+		)),
+		// A read that ends at the prompt read's result has nothing to measure.
+		sessionOf(readOf("b-ends.jsonl", merriamName,
+			launch("2026-01-02T04:00:00Z", "/p/prompt.md"),
+			readUse("v1", "ends", "/p/prompt.md", 100),
+			toolResultFor("ends", "2026-01-02T04:00:01Z", "prompt"),
+		)),
 	)
-	writeLines(t, filepath.Join(merriams, "a-second.jsonl"),
-		`{"type":"custom-title","customTitle":"ly:merriams:webster"}`,
-		launch("2026-01-02T02:00:00Z", "/p/prompt.md"),
-		assistant("t1", "opus", 1, 100),
-	)
-	// A launch line typed as a text item of list content measures as string content does.
-	writeLines(t, filepath.Join(merriams, "m-list.jsonl"),
-		`{"type":"custom-title","customTitle":"ly:merriams:webster"}`,
-		`{"type":"user","timestamp":"2026-01-02T03:00:00Z","message":{"role":"user","content":[{"type":"text","text":"Read /p/list.md in full first; it is your complete, authoritative instructions."}]}}`,
-		readUse("u1", "list", "/p/list.md", 100),
-		toolResultFor("list", "2026-01-02T03:00:01Z", jsonString(t, "prompt")),
-		assistant("u2", "opus", 1, 500),
-	)
-	// A transcript that ends at the prompt Read's result has nothing to measure.
-	writeLines(t, filepath.Join(merriams, "b-ends.jsonl"),
-		`{"type":"custom-title","customTitle":"ly:merriams:webster"}`,
-		launch("2026-01-02T04:00:00Z", "/p/prompt.md"),
-		readUse("v1", "ends", "/p/prompt.md", 100),
-		toolResultFor("ends", "2026-01-02T04:00:01Z", jsonString(t, "prompt")),
-	)
-	withMerriams, err := CountRun(merriams, "merriams", time.Time{})
+	withMerriams, err := CountRun(merriams, "/hub/merriams", "merriams", time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -359,29 +441,24 @@ func TestCountRun(t *testing.T) {
 	}
 
 	// A bound leaves out a webster session that starts before it, with its fork, and a session with no timestamped line.
-	boundedDir := projectDir(projects, "/hub/bounded")
 	bound := time.Date(2026, 1, 2, 12, 0, 0, 0, time.UTC)
-	writeLines(t, filepath.Join(boundedDir, "e-webster.jsonl"),
-		`{"type":"custom-title","customTitle":"ly:bounded:webster"}`,
-		launch("2026-01-02T10:00:00Z", "/p/prompt.md"),
-		bashUse(t, "old", "lyx webster begin-batch 1"),
-		toolResultFor("old", "2026-01-02T10:01:00Z", jsonString(t, `{"batch":"01-alpha","start_sha":"old0000"}`)),
-		timedAssistant("old1", "opus", "2026-01-02T10:02:00Z", 50),
+	bounded := oneEngine("/hub/bounded",
+		sessionOf(readOf("e-webster.jsonl", "ly:bounded:webster",
+			launch("2026-01-02T10:00:00Z", "/p/prompt.md"),
+			bashUse("old", "lyx webster begin-batch 1"),
+			toolResultFor("old", "2026-01-02T10:01:00Z", `{"batch":"01-alpha","start_sha":"old0000"}`),
+			timedAssistant("old1", "model-a", "2026-01-02T10:02:00Z", 50),
+		), readOf("agent-old.jsonl", "",
+			toolResult("2026-01-02T10:03:00Z", "- `_lyx/plan/01-alpha.md`"),
+			timedAssistant("oldfork", "model-a", "2026-01-02T10:04:00Z", 7),
+		)),
+		sessionOf(readOf("n-none.jsonl", "ly:bounded:burler", assistant("none1", "model-a", 9, 0))),
+		sessionOf(readOf("l-later.jsonl", "ly:bounded:burler",
+			userAt("2026-01-02T13:00:00Z", "go"),
+			timedAssistant("late1", "model-a", "2026-01-02T13:05:00Z", 4),
+		)),
 	)
-	writeLines(t, filepath.Join(boundedDir, "e-webster", "subagents", "agent-old.jsonl"),
-		toolResult("2026-01-02T10:03:00Z", jsonString(t, "- `_lyx/plan/01-alpha.md`")),
-		timedAssistant("oldfork", "opus", "2026-01-02T10:04:00Z", 7),
-	)
-	writeLines(t, filepath.Join(boundedDir, "n-none.jsonl"),
-		`{"type":"custom-title","customTitle":"ly:bounded:burler"}`,
-		assistant("none1", "sonnet", 9, 0),
-	)
-	writeLines(t, filepath.Join(boundedDir, "l-later.jsonl"),
-		`{"type":"custom-title","customTitle":"ly:bounded:burler"}`,
-		userAt(t, "2026-01-02T13:00:00Z", "go"),
-		timedAssistant("late1", "sonnet", "2026-01-02T13:05:00Z", 4),
-	)
-	afterBound, err := CountRun(boundedDir, "bounded", bound)
+	afterBound, err := CountRun(bounded, "/hub/bounded", "bounded", bound)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -452,21 +529,65 @@ func TestCountRun(t *testing.T) {
 
 func TestCountRunWithoutSessions(t *testing.T) {
 	t.Parallel()
-	if _, err := CountRun(projectDir(t.TempDir(), "/hub/none"), "none", time.Time{}); err == nil {
-		t.Fatal("CountRun found sessions in an empty projects directory")
+	const worktree = "/hub/x"
+	tests := []struct {
+		name      string
+		noSession bool
+		locateErr error
+		readErr   error
+		// orch is set when CountOrch fails the same way as CountRun; absence is no failure for it.
+		orch      bool
+		wantParts []string
+		wantIs    error
+	}{
+		{"no session from any engine", true, nil, nil, false, []string{"no sessions for x at /hub/x from engines fake"}, nil},
+		{"locator error", false, errors.New("locator down"), nil, true, []string{"locating sessions of /hub/x through engine fake", "locator down"}, nil},
+		{"read error", false, nil, errors.New("unreadable"), true, []string{"reading session s.jsonl of engine fake", "unreadable"}, nil},
+		{"session vanished after locating", false, nil, fs.ErrNotExist, true, []string{"reading session s.jsonl of engine fake"}, fs.ErrNotExist},
+	}
+	runs := []RunTally{{Slug: "x", First: stampOf("2026-01-02T09:00:00Z"), Last: stampOf("2026-01-02T11:00:00Z")}}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			fake := newFakeTranscripts()
+			if !tt.noSession {
+				fake.add(worktree, time.Time{}, sessionOf(readOf("s.jsonl", "ly:x:burler", timedAssistant("m", "model-a", "2026-01-02T10:00:00Z", 1))))
+			}
+			fake.locateErr = tt.locateErr
+			if tt.readErr != nil {
+				fake.readErrs[worktree+"/s.jsonl"] = tt.readErr
+			}
+			reads := fakeReadSet(fake)
+			calls := map[string]func() error{
+				"CountRun": func() error { _, err := CountRun(reads, worktree, "x", time.Time{}); return err },
+			}
+			if tt.orch {
+				calls["CountOrch"] = func() error { _, err := CountOrch(reads, worktree, runs); return err }
+			}
+			for name, call := range calls {
+				err := call()
+				if err == nil {
+					t.Fatalf("%s = nil error; want one", name)
+				}
+				for _, part := range tt.wantParts {
+					if !strings.Contains(err.Error(), part) {
+						t.Errorf("%s error = %q; want it to contain %q", name, err, part)
+					}
+				}
+				if tt.wantIs != nil && !errors.Is(err, tt.wantIs) {
+					t.Errorf("%s error = %v; want errors.Is %v", name, err, tt.wantIs)
+				}
+			}
+		})
 	}
 }
 
 func TestRecentRuns(t *testing.T) {
 	t.Parallel()
-	projects := t.TempDir()
+	now := time.Date(2026, 1, 2, 12, 0, 0, 0, time.UTC)
+	fake := newFakeTranscripts()
 	touch := func(worktree string, age time.Duration) {
-		path := filepath.Join(projectDir(projects, worktree), "s.jsonl")
-		writeLines(t, path, assistant("m", "sonnet", 1, 0))
-		when := time.Now().Add(-age)
-		if err := os.Chtimes(path, when, when); err != nil {
-			t.Fatal(err)
-		}
+		fake.add(worktree, now.Add(-age), sessionOf(readOf("s.jsonl", "ly:s:burler", assistant("m", "model-a", 1, 0))))
 	}
 	hub := t.TempDir()
 	if err := os.Mkdir(filepath.Join(hub, "inflight"), 0o755); err != nil {
@@ -489,7 +610,7 @@ func TestRecentRuns(t *testing.T) {
 		trees[[2]string{slug, statusRel}] = `{"history":[` + strings.Join(entries, ",") + `]}`
 	}
 	full := []string{"Plan-Write", "Webster", "Finalize", "Friction-Reflect"}
-	for slug, age := range map[string]time.Duration{"old": 5 * time.Hour, "mid": 4 * time.Hour, "new": 3 * time.Hour, "inflight": 2 * time.Hour, "prime": 0, "empty": 0} {
+	for slug, age := range map[string]time.Duration{"old": 5 * time.Hour, "mid": 4 * time.Hour, "new": 3 * time.Hour, "inflight": 2 * time.Hour, "prime": 0} {
 		touch(filepath.Join(hub, slug), age)
 		archive(slug, shedrun.RecipeLoom, full...)
 	}
@@ -498,13 +619,12 @@ func TestRecentRuns(t *testing.T) {
 	touch(filepath.Join(hub, "bench"), time.Hour)
 	archive("bench", shedrun.RecipeLoom, "Preflight", "Discussion-Write")
 	touch(filepath.Join(hub, "parked"), 0)
+	// A finished slug with no session located under the hub, and one whose session sits in another hub, are never candidates.
+	archive("empty", shedrun.RecipeLoom, full...)
 	touch("/other/newest", 0)
 	archive("newest", shedrun.RecipeLoom, full...)
-	if err := os.RemoveAll(filepath.Join(projectDir(projects, filepath.Join(hub, "empty")), "s.jsonl")); err != nil {
-		t.Fatal(err)
-	}
 
-	counted, skipped, err := recentRuns(projects, hub, "prime", finished, trees, 2)
+	counted, skipped, err := recentRuns(fakeReadSet(fake), hub, "prime", finished, trees, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -513,6 +633,11 @@ func TestRecentRuns(t *testing.T) {
 	}
 	if strings.Join(skipped, ",") != "bench,darn,inflight" {
 		t.Errorf("recentRuns skipped = %v, want [bench darn inflight]", skipped)
+	}
+
+	fake.locateErr = errors.New("locator down")
+	if _, _, err := recentRuns(fakeReadSet(fake), hub, "prime", finished, trees, 2); err == nil || !strings.Contains(err.Error(), "locator down") {
+		t.Errorf("recentRuns with a failing locator = %v; want an error naming it", err)
 	}
 }
 
@@ -676,15 +801,13 @@ func TestShedRecordSpanAndProducers(t *testing.T) {
 	// A run whose burler works 10:00-10:02 and 10:08-10:10.
 	counted := func(t *testing.T) RunTally {
 		t.Helper()
-		dir := t.TempDir()
-		writeLines(t, filepath.Join(dir, "a.jsonl"),
-			`{"type":"custom-title","customTitle":"ly:r:burler"}`,
-			userAt(t, clock("10:00:00"), "go"),
-			stamped(clock("10:02:00"), `"end_turn"`),
-			userAt(t, clock("10:08:00"), "again"),
-			stamped(clock("10:10:00"), `"end_turn"`),
-		)
-		run, err := CountRun(dir, "r", time.Time{})
+		reads := oneEngine("/hub/r", sessionOf(readOf("a.jsonl", "ly:r:burler",
+			userAt(clock("10:00:00"), "go"),
+			stamped(clock("10:02:00"), true),
+			userAt(clock("10:08:00"), "again"),
+			stamped(clock("10:10:00"), true),
+		)))
+		run, err := CountRun(reads, "/hub/r", "r", time.Time{})
 		if err != nil {
 			t.Fatal(err)
 		}

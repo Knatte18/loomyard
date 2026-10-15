@@ -83,6 +83,22 @@
 // a message counts once however many transcript lines carry it, and the totals include the forks, which are also broken out.
 // A fork transcript's entries are all sidechain and count, except the parent's spawning message it replays as its first entry.
 // An unreadable transcript makes the whole reading unknown, and a missing `subagents/` directory is zero forks.
+// The reading shares one parse of the transcript lines with the transcript reader below.
+//
+// The transcript reader (TranscriptReader) locates and reads finished sessions with no run and no shuttle config.
+// A worktree's project directory is `<home>/.claude/projects/<worktree path with every non-alphanumeric byte as a hyphen>`:
+// each `*.jsonl` file directly in it is a session, and the `*.jsonl` files in `<session>/subagents/` are its forks.
+// Sessions and forks come back sorted by file name, and a missing projects root, project directory or `subagents/` directory is none of them and no error.
+// Reading a session parses its own transcript with sidechain lines included, then each fork with the message ids the session counted as a skip set.
+// A message streamed over several lines carries its usage on its last line only, and each earlier line counts as a repeat.
+// A fork replays its parent's spawning message, so each fork line of a skipped id carries no usage and counts as a repeat, its entry kept for the turn times.
+// A message with no id is keyed by its line's uuid, else by its transcript and line number, so two such messages never merge.
+// A turn ends on an assistant line whose stop reason is not `tool_use`, or on a user line starting `[Request interrupted by user` or `<local-command-stdout>`.
+// A turn starts on a user line holding text and no tool result that neither ends a turn nor is a compaction summary.
+// The launch line is `launchPointer`'s rendering in a user text, and its prompt path rides on that entry.
+// A malformed or half-written line is skipped, a vanished transcript fails the read naming its path, and a line without a parseable timestamp has a zero time.
+//
+// The message pricer (MessagePricer) prices one message's neutral usage from its model; the price table is Claude's API list price, with its source cited at the table.
 //
 // The session-signal parse (SessionSignalParser) reads the same events file as ParseEvents but yields a separate stream, in signals.go, and leaves ParseEvents unchanged.
 // A `Stop` line is a turn end with its outstanding tasks read exactly as ParseEvents reads them, a `StopFailure` an API-error turn end, a `UserPromptSubmit` a turn start, a `PreToolUse` for `AskUserQuestion` an ask, a `PermissionRequest` an ask by its hook name alone, a `Notification` by the fixed table `notificationSignalKinds` (`permission_prompt`, `elicitation_dialog` and `elicitation_url_dialog` are asks, `idle_prompt` is an idle notice, and `agent_needs_input`, `elicitation_response` and any other type are skipped), a `SessionEnd` a session end with its reason, and a `SessionStart` a session start carrying the payload's `source` mapped to a provider-neutral one: `startup`, `resume`, `clear` and `compact` to their constants, and any other or missing string to the empty source.

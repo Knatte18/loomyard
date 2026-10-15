@@ -9,5 +9,6 @@ Provider specifics live only under `internal/shuttleengine/<engine>`, and only `
 - An engine's scrub keys, the environment keys reed's server spawn strips, reach reed only through `shuttleengines.EnvScrub()`, which every production `reedengine.New` caller passes.
 - reed's strand provider tag is opaque: shuttle sets it to the run's engine name, reed stores it and never interprets it.
   An engine's session namer reaches reed's watchdog only through `shuttleengines.SessionNamers()`, keyed by that tag.
+- An engine's record-reading capabilities reach a reader outside the engines only through `shuttleengines.RecordReaders()`, as adapters that expose reading alone.
 - A `*Run` issued by `Start` or `StartGated` has already resolved its provider's startup probe.
   No caller outside `internal/shuttleengine` probes provider readiness or plays startup-gate keys.

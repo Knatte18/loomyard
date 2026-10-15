@@ -181,3 +181,69 @@ func namersOf(engines map[string]shuttleengine.Engine) map[string]reedengine.Ses
 	}
 	return namers
 }
+
+// RecordReaders returns each registered engine's offline read capabilities, keyed by engine name, for a reader that works from finished session records.
+// The engines are built with a zero shuttle config and no config directories, as SessionNamers builds them, so no config file is needed to read a record.
+// Each capability is wrapped in an adapter that exposes reading alone, so a reader cannot recover an engine that starts, opens, sends to or stops a run.
+func RecordReaders() map[string]shuttleengine.RecordReads {
+	engines := make(map[string]shuttleengine.Engine, len(registry))
+	for name, registered := range registry {
+		engines[name] = registered.constructor(shuttleengine.Config{}, configengine.Dirs{})
+	}
+	return readsOf(engines)
+}
+
+// readsOf maps each engine to its read capabilities, keyed by the engine's name.
+// A capability the engine does not implement is nil in its entry.
+func readsOf(engines map[string]shuttleengine.Engine) map[string]shuttleengine.RecordReads {
+	reads := make(map[string]shuttleengine.RecordReads, len(engines))
+	for name, engine := range engines {
+		var entry shuttleengine.RecordReads
+		if transcripts, ok := engine.(shuttleengine.TranscriptReader); ok {
+			entry.Transcripts = transcriptsAdapter{transcripts: transcripts}
+		}
+		if pricer, ok := engine.(shuttleengine.MessagePricer); ok {
+			entry.Pricer = pricerAdapter{pricer: pricer}
+		}
+		if instructions, ok := engine.(shuttleengine.InstructionFileLister); ok {
+			entry.Instructions = instructionsAdapter{instructions: instructions}
+		}
+		reads[name] = entry
+	}
+	return reads
+}
+
+// transcriptsAdapter forwards transcript reading to an engine and exposes nothing else of it.
+type transcriptsAdapter struct {
+	transcripts shuttleengine.TranscriptReader
+}
+
+// LocateSessions forwards to the wrapped engine.
+func (a transcriptsAdapter) LocateSessions(worktree string) ([]shuttleengine.LocatedSession, error) {
+	return a.transcripts.LocateSessions(worktree)
+}
+
+// ReadSession forwards to the wrapped engine.
+func (a transcriptsAdapter) ReadSession(s shuttleengine.LocatedSession) (shuttleengine.SessionRead, error) {
+	return a.transcripts.ReadSession(s)
+}
+
+// pricerAdapter forwards message pricing to an engine and exposes nothing else of it.
+type pricerAdapter struct {
+	pricer shuttleengine.MessagePricer
+}
+
+// PriceMessage forwards to the wrapped engine.
+func (a pricerAdapter) PriceMessage(model string, u shuttleengine.MessageUsage) (float64, bool) {
+	return a.pricer.PriceMessage(model, u)
+}
+
+// instructionsAdapter forwards the instruction-file list to an engine and exposes nothing else of it.
+type instructionsAdapter struct {
+	instructions shuttleengine.InstructionFileLister
+}
+
+// InstructionFiles forwards to the wrapped engine.
+func (a instructionsAdapter) InstructionFiles() []string {
+	return a.instructions.InstructionFiles()
+}

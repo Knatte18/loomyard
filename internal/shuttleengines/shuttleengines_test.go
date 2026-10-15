@@ -271,3 +271,61 @@ func TestSessionNamers(t *testing.T) {
 		t.Errorf("namersOf = %v; want the engine implementing SessionNamer under its name", got)
 	}
 }
+
+// readingEngine answers transcript location, transcript reading and pricing with fixed values.
+type readingEngine struct{ shuttleengine.Engine }
+
+func (readingEngine) LocateSessions(worktree string) ([]shuttleengine.LocatedSession, error) {
+	return []shuttleengine.LocatedSession{{TranscriptRef: shuttleengine.TranscriptRef{ID: worktree}}}, nil
+}
+
+func (readingEngine) ReadSession(s shuttleengine.LocatedSession) (shuttleengine.SessionRead, error) {
+	return shuttleengine.SessionRead{Main: shuttleengine.TranscriptRead{ID: s.ID}}, nil
+}
+
+func (readingEngine) PriceMessage(model string, u shuttleengine.MessageUsage) (float64, bool) {
+	return float64(u.Output), model == "known"
+}
+
+// TestRecordReaders pins that the claude entry carries all three capabilities as adapters that hide the engine,
+// and that readsOf sets exactly the capabilities an engine implements and forwards each to it.
+func TestRecordReaders(t *testing.T) {
+	t.Parallel()
+
+	claude, ok := RecordReaders()["claude"]
+	if !ok {
+		t.Fatalf("RecordReaders has no claude entry")
+	}
+	if claude.Transcripts == nil || claude.Pricer == nil || claude.Instructions == nil {
+		t.Fatalf("RecordReaders[claude] = %+v; want all three capabilities set", claude)
+	}
+	for name, capability := range map[string]any{"Transcripts": claude.Transcripts, "Pricer": claude.Pricer, "Instructions": claude.Instructions} {
+		if _, isEngine := capability.(shuttleengine.Engine); isEngine {
+			t.Errorf("RecordReaders[claude].%s = %T; want an adapter that is not an Engine", name, capability)
+		}
+	}
+	if got, want := claude.Instructions.InstructionFiles(), (&claudeengine.Claude{}).InstructionFiles(); !reflect.DeepEqual(got, want) {
+		t.Errorf("Instructions.InstructionFiles() = %v; want the engine's own %v", got, want)
+	}
+
+	bare := readsOf(map[string]shuttleengine.Engine{"bare": forksWithoutAuditEngine{}})["bare"]
+	if bare.Transcripts != nil || bare.Pricer != nil || bare.Instructions != nil {
+		t.Errorf("readsOf(non-reading engine) = %+v; want all three nil", bare)
+	}
+
+	reading := readsOf(map[string]shuttleengine.Engine{"reading": readingEngine{}})["reading"]
+	sessions, err := reading.Transcripts.LocateSessions("/wt")
+	if err != nil || len(sessions) != 1 || sessions[0].ID != "/wt" {
+		t.Errorf("LocateSessions = %v, %v; want the engine's fixed session", sessions, err)
+	}
+	read, err := reading.Transcripts.ReadSession(shuttleengine.LocatedSession{TranscriptRef: shuttleengine.TranscriptRef{ID: "s.jsonl"}})
+	if err != nil || read.Main.ID != "s.jsonl" {
+		t.Errorf("ReadSession = %v, %v; want the engine's fixed read", read, err)
+	}
+	if usd, priced := reading.Pricer.PriceMessage("known", shuttleengine.MessageUsage{Output: 7}); usd != 7 || !priced {
+		t.Errorf("PriceMessage(known) = %v, %v; want 7, true", usd, priced)
+	}
+	if reading.Instructions != nil {
+		t.Errorf("readsOf(reading engine).Instructions = %v; want nil", reading.Instructions)
+	}
+}

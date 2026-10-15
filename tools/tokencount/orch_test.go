@@ -1,4 +1,5 @@
-// orch_test.go drives the orchestrator count and the cost estimate over fixture transcripts: the charge by time, a fork naming one run, the window cut-off, the orch rows of the role tables, the section order, the list prices and an unpriced model.
+// orch_test.go drives the orchestrator count and the cost estimate over fake reads: the charge by time, a fork naming one run, the window cut-off, the orch rows of the role tables, the section order, the fake engine's prices and an unpriced model.
+// The prices are the fake pricer's, not any provider's.
 // Tier-1 (no git, no spawn).
 
 package main
@@ -7,89 +8,92 @@ import (
 	"bytes"
 	"math"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// timedAssistant is an assistant transcript line at ts with no input and output tokens of usage.
-func timedAssistant(id, model, ts string, output int) string {
-	return `{"type":"assistant","timestamp":"` + ts + `","message":{"id":"` + id + `","model":"` + model +
-		`","usage":{"input_tokens":0,"output_tokens":` + strconv.Itoa(output) + `,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}`
+// timedAssistant is an assistant entry at ts whose usage is output tokens alone.
+func timedAssistant(id, model, ts string, output int) shuttleengine.TranscriptEntry {
+	return shuttleengine.TranscriptEntry{
+		At: stampOf(ts), Role: shuttleengine.EntryAssistant, MessageKey: id, Model: model,
+		Usage: &shuttleengine.MessageUsage{Output: output},
+	}
 }
 
-// userPrompt is a user transcript line at ts whose content is the text item prompt, the shape of a fork's first prompt.
-func userPrompt(t *testing.T, ts, prompt string) string {
-	t.Helper()
-	return `{"type":"user","timestamp":"` + ts + `","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"x","content":"Fork started"},{"type":"text","text":` + jsonString(t, prompt) + `}]}}`
+// userPrompt is a user entry at ts holding the text prompt beside a tool result, the shape of a fork's first prompt.
+func userPrompt(ts, prompt string) shuttleengine.TranscriptEntry {
+	return shuttleengine.TranscriptEntry{
+		At: stampOf(ts), Role: shuttleengine.EntryUser, UserTexts: []string{prompt},
+		ToolResults: []shuttleengine.ToolResult{{CallID: "x", Text: "Fork started"}},
+	}
 }
 
 func TestCountOrch(t *testing.T) {
 	t.Parallel()
-	const model = "claude-opus-5-5"
-	projects := t.TempDir()
+	// model-a is priced at $20 per million tokens by the fake.
+	const model = "model-a"
+	fake := newFakeTranscripts()
 
 	// run-a is active 10:00-12:00, run-b 11:00-12:00 and run-c 13:00-14:00, each with one message of 1M output tokens;
 	// each window is over the stall cap, so the run's time is all idle.
 	windows := map[string][2]string{"run-a": {"10:00", "12:00"}, "run-b": {"11:00", "12:00"}, "run-c": {"13:00", "14:00"}}
+	for _, slug := range []string{"run-a", "run-b", "run-c"} {
+		fake.add(filepath.Join("/hub", slug), time.Time{}, sessionOf(readOf("s.jsonl", "ly:"+slug+":burler",
+			userAt("2026-01-02T"+windows[slug][0]+":00Z", "go"),
+			timedAssistant(slug+"-m", model, "2026-01-02T"+windows[slug][1]+":00Z", 1_000_000),
+		)))
+	}
 	var runs []RunTally
 	for _, slug := range []string{"run-a", "run-b", "run-c"} {
-		dir := projectDir(projects, "/hub/"+slug)
-		writeLines(t, filepath.Join(dir, "s.jsonl"),
-			`{"type":"custom-title","customTitle":"ly:`+slug+`:burler"}`,
-			`{"type":"user","timestamp":"2026-01-02T`+windows[slug][0]+`:00Z","message":{"role":"user","content":"go"}}`,
-			timedAssistant(slug+"-m", model, "2026-01-02T"+windows[slug][1]+":00Z", 1_000_000),
-		)
-		run, err := CountRun(dir, slug, time.Time{})
+		run, err := CountRun(fakeReadSet(fake), filepath.Join("/hub", slug), slug, time.Time{})
 		if err != nil {
 			t.Fatal(err)
 		}
 		runs = append(runs, run)
 	}
 
-	prime := projectDir(projects, "/hub/prime")
-	writeLines(t, filepath.Join(prime, "a.jsonl"),
-		`{"type":"custom-title","customTitle":"ly:orch"}`,
-		// Before the earliest window: cut off.
-		timedAssistant("before", model, "2026-01-02T09:00:00Z", 9_000_000),
-		// run-a alone in flight.
-		timedAssistant("one", model, "2026-01-02T10:30:00Z", 1_000_000),
-		// run-a and run-b in flight: split equally.
-		timedAssistant("two", model, "2026-01-02T11:30:00Z", 2_000_000),
-		// After the latest window: cut off.
-		timedAssistant("after", model, "2026-01-02T15:00:00Z", 9_000_000),
-		// One message on two lines: the first, outside the span, carries a partial output count;
-		// the last, between windows, carries the full count and decides both the span check and the charge.
-		timedAssistant("straddle", model, "2026-01-02T09:00:00Z", 1),
-		timedAssistant("straddle", model, "2026-01-02T12:30:00Z", 500_000),
-	)
-	writeLines(t, filepath.Join(prime, "a", "subagents", "agent-b.jsonl"),
-		userPrompt(t, "2026-01-02T13:29:00Z", "You are the parent reviewer for run `run-b`, in pair /hub/run-b-old and /hub/run-b."),
-		// In run-c's window, yet the fork names run-b alone.
-		timedAssistant("fork-b", model, "2026-01-02T13:30:00Z", 4_000_000),
-	)
-	writeLines(t, filepath.Join(prime, "a", "subagents", "agent-ac.jsonl"),
-		userPrompt(t, "2026-01-02T13:29:00Z", "Compare run-a with run-c."),
-		// Names two runs, so charged by time: run-c alone is in flight.
-		timedAssistant("fork-ac", model, "2026-01-02T13:30:00Z", 5_000_000),
-	)
-	writeLines(t, filepath.Join(prime, "a", "subagents", "agent-dup.jsonl"),
-		userPrompt(t, "2026-01-02T10:29:00Z", "About run-a."),
-		// The parent's message repeated in the fork's context.
-		timedAssistant("one", model, "2026-01-02T10:30:00Z", 1_000_000),
-	)
-	writeLines(t, filepath.Join(prime, "b.jsonl"),
-		`{"type":"custom-title","customTitle":"lyxhub:orch-2"}`,
+	const prime = "/hub/prime"
+	fake.add(prime, time.Time{}, sessionOf(
+		readOf("a.jsonl", "ly:orch",
+			// Before the earliest window: cut off.
+			timedAssistant("before", model, "2026-01-02T09:00:00Z", 9_000_000),
+			// run-a alone in flight.
+			timedAssistant("one", model, "2026-01-02T10:30:00Z", 1_000_000),
+			// run-a and run-b in flight: split equally.
+			timedAssistant("two", model, "2026-01-02T11:30:00Z", 2_000_000),
+			// After the latest window: cut off.
+			timedAssistant("after", model, "2026-01-02T15:00:00Z", 9_000_000),
+			// A message the engine collapsed to its final record is judged at that record's time, between windows.
+			timedAssistant("straddle", model, "2026-01-02T12:30:00Z", 500_000),
+		),
+		readOf("agent-ac.jsonl", "",
+			userPrompt("2026-01-02T13:29:00Z", "Compare run-a with run-c."),
+			// Names two runs, so charged by time: run-c alone is in flight.
+			timedAssistant("fork-ac", model, "2026-01-02T13:30:00Z", 5_000_000),
+		),
+		readOf("agent-b.jsonl", "",
+			userPrompt("2026-01-02T13:29:00Z", "You are the parent reviewer for run `run-b`, in pair /hub/run-b-old and /hub/run-b."),
+			// In run-c's window, yet the fork names run-b alone.
+			timedAssistant("fork-b", model, "2026-01-02T13:30:00Z", 4_000_000),
+		),
+		readOf("agent-dup.jsonl", "",
+			userPrompt("2026-01-02T10:29:00Z", "About run-a."),
+			// The parent's message repeated in the fork's context.
+			timedAssistant("one", model, "2026-01-02T10:30:00Z", 1_000_000),
+		),
+	))
+	fake.add(prime, time.Time{}, sessionOf(readOf("b.jsonl", "lyxhub:orch-2",
 		// Inside the span, between windows: no run in flight.
 		timedAssistant("none", model, "2026-01-02T12:30:00Z", 3_000_000),
-	)
-	writeLines(t, filepath.Join(prime, "c.jsonl"),
-		`{"type":"custom-title","customTitle":"ly:other"}`,
+	)))
+	fake.add(prime, time.Time{}, sessionOf(readOf("c.jsonl", "ly:other",
 		timedAssistant("other", model, "2026-01-02T10:30:00Z", 7_000_000),
-	)
+	)))
 
-	orch, err := CountOrch(prime, runs)
+	orch, err := CountOrch(fakeReadSet(fake), prime, runs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +105,7 @@ func TestCountOrch(t *testing.T) {
 		{"OneRunInFlight_PlusHalfOfTwo", *orch.Charges["run-a"], 2_000_000},
 		{"HalfOfTwo_PlusForkNamingIt", *orch.Charges["run-b"], 5_000_000},
 		{"ForkNamingTwoRuns_ChargedByTime", *orch.Charges["run-c"], 5_000_000},
-		{"NoRunInFlight_PlusLastLineOfSplitMessage", orch.Unattributed, 3_500_000},
+		{"NoRunInFlight_PlusCollapsedMessage", orch.Unattributed, 3_500_000},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -112,7 +116,7 @@ func TestCountOrch(t *testing.T) {
 			if tt.charge.Weight != 5*tt.want {
 				t.Errorf("charge weight = %v; want %v, five per output token", tt.charge.Weight, 5*tt.want)
 			}
-			// Opus 5.5 output is $20 per million tokens.
+			// The fake prices model-a at $20 per million tokens.
 			if wantUSD := 20 * tt.want / 1e6; math.Abs(tt.charge.Cost.USD-wantUSD) > 1e-9 {
 				t.Errorf("charge cost = %v; want $%.2f", tt.charge.Cost.USD, wantUSD)
 			}
@@ -135,10 +139,10 @@ func TestCountOrch(t *testing.T) {
 	// Each output token weighs 5, so the runs' burler rows weigh 5M each and the orch rows five times their charged tokens;
 	// the shares divide by a total that holds the orch row.
 	for _, want := range []string{
-		"| burler | 3 | 3000000 | 0 | 0 | 0 | 15.0M | 20.0% | 0s | 0.0% | $60.00 | claude-opus-5-5: 3 |\n| idle | | | | | | | | 4h0m0s | 100.0% | | |\n| orch | | | | | | 60.0M | 80.0% | | | $240.00 | |\n",
+		"| burler | 3 | 3000000 | 0 | 0 | 0 | 15.0M | 20.0% | 0s | 0.0% | $60.00 | model-a: 3 |\n| idle | | | | | | | | 4h0m0s | 100.0% | | |\n| orch | | | | | | 60.0M | 80.0% | | | $240.00 | |\n",
 		"Total weight 75.0M;",
 		"## run-a\n\n| role |",
-		"| burler | 1 | 1000000 | 0 | 0 | 0 | 5.0M | 33.3% | 0s | 0.0% | $20.00 | claude-opus-5-5: 1 |\n| idle | | | | | | | | 2h0m0s | 100.0% | | |\n| orch | | | | | | 10.0M | 66.7% | | | $40.00 | |\n",
+		"| burler | 1 | 1000000 | 0 | 0 | 0 | 5.0M | 33.3% | 0s | 0.0% | $20.00 | model-a: 1 |\n| idle | | | | | | | | 2h0m0s | 100.0% | | |\n| orch | | | | | | 10.0M | 66.7% | | | $40.00 | |\n",
 		"| orch | 2 | 4 | 6.5M | $130.00 |",
 		"| orch+sub | 2 | 2 | 9.0M | $180.00 |",
 		"| total | 4 | 6 | 15.5M | $310.00 |",
@@ -157,46 +161,34 @@ func TestEstimatedCost(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name     string
+		pricer   shuttleengine.MessagePricer
 		model    string
-		usage    Usage
+		usage    shuttleengine.MessageUsage
 		wantUSD  float64
 		wantCell string
 	}{
-		{
-			"PricedByCacheLifetime", "claude-opus-5-5",
-			Usage{Input: 1e6, CacheCreate: 3e6, CacheCreation: CacheCreation{OneHour: 1e6}, CacheRead: 1e6, Output: 1e6},
-			4 + 2*5 + 8 + 0.2 + 20, "$42.20",
-		},
-		{
-			"PromptAtLongPromptThreshold_LowerCard", "claude-haiku-5-5",
-			Usage{Input: 10_000, CacheRead: 90_000, Output: 1e6},
-			(10_000*0.10 + 90_000*0.01 + 1e6*0.50) / 1e6, "$0.50",
-		},
-		{
-			"PromptOverLongPromptThreshold_HigherCard", "claude-haiku-5-5",
-			Usage{Input: 10_000, CacheCreate: 1, CacheRead: 90_000, Output: 1e6},
-			(10_000*0.50 + 1*0.625 + 90_000*0.05 + 1e6*2.50) / 1e6, "$2.51",
-		},
-		{"UnpricedModel", "claude-future-9", Usage{Output: 1}, 0, "unpriced"},
-		{"PlaceholderWithoutUsage", "<synthetic>", Usage{}, 0, "$0.00"},
+		{"PricedByTheEngine", fakeRates, "model-a", shuttleengine.MessageUsage{Input: 1e6, CacheWrite: 1e6, CacheRead: 1e6, Output: 1e6}, 80, "$80.00"},
+		{"ModelWithoutPrice", fakeRates, "model-x", shuttleengine.MessageUsage{Output: 1}, 0, "unpriced"},
+		{"EngineWithoutPricing", nil, "model-a", shuttleengine.MessageUsage{Output: 1}, 0, "unpriced"},
+		{"PlaceholderWithoutUsage", nil, "<synthetic>", shuttleengine.MessageUsage{}, 0, "$0.00"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := messageCost(tt.model, tt.usage)
+			got := messageCost(tt.pricer, tt.model, tt.usage)
 			if math.Abs(got.USD-tt.wantUSD) > 1e-9 || got.String() != tt.wantCell {
 				t.Errorf("messageCost(%s) = %v (%s); want %v (%s)", tt.model, got.USD, got, tt.wantUSD, tt.wantCell)
 			}
 		})
 	}
 
-	dir := projectDir(t.TempDir(), "/hub/mixed")
-	writeLines(t, filepath.Join(dir, "s.jsonl"),
-		`{"type":"custom-title","customTitle":"ly:mixed:burler"}`,
-		timedAssistant("priced", "claude-sonnet-5-5", "2026-01-02T10:00:00Z", 1_000_000),
-		timedAssistant("unpriced", "claude-future-9", "2026-01-02T10:01:00Z", 1_000_000),
-	)
-	run, err := CountRun(dir, "mixed", time.Time{})
+	const worktree = "/hub/mixed"
+	fake := newFakeTranscripts()
+	fake.add(worktree, time.Time{}, sessionOf(readOf("s.jsonl", "ly:mixed:burler",
+		timedAssistant("priced", "model-b", "2026-01-02T10:00:00Z", 1_000_000),
+		timedAssistant("unpriced", "model-x", "2026-01-02T10:01:00Z", 1_000_000),
+	)))
+	run, err := CountRun(fakeReadSet(fake), worktree, "mixed", time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,11 +197,25 @@ func TestEstimatedCost(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"| $10.00 + unpriced | claude-future-9: 1, claude-sonnet-5-5: 1 |",
-		"Unpriced models (messages), in no cost figure: claude-future-9: 1.",
+		"| $10.00 + unpriced | model-b: 1, model-x: 1 |",
+		"Unpriced models (messages), in no cost figure: model-x: 1.",
 	} {
 		if !strings.Contains(buf.String(), want) {
 			t.Errorf("report lacks %q:\n%s", want, buf.String())
 		}
+	}
+
+	// An engine without pricing makes every message with usage unpriced.
+	unpriced := ReadSet{fakeEngine: {Transcripts: fake}}
+	run, err = CountRun(unpriced, worktree, "mixed", time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf.Reset()
+	if err := (Report{Runs: []RunTally{run}}).WriteMarkdown(&buf); err != nil {
+		t.Fatal(err)
+	}
+	if want := "| unpriced | model-b: 1, model-x: 1 |"; !strings.Contains(buf.String(), want) {
+		t.Errorf("report with no pricing lacks %q:\n%s", want, buf.String())
 	}
 }
