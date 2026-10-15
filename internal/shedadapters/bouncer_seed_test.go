@@ -299,9 +299,12 @@ func TestBouncer_ReBounceProbesForALiveSeed(t *testing.T) {
 	tests := []struct {
 		name        string
 		attachFound bool
+		rolePrefix  string
+		wantRole    string
 	}{
-		{"LiveSeedIsWaitedOn", true},
-		{"NothingLiveLeavesTheBranchUnchanged", false},
+		{"LiveSeedIsWaitedOn", true, "", bouncerSeedRole},
+		{"NothingLiveLeavesTheBranchUnchanged", false, "", bouncerSeedRole},
+		{"PrefixedProbeCarriesThePrefixedRole", true, "plan", "plan-" + bouncerSeedRole},
 	}
 
 	for _, tt := range tests {
@@ -311,7 +314,9 @@ func TestBouncer_ReBounceProbesForALiveSeed(t *testing.T) {
 				AttachFound:  tt.attachFound,
 				AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 			}
-			b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
+			fx := newBouncerFixture(t, withShuttle(shuttle))
+			fx.Config.RolePrefix = tt.rolePrefix
+			b, cfg := fx.Build()
 
 			if err := os.WriteFile(focusPath(cfg.RunDir, 1), []byte(seeded), 0o644); err != nil {
 				t.Fatalf("WriteFile(...) = %v; want nil", err)
@@ -326,8 +331,8 @@ func TestBouncer_ReBounceProbesForALiveSeed(t *testing.T) {
 			if !slices.Equal(shuttle.GotAttachSpec.OutputFiles, wantOutputs) {
 				t.Errorf("re-bounce probe OutputFiles = %v; want %v -- Attach matches on this set alone, so it must equal the seed spawn's own", shuttle.GotAttachSpec.OutputFiles, wantOutputs)
 			}
-			if shuttle.GotAttachSpec.Role != bouncerSeedRole {
-				t.Errorf("re-bounce probe Role = %q; want %q -- it must describe the same run the seed spawn started", shuttle.GotAttachSpec.Role, bouncerSeedRole)
+			if shuttle.GotAttachSpec.Role != tt.wantRole {
+				t.Errorf("re-bounce probe Role = %q; want %q -- it must describe the same run the seed spawn started", shuttle.GotAttachSpec.Role, tt.wantRole)
 			}
 			if shuttle.GotAttachSpec.Round != "1" {
 				t.Errorf("re-bounce probe Round = %q; want \"1\"", shuttle.GotAttachSpec.Round)

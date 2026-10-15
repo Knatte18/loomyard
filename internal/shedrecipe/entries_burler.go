@@ -53,7 +53,11 @@ func burlerReviewEntry(name string, cfg Config, env Env) (shedengine.ShedProduce
 	if err != nil {
 		return nil, err
 	}
-	if err := configRejectUnknown(cfg, "run_subdir", "profile", "timeout_s", "color_segment"); err != nil {
+	rolePrefix, err := rolePrefixKey("BurlerReview", cfg)
+	if err != nil {
+		return nil, err
+	}
+	if err := configRejectUnknown(cfg, "run_subdir", "profile", "timeout_s", "color_segment", "role_prefix"); err != nil {
 		return nil, err
 	}
 
@@ -72,6 +76,7 @@ func burlerReviewEntry(name string, cfg Config, env Env) (shedengine.ShedProduce
 		return nil, err
 	}
 	profile.Segment = colorSegment
+	profile.RolePrefix = rolePrefix
 
 	if fan := env.RowClusterFans[name]; fan != "" {
 		if profile.ClusterFan != "" {
@@ -122,7 +127,11 @@ func burlerFixEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, 
 	if err != nil {
 		return nil, err
 	}
-	if err := configRejectUnknown(cfg, "run_subdir", "review_row", "profile", "timeout_s", "gates", "color_segment"); err != nil {
+	rolePrefix, err := rolePrefixKey("BurlerFix", cfg)
+	if err != nil {
+		return nil, err
+	}
+	if err := configRejectUnknown(cfg, "run_subdir", "review_row", "profile", "timeout_s", "gates", "color_segment", "role_prefix"); err != nil {
 		return nil, err
 	}
 
@@ -131,6 +140,7 @@ func burlerFixEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, 
 		return nil, err
 	}
 	profile.Segment = colorSegment
+	profile.RolePrefix = rolePrefix
 	runDir, err := burlerRunDir("BurlerFix", runSubdir, env)
 	if err != nil {
 		return nil, err

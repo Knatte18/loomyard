@@ -37,12 +37,14 @@ func TestEngine_Review_TableShape(t *testing.T) {
 		name         string
 		clusterFan   string
 		segment      segmentcolor.Segment
+		rolePrefix   string
 		wantSegment  segmentcolor.Segment
+		wantRole     string
 		wantForkFlag bool
 	}{
-		{name: "solo reviewer", wantSegment: segmentcolor.Review},
-		{name: "cluster reviewer", clusterFan: "standard", wantSegment: segmentcolor.Review, wantForkFlag: true},
-		{name: "merge-segment reviewer", segment: segmentcolor.Merge, wantSegment: segmentcolor.Merge},
+		{name: "solo reviewer", wantSegment: segmentcolor.Review, wantRole: reviewHalfRole},
+		{name: "cluster reviewer", clusterFan: "standard", wantSegment: segmentcolor.Review, wantRole: reviewHalfRole, wantForkFlag: true},
+		{name: "merge-segment reviewer", segment: segmentcolor.Merge, rolePrefix: "merge", wantSegment: segmentcolor.Merge, wantRole: "merge-" + reviewHalfRole},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -50,16 +52,17 @@ func TestEngine_Review_TableShape(t *testing.T) {
 			root, p := newEngineTestProfile(t)
 			p.ClusterFan = tt.clusterFan
 			p.Segment = tt.segment
+			p.RolePrefix = tt.rolePrefix
 			shuttle := doneReview(approvedReview)
 			e := newEngineWith(t, Geometry{WorktreeRoot: root, AnchorPath: root}, clusterTestConfig, shuttle)
 
 			// A cluster reviewer with no fork audit is refused after the spawn; the spec is what this test reads.
 			_, _ = e.Review(p, opts)
 
-			if want := []string{reviewHalfRole}; !slices.Equal(shuttle.started, want) {
+			if want := []string{tt.wantRole}; !slices.Equal(shuttle.started, want) {
 				t.Fatalf("started seats = %v; want %v, the one chair", shuttle.started, want)
 			}
-			spec := shuttle.specs[reviewHalfRole]
+			spec := shuttle.specs[tt.wantRole]
 			if spec.Prompt == "" {
 				t.Errorf("spec.Prompt = \"\"; want non-empty")
 			}
@@ -81,7 +84,7 @@ func TestEngine_Review_TableShape(t *testing.T) {
 			if spec.ForkSubagents != tt.wantForkFlag {
 				t.Errorf("spec.ForkSubagents = %v; want %v", spec.ForkSubagents, tt.wantForkFlag)
 			}
-			gate := shuttle.gates[reviewHalfRole]
+			gate := shuttle.gates[tt.wantRole]
 			if len(gate) != 1 || gate[0].Name != "review" || !gate[0].PassOnCap || gate[0].Attempts != reviewGateAttempts {
 				t.Errorf("gate = %+v; want the one review-parse entry that passes on its cap", gate)
 			}

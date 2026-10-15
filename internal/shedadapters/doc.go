@@ -68,6 +68,7 @@
 //     Roles: the judge and the seed spawn each load the `scribe:prose` skill (bouncerJudgeSkills, bouncerSeedSkills),
 //     and both prompts carry the parent directive that parentdirective.Directive renders from BouncerConfig.ParentName, in its non-interactive form;
 //     an empty ParentName renders the no-parent variant.
+//     The seed and judge sessions carry the roles bouncer-seed and bouncer-judge, each led by BouncerConfig.RolePrefix and a hyphen when one is configured, in the spawn and in the probe that attaches to it.
 //     The escalation brief and the parent notice are read by the parent, not by a spawned role, and carry no directive.
 //     Escalation: a CONTINUE or CIRCLING round escalates to the run's parent instead of halting for a human, for one of three causes.
 //     Soft-cap rule: the soft cap is reached when the BouncerConfig.Bounces seam reports count >= budget, the comparison Shed applies.

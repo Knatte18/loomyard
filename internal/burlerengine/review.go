@@ -49,7 +49,7 @@ var ErrReviewChanged = errors.New("burler: the review file changed after it was 
 // values carries the marker values the seat's stencil is filled from.
 func (p *Profile) reviewTable(opts RunOpts, values map[string]string) seatengine.Table {
 	return seatengine.Table{
-		RolePrefix: reviewRolePrefix,
+		RolePrefix: p.rolePrefix(reviewRolePrefix),
 		Segment:    p.segment(),
 		Gate:       shuttleengine.GateSpec{ReviewGateEntry(p.ReviewPath)},
 		Round:      opts.Round,
