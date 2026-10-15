@@ -287,8 +287,8 @@ func TestAttachArgv_PreflightOnAKnownGoodSession(t *testing.T) {
 		t.Fatalf("AttachArgv() = %v, want the chained argv on this known-good script", want)
 	}
 
-	// The seven bar and border pins plus the pre-existing window-size pin, the window marker and the strand pane's two options.
-	wantSetOptionCalls := 11 + wantShellPins
+	// The seven bar and border pins plus the pre-existing window-size pin, the one follow-command pin (set, or unset when the jump cannot be composed), the window marker and the strand pane's two options.
+	wantSetOptionCalls := 12 + wantShellPins
 	if setOptions := fake.ArgvFor("set-option"); len(setOptions) != wantSetOptionCalls {
 		t.Fatalf("AttachArgv() issued %d set-option calls, want %d: %v", len(setOptions), wantSetOptionCalls, setOptions)
 	}
@@ -485,14 +485,12 @@ func TestAttachArgv_SelectsTheRelevantWindow(t *testing.T) {
 
 			followReads := 0
 			for _, call := range fake.Calls() {
-				if !slices.ContainsFunc(call, func(arg string) bool { return strings.Contains(arg, "@lyx_follow") }) {
-					continue
+				if call[0] == "set-option" && slices.Contains(call, "@lyx_follow") {
+					t.Errorf("attach issued %v, want it never to write the follow state", call)
 				}
-				if call[0] != "display-message" || call[len(call)-1] != "#{@lyx_follow}" {
-					t.Errorf("attach issued %v, want no call carrying @lyx_follow but the display-message read", call)
-					continue
+				if call[0] == "display-message" && call[len(call)-1] == "#{@lyx_follow}" {
+					followReads++
 				}
-				followReads++
 			}
 			if wantRead := followReads == 1; wantRead != otherClient || followReads > 1 {
 				t.Errorf("follow reads = %d, want one read exactly when another client is attached or the listing failed (%v)", followReads, otherClient)

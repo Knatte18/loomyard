@@ -243,6 +243,32 @@ func TestBar_LineTwoListsSessionsInIDOrderAndTheBorderNamesStrands(t *testing.T)
 		t.Errorf("line 2 = %q, want the earlier session before the later one (session-id order)", line)
 	}
 
+	// The follow button sits after the last session button and before the time: lit while @lyx_follow is unset, unlit while it is off.
+	for _, tt := range []struct {
+		name, follow, want string
+	}{
+		{"unset", "", "range=user|follow bg=green fg=black bold] follow "},
+		{"off", "off", "range=user|follow bg=colour236 fg=white] follow "},
+	} {
+		// Boot sets the option on, so the unset row removes it first.
+		setArgv := []string{"set-option", "-t", exactSessionWindowTarget(f.e.SessionName()), followSessionOption, tt.follow}
+		if tt.follow == "" {
+			setArgv = []string{"set-option", "-u", "-t", exactSessionWindowTarget(f.e.SessionName()), followSessionOption}
+		}
+		if err := f.e.tmux.run(setArgv...); err != nil {
+			t.Fatalf("set %s to %q: %v", followSessionOption, tt.follow, err)
+		}
+		line := f.expand(t, "#{T:status-format[1]}")
+		at := strings.Index(line, tt.want)
+		if at < 0 {
+			t.Errorf("line 2 with follow %s = %q, want it to contain %q", tt.name, line, tt.want)
+			continue
+		}
+		if at < strings.LastIndex(line, other) || at > strings.Index(line, "nolist align=right") {
+			t.Errorf("line 2 with follow %s = %q, want the follow button after the last session button and before the time", tt.name, line)
+		}
+	}
+
 	if got := f.paneBorder(t, f.selvagePane); !strings.Contains(got, "selvage") || strings.Contains(got, "fg=") {
 		t.Errorf("Selvage's border title = %q, want it to read selvage with no strand color", got)
 	}

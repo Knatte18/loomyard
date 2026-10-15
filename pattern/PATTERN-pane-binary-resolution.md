@@ -6,7 +6,7 @@ A strand pane or detached `lyx` window reed creates, and a key binding reed pins
 - Every shell token is emitted through `internal/shell`, per the shell-mechanics-seam entry.
 - The dialect is `shell.ForGOOS()`, the same selector as the launch command the prelude is joined onto.
   Reed neither derives a dialect of its own nor changes how a pane's shell is started.
-- A key binding that runs `lyx` (the Alt+Left and Alt+Right session switch) names the absolute path of the binary that pinned it, composed in `panebin.go` from the same `executablePath` seam, with every token quoted through `internal/shell` and each `#` doubled for run-shell's format expansion.
+- A key binding that runs `lyx` (the Alt+Left and Alt+Right session switch, and the status bar's follow button, whose line rides the `@lyx_follow_command` option) names the absolute path of the binary that pinned it, composed in `panebin.go` from the same `executablePath` seam, with every token quoted through `internal/shell` and each `#` doubled for run-shell's format expansion.
   An unresolvable executable logs a named `logger.Warn` and pins no such binding.
 - Scope is strand panes, reed's key bindings that run `lyx`, and the detached `lyx` window `OpenWindow` opens, whose command `panebin.go` composes with the same prelude and no strand name exports.
   Selvage's split and the `new-session` first pane are exempt by name.
