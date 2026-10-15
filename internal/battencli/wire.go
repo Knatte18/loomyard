@@ -1220,9 +1220,9 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				}
 				return task.Recipe, nil
 			},
-			// ChildDriver is the "child_driver" param of prime's own seed when the operator typed one, otherwise the task's resolved driver_kind (childDriverFrom).
-			// The kind is read from the task worktree's loom config, loaded strictly, and SeedChild calls this after writing that worktree's local layer, so a driver_kind from the run settings is seen.
-			ChildDriver: func() (string, error) {
+			// ChildDriver is the "child_driver" param of prime's own seed when the operator typed one, otherwise the child recipe's resolved driver_kind (childDriverFrom).
+			// The kind is read from the task worktree's config layers, and SeedChild calls this after writing that worktree's local layer, so a driver_kind from the run settings is seen.
+			ChildDriver: func(recipe string) (string, error) {
 				seed, found, err := shedrun.ReadSeed(location, slug)
 				if err != nil {
 					return "", err
@@ -1232,11 +1232,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					if err != nil {
 						return "", err
 					}
-					cfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(taskLocation), "loom")
-					if err != nil {
-						return "", err
-					}
-					return loomengine.ResolveDriverKind(cfg), nil
+					return childDriverKind(fabricengine.ConfigDirs(taskLocation), recipe)
 				})
 			},
 			// ReadRunSettings opens the Board fresh on every Call, as ReadBoardType does, and returns the task's run_settings.

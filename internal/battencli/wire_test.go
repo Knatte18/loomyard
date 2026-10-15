@@ -410,7 +410,7 @@ func TestWire_ChildDriverDelegatesToChildDriverOf(t *testing.T) {
 				t.Fatalf("shedrun.WriteSeed = %v; want nil", err)
 			}
 
-			got, err := c.env.SeedChild.ChildDriver()
+			got, err := c.env.SeedChild.ChildDriver(shedrun.RecipeLoom)
 			if err != nil {
 				t.Fatalf("ChildDriver() error = %v; want nil", err)
 			}

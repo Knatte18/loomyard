@@ -89,7 +89,7 @@ func withLocalBounds(m Module) Module {
 func Modules() []Module {
 	modules := []Module{
 		{Name: "batcher", Template: batcher.ConfigTemplate, OpenMaps: batcher.ConfigOpenMaps(), Migrate: batcher.MigrateConfig, Spec: batcher.ConfigSpec},
-		{Name: "batten", Template: battenshed.ConfigTemplate, Spec: battenshed.ConfigSpec},
+		{Name: "batten", Template: battenshed.ConfigTemplate, CheckValues: battenshed.ValidateLocalValues, Spec: battenshed.ConfigSpec},
 		{Name: "board", Template: boardengine.ConfigTemplate, OpenMaps: boardengine.ConfigOpenMaps(), HubWide: true, Spec: boardengine.ConfigSpec},
 		{Name: "burler", Template: burlerengine.ConfigTemplate, SeedOnly: true, Spec: burlerengine.ConfigSpec},
 		{Name: "darn", Template: darnengine.ConfigTemplate, HubWide: true, CheckValues: darnengine.ValidateLocalValues, Spec: darnengine.ConfigSpec},

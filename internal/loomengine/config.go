@@ -43,12 +43,14 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/reviewbudget"
 	"github.com/Knatte18/loomyard/internal/seatengine"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 	"gopkg.in/yaml.v3"
@@ -432,12 +434,12 @@ type Config struct {
 	ArbiterTimeoutMin int    `yaml:"arbiter_timeout_min"`
 	ArbiterMaxSpawns  int    `yaml:"arbiter_max_spawns"`
 
-	// The driver a task's loom run is seeded with when nothing typed one, and the tackler's model-spec, timeout and spawn budget.
-	// An empty DriverKind reads as llm; an empty Tackler takes haiku, a zero TacklerTimeoutMin takes 10 minutes, and a zero TacklerMaxSpawns turns the tackler off.
+	// The driver a task's loom run is seeded with when nothing typed one, and the tackler's model-spec, timeout and spawn budget; each overrides shed.yaml's key.
+	// An empty DriverKind or Tackler, a zero TacklerTimeoutMin and a null TacklerMaxSpawns inherit shed.yaml, and a set TacklerMaxSpawns of 0 turns the tackler off.
 	DriverKind        string `yaml:"driver_kind"`
 	Tackler           string `yaml:"tackler"`
 	TacklerTimeoutMin int    `yaml:"tackler_timeout_min"`
-	TacklerMaxSpawns  int    `yaml:"tackler_max_spawns"`
+	TacklerMaxSpawns  *int   `yaml:"tackler_max_spawns"`
 
 	// The alignment agent's model-spec, timeout and switches.
 	// An empty Alignment takes opus[high] and a zero AlignmentTimeoutMin takes 20 minutes, kept below ParentReviewWaitMin.
@@ -990,59 +992,38 @@ func mappingKeyIndex(mapping *yaml.Node, key string) int {
 	return -1
 }
 
-// validateDriverKind refuses a driver_kind other than empty, llm or go, through shedrun.ValidateDriver so the vocabulary stays shedrun's.
-func validateDriverKind(driverKind string) error {
-	if driverKind == "" {
-		return nil
+// ShedOverride returns the driver and tackler keys of loom.yaml as the override of shed.yaml's.
+func (c Config) ShedOverride() sheddriver.Override {
+	return sheddriver.Override{
+		DriverKind:        c.DriverKind,
+		Tackler:           c.Tackler,
+		TacklerTimeoutMin: c.TacklerTimeoutMin,
+		TacklerMaxSpawns:  c.TacklerMaxSpawns,
 	}
-	if err := shedrun.ValidateDriver(driverKind); err != nil {
-		return fmt.Errorf("loom config key %q: %w; set driver_kind to llm or go in loom.yaml or the task's run_settings", "driver_kind", err)
-	}
-	return nil
 }
 
-// validateTacklerKnobs refuses a negative tackler_timeout_min or tackler_max_spawns; zero is a meaning on both.
-func validateTacklerKnobs(timeoutMin, maxSpawns int) error {
-	for _, knob := range []struct {
-		key   string
-		value int
-		zero  string
-	}{
-		{"tackler_timeout_min", timeoutMin, "0 for the 10 minute default"},
-		{"tackler_max_spawns", maxSpawns, "0 to turn the tackler off"},
-	} {
-		if knob.value < 0 {
-			return fmt.Errorf("loom config key %q: must not be negative, got %d; set it to %s, or to a positive integer, in loom.yaml or the task's run_settings", knob.key, knob.value, knob.zero)
+// RecipeOverride loads the shed override of a run's recipe from the config layers under dirs:
+// darn.yaml for shedrun.RecipeDarn, and loom.yaml for shedrun.RecipeLoom and the empty recipe.
+func RecipeOverride(dirs configengine.Dirs, recipe string) (sheddriver.Override, error) {
+	if recipe == shedrun.RecipeDarn {
+		cfg, err := darnengine.LoadConfig(dirs, "darn")
+		if err != nil {
+			return sheddriver.Override{}, err
 		}
+		return cfg.ShedOverride(), nil
 	}
-	return nil
+	cfg, err := LoadConfig(dirs, "loom")
+	if err != nil {
+		return sheddriver.Override{}, err
+	}
+	return cfg.ShedOverride(), nil
 }
 
-// ValidateLocalValues checks the values of the driver_kind, tackler_timeout_min and tackler_max_spawns keys a local-layer document sets, and of every review budget and hard-cap key through reviewbudget, and leaves every other key to LoadConfig.
+// ValidateLocalValues checks the values of the driver_kind, tackler, tackler_timeout_min and tackler_max_spawns keys a local-layer document sets, and of every review budget and hard-cap key through reviewbudget, and leaves every other key to LoadConfig.
 // A refusal is marked configengine.ErrInvalid and names the key.
 func ValidateLocalValues(document []byte) error {
-	var set struct {
-		DriverKind        *string `yaml:"driver_kind"`
-		TacklerTimeoutMin *int    `yaml:"tackler_timeout_min"`
-		TacklerMaxSpawns  *int    `yaml:"tackler_max_spawns"`
-	}
-	if err := yaml.Unmarshal(document, &set); err != nil {
-		return configengine.MarkInvalid(fmt.Errorf("unmarshal loom local values: %w", err))
-	}
-	if set.DriverKind != nil {
-		if err := validateDriverKind(*set.DriverKind); err != nil {
-			return configengine.MarkInvalid(err)
-		}
-	}
-	var timeoutMin, maxSpawns int
-	if set.TacklerTimeoutMin != nil {
-		timeoutMin = *set.TacklerTimeoutMin
-	}
-	if set.TacklerMaxSpawns != nil {
-		maxSpawns = *set.TacklerMaxSpawns
-	}
-	if err := validateTacklerKnobs(timeoutMin, maxSpawns); err != nil {
-		return configengine.MarkInvalid(err)
+	if err := sheddriver.CheckLocalOverride("loom", document); err != nil {
+		return err
 	}
 	var budgets map[string]any
 	if err := yaml.Unmarshal(document, &budgets); err != nil {
@@ -1199,18 +1180,7 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		}
 	}
 
-	if err := validateDriverKind(cfg.DriverKind); err != nil {
-		return Config{}, err
-	}
-
-	// tackler is validated only when non-empty: an empty value takes ResolveTackler's default.
-	if cfg.Tackler != "" {
-		if _, err := modelspec.Parse(cfg.Tackler); err != nil {
-			return Config{}, fmt.Errorf("loom config key %q: %w; set it to a model-spec the registry defines, or to empty to take haiku", "tackler", err)
-		}
-	}
-
-	if err := validateTacklerKnobs(cfg.TacklerTimeoutMin, cfg.TacklerMaxSpawns); err != nil {
+	if err := sheddriver.CheckOverride("loom", cfg.ShedOverride()); err != nil {
 		return Config{}, err
 	}
 

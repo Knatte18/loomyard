@@ -116,10 +116,10 @@ func templateConfig() Config {
 		Arbiter:                  "opus[high]",
 		ArbiterTimeoutMin:        30,
 		ArbiterMaxSpawns:         3,
-		DriverKind:               "llm",
-		Tackler:                  "haiku",
-		TacklerTimeoutMin:        10,
-		TacklerMaxSpawns:         4,
+		DriverKind:               "",
+		Tackler:                  "",
+		TacklerTimeoutMin:        0,
+		TacklerMaxSpawns:         nil,
 		Alignment:                "opus[high]",
 		AlignmentTimeoutMin:      20,
 		SkipAlignment:            false,
@@ -284,10 +284,10 @@ review_timeout_min: 240
 			mutate: func(c *Config) { c.Arbiter, c.ArbiterTimeoutMin, c.ArbiterMaxSpawns = "", 0, 0 },
 		},
 		{
-			name:   "driver_kind go and explicit tackler keys",
+			name:   "driver_kind go and explicit tackler keys, a tackler_max_spawns of 0 read as a set 0",
 			values: map[string]string{"driver_kind": "go", "tackler": "sonnet[low]", "tackler_timeout_min": "5", "tackler_max_spawns": "0"},
 			mutate: func(c *Config) {
-				c.DriverKind, c.Tackler, c.TacklerTimeoutMin, c.TacklerMaxSpawns = "go", "sonnet[low]", 5, 0
+				c.DriverKind, c.Tackler, c.TacklerTimeoutMin, c.TacklerMaxSpawns = "go", "sonnet[low]", 5, intPtr(0)
 			},
 		},
 		{

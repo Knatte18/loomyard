@@ -34,12 +34,15 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/battenshed"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedtransient"
@@ -119,7 +122,7 @@ func battenDriver(flagVal string) string {
 // A driver the operator typed cannot take effect on a seeded run, so it is refused rather than
 // dropped; one left at its cobra default carries no intent to contradict and is ignored.
 // A typed --child-driver is refused against a seed recording a different child driver and against a seed recording none;
-// an untyped one passes a seed that records none, since the child then takes the task's driver_kind.
+// an untyped one passes a seed that records none, since the child then takes its recipe's driver_kind, then shed.yaml's.
 func refuseAdoptedSeed(seed shedrun.Seed, runID string, driverFlag string, driverSet bool, childDriverFlag string, childDriverSet bool) error {
 	if seed.Recipe != shedrun.RecipeBatten {
 		return fmt.Errorf(
@@ -137,7 +140,7 @@ func refuseAdoptedSeed(seed shedrun.Seed, runID string, driverFlag string, drive
 		recorded, has := childDriverOf(seed)
 		if !has {
 			return fmt.Errorf(
-				"battencli: run %q is already seeded with no child driver; --child-driver %q cannot be recorded on a seeded run -- delete the run's seed to re-seed it with the flag, or drop the flag to take the task's driver_kind",
+				"battencli: run %q is already seeded with no child driver; --child-driver %q cannot be recorded on a seeded run -- delete the run's seed to re-seed it with the flag, or drop the flag to take the child recipe's driver_kind, then shed.yaml's",
 				runID, childDriverFlag,
 			)
 		}
@@ -168,6 +171,20 @@ func childDriverFrom(seed shedrun.Seed, found bool, resolveKind func() (string, 
 		}
 	}
 	return resolveKind()
+}
+
+// childDriverKind resolves the driver of a child run of recipe from the config layers under dirs:
+// the recipe's own driver_kind override, else shed.yaml's, else llm.
+func childDriverKind(dirs configengine.Dirs, recipe string) (string, error) {
+	shed, err := sheddriver.LoadConfig(dirs)
+	if err != nil {
+		return "", err
+	}
+	override, err := loomengine.RecipeOverride(dirs, recipe)
+	if err != nil {
+		return "", err
+	}
+	return sheddriver.ResolveDriverKind(shed, override), nil
 }
 
 // armSeed gates batten's auto-seed: it reads the seed at runID, refuses a found seed that disagrees
@@ -240,7 +257,7 @@ func (c *battenCLI) armSeed(location *lyxcwd.Location, runID, verb string) error
 	}
 
 	// The run-id is the slug; no param repeats it.
-	// child_driver is recorded only when the operator typed it; Seed-Child resolves the rest from the task's driver_kind.
+	// child_driver is recorded only when the operator typed it; Seed-Child resolves the rest from the child recipe's driver_kind, then shed.yaml's.
 	var params map[string]string
 	if c.childDriverFlagSet {
 		params = map[string]string{"child_driver": c.childDriverFlag}

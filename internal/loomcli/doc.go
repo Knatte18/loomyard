@@ -8,7 +8,7 @@
 //
 // `lyx loom start` works in order.
 // It resolves the recorded parent branch, seeds the status file when absent and commits the seed into the fabric before anything else touches it.
-// An unseeded run is seeded with the driver `driver_kind` resolves to, `llm` by default;
+// An unseeded run is seeded with the driver `loom.yaml`'s `driver_kind` resolves to over `shed.yaml`'s, `llm` by default;
 // a seeded run keeps its recorded driver whatever the key says later.
 // It brings up the worktree's tmux session;
 // it ensures the status strand on either driver, and the per-hub watchdog daemon is spawned best-effort.

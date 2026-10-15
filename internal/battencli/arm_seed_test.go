@@ -243,7 +243,7 @@ func TestRefuseAdoptedSeed(t *testing.T) {
 			seed:            battenSeedNoChildParam,
 			childDriverFlag: shedrun.DriverLLM,
 			childDriverSet:  true,
-			wantSubstr:      "delete the run's seed to re-seed it with the flag, or drop the flag to take the task's driver_kind",
+			wantSubstr:      "delete the run's seed to re-seed it with the flag, or drop the flag to take the child recipe's driver_kind, then shed.yaml's",
 		},
 		{
 			name: "an_untyped_child_driver_passes_a_seed_recording_none",

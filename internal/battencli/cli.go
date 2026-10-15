@@ -83,7 +83,7 @@ type battenCLI struct {
 	driverFlag string
 	// childDriverFlag is driverFlag's sibling for --child-driver, the value armSeed writes into the
 	// auto-seeded seed's params.child_driver, and only when childDriverFlagSet. Empty means "unset":
-	// the child then takes the task's driver_kind.
+	// the child then takes its recipe's driver_kind, then shed.yaml's.
 	childDriverFlag string
 	// driverFlagSet records whether the operator typed --driver, rather than cobra filling the
 	// field with its StringVar default.
@@ -293,7 +293,7 @@ Example:
 	// "llm" -- the child's own recipe capability is checked when that child's seed is written, not
 	// here.
 	runVerb.Flags().StringVar(&c.driverFlag, "driver", shedrun.DriverGo, "the run's own driver (batten has no bootstrap verb, so \"llm\" is refused)")
-	runVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", "", "the driver the task worktree's own inner run uses; unset, the task's driver_kind")
+	runVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", "", "the driver the task worktree's own inner run uses; unset, the child recipe's driver_kind, then shed.yaml's")
 	runVerb.Flags().BoolVar(&c.windowFlag, "window", false, "start the same run in its own tmux window of the prime's reed session and return at once, and have its Open-Window row open a terminal window attached to the task worktree whatever batten.yaml's open_window says")
 	runVerb.Flags().BoolVar(&c.openTerminalFlag, openTerminalFlagName, false, "turn the Open-Window row on for this run whatever batten.yaml's open_window says; --window passes it")
 	_ = runVerb.Flags().MarkHidden(openTerminalFlagName)
@@ -305,7 +305,7 @@ Example:
 		return c.runInWindow(cmd)
 	}
 	stepVerb.Flags().StringVar(&c.driverFlag, "driver", shedrun.DriverGo, "the run's own driver (batten has no bootstrap verb, so \"llm\" is refused)")
-	stepVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", "", "the driver the task worktree's own inner run uses; unset, the task's driver_kind")
+	stepVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", "", "the driver the task worktree's own inner run uses; unset, the child recipe's driver_kind, then shed.yaml's")
 
 	parent.AddCommand(runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, lockCommand(), c.cleanupCmd(), c.overviewCmd())
 

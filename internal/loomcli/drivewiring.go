@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/buildvcs"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -29,6 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
@@ -98,6 +100,27 @@ const (
 	darnTacklerRecipe = "darn: a one-writer task run (one darn writer session, its review, verify and landing)"
 )
 
+// tacklerFor resolves the tackler settings of a run of recipe from the config layers under dirs, and the one-line recipe description its prompt names:
+// shed.yaml's defaults under the recipe's own module overrides, so a darn run takes darn.yaml's keys and a loom run loom.yaml's.
+func tacklerFor(dirs configengine.Dirs, recipe string, reg modelspec.Registry) (sheddriver.TacklerSettings, string, error) {
+	shed, err := sheddriver.LoadConfig(dirs)
+	if err != nil {
+		return sheddriver.TacklerSettings{}, "", err
+	}
+	override, err := loomengine.RecipeOverride(dirs, recipe)
+	if err != nil {
+		return sheddriver.TacklerSettings{}, "", err
+	}
+	settings, err := sheddriver.ResolveTackler(shed, override, reg)
+	if err != nil {
+		return sheddriver.TacklerSettings{}, "", err
+	}
+	if recipe == shedrun.RecipeDarn {
+		return settings, darnTacklerRecipe, nil
+	}
+	return settings, loomTacklerRecipe, nil
+}
+
 // goDriverDepsFor assembles the Go driver's seams for the run the pre-run armed.
 // release is the driver lock's early release, which the hand-over calls before it spawns its successor.
 // Every closure reads on demand, and the on-disk lyx path is resolved once, here.
@@ -106,7 +129,7 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error)
 	if err != nil {
 		return sheddriver.Deps{}, err
 	}
-	tacklerSettings, err := loomengine.ResolveTackler(c.cfg, c.registry)
+	tacklerSettings, tacklerRecipe, err := tacklerFor(fabricengine.ConfigDirs(c.location), c.recipe, c.registry)
 	if err != nil {
 		return sheddriver.Deps{}, err
 	}
@@ -123,10 +146,6 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error)
 	verifyPaths := verifytree.NewPaths(location.WorktreePath(), verifytree.Dir(location.AnchorPath()))
 	pauseGeometry := func() (pauserecord.Geometry, error) { return hubgeom.PauseGeometry(location) }
 
-	tacklerRecipe := loomTacklerRecipe
-	if c.recipe == shedrun.RecipeDarn {
-		tacklerRecipe = darnTacklerRecipe
-	}
 	tacklerDeps := sheddriver.TacklerDeps{
 		Closed: func(key sheddriver.StopKey, spawned time.Time) (bool, error) {
 			records, err := sheddriver.ReadSettleRecords(settlePath)

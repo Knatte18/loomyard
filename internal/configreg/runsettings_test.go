@@ -162,6 +162,25 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantInvalid: true,
 		},
 		{
+			name:     "darn's tackler_max_spawns of 0 is open to run settings",
+			settings: map[string]any{"darn": map[string]any{"tackler_max_spawns": float64(0)}},
+			wantDocs: map[string]string{"darn": "tackler_max_spawns: 0\n"},
+		},
+		{
+			name:        "darn's negative tackler_max_spawns is refused by darn's CheckValues",
+			settings:    map[string]any{"darn": map[string]any{"tackler_max_spawns": float64(-1)}},
+			wantRefusal: "tackler_max_spawns",
+			wantModule:  "darn",
+			wantInvalid: true,
+		},
+		{
+			name:        "a batten driver_kind is refused naming the key",
+			settings:    map[string]any{"batten": map[string]any{"driver_kind": "go"}},
+			wantRefusal: "driver_kind",
+			wantModule:  "batten",
+			wantInvalid: true,
+		},
+		{
 			name:     "shed's tackler_max_spawns is open to run settings",
 			settings: map[string]any{"shed": map[string]any{"tackler_max_spawns": float64(0)}},
 			wantDocs: map[string]string{"shed": "tackler_max_spawns: 0\n"},
