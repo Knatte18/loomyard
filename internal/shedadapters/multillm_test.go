@@ -254,12 +254,18 @@ func TestMultiLLMProducer_Cancellation(t *testing.T) {
 func TestMultiLLMProducer_MapsTheLeadResult(t *testing.T) {
 	t.Parallel()
 	one, two := 1, 2
+	// The span times sit in a zone two hours east of UTC, so the wanted strings also pin the conversion to UTC.
+	zone := time.FixedZone("east", 2*60*60)
+	at := func(second, millisecond int) time.Time {
+		return time.Date(2026, 8, 15, 11, 0, second, millisecond*int(time.Millisecond), zone)
+	}
 	tests := []struct {
 		name string
 		// result is the lead's result the fake seat runner reports.
 		result       shuttleengine.Result
 		wantOutcome  shedengine.Outcome
 		wantAttempts *int
+		wantSpans    []shedengine.GateSpan
 		wantReason   string
 		// wantErr is a substring of the error, and "" means no error.
 		wantErr        string
@@ -267,17 +273,40 @@ func TestMultiLLMProducer_MapsTheLeadResult(t *testing.T) {
 	}{
 		{name: "done", result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, wantOutcome: shedengine.Done},
 		{
-			name:         "done with a passing gate",
-			result:       shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Passed: true, Attempts: 1}},
+			name: "done with a passing gate",
+			result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Passed: true, Attempts: 1, Entries: []shuttleengine.GateEntryOutcome{
+				{Name: "plan-parse", Spans: []shuttleengine.GateSpan{
+					{Kind: shuttleengine.GateSpanGate, Start: at(0, 500), End: at(1, 0)},
+					{Kind: shuttleengine.GateSpanHeld, Start: at(1, 0), End: at(5, 250)},
+				}},
+				{Name: "lint", Spans: []shuttleengine.GateSpan{{Kind: shuttleengine.GateSpanGate, Start: at(5, 250), End: at(6, 0)}}},
+			}}},
+			wantOutcome:  shedengine.Done,
+			wantAttempts: &one,
+			wantSpans: []shedengine.GateSpan{
+				{Gate: "plan-parse", Kind: shedengine.GateSpanKindGate, Start: "2026-08-15T09:00:00.5Z", End: "2026-08-15T09:00:01Z"},
+				{Gate: "plan-parse", Kind: shedengine.GateSpanKindHeld, Start: "2026-08-15T09:00:01Z", End: "2026-08-15T09:00:05.25Z"},
+				{Gate: "lint", Kind: shedengine.GateSpanKindGate, Start: "2026-08-15T09:00:05.25Z", End: "2026-08-15T09:00:06Z"},
+			},
+		},
+		{
+			name:         "done with a gate whose entries recorded no spans",
+			result:       shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Passed: true, Attempts: 1, Entries: []shuttleengine.GateEntryOutcome{{Name: "plan-parse"}}}},
 			wantOutcome:  shedengine.Done,
 			wantAttempts: &one,
 		},
 		{
-			name:         "done with a failing gate",
-			result:       shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Passed: false, Attempts: 2, Reason: "the gate said no"}},
+			name: "done with a failing gate",
+			result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Passed: false, Attempts: 2, Reason: "the gate said no", Entries: []shuttleengine.GateEntryOutcome{
+				{Name: "plan-parse", Spans: []shuttleengine.GateSpan{{Kind: shuttleengine.GateSpanGate, Start: at(0, 0), End: at(1, 0)}, {Kind: shuttleengine.GateSpanRework, Start: at(1, 0), End: at(9, 0)}}},
+			}}},
 			wantOutcome:  shedengine.Stuck,
 			wantAttempts: &two,
-			wantReason:   "the gate said no",
+			wantSpans: []shedengine.GateSpan{
+				{Gate: "plan-parse", Kind: shedengine.GateSpanKindGate, Start: "2026-08-15T09:00:00Z", End: "2026-08-15T09:00:01Z"},
+				{Gate: "plan-parse", Kind: shedengine.GateSpanKindRework, Start: "2026-08-15T09:00:01Z", End: "2026-08-15T09:00:09Z"},
+			},
+			wantReason: "the gate said no",
 		},
 		{name: "died", result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}, wantErr: "shuttle run outcome died"},
 		{name: "timeout", result: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}, wantErr: "shuttle run outcome timeout"},
@@ -321,7 +350,7 @@ func TestMultiLLMProducer_MapsTheLeadResult(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Call() error = %v, want nil", err)
 			}
-			want := shedengine.OutputPointer{Path: output, GateAttempts: tt.wantAttempts, Reason: tt.wantReason}
+			want := shedengine.OutputPointer{Path: output, GateAttempts: tt.wantAttempts, GateSpans: tt.wantSpans, Reason: tt.wantReason}
 			if outcome != tt.wantOutcome || !reflect.DeepEqual(pointer, want) {
 				t.Errorf("Call() = %q, %+v, want %q, %+v", outcome, pointer, tt.wantOutcome, want)
 			}

@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -85,7 +86,7 @@ func TestPlanWrite_Call(t *testing.T) {
 
 		p := NewPlanWrite("Plan-Write", inner, commit.Commit)
 		pointer := shedfake.RequireOutcome(t, p, shedengine.Done)
-		if pointer != inner.pointer {
+		if !reflect.DeepEqual(pointer, inner.pointer) {
 			t.Errorf("Call() pointer = %+v; want %+v", pointer, inner.pointer)
 		}
 		if commit.calls != 1 {
@@ -104,7 +105,7 @@ func TestPlanWrite_Call(t *testing.T) {
 
 		p := NewPlanWrite("Plan-Write", inner, commit.Commit)
 		pointer := shedfake.RequireOutcome(t, p, shedengine.Stuck)
-		if pointer != (shedengine.OutputPointer{}) {
+		if !reflect.DeepEqual(pointer, shedengine.OutputPointer{}) {
 			t.Errorf("Call() pointer = %+v; want the zero value", pointer)
 		}
 		if commit.calls != 0 {
@@ -122,7 +123,7 @@ func TestPlanWrite_Call(t *testing.T) {
 
 		p := NewPlanWrite("Plan-Write", inner, commit.Commit)
 		pointer := shedfake.RequireOutcome(t, p, shedengine.Stuck)
-		if pointer != inner.pointer {
+		if !reflect.DeepEqual(pointer, inner.pointer) {
 			t.Errorf("Call() pointer = %+v; want %+v", pointer, inner.pointer)
 		}
 		if commit.calls != 1 {
@@ -161,7 +162,7 @@ func TestPlanWrite_Call(t *testing.T) {
 		if outcome != "" {
 			t.Errorf("Call() outcome = %q; want the empty value, never %q", outcome, shedengine.Stuck)
 		}
-		if pointer != (shedengine.OutputPointer{}) {
+		if !reflect.DeepEqual(pointer, shedengine.OutputPointer{}) {
 			t.Errorf("Call() pointer = %+v; want the zero value", pointer)
 		}
 		if !strings.Contains(err.Error(), "Plan-Write") {
@@ -188,7 +189,7 @@ func TestPlanWrite_Call(t *testing.T) {
 		if outcome != "" {
 			t.Errorf("Call() outcome = %q; want the empty value, never %q", outcome, shedengine.Stuck)
 		}
-		if pointer != (shedengine.OutputPointer{}) {
+		if !reflect.DeepEqual(pointer, shedengine.OutputPointer{}) {
 			t.Errorf("Call() pointer = %+v; want the zero value", pointer)
 		}
 	})

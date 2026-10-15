@@ -604,6 +604,7 @@ var entries = []registryEntry{
 }
 
 // roleOpeningStencils maps each spawned role other than the orch to the stencils that open its session.
+// A key names a role with any segment prefix left off: a review segment's session carries `<prefix>-<key>` for the keys `bouncer-judge`, `bouncer-seed`, `burler-review` and `burler-fix`.
 // Each carries both the parent directive marker and the edit directive marker, which parentdirective_test.go enforces.
 var roleOpeningStencils = map[string][]string{
 	"driver":             {"shed-template-driver"},

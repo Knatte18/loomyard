@@ -39,6 +39,9 @@ type OutputPointer struct {
 	// producer applied no gate to this call; a gated producer sets it regardless of Path,
 	// including on the gate-failed exit whose Path is deliberately empty.
 	GateAttempts *int
+	// GateSpans are this call's gate spans, carried straight through to the persisted HistoryEntry.GateSpans.
+	// Nil means the call recorded none.
+	GateSpans []GateSpan
 	// Reason is one human-readable line naming why the call is stuck or awaiting. Shed reads it
 	// only on a Stuck verdict whose row has no OnStuck target, persisting it as the blocked halt's
 	// error, and on an Awaiting verdict, persisting it as the awaiting halt's error; every other

@@ -267,7 +267,7 @@ func TestEscalation_PerchBudgetOneWithAutoAccept(t *testing.T) {
 			dispatch := shuttle.RunFn
 			websterRunDir := string(filepath.Separator) + "webster" + string(filepath.Separator)
 			shuttle.RunFn = func(spec shuttleengine.Spec) (shuttleengine.Result, error) {
-				if spec.Role == "bouncer-judge" && len(spec.OutputFiles) > 0 && strings.Contains(spec.OutputFiles[0], websterRunDir) {
+				if spec.Role == "webster-bouncer-judge" && len(spec.OutputFiles) > 0 && strings.Contains(spec.OutputFiles[0], websterRunDir) {
 					return writeBouncerJudge(spec, "CONTINUE")
 				}
 				return dispatch(spec)

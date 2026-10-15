@@ -8,34 +8,41 @@ package shedengine
 
 import (
 	"context"
+	"encoding/json"
+	"os"
+	"reflect"
 	"strconv"
 	"testing"
 )
 
 // gatedOutcomeProducer returns a *funcProducer that always reports outcome and an OutputPointer
-// naming outputPath and gateAttempts, so a test can drive Step through a gated producer's exact
+// naming outputPath, gateAttempts and gateSpans, so a test can drive Step through a gated producer's exact
 // return shape without a real shuttleengine/shedadapters dependency.
-func gatedOutcomeProducer(outcome Outcome, outputPath string, gateAttempts *int) *funcProducer {
+func gatedOutcomeProducer(outcome Outcome, outputPath string, gateAttempts *int, gateSpans []GateSpan) *funcProducer {
 	return &funcProducer{
 		fn: func(ctx context.Context) (Outcome, OutputPointer, error) {
-			return outcome, OutputPointer{Path: outputPath, GateAttempts: gateAttempts}, nil
+			return outcome, OutputPointer{Path: outputPath, GateAttempts: gateAttempts, GateSpans: gateSpans}, nil
 		},
 	}
 }
 
 // TestStep_GateAttempts pins what Step records of a producer's gate attempts, in the returned history and in the status file:
-// an exhausted gate's count, a pass-after-retry count, and a first-try pass shown as a non-nil zero (a distinct verdict from an ungated call), while an ungated producer gains no gate_attempts field.
+// an exhausted gate's count, a pass-after-retry count, and a first-try pass shown as a non-nil zero (a distinct verdict from an ungated call), while an ungated producer gains no gate_attempts or gate_spans field.
+// A gated call's spans appear on the returned and the persisted entry.
 func TestStep_GateAttempts(t *testing.T) {
 	t.Parallel()
+	spans := []GateSpan{{Gate: "plan-parse", Kind: GateSpanKindGate, Start: "2026-08-15T09:00:00.5Z", End: "2026-08-15T09:00:01Z"}}
 	tests := []struct {
-		name     string
-		producer *funcProducer
-		want     *int
+		name      string
+		producer  *funcProducer
+		want      *int
+		wantSpans []GateSpan
 	}{
-		{"stuck exhaustion persists the count", gatedOutcomeProducer(Stuck, "", intPtr(3)), intPtr(3)},
-		{"pass after retry persists the count", gatedOutcomeProducer(Done, "out.md", intPtr(2)), intPtr(2)},
-		{"passed first try shows zero, not omitted", gatedOutcomeProducer(Done, "out.md", intPtr(0)), intPtr(0)},
-		{"ungated producer omits the field", fixedOutcomeProducer(Done, "out.md"), nil},
+		{"stuck exhaustion persists the count", gatedOutcomeProducer(Stuck, "", intPtr(3), nil), intPtr(3), nil},
+		{"pass after retry persists the count", gatedOutcomeProducer(Done, "out.md", intPtr(2), nil), intPtr(2), nil},
+		{"passed first try shows zero, not omitted", gatedOutcomeProducer(Done, "out.md", intPtr(0), nil), intPtr(0), nil},
+		{"a gated call's spans persist", gatedOutcomeProducer(Done, "out.md", intPtr(1), spans), intPtr(1), spans},
+		{"ungated producer omits the field", fixedOutcomeProducer(Done, "out.md"), nil, nil},
 	}
 	describe := func(p *int) string {
 		if p == nil {
@@ -73,6 +80,28 @@ func TestStep_GateAttempts(t *testing.T) {
 			}
 			if got := persisted.History[0].GateAttempts; !same(got, tt.want) {
 				t.Errorf("persisted History[0].GateAttempts = %s; want %s -- the status file must show the attempt count", describe(got), describe(tt.want))
+			}
+			if !reflect.DeepEqual(res.History[0].GateSpans, tt.wantSpans) {
+				t.Errorf("History[0].GateSpans = %+v; want %+v", res.History[0].GateSpans, tt.wantSpans)
+			}
+			if !reflect.DeepEqual(persisted.History[0].GateSpans, tt.wantSpans) {
+				t.Errorf("persisted History[0].GateSpans = %+v; want %+v", persisted.History[0].GateSpans, tt.wantSpans)
+			}
+			if tt.wantSpans == nil {
+				// An old entry reads with no list, so the raw bytes must carry no key; the decoded Status cannot tell an absent list from an empty one.
+				raw, err := os.ReadFile(statusPath)
+				if err != nil {
+					t.Fatalf("os.ReadFile(status) = _, %v", err)
+				}
+				var onDisk struct {
+					History []map[string]any `json:"history"`
+				}
+				if err := json.Unmarshal(raw, &onDisk); err != nil || len(onDisk.History) != 1 {
+					t.Fatalf("decoding the raw status = %v with %d entries; want one history entry", err, len(onDisk.History))
+				}
+				if _, present := onDisk.History[0]["gate_spans"]; present {
+					t.Errorf("raw history entry %v has a gate_spans key; want it omitted", onDisk.History[0])
+				}
 			}
 		})
 	}

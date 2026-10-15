@@ -1,5 +1,5 @@
-// names.go declares RecipeEngines, the derived engine set the cross-consumer coverage guard in
-// internal/shedrecipe trusts, and RowNames and Rows, a recipe's row names and rows in file order.
+// names.go declares RecipeEngines, the derived engine set the cross-consumer coverage guard in internal/shedrecipe trusts.
+// It also declares RowNames and Rows, a recipe's row names and rows in file order, and EntryNumbers, the entry number of each row.
 
 package loomrecipe
 
@@ -52,7 +52,7 @@ type RecipeRow struct {
 	Bouncer bool
 }
 
-// RowNames returns the row names of the named recipe in file order: shedrun.RecipeLoom is the loom recipe and shedrun.RecipeDarn the darn recipe.
+// RowNames returns the row names of the named recipe in file order: shedrun.RecipeLoom is the loom recipe, shedrun.RecipeDarn the darn recipe and shedrun.RecipeBatten the batten recipe.
 // Any other recipe name is refused with an error naming it.
 func RowNames(recipe string) ([]string, error) {
 	rows, err := Rows(recipe)
@@ -66,7 +66,7 @@ func RowNames(recipe string) ([]string, error) {
 	return names, nil
 }
 
-// Rows returns the rows of the named recipe in file order: shedrun.RecipeLoom is the loom recipe and shedrun.RecipeDarn the darn recipe.
+// Rows returns the rows of the named recipe in file order: shedrun.RecipeLoom is the loom recipe, shedrun.RecipeDarn the darn recipe and shedrun.RecipeBatten the batten recipe.
 // Any other recipe name is refused with an error naming it.
 func Rows(recipe string) ([]RecipeRow, error) {
 	var source []byte
@@ -75,6 +75,8 @@ func Rows(recipe string) ([]RecipeRow, error) {
 		source = recipes.LoomRecipe
 	case shedrun.RecipeDarn:
 		source = recipes.DarnRecipe
+	case shedrun.RecipeBatten:
+		source = recipes.BattenRecipe
 	default:
 		return nil, fmt.Errorf("loomrecipe: no row names for recipe %q", recipe)
 	}
@@ -87,4 +89,35 @@ func Rows(recipe string) ([]RecipeRow, error) {
 		rows = append(rows, RecipeRow{Name: row.Name, Segment: row.Segment, OnStuck: row.OnStuck, Bouncer: row.Engine == bouncerEngine})
 	}
 	return rows, nil
+}
+
+// EntryNumbers numbers a recipe's entries 1, 2, … in row order, the numbers every status pane draws.
+// A review segment, a non-empty segment holding a Bouncer row, is one entry: it takes one number, at the place of its first row, and every row of the segment maps to that number.
+// Every other row, including a row of a segment with no Bouncer row, is an entry of its own.
+// A row that is not in rows has no key in the result.
+func EntryNumbers(rows []RecipeRow) map[string]int {
+	reviewSegments := map[string]bool{}
+	for _, row := range rows {
+		if row.Bouncer && row.Segment != "" {
+			reviewSegments[row.Segment] = true
+		}
+	}
+	numbers := make(map[string]int, len(rows))
+	segmentNumbers := map[string]int{}
+	next := 0
+	for _, row := range rows {
+		if reviewSegments[row.Segment] {
+			number, seen := segmentNumbers[row.Segment]
+			if !seen {
+				next++
+				number = next
+				segmentNumbers[row.Segment] = number
+			}
+			numbers[row.Name] = number
+			continue
+		}
+		next++
+		numbers[row.Name] = next
+	}
+	return numbers
 }

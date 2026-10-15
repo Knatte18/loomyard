@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -50,6 +51,10 @@ type reworkFixture struct {
 	archiveErr   error
 	coverage     string
 	told         []ReworkTold
+
+	// gateAttempts and gateSpans are the gate fields the fake session stamps on the pointer it returns.
+	gateAttempts *int
+	gateSpans    []shedengine.GateSpan
 
 	// onInner runs inside the fake session, before it reports Done.
 	onInner func()
@@ -235,7 +240,7 @@ func (r reworkInner) Call(ctx context.Context) (shedengine.Outcome, shedengine.O
 	if r.f.innerErr != nil {
 		return "", shedengine.OutputPointer{}, r.f.innerErr
 	}
-	return shedengine.Done, shedengine.OutputPointer{Path: r.f.coverage}, nil
+	return shedengine.Done, shedengine.OutputPointer{Path: r.f.coverage, GateAttempts: r.f.gateAttempts, GateSpans: r.f.gateSpans}, nil
 }
 
 // newGeneration is the session body that writes a one-card generation numbered from first.
@@ -530,19 +535,52 @@ func TestPRRework_ClasslessRecordAtHeadIsNotCommitted(t *testing.T) {
 }
 
 func TestPRRework_ClassRecorded(t *testing.T) {
+	attempts := 2
+	spans := []shedengine.GateSpan{{Gate: "rework-plan", Kind: shedengine.GateSpanKindRework, Start: "2026-09-30T10:00:00Z", End: "2026-09-30T10:00:12Z"}}
 	tests := []struct {
-		name  string
-		cards []reworkGenCard
-		want  string
+		name         string
+		cards        []reworkGenCard
+		want         string
+		gated        bool
+		unparsedPlan bool
 	}{
-		{"all prosa", []reworkGenCard{{"docs-card", "Prosa", "docs/one.md"}, {"more-docs", "Prosa", "docs/two.md"}}, ReworkClassExempt},
-		{"mixed", []reworkGenCard{{"docs-card", "Prosa", "docs/one.md"}, {"code-card", "Create", "internal/x/new.go"}}, ReworkClassRequired},
+		{name: "all prosa", cards: []reworkGenCard{{"docs-card", "Prosa", "docs/one.md"}, {"more-docs", "Prosa", "docs/two.md"}}, want: ReworkClassExempt},
+		{name: "mixed", cards: []reworkGenCard{{"docs-card", "Prosa", "docs/one.md"}, {"code-card", "Create", "internal/x/new.go"}}, want: ReworkClassRequired, gated: true},
+		{name: "plan does not parse", gated: true, unparsedPlan: true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newReworkFixture(t)
-			f.onInner = func() { f.writeGeneration(2, tc.cards...) }
-			f.mustDone()
+			if tc.gated {
+				f.gateAttempts, f.gateSpans = &attempts, spans
+			}
+			f.onInner = func() {
+				if tc.unparsedPlan {
+					f.writeFile(f.planDir, "00-overview.md", "not a plan\n")
+					return
+				}
+				f.writeGeneration(2, tc.cards...)
+			}
+			outcome, pointer, err := f.producer().Call(context.Background())
+			if err != nil {
+				t.Fatalf("Call err = %v", err)
+			}
+			if tc.gated {
+				if pointer.GateAttempts == nil || *pointer.GateAttempts != attempts || !reflect.DeepEqual(pointer.GateSpans, spans) {
+					t.Errorf("pointer gate fields = %v, %v; want %d, %v", pointer.GateAttempts, pointer.GateSpans, attempts, spans)
+				}
+			} else if pointer.GateAttempts != nil || pointer.GateSpans != nil {
+				t.Errorf("pointer gate fields = %v, %v; want none", pointer.GateAttempts, pointer.GateSpans)
+			}
+			if tc.unparsedPlan {
+				if outcome != shedengine.Stuck || !strings.HasPrefix(pointer.Reason, "rework plan does not parse") {
+					t.Errorf("Call = %v, %q; want Stuck with a rework plan does not parse reason", outcome, pointer.Reason)
+				}
+				return
+			}
+			if outcome != shedengine.Done {
+				t.Fatalf("Call = %v; want Done", outcome)
+			}
 			if rec := f.readRecord(1); rec.Class != tc.want {
 				t.Errorf("class = %q; want %q", rec.Class, tc.want)
 			}

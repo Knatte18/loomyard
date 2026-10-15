@@ -11,6 +11,7 @@ package landingshed
 import (
 	"context"
 	"errors"
+	"reflect"
 	"slices"
 	"testing"
 
@@ -76,7 +77,7 @@ func TestFinalize_CommitStatus(t *testing.T) {
 				if outcome != "" {
 					t.Errorf("Call() outcome = %q; want empty alongside a non-nil error", outcome)
 				}
-				if ptr != (shedengine.OutputPointer{}) {
+				if !reflect.DeepEqual(ptr, shedengine.OutputPointer{}) {
 					t.Errorf("Call() pointer = %+v; want empty", ptr)
 				}
 			} else if err != nil || outcome != shedengine.Done {

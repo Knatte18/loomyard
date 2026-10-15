@@ -2,6 +2,7 @@ package loomshed
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -17,7 +18,7 @@ func TestStubProducer_Call(t *testing.T) {
 		if outcome != shedengine.Done {
 			t.Errorf("Call(healthy) outcome = %q; want %q", outcome, shedengine.Done)
 		}
-		if pointer != (shedengine.OutputPointer{}) {
+		if !reflect.DeepEqual(pointer, shedengine.OutputPointer{}) {
 			t.Errorf("Call(healthy) pointer = %+v; want empty", pointer)
 		}
 	})

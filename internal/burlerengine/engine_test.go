@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -240,9 +241,9 @@ func (h *fakeHandle) evaluateGate() (*shuttleengine.GateOutcome, error) {
 	return outcome, nil
 }
 
-// scriptFor is the halfScript of the seat spec's role names: the review script for the review half's chair, the fix script for every other seat.
+// scriptFor is the halfScript of the seat spec's role names: the review script for the review half's chair under any role prefix, the fix script for every other seat.
 func (f *fakeShuttle) scriptFor(spec shuttleengine.Spec) halfScript {
-	if spec.Role == reviewHalfRole {
+	if strings.HasSuffix(spec.Role, reviewHalfRole) {
 		return f.review
 	}
 	return f.fix

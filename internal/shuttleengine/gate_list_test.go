@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -246,6 +247,30 @@ func TestGateList_FinalReports(t *testing.T) {
 						t.Errorf("Attempts = %d, SendText calls = %d, want 2 and 2", result.Gate.Attempts, len(reed.SendTextCalls))
 					}
 					wantStates(t, result.Gate, GateEntryPassed, GateEntryFailed)
+					a, b := result.Gate.Entries[0].Spans, result.Gate.Entries[1].Spans
+					if !reflect.DeepEqual(spanKinds(a), []GateSpanKind{GateSpanGate, GateSpanGate, GateSpanGate}) {
+						t.Errorf("a span kinds = %v, want three gate spans", spanKinds(a))
+					}
+					if !reflect.DeepEqual(spanKinds(b), []GateSpanKind{GateSpanGate, GateSpanRework, GateSpanGate, GateSpanRework, GateSpanGate}) {
+						t.Fatalf("b span kinds = %v, want gate, rework, gate, rework, gate", spanKinds(b))
+					}
+					// Each rework span opens after the gate span before it and ends at the next arrival, which is where a's next gate span starts.
+					for k, rework := range []GateSpan{b[1], b[3]} {
+						previousGate, nextGate := b[2*k], b[2*k+2]
+						if rework.Start.Before(previousGate.End) || rework.End.Before(rework.Start) {
+							t.Errorf("rework span %d = %+v, want it to start no earlier than the gate span before it, %+v", k, rework, previousGate)
+						}
+						if !rework.End.Equal(nextGate.Start) || !rework.End.Equal(a[k+1].Start) {
+							t.Errorf("rework span %d ends at %v, want the next arrival's reading %v", k, rework.End, nextGate.Start)
+						}
+					}
+					for _, spans := range [][]GateSpan{a, b} {
+						for k := 1; k < len(spans); k++ {
+							if spans[k].Start.Before(spans[k-1].End) {
+								t.Errorf("spans overlap: %+v then %+v", spans[k-1], spans[k])
+							}
+						}
+					}
 				}
 			},
 		},

@@ -233,7 +233,7 @@ func (p *BurlerFixProducer) fixedExit(ctx context.Context, round int, result bur
 			return "", shedengine.OutputPointer{}, cerr
 		}
 		logger.Warn("shedadapters: burler fix's gate did not pass", "producer", p.name, "engine", burlerFixEngineLabel, "round", round, "attempts", result.Gate.Attempts, "findingsPath", result.Gate.FindingsPath)
-		return shedengine.Stuck, shedengine.OutputPointer{GateAttempts: gateAttemptsPointer(result.Gate), Reason: gateFailedReason(result.Gate)}, nil
+		return shedengine.Stuck, shedengine.OutputPointer{GateAttempts: gateAttemptsPointer(result.Gate), GateSpans: gateSpansOf(result.Gate), Reason: gateFailedReason(result.Gate)}, nil
 	}
 	if cerr := cancelErr(ctx, p.name, burlerFixEngineLabel); cerr != nil {
 		return "", shedengine.OutputPointer{}, cerr
@@ -243,7 +243,7 @@ func (p *BurlerFixProducer) fixedExit(ctx context.Context, round int, result bur
 	if err := mergeRoundUsage(p.runDir, round, p.now, func(u *roundUsage) { u.Fix = &half }); err != nil {
 		logger.Warn("shedadapters: burler fix's usage record was not written", "producer", p.name, "engine", burlerFixEngineLabel, "round", round, "error", err)
 	}
-	return shedengine.Stuck, shedengine.OutputPointer{Path: roundReviewPath(p.runDir, round), GateAttempts: gateAttemptsPointer(result.Gate), BudgetExempt: true}, nil
+	return shedengine.Stuck, shedengine.OutputPointer{Path: roundReviewPath(p.runDir, round), GateAttempts: gateAttemptsPointer(result.Gate), GateSpans: gateSpansOf(result.Gate), BudgetExempt: true}, nil
 }
 
 // probeLiveFix asks the runner what became of a previous session's fixer for this round and resumes it, against digest, when it is still live.

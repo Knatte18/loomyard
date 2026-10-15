@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
@@ -55,6 +56,10 @@ type overviewRun struct {
 	Session string
 	// PausedAt is when the live pause covering the run began; zero when none covers it.
 	PausedAt time.Time
+	// Recipe is the recipe the run's own seed names; empty while the seed is unreadable.
+	Recipe string
+	// ChildRecipe is the recipe the child's seed names; empty when unknown.
+	ChildRecipe string
 }
 
 // overviewLine is one run's cells before they are padded into columns.
@@ -146,10 +151,10 @@ func overviewLineOf(run overviewRun, now time.Time) overviewLine {
 	var stageStarted time.Time
 	if run.Batten.Found {
 		status := run.Batten.Status
-		state, stage = string(status.State), status.CurrentProducer
+		state, stage = string(status.State), overviewStage(run.Recipe, status.CurrentProducer)
 		stageStarted, _ = lastEntryEnd(status)
 		if inRunShed && run.Child.Found {
-			stage = run.Child.Status.CurrentProducer
+			stage = overviewChildStage(run)
 			if childStarted, ok := lastEntryEnd(run.Child.Status); ok {
 				stageStarted = childStarted
 			}
@@ -171,6 +176,39 @@ func overviewLineOf(run overviewRun, now time.Time) overviewLine {
 		run.Session,
 	}
 	return line
+}
+
+// overviewEntryNumber returns the entry number row has in the named recipe; false when the recipe is empty or unreadable or does not hold the row.
+func overviewEntryNumber(recipe, row string) (int, bool) {
+	if recipe == "" {
+		return 0, false
+	}
+	rows, err := loomrecipe.Rows(recipe)
+	if err != nil {
+		return 0, false
+	}
+	number, ok := loomrecipe.EntryNumbers(rows)[row]
+	return number, ok
+}
+
+// overviewStage draws row as `<n>. <row>`, n being its entry number in the named recipe; the row alone when its number cannot be read.
+func overviewStage(recipe, row string) string {
+	number, ok := overviewEntryNumber(recipe, row)
+	if !ok {
+		return row
+	}
+	return fmt.Sprintf("%d. %s", number, row)
+}
+
+// overviewChildStage draws the child's current row of a run in Run-Shed as `<Run-Shed's number>.<child number> <row>`; the row alone when either number cannot be read.
+func overviewChildStage(run overviewRun) string {
+	row := run.Child.Status.CurrentProducer
+	parent, parentOK := overviewEntryNumber(run.Recipe, battenrecipe.NameRunShed)
+	child, childOK := overviewEntryNumber(run.ChildRecipe, row)
+	if !parentOK || !childOK {
+		return row
+	}
+	return fmt.Sprintf("%d.%d %s", parent, child, row)
 }
 
 // lastEntryEnd returns the end of status's last history entry: its last_at when set, else its at; false when there is no entry or the time does not parse.
@@ -214,6 +252,8 @@ type overviewSource struct {
 	now         func() time.Time
 	// childStatus returns the path of the status file of the task worktree slug names; a test replaces it.
 	childStatus func(slug string) (string, error)
+	// childPair returns the task worktree location of slug; a test replaces it.
+	childPair func(slug string) (*lyxcwd.Location, error)
 
 	battenCaches map[string]*statuspane.StatusCache
 	childCaches  map[string]*statuspane.StatusCache
@@ -221,6 +261,8 @@ type overviewSource struct {
 	seeds map[string]shedrun.Seed
 	// pairs holds the resolved task worktree location by slug, for as long as its directory exists.
 	pairs map[string]*lyxcwd.Location
+	// childRecipes holds the recipe a child's seed names by slug; a seed is write-once, so a decoded one is never read again.
+	childRecipes map[string]string
 }
 
 // newOverviewSource returns a source over the prime's runs and the pause record at pauseRecord that reads the time from now.
@@ -233,23 +275,52 @@ func newOverviewSource(prime *lyxcwd.Location, pauseRecord string, now func() ti
 		childCaches:  map[string]*statuspane.StatusCache{},
 		seeds:        map[string]shedrun.Seed{},
 		pairs:        map[string]*lyxcwd.Location{},
+		childRecipes: map[string]string{},
 	}
+	s.childPair = s.resolveChildPair
 	s.childStatus = s.resolveChildStatus
 	return s
 }
 
-// resolveChildStatus resolves the task worktree of slug once while its directory exists and returns its status file.
-func (s *overviewSource) resolveChildStatus(slug string) (string, error) {
+// resolveChildPair resolves the task worktree of slug once while its directory exists.
+func (s *overviewSource) resolveChildPair(slug string) (*lyxcwd.Location, error) {
 	pair, ok := s.pairs[slug]
 	if !ok {
 		resolved, err := lyxcwd.ResolveWorktree(fabricengine.WorktreePath(s.prime, slug))
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 		pair = resolved
 		s.pairs[slug] = pair
 	}
+	return pair, nil
+}
+
+// resolveChildStatus returns the status file of the task worktree of slug.
+func (s *overviewSource) resolveChildStatus(slug string) (string, error) {
+	pair, err := s.childPair(slug)
+	if err != nil {
+		return "", err
+	}
 	return shedrun.StatusFile(pair, shedrun.SelfRunID), nil
+}
+
+// resolveChildRecipe returns the recipe the seed of the task worktree of slug names, empty when the seed is absent.
+// A decoded seed's recipe is cached by slug.
+func (s *overviewSource) resolveChildRecipe(slug string) (string, error) {
+	if recipe, ok := s.childRecipes[slug]; ok {
+		return recipe, nil
+	}
+	pair, err := s.childPair(slug)
+	if err != nil {
+		return "", err
+	}
+	seed, found, err := shedrun.ReadSeed(pair, shedrun.SelfRunID)
+	if err != nil || !found {
+		return "", err
+	}
+	s.childRecipes[slug] = seed.Recipe
+	return seed.Recipe, nil
 }
 
 // frame polls the prime's runs and returns the overview frame.
@@ -301,6 +372,7 @@ func (s *overviewSource) poll(slug string) (overviewRun, bool) {
 		if seed.Recipe != shedrun.RecipeBatten {
 			return run, false
 		}
+		run.Recipe = seed.Recipe
 		if startedAt, err := time.Parse(time.RFC3339, seed.StartedAt); err == nil {
 			run.StartedAt = startedAt
 		}
@@ -322,6 +394,11 @@ func (s *overviewSource) poll(slug string) (overviewRun, bool) {
 		} else {
 			run.Child = cacheFor(s.childCaches, slug).Poll(path)
 		}
+		recipe, err := s.resolveChildRecipe(slug)
+		if err != nil {
+			logger.Debug("batten: reading a child seed for the overview failed", "slug", slug, "err", err)
+		}
+		run.ChildRecipe = recipe
 	}
 	return run, true
 }

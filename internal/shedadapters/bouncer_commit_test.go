@@ -219,7 +219,7 @@ func TestBouncer_ConvergedSettle_CarryOverFailureBlocksTheSettle(t *testing.T) {
 					t.Errorf("Call() error = %q; want it to contain %q", err, want)
 				}
 			}
-			if outcome != "" || ptr != (shedengine.OutputPointer{}) {
+			if outcome != "" || !reflect.DeepEqual(ptr, shedengine.OutputPointer{}) {
 				t.Errorf("Call() = (%q, %+v); want an empty outcome and pointer alongside the error", outcome, ptr)
 			}
 			if !slices.Equal(log.calls, tt.wantSeamCalls) {
@@ -306,7 +306,7 @@ func TestBouncer_FailingSeamIsAnError(t *testing.T) {
 			if outcome == shedengine.Stuck {
 				t.Error("Call() outcome = Stuck; want anything but Stuck -- a seam failure must not be routed through degrade")
 			}
-			if ptr != (shedengine.OutputPointer{}) {
+			if !reflect.DeepEqual(ptr, shedengine.OutputPointer{}) {
 				t.Errorf("Call() pointer = %+v; want empty", ptr)
 			}
 			if !slices.Equal(log.calls, tt.want) {

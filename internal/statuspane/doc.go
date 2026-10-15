@@ -17,5 +17,6 @@
 // BuildIdentity names a lyx build by its executable's symlink-resolved path, size and modification time, and a Sidecar records which strand a bootstrap launched from which build.
 // StrandCurrent is the one keep test: a live strand is current only when the sidecar names its guid and records the running build, so a bootstrap replaces a status strand launched by an older build.
 //
-// FormatMinutes is the one time format both panes use, whole minutes as 12m, 1h05m or 2d03h, so a pane's text changes at most once a minute and its poll backs off between changes.
+// FormatMinutes is the format of every time that is still growing, whole minutes as 12m, 1h05m or 2d03h, so a pane's text changes at most once a minute and its poll backs off between changes.
+// FormatSeconds is the format of a closed span, as 45s, 12m05s or 1h05m12s, which never changes again and so costs no redraw.
 package statuspane

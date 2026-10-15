@@ -1740,6 +1740,8 @@ func TestRun_DoneOutcome(t *testing.T) {
 	t.Parallel()
 
 	const fabricCommand = "cat FABRICREF/webster/state.json"
+	passingGate := &shuttleengine.GateOutcome{Passed: true, Attempts: 1, Entries: []shuttleengine.GateEntryOutcome{{Name: "verify", Attempts: 1, State: shuttleengine.GateEntryPassed}}}
+	failingGate := &shuttleengine.GateOutcome{Passed: false, Attempts: 2, Reason: "the verify command failed twice", Entries: []shuttleengine.GateEntryOutcome{{Name: "verify", Attempts: 2, State: shuttleengine.GateEntryFailed}}}
 	cases := []struct {
 		name    string
 		cards   int
@@ -1751,8 +1753,42 @@ func TestRun_DoneOutcome(t *testing.T) {
 		batchesDone int
 		// outcome and summary replace the contract files Master writes, which otherwise report outcome done.
 		outcome, summary string
-		check            func(t *testing.T, fx *runFixture, result websterengine.RunResult)
+		// gate is the gate outcome Master's shuttle result carries.
+		gate  *shuttleengine.GateOutcome
+		check func(t *testing.T, fx *runFixture, result websterengine.RunResult)
 	}{
+		{
+			name:    "a passing verify gate is carried on the done result",
+			cards:   1,
+			session: "master-session-gate-pass",
+			state: &websterengine.State{Batches: map[int]*websterengine.BatchState{
+				1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done"},
+			}},
+			audit:       func(*runFixture) shuttleengine.ForkAudit { return shuttleengine.ForkAudit{Forks: forkReports(1)} },
+			batchesDone: 1,
+			gate:        passingGate,
+			check: func(t *testing.T, fx *runFixture, result websterengine.RunResult) {
+				if result.Outcome != "done" || result.Gate != passingGate {
+					t.Errorf("RunResult = outcome %q, gate %+v; want done carrying the passing gate", result.Outcome, result.Gate)
+				}
+			},
+		},
+		{
+			name:    "a failing verify gate demotes to stuck and is still carried",
+			cards:   1,
+			session: "master-session-gate-fail",
+			state: &websterengine.State{Batches: map[int]*websterengine.BatchState{
+				1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done"},
+			}},
+			audit:       func(*runFixture) shuttleengine.ForkAudit { return shuttleengine.ForkAudit{Forks: forkReports(1)} },
+			batchesDone: 1,
+			gate:        failingGate,
+			check: func(t *testing.T, fx *runFixture, result websterengine.RunResult) {
+				if result.Outcome != "stuck" || result.Gate != failingGate {
+					t.Errorf("RunResult = outcome %q, gate %+v; want stuck still carrying the failing gate", result.Outcome, result.Gate)
+				}
+			},
+		},
 		{
 			// The stuck path never reads as a question: nothing the run returns names one.
 			name:    "a stuck outcome reads stuck with its reason and is never reported as a question",
@@ -2007,6 +2043,7 @@ func TestRun_DoneOutcome(t *testing.T) {
 			}
 			seedMatchingState(t, fx, tc.state)
 			handle := auditDoneHandle(t, fx, tc.session, tc.batchesDone, tc.audit(fx), func() {})
+			handle.result.Gate = tc.gate
 			if tc.outcome != "" {
 				handle.onWait = func() { writeContractFiles(t, fx, tc.outcome, tc.summary) }
 			}

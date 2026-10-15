@@ -4,6 +4,7 @@ package shedengine
 
 import (
 	"context"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -16,6 +17,9 @@ const (
 	callDone
 )
 
+// rerouteSpans is the gate span every scripted reroute pointer carries, which each history entry of a reroute verdict must keep.
+var rerouteSpans = []GateSpan{{Gate: "parent-review", Kind: GateSpanKindHeld, Start: "2026-08-15T09:00:00Z", End: "2026-08-15T09:00:05Z"}}
+
 // scriptedRerouteProducer returns the scripted outcomes in order, repeating the last one.
 func scriptedRerouteProducer(script []rerouteOutcome) *funcProducer {
 	i := 0
@@ -25,7 +29,7 @@ func scriptedRerouteProducer(script []rerouteOutcome) *funcProducer {
 		if call == callDone {
 			return Done, OutputPointer{}, nil
 		}
-		return Stuck, OutputPointer{Reroute: true, Reason: "parent moved"}, nil
+		return Stuck, OutputPointer{Reroute: true, Reason: "parent moved", GateSpans: rerouteSpans}, nil
 	}}
 }
 
@@ -77,6 +81,9 @@ func TestStep_RerouteMovesToTargetAndEndsTargetSegmentEpisode(t *testing.T) {
 		t.Errorf("last history entry = %+v; want A's reroute entry routed to B, spending no budget", last)
 	}
 	assertRFC3339UTC(t, last.At)
+	if !reflect.DeepEqual(last.GateSpans, rerouteSpans) {
+		t.Errorf("reroute entry GateSpans = %+v; want %+v", last.GateSpans, rerouteSpans)
+	}
 	if got.Activity.Last != "A → rerouted to B" {
 		t.Errorf("Activity.Last = %q; want %q", got.Activity.Last, "A → rerouted to B")
 	}
@@ -115,6 +122,9 @@ func TestRun_RerouteCapHaltsOnFourthRerouteAndResumeGrantsThreeMore(t *testing.T
 				if last.Outcome != Stuck || !last.RerouteCapped || !last.BudgetExempt {
 					t.Fatalf("Run %d last entry = %+v; want a budget-exempt capped Stuck", halt, last)
 				}
+				if !reflect.DeepEqual(last.GateSpans, rerouteSpans) {
+					t.Errorf("Run %d capped Stuck GateSpans = %+v; want %+v", halt, last.GateSpans, rerouteSpans)
+				}
 			}
 			if a.calls != 8 {
 				t.Errorf("row A calls = %d; want 8, four per run (three reroutes, then the halt)", a.calls)
@@ -147,8 +157,12 @@ func TestStep_RerouteWithoutOnRerouteFailsRun(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), `"A"`) || !strings.Contains(err.Error(), "OnReroute") {
 		t.Fatalf("Step error = %v; want a wiring fault naming row A and OnReroute", err)
 	}
-	if got := readStatus(t, statusPath, statusLockPath); got.State != StateFailed || got.CurrentProducer != "A" {
+	got := readStatus(t, statusPath, statusLockPath)
+	if got.State != StateFailed || got.CurrentProducer != "A" {
 		t.Errorf("status = %q at %q; want failed at A", got.State, got.CurrentProducer)
+	}
+	if last := got.History[len(got.History)-1]; !reflect.DeepEqual(last.GateSpans, rerouteSpans) {
+		t.Errorf("persisted Stuck GateSpans = %+v; want %+v", last.GateSpans, rerouteSpans)
 	}
 }
 

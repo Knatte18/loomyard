@@ -57,6 +57,16 @@ type Profile struct {
 	FocusDirective string
 	// Segment is the segment both halves' sessions are colored by; the zero value keeps segmentcolor.Review.
 	Segment segmentcolor.Segment
+	// RolePrefix leads both halves' session roles, as `<RolePrefix>-burler-review` and `<RolePrefix>-burler-fix`; the zero value keeps the roles unprefixed.
+	RolePrefix string
+}
+
+// rolePrefix returns base led by the profile's RolePrefix, or base alone when there is none.
+func (p *Profile) rolePrefix(base string) string {
+	if p.RolePrefix == "" {
+		return base
+	}
+	return p.RolePrefix + "-" + base
 }
 
 // segment returns the segment the round's sessions are colored by.

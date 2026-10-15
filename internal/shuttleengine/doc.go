@@ -333,6 +333,11 @@
 // An entry may also carry GateEntry.Expired, a read-only probe of whether its wait has run out.
 // While the writer is off the boundary, mid-turn or attached with no boundary seen, the loop calls each probe once per gateRecheckEvery and finalizes the run done on the first that reports expired,
 // so the bound ends the wait even when the writer never ends its turn; finalize then reads the entries once in list order through each Final, and a must-pass entry that fails first still fails the gate.
+// Each GateEntryOutcome carries the GateSpan values its entry took on the run clock, in the order they started, in three kinds:
+// GateSpanGate is one run of the entry's closure, GateSpanHeld is the time the entry was pending and held the run, and GateSpanRework runs from a delivered re-prompt for the entry to the writer's next arrival, or to the run's end.
+// While a held span is open no entry of the gate records a gate span, so no two spans of one entry overlap.
+// Finalize ends the rework spans still open before its final evaluation and the held span still open after it, and stamps copies of the spans onto the outcome it returns, on every result that carries a gate.
+// The spans live in the wait loop's memory like the failure counts, so an attached run starts them afresh.
 //
 // A turn end that leaves background work outstanding (EventWaiting) is judged by the output files, one rule for a shell of either signal and for a fork.
 // An ungated run with every output file present finishes Done at that turn end, whatever is outstanding.

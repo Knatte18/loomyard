@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -174,7 +175,7 @@ func TestBouncer_Escalation_AwaitsWithTheRecordAndLeavesItUntouched(t *testing.T
 			}
 
 			second := shedfake.RequireOutcome(t, b, shedengine.Awaiting)
-			if second != ptr {
+			if !reflect.DeepEqual(second, ptr) {
 				t.Errorf("second Call() pointer = %+v; want %+v", second, ptr)
 			}
 			if got, _ := os.ReadFile(escalationPath(cfg.RunDir, 2)); !bytes.Equal(got, brief) {
@@ -749,7 +750,7 @@ func runSoftCapRuleRow(t *testing.T, row softCapRuleRow, path softCapPath) {
 			t.Errorf("seam order after the replay = %q; want the accept settled once", got)
 		}
 	default:
-		if second := shedfake.RequireOutcome(t, b, row.wantOutcome); second != ptr {
+		if second := shedfake.RequireOutcome(t, b, row.wantOutcome); !reflect.DeepEqual(second, ptr) {
 			t.Errorf("replay pointer = %+v; want %+v", second, ptr)
 		}
 		if recordAfter, _ := os.ReadFile(escalationPath(cfg.RunDir, 2)); !bytes.Equal(recordAfter, recordBefore) {

@@ -237,6 +237,14 @@ func TestWait_LogsSessionStateBesideItsClassification(t *testing.T) {
 			}
 			// The two drives read the real clock at different instants.
 			shadowed.result.EndedAt, plain.result.EndedAt = time.Time{}, time.Time{}
+			for _, result := range []*Result{&shadowed.result, &plain.result} {
+				if result.Gate == nil {
+					continue
+				}
+				for i := range result.Gate.Entries {
+					result.Gate.Entries[i].Spans = nil
+				}
+			}
 			if !reflect.DeepEqual(shadowed.result, plain.result) {
 				t.Errorf("result with the parser = %+v, without = %+v", shadowed.result, plain.result)
 			}

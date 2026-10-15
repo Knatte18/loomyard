@@ -4,6 +4,7 @@ package shedadapters
 
 import (
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -102,7 +103,7 @@ func TestBouncer_Verdict_LegacyWordAtEntry(t *testing.T) {
 
 			ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
 			if tt.clears {
-				if ptr != (shedengine.OutputPointer{}) {
+				if !reflect.DeepEqual(ptr, shedengine.OutputPointer{}) {
 					t.Errorf("Call() pointer = %+v; want empty", ptr)
 				}
 				if !shuttle.Called {

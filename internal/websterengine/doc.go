@@ -614,6 +614,7 @@
 // For each shell the note states its label, signal and time outstanding, that the run never read its result, that lyx did not stop the shell, what ends it and the run's final outcome.
 // Each shell is also a `RunResult.Warnings` entry with the same wording on every outcome that returns a `RunResult` (done and stuck), after the verify-gate demotion, so the warning and the note cannot drift;
 // an error outcome returns no `RunResult`, so the note alone carries it.
+// Every `RunResult` also carries `RunResult.Gate`, Merriam's shuttle gate outcome passed through with the verify gate's entry among its entries, the verify-gate demotion to stuck included.
 // summary.md's "Background shells at the run's end" section (AppendBackgroundShells) stays done-only, as does its "Plan rebaselined" section, which names an accepted auto-rebaseline beside the "Audit warnings" section so the summary a step's Done points at carries it.
 //
 // # Planning a reset
