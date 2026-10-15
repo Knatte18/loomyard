@@ -349,8 +349,8 @@ func (c *loomCLI) wireLanding() error {
 	return nil
 }
 
-// buildLoomShed builds the *shedengine.Shed run.go's RunE runs: it assembles Env.Landing through
-// wireLanding, then constructs the shed via loomrecipe.New.
+// buildLoomShed builds the *shedengine.Shed run.go's RunE runs.
+// It assembles Env.Landing through wireLanding, then constructs the shed via loomrecipe.New.
 //
 // It returns the constructed shed and a nil error, or a nil shed and the first error encountered,
 // unwrapped.
