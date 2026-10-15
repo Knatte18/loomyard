@@ -227,7 +227,9 @@ func (p shuttlePair) PaneRunningTurn(guid string) (bool, error) {
 }
 
 // InterruptSettle is how long after an interrupt key the strand's pane needs before it is read again.
-func (p shuttlePair) InterruptSettle() time.Duration { return p.runner.InterruptSettle() }
+func (p shuttlePair) InterruptSettle(guid string) (time.Duration, error) {
+	return p.runner.InterruptSettle(guid)
+}
 
 // Live reports whether reed tracks the strand with a live pane.
 func (p shuttlePair) Live(guid string) (bool, error) {

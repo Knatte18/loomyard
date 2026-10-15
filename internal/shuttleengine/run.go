@@ -1023,17 +1023,25 @@ func (r *Runner) Interrupt(guid string) error {
 	return guardedInterrupt(r.reed, engine, r.clock, guid)
 }
 
-// InterruptSettle returns how long after an interrupt key the pane needs before it is read again, or 0 for an engine that does not say.
+// InterruptSettle returns how long after an interrupt key the pane of the run identified by guid needs before it is read again, or 0 for an engine that does not say.
 // A caller that retries an interrupt waits at least this long after its first key.
-func (r *Runner) InterruptSettle() time.Duration {
-	engine, _, err := r.engineFor(RunState{})
+// It fails when guid is not a shuttle strand or its record names an engine the set does not hold.
+func (r *Runner) InterruptSettle(guid string) (time.Duration, error) {
+	if r.toldErr != nil {
+		return 0, r.toldErr
+	}
+	state, _, err := FindRun(r.cfg, r.anchorPath, guid)
 	if err != nil {
-		return 0
+		return 0, fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
+	}
+	engine, _, err := r.engineFor(state)
+	if err != nil {
+		return 0, err
 	}
 	if guard, ok := engine.(InterruptGuard); ok {
-		return guard.InterruptSettle()
+		return guard.InterruptSettle(), nil
 	}
-	return 0
+	return 0, nil
 }
 
 // PaneRunningTurn reports whether the pane of the run identified by guid shows a running turn, from one fresh capture.

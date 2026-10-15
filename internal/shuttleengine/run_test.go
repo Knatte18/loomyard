@@ -838,8 +838,8 @@ func TestRun_Interrupt_PlaysEscape(t *testing.T) {
 			if !tt.viaRunner {
 				return
 			}
-			if got := runner.InterruptSettle(); got != 2*time.Second {
-				t.Errorf("InterruptSettle() = %v; want 2s", got)
+			if got, settleErr := runner.InterruptSettle("strand-1"); settleErr != nil || got != 2*time.Second {
+				t.Errorf("InterruptSettle() = %v, %v; want 2s, nil", got, settleErr)
 			}
 			running, runningErr := runner.PaneRunningTurn("strand-1")
 			if tt.wantErr == boom {

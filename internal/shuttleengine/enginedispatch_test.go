@@ -6,6 +6,7 @@ package shuttleengine
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -257,6 +258,25 @@ func dispatchOps() []dispatchOp {
 		{"Runner.LoadSkills", func(r *dispatchRig) error { return r.fx.Runner.LoadSkills("strand-1", []string{"s"}) }, "SkillLoadMessage", ""},
 		{"Runner.TypeColor", func(r *dispatchRig) error { return r.fx.Runner.TypeColor("strand-1", segmentcolor.Green) }, "ColorSequence", ""},
 		{"Runner.ClearSession", func(r *dispatchRig) error { return r.fx.Runner.ClearSession("strand-1") }, "ClearSessionSequence", ""},
+		{"Runner.InterruptSettle", func(r *dispatchRig) error {
+			got, err := r.fx.Runner.InterruptSettle("strand-1")
+			if err == nil && got != 9*time.Millisecond {
+				return fmt.Errorf("InterruptSettle = %v; want the 9ms settle of engine b", got)
+			}
+			return err
+		}, "InterruptSettle", "ok"},
+		{"Runner.ContextTokens", func(r *dispatchRig) error {
+			_, err := r.fx.Runner.ContextTokens("strand-1", Event{Kind: EventStop})
+			return err
+		}, "ContextTokens", "ok"},
+		{"Runner.CompactedSince", func(r *dispatchRig) error {
+			_, _, err := r.fx.Runner.CompactedSince("strand-1", Event{Kind: EventStop}, time.Time{})
+			return err
+		}, "CompactedSince", "ok"},
+		{"Runner.ClassifySkillLoad", func(r *dispatchRig) error {
+			_, err := r.fx.Runner.ClassifySkillLoad("strand-1", Event{Kind: EventStop}, []string{"s"})
+			return err
+		}, "ClassifySkillLoad", "ok"},
 	}
 }
 
@@ -457,6 +477,26 @@ func TestRunner_EngineSetDispatch(t *testing.T) {
 			t.Fatalf("SessionIdle() error: %v", err)
 		}
 		requireConsulted(t, rig.a, rig.b, "IdleSession")
+	})
+
+	t.Run("the_guid_reads_of_a_guid_with_no_run_record_fail_as_not_a_shuttle_strand", func(t *testing.T) {
+		t.Parallel()
+		rig := newDispatchRig(t)
+		runner := rig.fx.Runner
+		reads := map[string]func() error{
+			"InterruptSettle": func() error { _, err := runner.InterruptSettle("nope"); return err },
+			"ContextTokens":   func() error { _, err := runner.ContextTokens("nope", Event{}); return err },
+			"CompactedSince": func() error {
+				_, _, err := runner.CompactedSince("nope", Event{}, time.Time{})
+				return err
+			},
+			"ClassifySkillLoad": func() error { _, err := runner.ClassifySkillLoad("nope", Event{}, nil); return err },
+		}
+		for name, read := range reads {
+			if err := read(); err == nil || !strings.Contains(err.Error(), "is not a shuttle strand") {
+				t.Errorf("%s(unknown guid) error = %v; want one saying it is not a shuttle strand", name, err)
+			}
+		}
 	})
 
 	t.Run("a_record_with_no_engine_key_is_driven_through_the_default", func(t *testing.T) {

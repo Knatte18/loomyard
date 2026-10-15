@@ -55,12 +55,16 @@ func (r *Runner) LoadSkills(guid string, skills []string) error {
 	return sendVerified(sc, loader.SkillLoadMessage(skills))
 }
 
-// ClassifySkillLoad returns the engine's classification of the load turn of skills that turnEnd ended.
-func (r *Runner) ClassifySkillLoad(turnEnd Event, skills []string) (SkillLoadReport, error) {
+// ClassifySkillLoad returns the classification, by the engine the run identified by guid records, of the load turn of skills that turnEnd ended.
+func (r *Runner) ClassifySkillLoad(guid string, turnEnd Event, skills []string) (SkillLoadReport, error) {
 	if r.toldErr != nil {
 		return SkillLoadReport{}, r.toldErr
 	}
-	engine, _, err := r.engineFor(RunState{})
+	state, _, err := FindRun(r.cfg, r.anchorPath, guid)
+	if err != nil {
+		return SkillLoadReport{}, fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
+	}
+	engine, _, err := r.engineFor(state)
 	if err != nil {
 		return SkillLoadReport{}, err
 	}
@@ -122,13 +126,17 @@ func (run *Run) SessionState() (RunSessionState, error) {
 	return run.runner.SessionState(run.StrandGUID())
 }
 
-// ContextTokens returns the provider's context usage as of turnEnd, via the engine's SessionCycler.
+// ContextTokens returns the provider's context usage as of turnEnd, via the SessionCycler of the engine the run identified by guid records.
 // A reading with Known false means usage could not be read.
-func (r *Runner) ContextTokens(turnEnd Event) (ContextReading, error) {
+func (r *Runner) ContextTokens(guid string, turnEnd Event) (ContextReading, error) {
 	if r.toldErr != nil {
 		return ContextReading{}, r.toldErr
 	}
-	engine, _, err := r.engineFor(RunState{})
+	state, _, err := FindRun(r.cfg, r.anchorPath, guid)
+	if err != nil {
+		return ContextReading{}, fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
+	}
+	engine, _, err := r.engineFor(state)
 	if err != nil {
 		return ContextReading{}, err
 	}
@@ -139,13 +147,17 @@ func (r *Runner) ContextTokens(turnEnd Event) (ContextReading, error) {
 	return cycler.ContextTokens(turnEnd), nil
 }
 
-// CompactedSince returns the newest compaction boundary after since in the transcript turnEnd names, with the turn ends that follow it, via the engine's SessionCycler.
+// CompactedSince returns the newest compaction boundary after since in the transcript turnEnd names, with the turn ends that follow it, via the SessionCycler of the engine the run identified by guid records.
 // found is false when there is none or the transcript could not be read.
-func (r *Runner) CompactedSince(turnEnd Event, since time.Time) (CompactionBoundary, bool, error) {
+func (r *Runner) CompactedSince(guid string, turnEnd Event, since time.Time) (CompactionBoundary, bool, error) {
 	if r.toldErr != nil {
 		return CompactionBoundary{}, false, r.toldErr
 	}
-	engine, _, err := r.engineFor(RunState{})
+	state, _, err := FindRun(r.cfg, r.anchorPath, guid)
+	if err != nil {
+		return CompactionBoundary{}, false, fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
+	}
+	engine, _, err := r.engineFor(state)
 	if err != nil {
 		return CompactionBoundary{}, false, err
 	}
