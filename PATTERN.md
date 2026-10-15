@@ -18,7 +18,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-cli-cobra` — Adding a CLI module: a cobra subtree under one root in `cmd/lyx/main.go`. (test) — [background](pattern/PATTERN-cli-cobra.md)
 - `PATTERN-cliwire-sole-wiring` — Wiring a standalone-capable CLI: `internal/cliwire` alone resolves target dir, repo root and state. (test) — [background](pattern/PATTERN-cliwire-sole-wiring.md)
 - `PATTERN-config-strictness` — Loading config: a caller adopts exactly one of strict `configengine.Load` or `LoadOrTemplate`. — [background](pattern/PATTERN-config-strictness.md)
-- `PATTERN-config-layers` — Resolving a module's config: only `configengine` reads, stacks and locates layer files; `configreg` sets keys closed to the local layer. — [background](pattern/PATTERN-config-layers.md)
+- `PATTERN-config-layers` — Resolving a module's config: only `configengine` reads, stacks and locates layer files. — [background](pattern/PATTERN-config-layers.md)
 - `PATTERN-binary-change-reconcile` — Reconciling a hub's config after a binary change: only through `hubreconcile.Ensure`, which owns the build stamp and the hub lock.
 - `PATTERN-refusal-way-forward` — Adding a webster, shed or loom refusal: name the way forward, land its spec row with it, add a test. — [background](pattern/PATTERN-refusal-way-forward.md)
 - `PATTERN-no-denied-recovery` — Naming a step in a refusal, stencil or spec: never a command the agents' settings deny. (test) — [background](pattern/PATTERN-no-denied-recovery.md)
@@ -47,7 +47,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-shed-producer-seam` — Importing into `internal/shedengine`: only stdlib, `state` and `lock`, and its status and lock paths are caller-supplied.
 - `PATTERN-shed-recipe-registry` — Registering a shed producer: one `map[string]Constructor` in `internal/shedrecipe`, reached through `Lookup`/`Names`, with no `init()`, no `Register`, no `lyxcwd`.
 - `PATTERN-shed-verb-set` — Adding a run, step, status, pause or goto verb: the generic bodies live in `internal/shedverbs` only. (test) — [background](pattern/PATTERN-shed-verb-set.md)
-- `PATTERN-shed-driver` — Driving a shed run in Go, deciding its stops or spawning a tackler: only `internal/sheddriver`, told its paths and seams. (test) — [background](pattern/PATTERN-shed-driver.md)
+- `PATTERN-shed-driver` — Driving a shed run in Go, deciding its stops or spawning a tackler: only `internal/sheddriver`. (test) — [background](pattern/PATTERN-shed-driver.md)
 - `PATTERN-shed-run-directory` — Touching run directories or `seed.json`: `internal/shedrun` alone declares their paths, ids and `Seed`. — [background](pattern/PATTERN-shed-run-directory.md)
 - `PATTERN-tolerant-records` — Go-written JSON records: never refuse an unknown key; rewrite via `internal/state`. (test) — [background](pattern/PATTERN-tolerant-records.md)
 - `PATTERN-transient-stop` — Marking a failure transient: the `internal/shedengine` mark, set only at a producer or step-bootstrap boundary. — [background](pattern/PATTERN-transient-stop.md)
@@ -56,7 +56,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-treadle-runner-seam` — Importing into `internal/treadleengine`: never `burlerengine` or an `internal/*cli` package, and only its allowlist, not `lyxcwd`.
 - `PATTERN-plan-generation` — Archiving a plan: `_lyx/plan/`'s top-level files hold one generation; a retired one moves to `round-<N>/prior-generation/`. — [background](pattern/PATTERN-plan-generation.md)
 - `PATTERN-ref-shape-registry` — Classifying a plan ref or `plan:` handle: `internal/planparser` alone declares and decides. (test) — [background](pattern/PATTERN-ref-shape-registry.md)
-- `PATTERN-glyph-conversion-chokepoint` — Converting glyphs and paths: only through `glyph`'s converters, plus `planparser`'s one test-unit mapping. — [background](pattern/PATTERN-glyph-conversion-chokepoint.md)
+- `PATTERN-glyph-conversion-chokepoint` — Converting glyphs and paths: only through `glyph`'s converters. — [background](pattern/PATTERN-glyph-conversion-chokepoint.md)
 - `PATTERN-gate-self-check-parity` — Adding a mechanical gate: its closure and its CLI self-check call one package function and land in one task. — [background](pattern/PATTERN-gate-self-check-parity.md)
 - `PATTERN-verified-tree` — Running a verify command: through `verifytree.Verify` only. (test) — [background](pattern/PATTERN-verified-tree.md)
 - `PATTERN-gate-slot` — Running a gate build or test: only in a `-p`-capped hub slot of `internal/gateslot`.
@@ -71,12 +71,13 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-producer-pointer-rule` — Writing an instruction file: it points at another producer's format contract and never duplicates or paraphrases it.
 - `PATTERN-friction-capture` — Halting a loom run or refusing in webster: Go writes a friction note, archived only once a reflection covers it. (test) — [background](pattern/PATTERN-friction-capture.md)
 - `PATTERN-completion-signal` — Finalizing a negative "did this run finish" answer in `internal/shuttleengine`: consult `allOutputFilesExist` first. (test) — [background](pattern/PATTERN-completion-signal.md)
-- `PATTERN-shuttle-provider-seam` — Referencing a provider: its specifics live only under `internal/shuttleengine/<engine>`, and only `internal/shuttleengines` constructs or imports a concrete engine. (test) — [background](pattern/PATTERN-shuttle-provider-seam.md)
+- `PATTERN-shuttle-provider-seam` — Referencing a provider: its specifics live only under `internal/shuttleengine/<engine>`. (test) — [background](pattern/PATTERN-shuttle-provider-seam.md)
+- `PATTERN-model-choice-mapping` — Mapping a resolved model-spec onto a spawn: only `shuttleengine.NewModelChoice` reads a `modelspec.Resolved` field. (test) — [background](pattern/PATTERN-model-choice-mapping.md)
 - `PATTERN-shuttle-stop` — Stopping a shuttle run's strand from Go outside `internal/shuttleengine`: only through shuttle's stop verb. (test) — [background](pattern/PATTERN-shuttle-stop.md)
 - `PATTERN-orch-pane-single-writer` — Typing into the orch session from Go: only the orch watcher, idle-gated but for a hub pause's interrupt; other modules queue an `orchengine` notice.
 - `PATTERN-shell-mechanics-seam` — Building a pane-shell command string: only through `internal/shell`, which imports the standard library alone.
 - `PATTERN-pane-text-injection` — Typing text into an agent pane: only reed's guarded paste-submit. — [background](pattern/PATTERN-pane-text-injection.md)
-- `PATTERN-guarded-interrupt` — Sending an agent pane the interrupt key: only shuttle's two pane guards; `Runner.Inject` refuses it. — [background](pattern/PATTERN-guarded-interrupt.md)
+- `PATTERN-guarded-interrupt` — Sending an agent pane the interrupt key: only shuttle's two pane guards. — [background](pattern/PATTERN-guarded-interrupt.md)
 - `PATTERN-pane-binary-resolution` — Creating a strand pane or detached `lyx` window in reed: resolve `lyx` via `panebin.go` only. (test) — [background](pattern/PATTERN-pane-binary-resolution.md)
 - `PATTERN-role-skills-typed` — Loading a spawned session's skill: its spawner names it on the launch spec and lyx delivers it, on the launch line or typed; no stencil asks for one. (test)
 - `PATTERN-parent-directive` — Writing a spawned role's top-level stencil: it renders the parent directive; no stencil tells an agent to ask the operator. (test) — [background](pattern/PATTERN-parent-directive.md)
