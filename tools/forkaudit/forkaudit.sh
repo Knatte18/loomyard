@@ -41,6 +41,20 @@
 # --since matches every project directory whose name starts with the encoded hub and `-`;
 # --runs matches only the directory named exactly the encoded hub, `-` and the run name.
 # The report header lists the matched directories and each --runs name that matched none.
+#
+# Forks: the candidates are the subagents/agent-*.jsonl files under the matched project directories;
+# under --since only those modified at or after it (and, with --until, not after it), under --runs every one.
+# A candidate holding the Webster implementer job heading goes through extract.jq, which keeps it only when
+# its first tool call reads a Webster prompt file whose result holds that heading, and writes one record per kept fork.
+# A transcript is read line by line and a line that does not parse is dropped and counted, so a half-written
+# last line of a fork still running costs that line, not the fork.
+# A transcript that cannot be read exits 1 naming it.
+# Each fork's arm is the pack layout its prompt shows, taken from the marker table at the head of extract.jq.
+# A task that adds a Webster pack layout adds its marker row there in the same task.
+#
+# Intermediate files in --work: projects.txt (matched project directories), candidates.txt (candidate transcripts),
+# webster-files.txt (candidates holding the job heading) and records.jsonl (one record per kept fork).
+# The report body is rendered from records.jsonl by report.jq.
 
 set -u
 set -o pipefail
@@ -69,7 +83,9 @@ date -d @0 > /dev/null 2>&1 || { echo "forkaudit: missing command: GNU date" >&2
 
 MARKER_FILE=".forkaudit-work"
 # The script's own intermediate files in --work; a run clears exactly these.
-WORK_FILES=(projects.txt candidates.txt)
+WORK_FILES=(projects.txt candidates.txt webster-files.txt records.jsonl)
+# The heading that marks a Webster implementer prompt.
+JOB_HEADING='# Webster implementer job'
 
 usage() {
   cat >&2 <<'EOF'
@@ -210,6 +226,41 @@ else
   [ -e "$work/projects.txt" ] || : > "$work/projects.txt"
 fi
 
+find_args=(-type f -path '*/subagents/agent-*.jsonl')
+if [ "$since_set" = 1 ]; then
+  find_args+=(-newermt "$since")
+  [ "$until_set" = 1 ] && find_args+=(! -newermt "$until_date")
+fi
+: > "$work/candidates.txt"
+while IFS= read -r project_dir; do
+  find "$project_dir" "${find_args[@]}" || fail "cannot search project directory: $project_dir"
+done < "$work/projects.txt" | sort > "$work/candidates.txt" || exit 1
+
+# A candidate holding the job heading is a fork only if extract.jq also accepts its first tool call.
+: > "$work/webster-files.txt"
+while IFS= read -r candidate; do
+  grep -q -- "$JOB_HEADING" "$candidate" 2> /dev/null
+  case $? in
+    0) echo "$candidate" >> "$work/webster-files.txt" ;;
+    1) ;;
+    *) fail "cannot read transcript: $candidate" ;;
+  esac
+done < "$work/candidates.txt"
+
+# The extractor's run name is the project directory's name without the encoded hub and `-`.
+: > "$work/records.jsonl"
+while IFS= read -r transcript; do
+  relative="${transcript#"$projects"/}"
+  project_name="${relative%%/*}"
+  jq -n -R -c --arg mode extract --arg run "${project_name#"$hub_encoded"-}" --arg rel "$relative" --arg plan "$PLAN_DIR" \
+    -f "$script_dir/extract.jq" "$transcript" >> "$work/records.jsonl" || fail "cannot extract transcript: $transcript"
+done < "$work/webster-files.txt"
+
+candidate_count="$(grep -c . "$work/candidates.txt")"
+heading_count="$(grep -c . "$work/webster-files.txt")"
+fork_count="$(grep -c . "$work/records.jsonl")"
+dropped_count="$(jq -s 'map(.dropped) | add // 0' "$work/records.jsonl")"
+
 write_header() {
   local project_dir
   echo "# Webster fork read audit"
@@ -231,12 +282,21 @@ write_header() {
   if [ "${#unmatched_runs[@]}" -gt 0 ]; then
     echo "- Runs with no project directory: ${unmatched_runs[*]}"
   fi
+  echo "- Candidates found: $candidate_count"
+  echo "- Transcripts holding the job heading: $heading_count"
+  echo "- Forks kept: $fork_count"
+  echo "- Transcript lines dropped as unparsable: $dropped_count"
   echo
 }
 
+arms_json="$(jq -n -c --arg mode arms --arg run "" --arg rel "" --arg plan "" -f "$script_dir/extract.jq")"
 {
   write_header
-  echo "No Webster implementer forks matched."
+  if [ "$fork_count" -eq 0 ]; then
+    echo "No Webster implementer forks matched."
+  else
+    jq -s -r --argjson arms "$arms_json" -f "$script_dir/report.jq" "$work/records.jsonl" || fail "cannot render the report"
+  fi
 } > "$report_tmp"
 
 mv -f -- "$report_tmp" "$out"
