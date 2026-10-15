@@ -360,6 +360,8 @@ func TestReadSession(t *testing.T) {
 	}
 }
 
+// TestLocateSessions is not parallel at the top because one step sets the process-global HOME;
+// its table rows run in parallel on temporary roots.
 func TestLocateSessions(t *testing.T) {
 	const worktree = "/hub/task"
 
