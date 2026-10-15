@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -228,7 +229,7 @@ func TestBouncer_Cancellation_ReturnsErrorAndEmptyPointer(t *testing.T) {
 			if outcome != "" {
 				t.Errorf("Call() outcome = %q; want empty alongside a non-nil error", outcome)
 			}
-			if ptr != (shedengine.OutputPointer{}) {
+			if !reflect.DeepEqual(ptr, shedengine.OutputPointer{}) {
 				t.Errorf("Call() pointer = %+v; want empty", ptr)
 			}
 			if !strings.Contains(err.Error(), "gate") {

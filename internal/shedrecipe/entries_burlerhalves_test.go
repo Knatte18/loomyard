@@ -480,8 +480,9 @@ func TestBurlerHalfEntries_StrictUnknownKeys(t *testing.T) {
 	}
 }
 
-// TestBurlerHalfEntries_ColorSegment covers the optional per-half keys that map onto the profile, color_segment and language-skills:
-// an absent color_segment keeps the zero segment, which the engine reads as the review color, a legal segment reaches the profile, and an unknown one is refused naming the key and the legal segments;
+// TestBurlerHalfEntries_ColorSegment covers the optional per-half keys that map onto the profile, color_segment, role_prefix and language-skills:
+// an absent color_segment keeps the zero segment, which the engine reads as the review color, a legal segment reaches the profile, and an unknown one is refused naming the key and the legal segments.
+// A role_prefix reaches the profile, an absent one leaves it empty, and a value that is no role is refused naming the key and the value.
 // language-skills true reaches the profile, and a non-boolean value is refused naming the key.
 func TestBurlerHalfEntries_ColorSegment(t *testing.T) {
 	entries := []struct {
@@ -529,6 +530,27 @@ func TestBurlerHalfEntries_ColorSegment(t *testing.T) {
 			cfg["profile"].(map[string]any)["language-skills"] = "yes"
 			_, err := e.entry("a-row", cfg, newTestEnv(t))
 			assertErrContains(t, err, "language-skills")
+		})
+		t.Run(e.name+"RolePrefix", func(t *testing.T) {
+			cfg := e.cfg()
+			cfg["role_prefix"] = "plan"
+			profile, _ := e.capture(t, "a-row", cfg, newTestEnv(t))
+			if profile.RolePrefix != "plan" {
+				t.Errorf("profile.RolePrefix = %q; want %q", profile.RolePrefix, "plan")
+			}
+		})
+		t.Run(e.name+"RolePrefixAbsent", func(t *testing.T) {
+			profile, _ := e.capture(t, "a-row", e.cfg(), newTestEnv(t))
+			if profile.RolePrefix != "" {
+				t.Errorf("profile.RolePrefix = %q; want empty", profile.RolePrefix)
+			}
+		})
+		t.Run(e.name+"RolePrefixInvalid", func(t *testing.T) {
+			cfg := e.cfg()
+			cfg["role_prefix"] = "Plan!"
+			_, err := e.entry("a-row", cfg, newTestEnv(t))
+			assertErrContains(t, err, "role_prefix")
+			assertErrContains(t, err, "Plan!")
 		})
 	}
 }

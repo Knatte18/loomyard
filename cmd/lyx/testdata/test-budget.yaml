@@ -9,7 +9,7 @@ internal/agentname: 8
 internal/alignment: 7
 internal/arbiterstop: 2
 internal/batcher: 9
-internal/battencli: 81
+internal/battencli: 83
 internal/battenrecipe: 9
 internal/battenshed: 114
 internal/boardcli: 13
@@ -64,14 +64,14 @@ internal/logger: 37
 internal/loggerconfig: 3
 internal/loomcli: 237
 internal/loomengine: 58
-internal/loomrecipe: 54
+internal/loomrecipe: 56
 internal/loomshed: 76
 internal/lyxcwd: 23
 internal/lyxtemp: 7
 internal/mergeresolve: 17
 internal/modelspec: 11
 internal/orchcli: 28
-internal/orchengine: 143
+internal/orchengine: 144
 internal/output: 4
 internal/pairteardown: 8
 internal/pauserecord: 14
@@ -147,6 +147,7 @@ internal/weftname: 1
 internal/yamlengine: 19
 tools/codestats: 9
 tools/deploy: 7
+tools/forkaudit: 5
 tools/godocreflow: 6
 tools/internal/devbin: 1
 tools/mdreflow: 3

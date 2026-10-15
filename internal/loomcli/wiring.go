@@ -1011,8 +1011,9 @@ func segmentBounces(statusPath, statusLockPath string, routing func() (shedengin
 // loomMissingStatusWayForward is the told trailing clause for a missing status file: loom's own start verb is what bootstraps one.
 const loomMissingStatusWayForward = "way forward: run \"lyx loom start\" first to bootstrap this task"
 
-// loomRerouteCapWayForward is the told clause a reroute-cap halt ends with: a row that keeps finding the parent moved is resumed once the parent branch has settled.
-const loomRerouteCapWayForward = "run \"lyx loom resume\" in the task worktree once the parent branch has settled"
+// loomRerouteCapWayForward is the told clause a reroute-cap halt ends with, whichever row's reroute hit the cap.
+// The halt is resumed once the cause its reason quotes is cleared.
+const loomRerouteCapWayForward = "run \"lyx loom resume\" in the task worktree once the cause the halt's reason quotes is cleared: for a parent-branch reroute, once the parent branch has settled; for a Webster plan conflict, once the named pending cards are edited by hand to match the tree"
 
 // hubConfigWayForward is the trailing clause for a failed load of the hub-wide landing config: reconciling the hub's config is what restores it.
 const hubConfigWayForward = "way forward: run lyx config reconcile --apply in the hub, then step again"

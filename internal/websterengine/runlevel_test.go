@@ -392,6 +392,26 @@ func captureLogs(t *testing.T) *bytes.Buffer {
 	return &logs
 }
 
+// seedConflictRecord writes a plan-conflict record into the fixture's scratch directory.
+func seedConflictRecord(t *testing.T, fx *runFixture) {
+	t.Helper()
+	if err := os.MkdirAll(fx.Deps.Geom.ScratchDir, 0o755); err != nil {
+		t.Fatalf("mkdir webster scratch dir: %v", err)
+	}
+	conflict := &websterengine.PlanConflictError{Batch: 1, Cause: websterengine.ConflictCausePlanDefect, Findings: []string{"a finding"}}
+	if err := websterengine.WriteConflictRecord(fx.Deps.Geom.ScratchDir, conflict); err != nil {
+		t.Fatalf("seed plan-conflict record: %v", err)
+	}
+}
+
+// requireNoConflictRecord fails the test when the fixture's plan-conflict record still exists.
+func requireNoConflictRecord(t *testing.T, fx *runFixture) {
+	t.Helper()
+	if _, err := os.Stat(websterengine.ConflictRecordPath(fx.Deps.Geom.ScratchDir)); !os.IsNotExist(err) {
+		t.Errorf("stat plan-conflict record = %v; want it removed", err)
+	}
+}
+
 // TestRun_RefusesBeforeSpawn asserts each refusal Run raises ahead of the Master spawn: the typed
 // error or message it carries, the way forward it names, that the Starter is never reached, and —
 // where the card has a way forward to take — that taking it lets the re-run reach the Master.
@@ -425,10 +445,17 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 					t.Fatalf("acquire run.lock: %v", err)
 				}
 				t.Cleanup(func() { held.Release() })
+				seedConflictRecord(t, fx)
 				return func() { held.Release() }
 			},
 			errIs:      websterengine.ErrRunBusy,
 			wayForward: []string{"lyx webster status"},
+			// The live run's record survives a Run refused as busy.
+			check: func(t *testing.T, fx *runFixture, _ error) {
+				if _, err := os.Stat(websterengine.ConflictRecordPath(fx.Deps.Geom.ScratchDir)); err != nil {
+					t.Errorf("stat plan-conflict record = %v; want it kept after ErrRunBusy", err)
+				}
+			},
 		},
 		{
 			name:  "no batchifier was populated",
@@ -923,11 +950,13 @@ func TestRun_AutoRebaseline(t *testing.T) {
 				fx := seed(t, tc.cards, tc.shape)
 				fingerprint := loadRunState(t, fx).PlanFingerprint
 				tc.edit(t, fx)
+				seedConflictRecord(t, fx)
 
 				_, err := autoRun(fx)
 				if !errors.Is(err, websterengine.ErrAutoRebaseline) {
 					t.Fatalf("Run() error = %v; want errors.Is(err, ErrAutoRebaseline)", err)
 				}
+				requireNoConflictRecord(t, fx)
 				if tc.wantIs != nil && !errors.Is(err, tc.wantIs) {
 					t.Errorf("Run() error = %v; want it to wrap %v too", err, tc.wantIs)
 				}
@@ -1395,6 +1424,30 @@ func TestRun_EntryHousekeeping(t *testing.T) {
 			},
 		},
 		{
+			name: "a stale plan-conflict record is removed",
+			setup: func(t *testing.T, fx *runFixture) func(t *testing.T) {
+				seedConflictRecord(t, fx)
+				return func(t *testing.T) { requireNoConflictRecord(t, fx) }
+			},
+		},
+		{
+			name: "a plan-conflict record that cannot be removed does not refuse the run",
+			setup: func(t *testing.T, fx *runFixture) func(t *testing.T) {
+				recordPath := websterengine.ConflictRecordPath(fx.Deps.Geom.ScratchDir)
+				if err := os.MkdirAll(filepath.Join(recordPath, "occupant"), 0o755); err != nil {
+					t.Fatalf("plant a non-empty directory at the record path: %v", err)
+				}
+				return func(t *testing.T) {
+					if got := fx.Starter.callCount(); got != 1 {
+						t.Errorf("StartMaster calls = %d; want the scripted starter reached despite the failed removal", got)
+					}
+					if info, err := os.Stat(recordPath); err != nil || !info.IsDir() {
+						t.Errorf("stat record path = %v, %v; want the directory left in place", info, err)
+					}
+				}
+			},
+		},
+		{
 			name: "a state recording no strand stops nothing",
 			setup: func(t *testing.T, fx *runFixture) func(t *testing.T) {
 				seedMatchingState(t, fx, &websterengine.State{})
@@ -1700,6 +1753,8 @@ func TestRun_DoneOutcome(t *testing.T) {
 	t.Parallel()
 
 	const fabricCommand = "cat FABRICREF/webster/state.json"
+	passingGate := &shuttleengine.GateOutcome{Passed: true, Attempts: 1, Entries: []shuttleengine.GateEntryOutcome{{Name: "verify", Attempts: 1, State: shuttleengine.GateEntryPassed}}}
+	failingGate := &shuttleengine.GateOutcome{Passed: false, Attempts: 2, Reason: "the verify command failed twice", Entries: []shuttleengine.GateEntryOutcome{{Name: "verify", Attempts: 2, State: shuttleengine.GateEntryFailed}}}
 	cases := []struct {
 		name    string
 		cards   int
@@ -1711,8 +1766,42 @@ func TestRun_DoneOutcome(t *testing.T) {
 		batchesDone int
 		// outcome and summary replace the contract files Master writes, which otherwise report outcome done.
 		outcome, summary string
-		check            func(t *testing.T, fx *runFixture, result websterengine.RunResult)
+		// gate is the gate outcome Master's shuttle result carries.
+		gate  *shuttleengine.GateOutcome
+		check func(t *testing.T, fx *runFixture, result websterengine.RunResult)
 	}{
+		{
+			name:    "a passing verify gate is carried on the done result",
+			cards:   1,
+			session: "master-session-gate-pass",
+			state: &websterengine.State{Batches: map[int]*websterengine.BatchState{
+				1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done"},
+			}},
+			audit:       func(*runFixture) shuttleengine.ForkAudit { return shuttleengine.ForkAudit{Forks: forkReports(1)} },
+			batchesDone: 1,
+			gate:        passingGate,
+			check: func(t *testing.T, fx *runFixture, result websterengine.RunResult) {
+				if result.Outcome != "done" || result.Gate != passingGate {
+					t.Errorf("RunResult = outcome %q, gate %+v; want done carrying the passing gate", result.Outcome, result.Gate)
+				}
+			},
+		},
+		{
+			name:    "a failing verify gate demotes to stuck and is still carried",
+			cards:   1,
+			session: "master-session-gate-fail",
+			state: &websterengine.State{Batches: map[int]*websterengine.BatchState{
+				1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done"},
+			}},
+			audit:       func(*runFixture) shuttleengine.ForkAudit { return shuttleengine.ForkAudit{Forks: forkReports(1)} },
+			batchesDone: 1,
+			gate:        failingGate,
+			check: func(t *testing.T, fx *runFixture, result websterengine.RunResult) {
+				if result.Outcome != "stuck" || result.Gate != failingGate {
+					t.Errorf("RunResult = outcome %q, gate %+v; want stuck still carrying the failing gate", result.Outcome, result.Gate)
+				}
+			},
+		},
 		{
 			// The stuck path never reads as a question: nothing the run returns names one.
 			name:    "a stuck outcome reads stuck with its reason and is never reported as a question",
@@ -1967,6 +2056,7 @@ func TestRun_DoneOutcome(t *testing.T) {
 			}
 			seedMatchingState(t, fx, tc.state)
 			handle := auditDoneHandle(t, fx, tc.session, tc.batchesDone, tc.audit(fx), func() {})
+			handle.result.Gate = tc.gate
 			if tc.outcome != "" {
 				handle.onWait = func() { writeContractFiles(t, fx, tc.outcome, tc.summary) }
 			}

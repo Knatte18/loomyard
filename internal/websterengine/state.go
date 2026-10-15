@@ -57,10 +57,9 @@ func ReportsDir(anchorRoot string) string {
 	return filepath.Join(Dir(anchorRoot), "reports")
 }
 
-// ScratchDir returns the path to the base directory for webster's never-tracked artifacts —
-// Dir's never-tracked sibling holding the rendered fork prompts, and every
-// *.lock — at the mirrored subpath of the _lyx/webster content each relates to, joined onto the
-// told anchorRoot.
+// ScratchDir returns the path to the base directory for webster's never-tracked artifacts.
+// It is Dir's never-tracked sibling, holding the rendered fork prompts, every *.lock, and the plan-conflict record and last-routed conflict.
+// It sits at the mirrored subpath of the _lyx/webster content each relates to, joined onto the told anchorRoot.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func ScratchDir(anchorRoot string) string {
 	return filepath.Join(anchorRoot, lyxdirs.DotLyxDirName, websterDirName)

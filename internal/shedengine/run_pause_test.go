@@ -255,7 +255,7 @@ func TestRun_CrashRecovery(t *testing.T) {
 		t.Fatalf("len(result.History) = %d; want %d (the first run's entry plus this run's two)", len(result.History), wantLen)
 	}
 	for i, entry := range halted.History {
-		if result.History[i] != entry {
+		if !reflect.DeepEqual(result.History[i], entry) {
 			t.Errorf("result.History[%d] = %+v; want %+v (carried over from the first run)", i, result.History[i], entry)
 		}
 	}

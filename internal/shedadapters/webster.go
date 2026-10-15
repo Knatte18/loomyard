@@ -34,6 +34,9 @@ const (
 	websterOutcomeStuck = "stuck"
 )
 
+// planConflictWayForward is the clause a halted Webster plan conflict ends with: the pending cards are edited by hand and the row resumed.
+const planConflictWayForward = "edit the named pending cards by hand so they match the tree, then run \"lyx loom resume\" in the task worktree"
+
 // WebsterProducer is the shedadapters adapter over websterengine's Run seam: it invokes run once per
 // Call with Fresh always false and AutoRebaseline always true, and maps the resulting RunResult/error onto shedengine's contract.
 type WebsterProducer struct {
@@ -92,14 +95,27 @@ func (p *WebsterProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 		// A genuine success verdict survives cancellation -- the one exception cancelErr never
 		// applies to. The summary is Webster's human-readable account of the whole run and is
 		// guaranteed present on this outcome; the webster dir is already told, never derived.
-		return shedengine.Done, shedengine.OutputPointer{Path: summaryparser.Path(p.deps.Geom.WebsterDir)}, nil
+		return shedengine.Done, shedengine.OutputPointer{Path: summaryparser.Path(p.deps.Geom.WebsterDir), GateAttempts: gateAttemptsPointer(result.Gate), GateSpans: gateSpansOf(result.Gate)}, nil
 
 	case websterOutcomeStuck:
 		if cerr := cancelErr(ctx, p.name, websterEngineLabel); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
 		}
 		logger.Warn("shedadapters: webster run is stuck", "producer", p.name, "engine", websterEngineLabel, "stuckReason", result.StuckReason, "batchesDone", result.BatchesDone)
-		return shedengine.Stuck, shedengine.OutputPointer{Reason: result.StuckReason}, nil
+		ptr := shedengine.OutputPointer{GateAttempts: gateAttemptsPointer(result.Gate), GateSpans: gateSpansOf(result.Gate), Reason: result.StuckReason}
+		route, claimErr := websterengine.ClaimConflictRoute(p.deps.Geom.ScratchDir)
+		if claimErr != nil {
+			logger.Warn("shedadapters: webster plan-conflict record not claimed; the stuck outcome halts", "producer", p.name, "engine", websterEngineLabel, "error", claimErr)
+			return shedengine.Stuck, ptr, nil
+		}
+		switch {
+		case route.New:
+			ptr.Reroute = true
+			ptr.Reason = "webster plan conflict, asking a reroute to plan review: " + result.StuckReason + "; if plan review does not clear it: " + planConflictWayForward
+		case route.Found:
+			ptr.Reason = "the same webster plan conflict recurred after a reroute of it was asked for: " + result.StuckReason + "; way forward: " + planConflictWayForward
+		}
+		return shedengine.Stuck, ptr, nil
 
 	default:
 		if cerr := cancelErr(ctx, p.name, websterEngineLabel); cerr != nil {

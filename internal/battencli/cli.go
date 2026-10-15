@@ -11,13 +11,15 @@
 // "lyx batten cleanup [--apply]" (cleanup.go) removes done runs' records and scratch and aged orphan scratch, as a dry run unless given --apply.
 //
 // "lyx batten overview" (overview.go) is the hidden pane verb the orch start runs in the prime's runs strand.
-// It lists the batten runs in flight, one line each: the slug, batten's state, the stage, the time in that stage, the run's age and the pair's reed session.
+// The first line is the orch session's: its latest context tokens against the soft and hard thresholds, its cycle phase and cycle count, with `watcher down` appended once the watcher has exited; no state file draws no orch line, and a state file unreadable on two polls in a row shows `orch  state unreadable`.
+// Below it come the batten runs in flight, one line each: the slug, batten's state, the stage, the time in that stage, the run's age and the pair's reed session.
 // A run shows while batten's state is not done and its pair exists or is being created; a run with a seed and no status shows as `starting`; the stage is the task worktree's current producer while batten is in Run-Shed and that status is found, and batten's own producer otherwise.
+// The stage cell carries the stage's entry number from the recipe, `7. Land` for a batten stage and `6.5 Plan-Write` for a child stage under Run-Shed's number 6; a stage whose number cannot be read shows its name alone.
 // A running, batten-paused or starting run a live pause covers shows `paused <minutes>` in its state cell, the minutes since that pause began.
 // Runs are ordered by the seed's start time and then slug, those with no readable start last.
 // The pane polls each second and backs off while nothing changes, which holds because every time renders in whole minutes.
 // A status file unreadable on two polls in a row shows the slug and `status unreadable`; one failed poll keeps the line of the previous status.
-// It only reads the run records and the status files, without their locks, so it never blocks or slows a run.
+// It only reads the orch state file, the orch config (loaded once at start), the run records and the status files, without their locks, so it never blocks or slows a run.
 //
 // "lyx batten run <slug> --window" runs the same status check as a plain run and refuses a done slug before opening anything.
 //

@@ -60,6 +60,16 @@ type Profile struct {
 	// LanguageSkills marks a code round: when true, every seat of the half loads burlerSkills followed by the engine's language skills; when false, burlerSkills alone.
 	// It only adds skills to a seat's load turn and changes no rubric, lens, fan or gate.
 	LanguageSkills bool
+	// RolePrefix leads both halves' session roles, as `<RolePrefix>-burler-review` and `<RolePrefix>-burler-fix`; the zero value keeps the roles unprefixed.
+	RolePrefix string
+}
+
+// rolePrefix returns base led by the profile's RolePrefix, or base alone when there is none.
+func (p *Profile) rolePrefix(base string) string {
+	if p.RolePrefix == "" {
+		return base
+	}
+	return p.RolePrefix + "-" + base
 }
 
 // segment returns the segment the round's sessions are colored by.

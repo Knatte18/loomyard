@@ -77,6 +77,8 @@ func TestEngine_Fix_TableShapeAndFiles(t *testing.T) {
 	p.PriorReviews = []string{"prior-review.md"}
 	p.Segment = segmentcolor.Merge
 	p.LanguageSkills = true
+	p.RolePrefix = "merge"
+	fixRole := "merge-" + fixHalfRole
 	shuttle := &fakeShuttle{fix: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, writes: "nothing fixed"}}
 	e := New(shuttle, Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug"}, Config{}, newTestStencilsDir(t), "", []string{"scribe:golang-testing"})
 
@@ -96,10 +98,10 @@ func TestEngine_Fix_TableShapeAndFiles(t *testing.T) {
 	if got.Outcome != shuttleengine.OutcomeDone || got.Skipped {
 		t.Errorf("Fix() outcome %q skipped %v; want done and not skipped, since the review holds a finding", got.Outcome, got.Skipped)
 	}
-	if want := []string{fixHalfRole}; !slices.Equal(shuttle.started, want) {
+	if want := []string{fixRole}; !slices.Equal(shuttle.started, want) {
 		t.Fatalf("started seats = %v; want %v, the one chair", shuttle.started, want)
 	}
-	spec := shuttle.specs[fixHalfRole]
+	spec := shuttle.specs[fixRole]
 	if want := []string{filepath.Join(root, "fixer-report.md")}; !slices.Equal(spec.OutputFiles, want) {
 		t.Errorf("spec.OutputFiles = %v; want %v", spec.OutputFiles, want)
 	}
@@ -115,7 +117,7 @@ func TestEngine_Fix_TableShapeAndFiles(t *testing.T) {
 	if want := []string{"scribe:prose", "scribe:code-quality", "scribe:testing", "scribe:golang-testing"}; !slices.Equal(spec.Skills, want) {
 		t.Errorf("spec.Skills = %v; want %v", spec.Skills, want)
 	}
-	gate := shuttle.gates[fixHalfRole]
+	gate := shuttle.gates[fixRole]
 	if len(gate) != 1 || gate[0].Name != "build" {
 		t.Fatalf("gate = %+v; want the opts' one entry", gate)
 	}

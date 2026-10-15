@@ -22,8 +22,11 @@
 # Burler row's on_done names the same row as its on_stuck, since neither ever returns Done. The
 # segment's rows declare no max_bounces: their budget is darn.yaml's review_max_bounces, applied by
 # internal/loomrecipe, and a budget of 0 turns the perch off by routing Darn-Write's Done straight
-# to Merge-In, past Describe, so the writer's own description stands. The perch's judge, reviewer
+# to Merge-In, past Describe, so the writer's own description stands.
+# The perch's judge, reviewer
 # and fixer models are loom.yaml's Webster-Review keys, the other committed-diff review.
+# The perch's rows share one role_prefix, which leads their sessions' roles,
+# so ly:<slug>:darn-burler-review names its segment.
 #
 # Merge-In follows Describe and hands straight to Publish: darn has no Merge-Review perch.
 # Publish, PR-Gate and Finalize each declare on_reroute: Merge-In, the row a moved parent sends
@@ -78,6 +81,7 @@ producers:
     on_done: Describe
     config:
       run_subdir: darn
+      role_prefix: darn
       # The subject under review is the committed diff, which artifact_paths cannot name; the key is
       # required, so it names the change description the writer committed, the writer's own claim
       # of what the diff does. The rubric names the diff as the subject and the amended board entry
@@ -101,6 +105,7 @@ producers:
       # The same run_subdir value as Darn-Bouncer is what makes the three rows write into one
       # shared run directory.
       run_subdir: darn
+      role_prefix: darn
       profile:
         target:
           # No paths key: a diff has no file on disk for the profile's path check to stat.
@@ -139,6 +144,7 @@ producers:
     on_done: Darn-Bouncer
     config:
       run_subdir: darn
+      role_prefix: darn
       review_row: Darn-Burler-Review
       # The verify gate runs darn.yaml's verify command on the committed tree after each round and
       # re-prompts the fix session with the findings until it passes. Its attempts here is a

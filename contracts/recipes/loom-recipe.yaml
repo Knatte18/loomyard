@@ -20,6 +20,10 @@
 # becomes reachable for the first time: nothing made it fire before, because its own row's on_done
 # always reached the row now removed regardless of what its gate found.
 #
+# Webster's Stuck halts the run for a human too, with one exception: Webster declares on_reroute:
+# Plan-Burler-Review, and its producer marks a Stuck Reroute only when begin-batch left a new
+# plan-conflict record. Shed's reroute cap bounds that edge, and a reroute spends no bounce budget.
+#
 # A gated writer row's exhausted gate halts the run for a human rather than bouncing to a fresh
 # writer, and this replaces the removed rows' cheap respawn deliberately: no on_stuck is added to
 # either writer row, because after three in-session re-prompts with the findings already in hand, a
@@ -57,6 +61,8 @@
 # Discussion-Burler-Review and Discussion-Burler-Fix carry segment: Discussion-Review, the three
 # Plan rows carry segment: Plan-Review, the three Webster rows carry segment: Webster-Review, and
 # the three Merge rows carry segment: Merge-Review.
+# A review segment's rows also share one role_prefix, which leads their sessions' roles,
+# so ly:<slug>:plan-burler-review names its segment.
 # In each ring the Bouncer's on_stuck names the review row, the review row's on_stuck names the fix
 # row, and the fix row's on_stuck names the Bouncer, and each Burler row's on_done names the same
 # row as its on_stuck -- neither Burler row ever returns Done, and an empty on_done would end the
@@ -116,6 +122,7 @@ producers:
     on_done: Plan-Write
     config:
       run_subdir: discussion
+      role_prefix: discussion
       artifact_paths:
         - _lyx/discussion/decision-record.md
         - _lyx/discussion/support-log.md
@@ -142,6 +149,7 @@ producers:
       # The same run_subdir value as Discussion-Bouncer is what makes the three rows write into one
       # shared run directory.
       run_subdir: discussion
+      role_prefix: discussion
       profile:
         target:
           paths:
@@ -172,6 +180,7 @@ producers:
     on_done: Discussion-Bouncer
     config:
       run_subdir: discussion
+      role_prefix: discussion
       # review_row names this segment's review row, which a refusal's way forward sends the
       # operator back to.
       review_row: Discussion-Burler-Review
@@ -207,6 +216,7 @@ producers:
     on_done: Batchifier
     config:
       run_subdir: plan
+      role_prefix: plan
       # A plan is 00-overview.md plus a variable number of card files, so no enumeration written
       # here stays correct across plans -- the single directory entry is what stays right. Both
       # consumers accept a directory: shedadapters.NewBouncer stats nothing, and burlerengine's own
@@ -250,6 +260,7 @@ producers:
       # The same run_subdir value as Plan-Bouncer is what makes the three rows write into one
       # shared run directory.
       run_subdir: plan
+      role_prefix: plan
       profile:
         target:
           paths:
@@ -273,7 +284,10 @@ producers:
             them here is duplicated work. This round may never write the approved: key in the
             plan's overview file: a fixer that set the flag would be approving the very artifact
             the review round is judging, and this row already has write access to the overview
-            because it runs fix-scope: overlay with the plan directory in its target paths.
+            because it runs fix-scope: overlay with the plan directory in its target paths. When
+            .lyx/webster/plan-conflict.md exists, Webster's begin-batch refused the approved plan
+            against the current tree: each blocking finding it lists is a finding of this round,
+            fixed by editing only cards whose batch has not begun.
         rubric_stencil: loom-rubric-plan-review
         # fix-scope: overlay, matching the Discussion-Burler-Review row above. The plan directory is fabric
         # records content reached through the junction, and the Fabric Git Invariant reserves committing that
@@ -296,6 +310,7 @@ producers:
     on_done: Plan-Bouncer
     config:
       run_subdir: plan
+      role_prefix: plan
       review_row: Plan-Burler-Review
       # gates holds this row's handoff until the artifact is mechanically valid: each entry names a
       # validator and re-prompts the live session up to its attempts times, so a failure never
@@ -317,6 +332,7 @@ producers:
   - name: Webster
     engine: Webster
     on_done: Webster-Bouncer
+    on_reroute: Plan-Burler-Review
 
   - name: Webster-Bouncer
     engine: Bouncer
@@ -325,6 +341,7 @@ producers:
     on_done: Describe
     config:
       run_subdir: webster
+      role_prefix: webster
       # The subject under review is the committed diff, which artifact_paths cannot name at all:
       # the key is required and non-empty, every entry resolves to an absolute path under
       # Env.AnchorPath, and the generic bouncer-template-judge.md renders the list as the
@@ -361,6 +378,7 @@ producers:
       # The same run_subdir value as Webster-Bouncer is what makes the three rows write into one
       # shared run directory.
       run_subdir: webster
+      role_prefix: webster
       profile:
         target:
           # No paths key, deliberately: burlerengine's own Profile.validate resolves and stats
@@ -411,6 +429,7 @@ producers:
     on_done: Webster-Bouncer
     config:
       run_subdir: webster
+      role_prefix: webster
       review_row: Webster-Burler-Review
       # The verify gate runs on the committed tree after each round and re-prompts the round
       # session with the findings until it passes. It first runs the headroom lint from the merge
@@ -458,6 +477,7 @@ producers:
     on_done: Publish
     config:
       run_subdir: merge
+      role_prefix: merge
       # The subject under review is the merge-in, which artifact_paths cannot name: the key is
       # required and non-empty, so it takes the decision record the review measures the merge
       # against. The rubric names the merge as the subject for the judge and the fixer alike.
@@ -490,6 +510,7 @@ producers:
       # The same run_subdir value as Merge-Bouncer is what makes the three rows write into one
       # shared run directory.
       run_subdir: merge
+      role_prefix: merge
       color_segment: merge
       profile:
         target:
@@ -525,6 +546,7 @@ producers:
     on_done: Merge-Bouncer
     config:
       run_subdir: merge
+      role_prefix: merge
       review_row: Merge-Burler-Review
       color_segment: merge
       # The verify gate runs as Webster-Burler-Fix's does.

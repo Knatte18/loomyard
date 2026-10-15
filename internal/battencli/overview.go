@@ -1,5 +1,5 @@
 // overview.go implements the hidden `overview` batten verb, the pane process of the prime's runs strand, and the pure rendering of the runs in flight it draws:
-// one line per batten run with its state, stage, time in stage, age and reed session.
+// one line per batten run with its state, stage, time in stage, age and reed session, below the orch line (overvieworch.go).
 
 package battencli
 
@@ -17,7 +17,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/orchcli"
+	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -55,6 +58,10 @@ type overviewRun struct {
 	Session string
 	// PausedAt is when the live pause covering the run began; zero when none covers it.
 	PausedAt time.Time
+	// Recipe is the recipe the run's own seed names; empty while the seed is unreadable.
+	Recipe string
+	// ChildRecipe is the recipe the child's seed names; empty when unknown.
+	ChildRecipe string
 }
 
 // overviewLine is one run's cells before they are padded into columns.
@@ -64,10 +71,15 @@ type overviewLine struct {
 	unreadable bool
 }
 
-// renderOverview renders the runs in flight, one line each, with its columns padded to the widest value, ordered by start time and then slug with the runs of no known start last.
+// renderOverview renders the orch line, when there is one, above the runs in flight, one line each, with its columns padded to the widest value, ordered by start time and then slug with the runs of no known start last.
 // A run shows while batten's state is not done and its pair exists or batten is creating it; a run with no status shows as `starting`; a status unreadable on two polls shows the slug and `status unreadable`.
-// No run to show renders the one line overviewNoRuns.
-func renderOverview(runs []overviewRun, now time.Time) []string {
+// No run to show renders the one line overviewNoRuns after the orch line.
+func renderOverview(orch orchStatePoll, thresholds overviewThresholds, runs []overviewRun, now time.Time) []string {
+	var orchLines []string
+	if line, ok := overviewOrchLine(orch, thresholds); ok {
+		orchLines = []string{line}
+	}
+
 	shown := make([]overviewRun, 0, len(runs))
 	for _, run := range runs {
 		if overviewShows(run) {
@@ -75,7 +87,7 @@ func renderOverview(runs []overviewRun, now time.Time) []string {
 		}
 	}
 	if len(shown) == 0 {
-		return []string{overviewNoRuns}
+		return append(orchLines, overviewNoRuns)
 	}
 	sort.SliceStable(shown, func(a, b int) bool {
 		sa, sb := shown[a].StartedAt, shown[b].StartedAt
@@ -115,7 +127,7 @@ func renderOverview(runs []overviewRun, now time.Time) []string {
 		}
 		rendered[i] = strings.TrimRight(strings.Join(cells, overviewColumnGap), " ")
 	}
-	return rendered
+	return append(orchLines, rendered...)
 }
 
 // overviewShows reports whether run belongs on the overview.
@@ -146,10 +158,10 @@ func overviewLineOf(run overviewRun, now time.Time) overviewLine {
 	var stageStarted time.Time
 	if run.Batten.Found {
 		status := run.Batten.Status
-		state, stage = string(status.State), status.CurrentProducer
+		state, stage = string(status.State), overviewStage(run.Recipe, status.CurrentProducer)
 		stageStarted, _ = lastEntryEnd(status)
 		if inRunShed && run.Child.Found {
-			stage = run.Child.Status.CurrentProducer
+			stage = overviewChildStage(run)
 			if childStarted, ok := lastEntryEnd(run.Child.Status); ok {
 				stageStarted = childStarted
 			}
@@ -171,6 +183,39 @@ func overviewLineOf(run overviewRun, now time.Time) overviewLine {
 		run.Session,
 	}
 	return line
+}
+
+// overviewEntryNumber returns the entry number row has in the named recipe; false when the recipe is empty or unreadable or does not hold the row.
+func overviewEntryNumber(recipe, row string) (int, bool) {
+	if recipe == "" {
+		return 0, false
+	}
+	rows, err := loomrecipe.Rows(recipe)
+	if err != nil {
+		return 0, false
+	}
+	number, ok := loomrecipe.EntryNumbers(rows)[row]
+	return number, ok
+}
+
+// overviewStage draws row as `<n>. <row>`, n being its entry number in the named recipe; the row alone when its number cannot be read.
+func overviewStage(recipe, row string) string {
+	number, ok := overviewEntryNumber(recipe, row)
+	if !ok {
+		return row
+	}
+	return fmt.Sprintf("%d. %s", number, row)
+}
+
+// overviewChildStage draws the child's current row of a run in Run-Shed as `<Run-Shed's number>.<child number> <row>`; the row alone when either number cannot be read.
+func overviewChildStage(run overviewRun) string {
+	row := run.Child.Status.CurrentProducer
+	parent, parentOK := overviewEntryNumber(run.Recipe, battenrecipe.NameRunShed)
+	child, childOK := overviewEntryNumber(run.ChildRecipe, row)
+	if !parentOK || !childOK {
+		return row
+	}
+	return fmt.Sprintf("%d.%d %s", parent, child, row)
 }
 
 // lastEntryEnd returns the end of status's last history entry: its last_at when set, else its at; false when there is no entry or the time does not parse.
@@ -205,15 +250,21 @@ func padRight(s string, width int) string {
 	return s
 }
 
-// overviewSource reads the prime's batten runs for the overview pane, keeping what the polls can reuse.
+// overviewSource reads the orch session's state and the prime's batten runs for the overview pane, keeping what the polls can reuse.
 // It is not safe for concurrent use.
 type overviewSource struct {
 	prime *lyxcwd.Location
 	// pauseRecord is the path of the hub's pause record.
 	pauseRecord string
 	now         func() time.Time
+	// orchPaths locates the prime's orch state file.
+	orchPaths  orchengine.Paths
+	orchCache  orchStateCache
+	thresholds overviewThresholds
 	// childStatus returns the path of the status file of the task worktree slug names; a test replaces it.
 	childStatus func(slug string) (string, error)
+	// childPair returns the task worktree location of slug; a test replaces it.
+	childPair func(slug string) (*lyxcwd.Location, error)
 
 	battenCaches map[string]*statuspane.StatusCache
 	childCaches  map[string]*statuspane.StatusCache
@@ -221,44 +272,83 @@ type overviewSource struct {
 	seeds map[string]shedrun.Seed
 	// pairs holds the resolved task worktree location by slug, for as long as its directory exists.
 	pairs map[string]*lyxcwd.Location
+	// childRecipes holds the recipe a child's seed names by slug; a seed is write-once, so a decoded one is never read again.
+	childRecipes map[string]string
 }
 
-// newOverviewSource returns a source over the prime's runs and the pause record at pauseRecord that reads the time from now.
-func newOverviewSource(prime *lyxcwd.Location, pauseRecord string, now func() time.Time) *overviewSource {
+// newOverviewSource returns a source over the prime's orch state, drawn against thresholds, and the prime's runs and the pause record at pauseRecord, that reads the time from now.
+func newOverviewSource(prime *lyxcwd.Location, pauseRecord string, thresholds overviewThresholds, now func() time.Time) *overviewSource {
 	s := &overviewSource{
 		prime:        prime,
 		pauseRecord:  pauseRecord,
 		now:          now,
+		orchPaths:    orchcli.PrimePaths(prime),
+		thresholds:   thresholds,
 		battenCaches: map[string]*statuspane.StatusCache{},
 		childCaches:  map[string]*statuspane.StatusCache{},
 		seeds:        map[string]shedrun.Seed{},
 		pairs:        map[string]*lyxcwd.Location{},
+		childRecipes: map[string]string{},
 	}
+	s.childPair = s.resolveChildPair
 	s.childStatus = s.resolveChildStatus
 	return s
 }
 
-// resolveChildStatus resolves the task worktree of slug once while its directory exists and returns its status file.
-func (s *overviewSource) resolveChildStatus(slug string) (string, error) {
+// resolveChildPair resolves the task worktree of slug once while its directory exists.
+func (s *overviewSource) resolveChildPair(slug string) (*lyxcwd.Location, error) {
 	pair, ok := s.pairs[slug]
 	if !ok {
 		resolved, err := lyxcwd.ResolveWorktree(fabricengine.WorktreePath(s.prime, slug))
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 		pair = resolved
 		s.pairs[slug] = pair
 	}
+	return pair, nil
+}
+
+// resolveChildStatus returns the status file of the task worktree of slug.
+func (s *overviewSource) resolveChildStatus(slug string) (string, error) {
+	pair, err := s.childPair(slug)
+	if err != nil {
+		return "", err
+	}
 	return shedrun.StatusFile(pair, shedrun.SelfRunID), nil
 }
 
-// frame polls the prime's runs and returns the overview frame.
-// It reads the run records and the status files without their locks, and writes nothing.
+// resolveChildRecipe returns the recipe the seed of the task worktree of slug names, empty when the seed is absent.
+// A decoded seed's recipe is cached by slug.
+func (s *overviewSource) resolveChildRecipe(slug string) (string, error) {
+	if recipe, ok := s.childRecipes[slug]; ok {
+		return recipe, nil
+	}
+	pair, err := s.childPair(slug)
+	if err != nil {
+		return "", err
+	}
+	seed, found, err := shedrun.ReadSeed(pair, shedrun.SelfRunID)
+	if err != nil || !found {
+		return "", err
+	}
+	s.childRecipes[slug] = seed.Recipe
+	return seed.Recipe, nil
+}
+
+// frame polls the orch state and the prime's runs and returns the overview frame.
+// It reads the orch state, the run records and the status files without their locks, and writes nothing.
 func (s *overviewSource) frame() statuspane.Frame {
+	orch := s.orchCache.Poll(s.orchPaths)
+
 	slugs, err := shedrun.List(s.prime)
 	if err != nil {
 		logger.Debug("batten: listing the runs for the overview failed", "err", err)
-		return statuspane.Frame{Lines: []string{overviewRunsBroken}}
+		lines := []string{overviewRunsBroken}
+		if line, ok := overviewOrchLine(orch, s.thresholds); ok {
+			lines = []string{line, overviewRunsBroken}
+		}
+		return statuspane.Frame{Lines: lines}
 	}
 
 	record, err := pauserecord.Read(s.pauseRecord)
@@ -276,7 +366,7 @@ func (s *overviewSource) frame() statuspane.Frame {
 			runs = append(runs, run)
 		}
 	}
-	return statuspane.Frame{Lines: renderOverview(runs, s.now())}
+	return statuspane.Frame{Lines: renderOverview(orch, s.thresholds, runs, s.now())}
 }
 
 // poll builds the overviewRun of slug; false when its seed names another recipe.
@@ -301,6 +391,7 @@ func (s *overviewSource) poll(slug string) (overviewRun, bool) {
 		if seed.Recipe != shedrun.RecipeBatten {
 			return run, false
 		}
+		run.Recipe = seed.Recipe
 		if startedAt, err := time.Parse(time.RFC3339, seed.StartedAt); err == nil {
 			run.StartedAt = startedAt
 		}
@@ -322,6 +413,11 @@ func (s *overviewSource) poll(slug string) (overviewRun, bool) {
 		} else {
 			run.Child = cacheFor(s.childCaches, slug).Poll(path)
 		}
+		recipe, err := s.resolveChildRecipe(slug)
+		if err != nil {
+			logger.Debug("batten: reading a child seed for the overview failed", "slug", slug, "err", err)
+		}
+		run.ChildRecipe = recipe
 	}
 	return run, true
 }
@@ -337,15 +433,17 @@ func cacheFor(caches map[string]*statuspane.StatusCache, slug string) *statuspan
 }
 
 // overviewCmd builds the hidden `overview` subcommand: the pane process of the prime's runs strand.
-// It reads the run records and status files only.
+// It reads the orch state, the orch config once at start, the run records and status files only.
 func (c *battenCLI) overviewCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:         "overview",
-		Short:       "draw the runs in flight in a pane (run by the prime's runs strand)",
+		Short:       "draw the orch's context and the runs in flight in a pane (run by the prime's runs strand)",
 		Hidden:      true,
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
-		Long: `overview draws one line per batten run in flight -- its state, stage, time in
-the stage, age and reed session -- redrawing in place until it is signalled.
+		Long: `overview first draws the orch line -- the orch session's context reading
+against the soft and hard thresholds, its cycle phase and cycle count -- then one
+line per batten run in flight -- its state, stage, time in the stage, age and
+reed session -- redrawing in place until it is signalled.
 The prime's runs strand runs it, and every line is drawn uncut. It reads
 files only, and runs from the prime only.`,
 		Args: cobra.NoArgs,
@@ -376,7 +474,7 @@ files only, and runs from the prime only.`,
 				return nil
 			}
 
-			source := newOverviewSource(location, pauseGeom.RecordPath, time.Now)
+			source := newOverviewSource(location, pauseGeom.RecordPath, loadOverviewThresholds(location), time.Now)
 			pane := statuspane.Pane{
 				Out:     out,
 				Size:    statuspane.TerminalSize(os.Stdout),

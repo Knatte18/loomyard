@@ -41,7 +41,10 @@ func TestStatus_JSONRoundTrip(t *testing.T) {
 		},
 		History: []HistoryEntry{
 			{Producer: "Preflight", Outcome: Done, Output: "", At: "2026-08-15T09:00:00Z"},
-			{Producer: "Plan-Write", Outcome: Stuck, Output: "_lyx/plan.md", At: "2026-08-15T09:05:00Z"},
+			{Producer: "Plan-Write", Outcome: Stuck, Output: "_lyx/plan.md", At: "2026-08-15T09:05:00Z", GateSpans: []GateSpan{
+				{Gate: "plan-parse", Kind: GateSpanKindGate, Start: "2026-08-15T09:04:00.25Z", End: "2026-08-15T09:04:01.5Z"},
+				{Gate: "plan-parse", Kind: GateSpanKindRework, Start: "2026-08-15T09:04:02Z", End: "2026-08-15T09:04:30Z"},
+			}},
 		},
 		Product: json.RawMessage(`{"foo":"bar","nested":{"n":1}}`),
 	}
@@ -98,6 +101,21 @@ func TestStatus_JSONRoundTrip(t *testing.T) {
 	}
 	if _, err := ParseStatusTolerant([]byte("{")); err == nil {
 		t.Error("ParseStatusTolerant({) error = nil; want a decode error")
+	}
+
+	// A span object carrying a key this binary does not know decodes both ways, keeping the span's known fields.
+	spanWithUnknownKey := []byte(`{"history":[{"producer":"Plan-Write","outcome":"stuck","output":"","at":"t","gate_spans":[{"gate":"g","kind":"held","start":"s","end":"e","future":1}]}]}`)
+	wantSpan := []GateSpan{{Gate: "g", Kind: GateSpanKindHeld, Start: "s", End: "e"}}
+	var strict Status
+	if err := json.Unmarshal(spanWithUnknownKey, &strict); err != nil {
+		t.Fatalf("json.Unmarshal(span with unknown key) = %v", err)
+	}
+	tolerantSpan, err := ParseStatusTolerant(spanWithUnknownKey)
+	if err != nil {
+		t.Fatalf("ParseStatusTolerant(span with unknown key) = %v", err)
+	}
+	if !reflect.DeepEqual(strict.History[0].GateSpans, wantSpan) || !reflect.DeepEqual(tolerantSpan.History[0].GateSpans, wantSpan) {
+		t.Errorf("GateSpans = %+v and %+v; want %+v", strict.History[0].GateSpans, tolerantSpan.History[0].GateSpans, wantSpan)
 	}
 }
 
