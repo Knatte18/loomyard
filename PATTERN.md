@@ -6,7 +6,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 
 - `PATTERN-cwd-resolution` — Resolving a cwd or worktree root: only `internal/lyxcwd` does it, and nothing else calls `os.Getwd` or `git rev-parse --show-toplevel`. — [background](pattern/PATTERN-cwd-resolution.md)
 - `PATTERN-told-geometry` — Writing an engine: it is handed the absolute paths it works on and derives none, so it never imports `internal/lyxcwd`. — [background](pattern/PATTERN-told-geometry.md)
-- `PATTERN-lyxdirs-single-declarer` — Naming `_lyx` or `.lyx` in a path: only `internal/lyxdirs` declares those literals, and no other production file spells them.
+- `PATTERN-lyxdirs-single-declarer` — Naming `_lyx` or `.lyx` in a path: only `internal/lyxdirs` declares them, bar one variable block heading a `tools/` script.
 - `PATTERN-lyx-temp-root` — Creating a temp file or directory: under `internal/lyxtemp`'s run directory, never in `os.TempDir()`. (test) — [background](pattern/PATTERN-lyx-temp-root.md)
 - `PATTERN-durable-vs-ephemeral-state` — Adding a file: tracked content lives under `_lyx`, anything never tracked under `.lyx` at the mirrored subpath. — [background](pattern/PATTERN-durable-vs-ephemeral-state.md)
 - `PATTERN-hub-containment` — Linking hub-level containers: `_board`, `_portals` and `_launchers` are reachable from the hub only, never junctioned into a worktree. — [background](pattern/PATTERN-hub-containment.md)
