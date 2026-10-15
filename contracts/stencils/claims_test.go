@@ -582,6 +582,8 @@ var wordingClaims = []stencilClaims{
 			"{{.locate}}", "{{.kickstart_pack}}"),
 		wantAll("the pack read line ends the body, after the batch-report section, since the end of a prompt is what an agent acts on first",
 			"never a slot-busy exit.{{.kickstart_pack}}\n"),
+		wantAll("the inline pack section sits after the per-card closing paragraph and before the sandbox rule, as at 1e39afc10^",
+			"do not continue to a later card on top of a broken one.{{.kickstart_pack_inline}}\n\n## The sandbox rule"),
 		wantAll("the fork runs from its working directory, never backgrounds a call, and runs a gate step and a card verify line as foreground calls under the gate rule in its system prompt",
 			"## Where and how you run commands",
 			"Your session's working directory already is the worktree root, `{{.worktree_root}}`: run every Bash command from there",
