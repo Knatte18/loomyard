@@ -33,11 +33,9 @@ const (
 // absentValue fills a marker whose input the point does not have.
 const absentValue = "none"
 
-// Settings is the agent's resolved model triple and the timeout of its run.
+// Settings is the agent's resolved model choice, engine included, and the timeout of its run.
 type Settings struct {
-	Model   string
-	Effort  string
-	Version string
+	shuttleengine.ModelChoice
 	Timeout time.Duration
 }
 
@@ -135,7 +133,7 @@ func valueOrNone(value string) string {
 //
 // Skills is empty, so the prompt is the agent's whole procedure.
 // OutputFiles is the attempt's verdict path and then its report path, so shuttle counts the run done only once both exist.
-// Model, Effort, Version and Timeout come from s, which carries the RESOLVED triple.
+// ModelChoice and Timeout come from s, which carries the RESOLVED engine, model, effort and version.
 // Role is Role, which reed forms into the strand name; NameOverride is left empty so a second agent of a run numbers its role.
 // Segment is segmentcolor.Review.
 // Interactive is false, shuttle's autonomous posture.
@@ -145,7 +143,7 @@ func Spec(prompt string, a Attempt, s Settings) shuttleengine.Spec {
 		Prompt:        prompt,
 		Skills:        []string{},
 		OutputFiles:   []string{a.VerdictPath(), a.ReportPath()},
-		ModelChoice:   shuttleengine.ModelChoice{Model: s.Model, Effort: s.Effort, Version: s.Version},
+		ModelChoice:   s.ModelChoice,
 		Timeout:       s.Timeout,
 		Role:          Role,
 		Segment:       segmentcolor.Review,

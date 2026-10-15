@@ -5,7 +5,6 @@
 package loomcli
 
 import (
-	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -18,15 +17,15 @@ const driverRole = "driver"
 var driverSkills = []string{}
 
 // driverSpec composes the shuttleengine.Spec the loom driver session launches from, from an already-
-// composed prompt, an already-composed report path, and the resolved driver-role settings.
+// composed prompt, an already-composed report path, and the resolved driver-role model choice.
 //
 // Every non-default field is pinned here with its own reason -- the standard this package holds.
 //
 // Prompt is the argument verbatim. Skills is driverSkills, empty. OutputFiles is a single-entry slice holding reportPath: the file
 // contract Spec enforces treats a run's output file as its return value, and this run has exactly
-// one. Model, Effort, and Version come from settings, which carries the RESOLVED triple -- a provider
-// model id plus its effort and version, never a raw config alias -- since only the resolved values
-// mean anything to the engine that reads them.
+// one.
+// ModelChoice is choice whole, which carries the RESOLVED engine, model id, effort and version, never a raw config alias.
+// Only the resolved values mean anything to the engine that reads them.
 // NameOverride is driverStrandDisplayName, an explicit role: reed refuses an add whose explicit role is already held rather than renumbering it,
 // and the bootstrap's own dead-strand removal (resolveDriverStrandAction) runs before the add, so a corpse never holds the role when the add arrives.
 // The next bootstrap's lookup uses the same constant, and reed's add has no upsert semantics,
@@ -53,12 +52,12 @@ var driverSkills = []string{}
 // inside Start -- the startup window itself is startup_timeout_s -- because Wait is never entered: the
 // driver session runs until it stops itself, and this path never waits on it to completion.
 // KeepPane is read only by Wait, so leaving it at its zero value is a statement that nothing on this path reads it, not a choice about pane retention.
-func driverSpec(prompt string, reportPath string, settings loomengine.DriverSettings) shuttleengine.Spec {
+func driverSpec(prompt string, reportPath string, choice shuttleengine.ModelChoice) shuttleengine.Spec {
 	return shuttleengine.Spec{
 		Prompt:        prompt,
 		Skills:        driverSkills,
 		OutputFiles:   []string{reportPath},
-		ModelChoice:   shuttleengine.ModelChoice{Model: settings.Model, Effort: settings.Effort, Version: settings.Version},
+		ModelChoice:   choice,
 		NameOverride:  driverStrandDisplayName,
 		Interactive:   false,
 		ForkSubagents: true,

@@ -138,7 +138,7 @@ func (h *sessionHarness) spawnInput(key string) SpawnInput {
 			ParentBranch:       "main",
 			MeasureStencil:     MeasureLoom,
 		},
-		Settings: Settings{Model: "claude-opus", Timeout: 20 * time.Minute},
+		Settings: Settings{ModelChoice: shuttleengine.ModelChoice{Model: "claude-opus"}, Timeout: 20 * time.Minute},
 		Snapshot: "snap",
 	}
 }

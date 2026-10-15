@@ -49,8 +49,8 @@ func mustUseLLMDriverArm(driver string) bool {
 	return driver == shedrun.DriverLLM
 }
 
-// startLLMDriverArm performs the llm arm's whole launch, in order: resolve the driver settings
-// through the loom engine's driver resolver, using the config and registry the receiver already
+// startLLMDriverArm performs the llm arm's whole launch, in order:
+// resolve the driver model choice through the loom engine's driver resolver, using the config and registry the receiver already
 // carries; when driverAction reports a dead driver strand, remove that corpse through the pane-probe
 // seam before anything else -- a relaunch that started first and removed second would leave two
 // strands under one name, which reed's add has no upsert semantics to reconcile; compose the report
@@ -72,7 +72,7 @@ func mustUseLLMDriverArm(driver string) bool {
 // being unable to answer says nothing about the agent, so tearing the strand down could kill a working
 // driver.
 func (c *loomCLI) startLLMDriverArm(driverAction driverStrandAction, driverGUID string, runID string) (driverHandle, error) {
-	settings, err := loomengine.ResolveDriver(c.cfg, c.registry)
+	choice, err := loomengine.ResolveDriver(c.cfg, c.registry)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +96,7 @@ func (c *loomCLI) startLLMDriverArm(driverAction driverStrandAction, driverGUID 
 	if err != nil {
 		return nil, err
 	}
-	spec := driverSpec(prompt, reportPath, settings)
+	spec := driverSpec(prompt, reportPath, choice)
 
 	run, err := c.driverStarter.StartDriver(spec)
 	if err != nil {

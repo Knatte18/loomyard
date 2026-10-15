@@ -12,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
@@ -120,16 +121,16 @@ func TestPrompt(t *testing.T) {
 	})
 }
 
-// TestSpec verifies each field of the launch spec: the prompt verbatim, no skills, both output files in order, the resolved model triple and timeout, the role and segment, and the autonomous no-parent posture.
+// TestSpec verifies each field of the launch spec: the prompt verbatim, no skills, both output files in order, the resolved model choice, engine included, and timeout, the role and segment, and the autonomous no-parent posture.
 func TestSpec(t *testing.T) {
 	t.Parallel()
 	a := Attempt{Dir: filepath.Join("hub", "attempt-1"), Token: "tok"}
-	s := Settings{Model: "claude-opus", Effort: "high", Version: "5", Timeout: 20 * time.Minute}
+	s := Settings{ModelChoice: shuttleengine.ModelChoice{Engine: "b", Model: "claude-opus", Effort: "high", Version: "5"}, Timeout: 20 * time.Minute}
 
 	got := Spec("the prompt", a, s)
 
-	if got.Prompt != "the prompt" || got.Model != "claude-opus" || got.Effort != "high" || got.Version != "5" || got.Timeout != 20*time.Minute {
-		t.Errorf("Spec() = %+v; want the prompt verbatim and the settings' model, effort, version and timeout", got)
+	if got.Prompt != "the prompt" || got.ModelChoice != s.ModelChoice || got.Timeout != 20*time.Minute {
+		t.Errorf("Spec() = %+v; want the prompt verbatim and the settings' engine, model, effort, version and timeout", got)
 	}
 	if len(got.Skills) != 0 {
 		t.Errorf("Spec().Skills = %v; want none", got.Skills)

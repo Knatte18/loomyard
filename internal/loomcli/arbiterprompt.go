@@ -89,7 +89,7 @@ func pathOrNone(path string) string {
 //
 // Prompt is the argument verbatim. Skills is arbiterSkills, empty, so the prompt is the arbiter's whole procedure.
 // OutputFiles is a single-entry slice holding verdictPath, so shuttle's completion check reads the verdict through allOutputFilesExist and reed drops a finished strand on resume.
-// Model, Effort and Version come from settings, which carries the RESOLVED triple -- a provider model id plus its effort and version.
+// ModelChoice is the settings' choice whole, which carries the RESOLVED engine, provider model id, effort and version.
 // Timeout is the settings' timeout, which bounds the arbiter's run.
 // Role is loomengine.ArbiterRole, which reed forms into `<shortname>:<slug>:arbiter`; NameOverride is left empty so a second attempt numbers its role.
 // Segment is the coordinator, the driver's, because the arbiter acts for the driver.
@@ -101,7 +101,7 @@ func arbiterSpec(prompt, verdictPath string, settings loomengine.ArbiterSettings
 		Prompt:        prompt,
 		Skills:        arbiterSkills,
 		OutputFiles:   []string{verdictPath},
-		ModelChoice:   shuttleengine.ModelChoice{Model: settings.Model, Effort: settings.Effort, Version: settings.Version},
+		ModelChoice:   settings.ModelChoice,
 		Timeout:       settings.Timeout,
 		Role:          loomengine.ArbiterRole,
 		Segment:       segmentcolor.Coordinator,
