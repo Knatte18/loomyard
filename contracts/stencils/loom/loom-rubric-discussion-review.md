@@ -36,6 +36,9 @@ Do not flag any of the following as a finding:
 - **The attack-surface question.**
   For every new verb, flag, escape hatch or routing edge, and every guard that is removed, downgraded or bypassable, the Decision that introduces it states what it can now skip or let through and what bounds it.
   A Decision that introduces one with no stated bound is a finding.
+- **A Decision that edits the task's own board entry.**
+  A Decision that asks the run to change this task's own board entry's body or scope, through `lyx board` or otherwise, is a finding, because the run's board lock refuses such a change.
+  A Decision that writes another entry, the entry's status or its `run_settings`, or changes board-module code is not flagged by this bullet.
 - **The writer/reviewer symmetry note.**
   The discussion writer's own stencil is `{{.stencils_dir}}/loom/loom-template-discussion.md`, and the record rules it follows are in `{{.specs_dir}}/loom/loom-discussion-spec.md`: read them to learn what the writer was told not to gather.
   Whatever it says not to gather, this rubric must not flag as missing, or the additive bias reappears even with the writer-side fix in place.

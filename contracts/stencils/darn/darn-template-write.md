@@ -80,6 +80,14 @@ When a message from your parent carries a correction, re-read the record's `Adde
 When the message names a correction the record does not yet hold, ask your parent to record it, follow the message meanwhile, and name it as an unrecorded parent correction in the change description's design decisions.
 You never run `lyx loom decision add` yourself; the verb refuses a task session.
 
+No step changes this task's own board entry's body or scope, because the run's board lock refuses such a change.
+The landing's status write, a `run_settings` write, a step that writes another board entry and a step that changes the board module's code stay allowed.
+When the board entry or the decision record asks for such a step, leave it out from the start and ask your parent to record the drop with `lyx loom decision add`.
+Until the record carries that `Added after Discussion` entry, name the omission in the change description's design decisions as an unrecorded parent correction.
+Once the entry exists, the omission is no deviation from the amended board entry.
+With no parent to ask, stop and report the step.
+The route admits a drop of an own-entry step only: no other step is left out through it.
+
 ## What happens after you hand off
 
 The handoff also checks the decision record and the support log, and re-prompts you in this same session with the findings.

@@ -44,7 +44,10 @@ Headless use is moving off subscription coverage onto API billing, so every agen
 ## Docs land in the same commit
 
 A task that adds a module, changes observable CLI behavior or adds cross-cutting infrastructure updates, in the same commit: the module doc in the package's `doc.go`, `docs/overview.md` if the module table or execution stack changes, and `PATTERN.md` for a new invariant.
-An unbuilt design lives in its board entry's body, and a built design lives in its package's `doc.go`: a design whose code has landed moves from the board entry into `doc.go`.
+An unbuilt design lives in its board entry's body, and a built design lives in its package's `doc.go`.
+The task that builds a design writes it into the package's `doc.go` and never changes its own board entry's body or scope:
+the landing marks the entry done and the board prune removes it, so no pointer is left behind.
+No decision, card or step of a run changes the running task's own board entry's body or scope, because the run's board lock refuses such a change.
 
 ## Test budget
 
