@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/yamlengine"
 	"gopkg.in/yaml.v3"
 )
 
@@ -539,6 +540,28 @@ func loomTemplateWith(t *testing.T, overrides string) string {
 		t.Fatalf("overrides %v are not keys of ConfigTemplate(); the fixture would silently test nothing", replacements)
 	}
 	return b.String()
+}
+
+// TestSetDiscussionAdvisors_LoadsBack verifies a discussion_advisors list of name and model mappings written through configengine.Set loads back as those advisors.
+func TestSetDiscussionAdvisors_LoadsBack(t *testing.T) {
+	t.Parallel()
+	baseDir := t.TempDir()
+	seedLoomConfig(t, baseDir, ConfigTemplate())
+	dirs := configengine.Dirs{Anchor: baseDir}
+	spec := ConfigSpec()
+	pairs := []yamlengine.KV{{Key: "discussion_advisors", Value: `[{name: critic, model: "sonnet[high]"}]`}}
+	if _, err := configengine.Set(dirs, spec, configengine.BaseLayer(dirs, spec), pairs); err != nil {
+		t.Fatalf("Set() = _, %v; want nil error", err)
+	}
+
+	got, err := LoadConfig(dirs, "loom")
+	if err != nil {
+		t.Fatalf("LoadConfig() = _, %v; want nil error", err)
+	}
+	want := DiscussionAdvisorList{{Name: "critic", Model: "sonnet[high]"}}
+	if !reflect.DeepEqual(got.DiscussionAdvisors, want) {
+		t.Errorf("DiscussionAdvisors = %+v; want %+v", got.DiscussionAdvisors, want)
+	}
 }
 
 // TestLoadConfig_Refuses verifies each invalid loom.yaml is refused at load time, naming the offending key:

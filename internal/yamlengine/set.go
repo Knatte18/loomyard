@@ -60,7 +60,7 @@ type SetResult struct {
 // A pair under an open map that holds a list is an error naming the path;
 // the list is never converted.
 // A pair at P itself, when P holds a scalar or a list, replaces P whole with the shape the value spells:
-// a value starting with [ is a YAML flow list of scalars, and any other value a string;
+// a value starting with [ is a YAML flow list of scalars or mappings of scalars, and any other value a string;
 // a bracketed value that is not such a list is an error.
 // Known lists each open map as P.<name>.
 func SetValues(template, existing []byte, pairs []KV, openMaps ...string) (SetResult, error) {
@@ -237,23 +237,39 @@ func scalarOrListOpenMapPaths(template *yaml.Node, openMaps []string) []string {
 }
 
 // scalarOrListNode returns the node pair.Value spells for a key that takes a scalar or a list:
-// a value whose first non-blank character is [ is a YAML flow list of scalars, and any other value is a string scalar.
-// A bracketed value that does not parse as a list of scalars, or carries text after the closing bracket, is an error naming the key and the quoted-entry form, never a string.
+// a value whose first non-blank character is [ is a YAML flow list whose entries are scalars or mappings of scalars, and any other value is a string scalar.
+// A bracketed value that does not parse as such a list, or carries text after the closing bracket, is an error naming the key and the quoted-entry form, never a string.
 func scalarOrListNode(pair KV) (*yaml.Node, error) {
 	if !strings.HasPrefix(strings.TrimSpace(pair.Value), "[") {
 		return stringNode(pair.Value), nil
 	}
-	refusal := fmt.Errorf("value for %s is neither one value nor a YAML flow list of scalars, got %q: quote each entry that holds [ or ], e.g. [\"opus[medium]\", \"sonnet[high]\"]", pair.Key, pair.Value)
+	refusal := fmt.Errorf("value for %s is neither one value nor a YAML flow list of scalars or mappings of scalars, got %q: quote each entry that holds [ or ], e.g. [\"opus[medium]\", \"sonnet[high]\"]", pair.Key, pair.Value)
 	sequence := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
 	if err := replaceSequence(sequence, pair); err != nil || !strings.HasSuffix(strings.TrimSpace(pair.Value), "]") {
 		return nil, refusal
 	}
 	for _, entry := range sequence.Content {
-		if entry.Kind != yaml.ScalarNode {
+		if !isScalarOrScalarMapping(entry) {
 			return nil, refusal
 		}
 	}
 	return sequence, nil
+}
+
+// isScalarOrScalarMapping reports whether node is a scalar or a mapping whose values are all scalars.
+func isScalarOrScalarMapping(node *yaml.Node) bool {
+	switch node.Kind {
+	case yaml.ScalarNode:
+		return true
+	case yaml.MappingNode:
+		for i := 1; i < len(node.Content); i += 2 {
+			if node.Content[i].Kind != yaml.ScalarNode {
+				return false
+			}
+		}
+		return true
+	}
+	return false
 }
 
 // replaceSequence replaces sequence's elements with pair.Value parsed as a YAML list, so a list key
