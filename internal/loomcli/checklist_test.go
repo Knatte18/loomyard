@@ -37,6 +37,17 @@ func secondMark(seconds int) string {
 	return checklistClock.Add(time.Duration(seconds) * time.Second).Format(time.RFC3339)
 }
 
+// gateSpan is a span of the gate entry named gate, of the given kind, from fromSeconds to toSeconds after checklistClock.
+func gateSpan(gate, kind string, fromSeconds, toSeconds int) shedengine.GateSpan {
+	return shedengine.GateSpan{Gate: gate, Kind: kind, Start: secondMark(fromSeconds), End: secondMark(toSeconds)}
+}
+
+// withGateSpans returns entry carrying spans.
+func withGateSpans(entry shedengine.HistoryEntry, spans ...shedengine.GateSpan) shedengine.HistoryEntry {
+	entry.GateSpans = spans
+	return entry
+}
+
 // minuteSpan is the interval from minute from to minute to after checklistClock.
 func minuteSpan(from, to int) pauserecord.Interval {
 	return pauserecord.Interval{Start: checklistClock.Add(time.Duration(from) * time.Minute), End: checklistClock.Add(time.Duration(to) * time.Minute)}
@@ -446,6 +457,108 @@ func TestRenderChecklist(t *testing.T) {
 				"[>] 3. Darn-Review 2m rounds 0",
 				"  10:10 2m Darn-Bouncer running",
 				"[ ] 4. Describe", "[ ] 5. Merge-In", "[ ] 6. Publish", "[ ] 7. PR-Align", "[ ] 8. PR-Gate", "[ ] 9. Finalize", "[ ] 10. Friction-Reflect",
+				"loom running | now working", "waiting on nothing",
+			},
+		},
+		{
+			name: "a visit with spans of two entries draws one gate line per entry in first-appearance order, a held span adding into its entry's gate time",
+			rows: recipe,
+			poll: checklistStatus(shedengine.StateRunning, "Review", withGateSpans(doneEntry("Plan", 5),
+				gateSpan("plan", shedengine.GateSpanKindGate, 0, 7),
+				gateSpan("plan", shedengine.GateSpanKindRework, 7, 70),
+				gateSpan("plan", shedengine.GateSpanKindGate, 70, 75),
+				gateSpan("plan", shedengine.GateSpanKindRework, 75, 197),
+				gateSpan("lint", shedengine.GateSpanKindGate, 197, 201),
+				gateSpan("lint", shedengine.GateSpanKindHeld, 201, 207))),
+			nowMin: 12,
+			want: []string{
+				"[x] 1. Plan 5m00s", "  10:00 5m00s done",
+				"    gate plan 12s refused 2 rework 3m05s",
+				"    gate lint 10s",
+				"[>] 2. Review 7m", "  10:05 7m running",
+				"[ ] 3. Build",
+				"loom running | now working", "waiting on nothing",
+			},
+		},
+		{
+			name: "a pause interval inside a held span is left out of its time",
+			rows: recipe,
+			poll: checklistStatus(shedengine.StateRunning, "Review", withGateSpans(doneEntry("Plan", 5),
+				gateSpan("plan", shedengine.GateSpanKindGate, 0, 60),
+				gateSpan("plan", shedengine.GateSpanKindHeld, 60, 300))),
+			nowMin: 12,
+			paused: []pauserecord.Interval{minuteSpan(2, 3)},
+			want: []string{
+				"[x] 1. Plan 4m00s", "  10:00 4m00s done",
+				"    gate plan 4m00s",
+				"[>] 2. Review 7m", "  10:05 7m running",
+				"[ ] 3. Build",
+				"loom running | now working", "waiting on nothing",
+			},
+		},
+		{
+			name: "a span ending before it starts draws 0s and a span whose start does not parse adds nothing",
+			rows: recipe,
+			poll: checklistStatus(shedengine.StateRunning, "Review", withGateSpans(doneEntry("Plan", 5),
+				gateSpan("plan", shedengine.GateSpanKindGate, 0, 20),
+				shedengine.GateSpan{Gate: "plan", Kind: shedengine.GateSpanKindGate, Start: "garbage", End: secondMark(50)},
+				gateSpan("late", shedengine.GateSpanKindGate, 30, 10))),
+			nowMin: 12,
+			want: []string{
+				"[x] 1. Plan 5m00s", "  10:00 5m00s done",
+				"    gate plan 20s",
+				"    gate late 0s",
+				"[>] 2. Review 7m", "  10:05 7m running",
+				"[ ] 3. Build",
+				"loom running | now working", "waiting on nothing",
+			},
+		},
+		{
+			name: "an empty span list beside gate attempts draws no gate line and no suffix",
+			rows: recipe,
+			poll: checklistStatus(shedengine.StateRunning, "Review", withGateSpans(func() shedengine.HistoryEntry {
+				entry := doneEntry("Plan", 5)
+				entry.GateAttempts = &gatedAttempts
+				return entry
+			}(), []shedengine.GateSpan{}...)),
+			nowMin: 12,
+			want: []string{
+				"[x] 1. Plan 5m00s", "  10:00 5m00s done",
+				"[>] 2. Review 7m", "  10:05 7m running",
+				"[ ] 3. Build",
+				"loom running | now working", "waiting on nothing",
+			},
+		},
+		{
+			name: "a review block's visit with spans draws its gate lines under the visit line, inside its round",
+			rows: reviewRecipe,
+			poll: checklistStatus(shedengine.StateRunning, "Rev-Fix",
+				doneEntry("Build", 5), bouncedEntry(6),
+				withGateSpans(roundEntry("Rev-Review", 10, 1, "review"), gateSpan("rev", shedengine.GateSpanKindGate, 0, 9))),
+			nowMin: 12,
+			want: []string{
+				"[x] 1. Build 5m00s", "  10:00 5m00s done",
+				"[>] 2. Rev 7m rounds 1",
+				"  round 1 7m",
+				"    10:05 1m00s Rev-Bouncer bounced",
+				"    10:06 4m00s Rev-Review done round-1-review.md",
+				"      gate rev 9s",
+				"    10:10 2m Rev-Fix running",
+				"[ ] 3. Publish", "[ ] 4. PR-Review", "[ ] 5. PR-Rework",
+				"loom running | now working", "waiting on nothing",
+			},
+		},
+		{
+			name:    "with the recipe unreadable a visit with spans draws its gate lines under its line in the history-order list",
+			rowsErr: errors.New("no seed is recorded"),
+			poll: checklistStatus(shedengine.StateRunning, "Plan", withGateSpans(doneEntry("Plan", 5),
+				gateSpan("plan", shedengine.GateSpanKindGate, 0, 7))),
+			nowMin: 7,
+			want: []string{
+				"recipe unreadable",
+				"  10:00 5m00s Plan done",
+				"    gate plan 7s",
+				"  10:05 2m Plan running",
 				"loom running | now working", "waiting on nothing",
 			},
 		},
