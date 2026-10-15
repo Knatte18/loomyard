@@ -563,7 +563,7 @@ func TestWire_DiscussionTableEvaluatesToExpectedShape(t *testing.T) {
 			if want := []string{"scribe:prose", "scribe:conversation"}; !reflect.DeepEqual(chair.Skills, want) {
 				t.Errorf("chair.Skills = %v; want %v", chair.Skills, want)
 			}
-			wantOutputs := []string{loomengine.DiscussionDecisionRecord(loc), loomengine.DiscussionSupportLog(loc)}
+			wantOutputs := []string{loomengine.DiscussionDecisionRecord(loc), loomengine.DiscussionSupportLog(loc), loomengine.DiscussionRelevant(loc)}
 			if !reflect.DeepEqual(chair.Outputs, wantOutputs) {
 				t.Errorf("chair.Outputs = %v; want %v", chair.Outputs, wantOutputs)
 			}
