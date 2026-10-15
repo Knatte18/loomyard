@@ -1,0 +1,117 @@
+== pack-check classes (pooled)
+    801 correct
+     22 correct-decl
+     62 notree
+== pack-check classes per fork (proj, agent, counts)
+claimed-scope-edit	a5ed13d6	entries=33	correct=33	correct-decl=0	stale=0	wrong=0	nofile=0	notree=0
+claimed-scope-edit	a9c90ae3	entries=41	correct=40	correct-decl=1	stale=0	wrong=0	nofile=0	notree=0
+claimed-scope-edit	ae9d3bc6	entries=31	correct=31	correct-decl=0	stale=0	wrong=0	nofile=0	notree=0
+hibernate-trigger	a631bbbb	entries=29	correct=29	correct-decl=0	stale=0	wrong=0	nofile=0	notree=0
+hibernate-trigger	aafbc567	entries=10	correct=9	correct-decl=1	stale=0	wrong=0	nofile=0	notree=0
+overview-seats	a0922f2f	entries=49	correct=49	correct-decl=0	stale=0	wrong=0	nofile=0	notree=0
+overview-seats	a24b26c7	entries=37	correct=30	correct-decl=7	stale=0	wrong=0	nofile=0	notree=0
+overview-seats	aa1c7f80	entries=28	correct=28	correct-decl=0	stale=0	wrong=0	nofile=0	notree=0
+overview-seats	aa703fbe	entries=68	correct=68	correct-decl=0	stale=0	wrong=0	nofile=0	notree=0
+overview-seats	ab55823d	entries=53	correct=53	correct-decl=0	stale=0	wrong=0	nofile=0	notree=0
+overview-seats	afb622a2	entries=85	correct=81	correct-decl=4	stale=0	wrong=0	nofile=0	notree=0
+perch-budget-arbiter	a5c2c36e	entries=67	correct=65	correct-decl=2	stale=0	wrong=0	nofile=0	notree=0
+perch-budget-arbiter	a60e307c	entries=47	correct=47	correct-decl=0	stale=0	wrong=0	nofile=0	notree=0
+plan-gate-gaps	a4ff4c05	entries=39	correct=39	correct-decl=0	stale=0	wrong=0	nofile=0	notree=0
+reed-window-order	a389c822	entries=3	correct=0	correct-decl=0	stale=0	wrong=0	nofile=0	notree=3
+shed-tackler	a9bb7c4a	entries=33	correct=28	correct-decl=5	stale=0	wrong=0	nofile=0	notree=0
+shed-tackler	ab8474be	entries=34	correct=32	correct-decl=2	stale=0	wrong=0	nofile=0	notree=0
+shed-tackler	ad560eff	entries=15	correct=15	correct-decl=0	stale=0	wrong=0	nofile=0	notree=0
+shed-tackler	ad9d98a1	entries=48	correct=48	correct-decl=0	stale=0	wrong=0	nofile=0	notree=0
+tender	a42938ef	entries=34	correct=0	correct-decl=0	stale=0	wrong=0	nofile=0	notree=34
+tender	abffd137	entries=33	correct=33	correct-decl=0	stale=0	wrong=0	nofile=0	notree=0
+twill-fork0	aaa7dd04	entries=16	correct=16	correct-decl=0	stale=0	wrong=0	nofile=0	notree=0
+twill-fork0	ac018cc9	entries=25	correct=0	correct-decl=0	stale=0	wrong=0	nofile=0	notree=25
+webster-pack-layout-switch	a6958ebb	entries=27	correct=27	correct-decl=0	stale=0	wrong=0	nofile=0	notree=0
+== glyph package vs file directory mismatches in the pack (excluding _test external packages)
+0
+== unresolved pack entries by reason
+    388 plan-handle
+== control: batch 4/7/13 packs against batch 1's tree
+     20 a9bb7c4a correct
+      2 a9bb7c4a correct-decl
+     11 a9bb7c4a stale
+     10 ad560eff correct
+      4 ad560eff stale
+      1 ad560eff wrong
+     45 ad9d98a1 correct
+      1 ad9d98a1 correct-decl
+      2 ad9d98a1 stale
+== existing files edited with no pack span, per run
+claimed-scope-edit files=20 edits=45
+hibernate-trigger files=13 edits=24
+overview-seats files=53 edits=102
+perch-budget-arbiter files=17 edits=35
+plan-gate-gaps files=8 edits=11
+shed-tackler files=37 edits=78
+tender files=9 edits=18
+TOTAL files=167 edits=327
+twill-fork0 files=3 edits=5
+webster-pack-layout-switch files=7 edits=9
+== same, by extension (files, edits)
+md 65 120
+go 59 116
+yaml 19 48
+go_test 22 40
+gitattributes 2 3
+== existing files with no pack span edited most (non-test, non-md)
+overview-seats	internal/shedadapters/doc.go	13	0	6
+claimed-scope-edit	contracts/recipes/darn-recipe.yaml	10	0	1
+perch-budget-arbiter	internal/loomengine/template.yaml	6	0	1
+overview-seats	internal/shedengine/doc.go	6	0	0
+shed-tackler	internal/shedverbs/spec.go	5	0	0
+shed-tackler	internal/loomcli/tackler.go	4	0	0
+tender	cmd/lyx/testdata/test-budget.yaml	4	0	0
+tender	internal/orchengine/doc.go	4	0	1
+overview-seats	internal/seatengine/doc.go	4	0	0
+overview-seats	internal/shedbuild/doc.go	3	0	0
+perch-budget-arbiter	cmd/lyx/testdata/test-budget.yaml	3	0	0
+shed-tackler	internal/loomcli/arbiter.go	3	0	0
+== forks whose pack was not checkable (no reconstructable start tree)
+      3 reed-window-order a389c822
+     34 tender a42938ef
+     25 twill-fork0 ac018cc9
+== plan glyph refs against pack entries (pf, sampled cards)
+glyph refs resolved (in pack with a span)=842 unresolved(non plan:)=0 absent from pack=0 plan: handles in sampled cards=392
+== bare file refs by arm, label, extension
+     98 raf Edit go
+     80 raf Edit md
+     75 pf Edit md
+     70 pf Edit go
+     67 raf Edit yaml
+     38 pf Edit yaml
+     27 raf Create go_test
+     16 pf Create go
+     15 pf Create go_test
+     14 pf Edit go_test
+     13 raf Create jsonl
+     13 raf Create go
+     13 pf Create md
+      9 pf Rename go
+== bare non-test go files under Edit or Move in pf cards (examples)
+overview-seats 17-single-llm-delete Edit //internal/shedadapters/shuttle.go
+overview-seats 17-single-llm-delete Edit internal/shedadapters/gateattempts.go
+overview-seats 17-single-llm-delete Edit internal/shedadapters/archive.go
+overview-seats 17-single-llm-delete Edit internal/mergeresolve/spec.go
+overview-seats 18-retired-builders-delete Edit internal/loomengine/review.go
+shed-tackler 02-sheddriver-records Move internal/loomengine/settle.go
+shed-tackler 02-sheddriver-records Move internal/loomengine/tackler.go
+shed-tackler 02-sheddriver-records Edit internal/arbiterstop/holdreading.go
+shed-tackler 02-sheddriver-records Edit internal/loomcli/arbiter.go
+shed-tackler 02-sheddriver-records Edit internal/loomcli/arbiterconsume.go
+shed-tackler 02-sheddriver-records Edit internal/loomcli/drive.go
+shed-tackler 02-sheddriver-records Edit internal/loomcli/drivehandback.go
+shed-tackler 02-sheddriver-records Edit internal/loomcli/driverules.go
+shed-tackler 02-sheddriver-records Edit internal/loomcli/drivewiring.go
+shed-tackler 02-sheddriver-records Edit internal/loomcli/tackler.go
+shed-tackler 02-sheddriver-records Edit internal/loomcli/tacklerconsume.go
+shed-tackler 02-sheddriver-records Edit internal/loomcli/tacklerprompt.go
+shed-tackler 04-tackler-call-to-sheddriver Move internal/loomcli/tackler.go
+shed-tackler 04-tackler-call-to-sheddriver Move internal/loomcli/tacklerconsume.go
+shed-tackler 04-tackler-call-to-sheddriver Move internal/loomcli/tacklerprompt.go
+raf writers=14 with_any_quarry=14 quarry=145 greps=1359 reads=1190 total_tools=2075
+pf writers=9 with_any_quarry=9 quarry=85 greps=807 reads=764 total_tools=1469

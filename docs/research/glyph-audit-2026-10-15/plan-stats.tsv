@@ -1,0 +1,45 @@
+metric	pf	raf
+plans (runs)	10	15
+cards	89	138
+refs total	1516	1873
+glyph refs (pkg#Name, existing)	842	1560
+plan: handles (glyph for a member the card creates)	392	2
+bare file paths	282	311
+bare directory paths	0	0
+glyph share of refs (glyph+plan)	81%	83%
+glyph refs / card (median)	6	9.5
+plan: handles / card (median)	2	0
+bare file / card (median)	2	2
+bare dir / card (median)	0	0
+glyph refs / card (pooled)	9.46	11.3
+bare file / card (pooled)	3.17	2.25
+cards with no glyph (glyph+plan = 0)	1 of 89	0 of 138
+cards with at least one bare file	69 of 89	117 of 138
+cards with only bare paths (glyph+plan = 0, bare > 0)	1 of 89	0 of 138
+
+per plan (arm, proj, commit, cards, glyph, plan:, bare file, bare dir)
+pf	claimed-scope-edit	7259bf25a	14	101	25	26	0
+pf	hibernate-trigger	5394072a4	8	30	96	30	0
+pf	overview-seats	436cb23f9	20	315	46	48	0
+pf	perch-budget-arbiter	5e776dda1	10	114	56	32	0
+pf	plan-gate-gaps	825572226	6	39	23	14	0
+pf	reed-window-order	c6328149b	1	3	2	2	0
+pf	shed-tackler	ba2a5b25d	13	130	96	62	0
+pf	tender	c8c66e29b	12	67	39	51	0
+pf	twill-fork0	e94020c84	1	16	6	5	0
+pf	webster-pack-layout-switch	d4b1f169f	4	27	3	12	0
+raf	arbiter-fixes	49260a9eb	8	52	0	16	0
+raf	cleanup-1012	67145ba97	3	13	0	1	0
+raf	convergence-plan	172c7e169	1	6	0	0	0
+raf	convergence-plan	da42731a0	1	6	0	0	0
+raf	go-driver-assistant	0b083ce15	22	297	0	44	0
+raf	intake-bugs-1012	6ea6adcb2	4	31	0	15	0
+raf	judge-cap-call	7744f1cc8	9	104	0	21	0
+raf	logging-cleanup	25ecbad15	19	229	0	31	0
+raf	lyx-halt	569e7817d	28	306	0	77	0
+raf	operator-followups	d2762fdb8	6	57	0	17	0
+raf	pause-esc-rewind	ae40bf03b	9	115	0	15	0
+raf	reed-multi-window	c2a08411d	13	208	0	23	0
+raf	reed-window-order	683ac34f6	1	3	2	2	0
+raf	run-window-bugs	927ed3471	7	70	0	22	0
+raf	shuttle-gate-early-done	61fb67167	7	63	0	27	0
