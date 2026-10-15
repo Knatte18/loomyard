@@ -336,6 +336,7 @@ func storeVerbs(board func() *boardengine.Board) []*cobra.Command {
 		Short:       "create or update a single task",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Create or update a task identified by its slug.
+The write still succeeds when it gives a task a new depends_on entry another open task waits on and the two share a module label; the envelope's "notice" then names the sibling, the dependency and the labels.
 
 Required field:
   "slug"       string — unique task identifier
@@ -389,11 +390,11 @@ Example:
 				if err != nil {
 					return outputError(out, err.Error())
 				}
-				task, err := board().UpsertTask(fields)
+				task, siblings, err := board().UpsertTaskSiblings(fields)
 				if err != nil {
 					return outputError(out, err.Error())
 				}
-				return outputSuccessWithTask(out, task, notice)
+				return outputSuccessWithTask(out, task, joinNotices(notice, siblingNotice(siblings)))
 			})(cmd, args)
 		},
 	}
@@ -409,6 +410,7 @@ Example:
 		Long: `Create or update multiple tasks in one atomic write.
 An absent or empty "tasks" array is an error. Each task element uses the same fields as
 "lyx board upsert" ("slug" required per element).
+The write still succeeds when it gives a task a new depends_on entry another open task waits on and the two share a module label; the envelope's "notice" then names the sibling, the dependency and the labels.
 
 Required wrapper field:
   "tasks" array — one or more task objects (each with "slug" required)
@@ -460,10 +462,11 @@ Example:
 				tasks[i] = m
 			}
 
-			if _, err := board().UpsertTasksBatch(tasks); err != nil {
+			siblings, err := board().UpsertTasksBatch(tasks)
+			if err != nil {
 				return outputError(out, err.Error())
 			}
-			return outputSuccessWithCount(out, len(tasks), strings.Join(notices, "\n"))
+			return outputSuccessWithCount(out, len(tasks), joinNotices(append(notices, siblingNotice(siblings))...))
 		}),
 	}
 
@@ -647,6 +650,7 @@ Examples:
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Remove tasks, upsert a task, and optionally set status in one atomic write.
 The inner "set_status" object takes what the standalone "set-status" command takes.
+The write still succeeds when it gives a task a new depends_on entry another open task waits on and the two share a module label; the envelope's "notice" then names the sibling, the dependency and the labels.
 
 Fields:
   "remove_slugs" array  — slug strings to remove (optional; omit to skip)
@@ -745,11 +749,11 @@ Example:
 				if err != nil {
 					return outputError(out, err.Error())
 				}
-				task, _, err := board().MergeTasks(removeSlugs, upsertFields, setStatusPtr)
+				task, siblings, err := board().MergeTasks(removeSlugs, upsertFields, setStatusPtr)
 				if err != nil {
 					return outputError(out, err.Error())
 				}
-				return outputSuccessWithTask(out, task, notice)
+				return outputSuccessWithTask(out, task, joinNotices(notice, siblingNotice(siblings)))
 			})(cmd, args)
 		},
 	}
@@ -765,6 +769,7 @@ Example:
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Replace the full depends_on list for a task wholesale.
 An absent "depends_on" is an error; an explicit [] clears the list.
+The write still succeeds when it gives a task a new depends_on entry another open task waits on and the two share a module label; the envelope's "notice" then names the sibling, the dependency and the labels.
 
 Fields:
   "slug"       string  — task slug (mutually exclusive with "id")
@@ -803,10 +808,11 @@ Example:
 				dependsOn = []string{}
 			}
 
-			if _, err := board().SetDeps(selector, dependsOn); err != nil {
+			siblings, err := board().SetDeps(selector, dependsOn)
+			if err != nil {
 				return outputError(out, err.Error())
 			}
-			return outputSuccess(out)
+			return outputSuccessWithNotice(out, siblingNotice(siblings))
 		}),
 	}
 
@@ -945,6 +951,38 @@ func outputError(out io.Writer, message string) int {
 // outputSuccess writes {"ok":true} and returns exit code 0.
 func outputSuccess(out io.Writer) int {
 	return output.Ok(out, map[string]any{})
+}
+
+// outputSuccessWithNotice writes {"ok":true} with exit code 0, plus a "notice" field when notice is not empty.
+func outputSuccessWithNotice(out io.Writer, notice string) int {
+	envelope := map[string]any{}
+	if notice != "" {
+		envelope["notice"] = notice
+	}
+	return output.Ok(out, envelope)
+}
+
+// siblingNotice formats siblings as one line per pair, joined by newlines, and is empty when there are none.
+// Each line names the written task, the dependencies it newly waits on, the sibling that waits on them too and the module labels the two share.
+func siblingNotice(siblings []boardengine.Sibling) string {
+	lines := make([]string, len(siblings))
+	for i, sibling := range siblings {
+		lines[i] = fmt.Sprintf(
+			`%q now waits on %s, which %q also waits on, and the two share module labels %s: chain one after the other with "lyx board set-deps", or leave both if they do not overlap`,
+			sibling.Task, strings.Join(sibling.Deps, ", "), sibling.Sibling, strings.Join(sibling.Labels, ", "))
+	}
+	return strings.Join(lines, "\n")
+}
+
+// joinNotices joins its non-empty notices with newlines.
+func joinNotices(notices ...string) string {
+	nonEmpty := make([]string, 0, len(notices))
+	for _, notice := range notices {
+		if notice != "" {
+			nonEmpty = append(nonEmpty, notice)
+		}
+	}
+	return strings.Join(nonEmpty, "\n")
 }
 
 // outputSuccessWithCount writes {"ok":true,"count":N} with exit code 0, plus a "notice" field when notice is not empty.

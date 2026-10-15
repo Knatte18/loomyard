@@ -122,6 +122,7 @@ func TestCLI(t *testing.T) {
 		{"LabelsMapShapedPrintsFileOrderWithDescriptions", stepLabelsMapShapedPrintsFileOrderWithDescriptions},
 		{"LabelsListShapedPrintsNamesWithEmptyDescriptions", stepLabelsListShapedPrintsNamesWithEmptyDescriptions},
 		{"RunSettings", stepRunSettings},
+		{"SiblingWarning", stepSiblingWarning},
 	}
 	for _, step := range steps {
 		if !t.Run(step.name, func(t *testing.T) {
@@ -131,6 +132,76 @@ func TestCLI(t *testing.T) {
 			return
 		}
 	}
+}
+
+// stepSiblingWarning tests the sibling warning in the success envelope's notice:
+// each write verb that sets depends_on names the sibling, the dependency and the shared label, and a write without a sibling prints no notice.
+func stepSiblingWarning(t *testing.T, f *cliFixture) {
+	seed := func(t *testing.T, extra ...string) {
+		t.Helper()
+		f.reset(t)
+		seedHubBoardConfig(t, filepath.Dir(f.cwd), "readme: Home.md\ndesign_prefix: proposal-\ntypes:\n  bug: Something broken\nlabels:\n  board: The task board\n")
+		for _, payload := range append([]string{
+			`{"slug":"D","title":"D","kind":"task","labels":["bug"]}`,
+			`{"slug":"X","title":"X","kind":"task","labels":["bug","board"]}`,
+			`{"slug":"Y","title":"Y","kind":"task","labels":["bug","board"],"depends_on":["D"]}`,
+		}, extra...) {
+			mustUpsert(t, payload)
+		}
+	}
+	wantSibling := func(t *testing.T, result map[string]any) {
+		t.Helper()
+		notice, _ := result["notice"].(string)
+		for _, want := range []string{"X", "Y", "D", "board", "lyx board set-deps"} {
+			if !strings.Contains(notice, want) {
+				t.Errorf("notice = %q; want it to contain %q", notice, want)
+			}
+		}
+	}
+
+	t.Run("set-deps names the sibling and stores the dependency", func(t *testing.T) {
+		seed(t)
+		wantSibling(t, runJSON(t, 0, "set-deps", `{"slug":"X","depends_on":["D"]}`))
+		task, _ := runJSON(t, 0, "get", `{"slug":"X"}`)["task"].(map[string]any)
+		if deps, _ := task["depends_on"].([]any); len(deps) != 1 || deps[0] != "D" {
+			t.Errorf("stored depends_on = %v; want [D]", task["depends_on"])
+		}
+	})
+	t.Run("upsert names the sibling", func(t *testing.T) {
+		seed(t)
+		wantSibling(t, runJSON(t, 0, "upsert", `{"slug":"X","depends_on":["D"]}`))
+	})
+	t.Run("upsert-batch names the sibling", func(t *testing.T) {
+		seed(t)
+		wantSibling(t, runJSON(t, 0, "upsert-batch", `{"tasks":[{"slug":"X","depends_on":["D"]}]}`))
+	})
+	t.Run("merge names the sibling", func(t *testing.T) {
+		seed(t)
+		wantSibling(t, runJSON(t, 0, "merge", `{"upsert":{"slug":"X","depends_on":["D"]}}`))
+	})
+	t.Run("two siblings are two lines", func(t *testing.T) {
+		seed(t, `{"slug":"Y2","title":"Y2","kind":"task","labels":["bug","board"],"depends_on":["D"]}`)
+		notice, _ := runJSON(t, 0, "set-deps", `{"slug":"X","depends_on":["D"]}`)["notice"].(string)
+		lines := strings.Split(notice, "\n")
+		if len(lines) != 2 || !strings.Contains(lines[0], `"Y"`) || !strings.Contains(lines[1], `"Y2"`) {
+			t.Errorf("notice = %q; want one line naming Y and one naming Y2", notice)
+		}
+	})
+	t.Run("no sibling prints no notice", func(t *testing.T) {
+		seed(t)
+		result := runJSON(t, 0, "set-deps", `{"slug":"X","depends_on":[]}`)
+		if _, has := result["notice"]; has {
+			t.Errorf("envelope = %v; want no notice key", result)
+		}
+	})
+	t.Run("a batch joins the run-settings notice and the sibling line", func(t *testing.T) {
+		seed(t, `{"slug":"rs","title":"RS","kind":"task","labels":["bug"],"status":"running · Discussion-Write"}`)
+		result := runJSON(t, 0, "upsert-batch", `{"tasks":[{"slug":"rs","run_settings":{"loom":{"review_max_bounces":4}}},{"slug":"X","depends_on":["D"]}]}`)
+		notice, _ := result["notice"].(string)
+		if !strings.Contains(notice, "--layer local") || !strings.Contains(notice, `"X" now waits on D`) {
+			t.Errorf("notice = %q; want the run-settings line and the sibling line", notice)
+		}
+	})
 }
 
 // stepContract tests the JSON envelope shape and exit code behavior for each happy-path verb:
