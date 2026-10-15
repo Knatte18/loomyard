@@ -1,6 +1,6 @@
 // sleepjournal_test.go pins how journal entries become sleep intervals and which clause Read gives for each way a run can leave no sleep.
 
-package sleepjournal_test
+package sleepjournal
 
 import (
 	"errors"
@@ -11,8 +11,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/Knatte18/loomyard/internal/sleepjournal"
 )
 
 func TestParse(t *testing.T) {
@@ -33,26 +31,26 @@ func TestParse(t *testing.T) {
 	tests := []struct {
 		name    string
 		lines   []string
-		want    []sleepjournal.Interval
+		want    []Interval
 		wantErr string
 	}{
 		{
 			name:  "a hibernate and a suspend amid other messages",
 			lines: []string{entry(0, "b1", "Successfully froze unit 'user.slice'."), enter(1, "b1", "hibernate"), leave(600, "b1", "hibernate"), entry(600, "b1", "Successfully thawed unit 'user.slice'."), enter(700, "b1", "suspend"), leave(710, "b1", "suspend")},
-			want:  []sleepjournal.Interval{{From: at(1), To: at(600)}, {From: at(700), To: at(710)}},
+			want:  []Interval{{From: at(1), To: at(600)}, {From: at(700), To: at(710)}},
 		},
-		{name: "a start with no return yields to the next start", lines: []string{enter(0, "b1", "hibernate"), enter(5, "b1", "hibernate"), leave(9, "b1", "hibernate")}, want: []sleepjournal.Interval{{From: at(5), To: at(9)}}},
+		{name: "a start with no return yields to the next start", lines: []string{enter(0, "b1", "hibernate"), enter(5, "b1", "hibernate"), leave(9, "b1", "hibernate")}, want: []Interval{{From: at(5), To: at(9)}}},
 		{name: "a return with no start", lines: []string{leave(9, "b1", "suspend")}},
 		{name: "a pair split across boots", lines: []string{enter(0, "b1", "hibernate"), leave(9, "b2", "hibernate")}},
 		{name: "a return from another operation", lines: []string{enter(0, "b1", "suspend"), leave(9, "b1", "hibernate")}},
-		{name: "a byte-array message is skipped", lines: []string{enter(0, "b1", "suspend"), `{"__REALTIME_TIMESTAMP":"1","_BOOT_ID":"b1","MESSAGE":[104,105]}`, leave(9, "b1", "suspend")}, want: []sleepjournal.Interval{{From: at(0), To: at(9)}}},
+		{name: "a byte-array message is skipped", lines: []string{enter(0, "b1", "suspend"), `{"__REALTIME_TIMESTAMP":"1","_BOOT_ID":"b1","MESSAGE":[104,105]}`, leave(9, "b1", "suspend")}, want: []Interval{{From: at(0), To: at(9)}}},
 		{name: "a line that does not decode", lines: []string{"{"}, wantErr: "does not decode"},
 		{name: "a timestamp that does not parse", lines: []string{`{"__REALTIME_TIMESTAMP":"soon","MESSAGE":"x"}`}, wantErr: "does not parse"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := sleepjournal.Parse([]byte(strings.Join(tt.lines, "\n") + "\n"))
+			got, err := Parse([]byte(strings.Join(tt.lines, "\n") + "\n"))
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("Parse error = %v; want one containing %q", err, tt.wantErr)
@@ -62,7 +60,7 @@ func TestParse(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !slices.EqualFunc(got, tt.want, func(a, b sleepjournal.Interval) bool { return a.From.Equal(b.From) && a.To.Equal(b.To) }) {
+			if !slices.EqualFunc(got, tt.want, func(a, b Interval) bool { return a.From.Equal(b.From) && a.To.Equal(b.To) }) {
 				t.Errorf("Parse = %v; want %v", got, tt.want)
 			}
 		})
@@ -85,7 +83,7 @@ func TestParse(t *testing.T) {
 	for _, tt := range reads {
 		t.Run("read "+tt.name, func(t *testing.T) {
 			t.Parallel()
-			sleeps, clause := sleepjournal.Read(tt.out, tt.runErr)
+			sleeps, clause := Read(tt.out, tt.runErr)
 			if clause != tt.wantClause || len(sleeps) != tt.wantLen {
 				t.Errorf("Read = %d sleeps, %q; want %d sleeps, %q", len(sleeps), clause, tt.wantLen, tt.wantClause)
 			}
