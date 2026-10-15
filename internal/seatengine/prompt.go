@@ -50,8 +50,8 @@ func seatValues(geom Geometry, table Table, seat Seat, names map[string]string) 
 	maps.Copy(values, table.Values)
 	maps.Copy(values, seat.Values)
 
-	parentName, interactive := names[RoleChair], false
-	if seat.Name == RoleChair {
+	parentName, interactive := names[leadName], false
+	if seat.Name == leadName {
 		parentName, interactive = geom.ParentName, table.Interactive
 	}
 	parent, err := parentdirective.Directive(geom.StencilsDir, parentName, interactive)
@@ -65,7 +65,7 @@ func seatValues(geom Geometry, table Table, seat Seat, names map[string]string) 
 
 	var advisors []string
 	for _, other := range table.Seats {
-		if other.Name != RoleChair {
+		if other.Name != leadName {
 			advisors = append(advisors, names[other.Name])
 		}
 	}
@@ -73,7 +73,7 @@ func seatValues(geom Geometry, table Table, seat Seat, names map[string]string) 
 	values[parentdirective.MarkerName] = parent
 	values[editdirective.MarkerName] = edit
 	values["seat_name"] = names[seat.Name]
-	values["chair_name"] = names[RoleChair]
+	values["chair_name"] = names[leadName]
 	values["advisor_names"] = joinLines(advisors)
 	values["inputs"] = joinLines(seat.Inputs)
 	values["outputs"] = joinLines(seat.Outputs)
@@ -91,6 +91,7 @@ func seatValues(geom Geometry, table Table, seat Seat, names map[string]string) 
 }
 
 // Prompts returns the prompt every seat of table reads at a fresh start, keyed by seat name, and starts nothing.
+// The lead's prompt ends with the table's Amendment.
 // It validates table against geom.StencilsDir, so a table that would be refused at start is refused here.
 func Prompts(geom Geometry, table Table) (map[string]string, error) {
 	if err := table.Validate(geom.StencilsDir); err != nil {
@@ -110,9 +111,17 @@ func Prompts(geom Geometry, table Table) (map[string]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		prompts[seat.Name] = prompt
+		prompts[seat.Name] = amendLeadPrompt(table, seat, prompt)
 	}
 	return prompts, nil
+}
+
+// amendLeadPrompt returns prompt followed by the table's Amendment when seat is the lead, and prompt unchanged for any other seat.
+func amendLeadPrompt(table Table, seat Seat, prompt string) string {
+	if seat.Name != leadName {
+		return prompt
+	}
+	return prompt + table.Amendment
 }
 
 // composePrompt reads seat's stencil and every block it includes from stencilsDir and fills them from values, with no marker optional.
@@ -151,7 +160,7 @@ func composeSeatPrompt(stencilsDir string, seat Seat, values map[string]string, 
 // Every seat of a table declares the own-window anchor with the table's window group and seat count.
 // The seat's gate rides the start call, not the spec.
 func seatSpec(table Table, seat Seat, prompt string) shuttleengine.Spec {
-	isChair := seat.Name == RoleChair
+	isChair := seat.Name == leadName
 	return shuttleengine.Spec{
 		Prompt:        prompt,
 		OutputFiles:   slices.Clone(seat.Outputs),
@@ -185,7 +194,7 @@ func tableWindow(table Table) string {
 
 // seatGate returns the gate seat runs under: the table's for the chair, the seat's own for an advisor.
 func seatGate(table Table, seat Seat) shuttleengine.GateSpec {
-	if seat.Name == RoleChair {
+	if seat.Name == leadName {
 		return table.Gate
 	}
 	return seat.Gate

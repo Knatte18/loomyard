@@ -171,6 +171,13 @@ func TestSetValues(t *testing.T) {
 			wantValues: map[string]string{"plan_review": "sonnet[high]"},
 		},
 		{
+			name:     "scalar-or-list key takes a flow list of name and model mappings",
+			template: "advisors: []\n",
+			pairs:    []KV{{Key: "advisors", Value: `[{name: critic, model: "sonnet[high]"}]`}},
+			openMaps: []string{"advisors"},
+			contains: []string{`advisors: [{name: critic, model: "sonnet[high]"}]`},
+		},
+		{
 			name:     "scalar-or-list key takes the empty list",
 			template: roundListTemplate,
 			pairs:    []KV{{Key: "plan_review", Value: "[]"}},
@@ -340,6 +347,13 @@ func TestSetValues_Refusals(t *testing.T) {
 			pair:     KV{Key: "plan_review", Value: "[[a], b]"},
 			openMaps: []string{"plan_review"},
 			want:     []string{"plan_review", "flow list of scalars"},
+		},
+		{
+			name:     "mapping holding a list for a scalar-or-list key",
+			template: roundListTemplate,
+			pair:     KV{Key: "plan_review", Value: "[{name: [a]}]"},
+			openMaps: []string{"plan_review"},
+			want:     []string{"plan_review", "mappings of scalars"},
 		},
 		{
 			name:     "text after the closing bracket for a scalar-or-list key",

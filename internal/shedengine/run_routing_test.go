@@ -157,6 +157,9 @@ func TestRun_StuckWithOnStuckTarget(t *testing.T) {
 	for _, entry := range got.History {
 		if entry.Producer == "B" && entry.Outcome == Stuck {
 			foundBounce = true
+			if entry.RoutedTo != "A" {
+				t.Errorf("B's stuck entry RoutedTo = %q; want %q, the row's OnStuck target", entry.RoutedTo, "A")
+			}
 		}
 	}
 	if !foundBounce {
@@ -206,6 +209,10 @@ func TestRun_StuckWithNoTarget(t *testing.T) {
 	}
 	if result.Reason != got.Error {
 		t.Errorf("Result.Reason (%q) and persisted Error (%q) must be equal", result.Reason, got.Error)
+	}
+	last := got.History[len(got.History)-1]
+	if last.Outcome != Stuck || last.RoutedTo != "" {
+		t.Errorf("halted entry = %+v; want a stuck entry with no routed_to", last)
 	}
 }
 

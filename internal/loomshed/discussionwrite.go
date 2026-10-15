@@ -14,10 +14,9 @@ import (
 // discussionWrite decorates inner with a post-Done commit step: once inner.Call reports Done with
 // a nil error, discussionWrite invokes commit before returning that same verdict to the caller.
 //
-// discussionWrite does not consult entryErr or cancelErr itself. inner (a *SingleLLMProducer in
+// discussionWrite does not consult entryErr or cancelErr itself. inner (a *MultiLLMProducer in
 // practice) already entry-checks the context as its first act, so a second check here would be
 // duplicate work at the same seam; the wrapped producer owns the whole cancellation obligation.
-// The wrapped producer is a *SingleLLMProducer or a *MultiLLMProducer in practice, and both entry-check the context first.
 type discussionWrite struct {
 	name   string
 	inner  shedengine.ShedProducer
@@ -37,10 +36,9 @@ func NewDiscussionWrite(name string, inner shedengine.ShedProducer, commit func(
 // Call implements shedengine.ShedProducer: it calls p.inner.Call(ctx) exactly once and returns its
 // three results verbatim whenever the error is non-nil or pointer.Path is empty. The commit seam
 // fires whenever the wrapped producer reports a non-empty output pointer with a nil error -- Done or
-// a gate-failed Stuck, the only two outcomes the wrapped *shedadapters.SingleLLMProducer can report
+// a gate-failed Stuck, the only two outcomes the wrapped *shedadapters.MultiLLMProducer can report
 // with a non-empty pointer -- and the returned triple is (outcome, pointer, nil) rather than being
 // forced to Done.
-// A wrapped *shedadapters.MultiLLMProducer reports a non-empty pointer for the same two outcomes only.
 //
 // A non-nil commit error maps to a returned error, never to shedengine.Stuck, on both the Done path
 // and the gate-failed Stuck path alike: a git fault is not something re-writing the discussion can

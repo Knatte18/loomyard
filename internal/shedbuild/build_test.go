@@ -71,14 +71,6 @@ func TestBuild_Errors(t *testing.T) {
 			wantSubs: []string{"0", "Pre", "Cwd"},
 		},
 		{
-			name: "single-LLM missing its stencil key",
-			rows: []Row{{Name: "LLM-Row", Engine: "SingleLLM", Config: map[string]any{
-				"output_files": []string{"out/a.md"},
-			}}},
-			fullEnv:  true,
-			wantSubs: []string{"0", "LLM-Row", "stencil"},
-		},
-		{
 			// Proves cfg reaches the constructor rather than being dropped: an engine that accepts no config keys rejects a non-empty block through its own unknown-key check.
 			name:     "non-empty config on an engine that accepts none",
 			rows:     []Row{{Name: "Stub-Row", Engine: "Stub", Config: map[string]any{"bogus": "value"}}},

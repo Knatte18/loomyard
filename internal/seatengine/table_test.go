@@ -41,15 +41,15 @@ func seatedStencils(t *testing.T) string {
 	return dir
 }
 
-// validTable returns a chair with two advisors whose outputs are the chair's inputs.
+// validTable returns an unnamed lead with two named advisors whose outputs are the lead's inputs.
 func validTable() Table {
 	return Table{
 		RolePrefix: "multi",
 		Segment:    "plan",
 		Seats: []Seat{
-			{Name: RoleChair, Stencil: "seat-test-chair", Inputs: []string{"/w/a1.md", "/w/a2.md"}, Outputs: []string{"/w/out.md"}},
-			{Name: AdvisorName(1), Stencil: "seat-test-advisor", Outputs: []string{"/w/a1.md"}},
-			{Name: AdvisorName(2), Stencil: "seat-test-advisor", Outputs: []string{"/w/a2.md"}},
+			{Stencil: "seat-test-chair", Inputs: []string{"/w/a1.md", "/w/a2.md"}, Outputs: []string{"/w/out.md"}},
+			{Name: advisorName(1), Stencil: "seat-test-advisor", Outputs: []string{"/w/a1.md"}},
+			{Name: advisorName(2), Stencil: "seat-test-advisor", Outputs: []string{"/w/a2.md"}},
 		},
 	}
 }
@@ -60,6 +60,7 @@ func TestTable_Validate(t *testing.T) {
 	writeStencil(t, dir, "seat-test-nested", "Nested.\n{{template \"seat-test-includer\"}}\n")
 	writeStencil(t, dir, "seat-test-includer", "Block.\n{{template \"seat-directive-advisor\"}}\n")
 	writeStencil(t, dir, "seat-test-broken", "{{template \"seat-test-absent\"}}\n")
+	writeStencil(t, dir, "seat-test-bare", "Lead {{.seat_name}}.\n")
 
 	tests := []struct {
 		name    string
@@ -67,9 +68,9 @@ func TestTable_Validate(t *testing.T) {
 		wantErr string
 	}{
 		{name: "an accepted table"},
-		{name: "a gate on the chair seat", mutate: func(tb *Table) { tb.Seats[0].Gate = shuttleengine.GateSpec{{Name: "g", Attempts: 1}} }, wantErr: `seat "chair": carries a gate`},
-		{name: "a required chair", mutate: func(tb *Table) { tb.Seats[0].Required = true }, wantErr: `seat "chair": is marked required`},
-		{name: "an accept hook on the chair", mutate: func(tb *Table) { tb.Seats[0].Accept = func(shuttleengine.Result) error { return nil } }, wantErr: `seat "chair": carries an accept hook`},
+		{name: "a gate on the lead", mutate: func(tb *Table) { tb.Seats[0].Gate = shuttleengine.GateSpec{{Name: "g", Attempts: 1}} }, wantErr: `the lead carries a gate`},
+		{name: "a required lead", mutate: func(tb *Table) { tb.Seats[0].Required = true }, wantErr: `the lead is marked required`},
+		{name: "an accept hook on the lead", mutate: func(tb *Table) { tb.Seats[0].Accept = func(shuttleengine.Result) error { return nil } }, wantErr: `the lead carries an accept hook`},
 		{name: "an accept hook on an advisor that is not required", mutate: func(tb *Table) { tb.Seats[1].Accept = func(shuttleengine.Result) error { return nil } }, wantErr: `seat "advisor-1": carries an accept hook but is not required`},
 		{name: "a required advisor with an accept hook", mutate: func(tb *Table) {
 			tb.Seats[1].Required = true
@@ -80,23 +81,30 @@ func TestTable_Validate(t *testing.T) {
 			tb.Seats[0].ForkSubagents, tb.Seats[1].ForkSubagents = true, true
 			tb.Round = "r1"
 		}},
-		{name: "a lone chair is accepted", mutate: func(tb *Table) { tb.Seats = tb.Seats[:1] }},
-		{name: "no chair", mutate: func(tb *Table) { tb.Seats = tb.Seats[1:] }, wantErr: `exactly one seat named "chair", found 0`},
-		{name: "two chairs", mutate: func(tb *Table) { tb.Seats[1].Name = RoleChair }, wantErr: `exactly one seat named "chair", found 2`},
-		{name: "advisors out of order", mutate: func(tb *Table) { tb.Seats[1].Name = AdvisorName(2) }, wantErr: `seat "advisor-2": want the name "advisor-1"`},
-		{name: "a foreign seat name", mutate: func(tb *Table) { tb.Seats[2].Name = "critic" }, wantErr: `seat "critic": want the name "advisor-2"`},
-		{name: "a seat with no output", mutate: func(tb *Table) { tb.Seats[0].Outputs = nil }, wantErr: `seat "chair": has no output`},
+		{name: "a lone lead is accepted", mutate: func(tb *Table) { tb.Seats = tb.Seats[:1] }},
+		{name: "a lone lead needs no chair directive", mutate: func(tb *Table) {
+			tb.Seats = tb.Seats[:1]
+			tb.Seats[0].Stencil = "seat-test-bare"
+		}},
+		{name: "a table with no seat", mutate: func(tb *Table) { tb.Seats = nil }, wantErr: `the table has no seat; give it a lead`},
+		{name: "a named lead", mutate: func(tb *Table) { tb.Seats[0].Name = "critic" }, wantErr: `seat "critic": the first seat is the lead and carries no name; drop its name`},
+		{name: "an unnamed later seat", mutate: func(tb *Table) { tb.Seats[1].Name = "" }, wantErr: `give the seat a unique name that starts with a letter`},
+		{name: "a duplicate later name", mutate: func(tb *Table) { tb.Seats[2].Name = tb.Seats[1].Name }, wantErr: `seat "advisor-1": the name is already taken; give the seat a unique name that starts with a letter`},
+		{name: "a numeric later name", mutate: func(tb *Table) { tb.Seats[1].Name = "2" }, wantErr: `seat "2": `},
+		{name: "a later name with an upper-case letter", mutate: func(tb *Table) { tb.Seats[1].Name = "Critic" }, wantErr: `seat "Critic": `},
+		{name: "a lead stencil without the chair directive beside advisors", mutate: func(tb *Table) { tb.Seats[0].Stencil = "seat-test-bare" }, wantErr: `include seat-directive-chair in the lead's stencil`},
+		{name: "a seat with no output", mutate: func(tb *Table) { tb.Seats[0].Outputs = nil }, wantErr: `seat "": has no output`},
 		{name: "two seats sharing an output", mutate: func(tb *Table) { tb.Seats[2].Outputs = []string{"/w/a1.md"} }, wantErr: `seat "advisor-2": output "/w/a1.md" is also seat "advisor-1"'s output`},
-		{name: "an advisor output the chair does not read", mutate: func(tb *Table) { tb.Seats[0].Inputs = []string{"/w/a1.md"} }, wantErr: `seat "advisor-2": output "/w/a2.md" is not among the chair's inputs`},
+		{name: "an advisor output the lead does not read", mutate: func(tb *Table) { tb.Seats[0].Inputs = []string{"/w/a1.md"} }, wantErr: `seat "advisor-2": output "/w/a2.md" is not among the lead's inputs`},
 		{name: "an invalid role prefix", mutate: func(tb *Table) { tb.RolePrefix = "Multi" }, wantErr: "role prefix"},
 		{name: "an empty role prefix", mutate: func(tb *Table) { tb.RolePrefix = "" }, wantErr: "role prefix"},
 		{name: "an unreadable seat stencil", mutate: func(tb *Table) { tb.Seats[1].Stencil = "seat-test-absent" }, wantErr: `seat "advisor-1": stencilstore: read stencil "seat-test-absent"`},
-		{name: "an unreadable included block", mutate: func(tb *Table) { tb.Seats[0].Stencil = "seat-test-broken" }, wantErr: `seat "chair": stencilstore: read stencil "seat-test-absent"`},
-		{name: "an included block that includes", mutate: func(tb *Table) { tb.Seats[0].Stencil = "seat-test-nested" }, wantErr: `seat "chair": include "seat-test-includer" declares an include of its own`},
+		{name: "an unreadable included block", mutate: func(tb *Table) { tb.Seats[0].Stencil = "seat-test-broken" }, wantErr: `seat "": stencilstore: read stencil "seat-test-absent"`},
+		{name: "an included block that includes", mutate: func(tb *Table) { tb.Seats[0].Stencil = "seat-test-nested" }, wantErr: `seat "": include "seat-test-includer" declares an include of its own`},
 		{name: "a table value naming a reserved marker", mutate: func(tb *Table) { tb.Values = map[string]string{"inputs": "x"} }, wantErr: `table: value "inputs" collides with a reserved marker`},
 		{name: "a seat value naming a reserved marker", mutate: func(tb *Table) { tb.Seats[1].Values = map[string]string{"seat_name": "x"} }, wantErr: `seat "advisor-1": value "seat_name" collides with a reserved marker`},
 		{name: "a whitespace-only table value", mutate: func(tb *Table) { tb.Values = map[string]string{"topic": " \n"} }, wantErr: `table: value "topic" is empty`},
-		{name: "an empty seat value", mutate: func(tb *Table) { tb.Seats[0].Values = map[string]string{"topic": ""} }, wantErr: `seat "chair": value "topic" is empty`},
+		{name: "an empty seat value", mutate: func(tb *Table) { tb.Seats[0].Values = map[string]string{"topic": ""} }, wantErr: `seat "": value "topic" is empty`},
 		{name: "a blank table value named optional", mutate: func(tb *Table) {
 			tb.Values = map[string]string{"topic": " "}
 			tb.Optional = []string{"topic"}
@@ -109,7 +117,7 @@ func TestTable_Validate(t *testing.T) {
 		{name: "a blank seat value whose name is optional", mutate: func(tb *Table) {
 			tb.Seats[0].Values = map[string]string{"topic": ""}
 			tb.Optional = []string{"topic"}
-		}, wantErr: `seat "chair": value "topic" is empty`},
+		}, wantErr: `seat "": value "topic" is empty`},
 		{name: "unreserved non-blank values", mutate: func(tb *Table) {
 			tb.Values = map[string]string{"topic": "x"}
 			tb.Seats[0].Values = map[string]string{"focus": "y"}
@@ -139,16 +147,16 @@ func TestTable_Validate(t *testing.T) {
 func TestTable_NamesAccessorsAndReservedMarkers(t *testing.T) {
 	t.Parallel()
 
-	if got, want := AdvisorName(3), "advisor-3"; got != want {
-		t.Errorf("AdvisorName(3) = %q, want %q", got, want)
+	if got, want := SeatRole("multi", ""), "multi"; got != want {
+		t.Errorf("SeatRole(multi, \"\") = %q, want the prefix alone, %q", got, want)
 	}
-	if got, want := SeatRole("multi", AdvisorName(2)), "multi-advisor-2"; got != want {
-		t.Errorf("SeatRole(multi, advisor-2) = %q, want %q", got, want)
+	if got, want := SeatRole("multi", "critic"), "multi-critic"; got != want {
+		t.Errorf("SeatRole(multi, critic) = %q, want %q", got, want)
 	}
 
 	table := validTable()
-	if got := table.Chair(); got.Name != RoleChair || !slices.Equal(got.Outputs, []string{"/w/out.md"}) {
-		t.Errorf("Chair() = %+v, want the chair seat", got)
+	if got := table.Chair(); got.Name != "" || !slices.Equal(got.Outputs, []string{"/w/out.md"}) {
+		t.Errorf("Chair() = %+v, want the first seat", got)
 	}
 	if got := (Table{}).Chair(); !reflect.DeepEqual(got, Seat{}) {
 		t.Errorf("Chair() of an empty table = %+v, want the zero seat", got)

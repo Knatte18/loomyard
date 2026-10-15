@@ -109,7 +109,7 @@ func (r *Runner) attach(spec Spec, gate GateSpec, removeSuperseded bool) (*Run, 
 
 	// Zero candidates returns immediately, without reading reed state at all. This precedence is
 	// load-bearing: reedengine.LoadState returns (nil, nil) for an absent reed.json, and with Attach
-	// probed on every SingleLLMProducer.Call, a worktree that has not yet had a reed session would
+	// probed on every writer row's Call, a worktree that has not yet had a reed session would
 	// otherwise hard-error on its very first Discussion-Write or Plan-Write call, with nothing to
 	// attach to and nothing wrong.
 	if len(candidates) == 0 {

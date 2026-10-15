@@ -25,13 +25,10 @@ import (
 // last stubbed row -- Webster-Review -- is real: no loom row reaches Stub any more, and the engine
 // stays registered because internal/shedrecipe's registry is generic Shed machinery shared by
 // reference with a future product's producer list rather than loom's private property.
-// SingleLLM is the other tolerated entry: the two other "loom: real LLM producers" board items
-// have not yet landed a row that reaches it.
 // MultiLLM is tolerated the same way: no loom row uses it yet.
 var coverageGuardAllowedUnreachableEngines = map[string]bool{
-	"MultiLLM":  true,
-	"SingleLLM": true,
-	"Stub":      true,
+	"MultiLLM": true,
+	"Stub":     true,
 }
 
 // reachedEngines returns the union of every recipe consumer's RecipeEngines().

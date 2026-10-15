@@ -14,18 +14,26 @@ import (
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
-// validMultiLLMConfig returns a Config multiLLMEntry accepts over an Env holding the "multillm-seat" stencil:
-// a chair and one advisor whose output is the chair's input.
+// writeMultiLLMStencils seeds the shipped seat blocks into env's stencils directory and writes the lead and advisor stencils validMultiLLMConfig names.
+func writeMultiLLMStencils(t *testing.T, env Env) {
+	t.Helper()
+	stencilkit.SeedInto(t, env.StencilsDir)
+	writeStencilFile(t, env.StencilsDir, "multillm-lead", `{{template "seat-directive-chair"}}`+"\n")
+	writeStencilFile(t, env.StencilsDir, "multillm-seat", "Body text with no markers.\n")
+}
+
+// validMultiLLMConfig returns a Config multiLLMEntry accepts over an Env holding the stencils writeMultiLLMStencils writes:
+// an unnamed lead and one named advisor whose output is the lead's input.
 func validMultiLLMConfig() Config {
 	return Config{
 		"role":    "multi",
 		"segment": "plan",
 		"seats": []any{
 			map[string]any{
-				"name":    "chair",
-				"stencil": "multillm-seat",
+				"stencil": "multillm-lead",
 				"model":   "opus[high]",
 				"inputs":  []string{"in/spec.md", "out/advisor.md"},
 				"outputs": []string{"out/chair.md"},
@@ -72,14 +80,23 @@ func TestMultiLLMEntry_ConstructionFailures(t *testing.T) {
 		{"AbsoluteInput", func(_ *Env, cfg Config) { multiLLMSeatConfig(cfg, 0)["inputs"] = []string{"/abs/in.md"} }, "must not be absolute"},
 		{"EscapingOutput", func(_ *Env, cfg Config) { multiLLMSeatConfig(cfg, 1)["outputs"] = []string{"../out.md"} }, "escapes root"},
 		{"UnreadableStencil", func(_ *Env, cfg Config) { multiLLMSeatConfig(cfg, 1)["stencil"] = "multillm-missing" }, "multillm-missing"},
-		{"AdvisorOutputNotChairInput", func(_ *Env, cfg Config) { multiLLMSeatConfig(cfg, 1)["outputs"] = []string{"out/other.md"} }, "not among the chair's inputs"},
-		{"AdvisorMisnamed", func(_ *Env, cfg Config) { multiLLMSeatConfig(cfg, 1)["name"] = "advisor-2" }, "advisor-1"},
+		{"AdvisorOutputNotLeadInput", func(_ *Env, cfg Config) { multiLLMSeatConfig(cfg, 1)["outputs"] = []string{"out/other.md"} }, "not among the lead's inputs"},
+		{"NameOnTheFirstSeat", func(_ *Env, cfg Config) { multiLLMSeatConfig(cfg, 0)["name"] = "chair" }, "the first seat is the lead and carries no name"},
+		{"LaterSeatWithoutAName", func(_ *Env, cfg Config) { delete(multiLLMSeatConfig(cfg, 1), "name") }, `"name"`},
+		{"LaterSeatWithADuplicateName", func(_ *Env, cfg Config) {
+			cfg["seats"] = append(cfg["seats"].([]any), map[string]any{
+				"name":    "advisor-1",
+				"stencil": "multillm-seat",
+				"model":   "opus",
+				"outputs": []string{"out/advisor.md"},
+			})
+		}, "the name is already taken"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			env := newTestEnv(t)
-			writeStencilFile(t, env.StencilsDir, "multillm-seat", "Body text with no markers.\n")
+			writeMultiLLMStencils(t, env)
 			cfg := validMultiLLMConfig()
 			tc.mutate(&env, cfg)
 			_, err := multiLLMEntry("Row", cfg, env)
@@ -90,6 +107,7 @@ func TestMultiLLMEntry_ConstructionFailures(t *testing.T) {
 	t.Run("IncludeThatIncludes", func(t *testing.T) {
 		t.Parallel()
 		env := newTestEnv(t)
+		writeMultiLLMStencils(t, env)
 		writeStencilFile(t, env.StencilsDir, "multillm-seat", `{{template "multillm-block"}}`+"\n")
 		writeStencilFile(t, env.StencilsDir, "multillm-block", `{{template "multillm-other"}}`+"\n")
 		writeStencilFile(t, env.StencilsDir, "multillm-other", "Leaf.\n")
@@ -102,7 +120,7 @@ func TestMultiLLMEntry_ComposedTable(t *testing.T) {
 	t.Parallel()
 
 	env := newTestEnv(t)
-	writeStencilFile(t, env.StencilsDir, "multillm-seat", "Body text with no markers.\n")
+	writeMultiLLMStencils(t, env)
 	fake := &shedfake.SeatRunner{Results: []seatengine.Result{{
 		// The scripted chair carries a passing GateOutcome, so the fake never evaluates the real plan gate: this test pins the table's shape only.
 		Chair:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Passed: true, Attempts: 1}},
@@ -136,14 +154,13 @@ func TestMultiLLMEntry_ComposedTable(t *testing.T) {
 		Values:      map[string]string{"topic": "caching"},
 		Seats: []seatengine.Seat{
 			{
-				Name:    seatengine.RoleChair,
-				Stencil: "multillm-seat",
+				Stencil: "multillm-lead",
 				Model:   "claude-opus-test",
 				Inputs:  []string{filepath.Join(root, "in/spec.md"), filepath.Join(root, "out/advisor.md")},
 				Outputs: []string{filepath.Join(root, "out/chair.md")},
 			},
 			{
-				Name:    seatengine.AdvisorName(1),
+				Name:    "advisor-1",
 				Stencil: "multillm-seat",
 				Model:   "claude-opus-test",
 				Outputs: []string{filepath.Join(root, "out/advisor.md")},

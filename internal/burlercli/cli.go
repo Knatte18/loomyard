@@ -114,10 +114,10 @@ func Command() *cobra.Command {
 		Use:   "burler",
 		Short: "run one review+fix round over an artifact (the burler round worker)",
 		Long: `burler drives one review+fix round over an artifact with two sessions run
-one after the other: a reviewer (role burler-review-chair) reviews the target
+one after the other: a reviewer (role burler-review) reviews the target
 against a fasit (a source of truth) and writes a structured review file
 (verdict + findings, each finding carrying its fix), then, once lyx has
-accepted the review, a fixer (role burler-fix-chair) validates what the
+accepted the review, a fixer (role burler-fix) validates what the
 reviewer found, fixes it and writes a fixer report. A review with no findings
 spawns no fixer. What to review, what to judge it against, and how the round is
 allowed to write its fixes are all supplied as a profile YAML file — burler

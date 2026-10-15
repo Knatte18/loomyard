@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -374,42 +375,56 @@ func TestWire_DefaultConfig(t *testing.T) {
 		}
 	})
 
-	t.Run("plan spec evaluates to the expected shape", func(t *testing.T) {
-		spec, err := c.env.PlanSpec()
+	t.Run("plan table evaluates to the expected shape", func(t *testing.T) {
+		table, err := c.env.PlanTable()
 		if err != nil {
-			t.Fatalf("c.env.PlanSpec() = %v; want nil", err)
+			t.Fatalf("c.env.PlanTable() = %v; want nil", err)
 		}
 
-		if spec.Interactive {
-			t.Error("spec.Interactive = true; want false (autonomous by design)")
+		if table.Interactive {
+			t.Error("table.Interactive = true; want false (autonomous by design)")
 		}
-		if spec.Role != "plan" {
-			t.Errorf("spec.Role = %q; want %q", spec.Role, "plan")
+		lead := table.Chair()
+		if role := seatengine.SeatRole(table.RolePrefix, lead.Name); role != "plan" {
+			t.Errorf("lead role = %q; want %q", role, "plan")
 		}
-		if want := []string{"scribe:prose", "scribe:testing"}; !reflect.DeepEqual(spec.Skills, want) {
-			t.Errorf("spec.Skills = %v; want %v", spec.Skills, want)
+		if len(table.Seats) != 1 {
+			t.Errorf("table has %d seats; want the lead alone", len(table.Seats))
 		}
-		if !strings.Contains(spec.Prompt, "## Your parent") {
-			t.Error("spec.Prompt carries no parent directive; want one")
+		if want := []string{"scribe:prose", "scribe:testing"}; !reflect.DeepEqual(lead.Skills, want) {
+			t.Errorf("lead.Skills = %v; want %v", lead.Skills, want)
 		}
 		wantTimeout := time.Duration(c.cfg.PlanTimeoutMin) * time.Minute
-		if spec.Timeout != wantTimeout {
-			t.Errorf("spec.Timeout = %s; want %s", spec.Timeout, wantTimeout)
+		if table.Timeout != wantTimeout {
+			t.Errorf("table.Timeout = %s; want %s", table.Timeout, wantTimeout)
 		}
-		if spec.Model == "" {
-			t.Error("spec.Model = \"\"; want non-empty")
+		if lead.Model == "" {
+			t.Error("lead.Model = \"\"; want non-empty")
 		}
 
 		wantOutputs := []string{planparser.PlanOverview(loc.AnchorPath())}
-		if !reflect.DeepEqual(spec.OutputFiles, wantOutputs) {
-			t.Errorf("spec.OutputFiles = %v; want %v", spec.OutputFiles, wantOutputs)
+		if !reflect.DeepEqual(lead.Outputs, wantOutputs) {
+			t.Errorf("lead.Outputs = %v; want %v", lead.Outputs, wantOutputs)
 		}
 
-		if spec.Prompt == "" {
-			t.Error("spec.Prompt = \"\"; want non-empty")
+		// The fixture hub records no shortname, so the wired parent is empty; the geometry tells a parent and shortname instead.
+		prompts, err := seatengine.Prompts(seatengine.Geometry{
+			WorktreeRoot: loc.WorktreePath(),
+			AnchorPath:   loc.AnchorPath(),
+			StencilsDir:  fabricengine.StencilsDir(loc.HubPath),
+			ParentName:   "hub:orch",
+			Shortname:    "hub",
+			Slug:         "pair",
+		}, table)
+		if err != nil {
+			t.Fatalf("seatengine.Prompts() = %v; want nil", err)
 		}
-		if strings.Contains(spec.Prompt, "{{") {
-			t.Errorf("spec.Prompt contains an unrendered {{ marker: %q", spec.Prompt)
+		prompt := prompts[""]
+		if !strings.Contains(prompt, "## Your parent") {
+			t.Error("lead prompt carries no parent directive; want one")
+		}
+		if strings.Contains(prompt, "{{") {
+			t.Errorf("lead prompt contains an unrendered {{ marker: %q", prompt)
 		}
 	})
 
@@ -496,76 +511,7 @@ func TestWire_DefaultConfig(t *testing.T) {
 	})
 }
 
-// TestWire_DiscussionSpecEvaluatesToExpectedShape evaluates c.env.DiscussionSpec() for both
-// discussion_interactive values and asserts on the returned shuttleengine.Spec's shape. Interactive
-// must be false when discussion_interactive is false, and true when
-// discussion_interactive is true; every other assertion (Role, Timeout, Model, OutputFiles, Prompt)
-// must hold in both cases.
-func TestWire_DiscussionSpecEvaluatesToExpectedShape(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name                  string
-		discussionInteractive bool
-		wantInteractive       bool
-	}{
-		{"Autonomous", false, false},
-		{"Interactive", true, true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			loc := hubLocation(t, "pair", ".")
-			if tt.discussionInteractive {
-				seedLoomConfigWithInteractive(t, loc.AnchorPath(), true)
-			}
-
-			c := &loomCLI{runID: shedrun.SelfRunID}
-			if err := c.wire(loc, loc.AnchorPath()); err != nil {
-				t.Fatalf("wire() = %v; want nil", err)
-			}
-
-			spec, err := c.env.DiscussionSpec()
-			if err != nil {
-				t.Fatalf("c.env.DiscussionSpec() = %v; want nil", err)
-			}
-
-			if spec.Interactive != tt.wantInteractive {
-				t.Errorf("spec.Interactive = %v; want %v", spec.Interactive, tt.wantInteractive)
-			}
-			if spec.Role != "discussion" {
-				t.Errorf("spec.Role = %q; want %q", spec.Role, "discussion")
-			}
-			if want := []string{"scribe:prose", "scribe:conversation"}; !reflect.DeepEqual(spec.Skills, want) {
-				t.Errorf("spec.Skills = %v; want %v", spec.Skills, want)
-			}
-			if !strings.Contains(spec.Prompt, "## Your parent") {
-				t.Error("spec.Prompt carries no parent directive; want one")
-			}
-			wantTimeout := time.Duration(c.cfg.DiscussionTimeoutMin) * time.Minute
-			if spec.Timeout != wantTimeout {
-				t.Errorf("spec.Timeout = %s; want %s", spec.Timeout, wantTimeout)
-			}
-			if spec.Model == "" {
-				t.Error("spec.Model = \"\"; want non-empty")
-			}
-
-			wantOutputs := []string{loomengine.DiscussionDecisionRecord(loc), loomengine.DiscussionSupportLog(loc)}
-			if !reflect.DeepEqual(spec.OutputFiles, wantOutputs) {
-				t.Errorf("spec.OutputFiles = %v; want %v", spec.OutputFiles, wantOutputs)
-			}
-
-			if spec.Prompt == "" {
-				t.Error("spec.Prompt = \"\"; want non-empty")
-			}
-			if strings.Contains(spec.Prompt, "{{") {
-				t.Errorf("spec.Prompt contains an unrendered {{ marker: %q", spec.Prompt)
-			}
-		})
-	}
-}
-
-// TestWire_DiscussionTableEvaluatesToExpectedShape evaluates c.env.DiscussionTable() for both discussion_interactive values and asserts the table's settings, the chair's seat, one advisor per configured entry, and a chair prompt over the wired geometry that names the parent and carries no unrendered marker.
+// TestWire_DiscussionTableEvaluatesToExpectedShape evaluates c.env.DiscussionTable() for both discussion_interactive values and asserts the table's settings, the lead's seat, and a lead prompt over the wired geometry that names the parent and carries no unrendered marker, then the table's seats and fork authorization under the discussion_advisors and discussion_lenses keys.
 func TestWire_DiscussionTableEvaluatesToExpectedShape(t *testing.T) {
 	t.Parallel()
 
@@ -620,8 +566,8 @@ func TestWire_DiscussionTableEvaluatesToExpectedShape(t *testing.T) {
 			if chair.Model == "" {
 				t.Error("chair.Model = \"\"; want non-empty")
 			}
-			if wantSeats := 1 + len(c.cfg.DiscussionAdvisors); len(table.Seats) != wantSeats {
-				t.Errorf("table has %d seats; want %d, the chair and one advisor per configured entry", len(table.Seats), wantSeats)
+			if len(table.Seats) != 1 {
+				t.Errorf("table has %d seats; want the lead alone under the template's empty advisors", len(table.Seats))
 			}
 
 			// The fixture hub records no shortname, so the wired parent is empty; the geometry tells a parent and shortname instead.
@@ -637,7 +583,7 @@ func TestWire_DiscussionTableEvaluatesToExpectedShape(t *testing.T) {
 			if err != nil {
 				t.Fatalf("seatengine.Prompts() = %v; want nil", err)
 			}
-			chairPrompt := prompts[seatengine.RoleChair]
+			chairPrompt := prompts[""]
 			if !strings.Contains(chairPrompt, "## Your parent") || !strings.Contains(chairPrompt, parentName) {
 				t.Errorf("chair prompt does not name the parent %q under its parent directive", parentName)
 			}
@@ -647,30 +593,46 @@ func TestWire_DiscussionTableEvaluatesToExpectedShape(t *testing.T) {
 		})
 	}
 
-	// discussion_producer selects which producer the Discussion-Write row runs; the table closure is wired either way.
-	producerTests := []struct {
+	// discussion_advisors and discussion_lenses decide which seats the wired table holds and whether its lead may fork:
+	// the template keeps the lead alone, each configured advisor adds a seat named by its entry, and a lens key authorizes the lead's forks and no advisor's.
+	const advisorEntries = `[{name: critic, model: "sonnet[low]"}, {name: skeptic, model: "opus[high]"}]`
+	keyTests := []struct {
 		name      string
-		seed      bool
-		wantSeats bool
+		values    map[string]string
+		wantSeats []string
+		wantForks bool
 	}{
-		{"TemplateKeepsTheSingleAgentProducer", false, false},
-		{"SeatsKeySelectsTheSeatProducer", true, true},
+		{"TemplateKeepsTheLeadAlone", nil, []string{""}, false},
+		{"AdvisorsAddASeatEach", map[string]string{"discussion_advisors": advisorEntries}, []string{"", "critic", "skeptic"}, false},
+		{"LensKeyAuthorizesTheLeadsForks", map[string]string{"discussion_lenses": "twill-discussion"}, []string{""}, true},
+		{"AdvisorsWithLensesForkFromTheLeadOnly", map[string]string{"discussion_advisors": advisorEntries, "discussion_lenses": "twill-discussion"}, []string{"", "critic", "skeptic"}, true},
 	}
-	for _, tt := range producerTests {
+	for _, tt := range keyTests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			loc := hubLocation(t, "pair", ".")
-			if tt.seed {
-				seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"discussion_producer": loomengine.DiscussionProducerSeats})
+			if tt.values != nil {
+				seedLoomConfigWithKeys(t, loc.AnchorPath(), tt.values)
 			}
 
 			c := &loomCLI{runID: shedrun.SelfRunID}
 			if err := c.wire(loc, loc.AnchorPath()); err != nil {
 				t.Fatalf("wire() = %v; want nil", err)
 			}
+			table, err := c.env.DiscussionTable()
+			if err != nil {
+				t.Fatalf("c.env.DiscussionTable() = %v; want nil", err)
+			}
 
-			if c.env.DiscussionSeats != tt.wantSeats {
-				t.Errorf("c.env.DiscussionSeats = %v; want %v", c.env.DiscussionSeats, tt.wantSeats)
+			var seatNames []string
+			for index, seat := range table.Seats {
+				seatNames = append(seatNames, seat.Name)
+				if wantFork := index == 0 && tt.wantForks; seat.ForkSubagents != wantFork {
+					t.Errorf("seat %q ForkSubagents = %v; want %v", seat.Name, seat.ForkSubagents, wantFork)
+				}
+			}
+			if !slices.Equal(seatNames, tt.wantSeats) {
+				t.Errorf("table seats = %q; want %q", seatNames, tt.wantSeats)
 			}
 		})
 	}

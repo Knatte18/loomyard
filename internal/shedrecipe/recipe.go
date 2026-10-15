@@ -18,9 +18,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/planindex"
+	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -45,13 +45,11 @@ type Config map[string]any
 type Env struct {
 	// Cwd is the caller's told working directory, read by Preflight.
 	Cwd string
-	// AnchorPath is the told anchor path, read by Batchifier, Webster, Bouncer, SingleLLM's
-	// anchor_path token, and by the gate resolver's "plan" gate.
+	// AnchorPath is the told anchor path, read by Batchifier, Webster, Bouncer and the gate resolver's "plan" gate.
 	AnchorPath string
 	// ConfigDirs is the told geometry of a layered config load, read by Batchifier, LoomPreflight and Webster, which load batcher through it.
 	ConfigDirs configengine.Dirs
-	// WorktreeRoot is the told worktree root, read by SingleLLM's output_files and by the gate
-	// resolver's "plan" and "verify" gates.
+	// WorktreeRoot is the told worktree root, read by the gate resolver's "plan" and "verify" gates.
 	WorktreeRoot string
 	// RunScratchDir is the told ephemeral shed scratch directory of the run, read by the gate resolver's "plan" and "rework-plan" gates, which record their informational findings in a file under it.
 	// Empty keeps those findings inline in the log.
@@ -78,7 +76,7 @@ type Env struct {
 	StatusPath string
 	// StatusLockPath is the told status lock file path, read by LoomPreflight.
 	StatusLockPath string
-	// StencilsDir is the told stencils directory, read by SingleLLM and Bouncer.
+	// StencilsDir is the told stencils directory, read by Bouncer.
 	StencilsDir string
 	// SpecsDir is the told deployed-specs directory, read by the Bouncer and BurlerReview entries.
 	// It is a run-wide root, which is exactly the class Env carries, so it belongs here rather
@@ -123,9 +121,6 @@ type Env struct {
 	// Its values are already resolved, since the per-perch fallback lives in the caller's config.
 	RowHardMaxBounces map[string]int
 
-	// DiscussionSeats, when true, runs the Discussion-Write row on the DiscussionSeats engine instead of the recipe's DiscussionWrite, read by loomrecipe alone.
-	DiscussionSeats bool
-
 	// ReviewCirclingCheckpoint is the run-wide first round a Bouncer's judge may rule CIRCLING in.
 	// The Bouncer entry requires it positive and passes it to shedadapters.BouncerConfig.CirclingCheckpoint.
 	ReviewCirclingCheckpoint int
@@ -136,7 +131,7 @@ type Env struct {
 	RowBouncerModels map[string]shedadapters.BouncerModels
 
 	// Shuttle is the injected shedadapters.Shuttle seam, an already-constructed engine (or a
-	// factory over one).
+	// factory over one), read by the Bouncer row and the Burler rows' attach probes.
 	Shuttle shedadapters.Shuttle
 	// Burler is the injected shedadapters.BurlerHalfRunner seam.
 	Burler shedadapters.BurlerHalfRunner
@@ -166,14 +161,9 @@ type Env struct {
 	// Now is the injected clock. Nil is legal and defaults to time.Now inside the underlying
 	// constructors.
 	Now func() time.Time
-	// DiscussionSpec is the injected shedadapters.SpecSource the DiscussionWrite entry evaluates
-	// once per Call. It arrives as a closure rather than as recipe Config because building the
-	// Spec needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package
-	// from importing directly. It is named per-producer rather than carried in a generic keyed
-	// map because Env already carries per-producer named fields.
-	DiscussionSpec shedadapters.SpecSource
-	// DiscussionTable is the injected shedadapters.TableSource the DiscussionSeats entry evaluates once per Call.
-	// It arrives as a closure for the same reason DiscussionSpec does: building the table needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing directly.
+	// DiscussionTable is the injected shedadapters.TableSource the DiscussionWrite entry evaluates once per Call.
+	// It arrives as a closure rather than as recipe Config because building the table needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing directly.
+	// It is named per-producer rather than carried in a generic keyed map because Env already carries per-producer named fields.
 	DiscussionTable shedadapters.TableSource
 	// CommitDiscussion is the injected closure that commits the discussion output directory.
 	// The commit decorator of every entry that wraps a discussion producer invokes it on a Done outcome.
@@ -182,22 +172,17 @@ type Env struct {
 	// DiscussionHistory returns every committed version of the decision record, newest first.
 	// Only the darn wiring sets it, together with CommitDiscussion; nil on a loom run, where the "discussion" gate resolves to the loom form.
 	DiscussionHistory func() ([][]byte, error)
-	// DescribeSpec is the injected shedadapters.SpecSource the Describe entry evaluates once per
-	// Call. It arrives as a closure rather than as recipe Config because building the Spec needs a
-	// *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing
-	// directly; internal/loomcli's wire() is what supplies it.
-	DescribeSpec shedadapters.SpecSource
+	// DescribeTable is the injected shedadapters.TableSource the Describe entry evaluates once per Call.
+	// It arrives as a closure rather than as recipe Config because building the table needs the fabric's landing geometry, which the Shed Recipe Registry Invariant bars this package from deriving;
+	// internal/loomcli's wire() is what supplies it.
+	DescribeTable shedadapters.TableSource
 	// CommitDescription is the injected closure that commits the change description's directory,
 	// invoked by the Describe entry's commit decorator on a Done outcome.
 	CommitDescription func() error
-	// PlanSpec is the injected shedadapters.SpecSource the PlanWrite entry evaluates once per Call.
-	// It arrives as a closure rather than as recipe Config because building the Spec needs a
-	// *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing
-	// directly; internal/loomcli's wire() is what supplies it. It is a second per-producer named
-	// field, not the first entry of a generic keyed map, because Env already carries per-producer
-	// named fields and forking that convention on the second instance would abandon a decision one
-	// commit old.
-	PlanSpec shedadapters.SpecSource
+	// PlanTable is the injected shedadapters.TableSource the PlanWrite entry evaluates once per Call.
+	// It arrives as a closure rather than as recipe Config because building the table needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing directly; internal/loomcli's wire() is what supplies it.
+	// It is named per-producer, like DiscussionTable, because Env already carries per-producer named fields.
+	PlanTable shedadapters.TableSource
 	// CommitPlan is the injected closure that commits the plan output directory, invoked by the
 	// PlanWrite entry's commit decorator on a Done outcome.
 	CommitPlan func() error
@@ -226,16 +211,16 @@ type Env struct {
 	// resolved on internal/loomcli's receiver, and building them here would pull friction, lock and
 	// loom-config imports into this Told-Geometry-bound package.
 	ReflectFriction func() string
-	// ReworkSpec is the injected Spec factory the PRRework entry evaluates once per Call, with the values the producer tells that session.
-	// It arrives as a closure rather than as recipe Config because building the Spec needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing directly;
+	// ReworkTable is the injected table factory the PRRework entry evaluates once per Call, with the values the producer tells that session.
+	// It arrives as a closure rather than as recipe Config because building the table needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing directly;
 	// internal/loomcli's wire() is what supplies it.
-	ReworkSpec func(loomshed.ReworkTold) (shuttleengine.Spec, error)
+	ReworkTable func(loomshed.ReworkTold) (seatengine.Table, error)
 	// Rework is a whole-struct passthrough to loomshed.NewPRRework, following Env.Landing's own precedent:
 	// the producer has behaviour of its own -- the generation archive, the round record and the rejection removal -- that per-seam fakes must be able to substitute individually.
 	Rework loomshed.PRReworkDeps
-	// DarnSpec is the injected Spec factory the DarnWrite entry evaluates once per Call, with the token texts the producer tells that session.
-	// It arrives as a closure for the reason ReworkSpec does.
-	DarnSpec func(loomshed.DarnTold) (shuttleengine.Spec, error)
+	// DarnTable is the injected table factory the DarnWrite entry evaluates once per Call, with the token texts the producer tells that session.
+	// It arrives as a closure for the reason ReworkTable does.
+	DarnTable func(loomshed.DarnTold) (seatengine.Table, error)
 	// DarnVerifyAttempts is the verify gate's attempt budget of the darn recipe, which `darn.yaml`'s verify_attempts supplies.
 	// internal/loomrecipe alone reads it, stamping it onto the verify gates of the Darn-Write and Darn-Burler-Fix rows at every build.
 	DarnVerifyAttempts int

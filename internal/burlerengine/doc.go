@@ -33,7 +33,7 @@
 // # The seat tables
 //
 // reviewTable and fixTable each build a one-seat seatengine.Table: the review segment, RunOpts.Timeout and RunOpts.Round, not interactive, and the half's agent as the chair.
-// The strands are therefore <shortname>:<slug>:burler-review-chair and <shortname>:<slug>:burler-fix-chair, formed through seatengine.SeatRole by the seats engine.
+// The one seat has no name, so the strands are <shortname>:<slug>:burler-review and <shortname>:<slug>:burler-fix, formed through seatengine.SeatRole by the seats engine.
 // New builds that seat engine itself from the told Geometry and the stencils directory, over the seatengine.Shuttle it is given.
 // Each seat's stencil markers ride the seat's values: the absolute instruction-file paths and the review path, and for the fix half the review format path.
 // composeReviewPrompt and composeFixPrompt fill the instruction files and return those values; the seat stencils are filled by the seats engine.

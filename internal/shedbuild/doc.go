@@ -5,11 +5,9 @@
 // This package holds PATTERN-told-geometry: Load reads
 // exactly the absolute path it is told, and the package derives no path of its own.
 //
-// Parse is filesystem-free but Build is not, because three registry constructors reach disk at
-// construction time between them, producing four distinct effects -- the bouncer constructor does
-// both, creating its resolved run directory and eagerly probing its rubric stencil, while the
-// burler-round constructor only creates its run directory and the single-LLM constructor only
-// probes its stencil -- and this package neither suppresses nor wraps those effects.
+// Parse is filesystem-free but Build is not, because two registry constructors reach disk at construction time between them, producing three distinct effects.
+// The bouncer constructor does both, creating its resolved run directory and eagerly probing its rubric stencil, while the burler-round constructor only creates its run directory.
+// This package neither suppresses nor wraps those effects.
 //
 // This package defines no on-disk location for recipe files -- no directory constant, no filename
 // convention, no embedded default.

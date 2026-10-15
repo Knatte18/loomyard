@@ -8,11 +8,15 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
+
+// liveSeatLead is a non-nil seatengine.Handle the fake seat runner hands back as a live lead; the producer never calls it.
+var liveSeatLead seatengine.Handle = (*shuttleengine.Run)(nil)
 
 // countingProducer is a shedengine.ShedProducer fake that always reports Done and counts every
 // call, used to prove crash-recovery's unconditional re-call: a producer whose output already
@@ -355,7 +359,7 @@ func TestBounceRouting_BudgetExhaustionBlocks(t *testing.T) {
 // always really about now that Discussion-Validate, the bounce that used to reach it, is gone:
 // current_producer is planted directly at Discussion-Write with both discussion artifacts already
 // present and complete on disk -- the identical on-disk shape a crash mid-interview leaves -- and
-// the fake shuttle's Attach reports not-found (no live agent matches), so Discussion-Write must
+// the fake seat runner's Probe reports no live lead, so Discussion-Write must
 // respawn rather than report Done off bare file existence.
 //
 // current_producer is planted directly at Discussion-Write via resetCurrentProducer, per the
@@ -369,7 +373,7 @@ func TestBounceRouting_BudgetExhaustionBlocks(t *testing.T) {
 func TestResume_DiscussionWriteRespawnsRatherThanReportDoneOffFileExistence(t *testing.T) {
 	_, env, paths := buildSequenceFixture(t)
 
-	loomShuttle := env.Shuttle.(*shedfake.Shuttle)
+	seats := env.Seats.(*shedfake.SeatRunner)
 
 	resetCurrentProducer(t, paths.StatusPath, paths.StatusLockPath, loomshed.NameDiscussionWrite, false)
 
@@ -397,19 +401,19 @@ func TestResume_DiscussionWriteRespawnsRatherThanReportDoneOffFileExistence(t *t
 		t.Errorf("Discussion-Write outcome = %q; want %q -- a respawned run must itself report Done, never report Done off bare pre-existing file existence", got, shedengine.Done)
 	}
 
-	if !loomShuttle.AttachCalled {
-		t.Errorf("Attach was never called; want it called -- the probe must run before any archive-and-respawn decision")
+	if seats.ProbeCalls == 0 {
+		t.Errorf("seat runner was never probed; want it probed -- the probe must run before any archive-and-respawn decision")
 	}
-	if countRole(loomShuttle, "discussion") == 0 {
-		t.Errorf("discussion Run calls = 0; want > 0 -- with Attach reporting not-found, Discussion-Write must respawn a fresh agent")
+	if countSeatRole(seats, "discussion") == 0 {
+		t.Errorf("discussion tables run = 0; want > 0 -- with no live lead, Discussion-Write must respawn a fresh lead")
 	}
 }
 
 // TestResume_LiveMatchingRunAttachesInsteadOfRespawning is the other half of the regression pair:
 // the identical on-disk shape as the bounce case above -- both discussion artifacts present -- but
-// this time the fake shuttle's Attach reports a still-live matching run (Outcome: OutcomeDone), the
+// this time the fake seat runner's Probe reports a live lead whose run ended done, the
 // crash-mid-interview case where the agent already finished before the driver noticed. Discussion-Write
-// must attach to that result rather than archive the artifacts and spawn a second agent on top of
+// must resume that lead rather than archive the artifacts and start a second lead on top of
 // one that (as far as this run's own state on disk is concerned) may still be working.
 //
 // current_producer is planted directly at Discussion-Write, since this test's whole point is what
@@ -417,12 +421,19 @@ func TestResume_DiscussionWriteRespawnsRatherThanReportDoneOffFileExistence(t *t
 func TestResume_LiveMatchingRunAttachesInsteadOfRespawning(t *testing.T) {
 	_, env, paths := buildSequenceFixture(t)
 
-	// The found answer is scoped to the discussion role: this one shuttle serves every row the run drives through it,
-	// and an unscoped found answer would also intercept every other row's own Attach probe and skip its Run, starving it of the output files only Run writes.
-	loomShuttle := env.Shuttle.(*shedfake.Shuttle)
-	loomShuttle.AttachResult = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
-	loomShuttle.DuringAttach = func() {
-		loomShuttle.AttachFound = loomShuttle.GotAttachSpec.Role == "discussion"
+	// The live answer is scoped to the discussion prefix: a table of any other prefix is not live, so later rows still run and write their outputs.
+	seats := env.Seats.(*shedfake.SeatRunner)
+	seats.ProbeFn = func(table seatengine.Table) (seatengine.LiveTable, error) {
+		if table.RolePrefix == "discussion" {
+			return seatengine.LiveTable{Chair: liveSeatLead}, nil
+		}
+		return seatengine.LiveTable{}, nil
+	}
+	seats.ResumeFn = func(table seatengine.Table, _ seatengine.LiveTable) (seatengine.Result, error) {
+		return seatengine.Result{
+			Chair:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+			ChairOutputs: []string{env.DecisionRecordPath, env.SupportLogPath},
+		}, nil
 	}
 
 	resetCurrentProducer(t, paths.StatusPath, paths.StatusLockPath, loomshed.NameDiscussionWrite, false)
@@ -448,14 +459,14 @@ func TestResume_LiveMatchingRunAttachesInsteadOfRespawning(t *testing.T) {
 		t.Fatalf("Run() History has no %s entry: %+v", loomshed.NameDiscussionWrite, result.History)
 	}
 	if got := result.History[writeIdx].Outcome; got != shedengine.Done {
-		t.Errorf("Discussion-Write outcome = %q; want %q -- attaching to a live matching run whose Outcome is OutcomeDone must report Done", got, shedengine.Done)
+		t.Errorf("Discussion-Write outcome = %q; want %q -- resuming a live matching lead that ended done must report Done", got, shedengine.Done)
 	}
 
-	if got := countRole(loomShuttle, "discussion"); got != 0 {
-		t.Errorf("discussion Run calls = %d; want 0 -- an attached run must not respawn a second agent", got)
+	if got := countSeatRole(seats, "discussion"); got != 0 {
+		t.Errorf("discussion tables run = %d; want 0 -- a resumed lead must not start a second one", got)
 	}
-	if !loomShuttle.AttachCalled {
-		t.Errorf("Attach was never called; want it called -- the probe must have run to find the live match")
+	if len(seats.GotResumeTables) != 1 || seats.GotResumeTables[0].RolePrefix != "discussion" {
+		t.Errorf("seat runner resumed %d tables; want exactly the discussion table", len(seats.GotResumeTables))
 	}
 
 	if _, err := os.Stat(env.DecisionRecordPath); err != nil {

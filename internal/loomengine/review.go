@@ -1,9 +1,8 @@
 // review.go implements ResolveReview, the review segment's config-to-settings resolver:
 // a pure composer that parses and resolves the review and fix roles' model-spec lists and pairs them with the review round timeout.
-// Unlike DiscussionSpec and PlanSpec, it returns no shuttleengine.Spec -- there is no prompt to
-// compose here, because the review segment's prompts are the Bouncer's own stencils, composed
-// inside internal/shedadapters at call time. The caller threads ReviewSettings' values onto
-// shedrecipe.Env instead.
+// Unlike DiscussionTable and PlanTable, it returns no seatengine.Table.
+// There is no seat to build here, because the review segment's prompts are the Bouncer's own stencils, composed inside internal/shedadapters at call time.
+// The caller threads ReviewSettings' values onto shedrecipe.Env instead.
 
 package loomengine
 

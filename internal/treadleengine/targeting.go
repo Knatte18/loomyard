@@ -34,7 +34,7 @@ var targetingSkills = []string{"scribe:prose"}
 // stencilstore.Read — logs a Warn and returns ("", false), so the round runs
 // without a seed. stencilsDir is the absolute stencils directory this call
 // reads its prompt from, leading rather than trailing so a mis-ordered call
-// site still compiles (see the composePrompt convention this mirrors).
+// site still compiles.
 func runTargeting(stencilsDir, parentName string, sh Shuttle, name string, round int, previousHandoffPath, seedPath, model, effort string) (string, bool) {
 	targetingTemplate, err := stencilstore.Read(stencilsDir, "treadle-template-targeting")
 	if err != nil {

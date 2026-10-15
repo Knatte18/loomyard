@@ -597,7 +597,7 @@ func TestAttach_NegativeTimeout(t *testing.T) {
 //
 // Before the fix, dispositionCandidate routed all three of these to verdictRespawnEligible (the dead
 // pane directly, the other two via leftoverThenAgeVerdict's own files-exist branch), so Attach
-// reported not-found and SingleLLMProducer archived the finished files and re-ran the whole LLM step —
+// reported not-found and a writer row archived the finished files and re-ran the whole LLM step —
 // reproduced live in round fable5-xhigh-r6 against a staged Discussion-Write. Reverting the attach.go
 // change makes every subtest here fail with found=false, so the guard is load-bearing rather than
 // vacuous.

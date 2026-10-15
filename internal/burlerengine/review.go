@@ -54,7 +54,6 @@ func (p *Profile) reviewTable(opts RunOpts, values map[string]string) seatengine
 		Timeout:    opts.Timeout,
 		Seats: []seatengine.Seat{
 			{
-				Name:          seatengine.RoleChair,
 				Stencil:       "burler-template-reviewer",
 				Model:         opts.Review.Model,
 				Effort:        opts.Review.Effort,

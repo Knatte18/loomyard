@@ -148,7 +148,7 @@ func (rule unitRule) stripMapping(lower, upper *yaml.Node, path string, topLevel
 // It never scaffolds from the template, which only decides which keys are known.
 // A key is known when the template holds it as a leaf or a list, or lies under a declared openMaps path P as P.<name>;
 // a list key takes a YAML flow list such as [] or [a, b], and an open-map entry is a scalar in the mapping at P.
-// A key at P itself, when P holds a scalar or a list, takes either: a value starting with [ is written as a flow list of scalars, any other value as a string, and a bracketed value that is not such a list is an error.
+// A key at P itself, when P holds a scalar or a list, takes either: a value starting with [ is written as a flow list of scalars or mappings of scalars, any other value as a string, and a bracketed value that is not such a list is an error.
 // Unknown lists the requested keys that are not known, Known the sorted known set, and Merged is nil when Unknown is non-empty.
 // A scalar leaf outside a scalar-or-list open-map path takes its template leaf's tag, except that a value spelling a null (`~`, `null`, `Null`, `NULL`), or a template leaf holding a null, gives it the tag its own text resolves to.
 // Preserved stays empty.

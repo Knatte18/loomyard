@@ -211,14 +211,14 @@ func TestRecipe_SeedAndResumeRowNamesExist(t *testing.T) {
 }
 
 // TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet asserts RecipeEngines() reports exactly loom's
-// own recipe's engine set plus the substituted discussionSeatsEngine and the darn recipe's DarnWrite, sorted and de-duplicated -- derived from wantProducerTable's own engine
+// own recipe's engine set plus the darn recipe's DarnWrite, sorted and de-duplicated -- derived from wantProducerTable's own engine
 // column rather than a second hand-written literal, for the same reason its battenrecipe twin
 // gets this test: a silently empty return would disable the cross-consumer coverage guard rather
 // than fail it.
 func TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet(t *testing.T) {
-	// The Discussion-Write row's substituted engine and the darn recipe's writer are ones a loom row can reach, beside the default build's.
-	seen := map[string]bool{discussionSeatsEngine: true, "DarnWrite": true}
-	want := []string{discussionSeatsEngine, "DarnWrite"}
+	// The darn recipe's writer is one a loom row can reach, beside the loom recipe's.
+	seen := map[string]bool{"DarnWrite": true}
+	want := []string{"DarnWrite"}
 	for _, row := range wantProducerTable {
 		engine := row.engine
 		if seen[engine] {
@@ -241,7 +241,7 @@ func TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet(t *testing.T) {
 	}
 }
 
-// TestRowNames_FollowEachRecipesRowOrder pins that each recipe's names equal its shedbuild.Parse row names in file order, and that a recipe the loom module does not own is refused.
+// TestRowNames_FollowEachRecipesRowOrder pins that each recipe's names and rows equal its shedbuild.Parse rows in file order, and that a recipe the loom module does not own is refused.
 func TestRowNames_FollowEachRecipesRowOrder(t *testing.T) {
 	for _, tt := range []struct {
 		recipe string
@@ -267,11 +267,30 @@ func TestRowNames_FollowEachRecipesRowOrder(t *testing.T) {
 			if !reflect.DeepEqual(got, want) {
 				t.Errorf("RowNames(%q) = %v; want %v", tt.recipe, got, want)
 			}
+
+			rows, err := Rows(tt.recipe)
+			if err != nil {
+				t.Fatalf("Rows(%q) error = %v; want nil", tt.recipe, err)
+			}
+			if len(rows) != len(parsed.Producers) {
+				t.Fatalf("Rows(%q) has %d rows; want %d", tt.recipe, len(rows), len(parsed.Producers))
+			}
+			for i, row := range parsed.Producers {
+				wantRow := RecipeRow{Name: row.Name, Segment: row.Segment, OnStuck: row.OnStuck, Bouncer: row.Engine == "Bouncer"}
+				if rows[i] != wantRow {
+					t.Errorf("Rows(%q)[%d] = %+v; want %+v", tt.recipe, i, rows[i], wantRow)
+				}
+			}
 		})
 	}
 
-	if _, err := RowNames(shedrun.RecipeBatten); err == nil || !strings.Contains(err.Error(), shedrun.RecipeBatten) {
-		t.Errorf("RowNames(%q) error = %v; want a refusal naming the recipe", shedrun.RecipeBatten, err)
+	for name, call := range map[string]func(string) error{
+		"RowNames": func(recipe string) error { _, err := RowNames(recipe); return err },
+		"Rows":     func(recipe string) error { _, err := Rows(recipe); return err },
+	} {
+		if err := call(shedrun.RecipeBatten); err == nil || !strings.Contains(err.Error(), shedrun.RecipeBatten) {
+			t.Errorf("%s(%q) error = %v; want a refusal naming the recipe", name, shedrun.RecipeBatten, err)
+		}
 	}
 }
 

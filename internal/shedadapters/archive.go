@@ -1,5 +1,5 @@
-// archive.go implements archiveStaleOutputs, the archive-never-refuse helper SingleLLMProducer runs
-// over an already-told, already-absolute list of output files before invoking its seam.
+// archive.go implements archiveStaleOutputs, the archive-never-refuse helper MultiLLMProducer runs
+// over an already-told, already-absolute list of output files before starting a table fresh.
 // firstFreeArchivePath is a package-local same-second collision helper, re-implemented here rather
 // than shared from websterengine because that package's own copy is unexported and the
 // no-new-engine-surface rule forbids exporting it.

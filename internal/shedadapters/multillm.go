@@ -40,8 +40,8 @@ type MultiLLMProducer struct {
 	tables TableSource
 	seats  SeatRunner
 	now    func() time.Time
-	// prepareFreshSpawn, when non-nil, runs on the fresh path after the probe and before the archive.
-	prepareFreshSpawn func() error
+	// prepareFreshSpawn, when non-nil, runs on the fresh path after the probe and before the archive, and returns the prompt amendment the lead's fresh prompt ends with.
+	prepareFreshSpawn func() (string, error)
 }
 
 var _ shedengine.ShedProducer = (*MultiLLMProducer)(nil)
@@ -62,8 +62,9 @@ func NewMultiLLMProducer(name string, table seatengine.Table, seats SeatRunner, 
 
 // NewMultiLLMProducerSourced returns a MultiLLMProducer identified as name that builds its table from tables on every call and runs it through seats.
 // A non-nil prepareFreshSpawn runs on the fresh path only, after the probe found no live chair and before the stale outputs are archived; its error fails the call with nothing archived and no seat started.
+// The text it returns becomes the table's Amendment, which the seat engine appends to the lead's prompt.
 // A nil now defaults to time.Now.
-func NewMultiLLMProducerSourced(name string, tables TableSource, seats SeatRunner, now func() time.Time, prepareFreshSpawn func() error) *MultiLLMProducer {
+func NewMultiLLMProducerSourced(name string, tables TableSource, seats SeatRunner, now func() time.Time, prepareFreshSpawn func() (string, error)) *MultiLLMProducer {
 	if now == nil {
 		now = time.Now
 	}
@@ -100,15 +101,18 @@ func (p *MultiLLMProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 		return p.mapOutcome(ctx, result)
 	}
 
+	freshTable := table
 	if p.prepareFreshSpawn != nil {
-		if err := p.prepareFreshSpawn(); err != nil {
+		amendment, err := p.prepareFreshSpawn()
+		if err != nil {
 			return p.errorExit(ctx, "prepare fresh spawn", err)
 		}
+		freshTable.Amendment = amendment
 	}
 	if err := archiveStaleOutputs(table.Outputs(), p.now); err != nil {
 		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): archive stale outputs: %w", p.name, multiLLMEngineLabel, err)
 	}
-	result, err := p.seats.Run(table)
+	result, err := p.seats.Run(freshTable)
 	if err != nil {
 		return p.errorExit(ctx, "seat run", err)
 	}
@@ -126,7 +130,7 @@ func (p *MultiLLMProducer) errorExit(ctx context.Context, what string, err error
 
 // mapOutcome maps the chair's result onto shedengine's contract, shared by the resume path and the fresh path:
 // done maps to Done with the chair's first output as the pointer, unless its gate failed, which maps to Stuck with the pointer and the gate's attempts and reason;
-// died and timeout are engine-level errors, wrapping shuttleengine.ErrNotStarted when the chair never started.
+// died and timeout are engine-level errors, wrapping shuttleengine.ErrNotStarted when the chair never started and carrying the chair's start error text when shuttle reported one.
 // A genuine success survives cancellation, the one exception cancelErr never applies to.
 func (p *MultiLLMProducer) mapOutcome(ctx context.Context, result seatengine.Result) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	for _, advisor := range result.Advisors {
@@ -154,6 +158,9 @@ func (p *MultiLLMProducer) mapOutcome(ctx context.Context, result seatengine.Res
 		}
 		logger.Warn("shedadapters: chair died or timed out", "producer", p.name, "engine", multiLLMEngineLabel, "sessionID", chair.SessionID, "strandGUID", chair.StrandGUID, "runDir", chair.RunDir, "outcome", chair.Outcome)
 		if chair.NotStarted {
+			if chair.StartError != "" {
+				return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): shuttle run outcome %s: %w: %s", p.name, multiLLMEngineLabel, chair.Outcome, shuttleengine.ErrNotStarted, chair.StartError)
+			}
 			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): shuttle run outcome %s: %w", p.name, multiLLMEngineLabel, chair.Outcome, shuttleengine.ErrNotStarted)
 		}
 		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): shuttle run outcome %s", p.name, multiLLMEngineLabel, chair.Outcome)

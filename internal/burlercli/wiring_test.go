@@ -594,8 +594,8 @@ func TestReedUpSeam_WatcherLifecycle(t *testing.T) {
 
 const (
 	// reviewChairRole and fixChairRole are the strand roles of the review half's and the fix half's one seat.
-	reviewChairRole = "burler-review-chair"
-	fixChairRole    = "burler-fix-chair"
+	reviewChairRole = "burler-review"
+	fixChairRole    = "burler-fix"
 )
 
 // halfShuttle is a seatengine.Shuttle double whose started seats finish at once.

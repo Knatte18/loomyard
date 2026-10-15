@@ -12,18 +12,19 @@
 // The engine audits no fork, so the caller that sets ForkSubagents owns the fork audit.
 // An advisor may be Required, with an Accept hook that judges its terminal result: a step then depends on that advisor's accepted output before its chair goes on.
 // A required advisor's held turn end still notifies the parent, where every other advisor holds quietly.
-// The chair seat is named RoleChair; the advisors are named AdvisorName(1), AdvisorName(2) and so on, in table order.
-// A seat's strand role is SeatRole(prefix, name), so a spec never spells a role as a literal.
+// The first seat is the lead, which the engine also calls the chair, and it carries no name; every later seat carries a name the table's builder takes from a recipe or config, valid under ValidateSeatName.
+// A seat's strand role is SeatRole(prefix, name), so a spec never spells a role as a literal: the lead's role is the prefix alone, and a later seat's is the prefix, a hyphen and its name.
 // Every seat strand, the chair and each advisor, declares the own-window anchor, the table's window group named by its role prefix and round, and its seat count, so reed shares one window for a small table and gives each seat its own for a large one.
 // A one-seat table gets a window of its own.
 //
 // # The table rules
 //
 // Table.Validate applies every rule as a loud error naming the seat.
-// The table has exactly one chair, and its other seats are advisors named from 1 contiguously in table order.
-// A table may hold no advisors: the chair then runs alone, and seat-directive-chair tells it to decide each question itself.
-// The chair seat carries no gate, since the chair's gate is the table's.
-// Every seat has at least one output and no two seats share an output path, and every advisor output is among the chair's inputs.
+// The table has at least one seat, its first seat is the unnamed lead, and every later seat is an advisor with a unique valid name.
+// A table may hold no advisors: the lead then runs alone, and seat-directive-chair tells it to decide each question itself.
+// The lead's stencil of a table of more than one seat includes seat-directive-chair; a lone lead needs no such include.
+// The lead carries no gate, since the lead's gate is the table's.
+// Every seat has at least one output and no two seats share an output path, and every advisor output is among the lead's inputs.
 // The role prefix and every seat's formed role pass the agent-name role grammar.
 // Every seat's stencil is readable from the told stencils directory, as is every block it includes (stencil.IncludeNames over the bytes read), and an included block declares no include of its own.
 // A table or seat value neither collides with a name in ReservedMarkers nor is empty or whitespace-only.
@@ -46,6 +47,7 @@
 // Engine.Run validates the table, forms every seat's strand name from the geometry's shortname and slug and the seat's role, and starts the chair first, then the advisors in table order.
 // The chair is the step's main agent: whoever talks to a producer running seats talks to the chair, and it holds the gate, the operator's channel and the step's outcome.
 // Each seat's prompt is its stencil filled, with the blocks it includes, from a value map holding the table's values, the seat's own and every reserved marker.
+// A table's Amendment is appended verbatim to the lead's composed prompt on this fresh path only, and Prompts appends it the same way; a later seat's prompt never carries it, and Probe and Resume never read it, since a probe's spec carries no prompt and a resumed lead keeps the prompt it started with.
 // The chair starts with the table's gate and is the only interactive seat; an advisor starts with its seat's gate, ungated when it has none, keeps its pane and holds a turn end quietly.
 // The chair's held-turn notice to the parent is deferred while advisor work is outstanding, so the chair's planned wait on its advisors does not reach the parent as a stall notice.
 // The chair's spec carries a HoldDeferral predicate, backed by the advisors started so far and the notice sender:
@@ -67,6 +69,7 @@
 // An advisor that reaches done queues nothing, since it stays reachable and the chair reads its file.
 // An advisor that dies, times out or whose wait errors queues one line for the chair.
 // A required advisor queues no line, neither an ending nor a not-started one, since its end stops the chair.
+// The sender carries advisor lines only, so a one-seat table queues no line and its lead's hold deferral never holds, since the deferral counts advisors.
 // One goroutine per chair types the queued lines through the chair's handle, one at a time, so two lines are never interleaved.
 // It retries a busy or unlanded send after the engine's notice interval until the line lands, the chair's outputs all exist or the sender is stopped, and logs a line that never lands rather than failing the step.
 //

@@ -1,4 +1,5 @@
-// entries_prrework_test.go covers prReworkEntry: its construction-time validation over Config, the injected ReworkSpec and Shuttle, every Env.Rework seam and its two told directories.
+// entries_prrework_test.go covers prReworkEntry: its construction-time validation over Config, the injected ReworkTable and Seats, every Env.Rework seam and its two told directories,
+// and the Calls proving the told value reaches the table source and the row's gate reaches the seat runner.
 
 package shedrecipe
 
@@ -10,17 +11,23 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/seatengine"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
-// reworkTestEnv returns newTestEnv(t) with ReworkSpec and every Rework seam filled.
+// reworkTestEnv returns newTestEnv(t) with ReworkTable and every Rework seam filled.
 func reworkTestEnv(t *testing.T) Env {
 	t.Helper()
 	env := newTestEnv(t)
 	dir := t.TempDir()
-	env.ReworkSpec = func(loomshed.ReworkTold) (shuttleengine.Spec, error) {
-		return shuttleengine.Spec{Prompt: "rework prompt", OutputFiles: []string{filepath.Join(dir, "coverage.md")}}, nil
+	env.ReworkTable = func(loomshed.ReworkTold) (seatengine.Table, error) {
+		return seatengine.Table{
+			RolePrefix: "rework",
+			Segment:    segmentcolor.Webster,
+			Seats:      []seatengine.Seat{{Stencil: "loom-template-rework", Outputs: []string{filepath.Join(dir, "coverage.md")}}},
+		}, nil
 	}
 	env.Rework = loomshed.PRReworkDeps{
 		PlanDir:          filepath.Join(dir, "plan"),
@@ -37,24 +44,9 @@ func reworkTestEnv(t *testing.T) Env {
 	return env
 }
 
-func TestPRReworkEntry_HappyPath(t *testing.T) {
-	producer, err := prReworkEntry("Row", Config{}, reworkTestEnv(t))
-	if err != nil {
-		t.Fatalf("prReworkEntry() error = %v; want nil", err)
-	}
-	if producer == nil {
-		t.Fatalf("prReworkEntry() = nil producer; want non-nil")
-	}
-}
-
-func TestPRReworkEntry_EvaluatesReworkSpecWithToldValue(t *testing.T) {
-	var got []loomshed.ReworkTold
-	env := reworkTestEnv(t)
-	env.ReworkSpec = func(told loomshed.ReworkTold) (shuttleengine.Spec, error) {
-		got = append(got, told)
-		return shuttleengine.Spec{}, errors.New("stop here")
-	}
-	// A committed one-card plan lets the producer compute FirstCard = 2.
+// withPendingRework returns env after planting a committed one-card plan and a pending rejection, so the producer computes FirstCard = 2 and starts a session.
+func withPendingRework(t *testing.T, env Env) Env {
+	t.Helper()
 	planDir := env.Rework.PlanDir
 	if err := os.MkdirAll(planDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -83,14 +75,34 @@ func TestPRReworkEntry_EvaluatesReworkSpecWithToldValue(t *testing.T) {
 	env.Rework.ReadRejection = func() (loomshed.PendingRejection, bool, error) {
 		return loomshed.PendingRejection{PRNumber: 1, HeadSHA: "h", RejectedAt: "t"}, true, nil
 	}
+	return env
+}
+
+func TestPRReworkEntry_HappyPath(t *testing.T) {
+	producer, err := prReworkEntry("Row", Config{}, reworkTestEnv(t))
+	if err != nil {
+		t.Fatalf("prReworkEntry() error = %v; want nil", err)
+	}
+	if producer == nil {
+		t.Fatalf("prReworkEntry() = nil producer; want non-nil")
+	}
+}
+
+func TestPRReworkEntry_EvaluatesReworkTableWithToldValue(t *testing.T) {
+	var got []loomshed.ReworkTold
+	env := withPendingRework(t, reworkTestEnv(t))
+	env.ReworkTable = func(told loomshed.ReworkTold) (seatengine.Table, error) {
+		got = append(got, told)
+		return seatengine.Table{}, errors.New("stop here")
+	}
 	producer, err := prReworkEntry("Row", Config{}, env)
 	if err != nil {
 		t.Fatalf("prReworkEntry() error = %v; want nil", err)
 	}
-	// The session's Spec failure surfaces as an error or a Stuck; either way the Spec source ran.
+	// The session's table failure surfaces as an error or a Stuck; either way the table source ran.
 	_, _, _ = producer.Call(context.Background())
 	if len(got) == 0 || got[0].FirstCard != 2 {
-		t.Errorf("ReworkSpec told %+v; want first call FirstCard 2", got)
+		t.Errorf("ReworkTable told %+v; want first call FirstCard 2", got)
 	}
 }
 
@@ -100,8 +112,8 @@ func TestPRReworkEntry_ConstructionFailures(t *testing.T) {
 		field string
 		edit  func(*Env)
 	}{
-		{"NilReworkSpec", "ReworkSpec", func(e *Env) { e.ReworkSpec = nil }},
-		{"NilShuttle", "Shuttle", func(e *Env) { e.Shuttle = nil }},
+		{"NilReworkTable", "ReworkTable", func(e *Env) { e.ReworkTable = nil }},
+		{"NilSeats", "Seats", func(e *Env) { e.Seats = nil }},
 		{"NilReadCommitted", "Rework.ReadCommitted", func(e *Env) { e.Rework.ReadCommitted = nil }},
 		{"NilReadRejection", "Rework.ReadRejection", func(e *Env) { e.Rework.ReadRejection = nil }},
 		{"NilClearRejection", "Rework.ClearRejection", func(e *Env) { e.Rework.ClearRejection = nil }},
@@ -144,5 +156,25 @@ func TestPRReworkEntry_Config(t *testing.T) {
 			t.Fatalf("resolveGateSpec() error = nil; want non-nil for a rework-plan gate with no ReadCommitted seam")
 		}
 		assertErrContains(t, err, "Rework.ReadCommitted")
+	})
+
+	t.Run("TheRowsGateReachesTheSeatRunner", func(t *testing.T) {
+		env := withPendingRework(t, reworkTestEnv(t))
+		fake := &shedfake.SeatRunner{}
+		env.Seats = fake
+		producer, err := prReworkEntry("Row", gatesCfg("rework-plan", 3), env)
+		if err != nil {
+			t.Fatalf("prReworkEntry() error = %v; want nil", err)
+		}
+		// The run's outcome depends on the planted plan, not on the gate under test.
+		_, _, _ = producer.Call(context.Background())
+
+		if len(fake.GotTables) != 1 {
+			t.Fatalf("seat runner saw %d tables; want 1", len(fake.GotTables))
+		}
+		gate := fake.GotTables[0].Gate
+		if len(gate) != 1 || gate[0].Name != "rework-plan" || gate[0].Attempts != 3 {
+			t.Errorf("table gate = %+v; want one \"rework-plan\" entry with 3 attempts", gate)
+		}
 	})
 }

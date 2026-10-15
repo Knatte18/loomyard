@@ -2,7 +2,7 @@
 
 // parentreview_integration_test.go drives the whole parent-review exchange against a real hub pair:
 // the Discussion-Write row's gate list as wire() builds it, the real verbs through RunCLIIn, the real round store, status, and the discussion commit.
-// Only the shuttle is scripted.
+// Only the seat runner is scripted.
 // The fake replays arrivals against the row's real gate list the way the wait loop does at a turn boundary,
 // so the test pins how the closures, the store and the verbs fit together, not the wait loop itself (internal/shuttleengine's own tests cover that).
 
@@ -24,6 +24,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/parentreview"
+	"github.com/Knatte18/loomyard/internal/seatengine"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
@@ -46,30 +48,22 @@ const (
 		"## Acceptance criteria\nThe gate lets the run through.\n"
 )
 
-// scriptedShuttle is a shedadapters.Shuttle whose gated run is a test-supplied script.
-// The producer's attach probe finds nothing, so every Call takes the fresh-spawn branch and runs the script once.
-type scriptedShuttle struct {
+// scriptedSeats is a shedadapters.SeatRunner whose run is a test-supplied script over the table's gate.
+// Its probe finds no live lead, so every Call takes the fresh-start branch and runs the script once.
+type scriptedSeats struct {
 	script func(gates shuttleengine.GateSpec) shuttleengine.Result
 }
 
-func (s *scriptedShuttle) Run(shuttleengine.Spec) (shuttleengine.Result, error) {
-	panic("scriptedShuttle: the producer must run gated")
+func (s *scriptedSeats) Probe(seatengine.Table) (seatengine.LiveTable, error) {
+	return seatengine.LiveTable{}, nil
 }
 
-func (s *scriptedShuttle) Attach(shuttleengine.Spec) (shuttleengine.Result, bool, error) {
-	panic("scriptedShuttle: the producer must attach gated")
+func (s *scriptedSeats) Resume(seatengine.Table, seatengine.LiveTable) (seatengine.Result, error) {
+	panic("scriptedSeats: the probe finds no live lead, so the producer never resumes")
 }
 
-func (s *scriptedShuttle) AttachIfLive(shuttleengine.Spec) (shuttleengine.Result, bool, error) {
-	panic("scriptedShuttle: the producer must attach gated")
-}
-
-func (s *scriptedShuttle) AttachGated(shuttleengine.Spec, shuttleengine.GateSpec) (shuttleengine.Result, bool, error) {
-	return shuttleengine.Result{}, false, nil
-}
-
-func (s *scriptedShuttle) RunGated(_ shuttleengine.Spec, gates shuttleengine.GateSpec) (shuttleengine.Result, error) {
-	return s.script(gates), nil
+func (s *scriptedSeats) Run(table seatengine.Table) (seatengine.Result, error) {
+	return seatengine.Result{Chair: s.script(table.Gate), ChairOutputs: table.Chair().Outputs}, nil
 }
 
 // arrive evaluates the gate list once, in order, the way the wait loop does at a turn boundary:
@@ -98,7 +92,7 @@ type prFixture struct {
 	slug     string
 	location *lyxcwd.Location
 	records  string
-	shuttle  *scriptedShuttle
+	seats    *scriptedSeats
 	producer shedengine.ShedProducer
 	store    parentreview.Store
 }
@@ -125,7 +119,7 @@ func newPRFixture(t *testing.T) *prFixture {
 	if err := c.wire(location, location.AnchorPath()); err != nil {
 		t.Fatalf("wire = %v; want nil", err)
 	}
-	f := &prFixture{t: t, hub: hub, slug: slug, location: location, records: hub.PairRecordsSibling(slug), shuttle: &scriptedShuttle{}, store: reviewStoreFor(location)}
+	f := &prFixture{t: t, hub: hub, slug: slug, location: location, records: hub.PairRecordsSibling(slug), seats: &scriptedSeats{}, store: reviewStoreFor(location)}
 
 	decision, support := loomengine.DiscussionDecisionRecord(location), loomengine.DiscussionSupportLog(location)
 	env := c.env
@@ -133,9 +127,13 @@ func newPRFixture(t *testing.T) *prFixture {
 	env.ParentReview.ReviewerLive = nil
 	// The wired alignment agent would spawn a real session; alignment off sends every review to the parent, as the test expects.
 	env.ParentReview.Aligner = nil
-	env.Shuttle = f.shuttle
-	env.DiscussionSpec = func() (shuttleengine.Spec, error) {
-		return shuttleengine.Spec{Prompt: "write the discussion", OutputFiles: []string{decision, support}}, nil
+	env.Seats = f.seats
+	env.DiscussionTable = func() (seatengine.Table, error) {
+		return seatengine.Table{
+			RolePrefix: "discussion",
+			Segment:    segmentcolor.Discussion,
+			Seats:      []seatengine.Seat{{Stencil: "loom-template-discussion-chair", Outputs: []string{decision, support}}},
+		}, nil
 	}
 
 	recipe, err := shedbuild.Parse(recipes.LoomRecipe)
@@ -206,7 +204,7 @@ func TestParentReviewExchange_RewriteReviewedThenCapRejectHalts(t *testing.T) {
 
 	writeStatusFile(t, f.location, `{"current_producer":"Discussion-Write","state":"running"}`)
 
-	f.shuttle.script = func(gates shuttleengine.GateSpec) shuttleengine.Result {
+	f.seats.script = func(gates shuttleengine.GateSpec) shuttleengine.Result {
 		f.writeDiscussion("")
 
 		// Before any request opens, the refusal names the status command the caller can reach: by slug from the prime, bare in the task worktree.
@@ -299,7 +297,7 @@ func TestParentReviewExchange_RewriteReviewedThenCapRejectHalts(t *testing.T) {
 	if code != 0 || envelope.Decode(t, out).Raw["superseded"] != true {
 		t.Fatalf("review approve = %d %q; want 0 reporting superseded", code, out)
 	}
-	f.shuttle.script = func(gates shuttleengine.GateSpec) shuttleengine.Result {
+	f.seats.script = func(gates shuttleengine.GateSpec) shuttleengine.Result {
 		f.writeDiscussion("\nAddressed the cap's finding.\n")
 		if first := arrive(t, gates); !first.Passed || first.Pending {
 			t.Fatalf("first arrival after the approve = %+v; want passed", first)

@@ -70,7 +70,8 @@ type HistoryEntry struct {
 	// LastAt is the RFC 3339 UTC time of the most recent folded call, empty when none;
 	// At keeps the first call's time.
 	LastAt string `json:"last_at,omitempty"`
-	// RoutedTo names the row a reroute entry sent the run to, empty on every other entry.
+	// RoutedTo names the row a reroute entry sent the run to, or the row a Stuck entry's OnStuck edge bounced it to.
+	// It is empty on every other entry, and on a Stuck entry written by an older binary.
 	// A status file written before the field existed decodes as empty.
 	RoutedTo string `json:"routed_to,omitempty"`
 	// RerouteCapped is true on the Stuck entry of a reroute-cap halt, which resets the row's reroute count.

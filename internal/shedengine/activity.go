@@ -14,9 +14,8 @@ import "fmt"
 // A latest entry that is a reroute entry composes as exactly "<producer> → rerouted to <target>", whatever routedTo is.
 //
 // routedTo is told by the one call site that routes a Stuck verdict to another row (or back to
-// the same row); it is never inferred from the persisted values, because a self-bounce and the
-// resume write after a budget-exhausted halt persist identical current_producer, state and
-// history, and no rule over them could tell the two apart.
+// the same row), because the activity line is composed in the same persist that records the bounce.
+// The Stuck history entry itself also records the target in its routed_to field, for readers such as the checklist.
 //
 // The Last format is pinned to an exact string rather than left to judgment because a test
 // asserts this field; an unpinned "formatted for a human" cannot be asserted, only approximated.

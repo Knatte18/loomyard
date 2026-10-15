@@ -1,8 +1,7 @@
-// describe.go implements the Describe row's two halves: DescribeSpec, the pure composer that turns
-// the row's told values into a shuttleengine.Spec (the stencil, the model resolved from
-// landing.yaml's describe key, and the one description file the session writes), and
-// NewDescriptionGate, the mechanical gate over that file. Neither derives a path of its own
-// (Told-Geometry Invariant).
+// describe.go implements the Describe row's two halves.
+// DescribeTable and DarnDescribeTable are the pure builders that turn the row's told values into a seatengine.Table: the stencil, the model resolved from landing.yaml's describe key, and the one description file the session writes.
+// NewDescriptionGate is the mechanical gate over that file.
+// Neither derives a path of its own (Told-Geometry Invariant).
 
 package landingshed
 
@@ -11,13 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
-	"github.com/Knatte18/loomyard/internal/parentdirective"
+	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
@@ -61,9 +58,6 @@ var describeSkills = []string{"scribe:prose"}
 type DescribeInputs struct {
 	// StencilsDir is the absolute directory the landing stencils are read from.
 	StencilsDir string
-	// ParentName is the name of the session the Describe session escalates to.
-	// Optional: empty renders the no-parent variant of the parent directive.
-	ParentName string
 	// DecisionRecordPath is the run's decision record, which the agent reads.
 	DecisionRecordPath string
 	// RunRecordPath is the live generation's webster summary.md, read only for manual-check items.
@@ -91,52 +85,13 @@ func runRecordBullets(in DescribeInputs) string {
 	return strings.Join(lines, "\n")
 }
 
-// DescribeSpec builds the shuttleengine.Spec for the Describe session. An empty input field is an
-// error naming the field, so a mis-wired closure fails at spawn rather than rendering a blank path
-// into the prompt. The prompt is read from in.StencilsDir via stencilstore.Read and filled with
-// stencil.Fill, never composed from a Go string literal.
-// Segment is the describe segment, because the session writes the pull request description.
-func DescribeSpec(in DescribeInputs, cfg Config, reg modelspec.Registry) (shuttleengine.Spec, error) {
-	required := []struct{ name, value string }{
-		{"StencilsDir", in.StencilsDir},
-		{"DecisionRecordPath", in.DecisionRecordPath},
-		{"RunRecordPath", in.RunRecordPath},
-		{"DescriptionPath", in.DescriptionPath},
-		{"TaskBranch", in.TaskBranch},
-		{"ParentBranch", in.ParentBranch},
-		{"Slug", in.Slug},
-	}
-	for _, r := range required {
-		if r.value == "" {
-			return shuttleengine.Spec{}, fmt.Errorf("landingshed: DescribeSpec: %s is empty", r.name)
-		}
-	}
-
-	spec, err := describeSessionSpec(describeStencilName, in.StencilsDir, in.ParentName, in.DescriptionPath, map[string]string{
-		"slug":                 in.Slug,
-		"decision_record_path": in.DecisionRecordPath,
-		"run_record_paths":     runRecordBullets(in),
-		"description_path":     in.DescriptionPath,
-		"task_branch":          in.TaskBranch,
-		"parent_branch":        in.ParentBranch,
-	}, cfg, reg)
-	if err != nil {
-		return shuttleengine.Spec{}, fmt.Errorf("landingshed: DescribeSpec: %w", err)
-	}
-
-	return spec, nil
-}
-
 // darnDescribeStencilName is the registered name of the darn recipe's Describe prompt.
 const darnDescribeStencilName = "landing-template-describe-darn"
 
-// DarnDescribeInputs carries the told values one Describe session of a darn run needs. Every field but ParentName is required.
+// DarnDescribeInputs carries the told values one Describe session of a darn run needs. Every field is required.
 type DarnDescribeInputs struct {
 	// StencilsDir is the absolute directory the landing stencils are read from.
 	StencilsDir string
-	// ParentName is the name of the session the Describe session escalates to.
-	// Optional: empty renders the no-parent variant of the parent directive.
-	ParentName string
 	// ReviewDir is the review perch's run directory, read only for the findings of a round the review passed unconverged.
 	ReviewDir string
 	// DecisionRecordPath is the decision record the darn writer wrote, read beside the board entry for the scope and decisions the description covers.
@@ -151,9 +106,48 @@ type DarnDescribeInputs struct {
 	Slug string
 }
 
-// DarnDescribeSpec builds the shuttleengine.Spec for the Describe session of a darn run, which describes the diff from the board entry and the decision record, and still reads no run record.
-// It is DescribeSpec's twin in every other respect: the model and timeout come from cfg's describe keys, the role, segment and skills are the same, and an empty required field is an error naming it.
-func DarnDescribeSpec(in DarnDescribeInputs, cfg Config, reg modelspec.Registry) (shuttleengine.Spec, error) {
+// DescribeTable builds the seatengine.Table of the Describe session: one lead that writes the change description.
+// An empty input field other than ParentName and PriorRunRecordPaths is an error naming the field, and so is a stencil missing from in.StencilsDir, so a mis-wired closure fails before the row runs rather than rendering a blank path into the prompt.
+// The table's values are the stencil's markers; the seat engine renders the parent and edit directives from its geometry.
+// The table carries no gate; the producer entry sets it.
+// Segment is the describe segment, because the session writes the pull request description.
+func DescribeTable(in DescribeInputs, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
+	required := []struct{ name, value string }{
+		{"StencilsDir", in.StencilsDir},
+		{"DecisionRecordPath", in.DecisionRecordPath},
+		{"RunRecordPath", in.RunRecordPath},
+		{"DescriptionPath", in.DescriptionPath},
+		{"TaskBranch", in.TaskBranch},
+		{"ParentBranch", in.ParentBranch},
+		{"Slug", in.Slug},
+	}
+	for _, r := range required {
+		if r.value == "" {
+			return seatengine.Table{}, fmt.Errorf("landingshed: DescribeTable: %s is empty", r.name)
+		}
+	}
+	if _, err := stencilstore.Read(in.StencilsDir, describeStencilName); err != nil {
+		return seatengine.Table{}, fmt.Errorf("landingshed: DescribeTable: %w", err)
+	}
+
+	table, err := describeSessionTable(describeStencilName, in.DescriptionPath, map[string]string{
+		"slug":                 in.Slug,
+		"decision_record_path": in.DecisionRecordPath,
+		"run_record_paths":     runRecordBullets(in),
+		"description_path":     in.DescriptionPath,
+		"task_branch":          in.TaskBranch,
+		"parent_branch":        in.ParentBranch,
+	}, cfg, reg)
+	if err != nil {
+		return seatengine.Table{}, fmt.Errorf("landingshed: DescribeTable: %w", err)
+	}
+
+	return table, nil
+}
+
+// DarnDescribeTable builds the seatengine.Table of the Describe session of a darn run, which describes the diff from the board entry and the decision record, and still reads no run record.
+// It is DescribeTable's twin in every other respect: the model and timeout come from cfg's describe keys, the role, segment and skills are the same, and an empty required field or a missing stencil is an error.
+func DarnDescribeTable(in DarnDescribeInputs, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
 	required := []struct{ name, value string }{
 		{"StencilsDir", in.StencilsDir},
 		{"ReviewDir", in.ReviewDir},
@@ -165,11 +159,14 @@ func DarnDescribeSpec(in DarnDescribeInputs, cfg Config, reg modelspec.Registry)
 	}
 	for _, r := range required {
 		if r.value == "" {
-			return shuttleengine.Spec{}, fmt.Errorf("landingshed: DarnDescribeSpec: %s is empty", r.name)
+			return seatengine.Table{}, fmt.Errorf("landingshed: DarnDescribeTable: %s is empty", r.name)
 		}
 	}
+	if _, err := stencilstore.Read(in.StencilsDir, darnDescribeStencilName); err != nil {
+		return seatengine.Table{}, fmt.Errorf("landingshed: DarnDescribeTable: %w", err)
+	}
 
-	spec, err := describeSessionSpec(darnDescribeStencilName, in.StencilsDir, in.ParentName, in.DescriptionPath, map[string]string{
+	table, err := describeSessionTable(darnDescribeStencilName, in.DescriptionPath, map[string]string{
 		"slug":                 in.Slug,
 		"review_dir":           in.ReviewDir,
 		"decision_record_path": in.DecisionRecordPath,
@@ -178,53 +175,36 @@ func DarnDescribeSpec(in DarnDescribeInputs, cfg Config, reg modelspec.Registry)
 		"parent_branch":        in.ParentBranch,
 	}, cfg, reg)
 	if err != nil {
-		return shuttleengine.Spec{}, fmt.Errorf("landingshed: DarnDescribeSpec: %w", err)
+		return seatengine.Table{}, fmt.Errorf("landingshed: DarnDescribeTable: %w", err)
 	}
 
-	return spec, nil
+	return table, nil
 }
 
-// describeSessionSpec builds a Describe session's Spec from the stencil registered as stencilName, filled with markers plus the parent and edit directives.
-// The session writes descriptionPath, its one output file, under cfg's describe model and timeout.
-func describeSessionSpec(stencilName, stencilsDir, parentName, descriptionPath string, markers map[string]string, cfg Config, reg modelspec.Registry) (shuttleengine.Spec, error) {
+// describeSessionTable builds a Describe session's table from the stencil registered as stencilName, with markers as the table's values.
+// The one lead seat writes descriptionPath, its one output file, under cfg's describe model and timeout.
+func describeSessionTable(stencilName, descriptionPath string, markers map[string]string, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
 	parsed, err := modelspec.Parse(cfg.Describe)
 	if err != nil {
-		return shuttleengine.Spec{}, fmt.Errorf("describe model-spec: %w", err)
+		return seatengine.Table{}, fmt.Errorf("describe model-spec: %w", err)
 	}
 	resolved, err := reg.Resolve(parsed)
 	if err != nil {
-		return shuttleengine.Spec{}, fmt.Errorf("describe model-spec: %w", err)
+		return seatengine.Table{}, fmt.Errorf("describe model-spec: %w", err)
 	}
 
-	template, err := stencilstore.Read(stencilsDir, stencilName)
-	if err != nil {
-		return shuttleengine.Spec{}, err
-	}
-	directive, err := parentdirective.Directive(stencilsDir, parentName, false)
-	if err != nil {
-		return shuttleengine.Spec{}, err
-	}
-	editDirective, err := editdirective.Directive(stencilsDir)
-	if err != nil {
-		return shuttleengine.Spec{}, err
-	}
-	markers[parentdirective.MarkerName] = directive
-	markers[editdirective.MarkerName] = editDirective
-	prompt, err := stencil.Fill(template, markers)
-	if err != nil {
-		return shuttleengine.Spec{}, fmt.Errorf("fill describe prompt: %w", err)
-	}
-
-	return shuttleengine.Spec{
-		Prompt:      string(prompt),
-		OutputFiles: []string{descriptionPath},
-		Model:       resolved.Model,
-		Effort:      resolved.Params["effort"],
-		Version:     resolved.Params["version"],
-		Interactive: false,
-		Role:        describeRole,
-		Segment:     segmentcolor.Describe,
-		Skills:      describeSkills,
-		Timeout:     time.Duration(cfg.DescribeTimeoutMin) * time.Minute,
+	return seatengine.Table{
+		RolePrefix: describeRole,
+		Segment:    segmentcolor.Describe,
+		Timeout:    time.Duration(cfg.DescribeTimeoutMin) * time.Minute,
+		Values:     markers,
+		Seats: []seatengine.Seat{{
+			Stencil: stencilName,
+			Model:   resolved.Model,
+			Effort:  resolved.Params["effort"],
+			Version: resolved.Params["version"],
+			Outputs: []string{descriptionPath},
+			Skills:  describeSkills,
+		}},
 	}, nil
 }

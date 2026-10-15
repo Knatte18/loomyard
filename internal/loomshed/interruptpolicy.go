@@ -27,7 +27,7 @@ const (
 // Every row maps to InterruptPolicyReinvoke except NameWebster, which maps to
 // InterruptPolicyHandback. On every row but Webster and Friction-Reflect, re-calling current_producer after an
 // interrupted invocation does not double-spawn:
-// internal/shedadapters/doc.go's "Every spawning adapter probes for a live agent first" section records that SingleLLMProducer, Bouncer, BurlerReviewProducer and BurlerFixProducer all call shuttleengine's Attach seam with the step's own OutputFiles and wait on a match before any archive.
+// internal/shedadapters/doc.go's "Every spawning adapter probes for a live agent first" section records that every spawning adapter probes for a live agent with the step's own OutputFiles and waits on a match before any archive.
 // So a re-invocation reattaches to the live agent rather than spawning a second one.
 //
 // NameFrictionReflect's premise is the attach premise:

@@ -384,8 +384,8 @@ const (
 		"---\n### [BLOCKING] colors do not match\n**Location:** target.txt:1\n**Issue:** found a mismatch\n"
 	malformedReview = "not frontmatter at all\n"
 
-	reviewHalfRole = reviewRolePrefix + "-" + seatengine.RoleChair
-	fixHalfRole    = fixRolePrefix + "-" + seatengine.RoleChair
+	reviewHalfRole = reviewRolePrefix
+	fixHalfRole    = fixRolePrefix
 )
 
 // clusterTestConfig is a one-lens, one-fan config, so a cluster profile resolves to exactly one fork.

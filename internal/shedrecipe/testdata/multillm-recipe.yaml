@@ -1,5 +1,5 @@
 # multillm-recipe.yaml is the fixture recipe multillm_fixture_test.go builds through shedbuild: one MultiLLM row
-# holding a chair and two advisors, every advisor output among the chair's inputs.
+# holding an unnamed lead and two named advisors, every advisor output among the lead's inputs.
 
 version: 1
 entry: Seat-Step
@@ -14,8 +14,7 @@ producers:
       role: fixture
       segment: discussion
       seats:
-        - name: chair
-          stencil: seatfixture-chair
+        - stencil: seatfixture-chair
           model: "opus[high]"
           inputs:
             - in/spec.md

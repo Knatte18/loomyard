@@ -270,7 +270,8 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 	//
 	// Appended or folded (see appendOrFold) on a copy of the history read at step 1, never mutating the read slice in place.
 	// An outcome the producer never reached is the one case that records nothing at all -- see the skip below.
-	appendHistory := func() []HistoryEntry {
+	// routedTo is the row a Stuck verdict's OnStuck edge bounced the run to, empty on every entry that routed nowhere.
+	appendHistory := func(routedTo string) []HistoryEntry {
 		if outcome == "" {
 			// A producer that returned an error and no outcome at all reached no verdict, so
 			// there is nothing to record -- the same reasoning the cancellation branch below
@@ -301,6 +302,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 			At:           nowRFC3339(),
 			GateAttempts: output.GateAttempts,
 			BudgetExempt: outcome == Stuck && (output.BudgetExempt || output.Halt),
+			RoutedTo:     routedTo,
 		})
 	}
 
@@ -338,7 +340,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		if s.Transient != nil {
 			callErr = MarkTransient(s.Transient(callErr), callErr)
 		}
-		nextHistory := appendHistory()
+		nextHistory := appendHistory("")
 		if persistErr := s.persistTransient(st.CurrentProducer, StateFailed, callErr.Error(), nextHistory, false, false, "", TransientOf(callErr), ""); persistErr != nil {
 			return StepResult{}, errors.Join(callErr, persistErr)
 		}
@@ -348,10 +350,10 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		return s.rerouteStuck(st, def, output)
 
 	case outcome == Stuck:
-		nextHistory := appendHistory()
 		switch {
 		// A Halt Stuck blocks at its own row whatever the row's OnStuck, and is budget-exempt through appendHistory.
 		case output.Halt || def.OnStuck == "":
+			nextHistory := appendHistory("")
 			reason := stuckReason(output.Reason)
 			if err := s.persist(st.CurrentProducer, StateBlocked, reason, nextHistory, false, ""); err != nil {
 				return StepResult{}, err
@@ -364,6 +366,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		case !output.BudgetExempt && episodeStuckCount(st.History, def, s.Producers) >= effectiveMaxBounces(def, s.MaxBounces):
 			// The boundary is pinned exactly, restated per-producer: a budget of three
 			// performs three bounce-backs and blocks on the fourth Stuck.
+			nextHistory := appendHistory("")
 			scope := fmt.Sprintf("row %q", def.Name)
 			if def.Segment != "" {
 				scope = fmt.Sprintf("segment %q", def.Segment)
@@ -374,6 +377,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 			}
 			return StepResult{Producer: def.Name, Outcome: outcome, Output: output.Path, Next: st.CurrentProducer, State: StateBlocked, Reason: reason, History: nextHistory}, nil
 		default:
+			nextHistory := appendHistory(def.OnStuck)
 			next, reason, err := s.routedState(def)
 			if err != nil {
 				return StepResult{}, err
@@ -388,7 +392,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		// The planned hand-off halt: never routed (neither OnStuck nor OnDone is read), never
 		// counted against the bounce budget, and current_producer stays put so the next step
 		// re-calls the same producer through step 3b's resume write.
-		nextHistory := appendHistory()
+		nextHistory := appendHistory("")
 		reason := stuckReason(output.Reason)
 		notice := oneLine(output.ParentNotice)
 		if err := s.persistTransient(st.CurrentProducer, StateAwaiting, reason, nextHistory, false, false, "", "", notice); err != nil {
@@ -397,7 +401,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		return StepResult{Producer: def.Name, Outcome: outcome, Output: output.Path, Next: st.CurrentProducer, State: StateAwaiting, Reason: reason, ParentNotice: notice, History: nextHistory}, nil
 
 	case outcome == Done:
-		nextHistory := appendHistory()
+		nextHistory := appendHistory("")
 		if def.OnDone == "" {
 			// current_producer keeps this producer's own name -- never the empty string --
 			// because activity.now is defined as current_producer's name and Next as the
@@ -428,7 +432,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		// routing would otherwise have an undefined fourth case, and coercing an unknown
 		// value to Stuck would consume bounce budget for a broken adapter while coercing
 		// it to Done would advance past a producer that may not have done its work.
-		nextHistory := appendHistory()
+		nextHistory := appendHistory("")
 		failErr := fmt.Errorf("shedengine: producer %q returned an unrecognised outcome %q", def.Name, outcome)
 		// Joined rather than replaced, for the same reason the producer-error arm above joins.
 		if persistErr := s.persist(st.CurrentProducer, StateFailed, failErr.Error(), nextHistory, false, ""); persistErr != nil {
@@ -596,7 +600,7 @@ func segmentEnders(producers []ProducerDef, def ProducerDef) []string {
 	return names
 }
 
-// appendOrFold returns a fresh copy of history with entry recorded: folded into the last element when both are budget-exempt Stucks with the same Producer, Output, and GateAttempts, else appended unchanged.
+// appendOrFold returns a fresh copy of history with entry recorded: folded into the last element when both are budget-exempt Stucks with the same Producer, Output, GateAttempts and RoutedTo, else appended unchanged.
 // A fold keeps the last element's At, increments its Repeats, and sets its LastAt to entry.At;
 // the last element's own Repeats/LastAt never take part in the match.
 // It never writes through history's backing array.
@@ -611,7 +615,7 @@ func appendOrFold(history []HistoryEntry, entry HistoryEntry) []HistoryEntry {
 	return append(next, entry)
 }
 
-// foldsInto reports whether entry is identical to last for folding: both budget-exempt Stucks with equal Producer, Output, and GateAttempts value, and neither a reroute-cap halt.
+// foldsInto reports whether entry is identical to last for folding: both budget-exempt Stucks with equal Producer, Output, RoutedTo and GateAttempts value, and neither a reroute-cap halt.
 func foldsInto(last, entry HistoryEntry) bool {
 	if entry.Outcome != Stuck || !entry.BudgetExempt || last.Outcome != Stuck || !last.BudgetExempt {
 		return false
@@ -619,7 +623,7 @@ func foldsInto(last, entry HistoryEntry) bool {
 	if entry.RerouteCapped || last.RerouteCapped {
 		return false
 	}
-	if last.Producer != entry.Producer || last.Output != entry.Output {
+	if last.Producer != entry.Producer || last.Output != entry.Output || last.RoutedTo != entry.RoutedTo {
 		return false
 	}
 	if (last.GateAttempts == nil) != (entry.GateAttempts == nil) {
