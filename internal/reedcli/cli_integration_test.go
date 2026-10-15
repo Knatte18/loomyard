@@ -230,5 +230,37 @@ func TestRunCLI_ColdHub(t *testing.T) {
 		if !found {
 			t.Errorf("RunCLI(status) strands = %v; want the cold add's strand %s listed", strands, guid)
 		}
+
+		// The session is up, so the follow verb, told the server's socket path, the session and the tmux binary, reaches it.
+		t.Run("FollowVerbReachesTheToldSession", func(t *testing.T) {
+			cfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: h.Location.AnchorPath()}, "reed")
+			if err != nil {
+				t.Fatalf("LoadConfig: %v", err)
+			}
+			tmuxPath, err := exec.LookPath(cfg.Tmux)
+			if err != nil {
+				t.Fatalf("resolve the tmux binary %q: %v", cfg.Tmux, err)
+			}
+			session := reedengine.SessionName(worktree)
+			socketOut, err := exec.Command(tmuxPath, "-L", reedengine.ServerName(h.Path), "display-message", "-p", "-t", "="+session+":", "#{socket_path}").Output()
+			if err != nil {
+				t.Fatalf("read the server's socket path: %v", err)
+			}
+			socketPath := strings.TrimSpace(string(socketOut))
+
+			var followOut bytes.Buffer
+			if code := RunCLIIn(worktree, &followOut, []string{"follow", "--socket", socketPath, "--session", session, "--tmux", tmuxPath}); code != 0 || followOut.Len() != 0 {
+				t.Errorf("RunCLI(follow) = %d with output %q; want 0 and no output", code, followOut.String())
+			}
+
+			followOut.Reset()
+			code := RunCLIIn(worktree, &followOut, []string{"follow", "--socket", socketPath, "--session", "no-such-session", "--tmux", tmuxPath})
+			if code != 1 {
+				t.Errorf("RunCLI(follow, unknown session) = %d; want 1", code)
+			}
+			if errMsg := envelope.Decode(t, followOut.String()).Error; !strings.Contains(errMsg, "no-such-session") {
+				t.Errorf("RunCLI(follow, unknown session) error = %q; want it to name the session", errMsg)
+			}
+		})
 	})
 }

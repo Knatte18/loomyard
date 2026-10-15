@@ -553,6 +553,12 @@ Example:
 				return nil
 			}
 
+			// Every start entry re-arms the viewer's follow state and selects the run's relevant window, whichever of keep, replace or add the status strand took.
+			// A failure never fails the start: the follow state belongs to the viewer, not to the run.
+			if err := c.reed.FollowRun(); err != nil {
+				logger.Warn("loom: could not turn the viewer's follow state on", "err", err)
+			}
+
 			// Still part of step 4, not a step of its own: this call reports nothing on the
 			// envelope, so it earns no "// Step N:" marker, and giving it one would leave a reader
 			// wondering why the numbering appears to skip something.

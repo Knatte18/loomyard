@@ -8,7 +8,8 @@
 // verdict really leaves reed holding one strand rather than two, and that a dead pane's corpse is
 // removed before a relaunch rather than left beside a second, live one -- reed's own add has no
 // upsert semantics to reconcile either case for us.
-// It also pins, in the same session, that an llm-seeded start leaves exactly one status strand beside its driver strand.
+// It also pins, in the same session, that an llm-seeded start leaves exactly one status strand beside its driver strand,
+// and that a start re-arms the session's follow state and selects the live driver strand's window while a resume does not.
 //
 // Like this package's other smoke tests it drives the real built cmd/lyx binary as a subprocess,
 // never RunCLI in-process (see smoke_test.go's own header): "lyx loom start" spawns its llm driver
@@ -216,6 +217,8 @@ func TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps(t *testing.T) {
 
 	// (2) a second bootstrap while the first driver's pane is still alive must leave exactly one
 	// strand and must not touch the live pane the first bootstrap already spawned.
+	// Follow is off first: a start entering a run whose driver is live is the path a parked run's resume through start takes, and it re-arms follow.
+	setFollow(t, eng, "off")
 	secondOut, secondExit, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "start", "--no-attach")
 	if err != nil {
 		t.Fatalf("second loom start: %v; output: %s", err, secondOut)
@@ -232,6 +235,12 @@ func TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps(t *testing.T) {
 	strand, found = driverStrand(t, eng)
 	if !found || !strand.Live {
 		t.Fatalf("driver strand after the second bootstrap = (found=%v live=%v); want it still live and untouched by the second bootstrap's own no-op", found, found && strand.Live)
+	}
+	if got := readFollow(t, eng); got != "on" {
+		t.Errorf("@lyx_follow after the second bootstrap = %q; want on", got)
+	}
+	if got, want := windowID(t, eng, "="+eng.SessionName()+":"), windowID(t, eng, strand.PaneID); got != want {
+		t.Errorf("current window after the second bootstrap = %s; want the live driver strand's window %s, the newest live agent", got, want)
 	}
 
 	// Kill the driver's own pane directly, before the third bootstrap: every strand's launch line is

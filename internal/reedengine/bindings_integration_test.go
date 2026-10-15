@@ -134,6 +134,53 @@ func (f *bindingsFixture) currentWindow(t *testing.T) string {
 // settle gives tmux time to process a key that should have changed nothing.
 func settle() { time.Sleep(doubleClickGap) }
 
+// setFollow writes @lyx_follow on the session named session.
+func (f *bindingsFixture) setFollow(t *testing.T, session, value string) {
+	t.Helper()
+	if err := f.e.tmux.run("set-option", "-t", "="+session+":", followSessionOption, value); err != nil {
+		t.Fatalf("set %s %s on %s: %v", followSessionOption, value, session, err)
+	}
+}
+
+// follow returns @lyx_follow of the session named session, empty when unset.
+func (f *bindingsFixture) follow(t *testing.T, session string) string {
+	t.Helper()
+	return f.display(t, "="+session+":", "#{"+followSessionOption+"}")
+}
+
+// assertFollow fails unless @lyx_follow of the fixture's own session reads want.
+func (f *bindingsFixture) assertFollow(t *testing.T, want string) {
+	t.Helper()
+	if got := f.follow(t, f.e.SessionName()); got != want {
+		t.Errorf("%s = %q, want %q", followSessionOption, got, want)
+	}
+}
+
+// awaitRecord waits for the recorder lyx to write its eight arguments of a follow jump and returns them.
+func (f *bindingsFixture) awaitRecord(t *testing.T) []string {
+	t.Helper()
+	var args []string
+	waitUntil(t, 5*time.Second, "the recorder never finished writing", func() bool {
+		raw, err := os.ReadFile(f.recordPath)
+		args = strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
+		return err == nil && len(args) == 8
+	})
+	return args
+}
+
+// removeRecord drops a stale recorder file.
+func (f *bindingsFixture) removeRecord(t *testing.T) {
+	t.Helper()
+	if err := os.Remove(f.recordPath); err != nil && !os.IsNotExist(err) {
+		t.Fatalf("remove stale record: %v", err)
+	}
+}
+
+// wantFollowRecord returns the arguments the recorder lyx writes for a follow jump of session on the told socket, with the tmux path checked apart.
+func wantFollowRecord(socketPath, session string) []string {
+	return []string{"reed", "follow", "--socket", socketPath, "--session", session, "--tmux"}
+}
+
 // selectStrandsWindow makes the strands' window current with pane the active one, unzoomed.
 func (f *bindingsFixture) selectStrandsWindow(t *testing.T, pane string) {
 	t.Helper()
@@ -171,6 +218,7 @@ func (f *bindingsFixture) click(t *testing.T, row int, label string) {
 func TestBindings_AltZTogglesStrandAndSelvageZoomInTheStrandsWindowOnly(t *testing.T) {
 	f := newBindingsFixture(t)
 	f.selectStrandsWindow(t, f.alpha.PaneID)
+	f.setFollow(t, f.e.SessionName(), "on")
 
 	f.send(t, "\x1bz")
 	waitUntil(t, 5*time.Second, "Alt+z never zoomed the strand", func() bool { return f.zoomed(t) == "1" })
@@ -194,6 +242,7 @@ func TestBindings_AltZTogglesStrandAndSelvageZoomInTheStrandsWindowOnly(t *testi
 	if got := f.zoomed(t); got != "0" {
 		t.Errorf("Alt+z in the second window zoomed the strands' window: flag %q, want 0", got)
 	}
+	f.assertFollow(t, "on")
 }
 
 func TestBindings_AltUpDownStepWindowsInIndexOrderPastHiddenOnes(t *testing.T) {
@@ -221,7 +270,9 @@ func TestBindings_AltUpDownStepWindowsInIndexOrderPastHiddenOnes(t *testing.T) {
 		t.Fatalf("select-window overview: %v", err)
 	}
 
-	for _, step := range []struct {
+	f.setFollow(t, f.e.SessionName(), "on")
+
+	for i, step := range []struct {
 		key  string
 		want string
 	}{
@@ -237,59 +288,138 @@ func TestBindings_AltUpDownStepWindowsInIndexOrderPastHiddenOnes(t *testing.T) {
 	} {
 		f.send(t, step.key)
 		waitUntil(t, 5*time.Second, "the Alt step never reached the "+step.want+" window", func() bool { return f.currentWindow(t) == step.want })
+		if i == 0 {
+			f.assertFollow(t, "off")
+		}
 	}
 }
 
 func TestBindings_StatusBarClicksSelectAndZoomByRangeType(t *testing.T) {
 	f := newBindingsFixture(t)
+	session := f.e.SessionName()
+	socketPath := strings.TrimSpace(mustTmuxOutput(t, f.e, "display-message", "-p", "#{socket_path}"))
+	// The strand, shell and window clicks write follow off, so each starts from follow on.
+	clickFollowingOn := func(row int, label string) {
+		t.Helper()
+		f.setFollow(t, session, "on")
+		f.click(t, row, label)
+	}
 
 	// A strand button selects its pane and zooms it, and a second click keeps the zoom on.
 	f.selectStrandsWindow(t, f.alpha.PaneID)
-	f.click(t, 0, " alpha ")
+	clickFollowingOn(0, " alpha ")
 	waitUntil(t, 5*time.Second, "a click on alpha's button never zoomed it", func() bool {
 		return f.activePane(t) == f.alpha.PaneID && f.zoomed(t) == "1"
 	})
-	f.click(t, 0, " beta ")
+	f.assertFollow(t, "off")
+	clickFollowingOn(0, " beta ")
 	waitUntil(t, 5*time.Second, "a click on beta's button never moved the zoom to it", func() bool {
 		return f.activePane(t) == f.beta.PaneID && f.zoomed(t) == "1"
 	})
-	f.click(t, 0, " beta ")
+	f.assertFollow(t, "off")
+	clickFollowingOn(0, " beta ")
 	settle()
 	if got := f.zoomed(t); got != "1" {
 		t.Errorf("a second click on beta's button left zoom flag %q, want 1 (never toggled off)", got)
 	}
+	f.assertFollow(t, "off")
 
 	// The shell button unzooms the strands' window.
-	f.click(t, 0, " shell ")
+	clickFollowingOn(0, " shell ")
 	waitUntil(t, 5*time.Second, "a click on shell never unzoomed the strands' window", func() bool { return f.zoomed(t) == "0" })
+	f.assertFollow(t, "off")
 
-	// A window button selects that window, and the shell button from there returns to the strands' window.
-	f.click(t, 0, " extra ")
+	// A window button selects that window, and a click on the current window's own button writes follow off too.
+	clickFollowingOn(0, " extra ")
 	waitUntil(t, 5*time.Second, "a click on the extra window's button never selected it", func() bool { return f.currentWindow(t) == "extra" })
-	f.click(t, 0, " shell ")
+	f.assertFollow(t, "off")
+	clickFollowingOn(0, " extra ")
+	settle()
+	if got := f.currentWindow(t); got != "extra" {
+		t.Errorf("a click on the current window's button left window %q current, want extra", got)
+	}
+	f.assertFollow(t, "off")
+
+	// The shell button from the second window returns to the strands' window.
+	clickFollowingOn(0, " shell ")
 	waitUntil(t, 5*time.Second, "a click on shell from the second window never returned to the strands' window", func() bool {
 		return f.currentWindow(t) != "extra"
 	})
+	f.assertFollow(t, "off")
 
 	// A strand button from the second window selects and zooms the strand in its own window.
 	if err := f.e.tmux.run("select-window", "-t", f.otherWindow); err != nil {
 		t.Fatalf("select-window extra: %v", err)
 	}
-	f.click(t, 0, " alpha ")
+	clickFollowingOn(0, " alpha ")
 	waitUntil(t, 5*time.Second, "a click on alpha's button from the second window never zoomed it", func() bool {
 		return f.currentWindow(t) != "extra" && f.activePane(t) == f.alpha.PaneID && f.zoomed(t) == "1"
 	})
+	f.assertFollow(t, "off")
 
-	// A run button switches the client to that session.
+	// The follow button on line 2 toggles the state: a click from on writes off, keeps the window and runs no recorder.
+	// A click from off writes on and runs the jump line with the told socket, this session and the tmux path.
+	f.setFollow(t, session, "on")
+	f.removeRecord(t)
+	windowBefore := f.currentWindow(t)
+	f.click(t, 1, " follow ")
+	waitUntil(t, 5*time.Second, "a click on the lit follow button never turned follow off", func() bool { return f.follow(t, session) == "off" })
+	settle()
+	if got := f.currentWindow(t); got != windowBefore {
+		t.Errorf("a click on the lit follow button left window %q current, want %q", got, windowBefore)
+	}
+	if _, err := os.Stat(f.recordPath); err == nil {
+		t.Errorf("a click on the lit follow button ran the recorder, want no jump")
+	}
+	f.click(t, 1, " follow ")
+	waitUntil(t, 5*time.Second, "a click on the unlit follow button never turned follow on", func() bool { return f.follow(t, session) == "on" })
+	args := f.awaitRecord(t)
+	if want := wantFollowRecord(socketPath, session); !slices.Equal(args[:7], want) {
+		t.Errorf("recorded arguments = %q, want %q followed by the tmux path", args, want)
+	}
+	if filepath.Base(args[7]) != filepath.Base(f.e.cfg.Tmux) || !filepath.IsAbs(args[7]) {
+		t.Errorf("recorded tmux path = %q, want the absolute path of %q", args[7], f.e.cfg.Tmux)
+	}
+
+	// A run button switches the client to that session and leaves the follow state of both sessions as it was.
+	f.setFollow(t, session, "on")
+	f.setFollow(t, "other", "off")
 	f.click(t, 1, " other ")
 	waitUntil(t, 5*time.Second, "a click on the other session's button never switched the client", func() bool {
 		return strings.TrimSpace(mustTmuxOutput(t, f.e, "display-message", "-p", "-c", f.client, "#{session_name}")) == "other"
 	})
+	if got := f.follow(t, session); got != "on" {
+		t.Errorf("%s of the left session = %q after the session click, want on unchanged", followSessionOption, got)
+	}
+	if got := f.follow(t, "other"); got != "off" {
+		t.Errorf("%s of the entered session = %q after the session click, want off unchanged", followSessionOption, got)
+	}
+
+	// The jump line names the clicking client's session as one argument, however the name is spelled.
+	// The session shows two status lines only because it is given them, since reed pins that on its own session alone.
+	const oddSession = "sp ace's #1"
+	if err := f.e.tmux.run("new-session", "-d", "-s", oddSession); err != nil {
+		t.Fatalf("new-session %q: %v", oddSession, err)
+	}
+	if err := f.e.tmux.run("set-option", "-t", "="+oddSession+":", "status", "2"); err != nil {
+		t.Fatalf("status 2 on %q: %v", oddSession, err)
+	}
+	if err := f.e.tmux.run("switch-client", "-c", f.client, "-t", "="+oddSession); err != nil {
+		t.Fatalf("switch-client to %q: %v", oddSession, err)
+	}
+	f.setFollow(t, oddSession, "off")
+	f.removeRecord(t)
+	f.click(t, 1, " follow ")
+	odd := f.awaitRecord(t)
+	if odd[5] != oddSession {
+		t.Errorf("recorded session = %q, want %q intact (full record %q)", odd[5], oddSession, odd)
+	}
 }
 
 func TestBindings_AltLeftRightRunTheSwitchCommandWithTheToldPaths(t *testing.T) {
 	f := newBindingsFixture(t)
 	socketPath := strings.TrimSpace(mustTmuxOutput(t, f.e, "display-message", "-p", "#{socket_path}"))
+	f.setFollow(t, f.e.SessionName(), "on")
 
 	for _, step := range []struct{ key, direction string }{
 		{"\x1b[1;3C", "--next"},
@@ -317,4 +447,5 @@ func TestBindings_AltLeftRightRunTheSwitchCommandWithTheToldPaths(t *testing.T) 
 			t.Errorf("recorded tmux path = %q, want the absolute path of %q", args[8], f.e.cfg.Tmux)
 		}
 	}
+	f.assertFollow(t, "on")
 }

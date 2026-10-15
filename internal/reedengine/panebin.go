@@ -116,6 +116,27 @@ func composeSwitchCommand(sh shell.Shell, next bool, socketPath, tmuxPath string
 	return strings.Join(words, " "), true
 }
 
+// composeFollowCommand returns the shell line the follow button's run-shell runs to jump back to the run: the absolute path of this binary, then `reed follow` with the told socket and tmux paths and the clicking client's session, on sh's dialect.
+// It reads the running process's own path via executablePath, so the button names the `lyx` that pinned it, never the one PATH resolves.
+// Every pinned token is quoted once and then has each # doubled, because the line is format-expanded when the button is clicked;
+// #{q:session_name} is the one value left for that expansion, as its own unquoted word, so the session reaches the verb as one quoted argument.
+// An unresolvable executable path logs a named logger.Warn and returns false, so the caller pins no follow jump.
+func composeFollowCommand(sh shell.Shell, socketPath, tmuxPath string) (string, bool) {
+	exe, err := executablePath()
+	if err != nil {
+		logger.Warn("reed: could not resolve this binary, pinning no follow jump", "err", err)
+		return "", false
+	}
+	pinned := func(token string) string { return strings.ReplaceAll(token, "#", "##") }
+	words := []string{
+		pinned(sh.Invoke(exe)), "reed", "follow",
+		"--socket", pinned(sh.Quote(socketPath)),
+		"--session", "#{q:session_name}",
+		"--tmux", pinned(sh.Quote(tmuxPath)),
+	}
+	return strings.Join(words, " "), true
+}
+
 // launchScriptReedSegment and launchScriptLaunchSegment are reed's own relative subpath under the state dir for per-strand launch scripts.
 const (
 	launchScriptReedSegment   = "reed"

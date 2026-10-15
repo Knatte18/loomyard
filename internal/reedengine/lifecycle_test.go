@@ -145,7 +145,7 @@ func TestUp_BootValidation(t *testing.T) {
 	}
 }
 
-// TestServerSpawnArgv pins the argv of the server-starting invocation: the debug flags first, `-f /dev/null` ahead of `-L` everywhere but Windows, then new-session with the configured shell, and off Windows the two chained session pins last.
+// TestServerSpawnArgv pins the argv of the server-starting invocation: the debug flags first, `-f /dev/null` ahead of `-L` everywhere but Windows, then new-session with the configured shell, and off Windows the three chained session pins last.
 func TestServerSpawnArgv(t *testing.T) {
 	e := newTestEngine(t)
 	session := []string{
@@ -156,10 +156,11 @@ func TestServerSpawnArgv(t *testing.T) {
 		"-y", strconv.Itoa(e.cfg.Height),
 		e.cfg.Shell,
 	}
-	// The chained pins of the new session: not destroyed when unattached, and tagged as reed's.
+	// The chained pins of the new session: not destroyed when unattached, tagged as reed's, and following the run.
 	posixTail := []string{
 		";", "set-option", "-t", "=" + e.SessionName() + ":", "destroy-unattached", "off",
 		";", "set-option", "-t", "=" + e.SessionName() + ":", "@lyx_reed_session", "on",
+		";", "set-option", "-t", "=" + e.SessionName() + ":", "@lyx_follow", "on",
 	}
 	tests := []struct {
 		name      string

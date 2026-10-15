@@ -310,11 +310,12 @@ func (e *Engine) newWindowLocked(placement []string, argv []string) (string, err
 }
 
 // openOwnWindowLocked opens a detached window for s named name and returns the id of its pane.
-// The window is created with -d, so the client's current window and active pane stay where they are; an own-window strand's window is then selected only when newAgentWindowSelected holds for the window the session showed before it opened, and carries no @lyx_unseen then.
+// The window is created with -d, so the client's current window and active pane stay where they are; an own-window strand's window is then selected only when it takes the viewer, which is a Focus display or, unless it sets KeepViewer, a session whose follow state reads on, and carries no @lyx_unseen then.
+// The window it opens never changes the follow state.
 // An overview window is never selected here.
 // It is placed behind every earlier agent window and before the shell window, and a relaunch keeps the place of the window its old pane was in.
 // It carries no command, so the pane is the default login shell like every strand pane.
-// An overview strand's window is named overviewWindowName and opens before the lowest-index window, hidden ones included, so it holds the lowest index; it carries the own marker but neither @strand_color nor @lyx_unseen.
+// An overview strand's window is named overviewWindowName and opens before the lowest-index window, hidden ones included, so it holds the lowest index; it carries the own marker and the overview marker but neither @strand_color nor @lyx_unseen.
 // A non-empty group is recorded on the window, which is how a group's shared window is found later.
 // A window option that fails to set is logged and never fails the open; a window missing the own marker is only never ended by reconcile.
 func (e *Engine) openOwnWindowLocked(st *ReedState, s *Strand, name, group string) (string, error) {
@@ -341,7 +342,7 @@ func (e *Engine) openOwnWindowLocked(st *ReedState, s *Strand, name, group strin
 		name = overviewWindowName
 		placement = overviewWindowInsertArgs(windows)
 	} else {
-		selectNew = e.newAgentWindowTakesViewerLocked(st, s.Display)
+		selectNew = e.newAgentWindowTakesViewerLocked(s.Display)
 	}
 	out, err := e.newWindowLocked(placement,
 		[]string{"-P", "-F", "#{pane_id} #{window_id}", "-n", name, "-c", e.geom.PaneCwd})
@@ -360,7 +361,9 @@ func (e *Engine) openOwnWindowLocked(st *ReedState, s *Strand, name, group strin
 		}
 	}
 	setOption(ownWindowOption, "1")
-	if !overview {
+	if overview {
+		setOption(overviewWindowOption, "1")
+	} else {
 		if color, ok := e.segmentColor(s.Segment); ok {
 			if tmuxColor, ok := segmentcolor.TmuxColor(color); ok {
 				setOption("@strand_color", tmuxColor)

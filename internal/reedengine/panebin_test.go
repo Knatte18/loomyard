@@ -278,7 +278,7 @@ func TestStageLaunchScript_WriteFailureDegrades(t *testing.T) {
 	}
 }
 
-// TestComposeSwitchCommand pins the switch command a key binding runs: the pinned tokens are quoted once and have every # doubled, #{q:client_name} stays an unquoted word, and an unresolvable executable pins nothing.
+// TestComposeSwitchCommand pins the switch command a key binding runs and the follow command the follow button runs: the pinned tokens are quoted once and have every # doubled, #{q:client_name} or #{q:session_name} stays an unquoted word, and an unresolvable executable pins nothing.
 func TestComposeSwitchCommand(t *testing.T) {
 	const (
 		exe        = "/opt/it's#here/lyx"
@@ -317,6 +317,35 @@ func TestComposeSwitchCommand(t *testing.T) {
 		}
 		if !strings.Contains(logs.String(), "pinning no session-switch binding") {
 			t.Errorf("log = %q, want a named warning that no switch binding is pinned", logs.String())
+		}
+	})
+
+	t.Run("follow", func(t *testing.T) {
+		withInjectedExecutablePath(t, func() (string, error) { return exe, nil })
+		sh := shell.Posix()
+
+		got, ok := composeFollowCommand(sh, socketPath, tmuxPath)
+
+		want := sh.Invoke(exe) + " reed follow --socket " + sh.Quote(socketPath) + " --session #{q:session_name} --tmux " + sh.Quote(tmuxPath)
+		want = strings.ReplaceAll(want, "#{q:session_name}", "\x00")
+		want = strings.ReplaceAll(want, "#", "##")
+		want = strings.ReplaceAll(want, "\x00", "#{q:session_name}")
+		if !ok || got != want {
+			t.Errorf("composeFollowCommand = (%q, %v), want (%q, true)", got, ok, want)
+		}
+	})
+
+	t.Run("follow with an unresolvable executable pins nothing", func(t *testing.T) {
+		withInjectedExecutablePath(t, func() (string, error) { return "", errors.New("no executable") })
+		logs := logcapture.CaptureVerbose(t)
+
+		got, ok := composeFollowCommand(shell.Posix(), socketPath, tmuxPath)
+
+		if ok || got != "" {
+			t.Errorf("composeFollowCommand with an unresolvable executable = (%q, %v), want (\"\", false)", got, ok)
+		}
+		if !strings.Contains(logs.String(), "pinning no follow jump") {
+			t.Errorf("log = %q, want a named warning that no follow jump is pinned", logs.String())
 		}
 	})
 }

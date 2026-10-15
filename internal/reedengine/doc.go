@@ -57,11 +57,17 @@
 // SwitchClient (switch.go) is the engine-less function behind `lyx reed switch`: it addresses a told server by socket path and issues list-sessions, display-message and switch-client on it, and nothing else.
 // It is the only reed code that issues switch-client.
 //
+// FollowSession (follow.go) is the engine-less function behind `lyx reed follow`: it addresses a told session of a told server by socket path and issues list-panes, set-option @lyx_follow on and, when a window is relevant, select-window, and nothing else.
+// It reads no working directory, config or state, so it picks the window from tmux facts alone: the highest-index window carrying @lyx_own and not @lyx_overview that holds a pane that is not dead, else the window carrying @lyx_overview, else none.
+// openOwnWindowLocked sets the window option @lyx_overview beside @lyx_own on an overview window, so that rule can tell the overview from an agent window; an overview window opened by an older lyx carries no marker and counts as an agent window, which it can win only when no other agent is live, the same outcome as the overview fallback.
+// A failed listing, which is how an unknown session answers, returns an error before any write, a failed option write returns before any select, and a failed select returns an error naming the window.
+//
 // Every strand pane carries the user options @strand (the role segment of its name, or the full name when it does not parse) and @strand_color (the tmux color of its segment, unset when it has none),
 // and the strand window carries @lyx_strands.
 // Launch sets the pane options and boot marks the strand window; every attach pre-flight marks the window and re-asserts both pane options on every strand bound to a live pane, so a session or strand spawned by an older lyx gets them at its next attach.
 // The Selvage pane carries the user option @lyx_console (consolePaneOption), set when it is split and re-asserted by every attach pre-flight.
 // The options are display only: the status bar and the key bindings read them, no Go decision does, and Selvage never gets @strand or @strand_color.
+// The session option @lyx_follow is the one decision-bearing session option reed reads; @strand, @strand_color, @lyx_unseen and the wait marks stay display only.
 // A strand's Segment is an opaque field its spawner names through AddSpec.Segment; reed reads it only to look up the segment's color, which the strand an add or replace returns and Status carry as Color.
 // An own window gets a status-bar button on line 1 in its segment's color, read from the window options @lyx_own and @strand_color, labelled with the window name and carrying its panes' wait marks.
 // The button is lit while the window is current, and otherwise that color on dark grey, underscored while the window carries @lyx_unseen.
@@ -70,12 +76,20 @@
 // The shell button is a range=user|shell button labelled shell, lit while the strands' window is active and not zoomed; line 1 follows window index order, so the overview's button is first, the agents' follow in start order and the shell button comes last.
 // An overview window's button is an own-window button with no @strand_color, which renders as the plain window-button style.
 // A window carrying @lyx_hidden still gets no button, and no Go decision reads @strand_color or @lyx_unseen.
+// Line 2 lists the sessions, then the follow button, a range=user|follow button labelled follow that sits left of the time, lit green while the current session's @lyx_follow is not off and unlit while it is.
 //
 // The navigation bindings (bindings.go) are root-table bindings on the hub's reed server, issued by pinBindingsLocked at the end of the geometry pins, so boot and every attach pre-flight pin them and a server booted by an older lyx gets them at its next attach.
 // Alt+z zooms or unzooms a strand pane or Selvage in the strands' window, and does nothing in any other window;
 // Alt+Up and Alt+Down step to the previous or next window in index order, in every window and wrapping with tmux's own window wrap: a step that lands on a window carrying @lyx_hidden goes on, forward to the session's first window, the overview, and back to the strands' window, the shell, which is one conditional step since hidden windows sit after the shell (on psmux, where the order is best-effort, a step may land on a hidden window);
 // Alt+Left and Alt+Right run `lyx reed switch --prev|--next` in the background through run-shell, naming the absolute path of the `lyx` that pinned them (panebin.go's composeSwitchCommand), never PATH's;
-// and a left click on the status bar dispatches on its range: the shell button, which heads the strands' window's pane buttons, selects and unzooms the strands' window, a strand button selects that pane and zooms it (never toggling the zoom off), a window button selects that window, and a session button switches the client to that session.
+// and a left click on the status bar dispatches on its range: the shell button, which heads the strands' window's pane buttons, selects and unzooms the strands' window, a strand button selects that pane and zooms it (never toggling the zoom off), a window button selects that window, a session button switches the client to that session, and the follow button toggles the follow state.
+// The follow state is written off by the bindings that change window by hand: Alt+Up and Alt+Down start with `set-option @lyx_follow off`, so the write lands also when the step wraps onto the current window, and the shell, strand and window clicks start with the same write, also for a click on the current window.
+// Each write is untargeted, so it hits the session of the client that pressed the key or clicked; Alt+z, Alt+Left, Alt+Right and the session click leave the follow state alone.
+// The follow button writes off when the state is on and changes no window; from off it writes on and, when the jump line is pinned, runs `lyx reed follow` in the background through run-shell, so the viewer jumps back to the run.
+// The jump line (panebin.go's composeFollowCommand) names the absolute path of the `lyx` that pinned it and the clicking client's session as `#{q:session_name}`, and rides the server-global option @lyx_follow_command, which the click runs through `#{E:...}`, keeping the line out of tmux's nested command-string quoting.
+// pinBindingsLocked sets that option when the line resolves and unsets it otherwise, so a click from off then only writes follow on and the next agent window takes the viewer.
+// A psmux without bind-key or run-shell pins none of these, never writes off, and its sessions always follow.
+// Bound: the bindings only ever write off, and the follow button on, to the clicking client's session, and the button runs one `lyx` verb whose effect FollowSession bounds; a window change outside these bindings leaves follow on.
 // Bound: these five keys and the left status click are taken from every pane on the server, so a program in a pane, Claude Code included, never receives them; no other key or mouse binding is changed, and tmux's right-click menus keep their defaults.
 // The shell and strand-button branches find the strands' window through the @lyx_strands marker, expanded at click time to a tmux-issued window id (`@<n>`), never a config value or free text.
 // tmux resolves a pane range's `=` target only inside the client's current window, so the strand-button branch selects the strands' window first.
@@ -347,13 +361,20 @@
 // An invalid window_split or window_share_max never refuses a removal: the layout is skipped and the key is reported in Removed.ConfigWarning.
 //
 // Focus rules: an agent window is a window holding a pane bound to an own-window strand; the overview, the shell and hidden windows are not agent windows.
-// An automatic window switch happens only at three points, each deciding from reed state, window ids, strand roles and pane liveness alone, never from @lyx_unseen, @lyx_hidden or a wait mark, and none moves a viewer off the shell or an older live agent window the operator picked by hand.
+// The follow state is the session option @lyx_follow (followSessionOption): boot sets it on off Windows, and it is off only while it reads off, so an unset option, as on Windows or in a session booted by an older lyx, reads on.
+// followingLocked reads it, and a failed read counts as off for that one decision and is logged at Warn, so a broken read never moves a viewer.
+// It is the one decision-bearing session option reed reads.
+// An automatic window switch happens only at three points, each deciding from reed state, window ids, strand roles, pane liveness and the follow state alone, never from @lyx_unseen, @lyx_hidden or a wait mark.
 // relevantWindow is the target of two of them: among the listed windows not about to end, the highest-index agent window holding a pane that is not dead, else the overview strand's window, else none.
-// Attach (attachWindowSelectionLocked, resolved by AttachArgv right after the shell check) appends `; select-window -t <relevant window>` to every argv it returns, and appends nothing when another client is attached or a listing fails.
-// A new agent window is selected by openOwnWindowLocked, for an own-window strand and never the overview, when newAgentWindowSelected holds: always for a Focus strand, never for one whose display sets only KeepViewer, otherwise only when the viewer is on the overview window, on an agent window whose every pane is dead, on the relevant window as listed before the new one opens, or on a window holding a live own-window pane of a strand whose role is the driver role; it then carries no @lyx_unseen.
-// So an attached viewer follows the newest agent window as strands spawn, and a viewer the operator moved to another window stays there.
+// Attach (attachWindowSelectionLocked, resolved by AttachArgv right after the shell check) appends `; select-window -t <relevant window>` to every argv it returns, and appends nothing when a listing fails or no window is relevant.
+// Beside another attached client, or when the client listing fails, it appends the selection only while follow reads on, reading the follow state only then and never writing it, so with follow on an attach moves every client of the session to the relevant window, including one on a window it reached outside reed's bindings, and a failed follow read counts as off.
+// A new agent window is selected by openOwnWindowLocked, for an own-window strand and never the overview, when newAgentWindowSelected holds: always for a Focus strand, never for one whose display sets only KeepViewer, otherwise exactly when the follow state reads on; it then carries no @lyx_unseen.
+// With follow on, a new agent window takes the viewer wherever it is, the shell included; with follow off, it leaves the viewer where it is.
+// Opening a window never changes the follow state.
+// FollowRun is the one engine operation that turns follow on, beside the engine-less FollowSession: under the operation lock it sets the option on and selects the relevant window, the newest live agent window, else the overview, else nothing, for whichever client views the session.
+// It persists no state, a failed option write is logged and the select still runs, and AddStrand, ReplaceStrand, Resume and Up never call it.
 // Every client of a session shares its current window, so the one select-window moves each attached client.
-// A viewed window ending, by RemoveStrand, by ReplaceStrand and by reconcile ending an orphan own window (selectRelevantWindowIfCurrentLocked), moves a viewer on it to the relevant window among those left, never the shell, and with none left to tmux.
+// A viewed window ending, by RemoveStrand, by ReplaceStrand and by reconcile ending an orphan own window (selectRelevantWindowIfCurrentLocked), moves a viewer on it to the relevant window among those left, never the shell, and with none left to tmux; this move neither reads nor changes the follow state.
 // A viewer elsewhere is never moved, and a strand leaving a shared window that stays open ends no window and switches nothing.
 // An automatic switch races an operator's own window change by at most one switch.
 //

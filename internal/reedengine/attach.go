@@ -89,8 +89,8 @@ func chainedAttachArgv(socket, session, windowTarget, layout string, pins []rend
 //
 // Right after that check, and ahead of every layout guard, it resolves the attach's window selection: a trailing `; select-window -t <relevant window>`, the newest live agent window, else the overview, never the shell.
 // The selection is appended to every argv it returns, the chained one after its zoom restore and the bare one of every degrade path past the state read, and also when no client size is known.
-// A second attach never moves a viewer: the selection is dropped when another client is attached, when the client listing fails, or when no window is relevant.
-// Failing to take the lock, read the session or the state, or list the clients drops it too, each logged at Warn.
+// When another client is attached, or the client listing fails, the selection is kept only while the session's follow state reads on, and dropped while it reads off or its read fails; it is dropped too when no window is relevant.
+// Failing to take the lock, read the session or the state still drops it, each logged at Warn.
 // A race with the operator's own window change costs at most one switch.
 //
 // The pre-flight also refreshes the session's window-resized resize-pin hook, computed against the
@@ -128,8 +128,8 @@ func (e *Engine) AttachArgv(cols, rows int) []string {
 		e.ensureShellWindowLocked(st)
 
 		// The window the attaching client lands on is resolved ahead of every layout guard, so every argv past this point carries it.
-		// A second attach never moves a viewer, so another attached client drops it.
-		if !anotherClient {
+		// Beside another attached client the selection is kept only while follow reads on; the follow state is read only then, and attach never writes it.
+		if !anotherClient || e.followingLocked() {
 			selection = e.attachWindowSelectionLocked(st)
 		}
 		if !sizeKnown {
@@ -275,7 +275,7 @@ func parseClientList(out string) []attachedClient {
 
 // warnMismatchedClientsLocked lists this session's currently attached clients and logs one logger.Warn per client whose size differs from cols/rows, the size this attach was told.
 // With no client size known it warns about no mismatch.
-// It reports whether another client is attached, a failed listing counting as one, which is what drops the attach window selection from the argv.
+// It reports whether another client is attached, a failed listing counting as one, which AttachArgv's selection gate reads.
 // It never blocks the chain: this is the uncovered subset of the resize-dot-fill root-cause model (see the discussion's root-cause-model decision).
 // Tmux is correctly painting real estate no other client's window can cover, and the warning's whole job is to name the specific other terminal an operator should go look at, not to repair anything.
 //
