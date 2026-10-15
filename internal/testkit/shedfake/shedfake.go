@@ -422,18 +422,18 @@ func (f *MergeShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error
 type (
 	masterStarter  struct{ websterengine.MasterStarter }
 	strandStopper  struct{ websterengine.StrandStopper }
-	shuttleEngine  struct{ shuttleengine.ForkAuditor }
+	auditEngines   struct{ websterengine.AuditEngines }
 	refMatcherSeam struct{ websterengine.RefMatcher }
 	indexSeam      struct{ planindex.Index }
 )
 
-// WebsterSeams returns a RunDeps whose Starter, Stopper, Engine and RefMatcher, and the Index of its Geom, are placeholders.
+// WebsterSeams returns a RunDeps whose Starter, Stopper, Engines and RefMatcher, and the Index of its Geom, are placeholders.
 // Each embeds its interface in an empty struct, so it is non-nil for a constructor check and panics if any method is called.
 func WebsterSeams() websterengine.RunDeps {
 	return websterengine.RunDeps{
 		Starter:    masterStarter{},
 		Stopper:    strandStopper{},
-		Engine:     shuttleEngine{},
+		Engines:    auditEngines{},
 		RefMatcher: refMatcherSeam{},
 		ReadOnly:   func(string) bool { return false },
 		Geom:       websterengine.Geometry{Index: indexSeam{}},

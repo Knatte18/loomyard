@@ -4,12 +4,15 @@
 package websterengine_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -17,7 +20,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -44,6 +46,11 @@ func (c *recoverFakeClock) Now() time.Time        { return c.now }
 func (c *recoverFakeClock) Sleep(d time.Duration) { c.now = c.now.Add(d) }
 
 var _ websterengine.Clock = (*recoverFakeClock)(nil)
+
+// namedEngines registers engine under name, which is also the set's default.
+func namedEngines(name string, engine shuttleengine.Engine) shuttleengine.EngineSet {
+	return shuttleengine.NewEngineSet(name, map[string]shuttleengine.Engine{name: engine})
+}
 
 // recoverFixture is a fully-wired set of RecoverBatch dependencies: a temp
 // directory holding base.txt as WorktreeRoot over a fakeGit at one commit, a one-batch plan backed
@@ -94,9 +101,9 @@ func newRecoverFixtureOver(t *testing.T, worktree string, git websterengine.Git)
 	shuttleCfg := shuttleengine.Config{RunDir: t.TempDir(), RunTimeoutMin: 60, StartupTimeoutS: 30}
 	runner := shuttleengine.NewRunner(reed, shuttlefake.EngineSet(engine), worktree, worktree, shuttleCfg)
 
-	roles := map[websterengine.Role]modelspec.Resolved{
-		websterengine.RoleMaster:   {Engine: "claude", Model: "master-model", Params: map[string]string{}},
-		websterengine.RoleRecovery: {Engine: "claude", Model: "recovery-model", Params: map[string]string{"effort": "high"}},
+	roles := map[websterengine.Role]shuttleengine.ModelChoice{
+		websterengine.RoleMaster:   {Model: "master-model"},
+		websterengine.RoleRecovery: {Model: "recovery-model", Effort: "high"},
 	}
 
 	reportsDir := t.TempDir()
@@ -116,7 +123,7 @@ func newRecoverFixtureOver(t *testing.T, worktree string, git websterengine.Git)
 		State:      state,
 		Roles:      roles,
 		Config:     websterengine.Config{SelfFixCap: 2, RecoveryTimeoutMin: 30},
-		Engine:     engine,
+		Engines:    shuttlefake.EngineSet(engine),
 		Reed:       reed,
 		Stopper:    runner,
 		ShuttleCfg: shuttleCfg,
@@ -676,7 +683,7 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 			// and the queued completion notification started the next turn, which writes the report.
 			name: "a turn end whose finished shell's notification starts the next turn keeps the strand running",
 			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
-				fx.Deps.Engine = claudeengine.New()
+				fx.Deps.Engines = namedEngines(shuttlefake.EngineName, claudeengine.New())
 				appendClaudeHook(t, fx, "Stop", clk.now, map[string]any{"background_tasks": []any{
 					map[string]any{"id": "bgate0001", "type": "shell", "status": "completed", "command": "lyx gate test ./x"},
 				}})
@@ -689,7 +696,7 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 			// The bound Master's wait applies: a shell the Stop payload reports running is live work and never expires.
 			name: "a turn end waiting on a payload-reported shell keeps the strand running past background_shell_wait_min",
 			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
-				fx.Deps.Engine = claudeengine.New()
+				fx.Deps.Engines = namedEngines(shuttlefake.EngineName, claudeengine.New())
 				appendClaudeHook(t, fx, "Stop", clk.now, map[string]any{"background_tasks": []any{
 					map[string]any{"id": "bgate0001", "type": "shell", "status": "running", "command": "lyx gate test ./x"},
 				}})
@@ -702,7 +709,7 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 			// A shell only the transcript reports keeps the strand running past background_shell_wait_min, like a payload-reported one: no shell expires, recovery_timeout_min bounds it.
 			name: "a turn end waiting on a transcript-reported shell keeps the strand running past background_shell_wait_min",
 			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
-				fx.Deps.Engine = claudeengine.New()
+				fx.Deps.Engines = namedEngines(shuttlefake.EngineName, claudeengine.New())
 				transcript := filepath.Join(t.TempDir(), "session.jsonl")
 				launch := `{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"lyx gate test ./x","run_in_background":true}}]}}` + "\n" +
 					`{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_1"}]},"toolUseResult":{"backgroundTaskId":"bgate0001"}}` + "\n"
@@ -717,7 +724,7 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 		{
 			name: "a report present beside a turn end with a shell outstanding classifies done",
 			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
-				fx.Deps.Engine = claudeengine.New()
+				fx.Deps.Engines = namedEngines(shuttlefake.EngineName, claudeengine.New())
 				appendClaudeHook(t, fx, "Stop", clk.now, map[string]any{"background_tasks": []any{
 					map[string]any{"id": "bgate0001", "type": "shell", "status": "running", "command": "lyx gate test ./x"},
 				}})
@@ -732,11 +739,47 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 		{
 			name: "a plain turn end that has stood past the settle is dead asking",
 			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
-				fx.Deps.Engine = claudeengine.New()
+				fx.Deps.Engines = namedEngines(shuttlefake.EngineName, claudeengine.New())
 				appendClaudeHook(t, fx, "Stop", clk.now.Add(-10*time.Second), map[string]any{"background_tasks": []any{}})
 				return secondCall{}
 			},
 			check: checkRecoveryAsking,
+		},
+		{
+			name: "a recorded session whose engine key is absent reads its turn end through the default",
+			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
+				fx.Deps.Engines = namedEngines(shuttlefake.EngineName, claudeengine.New())
+				fx.Deps.State.Batches[1].RecoveryEngines = nil
+				appendClaudeHook(t, fx, "Stop", clk.now.Add(-10*time.Second), map[string]any{"background_tasks": []any{}})
+				return secondCall{}
+			},
+			check: checkRecoveryAsking,
+		},
+		{
+			name: "a live record listing no session, as written before engines were recorded, reads through the default",
+			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
+				fx.Deps.Engines = namedEngines(shuttlefake.EngineName, claudeengine.New())
+				fx.Deps.State.Batches[1].RecoverySessions = nil
+				fx.Deps.State.Batches[1].RecoveryEngines = nil
+				appendClaudeHook(t, fx, "Stop", clk.now.Add(-10*time.Second), map[string]any{"background_tasks": []any{}})
+				return secondCall{}
+			},
+			check: checkRecoveryAsking,
+		},
+		{
+			name: "a recorded session whose engine the set does not hold is refused naming it",
+			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
+				fx.Deps.State.Batches[1].RecoveryEngines = map[string]string{"fake-session": "gone"}
+				return secondCall{refusal: []string{`"gone"`, "fake-session", shuttleengine.ErrEngineNotRegistered.Error()}}
+			},
+		},
+		{
+			name: "a recorded session whose engine key is absent is refused when the default hides its fork audit",
+			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
+				fx.Deps.Engines = namedEngines(shuttlefake.EngineName, struct{ shuttleengine.Engine }{fx.Engine})
+				fx.Deps.State.Batches[1].RecoveryEngines = nil
+				return secondCall{refusal: []string{"engine:", "set engine: in shuttle.yaml back to an engine with fork audit"}}
+			},
 		},
 	}
 
@@ -958,6 +1001,17 @@ func (erroringStarter) Start(spec shuttleengine.Spec) (*shuttleengine.Run, error
 
 var _ websterengine.Starter = erroringStarter{}
 
+// recoverSpawnCase is one TestRecoverSpawnOrAttach row.
+type recoverSpawnCase struct {
+	name  string
+	batch int
+	// setup seeds the state the decision is made over; nil leaves the batch unrecorded.
+	setup func(fx *recoverFixture)
+	// unreadable is a worktree-relative directory chmodded 0o000 after setup and restored at cleanup, skipping the row where permissions do not bind.
+	unreadable string
+	check      func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error)
+}
+
 // TestRecoverSpawnOrAttach asserts RecoverSpawnOrAttach's spawn-or-attach decision for the state a batch is in:
 // no record, a terminal prior or a failed batch spawns fresh, with the recorded card set, the original bracket's start commit, the failure digest and the execution predecessor's digest in the prompt, and any late or malformed report archived;
 // a recorded non-terminal recovery attaches; findings recovery cannot check are refused toward the reset-to-start route; and a failed or not-ready start surfaces without recording a strand.
@@ -1090,15 +1144,53 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 		}
 	}
 
-	cases := []struct {
-		name  string
-		batch int
-		// setup seeds the state the decision is made over; nil leaves the batch unrecorded.
-		setup func(fx *recoverFixture)
-		// unreadable is a worktree-relative directory chmodded 0o000 after setup and restored at cleanup, skipping the row where permissions do not bind.
-		unreadable string
-		check      func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error)
-	}{
+	// roleEngineRefusal returns a row where the recovery choice names engine over a terminal prior recovery, and the spawn is refused before it touches the prior record, report or strand.
+	roleEngineRefusal := func(name, engine string) recoverSpawnCase {
+		var stateBefore []byte
+		marshalState := func(t *testing.T, fx *recoverFixture) []byte {
+			t.Helper()
+			data, err := json.Marshal(fx.Deps.State)
+			if err != nil {
+				t.Fatalf("marshal state: %v", err)
+			}
+			return data
+		}
+		return recoverSpawnCase{
+			name: name,
+			setup: func(fx *recoverFixture) {
+				fx.Deps.Engines = enginesWithHiddenX(shuttlefake.EngineName)
+				fx.Deps.Roles[websterengine.RoleRecovery] = shuttleengine.ModelChoice{Model: "r", Engine: engine}
+				fx.Deps.State.Batches[1] = &websterengine.BatchState{Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead", StrandGUID: "prior-dead-1"}
+				fx.Deps.Stopper = &recordingStopper{}
+				writeWorktreeFile(t, fx.ReportsDir, websterengine.ReportFileName(1, "json-flag"), "status: FAILED\nhead_sha: deadbeef\n")
+				stateBefore = marshalState(t, fx)
+			},
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				if err == nil || spawned {
+					t.Fatalf("RecoverSpawnOrAttach() = spawned %v, error %v; want a refusal", spawned, err)
+				}
+				for _, want := range []string{"recovery", strconv.Quote(engine), "set recovery in webster.yaml"} {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("error %q lacks %q", err, want)
+					}
+				}
+				if fx.Engine.PrepareCalls != 0 {
+					t.Errorf("prepareCalls = %d; want no strand started", fx.Engine.PrepareCalls)
+				}
+				if _, statErr := os.Stat(filepath.Join(fx.ReportsDir, websterengine.ReportFileName(1, "json-flag"))); statErr != nil {
+					t.Errorf("the prior report is not in place: %v", statErr)
+				}
+				if stopped := fx.Deps.Stopper.(*recordingStopper).Stopped; len(stopped) != 0 {
+					t.Errorf("stopped = %q; want the prior strand left alone", stopped)
+				}
+				if got := marshalState(t, fx); !bytes.Equal(got, stateBefore) {
+					t.Errorf("state changed by a refused spawn:\n got %s\nwant %s", got, stateBefore)
+				}
+			},
+		}
+	}
+
+	cases := []recoverSpawnCase{
 		{
 			name: "no recorded batch state spawns fresh and records the card set",
 			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
@@ -1115,6 +1207,12 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 				}
 				if got, want := fx.Deps.State.Batches[1].RecoverySessions, []string{"fake-session"}; !slices.Equal(got, want) {
 					t.Errorf("recovery BatchState.RecoverySessions = %v; want %v", got, want)
+				}
+				if got, want := fx.Deps.State.Batches[1].RecoveryEngines, map[string]string{"fake-session": shuttlefake.EngineName}; !maps.Equal(got, want) {
+					t.Errorf("recovery BatchState.RecoveryEngines = %v; want %v, the spawned run's engine under its session id", got, want)
+				}
+				if got := fx.Engine.LastSpec.Requires; len(got) != 0 {
+					t.Errorf("recovery spec Requires = %v; want none", got)
 				}
 			},
 		},
@@ -1141,7 +1239,7 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 		{
 			name: "a spawn over a prior recovery raises the count and records HEAD as its start",
 			setup: func(fx *recoverFixture) {
-				fx.Deps.State.Batches[1] = &websterengine.BatchState{Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead", Recoveries: 1, RecoveryStartSHA: fx.Git.head, StartSHA: fx.Git.head, RecoverySessions: []string{"earlier-session"}}
+				fx.Deps.State.Batches[1] = &websterengine.BatchState{Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead", Recoveries: 1, RecoveryStartSHA: fx.Git.head, StartSHA: fx.Git.head, RecoverySessions: []string{"earlier-session"}, RecoveryEngines: map[string]string{"earlier-session": "claude"}}
 				fx.Git.commit()
 			},
 			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
@@ -1151,6 +1249,9 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 				}
 				if got, want := fx.Deps.State.Batches[1].RecoverySessions, []string{"earlier-session", "fake-session"}; !slices.Equal(got, want) {
 					t.Errorf("recovery BatchState.RecoverySessions = %v; want %v", got, want)
+				}
+				if got, want := fx.Deps.State.Batches[1].RecoveryEngines, map[string]string{"earlier-session": "claude", "fake-session": shuttlefake.EngineName}; !maps.Equal(got, want) {
+					t.Errorf("recovery BatchState.RecoveryEngines = %v; want the first entry kept and the second added: %v", got, want)
 				}
 			},
 		},
@@ -1227,6 +1328,24 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 				requireSpawned(t, spawned, err)
 				if stopped := fx.Deps.Stopper.(*recordingStopper).Stopped; len(stopped) != 0 {
 					t.Errorf("stopped = %q; want none", stopped)
+				}
+			},
+		},
+		roleEngineRefusal("a recovery choice on an engine without fork audit is refused", "x"),
+		roleEngineRefusal("a recovery choice on an engine the set does not hold is refused", "absent"),
+		{
+			name: "a recovery choice on an engine without fork audit still attaches to a live recovery",
+			setup: func(fx *recoverFixture) {
+				fx.Deps.Engines = enginesWithHiddenX(shuttlefake.EngineName)
+				fx.Deps.Roles[websterengine.RoleRecovery] = shuttleengine.ModelChoice{Model: "r", Engine: "x"}
+				fx.Deps.State.Batches[1] = &websterengine.BatchState{
+					Slug: "json-flag", Kind: "recovery", Terminal: false, StrandGUID: "still-live-1",
+					SpawnedAt: time.Unix(0, 0).UTC().Format(time.RFC3339),
+				}
+			},
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				if err != nil || spawned || bs == nil || bs.StrandGUID != "still-live-1" {
+					t.Errorf("RecoverSpawnOrAttach() = %+v, spawned %v, error %v; want the live recovery attached", bs, spawned, err)
 				}
 			},
 		},

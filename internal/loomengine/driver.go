@@ -1,7 +1,7 @@
 // driver.go implements ResolveDriver, the driver segment's config-to-settings resolver: a pure
 // composer that parses and resolves the driver role's model-spec, modelled on ResolveReview in
 // internal/loomengine/review.go.
-// Unlike ReviewSettings, DriverSettings carries no Timeout: shuttleengine.Spec.Timeout feeds
+// Unlike ReviewSettings, the driver's resolved choice carries no Timeout: shuttleengine.Spec.Timeout feeds
 // Run.deadline, which only Wait reads, and the driver path deliberately never calls Wait, so a
 // timeout key would configure nothing.
 
@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // LoomDriverStrandName is the loom driver session's own strand's stable identity, the role the hub addresses as "<slug>:driver".
@@ -33,32 +34,15 @@ func IsDriverStrand(name string) bool {
 	return agentname.Matches(name, LoomDriverStrandName) || name == LegacyLoomDriverStrandName
 }
 
-// DriverSettings is the driver role's resolved model settings, threaded onto the loom driver session's
-// launch spec.
-type DriverSettings struct {
-	// Model is the resolved driver role's provider-side model string, empty when cfg.Driver is
-	// empty (defer to the provider default).
-	Model string
-	// Effort is the resolved driver role's "effort" parameter, empty when unset.
-	Effort string
-	// Version is the resolved driver role's "version" parameter, empty when unset.
-	Version string
-}
-
 // arbiterDefaultModelSpec is the model-spec an empty arbiter key takes.
 const arbiterDefaultModelSpec = "opus[high]"
 
 // arbiterDefaultTimeout is the timeout a zero arbiter_timeout_min takes.
 const arbiterDefaultTimeout = 30 * time.Minute
 
-// ArbiterSettings is the arbiter role's resolved model settings, timeout and spawn budget, threaded onto the arbiter session's launch spec.
+// ArbiterSettings is the arbiter role's resolved model choice, timeout and spawn budget, threaded onto the arbiter session's launch spec.
 type ArbiterSettings struct {
-	// Model is the resolved provider-side model string.
-	Model string
-	// Effort is the resolved "effort" parameter, empty when unset.
-	Effort string
-	// Version is the resolved "version" parameter, empty when unset.
-	Version string
+	shuttleengine.ModelChoice
 	// Timeout is how long one arbiter spawn may run.
 	Timeout time.Duration
 	// MaxSpawns is how many arbiter spawns a run may use; zero turns the arbiter off.
@@ -84,11 +68,9 @@ func ResolveArbiter(cfg Config, reg modelspec.Registry) (ArbiterSettings, error)
 	}
 
 	return ArbiterSettings{
-		Model:     resolved.Model,
-		Effort:    resolved.Params["effort"],
-		Version:   resolved.Params["version"],
-		Timeout:   ArbiterTimeout(cfg),
-		MaxSpawns: cfg.ArbiterMaxSpawns,
+		ModelChoice: shuttleengine.NewModelChoice(resolved),
+		Timeout:     ArbiterTimeout(cfg),
+		MaxSpawns:   cfg.ArbiterMaxSpawns,
 	}, nil
 }
 
@@ -106,14 +88,9 @@ const alignmentDefaultModelSpec = "opus[high]"
 // alignmentDefaultTimeoutMin is the minutes a zero alignment_timeout_min takes.
 const alignmentDefaultTimeoutMin = 20
 
-// AlignmentSettings is the alignment agent's resolved model settings and timeout, threaded onto its session's launch spec.
+// AlignmentSettings is the alignment agent's resolved model choice and timeout, threaded onto its session's launch spec.
 type AlignmentSettings struct {
-	// Model is the resolved provider-side model string.
-	Model string
-	// Effort is the resolved "effort" parameter, empty when unset.
-	Effort string
-	// Version is the resolved "version" parameter, empty when unset.
-	Version string
+	shuttleengine.ModelChoice
 	// Timeout is how long one alignment spawn may run.
 	Timeout time.Duration
 }
@@ -140,34 +117,28 @@ func ResolveAlignment(cfg Config, reg modelspec.Registry) (AlignmentSettings, er
 		timeoutMin = cfg.AlignmentTimeoutMin
 	}
 	return AlignmentSettings{
-		Model:   resolved.Model,
-		Effort:  resolved.Params["effort"],
-		Version: resolved.Params["version"],
-		Timeout: time.Duration(timeoutMin) * time.Minute,
+		ModelChoice: shuttleengine.NewModelChoice(resolved),
+		Timeout:     time.Duration(timeoutMin) * time.Minute,
 	}, nil
 }
 
-// ResolveDriver parses and resolves the driver role's model-spec from cfg, returning the
-// DriverSettings the caller threads onto the driver session's launch spec.
-// An empty cfg.Driver resolves to a zero DriverSettings with a nil error, since an empty value
-// means "defer to the engine default" rather than a mistake to reject.
-func ResolveDriver(cfg Config, reg modelspec.Registry) (DriverSettings, error) {
+// ResolveDriver parses and resolves the driver role's model-spec from cfg.
+// It returns the ModelChoice the caller threads onto the driver session's launch spec.
+// An empty cfg.Driver resolves to the zero ModelChoice (default engine, provider defaults) with a nil error.
+// An empty value means "defer to the engine default", not a mistake to reject.
+func ResolveDriver(cfg Config, reg modelspec.Registry) (shuttleengine.ModelChoice, error) {
 	if cfg.Driver == "" {
-		return DriverSettings{}, nil
+		return shuttleengine.ModelChoice{}, nil
 	}
 
 	spec, err := modelspec.Parse(cfg.Driver)
 	if err != nil {
-		return DriverSettings{}, fmt.Errorf("loom: ResolveDriver: driver role model-spec: %w", err)
+		return shuttleengine.ModelChoice{}, fmt.Errorf("loom: ResolveDriver: driver role model-spec: %w", err)
 	}
 	resolved, err := reg.Resolve(spec)
 	if err != nil {
-		return DriverSettings{}, fmt.Errorf("loom: ResolveDriver: driver role model-spec: %w", err)
+		return shuttleengine.ModelChoice{}, fmt.Errorf("loom: ResolveDriver: driver role model-spec: %w", err)
 	}
 
-	return DriverSettings{
-		Model:   resolved.Model,
-		Effort:  resolved.Params["effort"],
-		Version: resolved.Params["version"],
-	}, nil
+	return shuttleengine.NewModelChoice(resolved), nil
 }

@@ -28,6 +28,7 @@
 // # Session
 //
 // A `Session` runs one point's attempts over a `Shuttle`, the slice of shuttle it drives, and never blocks its caller, since the parent-review gate polls it on each re-evaluation.
+// The `Settings` a spawn takes carry a model choice, engine included, beside the run's timeout.
 // `Begin` spawns an agent for an idempotence key (`round-<N>` at parent review, `pr-<number>-<head>` at PR-Gate) and returns the attempt that already holds the key without starting anything, closed or not, so a driver restart never spawns a second agent for one round or one head.
 // It writes `attempt.json` before the spawn and clears any file at the new attempt's output paths, so only a verdict written after the spawn can be read.
 // A failed start closes the attempt with the error as its reason.

@@ -9,6 +9,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // TestArbiterPrompt asserts the shipped stencil renders every marker value, the no-parent and edit directives, the literal none for an absent report, brief and case brief, and no unfilled marker.
@@ -90,7 +91,7 @@ func TestArbiterSpec(t *testing.T) {
 
 	const prompt = "settle the stop"
 	const verdictPath = "/hub/wt/.lyx/arbiter/attempt-1/verdict.yaml"
-	settings := loomengine.ArbiterSettings{Model: "claude-resolved-model-id", Effort: "high", Version: "v9", Timeout: 20 * time.Minute, MaxSpawns: 3}
+	settings := loomengine.ArbiterSettings{ModelChoice: shuttleengine.ModelChoice{Engine: "b", Model: "claude-resolved-model-id", Effort: "high", Version: "v9"}, Timeout: 20 * time.Minute, MaxSpawns: 3}
 
 	got := arbiterSpec(prompt, verdictPath, settings)
 
@@ -100,8 +101,8 @@ func TestArbiterSpec(t *testing.T) {
 	if len(got.OutputFiles) != 1 || got.OutputFiles[0] != verdictPath {
 		t.Errorf("arbiterSpec().OutputFiles = %v; want [%q]", got.OutputFiles, verdictPath)
 	}
-	if got.Model != settings.Model || got.Effort != settings.Effort || got.Version != settings.Version {
-		t.Errorf("arbiterSpec() model, effort, version = %q, %q, %q; want %q, %q, %q", got.Model, got.Effort, got.Version, settings.Model, settings.Effort, settings.Version)
+	if got.ModelChoice != settings.ModelChoice {
+		t.Errorf("arbiterSpec().ModelChoice = %+v; want %+v", got.ModelChoice, settings.ModelChoice)
 	}
 	if got.Timeout != settings.Timeout {
 		t.Errorf("arbiterSpec().Timeout = %v; want %v", got.Timeout, settings.Timeout)
@@ -117,6 +118,9 @@ func TestArbiterSpec(t *testing.T) {
 	}
 	if got.Segment != segmentcolor.Coordinator {
 		t.Errorf("arbiterSpec().Segment = %q; want %q", got.Segment, segmentcolor.Coordinator)
+	}
+	if len(got.Requires) != 0 {
+		t.Errorf("arbiterSpec().Requires = %v; want none", got.Requires)
 	}
 	if got.Interactive || got.ForkSubagents || got.Parent != "" {
 		t.Errorf("arbiterSpec() interactive, fork subagents, parent = %v, %v, %q; want false, false, empty", got.Interactive, got.ForkSubagents, got.Parent)

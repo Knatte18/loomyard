@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
@@ -97,8 +98,8 @@ func TestPlanTable(t *testing.T) {
 			if role := seatengine.SeatRole(table.RolePrefix, lead.Name); lead.Name != "" || role != "plan" {
 				t.Errorf("lead name %q and role %q; want no name and the role %q", lead.Name, role, "plan")
 			}
-			if lead.Model != "opus" || lead.Effort != "high" || lead.Version != "" {
-				t.Errorf("lead model/effort/version = %q/%q/%q; want opus/high/none", lead.Model, lead.Effort, lead.Version)
+			if lead.Engine != "claude" || lead.Model != "opus" || lead.Effort != "high" || lead.Version != "" {
+				t.Errorf("lead engine/model/effort/version = %q/%q/%q/%q; want claude/opus/high/none", lead.Engine, lead.Model, lead.Effort, lead.Version)
 			}
 			if want := []string{wantOverview(layout)}; !slices.Equal(lead.Outputs, want) {
 				t.Errorf("lead outputs = %v; want the overview %v", lead.Outputs, want)
@@ -117,6 +118,12 @@ func TestPlanTable(t *testing.T) {
 			}
 			if lead.ForkSubagents != tt.wantForks {
 				t.Errorf("lead ForkSubagents = %v; want %v", lead.ForkSubagents, tt.wantForks)
+			}
+			if want := (shuttleengine.ModelKey{Module: "loom", Key: "plan"}); lead.ModelKey != want {
+				t.Errorf("lead ModelKey = %+v; want %+v", lead.ModelKey, want)
+			}
+			if gotWake := slices.Contains(lead.Requires, shuttleengine.RequirementBackgroundWake); gotWake != (tt.lenses != "") {
+				t.Errorf("lead requires background-wake = %v (Requires %v); want exactly when lenses are set (%q)", gotWake, lead.Requires, tt.lenses)
 			}
 
 			prompts, err := seatengine.Prompts(discussionTableGeometry(layout, stencilsDir), table)

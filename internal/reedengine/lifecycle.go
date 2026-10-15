@@ -85,6 +85,8 @@ type StrandStatus struct {
 	Color segmentcolor.Color
 	// LyxBin mirrors Strand.LyxBin.
 	LyxBin string
+	// Provider mirrors Strand.Provider.
+	Provider string
 }
 
 // StatusResult reports this session's tracked strands and their live/dead state.
@@ -1326,7 +1328,7 @@ func (e *Engine) Status() (StatusResult, error) {
 		// must not "fix" a missing Selvage row by appending one here.
 		strands := make([]StrandStatus, len(st.Strands))
 		for i, s := range st.Strands {
-			strands[i] = StrandStatus{GUID: s.GUID, Name: s.Name, PaneID: s.PaneID, PanePID: alivePIDs[s.PaneID], Live: aliveIDs[s.PaneID], Present: presentIDs[s.PaneID], OwnWindow: isOwnWindow(s.Display), Retiring: s.Retiring, Color: e.withColor(s).Color, LyxBin: s.LyxBin}
+			strands[i] = StrandStatus{GUID: s.GUID, Name: s.Name, PaneID: s.PaneID, PanePID: alivePIDs[s.PaneID], Live: aliveIDs[s.PaneID], Present: presentIDs[s.PaneID], OwnWindow: isOwnWindow(s.Display), Retiring: s.Retiring, Color: e.withColor(s).Color, LyxBin: s.LyxBin, Provider: s.Provider}
 		}
 
 		result = StatusResult{Session: session, Socket: e.Socket(), Strands: strands}

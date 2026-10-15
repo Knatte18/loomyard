@@ -46,6 +46,7 @@ func TestState_RoundTrip(t *testing.T) {
 		CurrentBatch:    2,
 		MasterStrand:    "master-strand-1",
 		MasterSessionID: "session-1",
+		MasterEngine:    "claude",
 		PreFixHead:      "cafef00d",
 		Batches: map[int]*websterengine.BatchState{
 			1: {
@@ -53,6 +54,8 @@ func TestState_RoundTrip(t *testing.T) {
 				StartSHA:  "deadbeef",
 				Kind:      "fork",
 				SpawnedAt: "2026-07-11T12:00:00Z",
+				SessionID: "session-1",
+				Engine:    "claude",
 				Terminal:  true,
 				Status:    "done",
 				Digest: &websterengine.Digest{
@@ -75,6 +78,9 @@ func TestState_RoundTrip(t *testing.T) {
 				ShuttleRunDir: "/runs/2",
 				EventsPath:    "/runs/2/events.jsonl",
 				AmendedCards:  []websterengine.AmendedCard{{Card: "02-second", Rendered: false}, {Card: "03-third", Rendered: true}},
+
+				RecoverySessions: []string{"r1", "r2"},
+				RecoveryEngines:  map[string]string{"r1": "claude", "r2": "fake"},
 			},
 		},
 		SeenForkTranscripts: []string{"subagents/abc.jsonl"},
@@ -202,6 +208,9 @@ func TestLoadState_UnusualFiles(t *testing.T) {
 			}
 			if got.AuditDispositions != nil || got.AuditWarnings != nil || got.Batches[1].AuditWarnings != nil {
 				t.Errorf("LoadState = %+v; want the audit-ledger fields nil", got)
+			}
+			if got.MasterEngine != "" || got.Batches[1].Engine != "" || got.Batches[1].RecoveryEngines != nil {
+				t.Errorf("LoadState = %+v; want the engine keys empty for a state written without them", got)
 			}
 			if got.RunGUID != "g" || got.MasterStrand != "master-strand-1" {
 				t.Errorf("LoadState = %+v; want RunGUID %q and MasterStrand %q intact beside the retired assertedModel", got, "g", "master-strand-1")

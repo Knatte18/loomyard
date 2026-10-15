@@ -199,10 +199,6 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 	if err != nil {
 		return err
 	}
-	auditEngine, err := websterengine.AuditEngineFrom(engines)
-	if err != nil {
-		return err
-	}
 	runner := shuttleengine.NewRunner(reedEngine, engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 	pauseGeom, err := hubgeom.PauseGeometry(loc)
 	if err != nil {
@@ -211,10 +207,11 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 	runner.SetPause(pauseGeom)
 	runner.SetNotifier(func(line string) error { return orchcli.NotifyPrime(loc, line) })
 
-	c.setRunner(runner, auditEngine, reedEngine)
+	c.setRunner(runner, engines, reedEngine)
 	c.shuttleCfg = shuttleCfg
 	c.cfg = websterCfg
 	c.roles = roles
+	c.instructionFiles = websterengine.MasterInstructionFiles(engines, roles[websterengine.RoleMaster])
 	c.geom = geom
 	c.anchorRel = loc.AnchorRel
 	// The matcher is built eagerly because NewRefScanner only compiles a regexp and cannot fail. The
@@ -303,10 +300,6 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	if err != nil {
 		return err
 	}
-	auditEngine, err := websterengine.AuditEngineFrom(engines)
-	if err != nil {
-		return err
-	}
 	runner := shuttleengine.NewDetachedRunner(reedEngine, engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, reedGeom.PaneCwd, shuttleCfg)
 	runner.SetPause(standalonegeom.PauseGeometry(res.StateDir))
 
@@ -336,10 +329,11 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 		return nil
 	}
 
-	c.setRunner(runner, auditEngine, reedEngine)
+	c.setRunner(runner, engines, reedEngine)
 	c.shuttleCfg = shuttleCfg
 	c.cfg = websterCfg
 	c.roles = roles
+	c.instructionFiles = websterengine.MasterInstructionFiles(engines, roles[websterengine.RoleMaster])
 	c.geom = geom
 	c.anchorRel = ""
 	// standalone has no fabric repo by construction: the matcher never sees a fabric reference
@@ -383,11 +377,11 @@ func configLoadError(file string, cause error) error {
 	}
 }
 
-// setRunner stores runner and its adapted seams (starter, masterStarter) plus the default shuttle engine, asserted to audit forks, and the reed engine onto c, shared by both wireHub and wireStandalone so the adaptation is named once.
-func (c *websterCLI) setRunner(runner *shuttleengine.Runner, auditEngine websterengine.AuditEngine, reedEngine shuttleengine.ReedOps) {
+// setRunner stores runner and its adapted seams (starter, masterStarter) plus the engine set and the reed engine onto c, shared by both wireHub and wireStandalone so the adaptation is named once.
+func (c *websterCLI) setRunner(runner *shuttleengine.Runner, engines shuttleengine.EngineSet, reedEngine shuttleengine.ReedOps) {
 	c.runner = runner
 	c.starter = runner
 	c.masterStarter = runnerMasterStarter{runner: runner}
-	c.engine = auditEngine
+	c.engines = engines
 	c.reed = reedEngine
 }

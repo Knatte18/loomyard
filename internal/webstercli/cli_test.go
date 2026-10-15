@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/planglyph"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/indexkit"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
@@ -135,6 +136,16 @@ func newTestCLI(t *testing.T) (*websterCLI, string) {
 	// A verb run with no state computes Merriam's start base, which reads the Master stencil.
 	stencilkit.SeedInto(t, c.geom.StencilsDir)
 	return c, hub
+}
+
+// claudeInstructionFiles is a lister naming the files Claude Code loads, as Master's engine does in production.
+func claudeInstructionFiles() ([]string, error) {
+	return []string{"CLAUDE.md", "CLAUDE.local.md"}, nil
+}
+
+// failingInstructionFiles is a lister that fails as for a master engine the engine set does not hold.
+func failingInstructionFiles() ([]string, error) {
+	return nil, fmt.Errorf("webster: the master role's engine %q is not held by this lyx: %w; way forward: set master in webster.yaml to an alias whose engine the set holds with lyx config webster, then re-run the verb", "gone", shuttleengine.ErrEngineNotRegistered)
 }
 
 // hubGeometryWithIndex returns the hub geometry of layout with the real code index the CLI layer wires.
@@ -367,6 +378,7 @@ func TestValidateCmd_BatchesFlag(t *testing.T) {
 
 		c, _ := newTestCLI(t)
 		c.batcher = cost
+		c.instructionFiles = claudeInstructionFiles
 		plankit.Write(t, c.geom.PlanDir, twoCardUsesPlan(2, 1))
 		if err := os.Mkdir(filepath.Join(c.geom.WorktreeRoot, "CLAUDE.md"), 0o755); err != nil {
 			t.Fatalf("plant a directory in place of CLAUDE.md: %v", err)
@@ -380,6 +392,28 @@ func TestValidateCmd_BatchesFlag(t *testing.T) {
 			if !strings.Contains(out.String(), want) {
 				t.Errorf("output missing %q; got %q", want, out.String())
 			}
+		}
+	})
+
+	t.Run("a master engine the set lacks is refused with the master way forward", func(t *testing.T) {
+		t.Parallel()
+
+		c, _ := newTestCLI(t)
+		c.batcher = cost
+		c.instructionFiles = failingInstructionFiles
+		plankit.Write(t, c.geom.PlanDir, twoCardUsesPlan(2, 1))
+
+		var out bytes.Buffer
+		if code := clihelp.Execute(c.validateCmd(), &out, []string{"--batches"}); code == 0 {
+			t.Fatalf("validate --batches = 0; want non-zero, output: %s", out.String())
+		}
+		for _, want := range []string{"master", "set master in webster.yaml"} {
+			if !strings.Contains(out.String(), want) {
+				t.Errorf("output missing %q; got %q", want, out.String())
+			}
+		}
+		if strings.Contains(out.String(), "transient") {
+			t.Errorf("output = %q; want no transient way forward", out.String())
 		}
 	})
 
@@ -411,7 +445,7 @@ func TestValidateCmd_BatchesFlag(t *testing.T) {
 
 			// With no recorded state the partition is priced from Merriam's start base, and this profile's context_per_line is zero, so the base adds its fixed context alone.
 			if batches, ok := tc.want["batches"].([]any); ok {
-				base, err := websterengine.MerriamBase(c.geom)
+				base, err := websterengine.MerriamBase(c.geom, nil)
 				if err != nil {
 					t.Fatalf("MerriamBase() error = %v", err)
 				}
@@ -598,6 +632,8 @@ func TestValidateCmd_ScopeFollowsRunProgress(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			c, _ := newTestCLI(t)
 			c.batcher = identity
+			// A run with a state never prices a partition, so the lister that fails is never called.
+			c.instructionFiles = failingInstructionFiles
 			seedTwoCardGlyphPlanDir(t, c.geom.PlanDir, c.geom.WorktreeRoot)
 
 			fingerprint, err := websterengine.Fingerprint(c.geom.PlanDir)
@@ -1341,8 +1377,9 @@ func TestRebaselineCmd_Refusals(t *testing.T) {
 	cases := []struct {
 		name string
 		// arrange edits the plan and state after the run's state.json is seeded and returns the verb's arguments.
-		arrange func(t *testing.T, c *websterCLI) []string
-		wantIn  []string
+		arrange   func(t *testing.T, c *websterCLI) []string
+		wantIn    []string
+		wantNotIn []string
 	}{
 		{
 			name: "edited card not named",
@@ -1355,12 +1392,22 @@ func TestRebaselineCmd_Refusals(t *testing.T) {
 		{
 			name: "unreadable Merriam start base",
 			arrange: func(t *testing.T, c *websterCLI) []string {
+				c.instructionFiles = claudeInstructionFiles
 				if err := os.Mkdir(filepath.Join(c.geom.WorktreeRoot, "CLAUDE.md"), 0o755); err != nil {
 					t.Fatalf("plant a directory in place of CLAUDE.md: %v", err)
 				}
 				return []string{}
 			},
 			wantIn: []string{"CLAUDE.md", "way forward: transient, re-run the verb"},
+		},
+		{
+			name: "master engine not registered",
+			arrange: func(t *testing.T, c *websterCLI) []string {
+				c.instructionFiles = failingInstructionFiles
+				return []string{}
+			},
+			wantIn:    []string{"master", "set master in webster.yaml"},
+			wantNotIn: []string{"transient"},
 		},
 		{
 			name: "non-numeric card",
@@ -1439,6 +1486,11 @@ func TestRebaselineCmd_Refusals(t *testing.T) {
 			for _, want := range tc.wantIn {
 				if !strings.Contains(out.String(), want) {
 					t.Errorf("output missing %q; got %q", want, out.String())
+				}
+			}
+			for _, unwanted := range tc.wantNotIn {
+				if strings.Contains(out.String(), unwanted) {
+					t.Errorf("output contains %q; got %q", unwanted, out.String())
 				}
 			}
 			after, err := os.ReadFile(statePath)

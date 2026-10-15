@@ -61,8 +61,8 @@ func TestReworkTable(t *testing.T) {
 			if role := seatengine.SeatRole(table.RolePrefix, lead.Name); lead.Name != "" || role != "rework" {
 				t.Errorf("lead name %q and role %q; want no name and the role %q", lead.Name, role, "rework")
 			}
-			if lead.Model != tt.wantModel || lead.Effort != tt.wantEffort || lead.Version != "" {
-				t.Errorf("lead model/effort/version = %q/%q/%q; want %s/%s/none", lead.Model, lead.Effort, lead.Version, tt.wantModel, tt.wantEffort)
+			if lead.Engine != "claude" || lead.Model != tt.wantModel || lead.Effort != tt.wantEffort || lead.Version != "" {
+				t.Errorf("lead engine/model/effort/version = %q/%q/%q/%q; want claude/%s/%s/none", lead.Engine, lead.Model, lead.Effort, lead.Version, tt.wantModel, tt.wantEffort)
 			}
 			coverage := LoomReworkCoveragePath(layout)
 			if want := []string{coverage}; !slices.Equal(lead.Outputs, want) {

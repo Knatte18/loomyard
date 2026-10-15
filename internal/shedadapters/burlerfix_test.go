@@ -107,7 +107,7 @@ func TestBurlerFixProducer_Call_FinishedFixIsRecorded(t *testing.T) {
 	}{
 		{
 			name: "a spawned fixer",
-			result: burlerengine.FixResult{Outcome: shuttleengine.OutcomeDone, Fix: burlerengine.Half{StartedAt: started, EndedAt: started.Add(time.Minute)}, Gate: &shuttleengine.GateOutcome{Passed: true, Attempts: 2, Entries: []shuttleengine.GateEntryOutcome{
+			result: burlerengine.FixResult{Outcome: shuttleengine.OutcomeDone, Fix: burlerengine.Half{Engine: "claude", StartedAt: started, EndedAt: started.Add(time.Minute)}, Gate: &shuttleengine.GateOutcome{Passed: true, Attempts: 2, Entries: []shuttleengine.GateEntryOutcome{
 				{Name: "verify", Spans: []shuttleengine.GateSpan{{Kind: shuttleengine.GateSpanRework, Start: started, End: started.Add(2 * time.Second)}}},
 			}}},
 			wantSpans: []shedengine.GateSpan{{Gate: "verify", Kind: shedengine.GateSpanKindRework, Start: "2026-08-16T15:00:00Z", End: "2026-08-16T15:00:02Z"}},
@@ -125,7 +125,7 @@ func TestBurlerFixProducer_Call_FinishedFixIsRecorded(t *testing.T) {
 			}
 			spec := newHalfSpec()
 			spec.opts = burlerengine.RunOpts{Timeout: 3 * time.Minute, Gate: shuttleengine.GateSpec{{Name: "verify", Attempts: 1}}}
-			spec.models = burlerengine.RoundModels{Fix: []burlerengine.ModelChoice{{Model: "f1"}, {Model: "f2"}}}
+			spec.models = burlerengine.RoundModels{Fix: []shuttleengine.ModelChoice{{Model: "f1"}, {Model: "f2"}}}
 			runner := &shedfake.BurlerHalfRunner{FixResults: []burlerengine.FixResult{tt.result}}
 			p := newFixProducer(t, runDir, runner, spec)
 
@@ -150,6 +150,9 @@ func TestBurlerFixProducer_Call_FinishedFixIsRecorded(t *testing.T) {
 			usage, err := readCompletedRoundUsage(runDir, 2)
 			if err != nil || usage.Review.Model != "reviewer" || usage.Fix == nil || usage.Fix.Model != "f2" {
 				t.Errorf("usage record = %+v, %v; want the fix half merged beside the review half", usage, err)
+			}
+			if tt.result.Fix.Engine != "" && usage.Fix.Engine != tt.result.Fix.Engine {
+				t.Errorf("fix usage engine = %q; want %q", usage.Fix.Engine, tt.result.Fix.Engine)
 			}
 			requireArchived(t, runDir, "round-2-review.md", 0)
 			requireArchived(t, runDir, "round-2-acceptance.md", 0)

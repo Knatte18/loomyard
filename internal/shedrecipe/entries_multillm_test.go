@@ -155,22 +155,21 @@ func TestMultiLLMEntry_ComposedTable(t *testing.T) {
 		Seats: []seatengine.Seat{
 			{
 				Stencil: "multillm-lead",
-				Model:   "claude-opus-test",
-				Inputs:  []string{filepath.Join(root, "in/spec.md"), filepath.Join(root, "out/advisor.md")},
-				Outputs: []string{filepath.Join(root, "out/chair.md")},
+				// The chair's "opus[high]" spec resolves its effort from the bracket, and every alias resolves its engine.
+				ModelChoice: shuttleengine.ModelChoice{Engine: "claude", Model: "claude-opus-test", Effort: "high"},
+				Inputs:      []string{filepath.Join(root, "in/spec.md"), filepath.Join(root, "out/advisor.md")},
+				Outputs:     []string{filepath.Join(root, "out/chair.md")},
 			},
 			{
-				Name:    "advisor-1",
-				Stencil: "multillm-seat",
-				Model:   "claude-opus-test",
-				Outputs: []string{filepath.Join(root, "out/advisor.md")},
-				Skills:  []string{"scribe:prose"},
-				Values:  map[string]string{"focus": "naming"},
+				Name:        "advisor-1",
+				Stencil:     "multillm-seat",
+				ModelChoice: shuttleengine.ModelChoice{Engine: "claude", Model: "claude-opus-test"},
+				Outputs:     []string{filepath.Join(root, "out/advisor.md")},
+				Skills:      []string{"scribe:prose"},
+				Values:      map[string]string{"focus": "naming"},
 			},
 		},
 	}
-	// The chair's "opus[high]" spec resolves its effort from the bracket.
-	want.Seats[0].Effort = "high"
 	// A gate holds closures, which DeepEqual never matches, so it is compared by name and budget.
 	if len(table.Gate) != 1 || table.Gate[0].Name != "plan" || table.Gate[0].Attempts != 2 {
 		t.Errorf("table gate = %+v; want one \"plan\" entry with 2 attempts", table.Gate)

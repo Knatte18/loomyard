@@ -37,7 +37,7 @@ const reportNamePrefix = "conflict-resolution-r"
 // conflicted paths the session is told to resolve.
 //
 // It resolves the model as modelspec.Parse(deps.ConflictSpec),
-// then deps.Registry.Resolve(spec), then Model/Effort/Version off the resolved value. The prompt is
+// then deps.Registry.Resolve(spec), then shuttleengine.NewModelChoice(resolved). The prompt is
 // read from the told stencils directory via stencilstore.Read and filled with stencil.Fill — never
 // composed from a Go string literal, per the Stencil Ownership Invariant.
 //
@@ -100,9 +100,7 @@ func buildConflictSpec(deps Deps, paths []string, attempt int) (shuttleengine.Sp
 	return shuttleengine.Spec{
 		Prompt:      string(prompt),
 		OutputFiles: []string{reportPath},
-		Model:       resolved.Model,
-		Effort:      resolved.Params["effort"],
-		Version:     resolved.Params["version"],
+		ModelChoice: shuttleengine.NewModelChoice(resolved),
 		Interactive: false,
 		Role:        ConflictRole,
 		Segment:     segmentcolor.Landing,

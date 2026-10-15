@@ -66,6 +66,7 @@ func halfOf(result shuttleengine.Result, strandGUID, runDir string) Half {
 		StartedAt:            result.StartedAt,
 		EndedAt:              result.EndedAt,
 		Usage:                result.Usage,
+		Engine:               result.Engine,
 	}
 	if half.StrandGUID == "" {
 		half.StrandGUID = strandGUID

@@ -233,14 +233,11 @@ type SessionResumer interface {
 type OpenSpec struct {
 	// Role is the strand role, from the caller's flag.
 	Role string
-	// Model, Effort and Version are the resolved model choice, each empty for the provider default.
-	Model   string
-	Effort  string
-	Version string
+	// ModelChoice is the resolved engine and model choice, each field empty for the default.
+	// Open refuses an engine name the engine set does not hold.
+	ModelChoice
 	// Segment is the loom segment the session's window is colored by.
 	Segment segmentcolor.Segment
-	// Engine is the registered engine name the session opens under, empty for the engine set's default.
-	Engine string
 }
 
 // SessionOpener is an optional capability beside Engine: the provider's way of opening a named interactive session with no prompt.

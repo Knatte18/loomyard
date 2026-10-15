@@ -75,6 +75,8 @@ type Half struct {
 	EndedAt   time.Time
 	// Usage is the half's session token reading, forks included, unknown unless the half's run was done on an engine that reads usage.
 	Usage shuttleengine.SessionUsage
+	// Engine is the name of the engine the half's run used, empty for a half that never started.
+	Engine string
 }
 
 // repairReportBeforeGate wraps told, a fix half's own gate closure, in a per-round closure that additionally instructs the fixer to rewrite fixerReportPath when the gate fails.

@@ -36,8 +36,7 @@ type AttemptInput struct {
 	SeedPath          string
 	PriorReviews      []string
 	PriorFixerReports []string
-	Model             string
-	Effort            string
+	Choice            shuttleengine.ModelChoice
 	Timeout           time.Duration
 }
 

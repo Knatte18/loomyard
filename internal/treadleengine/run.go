@@ -323,8 +323,7 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 					VerdictPath:         outcome.Paths.Judge,
 					PreviousHandoffPath: prevHandoffPath,
 					HandoffPath:         outcome.Paths.Handoff,
-					Model:               p.JudgeModel,
-					Effort:              p.JudgeEffort,
+					Choice:              p.Judge,
 					StencilsDir:         e.stencilsDir,
 					ParentName:          e.parentName,
 				})
@@ -359,8 +358,7 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 					VerdictPath:         outcome.Paths.Judge,
 					PreviousHandoffPath: prevHandoffPath,
 					HandoffPath:         outcome.Paths.Handoff,
-					Model:               p.JudgeModel,
-					Effort:              p.JudgeEffort,
+					Choice:              p.Judge,
 					StencilsDir:         e.stencilsDir,
 					ParentName:          e.parentName,
 				})
@@ -422,7 +420,7 @@ func (e *Engine) runPreRoundTargeting(runDir string, round int, p Profile, round
 		return ""
 	}
 	seedPath := artifactPaths(runDir, round, 1).Seed
-	if _, ok := runTargeting(e.stencilsDir, e.parentName, e.shuttle, e.name, round, handoffPath, seedPath, p.JudgeModel, p.JudgeEffort); !ok {
+	if _, ok := runTargeting(e.stencilsDir, e.parentName, e.shuttle, e.name, round, handoffPath, seedPath, p.Judge); !ok {
 		return ""
 	}
 	return seedPath
@@ -465,8 +463,7 @@ func (e *Engine) runRound(runDir string, round int, p Profile, priorReviews, pri
 			SeedPath:          seedPath,
 			PriorReviews:      priorReviews,
 			PriorFixerReports: priorFixerReports,
-			Model:             p.Model,
-			Effort:            p.Effort,
+			Choice:            p.Attempt,
 			Timeout:           p.Timeout,
 		})
 		if err != nil {

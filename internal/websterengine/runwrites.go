@@ -25,17 +25,23 @@ type RunWrites struct {
 // loadRunWrites audits every session the state records and collects the write events.
 // The Master sessions are State.MasterSessionID then each batch record's SessionID in batch-number order;
 // the recovery sessions follow, each batch's RecoverySessions in batch-number order; both are deduplicated, an empty id skipped, and each id is audited once.
-// It reads only; an audit error is returned naming the session.
-func loadRunWrites(engine shuttleengine.ForkAuditor, st *State, worktree string) (RunWrites, error) {
+// Each session is audited through the engine its own state entry records, so a later change to the configured engine never changes it.
+// It reads only; an engine or audit error is returned naming the session.
+// A nil engines yields an empty history.
+func loadRunWrites(engines AuditEngines, st *State, worktree string) (RunWrites, error) {
 	var writes RunWrites
-	if st == nil {
+	if st == nil || engines == nil {
 		return writes, nil
 	}
 	master, recovery := recordedSessions(st)
 	for _, session := range master {
-		audit, err := engine.AuditForks(session, worktree)
+		engine, err := sessionAuditEngine(engines, session.ID, session.Engine)
 		if err != nil {
-			return RunWrites{}, fmt.Errorf("audit session %s for run writes: %w", session, err)
+			return RunWrites{}, err
+		}
+		audit, err := engine.AuditForks(session.ID, worktree)
+		if err != nil {
+			return RunWrites{}, fmt.Errorf("audit session %s for run writes: %w", session.ID, err)
 		}
 		writes.Master = append(writes.Master, audit.ParentWriteEvents...)
 		for _, fork := range audit.Forks {
@@ -43,9 +49,13 @@ func loadRunWrites(engine shuttleengine.ForkAuditor, st *State, worktree string)
 		}
 	}
 	for _, session := range recovery {
-		audit, err := engine.AuditForks(session, worktree)
+		engine, err := sessionAuditEngine(engines, session.ID, session.Engine)
 		if err != nil {
-			return RunWrites{}, fmt.Errorf("audit recovery session %s for run writes: %w", session, err)
+			return RunWrites{}, err
+		}
+		audit, err := engine.AuditForks(session.ID, worktree)
+		if err != nil {
+			return RunWrites{}, fmt.Errorf("audit recovery session %s for run writes: %w", session.ID, err)
 		}
 		writes.Recoveries = append(writes.Recoveries, audit.ParentWriteEvents...)
 		for _, fork := range audit.Forks {
@@ -87,15 +97,26 @@ func writtenWorktreePaths(writes RunWrites, worktree string) ([]string, error) {
 	return written, nil
 }
 
-// recordedSessions lists the distinct non-empty Master session ids st records, and separately the distinct recovery session ids of every batch in batch-number order, each in a stable order.
-// An id recorded as a Master session is never listed again as a recovery session.
-func recordedSessions(st *State) (master, recovery []string) {
-	add := func(list *[]string, id string) {
-		if id != "" && !slices.Contains(master, id) && !slices.Contains(recovery, id) {
-			*list = append(*list, id)
+// recordedSession is one session id with the engine name its state entry records, empty for an entry written before engines were recorded.
+type recordedSession struct {
+	ID     string
+	Engine string
+}
+
+// recordedSessions lists the distinct non-empty Master sessions st records, and separately the distinct recovery sessions of every batch in batch-number order, each in a stable order.
+// Master's id carries MasterEngine, each batch's SessionID its Engine and each recovery session its RecoveryEngines entry.
+// An id is listed once, the first sighting fixing its engine, and one recorded as a Master session is never listed again as a recovery session.
+func recordedSessions(st *State) (master, recovery []recordedSession) {
+	listed := func(id string) bool {
+		match := func(s recordedSession) bool { return s.ID == id }
+		return slices.ContainsFunc(master, match) || slices.ContainsFunc(recovery, match)
+	}
+	add := func(list *[]recordedSession, id, engine string) {
+		if id != "" && !listed(id) {
+			*list = append(*list, recordedSession{ID: id, Engine: engine})
 		}
 	}
-	add(&master, st.MasterSessionID)
+	add(&master, st.MasterSessionID, st.MasterEngine)
 	numbers := make([]int, 0, len(st.Batches))
 	for n := range st.Batches {
 		numbers = append(numbers, n)
@@ -103,13 +124,13 @@ func recordedSessions(st *State) (master, recovery []string) {
 	slices.Sort(numbers)
 	for _, n := range numbers {
 		if b := st.Batches[n]; b != nil {
-			add(&master, b.SessionID)
+			add(&master, b.SessionID, b.Engine)
 		}
 	}
 	for _, n := range numbers {
 		if b := st.Batches[n]; b != nil {
 			for _, id := range b.RecoverySessions {
-				add(&recovery, id)
+				add(&recovery, id, b.RecoveryEngines[id])
 			}
 		}
 	}

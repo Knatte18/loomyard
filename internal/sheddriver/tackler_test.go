@@ -116,7 +116,7 @@ func newTacklerFixture(t *testing.T) *tacklerFixture {
 				{Producer: "Plan-Write", Outcome: shedengine.Done},
 			},
 		},
-		settings:       TacklerSettings{Model: "claude-resolved", Effort: "low", Version: "v1", Timeout: 10 * time.Minute, MaxSpawns: 2},
+		settings:       TacklerSettings{ModelChoice: shuttleengine.ModelChoice{Model: "claude-resolved", Effort: "low", Version: "v1"}, Timeout: 10 * time.Minute, MaxSpawns: 2},
 		fake:           &agentFake{runGUID: "guid-1"},
 		snapshot:       WorktreeSnapshot{Head: "abc123", Branch: "task", Dirty: map[string]string{"a.go": "h1"}},
 		producers:      []string{"Plan-Draft", "Plan-Write", "Plan-Bouncer", "PR-Gate"},

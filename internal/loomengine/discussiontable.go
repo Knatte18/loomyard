@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/twilldirective"
 )
 
@@ -46,17 +47,17 @@ func discussionModeRules(autonomous, advisors bool) string {
 	return rules
 }
 
-// resolveModelChoice parses raw and resolves it through reg, returning the model, effort and version.
-func resolveModelChoice(raw string, reg modelspec.Registry) (model, effort, version string, err error) {
+// resolveModelChoice parses raw and resolves it through reg, returning the resolved engine, model, effort and version.
+func resolveModelChoice(raw string, reg modelspec.Registry) (shuttleengine.ModelChoice, error) {
 	spec, err := modelspec.Parse(raw)
 	if err != nil {
-		return "", "", "", err
+		return shuttleengine.ModelChoice{}, err
 	}
 	resolved, err := reg.Resolve(spec)
 	if err != nil {
-		return "", "", "", err
+		return shuttleengine.ModelChoice{}, err
 	}
-	return resolved.Model, resolved.Params["effort"], resolved.Params["version"], nil
+	return shuttleengine.NewModelChoice(resolved), nil
 }
 
 // DiscussionTable builds the seatengine.Table of one Discussion-Write run: a lead that writes the decision record, the support log and the relevant list, and one advisor per entry of cfg.DiscussionAdvisors, named by the entry, that writes its notes file for the lead to read.
@@ -70,7 +71,7 @@ func DiscussionTable(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDi
 		return seatengine.Table{}, fmt.Errorf("loom: DiscussionTable: slug must not be empty")
 	}
 
-	chairModel, chairEffort, chairVersion, err := resolveModelChoice(cfg.Discussion, reg)
+	chairChoice, err := resolveModelChoice(cfg.Discussion, reg)
 	if err != nil {
 		return seatengine.Table{}, fmt.Errorf("loom: DiscussionTable: discussion role model-spec: %w", err)
 	}
@@ -104,32 +105,34 @@ func DiscussionTable(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDi
 	seats := make([]seatengine.Seat, 0, 1+len(cfg.DiscussionAdvisors))
 	var notes []string
 	for n, advisor := range cfg.DiscussionAdvisors {
-		model, effort, version, err := resolveModelChoice(advisor.Model, reg)
+		choice, err := resolveModelChoice(advisor.Model, reg)
 		if err != nil {
 			return seatengine.Table{}, fmt.Errorf("loom: DiscussionTable: %s entry %d: %w; set the entry's model to a model-spec the registry defines", discussionAdvisorsKey, n+1, err)
 		}
 		path := DiscussionAdvisorNotes(layout, advisor.Name)
 		notes = append(notes, path)
 		seats = append(seats, seatengine.Seat{
-			Name:    advisor.Name,
-			Stencil: discussionAdvisorStencil,
-			Model:   model,
-			Effort:  effort,
-			Version: version,
-			Outputs: []string{path},
-			Skills:  discussionAdvisorSkills,
+			Name:        advisor.Name,
+			Stencil:     discussionAdvisorStencil,
+			ModelChoice: choice,
+			ModelKey:    shuttleengine.ModelKey{Module: loomModule, Key: discussionAdvisorsKey, Entry: advisor.Name},
+			Outputs:     []string{path},
+			Skills:      discussionAdvisorSkills,
 		})
 	}
 	lead := seatengine.Seat{
 		Stencil:       discussionChairStencil,
-		Model:         chairModel,
-		Effort:        chairEffort,
-		Version:       chairVersion,
+		ModelChoice:   chairChoice,
 		Inputs:        notes,
 		Outputs:       []string{DiscussionDecisionRecord(layout), DiscussionSupportLog(layout), DiscussionRelevant(layout)},
 		Skills:        discussionSkills,
 		Values:        leadValues,
 		ForkSubagents: forks,
+		ModelKey:      shuttleengine.ModelKey{Module: loomModule, Key: "discussion"},
+	}
+	if forks {
+		// The lens directive tells the lead to fork and to end its turn while forks are outstanding, which a provider must wake it from.
+		lead.Requires = []shuttleengine.Requirement{shuttleengine.RequirementBackgroundWake}
 	}
 
 	return seatengine.Table{

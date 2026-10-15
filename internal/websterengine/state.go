@@ -148,6 +148,10 @@ type State struct {
 	// at spawn. record-batch's incremental fork audit resolves fork
 	// transcripts against this session ID.
 	MasterSessionID string `json:"masterSessionId,omitempty"`
+	// MasterEngine names the engine Master's session ran under, captured at spawn with MasterSessionID.
+	// Webster reads the session through it, since a shuttle run record does not outlive its run.
+	// Empty for a state written before the field existed.
+	MasterEngine string `json:"masterEngine,omitempty"`
 	// Batches holds every batch's own persisted record, keyed by batch
 	// number.
 	Batches map[int]*BatchState `json:"batches"`
@@ -235,6 +239,9 @@ type BatchState struct {
 	// session's batches against it would fail every legitimately completed
 	// resume (found in round fable-r1). Empty for a recovery batch.
 	SessionID string `json:"sessionId,omitempty"`
+	// Engine is the engine SessionID's session ran under (State.MasterEngine at begin time).
+	// Empty for a recovery batch and for a record written before the field existed.
+	Engine string `json:"engine,omitempty"`
 	// Terminal reports whether this batch has reached a terminal
 	// classification (done, stuck, dead, or failed).
 	Terminal bool `json:"terminal"`
@@ -293,6 +300,9 @@ type BatchState struct {
 	// RecoverySessions is the session id of every recovery strand spawned for the batch, in spawn order, carried across a re-begin and a respawn.
 	// The run's write evidence audits each, so a recovery's writes count as the run's own.
 	RecoverySessions []string `json:"recoverySessions,omitempty"`
+	// RecoveryEngines maps each RecoverySessions id to the engine its session ran under, carried the same way.
+	// An id with no entry belongs to a record written before the field existed.
+	RecoveryEngines map[string]string `json:"recoveryEngines,omitempty"`
 	// RecoveryStartSHA is the repo HEAD when the record's recovery was spawned, empty for a fork record and for a record written before the field existed.
 	// RecoveryRetry reads it to tell whether a dead recovery committed work of its own.
 	RecoveryStartSHA string `json:"recoveryStartSha,omitempty"`

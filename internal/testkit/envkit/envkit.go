@@ -67,6 +67,7 @@ var nilLegal = map[string]bool{
 	"WebsterDeps.Batcher":               true,
 	"WebsterDeps.Roles":                 true,
 	"WebsterDeps.ParentBranch":          true,
+	"WebsterDeps.InstructionFiles":      true,
 	"WebsterDeps.Geom.Git":              true,
 	"WebsterDeps.Geom.GateSlots":        true,
 	"InnerRun.Sleep":                    true,

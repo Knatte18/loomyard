@@ -134,7 +134,7 @@ Example:
 				Batches:      batches,
 				State:        st,
 				Config:       c.cfg,
-				Engine:       c.engine,
+				Engines:      c.engines,
 				Geom:         c.geom,
 				RefMatcher:   c.refMatcher,
 				ReadOnly:     fabricengine.IsReadOnlyCommand,

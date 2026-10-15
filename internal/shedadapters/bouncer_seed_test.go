@@ -70,6 +70,9 @@ func TestBouncer_SeedCall_HappyPath(t *testing.T) {
 	if shuttle.GotSpec.Version != seed.Version {
 		t.Errorf("recorded spec.Version = %q; want %q", shuttle.GotSpec.Version, seed.Version)
 	}
+	if shuttle.GotSpec.Engine != seed.Engine {
+		t.Errorf("recorded spec.Engine = %q; want the seed's %q", shuttle.GotSpec.Engine, seed.Engine)
+	}
 	if len(shuttle.GotSpec.OutputFiles) == 0 {
 		t.Fatal("recorded spec.OutputFiles is empty")
 	}

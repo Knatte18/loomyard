@@ -1,11 +1,12 @@
 package loomcli
 
 import (
+	"slices"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // TestDriverSpec pins driverSpec's whole output shape, each field as its own named assertion.
@@ -14,7 +15,8 @@ import (
 func TestDriverSpec(t *testing.T) {
 	prompt := "drive the run"
 	reportPath := "/hub/wt/.lyx/shed/wt/drive-report-20260920-120000-cafe.md"
-	settings := loomengine.DriverSettings{
+	settings := shuttleengine.ModelChoice{
+		Engine:  "b",
 		Model:   "claude-resolved-model-id",
 		Effort:  "high",
 		Version: "v9",
@@ -52,6 +54,11 @@ func TestDriverSpec(t *testing.T) {
 			t.Errorf("driverSpec().Version = %q; want %q", got.Version, settings.Version)
 		}
 	})
+	t.Run("Engine_ResolvedFromSettings", func(t *testing.T) {
+		if got.Engine != settings.Engine {
+			t.Errorf("driverSpec().Engine = %q; want %q", got.Engine, settings.Engine)
+		}
+	})
 	t.Run("NameOverride", func(t *testing.T) {
 		if got.NameOverride != driverStrandDisplayName {
 			t.Errorf("driverSpec().NameOverride = %q; want %q -- the next bootstrap's lookup uses this exact constant", got.NameOverride, driverStrandDisplayName)
@@ -65,6 +72,11 @@ func TestDriverSpec(t *testing.T) {
 	t.Run("ForkSubagents", func(t *testing.T) {
 		if !got.ForkSubagents {
 			t.Error("driverSpec().ForkSubagents = false; want true -- the driver forks itself once at a failure stop")
+		}
+	})
+	t.Run("Requires", func(t *testing.T) {
+		if want := []shuttleengine.Requirement{shuttleengine.RequirementBackgroundWake}; !slices.Equal(got.Requires, want) {
+			t.Errorf("driverSpec().Requires = %v; want %v -- the driver runs its loop and arbiter as background jobs and wakes on them", got.Requires, want)
 		}
 	})
 	t.Run("Role", func(t *testing.T) {

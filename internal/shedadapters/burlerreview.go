@@ -296,7 +296,7 @@ func (p *BurlerReviewProducer) acceptedExit(ctx context.Context, round int, resu
 }
 
 // reviewHalfUsage builds the review half's usage record from the model it ran on and the half's identity, with the reviewer's fork reading when it is known.
-func reviewHalfUsage(model burlerengine.ModelChoice, half burlerengine.Half) halfUsage {
+func reviewHalfUsage(model shuttleengine.ModelChoice, half burlerengine.Half) halfUsage {
 	record := newHalfUsage(model, half)
 	if usage := half.Usage; usage.Known {
 		forks := usage.Forks

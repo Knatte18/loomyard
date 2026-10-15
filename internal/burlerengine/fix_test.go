@@ -84,8 +84,8 @@ func TestEngine_Fix_TableShapeAndFiles(t *testing.T) {
 
 	var gateCalls int
 	opts := RunOpts{
-		Review:  ModelChoice{Model: "haiku"},
-		Fix:     ModelChoice{Model: "opus", Effort: "high", Version: "5"},
+		Review:  shuttleengine.ModelChoice{Model: "haiku"},
+		Fix:     shuttleengine.ModelChoice{Engine: "b", Model: "opus", Effort: "high", Version: "5"},
 		Timeout: 5 * time.Minute,
 		Round:   "1",
 		Gate:    gateOf("build", shuttleengine.GateResult{Passed: false, Findings: "build broke"}, nil, &gateCalls),
@@ -108,8 +108,8 @@ func TestEngine_Fix_TableShapeAndFiles(t *testing.T) {
 	if spec.Segment != segmentcolor.Merge || spec.Interactive || spec.ForkSubagents {
 		t.Errorf("spec segment %q interactive %v forks %v; want the profile's merge segment, neither interactive nor forking", spec.Segment, spec.Interactive, spec.ForkSubagents)
 	}
-	if spec.Model != opts.Fix.Model || spec.Effort != opts.Fix.Effort || spec.Version != opts.Fix.Version {
-		t.Errorf("spec model = (%q, %q, %q); want %+v", spec.Model, spec.Effort, spec.Version, opts.Fix)
+	if spec.ModelChoice != opts.Fix {
+		t.Errorf("spec model choice = %+v; want %+v", spec.ModelChoice, opts.Fix)
 	}
 	if spec.Timeout != opts.Timeout || spec.Round != opts.Round {
 		t.Errorf("spec timeout %v round %q; want %v and %q", spec.Timeout, spec.Round, opts.Timeout, opts.Round)

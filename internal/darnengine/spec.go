@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // darnStencilName is the registered name of the darn writer's stencil.
@@ -113,12 +114,10 @@ func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Ta
 		},
 		Optional: []string{"pattern_directive", friction.MarkerName},
 		Seats: []seatengine.Seat{{
-			Stencil: darnStencilName,
-			Model:   resolved.Model,
-			Effort:  resolved.Params["effort"],
-			Version: resolved.Params["version"],
-			Outputs: []string{in.DescriptionPath},
-			Skills:  languageconfig.AppendSkills(darnSkills, in.LanguageSkills),
+			Stencil:     darnStencilName,
+			ModelChoice: shuttleengine.NewModelChoice(resolved),
+			Outputs:     []string{in.DescriptionPath},
+			Skills:      languageconfig.AppendSkills(darnSkills, in.LanguageSkills),
 		}},
 	}, nil
 }

@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -191,6 +192,27 @@ func TestStartLLMDriverArm(t *testing.T) {
 		_, err := c.startLLMDriverArm(driverStrandNone, "", "self")
 		if !errors.Is(err, wantErr) {
 			t.Errorf("startLLMDriverArm() error = %v; want %v", err, wantErr)
+		}
+	})
+
+	// The refusal comes from shuttle's Start over an engine meeting no requirement, before any pane exists, and names the driver key in place of the generic way forward.
+	t.Run("a requirements refusal names the driver key and adds no strand", func(t *testing.T) {
+		reed := &shuttlefake.Reed{}
+		root := t.TempDir()
+		runner := shuttleengine.NewRunner(reed, shuttlefake.EngineSet(&shuttlefake.Engine{}), root, root, shuttleengine.Config{RunDir: t.TempDir(), RunTimeoutMin: 60, StartupTimeoutS: 30})
+		c := newTestLLMArmReceiver(t, runnerDriverStarter{runner: runner}, &fakeDriverPaneProbeForArm{})
+
+		_, err := c.startLLMDriverArm(driverStrandNone, "", "self")
+		if !errors.Is(err, shuttleengine.ErrRequirementsUnmet) {
+			t.Fatalf("startLLMDriverArm() error = %v; want errors.Is(err, ErrRequirementsUnmet)", err)
+		}
+		for _, want := range []string{`engine "fake"`, "driver", "lyx config loom"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("startLLMDriverArm() error = %q; want it to contain %q", err, want)
+			}
+		}
+		if len(reed.AddedSpecs) != 0 {
+			t.Errorf("reed AddStrand calls = %d; want none before the refusal", len(reed.AddedSpecs))
 		}
 	})
 

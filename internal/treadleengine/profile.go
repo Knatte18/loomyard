@@ -8,6 +8,8 @@ package treadleengine
 import (
 	"fmt"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // GateMode selects how a round's convergence is decided.
@@ -37,18 +39,16 @@ type Gate struct {
 // Gate/GateDir select and locate the convergence check.
 // RoundCaps must be resolved and non-empty;
 // treadle does no default resolution.
-// JudgeModel/ JudgeEffort tune judge calls;
-// Model/Effort/Timeout tune each round's attempt.
+// Judge is the model choice, engine included, of the judge and targeting calls;
+// Attempt is the model choice of each round's attempt, and Timeout tunes it.
 // PreRoundTargeting gates the optional pre-round targeting capability.
 type Profile struct {
 	ProfileHash       string
 	Gate              Gate
 	GateDir           string
 	RoundCaps         []int
-	JudgeModel        string
-	JudgeEffort       string
-	Model             string
-	Effort            string
+	Judge             shuttleengine.ModelChoice
+	Attempt           shuttleengine.ModelChoice
 	Timeout           time.Duration
 	PreRoundTargeting bool
 }

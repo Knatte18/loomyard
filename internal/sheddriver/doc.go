@@ -81,6 +81,7 @@
 // `shed.yaml` holds the defaults every shed-driven recipe inherits: `driver_kind`, `tackler`, `tackler_timeout_min` and `tackler_max_spawns`.
 // A module's own keys of the same names are an `Override` of them: an empty string, a zero and a null inherit, and a set `tackler_max_spawns`, zero included, wins, since zero turns the tackler off.
 // `ResolveDriverKind` and `ResolveTackler` take each key from the override, else `shed.yaml`, else the default: the `llm` driver, the `haiku` model-spec and a ten minute timeout.
+// `ResolveTackler` returns `TacklerSettings`, which carry a model choice, engine included, beside the timeout and the spawn budget.
 // `loomengine.RecipeOverride` picks the module override by recipe, `darn.yaml`'s for a darn run and `loom.yaml`'s otherwise; batten's tackler keys sit in `batten.yaml`.
 // `CheckOverride` and `CheckLocalOverride` refuse a bad value in any layer, naming the module, the key and the way to set it.
 package sheddriver

@@ -13,7 +13,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
@@ -230,8 +229,8 @@ func TestBouncerEntry_ReportNamePinning(t *testing.T) {
 // driven against the entry's producer with the shedfake.Shuttle already on newTestEnv's Env, and the
 // recorded shuttleengine.Spec's Model, Effort, and Version are asserted.
 func TestBouncerEntry_EnvJudgeFallback(t *testing.T) {
-	seed := burlerengine.ModelChoice{Model: "seed-model", Effort: "seed-effort", Version: "seed-version"}
-	judge := burlerengine.ModelChoice{Model: "judge-model", Effort: "judge-effort", Version: "judge-version"}
+	seed := shuttleengine.ModelChoice{Engine: "seed-engine", Model: "seed-model", Effort: "seed-effort", Version: "seed-version"}
+	judge := shuttleengine.ModelChoice{Engine: "judge-engine", Model: "judge-model", Effort: "judge-effort", Version: "judge-version"}
 
 	// callAndCaptureSpec constructs the "review-bounce" Bouncer entry over an Env carrying distinct seed and judge triples.
 	// It optionally writes round 1's review report so the Call judges instead of seeding, sets the extra config keys, and returns the one recorded shuttleengine.Spec and the spec of the attach probe before it.
@@ -272,7 +271,7 @@ func TestBouncerEntry_EnvJudgeFallback(t *testing.T) {
 		writeReport bool
 		extra       Config
 		wantRole    string
-		want        burlerengine.ModelChoice
+		want        shuttleengine.ModelChoice
 	}{
 		{"SeedSpawnTakesTheRowsSeedTriple", false, nil, "bouncer-seed", seed},
 		{"JudgeSpawnTakesTheRowsJudgeTriple", true, nil, "bouncer-judge", judge},
@@ -288,9 +287,8 @@ func TestBouncerEntry_EnvJudgeFallback(t *testing.T) {
 			if attach.Role != tt.wantRole {
 				t.Errorf("attach spec Role = %q; want %q, the spawn's role", attach.Role, tt.wantRole)
 			}
-			got := burlerengine.ModelChoice{Model: spec.Model, Effort: spec.Effort, Version: spec.Version}
-			if got != tt.want {
-				t.Errorf("spec model = %+v; want %+v", got, tt.want)
+			if spec.ModelChoice != tt.want {
+				t.Errorf("spec model choice = %+v; want %+v", spec.ModelChoice, tt.want)
 			}
 		})
 	}

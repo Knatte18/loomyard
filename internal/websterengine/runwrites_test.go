@@ -41,7 +41,7 @@ func TestLoadRunWrites(t *testing.T) {
 			}, nil
 		}}
 
-		got, err := loadRunWrites(engine, st, "/wt")
+		got, err := loadRunWrites(shuttlefake.EngineSet(engine), st, "/wt")
 		if err != nil {
 			t.Fatalf("loadRunWrites: %v", err)
 		}
@@ -77,7 +77,7 @@ func TestLoadRunWrites(t *testing.T) {
 			}, nil
 		}}
 
-		got, err := loadRunWrites(engine, st, "/wt")
+		got, err := loadRunWrites(shuttlefake.EngineSet(engine), st, "/wt")
 		if err != nil {
 			t.Fatalf("loadRunWrites: %v", err)
 		}
@@ -111,7 +111,7 @@ func TestLoadRunWrites(t *testing.T) {
 			return shuttleengine.ForkAudit{ParentWriteEvents: []shuttleengine.WriteEvent{{Path: "p"}}}, nil
 		}}
 
-		got, err := loadRunWrites(engine, st, "/wt")
+		got, err := loadRunWrites(shuttlefake.EngineSet(engine), st, "/wt")
 		if err != nil {
 			t.Fatalf("loadRunWrites: %v", err)
 		}
@@ -152,6 +152,114 @@ func TestLoadRunWrites(t *testing.T) {
 		}
 	})
 
+	t.Run("each session is audited through its recorded engine", func(t *testing.T) {
+		t.Parallel()
+
+		var calls []string
+		fake := func(name string) *shuttlefake.Engine {
+			return &shuttlefake.Engine{AuditForksFn: func(session, _ string) (shuttleengine.ForkAudit, error) {
+				calls = append(calls, name+":"+session)
+				return shuttleengine.ForkAudit{ParentWriteEvents: []shuttleengine.WriteEvent{{Path: name + ":" + session}}}, nil
+			}}
+		}
+		engines := shuttleengine.NewEngineSet("c", map[string]shuttleengine.Engine{"a": fake("a"), "b": fake("b"), "c": fake("c")})
+		st := &State{
+			MasterSessionID: "m",
+			MasterEngine:    "a",
+			Batches: map[int]*BatchState{
+				// The Master session recorded again under another engine is audited once, through its first sighting.
+				1: {SessionID: "m", Engine: "b"},
+				2: {SessionID: "f", Engine: "b", RecoverySessions: []string{"r1", "r2"}, RecoveryEngines: map[string]string{"r1": "a", "r2": "b"}},
+				3: {SessionID: "legacy"},
+			},
+		}
+
+		got, err := loadRunWrites(engines, st, "/wt")
+		if err != nil {
+			t.Fatalf("loadRunWrites: %v", err)
+		}
+		if want := []string{"a:m", "b:f", "c:legacy", "a:r1", "b:r2"}; !reflect.DeepEqual(calls, want) {
+			t.Errorf("audits = %v, want %v (each session through its own engine, an engine-less one through the default)", calls, want)
+		}
+		wantMaster := []shuttleengine.WriteEvent{{Path: "a:m"}, {Path: "b:f"}, {Path: "c:legacy"}}
+		if !reflect.DeepEqual(got.Master, wantMaster) {
+			t.Errorf("Master = %v, want %v", got.Master, wantMaster)
+		}
+		wantRecoveries := []shuttleengine.WriteEvent{{Path: "a:r1"}, {Path: "b:r2"}}
+		if !reflect.DeepEqual(got.Recoveries, wantRecoveries) {
+			t.Errorf("Recoveries = %v, want %v", got.Recoveries, wantRecoveries)
+		}
+	})
+
+	t.Run("a session whose engine cannot be read is refused", func(t *testing.T) {
+		t.Parallel()
+
+		fake := &shuttlefake.Engine{}
+		withoutForkAudit := struct{ shuttleengine.Engine }{fake}
+		tests := []struct {
+			name      string
+			engines   shuttleengine.EngineSet
+			engine    string
+			wantIs    error
+			wantParts []string
+			wantNot   string
+		}{
+			{
+				name:      "UnregisteredEngine",
+				engines:   shuttleengine.NewEngineSet("a", map[string]shuttleengine.Engine{"a": fake}),
+				engine:    "gone",
+				wantIs:    shuttleengine.ErrEngineNotRegistered,
+				wantParts: []string{"sess-1", `"gone"`, `with a lyx whose engine set holds "gone"`},
+			},
+			{
+				name:      "EngineLessSessionOnDefaultWithoutForkAudit",
+				engines:   shuttleengine.NewEngineSet("a", map[string]shuttleengine.Engine{"a": withoutForkAudit}),
+				wantParts: []string{"sess-1", `engine: "a"`, "set engine: in shuttle.yaml back to an engine with fork audit"},
+			},
+			{
+				name:      "HeldEngineWithoutForkAudit",
+				engines:   shuttleengine.NewEngineSet("b", map[string]shuttleengine.Engine{"a": withoutForkAudit, "b": fake}),
+				engine:    "a",
+				wantParts: []string{"internal error", "sess-1", `"a"`},
+				wantNot:   "way forward",
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				st := &State{MasterSessionID: "sess-1", MasterEngine: tt.engine}
+				_, err := loadRunWrites(tt.engines, st, "/wt")
+				if err == nil {
+					t.Fatal("loadRunWrites() error = nil; want a refusal")
+				}
+				if tt.wantIs != nil && !errors.Is(err, tt.wantIs) {
+					t.Errorf("loadRunWrites() error = %v; want it to wrap %v", err, tt.wantIs)
+				}
+				for _, part := range tt.wantParts {
+					if !strings.Contains(err.Error(), part) {
+						t.Errorf("loadRunWrites() error = %q; want it to contain %q", err, part)
+					}
+				}
+				if tt.wantNot != "" && strings.Contains(err.Error(), tt.wantNot) {
+					t.Errorf("loadRunWrites() error = %q; want no %q", err, tt.wantNot)
+				}
+			})
+		}
+	})
+
+	t.Run("a nil engines yields an empty history", func(t *testing.T) {
+		t.Parallel()
+
+		got, err := loadRunWrites(nil, &State{MasterSessionID: "s1"}, "/wt")
+		if err != nil {
+			t.Fatalf("loadRunWrites: %v", err)
+		}
+		if !reflect.DeepEqual(got, RunWrites{}) {
+			t.Errorf("loadRunWrites(nil) = %+v, want the empty history", got)
+		}
+	})
+
 	t.Run("an audit error names the session", func(t *testing.T) {
 		t.Parallel()
 
@@ -159,7 +267,7 @@ func TestLoadRunWrites(t *testing.T) {
 		boom := errors.New("transcript unreadable")
 		engine := &shuttlefake.Engine{AuditErr: boom}
 
-		_, err := loadRunWrites(engine, st, "/wt")
+		_, err := loadRunWrites(shuttlefake.EngineSet(engine), st, "/wt")
 		if !errors.Is(err, boom) {
 			t.Fatalf("err = %v, want it to wrap %v", err, boom)
 		}

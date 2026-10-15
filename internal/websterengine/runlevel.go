@@ -19,7 +19,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -114,7 +113,7 @@ type MasterStarter interface {
 
 // RunDeps carries every seam Run needs for testing.
 // Starter spawns Master; Stopper is the seam the entry-time reclaim stops a leftover strand through;
-// Engine and ShuttleCfg support session resolution and audit;
+// Engines and ShuttleCfg support session resolution and audit, Engines reading each recorded session through its own engine;
 // Geom is the told Geometry every path (PlanDir, WebsterDir, ReportsDir, PromptsDir, ScratchDir,
 // WorktreeRoot, AnchorRoot, StencilsDir) is read from;
 // RefMatcher is the injected fabric-reference class matcher CheckParent/CheckFork consult, never nil
@@ -124,9 +123,9 @@ type MasterStarter interface {
 type RunDeps struct {
 	Starter    MasterStarter
 	Stopper    StrandStopper
-	Engine     shuttleengine.ForkAuditor
+	Engines    AuditEngines
 	ShuttleCfg shuttleengine.Config
-	Roles      map[Role]modelspec.Resolved
+	Roles      map[Role]shuttleengine.ModelChoice
 	Config     Config
 	// Batcher is the CLI-resolved active batchifier (batcher.Active),
 	// populated by webstercli's PersistentPreRunE before Run is called. Run
@@ -159,6 +158,18 @@ type RunDeps struct {
 
 	// LanguageSkills are the hub's language skills the master loads after roleSkills; empty for none.
 	LanguageSkills []string
+
+	// InstructionFiles lists the names of the instruction files Master's engine loads, which Merriam's start base counts; nil means none.
+	// It is called where a fresh partition is formed and where an auto-rebaseline prices the tail.
+	InstructionFiles func() ([]string, error)
+}
+
+// instructionFiles returns the instruction file names Merriam's start base counts, none when InstructionFiles is nil.
+func (d RunDeps) instructionFiles() ([]string, error) {
+	if d.InstructionFiles == nil {
+		return nil, nil
+	}
+	return d.InstructionFiles()
 }
 
 // reentryStep returns the step that re-enters the run, defaulting to `lyx webster run`.
@@ -400,6 +411,14 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	if deps.Batcher == nil {
 		return RunResult{}, ErrNilBatcher
 	}
+	// recover-batch spawns the recovery role, not Run, so its check here is a pre-flight; a role without a resolved choice is left to the spawn that refuses it.
+	for _, role := range []Role{RoleMaster, RoleRecovery} {
+		if choice, ok := deps.Roles[role]; ok {
+			if err := roleAuditEngine(deps.Engines, role, choice); err != nil {
+				return RunResult{}, err
+			}
+		}
+	}
 	// Run adds the `verify` entry itself, so a caller's gate naming one would run beside it.
 	for _, e := range deps.Gate {
 		if e.Name == verifyGateName {
@@ -449,7 +468,7 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 		return RunResult{}, err
 	}
 
-	freshDrop, freshWarnings, err := freshPendingDrop(deps.Engine, deps.Geom, st, opts)
+	freshDrop, freshWarnings, err := freshPendingDrop(deps.Engines, deps.Geom, st, opts)
 	if err != nil {
 		return RunResult{}, err
 	}
@@ -461,7 +480,11 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	// rebaselineStep is the step the plan refusals name once an auto-rebaseline was accepted, and empty otherwise.
 	var rebaselineStep string
 	newPartition := func() ([]batcher.Batch, error) {
-		base, err := MerriamBase(deps.Geom)
+		instructionFiles, err := deps.instructionFiles()
+		if err != nil {
+			return nil, err
+		}
+		base, err := MerriamBase(deps.Geom, instructionFiles)
 		if err != nil {
 			return nil, fmt.Errorf("%w; way forward: transient, %s", err, deps.reentryStep())
 		}
@@ -567,7 +590,7 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	}
 
 	if len(st.PendingAuditFindings) > 0 {
-		return RunResult{}, pendingAuditFindingsError(deps.Engine, st, deps.Geom, deps.reentryStep())
+		return RunResult{}, pendingAuditFindingsError(deps.Engines, st, deps.Geom, deps.reentryStep())
 	}
 
 	// Validation runs HERE — after the state phase settles — rather than at entry, because its
@@ -680,7 +703,7 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	if err != nil {
 		return RunResult{}, err
 	}
-	resolved, ok := deps.Roles[RoleMaster]
+	choice, ok := deps.Roles[RoleMaster]
 	if !ok {
 		return RunResult{}, fmt.Errorf("webster: no resolved model-spec for role %q", RoleMaster)
 	}
@@ -692,11 +715,11 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 		// reaches its summary.md final action never falsely reads as
 		// finished.
 		OutputFiles:   []string{outcomePath, summaryPath},
-		Model:         resolved.Model,
-		Effort:        resolved.Params["effort"],
-		Version:       resolved.Params["version"],
+		ModelChoice:   choice,
 		Skills:        languageconfig.AppendSkills(roleSkills, deps.LanguageSkills),
 		ForkSubagents: true,
+		// The Master stencil ends its turn after each backgrounded fork and backgrounded recover-batch and wakes on their completion.
+		Requires: []shuttleengine.Requirement{shuttleengine.RequirementBackgroundWake},
 		// The failure ladder backgrounds recover-batch and recovery_timeout_min bounds it, so the wait marker leaves it out.
 		AwaitedShellPrefixes: []string{masterAwaitedShellPrefix},
 		Role:                 MerriamStrandRole,
@@ -712,6 +735,10 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	gate := append(slices.Clone(deps.Gate), shuttleengine.GateEntry{Name: verifyGateName, Gate: verifyGate, Attempts: deps.Config.VerifyGateAttempts, Reprompt: verifyGateReprompt(verifyFixPromptPath)})
 	handle, err := deps.Starter.StartMaster(spec, gate)
 	if err != nil {
+		err = shuttleengine.ModelKey{Module: "webster", Key: "master"}.Wrap(err)
+		if errors.Is(err, shuttleengine.ErrRequirementsUnmet) {
+			return RunResult{}, fmt.Errorf("webster: start master: %w", err)
+		}
 		return RunResult{}, fmt.Errorf("webster: start master: %w; way forward: transient, re-run `lyx webster run`", err)
 	}
 
@@ -733,6 +760,7 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 		return RunResult{}, fmt.Errorf("webster: resolve spawned master run: %w", err)
 	}
 	st.MasterSessionID = runState.SessionID
+	st.MasterEngine = runState.Engine
 
 	// Second save: the session ID the verbs read.
 	if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
@@ -1067,7 +1095,7 @@ func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, resul
 		if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
 			return nil, "", err
 		}
-		clause, wayForward, err := pendingFindingsText(deps.Engine, st, deps.Geom, items, deps.reentryStep())
+		clause, wayForward, err := pendingFindingsText(deps.Engines, st, deps.Geom, items, deps.reentryStep())
 		if err != nil {
 			return nil, "", err
 		}
@@ -1103,13 +1131,13 @@ func hasPendingFinding(st *State, id string) bool {
 var ErrPendingAuditFindings = errors.New("webster: correctness findings from an earlier run exit are pending")
 
 // pendingAuditFindingsError wraps ErrPendingAuditFindings with the pending findings clause and the way forward pendingFindingsText builds.
-// The way forward is judged over the write history engine's audit of st's sessions yields, and ends in reentry on the accept-audit route.
-func pendingAuditFindingsError(engine shuttleengine.ForkAuditor, st *State, geom Geometry, reentry string) error {
+// The way forward is judged over the write history engines' audit of st's sessions yields, and ends in reentry on the accept-audit route.
+func pendingAuditFindingsError(engines AuditEngines, st *State, geom Geometry, reentry string) error {
 	items := make([]findingItem, len(st.PendingAuditFindings))
 	for i, f := range st.PendingAuditFindings {
 		items[i] = findingItem{Class: f.Class, Detail: f.Detail, Paths: f.Paths}
 	}
-	clause, wayForward, err := pendingFindingsText(engine, st, geom, items, reentry)
+	clause, wayForward, err := pendingFindingsText(engines, st, geom, items, reentry)
 	if err != nil {
 		return err
 	}
@@ -1118,8 +1146,8 @@ func pendingAuditFindingsError(engine shuttleengine.ForkAuditor, st *State, geom
 
 // pendingFindingsText renders the findings clause and the way forward for items, the text a run-exit stuck reason and the pending-findings refusal share.
 // The write history is loaded only when a path is a contract file.
-// The error is a link-resolution, audit or git probe failure.
-func pendingFindingsText(engine shuttleengine.ForkAuditor, st *State, geom Geometry, items []findingItem, reentry string) (clause, wayForward string, err error) {
+// The error is a link-resolution, engine-resolution, audit or git probe failure.
+func pendingFindingsText(engines AuditEngines, st *State, geom Geometry, items []findingItem, reentry string) (clause, wayForward string, err error) {
 	var paths []string
 	pathless := false
 	for _, it := range items {
@@ -1130,7 +1158,7 @@ func pendingFindingsText(engine shuttleengine.ForkAuditor, st *State, geom Geome
 			}
 		}
 	}
-	writes, err := contractWritesFor(engine, st, geom, paths)
+	writes, err := contractWritesFor(engines, st, geom, paths)
 	if err != nil {
 		return "", "", err
 	}
@@ -1223,7 +1251,7 @@ func pendingPathsWayForward(geom Geometry, st *State, writes RunWrites, paths []
 // its warning says so.
 // A batch record with Uncheckable entries counts as a pending finding: its SuspectPaths join the path check,
 // and it adds its own drop warning.
-func freshPendingDrop(engine shuttleengine.ForkAuditor, geom Geometry, st *State, opts RunOptions) (drop bool, warnings []string, err error) {
+func freshPendingDrop(engines AuditEngines, geom Geometry, st *State, opts RunOptions) (drop bool, warnings []string, err error) {
 	if !opts.Fresh || st == nil || !hasPendingFindings(st) {
 		return false, nil, nil
 	}
@@ -1248,7 +1276,7 @@ func freshPendingDrop(engine shuttleengine.ForkAuditor, geom Geometry, st *State
 	if head != base {
 		return false, nil, fmt.Errorf("%w: --fresh would drop pending audit findings while HEAD %s is not the run's start commit %s; %s", ErrPendingAuditFindings, head, base, resetToStartSteps(stepRun))
 	}
-	warnings, err = checkPendingFindings(engine, geom, st, base, freshPendingGuard())
+	warnings, err = checkPendingFindings(engines, geom, st, base, freshPendingGuard())
 	if err != nil {
 		return false, nil, err
 	}

@@ -136,6 +136,9 @@ func TestWire_ModeHubSelectsHubMode(t *testing.T) {
 			if c.refMatcher == nil {
 				t.Error("refMatcher = nil; want a non-nil matcher in hub mode")
 			}
+			if c.runDeps().InstructionFiles == nil {
+				t.Error("runDeps().InstructionFiles = nil; want Master's instruction file lister supplied for `lyx webster run`")
+			}
 			if c.geom.PlanDir == "" {
 				t.Error("geom.PlanDir is empty; want the hub default")
 			}
@@ -242,6 +245,9 @@ func TestWire_StandaloneMode(t *testing.T) {
 	}
 	if c.runDeps().ReadOnly == nil {
 		t.Error("runDeps().ReadOnly = nil; want the read-only classifier supplied for `lyx webster run`")
+	}
+	if c.runDeps().InstructionFiles == nil {
+		t.Error("runDeps().InstructionFiles = nil; want Master's instruction file lister supplied for `lyx webster run`")
 	}
 	if c.openFabric != nil {
 		t.Error("openFabric != nil; want nil in standalone -- there is no fabric repo to reach")

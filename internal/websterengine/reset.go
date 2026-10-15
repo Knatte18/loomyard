@@ -42,8 +42,8 @@ type ResetDeps struct {
 	Geom Geometry
 	// State is the loaded state.json, nil when the run has none.
 	State *State
-	// Engine audits the run's sessions for the writes the dirt check exempts.
-	Engine shuttleengine.ForkAuditor
+	// Engines audits the run's sessions, each through its recorded engine, for the writes the dirt check exempts.
+	Engines AuditEngines
 	// Reed answers whether a recovery strand is live; nil leaves the live-strand refusal of report-head unchecked.
 	Reed shuttleengine.ReedOps
 	// ParentBranch names the branch the run merges its parent in from; nil or an error leaves the parent-branch refusal unchecked.
@@ -420,10 +420,10 @@ func resolveResetSHA(geom Geometry, st *State, bases evidenceBases, to ResetTarg
 // ownTrackedPaths returns the sorted, deduplicated worktree-relative tracked paths the run wrote successfully.
 // A failed write is not evidence: the exemption is by path, not content.
 func ownTrackedPaths(deps ResetDeps) ([]string, error) {
-	if deps.Engine == nil {
+	if deps.Engines == nil {
 		return nil, nil
 	}
-	writes, err := loadRunWrites(deps.Engine, deps.State, deps.Geom.WorktreeRoot)
+	writes, err := loadRunWrites(deps.Engines, deps.State, deps.Geom.WorktreeRoot)
 	if err != nil {
 		return nil, err
 	}

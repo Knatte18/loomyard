@@ -35,7 +35,7 @@ var targetingSkills = []string{"scribe:prose"}
 // without a seed. stencilsDir is the absolute stencils directory this call
 // reads its prompt from, leading rather than trailing so a mis-ordered call
 // site still compiles.
-func runTargeting(stencilsDir, parentName string, sh Shuttle, name string, round int, previousHandoffPath, seedPath, model, effort string) (string, bool) {
+func runTargeting(stencilsDir, parentName string, sh Shuttle, name string, round int, previousHandoffPath, seedPath string, choice shuttleengine.ModelChoice) (string, bool) {
 	targetingTemplate, err := stencilstore.Read(stencilsDir, "treadle-template-targeting")
 	if err != nil {
 		logger.Warn(name+": targeting judge template unreadable, round runs without a seed", "round", round, "cause", err)
@@ -68,8 +68,7 @@ func runTargeting(stencilsDir, parentName string, sh Shuttle, name string, round
 	spec := shuttleengine.Spec{
 		Prompt:      string(prompt),
 		OutputFiles: []string{seedPath},
-		Model:       model,
-		Effort:      effort,
+		ModelChoice: choice,
 		Role:        targetingRole,
 		Segment:     segmentcolor.Review,
 		Skills:      targetingSkills,

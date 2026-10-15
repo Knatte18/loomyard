@@ -54,8 +54,8 @@ var (
 // BouncerModels holds the already-resolved model pair of each pass a Bouncer spawns.
 // An empty pair defers to the provider default.
 type BouncerModels struct {
-	Seed  burlerengine.ModelChoice
-	Judge burlerengine.ModelChoice
+	Seed  shuttleengine.ModelChoice
+	Judge shuttleengine.ModelChoice
 }
 
 // BouncerConfig configures one Bouncer instance.
@@ -1236,9 +1236,7 @@ func (b *Bouncer) runSeedSpawn(focusPathValue string) error {
 	spec := shuttleengine.Spec{
 		Prompt:      string(prompt),
 		OutputFiles: []string{focusPathValue},
-		Model:       b.cfg.Models.Seed.Model,
-		Effort:      b.cfg.Models.Seed.Effort,
-		Version:     b.cfg.Models.Seed.Version,
+		ModelChoice: b.cfg.Models.Seed,
 		Role:        b.role(bouncerSeedRole),
 		Segment:     b.colorSegment(),
 		Round:       "1",
@@ -1368,9 +1366,7 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 	spec := shuttleengine.Spec{
 		Prompt:      string(prompt),
 		OutputFiles: outputs,
-		Model:       b.cfg.Models.Judge.Model,
-		Effort:      b.cfg.Models.Judge.Effort,
-		Version:     b.cfg.Models.Judge.Version,
+		ModelChoice: b.cfg.Models.Judge,
 		Role:        b.role(bouncerJudgeRole),
 		Segment:     b.colorSegment(),
 		Round:       strconv.Itoa(n),

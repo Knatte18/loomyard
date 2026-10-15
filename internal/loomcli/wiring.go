@@ -546,10 +546,6 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	if err != nil {
 		return err
 	}
-	auditEngine, err := websterengine.AuditEngineFrom(engines)
-	if err != nil {
-		return err
-	}
 	runner := shuttleengine.NewRunner(reedEngine, engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 	pauseGeom, err := hubgeom.PauseGeometry(location)
 	if err != nil {
@@ -584,7 +580,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	runDeps := websterengine.RunDeps{
 		Starter:    runnerMasterStarter{runner: runner},
 		Stopper:    runner,
-		Engine:     auditEngine,
+		Engines:    engines,
 		ShuttleCfg: shuttleCfg,
 		Roles:      roles,
 		Config:     websterCfg,
@@ -607,6 +603,8 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 			return readRecordedParentBranch(location)
 		},
 		LanguageSkills: languageSkills,
+		// InstructionFiles looks Master's engine up lazily, so loom's status and pause, which only wire, are never refused by the master key.
+		InstructionFiles: websterengine.MasterInstructionFiles(engines, roles[websterengine.RoleMaster]),
 	}
 
 	statusPath := shedrun.StatusFile(location, c.runID)

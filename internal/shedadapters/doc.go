@@ -201,7 +201,7 @@
 // so a missing record, a switch from solo or from another fan, or a lens already excluded drops it, with a warning for the round's own file.
 // Round 1 runs the whole fan and drops a focus file's excludes, and an excluded lens returns only with a new generation, since an archived generation moves the whole run directory aside.
 // Every completed round, solo and fanned, also leaves round-<N>-usage.yaml beside them:
-// the fan and lenses the round ran, and each half's model, run times, wall time and tokens, forks included, with an unknown reading left unknown rather than zero.
+// the fan and lenses the round ran, and each half's engine and model, run times, wall time and tokens, forks included, with an unknown reading left unknown rather than zero.
 // The record also carries the Bouncer's `seed` and `judge` lists, one entry per pass in the same half shape.
 // The Bouncer appends an entry for every pass whose result reached the Call, a judgment the guard refuses included, so a re-judged round lists every pass it took;
 // a pass whose run errored, and a judgment a later Call settles from disk, record nothing, and a failed write only logs a warning.

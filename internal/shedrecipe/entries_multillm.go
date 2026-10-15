@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // multiLLMEntry is the Constructor for the "MultiLLM" registry row.
@@ -144,7 +145,7 @@ func multiLLMSeat(i int, cfg Config, env Env) (seatengine.Seat, error) {
 		return seatengine.Seat{}, wrap(err)
 	}
 
-	model, effort, version, err := resolveSeatModel("MultiLLM", i, modelSpec, env.Models)
+	choice, err := resolveSeatModel("MultiLLM", i, modelSpec, env.Models)
 	if err != nil {
 		return seatengine.Seat{}, err
 	}
@@ -159,15 +160,13 @@ func multiLLMSeat(i int, cfg Config, env Env) (seatengine.Seat, error) {
 	}
 
 	return seatengine.Seat{
-		Name:    name,
-		Stencil: stencilName,
-		Model:   model,
-		Effort:  effort,
-		Version: version,
-		Inputs:  resolvedInputs,
-		Outputs: resolvedOutputs,
-		Skills:  skills,
-		Values:  values,
+		Name:        name,
+		Stencil:     stencilName,
+		ModelChoice: choice,
+		Inputs:      resolvedInputs,
+		Outputs:     resolvedOutputs,
+		Skills:      skills,
+		Values:      values,
 	}, nil
 }
 
@@ -185,18 +184,18 @@ func resolveSeatPaths(root, key string, i int, paths []string) ([]string, error)
 }
 
 // resolveSeatModel parses the model-spec string of the i-th seat of entry and resolves it against reg.
-// It returns the provider model and the spec's effort and version parameters.
+// It returns the resolved engine and provider model with the spec's effort and version parameters.
 // An unparsable spec and an unknown alias are errors naming the seat.
-func resolveSeatModel(entry string, i int, spec string, reg modelspec.Registry) (model, effort, version string, err error) {
+func resolveSeatModel(entry string, i int, spec string, reg modelspec.Registry) (shuttleengine.ModelChoice, error) {
 	parsed, err := modelspec.Parse(spec)
 	if err != nil {
-		return "", "", "", fmt.Errorf("shedrecipe: %s: seat %d: model %q: %w", entry, i, spec, err)
+		return shuttleengine.ModelChoice{}, fmt.Errorf("shedrecipe: %s: seat %d: model %q: %w", entry, i, spec, err)
 	}
 	resolved, err := reg.Resolve(parsed)
 	if err != nil {
-		return "", "", "", fmt.Errorf("shedrecipe: %s: seat %d: model %q: %w", entry, i, spec, err)
+		return shuttleengine.ModelChoice{}, fmt.Errorf("shedrecipe: %s: seat %d: model %q: %w", entry, i, spec, err)
 	}
-	return resolved.Model, resolved.Params["effort"], resolved.Params["version"], nil
+	return shuttleengine.NewModelChoice(resolved), nil
 }
 
 // colorSegmentKey reads the optional color_segment key of cfg as the segment a Bouncer or Burler row's sessions are colored by.

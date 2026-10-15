@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -22,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
@@ -47,24 +47,20 @@ type reworkPaths struct {
 
 // ResolveRework parses and resolves the rework role's model-spec from cfg: cfg.Rework when non-empty, else cfg.Plan.
 // An error names the rework role and the key the value came from.
-func ResolveRework(cfg Config, reg modelspec.Registry) (burlerengine.ModelChoice, error) {
+func ResolveRework(cfg Config, reg modelspec.Registry) (shuttleengine.ModelChoice, error) {
 	key, raw := "plan", cfg.Plan
 	if cfg.Rework != "" {
 		key, raw = "rework", cfg.Rework
 	}
 	spec, err := modelspec.Parse(raw)
 	if err != nil {
-		return burlerengine.ModelChoice{}, fmt.Errorf("loom: ResolveRework: rework role model-spec from key %q: %w", key, err)
+		return shuttleengine.ModelChoice{}, fmt.Errorf("loom: ResolveRework: rework role model-spec from key %q: %w", key, err)
 	}
 	resolved, err := reg.Resolve(spec)
 	if err != nil {
-		return burlerengine.ModelChoice{}, fmt.Errorf("loom: ResolveRework: rework role model-spec from key %q: %w", key, err)
+		return shuttleengine.ModelChoice{}, fmt.Errorf("loom: ResolveRework: rework role model-spec from key %q: %w", key, err)
 	}
-	return burlerengine.ModelChoice{
-		Model:   resolved.Model,
-		Effort:  resolved.Params["effort"],
-		Version: resolved.Params["version"],
-	}, nil
+	return shuttleengine.NewModelChoice(resolved), nil
 }
 
 // ReworkTable builds the seatengine.Table of one PR-Rework run: a lead that turns the pending rejection's findings into a whole new plan generation and writes the coverage file last as its completion signal.
@@ -126,12 +122,10 @@ func ReworkTable(layout *lyxcwd.Location, stencilsDir, specsDir string, cfg Conf
 		},
 		Optional: []string{"pattern_directive", friction.MarkerName},
 		Seats: []seatengine.Seat{{
-			Stencil: reworkStencilName,
-			Model:   model.Model,
-			Effort:  model.Effort,
-			Version: model.Version,
-			Outputs: []string{paths.coverage},
-			Skills:  reworkSkills,
+			Stencil:     reworkStencilName,
+			ModelChoice: model,
+			Outputs:     []string{paths.coverage},
+			Skills:      reworkSkills,
 		}},
 	}, nil
 }

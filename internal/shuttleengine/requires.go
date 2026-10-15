@@ -21,6 +21,50 @@ func (e *requirementsError) Error() string { return e.message }
 
 func (e *requirementsError) Unwrap() error { return ErrRequirementsUnmet }
 
+// startRequirementsError is the refusal of an unmet requirement at Start.
+// It holds the refusal without its way forward and reads with the generic one, so a refusal no caller wraps still names a way forward.
+type startRequirementsError struct{ refusal error }
+
+func (e *startRequirementsError) Error() string {
+	return e.refusal.Error() + "; way forward: give the role a model alias of an engine that meets them, or for a role that takes no alias set engine: in shuttle.yaml to one that does, then re-run the verb"
+}
+
+func (e *startRequirementsError) Unwrap() error { return e.refusal }
+
+// ModelKey names where a role's model came from, so a Start requirements refusal can name the key to change.
+// The zero ModelKey stands for a seat whose key no caller names.
+type ModelKey struct {
+	// Module is the config module whose YAML file holds the key.
+	Module string
+	// Key is the config key holding the model spec.
+	Key string
+	// Entry names one entry of a {name, model} list under Key, empty for a scalar model spec.
+	Entry string
+	// DefaultEngine marks a model that named no engine and resolved no key, so the engine came from shuttle.yaml's default.
+	DefaultEngine bool
+}
+
+// Wrap returns err unchanged unless its chain holds a Start requirements refusal.
+// For one that does, it returns the held refusal with the way forward for this key in place of the generic one; the result still wraps ErrRequirementsUnmet.
+func (k ModelKey) Wrap(err error) error {
+	var start *startRequirementsError
+	if !errors.As(err, &start) {
+		return err
+	}
+	var wayForward string
+	switch {
+	case k.Module != "" && k.Key != "" && k.Entry != "":
+		wayForward = fmt.Sprintf("set the model of %s in %s in %s.yaml to an alias whose engine meets them with lyx config %s, then re-run the verb, or under the role's row re-step the row", k.Entry, k.Key, k.Module, k.Module)
+	case k.Module != "" && k.Key != "":
+		wayForward = fmt.Sprintf("set %s in %s.yaml to an alias whose engine meets them with lyx config %s --set %s=<alias>, then re-run the verb, or under the role's row re-step the row", k.Key, k.Module, k.Module, k.Key)
+	case k.DefaultEngine:
+		wayForward = "set engine: in shuttle.yaml to an engine that meets them, then re-run the verb"
+	default:
+		wayForward = "set the seat's model to an alias whose engine meets them, then re-run the verb, or under the role's row re-step the row"
+	}
+	return &requirementsError{message: start.refusal.Error() + "; way forward: " + wayForward}
+}
+
 // knownRequirements lists the closed set of requirements, in the order a refusal names them.
 var knownRequirements = []Requirement{RequirementForks, RequirementPeerMessaging, RequirementBackgroundWake}
 
@@ -103,7 +147,7 @@ func (r *Runner) checkRequirementsAtStart(spec Spec, engine Engine, engineName s
 	}
 	err := unmetRequirements(r.engines, engineName, engine, requiredOf(spec.Requires, spec.ForkSubagents))
 	if err != nil {
-		return fmt.Errorf("%w; way forward: give the role a model alias of an engine that meets them", err)
+		return &startRequirementsError{refusal: err}
 	}
 	return nil
 }

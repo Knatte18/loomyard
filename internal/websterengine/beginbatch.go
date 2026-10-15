@@ -665,8 +665,10 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	var priorRecoveries int
 	var priorRecoveryStart string
 	var priorRecoverySessions []string
+	var priorRecoveryEngines map[string]string
 	if prior != nil {
 		priorRecoverySessions = prior.RecoverySessions
+		priorRecoveryEngines = prior.RecoveryEngines
 		priorWarnings = prior.AuditWarnings
 		priorTranscripts = prior.ForkTranscripts
 		priorRecoveries = prior.Recoveries
@@ -683,12 +685,14 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		ForkTranscripts:  priorTranscripts,
 		Recoveries:       priorRecoveries,
 		RecoverySessions: priorRecoverySessions,
+		RecoveryEngines:  priorRecoveryEngines,
 		RecoveryStartSHA: priorRecoveryStart,
 		SpawnedAt:        time.Now().UTC().Format(time.RFC3339),
 		// Stamp the opening Master session so the run-exit audit cross-check
 		// can scope its begun-batch count to the session whose forks the
 		// whole-session audit actually covers.
 		SessionID: deps.State.MasterSessionID,
+		Engine:    deps.State.MasterEngine,
 	}
 	deps.State.CurrentBatch = number
 

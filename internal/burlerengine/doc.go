@@ -40,7 +40,8 @@
 // New builds that seat engine itself from the told Geometry and the stencils directory, over the seatengine.Shuttle it is given.
 // Each seat's stencil markers ride the seat's values: the absolute instruction-file paths and the review path, and for the fix half the review format path.
 // composeReviewPrompt and composeFixPrompt fill the instruction files and return those values; the seat stencils are filled by the seats engine.
-// RunOpts.Review and RunOpts.Fix pick each half's model, effort and version.
+// RunOpts.Review and RunOpts.Fix pick each half's engine, model, effort and version.
+// RoundModels' per-round lists carry each entry's engine, so a later round can run on another engine than the first.
 //
 // # The review half
 //

@@ -29,7 +29,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/preflight"
@@ -47,9 +46,10 @@ type websterCLI struct {
 	starter       websterengine.Starter
 	masterStarter websterengine.MasterStarter
 
-	// engine and reed are the constructed claude and reed engines record-batch and recover-batch need directly.
-	engine websterengine.AuditEngine
-	reed   shuttleengine.ReedOps
+	// engines and reed are the constructed engine set and reed engine record-batch and recover-batch need directly;
+	// engines is the lookup webster reads each recorded session through.
+	engines websterengine.AuditEngines
+	reed    shuttleengine.ReedOps
 
 	// reedUp brings the standalone reed session up, idempotently, and, when watch is true and the
 	// boot succeeded, also starts that session's in-process resize watcher bound to ctx. It is set by
@@ -90,7 +90,11 @@ type websterCLI struct {
 
 	shuttleCfg shuttleengine.Config
 	cfg        websterengine.Config
-	roles      map[websterengine.Role]modelspec.Resolved
+	roles      map[websterengine.Role]shuttleengine.ModelChoice
+
+	// instructionFiles lists the instruction files Master's engine names, which Merriam's start base counts; nil means none.
+	// It looks the engine up when called, so a verb that never prices a partition is never refused for the master key.
+	instructionFiles func() ([]string, error)
 
 	// anchorRel is the hub-mode Location's own anchor-relative path (loc.AnchorRel), empty in
 	// standalone. It is the one thing the deleted layout field held that no other told replacement
@@ -267,13 +271,24 @@ Example (standalone, outside any lyx hub):
 	return parent
 }
 
+// listInstructionFiles returns the instruction file names Merriam's start base counts, none when no lister is set.
+func (c *websterCLI) listInstructionFiles() ([]string, error) {
+	if c.instructionFiles == nil {
+		return nil, nil
+	}
+	return c.instructionFiles()
+}
+
 // executionBatches returns the batches every verb runs for plan and the loaded state, sizing cards from the task worktree.
 // Merriam's start base is computed only for a nil state, the one case that forms a partition; a recorded partition is mapped without reading it.
 func (c *websterCLI) executionBatches(plan *planparser.Plan, st *websterengine.State) ([]batcher.Batch, error) {
 	var base batcher.StartBase
 	if st == nil {
-		var err error
-		base, err = websterengine.MerriamBase(c.geom)
+		files, err := c.listInstructionFiles()
+		if err != nil {
+			return nil, err
+		}
+		base, err = websterengine.MerriamBase(c.geom, files)
 		if err != nil {
 			return nil, fmt.Errorf("%w; way forward: transient, re-run the verb", err)
 		}
