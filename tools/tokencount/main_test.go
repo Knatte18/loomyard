@@ -1,4 +1,4 @@
-// main_test.go checks tokencount's flag set: the retired history flag and a foreign hub without a records repository are refused, and the hub flag resolves against the current directory.
+// main_test.go checks tokencount's flag set: the retired history and projects flags and a foreign hub without a records repository are refused, and the hub flag resolves against the current directory.
 
 package main
 
@@ -55,13 +55,14 @@ func TestRunRefuses(t *testing.T) {
 		wantErr string
 	}{
 		{"the retired history flag", []string{"-history", "somewhere", "-calibrate", "fit", "slug"}, "flag provided but not defined: -history"},
+		{"the retired projects flag", []string{"-projects", "somewhere", "slug"}, "flag provided but not defined: -projects"},
 		{"a foreign hub without a records", []string{"-hub", t.TempDir(), "slug"}, "-" + repositoryFlag},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			var out bytes.Buffer
-			err := run(tt.args, &out)
+			err := run(tt.args, &out, ReadSet{})
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Errorf("run error = %v; want one containing %q", err, tt.wantErr)
 			}

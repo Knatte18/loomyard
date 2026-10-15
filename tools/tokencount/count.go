@@ -1,11 +1,9 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -15,22 +13,23 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // Usage is a token tally: one message's usage, or a sum over many.
 type Usage struct {
-	Input       int `json:"input_tokens"`
-	Output      int `json:"output_tokens"`
-	CacheCreate int `json:"cache_creation_input_tokens"`
-	CacheRead   int `json:"cache_read_input_tokens"`
+	Input       int
+	Output      int
+	CacheCreate int
+	CacheRead   int
 	// CacheCreation splits CacheCreate by cache lifetime, which sets a cache write's price.
-	CacheCreation CacheCreation `json:"cache_creation"`
+	CacheCreation CacheCreation
 }
 
 // CacheCreation is the part of a tally's cache writes made with the one-hour lifetime;
 // the rest of the writes have the default five-minute lifetime.
 type CacheCreation struct {
-	OneHour int `json:"ephemeral_1h_input_tokens"`
+	OneHour int
 }
 
 func (u *Usage) add(o Usage) {
@@ -152,56 +151,11 @@ func min2(a, b time.Time) time.Time {
 // a longer interval is a stall such as a suspended host and counts as idle whole.
 const stallCap = 30 * time.Minute
 
-// turnPoint is one user or assistant line's timestamp and whether the line ends or starts its session's turn.
+// turnPoint is one transcript entry's timestamp and whether the entry ends or starts its session's turn.
 type turnPoint struct {
 	At     time.Time
 	Ends   bool
 	Starts bool
-}
-
-// endsTurn reports whether a line ends its session's turn: an assistant line whose stop reason is not tool_use, or a user line that interrupts the turn or holds a local command's output.
-func endsTurn(l line) bool {
-	if l.Message == nil {
-		return false
-	}
-	switch l.Type {
-	case "assistant":
-		return l.Message.StopReason != "" && l.Message.StopReason != "tool_use"
-	case "user":
-		for _, text := range userTexts(l.Message.Content) {
-			if strings.HasPrefix(text, "[Request interrupted by user") || strings.HasPrefix(text, "<local-command-stdout>") {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// startsTurn reports whether a line starts a turn: a user line holding text and no tool result, other than a line that ends a turn or a compaction summary.
-func startsTurn(l line) bool {
-	if l.Type != "user" || l.Message == nil || l.IsCompactSummary || endsTurn(l) {
-		return false
-	}
-	var text string
-	if json.Unmarshal(l.Message.Content, &text) == nil {
-		return true
-	}
-	var items []struct {
-		Type string `json:"type"`
-	}
-	if json.Unmarshal(l.Message.Content, &items) != nil {
-		return false
-	}
-	hasText := false
-	for _, item := range items {
-		switch item.Type {
-		case "tool_result":
-			return false
-		case "text":
-			hasText = true
-		}
-	}
-	return hasText
 }
 
 // workingIntervals returns the interval from each point to the next, in timestamp order, except after a point that ends the turn, into a point that starts a turn, or longer than stallCap.
@@ -329,44 +283,17 @@ func (run RunTally) Cost() Cost {
 	return total
 }
 
-// observeTime widens the run's active window to hold a user or assistant line's timestamp.
-func (run *RunTally) observeTime(l line) {
-	at, ok := lineTime(l)
-	if !ok {
+// observeTime widens the run's active window to hold an entry's timestamp, an entry without one leaving it as it is.
+func (run *RunTally) observeTime(e shuttleengine.TranscriptEntry) {
+	if e.At.IsZero() {
 		return
 	}
-	if run.First.IsZero() || at.Before(run.First) {
-		run.First = at
+	if run.First.IsZero() || e.At.Before(run.First) {
+		run.First = e.At
 	}
-	if at.After(run.Last) {
-		run.Last = at
+	if e.At.After(run.Last) {
+		run.Last = e.At
 	}
-}
-
-// lineTime returns the parsed timestamp of a user or assistant line, false for any other line or an unparseable timestamp.
-func lineTime(l line) (time.Time, bool) {
-	if l.Type != "user" && l.Type != "assistant" {
-		return time.Time{}, false
-	}
-	at, err := time.Parse(time.RFC3339Nano, l.Timestamp)
-	return at, err == nil
-}
-
-// line is the part of a transcript line tokencount reads.
-type line struct {
-	Type        string `json:"type"`
-	CustomTitle string `json:"customTitle"`
-	UUID        string `json:"uuid"`
-	Timestamp   string `json:"timestamp"`
-	// IsCompactSummary marks the user line that holds a compaction's summary.
-	IsCompactSummary bool `json:"isCompactSummary"`
-	Message          *struct {
-		ID         string          `json:"id"`
-		Model      string          `json:"model"`
-		StopReason string          `json:"stop_reason"`
-		Usage      *Usage          `json:"usage"`
-		Content    json.RawMessage `json:"content"`
-	} `json:"message"`
 }
 
 // websterMasterRole is the role of the session whose sub-agents are Webster forks.
@@ -390,237 +317,91 @@ func cardPointers(text string) []string {
 	return cards
 }
 
-// toolResultItem is one tool result of a user message: the tool use it answers and its text.
-type toolResultItem struct {
-	UseID string
-	Text  string
-}
-
-// toolResultItems returns every tool result in a user message's content, which is a string or a list of items;
-// a tool result's own content is likewise a string or a list of text items.
-func toolResultItems(content json.RawMessage) []toolResultItem {
-	var items []struct {
-		Type      string          `json:"type"`
-		ToolUseID string          `json:"tool_use_id"`
-		Content   json.RawMessage `json:"content"`
-	}
-	if json.Unmarshal(content, &items) != nil {
-		return nil
-	}
-	var results []toolResultItem
-	for _, item := range items {
-		if item.Type != "tool_result" {
-			continue
-		}
-		var text string
-		if json.Unmarshal(item.Content, &text) == nil {
-			results = append(results, toolResultItem{item.ToolUseID, text})
-			continue
-		}
-		var parts []struct {
-			Text string `json:"text"`
-		}
-		if json.Unmarshal(item.Content, &parts) != nil {
-			continue
-		}
-		var joined []string
-		for _, p := range parts {
-			joined = append(joined, p.Text)
-		}
-		results = append(results, toolResultItem{item.ToolUseID, strings.Join(joined, "\n")})
-	}
-	return results
-}
-
-// toolResultTexts returns the text of every tool result in a user message's content.
-func toolResultTexts(content json.RawMessage) []string {
-	var texts []string
-	for _, item := range toolResultItems(content) {
-		texts = append(texts, item.Text)
-	}
-	return texts
-}
-
-// beginBatchCommand matches a Bash command that invokes the webster begin-batch verb.
+// beginBatchCommand matches a shell command that invokes the webster begin-batch verb.
 var beginBatchCommand = regexp.MustCompile(`\blyx\s+webster\s+begin-batch\b`)
 
-// bashCommands returns the command of every Bash tool use in an assistant message's content, keyed by tool use id.
-func bashCommands(content json.RawMessage) map[string]string {
-	var items []struct {
-		Type  string `json:"type"`
-		ID    string `json:"id"`
-		Name  string `json:"name"`
-		Input struct {
-			Command string `json:"command"`
-		} `json:"input"`
-	}
-	if json.Unmarshal(content, &items) != nil {
-		return nil
-	}
-	commands := map[string]string{}
-	for _, item := range items {
-		if item.Type == "tool_use" && item.Name == "Bash" {
-			commands[item.ID] = item.Input.Command
-		}
-	}
-	return commands
-}
-
-// recordBase scans one webster session for begin-batch result envelopes and keeps the start_sha of the earliest-timestamped one across every session of the run.
-// An envelope is a tool result answering a begin-batch Bash call whose text is a JSON object with a non-empty start_sha;
-// a refusal carries none.
-func (run *RunTally) recordBase(path string) error {
-	beginBatchUses := map[string]bool{}
-	return eachLine(path, func(l line) {
-		if l.Message == nil {
-			return
-		}
-		switch l.Type {
-		case "assistant":
-			for id, command := range bashCommands(l.Message.Content) {
-				if beginBatchCommand.MatchString(command) {
-					beginBatchUses[id] = true
-				}
-			}
-		case "user":
-			at, err := time.Parse(time.RFC3339Nano, l.Timestamp)
-			if err != nil {
-				return
-			}
-			for _, item := range toolResultItems(l.Message.Content) {
-				if !beginBatchUses[item.UseID] {
-					continue
-				}
-				var envelope struct {
-					StartSHA string `json:"start_sha"`
-				}
-				if json.Unmarshal([]byte(item.Text), &envelope) != nil || envelope.StartSHA == "" {
-					continue
-				}
-				if run.baseAt.IsZero() || at.Before(run.baseAt) {
-					run.BaseSHA, run.baseAt = envelope.StartSHA, at
-				}
+// recordBase scans one webster session's entries for begin-batch result envelopes and keeps the start_sha of the earliest-timestamped one across every session of the run.
+// An envelope is a tool result answering a begin-batch shell call whose text is a JSON object with a non-empty start_sha;
+// a refusal carries none, and a result entry without a timestamp is skipped.
+func (run *RunTally) recordBase(entries []shuttleengine.TranscriptEntry) {
+	beginBatchCalls := map[string]bool{}
+	for _, e := range entries {
+		for _, call := range e.ToolCalls {
+			if call.Kind == shuttleengine.ToolShell && beginBatchCommand.MatchString(call.Command) {
+				beginBatchCalls[call.ID] = true
 			}
 		}
-	})
-}
-
-// launchPointerLine matches the launch line lyx types into a Merriam session, capturing the prompt file's path.
-var launchPointerLine = regexp.MustCompile(`(?m)^Read (.+) in full first; it is your complete, authoritative instructions\.\s*$`)
-
-// userTexts returns the text of a user message's content, which is a string or a list of items, the text items of which count.
-func userTexts(content json.RawMessage) []string {
-	var text string
-	if json.Unmarshal(content, &text) == nil {
-		return []string{text}
-	}
-	var items []struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
-	}
-	if json.Unmarshal(content, &items) != nil {
-		return nil
-	}
-	var texts []string
-	for _, item := range items {
-		if item.Type == "text" {
-			texts = append(texts, item.Text)
+		if e.At.IsZero() {
+			continue
 		}
-	}
-	return texts
-}
-
-// readToolUseIDs returns the id of every Read tool use in an assistant message's content, keyed by the file path it reads.
-func readToolUseIDs(content json.RawMessage) map[string]string {
-	var items []struct {
-		Type  string `json:"type"`
-		ID    string `json:"id"`
-		Name  string `json:"name"`
-		Input struct {
-			FilePath string `json:"file_path"`
-		} `json:"input"`
-	}
-	if json.Unmarshal(content, &items) != nil {
-		return nil
-	}
-	ids := map[string]string{}
-	for _, item := range items {
-		if item.Type == "tool_use" && item.Name == "Read" {
-			if _, seen := ids[item.Input.FilePath]; !seen {
-				ids[item.Input.FilePath] = item.ID
+		for _, result := range e.ToolResults {
+			if !beginBatchCalls[result.CallID] {
+				continue
+			}
+			var envelope struct {
+				StartSHA string `json:"start_sha"`
+			}
+			if json.Unmarshal([]byte(result.Text), &envelope) != nil || envelope.StartSHA == "" {
+				continue
+			}
+			if run.baseAt.IsZero() || e.At.Before(run.baseAt) {
+				run.BaseSHA, run.baseAt = envelope.StartSHA, e.At
 			}
 		}
 	}
-	return ids
 }
 
-// readMerriamStart measures one Merriam session's start in the transcript at path.
-// The prompt path comes from the first user message holding the launch line;
-// the start is the context of the first assistant message with usage after the result of the first Read of that path.
-func readMerriamStart(path string) (MerriamStart, error) {
-	start := MerriamStart{Session: filepath.Base(path)}
-	var promptPath, readUseID string
+// readMerriamStart measures one Merriam session's start in its read transcript.
+// The prompt path comes from the first user entry holding the engine's launch line;
+// the start is the context of the first assistant entry with usage after the result of the first file read of that path.
+func readMerriamStart(read shuttleengine.TranscriptRead) MerriamStart {
+	start := MerriamStart{Session: read.ID, Started: read.Started}
+	var promptPath, readCallID string
 	resultSeen, measured := false, false
-	err := eachLine(path, func(l line) {
-		if start.Started.IsZero() && l.Timestamp != "" {
-			if t, err := time.Parse(time.RFC3339Nano, l.Timestamp); err == nil {
-				start.Started = t
-			}
+	for _, e := range read.Entries {
+		if measured {
+			break
 		}
-		if measured || l.Message == nil {
-			return
-		}
-		switch l.Type {
-		case "user":
+		switch e.Role {
+		case shuttleengine.EntryUser:
 			if promptPath == "" {
-				for _, text := range userTexts(l.Message.Content) {
-					if m := launchPointerLine.FindStringSubmatch(text); m != nil {
-						promptPath = m[1]
-						return
-					}
-				}
-				return
+				promptPath = e.PromptPath
+				continue
 			}
-			if readUseID == "" || resultSeen {
-				return
+			if readCallID == "" || resultSeen {
+				continue
 			}
-			for _, item := range toolResultItems(l.Message.Content) {
-				if item.UseID == readUseID {
+			for _, result := range e.ToolResults {
+				if result.CallID == readCallID {
 					resultSeen = true
 				}
 			}
-		case "assistant":
-			if promptPath != "" && readUseID == "" {
-				readUseID = readToolUseIDs(l.Message.Content)[promptPath]
-				return
+		case shuttleengine.EntryAssistant:
+			if promptPath != "" && readCallID == "" {
+				for _, call := range e.ToolCalls {
+					if call.Kind == shuttleengine.ToolFileRead && call.Path == promptPath {
+						readCallID = call.ID
+						break
+					}
+				}
+				continue
 			}
-			if resultSeen && l.Message.Usage != nil {
-				u := l.Message.Usage
+			if resultSeen && e.Usage != nil {
+				u := usageOf(*e.Usage)
 				start.StartContext = u.Input + u.CacheCreate + u.CacheRead
 				measured = true
 			}
 		}
-	})
-	if err != nil {
-		return MerriamStart{}, err
 	}
 	switch {
 	case promptPath == "":
 		start.NoStart = "no launch line"
-	case readUseID == "":
+	case readCallID == "":
 		start.NoStart = "no Read of the prompt file " + promptPath
 	case !measured:
 		start.NoStart = "no assistant message after the prompt Read's result"
 	}
-	return start, nil
-}
-
-var nonAlnum = regexp.MustCompile(`[^A-Za-z0-9]`)
-
-// projectDir is the directory Claude Code keeps a worktree's sessions in: the absolute path
-// with every character but letters and digits turned into a hyphen.
-func projectDir(projects, worktree string) string {
-	return filepath.Join(projects, nonAlnum.ReplaceAllString(worktree, "-"))
+	return start
 }
 
 var trailingNumber = regexp.MustCompile(`-\d+$`)
@@ -691,39 +472,39 @@ func archivedSlugs(refs string) map[string][]ArchiveTag {
 }
 
 // recentRuns names the full loom runs of the hub whose sessions changed most recently, newest first, at most last of them, and, newest first, the runs it skipped on the way because they are not full loom runs.
-// A candidate is a project directory of a worktree under the hub whose slug has an archive tag in finished, except the prime's own;
+// A candidate is the slug of an archive tag in finished, except the prime's own, with a session located at the worktree <hub>/<slug> through some engine;
+// its recency is the newest modification time among those sessions.
 // fullLoomRun decides it from the archive tags read through trees.
-func recentRuns(projects, hub, prime string, finished map[string][]ArchiveTag, trees ArchiveTrees, last int) (counted, skipped []string, err error) {
-	prefix := filepath.Base(projectDir(projects, hub)) + "-"
-	entries, err := os.ReadDir(projects)
-	if err != nil {
-		return nil, nil, err
-	}
+func recentRuns(reads ReadSet, hub, prime string, finished map[string][]ArchiveTag, trees ArchiveTrees, last int) (counted, skipped []string, err error) {
 	type candidate struct {
 		slug    string
 		touched time.Time
 	}
+	slugs := make([]string, 0, len(finished))
+	for slug := range finished {
+		slugs = append(slugs, slug)
+	}
+	sort.Strings(slugs)
 	var found []candidate
-	for _, e := range entries {
-		slug, ok := strings.CutPrefix(e.Name(), prefix)
-		if !e.IsDir() || !ok || slug == "" || slug == prime || len(finished[slug]) == 0 {
+	for _, slug := range slugs {
+		if slug == "" || slug == prime || len(finished[slug]) == 0 {
 			continue
 		}
-		sessions, err := filepath.Glob(filepath.Join(projects, e.Name(), "*.jsonl"))
+		located, err := locateSessions(reads, filepath.Join(hub, slug))
 		if err != nil {
 			return nil, nil, err
 		}
 		var touched time.Time
-		for _, s := range sessions {
-			if info, err := os.Stat(s); err == nil && info.ModTime().After(touched) {
-				touched = info.ModTime()
+		for _, s := range located {
+			if s.session.Modified.After(touched) {
+				touched = s.session.Modified
 			}
 		}
 		if !touched.IsZero() {
 			found = append(found, candidate{slug, touched})
 		}
 	}
-	sort.Slice(found, func(i, j int) bool { return found[i].touched.After(found[j].touched) })
+	sort.SliceStable(found, func(i, j int) bool { return found[i].touched.After(found[j].touched) })
 	counted = []string{}
 	for i := 0; i < len(found) && len(counted) < last; i++ {
 		full, err := fullLoomRun(trees, hub, found[i].slug, finished[found[i].slug])
@@ -752,74 +533,58 @@ func runBound(tags []ArchiveTag, inFlight bool) time.Time {
 	return tags[previous].Committed
 }
 
-// transcriptStart returns the earliest timestamp of a user or assistant line in the transcript at path, false when no such line carries one.
-func transcriptStart(path string) (time.Time, bool, error) {
+// transcriptStart returns the earliest timestamp of an entry in the transcript, false when no entry carries one.
+func transcriptStart(read shuttleengine.TranscriptRead) (time.Time, bool) {
 	var start time.Time
 	var found bool
-	err := eachLine(path, func(l line) {
-		if at, ok := lineTime(l); ok && (!found || at.Before(start)) {
-			start, found = at, true
+	for _, e := range read.Entries {
+		if !e.At.IsZero() && (!found || e.At.Before(start)) {
+			start, found = e.At, true
 		}
-	})
-	return start, found, err
+	}
+	return start, found
 }
 
-// CountRun tallies every session Claude Code recorded in the project directory dir.
-// A non-zero bound leaves out, with its sub-agents, every main-session transcript that starts before the bound or has no timestamped user or assistant line, and counts them in LeftOut.
-func CountRun(dir, slug string, bound time.Time) (RunTally, error) {
-	sessions, err := filepath.Glob(filepath.Join(dir, "*.jsonl"))
+// CountRun tallies every session the engines in reads recorded under the worktree.
+// A non-zero bound leaves out, with its forks, every main-session transcript that starts before the bound or has no timestamped entry, and counts them in LeftOut.
+// It fails when no engine located a session, and when an engine fails to locate or read one.
+func CountRun(reads ReadSet, worktree, slug string, bound time.Time) (RunTally, error) {
+	located, err := locateSessions(reads, worktree)
 	if err != nil {
 		return RunTally{}, err
 	}
-	if len(sessions) == 0 {
-		return RunTally{}, fmt.Errorf("no sessions for %s under %s", slug, dir)
+	if len(located) == 0 {
+		readable, _ := reads.engines()
+		return RunTally{}, fmt.Errorf("no sessions for %s at %s from engines %s", slug, worktree, strings.Join(readable, ", "))
 	}
-	sort.Strings(sessions)
 
 	run := RunTally{Slug: slug, Roles: map[string]*RoleTally{}, Bound: bound}
 	seen := map[string]bool{}
-	for _, session := range sessions {
+	for _, l := range located {
+		session, err := readLocated(reads, l)
+		if err != nil {
+			return RunTally{}, err
+		}
 		if !bound.IsZero() {
-			start, ok, err := transcriptStart(session)
-			if err != nil {
-				return RunTally{}, err
-			}
+			start, ok := transcriptStart(session.Main)
 			if !ok || start.Before(bound) {
 				run.LeftOut++
 				continue
 			}
 		}
-		title, err := latestTitle(session)
-		if err != nil {
-			return RunTally{}, err
-		}
-		role := roleOf(title)
-		if err := run.countFile(session, role, seen, nil); err != nil {
-			return RunTally{}, err
-		}
+		role := roleOf(session.Main.Name)
+		pricer := reads[l.engine].Pricer
+		run.countFile(l.engine, pricer, session.Main, role, seen, nil)
 		if role == websterMasterRole {
-			if err := run.recordBase(session); err != nil {
-				return RunTally{}, err
-			}
-			merriam, err := readMerriamStart(session)
-			if err != nil {
-				return RunTally{}, err
-			}
-			run.Merriams = append(run.Merriams, merriam)
+			run.recordBase(session.Main.Entries)
+			run.Merriams = append(run.Merriams, readMerriamStart(session.Main))
 		}
-		subs, err := filepath.Glob(filepath.Join(strings.TrimSuffix(session, ".jsonl"), "subagents", "*.jsonl"))
-		if err != nil {
-			return RunTally{}, err
-		}
-		sort.Strings(subs)
-		for _, sub := range subs {
+		for _, forkRead := range session.Forks {
 			var fork *ForkTally
 			if role == websterMasterRole {
-				fork = &ForkTally{Slug: slug, File: filepath.Base(sub), Session: filepath.Base(session)}
+				fork = &ForkTally{Slug: slug, File: forkRead.ID, Session: session.Main.ID, Started: forkRead.Started}
 			}
-			if err := run.countFile(sub, role+"+sub", seen, fork); err != nil {
-				return RunTally{}, err
-			}
+			run.countFile(l.engine, pricer, forkRead, role+"+sub", seen, fork)
 			if fork != nil {
 				run.Forks = append(run.Forks, *fork)
 			}
@@ -831,58 +596,42 @@ func CountRun(dir, slug string, bound time.Time) (RunTally, error) {
 	return run, nil
 }
 
-func latestTitle(path string) (string, error) {
-	title := ""
-	err := eachLine(path, func(l line) {
-		if l.Type == "custom-title" && l.CustomTitle != "" {
-			title = l.CustomTitle
-		}
-	})
-	return title, err
-}
-
-// countFile tallies one transcript under role;
+// countFile tallies one read transcript of an engine under role;
 // a non-nil fork also receives the transcript's own tally and card attribution.
-func (run *RunTally) countFile(path, role string, seen map[string]bool, fork *ForkTally) error {
+// The read's repeats count as duplicates, and so does each message already seen under the same engine and message key.
+func (run *RunTally) countFile(engine string, pricer shuttleengine.MessagePricer, read shuttleengine.TranscriptRead, role string, seen map[string]bool, fork *ForkTally) {
 	tally := run.Roles[role]
 	if tally == nil {
 		tally = &RoleTally{Role: role, Models: map[string]int{}}
 		run.Roles[role] = tally
 	}
 	tally.Sessions++
+	run.Duplicates += read.Repeats
 	var points []turnPoint
-	var usageLines []line
-	err := eachLine(path, func(l line) {
+	for _, e := range read.Entries {
 		if fork != nil {
-			fork.observe(l)
+			fork.observe(e)
 		}
-		run.observeTime(l)
-		if at, ok := lineTime(l); ok {
-			points = append(points, turnPoint{at, endsTurn(l), startsTurn(l)})
+		run.observeTime(e)
+		if !e.At.IsZero() {
+			points = append(points, turnPoint{e.At, e.EndsTurn, e.StartsTurn})
 		}
-		if isUsageLine(l) {
-			usageLines = append(usageLines, l)
+		if e.Usage == nil {
+			continue
 		}
-	})
-	if err != nil {
-		return err
-	}
-	messages, repeats := lastLinePerMessage(usageLines)
-	run.Duplicates += repeats
-	for _, l := range messages {
-		id := messageKey(l)
+		id := messageKey(engine, e)
 		if seen[id] {
 			run.Duplicates++
 			continue
 		}
 		seen[id] = true
-		tally.Usage.add(*l.Message.Usage)
-		tally.Cost.add(messageCost(l.Message.Model, *l.Message.Usage))
-		tally.Models[l.Message.Model]++
+		u := usageOf(*e.Usage)
+		tally.Usage.add(u)
+		tally.Cost.add(messageCost(pricer, e.Model, *e.Usage))
+		tally.Models[e.Model]++
 		if fork != nil {
 			fork.Messages++
-			fork.Usage.add(*l.Message.Usage)
-			u := l.Message.Usage
+			fork.Usage.add(u)
 			context := u.Input + u.CacheCreate + u.CacheRead
 			if fork.Messages == 1 {
 				fork.StartContext = context
@@ -893,73 +642,24 @@ func (run *RunTally) countFile(path, role string, seen map[string]bool, fork *Fo
 	working := workingIntervals(points)
 	tally.Working = unionIntervals(append(tally.Working, working...))
 	run.Working = unionIntervals(append(run.Working, working...))
-	return nil
 }
 
-// isUsageLine reports whether l is an assistant line carrying a usage record.
-func isUsageLine(l line) bool {
-	return l.Type == "assistant" && l.Message != nil && l.Message.Usage != nil
+// messageKey identifies a message across the run's transcripts: the engine that read it and the engine's key for it.
+func messageKey(engine string, e shuttleengine.TranscriptEntry) string {
+	return engine + "/" + e.MessageKey
 }
 
-// messageKey is the API message id of a usage line, or the line's uuid when the message has no id.
-func messageKey(l line) string {
-	if l.Message.ID != "" {
-		return l.Message.ID
-	}
-	return l.UUID
-}
-
-// lastLinePerMessage returns one of a transcript's usage lines per message key, in the order the keys first appear, each the key's last line, and how many earlier lines it dropped.
-// A message streamed over several lines carries a partial output_tokens on all but its last line.
-func lastLinePerMessage(usageLines []line) ([]line, int) {
-	index := map[string]int{}
-	var messages []line
-	for _, l := range usageLines {
-		key := messageKey(l)
-		if i, ok := index[key]; ok {
-			messages[i] = l
-			continue
-		}
-		index[key] = len(messages)
-		messages = append(messages, l)
-	}
-	return messages, len(usageLines) - len(messages)
-}
-
-// observe records a line's timestamp and, until a card pointer has been found, its card attribution: the fork's prompt is the first tool result holding a card pointer line.
-func (f *ForkTally) observe(l line) {
-	if f.Started.IsZero() && l.Timestamp != "" {
-		if t, err := time.Parse(time.RFC3339Nano, l.Timestamp); err == nil {
-			f.Started = t
-		}
-	}
-	if f.Cards != nil || l.Type != "user" || l.Message == nil {
+// observe records, until a card pointer has been found, a fork entry's card attribution: the fork's prompt is the first tool result holding a card pointer line.
+func (f *ForkTally) observe(e shuttleengine.TranscriptEntry) {
+	if f.Cards != nil || e.Role != shuttleengine.EntryUser {
 		return
 	}
-	for _, text := range toolResultTexts(l.Message.Content) {
-		if cards := cardPointers(text); len(cards) > 0 {
+	for _, result := range e.ToolResults {
+		if cards := cardPointers(result.Text); len(cards) > 0 {
 			f.Cards = cards
 			return
 		}
 	}
-}
-
-// eachLine calls fn for every line of a JSONL file that parses, skipping any that do not.
-func eachLine(path string, fn func(line)) error {
-	f, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 1024*1024), 64*1024*1024)
-	for scanner.Scan() {
-		var l line
-		if json.Unmarshal(scanner.Bytes(), &l) == nil {
-			fn(l)
-		}
-	}
-	return scanner.Err()
 }
 
 // Report is every run counted in one invocation.
