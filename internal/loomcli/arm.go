@@ -406,45 +406,9 @@ func (c *loomCLI) loomPreRun(ctx context.Context) error {
 		return err
 	}
 
-	handle, err := fabricengine.Open(c.location)
-	if err != nil {
+	if err := c.wireLanding(); err != nil {
 		return err
 	}
-	taskBranch, parentBranch, err := landingBranches(handle, c.location)
-	if err != nil {
-		return err
-	}
-	originURL, err := handle.OriginURL()
-	if err != nil {
-		// scalar-read-errors-refuse-or-defer-by-consumer: only Publish reads OriginURL, and only
-		// when a pull request is actually required, so an unusable origin URL passes through as
-		// an empty string rather than refusing run itself.
-		originURL = ""
-	}
-	syncOpts := fabricengine.EnvSyncOptions()
-	pushBranch := func() error {
-		_, err := handle.PushBranch(syncOpts)
-		return err
-	}
-	c.env.Landing = landingDeps(
-		c.location,
-		c.recipe,
-		c.runDeps.Geom,
-		taskBranch,
-		originURL,
-		parentBranch,
-		syncOpts.SkipPush,
-		pushBranch,
-		c.registry,
-		c.runner,
-		c.landingCfg,
-		c.parentName,
-		nil,
-		driverWaitMark(c.reed.Status, c.reed.SetWaitMark),
-		conflictSessionStopper(c.reed.Status, c.runner.StopStrand),
-		c.verifySource(),
-		parentLockDeps(c.location, c.runID, c.shedPaths.StatusPath, c.shedPaths.StatusLockPath),
-	)
 
 	// Ensure the friction directory before the run starts, and never clear it here: run requires
 	// an already-seeded task (VerifySeedOwnership above), so a run-only invocation is by

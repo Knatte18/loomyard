@@ -24,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
+	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
@@ -493,6 +494,11 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	if err != nil {
 		return fmt.Errorf("%w; %s", err, hubConfigWayForward)
 	}
+	// The error already names skills and its own way forward.
+	languageSkills, err := languageconfig.Load(fabricengine.ConfigDirs(location))
+	if err != nil {
+		return err
+	}
 	// burlerengine.LoadConfig is an optional-file loader: an absent burler.yaml yields a zero
 	// Config and a nil error rather than a load failure.
 	burlerCfg, err := burlerengine.LoadConfig(fabricengine.ConfigDirs(location))
@@ -587,6 +593,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		ParentBranch: func() (string, error) {
 			return readRecordedParentBranch(location)
 		},
+		LanguageSkills: languageSkills,
 	}
 
 	statusPath := shedrun.StatusFile(location, c.runID)
@@ -901,6 +908,9 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		MissingStatusWayForward: loomMissingStatusWayForward,
 		RerouteCapWayForward:    loomRerouteCapWayForward,
 	}
+
+	// wireDarn and wireLanding tell the list to the writer and the conflict session.
+	c.languageSkills = languageSkills
 
 	// A darn run swaps in the darn recipe's verify source and Describe spec and fills the Darn-Write row's seams; a loom run leaves them nil.
 	if c.recipe == shedrun.RecipeDarn {

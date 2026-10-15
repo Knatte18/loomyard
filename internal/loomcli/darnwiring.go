@@ -204,6 +204,7 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 			SupportLogPath:     loomengine.DiscussionSupportLog(location),
 			RejectionFindings:  told.RejectionFindings,
 			PriorWork:          told.PriorWork,
+			LanguageSkills:     c.languageSkills,
 		}, cfg, registry)
 	}
 	reviewSubdir, isBouncer, err := loomrecipe.BouncerRunSubdir(loomshed.NameDarnBouncer)

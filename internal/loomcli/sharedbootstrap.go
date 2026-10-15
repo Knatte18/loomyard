@@ -304,21 +304,16 @@ func (c *loomCLI) ensureStatusStrand() error {
 	return nil
 }
 
-// buildLoomShed builds the *shedengine.Shed run.go's RunE runs -- today's shed-construction
-// block from run.go, held here verbatim and in today's order: open the fabric, read the current
-// branch and origin URL, resolve the recorded origin and the landing parent, assemble Env.Landing,
-// and construct the shed via loomrecipe.New.
-//
-// It returns the constructed shed and a nil error, or a nil shed and the first error encountered,
-// unwrapped.
-func (c *loomCLI) buildLoomShed() (*shedengine.Shed, error) {
+// wireLanding assembles Env.Landing: it opens the fabric, reads the landing branches and the origin URL, builds the push closure and tells landingDeps the hub's language skills.
+// An origin URL that cannot be read passes through as empty.
+func (c *loomCLI) wireLanding() error {
 	handle, err := fabricengine.Open(c.location)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	taskBranch, parentBranch, err := landingBranches(handle, c.location)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	originURL, err := handle.OriginURL()
 	if err != nil {
@@ -345,12 +340,26 @@ func (c *loomCLI) buildLoomShed() (*shedengine.Shed, error) {
 		c.runner,
 		c.landingCfg,
 		c.parentName,
-		nil,
+		c.languageSkills,
 		driverWaitMark(c.reed.Status, c.reed.SetWaitMark),
 		conflictSessionStopper(c.reed.Status, c.runner.StopStrand),
 		c.verifySource(),
 		parentLockDeps(c.location, c.runID, c.shedPaths.StatusPath, c.shedPaths.StatusLockPath),
 	)
+	return nil
+}
+
+// buildLoomShed builds the *shedengine.Shed run.go's RunE runs -- today's shed-construction
+// block from run.go, held here verbatim and in today's order: open the fabric, read the current
+// branch and origin URL, resolve the recorded origin and the landing parent, assemble Env.Landing,
+// and construct the shed via loomrecipe.New.
+//
+// It returns the constructed shed and a nil error, or a nil shed and the first error encountered,
+// unwrapped.
+func (c *loomCLI) buildLoomShed() (*shedengine.Shed, error) {
+	if err := c.wireLanding(); err != nil {
+		return nil, err
+	}
 
 	// A loop's step child adopts its trace id from LYX_TRACE_ID, so this tie names the step the loop runs and the watchdog can stop that step's runs.
 	c.runner.SetStepTie(shuttleengine.StepTie{StepsDir: shedrun.StepsDir(c.location, c.runID), TraceID: logger.TraceID()})
