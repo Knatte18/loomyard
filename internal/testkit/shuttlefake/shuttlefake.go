@@ -65,6 +65,14 @@ var (
 	_ shuttleengine.RewindPickerReader = (*Engine)(nil)
 )
 
+// EngineName is the name EngineSet registers its engine under, and the default of the set it returns.
+const EngineName = "fake"
+
+// EngineSet wraps one engine as a set registered under EngineName, which is also its default.
+func EngineSet(engine shuttleengine.Engine) shuttleengine.EngineSet {
+	return shuttleengine.NewEngineSet(EngineName, map[string]shuttleengine.Engine{EngineName: engine})
+}
+
 // RunningTurn answers RunningTurnFn, else false.
 func (e *Engine) RunningTurn(capture string) bool {
 	if e.RunningTurnFn != nil {
