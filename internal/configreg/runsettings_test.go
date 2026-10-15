@@ -161,6 +161,18 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantModule:  "loom",
 			wantInvalid: true,
 		},
+		{
+			name:     "shed's tackler_max_spawns is open to run settings",
+			settings: map[string]any{"shed": map[string]any{"tackler_max_spawns": float64(0)}},
+			wantDocs: map[string]string{"shed": "tackler_max_spawns: 0\n"},
+		},
+		{
+			name:        "negative tackler_max_spawns is refused by shed's CheckValues",
+			settings:    map[string]any{"shed": map[string]any{"tackler_max_spawns": float64(-1)}},
+			wantRefusal: "tackler_max_spawns",
+			wantModule:  "shed",
+			wantInvalid: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -100,6 +101,7 @@ func Modules() []Module {
 		{Name: "models", Template: modelspec.ConfigTemplate, SeedOnly: true, Spec: modelspec.ConfigSpec},
 		{Name: "orch", Template: orchengine.ConfigTemplate, Migrate: orchengine.MigrateConfig, Spec: orchengine.ConfigSpec},
 		{Name: "reed", Template: reedengine.ConfigTemplate, Spec: reedengine.ConfigSpec},
+		{Name: "shed", Template: sheddriver.ConfigTemplate, CheckValues: sheddriver.ValidateLocalValues, Spec: sheddriver.ConfigSpec},
 		{Name: "shuttle", Template: shuttleengine.ConfigTemplate, OpenMaps: shuttleengine.ConfigOpenMaps(), Migrate: shuttleengine.MigrateConfig, Spec: shuttleengine.ConfigSpec},
 		{Name: "webster", Template: websterengine.ConfigTemplate, Spec: websterengine.ConfigSpec},
 	}
