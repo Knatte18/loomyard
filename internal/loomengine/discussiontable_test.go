@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/twilldirective"
 )
@@ -144,8 +145,14 @@ func TestDiscussionTable(t *testing.T) {
 				if role := seatengine.SeatRole(table.RolePrefix, chair.Name); chair.Name != "" || role != "discussion" || role != DiscussionWriterRole() {
 					t.Errorf("lead name %q and role %q; want no name and the role discussion", chair.Name, role)
 				}
+				if want := (shuttleengine.ModelKey{Module: "loom", Key: "discussion"}); chair.ModelKey != want {
+					t.Errorf("chair ModelKey = %+v; want %+v", chair.ModelKey, want)
+				}
 				for n, want := range discussionTableAdvisors[:advisors] {
 					advisor := table.Seats[n+1]
+					if wantKey := (shuttleengine.ModelKey{Module: "loom", Key: "discussion_advisors", Entry: want.Name}); advisor.ModelKey != wantKey {
+						t.Errorf("advisor %q ModelKey = %+v; want %+v", want.Name, advisor.ModelKey, wantKey)
+					}
 					if advisor.Name != want.Name || advisor.Stencil != discussionAdvisorStencil || !slices.Equal(advisor.Outputs, []string{DiscussionAdvisorNotes(layout, want.Name)}) || !slices.Equal(advisor.Skills, []string{"scribe:prose"}) || advisor.Engine != "claude" || advisor.Model == "" || advisor.ForkSubagents {
 						t.Errorf("advisor %q = %+v; want its stencil, its notes file as the only output, scribe:prose alone, the claude engine, a model and no forks", want.Name, advisor)
 					}
@@ -342,6 +349,9 @@ func TestDiscussionTable(t *testing.T) {
 				wantFork, wantDirective := index == 0 && tt.wantForks, index == 0 && tt.wantDirective
 				if seat.ForkSubagents != wantFork {
 					t.Errorf("seat %d ForkSubagents = %v; want %v", index, seat.ForkSubagents, wantFork)
+				}
+				if gotWake := slices.Contains(seat.Requires, shuttleengine.RequirementBackgroundWake); gotWake != wantFork {
+					t.Errorf("seat %d requires background-wake = %v (Requires %v); want exactly when the lead is lensed (%v)", index, gotWake, seat.Requires, wantFork)
 				}
 				if _, has := seat.Values[twilldirective.MarkerName]; has != wantDirective {
 					t.Errorf("seat %d carries the twill directive = %v; want %v", index, has, wantDirective)

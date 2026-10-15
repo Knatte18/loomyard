@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
@@ -114,6 +115,12 @@ func TestPlanTable(t *testing.T) {
 			}
 			if lead.ForkSubagents != tt.wantForks {
 				t.Errorf("lead ForkSubagents = %v; want %v", lead.ForkSubagents, tt.wantForks)
+			}
+			if want := (shuttleengine.ModelKey{Module: "loom", Key: "plan"}); lead.ModelKey != want {
+				t.Errorf("lead ModelKey = %+v; want %+v", lead.ModelKey, want)
+			}
+			if gotWake := slices.Contains(lead.Requires, shuttleengine.RequirementBackgroundWake); gotWake != (tt.lenses != "") {
+				t.Errorf("lead requires background-wake = %v (Requires %v); want exactly when lenses are set (%q)", gotWake, lead.Requires, tt.lenses)
 			}
 
 			prompts, err := seatengine.Prompts(discussionTableGeometry(layout, stencilsDir), table)

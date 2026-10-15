@@ -58,6 +58,7 @@ func (p *Profile) reviewTable(opts RunOpts, values map[string]string, skills []s
 			{
 				Stencil:       "burler-template-reviewer",
 				ModelChoice:   opts.Review,
+				ModelKey:      opts.ReviewKey,
 				Outputs:       []string{p.ReviewPath},
 				Skills:        skills,
 				Values:        values,

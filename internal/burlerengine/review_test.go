@@ -32,6 +32,8 @@ func TestEngine_Review_TableShape(t *testing.T) {
 		Fix:     shuttleengine.ModelChoice{Model: "opus", Effort: "high"},
 		Timeout: 5 * time.Minute,
 		Round:   "1",
+
+		ReviewKey: shuttleengine.ModelKey{Module: "loom", Key: "fan_review"},
 	}
 	tests := []struct {
 		name           string
@@ -102,6 +104,9 @@ func TestEngine_Review_TableShape(t *testing.T) {
 			}
 			if spec.ForkSubagents != tt.wantForkFlag {
 				t.Errorf("spec.ForkSubagents = %v; want %v", spec.ForkSubagents, tt.wantForkFlag)
+			}
+			if seat := p.reviewTable(opts, nil, nil).Seats[0]; seat.ModelKey != opts.ReviewKey {
+				t.Errorf("reviewer seat ModelKey = %+v; want opts.ReviewKey %+v", seat.ModelKey, opts.ReviewKey)
 			}
 			gate := shuttle.gates[tt.wantRole]
 			if len(gate) != 1 || gate[0].Name != "review" || !gate[0].PassOnCap || gate[0].Attempts != reviewGateAttempts {

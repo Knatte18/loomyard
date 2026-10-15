@@ -85,10 +85,13 @@ func (p *Profile) segment() segmentcolor.Segment {
 // zero values defer to engine/config default.
 type RunOpts struct {
 	// Review and Fix are the reviewer's and the fixer's model choices.
-	Review  shuttleengine.ModelChoice
-	Fix     shuttleengine.ModelChoice
-	Timeout time.Duration
-	Round   string
+	Review shuttleengine.ModelChoice
+	Fix    shuttleengine.ModelChoice
+	// ReviewKey names the config key the reviewer's model came from, so a refusal of an engine that cannot run the reviewer names the key to change.
+	// The zero value stands for a reviewer whose key no caller names.
+	ReviewKey shuttleengine.ModelKey
+	Timeout   time.Duration
+	Round     string
 	// NoteID is the caller-supplied friction-note stem for this round --
 	// unique across sites, with friction.NotePath supplying uniqueness
 	// across invocations of the same site. An empty NoteID means no note

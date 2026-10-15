@@ -115,6 +115,7 @@ func DiscussionTable(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDi
 			Name:        advisor.Name,
 			Stencil:     discussionAdvisorStencil,
 			ModelChoice: choice,
+			ModelKey:    shuttleengine.ModelKey{Module: loomModule, Key: discussionAdvisorsKey, Entry: advisor.Name},
 			Outputs:     []string{path},
 			Skills:      discussionAdvisorSkills,
 		})
@@ -127,6 +128,11 @@ func DiscussionTable(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDi
 		Skills:        discussionSkills,
 		Values:        leadValues,
 		ForkSubagents: forks,
+		ModelKey:      shuttleengine.ModelKey{Module: loomModule, Key: "discussion"},
+	}
+	if forks {
+		// The lens directive tells the lead to fork and to end its turn while forks are outstanding, which a provider must wake it from.
+		lead.Requires = []shuttleengine.Requirement{shuttleengine.RequirementBackgroundWake}
 	}
 
 	return seatengine.Table{

@@ -680,6 +680,8 @@ func validateModelSpecList(key string, specs ModelSpecList) error {
 }
 
 const (
+	// loomModule is the config module whose YAML file holds the model keys a seat's refusal names.
+	loomModule = "loom"
 	// discussionAdvisorsKey is the loom.yaml key holding the Discussion-Write advisors.
 	discussionAdvisorsKey = "discussion_advisors"
 	// discussionLensesKey is the loom.yaml key naming the fan the Discussion-Write lead forks its lenses from.

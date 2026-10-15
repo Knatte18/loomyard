@@ -345,9 +345,17 @@ func TestBurlerReviewEntry_ClusterFan(t *testing.T) {
 		env := newTestEnv(t)
 		env.RowClusterFans = map[string]string{"review-row": "env-fan"}
 
-		profile, _ := captureReview(t, "review-row", minimalReviewConfig(), env)
+		profile, opts := captureReview(t, "review-row", minimalReviewConfig(), env)
 		if profile.ClusterFan != "env-fan" {
 			t.Errorf("profile.ClusterFan = %q; want the row's RowClusterFans entry env-fan", profile.ClusterFan)
+		}
+		if want := (shuttleengine.ModelKey{Module: "loom", Key: "fan_review"}); opts.ReviewKey != want {
+			t.Errorf("cluster-fan row ReviewKey = %+v; want %+v", opts.ReviewKey, want)
+		}
+
+		_, soloOpts := captureReview(t, "solo-row", minimalReviewConfig(), newTestEnv(t))
+		if soloOpts.ReviewKey != (shuttleengine.ModelKey{}) {
+			t.Errorf("solo row ReviewKey = %+v; want the zero key", soloOpts.ReviewKey)
 		}
 
 		otherEnv := newTestEnv(t)

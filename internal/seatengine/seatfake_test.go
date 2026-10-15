@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 )
 
 // fakeWait bounds every wait a test makes on the engine's goroutines; it is only reached when a test is about to fail.
@@ -119,6 +120,8 @@ type fakeShuttle struct {
 
 	// startErrs fails the start of the seat with that role.
 	startErrs map[string]error
+	// startedBy routes the start of the seat with that role to the Shuttle, which answers it in place of the fake handles.
+	startedBy map[string]Shuttle
 	// strandNames overrides the strand name a role's seat is started under.
 	strandNames map[string]string
 	// sendErrs, alwaysBusy and stopErrs script the handle started for that role.
@@ -154,6 +157,14 @@ func newFakeShuttle(t *testing.T) *fakeShuttle {
 	}
 }
 
+// realRunnerShuttle returns a Shuttle over a real shuttleengine.Runner whose engine set holds only the fake engine, which supports no requirement, with the reed it records on.
+func realRunnerShuttle(t *testing.T, root string) (Shuttle, *shuttlefake.Reed) {
+	t.Helper()
+	reed := &shuttlefake.Reed{}
+	cfg := shuttleengine.Config{RunDir: t.TempDir(), RunTimeoutMin: 60, StartupTimeoutS: 30}
+	return RunnerShuttle(shuttleengine.NewRunner(reed, shuttlefake.EngineSet(&shuttlefake.Engine{}), root, root, cfg)), reed
+}
+
 // newHandle returns a handle for role, named and scripted from the shuttle's fields.
 func (f *fakeShuttle) newHandle(role string) *fakeHandle {
 	name := "ly:task:" + role
@@ -183,6 +194,11 @@ func (f *fakeShuttle) StartGated(spec shuttleengine.Spec, gate shuttleengine.Gat
 	if err := f.startErrs[spec.Role]; err != nil {
 		f.started <- spec.Role
 		return nil, err
+	}
+	if routed, ok := f.startedBy[spec.Role]; ok {
+		handle, err := routed.StartGated(spec, gate)
+		f.started <- spec.Role
+		return handle, err
 	}
 	handle := f.newHandle(spec.Role)
 	f.mu.Lock()

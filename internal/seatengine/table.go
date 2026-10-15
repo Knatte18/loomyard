@@ -79,6 +79,10 @@ type Seat struct {
 	Gate shuttleengine.GateSpec
 	// ForkSubagents authorizes the seat's session to spawn in-session fork subagents; the engine audits none.
 	ForkSubagents bool
+	// Requires lists what the seat requires of its engine beyond forks, which ForkSubagents implies, and beyond peer messaging, which a table of more than one seat adds.
+	Requires []shuttleengine.Requirement
+	// ModelKey names the config key the seat's model came from, so a Start refusal for an unmet requirement names the key to change; the zero value stands for a seat whose key no caller names.
+	ModelKey shuttleengine.ModelKey
 	// Required marks an advisor the step depends on: any end of its run that Accept does not accept ends the step, and its held turn end still notifies the parent.
 	// The lead is never Required.
 	Required bool

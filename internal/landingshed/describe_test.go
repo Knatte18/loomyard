@@ -99,6 +99,9 @@ func TestDescribeSpec_ComposesSpec(t *testing.T) {
 		t.Errorf("lead engine/model/effort, table timeout = %q/%q/%q, %v; want claude/sonnet/high, 7m", lead.Engine, lead.Model, lead.Effort, table.Timeout)
 	}
 	requireDescribeLead(t, table, in.DescriptionPath)
+	if len(lead.Requires) != 0 {
+		t.Errorf("lead Requires = %v; want none, a lone seat declares nothing", lead.Requires)
+	}
 
 	prompt := describeLeadPrompt(t, in.StencilsDir, parentName, table)
 	for _, v := range []string{in.DecisionRecordPath, in.RunRecordPath, in.DescriptionPath, in.TaskBranch, in.ParentBranch, in.Slug} {
