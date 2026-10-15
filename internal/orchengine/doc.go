@@ -10,7 +10,7 @@
 // `lyx orch` runs from the hub's prime worktree only; every verb refuses elsewhere.
 //
 //   - start: the idempotent bootstrap.
-//     It first ensures the prime's `runs` strand, the session's overview window running `lyx batten overview`, so on a fresh session the overview is the first window and the orchestrator has a window of its own; a failure there only warns.
+//     It first ensures the prime's `runs` strand, the session's overview window running `lyx batten overview`, which shows the orch's context line above the runs in flight, so on a fresh session the overview is the first window and the orchestrator has a window of its own; a failure there only warns.
 //     It leaves one live orchestrator strand and one watcher bound to it, then reports on the envelope.
 //     It never attaches or switches a tmux client;
 //     `lyx reed attach` is the only way into the session.

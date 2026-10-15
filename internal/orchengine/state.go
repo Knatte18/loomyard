@@ -131,6 +131,24 @@ func LoadState(p Paths) (State, error) {
 	return s, nil
 }
 
+// PeekState reads the persisted state without taking p.StateLockPath and without creating any directory or file, so a status pane polling it never blocks the watcher.
+// This is safe because internal/state writes the file atomically.
+// An absent file returns a zero State, false and no error; a read or decode failure returns an error.
+func PeekState(p Paths) (State, bool, error) {
+	data, err := os.ReadFile(p.StatePath)
+	if errors.Is(err, os.ErrNotExist) {
+		return State{}, false, nil
+	}
+	if err != nil {
+		return State{}, false, fmt.Errorf("orch: peek state: %w", err)
+	}
+	var s State
+	if err := json.Unmarshal(data, &s); err != nil {
+		return State{}, false, fmt.Errorf("orch: peek state: %w", err)
+	}
+	return s, true, nil
+}
+
 // SaveState writes the state, creating p.Dir first.
 func SaveState(p Paths, s State) error {
 	if err := os.MkdirAll(p.Dir, 0o755); err != nil {
