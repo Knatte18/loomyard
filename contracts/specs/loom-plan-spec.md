@@ -20,6 +20,7 @@ The smallest change that:
 2. **Is independently committable** — a meaningful, revertible git commit on its own.
 3. **Carries the coverage for any new behavior it introduces**; the card's own targets include the test that covers it (`PATTERN-test-economy`).
    Pure refactors/renames may rely on existing tests instead.
+   A stencil's static prose is not behavior a test covers; a stencil card carries a test only when it changes a marker, a value Go fills, reads or names, a fragment Go chooses, or a rule a scan across stencils checks.
 
 **Key insight,
 and the reason the schema is shaped this way:** criterion 1 is not just a post-hoc check — it's *why the dependency graph exists at all*.

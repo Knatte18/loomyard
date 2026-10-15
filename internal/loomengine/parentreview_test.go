@@ -27,7 +27,7 @@ func TestParentReviewDeliveryPrompt_OneLineNamingReviewerSlugBrief(t *testing.T)
 	if strings.ContainsAny(got, "\r\n") {
 		t.Errorf("ParentReviewDeliveryPrompt(...) = %q; want one line", got)
 	}
-	for _, want := range []string{"hub:orch", "add-json-flag", "/w/_lyx/reviews/parent-review/round-1/brief.md", "SendMessage", "lyx loom review delivered", "--failed"} {
+	for _, want := range []string{"hub:orch", "add-json-flag", "/w/_lyx/reviews/parent-review/round-1/brief.md"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("ParentReviewDeliveryPrompt(...) = %q; want it to contain %q", got, want)
 		}
@@ -83,8 +83,6 @@ func TestParentReviewBrief_NamesPathsAndSubmitLines(t *testing.T) {
 		"/w/decision.md",
 		"/w/support.md",
 		stencilstore.Path(dir, "burler-review-format"),
-		"lyx board list",
-		"lyx board get",
 		"lyx loom review approve add-json-flag",
 		"lyx loom review reject add-json-flag",
 	} {
