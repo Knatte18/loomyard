@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/clihelp"
@@ -312,7 +313,9 @@ func editLocal(dirs configDirs, out io.Writer, mod configreg.Module, path string
 // The worktree base dir is computed from the layout as filepath.Join(WorktreeRoot, RelPath), and the board dir is the hub's.
 // layer is the --layer value, empty or one of the three layer names; any other value is refused before anything is read or written.
 // hubWriteGuard is called before a default-layer write and refuses it with its message; a nil guard allows every write.
-func dispatch(l *lyxcwd.Location, out io.Writer, args []string, edit configengine.EditorFunc, sync syncFunc, commit hubCommitFunc, printOnly bool, setFlags []string, layer string, hubWriteGuard func() (string, error)) int {
+// terminal tells whether the command's input is an interactive terminal:
+// without one, an editor path is refused before the layer is dispatched, the hub-write guard is consulted, a file is scaffolded or the editor runs.
+func dispatch(l *lyxcwd.Location, out io.Writer, args []string, edit configengine.EditorFunc, sync syncFunc, commit hubCommitFunc, printOnly bool, setFlags []string, layer string, hubWriteGuard func() (string, error), terminal bool) int {
 	if !validLayer(layer) {
 		return output.Err(out, fmt.Sprintf("unknown --layer %q; use default, worktree or local", layer))
 	}
@@ -353,7 +356,25 @@ func dispatch(l *lyxcwd.Location, out io.Writer, args []string, edit configengin
 	if len(args) < 1 {
 		return output.Err(out, `module required; run "lyx config" to list modules and verbs`)
 	}
+	// The editor paths need a terminal; --set and --print above need none.
+	if !terminal {
+		return output.Err(out, noTerminalRefusal(args[0]))
+	}
 	return editOne(dirs, out, args[0], edit, sync, commit)
+}
+
+// stdinIsTerminal reports whether in is an *os.File whose descriptor is a terminal; any other reader is not one.
+func stdinIsTerminal(in io.Reader) bool {
+	file, ok := in.(*os.File)
+	return ok && term.IsTerminal(int(file.Fd()))
+}
+
+// noTerminalRefusal words the refusal of an editor path run without a terminal, naming module in its way forward, or a placeholder when module is empty.
+func noTerminalRefusal(module string) string {
+	if module == "" {
+		module = "<module>"
+	}
+	return fmt.Sprintf(`lyx config opens an editor only from an interactive terminal, and stdin is not one; way forward: "lyx config %s --print" to read, "lyx config %s --set key=value" to write`, module, module)
 }
 
 // baseDirOf returns the enclosing _lyx parent: the worktree root joined with the relative path.
@@ -558,7 +579,7 @@ func Command() *cobra.Command {
 			clihelp.SetExit(cmd.Context(), runResolved(cmd.Context(), cmd.OutOrStdout(), args[0]))
 			return nil
 		}
-		clihelp.SetExit(cmd.Context(), runConfig(cmd.Context(), cmd.OutOrStdout(), args, printOnly, setFlags, layer))
+		clihelp.SetExit(cmd.Context(), runConfig(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout(), args, printOnly, setFlags, layer))
 		return nil
 	}
 
@@ -639,14 +660,14 @@ func RunCLIIn(cwd string, out io.Writer, args []string) int {
 // When printOnly is true the command is read-only: it prints on-disk YAML
 // without opening an editor or running sync. setFlags carries the raw
 // "key=value" strings collected from repeated --set flags.
-func runConfig(ctx context.Context, out io.Writer, args []string, printOnly bool, setFlags []string, layer string) int {
+func runConfig(ctx context.Context, in io.Reader, out io.Writer, args []string, printOnly bool, setFlags []string, layer string) int {
 	l, realSync, realCommit, err := resolveReal(ctx)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
 	// Dispatch to the print path, --set path, or specific module.
-	return dispatch(l, out, args, configengine.DefaultEditor, realSync, realCommit, printOnly, setFlags, layer, realHubWriteGuard(l))
+	return dispatch(l, out, args, configengine.DefaultEditor, realSync, realCommit, printOnly, setFlags, layer, realHubWriteGuard(l), stdinIsTerminal(in))
 }
 
 // realHubWriteGuard returns the guard over l and the calling session's strand name from the environment.
@@ -667,7 +688,7 @@ func runMenu(ctx context.Context, in io.Reader, out io.Writer) int {
 	}
 	dirs := dirsOf(l)
 	dirs.hubWriteGuard = realHubWriteGuard(l)
-	return menu(dirs, in, out, configengine.DefaultEditor, realSync, realCommit)
+	return menu(dirs, in, out, configengine.DefaultEditor, realSync, realCommit, stdinIsTerminal(in))
 }
 
 // resolveReal resolves the layout from the seam cwd and builds the real sync function and hub commit.

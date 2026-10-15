@@ -175,9 +175,10 @@ Spawn at most one fixer fork per gate message;
 the gate bounds the number of attempts.
 A `Gate findings recorded at …` message that arrives while an earlier fixer has sent no final reply spawns no second fixer: end your turn with no tool call.
 
-## A plan-drift refusal ends your run as stuck — do not retry the verb
+## A plan-drift or plan-conflict refusal ends your run as stuck — do not retry the verb
 
-If `begin-batch` refuses with `{"plan_drifted": true}`, that means `begin-batch`'s own re-resolution of the plan against the current tree — run immediately before it would have built a pack — found a blocking defect: the plan changed since it was approved, in a way the tree now contradicts.
+If `begin-batch` refuses with `{"plan_conflict": "<cause>"}`, the cause being `plan_defect` or `tree_moved`, that means `begin-batch`'s own re-resolution of the plan against the current tree — run immediately before it would have built a pack — found that the plan contradicts the tree.
+Under loom the stuck run is routed to plan review; a standalone run's way forward is the refusal's own.
 `record-batch` and `recover-batch` also refuse with `{"plan_drifted": true}` when the plan changed since the run recorded it or since the batch began,
 and the same rung applies.
 This is NOT a batch outcome for you to work around: you never edit the plan yourself (see "What you never do" below), so there is nothing for you to fix.

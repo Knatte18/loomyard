@@ -196,6 +196,7 @@
 // A forthcoming card's Create targets and Rename New sides are excluded from the status check, so a later card that Uses one passes while the fork has landed nothing yet.
 // A terminal batch's cards are never forthcoming: its done-checks proved its targets present.
 // With no begun card, validate runs the whole-plan check set, approval gate included.
+// begin-batch's blocking refusal is a PlanConflictError, the `plan_conflict` class: its cause is `plan_defect` when begun is empty and `tree_moved` otherwise.
 //
 // The bound: drift in a begun, non-terminal card's own targets is reported by none of the three sites.
 // That card was fully validated at its first begin-batch, its bytes stay pinned by its recorded CardHashes, and record-batch and recover-batch still run its done-checks and drift detection.
@@ -528,6 +529,22 @@
 // Every error of the auto path wraps ErrAutoRebaseline, and its refusals name RunDeps.ReentryStep through Rebaseline's step-keyed texts, never `lyx webster rebaseline`; the shed adapter maps them to Stuck.
 // The accepted rebaseline's warning is logged once at Warn, leads RunResult.Warnings, opens a stuck outcome's reason and every error Run returns afterwards, and the plan refusals that follow it (validation, zero batches, quarry) wrap ErrAutoRebaseline too.
 // `--fresh` beside the option keeps its archive path and runs no rebaseline, and a run without the option keeps ErrFingerprintMismatch.
+//
+// # The plan-conflict record
+//
+// begin-batch leaves two never-tracked files in the scratch directory (`.lyx/webster/`), never under `_lyx`, so no sync carries them:
+// the conflict record `plan-conflict.md`, naming the batch, the cause and each blocking finding, and the last-routed conflict `plan-conflict-routed.md`, holding the findings of the conflict last routed to plan review.
+// Their paths are ConflictRecordPath and RoutedConflictPath, and ConflictRecordRel is the record's anchor-relative path for recipe text.
+// The record is bounded to one Webster call:
+// Run removes it on entry once it holds run.lock, and begin-batch removes it as its first step, then writes it only when it refuses with a PlanConflictError and the plan-fingerprint re-baseline persisted.
+// So a record exists only when the latest begin-batch of the call refused with `plan_conflict`.
+// A begun batch removes the routed file under the state-mutation lease.
+// A failed removal or write is logged at Warn and changes no refusal, class or outcome.
+// Under loom, the Webster producer claims the record when Master ends stuck (ClaimConflictRoute) and decides three ways:
+// findings that differ, as a set, from the routed file's are new, so the claim rewrites the routed file and the stuck outcome reroutes to plan review;
+// findings equal to the routed file's are a recurrence, and the stuck outcome halts for a hand edit of the named pending cards;
+// no record, or one naming no finding line, claims nothing.
+// A read or write error is returned, and the producer then halts rather than reroutes.
 //
 // # The verify-gate fixer fork
 //

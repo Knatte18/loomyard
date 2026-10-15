@@ -20,6 +20,10 @@
 # becomes reachable for the first time: nothing made it fire before, because its own row's on_done
 # always reached the row now removed regardless of what its gate found.
 #
+# Webster's Stuck halts the run for a human too, with one exception: Webster declares on_reroute:
+# Plan-Burler-Review, and its producer marks a Stuck Reroute only when begin-batch left a new
+# plan-conflict record. Shed's reroute cap bounds that edge, and a reroute spends no bounce budget.
+#
 # A gated writer row's exhausted gate halts the run for a human rather than bouncing to a fresh
 # writer, and this replaces the removed rows' cheap respawn deliberately: no on_stuck is added to
 # either writer row, because after three in-session re-prompts with the findings already in hand, a
@@ -273,7 +277,10 @@ producers:
             them here is duplicated work. This round may never write the approved: key in the
             plan's overview file: a fixer that set the flag would be approving the very artifact
             the review round is judging, and this row already has write access to the overview
-            because it runs fix-scope: overlay with the plan directory in its target paths.
+            because it runs fix-scope: overlay with the plan directory in its target paths. When
+            .lyx/webster/plan-conflict.md exists, Webster's begin-batch refused the approved plan
+            against the current tree: each blocking finding it lists is a finding of this round,
+            fixed by editing only cards whose batch has not begun.
         rubric_stencil: loom-rubric-plan-review
         # fix-scope: overlay, matching the Discussion-Burler-Review row above. The plan directory is fabric
         # records content reached through the junction, and the Fabric Git Invariant reserves committing that
@@ -317,6 +324,7 @@ producers:
   - name: Webster
     engine: Webster
     on_done: Webster-Bouncer
+    on_reroute: Plan-Burler-Review
 
   - name: Webster-Bouncer
     engine: Bouncer

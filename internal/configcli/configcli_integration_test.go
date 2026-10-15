@@ -70,7 +70,7 @@ func TestConfigOverRealHub(t *testing.T) {
 		}
 
 		var out bytes.Buffer
-		code := dispatch(codeLayout, &out, []string{"loom"}, fakeEdit, injectedSync, nil, false, nil, "", nil)
+		code := dispatch(codeLayout, &out, []string{"loom"}, fakeEdit, injectedSync, nil, false, nil, "", nil, true)
 		if code != 0 {
 			t.Errorf("dispatch() = %d; want 0; output: %s", code, out.String())
 		}
@@ -196,10 +196,15 @@ func TestConfigOverRealHub(t *testing.T) {
 			t.Fatalf("read hub board.yaml: %v", err)
 		}
 
-		cmd := Command()
-		cmd.SetIn(strings.NewReader(strconv.Itoa(boardChoice) + "\n"))
+		// The real command meets the no-terminal refusal before any listing, so this drives menu with a terminal answer of true to reach its hub-write guard.
+		codeLayout, err := lyxcwd.Resolve(codeWorktreePath)
+		if err != nil {
+			t.Fatalf("lyxcwd.Resolve(%q): %v", codeWorktreePath, err)
+		}
+		dirs := dirsOf(codeLayout)
+		dirs.hubWriteGuard = realHubWriteGuard(codeLayout)
 		var out bytes.Buffer
-		if code := clihelp.ExecuteIn(cmd, codeWorktreePath, &out, []string{"menu"}); code != 1 {
+		if code := menu(dirs, strings.NewReader(strconv.Itoa(boardChoice)+"\n"), &out, makeNeverCalledEditor(t), nil, nil, true); code != 1 {
 			t.Fatalf("lyx config menu = %d; want 1; output: %s", code, out.String())
 		}
 		menuListing, envelope, _ := strings.Cut(out.String(), "{")
@@ -209,6 +214,41 @@ func TestConfigOverRealHub(t *testing.T) {
 		assertJSONErrContains(t, "{"+envelope, "prime worktree")
 		if after, err := os.ReadFile(hubFile); err != nil || !bytes.Equal(before, after) {
 			t.Errorf("hub board.yaml = %q, %v after a refused menu edit; want it unchanged", after, err)
+		}
+	})
+
+	// A file that is no terminal and a reader that is no file are the two non-terminal inputs of stdinIsTerminal; its terminal branch needs a real terminal, which no test has.
+	t.Run("the real command refuses its editor paths when its input is not a terminal", func(t *testing.T) {
+		t.Setenv(agentname.StrandNameEnv, "")
+		loomFile := configengine.ConfigFile(codeWorktreePath, "loom")
+		before, err := os.ReadFile(loomFile)
+		if err != nil {
+			t.Fatalf("read the worktree loom.yaml: %v", err)
+		}
+		regularFile, err := os.Create(filepath.Join(t.TempDir(), "stdin"))
+		if err != nil {
+			t.Fatalf("create the stdin stand-in: %v", err)
+		}
+		defer regularFile.Close()
+
+		for _, tt := range []struct {
+			name string
+			in   io.Reader
+			args []string
+		}{
+			{name: "a regular file on a module", in: regularFile, args: []string{"loom"}},
+			{name: "a reader on the menu", in: strings.NewReader("1\n"), args: []string{"menu"}},
+		} {
+			cmd := Command()
+			cmd.SetIn(tt.in)
+			var out bytes.Buffer
+			if code := clihelp.ExecuteIn(cmd, codeWorktreePath, &out, tt.args); code != 1 {
+				t.Fatalf("lyx config %s (%s) = %d; want 1; output: %s", tt.args[0], tt.name, code, out.String())
+			}
+			assertJSONErrContains(t, out.String(), "--print")
+		}
+		if after, err := os.ReadFile(loomFile); err != nil || !bytes.Equal(before, after) {
+			t.Errorf("worktree loom.yaml = %q, %v after refused editor paths; want it unchanged", after, err)
 		}
 	})
 

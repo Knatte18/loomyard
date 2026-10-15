@@ -77,7 +77,7 @@ func joinClaims(groups ...[]claim) []claim {
 
 const (
 	websterDoneCheckSection = "## A done-check failure arrives as `batch_failed`"
-	websterPlanDriftSection = "## A plan-drift refusal ends your run as stuck"
+	websterPlanDriftSection = "## A plan-drift or plan-conflict refusal ends your run as stuck"
 	websterGateSection      = "## A gate failure: spawn one fixer fork"
 	websterOutcomeKeysLine  = "`{{.outcome_path}}` itself carries exactly these three keys, quoted here, exactly:"
 	orchNoScribeHandoffWhy  = "the orch stencils carry their own handoff procedure, so none names the scribe handoff skill"
@@ -821,8 +821,11 @@ var wordingClaims = []stencilClaims{
 			"- Any verb refuses with `{\"config_invalid\": true}` →",
 			"and stop without calling another verb.",
 			"carries no `config_invalid` and is transient: re-run the verb."),
-		wantAll("begin-batch's plan_drifted refusal ends the run as stuck, exactly as a fabric-sync failure does, and the verb is not retried",
-			websterPlanDriftSection, `"plan_drifted": true`, "do not retry the verb"),
+		wantAll("begin-batch's plan_conflict refusal ends the run as stuck, exactly as a fabric-sync failure does, and the verb is not retried",
+			websterPlanDriftSection, `"plan_conflict"`, "do not retry the verb"),
+		inSection(websterPlanDriftSection, wantAll("a plan_conflict stuck is routed to plan review under loom, and a standalone run's way forward is the refusal's own",
+			"Under loom the stuck run is routed to plan review",
+			"a standalone run's way forward is the refusal's own")),
 		inSection(websterPlanDriftSection, wantAll("record-batch and recover-batch refuse with plan_drifted too, and the operator's way forward is restore-plan",
 			"`record-batch` and `recover-batch` also refuse with `{\"plan_drifted\": true}`",
 			"`lyx webster restore-plan`")),

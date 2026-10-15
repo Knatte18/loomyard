@@ -19,6 +19,9 @@
 //     (summaryparser.Path) as the pointer's path.
 //     Its run is handed two options: Fresh is always false, and AutoRebaseline is always true, so a plan changed between steps is rebaselined on entry.
 //     Webster's own "stuck" outcome, a websterengine.ErrPendingAuditFindings error and a websterengine.ErrAutoRebaseline error all map to Stuck with an empty Path and a Reason: Master's own stuck_reason or the run-entry refusal's text, whose way forward already ends in this row's re-entry step (NewWebsterProducer sets RunDeps.ReentryStep to "re-step the <row> row" when it is empty).
+//     A Stuck from Webster's own "stuck" outcome consults the plan-conflict record begin-batch left (websterengine.ClaimConflictRoute) after the cancellation check:
+//     a conflict whose findings are new asks for a reroute (OutputPointer.Reroute) to the row's on_reroute target, a record repeating the last routed findings stays a plain Stuck that names the hand edit, and no record, an unreadable one or a failed write stays a plain Stuck with Master's reason.
+//     The error outcomes never consult the record and never reroute.
 //     Any other outcome value reaching Call is an engine-level error.
 //   - BurlerReviewProducer and BurlerFixProducer: a finished half -- shuttleengine.OutcomeDone reached within the bounded
 //     retry -- maps to Stuck, never Done, reporting the round's own review path as the pointer.
