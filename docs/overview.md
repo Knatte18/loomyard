@@ -514,6 +514,7 @@ User-facing modules each get one `lyx <module>` namespace:
   a darn run's tail is `Describe → Merge-In → Publish → PR-Align → PR-Gate → Finalize`, with no merge review.
   `Merge-In` merges the parent into the task, verifies the merged tree and writes the merge record, and the perch reviews how the task's code interacts with what the parent gained.
   `Publish`, `PR-Gate` and `Finalize` reroute to `Merge-In` when the parent moved since.
+  `Webster` reroutes to `Plan-Burler-Review` when begin-batch left a new plan conflict.
   `Publish` pushes the task branch after the repo's `publish_verify`, and returns Done once the PR is open, refreshing its title and body from the description.
   `Describe` writes the change description at `_lyx/landing/summary.md`, the single source for the PR title and body and for the landing commit, whose message carries exactly one `Co-Authored-By` trailer that Go appends from `landing.yaml`'s `co_authored_by`.
   `PR-Gate` returns Done on a valid approval (matching the branch's current HEAD), and `Finalize` closes the open PR with a comment naming the landing commit, tolerates an already-landed parent, and marks the board task `done` after the parent merge.
