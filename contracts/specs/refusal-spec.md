@@ -216,6 +216,7 @@ A correctness halt clears only on evidence that HEAD and every suspect path matc
 | llm driver without bootstrap | `--driver llm` on a recipe with no bootstrap verb | correctness halt | re-run with `--driver go` |
 | Seed-Child: run settings invalid | batten's Seed-Child finds the board task's `run_settings` no longer validate, such as a key a later binary retired or closed to the local layer, a review budget key below its bound (also refused at `lyx board upsert`), or one written to `board.json` by hand; no seed or local file is written and the message names the module and the key | correctness halt | correct the task's `run_settings` with `lyx board upsert`, then `lyx batten run <slug>` |
 | batten run: typed --child-driver over a seed recording none | `lyx batten run` or `lyx batten step` is given `--child-driver` for a run whose seed records no `child_driver`, so the flag cannot take effect | correctness halt | delete the run's seed to re-seed it with the flag, or drop the flag to take the child recipe's `driver_kind`, then `shed.yaml`'s |
+| batten run: a batten driver already drives the run | a second `lyx batten run <slug>` finds the driver lock held by a live batten driver | transient | `lyx batten status <slug>` shows the run; the live batten driver settles it |
 | config: driver_kind in batten.yaml | `batten.yaml` holds a `driver_kind` key, since batten's own driver is always `go` | correctness halt | remove the key from `batten.yaml` |
 | wiring guards | nil deps, an invalid producer list, empty paths | wiring guard | none per row; grouped |
 | raw I/O | `stat`, `mkdir`, `read` or `write` of a status, seed, lock or loop file fails, or the loop process cannot be started | transient | re-run the refused verb; nothing is mutated |
@@ -470,7 +471,7 @@ Its JSON error envelope carries the way forward in the message.
 
 ## Out of scope
 
-Landing, batten, orch, fabric, burler and board refusals are not in this table, except the batten lock rows above, and the verify-gate, dirty-tree, conflict-session, superseded-strand, hub-wide config write, Seed-Child run settings and batten typed child-driver rows above;
+Landing, batten, orch, fabric, burler and board refusals are not in this table, except the batten lock rows above, and the verify-gate, dirty-tree, conflict-session, superseded-strand, hub-wide config write, Seed-Child run settings, batten typed child-driver and batten driver lock rows above;
 a later audit adds each as its own section.
 Burler's own round errors stay out too, as the strict review parse and the cluster audit already do:
 a changed review and a failed write of the acceptance record each name the file concerned in their message and land no row.

@@ -879,9 +879,6 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				if err != nil {
 					return "", teardownRefusal(err, slug)
 				}
-				// Recorded onto the receiver, not only returned: the run verb reads it back after
-				// the Shed's own Run has returned, to surface it on the success envelope.
-				c.abandonedSession = res.AbandonedSession
 				return res.AbandonedSession, nil
 			},
 			Remove: func(ctx context.Context) error {

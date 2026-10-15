@@ -88,10 +88,9 @@ once. It removes the park marker and the resume report on start.`,
 	}
 }
 
-// driveEnvelopePath composes the path of one saved stop envelope, drive-envelope-<compact-timestamp>-<4-hex>.json beside the run's drive reports.
+// driveEnvelopePath composes the path of one saved stop envelope, sheddriver.EnvelopeFileName's drive-envelope-<compact-timestamp>-<4-hex>.json beside the run's drive reports.
 func driveEnvelopePath(l *lyxcwd.Location, runID string, now func() time.Time, rand func() string) string {
-	filename := fmt.Sprintf("drive-envelope-%s-%s.json", now().Format(driverReportTimestampLayout), rand())
-	return filepath.Join(shedrun.DriveReportsDir(l, runID), filename)
+	return filepath.Join(shedrun.DriveReportsDir(l, runID), sheddriver.EnvelopeFileName(now(), rand()))
 }
 
 // The one-line recipe descriptions the tackler's prompt names under its run heading.

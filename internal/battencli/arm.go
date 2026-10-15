@@ -408,7 +408,6 @@ func (c *battenCLI) specFor(verb string) shedverbs.Spec {
 		PauseAbsentMessage: fmt.Sprintf("battencli: no status file at %s; there is nothing running to pause -- run \"lyx batten run <slug>\" first", c.shedPaths.StatusPath),
 		Hooks: shedverbs.Hooks{
 			PreRun:       c.battenPreRun,
-			PostRun:      c.battenPostRun,
 			PreStep:      c.battenPreStep,
 			StatusExtras: c.battenStatusExtras,
 			PreGoto:      c.battenPreGoto,
@@ -472,7 +471,7 @@ func battenInterruptPolicy(row string) string {
 // Arm is battencli's exported resolution entry point, for batten's own subtree: it constructs a
 // fresh receiver and returns c.arm(cwd, verb, args), resolving cwd itself. A package-level Arm
 // alone could not serve resolvePersistentPreRun, because wire is a method on the receiver and the
-// hooks close over c.env, c.shedPaths and c.abandonedSession, and the pre-run's own c.location and
+// hooks close over c.env and c.shedPaths, and the pre-run's own c.location and
 // c.slug assignments would stop happening.
 func Arm(cwd string, verb string, args []string) (shedverbs.Spec, error) {
 	c := &battenCLI{}
@@ -687,22 +686,6 @@ func (c *battenCLI) battenPreStepUnmarked(ctx context.Context) (string, error) {
 	return "", nil
 }
 
-// battenPostRun implements the PostRun hook for batten's spec: it returns the envelope's
-// "abandonedSession" key only when c.abandonedSession is non-empty, preserving today's
-// conditional emission.
-// It returns nil on a non-nil runErr, so batten's error envelope keeps exactly its own keys.
-//
-// The run envelope deliberately carries neither a mutations array nor a partial bool: a run may
-// perform zero, one, or two topology mutations at arbitrary points hours apart, so there is no
-// coherent single array at run scope, and partial has no referent here. The mutation records are
-// logged at Info by the wiring closures (wire.go) instead of discarded.
-func (c *battenCLI) battenPostRun(ctx context.Context, result shedengine.Result, runErr error) map[string]any {
-	if runErr != nil || c.abandonedSession == "" {
-		return nil
-	}
-	return map[string]any{"abandonedSession": c.abandonedSession}
-}
-
 // maxStatusHistoryEntries caps the history entries the status envelope carries.
 // History grows only when Run-Shed's wait returns: on a state change, a pause or a failed status stat, each its own entry.
 // The cap still keeps a long run from burying the two ends that carry the run's meaning.
@@ -783,8 +766,7 @@ func (c *battenCLI) readChildStatus() (shedengine.Status, bool) {
 
 // readAbandonedSession reads back the record battenshed's teardown row writes when session shutdown
 // abandoned a session rather than ending it cleanly, reporting found == false when there is none.
-// Reading it here is what gives a step-driven lifecycle the same fact a run-driven one gets from
-// the PostRun hook, which shedverbs' closed step envelope has no counterpart for.
+// The record outlives the process that observed the shutdown, so the status verb and the run verb's envelope read the same fact from it.
 func readAbandonedSession(scratchDir string) (string, bool) {
 	if scratchDir == "" {
 		return "", false
