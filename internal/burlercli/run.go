@@ -38,6 +38,8 @@ type profileYAML struct {
 	FixerReportPath   string      `yaml:"fixer-report-path"`
 	PriorReviews      []string    `yaml:"prior-reviews"`
 	PriorFixerReports []string    `yaml:"prior-fixer-reports"`
+	// LanguageSkills stays a raw node so decodeProfile can refuse a non-boolean with an error naming the key.
+	LanguageSkills yaml.Node `yaml:"language-skills"`
 }
 
 // decodeProfile strictly decodes a profile file into burlerengine.Profile
@@ -49,6 +51,16 @@ func decodeProfile(data []byte) (burlerengine.Profile, error) {
 	dec.KnownFields(true)
 	if err := dec.Decode(&parsed); err != nil {
 		return burlerengine.Profile{}, fmt.Errorf("burler: profile YAML: %w", err)
+	}
+
+	var languageSkills bool
+	if parsed.LanguageSkills.Kind != 0 {
+		if parsed.LanguageSkills.Kind != yaml.ScalarNode || parsed.LanguageSkills.ShortTag() != "!!bool" {
+			return burlerengine.Profile{}, fmt.Errorf("burler: profile YAML: key \"language-skills\" must be a boolean")
+		}
+		if err := parsed.LanguageSkills.Decode(&languageSkills); err != nil {
+			return burlerengine.Profile{}, fmt.Errorf("burler: profile YAML: key \"language-skills\" must be a boolean: %w", err)
+		}
 	}
 
 	return burlerengine.Profile{
@@ -68,6 +80,7 @@ func decodeProfile(data []byte) (burlerengine.Profile, error) {
 		FixerReportPath:   parsed.FixerReportPath,
 		PriorReviews:      parsed.PriorReviews,
 		PriorFixerReports: parsed.PriorFixerReports,
+		LanguageSkills:    languageSkills,
 	}, nil
 }
 
@@ -115,6 +128,7 @@ Example profile YAML:
   fix-scope: source
   tool-use: false
   cluster-fan: ""  # naming a fan from burler.yaml activates cluster review, one fork per fan entry
+  language-skills: false  # true loads the hub's language skills after burler's own on both seats
   review-path: _lyx/burler/review.md
   fixer-report-path: _lyx/burler/fixer-report.md
   prior-reviews: []
