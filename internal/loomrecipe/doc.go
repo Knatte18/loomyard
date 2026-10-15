@@ -25,6 +25,9 @@
 // Rows and RowNames serve the loom, darn and batten recipes, and EntryNumbers numbers any recipe's rows for the panes that draw them:
 // a review segment is one entry and every other row its own, so a recipe added to Rows is numbered with no change to its readers.
 //
+// Every review segment of the loom and darn recipes sets one `role_prefix` on its Bouncer, BurlerReview and BurlerFix rows, and no two segments share a value.
+// A test pins that beside the carry-over check, which pins that each Bouncer row's `carry_over` names the row's own segment.
+//
 // This package sits above internal/loomshed rather than inside it because internal/shedrecipe's
 // registry already imports loomshed for six of its constructors -- a loomshed -> shedbuild ->
 // shedrecipe -> loomshed production import cycle would not compile.
