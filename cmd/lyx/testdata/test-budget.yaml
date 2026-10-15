@@ -89,7 +89,7 @@ internal/quarrycli: 7
 internal/reedcli: 40
 internal/reedengine: 266
 internal/reedengine/render: 12
-internal/reportcli: 3
+internal/reportcli: 5
 internal/reportengine: 10
 internal/reviewbudget: 3
 internal/seatengine: 17
