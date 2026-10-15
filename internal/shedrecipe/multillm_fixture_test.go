@@ -71,22 +71,23 @@ func TestMultiLLMFixtureRecipe_BuildsAndRunsAgainstFakeSeats(t *testing.T) {
 	var seats []seatengine.Seat
 	for _, seat := range fake.GotTables[0].Seats {
 		seats = append(seats, seatengine.Seat{
-			Name: seat.Name, Stencil: seat.Stencil, Model: seat.Model, Effort: seat.Effort,
+			Name: seat.Name, Stencil: seat.Stencil, ModelChoice: seat.ModelChoice,
 			Inputs: seat.Inputs, Outputs: seat.Outputs,
 		})
 	}
+	choice := shuttleengine.ModelChoice{Engine: "claude", Model: "claude-opus-test", Effort: "high"}
 	want := []seatengine.Seat{
 		{
-			Stencil: "seatfixture-chair", Model: "claude-opus-test", Effort: "high",
+			Stencil: "seatfixture-chair", ModelChoice: choice,
 			Inputs:  []string{filepath.Join(root, "in/spec.md"), filepath.Join(root, "seats/advisor-1.md"), filepath.Join(root, "seats/advisor-2.md")},
 			Outputs: []string{chairOutput},
 		},
 		{
-			Name: "advisor-1", Stencil: "seatfixture-advisor", Model: "claude-opus-test", Effort: "high",
+			Name: "advisor-1", Stencil: "seatfixture-advisor", ModelChoice: choice,
 			Outputs: []string{filepath.Join(root, "seats/advisor-1.md")},
 		},
 		{
-			Name: "advisor-2", Stencil: "seatfixture-advisor", Model: "claude-opus-test", Effort: "high",
+			Name: "advisor-2", Stencil: "seatfixture-advisor", ModelChoice: choice,
 			Outputs: []string{filepath.Join(root, "seats/advisor-2.md")},
 		},
 	}

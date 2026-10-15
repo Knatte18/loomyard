@@ -138,16 +138,16 @@ func TestDiscussionTable(t *testing.T) {
 				if chair.ForkSubagents {
 					t.Errorf("chair ForkSubagents = true; want no forks without a lens key")
 				}
-				if !slices.Equal(chair.Skills, discussionSkills) || chair.Model == "" || chair.Effort != "high" || chair.Stencil != discussionChairStencil {
-					t.Errorf("chair skills/model/effort/stencil = %v/%q/%q/%q; want %v, a model, high and %q", chair.Skills, chair.Model, chair.Effort, chair.Stencil, discussionSkills, discussionChairStencil)
+				if !slices.Equal(chair.Skills, discussionSkills) || chair.Engine != "claude" || chair.Model == "" || chair.Effort != "high" || chair.Stencil != discussionChairStencil {
+					t.Errorf("chair skills/engine/model/effort/stencil = %v/%q/%q/%q/%q; want %v, claude, a model, high and %q", chair.Skills, chair.Engine, chair.Model, chair.Effort, chair.Stencil, discussionSkills, discussionChairStencil)
 				}
 				if role := seatengine.SeatRole(table.RolePrefix, chair.Name); chair.Name != "" || role != "discussion" || role != DiscussionWriterRole() {
 					t.Errorf("lead name %q and role %q; want no name and the role discussion", chair.Name, role)
 				}
 				for n, want := range discussionTableAdvisors[:advisors] {
 					advisor := table.Seats[n+1]
-					if advisor.Name != want.Name || advisor.Stencil != discussionAdvisorStencil || !slices.Equal(advisor.Outputs, []string{DiscussionAdvisorNotes(layout, want.Name)}) || !slices.Equal(advisor.Skills, []string{"scribe:prose"}) || advisor.Model == "" || advisor.ForkSubagents {
-						t.Errorf("advisor %q = %+v; want its stencil, its notes file as the only output, scribe:prose alone, a model and no forks", want.Name, advisor)
+					if advisor.Name != want.Name || advisor.Stencil != discussionAdvisorStencil || !slices.Equal(advisor.Outputs, []string{DiscussionAdvisorNotes(layout, want.Name)}) || !slices.Equal(advisor.Skills, []string{"scribe:prose"}) || advisor.Engine != "claude" || advisor.Model == "" || advisor.ForkSubagents {
+						t.Errorf("advisor %q = %+v; want its stencil, its notes file as the only output, scribe:prose alone, the claude engine, a model and no forks", want.Name, advisor)
 					}
 					if role := seatengine.SeatRole(table.RolePrefix, advisor.Name); role != "discussion-"+want.Name {
 						t.Errorf("advisor %q role = %q; want %q", want.Name, role, "discussion-"+want.Name)

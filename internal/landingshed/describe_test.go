@@ -95,8 +95,8 @@ func TestDescribeSpec_ComposesSpec(t *testing.T) {
 	}
 
 	lead := table.Chair()
-	if lead.Model != "sonnet" || lead.Effort != "high" || table.Timeout != 7*time.Minute {
-		t.Errorf("lead model/effort, table timeout = %q/%q, %v; want sonnet/high, 7m", lead.Model, lead.Effort, table.Timeout)
+	if lead.Engine != "claude" || lead.Model != "sonnet" || lead.Effort != "high" || table.Timeout != 7*time.Minute {
+		t.Errorf("lead engine/model/effort, table timeout = %q/%q/%q, %v; want claude/sonnet/high, 7m", lead.Engine, lead.Model, lead.Effort, table.Timeout)
 	}
 	requireDescribeLead(t, table, in.DescriptionPath)
 

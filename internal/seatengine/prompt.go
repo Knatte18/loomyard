@@ -164,7 +164,7 @@ func seatSpec(table Table, seat Seat, prompt string) shuttleengine.Spec {
 	return shuttleengine.Spec{
 		Prompt:        prompt,
 		OutputFiles:   slices.Clone(seat.Outputs),
-		ModelChoice:   shuttleengine.ModelChoice{Model: seat.Model, Effort: seat.Effort, Version: seat.Version},
+		ModelChoice:   seat.ModelChoice,
 		ForkSubagents: seat.ForkSubagents,
 		Interactive:   isChair && table.Interactive,
 		QuietHold:     !isChair && !seat.Required,

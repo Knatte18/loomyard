@@ -94,8 +94,8 @@ func TestPlanTable(t *testing.T) {
 			if role := seatengine.SeatRole(table.RolePrefix, lead.Name); lead.Name != "" || role != "plan" {
 				t.Errorf("lead name %q and role %q; want no name and the role %q", lead.Name, role, "plan")
 			}
-			if lead.Model != "opus" || lead.Effort != "high" || lead.Version != "" {
-				t.Errorf("lead model/effort/version = %q/%q/%q; want opus/high/none", lead.Model, lead.Effort, lead.Version)
+			if lead.Engine != "claude" || lead.Model != "opus" || lead.Effort != "high" || lead.Version != "" {
+				t.Errorf("lead engine/model/effort/version = %q/%q/%q/%q; want claude/opus/high/none", lead.Engine, lead.Model, lead.Effort, lead.Version)
 			}
 			if want := []string{wantOverview(layout)}; !slices.Equal(lead.Outputs, want) {
 				t.Errorf("lead outputs = %v; want the overview %v", lead.Outputs, want)

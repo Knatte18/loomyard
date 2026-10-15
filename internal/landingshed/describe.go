@@ -199,12 +199,10 @@ func describeSessionTable(stencilName, descriptionPath string, markers map[strin
 		Timeout:    time.Duration(cfg.DescribeTimeoutMin) * time.Minute,
 		Values:     markers,
 		Seats: []seatengine.Seat{{
-			Stencil: stencilName,
-			Model:   resolved.Model,
-			Effort:  resolved.Params["effort"],
-			Version: resolved.Params["version"],
-			Outputs: []string{descriptionPath},
-			Skills:  describeSkills,
+			Stencil:     stencilName,
+			ModelChoice: shuttleengine.NewModelChoice(resolved),
+			Outputs:     []string{descriptionPath},
+			Skills:      describeSkills,
 		}},
 	}, nil
 }

@@ -66,10 +66,8 @@ type Seat struct {
 	Name string
 	// Stencil is the name of the stencil, read from the told stencils directory, that opens the seat.
 	Stencil string
-	// Model, Effort and Version select the seat's model; each is empty to defer to the provider default.
-	Model   string
-	Effort  string
-	Version string
+	// ModelChoice selects the seat's engine and model; each field is empty to defer to the engine set's default or the provider default.
+	shuttleengine.ModelChoice
 	// Inputs are the files the seat reads, and Outputs the files it writes; a seat has at least one output.
 	Inputs  []string
 	Outputs []string

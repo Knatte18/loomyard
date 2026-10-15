@@ -57,9 +57,7 @@ func (p *Profile) reviewTable(opts RunOpts, values map[string]string, skills []s
 		Seats: []seatengine.Seat{
 			{
 				Stencil:       "burler-template-reviewer",
-				Model:         opts.Review.Model,
-				Effort:        opts.Review.Effort,
-				Version:       opts.Review.Version,
+				ModelChoice:   shuttleengine.ModelChoice{Model: opts.Review.Model, Effort: opts.Review.Effort, Version: opts.Review.Version},
 				Outputs:       []string{p.ReviewPath},
 				Skills:        skills,
 				Values:        values,
