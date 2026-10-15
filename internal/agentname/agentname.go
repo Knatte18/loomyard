@@ -18,6 +18,9 @@ const (
 	// RoleDriver is the role other processes address a run's driver strand by.
 	RoleDriver = "driver"
 
+	// CallerOperator is the caller label of a process with no strand, the operator at a terminal.
+	CallerOperator = "operator"
+
 	// StrandNameEnv is the env key reed injects with a strand's full name.
 	StrandNameEnv = "LYX_STRAND_NAME"
 	// ParentEnv is the env key reed injects with the full name of the session that spawned the worktree's run.
@@ -148,6 +151,27 @@ func MatchesRole(role, base string) bool {
 	}
 	n, err := strconv.Atoi(suffix)
 	return err == nil && n >= 2 && strconv.Itoa(n) == suffix
+}
+
+// CallerLabel classifies a caller's strand name, the value of StrandNameEnv, into the label the shed history records.
+// An empty strand reads CallerOperator; a strand whose role MatchesRole RoleOrch or RoleDriver reads that role;
+// any other strand reads its own role.
+// A strand that does not parse is never refused: its label is the text after its last ":", or the whole strand when it has none.
+// The label is for reports only and no decision reads it, which bounds a caller choosing its own strand.
+func CallerLabel(strand string) string {
+	if strand == "" {
+		return CallerOperator
+	}
+	role := strand[strings.LastIndex(strand, sep)+1:]
+	if n, err := Parse(strand); err == nil {
+		role = n.Role
+	}
+	for _, base := range []string{RoleOrch, RoleDriver} {
+		if MatchesRole(role, base) {
+			return base
+		}
+	}
+	return role
 }
 
 // Resolve reads a --name-style query: a bare role segment is formed under (shortname, slug);
