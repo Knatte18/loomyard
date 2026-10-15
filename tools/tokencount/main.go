@@ -83,7 +83,7 @@
 //
 // The calibration section also ends with a "Merriam fixed context" subsection, which re-measures websterengine's merriamFixedContext.
 // A Merriam session is a webster-role session, and its start context is the input + cache write + cache read of the first assistant message after the result of its read of the prompt file named by the launch line lyx types.
-// For each run's first Merriam session by start time, the subsection gives the measured start, the line count of the texts MerriamBase counts but the plan overview (the Webster session engine's instruction files, the Master template and the rendered directive; an untracked instruction file is assumed absent), and the fixed context left once those lines are priced at context_per_line.
+// For each run's first Merriam session by start time, the subsection gives the measured start, the line count of the texts MerriamBase counts but the plan overview (the Webster session engine's instruction files, the Master template and the rendered directive; the engine is the one that located the run's first webster-role session, and every webster-role session of a run is assumed to have run under one engine; an untracked instruction file is assumed absent), and the fixed context left once those lines are priced at context_per_line.
 // Below the table it gives the median and the 25th and 75th percentiles of the fixed figures beside the current constant.
 // A session with no measured start, a run whose texts cannot be reconstructed, and every later session of a run (a resume, a refresh or a re-launch starts with prior conversation or a compaction summary in context) are listed with their reasons.
 //

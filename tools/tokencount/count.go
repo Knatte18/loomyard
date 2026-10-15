@@ -216,6 +216,7 @@ type RunTally struct {
 	Duplicates int // transcript lines skipped as a repeat of a message already counted
 	// WebsterEngine is the name of the engine that located the run's first counted webster-role session, in located order;
 	// empty when the run has none.
+	// Calibration takes the run's instruction files from this engine, so it assumes every webster-role session of the run ran under one engine.
 	WebsterEngine string
 	// BaseSHA is the start_sha of the earliest successful begin-batch result in the run's webster sessions, the HEAD before its first batch forked;
 	// empty when there is none.
