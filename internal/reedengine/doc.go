@@ -353,7 +353,8 @@
 // It is the one decision-bearing session option reed reads.
 // An automatic window switch happens only at three points, each deciding from reed state, window ids, strand roles, pane liveness and the follow state alone, never from @lyx_unseen, @lyx_hidden or a wait mark.
 // relevantWindow is the target of two of them: among the listed windows not about to end, the highest-index agent window holding a pane that is not dead, else the overview strand's window, else none.
-// Attach (attachWindowSelectionLocked, resolved by AttachArgv right after the shell check) appends `; select-window -t <relevant window>` to every argv it returns, and appends nothing when another client is attached or a listing fails.
+// Attach (attachWindowSelectionLocked, resolved by AttachArgv right after the shell check) appends `; select-window -t <relevant window>` to every argv it returns, and appends nothing when a listing fails or no window is relevant.
+// Beside another attached client, or when the client listing fails, it appends the selection only while follow reads on, reading the follow state only then and never writing it, so with follow on an attach moves every client of the session to the relevant window, including one on a window it reached outside reed's bindings, and a failed follow read counts as off.
 // A new agent window is selected by openOwnWindowLocked, for an own-window strand and never the overview, when newAgentWindowSelected holds: always for a Focus strand, never for one whose display sets only KeepViewer, otherwise exactly when the follow state reads on; it then carries no @lyx_unseen.
 // With follow on, a new agent window takes the viewer wherever it is, the shell included; with follow off, it leaves the viewer where it is.
 // Opening a window never changes the follow state.
