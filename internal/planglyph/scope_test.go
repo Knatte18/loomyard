@@ -11,30 +11,62 @@ import (
 	"github.com/Knatte18/quarry/quarry"
 )
 
-// TestScopeGuard_SymbolInsideTargetsNoFinding covers a symbol inside the card's own targets: no
-// finding.
-func TestScopeGuard_SymbolInsideTargetsNoFinding(t *testing.T) {
-	cards := []planparser.Card{{Number: 1, Slug: "one", Targets: []string{"sub#Foo"}}}
-	delta := quarry.GitDeltaAnswer{DeltaAnswer: quarry.DeltaAnswer{Created: []quarry.Symbol{{ID: "sub#Foo", File: "sub/a.go"}}}}
-
-	got := ScopeGuard(cards, delta)
-	if len(got) != 0 {
-		t.Errorf("ScopeGuard(inside) = %+v; want none", got)
+// TestScopeGuard_SymbolCoverage covers the symbol check.
+// A symbol is in scope when a member target or handle names it, when a rename has a side named, or when a file or package target covers every file it lives in.
+// Each row is one card's targets and one delta symbol, and asserts the reported findings' files.
+func TestScopeGuard_SymbolCoverage(t *testing.T) {
+	sym := func(id, file string) quarry.Symbol { return quarry.Symbol{ID: id, File: file} }
+	created := func(s quarry.Symbol) quarry.DeltaAnswer { return quarry.DeltaAnswer{Created: []quarry.Symbol{s}} }
+	modified := func(beforeFile, afterFile string) quarry.DeltaAnswer {
+		return quarry.DeltaAnswer{Modified: []quarry.ModifiedSymbol{{
+			ID:     "sub#Foo",
+			Before: []quarry.SymbolLocation{{File: beforeFile}},
+			After:  []quarry.Symbol{sym("sub#Foo", afterFile)},
+		}}}
 	}
-}
-
-// TestScopeGuard_SymbolOutsideTargetsOneInformationalFinding covers a symbol outside the card's
-// own targets: exactly one informational finding.
-func TestScopeGuard_SymbolOutsideTargetsOneInformationalFinding(t *testing.T) {
-	cards := []planparser.Card{{Number: 1, Slug: "one", Targets: []string{"sub#Foo"}}}
-	delta := quarry.GitDeltaAnswer{DeltaAnswer: quarry.DeltaAnswer{Created: []quarry.Symbol{{ID: "sub#Bar", File: "sub/b.go"}}}}
-
-	got := ScopeGuard(cards, delta)
-	if len(got) != 1 || got[0].Check != "scope-outside-plan" || got[0].Severity != SeverityInformational {
-		t.Fatalf("ScopeGuard(outside) = %+v; want exactly one informational scope-outside-plan finding", got)
+	renamed := func(fromFile, toFile string) quarry.DeltaAnswer {
+		return quarry.DeltaAnswer{Renamed: []quarry.RenamedPair{{From: sym("sub#Foo", fromFile), To: sym("sub#Bar", toFile)}}}
 	}
-	if got[0].File != "sub/b.go" {
-		t.Errorf("ScopeGuard(outside)[0].File = %q; want %q", got[0].File, "sub/b.go")
+
+	for _, tc := range []struct {
+		name    string
+		targets []string
+		delta   quarry.DeltaAnswer
+		want    []string
+	}{
+		{name: "member glyph covers itself", targets: []string{"sub#Foo"}, delta: created(sym("sub#Foo", "sub/a.go"))},
+		{name: "member glyph never covers its package's other members", targets: []string{"sub#Foo"}, delta: created(sym("sub#Bar", "sub/b.go")), want: []string{"sub/b.go"}},
+		{name: "member handle covers the symbol it stands for", targets: []string{"plan:sub#Foo"}, delta: created(sym("sub#Foo", "sub/a.go"))},
+		{name: "file self glyph covers a symbol in its file", targets: []string{"sub/a.go#"}, delta: created(sym("sub#Foo", "sub/a.go"))},
+		{name: "plain file path covers a symbol in its file", targets: []string{"sub/a.go"}, delta: created(sym("sub#Foo", "sub/a.go"))},
+		{name: "file target never covers another file", targets: []string{"sub/a.go#"}, delta: created(sym("sub#Bar", "sub/b.go")), want: []string{"sub/b.go"}},
+		{name: "package self glyph covers a modified symbol in its directory", targets: []string{"sub#"}, delta: modified("sub/a.go", "sub/a.go")},
+		{name: "directory path covers a deleted symbol in its directory", targets: []string{"sub"}, delta: quarry.DeltaAnswer{Deleted: []quarry.Symbol{sym("sub#Gone", "sub/c.go")}}},
+		{name: "package self glyph never covers a subdirectory", targets: []string{"sub#"}, delta: created(sym("sub/inner#Foo", "sub/inner/a.go")), want: []string{"sub/inner/a.go"}},
+		{name: "directory path never covers a subdirectory", targets: []string{"sub"}, delta: created(sym("sub/inner#Foo", "sub/inner/a.go")), want: []string{"sub/inner/a.go"}},
+		{name: "modified symbol moved out of a file target stays reported", targets: []string{"sub/a.go#"}, delta: modified("sub/a.go", "sub/b.go"), want: []string{"sub/b.go"}},
+		{name: "modified symbol moved into a file target stays reported", targets: []string{"sub/a.go#"}, delta: modified("sub/b.go", "sub/a.go"), want: []string{"sub/a.go"}},
+		{name: "modified symbol with both files targeted is covered", targets: []string{"sub/a.go#", "sub/b.go#"}, delta: modified("sub/a.go", "sub/b.go")},
+		{name: "renamed pair leaving a file target is reported", targets: []string{"sub/a.go#"}, delta: renamed("sub/a.go", "sub/b.go"), want: []string{"sub/b.go"}},
+		{name: "renamed pair entering a file target is reported", targets: []string{"sub/a.go#"}, delta: renamed("sub/b.go", "sub/a.go"), want: []string{"sub/a.go"}},
+		{name: "renamed pair inside a package target is covered", targets: []string{"sub#"}, delta: renamed("sub/a.go", "sub/b.go")},
+		{name: "file-unit member glyph never covers the file's other symbols", targets: []string{"sub/a.go#Foo"}, delta: created(sym("sub#Bar", "sub/a.go")), want: []string{"sub/a.go"}},
+		{name: "member handle never covers its package's other members", targets: []string{"plan:sub#Foo"}, delta: created(sym("sub#Bar", "sub/a.go")), want: []string{"sub/a.go"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cards := []planparser.Card{{Number: 1, Slug: "one", Targets: tc.targets}}
+
+			var got []string
+			for _, f := range ScopeGuard(cards, quarry.GitDeltaAnswer{DeltaAnswer: tc.delta}) {
+				if f.Check != "scope-outside-plan" || f.Severity != SeverityInformational {
+					t.Errorf("finding = %+v; want an informational scope-outside-plan", f)
+				}
+				got = append(got, f.File)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("ScopeGuard files = %v; want %v", got, tc.want)
+			}
+		})
 	}
 }
 
@@ -94,19 +126,6 @@ func TestScopeGuard_DeletedAndModifiedAlsoChecked(t *testing.T) {
 	got := ScopeGuard(cards, delta)
 	if len(got) != 2 {
 		t.Fatalf("ScopeGuard(deleted+modified outside) = %+v; want exactly two findings", got)
-	}
-}
-
-// TestScopeGuard_HandleTargetCoversTheSymbolItStandsFor covers a Create card whose target is a
-// plan: handle: the symbol that card just created is inside the plan, not outside it, even though
-// the delta reports it under its bare glyph while the card still spells it as a handle.
-func TestScopeGuard_HandleTargetCoversTheSymbolItStandsFor(t *testing.T) {
-	cards := []planparser.Card{{Number: 1, Slug: "one", Targets: []string{"plan:sub#Foo"}}}
-	delta := quarry.GitDeltaAnswer{DeltaAnswer: quarry.DeltaAnswer{Created: []quarry.Symbol{{ID: "sub#Foo", File: "sub/a.go"}}}}
-
-	got := ScopeGuard(cards, delta)
-	if len(got) != 0 {
-		t.Errorf("ScopeGuard(handle target) = %+v; want none — the card asked for exactly this symbol", got)
 	}
 }
 

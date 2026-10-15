@@ -14,8 +14,8 @@ import (
 	"github.com/Knatte18/quarry/quarry"
 )
 
-// targetGlyphUnion returns the union of cards' own flat Targets, the comparison set ScopeGuard
-// checks every touched symbol against.
+// targetGlyphUnion returns the union of cards' own flat Targets, the exact-match half of ScopeGuard's symbol check.
+// File and package coverage is the other half.
 //
 // Each target is normalized through resolveKeyFor (donecheck.go), so a plan: handle contributes the
 // expected glyph it stands for rather than its literal handle text. Without that, a Create card's
@@ -37,6 +37,9 @@ func targetGlyphUnion(cards []planparser.Card) map[string]bool {
 // union, check ID scope-outside-plan, naming the symbol and the file it lives in.
 // The finding's File is that file.
 //
+// A file target covers every symbol in that file, a package target every symbol in a file directly in its directory, and a member target only that member.
+// A symbol with several files is covered only when every one is.
+//
 // It also reports, at file level, each entry of delta.Files that no symbol of the delta lives in, every disposition included, unless some card target covers it.
 // A target covers a path when its file equals the path or its package directory equals the path's own directory.
 // The bound is file-granular: a symbol-less change in a target's file or package directory passes, and every other one is reported, a file in a subdirectory of a target's package included.
@@ -55,8 +58,8 @@ func ScopeGuard(cards []planparser.Card, delta quarry.GitDeltaAnswer) []Finding 
 
 	var findings []Finding
 	seen := make(map[string]bool)
-	report := func(id, file string) {
-		if union[id] || seen[id] {
+	report := func(id, file string, files []string) {
+		if union[id] || seen[id] || symbolFilesCovered(cards, files) {
 			return
 		}
 		seen[id] = true
@@ -76,17 +79,18 @@ func ScopeGuard(cards []planparser.Card, delta quarry.GitDeltaAnswer) []Finding 
 	// two logs an unreferenced rename at Debug only, so nothing operator-visible named it at all.
 	// A pair is in scope when EITHER endpoint is a declared target: the card that declared the old
 	// symbol is the card doing the renaming, and a card that declared the new one asked for it.
+	// A pair whose From.File and To.File a file or package target both cover is in scope too.
 	for _, rp := range delta.Renamed {
 		if union[rp.From.ID] || union[rp.To.ID] {
 			continue
 		}
-		report(rp.To.ID, rp.To.File)
+		report(rp.To.ID, rp.To.File, []string{rp.From.File, rp.To.File})
 	}
 	for _, s := range delta.Created {
-		report(s.ID, s.File)
+		report(s.ID, s.File, []string{s.File})
 	}
 	for _, s := range delta.Deleted {
-		report(s.ID, s.File)
+		report(s.ID, s.File, []string{s.File})
 	}
 	for _, m := range delta.Modified {
 		file := ""
@@ -95,7 +99,14 @@ func ScopeGuard(cards []planparser.Card, delta quarry.GitDeltaAnswer) []Finding 
 		} else if len(m.Before) > 0 {
 			file = m.Before[0].File
 		}
-		report(m.ID, file)
+		var files []string
+		for _, s := range m.Before {
+			files = append(files, s.File)
+		}
+		for _, s := range m.After {
+			files = append(files, s.File)
+		}
+		report(m.ID, file, files)
 	}
 
 	symbolFiles := filesWithSymbols(delta)
@@ -136,6 +147,37 @@ func filesWithSymbols(delta quarry.GitDeltaAnswer) map[string]bool {
 		files[rp.To.File] = true
 	}
 	return files
+}
+
+// symbolFilesCovered reports whether every path in files is covered by some non-member target of cards.
+// A member glyph or member `plan:` handle never covers, so it does not extend to its package's other members.
+// A file scope covers a path equal to it, and a directory scope covers a path directly in that directory, never one in a subdirectory.
+// An empty files covers nothing.
+func symbolFilesCovered(cards []planparser.Card, files []string) bool {
+	if len(files) == 0 {
+		return false
+	}
+	for _, file := range files {
+		covered := false
+		for _, c := range cards {
+			for _, t := range c.Targets {
+				if _, isMember := planparser.RefMember(nil, t); isMember {
+					continue
+				}
+				scope, isFile, ok := planparser.RefScope(nil, t)
+				if !ok {
+					continue
+				}
+				if isFile && scope == file || !isFile && scope == pathpkg.Dir(file) {
+					covered = true
+				}
+			}
+		}
+		if !covered {
+			return false
+		}
+	}
+	return true
 }
 
 // targetsCover reports whether some target of cards covers path: a file scope equal to path, or a package directory scope equal to the directory path lives in.

@@ -1,4 +1,4 @@
-// targetdirs.go holds CardTargetDirs, RefFile, RefScope, RefCovers and CardCovers, the read-only mappings from a card's refs to the worktree directories and files they name.
+// targetdirs.go holds CardTargetDirs, RefFile, RefScope, RefCovers, RefMember and CardCovers, the read-only mappings from a card's refs to the worktree directories and files they name.
 // It lives here so every ref-shape and glyph-to-path decision stays inside this package, per the Planparser Sole-Parser and Glyph Conversion Chokepoint invariants.
 
 package planparser
@@ -117,8 +117,8 @@ func RefCovers(plan *Plan, cover, target string) bool {
 	if plan == nil {
 		plan = &Plan{}
 	}
-	if member, ok := refMember(plan, cover); ok {
-		targetMember, targetOK := refMember(plan, target)
+	if member, ok := RefMember(plan, cover); ok {
+		targetMember, targetOK := RefMember(plan, target)
 		return targetOK && member == targetMember
 	}
 
@@ -166,9 +166,13 @@ func CardCovers(card Card) []string {
 	return covers
 }
 
-// refMember returns the canonical glyph string of a ref naming a member, a glyph or a `plan:` handle whose body parses to a glyph that is not a self glyph.
+// RefMember returns the canonical glyph string of a ref naming a member, a glyph or a `plan:` handle whose body parses to a glyph that is not a self glyph.
 // ok is false for any other ref.
-func refMember(plan *Plan, ref string) (string, bool) {
+// A nil plan reads as the default language.
+func RefMember(plan *Plan, ref string) (string, bool) {
+	if plan == nil {
+		plan = &Plan{}
+	}
 	body := ref
 	if b, handle := HandleBody(ref); handle {
 		body = b
