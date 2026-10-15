@@ -352,9 +352,9 @@ The real gate is post-merge: once a concurrently-executed batch's worktrees merg
 
 ## Deferred / forward-compat
 
-The **`changes-files`/deviation union** — the artifact webster's fork-return contract compares actual changed files against (a fork reports `OK` and a SHA, while record-batch's mechanical guard produces the file list; a file-list mismatch against this union is always informational, never blocking on its own) — is, under format 5, restated over glyphs rather than paths-plus-symbol-files: a mechanical guard compares the delta's changed files against the batch's own target glyphs' `UnitPath`-mapped files directly, rather than this spec defining a files-union to compare against. The mismatch stays exactly as informational, never blocking on its own, and `Uses:` stays excluded from the comparison because it names what a card reads, not what it changes.
-See `internal/websterengine`'s package documentation for the verification semantics.
-This union is defined over each card's flat target set (the union across all of that card's own `TargetGroups`), so it is unchanged by multi-label: a card carrying two groups contributes both groups' targets exactly as it always contributed one group's.
+The **`changes-files`/deviation union** — the artifact webster's fork-return contract compares actual changed files against (a fork reports `OK` and a SHA, while record-batch's mechanical guard produces the file list; a file-list mismatch against this union is always informational, never blocking on its own) — is always informational, never blocking on its own.
+`Uses:` is excluded from the comparison because it names what a card reads, not what it changes.
+`planglyph.ScopeGuard` defines what counts as inside a batch's targets, and `internal/websterengine`'s package documentation covers the verification semantics.
 
 Symbol/path matching of the cards' `Targets`/`Uses` refs asserts that the batches run in card order, and webster refuses a backward dependency between them — see `internal/websterengine`'s package documentation under its "Batches run in the batchifier's order, asserted not derived" section.
 What remains deferred is continuous DAG update across waves and any parallel execution, both of which belong to the roadmap's Someday `webster: worktree-per-card parallel execution` item.
