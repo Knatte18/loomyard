@@ -1,6 +1,6 @@
 <!-- This is the inline kick-start pack section of webster's fork prompt.
      renderPackSection (render.go) reads it through stencilstore, fills its one marker with the Go-rendered card subsections, and strips this banner and trailing newline;
-     RenderForkPrompt fills the result into the optional kickstart_pack_inline marker of webster-body-implementer when begin-batch built a kick-start pack and kickstart_pack_file is false.
+     RenderForkPrompt fills the result into the optional kickstart_pack_inline marker of webster-body-implementer when begin-batch built a kick-start pack and kickstart_pack_per_card is false and kickstart_pack_file is false.
      It is the measurement baseline: its text is the 1e39afc10^ text and changes only when the layout comparison itself is meant to change, never to mirror an edit to the file-layout fragments.
      pack_cards holds one subsection per card of the batch, each rendered from webster-fragment-pack-card. -->
 

@@ -293,6 +293,7 @@ func (c *loomCLI) wireLightweight(location *lyxcwd.Location, cwd string) {
 	// exists to avoid.
 	c.env.AnchorPath = location.AnchorPath()
 	c.env.WorktreeRoot = location.WorktreePath()
+	c.env.StencilsDir = fabricengine.StencilsDir(location.HubPath)
 	c.env.DecisionRecordPath = loomengine.DiscussionDecisionRecord(location)
 	c.env.SupportLogPath = loomengine.DiscussionSupportLog(location)
 	c.env.DescriptionPath = summaryparser.Path(loomengine.LandingDir(location))

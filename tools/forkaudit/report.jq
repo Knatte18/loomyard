@@ -1,6 +1,6 @@
 # report.jq renders the report body from the slurped per-fork records, one markdown line per output string.
 # Arguments: $markers, the marker table's rows (arm and agreeing trace values) in table order;
-# $batches and $traces, the contents of batches.tsv and traces.tsv, which join each record to its resolved batch and trace layout;
+# $batches, $traces and $card_traces, the contents of batches.tsv, traces.tsv and card-traces.tsv, which join each record to its resolved batch, its trace layout and its traced card pack count;
 # $pack_check, whether to render the pack-correctness section, with $pack_rows and $missed_rows, the contents of pack-check.tsv and missed-files.tsv;
 # $plan_on, whether to render the plan glyph-use section, with $plan_runs, $plan_cards, $plan_refs and $plan_writers, the contents of the plan-*.tsv files.
 # Rows and arms sort by arm (marker-table order, then any other arm name alphabetically), run, start time and agent id,
@@ -15,6 +15,17 @@
 # Missing-metric rule: a fork lacking a metric is left out of that metric's median and pooled value.
 # No edit leaves out every "before the first edit" metric, a pack with no spans every span share,
 # arm none every pack metric, and zero cards every per-card metric.
+# The card arm has no first-work-turn span share, since its first work turn reads card files only,
+# so its spans_*_first are null and the two "spans reached in the first work turn" rows leave it out.
+# Its other span shares use the window its records state: a span counts as reached when read after the card-pack call that lists it and before the next edit.
+#
+# Card pack column: `-` for a fork with no card-pack call and no traced card pack line, `<calls>/<traced>` for a fork with a card-traces.tsv row and either,
+# and `<calls>/-` for a fork with calls and no row.
+# A fork with a row whose count differs from its call count is listed under Card pack disagreements.
+#
+# Whenever the card arm is present the report prints a note line under the Pack use, Arm comparison and Per-fork tables,
+# and under the Pack correctness heading when that section is on: the first three state how the card arm's metrics differ, the last that only its first card-pack call is graded.
+#
 # A cell whose sample is smaller than the arm's fork count shows its size as `<value> (n=<k>)`, and a cell with no sample left shows n/a.
 
 def dash: if . == null then "-" else tostring end;
@@ -47,6 +58,9 @@ def spanned(f): if .nspans == 0 then null else f end;
 def per_card($k): if .cards > 0 and .[$k] != null then .[$k] / .cards else null end;
 def pooled_card($k): if .cards > 0 and .[$k] != null then [.[$k], .cards] else null end;
 
+# first_turn(f): f, or null for a fork whose first-work-turn span metrics are null.
+def first_turn(f): if .spans_strict_first == null then null else f end;
+
 def tsv_rows($raw): $raw | split("\n") | map(select(length > 0) | split("\t"));
 
 ($markers | map(.arm)) as $arms
@@ -54,6 +68,7 @@ def tsv_rows($raw): $raw | split("\n") | map(select(length > 0) | split("\t"));
 | def armkey: . as $arm | [($arms | index($arm)) // 1000, $arm];
   (tsv_rows($batches) | map({key: .[0], value: .}) | from_entries) as $batch_rows
 | (tsv_rows($traces) | map({key: .[0], value: .[2]}) | from_entries) as $trace_layouts
+| (tsv_rows($card_traces) | map({key: .[0], value: (.[1] | tonumber)}) | from_entries) as $card_trace_counts
 | def crosscheck:
     . as $r
     | ($batch_rows[$r.rel] // null) as $row
@@ -66,6 +81,8 @@ def tsv_rows($raw): $raw | split("\n") | map(select(length > 0) | split("\t"));
       else . + {check: "unrecognized"} end;
   map(crosscheck) as $recs
 | ([$recs[].arm] | unique | sort_by(armkey)) as $present
+| (($present | index("card")) != null) as $card_present
+| ([$recs | sort_by([(.arm | armkey), .proj, .start, .agent])[] | select($card_trace_counts[.rel] != null and $card_trace_counts[.rel] != .card_pack_calls)]) as $card_disagreements
 | ($recs | group_by(.arm) | map({key: .[0].arm, value: .}) | from_entries) as $by
 | ($known - $present) as $absent
 | ([$recs | sort_by([(.arm | armkey), .proj, .start, .agent])[] | select(.check == "disagrees")]) as $disagreements
@@ -101,6 +118,9 @@ def tsv_rows($raw): $raw | split("\n") | map(select(length > 0) | split("\t"));
   + (if ($disagreements | length) > 0
      then ["", "Cross-check disagreements:", ""] + [$disagreements[] | "- \(.agent) (\(.proj)): arm \(.arm), trace \(.trace)"]
      else [] end)
+  + (if ($card_disagreements | length) > 0
+     then ["", "Card pack disagreements:", ""] + [$card_disagreements[] | "- \(.agent) (\(.proj)): card-pack calls \(.card_pack_calls), traced \($card_trace_counts[.rel])"]
+     else [] end)
   + (if ($unrecognized | length) > 0 then ["", "Unrecognized trace values: " + ($unrecognized | join(", ")) + "."] else [] end)
   + ["", "## Pack use", ""]
   + table(["metric"] + $present; [
@@ -113,16 +133,18 @@ def tsv_rows($raw): $raw | split("\n") | map(select(length > 0) | split("\t"));
       row("spans reached before the first edit, strict share, pooled"; ratio_cell(.; packed(edited(spanned([.spans_strict_pre, .nspans]))); pct)),
       row("span files touched before the first edit, file-level share, median"; med_cell(.; packed(edited(spanned(.spans_file_pre / .nspans))); pct)),
       row("span files touched before the first edit, file-level share, pooled"; ratio_cell(.; packed(edited(spanned([.spans_file_pre, .nspans]))); pct)),
-      row("spans reached in the first work turn, strict share, pooled"; ratio_cell(.; packed(spanned([.spans_strict_first, .nspans])); pct)),
-      row("spans reached in the first work turn, file-level share, pooled"; ratio_cell(.; packed(spanned([.spans_file_first, .nspans])); pct)),
+      row("spans reached in the first work turn, strict share, pooled"; ratio_cell(.; packed(spanned(first_turn([.spans_strict_first, .nspans]))); pct)),
+      row("spans reached in the first work turn, file-level share, pooled"; ratio_cell(.; packed(spanned(first_turn([.spans_file_first, .nspans]))); pct)),
       row("forks reaching half their spans (strict) before the first edit"; count_cell(.; packed(edited(spanned(.spans_strict_pre / .nspans >= 0.5)))))
     ])
+  + (if $card_present then ["", "Card arm: a span counts as reached when read after the card-pack call that lists it and before the next edit; the other arms count a span read before the batch's first edit, and the card arm has no first-work-turn share because that turn reads card files only."] else [] end)
   + ["", "## Arm comparison", ""]
   + table(["metric"] + $present;
       [ $comparison[] as [$label, $key]
         | row($label + ", median per card"; med_cell(.; per_card($key); n2)),
           row($label + ", pooled per card"; ratio_cell(.; pooled_card($key); n2)) ]
       + [row("forks with 3+ parallel calls in the first work turn, share"; (map(select(.first_par >= 3)) | length) / length | pct)])
+  + (if $card_present then ["", "Card arm: the first work turn reads card files only, so its share of forks with 3+ parallel calls counts card-file reads, not span reads; the other arms' first work turn holds their span reads."] else [] end)
   + ["", "## Exploration quartiles", ""]
   + table(["arm", "n", "min", "q1", "median", "q3", "max"];
       [ $present[] | . as $a
@@ -134,15 +156,22 @@ def tsv_rows($raw): $raw | split("\n") | map(select(length > 0) | split("\t"));
       ["arm", "run", "agent", "start", "cards", "pack opened", "pack turn", "pack before edit", "first work turn", "first parallel", "spans",
        "strict before edit", "file-level before edit", "strict in first turn", "calls before edit", "net before edit", "net exploration",
        "net whole reads", "partial reads", "greps", "quarry", "turns", "output k", "cache read M", "edits", "edits to no-span files", "dropped lines",
-       "batch", "trace", "cross-check"];
+       "batch", "trace", "cross-check", "card packs"];
       [$recs | sort_by([(.arm | armkey), .proj, .start, .agent])[]
        | [.arm, .proj, .agent, .start[5:16], .cards, (if .pack_opened then "yes" else "no" end), .pack_turn,
           (if .pack_before_edit then "yes" else "no" end), .first_work_turn, .first_par, .nspans,
           .spans_strict_pre, .spans_file_pre, .spans_strict_first, .pre_edit, .pre_edit_net, .ex_net,
           .rfull_net, .rpart, .grep, .quarry, .turns, (.out / 1000 | round), (.cache_read / 1e6 * 10 | round / 10), .edits, .edits_out, .dropped,
-          .batch, .trace, .check]])
+          .batch, .trace, .check,
+          ($card_trace_counts[.rel] as $traced
+           | if $traced == null then (if .card_pack_calls > 0 then "\(.card_pack_calls)/-" else null end)
+             elif .card_pack_calls == 0 and $traced == 0 then null
+             else "\(.card_pack_calls)/\($traced)" end)]])
+  + (if $card_present then ["", "Card arm: strict before edit and file-level before edit use the window stated under the Pack use table, strict in first turn is - and first parallel counts the card-file reads."] else [] end)
   + (if $pack_check then
-      ["", "## Pack correctness at batch start", "", "### Span entries by class, pooled per arm", ""]
+      ["", "## Pack correctness at batch start", ""]
+      + (if $card_present then ["Card arm: its spans here come from its first card-pack call only, resolved at the batch's start; spans from later calls are resolved against edited trees and are not graded, so the count is below its distinct spans under Pack use.", ""] else [] end)
+      + ["### Span entries by class, pooled per arm", ""]
       + table(["arm", "forks", "spans"] + $classes;
           [$present[] | . as $a | [$by[$a][] | $span_rows[.rel] // [] | .[]] as $rows | [$a, ($by[$a] | length), ($rows | length)] + class_counts($rows)])
       + ["", "### Span entries by class, per fork", ""]
