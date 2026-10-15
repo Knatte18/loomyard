@@ -45,6 +45,10 @@
 // it applies to the next run's Seed-Child, and the running pair takes it through `lyx config <module> --layer local --set` in the pair.
 // Value semantics, such as a positive integer, stay with the module's load.
 //
+// `set-deps`, `upsert`, `upsert-batch` and `merge` add the sibling warning to the success envelope's `notice`, joined after a run-settings notice, one line per pair, a batch pair once;
+// `set-deps` prints `notice` only then.
+// `promote` and `intake import` write no `depends_on` and stay unchanged.
+//
 // `get` takes `--body` to write the entry's body alone, verbatim, with no envelope;
 // an empty body writes nothing,
 // and an absent target is an error.

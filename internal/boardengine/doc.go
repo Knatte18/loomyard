@@ -110,6 +110,16 @@
 // The refusal is a *RunLockedError that matches ErrRunLocked through errors.Is.
 // Its message names the entry, its status and both ways forward: a finding goes to a note of its own, and an abandoned run's entry is unlocked by clearing its status once `lyx batten status` shows no run holds it.
 //
+// # Siblings
+//
+// A write that gives an open task a depends_on entry it did not have reports its siblings: the other open tasks that wait on that same entry while sharing a module label with the written task.
+// A module label is a label the vocabulary does not report as a type label, and SharedModuleLabels answers the overlap, in the written task's label order.
+// The written task's baseline is its own depends_on as loaded, together with the depends_on of every entry the write removed, so a merge warns only on dependencies none of the merged entries had.
+// A dependency listed twice counts once, a dependency that is done is not added, a done written task is skipped, and a sibling that is done or abandoned is not one; a running sibling is.
+// A pair reached from both sides, as in a batch, is reported once with the dependencies of both sides.
+// SetDeps, UpsertTaskSiblings, UpsertTasksBatch and MergeTasks return the siblings, computed under the write lock from the entries as loaded and as the mutation left them.
+// The check never refuses, never changes a stored record and returns no siblings for a refused write.
+//
 // # Concurrency and sync
 //
 // Board sequences all mutating operations with a file lock: lock → load → mutate → save board.json → render → write files.

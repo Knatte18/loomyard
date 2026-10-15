@@ -53,35 +53,40 @@ func TestRunLock(t *testing.T) {
 		{name: "status paused", refused: true, locked: map[string]any{"status": "paused · X"}, act: upsertLocked(map[string]any{"body": "new"})},
 		{name: "status failed", refused: true, locked: map[string]any{"status": "failed · X"}, act: upsertLocked(map[string]any{"body": "new"})},
 		{name: "status awaiting", refused: true, locked: map[string]any{"status": "awaiting · X"}, act: upsertLocked(map[string]any{"body": "new"})},
-		{name: "set deps", refused: true, extra: []map[string]any{other}, act: func(b *boardengine.Board) error { return b.SetDeps("locked", []string{"other"}) }},
+		{name: "set deps", refused: true, extra: []map[string]any{other}, act: func(b *boardengine.Board) error {
+			_, err := b.SetDeps("locked", []string{"other"})
+			return err
+		}},
 		{name: "promote a locked note", refused: true, locked: map[string]any{"kind": "note"}, act: func(b *boardengine.Board) error {
 			_, err := b.Promote("locked")
 			return err
 		}},
 		{name: "remove", refused: true, act: func(b *boardengine.Board) error { return b.RemoveTask("locked") }},
 		{name: "merge removing it", refused: true, extra: []map[string]any{other}, act: func(b *boardengine.Board) error {
-			_, err := b.MergeTasks([]string{"locked"}, map[string]any{"slug": "other", "body": "merged"}, nil)
+			_, _, err := b.MergeTasks([]string{"locked"}, map[string]any{"slug": "other", "body": "merged"}, nil)
 			return err
 		}},
 		{name: "merge upserting a change into it", refused: true, extra: []map[string]any{other}, act: func(b *boardengine.Board) error {
-			_, err := b.MergeTasks([]string{"other"}, map[string]any{"slug": "locked", "body": "merged"}, nil)
+			_, _, err := b.MergeTasks([]string{"other"}, map[string]any{"slug": "locked", "body": "merged"}, nil)
 			return err
 		}},
 		{name: "merge changing it and clearing its status", refused: true, extra: []map[string]any{other}, act: func(b *boardengine.Board) error {
-			_, err := b.MergeTasks([]string{"other"}, map[string]any{"slug": "locked", "body": "merged"}, &boardengine.MergeStatusUpdate{Selector: "locked"})
+			_, _, err := b.MergeTasks([]string{"other"}, map[string]any{"slug": "locked", "body": "merged"}, &boardengine.MergeStatusUpdate{Selector: "locked"})
 			return err
 		}},
 		{name: "batch with one changing item", refused: true, extra: []map[string]any{other}, act: func(b *boardengine.Board) error {
-			return b.UpsertTasksBatch([]map[string]any{{"slug": "other", "body": "batched"}, {"slug": "locked", "body": "new"}})
+			_, err := b.UpsertTasksBatch([]map[string]any{{"slug": "other", "body": "batched"}, {"slug": "locked", "body": "new"}})
+			return err
 		}},
 		{name: "batch clearing the status then changing the body", refused: true, act: func(b *boardengine.Board) error {
-			return b.UpsertTasksBatch([]map[string]any{{"slug": "locked", "status": ""}, {"slug": "locked", "body": "new"}})
+			_, err := b.UpsertTasksBatch([]map[string]any{{"slug": "locked", "status": ""}, {"slug": "locked", "body": "new"}})
+			return err
 		}},
 
 		{name: "set-status to another value", unknown: `"zz_scalar":9007199254740993`, act: func(b *boardengine.Board) error { return b.SetStatus("locked", strPtr("paused · X")) }},
 		{name: "set-status to nil", act: func(b *boardengine.Board) error { return b.SetStatus("locked", nil) }},
 		{name: "merge whose set_status targets it", extra: []map[string]any{other}, act: func(b *boardengine.Board) error {
-			_, err := b.MergeTasks(nil, map[string]any{"slug": "other", "body": "merged"}, &boardengine.MergeStatusUpdate{Selector: "locked", Status: strPtr("done")})
+			_, _, err := b.MergeTasks(nil, map[string]any{"slug": "other", "body": "merged"}, &boardengine.MergeStatusUpdate{Selector: "locked", Status: strPtr("done")})
 			return err
 		}},
 		{name: "identical upsert", act: upsertLocked(map[string]any{"body": "body", "labels": []string{"bug"}, "issues": []int{}, "depends_on": []string{}})},
@@ -89,7 +94,8 @@ func TestRunLock(t *testing.T) {
 		{name: "run settings change", act: upsertLocked(map[string]any{"run_settings": map[string]any{"loom": map[string]any{"review_max_bounces": 2}}})},
 		{name: "normal priority on an entry without one", act: upsertLocked(map[string]any{"priority": "normal"})},
 		{name: "batch whose only item on it is status-only", extra: []map[string]any{other}, act: func(b *boardengine.Board) error {
-			return b.UpsertTasksBatch([]map[string]any{{"slug": "other", "body": "batched"}, {"slug": "locked", "status": "done"}})
+			_, err := b.UpsertTasksBatch([]map[string]any{{"slug": "other", "body": "batched"}, {"slug": "locked", "status": "done"}})
+			return err
 		}},
 		{name: "prune dropping a done dependency", locked: map[string]any{"depends_on": []string{"fin"}}, extra: []map[string]any{done}, act: func(b *boardengine.Board) error {
 			removed, err := b.Prune(true)
@@ -102,7 +108,10 @@ func TestRunLock(t *testing.T) {
 			_, err := b.UpsertTask(map[string]any{"slug": "other", "body": "new"})
 			return err
 		}},
-		{name: "add a dependency on the locked entry", extra: []map[string]any{other}, act: func(b *boardengine.Board) error { return b.SetDeps("other", []string{"locked"}) }},
+		{name: "add a dependency on the locked entry", extra: []map[string]any{other}, act: func(b *boardengine.Board) error {
+			_, err := b.SetDeps("other", []string{"locked"})
+			return err
+		}},
 		{name: "body change on an entry whose status is not a run status", locked: map[string]any{"status": "active"}, act: upsertLocked(map[string]any{"body": "new"})},
 	}
 

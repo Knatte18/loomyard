@@ -132,13 +132,8 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 // UpsertTask creates or updates the task identified by fields["slug"] under the write lock;
 // field validation (allowlist, slug shape) is the store's job.
 func (b *Board) UpsertTask(fields map[string]any) (Task, error) {
-	result, err := b.boardCriticalSection(func(store *Store) (any, error) {
-		return store.UpsertTask(fields)
-	}, nil)
-	if err != nil {
-		return Task{}, err
-	}
-	return result.(Task), nil
+	task, _, err := b.UpsertTaskSiblings(fields)
+	return task, err
 }
 
 // SetStatus sets or clears the status field of the task identified by idOrSlug.
@@ -173,28 +168,31 @@ func (b *Board) RemoveTask(idOrSlug any) error {
 // setStatus carries the pre-resolved task selector and status value;
 // pass nil to skip the status step.
 // A status update that targets a missing task causes the entire merge to fail (boardCriticalSection discards the in-memory mutation).
-func (b *Board) MergeTasks(removeSlugs []string, upsert map[string]any, setStatus *MergeStatusUpdate) (Task, error) {
-	result, err := b.boardCriticalSection(func(store *Store) (any, error) {
+// It also returns the siblings the merge created.
+func (b *Board) MergeTasks(removeSlugs []string, upsert map[string]any, setStatus *MergeStatusUpdate) (Task, []Sibling, error) {
+	result, siblings, err := b.writeReportingSiblings(func(store *Store) (any, error) {
 		return store.MergeTasks(removeSlugs, upsert, setStatus)
-	}, nil)
+	})
 	if err != nil {
-		return Task{}, err
+		return Task{}, nil, err
 	}
-	return result.(Task), nil
+	return result.(Task), siblings, nil
 }
 
-func (b *Board) SetDeps(selector any, dependsOn []string) error {
-	_, err := b.boardCriticalSection(func(store *Store) (any, error) {
+// SetDeps replaces the depends_on of the task identified by selector under the write lock and returns the siblings the write created.
+func (b *Board) SetDeps(selector any, dependsOn []string) ([]Sibling, error) {
+	_, siblings, err := b.writeReportingSiblings(func(store *Store) (any, error) {
 		return nil, store.SetDeps(selector, dependsOn)
-	}, nil)
-	return err
+	})
+	return siblings, err
 }
 
-func (b *Board) UpsertTasksBatch(tasks []map[string]any) error {
-	_, err := b.boardCriticalSection(func(store *Store) (any, error) {
+// UpsertTasksBatch upserts every task in tasks in one write under the write lock and returns the siblings the write created.
+func (b *Board) UpsertTasksBatch(tasks []map[string]any) ([]Sibling, error) {
+	_, siblings, err := b.writeReportingSiblings(func(store *Store) (any, error) {
 		return nil, store.UpsertTasksBatch(tasks)
-	}, nil)
-	return err
+	})
+	return siblings, err
 }
 
 func (b *Board) Rerender() error {
