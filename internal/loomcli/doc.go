@@ -40,11 +40,10 @@
 // a loom driver strand writes no such log, since its pane holds its output.
 // A loom driver strand launches from the driver stencil, read from the stencils directory at start time.
 //
-// A worktree opened through `lyx ide spawn`'s generated VS Code task runs `lyx reed up`, `lyx reed add --if-absent --cmd claude --name claude --focus` and `lyx reed attach`, so the operator's own session is the strand named `claude` and the run's panes are its siblings.
+// An operator session started with `lyx reed add --cmd claude --name claude` is the strand named `claude`, and the run's panes are its siblings.
 // To self-check, compare `$TMUX_PANE` against the tracked strands `lyx reed status` reports: tracked is fine;
-// set but untracked means relaunching through that chain or proceeding without reed supervision;
+// set but untracked means relaunching through `lyx reed add` or proceeding without reed supervision;
 // unset is unconfirmed rather than failed, since psmux on Windows may not export it.
-// A worktree whose `.vscode/tasks.json` predates this convention is upgraded by deleting that file and re-running `lyx ide spawn`.
 //
 // # Resume
 //
