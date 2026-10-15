@@ -1,6 +1,7 @@
 // Package reportengine computes the read-only report behind `lyx report convergence`: per finished run and per ISO week, what woke the orch, what stopped and repaired runs, and how the parent branch's landings fared.
 // Every figure comes from records lyx already writes, each read from git objects through a tolerant parse in the package that owns its format.
 // A record a run lacks is reported absent, never as zero.
+// ComputeTiming is the second compute entry, over the same snapshot: where each run's time went, per phase and per day or week.
 //
 // # Told geometry
 //
@@ -95,6 +96,36 @@
 // A class's Runs counts the week's runs it occurred in.
 // A share is fresh over fresh plus aged, separately for fix and unmapped landings.
 // Report.Absent counts, per source, the selected runs lacking it.
+//
+// # Timing
+//
+// ComputeTiming is the second compute entry, over the same Sources snapshot.
+// It is told its options and runs no process and reads no clock: its window runs from TimingOptions.Since to Sources.SnapshotAt, and a Since after the snapshot gives an empty report with no bucket.
+// A record that does not decode is a Finding, and a figure a run's records lack is nil, never zero.
+//
+// A landed run is exactly a full run as run selection picks it, read once with its seed, status and batten snapshots; a partial run enters neither the run table nor any bucket.
+// A run in flight is a pair records branch of Sources.Branches: a branch other than the records branch whose name is the one fabricengine.RecordsBranchName forms from a slug.
+// A branch whose tip is the commit of one of its slug's archive tags is landed and skipped; one whose slug TimingOptions.Live names is in flight; any other is abandoned and left out with a finding.
+// A pair not seeded yet, or seeded to another recipe, is left out silently.
+// A run in flight takes the batten snapshots committed after its slug's newest archive tag, so a reused slug never reads an earlier run's.
+// A run enters the report when its span overlaps the window.
+//
+// A run's span opens at the first entry of its batten record, else at the seed's started_at, else at the first loom row with a finding saying so.
+// The loom history and the batten record's history merge in stamp order, each keeping its own order, a row's stamp being its last_at when set, else its at.
+// Each row's interval runs from the latest stamp so far, the span's opening for the first row, to its own stamp, so a batten row between two loom rows splits their gap.
+// A stamp earlier than the latest, or none, gives a zero interval and a finding.
+// The span closes at the last stamp of either history, or at Sources.SnapshotAt for a run in flight, whose trailing interval counts under the phase of its loom status's current producer.
+//
+// Each interval counts under one phase of a closed table.
+// setup holds every batten row before batten's first Run-Shed entry and loom's Preflight and Loom-Preflight; discussion every Discussion row; plan every Plan row and Batchifier; webster every Webster row and Describe; merge every Merge row; publish-finalize Publish, PR-Align, PR-Gate, PR-Rework, every Darn row, Finalize and Friction-Reflect; land every batten row other than Run-Shed after batten's first Run-Shed entry.
+// A Run-Shed entry records the child's state changes and counts under the phase of the producer its change names, else of the latest loom row before it, else under setup.
+// Any other row counts under other and adds a finding.
+// Without the batten source land is nil and setup holds the loom rows alone.
+//
+// TimingOptions.Sleeps, unioned and clipped to the span, is the run's sleep, and every row interval loses the part a sleep covers, so the phases plus the sleep sum to the span.
+// Buckets are UTC days or ISO weeks from Since, none opening before it.
+// Each interval and sleep is clipped to every bucket it overlaps, and a bucket's time sums over runs, so two parallel runs add two hours to an hour.
+// TimingReport.Phases holds each phase's median over the landed runs holding it whose archive tag is committed in the window; the median of an even count is the mean of the two middle values rounded down, and a run in flight never enters one.
 //
 // # Outputs
 //

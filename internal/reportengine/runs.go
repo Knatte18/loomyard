@@ -66,8 +66,15 @@ type RunRow struct {
 	// battenSnapshots are the batten status files in the run's span, oldest first, the last being the run's batten record.
 	battenSnapshots []shedengine.Status
 
-	// childHistory is the loom history at the run's archive tag.
+	// childHistory is the loom history at the run's archive tag, or at the branch tip for a run in flight.
 	childHistory []shedengine.HistoryEntry
+
+	// startedAt is the loom seed's started_at stamp, empty when the seed carries none.
+	startedAt string
+
+	// inFlight marks a run read from a live pair's records branch, and currentProducer is the loom status's current producer at that tip.
+	inFlight        bool
+	currentProducer string
 
 	// changes are the child state changes batten recorded, and accountedChild the indexes of childHistory entries an automatic step accounts for.
 	changes        []battenshed.StateChange
@@ -124,7 +131,7 @@ func selectRuns(src Sources, opts Options, report *Report) error {
 		}
 
 		week := isoWeekLabel(committed)
-		status, reason, findings, err := readLoomRecords(src.Records, tag, slug)
+		seed, status, reason, findings, err := readLoomRecords(src.Records, tag, slug)
 		if err != nil {
 			return err
 		}
@@ -148,6 +155,7 @@ func selectRuns(src Sources, opts Options, report *Report) error {
 			Week:         week,
 			Sources:      map[string]bool{},
 			childHistory: status.History,
+			startedAt:    seed.StartedAt,
 		}
 		snapshots, battenFindings, err := batten.snapshotsOfRun(slug, tag.Name, earlierCommitted, tag.Committed)
 		if err != nil {
@@ -209,46 +217,46 @@ type landingInputs struct {
 	newestTag   map[string]time.Time
 }
 
-// readLoomRecords reads the loom seed and status at tag's commit through the shared record parsers.
+// readLoomRecords reads the loom seed and status at tag's commit through the shared record parsers, and returns both.
 // A non-empty reason means the tag is not a full run: its seed names another recipe, a record is absent or does not decode, or the history holds no Finalize entry.
 // A record that exists but does not decode is also a finding.
-func readLoomRecords(records Reader, tag gitrepo.TagRef, slug string) (status shedengine.Status, reason string, findings []Finding, err error) {
+func readLoomRecords(records Reader, tag gitrepo.TagRef, slug string) (seed shedrun.Seed, status shedengine.Status, reason string, findings []Finding, err error) {
 	rels, relErr := shedrun.TreeRunRels(slug)
 	if relErr != nil {
-		return shedengine.Status{}, "the slug is no legal run id", []Finding{{Tag: tag.Name, Error: relErr.Error()}}, nil
+		return shedrun.Seed{}, shedengine.Status{}, "the slug is no legal run id", []Finding{{Tag: tag.Name, Error: relErr.Error()}}, nil
 	}
 
 	seedBytes, err := records.FileAtRevision(tag.Commit, rels.Seed)
 	if errors.Is(err, gitrepo.ErrPathNotAtRevision) {
-		return shedengine.Status{}, "the tag holds no seed", nil, nil
+		return shedrun.Seed{}, shedengine.Status{}, "the tag holds no seed", nil, nil
 	}
 	if err != nil {
-		return shedengine.Status{}, "", nil, fmt.Errorf("reportengine: read %s at %s: %w", rels.Seed, tag.Name, err)
+		return shedrun.Seed{}, shedengine.Status{}, "", nil, fmt.Errorf("reportengine: read %s at %s: %w", rels.Seed, tag.Name, err)
 	}
-	seed, err := shedrun.ParseSeed(seedBytes)
+	seed, err = shedrun.ParseSeed(seedBytes)
 	if err != nil {
-		return shedengine.Status{}, "the seed does not decode", []Finding{{Tag: tag.Name, File: rels.Seed, Error: err.Error()}}, nil
+		return shedrun.Seed{}, shedengine.Status{}, "the seed does not decode", []Finding{{Tag: tag.Name, File: rels.Seed, Error: err.Error()}}, nil
 	}
 	if seed.Recipe != shedrun.RecipeLoom {
-		return shedengine.Status{}, fmt.Sprintf("the seed names the %q recipe, not loom", seed.Recipe), nil, nil
+		return shedrun.Seed{}, shedengine.Status{}, fmt.Sprintf("the seed names the %q recipe, not loom", seed.Recipe), nil, nil
 	}
 
 	statusBytes, err := records.FileAtRevision(tag.Commit, rels.Status)
 	if errors.Is(err, gitrepo.ErrPathNotAtRevision) {
-		return shedengine.Status{}, "the tag holds no status", nil, nil
+		return shedrun.Seed{}, shedengine.Status{}, "the tag holds no status", nil, nil
 	}
 	if err != nil {
-		return shedengine.Status{}, "", nil, fmt.Errorf("reportengine: read %s at %s: %w", rels.Status, tag.Name, err)
+		return shedrun.Seed{}, shedengine.Status{}, "", nil, fmt.Errorf("reportengine: read %s at %s: %w", rels.Status, tag.Name, err)
 	}
 	status, err = shedengine.ParseStatusTolerant(statusBytes)
 	if err != nil {
-		return shedengine.Status{}, "the status does not decode", []Finding{{Tag: tag.Name, File: rels.Status, Error: err.Error()}}, nil
+		return shedrun.Seed{}, shedengine.Status{}, "the status does not decode", []Finding{{Tag: tag.Name, File: rels.Status, Error: err.Error()}}, nil
 	}
 	finalized := slices.ContainsFunc(status.History, func(entry shedengine.HistoryEntry) bool {
 		return entry.Producer == loomshed.NameFinalize
 	})
 	if !finalized {
-		return shedengine.Status{}, noFinalizeReason(), nil, nil
+		return shedrun.Seed{}, shedengine.Status{}, noFinalizeReason(), nil, nil
 	}
-	return status, "", nil, nil
+	return seed, status, "", nil, nil
 }
