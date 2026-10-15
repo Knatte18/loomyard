@@ -1,14 +1,20 @@
 # report.jq renders the report body from the slurped per-fork records, one markdown line per output string.
-# Arguments: $arms, the marker table's arm names in table order.
+# Arguments: $markers, the marker table's rows (arm and agreeing trace values) in table order;
+# $batches and $traces, the contents of batches.tsv and traces.tsv, which join each record to its resolved batch and trace layout.
 # Rows and arms sort by arm (marker-table order, then any other arm name alphabetically), run, start time and agent id,
 # so two runs over the same input differ only in the generation-time line.
+#
+# Cross-check: a trace layout agrees with a fork when the fork's arm lists it, and any other pairing is a disagreement,
+# listed per fork; the arm stays the prompt's.
+# On an unknown fork a trace value of [a-z0-9_-]+ that is no arm name makes the arm trace:<value>;
+# any other trace value leaves the fork unknown and is listed once as unrecognized.
+# A fork without a resolved batch or a trace line before its start has no cross-check.
 #
 # Missing-metric rule: a fork lacking a metric is left out of that metric's median and pooled value.
 # No edit leaves out every "before the first edit" metric, a pack with no spans every span share,
 # arm none every pack metric, and zero cards every per-card metric.
 # A cell whose sample is smaller than the arm's fork count shows its size as `<value> (n=<k>)`, and a cell with no sample left shows n/a.
 
-def armkey: . as $arm | [($arms | index($arm)) // 1000, $arm];
 def dash: if . == null then "-" else tostring end;
 def table($head; $rows):
   ["| " + ($head | join(" | ")) + " |", "| " + ($head | map("---") | join(" | ")) + " |"]
@@ -39,11 +45,29 @@ def spanned(f): if .nspans == 0 then null else f end;
 def per_card($k): if .cards > 0 and .[$k] != null then .[$k] / .cards else null end;
 def pooled_card($k): if .cards > 0 and .[$k] != null then [.[$k], .cards] else null end;
 
-. as $recs
+def tsv_rows($raw): $raw | split("\n") | map(select(length > 0) | split("\t"));
+
+($markers | map(.arm)) as $arms
 | ($arms + ["unknown"]) as $known
+| def armkey: . as $arm | [($arms | index($arm)) // 1000, $arm];
+  (tsv_rows($batches) | map({key: .[0], value: .}) | from_entries) as $batch_rows
+| (tsv_rows($traces) | map({key: .[0], value: .[2]}) | from_entries) as $trace_layouts
+| def crosscheck:
+    . as $r
+    | ($batch_rows[$r.rel] // null) as $row
+    | ($trace_layouts[$r.rel] // null) as $trace
+    | ($markers | map(select(.arm == $r.arm)) | .[0]) as $marker
+    | $r + {batch: (if $row == null or $row[3] == "-" then null else $row[3] end), trace: $trace}
+    | if $trace == null then . + {check: null}
+      elif $marker != null then . + {check: (if ($marker.trace | index($trace)) != null then "agrees" else "disagrees" end)}
+      elif ($trace | test("^[a-z0-9_-]+$")) and (($known | index($trace)) == null) then . + {arm: ("trace:" + $trace), check: "trace arm"}
+      else . + {check: "unrecognized"} end;
+  map(crosscheck) as $recs
 | ([$recs[].arm] | unique | sort_by(armkey)) as $present
 | ($recs | group_by(.arm) | map({key: .[0].arm, value: .}) | from_entries) as $by
 | ($known - $present) as $absent
+| ([$recs | sort_by([(.arm | armkey), .proj, .start, .agent])[] | select(.check == "disagrees")]) as $disagreements
+| ([$recs[] | select(.check == "unrecognized") | .trace] | unique) as $unrecognized
 | def row($label; c): [$label] + [$present[] | . as $a | $by[$a] | c];
   [
     ["exploration calls, raw", "ex_tools"], ["exploration calls, net", "ex_net"],
@@ -54,9 +78,14 @@ def pooled_card($k): if .cards > 0 and .[$k] != null then [.[$k], .cards] else n
   ] as $comparison
 | (
   ["## Samples", ""]
-  + table(["arm", "forks", "runs", "cards"];
-      [$present[] | . as $a | [$a, ($by[$a] | length), ($by[$a] | map(.proj) | unique | length), ($by[$a] | map(.cards) | add)]])
+  + table(["arm", "forks", "runs", "cards", "cross-checked"];
+      [$present[] | . as $a | [$a, ($by[$a] | length), ($by[$a] | map(.proj) | unique | length), ($by[$a] | map(.cards) | add),
+                               ($by[$a] | map(select(.check != null)) | length)]])
   + (if ($absent | length) > 0 then ["", "Arms with no forks: " + ($absent | join(", ")) + "."] else [] end)
+  + (if ($disagreements | length) > 0
+     then ["", "Cross-check disagreements:", ""] + [$disagreements[] | "- \(.agent) (\(.proj)): arm \(.arm), trace \(.trace)"]
+     else [] end)
+  + (if ($unrecognized | length) > 0 then ["", "Unrecognized trace values: " + ($unrecognized | join(", ")) + "."] else [] end)
   + ["", "## Pack use", ""]
   + table(["metric"] + $present; [
       row("pack file opened"; count_cell(.; packed(.pack_opened))),
@@ -88,10 +117,12 @@ def pooled_card($k): if .cards > 0 and .[$k] != null then [.[$k], .cards] else n
   + table(
       ["arm", "run", "agent", "start", "cards", "pack opened", "pack turn", "pack before edit", "first work turn", "first parallel", "spans",
        "strict before edit", "file-level before edit", "strict in first turn", "calls before edit", "net before edit", "net exploration",
-       "net whole reads", "partial reads", "greps", "quarry", "turns", "output k", "cache read M", "edits", "edits to no-span files", "dropped lines"];
+       "net whole reads", "partial reads", "greps", "quarry", "turns", "output k", "cache read M", "edits", "edits to no-span files", "dropped lines",
+       "batch", "trace", "cross-check"];
       [$recs | sort_by([(.arm | armkey), .proj, .start, .agent])[]
        | [.arm, .proj, .agent, .start[5:16], .cards, (if .pack_opened then "yes" else "no" end), .pack_turn,
           (if .pack_before_edit then "yes" else "no" end), .first_work_turn, .first_par, .nspans,
           .spans_strict_pre, .spans_file_pre, .spans_strict_first, .pre_edit, .pre_edit_net, .ex_net,
-          .rfull_net, .rpart, .grep, .quarry, .turns, (.out / 1000 | round), (.cache_read / 1e6 * 10 | round / 10), .edits, .edits_out, .dropped]])
+          .rfull_net, .rpart, .grep, .quarry, .turns, (.out / 1000 | round), (.cache_read / 1e6 * 10 | round / 10), .edits, .edits_out, .dropped,
+          .batch, .trace, .check]])
 ) | .[]

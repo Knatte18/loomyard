@@ -15,6 +15,8 @@
 #                       each the worktree's directory name, made of [a-z0-9-] only.
 #   --projects <dir>    Claude Code's projects directory (default $HOME/.claude/projects).
 #   --hub <dir>         the hub whose worktrees are audited (default the repo root's parent).
+#   --records <dir>     the records repository holding the webster state history
+#                       (default the repo root's sibling named after the repo root plus the records suffix).
 #   --out <path>        the report file (default .scratch/fork-audit.md under the repo root).
 #   --work <dir>        the work directory for intermediate files (default .scratch/fork-audit under the repo root).
 # Exactly one of --since and --runs is required, and --until needs --since.
@@ -52,8 +54,20 @@
 # Each fork's arm is the pack layout its prompt shows, taken from the marker table at the head of extract.jq.
 # A task that adds a Webster pack layout adds its marker row there in the same task.
 #
+# Cross-check: the prompt decides a fork's arm, and begin-batch's `webster: kickstart pack` trace line cross-checks it.
+# For each fork whose worktree (the hub plus the run name) has a trace file under its logs directory,
+# the fork's batch is the one in the records repository whose spawn second is 1 to 6 seconds before the fork's first transcript line,
+# searched with git log and git show only, on that run's own refs: its records branch (local or under origin/) and its archive tags.
+# The fork's trace layout is the pack_layout of the last trace line for that batch before the fork's first transcript line.
+# A trace layout agrees with an arm when the arm's marker row lists it; any other pairing is a disagreement and the arm stays the prompt's.
+# On an unknown fork a layout of [a-z0-9_-]+ that is no arm name makes the arm trace:<layout>;
+# any other layout leaves the fork unknown and is listed once as unrecognized.
+# A fork with no trace file, no resolved batch or no trace line before its start has no cross-check.
+# A missing records repository only disables the cross-check, and the report header says so.
+#
 # Intermediate files in --work: projects.txt (matched project directories), candidates.txt (candidate transcripts),
-# webster-files.txt (candidates holding the job heading) and records.jsonl (one record per kept fork).
+# webster-files.txt (candidates holding the job heading), records.jsonl (one record per kept fork),
+# batches.tsv (each fork's resolved batch) and traces.tsv (each cross-checked fork's trace layout).
 # The report body is rendered from records.jsonl by report.jq:
 # a samples table, a pack-use table, an arm comparison table, the quartiles of net exploration calls per card and a per-fork table.
 # A fork lacking a metric is left out of that metric's median and pooled value, and a cell shows its sample size when that is
@@ -87,7 +101,7 @@ date -d @0 > /dev/null 2>&1 || { echo "forkaudit: missing command: GNU date" >&2
 
 MARKER_FILE=".forkaudit-work"
 # The script's own intermediate files in --work; a run clears exactly these.
-WORK_FILES=(projects.txt candidates.txt webster-files.txt records.jsonl)
+WORK_FILES=(projects.txt candidates.txt webster-files.txt records.jsonl batches.tsv traces.tsv)
 # The heading that marks a Webster implementer prompt.
 JOB_HEADING='# Webster implementer job'
 
@@ -97,6 +111,7 @@ Usage: forkaudit.sh (--since <date> [--until <date>] | --runs <name>[,<name>...]
 Options:
   --projects <dir>   Claude Code projects directory (default $HOME/.claude/projects)
   --hub <dir>        hub whose worktrees are audited (default the repo root's parent)
+  --records <dir>    records repository (default the repo root's sibling named after it plus the records suffix)
   --out <path>       report file (default .scratch/fork-audit.md under the repo root)
   --work <dir>       work directory (default .scratch/fork-audit under the repo root)
 EOF
@@ -114,11 +129,11 @@ fail() {
 }
 
 original_args=("$@")
-since="" until_date="" runs="" projects="${HOME:-}/.claude/projects" hub="" out="" work=""
+since="" until_date="" runs="" projects="${HOME:-}/.claude/projects" hub="" records="" out="" work=""
 since_set=0 until_set=0 runs_set=0
 while [ $# -gt 0 ]; do
   case "$1" in
-    --since|--until|--runs|--projects|--hub|--out|--work)
+    --since|--until|--runs|--projects|--hub|--records|--out|--work)
       [ $# -ge 2 ] || usage_error "$1 needs a value"
       case "$1" in
         --since) since="$2"; since_set=1 ;;
@@ -126,6 +141,7 @@ while [ $# -gt 0 ]; do
         --runs) runs="$2"; runs_set=1 ;;
         --projects) projects="$2" ;;
         --hub) hub="$2" ;;
+        --records) records="$2" ;;
         --out) out="$2" ;;
         --work) work="$2" ;;
       esac
@@ -158,6 +174,7 @@ fi
 repo_root="$(realpath -m "$repo_root")"
 projects="$(realpath -m "$projects")"
 hub="$(realpath -m "${hub:-$repo_root/..}")"
+records="$(realpath -m "${records:-$repo_root$RECORDS_SUFFIX}")"
 out_explicit=1
 if [ -z "$out" ]; then
   out="$repo_root/.scratch/fork-audit.md"
@@ -265,6 +282,64 @@ heading_count="$(grep -c . "$work/webster-files.txt")"
 fork_count="$(grep -c . "$work/records.jsonl")"
 dropped_count="$(jq -s 'map(.dropped) | add // 0' "$work/records.jsonl")"
 
+# Batch resolution and the trace join, per fork, reading the records repository with git log and git show only.
+# The batch is the one in the fork's own run's state history whose spawn second is 1 to 6 seconds before the fork's first transcript line.
+# Only the fork's run refs are searched, so a concurrent run's batch spawned in the same window never resolves:
+# its records branch, local and under origin/, and its archive tags.
+# One letter of the suffix is bracketed so --glob matches that one branch and does not append /*.
+# batches.tsv columns: transcript path relative to --projects, run, fork start, batch, card count, start sha, commit, spawn second, cards.
+# traces.tsv columns: transcript path relative to --projects, batch, pack_layout of the last trace line before the fork's start.
+resolve_all=0
+: > "$work/batches.tsv"
+: > "$work/traces.tsv"
+records_found=0
+[ -d "$records" ] && records_found=1
+branch_glob="${RECORDS_SUFFIX%?}[${RECORDS_SUFFIX: -1}]"
+if [ "$records_found" = 1 ]; then
+  while IFS=$'\t' read -r fork_rel fork_run fork_start; do
+    worktree="$hub/$fork_run"
+    shopt -s nullglob
+    trace_files=("$worktree/$LOGS_DIR"/trace-*.log)
+    shopt -u nullglob
+    if [ "${#trace_files[@]}" -eq 0 ] && [ "$resolve_all" = 0 ]; then
+      continue
+    fi
+    ref_globs=("--glob=refs/heads/$fork_run$branch_glob" "--glob=refs/remotes/origin/$fork_run$branch_glob" "--glob=refs/tags/archive/$fork_run/*")
+    start_epoch="$(date -u -d "$fork_start" +%s)"
+    resolved=""
+    for offset in 1 2 3 4 5 6; do
+      spawn_second="$(date -u -d "@$((start_epoch - offset))" +%Y-%m-%dT%H:%M:%SZ)"
+      commit="$(git -C "$records" log "${ref_globs[@]}" -S"$spawn_second" --format=%H -- "$STATE_PATH" 2> /dev/null | head -1)"
+      [ -n "$commit" ] || continue
+      batch_row="$(git -C "$records" show "$commit:$STATE_PATH" 2> /dev/null | jq -r --arg second "$spawn_second" \
+        '.batches | to_entries[] | select(.value.spawnedAt == $second) | [.key, (.value.cards | length), .value.startSha, .value.spawnedAt, (.value.cards | join(","))] | @tsv' 2> /dev/null | head -1)"
+      if [ -n "$batch_row" ]; then
+        resolved="$commit"$'\t'"$batch_row"
+        break
+      fi
+    done
+    if [ -z "$resolved" ]; then
+      printf '%s\t%s\t%s\t-\t-\t-\t-\t-\t-\n' "$fork_rel" "$fork_run" "$fork_start" >> "$work/batches.tsv"
+      continue
+    fi
+    IFS=$'\t' read -r commit batch card_count start_sha spawn_second batch_cards <<< "$resolved"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$fork_rel" "$fork_run" "$fork_start" "$batch" "$card_count" "$start_sha" "$commit" "$spawn_second" "$batch_cards" >> "$work/batches.tsv"
+    [ "${#trace_files[@]}" -gt 0 ] || continue
+    start_ns="$(date -u -d "$fork_start" +%s%N)"
+    best_ns=0
+    layout=""
+    while IFS= read -r trace_line; do
+      [[ "$trace_line" =~ time=([^[:space:]]+) ]] || continue
+      line_ns="$(date -u -d "${BASH_REMATCH[1]}" +%s%N 2> /dev/null)" || continue
+      [ "$line_ns" -lt "$start_ns" ] && [ "$line_ns" -gt "$best_ns" ] || continue
+      [[ "$trace_line" =~ pack_layout=([^[:space:]]+) ]] || continue
+      best_ns="$line_ns"
+      layout="${BASH_REMATCH[1]}"
+    done < <(grep -h -F 'msg="webster: kickstart pack"' "${trace_files[@]}" | grep -F " batch=$batch ")
+    [ -z "$layout" ] || printf '%s\t%s\t%s\n' "$fork_rel" "$batch" "$layout" >> "$work/traces.tsv"
+  done < <(jq -r '[.rel, .proj, .start] | @tsv' "$work/records.jsonl")
+fi
+
 write_header() {
   local project_dir
   echo "# Webster fork read audit"
@@ -275,6 +350,10 @@ write_header() {
   echo "- Projects: \`$projects\`"
   echo "- Hub: \`$hub\`"
   echo "- Work: \`$work\`"
+  echo "- Records: \`$records\`"
+  if [ "$records_found" = 0 ]; then
+    echo "- No cross-check: records repo $records not found."
+  fi
   if [ -s "$work/projects.txt" ]; then
     echo "- Project directories matched:"
     while IFS= read -r project_dir; do
@@ -293,13 +372,14 @@ write_header() {
   echo
 }
 
-arms_json="$(jq -n -c --arg mode arms --arg run "" --arg rel "" --arg plan "" -f "$script_dir/extract.jq")"
+markers_json="$(jq -n -c --arg mode arms --arg run "" --arg rel "" --arg plan "" -f "$script_dir/extract.jq")"
 {
   write_header
   if [ "$fork_count" -eq 0 ]; then
     echo "No Webster implementer forks matched."
   else
-    jq -s -r --argjson arms "$arms_json" -f "$script_dir/report.jq" "$work/records.jsonl" || fail "cannot render the report"
+    jq -s -r --argjson markers "$markers_json" --rawfile batches "$work/batches.tsv" --rawfile traces "$work/traces.tsv" \
+      -f "$script_dir/report.jq" "$work/records.jsonl" || fail "cannot render the report"
   fi
 } > "$report_tmp"
 

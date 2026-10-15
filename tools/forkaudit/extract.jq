@@ -1,18 +1,19 @@
 # extract.jq turns one subagent transcript, read line by line with `jq -n -R`, into the per-fork record forkaudit.sh collects.
 # It emits nothing unless the transcript is a Webster implementer fork:
 # its first tool call (Skill and Agent calls excluded) must read a Webster prompt file whose result holds the job heading.
-# Arguments: $mode ("extract", or "arms" to print the marker table's arm names and read no input),
+# Arguments: $mode ("extract", or "arms" to print the marker table and read no input),
 # $run (the run name of the fork's project directory), $rel (the transcript's path relative to the projects directory)
 # and $plan (the plan directory the prompt's card lines name).
 
 # The arm marker table, checked in order, one row per arm; a fork matching no row is "unknown".
 # A row matches when every feature in its `when` equals the fork's feature.
+# `trace` lists the pack_layout values of begin-batch's trace line that agree with the arm.
 # A task that adds a Webster pack layout adds its marker row here in the same task.
 def markers: [
-  {arm: "file", when: {starthere: true}},
-  {arm: "raf", when: {inlinepack: true, rafphrase: true}},
-  {arm: "inline", when: {inlinepack: true}},
-  {arm: "none", when: {inlinepack: false, packopened: false}}
+  {arm: "file", trace: ["file"], when: {starthere: true}},
+  {arm: "raf", trace: ["inline"], when: {inlinepack: true, rafphrase: true}},
+  {arm: "inline", trace: ["inline"], when: {inlinepack: true}},
+  {arm: "none", trace: ["none"], when: {inlinepack: false, packopened: false}}
 ];
 
 def armof($features):
@@ -52,7 +53,7 @@ def hit($t; $s):
       else 0 end
   else 0 end;
 
-if $mode == "arms" then [markers[].arm] else
+if $mode == "arms" then [markers[] | {arm, trace}] else
 ([inputs | select(test("\\S"))]) as $lines
 | ($lines | map(fromjson? | select(type == "object"))) as $all
 | (($lines | length) - ($all | length)) as $dropped

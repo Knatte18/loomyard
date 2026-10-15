@@ -6,7 +6,9 @@ package forkaudit
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"maps"
 	"os"
@@ -15,9 +17,13 @@ import (
 	"regexp"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 // workMarker is the file that marks a directory as a forkaudit work directory.
@@ -27,6 +33,7 @@ const workMarker = ".forkaudit-work"
 const noForksSentence = "No Webster implementer forks matched."
 
 // runForkaudit runs forkaudit.sh with the given extra environment and arguments from a fresh working directory.
+// Unless the arguments carry --records, it points the script at a records directory that does not exist, so no run reads the live records repository.
 // It returns what the script printed and its exit code.
 func runForkaudit(t *testing.T, env []string, args ...string) (stdout, stderr string, exit int) {
 	t.Helper()
@@ -39,6 +46,9 @@ func runForkaudit(t *testing.T, env []string, args ...string) (stdout, stderr st
 	script, err := filepath.Abs("forkaudit.sh")
 	if err != nil {
 		t.Fatalf("resolve forkaudit.sh: %v", err)
+	}
+	if !slices.Contains(args, "--records") {
+		args = append([]string{"--records", filepath.Join(tempDir(t), "absent-records")}, args...)
 	}
 	cmd := exec.Command("bash", append([]string{script}, args...)...)
 	cmd.Dir = t.TempDir()
@@ -658,7 +668,7 @@ func TestForkauditReport(t *testing.T) {
 		{name: "a second run replaces the first report with an identical one",
 			prepare: func(t *testing.T, d *auditDirs) []string {
 				placeForks(t, d.projects, d.hub, mainForks())
-				return []string{"--since", "2026-10-13"}
+				return []string{"--since", "2026-10-13", "--records", filepath.Join(tempDir(t), "absent-records")}
 			},
 			check: func(t *testing.T, d auditDirs, args []string, report string) {
 				writeFile(t, d.out, "replace me")
@@ -734,6 +744,296 @@ func TestForkauditReport(t *testing.T) {
 				t.Fatalf("read report: %v", err)
 			}
 			row.check(t, d, args, string(report))
+		})
+	}
+}
+
+var recordsSuffixLine = regexp.MustCompile(`(?m)^RECORDS_SUFFIX="([^"]*)"`)
+
+// recordsSuffix returns the suffix of a run's records branch, read from the script's variable block so the test spells no second copy.
+func recordsSuffix(t *testing.T) string {
+	t.Helper()
+	script, err := os.ReadFile("forkaudit.sh")
+	if err != nil {
+		t.Fatalf("read forkaudit.sh: %v", err)
+	}
+	match := recordsSuffixLine.FindSubmatch(script)
+	if match == nil {
+		t.Fatal("forkaudit.sh has no RECORDS_SUFFIX line")
+	}
+	return string(match[1])
+}
+
+// batchFixture is one batch of a run's webster state.
+type batchFixture struct {
+	number    int
+	cards     []string
+	startSHA  string
+	spawnedAt string
+}
+
+// recordsRun is one run's state history in the records repository.
+type recordsRun struct {
+	name string
+	// kind is where the state is committed: "local" branch, "origin" remote-tracking branch or "archive" tag.
+	kind    string
+	batches []batchFixture
+	// extraKey, when set, is a UTC second stored under a state key that is no batch.
+	extraKey string
+	// planCards maps a path under the plan directory to the card's content.
+	planCards map[string]string
+}
+
+// stateText renders run's webster state file.
+func stateText(t *testing.T, run recordsRun) string {
+	t.Helper()
+	batches := map[string]any{}
+	for _, batch := range run.batches {
+		batches[strconv.Itoa(batch.number)] = map[string]any{"cards": batch.cards, "startSha": batch.startSHA, "spawnedAt": batch.spawnedAt}
+	}
+	state := map[string]any{"batches": batches}
+	if run.extraKey != "" {
+		state["note"] = run.extraKey
+	}
+	text, err := json.Marshal(state)
+	if err != nil {
+		t.Fatalf("marshal state: %v", err)
+	}
+	return string(text)
+}
+
+// recordsRepo builds a records repository holding each run's state under the run's records ref.
+func recordsRepo(t *testing.T, runs []recordsRun) string {
+	t.Helper()
+	dir := tempDir(t)
+	statePath := filepath.Join(lyxdirs.LyxDirName, "webster", "state.json")
+	gitkit.Git(t, dir, "init", "-b", "main")
+	gitkit.Git(t, dir, "commit", "--allow-empty", "-m", "initial")
+	for _, run := range runs {
+		branch := run.name + recordsSuffix(t)
+		gitkit.Git(t, dir, "checkout", "-b", branch, "main")
+		gitkit.CommitFileOnBranch(t, dir, branch, statePath, stateText(t, run), "state of "+run.name)
+		gitkit.Git(t, dir, "checkout", "main")
+		switch run.kind {
+		case "local":
+		case "origin":
+			gitkit.Git(t, dir, "update-ref", "refs/remotes/origin/"+branch, branch)
+			gitkit.Git(t, dir, "branch", "-D", branch)
+		case "archive":
+			gitkit.Git(t, dir, "tag", "archive/"+run.name+"/final", branch)
+			gitkit.Git(t, dir, "branch", "-D", branch)
+		default:
+			t.Fatalf("unknown records ref kind %q", run.kind)
+		}
+	}
+	return dir
+}
+
+// forkStart returns the first-line timestamp of a fork fixture.
+func forkStart(t *testing.T, fixture string) time.Time {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("testdata", fixture+".jsonl"))
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	start, err := time.Parse(time.RFC3339, firstTimestamp.FindStringSubmatch(string(raw))[1])
+	if err != nil {
+		t.Fatalf("parse the first timestamp of %s: %v", fixture, err)
+	}
+	return start
+}
+
+// traceSpec is one begin-batch trace line of a fork's worktree.
+type traceSpec struct {
+	batch  int
+	layout string
+	// before is how long before the fork's start the line was logged; negative means after.
+	before time.Duration
+}
+
+// traceLine renders a `webster: kickstart pack` trace line logged spec.before ahead of start, with a local UTC offset.
+func traceLine(start time.Time, spec traceSpec) string {
+	logged := start.Add(-spec.before).In(time.FixedZone("local", 2*3600))
+	return fmt.Sprintf(`time=%s level=INFO msg="webster: kickstart pack" trace=abc batch=%d kickstart_pack=on resolved=1 unresolved=0 pack_layout=%s`,
+		logged.Format("2006-01-02T15:04:05.000-07:00"), spec.batch, spec.layout)
+}
+
+// writeTrace writes a trace file with a header record and lines into the logs directory of the worktree <hub>/<run>.
+func writeTrace(t *testing.T, hub, run string, lines []string) {
+	t.Helper()
+	content := "command=lyx argv=webster trace=abc pid=1 worktree_root=" + filepath.Join(hub, run) + "\n" + strings.Join(lines, "\n") + "\n"
+	writeFile(t, filepath.Join(hub, run, lyxdirs.DotLyxDirName, "logs", "trace-20261014T090000Z-abc-1.log"), content)
+}
+
+// traceCase is one fork with its run's records and trace file, and the cells its report row must hold.
+type traceCase struct {
+	fixture string
+	// run names the fork's run, its records branch and its agent: agent-<run>.
+	run string
+	// kind is the records ref kind of the run's state; empty means the run has no records refs.
+	kind  string
+	batch int
+	// spawnLead is how long before the fork's first line the batch spawned; zero means 3 seconds.
+	spawnLead time.Duration
+	// extraOnly keeps the spawn second under a non-batch state key and holds no batch.
+	extraOnly bool
+	// noTraceFile leaves the worktree without a trace file.
+	noTraceFile bool
+	trace       []traceSpec
+	// want maps per-fork table columns to the expected cells.
+	want map[string]string
+}
+
+// traceRow is one report over a set of trace cases.
+type traceRow struct {
+	name           string
+	cases          []traceCase
+	missingRecords bool
+	// wantReport lists substrings of the report.
+	wantReport []string
+	// wantCrossChecked maps an arm to its cross-checked count in the samples table.
+	wantCrossChecked map[string]string
+}
+
+func TestForkauditTraceCrossCheck(t *testing.T) {
+	t.Parallel()
+	const sha = "0123456789abcdef0123456789abcdef01234567"
+	oneLine := func(layout string) []traceSpec {
+		return []traceSpec{{batch: 1, layout: layout, before: 1500 * time.Millisecond}}
+	}
+	rows := []traceRow{
+		{name: "agreeing layouts", cases: []traceCase{
+			{fixture: "fork-raf", run: "ra", kind: "local", batch: 1, trace: oneLine("inline"),
+				want: map[string]string{"arm": "raf", "batch": "1", "trace": "inline", "cross-check": "agrees"}},
+			{fixture: "fork-file", run: "rb", kind: "local", batch: 1, trace: oneLine("file"),
+				want: map[string]string{"arm": "file", "batch": "1", "trace": "file", "cross-check": "agrees"}},
+			{fixture: "fork-none", run: "rc", kind: "local", batch: 1, trace: oneLine("none"),
+				want: map[string]string{"arm": "none", "batch": "1", "trace": "none", "cross-check": "agrees"}},
+		}, wantCrossChecked: map[string]string{"raf": "1", "file": "1", "none": "1"}},
+		{name: "disagreeing layouts keep the prompt's arm", cases: []traceCase{
+			{fixture: "fork-file", run: "rd", kind: "local", batch: 1, trace: oneLine("inline"),
+				want: map[string]string{"arm": "file", "trace": "inline", "cross-check": "disagrees"}},
+			{fixture: "fork-file-noedit", run: "re", kind: "local", batch: 1, trace: oneLine("perhand"),
+				want: map[string]string{"arm": "file", "trace": "perhand", "cross-check": "disagrees"}},
+		}, wantReport: []string{"- agent-rd (rd): arm file, trace inline", "- agent-re (re): arm file, trace perhand"}},
+		{name: "unknown forks take a new layout as their arm or stay unknown", cases: []traceCase{
+			{fixture: "fork-unknown", run: "rf", kind: "local", batch: 1, trace: oneLine("perhand"),
+				want: map[string]string{"arm": "trace:perhand", "trace": "perhand", "cross-check": "trace arm"}},
+			{fixture: "fork-unknown", run: "rg", kind: "local", batch: 1, trace: oneLine("raf"),
+				want: map[string]string{"arm": "unknown", "trace": "raf", "cross-check": "unrecognized"}},
+			{fixture: "fork-unknown", run: "rh", kind: "local", batch: 1, trace: oneLine("unknown"),
+				want: map[string]string{"arm": "unknown", "trace": "unknown", "cross-check": "unrecognized"}},
+			{fixture: "fork-unknown", run: "ri", kind: "local", batch: 1, trace: oneLine("a|b"),
+				want: map[string]string{"arm": "unknown", "trace": "a|b", "cross-check": "unrecognized"}},
+		}, wantReport: []string{"Unrecognized trace values: a|b, raf, unknown."}, wantCrossChecked: map[string]string{"trace:perhand": "1", "unknown": "3"}},
+		{name: "the last trace line before the fork's start counts", cases: []traceCase{
+			{fixture: "fork-file", run: "rj", kind: "local", batch: 1,
+				trace: []traceSpec{{batch: 1, layout: "file", before: 2 * time.Second}, {batch: 1, layout: "inline", before: -2 * time.Second}},
+				want:  map[string]string{"trace": "file", "cross-check": "agrees"}},
+			{fixture: "fork-file-noedit", run: "rk", kind: "local", batch: 1,
+				trace: []traceSpec{{batch: 1, layout: "file", before: -2 * time.Second}},
+				want:  map[string]string{"batch": "1", "trace": "-", "cross-check": "-"}},
+			{fixture: "fork-raf", run: "rl", kind: "local", batch: 1,
+				trace: []traceSpec{{batch: 2, layout: "none", before: time.Second}},
+				want:  map[string]string{"batch": "1", "trace": "-", "cross-check": "-"}},
+		}},
+		{name: "runs sharing a spawn second resolve to their own batches", cases: []traceCase{
+			{fixture: "fork-raf", run: "alpha", kind: "local", batch: 1, trace: oneLine("inline"),
+				want: map[string]string{"batch": "1", "trace": "inline", "cross-check": "agrees"}},
+			{fixture: "fork-raf", run: "beta", kind: "local", batch: 2, trace: []traceSpec{{batch: 2, layout: "none", before: 1500 * time.Millisecond}},
+				want: map[string]string{"batch": "2", "trace": "none", "cross-check": "disagrees"}},
+		}},
+		{name: "batches under an origin branch and an archive tag resolve", cases: []traceCase{
+			{fixture: "fork-file", run: "rm", kind: "origin", batch: 4, trace: []traceSpec{{batch: 4, layout: "file", before: time.Second}},
+				want: map[string]string{"batch": "4", "cross-check": "agrees"}},
+			{fixture: "fork-raf", run: "rn", kind: "archive", batch: 5, trace: []traceSpec{{batch: 5, layout: "inline", before: time.Second}},
+				want: map[string]string{"batch": "5", "cross-check": "agrees"}},
+		}},
+		{name: "an unmatched spawn second gives no cross-check", cases: []traceCase{
+			{fixture: "fork-file", run: "ro", kind: "local", batch: 1, spawnLead: 20 * time.Second, trace: oneLine("file"),
+				want: map[string]string{"batch": "-", "trace": "-", "cross-check": "-"}},
+			{fixture: "fork-raf", run: "rp", kind: "local", extraOnly: true, trace: oneLine("inline"),
+				want: map[string]string{"batch": "-", "trace": "-", "cross-check": "-"}},
+			{fixture: "fork-none", run: "rq", trace: oneLine("none"),
+				want: map[string]string{"batch": "-", "trace": "-", "cross-check": "-"}},
+		}},
+		{name: "a worktree without a trace file is not cross-checked", cases: []traceCase{
+			{fixture: "fork-file", run: "rr", kind: "local", batch: 1, noTraceFile: true,
+				want: map[string]string{"batch": "-", "trace": "-", "cross-check": "-"}},
+		}, wantCrossChecked: map[string]string{"file": "0"}},
+		{name: "a missing records directory disables the cross-check", missingRecords: true, cases: []traceCase{
+			{fixture: "fork-file", run: "rs", trace: oneLine("file"),
+				want: map[string]string{"batch": "-", "trace": "-", "cross-check": "-"}},
+		}, wantReport: []string{"No cross-check: records repo "}},
+	}
+	for _, row := range rows {
+		t.Run(row.name, func(t *testing.T) {
+			t.Parallel()
+			d := newAuditDirs(t)
+			var forks []forkFixture
+			var runs []recordsRun
+			for _, c := range row.cases {
+				forks = append(forks, forkFixture{fixture: c.fixture, run: c.run, session: "s-" + c.run, agent: c.run})
+				start := forkStart(t, c.fixture)
+				if c.kind != "" {
+					lead := c.spawnLead
+					if lead == 0 {
+						lead = 3 * time.Second
+					}
+					spawned := start.Add(-lead).UTC().Format("2006-01-02T15:04:05Z")
+					run := recordsRun{name: c.run, kind: c.kind}
+					if c.extraOnly {
+						run.extraKey = spawned
+					} else {
+						run.batches = []batchFixture{{number: c.batch, cards: []string{"01-alpha"}, startSHA: sha, spawnedAt: spawned}}
+					}
+					runs = append(runs, run)
+				}
+				if !c.noTraceFile {
+					var lines []string
+					for _, spec := range c.trace {
+						lines = append(lines, traceLine(start, spec))
+					}
+					writeTrace(t, d.hub, c.run, lines)
+				}
+			}
+			placeForks(t, d.projects, d.hub, forks)
+			records := filepath.Join(tempDir(t), "absent-records")
+			if !row.missingRecords {
+				records = recordsRepo(t, runs)
+			}
+			stdout, stderr, exit := runForkaudit(t, nil, d.args("--since", "2026-10-13", "--records", records)...)
+			if exit != 0 {
+				t.Fatalf("exit = %d, want 0; stderr: %s", exit, stderr)
+			}
+			if stdout != d.out+"\n" {
+				t.Errorf("stdout = %q, want the --out path", stdout)
+			}
+			content, err := os.ReadFile(d.out)
+			if err != nil {
+				t.Fatalf("read report: %v", err)
+			}
+			report := string(content)
+			perFork := tableRows(t, report, "## Per-fork")
+			for _, c := range row.cases {
+				fork := rowWhere(t, perFork, "agent", "agent-"+c.run)
+				for column, want := range c.want {
+					if fork[column] != want {
+						t.Errorf("%s: %s = %q, want %q", c.run, column, fork[column], want)
+					}
+				}
+			}
+			for _, want := range row.wantReport {
+				if !strings.Contains(report, want) {
+					t.Errorf("report lacks %q:\n%s", want, report)
+				}
+			}
+			samples := tableRows(t, report, "## Samples")
+			for arm, want := range row.wantCrossChecked {
+				if got := rowWhere(t, samples, "arm", arm)["cross-checked"]; got != want {
+					t.Errorf("arm %s cross-checked = %q, want %q", arm, got, want)
+				}
+			}
 		})
 	}
 }
