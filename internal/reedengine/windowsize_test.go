@@ -13,10 +13,12 @@ import (
 	"runtime"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 //testtiming:keep pins the window-size parser: a well-formed pair with trailing newline or extra whitespace parses, and an empty, one-field, three-field, non-numeric, zero or negative answer is rejected; its covering tests run this code without asserting it
@@ -240,6 +242,8 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 			{"set-option", "-w", "-t", target, "pane-border-status", "top"},
 			{"set-option", "-w", "-t", target, "pane-border-format", paneBorderFormat},
 			{"set-option", "-w", "-t", target, "window-size", "latest"},
+			// The fixture's tmux binary does not resolve, so the follow jump line is unset.
+			{"set-option", "-gu", "@lyx_follow_command"},
 		}
 		if !slices.EqualFunc(calls, wantOptions, slices.Equal[[]string]) {
 			t.Errorf("pinGeometryOptionsLocked set-option calls = %v, want %v", calls, wantOptions)
@@ -259,8 +263,15 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 			{"set-option", "-t", target, "default-shell", "/bin/sh"},
 			{"set-option", "-t", target, "default-command", "/bin/sh"},
 		}
-		if len(calls) < len(wantTail) || !slices.EqualFunc(calls[len(calls)-len(wantTail):], wantTail, slices.Equal[[]string]) {
-			t.Errorf("pinGeometryOptionsLocked set-option calls = %v, want them to end with the window-size pin and the two session-scoped shell pins %v", calls, wantTail)
+		wantLast := []string{"set-option", "-gu", "@lyx_follow_command"}
+		if len(calls) < len(wantTail)+1 {
+			t.Fatalf("pinGeometryOptionsLocked set-option calls = %v, want at least the window-size pin, the two shell pins and the follow-command unset", calls)
+		}
+		if got := calls[len(calls)-1]; !slices.Equal(got, wantLast) {
+			t.Errorf("last set-option call = %v, want the follow-command unset %v", got, wantLast)
+		}
+		if got := calls[len(calls)-1-len(wantTail) : len(calls)-1]; !slices.EqualFunc(got, wantTail, slices.Equal[[]string]) {
+			t.Errorf("pinGeometryOptionsLocked set-option calls = %v, want them to end, before the follow-command unset, with the window-size pin and the two session-scoped shell pins %v", calls, wantTail)
 		}
 
 		fake = installFakeTmux(t, e)
@@ -278,24 +289,65 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 
 		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()), "")
 
-		lastOption, firstBinding, bindings := -1, -1, 0
+		lastOption, firstBinding, followUnset, bindings := -1, -1, -1, 0
+		var click []string
 		for i, call := range fake.Calls() {
 			switch call[0] {
 			case "set-option":
 				lastOption = i
+				if slices.Equal(call, []string{"set-option", "-gu", "@lyx_follow_command"}) {
+					followUnset = i
+				}
 			case "bind-key":
 				bindings++
 				if firstBinding == -1 {
 					firstBinding = i
 				}
+				if call[2] == "MouseDown1Status" {
+					click = call
+				}
 			}
 		}
-		// The fixture's tmux binary does not exist, so the two session-switch keys are left unbound.
-		if want := len(bindingArgvs("", "")); bindings != want {
+		// The fixture's tmux binary does not exist, so the two session-switch keys are left unbound and the follow jump is not pinned.
+		if want := len(bindingArgvs("", "", false)); bindings != want {
 			t.Errorf("pinGeometryOptionsLocked issued %d bind-key calls, want %d", bindings, want)
 		}
 		if firstBinding < lastOption {
 			t.Errorf("first bind-key call at %d precedes the last set-option call at %d, want the bindings after the option pins", firstBinding, lastOption)
+		}
+		if followUnset == -1 || followUnset > firstBinding {
+			t.Errorf("follow-command unset at %d, first bind-key call at %d, want the unset issued before any binding", followUnset, firstBinding)
+		}
+		// The follow branch lives inside the one click argv, so only the argv itself shows that no jump is bound.
+		var wantClick []string
+		for _, argv := range bindingArgvs("", "", false) {
+			if argv[2] == "MouseDown1Status" {
+				wantClick = argv
+			}
+		}
+		if !slices.Equal(click, wantClick) {
+			t.Errorf("MouseDown1Status binding = %q, want the one without a follow jump %q", click, wantClick)
+		}
+	})
+
+	t.Run("FailedFollowCommandWriteIsNonFatal", func(t *testing.T) {
+		e := newTestEngine(t)
+		fake := installFakeTmux(t, e)
+		fake.answerFunc("set-option", func(args []string) (string, error) {
+			if slices.Contains(args, followCommandOption) {
+				return "", errors.New("boom")
+			}
+			return "", nil
+		})
+		logs := logcapture.CaptureVerbose(t)
+
+		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()), "")
+
+		if got, want := fake.Count("bind-key"), len(bindingArgvs("", "", false)); got != want {
+			t.Errorf("bind-key calls = %d after a failed follow-command write, want all %d still issued", got, want)
+		}
+		if !strings.Contains(logs.String(), "failed to unset the follow jump line") {
+			t.Errorf("log = %q, want the failed follow-command write logged at Warn", logs.String())
 		}
 	})
 
@@ -312,7 +364,7 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()), "")
 		calls := fake.ArgvFor("set-option")
 
-		const wantCalls = 8
+		const wantCalls = 9
 		if len(calls) != wantCalls {
 			t.Fatalf("pinGeometryOptionsLocked issued %d set-option calls despite one erroring, want all %d still attempted: %v", len(calls), wantCalls, calls)
 		}
@@ -338,8 +390,8 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 				setOptionCalls++
 			}
 		}
-		if setOptionCalls != 8 {
-			t.Errorf("pinGeometryOptionsLocked calls = %v, want 8 set-option calls (the seven bar and border options and window-size)", calls)
+		if setOptionCalls != 9 {
+			t.Errorf("pinGeometryOptionsLocked calls = %v, want 9 set-option calls (the seven bar and border options, window-size and the follow-command pin)", calls)
 		}
 	})
 
@@ -400,8 +452,8 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 
 		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()), "")
 
-		if setOptionCalls := fake.Count("set-option"); setOptionCalls != 8 {
-			t.Errorf("set-option calls = %d, want 8(all preceding pins still attempted despite the later set-hook error)", setOptionCalls)
+		if setOptionCalls := fake.Count("set-option"); setOptionCalls != 9 {
+			t.Errorf("set-option calls = %d, want 9 (all preceding pins still attempted despite the later set-hook error)", setOptionCalls)
 		}
 		// The unseen-clear pin and the resize-hook unset are both attempted while each errors.
 		if wantHooks, setHookErrors := 1+unseenClearPinCount(), fake.Count("set-hook"); setHookErrors != wantHooks {

@@ -4,7 +4,7 @@
 // They read own windows, the overview window among them, through the window user options @lyx_own, @strand_color and @lyx_unseen.
 // Line 1 follows window index order: the overview, the agents in start order, then the shell button with the strands' pane buttons.
 // A window carrying the window user option @lyx_hidden still gets no button.
-// Every option read here is display only: no Go decision reads @strand_color or @lyx_unseen.
+// Every option read here is display only but one: no Go decision reads @strand_color or @lyx_unseen, while @lyx_follow, which the follow button shows, is the follow state that followingLocked reads.
 
 package reedengine
 
@@ -61,9 +61,12 @@ const (
 	sessionButtonFormat        = "#[range=session|#{session_id} " + unlitButtonStyle + "] #{=12:session_name} #[norange list=on default] "
 	currentSessionButtonFormat = "#[range=session|#{session_id} list=focus bg=yellow fg=black bold] #{session_name} #[norange list=on default] "
 
-	// statusFormatSessions is status-format[1]: one button per session in the #{S:} loop's own session-id order, then the time right-aligned.
+	// followButtonFormat is the follow button, a user range labelled follow, lit green while the current session's @lyx_follow is not off and unlit while it is.
+	followButtonFormat = "#[range=user|follow #{?#{!=:#{@lyx_follow},off},bg=green fg=black bold," + unlitButtonStyle + "}] follow #[norange list=on default] "
+
+	// statusFormatSessions is status-format[1]: one button per session in the #{S:} loop's own session-id order, then the follow button, then the time right-aligned.
 	// Each loop body is wrapped in reedSessionFilter, so a session that does not count as reed's gets no button.
-	statusFormatSessions = listPrologueFormat + "#{S:#{?" + reedSessionFilter + "," + sessionButtonFormat + ",}," + "#{?" + reedSessionFilter + "," + currentSessionButtonFormat + ",}}#[nolist align=right]%H:%M "
+	statusFormatSessions = listPrologueFormat + "#{S:#{?" + reedSessionFilter + "," + sessionButtonFormat + ",}," + "#{?" + reedSessionFilter + "," + currentSessionButtonFormat + ",}}" + followButtonFormat + "#[nolist align=right]%H:%M "
 
 	// paneBorderFormat is the pane-border title: " <@strand> " in the strand's color, bold on the active pane, and " selvage " for a pane without @strand.
 	paneBorderFormat = "#{?#{@strand},#[fg=" + strandColorFormat + "]#{?pane_active,#[bold],} #{@strand} #[default],#[default] selvage }"

@@ -249,7 +249,7 @@ func (f *fakeTmux) exec(capture bool, stdin []byte, args ...string) (string, err
 	fn := f.funcs[verb]
 	real := f.real
 	ans, ok := f.verbs[verb]
-	if verb == sessionListVerb && !ok {
+	if verb == sessionListVerb && !ok && real == nil {
 		ans, ok = f.verbs["list-panes"], true
 		switch args[len(args)-1] {
 		case sessionPaneWindowFormat:
