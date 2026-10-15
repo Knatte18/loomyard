@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
+	"github.com/Knatte18/loomyard/internal/shedverbs"
 )
 
 // TestInterruptPolicies_MatchAssembledRows asserts, in both directions, that loomshed.InterruptPolicies covers exactly the rows New and NewDarn assemble.
@@ -42,7 +43,7 @@ func TestInterruptPolicies_MatchAssembledRows(t *testing.T) {
 }
 
 // TestInterruptPolicies_MatchEngineIdentity cross-checks loomshed.InterruptPolicies against the row-to-engine mapping read off wantProducerTable:
-// every row whose engine is "Webster" must carry loomshed.InterruptPolicyHandback, and every row whose engine is anything else must carry loomshed.InterruptPolicyReinvoke.
+// every row whose engine is "Webster" must carry shedverbs.InterruptPolicyHandback, and every row whose engine is anything else must carry shedverbs.InterruptPolicyReinvoke.
 // This is the assertion that keeps a row which changes adapter from silently keeping the wrong policy, and the engine-name side is what makes the Webster exception derivable rather than hand-maintained.
 //
 //testtiming:keep pins the Webster-handback and reinvoke-otherwise policy per row engine, which TestApproveSeam_FailsToBuild never asserts
@@ -55,14 +56,14 @@ func TestInterruptPolicies_MatchEngineIdentity(t *testing.T) {
 		}
 
 		if engineName == "Webster" {
-			if policy != loomshed.InterruptPolicyHandback {
-				t.Errorf("row %q (engine %q) policy = %q; want %q", rowName, engineName, policy, loomshed.InterruptPolicyHandback)
+			if policy != shedverbs.InterruptPolicyHandback {
+				t.Errorf("row %q (engine %q) policy = %q; want %q", rowName, engineName, policy, shedverbs.InterruptPolicyHandback)
 			}
 			continue
 		}
 
-		if policy != loomshed.InterruptPolicyReinvoke {
-			t.Errorf("row %q (engine %q) policy = %q; want %q", rowName, engineName, policy, loomshed.InterruptPolicyReinvoke)
+		if policy != shedverbs.InterruptPolicyReinvoke {
+			t.Errorf("row %q (engine %q) policy = %q; want %q", rowName, engineName, policy, shedverbs.InterruptPolicyReinvoke)
 		}
 	}
 }

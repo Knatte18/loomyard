@@ -1,0 +1,4 @@
+driver_kind: llm  # the driver a shed run is seeded with when nothing typed one: llm or go; a seeded run keeps its recorded driver; a module's own driver_kind overrides it
+tackler: haiku  # model-spec for the tackler, the cold agent a Go driver asks to settle a stop its rules do not (see contracts/specs/llm-model-spec.md); a module's own tackler overrides it
+tackler_timeout_min: 10  # minutes one tackler spawn is allowed to run; 0 takes 10; a module's own positive value overrides it
+tackler_max_spawns: 4  # tackler spawns a run may use; 0 turns the tackler off, so every stop it would take hands back; a module's own set value, 0 included, overrides it

@@ -2,6 +2,7 @@
 
 `internal/shedverbs` owns the generic `run`, `step`, `status`, `pause` and `goto` verb bodies; no `<module>cli` reimplements one.
 That first clause is review discipline, not a scan: "reimplements" has no static shape a scan can see.
+A recipe's `run` verb may be `internal/sheddriver`'s body, which steps through `shedverbs`' `--until-stop` and goto bodies and restates neither.
 
 ## No derived paths
 

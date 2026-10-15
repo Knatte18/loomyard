@@ -33,7 +33,7 @@
 // DriverLock is the ephemeral Go-driver lock under ScratchDir, distinct from the run lock and the status lock.
 // TacklerDir is the durable directory of a run's tackler attempts, TacklerRel its anchor-relative form and TacklerAttemptDir one attempt's directory (attempt-<N>, 1-based).
 // TacklerMarker is the ephemeral in-flight marker under ScratchDir.
-// SettleRecordsFile is the Go driver's settle-record file in a told friction directory, a non-markdown name so a reflection never archives it.
+// SettleRecords is the Go driver's settle-record file under a run's directory, beside its drive reports.
 //
 // The batten-watched marker's format is declared here too.
 // BattenWatchedContent renders the pid on the first line and, when known, the prime's batten scratch directory and the Run-Shed row's name on the next two.

@@ -36,7 +36,7 @@ const tacklerMarkerFileName = "tackler-inflight.json"
 // driverLockFileName is the filename of the Go-driver lock, whose path DriverLock returns.
 const driverLockFileName = "driver.lock"
 
-// settleRecordsFileName is the filename of the Go driver's settle records, whose path SettleRecordsFile returns.
+// settleRecordsFileName is the filename of the Go driver's settle records, whose path SettleRecords returns.
 const settleRecordsFileName = "go-settle.jsonl"
 
 // alignmentDirName is the segment under a run's directory that holds its alignment attempts, one directory per point.
@@ -268,10 +268,10 @@ func TacklerMarker(l *lyxcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), tacklerMarkerFileName)
 }
 
-// SettleRecordsFile returns the path to the Go driver's settle records, settleRecordsFileName in the told friction directory frictionDir.
-// The name is not markdown, so the friction note scan never archives it and the caps counted from it survive a reflection.
-func SettleRecordsFile(frictionDir string) string {
-	return filepath.Join(frictionDir, settleRecordsFileName)
+// SettleRecords returns the path to the Go driver's settle records, settleRecordsFileName under RunDir(l, runID).
+// It sits beside the drive reports, so a run's records commit stages it with the run directory and a dirty-path check counts it as run state.
+func SettleRecords(l *lyxcwd.Location, runID string) string {
+	return filepath.Join(RunDir(l, runID), settleRecordsFileName)
 }
 
 // RunsRootRel returns the worktree-anchor-relative path of the run-records root: the join of lyxdirs.LyxDirName and shedDirName, the directory every run's RunDir sits under.

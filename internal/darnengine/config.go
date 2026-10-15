@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/reviewbudget"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"gopkg.in/yaml.v3"
 )
 
@@ -48,6 +49,22 @@ type Config struct {
 	ReviewMaxBounces int `yaml:"review_max_bounces"`
 	// ReviewHardMaxBounces is the round number at or past which the Darn-Review perch never continues a round; it is at least 1 and not below ReviewMaxBounces, and settable per run.
 	ReviewHardMaxBounces int `yaml:"review_hard_max_bounces"`
+	// DriverKind, Tackler, TacklerTimeoutMin and TacklerMaxSpawns override shed.yaml's keys of the same names for a darn run;
+	// an empty string, a zero and a null inherit shed.yaml, and a set TacklerMaxSpawns of 0 turns the tackler off.
+	DriverKind        string `yaml:"driver_kind"`
+	Tackler           string `yaml:"tackler"`
+	TacklerTimeoutMin int    `yaml:"tackler_timeout_min"`
+	TacklerMaxSpawns  *int   `yaml:"tackler_max_spawns"`
+}
+
+// ShedOverride returns the driver and tackler keys of darn.yaml as the override of shed.yaml's.
+func (c Config) ShedOverride() sheddriver.Override {
+	return sheddriver.Override{
+		DriverKind:        c.DriverKind,
+		Tackler:           c.Tackler,
+		TacklerTimeoutMin: c.TacklerTimeoutMin,
+		TacklerMaxSpawns:  c.TacklerMaxSpawns,
+	}
 }
 
 // ConfigSpec returns darn's layered-load spec.
@@ -59,6 +76,11 @@ func ConfigSpec() configengine.Spec {
 		"writer_timeout_min": configengine.CategoryNone,
 		"verify":             configengine.CategoryExecutable,
 		"verify_attempts":    configengine.CategoryNone,
+
+		"driver_kind":         configengine.CategoryNone,
+		"tackler":             configengine.CategoryNone,
+		"tackler_timeout_min": configengine.CategoryNone,
+		"tackler_max_spawns":  configengine.CategoryNone,
 	}
 	for key, category := range reviewbudget.Categories(nil) {
 		categories[key] = category
@@ -71,9 +93,12 @@ func ConfigSpec() configengine.Spec {
 	}
 }
 
-// ValidateLocalValues checks the review budget keys a local-layer document sets against their bounds, and leaves every other key to LoadConfig.
+// ValidateLocalValues checks the review budget keys and the shed override keys a local-layer document sets against their bounds, and leaves every other key to LoadConfig.
 // A refusal is marked configengine.ErrInvalid and names the key.
 func ValidateLocalValues(document []byte) error {
+	if err := sheddriver.CheckLocalOverride(configModule, document); err != nil {
+		return err
+	}
 	var set map[string]any
 	if err := yaml.Unmarshal(document, &set); err != nil {
 		return configengine.MarkInvalid(fmt.Errorf("unmarshal darn local values: %w", err))
@@ -103,6 +128,10 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 
 	if _, err := modelspec.Parse(cfg.Writer); err != nil {
 		return Config{}, fmt.Errorf("darn config key %q: %w", "writer", err)
+	}
+
+	if err := sheddriver.CheckOverride(configModule, cfg.ShedOverride()); err != nil {
+		return Config{}, err
 	}
 
 	if err := reviewbudget.CheckResolved(dirs, spec, reviewbudget.Values{RunSoft: cfg.ReviewMaxBounces, RunHard: cfg.ReviewHardMaxBounces}); err != nil {

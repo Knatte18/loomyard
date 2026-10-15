@@ -10,6 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/haltnote"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
@@ -28,7 +29,7 @@ func roundFiguresOf(run RunRow) roundFigures {
 
 // arbiterAt is an arbiter attempt that stopped at producer in state, spawned at hour.
 func arbiterAt(producer, state string, hour int) loomengine.ArbiterAttempt {
-	return loomengine.ArbiterAttempt{StopKey: loomengine.ArbiterStopKey{CurrentProducer: producer, State: state}, SpawnedAt: at(hour)}
+	return loomengine.ArbiterAttempt{StopKey: sheddriver.StopKey{CurrentProducer: producer, State: state}, SpawnedAt: at(hour)}
 }
 
 func TestCompute_RepairsAndRounds(t *testing.T) {

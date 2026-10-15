@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shell"
@@ -100,8 +101,18 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, strin
 	if err != nil {
 		return "", "", bootstrapStageSeed, err
 	}
-	driver := resolveSeedDriver(existingSeed, seedFound, loomengine.ResolveDriverKind(c.cfg))
-	if err := shedrun.WriteSeed(c.location, shedrun.SelfRunID, loomSeedFor(resolveSeedRecipe(existingSeed, seedFound), parent, driver)); err != nil {
+	seedRecipe := resolveSeedRecipe(existingSeed, seedFound)
+	configDirs := fabricengine.ConfigDirs(c.location)
+	shedConfig, err := sheddriver.LoadConfig(configDirs)
+	if err != nil {
+		return "", "", bootstrapStageSeed, err
+	}
+	recipeOverride, err := loomengine.RecipeOverride(configDirs, seedRecipe)
+	if err != nil {
+		return "", "", bootstrapStageSeed, err
+	}
+	driver := resolveSeedDriver(existingSeed, seedFound, sheddriver.ResolveDriverKind(shedConfig, recipeOverride))
+	if err := shedrun.WriteSeed(c.location, shedrun.SelfRunID, loomSeedFor(seedRecipe, parent, driver)); err != nil {
 		if errors.Is(err, shedrun.ErrDisagreeingSeed) {
 			err = disagreeingSeedRefusal(shedrun.SeedFile(c.location, shedrun.SelfRunID), existingSeed, parent)
 		}

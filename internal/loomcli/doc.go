@@ -8,7 +8,7 @@
 //
 // `lyx loom start` works in order.
 // It resolves the recorded parent branch, seeds the status file when absent and commits the seed into the fabric before anything else touches it.
-// An unseeded run is seeded with the driver `driver_kind` resolves to, `llm` by default;
+// An unseeded run is seeded with the driver `loom.yaml`'s `driver_kind` resolves to over `shed.yaml`'s, `llm` by default;
 // a seeded run keeps its recorded driver whatever the key says later.
 // It brings up the worktree's tmux session;
 // it ensures the status strand on either driver, and the per-hub watchdog daemon is spawned best-effort.
@@ -137,12 +137,13 @@
 // a run already paused at the verdict's goto target with only goto entries since the spawn, the last naming that target, is admitted with no second goto.
 // A pair's session end ends a live arbiter strand with the pair's other strands.
 //
-// The Go driver calls this same path in-process, so eligibility, `arbiter_max_spawns`, the attempts, the applied mark and the deadlines are shared;
+// The Go driver reaches the arbiter through its arbiter seam, which calls this same path in-process, so eligibility, `arbiter_max_spawns`, the attempts, the applied mark and the deadlines are shared;
 // it passes the tackler's case brief, which the arbiter's prompt asks it to check against the facts.
 //
 // # Go driver
 //
 // `lyx loom drive` is the hidden role verb that drives a go-seeded run, spawned by `lyx loom start`, by `lyx loom resume` for a halted go run and by a hand-over.
+// It mounts `internal/sheddriver` with loom's seams, and serves darn runs as well as loom runs; the loop, rule table, hand-back and tackler below are that package's.
 // It takes the run's driver lock without blocking and holds it for its whole life, so a settling driver reads as live while the run lock is free between steps, and a second driver refuses at once.
 // On start it removes the park marker and the resume report.
 //

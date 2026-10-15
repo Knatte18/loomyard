@@ -53,7 +53,7 @@ func TestDriverReportPath(t *testing.T) {
 	t.Run("timestamp is ahead of the random component", func(t *testing.T) {
 		t.Parallel()
 		got := driverReportPath(l, "self", now, func() string { return "cafe" })
-		timestamp := now().Format(driverReportTimestampLayout)
+		timestamp := now().Format("20060102-150405")
 
 		timestampIdx := strings.Index(got, timestamp)
 		randIdx := strings.Index(got, "cafe")

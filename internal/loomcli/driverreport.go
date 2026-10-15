@@ -11,15 +11,11 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// driverReportTimestampLayout is the compact timestamp format driverReportPath interpolates: a
-// directory listing of past attempts sorts correctly by name under this layout, since it carries no
-// separators that would sort out of chronological order.
-const driverReportTimestampLayout = "20060102-150405"
-
-// driverReportPath composes the path to one loom driver attempt's drive report, under the run's durable drive-reports directory: shedrun.DriveReportsDir(l, runID) joined with "drive-report-<compact-timestamp>-<4-hex>.md".
+// driverReportPath composes the path to one loom driver attempt's drive report, under the run's durable drive-reports directory: shedrun.DriveReportsDir(l, runID) joined with sheddriver.ReportFileName's "drive-report-<compact-timestamp>-<4-hex>.md".
 //
 // now and rand are injected seams rather than read directly, so this composer stays pure and a test
 // can drive it with no real clock and no real entropy source. Both halves of the suffix are
@@ -33,8 +29,7 @@ const driverReportTimestampLayout = "20060102-150405"
 // The directory is durable, so the reports can be committed and survive teardown.
 // It is composed through shedrun.DriveReportsDir and never by spelling "_lyx" or "shed" in this package: the Lyxdirs Single-Declarer Invariant and the Shed Run-Directory Invariant both make that a shedrun obligation.
 func driverReportPath(l *lyxcwd.Location, runID string, now func() time.Time, rand func() string) string {
-	filename := fmt.Sprintf("drive-report-%s-%s.md", now().Format(driverReportTimestampLayout), rand())
-	return filepath.Join(shedrun.DriveReportsDir(l, runID), filename)
+	return filepath.Join(shedrun.DriveReportsDir(l, runID), sheddriver.ReportFileName(now(), rand()))
 }
 
 // newDriverReportRand returns the production random source driverReportPath's rand seam consumes: a

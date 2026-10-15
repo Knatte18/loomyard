@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 )
 
 func TestIsArbiterStrand(t *testing.T) {
@@ -38,22 +38,13 @@ func TestIsArbiterStrand(t *testing.T) {
 	}
 }
 
-func TestStopKeyOf(t *testing.T) {
-	t.Parallel()
-	st := shedengine.Status{CurrentProducer: "Plan-Review", State: shedengine.StateBlocked, History: []shedengine.HistoryEntry{{}, {}}}
-	want := ArbiterStopKey{CurrentProducer: "Plan-Review", HistoryLength: 2, State: "blocked"}
-	if got := StopKeyOf(st); got != want {
-		t.Errorf("StopKeyOf(...) = %+v; want %+v", got, want)
-	}
-}
-
 // TestArbiterAttempts pins attempt write and read (the directory filled in and never serialized), listing in attempt order, an absent directory listing none, and a subdirectory with no attempt.json refused by name.
 func TestArbiterAttempts(t *testing.T) {
 	t.Parallel()
 	attempt := func(n int) ArbiterAttempt {
 		return ArbiterAttempt{
 			Number:       n,
-			StopKey:      ArbiterStopKey{CurrentProducer: "B", HistoryLength: n, State: "blocked"},
+			StopKey:      sheddriver.StopKey{CurrentProducer: "B", HistoryLength: n, State: "blocked"},
 			PauseBefore:  "C",
 			PauseAfter:   "A",
 			SpawnedAt:    time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),

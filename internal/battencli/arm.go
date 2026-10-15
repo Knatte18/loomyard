@@ -34,12 +34,15 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/battenshed"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedtransient"
@@ -119,7 +122,7 @@ func battenDriver(flagVal string) string {
 // A driver the operator typed cannot take effect on a seeded run, so it is refused rather than
 // dropped; one left at its cobra default carries no intent to contradict and is ignored.
 // A typed --child-driver is refused against a seed recording a different child driver and against a seed recording none;
-// an untyped one passes a seed that records none, since the child then takes the task's driver_kind.
+// an untyped one passes a seed that records none, since the child then takes its recipe's driver_kind, then shed.yaml's.
 func refuseAdoptedSeed(seed shedrun.Seed, runID string, driverFlag string, driverSet bool, childDriverFlag string, childDriverSet bool) error {
 	if seed.Recipe != shedrun.RecipeBatten {
 		return fmt.Errorf(
@@ -137,7 +140,7 @@ func refuseAdoptedSeed(seed shedrun.Seed, runID string, driverFlag string, drive
 		recorded, has := childDriverOf(seed)
 		if !has {
 			return fmt.Errorf(
-				"battencli: run %q is already seeded with no child driver; --child-driver %q cannot be recorded on a seeded run -- delete the run's seed to re-seed it with the flag, or drop the flag to take the task's driver_kind",
+				"battencli: run %q is already seeded with no child driver; --child-driver %q cannot be recorded on a seeded run -- delete the run's seed to re-seed it with the flag, or drop the flag to take the child recipe's driver_kind, then shed.yaml's",
 				runID, childDriverFlag,
 			)
 		}
@@ -168,6 +171,20 @@ func childDriverFrom(seed shedrun.Seed, found bool, resolveKind func() (string, 
 		}
 	}
 	return resolveKind()
+}
+
+// childDriverKind resolves the driver of a child run of recipe from the config layers under dirs:
+// the recipe's own driver_kind override, else shed.yaml's, else llm.
+func childDriverKind(dirs configengine.Dirs, recipe string) (string, error) {
+	shed, err := sheddriver.LoadConfig(dirs)
+	if err != nil {
+		return "", err
+	}
+	override, err := loomengine.RecipeOverride(dirs, recipe)
+	if err != nil {
+		return "", err
+	}
+	return sheddriver.ResolveDriverKind(shed, override), nil
 }
 
 // armSeed gates batten's auto-seed: it reads the seed at runID, refuses a found seed that disagrees
@@ -240,7 +257,7 @@ func (c *battenCLI) armSeed(location *lyxcwd.Location, runID, verb string) error
 	}
 
 	// The run-id is the slug; no param repeats it.
-	// child_driver is recorded only when the operator typed it; Seed-Child resolves the rest from the task's driver_kind.
+	// child_driver is recorded only when the operator typed it; Seed-Child resolves the rest from the child recipe's driver_kind, then shed.yaml's.
 	var params map[string]string
 	if c.childDriverFlagSet {
 		params = map[string]string{"child_driver": c.childDriverFlag}
@@ -391,7 +408,6 @@ func (c *battenCLI) specFor(verb string) shedverbs.Spec {
 		PauseAbsentMessage: fmt.Sprintf("battencli: no status file at %s; there is nothing running to pause -- run \"lyx batten run <slug>\" first", c.shedPaths.StatusPath),
 		Hooks: shedverbs.Hooks{
 			PreRun:       c.battenPreRun,
-			PostRun:      c.battenPostRun,
 			PreStep:      c.battenPreStep,
 			StatusExtras: c.battenStatusExtras,
 			PreGoto:      c.battenPreGoto,
@@ -413,14 +429,49 @@ func (c *battenCLI) specFor(verb string) shedverbs.Spec {
 		spec.RunID = shedrun.ResolveRunID(c.location, c.slug)
 	}
 	spec.Routing = c.routing
+	spec.Hooks.InterruptPolicyFor = battenInterruptPolicy
+	if c.location != nil {
+		spec.Loop = battenLoopSpec(c.location, c.slug)
+	}
 
 	return spec
+}
+
+// battenLoopSpec builds the loop arming of the batten run slug under location.
+// It leaves IdleTimeout zero and Activity nil: Run-Shed waits idle by design, so the watchdog stays disarmed and a wedged step is ended only by the operator's pause or by ending the detached loop job.
+func battenLoopSpec(location *lyxcwd.Location, slug string) shedverbs.LoopSpec {
+	executable, err := os.Executable()
+	if err != nil {
+		logger.Warn("battencli: could not resolve the running binary, so the loop has no executable", "error", err.Error())
+	}
+	return shedverbs.LoopSpec{
+		LockPath:     shedrun.LoopLock(location, slug),
+		PIDPath:      shedrun.LoopPIDFile(location, slug),
+		LogPath:      shedrun.LoopLog(location, slug),
+		EnvelopePath: shedrun.LoopEnvelope(location, slug),
+		JobName:      shedrun.LoopJobName(location, slug),
+		Delivered:    func(loopID string) string { return shedrun.LoopDelivered(location, slug, loopID) },
+		StopFiles: func(traceID string) (string, string) {
+			return shedrun.StepTraceCopy(location, slug, traceID), shedrun.StepStderr(location, slug, traceID)
+		},
+		TraceFiles: func(traceID string) ([]string, error) { return logger.TraceFilesFor(logger.TraceDir(), traceID) },
+		Executable: executable,
+	}
+}
+
+// battenInterruptPolicy answers the interrupt policy of a step that ended without an envelope at row:
+// Run-Shed, whose wait reattaches to the child run, is stepped again under the repair cap, and a step at any other row, the empty name included, hands back.
+func battenInterruptPolicy(row string) string {
+	if row == battenrecipe.NameRunShed {
+		return shedverbs.InterruptPolicyReinvoke
+	}
+	return shedverbs.InterruptPolicyHandback
 }
 
 // Arm is battencli's exported resolution entry point, for batten's own subtree: it constructs a
 // fresh receiver and returns c.arm(cwd, verb, args), resolving cwd itself. A package-level Arm
 // alone could not serve resolvePersistentPreRun, because wire is a method on the receiver and the
-// hooks close over c.env, c.shedPaths and c.abandonedSession, and the pre-run's own c.location and
+// hooks close over c.env and c.shedPaths, and the pre-run's own c.location and
 // c.slug assignments would stop happening.
 func Arm(cwd string, verb string, args []string) (shedverbs.Spec, error) {
 	c := &battenCLI{}
@@ -635,22 +686,6 @@ func (c *battenCLI) battenPreStepUnmarked(ctx context.Context) (string, error) {
 	return "", nil
 }
 
-// battenPostRun implements the PostRun hook for batten's spec: it returns the envelope's
-// "abandonedSession" key only when c.abandonedSession is non-empty, preserving today's
-// conditional emission.
-// It returns nil on a non-nil runErr, so batten's error envelope keeps exactly its own keys.
-//
-// The run envelope deliberately carries neither a mutations array nor a partial bool: a run may
-// perform zero, one, or two topology mutations at arbitrary points hours apart, so there is no
-// coherent single array at run scope, and partial has no referent here. The mutation records are
-// logged at Info by the wiring closures (wire.go) instead of discarded.
-func (c *battenCLI) battenPostRun(ctx context.Context, result shedengine.Result, runErr error) map[string]any {
-	if runErr != nil || c.abandonedSession == "" {
-		return nil
-	}
-	return map[string]any{"abandonedSession": c.abandonedSession}
-}
-
 // maxStatusHistoryEntries caps the history entries the status envelope carries.
 // History grows only when Run-Shed's wait returns: on a state change, a pause or a failed status stat, each its own entry.
 // The cap still keeps a long run from burying the two ends that carry the run's meaning.
@@ -731,8 +766,7 @@ func (c *battenCLI) readChildStatus() (shedengine.Status, bool) {
 
 // readAbandonedSession reads back the record battenshed's teardown row writes when session shutdown
 // abandoned a session rather than ending it cleanly, reporting found == false when there is none.
-// Reading it here is what gives a step-driven lifecycle the same fact a run-driven one gets from
-// the PostRun hook, which shedverbs' closed step envelope has no counterpart for.
+// The record outlives the process that observed the shutdown, so the status verb and the run verb's envelope read the same fact from it.
 func readAbandonedSession(scratchDir string) (string, bool) {
 	if scratchDir == "" {
 		return "", false

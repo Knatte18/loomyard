@@ -20,7 +20,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
-	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 )
 
 // ArbiterRole is the agent-name role of an arbiter strand; a second arbiter of a run takes the numbered form.
@@ -46,29 +46,17 @@ func IsArbiterStrand(name string) bool {
 	return err == nil && agentname.MatchesRole(parsed.Role, ArbiterRole)
 }
 
-// ArbiterStopKey identifies the stop an attempt arbitrates: the status file's current producer, history length and state.
-type ArbiterStopKey struct {
-	CurrentProducer string `json:"current_producer"`
-	HistoryLength   int    `json:"history_length"`
-	State           string `json:"state"`
-}
-
-// StopKeyOf reads the stop key off a status.
-func StopKeyOf(st shedengine.Status) ArbiterStopKey {
-	return ArbiterStopKey{CurrentProducer: st.CurrentProducer, HistoryLength: len(st.History), State: string(st.State)}
-}
-
 // ArbiterAttempt is attempt.json: the record the arbiter verb writes before it spawns, so the attempt counts against the spawn budget whatever happens next.
 type ArbiterAttempt struct {
-	Number       int            `json:"number"`
-	StopKey      ArbiterStopKey `json:"stop_key"`
-	PauseBefore  string         `json:"pause_before"`
-	PauseAfter   string         `json:"pause_after"`
-	SpawnedAt    time.Time      `json:"spawned_at"`
-	Deadline     time.Time      `json:"deadline"`
-	StrandGUID   string         `json:"strand_guid"`
-	EnvelopePath string         `json:"envelope_path"`
-	ReportPath   string         `json:"report_path"`
+	Number       int                `json:"number"`
+	StopKey      sheddriver.StopKey `json:"stop_key"`
+	PauseBefore  string             `json:"pause_before"`
+	PauseAfter   string             `json:"pause_after"`
+	SpawnedAt    time.Time          `json:"spawned_at"`
+	Deadline     time.Time          `json:"deadline"`
+	StrandGUID   string             `json:"strand_guid"`
+	EnvelopePath string             `json:"envelope_path"`
+	ReportPath   string             `json:"report_path"`
 	// CaseBriefPath is the tackler's case brief the attempt was given, so a re-run names the same brief; omitted when there was none.
 	CaseBriefPath string `json:"case_brief_path,omitempty"`
 

@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -107,7 +108,7 @@ func checkLoadNamed[T any](load func(configengine.Dirs, string) (T, error), modu
 func Modules() []Module {
 	modules := []Module{
 		{Name: "batcher", Template: batcher.ConfigTemplate, OpenMaps: batcher.ConfigOpenMaps(), Migrate: batcher.MigrateConfig, CheckLoad: checkLoad(batcher.Active), Spec: batcher.ConfigSpec},
-		{Name: "batten", Template: battenshed.ConfigTemplate, CheckLoad: checkLoad(battenshed.LoadConfig), Spec: battenshed.ConfigSpec},
+		{Name: "batten", Template: battenshed.ConfigTemplate, CheckValues: battenshed.ValidateLocalValues, CheckLoad: checkLoad(battenshed.LoadConfig), Spec: battenshed.ConfigSpec},
 		{Name: "board", Template: boardengine.ConfigTemplate, OpenMaps: boardengine.ConfigOpenMaps(), HubWide: true, CheckLoad: checkLoadNamed(boardengine.LoadConfig, "board"), Spec: boardengine.ConfigSpec},
 		{Name: "burler", Template: burlerengine.ConfigTemplate, SeedOnly: true, CheckLoad: checkLoad(burlerengine.LoadConfig), Spec: burlerengine.ConfigSpec},
 		{Name: "darn", Template: darnengine.ConfigTemplate, HubWide: true, CheckValues: darnengine.ValidateLocalValues, CheckLoad: checkLoadNamed(darnengine.LoadConfig, "darn"), Spec: darnengine.ConfigSpec},
@@ -119,6 +120,7 @@ func Modules() []Module {
 		{Name: "models", Template: modelspec.ConfigTemplate, SeedOnly: true, CheckLoad: checkLoad(modelspec.LoadRegistry), Spec: modelspec.ConfigSpec},
 		{Name: "orch", Template: orchengine.ConfigTemplate, Migrate: orchengine.MigrateConfig, CheckLoad: checkLoadNamed(orchengine.LoadConfig, "orch"), Spec: orchengine.ConfigSpec},
 		{Name: "reed", Template: reedengine.ConfigTemplate, CheckLoad: checkLoadNamed(reedengine.LoadConfig, "reed"), Spec: reedengine.ConfigSpec},
+		{Name: "shed", Template: sheddriver.ConfigTemplate, CheckValues: sheddriver.ValidateLocalValues, CheckLoad: checkLoad(sheddriver.LoadConfig), Spec: sheddriver.ConfigSpec},
 		{Name: "shuttle", Template: shuttleengine.ConfigTemplate, OpenMaps: shuttleengine.ConfigOpenMaps(), Migrate: shuttleengine.MigrateConfig, CheckLoad: checkLoadNamed(shuttleengine.LoadConfig, "shuttle"), Spec: shuttleengine.ConfigSpec},
 		{Name: "webster", Template: websterengine.ConfigTemplate, CheckLoad: checkLoadNamed(websterengine.LoadConfig, "webster"), Spec: websterengine.ConfigSpec},
 	}

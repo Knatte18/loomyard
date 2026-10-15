@@ -56,7 +56,7 @@ func Eligibility(stop Stop) error {
 		switch {
 		case stop.Kind == shedverbs.KindProducer, stop.Kind == shedverbs.KindBootstrap, stop.Transient != "":
 			return nil
-		case stop.Kind == shedverbs.KindInterrupted && stop.InterruptPolicy == loomshed.InterruptPolicyReinvoke:
+		case stop.Kind == shedverbs.KindInterrupted && stop.InterruptPolicy == shedverbs.InterruptPolicyReinvoke:
 			return nil
 		case stop.Kind == shedverbs.KindInterrupted:
 			return refuse(fmt.Sprintf("the run was interrupted at %q, whose policy hands back", stop.Producer))

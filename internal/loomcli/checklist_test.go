@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/statuspane"
 )
@@ -772,7 +773,7 @@ func TestRenderChecklist(t *testing.T) {
 		attempt := func(number int) loomengine.ArbiterAttempt {
 			return loomengine.ArbiterAttempt{
 				Number:    number,
-				StopKey:   loomengine.ArbiterStopKey{HistoryLength: 2},
+				StopKey:   sheddriver.StopKey{HistoryLength: 2},
 				SpawnedAt: checklistClock,
 				Deadline:  checklistClock.Add(10 * time.Minute),
 			}

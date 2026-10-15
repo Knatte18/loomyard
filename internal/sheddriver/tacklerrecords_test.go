@@ -1,6 +1,6 @@
 // tackler_test.go — untagged Tier-1 tests for the tackler's record readers and writers, over temp directories.
 
-package loomengine
+package sheddriver
 
 import (
 	"os"
@@ -55,7 +55,7 @@ func TestTacklerRecords(t *testing.T) {
 		attempt := func(n int) TacklerAttempt {
 			return TacklerAttempt{
 				Number:       n,
-				StopKey:      ArbiterStopKey{CurrentProducer: "B", HistoryLength: n, State: "paused"},
+				StopKey:      StopKey{CurrentProducer: "B", HistoryLength: n, State: "paused"},
 				PauseBefore:  "C",
 				PauseAfter:   "A",
 				Snapshot:     WorktreeSnapshot{Head: "abc", Branch: "task", Dirty: map[string]string{"a.go": "h1"}},

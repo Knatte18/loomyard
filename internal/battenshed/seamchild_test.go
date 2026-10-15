@@ -21,6 +21,7 @@ import (
 // two-source split (recipe from the Board, driver from ChildDriver) rather than trusting a single
 // combined value.
 type seedChildCalls struct {
+	driverRecipe string
 	writeRecipe  string
 	writeDriver  string
 	writeCalled  bool
@@ -45,7 +46,8 @@ func newSeedChildDeps(boardType string, boardErr error, driver string, driverErr
 		ReadBoardType: func(ctx context.Context) (string, error) {
 			return boardType, boardErr
 		},
-		ChildDriver: func() (string, error) {
+		ChildDriver: func(recipe string) (string, error) {
+			calls.driverRecipe = recipe
 			calls.events = append(calls.events, "driver")
 			return driver, driverErr
 		},
@@ -97,6 +99,9 @@ func TestSeedChild_RecipeFromTheBoardTypeAndDriverFromChildDriver(t *testing.T) 
 			shedfake.RequireOutcome(t, producer, shedengine.Done)
 			if calls.writeRecipe != tt.wantRecipe {
 				t.Errorf("WriteSeed recipe = %q; want %q", calls.writeRecipe, tt.wantRecipe)
+			}
+			if calls.driverRecipe != tt.wantRecipe {
+				t.Errorf("ChildDriver recipe = %q; want %q", calls.driverRecipe, tt.wantRecipe)
 			}
 			if calls.writeDriver != "claude" {
 				t.Errorf("WriteSeed driver = %q; want %q (the injected ChildDriver value)", calls.writeDriver, "claude")
@@ -263,7 +268,7 @@ func TestSeedChild_CancelledDuringASeamErrorReportsTheCancellation(t *testing.T)
 			deps: func(cancel context.CancelFunc) SeedChildDeps {
 				return withNoRunSettings(SeedChildDeps{
 					ReadBoardType: func(ctx context.Context) (string, error) { return "batten", nil },
-					ChildDriver: func() (string, error) {
+					ChildDriver: func(string) (string, error) {
 						cancel()
 						return "", errors.New("driver read failed")
 					},
@@ -278,7 +283,7 @@ func TestSeedChild_CancelledDuringASeamErrorReportsTheCancellation(t *testing.T)
 			deps: func(cancel context.CancelFunc) SeedChildDeps {
 				return withNoRunSettings(SeedChildDeps{
 					ReadBoardType: func(ctx context.Context) (string, error) { return "batten", nil },
-					ChildDriver:   func() (string, error) { return "claude", nil },
+					ChildDriver:   func(string) (string, error) { return "claude", nil },
 					WriteSeed: func(ctx context.Context, recipe, driver string) error {
 						cancel()
 						return errors.New("resolve seed path failed")

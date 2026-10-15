@@ -43,12 +43,14 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/reviewbudget"
 	"github.com/Knatte18/loomyard/internal/seatengine"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 	"gopkg.in/yaml.v3"
@@ -432,12 +434,12 @@ type Config struct {
 	ArbiterTimeoutMin int    `yaml:"arbiter_timeout_min"`
 	ArbiterMaxSpawns  int    `yaml:"arbiter_max_spawns"`
 
-	// The driver a task's loom run is seeded with when nothing typed one, and the tackler's model-spec, timeout and spawn budget.
-	// An empty DriverKind reads as llm; an empty Tackler takes haiku, a zero TacklerTimeoutMin takes 10 minutes, and a zero TacklerMaxSpawns turns the tackler off.
+	// The driver a task's loom run is seeded with when nothing typed one, and the tackler's model-spec, timeout and spawn budget; each overrides shed.yaml's key.
+	// An empty DriverKind or Tackler, a zero TacklerTimeoutMin and a null TacklerMaxSpawns inherit shed.yaml, and a set TacklerMaxSpawns of 0 turns the tackler off.
 	DriverKind        string `yaml:"driver_kind"`
 	Tackler           string `yaml:"tackler"`
 	TacklerTimeoutMin int    `yaml:"tackler_timeout_min"`
-	TacklerMaxSpawns  int    `yaml:"tackler_max_spawns"`
+	TacklerMaxSpawns  *int   `yaml:"tackler_max_spawns"`
 
 	// The alignment agent's model-spec, timeout and switches.
 	// An empty Alignment takes opus[high] and a zero AlignmentTimeoutMin takes 20 minutes, kept below ParentReviewWaitMin.
@@ -757,7 +759,8 @@ func validateFanKeys(dirs configengine.Dirs, cfg Config) error {
 // A document holding skip_merge_review was written under the old schema, where a per-perch budget of 0 meant "take review_max_bounces":
 // each of the four per-perch budgets that is the integer 0 becomes null, skip_merge_review true becomes merge_max_bounces: 0, and the key is removed.
 // A document without skip_merge_review keeps every budget as written, since its 0 already means zero rounds.
-// A document without a retired key is returned unchanged, so a migrated file is unchanged on a second pass.
+// The driver_kind, tackler, tackler_timeout_min and tackler_max_spawns keys the retired template spelled out as llm, haiku, 10 and 4 become the values that inherit shed.yaml, and each of the four keys carrying the retired template's comment gets the current one.
+// A document without a retired key or comment is returned unchanged, so a migrated file is unchanged on a second pass.
 // Everything else is carried through yaml node editing with its comments;
 // the loader never calls it.
 // A document that does not parse returns an error marked configengine.ErrInvalid.
@@ -779,7 +782,87 @@ func MigrateConfig(existing []byte) ([]byte, []string, error) {
 	if err != nil {
 		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate loom config: %w", err))
 	}
-	return migrated, append(rewrites, retiredLines...), nil
+	rewrites = append(rewrites, retiredLines...)
+	migrated, shedLines, err := migrateShedOverrides(migrated)
+	if err != nil {
+		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate loom config: %w", err))
+	}
+	return migrated, append(rewrites, shedLines...), nil
+}
+
+// retiredShedKeyComments holds the line comment the retired loom template carried on each of the four driver and tackler keys, in the order the keys sit in loom.yaml.
+// migrateShedOverrides keys on them, so they are never edited.
+var retiredShedKeyComments = []struct{ key, comment string }{
+	{"driver_kind", "# the driver a task's loom run is seeded with when nothing typed one: llm or go; a seeded run keeps its recorded driver"},
+	{"tackler", "# model-spec for the tackler, the cold agent a Go driver asks to settle a stop its rules do not (see contracts/specs/llm-model-spec.md); empty takes haiku"},
+	{"tackler_timeout_min", "# minutes one tackler spawn is allowed to run; 0 takes 10"},
+	{"tackler_max_spawns", "# tackler spawns a run may use; 0 turns the tackler off, so every stop it would take hands back"},
+}
+
+// migrateShedOverrides moves the four driver and tackler keys of document off the retired template's defaults, in two steps of one pass, and returns document itself, with no lines, when neither fires.
+// First, when driver_kind, tackler, tackler_timeout_min and tackler_max_spawns hold exactly llm, haiku, 10 and 4 and driver_kind carries the retired comment, they become the inherit values "", "", 0 and null.
+// Second, each of the four keys whose line comment is the retired template's text gets the current template's comment, its value untouched.
+// A comment edited by hand is kept, and a document without comments, such as a run_settings document, fires neither step.
+func migrateShedOverrides(document []byte) ([]byte, []string, error) {
+	var tree yaml.Node
+	if err := yaml.Unmarshal(document, &tree); err != nil {
+		return nil, nil, err
+	}
+	if tree.Kind != yaml.DocumentNode || len(tree.Content) == 0 || tree.Content[0].Kind != yaml.MappingNode {
+		return document, nil, nil
+	}
+	root := tree.Content[0]
+
+	var current yaml.Node
+	if err := yaml.Unmarshal([]byte(ConfigTemplate()), &current); err != nil {
+		return nil, nil, fmt.Errorf("unmarshal loom config template: %w", err)
+	}
+
+	var lines []string
+	retiredValues := map[string]string{"driver_kind": "llm", "tackler": "haiku", "tackler_timeout_min": "10", "tackler_max_spawns": "4"}
+	allRetired := true
+	for key, retired := range retiredValues {
+		value := mappingValueNode(root, key)
+		if value == nil || value.Kind != yaml.ScalarNode || value.Value != retired {
+			allRetired = false
+		}
+	}
+	if allRetired && mappingValueNode(root, "driver_kind").LineComment == retiredShedKeyComments[0].comment {
+		inherit := map[string]yaml.Node{
+			"driver_kind":         {Kind: yaml.ScalarNode, Tag: "!!str", Style: yaml.DoubleQuotedStyle, Value: ""},
+			"tackler":             {Kind: yaml.ScalarNode, Tag: "!!str", Style: yaml.DoubleQuotedStyle, Value: ""},
+			"tackler_timeout_min": {Kind: yaml.ScalarNode, Tag: "!!int", Value: "0"},
+			"tackler_max_spawns":  {Kind: yaml.ScalarNode, Tag: "!!null", Value: "~"},
+		}
+		for key, replacement := range inherit {
+			value := mappingValueNode(root, key)
+			value.Tag, value.Style, value.Value = replacement.Tag, replacement.Style, replacement.Value
+		}
+		lines = append(lines, "driver_kind, tackler, tackler_timeout_min and tackler_max_spawns rewritten from the retired llm, haiku, 10 and 4 to the values that inherit shed.yaml")
+	}
+
+	for _, retired := range retiredShedKeyComments {
+		value := mappingValueNode(root, retired.key)
+		if value == nil || value.LineComment != retired.comment {
+			continue
+		}
+		value.LineComment = mappingValueNode(current.Content[0], retired.key).LineComment
+		lines = append(lines, retired.key+": comment refreshed to say it overrides shed.yaml")
+	}
+	if len(lines) == 0 {
+		return document, nil, nil
+	}
+
+	var out bytes.Buffer
+	encoder := yaml.NewEncoder(&out)
+	encoder.SetIndent(2)
+	if err := encoder.Encode(&tree); err != nil {
+		return nil, nil, fmt.Errorf("encode migrated loom config: %w", err)
+	}
+	if err := encoder.Close(); err != nil {
+		return nil, nil, fmt.Errorf("encode migrated loom config: %w", err)
+	}
+	return out.Bytes(), lines, nil
 }
 
 // migrateProducerKeys replaces the retired discussion_producer and plan_producer keys of document, as MigrateConfig describes, and returns document itself, with no lines, when it holds neither.
@@ -990,59 +1073,38 @@ func mappingKeyIndex(mapping *yaml.Node, key string) int {
 	return -1
 }
 
-// validateDriverKind refuses a driver_kind other than empty, llm or go, through shedrun.ValidateDriver so the vocabulary stays shedrun's.
-func validateDriverKind(driverKind string) error {
-	if driverKind == "" {
-		return nil
+// ShedOverride returns the driver and tackler keys of loom.yaml as the override of shed.yaml's.
+func (c Config) ShedOverride() sheddriver.Override {
+	return sheddriver.Override{
+		DriverKind:        c.DriverKind,
+		Tackler:           c.Tackler,
+		TacklerTimeoutMin: c.TacklerTimeoutMin,
+		TacklerMaxSpawns:  c.TacklerMaxSpawns,
 	}
-	if err := shedrun.ValidateDriver(driverKind); err != nil {
-		return fmt.Errorf("loom config key %q: %w; set driver_kind to llm or go in loom.yaml or the task's run_settings", "driver_kind", err)
-	}
-	return nil
 }
 
-// validateTacklerKnobs refuses a negative tackler_timeout_min or tackler_max_spawns; zero is a meaning on both.
-func validateTacklerKnobs(timeoutMin, maxSpawns int) error {
-	for _, knob := range []struct {
-		key   string
-		value int
-		zero  string
-	}{
-		{"tackler_timeout_min", timeoutMin, "0 for the 10 minute default"},
-		{"tackler_max_spawns", maxSpawns, "0 to turn the tackler off"},
-	} {
-		if knob.value < 0 {
-			return fmt.Errorf("loom config key %q: must not be negative, got %d; set it to %s, or to a positive integer, in loom.yaml or the task's run_settings", knob.key, knob.value, knob.zero)
+// RecipeOverride loads the shed override of a run's recipe from the config layers under dirs:
+// darn.yaml for shedrun.RecipeDarn, and loom.yaml for shedrun.RecipeLoom and the empty recipe.
+func RecipeOverride(dirs configengine.Dirs, recipe string) (sheddriver.Override, error) {
+	if recipe == shedrun.RecipeDarn {
+		cfg, err := darnengine.LoadConfig(dirs, "darn")
+		if err != nil {
+			return sheddriver.Override{}, err
 		}
+		return cfg.ShedOverride(), nil
 	}
-	return nil
+	cfg, err := LoadConfig(dirs, "loom")
+	if err != nil {
+		return sheddriver.Override{}, err
+	}
+	return cfg.ShedOverride(), nil
 }
 
-// ValidateLocalValues checks the values of the driver_kind, tackler_timeout_min and tackler_max_spawns keys a local-layer document sets, and of every review budget and hard-cap key through reviewbudget, and leaves every other key to LoadConfig.
+// ValidateLocalValues checks the values of the driver_kind, tackler, tackler_timeout_min and tackler_max_spawns keys a local-layer document sets, and of every review budget and hard-cap key through reviewbudget, and leaves every other key to LoadConfig.
 // A refusal is marked configengine.ErrInvalid and names the key.
 func ValidateLocalValues(document []byte) error {
-	var set struct {
-		DriverKind        *string `yaml:"driver_kind"`
-		TacklerTimeoutMin *int    `yaml:"tackler_timeout_min"`
-		TacklerMaxSpawns  *int    `yaml:"tackler_max_spawns"`
-	}
-	if err := yaml.Unmarshal(document, &set); err != nil {
-		return configengine.MarkInvalid(fmt.Errorf("unmarshal loom local values: %w", err))
-	}
-	if set.DriverKind != nil {
-		if err := validateDriverKind(*set.DriverKind); err != nil {
-			return configengine.MarkInvalid(err)
-		}
-	}
-	var timeoutMin, maxSpawns int
-	if set.TacklerTimeoutMin != nil {
-		timeoutMin = *set.TacklerTimeoutMin
-	}
-	if set.TacklerMaxSpawns != nil {
-		maxSpawns = *set.TacklerMaxSpawns
-	}
-	if err := validateTacklerKnobs(timeoutMin, maxSpawns); err != nil {
-		return configengine.MarkInvalid(err)
+	if err := sheddriver.CheckLocalOverride("loom", document); err != nil {
+		return err
 	}
 	var budgets map[string]any
 	if err := yaml.Unmarshal(document, &budgets); err != nil {
@@ -1199,18 +1261,7 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		}
 	}
 
-	if err := validateDriverKind(cfg.DriverKind); err != nil {
-		return Config{}, err
-	}
-
-	// tackler is validated only when non-empty: an empty value takes ResolveTackler's default.
-	if cfg.Tackler != "" {
-		if _, err := modelspec.Parse(cfg.Tackler); err != nil {
-			return Config{}, fmt.Errorf("loom config key %q: %w; set it to a model-spec the registry defines, or to empty to take haiku", "tackler", err)
-		}
-	}
-
-	if err := validateTacklerKnobs(cfg.TacklerTimeoutMin, cfg.TacklerMaxSpawns); err != nil {
+	if err := sheddriver.CheckOverride("loom", cfg.ShedOverride()); err != nil {
 		return Config{}, err
 	}
 
