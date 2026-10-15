@@ -478,6 +478,11 @@
 // An engine the set does not hold is refused naming the session and the engine;
 // an entry with no engine, written before engines were recorded, reads through the default engine and is refused when that default cannot audit forks.
 // The bound is the single registered engine: an engine-less entry read through a default other than the engine that ran it either fails that engine's audit or audits nothing.
+// Each spawn checks its role's engine first.
+// Run checks the master and recovery roles as an entry gate before it takes the state lock, so a refusal stops no strand and writes nothing.
+// RecoverSpawnOrAttach checks the recovery role again once it has found no live recovery to attach to, because the key can change mid-run.
+// A role whose engine is not held or cannot audit forks is refused naming its webster.yaml key; the attach, await and terminal paths check no key.
+// The default engine is checked only when a role's choice resolves to it.
 // The spawn records HEAD as RecoveryStartSHA, read before anything is stopped or started, so a HEAD that cannot be read starts and counts nothing.
 // A re-begin and a rebaseline keep the count.
 // A spawn whose prompt renders an amendment no earlier spawn rendered does not count, so an amendment forces at most one uncounted re-run.

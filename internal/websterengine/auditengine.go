@@ -22,6 +22,25 @@ type AuditEngines interface {
 	DefaultName() string
 }
 
+// roleAuditEngine checks that the engine role's choice resolves to holds fork audit, which every session webster spawns is read through.
+// An empty engine resolves the default engine.
+// The refusal names the role's key in webster.yaml and the engine, and wraps the lookup's error for an engine engines does not hold.
+func roleAuditEngine(engines AuditEngines, role Role, choice shuttleengine.ModelChoice) error {
+	name := choice.Engine
+	if name == "" {
+		name = engines.DefaultName()
+	}
+	const wayForward = "set %s in webster.yaml to an alias whose engine audits forks with lyx config webster, then re-run the verb, or under the Webster row re-step the row"
+	engine, err := engines.Lookup(choice.Engine)
+	if err != nil {
+		return fmt.Errorf("webster: the %s role's engine %q is not held by this lyx: %w; way forward: "+wayForward, role, name, err, role)
+	}
+	if _, ok := engine.(AuditEngine); !ok {
+		return fmt.Errorf("webster: the %s role's engine %q cannot audit forks, which webster needs; way forward: "+wayForward, role, name, role)
+	}
+	return nil
+}
+
 // sessionAuditEngine resolves the engine that session ran under from recorded, the engine name its state entry holds.
 // A name engines holds resolves to that engine; one without fork audit is an internal error, since every spawn checks its engine.
 // A name engines does not hold is refused wrapping the lookup's error, naming the session and the engine.

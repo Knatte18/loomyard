@@ -4,6 +4,7 @@
 package websterengine_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -999,6 +1001,17 @@ func (erroringStarter) Start(spec shuttleengine.Spec) (*shuttleengine.Run, error
 
 var _ websterengine.Starter = erroringStarter{}
 
+// recoverSpawnCase is one TestRecoverSpawnOrAttach row.
+type recoverSpawnCase struct {
+	name  string
+	batch int
+	// setup seeds the state the decision is made over; nil leaves the batch unrecorded.
+	setup func(fx *recoverFixture)
+	// unreadable is a worktree-relative directory chmodded 0o000 after setup and restored at cleanup, skipping the row where permissions do not bind.
+	unreadable string
+	check      func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error)
+}
+
 // TestRecoverSpawnOrAttach asserts RecoverSpawnOrAttach's spawn-or-attach decision for the state a batch is in:
 // no record, a terminal prior or a failed batch spawns fresh, with the recorded card set, the original bracket's start commit, the failure digest and the execution predecessor's digest in the prompt, and any late or malformed report archived;
 // a recorded non-terminal recovery attaches; findings recovery cannot check are refused toward the reset-to-start route; and a failed or not-ready start surfaces without recording a strand.
@@ -1131,15 +1144,53 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 		}
 	}
 
-	cases := []struct {
-		name  string
-		batch int
-		// setup seeds the state the decision is made over; nil leaves the batch unrecorded.
-		setup func(fx *recoverFixture)
-		// unreadable is a worktree-relative directory chmodded 0o000 after setup and restored at cleanup, skipping the row where permissions do not bind.
-		unreadable string
-		check      func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error)
-	}{
+	// roleEngineRefusal returns a row where the recovery choice names engine over a terminal prior recovery, and the spawn is refused before it touches the prior record, report or strand.
+	roleEngineRefusal := func(name, engine string) recoverSpawnCase {
+		var stateBefore []byte
+		marshalState := func(t *testing.T, fx *recoverFixture) []byte {
+			t.Helper()
+			data, err := json.Marshal(fx.Deps.State)
+			if err != nil {
+				t.Fatalf("marshal state: %v", err)
+			}
+			return data
+		}
+		return recoverSpawnCase{
+			name: name,
+			setup: func(fx *recoverFixture) {
+				fx.Deps.Engines = enginesWithHiddenX(shuttlefake.EngineName)
+				fx.Deps.Roles[websterengine.RoleRecovery] = shuttleengine.ModelChoice{Model: "r", Engine: engine}
+				fx.Deps.State.Batches[1] = &websterengine.BatchState{Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead", StrandGUID: "prior-dead-1"}
+				fx.Deps.Stopper = &recordingStopper{}
+				writeWorktreeFile(t, fx.ReportsDir, websterengine.ReportFileName(1, "json-flag"), "status: FAILED\nhead_sha: deadbeef\n")
+				stateBefore = marshalState(t, fx)
+			},
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				if err == nil || spawned {
+					t.Fatalf("RecoverSpawnOrAttach() = spawned %v, error %v; want a refusal", spawned, err)
+				}
+				for _, want := range []string{"recovery", strconv.Quote(engine), "set recovery in webster.yaml"} {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("error %q lacks %q", err, want)
+					}
+				}
+				if fx.Engine.PrepareCalls != 0 {
+					t.Errorf("prepareCalls = %d; want no strand started", fx.Engine.PrepareCalls)
+				}
+				if _, statErr := os.Stat(filepath.Join(fx.ReportsDir, websterengine.ReportFileName(1, "json-flag"))); statErr != nil {
+					t.Errorf("the prior report is not in place: %v", statErr)
+				}
+				if stopped := fx.Deps.Stopper.(*recordingStopper).Stopped; len(stopped) != 0 {
+					t.Errorf("stopped = %q; want the prior strand left alone", stopped)
+				}
+				if got := marshalState(t, fx); !bytes.Equal(got, stateBefore) {
+					t.Errorf("state changed by a refused spawn:\n got %s\nwant %s", got, stateBefore)
+				}
+			},
+		}
+	}
+
+	cases := []recoverSpawnCase{
 		{
 			name: "no recorded batch state spawns fresh and records the card set",
 			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
@@ -1274,6 +1325,24 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 				requireSpawned(t, spawned, err)
 				if stopped := fx.Deps.Stopper.(*recordingStopper).Stopped; len(stopped) != 0 {
 					t.Errorf("stopped = %q; want none", stopped)
+				}
+			},
+		},
+		roleEngineRefusal("a recovery choice on an engine without fork audit is refused", "x"),
+		roleEngineRefusal("a recovery choice on an engine the set does not hold is refused", "absent"),
+		{
+			name: "a recovery choice on an engine without fork audit still attaches to a live recovery",
+			setup: func(fx *recoverFixture) {
+				fx.Deps.Engines = enginesWithHiddenX(shuttlefake.EngineName)
+				fx.Deps.Roles[websterengine.RoleRecovery] = shuttleengine.ModelChoice{Model: "r", Engine: "x"}
+				fx.Deps.State.Batches[1] = &websterengine.BatchState{
+					Slug: "json-flag", Kind: "recovery", Terminal: false, StrandGUID: "still-live-1",
+					SpawnedAt: time.Unix(0, 0).UTC().Format(time.RFC3339),
+				}
+			},
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				if err != nil || spawned || bs == nil || bs.StrandGUID != "still-live-1" {
+					t.Errorf("RecoverSpawnOrAttach() = %+v, spawned %v, error %v; want the live recovery attached", bs, spawned, err)
 				}
 			},
 		},

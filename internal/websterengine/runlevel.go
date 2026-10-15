@@ -399,6 +399,14 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	if deps.Batcher == nil {
 		return RunResult{}, ErrNilBatcher
 	}
+	// recover-batch spawns the recovery role, not Run, so its check here is a pre-flight; a role without a resolved choice is left to the spawn that refuses it.
+	for _, role := range []Role{RoleMaster, RoleRecovery} {
+		if choice, ok := deps.Roles[role]; ok {
+			if err := roleAuditEngine(deps.Engines, role, choice); err != nil {
+				return RunResult{}, err
+			}
+		}
+	}
 	// Run adds the `verify` entry itself, so a caller's gate naming one would run beside it.
 	for _, e := range deps.Gate {
 		if e.Name == verifyGateName {

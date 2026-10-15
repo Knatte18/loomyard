@@ -457,6 +457,12 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 	if prior != nil && prior.Kind == "recovery" && !prior.Terminal && prior.StrandGUID != "" {
 		return prior, false, nil
 	}
+	// The recovery key can change mid-run, so the spawn re-checks it ahead of anything that archives or stops.
+	if choice, ok := deps.Roles[RoleRecovery]; ok {
+		if err := roleAuditEngine(deps.Engines, RoleRecovery, choice); err != nil {
+			return nil, false, err
+		}
+	}
 	if prior != nil && prior.Recoveries >= maxRecoveries && !rendersNewAmendment(prior) {
 		return nil, false, fmt.Errorf("%w: batch %02d has had %d recoveries; %s; or %s", ErrRecoveryExhausted, batchNumber, prior.Recoveries,
 			wayForwardSteps(resetVerb(ResetToBatchStart, batchNumber), fmt.Sprintf("lyx webster recover-batch %d", batchNumber)), freshRestartSteps(stepRun))
