@@ -352,7 +352,7 @@ The real gate is post-merge: once a concurrently-executed batch's worktrees merg
 
 ## Deferred / forward-compat
 
-The **`changes-files`/deviation union** — the artifact webster's fork-return contract compares actual changed files against (a fork reports `OK` and a SHA, while record-batch's mechanical guard produces the file list; a file-list mismatch against this union is always informational, never blocking on its own) — is always informational, never blocking on its own.
+The **`changes-files`/deviation union** — the artifact webster's fork-return contract compares actual changed files against (a fork reports `OK` and a SHA, while record-batch's mechanical guard produces the file list; a file-list mismatch against this union is always informational, never blocking on its own) — is what the guard compares the batch's changes against.
 `Uses:` is excluded from the comparison because it names what a card reads, not what it changes.
 `planglyph.ScopeGuard` defines what counts as inside a batch's targets, and `internal/websterengine`'s package documentation covers the verification semantics.
 
