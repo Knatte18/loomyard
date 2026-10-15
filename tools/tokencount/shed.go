@@ -46,13 +46,18 @@ type ShedRecord struct {
 	Entries []ShedEntry
 }
 
-// ProducerRow is one producer's share of a run's span.
+// ProducerRow is one producer's share of a run's span, machine sleep left out.
 type ProducerRow struct {
 	Producer string
 	Entries  int
 	Elapsed  time.Duration
 	// Idle is the part of Elapsed in which no session of the run was in a turn.
 	Idle time.Duration
+}
+
+// Active is the part of the row's elapsed time in which a session of the run was in a turn.
+func (row ProducerRow) Active() time.Duration {
+	return row.Elapsed - row.Idle
 }
 
 // readShedRecord reads the seed and shed status of the slug's newest tag, tags being ordered newest first.
@@ -173,7 +178,8 @@ func (run *RunTally) useShedRecord(rec ShedRecord) {
 
 // Producers splits the run's span by shed history entry, nil for a run with no shed record.
 // An entry owns the interval from the latest end among the entries before it, the span's start for the first, to its own end, empty when its end is not later.
-// Rows sum the entries per producer and are ordered by elapsed time, longest first, then by name.
+// An interval's elapsed and idle time leave out the machine's sleeps.
+// Rows sum the entries per producer and are ordered by active time, longest first, then by name.
 func (run RunTally) Producers() []ProducerRow {
 	if run.Shed == nil {
 		return nil
@@ -188,8 +194,9 @@ func (run RunTally) Producers() []ProducerRow {
 		}
 		row.Entries++
 		interval := Interval{latest, entry.End}
-		row.Elapsed += interval.Duration()
-		row.Idle += interval.Duration() - covered(run.Working, interval)
+		elapsed := run.awake(interval)
+		row.Elapsed += elapsed
+		row.Idle += elapsed - covered(run.Working, interval)
 		if entry.End.After(latest) {
 			latest = entry.End
 		}
@@ -197,30 +204,28 @@ func (run RunTally) Producers() []ProducerRow {
 	return sortedProducerRows(rows)
 }
 
-// sortedProducerRows returns the rows ordered by elapsed time, longest first, then by producer name.
+// sortedProducerRows returns the rows ordered by active time, longest first, then by producer name.
 func sortedProducerRows(rows map[string]*ProducerRow) []ProducerRow {
 	sorted := make([]ProducerRow, 0, len(rows))
 	for _, row := range rows {
 		sorted = append(sorted, *row)
 	}
 	sort.Slice(sorted, func(i, j int) bool {
-		if sorted[i].Elapsed != sorted[j].Elapsed {
-			return sorted[i].Elapsed > sorted[j].Elapsed
+		if sorted[i].Active() != sorted[j].Active() {
+			return sorted[i].Active() > sorted[j].Active()
 		}
 		return sorted[i].Producer < sorted[j].Producer
 	})
 	return sorted
 }
 
-// sumProducers sums the rows of every run with a shed record per producer, and the spans of those runs.
-func sumProducers(runs []RunTally) ([]ProducerRow, time.Duration) {
+// sumProducers sums the rows of every run with a shed record per producer.
+func sumProducers(runs []RunTally) []ProducerRow {
 	rows := map[string]*ProducerRow{}
-	var span time.Duration
 	for _, run := range runs {
 		if run.Shed == nil {
 			continue
 		}
-		span += run.Span.Duration()
 		for _, row := range run.Producers() {
 			sum := rows[row.Producer]
 			if sum == nil {
@@ -232,23 +237,28 @@ func sumProducers(runs []RunTally) ([]ProducerRow, time.Duration) {
 			sum.Idle += row.Idle
 		}
 	}
-	return sortedProducerRows(rows), span
+	return sortedProducerRows(rows)
 }
 
-// writeProducers writes the Producers table, each row's share being its elapsed time over span.
-func writeProducers(w io.Writer, rows []ProducerRow, span time.Duration) {
+// writeProducers writes the Producers table, each row's share being its active time over the rows' summed active time.
+func writeProducers(w io.Writer, rows []ProducerRow) {
+	var active time.Duration
+	for _, row := range rows {
+		active += row.Active()
+	}
 	fmt.Fprintln(w, "### Producers")
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "| producer | entries | elapsed | idle | share |")
-	fmt.Fprintln(w, "|---|---|---|---|---|")
+	fmt.Fprintln(w, "| producer | entries | elapsed | idle | active | share |")
+	fmt.Fprintln(w, "|---|---|---|---|---|---|")
 	for _, row := range rows {
 		share := 0.0
-		if span > 0 {
-			share = 100 * float64(row.Elapsed) / float64(span)
+		if active > 0 {
+			share = 100 * float64(row.Active()) / float64(active)
 		}
-		fmt.Fprintf(w, "| %s | %d | %s | %s | %.1f%% |\n", row.Producer, row.Entries, row.Elapsed.Round(time.Second), row.Idle.Round(time.Second), share)
+		fmt.Fprintf(w, "| %s | %d | %s | %s | %s | %.1f%% |\n", row.Producer, row.Entries, row.Elapsed.Round(time.Second), row.Idle.Round(time.Second), row.Active().Round(time.Second), share)
 	}
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "A row's elapsed is the gap between finish times, so it includes any wait before the row started, and `Publish` and `Finalize` record no inner breakdown.")
+	fmt.Fprintln(w, "Elapsed and idle leave out machine sleep; active is elapsed minus idle, and the share is a row's active time over the table's summed active time.")
 	fmt.Fprintln(w)
 }

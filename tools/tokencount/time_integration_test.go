@@ -110,7 +110,8 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 
 	reportPath := filepath.Join(t.TempDir(), "report.md")
 	var stdout bytes.Buffer
-	args := []string{"-hub", hub, "-projects", projects, "-" + repositoryFlag, records, "-out", reportPath, "done", "live", "solo"}
+	// -no-sleep keeps the host's journal out of the figures.
+	args := []string{"-hub", hub, "-projects", projects, "-" + repositoryFlag, records, "-out", reportPath, "-no-sleep", "done", "live", "solo"}
 	if err := run(args, &stdout); err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -125,7 +126,7 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 	_, afterDone, _ := strings.Cut(report, "## done\n")
 	donePart, afterLive, _ := strings.Cut(afterDone, "## live\n")
 	livePart, soloPart, _ := strings.Cut(afterLive, "## solo\n")
-	if !strings.Contains(donePart, "| Publish | 1 | 9m0s | 7m0s | 64.3% |") || strings.Contains(donePart, "OldProducer") {
+	if !strings.Contains(donePart, "| Publish | 1 | 9m0s | 7m0s | 2m0s | 50.0% |") || strings.Contains(donePart, "OldProducer") {
 		t.Errorf("finished run lacks the newest tag's Producers table:\n%s", donePart)
 	}
 	if !strings.Contains(livePart, "No shed status was read") || strings.Contains(livePart, "### Producers") {
@@ -145,7 +146,8 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 	if strings.Contains(soloPart, "left out") || !strings.Contains(soloPart, "| burler | 1 |") {
 		t.Errorf("one-tag run = %q; want its transcript counted and no left-out line", soloPart)
 	}
-	if !strings.Contains(report, " for done, live, solo.\n\n") {
+	const sleepOffLine = "Machine sleep counts as time: -no-sleep is set.\n"
+	if !strings.Contains(report, " for done, live, solo.\n"+sleepOffLine+"\n") {
 		t.Errorf("report header lacks the named slugs as given:\n%s", report)
 	}
 	const cutoffOffLine = "The archive-tag cutoff is off: every transcript in each slug's project directory counts.\n"
@@ -168,10 +170,10 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 		}
 	}
 	var defaulted bytes.Buffer
-	if err := run([]string{"-hub", hub, "-projects", projects, "-" + repositoryFlag, records, "-last", "1"}, &defaulted); err != nil {
+	if err := run([]string{"-hub", hub, "-projects", projects, "-" + repositoryFlag, records, "-no-sleep", "-last", "1"}, &defaulted); err != nil {
 		t.Fatalf("run with no slugs: %v", err)
 	}
-	wantHeader := " for the 1 most recent full loom runs: full.\nSkipped 2 more recent runs that are not full loom runs: done, live.\n\n"
+	wantHeader := " for the 1 most recent full loom runs: full.\n" + sleepOffLine + "Skipped 2 more recent runs that are not full loom runs: done, live.\n\n"
 	if !strings.Contains(defaulted.String(), wantHeader) {
 		t.Errorf("default report header lacks %q:\n%s", wantHeader, defaulted.String())
 	}
@@ -198,7 +200,7 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 		assistant("untimed", "claude-sonnet-4-5", 1, 1),
 	)
 	noCutoffPath := filepath.Join(t.TempDir(), "no-cutoff.md")
-	args = []string{"-hub", hub, "-projects", projects, "-" + repositoryFlag, records, "-out", noCutoffPath, "-no-cutoff", "done", "live", "early"}
+	args = []string{"-hub", hub, "-projects", projects, "-" + repositoryFlag, records, "-out", noCutoffPath, "-no-cutoff", "-no-sleep", "done", "live", "early"}
 	if err := run(args, &stdout); err != nil {
 		t.Fatalf("run with -no-cutoff: %v", err)
 	}
@@ -207,7 +209,7 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 	report = string(data)
-	if !strings.Contains(report, " for done, live, early.\n"+cutoffOffLine+"\n") {
+	if !strings.Contains(report, " for done, live, early.\n"+cutoffOffLine+sleepOffLine+"\n") {
 		t.Errorf("-no-cutoff report header lacks the cutoff-off line after the counted runs:\n%s", report)
 	}
 	if strings.Contains(report, "left out") {

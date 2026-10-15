@@ -149,5 +149,5 @@ tools/godocreflow: 6
 tools/internal/devbin: 1
 tools/mdreflow: 3
 tools/sandbox: 28
-tools/tokencount: 16
+tools/tokencount: 17
 tools/wordswap: 3
