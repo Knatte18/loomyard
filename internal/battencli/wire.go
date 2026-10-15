@@ -1139,11 +1139,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				if err != nil {
 					return false, err
 				}
-				records, err := sheddriver.ReadSettleRecords(shedrun.SettleRecordsFile(loomengine.LoomFrictionDir(taskLocation)))
-				if err != nil {
-					return false, err
-				}
-				return sheddriver.GoVerifyRetrySpent(records), nil
+				return childGoVerifyRetrySpent(taskLocation)
 			},
 			// ChildBuildChanged reads the lyx on disk, which a deploy replaces under this running batten, and compares it with the build the child's last step recorded.
 			ChildBuildChanged: func() (string, bool, error) {

@@ -250,7 +250,7 @@ func TestGoDriver_Settle(t *testing.T) {
 			record: &staleRecord, tacklerReturns: tacklerOutcome(sheddriver.TacklerVerdictHandBack, 1),
 			wantCalls:   []string{"step", "tackler"},
 			wantActions: []string{sheddriver.SettleSpawn, sheddriver.SettleHandBack}, wantSettlers: []string{sheddriver.SettlerTackler, sheddriver.SettlerParent},
-			wantReports: 2, wantParked: true, wantHandBack: true, wantReportHas: map[int][]string{2: {"what now?", "tackler attempt 1: verdict hand-back"}},
+			wantReports: 2, wantParked: true, wantHandBack: true, wantReportHas: map[int][]string{2: {"what now?", "tackler attempt 1: verdict hand-back", "Friction directory: /loom-friction"}},
 		},
 		{
 			name:  "a transient stop calls the tackler once, and its resume is consumed then re-stepped",
@@ -443,7 +443,7 @@ func TestGoDriver_Settle(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			root := t.TempDir()
-			settlePath := filepath.Join(root, "friction", "settle-records.jsonl")
+			settlePath := filepath.Join(root, "run", "settle-records.jsonl")
 			for _, record := range tt.settleSeed {
 				if err := sheddriver.AppendSettleRecord(settlePath, record); err != nil {
 					t.Fatalf("seed settle record: %v", err)
@@ -515,6 +515,7 @@ func TestGoDriver_Settle(t *testing.T) {
 					return path, os.WriteFile(path, raw, 0o644)
 				},
 				SettlePath:        settlePath,
+				FrictionDir:       "/loom-friction",
 				EscalationPending: func(string) (bool, error) { return tt.escalation, nil },
 				VerifyRecord: func() (battenshed.ChildPublishFailure, bool, error) {
 					if tt.record == nil {

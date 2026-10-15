@@ -85,7 +85,7 @@ func HoldReading(location *lyxcwd.Location, status shedengine.Status) (battenshe
 			return battenshed.ChildArbiterStop{}, err
 		}
 	}
-	records, err := sheddriver.ReadSettleRecords(shedrun.SettleRecordsFile(loomengine.LoomFrictionDir(location)))
+	records, err := sheddriver.ReadSettleRecords(shedrun.SettleRecords(location, shedrun.SelfRunID))
 	if err != nil {
 		return battenshed.ChildArbiterStop{}, err
 	}

@@ -12,6 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -24,6 +26,15 @@ func readChildPublishFailure(taskLocation *lyxcwd.Location) (battenshed.ChildPub
 		return battenshed.ChildPublishFailure{}, false, err
 	}
 	return battenshed.ChildPublishFailure{Row: record.Row, Head: record.Head, Target: record.Target, WrittenAt: record.WrittenAt}, true, nil
+}
+
+// childGoVerifyRetrySpent reads whether the task worktree's per-run settle records show its Go driver already spent a verify retry.
+func childGoVerifyRetrySpent(taskLocation *lyxcwd.Location) (bool, error) {
+	records, err := sheddriver.ReadSettleRecords(shedrun.SettleRecords(taskLocation, shedrun.SelfRunID))
+	if err != nil {
+		return false, err
+	}
+	return sheddriver.GoVerifyRetrySpent(records), nil
 }
 
 // childHead returns the HEAD commit of the task worktree.

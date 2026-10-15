@@ -49,8 +49,10 @@ type goDriverDeps struct {
 	RunLockHeld func() (bool, error)
 	// SaveEnvelope keeps a stop envelope under the run's drive-reports directory and returns its path.
 	SaveEnvelope func(raw []byte) (string, error)
-	// SettlePath is the settle-records file in the friction directory.
+	// SettlePath is the run's settle-records file.
 	SettlePath string
+	// FrictionDir is the run's friction directory, which the stop report quotes.
+	FrictionDir string
 	// EscalationPending reports whether the arbiter verb would admit the awaiting stop at producer: a Bouncer row whose latest round awaits a decision on a hard-cap or circling escalation, not mere pendency.
 	EscalationPending func(producer string) (bool, error)
 	// VerifyRecord reads the Publish failure record; found is false when there is none.
@@ -865,7 +867,7 @@ func (d *goDriver) reportFor(stop driveStop, h driveHandBack, reportPath string)
 		Rules:         h.Rules,
 		Attempts:      h.Attempts,
 		Question:      h.Question,
-		FrictionDir:   filepath.Dir(d.deps.SettlePath),
+		FrictionDir:   d.deps.FrictionDir,
 		RepairDir:     filepath.Dir(reportPath),
 	}
 }

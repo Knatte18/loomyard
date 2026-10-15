@@ -56,7 +56,7 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (goDriverDeps, error) {
 
 	location := c.location
 	runID := shedrun.ResolveRunID(location, c.runID)
-	settlePath := shedrun.SettleRecordsFile(loomengine.LoomFrictionDir(location))
+	settlePath := shedrun.SettleRecords(location, c.runID)
 	reportRand := newDriverReportRand()
 	readStatus := circlingStatusReader(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
 	verifyPaths := verifytree.NewPaths(location.WorktreePath(), verifytree.Dir(location.AnchorPath()))
@@ -127,7 +127,8 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (goDriverDeps, error) {
 			}
 			return path, os.WriteFile(path, raw, 0o644)
 		},
-		SettlePath: settlePath,
+		SettlePath:  settlePath,
+		FrictionDir: loomengine.LoomFrictionDir(location),
 		EscalationPending: func(producer string) (bool, error) {
 			return arbiterstop.EscalationEligible(producer, arbiterDeps.Stop), nil
 		},

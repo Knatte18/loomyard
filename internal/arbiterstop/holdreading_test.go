@@ -121,7 +121,7 @@ func (f *holdFixture) chtimes(path string, at time.Time) {
 // settle appends a settle record at key with action, at at.
 func (f *holdFixture) settle(key sheddriver.StopKey, action string, at time.Time) {
 	f.t.Helper()
-	path := shedrun.SettleRecordsFile(loomengine.LoomFrictionDir(f.location))
+	path := shedrun.SettleRecords(f.location, shedrun.SelfRunID)
 	if err := sheddriver.AppendSettleRecord(path, sheddriver.SettleRecord{StopKey: key, Settler: sheddriver.SettlerGoRule, Action: action, At: at}); err != nil {
 		f.t.Fatal(err)
 	}
