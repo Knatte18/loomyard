@@ -15,6 +15,8 @@
 // The status strand runs the hidden `lyx loom checklist` verb: the session's overview window, drawing the checklist frame: the recipe's rows in order, each entry numbered after its box and a review segment taking one number, each with its box, the time spent in it, its visit count and its visit lines under it, a gate line per gate entry under a visit that recorded gate spans, the visit after a gate row's refusal marked as rework for it and its time added to the gate row's line, a review segment's rounds each carrying their total, every closed time drawn to the second and every time that includes the open visit in whole minutes, then the run's state line, with the note of what a running run waits on (the same note `lyx loom status` reports), and the wait line.
 // A Stuck visit whose status entry records where Shed routed it reads `bounced` and an awaiting one reads `escalated`, in this window only.
 // The verb reads the status file and the seed without arming a run, and reports no content size to reed.
+// Right after ensuring the status strand, every start entry, a fresh run, a re-entrant start on a live run and a resume of a parked run, turns the session's follow state on and selects the run's relevant window;
+// a failure there is logged and never fails the start, and `lyx loom resume`, which never brings reed up, leaves the follow state as it is.
 // Unless a driver is already alive, it spawns the driver the seed records, which is never chosen by a flag;
 // a second invocation while a driver runs ensures the substrate instead.
 //

@@ -32,6 +32,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/configengine"
@@ -343,6 +344,7 @@ func (c *battenCLI) armAt(location *lyxcwd.Location, runID string, explicit bool
 
 	c.location = location
 	c.slug = runID
+	c.caller = agentname.CallerLabel(os.Getenv(agentname.StrandNameEnv))
 
 	if err := c.armSeed(location, runID, verb); err != nil {
 		return shedverbs.Spec{}, err
@@ -422,6 +424,7 @@ func (c *battenCLI) specFor(verb string) shedverbs.Spec {
 		spec.BuildShed = func() (*shedengine.Shed, error) { return battenrecipe.New(c.env, c.shedPaths) }
 	}
 
+	spec.Caller = c.caller
 	// Batten carries no agent friction directory, so FrictionDir stays empty.
 	if c.location != nil {
 		spec.ScratchDir = shedrun.ScratchDir(c.location, c.slug)

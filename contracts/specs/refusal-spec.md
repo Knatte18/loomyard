@@ -203,6 +203,7 @@ A correctness halt clears only on evidence that HEAD and every suspect path matc
 | goto on a running run | `goto` names a run whose status is running | correctness halt | the recipe's pause then `lyx shed step <run-id>` leaves the run paused at its next producer boundary, `lyx shed pause <run-id> --after <current_producer>` for a loom run and `lyx batten pause <slug>` for a batten run, then re-run goto |
 | goto target past the current row | `goto` names a row after the run's current row, or a target the awaiting narrowing excludes | correctness halt | re-run goto with --to naming one of: `<admitted rows>` |
 | goto target unknown | `goto` has no `--to`, or the target names no producer | correctness halt | re-run goto with `--to` naming one of the producers the message lists |
+| goto caller label refused | `goto` carries a `--by` other than `shed`, the label of lyx's own automatic steps, and leaves the status file untouched | correctness halt | re-run goto without `--by` |
 | pause target unknown | `pause --before` or `--after` names a target that is no producer of the recipe | correctness halt | re-run pause with `--before` or `--after` naming one of the producers the message lists |
 | pause flags contradictory | `pause --clear` is given beside `--before` or `--after` | correctness halt | run `pause --clear` alone, then `pause --before` or `--after` |
 | status watch as JSON | `status` is given both `--watch` and `--json` | correctness halt | drop `--json`, or drop `--watch` for the JSON envelope |

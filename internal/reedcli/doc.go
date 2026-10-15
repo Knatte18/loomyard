@@ -9,6 +9,10 @@
 // `attach` execs tmux over the lyx process on Unix, so no lyx process outlives the handover, and keeps a child process on Windows.
 // Nothing runs after it in the process, so a shortcut that runs `reed attach` runs it as its last argv.
 //
+// `follow` turns follow on for a session told by `--socket`, `--session` and `--tmux`, and selects the session's relevant window from tmux facts alone.
+// It reads no working directory, config or state, skips the root pre-run's stencil-seed pass, and prints nothing on success; the status bar's follow button runs it through run-shell.
+// A missing flag or a failed tmux call is an error envelope with a non-zero exit.
+//
 // Each watched session's engine drives the daemon's told tmux binary, whatever that worktree's config names.
 //
 // On each cycle the daemon stats the `lyx` binary it started from, and when that file has been replaced or rewritten it retires: it ends its watched sessions, releases the hub lock, spawns a successor detached and exits 0.

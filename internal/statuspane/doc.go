@@ -1,4 +1,4 @@
-// Package statuspane is the pane mechanics the runs overview and the gate checklist share: a redraw-in-place pane loop, a status-file reader and the panes' time format.
+// Package statuspane is the pane mechanics the runs overview and the gate checklist share: a redraw-in-place pane loop and a status-file reader.
 // It takes every path and size it works on as values and imports the standard library, internal/shedengine, internal/selfexec and golang.org/x/term.
 //
 // Pane.Run polls until its context ends and redraws only when the text or the terminal size changed.
@@ -17,6 +17,5 @@
 // BuildIdentity names a lyx build by its executable's symlink-resolved path, size and modification time, and a Sidecar records which strand a bootstrap launched from which build.
 // StrandCurrent is the one keep test: a live strand is current only when the sidecar names its guid and records the running build, so a bootstrap replaces a status strand launched by an older build.
 //
-// FormatMinutes is the format of every time that is still growing, whole minutes as 12m, 1h05m or 2d03h, so a pane's text changes at most once a minute and its poll backs off between changes.
-// FormatSeconds is the format of a closed span, as 45s, 12m05s or 1h05m12s, which never changes again and so costs no redraw.
+// The panes' time formats come from internal/durfmt: minutes for every time still growing, so a pane's text changes at most once a minute and its poll backs off between changes, and seconds for a closed span, which never changes again and so costs no redraw.
 package statuspane

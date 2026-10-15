@@ -1,12 +1,10 @@
 // Package websterengine is the domain kernel behind webster, a fork-based
 // implementer loop: instead of spawning a fresh reed/tmux strand per batch, one long-lived Master
-// session reads the codebase and the whole plan once, then forks one implementer
-// per execution batch in-session (Claude Code's Agent tool, subagent_type "fork"),
-// sequentially — one fork at a time, one worktree — in an order sequence.go derives from the
-// cards' own declared dependencies, not the plan's declared order. websterengine holds no loop itself —
-// the loop is the Master session driving fat `lyx webster` verbs
-// (internal/webstercli); this package provides only those verbs' logic plus
-// the distillation behind them.
+// session reads the plan's overview and the repo's rules once, never the code, then forks one implementer
+// per execution batch in-session (Claude Code's Agent tool, subagent_type "fork"), each fork reading the code its cards need itself, sequentially — one fork at a time, one worktree — in an order sequence.go derives from the cards' own declared dependencies, not the plan's declared order.
+// websterengine holds no loop itself —
+// the loop is the Master session driving fat `lyx webster` verbs (internal/webstercli);
+// this package provides only those verbs' logic plus the distillation behind them.
 //
 // # Plan consumption: one parser, one batcher registry
 //

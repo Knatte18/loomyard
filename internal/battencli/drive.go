@@ -130,6 +130,26 @@ func reportSuffix() string {
 	return fmt.Sprintf("%04x", b)
 }
 
+// driverStep is the Go driver's step seam: the untilStop override when set, else the loop's waiter over the armed spec, labelled shedengine.CallerShed.
+// It returns the envelope the waiter printed, or an error when it printed none.
+func (c *battenCLI) driverStep(ctx context.Context, attempt string) ([]byte, error) {
+	if c.untilStop != nil {
+		return c.untilStop(ctx, attempt)
+	}
+	var envelope bytes.Buffer
+	shedverbs.RunUntilStop(ctx, c.spec, []string{"batten", "step", c.slug}, attempt, shedengine.CallerShed, &envelope)
+	if envelope.Len() == 0 {
+		return nil, errors.New("the step printed no envelope")
+	}
+	return envelope.Bytes(), nil
+}
+
+// driverGoto is the Go driver's goto seam: it moves the run onto target, labelled shedengine.CallerShed.
+func (c *battenCLI) driverGoto(ctx context.Context, target string) error {
+	_, err := shedverbs.RunGoto(ctx, c.spec, target, shedengine.CallerShed)
+	return err
+}
+
 // driverDepsFor fills the shed driver's seams for batten's run in the prime.
 // Every path comes from shedrun over the prime's location and the slug, and nothing is read or built here: the configs, the model registry and the shuttle runner load inside the Tackler seam on its first call.
 // The seams it leaves nil, the arbiter, verify, watched, hand-over, tamper, record-commit and friction-note ones, remove their rows from the driver's rule table.
@@ -139,22 +159,9 @@ func (c *battenCLI) driverDepsFor() (sheddriver.Deps, error) {
 	pauseGeometry := func() (pauserecord.Geometry, error) { return hubgeom.PauseGeometry(location) }
 
 	return sheddriver.Deps{
-		RunID: runID,
-		Step: func(ctx context.Context, attempt string) ([]byte, error) {
-			if c.untilStop != nil {
-				return c.untilStop(ctx, attempt)
-			}
-			var envelope bytes.Buffer
-			shedverbs.RunUntilStop(ctx, c.spec, []string{"batten", "step", slug}, attempt, &envelope)
-			if envelope.Len() == 0 {
-				return nil, errors.New("the step printed no envelope")
-			}
-			return envelope.Bytes(), nil
-		},
-		Goto: func(ctx context.Context, target string) error {
-			_, err := shedverbs.RunGoto(ctx, c.spec, target)
-			return err
-		},
+		RunID:       runID,
+		Step:        c.driverStep,
+		Goto:        c.driverGoto,
 		ReadStatus:  c.readRunStatus,
 		RunLockHeld: func() (bool, error) { return runLockHeld(c.shedPaths.LockPath) },
 		SaveEnvelope: func(raw []byte) (string, error) {
@@ -241,7 +248,7 @@ func (c *battenCLI) tacklerDepsFor(settings sheddriver.TacklerSettings, shuttle 
 				return false, err
 			}
 			for _, record := range records {
-				if record.StopKey == key && record.Action == sheddriver.SettleHandBack && record.At.After(spawned) {
+				if record.StopKey == key && record.Action == shedrun.SettleHandBack && record.At.After(spawned) {
 					return true, nil
 				}
 			}
