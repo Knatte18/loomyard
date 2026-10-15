@@ -5,7 +5,8 @@
 // The base layer of a config stack stays full and every layer above it is sparse.
 // ReconcileHubWideAt covers every module's file at the board dir, hub files and per-worktree repo defaults;
 // ReconcileAll covers a worktree's sparse and local layers.
-// Their failures are *FileError values naming the file that failed.
+// Every reconcile entry point, and run-settings preparation through configreg, applies the key-move table to each layer as its first step, before any module of the layer is seeded or reconciled.
+// Reconcile failures are *FileError values naming the file that failed.
 
 package configsync
 

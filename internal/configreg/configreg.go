@@ -3,6 +3,8 @@
 // Provides a neutral registry of available config modules and their templates,
 // used by the config CLI command and callers such as fabric clone.
 // Its second role is marking which modules are hub-wide, so every caller branches on the registry rather than on a module name.
+// The registry also lists every registered engine's config module, reached through shuttleengines so configreg imports no concrete engine.
+// It declares the cross-module key-move table, which carries a key's value from one module's file to another's.
 
 package configreg
 
