@@ -1,0 +1,19 @@
+metric	arm	n	min	q1	median	q3	max
+ex_net/card	pf	24	2.2	3.6	5	8.2	24.5
+ex_net/card	raf	31	2.8	4.2	5.8	6.7	12.5
+rfull_net/card	pf	24	1	1.4	3	4.6	16
+rfull_net/card	raf	31	0.7	1.3	2.2	2.8	4.4
+turns/card	pf	24	9.4	15	20	26.2	76
+turns/card	raf	31	8.3	12.5	15	21.6	38
+out_k/card	pf	24	5.4	13	16.3	23.4	73
+out_k/card	raf	31	4.6	8.8	12.6	17.8	35.7
+cache_read_M/card	pf	24	1.1	2.1	3.4	4.8	15.7
+cache_read_M/card	raf	31	0.8	1.7	2.5	4.2	9.7
+pre_edit_net	pf	24	3	5	9	12	42
+pre_edit_net	raf	31	3	5	8	13	22
+first_par	pf	24	1	1	2	3	11
+first_par	raf	31	1	1	3	5	6
+strict span share pre-edit %	pf	24	0	12	25	43.8	100
+strict span share pre-edit %	raf	31	0	8.7	16.7	28.6	77.5
+edits/card	pf	24	7	13.8	18.3	35.3	92
+edits/card	raf	31	7.3	12.8	16.5	20.6	79
