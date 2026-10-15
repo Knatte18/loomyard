@@ -17,6 +17,6 @@ The bounded exception is a lone stray character in an idle box: the guard clears
 - A send that may have left its text in the box records `{text, events offset}` in the run directory's `pending-send.json`.
   The next send to the strand reads it: the same text with a turn start past the offset went out already and types nothing; otherwise the send types as usual.
 - A send to a strand with no run record takes the pane-only readiness reading, keeps no pending-send record and never clears its unlanded text, so the next send holds on the non-empty box.
-- Explicit key deliveries stay outside the rule: `Runner.Interrupt`, `Runner.Inject`, `InterruptSequence`, `ModelSwitchSequence`, the trust-prompt dismissal and the clear sent into a box holding exactly one stray-character candidate the guard reading found.
+- Explicit key deliveries stay outside the rule: `Runner.Interrupt`, `Runner.Inject`, `InterruptSequence`, the trust-prompt dismissal and the clear sent into a box holding exactly one stray-character candidate the guard reading found.
   Each names its keys itself and is not text for a draft box.
   `Runner.Interrupt` and `Runner.Inject` stay outside this rule as explicit key deliveries, but their interrupt key follows `PATTERN-guarded-interrupt`.

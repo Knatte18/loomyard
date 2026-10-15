@@ -36,8 +36,9 @@ type Pair interface {
 	Background(guid string) (labels []string, background bool, err error)
 	// PaneRunningTurn reports whether the session's pane shows a running turn, from one fresh capture.
 	PaneRunningTurn(guid string) (bool, error)
-	// InterruptSettle is how long after an interrupt key the pane needs before it is read again.
-	InterruptSettle() time.Duration
+	// InterruptSettle is how long after an interrupt key the strand's pane needs before it is read again.
+	// It fails when guid resolves to no run or to an engine the set does not hold.
+	InterruptSettle(guid string) (time.Duration, error)
 	// Live reports whether the strand exists with a live pane.
 	Live(guid string) (bool, error)
 	// Interrupt sends the provider's interrupt key through shuttle's guarded interrupt.

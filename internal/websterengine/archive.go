@@ -167,7 +167,7 @@ func archiveRunInPlace(geom Geometry, now func() time.Time) error {
 // Those are an uncleared contract file a fork or a recovery session wrote last, a plan path that differs from the recorded plan, and a suspect path that differs from HEAD.
 // Every other pending finding, and every batch record's uncheckable entries, is dropped with the archived record, and the returned warnings name each drop.
 // A nil state has nothing to judge, and archives whatever record is on disk.
-func ArchiveRunAfterReset(engine shuttleengine.Engine, geom Geometry, st *State) ([]string, error) {
+func ArchiveRunAfterReset(engine shuttleengine.ForkAuditor, geom Geometry, st *State) ([]string, error) {
 	var warnings []string
 	if st != nil && hasPendingFindings(st) {
 		head, err := geom.git().HeadSHA(geom.WorktreeRoot)
@@ -240,7 +240,7 @@ func resetPendingGuard() pendingGuard {
 // It refuses with ErrPendingAuditFindings where the caller can clear the state:
 // a contract file a fork or a recovery session wrote last, a suspect path that differs from base, and a plan path that differs from the recorded plan while restore-plan can undo that, either because the store holds the recorded copy or because the file was never recorded.
 // An unverifiable path, a pathless finding and a differing plan path whose recorded copy is missing from the store are dropped, since no verb could restore the last; its warning says so.
-func checkPendingFindings(engine shuttleengine.Engine, geom Geometry, st *State, base string, guard pendingGuard) ([]string, error) {
+func checkPendingFindings(engine shuttleengine.ForkAuditor, geom Geometry, st *State, base string, guard pendingGuard) ([]string, error) {
 	uncheckableBatches := uncheckableBatchNumbers(st)
 	var allPaths []string
 	seen := map[string]bool{}

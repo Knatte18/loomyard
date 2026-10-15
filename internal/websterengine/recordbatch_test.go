@@ -1,12 +1,8 @@
-// recordbatch_test.go exercises RecordBatch end to end (Tier 1 — see
-// docs/benchmarks/running-tests.md): a temp directory backs
-// WorktreeRoot over a fakeGit for the head, dirty and merge questions,
-// while the incremental fork audit
-// (shuttleengine.Engine.AuditForksIncremental) is a local, call-scripted
-// fake and SettleRetry's clock seam is a recording fake Sleeper that never
-// actually blocks, mirroring audit_test.go's own SettleRetry fixture
-// pattern (package-local — the internal and external test packages
-// deliberately do not share a test-helper package).
+// recordbatch_test.go exercises RecordBatch end to end (Tier 1 — see docs/benchmarks/running-tests.md).
+// A temp directory backs WorktreeRoot over a fakeGit for the head, dirty and merge questions.
+// The incremental fork audit (shuttleengine.ForkAuditor.AuditForksIncremental) is a local, call-scripted fake.
+// SettleRetry's clock seam is a recording fake Sleeper that never actually blocks, mirroring audit_test.go's own SettleRetry fixture pattern.
+// The fixtures are package-local: the internal and external test packages deliberately do not share a test-helper package.
 
 package websterengine_test
 

@@ -462,7 +462,7 @@ func TestAgentActivity_LiveLockWaitReadsAsActivity(t *testing.T) {
 			}
 
 			before := time.Now()
-			last, live, err := agentActivityFor(loc, shuttleengine.Config{})()
+			last, live, err := agentActivityFor(loc, shuttleengine.Config{Engine: "claude"})()
 
 			if err != nil {
 				t.Fatalf("agentActivityFor() error = %v", err)

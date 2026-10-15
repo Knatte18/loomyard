@@ -10,8 +10,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/creelengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
 )
 
@@ -22,10 +21,9 @@ func TestSmokeCreelClaudeStrand(t *testing.T) {
 	// The strand name in the environment is process-global state, set by newSmokeHub.
 	smoke := newSmokeHub(t)
 	name, guid := smoke.addStrand(t, "smokeclaude", claudePath)
-	engineFor := func(cfg shuttleengine.Config) shuttleengine.Engine { return claudeengine.NewFromConfig(cfg) }
-	smoke.startDaemon(t, engineFor)
+	smoke.startDaemon(t, shuttleengines.New)
 
-	delivery := newHubDelivery(smoke.hub.Path, engineFor)
+	delivery := newHubDelivery(smoke.hub.Path, shuttleengines.New)
 	strands, err := delivery.Strands()
 	if err != nil {
 		t.Fatalf("Strands() = %v", err)

@@ -85,7 +85,9 @@ func TestSmokeCreelFakeProviderPane(t *testing.T) {
 	if capture, ok := smoke.awaitPane(t, guid, fakeProviderBox); !ok {
 		t.Fatalf("the fake provider drew no input box; pane:\n%s", capture)
 	}
-	smoke.startDaemon(t, func(shuttleengine.Config) shuttleengine.Engine { return &scriptProviderEngine{} })
+	smoke.startDaemon(t, func(shuttleengine.Config) (shuttleengine.EngineSet, error) {
+		return shuttleengine.NewEngineSet("script", map[string]shuttleengine.Engine{"script": &scriptProviderEngine{}}), nil
+	})
 
 	code, posted := smoke.creel("post", name, "hello from creel")
 	if code != 0 {

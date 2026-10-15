@@ -98,8 +98,8 @@ func (s *smokeHub) addStrand(t *testing.T, role, command string) (name, guid str
 	return added.Name, added.GUID
 }
 
-// startDaemon runs the creel daemon in process on the hub's real socket, with the hub delivery over engineFor, and stops it when the test ends.
-func (s *smokeHub) startDaemon(t *testing.T, engineFor func(shuttleengine.Config) shuttleengine.Engine) {
+// startDaemon runs the creel daemon in process on the hub's real socket, with the hub delivery over enginesFor, and stops it when the test ends.
+func (s *smokeHub) startDaemon(t *testing.T, enginesFor func(shuttleengine.Config) (shuttleengine.EngineSet, error)) {
 	t.Helper()
 	ready := make(chan struct{})
 	ctx, cancel := context.WithCancel(context.Background())
@@ -107,7 +107,7 @@ func (s *smokeHub) startDaemon(t *testing.T, engineFor func(shuttleengine.Config
 	go func() {
 		done <- creelengine.Run(ctx, creelengine.Options{
 			Geometry:  s.geometry,
-			Delivery:  newHubDelivery(s.hub.Path, engineFor),
+			Delivery:  newHubDelivery(s.hub.Path, enginesFor),
 			Clock:     realClock{},
 			ParentPID: proc.ParentPID,
 			GOOS:      runtime.GOOS,

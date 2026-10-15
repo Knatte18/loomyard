@@ -16,7 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 )
 
 // runLockIdentity returns the run part of a parent lock owner for the run runID of the worktree loc: the slug, the pair path and the resolved run id.
@@ -51,7 +51,11 @@ func battenWatcher(loc *lyxcwd.Location, runID string) func() (int, bool) {
 // readAgentStates returns the reading of every live agent run of the worktree loc as the parent lock's idle rule folds it.
 func readAgentStates(loc *lyxcwd.Location, cfg shuttleengine.Config) func() ([]parentlock.AgentState, error) {
 	return func() ([]parentlock.AgentState, error) {
-		waits, err := shuttleengine.ReadAgentWaits(cfg, loc.AnchorPath(), claudeengine.NewFromConfig(cfg), time.Now())
+		engines, err := shuttleengines.New(cfg)
+		if err != nil {
+			return nil, err
+		}
+		waits, err := shuttleengine.ReadAgentWaits(cfg, loc.AnchorPath(), engines, time.Now())
 		if err != nil {
 			return nil, err
 		}

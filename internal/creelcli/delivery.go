@@ -38,12 +38,12 @@ type hubDelivery struct {
 	wire func(location *lyxcwd.Location) (worktreeOps, error)
 }
 
-// newHubDelivery returns the Delivery of the hub at hubPath, building each worktree's shuttle engine with engineFor.
-func newHubDelivery(hubPath string, engineFor func(shuttleengine.Config) shuttleengine.Engine) *hubDelivery {
+// newHubDelivery returns the Delivery of the hub at hubPath, building each worktree's shuttle engines with enginesFor.
+func newHubDelivery(hubPath string, enginesFor func(shuttleengine.Config) (shuttleengine.EngineSet, error)) *hubDelivery {
 	return &hubDelivery{
 		hubPath: hubPath,
 		wire: func(location *lyxcwd.Location) (worktreeOps, error) {
-			return wireShuttle(location, engineFor)
+			return wireShuttle(location, enginesFor)
 		},
 	}
 }
@@ -55,7 +55,7 @@ type shuttleOps struct {
 }
 
 // wireShuttle builds the worktree's reed and shuttle config, its reed geometry, and the reed engine and runner over them.
-func wireShuttle(location *lyxcwd.Location, engineFor func(shuttleengine.Config) shuttleengine.Engine) (shuttleOps, error) {
+func wireShuttle(location *lyxcwd.Location, enginesFor func(shuttleengine.Config) (shuttleengine.EngineSet, error)) (shuttleOps, error) {
 	configDirs := fabricengine.ConfigDirs(location)
 	reedCfg, err := reedengine.LoadConfig(configDirs, "reed")
 	if err != nil {
@@ -69,8 +69,12 @@ func wireShuttle(location *lyxcwd.Location, engineFor func(shuttleengine.Config)
 	if err != nil {
 		return shuttleOps{}, err
 	}
+	engines, err := enginesFor(shuttleCfg)
+	if err != nil {
+		return shuttleOps{}, err
+	}
 	reed := reedengine.New(reedCfg, reedGeom)
-	runner := shuttleengine.NewRunner(reed, engineFor(shuttleCfg), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+	runner := shuttleengine.NewRunner(reed, engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 	return shuttleOps{reed: reed, runner: runner}, nil
 }
 

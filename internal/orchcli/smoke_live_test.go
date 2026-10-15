@@ -31,6 +31,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
 	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
+	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -116,7 +117,7 @@ func newLiveFixture(t *testing.T, orchCfg string, extraCfg map[string]string) *l
 		prime:      prime,
 		paths:      orchPaths(h.Location),
 		reed:       reed,
-		runner:     shuttleengine.NewRunner(reed, claudeengine.New(), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg),
+		runner:     shuttleengine.NewRunner(reed, shuttlefake.EngineSet(claudeengine.New()), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg),
 		shuttleCfg: shuttleCfg,
 	}
 	t.Cleanup(func() {

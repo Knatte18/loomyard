@@ -77,7 +77,7 @@ type sendContext struct {
 func (run *Run) newSendContext() sendContext {
 	return sendContext{
 		reed:       run.runner.reed,
-		engine:     run.runner.engine,
+		engine:     run.engine,
 		guid:       run.state.StrandGUID,
 		state:      run.state,
 		runDir:     run.runDir,
@@ -90,10 +90,15 @@ func (run *Run) newSendContext() sendContext {
 }
 
 // newSendContext returns the context of a verified send into the pane of the run state names, whose directory is runDir.
-func (r *Runner) newSendContext(state RunState, runDir string) sendContext {
+// It fails with the lookup's error when the state names an engine the runner's set does not hold.
+func (r *Runner) newSendContext(state RunState, runDir string) (sendContext, error) {
+	engine, _, err := r.engineFor(state)
+	if err != nil {
+		return sendContext{}, err
+	}
 	return sendContext{
 		reed:       r.reed,
-		engine:     r.engine,
+		engine:     engine,
 		guid:       state.StrandGUID,
 		state:      state,
 		runDir:     runDir,
@@ -102,15 +107,20 @@ func (r *Runner) newSendContext(state RunState, runDir string) sendContext {
 		clock:      r.clock,
 
 		activityFailures: &r.activityFailures,
-	}
+	}, nil
 }
 
 // recordlessSendContext returns the context of a verified send into the pane of the live strand guid, which no run record names.
 // It keeps the runner's turn-start hold for the strand and never clears a text that did not land.
-func (r *Runner) recordlessSendContext(guid string) sendContext {
+// The send goes through the runner's default engine, and fails with the lookup's error when the set does not hold it.
+func (r *Runner) recordlessSendContext(guid string) (sendContext, error) {
+	engine, _, err := r.engineFor(RunState{})
+	if err != nil {
+		return sendContext{}, err
+	}
 	return sendContext{
 		reed:         r.reed,
-		engine:       r.engine,
+		engine:       engine,
 		guid:         guid,
 		cfg:          r.cfg,
 		clock:        r.clock,
@@ -119,7 +129,7 @@ func (r *Runner) recordlessSendContext(guid string) sendContext {
 		recordless:   true,
 
 		activityFailures: &r.activityFailures,
-	}
+	}, nil
 }
 
 // sendReadyTimeout returns how long a verified send waits for an idle session.
@@ -830,7 +840,7 @@ func (run *Run) sendWithin(text string) error {
 // Otherwise a turn start left unmatched by a later turn end means the writer began a new turn after the boundary:
 // the boundary and the unsent re-prompt mark are cleared, the cleared state is recorded for startHoldReleased, and the answer is false.
 func (run *Run) boundaryIdle() bool {
-	engine := run.runner.engine
+	engine := run.engine
 	if _, ok := engine.(SessionCycler); !ok {
 		return true
 	}
@@ -851,7 +861,7 @@ func (run *Run) boundaryIdle() bool {
 // A turn start that a later turn end has since matched ends the cleared state without restoring the boundary.
 // That turn end is either a gated Done arrival or a held turn end with nothing to evaluate.
 func (run *Run) startHoldReleased() bool {
-	engine := run.runner.engine
+	engine := run.engine
 	cycler := engine.(SessionCycler)
 	turnStart, restarted, found := unmatchedTurnStart(engine, run.state.EventsPath)
 	if !found {

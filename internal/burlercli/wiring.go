@@ -23,7 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/standalonegeom"
 )
 
@@ -139,7 +139,11 @@ func (c *burlerCLI) wireHub(loc *lyxcwd.Location, stencilsDirOverride, targetDir
 		return err
 	}
 	reedEngine := reedengine.New(reedCfg, reedGeom)
-	runner := shuttleengine.NewRunner(reedEngine, claudeengine.NewFromConfig(shuttleCfg), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+	engines, err := shuttleengines.New(shuttleCfg)
+	if err != nil {
+		return err
+	}
+	runner := shuttleengine.NewRunner(reedEngine, engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 	pauseGeom, err := hubgeom.PauseGeometry(loc)
 	if err != nil {
 		return err
@@ -200,7 +204,11 @@ func (c *burlerCLI) wireStandalone(cwd, stencilsDirOverride, targetDirFlag strin
 	reedEngine := reedengine.New(reedCfg, reedGeom)
 	// Standalone's anchor (the derived state directory) is deliberately outside its worktree root
 	// (the target), which NewRunner's containment assertion would refuse -- NewDetachedRunner stays.
-	runner := shuttleengine.NewDetachedRunner(reedEngine, claudeengine.NewFromConfig(shuttleCfg), reedGeom.AnchorPath, reedGeom.WorktreeRoot, reedGeom.PaneCwd, shuttleCfg)
+	engines, err := shuttleengines.New(shuttleCfg)
+	if err != nil {
+		return err
+	}
+	runner := shuttleengine.NewDetachedRunner(reedEngine, engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, reedGeom.PaneCwd, shuttleCfg)
 	runner.SetPause(standalonegeom.PauseGeometry(res.StateDir))
 
 	// Standalone's reed session lives on its own derived geometry, which no CLI verb can reach —

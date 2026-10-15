@@ -153,6 +153,9 @@ type RunState struct {
 	// ForkSubagents is the spawning Spec's ForkSubagents, copied at spawn.
 	// A record an older binary wrote decodes false and reads as not authorized.
 	ForkSubagents bool `json:"forkSubagents,omitempty"`
+	// Engine is the name of the engine the run was started with.
+	// A record without it, which every record written before the field is, reads as the engine set's default engine.
+	Engine string `json:"engine,omitempty"`
 }
 
 // createRunDir mints a fresh run id, creates <root>/<runID>, and returns

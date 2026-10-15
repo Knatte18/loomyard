@@ -24,13 +24,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// AuditForks implements shuttleengine.Engine.AuditForks for Claude, reporting every fork transcript
+// AuditForks implements shuttleengine.ForkAuditor for Claude, reporting every fork transcript
 // by calling AuditForksIncremental with nil seenTranscripts.
 func (c *Claude) AuditForks(sessionID, workdir string) (shuttleengine.ForkAudit, error) {
 	return c.AuditForksIncremental(sessionID, workdir, nil)
 }
 
-// AuditForksIncremental implements shuttleengine.Engine.AuditForksIncremental for Claude, deriving
+// AuditForksIncremental implements shuttleengine.ForkAuditor for Claude, deriving
 // the session's project directory from workdir and reading transcripts.
 // A nil seenTranscripts reports every fork transcript; missing subagents/ is not an error (zero
 // forks).

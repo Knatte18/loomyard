@@ -18,7 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/statuspane"
 	"github.com/spf13/cobra"
 )
@@ -74,6 +74,7 @@ type orchCLI struct {
 	location    *lyxcwd.Location
 	cfg         orchengine.Config
 	shuttleCfg  shuttleengine.Config
+	engines     shuttleengine.EngineSet
 	runner      *shuttleengine.Runner
 	strands     strandOps
 	paths       orchengine.Paths
@@ -165,7 +166,12 @@ Every verb runs from the hub's prime worktree only.`,
 			c.location = location
 			c.cfg = orchCfg
 			c.shuttleCfg = shuttleCfg
-			c.runner = shuttleengine.NewRunner(reed, claudeengine.NewFromConfig(shuttleCfg), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+			engines, err := shuttleengines.New(shuttleCfg)
+			if err != nil {
+				return fail(err)
+			}
+			c.engines = engines
+			c.runner = shuttleengine.NewRunner(reed, engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 			c.strands = newReedStrandOps(reed)
 			c.paths = orchPaths(location)
 			c.stencilsDir = fabricengine.StencilsDir(location.HubPath)

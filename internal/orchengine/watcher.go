@@ -35,8 +35,8 @@ type Session interface {
 	StrandAlive(guid string) (bool, error)
 	// ReadEvents returns the events past offset and the offset read through.
 	ReadEvents(guid string, offset int64) ([]shuttleengine.Event, int64, error)
-	// ContextTokens returns the context reading as of turnEnd; a reading with Known false means unreadable.
-	ContextTokens(turnEnd shuttleengine.Event) (shuttleengine.ContextReading, error)
+	// ContextTokens returns the context reading of the run identified by guid as of turnEnd; a reading with Known false means unreadable.
+	ContextTokens(guid string, turnEnd shuttleengine.Event) (shuttleengine.ContextReading, error)
 	// SessionIdle probes whether the session shows an empty input box with no turn in progress, and whether the pane is too short to tell.
 	SessionIdle(guid string) (shuttleengine.IdleProbe, error)
 	// SessionState returns the session's state as read from the run's files; the watcher logs it and reads it to drop a conditioned notice.
@@ -53,15 +53,16 @@ type Session interface {
 	CompactSession(guid, focus string) error
 	// LoadSkills types the provider's one-turn load message for skills into the session.
 	LoadSkills(guid string, skills []string) error
-	// ClassifySkillLoad classifies the load turn of skills that turnEnd ended.
-	ClassifySkillLoad(turnEnd shuttleengine.Event, skills []string) (shuttleengine.SkillLoadReport, error)
-	// CompactedSince returns the newest compaction boundary after since in the transcript turnEnd names, with the turn ends that follow it.
-	CompactedSince(turnEnd shuttleengine.Event, since time.Time) (shuttleengine.CompactionBoundary, bool, error)
+	// ClassifySkillLoad classifies the load turn of skills that turnEnd ended in the run identified by guid.
+	ClassifySkillLoad(guid string, turnEnd shuttleengine.Event, skills []string) (shuttleengine.SkillLoadReport, error)
+	// CompactedSince returns the newest compaction boundary after since in the transcript turnEnd names, with the turn ends that follow it, for the run identified by guid.
+	CompactedSince(guid string, turnEnd shuttleengine.Event, since time.Time) (shuttleengine.CompactionBoundary, bool, error)
 	// Interrupt stops the session's running turn with the provider's interrupt key, sent only into a pane showing one.
 	// It fails with shuttleengine.ErrNoRunningTurn when the pane shows none, and with shuttleengine.ErrRewindPickerOpen when it closed an open rewind picker.
 	Interrupt(guid string) error
-	// InterruptSettle is how long after an interrupt key the pane needs before it is read again.
-	InterruptSettle() time.Duration
+	// InterruptSettle is how long after an interrupt key the pane of the run identified by guid needs before it is read again.
+	// It fails when guid resolves to no run or to an engine the set does not hold.
+	InterruptSettle(guid string) (time.Duration, error)
 }
 
 // Clock supplies the current time, settable in tests.
@@ -250,7 +251,7 @@ func (w *Watcher) tick() (done bool, err error) {
 	var lastTurnEnd *shuttleengine.Event
 	for _, ev := range events {
 		if st.Phase == PhaseIdle && isTurnEnd(ev) {
-			reading, err := w.session.ContextTokens(ev)
+			reading, err := w.session.ContextTokens(st.Strand, ev)
 			if err != nil {
 				return false, err
 			}
@@ -262,7 +263,7 @@ func (w *Watcher) tick() (done bool, err error) {
 	}
 	var compactedAt time.Time
 	if lastTurnEnd != nil {
-		boundary, found, err := w.session.CompactedSince(*lastTurnEnd, st.CompactionBaseline)
+		boundary, found, err := w.session.CompactedSince(st.Strand, *lastTurnEnd, st.CompactionBaseline)
 		if err != nil {
 			return false, err
 		}
@@ -768,7 +769,7 @@ func (w *Watcher) tickIdle(st State, now time.Time) error {
 	}
 	if trigger != TriggerRequested {
 		// The transcript can change without a turn end, so the saved reading may be stale: fire only on a fresh one.
-		reading, err := w.session.ContextTokens(*w.newest)
+		reading, err := w.session.ContextTokens(st.Strand, *w.newest)
 		if err != nil {
 			return err
 		}
@@ -1131,7 +1132,7 @@ func (w *Watcher) skipSkill(st State, skill, cause string) {
 // to the retry step when the skills step left skills missing, else to the pointer.
 // An unreadable turn is confirmed unverified, with no retry.
 func (w *Watcher) settleSkillTurn(st State, now time.Time, step int, skills []string) error {
-	report, err := w.session.ClassifySkillLoad(w.seen.firstTurnEnd, skills)
+	report, err := w.session.ClassifySkillLoad(st.Strand, w.seen.firstTurnEnd, skills)
 	if err != nil {
 		return err
 	}
@@ -1185,7 +1186,7 @@ func (w *Watcher) tickResuming(st State, now time.Time) error {
 		}
 	} else if typed {
 		if w.seen.turnEnd {
-			reading, err := w.session.ContextTokens(w.seen.firstTurnEnd)
+			reading, err := w.session.ContextTokens(st.Strand, w.seen.firstTurnEnd)
 			if err != nil {
 				return err
 			}
@@ -1263,7 +1264,7 @@ func (w *Watcher) tickCompacting(st State, now time.Time) error {
 	qualifying := false
 	if st.ReadingTurnEnd != nil {
 		var err error
-		if boundary, qualifying, err = w.session.CompactedSince(*st.ReadingTurnEnd, st.PhaseEnteredAt); err != nil {
+		if boundary, qualifying, err = w.session.CompactedSince(st.Strand, *st.ReadingTurnEnd, st.PhaseEnteredAt); err != nil {
 			return err
 		}
 	}
@@ -1271,7 +1272,7 @@ func (w *Watcher) tickCompacting(st State, now time.Time) error {
 		if st.ReadingTurnEnd == nil {
 			return nil
 		}
-		reading, err := w.session.ContextTokens(*st.ReadingTurnEnd)
+		reading, err := w.session.ContextTokens(st.Strand, *st.ReadingTurnEnd)
 		if err != nil {
 			return err
 		}
