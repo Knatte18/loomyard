@@ -190,19 +190,9 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error)
 	}
 
 	deps := sheddriver.Deps{
-		RunID: runID,
-		Step: func(ctx context.Context, attempt string) ([]byte, error) {
-			var envelope bytes.Buffer
-			shedverbs.RunUntilStop(ctx, c.spec, []string{"loom", "step"}, attempt, &envelope)
-			if envelope.Len() == 0 {
-				return nil, errors.New("the step printed no envelope")
-			}
-			return envelope.Bytes(), nil
-		},
-		Goto: func(ctx context.Context, target string) error {
-			_, err := shedverbs.RunGoto(ctx, c.spec, target)
-			return err
-		},
+		RunID:       runID,
+		Step:        c.driverStep,
+		Goto:        c.driverGoto,
 		ReadStatus:  readStatus,
 		RunLockHeld: c.runLockHeld,
 		SaveEnvelope: func(raw []byte) (string, error) {
@@ -333,6 +323,23 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error)
 		},
 	}
 	return deps, nil
+}
+
+// driverStep is the Go driver's step seam: the loop's waiter over the armed spec, labelled shedengine.CallerShed.
+// It returns the envelope the waiter printed, or an error when it printed none.
+func (c *loomCLI) driverStep(ctx context.Context, attempt string) ([]byte, error) {
+	var envelope bytes.Buffer
+	shedverbs.RunUntilStop(ctx, c.spec, []string{"loom", "step"}, attempt, shedengine.CallerShed, &envelope)
+	if envelope.Len() == 0 {
+		return nil, errors.New("the step printed no envelope")
+	}
+	return envelope.Bytes(), nil
+}
+
+// driverGoto is the Go driver's goto seam: it moves the run onto target, labelled shedengine.CallerShed.
+func (c *loomCLI) driverGoto(ctx context.Context, target string) error {
+	_, err := shedverbs.RunGoto(ctx, c.spec, target, shedengine.CallerShed)
+	return err
 }
 
 // publishHaltMatches reports whether the Publish failure record matches the blocked stop the status shows, and the row the record names.

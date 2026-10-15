@@ -128,6 +128,9 @@ type loomCLI struct {
 	// shedrun.RecipeLoom when the run has no seed yet.
 	// The routing, the shed builder, the wiring branch, the landing verify source and the reject rework row all read it.
 	recipe string
+	// caller is the caller label armAt classifies from the strand variable and specFor copies onto the Spec;
+	// empty on a hand-populated receiver, which records none.
+	caller string
 	// routing is the recipe's producer-graph projection armAt loads (loadRouting) and specFor copies
 	// onto the Spec; zero on a hand-populated receiver, which reports no progress.
 	routing shedengine.Routing
