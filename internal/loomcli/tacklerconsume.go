@@ -6,7 +6,7 @@ package loomcli
 import (
 	"fmt"
 
-	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
@@ -24,20 +24,20 @@ func consumeTacklerAttempt(attemptDir string, base shedengine.RelaunchRequest) e
 		return fmt.Errorf("loom: tackler attempt %s: "+format+"; way forward: act on the refused stop as a new stop, or report it in the stop report and the run's parent decides", append([]any{attemptDir}, args...)...)
 	}
 
-	attempt, err := loomengine.ReadTacklerAttempt(attemptDir)
+	attempt, err := sheddriver.ReadTacklerAttempt(attemptDir)
 	if err != nil {
 		return refuse("unusable: %v", err)
 	}
-	envelope, found, err := loomengine.ReadTacklerEnvelope(loomengine.TacklerEnvelopePath(attemptDir))
+	envelope, found, err := sheddriver.ReadTacklerEnvelope(sheddriver.TacklerEnvelopePath(attemptDir))
 	switch {
 	case err != nil:
 		return refuse("unusable: %v", err)
 	case !found:
 		return refuse("unusable: the tackler call left no envelope")
-	case envelope.Verdict != loomengine.TacklerVerdictResume || envelope.Cause != "":
+	case envelope.Verdict != sheddriver.TacklerVerdictResume || envelope.Cause != "":
 		return refuse("unusable: the validated verdict is %q with cause %q, not a resume", envelope.Verdict, envelope.Cause)
 	}
-	applied, err := loomengine.TacklerApplied(attemptDir)
+	applied, err := sheddriver.TacklerApplied(attemptDir)
 	if err != nil {
 		return refuse("unusable: %v", err)
 	}
@@ -52,7 +52,7 @@ func consumeTacklerAttempt(attemptDir string, base shedengine.RelaunchRequest) e
 		if reason != "" {
 			return false, refuse("%s", reason)
 		}
-		return inEffect, loomengine.MarkTacklerApplied(attemptDir)
+		return inEffect, sheddriver.MarkTacklerApplied(attemptDir)
 	}
 	_, err = shedengine.Relaunch(request)
 	return err

@@ -30,6 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
@@ -62,13 +63,13 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (goDriverDeps, error) {
 	pauseGeometry := func() (pauserecord.Geometry, error) { return hubgeom.PauseGeometry(location) }
 
 	tacklerDeps := tacklerDeps{
-		Closed: func(key loomengine.ArbiterStopKey, spawned time.Time) (bool, error) {
-			records, err := loomengine.ReadSettleRecords(settlePath)
+		Closed: func(key sheddriver.StopKey, spawned time.Time) (bool, error) {
+			records, err := sheddriver.ReadSettleRecords(settlePath)
 			if err != nil {
 				return false, err
 			}
 			for _, record := range records {
-				if record.StopKey == key && record.Action == loomengine.SettleHandBack && record.At.After(spawned) {
+				if record.StopKey == key && record.Action == sheddriver.SettleHandBack && record.At.After(spawned) {
 					return true, nil
 				}
 			}
@@ -80,7 +81,7 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (goDriverDeps, error) {
 		AttemptDir: func(number int) string { return shedrun.TacklerAttemptDir(location, c.runID, number) },
 		MarkerPath: shedrun.TacklerMarker(location, c.runID),
 		Producers:  c.routing.Producers,
-		Snapshot:   func() (loomengine.WorktreeSnapshot, error) { return worktreeSnapshot(location) },
+		Snapshot:   func() (sheddriver.WorktreeSnapshot, error) { return worktreeSnapshot(location) },
 		PausedWithin: func(from, to time.Time) (time.Duration, error) {
 			geometry, err := pauseGeometry()
 			if err != nil {
@@ -179,10 +180,10 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (goDriverDeps, error) {
 			return nil
 		},
 		WriteFrictionNote: func(stop driveStop) error { return writeDrivePausedNote(c.frictionDir, runID, stop) },
-		Tackler: func(stop driveStop, reportPath string) (loomengine.TacklerEnvelope, error) {
+		Tackler: func(stop driveStop, reportPath string) (sheddriver.TacklerEnvelope, error) {
 			call, err := newTacklerCall(tacklerDeps, tacklerInput{RunID: runID, EnvelopePath: stop.EnvelopePath, ReportPath: reportPath, TraceCopy: stop.TraceCopy, StderrPath: stop.StderrPath})
 			if err != nil {
-				return loomengine.TacklerEnvelope{}, err
+				return sheddriver.TacklerEnvelope{}, err
 			}
 			return call.settle()
 		},
@@ -203,12 +204,12 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (goDriverDeps, error) {
 			}
 			return call.settle()
 		},
-		Snapshot: func() (loomengine.WorktreeSnapshot, error) { return worktreeSnapshot(location) },
-		OpenAttempts: func(key loomengine.ArbiterStopKey) (string, string, bool, error) {
+		Snapshot: func() (sheddriver.WorktreeSnapshot, error) { return worktreeSnapshot(location) },
+		OpenAttempts: func(key sheddriver.StopKey) (string, string, bool, error) {
 			return newestAttemptsFor(shedrun.TacklerDir(location, c.runID), shedrun.ArbiterDir(location, c.runID), key)
 		},
-		AttemptSnapshot: func(tacklerDir string) (loomengine.WorktreeSnapshot, error) {
-			attempt, err := loomengine.ReadTacklerAttempt(tacklerDir)
+		AttemptSnapshot: func(tacklerDir string) (sheddriver.WorktreeSnapshot, error) {
+			attempt, err := sheddriver.ReadTacklerAttempt(tacklerDir)
 			return attempt.Snapshot, err
 		},
 		OnDiskBuild: func() (buildvcs.Identity, error) { return buildvcs.OfFile(executable) },
@@ -269,22 +270,22 @@ func writeDrivePausedNote(frictionDir, runID string, stop driveStop) error {
 
 // worktreeSnapshot reads the state of the task's code worktree a tackler must leave as it found it: HEAD, branch and the SHA-256 of each tracked dirty path.
 // The records side is left out, since the run's own records change under every step.
-func worktreeSnapshot(location *lyxcwd.Location) (loomengine.WorktreeSnapshot, error) {
+func worktreeSnapshot(location *lyxcwd.Location) (sheddriver.WorktreeSnapshot, error) {
 	fab, err := fabricengine.Open(location)
 	if err != nil {
-		return loomengine.WorktreeSnapshot{}, err
+		return sheddriver.WorktreeSnapshot{}, err
 	}
 	head, err := fab.HeadSHA()
 	if err != nil {
-		return loomengine.WorktreeSnapshot{}, err
+		return sheddriver.WorktreeSnapshot{}, err
 	}
 	branch, err := fab.CurrentBranch()
 	if err != nil {
-		return loomengine.WorktreeSnapshot{}, err
+		return sheddriver.WorktreeSnapshot{}, err
 	}
 	paths, err := fab.DirtyPaths()
 	if err != nil {
-		return loomengine.WorktreeSnapshot{}, err
+		return sheddriver.WorktreeSnapshot{}, err
 	}
 	codeRoot := location.WorktreePath() + string(filepath.Separator)
 	dirty := map[string]string{}
@@ -297,13 +298,13 @@ func worktreeSnapshot(location *lyxcwd.Location) (loomengine.WorktreeSnapshot, e
 		case errors.Is(err, fs.ErrNotExist):
 			dirty[path] = "deleted"
 		case err != nil:
-			return loomengine.WorktreeSnapshot{}, fmt.Errorf("hash dirty path %s: %w", path, err)
+			return sheddriver.WorktreeSnapshot{}, fmt.Errorf("hash dirty path %s: %w", path, err)
 		default:
 			sum := sha256.Sum256(content)
 			dirty[path] = hex.EncodeToString(sum[:])
 		}
 	}
-	return loomengine.WorktreeSnapshot{Head: head, Branch: branch, Dirty: dirty}, nil
+	return sheddriver.WorktreeSnapshot{Head: head, Branch: branch, Dirty: dirty}, nil
 }
 
 // dirtyPathsOutsideRecords lists the pair's uncommitted or untracked paths outside the run's own records directories.
@@ -325,8 +326,8 @@ func dirtyPathsOutsideRecords(location *lyxcwd.Location, runID string) ([]string
 }
 
 // newestAttemptsFor names the newest tackler and arbiter attempt directories recorded for key, empty when there is none, and whether the tackler attempt carries the applied mark.
-func newestAttemptsFor(tacklerDir, arbiterDir string, key loomengine.ArbiterStopKey) (tackler, arbiter string, tacklerApplied bool, err error) {
-	tacklers, err := loomengine.ListTacklerAttempts(tacklerDir)
+func newestAttemptsFor(tacklerDir, arbiterDir string, key sheddriver.StopKey) (tackler, arbiter string, tacklerApplied bool, err error) {
+	tacklers, err := sheddriver.ListTacklerAttempts(tacklerDir)
 	if err != nil {
 		return "", "", false, err
 	}
@@ -337,7 +338,7 @@ func newestAttemptsFor(tacklerDir, arbiterDir string, key loomengine.ArbiterStop
 		}
 	}
 	if tackler != "" {
-		if tacklerApplied, err = loomengine.TacklerApplied(tackler); err != nil {
+		if tacklerApplied, err = sheddriver.TacklerApplied(tackler); err != nil {
 			return "", "", false, err
 		}
 	}

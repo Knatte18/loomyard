@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -25,7 +26,7 @@ type tacklerFixture struct {
 	status     shedengine.Status
 	settings   loomengine.TacklerSettings
 	fake       *arbiterFake
-	snapshot   loomengine.WorktreeSnapshot
+	snapshot   sheddriver.WorktreeSnapshot
 	paused     time.Duration
 	closed     func(spawned time.Time) bool
 	producers  []string
@@ -52,7 +53,7 @@ func newTacklerFixture(t *testing.T) *tacklerFixture {
 		},
 		settings:   loomengine.TacklerSettings{Model: "claude-resolved", Effort: "low", Version: "v1", Timeout: 10 * time.Minute, MaxSpawns: 2},
 		fake:       &arbiterFake{runGUID: "guid-1"},
-		snapshot:   loomengine.WorktreeSnapshot{Head: "abc123", Branch: "task", Dirty: map[string]string{"a.go": "h1"}},
+		snapshot:   sheddriver.WorktreeSnapshot{Head: "abc123", Branch: "task", Dirty: map[string]string{"a.go": "h1"}},
 		producers:  []string{"Plan-Draft", "Plan-Write", "Plan-Bouncer", "PR-Gate"},
 		envelope:   filepath.Join(root, "stop-envelope.json"),
 		reportPath: filepath.Join(root, "report.md"),
@@ -71,7 +72,7 @@ func (f *tacklerFixture) deps() tacklerDeps {
 		producers[i] = shedengine.ProducerDef{Name: name}
 	}
 	return tacklerDeps{
-		Closed: func(_ loomengine.ArbiterStopKey, spawned time.Time) (bool, error) {
+		Closed: func(_ sheddriver.StopKey, spawned time.Time) (bool, error) {
 			return f.closed != nil && f.closed(spawned), nil
 		},
 		ReadStatus:   func() (shedengine.Status, bool, error) { return f.status, true, nil },
@@ -80,7 +81,7 @@ func (f *tacklerFixture) deps() tacklerDeps {
 		AttemptDir:   f.attemptDir,
 		MarkerPath:   f.markerPath(),
 		Producers:    producers,
-		Snapshot:     func() (loomengine.WorktreeSnapshot, error) { return f.snapshot, nil },
+		Snapshot:     func() (sheddriver.WorktreeSnapshot, error) { return f.snapshot, nil },
 		PausedWithin: func(_, _ time.Time) (time.Duration, error) { return f.paused, nil },
 		Prompt: tacklerPromptInput{
 			Slug:      "operator-surface-task",
@@ -95,7 +96,7 @@ func (f *tacklerFixture) deps() tacklerDeps {
 }
 
 // settle runs one call over the fixture's seams.
-func (f *tacklerFixture) settle() (loomengine.TacklerEnvelope, error) {
+func (f *tacklerFixture) settle() (sheddriver.TacklerEnvelope, error) {
 	f.t.Helper()
 	call, err := newTacklerCall(f.deps(), tacklerInput{
 		RunID:        tacklerTestRun,
@@ -111,16 +112,16 @@ func (f *tacklerFixture) settle() (loomengine.TacklerEnvelope, error) {
 }
 
 // priorAttempt writes an attempt for the fixture's current stop, with its deadline offset from now.
-func (f *tacklerFixture) priorAttempt(number int, deadlineIn time.Duration) loomengine.TacklerAttempt {
+func (f *tacklerFixture) priorAttempt(number int, deadlineIn time.Duration) sheddriver.TacklerAttempt {
 	f.t.Helper()
-	attempt := loomengine.TacklerAttempt{
+	attempt := sheddriver.TacklerAttempt{
 		Number:     number,
-		StopKey:    loomengine.StopKeyOf(f.status),
+		StopKey:    sheddriver.StopKeyOf(f.status),
 		SpawnedAt:  f.now.Add(-5 * time.Minute),
 		Deadline:   f.now.Add(deadlineIn),
 		StrandGUID: "old-guid",
 	}
-	if err := loomengine.WriteTacklerAttempt(f.attemptDir(number), attempt); err != nil {
+	if err := sheddriver.WriteTacklerAttempt(f.attemptDir(number), attempt); err != nil {
 		f.t.Fatal(err)
 	}
 	attempt.Dir = f.attemptDir(number)
@@ -169,8 +170,8 @@ func TestTacklerCall_SpawnPath(t *testing.T) {
 			name: "spent budget starts nothing",
 			setup: func(f *tacklerFixture) {
 				f.settings.MaxSpawns = 1
-				other := loomengine.TacklerAttempt{Number: 1, StopKey: loomengine.ArbiterStopKey{CurrentProducer: "PR-Gate", HistoryLength: 1, State: "awaiting"}}
-				if err := loomengine.WriteTacklerAttempt(f.attemptDir(1), other); err != nil {
+				other := sheddriver.TacklerAttempt{Number: 1, StopKey: sheddriver.StopKey{CurrentProducer: "PR-Gate", HistoryLength: 1, State: "awaiting"}}
+				if err := sheddriver.WriteTacklerAttempt(f.attemptDir(1), other); err != nil {
 					t.Fatal(err)
 				}
 			},
@@ -179,19 +180,19 @@ func TestTacklerCall_SpawnPath(t *testing.T) {
 		{
 			name:        "fresh stop records the attempt before the start and concludes the verdict",
 			setup:       func(f *tacklerFixture) {},
-			wantVerdict: loomengine.TacklerVerdictResume, wantStarts: 1,
+			wantVerdict: sheddriver.TacklerVerdictResume, wantStarts: 1,
 		},
 		{
 			name:      "start error reads hand-back died",
 			setup:     func(f *tacklerFixture) { f.fake.startErr = errors.New("no pane") },
-			wantCause: arbiterCauseDied, wantVerdict: loomengine.TacklerVerdictHandBack,
+			wantCause: arbiterCauseDied, wantVerdict: sheddriver.TacklerVerdictHandBack,
 		},
 		{
 			name: "timeout with no paused time stops the strand",
 			setup: func(f *tacklerFixture) {
 				f.fake.waitResult = shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}
 			},
-			wantCause: arbiterCauseTimeout, wantVerdict: loomengine.TacklerVerdictHandBack, wantStarts: 1, wantStops: 1,
+			wantCause: arbiterCauseTimeout, wantVerdict: sheddriver.TacklerVerdictHandBack, wantStarts: 1, wantStops: 1,
 		},
 		{
 			name: "timeout over a paused window re-attaches with the deadline moved out",
@@ -200,7 +201,7 @@ func TestTacklerCall_SpawnPath(t *testing.T) {
 				f.fake.waitResult = shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}
 				f.fake.attachFound = true
 			},
-			wantVerdict: loomengine.TacklerVerdictResume, wantStarts: 1, wantAttach: 1,
+			wantVerdict: sheddriver.TacklerVerdictResume, wantStarts: 1, wantAttach: 1,
 		},
 	}
 	for _, tt := range tests {
@@ -210,19 +211,19 @@ func TestTacklerCall_SpawnPath(t *testing.T) {
 			tt.setup(f)
 
 			type captured struct {
-				attempt loomengine.TacklerAttempt
-				marker  loomengine.TacklerMarker
+				attempt sheddriver.TacklerAttempt
+				marker  sheddriver.TacklerMarker
 				prompt  string
 			}
 			var atWait captured
 			var attachSpec shuttleengine.Spec
 			writeVerdict := func() {
-				writeTacklerFile(t, loomengine.TacklerVerdictPath(f.attemptDir(1)), tacklerResumeVerdict)
+				writeTacklerFile(t, sheddriver.TacklerVerdictPath(f.attemptDir(1)), tacklerResumeVerdict)
 			}
 			f.fake.onWait = func(shuttleengine.Spec) {
-				atWait.attempt, _ = loomengine.ReadTacklerAttempt(f.attemptDir(1))
-				atWait.marker, _, _ = loomengine.ReadTacklerMarker(f.markerPath())
-				data, _ := os.ReadFile(loomengine.TacklerPromptPath(f.attemptDir(1)))
+				atWait.attempt, _ = sheddriver.ReadTacklerAttempt(f.attemptDir(1))
+				atWait.marker, _, _ = sheddriver.ReadTacklerMarker(f.markerPath())
+				data, _ := os.ReadFile(sheddriver.TacklerPromptPath(f.attemptDir(1)))
 				atWait.prompt = string(data)
 				if f.fake.waitResult.Outcome == "" {
 					writeVerdict()
@@ -256,10 +257,10 @@ func TestTacklerCall_SpawnPath(t *testing.T) {
 			if len(f.fake.starts) != tt.wantStarts || f.fake.runStops != tt.wantStops || len(f.fake.attaches) != tt.wantAttach {
 				t.Errorf("starts, run stops, attaches = %d, %d, %d; want %d, %d, %d", len(f.fake.starts), f.fake.runStops, len(f.fake.attaches), tt.wantStarts, tt.wantStops, tt.wantAttach)
 			}
-			if _, found, _ := loomengine.ReadTacklerMarker(f.markerPath()); found {
+			if _, found, _ := sheddriver.ReadTacklerMarker(f.markerPath()); found {
 				t.Error("marker still present after the call finished; want it removed")
 			}
-			if stored, found, err := loomengine.ReadTacklerEnvelope(loomengine.TacklerEnvelopePath(f.attemptDir(1))); err != nil || !found || stored != envelope {
+			if stored, found, err := sheddriver.ReadTacklerEnvelope(sheddriver.TacklerEnvelopePath(f.attemptDir(1))); err != nil || !found || stored != envelope {
 				t.Errorf("envelope.json = %+v, found %v, error %v; want the returned envelope %+v", stored, found, err, envelope)
 			}
 			if tt.wantStarts == 0 {
@@ -267,18 +268,18 @@ func TestTacklerCall_SpawnPath(t *testing.T) {
 			}
 
 			spec := f.fake.starts[0]
-			verdictPath := loomengine.TacklerVerdictPath(f.attemptDir(1))
-			if spec.Role != loomengine.TacklerRole || !reflect.DeepEqual(spec.OutputFiles, []string{verdictPath}) || spec.Model != "claude-resolved" || spec.Timeout != 10*time.Minute {
+			verdictPath := sheddriver.TacklerVerdictPath(f.attemptDir(1))
+			if spec.Role != sheddriver.TacklerRole || !reflect.DeepEqual(spec.OutputFiles, []string{verdictPath}) || spec.Model != "claude-resolved" || spec.Timeout != 10*time.Minute {
 				t.Errorf("spec = role %q, outputs %v, model %q, timeout %v; want the tackler role over %q, the resolved model and 10m", spec.Role, spec.OutputFiles, spec.Model, spec.Timeout, verdictPath)
 			}
-			wantAttempt := loomengine.TacklerAttempt{
-				Number: 1, StopKey: loomengine.StopKeyOf(f.status), Snapshot: f.snapshot, SpawnedAt: f.now, Deadline: f.now.Add(10 * time.Minute),
+			wantAttempt := sheddriver.TacklerAttempt{
+				Number: 1, StopKey: sheddriver.StopKeyOf(f.status), Snapshot: f.snapshot, SpawnedAt: f.now, Deadline: f.now.Add(10 * time.Minute),
 				StrandGUID: "guid-1", EnvelopePath: f.envelope, ReportPath: f.reportPath, Dir: f.attemptDir(1),
 			}
 			if !reflect.DeepEqual(atWait.attempt, wantAttempt) {
 				t.Errorf("attempt.json at the wait = %+v; want %+v", atWait.attempt, wantAttempt)
 			}
-			if want := (loomengine.TacklerMarker{Attempt: 1, StrandGUID: "guid-1", Deadline: f.now.Add(10 * time.Minute)}); atWait.marker != want {
+			if want := (sheddriver.TacklerMarker{Attempt: 1, StrandGUID: "guid-1", Deadline: f.now.Add(10 * time.Minute)}); atWait.marker != want {
 				t.Errorf("marker at the wait = %+v; want %+v", atWait.marker, want)
 			}
 			if atWait.prompt != spec.Prompt || !strings.Contains(spec.Prompt, verdictPath) || !strings.Contains(spec.Prompt, f.envelope) {
@@ -289,7 +290,7 @@ func TestTacklerCall_SpawnPath(t *testing.T) {
 				if attachSpec.Timeout != wantDeadline.Sub(f.now) {
 					t.Errorf("re-attach timeout = %v; want %v, the deadline moved out by the paused time", attachSpec.Timeout, wantDeadline.Sub(f.now))
 				}
-				if moved, _ := loomengine.ReadTacklerAttempt(f.attemptDir(1)); !moved.Deadline.Equal(wantDeadline) {
+				if moved, _ := sheddriver.ReadTacklerAttempt(f.attemptDir(1)); !moved.Deadline.Equal(wantDeadline) {
 					t.Errorf("attempt.json deadline = %v; want %v", moved.Deadline, wantDeadline)
 				}
 			}
@@ -303,7 +304,7 @@ func TestTacklerCall_Rerun(t *testing.T) {
 
 	tests := []struct {
 		name  string
-		setup func(f *tacklerFixture, attempt loomengine.TacklerAttempt)
+		setup func(f *tacklerFixture, attempt sheddriver.TacklerAttempt)
 		// wantErr is the sentinel the call returns; empty rows expect an envelope.
 		wantErr error
 		// deadlinePassed gives the prior attempt a deadline a minute behind the clock.
@@ -317,33 +318,33 @@ func TestTacklerCall_Rerun(t *testing.T) {
 	}{
 		{
 			name: "verdict on disk is returned with no start",
-			setup: func(f *tacklerFixture, attempt loomengine.TacklerAttempt) {
-				writeTacklerFile(t, loomengine.TacklerVerdictPath(attempt.Dir), tacklerResumeVerdict)
+			setup: func(f *tacklerFixture, attempt sheddriver.TacklerAttempt) {
+				writeTacklerFile(t, sheddriver.TacklerVerdictPath(attempt.Dir), tacklerResumeVerdict)
 			},
 			wantAttempt: 1,
 		},
 		{
 			name: "live attempt within its deadline is attached for the remaining time",
-			setup: func(f *tacklerFixture, attempt loomengine.TacklerAttempt) {
+			setup: func(f *tacklerFixture, attempt sheddriver.TacklerAttempt) {
 				f.fake.attachFound = true
 				f.fake.onAttach = func(shuttleengine.Spec) {
-					writeTacklerFile(t, loomengine.TacklerVerdictPath(attempt.Dir), tacklerResumeVerdict)
+					writeTacklerFile(t, sheddriver.TacklerVerdictPath(attempt.Dir), tacklerResumeVerdict)
 				}
 			},
 			wantAttempt: 1, wantAttaches: 1, wantTimeout: 5 * time.Minute,
 		},
 		{
 			name: "attempt with no live run and no verdict reads hand-back missing",
-			setup: func(f *tacklerFixture, attempt loomengine.TacklerAttempt) {
+			setup: func(f *tacklerFixture, attempt sheddriver.TacklerAttempt) {
 				f.fake.attachFound = false
 			},
 			wantAttempt: 1, wantAttaches: 1, wantTimeout: 5 * time.Minute, wantCause: arbiterCauseMissing,
 		},
 		{
 			name: "marker past its deadline is stopped and reads hand-back timeout",
-			setup: func(f *tacklerFixture, attempt loomengine.TacklerAttempt) {
-				marker := loomengine.TacklerMarker{Attempt: attempt.Number, StrandGUID: "marker-guid", Deadline: f.now.Add(-time.Minute)}
-				if err := loomengine.WriteTacklerMarker(f.markerPath(), marker); err != nil {
+			setup: func(f *tacklerFixture, attempt sheddriver.TacklerAttempt) {
+				marker := sheddriver.TacklerMarker{Attempt: attempt.Number, StrandGUID: "marker-guid", Deadline: f.now.Add(-time.Minute)}
+				if err := sheddriver.WriteTacklerMarker(f.markerPath(), marker); err != nil {
 					t.Fatal(err)
 				}
 			},
@@ -352,9 +353,9 @@ func TestTacklerCall_Rerun(t *testing.T) {
 		},
 		{
 			name: "applied attempt returns errTacklerResumeReturned",
-			setup: func(f *tacklerFixture, attempt loomengine.TacklerAttempt) {
-				writeTacklerFile(t, loomengine.TacklerVerdictPath(attempt.Dir), tacklerResumeVerdict)
-				if err := loomengine.MarkTacklerApplied(attempt.Dir); err != nil {
+			setup: func(f *tacklerFixture, attempt sheddriver.TacklerAttempt) {
+				writeTacklerFile(t, sheddriver.TacklerVerdictPath(attempt.Dir), tacklerResumeVerdict)
+				if err := sheddriver.MarkTacklerApplied(attempt.Dir); err != nil {
 					t.Fatal(err)
 				}
 			},
@@ -362,18 +363,18 @@ func TestTacklerCall_Rerun(t *testing.T) {
 		},
 		{
 			name: "attempt already handed to the parent is skipped for a fresh one",
-			setup: func(f *tacklerFixture, attempt loomengine.TacklerAttempt) {
-				writeTacklerFile(t, loomengine.TacklerVerdictPath(attempt.Dir), tacklerHandBackVerdict)
+			setup: func(f *tacklerFixture, attempt sheddriver.TacklerAttempt) {
+				writeTacklerFile(t, sheddriver.TacklerVerdictPath(attempt.Dir), tacklerHandBackVerdict)
 				f.closed = func(time.Time) bool { return true }
 				f.fake.onWait = func(shuttleengine.Spec) {
-					writeTacklerFile(t, loomengine.TacklerVerdictPath(f.attemptDir(2)), tacklerResumeVerdict)
+					writeTacklerFile(t, sheddriver.TacklerVerdictPath(f.attemptDir(2)), tacklerResumeVerdict)
 				}
 			},
 			wantAttempt: 2, wantStarts: 1,
 		},
 		{
 			name: "attempt already handed to the parent still counts toward the budget",
-			setup: func(f *tacklerFixture, attempt loomengine.TacklerAttempt) {
+			setup: func(f *tacklerFixture, attempt sheddriver.TacklerAttempt) {
 				f.settings.MaxSpawns = 1
 				f.closed = func(time.Time) bool { return true }
 			},
@@ -434,47 +435,47 @@ func TestTacklerCall_VerdictOutcomes(t *testing.T) {
 		wantGoto    string
 		wantBrief   bool
 	}{
-		{name: "resume at an error stop", verdict: tacklerResumeVerdict, wantVerdict: loomengine.TacklerVerdictResume},
+		{name: "resume at an error stop", verdict: tacklerResumeVerdict, wantVerdict: sheddriver.TacklerVerdictResume},
 		{
 			name: "resume with a goto to the current row", verdict: "verdict: resume\nreason: r\ngoto: Plan-Bouncer\n",
-			wantVerdict: loomengine.TacklerVerdictResume, wantGoto: "Plan-Bouncer",
+			wantVerdict: sheddriver.TacklerVerdictResume, wantGoto: "Plan-Bouncer",
 		},
 		{
 			name: "resume with a goto to the last history entry's producer", verdict: "verdict: resume\nreason: r\ngoto: Plan-Write\n",
-			wantVerdict: loomengine.TacklerVerdictResume, wantGoto: "Plan-Write",
+			wantVerdict: sheddriver.TacklerVerdictResume, wantGoto: "Plan-Write",
 		},
 		{
 			name: "resume with a goto to another earlier row", verdict: "verdict: resume\nreason: r\ngoto: Plan-Draft\n",
-			wantVerdict: loomengine.TacklerVerdictHandBack, wantCause: arbiterCausePrecondition,
+			wantVerdict: sheddriver.TacklerVerdictHandBack, wantCause: arbiterCausePrecondition,
 		},
 		{
 			name: "resume with a goto the shed refuses", verdict: "verdict: resume\nreason: r\ngoto: Plan-Bouncer\n", state: shedengine.StateAwaiting,
-			wantVerdict: loomengine.TacklerVerdictHandBack, wantCause: arbiterCausePrecondition,
+			wantVerdict: sheddriver.TacklerVerdictHandBack, wantCause: arbiterCausePrecondition,
 		},
 		{
 			name: "resume at a blocked stop without a goto", verdict: tacklerResumeVerdict, state: shedengine.StateBlocked,
-			wantVerdict: loomengine.TacklerVerdictHandBack, wantCause: arbiterCausePrecondition,
+			wantVerdict: sheddriver.TacklerVerdictHandBack, wantCause: arbiterCausePrecondition,
 		},
-		{name: "hand-back with a question", verdict: tacklerHandBackVerdict, wantVerdict: loomengine.TacklerVerdictHandBack},
+		{name: "hand-back with a question", verdict: tacklerHandBackVerdict, wantVerdict: sheddriver.TacklerVerdictHandBack},
 		{
 			name: "hand-back without a question", verdict: "verdict: hand-back\nreason: r\n",
-			wantVerdict: loomengine.TacklerVerdictHandBack, wantCause: tacklerCauseQuestion,
+			wantVerdict: sheddriver.TacklerVerdictHandBack, wantCause: tacklerCauseQuestion,
 		},
 		{
 			name: "escalate with an empty case brief", verdict: "verdict: escalate\nreason: r\n", caseBrief: "",
-			wantVerdict: loomengine.TacklerVerdictHandBack, wantCause: tacklerCauseCaseBrief,
+			wantVerdict: sheddriver.TacklerVerdictHandBack, wantCause: tacklerCauseCaseBrief,
 		},
 		{
 			name: "escalate with no case brief file", verdict: "verdict: escalate\nreason: r\n", caseBrief: "<absent>",
-			wantVerdict: loomengine.TacklerVerdictHandBack, wantCause: tacklerCauseCaseBrief,
+			wantVerdict: sheddriver.TacklerVerdictHandBack, wantCause: tacklerCauseCaseBrief,
 		},
 		{
 			name: "escalate with a case brief", verdict: "verdict: escalate\nreason: r\n", caseBrief: "# Case\nhypothesis: the build is stale\n",
-			wantVerdict: loomengine.TacklerVerdictEscalate, wantBrief: true,
+			wantVerdict: sheddriver.TacklerVerdictEscalate, wantBrief: true,
 		},
 		{
 			name: "undecodable verdict", verdict: "verdict: [unclosed\n",
-			wantVerdict: loomengine.TacklerVerdictHandBack, wantCause: arbiterCauseUnparseable,
+			wantVerdict: sheddriver.TacklerVerdictHandBack, wantCause: arbiterCauseUnparseable,
 		},
 	}
 	for _, tt := range tests {
@@ -486,9 +487,9 @@ func TestTacklerCall_VerdictOutcomes(t *testing.T) {
 			}
 			f.fake.onWait = func(shuttleengine.Spec) {
 				dir := f.attemptDir(1)
-				writeTacklerFile(t, loomengine.TacklerVerdictPath(dir), tt.verdict)
+				writeTacklerFile(t, sheddriver.TacklerVerdictPath(dir), tt.verdict)
 				if tt.caseBrief != "<absent>" && strings.HasPrefix(tt.verdict, "verdict: escalate") {
-					writeTacklerFile(t, loomengine.TacklerCaseBriefPath(dir), tt.caseBrief)
+					writeTacklerFile(t, sheddriver.TacklerCaseBriefPath(dir), tt.caseBrief)
 				}
 			}
 
@@ -502,7 +503,7 @@ func TestTacklerCall_VerdictOutcomes(t *testing.T) {
 			}
 			wantBriefPath := ""
 			if tt.wantBrief {
-				wantBriefPath = loomengine.TacklerCaseBriefPath(f.attemptDir(1))
+				wantBriefPath = sheddriver.TacklerCaseBriefPath(f.attemptDir(1))
 			}
 			if envelope.CaseBriefPath != wantBriefPath {
 				t.Errorf("envelope case brief path = %q; want %q", envelope.CaseBriefPath, wantBriefPath)

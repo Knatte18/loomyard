@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 )
@@ -110,12 +110,12 @@ func stopFromStatus(st shedengine.Status) driveStop {
 }
 
 // key is the stop key the stop left: the loop's current producer, history length and state, falling back to the top-level state.
-func (s driveStop) key() loomengine.ArbiterStopKey {
+func (s driveStop) key() sheddriver.StopKey {
 	state := s.LoopState
 	if state == "" {
 		state = s.State
 	}
-	return loomengine.ArbiterStopKey{CurrentProducer: s.CurrentProducer, HistoryLength: s.HistoryLength, State: state}
+	return sheddriver.StopKey{CurrentProducer: s.CurrentProducer, HistoryLength: s.HistoryLength, State: state}
 }
 
 // driveFacts carries the disk reads the loop makes before deciding.
@@ -181,10 +181,10 @@ func binaryEligible(stop driveStop) bool {
 }
 
 // repairCount counts the restep settle records of the stop key.
-func repairCount(records []loomengine.SettleRecord, key loomengine.ArbiterStopKey) int {
+func repairCount(records []sheddriver.SettleRecord, key sheddriver.StopKey) int {
 	count := 0
 	for _, record := range records {
-		if record.Action == loomengine.SettleRestep && record.StopKey == key {
+		if record.Action == sheddriver.SettleRestep && record.StopKey == key {
 			count++
 		}
 	}

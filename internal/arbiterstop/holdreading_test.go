@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
@@ -81,7 +82,7 @@ func (f *holdFixture) escalate(cause, decision string) {
 }
 
 // attempt writes the next attempt record at key with deadline, and returns its directory.
-func (f *holdFixture) attempt(key loomengine.ArbiterStopKey, deadline time.Time) string {
+func (f *holdFixture) attempt(key sheddriver.StopKey, deadline time.Time) string {
 	f.t.Helper()
 	f.attempts++
 	dir := filepath.Join(shedrun.ArbiterDir(f.location, shedrun.SelfRunID), "attempt-"+string(rune('0'+f.attempts)))
@@ -118,10 +119,10 @@ func (f *holdFixture) chtimes(path string, at time.Time) {
 }
 
 // settle appends a settle record at key with action, at at.
-func (f *holdFixture) settle(key loomengine.ArbiterStopKey, action string, at time.Time) {
+func (f *holdFixture) settle(key sheddriver.StopKey, action string, at time.Time) {
 	f.t.Helper()
 	path := shedrun.SettleRecordsFile(loomengine.LoomFrictionDir(f.location))
-	if err := loomengine.AppendSettleRecord(path, loomengine.SettleRecord{StopKey: key, Settler: loomengine.SettlerGoRule, Action: action, At: at}); err != nil {
+	if err := sheddriver.AppendSettleRecord(path, sheddriver.SettleRecord{StopKey: key, Settler: sheddriver.SettlerGoRule, Action: action, At: at}); err != nil {
 		f.t.Fatal(err)
 	}
 }
@@ -143,7 +144,7 @@ func TestHoldReading(t *testing.T) {
 	deadline := holdBase.Add(timeout)
 	handOnAt := holdBase.Add(time.Minute)
 	appliedAt := holdBase.Add(2 * time.Minute)
-	otherKey := loomengine.ArbiterStopKey{CurrentProducer: "Plan-Bouncer", HistoryLength: 9, State: "awaiting"}
+	otherKey := sheddriver.StopKey{CurrentProducer: "Plan-Bouncer", HistoryLength: 9, State: "awaiting"}
 	withAttempt := eligible
 	withAttempt.Attempt, withAttempt.AttemptDeadline = true, deadline
 	withMarks := withAttempt
@@ -155,30 +156,30 @@ func TestHoldReading(t *testing.T) {
 		name     string
 		producer string
 		state    shedengine.State
-		setup    func(f *holdFixture, key loomengine.ArbiterStopKey)
+		setup    func(f *holdFixture, key sheddriver.StopKey)
 		want     battenshed.ChildArbiterStop
 	}{
 		{name: "blocked stop at Plan-Write", producer: "Plan-Write", state: shedengine.StateBlocked, want: eligible},
 		{name: "failed status is not eligible", producer: "Plan-Write", state: shedengine.StateFailed},
 		{
 			name: "awaiting at a budget escalation is not eligible", producer: "Plan-Bouncer", state: shedengine.StateAwaiting,
-			setup: func(f *holdFixture, _ loomengine.ArbiterStopKey) { f.escalate("budget", "") },
+			setup: func(f *holdFixture, _ sheddriver.StopKey) { f.escalate("budget", "") },
 		},
 		{
 			name: "awaiting at a circling escalation with no attempt", producer: "Plan-Bouncer", state: shedengine.StateAwaiting,
-			setup: func(f *holdFixture, _ loomengine.ArbiterStopKey) { f.escalate("circling", "") },
+			setup: func(f *holdFixture, _ sheddriver.StopKey) { f.escalate("circling", "") },
 			want:  eligible,
 		},
 		{
 			name: "arbiter_max_spawns of 0 reads off", producer: "Plan-Write", state: shedengine.StateBlocked,
-			setup: func(f *holdFixture, _ loomengine.ArbiterStopKey) {
+			setup: func(f *holdFixture, _ sheddriver.StopKey) {
 				f.writeConfig(strings.Replace(loomengine.ConfigTemplate(), "arbiter_max_spawns: 3", "arbiter_max_spawns: 0", 1))
 			},
 			want: battenshed.ChildArbiterStop{Eligible: true, Timeout: timeout},
 		},
 		{
 			name: "attempts at the cap, none at this key, read no spawns left", producer: "Plan-Write", state: shedengine.StateBlocked,
-			setup: func(f *holdFixture, _ loomengine.ArbiterStopKey) {
+			setup: func(f *holdFixture, _ sheddriver.StopKey) {
 				for range 3 {
 					f.attempt(otherKey, deadline)
 				}
@@ -187,7 +188,7 @@ func TestHoldReading(t *testing.T) {
 		},
 		{
 			name: "an attempt at the key reads its deadline, hand-on time and applied time", producer: "Plan-Write", state: shedengine.StateBlocked,
-			setup: func(f *holdFixture, key loomengine.ArbiterStopKey) {
+			setup: func(f *holdFixture, key sheddriver.StopKey) {
 				f.attempt(otherKey, holdBase)
 				dir := f.attempt(key, deadline)
 				f.envelope(dir, loomengine.ArbiterVerdictHandOn, handOnAt)
@@ -197,31 +198,31 @@ func TestHoldReading(t *testing.T) {
 		},
 		{
 			name: "a resume envelope leaves HandOnAt zero", producer: "Plan-Write", state: shedengine.StateBlocked,
-			setup: func(f *holdFixture, key loomengine.ArbiterStopKey) {
+			setup: func(f *holdFixture, key sheddriver.StopKey) {
 				f.envelope(f.attempt(key, deadline), loomengine.ArbiterVerdictResume, handOnAt)
 			},
 			want: withAttempt,
 		},
 		{
 			name: "a newest hand-over settle record at the key fills HandOverAt", producer: "Plan-Write", state: shedengine.StateBlocked,
-			setup: func(f *holdFixture, key loomengine.ArbiterStopKey) {
-				f.settle(key, loomengine.SettleHandBack, holdBase)
-				f.settle(key, loomengine.SettleHandOver, handOnAt)
-				f.settle(otherKey, loomengine.SettleHandBack, appliedAt)
+			setup: func(f *holdFixture, key sheddriver.StopKey) {
+				f.settle(key, sheddriver.SettleHandBack, holdBase)
+				f.settle(key, sheddriver.SettleHandOver, handOnAt)
+				f.settle(otherKey, sheddriver.SettleHandBack, appliedAt)
 			},
 			want: withHandOver,
 		},
 		{
 			name: "a newer hand-back at the key leaves HandOverAt zero", producer: "Plan-Write", state: shedengine.StateBlocked,
-			setup: func(f *holdFixture, key loomengine.ArbiterStopKey) {
-				f.settle(key, loomengine.SettleHandOver, holdBase)
-				f.settle(key, loomengine.SettleHandBack, handOnAt)
+			setup: func(f *holdFixture, key sheddriver.StopKey) {
+				f.settle(key, sheddriver.SettleHandOver, holdBase)
+				f.settle(key, sheddriver.SettleHandBack, handOnAt)
 			},
 			want: eligible,
 		},
 		{
 			name: "awaiting past the arbiter's own decision stays eligible until applied", producer: "Plan-Bouncer", state: shedengine.StateAwaiting,
-			setup: func(f *holdFixture, key loomengine.ArbiterStopKey) {
+			setup: func(f *holdFixture, key sheddriver.StopKey) {
 				f.escalate("circling", "continue")
 				f.envelope(f.attempt(key, deadline), loomengine.ArbiterVerdictResume, handOnAt)
 			},
@@ -233,7 +234,7 @@ func TestHoldReading(t *testing.T) {
 			t.Parallel()
 			f := newHoldFixture(t, tt.producer, tt.state)
 			if tt.setup != nil {
-				tt.setup(f, loomengine.StopKeyOf(f.status))
+				tt.setup(f, sheddriver.StopKeyOf(f.status))
 			}
 			got, err := HoldReading(f.location, f.status)
 			if err != nil {

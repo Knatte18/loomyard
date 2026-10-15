@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -223,7 +224,7 @@ func (f *arbiterFixture) priorAttempt(number int, deadlineIn time.Duration) loom
 	f.t.Helper()
 	attempt := loomengine.ArbiterAttempt{
 		Number:     number,
-		StopKey:    loomengine.StopKeyOf(f.status),
+		StopKey:    sheddriver.StopKeyOf(f.status),
 		SpawnedAt:  f.now.Add(-10 * time.Minute),
 		Deadline:   f.now.Add(deadlineIn),
 		StrandGUID: "old-guid",
@@ -374,7 +375,7 @@ func TestArbiterVerb_SpawnPath(t *testing.T) {
 			name: "spent budget refused, counted from the attempt records on disk", producer: "Plan-Write", state: shedengine.StateBlocked,
 			setup: func(f *arbiterFixture) {
 				f.settings.MaxSpawns = 1
-				other := loomengine.ArbiterAttempt{Number: 1, StopKey: loomengine.ArbiterStopKey{CurrentProducer: "Plan-Bouncer", HistoryLength: 1, State: "awaiting"}}
+				other := loomengine.ArbiterAttempt{Number: 1, StopKey: sheddriver.StopKey{CurrentProducer: "Plan-Bouncer", HistoryLength: 1, State: "awaiting"}}
 				if err := loomengine.WriteArbiterAttempt(f.attemptDir(1), other); err != nil {
 					t.Fatal(err)
 				}
@@ -454,7 +455,7 @@ func TestArbiterVerb_SpawnPath(t *testing.T) {
 				t.Errorf("prompt reads a case brief at a stop given none; want none")
 			}
 			wantAttempt := loomengine.ArbiterAttempt{
-				Number: 1, StopKey: loomengine.StopKeyOf(f.status), SpawnedAt: f.now, Deadline: f.now.Add(30 * time.Minute),
+				Number: 1, StopKey: sheddriver.StopKeyOf(f.status), SpawnedAt: f.now, Deadline: f.now.Add(30 * time.Minute),
 				StrandGUID: "guid-1", EnvelopePath: f.envelopePath, ReportPath: f.reportPath, CaseBriefPath: f.caseBriefPath, Dir: f.attemptDir(1),
 			}
 			if !reflect.DeepEqual(captured.attempt, wantAttempt) {

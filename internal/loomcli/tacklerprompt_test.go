@@ -11,6 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 )
 
 // TestTacklerPrompt asserts the shipped stencil renders every marker value, the no-parent and edit directives, the literal none for an absent report, and no unfilled marker.
@@ -103,8 +104,8 @@ func TestTacklerSpec(t *testing.T) {
 	if got.Timeout != settings.Timeout {
 		t.Errorf("tacklerSpec().Timeout = %v; want %v", got.Timeout, settings.Timeout)
 	}
-	if got.Role != loomengine.TacklerRole {
-		t.Errorf("tacklerSpec().Role = %q; want %q", got.Role, loomengine.TacklerRole)
+	if got.Role != sheddriver.TacklerRole {
+		t.Errorf("tacklerSpec().Role = %q; want %q", got.Role, sheddriver.TacklerRole)
 	}
 	if got.NameOverride != "" {
 		t.Errorf("tacklerSpec().NameOverride = %q; want empty so a second attempt numbers its role", got.NameOverride)

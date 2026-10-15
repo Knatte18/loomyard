@@ -20,7 +20,7 @@ const driveNoticeTail = "Answer briefly, then continue your task."
 
 // driveAttemptNote is one tackler or arbiter attempt as the stop report and the hand-back record it.
 type driveAttemptNote struct {
-	// Role is the agent that judged the stop: loomengine.TacklerRole or loomengine.ArbiterRole.
+	// Role is the agent that judged the stop: sheddriver.TacklerRole or loomengine.ArbiterRole.
 	Role        string
 	Number      int
 	Verdict     string

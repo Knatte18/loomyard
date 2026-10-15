@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -150,7 +151,7 @@ type arbiterCall struct {
 	in     arbiterInput
 	status shedengine.Status
 	stop   arbiterStopEnvelope
-	key    loomengine.ArbiterStopKey
+	key    sheddriver.StopKey
 }
 
 // newArbiterCall reads the status and the stop envelope, refusing when either is missing or unreadable.
@@ -170,7 +171,7 @@ func newArbiterCall(deps arbiterDeps, in arbiterInput) (*arbiterCall, error) {
 	if err := json.Unmarshal(data, &stop); err != nil {
 		return nil, arbiterRefusal("status or envelope unreadable: the stop envelope %s: %v", in.EnvelopePath, err)
 	}
-	return &arbiterCall{deps: deps, in: in, status: status, stop: stop, key: loomengine.StopKeyOf(status)}, nil
+	return &arbiterCall{deps: deps, in: in, status: status, stop: stop, key: sheddriver.StopKeyOf(status)}, nil
 }
 
 // settle returns the validated verdict for the call's stop: an earlier attempt's when one arbitrated this stop, else a fresh attempt's.

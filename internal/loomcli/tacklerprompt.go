@@ -10,6 +10,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
@@ -83,7 +84,7 @@ func tacklerPrompt(stencilsDir string, in tacklerPromptInput) (string, error) {
 // The case brief is not an output file, since only an escalate writes it; caseBriefPath reaches the prompt input alone, which is why it is not read here.
 // Model, Effort and Version come from settings, which carries the RESOLVED triple -- a provider model id plus its effort and version.
 // Timeout is the settings' timeout, which bounds the tackler's run.
-// Role is loomengine.TacklerRole, which reed forms into `<shortname>:<slug>:tackler`; NameOverride is left empty so a second attempt numbers its role.
+// Role is sheddriver.TacklerRole, which reed forms into `<shortname>:<slug>:tackler`; NameOverride is left empty so a second attempt numbers its role.
 // Segment is the coordinator, the driver's, because the tackler acts for the driver.
 // Interactive is false, shuttle's autonomous posture, which adds the operator-prompt deny an unattended session needs.
 // ForkSubagents is false and Parent is empty: the tackler spawns nothing and has no session to message.
@@ -96,7 +97,7 @@ func tacklerSpec(prompt, verdictPath, caseBriefPath string, settings loomengine.
 		Effort:        settings.Effort,
 		Version:       settings.Version,
 		Timeout:       settings.Timeout,
-		Role:          loomengine.TacklerRole,
+		Role:          sheddriver.TacklerRole,
 		Segment:       segmentcolor.Coordinator,
 		Interactive:   false,
 		ForkSubagents: false,

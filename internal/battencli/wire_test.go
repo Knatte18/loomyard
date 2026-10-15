@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shell"
@@ -187,7 +188,7 @@ func TestArbiterInFlightFrom(t *testing.T) {
 		return nil, nil
 	}
 	tacklerPath := filepath.Join(t.TempDir(), "tackler-marker.json")
-	if err := loomengine.WriteTacklerMarker(tacklerPath, loomengine.TacklerMarker{Attempt: 1, StrandGUID: "guid-1", Deadline: deadline}); err != nil {
+	if err := sheddriver.WriteTacklerMarker(tacklerPath, sheddriver.TacklerMarker{Attempt: 1, StrandGUID: "guid-1", Deadline: deadline}); err != nil {
 		t.Fatalf("WriteTacklerMarker: %v", err)
 	}
 	tacklerMark := func() (loomengine.ArbiterMarker, bool, error) { return readTacklerAsArbiterMarker(tacklerPath) }

@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 )
@@ -27,8 +27,8 @@ func TestDecideDrive(t *testing.T) {
 	awaitingStop := func(notice string) driveStop {
 		return driveStop{OK: true, State: "awaiting", LoopState: "awaiting", ParentNotice: notice}
 	}
-	restepRecord := func(key loomengine.ArbiterStopKey) loomengine.SettleRecord {
-		return loomengine.SettleRecord{StopKey: key, Action: loomengine.SettleRestep}
+	restepRecord := func(key sheddriver.StopKey) sheddriver.SettleRecord {
+		return sheddriver.SettleRecord{StopKey: key, Action: sheddriver.SettleRestep}
 	}
 
 	tests := []struct {
@@ -36,7 +36,7 @@ func TestDecideDrive(t *testing.T) {
 		stop  driveStop
 		facts driveFacts
 		// records, when set, derive the facts' RepairCount through repairCount.
-		records           []loomengine.SettleRecord
+		records           []sheddriver.SettleRecord
 		want              driveAction
 		wantFrictionNote  bool
 		wantWatchedVerify bool
@@ -69,11 +69,11 @@ func TestDecideDrive(t *testing.T) {
 		{name: "third reinvoke failure goes to the tackler", stop: interruptedStop(shedverbs.InterruptPolicyReinvoke), facts: driveFacts{RepairCount: driveRepairCap}, want: driveActionTackler},
 		{
 			name: "repair count is the restep records of the stop key only", stop: interruptedStop(shedverbs.InterruptPolicyReinvoke),
-			records: []loomengine.SettleRecord{
+			records: []sheddriver.SettleRecord{
 				restepRecord(interruptedStop("").key()),
 				restepRecord(interruptedStop("").key()),
-				restepRecord(loomengine.ArbiterStopKey{CurrentProducer: "Other", HistoryLength: 1, State: "failed"}),
-				{StopKey: interruptedStop("").key(), Action: loomengine.SettleHandBack},
+				restepRecord(sheddriver.StopKey{CurrentProducer: "Other", HistoryLength: 1, State: "failed"}),
+				{StopKey: interruptedStop("").key(), Action: sheddriver.SettleHandBack},
 			},
 			want: driveActionTackler,
 		},
@@ -113,7 +113,7 @@ func TestParseDriveStop(t *testing.T) {
 		name     string
 		envelope string
 		want     driveStop
-		wantKey  loomengine.ArbiterStopKey
+		wantKey  sheddriver.StopKey
 		wantErr  bool
 	}{
 		{
@@ -123,7 +123,7 @@ func TestParseDriveStop(t *testing.T) {
 				OK: true, State: "awaiting", Reason: "review", ParentNotice: "look", Friction: "ok", EnvelopePath: "/e.json",
 				Stop: "halted", CurrentProducer: "Plan-Bouncer", HistoryLength: 4, LoopState: "awaiting",
 			},
-			wantKey: loomengine.ArbiterStopKey{CurrentProducer: "Plan-Bouncer", HistoryLength: 4, State: "awaiting"},
+			wantKey: sheddriver.StopKey{CurrentProducer: "Plan-Bouncer", HistoryLength: 4, State: "awaiting"},
 		},
 		{
 			name:     "error envelope carrying kind and transient",
@@ -132,7 +132,7 @@ func TestParseDriveStop(t *testing.T) {
 				Error: "boom", Kind: "producer", Transient: "network",
 				Stop: "error", CurrentProducer: "Plan-Write", HistoryLength: 2, LoopState: "failed",
 			},
-			wantKey: loomengine.ArbiterStopKey{CurrentProducer: "Plan-Write", HistoryLength: 2, State: "failed"},
+			wantKey: sheddriver.StopKey{CurrentProducer: "Plan-Write", HistoryLength: 2, State: "failed"},
 		},
 		{
 			name:     "interrupted loop object with its trace paths",
@@ -141,7 +141,7 @@ func TestParseDriveStop(t *testing.T) {
 				State: "failed", Error: "interrupted", Kind: "interrupted",
 				Stop: "interrupted", CurrentProducer: "Plan-Write", HistoryLength: 2, InterruptPolicy: "reinvoke", StatusMoved: true, TraceCopy: "/t.log", StderrPath: "/s.log",
 			},
-			wantKey: loomengine.ArbiterStopKey{CurrentProducer: "Plan-Write", HistoryLength: 2, State: "failed"},
+			wantKey: sheddriver.StopKey{CurrentProducer: "Plan-Write", HistoryLength: 2, State: "failed"},
 		},
 		{name: "undecodable bytes are refused", envelope: `{"ok":`, wantErr: true},
 	}

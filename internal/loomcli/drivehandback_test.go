@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 )
 
 // TestDriveNotices pins what a hand-back tells its parent under each notify rule: the notice verbatim, the question line, the friction-failed done line and the run-id line, each ending in the tail.
@@ -139,7 +139,7 @@ func TestDriveHandBack(t *testing.T) {
 				Progress:      "step 2 of 5",
 				Reason:        "the review needs a decision",
 				Rules:         []string{"an awaiting stop: planned hand-back"},
-				Attempts:      []driveAttemptNote{{Role: loomengine.TacklerRole, Number: 1, Verdict: loomengine.TacklerVerdictHandBack, Cause: "timeout", VerdictPath: "/t/verdict.yaml"}},
+				Attempts:      []driveAttemptNote{{Role: sheddriver.TacklerRole, Number: 1, Verdict: sheddriver.TacklerVerdictHandBack, Cause: "timeout", VerdictPath: "/t/verdict.yaml"}},
 				Question:      h.Question,
 				FrictionDir:   "/friction",
 				RepairDir:     "/repair",

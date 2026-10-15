@@ -1,9 +1,8 @@
 // settle.go declares the Go driver's settle records and their appender and reader:
 // one JSON line per action the driver takes at a stop, in the told settle-records file.
 // The repair cap, the one verify retry and the one hand-over per build are counted from these records, so a restarted driver keeps every cap.
-// The records sit in this package, not in loomcli, so battencli reads them without importing another CLI package.
 
-package loomengine
+package sheddriver
 
 import (
 	"bytes"
@@ -41,34 +40,34 @@ const (
 // SettleRecord is one line of the settle-records file.
 // Build is the build identity the action was taken under and Target the row or verb it aimed at; each is omitted when empty.
 type SettleRecord struct {
-	StopKey ArbiterStopKey `json:"stop_key"`
-	Settler string         `json:"settler"`
-	Action  string         `json:"action"`
-	Outcome string         `json:"outcome"`
-	At      time.Time      `json:"at"`
-	Build   string         `json:"build,omitempty"`
-	Target  string         `json:"target,omitempty"`
+	StopKey StopKey   `json:"stop_key"`
+	Settler string    `json:"settler"`
+	Action  string    `json:"action"`
+	Outcome string    `json:"outcome"`
+	At      time.Time `json:"at"`
+	Build   string    `json:"build,omitempty"`
+	Target  string    `json:"target,omitempty"`
 }
 
 // AppendSettleRecord appends r as one JSON line to the file at path, creating the file and its directory.
 func AppendSettleRecord(path string, r SettleRecord) error {
 	line, err := json.Marshal(r)
 	if err != nil {
-		return fmt.Errorf("loom: encode settle record: %w", err)
+		return fmt.Errorf("sheddriver:encode settle record: %w", err)
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("loom: create settle record directory: %w", err)
+		return fmt.Errorf("sheddriver:create settle record directory: %w", err)
 	}
 	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
-		return fmt.Errorf("loom: open settle records %q: %w", path, err)
+		return fmt.Errorf("sheddriver:open settle records %q: %w", path, err)
 	}
 	if _, err := file.Write(append(line, '\n')); err != nil {
 		_ = file.Close()
-		return fmt.Errorf("loom: append settle record %q: %w", path, err)
+		return fmt.Errorf("sheddriver:append settle record %q: %w", path, err)
 	}
 	if err := file.Close(); err != nil {
-		return fmt.Errorf("loom: close settle records %q: %w", path, err)
+		return fmt.Errorf("sheddriver:close settle records %q: %w", path, err)
 	}
 	return nil
 }
@@ -81,7 +80,7 @@ func ReadSettleRecords(path string) ([]SettleRecord, error) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("loom: read settle records %q: %w", path, err)
+		return nil, fmt.Errorf("sheddriver:read settle records %q: %w", path, err)
 	}
 	var records []SettleRecord
 	for _, line := range bytes.Split(data, []byte{'\n'}) {

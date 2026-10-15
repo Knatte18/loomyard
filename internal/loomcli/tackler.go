@@ -12,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -31,7 +32,7 @@ var errTacklerResumeReturned = errors.New("tackler resume returned")
 // tacklerDeps is every seam and fixed value the call reads.
 type tacklerDeps struct {
 	// Closed reports whether the stop key's attempt spawned at spawned was already handed to the parent: a hand-back settle record for the key later than spawned.
-	Closed func(key loomengine.ArbiterStopKey, spawned time.Time) (bool, error)
+	Closed func(key sheddriver.StopKey, spawned time.Time) (bool, error)
 	// ReadStatus reads the run's status; found is false when it has no status file.
 	ReadStatus func() (status shedengine.Status, found bool, err error)
 	// Settings is the resolved tackler role.
@@ -45,7 +46,7 @@ type tacklerDeps struct {
 	// Producers is the run's producer list, for goto checks.
 	Producers []shedengine.ProducerDef
 	// Snapshot reads the worktree state a tackler must leave as it found it.
-	Snapshot func() (loomengine.WorktreeSnapshot, error)
+	Snapshot func() (sheddriver.WorktreeSnapshot, error)
 	// PausedWithin returns the time the hub's pause record covered the run's slug inside the window from to.
 	PausedWithin func(from, to time.Time) (time.Duration, error)
 	// Prompt holds the prompt inputs that do not vary per attempt; StencilsDir is where the tackler stencil is read from.
@@ -76,7 +77,7 @@ type tacklerCall struct {
 	deps   tacklerDeps
 	in     tacklerInput
 	status shedengine.Status
-	key    loomengine.ArbiterStopKey
+	key    sheddriver.StopKey
 }
 
 // tacklerRefusal builds an error whose way forward is the hand-back to the run's parent.
@@ -93,15 +94,15 @@ func newTacklerCall(deps tacklerDeps, in tacklerInput) (*tacklerCall, error) {
 	if !found {
 		return nil, tacklerRefusal("status unreadable: the run has no status file")
 	}
-	return &tacklerCall{deps: deps, in: in, status: status, key: loomengine.StopKeyOf(status)}, nil
+	return &tacklerCall{deps: deps, in: in, status: status, key: sheddriver.StopKeyOf(status)}, nil
 }
 
 // settle returns the validated envelope for the call's stop: an earlier attempt's when one judged this stop and was not yet handed to the parent, else a fresh attempt's.
 // It returns errTacklerUnavailable when no attempt exists and none may be spawned, and errTacklerResumeReturned when the stop's attempt resumed the run and the run stopped at the same place.
-func (c *tacklerCall) settle() (loomengine.TacklerEnvelope, error) {
-	attempts, err := loomengine.ListTacklerAttempts(c.deps.TacklerDir)
+func (c *tacklerCall) settle() (sheddriver.TacklerEnvelope, error) {
+	attempts, err := sheddriver.ListTacklerAttempts(c.deps.TacklerDir)
 	if err != nil {
-		return loomengine.TacklerEnvelope{}, err
+		return sheddriver.TacklerEnvelope{}, err
 	}
 	for i := len(attempts) - 1; i >= 0; i-- {
 		if attempts[i].StopKey != c.key {
@@ -109,7 +110,7 @@ func (c *tacklerCall) settle() (loomengine.TacklerEnvelope, error) {
 		}
 		closed, err := c.deps.Closed(c.key, attempts[i].SpawnedAt)
 		if err != nil {
-			return loomengine.TacklerEnvelope{}, err
+			return sheddriver.TacklerEnvelope{}, err
 		}
 		if closed {
 			continue
@@ -120,20 +121,20 @@ func (c *tacklerCall) settle() (loomengine.TacklerEnvelope, error) {
 }
 
 // settleExisting settles the stop from attempt, the newest open one for it, spawning nothing.
-func (c *tacklerCall) settleExisting(attempt loomengine.TacklerAttempt) (loomengine.TacklerEnvelope, error) {
-	applied, err := loomengine.TacklerApplied(attempt.Dir)
+func (c *tacklerCall) settleExisting(attempt sheddriver.TacklerAttempt) (sheddriver.TacklerEnvelope, error) {
+	applied, err := sheddriver.TacklerApplied(attempt.Dir)
 	if err != nil {
-		return loomengine.TacklerEnvelope{}, err
+		return sheddriver.TacklerEnvelope{}, err
 	}
 	if applied {
-		return loomengine.TacklerEnvelope{}, fmt.Errorf("%w: attempt %d was applied and the run stopped at the same place", errTacklerResumeReturned, attempt.Number)
+		return sheddriver.TacklerEnvelope{}, fmt.Errorf("%w: attempt %d was applied and the run stopped at the same place", errTacklerResumeReturned, attempt.Number)
 	}
-	if _, found, verdictErr := loomengine.ReadTacklerVerdict(loomengine.TacklerVerdictPath(attempt.Dir)); found || verdictErr != nil {
+	if _, found, verdictErr := sheddriver.ReadTacklerVerdict(sheddriver.TacklerVerdictPath(attempt.Dir)); found || verdictErr != nil {
 		return c.conclude(attempt)
 	}
-	marker, markerFound, err := loomengine.ReadTacklerMarker(c.deps.MarkerPath)
+	marker, markerFound, err := sheddriver.ReadTacklerMarker(c.deps.MarkerPath)
 	if err != nil {
-		return loomengine.TacklerEnvelope{}, err
+		return sheddriver.TacklerEnvelope{}, err
 	}
 	now := c.deps.Now()
 	switch {
@@ -149,7 +150,7 @@ func (c *tacklerCall) settleExisting(attempt loomengine.TacklerAttempt) (loomeng
 
 // attachAndConclude waits on the live tackler of attempt for at most remaining and concludes the attempt.
 // guid is the strand a failed wait stops; when it is empty the attached run's own strand is stopped.
-func (c *tacklerCall) attachAndConclude(attempt loomengine.TacklerAttempt, guid string, remaining time.Duration) (loomengine.TacklerEnvelope, error) {
+func (c *tacklerCall) attachAndConclude(attempt sheddriver.TacklerAttempt, guid string, remaining time.Duration) (sheddriver.TacklerEnvelope, error) {
 	result, found, err := c.attach(attempt, remaining)
 	if err == nil && !found {
 		return c.conclude(attempt)
@@ -161,20 +162,20 @@ func (c *tacklerCall) attachAndConclude(attempt loomengine.TacklerAttempt, guid 
 }
 
 // attach waits on a live tackler of attempt for at most remaining.
-func (c *tacklerCall) attach(attempt loomengine.TacklerAttempt, remaining time.Duration) (shuttleengine.Result, bool, error) {
-	spec := tacklerSpec("", loomengine.TacklerVerdictPath(attempt.Dir), loomengine.TacklerCaseBriefPath(attempt.Dir), c.deps.Settings)
+func (c *tacklerCall) attach(attempt sheddriver.TacklerAttempt, remaining time.Duration) (shuttleengine.Result, bool, error) {
+	spec := tacklerSpec("", sheddriver.TacklerVerdictPath(attempt.Dir), sheddriver.TacklerCaseBriefPath(attempt.Dir), c.deps.Settings)
 	spec.Timeout = remaining
 	return c.deps.Shuttle.AttachIfLive(spec)
 }
 
 // settleFresh spawns a new tackler for the stop, after the budget checks.
-func (c *tacklerCall) settleFresh(attempts []loomengine.TacklerAttempt) (loomengine.TacklerEnvelope, error) {
+func (c *tacklerCall) settleFresh(attempts []sheddriver.TacklerAttempt) (sheddriver.TacklerEnvelope, error) {
 	settings := c.deps.Settings
 	if settings.MaxSpawns == 0 {
-		return loomengine.TacklerEnvelope{}, fmt.Errorf("%w: tackler_max_spawns: 0 turns the tackler off", errTacklerUnavailable)
+		return sheddriver.TacklerEnvelope{}, fmt.Errorf("%w: tackler_max_spawns: 0 turns the tackler off", errTacklerUnavailable)
 	}
 	if len(attempts) >= settings.MaxSpawns {
-		return loomengine.TacklerEnvelope{}, fmt.Errorf("%w: spawn budget spent: the run has used %d of its %d tackler spawns", errTacklerUnavailable, len(attempts), settings.MaxSpawns)
+		return sheddriver.TacklerEnvelope{}, fmt.Errorf("%w: spawn budget spent: the run has used %d of its %d tackler spawns", errTacklerUnavailable, len(attempts), settings.MaxSpawns)
 	}
 
 	number := 1
@@ -183,11 +184,11 @@ func (c *tacklerCall) settleFresh(attempts []loomengine.TacklerAttempt) (loomeng
 	}
 	snapshot, err := c.deps.Snapshot()
 	if err != nil {
-		return loomengine.TacklerEnvelope{}, tacklerRefusal("the worktree snapshot: %v", err)
+		return sheddriver.TacklerEnvelope{}, tacklerRefusal("the worktree snapshot: %v", err)
 	}
 	dir := c.deps.AttemptDir(number)
 	now := c.deps.Now()
-	attempt := loomengine.TacklerAttempt{
+	attempt := sheddriver.TacklerAttempt{
 		Number:       number,
 		StopKey:      c.key,
 		PauseBefore:  c.status.PauseBefore,
@@ -199,8 +200,8 @@ func (c *tacklerCall) settleFresh(attempts []loomengine.TacklerAttempt) (loomeng
 		ReportPath:   c.in.ReportPath,
 		Dir:          dir,
 	}
-	if err := loomengine.WriteTacklerAttempt(dir, attempt); err != nil {
-		return loomengine.TacklerEnvelope{}, err
+	if err := sheddriver.WriteTacklerAttempt(dir, attempt); err != nil {
+		return sheddriver.TacklerEnvelope{}, err
 	}
 
 	promptInput := c.deps.Prompt
@@ -209,14 +210,14 @@ func (c *tacklerCall) settleFresh(attempts []loomengine.TacklerAttempt) (loomeng
 	promptInput.ReportPath = c.in.ReportPath
 	promptInput.TraceCopy = c.in.TraceCopy
 	promptInput.StderrPath = c.in.StderrPath
-	promptInput.VerdictPath = loomengine.TacklerVerdictPath(dir)
-	promptInput.CaseBriefPath = loomengine.TacklerCaseBriefPath(dir)
+	promptInput.VerdictPath = sheddriver.TacklerVerdictPath(dir)
+	promptInput.CaseBriefPath = sheddriver.TacklerCaseBriefPath(dir)
 	prompt, err := tacklerPrompt(c.deps.StencilsDir, promptInput)
 	if err != nil {
-		return loomengine.TacklerEnvelope{}, err
+		return sheddriver.TacklerEnvelope{}, err
 	}
-	if err := os.WriteFile(loomengine.TacklerPromptPath(dir), []byte(prompt), 0o644); err != nil {
-		return loomengine.TacklerEnvelope{}, fmt.Errorf("tackler: write the attempt's prompt: %w", err)
+	if err := os.WriteFile(sheddriver.TacklerPromptPath(dir), []byte(prompt), 0o644); err != nil {
+		return sheddriver.TacklerEnvelope{}, fmt.Errorf("tackler: write the attempt's prompt: %w", err)
 	}
 
 	logger.Info("loom: tackler spawn", "run", c.in.RunID, "attempt", number, "producer", c.status.CurrentProducer, "deadline", attempt.Deadline)
@@ -228,9 +229,9 @@ func (c *tacklerCall) settleFresh(attempts []loomengine.TacklerAttempt) (loomeng
 	if err := c.recordStartedTackler(attempt); err != nil {
 		// The run must not proceed beside a live tackler nothing tracks.
 		if stopErr := run.Stop(); stopErr != nil {
-			return loomengine.TacklerEnvelope{}, fmt.Errorf("%w; stopping the tackler strand %s also failed: %v", err, attempt.StrandGUID, stopErr)
+			return sheddriver.TacklerEnvelope{}, fmt.Errorf("%w; stopping the tackler strand %s also failed: %v", err, attempt.StrandGUID, stopErr)
 		}
-		return loomengine.TacklerEnvelope{}, err
+		return sheddriver.TacklerEnvelope{}, err
 	}
 
 	result, waitErr := run.Wait()
@@ -238,21 +239,21 @@ func (c *tacklerCall) settleFresh(attempts []loomengine.TacklerAttempt) (loomeng
 }
 
 // recordStartedTackler saves the started tackler's strand in its attempt record and writes the in-flight marker.
-func (c *tacklerCall) recordStartedTackler(attempt loomengine.TacklerAttempt) error {
-	if err := loomengine.WriteTacklerAttempt(attempt.Dir, attempt); err != nil {
+func (c *tacklerCall) recordStartedTackler(attempt sheddriver.TacklerAttempt) error {
+	if err := sheddriver.WriteTacklerAttempt(attempt.Dir, attempt); err != nil {
 		return err
 	}
-	marker := loomengine.TacklerMarker{Attempt: attempt.Number, StrandGUID: attempt.StrandGUID, Deadline: attempt.Deadline}
-	return loomengine.WriteTacklerMarker(c.deps.MarkerPath, marker)
+	marker := sheddriver.TacklerMarker{Attempt: attempt.Number, StrandGUID: attempt.StrandGUID, Deadline: attempt.Deadline}
+	return sheddriver.WriteTacklerMarker(c.deps.MarkerPath, marker)
 }
 
 // concludeWait concludes attempt after a wait ended with result and waitErr.
 // A verdict on disk wins whatever the wait reported.
 // A timeout that ended while the hub's pause record covered part of the run moves the deadline out by the paused time and attaches again for the remainder.
 // Any other run that did not finish is stopped through stop and reads as a hand-back.
-func (c *tacklerCall) concludeWait(attempt loomengine.TacklerAttempt, result shuttleengine.Result, waitErr error, stop func() error, guid string) (loomengine.TacklerEnvelope, error) {
+func (c *tacklerCall) concludeWait(attempt sheddriver.TacklerAttempt, result shuttleengine.Result, waitErr error, stop func() error, guid string) (sheddriver.TacklerEnvelope, error) {
 	for {
-		if _, found, verdictErr := loomengine.ReadTacklerVerdict(loomengine.TacklerVerdictPath(attempt.Dir)); found || verdictErr != nil {
+		if _, found, verdictErr := sheddriver.ReadTacklerVerdict(sheddriver.TacklerVerdictPath(attempt.Dir)); found || verdictErr != nil {
 			return c.conclude(attempt)
 		}
 		switch {
@@ -261,7 +262,7 @@ func (c *tacklerCall) concludeWait(attempt loomengine.TacklerAttempt, result shu
 		case result.Outcome == shuttleengine.OutcomeTimeout:
 			extended, err := c.extendDeadlineByPausedTime(&attempt, guid)
 			if err != nil {
-				return loomengine.TacklerEnvelope{}, err
+				return sheddriver.TacklerEnvelope{}, err
 			}
 			if !extended {
 				return c.stopRunAndHandBack(attempt, stop, guid, arbiterCauseTimeout, "the tackler ran past its deadline")
@@ -286,7 +287,7 @@ func (c *tacklerCall) concludeWait(attempt loomengine.TacklerAttempt, result shu
 // extendDeadlineByPausedTime moves attempt's deadline out so the tackler's awake time, not the wall time, bounds its run.
 // It reports false, and changes nothing, when the pause record covered no new time inside the window, when it cannot be read (one Warn), or when the awake budget is spent.
 // Otherwise it rewrites the attempt record and the in-flight marker with the new deadline.
-func (c *tacklerCall) extendDeadlineByPausedTime(attempt *loomengine.TacklerAttempt, guid string) (bool, error) {
+func (c *tacklerCall) extendDeadlineByPausedTime(attempt *sheddriver.TacklerAttempt, guid string) (bool, error) {
 	now := c.deps.Now()
 	paused, err := c.deps.PausedWithin(attempt.SpawnedAt, now)
 	if err != nil {
@@ -298,11 +299,11 @@ func (c *tacklerCall) extendDeadlineByPausedTime(attempt *loomengine.TacklerAtte
 		return false, nil
 	}
 	attempt.Deadline = deadline
-	if err := loomengine.WriteTacklerAttempt(attempt.Dir, *attempt); err != nil {
+	if err := sheddriver.WriteTacklerAttempt(attempt.Dir, *attempt); err != nil {
 		return false, err
 	}
-	marker := loomengine.TacklerMarker{Attempt: attempt.Number, StrandGUID: guid, Deadline: deadline}
-	if err := loomengine.WriteTacklerMarker(c.deps.MarkerPath, marker); err != nil {
+	marker := sheddriver.TacklerMarker{Attempt: attempt.Number, StrandGUID: guid, Deadline: deadline}
+	if err := sheddriver.WriteTacklerMarker(c.deps.MarkerPath, marker); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -310,44 +311,44 @@ func (c *tacklerCall) extendDeadlineByPausedTime(attempt *loomengine.TacklerAtte
 
 // stopRunAndHandBack runs stop, logs it and reads the attempt as a hand-back with cause.
 // A stop that fails is returned as an error, since the tackler may still be live and the run must not proceed beside it.
-func (c *tacklerCall) stopRunAndHandBack(attempt loomengine.TacklerAttempt, stop func() error, guid, cause, detail string) (loomengine.TacklerEnvelope, error) {
+func (c *tacklerCall) stopRunAndHandBack(attempt sheddriver.TacklerAttempt, stop func() error, guid, cause, detail string) (sheddriver.TacklerEnvelope, error) {
 	logger.Warn("loom: tackler stopped", "run", c.in.RunID, "attempt", attempt.Number, "strand", guid, "cause", cause)
 	if err := stop(); err != nil {
-		return loomengine.TacklerEnvelope{}, fmt.Errorf("tackler: stop the tackler strand %s: %w; %s", guid, err, arbiterHandBackWayForward)
+		return sheddriver.TacklerEnvelope{}, fmt.Errorf("tackler: stop the tackler strand %s: %w; %s", guid, err, arbiterHandBackWayForward)
 	}
 	return c.handBack(attempt, cause, detail)
 }
 
 // conclude validates the attempt's verdict file and finishes the call with it.
-func (c *tacklerCall) conclude(attempt loomengine.TacklerAttempt) (loomengine.TacklerEnvelope, error) {
-	verdict, found, err := loomengine.ReadTacklerVerdict(loomengine.TacklerVerdictPath(attempt.Dir))
+func (c *tacklerCall) conclude(attempt sheddriver.TacklerAttempt) (sheddriver.TacklerEnvelope, error) {
+	verdict, found, err := sheddriver.ReadTacklerVerdict(sheddriver.TacklerVerdictPath(attempt.Dir))
 	if err != nil {
 		return c.handBack(attempt, arbiterCauseUnparseable, err.Error())
 	}
 	if !found {
 		return c.handBack(attempt, arbiterCauseMissing, "the tackler left no verdict")
 	}
-	envelope := loomengine.TacklerEnvelope{
+	envelope := sheddriver.TacklerEnvelope{
 		Verdict:     verdict.Verdict,
 		Reason:      verdict.Reason,
 		Question:    verdict.Question,
 		Goto:        verdict.Goto,
 		Attempt:     attempt.Number,
 		AttemptDir:  attempt.Dir,
-		VerdictPath: loomengine.TacklerVerdictPath(attempt.Dir),
+		VerdictPath: sheddriver.TacklerVerdictPath(attempt.Dir),
 	}
 	switch verdict.Verdict {
-	case loomengine.TacklerVerdictHandBack:
+	case sheddriver.TacklerVerdictHandBack:
 		if verdict.Question == "" {
 			return c.handBack(attempt, tacklerCauseQuestion, "a hand-back verdict names no question for the run's parent")
 		}
-	case loomengine.TacklerVerdictEscalate:
-		caseBrief := loomengine.TacklerCaseBriefPath(attempt.Dir)
+	case sheddriver.TacklerVerdictEscalate:
+		caseBrief := sheddriver.TacklerCaseBriefPath(attempt.Dir)
 		if info, err := os.Stat(caseBrief); err != nil || info.Size() == 0 {
 			return c.handBack(attempt, tacklerCauseCaseBrief, fmt.Sprintf("an escalate verdict needs a case brief at %s, and it is missing or empty", caseBrief))
 		}
 		envelope.CaseBriefPath = caseBrief
-	case loomengine.TacklerVerdictResume:
+	case sheddriver.TacklerVerdictResume:
 		if problem := c.resumePrecondition(verdict); problem != "" {
 			return c.handBack(attempt, arbiterCausePrecondition, problem)
 		}
@@ -357,7 +358,7 @@ func (c *tacklerCall) conclude(attempt loomengine.TacklerAttempt) (loomengine.Ta
 
 // resumePrecondition returns what stops a resume from being sound at the call's stop, or empty when nothing does.
 // A goto names the status's current row or the producer of the last history entry, the halting entry's routed-from row.
-func (c *tacklerCall) resumePrecondition(verdict loomengine.TacklerVerdict) string {
+func (c *tacklerCall) resumePrecondition(verdict sheddriver.TacklerVerdict) string {
 	if verdict.Goto == "" {
 		if c.status.State == shedengine.StateBlocked {
 			return "a resume at a blocked stop needs a goto target, and the verdict names none"
@@ -378,25 +379,25 @@ func (c *tacklerCall) resumePrecondition(verdict loomengine.TacklerVerdict) stri
 }
 
 // handBack finishes the call with a hand-back the call made itself, naming cause.
-func (c *tacklerCall) handBack(attempt loomengine.TacklerAttempt, cause, detail string) (loomengine.TacklerEnvelope, error) {
-	return c.finish(loomengine.TacklerEnvelope{
-		Verdict:     loomengine.TacklerVerdictHandBack,
+func (c *tacklerCall) handBack(attempt sheddriver.TacklerAttempt, cause, detail string) (sheddriver.TacklerEnvelope, error) {
+	return c.finish(sheddriver.TacklerEnvelope{
+		Verdict:     sheddriver.TacklerVerdictHandBack,
 		Reason:      detail,
 		Question:    fmt.Sprintf("The tackler could not settle this stop (%s); decide it yourself and report the choice in the stop report.", cause),
 		Cause:       cause,
 		Attempt:     attempt.Number,
 		AttemptDir:  attempt.Dir,
-		VerdictPath: loomengine.TacklerVerdictPath(attempt.Dir),
+		VerdictPath: sheddriver.TacklerVerdictPath(attempt.Dir),
 	})
 }
 
 // finish removes the in-flight marker and saves envelope in its attempt directory.
-func (c *tacklerCall) finish(envelope loomengine.TacklerEnvelope) (loomengine.TacklerEnvelope, error) {
-	if err := loomengine.RemoveTacklerMarker(c.deps.MarkerPath); err != nil {
-		return loomengine.TacklerEnvelope{}, err
+func (c *tacklerCall) finish(envelope sheddriver.TacklerEnvelope) (sheddriver.TacklerEnvelope, error) {
+	if err := sheddriver.RemoveTacklerMarker(c.deps.MarkerPath); err != nil {
+		return sheddriver.TacklerEnvelope{}, err
 	}
-	if err := loomengine.WriteTacklerEnvelope(loomengine.TacklerEnvelopePath(envelope.AttemptDir), envelope); err != nil {
-		return loomengine.TacklerEnvelope{}, err
+	if err := sheddriver.WriteTacklerEnvelope(sheddriver.TacklerEnvelopePath(envelope.AttemptDir), envelope); err != nil {
+		return sheddriver.TacklerEnvelope{}, err
 	}
 	return envelope, nil
 }

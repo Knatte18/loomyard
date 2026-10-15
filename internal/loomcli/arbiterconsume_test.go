@@ -10,6 +10,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -157,7 +158,7 @@ func TestConsumeArbiterAttempt(t *testing.T) {
 			if err := state.WriteJSON(statusPath, statusLock, baseStatus); err != nil {
 				t.Fatal(err)
 			}
-			attempt := loomengine.ArbiterAttempt{Number: 1, StopKey: loomengine.StopKeyOf(baseStatus)}
+			attempt := loomengine.ArbiterAttempt{Number: 1, StopKey: sheddriver.StopKeyOf(baseStatus)}
 			if tt.spawn != nil {
 				tt.spawn(&attempt)
 			}

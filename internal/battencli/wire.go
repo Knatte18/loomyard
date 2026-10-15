@@ -50,6 +50,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -653,7 +654,7 @@ func syncWatchedMarker(marker string, watched bool, content []byte) (bool, error
 
 // readTacklerAsArbiterMarker reads the tackler marker at path as the arbiter marker of the same attempt, strand and deadline, so one reader serves both in-flight seams.
 func readTacklerAsArbiterMarker(path string) (loomengine.ArbiterMarker, bool, error) {
-	marker, found, err := loomengine.ReadTacklerMarker(path)
+	marker, found, err := sheddriver.ReadTacklerMarker(path)
 	if err != nil || !found {
 		return loomengine.ArbiterMarker{}, false, err
 	}
@@ -1138,11 +1139,11 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				if err != nil {
 					return false, err
 				}
-				records, err := loomengine.ReadSettleRecords(shedrun.SettleRecordsFile(loomengine.LoomFrictionDir(taskLocation)))
+				records, err := sheddriver.ReadSettleRecords(shedrun.SettleRecordsFile(loomengine.LoomFrictionDir(taskLocation)))
 				if err != nil {
 					return false, err
 				}
-				return loomengine.GoVerifyRetrySpent(records), nil
+				return sheddriver.GoVerifyRetrySpent(records), nil
 			},
 			// ChildBuildChanged reads the lyx on disk, which a deploy replaces under this running batten, and compares it with the build the child's last step recorded.
 			ChildBuildChanged: func() (string, bool, error) {

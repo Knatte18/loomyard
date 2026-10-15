@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
@@ -24,7 +25,7 @@ import (
 // A stop that is not eligible returns at once; any read error is returned.
 func HoldReading(location *lyxcwd.Location, status shedengine.Status) (battenshed.ChildArbiterStop, error) {
 	readers := NewReaders(location)
-	key := loomengine.StopKeyOf(status)
+	key := sheddriver.StopKeyOf(status)
 	arbiterDir := shedrun.ArbiterDir(location, shedrun.SelfRunID)
 
 	var attempts []loomengine.ArbiterAttempt
@@ -84,7 +85,7 @@ func HoldReading(location *lyxcwd.Location, status shedengine.Status) (battenshe
 			return battenshed.ChildArbiterStop{}, err
 		}
 	}
-	records, err := loomengine.ReadSettleRecords(shedrun.SettleRecordsFile(loomengine.LoomFrictionDir(location)))
+	records, err := sheddriver.ReadSettleRecords(shedrun.SettleRecordsFile(loomengine.LoomFrictionDir(location)))
 	if err != nil {
 		return battenshed.ChildArbiterStop{}, err
 	}
@@ -92,7 +93,7 @@ func HoldReading(location *lyxcwd.Location, status shedengine.Status) (battenshe
 		if records[i].StopKey != key {
 			continue
 		}
-		if records[i].Action == loomengine.SettleHandOver {
+		if records[i].Action == sheddriver.SettleHandOver {
 			reading.HandOverAt = records[i].At
 		}
 		break
@@ -101,7 +102,7 @@ func HoldReading(location *lyxcwd.Location, status shedengine.Status) (battenshe
 }
 
 // newestAttemptAt returns the highest-numbered attempt of attempts, which are sorted by number, whose stop key is key.
-func newestAttemptAt(attempts []loomengine.ArbiterAttempt, key loomengine.ArbiterStopKey) (loomengine.ArbiterAttempt, bool) {
+func newestAttemptAt(attempts []loomengine.ArbiterAttempt, key sheddriver.StopKey) (loomengine.ArbiterAttempt, bool) {
 	for i := len(attempts) - 1; i >= 0; i-- {
 		if attempts[i].StopKey == key {
 			return attempts[i], true

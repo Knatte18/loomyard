@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
@@ -68,9 +69,9 @@ func consumeArbiterAttempt(attemptDir string, base shedengine.RelaunchRequest) e
 // A moved run is admitted as inEffect when it stands paused at target having had only goto entries since the spawn, the last naming target;
 // there only a pause condition present now that the spawn did not record refuses.
 // Any other move returns a refusal reason, and an empty reason with inEffect false is an ordinary admit.
-func admitRelaunch(current shedengine.Status, key loomengine.ArbiterStopKey, pauseBefore, pauseAfter, target, actor string) (inEffect bool, refusal string) {
+func admitRelaunch(current shedengine.Status, key sheddriver.StopKey, pauseBefore, pauseAfter, target, actor string) (inEffect bool, refusal string) {
 	paused := fmt.Sprintf("the run was paused since the %s spawned", actor)
-	if loomengine.StopKeyOf(current) == key {
+	if sheddriver.StopKeyOf(current) == key {
 		if current.PauseBefore != pauseBefore || current.PauseAfter != pauseAfter {
 			return false, paused
 		}
@@ -86,7 +87,7 @@ func admitRelaunch(current shedengine.Status, key loomengine.ArbiterStopKey, pau
 }
 
 // verdictInEffect reports whether current stands paused at target with only goto entries added since the stop key was taken, the last naming target.
-func verdictInEffect(current shedengine.Status, key loomengine.ArbiterStopKey, target string) bool {
+func verdictInEffect(current shedengine.Status, key sheddriver.StopKey, target string) bool {
 	if target == "" || current.CurrentProducer != target || current.State != shedengine.StatePaused || len(current.History) <= key.HistoryLength {
 		return false
 	}
