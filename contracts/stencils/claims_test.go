@@ -789,6 +789,9 @@ var wordingClaims = []stencilClaims{
 		droppedConceptClaims(),
 	)},
 	{"webster-body-verify-fix.md", WebsterBodyVerifyFix, joinClaims(
+		wantAll("the fixer's inherited context holds no code, so it reads the code behind each finding itself",
+			"That context holds no code",
+			"read the code behind each finding yourself"),
 		wantAll("the fixer reads the gate report and fixes the cause in source",
 			"{{.report_path}}", "Fix the cause in source"),
 		wantAll("the fixer never deletes, skips or weakens a test",

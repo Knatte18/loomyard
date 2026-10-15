@@ -1180,7 +1180,7 @@ func TestRenderPrompts(t *testing.T) {
 			root, stencilsDir := testLayout(t)
 			text, err := renderVerifyFix(reportPath, root, stencilsDir, "")
 			return promptCheck{text: text, err: err,
-				contains:    []string{reportPath, testOutcomePath, testSummaryPath, "`_lyx/plan`"},
+				contains:    []string{reportPath, testOutcomePath, testSummaryPath, "`_lyx/plan`", "That context holds no code"},
 				notContains: []string{"{{"}}
 		}},
 		{"fixer prompt refuses an empty report path", func(t *testing.T) promptCheck {
