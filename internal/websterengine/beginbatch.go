@@ -402,7 +402,8 @@ func existingReportRemedy(number int, recorded *BatchState, retry bool) (string,
 // a parse error degrades to deps.Plan and batch.Cards instead, with a Warn, so building the pack never refuses the batch.
 // An index error is a Warn too, and the degraded pack the index returned is kept.
 // The logged resolved and unresolved counts are distinct refs across the batch, so a ref listed under two cards counts once.
-// The line's last key, pack_layout, is `file` or `inline` by deps.Config.KickstartPackFile when a pack is built, and `none` on every line where none is.
+// The line's last key, pack_layout, is the PackLayout packLayoutOf picks (`file`, `inline` or `card`) when a pack is built, and `none` on every line where none is.
+// A per-card batch still builds the batch pack, so the off, language-none and empty outcomes and the counts keep their batch-start meaning; the prompt just never carries it.
 func buildKickstartPack(deps BeginDeps, index planindex.Index, batch batcher.Batch, number int) []planindex.CardPack {
 	logPack := func(state string, pack []planindex.CardPack) {
 		resolved, unresolved := make(map[string]bool), make(map[string]bool)
@@ -416,10 +417,7 @@ func buildKickstartPack(deps BeginDeps, index planindex.Index, batch batcher.Bat
 		}
 		layout := "none"
 		if state == "on" {
-			layout = "inline"
-			if deps.Config.KickstartPackFile {
-				layout = "file"
-			}
+			layout = string(packLayoutOf(deps.Config, deps.Geom))
 		}
 		logger.Info("webster: kickstart pack", "batch", number, "kickstart_pack", state, "resolved", len(resolved), "unresolved", len(unresolved), "pack_layout", layout)
 	}
@@ -458,7 +456,7 @@ func buildKickstartPack(deps BeginDeps, index planindex.Index, batch batcher.Bat
 	return pack
 }
 
-// BeginBatch drives one begin-batch call to completion, immediately before Master forks batchNumber's implementer: the fingerprint gate, start-SHA capture, the previous batch's persisted digest rendered into the fork prompt, and the prompt file write itself, preceded by the kick-start pack file beside it only when the batch has a pack and kickstart_pack_file is true, the file layout.
+// BeginBatch drives one begin-batch call to completion, immediately before Master forks batchNumber's implementer: the fingerprint gate, start-SHA capture, the previous batch's persisted digest rendered into the fork prompt, and the prompt file write itself, preceded by the kick-start pack file beside it only when the batch has a pack and packLayoutOf picks the file layout.
 // The caller holds the state-mutation lease across this whole call and is responsible for
 // persisting deps.State via SaveState once BeginBatch returns successfully — BeginBatch itself
 // never calls SaveState and never touches fabric.
@@ -615,7 +613,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		return nil, fmt.Errorf("webster: resolve pack path: %w", err)
 	}
 	pack := buildKickstartPack(deps, index, batch, number)
-	prompt, packFile, err := RenderForkPrompt(batch, cardGates, batchGate, prevDigest, reportPath, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, OutcomePath(deps.Geom.WebsterDir), summaryparser.Path(deps.Geom.WebsterDir), deps.Config.SelfFixCap, notePath, packPath, deps.Config.KickstartPackFile, pack)
+	prompt, packFile, err := RenderForkPrompt(batch, cardGates, batchGate, prevDigest, reportPath, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, OutcomePath(deps.Geom.WebsterDir), summaryparser.Path(deps.Geom.WebsterDir), deps.Config.SelfFixCap, notePath, packPath, packLayoutOf(deps.Config, deps.Geom), pack)
 	if err != nil {
 		return nil, err
 	}

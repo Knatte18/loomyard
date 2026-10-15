@@ -1,5 +1,5 @@
 <!-- This is the inline-layout pack locate fragment for webster's fork prompt.
-     RenderForkPrompt reads it through stencilstore when begin-batch built a kick-start pack and kickstart_pack_file is false, fills its one marker, strips this banner and trailing newline,
+     RenderForkPrompt reads it through stencilstore when begin-batch built a kick-start pack and kickstart_pack_per_card is false and kickstart_pack_file is false, fills its one marker, strips this banner and trailing newline,
      and fills the text into the required locate marker of webster-body-implementer, in place of the quarry locate fragment.
      It is the measurement baseline: its text is the 1e39afc10^ text and changes only when the layout comparison itself is meant to change, never to mirror an edit to the file-layout fragments.
      The one marker is specs_dir, the deployed specs directory the card grammar lives in. -->

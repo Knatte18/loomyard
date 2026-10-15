@@ -1,4 +1,4 @@
-<!-- This is the empty-pack line of one card's subsection in webster's kick-start pack, in the kick-start pack file or the fork prompt's inline pack section.
+<!-- This is the empty-pack line of one card's subsection in webster's kick-start pack, in the kick-start pack file, the fork prompt's inline pack section, or the stdout of `lyx loom card-pack`.
      renderCardPack (render.go) reads it through stencilstore, strips this banner and trailing newline,
      and fills the text into the pack_entries marker of webster-fragment-pack-card when the card names no member glyph.
      It carries no marker. -->

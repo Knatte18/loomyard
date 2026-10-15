@@ -48,6 +48,13 @@ type Config struct {
 	// false renders the pack inline in the fork prompt and writes no pack file.
 	// It has an effect only when a pack is built.
 	KickstartPackFile bool `yaml:"kickstart_pack_file"`
+	// KickstartPackPerCard true renders the per-card layout, in which the fork fetches each card's pack with `lyx loom card-pack` at that card's start and no pack file is written.
+	// It overrides kickstart_pack_file, which picks between the file and inline layouts only when this key is false.
+	// Like the other pack keys, it has an effect only when a pack is built.
+	// The per-card layout applies to a hub run;
+	// a standalone run keeps the layout kickstart_pack_file picks, because `lyx loom card-pack` cannot run there.
+	// Every begin-batch reads the key afresh.
+	KickstartPackPerCard bool `yaml:"kickstart_pack_per_card"`
 }
 
 // ConfigSpec returns webster's layered-load spec.
@@ -57,14 +64,15 @@ func ConfigSpec() configengine.Spec {
 		Name:     "webster",
 		Template: []byte(ConfigTemplate()),
 		Categories: map[string]configengine.Category{
-			"master":               configengine.CategoryNone,
-			"recovery":             configengine.CategoryNone,
-			"self_fix_cap":         configengine.CategoryNone,
-			"master_timeout_min":   configengine.CategoryNone,
-			"recovery_timeout_min": configengine.CategoryNone,
-			"verify_gate_attempts": configengine.CategoryNone,
-			"kickstart_pack":       configengine.CategoryNone,
-			"kickstart_pack_file":  configengine.CategoryNone,
+			"master":                  configengine.CategoryNone,
+			"recovery":                configengine.CategoryNone,
+			"self_fix_cap":            configengine.CategoryNone,
+			"master_timeout_min":      configengine.CategoryNone,
+			"recovery_timeout_min":    configengine.CategoryNone,
+			"verify_gate_attempts":    configengine.CategoryNone,
+			"kickstart_pack":          configengine.CategoryNone,
+			"kickstart_pack_file":     configengine.CategoryNone,
+			"kickstart_pack_per_card": configengine.CategoryNone,
 		},
 	}
 }

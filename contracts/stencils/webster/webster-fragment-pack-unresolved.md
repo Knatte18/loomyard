@@ -1,4 +1,4 @@
-<!-- This is the unresolved list of one card's subsection in webster's kick-start pack, in the kick-start pack file or the fork prompt's inline pack section.
+<!-- This is the unresolved list of one card's subsection in webster's kick-start pack, in the kick-start pack file, the fork prompt's inline pack section, or the stdout of `lyx loom card-pack`.
      renderCardPack (render.go) reads it through stencilstore, fills its one marker, strips this banner and trailing newline,
      and fills the text into the optional pack_unresolved marker of webster-fragment-pack-card when the card has unresolved refs.
      pack_unresolved lists the card's refs that did not resolve, each with its reason. -->

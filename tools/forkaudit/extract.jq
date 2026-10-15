@@ -4,12 +4,19 @@
 # Arguments: $mode ("extract", or "arms" to print the marker table and read no input),
 # $run (the run name of the fork's project directory), $rel (the transcript's path relative to the projects directory)
 # and $plan (the plan directory the prompt's card lines name).
+#
+# A fork of the card arm has no pack file and no inline pack: its pack text is the results of its successful `lyx loom card-pack` calls, joined in call order.
+# A successful call is a Bash tool use whose command holds `lyx loom card-pack` and whose result holds a `### ` subsection heading; a refused call, whose result is a failure envelope, is no call.
+# Each card's spans are listed after the earlier cards' edits, so a span counts as reached when it is read after the call that lists it and before the next edit,
+# the first-work-turn span metrics are null, and the card-pack calls inside the counted range are netted out of ex_net and pre_edit_net.
 
 # The arm marker table, checked in order, one row per arm; a fork matching no row is "unknown".
 # A row matches when every feature in its `when` equals the fork's feature.
 # `trace` lists the pack_layout values of begin-batch's trace line that agree with the arm.
+# The card row comes first because a per-card prompt also ends with `## Start here`.
 # A task that adds a Webster pack layout adds its marker row here in the same task.
 def markers: [
+  {arm: "card", trace: ["card"], when: {cardpack: true}},
   {arm: "file", trace: ["file"], when: {starthere: true}},
   {arm: "raf", trace: ["inline"], when: {inlinepack: true, rafphrase: true}},
   {arm: "inline", trace: ["inline"], when: {inlinepack: true}},
@@ -53,6 +60,18 @@ def hit($t; $s):
       else 0 end
   else 0 end;
 
+# parsepack reads a pack text, with or without the Read tool's line-number prefix on each line, into the entry and unresolved-ref counts and the span list.
+def parsepack:
+  split("\n")
+  | reduce .[] as $l ({u:false,res:0,un:0,spans:[]};
+    if ($l|test("^(\\s*\\d+\\t)?### ")) then .u=false
+    elif ($l|test("^(\\s*\\d+\\t)?#### Unresolved")) then .u=true
+    elif ($l|test("^(\\s*\\d+\\t)?- `")) then (if .u then .un+=1 else .res+=1 end)
+    elif ($l|test("^(\\s*\\d+\\t)?  - `[^`:]+:\\d+(-\\d+)?`")) then
+      ($l|capture("^(\\s*\\d+\\t)?  - `(?<f>[^`:]+):(?<a>\\d+)(-(?<b>\\d+))?`")) as $c
+      | .spans += [{f:$c.f, a:($c.a|tonumber), b:(($c.b // $c.a)|tonumber)}]
+    else . end);
+
 if $mode == "arms" then [markers[] | {arm, trace}] else
 ([inputs | select(test("\\S"))]) as $lines
 | ($lines | map(fromjson? | select(type == "object"))) as $all
@@ -75,20 +94,19 @@ if $mode == "arms" then [markers[] | {arm, trace}] else
 | ($p | test("\n[0-9 ]*\t?## Start here")) as $starthere
 | ($p | test("## Kick-start pack")) as $inlinepack
 | ($p | test("Your first turn, before any edit, reads in parallel every card file")) as $rafphrase
-| (if $packfile != null then $packfile elif $inlinepack then ($p | split("## Kick-start pack")[1]) else "" end) as $ptext
+| ($p | contains("lyx loom card-pack")) as $cardpack
+| ([ $tu | to_entries[]
+      | select(.value.name=="Bash" and ((.value.input.command//"")|contains("lyx loom card-pack")) and (($rbyid[.value.id]//"")|test("(^|\n)### ")))
+      | {i: .key, id: .value.id} ]) as $cpcalls
+| (if $cardpack then $cpcalls else [] end) as $cpn
+| ($cpn | map(.id)) as $cpids
+| (if $cardpack then ($cpn | map($rbyid[.id]) | join("\n")) elif $packfile != null then $packfile elif $inlinepack then ($p | split("## Kick-start pack")[1]) else "" end) as $ptext
 | ($p | split("## Your cards")[1] // "" | split("For EACH card")[0]) as $cs
 | ("- `" + $plan) as $cardline
 | ([ $cs | split("\n")[] | select(contains($cardline) and (split($cardline)[1] | test("^\\d+-"))) ] | length) as $cards
-| ($ptext | split("\n")) as $pl
-| ([ $pl | reduce .[] as $l ({u:false,res:0,un:0,spans:[]};
-    if ($l|test("^\\s*\\d+\\t### ")) then .u=false
-    elif ($l|test("^\\s*\\d+\\t#### Unresolved")) then .u=true
-    elif ($l|test("^\\s*\\d+\\t- `")) then (if .u then .un+=1 else .res+=1 end)
-    elif ($l|test("^\\s*\\d+\\t  - `[^`:]+:\\d+(-\\d+)?`")) then
-      ($l|capture("^\\s*\\d+\\t  - `(?<f>[^`:]+):(?<a>\\d+)(-(?<b>\\d+))?`")) as $c
-      | .spans += [{f:$c.f, a:($c.a|tonumber), b:(($c.b // $c.a)|tonumber)}]
-    else . end) ] | .[0]) as $pk
+| ($ptext | parsepack) as $pk
 | ($pk.spans | unique) as $spans
+| ([ $cpn[] | {i: .i, spans: ($rbyid[.id] | parsepack | .spans)} ]) as $cpspans
 | ($spans | map(.f) | unique) as $sf
 | ([ $tu | to_entries[] | select(.value.name|test("^(Edit|Write|MultiEdit|NotebookEdit)$")) | .key ] | .[0]) as $fe
 | ($tu | if $fe==null then . else .[0:$fe] end) as $pre
@@ -98,17 +116,27 @@ if $mode == "arms" then [markers[] | {arm, trace}] else
 | (if $packopened and $par_with_pack>0 then $base_turn else ([ $tu[] | select(.turn>$base_turn) | .turn ] | min) end) as $fwt
 | ([ $tu[] | select(.turn==$fwt and .id!=($pr.id//"")) ]) as $fcalls
 | ([ $spans[] as $s | ([ $pre[] | select(hit(.; $s)>=1) | .turn ] | min) as $t1 | ([ $pre[] | select(hit(.; $s)>=2) | .turn ] | min) as $t2 | {t1:$t1, t2:$t2} ]) as $sh
-| (reduce $tu[] as $t ({ex:true, n:0, g:0, r:0, segs:0};
+| (reduce $tu[] as $t ({ex:true, n:0, g:0, r:0, segs:0, cp:0};
     if ($t.name|test("^(Edit|Write|MultiEdit|NotebookEdit)$")) then (if .ex then .segs+=1 else . end) | .ex=false
     elif ($t.name=="Bash" and (($t.input.command//"")|test("git commit"))) then .ex=true
-    elif .ex then .n+=1 | .g += ([$t|cls[]|select(.=="grep")]|length) | .r += ([$t|cls[]|select(.=="rfull" or .=="rpart")]|length)
+    elif .ex then .n+=1 | .g += ([$t|cls[]|select(.=="grep")]|length) | .r += ([$t|cls[]|select(.=="rfull" or .=="rpart")]|length) | .cp += (if ($cpids|index($t.id)) != null then 1 else 0 end)
     else . end)) as $ex
+| ([ $cpn[] | select($fe != null and .i < $fe) ] | length) as $cp_pre
 | ([ $tu[] | cls[] ]) as $c
 | ([ $pre[] | cls[] ]) as $cp
 | ([ $tu[] | select(.name|test("^(Edit|MultiEdit)$")) | (.input.file_path//"") ]) as $ed
 | ([ $tu[] | select(.name=="Write") | (.input.file_path//"") ]) as $wr
 | def outside($l): $l | map(select(. as $e | ($sf|map(. as $s | ($e == $s or ($e|endswith("/"+$s))))|any)|not)) | length;
   def cnt($a; $k): $a | map(select(.==$k)) | length;
+  # reached($level) counts the distinct spans of a card-arm fork that it read after a card-pack call listing them and before the next edit after that call.
+  # $level is 1 for a file-level read and 2 for a read reaching the span.
+  def reached($level):
+    [ $spans[] as $s
+      | select(any($cpspans[]; . as $c
+          | any($c.spans[]; . == $s)
+            and (([ $tu | to_entries[] | select(.key > $c.i and (.value.name|test("^(Edit|Write|MultiEdit|NotebookEdit)$"))) | .key ] | min) as $next_edit
+                 | any($tu[$c.i + 1:$next_edit][]; hit(.; $s) >= $level)))) ]
+    | length;
   def lastmsgs: ([ $all[] | select(.type=="assistant" and .message.id!=null) ] | group_by(.message.id) | map(.[-1]));
   (lastmsgs) as $msgs
 | ($pr != null and ($pre | map(.id) | index($pr.id)) != null) as $pack_pre
@@ -118,23 +146,26 @@ if $mode == "arms" then [markers[] | {arm, trace}] else
     agent: ($rel | split("/") | last | sub("\\.jsonl$"; "")),
     rel: $rel,
     start: ($all|map(.timestamp//empty)|min),
-    arm: armof({starthere: $starthere, inlinepack: $inlinepack, rafphrase: $rafphrase, packopened: $packopened}),
+    arm: armof({starthere: $starthere, inlinepack: $inlinepack, rafphrase: $rafphrase, packopened: $packopened, cardpack: $cardpack}),
     cards: $cards,
     pack_opened: $packopened, pack_turn: (if $packopened then $pr.turn else null end), pack_reads: ($packreads|length), pack_before_edit: $pack_pre, par_with_pack: $par_with_pack,
     pack_res: $pk.res, pack_unres: $pk.un, nspans: ($spans|length), nsf: ($sf|length),
     first_work_turn: $fwt, first_par: ($fcalls|length),
     first_classes: ([ $fcalls[] | cls[] ] | group_by(.) | map({(.[0]): length}) | add),
-    spans_file_pre: ([ $sh[] | select(.t1!=null) ] | length), spans_strict_pre: ([ $sh[] | select(.t2!=null) ] | length),
-    spans_file_first: ([ $sh[] | select(.t1!=null and .t1<=$fwt) ] | length), spans_strict_first: ([ $sh[] | select(.t2!=null and .t2<=$fwt) ] | length),
+    card_pack_calls: ($cpcalls|length), end: ($all|map(.timestamp//empty)|max),
+    spans_file_pre: (if $cardpack then reached(1) else ([ $sh[] | select(.t1!=null) ] | length) end),
+    spans_strict_pre: (if $cardpack then reached(2) else ([ $sh[] | select(.t2!=null) ] | length) end),
+    spans_file_first: (if $cardpack then null else ([ $sh[] | select(.t1!=null and .t1<=$fwt) ] | length) end),
+    spans_strict_first: (if $cardpack then null else ([ $sh[] | select(.t2!=null and .t2<=$fwt) ] | length) end),
     spans_strict_max_turn: (([ $sh[] | select(.t2!=null) | .t2 ] | group_by(.) | map(length) | max) // 0),
     sf_file_pre: ([ $sf[] as $s | select([ $pre[] | select(hit(.; {f:$s,a:0,b:999999})>=1) ] | length > 0) ] | length),
     edits: ($ed|length), edits_out: outside($ed), writes: ($wr|length), writes_out: outside($wr),
-    tools: ($tu|length), pre_edit: $fe, pre_edit_net: (if $fe==null then null else $fe - (if $pack_pre then 1 else 0 end) end),
+    tools: ($tu|length), pre_edit: $fe, pre_edit_net: (if $fe==null then null else $fe - (if $pack_pre then 1 else 0 end) - $cp_pre end),
     grep: cnt($c;"grep"), gmem: cnt($c;"gmem"), quarry: cnt($c;"quarry"), rfull: cnt($c;"rfull"), rpart: cnt($c;"rpart"),
     rfull_net: (cnt($c;"rfull") - $pk1),
     grep_pre: cnt($cp;"grep"), quarry_pre: cnt($cp;"quarry"), rfull_pre: cnt($cp;"rfull"), rpart_pre: cnt($cp;"rpart"),
     turns: ($msgs|length), turns_pre: (if $fe==null then null else $tu[$fe].turn end),
-    ex_tools: $ex.n, ex_net: ($ex.n - (if $packopened and $pack_pre then 1 else 0 end)), ex_grep: $ex.g, ex_reads: $ex.r, ex_segs: $ex.segs,
+    ex_tools: $ex.n, ex_net: ($ex.n - (if $packopened and $pack_pre then 1 else 0 end) - $ex.cp), ex_grep: $ex.g, ex_reads: $ex.r, ex_segs: $ex.segs,
     out: ($msgs|map(.message.usage.output_tokens//0)|add),
     fresh_in: ($msgs|map((.message.usage.input_tokens//0)+(.message.usage.cache_creation_input_tokens//0))|add),
     cache_read: ($msgs|map(.message.usage.cache_read_input_tokens//0)|add),

@@ -1108,6 +1108,8 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 	const packHeading = "## Kick-start pack"
 	const packFirstTurn = "Read all of this in one turn, in parallel, before any edit"
 	const plainStepOne = "1. Read the card file."
+	const perCardFreshRead = "Your first work turn reads in parallel every card file the card list below points at, and nothing else"
+	const perCardStepOne = "1. Before this card's first edit, run `lyx loom card-pack <N>`"
 	resolvedBaz := []string{
 		packHeading,
 		"- `internal/foo#Baz`",
@@ -1127,11 +1129,17 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 		cardHeadings []string
 		// inline sets kickstart_pack_file false before the first call.
 		inline bool
+		// perCard sets kickstart_pack_per_card true before the first call.
+		perCard bool
+		// standaloneGeom gives the anchor a directory apart from the worktree, as a standalone geometry does.
+		standaloneGeom bool
 		// flip makes the case call begin-batch once, flip kickstart_pack_file and call it again, and assert on the second call's files.
 		flip bool
+		// flipPerCard makes flip toggle kickstart_pack_per_card instead of kickstart_pack_file.
+		flipPerCard bool
 		// stalePack says the pack file the first call wrote is still on disk after the second, which names neither the read line nor the pack path, so the needles are checked against the prompt alone.
 		stalePack bool
-		// layoutBlind makes the case call begin-batch again with kickstart_pack_file flipped and require the same prompt bytes and still no pack file.
+		// layoutBlind makes the case call begin-batch again with kickstart_pack_file and kickstart_pack_per_card both flipped and require the same prompt bytes, still no pack file and its first log needle on both calls.
 		layoutBlind bool
 		// noPack says begin-batch writes no pack file.
 		noPack bool
@@ -1200,6 +1208,54 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 			},
 		},
 		{
+			name:          "the per-card layout writes no pack file and names card-pack",
+			perCard:       true,
+			noPack:        true,
+			wantPrompt:    []string{perCardFreshRead, perCardStepOne, "## Start here"},
+			wantNotPrompt: []string{packFirstTurn, packHeading, "- `internal/foo#Baz`", "internal/foo/impl.go"},
+			wantLog:       []string{"batch=1 kickstart_pack=on resolved=1 unresolved=0 pack_layout=card"},
+		},
+		{
+			name:          "the per-card switch overrides kickstart_pack_file",
+			perCard:       true,
+			inline:        true,
+			noPack:        true,
+			wantPrompt:    []string{perCardFreshRead, perCardStepOne, "## Start here"},
+			wantNotPrompt: []string{packFirstTurn, packHeading, "- `internal/foo#Baz`", "internal/foo/impl.go"},
+			wantLog:       []string{"batch=1 kickstart_pack=on resolved=1 unresolved=0 pack_layout=card"},
+		},
+		{
+			name:          "a flip from file to per-card leaves a prompt that names no pack file",
+			flip:          true,
+			flipPerCard:   true,
+			stalePack:     true,
+			wantPrompt:    []string{perCardFreshRead, perCardStepOne, "## Start here"},
+			wantNotPrompt: []string{packFirstTurn, packHeading},
+			wantLog: []string{
+				"batch=1 kickstart_pack=on resolved=1 unresolved=0 pack_layout=file",
+				"batch=1 kickstart_pack=on resolved=1 unresolved=0 pack_layout=card",
+			},
+		},
+		{
+			name:        "a flip from per-card to file writes the pack file",
+			perCard:     true,
+			flip:        true,
+			flipPerCard: true,
+			wantPrompt:  append([]string{packFirstTurn}, resolvedBaz...),
+			wantLog: []string{
+				"batch=1 kickstart_pack=on resolved=1 unresolved=0 pack_layout=card",
+				"batch=1 kickstart_pack=on resolved=1 unresolved=0 pack_layout=file",
+			},
+		},
+		{
+			name:           "a standalone geometry keeps the file layout under per-card",
+			perCard:        true,
+			standaloneGeom: true,
+			wantPrompt:     append([]string{packFirstTurn}, resolvedBaz...),
+			wantNotPrompt:  []string{perCardStepOne},
+			wantLog:        []string{"batch=1 kickstart_pack=on resolved=1 unresolved=0 pack_layout=file"},
+		},
+		{
 			name:          "switch off renders the quarry locate step",
 			off:           true,
 			noPack:        true,
@@ -1212,6 +1268,7 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 			name:          "a plan without a glyph language renders as switch off",
 			language:      "none",
 			noPack:        true,
+			layoutBlind:   true,
 			wantPrompt:    []string{quarryLocate, plainStepOne},
 			wantNotPrompt: []string{packHeading, packFirstTurn},
 			wantLog:       []string{"batch=1 kickstart_pack=language-none resolved=0 unresolved=0 pack_layout=none"},
@@ -1228,6 +1285,7 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 				}
 			},
 			noPack:        true,
+			layoutBlind:   true,
 			wantPrompt:    []string{quarryLocate, plainStepOne},
 			wantNotPrompt: []string{packHeading, packFirstTurn},
 			wantLog:       []string{"batch=1 kickstart_pack=empty resolved=0 unresolved=0 pack_layout=none"},
@@ -1304,6 +1362,10 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 			}
 			fx.Deps.Config.KickstartPack = !tt.off
 			fx.Deps.Config.KickstartPackFile = !tt.inline
+			fx.Deps.Config.KickstartPackPerCard = tt.perCard
+			if tt.standaloneGeom {
+				fx.Deps.Geom.AnchorRoot = t.TempDir()
+			}
 			if tt.prepare != nil {
 				tt.prepare(fx.Deps.Geom.Index.(*fakeIndex))
 			}
@@ -1317,7 +1379,15 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 				t.Fatalf("read the first prompt file: %v", err)
 			}
 			if tt.flip || tt.layoutBlind {
-				fx.Deps.Config.KickstartPackFile = !fx.Deps.Config.KickstartPackFile
+				switch {
+				case tt.layoutBlind:
+					fx.Deps.Config.KickstartPackFile = !fx.Deps.Config.KickstartPackFile
+					fx.Deps.Config.KickstartPackPerCard = !fx.Deps.Config.KickstartPackPerCard
+				case tt.flipPerCard:
+					fx.Deps.Config.KickstartPackPerCard = !fx.Deps.Config.KickstartPackPerCard
+				default:
+					fx.Deps.Config.KickstartPackFile = !fx.Deps.Config.KickstartPackFile
+				}
 				result, err = websterengine.BeginBatch(fx.Deps, 1)
 				if err != nil {
 					t.Fatalf("second BeginBatch() error = %v; want nil", err)
@@ -1329,7 +1399,12 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 				t.Fatalf("read the prompt file: %v", err)
 			}
 			if tt.layoutBlind && string(prompt) != string(firstPrompt) {
-				t.Errorf("prompt differs after flipping kickstart_pack_file; want the same bytes")
+				t.Errorf("prompt differs after flipping the layout keys; want the same bytes")
+			}
+			if tt.layoutBlind {
+				if n := strings.Count(logs.String(), tt.wantLog[0]); n != 2 {
+					t.Errorf("log holds %q %d times; want it once per call", tt.wantLog[0], n)
+				}
 			}
 			packPath := strings.TrimSuffix(result.PromptPath, ".md") + "-pack.md"
 			packFile, err := os.ReadFile(packPath)

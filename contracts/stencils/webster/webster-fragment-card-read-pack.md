@@ -1,5 +1,5 @@
 <!-- This is the pack-on first step of each card in webster's implementer prompt.
-     RenderForkPrompt reads it through stencilstore when begin-batch built a kick-start pack;
+     RenderForkPrompt reads it through stencilstore when begin-batch built a kick-start pack in the file or inline layout, since a per-card pack fills card_read from webster-fragment-card-read-pack-card;
      the text, with this banner and the trailing newline stripped, fills the required card_read marker of webster-body-implementer, after the step's number.
      It carries no marker. -->
 
