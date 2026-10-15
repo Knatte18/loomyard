@@ -18,6 +18,7 @@ package websterengine
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -28,7 +29,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -64,8 +64,8 @@ type Clock interface {
 	Sleep(time.Duration)
 }
 
-// RecoverDeps carries seams RecoverBatch needs: Starter, Plan, Batches, State, Roles, Config,
-// Engine, Reed, Stopper, ShuttleCfg, and Geom, the told Geometry every path is read from.
+// RecoverDeps carries seams RecoverBatch needs: Starter, Plan, Batches, State, Roles, Config, Engines, Reed, Stopper and ShuttleCfg.
+// Geom is the told Geometry every path is read from.
 // Reed answers awaitTerminal's liveness read, and Stopper is the seam the reclaims stop a leftover strand through.
 // Batches is the execution order, the batchifier's own order (ExecutionBatches);
 // predecessorDigestLine's lookup depends on Batches already being in that order.
@@ -74,9 +74,9 @@ type RecoverDeps struct {
 	Plan       *planparser.Plan
 	Batches    []batcher.Batch
 	State      *State
-	Roles      map[Role]modelspec.Resolved
+	Roles      map[Role]shuttleengine.ModelChoice
 	Config     Config
-	Engine     AuditEngine
+	Engines    AuditEngines
 	Reed       shuttleengine.ReedOps
 	Stopper    StrandStopper
 	ShuttleCfg shuttleengine.Config
@@ -189,8 +189,8 @@ func uncommittedPathsBlock(deps RecoverDeps) (string, error) {
 		return "none", nil
 	}
 	var written []string
-	if deps.Engine != nil {
-		writes, err := loadRunWrites(deps.Engine, deps.State, deps.Geom.WorktreeRoot)
+	if deps.Engines != nil {
+		writes, err := loadRunWrites(deps.Engines, deps.State, deps.Geom.WorktreeRoot)
 		if err != nil {
 			return "", err
 		}
@@ -234,7 +234,7 @@ func rendersNewAmendment(prior *BatchState) bool {
 // recoverSpawn archives any stale report, stops a live prior strand, renders
 // the recovery prompt, and starts the recovery strand, returning a fresh BatchState.
 // clk stamps SpawnedAt so elapsed-since-spawn is measured against the same clock.
-// The record appends the spawned run's session id to the prior record's RecoverySessions.
+// The record appends the spawned run's session id to the prior record's RecoverySessions, and records that run's engine under it in RecoveryEngines.
 // The record counts the spawn in Recoveries unless the prompt renders an amendment no earlier spawn rendered, and carries HEAD at the spawn as RecoveryStartSHA.
 // HEAD is read before anything is stopped or started, so a failed read starts nothing and counts nothing.
 func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prevDigest string, clk Clock) (*BatchState, error) {
@@ -297,7 +297,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		return nil, err
 	}
 
-	resolved, ok := deps.Roles[RoleRecovery]
+	choice, ok := deps.Roles[RoleRecovery]
 	if !ok {
 		return nil, fmt.Errorf("webster: no resolved model-spec for role %q", RoleRecovery)
 	}
@@ -305,9 +305,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 	spec := shuttleengine.Spec{
 		Prompt:      string(prompt),
 		OutputFiles: []string{reportPath},
-		Model:       resolved.Model,
-		Effort:      resolved.Params["effort"],
-		Version:     resolved.Params["version"],
+		ModelChoice: choice,
 		Skills:      languageconfig.AppendSkills(roleSkills, deps.LanguageSkills),
 		Role:        string(RoleRecovery),
 		Segment:     segmentcolor.Webster,
@@ -347,8 +345,10 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 	var amended []AmendedCard
 	recoveries := 0
 	var recoverySessions []string
+	recoveryEngines := map[string]string{}
 	if prior != nil {
 		recoverySessions = slices.Clone(prior.RecoverySessions)
+		maps.Copy(recoveryEngines, prior.RecoveryEngines)
 		for _, a := range prior.AmendedCards {
 			amended = append(amended, AmendedCard{Card: a.Card, Rendered: true})
 		}
@@ -361,6 +361,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		recoveries++
 	}
 	recoverySessions = append(recoverySessions, runState.SessionID)
+	recoveryEngines[runState.SessionID] = runState.Engine
 
 	return &BatchState{
 		Slug:             slug,
@@ -379,6 +380,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		EventsOffset:     runState.PromptOffset,
 		Recoveries:       recoveries,
 		RecoverySessions: recoverySessions,
+		RecoveryEngines:  recoveryEngines,
 		RecoveryStartSHA: head,
 	}, nil
 }
@@ -455,6 +457,12 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 	if prior != nil && prior.Kind == "recovery" && !prior.Terminal && prior.StrandGUID != "" {
 		return prior, false, nil
 	}
+	// The recovery key can change mid-run, so the spawn re-checks it ahead of anything that archives or stops.
+	if choice, ok := deps.Roles[RoleRecovery]; ok {
+		if err := roleAuditEngine(deps.Engines, RoleRecovery, choice); err != nil {
+			return nil, false, err
+		}
+	}
 	if prior != nil && prior.Recoveries >= maxRecoveries && !rendersNewAmendment(prior) {
 		return nil, false, fmt.Errorf("%w: batch %02d has had %d recoveries; %s; or %s", ErrRecoveryExhausted, batchNumber, prior.Recoveries,
 			wayForwardSteps(resetVerb(ResetToBatchStart, batchNumber), fmt.Sprintf("lyx webster recover-batch %d", batchNumber)), freshRestartSteps(stepRun))
@@ -466,7 +474,7 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 		}
 	}
 	if prior != nil && prior.Terminal && prior.Status == DigestStatusFailed && len(prior.Uncheckable) > 0 {
-		writes, err := contractWritesFor(deps.Engine, deps.State, deps.Geom, prior.Uncheckable)
+		writes, err := contractWritesFor(deps.Engines, deps.State, deps.Geom, prior.Uncheckable)
 		if err != nil {
 			return nil, false, err
 		}
@@ -714,6 +722,17 @@ func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait t
 	reportPath := filepath.Join(deps.Geom.ReportsDir, ReportFileName(number, slug))
 	timeout := time.Duration(deps.Config.RecoveryTimeoutMin) * time.Minute
 
+	// The turn ends are read through the engine the live recovery session ran under;
+	// a record written before engines were recorded lists no session, and reads as an engine-less entry.
+	var session string
+	if n := len(bs.RecoverySessions); n > 0 {
+		session = bs.RecoverySessions[n-1]
+	}
+	engine, err := sessionAuditEngine(deps.Engines, session, bs.RecoveryEngines[session])
+	if err != nil {
+		return nil, err
+	}
+
 	gather := func() (Digest, bool, error) {
 		var report *Report
 		if _, statErr := os.Stat(reportPath); statErr == nil {
@@ -726,7 +745,7 @@ func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait t
 			return Digest{}, false, fmt.Errorf("webster: stat batch report %s: %w", reportPath, statErr)
 		}
 
-		turnEnded, err := TurnEndedAfter(bs.EventsPath, bs.EventsOffset, deps.Engine, TurnEndRead{Now: clk.Now()})
+		turnEnded, err := TurnEndedAfter(bs.EventsPath, bs.EventsOffset, engine, TurnEndRead{Now: clk.Now()})
 		if err != nil {
 			return Digest{}, false, err
 		}

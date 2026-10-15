@@ -12,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // ReviewSettings is the review segment's run-wide model and timeout settings, resolved once from
@@ -27,10 +28,10 @@ type ReviewSettings struct {
 	Timeout time.Duration
 }
 
-// BouncerModels is one review segment's resolved seed and judge pair, each an already-resolved model, effort and version triple.
+// BouncerModels is one review segment's resolved seed and judge pair, each an already-resolved engine, model, effort and version.
 type BouncerModels struct {
-	Seed  burlerengine.ModelChoice
-	Judge burlerengine.ModelChoice
+	Seed  shuttleengine.ModelChoice
+	Judge shuttleengine.ModelChoice
 }
 
 // JudgeSettings is each review segment's resolved Bouncer models, resolved once from Config and threaded onto shedrecipe.Env per Bouncer row.
@@ -88,20 +89,16 @@ func resolveSegmentBouncerModels(segment, segmentJudge, segmentSeed string, cfg 
 }
 
 // resolveKeyedModelChoice parses and resolves one model-spec through reg, naming key in an error.
-func resolveKeyedModelChoice(key, raw string, reg modelspec.Registry) (burlerengine.ModelChoice, error) {
+func resolveKeyedModelChoice(key, raw string, reg modelspec.Registry) (shuttleengine.ModelChoice, error) {
 	spec, err := modelspec.Parse(raw)
 	if err != nil {
-		return burlerengine.ModelChoice{}, fmt.Errorf("loom: ResolveJudge: %s role model-spec: %w", key, err)
+		return shuttleengine.ModelChoice{}, fmt.Errorf("loom: ResolveJudge: %s role model-spec: %w", key, err)
 	}
 	resolved, err := reg.Resolve(spec)
 	if err != nil {
-		return burlerengine.ModelChoice{}, fmt.Errorf("loom: ResolveJudge: %s role model-spec: %w", key, err)
+		return shuttleengine.ModelChoice{}, fmt.Errorf("loom: ResolveJudge: %s role model-spec: %w", key, err)
 	}
-	return burlerengine.ModelChoice{
-		Model:   resolved.Model,
-		Effort:  resolved.Params["effort"],
-		Version: resolved.Params["version"],
-	}, nil
+	return shuttleengine.NewModelChoice(resolved), nil
 }
 
 // ResolveReview resolves every entry of the review and fix model-spec lists and of each set per-segment list through reg,
@@ -147,7 +144,7 @@ func ResolveReview(cfg Config, reg modelspec.Registry) (ReviewSettings, error) {
 }
 
 // fannedReview returns fanReview when fan names a fan, else nil, which leaves a segment's reviewer list to its own keys.
-func fannedReview(fan string, fanReview []burlerengine.ModelChoice) []burlerengine.ModelChoice {
+func fannedReview(fan string, fanReview []shuttleengine.ModelChoice) []shuttleengine.ModelChoice {
 	if fan == "" {
 		return nil
 	}
@@ -156,7 +153,7 @@ func fannedReview(fan string, fanReview []burlerengine.ModelChoice) []burlerengi
 
 // resolveSegmentModels resolves one review segment's reviewer and fixer lists, each falling back independently to runWide when its key is unset.
 // A non-nil fanReview replaces the reviewer list outright, since a fanned segment's reviewer runs on fan_review; the fixer list is unaffected.
-func resolveSegmentModels(segment string, reviewSpecs, fixSpecs ModelSpecList, fanReview []burlerengine.ModelChoice, runWide burlerengine.RoundModels, reg modelspec.Registry) (burlerengine.RoundModels, error) {
+func resolveSegmentModels(segment string, reviewSpecs, fixSpecs ModelSpecList, fanReview []shuttleengine.ModelChoice, runWide burlerengine.RoundModels, reg modelspec.Registry) (burlerengine.RoundModels, error) {
 	models := runWide
 	if fanReview != nil {
 		models.Review = fanReview
@@ -178,8 +175,8 @@ func resolveSegmentModels(segment string, reviewSpecs, fixSpecs ModelSpecList, f
 }
 
 // resolveModelChoices parses and resolves each entry of specs, naming key and the 1-based entry index in an error.
-func resolveModelChoices(key string, specs ModelSpecList, reg modelspec.Registry) ([]burlerengine.ModelChoice, error) {
-	choices := make([]burlerengine.ModelChoice, 0, len(specs))
+func resolveModelChoices(key string, specs ModelSpecList, reg modelspec.Registry) ([]shuttleengine.ModelChoice, error) {
+	choices := make([]shuttleengine.ModelChoice, 0, len(specs))
 	for i, raw := range specs {
 		spec, err := modelspec.Parse(raw)
 		if err != nil {
@@ -189,11 +186,7 @@ func resolveModelChoices(key string, specs ModelSpecList, reg modelspec.Registry
 		if err != nil {
 			return nil, fmt.Errorf("loom: ResolveReview: %s entry %d: %w; set that entry in loom.yaml to a model-spec the registry defines", key, i+1, err)
 		}
-		choices = append(choices, burlerengine.ModelChoice{
-			Model:   resolved.Model,
-			Effort:  resolved.Params["effort"],
-			Version: resolved.Params["version"],
-		})
+		choices = append(choices, shuttleengine.NewModelChoice(resolved))
 	}
 	return choices, nil
 }

@@ -210,7 +210,7 @@ func websterEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 	if err := requireSeam("Webster", "WebsterDeps.Stopper", env.WebsterDeps.Stopper); err != nil {
 		return nil, err
 	}
-	if err := requireSeam("Webster", "WebsterDeps.Engine", env.WebsterDeps.Engine); err != nil {
+	if err := requireSeam("Webster", "WebsterDeps.Engines", env.WebsterDeps.Engines); err != nil {
 		return nil, err
 	}
 	if err := requireSeam("Webster", "WebsterDeps.RefMatcher", env.WebsterDeps.RefMatcher); err != nil {

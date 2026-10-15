@@ -95,7 +95,7 @@ func TestSmokePasteSubmitAndCollapse(t *testing.T) {
 	run, err := runner.Start(shuttleengine.Spec{
 		Prompt:      "Reply with the single word ready and then wait for my next message. Use no tools.",
 		OutputFiles: []string{filepath.Join(h.PrimeWorktree(), "smoke-paste-output.txt")},
-		Model:       smokeClaudeModel,
+		ModelChoice: shuttleengine.ModelChoice{Model: smokeClaudeModel},
 		Timeout:     10 * time.Minute,
 	})
 	if err != nil {

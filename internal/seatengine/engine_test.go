@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 )
 
 func TestEngine_Run_ChairEndStopsEverySeat(t *testing.T) {
@@ -165,6 +166,47 @@ func TestEngine_Run_StartFailureEndingTheRunStopsEveryStartedSeat(t *testing.T) 
 			}
 		})
 	}
+
+	forkWake := []shuttleengine.Requirement{shuttleengine.RequirementBackgroundWake}
+	unmet := []struct {
+		name     string
+		advisors int
+		forks    bool
+		requires []shuttleengine.Requirement
+		key      shuttleengine.ModelKey
+		wantText string
+	}{
+		{name: "the discussion chair", forks: true, requires: forkWake, key: shuttleengine.ModelKey{Module: "loom", Key: "discussion"}, wantText: "set discussion in loom.yaml to an alias whose engine meets them"},
+		{name: "the plan chair", forks: true, requires: forkWake, key: shuttleengine.ModelKey{Module: "loom", Key: "plan"}, wantText: "set plan in loom.yaml to an alias whose engine meets them"},
+		{name: "the cluster-fan reviewer", forks: true, key: shuttleengine.ModelKey{Module: "loom", Key: "fan_review"}, wantText: "set fan_review in loom.yaml to an alias whose engine meets them"},
+		{name: "a recipe seat of a two-seat table", advisors: 1, wantText: "set the seat's model to an alias whose engine meets them"},
+	}
+	for _, tt := range unmet {
+		t.Run("an unmet requirement refuses "+tt.name, func(t *testing.T) {
+			t.Parallel()
+			engine, geom := engineFixture(t, newFakeShuttle(t))
+			runner, reed := realRunnerShuttle(t, geom.WorktreeRoot)
+			engine.shuttle = runner
+			table := engineTable(geom.WorktreeRoot, tt.advisors)
+			table.Seats[0].ForkSubagents = tt.forks
+			table.Seats[0].Requires = tt.requires
+			table.Seats[0].ModelKey = tt.key
+
+			end := await(t, runAsync(engine, table))
+
+			if !errors.Is(end.err, shuttleengine.ErrRequirementsUnmet) {
+				t.Fatalf("Run() error = %v, want it to wrap ErrRequirementsUnmet", end.err)
+			}
+			for _, want := range []string{`engine "fake"`, tt.wantText} {
+				if !strings.Contains(end.err.Error(), want) {
+					t.Errorf("Run() error = %v, want it to contain %q", end.err, want)
+				}
+			}
+			if len(reed.AddedSpecs) != 0 {
+				t.Errorf("reed AddStrand calls = %d, want none before any pane", len(reed.AddedSpecs))
+			}
+		})
+	}
 }
 
 func TestEngine_Run_AdvisorStartFailureIsRecordedAndNamedToTheChair(t *testing.T) {
@@ -173,11 +215,13 @@ func TestEngine_Run_AdvisorStartFailureIsRecordedAndNamedToTheChair(t *testing.T
 	tests := []struct {
 		name        string
 		shuttle     func(*fakeShuttle)
+		unmetKey    bool
 		wantError   string
 		wantStopped int
 	}{
 		{name: "a start error", shuttle: func(f *fakeShuttle) { f.startErrs = map[string]error{advisorRole: errors.New("no pane")} }, wantError: "no pane"},
 		{name: "a held strand name", shuttle: func(f *fakeShuttle) { f.strandNames = map[string]string{advisorRole: "ly:task:multi-advisor-1-2"} }, wantError: `lyx reed remove --name ly:task:multi-advisor-1"`, wantStopped: 1},
+		{name: "an unmet requirement names the advisor's model key", shuttle: func(*fakeShuttle) {}, unmetKey: true, wantError: `engine "fake"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -185,8 +229,17 @@ func TestEngine_Run_AdvisorStartFailureIsRecordedAndNamedToTheChair(t *testing.T
 			shuttle := newFakeShuttle(t)
 			tt.shuttle(shuttle)
 			engine, geom := engineFixture(t, shuttle)
+			table := engineTable(geom.WorktreeRoot, 2)
+			var reed *shuttlefake.Reed
+			if tt.unmetKey {
+				// The chair of a two-seat table requires peer messaging itself, so no chair could start on the fake engine's set: only this advisor runs on it.
+				var runner Shuttle
+				runner, reed = realRunnerShuttle(t, geom.WorktreeRoot)
+				shuttle.startedBy = map[string]Shuttle{advisorRole: runner}
+				table.Seats[1].ModelKey = shuttleengine.ModelKey{Module: "loom", Key: "discussion_advisors", Entry: advisorName(1)}
+			}
 
-			ended := runAsync(engine, engineTable(geom.WorktreeRoot, 2))
+			ended := runAsync(engine, table)
 			shuttle.awaitStarts(3)
 			chair := shuttle.handle(role(""))
 			lines := []string{receive(t, chair), receive(t, chair)}
@@ -202,6 +255,14 @@ func TestEngine_Run_AdvisorStartFailureIsRecordedAndNamedToTheChair(t *testing.T
 			}
 			if got := end.result.Advisors[0]; !strings.Contains(got.StartError, tt.wantError) || got.StrandGUID != "" || !got.Notified {
 				t.Errorf("failed advisor result = %+v, want the start error %q, no strand and Notified", got, tt.wantError)
+			}
+			if tt.unmetKey {
+				if got, want := end.result.Advisors[0].StartError, "the model of "+advisorName(1)+" in discussion_advisors"; !strings.Contains(got, want) {
+					t.Errorf("failed advisor start error = %q, want it to contain %q", got, want)
+				}
+				if len(reed.AddedSpecs) != 0 {
+					t.Errorf("reed AddStrand calls = %d, want none before any pane", len(reed.AddedSpecs))
+				}
 			}
 			if got := end.result.Advisors[1]; got.StartError != "" || got.StrandGUID == "" || got.Notified {
 				t.Errorf("second advisor result = %+v, want it started and no ending notice", got)

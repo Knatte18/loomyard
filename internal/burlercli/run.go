@@ -179,10 +179,12 @@ the config default.`,
 			}
 
 			opts := burlerengine.RunOpts{
-				Review:  burlerengine.ModelChoice{Model: reviewModel, Effort: reviewEffort},
-				Fix:     burlerengine.ModelChoice{Model: fixModel, Effort: fixEffort},
-				Timeout: timeout,
-				Round:   round,
+				Review: shuttleengine.ModelChoice{Model: reviewModel, Effort: reviewEffort},
+				Fix:    shuttleengine.ModelChoice{Model: fixModel, Effort: fixEffort},
+				// The command resolves no key, so its reviewer's engine is the shuttle.yaml default.
+				ReviewKey: shuttleengine.ModelKey{DefaultEngine: true},
+				Timeout:   timeout,
+				Round:     round,
 			}
 
 			// Standalone mode boots its own reed session here, idempotently, because nothing else

@@ -159,15 +159,19 @@ func composeSeatPrompt(stencilsDir string, seat Seat, values map[string]string, 
 // Only the chair is interactive; only an advisor keeps its pane, and an advisor holds its turn end quietly unless it is Required.
 // Every seat of a table declares the own-window anchor with the table's window group and seat count.
 // The seat's gate rides the start call, not the spec.
+// A seat of a table with more than one seat also requires peer messaging, since the seats message each other.
 func seatSpec(table Table, seat Seat, prompt string) shuttleengine.Spec {
 	isChair := seat.Name == leadName
+	requires := slices.Clone(seat.Requires)
+	if len(table.Seats) > 1 && !slices.Contains(requires, shuttleengine.RequirementPeerMessaging) {
+		requires = append(requires, shuttleengine.RequirementPeerMessaging)
+	}
 	return shuttleengine.Spec{
 		Prompt:        prompt,
 		OutputFiles:   slices.Clone(seat.Outputs),
-		Model:         seat.Model,
-		Effort:        seat.Effort,
-		Version:       seat.Version,
+		ModelChoice:   seat.ModelChoice,
 		ForkSubagents: seat.ForkSubagents,
+		Requires:      requires,
 		Interactive:   isChair && table.Interactive,
 		QuietHold:     !isChair && !seat.Required,
 		KeepPane:      !isChair,

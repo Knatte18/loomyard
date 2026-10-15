@@ -1440,6 +1440,7 @@ func (run *Run) identity() Result {
 		SessionID:  run.state.SessionID,
 		StrandGUID: run.state.StrandGUID,
 		RunDir:     run.runDir,
+		Engine:     run.engineName,
 	}
 }
 
@@ -1630,6 +1631,7 @@ func (run *Run) finalize(outcome Outcome) (Result, error) {
 		SessionID:   run.state.SessionID,
 		StrandGUID:  run.state.StrandGUID,
 		RunDir:      run.runDir,
+		Engine:      run.engineName,
 		EndedShells: run.endedShells(run.clock.Now()),
 		EndedAt:     run.clock.Now(),
 	}

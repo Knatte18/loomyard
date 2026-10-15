@@ -34,7 +34,7 @@
 // # Merriam's start base enters at partition time
 //
 // The batchifier prices each fork from Merriam's context at that point, whose start part is the start base this package computes in merriambase.go:
-// the line count of what Merriam loads at start (the worktree's CLAUDE.md and CLAUDE.local.md, the Master stencil with the orchestrator PATTERN directive, and the plan's 00-overview.md) plus a fixed system-prompt-and-tools context.
+// the line count of what Merriam loads at start (the worktree's instruction files that Master's engine names, the Master stencil with the orchestrator PATTERN directive, and the plan's 00-overview.md) plus a fixed system-prompt-and-tools context.
 // Run computes it where it forms a new partition (first init and `--fresh`), Rebaseline is told it when it batches the tail, and validate computes it for a run with no state;
 // a recorded partition keeps the estimates it was formed with, so the base never regroups a run.
 //
@@ -468,6 +468,21 @@
 // This mirrors classify.go's dead/timeout/stuck classification.
 //
 // A batch's recovery spawns are counted in BatchState.Recoveries, and BatchState.RecoverySessions records every recovery strand's session id in spawn order, so the batch records every recovery session.
+// A session's engine is recorded beside its session id, because a shuttle run record does not outlive its run:
+// State.MasterEngine beside MasterSessionID, BatchState.Engine beside SessionID, and BatchState.RecoveryEngines, keyed by session id, beside RecoverySessions.
+// A state written before these keys existed reads with them empty.
+// Webster is told an AuditEngines lookup, which the engine set satisfies, and reads each session through the engine its own entry records, so a later change to shuttle.yaml's engine never changes it:
+// the run-write history and the reset's own paths audit each recorded session through its engine.
+// Record-batch audits a batch's session through that batch's Engine.
+// Recover-batch reads the live recovery strand's turn ends through the engine its last RecoveryEngines entry records.
+// An engine the set does not hold is refused naming the session and the engine;
+// an entry with no engine, written before engines were recorded, reads through the default engine and is refused when that default cannot audit forks.
+// The bound is the single registered engine: an engine-less entry read through a default other than the engine that ran it either fails that engine's audit or audits nothing.
+// Each spawn checks its role's engine first.
+// Run checks the master and recovery roles as an entry gate before it takes the state lock, so a refusal stops no strand and writes nothing.
+// RecoverSpawnOrAttach checks the recovery role again once it has found no live recovery to attach to, because the key can change mid-run.
+// A role whose engine is not held or cannot audit forks is refused naming its webster.yaml key; the attach, await and terminal paths check no key.
+// The default engine is checked only when a role's choice resolves to it.
 // The spawn records HEAD as RecoveryStartSHA, read before anything is stopped or started, so a HEAD that cannot be read starts and counts nothing.
 // A re-begin and a rebaseline keep the count.
 // A spawn whose prompt renders an amendment no earlier spawn rendered does not count, so an amendment forces at most one uncounted re-run.

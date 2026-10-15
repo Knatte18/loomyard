@@ -1,5 +1,5 @@
 // roles.go implements the role-resolution pre-flight: mapping webster.yaml's two role model-spec
-// strings onto their resolved model-spec Resolved values, once, before any agent spawns. `run`
+// strings onto shuttle model choices, once, before any agent spawns. `run`
 // calls ResolveRoles at entry so a typo'd alias in webster.yaml fails loud before Master ever
 // starts, never mid-run when a role first spawns.
 
@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // Role names one of webster.yaml's two model-spec roles.
@@ -39,15 +40,15 @@ const MerriamStrandRole = "webster"
 
 // ResolveRoles parses and resolves cfg's two role model-spec strings against reg, failing before
 // Master spawns on any unknown alias.
-// It returns the resolved values keyed by Role, with each violation wrapped naming the offending
-// role.
-func ResolveRoles(cfg Config, reg modelspec.Registry) (map[Role]modelspec.Resolved, error) {
+// It returns each role's model choice, engine included, keyed by Role.
+// Each violation is wrapped naming the offending role.
+func ResolveRoles(cfg Config, reg modelspec.Registry) (map[Role]shuttleengine.ModelChoice, error) {
 	specsByRole := map[Role]string{
 		RoleMaster:   cfg.Master,
 		RoleRecovery: cfg.Recovery,
 	}
 
-	resolved := make(map[Role]modelspec.Resolved, len(specsByRole))
+	choices := make(map[Role]shuttleengine.ModelChoice, len(specsByRole))
 	for role, specStr := range specsByRole {
 		spec, err := modelspec.Parse(specStr)
 		if err != nil {
@@ -57,8 +58,8 @@ func ResolveRoles(cfg Config, reg modelspec.Registry) (map[Role]modelspec.Resolv
 		if err != nil {
 			return nil, fmt.Errorf("webster: role %q: %w", role, err)
 		}
-		resolved[role] = r
+		choices[role] = shuttleengine.NewModelChoice(r)
 	}
 
-	return resolved, nil
+	return choices, nil
 }

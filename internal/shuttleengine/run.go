@@ -256,6 +256,9 @@ type Result struct {
 	StrandGUID           string
 	LastAssistantMessage string
 	RunDir               string
+	// Engine is the resolved name of the engine the run was driven through: the record's engine, or the engine set's default name for a record naming none.
+	// It is empty only on the zero Result of a Start refused before a run exists.
+	Engine string
 	// ForkAudit is populated only when the run's record carries fork authorization, the run classified OutcomeDone, and the audit itself succeeded; nil otherwise.
 	// The Spec that started this Call does not decide it.
 	// A nil ForkAudit therefore always reads as "not audited" and never as "audited, found nothing".
@@ -1018,10 +1021,11 @@ func (r *Runner) Interrupt(guid string) error {
 	}
 	state, _, err := FindRun(r.cfg, r.anchorPath, guid)
 	if errors.Is(err, ErrNoRunRecord) {
-		if liveErr := requireLiveStrand(r.reed, guid); liveErr != nil {
+		strand, liveErr := liveStrand(r.reed, guid)
+		if liveErr != nil {
 			return notShuttleOrLiveStrandError(guid, liveErr)
 		}
-		state = RunState{}
+		state = RunState{Engine: strand.Provider}
 	} else if err != nil {
 		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
 	}
@@ -1093,10 +1097,11 @@ func (r *Runner) Send(guid, text string) error {
 	}
 	state, runDir, err := FindRun(r.cfg, r.anchorPath, guid)
 	if errors.Is(err, ErrNoRunRecord) {
-		if liveErr := requireLiveStrand(r.reed, guid); liveErr != nil {
+		strand, liveErr := liveStrand(r.reed, guid)
+		if liveErr != nil {
 			return notShuttleOrLiveStrandError(guid, liveErr)
 		}
-		sc, err := r.recordlessSendContext(guid)
+		sc, err := r.recordlessSendContext(guid, strand.Provider)
 		if err != nil {
 			return err
 		}
@@ -1210,9 +1215,15 @@ func (e paneNotReadyError) Unwrap() error { return ErrPaneNotReady }
 // requireLiveStrand fails unless guid's strand is tracked by reed and bound
 // to a live pane. This guards against tmux send-keys exiting 0 on dead panes.
 func requireLiveStrand(reed ReedOps, guid string) error {
+	_, err := liveStrand(reed, guid)
+	return err
+}
+
+// liveStrand returns guid's strand as reed reports it, failing as requireLiveStrand does unless it is tracked and bound to a live pane.
+func liveStrand(reed ReedOps, guid string) (reedengine.StrandStatus, error) {
 	status, err := reed.Status()
 	if err != nil {
-		return fmt.Errorf("shuttle: check strand liveness: %w", err)
+		return reedengine.StrandStatus{}, fmt.Errorf("shuttle: check strand liveness: %w", err)
 	}
 	for _, s := range status.Strands {
 		if s.GUID != guid {
@@ -1225,16 +1236,16 @@ func requireLiveStrand(reed ReedOps, guid string) error {
 			// agent was working in a pane tmux reported alive), and it sends an operator looking for
 			// a corpse instead of for the binding reed dropped.
 			if s.PaneID == "" {
-				return fmt.Errorf("shuttle: reed tracks strand %q but holds no pane id for it — either its pane binding was cleared as stale (reed does that when the persisted pane generation is not the session incarnation now running: a restored backup, a copied .lyx, or a reed.json older than the session) or the strand was added anchor:hidden and never given a pane. Its agent may still be working in a pane reed can no longer address, so keys have nowhere to go; check \"lyx reed status\"", guid)
+				return reedengine.StrandStatus{}, fmt.Errorf("shuttle: reed tracks strand %q but holds no pane id for it — either its pane binding was cleared as stale (reed does that when the persisted pane generation is not the session incarnation now running: a restored backup, a copied .lyx, or a reed.json older than the session) or the strand was added anchor:hidden and never given a pane. Its agent may still be working in a pane reed can no longer address, so keys have nowhere to go; check \"lyx reed status\"", guid)
 			}
-			return fmt.Errorf("shuttle: strand %q has no live pane — its run already reached a terminal outcome or its pane died; keys would be silently dropped", guid)
+			return reedengine.StrandStatus{}, fmt.Errorf("shuttle: strand %q has no live pane — its run already reached a terminal outcome or its pane died; keys would be silently dropped", guid)
 		}
-		return nil
+		return s, nil
 	}
 	// Naming only the completed-and-cleaned-up cause would be wrong more often than right: a
 	// `lyx reed remove`, a `down`/`up` cycle, and a server rebirth all reach this same branch with
 	// the run still very much unfinished (proven live). State what was observed, then the causes.
-	return fmt.Errorf("shuttle: strand %q is not tracked by reed — either its run completed and was cleaned up, or reed's strand table was reset under it (a reed remove/down, or a lost or rebuilt reed.json); check \"lyx reed status\"", guid)
+	return reedengine.StrandStatus{}, fmt.Errorf("shuttle: strand %q is not tracked by reed — either its run completed and was cleaned up, or reed's strand table was reset under it (a reed remove/down, or a lost or rebuilt reed.json); check \"lyx reed status\"", guid)
 }
 
 // playInputs plays inputs into guid's pane through reed in order, with

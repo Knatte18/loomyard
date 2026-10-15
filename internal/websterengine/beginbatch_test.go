@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -606,9 +607,14 @@ func TestBeginBatch_Record(t *testing.T) {
 			name: "a first begin records a fresh fork batch and creates the reports dir",
 			prepare: func(t *testing.T, fx *beginFixture) {
 				fx.Deps.Geom.ReportsDir = filepath.Join(t.TempDir(), "reports")
+				fx.Deps.State.MasterSessionID = "master-session"
+				fx.Deps.State.MasterEngine = "master-engine"
 			},
 			wantStart: func(fx *beginFixture) string { return fx.Git.head },
 			check: func(t *testing.T, fx *beginFixture, bs *websterengine.BatchState) {
+				if bs.SessionID != "master-session" || bs.Engine != "master-engine" {
+					t.Errorf("Batches[1] session and engine = %q, %q; want the Master's %q, %q", bs.SessionID, bs.Engine, "master-session", "master-engine")
+				}
 				if fx.Deps.State.CurrentBatch != 1 {
 					t.Errorf("State.CurrentBatch = %d; want 1", fx.Deps.State.CurrentBatch)
 				}
@@ -651,9 +657,12 @@ func TestBeginBatch_Record(t *testing.T) {
 		},
 		{
 			name:      "a re-begin carries the recovery count, its sessions and its start commit",
-			prior:     &websterengine.BatchState{Slug: "json-flag", Kind: "recovery", Recoveries: 2, RecoverySessions: []string{"r1", "r2"}, RecoveryStartSHA: recordedStart},
+			prior:     &websterengine.BatchState{Slug: "json-flag", Kind: "recovery", Recoveries: 2, RecoverySessions: []string{"r1", "r2"}, RecoveryEngines: map[string]string{"r1": "claude", "r2": "fake"}, RecoveryStartSHA: recordedStart},
 			wantStart: func(fx *beginFixture) string { return fx.Git.head },
 			check: func(t *testing.T, fx *beginFixture, bs *websterengine.BatchState) {
+				if want := map[string]string{"r1": "claude", "r2": "fake"}; !maps.Equal(bs.RecoveryEngines, want) {
+					t.Errorf("Batches[1].RecoveryEngines = %v; want %v", bs.RecoveryEngines, want)
+				}
 				if bs.Kind != "fork" || bs.Recoveries != 2 || bs.RecoveryStartSHA != recordedStart {
 					t.Errorf("Batches[1] = %+v; want a fork record carrying Recoveries 2 and RecoveryStartSHA %s", bs, recordedStart)
 				}

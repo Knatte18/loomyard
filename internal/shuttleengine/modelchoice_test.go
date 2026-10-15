@@ -41,4 +41,20 @@ func TestNewModelChoice(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("EscapeFormResolvesThroughEmptyRegistry", func(t *testing.T) {
+		t.Parallel()
+		parsed, err := modelspec.Parse("claude:some-model[high]")
+		if err != nil {
+			t.Fatalf("Parse error: %v", err)
+		}
+		resolved, err := modelspec.Registry{}.Resolve(parsed)
+		if err != nil {
+			t.Fatalf("Resolve error: %v", err)
+		}
+		want := ModelChoice{Engine: "claude", Model: "some-model", Effort: "high"}
+		if got := NewModelChoice(resolved); got != want {
+			t.Errorf("NewModelChoice(Resolve(Parse(escape form))) = %+v; want %+v", got, want)
+		}
+	})
 }

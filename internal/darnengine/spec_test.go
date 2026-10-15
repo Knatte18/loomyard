@@ -130,8 +130,11 @@ func TestDarnSpec(t *testing.T) {
 			if role := seatengine.SeatRole(table.RolePrefix, lead.Name); lead.Name != "" || role != "darn" {
 				t.Errorf("lead name %q and role %q; want no name and the role %q", lead.Name, role, "darn")
 			}
-			if lead.Model != "opus" || lead.Effort != "high" || lead.Version != "" {
-				t.Errorf("lead model/effort/version = %q/%q/%q; want opus/high/none", lead.Model, lead.Effort, lead.Version)
+			if lead.Engine != "claude" || lead.Model != "opus" || lead.Effort != "high" || lead.Version != "" {
+				t.Errorf("lead engine/model/effort/version = %q/%q/%q/%q; want claude/opus/high/none", lead.Engine, lead.Model, lead.Effort, lead.Version)
+			}
+			if len(lead.Requires) != 0 {
+				t.Errorf("lead Requires = %v; want none, a lone seat declares nothing", lead.Requires)
 			}
 			if want := []string{in.DescriptionPath}; !slices.Equal(lead.Outputs, want) {
 				t.Errorf("lead outputs = %v; want the description alone %v", lead.Outputs, want)
