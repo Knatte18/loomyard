@@ -336,7 +336,7 @@ func storeVerbs(board func() *boardengine.Board) []*cobra.Command {
 		Short:       "create or update a single task",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Create or update a task identified by its slug.
-The envelope's "notice" names any open task sharing a new depends_on entry and a module label.
+The "notice" names siblings sharing a new depends_on and a label.
 
 Required field:
   "slug"       string — unique task identifier
@@ -410,7 +410,7 @@ Example:
 		Long: `Create or update multiple tasks in one atomic write.
 An absent or empty "tasks" array is an error. Each task element uses the same fields as
 "lyx board upsert" ("slug" required per element).
-The envelope's "notice" names any open task sharing a new depends_on entry and a module label.
+The "notice" names siblings sharing a new depends_on and a label.
 
 Required wrapper field:
   "tasks" array — one or more task objects (each with "slug" required)
@@ -650,7 +650,7 @@ Examples:
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Remove tasks, upsert a task, and optionally set status in one atomic write.
 The inner "set_status" object takes what the standalone "set-status" command takes.
-The envelope's "notice" names any open task sharing a new depends_on entry and a module label.
+The "notice" names siblings sharing a new depends_on and a label.
 
 Fields:
   "remove_slugs" array  — slug strings to remove (optional; omit to skip)
@@ -769,7 +769,7 @@ Example:
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Replace the full depends_on list for a task wholesale.
 An absent "depends_on" is an error; an explicit [] clears the list.
-The envelope's "notice" names any open task sharing a new depends_on entry and a module label.
+The "notice" names siblings sharing a new depends_on and a label.
 
 Fields:
   "slug"       string  — task slug (mutually exclusive with "id")
