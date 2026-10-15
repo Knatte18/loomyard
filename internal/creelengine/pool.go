@@ -69,6 +69,17 @@ func (s *Store) Close() error {
 	return s.writer.close()
 }
 
+// RollDay opens the journal's file for the clock's UTC day when that day has changed, which also carries live state out of the files past retention.
+func (s *Store) RollDay() error {
+	return s.do(func() error {
+		now := s.clock.Now().UTC()
+		if day := journalDay(now); day != s.writer.day {
+			return s.writer.rotate(now, day)
+		}
+		return nil
+	})
+}
+
 // SetWakeHook sets the function called with a receiver name whenever mail, an inject or a release makes that receiver worth a delivery attempt.
 // The hook runs after the verb has released the store's mutex, so it may call back into the store.
 func (s *Store) SetWakeHook(hook func(receiver string)) {

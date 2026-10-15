@@ -35,16 +35,22 @@ func (s *Scheduler) sweepLoop() {
 	defer s.wg.Done()
 	state := &sweeper{absent: map[string]int{}}
 	wait := sweepBackoffBase
-	seq := s.store.mailSequence()
+	var seq uint64
+	// idle is set while nothing needs sweeping, so the mail that makes sweeping needed starts a period at its own sequence number.
+	idle := true
 	for {
 		if !s.store.sweepNeeded() {
+			idle = true
 			select {
 			case <-s.sweepWake:
-				wait, seq = sweepBackoffBase, s.store.mailSequence()
+				wait = sweepBackoffBase
 				continue
 			case <-s.stop:
 				return
 			}
+		}
+		if idle {
+			seq, idle = s.store.mailSequence(), false
 		}
 		timer := s.clock.After(wait)
 	waiting:

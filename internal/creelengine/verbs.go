@@ -182,15 +182,49 @@ func (r *Reading) Ack() error {
 	})
 }
 
-// Release drops the reservation and leaves the messages unread.
+// Release drops the reservation and leaves the messages unread; a wait for the holder's mail is answered, since the mail is back.
 func (r *Reading) Release() {
 	_ = r.store.do(func() error {
 		for _, id := range r.ids {
 			delete(r.store.reserved, id)
 		}
+		if len(r.ids) > 0 {
+			r.store.answerLocked(waitKey{kind: waitHolder, holder: r.holder}, Outcome{Kind: OutcomeMail})
+		}
 		r.ids = nil
 		return nil
 	})
+}
+
+// WaitReply registers a wait for the reply to message id, which the caller posted.
+// A reply that already came while no wait was registered is handed over at once and journaled delivered.
+func (s *Store) WaitReply(sender Sender, id int64) (*Waiter, error) {
+	var waiter *Waiter
+	err := s.do(func() error {
+		msg := s.state.messages[id]
+		if msg == nil || msg.From != sender.Name {
+			return fmt.Errorf("creel: message #%d is not one you posted", id)
+		}
+		var err error
+		waiter, err = s.addWaiterLocked(waitKey{kind: waitReply, id: id})
+		return err
+	})
+	return waiter, err
+}
+
+// WaitInject registers a wait for the outcome of inject id, which the caller queued.
+func (s *Store) WaitInject(sender Sender, id int64) (*Waiter, error) {
+	var waiter *Waiter
+	err := s.do(func() error {
+		entry := s.state.injects[id]
+		if entry == nil || entry.From != sender.Name {
+			return fmt.Errorf("creel: inject #%d is not one you queued", id)
+		}
+		var err error
+		waiter, err = s.addWaiterLocked(waitKey{kind: waitInject, id: id})
+		return err
+	})
+	return waiter, err
 }
 
 // WaitMail registers a wait for unread mail for the caller, answered at once when the caller already holds some.

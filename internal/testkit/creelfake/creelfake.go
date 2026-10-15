@@ -260,6 +260,38 @@ func (c *Clock) Advance(d time.Duration) {
 	c.timers = pending
 }
 
+// AutoAdvance moves the clock to the next pending timer, and again for each timer armed after, until done is closed.
+// A test uses it to run through the sleeps of a call that retries on this clock.
+func (c *Clock) AutoAdvance(done <-chan struct{}) {
+	for {
+		select {
+		case <-done:
+			return
+		default:
+		}
+		c.mu.Lock()
+		if len(c.timers) > 0 {
+			earliest := c.timers[0].due
+			for _, t := range c.timers {
+				if t.due.Before(earliest) {
+					earliest = t.due
+				}
+			}
+			step := earliest.Sub(c.now)
+			c.mu.Unlock()
+			c.Advance(step)
+			continue
+		}
+		changed := c.changed
+		c.mu.Unlock()
+		select {
+		case <-changed:
+		case <-done:
+			return
+		}
+	}
+}
+
 // Waits returns every duration passed to After, in order.
 func (c *Clock) Waits() []time.Duration {
 	c.mu.Lock()
