@@ -437,7 +437,7 @@ func TestDiscussionTable(t *testing.T) {
 					"runs `lyx loom validate-discussion` per `Step 6` until it passes",
 					"6. Run `lyx loom validate-discussion` again until it passes",
 					"per `Step 5`",
-					"The writer wrote `" + DiscussionDecisionRecord(layout) + "` and `" + DiscussionSupportLog(layout) + "` and passed its self-check before spawning you.",
+					"`" + DiscussionDecisionRecord(layout) + "` and `" + DiscussionSupportLog(layout) + "` were written and passed the self-check before you were spawned.",
 					"Once you have written both output files per Step 5 and `lyx loom validate-discussion` passes per Step 6, run this procedure once, before you end your turn:",
 					"Fix the record, or reject the finding with a one-line reason.",
 					"each with a severity (`BLOCKING`, `MEDIUM` or `LOW`), the section or decision it concerns",
@@ -448,6 +448,11 @@ func TestDiscussionTable(t *testing.T) {
 				}
 				if strings.Contains(prompt, "lyx shuttle await") {
 					t.Error("twill lead prompt carries a ready-marker wait; want the forks to wait on nothing")
+				}
+				for _, wantNot := range []string{"a later turn of the same session", "fork0"} {
+					if strings.Contains(prompt, wantNot) {
+						t.Errorf("twill lead prompt carries %q; want the re-prompt rule and the relaunch paragraphs instead", wantNot)
+					}
 				}
 
 				modeRulesAt := strings.Index(prompt, modeRules(true))

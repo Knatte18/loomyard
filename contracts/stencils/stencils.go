@@ -452,6 +452,26 @@ var EditDirective []byte
 //go:embed twill/twill-directive.md
 var TwillDirective []byte
 
+// TwillWriterFork is the twill writer-fork part's shipped default: the host-neutral procedure in which one fork writes the reviewed files and the writer reviews what it wrote.
+//
+//go:embed twill/twill-writer-fork.md
+var TwillWriterFork []byte
+
+// TwillRelaunch is the twill relaunch part's shipped default: the host-neutral paragraphs that say what a writer relaunched around its lens spawn call does.
+//
+//go:embed twill/twill-relaunch.md
+var TwillRelaunch []byte
+
+// TwillJudgeCritical is the twill critical-judge part's shipped default: the host-neutral steps that have the writer judge each finding as a critical fixer and record each disposition.
+//
+//go:embed twill/twill-judge-critical.md
+var TwillJudgeCritical []byte
+
+// TwillJudgePlain is the twill plain-judge part's shipped default: the host-neutral steps that have the writer judge each finding and record whether it was fixed or rejected.
+//
+//go:embed twill/twill-judge-plain.md
+var TwillJudgePlain []byte
+
 // SeatDirectiveChair is the chair seat block's shipped default: the channel rules a multi-seat step's chair works under, pulled into a seat stencil as an include.
 //
 //go:embed seat/seat-directive-chair.md
@@ -557,6 +577,10 @@ var entries = []registryEntry{
 	{"parent-directive-none", &ParentDirectiveNone},
 	{"edit-directive", &EditDirective},
 	{"twill-directive", &TwillDirective},
+	{"twill-writer-fork", &TwillWriterFork},
+	{"twill-relaunch", &TwillRelaunch},
+	{"twill-judge-critical", &TwillJudgeCritical},
+	{"twill-judge-plain", &TwillJudgePlain},
 	{"seat-directive-chair", &SeatDirectiveChair},
 	{"seat-directive-advisor", &SeatDirectiveAdvisor},
 }
