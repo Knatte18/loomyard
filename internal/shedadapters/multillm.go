@@ -148,9 +148,9 @@ func (p *MultiLLMProducer) mapOutcome(ctx context.Context, result seatengine.Res
 				return "", shedengine.OutputPointer{}, cerr
 			}
 			logger.Warn("shedadapters: chair's gate did not pass", "producer", p.name, "engine", multiLLMEngineLabel, "attempts", chair.Gate.Attempts, "findingsPath", chair.Gate.FindingsPath, "sessionID", chair.SessionID, "strandGUID", chair.StrandGUID)
-			return shedengine.Stuck, shedengine.OutputPointer{Path: result.ChairOutputs[0], GateAttempts: gateAttemptsPointer(chair.Gate), Reason: gateFailedReason(chair.Gate)}, nil
+			return shedengine.Stuck, shedengine.OutputPointer{Path: result.ChairOutputs[0], GateAttempts: gateAttemptsPointer(chair.Gate), GateSpans: gateSpansOf(chair.Gate), Reason: gateFailedReason(chair.Gate)}, nil
 		}
-		return shedengine.Done, shedengine.OutputPointer{Path: result.ChairOutputs[0], GateAttempts: gateAttemptsPointer(chair.Gate)}, nil
+		return shedengine.Done, shedengine.OutputPointer{Path: result.ChairOutputs[0], GateAttempts: gateAttemptsPointer(chair.Gate), GateSpans: gateSpansOf(chair.Gate)}, nil
 
 	case shuttleengine.OutcomeDied, shuttleengine.OutcomeTimeout:
 		if cerr := cancelErr(ctx, p.name, multiLLMEngineLabel); cerr != nil {

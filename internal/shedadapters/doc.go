@@ -20,12 +20,14 @@
 //     Its run is handed two options: Fresh is always false, and AutoRebaseline is always true, so a plan changed between steps is rebaselined on entry.
 //     Webster's own "stuck" outcome, a websterengine.ErrPendingAuditFindings error and a websterengine.ErrAutoRebaseline error all map to Stuck with an empty Path and a Reason: Master's own stuck_reason or the run-entry refusal's text, whose way forward already ends in this row's re-entry step (NewWebsterProducer sets RunDeps.ReentryStep to "re-step the <row> row" when it is empty).
 //     Any other outcome value reaching Call is an engine-level error.
+//     It is a gate carrier: its done and its stuck pointers carry the gate count and spans of Merriam's run, the verify gate's entry included.
 //   - BurlerReviewProducer and BurlerFixProducer: a finished half -- shuttleengine.OutcomeDone reached within the bounded
 //     retry -- maps to Stuck, never Done, reporting the round's own review path as the pointer.
 //     That Stuck is a routine hand-off, the review row's to the fix row and the fix row's to the segment's Bouncer via OnStuck, never a real stuck
 //     condition: a half producer has no independent notion of "finished," only the judge does.
 //     Every hand-on, a finished half and an unjudged highest round, is BudgetExempt, so the Bouncer row's own budget check is the segment's one budget on judged rounds.
 //     The fix row's gate-failed exit is counted against its own MaxBounces.
+//     Both rows are gate carriers: the review row's hand-on pointer carries the gate count and spans of the reviewer's review-parse gate, for a spawned and a resumed review alike, and the fix row's gate-failed and finished-fix pointers carry the fixer's.
 //     A round names two strands, the reviewer's and the fixer's, one per row, and each attempt picks its half's model from BurlerHalfDeps.Models for the round.
 //     A runner error wrapping burlerengine.ErrHalfNotStopped returns without archiving and without the retry, since a live half may still write the round's files.
 //     Before archiving or spawning, each row probes its half and resumes or respawns by what is live (see "Every spawning adapter probes for a live agent first").

@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -100,10 +101,17 @@ func TestBurlerFixProducer_Call_FinishedFixIsRecorded(t *testing.T) {
 	t.Parallel()
 	started := time.Date(2026, 8, 16, 15, 0, 0, 0, time.UTC)
 	tests := []struct {
-		name   string
-		result burlerengine.FixResult
+		name      string
+		result    burlerengine.FixResult
+		wantSpans []shedengine.GateSpan
 	}{
-		{name: "a spawned fixer", result: burlerengine.FixResult{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Passed: true, Attempts: 2}, Fix: burlerengine.Half{StartedAt: started, EndedAt: started.Add(time.Minute)}}},
+		{
+			name: "a spawned fixer",
+			result: burlerengine.FixResult{Outcome: shuttleengine.OutcomeDone, Fix: burlerengine.Half{StartedAt: started, EndedAt: started.Add(time.Minute)}, Gate: &shuttleengine.GateOutcome{Passed: true, Attempts: 2, Entries: []shuttleengine.GateEntryOutcome{
+				{Name: "verify", Spans: []shuttleengine.GateSpan{{Kind: shuttleengine.GateSpanRework, Start: started, End: started.Add(2 * time.Second)}}},
+			}}},
+			wantSpans: []shedengine.GateSpan{{Gate: "verify", Kind: shedengine.GateSpanKindRework, Start: "2026-08-16T15:00:00Z", End: "2026-08-16T15:00:02Z"}},
+		},
 		{name: "a skipped empty review", result: burlerengine.FixResult{Outcome: shuttleengine.OutcomeDone, Skipped: true}},
 	}
 	for _, tt := range tests {
@@ -125,6 +133,9 @@ func TestBurlerFixProducer_Call_FinishedFixIsRecorded(t *testing.T) {
 
 			if ptr.Path != roundReviewPath(runDir, 2) || !ptr.BudgetExempt || (ptr.GateAttempts != nil) != (tt.result.Gate != nil) {
 				t.Errorf("Call() pointer = %+v; want round 2's review, BudgetExempt and gate attempts iff the fix was gated", ptr)
+			}
+			if !reflect.DeepEqual(ptr.GateSpans, tt.wantSpans) {
+				t.Errorf("Call() pointer spans = %+v; want %+v", ptr.GateSpans, tt.wantSpans)
 			}
 			if runner.FixCalls != 1 || runner.GotFixDigests[0] != "digest-2" {
 				t.Fatalf("Fix calls %d with digests %v; want one call under the recorded digest", runner.FixCalls, runner.GotFixDigests)
@@ -158,7 +169,9 @@ func TestBurlerFixProducer_Call_GateFailedAndChangedReviewArchiveTheWholeRound(t
 		wantErrIs  error
 		wantErrEnd string
 	}{
-		{name: "a failed gate", result: burlerengine.FixResult{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Attempts: 3, Reason: "verify is red"}}, wantStuck: true},
+		{name: "a failed gate", result: burlerengine.FixResult{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Attempts: 3, Reason: "verify is red", Entries: []shuttleengine.GateEntryOutcome{
+			{Name: "verify", Spans: []shuttleengine.GateSpan{{Kind: shuttleengine.GateSpanGate, Start: time.Date(2026, 8, 16, 15, 0, 0, 0, time.UTC), End: time.Date(2026, 8, 16, 15, 0, 3, 0, time.UTC)}}},
+		}}}, wantStuck: true},
 		{name: "a changed review", err: burlerengine.ErrReviewChanged, wantErrIs: burlerengine.ErrReviewChanged, wantErrEnd: wayForwardToReview},
 	}
 	for _, tt := range tests {
@@ -175,6 +188,10 @@ func TestBurlerFixProducer_Call_GateFailedAndChangedReviewArchiveTheWholeRound(t
 			if tt.wantStuck {
 				if err != nil || outcome != shedengine.Stuck || ptr.Path != "" || ptr.BudgetExempt || ptr.Reason != "verify is red" || ptr.GateAttempts == nil || *ptr.GateAttempts != 3 {
 					t.Errorf("Call() = %q, %+v, %v; want a counted Stuck with an empty Path, the gate's reason and 3 attempts", outcome, ptr, err)
+				}
+				wantSpans := []shedengine.GateSpan{{Gate: "verify", Kind: shedengine.GateSpanKindGate, Start: "2026-08-16T15:00:00Z", End: "2026-08-16T15:00:03Z"}}
+				if !reflect.DeepEqual(ptr.GateSpans, wantSpans) {
+					t.Errorf("Call() pointer spans = %+v; want %+v", ptr.GateSpans, wantSpans)
 				}
 			} else if !errors.Is(err, tt.wantErrIs) || !strings.HasSuffix(err.Error(), tt.wantErrEnd) {
 				t.Errorf("Call() error = %v; want it to wrap %v and end with %q", err, tt.wantErrIs, tt.wantErrEnd)

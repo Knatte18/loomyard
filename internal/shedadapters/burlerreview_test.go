@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -344,14 +345,21 @@ func TestBurlerReviewProducer_Call_AcceptedReviewIsRecorded(t *testing.T) {
 		Digest:  "digest-1",
 		Lenses:  []string{"style"},
 		Review:  burlerengine.Half{StartedAt: started, EndedAt: started.Add(time.Minute), Usage: shuttleengine.SessionUsage{Known: true, Fresh: 100, ForkFresh: 25, Forks: 2}},
+		Gate: &shuttleengine.GateOutcome{Passed: true, Attempts: 1, Entries: []shuttleengine.GateEntryOutcome{
+			{Name: "review", Attempts: 1, Spans: []shuttleengine.GateSpan{{Kind: shuttleengine.GateSpanRework, Start: started, End: started.Add(4 * time.Second)}}},
+		}},
 	}
 	runner := &shedfake.BurlerHalfRunner{ReviewResults: []burlerengine.ReviewResult{result}}
 	p := newReviewProducer(t, runDir, runner, spec)
 
 	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 
-	if ptr.Path != roundReviewPath(runDir, 1) || !ptr.BudgetExempt || ptr.GateAttempts != nil {
-		t.Errorf("Call() pointer = %+v; want round 1's review, BudgetExempt and no gate attempts", ptr)
+	if ptr.Path != roundReviewPath(runDir, 1) || !ptr.BudgetExempt || ptr.GateAttempts == nil || *ptr.GateAttempts != 1 {
+		t.Errorf("Call() pointer = %+v; want round 1's review, BudgetExempt and the review gate's one attempt", ptr)
+	}
+	wantSpans := []shedengine.GateSpan{{Gate: "review", Kind: shedengine.GateSpanKindRework, Start: "2026-08-16T15:00:00Z", End: "2026-08-16T15:00:04Z"}}
+	if !reflect.DeepEqual(ptr.GateSpans, wantSpans) {
+		t.Errorf("Call() pointer spans = %+v; want %+v", ptr.GateSpans, wantSpans)
 	}
 	if digest, found, err := readAcceptance(runDir, 1); digest != "digest-1" || !found || err != nil {
 		t.Errorf("acceptance record = %q, %v, %v; want digest-1 recorded", digest, found, err)
@@ -506,6 +514,12 @@ func TestBurlerReviewProducer_Call_Cancellation(t *testing.T) {
 func TestBurlerReviewProducer_Call_ProbeAndResume(t *testing.T) {
 	t.Parallel()
 	live := burlerengine.LiveHalf{State: burlerengine.HalfLive}
+	resumedStart := time.Date(2026, 8, 16, 15, 0, 0, 0, time.UTC)
+	resumed := reviewDone("resumed")
+	resumed.Gate = &shuttleengine.GateOutcome{Passed: true, Attempts: 2, Entries: []shuttleengine.GateEntryOutcome{
+		{Name: "review", Attempts: 2, Spans: []shuttleengine.GateSpan{{Kind: shuttleengine.GateSpanGate, Start: resumedStart, End: resumedStart.Add(time.Second)}}},
+	}}
+	two := 2
 
 	tests := []struct {
 		name         string
@@ -519,9 +533,15 @@ func TestBurlerReviewProducer_Call_ProbeAndResume(t *testing.T) {
 		wantResumes  int
 		wantArchived int
 		wantRecorded string
+		// wantAttempts and wantSpans are the accepted pointer's gate count and spans, nil when the accepted result carried no gate.
+		wantAttempts *int
+		wantSpans    []shedengine.GateSpan
 	}{
 		{name: "not live proceeds to the spawn", wantReviews: 1, wantArchived: 1, wantRecorded: "spawned"},
-		{name: "a live reviewer is resumed and accepted", probe: []burlerengine.LiveHalf{live}, resume: reviewDone("resumed"), wantResumes: 1, wantRecorded: "resumed"},
+		{
+			name: "a live reviewer is resumed and accepted", probe: []burlerengine.LiveHalf{live}, resume: resumed, wantResumes: 1, wantRecorded: "resumed",
+			wantAttempts: &two, wantSpans: []shedengine.GateSpan{{Gate: "review", Kind: shedengine.GateSpanKindGate, Start: "2026-08-16T15:00:00Z", End: "2026-08-16T15:00:01Z"}},
+		},
 		{name: "a resumed death falls through to a fresh attempt", probe: []burlerengine.LiveHalf{live}, resume: burlerengine.ReviewResult{Outcome: shuttleengine.OutcomeDied}, wantResumes: 1, wantReviews: 1, wantArchived: 1, wantRecorded: "spawned"},
 		{name: "a resumed unrecognized outcome archives the round", probe: []burlerengine.LiveHalf{live}, resume: burlerengine.ReviewResult{Outcome: "weird"}, wantErr: "unrecognized outcome", wantResumes: 1, wantArchived: 1},
 		{name: "a probe error returns bare", probeErr: errors.New("reed unreadable"), wantErr: "probe the reviewer"},
@@ -560,6 +580,9 @@ func TestBurlerReviewProducer_Call_ProbeAndResume(t *testing.T) {
 			if !wantErr {
 				if digest, _, _ := readAcceptance(runDir, 1); digest != tt.wantRecorded || ptr.Path != roundReviewPath(runDir, 1) {
 					t.Errorf("recorded digest %q and Path %q; want %q and round 1's review", digest, ptr.Path, tt.wantRecorded)
+				}
+				if (ptr.GateAttempts == nil) != (tt.wantAttempts == nil) || (ptr.GateAttempts != nil && *ptr.GateAttempts != *tt.wantAttempts) || !reflect.DeepEqual(ptr.GateSpans, tt.wantSpans) {
+					t.Errorf("gate attempts %v and spans %+v; want %v and %+v", ptr.GateAttempts, ptr.GateSpans, tt.wantAttempts, tt.wantSpans)
 				}
 			}
 			if len(runner.GotProbeReviewOpts) != 1 || runner.GotProbeReviewOpts[0].Round != "1" {
