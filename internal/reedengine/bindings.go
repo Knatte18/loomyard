@@ -1,7 +1,7 @@
 // bindings.go declares the server-wide key and mouse bindings of reed's navigation: the five Alt keys and the left click on the status bar.
 // Alt+Up and Alt+Down step across windows in index order, and a left click on the shell button returns to the strands' window.
 // The builder is pure; pinBindingsLocked issues its argvs, each non-fatal, from the geometry pin path that boot and the attach pre-flight both run.
-// The pin stamps the server with the build that made it, and every op under the blocking op lock re-pins when a newer build finds an older build's stamp, so a deploy reaches a running server at its first reed op.
+// The pin stamps the server with the build that made it, and every op under the blocking op lock re-pins when the stamp is absent, unparseable or another build's with a commit time not after the running build's, so a deploy reaches a running server at its first reed op.
 // Alt+Up, Alt+Down and the shell, pane and window clicks write the follow state off, and the follow button toggles it; @lyx_follow is the one option these bindings write that a Go decision reads.
 
 package reedengine
