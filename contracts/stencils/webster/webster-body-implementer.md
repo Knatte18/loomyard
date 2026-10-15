@@ -48,7 +48,7 @@ For EACH card file listed above, in the order listed:
    A non-zero exit fails the card exactly like the gate in step 3 — there is no separate "deferred verify" concept;
    every card's gate (the steps above, plus its own `verify:` when it declares one) is checked right after that card's own commit, never bundled into a later card.
 
-If any card's gate fails, or a test the card broke fails, and you cannot fix it within your self-fix bound (see next section), stop and report `status: FAILED` — do not continue to a later card on top of a broken one.
+If any card's gate fails, or a test the card broke fails, and you cannot fix it within your self-fix bound (see next section), stop and report `status: FAILED` — do not continue to a later card on top of a broken one.{{.kickstart_pack_inline}}
 
 ## The sandbox rule
 
