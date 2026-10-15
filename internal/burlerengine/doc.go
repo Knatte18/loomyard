@@ -26,6 +26,8 @@
 // # Skills and the parent directive
 //
 // Both seats load `scribe:prose`, `scribe:code-quality` and `scribe:testing` through their spawn specs' skills (`burlerSkills`).
+// A half whose `Profile.LanguageSkills` marks a code round loads the language skills told to `New` after those, on every seat, with repeats dropped;
+// any other half loads `burlerSkills` alone.
 // The seats engine renders the parent and edit directives into each seat stencil exactly once:
 // the chair's parent directive names Geometry.ParentName, which hubgeom.BurlerGeometry fills from the worktree's origin record, and standalone geometry leaves it empty, which renders the no-parent variant.
 // The instruction files carry no directive.

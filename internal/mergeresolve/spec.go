@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/editdirective"
+	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -105,7 +106,7 @@ func buildConflictSpec(deps Deps, paths []string, attempt int) (shuttleengine.Sp
 		Interactive: false,
 		Role:        ConflictRole,
 		Segment:     segmentcolor.Landing,
-		Skills:      conflictSkills,
+		Skills:      languageconfig.AppendSkills(conflictSkills, deps.LanguageSkills),
 		Timeout:     deps.Timeout,
 	}, nil
 }

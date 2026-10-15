@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -34,7 +35,7 @@ import (
 )
 
 // TestLandingDeps_EveryFieldPopulated asserts landingDeps populates every field of the
-// landingshed.Deps it returns, walking the struct by reflection so a sixteenth field added later is
+// landingshed.Deps it returns, walking the struct by reflection so a field added later is
 // caught automatically rather than silently passing an enumerated list of assertions.
 //
 //testtiming:keep drift guard walking every landingshed.Deps field by reflection so a field added later must be populated; the covering mark-done test populates only the fields it uses
@@ -50,6 +51,7 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 	registry := modelspec.Registry{"claude/sonnet-5": {}}
 	runner := &shuttleengine.Runner{}
 	cfg := landingshed.Config{Squash: true}
+	languageSkills := []string{"scribe:golang-testing"}
 
 	deps := landingDeps(
 		loc,
@@ -64,6 +66,7 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 		runner,
 		cfg,
 		"parent-session",
+		languageSkills,
 		func(string, time.Time) error { return nil },
 		func() (string, error) { return "", nil },
 		planVerifySource(loc),
@@ -72,6 +75,9 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 
 	if deps.ParentName != "parent-session" {
 		t.Errorf("landingDeps(...).ParentName = %q; want the told parent name", deps.ParentName)
+	}
+	if !slices.Equal(deps.LanguageSkills, languageSkills) {
+		t.Errorf("landingDeps(...).LanguageSkills = %v; want the told language skills %v", deps.LanguageSkills, languageSkills)
 	}
 
 	v := reflect.ValueOf(deps)

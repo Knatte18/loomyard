@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -145,6 +146,10 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 	if err != nil {
 		return configLoadError("batcher.yaml", err)
 	}
+	languageSkills, err := languageconfig.Load(fabricengine.ConfigDirs(loc))
+	if err != nil {
+		return configLoadError("language.yaml", err)
+	}
 	registry, err := modelspec.LoadRegistry(fabricengine.ConfigDirs(loc))
 	if err != nil {
 		return err
@@ -222,6 +227,7 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 		return origin.ParentBranch, nil
 	}
 	c.batcher = activeBatcher
+	c.languageSkills = languageSkills
 	return nil
 }
 
@@ -346,10 +352,13 @@ func (r configLoadRefusal) Unwrap() error { return r.cause }
 
 // configLoadError wraps the error of loading the named config file (such as "batcher.yaml") as a configLoadRefusal that names the file and the way forward.
 // A content failure (configengine.ErrInvalid) is invalid and names the fix, or the reconcile run when the cause is a retired batcher key;
+// a languageconfig.ErrUnusable cause is invalid and ends in its own way forward, since the hub-wide language.yaml never lives under a worktree's _lyx/config;
 // any other cause is a file that exists but cannot be read, which is transient.
 // Both wiring prologues return it before any verb's body runs, so a config that does not load leaves the recorded partition and state untouched.
 func configLoadError(file string, cause error) error {
 	switch {
+	case errors.Is(cause, languageconfig.ErrUnusable):
+		return configLoadRefusal{message: fmt.Sprintf("webster: %s did not load: %v, then re-run the verb", file, cause), invalid: true, cause: cause}
 	case errors.Is(cause, batcher.ErrRetiredKey):
 		// The retired-key cause already ends in the reconcile way forward.
 		return configLoadRefusal{message: fmt.Sprintf("webster: %s did not load: %v, then re-run the verb", file, cause), invalid: true, cause: cause}

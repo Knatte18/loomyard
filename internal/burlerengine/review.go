@@ -46,8 +46,8 @@ var ErrReviewChanged = errors.New("burler: the review file changed after it was 
 
 // reviewTable builds the review half's one-seat table for p under opts: the reviewer as the chair, gated by the review-parse entry alone.
 // The reviewer writes the review file alone and may fork exactly when p names a cluster fan.
-// values carries the marker values the seat's stencil is filled from.
-func (p *Profile) reviewTable(opts RunOpts, values map[string]string) seatengine.Table {
+// values carries the marker values the seat's stencil is filled from, and skills the skills the seat loads.
+func (p *Profile) reviewTable(opts RunOpts, values map[string]string, skills []string) seatengine.Table {
 	return seatengine.Table{
 		RolePrefix: p.rolePrefix(reviewRolePrefix),
 		Segment:    p.segment(),
@@ -61,7 +61,7 @@ func (p *Profile) reviewTable(opts RunOpts, values map[string]string) seatengine
 				Effort:        opts.Review.Effort,
 				Version:       opts.Review.Version,
 				Outputs:       []string{p.ReviewPath},
-				Skills:        burlerSkills,
+				Skills:        skills,
 				Values:        values,
 				ForkSubagents: p.ClusterFan != "",
 			},
@@ -98,7 +98,7 @@ func (e *Engine) Review(p Profile, opts RunOpts) (ReviewResult, error) {
 		return ReviewResult{}, err
 	}
 
-	seats, err := e.seats.Run(p.reviewTable(opts, prompt.Values))
+	seats, err := e.seats.Run(p.reviewTable(opts, prompt.Values, e.seatSkills(&p)))
 	return e.concludeReview(&p, opts, seats, err)
 }
 
@@ -140,7 +140,7 @@ func (e *Engine) ProbeReview(p Profile, opts RunOpts) (LiveHalf, error) {
 	if err := p.validateReview(e.geom.WorktreeRoot, e.cfg); err != nil {
 		return LiveHalf{}, err
 	}
-	table := p.reviewTable(opts, reviewSeatValues(&p, reviewFilesIn(e.probeDirOf())))
+	table := p.reviewTable(opts, reviewSeatValues(&p, reviewFilesIn(e.probeDirOf())), e.seatSkills(&p))
 	return e.probeHalf(table, p.ReviewPath)
 }
 
@@ -159,7 +159,7 @@ func (e *Engine) ResumeReview(p Profile, opts RunOpts, live LiveHalf) (ReviewRes
 
 	logger.Info("burler: resuming a live review", "round", opts.Round, "reviewStrand", live.Handle.StrandGUID())
 
-	table := p.reviewTable(opts, reviewSeatValues(&p, reviewFilesIn(e.probeDirOf())))
+	table := p.reviewTable(opts, reviewSeatValues(&p, reviewFilesIn(e.probeDirOf())), e.seatSkills(&p))
 	seats, err := e.seats.Resume(table, *live.table)
 	return e.concludeReview(&p, opts, seats, err)
 }

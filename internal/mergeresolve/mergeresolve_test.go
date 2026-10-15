@@ -639,15 +639,19 @@ func TestBuildConflictSpec_SkillsAndParentDirective(t *testing.T) {
 		name       string
 		parentName string
 		want       string
+		language   []string
+		wantSkills string
 	}{
-		{"with parent", "ab:cd:webster", "ab:cd:webster"},
-		{"no parent", "", "No parent is recorded"},
+		{"with parent", "ab:cd:webster", "ab:cd:webster", nil, "scribe:prose,scribe:code-quality"},
+		{"no parent", "", "No parent is recorded", nil, "scribe:prose,scribe:code-quality"},
+		{"language skills follow its own", "", "No parent is recorded", []string{"scribe:golang-testing", "scribe:code-quality"}, "scribe:prose,scribe:code-quality,scribe:golang-testing"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			deps := newTestDeps(t, &fakeMergeSurface{}, &shedfake.MergeShuttle{})
 			deps.ParentName = tt.parentName
+			deps.LanguageSkills = tt.language
 
 			spec, err := buildConflictSpec(deps, []string{"a.txt"}, 1)
 			if err != nil {
@@ -662,8 +666,8 @@ func TestBuildConflictSpec_SkillsAndParentDirective(t *testing.T) {
 			if tt.parentName == "" && strings.Contains(spec.Prompt, "Your parent is") {
 				t.Errorf("Prompt = %q; want the no-parent variant", spec.Prompt)
 			}
-			if got := strings.Join(spec.Skills, ","); got != "scribe:prose,scribe:code-quality" {
-				t.Errorf("Skills = %q; want scribe:prose,scribe:code-quality", got)
+			if got := strings.Join(spec.Skills, ","); got != tt.wantSkills {
+				t.Errorf("Skills = %q; want %q", got, tt.wantSkills)
 			}
 			if spec.Segment != segmentcolor.Landing {
 				t.Errorf("Segment = %q; want %q", spec.Segment, segmentcolor.Landing)

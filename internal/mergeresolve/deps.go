@@ -78,6 +78,9 @@ type Deps struct {
 	Registry modelspec.Registry
 	// Timeout bounds the conflict-resolution session's wall-clock deadline. Told by the caller.
 	Timeout time.Duration
+	// LanguageSkills are the hub's language skills the conflict session loads after its own; empty for none.
+	// Told by the caller.
+	LanguageSkills []string
 }
 
 // Outcome is Resolve's two-value verdict.

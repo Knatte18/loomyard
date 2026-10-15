@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
@@ -116,6 +117,11 @@ func (c *burlerCLI) wireHub(loc *lyxcwd.Location, stencilsDirOverride, targetDir
 		return err
 	}
 
+	languageSkills, err := languageconfig.Load(fabricengine.ConfigDirs(loc))
+	if err != nil {
+		return err
+	}
+
 	stencilsDir := fabricengine.StencilsDir(loc.HubPath)
 	if stencilsDirOverride != "" {
 		// The same boundary stat standalone's prologue applies, through the same descriptor method,
@@ -146,7 +152,8 @@ func (c *burlerCLI) wireHub(loc *lyxcwd.Location, stencilsDirOverride, targetDir
 	if err != nil {
 		return err
 	}
-	c.engine = burlerengine.New(seatengine.RunnerShuttle(runner), burlerGeom, burlerCfg, stencilsDir, "")
+	c.engine = burlerengine.New(seatengine.RunnerShuttle(runner), burlerGeom, burlerCfg, stencilsDir, "", languageSkills)
+	c.languageSkills = languageSkills
 	c.mode = "hub"
 	c.stateDir = ""
 	c.stencilsDir = stencilsDir
@@ -222,7 +229,7 @@ func (c *burlerCLI) wireStandalone(cwd, stencilsDirOverride, targetDirFlag strin
 	}
 
 	// A `lyx burler` run is not a loom run and has no friction directory in either mode.
-	c.engine = burlerengine.New(seatengine.RunnerShuttle(runner), standalonegeom.BurlerGeometry(res.Target, res.StateDir, res.Hash8), burlerCfg, res.StencilsDir, "")
+	c.engine = burlerengine.New(seatengine.RunnerShuttle(runner), standalonegeom.BurlerGeometry(res.Target, res.StateDir, res.Hash8), burlerCfg, res.StencilsDir, "", c.languageSkills)
 	c.mode = "standalone"
 	c.stateDir = res.StateDir
 	c.stencilsDir = res.StencilsDir

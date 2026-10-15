@@ -2,7 +2,7 @@
 
 `internal/configengine` offers `Load` (strict) and `LoadOrTemplate` (degrades to the embedded template); a caller adopts exactly one.
 
-- Degrading callers: `{shuttleengine, reedengine, websterengine, batcher, orchengine, loggerconfig, battenshed}`.
+- Degrading callers: `{shuttleengine, reedengine, websterengine, batcher, orchengine, loggerconfig, battenshed, languageconfig}`.
 - Strict callers: `{fabricengine, boardengine, loomengine, landingshed, gateslot, configcli}`.
   `configcli` loads strictly only to validate a hub-wide module's file before committing it.
 - Strictness applies to the base layer: the repo default or hub file when a board dir is told, else the worktree file.

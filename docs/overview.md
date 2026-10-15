@@ -265,6 +265,7 @@ github.com/Knatte18/loomyard/
 ├── internal/statuspane/          the pane mechanics the runs overview and the gate checklist share: a redraw-in-place pane loop, a lock-free status-file reader and the panes' two time formats, minute-resolution for growing times and second-resolution for closed spans
 ├── internal/landingshed/         landing's four general ShedProducers, Publish, PR-Align, PR-Gate and Finalize, shared by reference across producer lists
 ├── internal/darnengine/          the darn recipe's hub-wide `darn.yaml` config and the verify command every darn verify reads
+├── internal/languageconfig/      the hub-wide `language.yaml` config: the skills every code role loads after its own
 ├── internal/mergeresolve/        the merge-in + LLM conflict-resolution engine internal/landingshed's two producers each call
 ├── internal/frictionengine/      the aggregation-and-reflection step loom's terminal Friction-Reflect row runs and loom runs after a `blocked` or `failed` halt, under `run` and `step`, except that an escalation halt writes its note and runs no reflection; it is re-entrant across a killed driving process
 ├── internal/hubgeom/             the hub-mode told-geometry teller that converts a resolved `lyxcwd.Location` into each engine's geometry struct
@@ -566,7 +567,7 @@ User-facing modules each get one `lyx <module>` namespace:
 - **burler** — one review+fix round: two fresh sessions, a reviewer and then a fixer, each the unnamed lead of its own one-seat table on the seats engine (strands `burler-review` and `burler-fix`), no self-grading, over the shuttle file contract (`internal/burlerengine` + `internal/burlercli`).
   `loom.yaml`'s `discussion_fan` and `plan_fan` turn the lens fan on for Discussion-Review and Plan-Review, off by default.
   The reviewer writes the review, Go accepts it and records its digest, and only then does a fixer start; it validates and fixes the findings, disputing one only with evidence that its premise is false or that every fix makes the target worse, and fixing a real finding with its own change when the proposed one is wrong.
-  Profile-driven: `{overlay, source}` fix-scope, tool-use; `loom.yaml`'s `review` and `fix` keys pick each seat's model per round.
+  Profile-driven: `{overlay, source}` fix-scope, tool-use, `language-skills` (a code round's seats load the hub's `language.yaml` skills after their own); `loom.yaml`'s `review` and `fix` keys pick each seat's model per round.
   Cluster review fans the reviewer out into N fork-subagent reviewers by naming a fan (`cluster-fan`) from the seed-only `burler.yaml` lens/fan library — never on by default.
   Strict frontmatter verdict parse;
   debug CLI `lyx burler run`, and the read-only review-gate self-check `lyx burler validate-review <review-file>`. ✅ Implemented.

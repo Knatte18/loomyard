@@ -54,6 +54,27 @@ func recoveryNotDoneMessage(batchName string, batchNumber int, status string, re
 	return fmt.Sprintf("webster: batch %s recovery ended %s and the batch has no recovery left; way forward: end the run stuck, naming batch %s", batchName, status, batchName)
 }
 
+// recoverDeps builds the websterengine.RecoverDeps for this CLI's current wiring over the loaded plan, execution batches and run state.
+func (c *websterCLI) recoverDeps(plan *planparser.Plan, batches []batcher.Batch, st *websterengine.State) websterengine.RecoverDeps {
+	return websterengine.RecoverDeps{
+		Starter:        c.starter,
+		Plan:           plan,
+		Batches:        batches,
+		State:          st,
+		Roles:          c.roles,
+		Config:         c.cfg,
+		Engine:         c.engine,
+		Reed:           c.reed,
+		Stopper:        c.runner,
+		ShuttleCfg:     c.shuttleCfg,
+		Geom:           c.geom,
+		ReadOnly:       fabricengine.IsReadOnlyCommand,
+		FrictionDir:    c.frictionDir,
+		ParentBranch:   c.parentBranch,
+		LanguageSkills: c.languageSkills,
+	}
+}
+
 // recoverBatchCmd builds the `recover-batch <nn>` subcommand.
 func (c *websterCLI) recoverBatchCmd() *cobra.Command {
 	var wait time.Duration
@@ -173,22 +194,7 @@ Example:
 				}
 			}
 
-			deps := websterengine.RecoverDeps{
-				Starter:      c.starter,
-				Plan:         plan,
-				Batches:      batches,
-				State:        st,
-				Roles:        c.roles,
-				Config:       c.cfg,
-				Engine:       c.engine,
-				Reed:         c.reed,
-				Stopper:      c.runner,
-				ShuttleCfg:   c.shuttleCfg,
-				Geom:         c.geom,
-				ReadOnly:     fabricengine.IsReadOnlyCommand,
-				FrictionDir:  c.frictionDir,
-				ParentBranch: c.parentBranch,
-			}
+			deps := c.recoverDeps(plan, batches, st)
 
 			bs, spawned, err := websterengine.RecoverSpawnOrAttach(deps, batchNumber, recoverRealClock{})
 			if err != nil {

@@ -144,7 +144,7 @@ func newClusterSmokeEngine(t *testing.T) (*burlerengine.Engine, *hubforge.Hub) {
 	if err != nil {
 		t.Fatalf("burler geometry: %v", err)
 	}
-	engine := burlerengine.New(seatengine.RunnerShuttle(runner), burlerGeom, cfg, fabricengine.StencilsDir(h.Location.HubPath), "")
+	engine := burlerengine.New(seatengine.RunnerShuttle(runner), burlerGeom, cfg, fabricengine.StencilsDir(h.Location.HubPath), "", nil)
 	return engine, h
 }
 

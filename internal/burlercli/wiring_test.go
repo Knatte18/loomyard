@@ -140,6 +140,52 @@ func TestWire_SelectsModeAndWiresItsFields(t *testing.T) {
 		}
 	})
 
+	writeHubLanguageFile := func(t *testing.T, hub, contents string) {
+		t.Helper()
+		configDir := filepath.Join(fabricengine.BoardDir(hub), "_lyx", "config")
+		if err := os.MkdirAll(configDir, 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
+		}
+		if err := os.WriteFile(filepath.Join(configDir, "language.yaml"), []byte(contents), 0o644); err != nil {
+			t.Fatalf("WriteFile(language.yaml) = %v; want nil", err)
+		}
+	}
+
+	t.Run("HubWithLanguageList", func(t *testing.T) {
+		t.Parallel()
+		hub := t.TempDir()
+		loc := hubLocation(t, hub, "code", ".")
+		writeHubLanguageFile(t, hub, "skills:\n  - scribe:golang-testing\n")
+
+		c := &burlerCLI{}
+		if err := c.wire(loc, preflight.ModeHub, "", "", ""); err != nil {
+			t.Fatalf("wire() = %v; want nil", err)
+		}
+
+		if want := []string{"scribe:golang-testing"}; !slices.Equal(c.languageSkills, want) {
+			t.Errorf("c.languageSkills = %v; want %v", c.languageSkills, want)
+		}
+	})
+
+	t.Run("HubWithInvalidLanguageList", func(t *testing.T) {
+		t.Parallel()
+		hub := t.TempDir()
+		loc := hubLocation(t, hub, "code", ".")
+		writeHubLanguageFile(t, hub, "skills:\n  - \"\"\n")
+
+		c := &burlerCLI{}
+		err := c.wire(loc, preflight.ModeHub, "", "", "")
+
+		if err == nil {
+			t.Fatal("wire() = nil; want a refusal of the empty skills entry")
+		}
+		for _, want := range []string{"skills", "lyx config language"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("wire() error = %q; want it to contain %q", err, want)
+			}
+		}
+	})
+
 	t.Run("Standalone", func(t *testing.T) {
 		target := t.TempDir()
 		setStandaloneStateRoot(t)
@@ -164,6 +210,9 @@ func TestWire_SelectsModeAndWiresItsFields(t *testing.T) {
 		}
 		if c.reedUp == nil {
 			t.Error("wireStandalone left c.reedUp nil; want the in-process reed bring-up seam armed")
+		}
+		if len(c.languageSkills) != 0 {
+			t.Errorf("c.languageSkills = %v; want empty in standalone, which loads no language module", c.languageSkills)
 		}
 	})
 }
@@ -714,7 +763,7 @@ fixer-report-path: reviews/fixer-report.md
 			t.Fatalf("write profile: %v", err)
 		}
 		shuttle = &halfShuttle{review: review}
-		engine := burlerengine.New(shuttle, burlerengine.Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug"}, burlerengine.Config{}, stencilkit.Seed(t), "")
+		engine := burlerengine.New(shuttle, burlerengine.Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug"}, burlerengine.Config{}, stencilkit.Seed(t), "", nil)
 		c = &burlerCLI{cwd: root, engine: engine, mode: "standalone"}
 		return c, shuttle, profilePath, root
 	}

@@ -113,6 +113,59 @@ fixer-report-path: fixer-report.md
 `,
 		},
 		{
+			name: "LanguageSkillsTrue",
+			check: func(t *testing.T, profile burlerengine.Profile) {
+				if !profile.LanguageSkills {
+					t.Errorf("LanguageSkills = false; want true")
+				}
+			},
+			yaml: `
+target:
+  instructions: "diff against main"
+fasit:
+  instructions: "the discussion"
+rubric: "BLOCKING: x."
+fix-scope: overlay
+language-skills: true
+review-path: review.md
+fixer-report-path: fixer-report.md
+`,
+		},
+		{
+			name: "LanguageSkillsAbsent",
+			check: func(t *testing.T, profile burlerengine.Profile) {
+				if profile.LanguageSkills {
+					t.Errorf("LanguageSkills = true; want false when the key is absent")
+				}
+			},
+			yaml: `
+target:
+  instructions: "diff against main"
+fasit:
+  instructions: "the discussion"
+rubric: "BLOCKING: x."
+fix-scope: overlay
+review-path: review.md
+fixer-report-path: fixer-report.md
+`,
+		},
+		{
+			name: "LanguageSkillsNotBool",
+			yaml: `
+target:
+  instructions: "diff against main"
+fasit:
+  instructions: "the discussion"
+rubric: "BLOCKING: x."
+fix-scope: overlay
+language-skills: "yes"
+review-path: review.md
+fixer-report-path: fixer-report.md
+`,
+			wantErr:   true,
+			errSubstr: "language-skills",
+		},
+		{
 			name: "UnknownKey",
 			yaml: `
 target:

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/friction"
+	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/pattern"
@@ -26,7 +27,7 @@ const darnRole = "darn"
 const noneToken = "(none)"
 
 // darnSkills are the skills the darn writer's spawn loads, in order.
-var darnSkills = []string{"scribe:prose", "scribe:code-quality"}
+var darnSkills = []string{"scribe:prose", "scribe:code-quality", "scribe:testing"}
 
 // DarnInputs are the told values one darn writer spawn is composed from.
 type DarnInputs struct {
@@ -50,6 +51,8 @@ type DarnInputs struct {
 	RejectionFindings string
 	// PriorWork names what an earlier spawn left unfinished or broken; empty on a first spawn.
 	PriorWork string
+	// LanguageSkills are the hub's language skills the writer loads after its own; empty for none.
+	LanguageSkills []string
 }
 
 // DarnTable builds the seatengine.Table of one darn writer spawn: one lead that writes the change description.
@@ -115,7 +118,7 @@ func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Ta
 			Effort:  resolved.Params["effort"],
 			Version: resolved.Params["version"],
 			Outputs: []string{in.DescriptionPath},
-			Skills:  darnSkills,
+			Skills:  languageconfig.AppendSkills(darnSkills, in.LanguageSkills),
 		}},
 	}, nil
 }

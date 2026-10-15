@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -117,6 +118,7 @@ func newFinalizeAt(t *testing.T, taskBranch, taskCode, parentCode string, shuttl
 	deps.Shuttle = shuttle
 	deps.ConfigChanges = configChanges
 	deps.Notify = notify
+	deps.LanguageSkills = []string{"scribe:golang-testing"}
 	deps.Config = landingshed.Config{
 		Squash:             squash,
 		Conflict:           "claude:test-model",
@@ -176,6 +178,8 @@ func TestFinalize_OverRealHub(t *testing.T) {
 		shedfake.RequireOutcome(t, fz, shedengine.Done)
 		if len(shuttle.Specs) != 1 {
 			t.Errorf("fake shuttle Run() called %d time(s); want exactly 1 (one conflict-resolution session)", len(shuttle.Specs))
+		} else if want := []string{"scribe:prose", "scribe:code-quality", "scribe:golang-testing"}; !slices.Equal(shuttle.Specs[0].Skills, want) {
+			t.Errorf("conflict session Skills = %v; want %v", shuttle.Specs[0].Skills, want)
 		}
 
 		// The parent pair's code side carries the task's resolved content.

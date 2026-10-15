@@ -125,14 +125,14 @@ func combinedPrompt(t *testing.T, stencilsDir string, p *Profile, table seatengi
 func reviewHalf(t *testing.T, stencilsDir string, p *Profile, patternDirective string) (halfPrompt, string) {
 	t.Helper()
 	prompt := composeReview(t, stencilsDir, p, patternDirective)
-	return prompt, combinedPrompt(t, stencilsDir, p, p.reviewTable(RunOpts{}, prompt.Values), prompt)
+	return prompt, combinedPrompt(t, stencilsDir, p, p.reviewTable(RunOpts{}, prompt.Values, burlerSkills), prompt)
 }
 
 // fixHalf composes p's fix half and returns its prompt with its combined haystack.
 func fixHalf(t *testing.T, stencilsDir string, p *Profile, frictionDirective string) (halfPrompt, string) {
 	t.Helper()
 	prompt := composeFix(t, stencilsDir, p, frictionDirective)
-	return prompt, combinedPrompt(t, stencilsDir, p, p.fixTable(RunOpts{}, prompt.Values), prompt)
+	return prompt, combinedPrompt(t, stencilsDir, p, p.fixTable(RunOpts{}, prompt.Values, burlerSkills), prompt)
 }
 
 // TestComposePrompt_FocusDirective proves a round's focus file reaches the explore step through its own channel, with the precedence rule, and never reaches the review step's prior-rounds block;
@@ -268,8 +268,8 @@ func TestComposePrompt_MinimalProfile(t *testing.T) {
 		}
 	}
 
-	reviewer := chairPrompt(t, stencilsDir, "", &p, p.reviewTable(RunOpts{}, review.Values))
-	fixer := chairPrompt(t, stencilsDir, "", &p, p.fixTable(RunOpts{}, fix.Values))
+	reviewer := chairPrompt(t, stencilsDir, "", &p, p.reviewTable(RunOpts{}, review.Values, burlerSkills))
+	fixer := chairPrompt(t, stencilsDir, "", &p, p.fixTable(RunOpts{}, fix.Values, burlerSkills))
 	requireContains(t, reviewer, testReviewFiles.Explore)
 	requireContains(t, reviewer, testReviewFiles.Review)
 	requireContains(t, fixer, testFixFiles.Format)
@@ -292,7 +292,7 @@ func TestComposePrompt_ParentDirective(t *testing.T) {
 
 	review := composeReview(t, stencilsDir, &p, "")
 	fix := composeFix(t, stencilsDir, &p, "")
-	reviewTable, fixTable := p.reviewTable(RunOpts{}, review.Values), p.fixTable(RunOpts{}, fix.Values)
+	reviewTable, fixTable := p.reviewTable(RunOpts{}, review.Values, burlerSkills), p.fixTable(RunOpts{}, fix.Values, burlerSkills)
 
 	for _, seat := range []string{
 		chairPrompt(t, stencilsDir, "tst:task:orch", &p, reviewTable),
@@ -460,8 +460,8 @@ func TestComposePrompt_ClusterRules(t *testing.T) {
 		requireNotContains(t, reviewStep, "pattern directive placeholder")
 		requireNotContains(t, fixStep, "pattern directive placeholder")
 		for _, seat := range []string{
-			chairPrompt(t, stencilsDir, "", &p, p.reviewTable(RunOpts{}, review.Values)),
-			chairPrompt(t, stencilsDir, "", &p, p.fixTable(RunOpts{}, fix.Values)),
+			chairPrompt(t, stencilsDir, "", &p, p.reviewTable(RunOpts{}, review.Values, burlerSkills)),
+			chairPrompt(t, stencilsDir, "", &p, p.fixTable(RunOpts{}, fix.Values, burlerSkills)),
 		} {
 			requireNotContains(t, seat, "Write surface")
 			requireNotContains(t, seat, "style")

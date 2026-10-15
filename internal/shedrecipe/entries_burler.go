@@ -201,12 +201,11 @@ func burlerRoundFileSet(entry, field string, cfg Config) (burlerengine.FileSet, 
 	return burlerengine.FileSet{Paths: paths, Instructions: instructions}, nil
 }
 
-// burlerRoundProfile maps cfg's profile map onto a burlerengine.Profile, recognising exactly seven
-// keys -- target, fasit, rubric, rubric_stencil, fix-scope, tool-use, and cluster-fan -- all
-// optional at this level individually, subject to the rubric/rubric_stencil mutual-exclusivity rule
-// below.
+// burlerRoundProfile maps cfg's profile map onto a burlerengine.Profile, recognising exactly eight keys:
+// target, fasit, rubric, rubric_stencil, fix-scope, tool-use, cluster-fan and language-skills.
+// All are optional at this level individually, subject to the rubric/rubric_stencil mutual-exclusivity rule below.
 //
-// Six of these seven key names are a hand-maintained duplicate of internal/burlercli's profileYAML
+// Seven of these eight key names are a hand-maintained duplicate of internal/burlercli's profileYAML
 // kebab-case shape, kept identical deliberately so a human who has written a burler profile file
 // reads a recipe row without a second vocabulary. review-path, fixer-report-path, prior-reviews,
 // prior-fixer-reports, and cluster-exclude are deliberately absent.
@@ -257,7 +256,11 @@ func burlerRoundProfile(cfg Config, stencilsDir, specsDir string, notes shedadap
 	if err != nil {
 		return burlerengine.Profile{}, err
 	}
-	if err := configRejectUnknown(cfg, "target", "fasit", "rubric", "rubric_stencil", "fix-scope", "tool-use", "cluster-fan"); err != nil {
+	languageSkills, err := configBool(cfg, "language-skills", false)
+	if err != nil {
+		return burlerengine.Profile{}, err
+	}
+	if err := configRejectUnknown(cfg, "target", "fasit", "rubric", "rubric_stencil", "fix-scope", "tool-use", "cluster-fan", "language-skills"); err != nil {
 		return burlerengine.Profile{}, err
 	}
 
@@ -305,16 +308,17 @@ func burlerRoundProfile(cfg Config, stencilsDir, specsDir string, notes shedadap
 	// behaviour rather than this package's.
 
 	return burlerengine.Profile{
-		Target:     target,
-		Fasit:      fasit,
-		Rubric:     rubric,
-		FixScope:   burlerengine.FixScope(fixScope),
-		ToolUse:    toolUse,
-		ClusterFan: clusterFan,
+		Target:         target,
+		Fasit:          fasit,
+		Rubric:         rubric,
+		FixScope:       burlerengine.FixScope(fixScope),
+		ToolUse:        toolUse,
+		ClusterFan:     clusterFan,
+		LanguageSkills: languageSkills,
 	}, nil
 }
 
-// burlerFixProfile maps cfg's profile map onto the burlerengine.Profile of a fix row, recognising exactly two keys -- target and fix-scope -- both optional at this level.
+// burlerFixProfile maps cfg's profile map onto the burlerengine.Profile of a fix row, recognising exactly three keys -- target, fix-scope and language-skills -- all optional at this level.
 // The fixer holds no fasit, rubric or cluster fan, so those keys are rejected as unrecognised; profile.target.paths follows burlerRoundProfile's relative-path exception.
 func burlerFixProfile(cfg Config) (burlerengine.Profile, error) {
 	targetCfg, err := configMap(cfg, "target", false)
@@ -325,12 +329,16 @@ func burlerFixProfile(cfg Config) (burlerengine.Profile, error) {
 	if err != nil {
 		return burlerengine.Profile{}, err
 	}
-	if err := configRejectUnknown(cfg, "target", "fix-scope"); err != nil {
+	languageSkills, err := configBool(cfg, "language-skills", false)
+	if err != nil {
+		return burlerengine.Profile{}, err
+	}
+	if err := configRejectUnknown(cfg, "target", "fix-scope", "language-skills"); err != nil {
 		return burlerengine.Profile{}, err
 	}
 	target, err := burlerRoundFileSet("BurlerFix", "target", targetCfg)
 	if err != nil {
 		return burlerengine.Profile{}, err
 	}
-	return burlerengine.Profile{Target: target, FixScope: burlerengine.FixScope(fixScope)}, nil
+	return burlerengine.Profile{Target: target, FixScope: burlerengine.FixScope(fixScope), LanguageSkills: languageSkills}, nil
 }

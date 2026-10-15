@@ -57,7 +57,8 @@ internal/hubreconcile: 18
 internal/idecli: 2
 internal/ideengine: 4
 internal/impactset: 5
-internal/landingshed: 86
+internal/landingshed: 87
+internal/languageconfig: 3
 internal/lock: 4
 internal/logger: 37
 internal/loggerconfig: 3
