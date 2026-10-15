@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -17,7 +18,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -94,9 +94,9 @@ func newRecoverFixtureOver(t *testing.T, worktree string, git websterengine.Git)
 	shuttleCfg := shuttleengine.Config{RunDir: t.TempDir(), RunTimeoutMin: 60, StartupTimeoutS: 30}
 	runner := shuttleengine.NewRunner(reed, shuttlefake.EngineSet(engine), worktree, worktree, shuttleCfg)
 
-	roles := map[websterengine.Role]modelspec.Resolved{
-		websterengine.RoleMaster:   {Model: "master-model", Params: map[string]string{}},
-		websterengine.RoleRecovery: {Model: "recovery-model", Params: map[string]string{"effort": "high"}},
+	roles := map[websterengine.Role]shuttleengine.ModelChoice{
+		websterengine.RoleMaster:   {Model: "master-model"},
+		websterengine.RoleRecovery: {Model: "recovery-model", Effort: "high"},
 	}
 
 	reportsDir := t.TempDir()
@@ -1116,6 +1116,9 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 				if got, want := fx.Deps.State.Batches[1].RecoverySessions, []string{"fake-session"}; !slices.Equal(got, want) {
 					t.Errorf("recovery BatchState.RecoverySessions = %v; want %v", got, want)
 				}
+				if got, want := fx.Deps.State.Batches[1].RecoveryEngines, map[string]string{"fake-session": shuttlefake.EngineName}; !maps.Equal(got, want) {
+					t.Errorf("recovery BatchState.RecoveryEngines = %v; want %v, the spawned run's engine under its session id", got, want)
+				}
 			},
 		},
 		{
@@ -1141,7 +1144,7 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 		{
 			name: "a spawn over a prior recovery raises the count and records HEAD as its start",
 			setup: func(fx *recoverFixture) {
-				fx.Deps.State.Batches[1] = &websterengine.BatchState{Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead", Recoveries: 1, RecoveryStartSHA: fx.Git.head, StartSHA: fx.Git.head, RecoverySessions: []string{"earlier-session"}}
+				fx.Deps.State.Batches[1] = &websterengine.BatchState{Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead", Recoveries: 1, RecoveryStartSHA: fx.Git.head, StartSHA: fx.Git.head, RecoverySessions: []string{"earlier-session"}, RecoveryEngines: map[string]string{"earlier-session": "claude"}}
 				fx.Git.commit()
 			},
 			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
@@ -1151,6 +1154,9 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 				}
 				if got, want := fx.Deps.State.Batches[1].RecoverySessions, []string{"earlier-session", "fake-session"}; !slices.Equal(got, want) {
 					t.Errorf("recovery BatchState.RecoverySessions = %v; want %v", got, want)
+				}
+				if got, want := fx.Deps.State.Batches[1].RecoveryEngines, map[string]string{"earlier-session": "claude", "fake-session": shuttlefake.EngineName}; !maps.Equal(got, want) {
+					t.Errorf("recovery BatchState.RecoveryEngines = %v; want the first entry kept and the second added: %v", got, want)
 				}
 			},
 		},

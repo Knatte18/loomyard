@@ -18,6 +18,7 @@ package websterengine
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -28,7 +29,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -74,7 +74,7 @@ type RecoverDeps struct {
 	Plan       *planparser.Plan
 	Batches    []batcher.Batch
 	State      *State
-	Roles      map[Role]modelspec.Resolved
+	Roles      map[Role]shuttleengine.ModelChoice
 	Config     Config
 	Engine     AuditEngine
 	Reed       shuttleengine.ReedOps
@@ -234,7 +234,7 @@ func rendersNewAmendment(prior *BatchState) bool {
 // recoverSpawn archives any stale report, stops a live prior strand, renders
 // the recovery prompt, and starts the recovery strand, returning a fresh BatchState.
 // clk stamps SpawnedAt so elapsed-since-spawn is measured against the same clock.
-// The record appends the spawned run's session id to the prior record's RecoverySessions.
+// The record appends the spawned run's session id to the prior record's RecoverySessions, and records that run's engine under it in RecoveryEngines.
 // The record counts the spawn in Recoveries unless the prompt renders an amendment no earlier spawn rendered, and carries HEAD at the spawn as RecoveryStartSHA.
 // HEAD is read before anything is stopped or started, so a failed read starts nothing and counts nothing.
 func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prevDigest string, clk Clock) (*BatchState, error) {
@@ -297,7 +297,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		return nil, err
 	}
 
-	resolved, ok := deps.Roles[RoleRecovery]
+	choice, ok := deps.Roles[RoleRecovery]
 	if !ok {
 		return nil, fmt.Errorf("webster: no resolved model-spec for role %q", RoleRecovery)
 	}
@@ -305,7 +305,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 	spec := shuttleengine.Spec{
 		Prompt:      string(prompt),
 		OutputFiles: []string{reportPath},
-		ModelChoice: shuttleengine.NewModelChoice(resolved),
+		ModelChoice: choice,
 		Skills:      languageconfig.AppendSkills(roleSkills, deps.LanguageSkills),
 		Role:        string(RoleRecovery),
 		Segment:     segmentcolor.Webster,
@@ -345,8 +345,10 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 	var amended []AmendedCard
 	recoveries := 0
 	var recoverySessions []string
+	recoveryEngines := map[string]string{}
 	if prior != nil {
 		recoverySessions = slices.Clone(prior.RecoverySessions)
+		maps.Copy(recoveryEngines, prior.RecoveryEngines)
 		for _, a := range prior.AmendedCards {
 			amended = append(amended, AmendedCard{Card: a.Card, Rendered: true})
 		}
@@ -359,6 +361,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		recoveries++
 	}
 	recoverySessions = append(recoverySessions, runState.SessionID)
+	recoveryEngines[runState.SessionID] = runState.Engine
 
 	return &BatchState{
 		Slug:             slug,
@@ -377,6 +380,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		EventsOffset:     runState.PromptOffset,
 		Recoveries:       recoveries,
 		RecoverySessions: recoverySessions,
+		RecoveryEngines:  recoveryEngines,
 		RecoveryStartSHA: head,
 	}, nil
 }

@@ -29,7 +29,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/preflight"
@@ -90,7 +89,7 @@ type websterCLI struct {
 
 	shuttleCfg shuttleengine.Config
 	cfg        websterengine.Config
-	roles      map[websterengine.Role]modelspec.Resolved
+	roles      map[websterengine.Role]shuttleengine.ModelChoice
 
 	// anchorRel is the hub-mode Location's own anchor-relative path (loc.AnchorRel), empty in
 	// standalone. It is the one thing the deleted layout field held that no other told replacement

@@ -38,7 +38,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -155,6 +154,7 @@ func seedShuttleRunState(t *testing.T, runDirRoot, strandGUID, sessionID string)
 		RunID:      "fake-run-" + strandGUID,
 		StrandGUID: strandGUID,
 		SessionID:  sessionID,
+		Engine:     shuttlefake.EngineName,
 		CreatedAt:  time.Now().UTC().Format(time.RFC3339),
 	}
 	data, err := json.MarshalIndent(rs, "", "  ")
@@ -207,9 +207,9 @@ func newRunFixtureOver(t *testing.T, numCards int, worktree string, git webstere
 	shuttleRunRoot := t.TempDir()
 	shuttleCfg := shuttleengine.Config{RunDir: shuttleRunRoot, RunTimeoutMin: 60, StartupTimeoutS: 30}
 
-	roles := map[websterengine.Role]modelspec.Resolved{
-		websterengine.RoleMaster:   {Model: "master-model", Params: map[string]string{}},
-		websterengine.RoleRecovery: {Model: "recovery-model", Params: map[string]string{"effort": "high"}},
+	roles := map[websterengine.Role]shuttleengine.ModelChoice{
+		websterengine.RoleMaster:   {Model: "master-model"},
+		websterengine.RoleRecovery: {Model: "recovery-model", Effort: "high"},
 	}
 
 	// Select("") is the right call here rather than Active: the fixture's
@@ -1498,6 +1498,11 @@ func TestRun_MasterSpawn(t *testing.T) {
 			// Merriam spawns under the strand role `webster` while the model still resolves from RoleMaster.
 			name:  "the strand role, the model and the skills",
 			cards: 1,
+			prepare: func(t *testing.T, fx *runFixture) {
+				choice := fx.Deps.Roles[websterengine.RoleMaster]
+				choice.Engine = "master-engine"
+				fx.Deps.Roles[websterengine.RoleMaster] = choice
+			},
 			check: func(t *testing.T, fx *runFixture) {
 				spec := fx.Starter.startCalls[0]
 				if spec.Role != websterengine.MerriamStrandRole || spec.Role == string(websterengine.RoleMaster) {
@@ -1508,6 +1513,9 @@ func TestRun_MasterSpawn(t *testing.T) {
 				}
 				if want := fx.Deps.Roles[websterengine.RoleMaster].Model; spec.Model != want {
 					t.Errorf("Spec.Model = %q; want %q (RoleMaster's resolved model)", spec.Model, want)
+				}
+				if want := fx.Deps.Roles[websterengine.RoleMaster].Engine; spec.Engine != want {
+					t.Errorf("Spec.Engine = %q; want %q (RoleMaster's engine)", spec.Engine, want)
 				}
 				if want := []string{"scribe:prose", "scribe:code-quality", "scribe:testing"}; !slices.Equal(spec.Skills, want) {
 					t.Errorf("Spec.Skills = %v; want %v", spec.Skills, want)
@@ -1548,6 +1556,9 @@ func TestRun_MasterSpawn(t *testing.T) {
 				}
 				if st.MasterSessionID != spawnSession {
 					t.Errorf("State.MasterSessionID = %q; want %q", st.MasterSessionID, spawnSession)
+				}
+				if st.MasterEngine != shuttlefake.EngineName {
+					t.Errorf("State.MasterEngine = %q; want %q, the engine the Master run record names", st.MasterEngine, shuttlefake.EngineName)
 				}
 			},
 		},

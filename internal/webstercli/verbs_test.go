@@ -28,7 +28,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -124,9 +123,9 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 	shuttleCfg := shuttleengine.Config{RunDir: filepath.Join(t.TempDir(), "runs"), RunTimeoutMin: 60, StartupTimeoutS: 30}
 	runner := shuttleengine.NewRunner(reed, shuttlefake.EngineSet(engine), layout.AnchorPath(), layout.WorktreePath(), shuttleCfg)
 
-	roles := map[websterengine.Role]modelspec.Resolved{
-		websterengine.RoleMaster:   {Model: "master-model", Params: map[string]string{}},
-		websterengine.RoleRecovery: {Model: "recovery-model", Params: map[string]string{}},
+	roles := map[websterengine.Role]shuttleengine.ModelChoice{
+		websterengine.RoleMaster:   {Model: "master-model"},
+		websterengine.RoleRecovery: {Model: "recovery-model"},
 	}
 
 	// The default (empty) batcher name resolves to the identity batchifier

@@ -468,6 +468,9 @@
 // This mirrors classify.go's dead/timeout/stuck classification.
 //
 // A batch's recovery spawns are counted in BatchState.Recoveries, and BatchState.RecoverySessions records every recovery strand's session id in spawn order, so the batch records every recovery session.
+// A session's engine is recorded beside its session id, because a shuttle run record does not outlive its run:
+// State.MasterEngine beside MasterSessionID, BatchState.Engine beside SessionID, and BatchState.RecoveryEngines, keyed by session id, beside RecoverySessions.
+// A state written before these keys existed reads with them empty.
 // The spawn records HEAD as RecoveryStartSHA, read before anything is stopped or started, so a HEAD that cannot be read starts and counts nothing.
 // A re-begin and a rebaseline keep the count.
 // A spawn whose prompt renders an amendment no earlier spawn rendered does not count, so an amendment forces at most one uncounted re-run.

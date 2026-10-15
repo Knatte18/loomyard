@@ -19,7 +19,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -126,7 +125,7 @@ type RunDeps struct {
 	Stopper    StrandStopper
 	Engine     shuttleengine.ForkAuditor
 	ShuttleCfg shuttleengine.Config
-	Roles      map[Role]modelspec.Resolved
+	Roles      map[Role]shuttleengine.ModelChoice
 	Config     Config
 	// Batcher is the CLI-resolved active batchifier (batcher.Active),
 	// populated by webstercli's PersistentPreRunE before Run is called. Run
@@ -680,7 +679,7 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	if err != nil {
 		return RunResult{}, err
 	}
-	resolved, ok := deps.Roles[RoleMaster]
+	choice, ok := deps.Roles[RoleMaster]
 	if !ok {
 		return RunResult{}, fmt.Errorf("webster: no resolved model-spec for role %q", RoleMaster)
 	}
@@ -692,7 +691,7 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 		// reaches its summary.md final action never falsely reads as
 		// finished.
 		OutputFiles:   []string{outcomePath, summaryPath},
-		ModelChoice:   shuttleengine.NewModelChoice(resolved),
+		ModelChoice:   choice,
 		Skills:        languageconfig.AppendSkills(roleSkills, deps.LanguageSkills),
 		ForkSubagents: true,
 		// The failure ladder backgrounds recover-batch and recovery_timeout_min bounds it, so the wait marker leaves it out.
@@ -731,6 +730,7 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 		return RunResult{}, fmt.Errorf("webster: resolve spawned master run: %w", err)
 	}
 	st.MasterSessionID = runState.SessionID
+	st.MasterEngine = runState.Engine
 
 	// Second save: the session ID the verbs read.
 	if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
