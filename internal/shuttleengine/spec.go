@@ -85,7 +85,8 @@ type Spec struct {
 	// Whether the launch carries --dangerously-skip-permissions follows the resolved PermissionMode,
 	// whose empty default skips in an autonomous run and prompts in an interactive one.
 	// The Agent tool deny and the python deny are included in both modes.
-	// Each deny is still individually toggleable via the shuttle config's claude_deny_agent_tool, claude_deny_ask_user_question and claude_deny_python keys.
+	// The python deny is toggleable via the shuttle config's deny_python key;
+	// the Agent tool and AskUserQuestion denies are toggleable via the claude engine's own config.
 	Interactive bool
 	// QuietHold skips the held-turn parent notice alone.
 	// The hold itself, the wait mark, the deadline and attach behaviour are unchanged.

@@ -297,7 +297,7 @@ func TestPrepare_AppendSystemPromptMatchesDenyNotice(t *testing.T) {
 					for _, fork := range []bool{false, true} {
 						claude := templateConfig(t)
 						claude.DenyAgentTool, claude.DenyAskUserQuestion = denyAgent, denyAsk
-						cfg := shuttleengine.Config{ClaudeDenyPython: denyPython}
+						cfg := shuttleengine.Config{DenyPython: denyPython}
 						spec := shuttleengine.Spec{Prompt: "do the thing", Interactive: interactive, ForkSubagents: fork}
 						notice := buildDenyNotice(interactive, cfg, claude, fork, false)
 

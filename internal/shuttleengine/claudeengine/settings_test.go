@@ -227,7 +227,7 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := shuttleengine.Config{ClaudeDenyPython: tt.pythonDeny}
+			cfg := shuttleengine.Config{DenyPython: tt.pythonDeny}
 			claude := Config{DenyAgentTool: tt.agentDeny, DenyAskUserQuestion: tt.askUserDeny}
 			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, cfg, claude, tt.fork, false, "")
 			if err != nil {
@@ -675,7 +675,7 @@ func TestBuildDenyNotice_MatchesInstalledDenies(t *testing.T) {
 			for _, pythonDeny := range []bool{false, true} {
 				for _, interactive := range []bool{false, true} {
 					for _, fork := range []bool{false, true} {
-						cfg := shuttleengine.Config{ClaudeDenyPython: pythonDeny}
+						cfg := shuttleengine.Config{DenyPython: pythonDeny}
 						claude := Config{DenyAgentTool: agentDeny, DenyAskUserQuestion: askUserDeny}
 						data, err := buildSettings("/c/run/events.jsonl", interactive, cfg, claude, fork, false, "")
 						if err != nil {
@@ -772,10 +772,10 @@ func TestBuildSettings_MatchesGolden(t *testing.T) {
 	for mask := 0; mask < 64; mask++ {
 		bit := func(position int) bool { return mask&(1<<position) != 0 }
 		interactive, fork, allowAgent := bit(0), bit(1), bit(2)
-		cfg := shuttleengine.Config{ClaudeDenyPython: bit(5)}
+		cfg := shuttleengine.Config{DenyPython: bit(5)}
 		claude := Config{DenyAgentTool: bit(3), DenyAskUserQuestion: bit(4)}
 		label := fmt.Sprintf("interactive=%t fork=%t allowAgent=%t denyAgent=%t denyAsk=%t denyPython=%t",
-			interactive, fork, allowAgent, claude.DenyAgentTool, claude.DenyAskUserQuestion, cfg.ClaudeDenyPython)
+			interactive, fork, allowAgent, claude.DenyAgentTool, claude.DenyAskUserQuestion, cfg.DenyPython)
 		rendered[label] = true
 
 		entry, ok := want[label]

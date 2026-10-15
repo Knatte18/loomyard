@@ -103,30 +103,22 @@ sleep 3600
 	return path
 }
 
-// driverShuttleConfig returns shuttle's shipped config template with the claude key pointed at
-// stubPath and startup_timeout_s lowered from 90 to 10. Unlike smoke_test.go's own
-// providerlessShuttleConfig, this file's whole point is proving reed's own strand bookkeeping across a
-// REAL spawned pane, so the provider path must resolve to a real (if stubbed) executable rather than a
-// deliberately-broken one. The lowered window keeps a readiness regression -- shuttle's own startup
+// driverShuttleConfig returns shuttle's shipped config template with startup_timeout_s lowered from 90 to 10.
+// This file's whole point is proving reed's own strand bookkeeping across a REAL spawned pane,
+// so the fixture's claude.yaml points at a real (if stubbed) executable rather than a deliberately-broken one.
+// The lowered window keeps a readiness regression -- shuttle's own startup
 // step never observing the ready marker -- surfacing as a refusal envelope inside the 30s per-invocation timeout
-// runLoomCLINoFatal enforces, rather than that timeout itself firing and masking the real failure. Both
-// substring replacements are asserted present before being applied, so a template drift (the shipped
-// claude key or the shipped startup_timeout_s value changing shape) fails loudly here rather than
-// silently leaving the 90s window in place.
-func driverShuttleConfig(t *testing.T, stubPath string) string {
+// runLoomCLINoFatal enforces, rather than that timeout itself firing and masking the real failure.
+// The substring is asserted present before being replaced,
+// so a template drift (the shipped startup_timeout_s value changing shape) fails loudly here rather than silently leaving the 90s window in place.
+func driverShuttleConfig(t *testing.T) string {
 	t.Helper()
 	cfg := shuttleengine.ConfigTemplate()
-	const claudeKey = "claude: ${env:LYX_SHUTTLE_CLAUDE:-}"
 	const timeoutKey = "startup_timeout_s: 90"
-	if !strings.Contains(cfg, claudeKey) {
-		t.Fatalf("shuttle config template drift: %q not found", claudeKey)
-	}
 	if !strings.Contains(cfg, timeoutKey) {
 		t.Fatalf("shuttle config template drift: %q not found", timeoutKey)
 	}
-	cfg = strings.Replace(cfg, claudeKey, "claude: "+stubPath, 1)
-	cfg = strings.Replace(cfg, timeoutKey, "startup_timeout_s: 10", 1)
-	return cfg
+	return strings.Replace(cfg, timeoutKey, "startup_timeout_s: 10", 1)
 }
 
 // driverStrand returns the tracked driver strand from eng's own Status(), and whether one was found,
@@ -181,7 +173,7 @@ func TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps(t *testing.T) {
 		"claude":  claudeConfigWithBinary(stubPath),
 		"loom":    fastDeadlineLoomConfig(),
 		"reed":    reedengine.ConfigTemplate(),
-		"shuttle": driverShuttleConfig(t, stubPath),
+		"shuttle": driverShuttleConfig(t),
 		"webster": websterengine.ConfigTemplate(),
 	})
 	const slug = "loom-smoke-driver-task"

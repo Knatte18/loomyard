@@ -9,11 +9,4 @@ submit_confirm_timeout_s: 30  # seconds from the moment a verified send begins t
 submit_settle_ms: 300  # milliseconds between the two input-box reads that must agree before a verified send's Enter, so typed text has finished arriving and Claude Code does not swallow the Enter as part of a paste; it paces the two box reads before the Enter of the no-Enter paste variant and of a typing engine; 0 reads back to back, negative is a config error
 submit_redraw_settle_ms: 300  # milliseconds for the first step of the doubling interval at which the input box is read after an Enter to confirm the send, so Claude Code has redrawn it; 0 reads at once, negative is a config error
 engine: claude  # the engine for a spec that names none; must be a registered engine name, and an empty value is a config error
-claude: ${env:LYX_SHUTTLE_CLAUDE:-}  # path to the claude executable; empty falls back to "claude" on PATH — prefer an explicit path, PATH aliases can hit the 0-byte WindowsApps stub
-claude_deny_agent_tool: true  # emit a PreToolUse deny for the in-process Agent tool
-claude_deny_ask_user_question: true  # emit a PreToolUse deny for the AskUserQuestion tool (autonomous runs only)
-claude_deny_python: true  # emit a PreToolUse deny for the python interpreter (python, python3, python3.<minor>, optionally path-prefixed) run as a Bash command in every lyx-spawned session; turn it off in a Python target repo
-claude_prompt_cache_ttl: 5m  # prompt-cache TTL for every role without an entry in claude_prompt_cache_ttl_roles; Claude Code's own values, validated when a run starts, and the refusal names the accepted ones
-claude_prompt_cache_ttl_roles:  # prompt-cache TTL per role, keyed by a strand's role segment (Spec.Role); the operator's own map, replacing the template's whole when present, so leaving a role out drops it to the default; values are Claude Code's, validated when a run starts, and the refusal names the accepted ones
-  driver: 1h
-  webster: 1h
+deny_python: true  # switches the python guard of internal/shellguard's table for every engine: a deny for the python interpreter (python, python3, python3.<minor>, optionally path-prefixed) run as a shell command in every lyx-spawned session; on by default, turn it off in a Python target repo

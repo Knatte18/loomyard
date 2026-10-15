@@ -98,10 +98,8 @@ func newWiredPairFixture(t *testing.T) (h *hubforge.Hub, loc *lyxcwd.Location, w
 	return h, loc, worktree, slug
 }
 
-// providerlessShuttleConfig returns shuttle's shipped config template with two values overridden so
-// no fixture in this suite can ever start a real provider session: the provider binary is a path
-// that cannot exist, and the startup window is short enough that the resulting launch failure is
-// classified within a test's own patience rather than ninety seconds later.
+// providerlessShuttleConfig returns shuttle's shipped config template with the startup window shortened.
+// A launch failure from the unreachable provider binary that providerlessBinary seeds into claude.yaml is then classified within a test's own patience rather than ninety seconds later.
 //
 // This is a correction, not a convenience. The suite's own header used to assert that every fixture
 // here "bounces before a real spawn", and the campaign's cost model was written on that claim. It
@@ -113,9 +111,7 @@ func newWiredPairFixture(t *testing.T) (h *hubforge.Hub, loc *lyxcwd.Location, w
 // zero-subprocess claim true by construction instead of by hope.
 func providerlessShuttleConfig() string {
 	cfg := shuttleengine.ConfigTemplate()
-	cfg = strings.Replace(cfg, "claude: ${env:LYX_SHUTTLE_CLAUDE:-}", "claude: "+providerlessBinary, 1)
-	cfg = strings.Replace(cfg, "startup_timeout_s: 90", "startup_timeout_s: 2", 1)
-	return cfg
+	return strings.Replace(cfg, "startup_timeout_s: 90", "startup_timeout_s: 2", 1)
 }
 
 // providerlessBinary is a provider path that cannot exist, which keeps a fixture from starting a real session.

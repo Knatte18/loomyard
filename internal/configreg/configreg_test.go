@@ -77,7 +77,7 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 	wantLocalDenied := map[string][]string{
 		"claude":  {"binary", "deny_agent_tool", "deny_ask_user_question"},
 		"reed":    {"debug_log", "mouse", "shell", "tmux", "tmux_conf"},
-		"shuttle": {"claude", "claude_deny_agent_tool", "claude_deny_ask_user_question", "claude_deny_python", "run_dir"},
+		"shuttle": {"deny_python", "run_dir"},
 		"loom":    {"alignment", "alignment_pr_approve", "discussion_advisors", "discussion_auto_accept", "discussion_fan", "discussion_lenses", "merge_auto_accept", "parent_review_wait_min", "plan_auto_accept", "plan_fan", "plan_lenses", "skip_alignment", "webster_auto_accept"},
 		"burler":  {"fans", "lenses"},
 	}
@@ -222,7 +222,7 @@ func TestLookup(t *testing.T) {
 		{"batcher", true, []string{"profiles"}},
 		{"board", true, []string{"types", "labels"}},
 		{"loom", true, []string{"review", "fix", "discussion_review", "discussion_fix", "plan_review", "plan_fix", "webster_review", "webster_fix", "fan_review", "discussion_advisors"}},
-		{"shuttle", true, []string{"claude_prompt_cache_ttl_roles"}},
+		{"shuttle", true, nil},
 		{"bogus", false, nil},
 	}
 	for _, tt := range tests {

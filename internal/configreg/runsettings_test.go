@@ -61,8 +61,15 @@ func TestPrepareRunSettings(t *testing.T) {
 		},
 		{
 			name:     "role under an open map passes",
-			settings: map[string]any{"shuttle": map[string]any{"claude_prompt_cache_ttl_roles": map[string]any{"worker": "1h"}}},
-			wantDocs: map[string]string{"shuttle": "claude_prompt_cache_ttl_roles:\n    worker: 1h\n"},
+			settings: map[string]any{"claude": map[string]any{"prompt_cache_ttl_roles": map[string]any{"worker": "1h"}}},
+			wantDocs: map[string]string{"claude": "prompt_cache_ttl_roles:\n    worker: 1h\n"},
+		},
+		{
+			name:        "the legacy python switch is renamed by shuttle's Migrate and refused as a guard key",
+			settings:    map[string]any{"shuttle": map[string]any{"claude_deny_python": true}},
+			wantRefusal: "deny_python",
+			wantModule:  "shuttle",
+			wantInvalid: true,
 		},
 		{
 			name:         "empty module object is dropped",

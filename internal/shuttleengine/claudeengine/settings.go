@@ -194,7 +194,7 @@ var bashForegroundPhrase = "with the Bash tool timeout set to " + bashMaxTimeout
 // shellSwitchInstalled maps each shellguard.Switch to whether a run with the given inputs installs the rows hanging on it.
 var shellSwitchInstalled = map[shellguard.Switch]func(denyInputs) bool{
 	shellguard.SwitchNone:       func(denyInputs) bool { return true },
-	shellguard.SwitchDenyPython: func(in denyInputs) bool { return in.cfg.ClaudeDenyPython },
+	shellguard.SwitchDenyPython: func(in denyInputs) bool { return in.cfg.DenyPython },
 }
 
 // shellGuardInstalled reports whether a run with the given inputs installs the shell guard rows hanging on sw; a switch it does not know is not installed.

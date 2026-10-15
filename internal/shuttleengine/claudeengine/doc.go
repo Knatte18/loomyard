@@ -169,7 +169,7 @@
 // The webster fork guard has no notice sentence and is not announced.
 // The Bash denies below are not declared here: they render the rows of `internal/shellguard`'s table as PreToolUse(Bash) hooks, every row in table order after the Claude rows.
 // The python row denies a Bash command that runs `python`, `python3` or `python3.<minor>` in command position, in every run mode;
-// `shuttle.yaml`'s `claude_deny_python` switches it off for a Python target repo.
+// `shuttle.yaml`'s `deny_python` switches it off for a Python target repo.
 // It is a guardrail, not a barrier: its hook greps the payload, so a quoted argument or heredoc body can trip it falsely, and python behind `bash -c`, `eval` or a launcher passes.
 //
 // The raw go row keeps a session from reaching the hub's gate slots around `lyx gate test`, and every run installs it, the orch included.

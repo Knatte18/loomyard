@@ -125,7 +125,7 @@ func Modules() []Module {
 		{Name: "orch", Template: orchengine.ConfigTemplate, Migrate: orchengine.MigrateConfig, CheckLoad: checkLoadNamed(orchengine.LoadConfig, "orch"), Spec: orchengine.ConfigSpec},
 		{Name: "reed", Template: reedengine.ConfigTemplate, CheckLoad: checkLoadNamed(reedengine.LoadConfig, "reed"), Spec: reedengine.ConfigSpec},
 		{Name: "shed", Template: sheddriver.ConfigTemplate, CheckValues: sheddriver.ValidateLocalValues, CheckLoad: checkLoad(sheddriver.LoadConfig), Spec: sheddriver.ConfigSpec},
-		{Name: "shuttle", Template: shuttleengine.ConfigTemplate, OpenMaps: shuttleengine.ConfigOpenMaps(), Migrate: shuttleengine.MigrateConfig, CheckLoad: checkLoadNamed(shuttleengine.LoadConfig, "shuttle"), Spec: shuttleengine.ConfigSpec},
+		{Name: "shuttle", Template: shuttleengine.ConfigTemplate, Migrate: shuttleengine.MigrateConfig, CheckLoad: checkLoadNamed(shuttleengine.LoadConfig, "shuttle"), Spec: shuttleengine.ConfigSpec},
 		{Name: "webster", Template: websterengine.ConfigTemplate, CheckLoad: checkLoadNamed(websterengine.LoadConfig, "webster"), Spec: websterengine.ConfigSpec},
 	}
 	for _, engine := range shuttleengines.ConfigModules() {

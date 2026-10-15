@@ -54,7 +54,7 @@ func TestSmokeStart_NeverAttachesAndAddsNoOperatorStrand(t *testing.T) {
 		"claude":  claudeConfigWithBinary(stubPath),
 		"loom":    fastDeadlineLoomConfig(),
 		"reed":    reedengine.ConfigTemplate(),
-		"shuttle": driverShuttleConfig(t, stubPath),
+		"shuttle": driverShuttleConfig(t),
 		"webster": websterengine.ConfigTemplate(),
 	})
 	const slug = "loom-smoke-start-task"
