@@ -46,9 +46,10 @@ type websterCLI struct {
 	starter       websterengine.Starter
 	masterStarter websterengine.MasterStarter
 
-	// engine and reed are the constructed claude and reed engines record-batch and recover-batch need directly.
-	engine websterengine.AuditEngine
-	reed   shuttleengine.ReedOps
+	// engines and reed are the constructed engine set and reed engine record-batch and recover-batch need directly;
+	// engines is the lookup webster reads each recorded session through.
+	engines websterengine.AuditEngines
+	reed    shuttleengine.ReedOps
 
 	// reedUp brings the standalone reed session up, idempotently, and, when watch is true and the
 	// boot succeeded, also starts that session's in-process resize watcher bound to ctx. It is set by

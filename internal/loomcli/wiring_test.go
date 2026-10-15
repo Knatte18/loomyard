@@ -247,8 +247,8 @@ func TestWire_DefaultConfig(t *testing.T) {
 		if deps.Stopper == nil {
 			t.Error("runDeps.Stopper = nil; want the constructed shuttle runner")
 		}
-		if deps.Engine == nil {
-			t.Error("runDeps.Engine = nil; want the constructed claude engine")
+		if deps.Engines == nil {
+			t.Error("runDeps.Engines = nil; want the constructed engine set")
 		}
 		if deps.Roles == nil {
 			t.Error("runDeps.Roles = nil; want the resolved role map")

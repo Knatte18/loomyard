@@ -545,10 +545,6 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	if err != nil {
 		return err
 	}
-	auditEngine, err := websterengine.AuditEngineFrom(engines)
-	if err != nil {
-		return err
-	}
 	runner := shuttleengine.NewRunner(reedEngine, engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 	pauseGeom, err := hubgeom.PauseGeometry(location)
 	if err != nil {
@@ -583,7 +579,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	runDeps := websterengine.RunDeps{
 		Starter:    runnerMasterStarter{runner: runner},
 		Stopper:    runner,
-		Engine:     auditEngine,
+		Engines:    engines,
 		ShuttleCfg: shuttleCfg,
 		Roles:      roles,
 		Config:     websterCfg,

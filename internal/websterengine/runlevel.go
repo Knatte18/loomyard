@@ -113,7 +113,7 @@ type MasterStarter interface {
 
 // RunDeps carries every seam Run needs for testing.
 // Starter spawns Master; Stopper is the seam the entry-time reclaim stops a leftover strand through;
-// Engine and ShuttleCfg support session resolution and audit;
+// Engines and ShuttleCfg support session resolution and audit, Engines reading each recorded session through its own engine;
 // Geom is the told Geometry every path (PlanDir, WebsterDir, ReportsDir, PromptsDir, ScratchDir,
 // WorktreeRoot, AnchorRoot, StencilsDir) is read from;
 // RefMatcher is the injected fabric-reference class matcher CheckParent/CheckFork consult, never nil
@@ -123,7 +123,7 @@ type MasterStarter interface {
 type RunDeps struct {
 	Starter    MasterStarter
 	Stopper    StrandStopper
-	Engine     shuttleengine.ForkAuditor
+	Engines    AuditEngines
 	ShuttleCfg shuttleengine.Config
 	Roles      map[Role]shuttleengine.ModelChoice
 	Config     Config
@@ -448,7 +448,7 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 		return RunResult{}, err
 	}
 
-	freshDrop, freshWarnings, err := freshPendingDrop(deps.Engine, deps.Geom, st, opts)
+	freshDrop, freshWarnings, err := freshPendingDrop(deps.Engines, deps.Geom, st, opts)
 	if err != nil {
 		return RunResult{}, err
 	}
@@ -566,7 +566,7 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	}
 
 	if len(st.PendingAuditFindings) > 0 {
-		return RunResult{}, pendingAuditFindingsError(deps.Engine, st, deps.Geom, deps.reentryStep())
+		return RunResult{}, pendingAuditFindingsError(deps.Engines, st, deps.Geom, deps.reentryStep())
 	}
 
 	// Validation runs HERE — after the state phase settles — rather than at entry, because its
@@ -1065,7 +1065,7 @@ func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, resul
 		if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
 			return nil, "", err
 		}
-		clause, wayForward, err := pendingFindingsText(deps.Engine, st, deps.Geom, items, deps.reentryStep())
+		clause, wayForward, err := pendingFindingsText(deps.Engines, st, deps.Geom, items, deps.reentryStep())
 		if err != nil {
 			return nil, "", err
 		}
@@ -1101,13 +1101,13 @@ func hasPendingFinding(st *State, id string) bool {
 var ErrPendingAuditFindings = errors.New("webster: correctness findings from an earlier run exit are pending")
 
 // pendingAuditFindingsError wraps ErrPendingAuditFindings with the pending findings clause and the way forward pendingFindingsText builds.
-// The way forward is judged over the write history engine's audit of st's sessions yields, and ends in reentry on the accept-audit route.
-func pendingAuditFindingsError(engine shuttleengine.ForkAuditor, st *State, geom Geometry, reentry string) error {
+// The way forward is judged over the write history engines' audit of st's sessions yields, and ends in reentry on the accept-audit route.
+func pendingAuditFindingsError(engines AuditEngines, st *State, geom Geometry, reentry string) error {
 	items := make([]findingItem, len(st.PendingAuditFindings))
 	for i, f := range st.PendingAuditFindings {
 		items[i] = findingItem{Class: f.Class, Detail: f.Detail, Paths: f.Paths}
 	}
-	clause, wayForward, err := pendingFindingsText(engine, st, geom, items, reentry)
+	clause, wayForward, err := pendingFindingsText(engines, st, geom, items, reentry)
 	if err != nil {
 		return err
 	}
@@ -1116,8 +1116,8 @@ func pendingAuditFindingsError(engine shuttleengine.ForkAuditor, st *State, geom
 
 // pendingFindingsText renders the findings clause and the way forward for items, the text a run-exit stuck reason and the pending-findings refusal share.
 // The write history is loaded only when a path is a contract file.
-// The error is a link-resolution, audit or git probe failure.
-func pendingFindingsText(engine shuttleengine.ForkAuditor, st *State, geom Geometry, items []findingItem, reentry string) (clause, wayForward string, err error) {
+// The error is a link-resolution, engine-resolution, audit or git probe failure.
+func pendingFindingsText(engines AuditEngines, st *State, geom Geometry, items []findingItem, reentry string) (clause, wayForward string, err error) {
 	var paths []string
 	pathless := false
 	for _, it := range items {
@@ -1128,7 +1128,7 @@ func pendingFindingsText(engine shuttleengine.ForkAuditor, st *State, geom Geome
 			}
 		}
 	}
-	writes, err := contractWritesFor(engine, st, geom, paths)
+	writes, err := contractWritesFor(engines, st, geom, paths)
 	if err != nil {
 		return "", "", err
 	}
@@ -1221,7 +1221,7 @@ func pendingPathsWayForward(geom Geometry, st *State, writes RunWrites, paths []
 // its warning says so.
 // A batch record with Uncheckable entries counts as a pending finding: its SuspectPaths join the path check,
 // and it adds its own drop warning.
-func freshPendingDrop(engine shuttleengine.ForkAuditor, geom Geometry, st *State, opts RunOptions) (drop bool, warnings []string, err error) {
+func freshPendingDrop(engines AuditEngines, geom Geometry, st *State, opts RunOptions) (drop bool, warnings []string, err error) {
 	if !opts.Fresh || st == nil || !hasPendingFindings(st) {
 		return false, nil, nil
 	}
@@ -1246,7 +1246,7 @@ func freshPendingDrop(engine shuttleengine.ForkAuditor, geom Geometry, st *State
 	if head != base {
 		return false, nil, fmt.Errorf("%w: --fresh would drop pending audit findings while HEAD %s is not the run's start commit %s; %s", ErrPendingAuditFindings, head, base, resetToStartSteps(stepRun))
 	}
-	warnings, err = checkPendingFindings(engine, geom, st, base, freshPendingGuard())
+	warnings, err = checkPendingFindings(engines, geom, st, base, freshPendingGuard())
 	if err != nil {
 		return false, nil, err
 	}

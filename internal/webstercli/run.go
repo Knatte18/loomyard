@@ -25,7 +25,7 @@ func (c *websterCLI) runDeps() websterengine.RunDeps {
 	return websterengine.RunDeps{
 		Starter:      c.masterStarter,
 		Stopper:      c.runner,
-		Engine:       c.engine,
+		Engines:      c.engines,
 		ShuttleCfg:   c.shuttleCfg,
 		Roles:        c.roles,
 		Config:       c.cfg,

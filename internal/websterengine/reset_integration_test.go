@@ -44,7 +44,7 @@ func (fx *resetFixture) step(t *testing.T, name string, run func(t *testing.T)) 
 		fx.deps = ResetDeps{
 			Geom:         Geometry{WorktreeRoot: fx.root, ScratchDir: t.TempDir()},
 			State:        &State{MasterSessionID: "s1", Batches: map[int]*BatchState{1: {Slug: "one", StartSHA: fx.first}}},
-			Engine:       &shuttlefake.Engine{},
+			Engines:      shuttlefake.EngineSet(&shuttlefake.Engine{}),
 			ParentBranch: func() (string, error) { return "main", nil },
 			Branch:       func() (string, error) { return "task", nil },
 		}
@@ -196,14 +196,14 @@ func TestPlanReset(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		fx.deps.Engine = &shuttlefake.Engine{AuditForksFn: func(string, string) (shuttleengine.ForkAudit, error) {
+		fx.deps.Engines = shuttlefake.EngineSet(&shuttlefake.Engine{AuditForksFn: func(string, string) (shuttleengine.ForkAudit, error) {
 			return shuttleengine.ForkAudit{
 				ParentWriteEvents: []shuttleengine.WriteEvent{
 					{Path: filepath.Join(fx.root, "a.txt"), Succeeded: true},
 					{Path: filepath.Join(fx.root, "b.txt"), Succeeded: false},
 				},
 			}, nil
-		}}
+		}})
 		// b.txt is dirty and its only recorded write failed, so it is foreign dirt.
 		fx.wantRefusal(t, ResetToPreFix, "b.txt")
 
@@ -229,15 +229,50 @@ func TestPlanReset(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		fx.deps.Engine = &shuttlefake.Engine{AuditForksFn: func(session, _ string) (shuttleengine.ForkAudit, error) {
+		fx.deps.Engines = shuttlefake.EngineSet(&shuttlefake.Engine{AuditForksFn: func(session, _ string) (shuttleengine.ForkAudit, error) {
 			if session != "recovery-1" {
 				return shuttleengine.ForkAudit{}, nil
 			}
 			return shuttleengine.ForkAudit{
 				ParentWriteEvents: []shuttleengine.WriteEvent{{Path: filepath.Join(fx.root, "b.txt"), Succeeded: true}},
 			}, nil
-		}}
+		}})
 		// a.txt is dirty and no session of the run wrote it, so it is foreign dirt.
+		fx.wantRefusal(t, ResetToPreFix, "a.txt")
+
+		gitkit.Git(t, fx.root, "checkout", "--", "a.txt")
+		plan, err := PlanReset(fx.deps, ResetToPreFix, 0)
+		if err != nil {
+			t.Fatalf("PlanReset error = %v, want a plan", err)
+		}
+		if want := []string{"b.txt"}; !reflect.DeepEqual(plan.OwnPaths, want) {
+			t.Errorf("OwnPaths = %v, want %v", plan.OwnPaths, want)
+		}
+	})
+
+	// A recovery whose shuttle run directory was removed after its done run leaves only the engine its state entry records.
+	fx.step(t, "own paths read a recovery session through the engine its entry records", func(t *testing.T) {
+		t.Cleanup(func() { gitkit.Git(t, fx.root, "checkout", "--", "a.txt", "b.txt") })
+		fx.deps.State.PreFixHead = fx.first
+		fx.deps.State.Batches[1].RecoverySessions = []string{"recovery-1"}
+		fx.deps.State.Batches[1].RecoveryEngines = map[string]string{"recovery-1": "b"}
+		for _, name := range []string{"a.txt", "b.txt"} {
+			if err := os.WriteFile(filepath.Join(fx.root, name), []byte("edited"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		forEngine := func(path string) *shuttlefake.Engine {
+			return &shuttlefake.Engine{AuditForksFn: func(session, _ string) (shuttleengine.ForkAudit, error) {
+				if session != "recovery-1" {
+					return shuttleengine.ForkAudit{}, nil
+				}
+				return shuttleengine.ForkAudit{
+					ParentWriteEvents: []shuttleengine.WriteEvent{{Path: filepath.Join(fx.root, path), Succeeded: true}},
+				}, nil
+			}}
+		}
+		fx.deps.Engines = shuttleengine.NewEngineSet("a", map[string]shuttleengine.Engine{"a": forEngine("a.txt"), "b": forEngine("b.txt")})
+		// a.txt is dirty and only the default engine's fake reports a write to it.
 		fx.wantRefusal(t, ResetToPreFix, "a.txt")
 
 		gitkit.Git(t, fx.root, "checkout", "--", "a.txt")

@@ -64,8 +64,8 @@ type Clock interface {
 	Sleep(time.Duration)
 }
 
-// RecoverDeps carries seams RecoverBatch needs: Starter, Plan, Batches, State, Roles, Config,
-// Engine, Reed, Stopper, ShuttleCfg, and Geom, the told Geometry every path is read from.
+// RecoverDeps carries seams RecoverBatch needs: Starter, Plan, Batches, State, Roles, Config, Engines, Reed, Stopper and ShuttleCfg.
+// Geom is the told Geometry every path is read from.
 // Reed answers awaitTerminal's liveness read, and Stopper is the seam the reclaims stop a leftover strand through.
 // Batches is the execution order, the batchifier's own order (ExecutionBatches);
 // predecessorDigestLine's lookup depends on Batches already being in that order.
@@ -76,7 +76,7 @@ type RecoverDeps struct {
 	State      *State
 	Roles      map[Role]shuttleengine.ModelChoice
 	Config     Config
-	Engine     AuditEngine
+	Engines    AuditEngines
 	Reed       shuttleengine.ReedOps
 	Stopper    StrandStopper
 	ShuttleCfg shuttleengine.Config
@@ -189,8 +189,8 @@ func uncommittedPathsBlock(deps RecoverDeps) (string, error) {
 		return "none", nil
 	}
 	var written []string
-	if deps.Engine != nil {
-		writes, err := loadRunWrites(deps.Engine, deps.State, deps.Geom.WorktreeRoot)
+	if deps.Engines != nil {
+		writes, err := loadRunWrites(deps.Engines, deps.State, deps.Geom.WorktreeRoot)
 		if err != nil {
 			return "", err
 		}
@@ -468,7 +468,7 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 		}
 	}
 	if prior != nil && prior.Terminal && prior.Status == DigestStatusFailed && len(prior.Uncheckable) > 0 {
-		writes, err := contractWritesFor(deps.Engine, deps.State, deps.Geom, prior.Uncheckable)
+		writes, err := contractWritesFor(deps.Engines, deps.State, deps.Geom, prior.Uncheckable)
 		if err != nil {
 			return nil, false, err
 		}
@@ -716,6 +716,17 @@ func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait t
 	reportPath := filepath.Join(deps.Geom.ReportsDir, ReportFileName(number, slug))
 	timeout := time.Duration(deps.Config.RecoveryTimeoutMin) * time.Minute
 
+	// The turn ends are read through the engine the live recovery session ran under;
+	// a record written before engines were recorded lists no session, and reads as an engine-less entry.
+	var session string
+	if n := len(bs.RecoverySessions); n > 0 {
+		session = bs.RecoverySessions[n-1]
+	}
+	engine, err := sessionAuditEngine(deps.Engines, session, bs.RecoveryEngines[session])
+	if err != nil {
+		return nil, err
+	}
+
 	gather := func() (Digest, bool, error) {
 		var report *Report
 		if _, statErr := os.Stat(reportPath); statErr == nil {
@@ -728,7 +739,7 @@ func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait t
 			return Digest{}, false, fmt.Errorf("webster: stat batch report %s: %w", reportPath, statErr)
 		}
 
-		turnEnded, err := TurnEndedAfter(bs.EventsPath, bs.EventsOffset, deps.Engine, TurnEndRead{Now: clk.Now()})
+		turnEnded, err := TurnEndedAfter(bs.EventsPath, bs.EventsOffset, engine, TurnEndRead{Now: clk.Now()})
 		if err != nil {
 			return Digest{}, false, err
 		}

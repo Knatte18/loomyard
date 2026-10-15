@@ -1,4 +1,4 @@
-// auditengine.go declares the engine type webster's recover path needs and the assertion that wires it from an engine set.
+// auditengine.go declares the audit engine type and the engine lookup webster is told, and resolves the engine one recorded session is read through.
 
 package websterengine
 
@@ -15,17 +15,31 @@ type AuditEngine interface {
 	shuttleengine.ForkAuditor
 }
 
-// AuditEngineFrom resolves the default engine of engines and asserts that it audits forks.
-// It returns the lookup's error when the default does not resolve,
-// and a refusal naming the engine and the way forward when the default has no fork audit.
-func AuditEngineFrom(engines shuttleengine.EngineSet) (AuditEngine, error) {
-	engine, err := engines.Lookup("")
+// AuditEngines is the engine lookup webster reads its sessions through.
+// An empty name resolves the default engine, and DefaultName names that engine.
+type AuditEngines interface {
+	Lookup(name string) (shuttleengine.Engine, error)
+	DefaultName() string
+}
+
+// sessionAuditEngine resolves the engine that session ran under from recorded, the engine name its state entry holds.
+// A name engines holds resolves to that engine; one without fork audit is an internal error, since every spawn checks its engine.
+// A name engines does not hold is refused wrapping the lookup's error, naming the session and the engine.
+// An empty name, an entry written before engines were recorded, reads as the default engine and is refused when that default has no fork audit.
+func sessionAuditEngine(engines AuditEngines, session, recorded string) (AuditEngine, error) {
+	engine, err := engines.Lookup(recorded)
 	if err != nil {
-		return nil, err
+		if recorded == "" {
+			return nil, fmt.Errorf("webster: resolve the default engine for session %s, which records none: %w", session, err)
+		}
+		return nil, fmt.Errorf("webster: session %s ran under engine %q, which this lyx does not hold: %w; way forward: re-run the verb, or under the Webster row re-step the row, with a lyx whose engine set holds %q", session, recorded, err, recorded)
 	}
 	auditEngine, ok := engine.(AuditEngine)
-	if !ok {
-		return nil, fmt.Errorf("webster: shuttle.yaml's engine: %q cannot audit forks, which webster needs; way forward: set engine: in shuttle.yaml to an engine with fork support, then re-run the verb, or under the Webster row re-step the row", engines.DefaultName())
+	if ok {
+		return auditEngine, nil
 	}
-	return auditEngine, nil
+	if recorded == "" {
+		return nil, fmt.Errorf("webster: session %s records no engine, and shuttle.yaml's engine: %q cannot audit forks, which webster needs; way forward: set engine: in shuttle.yaml back to an engine with fork audit, then re-run the verb, or under the Webster row re-step the row", session, engines.DefaultName())
+	}
+	return nil, fmt.Errorf("webster: internal error: session %s ran under engine %q, which cannot audit forks", session, recorded)
 }

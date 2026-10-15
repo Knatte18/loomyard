@@ -137,7 +137,7 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 	c := &websterCLI{
 		runner:     runner,
 		starter:    runner,
-		engine:     engine,
+		engines:    shuttlefake.EngineSet(engine),
 		reed:       reed,
 		anchorRel:  layout.AnchorRel,
 		shuttleCfg: shuttleCfg,

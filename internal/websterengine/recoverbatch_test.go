@@ -45,6 +45,11 @@ func (c *recoverFakeClock) Sleep(d time.Duration) { c.now = c.now.Add(d) }
 
 var _ websterengine.Clock = (*recoverFakeClock)(nil)
 
+// namedEngines registers engine under name, which is also the set's default.
+func namedEngines(name string, engine shuttleengine.Engine) shuttleengine.EngineSet {
+	return shuttleengine.NewEngineSet(name, map[string]shuttleengine.Engine{name: engine})
+}
+
 // recoverFixture is a fully-wired set of RecoverBatch dependencies: a temp
 // directory holding base.txt as WorktreeRoot over a fakeGit at one commit, a one-batch plan backed
 // by a seeded plan dir and its corresponding execution-batch list, a real
@@ -116,7 +121,7 @@ func newRecoverFixtureOver(t *testing.T, worktree string, git websterengine.Git)
 		State:      state,
 		Roles:      roles,
 		Config:     websterengine.Config{SelfFixCap: 2, RecoveryTimeoutMin: 30},
-		Engine:     engine,
+		Engines:    shuttlefake.EngineSet(engine),
 		Reed:       reed,
 		Stopper:    runner,
 		ShuttleCfg: shuttleCfg,
@@ -676,7 +681,7 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 			// and the queued completion notification started the next turn, which writes the report.
 			name: "a turn end whose finished shell's notification starts the next turn keeps the strand running",
 			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
-				fx.Deps.Engine = claudeengine.New()
+				fx.Deps.Engines = namedEngines(shuttlefake.EngineName, claudeengine.New())
 				appendClaudeHook(t, fx, "Stop", clk.now, map[string]any{"background_tasks": []any{
 					map[string]any{"id": "bgate0001", "type": "shell", "status": "completed", "command": "lyx gate test ./x"},
 				}})
@@ -689,7 +694,7 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 			// The bound Master's wait applies: a shell the Stop payload reports running is live work and never expires.
 			name: "a turn end waiting on a payload-reported shell keeps the strand running past background_shell_wait_min",
 			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
-				fx.Deps.Engine = claudeengine.New()
+				fx.Deps.Engines = namedEngines(shuttlefake.EngineName, claudeengine.New())
 				appendClaudeHook(t, fx, "Stop", clk.now, map[string]any{"background_tasks": []any{
 					map[string]any{"id": "bgate0001", "type": "shell", "status": "running", "command": "lyx gate test ./x"},
 				}})
@@ -702,7 +707,7 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 			// A shell only the transcript reports keeps the strand running past background_shell_wait_min, like a payload-reported one: no shell expires, recovery_timeout_min bounds it.
 			name: "a turn end waiting on a transcript-reported shell keeps the strand running past background_shell_wait_min",
 			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
-				fx.Deps.Engine = claudeengine.New()
+				fx.Deps.Engines = namedEngines(shuttlefake.EngineName, claudeengine.New())
 				transcript := filepath.Join(t.TempDir(), "session.jsonl")
 				launch := `{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"lyx gate test ./x","run_in_background":true}}]}}` + "\n" +
 					`{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_1"}]},"toolUseResult":{"backgroundTaskId":"bgate0001"}}` + "\n"
@@ -717,7 +722,7 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 		{
 			name: "a report present beside a turn end with a shell outstanding classifies done",
 			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
-				fx.Deps.Engine = claudeengine.New()
+				fx.Deps.Engines = namedEngines(shuttlefake.EngineName, claudeengine.New())
 				appendClaudeHook(t, fx, "Stop", clk.now, map[string]any{"background_tasks": []any{
 					map[string]any{"id": "bgate0001", "type": "shell", "status": "running", "command": "lyx gate test ./x"},
 				}})
@@ -732,11 +737,47 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 		{
 			name: "a plain turn end that has stood past the settle is dead asking",
 			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
-				fx.Deps.Engine = claudeengine.New()
+				fx.Deps.Engines = namedEngines(shuttlefake.EngineName, claudeengine.New())
 				appendClaudeHook(t, fx, "Stop", clk.now.Add(-10*time.Second), map[string]any{"background_tasks": []any{}})
 				return secondCall{}
 			},
 			check: checkRecoveryAsking,
+		},
+		{
+			name: "a recorded session whose engine key is absent reads its turn end through the default",
+			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
+				fx.Deps.Engines = namedEngines(shuttlefake.EngineName, claudeengine.New())
+				fx.Deps.State.Batches[1].RecoveryEngines = nil
+				appendClaudeHook(t, fx, "Stop", clk.now.Add(-10*time.Second), map[string]any{"background_tasks": []any{}})
+				return secondCall{}
+			},
+			check: checkRecoveryAsking,
+		},
+		{
+			name: "a live record listing no session, as written before engines were recorded, reads through the default",
+			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
+				fx.Deps.Engines = namedEngines(shuttlefake.EngineName, claudeengine.New())
+				fx.Deps.State.Batches[1].RecoverySessions = nil
+				fx.Deps.State.Batches[1].RecoveryEngines = nil
+				appendClaudeHook(t, fx, "Stop", clk.now.Add(-10*time.Second), map[string]any{"background_tasks": []any{}})
+				return secondCall{}
+			},
+			check: checkRecoveryAsking,
+		},
+		{
+			name: "a recorded session whose engine the set does not hold is refused naming it",
+			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
+				fx.Deps.State.Batches[1].RecoveryEngines = map[string]string{"fake-session": "gone"}
+				return secondCall{refusal: []string{`"gone"`, "fake-session", shuttleengine.ErrEngineNotRegistered.Error()}}
+			},
+		},
+		{
+			name: "a recorded session whose engine key is absent is refused when the default hides its fork audit",
+			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
+				fx.Deps.Engines = namedEngines(shuttlefake.EngineName, struct{ shuttleengine.Engine }{fx.Engine})
+				fx.Deps.State.Batches[1].RecoveryEngines = nil
+				return secondCall{refusal: []string{"engine:", "set engine: in shuttle.yaml back to an engine with fork audit"}}
+			},
 		},
 	}
 

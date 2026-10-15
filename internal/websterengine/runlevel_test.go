@@ -221,7 +221,7 @@ func newRunFixtureOver(t *testing.T, numCards int, worktree string, git webstere
 	deps := websterengine.RunDeps{
 		Starter:    starter,
 		Stopper:    stopper,
-		Engine:     &shuttlefake.Engine{},
+		Engines:    shuttlefake.EngineSet(&shuttlefake.Engine{}),
 		ShuttleCfg: shuttleCfg,
 		Roles:      roles,
 		Batcher:    activeBatcher,

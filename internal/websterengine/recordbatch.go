@@ -176,7 +176,7 @@ func failCardNotDone(in cardNotDoneInputs, cause error) (*BatchFailedError, erro
 // once at entry;
 // State is the already-loaded run state RecordBatch reads and mutates;
 // Config is the loaded webster.yaml;
-// Engine supplies the incremental fork audit (AuditForksIncremental);
+// Engines supplies the incremental fork audit (AuditForksIncremental), read for each session through the engine its batch record names;
 // Geom is the told Geometry the audit and the dirty-worktree/head-SHA checks read: the audit workdir
 // is Geom.WorktreeRoot (not Geom.AnchorRoot) — the audit resolves transcript-relative recorded write
 // paths against this directory, so it must be the directory the fork actually ran in, which is the
@@ -190,7 +190,7 @@ type RecordDeps struct {
 	Batches    []batcher.Batch
 	State      *State
 	Config     Config
-	Engine     shuttleengine.ForkAuditor
+	Engines    AuditEngines
 	Geom       Geometry
 	RefMatcher RefMatcher
 	// ReadOnly classifies a fabric-referencing command as read-only, which makes its finding a policy warning; nil accepts nothing.
@@ -308,8 +308,12 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	// Audit the session that opened this batch's bracket (bs.SessionID),
 	// not the current Master session, so a resumed Master can consume a
 	// report whose transcript lives under the crashed session's directory.
+	engine, err := sessionAuditEngine(deps.Engines, bs.SessionID, bs.Engine)
+	if err != nil {
+		return nil, err
+	}
 	fetch := func() (shuttleengine.ForkAudit, error) {
-		return deps.Engine.AuditForksIncremental(bs.SessionID, deps.Geom.WorktreeRoot, seenSet)
+		return engine.AuditForksIncremental(bs.SessionID, deps.Geom.WorktreeRoot, seenSet)
 	}
 
 	audit, newReports, err := SettleRetry(fetch, deps.State.SeenForkTranscripts, DefaultSettleWindow, DefaultSettleTick, deps.Sleeper)
@@ -636,7 +640,11 @@ func auditTerminalFork(deps RecordDeps, bs *BatchState, batchNumber int) (*Recor
 	for _, p := range deps.State.SeenForkTranscripts {
 		seenSet[p] = true
 	}
-	audit, err := deps.Engine.AuditForksIncremental(bs.SessionID, deps.Geom.WorktreeRoot, seenSet)
+	engine, err := sessionAuditEngine(deps.Engines, bs.SessionID, bs.Engine)
+	if err != nil {
+		return nil, err
+	}
+	audit, err := engine.AuditForksIncremental(bs.SessionID, deps.Geom.WorktreeRoot, seenSet)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, nil

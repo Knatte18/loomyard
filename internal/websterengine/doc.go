@@ -471,6 +471,13 @@
 // A session's engine is recorded beside its session id, because a shuttle run record does not outlive its run:
 // State.MasterEngine beside MasterSessionID, BatchState.Engine beside SessionID, and BatchState.RecoveryEngines, keyed by session id, beside RecoverySessions.
 // A state written before these keys existed reads with them empty.
+// Webster is told an AuditEngines lookup, which the engine set satisfies, and reads each session through the engine its own entry records, so a later change to shuttle.yaml's engine never changes it:
+// the run-write history and the reset's own paths audit each recorded session through its engine.
+// Record-batch audits a batch's session through that batch's Engine.
+// Recover-batch reads the live recovery strand's turn ends through the engine its last RecoveryEngines entry records.
+// An engine the set does not hold is refused naming the session and the engine;
+// an entry with no engine, written before engines were recorded, reads through the default engine and is refused when that default cannot audit forks.
+// The bound is the single registered engine: an engine-less entry read through a default other than the engine that ran it either fails that engine's audit or audits nothing.
 // The spawn records HEAD as RecoveryStartSHA, read before anything is stopped or started, so a HEAD that cannot be read starts and counts nothing.
 // A re-begin and a rebaseline keep the count.
 // A spawn whose prompt renders an amendment no earlier spawn rendered does not count, so an amendment forces at most one uncounted re-run.

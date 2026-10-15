@@ -128,13 +128,13 @@ func contractState(paths ...string) *State {
 }
 
 // writesEngine answers every session's audit with the given Master and fork events.
-func writesEngine(master, fork []shuttleengine.WriteEvent) *shuttlefake.Engine {
-	return &shuttlefake.Engine{AuditForksFn: func(string, string) (shuttleengine.ForkAudit, error) {
+func writesEngine(master, fork []shuttleengine.WriteEvent) AuditEngines {
+	return shuttlefake.EngineSet(&shuttlefake.Engine{AuditForksFn: func(string, string) (shuttleengine.ForkAudit, error) {
 		return shuttleengine.ForkAudit{
 			ParentWriteEvents: master,
 			Forks:             []shuttleengine.ForkReport{{WriteEvents: fork}},
 		}, nil
-	}}
+	}})
 }
 
 // TestAcceptPendingAudit_ContractFiles pins accept-audit over contract-file findings: absent files
@@ -146,28 +146,28 @@ func TestAcceptPendingAudit_ContractFiles(t *testing.T) {
 	tests := []struct {
 		name string
 		// fixture returns the finding's paths and the engine answering the audit.
-		fixture      func(t *testing.T, geom Geometry) ([]string, shuttleengine.ForkAuditor)
+		fixture      func(t *testing.T, geom Geometry) ([]string, AuditEngines)
 		wantOnAbsent bool
 		// wantRefusal lists what the refusal names; empty expects an accept.
 		wantRefusal func(paths []string) []string
 	}{
 		{
 			name: "absent contract files accept",
-			fixture: func(t *testing.T, geom Geometry) ([]string, shuttleengine.ForkAuditor) {
+			fixture: func(t *testing.T, geom Geometry) ([]string, AuditEngines) {
 				return []string{OutcomePath(geom.WebsterDir), summaryparser.Path(geom.WebsterDir)}, writesEngine(nil, nil)
 			},
 			wantOnAbsent: true,
 		},
 		{
 			name: "Master writing after the fork accepts",
-			fixture: func(t *testing.T, geom Geometry) ([]string, shuttleengine.ForkAuditor) {
+			fixture: func(t *testing.T, geom Geometry) ([]string, AuditEngines) {
 				path := writeContractFile(t, geom)
 				return []string{path}, writesEngine([]shuttleengine.WriteEvent{succeeded(path, 2*time.Minute)}, []shuttleengine.WriteEvent{succeeded(path, time.Minute)})
 			},
 		},
 		{
 			name: "the fork writing last refuses naming the delete route",
-			fixture: func(t *testing.T, geom Geometry) ([]string, shuttleengine.ForkAuditor) {
+			fixture: func(t *testing.T, geom Geometry) ([]string, AuditEngines) {
 				path := writeContractFile(t, geom)
 				return []string{path}, writesEngine([]shuttleengine.WriteEvent{succeeded(path, 0)}, []shuttleengine.WriteEvent{succeeded(path, time.Minute)})
 			},

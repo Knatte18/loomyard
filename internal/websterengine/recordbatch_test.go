@@ -165,7 +165,7 @@ func newRecordFixtureOver(t *testing.T, worktree string, git websterengine.Git, 
 		Batches: batches,
 		State:   state,
 		Config:  websterengine.Config{},
-		Engine:  audit.engine(),
+		Engines: shuttlefake.EngineSet(audit.engine()),
 		Geom: websterengine.Geometry{
 			AnchorRoot:   worktree,
 			WorktreeRoot: worktree,
@@ -471,6 +471,14 @@ func TestRecordBatch_AuditOutcomes(t *testing.T) {
 	}
 	trackedFile := func(fx *recordFixture) string { return filepath.Join(fx.Worktree, "internal", "foo", "impl.go") }
 	oneFork := func() []shuttleengine.ForkAudit { return []shuttleengine.ForkAudit{oneForkAudit()} }
+	// engineB makes fx's scripted audit the engine named "b" of a set whose default "a" fails the test when asked to audit.
+	engineB := func(t *testing.T, fx *recordFixture) {
+		unused := &shuttlefake.Engine{AuditForksIncrementalFn: func(string, string, map[string]bool) (shuttleengine.ForkAudit, error) {
+			t.Error("the default engine audited a session whose record names another engine")
+			return shuttleengine.ForkAudit{}, nil
+		}}
+		fx.Deps.Engines = shuttleengine.NewEngineSet("a", map[string]shuttleengine.Engine{"a": unused, "b": fx.Audit.engine()})
+	}
 
 	cases := []struct {
 		name    string
@@ -480,7 +488,10 @@ func TestRecordBatch_AuditOutcomes(t *testing.T) {
 		report func(fx *recordFixture) string
 		// wantFailed expects the batch to fail terminally with ErrBatchFailed.
 		wantFailed bool
-		check      func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, err error)
+		// wantErr lists what a refusal that is not a failed batch contains; nil expects none.
+		wantErr   []string
+		wantErrIs error
+		check     func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, err error)
 	}{
 		{
 			name:   "a lowercase abbreviation of HEAD records the full SHA",
@@ -936,6 +947,65 @@ func TestRecordBatch_AuditOutcomes(t *testing.T) {
 				requireUncheckableFabricReference(t, fx)
 			},
 		},
+		{
+			// record-batch after the master key changed: the batch's own record decides the engine.
+			name:   "a batch records an engine other than the default and only that engine audits",
+			audits: oneFork,
+			prepare: func(t *testing.T, fx *recordFixture) {
+				fx.Deps.State.Batches[1].Engine = "b"
+				engineB(t, fx)
+			},
+			report: okReport,
+			check: func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, err error) {
+				requireDone(t, result)
+				if fx.Audit.callCount == 0 {
+					t.Error("the recorded engine's audit was never reached")
+				}
+			},
+		},
+		{
+			name:   "a batch recording an engine the set does not hold is refused and archives no report",
+			audits: oneFork,
+			prepare: func(t *testing.T, fx *recordFixture) {
+				fx.Deps.State.Batches[1].Engine = "gone"
+			},
+			report:    okReport,
+			wantErr:   []string{`"gone"`, "session-1"},
+			wantErrIs: shuttleengine.ErrEngineNotRegistered,
+			check: func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, err error) {
+				archived(t, fx, 0)
+			},
+		},
+		{
+			name:   "an engine-less batch is refused with the engine: way forward when the default hides its fork audit",
+			audits: oneFork,
+			prepare: func(t *testing.T, fx *recordFixture) {
+				fx.Deps.Engines = shuttleengine.NewEngineSet(shuttlefake.EngineName, map[string]shuttleengine.Engine{shuttlefake.EngineName: struct{ shuttleengine.Engine }{fx.Audit.engine()}})
+			},
+			report:  okReport,
+			wantErr: []string{"engine:", "set engine: in shuttle.yaml back to an engine with fork audit"},
+			check: func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, err error) {
+				archived(t, fx, 0)
+			},
+		},
+		{
+			name:   "a terminal fork batch recording an engine audits through that engine",
+			audits: oneFork,
+			prepare: func(t *testing.T, fx *recordFixture) {
+				bs := fx.Deps.State.Batches[1]
+				bs.Engine = "b"
+				bs.Terminal = true
+				bs.Status = websterengine.DigestStatusDone
+				bs.Digest = &websterengine.Digest{Batch: "01-json-flag", Status: websterengine.DigestStatusDone, HeadSHA: fx.HeadSHA}
+				engineB(t, fx)
+			},
+			wantErr: []string{"already terminal"},
+			check: func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, err error) {
+				if fx.Audit.callCount == 0 {
+					t.Error("the recorded engine's audit was never reached")
+				}
+			},
+		},
 	}
 
 	for _, tc := range cases {
@@ -950,7 +1020,19 @@ func TestRecordBatch_AuditOutcomes(t *testing.T) {
 			}
 
 			result, err := websterengine.RecordBatch(fx.Deps, 1)
-			if tc.wantFailed {
+			if tc.wantErr != nil {
+				if err == nil {
+					t.Fatal("RecordBatch() error = nil; want a refusal")
+				}
+				if tc.wantErrIs != nil && !errors.Is(err, tc.wantErrIs) {
+					t.Errorf("RecordBatch() error = %v; want it to wrap %v", err, tc.wantErrIs)
+				}
+				for _, want := range tc.wantErr {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("RecordBatch() error = %q; want it to contain %q", err.Error(), want)
+					}
+				}
+			} else if tc.wantFailed {
 				if !errors.Is(err, websterengine.ErrBatchFailed) {
 					t.Fatalf("RecordBatch() error = %v; want ErrBatchFailed", err)
 				}
