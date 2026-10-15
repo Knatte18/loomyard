@@ -42,6 +42,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/twilldirective"
 )
 
@@ -61,7 +62,7 @@ const planStencil = "loom-template-plan"
 // The table carries no gate; the producer entry sets it.
 // A PATTERN directive that cannot be rendered fails the table; a friction directive that cannot be rendered is left empty, the failure logged.
 func PlanTable(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir, specsDir string, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
-	model, effort, version, err := resolveModelChoice(cfg.Plan, reg)
+	choice, err := resolveModelChoice(cfg.Plan, reg)
 	if err != nil {
 		return seatengine.Table{}, fmt.Errorf("loom: PlanTable: plan role model-spec: %w", err)
 	}
@@ -92,7 +93,21 @@ func PlanTable(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir, spe
 		leadValues = map[string]string{twilldirective.MarkerName: setOffParagraph(lensDirective)}
 	}
 
-	overviewPath := planparser.PlanOverview(layout.AnchorPath())
+	lead := seatengine.Seat{
+		Stencil:       planStencil,
+		ModelChoice:   choice,
+		ModelKey:      shuttleengine.ModelKey{Module: loomModule, Key: "plan"},
+		Outputs:       []string{planparser.PlanOverview(layout.AnchorPath())},
+		Skills:        planSkills,
+		Values:        leadValues,
+		ForkSubagents: forks,
+	}
+	if forks {
+		// The lens directive tells the lead to fork and to end its turn while forks are outstanding, which a provider must wake it from.
+		lead.Requires = []shuttleengine.Requirement{shuttleengine.RequirementBackgroundWake}
+	}
+
+	overviewPath := lead.Outputs[0]
 	return seatengine.Table{
 		RolePrefix: planRole,
 		Segment:    segmentcolor.Plan,
@@ -107,15 +122,6 @@ func PlanTable(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir, spe
 			friction.MarkerName:    frictionDirective,
 		},
 		Optional: []string{"pattern_directive", friction.MarkerName, twilldirective.MarkerName},
-		Seats: []seatengine.Seat{{
-			Stencil:       planStencil,
-			Model:         model,
-			Effort:        effort,
-			Version:       version,
-			Outputs:       []string{overviewPath},
-			Skills:        planSkills,
-			Values:        leadValues,
-			ForkSubagents: forks,
-		}},
+		Seats:    []seatengine.Seat{lead},
 	}, nil
 }

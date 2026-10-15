@@ -11,6 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
@@ -121,7 +122,7 @@ func TestTacklerPrompt(t *testing.T) {
 	}
 }
 
-// TestTacklerSpec pins tacklerSpec's output shape: the resolved model triple and timeout, the verdict as the single output file, the tackler role, the coordinator segment, and no skills, interactivity or parent.
+// TestTacklerSpec pins tacklerSpec's output shape: the resolved model choice, engine included, and timeout, the verdict as the single output file, the tackler role, the coordinator segment, and no skills, interactivity or parent.
 //
 //testtiming:keep pins every field of the tackler launch spec: the verdict as its single output file, the resolved model, effort, version and timeout, the role, the empty skill list and parent, and the zero-valued fields
 func TestTacklerSpec(t *testing.T) {
@@ -130,7 +131,7 @@ func TestTacklerSpec(t *testing.T) {
 	const prompt = "settle the stop"
 	const verdictPath = "/hub/wt/_lyx/shed/run/tackler/attempt-1/verdict.yaml"
 	const caseBriefPath = "/hub/wt/_lyx/shed/run/tackler/attempt-1/case-brief.md"
-	settings := TacklerSettings{Model: "claude-resolved-model-id", Effort: "low", Version: "v9", Timeout: 10 * time.Minute, MaxSpawns: 4}
+	settings := TacklerSettings{ModelChoice: shuttleengine.ModelChoice{Engine: "b", Model: "claude-resolved-model-id", Effort: "low", Version: "v9"}, Timeout: 10 * time.Minute, MaxSpawns: 4}
 
 	got := tacklerSpec(prompt, verdictPath, caseBriefPath, settings)
 
@@ -140,8 +141,8 @@ func TestTacklerSpec(t *testing.T) {
 	if len(got.OutputFiles) != 1 || got.OutputFiles[0] != verdictPath {
 		t.Errorf("tacklerSpec().OutputFiles = %v; want [%q]", got.OutputFiles, verdictPath)
 	}
-	if got.Model != settings.Model || got.Effort != settings.Effort || got.Version != settings.Version {
-		t.Errorf("tacklerSpec() model, effort, version = %q, %q, %q; want %q, %q, %q", got.Model, got.Effort, got.Version, settings.Model, settings.Effort, settings.Version)
+	if got.ModelChoice != settings.ModelChoice {
+		t.Errorf("tacklerSpec().ModelChoice = %+v; want %+v", got.ModelChoice, settings.ModelChoice)
 	}
 	if got.Timeout != settings.Timeout {
 		t.Errorf("tacklerSpec().Timeout = %v; want %v", got.Timeout, settings.Timeout)
@@ -157,6 +158,9 @@ func TestTacklerSpec(t *testing.T) {
 	}
 	if got.Segment != segmentcolor.Coordinator {
 		t.Errorf("tacklerSpec().Segment = %q; want %q", got.Segment, segmentcolor.Coordinator)
+	}
+	if len(got.Requires) != 0 {
+		t.Errorf("tacklerSpec().Requires = %v; want none", got.Requires)
 	}
 	if got.Interactive || got.ForkSubagents || got.Parent != "" {
 		t.Errorf("tacklerSpec() interactive, fork subagents, parent = %v, %v, %q; want false, false, empty", got.Interactive, got.ForkSubagents, got.Parent)

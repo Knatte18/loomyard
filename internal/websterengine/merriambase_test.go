@@ -4,15 +4,28 @@
 package websterengine_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
+
+// instructionFileEngine is a shuttlefake.Engine that also offers the InstructionFileLister capability.
+type instructionFileEngine struct {
+	*shuttlefake.Engine
+	files []string
+}
+
+// InstructionFiles returns the file names the engine was built with.
+func (e instructionFileEngine) InstructionFiles() []string { return e.files }
 
 // TestMerriamBase pins MerriamBaseOf's line sum and fixed context, and that MerriamBase grows with the plan's 00-overview.md and with the worktree's CLAUDE.md, adds nothing for an absent CLAUDE.md or CLAUDE.local.md and refuses an absent overview.
 // The steps share one temp worktree and each rewrites its own files, so none relies on another's result.
@@ -35,6 +48,34 @@ func TestMerriamBase(t *testing.T) {
 		}
 	})
 
+	t.Run("MasterInstructionFiles lists the names Master's engine offers", func(t *testing.T) {
+		withFiles := shuttlefake.EngineSet(instructionFileEngine{Engine: &shuttlefake.Engine{}, files: []string{"AGENTS.md"}})
+		plain := shuttlefake.EngineSet(&shuttlefake.Engine{})
+
+		got, err := websterengine.MasterInstructionFiles(withFiles, shuttleengine.ModelChoice{})()
+		if err != nil || !reflect.DeepEqual(got, []string{"AGENTS.md"}) {
+			t.Errorf("MasterInstructionFiles() over an engine with the capability = %v, %v; want [AGENTS.md], nil", got, err)
+		}
+
+		got, err = websterengine.MasterInstructionFiles(plain, shuttleengine.ModelChoice{})()
+		if err != nil || len(got) != 0 {
+			t.Errorf("MasterInstructionFiles() over an engine without the capability = %v, %v; want none, nil", got, err)
+		}
+
+		_, err = websterengine.MasterInstructionFiles(plain, shuttleengine.ModelChoice{Engine: "gone"})()
+		if err == nil {
+			t.Fatal("MasterInstructionFiles() error = nil; want a refusal for an engine the set lacks")
+		}
+		if !errors.Is(err, shuttleengine.ErrEngineNotRegistered) {
+			t.Errorf("MasterInstructionFiles() error = %v; want it to wrap ErrEngineNotRegistered", err)
+		}
+		for _, want := range []string{"master", "set master in webster.yaml"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("MasterInstructionFiles() error = %q; want it to contain %q", err.Error(), want)
+			}
+		}
+	})
+
 	worktree := t.TempDir()
 	planDir := filepath.Join(worktree, "plan")
 	stencilsDir := stencilkit.Seed(t)
@@ -51,12 +92,13 @@ func TestMerriamBase(t *testing.T) {
 	overview := filepath.Join(planDir, "00-overview.md")
 	claude := filepath.Join(worktree, "CLAUDE.md")
 	claudeLocal := filepath.Join(worktree, "CLAUDE.local.md")
+	claudeFiles := []string{"CLAUDE.md", "CLAUDE.local.md"}
 
 	baseLines := 0
 	t.Run("an absent CLAUDE.md and CLAUDE.local.md add nothing", func(t *testing.T) {
 		write(t, overview, "# plan\n")
 
-		got, err := websterengine.MerriamBase(geom)
+		got, err := websterengine.MerriamBase(geom, claudeFiles)
 		if err != nil {
 			t.Fatalf("MerriamBase() error = %v; want nil", err)
 		}
@@ -69,7 +111,7 @@ func TestMerriamBase(t *testing.T) {
 	t.Run("the base grows with the overview", func(t *testing.T) {
 		write(t, overview, "# plan\nsecond line\nthird line\n")
 
-		got, err := websterengine.MerriamBase(geom)
+		got, err := websterengine.MerriamBase(geom, claudeFiles)
 		if err != nil {
 			t.Fatalf("MerriamBase() error = %v; want nil", err)
 		}
@@ -83,7 +125,7 @@ func TestMerriamBase(t *testing.T) {
 		write(t, claude, "a\nb\nc\n")
 		write(t, claudeLocal, "d\n")
 
-		got, err := websterengine.MerriamBase(geom)
+		got, err := websterengine.MerriamBase(geom, claudeFiles)
 		if err != nil {
 			t.Fatalf("MerriamBase() error = %v; want nil", err)
 		}
@@ -92,12 +134,46 @@ func TestMerriamBase(t *testing.T) {
 		}
 	})
 
+	t.Run("the base counts only the files it is told", func(t *testing.T) {
+		write(t, filepath.Join(worktree, "AGENTS.md"), "x\ny\n")
+
+		agents, err := websterengine.MerriamBase(geom, []string{"AGENTS.md"})
+		if err != nil {
+			t.Fatalf("MerriamBase() with AGENTS.md error = %v; want nil", err)
+		}
+		if want := baseLines + 2; agents.Lines != want {
+			t.Errorf("MerriamBase().Lines with AGENTS.md alone = %d; want %d, its two lines and not the present CLAUDE.md", agents.Lines, want)
+		}
+
+		none, err := websterengine.MerriamBase(geom, nil)
+		if err != nil {
+			t.Fatalf("MerriamBase() with no files error = %v; want nil", err)
+		}
+		if none.Lines != baseLines {
+			t.Errorf("MerriamBase().Lines with no files = %d; want %d, nothing over a present CLAUDE.md", none.Lines, baseLines)
+		}
+	})
+
+	t.Run("a named file that is a directory is refused naming it", func(t *testing.T) {
+		if err := os.Mkdir(filepath.Join(worktree, "DIRECTORY.md"), 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+
+		_, err := websterengine.MerriamBase(geom, []string{"DIRECTORY.md"})
+		if err == nil {
+			t.Fatal("MerriamBase() error = nil; want a refusal for the directory")
+		}
+		if !strings.Contains(err.Error(), "DIRECTORY.md") {
+			t.Errorf("MerriamBase() error = %q; want it to contain %q", err.Error(), "DIRECTORY.md")
+		}
+	})
+
 	t.Run("an absent overview is refused naming the file and no way forward", func(t *testing.T) {
 		if err := os.Remove(overview); err != nil {
 			t.Fatalf("remove overview: %v", err)
 		}
 
-		_, err := websterengine.MerriamBase(geom)
+		_, err := websterengine.MerriamBase(geom, claudeFiles)
 		if err == nil {
 			t.Fatal("MerriamBase() error = nil; want a refusal for the absent overview")
 		}

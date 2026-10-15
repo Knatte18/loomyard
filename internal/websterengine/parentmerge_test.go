@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -65,10 +66,10 @@ func TestParentMergeBetweenForkCommitAndRecordBatch(t *testing.T) {
 		Batches: deps.Batches,
 		State:   deps.State,
 		Config:  websterengine.Config{},
-		Engine: (&recordAudit{scripted: []shuttleengine.ForkAudit{
+		Engines: shuttlefake.EngineSet((&recordAudit{scripted: []shuttleengine.ForkAudit{
 			{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
 			{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}, {TranscriptPath: "subagents/f2.jsonl", ReportReturned: true}}},
-		}}).engine(),
+		}}).engine()),
 		Geom:         deps.Geom,
 		RefMatcher:   websterengine.NeverMatches{},
 		OutcomePath:  filepath.Join(contractDir, "outcome.yaml"),

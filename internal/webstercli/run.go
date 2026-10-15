@@ -25,7 +25,7 @@ func (c *websterCLI) runDeps() websterengine.RunDeps {
 	return websterengine.RunDeps{
 		Starter:      c.masterStarter,
 		Stopper:      c.runner,
-		Engine:       c.engine,
+		Engines:      c.engines,
 		ShuttleCfg:   c.shuttleCfg,
 		Roles:        c.roles,
 		Config:       c.cfg,
@@ -36,7 +36,8 @@ func (c *websterCLI) runDeps() websterengine.RunDeps {
 		FrictionDir:  c.frictionDir,
 		ParentBranch: c.parentBranch,
 
-		LanguageSkills: c.languageSkills,
+		LanguageSkills:   c.languageSkills,
+		InstructionFiles: c.instructionFiles,
 	}
 }
 

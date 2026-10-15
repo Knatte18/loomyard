@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // TestResolveReview verifies ResolveReview returns the expected model/effort/version triple and
@@ -91,6 +92,23 @@ func TestResolveReview(t *testing.T) {
 	}
 	if !reflect.DeepEqual(fanned.Webster, settings.Models) {
 		t.Errorf("ResolveReview(fanned cfg).Webster = %+v; want the run-wide %+v", fanned.Webster, settings.Models)
+	}
+
+	// Each entry carries the engine its alias resolves to, in list order.
+	engineReg := modelspec.Registry{
+		"alpha": {Engine: "claude", Model: "alpha-model"},
+		"beta":  {Engine: "other", Model: "beta-model"},
+	}
+	engineSettings, err := ResolveReview(Config{Review: ModelSpecList{"alpha", "beta"}, Fix: ModelSpecList{"beta"}}, engineReg)
+	if err != nil {
+		t.Fatalf("ResolveReview(engine registry) = _, %v; want nil error", err)
+	}
+	wantReview := []shuttleengine.ModelChoice{{Engine: "claude", Model: "alpha-model"}, {Engine: "other", Model: "beta-model"}}
+	if !reflect.DeepEqual(engineSettings.Models.Review, wantReview) {
+		t.Errorf("ResolveReview(engine registry).Models.Review = %+v; want %+v", engineSettings.Models.Review, wantReview)
+	}
+	if got := engineSettings.Models.Fix; len(got) != 1 || got[0].Engine != "other" {
+		t.Errorf("ResolveReview(engine registry).Models.Fix = %+v; want one entry on engine other", got)
 	}
 
 	cfg.FanReview = ModelSpecList{"opus[effort"}
@@ -186,6 +204,24 @@ func TestResolveJudge(t *testing.T) {
 		}
 		if settings.Plan.Judge.Effort != "medium" || settings.Plan.Seed.Effort != "medium" {
 			t.Errorf("ResolveJudge(...).Plan = %+v; want effort medium on both passes", settings.Plan)
+		}
+	})
+
+	t.Run("the judge and seed carry their aliases' engines, the seed falling back to the judge's", func(t *testing.T) {
+		t.Parallel()
+		reg := modelspec.Registry{
+			"alpha": {Engine: "claude", Model: "alpha-model"},
+			"beta":  {Engine: "other", Model: "beta-model"},
+		}
+		settings, err := ResolveJudge(Config{Judge: "alpha", PlanSeed: "beta"}, reg)
+		if err != nil {
+			t.Fatalf("ResolveJudge(...) = _, %v; want nil error", err)
+		}
+		if settings.Plan.Judge.Engine != "claude" || settings.Plan.Seed.Engine != "other" {
+			t.Errorf("ResolveJudge(...).Plan = %+v; want judge engine claude and seed engine other", settings.Plan)
+		}
+		if settings.Discussion.Judge.Engine != "claude" || settings.Discussion.Seed.Engine != "claude" {
+			t.Errorf("ResolveJudge(...).Discussion = %+v; want the seed fallen back to the judge, engine claude on both", settings.Discussion)
 		}
 	})
 }

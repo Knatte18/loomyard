@@ -54,7 +54,7 @@ func (r *requiresRig) start(spec Spec) (*Run, error) {
 // startRecord starts a plain-engine run without requirements and rewrites its record to carry forkSubagents.
 func (r *requiresRig) startRecord(forkSubagents bool) (runDir string) {
 	r.t.Helper()
-	if _, err := r.start(Spec{Engine: "plain"}); err != nil {
+	if _, err := r.start(Spec{ModelChoice: ModelChoice{Engine: "plain"}}); err != nil {
 		r.t.Fatalf("Start(plain) error: %v", err)
 	}
 	state, runDir, err := FindRun(r.fx.Runner.cfg, r.fx.Anchor, "strand-1")
@@ -74,7 +74,7 @@ func (r *requiresRig) outputFile() string { return filepath.Join(r.fx.Worktree, 
 func TestRunner_Requires(t *testing.T) {
 	t.Parallel()
 
-	startWayForward := "way forward: give the role a model alias of an engine that meets them"
+	startWayForward := "way forward: give the role a model alias of an engine that meets them, or for a role that takes no alias set engine: in shuttle.yaml to one that does, then re-run the verb"
 	startRefusals := []struct {
 		name string
 		spec Spec
@@ -82,11 +82,11 @@ func TestRunner_Requires(t *testing.T) {
 	}{
 		{"an unknown requirement", Spec{Requires: []Requirement{"telepathy"}},
 			[]string{`shuttle: start: unknown requirement "telepathy"; known requirements: forks, peer-messaging, background-wake`}},
-		{"a requirement the engine does not meet names the engine, the requirement and the meeting engine", Spec{Engine: "wake", Requires: []Requirement{RequirementBackgroundWake, RequirementPeerMessaging}},
+		{"a requirement the engine does not meet names the engine, the requirement and the meeting engine", Spec{ModelChoice: ModelChoice{Engine: "wake"}, Requires: []Requirement{RequirementBackgroundWake, RequirementPeerMessaging}},
 			[]string{`engine "wake"`, "peer-messaging", "engines that meet them all: full", startWayForward}},
-		{"a ForkSubagents spec on an engine without forks", Spec{Engine: "wake", ForkSubagents: true},
+		{"a ForkSubagents spec on an engine without forks", Spec{ModelChoice: ModelChoice{Engine: "wake"}, ForkSubagents: true},
 			[]string{`engine "wake"`, "forks", "engines that meet them all: full", startWayForward}},
-		{"an engine without the capability meets nothing", Spec{Engine: "plain", Requires: []Requirement{RequirementBackgroundWake}},
+		{"an engine without the capability meets nothing", Spec{ModelChoice: ModelChoice{Engine: "plain"}, Requires: []Requirement{RequirementBackgroundWake}},
 			[]string{`engine "plain"`, "background-wake", "engines that meet them all: full, wake", startWayForward}},
 	}
 	for _, tt := range startRefusals {
@@ -104,6 +104,48 @@ func TestRunner_Requires(t *testing.T) {
 			}
 			if len(rig.reed.AddStrandCalls) != 0 {
 				t.Errorf("AddStrand calls = %d; want none for a refused start", len(rig.reed.AddStrandCalls))
+			}
+		})
+	}
+
+	wrapRows := []struct {
+		name string
+		key  ModelKey
+		want string
+	}{
+		{"a named key", ModelKey{Module: "loom", Key: "discussion"}, "set discussion in loom.yaml to an alias whose engine meets them with lyx config loom --set discussion=<alias>"},
+		{"a list entry", ModelKey{Module: "loom", Key: "discussion_advisors", Entry: "skeptic"}, "set the model of skeptic in discussion_advisors in loom.yaml"},
+		{"the default engine", ModelKey{DefaultEngine: true}, "set engine: in shuttle.yaml to an engine that meets them, then re-run the verb"},
+		{"the zero key", ModelKey{}, "set the seat's model to an alias whose engine meets them"},
+	}
+	for _, tt := range wrapRows {
+		t.Run("ModelKey_Wrap_replaces_the_generic_way_forward_for_"+tt.name, func(t *testing.T) {
+			t.Parallel()
+			rig := newRequiresRig(t)
+			_, refused := rig.start(Spec{ModelChoice: ModelChoice{Engine: "wake"}, Requires: []Requirement{RequirementPeerMessaging}})
+			got := tt.key.Wrap(refused)
+			if !errors.Is(got, ErrRequirementsUnmet) {
+				t.Fatalf("Wrap() error = %v; want it to wrap ErrRequirementsUnmet", got)
+			}
+			for _, want := range []string{`engine "wake"`, "peer-messaging", "way forward: " + tt.want} {
+				if !strings.Contains(got.Error(), want) {
+					t.Errorf("Wrap() error = %q; want it to contain %q", got, want)
+				}
+			}
+			if strings.Contains(got.Error(), "give the role a model alias") {
+				t.Errorf("Wrap() error = %q; want the generic way forward replaced", got)
+			}
+			if strings.Count(got.Error(), "way forward") != 1 {
+				t.Errorf("Wrap() error = %q; want exactly one way forward", got)
+			}
+
+			_, unknown := rig.start(Spec{Requires: []Requirement{"telepathy"}})
+			if tt.key.Wrap(unknown) != unknown {
+				t.Errorf("Wrap(unknown requirement) changed the error")
+			}
+			plain := errors.New("boom")
+			if tt.key.Wrap(plain) != plain {
+				t.Errorf("Wrap(plain error) changed the error")
 			}
 		})
 	}

@@ -68,6 +68,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/standalonegeom"
 	"github.com/Knatte18/loomyard/internal/standalonestate"
+	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
@@ -839,6 +840,9 @@ fixer-report-path: reviews/fixer-report.md
 		got := map[string][2]string{}
 		for _, spec := range shuttle.specs {
 			got[spec.Role] = [2]string{spec.Model, spec.Effort}
+			if spec.Engine != "" {
+				t.Errorf("%s spec engine = %q; want empty, the default engine", spec.Role, spec.Engine)
+			}
 		}
 		want := map[string][2]string{reviewChairRole: {"rm", "re"}, fixChairRole: {"fm", "fe"}}
 		if len(got) != len(want) || got[reviewChairRole] != want[reviewChairRole] || got[fixChairRole] != want[fixChairRole] {
@@ -889,6 +893,40 @@ fixer-report-path: reviews/fixer-report.md
 		}
 		if len(shuttle.startedRoles()) != 0 {
 			t.Errorf("started halves = %v; want none for a rejected flag", shuttle.startedRoles())
+		}
+	})
+
+	t.Run("a cluster-fan reviewer on an engine without forks is refused naming the engine: way forward", func(t *testing.T) {
+		t.Parallel()
+
+		root := t.TempDir()
+		for _, name := range []string{"target.txt", "fasit.txt"} {
+			if err := os.WriteFile(filepath.Join(root, name), []byte(name), 0o644); err != nil {
+				t.Fatalf("write %s: %v", name, err)
+			}
+		}
+		profilePath := filepath.Join(root, "profile.yaml")
+		if err := os.WriteFile(profilePath, []byte(profileYAML+"cluster-fan: standard\n"), 0o644); err != nil {
+			t.Fatalf("write profile: %v", err)
+		}
+		reed := &shuttlefake.Reed{}
+		runner := shuttleengine.NewRunner(reed, shuttlefake.EngineSet(&shuttlefake.Engine{}), root, root, shuttleengine.Config{RunDir: t.TempDir(), RunTimeoutMin: 60, StartupTimeoutS: 30})
+		engine := burlerengine.New(seatengine.RunnerShuttle(runner), burlerengine.Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug"}, burlerengine.Config{}, stencilkit.Seed(t), "", nil)
+		c := &burlerCLI{cwd: root, engine: engine, mode: "standalone"}
+
+		var out bytes.Buffer
+		exitCode := clihelp.Execute(c.runCmd(), &out, []string{"--profile", profilePath, "--review-model", "rm"})
+
+		if exitCode == 0 {
+			t.Fatalf("run = exit 0, output: %s; want the requirements refusal", out.String())
+		}
+		for _, want := range []string{`engine \"fake\"`, "set engine: in shuttle.yaml to an engine that meets them"} {
+			if !strings.Contains(out.String(), want) {
+				t.Errorf("run output = %s; want it to contain %q", out.String(), want)
+			}
+		}
+		if len(reed.AddedSpecs) != 0 {
+			t.Errorf("reed AddStrand calls = %d; want none, the refusal comes before any pane", len(reed.AddedSpecs))
 		}
 	})
 }

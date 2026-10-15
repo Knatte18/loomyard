@@ -28,7 +28,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -124,9 +123,9 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 	shuttleCfg := shuttleengine.Config{RunDir: filepath.Join(t.TempDir(), "runs"), RunTimeoutMin: 60, StartupTimeoutS: 30}
 	runner := shuttleengine.NewRunner(reed, shuttlefake.EngineSet(engine), layout.AnchorPath(), layout.WorktreePath(), shuttleCfg)
 
-	roles := map[websterengine.Role]modelspec.Resolved{
-		websterengine.RoleMaster:   {Engine: "claude", Model: "master-model", Params: map[string]string{}},
-		websterengine.RoleRecovery: {Engine: "claude", Model: "recovery-model", Params: map[string]string{}},
+	roles := map[websterengine.Role]shuttleengine.ModelChoice{
+		websterengine.RoleMaster:   {Model: "master-model"},
+		websterengine.RoleRecovery: {Model: "recovery-model"},
 	}
 
 	// The default (empty) batcher name resolves to the identity batchifier
@@ -138,7 +137,7 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 	c := &websterCLI{
 		runner:     runner,
 		starter:    runner,
-		engine:     engine,
+		engines:    shuttlefake.EngineSet(engine),
 		reed:       reed,
 		anchorRel:  layout.AnchorRel,
 		shuttleCfg: shuttleCfg,
@@ -649,6 +648,8 @@ func TestRecordBatchCmd_Envelope(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("FABRIC_SKIP_GIT", "1")
 			fx := newVerbsFixture(t)
+			// record-batch runs on a recorded state and prices no partition, so a lister that fails proves it is never called.
+			fx.CLI.instructionFiles = failingInstructionFiles
 			st := fx.initState(t)
 			// DoneChecks resolves a card's Create target against
 			// deps.Geom.WorktreeRoot, which hubgeom.WebsterGeometry fills
@@ -970,6 +971,8 @@ func TestRebaselineCmd_EditedCardOfFailedBatchThenRecover(t *testing.T) {
 func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 	t.Setenv("FABRIC_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
+	// recover-batch runs on a recorded state and prices no partition, so a lister that fails proves it is never called.
+	fx.CLI.instructionFiles = failingInstructionFiles
 	fx.initState(t)
 
 	// First call: no prior record for batch 1, so RecoverBatch spawns a

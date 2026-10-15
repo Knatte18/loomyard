@@ -179,7 +179,7 @@ func newDispatchRig(t *testing.T) *dispatchRig {
 // start starts a run on the named engine and forgets what the start consulted.
 func (r *dispatchRig) start(engine string) *Run {
 	r.t.Helper()
-	run, err := r.fx.Runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}, Engine: engine})
+	run, err := r.fx.Runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}, ModelChoice: ModelChoice{Engine: engine}})
 	if err != nil {
 		r.t.Fatalf("Start(engine %q) error: %v", engine, err)
 	}
@@ -311,7 +311,7 @@ func TestRunner_EngineSetDispatch(t *testing.T) {
 			if tt.wantName == "b" {
 				used, other = rig.b, rig.a
 			}
-			run, err := rig.fx.Runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}, Engine: tt.spec})
+			run, err := rig.fx.Runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}, ModelChoice: ModelChoice{Engine: tt.spec}})
 			if err != nil {
 				t.Fatalf("Start(engine %q) error: %v", tt.spec, err)
 			}
@@ -341,7 +341,7 @@ func TestRunner_EngineSetDispatch(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
 				rig := newDispatchRig(t)
-				result, err := rig.fx.Runner.Open(OpenSpec{Role: "explore", Engine: tt.spec})
+				result, err := rig.fx.Runner.Open(OpenSpec{Role: "explore", ModelChoice: ModelChoice{Engine: tt.spec}})
 				if tt.wantErr {
 					if err == nil {
 						t.Fatalf("Open(engine %q) = nil error; want a refusal", tt.spec)
@@ -369,8 +369,8 @@ func TestRunner_EngineSetDispatch(t *testing.T) {
 	t.Run("an_unregistered_engine_is_refused_before_anything_is_created", func(t *testing.T) {
 		t.Parallel()
 		rig := newDispatchRig(t)
-		_, startErr := rig.fx.Runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}, Engine: "c"})
-		_, openErr := rig.fx.Runner.Open(OpenSpec{Role: "explore", Engine: "c"})
+		_, startErr := rig.fx.Runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}, ModelChoice: ModelChoice{Engine: "c"}})
+		_, openErr := rig.fx.Runner.Open(OpenSpec{Role: "explore", ModelChoice: ModelChoice{Engine: "c"}})
 		for name, err := range map[string]error{"Start": startErr, "Open": openErr} {
 			if !errors.Is(err, ErrEngineNotRegistered) || !strings.Contains(err.Error(), "a, b, p") {
 				t.Errorf("%s(engine c) error = %v; want ErrEngineNotRegistered naming the registered engines", name, err)
@@ -455,7 +455,7 @@ func TestRunner_EngineSetDispatch(t *testing.T) {
 		fresh := NewRunner(rig.reed, rig.engines, rig.fx.Anchor, rig.fx.Worktree, rig.fx.Runner.cfg)
 		fresh.SetClock(newFakeClock(time.Now()))
 
-		if _, found, err := fresh.Attach(Spec{OutputFiles: []string{out}, Timeout: time.Minute, Engine: "a"}); err != nil || !found {
+		if _, found, err := fresh.Attach(Spec{OutputFiles: []string{out}, Timeout: time.Minute, ModelChoice: ModelChoice{Engine: "a"}}); err != nil || !found {
 			t.Fatalf("Attach() found = %v, error = %v; want the live run found", found, err)
 		}
 		requireConsulted(t, rig.b, rig.a, "ParseEvents")
@@ -476,6 +476,63 @@ func TestRunner_EngineSetDispatch(t *testing.T) {
 		}
 	})
 
+	t.Run("Result_carries_the_engine_the_run_was_driven_through", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name       string
+			startOn    string
+			clearKey   bool
+			wantEngine string
+		}{
+			{"a_named_engine", "b", false, "b"},
+			{"the_default_by_empty_name", "", false, "a"},
+			{"a_record_with_no_engine_key", "b", true, "a"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				rig := newDispatchRig(t)
+				rig.start(tt.startOn)
+				state, runDir := rig.record()
+				if tt.clearKey {
+					state.Engine = ""
+					if err := saveRunState(runDir, state); err != nil {
+						t.Fatalf("saveRunState: %v", err)
+					}
+				}
+				rig.writeEvents(state)
+				seedPresentReedState(t, rig.fx.DotLyx)
+				out := filepath.Join(rig.fx.Worktree, "out.md")
+				touchOutputFile(t, out)
+
+				result, found, err := rig.fx.Runner.Attach(Spec{OutputFiles: []string{out}, Timeout: time.Minute})
+				if err != nil || !found {
+					t.Fatalf("Attach() = %+v, %v, %v; want the run found and driven to done", result, found, err)
+				}
+				if result.Outcome != OutcomeDone || result.Engine != tt.wantEngine {
+					t.Errorf("Attach() Outcome, Engine = %q, %q; want %q, %q", result.Outcome, result.Engine, OutcomeDone, tt.wantEngine)
+				}
+			})
+		}
+
+		t.Run("a_mechanism_failure_identity", func(t *testing.T) {
+			t.Parallel()
+			rig := newDispatchRig(t)
+			run := rig.start("b")
+			state, _ := rig.record()
+			if err := os.MkdirAll(state.EventsPath, 0o755); err != nil {
+				t.Fatalf("make the events path unreadable: %v", err)
+			}
+			result, err := run.Wait()
+			if err == nil {
+				t.Fatalf("Wait() error = nil; want the events-file mechanism failure")
+			}
+			if result.Outcome != "" || result.Engine != "b" {
+				t.Errorf("Wait() Outcome, Engine = %q, %q; want an empty outcome and engine b", result.Outcome, result.Engine)
+			}
+		})
+	})
+
 	t.Run("SessionIdle_on_a_live_strand_with_no_record_consults_the_default", func(t *testing.T) {
 		t.Parallel()
 		rig := newDispatchRig(t)
@@ -486,27 +543,39 @@ func TestRunner_EngineSetDispatch(t *testing.T) {
 		requireConsulted(t, rig.a, rig.b, "IdleSession")
 	})
 
-	t.Run("Send_and_Interrupt_on_a_live_strand_with_no_record_consult_the_default", func(t *testing.T) {
+	t.Run("Send_and_Interrupt_on_a_live_strand_with_no_record_consult_the_engine_its_provider_tag_names", func(t *testing.T) {
 		t.Parallel()
 		tests := []struct {
 			name       string
+			provider   string
 			call       func(rig *dispatchRig) error
 			wantMethod string
+			wantUsed   string
 		}{
-			{"Send", func(rig *dispatchRig) error { return rig.fx.Runner.Send("strand-1", "hello") }, "IdleSession"},
-			{"Interrupt", func(rig *dispatchRig) error {
+			{"Send_untagged", "", func(rig *dispatchRig) error { return rig.fx.Runner.Send("strand-1", "hello") }, "IdleSession", "a"},
+			{"Send_tagged_b", "b", func(rig *dispatchRig) error { return rig.fx.Runner.Send("strand-1", "hello") }, "IdleSession", "b"},
+			{"Interrupt_untagged", "", func(rig *dispatchRig) error {
 				rig.reed.CaptureQueue = []string{"RUNNING"}
 				return rig.fx.Runner.Interrupt("strand-1")
-			}, "InterruptSequence"},
+			}, "InterruptSequence", "a"},
+			{"Interrupt_tagged_b", "b", func(rig *dispatchRig) error {
+				rig.reed.CaptureQueue = []string{"RUNNING"}
+				return rig.fx.Runner.Interrupt("strand-1")
+			}, "InterruptSequence", "b"},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
 				rig := newDispatchRig(t)
 				rig.reed.StatusQueue = liveStrandStatus(true)
+				rig.reed.StatusQueue[0].Strands[0].Provider = tt.provider
 				// The fake pane never echoes the sent text, so only which engine was consulted is pinned.
 				_ = tt.call(rig)
-				requireConsulted(t, rig.a, rig.b, tt.wantMethod)
+				used, other := rig.a, rig.b
+				if tt.wantUsed == "b" {
+					used, other = rig.b, rig.a
+				}
+				requireConsulted(t, used, other, tt.wantMethod)
 			})
 		}
 	})

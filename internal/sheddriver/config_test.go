@@ -12,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // writeLayer writes document to path, creating its directory.
@@ -150,7 +151,7 @@ func TestResolveTackler(t *testing.T) {
 		if err != nil {
 			t.Fatalf("reg.Resolve(%q) = _, %v; want nil error", text, err)
 		}
-		return TacklerSettings{Model: resolved.Model, Effort: resolved.Params["effort"], Version: resolved.Params["version"]}
+		return TacklerSettings{ModelChoice: shuttleengine.NewModelChoice(resolved)}
 	}
 
 	for _, tt := range []struct {
@@ -222,6 +223,9 @@ func TestResolveTackler(t *testing.T) {
 			want.Timeout, want.MaxSpawns = tt.wantTimeout, tt.wantSpawns
 			if got != want {
 				t.Errorf("ResolveTackler(%+v, %+v) = %+v; want %+v", tt.cfg, tt.override, got, want)
+			}
+			if got.Engine != "claude" {
+				t.Errorf("ResolveTackler(%+v, %+v).Engine = %q; want %q (the alias's engine)", tt.cfg, tt.override, got.Engine, "claude")
 			}
 		})
 	}

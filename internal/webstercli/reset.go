@@ -105,7 +105,7 @@ Example:
 			plan, err := websterengine.PlanReset(websterengine.ResetDeps{
 				Geom:         c.geom,
 				State:        st,
-				Engine:       c.engine,
+				Engines:      c.engines,
 				Reed:         c.reed,
 				ParentBranch: c.parentBranch,
 				Branch:       branch,
@@ -158,7 +158,7 @@ Example:
 
 			warnings := []string{}
 			if target == websterengine.ResetToStart {
-				dropped, err := websterengine.ArchiveRunAfterReset(c.engine, c.geom, st)
+				dropped, err := websterengine.ArchiveRunAfterReset(c.engines, c.geom, st)
 				if err != nil {
 					if plan.ArchiveOnly {
 						return fail(err.Error())

@@ -11,6 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // burlerRowModels returns the review and fix model lists of the row called name: its env.RowReviewModels entry, else env.ReviewModels.
@@ -90,6 +91,10 @@ func burlerReviewEntry(name string, cfg Config, env Env) (shedengine.ShedProduce
 		return nil, err
 	}
 	opts := burlerengine.RunOpts{Timeout: burlerRowTimeout(timeoutS, env)}
+	if profile.ClusterFan != "" {
+		// A fanned reviewer runs on the fan_review list, so a refusal of its engine names that key.
+		opts.ReviewKey = shuttleengine.ModelKey{Module: "loom", Key: "fan_review"}
+	}
 	producer, err := shedadapters.NewBurlerReviewProducer(name, shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: burlerRowModels(name, env)}, profile, opts, runDir, env.Now)
 	if err != nil {
 		return nil, fmt.Errorf("shedrecipe: BurlerReview: %w", err)

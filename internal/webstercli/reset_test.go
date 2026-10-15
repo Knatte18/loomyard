@@ -60,12 +60,14 @@ func newResetFixture(t *testing.T, h *hubforge.Hub, slug string) *resetFixture {
 	reed := &shuttlefake.Reed{}
 	runner := shuttleengine.NewRunner(reed, shuttlefake.EngineSet(engine), loc.AnchorPath(), checkout, shuttleengine.Config{RunDir: t.TempDir(), RunTimeoutMin: 60, StartupTimeoutS: 30})
 	c := &websterCLI{
-		engine:     engine,
+		engines:    shuttlefake.EngineSet(engine),
 		reed:       reed,
 		runner:     runner,
 		anchorRel:  loc.AnchorRel,
 		geom:       hubgeom.WebsterGeometry(loc),
 		openFabric: func() (*fabricengine.Fabric, error) { return fabricengine.Open(loc) },
+		// Reset runs on a recorded state and prices no partition, so a lister that fails proves it is never called.
+		instructionFiles: failingInstructionFiles,
 		parentBranch: func() (string, error) {
 			origin, found, err := fabricengine.ReadOrigin(loc)
 			if err != nil || !found {

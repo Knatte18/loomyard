@@ -11,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // TestResolveDriver verifies ResolveDriver resolves an alias to its provider model id, lifting
@@ -50,6 +51,9 @@ func TestResolveDriver(t *testing.T) {
 	if settings.Version != "1" {
 		t.Errorf("ResolveDriver(...).Version = %q; want %q", settings.Version, "1")
 	}
+	if settings.Engine != "claude" {
+		t.Errorf("ResolveDriver(...).Engine = %q; want %q (the alias's engine)", settings.Engine, "claude")
+	}
 }
 
 // TestResolveArbiter verifies ResolveArbiter resolves the spec through the registry, takes opus[high] for an empty spec and 30 minutes for a zero timeout, passes a set timeout and the spawn budget through, and names the arbiter key when the registry lacks the alias.
@@ -69,7 +73,7 @@ func TestResolveArbiter(t *testing.T) {
 		if err != nil {
 			t.Fatalf("reg.Resolve(%q) = _, %v; want nil error", text, err)
 		}
-		return ArbiterSettings{Model: resolved.Model, Effort: resolved.Params["effort"], Version: resolved.Params["version"]}, nil
+		return ArbiterSettings{ModelChoice: shuttleengine.NewModelChoice(resolved)}, nil
 	}
 
 	tests := []struct {
@@ -108,6 +112,9 @@ func TestResolveArbiter(t *testing.T) {
 			if got != want {
 				t.Errorf("ResolveArbiter(%+v) = %+v; want %+v", tt.cfg, got, want)
 			}
+			if got.Engine != "claude" {
+				t.Errorf("ResolveArbiter(%+v).Engine = %q; want %q (the alias's engine)", tt.cfg, got.Engine, "claude")
+			}
 		})
 	}
 }
@@ -129,7 +136,7 @@ func TestResolveAlignment(t *testing.T) {
 		if err != nil {
 			t.Fatalf("reg.Resolve(%q) = _, %v; want nil error", text, err)
 		}
-		return AlignmentSettings{Model: resolved.Model, Effort: resolved.Params["effort"], Version: resolved.Params["version"]}
+		return AlignmentSettings{ModelChoice: shuttleengine.NewModelChoice(resolved)}
 	}
 
 	tests := []struct {
@@ -166,6 +173,9 @@ func TestResolveAlignment(t *testing.T) {
 			want.Timeout = tt.wantTimeout
 			if got != want {
 				t.Errorf("ResolveAlignment(%+v) = %+v; want %+v", tt.cfg, got, want)
+			}
+			if got.Engine != "claude" {
+				t.Errorf("ResolveAlignment(%+v).Engine = %q; want %q (the alias's engine)", tt.cfg, got.Engine, "claude")
 			}
 		})
 	}
@@ -204,7 +214,7 @@ func TestResolveDriver_Refuses(t *testing.T) {
 }
 
 // TestResolveDriver_EmptyDriverIsOffDefault verifies an empty cfg.Driver -- "defer to the provider
-// default" -- resolves to a zero DriverSettings with a nil error, the same "off/default" arm
+// default" -- resolves to the zero ModelChoice (an empty Engine reads as the default engine) with a nil error, the same "off/default" arm
 // Friction already has, rather than being forced through modelspec.Parse.
 func TestResolveDriver_EmptyDriverIsOffDefault(t *testing.T) {
 	cfg := Config{Driver: ""}
@@ -218,7 +228,7 @@ func TestResolveDriver_EmptyDriverIsOffDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveDriver(...) = _, %v; want nil error for an empty cfg.Driver", err)
 	}
-	if settings != (DriverSettings{}) {
-		t.Errorf("ResolveDriver(...) = %+v; want the zero DriverSettings for an empty cfg.Driver", settings)
+	if settings != (shuttleengine.ModelChoice{}) {
+		t.Errorf("ResolveDriver(...) = %+v; want the zero ModelChoice for an empty cfg.Driver", settings)
 	}
 }

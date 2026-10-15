@@ -100,7 +100,7 @@ func pathOrNone(path string) string {
 // Prompt is the argument verbatim. Skills is tacklerSkills, empty, so the prompt is the tackler's whole procedure.
 // OutputFiles is a single-entry slice holding verdictPath, so shuttle's completion check reads the verdict through allOutputFilesExist and reed drops a finished strand on resume.
 // The case brief is not an output file, since only an escalate writes it; caseBriefPath reaches the prompt input alone, which is why it is not read here.
-// Model, Effort and Version come from settings, which carries the RESOLVED triple -- a provider model id plus its effort and version.
+// ModelChoice is the settings' choice whole, which carries the RESOLVED engine, provider model id, effort and version.
 // Timeout is the settings' timeout, which bounds the tackler's run.
 // Role is TacklerRole, which reed forms into `<shortname>:<slug>:tackler`; NameOverride is left empty so a second attempt numbers its role.
 // Segment is the coordinator, the driver's, because the tackler acts for the driver.
@@ -111,9 +111,7 @@ func tacklerSpec(prompt, verdictPath, caseBriefPath string, settings TacklerSett
 		Prompt:        prompt,
 		Skills:        tacklerSkills,
 		OutputFiles:   []string{verdictPath},
-		Model:         settings.Model,
-		Effort:        settings.Effort,
-		Version:       settings.Version,
+		ModelChoice:   settings.ModelChoice,
 		Timeout:       settings.Timeout,
 		Role:          TacklerRole,
 		Segment:       segmentcolor.Coordinator,

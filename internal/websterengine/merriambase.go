@@ -33,11 +33,11 @@ func MerriamBaseOf(texts ...string) batcher.StartBase {
 	return batcher.StartBase{Lines: lines, Fixed: merriamFixedContext}
 }
 
-// MerriamBase returns the start base of the Merriam session geom describes: CLAUDE.md and CLAUDE.local.md at the worktree root when present, the Master stencil with the orchestrator PATTERN directive, and the plan's 00-overview.md.
-// An absent CLAUDE.md or CLAUDE.local.md adds nothing; any other failure is refused naming the file and the cause, with no way forward.
-func MerriamBase(geom Geometry) (batcher.StartBase, error) {
+// MerriamBase returns the start base of the Merriam session geom describes: the named instruction files at the worktree root when present, the Master stencil with the orchestrator PATTERN directive, and the plan's 00-overview.md.
+// An absent instruction file adds nothing; any other failure is refused naming the file and the cause, with no way forward.
+func MerriamBase(geom Geometry, instructionFiles []string) (batcher.StartBase, error) {
 	var texts []string
-	for _, name := range []string{"CLAUDE.md", "CLAUDE.local.md"} {
+	for _, name := range instructionFiles {
 		data, err := os.ReadFile(filepath.Join(geom.WorktreeRoot, name))
 		if errors.Is(err, fs.ErrNotExist) {
 			continue

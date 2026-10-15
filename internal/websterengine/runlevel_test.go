@@ -38,7 +38,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -92,6 +91,21 @@ func (s *runFakeStarter) StartMaster(spec shuttleengine.Spec, gate shuttleengine
 	}
 	return s.handle, nil
 }
+
+// realMasterStarter is a websterengine.MasterStarter over a real shuttleengine.Runner, so a test reaches shuttle's own Start refusals.
+type realMasterStarter struct {
+	runner *shuttleengine.Runner
+}
+
+func (s realMasterStarter) StartMaster(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (websterengine.MasterHandle, error) {
+	run, err := s.runner.StartGated(spec, gate)
+	if err != nil {
+		return nil, err
+	}
+	return run, nil
+}
+
+var _ websterengine.MasterStarter = realMasterStarter{}
 
 func (s *runFakeStarter) callCount() int {
 	s.mu.Lock()
@@ -155,6 +169,7 @@ func seedShuttleRunState(t *testing.T, runDirRoot, strandGUID, sessionID string)
 		RunID:      "fake-run-" + strandGUID,
 		StrandGUID: strandGUID,
 		SessionID:  sessionID,
+		Engine:     shuttlefake.EngineName,
 		CreatedAt:  time.Now().UTC().Format(time.RFC3339),
 	}
 	data, err := json.MarshalIndent(rs, "", "  ")
@@ -207,9 +222,9 @@ func newRunFixtureOver(t *testing.T, numCards int, worktree string, git webstere
 	shuttleRunRoot := t.TempDir()
 	shuttleCfg := shuttleengine.Config{RunDir: shuttleRunRoot, RunTimeoutMin: 60, StartupTimeoutS: 30}
 
-	roles := map[websterengine.Role]modelspec.Resolved{
-		websterengine.RoleMaster:   {Engine: "claude", Model: "master-model", Params: map[string]string{}},
-		websterengine.RoleRecovery: {Engine: "claude", Model: "recovery-model", Params: map[string]string{"effort": "high"}},
+	roles := map[websterengine.Role]shuttleengine.ModelChoice{
+		websterengine.RoleMaster:   {Model: "master-model"},
+		websterengine.RoleRecovery: {Model: "recovery-model", Effort: "high"},
 	}
 
 	// Select("") is the right call here rather than Active: the fixture's
@@ -221,7 +236,7 @@ func newRunFixtureOver(t *testing.T, numCards int, worktree string, git webstere
 	deps := websterengine.RunDeps{
 		Starter:    starter,
 		Stopper:    stopper,
-		Engine:     &shuttlefake.Engine{},
+		Engines:    shuttlefake.EngineSet(&shuttlefake.Engine{}),
 		ShuttleCfg: shuttleCfg,
 		Roles:      roles,
 		Batcher:    activeBatcher,
@@ -412,27 +427,152 @@ func requireNoConflictRecord(t *testing.T, fx *runFixture) {
 	}
 }
 
+// runRefusalCase is one TestRun_RefusesBeforeSpawn row.
+type runRefusalCase struct {
+	name  string
+	cards int
+	// setup edits the fixture to provoke the refusal and returns the step that takes the way
+	// forward; nil means the case has no way forward to take.
+	setup       func(t *testing.T, fx *runFixture) (takeWayForward func())
+	errIs       error
+	msgContains []string
+	wayForward  []string
+	// reachesStarter marks a refusal raised by the Starter itself.
+	reachesStarter bool
+	// fresh runs with --fresh.
+	fresh bool
+	check func(t *testing.T, fx *runFixture, err error)
+}
+
+// enginesWithHiddenX returns an engine set whose engine "x" hides its fork audit and whose other engine is the fake that audits, with defaultName as the default.
+func enginesWithHiddenX(defaultName string) shuttleengine.EngineSet {
+	fake := &shuttlefake.Engine{}
+	return shuttleengine.NewEngineSet(defaultName, map[string]shuttleengine.Engine{
+		shuttlefake.EngineName: fake,
+		"x":                    struct{ shuttleengine.Engine }{fake},
+	})
+}
+
+// roleEngineRefusalCase returns a row over a fixture holding a recorded state, a recorded Master strand and a stale outcome, whose roles mutate edits.
+// The row asserts the refusal names roleKey and engineQuoted, and that nothing was started, stopped, archived or rewritten.
+func roleEngineRefusalCase(name string, fresh bool, roleKey, engineQuoted string, mutate func(fx *runFixture)) runRefusalCase {
+	var stateBefore, outcomeBefore []byte
+	var dirBefore []string
+	return runRefusalCase{
+		name:  name,
+		cards: 1,
+		fresh: fresh,
+		setup: func(t *testing.T, fx *runFixture) func() {
+			seedMatchingState(t, fx, &websterengine.State{MasterStrand: "master-strand", MasterSessionID: "master-session"})
+			outcomePath := websterengine.OutcomePath(fx.Deps.Geom.WebsterDir)
+			if err := os.WriteFile(outcomePath, []byte("outcome: stuck\n"), 0o644); err != nil {
+				t.Fatalf("seed stale outcome: %v", err)
+			}
+			stateBefore, outcomeBefore, dirBefore = snapshotWebsterDir(t, fx)
+			mutate(fx)
+			return nil
+		},
+		msgContains: []string{engineQuoted},
+		wayForward:  []string{"set " + roleKey + " in webster.yaml", "audits forks"},
+		check: func(t *testing.T, fx *runFixture, _ error) {
+			stateAfter, outcomeAfter, dirAfter := snapshotWebsterDir(t, fx)
+			if !bytes.Equal(stateAfter, stateBefore) {
+				t.Errorf("state.json changed by a refused Run; want it untouched")
+			}
+			if !bytes.Equal(outcomeAfter, outcomeBefore) {
+				t.Errorf("outcome.yaml = %q after a refused Run; want %q left in place", outcomeAfter, outcomeBefore)
+			}
+			if !slices.Equal(dirAfter, dirBefore) {
+				t.Errorf("webster dir entries = %v after a refused Run; want %v, no archive written", dirAfter, dirBefore)
+			}
+			if len(fx.Stopper.Stopped) != 0 {
+				t.Errorf("StopStrand calls = %v; want none before the refusal", fx.Stopper.Stopped)
+			}
+		},
+	}
+}
+
+// snapshotWebsterDir returns the bytes of fx's state.json and outcome.yaml and the sorted entry names of its webster dir.
+func snapshotWebsterDir(t *testing.T, fx *runFixture) (state, outcome []byte, entries []string) {
+	t.Helper()
+	dir := fx.Deps.Geom.WebsterDir
+	state, err := os.ReadFile(filepath.Join(dir, "state.json"))
+	if err != nil {
+		t.Fatalf("read state.json: %v", err)
+	}
+	outcome, err = os.ReadFile(websterengine.OutcomePath(dir))
+	if err != nil {
+		t.Fatalf("read outcome.yaml: %v", err)
+	}
+	dirEntries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read webster dir: %v", err)
+	}
+	for _, e := range dirEntries {
+		entries = append(entries, e.Name())
+	}
+	slices.Sort(entries)
+	return state, outcome, entries
+}
+
 // TestRun_RefusesBeforeSpawn asserts each refusal Run raises ahead of the Master spawn: the typed
 // error or message it carries, the way forward it names, that the Starter is never reached, and —
 // where the card has a way forward to take — that taking it lets the re-run reach the Master.
 func TestRun_RefusesBeforeSpawn(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
-		name  string
-		cards int
-		// setup edits the fixture to provoke the refusal and returns the step that takes the way
-		// forward; nil means the case has no way forward to take.
-		setup       func(t *testing.T, fx *runFixture) (takeWayForward func())
-		errIs       error
-		msgContains []string
-		wayForward  []string
-		// reachesStarter marks a refusal raised by the Starter itself.
-		reachesStarter bool
-		// fresh runs with --fresh.
-		fresh bool
-		check func(t *testing.T, fx *runFixture, err error)
-	}{
+	var masterReed *shuttlefake.Reed
+	cases := []runRefusalCase{
+		{
+			// The engine meets no requirement, so shuttle's Start refuses Master's forks and background wake; the empty engine is checked as the set's default.
+			name:  "master engine misses a requirement",
+			cards: 1,
+			setup: func(t *testing.T, fx *runFixture) func() {
+				masterReed = &shuttlefake.Reed{}
+				runner := shuttleengine.NewRunner(masterReed, shuttlefake.EngineSet(&shuttlefake.Engine{}), fx.Worktree, fx.Worktree, shuttleengine.Config{RunDir: t.TempDir(), RunTimeoutMin: 60, StartupTimeoutS: 30})
+				fx.Deps.Starter = realMasterStarter{runner: runner}
+				return nil
+			},
+			errIs:       shuttleengine.ErrRequirementsUnmet,
+			msgContains: []string{`engine "fake"`, "master", "lyx config webster"},
+			wayForward:  []string{"set master in webster.yaml", "lyx config webster"},
+			check: func(t *testing.T, fx *runFixture, err error) {
+				if strings.Contains(err.Error(), "transient") {
+					t.Errorf("Run() error = %q; want no transient clause on a requirements refusal", err)
+				}
+				if len(masterReed.AddedSpecs) != 0 {
+					t.Errorf("reed AddStrand calls = %d; want none before the refusal", len(masterReed.AddedSpecs))
+				}
+			},
+		},
+		roleEngineRefusalCase("master choice on an engine without fork audit", false, "master", `"x"`, func(fx *runFixture) {
+			fx.Deps.Engines = enginesWithHiddenX(shuttlefake.EngineName)
+			fx.Deps.Roles[websterengine.RoleMaster] = shuttleengine.ModelChoice{Model: "m", Engine: "x"}
+		}),
+		roleEngineRefusalCase("master choice on an engine without fork audit, fresh", true, "master", `"x"`, func(fx *runFixture) {
+			fx.Deps.Engines = enginesWithHiddenX(shuttlefake.EngineName)
+			fx.Deps.Roles[websterengine.RoleMaster] = shuttleengine.ModelChoice{Model: "m", Engine: "x"}
+		}),
+		roleEngineRefusalCase("recovery choice on an engine without fork audit", false, "recovery", `"x"`, func(fx *runFixture) {
+			fx.Deps.Engines = enginesWithHiddenX(shuttlefake.EngineName)
+			fx.Deps.Roles[websterengine.RoleRecovery] = shuttleengine.ModelChoice{Model: "r", Engine: "x"}
+		}),
+		roleEngineRefusalCase("recovery choice on an engine without fork audit, fresh", true, "recovery", `"x"`, func(fx *runFixture) {
+			fx.Deps.Engines = enginesWithHiddenX(shuttlefake.EngineName)
+			fx.Deps.Roles[websterengine.RoleRecovery] = shuttleengine.ModelChoice{Model: "r", Engine: "x"}
+		}),
+		roleEngineRefusalCase("master choice on an engine the set does not hold", false, "master", `"absent"`, func(fx *runFixture) {
+			fx.Deps.Roles[websterengine.RoleMaster] = shuttleengine.ModelChoice{Model: "m", Engine: "absent"}
+		}),
+		roleEngineRefusalCase("master choice on an engine the set does not hold, fresh", true, "master", `"absent"`, func(fx *runFixture) {
+			fx.Deps.Roles[websterengine.RoleMaster] = shuttleengine.ModelChoice{Model: "m", Engine: "absent"}
+		}),
+		roleEngineRefusalCase("master choice with no engine on a default without fork audit", false, "master", `"x"`, func(fx *runFixture) {
+			fx.Deps.Engines = enginesWithHiddenX("x")
+		}),
+		roleEngineRefusalCase("master choice with no engine on a default without fork audit, fresh", true, "master", `"x"`, func(fx *runFixture) {
+			fx.Deps.Engines = enginesWithHiddenX("x")
+		}),
 		{
 			name:  "another run holds run.lock",
 			cards: 1,
@@ -495,6 +635,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 			name:  "Merriam's start base is unreadable",
 			cards: 1,
 			setup: func(t *testing.T, fx *runFixture) func() {
+				fx.Deps.InstructionFiles = func() ([]string, error) { return []string{"CLAUDE.md"}, nil }
 				if err := os.Mkdir(filepath.Join(fx.Worktree, "CLAUDE.md"), 0o755); err != nil {
 					t.Fatalf("plant a directory in place of CLAUDE.md: %v", err)
 				}
@@ -937,6 +1078,7 @@ func TestRun_AutoRebaseline(t *testing.T) {
 				cards: 1,
 				edit: func(t *testing.T, fx *runFixture) {
 					addCards(t, fx, 2)
+					fx.Deps.InstructionFiles = func() ([]string, error) { return []string{"CLAUDE.md"}, nil }
 					if err := os.Mkdir(filepath.Join(fx.Worktree, "CLAUDE.md"), 0o755); err != nil {
 						t.Fatalf("plant a directory in place of CLAUDE.md: %v", err)
 					}
@@ -1498,6 +1640,16 @@ func TestRun_MasterSpawn(t *testing.T) {
 			// Merriam spawns under the strand role `webster` while the model still resolves from RoleMaster.
 			name:  "the strand role, the model and the skills",
 			cards: 1,
+			prepare: func(t *testing.T, fx *runFixture) {
+				choice := fx.Deps.Roles[websterengine.RoleMaster]
+				choice.Engine = "master-engine"
+				fx.Deps.Roles[websterengine.RoleMaster] = choice
+				fake := &shuttlefake.Engine{}
+				fx.Deps.Engines = shuttleengine.NewEngineSet(shuttlefake.EngineName, map[string]shuttleengine.Engine{
+					shuttlefake.EngineName: fake,
+					"master-engine":        fake,
+				})
+			},
 			check: func(t *testing.T, fx *runFixture) {
 				spec := fx.Starter.startCalls[0]
 				if spec.Role != websterengine.MerriamStrandRole || spec.Role == string(websterengine.RoleMaster) {
@@ -1509,8 +1661,34 @@ func TestRun_MasterSpawn(t *testing.T) {
 				if want := fx.Deps.Roles[websterengine.RoleMaster].Model; spec.Model != want {
 					t.Errorf("Spec.Model = %q; want %q (RoleMaster's resolved model)", spec.Model, want)
 				}
+				if want := fx.Deps.Roles[websterengine.RoleMaster].Engine; spec.Engine != want {
+					t.Errorf("Spec.Engine = %q; want %q (RoleMaster's engine)", spec.Engine, want)
+				}
 				if want := []string{"scribe:prose", "scribe:code-quality", "scribe:testing"}; !slices.Equal(spec.Skills, want) {
 					t.Errorf("Spec.Skills = %v; want %v", spec.Skills, want)
+				}
+				if want := []shuttleengine.Requirement{shuttleengine.RequirementBackgroundWake}; !slices.Equal(spec.Requires, want) {
+					t.Errorf("Spec.Requires = %v; want %v (forks stay implied by ForkSubagents)", spec.Requires, want)
+				}
+			},
+		},
+		{
+			// The default engine is checked only when a role's choice resolves to it.
+			name:  "a default without fork audit does not refuse roles naming an engine that audits",
+			cards: 1,
+			prepare: func(t *testing.T, fx *runFixture) {
+				fake := &shuttlefake.Engine{}
+				fx.Deps.Engines = shuttleengine.NewEngineSet("default", map[string]shuttleengine.Engine{
+					shuttlefake.EngineName: fake,
+					"a":                    fake,
+					"default":              struct{ shuttleengine.Engine }{fake},
+				})
+				fx.Deps.Roles[websterengine.RoleMaster] = shuttleengine.ModelChoice{Model: "m", Engine: "a"}
+				fx.Deps.Roles[websterengine.RoleRecovery] = shuttleengine.ModelChoice{Model: "r", Engine: "a"}
+			},
+			check: func(t *testing.T, fx *runFixture) {
+				if got := fx.Starter.startCalls[0].Engine; got != "a" {
+					t.Errorf("Spec.Engine = %q; want %q", got, "a")
 				}
 			},
 		},
@@ -1548,6 +1726,9 @@ func TestRun_MasterSpawn(t *testing.T) {
 				}
 				if st.MasterSessionID != spawnSession {
 					t.Errorf("State.MasterSessionID = %q; want %q", st.MasterSessionID, spawnSession)
+				}
+				if st.MasterEngine != shuttlefake.EngineName {
+					t.Errorf("State.MasterEngine = %q; want %q, the engine the Master run record names", st.MasterEngine, shuttlefake.EngineName)
 				}
 			},
 		},
