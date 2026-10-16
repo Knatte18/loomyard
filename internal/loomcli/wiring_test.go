@@ -1067,6 +1067,9 @@ func TestWire_LanguageSkills(t *testing.T) {
 			if !slices.Equal(c.language.VerifyTiers, tt.wantTiers) {
 				t.Errorf("language.VerifyTiers = %q; want %q", c.language.VerifyTiers, tt.wantTiers)
 			}
+			if !slices.Equal(c.env.VerifyTiers, tt.wantTiers) {
+				t.Errorf("env.VerifyTiers = %q; want %q", c.env.VerifyTiers, tt.wantTiers)
+			}
 			if !slices.Equal(c.languageSkills, tt.wantSkills) || !slices.Equal(c.runDeps.LanguageSkills, tt.wantSkills) {
 				t.Errorf("languageSkills = %v, runDeps.LanguageSkills = %v; want %v", c.languageSkills, c.runDeps.LanguageSkills, tt.wantSkills)
 			}

@@ -670,6 +670,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		WebsterRecord: func() string {
 			return loomshed.WebsterRecordNote(anchorPath)
 		},
+		VerifyTiers:        language.VerifyTiers,
 		StatusPath:         statusPath,
 		StatusLockPath:     statusLockPath,
 		DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),
