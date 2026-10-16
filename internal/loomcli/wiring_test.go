@@ -1016,19 +1016,29 @@ func TestWire_LanguageSkills(t *testing.T) {
 	tests := []struct {
 		name    string
 		content string
-		// wantErr is the text the wire error must contain; empty means wire succeeds with wantSkills.
+		// wantErr is the text the wire error must contain beside wantKey; empty means wire succeeds with wantSkills and wantTiers.
 		wantErr    string
+		wantKey    string
 		wantSkills []string
+		wantTiers  []string
 	}{
 		{
 			name:       "a listed language reaches the Webster deps and the darn writer after its own",
-			content:    "skills:\n  - scribe:golang-comments\n  - scribe:golang-testing\n",
+			content:    "skills:\n  - scribe:golang-comments\n  - scribe:golang-testing\nverify_tiers:\n  - build first\n  - vet second\n",
 			wantSkills: []string{"scribe:golang-comments", "scribe:golang-testing"},
+			wantTiers:  []string{"build first", "vet second"},
 		},
 		{
-			name:    "an empty entry halts wire naming skills and the way forward",
+			name:    "an empty skills entry halts wire naming skills and the way forward",
 			content: "skills: [\"\"]\n",
 			wantErr: "lyx config language",
+			wantKey: "skills",
+		},
+		{
+			name:    "an empty verify_tiers entry halts wire naming verify_tiers and the way forward",
+			content: "skills:\n  - scribe:golang-comments\nverify_tiers: [\"\"]\n",
+			wantErr: "lyx config language",
+			wantKey: "verify_tiers",
 		},
 	}
 	for _, tt := range tests {
@@ -1045,13 +1055,16 @@ func TestWire_LanguageSkills(t *testing.T) {
 			err := c.wire(loc, loc.AnchorPath())
 
 			if tt.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tt.wantErr) || !strings.Contains(err.Error(), "skills") {
-					t.Fatalf("wire() = %v; want an error naming skills and %q", err, tt.wantErr)
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) || !strings.Contains(err.Error(), tt.wantKey) {
+					t.Fatalf("wire() = %v; want an error naming %s and %q", err, tt.wantKey, tt.wantErr)
 				}
 				return
 			}
 			if err != nil {
 				t.Fatalf("wire() = %v; want nil", err)
+			}
+			if !slices.Equal(c.language.VerifyTiers, tt.wantTiers) {
+				t.Errorf("language.VerifyTiers = %q; want %q", c.language.VerifyTiers, tt.wantTiers)
 			}
 			if !slices.Equal(c.languageSkills, tt.wantSkills) || !slices.Equal(c.runDeps.LanguageSkills, tt.wantSkills) {
 				t.Errorf("languageSkills = %v, runDeps.LanguageSkills = %v; want %v", c.languageSkills, c.runDeps.LanguageSkills, tt.wantSkills)
