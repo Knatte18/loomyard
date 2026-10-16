@@ -41,10 +41,17 @@ type FixResult struct {
 	Skipped bool
 	// NotStarted is true when the fixer's provider never came up, so a producer can tell that from an agent that died mid-run.
 	NotStarted bool
+	// Lenses names the lenses of the fixer fan in fan order; nil for a single fixer.
+	Lenses []string
+	// Forks is the number of self-check forks the audit counted for a done twill fixer, 0 otherwise.
+	Forks int
+	// Warnings holds the audit's warnings for a done twill fixer: a fork count other than the lens count, and a fork that never returned a report.
+	Warnings []string
 }
 
 // fixTable builds the fix half's one-seat table for p under opts: the fixer as the chair, gated by opts.Gate with every entry wrapped by repairReportBeforeGate.
-// The fixer reads the review file, writes the fixer-report and never forks.
+// The fixer reads the review file, writes the fixer-report and forks exactly when the profile names a fixer fan.
+// The seat's model key stays zero in every round; opts.FixKey is read only to name the key in an engine refusal.
 // values carries the marker values the seat's stencil is filled from, and skills the skills the seat loads.
 func (p *Profile) fixTable(opts RunOpts, values map[string]string, skills []string) seatengine.Table {
 	// A fresh copy, so the caller's slice is never mutated;
@@ -62,12 +69,13 @@ func (p *Profile) fixTable(opts RunOpts, values map[string]string, skills []stri
 		Timeout:    opts.Timeout,
 		Seats: []seatengine.Seat{
 			{
-				Stencil:     "burler-template-fixer",
-				ModelChoice: opts.Fix,
-				Inputs:      []string{p.ReviewPath},
-				Outputs:     []string{p.FixerReportPath},
-				Skills:      skills,
-				Values:      values,
+				Stencil:       "burler-template-fixer",
+				ModelChoice:   opts.Fix,
+				Inputs:        []string{p.ReviewPath},
+				Outputs:       []string{p.FixerReportPath},
+				Skills:        skills,
+				Values:        values,
+				ForkSubagents: p.FixFan != "",
 			},
 		},
 	}
@@ -83,7 +91,7 @@ func (p *Profile) fixTable(opts RunOpts, values map[string]string, skills []stri
 // A fixer that is done while the review file changed is ErrReviewChanged.
 // A fixer that could not be stopped is returned wrapped in ErrHalfNotStopped.
 func (e *Engine) Fix(p Profile, opts RunOpts, digest string) (FixResult, error) {
-	if err := p.validateFix(e.geom.WorktreeRoot); err != nil {
+	if err := p.validateFix(e.geom.WorktreeRoot, e.cfg); err != nil {
 		return FixResult{}, err
 	}
 	findings, err := acceptedReview(&p, digest)
@@ -190,7 +198,7 @@ func checkGates(gate shuttleengine.GateSpec) (string, error) {
 // live when the seats engine finds a live fixer run, done when it has no live run and the fixer-report is present, and gone otherwise.
 // A probe error, and an invalid p, are returned as is, a fixer that could not be stopped wrapped in ErrHalfNotStopped.
 func (e *Engine) ProbeFix(p Profile, opts RunOpts) (LiveHalf, error) {
-	if err := p.validateFix(e.geom.WorktreeRoot); err != nil {
+	if err := p.validateFix(e.geom.WorktreeRoot, e.cfg); err != nil {
 		return LiveHalf{}, err
 	}
 	table := p.fixTable(opts, fixSeatValues(&p, fixFilesIn(e.probeDirOf())), e.seatSkills(&p))
@@ -213,7 +221,7 @@ func (e *Engine) ResumeFix(p Profile, opts RunOpts, digest string, live LiveHalf
 	if live.table == nil {
 		return FixResult{}, fmt.Errorf("burler: resume needs the table ProbeFix found; way forward: take the LiveHalf from ProbeFix, or run the row again so it starts the fix fresh")
 	}
-	if err := p.validateFix(e.geom.WorktreeRoot); err != nil {
+	if err := p.validateFix(e.geom.WorktreeRoot, e.cfg); err != nil {
 		return FixResult{}, err
 	}
 
@@ -236,17 +244,24 @@ func (e *Engine) ResumeFix(p Profile, opts RunOpts, digest string, live LiveHalf
 
 // concludeFix turns the seats engine's answer, the fixer's result and the error it ran with, into the fix half's one result.
 // Stops, start errors and a died or timed-out fixer are mapped as concludeReview maps them.
+// A start error that refuses a twill fixer's missing fork support is returned as twillEngineRefusal words it.
+// A done fixer of a twill round is audited first, and a fork violation is that error whether or not its gate passed.
 // A done fixer whose gate failed returns its Gate with a nil error.
 // A done fixer with a passing or absent gate is accepted only when the review file still hashes to digest, and is ErrReviewChanged otherwise.
 func (e *Engine) concludeFix(p *Profile, opts RunOpts, digest string, seats seatengine.Result, runErr error) (FixResult, error) {
 	fixer := seats.Chair
 	base := FixResult{Outcome: fixer.Outcome, FixerReportPath: p.FixerReportPath, Fix: halfOf(fixer, "", "")}
+	if p.FixFan != "" {
+		base.Lenses = lensNames(p.fixLenses)
+	}
 	switch {
 	case runErr == nil:
 	case errors.Is(runErr, seatengine.ErrSeatNotStopped):
 		return base, fmt.Errorf("%w: %w", ErrHalfNotStopped, runErr)
 	case errors.Is(runErr, shuttleengine.ErrNotStarted):
 		return FixResult{Outcome: shuttleengine.OutcomeDied, FixerReportPath: p.FixerReportPath, Fix: Half{StartError: runErr.Error()}, NotStarted: true}, nil
+	case p.FixFan != "" && errors.Is(runErr, shuttleengine.ErrRequirementsUnmet):
+		return FixResult{}, twillEngineRefusal(opts, runErr)
 	default:
 		return FixResult{}, fmt.Errorf("burler: shuttle run: %w", runErr)
 	}
@@ -257,6 +272,16 @@ func (e *Engine) concludeFix(p *Profile, opts RunOpts, digest string, seats seat
 		return base, nil
 	}
 	base.Gate = fixer.Gate
+	if p.FixFan != "" {
+		warnings, forks, err := auditFixRound(fixer.ForkAudit, len(p.fixLenses))
+		for _, warning := range warnings {
+			logger.Warn("burler: "+warning, "round", opts.Round)
+		}
+		base.Forks, base.Warnings = forks, warnings
+		if err != nil {
+			return base, err
+		}
+	}
 	if base.Gate != nil && !base.Gate.Passed {
 		return base, nil
 	}
@@ -264,4 +289,40 @@ func (e *Engine) concludeFix(p *Profile, opts RunOpts, digest string, seats seat
 		return base, err
 	}
 	return base, nil
+}
+
+// lensNames returns the names of lenses in order.
+func lensNames(lenses []Lens) []string {
+	names := make([]string, len(lenses))
+	for i, lens := range lenses {
+		names[i] = lens.Name
+	}
+	return names
+}
+
+// engineRefusalError is a refusal that reads as its message and matches shuttleengine.ErrRequirementsUnmet.
+type engineRefusalError struct{ message string }
+
+func (e *engineRefusalError) Error() string { return e.message }
+
+func (e *engineRefusalError) Unwrap() error { return shuttleengine.ErrRequirementsUnmet }
+
+// twillEngineRefusal words the refusal of a twill fixer whose engine cannot run fork subagents, naming the model key and the fan key from opts.
+// err is the start error wrapping shuttleengine.ErrRequirementsUnmet;
+// its text is cut at its last way-forward clause, so the message carries exactly one, the one for the caller that told the keys.
+// A fixer told a fixer model key (a shed row) is moved to an engine with forks and resumed;
+// one told none (lyx burler run) takes the default engine of shuttle.yaml or drops the fan from its profile.
+func twillEngineRefusal(opts RunOpts, err error) error {
+	const wayForwardMarker = "; way forward: "
+	refusal := err.Error()
+	if cut := strings.LastIndex(refusal, wayForwardMarker); cut >= 0 {
+		refusal = refusal[:cut]
+	}
+	modelKey := "engine: in shuttle.yaml"
+	step := fmt.Sprintf("set engine: in shuttle.yaml to an engine with forks, or remove %s from the profile, and re-run", opts.FixFanKey)
+	if opts.FixKey.Key != "" {
+		modelKey = fmt.Sprintf("%s in %s.yaml", opts.FixKey.Key, opts.FixKey.Module)
+		step = fmt.Sprintf("move %s to an engine with forks, then resume; setting the %s entry to \"\" reaches only rounds whose reviewer is spawned after the edit", modelKey, opts.FixFanKey)
+	}
+	return &engineRefusalError{message: fmt.Sprintf("burler: the twill fixer's fan from %s needs fork subagents, which the engine of %s cannot run: %s%s%s", opts.FixFanKey, modelKey, refusal, wayForwardMarker, step)}
 }

@@ -1,4 +1,4 @@
-// prompt.go composes a half's prompt: it reads the half's instruction stencils from stencilsDir at call time via stencilstore.Read — the explore, review and review-format stencils for the review half, the fix step and review-format stencils for the fix half, the focus directive block when the round carries one, and the fork-reading and the solo or fanned cluster-rules parts of the review half — each with only its own marker subset, and returns the seat's stencil marker values plus the rendered (path, content) instruction pairs the half (Engine.Review or Engine.Fix) writes to disk.
+// prompt.go composes a half's prompt: it reads the half's instruction stencils from stencilsDir at call time via stencilstore.Read — the explore, review and review-format stencils for the review half, the fix step, review-format and, for a fixer fan, self-check stencils for the fix half, the focus directive block when the round carries one, and the fork-reading and the solo or fanned cluster-rules parts of the review half — each with only its own marker subset, and returns the seat's stencil marker values plus the rendered (path, content) instruction pairs the half (Engine.Review or Engine.Fix) writes to disk.
 // The seat stencil itself is filled by the seats engine from those values.
 // composeReviewPrompt is called only after (*Profile).validateReview has run, and composeFixPrompt after (*Profile).validateFix, so every path field they read is already a cleaned absolute path and p.clusterLenses (when ClusterFan was set) is already resolved.
 // They do no filesystem access beyond the directory check formatFileSet already performs on each Target/Fasit path and the stencilstore.Read calls.
@@ -167,13 +167,18 @@ func composeFixPrompt(stencilsDir string, p *Profile, frictionDirective, work st
 		return halfPrompt{}, err
 	}
 	friction.WarnIfMarkerAbsent(fixTemplate, "burler-step-fix", frictionDirective)
+	selfCheck, err := selfCheckBlock(stencilsDir, p)
+	if err != nil {
+		return halfPrompt{}, err
+	}
 	fix, err := stencil.FillOptional(fixTemplate, map[string]string{
 		friction.MarkerName: frictionDirective,
 		"work":              work,
 		"fix_scope_rules":   fixScopeRules(p),
 		"review_path":       p.ReviewPath,
 		"fixer_report_path": p.FixerReportPath,
-	}, []string{friction.MarkerName})
+		"self_check":        selfCheck,
+	}, []string{friction.MarkerName, "self_check"})
 	if err != nil {
 		return halfPrompt{}, fmt.Errorf("burler: compose prompt: %w", err)
 	}
@@ -381,6 +386,29 @@ func forkReadingBlock(stencilsDir string, p *Profile) (string, error) {
 		return "", fmt.Errorf("burler: compose prompt: %w", err)
 	}
 	return "\n\n" + strings.TrimRight(string(reading), "\n"), nil
+}
+
+// selfCheckBlock renders the fix self-check stencil for the fix step's optional self_check marker.
+// A profile with no FixFan returns "" without reading anything.
+// Otherwise the part is filled with the path of the deployed fix-check rubric and p's fixer lenses;
+// it ends in a blank line, which the fix step relies on to set off the heading that follows its marker.
+// p.fixLenses is assumed already resolved by (*Profile).validateFix.
+func selfCheckBlock(stencilsDir string, p *Profile) (string, error) {
+	if p.FixFan == "" {
+		return "", nil
+	}
+	template, err := stencilstore.Read(stencilsDir, "burler-fix-self-check")
+	if err != nil {
+		return "", err
+	}
+	block, err := stencil.Fill(template, map[string]string{
+		"rubric_path": stencilstore.Path(stencilsDir, "burler-fix-check-rubric"),
+		"lens_list":   lensList(p.fixLenses),
+	})
+	if err != nil {
+		return "", fmt.Errorf("burler: compose prompt: %w", err)
+	}
+	return string(block), nil
 }
 
 // lensList renders lenses as one "- <name>: <text>" bullet per lens in fan order, each bullet ending in a newline.

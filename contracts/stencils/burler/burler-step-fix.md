@@ -4,6 +4,8 @@
      (prompt.go) via internal/stencil, then read by the fixer only when the fixer stencil
      (burler-template-fixer.md) directs it here.
      The friction_directive marker is optional and renders as nothing when the round has no note.
+     The self_check marker is optional too, and renders as nothing when the round names no fixer fan;
+     it sits directly before the Fixer-report heading with no line of its own, so an empty value adds no byte.
      Every other marker below is a top-level {{.X}} substitution;
      stencil.Fill requires them all non-empty and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go). -->
 
@@ -45,7 +47,7 @@ A fix adds a test only when the finding is a coverage gap; for any other finding
 
 {{.fix_scope_rules}}
 
-## Fixer-report rule (write this to `{{.fixer_report_path}}`)
+{{.self_check}}## Fixer-report rule (write this to `{{.fixer_report_path}}`)
 
 Write `{{.fixer_report_path}}` unconditionally, every round — even when nothing needed fixing, in which case state "nothing fixed".
 Include what you changed, a `Disputed` section (empty if you disputed nothing) and a deferred-with-reason section (empty if nothing was deferred).

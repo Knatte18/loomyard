@@ -175,6 +175,16 @@ var BurlerClusterSolo []byte
 //go:embed burler/burler-cluster-fan.md
 var BurlerClusterFan []byte
 
+// BurlerFixSelfCheck is burler's shipped-default fix self-check part: the procedure by which a twill fixer has read-only forks check its own change set, filled with the deployed rubric's path and the fixer fan's lens list.
+//
+//go:embed burler/burler-fix-self-check.md
+var BurlerFixSelfCheck []byte
+
+// BurlerFixCheckRubric is burler's shipped-default fix-check rubric: the severity vocabulary and finding rules a twill fixer's self-check forks work under.
+//
+//go:embed burler/burler-fix-check-rubric.md
+var BurlerFixCheckRubric []byte
+
 // BouncerTemplateSeed is the Bouncer's shipped-default seed prompt: the focus-setting pass that
 // runs before any round has been reviewed.
 //
@@ -569,6 +579,8 @@ var entries = []registryEntry{
 	{"burler-fork-reading", &BurlerForkReading},
 	{"burler-cluster-solo", &BurlerClusterSolo},
 	{"burler-cluster-fan", &BurlerClusterFan},
+	{"burler-fix-self-check", &BurlerFixSelfCheck},
+	{"burler-fix-check-rubric", &BurlerFixCheckRubric},
 	{"bouncer-template-seed", &BouncerTemplateSeed},
 	{"bouncer-template-judge", &BouncerTemplateJudge},
 	{"bouncer-template-escalation", &BouncerTemplateEscalation},

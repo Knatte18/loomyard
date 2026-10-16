@@ -54,10 +54,11 @@ func reviewStepMarkerValues() map[string]string {
 	}
 }
 
-// fixStepMarkerValues returns a values map with every one of the fix step's top-level markers set to a non-empty placeholder, friction_directive, its one optional marker, included.
+// fixStepMarkerValues returns a values map with every one of the fix step's top-level markers set to a non-empty placeholder, friction_directive and self_check, its two optional markers, included.
 func fixStepMarkerValues() map[string]string {
 	return map[string]string{
 		"friction_directive": "## Friction note placeholder",
+		"self_check":         "## Self-check placeholder\n\n",
 		"work":               "work placeholder",
 		"fix_scope_rules":    "fix-scope placeholder",
 		"review_path":        "/tmp/review.md",
@@ -113,7 +114,7 @@ func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 			name:            "fix step",
 			template:        stencils.BurlerStepFix,
 			values:          fixStepMarkerValues(),
-			optional:        []string{"friction_directive"},
+			optional:        []string{"friction_directive", "self_check"},
 			requiredMarkers: []string{"work", "fix_scope_rules", "review_path", "fixer_report_path"},
 		},
 		{
@@ -163,7 +164,7 @@ func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 }
 
 // TestTemplate_OptionalDirectives asserts pattern_directive, focus_directive and fork_reading each behave as an optional marker on the explore step: an empty value renders cleanly with no leftover `{{`, no orphan heading and, for pattern_directive, no stray blank-line block where the directive would have sat, and a non-empty value places the block where its row says: the two directives ahead of the first work instruction ("## What to review (the target)"), the fork reading after the tool-use rules at the end of the stencil.
-// The fix step's friction_directive renders an empty value cleanly too.
+// The fix step's friction_directive and self_check each render an empty value cleanly too.
 func TestTemplate_OptionalDirectives(t *testing.T) {
 	t.Parallel()
 
@@ -222,16 +223,18 @@ func TestTemplate_OptionalDirectives(t *testing.T) {
 		})
 	}
 
-	t.Run("fix step renders an empty friction directive cleanly", func(t *testing.T) {
+	t.Run("fix step renders an empty optional marker cleanly", func(t *testing.T) {
 		t.Parallel()
-		values := fixStepMarkerValues()
-		values["friction_directive"] = ""
-		got, err := stencil.FillOptional(stencils.BurlerStepFix, values, []string{"friction_directive"})
-		if err != nil {
-			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
-		}
-		if strings.Contains(string(got), "{{") {
-			t.Errorf("rendered output contains leftover {{: %q", got)
+		for _, marker := range []string{"friction_directive", "self_check"} {
+			values := fixStepMarkerValues()
+			values[marker] = ""
+			got, err := stencil.FillOptional(stencils.BurlerStepFix, values, []string{"friction_directive", "self_check"})
+			if err != nil {
+				t.Fatalf("stencil.FillOptional() with %s empty = %v; want nil", marker, err)
+			}
+			if strings.Contains(string(got), "{{") {
+				t.Errorf("rendered output with %s empty contains leftover {{: %q", marker, got)
+			}
 		}
 	})
 
