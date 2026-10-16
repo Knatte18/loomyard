@@ -93,6 +93,7 @@ func renderRole(dir, path, rulesPath string) error {
 }
 
 func TestRenderRoleFile_RefusalsWriteNoFile(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		// override replaces the shipped role stencil when non-empty.
