@@ -721,7 +721,11 @@ func RenderProgress(batches []batcher.Batch, st *State) string {
 		if !ok || bs == nil || !bs.Terminal {
 			continue
 		}
-		lines = append(lines, fmt.Sprintf("%02d-%s: %s", number, slug, bs.Status))
+		line := fmt.Sprintf("%02d-%s: %s", number, slug, bs.Status)
+		if bs.Digest != nil && len(bs.Digest.Departures) > 0 {
+			line += fmt.Sprintf(" (pattern departures: %s)", strings.Join(bs.Digest.Departures, "; "))
+		}
+		lines = append(lines, line)
 	}
 	if len(lines) == 0 {
 		return "none"

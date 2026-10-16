@@ -98,10 +98,12 @@ and you read ONLY these fields:
 - `status`
 - `head_sha`
 - `deviations`
+- `departures`
 - `dead_reason`
 - `elapsed_s`
 
 `deviations` is the list of files record-batch's glyph scope guard found changed outside the batch's own targets, ALWAYS informational and never a reason a batch is `stuck` on its own.
+`departures` lists the batch's `Pattern-Departure:` commit trailers, informational like `deviations`.
 You never read raw fork output beyond its own turn, and you never open a file to double-check the digest — this is the only implementer output you ever see, by design.
 
 ## The failure ladder
@@ -249,7 +251,7 @@ and a single line naming the batch and the blocker for `stuck`. `batches_done` c
 
 `{{.summary_path}}` is a prose narrative built strictly from the minimal reports and digests you actually read — never a fork's own success narrative (forks never write prose narratives;
 their whole report is `status`/`head_sha`);
-first line `# <title>`, then a narrative of what was actually built, naming each batch's deviations from the digest's list, the scope guard's result — required whenever `outcome: done`.
+first line `# <title>`, then a narrative of what was actually built, naming each batch's deviations and departures from the digest's lists, the scope guard's result — required whenever `outcome: done`.
 
 ## Tuning knobs
 

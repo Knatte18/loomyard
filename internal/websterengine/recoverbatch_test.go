@@ -917,6 +917,22 @@ func TestRecoverBatch_TerminalRunsTheSamePostBatchChecksAsRecordBatch(t *testing
 	if !again.Spawned {
 		t.Errorf("third call = %+v; want Spawned=true after a failed recovery", again)
 	}
+
+	// The fresh strand lands: the card declares no unlanded work any more, and the fork's commit and the recovery's commit both carry trailers.
+	landed := planparser.Card{Number: 1, Slug: "json-flag", Title: "json-flag", Intent: "add the --json flag"}
+	fx.Deps.Plan.Cards = []planparser.Card{landed}
+	fx.Deps.Batches[0].Cards = []planparser.Card{landed}
+	fx.Git.commitWith("fork work", "fork departure")
+	fx.Git.commitWith("recovery work", "recovery departure")
+	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+fx.Git.head+"\n")
+	recovered, err := driveRecoverBatch(fx.Deps, 1, 2*time.Second, clk)
+	if err != nil {
+		t.Fatalf("RecoverBatch() fourth call error = %v; want nil", err)
+	}
+	wantDepartures := []string{"fork work: fork departure", "recovery work: recovery departure"}
+	if recovered.Digest == nil || !slices.Equal(recovered.Digest.Departures, wantDepartures) {
+		t.Errorf("recovered Digest = %+v; want Departures %v from the whole bracket", recovered.Digest, wantDepartures)
+	}
 }
 
 // TestRecoverBatch_AmendedCards walks one batch's amendment through its recoveries.

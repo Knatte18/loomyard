@@ -11,6 +11,7 @@
 This is the immediately preceding batch's own persisted digest, rendered as a fixed one-line summary by `begin-batch` — the literal string `none (first batch)` when you are the first executed batch's fork.
 It is Go-rendered from the persisted record, never something you need to go derive yourself.
 The line's `scope-guard deviations` are the files record-batch's scope guard found changed outside that batch's targets.
+The line's `pattern departures` are the preceding batch's `Pattern-Departure:` trailers.
 
 ## Where and how you run commands
 

@@ -706,7 +706,13 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 		return warnings, bfe
 	}
 
+	departures, err := batchDepartures(deps.Geom, bs.StartSHA, head)
+	if err != nil {
+		return warnings, err
+	}
+
 	digest.Deviations = deviations
+	digest.Departures = departures
 	bs.Digest = digest
 	bs.Terminal = true
 	bs.Status = digest.Status

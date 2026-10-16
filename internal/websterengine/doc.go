@@ -64,6 +64,9 @@
 // The digest's `deviations` list is the glyph scope guard's file list over the batch delta, the files changed outside the batch's own targets.
 // Record-batch and recover-batch fill it.
 // The list is ALWAYS informational, never a failure condition.
+// The digest's `departures` list holds one `<subject>: <value>` line per `Pattern-Departure:` trailer on the batch's non-merge commits from the batch's start head to its recorded head, oldest first.
+// Record-batch and recover-batch fill it, a recovery over the whole bracket, and a parent merge-in's commits are never counted.
+// It is informational like `deviations`, and the prior-batch line and the resume trail carry it to the next fork and a resumed Master.
 // A fork returns FAILED on a failed card gate, card `**Verify:**` or batch gate, never on deviation alone and never on a slot-busy exit.
 // Plan-predicted file impact is frequently incomplete, so treating deviation as failure would make the system impractically brittle.
 // Within one fork's batch, each card lands as its own commit (BatchState.CardSHAs records the ordered per-card SHA trail — one element under the identity batcher, more once a grouping batchifier ships), and each card's own optional `verify:` runs and must pass before that card's commit.

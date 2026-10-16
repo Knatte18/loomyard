@@ -449,7 +449,7 @@ func TestMasterTemplate_QuotesBulletLists(t *testing.T) {
 		heading string
 		want    []string
 	}{
-		{"digest fields", digestSectionHeading, []string{"batch", "status", "head_sha", "deviations", "dead_reason", "elapsed_s"}},
+		{"digest fields", digestSectionHeading, []string{"batch", "status", "head_sha", "deviations", "departures", "dead_reason", "elapsed_s"}},
 		{"outcome schema keys", outcomeKeysHeadingSub, []string{"outcome", "stuck_reason", "batches_done"}},
 	}
 	for _, tc := range cases {
@@ -1238,6 +1238,10 @@ func TestRenderBatchLists(t *testing.T) {
 			1: nil,
 			2: {Slug: "webster-foundation", Terminal: true, Status: "done"},
 		}}), "02-webster-foundation: done"},
+		{"progress appends a done batch's pattern departures", websterengine.RenderProgress(inOrder, &websterengine.State{Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "seam-extensions", Terminal: true, Status: "done", Digest: &websterengine.Digest{Departures: []string{"1: seam: kept the old name", "2: seam: skipped a scan"}}},
+			2: {Slug: "webster-foundation", Terminal: true, Status: "done", Digest: &websterengine.Digest{}},
+		}}), "01-seam-extensions: done (pattern departures: 1: seam: kept the old name; 2: seam: skipped a scan)\n02-webster-foundation: done"},
 		{"remaining names every batch in execution order for a nil state", websterengine.RenderRemaining(reordered, nil), "03-third, 01-first, 02-second"},
 		{"remaining drops terminal batches", websterengine.RenderRemaining(reordered, partial), "01-first, 02-second"},
 		{"remaining is none once every batch is terminal", websterengine.RenderRemaining(reordered, allDone), "none"},

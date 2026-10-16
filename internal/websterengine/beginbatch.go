@@ -363,6 +363,9 @@ func digestSummaryLine(d *Digest) string {
 	if len(d.Deviations) > 0 {
 		line += fmt.Sprintf(" scope-guard deviations=%s", strings.Join(d.Deviations, ","))
 	}
+	if len(d.Departures) > 0 {
+		line += fmt.Sprintf(" pattern departures=%s", strings.Join(d.Departures, "; "))
+	}
 	return line
 }
 
