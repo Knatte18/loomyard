@@ -83,12 +83,11 @@ func newSmokeHub(t *testing.T) *smokeHub {
 	return smoke
 }
 
-// addStrand runs `lyx reed add --anchor own-window --cmd <command> --role <role>` in the hub and returns the strand's name and guid.
-// The strand gets its own window because the default anchor splits it into the selvage shell window and draws its pane too short (issue #673).
+// addStrand runs `lyx reed add --cmd <command> --role <role>` in the hub and returns the strand's name and guid.
 func (s *smokeHub) addStrand(t *testing.T, role, command string) (name, guid string) {
 	t.Helper()
 	var out bytes.Buffer
-	if code := reedcli.RunCLIIn(s.cwd, &out, []string{"add", "--anchor", "own-window", "--cmd", command, "--role", role}); code != 0 {
+	if code := reedcli.RunCLIIn(s.cwd, &out, []string{"add", "--cmd", command, "--role", role}); code != 0 {
 		t.Fatalf("lyx reed add --cmd %q = %d; output: %s", command, code, out.String())
 	}
 	var added struct {
