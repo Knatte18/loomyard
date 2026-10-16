@@ -62,14 +62,14 @@ func TestPaneBinPrelude_ComposesPrependThenExport(t *testing.T) {
 			}
 			// The directory is a prefix of exe, so the first occurrence of dir inside got may be
 			// the one inside the export statement rather than the prepend. Locate the export
-			// statement itself via lyxBinEnvKey, which is unique to it, and compare positions
+			// statement itself via agentname.LyxBinEnv, which is unique to it, and compare positions
 			// against that.
-			exportStmtIdx := strings.Index(got, lyxBinEnvKey)
+			exportStmtIdx := strings.Index(got, agentname.LyxBinEnv)
 			if exportStmtIdx < 0 {
-				t.Fatalf("paneBinPrelude(%s, %q) = %q, want it to carry the %s export", d.name, exe, got, lyxBinEnvKey)
+				t.Fatalf("paneBinPrelude(%s, %q) = %q, want it to carry the %s export", d.name, exe, got, agentname.LyxBinEnv)
 			}
 			if prependIdx >= exportStmtIdx {
-				t.Errorf("paneBinPrelude(%s, %q) = %q, want the PATH prepend to appear before the %s export", d.name, exe, got, lyxBinEnvKey)
+				t.Errorf("paneBinPrelude(%s, %q) = %q, want the PATH prepend to appear before the %s export", d.name, exe, got, agentname.LyxBinEnv)
 			}
 
 			wantJoiner := "; "
@@ -77,7 +77,7 @@ func TestPaneBinPrelude_ComposesPrependThenExport(t *testing.T) {
 				t.Errorf("paneBinPrelude(%s, %q) = %q, want the two statements joined by %q", d.name, exe, got, wantJoiner)
 			}
 			wantPrepend := d.sh.PrependPathEntry(dir)
-			wantExport := d.sh.ExportEnv(lyxBinEnvKey, exe)
+			wantExport := d.sh.ExportEnv(agentname.LyxBinEnv, exe)
 			want := wantPrepend + wantJoiner + wantExport
 			if got != want {
 				t.Errorf("paneBinPrelude(%s, %q) = %q, want %q", d.name, exe, got, want)
@@ -187,8 +187,8 @@ func TestComposePaneLaunchLine(t *testing.T) {
 					t.Errorf("composePaneLaunchLine(...) = %q, want no trailing separator", got)
 				}
 				if tt.executable != nil {
-					if strings.Contains(got, lyxBinEnvKey) {
-						t.Errorf("composePaneLaunchLine(...) = %q, want no %s prelude", got, lyxBinEnvKey)
+					if strings.Contains(got, agentname.LyxBinEnv) {
+						t.Errorf("composePaneLaunchLine(...) = %q, want no %s prelude", got, agentname.LyxBinEnv)
 					}
 					if !strings.Contains(buf.String(), guid) {
 						t.Errorf("captured log output = %q, want it to name the strand %q", buf.String(), guid)
