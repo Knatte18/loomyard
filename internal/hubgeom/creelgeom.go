@@ -23,11 +23,12 @@ func CreelGeometry(hubPath, tempRoot string) (creelengine.Geometry, error) {
 	}
 	stateDir := filepath.Join(fabricengine.HubScratchDir(hubPath), lyxdirs.CreelDirName)
 	return creelengine.Geometry{
-		HubPath:    hubPath,
-		Shortname:  shortname,
-		StateDir:   stateDir,
-		JournalDir: filepath.Join(stateDir, "journal"),
-		LockPath:   filepath.Join(stateDir, "daemon.lock"),
-		SocketPath: filepath.Join(tempRoot, creelengine.SocketName(shortname, hubPath)),
+		HubPath:       hubPath,
+		Shortname:     shortname,
+		StateDir:      stateDir,
+		JournalDir:    filepath.Join(stateDir, "journal"),
+		LockPath:      filepath.Join(stateDir, "daemon.lock"),
+		SocketPath:    filepath.Join(tempRoot, creelengine.SocketName(shortname, hubPath)),
+		DaemonLogPath: filepath.Join(stateDir, "daemon.log"),
 	}, nil
 }

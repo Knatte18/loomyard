@@ -30,6 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/testkit/creelfake"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 var epoch = time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
@@ -168,7 +169,7 @@ func newRig(t *testing.T) *rig {
 		delivery: creelfake.NewDelivery(), clock: creelfake.NewClock(epoch), clientClock: creelfake.NewClock(epoch),
 	}
 	previous := seam
-	seam = clientSeam{clock: r.clientClock, spawn: func(string) error { return nil }}
+	seam = clientSeam{clock: r.clientClock, spawn: func(string, string) (int, error) { return 0, nil }}
 	t.Cleanup(func() { seam = previous })
 	return r
 }
@@ -554,6 +555,51 @@ func TestCreelCLI(t *testing.T) {
 				t.Fatalf("creel read after the sweeps = (%d, %q); want the returned message", read.code, read.raw)
 			}
 			time.Sleep(10 * time.Millisecond)
+		}
+	})
+
+	t.Run("the daemon log is appended to, truncated over its cap, and a log that cannot be opened is a nil file with a Warn", func(t *testing.T) {
+		captured := logcapture.Capture(t)
+		dir := t.TempDir()
+
+		small := filepath.Join(dir, "state", "daemon.log")
+		if err := os.MkdirAll(filepath.Dir(small), 0o755); err != nil {
+			t.Fatalf("MkdirAll() = %v", err)
+		}
+		if err := os.WriteFile(small, []byte("earlier line\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile() = %v", err)
+		}
+		file, err := openDaemonLog(small)
+		if err != nil || file == nil {
+			t.Fatalf("openDaemonLog(small) = (%v, %v); want a file", file, err)
+		}
+		_, _ = file.WriteString("new line\n")
+		_ = file.Close()
+		if got, _ := os.ReadFile(small); string(got) != "earlier line\nnew line\n" {
+			t.Errorf("small log = %q; want the new line appended", got)
+		}
+
+		big := filepath.Join(dir, "big.log")
+		if err := os.WriteFile(big, bytes.Repeat([]byte("x"), daemonLogCap+1), 0o644); err != nil {
+			t.Fatalf("WriteFile() = %v", err)
+		}
+		file, err = openDaemonLog(big)
+		if err != nil || file == nil {
+			t.Fatalf("openDaemonLog(big) = (%v, %v); want a file", file, err)
+		}
+		_, _ = file.WriteString("fresh\n")
+		_ = file.Close()
+		if got, _ := os.ReadFile(big); string(got) != "fresh\n" {
+			t.Errorf("big log = %d bytes; want it truncated before the append", len(got))
+		}
+
+		blocked := filepath.Join(small, "inner", "daemon.log")
+		file, err = openDaemonLog(blocked)
+		if file != nil || err == nil {
+			t.Errorf("openDaemonLog(parent is a file) = (%v, %v); want a nil file and an error", file, err)
+		}
+		if !strings.Contains(captured.String(), "the daemon log cannot be opened") {
+			t.Errorf("logger output = %q; want a Warn naming the daemon log", captured.String())
 		}
 	})
 }

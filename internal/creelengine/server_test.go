@@ -56,7 +56,7 @@ func newRig(t *testing.T, asStrand bool) *rig {
 		geom: creelengine.Geometry{
 			HubPath: filepath.Join(dir, "hub"), Shortname: "ly", StateDir: state,
 			JournalDir: filepath.Join(state, "journal"), LockPath: filepath.Join(state, "daemon.lock"),
-			SocketPath: filepath.Join(dir, "s.sock"),
+			SocketPath: filepath.Join(dir, "s.sock"), DaemonLogPath: filepath.Join(state, "daemon.log"),
 		},
 		del:       creelfake.NewDelivery(),
 		clock:     creelfake.NewClock(epoch),
@@ -140,8 +140,13 @@ func (r *rig) spawn() error {
 	}
 }
 
+// client returns a client over the rig whose spawn, when set, answers pid 0.
 func (r *rig) client(claim creelengine.Claim, spawn func() error, clock creelengine.Clock) *creelengine.Client {
-	return creelengine.NewClient(r.geom, claim, spawn, clock)
+	var adapted func() (int, error)
+	if spawn != nil {
+		adapted = func() (int, error) { return 0, spawn() }
+	}
+	return creelengine.NewClient(r.geom, claim, adapted, clock)
 }
 
 func externalClaim() creelengine.Claim {
@@ -578,22 +583,114 @@ func TestDaemon_Lifecycle(t *testing.T) {
 				t.Errorf("%d daemons listened; want one", got)
 			}
 		}},
-		{"ClientWithNoListenerSpawnsOnceAndGivesUpNamingTheSocket", func(t *testing.T, r *rig) {
-			clock := creelfake.NewClock(epoch)
-			done := make(chan struct{})
-			go clock.AutoAdvance(done)
-			defer close(done)
-			var spawns int
-			c := r.client(externalClaim(), func() error { spawns++; return nil }, clock)
-			_, err := c.Call(creelengine.Request{Verb: creelengine.VerbLog}, 0, nil)
-			if err == nil || !strings.Contains(err.Error(), r.geom.SocketPath) {
-				t.Errorf("Call = %v; want an error naming the socket", err)
+		{"ClientWithNoListenerSpawnsOnceAndGivesUpNamingTheSocketAndQuotingTheDaemonLog", func(t *testing.T, _ *rig) {
+			const header4242 = "creel daemon start pid=4242 at=2026-10-01T12:00:00Z"
+			logTests := []struct {
+				name    string
+				content string
+				// absent leaves the file uncreated.
+				absent bool
+				mode   os.FileMode
+				// skipRoot skips the row on Windows and as root, where the mode denies nothing.
+				skipRoot bool
+				want     []string
+				notWant  []string
+			}{
+				{
+					name: "OwnLinesAndAPanicLineAfterItsHeaderAreQuoted",
+					content: "creel daemon start pid=77 at=2026-10-01T11:00:00Z\npid=77 seventy-seven warning\nstray before the header\n" +
+						header4242 + "\npid=4242 own warning\npanic: boom\n",
+					mode:    0o644,
+					want:    []string{"pid=4242 own warning", "panic: boom", header4242},
+					notWant: []string{"pid=77", "stray before the header", "creel daemon start pid=77"},
+				},
+				{
+					name:    "AnotherHeaderAfterItQuotesOnlyTaggedLinesAndSaysSo",
+					content: header4242 + "\npid=4242 own warning\nan unattributed line\ncreel daemon start pid=88 at=2026-10-01T12:01:00Z\npid=88 other\n",
+					mode:    0o644,
+					want:    []string{"pid=4242 own warning", "cannot attribute"},
+					notWant: []string{"an unattributed line", "pid=88"},
+				},
+				{
+					name:    "TaggedLinesWithNoHeaderSurviveATruncation",
+					content: "pid=4242 late warning\n",
+					mode:    0o644,
+					want:    []string{"pid=4242 late warning"},
+				},
+				{
+					name:    "OnlyAnotherPidsLinesSayNoLineFromThatStart",
+					content: "creel daemon start pid=77 at=2026-10-01T11:00:00Z\npid=77 seventy-seven warning\n",
+					mode:    0o644,
+					want:    []string{"holds no line from that start"},
+					notWant: []string{"seventy-seven"},
+				},
+				{
+					name:     "ALogThatCannotBeAppendedToCouldNotBeOpened",
+					content:  "pid=4242 hidden\n",
+					mode:     0o444,
+					skipRoot: true,
+					want:     []string{"could not be opened"},
+					notWant:  []string{"hidden"},
+				},
+				{
+					name:     "ALogThatCannotBeReadCouldNotBeOpened",
+					content:  "pid=4242 hidden\n",
+					mode:     0o200,
+					skipRoot: true,
+					want:     []string{"could not be opened"},
+					notWant:  []string{"hidden"},
+				},
+				{
+					name:   "AnAbsentLogCouldNotBeOpened",
+					absent: true,
+					want:   []string{"could not be opened"},
+				},
 			}
-			if spawns != 1 {
-				t.Errorf("spawn called %d times; want once", spawns)
-			}
-			if waits := clock.Waits(); len(waits) != creelengine.ConnectAttempts-1 || waits[0] != time.Second {
-				t.Errorf("sleeps = %v; want %d, from one second", waits, creelengine.ConnectAttempts-1)
+			for _, tt := range logTests {
+				t.Run(tt.name, func(t *testing.T) {
+					t.Parallel()
+					if tt.skipRoot && (runtime.GOOS == "windows" || os.Geteuid() == 0) {
+						t.Skip("the file mode denies nothing on Windows or to root")
+					}
+					r := newRig(t, false)
+					if !tt.absent {
+						if err := os.MkdirAll(r.geom.StateDir, 0o755); err != nil {
+							t.Fatalf("mkdir: %v", err)
+						}
+						if err := os.WriteFile(r.geom.DaemonLogPath, []byte(tt.content), 0o644); err != nil {
+							t.Fatalf("write the daemon log: %v", err)
+						}
+						if err := os.Chmod(r.geom.DaemonLogPath, tt.mode); err != nil {
+							t.Fatalf("chmod the daemon log: %v", err)
+						}
+					}
+					clock := creelfake.NewClock(epoch)
+					done := make(chan struct{})
+					go clock.AutoAdvance(done)
+					defer close(done)
+					var spawns int
+					c := creelengine.NewClient(r.geom, externalClaim(), func() (int, error) { spawns++; return 4242, nil }, clock)
+					_, err := c.Call(creelengine.Request{Verb: creelengine.VerbLog}, 0, nil)
+					if err == nil || !strings.Contains(err.Error(), r.geom.SocketPath) || !strings.Contains(err.Error(), r.geom.DaemonLogPath) {
+						t.Fatalf("Call = %v; want an error naming the socket and the daemon log", err)
+					}
+					for _, want := range tt.want {
+						if !strings.Contains(err.Error(), want) {
+							t.Errorf("Call error = %q; want it to contain %q", err, want)
+						}
+					}
+					for _, notWant := range tt.notWant {
+						if strings.Contains(err.Error(), notWant) {
+							t.Errorf("Call error = %q; want it to omit %q", err, notWant)
+						}
+					}
+					if spawns != 1 {
+						t.Errorf("spawn called %d times; want once", spawns)
+					}
+					if waits := clock.Waits(); len(waits) != creelengine.ConnectAttempts-1 || waits[0] != time.Second {
+						t.Errorf("sleeps = %v; want %d, from one second", waits, creelengine.ConnectAttempts-1)
+					}
+				})
 			}
 		}},
 		{"StaleSocketFileIsRemovedAndRebound", func(t *testing.T, r *rig) {

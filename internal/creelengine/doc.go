@@ -21,6 +21,8 @@
 // It removes a socket file no listener answers, listens on Geometry.SocketPath, and serves one request per connection.
 // The socket sits in the user's lyxtemp root and is named creel-<shortname>-<h>.sock, where <h> is the first eight hex digits of the hub path's hash, so two hubs sharing a shortname never meet.
 // A client that finds no daemon starts one and connects up to ConnectAttempts times, waiting from one second and doubling to eight.
+// The detached daemon's stderr goes to Geometry.DaemonLogPath in the state directory, which opens with DaemonStartHeader and whose logger lines open with DaemonLogPrefix.
+// A client that gives up connecting names the socket and the log, and quotes the log's lines from the daemon it started.
 //
 // The protocol is JSON lines: a request line carrying the verb, the sender's claim and the verb's fields, and one or more response lines.
 // Every response carries the hub path, and the client refuses a socket that answers for another hub.

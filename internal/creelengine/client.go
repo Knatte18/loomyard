@@ -31,14 +31,15 @@ const (
 type Client struct {
 	geom  Geometry
 	claim Claim
-	// spawn starts the daemon detached; the client calls it at most once per connect.
-	spawn func() error
+	// spawn starts the daemon detached and answers its pid; the client calls it at most once per connect.
+	spawn func() (int, error)
 	clock Clock
 }
 
 // NewClient returns a Client for the hub in geom.
-// claim states who the caller says it is, and spawn starts the daemon when none answers; nil spawns nothing.
-func NewClient(geom Geometry, claim Claim, spawn func() error, clock Clock) *Client {
+// claim states who the caller says it is, and spawn starts the daemon when none answers and answers the pid it started; nil spawns nothing.
+// A client that gives up connecting after a spawn quotes that pid's lines from geom.DaemonLogPath.
+func NewClient(geom Geometry, claim Claim, spawn func() (int, error), clock Clock) *Client {
 	return &Client{geom: geom, claim: claim, spawn: spawn, clock: clock}
 }
 
@@ -51,6 +52,7 @@ func (e *connLostError) Unwrap() error { return e.err }
 
 // connect dials the daemon's socket.
 // When nothing answers it starts the daemon once and retries up to ConnectAttempts times, sleeping on the told clock from one second between tries.
+// When it gives up, its error names the socket and the daemon log and quotes the log's lines from that start.
 func (c *Client) connect() (net.Conn, error) {
 	conn, err := net.Dial("unix", c.geom.SocketPath)
 	if err == nil {
@@ -60,7 +62,8 @@ func (c *Client) connect() (net.Conn, error) {
 		return nil, &connLostError{fmt.Errorf("creel: no daemon answers on %s: %w", c.geom.SocketPath, err)}
 	}
 	logger.Info("creel: no daemon answers, starting one", "socket", c.geom.SocketPath)
-	if spawnErr := c.spawn(); spawnErr != nil {
+	pid, spawnErr := c.spawn()
+	if spawnErr != nil {
 		return nil, fmt.Errorf("creel: start the daemon for %s: %w", c.geom.SocketPath, spawnErr)
 	}
 	wait := connectWaitBase
@@ -73,7 +76,8 @@ func (c *Client) connect() (net.Conn, error) {
 			wait = min(wait*2, connectWaitCeiling)
 		}
 	}
-	return nil, &connLostError{fmt.Errorf("creel: no daemon answers on %s after starting one and %d connects: %w", c.geom.SocketPath, ConnectAttempts, err)}
+	return nil, &connLostError{fmt.Errorf("creel: no daemon answers on %s after starting one and %d connects: %w; daemon log %s: %s",
+		c.geom.SocketPath, ConnectAttempts, err, c.geom.DaemonLogPath, daemonLogExcerpt(c.geom.DaemonLogPath, pid))}
 }
 
 // waitState remembers what a waiting call learned, so a reconnect can resume it.
