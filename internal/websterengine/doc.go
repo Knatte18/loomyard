@@ -598,6 +598,7 @@
 // Otherwise it fails with the dirty paths when the tree is not clean, and runs no verify.
 // Once a pre-fix head is recorded, every commit from it to HEAD on the first-parent chain must be a non-merge commit or a clean parent merge (fixCommitRejection, in gitwrap.go);
 // any other fails the gate `Terminal`, which ends the run at once with the commit and the reason.
+// The non-merge commits in that range, with the `Pattern-Departure:` trailers their messages declare, are recorded in the gate's notes at each evaluation, and Run appends them after the wait as a `## Verify gate fix commits` section of summary.md (AppendVerifyGateFixCommits): one bullet per `fix:` commit, then one per departure.
 // A plan with no `## verify:` section passes with a warning.
 // Otherwise verifytree.Verify runs the command under the site label `webster gate`, and a pass records the tree.
 // A failure is parsed from the log and rerun once: a rerun pass passes the gate, and the identities that failed once are flaky, which Run reports after the wait as a warning, a summary.md section and a friction note (VerifyGateNotes.Apply).
