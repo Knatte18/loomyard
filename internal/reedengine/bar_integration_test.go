@@ -23,6 +23,8 @@ type barFixture struct {
 	alpha, beta               Strand
 	selvagePane               string
 	strandWindow, otherWindow string
+	// otherWindowIndex is the extra window's tmux index, which the own windows created before it push past a fixed literal.
+	otherWindowIndex string
 }
 
 func newBarFixture(t *testing.T) *barFixture {
@@ -67,6 +69,7 @@ func newBarFixture(t *testing.T) *barFixture {
 	}
 	f := &barFixture{e: e, alpha: alpha, beta: beta, selvagePane: st.SelvagePaneID, strandWindow: strandWindow, otherWindow: exactSessionWindowTarget(e.SessionName()) + "extra"}
 	f.client = strings.TrimSpace(mustTmuxOutput(t, e, "list-clients", "-F", "#{client_name}"))
+	f.otherWindowIndex = strings.TrimSpace(mustTmuxOutput(t, e, "display-message", "-p", "-t", f.otherWindow, "#{window_index}"))
 	return f
 }
 
@@ -102,7 +105,7 @@ func TestBar_LineOneButtonsFollowTheWindowZoomAndWaitMarks(t *testing.T) {
 	if strings.Index(line, " extra ") > strings.Index(line, shellLit) {
 		t.Errorf("line 1 = %q, want the shell button after the extra window's button, the last visible window", line)
 	}
-	if !strings.Contains(line, "range=window|1 bg=colour236 fg=white] extra ") {
+	if !strings.Contains(line, "range=window|"+f.otherWindowIndex+" bg=colour236 fg=white] extra ") {
 		t.Errorf("line 1 = %q, want the non-current window button unlit", line)
 	}
 	if strings.Contains(line, " hidden ") {
@@ -129,7 +132,7 @@ func TestBar_LineOneButtonsFollowTheWindowZoomAndWaitMarks(t *testing.T) {
 		t.Fatalf("select-window extra: %v", err)
 	}
 	line = f.expand(t, "#{T:status-format[0]}")
-	for _, want := range []string{shellUnlit, "range=window|1 list=focus bg=white fg=black bold] extra "} {
+	for _, want := range []string{shellUnlit, "range=window|" + f.otherWindowIndex + " list=focus bg=white fg=black bold] extra "} {
 		if !strings.Contains(line, want) {
 			t.Errorf("line 1 from the second window = %q, want it to contain %q", line, want)
 		}
