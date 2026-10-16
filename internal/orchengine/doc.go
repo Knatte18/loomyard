@@ -15,6 +15,7 @@
 //     It never attaches or switches a tmux client;
 //     `lyx reed attach` is the only way into the session.
 //     `--adopt <session-id>` resumes an existing Claude session as the orchestrator strand instead of launching a fresh one.
+//     `--continue` resumes the session orch recorded for its strand.
 //   - status: reports the strand, the watcher and the persisted cycle state.
 //   - refresh: writes a clear-cycle request, which makes the watcher write a note and clear the session at its next idle moment regardless of the token count and of `cycle_mode`.
 //   - distill: the same for a compact cycle: a note, then `/compact`, whatever `cycle_mode` says.
@@ -33,7 +34,7 @@
 //
 // The launch prompt is picked in a fixed order:
 //
-//  1. The adopt stencil, when `--adopt` is given; `start` renders it directly, and it is exclusive with `--handoff`.
+//  1. The adopt stencil, when `--adopt` or `--continue` is given; `start` renders it directly, and both are exclusive with `--handoff`.
 //  2. The resume stencil pointed at the `--handoff` file, when the flag is given.
 //     A flag naming a missing file is an error rather than a fallback.
 //  3. The resume stencil pointed at State.LastHandoff, when that file still exists.
@@ -401,6 +402,14 @@
 // An absent or unreadable Claude session registry lets an unconfirmed holder through, so two processes can drive one session;
 // the explicit id and the resume warning on the log and envelope bound that.
 //
+// # Continuing after a reboot
+//
+// `lyx orch start --continue` resumes the session State.SessionID records, through the adopt branch, after a reboot or a dead strand.
+// `start` records the id of every fresh launch and the watcher keeps it current across `/clear`, so it names the context the orchestrator last ran.
+// A plain `start` still relaunches from the last completed handoff, and a fresh launch that replaces a recorded session names it in the envelope hint.
+// `--continue` is refused alongside `--adopt` or `--handoff`, while the orchestrator strand is live, and with no session recorded, each before anything is removed or launched.
+// `lyx orch status` shows the recorded id as `session_id`.
+//
 // # Residuals
 //
 //   - Shuttle switches Claude's prompt suggestion off in every settings file it writes, and the idle probe still fails closed on any non-empty box, so a session with a draft is never cycled until it is cleared.
@@ -410,6 +419,7 @@
 //   - In clear mode, reed's resume path replays the launch's `--resume <session-id>`, which names the pre-clear session once a cycle has run, so a reed server rebirth resumes the older context.
 //     `lyx orch stop` plus `lyx orch start` relaunches from the last completed handoff instead.
 //     Compact mode keeps the session id, so it does not apply there.
+//     The watcher bound to a reborn strand records the replayed pre-clear id, so `--continue` then resumes the older context too, and the post-clear id is recoverable only from the provider's session list for `--adopt`.
 //
 // # Open risks
 //
