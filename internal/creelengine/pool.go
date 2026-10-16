@@ -44,7 +44,7 @@ type Store struct {
 	mailSeq uint64
 	// agedWritten maps an inject id to the consumed seconds its last aged event recorded.
 	agedWritten map[int64]int64
-	// stalls maps a receiver to the last stall a probe read for it and the clock time it was read.
+	// stalls maps a receiver to its standing stall, the clock time the stall began and the clock time a probe last read it.
 	stalls map[string]stallNote
 	// paneLocks maps a receiver to the mutex that serialises an interrupt of its pane with its deliveries.
 	paneLocks map[string]*sync.Mutex
@@ -63,10 +63,30 @@ func (s *Store) paneLock(receiver string) *sync.Mutex {
 	return lock
 }
 
-// stallNote is the last stall read for a receiver.
+// stallNote is the stall standing for a receiver.
+// at is when the stall began, the time every note and answer prints, and readAt is when a probe last read it.
 type stallNote struct {
-	stall Stall
-	at    time.Time
+	stall  Stall
+	at     time.Time
+	readAt time.Time
+}
+
+// stallFreshness is how old a stall's last reading may be and still reach a waiter or an expired answer.
+// A probe that reads runs at least every probeBackoffCeiling, so only a stall no probe has read for twice that is withheld.
+const stallFreshness = 2 * probeBackoffCeiling
+
+// freshStallLocked returns receiver's standing stall when a probe read it no longer ago than stallFreshness.
+// A stale stall is dropped from the standing map, so its next reading journals a new stalled record, and nothing is returned.
+func (s *Store) freshStallLocked(receiver string) (stallNote, bool) {
+	note, ok := s.stalls[receiver]
+	if !ok {
+		return stallNote{}, false
+	}
+	if s.clock.Now().Sub(note.readAt) > stallFreshness {
+		delete(s.stalls, receiver)
+		return stallNote{}, false
+	}
+	return note, true
 }
 
 // OpenStore folds the journal under geom.JournalDir into a pool and opens the journal for appending.
@@ -219,7 +239,7 @@ const (
 )
 
 // Outcome is the answer to a Waiter; Message is the reply or the returned message, and zero for the others.
-// Stall and StallAt are the receiver's stall standing when an inject expired, empty and zero when none stood.
+// Stall and StallAt are the receiver's fresh stall when an inject expired and the time it began, empty and zero when none stood.
 type Outcome struct {
 	Kind    OutcomeKind
 	Message Message
@@ -227,7 +247,7 @@ type Outcome struct {
 	StallAt time.Time
 }
 
-// StallNote is a stall a probe read for a receiver and the time it was read.
+// StallNote is a stall a probe read for a receiver and the time the stall began.
 type StallNote struct {
 	Stall Stall
 	At    time.Time
@@ -258,6 +278,8 @@ type Waiter struct {
 	progress chan StallNote
 	store    *Store
 	key      waitKey
+	// told is the stall the waiter was last told, empty when none; a reading that differs from it is notified.
+	told Stall
 }
 
 // notify hands note to the waiter's progress channel, replacing a note nobody has read.
@@ -295,7 +317,7 @@ func (w *Waiter) Cancel() {
 }
 
 // addWaiterLocked registers a wait on key, and answers it at once when its outcome already stands in the pool.
-// A wait on an inject also gets the stall standing for the inject's receiver as its first progress note.
+// A wait on an inject also gets the receiver's fresh stall as its first progress note.
 func (s *Store) addWaiterLocked(key waitKey) (*Waiter, error) {
 	ch := make(chan Outcome, 1)
 	waiter := &Waiter{C: ch, ch: ch, store: s, key: key}
@@ -313,8 +335,9 @@ func (s *Store) addWaiterLocked(key waitKey) (*Waiter, error) {
 	}
 	if key.kind == waitInject {
 		if entry := s.state.injects[key.id]; entry != nil {
-			if note, ok := s.stalls[entry.Receiver]; ok {
+			if note, ok := s.freshStallLocked(entry.Receiver); ok {
 				waiter.notify(StallNote{Stall: note.stall, At: note.at})
+				waiter.told = note.stall
 			}
 		}
 	}

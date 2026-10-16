@@ -417,11 +417,15 @@ func TestCreelCLI(t *testing.T) {
 		probesBefore := len(r.clock.AwaitWaitsWhere(0, isProbeWait))
 		var stderr lockedBuffer
 		done := make(chan cliRun, 1)
-		go func() { done <- runCreelSplit(r.cwd, &stderr, "inject", "--wait", "--ttl", "1m", alpha, "/clear") }()
+		returned := make(chan struct{})
+		go func() {
+			done <- runCreelSplit(r.cwd, &stderr, "inject", "--wait", "--ttl", "1m", alpha, "/clear")
+			close(returned)
+		}()
 		r.clock.AwaitWaitsWhere(probesBefore+1, isProbeWait)
 		r.clock.Advance(time.Second)
 		awaitStderr(t, &stderr, "is stalled: "+creelengine.StallDraft.Reason())
-		r.clock.Advance(61 * time.Second)
+		r.clock.AdvanceByWaitsWhere(isProbeWait, returned)
 		expired := awaitRun(t, done)
 		if expired.code != ExitInjectExpired {
 			t.Fatalf("creel inject --wait past its TTL = (%d, %q); want exit %d", expired.code, expired.raw, ExitInjectExpired)

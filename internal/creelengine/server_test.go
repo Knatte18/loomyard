@@ -417,10 +417,12 @@ func TestDaemon_Protocol(t *testing.T) {
 			c := r.client(externalClaim(), nil, creelfake.NewClock(epoch))
 			progress := make(chan creelengine.Response, 8)
 			done := make(chan callResult, 1)
+			returned := make(chan struct{})
 			go func() {
 				resp, err := c.CallWatching(creelengine.Request{Verb: creelengine.VerbInject, Receiver: alpha, Text: "/clear", TTLSeconds: 60, Wait: true}, 0, nil,
 					func(note creelengine.Response) { progress <- note })
 				done <- callResult{resp, err}
+				close(returned)
 			}()
 			r.clock.AwaitWaitsWhere(1, isProbeWait)
 			r.clock.Advance(time.Second)
@@ -433,8 +435,7 @@ func TestDaemon_Protocol(t *testing.T) {
 			if note := nextProgress(t, progress); note.Stall != creelengine.StallTooShort {
 				t.Errorf("second progress = %+v; want the too-short stall", note)
 			}
-			r.clock.AwaitWaitsWhere(3, isProbeWait)
-			r.clock.Advance(61 * time.Second)
+			r.clock.AdvanceByWaitsWhere(isProbeWait, returned)
 			got := result(t, done)
 			if got.err != nil || got.resp.Outcome != creelengine.OutcomeExpired || got.resp.Stall != creelengine.StallTooShort || got.resp.StallAt.IsZero() {
 				t.Errorf("inject --wait = %+v, %v; want expired carrying the too-short stall", got.resp, got.err)
@@ -456,15 +457,17 @@ func TestDaemon_Protocol(t *testing.T) {
 			r.clock.AwaitWaitsWhere(2, isProbeWait)
 			progress := make(chan creelengine.Response, 8)
 			done := make(chan callResult, 1)
+			returned := make(chan struct{})
 			go func() {
 				resp, err := c.CallWatching(creelengine.Request{Verb: creelengine.VerbWaitInject, ID: queued.ID, Wait: true}, 0, nil,
 					func(note creelengine.Response) { progress <- note })
 				done <- callResult{resp, err}
+				close(returned)
 			}()
 			if note := nextProgress(t, progress); note.ID != queued.ID || note.Stall != creelengine.StallDraft {
 				t.Errorf("resumed wait progress = %+v; want the standing draft stall for inject %d", note, queued.ID)
 			}
-			r.clock.Advance(61 * time.Second)
+			r.clock.AdvanceByWaitsWhere(isProbeWait, returned)
 			if got := result(t, done); got.err != nil || got.resp.Outcome != creelengine.OutcomeExpired || got.resp.Stall != creelengine.StallDraft {
 				t.Errorf("wait-inject = %+v, %v; want expired carrying the draft stall", got.resp, got.err)
 			}

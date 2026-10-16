@@ -97,6 +97,31 @@ func stalledReasons(e *env, receiver string) []string {
 	return reasons
 }
 
+// holdAfterAReminderProbeReadTheDraft leaves a draft standing in alpha's pane, read once by the probe of an unread message's reminder, and then holds alpha for batten.
+// From then on the probe skips the pane read, since only the hold owner's mail and injects are delivered.
+func holdAfterAReminderProbeReadTheDraft(t *testing.T, e *env) {
+	t.Helper()
+	e.del.SetStall(alpha, creelengine.StallDraft)
+	e.post(t, strand(beta), alpha, "hi")
+	e.start(t)
+	e.probeWaits(1)
+	if _, err := e.store.Hold(program(batten), alpha, time.Hour); err != nil {
+		t.Fatalf("Hold: %v", err)
+	}
+}
+
+// tickPastTheStallFreshness moves the clock 24 seconds in probe steps and checks that no probe read the pane meanwhile.
+func (e *env) tickPastTheStallFreshness(t *testing.T) {
+	t.Helper()
+	idleCalls := e.del.IdleCalls(alpha)
+	for range 3 {
+		e.tick(8 * time.Second)
+	}
+	if got := e.del.IdleCalls(alpha); got != idleCalls {
+		t.Fatalf("Idle was asked %d more times under the hold; want the probe to skip the pane read", got-idleCalls)
+	}
+}
+
 func reminderFor(count int, listed ...string) string {
 	return fmt.Sprintf("[creel] %d unread: %s — run lyx creel read", count, strings.Join(listed, ", "))
 }
@@ -626,6 +651,92 @@ func TestScheduler_Injects(t *testing.T) {
 			case note := <-waiter.Progress:
 				t.Errorf("a second progress note %+v; the older unread one must have been replaced", note)
 			default:
+			}
+		}},
+		{"StallClearedUnderAHoldIsNotSeededIntoALaterWaiter", func(t *testing.T, e *env) {
+			holdAfterAReminderProbeReadTheDraft(t, e)
+			e.tickPastTheStallFreshness(t)
+			e.del.SetStall(alpha, "")
+			_, waiter, err := e.store.InjectWait(program(batten), alpha, "/clear", 0, false)
+			if err != nil {
+				t.Fatalf("InjectWait: %v", err)
+			}
+			select {
+			case note := <-waiter.Progress:
+				t.Errorf("seeded with %+v; want no note for a stall no probe read within 16 s", note)
+			default:
+			}
+			if outcome := awaitOutcome(t, waiter); outcome.Kind != creelengine.OutcomeInjected {
+				t.Errorf("wait answered %v; want injected", outcome.Kind)
+			}
+			select {
+			case note := <-waiter.Progress:
+				t.Errorf("heard %+v; want no stall line once the draft is gone", note)
+			default:
+			}
+		}},
+		{"PersistingStallIsToldOnceToALaterWaiterAndEachChangeOnce", func(t *testing.T, e *env) {
+			holdAfterAReminderProbeReadTheDraft(t, e)
+			e.tickPastTheStallFreshness(t)
+			before := len(e.probeWaits(0))
+			_, waiter, err := e.store.InjectWait(program(batten), alpha, "/clear", 0, false)
+			if err != nil {
+				t.Fatalf("InjectWait: %v", err)
+			}
+			select {
+			case note := <-waiter.Progress:
+				t.Fatalf("seeded with %+v; want no note for a stall no probe read within 16 s", note)
+			default:
+			}
+			e.probeWaits(before + 1)
+			// told drains what the last probe told the waiter: nothing for an empty want, else exactly that stall as it began at the probe.
+			told := func(want creelengine.Stall) {
+				t.Helper()
+				select {
+				case note := <-waiter.Progress:
+					if want == "" {
+						t.Errorf("told %+v; want nothing", note)
+					} else if note.Stall != want || !note.At.Equal(e.clock.Now()) {
+						t.Errorf("told %+v; want %s from the probe that read it, at %v", note, want, e.clock.Now())
+					}
+				default:
+					if want != "" {
+						t.Errorf("told nothing; want %s", want)
+					}
+				}
+			}
+			told(creelengine.StallDraft)
+			e.tick(time.Second)
+			told("")
+			for _, change := range []creelengine.Stall{creelengine.StallTooShort, creelengine.StallDraft} {
+				e.del.SetStall(alpha, change)
+				e.tick(8 * time.Second)
+				told(change)
+			}
+			e.del.SetStall(alpha, "")
+			e.del.SetIdle(alpha, false)
+			e.tick(8 * time.Second)
+			told("")
+			e.del.SetStall(alpha, creelengine.StallDraft)
+			e.tick(8 * time.Second)
+			told(creelengine.StallDraft)
+		}},
+		{"ExpiryNamesNoStallLastReadBeforeTheBound", func(t *testing.T, e *env) {
+			holdAfterAReminderProbeReadTheDraft(t, e)
+			muted, waiter, err := e.store.InjectWait(external(), alpha, "/muted", time.Minute, false)
+			if err != nil {
+				t.Fatalf("InjectWait: %v", err)
+			}
+			e.tickPastTheStallFreshness(t)
+			e.clock.Advance(time.Minute)
+			outcome := awaitOutcome(t, waiter)
+			if outcome.Kind != creelengine.OutcomeExpired || outcome.Stall != "" || !outcome.StallAt.IsZero() {
+				t.Errorf("wait answered %+v; want expired with no stall", outcome)
+			}
+			for _, entry := range e.store.Log(creelengine.LogFilter{ID: muted.ID}) {
+				if entry.Event == "expired" && entry.Reason != "" {
+					t.Errorf("expired entry carries reason %q; want none", entry.Reason)
+				}
 			}
 		}},
 		{"RunningInterruptHoldsBackEveryDeliveryToTheReceiver", func(t *testing.T, e *env) {

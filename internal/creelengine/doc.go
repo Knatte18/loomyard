@@ -26,7 +26,7 @@
 //
 // The protocol is JSON lines: a request line carrying the verb, the sender's claim and the verb's fields, and one or more response lines.
 // Every response carries the hub path, and the client refuses a socket that answers for another hub.
-// A waiting verb gets a pending response with its id at once and its outcome as a later response; a waiting inject also gets a progress response for each change of its receiver's stall, and its expired response carries the last stall.
+// A waiting verb gets a pending response with its id at once and its outcome as a later response; a waiting inject also gets a progress response for each change of its receiver's stall it sees, once each, and its expired response carries the receiver's stall only when a probe read it no more than twice the probe ceiling before.
 // A waiting call whose connection drops reconnects up to MaxReconnects times and resumes the same wait with wait-reply or wait-inject.
 // A read's response is acknowledged on the same connection, and the daemon answers the acknowledgement with one confirming line once it is journaled.
 //
@@ -95,8 +95,9 @@
 // Queued injects are typed before reminders, oldest first, except that an interrupt-queued inject goes ahead of the others, newest first.
 // A sending event is journaled before the line is typed.
 // The outcome is injected, unconfirmed when the send answered ErrNotLanded, so the line is never typed twice, or expired; a busy send is requeued untouched.
-// inject --wait answers with the outcome, and hears each change of its receiver's stall reason as a progress line on stderr.
-// An expired answer carries the stall that stood when the TTL ran out, and the `expired` record names it as its reason.
+// inject --wait answers with the outcome, and hears each change of its receiver's stall reason as a progress line on stderr, once each.
+// A waiter hears a stall only from a reading no older than twice the probe ceiling, a stall that persists from the next reading when none was seeded, and the time printed is when the stall began.
+// An expired answer carries the stall that stood when the TTL ran out, and the `expired` record names it as its reason, only when a probe read that stall no more than twice the probe ceiling before; otherwise both carry none.
 // inject --interrupt first sends the guarded interrupt and queues the line at the head.
 //
 // interrupt sends the guarded interrupt at once, bypassing the queue, and reports whether it stopped a running turn.
@@ -137,7 +138,7 @@
 //
 // log lists the journal's events oldest first with their ids, parties, times and subjects, narrowed by --id, --from, --to and --since.
 // It carries no body field.
-// A `stalled` record names the receiver and the stall reason a delivery probe read, and is written once per change of reason while something is pending for the receiver.
+// A `stalled` record names the receiver and the stall reason a delivery probe read, and is written once per change of reason while something is pending for the receiver, and again for a stall read after it went stale.
 //
 // # Delivery loop
 //
@@ -145,7 +146,7 @@
 // A worker probes from a one-second base and doubles the wait to eight seconds after every probe that delivers nothing; a wake from the store or a probe that delivers returns it to the base, and the worker ends when nothing is pending.
 // A probe finds the strand, skips a dormant or paused one, and types the first queued inject, or under a hold the owner's; with none due it types the reminder.
 // Each delivery asks the seam whether the strand is idle first, and every wait goes through the Clock, so a test never waits out an interval.
-// Every idle answer feeds the stall journal: a new non-empty reason is journaled, a repeat is not, and a reading with no reason, a probe error or a typed line clears it with no record.
+// Every idle answer feeds the stall journal: a new non-empty reason is journaled, a repeat only stamps when it was read, and a reading with no reason, a probe error or a typed line clears it with no record.
 // The inject TTL keeps running while a strand is stalled, live and unpaused.
 //
 // # Unbuilt: stages 2 and 3

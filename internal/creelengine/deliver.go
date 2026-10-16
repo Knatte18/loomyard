@@ -473,11 +473,11 @@ func (s *Store) settleInject(id int64, event string) error {
 }
 
 // settleInjectLocked journals the end of an inject and answers its waiters.
-// An expired inject journals and answers with the receiver's stall standing at that moment, when there is one.
+// An expired inject journals and answers with the receiver's fresh stall at that moment, when there is one.
 func (s *Store) settleInjectLocked(id int64, event string) error {
 	var standing stallNote
 	if entry := s.state.injects[id]; entry != nil && event == eventExpired {
-		standing = s.stalls[entry.Receiver]
+		standing, _ = s.freshStallLocked(entry.Receiver)
 	}
 	if err := s.writer.append(record{Event: event, ID: id, Reason: string(standing.stall)}); err != nil {
 		return err
@@ -487,29 +487,46 @@ func (s *Store) settleInjectLocked(id int64, event string) error {
 	return nil
 }
 
-// noteStall records the stall a probe read for receiver and journals a stalled record when it is non-empty and differs from the last one.
-// An empty stall clears the receiver's entry with no record.
+// noteStall records the stall a probe read for receiver and journals a stalled record when it is non-empty and differs from the standing one, or the standing one went stale.
+// Every non-empty reading stamps the time it was read, and tells each waiter on the receiver's queued injects the stall when it differs from the one that waiter was last told.
+// An empty stall clears the receiver's entry with no record and resets what those waiters were told.
 func (s *Store) noteStall(receiver string, stall Stall) error {
 	return s.do(func() error {
+		now := s.clock.Now()
 		if stall == "" {
 			delete(s.stalls, receiver)
+			s.tellStallLocked(receiver, "", stallNote{})
 			return nil
 		}
-		if s.stalls[receiver].stall == stall {
-			return nil
+		note, standing := s.stalls[receiver]
+		if standing && note.stall == stall && now.Sub(note.readAt) <= stallFreshness {
+			note.readAt = now
+			s.stalls[receiver] = note
+		} else {
+			note = stallNote{stall: stall, at: now, readAt: now}
+			s.stalls[receiver] = note
+			if err := s.writer.append(record{Event: eventStalled, To: receiver, Reason: string(stall)}); err != nil {
+				return err
+			}
 		}
-		note := stallNote{stall: stall, at: s.clock.Now()}
-		s.stalls[receiver] = note
-		if err := s.writer.append(record{Event: eventStalled, To: receiver, Reason: string(stall)}); err != nil {
-			return err
-		}
-		for _, entry := range s.queuedEntriesLocked(receiver) {
-			for _, waiter := range s.waiters[waitKey{kind: waitInject, id: entry.ID}] {
+		s.tellStallLocked(receiver, stall, note)
+		return nil
+	})
+}
+
+// tellStallLocked records stall as told to each waiter on receiver's queued injects whose last told stall differs, and notifies it of note unless stall is empty.
+func (s *Store) tellStallLocked(receiver string, stall Stall, note stallNote) {
+	for _, entry := range s.queuedEntriesLocked(receiver) {
+		for _, waiter := range s.waiters[waitKey{kind: waitInject, id: entry.ID}] {
+			if waiter.told == stall {
+				continue
+			}
+			waiter.told = stall
+			if stall != "" {
 				waiter.notify(StallNote{Stall: note.stall, At: note.at})
 			}
 		}
-		return nil
-	})
+	}
 }
 
 // journalReminded records a reminder typed to receiver about the unread ids, at the given backoff step.

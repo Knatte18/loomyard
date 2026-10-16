@@ -232,6 +232,7 @@ A box holding the operator's own text is left alone, and the inject waits.
 
 **Watch:** A privileged sender holds the strand, injects and mail from another sender are held back, and the owner's inject passes.
 After `release` the held inject is typed and the mail reminded.
+An `inject --wait` started after a draft was cleared under a hold prints no stall line and ends injected.
 Then `lyx tender pause` freezes the TTL and holds delivery, and `lyx tender resume` delivers.
 
 **Verdict:** `FAIL` on delivery during a hold or pause, or a TTL that runs while paused.
