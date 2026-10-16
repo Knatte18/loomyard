@@ -37,6 +37,7 @@ func statusFields(st orchengine.State, cfg orchengine.Config, strand reedengine.
 	}
 	return map[string]any{
 		"strand":                st.Strand,
+		"session_id":            st.SessionID,
 		"strand_live":           tracked && strand.Live,
 		"watcher_live":          watcherLive,
 		"context_tokens":        tokens,
@@ -64,7 +65,9 @@ whether a watcher holds its lock, the latest context reading against the soft
 threshold (soft_threshold_tokens) and the hard cap (threshold_tokens), and the
 persisted cycle phase (idle, handoff-requested, clearing, resuming or compacting), count, trigger (cycle_trigger), last handoff, abort reason
 and last DEFER deferral (last_deferral, RFC 3339 UTC, null when none).
-stuck names why an overdue phase is still waiting for the session to go idle.`,
+stuck names why an overdue phase is still waiting for the session to go idle.
+session_id is the orch session's recorded provider id, which "lyx orch start
+--continue" resumes; it is empty when none is recorded.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
