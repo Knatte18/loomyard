@@ -267,7 +267,7 @@ github.com/Knatte18/loomyard/
 ├── internal/statuspane/          the pane mechanics the runs overview and the gate checklist share: a redraw-in-place pane loop and a lock-free status-file reader
 ├── internal/landingshed/         landing's four general ShedProducers, Publish, PR-Align, PR-Gate and Finalize, shared by reference across producer lists
 ├── internal/darnengine/          the darn recipe's hub-wide `darn.yaml` config and the verify command every darn verify reads
-├── internal/languageconfig/      the hub-wide `language.yaml` config: the skills every code role loads after its own, and the verify tiers the plan, review and implementer prompts render
+├── internal/languageconfig/      the hub-wide `language.yaml` config: the skills every code role loads after its own, the verify tiers the plan, review and implementer prompts render, and the hub's structure-aware rename tools the Webster implementer prompt renders
 ├── internal/mergeresolve/        the merge-in + LLM conflict-resolution engine internal/landingshed's two producers each call
 ├── internal/frictionengine/      the aggregation-and-reflection step loom's terminal Friction-Reflect row runs and loom runs after a `blocked` or `failed` halt, under `run` and `step`, except that an escalation halt writes its note and runs no reflection; it is re-entrant across a killed driving process
 ├── internal/hubgeom/             the hub-mode told-geometry teller that converts a resolved `lyxcwd.Location` into each engine's geometry struct
