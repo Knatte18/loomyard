@@ -74,7 +74,7 @@ internal/lyxtemp: 7
 internal/mergeresolve: 17
 internal/modelspec: 11
 internal/orchcli: 28
-internal/orchengine: 144
+internal/orchengine: 145
 internal/output: 4
 internal/pairteardown: 8
 internal/pauserecord: 14

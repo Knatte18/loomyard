@@ -51,7 +51,8 @@ type fakeSession struct {
 	sessionState    shuttleengine.SessionState // Answered by SessionState while stateErr is nil.
 	sessionStateErr error                      // Returned by every SessionState while set.
 	sessionStartAt  time.Time                  // Answered by SessionState as the newest session-start time.
-	sessionSinces   []time.Time                // Consumed one per SessionState call into the answered state's Since, the last one sticking, while it is not empty.
+	sessionSinces   []time.Time                // Consumed one per SessionState call, which the watcher's per-tick session id read makes one more per tick, into the answered state's Since, the last one sticking, while it is not empty.
+	sessionID       string                     // Answered by SessionState as the reading's session id.
 
 	// interruptErrs is consumed in order by Interrupt, which answers nil once it is drained.
 	interruptErrs []error
@@ -72,7 +73,7 @@ func (f *fakeSession) SessionState(string) (shuttleengine.RunSessionState, error
 			f.sessionSinces = f.sessionSinces[1:]
 		}
 	}
-	return shuttleengine.RunSessionState{State: state, SessionStartAt: f.sessionStartAt}, nil
+	return shuttleengine.RunSessionState{State: state, SessionStartAt: f.sessionStartAt, SessionID: f.sessionID}, nil
 }
 
 func (f *fakeSession) LoadSkills(_ string, skills []string) error {
@@ -1904,6 +1905,66 @@ func TestWatcher_StrandReboundMidTickIsNotOverwritten(t *testing.T) {
 	e.tick()
 	if e.w.strand != "s2" {
 		t.Errorf("watcher strand = %q; want s2", e.w.strand)
+	}
+
+	t.Run("a session id read for a rebound strand is not written", func(t *testing.T) {
+		e := newWatchEnv(t)
+		e.setState(func(s *State) { s.SessionID = "launch-id" })
+		e.s.sessionID = "other-id"
+		e.s.onAlive = func() {
+			e.setState(func(s *State) { s.Strand, s.SessionID = "s2", "" })
+		}
+		done, err := e.w.Tick()
+		if err != nil || done {
+			t.Fatalf("Tick = %v, %v; want false, nil", done, err)
+		}
+		if st := e.state(); st.Strand != "s2" || st.SessionID != "" {
+			t.Errorf("the rebound state was overwritten: strand %q, session id %q; want s2 and empty", st.Strand, st.SessionID)
+		}
+	})
+}
+
+func TestWatcher_RecordsTheSessionIDItReads(t *testing.T) {
+	tests := []struct {
+		name      string
+		recorded  string
+		read      string
+		readErr   error
+		want      string
+		wantTouch bool
+	}{
+		{name: "a reading naming a new id records it", recorded: "launch-id", read: "post-clear-id", want: "post-clear-id", wantTouch: true},
+		{name: "an unchanged id writes nothing", recorded: "same-id", read: "same-id", want: "same-id"},
+		{name: "a reading naming no id keeps the recorded one", recorded: "post-clear-id", want: "post-clear-id"},
+		{name: "an unreadable reading keeps the id and the tick goes on", recorded: "launch-id", readErr: errBoom, want: "launch-id"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newWatchEnv(t)
+			// The first tick types the start color, so the measured tick has nothing else to save.
+			e.tick()
+			e.setState(func(s *State) { s.SessionID = tt.recorded })
+			past := e.clock.now.Add(-time.Hour)
+			if err := os.Chtimes(e.paths.StatePath, past, past); err != nil {
+				t.Fatal(err)
+			}
+			e.s.sessionID, e.s.sessionStateErr = tt.read, tt.readErr
+
+			done, err := e.w.Tick()
+			if err != nil || done {
+				t.Fatalf("Tick = %v, %v; want false, nil", done, err)
+			}
+			if got := e.state().SessionID; got != tt.want {
+				t.Errorf("SessionID = %q; want %q", got, tt.want)
+			}
+			info, err := os.Stat(e.paths.StatePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if touched := !info.ModTime().Equal(past); touched != tt.wantTouch {
+				t.Errorf("state file rewritten = %v; want %v", touched, tt.wantTouch)
+			}
+		})
 	}
 }
 

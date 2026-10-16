@@ -24,6 +24,8 @@ type RunSessionState struct {
 	History []SessionState
 	// SessionStartAt is the time of the newest session-start signal read; zero when none.
 	SessionStartAt time.Time
+	// SessionID is the session id of the newest signal that names one, else the run record's; empty when neither names one.
+	SessionID string
 }
 
 // ReadSessionStates returns the session state of every run under the run-directory root of anchorPath whose record reads running.
@@ -76,6 +78,7 @@ func readRunSessionState(rs RunState, engine Engine, now time.Time) RunSessionSt
 
 	parser, ok := engine.(SessionSignalParser)
 	if !ok {
+		reading.SessionID = rs.SessionID
 		reading.State = SessionState{Name: SessionUnknown, Cause: SessionCauseUnsupported, Since: now}
 		reading.History = []SessionState{reading.State}
 		return reading
@@ -89,12 +92,24 @@ func readRunSessionState(rs RunState, engine Engine, now time.Time) RunSessionSt
 		signals, _ = parser.ParseSessionSignals(data[max(0, min(rs.PromptOffset, int64(len(data)))):])
 	}
 
+	reading.SessionID = newestSessionID(rs, signals)
 	facts := readSessionFacts(rs, engine, signals, now)
 	facts.EventsUnreadable = eventsUnreadable
 	var fold SessionFold
 	fold.Fold(signals, facts)
 	reading.State, reading.History, reading.SessionStartAt = fold.State(), fold.History(), fold.SessionStartAt()
 	return reading
+}
+
+// newestSessionID returns the session id of the newest signal that names one, else the run record's;
+// empty when neither names one.
+func newestSessionID(rs RunState, signals []SessionSignal) string {
+	for i := len(signals) - 1; i >= 0; i-- {
+		if signals[i].SessionID != "" {
+			return signals[i].SessionID
+		}
+	}
+	return rs.SessionID
 }
 
 // readSessionFacts reads the facts of a fold over signals that the signals themselves do not carry, at the time now.
@@ -112,13 +127,9 @@ func readSessionFacts(rs RunState, engine Engine, signals []SessionSignal, now t
 	prober, _ := engine.(SessionProber)
 	reader, _ := engine.(ActivityReader)
 
-	sessionID := ""
 	var newestTurnEnd, newestTurnStart *SessionSignal
 	for i := len(signals) - 1; i >= 0; i-- {
 		signal := &signals[i]
-		if sessionID == "" {
-			sessionID = signal.SessionID
-		}
 		switch signal.Kind {
 		case SessionSignalTurnEnd, SessionSignalAPIErrorTurnEnd:
 			if newestTurnEnd == nil {
@@ -131,9 +142,7 @@ func readSessionFacts(rs RunState, engine Engine, signals []SessionSignal, now t
 		}
 	}
 
-	if sessionID == "" {
-		sessionID = rs.SessionID
-	}
+	sessionID := newestSessionID(rs, signals)
 	if prober != nil && sessionID != "" {
 		facts.Liveness = prober.ProcessLiveness(sessionID)
 	}

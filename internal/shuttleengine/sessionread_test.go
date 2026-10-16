@@ -102,59 +102,76 @@ func TestReadSessionStates(t *testing.T) {
 		want   []wanted
 		// wantSessionStartAt is the first reading's SessionStartAt; zero when no session start is read.
 		wantSessionStartAt time.Time
+		// wantSessionID is the first reading's SessionID.
+		wantSessionID string
 	}{
 		{
 			name:               "a session start after the turn end leaves the reading and is reported as SessionStartAt",
 			runs:               map[string]readRun{"run-a": {outcome: runOutcomeRunning, events: startLine + endLine + "SESSION@2026-10-08T07:10:00Z\n", outputExists: true}},
 			want:               []wanted{{"hub:task:driver", SessionIdleDone, SessionCauseDone, end}},
 			wantSessionStartAt: end.Add(5 * time.Minute),
+			wantSessionID:      "recorded-session",
 		},
 		{
-			name: "a stamped turn end with outputs present reads idle-done at the turn end's time",
-			runs: map[string]readRun{"run-a": finished},
-			want: []wanted{{"hub:task:driver", SessionIdleDone, SessionCauseDone, end}},
+			name:          "a stamped turn end with outputs present reads idle-done at the turn end's time",
+			runs:          map[string]readRun{"run-a": finished},
+			want:          []wanted{{"hub:task:driver", SessionIdleDone, SessionCauseDone, end}},
+			wantSessionID: "recorded-session",
 		},
 		{
 			name: "a non-running record, a non-run file and an undecodable record are skipped",
 			runs: map[string]readRun{"run-a": finished, "run-b": {outcome: string(OutcomeDone), events: startLine + endLine}},
 			// the stray entries sort around run-a and must not hide it.
-			stray: true,
-			want:  []wanted{{"hub:task:driver", SessionIdleDone, SessionCauseDone, end}},
+			stray:         true,
+			want:          []wanted{{"hub:task:driver", SessionIdleDone, SessionCauseDone, end}},
+			wantSessionID: "recorded-session",
 		},
 		{
-			name: "signals before the prompt offset are not folded",
-			runs: map[string]readRun{"run-a": {outcome: runOutcomeRunning, events: endLine + startLine, promptOffset: int64(len(endLine))}},
-			want: []wanted{{"hub:task:driver", SessionBusy, SessionCauseTurn, start}},
+			name:          "signals before the prompt offset are not folded",
+			runs:          map[string]readRun{"run-a": {outcome: runOutcomeRunning, events: endLine + startLine, promptOffset: int64(len(endLine))}},
+			want:          []wanted{{"hub:task:driver", SessionBusy, SessionCauseTurn, start}},
+			wantSessionID: "recorded-session",
 		},
 		{
-			name:   "liveness is looked up by the newest signal's session id, not the record's",
-			runs:   map[string]readRun{"run-a": {outcome: runOutcomeRunning, sessionID: "recorded", events: "START@2026-10-08T07:00:00Z|recorded\nEND@2026-10-08T07:05:00Z|newer\n", outputExists: true}},
-			engine: readEngine{livenessByID: map[string]Liveness{"recorded": LivenessDead}},
-			want:   []wanted{{"hub:task:driver", SessionIdleDone, SessionCauseDone, end}},
+			name:          "a later signal naming no id keeps the newest id named",
+			runs:          map[string]readRun{"run-a": {outcome: runOutcomeRunning, sessionID: "launch", events: "END@2026-10-08T07:05:00Z|post-clear\nSTART@2026-10-08T07:20:00Z\n"}},
+			want:          []wanted{{"hub:task:driver", SessionBusy, SessionCauseTurn, start.Add(20 * time.Minute)}},
+			wantSessionID: "post-clear",
 		},
 		{
-			name:   "a dead process reads dead",
-			runs:   map[string]readRun{"run-a": {outcome: runOutcomeRunning, sessionID: "recorded", events: startLine}},
-			engine: readEngine{livenessByID: map[string]Liveness{"recorded": LivenessDead}},
-			want:   []wanted{{"hub:task:driver", SessionDead, SessionCauseProcessGone, now}},
+			name:          "liveness is looked up by the newest signal's session id, not the record's",
+			runs:          map[string]readRun{"run-a": {outcome: runOutcomeRunning, sessionID: "recorded", events: "START@2026-10-08T07:00:00Z|recorded\nEND@2026-10-08T07:05:00Z|newer\n", outputExists: true}},
+			engine:        readEngine{livenessByID: map[string]Liveness{"recorded": LivenessDead}},
+			want:          []wanted{{"hub:task:driver", SessionIdleDone, SessionCauseDone, end}},
+			wantSessionID: "newer",
 		},
 		{
-			name:   "the transcript's API-error marker makes the turn end a stall",
-			runs:   map[string]readRun{"run-a": {outcome: runOutcomeRunning, events: startLine + endLine}},
-			engine: readEngine{apiError: true},
-			want:   []wanted{{"hub:task:driver", SessionIdleStalled, SessionCauseAPIError, end}},
+			name:          "a dead process reads dead",
+			runs:          map[string]readRun{"run-a": {outcome: runOutcomeRunning, sessionID: "recorded", events: startLine}},
+			engine:        readEngine{livenessByID: map[string]Liveness{"recorded": LivenessDead}},
+			want:          []wanted{{"hub:task:driver", SessionDead, SessionCauseProcessGone, now}},
+			wantSessionID: "recorded",
 		},
 		{
-			name:   "an interrupt marker on the turn start makes the turn a stall at the interrupt's time",
-			runs:   map[string]readRun{"run-a": {outcome: runOutcomeRunning, events: startLine}},
-			engine: readEngine{interruptAt: start.Add(time.Minute)},
-			want:   []wanted{{"hub:task:driver", SessionIdleStalled, SessionCauseInterrupt, start.Add(time.Minute)}},
+			name:          "the transcript's API-error marker makes the turn end a stall",
+			runs:          map[string]readRun{"run-a": {outcome: runOutcomeRunning, events: startLine + endLine}},
+			engine:        readEngine{apiError: true},
+			want:          []wanted{{"hub:task:driver", SessionIdleStalled, SessionCauseAPIError, end}},
+			wantSessionID: "recorded-session",
 		},
 		{
-			name:  "an engine without a signal parser reads unknown unsupported",
-			runs:  map[string]readRun{"run-a": finished},
-			plain: true,
-			want:  []wanted{{"hub:task:driver", SessionUnknown, SessionCauseUnsupported, now}},
+			name:          "an interrupt marker on the turn start makes the turn a stall at the interrupt's time",
+			runs:          map[string]readRun{"run-a": {outcome: runOutcomeRunning, events: startLine}},
+			engine:        readEngine{interruptAt: start.Add(time.Minute)},
+			want:          []wanted{{"hub:task:driver", SessionIdleStalled, SessionCauseInterrupt, start.Add(time.Minute)}},
+			wantSessionID: "recorded-session",
+		},
+		{
+			name:          "an engine without a signal parser reads unknown unsupported",
+			runs:          map[string]readRun{"run-a": {outcome: finished.outcome, events: finished.events, outputExists: finished.outputExists, sessionID: "recorded"}},
+			plain:         true,
+			want:          []wanted{{"hub:task:driver", SessionUnknown, SessionCauseUnsupported, now}},
+			wantSessionID: "recorded",
 		},
 	}
 
@@ -195,6 +212,9 @@ func TestReadSessionStates(t *testing.T) {
 			}
 			if len(got) > 0 && !got[0].SessionStartAt.Equal(tt.wantSessionStartAt) {
 				t.Errorf("ReadSessionStates SessionStartAt = %v; want %v", got[0].SessionStartAt, tt.wantSessionStartAt)
+			}
+			if len(got) > 0 && got[0].SessionID != tt.wantSessionID {
+				t.Errorf("ReadSessionStates SessionID = %q; want %q", got[0].SessionID, tt.wantSessionID)
 			}
 		})
 	}

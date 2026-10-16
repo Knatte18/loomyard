@@ -5,6 +5,7 @@
 package orchcli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -40,9 +41,29 @@ const (
 // stoppingWatcherHint is the envelope hint when the watcher is still stopping after start's wait.
 const stoppingWatcherHint = `the watcher is stopping; run "lyx orch start" again once it has exited`
 
-// sessionStarter starts the orchestrator's shuttle run and returns its strand guid and the resume check's warning, empty when there is none.
+// startedSession is what a started orchestrator run reports back.
+type startedSession struct {
+	// GUID is the run's strand guid.
+	GUID string
+	// SessionID is the provider session id the launch used: minted for a fresh launch, the resumed id for a resume; empty when the engine names none.
+	SessionID string
+	// Warning is the resume check's warning, empty when there is none.
+	Warning string
+}
+
+// previousSessionHint is the envelope hint naming a recorded orch session that a fresh launch replaced and that `--adopt` can still resume.
+func previousSessionHint(id string) string {
+	return fmt.Sprintf(`the previous orch session %s is still resumable: run "lyx orch stop" then "lyx orch start --adopt %s"`, id, id)
+}
+
+// withContinueWaysForward appends the ways forward from a refused or failed `--continue` to err.
+func withContinueWaysForward(err error) error {
+	return fmt.Errorf("%w; run `lyx orch start` for a fresh launch, or `lyx orch start --adopt <id>` with the id `/status` shows in the session", err)
+}
+
+// sessionStarter starts the orchestrator's shuttle run and returns its strand guid, session id and the resume check's warning.
 type sessionStarter interface {
-	StartSession(spec shuttleengine.Spec) (guid, warning string, err error)
+	StartSession(spec shuttleengine.Spec) (startedSession, error)
 }
 
 // runnerSessionStarter adapts *shuttleengine.Runner to sessionStarter.
@@ -51,12 +72,12 @@ type runnerSessionStarter struct {
 }
 
 // StartSession delegates to Runner.Start, which returns only once the provider is past its startup gates.
-func (s runnerSessionStarter) StartSession(spec shuttleengine.Spec) (string, string, error) {
+func (s runnerSessionStarter) StartSession(spec shuttleengine.Spec) (startedSession, error) {
 	run, err := s.runner.Start(spec)
 	if err != nil {
-		return "", "", err
+		return startedSession{}, err
 	}
-	return run.StrandGUID(), run.ResumeWarning(), nil
+	return startedSession{GUID: run.StrandGUID(), SessionID: run.SessionID(), Warning: run.ResumeWarning()}, nil
 }
 
 // orchSpec builds the orchestrator run's spec: interactive, awaiting the operator, focused, with a never-written sentinel as its one output file so the run never finishes on one.
@@ -121,6 +142,7 @@ func startFields(action, strand, promptSource, hint, warning string) map[string]
 func (c *orchCLI) startCmd() *cobra.Command {
 	var noAttach bool
 	var handoffFlag, adoptFlag string
+	var continueFlag bool
 
 	cmd := &cobra.Command{
 		Use:         "start",
@@ -136,6 +158,11 @@ from the last completed handoff, else starts from the start stencil.
 With --adopt <session-id> the fresh launch instead resumes that existing Claude
 session, recorded under the prime's own directory, as the orchestrator strand;
 --adopt and --handoff are exclusive, and --adopt is refused while the strand is live.
+With --continue the fresh launch resumes the session orch recorded for its strand at
+launch and after each /clear, the reboot recovery after "lyx orch stop" or a dead
+strand; it is refused alongside --adopt or --handoff, while the strand is live, or
+with no session recorded. A fresh launch that replaces a recorded session names it in
+the envelope hint.
 A watcher that has received SIGINT or SIGTERM and not yet exited is waited for, up to
 three watcher poll intervals, so a kill followed by start spawns a fresh watcher; past
 that bound start reports the watcher live with "watcher_stopping": true.
@@ -155,6 +182,12 @@ session.`,
 
 			if adoptFlag != "" && handoffFlag != "" {
 				return fail(fmt.Errorf("orch: --adopt and --handoff are exclusive; drop one"))
+			}
+			if continueFlag && adoptFlag != "" {
+				return fail(fmt.Errorf("orch: --continue and --adopt are exclusive; drop --adopt"))
+			}
+			if continueFlag && handoffFlag != "" {
+				return fail(fmt.Errorf("orch: --continue and --handoff are exclusive; drop --handoff"))
 			}
 
 			if handoffFlag != "" {
@@ -223,7 +256,20 @@ session.`,
 				return fail(fmt.Errorf("orch: --adopt applies to a fresh launch only, but the orchestrator strand %s is live -- run `lyx orch stop` first", strand.GUID))
 			}
 
-			envAction, promptSource, guid, warning := "", "", strand.GUID, ""
+			if continueFlag {
+				if action != orchengine.StartRelaunch {
+					return fail(fmt.Errorf("orch: --continue applies to a fresh launch only, but the orchestrator strand %s is live -- run `lyx orch stop` first", strand.GUID))
+				}
+				if st.SessionID == "" {
+					return fail(withContinueWaysForward(errors.New("orch: --continue found no recorded orch session id")))
+				}
+			}
+			resumeSessionID := adoptFlag
+			if continueFlag {
+				resumeSessionID = st.SessionID
+			}
+
+			envAction, promptSource, guid, warning, hint := "", "", strand.GUID, "", ""
 			switch action {
 			case orchengine.StartRelaunch:
 				if hasStrand {
@@ -236,7 +282,7 @@ session.`,
 					return fail(err)
 				}
 				var prompt, source string
-				if adoptFlag != "" {
+				if resumeSessionID != "" {
 					prompt, err = orchengine.RenderAdoptPrompt(c.stencilsDir, c.paths.RolePath)
 					source = orchengine.SourceAdopt
 				} else {
@@ -246,18 +292,27 @@ session.`,
 					return fail(err)
 				}
 				spec := c.orchSpec(prompt, time.Now())
-				spec.ResumeSessionID = adoptFlag
-				guid, warning, err = c.starter.StartSession(spec)
+				spec.ResumeSessionID = resumeSessionID
+				started, err := c.starter.StartSession(spec)
 				if err != nil {
+					if continueFlag {
+						err = withContinueWaysForward(err)
+					}
 					return fail(err)
 				}
-				if err := orchengine.SaveState(c.paths, orchengine.ResetForFreshLaunch(st, guid, time.Now())); err != nil {
+				guid, warning = started.GUID, started.Warning
+				next := orchengine.ResetForFreshLaunch(st, guid, time.Now())
+				next.SessionID = started.SessionID
+				if err := orchengine.SaveState(c.paths, next); err != nil {
 					return fail(err)
 				}
-				if adoptFlag != "" {
-					logger.Info("orch: launched orchestrator session", "strandGUID", guid, "adoptedSessionID", adoptFlag, "promptSource", source)
+				if resumeSessionID != "" {
+					logger.Info("orch: launched orchestrator session", "strandGUID", guid, "sessionID", started.SessionID, "adoptedSessionID", resumeSessionID, "promptSource", source)
 				} else {
-					logger.Info("orch: launched orchestrator session", "strandGUID", guid, "promptSource", source)
+					logger.Info("orch: launched orchestrator session", "strandGUID", guid, "sessionID", started.SessionID, "promptSource", source)
+				}
+				if st.SessionID != "" && st.SessionID != started.SessionID {
+					hint = previousSessionHint(st.SessionID)
 				}
 				if err := c.spawnWatcher(); err != nil {
 					return fail(err)
@@ -280,10 +335,16 @@ session.`,
 
 			releaseLock()
 
-			fields := startFields(envAction, guid, promptSource, "", warning)
+			fields := startFields(envAction, guid, promptSource, hint, warning)
+			if continueFlag {
+				fields["session_id"] = resumeSessionID
+			}
 			if watcherLive && st.WatcherStopping {
 				fields["watcher_stopping"] = true
 				fields["hint"] = stoppingWatcherHint
+				if hint != "" {
+					fields["hint"] = stoppingWatcherHint + "; " + hint
+				}
 			}
 			clihelp.SetExit(ctx, output.Ok(out, fields))
 			return nil
@@ -293,13 +354,17 @@ session.`,
 	_ = cmd.Flags().MarkHidden("no-attach")
 	cmd.Flags().StringVar(&handoffFlag, "handoff", "", "resume a fresh launch from this handoff file instead of the last completed one; refused while the strand is live")
 	cmd.Flags().StringVar(&adoptFlag, "adopt", "", "resume this existing Claude session (the id `/status` shows in it) as the orchestrator strand; exclusive with --handoff, and refused while the strand is live")
+	cmd.Flags().BoolVar(&continueFlag, "continue", false, "resume the orch session recorded at the last launch or cycle as the orchestrator strand; exclusive with --adopt and --handoff, refused while the strand is live, and with no session recorded")
 	return cmd
 }
 
 // adoptStrand resets the persisted state onto guid when it belongs to another run than the recorded one.
+// The reset clears the recorded session id, since it named the other run's session; the watcher's first reading of guid's run fills it.
 func (c *orchCLI) adoptStrand(st orchengine.State, guid string) error {
 	if st.Strand == guid {
 		return nil
 	}
-	return orchengine.SaveState(c.paths, orchengine.ResetForFreshLaunch(st, guid, time.Now()))
+	next := orchengine.ResetForFreshLaunch(st, guid, time.Now())
+	next.SessionID = ""
+	return orchengine.SaveState(c.paths, next)
 }

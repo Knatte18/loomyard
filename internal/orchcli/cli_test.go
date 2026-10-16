@@ -148,7 +148,7 @@ func TestStatus_Envelope(t *testing.T) {
 			name:    "populated state",
 			strands: liveOrch,
 			state: &orchengine.State{
-				Strand: "g1", Phase: orchengine.PhaseClearing, LastContextTokens: 999, LastContextKnown: true,
+				Strand: "g1", SessionID: "sess-1", Phase: orchengine.PhaseClearing, LastContextTokens: 999, LastContextKnown: true,
 				CycleCount: 4, LastHandoff: "h.md", LastAbortReason: "why", Stuck: "busy", WatcherExit: "gone",
 				PhaseEnteredAt: time.Unix(0, 0), CycleTrigger: orchengine.TriggerSoft,
 				LastDeferral: time.Date(2026, 10, 1, 12, 30, 0, 0, time.UTC),
@@ -159,7 +159,7 @@ func TestStatus_Envelope(t *testing.T) {
 					"threshold_tokens": float64(1234), "phase": "clearing", "cycle_count": float64(4),
 					"last_handoff": "h.md", "last_abort_reason": "why", "stuck": "busy", "watcher_exit": "gone",
 					"soft_threshold_tokens": float64(c.cfg.SoftThreshold()), "cycle_trigger": "soft",
-					"last_deferral": "2026-10-01T12:30:00Z",
+					"last_deferral": "2026-10-01T12:30:00Z", "session_id": "sess-1",
 				}
 			},
 		},
@@ -174,7 +174,7 @@ func TestStatus_Envelope(t *testing.T) {
 		{
 			name: "unknown tokens are null",
 			want: func(*orchCLI) map[string]any {
-				return map[string]any{"context_tokens": nil, "strand_live": false, "last_deferral": nil, "cycle_trigger": ""}
+				return map[string]any{"context_tokens": nil, "strand_live": false, "last_deferral": nil, "cycle_trigger": "", "session_id": ""}
 			},
 		},
 	}
