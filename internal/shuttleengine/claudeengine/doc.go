@@ -164,6 +164,8 @@
 // OwnPastePlaceholder recognises the `[Pasted text #<n>]` or `[Pasted text #<n> +<m> lines]` form Claude Code collapses a pasted draft into, which a box reading cannot otherwise match against the pasted text.
 // It answers true only for a text of at least `PasteCollapseMinChars` characters, whose newline count equals `m` when the placeholder shows one.
 // The box reading takes a box holding only a lone `%`, the shell's end-of-line mark, as empty.
+// PlainBoxCapture takes the placeholder reading too: it turns a styled capture into a plain one, and blanks a box whose every cell but a lone unstyled `%` is drawn faint, the way Claude draws its placeholder and prompt suggestion, unless the faint text is the collapsed-paste placeholder.
+// Unstyled text, a box mixing unstyled and faint text, and a release that restyles the placeholder read as a draft, so the reading fails closed.
 // StrayInput is the judgment beside that rule: a box holding exactly one character that is neither a letter, a digit nor whitespace, with no running turn on screen, is a stray-character candidate and the character is returned; the lone `%` is never one.
 // IdleSession, StrayInput and RunningTurn share one running-turn reading, the "esc to interrupt" hint matched over the whole capture.
 // RewindPicker reads the rewind picker: the picker's subtitle is on screen and no input box is, so a transcript quoting the subtitle above a live box is not the picker.

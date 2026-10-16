@@ -114,7 +114,7 @@ internal/shellguard: 3
 internal/shortcutcli: 2
 internal/shuttlecli: 27
 internal/shuttleengine: 178
-internal/shuttleengine/claudeengine: 113
+internal/shuttleengine/claudeengine: 114
 internal/shuttleengines: 6
 internal/sleepjournal: 2
 internal/standalonegeom: 7

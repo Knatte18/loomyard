@@ -316,6 +316,15 @@ type RewindPickerReader interface {
 	RewindPicker(capture string) bool
 }
 
+// StyledBoxReader is an optional capability beside Engine: the provider's way of turning a styled pane capture into the plain capture its box readings take.
+type StyledBoxReader interface {
+	// PlainBoxCapture takes a capture reed's CapturePaneStyled returned and answers the plain capture:
+	// every SGR and other escape sequence removed and each line's trailing ASCII spaces (U+0020) trimmed as `capture-pane -p` trims them, with the cells of an input box holding only the provider's placeholder blanked to spaces.
+	// The answer therefore matches what `capture-pane -p` returns for a pane with no placeholder.
+	// A caller reads the box, the running turn and every other classification of one decision from the one plain capture it answers.
+	PlainBoxCapture(styled string) string
+}
+
 // TextPaster is an optional capability beside Engine: a provider that takes text as one bracketed paste.
 // An engine with it, InputBoxReader and SessionCycler is written to through reed's paste-submit instead of typed keys.
 type TextPaster interface {

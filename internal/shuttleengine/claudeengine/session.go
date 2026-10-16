@@ -71,8 +71,9 @@ func (c *Claude) PaneTooShort(capture string) bool {
 // a draft leaves non-blank text between the rules.
 //
 // Two fail-closed residuals, stated rather than papered over.
-// A capture carries no styling, so any non-empty box classifies as not idle and the watcher skips the poll and retries;
-// the greyed prompt suggestion no longer appears in a shuttle-launched session, since every settings file switches it off.
+// A plain capture carries no styling, so any non-empty box classifies as not idle and the watcher skips the poll and retries;
+// the greyed prompt suggestion does not appear in a shuttle-launched session, since every settings file switches it off,
+// and a caller that reads through PlainBoxCapture sees a box holding only the placeholder or suggestion as empty, under that method's bounds.
 // And a transcript line quoting "esc to interrupt" anywhere in the capture classifies as not idle, because the running-turn hint is matched over the whole capture.
 //
 // A box holding only a lone `%` reads idle: that is the shell's end-of-line mark left on screen, never input.

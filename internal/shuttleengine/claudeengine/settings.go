@@ -11,8 +11,9 @@
 // The Bash tool's default stdin is set by the env file Prepare writes (see command.go), not by a hook.
 // The Bash denies render the rows of internal/shellguard's table, which installs the machine sleep, raw go, in-place edit and computed-path rm denies for every run and the python deny unless the run's config switches it off.
 // buildDenyNotice, built from the same standingDenies table so the two cannot drift, is the one-line system-prompt notice announcing each installed deny to the session.
-// Every document also sets `promptSuggestionEnabled` to false: a capture carries no styling,
+// Every document also sets `promptSuggestionEnabled` to false for shuttle-launched sessions: a plain capture carries no styling,
 // so a greyed suggestion in an empty input box would read as a draft and IdleSession would never pass.
+// The styled read is what lets a hand-added session's suggestion read as empty.
 
 package claudeengine
 
@@ -98,6 +99,7 @@ func SessionStartContext(text string) ([]byte, error) {
 
 // settingsDoc is the Claude Code settings.json document Prepare writes.
 // PromptSuggestionEnabled has no omitempty and buildSettings leaves it false, so every document carries `"promptSuggestionEnabled": false`.
+// The styled read is what lets a hand-added session, which this document does not configure, have its suggestion read as an empty box.
 type settingsDoc struct {
 	Hooks                   settingsHooks `json:"hooks"`
 	PromptSuggestionEnabled bool          `json:"promptSuggestionEnabled"`
