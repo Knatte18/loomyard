@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -654,8 +655,8 @@ func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read bash-env.sh: %v", err)
 	}
-	if string(envBytes) != envFileContent {
-		t.Errorf("bash-env.sh = %q; want %q", envBytes, envFileContent)
+	if want := envFileContentFor(runtime.GOOS); string(envBytes) != want {
+		t.Errorf("bash-env.sh = %q; want %q", envBytes, want)
 	}
 	wantLead := shell.ForGOOS().WithEnv(envFileKey, envFilePath, "")
 	if !strings.HasPrefix(launch.Cmd, wantLead) {

@@ -198,7 +198,7 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 	if err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("resolve env file path: %w", err)
 	}
-	if err := os.WriteFile(envFilePath, []byte(envFileContent), 0o644); err != nil {
+	if err := os.WriteFile(envFilePath, []byte(envFileContentFor(runtime.GOOS)), 0o644); err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("write env file: %w", err)
 	}
 

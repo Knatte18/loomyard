@@ -173,6 +173,8 @@
 // The shell window is found by the Selvage pane first, else by the @lyx_strands marker, and with neither the current window is listed and nothing moves.
 //
 // Every strand pane reed creates resolves `lyx` to the binary that spawned it, because launchStrandLocked prepends that binary's directory to the pane's PATH and exports LYX_BIN to its absolute path as shell statements.
+// A fresh shell a strand's command starts re-runs its rc and can reorder PATH, so LYX_BIN names the spawning binary there,
+// and a shuttle engine re-asserts LYX_BIN's directory in its agent's tool shell.
 // The composed line, prelude and launch command together, is written to the strand's launch script,
 // and the typed send-keys line sources it in the pane shell's own scope, so the prelude still runs after the pane shell's profile.
 // The shell dialect's discard-line key (`C-u` on POSIX, none on PowerShell) is sent ahead of that line, so input that reached the booting pane first, such as a viewer's keystrokes or a terminal reply after a window switch, never prefixes it.
