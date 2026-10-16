@@ -215,6 +215,7 @@
 //
 // The open launch (Claude.OpenLaunch) starts a named interactive session with no prompt.
 // Its line carries the session id and the strand-name reference, adds `--model` and `--effort` only when set, and passes no `--settings`, so the session takes the worktree's own settings.
+// It carries `--dangerously-skip-permissions` when the open's permission mode is `bypass`, on the fresh and the resume line alike, and an unknown mode refuses the open.
 // Its resume line falls back to a fresh start under the same id, because Claude Code keeps no transcript for a session that never took a turn and `--resume` then fails.
 //
 // A replay corpus of real turn ends lives under testdata/corpus, one directory per case:
