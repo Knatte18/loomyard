@@ -76,7 +76,7 @@ Do not flag any of the following as a finding:
   A comment's line breaks and wrapping are never a finding; the gate's `lyx loom lint-comments` alone checks them.
   This rubric checks compliance with the target repository's own standard, not loomyard's.
 - **Per-card mechanical check.**
-  Confirm every one of the card's own groups' type-specific mechanical checks passed, each against that group's own targets, not just the first label's, per the per-type table in `{{.specs_dir}}/loom/loom-plan-spec.md` — not merely that the diff compiles and its tests pass.
+  Confirm every one of the card's own groups' type-specific mechanical checks actually ran and passed, each against that group's own targets, not just the first label's, per the per-type table in `{{.specs_dir}}/loom/loom-plan-spec.md` — not merely that the diff compiles and its tests pass.
   For a `Rename` group, check the outcome the diff shows: no reference to the old name is left and the symbol's doc-comment opening is updated; never check that a tool ran.
   For a `Delete` group, check `assert-no-callers`.
 - **Commit messages and departures.**
