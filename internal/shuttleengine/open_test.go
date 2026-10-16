@@ -16,11 +16,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shell"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // TestRunner_Open pins the strand Open adds and what it refuses before creating one.
 func TestRunner_Open(t *testing.T) {
-	t.Parallel()
+	// One subtest captures the process-global logger, so the test runs serially and no parallel test of the package swaps the logger output during the capture.
 	sh := shell.ForGOOS()
 	launch := Launch{Cmd: "open-cmd", ResumeCmd: "resume-cmd", SessionID: "session-9"}
 	spec := OpenSpec{Role: "explore", Segment: segmentcolor.Segment("review")}
@@ -34,7 +35,9 @@ func TestRunner_Open(t *testing.T) {
 		wantErr string
 	}{
 		{name: "an empty role is refused before anything is created", spec: OpenSpec{}, wantErr: "the role must not be empty"},
-		{name: "a live pause covering the worktree is refused", spec: spec, covered: true, wantErr: "re-run lyx shuttle open"},
+		{name: "a live pause covering the worktree is refused", spec: spec, covered: true, wantErr: "re-run lyx shuttle open",
+			engine: func() Engine { return &openerFakeEngine{openErr: errors.New("provider down")} },
+		},
 		{name: "an engine without the capability is refused", spec: spec, engine: func() Engine { return &fakeEngine{} }, wantErr: "cannot open a session"},
 		{
 			name: "a failed open launch is returned", spec: spec, wantErr: "provider down",
@@ -66,18 +69,32 @@ func TestRunner_Open(t *testing.T) {
 			if len(reed.AddStrandCalls) != 0 {
 				t.Errorf("AddStrand calls = %v; want none from a refused open", reed.AddStrandCalls)
 			}
+			markerDir := filepath.Join(fx.Anchor, lyxdirs.DotLyxDirName, openMarkerDirName)
+			if _, err := os.Stat(markerDir); !os.IsNotExist(err) {
+				t.Errorf("marker directory stat err = %v; want it absent from a refused open", err)
+			}
 		})
 	}
 
+	// It captures the process-global logger, so it runs serially like the test.
 	t.Run("adds an own-window strand by role", func(t *testing.T) {
-		t.Parallel()
+		buf := logcapture.CaptureVerbose(t)
 		reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "guid-1", Name: "ly:task:explore"}}
 		engine := &openerFakeEngine{launch: launch}
 		fx := newFixture(t, reed, engine)
+		bypassSpec := spec
+		bypassSpec.PermissionMode = "bypass"
 
-		result, err := fx.Runner.Open(spec)
+		result, err := fx.Runner.Open(bypassSpec)
 		if err != nil {
 			t.Fatalf("Open() error = %v", err)
+		}
+
+		if len(engine.openSpecs) != 1 || engine.openSpecs[0].PermissionMode != "bypass" {
+			t.Errorf("OpenLaunch specs = %+v; want exactly one carrying PermissionMode bypass", engine.openSpecs)
+		}
+		if !strings.Contains(buf.String(), "permissionMode=bypass") {
+			t.Errorf("log output = %q; want it to hold permissionMode=bypass", buf.String())
 		}
 
 		if len(reed.AddStrandCalls) != 1 {

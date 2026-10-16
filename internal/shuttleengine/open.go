@@ -96,6 +96,6 @@ func (r *Runner) Open(spec OpenSpec) (OpenResult, error) {
 		return OpenResult{}, fmt.Errorf("shuttle: open: add the strand: %w", err)
 	}
 
-	logger.Info("shuttle: opened session", "strandGUID", strand.GUID, "strandName", strand.Name, "role", spec.Role, "sessionID", launch.SessionID, "marker", marker, "engine", engineName)
+	logger.Info("shuttle: opened session", "strandGUID", strand.GUID, "strandName", strand.Name, "role", spec.Role, "sessionID", launch.SessionID, "marker", marker, "engine", engineName, "permissionMode", spec.PermissionMode)
 	return OpenResult{StrandGUID: strand.GUID, StrandName: strand.Name, SessionID: launch.SessionID, Engine: engineName}, nil
 }

@@ -371,6 +371,41 @@ func TestOpenLaunch(t *testing.T) {
 						t.Errorf("Cmd = %q; want no %q", launch.Cmd, banned)
 					}
 				}
+				if strings.Contains(launch.ResumeCmd, "--dangerously-skip-permissions") {
+					t.Errorf("ResumeCmd = %q; want no --dangerously-skip-permissions", launch.ResumeCmd)
+				}
+			},
+		},
+		{
+			name: "bypass skips permissions on every line",
+			spec: shuttleengine.OpenSpec{Role: "explore", PermissionMode: "bypass"},
+			check: func(t *testing.T, launch shuttleengine.Launch) {
+				const flag = "--dangerously-skip-permissions"
+				if !strings.Contains(launch.Cmd, flag) {
+					t.Errorf("Cmd = %q; want it to hold %q", launch.Cmd, flag)
+				}
+				resumeLine := strings.Replace(launch.Cmd, "--session-id", "--resume", 1)
+				if want := sh.OrElse(resumeLine, launch.Cmd); launch.ResumeCmd != want {
+					t.Errorf("ResumeCmd = %q; want %q", launch.ResumeCmd, want)
+				}
+				if got := strings.Count(launch.ResumeCmd, flag); got != 2 {
+					t.Errorf("ResumeCmd = %q holds %q %d times; want 2", launch.ResumeCmd, flag, got)
+				}
+			},
+		},
+		{
+			name: "prompt adds no permission flag",
+			spec: shuttleengine.OpenSpec{Role: "explore", PermissionMode: "prompt"},
+			check: func(t *testing.T, launch shuttleengine.Launch) {
+				for _, line := range []string{launch.Cmd, launch.ResumeCmd} {
+					if strings.Contains(line, "--dangerously-skip-permissions") {
+						t.Errorf("line = %q; want no --dangerously-skip-permissions", line)
+					}
+				}
+				resumeLine := strings.Replace(launch.Cmd, "--session-id", "--resume", 1)
+				if want := sh.OrElse(resumeLine, launch.Cmd); launch.ResumeCmd != want {
+					t.Errorf("ResumeCmd = %q; want %q", launch.ResumeCmd, want)
+				}
 			},
 		},
 		{
@@ -394,6 +429,7 @@ func TestOpenLaunch(t *testing.T) {
 		},
 		{name: "an invalid effort is refused", spec: shuttleengine.OpenSpec{Role: "explore", ModelChoice: shuttleengine.ModelChoice{Effort: "turbo"}}, wantErr: "invalid effort"},
 		{name: "a version without a model is refused", spec: shuttleengine.OpenSpec{Role: "explore", ModelChoice: shuttleengine.ModelChoice{Version: "4.5"}}, wantErr: "no model"},
+		{name: "an unknown mode is refused", spec: shuttleengine.OpenSpec{Role: "explore", PermissionMode: "auto"}, wantErr: "invalid permission mode"},
 		{name: "an invalid claude config is refused", spec: shuttleengine.OpenSpec{Role: "explore"}, invalidConfig: true, wantErr: "claude.local.yaml"},
 	}
 	for _, tt := range tests {
