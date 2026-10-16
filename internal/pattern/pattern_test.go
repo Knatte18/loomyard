@@ -137,7 +137,7 @@ func TestDirective_PerRole(t *testing.T) {
 }
 
 // declaredBullet is a declared-change bullet line the tests pass to Directive.
-const declaredBullet = "- `PATTERN-cwd-resolution` — replaces: resolve the cwd in `internal/lyxcwd` only."
+const declaredBullet = "- `PATTERN-cwd-resolution` — changes: resolve the cwd in `internal/lyxcwd` only."
 
 // TestDirective_RendersNothing pins every case that renders no directive and reads no stencil, asserted by pointing stencilsDir at a path that does not exist:
 // a stray directory without PATTERN.md, nothing at all, an empty or whitespace-only file (neither carries an overview to inline), PATTERN.md as a directory (not a readable index), a subdirectory of a root that holds the overview (Directive reads <root>/PATTERN.md and nothing else, so callers pass the worktree root, never an anchor path), an empty root, and an unknown or zero Role even when PATTERN is active.
