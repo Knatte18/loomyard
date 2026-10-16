@@ -175,39 +175,6 @@ func TestWindowOrder_RealTmux(t *testing.T) {
 		}
 	})
 
-	t.Run("ABelowParentStrandRelaunchedByResumeIsBackInTheShellWindow", func(t *testing.T) {
-		base, err := e.AddStrand(AddSpec{NameOverride: "base", Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorBelowParent}})
-		if err != nil {
-			t.Fatalf("AddStrand(base): %v", err)
-		}
-		if err := e.tmux.run("kill-server"); err != nil {
-			t.Fatalf("kill-server: %v", err)
-		}
-		if _, err := e.Resume(); err != nil {
-			t.Fatalf("Resume: %v", err)
-		}
-		// The restarted server boots the session with follow on.
-		setFollow("off")
-
-		status, err := e.Status()
-		if err != nil {
-			t.Fatalf("Status: %v", err)
-		}
-		for _, s := range status.Strands {
-			if s.GUID != base.GUID {
-				continue
-			}
-			window := windowOfPane(t, e, s.PaneID)
-			for _, w := range windows() {
-				if w.ID == window && w.Name != shellWindowName {
-					t.Errorf("relaunched below-parent strand is in window %q, want the shell window", w.Name)
-				}
-			}
-			return
-		}
-		t.Fatalf("Status carries no strand %s after Resume", base.GUID)
-	})
-
 	overviewDisplay := render.Display{Anchor: render.AnchorOverview}
 	currentWindow := func() string {
 		t.Helper()
@@ -283,26 +250,20 @@ func TestWindowOrder_RealTmux(t *testing.T) {
 		}
 	})
 
-	t.Run("ReplacingATopStrandWithAnOverviewOpensItFirstAndLeavesTheShellWindowSelected", func(t *testing.T) {
+	t.Run("ReplacingAnUnviewedStrandWithAnOverviewOpensItFirstAndLeavesTheShellWindowSelected", func(t *testing.T) {
 		if _, err := e.RemoveStrand(overview.GUID, false); err != nil {
 			t.Fatalf("RemoveStrand(overview): %v", err)
 		}
-		top, err := e.AddStrand(AddSpec{NameOverride: "status", Cmd: "sleep 300", Display: render.Display{
-			Anchor: render.AnchorTop,
-			Size:   render.Size{Kind: render.SizeContent, ShareNum: 1, ShareDen: 8, MinRows: 3},
-		}})
+		top, err := e.AddStrand(AddSpec{NameOverride: "status", Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorOwnWindow}})
 		if err != nil {
-			t.Fatalf("AddStrand(top): %v", err)
+			t.Fatalf("AddStrand(status): %v", err)
 		}
 		shellWindow := shellWindowID()
-		if got := windowOfPane(t, e, top.PaneID); got != shellWindow {
-			t.Fatalf("top strand is in window %s, want the shell window %s", got, shellWindow)
-		}
 		selectWindow(shellWindow)
 
 		overview, err = e.ReplaceStrand(top.GUID, AddSpec{NameOverride: "status", Cmd: "sleep 300", Display: overviewDisplay})
 		if err != nil {
-			t.Fatalf("ReplaceStrand(top -> overview): %v", err)
+			t.Fatalf("ReplaceStrand(strand -> overview): %v", err)
 		}
 		if first := windows()[0]; first.Name != overviewWindowName {
 			t.Errorf("first window is %q, want %q", first.Name, overviewWindowName)
@@ -313,7 +274,7 @@ func TestWindowOrder_RealTmux(t *testing.T) {
 		}
 		for _, p := range panes {
 			if p.PaneID == top.PaneID {
-				t.Errorf("the replaced top pane %s is still listed", top.PaneID)
+				t.Errorf("the replaced strand's pane %s is still listed", top.PaneID)
 			}
 		}
 		if got := currentWindow(); got != shellWindow {
@@ -485,7 +446,7 @@ func TestWindowOrder_RealTmux(t *testing.T) {
 		}
 		selectWindow(orphan)
 
-		if _, err := e.AddStrand(AddSpec{NameOverride: "reconcile-trigger", Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorBelowParent}}); err != nil {
+		if _, err := e.AddStrand(AddSpec{NameOverride: "reconcile-trigger", Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorOwnWindow}}); err != nil {
 			t.Fatalf("AddStrand(reconcile-trigger): %v", err)
 		}
 

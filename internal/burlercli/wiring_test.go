@@ -43,7 +43,6 @@ package burlercli
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -53,7 +52,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
@@ -542,106 +540,6 @@ func TestWireModule_DescriptorIsVerbatim(t *testing.T) {
 	})
 }
 
-// TestReedUpSeam_WatcherLifecycle pins the standalone reedUp seam's lifecycle contract -- the one
-// batch 06-standalone-watcher's card 42 requires of BOTH wireStandalone closures (this package's and
-// webstercli's): the resize watcher starts iff the boot succeeded AND watch is true, and once
-// started it lives exactly as long as the passed context. wiring.go itself is outside this card's
-// Edits and is not driven directly here -- it closes over a real *reedengine.Engine whose Up() spawns
-// a live tmux server, which an untagged Tier 1 test must never do (Test Tier Purity Invariant). This
-// test instead drives the identical shape wiring.go's closure implements against a fake stand-in for
-// reedEngine.Up/Watch, so the lifecycle contract itself is pinned without booting a substrate.
-func TestReedUpSeam_WatcherLifecycle(t *testing.T) {
-	t.Parallel()
-
-	// newSeam reproduces wiring.go's c.reedUp closure body: boot, then start the watcher (bound to
-	// ctx) iff the boot succeeded and watch is true.
-	newSeam := func(upErr error, watchCalls chan context.Context) func(context.Context, bool) error {
-		return func(ctx context.Context, watch bool) error {
-			if upErr != nil {
-				return upErr
-			}
-			if watch {
-				go func() {
-					watchCalls <- ctx
-					<-ctx.Done()
-				}()
-			}
-			return nil
-		}
-	}
-
-	t.Run("StartsOnSuccessfulBootWithWatchTrue", func(t *testing.T) {
-		t.Parallel()
-		watchCalls := make(chan context.Context, 1)
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
-		seam := newSeam(nil, watchCalls)
-		if err := seam(ctx, true); err != nil {
-			t.Fatalf("seam() = %v; want nil", err)
-		}
-		select {
-		case <-watchCalls:
-		case <-time.After(time.Second):
-			t.Fatal("watcher did not start within 1s of a successful boot with watch: true")
-		}
-	})
-
-	t.Run("DoesNotStartWhenBootFails", func(t *testing.T) {
-		t.Parallel()
-		watchCalls := make(chan context.Context, 1)
-		bootErr := errors.New("boot failed")
-
-		seam := newSeam(bootErr, watchCalls)
-		if err := seam(context.Background(), true); !errors.Is(err, bootErr) {
-			t.Fatalf("seam() = %v; want %v", err, bootErr)
-		}
-		select {
-		case <-watchCalls:
-			t.Fatal("watcher started despite a failed boot")
-		case <-time.After(50 * time.Millisecond):
-		}
-	})
-
-	t.Run("DoesNotStartWhenWatchFalse", func(t *testing.T) {
-		t.Parallel()
-		watchCalls := make(chan context.Context, 1)
-
-		seam := newSeam(nil, watchCalls)
-		if err := seam(context.Background(), false); err != nil {
-			t.Fatalf("seam() = %v; want nil", err)
-		}
-		select {
-		case <-watchCalls:
-			t.Fatal("watcher started despite watch: false")
-		case <-time.After(50 * time.Millisecond):
-		}
-	})
-
-	t.Run("StopsWhenContextIsCancelled", func(t *testing.T) {
-		t.Parallel()
-		watchCalls := make(chan context.Context, 1)
-		ctx, cancel := context.WithCancel(context.Background())
-
-		seam := newSeam(nil, watchCalls)
-		if err := seam(ctx, true); err != nil {
-			t.Fatalf("seam() = %v; want nil", err)
-		}
-		var watcherCtx context.Context
-		select {
-		case watcherCtx = <-watchCalls:
-		case <-time.After(time.Second):
-			t.Fatal("watcher did not start")
-		}
-		cancel()
-		select {
-		case <-watcherCtx.Done():
-		case <-time.After(time.Second):
-			t.Fatal("watcher's context did not observe cancellation within 1s")
-		}
-	})
-}
-
 const (
 	// reviewChairRole and fixChairRole are the strand roles of the review half's and the fix half's one seat.
 	reviewChairRole = "burler-review"
@@ -724,7 +622,7 @@ func (h halfHandle) Wait() (shuttleengine.Result, error) {
 func (h halfHandle) Stop() error { return nil }
 
 // TestRunCmd drives burler's run verb through its own RunE with seams in place of the live substrate.
-// One row proves it calls c.reedUp with watch: true, through a recording fake that fails, so the call ends right after the reedUp check and c.engine stays nil.
+// One row proves it calls c.reedUp once, through a recording fake that fails, so the call ends right after the reedUp check and c.engine stays nil.
 // One row proves a review with findings runs the fixer, maps the four model flags onto the two halves and reports each half's identity.
 // One row proves a review with no findings runs no fixer and reports fixSkipped beside the Go-written fixer report.
 // One row proves a reviewer that died runs no fixer and reports the death as the outcome.
@@ -783,7 +681,7 @@ fixer-report-path: reviews/fixer-report.md
 		return envelope
 	}
 
-	t.Run("passes watch true to the reed bring-up", func(t *testing.T) {
+	t.Run("calls the reed bring-up once", func(t *testing.T) {
 		t.Parallel()
 
 		dir := t.TempDir()
@@ -794,10 +692,8 @@ fixer-report-path: reviews/fixer-report.md
 
 		c := &burlerCLI{cwd: dir}
 		var bringUps int
-		var gotWatch bool
-		c.reedUp = func(ctx context.Context, watch bool) error {
+		c.reedUp = func() error {
 			bringUps++
-			gotWatch = watch
 			return errors.New("no tmux server available in this test")
 		}
 
@@ -806,9 +702,6 @@ fixer-report-path: reviews/fixer-report.md
 
 		if bringUps != 1 {
 			t.Fatalf("c.reedUp calls = %d; want exactly 1", bringUps)
-		}
-		if !gotWatch {
-			t.Error("c.reedUp watch = false; want true -- run binds the watcher to the run's own context")
 		}
 		if exitCode != 1 {
 			t.Fatalf("run with a failing reed bring-up = %d; want 1, output: %s", exitCode, out.String())

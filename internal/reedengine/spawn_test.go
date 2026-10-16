@@ -1,9 +1,8 @@
 // spawn_test.go covers launchStrandLocked's reap-before-allocate ordering (TestLaunchStrandLocked_*,
 // invoking it directly through the e.tmux.execHook fake) and loadOrInitStateLocked's fresh-worktree
 // bootstrap. Both are pure/hermetic, no live tmux required. The composed live behavior against a real
-// tmux is covered by the smoke tests. planPaneTarget's own table-driven test moved to
-// selvagepane_test.go alongside the function it exercises.
-// It also pins two regression guards for the pane-binary prelude wiring: that launchStrandLocked's send-keys payload is the launch script's source statement and the script holds the composed prelude rather than the bare command, and that the split-window argv it issues still carries no trailing shell-command argument.
+// tmux is covered by the smoke tests.
+// It also pins two regression guards for the pane-binary prelude wiring: that launchStrandLocked's send-keys payload is the launch script's source statement and the script holds the composed prelude rather than the bare command, and that the new-window argv it issues still carries no trailing shell-command argument.
 
 package reedengine
 
@@ -22,8 +21,8 @@ import (
 )
 
 // TestLaunchStrandLocked_ReapsUntrackedPanesBeforeChoosingASplitTarget pins the reap-before-allocate
-// chokepoint at the unit tier: launchStrandLocked must reconcile before it plans a split target, so
-// an untracked alive pane is never eligible to become the split target and is instead reaped first.
+// chokepoint at the unit tier: launchStrandLocked must reconcile before it creates the strand's window, so
+// an untracked alive pane is reaped first.
 //
 // The fixture is a ReedState with an alive Selvage pane, zero strands bound to a present pane, and one
 // untracked alive pane; the strand being launched has PaneID == "", mirroring how addStrandLocked
@@ -44,71 +43,57 @@ func TestLaunchStrandLocked_ReapsUntrackedPanesBeforeChoosingASplitTarget(t *tes
 		}
 		return postReap, nil
 	})
-	fake.answer("split-window", "%new\n", nil)
+	fake.answer("new-window", "%new @9\n", nil)
 
 	st := &ReedState{SelvagePaneID: selvagePaneID}
-	st.Strands = append(st.Strands, Strand{GUID: "new"})
+	st.Strands = append(st.Strands, Strand{GUID: "new", Display: render.Display{Anchor: render.AnchorOwnWindow}})
 	s := &st.Strands[0]
 
 	if err := e.launchStrandLocked(st, s, "echo hi"); err != nil {
 		t.Fatalf("launchStrandLocked: %v", err)
 	}
 	verbs := fake.Sequence()
-	splitArgs := fake.LastArgv("split-window")
 
-	killIdx, splitIdx, secondListIdx := -1, -1, -1
-	listPanesSeen := 0
+	killIdx, newWindowIdx := -1, -1
 	for i, v := range verbs {
 		switch v {
 		case "kill-pane":
 			if killIdx == -1 {
 				killIdx = i
 			}
-		case "split-window":
-			if splitIdx == -1 {
-				splitIdx = i
-			}
-		case "list-panes":
-			listPanesSeen++
-			if listPanesSeen == 2 {
-				secondListIdx = i
+		case "new-window":
+			if newWindowIdx == -1 {
+				newWindowIdx = i
 			}
 		}
 	}
 	if killIdx == -1 {
 		t.Fatalf("verbs %v: expected a kill-pane reaping the untracked pane, got none", verbs)
 	}
-	if splitIdx == -1 {
-		t.Fatalf("verbs %v: expected a split-window, got none", verbs)
+	if newWindowIdx == -1 {
+		t.Fatalf("verbs %v: expected a new-window, got none", verbs)
 	}
-	if killIdx > splitIdx {
-		t.Errorf("verbs %v: kill-pane at %d, split-window at %d; want kill-pane before split-window", verbs, killIdx, splitIdx)
+	if killIdx > newWindowIdx {
+		t.Errorf("verbs %v: kill-pane at %d, new-window at %d; want kill-pane before new-window", verbs, killIdx, newWindowIdx)
 	}
-	if secondListIdx == -1 {
-		t.Fatalf("verbs %v: expected a second list-panes (re-enumeration after reap), got none", verbs)
-	}
-	if !(killIdx < secondListIdx && secondListIdx < splitIdx) {
-		t.Errorf("verbs %v: want kill-pane(%d) < second list-panes(%d) < split-window(%d)", verbs, killIdx, secondListIdx, splitIdx)
-	}
-
-	if len(splitArgs) == 0 {
-		t.Fatal("split-window was never called")
-	}
-	for i, arg := range splitArgs {
-		if arg == "-t" && i+1 < len(splitArgs) && splitArgs[i+1] == untrackedPaneID {
-			t.Errorf("split-window target = %q, want it not to be the reaped pane", untrackedPaneID)
+	for _, argv := range fake.ArgvFor("kill-pane") {
+		if !containsArg(argv, untrackedPaneID) {
+			t.Errorf("kill-pane argv = %v, want it to reap only %q", argv, untrackedPaneID)
 		}
+	}
+	if s.PaneID != "%new" {
+		t.Errorf("strand PaneID = %q, want the new window's pane %%new", s.PaneID)
 	}
 }
 
 // TestLaunchStrandLocked_SkipsTheRedundantReEnumerationWhenNothingIsReaped is the companion to
 // TestLaunchStrandLocked_ReapsUntrackedPanesBeforeChoosingASplitTarget: when reconcile kills nothing,
-// launchStrandLocked must not pay for a second list-panes round trip it does not need.
+// launchStrandLocked must issue no kill-pane and create the strand's window only after the pane listing.
 //
 // The fixture has nothing to reap: an alive Selvage plus a strand already bound to a present alive
 // pane. The strand being launched is a second one, again with PaneID == "".
 //
-//testtiming:keep pins launchStrandLocked paying for exactly one list-panes and issuing no kill-pane when reconcile reaps nothing; its covering tests run this code without asserting it
+//testtiming:keep pins launchStrandLocked issuing no kill-pane when reconcile reaps nothing and creating the window only after the pane listing; its covering tests run this code without asserting it
 func TestLaunchStrandLocked_SkipsTheRedundantReEnumerationWhenNothingIsReaped(t *testing.T) {
 	e := newTestEngine(t)
 
@@ -118,10 +103,11 @@ func TestLaunchStrandLocked_SkipsTheRedundantReEnumerationWhenNothingIsReaped(t 
 
 	fake := installFakeTmux(t, e)
 	fake.answer("list-panes", live, nil)
-	fake.answer("split-window", "%new\n", nil)
+	fake.answer("new-window", "%new @9\n", nil)
 
+	own := render.Display{Anchor: render.AnchorOwnWindow}
 	st := &ReedState{SelvagePaneID: selvagePaneID}
-	st.Strands = append(st.Strands, Strand{GUID: "bound", PaneID: boundPaneID}, Strand{GUID: "new"})
+	st.Strands = append(st.Strands, Strand{GUID: "bound", PaneID: boundPaneID, Display: own}, Strand{GUID: "new", Display: own})
 	s := &st.Strands[1]
 
 	if err := e.launchStrandLocked(st, s, "echo hi"); err != nil {
@@ -134,23 +120,12 @@ func TestLaunchStrandLocked_SkipsTheRedundantReEnumerationWhenNothingIsReaped(t 
 			t.Fatalf("verbs %v: expected no kill-pane when nothing is reaped", verbs)
 		}
 	}
-	listPanesCount, splitIdx := 0, -1
-	for i, v := range verbs {
-		if v == "list-panes" {
-			listPanesCount++
-		}
-		if v == "split-window" && splitIdx == -1 {
-			splitIdx = i
-		}
+	newWindowIdx := slices.Index(verbs, "new-window")
+	if newWindowIdx == -1 {
+		t.Fatalf("verbs %v: expected a new-window, got none", verbs)
 	}
-	if listPanesCount != 1 {
-		t.Errorf("verbs %v: list-panes called %d times, want exactly 1 (no redundant re-enumeration)", verbs, listPanesCount)
-	}
-	if splitIdx == -1 {
-		t.Fatalf("verbs %v: expected a split-window, got none", verbs)
-	}
-	if verbs[0] != sessionListVerb || verbs[1] != "list-panes" || splitIdx <= 1 {
-		t.Errorf("verbs %v: want the window resolution, then the single list-panes, to precede split-window", verbs)
+	if verbs[0] != sessionListVerb || verbs[1] != "list-panes" || newWindowIdx <= 1 {
+		t.Errorf("verbs %v: want the window resolution, then the pane listing, to precede new-window", verbs)
 	}
 }
 
@@ -400,13 +375,13 @@ func TestStatus_NeverReportsAStrandLiveOnAPaneAnotherOwnerClaims(t *testing.T) {
 	}
 }
 
-// launchFake installs a fakeTmux that reports one live Selvage pane and answers split-window with a fresh pane id.
+// launchFake installs a fakeTmux that reports one live Selvage pane and answers new-window with a fresh pane and window id.
 // onEnter, when non-nil, runs at the Enter submit, the last step of launchStrandLocked.
 func launchFake(t *testing.T, e *Engine, onEnter func()) *fakeTmux {
 	t.Helper()
 	fake := installFakeTmux(t, e)
 	fake.answer("list-panes", "%selvage 0 0 100 20 4321\n", nil)
-	fake.answer("split-window", "%new\n", nil)
+	fake.answer("new-window", "%new @9\n", nil)
 	if onEnter != nil {
 		fake.answerFunc("send-keys", func(args []string) (string, error) {
 			if args[len(args)-1] == "Enter" {
@@ -650,12 +625,12 @@ func TestLaunchScriptDoesNotSurviveAFailedLaunch(t *testing.T) {
 }
 
 // TestLaunchStrandLocked_SplitWindowAndPaneTitleCalls pins the two pane-start guarantees of one launch.
-// The split-window argv ends with the -F flag and its #{pane_id} value, so that appending ANY trailing argument fails it, not merely a specific known-bad value:
+// The new-window argv ends with the -c flag and the told cwd, so that appending ANY trailing argument fails it, not merely a specific known-bad value:
 // a trailing shell-command makes tmux hand the pane to /bin/sh -c, which execs a non-login shell that skips ~/.profile / ~/.bash_profile
 // and therefore changes the pane's inherited PATH — and that pane resolves claude by bare name, so the change would stop the agent binary resolving at all.
-// The two title commands then run in order between the split and the send-keys, and carry the strand's full name.
+// The two title commands then run in order between the window creation and the send-keys, and carry the strand's full name.
 //
-//testtiming:keep pins the split-window argv ending with -F #{pane_id} with no trailing shell command, which would make tmux exec a non-login shell, and the two title commands running in order between the split and the send-keys; its covering tests run this code without asserting it
+//testtiming:keep pins the new-window argv ending with -c and the told cwd with no trailing shell command, which would make tmux exec a non-login shell, and the two title commands running in order between the window creation and the send-keys; its covering tests run this code without asserting it
 func TestLaunchStrandLocked_SplitWindowAndPaneTitleCalls(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -702,29 +677,34 @@ func TestLaunchStrandLocked_SplitWindowAndPaneTitleCalls(t *testing.T) {
 				t.Fatalf("launchStrandLocked: %v", err)
 			}
 
-			splitArgs := fake.LastArgv("split-window")
-			if len(splitArgs) < 2 {
-				t.Fatalf("split-window argv = %v, too short to check its tail", splitArgs)
+			newWindowArgs := fake.LastArgv("new-window")
+			if len(newWindowArgs) < 2 {
+				t.Fatalf("new-window argv = %v, too short to check its tail", newWindowArgs)
 			}
-			last, secondLast := splitArgs[len(splitArgs)-1], splitArgs[len(splitArgs)-2]
-			if secondLast != "-F" || last != "#{pane_id}" {
-				t.Errorf("split-window argv = %v, want it to end with \"-F\" \"#{pane_id}\" and nothing after -- a trailing shell-command argument would make tmux exec a non-login shell that skips the pane's profile", splitArgs)
+			last, secondLast := newWindowArgs[len(newWindowArgs)-1], newWindowArgs[len(newWindowArgs)-2]
+			if secondLast != "-c" || last != e.geom.PaneCwd {
+				t.Errorf("new-window argv = %v, want it to end with \"-c\" %q and nothing after -- a trailing shell-command argument would make tmux exec a non-login shell that skips the pane's profile", newWindowArgs, e.geom.PaneCwd)
 			}
 
 			var order []string
 			for _, call := range fake.Calls() {
 				switch call[0] {
-				case "split-window":
-					order = append(order, "split-window")
-				case "set-option", "select-pane", "send-keys":
+				case "new-window":
+					order = append(order, "new-window")
+				case "set-option":
+					// The window options the new window carries are not pane options.
+					if call[1] != "-w" {
+						order = append(order, strings.Join(call, " "))
+					}
+				case "select-pane", "send-keys":
 					order = append(order, strings.Join(call, " "))
 				}
 			}
 			if len(order) < 6 {
-				t.Fatalf("recorded calls = %v, want split-window, set-option, select-pane, the two strand options, send-keys", order)
+				t.Fatalf("recorded calls = %v, want new-window, set-option, select-pane, the two strand options, send-keys", order)
 			}
-			if order[0] != "split-window" {
-				t.Errorf("first call = %q, want split-window", order[0])
+			if order[0] != "new-window" {
+				t.Errorf("first call = %q, want new-window", order[0])
 			}
 			if want := "set-option -p -t %new allow-set-title off"; order[1] != want {
 				t.Errorf("second call = %q, want %q", order[1], want)

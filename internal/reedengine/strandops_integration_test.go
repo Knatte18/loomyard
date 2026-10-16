@@ -1,7 +1,7 @@
 //go:build tmux
 
 // strandops_integration_test.go proves ReplaceStrand and AddStrand with an empty Cmd against a real tmux.
-// Replacing the top strand of a three-strand stack leaves the replacement on top at collapsed_rows, with the other strands' panes untouched;
+// Replacing the first of three strands leaves the replacement in its slot of the strand table, with the other strands' panes untouched;
 // an empty Cmd still leaves a live pane running the pane's own shell, now with the pane-binary prelude applied to it.
 // A third step proves Resume drops a non-live strand whose done-when paths all exist and relaunches one whose list is partly missing.
 // One cold session serves every step.
@@ -17,18 +17,18 @@ import (
 )
 
 // TestStrandOps_RealTmux runs its steps in order on one cold session.
-// EmptyCmdLeavesALivePane relies on the three-strand stack ReplaceKeepsTopSlotAtCollapsedRows leaves behind and asserts only on its own strand.
+// EmptyCmdLeavesALivePane relies on the three strands ReplaceKeepsTheTopSlot leaves behind and asserts only on its own strand.
 func TestStrandOps_RealTmux(t *testing.T) {
 	t.Parallel()
 	e := newColdScratchEngine(t)
 
-	t.Run("ReplaceKeepsTopSlotAtCollapsedRows", func(t *testing.T) {
+	t.Run("ReplaceKeepsTheTopSlot", func(t *testing.T) {
 		var added []Strand
 		for _, name := range []string{"top", "middle", "bottom"} {
 			s, err := e.AddStrand(AddSpec{
 				NameOverride: name,
 				Provider:     "claude",
-				Display:      render.Display{Anchor: render.AnchorBelowParent},
+				Display:      render.Display{Anchor: render.AnchorOwnWindow},
 			})
 			if err != nil {
 				t.Fatalf("AddStrand(%q) = %v, want nil", name, err)
@@ -46,7 +46,7 @@ func TestStrandOps_RealTmux(t *testing.T) {
 		replacement, err := e.ReplaceStrand(added[0].GUID, AddSpec{
 			NameOverride: "top",
 			Provider:     "codex",
-			Display:      render.Display{Anchor: render.AnchorBelowParent},
+			Display:      render.Display{Anchor: render.AnchorOwnWindow},
 		})
 		if err != nil {
 			t.Fatalf("ReplaceStrand = %v, want nil", err)
@@ -73,25 +73,17 @@ func TestStrandOps_RealTmux(t *testing.T) {
 				after.Strands[1].PaneID, after.Strands[2].PaneID, middlePane, bottomPane)
 		}
 
-		live, err := e.tmux.listPanes(exactSessionWindowTarget(e.SessionName()))
+		live, err := e.tmux.listWindowPanes(e.SessionName())
 		if err != nil {
-			t.Fatalf("listPanes: %v", err)
+			t.Fatalf("listWindowPanes: %v", err)
 		}
 		var sawTop bool
-		windowRowZeroPane := paneIDsByTop(live)[0]
 		for _, p := range live {
-			if p.ID == after.Strands[0].PaneID {
+			if p.PaneID == after.Strands[0].PaneID {
 				sawTop = true
-				wantHeight := e.cfg.CollapsedRows
-				if p.ID == windowRowZeroPane {
-					wantHeight-- // the title row takes one row of the cell at window row 0
-				}
-				if p.Height != wantHeight {
-					t.Errorf("replacement pane height = %d, want %d (cfg.CollapsedRows, less the title row when it sits at window row 0)", p.Height, wantHeight)
-				}
 			}
-			if p.ID == added[0].PaneID {
-				t.Errorf("replaced strand's pane %s is still live", p.ID)
+			if p.PaneID == added[0].PaneID {
+				t.Errorf("replaced strand's pane %s is still live", p.PaneID)
 			}
 		}
 		if !sawTop {
@@ -103,7 +95,7 @@ func TestStrandOps_RealTmux(t *testing.T) {
 		strand, err := e.AddStrand(AddSpec{
 			Cmd:          "",
 			NameOverride: "empty-cmd-strand",
-			Display:      render.Display{Anchor: render.AnchorBelowParent},
+			Display:      render.Display{Anchor: render.AnchorOwnWindow},
 		})
 		if err != nil {
 			t.Fatalf("AddStrand(Cmd: \"\") = %v, want a nil error", err)
@@ -134,7 +126,7 @@ func TestStrandOps_RealTmux(t *testing.T) {
 		if err := os.WriteFile(finishedPath, nil, 0o644); err != nil {
 			t.Fatalf("WriteFile: %v", err)
 		}
-		display := render.Display{Anchor: render.AnchorBelowParent}
+		display := render.Display{Anchor: render.AnchorOwnWindow}
 		finished, err := e.AddStrand(AddSpec{NameOverride: "finished", Display: display, DoneWhen: []string{finishedPath}})
 		if err != nil {
 			t.Fatalf("AddStrand(finished) = %v, want nil", err)

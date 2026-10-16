@@ -65,7 +65,7 @@ func addLivePair(t *testing.T, h *hubforge.Hub, tmuxBinary, slug string) *livePa
 	}
 	t.Cleanup(func() { _, _ = eng.Down() })
 
-	strand, err := eng.AddStrand(reedengine.AddSpec{Role: "driver", Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorBelowParent}})
+	strand, err := eng.AddStrand(reedengine.AddSpec{Role: "driver", Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorOwnWindow}})
 	if err != nil {
 		t.Fatalf("AddStrand: %v", err)
 	}

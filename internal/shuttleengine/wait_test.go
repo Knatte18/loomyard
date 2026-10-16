@@ -329,7 +329,7 @@ func TestRun_Wait_Classification(t *testing.T) {
 			wantOutcome: OutcomeDone, wantCleanup: cleanupPerformed,
 		},
 		{
-			name: "cleared pane binding under an ordinary run is a mechanism failure", status: clearedBinding, anchor: render.AnchorBelowParent,
+			name: "cleared pane binding under an ordinary run is a mechanism failure", status: clearedBinding, anchor: render.AnchorOwnWindow,
 			wantOutcome: "", wantErr: errStrandPaneBindingCleared, wantIdentity: true, wantCleanup: cleanupSkipped,
 		},
 		{
@@ -338,7 +338,7 @@ func TestRun_Wait_Classification(t *testing.T) {
 		},
 		{
 			// The output files ARE the run's return value.
-			name: "cleared pane binding with output files is still done", status: clearedBinding, anchor: render.AnchorBelowParent, output: true,
+			name: "cleared pane binding with output files is still done", status: clearedBinding, anchor: render.AnchorOwnWindow, output: true,
 			wantOutcome: OutcomeDone,
 		},
 		{

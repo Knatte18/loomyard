@@ -6,6 +6,8 @@
 // When the signal file cannot be watched the loop logs that once and keeps its backed-off cadence.
 // Idle exit and orphan reap each count three consecutive cycles, so at the backed-off cadence they take up to three minutes.
 //
+// `add` places the strand in a window of its own, or its group's, and its `--anchor` takes `own-window` (the default) or `hidden`; any other value is refused.
+//
 // `attach` execs tmux over the lyx process on Unix, so no lyx process outlives the handover, and keeps a child process on Windows.
 // Nothing runs after it in the process, so a shortcut that runs `reed attach` runs it as its last argv.
 //
@@ -16,7 +18,7 @@
 // Each watched session's engine drives the daemon's told tmux binary, whatever that worktree's config names.
 //
 // On each cycle the daemon stats the `lyx` binary it started from, and when that file has been replaced or rewritten it retires: it ends its watched sessions, releases the hub lock, spawns a successor detached and exits 0.
-// So a deploy never leaves an old daemon laying out sessions with stale render code.
+// So a deploy never leaves an old daemon repairing names with stale code.
 // A failed stat counts as unchanged, so a binary missing mid-build retires nothing, and a deploy that rewrites the file in several steps can chain retirements, one per observed change.
 // A daemon started before this check existed carries none and is ended once by hand after the deploy; the next `reed up`, `attach` or `resume` spawns a successor that has it.
 // A spawn that loses the lock race exits 0 and logs at Debug, so at the default verbosity it writes no trace file.

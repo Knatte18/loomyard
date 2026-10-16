@@ -23,7 +23,7 @@ func addEnvProbeStrand(t *testing.T, e *Engine, role string) (Strand, string) {
 
 	probe := filepath.Join(t.TempDir(), "env.txt")
 	cmd := "printf '%s\\n%s\\n' \"$LYX_STRAND_NAME\" \"$LYX_PARENT\" > " + shell.Posix().Quote(probe)
-	strand, err := e.AddStrand(AddSpec{Role: role, Cmd: cmd, Display: render.Display{Anchor: render.AnchorBelowParent}})
+	strand, err := e.AddStrand(AddSpec{Role: role, Cmd: cmd, Display: render.Display{Anchor: render.AnchorOwnWindow}})
 	if err != nil {
 		t.Fatalf("AddStrand: %v", err)
 	}

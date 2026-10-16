@@ -42,10 +42,8 @@ func sendKeysLiteralArg(text string) string {
 }
 
 // launchStrandLocked reconciles the session's panes first, then creates a fresh pane for s and runs launchCmd in it.
-// The pane is a split of window 0, or a detached window of its own for an own-window strand, and both run the same tail:
-// the title lock, the pane options, the prelude, the launch script and the send-keys.
-// It validates the split created a new pane and sets only s.PaneID; Live is
-// derived from pane binding downstream.
+// The pane is in a window of its own, or its group's shared window, and the launch then runs the title lock, the pane options, the prelude, the launch script and the send-keys.
+// It sets only s.PaneID; Live is derived from pane binding downstream.
 //
 // Reconciling here — rather than trusting the caller's last reconcile — is the chokepoint that makes
 // "reap before allocate" hold on every strand-realizing path (AddStrand, UpdateStrand, Resume, and
@@ -58,7 +56,7 @@ func sendKeysLiteralArg(text string) string {
 //     absent from aliveIDSet, which includes a strand still bound to a dead-but-present pane. That is
 //     harmless here too — that binding names a corpse, so reconcile either kills it as a dead pane
 //     (clearing the binding) or spares it as the kept dead pane, and either way this function
-//     overwrites s.PaneID with the freshly split pane a few lines below. Strands Resume's per-strand
+//     overwrites s.PaneID with the freshly created pane a few lines below. Strands Resume's per-strand
 //     loop already relaunched earlier in the same pass are bound to alive panes by the time this
 //     reconcile runs for the next strand, so they are exempt from the untracked reap, not merely
 //     lucky to survive it.
@@ -66,9 +64,7 @@ func sendKeysLiteralArg(text string) string {
 // This does not call SaveState: AddStrand and UpdateStrand only persist after this function returns
 // nil, so a split-window or send-keys failure here returns with panes already killed in tmux while
 // the corresponding binding clears live only in memory — reed.json itself is untouched. That window
-// is accepted rather than closed, because it is self-healing (Status and toRenderStrands derive
-// liveness from the live pane set, never the persisted binding, and the next mutating verb's own
-// reconcile clears the now-stale bindings for real) and because closing it here would be worse:
+// is accepted rather than closed, because it is self-healing (Status derives liveness from the live pane set, never the persisted binding, and the next mutating verb's own reconcile clears the now-stale bindings for real) and because closing it here would be worse:
 // persisting inside this helper would write the half-added strand record on the add path, turning a
 // clean failure into a phantom strand Resume would later try to launch. If this window ever needs
 // closing, the right shape is reaping before the strand record is appended to st.Strands, not
@@ -76,47 +72,29 @@ func sendKeysLiteralArg(text string) string {
 //
 // The prelude that resolves this strand pane's `lyx` to the binary that spawned it is owned by panebin.go and composed here, at the one launch every strand-realizing path funnels through — see composePaneLaunchLine.
 // The same composition exports LYX_STRAND_NAME and LYX_PARENT beside LYX_BIN: the name is the strand's stored birth attribute and the parent is re-told from the geometry, so every launch and resume path sees the same values.
-// The split issued below still carries no trailing shell-command argument,
+// The window created below still carries no trailing shell-command argument,
 // so the pane remains tmux's own default-shell started as a login shell (pane-start-mode-is-untouched Shared Decision).
 // The prelude and launchCmd reach that shell afterward through the strand's launch script, which the send-keys line typed into the pane sources in the shell's own scope, rather than by changing how the pane's shell itself starts;
 // a script write failure degrades to typing the composed line itself.
 // The script is written on every launch, so a relaunch with a different command or a different spawning executable always regenerates it.
 func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) error {
-	live, windows, err := e.listStrandAndWindowPanes(st)
+	live, windows, err := e.listReconcilePanesLocked(st)
 	if err != nil {
 		return fmt.Errorf("list panes: %w", err)
 	}
 
-	killed, err := e.reconcileLocked(st, live, windows)
-	if err != nil {
+	if _, err := e.reconcileLocked(st, live, windows); err != nil {
 		return fmt.Errorf("reconcile: %w", err)
 	}
-	if len(killed) > 0 {
-		// Order matters: kill untracked/dead -> re-enumerate live -> plan.
-		// The kill-pane calls above mutate the pane set planPaneTarget below
-		// must choose from, so enumeration must follow them (same ordering
-		// reconcileApplyPersistLocked already treats as load-bearing).
-		live, err = e.listStrandPanes(st)
-		if err != nil {
-			return fmt.Errorf("list panes after reconcile: %w", err)
-		}
-	}
 
-	var paneID string
 	previousPaneID := s.PaneID
-	if isOwnWindow(s.Display) {
-		paneID, err = e.createOwnWindowPaneLocked(st, s)
-	} else {
-		paneID, err = e.splitWindowZeroPaneLocked(st, live, s)
-	}
+	paneID, err := e.createOwnWindowPaneLocked(st, s)
 	if err != nil {
 		return err
 	}
 
 	s.PaneID = paneID
-	if isOwnWindow(s.Display) {
-		e.killReplacedOwnWindowPaneLocked(previousPaneID, paneID)
-	}
+	e.killReplacedOwnWindowPaneLocked(previousPaneID, paneID)
 	// Both title commands are display mirrors: allow-set-title off stops the agent inside from overwriting the name,
 	// and no lookup or delivery ever resolves through a title, so a failure of either costs display only and never fails the launch.
 	if err := e.tmux.run("set-option", "-p", "-t", paneID, "allow-set-title", "off"); err != nil {
@@ -172,47 +150,6 @@ func (e *Engine) killReplacedOwnWindowPaneLocked(previousPaneID, newPaneID strin
 		}
 		return
 	}
-}
-
-// splitWindowZeroPaneLocked splits a fresh pane for s into window 0 at the target planPaneTarget picks from live and returns its id.
-func (e *Engine) splitWindowZeroPaneLocked(st *ReedState, live []LivePane, s *Strand) (string, error) {
-	split, err := planPaneTarget(st, live, s.Display)
-	if err != nil {
-		return "", err
-	}
-	splitTargetID := split.target
-
-	// -c pins the new pane's cwd to Geometry.PaneCwd, exactly as
-	// new-session and Selvage's own split (lifecycle.go) already do. Without
-	// it tmux resolves the cwd from the invoking CLIENT — verified live
-	// (tmux 3.6): a split issued from outside tmux lands in the calling
-	// process's cwd, neither the target pane's cwd nor the session's. That
-	// happens to be PaneCwd whenever lyx runs under lyxcwd.Resolve's
-	// exact-equality cwd gate, and stops being it the moment a
-	// caller injects a cwd through the RunCLIIn seam instead — at which
-	// point every strand command would run against the wrong tree while
-	// reed reported success.
-	//
-	// -b is the exception to "a strand split always lands below its target";
-	// see planPaneTarget's doc comment for when it is set.
-	// -f, set with -b for a top-anchored strand, makes the split full-width and takes its rows from the whole window.
-	argv := []string{"split-window"}
-	if split.above {
-		argv = append(argv, "-b")
-	}
-	if split.full {
-		argv = append(argv, "-f")
-	}
-	argv = append(argv, "-t", splitTargetID, "-c", e.geom.PaneCwd, "-P", "-F", "#{pane_id}")
-	out, err := e.tmux.output(argv...)
-	if err != nil {
-		return "", fmt.Errorf("split window: %w", err)
-	}
-	paneID := strings.TrimSpace(out)
-	if err := validateSplitCreatedNewPane(paneID, live, splitTargetID); err != nil {
-		return "", err
-	}
-	return paneID, nil
 }
 
 // createOwnWindowPaneLocked creates the pane of an own-window strand and returns its id.
@@ -355,6 +292,21 @@ func (e *Engine) openOwnWindowLocked(st *ReedState, s *Strand, name, group strin
 	}
 	paneID, windowID := fields[0], fields[1]
 
+	e.markOwnWindowLocked(s, windowID, overview, !selectNew, group)
+	if selectNew {
+		if err := e.tmux.run("select-window", "-t", windowID); err != nil {
+			logger.Warn("reed: could not select the new agent window", "strand", s.GUID, "window", windowID, "err", err)
+		}
+	}
+
+	logger.Info("reed: opened own window", "socket", e.Socket(), "session", e.SessionName(), "strand", s.GUID, "window", windowID, "pane", paneID)
+	return paneID, nil
+}
+
+// markOwnWindowLocked sets the own-window options on windowID, the window of s's pane: the own marker always, and then the overview marker for an overview window.
+// Any other window gets the strand's @strand_color and, off Windows, @lyx_unseen when unseen is set; a non-empty group is recorded on the window.
+// A window option that fails to set is logged and never fails the step; a window missing the own marker is only never ended by reconcile.
+func (e *Engine) markOwnWindowLocked(s *Strand, windowID string, overview, unseen bool, group string) {
 	setOption := func(option, value string) {
 		if err := e.tmux.run("set-option", "-w", "-t", windowID, option, value); err != nil {
 			logger.Warn("reed: could not set an own-window option", "strand", s.GUID, "window", windowID, "option", option, "err", err)
@@ -369,21 +321,13 @@ func (e *Engine) openOwnWindowLocked(st *ReedState, s *Strand, name, group strin
 				setOption("@strand_color", tmuxColor)
 			}
 		}
-		if runtime.GOOS != "windows" && !selectNew {
+		if runtime.GOOS != "windows" && unseen {
 			setOption(unseenWindowOption, "1")
 		}
 	}
 	if group != "" {
 		setOption(groupWindowOption, group)
 	}
-	if selectNew {
-		if err := e.tmux.run("select-window", "-t", windowID); err != nil {
-			logger.Warn("reed: could not select the new agent window", "strand", s.GUID, "window", windowID, "err", err)
-		}
-	}
-
-	logger.Info("reed: opened own window", "socket", e.Socket(), "session", e.SessionName(), "strand", s.GUID, "window", windowID, "pane", paneID)
-	return paneID, nil
 }
 
 // loadOrInitStateLocked loads or initializes a ReedState stamped with
@@ -437,10 +381,10 @@ func (e *Engine) loadOrInitStateLocked() (*ReedState, error) {
 }
 
 // reconcileApplyPersistLocked fetches current panes, reconciles dead
-// pane bindings, reapplies the layout, and persists the state. It is the
+// pane bindings, and persists the state. It is the
 // shared tail every public op composes after mutation.
 func (e *Engine) reconcileApplyPersistLocked(st *ReedState) ([]LivePane, error) {
-	live, windows, err := e.listStrandAndWindowPanes(st)
+	live, windows, err := e.listReconcilePanesLocked(st)
 	if err != nil {
 		return nil, fmt.Errorf("list panes: %w", err)
 	}
@@ -450,18 +394,14 @@ func (e *Engine) reconcileApplyPersistLocked(st *ReedState) ([]LivePane, error) 
 		return nil, fmt.Errorf("reconcile: %w", err)
 	}
 	if len(killed) > 0 {
-		// Order matters: kill dead -> re-enumerate live -> compute layout
-		// -> apply. The kill-pane calls above mutate the pane set the next
-		// select-layout must enumerate, so enumeration must follow them.
+		// The kill-pane calls above changed the pane set.
+		// Callers read the returned panes, so enumeration must follow them.
 		live, err = e.listStrandPanes(st)
 		if err != nil {
 			return nil, fmt.Errorf("list panes after reconcile: %w", err)
 		}
 	}
 
-	if err := e.applyLayoutLocked(st, live); err != nil {
-		return nil, fmt.Errorf("apply layout: %w", err)
-	}
 	if err := SaveState(e.stateDir(), st); err != nil {
 		return nil, fmt.Errorf("save state: %w", err)
 	}

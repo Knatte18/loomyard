@@ -482,7 +482,7 @@ func TestAttach_UntrackedTerminalRecord_RespawnEligibleRegardlessOfAge(t *testin
 				runDir := seedAttachRun(t, runRoot, "run-1", seedAttachRunOpts{strandGUID: "strand-1", outputFiles: []string{outputFile}, outcome: outcome, includeOutcome: true})
 				setDirAge(t, runDir, fc.Now().Add(-2*time.Duration(30)*time.Second))
 
-				_, found, err := runner.Attach(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, Display: render.Display{Anchor: render.AnchorBelowParent}})
+				_, found, err := runner.Attach(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, Display: render.Display{Anchor: render.AnchorOwnWindow}})
 				if err != nil {
 					t.Fatalf("Attach() error = %v; want nil — a terminal-Outcome record is respawn-eligible regardless of age", err)
 				}
@@ -701,11 +701,11 @@ func TestAttach_RunningRecordUnsatisfiedFileContract_RespawnsOrErrors(t *testing
 		{name: "untracked_empty_outcome_young_dir_errors", status: reedengine.StatusResult{Strands: nil}, age: 10 * time.Second, omitOutcome: true, wantError: true},
 		{
 			name: "binding_cleared_young_dir_errors", status: deadStatus("strand-1", ""), age: 10 * time.Second,
-			display: render.Display{Anchor: render.AnchorBelowParent}, wantError: true,
+			display: render.Display{Anchor: render.AnchorOwnWindow}, wantError: true,
 		},
 		{
 			name: "binding_cleared_old_dir_respawns", status: deadStatus("strand-1", ""), age: 2 * time.Minute,
-			display: render.Display{Anchor: render.AnchorBelowParent},
+			display: render.Display{Anchor: render.AnchorOwnWindow},
 		},
 	}
 	for _, tt := range tests {

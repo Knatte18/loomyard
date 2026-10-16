@@ -172,21 +172,17 @@ func clearAllPaneBindings(st *ReedState) {
 // possibly own — Selvage's pane, or a pane an earlier strand in the table already claims — and
 // returns the GUIDs it cleared, in table order.
 //
-// A pane has exactly one owner. reed's own construction paths already guarantee that
-// (planPaneTarget never yields Selvage as a split target while any non-Selvage pane exists, and
-// its result is always validated as genuinely new by validateSplitCreatedNewPane), so a table
-// violating it is a CORRUPT table, not one reed produced: a stale
-// reed.json restored over a newer session, a hand-edited file, a partially restored backup. Every
-// such table reaches this package through LoadState, so the repair belongs at that one load
-// chokepoint rather than at each of the several places a duplicate does damage.
+// A pane has exactly one owner.
+// reed's own construction paths already guarantee that, since every strand pane is created new in a window of its own,
+// so a table violating it is a CORRUPT table, not one reed produced:
+// a stale reed.json restored over a newer session, a hand-edited file, a partially restored backup.
+// Every such table reaches this package through LoadState,
+// so the repair belongs at that one load chokepoint rather than at each of the several places a duplicate does damage.
 //
 // The damage is worth naming, because it is neither theoretical nor loud (R5 review finding R5-F3,
 // both shapes reproduced live on tmux 3.6):
-//   - A strand sharing SELVAGE's pane id makes planLayout place that pane twice — once as
-//     bandSelvage's fixed bottom cell, once inside the stack body — and tmux answers a layout string
-//     whose cell count exceeds the panes it can name by DESTROYING the panes it has no cell for.
-//     Observed: a single `lyx reed up` reduced a two-pane session to one, reported ok:true, and then
-//     reported the strand live:true against the Selvage pane.
+//   - A strand sharing SELVAGE's pane id makes one pane answer to two owners, so the strand reports
+//     live:true against the Selvage pane.
 //   - Two strands sharing one pane id leave the second strand's REAL pane bound to nobody, so
 //     planReconcile's deterministic untracked reap kills it. Observed: `up` reported ok:true and
 //     strands:2 while destroying the second strand's pane and its running process, after which

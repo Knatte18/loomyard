@@ -106,15 +106,26 @@ func TestReconcileAll(t *testing.T) {
 			},
 		},
 		{
-			name:  "stale reed header block is replaced by selvage",
+			name:  "stale reed header block is removed",
 			seed:  map[string]string{"reed": "tmux: C:\\tools\\tmux.exe\nheader:\n  template: \"\"\n  height_rows: 1\n"},
 			apply: true,
 			want: map[string]moduleWant{
 				"reed": {
 					applied:         true,
 					removedAll:      []string{"header.template", "header.height_rows"},
-					addedAll:        []string{"selvage.height_rows"},
 					fileNotContains: []string{"header:"},
+				},
+			},
+		},
+		{
+			name:  "retired reed layout keys are reconciled away",
+			seed:  map[string]string{"reed": "tmux: C:\\tools\\tmux.exe\ncollapsed_rows: 3\nmin_full_rows: 3\nselvage:\n  height_rows: 1\n"},
+			apply: true,
+			want: map[string]moduleWant{
+				"reed": {
+					applied:         true,
+					removedAll:      []string{"collapsed_rows", "min_full_rows", "selvage.height_rows"},
+					fileNotContains: []string{"collapsed_rows:", "min_full_rows:", "selvage:"},
 				},
 			},
 		},

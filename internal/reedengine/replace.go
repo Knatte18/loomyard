@@ -45,76 +45,78 @@ func (e *Engine) ReplaceStrand(guid string, spec AddSpec) (Strand, error) {
 		if _, err := e.validateNaming(spec); err != nil {
 			return err
 		}
+		// Refused before the old strand is removed and its pane killed: addStrandLocked's own check comes too late to keep it.
+		if err := validateDisplay(spec.Display); err != nil {
+			return err
+		}
 		if err := validateWindowConfig(e.cfg); err != nil {
 			return err
 		}
-		return e.keepZoomLocked(func() error {
-			if err := e.requireSessionLocked(); err != nil {
-				return err
-			}
+		if err := e.requireSessionLocked(); err != nil {
+			return err
+		}
 
-			st, err := e.loadOrInitStateLocked()
-			if err != nil {
-				return err
-			}
+		st, err := e.loadOrInitStateLocked()
+		if err != nil {
+			return err
+		}
 
-			slot := strandIndex(st.Strands, guid)
-			removed, paneIDs, err := e.removeStrandLocked(st, guid, false)
-			if err != nil {
-				return err
-			}
+		slot := strandIndex(st.Strands, guid)
+		removed, paneIDs, err := e.removeStrandLocked(st, guid, false)
+		if err != nil {
+			return err
+		}
 
-			replacingWithOverview := isOverview(spec.Display)
-			reapPIDs, leftWindows, endedCurrent := e.killStrandPanes(st, paneIDs, !replacingWithOverview)
-			if warning := e.relayoutSharedWindowsLocked(leftWindows); warning != "" {
-				logger.Warn("reed: replace skipped the shared-window layout", "socket", e.Socket(), "session", e.SessionName(), "cause", warning)
-			}
-			logger.Info("reed: replacing strand", "socket", e.Socket(), "session", e.SessionName(),
-				"guid", guid, "removed", removed.Strands)
+		replacingWithOverview := isOverview(spec.Display)
+		reapPIDs, leftWindows, endedCurrent := e.killStrandPanes(st, paneIDs, !replacingWithOverview)
+		if warning := e.relayoutSharedWindowsLocked(leftWindows); warning != "" {
+			logger.Warn("reed: replace skipped the shared-window layout", "socket", e.Socket(), "session", e.SessionName(), "cause", warning)
+		}
+		logger.Info("reed: replacing strand", "socket", e.Socket(), "session", e.SessionName(),
+			"guid", guid, "removed", removed.Strands)
 
-			// A failed add can leave its unlaunched strand appended to the table; cut it back off so the
-			// reconcile tail below persists the removal alone.
-			beforeAdd := len(st.Strands)
-			strand, addErr := e.addStrandLocked(st, spec)
-			if addErr != nil {
-				st.Strands = st.Strands[:beforeAdd]
-				pruneWindowGroups(st)
+		// A failed add can leave its unlaunched strand appended to the table; cut it back off so the
+		// reconcile tail below persists the removal alone.
+		beforeAdd := len(st.Strands)
+		strand, addErr := e.addStrandLocked(st, spec)
+		if addErr != nil {
+			st.Strands = st.Strands[:beforeAdd]
+			pruneWindowGroups(st)
+		}
+		postAddSaveFailed := false
+		if addErr == nil {
+			st.Strands = moveStrandTo(st.Strands, strand.GUID, slot)
+			if err := SaveState(e.stateDir(), st); err != nil {
+				addErr = fmt.Errorf("persist strand: %w", err)
+				postAddSaveFailed = true
 			}
-			postAddSaveFailed := false
-			if addErr == nil {
-				st.Strands = moveStrandTo(st.Strands, strand.GUID, slot)
-				if err := SaveState(e.stateDir(), st); err != nil {
-					addErr = fmt.Errorf("persist strand: %w", err)
-					postAddSaveFailed = true
-				}
+		}
+		if addErr == nil {
+			logger.Info("reed: replacement strand launched", "socket", e.Socket(), "session", e.SessionName(),
+				"guid", strand.GUID, "name", strand.Name)
+			if endedCurrent && replacingWithOverview {
+				e.selectStrandWindowLocked(strand.PaneID)
 			}
-			if addErr == nil {
-				logger.Info("reed: replacement strand launched", "socket", e.Socket(), "session", e.SessionName(),
-					"guid", strand.GUID, "name", strand.Name)
-				if endedCurrent && replacingWithOverview {
-					e.selectStrandWindowLocked(strand.PaneID)
-				}
-			}
+		}
 
-			// The old pane is already killed: repair the layout and reap even when the add failed, so
-			// the removal is persisted and the dying subtree is never left holding the worktree.
-			_, applyErr := e.reconcileApplyPersistLocked(st)
-			reapPaneChildren(reapPIDs, reapExitTimeout)
-			// reconcileApplyPersistLocked ends in SaveState, so a nil applyErr means the new strand's record was persisted after all and its launch script stays.
-			// When the post-add save failed and the tail failed too, no save carrying the new strand ever succeeded, so its script is deleted.
-			if postAddSaveFailed && applyErr != nil {
-				removeLaunchScripts(shell.ForGOOS(), e.stateDir(), []string{strand.GUID})
-			}
-			if addErr != nil {
-				return addErr
-			}
-			if applyErr != nil {
-				return applyErr
-			}
+		// The old pane is already killed: repair the layout and reap even when the add failed, so
+		// the removal is persisted and the dying subtree is never left holding the worktree.
+		_, applyErr := e.reconcileApplyPersistLocked(st)
+		reapPaneChildren(reapPIDs, reapExitTimeout)
+		// reconcileApplyPersistLocked ends in SaveState, so a nil applyErr means the new strand's record was persisted after all and its launch script stays.
+		// When the post-add save failed and the tail failed too, no save carrying the new strand ever succeeded, so its script is deleted.
+		if postAddSaveFailed && applyErr != nil {
+			removeLaunchScripts(shell.ForGOOS(), e.stateDir(), []string{strand.GUID})
+		}
+		if addErr != nil {
+			return addErr
+		}
+		if applyErr != nil {
+			return applyErr
+		}
 
-			result, _ = strandByGUID(st.Strands, strand.GUID)
-			return nil
-		})
+		result, _ = strandByGUID(st.Strands, strand.GUID)
+		return nil
 	})
 	return e.withColor(result), err
 }

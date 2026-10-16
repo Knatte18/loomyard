@@ -43,7 +43,7 @@ func TestLaunchScript_SourcedScriptRunsInThePaneShellScope(t *testing.T) {
 	strand, err := e.AddStrand(AddSpec{
 		Cmd:          cmd,
 		NameOverride: "launch-script-strand",
-		Display:      render.Display{Anchor: render.AnchorBelowParent},
+		Display:      render.Display{Anchor: render.AnchorOwnWindow},
 	})
 	if err != nil {
 		t.Fatalf("AddStrand: %v", err)

@@ -20,7 +20,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
-	"github.com/Knatte18/loomyard/internal/shell"
 )
 
 func guids(strands []Strand) []string {
@@ -35,7 +34,7 @@ func guids(strands []Strand) []string {
 // An over-long socket path, an unresolvable shell, a segment color outside the palette, an invalid watchdog value, an invalid window_split or a negative window_share_max each fail with an error naming it before any tmux round trip (validation ORDER, not just existence),
 // while "on" and "off" do not trip the watchdog check (the fixture's nonexistent tmux binary is expected to fail Up() past this point,
 // so the assertion is only that the error is NOT the watchdog validation error).
-// Each refusal is asserted at three boot entries: Up and Resume, whose op-lock brackets refuse before their zoom read, and ensureServerAndSessionLocked, which every other boot path reaches without that bracket.
+// Each refusal is asserted at three boot entries: Up and Resume, whose boot op lock refuses before any tmux round trip, and ensureServerAndSessionLocked, which every other boot path reaches without it.
 func TestUp_BootValidation(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -181,65 +180,27 @@ func TestServerSpawnArgv(t *testing.T) {
 	}
 }
 
-// TestPinBootOptionsLocked_InstallsTheSignalEntry pins that a fresh boot's pins end in a zero-pin rebuild of the window-resized hook array when the watchdog is on, the clear and the signal entry alone,
-// and that watchdog off leaves the one unset and installs no entry.
-// Both steps also see the unseen-clear hook pinned once.
-// Windows issues no hook call and cannot be faked, so both steps skip there.
-func TestPinBootOptionsLocked_InstallsTheSignalEntry(t *testing.T) {
-	bootPins := func(t *testing.T, watchdog string) (*Engine, *fakeTmux) {
-		t.Helper()
-		if runtime.GOOS == "windows" {
-			t.Skip("the window-resized hook is never installed on Windows")
-		}
-		e := newTestEngine(t)
-		e.cfg.Watchdog = watchdog
-		fake := installFakeTmux(t, e)
-		if err := e.pinBootOptionsLocked("off", ""); err != nil {
-			t.Fatalf("pinBootOptionsLocked() = %v, want nil", err)
-		}
-		return e, fake
+// TestPinBootOptionsLocked_ClearsTheWindowResizedHook pins that a fresh boot unpins the window-resized hook in both scopes and installs no entry, whatever the watchdog value.
+// Windows issues no hook call and cannot be faked, so it skips there.
+func TestPinBootOptionsLocked_ClearsTheWindowResizedHook(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the window-resized hook is never touched on Windows")
 	}
-
-	t.Run("WatchdogOn", func(t *testing.T) {
-		e, fake := bootPins(t, "on")
-		target := exactSessionWindowTarget(e.SessionName())
-
-		var hooks [][]string
-		lastOption, firstHook := -1, -1
-		for i, call := range fake.Calls() {
-			switch {
-			case call[0] == "set-option":
-				lastOption = i
-			case call[0] == "set-hook" && containsArg(call, windowResizedHookName):
-				hooks = append(hooks, call)
-				if firstHook == -1 {
-					firstHook = i
-				}
+	for _, watchdog := range []string{"on", "off"} {
+		t.Run("Watchdog_"+watchdog, func(t *testing.T) {
+			e := newTestEngine(t)
+			e.cfg.Watchdog = watchdog
+			fake := installFakeTmux(t, e)
+			if err := e.pinBootOptionsLocked("off", ""); err != nil {
+				t.Fatalf("pinBootOptionsLocked() = %v, want nil", err)
 			}
-		}
-		assertUnseenClearHookPinned(t, e, fake)
-		want := [][]string{
-			{"set-hook", "-u", "-w", "-t", target, windowResizedHookName},
-			{"set-hook", "-w", "-t", target, windowResizedHookName, resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())},
-		}
-		if !slices.EqualFunc(hooks, want, slices.Equal[[]string]) {
-			t.Errorf("set-hook calls = %v, want the clear and the signal entry alone: %v", hooks, want)
-		}
-		if firstHook < lastOption {
-			t.Errorf("first set-hook call at %d precedes the last set-option call at %d, want the install after the geometry pins", firstHook, lastOption)
-		}
-	})
 
-	t.Run("WatchdogOff", func(t *testing.T) {
-		e, fake := bootPins(t, "off")
-
-		hooks := fake.SetHookCalls(windowResizedHookName)
-		assertUnseenClearHookPinned(t, e, fake)
-		want := [][]string{{"set-hook", "-u", "-t", exactSessionWindowTarget(e.SessionName()), windowResizedHookName}}
-		if !slices.EqualFunc(hooks, want, slices.Equal[[]string]) {
-			t.Errorf("set-hook calls = %v, want the one unset %v", hooks, want)
-		}
-	})
+			if got, want := fake.SetHookCalls(windowResizedHookName), wantResizedUnpins(exactSessionWindowTarget(e.SessionName())); !slices.EqualFunc(got, want, slices.Equal[[]string]) {
+				t.Errorf("set-hook calls naming %s = %v, want the two unpins and no installing entry: %v", windowResizedHookName, got, want)
+			}
+			assertUnseenClearHookPinned(t, e, fake)
+		})
+	}
 }
 
 // TestStatus_ReportsSegmentColor pins that Status carries each strand's resolved segment color, and none for a strand recorded without a segment.
@@ -362,10 +323,10 @@ func TestStripAgentNameEnv_DropsNameAndParentOnly(t *testing.T) {
 func TestPlanUpLaunches_NeverLaunchesAnyStrand(t *testing.T) {
 	tables := [][]Strand{
 		nil,
-		{{GUID: "a", Display: render.Display{Anchor: render.AnchorBelowParent}}},
+		{{GUID: "a", Display: render.Display{Anchor: render.AnchorOwnWindow}}},
 		{
 			{GUID: "a", Display: render.Display{Anchor: render.AnchorHidden}},
-			{GUID: "b", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}},
+			{GUID: "b", PaneID: "%1", Display: render.Display{Anchor: render.AnchorOwnWindow}},
 		},
 	}
 	for _, strands := range tables {
@@ -503,8 +464,8 @@ func TestPruneServerLogsLocked_ServerAndClientPrefixesPrunedIndependently(t *tes
 }
 
 func TestPlanResumeLaunches_ThreeLifecycleStates(t *testing.T) {
-	notLive := Strand{GUID: "a", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}}
-	stillLive := Strand{GUID: "b", PaneID: "%2", Display: render.Display{Anchor: render.AnchorBelowParent}}
+	notLive := Strand{GUID: "a", PaneID: "%1", Display: render.Display{Anchor: render.AnchorOwnWindow}}
+	stillLive := Strand{GUID: "b", PaneID: "%2", Display: render.Display{Anchor: render.AnchorOwnWindow}}
 	hidden := Strand{GUID: "c", Display: render.Display{Anchor: render.AnchorHidden}}
 	withDoneWhen := func(s Strand, paths ...string) Strand {
 		s.DoneWhen = paths

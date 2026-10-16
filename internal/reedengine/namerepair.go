@@ -81,7 +81,7 @@ func planTitleRepairs(strands []Strand, live []LivePane) []titleRepair {
 
 // WatchNames runs the name-repair loop until ctx ends, one repairNames pass per wake.
 // The wait starts at nameRepairCycle, doubles up to nameRepairCeiling across passes that repair nothing, and returns to nameRepairCycle after one that repairs something.
-// A held op lock defers a tick rather than queueing behind it, as reapplyLayout does.
+// A held op lock defers a tick rather than queueing behind it.
 // namers maps a strand's provider tag to the namer that repairs its session name;
 // a strand whose tag has no namer, or a nil map, gets no session-name repair.
 // It never writes to stdout or stderr, and a failure inside a pass is logged, never returned.

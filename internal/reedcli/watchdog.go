@@ -42,11 +42,7 @@ import (
 // watchdogHubDiscoveryCycle is the base cadence of the daemon's outer loop: how often it runs one list-sessions round trip against its hub socket while the session set keeps changing.
 // Across cycles that find the set unchanged the cadence doubles up to watchdogHubDiscoveryCeiling, and a changed set or a discover signal returns it to this base.
 //
-// It lives here, beside the discovery loop that consumes it, rather than alongside
-// internal/reedengine/watchdog.go's existing unexported watchdog* constants: those govern
-// Engine.Watch's own internals, which reedengine still owns, and exporting two constants from that
-// package purely so another package could read them would put the timings somewhere their only
-// consumer is not.
+// It lives here, beside the discovery loop that consumes it, because that loop is its only consumer.
 //
 // Five seconds is well below any human `down` + `up` gap, so discovery costs one list-sessions round trip per hub every five seconds at most.
 const watchdogHubDiscoveryCycle = 5 * time.Second
@@ -74,9 +70,7 @@ const watchdogOrphanGoneCycles = 3
 
 // watchdogTiming carries the daemon's loop tunables as data, so a test can drive the loop against
 // compressed cycles while production wires the fixed package constants through
-// watchdogDefaultTiming. This deliberately mirrors the shape internal/reedengine/watchloop.go
-// already uses for its own watchTiming/watchDefaultTiming pair, so the repo carries one idiom for
-// loop-timing injection rather than two.
+// watchdogDefaultTiming.
 //
 // DiscoveryCycle is the base cadence and DiscoveryCeiling the cap it backs off to across unchanged cycles; a ceiling equal to the cycle means no backoff.
 // ReapTimeout bounds the reap's graceful wait before it force-kills.
@@ -184,7 +178,7 @@ func sessionsAreIdle(names []string, err error) bool {
 }
 
 // watchedSession is one worktree session the daemon has entered: the *reedengine.Engine built for
-// it, plus the cancel for the goroutine (if any) running Engine.Watch on its behalf.
+// it, plus the cancel for the name-repair goroutine (if any) running on its behalf.
 //
 // cancel is nil for a `watchdog: off` worktree: enterSession starts no goroutine for it at all, but
 // the entry is still kept so departure bookkeeping (runWatchdogLoop) stays uniform across enabled
@@ -303,16 +297,14 @@ func resolveWatchedSession(hub, sessionName string) (*lyxcwd.Location, error) {
 }
 
 // enterSession builds the watchedSession entry for a newly-appeared live tmux session name,
-// starting its Engine.Watch goroutine unless the worktree's own config says watchdog: off.
+// starting its name-repair goroutine unless the worktree's own config says watchdog: off.
 //
 // LoadConfig, not a strict load, is used deliberately: a worktree with no _lyx still resolves the
 // embedded template, which keeps reedengine on the degrading side of the Config Strictness
 // Invariant rather than refusing a worktree the daemon should otherwise watch.
 //
 // A watchdog: off worktree still gets an entry, with a nil cancel and no goroutine started at all:
-// watchLoop answers a disabled watchdog by blocking on <-ctx.Done() rather than returning, so
-// starting one here would cost a goroutine per disabled worktree to do nothing — while keeping the
-// entry still keeps the session known and keeps departure bookkeeping (runWatchdogLoop) uniform
+// the entry keeps the session known and keeps departure bookkeeping (runWatchdogLoop) uniform
 // across enabled and disabled worktrees.
 //
 // The engine drives tmuxPath, the binary the daemon was told, whatever the worktree's own config names,
@@ -339,18 +331,12 @@ func enterSession(hub, tmuxPath, sessionName string) (watchedSession, error) {
 	// A worktree reaches the daemon's discovery loop only after "lyx reed up" already booted it,
 	// and that boot already validated cfg.Watchdog loudly (ensureServerAndSessionLocked), so the
 	// only value this needs to recognize here is the "off" spelling itself — every other value,
-	// valid or not, behaves as enabled, matching Engine.Watch's own fail-safe-toward-watching
-	// posture for a value it cannot parse.
+	// valid or not, behaves as enabled, failing safe toward watching for a value it cannot parse.
 	if strings.EqualFold(strings.TrimSpace(cfg.Watchdog), "off") {
 		return watchedSession{eng: eng}, nil
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		if err := eng.Watch(ctx); err != nil {
-			logger.Debug("reed: watchdog's watch loop returned", "session", sessionName, "err", err)
-		}
-	}()
 	go func() {
 		if err := eng.WatchNames(ctx, shuttleengines.SessionNamers()); err != nil {
 			logger.Debug("reed: watchdog's name repair loop returned", "session", sessionName, "err", err)
@@ -435,11 +421,11 @@ func dispatchReap(wg *sync.WaitGroup, done chan<- string, hub, tmuxPath, shellPa
 // reapPaneChildren waits up to timing.ReapTimeout (default 15s) and then up to forceKillExitGrace (5s) per straggler,
 // so an inline reap would stall one tick for ~20s — breaking the confirmation rule's quoted cadence, delaying entry into a newly-appeared healthy session, and leaving ctx.Done() unread for the whole stall.
 //
-// Teardown on departure is not optional: Engine.Watch never returns while its context is live, so
+// Teardown on departure is not optional: the name-repair loop never returns while its context is live, so
 // without cancelling a departed entry's goroutine, a worktree whose session goes away while
 // siblings remain would leave a goroutine polling a dead session for the daemon's whole remaining
 // lifetime. Cancelling on departure is also what makes "re-entry re-reads config" true at all:
-// watchLoop reads cfg.Watchdog exactly once at start, so a flipped watchdog: value only takes
+// enterSession reads cfg.Watchdog exactly once, so a flipped watchdog: value only takes
 // effect once the entry leaves (this departure teardown) and re-enters (enterSession, on the next
 // appearance) — there is no other re-read path.
 //
@@ -638,7 +624,7 @@ func ownExecutableStat() func() (os.FileInfo, error) {
 // every GOOS but never validated, and having no shell parameter to inspect makes that a property of
 // the signature rather than a branch someone can add later. A hard --shell pre-flight would have a
 // real consequence: ensureWatchdogSpawned is best-effort and detached with no stderr anyone watches, so a
-// rejection there would silently cost the hub its entire watchdog daemon, resize self-heal for every
+// rejection there would silently cost the hub its entire watchdog daemon, name repair for every
 // worktree included, over one empty config value.
 func validateWatchdogFlags(hubPath, tmuxPath string) error {
 	if hubPath == "" || !filepath.IsAbs(hubPath) {
@@ -699,7 +685,7 @@ func (c *reedCLI) watchdogCmd() *cobra.Command {
 		Short:       "run the blocking, single-instance, per-hub watchdog daemon",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
 		Long: `watchdog is the detached, single-instance, per-hub daemon that hosts reed's
-resize self-heal watch loop for every worktree session on the hub named by
+session-name repair for every worktree session on the hub named by
 --hub-path. It is told its hub path, the tmux binary to use, and (optionally)
 the shell it should spawn to walk a reaped session's descendant pids on its
 command line — it opts out of reed's normal cwd/location/config resolution

@@ -216,7 +216,7 @@ func TestRunner_Start_HappyPath(t *testing.T) {
 		Round:       "1",
 		Segment:     segmentcolor.Review,
 		Parent:      "parent-guid",
-		Display:     render.Display{Anchor: render.AnchorBelowParent},
+		Display:     render.Display{Anchor: render.AnchorOwnWindow},
 
 		ForkSubagents: true,
 	}
@@ -242,7 +242,7 @@ func TestRunner_Start_HappyPath(t *testing.T) {
 			Cmd:       "launch-cmd",
 			ResumeCmd: "resume-cmd",
 			SessionID: "session-1",
-			Display:   render.Display{Anchor: render.AnchorBelowParent},
+			Display:   render.Display{Anchor: render.AnchorOwnWindow},
 			DoneWhen:  []string{filepath.Join(fx.Worktree, "out.md")},
 		}
 		if !reflect.DeepEqual(got, want) {

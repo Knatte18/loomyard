@@ -15,7 +15,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -322,8 +321,8 @@ func TestWatchdogDaemon(t *testing.T) {
 		}
 	}
 
-	// ResizeAppliesOnlyToThatWorktree drives a real resize against one of two worktrees discovered by the same daemon and asserts the sibling's own window is left exactly alone — the daemon's per-session watch loops must stay isolated from each other, never cross-applying a resize meant for a different worktree's session.
-	if !t.Run("ResizeAppliesOnlyToThatWorktree", func(t *testing.T) {
+	// DiscoversBothSessions boots both worktrees' engines, starts the loop and waits until the daemon has discovered both sessions.
+	if !t.Run("DiscoversBothSessions", func(t *testing.T) {
 		eng1 = bootWatchdogEngine(t, prime)
 		scenario.Cleanup(func() { _, _ = eng1.Down() })
 		eng2 = bootWatchdogEngine(t, pair)
@@ -336,26 +335,6 @@ func TestWatchdogDaemon(t *testing.T) {
 		waitForCondition(t, watchdogTestWait, func() bool {
 			return sessionListed(tmuxPath, socket, eng1.SessionName()) && sessionListed(tmuxPath, socket, eng2.SessionName())
 		})
-
-		eng2W, eng2H := watchdogWindowSize(t, tmuxPath, socket, eng2.SessionName())
-
-		_, eng1H := watchdogWindowSize(t, tmuxPath, socket, eng1.SessionName())
-		newH := eng1H + 10
-		watchdogResizeWindow(t, tmuxPath, socket, eng1.SessionName(), 90, newH)
-
-		waitForCondition(t, 15*time.Second, func() bool {
-			_, gotH := watchdogWindowSize(t, tmuxPath, socket, eng1.SessionName())
-			return gotH == newH
-		})
-
-		// Give eng1's own watch loop goroutine ample time to actually react before checking the sibling
-		// never moved — a false pass here would mean we checked before either loop had a chance to run.
-		time.Sleep(watchdogTestCycle * 10)
-
-		gotW2, gotH2 := watchdogWindowSize(t, tmuxPath, socket, eng2.SessionName())
-		if gotW2 != eng2W || gotH2 != eng2H {
-			t.Errorf("eng2's window size became %dx%d after resizing only eng1's window; want unchanged %dx%d — a resize must re-apply only the worktree whose own window actually resized", gotW2, gotH2, eng2W, eng2H)
-		}
 	}) {
 		return
 	}
@@ -475,39 +454,6 @@ func TestWatchdogDaemon(t *testing.T) {
 		cancelLoop()
 		<-loopDone
 	})
-}
-
-// watchdogWindowSize reads session's live #{window_width} and #{window_height} via a plain tmux
-// display-message, bypassing the engine entirely so a test can observe either worktree's window from
-// outside both — exactSessionWindowTarget's "=<name>:" form is used so two sessions sharing this
-// hub's one socket can never prefix-match each other.
-func watchdogWindowSize(t *testing.T, tmuxPath, socket, session string) (w, h int) {
-	t.Helper()
-	out, err := exec.Command(tmuxPath, "-L", socket, "display-message", "-p", "-t", "="+session+":", "#{window_width} #{window_height}").Output()
-	if err != nil {
-		t.Fatalf("display-message #{window_width} #{window_height} for %s: %v", session, err)
-	}
-	fields := strings.Fields(string(out))
-	if len(fields) != 2 {
-		t.Fatalf("display-message #{window_width} #{window_height} for %s = %q, want two fields", session, out)
-	}
-	w, errW := strconv.Atoi(fields[0])
-	h, errH := strconv.Atoi(fields[1])
-	if errW != nil || errH != nil {
-		t.Fatalf("parse window size %q for %s: width err=%v height err=%v", out, session, errW, errH)
-	}
-	return w, h
-}
-
-// watchdogResizeWindow issues a direct resize-window against session — the same live trigger
-// smoke_dotfill_test.go already drives against a single session — bypassing the engine entirely so a
-// test can resize one worktree's window from outside every engine.
-func watchdogResizeWindow(t *testing.T, tmuxPath, socket, session string, cols, rows int) {
-	t.Helper()
-	out, err := exec.Command(tmuxPath, "-L", socket, "resize-window", "-t", "="+session+":", "-x", strconv.Itoa(cols), "-y", strconv.Itoa(rows)).CombinedOutput()
-	if err != nil {
-		t.Fatalf("resize-window %s to %dx%d: %v (%s)", session, cols, rows, err, out)
-	}
 }
 
 // unusableHubPath returns a hub path that makes fabricengine.HubScratchDir(hub)'s MkdirAll fail: a

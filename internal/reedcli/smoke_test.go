@@ -2,7 +2,7 @@
 
 // smoke_test.go is the shared smoke-test harness: the helpers (binary discovery, live-tmux process/pane probes, transcript watching, fixture wiring) common to the smoke test files in this package.
 // Those files drive the composed live-tmux behaviors through RunCLIIn against a real server:
-// the basic up -> add -> status -> down round-trip, crash recovery, layout survival under stacked below-parent adds, add-after-remove-last, down's synchronous server teardown, cross-worktree scope, the interactive attach handover, and native claude --resume codeword recall.
+// the basic up -> add -> status -> down round-trip, crash recovery, every successive add opening a window of its own, add-after-remove-last, down's synchronous server teardown, cross-worktree scope, the interactive attach handover, and native claude --resume codeword recall.
 // These paths are exactly where hermetic tests prove nothing:
 // tmux's real semantics (positional select-layout, silent split failures, corpse panes, async kill-server) and claude's real transcript persistence only show up live.
 // Excluded from the default `go test ./internal/reedcli/...`; runs under `go test -tags tmux`, or `-tags llm` for the claude resume test.
@@ -125,11 +125,11 @@ func waitServerGone(t *testing.T, tmuxPath, socket, session string) {
 	}
 }
 
-// listPaneLines returns the session's list-panes rows as
+// listPaneLines returns the list-panes rows of every window of the session as
 // "<pane_id> <pane_dead> <pane_top> <pane_height>" strings.
 func listPaneLines(t *testing.T, tmuxPath, socket, session string) []string {
 	t.Helper()
-	out, err := exec.Command(tmuxPath, "-L", socket, "list-panes", "-t", session,
+	out, err := exec.Command(tmuxPath, "-L", socket, "list-panes", "-s", "-t", session,
 		"-F", "#{pane_id} #{pane_dead} #{pane_top} #{pane_height}").Output()
 	if err != nil {
 		t.Fatalf("list-panes: %v", err)
@@ -311,7 +311,7 @@ func processGone(pid int) bool {
 // and their full descendant subtrees.
 func paneProcessTree(t *testing.T, tmuxPath, socket, session string) []int {
 	t.Helper()
-	out, err := exec.Command(tmuxPath, "-L", socket, "list-panes", "-t", session, "-F", "#{pane_pid}").Output()
+	out, err := exec.Command(tmuxPath, "-L", socket, "list-panes", "-s", "-t", session, "-F", "#{pane_pid}").Output()
 	if err != nil {
 		t.Fatalf("list-panes #{pane_pid}: %v", err)
 	}
@@ -364,7 +364,7 @@ $acc`, strings.Join(roots, ","))
 // its full descendant subtree.
 func panePaneSubtree(t *testing.T, tmuxPath, socket, session, paneID string) []int {
 	t.Helper()
-	out, err := exec.Command(tmuxPath, "-L", socket, "list-panes", "-t", session,
+	out, err := exec.Command(tmuxPath, "-L", socket, "list-panes", "-s", "-t", session,
 		"-F", "#{pane_id} #{pane_pid}").Output()
 	if err != nil {
 		t.Fatalf("list-panes #{pane_id} #{pane_pid}: %v", err)
@@ -735,7 +735,7 @@ func paneLiveOnSession(lines []string, paneID string) bool {
 // paneRootPID returns a pane's root process id on the socket.
 func paneRootPID(t *testing.T, tmuxPath, socket, session, paneID string) int {
 	t.Helper()
-	out, err := exec.Command(tmuxPath, "-L", socket, "list-panes", "-t", session,
+	out, err := exec.Command(tmuxPath, "-L", socket, "list-panes", "-s", "-t", session,
 		"-F", "#{pane_id} #{pane_pid}").Output()
 	if err != nil {
 		t.Fatalf("list-panes #{pane_id} #{pane_pid}: %v", err)
@@ -785,7 +785,7 @@ func paneCurrentPath(t *testing.T, tmuxPath, socket, paneID string) string {
 // harnessOnlyPaneID returns the sole pane id of a freshly-booted harness session.
 func harnessOnlyPaneID(t *testing.T, tmuxPath, socket, session string) string {
 	t.Helper()
-	out, err := exec.Command(tmuxPath, "-L", socket, "list-panes", "-t", session, "-F", "#{pane_id}").Output()
+	out, err := exec.Command(tmuxPath, "-L", socket, "list-panes", "-s", "-t", session, "-F", "#{pane_id}").Output()
 	if err != nil {
 		t.Fatalf("list-panes #{pane_id}: %v", err)
 	}

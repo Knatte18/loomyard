@@ -34,8 +34,8 @@ func (c *reedCLI) addCmd() *cobra.Command {
 		Use:         "add",
 		Short:       "add a new strand to the reed layout",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `add registers a new strand and, unless --anchor hidden, realizes it into
-a live pane and runs --cmd in it.
+		Long: `add registers a new strand and, unless --anchor hidden, gives it a window
+of its own and runs --cmd in it.
 
 The strand's name is formed by reed as <shortname>:<slug>:<role> in a task
 worktree, <shortname>:<role> in the prime and in a standalone run. The role is
@@ -68,13 +68,12 @@ Example:
 			}
 			out := cmd.OutOrStdout()
 
-			// The CLI vocabulary is below-parent, hidden and own-window.
-			// Top is an engine-only anchor, so it is rejected here with a specific message.
-			// That keeps a confusing render-layer error from surfacing later.
+			// The CLI vocabulary is own-window and hidden.
+			// Overview is an engine-only anchor, so it is rejected here with the retired spellings.
 			switch render.Anchor(anchor) {
-			case render.AnchorBelowParent, render.AnchorHidden, render.AnchorOwnWindow:
+			case render.AnchorHidden, render.AnchorOwnWindow:
 			default:
-				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("invalid --anchor %q; want below-parent|hidden|own-window", anchor)))
+				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("invalid --anchor %q; want own-window|hidden", anchor)))
 				return nil
 			}
 
@@ -121,7 +120,7 @@ Example:
 	cmd.Flags().StringVar(&name, "name", "", "explicit role segment or full name, never renumbered; refused when another strand holds it")
 	cmd.Flags().StringVar(&resumeCmd, "resume-cmd", "", `command "lyx reed resume" replays instead of --cmd`)
 	cmd.Flags().StringVar(&parent, "parent", "", "parent strand's guid")
-	cmd.Flags().StringVar(&anchor, "anchor", string(render.AnchorBelowParent), "placement: below-parent|hidden|own-window")
+	cmd.Flags().StringVar(&anchor, "anchor", string(render.AnchorOwnWindow), "placement: own-window|hidden")
 	cmd.Flags().BoolVar(&focus, "focus", false, "give this strand tmux input focus")
 	cmd.Flags().BoolVar(&ifAbsent, "if-absent", false, "make a repeated add idempotent by matching --name against this worktree's strands")
 	cmd.Flags().StringVar(&unlessName, "unless-name", "", "skip the add while this worktree's state holds a strand, live or dormant, matching this role segment or full name; checked before --if-absent, never touches that strand")
