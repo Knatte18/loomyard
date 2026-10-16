@@ -94,8 +94,27 @@ type result struct {
 
 // refuse prints err as a refusal and records exit 1.
 func refuse(cmd *cobra.Command, err error) error {
-	clihelp.SetExit(cmd.Context(), output.Err(cmd.OutOrStdout(), err.Error()))
+	writeRefusal(cmd, err.Error(), nil, 1)
 	return nil
+}
+
+// writeRefusal prints the JSON error envelope, with ok false, the trimmed msg and fields, to the command's stdout and records code as the exit.
+// When that write fails it writes one line "creel: <msg>" to the command's stderr instead, so a refusal is never lost; the exit code stays code.
+func writeRefusal(cmd *cobra.Command, msg string, fields map[string]any, code int) {
+	clihelp.SetExit(cmd.Context(), code)
+	msg = strings.TrimSpace(msg)
+	if fields == nil {
+		fields = map[string]any{}
+	}
+	fields["ok"] = false
+	fields["error"] = msg
+	data, err := json.Marshal(fields)
+	if err == nil {
+		_, err = fmt.Fprintln(cmd.OutOrStdout(), string(data))
+	}
+	if err != nil {
+		fmt.Fprintln(cmd.ErrOrStderr(), "creel: "+msg)
+	}
 }
 
 // writeOk prints fields as one JSON line with ok set to true, as output.Ok does, and returns the write's error.
@@ -140,8 +159,7 @@ func runVerb(cmd *cobra.Command, timeout time.Duration, body func(client *creele
 	client := creelengine.NewClient(geometry, claimFor(cwd), func() (int, error) { return seam.spawn(hubPath, geometry.DaemonLogPath) }, seam.clock)
 	res, err := body(client, out)
 	if errors.Is(err, creelengine.ErrWaitTimeout) {
-		clihelp.SetExit(ctx, ExitWaitTimeout)
-		output.ErrFields(out, "no outcome arrived before the timeout of "+timeout.String(), res.fields)
+		writeRefusal(cmd, "no outcome arrived before the timeout of "+timeout.String(), res.fields, ExitWaitTimeout)
 		return nil
 	}
 	if err != nil {
@@ -151,8 +169,7 @@ func runVerb(cmd *cobra.Command, timeout time.Duration, body func(client *creele
 		return nil
 	}
 	if res.code != 0 {
-		output.ErrFields(out, res.note, res.fields)
-		clihelp.SetExit(ctx, res.code)
+		writeRefusal(cmd, res.note, res.fields, res.code)
 		return nil
 	}
 	output.Ok(out, res.fields)
@@ -447,7 +464,10 @@ Example:
 					if len(resp.Messages) == 0 {
 						fields["note"] = "nothing unread"
 					}
-					return writeOk(out, fields)
+					if err := writeOk(out, fields); err != nil {
+						return fmt.Errorf("creel read: could not write the messages, so they stay unread: %w", err)
+					}
+					return nil
 				}
 				resp, err := client.Call(creelengine.Request{Verb: creelengine.VerbRead, From: from, All: all, Wait: wait}, timeout, printMessages)
 				if err != nil {

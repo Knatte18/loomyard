@@ -176,7 +176,7 @@ The reminder lands only after the turn ends and appears once in the pane's scrol
 **Goal:** "Leave interleaved mail from several senders, read it in every way the verb offers, and confirm each read returns the right set and that mail whose output could not be written stays unread."
 
 **Watch:** Interleave mail from EXTERNAL and a shell strand, then check plain `read`, `read --from`, `read --all` and `inbox`.
-`lyx creel read > /dev/full` exits non-zero and leaves the mail unread, so a following `read` still returns it.
+`lyx creel read > /dev/full` exits 1, writes a `creel:` line to stderr and leaves the mail unread, so a following `read` still returns it.
 
 **Verdict:** `FAIL` on a wrong set or lost mail.
 

@@ -98,11 +98,11 @@ type failingWriter struct{}
 
 func (failingWriter) Write(p []byte) (int, error) { return 0, errors.New("write refused") }
 
-// runCreelInto runs the creel command as runCreel does but prints to out, and returns the exit code.
-func runCreelInto(cwd string, out io.Writer, args ...string) int {
+// runCreelInto runs the creel command as runCreel does but prints to out and writes stderr to the writer it is handed, and returns the exit code.
+func runCreelInto(cwd string, out, stderr io.Writer, args ...string) int {
 	cmd := Command()
 	cmd.SetOut(out)
-	cmd.SetErr(io.Discard)
+	cmd.SetErr(stderr)
 	cmd.SetArgs(args)
 	return clihelp.RunRootCtx(lyxcwd.WithCwd(context.Background(), cwd), cmd, out)
 }
@@ -547,14 +547,17 @@ func TestCreelCLI(t *testing.T) {
 		r.delivery.SetStrands(strand)
 		r.startDaemon(t)
 
-		if code := runCreelInto(r.cwd, failingWriter{}, "read"); code == 0 {
-			t.Errorf("creel read of nothing unread into a failing writer exited 0; want non-zero")
+		var emptyStderr lockedBuffer
+		if code := runCreelInto(r.cwd, failingWriter{}, &emptyStderr, "read"); code != 1 || !strings.HasPrefix(emptyStderr.String(), "creel: ") {
+			t.Errorf("creel read of nothing unread into a failing writer = (%d, %q); want exit 1 and a creel: line on stderr", code, emptyStderr.String())
 		}
 		if post := runCreel(r.cwd, "post", alpha, "note to self"); post.code != 0 {
 			t.Fatalf("creel post = (%d, %q); want exit 0", post.code, post.raw)
 		}
-		if code := runCreelInto(r.cwd, failingWriter{}, "read"); code == 0 {
-			t.Errorf("creel read of a message into a failing writer exited 0; want non-zero")
+		var messageStderr lockedBuffer
+		code := runCreelInto(r.cwd, failingWriter{}, &messageStderr, "read")
+		if text := messageStderr.String(); code != 1 || !strings.HasPrefix(text, "creel: ") || !strings.Contains(text, "write refused") || !strings.Contains(text, "unread") {
+			t.Errorf("creel read of a message into a failing writer = (%d, %q); want exit 1 and a creel: line holding the write's error and unread", code, text)
 		}
 		// The daemon releases the dropped read's reservation only once it sees the connection close, so the retry runs under a real-time deadline.
 		deadline := time.Now().Add(10 * time.Second)
@@ -567,6 +570,38 @@ func TestCreelCLI(t *testing.T) {
 				t.Fatalf("creel read after the failed write = (%d, %q); want the message still unread", read.code, read.raw)
 			}
 			time.Sleep(10 * time.Millisecond)
+		}
+	})
+
+	t.Run("a waiting verb's envelope that cannot be written keeps its exit code and goes to stderr", func(t *testing.T) {
+		r := newRig(t)
+		alpha := r.name("alpha:driver")
+		r.delivery.SetStrands(creelfake.LiveStrand(alpha))
+		r.startDaemon(t)
+
+		r.delivery.SetSendError(creelengine.ErrNotLanded)
+		var unconfirmedStderr lockedBuffer
+		code := runCreelInto(r.cwd, failingWriter{}, &unconfirmedStderr, "inject", "--wait", alpha, "/clear")
+		if text := unconfirmedStderr.String(); code != ExitInjectUnconfirmed || !strings.HasPrefix(text, "creel: ") || !strings.Contains(text, "not confirmed") {
+			t.Errorf("creel inject --wait on a send answering ErrNotLanded into a failing writer = (%d, %q); want exit %d and a creel: line naming the unconfirmed landing", code, text, ExitInjectUnconfirmed)
+		}
+		r.delivery.SetSendError(nil)
+
+		r.delivery.SetIdle(alpha, false)
+		var timeoutStderr lockedBuffer
+		codes := make(chan int, 1)
+		go func() {
+			codes <- runCreelInto(r.cwd, failingWriter{}, &timeoutStderr, "inject", "--wait", "--timeout", "5s", alpha, "/clear")
+		}()
+		r.clientClock.AwaitWaits(1)
+		r.clientClock.Advance(5 * time.Second)
+		select {
+		case code := <-codes:
+			if text := timeoutStderr.String(); code != ExitWaitTimeout || !strings.HasPrefix(text, "creel: ") || !strings.Contains(text, "no outcome arrived") {
+				t.Errorf("creel inject --wait --timeout 5s into a failing writer = (%d, %q); want exit %d and a creel: line naming the timeout", code, text, ExitWaitTimeout)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatal("the verb did not return")
 		}
 	})
 
