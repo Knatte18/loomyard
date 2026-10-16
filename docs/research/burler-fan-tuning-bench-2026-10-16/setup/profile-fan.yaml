@@ -1,0 +1,66 @@
+target:
+  paths:
+    - .scratch/fan/arm/decision-record.md
+    - .scratch/fan/arm/support-log.md
+  instructions: ""
+fasit:
+  paths:
+    - .scratch/fan/inputs/board-entry.md
+  instructions: >
+    The authority for this round is the rubric supplied in the prompt. The mechanical
+    section contract over the discussion artifact pair is already enforced by this round's
+    own gate over this round's own output, so re-deriving it here is duplicated work.
+    The board entry of the task the record belongs to is the fasit file listed here;
+    the task is no longer on the live board, so read it from this file, not through lyx board.
+rubric: |
+  # Discussion-Review rubric
+
+  The subject under review is the discussion artifact pair, `decision-record.md` and `support-log.md`.
+  The mechanical section contract over that pair — which sections exist, in which file — is enforced by this round's own gate over this round's own output, and is not this rubric's subject.
+
+  `Discussion-Review` is the LLM producer, not the mechanical one — over-flagging is a judgment failure mode a mechanical producer, which has only checks and never judgment, cannot exhibit.
+
+  ## Do not flag
+
+  Do not flag any of the following as a finding:
+
+  - **A missing "Notes for the plan writer" subsection.**
+    It is optional by contract; its absence is never a deficiency.
+  - **Missing rejected alternatives in `decision-record.md`.**
+    Rejected alternatives belong in `support-log.md`'s Rejected alternatives section, not in `decision-record.md`;
+    their absence from `decision-record.md` is by design, not an omission.
+  - **Incomplete call-site or cross-reference enumeration.**
+    That enumeration belongs to the compiler and to `Plan-Write`'s own quarry lookups, not to `Discussion-Review`.
+
+  ## Also flag
+
+  - **Relocation and exclusion findings are legitimate, on equal footing with gap-filling findings.**
+    Accept "this belongs in `support-log.md`, not `decision-record.md`" and "this doesn't belong in Discussion at all" as legitimate findings, exactly as legitimate as a finding that fills a gap.
+    A review loop that can only resolve a finding by adding content is the concrete mechanism behind discussion files that only grow across rounds.
+  - **The completeness-before-leanness test.**
+    Before raising any relocation finding, check whether the content carries a requirement or constraint the plan writer needs.
+    Extract that into `decision-record.md`'s own Decisions or Constraints first, and move only the surrounding deliberation narrative — because `Plan-Write` never reads `support-log.md`, making a careless move a silent loss rather than a relocation.
+  - **The attack-surface question.**
+    For every new verb, flag, escape hatch or routing edge, and every guard that is removed, downgraded or bypassable, the Decision that introduces it states what it can now skip or let through and what bounds it.
+    A Decision that introduces one with no stated bound is a finding.
+  - **A Decision that edits the task's own board entry.**
+    A Decision that asks the run to change this task's own board entry's body or scope, through `lyx board` or otherwise, is a finding, because the run's board lock refuses such a change.
+    A Decision that writes another entry, the entry's status or its `run_settings`, or changes board-module code is not flagged by this bullet.
+  - **The writer/reviewer symmetry note.**
+    The discussion writer's own stencil is `/home/knatte/Code/loomyard-LYXHUB/_board/_lyx/stencils/loom/loom-template-discussion.md`, and the record rules it follows are in `/home/knatte/Code/loomyard-LYXHUB/_board/_lyx/specs/loom/loom-discussion-spec.md`: read them to learn what the writer was told not to gather.
+    Whatever it says not to gather, this rubric must not flag as missing, or the additive bias reappears even with the writer-side fix in place.
+
+  ## Finding class
+
+  Every finding carries one class: `design`, `scope`, `decision` or `consistency`.
+  Their generic meanings are in burler's review step; this section does not restate them.
+  In this segment, `design` means the design is wrong: a wrong or missing decision, or a false premise.
+  A recurring enumeration gap is filed once as a `design` finding about the method, not once per missing item.
+  Class never changes whether a finding is fixed.
+fix-scope: overlay
+tool-use: true
+cluster-fan: "fan-bench"
+review-path: .scratch/fan/arm/round-1-review.md
+fixer-report-path: .scratch/fan/arm/round-1-fixer-report.md
+prior-reviews: []
+prior-fixer-reports: []
