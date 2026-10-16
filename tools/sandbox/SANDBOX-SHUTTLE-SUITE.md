@@ -15,7 +15,7 @@ Before starting a session:
    The suite resolves `.dev-bin` itself and prepends it to the agent's PATH (the fingerprint header's `Source: dev` line confirms the dev build is under test) -- no PATH setup needed, and production `lyx` stays untouched.
    The deployed binary is a snapshot -- re-deploy after any source change you want to test.
    Once a pane exists, run these checks inside a spawned agent pane:
-   - `command -v lyx` (`where lyx` on Windows) names the spawning binary, not the production install.
+   - `command -v lyx` (`where lyx` on Windows) run from the spawned agent's Bash tool names the spawning binary (`LYX_BIN`), not the production install, even on a machine whose shell rc prepends another directory holding a `lyx`.
    - `LYX_BIN` is set inside that pane and names the same binary.
    - `claude` still resolves inside that pane.
      `claude` is looked up by bare name from the pane's PATH, so it is the property most exposed to any future change in how a pane's shell is started, and it is the one property no hermetic test can prove.
