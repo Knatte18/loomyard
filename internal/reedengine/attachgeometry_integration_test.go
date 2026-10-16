@@ -152,8 +152,18 @@ func TestAttachGeometry_DegradedPathStillAttaches(t *testing.T) {
 	e := setupAttachGeometryFixture(t)
 
 	argv := e.AttachArgv(0, 0)
-	if len(argv) != 5 {
-		t.Fatalf("AttachArgv(0, 0) = %v (%d argv elements), want the 5-element bare form", argv, len(argv))
+	// The strands live in own windows, so an agent window is relevant and the bare prefix carries the chained select-window tail.
+	bare := bareAttachArgv(e.Socket(), e.SessionName())
+	if len(argv) != len(bare)+4 {
+		t.Fatalf("AttachArgv(0, 0) = %v (%d argv elements), want the bare form plus a 4-element select-window tail", argv, len(argv))
+	}
+	for i, want := range bare {
+		if argv[i] != want {
+			t.Fatalf("AttachArgv(0, 0)[%d] = %q, want %q; argv=%v", i, argv[i], want, argv)
+		}
+	}
+	if tail := argv[len(bare):]; tail[0] != ";" || tail[1] != "select-window" || tail[2] != "-t" || tail[3] == "" {
+		t.Fatalf("AttachArgv(0, 0) tail = %v, want [; select-window -t <window>]", tail)
 	}
 
 	pty := startInPTY(t, append([]string{e.cfg.Tmux}, argv...), 80, 24)
