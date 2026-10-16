@@ -231,6 +231,8 @@
 // The discover signal is the hub-level file named DiscoverSignalFileName, at the path Geometry.DiscoverSignalPath tells.
 // A cold session boot touches it, right after the new session exists and on the boot path alone, so every path that boots a session raises it and an attach to a live session touches nothing; a failed touch is logged at Warn and never fails the boot.
 // The daemon's discovery loop wakes on it; standalone mode tells no path and touches nothing.
+// When `Down` ends the server, because no session is left or the session listing errored, it writes DiscoverStopMarker into the file, atomically, before kill-server, to ask the daemon to stop;
+// a cold boot's touch truncates the file back to an ordinary discover, so a racing `up` wins, and `DownResult.EndedServer` reports the teardown.
 // `lyx reed list` reports the hub-wide directory of names across worktrees, with each row's live state.
 //
 // # Multiplexer contract surface
