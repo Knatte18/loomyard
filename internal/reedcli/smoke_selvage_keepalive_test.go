@@ -4,7 +4,7 @@
 // There is no analogue of the old blockForever/deadlock-avoidance test here: Selvage runs the operator's configured shell (e.cfg.Shell) directly, so there is no reed-authored blocking loop left to pin against a runtime deadlock detector.
 // What survives is the guarantee itself — a session with Selvage in it never dies just because every strand died — pinned instead against the real mechanism: an ordinary shell surviving a killed sibling pane, surviving Ctrl-C at its own idle prompt, and surviving Ctrl-C to a foreground job running inside it.
 // Tagged smoke because untagged reedcli tests must not spawn processes (Test Tier Purity Invariant).
-// The scenario also pins Selvage's placement (physically bottom-most, never a strand's pane) and the status-line options `up` pins into the session.
+// The scenario also pins Selvage's placement (sole pane of the shell window, never a strand's pane) and the status-line options `up` pins into the session.
 
 package reedcli
 
@@ -153,51 +153,39 @@ func TestSmokeSelvage(t *testing.T) {
 		return
 	}
 
-	// StaysPhysicallyBottomMostAcrossAddsAndRemoves pins the physical-position rule module-local to this package (see internal/reedengine/doc.go): Selvage is always the pane with the largest pane_top, in every state a series of adds and removes can leave the window in.
-	if !t.Run("StaysPhysicallyBottomMostAcrossAddsAndRemoves", func(t *testing.T) {
+	// StaysSoleInShellWindowAcrossAddsAndRemoves pins the placement rule: every strand lands in a window of its own, so Selvage is the only pane of the shell window in every state a series of adds and removes can leave the session in.
+	if !t.Run("StaysSoleInShellWindowAcrossAddsAndRemoves", func(t *testing.T) {
 		restartSession(t, prime)
 		selvage := selvagePaneID(t, prime)
-		socket, session := socketAndSessionIn(t, prime)
+		socket, _ := socketAndSessionIn(t, prime)
 
-		requireBottomMost := func(when string) {
+		requireSoleInShellWindow := func(when string) {
 			t.Helper()
-			panes := listPaneLines(t, tmuxPath, socket, session)
-			bottomTop := -1
-			bottomID := ""
-			for _, line := range panes {
-				fields := strings.Fields(line)
-				if len(fields) < 3 {
-					continue
-				}
-				top, err := strconv.Atoi(fields[2])
-				if err != nil {
-					t.Fatalf("parse pane_top %q: %v", fields[2], err)
-				}
-				if top > bottomTop {
-					bottomTop = top
-					bottomID = fields[0]
-				}
+			// A pane target without -s lists only the panes of the window holding that pane.
+			out, err := exec.Command(tmuxPath, "-L", socket, "list-panes", "-t", selvage, "-F", "#{pane_id}").Output()
+			if err != nil {
+				t.Fatalf("%s: list-panes -t %s: %v", when, selvage, err)
 			}
-			if bottomID != selvage {
-				t.Errorf("%s: physically bottom-most pane = %s; want Selvage %s; panes=%v", when, bottomID, selvage, panes)
+			if got := strings.TrimSpace(string(out)); got != selvage {
+				t.Errorf("%s: shell window panes = %q; want only Selvage %s", when, got, selvage)
 			}
 		}
-		requireBottomMost("right after up")
+		requireSoleInShellWindow("right after up")
 
 		first := addStrandIn(t, prime, smokeReapLaunchCmd(), "--name", "first")
-		requireBottomMost("after adding the first strand")
+		requireSoleInShellWindow("after adding the first strand")
 
 		second := addStrandIn(t, prime, smokeReapLaunchCmd(), "--name", "second")
-		requireBottomMost("after adding a second strand")
+		requireSoleInShellWindow("after adding a second strand")
 
 		mustRunReed(t, prime, "remove", first)
-		requireBottomMost("after removing the first strand")
+		requireSoleInShellWindow("after removing the first strand")
 
 		addStrandIn(t, prime, smokeReapLaunchCmd(), "--name", "third")
-		requireBottomMost("after adding a third strand")
+		requireSoleInShellWindow("after adding a third strand")
 
 		mustRunReed(t, prime, "remove", second)
-		requireBottomMost("after removing the second strand")
+		requireSoleInShellWindow("after removing the second strand")
 	}) {
 		return
 	}
