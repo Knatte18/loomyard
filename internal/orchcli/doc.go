@@ -4,7 +4,8 @@
 // # The role file and the note
 //
 // The procedure below lives in the role stencil, not in the launch prompt.
-// `start` renders it to `.lyx/orch/role.md` and launches the session with a one-line pointer at it; skills (`scribe:prose`, `scribe:conversation`, `ly:board`) are loaded by shuttle before that pointer on every launch path, `--adopt` included.
+// `start` renders it to `.lyx/orch/role.md` and launches the session with a one-line pointer at it; skills (`scribe:prose`, `scribe:conversation`, `ly:board`) are loaded by shuttle before that pointer on every launch path, `--adopt` and `--continue` included.
+// `start` records the orch session's id in orch's state, which `lyx orch start --continue` resumes after a reboot or a dead strand; see the internal/orchengine package documentation's `Continuing after a reboot` section.
 // A context cycle asks the session for an orch note at the path it names, following `.lyx/orch/note-template.md`, in place of a general handoff skill.
 // `lyx orch refresh` requests a clear cycle and `lyx orch distill` a compact cycle, whatever `cycle_mode` says; both write the note first.
 // The role file's `## Commands` section holds the operator command index.

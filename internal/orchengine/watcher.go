@@ -39,7 +39,7 @@ type Session interface {
 	ContextTokens(guid string, turnEnd shuttleengine.Event) (shuttleengine.ContextReading, error)
 	// SessionIdle probes whether the session shows an empty input box with no turn in progress, and whether the pane is too short to tell.
 	SessionIdle(guid string) (shuttleengine.IdleProbe, error)
-	// SessionState returns the session's state as read from the run's files; the watcher logs it and reads it to drop a conditioned notice.
+	// SessionState returns the session's state as read from the run's files; the watcher logs it, reads it to drop a conditioned notice, and records its session id.
 	SessionState(guid string) (shuttleengine.RunSessionState, error)
 	// Send types text into the session as a new turn.
 	Send(guid, text string) error
@@ -234,6 +234,10 @@ func (w *Watcher) tick() (done bool, err error) {
 		}
 	}
 
+	if err := w.recordSessionID(&st); err != nil {
+		return false, err
+	}
+
 	if st.Phase == PhaseHandoffRequested && !w.seen.handoffWritten {
 		// Stat before the event read, so every turn end read from here on was read after the file was seen written.
 		if w.seen.handoffWritten, err = handoffWritten(st.PendingHandoff); err != nil {
@@ -340,6 +344,23 @@ func (w *Watcher) tick() (done bool, err error) {
 		return false, w.tickCompacting(st, now)
 	}
 	return false, fmt.Errorf("orch: unknown phase %q", st.Phase)
+}
+
+// recordSessionID records in st the session id shuttle's files-only reading of the strand names, when it differs from the recorded one.
+// An unreadable reading, such as a bound strand with no shuttle run, leaves the recorded id and never fails the tick; an empty reading id writes nothing.
+// The save is strand-checked, so a strand a concurrent start bound is never written onto.
+func (w *Watcher) recordSessionID(st *State) error {
+	reading, err := w.session.SessionState(st.Strand)
+	if err != nil {
+		logger.Debug("orch: session id unreadable", "strandGUID", st.Strand, "cause", err)
+		return nil
+	}
+	if reading.SessionID == "" || reading.SessionID == st.SessionID {
+		return nil
+	}
+	logger.Info("orch: session id recorded", "strandGUID", st.Strand, "previous", st.SessionID, "sessionID", reading.SessionID)
+	st.SessionID = reading.SessionID
+	return w.save(*st)
 }
 
 // typeStartColor types the strand's color on the first tick whose idle probe passes after binding, before anything else that tick types, then clears the mark.
@@ -617,7 +638,7 @@ func reloadStepName(step int) string {
 // An episode is the idle answer, state, cause and the state's since; the line logs only when that differs from the last pair logged, and an agreeing probe forgets nothing.
 // It also logs the hook's session-start event once per new time.
 // A probe that reports the pane too short is not compared.
-// A state that cannot be read is logged at Debug, and dropping a conditioned notice is the one decision the watcher takes from the state.
+// A state that cannot be read is logged at Debug, and the watcher takes two decisions from the state: dropping a conditioned notice and recording the session id.
 func (w *Watcher) logIdleStateDisagreement(strand string, probe shuttleengine.IdleProbe) {
 	reading, err := w.session.SessionState(strand)
 	if err != nil {
