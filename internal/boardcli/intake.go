@@ -81,8 +81,9 @@ Fields:
 A new note carries the issue's configured labels and needs exactly one type label. A fold appends the
 issue to the entry's body and issues list. Either way the issue's comments, oldest first and without
 lyx's own import pointers, are carried in the body. An issue an entry already records is a no-op that prints the
-recording entries and touches nothing on GitHub. The board is written before GitHub is touched; when
-the comment or close then fails, the error carries the written entry and the "close" payload to run.
+recording entries and touches nothing on GitHub. A success prints slug, issue, labels and dropped,
+the slug being the entry folded into for a fold. The board is written before GitHub is touched; when
+the comment or close then fails, the error carries the slug, issue, labels and dropped it would have printed, and the "close" payload to run.
 
 Examples:
   lyx board intake import '{"issue":12,"slug":"retry-backoff"}'
@@ -291,15 +292,18 @@ func intakeImport(out io.Writer, b *boardengine.Board, payload string) int {
 	if dropped == nil {
 		dropped = []string{}
 	}
+	short := map[string]any{
+		"slug":    result.Entry.Slug,
+		"issue":   number,
+		"labels":  result.Entry.Labels,
+		"dropped": dropped,
+	}
 	comment := importPointer(result.Entry.Slug)
 	if err := selfreportengine.CommentAndClose(number, comment, true); err != nil {
-		return output.ErrFields(out, err.Error(), map[string]any{
-			"entry":   result.Entry,
-			"dropped": dropped,
-			"close":   map[string]any{"issue": number, "reason": comment, "completed": true},
-		})
+		short["close"] = map[string]any{"issue": number, "reason": comment, "completed": true}
+		return output.ErrFields(out, err.Error(), short)
 	}
-	return output.Ok(out, map[string]any{"entry": result.Entry, "dropped": dropped})
+	return output.Ok(out, short)
 }
 
 // intakeClose comments on the open issue named by payload with the reason and closes it.

@@ -58,6 +58,10 @@
 // `intake list` prints `{"issues":[{"number":…,"title":…}]}` for each open inbox issue no entry records, pull requests excluded, and an empty inbox as `{"issues":[]}`.
 // `--full` prints number, title, body, labels, url, comments and created_at for the same set.
 //
+// `intake import` prints `{"slug":…,"issue":…,"labels":[…],"dropped":[…]}`, with the slug of the entry folded into for a fold.
+// A failed comment or close after the board write carries the same four fields and the `close` payload in the error envelope.
+// An already-recorded issue prints `recorded`.
+//
 // `labels` takes no payload and prints `{"ok":true,"types":[{"label":…,"description":…}],"labels":[…]}`.
 // Each list is in `board.yaml` file order,
 // an empty list is `[]`,

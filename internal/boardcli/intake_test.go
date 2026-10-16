@@ -365,18 +365,26 @@ func TestIntakeImport_NewNoteCommentsAndCloses(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d: %v", code, envelope)
 	}
-	entry := envelope["entry"].(map[string]any)
-	if entry["slug"] != "from-inbox" || entry["kind"] != "note" {
-		t.Errorf("entry = %v, want note from-inbox", entry)
+	if envelope["slug"] != "from-inbox" || envelope["issue"] != 7.0 || fmt.Sprint(envelope["labels"]) != "[bug]" || fmt.Sprint(envelope["dropped"]) != "[stray]" {
+		t.Errorf("envelope = %v, want slug from-inbox, issue 7, labels [bug], dropped [stray]", envelope)
 	}
-	if fmt.Sprint(envelope["dropped"]) != "[stray]" {
-		t.Errorf("dropped = %v, want [stray]", envelope["dropped"])
+	for _, key := range []string{"entry", "body"} {
+		if _, present := envelope[key]; present {
+			t.Errorf("envelope carries %q, want it left out", key)
+		}
+	}
+	entry, found, err := b.GetTask("from-inbox")
+	if err != nil || !found {
+		t.Fatalf("GetTask: found %v, err %v", found, err)
+	}
+	if entry.Kind != "note" {
+		t.Errorf("kind = %q, want note", entry.Kind)
 	}
 	wantBody := "Imported from [issue #7](https://example.test/issues/7).\n\nBody 7." +
 		"\n\n## Issue comment, 2026-01-02\n\nFirst comment." +
 		"\n\n## Issue comment, 2026-01-04\n\n" + quotedPointerComment
-	if entry["body"] != wantBody {
-		t.Errorf("body = %q, want %q", entry["body"], wantBody)
+	if entry.Body != wantBody {
+		t.Errorf("body = %q, want %q", entry.Body, wantBody)
 	}
 	if got := fmt.Sprint(inbox.comments); got != "[7: Imported into the board as `from-inbox`.]" {
 		t.Errorf("comments = %v", inbox.comments)
@@ -390,7 +398,7 @@ func TestIntakeImport_NewNoteCommentsAndCloses(t *testing.T) {
 }
 
 func TestIntakeImport_FoldIntoEntry(t *testing.T) {
-	inbox := newFakeInbox(t, fakeIssue{number: 8, state: "open", thread: threadWithPointer})
+	inbox := newFakeInbox(t, fakeIssue{number: 8, state: "open", labels: []string{"undecided"}, thread: threadWithPointer})
 	b, _ := newIntakeBoard(t)
 	if _, err := b.UpsertTask(map[string]any{"slug": "target", "labels": []string{"bug"}}); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -402,14 +410,23 @@ func TestIntakeImport_FoldIntoEntry(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d: %v", code, envelope)
 	}
-	entry := envelope["entry"].(map[string]any)
-	if fmt.Sprint(entry["issues"]) != "[8]" || !strings.Contains(entry["body"].(string), "## From issue #8") {
-		t.Errorf("entry = %v, want the issue folded in", entry)
+	if envelope["slug"] != "target" || envelope["issue"] != 8.0 || fmt.Sprint(envelope["labels"]) != "[bug undecided]" || fmt.Sprint(envelope["dropped"]) != "[]" {
+		t.Errorf("envelope = %v, want slug target, issue 8, labels [bug undecided], dropped []", envelope)
+	}
+	if _, present := envelope["entry"]; present {
+		t.Errorf("envelope carries entry, want it left out")
+	}
+	entry, found, err := b.GetTask("target")
+	if err != nil || !found {
+		t.Fatalf("GetTask: found %v, err %v", found, err)
+	}
+	if fmt.Sprint(entry.Issues) != "[8]" || !strings.Contains(entry.Body, "## From issue #8") {
+		t.Errorf("entry = %+v, want the issue folded in", entry)
 	}
 	wantTail := "\n\n### Issue comment, 2026-01-02\n\nFirst comment." +
 		"\n\n### Issue comment, 2026-01-04\n\n" + quotedPointerComment
-	if !strings.HasSuffix(entry["body"].(string), wantTail) {
-		t.Errorf("body = %q, want it to end with %q", entry["body"], wantTail)
+	if !strings.HasSuffix(entry.Body, wantTail) {
+		t.Errorf("body = %q, want it to end with %q", entry.Body, wantTail)
 	}
 	if got := fmt.Sprint(inbox.comments); got != "[8: Imported into the board as `target`.]" {
 		t.Errorf("comments = %v", inbox.comments)
@@ -486,7 +503,7 @@ func TestIntakeImport_RefusedBeforeAnyWrite(t *testing.T) {
 	}
 }
 
-func TestIntakeImport_CloseFailureReportsEntryAndClosePayload(t *testing.T) {
+func TestIntakeImport_CloseFailureReportsShortResultAndClosePayload(t *testing.T) {
 	inbox := newFakeInbox(t, fakeIssue{number: 16, state: "open", labels: []string{"bug"}})
 	inbox.failClose = true
 	b, path := newIntakeBoard(t)
@@ -497,8 +514,11 @@ func TestIntakeImport_CloseFailureReportsEntryAndClosePayload(t *testing.T) {
 	if code != 1 || envelope["ok"] != false {
 		t.Fatalf("exit %d, envelope %v, want a failure", code, envelope)
 	}
-	if envelope["entry"].(map[string]any)["slug"] != "half-done" {
-		t.Errorf("entry = %v, want half-done", envelope["entry"])
+	if envelope["slug"] != "half-done" || envelope["issue"] != 16.0 || fmt.Sprint(envelope["labels"]) != "[bug]" || fmt.Sprint(envelope["dropped"]) != "[]" {
+		t.Errorf("envelope = %v, want slug half-done, issue 16, labels [bug], dropped []", envelope)
+	}
+	if _, present := envelope["entry"]; present {
+		t.Errorf("envelope carries entry, want it left out")
 	}
 	closePayload := envelope["close"].(map[string]any)
 	if closePayload["issue"] != 16.0 || closePayload["completed"] != true || closePayload["reason"] != "Imported into the board as `half-done`." {
