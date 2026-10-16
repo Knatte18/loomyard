@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -172,7 +173,7 @@ func TestRun_BuildRouting(t *testing.T) {
 	}
 }
 
-// TestRun_SuiteSubcommands verifies, for every suite positional, that run routes it to the suite path and invokes launchAgent with the repo directory and the suite's default instruction; that -claude/-prompt flags following the positional are parsed and forwarded to launchAgent without a PATH lookup for claude; and that an absent Hub repo is propagated as a non-zero exit code.
+// TestRun_SuiteSubcommands verifies, for every suite positional, that run routes it to the suite path and invokes launchAgent with the repo directory and the suite's default instruction; that -claude/-prompt flags following the positional are parsed and forwarded to launchAgent without a PATH lookup for claude; and that an absent Hub repo is propagated as a non-zero exit code naming sandbox/build.cmd without launching the agent (subtest "absent Hub exits non-zero"), and an unknown flag exits non-zero without launching it (subtest "unknown flag exits non-zero").
 func TestRun_SuiteSubcommands(t *testing.T) {
 	tests := []struct {
 		token string
@@ -181,6 +182,7 @@ func TestRun_SuiteSubcommands(t *testing.T) {
 		{"suite", mainSuite},
 		{"reed-suite", reedSuite},
 		{"shuttle-suite", shuttleSuite},
+		{"creel-suite", creelSuite},
 		{"burler-suite", burlerSuite},
 		{"fabric-suite", fabricSuite},
 	}
@@ -248,8 +250,41 @@ func TestRun_SuiteSubcommands(t *testing.T) {
 			})
 
 			t.Run("absent Hub exits non-zero", func(t *testing.T) {
-				if code := run([]string{"-parent", t.TempDir(), tt.token}); code == 0 {
+				restore := stubSuiteSeams(t, "", "", func(dir, claude, instruction, binDir string) int {
+					t.Errorf("launchAgent should not be called when the Hub is absent for the %s subcommand", tt.token)
+					return 1
+				})
+				defer restore()
+
+				var code int
+				stderr := captureStderr(t, func() {
+					code = run([]string{"-parent", t.TempDir(), tt.token})
+				})
+				if code == 0 {
 					t.Errorf("run() = 0; want non-zero when the Hub repo is absent for the %s subcommand", tt.token)
+				}
+				if !strings.Contains(stderr, "sandbox/build.cmd") {
+					t.Errorf("stderr = %q; want it to contain %q", stderr, "sandbox/build.cmd")
+				}
+			})
+
+			t.Run("unknown flag exits non-zero", func(t *testing.T) {
+				parentDir, _ := makeHubRepo(t)
+				fakeLyx := makeFakeLyx(t, parentDir)
+				fakeClaude := filepath.Join(parentDir, "claude.exe")
+
+				restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
+					t.Errorf("launchAgent should not be called after a flag-parse failure for the %s subcommand", tt.token)
+					return 1
+				})
+				defer restore()
+
+				var code int
+				captureStderr(t, func() {
+					code = run([]string{"-parent", parentDir, tt.token, "-bogus"})
+				})
+				if code == 0 {
+					t.Errorf("run() = 0; want non-zero for an unknown flag on the %s subcommand", tt.token)
 				}
 			})
 		})
