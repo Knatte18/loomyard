@@ -123,7 +123,7 @@ A symbol no card in the plan touches needs no edge — its state never changes d
 | Create | new symbol(s)/file(s) | none — check nothing equivalent exists first | not required |
 | Edit | existing symbol(s) | impact/blast-radius on the symbol being changed; `caller-uncovered` for a re-signed member, resolved by type where a type load answers and by import path elsewhere | required |
 | Delete | existing symbol(s) OR whole file(s) | assert-no-callers (necessary, not sufficient), mechanically `caller-uncovered` for a member, resolved by type where a type load answers and by import path elsewhere | required |
-| Rename | existing symbol(s), `old -> new` pairs | AST-aware script + grep verify, never text/regex replace | not required |
+| Rename | existing symbol(s), `old -> new` pairs | the hub's structure-aware rename tool (`language.yaml` `rename_tools`) + grep verify, never text or regex replace | not required |
 | Move | existing symbol relocated to a file, OR a whole file relocated | `git mv` + import fixup; destination stated in `Intent`, not the target list | not required |
 | Prosa | file(s), no symbol target | none | not required |
 | Custom | either | none — explicit escape hatch | as applicable |
@@ -144,7 +144,7 @@ A multi-label card composes this table's three rule columns as follows, one rule
 `ImpactSummary` is a separate, hard-capped one-line blast-radius conclusion ("3 callers, all local to the billing package, no cross-module effects") — its own field specifically so it stays terse, since folding it into `Intent` lets it balloon into unbounded reasoning.
 
 **`Rename` requires no `ImpactSummary`, and that is a property of the operation, not an oversight.**
-A correctly executed AST-aware rename is binary — every reference updates and the build passes, or a leftover reference fails the build immediately — so there is no graded blast radius to summarize.
+A correctly executed structure-aware rename is binary — every reference updates and the build passes, or a leftover reference fails the build immediately — so there is no graded blast radius to summarize.
 The blind spot `assert-no-callers` has for `Delete` still applies: string- and reflection-based references (a registry keyed by name) survive a rename without failing the build.
 A rename must also rewrite the target symbol's own leading self-reference in its doc comment, which Go convention opens with the symbol's name; the card's own `old -> new` pair names exactly what changed, so this is safe to do mechanically and is verified by the same grep pass.
 
@@ -205,18 +205,20 @@ The section's text is CANONICAL — reproduce it verbatim (adjusted only for the
 ```markdown
 ## Rename mechanic
 
-1. Run `git mv <old> <new>` FIRST, before any other change to the moved file.
+1. For a file pair (both sides file self glyphs or paths), run `git mv <old> <new>` FIRST, before any other change to the moved file.
 2. Then make ONLY surgical edits (package declaration, imports, identifier
    retargeting) — no unrelated rewrites.
 3. A genuinely new file with no predecessor belongs in a separate `Create` card, never folded
    into the `Rename` pair.
 4. Never write the relocated file from scratch and delete the original — that loses
    git history exactly as an unstructured create+delete pair would.
+5. For a symbol pair, run the hub's structure-aware rename tool the implementer prompt names (`language.yaml` `rename_tools`), never a text or regex replace, then grep for zero remaining old-name references and confirm the symbol's doc comment opening names the new name.
 ```
 
 Step 3 names a separate `Create` card rather than the removed `Creates:` field — this format has no typed file-op fields, so "genuinely new content" is always its own card under the `Create` label, never a bullet folded into another card's field.
 
 This is the repo's own `git mv` + surgical-edits convention made declarable in a plan and mechanically checkable, rather than an unstated expectation an implementer might miss.
+The section is required by `rename-mechanic-missing`, whose condition is unchanged, and a hub with an empty `rename_tools` list cannot run a symbol pair.
 
 **Accepted false positive:** because a `Move` card's destination lives in `Intent` prose rather than in its own target list, there is no third union (parallel to the `Create`/`Rename` target unions below) for `path-missing` to check a `Move` destination against.
 A later card naming a file an earlier `Move` card relocated into place therefore produces a false-positive `path-missing` finding — the earlier `Move`'s destination is real on disk by the time the later card runs, but nothing in the plan model records that.
@@ -268,6 +270,12 @@ An explicit `**Commit:**` overrides the default but must start with the card's o
 
 Commit-per-card is the **resume mechanism**: a fresh session sees from `git log` exactly which card the previous session reached,
 and a half-done card is resumed by discarding uncommitted changes and restarting that card.
+
+## Pattern-Departure trailer
+
+A Webster fork, the recovery strand or the verify-fix fork that departs from its card because a PATTERN entry forbids the card's way records each departure as one trailer line in the departing commit's body, `Pattern-Departure: <PATTERN-entry-id> — <what differs from the card and why>`, in the commit message's last paragraph, where git reads trailers.
+A departure from an entry the task declares changed in the overview's `## PATTERN changes` cites the declared new text, never the old.
+`record-batch` and `recover-batch` read the trailers of the batch's own non-merge first-parent commits into the digest's `departures`, and the verify gate reads the verify-fix fork's; Webster-Review reads them in the commit messages of its range.
 
 ## verify model
 
@@ -332,7 +340,7 @@ Every mechanical check above works without quarry, and no card type is defined i
 - **Impact and references** — `go doc <pkg> <Symbol>` for existence and definition, `grep -rn` scoped to the right package for call sites, manual read.
   Quarry replaces this with a symbol-impact query, which must also return each caller's full enclosing function and its own doc comment, not just file:line.
   Neither the Card format nor `ImpactSummary`'s output shape changes either way.
-- **Rename** — an AST-aware script (`go/ast` + `go/types` for Go, Roslyn's `Renamer` for C#, `rope`/`libcst` for Python; the model picks the library, but the script is never text- or regex-based), then a grep pass confirming zero remaining old-name references and that the symbol's own doc comment was updated.
+- **Rename** — the hub's structure-aware rename tool that `language.yaml`'s `rename_tools` names, then a grep pass confirming zero remaining old-name references and that the symbol's own doc comment was updated.
   Quarry replaces the script-writing step with a mechanical rename primitive; the grep-verify step stays as the same backstop either way.
 - **Delete** — a grep for zero remaining callers, with the same caveat as `assert-no-callers`: necessary, not sufficient, since interface satisfaction, dispatch-table registration, and prose references are not caught.
 
@@ -574,13 +582,14 @@ of a later extraction.
 
 ## Rename mechanic
 
-1. Run `git mv <old> <new>` FIRST, before any other change to the moved file.
+1. For a file pair (both sides file self glyphs or paths), run `git mv <old> <new>` FIRST, before any other change to the moved file.
 2. Then make ONLY surgical edits (package declaration, imports, identifier
    retargeting) — no unrelated rewrites.
 3. A genuinely new file with no predecessor belongs in a separate `Create` card, never folded
    into the `Rename` pair.
 4. Never write the relocated file from scratch and delete the original — that loses
    git history exactly as an unstructured create+delete pair would.
+5. For a symbol pair, run the hub's structure-aware rename tool the implementer prompt names (`language.yaml` `rename_tools`), never a text or regex replace, then grep for zero remaining old-name references and confirm the symbol's doc comment opening names the new name.
 
 ## verify:
 

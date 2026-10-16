@@ -216,13 +216,14 @@ A genuinely new file with no predecessor belongs in a separate `Create` card, ne
 ```markdown
 ## Rename mechanic
 
-1. Run `git mv <old> <new>` FIRST, before any other change to the moved file.
+1. For a file pair (both sides file self glyphs or paths), run `git mv <old> <new>` FIRST, before any other change to the moved file.
 2. Then make ONLY surgical edits (package declaration, imports, identifier
    retargeting) — no unrelated rewrites.
 3. A genuinely new file with no predecessor belongs in a separate `Create` card, never folded
    into the `Rename` pair.
 4. Never write the relocated file from scratch and delete the original — that loses
    git history exactly as an unstructured create+delete pair would.
+5. For a symbol pair, run the hub's structure-aware rename tool the implementer prompt names (`language.yaml` `rename_tools`), never a text or regex replace, then grep for zero remaining old-name references and confirm the symbol's doc comment opening names the new name.
 ```
 
 ### Minimal skeleton
