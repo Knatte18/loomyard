@@ -24,7 +24,7 @@ func ResumeContext(p Paths, stencilsDir, index string, now time.Time) (string, e
 	}
 	text := st.PendingResume
 	if st.Phase != PhaseResuming || text == "" {
-		if err := RenderRoleFile(stencilsDir, p.RolePath, index); err != nil {
+		if err := RenderRoleFile(stencilsDir, p.RolePath, index, p.RepoRulesPath); err != nil {
 			return "", err
 		}
 		if st.Phase == PhaseCompacting {

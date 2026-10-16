@@ -278,7 +278,7 @@ session.`,
 					}
 				}
 				// start runs as a fresh process of the binary the pane names, so its own tree is the index source.
-				if err := orchengine.RenderRoleFile(c.stencilsDir, c.paths.RolePath, clihelp.RenderIndex(cmd.Root(), clihelp.AudienceOperator)); err != nil {
+				if err := orchengine.RenderRoleFile(c.stencilsDir, c.paths.RolePath, clihelp.RenderIndex(cmd.Root(), clihelp.AudienceOperator), c.paths.RepoRulesPath); err != nil {
 					return fail(err)
 				}
 				var prompt, source string

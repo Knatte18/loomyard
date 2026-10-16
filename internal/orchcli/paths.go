@@ -1,4 +1,5 @@
 // paths.go declares the orch module's one scratch accessor: every file orch writes lives under the prime's `<anchor>/.lyx/orch/`, joined here once and handed to orchengine as told paths (Durable-vs-Ephemeral State, Lyxdirs Single-Declarer and Told-Geometry Invariants).
+// The one exception is the repository's ORCHESTRATOR.md, a repository document joined at the worktree root, not lyx state.
 
 package orchcli
 
@@ -34,5 +35,6 @@ func orchPaths(location *lyxcwd.Location) orchengine.Paths {
 		WatchLogPath:     filepath.Join(dir, "watch.log"),
 		RolePath:         filepath.Join(dir, "role.md"),
 		NoteTemplatePath: filepath.Join(dir, "note-template.md"),
+		RepoRulesPath:    filepath.Join(location.WorktreePath(), "ORCHESTRATOR.md"),
 	}
 }

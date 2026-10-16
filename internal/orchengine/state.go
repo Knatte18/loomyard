@@ -33,6 +33,7 @@ type Paths struct {
 
 	RolePath         string // Role file rendered from the role stencil before every delivery.
 	NoteTemplatePath string // Note template file rendered before every note request.
+	RepoRulesPath    string // The repository's ORCHESTRATOR.md, read at every role-file render.
 }
 
 // Phase is a step of a cycle: the four-phase clear cycle, or the compact cycle's one non-idle phase.
