@@ -152,6 +152,7 @@
 // The marker is the strand's done-when path, so a resume drops a finished session instead of relaunching it.
 // The strand carries the provider's session id, which the watchdog's name repair reads.
 // An open writes no run directory, no run.json and no output file, so the state verb and the hold notices never cover an opened session.
+// OpenSpec.PermissionMode is engine vocabulary carried blind to OpenLaunch, and the engine realizes it or refuses it before anything is created.
 //
 // # Stop verb
 //
@@ -176,6 +177,7 @@
 // Empty PermissionMode keeps the run mode's default, AllowAgentTool left false keeps shuttle's config-driven Agent deny,
 // and an empty ResumeSessionID mints a new session, so a caller that sets none of them sees no change.
 // A non-empty ResumeSessionID launches that existing session instead.
+// OpenSpec.PermissionMode is the same vocabulary, carried blind by Runner.Open, with empty keeping the engine's interactive default.
 //
 // An ungated run's strand is registered with its output files as reed's done-when list,
 // so reed's resume drops a finished agent strand instead of reviving it;

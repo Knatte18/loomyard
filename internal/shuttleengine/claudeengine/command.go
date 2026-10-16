@@ -59,7 +59,8 @@ const (
 	permissionModePrompt = "prompt"
 )
 
-// validatePermissionMode resolves a run's permission mode into whether its launch lines carry --dangerously-skip-permissions.
+// validatePermissionMode resolves a run's or an opened session's permission mode into whether its launch lines carry --dangerously-skip-permissions.
+// An opened session is always interactive.
 // Empty resolves to the run mode's default: an autonomous run skips, an interactive run prompts.
 // "bypass" skips and "prompt" adds nothing.
 // "prompt" on an autonomous run is an error, since a run that prompts with nobody to answer stalls;
@@ -244,8 +245,10 @@ func buildLaunchCmd(sh shell.Shell, bin, pointer, settingsPath, sessionID, model
 // buildOpenCmd composes the pane-shell line of a named interactive session that takes no prompt.
 // A fresh session is named with --session-id; when resume is true the line takes over the session sessionID names with --resume instead.
 // It names the session with --name as a reference to LYX_STRAND_NAME, as buildLaunchCmd does, and appends --model and --effort only when non-empty.
-// It passes no prompt, no --settings (the session takes the worktree's own settings), no permission flag and no environment assignment, so the line is one pipeline that OrElse may join.
-func buildOpenCmd(sh shell.Shell, bin, sessionID, model, effort string, resume bool) string {
+// It appends --dangerously-skip-permissions when skipPermissions is true, on the fresh and the resume form alike.
+// Reed replays the resume line verbatim, so a resume without the flag would bring a bypass session back prompting.
+// It passes no prompt, no --settings (the session takes the worktree's own settings) and no environment assignment, so the line is one pipeline that OrElse may join.
+func buildOpenCmd(sh shell.Shell, bin, sessionID, model, effort string, skipPermissions, resume bool) string {
 	sessionFlag := " --session-id "
 	if resume {
 		sessionFlag = " --resume "
@@ -257,11 +260,18 @@ func buildOpenCmd(sh shell.Shell, bin, sessionID, model, effort string, resume b
 	if effort != "" {
 		cmd += " --effort " + sh.Quote(effort)
 	}
+	if skipPermissions {
+		cmd += " --dangerously-skip-permissions"
+	}
 	return cmd
 }
 
 // OpenLaunch returns the launch of a named interactive session with no prompt.
-// It loads claude.yaml, validates the effort and resolves the model and version into a model id before anything else, mints a session id, and returns the fresh line as Cmd.
+// It loads claude.yaml, validates the effort and the permission mode and resolves the model and version into a model id before anything else, mints a session id, and returns the fresh line as Cmd.
+// Bypass is opt-in per call through spec.PermissionMode;
+// the session still loads Claude Code's own settings layers, whose deny rules and hooks Claude Code applies in bypass too, and carries no shuttle --settings or guard.
+// "prompt" adds nothing, so it cannot override a default mode the settings set.
+// The session takes no turn until text reaches its pane through the operator, `lyx shuttle send` or creel, each bounded by its own rules.
 // ResumeCmd resumes the session and falls back to a fresh start under the same id, because Claude Code keeps no transcript for a session that never took a turn, so --resume fails there.
 // Bound: the fresh line runs whenever the resume line exits nonzero, including a resumed session that ends nonzero after a working life;
 // a fresh start under a session id whose transcript exists fails at once, so the fallback never starts a second live session over a recorded one.
@@ -277,14 +287,18 @@ func (c *Claude) OpenLaunch(spec shuttleengine.OpenSpec, cfg shuttleengine.Confi
 	if err != nil {
 		return shuttleengine.Launch{}, err
 	}
+	skipPermissions, err := validatePermissionMode(spec.PermissionMode, true)
+	if err != nil {
+		return shuttleengine.Launch{}, err
+	}
 	sessionID, err := newSessionID()
 	if err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("mint session id: %w", err)
 	}
 	sh := shell.ForGOOS()
 	bin := claudeBinary(claude)
-	fresh := buildOpenCmd(sh, bin, sessionID, resolvedModel, spec.Effort, false)
-	resumeLine := buildOpenCmd(sh, bin, sessionID, resolvedModel, spec.Effort, true)
+	fresh := buildOpenCmd(sh, bin, sessionID, resolvedModel, spec.Effort, skipPermissions, false)
+	resumeLine := buildOpenCmd(sh, bin, sessionID, resolvedModel, spec.Effort, skipPermissions, true)
 	return shuttleengine.Launch{Cmd: fresh, ResumeCmd: sh.OrElse(resumeLine, fresh), SessionID: sessionID}, nil
 }
 
