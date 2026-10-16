@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
+	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -1076,6 +1077,13 @@ func TestWire_LanguageSkills(t *testing.T) {
 			want := append([]string{"scribe:prose", "scribe:code-quality", "scribe:testing"}, tt.wantSkills...)
 			if got := table.Chair().Skills; !slices.Equal(got, want) {
 				t.Errorf("darn writer skills = %v; want %v", got, want)
+			}
+			planTable, err := c.env.PlanTable()
+			if err != nil {
+				t.Fatalf("PlanTable() = %v; want nil", err)
+			}
+			if got, want := planTable.Values["verify_tiers"], languageconfig.VerifyTiersValue(tt.wantTiers); got != want {
+				t.Errorf("plan table verify_tiers = %q; want %q", got, want)
 			}
 		})
 	}

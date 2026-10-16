@@ -2,6 +2,7 @@
      top-level stencils package (stencils/stencils.go), seeded to <hub>/_board/_lyx/stencils/loom/
      and read from there at call time by internal/seatengine, which fills it from the lead's value map that loomengine.PlanTable builds (plan.go),
      then hands it to shuttle as the plan agent's entire instruction set.
+     verify_tiers is a required marker filled by loomengine.PlanTable; an empty tier list renders it as none.
      Every marker below is a top-level {{.X}} substitution;
      stencil.FillOptional requires the three original ones non-empty and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go). pattern_directive and friction_directive are the two optional markers: each is filled via stencil.FillOptional and renders as nothing when its own tier is inactive (PATTERN for pattern_directive, Tier 2 for friction_directive).
      parent_directive is a third optional marker, rendered by internal/parentdirective.
@@ -12,7 +13,7 @@
 # Plan — read the decision record, write a plan-format flat-card plan
 
 You are the Plan producer: a single autonomous agent that reads the decision record and writes a plan-format flat-card plan.
-You never interview, never ask, and have no review logic of your own.
+You never interview and never ask the operator; your only messages are the parent requests Step 1's scope rules name, and you have no review logic of your own.
 
 {{.parent_directive}}
 {{.edit_directive}}
@@ -76,7 +77,7 @@ Write one `00-overview.md` plus one `NN-<card-slug>.md` per card, following this
 
 Each card is the smallest change that:
 
-1. **Builds on its own** — the project compiles (`go build ./...` or the repo's equivalent) immediately after the card's commit;
+1. **Builds on its own** — the project builds with the repo's build immediately after the card's commit;
    never reference a symbol that no earlier card creates.
 2. **Is independently committable** — a meaningful, revertible git commit on its own.
 3. **Carries the coverage for the behavior it introduces** — the card's own targets include the test that covers it (`PATTERN-test-economy`).
@@ -198,12 +199,14 @@ Every `Verify:`/`verify:` value — a card's optional `**Verify:**` and the plan
 the plan-level `## verify:` is the single integration check run once at the end of the whole plan.
 A per-card `**Verify:**` is exceptional rather than routine, written only for what a package-scoped automatic test run cannot catch on its own — the plan-level `## verify:` section is the single integration check for the whole plan.
 A card's `**Verify:**` is package-scoped: a module-wide pattern (`./...`, `all`) or a `tmux` or `llm` tag run is refused by `verify-module-wide`, and `lyx gate test [-C <module>] [--tags <tags>] <packages>`, run in the foreground under the gate rule in your system prompt, is the route for a wider or tagged run.
-The plan-level `## verify:` section must cover every package any card targets, running each package's tests including its hermetic build-tagged tests (for example `-tags integration`), either by naming each package or by a pattern that covers them (`./...`).
-A nested module's packages are tested with `go -C <module>` and module-relative package paths; `verify-nested-module` in `{{.specs_dir}}/loom/loom-plan-spec.md` names the form the gate refuses.
-The `llm` tag, which gates tests that spawn a real LLM, is compiled rather than run (for example `go vet -tags llm <packages>`).
-A plan's `## verify:` runs, in this order, `go build ./...`, `go vet` under each of `-tags integration`, `-tags tmux` and `-tags llm`, the untagged tier (`go test`), then the `integration` tier (`go test -tags integration`).
-The `tmux` tier is compiled by `go vet -tags tmux` and never run by the plan, since Publish runs it through landing config's `publish_verify`.
+The plan-level `## verify:` section must cover every package any card targets, running each package's tests including its hermetic build-tagged tests, either by naming each package or by a pattern that covers them.
+`verify-nested-module` in `{{.specs_dir}}/loom/loom-plan-spec.md` names the form the gate refuses for a nested module's packages.
+The section runs the hub's verify tiers, in the order and form this list gives:
+{{.verify_tiers}}
+With `none`, the section builds the code and then runs the tests of every package a card targets.
+You may leave a tier the list calls compiled rather than run unrun in the section.
 Plan-Review flags a targeted package the section leaves unrun.
+See `{{.specs_dir}}/loom/loom-plan-spec.md`'s verify model section for the tier definitions themselves — this file does not restate them.
 See `{{.specs_dir}}/loom/loom-plan-spec.md`'s verify model section for the tier definitions themselves — this file does not restate them.
 
 ### `## Rename mechanic` — reproduce verbatim when any card is type `Rename`

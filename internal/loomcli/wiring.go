@@ -776,7 +776,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// PlanTable is evaluated per Call, not resolved here, so the stencil is read at call time -- what the Stencil Ownership Invariant requires.
 		// It takes no autonomous argument: the Plan producer is autonomous by design and its table is never interactive.
 		PlanTable: func() (seatengine.Table, error) {
-			return loomengine.PlanTable(location, fabricengine.ConfigDirs(location), websterGeom.StencilsDir, websterGeom.SpecsDir, loomCfg, registry)
+			return loomengine.PlanTable(location, fabricengine.ConfigDirs(location), websterGeom.StencilsDir, websterGeom.SpecsDir, loomCfg, registry, language.VerifyTiers)
 		},
 		// CommitPlan mirrors CommitDiscussion above: it keeps the working tree clean for the rows
 		// that follow, makes the artifact durable across a crash or a resume, and sweeps the
