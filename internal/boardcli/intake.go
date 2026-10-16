@@ -42,6 +42,7 @@ into an entry and closes it with a pointer, and close closes noise with a stated
 		RunE: clihelp.GroupRunE,
 	}
 
+	var listFull bool
 	listCmd := &cobra.Command{
 		Use:         "list",
 		Short:       "list open inbox issues no board entry records, to triage them",
@@ -49,15 +50,19 @@ into an entry and closes it with a pointer, and close closes noise with a stated
 		Long: `List the open issues of the inbox repository that no board entry records, pull requests excluded.
 Takes no payload.
 
-Prints {"issues":[...]}, each with number, title, body, labels, url, comments (the comment count) and created_at.
+Prints {"issues":[...]} with the number and title of each issue.
+With --full, each issue also carries body, labels, url, comments (the comment count) and created_at.
+The filtering is the same in both modes.
 
-Example:
-  lyx board intake list`,
+Examples:
+  lyx board intake list
+  lyx board intake list --full`,
 		Args: cobra.NoArgs,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
-			return intakeList(out, board())
+			return intakeList(out, board(), listFull)
 		}),
 	}
+	listCmd.Flags().BoolVar(&listFull, "full", false, "print body, labels, url, comments and created_at too")
 
 	importCmd := &cobra.Command{
 		Use:         "import {issue, slug|into, title?, brief?, labels?}",
@@ -76,8 +81,9 @@ Fields:
 A new note carries the issue's configured labels and needs exactly one type label. A fold appends the
 issue to the entry's body and issues list. Either way the issue's comments, oldest first and without
 lyx's own import pointers, are carried in the body. An issue an entry already records is a no-op that prints the
-recording entries and touches nothing on GitHub. The board is written before GitHub is touched; when
-the comment or close then fails, the error carries the written entry and the "close" payload to run.
+recording entries and touches nothing on GitHub. A success prints slug, issue, labels and dropped,
+the slug being the entry folded into for a fold. The board is written before GitHub is touched; when
+the comment or close then fails, the error carries the slug, issue, labels and dropped it would have printed, and the "close" payload to run.
 
 Examples:
   lyx board intake import '{"issue":12,"slug":"retry-backoff"}'
@@ -134,7 +140,13 @@ func isImportPointer(body string) bool {
 	return importPointerPattern.MatchString(strings.TrimSpace(body))
 }
 
-// intakeIssueView is the view of an inbox issue that list prints.
+// intakeIssueSummary is the view of an inbox issue that list prints by default.
+type intakeIssueSummary struct {
+	Number int    `json:"number"`
+	Title  string `json:"title"`
+}
+
+// intakeIssueView is the view of an inbox issue that list --full prints.
 type intakeIssueView struct {
 	Number    int       `json:"number"`
 	Title     string    `json:"title"`
@@ -145,8 +157,8 @@ type intakeIssueView struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// intakeList prints the open inbox issues that no board entry records.
-func intakeList(out io.Writer, b *boardengine.Board) int {
+// intakeList prints the open inbox issues that no board entry records, as number and title unless full is set.
+func intakeList(out io.Writer, b *boardengine.Board, full bool) int {
 	issues, err := selfreportengine.ListOpenIssues()
 	if err != nil {
 		return outputError(out, err.Error())
@@ -155,9 +167,14 @@ func intakeList(out io.Writer, b *boardengine.Board) int {
 	if err != nil {
 		return outputError(out, err.Error())
 	}
+	summaries := []intakeIssueSummary{}
 	views := []intakeIssueView{}
 	for _, issue := range issues {
 		if _, done := recorded[issue.Number]; done {
+			continue
+		}
+		if !full {
+			summaries = append(summaries, intakeIssueSummary{Number: issue.Number, Title: issue.Title})
 			continue
 		}
 		views = append(views, intakeIssueView{
@@ -169,6 +186,9 @@ func intakeList(out io.Writer, b *boardengine.Board) int {
 			Comments:  issue.Comments,
 			CreatedAt: issue.CreatedAt,
 		})
+	}
+	if !full {
+		return output.Ok(out, map[string]any{"issues": summaries})
 	}
 	return output.Ok(out, map[string]any{"issues": views})
 }
@@ -272,15 +292,18 @@ func intakeImport(out io.Writer, b *boardengine.Board, payload string) int {
 	if dropped == nil {
 		dropped = []string{}
 	}
+	short := map[string]any{
+		"slug":    result.Entry.Slug,
+		"issue":   number,
+		"labels":  result.Entry.Labels,
+		"dropped": dropped,
+	}
 	comment := importPointer(result.Entry.Slug)
 	if err := selfreportengine.CommentAndClose(number, comment, true); err != nil {
-		return output.ErrFields(out, err.Error(), map[string]any{
-			"entry":   result.Entry,
-			"dropped": dropped,
-			"close":   map[string]any{"issue": number, "reason": comment, "completed": true},
-		})
+		short["close"] = map[string]any{"issue": number, "reason": comment, "completed": true}
+		return output.ErrFields(out, err.Error(), short)
 	}
-	return output.Ok(out, map[string]any{"entry": result.Entry, "dropped": dropped})
+	return output.Ok(out, short)
 }
 
 // intakeClose comments on the open issue named by payload with the reason and closes it.

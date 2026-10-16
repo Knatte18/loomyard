@@ -112,14 +112,17 @@ Take each open inbox issue onto the board, then close it:
 
 ```
 lyx board intake list
+lyx board intake list --full
 lyx board intake import '{"issue":12,"slug":"retry-backoff"}'
 lyx board intake import '{"issue":13,"into":"retry-backoff"}'
 lyx board intake close '{"issue":14,"reason":"Duplicate of #12."}'
 ```
 
-- `list` prints the open issues no entry records.
+- `list` prints the number and title of each open issue no entry records; `--full` adds body, labels, url, comment count and creation time.
 - `import` with `slug` records the issue as a new note; with `into` it folds the issue into an existing entry. Either way it comments on the issue with a pointer and closes it.
-  An imported note carries only a type label, so give it its module labels with `upsert` at once.
+  A new note gets its type and module labels through `import`'s `labels`.
+  `import` prints the slug, issue, labels and dropped labels, not the entry; `lyx board get` shows the entry.
+  A label `upsert` on a folded entry carries the entry's whole label list, since `labels` replaces it.
 - `close` ends a noise issue with a stated `reason` and writes nothing to the board.
 
 ## Writing a body

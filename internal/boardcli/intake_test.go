@@ -6,6 +6,7 @@ package boardcli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -20,6 +21,7 @@ import (
 	"github.com/google/go-github/v75/github"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/selfreportengine"
 )
 
@@ -42,8 +44,10 @@ type fakeIssue struct {
 type fakeInbox struct {
 	issues    []fakeIssue
 	failClose bool
-	comments  []string
-	closes    []string
+	// failList makes the list endpoint answer with a server error.
+	failList bool
+	comments []string
+	closes   []string
 	// perIssueGets records every GET naming one issue, so a test sees whether a handler made a per-issue call.
 	perIssueGets []string
 	server       *httptest.Server
@@ -151,6 +155,10 @@ func (f *fakeInbox) serveComments(w http.ResponseWriter, r *http.Request, number
 
 // list serves the open issues in pages of two.
 func (f *fakeInbox) list(w http.ResponseWriter, r *http.Request) {
+	if f.failList {
+		http.Error(w, `{"message":"boom"}`, http.StatusInternalServerError)
+		return
+	}
 	var open []fakeIssue
 	for _, issue := range f.issues {
 		if issue.state == "open" {
@@ -236,40 +244,108 @@ func runHandler(t *testing.T, fn func(out *bytes.Buffer) int) (int, map[string]a
 }
 
 func TestIntakeList_ExcludesPullRequestsRecordedAndClosedAcrossPages(t *testing.T) {
-	inbox := newFakeInbox(t,
-		fakeIssue{number: 1, state: "open", thread: []string{"one", "two"}},
-		fakeIssue{number: 2, state: "open", pullRequest: true},
-		fakeIssue{number: 3, state: "closed"},
-		fakeIssue{number: 4, state: "open"},
-		fakeIssue{number: 5, state: "open"},
-		fakeIssue{number: 6, state: "open", labels: []string{"bug"}},
-	)
-	b, _ := newIntakeBoard(t)
-	if _, err := b.UpsertTask(map[string]any{"slug": "kept", "labels": []string{"bug"}, "issues": []int{4}}); err != nil {
-		t.Fatalf("seed: %v", err)
+	fullInbox := []fakeIssue{
+		{number: 1, state: "open", thread: []string{"one", "two"}},
+		{number: 2, state: "open", pullRequest: true},
+		{number: 3, state: "closed"},
+		{number: 4, state: "open"},
+		{number: 5, state: "open"},
+		{number: 6, state: "open", labels: []string{"bug"}},
 	}
+	emptyInbox := []fakeIssue{
+		{number: 2, state: "open", pullRequest: true},
+		{number: 3, state: "closed"},
+		{number: 4, state: "open"},
+	}
+	tests := []struct {
+		name         string
+		issues       []fakeIssue
+		failList     bool
+		corruptBoard bool
+		args         []string
+		wantCode     int
+		// wantNumbers is the expected issue numbers when the run succeeds.
+		wantNumbers string
+		// wantFull is whether the issue objects carry the full view.
+		wantFull bool
+	}{
+		{"Compact", fullInbox, false, false, []string{"list"}, 0, "[1 5 6]", false},
+		{"Full", fullInbox, false, false, []string{"list", "--full"}, 0, "[1 5 6]", true},
+		{"EmptyCompact", emptyInbox, false, false, []string{"list"}, 0, "[]", false},
+		{"EmptyFull", emptyInbox, false, false, []string{"list", "--full"}, 0, "[]", true},
+		{"ListFailure", fullInbox, true, false, []string{"list"}, 1, "", false},
+		{"BoardLoadFailure", fullInbox, false, true, []string{"list"}, 1, "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			inbox := newFakeInbox(t, tt.issues...)
+			inbox.failList = tt.failList
+			b, path := newIntakeBoard(t)
+			if _, err := b.UpsertTask(map[string]any{"slug": "kept", "labels": []string{"bug"}, "issues": []int{4}}); err != nil {
+				t.Fatalf("seed: %v", err)
+			}
+			if tt.corruptBoard {
+				if err := os.WriteFile(path, []byte("{"), 0o644); err != nil {
+					t.Fatalf("corrupt board.json: %v", err)
+				}
+			}
 
-	code, envelope := runHandler(t, func(out *bytes.Buffer) int { return intakeList(out, b) })
-	if code != 0 {
-		t.Fatalf("exit %d: %v", code, envelope)
-	}
-	issues := envelope["issues"].([]any)
-	var numbers []float64
-	for _, v := range issues {
-		numbers = append(numbers, v.(map[string]any)["number"].(float64))
-	}
-	if fmt.Sprint(numbers) != "[1 5 6]" {
-		t.Fatalf("issues = %v, want [1 5 6]", numbers)
-	}
-	first := issues[0].(map[string]any)
-	if first["title"] != "Issue 1" || first["body"] != "Body 1." || first["url"] != "https://example.test/issues/1" || first["created_at"] != "2026-01-02T03:04:05Z" {
-		t.Errorf("first issue = %v, want its fields carried over", first)
-	}
-	if first["comments"] != 2.0 || issues[1].(map[string]any)["comments"] != 0.0 {
-		t.Errorf("comment counts = %v and %v, want 2 and 0", first["comments"], issues[1].(map[string]any)["comments"])
-	}
-	if len(inbox.perIssueGets) != 0 {
-		t.Errorf("per-issue requests = %v, want none", inbox.perIssueGets)
+			cmd := intakeCommand(func() *boardengine.Board { return b })
+			var out bytes.Buffer
+			cmd.SetArgs(tt.args)
+			cmd.SetOut(&out)
+			code := clihelp.RunRootCtx(context.Background(), cmd, &out)
+			envelope := decodeEnvelope(t, &out)
+			if code != tt.wantCode {
+				t.Fatalf("exit %d, want %d: %v", code, tt.wantCode, envelope)
+			}
+			if len(inbox.perIssueGets) != 0 {
+				t.Errorf("per-issue requests = %v, want none", inbox.perIssueGets)
+			}
+			if tt.wantCode != 0 {
+				if envelope["ok"] != false {
+					t.Errorf("ok = %v, want false", envelope["ok"])
+				}
+				if msg, _ := envelope["error"].(string); msg == "" {
+					t.Errorf("error = %v, want a message", envelope["error"])
+				}
+				if _, present := envelope["issues"]; present {
+					t.Errorf("issues = %v, want no issues key", envelope["issues"])
+				}
+				return
+			}
+
+			issues, ok := envelope["issues"].([]any)
+			if !ok {
+				t.Fatalf("issues = %v, want a JSON array", envelope["issues"])
+			}
+			numbers := []float64{}
+			for _, v := range issues {
+				numbers = append(numbers, v.(map[string]any)["number"].(float64))
+			}
+			if fmt.Sprint(numbers) != tt.wantNumbers {
+				t.Fatalf("issues = %v, want %s", numbers, tt.wantNumbers)
+			}
+			if len(issues) == 0 {
+				return
+			}
+			first := issues[0].(map[string]any)
+			if !tt.wantFull {
+				if len(first) != 2 || first["number"] != 1.0 || first["title"] != "Issue 1" {
+					t.Errorf("first issue = %v, want exactly number 1 and title Issue 1", first)
+				}
+				return
+			}
+			if first["title"] != "Issue 1" || first["body"] != "Body 1." || first["url"] != "https://example.test/issues/1" || first["created_at"] != "2026-01-02T03:04:05Z" {
+				t.Errorf("first issue = %v, want its fields carried over", first)
+			}
+			if first["comments"] != 2.0 || issues[1].(map[string]any)["comments"] != 0.0 {
+				t.Errorf("comment counts = %v and %v, want 2 and 0", first["comments"], issues[1].(map[string]any)["comments"])
+			}
+			if fmt.Sprint(issues[2].(map[string]any)["labels"]) != "[bug]" {
+				t.Errorf("issue 6 labels = %v, want [bug]", issues[2].(map[string]any)["labels"])
+			}
+		})
 	}
 }
 
@@ -289,18 +365,26 @@ func TestIntakeImport_NewNoteCommentsAndCloses(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d: %v", code, envelope)
 	}
-	entry := envelope["entry"].(map[string]any)
-	if entry["slug"] != "from-inbox" || entry["kind"] != "note" {
-		t.Errorf("entry = %v, want note from-inbox", entry)
+	if envelope["slug"] != "from-inbox" || envelope["issue"] != 7.0 || fmt.Sprint(envelope["labels"]) != "[bug]" || fmt.Sprint(envelope["dropped"]) != "[stray]" {
+		t.Errorf("envelope = %v, want slug from-inbox, issue 7, labels [bug], dropped [stray]", envelope)
 	}
-	if fmt.Sprint(envelope["dropped"]) != "[stray]" {
-		t.Errorf("dropped = %v, want [stray]", envelope["dropped"])
+	for _, key := range []string{"entry", "body"} {
+		if _, present := envelope[key]; present {
+			t.Errorf("envelope carries %q, want it left out", key)
+		}
+	}
+	entry, found, err := b.GetTask("from-inbox")
+	if err != nil || !found {
+		t.Fatalf("GetTask: found %v, err %v", found, err)
+	}
+	if entry.Kind != "note" {
+		t.Errorf("kind = %q, want note", entry.Kind)
 	}
 	wantBody := "Imported from [issue #7](https://example.test/issues/7).\n\nBody 7." +
 		"\n\n## Issue comment, 2026-01-02\n\nFirst comment." +
 		"\n\n## Issue comment, 2026-01-04\n\n" + quotedPointerComment
-	if entry["body"] != wantBody {
-		t.Errorf("body = %q, want %q", entry["body"], wantBody)
+	if entry.Body != wantBody {
+		t.Errorf("body = %q, want %q", entry.Body, wantBody)
 	}
 	if got := fmt.Sprint(inbox.comments); got != "[7: Imported into the board as `from-inbox`.]" {
 		t.Errorf("comments = %v", inbox.comments)
@@ -314,7 +398,7 @@ func TestIntakeImport_NewNoteCommentsAndCloses(t *testing.T) {
 }
 
 func TestIntakeImport_FoldIntoEntry(t *testing.T) {
-	inbox := newFakeInbox(t, fakeIssue{number: 8, state: "open", thread: threadWithPointer})
+	inbox := newFakeInbox(t, fakeIssue{number: 8, state: "open", labels: []string{"undecided"}, thread: threadWithPointer})
 	b, _ := newIntakeBoard(t)
 	if _, err := b.UpsertTask(map[string]any{"slug": "target", "labels": []string{"bug"}}); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -326,14 +410,23 @@ func TestIntakeImport_FoldIntoEntry(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d: %v", code, envelope)
 	}
-	entry := envelope["entry"].(map[string]any)
-	if fmt.Sprint(entry["issues"]) != "[8]" || !strings.Contains(entry["body"].(string), "## From issue #8") {
-		t.Errorf("entry = %v, want the issue folded in", entry)
+	if envelope["slug"] != "target" || envelope["issue"] != 8.0 || fmt.Sprint(envelope["labels"]) != "[bug undecided]" || fmt.Sprint(envelope["dropped"]) != "[]" {
+		t.Errorf("envelope = %v, want slug target, issue 8, labels [bug undecided], dropped []", envelope)
+	}
+	if _, present := envelope["entry"]; present {
+		t.Errorf("envelope carries entry, want it left out")
+	}
+	entry, found, err := b.GetTask("target")
+	if err != nil || !found {
+		t.Fatalf("GetTask: found %v, err %v", found, err)
+	}
+	if fmt.Sprint(entry.Issues) != "[8]" || !strings.Contains(entry.Body, "## From issue #8") {
+		t.Errorf("entry = %+v, want the issue folded in", entry)
 	}
 	wantTail := "\n\n### Issue comment, 2026-01-02\n\nFirst comment." +
 		"\n\n### Issue comment, 2026-01-04\n\n" + quotedPointerComment
-	if !strings.HasSuffix(entry["body"].(string), wantTail) {
-		t.Errorf("body = %q, want it to end with %q", entry["body"], wantTail)
+	if !strings.HasSuffix(entry.Body, wantTail) {
+		t.Errorf("body = %q, want it to end with %q", entry.Body, wantTail)
 	}
 	if got := fmt.Sprint(inbox.comments); got != "[8: Imported into the board as `target`.]" {
 		t.Errorf("comments = %v", inbox.comments)
@@ -410,7 +503,7 @@ func TestIntakeImport_RefusedBeforeAnyWrite(t *testing.T) {
 	}
 }
 
-func TestIntakeImport_CloseFailureReportsEntryAndClosePayload(t *testing.T) {
+func TestIntakeImport_CloseFailureReportsShortResultAndClosePayload(t *testing.T) {
 	inbox := newFakeInbox(t, fakeIssue{number: 16, state: "open", labels: []string{"bug"}})
 	inbox.failClose = true
 	b, path := newIntakeBoard(t)
@@ -421,8 +514,11 @@ func TestIntakeImport_CloseFailureReportsEntryAndClosePayload(t *testing.T) {
 	if code != 1 || envelope["ok"] != false {
 		t.Fatalf("exit %d, envelope %v, want a failure", code, envelope)
 	}
-	if envelope["entry"].(map[string]any)["slug"] != "half-done" {
-		t.Errorf("entry = %v, want half-done", envelope["entry"])
+	if envelope["slug"] != "half-done" || envelope["issue"] != 16.0 || fmt.Sprint(envelope["labels"]) != "[bug]" || fmt.Sprint(envelope["dropped"]) != "[]" {
+		t.Errorf("envelope = %v, want slug half-done, issue 16, labels [bug], dropped []", envelope)
+	}
+	if _, present := envelope["entry"]; present {
+		t.Errorf("envelope carries entry, want it left out")
 	}
 	closePayload := envelope["close"].(map[string]any)
 	if closePayload["issue"] != 16.0 || closePayload["completed"] != true || closePayload["reason"] != "Imported into the board as `half-done`." {
