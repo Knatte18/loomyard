@@ -734,25 +734,53 @@ func TestStateCmd_ListsRunningRunsAndNarrowsByStrand(t *testing.T) {
 	}
 }
 
-// TestOpenCmd_ModelAliasEngine pins that `open --model` hands Open the engine its alias resolves to:
-// neither engine of the set has a session opener, so the refusal names the engine Open was given.
+// openRecorderEngine is a shuttlefake.Engine with the SessionOpener capability: OpenLaunch appends the spec it is given to specs and answers a fixed launch beside err.
+type openRecorderEngine struct {
+	shuttlefake.Engine
+
+	err   error
+	specs []shuttleengine.OpenSpec
+}
+
+func (e *openRecorderEngine) OpenLaunch(spec shuttleengine.OpenSpec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
+	e.specs = append(e.specs, spec)
+	return shuttleengine.Launch{Cmd: "open-cmd", ResumeCmd: "resume-cmd", SessionID: "session-1"}, e.err
+}
+
+// TestOpenCmd_ModelAliasEngine pins the engine and permission mode `open` hands Runner.Open, and that a refusal from Open reaches the error envelope.
 func TestOpenCmd_ModelAliasEngine(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name       string
-		args       []string
+		name string
+		args []string
+		// wantEngine is the engine whose recorder must see the one spec.
 		wantEngine string
+		wantMode   string
+		// openErr scripts the wanted engine's refusal.
+		openErr error
 	}{
-		{"an alias of the claude engine", []string{"--role", "explore", "--model", "opus"}, `"claude"`},
-		{"no model leaves the set's default", []string{"--role", "explore"}, `"fake"`},
+		{name: "an alias of the claude engine", args: []string{"--role", "explore", "--model", "opus"}, wantEngine: "claude"},
+		{name: "no model leaves the set's default", args: []string{"--role", "explore"}, wantEngine: shuttlefake.EngineName},
+		{name: "bypass is passed through", args: []string{"--role", "explore", "--permission-mode", "bypass"}, wantEngine: shuttlefake.EngineName, wantMode: "bypass"},
+		{name: "prompt is passed through", args: []string{"--role", "explore", "--permission-mode", "prompt"}, wantEngine: shuttlefake.EngineName, wantMode: "prompt"},
+		{name: "a wrong-case mode is passed unchanged", args: []string{"--role", "explore", "--permission-mode", "Bypass"}, wantEngine: shuttlefake.EngineName, wantMode: "Bypass"},
+		{
+			name: "an engine refusal reaches the error envelope", args: []string{"--role", "explore", "--permission-mode", "auto"},
+			wantEngine: shuttlefake.EngineName, wantMode: "auto", openErr: errors.New("invalid permission mode \"auto\""),
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			worktreeRoot := t.TempDir()
+			recorders := map[string]*openRecorderEngine{
+				shuttlefake.EngineName: {},
+				"claude":               {},
+			}
+			recorders[tt.wantEngine].err = tt.openErr
 			engines := shuttleengine.NewEngineSet(shuttlefake.EngineName, map[string]shuttleengine.Engine{
-				shuttlefake.EngineName: &shuttlefake.Engine{},
-				"claude":               &shuttlefake.Engine{},
+				shuttlefake.EngineName: recorders[shuttlefake.EngineName],
+				"claude":               recorders["claude"],
 			})
 			runner := shuttleengine.NewRunner(&shuttlefake.Reed{}, engines, worktreeRoot, worktreeRoot, shuttleengine.Config{RunTimeoutMin: 30})
 			c := &shuttleCLI{runner: runner, configDirs: configengine.Dirs{Anchor: t.TempDir()}}
@@ -765,11 +793,25 @@ func TestOpenCmd_ModelAliasEngine(t *testing.T) {
 			}
 
 			envelope := parseSingleEnvelope(t, out.Bytes())
-			if ok, _ := envelope["ok"].(bool); ok {
-				t.Errorf("envelope ok = true; want the open refusal; output: %s", out.String())
+			ok, _ := envelope["ok"].(bool)
+			if tt.openErr == nil && !ok {
+				t.Errorf("envelope = %v; want ok", envelope)
 			}
-			if got, _ := envelope["error"].(string); !strings.Contains(got, "cannot open a session") || !strings.Contains(got, tt.wantEngine) {
-				t.Errorf("envelope error = %q; want the open refusal naming engine %s", got, tt.wantEngine)
+			if tt.openErr != nil {
+				if got, _ := envelope["error"].(string); ok || !strings.Contains(got, "invalid permission mode") {
+					t.Errorf("envelope = %v; want the engine's refusal in the error", envelope)
+				}
+			}
+			for name, recorder := range recorders {
+				if name != tt.wantEngine {
+					if len(recorder.specs) != 0 {
+						t.Errorf("engine %s saw specs %+v; want none", name, recorder.specs)
+					}
+					continue
+				}
+				if len(recorder.specs) != 1 || recorder.specs[0].PermissionMode != tt.wantMode {
+					t.Errorf("engine %s saw specs %+v; want exactly one with PermissionMode %q", name, recorder.specs, tt.wantMode)
+				}
 			}
 		})
 	}
