@@ -16,25 +16,32 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 )
 
-// gateQuiescenceFailureMessage is the shared failure text every case below reports on: a turn end whose Stop payload reports an outstanding fork is a wait, so no gate runs while a fork is live,
-// and the burler fork audit's exact count is the backstop.
-// A gated row that forks has no such wait to rest on, so the decision must be re-opened rather than this test updated to tolerate the new shape.
-// A BurlerReview reviewer may fork because it carries no "gates" key, and a BurlerFix fixer may carry gates because it never forks.
-const gateQuiescenceFailureMessage = "a turn end whose Stop payload reports an outstanding fork is a wait, so no gate runs while a fork is live, and the burler fork audit's exact count is the backstop; only a BurlerReview reviewer, whose only gate is the review-parse entry, may fork -- the decision must be re-opened, not this test"
+// gateQuiescenceFailureMessage is the shared failure text every case below reports on: a turn end whose Stop payload reports an outstanding fork is a wait, so no gate runs while a fork is live.
+// A BurlerReview reviewer forks under its cluster fan, and a gated BurlerFix fixer forks only under its segment's fixer fan, which reaches it through the review row's recorded fix_fan and never as a cluster fan.
+// The backstop is the reviewer audit's exact count and the fixer audit's per-fork violation checks, the fixer's count being a warning.
+// A gated row that forks outside those two has no such wait to rest on, so the decision must be re-opened rather than this test updated to tolerate the new shape.
+const gateQuiescenceFailureMessage = "a turn end whose Stop payload reports an outstanding fork is a wait, so no gate runs while a fork is live; a BurlerReview reviewer forks under its cluster fan, and a gated BurlerFix fixer forks only under its segment's fixer fan, which reaches it through the review row's recorded fix_fan, never a cluster fan; the backstop is the reviewer audit's exact count and the fixer audit's per-fork violation checks, the fixer's count being a warning -- the decision must be re-opened, not this test"
 
 // gatedRowFanViolations returns one message per gated row of r that breaks the fork rule.
 // A row is gated when its config carries a non-empty "gates" list.
-// A gated row receives a fan from its profile's "cluster-fan" or from fans, a row-name to fan map as Env.RowClusterFans carries them.
-// A gated row must be a writer engine (DiscussionWrite, PlanWrite, Describe, PRRework) or BurlerFix, and none of them may receive a fan.
-// A writer engine's spec factory never sets shuttleengine.Spec.ForkSubagents, and burlerengine.Engine.Review sets it from a non-empty fan alone, so a fan on the ungated BurlerReview row is the one legal fork.
-func gatedRowFanViolations(r shedbuild.Recipe, fans map[string]string) []string {
+// A gated row receives a fan from its profile's "cluster-fan" or from fans, a row-name to fan-list map as Env.RowClusterFans carries them, when any entry of its list is non-empty.
+// A gated row must be a writer engine (DiscussionWrite, PlanWrite, Describe, PRRework) or BurlerFix, and none of them may receive a cluster fan.
+// A writer engine's spec factory never sets shuttleengine.Spec.ForkSubagents, and burlerengine.Engine.Review sets it from a non-empty fan alone, so a cluster fan on the ungated BurlerReview row is the one legal reviewer fork.
+// A gated BurlerFix fixer forks only under the fixer fan the review row recorded, which this check does not see.
+func gatedRowFanViolations(r shedbuild.Recipe, fans map[string][]string) []string {
 	var violations []string
 	for _, row := range r.Producers {
 		if gates, ok := row.Config["gates"].([]any); !ok || len(gates) == 0 {
 			continue
 		}
 
-		fan := fans[row.Name]
+		fan := ""
+		for _, entry := range fans[row.Name] {
+			if entry != "" {
+				fan = entry
+				break
+			}
+		}
 		if profile, ok := row.Config["profile"].(map[string]any); ok {
 			if profileFan, has := profile["cluster-fan"]; has && profileFan != "" {
 				fan = fmt.Sprint(profileFan)
@@ -94,26 +101,27 @@ func TestNoGatedRowAuthorizesForkSubagents(t *testing.T) {
 		return shedbuild.Recipe{Producers: []shedbuild.Row{{Name: "Burler", Engine: engine, Config: config}}}
 	}
 
-	reviewFans := map[string]string{
-		loomshed.NameDiscussionBouncer:      "standard",
-		loomshed.NameDiscussionBurlerReview: "standard",
-		loomshed.NamePlanBouncer:            "full",
-		loomshed.NamePlanBurlerReview:       "full",
+	reviewFans := map[string][]string{
+		loomshed.NameDiscussionBouncer:      {"standard"},
+		loomshed.NameDiscussionBurlerReview: {"standard"},
+		loomshed.NamePlanBouncer:            {"full"},
+		loomshed.NamePlanBurlerReview:       {"full"},
 	}
 
 	tests := []struct {
 		name           string
 		recipe         shedbuild.Recipe
-		fans           map[string]string
+		fans           map[string][]string
 		wantViolations int
 	}{
 		{name: "shipped recipe with Discussion-Review and Plan-Review fans", recipe: shipped, fans: reviewFans},
-		{name: "gated writer row receiving a fan from the map", recipe: gatedWriter(nil), fans: map[string]string{"Writer": "standard"}, wantViolations: 1},
+		{name: "gated writer row receiving a fan from the map", recipe: gatedWriter(nil), fans: map[string][]string{"Writer": {"", "standard"}}, wantViolations: 1},
 		{name: "gated writer row receiving a fan from its profile", recipe: gatedWriter("standard"), wantViolations: 1},
 		{name: "gated writer row with no fan", recipe: gatedWriter(nil)},
-		{name: "ungated BurlerReview row with a fan", recipe: burlerRow("BurlerReview", false), fans: map[string]string{"Burler": "full"}},
+		{name: "gated writer row with an all-empty fan list", recipe: gatedWriter(nil), fans: map[string][]string{"Writer": {""}}},
+		{name: "ungated BurlerReview row with a fan", recipe: burlerRow("BurlerReview", false), fans: map[string][]string{"Burler": {"full"}}},
 		{name: "gated BurlerFix row with no fan", recipe: shedbuild.Recipe{Producers: []shedbuild.Row{{Name: "Fixer", Engine: "BurlerFix", Config: map[string]any{"gates": []any{map[string]any{"name": "verify"}}}}}}},
-		{name: "gated BurlerFix row receiving a fan from the map", recipe: burlerRow("BurlerFix", true), fans: map[string]string{"Burler": "full"}, wantViolations: 1},
+		{name: "gated BurlerFix row receiving a fan from the map", recipe: burlerRow("BurlerFix", true), fans: map[string][]string{"Burler": {"full"}}, wantViolations: 1},
 		{
 			name: "gated row of an engine that is neither a writer nor BurlerFix",
 			recipe: shedbuild.Recipe{Producers: []shedbuild.Row{{

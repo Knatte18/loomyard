@@ -892,13 +892,15 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 			loomshed.NameDarnBurlerFix:    reviewSettings.Webster,
 		},
 		// A segment's fan reaches its Bouncer and its review row from one key, so the two agree by construction; the fix row runs no fan.
+		// Each list holds the one entry of the segment's fan, empty when the key is unset.
 		// Webster-Review stays solo: its forks may run no git and its subject exists only through git.
-		RowClusterFans: map[string]string{
-			loomshed.NameDiscussionBouncer:      loomCfg.DiscussionFan,
-			loomshed.NameDiscussionBurlerReview: loomCfg.DiscussionFan,
-			loomshed.NamePlanBouncer:            loomCfg.PlanFan,
-			loomshed.NamePlanBurlerReview:       loomCfg.PlanFan,
+		RowClusterFans: map[string][]string{
+			loomshed.NameDiscussionBouncer:      {loomCfg.DiscussionFan},
+			loomshed.NameDiscussionBurlerReview: {loomCfg.DiscussionFan},
+			loomshed.NamePlanBouncer:            {loomCfg.PlanFan},
+			loomshed.NamePlanBurlerReview:       {loomCfg.PlanFan},
 		},
+		RowModelKeys: reviewRowModelKeys(loomCfg),
 
 		RowBouncerModels: map[string]shedadapters.BouncerModels{
 			loomshed.NameDiscussionBouncer: shedadapters.BouncerModels(judgeSettings.Discussion),
@@ -968,6 +970,20 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	c.driverDirectory = newReedDriverDirectory(reedEngine)
 	c.bouncerSubdir = loomrecipe.BouncerRunSubdir
 	return nil
+}
+
+// reviewRowModelKeys names loom.yaml's fan_review key as the reviewer model key of each Discussion and Plan review row whose segment's fan is set.
+// A row whose segment runs solo gets no entry, so its engine refusals name no key.
+func reviewRowModelKeys(cfg loomengine.Config) map[string]shedrecipe.RowModelKeys {
+	fanReviewKey := shuttleengine.ModelKey{Module: "loom", Key: "fan_review"}
+	keys := map[string]shedrecipe.RowModelKeys{}
+	if cfg.DiscussionFan != "" {
+		keys[loomshed.NameDiscussionBurlerReview] = shedrecipe.RowModelKeys{Review: fanReviewKey}
+	}
+	if cfg.PlanFan != "" {
+		keys[loomshed.NamePlanBurlerReview] = shedrecipe.RowModelKeys{Review: fanReviewKey}
+	}
+	return keys
 }
 
 // perchMaxBounces maps loom.yaml's per-perch budget keys onto the Discussion, Plan, Webster and Merge Bouncer rows' names.

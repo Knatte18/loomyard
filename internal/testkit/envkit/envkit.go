@@ -97,6 +97,8 @@ var nilLegal = map[string]bool{
 	"SegmentBounces":                    true,
 	"RowReviewModels":                   true,
 	"RowClusterFans":                    true,
+	"RowFixFans":                        true,
+	"RowModelKeys":                      true,
 	"RowBouncerModels":                  true,
 	"RowMaxBounces":                     true,
 	"RowAutoAccept":                     true,

@@ -33,6 +33,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -942,10 +943,13 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	}
 
 	// The template's empty fans leave every fan entry empty, and Webster rows never carry one.
-	for row, fan := range c.env.RowClusterFans {
-		if fan != "" {
-			t.Errorf("RowClusterFans[%q] = %q; want empty under the template's empty fans", row, fan)
+	for row, fans := range c.env.RowClusterFans {
+		if !reflect.DeepEqual(fans, []string{""}) {
+			t.Errorf("RowClusterFans[%q] = %q; want the one empty entry under the template's empty fans", row, fans)
 		}
+	}
+	if len(c.env.RowModelKeys) != 0 {
+		t.Errorf("RowModelKeys = %+v; want none while both segments run solo", c.env.RowModelKeys)
 	}
 	for _, row := range []string{loomshed.NameWebsterBurlerReview, loomshed.NameWebsterBurlerFix, loomshed.NameWebsterBouncer, loomshed.NameMergeBurlerReview, loomshed.NameMergeBurlerFix, loomshed.NameMergeBouncer} {
 		if _, present := c.env.RowClusterFans[row]; present {
@@ -960,14 +964,22 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	if err := fanned.wire(fannedLoc, fannedLoc.AnchorPath()); err != nil {
 		t.Fatalf("wire() with fans = %v; want nil", err)
 	}
-	wantFans := map[string]string{
-		loomshed.NameDiscussionBouncer:      "standard",
-		loomshed.NameDiscussionBurlerReview: "standard",
-		loomshed.NamePlanBouncer:            "full",
-		loomshed.NamePlanBurlerReview:       "full",
+	wantFans := map[string][]string{
+		loomshed.NameDiscussionBouncer:      {"standard"},
+		loomshed.NameDiscussionBurlerReview: {"standard"},
+		loomshed.NamePlanBouncer:            {"full"},
+		loomshed.NamePlanBurlerReview:       {"full"},
 	}
 	if !reflect.DeepEqual(fanned.env.RowClusterFans, wantFans) {
 		t.Errorf("RowClusterFans = %v; want %v", fanned.env.RowClusterFans, wantFans)
+	}
+	fanReviewKey := shuttleengine.ModelKey{Module: "loom", Key: "fan_review"}
+	wantKeys := map[string]shedrecipe.RowModelKeys{
+		loomshed.NameDiscussionBurlerReview: {Review: fanReviewKey},
+		loomshed.NamePlanBurlerReview:       {Review: fanReviewKey},
+	}
+	if !reflect.DeepEqual(fanned.env.RowModelKeys, wantKeys) {
+		t.Errorf("RowModelKeys = %+v; want %+v", fanned.env.RowModelKeys, wantKeys)
 	}
 	for _, row := range []string{loomshed.NameDiscussionBurlerReview, loomshed.NamePlanBurlerReview} {
 		got := fanned.env.RowReviewModels[row].Review
