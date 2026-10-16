@@ -428,7 +428,7 @@ func TestBurlerReviewEntry_ClusterFan(t *testing.T) {
 
 	t.Run("RowModelKeysEntryReachesTheReviewerKey", func(t *testing.T) {
 		env := newTestEnv(t)
-		want := shuttleengine.ModelKey{Module: "loom", Key: "fan_review"}
+		want := shuttleengine.ModelKey{Module: "loom", Key: "discussion_review"}
 		env.RowModelKeys = map[string]RowModelKeys{"review-row": {Review: want}}
 
 		_, opts := captureReview(t, "review-row", minimalReviewConfig(), env)
