@@ -55,11 +55,11 @@ func (realClock) Now() time.Time                         { return time.Now() }
 func (realClock) After(d time.Duration) <-chan time.Time { return time.After(d) }
 
 // clientSeam is the clock and daemon spawn every verb's client is built with.
-// spawn starts the daemon for a hub with its stderr appended to the log file at logPath and answers the daemon's pid.
+// spawn starts the daemon for a hub with its stderr appended to the log file at logPath and answers the daemon's pid with the signal of its exit.
 // A test replaces it, and so does not run in parallel.
 type clientSeam struct {
 	clock creelengine.Clock
-	spawn func(hubPath, logPath string) (int, error)
+	spawn func(hubPath, logPath string) (creelengine.Spawn, error)
 }
 
 var seam = clientSeam{clock: realClock{}, spawn: spawnDaemon}
@@ -156,7 +156,7 @@ func runVerb(cmd *cobra.Command, timeout time.Duration, body func(client *creele
 		return refuse(cmd, err)
 	}
 	hubPath := location.HubPath
-	client := creelengine.NewClient(geometry, claimFor(cwd), func() (int, error) { return seam.spawn(hubPath, geometry.DaemonLogPath) }, seam.clock)
+	client := creelengine.NewClient(geometry, claimFor(cwd), func() (creelengine.Spawn, error) { return seam.spawn(hubPath, geometry.DaemonLogPath) }, seam.clock)
 	res, err := body(client, out)
 	if errors.Is(err, creelengine.ErrWaitTimeout) {
 		writeRefusal(cmd, "no outcome arrived before the timeout of "+timeout.String(), res.fields, ExitWaitTimeout)

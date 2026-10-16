@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -170,7 +171,7 @@ func newRig(t *testing.T) *rig {
 		delivery: creelfake.NewDelivery(), clock: creelfake.NewClock(epoch), clientClock: creelfake.NewClock(epoch),
 	}
 	previous := seam
-	seam = clientSeam{clock: r.clientClock, spawn: func(string, string) (int, error) { return 0, nil }}
+	seam = clientSeam{clock: r.clientClock, spawn: func(string, string) (creelengine.Spawn, error) { return creelengine.Spawn{}, nil }}
 	t.Cleanup(func() { seam = previous })
 	return r
 }
@@ -686,6 +687,40 @@ func TestCreelCLI(t *testing.T) {
 		}
 		if !strings.Contains(captured.String(), "the daemon log cannot be opened") {
 			t.Errorf("logger output = %q; want a Warn naming the daemon log", captured.String())
+		}
+	})
+
+	t.Run("the spawned daemon's reap logs its exit and reads exit 0 as a lost start race", func(t *testing.T) {
+		tests := []struct {
+			name       string
+			script     string
+			wantLost   bool
+			wantStatus string
+		}{
+			{"ExitZeroIsALostRace", "exit 0", true, "status=0"},
+			{"ExitOneIsAFailedStart", "exit 1", false, "status=1"},
+			{"KilledBySignalIsNoLostRace", "kill -9 $$", false, "status=-1"},
+		}
+		for _, tt := range tests {
+			captured := logcapture.CaptureVerbose(t)
+			cmd := exec.Command("sh", "-c", tt.script)
+			if err := cmd.Start(); err != nil {
+				t.Fatalf("%s: start sh: %v", tt.name, err)
+			}
+			pid := cmd.Process.Pid
+			select {
+			case exit := <-reapDaemon(cmd):
+				if exit.LostRace != tt.wantLost {
+					t.Errorf("%s: LostRace = %v; want %v", tt.name, exit.LostRace, tt.wantLost)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatalf("%s: the reap sent no exit", tt.name)
+			}
+			for _, want := range []string{fmt.Sprintf("pid=%d", pid), tt.wantStatus} {
+				if !strings.Contains(captured.String(), want) {
+					t.Errorf("%s: logger output = %q; want it to hold %q", tt.name, captured.String(), want)
+				}
+			}
 		}
 	})
 }
