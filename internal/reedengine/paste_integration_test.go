@@ -39,7 +39,7 @@ func TestPasteSubmit_DeliversTextAndLeavesTheBufferStackAlone(t *testing.T) {
 	if _, err := e.Up(); err != nil {
 		t.Fatalf("Up: %v", err)
 	}
-	strand, err := e.AddStrand(AddSpec{Cmd: "cat", Display: render.Display{Anchor: render.AnchorBelowParent}})
+	strand, err := e.AddStrand(AddSpec{Cmd: "cat", Display: render.Display{Anchor: render.AnchorOwnWindow}})
 	if err != nil {
 		t.Fatalf("AddStrand: %v", err)
 	}
@@ -68,10 +68,16 @@ func TestPasteSubmit_DeliversTextAndLeavesTheBufferStackAlone(t *testing.T) {
 	// A long line, dash-leading and semicolon-ending, goes whole through standard input.
 	// The pane's terminal is made non-canonical because a canonical tty line holds at most 4095 bytes.
 	sinkFile := filepath.Join(t.TempDir(), "long-paste.txt")
-	sink, err := e.AddStrand(AddSpec{Cmd: "stty -icanon -echo; cat > " + sinkFile, Display: render.Display{Anchor: render.AnchorBelowParent}})
+	// The own-window launch returns before the pane's shell runs the command, so the sink signals once stty has taken effect.
+	readyFile := filepath.Join(t.TempDir(), "sink-ready")
+	sink, err := e.AddStrand(AddSpec{Cmd: "stty -icanon -echo; touch " + readyFile + "; cat > " + sinkFile, Display: render.Display{Anchor: render.AnchorOwnWindow}})
 	if err != nil {
 		t.Fatalf("AddStrand(sink): %v", err)
 	}
+	waitUntil(t, 10*time.Second, "the sink never signalled that stty ran", func() bool {
+		_, err := os.Stat(readyFile)
+		return err == nil
+	})
 	longText := "-" + strings.Repeat("x", 70000) + ";"
 	if err := e.PasteSubmit(sink.GUID, longText, false); err != nil {
 		t.Fatalf("PasteSubmit(long): %v", err)

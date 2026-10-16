@@ -37,8 +37,33 @@ func TestSmokeCreelClaudeStrand(t *testing.T) {
 	if strand.GUID != guid || !strand.Live {
 		t.Fatalf("Strands() = %+v; want the claude strand %s live", strands, guid)
 	}
-	// The booted session has no event to wait on, so the idle check is polled on a tick under a real-time deadline.
+	// A fresh temp hub shows claude's folder-trust gate, which covers the input box.
+	// The pane has no event to wait on, so it is polled on a tick under a real-time deadline until the gate is accepted or the box shows.
+	// Accepting the gate adds the temp hub's path to the operator's Claude trust list.
 	deadline := time.Now().Add(smokePaneWindow)
+	for {
+		ops, err := wireShuttle(smoke.hub.Location, shuttleengines.New)
+		if err != nil {
+			t.Fatalf("wireShuttle() = %v", err)
+		}
+		accepted, err := ops.runner.AcceptStartupGate(guid)
+		if err != nil {
+			t.Fatalf("AcceptStartupGate() = %v", err)
+		}
+		answer, err := delivery.Idle(strand)
+		if err != nil {
+			t.Fatalf("Idle() = %v", err)
+		}
+		if accepted || answer.Stall != creelengine.StallNoInputBox {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the claude pane showed no input box and no startup gate; pane:\n%s", smoke.lastPane(t, guid))
+		}
+		time.Sleep(time.Second)
+	}
+	// The booted session has no event to wait on, so the idle check is polled on a tick under a real-time deadline.
+	deadline = time.Now().Add(smokePaneWindow)
 	for {
 		answer, err := delivery.Idle(strand)
 		if err != nil {
@@ -48,7 +73,7 @@ func TestSmokeCreelClaudeStrand(t *testing.T) {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatal("the adapter never read the booted session idle")
+			t.Fatalf("the adapter never read the booted session idle; pane:\n%s", smoke.lastPane(t, guid))
 		}
 		time.Sleep(time.Second)
 	}

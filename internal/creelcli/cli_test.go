@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -36,10 +37,10 @@ import (
 
 var epoch = time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
 
-// isProbeWait and isSweepWait tell the delivery workers' waits (1 to 8 seconds) from the sweep's (30 seconds and up) on the daemon's clock.
+// isProbeWait and isSweepWait tell the delivery workers' waits (1 to 8 seconds) from the sweep's (longer than the probe ceiling) on the daemon's clock.
 func isProbeWait(d time.Duration) bool { return d <= 8*time.Second }
 
-func isSweepWait(d time.Duration) bool { return d >= 30*time.Second }
+func isSweepWait(d time.Duration) bool { return d > 8*time.Second }
 
 // cliRun is one verb's exit code and the JSON envelope it printed.
 type cliRun struct {
@@ -98,11 +99,11 @@ type failingWriter struct{}
 
 func (failingWriter) Write(p []byte) (int, error) { return 0, errors.New("write refused") }
 
-// runCreelInto runs the creel command as runCreel does but prints to out, and returns the exit code.
-func runCreelInto(cwd string, out io.Writer, args ...string) int {
+// runCreelInto runs the creel command as runCreel does but prints to out and writes stderr to the writer it is handed, and returns the exit code.
+func runCreelInto(cwd string, out, stderr io.Writer, args ...string) int {
 	cmd := Command()
 	cmd.SetOut(out)
-	cmd.SetErr(io.Discard)
+	cmd.SetErr(stderr)
 	cmd.SetArgs(args)
 	return clihelp.RunRootCtx(lyxcwd.WithCwd(context.Background(), cwd), cmd, out)
 }
@@ -170,7 +171,7 @@ func newRig(t *testing.T) *rig {
 		delivery: creelfake.NewDelivery(), clock: creelfake.NewClock(epoch), clientClock: creelfake.NewClock(epoch),
 	}
 	previous := seam
-	seam = clientSeam{clock: r.clientClock, spawn: func(string, string) (int, error) { return 0, nil }}
+	seam = clientSeam{clock: r.clientClock, spawn: func(string, string) (creelengine.Spawn, error) { return creelengine.Spawn{}, nil }}
 	t.Cleanup(func() { seam = previous })
 	return r
 }
@@ -417,11 +418,15 @@ func TestCreelCLI(t *testing.T) {
 		probesBefore := len(r.clock.AwaitWaitsWhere(0, isProbeWait))
 		var stderr lockedBuffer
 		done := make(chan cliRun, 1)
-		go func() { done <- runCreelSplit(r.cwd, &stderr, "inject", "--wait", "--ttl", "1m", alpha, "/clear") }()
+		returned := make(chan struct{})
+		go func() {
+			done <- runCreelSplit(r.cwd, &stderr, "inject", "--wait", "--ttl", "1m", alpha, "/clear")
+			close(returned)
+		}()
 		r.clock.AwaitWaitsWhere(probesBefore+1, isProbeWait)
 		r.clock.Advance(time.Second)
 		awaitStderr(t, &stderr, "is stalled: "+creelengine.StallDraft.Reason())
-		r.clock.Advance(61 * time.Second)
+		r.clock.AdvanceByWaitsWhere(isProbeWait, returned)
 		expired := awaitRun(t, done)
 		if expired.code != ExitInjectExpired {
 			t.Fatalf("creel inject --wait past its TTL = (%d, %q); want exit %d", expired.code, expired.raw, ExitInjectExpired)
@@ -479,6 +484,28 @@ func TestCreelCLI(t *testing.T) {
 		}
 		if len(stalled) != 1 || stalled[0]["to"] != alpha || stalled[0]["reason"] != string(creelengine.StallTooShort) {
 			t.Errorf("creel log stalled events = %v; want one to %s with reason %q", stalled, alpha, creelengine.StallTooShort)
+		}
+	})
+
+	t.Run("log --id prints a carried entry's kind", func(t *testing.T) {
+		r := newRig(t)
+		alpha, beta := r.name("alpha:driver"), r.name("beta:driver")
+		r.delivery.SetStrands(creelfake.LiveStrand(alpha), creelfake.LiveStrand(beta))
+		if err := os.MkdirAll(r.geometry.JournalDir, 0o755); err != nil {
+			t.Fatalf("MkdirAll() = %v", err)
+		}
+		carried := fmt.Sprintf(`{"event":"carried","at":"2026-10-01T11:00:00Z","of":"posted","id":1,"from":%q,"to":%q,"body":"old mail","orig_at":"2026-09-20T11:00:00Z"}`, alpha, beta)
+		if err := os.WriteFile(filepath.Join(r.geometry.JournalDir, "2026-10-01.jsonl"), []byte(carried+"\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile() = %v", err)
+		}
+		r.startDaemon(t)
+
+		entries, _ := runCreel(r.cwd, "log", "--id", "1").fields["log"].([]any)
+		if len(entries) != 1 {
+			t.Fatalf("creel log --id 1 listed %d entries; want the carried one", len(entries))
+		}
+		if fields, _ := entries[0].(map[string]any); fields["event"] != "carried" || fields["kind"] != "mail" {
+			t.Errorf("creel log --id 1 entry = %v; want event carried with kind mail", entries[0])
 		}
 	})
 
@@ -547,14 +574,17 @@ func TestCreelCLI(t *testing.T) {
 		r.delivery.SetStrands(strand)
 		r.startDaemon(t)
 
-		if code := runCreelInto(r.cwd, failingWriter{}, "read"); code == 0 {
-			t.Errorf("creel read of nothing unread into a failing writer exited 0; want non-zero")
+		var emptyStderr lockedBuffer
+		if code := runCreelInto(r.cwd, failingWriter{}, &emptyStderr, "read"); code != 1 || !strings.HasPrefix(emptyStderr.String(), "creel: ") {
+			t.Errorf("creel read of nothing unread into a failing writer = (%d, %q); want exit 1 and a creel: line on stderr", code, emptyStderr.String())
 		}
 		if post := runCreel(r.cwd, "post", alpha, "note to self"); post.code != 0 {
 			t.Fatalf("creel post = (%d, %q); want exit 0", post.code, post.raw)
 		}
-		if code := runCreelInto(r.cwd, failingWriter{}, "read"); code == 0 {
-			t.Errorf("creel read of a message into a failing writer exited 0; want non-zero")
+		var messageStderr lockedBuffer
+		code := runCreelInto(r.cwd, failingWriter{}, &messageStderr, "read")
+		if text := messageStderr.String(); code != 1 || !strings.HasPrefix(text, "creel: ") || !strings.Contains(text, "write refused") || !strings.Contains(text, "unread") {
+			t.Errorf("creel read of a message into a failing writer = (%d, %q); want exit 1 and a creel: line holding the write's error and unread", code, text)
 		}
 		// The daemon releases the dropped read's reservation only once it sees the connection close, so the retry runs under a real-time deadline.
 		deadline := time.Now().Add(10 * time.Second)
@@ -567,6 +597,38 @@ func TestCreelCLI(t *testing.T) {
 				t.Fatalf("creel read after the failed write = (%d, %q); want the message still unread", read.code, read.raw)
 			}
 			time.Sleep(10 * time.Millisecond)
+		}
+	})
+
+	t.Run("a waiting verb's envelope that cannot be written keeps its exit code and goes to stderr", func(t *testing.T) {
+		r := newRig(t)
+		alpha := r.name("alpha:driver")
+		r.delivery.SetStrands(creelfake.LiveStrand(alpha))
+		r.startDaemon(t)
+
+		r.delivery.SetSendError(creelengine.ErrNotLanded)
+		var unconfirmedStderr lockedBuffer
+		code := runCreelInto(r.cwd, failingWriter{}, &unconfirmedStderr, "inject", "--wait", alpha, "/clear")
+		if text := unconfirmedStderr.String(); code != ExitInjectUnconfirmed || !strings.HasPrefix(text, "creel: ") || !strings.Contains(text, "not confirmed") {
+			t.Errorf("creel inject --wait on a send answering ErrNotLanded into a failing writer = (%d, %q); want exit %d and a creel: line naming the unconfirmed landing", code, text, ExitInjectUnconfirmed)
+		}
+		r.delivery.SetSendError(nil)
+
+		r.delivery.SetIdle(alpha, false)
+		var timeoutStderr lockedBuffer
+		codes := make(chan int, 1)
+		go func() {
+			codes <- runCreelInto(r.cwd, failingWriter{}, &timeoutStderr, "inject", "--wait", "--timeout", "5s", alpha, "/clear")
+		}()
+		r.clientClock.AwaitWaits(1)
+		r.clientClock.Advance(5 * time.Second)
+		select {
+		case code := <-codes:
+			if text := timeoutStderr.String(); code != ExitWaitTimeout || !strings.HasPrefix(text, "creel: ") || !strings.Contains(text, "no outcome arrived") {
+				t.Errorf("creel inject --wait --timeout 5s into a failing writer = (%d, %q); want exit %d and a creel: line naming the timeout", code, text, ExitWaitTimeout)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatal("the verb did not return")
 		}
 	})
 
@@ -647,6 +709,40 @@ func TestCreelCLI(t *testing.T) {
 		}
 		if !strings.Contains(captured.String(), "the daemon log cannot be opened") {
 			t.Errorf("logger output = %q; want a Warn naming the daemon log", captured.String())
+		}
+	})
+
+	t.Run("the spawned daemon's reap logs its exit and reads exit 0 as a lost start race", func(t *testing.T) {
+		tests := []struct {
+			name       string
+			script     string
+			wantLost   bool
+			wantStatus string
+		}{
+			{"ExitZeroIsALostRace", "exit 0", true, "status=0"},
+			{"ExitOneIsAFailedStart", "exit 1", false, "status=1"},
+			{"KilledBySignalIsNoLostRace", "kill -9 $$", false, "status=-1"},
+		}
+		for _, tt := range tests {
+			captured := logcapture.CaptureVerbose(t)
+			cmd := exec.Command("sh", "-c", tt.script)
+			if err := cmd.Start(); err != nil {
+				t.Fatalf("%s: start sh: %v", tt.name, err)
+			}
+			pid := cmd.Process.Pid
+			select {
+			case exit := <-reapDaemon(cmd):
+				if exit.LostRace != tt.wantLost {
+					t.Errorf("%s: LostRace = %v; want %v", tt.name, exit.LostRace, tt.wantLost)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatalf("%s: the reap sent no exit", tt.name)
+			}
+			for _, want := range []string{fmt.Sprintf("pid=%d", pid), tt.wantStatus} {
+				if !strings.Contains(captured.String(), want) {
+					t.Errorf("%s: logger output = %q; want it to hold %q", tt.name, captured.String(), want)
+				}
+			}
 		}
 	})
 }

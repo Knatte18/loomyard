@@ -384,6 +384,9 @@ type IdleProbe struct {
 	Reason string
 	// Draft is true when Idle is false and the input box holds text, on either reading; always false when Idle is true.
 	Draft bool
+	// NoInputBox is true when Idle is false and the pane shows no input box to an engine that reads one, as when the pane runs no agent or a dialog covers the box.
+	// It is always false when Idle is true, when the pane is too short to draw a box and for an engine that reads no box.
+	NoInputBox bool
 }
 
 // SessionCycler is an optional capability beside Engine: the provider operations a caller needs to cycle a live session's context (read its usage, probe whether it is idle, clear it, compact it).

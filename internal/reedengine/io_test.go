@@ -22,9 +22,9 @@ import (
 // TestResolveLivePaneID pins the lookup all pane-transport ops share.
 func TestResolveLivePaneID(t *testing.T) {
 	st := &ReedState{Strands: []Strand{
-		{GUID: "live", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}},
+		{GUID: "live", PaneID: "%1", Display: render.Display{Anchor: render.AnchorOwnWindow}},
 		{GUID: "hidden", Display: render.Display{Anchor: render.AnchorHidden}},
-		{GUID: "unbound", Display: render.Display{Anchor: render.AnchorBelowParent}},
+		{GUID: "unbound", Display: render.Display{Anchor: render.AnchorOwnWindow}},
 	}}
 
 	tests := []struct {
@@ -104,7 +104,7 @@ func TestCapturePaneArgv(t *testing.T) {
 			e := newTestEngine(t)
 			fake := installIfAbsentTmux(t, e, "%7 0 0 100 20 4321\n")
 			st := &ReedState{Strands: []Strand{
-				{GUID: "a", PaneID: "%7", Display: render.Display{Anchor: render.AnchorBelowParent}},
+				{GUID: "a", PaneID: "%7", Display: render.Display{Anchor: render.AnchorOwnWindow}},
 			}}
 			if err := SaveState(e.stateDir(), st); err != nil {
 				t.Fatalf("SaveState: %v", err)
@@ -190,7 +190,7 @@ func TestPasteSubmit(t *testing.T) {
 			e := newTestEngine(t)
 			fake := installIfAbsentTmux(t, e, "%7 0 0 100 20 4321\n")
 			st := &ReedState{Strands: []Strand{
-				{GUID: "a", PaneID: "%7", Display: render.Display{Anchor: render.AnchorBelowParent}},
+				{GUID: "a", PaneID: "%7", Display: render.Display{Anchor: render.AnchorOwnWindow}},
 				{GUID: "hidden", Display: render.Display{Anchor: render.AnchorHidden}},
 			}}
 			if err := SaveState(e.stateDir(), st); err != nil {
@@ -321,7 +321,7 @@ func TestSetWaitMark(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			e := newTestEngine(t)
 			fake := installIfAbsentTmux(t, e, "%7 0 0 100 20 4321\n")
-			st := &ReedState{Strands: []Strand{{GUID: "a", PaneID: "%7", Display: render.Display{Anchor: render.AnchorBelowParent}}}}
+			st := &ReedState{Strands: []Strand{{GUID: "a", PaneID: "%7", Display: render.Display{Anchor: render.AnchorOwnWindow}}}}
 			if err := SaveState(e.stateDir(), st); err != nil {
 				t.Fatalf("SaveState: %v", err)
 			}

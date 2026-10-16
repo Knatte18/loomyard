@@ -101,8 +101,7 @@ type Spec struct {
 	NameOverride string
 	// Display carries the reed placement/focus/shrink settings for this
 	// run's strand.
-	// A strand lands in a window of its own unless the spec names an anchor, so an empty Anchor defaults to render.AnchorOwnWindow;
-	// a spec that wants the shell window names render.AnchorBelowParent.
+	// A strand lands in a window of its own unless the spec names an anchor, so an empty Anchor defaults to render.AnchorOwnWindow.
 	Display render.Display
 	// Timeout is the wall-clock deadline after which an in-progress run is
 	// classified as timed out. Zero defers to cfg.RunTimeoutMin minutes —

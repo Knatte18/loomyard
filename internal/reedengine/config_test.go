@@ -35,7 +35,7 @@ func seedLyxConfig(t *testing.T, tmpDir, module, content string) {
 	}
 }
 
-//testtiming:keep pins every shipped template default through a seeded reed.yaml: tmux and shell per GOOS, width, height, collapsed and minimum full rows, debug_log off, mouse on, window_share_max 2 and window_split width; its covering tests run this code without asserting it
+//testtiming:keep pins every shipped template default through a seeded reed.yaml: tmux and shell per GOOS, width, height, debug_log off, mouse on, window_share_max 2 and window_split width; its covering tests run this code without asserting it
 func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	tmpDir := t.TempDir()
 	seedLyxConfig(t, tmpDir, "reed", reedengine.ConfigTemplate())
@@ -60,12 +60,6 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	}
 	if cfg.Height != 50 {
 		t.Errorf("Height = %d, want 50", cfg.Height)
-	}
-	if cfg.CollapsedRows != 3 {
-		t.Errorf("CollapsedRows = %d, want 3", cfg.CollapsedRows)
-	}
-	if cfg.MinFullRows != 3 {
-		t.Errorf("MinFullRows = %d, want 3", cfg.MinFullRows)
 	}
 	if cfg.OperatorQuietS != 5 {
 		t.Errorf("OperatorQuietS = %d, want 5", cfg.OperatorQuietS)
@@ -238,12 +232,6 @@ func TestLoadConfig_UninitializedFallsBackToTemplate(t *testing.T) {
 	if cfg.Width != 220 {
 		t.Errorf("Width = %d, want 220", cfg.Width)
 	}
-	if cfg.CollapsedRows != 3 {
-		t.Errorf("CollapsedRows = %d, want 3", cfg.CollapsedRows)
-	}
-	if cfg.Selvage.HeightRows != 1 {
-		t.Errorf("Selvage.HeightRows = %d, want 1", cfg.Selvage.HeightRows)
-	}
 }
 
 // TestLoadConfig_UnknownKeysFromAnOlderConfigAreIgnored pins the no-removal-logic decision.
@@ -255,25 +243,38 @@ func TestLoadConfig_UnknownKeysFromAnOlderConfigAreIgnored(t *testing.T) {
 	tests := []struct {
 		name  string
 		extra string
+		// droppedKeys are the retired keys the merged document must no longer name.
+		droppedKeys []string
 	}{
-		{"StaleHeaderBlock", "\nheader:\n  template: \"stale\"\n  height_rows: 5\n"},
-		{"RetiredStrandNameKey", "\nstrand_name: '<ROLE>:<ROUND>:<SHORT_GUID>'\n"},
-		{"RetiredStatusLineBlock", "\nstatus_line:\n  template: \"{{.repo}}\"\n"},
+		{"StaleHeaderBlock", "\nheader:\n  template: \"stale\"\n  height_rows: 5\n", nil},
+		{"RetiredStrandNameKey", "\nstrand_name: '<ROLE>:<ROUND>:<SHORT_GUID>'\n", nil},
+		{"RetiredStatusLineBlock", "\nstatus_line:\n  template: \"{{.repo}}\"\n", nil},
+		{"RetiredLayoutKeys", "\ncollapsed_rows: 3\nmin_full_rows: 3\nselvage:\n  height_rows: 1\n", []string{"collapsed_rows", "min_full_rows", "selvage"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tmpDir := t.TempDir()
+			dirs := configengine.Dirs{Anchor: tmpDir}
 			seedLyxConfig(t, tmpDir, "reed", reedengine.ConfigTemplate()+tt.extra)
 
-			cfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "reed")
+			cfg, err := reedengine.LoadConfig(dirs, "reed")
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if cfg.Selvage.HeightRows != 1 {
-				t.Errorf("Selvage.HeightRows = %d, want 1 (an old key must not override it)", cfg.Selvage.HeightRows)
-			}
 			if cfg.Width != 220 {
 				t.Errorf("Width = %d, want 220 (an old key must not disturb the rest)", cfg.Width)
+			}
+			if len(tt.droppedKeys) == 0 {
+				return
+			}
+			merged, err := configengine.LoadOrTemplate(dirs, reedengine.ConfigSpec())
+			if err != nil {
+				t.Fatalf("LoadOrTemplate: %v", err)
+			}
+			for _, key := range tt.droppedKeys {
+				if strings.Contains(string(merged), key+":") {
+					t.Errorf("merged document names retired key %q, want it dropped on load:\n%s", key, merged)
+				}
 			}
 		})
 	}

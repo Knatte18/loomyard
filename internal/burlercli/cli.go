@@ -11,7 +11,6 @@
 package burlercli
 
 import (
-	"context"
 	"io"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
@@ -37,18 +36,13 @@ type burlerCLI struct {
 	// driver is a different directory (crucible round opus-medium-r6, R6-17).
 	cwd string
 
-	// reedUp brings the standalone reed session up, idempotently, and, when watch is true and the
-	// boot succeeded, also starts that session's in-process resize watcher bound to ctx. It is set by
+	// reedUp brings the standalone reed session up, idempotently. It is set by
 	// wireStandalone alone — the run verb calls it immediately before driving a round, because
 	// standalone mode has no other way to a live session: `lyx reed up` is hub-only (its pre-run
 	// requires lyxcwd.Resolve), so the session on standalone's own geometry (socket "lyx-<hash8>",
 	// state under the derived state directory) can only be booted in-process. It stays nil in hub
 	// mode, where bringing reed up remains the operator's (or loom's) own act.
-	//
-	// watch is an explicit parameter, not an implicit rule, precisely so the recover-batch asymmetry
-	// (webster's own recover-batch call site passes false; every other call site passes true) is
-	// visible at the call sites themselves rather than rediscovered from a comment.
-	reedUp func(ctx context.Context, watch bool) error
+	reedUp func() error
 
 	// stencilsDirFlag and targetDirFlag hold the raw, as-parsed values of the two standalone-entry
 	// persistent flags (--stencils-dir, --target-dir). An empty value means the flag was not passed;

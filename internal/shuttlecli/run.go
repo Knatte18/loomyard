@@ -110,6 +110,11 @@ the provider default.`,
 				return nil
 			}
 
+			if anchor != string(render.AnchorOwnWindow) && anchor != string(render.AnchorHidden) {
+				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("invalid --anchor %q; want own-window|hidden", anchor)))
+				return nil
+			}
+
 			promptText := prompt
 			if havePromptFile {
 				data, err := os.ReadFile(promptFile)
@@ -168,7 +173,7 @@ the provider default.`,
 	cmd.Flags().StringVar(&role, "role", "", "role token used to fill the strand-name template")
 	cmd.Flags().StringVar(&round, "round", "", "round token used to fill the strand-name template")
 	cmd.Flags().StringVar(&parent, "parent", "", "parent strand's guid")
-	cmd.Flags().StringVar(&anchor, "anchor", string(render.AnchorOwnWindow), "placement: own-window|below-parent|hidden")
+	cmd.Flags().StringVar(&anchor, "anchor", string(render.AnchorOwnWindow), "placement: own-window|hidden")
 	cmd.Flags().BoolVar(&focus, "focus", true, "give this strand tmux input focus; false never moves the viewer to its window")
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, "wall-clock deadline before an in-progress run is classified as timed out (0 = config default)")
 	cmd.Flags().BoolVar(&keepPane, "keep-pane", false, `leave the strand and its pane alive after a "done" outcome`)

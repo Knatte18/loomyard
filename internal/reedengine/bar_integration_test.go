@@ -1,7 +1,7 @@
 //go:build tmux && linux
 
-// bar_integration_test.go expands the two-line status bar and the pane-border title against a real tmux server and an attached client,
-// and asserts the acceptance rows: which button is lit, which strands and windows get a button, the wait mark, and the session line.
+// bar_integration_test.go expands the two-line status bar against a real tmux server and an attached client,
+// and asserts the acceptance rows: which button is lit, which windows get a button, the wait mark, and the session line.
 // The formats are expanded with display-message -c <client>, so the client's own session and current window are the context.
 // The client is attached through the pty harness attachgeometry_integration_test.go defines.
 
@@ -23,6 +23,8 @@ type barFixture struct {
 	alpha, beta               Strand
 	selvagePane               string
 	strandWindow, otherWindow string
+	// otherWindowIndex is the extra window's tmux index, which the own windows created before it push past a fixed literal.
+	otherWindowIndex string
 }
 
 func newBarFixture(t *testing.T) *barFixture {
@@ -31,12 +33,12 @@ func newBarFixture(t *testing.T) *barFixture {
 	if _, err := e.Up(); err != nil {
 		t.Fatalf("Up: %v", err)
 	}
-	below := render.Display{Anchor: render.AnchorBelowParent}
-	alpha, err := e.AddStrand(AddSpec{NameOverride: "alpha", Segment: "review", Cmd: "sleep 300", Display: below})
+	own := render.Display{Anchor: render.AnchorOwnWindow}
+	alpha, err := e.AddStrand(AddSpec{NameOverride: "alpha", Segment: "review", Cmd: "sleep 300", Display: own})
 	if err != nil {
 		t.Fatalf("AddStrand(alpha): %v", err)
 	}
-	beta, err := e.AddStrand(AddSpec{NameOverride: "beta", Segment: "plan", Cmd: "sleep 300", Display: below})
+	beta, err := e.AddStrand(AddSpec{NameOverride: "beta", Segment: "plan", Cmd: "sleep 300", Display: own})
 	if err != nil {
 		t.Fatalf("AddStrand(beta): %v", err)
 	}
@@ -67,6 +69,7 @@ func newBarFixture(t *testing.T) *barFixture {
 	}
 	f := &barFixture{e: e, alpha: alpha, beta: beta, selvagePane: st.SelvagePaneID, strandWindow: strandWindow, otherWindow: exactSessionWindowTarget(e.SessionName()) + "extra"}
 	f.client = strings.TrimSpace(mustTmuxOutput(t, e, "list-clients", "-F", "#{client_name}"))
+	f.otherWindowIndex = strings.TrimSpace(mustTmuxOutput(t, e, "display-message", "-p", "-t", f.otherWindow, "#{window_index}"))
 	return f
 }
 
@@ -74,11 +77,6 @@ func newBarFixture(t *testing.T) *barFixture {
 func (f *barFixture) expand(t *testing.T, format string) string {
 	t.Helper()
 	return strings.TrimSpace(mustTmuxOutput(t, f.e, "display-message", "-c", f.client, "-p", format))
-}
-
-func (f *barFixture) paneBorder(t *testing.T, paneID string) string {
-	t.Helper()
-	return strings.TrimSpace(mustTmuxOutput(t, f.e, "display-message", "-p", "-t", paneID, "#{E:pane-border-format}"))
 }
 
 func TestBar_LineOneButtonsFollowTheWindowZoomAndWaitMarks(t *testing.T) {
@@ -90,16 +88,16 @@ func TestBar_LineOneButtonsFollowTheWindowZoomAndWaitMarks(t *testing.T) {
 
 	shellLit := "range=user|shell list=focus bg=white fg=black bold] shell "
 	shellUnlit := "range=user|shell bg=colour236 fg=white] shell "
-	alphaLit := "range=pane|" + f.alpha.PaneID + " list=focus bg=colour208 fg=black bold] alpha "
-	alphaUnlit := "range=pane|" + f.alpha.PaneID + " bg=colour236 fg=colour208] alpha "
-	betaUnlit := "range=pane|" + f.beta.PaneID + " bg=colour236 fg=cyan] beta "
 
-	// The strand window is current and unzoomed: the shell button is lit and both strands are unlit buttons, in pane order, with no Selvage button.
+	// The strand window is current: the shell button is lit and no strand or Selvage pane gets a button.
 	line := f.expand(t, "#{T:status-format[0]}")
-	for _, want := range []string{shellLit, alphaUnlit, betaUnlit, "range=window|", " extra "} {
+	for _, want := range []string{shellLit, "range=window|", " extra "} {
 		if !strings.Contains(line, want) {
 			t.Errorf("line 1 with the strand window current = %q, want it to contain %q", line, want)
 		}
+	}
+	if strings.Contains(line, "range=pane|") {
+		t.Errorf("line 1 = %q, want no strand pane button", line)
 	}
 	if strings.Contains(line, " VIEW ") {
 		t.Errorf("line 1 = %q, want no VIEW button", line)
@@ -107,20 +105,14 @@ func TestBar_LineOneButtonsFollowTheWindowZoomAndWaitMarks(t *testing.T) {
 	if strings.Index(line, " extra ") > strings.Index(line, shellLit) {
 		t.Errorf("line 1 = %q, want the shell button after the extra window's button, the last visible window", line)
 	}
-	if strings.Index(line, alphaUnlit) > strings.Index(line, betaUnlit) {
-		t.Errorf("line 1 = %q, want alpha's button before beta's (pane order)", line)
-	}
-	if strings.Contains(line, "range=pane|"+f.selvagePane) {
-		t.Errorf("line 1 = %q, want no button for the Selvage pane", line)
-	}
-	if !strings.Contains(line, "range=window|1 bg=colour236 fg=white] extra ") {
+	if !strings.Contains(line, "range=window|"+f.otherWindowIndex+" bg=colour236 fg=white] extra ") {
 		t.Errorf("line 1 = %q, want the non-current window button unlit", line)
 	}
 	if strings.Contains(line, " hidden ") {
 		t.Errorf("line 1 = %q, want no button for the window carrying @lyx_hidden", line)
 	}
 
-	// Zooming alpha unlights the shell button and lights exactly alpha's button.
+	// Zooming a strand pane leaves the shell button lit, since the button follows the active window alone.
 	if err := e.tmux.run("select-pane", "-t", f.alpha.PaneID); err != nil {
 		t.Fatalf("select-pane: %v", err)
 	}
@@ -128,38 +120,22 @@ func TestBar_LineOneButtonsFollowTheWindowZoomAndWaitMarks(t *testing.T) {
 		t.Fatalf("resize-pane -Z: %v", err)
 	}
 	line = f.expand(t, "#{T:status-format[0]}")
-	for _, want := range []string{shellUnlit, alphaLit, betaUnlit} {
-		if !strings.Contains(line, want) {
-			t.Errorf("line 1 with alpha zoomed = %q, want it to contain %q", line, want)
-		}
+	if !strings.Contains(line, shellLit) {
+		t.Errorf("line 1 with alpha zoomed = %q, want it to contain %q", line, shellLit)
 	}
 	if err := e.tmux.run("resize-pane", "-Z", "-t", f.alpha.PaneID); err != nil {
 		t.Fatalf("unzoom: %v", err)
 	}
 
-	// From the second window the strand buttons are still there, the shell button is unlit and the window's own button is lit.
+	// From the second window the shell button is unlit and the window's own button is lit.
 	if err := e.tmux.run("select-window", "-t", f.otherWindow); err != nil {
 		t.Fatalf("select-window extra: %v", err)
 	}
 	line = f.expand(t, "#{T:status-format[0]}")
-	for _, want := range []string{shellUnlit, alphaUnlit, betaUnlit, "range=window|1 list=focus bg=white fg=black bold] extra "} {
+	for _, want := range []string{shellUnlit, "range=window|" + f.otherWindowIndex + " list=focus bg=white fg=black bold] extra "} {
 		if !strings.Contains(line, want) {
 			t.Errorf("line 1 from the second window = %q, want it to contain %q", line, want)
 		}
-	}
-
-	// A wait mark shows on its strand's button until cleared.
-	if err := e.SetWaitMark(f.alpha.GUID, "verify loom", time.Now().Add(-3*time.Minute)); err != nil {
-		t.Fatalf("SetWaitMark: %v", err)
-	}
-	if line = f.expand(t, "#{T:status-format[0]}"); !regexp.MustCompile(`alpha ⏳verify loom [23]m `).MatchString(line) {
-		t.Errorf("line 1 with a mark = %q, want alpha's button to carry the label and a two-to-three minute count", line)
-	}
-	if err := e.SetWaitMark(f.alpha.GUID, "", time.Time{}); err != nil {
-		t.Fatalf("SetWaitMark (clear): %v", err)
-	}
-	if line = f.expand(t, "#{T:status-format[0]}"); strings.Contains(line, "⏳") {
-		t.Errorf("line 1 after the mark was cleared = %q, want no wait text", line)
 	}
 
 	// An own window gets a button in its segment's color, underscored until the operator first selects it.
@@ -229,7 +205,7 @@ func TestBar_LineOneButtonsFollowTheWindowZoomAndWaitMarks(t *testing.T) {
 	}
 }
 
-func TestBar_LineTwoListsSessionsInIDOrderAndTheBorderNamesStrands(t *testing.T) {
+func TestBar_LineTwoListsSessionsInIDOrder(t *testing.T) {
 	f := newBarFixture(t)
 
 	// The current session is lit with its full name and the other is cut to 12 characters, in session-id order.
@@ -267,16 +243,5 @@ func TestBar_LineTwoListsSessionsInIDOrderAndTheBorderNamesStrands(t *testing.T)
 		if at < strings.LastIndex(line, other) || at > strings.Index(line, "nolist align=right") {
 			t.Errorf("line 2 with follow %s = %q, want the follow button after the last session button and before the time", tt.name, line)
 		}
-	}
-
-	if got := f.paneBorder(t, f.selvagePane); !strings.Contains(got, "selvage") || strings.Contains(got, "fg=") {
-		t.Errorf("Selvage's border title = %q, want it to read selvage with no strand color", got)
-	}
-	got := f.paneBorder(t, f.alpha.PaneID)
-	if !strings.Contains(got, "fg=colour208") || !strings.Contains(got, " alpha ") {
-		t.Errorf("alpha's border title = %q, want its name in its segment color", got)
-	}
-	if got := f.paneBorder(t, f.beta.PaneID); !strings.Contains(got, "fg=cyan") {
-		t.Errorf("beta's border title = %q, want its name in cyan", got)
 	}
 }

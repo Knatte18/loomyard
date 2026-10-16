@@ -26,20 +26,34 @@ const (
 	maxResponseBytes = 64 << 20
 )
 
+// Spawn is what a client's spawn seam answers for a daemon it started.
+type Spawn struct {
+	// PID is the pid of the started daemon.
+	PID int
+	// Exited fires once when that process exits; nil for a seam that gives no signal.
+	Exited <-chan SpawnExit
+}
+
+// SpawnExit describes the exit of a spawned daemon.
+type SpawnExit struct {
+	// LostRace is true when the daemon exited because another daemon holds the hub's lock.
+	LostRace bool
+}
+
 // Client talks to the daemon of one hub.
 // Its clock measures the waits between connects and a waiting call's timeout.
 type Client struct {
 	geom  Geometry
 	claim Claim
-	// spawn starts the daemon detached and answers its pid; the client calls it at most once per connect.
-	spawn func() (int, error)
+	// spawn starts the daemon detached; the client calls it at most once per connect.
+	spawn func() (Spawn, error)
 	clock Clock
 }
 
 // NewClient returns a Client for the hub in geom.
-// claim states who the caller says it is, and spawn starts the daemon when none answers and answers the pid it started; nil spawns nothing.
+// claim states who the caller says it is, and spawn starts the daemon when none answers and answers the pid it started with the signal of its exit; nil spawns nothing.
 // A client that gives up connecting after a spawn quotes that pid's lines from geom.DaemonLogPath.
-func NewClient(geom Geometry, claim Claim, spawn func() (int, error), clock Clock) *Client {
+func NewClient(geom Geometry, claim Claim, spawn func() (Spawn, error), clock Clock) *Client {
 	return &Client{geom: geom, claim: claim, spawn: spawn, clock: clock}
 }
 
@@ -52,6 +66,7 @@ func (e *connLostError) Unwrap() error { return e.err }
 
 // connect dials the daemon's socket.
 // When nothing answers it starts the daemon once and retries up to ConnectAttempts times, sleeping on the told clock from one second between tries.
+// A spawned daemon that exits other than by a lost start race ends the wait after one last connect; a lost race keeps the backoff, since the winner may not answer yet.
 // When it gives up, its error names the socket and the daemon log and quotes the log's lines from that start.
 func (c *Client) connect() (net.Conn, error) {
 	conn, err := net.Dial("unix", c.geom.SocketPath)
@@ -62,22 +77,44 @@ func (c *Client) connect() (net.Conn, error) {
 		return nil, &connLostError{fmt.Errorf("creel: no daemon answers on %s: %w", c.geom.SocketPath, err)}
 	}
 	logger.Info("creel: no daemon answers, starting one", "socket", c.geom.SocketPath)
-	pid, spawnErr := c.spawn()
+	spawned, spawnErr := c.spawn()
 	if spawnErr != nil {
 		return nil, fmt.Errorf("creel: start the daemon for %s: %w", c.geom.SocketPath, spawnErr)
 	}
+	exited := spawned.Exited
 	wait := connectWaitBase
-	for attempt := 1; attempt <= ConnectAttempts; attempt++ {
+	connects := 0
+	for connects < ConnectAttempts {
+		connects++
 		if conn, err = net.Dial("unix", c.geom.SocketPath); err == nil {
 			return conn, nil
 		}
-		if attempt < ConnectAttempts {
-			<-c.clock.After(wait)
-			wait = min(wait*2, connectWaitCeiling)
+		if connects == ConnectAttempts {
+			break
+		}
+		timer := c.clock.After(wait)
+		wait = min(wait*2, connectWaitCeiling)
+		select {
+		case <-timer:
+		case exit := <-exited:
+			if !exit.LostRace {
+				connects++
+				if conn, err = net.Dial("unix", c.geom.SocketPath); err == nil {
+					return conn, nil
+				}
+				return nil, c.gaveUp(spawned.PID, connects, err)
+			}
+			exited = nil
+			<-timer
 		}
 	}
-	return nil, &connLostError{fmt.Errorf("creel: no daemon answers on %s after starting one and %d connects: %w; daemon log %s: %s",
-		c.geom.SocketPath, ConnectAttempts, err, c.geom.DaemonLogPath, daemonLogExcerpt(c.geom.DaemonLogPath, pid))}
+	return nil, c.gaveUp(spawned.PID, connects, err)
+}
+
+// gaveUp builds the error of a client that started a daemon and still could not connect after the given number of connects.
+func (c *Client) gaveUp(pid, connects int, err error) error {
+	return &connLostError{fmt.Errorf("creel: no daemon answers on %s after starting one and %d connects: %w; daemon log %s: %s",
+		c.geom.SocketPath, connects, err, c.geom.DaemonLogPath, daemonLogExcerpt(c.geom.DaemonLogPath, pid))}
 }
 
 // waitState remembers what a waiting call learned, so a reconnect can resume it.

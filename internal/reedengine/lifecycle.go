@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
@@ -63,6 +64,8 @@ type DownResult struct {
 	// naming it. Empty in every ordinary teardown. See Down for why it is reported rather than
 	// killed.
 	AbandonedSession string
+	// EndedServer is true when Down took its server-teardown branch: no session was left, or the session listing errored.
+	EndedServer bool
 }
 
 // StrandStatus is one strand's status in StatusResult.
@@ -276,7 +279,7 @@ func (e *Engine) sessionSubstrateLocked() (up bool, usable bool, err error) {
 
 // validateBootConfig refuses a boot-time config value that is wrong on its own, before any tmux round trip.
 // It validates debug_log, mouse, watchdog, the segment colors, window_share_max and window_split, and returns the tmux global flags debug_log selects and the mouse option value.
-// The boot path calls it, and so does an op that reads the strands' window's zoom before booting, so a pure config error surfaces ahead of that read.
+// The boot path calls it, and so does withBootOpLock, so a pure config error surfaces ahead of the boot's first tmux read.
 func (e *Engine) validateBootConfig() (debugArgs []string, mouse string, err error) {
 	// Validate debug_log before anything else touches tmux: a misconfigured
 	// value is a pure config error, unrelated to server/session state, so it
@@ -294,10 +297,8 @@ func (e *Engine) validateBootConfig() (debugArgs []string, mouse string, err err
 		return nil, "", err
 	}
 
-	// The boolean is discarded here: this is the one consumer of watchdogOption with an error
-	// channel, and its only job is to make a typo fail `lyx reed up` loudly and by name — the hook
-	// install (pinGeometryOptionsLocked) and the watch loop each read the key again and fail safe
-	// toward "no watchdog" instead.
+	// The boolean is discarded here: this is the one consumer of watchdogOption with an error channel.
+	// Its only job is to make a typo fail `lyx reed up` loudly and by name, since every other reader of the key fails safe toward "no watchdog" instead.
 	if _, err = watchdogOption(e.cfg.Watchdog); err != nil {
 		return nil, "", err
 	}
@@ -553,10 +554,8 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 }
 
 // pinBootOptionsLocked pins the options a fresh boot sets on the server and session it just spawned.
-// The `remain-on-exit` and `mouse` pins are correctness dependencies and fail the boot; the geometry pins and the hook install are non-fatal.
+// The `remain-on-exit` and `mouse` pins are correctness dependencies and fail the boot; the geometry pins, which include the `window-resized` unpin, are non-fatal.
 // Boot options never re-apply to an already-up session, which is why the attach pre-flight re-pins the geometry ones itself.
-// When the watchdog is on (POSIX only), it ends with a zero-pin rebuild of the window-resized hook array, the clear and the signal entry alone, so a session with fewer than two panes or no placed strand promotes its watcher out of poll mode without waiting for a layout apply.
-// That install sits here and not in pinGeometryOptionsLocked, which the attach pre-flight also runs: a degrading attach returns before its own install, and a zero-pin rebuild there would wipe the session's resize pins.
 // Assumes the op lock is already held.
 func (e *Engine) pinBootOptionsLocked(mouse, shellPath string) error {
 	// remain-on-exit keeps a pane whose command exits around as
@@ -580,12 +579,7 @@ func (e *Engine) pinBootOptionsLocked(mouse, shellPath string) error {
 	// support for both is unverified anywhere in this repo, so a capability
 	// reed cannot confirm must not be able to take the boot down (Shared
 	// Decision geometry-tmux-failures-are-non-fatal-everywhere).
-	target := exactSessionWindowTarget(e.SessionName())
-	e.pinGeometryOptionsLocked(target, shellPath)
-
-	if e.resizeSignalHookCommand() != "" {
-		e.installResizePinsLocked(target, nil)
-	}
+	e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()), shellPath)
 	return nil
 }
 
@@ -629,6 +623,19 @@ func (e *Engine) touchDiscoverSignal() {
 	}
 	if err := os.WriteFile(path, nil, 0o644); err != nil {
 		logger.Warn("reed: could not touch the discover signal", "socket", e.Socket(), "path", path, "err", err)
+	}
+}
+
+// writeDiscoverStop writes DiscoverStopMarker as the whole content of the told discover signal file, asking the hub's watchdog daemon to stop.
+// The write is atomic, a temp file renamed onto the path, so the daemon's watch never sees the file created empty before the marker lands.
+// It does nothing when no path is told, and a failure is logged at Warn, never failing Down.
+func (e *Engine) writeDiscoverStop() {
+	path := e.geom.DiscoverSignalPath
+	if path == "" {
+		return
+	}
+	if err := fsx.AtomicWriteBytes(path, []byte(DiscoverStopMarker)); err != nil {
+		logger.Warn("reed: could not write the discover stop", "socket", e.Socket(), "path", path, "err", err)
 	}
 }
 
@@ -714,12 +721,26 @@ func (e *Engine) upLocked() (UpResult, bool, error) {
 	return result, booted, nil
 }
 
+// withBootOpLock is withOpLock for an op that always boots: a boot-time config error, an over-long socket path, an unresolvable shell or an unusable `tmux_conf` is refused before fn's first tmux round trip.
+// The boot itself makes the same refusals for the paths that reach it without this wrapper.
+func (e *Engine) withBootOpLock(fn func() error) error {
+	return e.withOpLock(func() error {
+		if _, _, err := e.validateBootConfig(); err != nil {
+			return err
+		}
+		if _, _, err := e.preflightBootHost(); err != nil {
+			return err
+		}
+		return fn()
+	})
+}
+
 // Up ensures the server and session exist.
 // Up never launches strands;
 // Resume rebuilds content after a server restart.
 func (e *Engine) Up() (UpResult, error) {
 	var result UpResult
-	err := e.withRevivalFirst(e.withBootOpLockKeepingZoom, func() error {
+	err := e.withRevivalFirst(e.withBootOpLock, func() error {
 		var err error
 		result, _, err = e.upLocked()
 		return err
@@ -753,10 +774,10 @@ func (e *Engine) ensureSessionLocked() (bool, error) {
 
 // EnsureSession boots this worktree's session only when there is nothing usable to attach to, and
 // reports whether a session was actually created.
-// It raises no state-level refusal on the warm path, since the only state it reads is the zoom bracket's, which swallows its errors, so a caller needing reed's state-level refusals must
+// It raises no state-level refusal on the warm path, since it reads no state there, so a caller needing reed's state-level refusals must
 // still make its own Status call.
 func (e *Engine) EnsureSession() (booted bool, err error) {
-	err = e.withRevivalFirst(e.withOpLockKeepingZoom, func() error {
+	err = e.withRevivalFirst(e.withOpLock, func() error {
 		var innerErr error
 		booted, innerErr = e.ensureSessionLocked()
 		return innerErr
@@ -768,7 +789,7 @@ func (e *Engine) EnsureSession() (booted bool, err error) {
 // drops non-live strands whose done-when paths all exist, relaunches the other non-live strands, and re-applies the layout.
 func (e *Engine) Resume() (ResumeResult, error) {
 	var result ResumeResult
-	err := e.withRevivalFirst(e.withBootOpLockKeepingZoom, func() error {
+	err := e.withRevivalFirst(e.withBootOpLock, func() error {
 		dropped := 0
 		booted, stripped, err := e.ensureServerAndSessionLocked()
 		if err != nil {
@@ -800,7 +821,7 @@ func (e *Engine) Resume() (ResumeResult, error) {
 		}
 		e.markResolvedStrandWindowLocked(st)
 
-		live, windows, err := e.listStrandAndWindowPanes(st)
+		live, windows, err := e.listReconcilePanesLocked(st)
 		if err != nil {
 			return fmt.Errorf("list panes: %w", err)
 		}
@@ -943,7 +964,10 @@ func (e *Engine) Down() (DownResult, error) {
 		// pre-boot check applies regardless).
 		var serverErr error
 		if out, err := e.tmux.output(listSessionsArgv(runtime.GOOS, "#{session_name}")...); err != nil || strings.TrimSpace(out) == "" {
+			result.EndedServer = true
 			logger.Info("reed: tearing down tmux server", "socket", e.Socket(), "serverPID", serverPID)
+			// Written before kill-server so the stop is asked for whether or not the server then confirms gone.
+			e.writeDiscoverStop()
 			// Best-effort — the more significant "server did not confirm
 			// gone" outcome is already covered at Warn by ensureServerGoneLocked
 			// below; this earlier, routine kill-server discard only needs a
@@ -951,7 +975,11 @@ func (e *Engine) Down() (DownResult, error) {
 			if err := e.tmux.run("kill-server"); err != nil {
 				logger.Debug("reed: best-effort kill-server failed", "socket", e.Socket(), "serverPID", serverPID, "err", err)
 			}
-			serverErr = e.ensureServerGoneLocked(serverPID)
+			ensureGone := e.ensureServerGone
+			if ensureGone == nil {
+				ensureGone = e.ensureServerGoneLocked
+			}
+			serverErr = ensureGone(serverPID)
 			if serverErr != nil {
 				logger.Warn("reed: server did not confirm gone after kill-server", "socket", e.Socket(), "serverPID", serverPID, "err", serverErr)
 			}
@@ -998,7 +1026,8 @@ func (e *Engine) Down() (DownResult, error) {
 			logger.Warn("reed: could not delete launch script directory", "path", launchScriptDir(e.stateDir()), "err", err)
 		}
 
-		result = DownResult{Session: e.SessionName(), AbandonedSession: abandoned}
+		result.Session = e.SessionName()
+		result.AbandonedSession = abandoned
 		return nil
 	})
 	return result, err

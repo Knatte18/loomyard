@@ -12,10 +12,8 @@
 // are formatting-only inputs consumed once, at add-time, to fill the
 // strand-name template — they are never persisted or read back.
 //
-// reedengine imports internal/reedengine/render (the pure display-vocabulary
-// leaf) and maps its own persisted records down to render.Strand when
-// computing a layout; render never imports reedengine, so the import graph
-// stays acyclic (reedcli -> reedengine -> render).
+// reedengine imports internal/reedengine/render (the pure display-vocabulary leaf: Anchor, Display and ValidateDisplay).
+// render never imports reedengine, so the import graph stays acyclic (reedcli -> reedengine -> render).
 //
 // reedengine is told its geometry as a Geometry value (geometry.go) and
 // derives none of it. internal/lyxcwd is consequently absent from this
@@ -78,7 +76,7 @@
 // The button is lit while the window is current, and otherwise that color on dark grey, underscored while the window carries @lyx_unseen.
 // Outside Windows, the geometry pins also pin the session hook `session-window-changed` with `set-option -w -u @lyx_unseen`, so selecting the window clears the mark; boot and every attach pre-flight run the pin.
 // On Windows no hook is pinned and the mark is never set.
-// The shell button is a range=user|shell button labelled shell, lit while the strands' window is active and not zoomed; line 1 follows window index order, so the overview's button is first, the agents' follow in start order and the shell button comes last.
+// The shell button is a range=user|shell button labelled shell, lit while the shell window is active; line 1 follows window index order, so the overview's button is first, the agents' follow in start order and the shell button comes last.
 // An overview window's button is an own-window button with no @strand_color, which renders as the plain window-button style.
 // A window carrying @lyx_hidden still gets no button, and no Go decision reads @strand_color or @lyx_unseen.
 // Line 2 lists the sessions, then the follow button, a range=user|follow button labelled follow that sits left of the time, lit green while the current session's @lyx_follow is not off and unlit while it is.
@@ -87,43 +85,25 @@
 // The pin stamps the server-global option @lyx_bindings_build with the pinning build's VCS commit time and revision label, and unsets it for a binary with no VCS stamp.
 // Every op under the blocking op lock reads the stamp before its step and re-pins the bindings when it is absent, unparseable or names another build whose commit time is not after the running one's, so a deployed lyx reaches a running server at its first reed op.
 // Bound: an older build never re-pins over a newer one's stamp, so a long-lived process of an older lyx cannot restore stale bindings, and an unstamped binary never re-pins; two builds of one commit time, such as a dirty build and its commit's clean one, can re-pin over each other.
-// The watchdog's try-lock re-apply and the name-repair loop never re-pin, and the global status-bar options still refresh only at boot and attach.
-// Alt+z zooms or unzooms a strand pane or Selvage in the strands' window, and does nothing in any other window;
+// The name-repair loop never re-pins, and the global status-bar options refresh only at boot and attach.
+// The pin starts with `unbind-key -n M-z`, which removes the Alt+z an older build bound, since a `bind-key` re-pin never removes a binding; reed binds no zoom key.
 // Alt+Up and Alt+Down step to the previous or next window in index order, in every window and wrapping with tmux's own window wrap: a step that lands on a window carrying @lyx_hidden goes on, forward to the session's first window, the overview, and back to the strands' window, the shell, which is one conditional step since hidden windows sit after the shell (on psmux, where the order is best-effort, a step may land on a hidden window);
 // Alt+Left and Alt+Right run `lyx reed switch --prev|--next` in the background through run-shell, naming the absolute path of the `lyx` that pinned them (panebin.go's composeSwitchCommand), never PATH's;
-// and a left click on the status bar dispatches on its range: the shell button, which heads the strands' window's pane buttons, selects and unzooms the strands' window, a strand button selects that pane and zooms it (never toggling the zoom off), a window button selects that window, a session button switches the client to that session, and the follow button toggles the follow state.
-// The follow state is written off by the bindings that change window by hand: Alt+Up and Alt+Down start with `set-option @lyx_follow off`, so the write lands also when the step wraps onto the current window, and the shell, strand and window clicks start with the same write, also for a click on the current window.
-// Each write is untargeted, so it hits the session of the client that pressed the key or clicked; Alt+z, Alt+Left, Alt+Right and the session click leave the follow state alone.
+// and a left click on the status bar dispatches on its range: the shell button selects the strands' window, a window button selects that window, a session button switches the client to that session, and the follow button toggles the follow state.
+// The status bar draws no button for a strand pane, so a click selects no pane.
+// The follow state is written off by the bindings that change window by hand: Alt+Up and Alt+Down start with `set-option @lyx_follow off`, so the write lands also when the step wraps onto the current window, and the shell and window clicks start with the same write, also for a click on the current window.
+// Each write is untargeted, so it hits the session of the client that pressed the key or clicked; Alt+Left, Alt+Right and the session click leave the follow state alone.
 // The follow button writes off when the state is on and changes no window; from off it writes on and, when the jump line is pinned, runs `lyx reed follow` in the background through run-shell, so the viewer jumps back to the run.
 // The jump line (panebin.go's composeFollowCommand) names the absolute path of the `lyx` that pinned it and the clicking client's session as `#{q:session_name}`, and rides the server-global option @lyx_follow_command, which the click runs through `#{E:...}`, keeping the line out of tmux's nested command-string quoting.
 // pinBindingsLocked sets that option when the line resolves and unsets it otherwise, so a click from off then only writes follow on and the next agent window takes the viewer.
 // A psmux without bind-key or run-shell pins none of these, never writes off, and its sessions always follow.
 // Bound: the bindings only ever write off, and the follow button on, to the clicking client's session, and the button runs one `lyx` verb whose effect FollowSession bounds; a window change outside these bindings leaves follow on.
-// Bound: these five keys and the left status click are taken from every pane on the server, so a program in a pane, Claude Code included, never receives them; no other key or mouse binding is changed, and tmux's right-click menus keep their defaults.
-// The shell and strand-button branches find the strands' window through the @lyx_strands marker, expanded at click time to a tmux-issued window id (`@<n>`), never a config value or free text.
-// tmux resolves a pane range's `=` target only inside the client's current window, so the strand-button branch selects the strands' window first.
+// Bound: these four keys and the left status click are taken from every pane on the server, so a program in a pane, Claude Code included, never receives them; no other key or mouse binding is changed, and tmux's right-click menus keep their defaults.
+// The shell branch finds the strands' window through the @lyx_strands marker, expanded at click time to a tmux-issued window id (`@<n>`), never a config value or free text.
 // Every binding is non-fatal: a failed `bind-key` is logged and the rest are still issued, and an unresolvable executable, socket path or tmux path logs a named warning and leaves only Alt+Left and Alt+Right unbound.
 // The capability probe checks bind-key, run-shell, if-shell and switch-client as optional verbs after the required set: a missing one logs one warning naming it and never fails the probe, so a psmux without them still boots.
 //
-// A zoomed strand survives every reed step (zoom.go).
-// tmux clears a window's zoom on resize-pane -y, select-layout, split-window, select-pane without -Z and kill-pane of another pane, so every step that changes panes runs inside keepZoomLocked, under the op lock.
-// It reads the strands' window's `#{window_zoomed_flag} #{pane_id}` through the stored-state window seam; for a zoomed window it unzooms the active pane with `resize-pane -Z`, runs the step, and zooms the same pane again, also when the step failed.
-// The call sites are Up, EnsureSession, Resume, AddStrand and AddStrandUnless, UpdateStrand, SetContentRows, RemoveStrand, ReplaceStrand, the watchdog's reapplyLayout and AttachArgv's pre-flight, so every pane list a layout or a pin is planned from is read on the unzoomed window.
-// The watchdog's reapplyLayout enters the bracket only for an apply it will run: a live box equal to the last applied box or to the last failed box returns before it, so a re-apply that changes nothing never toggles zoom.
-// The watch loop records the live box of a failed re-apply as the last failed box and skips it until another box applies; a strand op's own apply is never suppressed.
-// An op that refuses a bad config value or an unformable name does so before the bracket's first read.
-// Bound: a step re-zooms only a window that was zoomed when it started, and only the pane that was zoomed; a pane gone by then leaves the window in the overview.
-// No session, a failed read, an unparseable answer and a failed unzoom all mean "run plain", logged and never fatal.
-// The two executions tmux runs after reed returns carry the same bracket as tmux commands that test the zoom when they run:
-// the window-resized hook array, when it holds any pin, starts with an entry that records a zoomed window in the window option @lyx_rezoom and unzooms it, and ends its pins with an entry that zooms the active pane again and clears the record, ahead of the watchdog's signal entry;
-// the attach chain runs the same two entries around its select-layout and pins, each naming the strands' window, since the chain runs in the client's context.
-//
-// SetContentRows(name, paneID, rows) is the one operation through which a content strand's pane process reports its line count (strand.go).
-// It refuses rows < 1 before taking any lock, then, under the op lock and the zoom bracket, an unknown name, a strand that is not content-sized and a strand whose recorded pane is not paneID, each naming the strand and the reason.
-// A count equal to the recorded one touches neither reed.json nor tmux; otherwise it persists the count and re-applies the layout with applyOpts{SkipFocus, InstallPins}, so the operator's cursor never moves and the window-resized hook array is rebuilt from the new pins.
-// It changes nothing but that strand's ContentRows and the layout and pins derived from it.
-// Neither overview pane reports a count, so the operation stays for an explicit content-sized caller.
-// Bound: a hand-run or replaced pane process reports from a pane the strand does not hold and is refused, so it can resize no strand.
+// Reed keeps no zoom state: a step never zooms or unzooms a pane.
 //
 // A restarted server's sessions come back in spawn order (revive.go).
 // The teller tells Geometry.SpawnOrder, a lazy list of ReviveEntry for the hub's worktrees in spawn order, nil in standalone mode; reedengine sorts nothing and reads no loom or fabric record.
@@ -144,7 +124,7 @@
 // never a Strand (Shared Decision header-is-not-a-strand): it is excluded
 // from strand accounting, from being the preferred split target, and from
 // both halves of reconcile's kill schedule (see selvagepane.go's
-// create/heal path, planPaneTarget, and the reapPolicy value
+// create/heal path and the reapPolicy value
 // planReconcile is handed for the three exclusion seams), so that
 // removing a session's last strand can never destroy the
 // session or corpse its sole pane — Selvage keeps the session (and the
@@ -161,23 +141,14 @@
 // A non-empty `default-command` makes tmux start the shell without the login flag, so a strand pane runs the shell's rc files and not the login profile.
 // The boot refuses a configured shell that does not resolve, naming the `shell` key;
 // the attach pre-flight logs a warning and leaves the session's earlier values.
-// Windows keeps its current boot and pins no session shell. A Selvage pane whose shell process
-// dies (pane_dead=1) is deliberately kept as an enumerable corpse by
-// reconcile — never killed there — and healed (corpse killed, a fresh
-// Selvage split back in at the physical bottom, carrying e.cfg.Shell on
-// both the first attempt and any even-vertical-retile retry) by
-// ensureSelvagePaneLocked on the next Up/Resume; planLayout only ever emits
-// a Selvage cell for a pane actually present in the window, so a stale
-// SelvagePaneID can never put an absent pane's cell into select-layout's
-// string (which a real tmux accepts and misassigns positionally rather than
-// rejecting).
+// Windows keeps its current boot and pins no session shell.
+// A Selvage pane whose shell process dies (pane_dead=1) is deliberately kept as an enumerable corpse by reconcile, never killed there, and healed by ensureSelvagePaneLocked on the next Up/Resume: the corpse is killed and a fresh full-width Selvage is split in below the bottom-most live pane, carrying e.cfg.Shell.
 //
 // Three module-local Selvage rules, kept here rather than in a PATTERN entry
 // because they describe this package's own design rather than a
-// cross-cutting invariant another module could violate: Selvage is always
-// physically bottom-most in the window — render.Rules emits its cell last
-// and every split site that creates or rebuilds it targets the bottommost
-// live pane, never the topmost. Selvage is never a strand — it is excluded
+// cross-cutting invariant another module could violate.
+// Selvage is always physically bottom-most in the window, because every split site that creates or rebuilds it targets the bottommost live pane, never the topmost.
+// Selvage is never a strand — it is excluded
 // from ReedState.Strands, from strand accounting, and from every strand-only
 // code path, by construction rather than by a runtime check. And Selvage is
 // never written to, cleared, or sent keys by reed — it is a real, usable
@@ -189,32 +160,21 @@
 // selvagepane_enforcement_test.go is the mechanical check keeping them
 // there.
 //
-// The layout rule: the placed strands are ordered by insertion, the persisted strand-table order, with the top-anchored strands above the below-parent ones, and the parent chain plays no part in the order.
-// A strand's Display.Size picks its height rule.
-// A positional strand, the default, is decided by position alone: it takes exactly collapsed_rows rows unless it is the bottom-most positional strand, which expands.
-// A content strand takes its reported line count (Strand.ContentRows, its minimum while unreported), at least its minimum rows and at most its share of the free height, and a content strand in the first row of a window drawing a pane-border title row adds one row for it.
-// A sharing strand expands: while any is live, every sharing strand splits the rows the fixed cells leave evenly, the bottom-most taking the remainder, and every positional strand collapses.
-// The free height is the stack region, the window's box less the Selvage band and its divider.
-// With no positional and no sharing strand, the bottom-most cell expands whatever its kind.
-// A window whose strands declare nothing lays out as before: a new strand is the bottom-most, nothing above it moves except the previous bottom-most (which collapses), and removing the bottom-most makes the one above it bottom-most, which expands.
-// A window too short for the natural split reclaims rows from the collapsed cells first, then the content cells down to one row each, then the expanding cells from the bottom up, and every pane keeps a positive height.
-// The fixed-height panes the hook pins are the Selvage band, every collapsed positional cell and every content cell.
-// The Selvage band sits outside the stack with its own selvage.height_rows.
-// A top-anchored strand's pane is split above every other pane (split-window -f -b), or below the lowest top strand's pane, because the layout string places cells by physical pane order.
+// The placement rule: every placed strand gets a window of its own, a group window or the overview, and the shell window holds Selvage alone, which fills it after boot, a heal and the move below.
+// The anchors are own-window, overview and hidden (internal/reedengine/render); a hidden strand never owns a pane.
+// `lyx reed add` with no `--anchor` places the strand own-window.
+// The retired anchors `below-parent` and `top` read as own-window when reed.json is decoded, and a write refuses them before any tmux call, naming the way forward.
+// Reed arranges no panes in the shell window: it computes no layout, pins no pane height and keeps no resize hook.
+// The only layout reed issues is the even layout of a group window, in the window_split direction.
 //
-// The live-geometry rule: the render box a layout is computed against is no
-// longer the config-pinned Width/Height. planLayout (apply.go) is always
-// TOLD its box as an explicit render.Box parameter and queries nothing of
-// its own — that separation is what lets its two callers disagree about
-// where the box comes from without planLayout itself needing to know.
-// applyLayoutLocked (apply.go) resolves the live box with liveBoxLocked (windowsize.go), `display-message -p -t <strand window> '#{window_width} #{window_height}'`, and falls back to the configured cfg.Width/cfg.Height pair on any round-trip error or malformed answer.
-// AttachArgv (attach.go) passes the attaching client's own told cols/rows
-// and never calls liveBoxLocked, because at argv-build time the live window
-// is still the PRE-attach size — querying it there would reintroduce the
-// exact rescale this task removes (Shared Decision
-// told-box-wins-live-query-is-the-fallback).
+// The move rule: the head of every reconcile (listReconcilePanesLocked, reached from launch, resume and the shared apply tail) lists the shell window's panes and breaks any pane a strand is bound to out into a window of its own.
+// That upgrades a session an older lyx left with strands split under a parent.
+// The recorded Selvage pane and an unbound pane never move, and with the Selvage pane absent the last bound pane stays, because breaking out a window's only pane would take the window with it.
+// The shell window is found by the Selvage pane first, else by the @lyx_strands marker, and with neither the current window is listed and nothing moves.
 //
 // Every strand pane reed creates resolves `lyx` to the binary that spawned it, because launchStrandLocked prepends that binary's directory to the pane's PATH and exports LYX_BIN to its absolute path as shell statements.
+// A fresh shell a strand's command starts re-runs its rc and can reorder PATH, so LYX_BIN names the spawning binary there,
+// and a shuttle engine re-asserts LYX_BIN's directory in its agent's tool shell.
 // The composed line, prelude and launch command together, is written to the strand's launch script,
 // and the typed send-keys line sources it in the pane shell's own scope, so the prelude still runs after the pane shell's profile.
 // The shell dialect's discard-line key (`C-u` on POSIX, none on PowerShell) is sent ahead of that line, so input that reached the booting pane first, such as a viewer's keystrokes or a terminal reply after a window switch, never prefixes it.
@@ -245,11 +205,7 @@
 // launchStrandLocked exports it to the strand's process as LYX_STRAND_NAME, with LYX_PARENT when a parent is told, ahead of the launch command.
 // It also sets the pane title to the full name after `set-option -p allow-set-title off`, so the program in the pane cannot overwrite it.
 // A provider session name is the other mirror, passed by the launch line as `--name`.
-// The resize loop (watchloop.go) polls until the window-resized hook is seen installed, its wait doubling from two seconds to a minute across ticks that change nothing and returning to two seconds on an applied layout, a changed box or a deferral, then blocks on a file event for the signal file through a FileWatchOpener, whose production value OpenFileWatch wraps internal/fswatch.
-// An event stats the signal file, removes it when found and arms a one-shot debounce timer; a failed apply arms a one-shot retry timer on an escalating delay, bounded by the retry cap.
-// When the watcher cannot be opened the loop logs that once and stays in poll mode for good.
-// A resize while a poll-mode watcher is backed off heals at the next tick, up to a minute late.
-// Windows is poll-only, and on POSIX a watcher stays in poll mode when its file watch failed at promotion or until a later attach or apply installs the hook.
+// The daemon's file-event waits (watchloop.go) go through a FileWatchOpener, whose production value OpenFileWatch wraps internal/fswatch.
 // PasteSubmit is the pane-write transport op: one tmux invocation fills a fresh named buffer (`lyx-inject-` plus 8 hex characters) with the text, pastes it as a bracketed paste, deletes the buffer, and, when asked, sends Enter behind it.
 // The buffer is loaded with `load-buffer -` from the tmux client's standard input in the same invocation.
 // The paste and the Enter reach the pane in one command list, so nothing the operator types lands between them, and the operator's automatic paste-buffer stack is never touched.
@@ -259,22 +215,24 @@
 // The window is the reed.yaml key `operator_quiet_s` (seconds, default 5; a zero or negative value takes the default, as does a materialized reed.yaml lacking the key until `lyx config reconcile` writes it).
 // No attached client, or clients on other panes only, answer not active, and a failed listing is returned as the error for the caller to decide on.
 // The hub watchdog daemon retires and respawns itself when the `lyx` binary it started from is replaced (reedcli's watchdog verb owns the check and calls SpawnWatchdog for the successor), and a daemon started before that check existed is ended once by hand after the deploy.
-// The hub watchdog daemon runs a name-repair tick (namerepair.go) beside its resize loop: it resets a drifted pane title itself and repairs a drifted provider session name through the SessionNamer seam, which the provider package implements and `internal/shuttleengines` fills.
+// The hub watchdog daemon runs a name-repair tick (namerepair.go), gated by the reed.yaml key `watchdog`, and runs no resize self-heal.
+// The tick resets a drifted pane title itself and repairs a drifted provider session name through the SessionNamer seam, which the provider package implements and `internal/shuttleengines` fills.
 // A strand carries an opaque provider tag its spawner sets (Strand.Provider, JSON `provider`, omitted when empty); reed stores it and never interprets it.
 // The watchdog is handed a map from tag to SessionNamer and repairs each strand's session name through the namer for its tag, so a strand whose tag has no namer gets its pane title repaired only.
 // The session-name repair types the rename only into an idle pane with no active operator, and does it with one paste-submit under the op lock it already holds; an active operator defers the repair to the next tick, and an unreadable client list does not hold it.
 // The name-repair tick backs off: its wait starts at ten seconds, doubles through NextWakeCadence up to a minute across passes that repair nothing, and returns to ten seconds after a pass that repaired a title or a session name.
 // NextWakeCadence is the one backoff rule the daemon's loops share.
-// A failure that can repeat on every tick of the watch loop or the name-repair tick logs once per episode through logger.Episode: Warn at the first failure, Debug while it goes on, Info at recovery with the count of failed ticks.
-// The watch loop holds one episode for the re-apply per session, living as long as its watcher, so a failing re-apply warns once however many ticks fail and a session that ends mid-episode owes no recovery line; a deferral is neither a failure nor a recovery.
-// The name-repair half guards the session-name repair's operator-activity read, pane capture and rename typing the same way, per strand where it names one.
-// The tmux reads and writes the two loops reach through their callees share one engine-wide episode set, one episode per read: the live window size query, the pane-border-status readback, the three zoom steps, each pane height pin, the live pane generation read and each pane title repair.
-// One-shot callers of the same helpers share those episodes, so a failure inside a watch-tick episode logs at Debug and a success ends the episode with the Info line.
+// A failure that can repeat on every tick of the name-repair tick logs once per episode through logger.Episode: Warn at the first failure, Debug while it goes on, Info at recovery with the count of failed ticks.
+// The name-repair tick guards the session-name repair's operator-activity read, pane capture and rename typing the same way, per strand where it names one.
+// The tmux reads and writes the tick reaches through its callees share one engine-wide episode set, one episode per read: the live pane generation read and each pane title repair.
+// One-shot callers of the same helpers share those episodes, so a failure inside a tick's episode logs at Debug and a success ends the episode with the Info line.
 // The name-repair loop holds its own episode for a pass that fails as a whole.
 // The two in-memory pane-binding clears of a state load are no failure and have no episode: a state load never saves, so the same clear repeats on every tick, and it warns once per recorded and live generation pair or cleared strand set and logs at Debug while it repeats.
 // The discover signal is the hub-level file named DiscoverSignalFileName, at the path Geometry.DiscoverSignalPath tells.
 // A cold session boot touches it, right after the new session exists and on the boot path alone, so every path that boots a session raises it and an attach to a live session touches nothing; a failed touch is logged at Warn and never fails the boot.
 // The daemon's discovery loop wakes on it; standalone mode tells no path and touches nothing.
+// When `Down` ends the server, because no session is left or the session listing errored, it writes DiscoverStopMarker into the file, atomically, before kill-server, to ask the daemon to stop;
+// a cold boot's touch truncates the file back to an ordinary discover, so a racing `up` wins, and `DownResult.EndedServer` reports the teardown.
 // `lyx reed list` reports the hub-wide directory of names across worktrees, with each row's live state.
 //
 // # Multiplexer contract surface
@@ -324,7 +282,7 @@
 // Strand window: the strands live in one window of the session, and every op that enumerates, lays out or measures them addresses that window by its id ("@<n>"), never by the session's current window.
 // A second window in the session is therefore never read as the strands' window.
 // The one seam, windowtarget.go's TmuxCmd.strandWindowTarget, lists the session's own panes across all its windows (`list-panes -s -t '=<session>' -F "#{pane_id} #{window_id}"`).
-// It resolves the window of the recorded Selvage pane (alive, or a dead corpse), else of any present recorded strand pane placed in window 0, else the current-window target "=<session>:", which only the seam keeps.
+// It resolves the window of the recorded Selvage pane (alive, or a dead corpse), else of any present recorded strand pane left in the shell window by an older lyx, else the current-window target "=<session>:", which only the seam keeps.
 // A session reap (Down, and the engine-less ReapSession) ends every window, so it lists the panes of all of them (`list-panes -s`) and reads no reed state.
 // A recorded pane id counts as present only when that session-scoped listing carries it, since pane ids are server-wide and a stale id can name another session's pane.
 // With a present Selvage or strand pane a batten window, current or not, is never read as the strands' window and its pane is never reaped as untracked.
@@ -340,7 +298,7 @@
 // A placed new-window the multiplexer refuses on Windows (psmux) logs at Debug and is retried once in the plain form, so the order is best-effort there and nothing fails.
 // The shell window is the window of the recorded console pane (Selvage), named shell with automatic-rename off, which is how a fresh boot names its one window.
 // A session booted by an older lyx is brought into that order by ensureShellWindowLocked, which runs wherever a window opens, once the boot marks the strands' window and at the head of every attach pre-flight, also when no client size is known:
-// it renames the shell window when its name is wrong and moves it behind the last non-hidden window, and only that window; strands already placed stay where they are, so Resume relaunches an in-flight below-parent strand in the shell window.
+// it renames the shell window when its name is wrong and moves it behind the last non-hidden window, and only that window; a strand pane an older lyx left in the shell window is broken out by the reconcile head's move rule.
 // It does nothing, logged at Debug, when no console pane is recorded or the window listing does not carry its window, and a check never fails its caller.
 // A failed rename or move warns once per failure episode, which the session option @lyx_shell_check_failed keeps open, logs at Debug while the episode stays open and always on Windows, and an Info line closes the episode when a later check succeeds.
 //
@@ -358,7 +316,7 @@
 //
 // Own windows: an own-window strand gets a detached window named by its role, opened through the launch chokepoint (spawn.go's openOwnWindowLocked) by `new-window -d`, and the window is then selected only under the focus rule below.
 // The window carries @lyx_own, @strand_color and @lyx_unseen, each set by window id; the last is left unset on Windows, and an overview window carries neither @strand_color nor @lyx_unseen, nor does a new agent window the focus rule selects.
-// Its pane runs the same launch tail as a window 0 strand.
+// Its pane runs the launch tail every strand pane runs.
 // Its dead pane stays until the strand is removed or relaunched; a relaunch kills the old pane once the new one exists, so a shared window never keeps a dead pane beside the relaunched one.
 // Resume reopens the strand detached.
 // UpdateStrand refuses a move into or out of the anchor, since the pane would sit where the new display does not expect it.
@@ -400,10 +358,8 @@
 // Session targeting: every -t argument that names a SESSION is passed in
 // an exact-match form — "=<name>" for session targets (has-session,
 // kill-session, attach-session) and "=<name>:" for window/pane targets
-// (list-panes, select-layout, display-message, and the chained
-// select-layout's own -t in the attach argv, plus the set-option pins'
-// window-targeted -t and the two display-message readbacks that confirm
-// them), since the window/pane target parser rejects the bare "=<name>"
+// (list-panes, select-layout, display-message, plus the set-option pins'
+// window-targeted -t), since the window/pane target parser rejects the bare "=<name>"
 // form. This is load-bearing:
 // tmux falls back to PREFIX matching a bare -t name when no exact match
 // exists, so on the shared per-hub server a bare name issued from one
@@ -432,13 +388,7 @@
 // Every verb named above is REQUIRED: a binary missing any of them is
 // unusable, and requiredSubcommands (probe.go) fails the capability probe
 // on it.
-// set-hook and resize-pane are different: they are reed's first
-// deliberately OPTIONAL verbs, absent from requiredSubcommands on purpose,
-// because gating the capability probe on them would take every reed verb
-// down on a psmux lacking set-hook, over a quality-only option
-// (the resize-pin hook documented below, under "The resize round-robin
-// and the resize-pin hook") that is already designed to degrade silently
-// — their absence costs only the resize pin, never a working session.
+// set-hook is different: it is deliberately absent from requiredSubcommands, because gating the capability probe on it would take every reed verb down on a psmux lacking it, over the quality-only unseen-clear hook and the window-resized unpin that already degrade silently.
 //
 // Load-bearing behavioral assumptions, each with the rationale that makes it
 // load-bearing:
@@ -475,12 +425,9 @@
 //     construction on every realization path rather than requiring two
 //     call sites to stay in sync. Two consequences follow: an `up` against
 //     a session with zero tracked strands ends up Selvage-only and
-//     full-height, because applyLayoutLockedOpts deliberately skips
-//     select-layout when no strand owns a present pane, and Selvage
-//     snaps back to its configured height the moment a strand pane exists;
-//     and RemoveStrand's own code is unchanged, but its
-//     reconcileApplyPersistLocked tail inherits the new gate, so removing
-//     the last strand now reaps any untracked alive pane in the same verb.
+//     full-height; and RemoveStrand's reconcileApplyPersistLocked tail
+//     inherits the gate, so removing the last strand reaps any untracked
+//     alive pane in the same verb.
 //   - Last-pane fate is BINARY-DEPENDENT, not universally the corpse
 //     behavior above (strand.go's kill-pane loop, RemoveStrand): killing a
 //     session's TRUE LAST pane behaves oppositely depending on the
@@ -510,26 +457,15 @@
 //   - Told-geometry lifetime and the vanished worktree root (server.go's
 //     validateToldWorktreeRootLive, lock.go's withOpLock/withTryOpLock): a
 //     told Geometry is resolved once per process and pinned for that
-//     process's whole life, so a long-lived process such as the watch loop
-//     (watchloop.go) holds a frozen WorktreeRoot that a `mv` of the
+//     process's whole life, so a long-lived process such as the daemon
+//     holds a frozen WorktreeRoot that a `mv` of the
 //     worktree makes stale. Every operation therefore re-checks that told
 //     worktree root's liveness at the op-lock chokepoint, and refuses
 //     rather than creating substrate under a path that is no longer a
 //     worktree. One user-visible consequence is a deliberate behaviour
 //     change in standalone mode: a `--target-dir` naming a directory that
 //     does not exist is now refused at the first engine op, instead of
-//     proceeding and deriving a state directory for it. Once the resize
-//     watch loop (watchloop.go) itself learns its told worktree root is
-//     gone — via errWorktreeRootGone surfacing from a re-apply attempt — it
-//     logs exactly one warning and drops to a sixty-second dormant cadence
-//     rather than the ordinary poll, so a session abandoned by
-//     `down` costs one log line instead of a warning every two seconds for
-//     the rest of its life. It automatically returns to whichever mode
-//     (poll or signal) it was in before dormancy, logging exactly one more
-//     line, once the worktree root exists again. Dormancy never tears down
-//     Selvage and never stops the watch loop itself: the session
-//     reed walked away from may still be hosting the operator's live
-//     strands.
+//     proceeding and deriving a state directory for it.
 //   - Silent session-name rewriting (server.go's validateToldTmuxIdentity):
 //     tmux does not REJECT a session name containing '.' or ':' — it
 //     rewrites each to '_', creates the session under the rewritten name,
@@ -564,12 +500,6 @@
 //     separator does not stop this parsing), so sendKeysLiteralArg prefixes
 //     a single space onto any opaque cmd/resumeCmd beginning with '-' before
 //     it is ever handed to send-keys.
-//   - Empty-layout session destruction (apply.go): select-layout accepts a
-//     layout string that enumerates zero panes (exit 0) and answers it by
-//     destroying every pane in the session, wedging it into a zero-pane
-//     zombie that no later add can host a strand in — anyPlacedStrand
-//     refuses to call select-layout at all when no strand would place a
-//     present pane.
 //   - Pane ids are server-global and NOT stable across a server rebirth
 //     (generation.go): tmux hands out %0, %1, … per SERVER, not per session,
 //     and the counter restarts at %0 when the server dies. A persisted pane
@@ -601,23 +531,17 @@
 //     with list-sessions for exactly this reason and refuses a listed session
 //     it cannot identify, rather than failing open on it (R6 review finding
 //     R6-F2).
-//   - Duplicate-pane-cell session destruction (render/policy.go's
-//     removeDuplicatePaneCells, reconcile.go's clearConflictingPaneBindings):
-//     the twin of the empty-layout hazard above, reached from the opposite
-//     direction. select-layout likewise does not REJECT a layout string that
+//   - Duplicate-pane-cell session destruction (reconcile.go's clearConflictingPaneBindings):
+//     select-layout does not REJECT a layout string that
 //     names one pane TWICE — it accepts it (exit 0), assigns cells
 //     positionally, and destroys every pane the resulting short cell list no
 //     longer covers (verified live, tmux 3.6: one `up` reduced a two-pane
 //     session to one and reported ok:true). Nothing reed constructs can
-//     produce such a table — planPaneTarget always yields a split whose
-//     result validateSplitCreatedNewPane proves genuinely new — so the
+//     produce such a table — every split result passes
+//     validateSplitCreatedNewPane — so the
 //     source is always a CORRUPT persisted table: a restored backup, a hand-edited
-//     or partially-restored reed.json (R5 review finding R5-F3). It is
-//     guarded twice on purpose: the engine clears such bindings at the single
-//     load chokepoint, and render.Rules independently drops a duplicated pane
-//     cell so the destructive string is unreachable from inside that pure,
-//     total function's own contract rather than only by a caller remembering
-//     to sanitize first.
+//     or partially-restored reed.json (R5 review finding R5-F3). The engine
+//     clears such bindings at the single load chokepoint.
 //   - Async kill-server / probe-always-exits-0 (lifecycle.go): kill-server
 //     returns before the server process (and its "__warm__" helper) have
 //     actually released the -L socket, and no probe — list-sessions,
@@ -655,162 +579,11 @@
 //     The cost of "on" is that native terminal text selection needs the
 //     terminal's shift-bypass (hold Shift while dragging); tmux copy-mode is
 //     the in-band alternative. "on" also enables click-to-switch-pane.
-//   - Selvage band divider row (render/rules.go, height.go): the Selvage
-//     pane and the strand stack above it are physically adjacent, so
-//     tmux/psmux always renders the same one-row border between them that
-//     buildStackBody already budgets for between individual strands —
-//     omitting that budget still lets select-layout return success, but
-//     tmux inserts the border row anyway, silently overflowing the window
-//     by one row. clampBandHeight (height.go) also never clamps
-//     Selvage.HeightRows below 1 row for the same reason: a real tmux/psmux
-//     select-layout does not cleanly support a genuinely zero-height cell
-//     for an always-on pane either. Verified against a real tmux instance;
-//     contract_integration_test.go's TestSelvageNeverGetsZeroHeightLayoutCell
-//     pins it (renamed for the Selvage band).
-//   - Silent layout rescale (apply.go, windowsize.go): select-layout accepts a
-//     layout string whose dimensions disagree with the live window (exit 0)
-//     and silently rescales it proportionally — measured live on tmux 3.6, a
-//     "220x50" string applied to a "100x30" window turned a 3-row collapsed
-//     placement into 1 row — so every
-//     absolute row budget reed computes (Selvage.HeightRows,
-//     CollapsedRows, MinFullRows) is scaled by live_height/string_height
-//     unless the string is sized to the live window. This is why
-//     applyLayoutLocked always plans against liveBoxLocked's live box rather
-//     than the configured one. The detached counterpart is the opposite
-//     failure: an OVER-budget string is not refused either — with no client
-//     attached, tmux GROWS the window to fit the cells, so a client-less
-//     session can end up taller than its configured boot height until the next
-//     attach snaps it back; with a client attached, the "window-size latest"
-//     pin holds the window at the client's size and tmux rescales the cells
-//     into it instead.
-//   - The resize round-robin and the resize-pin hook (windowsize.go,
-//     apply.go, attach.go): tmux has no fixed-height pane concept, and a
-//     window-size delta arriving after attach time is handed out one row at
-//     a time, round-robin across every vertical cell in the stack — so no
-//     absolute row budget reed computes survives a resize on its own.
-//     Measured live on tmux 3.6: a healthy attached session's Selvage went
-//     from 1 row to 6 across a 76-to-90-row client resize, and to 16 across
-//     a further 90-to-120 one.
-//     The answer is a window-resized window hook holding one
-//     "resize-pane -y" array entry per fixed-height pane — the Selvage band,
-//     every collapsed positional placement and every content placement — installed by reed
-//     and executed by the tmux server itself, refreshed on every successful apply
-//     (applyLayoutLocked) and again in AttachArgv's pre-flight, with the
-//     pinned heights coming from render.FixedHeightPins: the heights render
-//     actually placed the cells at, after clampBandHeight and
-//     clampToFit, never the raw configured budgets.
-//     The pins are adjusted for the pane-border title row (pinsForContent):
-//     "resize-pane -y" sizes a pane's content, which equals its cell
-//     everywhere except at window row 0, where "pane-border-status top"
-//     draws the title inside the top cell. When the strands' window reads
-//     back "top", the pin on the row-0 pane is its planned cell height
-//     minus one, floored at one content row (so a planned one-row top cell
-//     ends one row taller, the row coming from the cells below), and every
-//     other pin keeps its cell height. The row-0 pane is the first of the
-//     physical pane order the layout string was built from, never the pin
-//     emission order, and a row-0 pane with no pin gets none. "off",
-//     "bottom", an empty answer and a failed readback mean no title row,
-//     so the pins pass through unchanged. The layout planner and render are
-//     untouched.
-//     The same adjusted pins also run directly: right after its
-//     select-layout, on the focusing path and on the SkipFocus one the
-//     watchdog's re-apply takes, applyLayoutLockedOpts issues them as
-//     "resize-pane -t <pane> -y <n>" calls, each non-fatal, so the heights
-//     hold from the apply and not only after the next resize. This run
-//     issues pin entries only — never the hook's signal entry — so an apply
-//     never signals the watchdog into another apply.
-//     The watchdog's own signal entry rides the SAME array, always as its
-//     last entry, and installResizePinsLocked is its only install site —
-//     the array is a whole-snapshot rebuild, so a second writer could only
-//     clear the pins this one just installed or accumulate a duplicate
-//     touch per attach. Ordering it last means a resize fires the pin
-//     fixups before the watcher is told about it, and that is safe because
-//     array entries fire independently (see the dead-strip-pin case
-//     below), so a pin naming a destroyed pane cannot swallow the touch
-//     behind it. It is installed even when the pin set is empty:
-//     "nothing is pinned" and "nobody wants to hear about a resize" are
-//     different opinions, and gating the touch on a non-empty pin set would
-//     pin such a session's watcher into poll mode forever. The one gate it
-//     does carry is watchdog: off (and Windows, where the hook is never
-//     installed at all), since a touch entry nobody reads is a run-shell
-//     spawn per resize for nothing.
-//     Two candidate hooks were measured and rejected: client-resized fires
-//     BEFORE the layout is resized, so a resize-pane inside it cannot work,
-//     and window-layout-changed also fires on reed's own select-layout,
-//     inviting re-entrancy for no benefit.
-//     The paths that install nothing are deliberate: an apply returning at
-//     either of applyLayoutLocked's guards, and every AttachArgv degrade
-//     return, issue no set-hook at all — not even the clear — so a
-//     previously installed array survives them on purpose, since a clear
-//     with no rebuild behind it would drift on the very next resize.
-//     The boot (pinBootOptionsLocked) is the one path that installs for every session:
-//     with the watchdog on, a fresh boot rebuilds the array with no pins, the clear and the signal entry alone.
-//     That install sits in the boot path and not in pinGeometryOptionsLocked, which the attach pre-flight also runs, because a degrading attach returns before its own install and a zero-pin rebuild there would wipe the session's resize pins.
-//     That is safe in both guard cases. resize-pane -y against a window's
-//     sole pane is a verified silent no-op (exit 0, height unchanged), so
-//     the len(live) < 2 case's surviving Selvage pin cannot contradict
-//     render.Rules' sole-cell branch.
-//     And in the !anyPlacedStrand case — reachable via the operator remedy
-//     state.go documents, which deletes reed.json while the session keeps
-//     running untracked only until the next mutating verb reaps it — the
-//     surviving array is a benefit, still holding the live Selvage and
-//     collapsed placements at the budgets reed last
-//     computed for them.
-//     Since the signal entry rides the same array, the same rule decides it:
-//     the boot installs it for every session, so a session with fewer than two panes or no placed strand
-//     promotes its watcher out of poll mode without waiting for a layout apply,
-//     and a session keeps it across every later guard-skip and degrade until an apply or a successful attach rebuilds the array with its pins.
-//     The ~50-row threshold in the original bug report is
-//     template_posix.yaml's "height: 50" boot box showing through the BARE
-//     (unchained) attach path, not evidence of a miscomputed layout — a
-//     synthetic bare attach reproduces the reported table exactly, with 40
-//     and 50 rows leaving Selvage at 1 row and 76 rows taking it to 10.
-//     The watchdog's own run-shell signal command (watchdog.go's
-//     resizeHookCommand) lives in THIS SAME array, appended as one further
-//     entry by installResizePinsLocked whenever the watchdog is enabled —
-//     never installed independently. window-resized has no session scope to
-//     fall back on: verified live, tmux 3.6, `set-hook` against any target
-//     that does not resolve to a specific window errors "no such window",
-//     and a hook installed against a window target is invisible from any
-//     sibling window of the same session, -w or no -w. Since the array's
-//     plain (non-"-a") form replaces the whole thing, a signal hook installed
-//     by a separate call would be silently clobbered the next time this
-//     rebuild ran (or vice versa) — folding it into the one rebuild is what
-//     keeps both mechanisms alive on the same event. hookInstalledLocked
-//     (reapply.go) reads the array back and matches the signal command
-//     against each line of the multi-entry answer, never the answer as a
-//     whole, so its position among the resize-pane pins does not matter.
-//   - Measurement record (repaint candidates) (internal/reedcli's
-//     smoke_dotfill_measure_test.go, TestSmokeRepaintCandidateMeasurement):
-//     measured live on tmux 3.6, across two independent runs of the gate.
-//     Candidates were tried in order: candidate 1 (a run-shell -b fragment
-//     enumerating the session's attached clients via
-//     "list-clients -F '##{client_name}'" and refreshing each with
-//     refresh-client) and candidate 2 (the bare refresh-client tmux
-//     command, no target). Both candidates cleared the dot-fill artifact
-//     (paneStaysCleanOfDotRun held over a fixed 3 s window after the
-//     shrink-then-grow trigger) and both left the window size settled
-//     (sampleWindowSize's final third held at a single repeated value,
-//     both runs), but both were rejected on the same gate: no repeated
-//     hook fire. The scenario's shrink-then-grow trigger fires
-//     window-resized exactly twice — once per real resize-window call —
-//     and fireCount read back 2 for both candidates, identically, which is
-//     symmetric evidence that the count comes from the harness's own
-//     two-action trigger rather than either candidate's own feedback; the
-//     repaint-must-not-self-retrigger decision's exactly-one-fire
-//     criterion is nonetheless tripped by that count as literally stated.
-//     No candidate was accepted. No repaint entry ships from this task:
-//     the resize control and cross-client scenarios stand as the durable
-//     reproduction record, and the resize treatment scenario is inverted
-//     to assert the artifact's continued appearance rather than its
-//     absence, per the no-candidate-accepted disposition.
 //   - The dot-fill artifact's mechanism (windowsize.go, attach.go): the dots are painted by tmux
 //     itself, in the region of an attached client's terminal that the current window geometry does
 //     not cover or whose paint has gone stale relative to a just-changed window size. They are
 //     never content reed writes and are in no pane's grid — which is also why capture-pane against
-//     the reed session is structurally blind to them, and why the regression test
-//     (internal/reedcli's smoke_dotfill_test.go) captures the harness pane hosting the attach client
-//     instead. Both reported triggers are one mechanism, a transient or standing mismatch between a
+//     the reed session is structurally blind to them. Both reported triggers are one mechanism, a transient or standing mismatch between a
 //     client's terminal size and the window's size: a resize changes the client's size and
 //     window-size latest moves the window to follow it, and delivering any input to a second client
 //     — a keystroke, a mouse report, a focus report — makes that client most-recently-used, which is
@@ -825,69 +598,19 @@
 //     terminal is genuinely larger than the window, so tmux has real estate with nothing behind it
 //     and legitimately pads it — this is the cross-client trigger as reported, because a VS Code
 //     integrated terminal is smaller than a standalone Konsole window. No repaint mechanism can
-//     remove the uncovered subset, and reed does not attempt to: removing it would require changing
+//     remove the uncovered subset, and reed ships no repaint entry: removing it would require changing
 //     window-size, which is refused for stronger reasons (see the next bullet).
 //   - Why window-size latest is not changed, made configurable, or conditioned on the client count
 //     (windowsize.go): with two clients of different sizes attached, tmux must pick one window size,
 //     so some client is always mismatched under every available policy; latest gives the artifact to
-//     the client the operator is not currently using, which is the best of the three. It is also
-//     structurally load-bearing: AttachArgv reads #{window-size} back and suppresses the chained
-//     select-layout on anything other than latest. Rejected: largest breaks attach-time layout for
-//     every operator with a second client open; smallest turns an intermittent artifact into a
-//     standing one; manual abandons client-following and is already a chain-suppressing value.
+//     the client the operator is not currently using, which is the best of the three.
+//     Rejected: largest shows tmux padding to every operator with a second client open; smallest turns an intermittent artifact into a
+//     standing one; manual abandons client-following.
 //   - The orch pane under the same policy:
 //     a smaller client attached to the orch session can shrink the window below the rows the input box needs,
 //     and the orch watcher's idle probe then reads no box and records the pane as too short (internal/orchengine's State.Stuck), holding every cycle.
 //     The policy is kept rather than changed or conditioned for the orch pane, since no policy avoids a mismatch with two clients of different sizes.
 //     The window returns to the larger client's size at that client's next keystroke, which clears the hold at the next passing probe.
-//   - The repaint entry (windowsize.go's installResizePinsLocked): none shipped. The measurement
-//     gate (the Measurement record bullet above) rejected both candidates on the same criterion — no
-//     repeated hook fire — so installResizePinsLocked installs no forced-repaint entry into the
-//     window-resized array; its own doc comment records the disposition and points back at that
-//     Measurement record block. With no repaint entry, a resize's dot-fill artifact is cleared by
-//     the watchdog's own round trip when the watchdog is on (the hook's run-shell touch,
-//     the file event on the signal, watchdogDebounceQuiet, and the re-apply round trip — a fraction of a second) or
-//     stands until the next reed operation when the watchdog is off; the cross-client trigger is
-//     never cleared by anything, per the split above.
-//   - The two acceptance criteria and why "did it clear the artifact" was not sufficient:
-//     window-resized fires on a settled size change rather than on a paint, and a server-issued
-//     refresh-client repaints a client at its existing size without moving the most-recently-used
-//     pointer — but that reasoning was measured rather than assumed, because refreshing every client
-//     would otherwise hand most-recently-used to whichever client was refreshed last, resize the
-//     window to it, fire the hook again, and loop. Both criteria — no repeated hook fire, no resize
-//     storm — were measured live on tmux 3.6 (Measurement record above); both candidates cleared the
-//     artifact and held the window settled, and both failed the same first criterion.
-//   - The (would-be) repaint entry's independence from watchdog, with the full call-site map stated
-//     plainly (windowsize.go, attach.go, apply.go, lifecycle.go), rather than left for a reader to
-//     re-derive across four files: watchdog gates the watch loop and its signal entry only; a forced
-//     redraw would mutate nothing, so an operator who turns off self-healing would still keep a
-//     repaint entry if one existed. The two unset sites and the two install sites are different
-//     sites: pinGeometryOptionsLocked is called from lifecycle.go's boot path and from AttachArgv's
-//     pre-flight, while installResizePinsLocked is called from that same pre-flight and from
-//     applyLayoutLockedOpts in apply.go, and nowhere else. Only the attach path holds both, in that
-//     order, in one locked closure. The boot path clears and returns without rebuilding. AttachArgv
-//     reaches the install only when its chain succeeds: it returns bare before taking the lock on
-//     non-positive cols/rows, and every in-closure degrade returns before the install — while
-//     pinGeometryOptionsLocked has already run, so under watchdog: off a degrading attach issues the
-//     unconditional clear and leaves without rebuilding. And applyLayoutLockedOpts returns
-//     immediately after select-layout when opts.SkipFocus is set, which is exactly the mode the
-//     watchdog's own re-apply (reapplyLayout) uses — so the watchdog re-apply never installs the
-//     array. So the array is (re)established only by an attach whose chain succeeds or by a focusing
-//     apply (up, add, remove, resume); under watchdog: off it is empty from boot and any degrading
-//     attach returns it to empty until one of those runs. This is accepted as-is and unchanged by
-//     this task — it is already today's behaviour for the resize-pane pins — and, had a repaint
-//     entry shipped, it would have shared their lifecycle rather than inventing one; widening the
-//     install to the SkipFocus path remains out of scope because it would put a hook-array rebuild
-//     inside the watchdog's own re-apply loop.
-//   - Windows (windowsize.go): installResizePinsLocked carries no runtime.GOOS gate: on Windows it
-//     issues the clear and every resize-pane pin argv exactly as elsewhere, and
-//     pinGeometryOptionsLocked's early Windows return covers only the unset half of the lifecycle.
-//     The single mechanism keeping the signal entry off Windows is resizeSignalHookCommand returning
-//     "" combined with resizePinHookArgvs emitting no entry for an empty body. Since no repaint
-//     entry shipped, this bullet records what its wiring would have been rather than what runs: it
-//     would have carried its own ""-returning check for the same unchanged underlying reason —
-//     set-hook and run-shell are outside requiredSubcommands and psmux's support for them is
-//     unverified.
 //   - The attach-time multi-client warning (attach.go's warnMismatchedClientsLocked): AttachArgv's
 //     pre-flight lists the session's attached clients and emits one logger.Warn per client whose
 //     size differs from the size this attach was told, naming that client and both sizes; zero
@@ -897,129 +620,30 @@
 //     than a consolation prize, because that trigger's dots are the uncovered subset and cannot be
 //     repainted away — the residual's real operator cost is bewilderment, and the warning turns a
 //     mysterious artifact into a logged, searchable fact at the moment the operator creates the
-//     condition. The target-form rule binding both new call sites: list-clients -t takes a SESSION
-//     target, so warnMismatchedClientsLocked uses the bare "=<name>" form, while set-hook keeps the
-//     "=<name>:" window form because the array is window-scoped.
-//   - list-clients and refresh-client stay out of requiredSubcommands (probe.go): both are
+//     condition. The target-form rule: list-clients -t takes a SESSION
+//     target, so warnMismatchedClientsLocked uses the bare "=<name>" form.
+//   - list-clients stays out of requiredSubcommands (probe.go): it is
 //     geometry-quality only, exactly like the status/window-size pins the Shared Decision
 //     geometry-tmux-failures-are-non-fatal-everywhere already exempts from fatality. A failing or
 //     unsupported list-clients logs one warning and emits no multi-client warning
-//     (warnMismatchedClientsLocked); refresh-client was never wired in, since no candidate shipped,
-//     but the same exemption would have applied to it — a refresh-client the multiplexer does not
-//     implement would have made the hook entry a server-fired no-op, the same outcome as the
-//     mitigation not helping. Adding either would make a multiplexer that runs reed perfectly well
+//     (warnMismatchedClientsLocked). Requiring it would make a multiplexer that runs reed perfectly well
 //     today fail at boot over a cosmetic feature.
-//   - The chained attach (attach.go): AttachArgv's argv is "attach-session … ; select-layout -t <strand window> <layout>", with the separator a literal one-character ";" argv element — never "\;", since exec.Command passes argv directly to the child and no shell ever sees it to unescape.
-//     Each adjusted pin follows the select-layout as one more ";"-separated
-//     "resize-pane -t <pane> -y <n>", so the heights hold from the first
-//     frame; the chained form is therefore recognised by its select-layout
-//     element, never by the argv length.
-//     The chained select-layout runs only after the
-//     client has attached and tmux has already resized the window to it, so
-//     the layout string lands verbatim with no rescale — but only until the
-//     next window resize; see the resize round-robin bullet above for what
-//     holds the fixed-height budgets afterward. attach-session is
-//     first in the chain, so a failing or unsupported select-layout still
-//     leaves the operator attached — strictly no worse than before this
-//     task. The window between building the string and applying it is not
-//     closed: it is planned under the op lock and executed by the shell
-//     seconds later, outside it, so the live pane set can have moved on by
-//     the time it runs. When the pane count no longer matches, tmux REFUSES
-//     the layout (exit 1, "have 3 panes but need 2") and destroys nothing;
-//     when the count still matches but membership shifted, cells apply
-//     positionally, so a strand ends up mis-sized rather than lost.
-//   - The geometry option pins (windowsize.go): pinGeometryOptionsLocked pins the two-line status bar and the strand pane-border title, whose format strings bar.go declares: "status-format[0]" (the strand, window and shell buttons) and "status-format[1]" (the session buttons and the time), both with -g since tmux's status formats are one array; "status-style" (-g) with the dark grey statusBarStyle, so the gaps between the buttons are not tmux's default green; "status" "2" and "status-position" "bottom" on the session; and, window-targeted with -w on the strand window only, "pane-border-status" "top" and "pane-border-format", so a batten window gets no border title — plus "window-size" "latest" (-w).
-//     The window-targeted pins are targeted at the strand window (-t <strand window>, per the Strand window and Session targeting grammar above), both at boot and again in AttachArgv's pre-flight.
+//   - The attach argv (attach.go): AttachArgv's argv is the bare "attach-session" argv, with a "; select-window -t <relevant window>" tail when the window selection applies, the separator a literal one-character ";" argv element — never "\;", since exec.Command passes argv directly to the child and no shell ever sees it to unescape.
+//     attach-session is first in the chain, so a failing select-window still leaves the operator attached.
+//   - The geometry option pins (windowsize.go): pinGeometryOptionsLocked pins the two-line status bar, whose format strings bar.go declares: "status-format[0]" (the window and shell buttons) and "status-format[1]" (the session buttons and the time), both with -g since tmux's status formats are one array; "status-style" (-g) with the dark grey statusBarStyle, so the gaps between the buttons are not tmux's default green; "status" "2" and "status-position" "bottom" on the session; and "window-size" "latest" (-w) on the strand window.
+//     The window-targeted pin is targeted at the strand window (-t <strand window>, per the Strand window and Session targeting grammar above), both at boot and again in AttachArgv's pre-flight.
 //     The bar reads strands only through the @strand and @strand_color pane options and the @lyx_strands window option, never through the current window.
-//     Their EFFECTIVE values are read
-//     back with display-message rather than trusted from set-option's exit status, because a -g pin
-//     plus exit 0 is not proof the option took — verified live, tmux 3.6: a session-scoped "status on"
-//     survives a global "set-option -g status off" with exit 0, and a window-scoped "window-size
-//     manual" survives the global "latest" pin the same way. "#{status}" feeds the reserved-row count
-//     reserved for the status bar ("off" -> 0, "on" -> 1, a numeric N -> N, so the pinned "2" reserves two rows); a "#{window-size}" other
-//     than "latest", or either readback erroring or answering an unrecognised value, suppresses the
-//     chain rather than risking a wrong-height string. Unlike the remain-on-exit/mouse pins beside
-//     them, every pin and both readbacks here are NON-FATAL: those two are correctness dependencies,
+//     The same function clears the `window-resized` hook an older binary pinned on the shell window, with `set-hook -u` in the window scope and the session scope, everywhere but Windows, so boot and attach both clear it.
+//     Unlike the remain-on-exit/mouse pins beside
+//     them, every pin here is NON-FATAL: those two are correctness dependencies,
 //     these are geometry-quality options whose absence degrades to a working session, and psmux's
 //     support for them is unverified anywhere in this repo (Shared Decision
 //     geometry-tmux-failures-are-non-fatal-everywhere).
-//   - window-resized is the only usable resize event source (windowsize.go,
-//     watchdog.go): on a client resize the hooks fire client-resized ->
-//     window-layout-changed -> window-resized; client-resized reports the
-//     STALE pre-resize window size, so it cannot plan a correct layout, and
-//     window-layout-changed is self-triggering, so reed's own select-layout
-//     would re-enter the watcher in an infinite loop. window-resized fires
-//     exactly once per settled size, after the window already has the new
-//     geometry, on both growth and shrink.
-//   - SIGWINCH is not a substitute (reedcli/watchdog.go's daemon process):
-//     the daemon has no pane of its own to receive terminal signals from,
-//     but even for a process that did, growing the window delivers SIGWINCH
-//     every time — and that growth IS the layout bug — but SHRINKING
-//     delivers nothing while the strand budgets below are silently violated
-//     (at 30 rows the bottom strand had been squeezed from 15 rows to 2). A
-//     watcher that self-heals only on growth is worse than none, because the
-//     operator learns to trust it.
-//   - select-layout does not fire window-resized (apply.go, reapply.go):
-//     verified in all four cases — attached, detached, re-applying an
-//     identical layout, and the documented detached over-budget apply that
-//     genuinely grew the window 40 -> 60 rows — zero fires each time. So
-//     window-resized tracks CLIENT-DRIVEN size changes, not layout-driven
-//     ones, which is exactly the property that makes it usable where
-//     window-layout-changed is not. The box-equality guard inside
-//     reapplyLayout is kept anyway: the probe settles tmux 3.6 but not
-//     psmux, and a silent infinite loop inside the session keepalive is the
-//     worst available failure mode.
-//   - The plain set-hook form replaces; -a accumulates (windowsize.go): four
-//     identical plain installs yield exactly one fire per resize; three
-//     further -a appends yield four. installResizePinsLocked's rebuild always
-//     starts from its own unconditional clear and establishes entry [0] with a
-//     plain set-hook, using -a only for the entries behind it. Since the rebuild
-//     runs on every AttachArgv pre-flight as well as on every apply, an
-//     append-only pattern would accumulate N run-shell spawns and N redundant
-//     resize-panes per resize after N attaches — the plain-first/-a-after
-//     pattern keeps it idempotent instead.
-//   - The hook readback is show-options, not show-hooks (reapply.go): in
-//     tmux 3.6 hooks are options, and show-hooks prints nothing for a
-//     window-scoped hook that demonstrably fires — a show-hooks-based probe
-//     would report "no hook" every time and pin every watcher into poll
-//     mode.
-//   - show-options -v prints an ARRAY option one entry per line
-//     (windowsize.go, reapply.go): verified live on tmux 3.6, -v prints
-//     every entry of window-resized in index order with the
-//     "window-resized[N]" prefix that plain show-options carries suppressed.
-//     So the probe's match is exact PER ENTRY, never against the whole
-//     answer: reed's own array normally holds a resize-pane pin per
-//     fixed-height pane ahead of the touch, and an equality test against the
-//     whole multi-line answer therefore reports "absent" on every healthy
-//     session with anything pinned — which is exactly what it did for as
-//     long as the touch entry had no install site at all. Exactness stays
-//     per entry all the same, never a substring search over the raw answer,
-//     which would accept a foreign entry that merely embeds reed's command
-//     string. Entry POSITION is deliberately outside the match: reed writes
-//     the touch last, but the question the probe answers is only "will a
-//     resize touch THIS worktree's signal file".
-//   - run-shell without -b blocks the tmux server (watchdog.go).
-//   - liveBoxLocked never reports failure through its box (windowsize.go,
-//     reapply.go): a degraded query returns the configured
-//     cfg.Width/cfg.Height pair, which is a perfectly plausible-looking box,
-//     so any caller comparing boxes across calls must consume the method's
-//     second return value — otherwise a fallback that happens to equal the
-//     last applied box skips forever and one that differs re-applies
-//     forever.
 //   - The watchdog daemon's own stderr is watched by no one
 //     (reedcli/watchdog.go): the daemon points the logger's durable sink at
 //     fabricengine.HubLogsDir(hub) FIRST, before it takes its lock — the
 //     ordering is what keeps its diagnostics reachable at all, since nothing
 //     reads a detached process's stdio.
 //
-// requiredSubcommands (probe.go) still does not grow for the live-geometry
-// rule, the attach chain, or the two option pins: display-message,
-// select-layout, set-option, and list-panes were already spent by the
-// engine before this task.
-// set-hook and resize-pane are not the same story: both are new to
-// internal/, so the wire contract this package assumes genuinely widens,
-// and that widening costing nothing at the probe is now a deliberate
-// trade, not a free consequence — the non-fatal degrade the two Optional
-// verbs above are wired for (Shared Decision
-// hook-failure-is-non-fatal-everywhere) is what pays for it.
+// requiredSubcommands (probe.go) does not grow for the option pins or the window-resized unpin: display-message, set-option and list-panes are already required, and set-hook is absent from the set on purpose, its failure being logged and never fatal.
 package reedengine

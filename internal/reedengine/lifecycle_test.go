@@ -18,9 +18,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
-	"github.com/Knatte18/loomyard/internal/shell"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 func guids(strands []Strand) []string {
@@ -35,7 +36,7 @@ func guids(strands []Strand) []string {
 // An over-long socket path, an unresolvable shell, a segment color outside the palette, an invalid watchdog value, an invalid window_split or a negative window_share_max each fail with an error naming it before any tmux round trip (validation ORDER, not just existence),
 // while "on" and "off" do not trip the watchdog check (the fixture's nonexistent tmux binary is expected to fail Up() past this point,
 // so the assertion is only that the error is NOT the watchdog validation error).
-// Each refusal is asserted at three boot entries: Up and Resume, whose op-lock brackets refuse before their zoom read, and ensureServerAndSessionLocked, which every other boot path reaches without that bracket.
+// Each refusal is asserted at three boot entries: Up and Resume, whose boot op lock refuses before any tmux round trip, and ensureServerAndSessionLocked, which every other boot path reaches without it.
 func TestUp_BootValidation(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -181,65 +182,27 @@ func TestServerSpawnArgv(t *testing.T) {
 	}
 }
 
-// TestPinBootOptionsLocked_InstallsTheSignalEntry pins that a fresh boot's pins end in a zero-pin rebuild of the window-resized hook array when the watchdog is on, the clear and the signal entry alone,
-// and that watchdog off leaves the one unset and installs no entry.
-// Both steps also see the unseen-clear hook pinned once.
-// Windows issues no hook call and cannot be faked, so both steps skip there.
-func TestPinBootOptionsLocked_InstallsTheSignalEntry(t *testing.T) {
-	bootPins := func(t *testing.T, watchdog string) (*Engine, *fakeTmux) {
-		t.Helper()
-		if runtime.GOOS == "windows" {
-			t.Skip("the window-resized hook is never installed on Windows")
-		}
-		e := newTestEngine(t)
-		e.cfg.Watchdog = watchdog
-		fake := installFakeTmux(t, e)
-		if err := e.pinBootOptionsLocked("off", ""); err != nil {
-			t.Fatalf("pinBootOptionsLocked() = %v, want nil", err)
-		}
-		return e, fake
+// TestPinBootOptionsLocked_ClearsTheWindowResizedHook pins that a fresh boot unpins the window-resized hook in both scopes and installs no entry, whatever the watchdog value.
+// Windows issues no hook call and cannot be faked, so it skips there.
+func TestPinBootOptionsLocked_ClearsTheWindowResizedHook(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the window-resized hook is never touched on Windows")
 	}
-
-	t.Run("WatchdogOn", func(t *testing.T) {
-		e, fake := bootPins(t, "on")
-		target := exactSessionWindowTarget(e.SessionName())
-
-		var hooks [][]string
-		lastOption, firstHook := -1, -1
-		for i, call := range fake.Calls() {
-			switch {
-			case call[0] == "set-option":
-				lastOption = i
-			case call[0] == "set-hook" && containsArg(call, windowResizedHookName):
-				hooks = append(hooks, call)
-				if firstHook == -1 {
-					firstHook = i
-				}
+	for _, watchdog := range []string{"on", "off"} {
+		t.Run("Watchdog_"+watchdog, func(t *testing.T) {
+			e := newTestEngine(t)
+			e.cfg.Watchdog = watchdog
+			fake := installFakeTmux(t, e)
+			if err := e.pinBootOptionsLocked("off", ""); err != nil {
+				t.Fatalf("pinBootOptionsLocked() = %v, want nil", err)
 			}
-		}
-		assertUnseenClearHookPinned(t, e, fake)
-		want := [][]string{
-			{"set-hook", "-u", "-w", "-t", target, windowResizedHookName},
-			{"set-hook", "-w", "-t", target, windowResizedHookName, resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())},
-		}
-		if !slices.EqualFunc(hooks, want, slices.Equal[[]string]) {
-			t.Errorf("set-hook calls = %v, want the clear and the signal entry alone: %v", hooks, want)
-		}
-		if firstHook < lastOption {
-			t.Errorf("first set-hook call at %d precedes the last set-option call at %d, want the install after the geometry pins", firstHook, lastOption)
-		}
-	})
 
-	t.Run("WatchdogOff", func(t *testing.T) {
-		e, fake := bootPins(t, "off")
-
-		hooks := fake.SetHookCalls(windowResizedHookName)
-		assertUnseenClearHookPinned(t, e, fake)
-		want := [][]string{{"set-hook", "-u", "-t", exactSessionWindowTarget(e.SessionName()), windowResizedHookName}}
-		if !slices.EqualFunc(hooks, want, slices.Equal[[]string]) {
-			t.Errorf("set-hook calls = %v, want the one unset %v", hooks, want)
-		}
-	})
+			if got, want := fake.SetHookCalls(windowResizedHookName), wantResizedUnpins(exactSessionWindowTarget(e.SessionName())); !slices.EqualFunc(got, want, slices.Equal[[]string]) {
+				t.Errorf("set-hook calls naming %s = %v, want the two unpins and no installing entry: %v", windowResizedHookName, got, want)
+			}
+			assertUnseenClearHookPinned(t, e, fake)
+		})
+	}
 }
 
 // TestStatus_ReportsSegmentColor pins that Status carries each strand's resolved segment color, and none for a strand recorded without a segment.
@@ -362,10 +325,10 @@ func TestStripAgentNameEnv_DropsNameAndParentOnly(t *testing.T) {
 func TestPlanUpLaunches_NeverLaunchesAnyStrand(t *testing.T) {
 	tables := [][]Strand{
 		nil,
-		{{GUID: "a", Display: render.Display{Anchor: render.AnchorBelowParent}}},
+		{{GUID: "a", Display: render.Display{Anchor: render.AnchorOwnWindow}}},
 		{
 			{GUID: "a", Display: render.Display{Anchor: render.AnchorHidden}},
-			{GUID: "b", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}},
+			{GUID: "b", PaneID: "%1", Display: render.Display{Anchor: render.AnchorOwnWindow}},
 		},
 	}
 	for _, strands := range tables {
@@ -503,8 +466,8 @@ func TestPruneServerLogsLocked_ServerAndClientPrefixesPrunedIndependently(t *tes
 }
 
 func TestPlanResumeLaunches_ThreeLifecycleStates(t *testing.T) {
-	notLive := Strand{GUID: "a", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}}
-	stillLive := Strand{GUID: "b", PaneID: "%2", Display: render.Display{Anchor: render.AnchorBelowParent}}
+	notLive := Strand{GUID: "a", PaneID: "%1", Display: render.Display{Anchor: render.AnchorOwnWindow}}
+	stillLive := Strand{GUID: "b", PaneID: "%2", Display: render.Display{Anchor: render.AnchorOwnWindow}}
 	hidden := Strand{GUID: "c", Display: render.Display{Anchor: render.AnchorHidden}}
 	withDoneWhen := func(s Strand, paths ...string) Strand {
 		s.DoneWhen = paths
@@ -643,6 +606,103 @@ func TestDown_ListsEveryWindowsPanesOverACorruptState(t *testing.T) {
 	}
 	if _, err := os.Stat(statePath); !os.IsNotExist(err) {
 		t.Errorf("stat %s error = %v; want the state file deleted", statePath, err)
+	}
+}
+
+// TestDown_WritesTheDiscoverStopOnlyWhenItEndsTheServer pins that Down asks the hub's watchdog to stop through the discover signal file exactly when it takes its server-teardown branch.
+// It also pins that a write failure or an unconfirmed server death never hides the stop or swallows the error, and that a cold boot's touch turns a stop back into an ordinary discover.
+// It is not parallel: logcapture redirects the process-global logger.
+func TestDown_WritesTheDiscoverStopOnlyWhenItEndsTheServer(t *testing.T) {
+	notGone := errors.New("server still holds the socket")
+	tests := []struct {
+		name            string
+		sessions        string
+		sessionsErr     error
+		noPathTold      bool
+		pathIsDirectory bool
+		goneErr         error
+		wantEnded       bool
+		wantMarker      bool
+		wantWarn        bool
+		wantErr         error
+	}{
+		{name: "LastSession", wantEnded: true, wantMarker: true},
+		{name: "ListingErrors", sessionsErr: errors.New("no server"), wantEnded: true, wantMarker: true},
+		{name: "SiblingLive", sessions: "sibling-session\n"},
+		{name: "NoPathTold", noPathTold: true, wantEnded: true},
+		{name: "PathIsDirectory", pathIsDirectory: true, wantEnded: true, wantWarn: true},
+		{name: "ServerNotConfirmedGone", goneErr: notGone, wantEnded: true, wantMarker: true, wantErr: notGone},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newTestEngine(t)
+			logs := logcapture.Capture(t)
+			scratch := fabricengine.HubScratchDir(e.geom.HubPath)
+			signalPath := filepath.Join(scratch, DiscoverSignalFileName)
+			if err := os.MkdirAll(scratch, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if !tt.noPathTold {
+				e.geom.DiscoverSignalPath = signalPath
+			}
+			if tt.pathIsDirectory {
+				if err := os.Mkdir(signalPath, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tt.goneErr != nil {
+				e.ensureServerGone = func(int) error { return tt.goneErr }
+			}
+			entriesBefore, err := os.ReadDir(scratch)
+			if err != nil {
+				t.Fatal(err)
+			}
+			fake := installFakeTmux(t, e)
+			// A dead pane is listed but never reaped, so the test touches no real process.
+			fake.answer("list-panes", "%1 1 0 80 24 4242\n", nil)
+			fake.answer("list-sessions", tt.sessions, tt.sessionsErr)
+
+			result, err := e.Down()
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("Down() error = %v; want %v", err, tt.wantErr)
+			}
+			if tt.wantErr == nil && result.EndedServer != tt.wantEnded {
+				t.Errorf("Down().EndedServer = %v; want %v", result.EndedServer, tt.wantEnded)
+			}
+			if got := strings.Count(logs.String(), "could not write the discover stop"); (got == 1) != tt.wantWarn || got > 1 {
+				t.Errorf("discover stop Warn count = %d; want warn %v\nlogs: %s", got, tt.wantWarn, logs.String())
+			}
+			if tt.wantWarn && !strings.Contains(logs.String(), signalPath) {
+				t.Errorf("logs = %q; want the Warn to name %s", logs.String(), signalPath)
+			}
+
+			if tt.pathIsDirectory {
+				return
+			}
+			content, readErr := os.ReadFile(signalPath)
+			if !tt.wantMarker {
+				if !os.IsNotExist(readErr) {
+					t.Errorf("read %s error = %v; want no signal file", signalPath, readErr)
+				}
+				entriesAfter, err := os.ReadDir(scratch)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(entriesAfter) != len(entriesBefore) {
+					t.Errorf("hub scratch entries = %d; want the %d it held before", len(entriesAfter), len(entriesBefore))
+				}
+				return
+			}
+			if readErr != nil || string(content) != DiscoverStopMarker {
+				t.Fatalf("read %s = %q, %v; want exactly %q", signalPath, content, readErr, DiscoverStopMarker)
+			}
+			// A cold boot between the stop and the daemon consuming it turns the stop back into a discover.
+			e.touchDiscoverSignal()
+			info, err := os.Stat(signalPath)
+			if err != nil || info.Size() != 0 {
+				t.Errorf("after touchDiscoverSignal stat %s = %v, %v; want an existing empty file", signalPath, info, err)
+			}
+		})
 	}
 }
 

@@ -53,7 +53,7 @@ func TestNaming_StandaloneStrandIsShortnameAndRoleWithNoParent(t *testing.T) {
 
 	probe := filepath.Join(t.TempDir(), "env.txt")
 	cmd := "printf '%s|%s' \"$LYX_STRAND_NAME\" \"$LYX_PARENT\" > '" + probe + "'; sleep 300"
-	strand, err := e.AddStrand(reedengine.AddSpec{Role: "worker", Cmd: cmd, Display: render.Display{Anchor: render.AnchorBelowParent}})
+	strand, err := e.AddStrand(reedengine.AddSpec{Role: "worker", Cmd: cmd, Display: render.Display{Anchor: render.AnchorOwnWindow}})
 	if err != nil {
 		t.Fatalf("AddStrand: %v", err)
 	}

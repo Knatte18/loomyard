@@ -16,10 +16,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
-// isProbeWait and isSweepWait tell the waits of the delivery workers (1 to 8 seconds) from the sweep's (30 seconds and up) on the shared fake clock.
+// isProbeWait and isSweepWait tell the waits of the delivery workers (1 to 8 seconds) from the sweep's (longer than the probe ceiling) on the shared fake clock.
 func isProbeWait(d time.Duration) bool { return d <= 8*time.Second }
 
-func isSweepWait(d time.Duration) bool { return d >= 30*time.Second }
+func isSweepWait(d time.Duration) bool { return d > 8*time.Second }
 
 // start runs a scheduler over the env's store and stops it when the test ends.
 func (e *env) start(t *testing.T) {
@@ -95,6 +95,31 @@ func stalledReasons(e *env, receiver string) []string {
 		}
 	}
 	return reasons
+}
+
+// holdAfterAReminderProbeReadTheDraft leaves a draft standing in alpha's pane, read once by the probe of an unread message's reminder, and then holds alpha for batten.
+// From then on the probe skips the pane read, since only the hold owner's mail and injects are delivered.
+func holdAfterAReminderProbeReadTheDraft(t *testing.T, e *env) {
+	t.Helper()
+	e.del.SetStall(alpha, creelengine.StallDraft)
+	e.post(t, strand(beta), alpha, "hi")
+	e.start(t)
+	e.probeWaits(1)
+	if _, err := e.store.Hold(program(batten), alpha, time.Hour); err != nil {
+		t.Fatalf("Hold: %v", err)
+	}
+}
+
+// tickPastTheStallFreshness moves the clock 24 seconds in probe steps and checks that no probe read the pane meanwhile.
+func (e *env) tickPastTheStallFreshness(t *testing.T) {
+	t.Helper()
+	idleCalls := e.del.IdleCalls(alpha)
+	for range 3 {
+		e.tick(8 * time.Second)
+	}
+	if got := e.del.IdleCalls(alpha); got != idleCalls {
+		t.Fatalf("Idle was asked %d more times under the hold; want the probe to skip the pane read", got-idleCalls)
+	}
 }
 
 func reminderFor(count int, listed ...string) string {
@@ -452,17 +477,52 @@ func TestScheduler_Injects(t *testing.T) {
 		}},
 		{"TTLIsFrozenWhilePausedAndWhileDormant", func(t *testing.T, e *env) {
 			e.del.SetPaused(alpha, true)
-			inject(t, e, program(batten), alpha, "/paused", 0, false)
+			inject(t, e, program(batten), alpha, "/paused", 3*time.Second, false)
 			e.start(t)
-			e.probeWaits(1)
-			e.tick(time.Hour)
+			if got := e.driveProbeWaits(5); !slices.Equal(got, seconds(1, 2, 4, 8, 8)) {
+				t.Fatalf("probe waits under the pause = %v; want 1, 2, 4, 8, 8 seconds, uncapped by the frozen TTL", got)
+			}
 			e.del.SetPaused(alpha, false)
 			e.del.SetStrands(creelfake.DormantStrand(alpha), creelfake.LiveStrand(beta), creelfake.LiveStrand(orch), creelfake.LiveStrand(orch2))
-			e.tick(time.Hour)
+			e.tick(8 * time.Second)
+			e.tick(8 * time.Second)
+			if got := e.probeWaits(7)[5:]; !slices.Equal(got, seconds(8, 8)) {
+				t.Errorf("probe waits while dormant = %v; want 8, 8 seconds, uncapped by the frozen TTL", got)
+			}
+			if queued := e.store.Queued(alpha); len(queued) != 1 {
+				t.Fatalf("Queued = %+v after the pause and the dormancy; want the inject still waiting", queued)
+			}
 			e.del.SetStrands(creelfake.LiveStrand(alpha), creelfake.LiveStrand(beta), creelfake.LiveStrand(orch), creelfake.LiveStrand(orch2))
-			e.tick(time.Hour)
+			e.tick(8 * time.Second)
 			if got := e.typed(alpha); !slices.Equal(got, []string{"/paused"}) {
-				t.Errorf("typed %q; want the inject typed once live and unpaused, after hours of freeze", got)
+				t.Errorf("typed %q; want the inject typed once live and unpaused, after its TTL stood still", got)
+			}
+		}},
+		{"InjectExpiresWithinASecondOfItsTTLBetweenBackoffSteps", func(t *testing.T, _ *env) {
+			for _, ttl := range seconds(10, 20, 37) {
+				e := newEnv(t)
+				e.del.SetIdle(alpha, false)
+				posted := e.clock.Now()
+				_, waiter, err := e.store.InjectWait(program(batten), alpha, "/slow", ttl, false)
+				if err != nil {
+					t.Fatalf("InjectWait: %v", err)
+				}
+				e.start(t)
+				done := make(chan struct{})
+				go e.clock.AdvanceByWaitsWhere(isProbeWait, done)
+				outcome := awaitOutcome(t, waiter)
+				close(done)
+				if outcome.Kind != creelengine.OutcomeExpired {
+					t.Errorf("TTL %v: wait answered %v; want expired", ttl, outcome.Kind)
+				}
+				if late := e.clock.Now().Sub(posted) - ttl; late < 0 || late > time.Second {
+					t.Errorf("TTL %v: expired %v past the TTL; want within a second", ttl, late)
+				}
+				for _, wait := range e.clock.Waits() {
+					if isProbeWait(wait) && wait < time.Second {
+						t.Errorf("TTL %v: recorded probe wait %v is under the one-second floor", ttl, wait)
+					}
+				}
 			}
 		}},
 		{"TTLRunsUnderAnotherSendersHoldAndExpiresUntyped", func(t *testing.T, e *env) {
@@ -588,19 +648,30 @@ func TestScheduler_Injects(t *testing.T) {
 			}
 		}},
 		{"InjectStalledForItsWholeTTLStillExpiresWithOneStalledRecord", func(t *testing.T, e *env) {
-			e.del.SetStall(alpha, creelengine.StallDraft)
+			e.del.SetStall(alpha, creelengine.StallNoInputBox)
 			_, waiter, err := e.store.InjectWait(program(batten), alpha, "/clear", time.Minute, false)
 			if err != nil {
 				t.Fatalf("InjectWait: %v", err)
 			}
 			e.start(t)
-			e.probeWaits(1)
-			e.clock.Advance(2 * time.Minute)
-			if outcome := awaitOutcome(t, waiter); outcome.Kind != creelengine.OutcomeExpired {
-				t.Errorf("wait answered %v; want expired at the TTL", outcome.Kind)
+			done := make(chan struct{})
+			go e.clock.AdvanceByWaitsWhere(isProbeWait, done)
+			outcome := awaitOutcome(t, waiter)
+			close(done)
+			if outcome.Kind != creelengine.OutcomeExpired || outcome.Stall != creelengine.StallNoInputBox {
+				t.Errorf("wait answered %v with stall %q; want expired at the TTL with stall no-input-box", outcome.Kind, outcome.Stall)
 			}
-			if got := stalledReasons(e, alpha); !slices.Equal(got, []string{"draft"}) {
+			if got := stalledReasons(e, alpha); !slices.Equal(got, []string{"no-input-box"}) {
 				t.Errorf("stalled reasons = %q; want one", got)
+			}
+			var expiredReasons []string
+			for _, entry := range e.store.Log(creelengine.LogFilter{To: alpha}) {
+				if entry.Event == "expired" {
+					expiredReasons = append(expiredReasons, entry.Reason)
+				}
+			}
+			if !slices.Equal(expiredReasons, []string{"no-input-box"}) {
+				t.Errorf("expired log reasons = %q; want no-input-box", expiredReasons)
 			}
 		}},
 		{"WaiterProgressKeepsOnlyTheNewestUnreadStall", func(t *testing.T, e *env) {
@@ -626,6 +697,92 @@ func TestScheduler_Injects(t *testing.T) {
 			case note := <-waiter.Progress:
 				t.Errorf("a second progress note %+v; the older unread one must have been replaced", note)
 			default:
+			}
+		}},
+		{"StallClearedUnderAHoldIsNotSeededIntoALaterWaiter", func(t *testing.T, e *env) {
+			holdAfterAReminderProbeReadTheDraft(t, e)
+			e.tickPastTheStallFreshness(t)
+			e.del.SetStall(alpha, "")
+			_, waiter, err := e.store.InjectWait(program(batten), alpha, "/clear", 0, false)
+			if err != nil {
+				t.Fatalf("InjectWait: %v", err)
+			}
+			select {
+			case note := <-waiter.Progress:
+				t.Errorf("seeded with %+v; want no note for a stall no probe read within 16 s", note)
+			default:
+			}
+			if outcome := awaitOutcome(t, waiter); outcome.Kind != creelengine.OutcomeInjected {
+				t.Errorf("wait answered %v; want injected", outcome.Kind)
+			}
+			select {
+			case note := <-waiter.Progress:
+				t.Errorf("heard %+v; want no stall line once the draft is gone", note)
+			default:
+			}
+		}},
+		{"PersistingStallIsToldOnceToALaterWaiterAndEachChangeOnce", func(t *testing.T, e *env) {
+			holdAfterAReminderProbeReadTheDraft(t, e)
+			e.tickPastTheStallFreshness(t)
+			before := len(e.probeWaits(0))
+			_, waiter, err := e.store.InjectWait(program(batten), alpha, "/clear", 0, false)
+			if err != nil {
+				t.Fatalf("InjectWait: %v", err)
+			}
+			select {
+			case note := <-waiter.Progress:
+				t.Fatalf("seeded with %+v; want no note for a stall no probe read within 16 s", note)
+			default:
+			}
+			e.probeWaits(before + 1)
+			// told drains what the last probe told the waiter: nothing for an empty want, else exactly that stall as it began at the probe.
+			told := func(want creelengine.Stall) {
+				t.Helper()
+				select {
+				case note := <-waiter.Progress:
+					if want == "" {
+						t.Errorf("told %+v; want nothing", note)
+					} else if note.Stall != want || !note.At.Equal(e.clock.Now()) {
+						t.Errorf("told %+v; want %s from the probe that read it, at %v", note, want, e.clock.Now())
+					}
+				default:
+					if want != "" {
+						t.Errorf("told nothing; want %s", want)
+					}
+				}
+			}
+			told(creelengine.StallDraft)
+			e.tick(time.Second)
+			told("")
+			for _, change := range []creelengine.Stall{creelengine.StallTooShort, creelengine.StallDraft} {
+				e.del.SetStall(alpha, change)
+				e.tick(8 * time.Second)
+				told(change)
+			}
+			e.del.SetStall(alpha, "")
+			e.del.SetIdle(alpha, false)
+			e.tick(8 * time.Second)
+			told("")
+			e.del.SetStall(alpha, creelengine.StallDraft)
+			e.tick(8 * time.Second)
+			told(creelengine.StallDraft)
+		}},
+		{"ExpiryNamesNoStallLastReadBeforeTheBound", func(t *testing.T, e *env) {
+			holdAfterAReminderProbeReadTheDraft(t, e)
+			muted, waiter, err := e.store.InjectWait(external(), alpha, "/muted", time.Minute, false)
+			if err != nil {
+				t.Fatalf("InjectWait: %v", err)
+			}
+			e.tickPastTheStallFreshness(t)
+			e.clock.Advance(time.Minute)
+			outcome := awaitOutcome(t, waiter)
+			if outcome.Kind != creelengine.OutcomeExpired || outcome.Stall != "" || !outcome.StallAt.IsZero() {
+				t.Errorf("wait answered %+v; want expired with no stall", outcome)
+			}
+			for _, entry := range e.store.Log(creelengine.LogFilter{ID: muted.ID}) {
+				if entry.Event == "expired" && entry.Reason != "" {
+					t.Errorf("expired entry carries reason %q; want none", entry.Reason)
+				}
 			}
 		}},
 		{"RunningInterruptHoldsBackEveryDeliveryToTheReceiver", func(t *testing.T, e *env) {
@@ -811,16 +968,81 @@ func TestSweep_RemovedHolders(t *testing.T) {
 			e.start(t)
 			e.post(t, strand(alpha), orch, "one")
 			waits := e.sweepWaits(1)
-			for len(waits) < 5 {
+			for len(waits) < 3 {
 				e.clock.Advance(waits[len(waits)-1])
 				waits = e.sweepWaits(len(waits) + 1)
 			}
-			if !slices.Equal(waits, seconds(30, 60, 120, 240, 240)) {
-				t.Fatalf("sweep waits = %v; want 30s doubling to a 4-minute ceiling", waits)
+			if !slices.Equal(waits, seconds(30, 50, 50)) {
+				t.Fatalf("sweep waits = %v; want 30s doubling to a 50-second ceiling", waits)
 			}
 			e.post(t, strand(beta), orch, "two")
-			if got := e.sweepWaits(6)[5]; got != 30*time.Second {
-				t.Errorf("sweep wait after a post = %v; want 30s", got)
+			if got := e.sweepWaits(4)[3]; got != 30*time.Second {
+				t.Errorf("sweep wait after a post with the full ceiling left = %v; want 30s", got)
+			}
+		}},
+		{"PostWithLessThanTheBaseLeftDoesNotDelayTheSweep", func(t *testing.T, e *env) {
+			// Only orch-role mail exists, which has no delivery worker, so every wait on the clock is the sweep's.
+			e.start(t)
+			e.post(t, strand(alpha), orch, "one")
+			e.clock.AwaitWaits(1)
+			e.clock.Advance(30 * time.Second)
+			e.clock.AwaitWaits(2)
+			e.clock.Advance(45 * time.Second)
+			e.post(t, strand(beta), orch, "two")
+			e.clock.Advance(5 * time.Second)
+			if got := e.clock.AwaitWaits(3)[2]; got != 50*time.Second {
+				t.Errorf("wait after the sweep that the post left at 5s = %v; want the 50s ceiling", got)
+			}
+		}},
+		{"RemovedHolderIsSettledWithin60sAtTheCeiling", func(t *testing.T, e *env) {
+			e.post(t, strand(alpha), orch, "orch mail")
+			e.post(t, strand(alpha), beta, "beta mail")
+			e.start(t)
+			e.sweepStep()
+			e.sweepStep()
+			if waits := e.sweepWaits(3); !slices.Equal(waits, seconds(30, 50, 50)) {
+				t.Fatalf("sweep waits = %v; want the ceiling reached at 30, 50, 50", waits)
+			}
+			without(e, orch, beta)
+			e.sweepStep()
+			if waits := e.sweepWaits(4); waits[3] != 10*time.Second {
+				t.Fatalf("wait after the first miss = %v; want the 10s confirm", waits[3])
+			}
+			e.sweepLast()
+			waits := e.sweepWaits(6)
+			if waits[4] != 50*time.Second || waits[5] != 30*time.Second {
+				t.Errorf("waits after the release = %v; want 50s armed by the releasing sweep and 30s re-armed by the returns' wake", waits[4:])
+			}
+			var endedBy []string
+			for _, msg := range holderOf(t, e, alpha) {
+				endedBy = append(endedBy, msg.EndedUnreadBy)
+			}
+			slices.Sort(endedBy)
+			if want := []string{beta, orch}; !slices.Equal(endedBy, want) {
+				t.Errorf("messages back with %s are marked ended unread by %v; want %v", alpha, endedBy, want)
+			}
+		}},
+		{"PostInsideTheConfirmIntervalKeepsTheConfirmDeadline", func(t *testing.T, e *env) {
+			// The removed holder is orch, whose mail has no worker, so the row reads every wait on the clock.
+			_, first, err := e.store.PostWait(external(), orch, "one")
+			if err != nil {
+				t.Fatalf("PostWait: %v", err)
+			}
+			without(e, orch)
+			e.start(t)
+			e.clock.AwaitWaits(1)
+			e.clock.Advance(30 * time.Second)
+			if waits := e.clock.AwaitWaits(2); waits[1] != 10*time.Second {
+				t.Fatalf("wait after the first miss = %v; want the 10s confirm", waits[1])
+			}
+			e.clock.Advance(5 * time.Second)
+			e.post(t, strand(alpha), orch2, "two")
+			if waits := e.clock.AwaitWaits(3); waits[2] != 5*time.Second {
+				t.Fatalf("wait after a post inside the confirm = %v; want the 5s left to the confirm deadline", waits[2])
+			}
+			e.clock.Advance(5 * time.Second)
+			if outcome := awaitOutcome(t, first); outcome.Kind != creelengine.OutcomeReturned {
+				t.Errorf("wait answered %+v; want the message returned undelivered at the confirm deadline", outcome)
 			}
 		}},
 		{"MailReturnsOneStepAtATimeThenIsUndeliveredAndAnswersItsWaiter", func(t *testing.T, e *env) {
@@ -858,26 +1080,46 @@ func TestSweep_RemovedHolders(t *testing.T) {
 		}},
 		{"StrandRemovedAndReAddedKeepsItsMail", func(t *testing.T, e *env) {
 			e.post(t, strand(alpha), beta, "kept")
+			e.post(t, strand(alpha), orch, "orch kept")
 			without(e, beta)
 			e.start(t)
+			// The confirm sweep 10 seconds after the miss finds beta back, and ends the confirm at the 30-second base since the strand-name set changed.
 			e.sweepStep()
 			without(e)
 			e.sweepStep()
-			e.sweepStep()
-			held := holderOf(t, e, beta)
-			if len(held) != 1 || held[0].Holder != beta || held[0].EndedUnreadBy != "" {
+			if waits := e.sweepWaits(3); !slices.Equal(waits, seconds(30, 10, 30)) {
+				t.Fatalf("sweep waits = %v; want the 10s confirm after the miss and the 30s base after it", waits)
+			}
+			if held := holderOf(t, e, beta); len(held) != 1 || held[0].Holder != beta || held[0].EndedUnreadBy != "" {
 				t.Errorf("the message is %+v; want it still with %s", held, beta)
+			}
+			// Beta is removed again for a first miss; at the confirm sweep beta is back and orch is gone, which is orch's first miss and a new confirm.
+			without(e, beta)
+			e.sweepStep()
+			without(e, orch)
+			e.sweepStep()
+			if waits := e.sweepWaits(5); !slices.Equal(waits[3:], seconds(10, 10)) {
+				t.Errorf("sweep waits after the second removal = %v; want a 10s confirm after each first miss", waits[3:])
+			}
+			if held := holderOf(t, e, orch); len(held) != 1 || held[0].Holder != orch {
+				t.Errorf("orch's mail is %+v; want it still with %s after one miss", held, orch)
 			}
 		}},
 		{"FailedListingMovesNothingAndCountsTowardNoStreak", func(t *testing.T, e *env) {
 			e.post(t, strand(alpha), beta, "kept")
-			without(e, beta)
+			e.del.SetStrandsError(errors.New("reed state unreadable"))
 			e.start(t)
+			e.sweepStep()
+			if waits := e.sweepWaits(2); waits[1] != 30*time.Second {
+				t.Errorf("wait after a failed sweep with no miss pending = %v; want 30s", waits[1])
+			}
+			e.del.SetStrandsError(nil)
+			without(e, beta)
 			e.sweepStep()
 			e.del.SetStrandsError(errors.New("reed state unreadable"))
 			e.sweepStep()
-			if waits := e.sweepWaits(3); waits[2] != 30*time.Second {
-				t.Errorf("wait after a failed sweep = %v; want 30s", waits[2])
+			if waits := e.sweepWaits(4); waits[2] != 10*time.Second || waits[3] != 10*time.Second {
+				t.Errorf("waits after the first miss and a failed sweep = %v; want 10s and 10s", waits[2:])
 			}
 			if held := holderOf(t, e, beta); len(held) != 1 {
 				t.Fatalf("a failed sweep moved the mail: %+v", held)

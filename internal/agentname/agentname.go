@@ -25,6 +25,9 @@ const (
 	StrandNameEnv = "LYX_STRAND_NAME"
 	// ParentEnv is the env key reed injects with the full name of the session that spawned the worktree's run.
 	ParentEnv = "LYX_PARENT"
+	// LyxBinEnv is the env key reed's launch script exports with the absolute path of the spawning lyx binary, never its directory.
+	// The Claude engine's env file reads the same key.
+	LyxBinEnv = "LYX_BIN"
 
 	sep = ":"
 )

@@ -88,7 +88,7 @@ internal/preflight: 7
 internal/preflightshed: 8
 internal/proc: 18
 internal/quarrycli: 7
-internal/reedcli: 40
+internal/reedcli: 41
 internal/reedengine: 270
 internal/reedengine/render: 12
 internal/reportcli: 5
@@ -113,7 +113,7 @@ internal/shell: 14
 internal/shellguard: 3
 internal/shortcutcli: 2
 internal/shuttlecli: 27
-internal/shuttleengine: 179
+internal/shuttleengine: 180
 internal/shuttleengine/claudeengine: 114
 internal/shuttleengines: 6
 internal/sleepjournal: 2

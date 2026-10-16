@@ -16,12 +16,10 @@ import (
 
 // Config represents the resolved reed.yaml configuration.
 type Config struct {
-	Tmux          string `yaml:"tmux"`
-	Shell         string `yaml:"shell"`
-	Width         int    `yaml:"width"`
-	Height        int    `yaml:"height"`
-	CollapsedRows int    `yaml:"collapsed_rows"`
-	MinFullRows   int    `yaml:"min_full_rows"`
+	Tmux   string `yaml:"tmux"`
+	Shell  string `yaml:"shell"`
+	Width  int    `yaml:"width"`
+	Height int    `yaml:"height"`
 
 	DebugLog string `yaml:"debug_log"`
 
@@ -40,15 +38,8 @@ type Config struct {
 
 	TmuxConf string `yaml:"tmux_conf"`
 
-	Selvage SelvageConfig `yaml:"selvage"`
-
 	// SegmentColors maps a loom segment key to a palette color name.
 	SegmentColors map[string]string `yaml:"segment_colors"`
-}
-
-// SelvageConfig configures the Selvage pane's fixed row budget.
-type SelvageConfig struct {
-	HeightRows int `yaml:"height_rows"`
 }
 
 // ConfigSpec returns reed's layered-load spec.
@@ -62,8 +53,6 @@ func ConfigSpec() configengine.Spec {
 			"shell":            configengine.CategoryExecutable,
 			"width":            configengine.CategoryNone,
 			"height":           configengine.CategoryNone,
-			"collapsed_rows":   configengine.CategoryNone,
-			"min_full_rows":    configengine.CategoryNone,
 			"debug_log":        configengine.CategoryCrossPair,
 			"mouse":            configengine.CategoryCrossPair,
 			"watchdog":         configengine.CategoryNone,
@@ -71,8 +60,12 @@ func ConfigSpec() configengine.Spec {
 			"window_share_max": configengine.CategoryNone,
 			"window_split":     configengine.CategoryNone,
 			"tmux_conf":        configengine.CategorySourcedFile,
-			"selvage":          configengine.CategoryNone,
 			"segment_colors":   configengine.CategoryNone,
+		},
+		RetiredKeys: map[string]configengine.Category{
+			"collapsed_rows": configengine.CategoryNone,
+			"min_full_rows":  configengine.CategoryNone,
+			"selvage":        configengine.CategoryNone,
 		},
 	}
 }

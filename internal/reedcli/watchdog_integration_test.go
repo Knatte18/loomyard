@@ -1,6 +1,6 @@
 //go:build tmux
 
-// watchdog_integration_test.go carries the watchdog daemon's live-behaviour assertions as one TestWatchdogDaemon scenario: discovery against a real hub with real tmux sessions, the single-instance lock's two outcomes, the idle-exit timer, departure teardown, and re-entry re-reading a flipped watchdog: config value.
+// watchdog_integration_test.go carries the watchdog daemon's live-behaviour assertions as one TestWatchdogDaemon scenario: discovery against a real hub with real tmux sessions, the single-instance lock's two outcomes, the stop a last down writes, departure teardown, and re-entry re-reading a flipped watchdog: config value.
 //
 // It is a separate file from watchdog_test.go, rather than tagged content inside it, because a Go build tag is per-file: tagging watchdog_test.go itself would hide its pure-seam tests from the untagged tier where they belong.
 // The hub fixture is built through internal/hubforge per the hubforge Fabric-Fixture Invariant, never hand-assembled.
@@ -12,10 +12,10 @@ package reedcli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -24,8 +24,10 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fswatch"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -97,11 +99,10 @@ func compressedWatchdogTiming() watchdogTiming {
 	}
 }
 
-// runWatchdogCmdInBackground starts watchdogCmd() against hub/tmuxPath on a cancellable context and
+// runWatchdogCmdInBackground starts watchdogCmd() against hub/tmuxPath with the given timing on a cancellable context and
 // returns the cancel func plus a channel that receives RunE's error (or nil) once it returns.
-func runWatchdogCmdInBackground(t *testing.T, hub, tmuxPath string) (cancel context.CancelFunc, done chan error, out *bytes.Buffer) {
+func runWatchdogCmdInBackground(t *testing.T, hub, tmuxPath string, timing watchdogTiming) (cancel context.CancelFunc, done chan error, out *bytes.Buffer) {
 	t.Helper()
-	timing := compressedWatchdogTiming()
 	c := &reedCLI{watchdogTiming: &timing}
 	cmd := c.watchdogCmd()
 	buf := &bytes.Buffer{}
@@ -159,7 +160,7 @@ func TestWatchdogDaemon(t *testing.T) {
 		}
 
 		logs := logcapture.CaptureVerbose(t)
-		cancel1, done1, _ := runWatchdogCmdInBackground(t, h.Path, tmuxPath)
+		cancel1, done1, _ := runWatchdogCmdInBackground(t, h.Path, tmuxPath, compressedWatchdogTiming())
 		defer cancel1()
 
 		// Give the first daemon time to actually acquire the lock before the second attempt races it.
@@ -219,15 +220,19 @@ func TestWatchdogDaemon(t *testing.T) {
 		return
 	}
 
-	// ExitsAfterIdleCyclesAndReleasesLock boots the prime worktree's session, starts the daemon, tears the session down, and asserts the daemon exits on its own and releases the lock.
-	// The previous step left its lock file behind, so it is removed first: the daemon recreating it is what proves the daemon is running before the session goes away.
-	if !t.Run("ExitsAfterIdleCyclesAndReleasesLock", func(t *testing.T) {
-		eng := watchdogIntegrationEngine(t, prime)
+	// DownStopsTheDaemonAndReleasesLock boots the prime and the pair sessions and starts a daemon whose idle-cycle limit no step can reach, so only a stop can end it.
+	// A non-last down leaves the daemon running across five discovery cycles; the last down's stop ends it within the step's bound, and the lock is then free.
+	// The previous step left its lock file behind, so it is removed first: the daemon recreating it is what proves the daemon is running before the sessions go away.
+	if !t.Run("DownStopsTheDaemonAndReleasesLock", func(t *testing.T) {
+		watchdogIntegrationEngine(t, prime)
+		pairEng := watchdogIntegrationEngine(t, pair)
 		if err := os.Remove(lockPath); err != nil {
 			t.Fatalf("remove the previous daemon's lock file %s: %v", lockPath, err)
 		}
 
-		cancel, done, _ := runWatchdogCmdInBackground(t, h.Path, tmuxPath)
+		timing := compressedWatchdogTiming()
+		timing.IdleCycles = 1000
+		cancel, done, _ := runWatchdogCmdInBackground(t, h.Path, tmuxPath, timing)
 		defer cancel()
 
 		waitForCondition(t, 10*time.Second, func() bool {
@@ -235,30 +240,34 @@ func TestWatchdogDaemon(t *testing.T) {
 			return err == nil
 		})
 
-		if _, err := eng.Down(); err != nil {
-			t.Fatalf("eng.Down(): %v", err)
+		if _, err := pairEng.Down(); err != nil {
+			t.Fatalf("pairEng.Down(): %v", err)
+		}
+		select {
+		case err := <-done:
+			t.Fatalf("watchdog daemon exited (err=%v) after a non-last down; want it still running", err)
+		case <-time.After(5 * watchdogTestCycle):
 		}
 
-		// The daemon must exit on its own within watchdogHubIdleCycles of its own discovery cycle plus slack, and release its lock.
-		slack := 10 * time.Second
+		// The last down runs as the verb, so the stop and the bounded wait are proven together: the lock is free as soon as the verb returns.
+		var downOut bytes.Buffer
+		if code := RunCLIIn(prime, &downOut, []string{"down"}); code != 0 {
+			t.Fatalf("lyx reed down exited %d: %s", code, downOut.String())
+		}
+		envelope.RequireOK(t, downOut.String())
+		held, acquired, err := lock.TryAcquireWriteLock(lockPath)
+		if err != nil || !acquired {
+			t.Fatalf("watchdog lock right after the verb returned: acquired=%v err=%v; want it free", acquired, err)
+		}
+		held.Release()
 		select {
 		case err := <-done:
 			if err != nil {
 				t.Errorf("watchdogCmd RunE returned %v; want nil", err)
 			}
-		case <-time.After(watchdogHubIdleCycles*watchdogTestCycle + slack):
-			t.Fatal("watchdog daemon did not exit after its last session went away")
+		case <-time.After(watchdogTestWait):
+			t.Fatal("watchdog daemon did not return after the last down's stop")
 		}
-
-		// A later spawn attempt must be able to take the now-released lock.
-		c2 := &reedCLI{}
-		cmd2 := c2.watchdogCmd()
-		buf2 := &bytes.Buffer{}
-		cmd2.SetOut(buf2)
-		cmd2.SetArgs([]string{"--hub-path", h.Path, "--tmux", tmuxPath})
-		ctx2, cancel2 := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel2()
-		_ = cmd2.ExecuteContext(ctx2)
 	}) {
 		return
 	}
@@ -279,7 +288,7 @@ func TestWatchdogDaemon(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		done := make(chan error, 1)
 		go func() {
-			done <- runWatchdogLoop(ctx, h.Path, tmuxPath, primeEng.ShellPath(), timing, reedengine.OpenFileWatch, nil)
+			done <- runWatchdogLoop(ctx, h.Path, tmuxPath, primeEng.ShellPath(), timing, reedengine.OpenFileWatch, reedengine.ListSessions, nil)
 		}()
 		defer func() {
 			cancel()
@@ -322,40 +331,24 @@ func TestWatchdogDaemon(t *testing.T) {
 		}
 	}
 
-	// ResizeAppliesOnlyToThatWorktree drives a real resize against one of two worktrees discovered by the same daemon and asserts the sibling's own window is left exactly alone — the daemon's per-session watch loops must stay isolated from each other, never cross-applying a resize meant for a different worktree's session.
-	if !t.Run("ResizeAppliesOnlyToThatWorktree", func(t *testing.T) {
+	// DiscoversBothSessions boots both worktrees' engines, starts the loop and waits until the daemon has discovered both sessions.
+	if !t.Run("DiscoversBothSessions", func(t *testing.T) {
 		eng1 = bootWatchdogEngine(t, prime)
 		scenario.Cleanup(func() { _, _ = eng1.Down() })
 		eng2 = bootWatchdogEngine(t, pair)
 		scenario.Cleanup(func() { _, _ = eng2.Down() })
+		// The watch never opens, so this loop sees no stop and keeps the idle-cycle rule that covers a down followed by an up.
+		noWatch := func(string, ...string) (<-chan fswatch.Event, func() error, error) {
+			return nil, nil, errors.New("watch disabled for the shared discovery loop")
+		}
 		go func() {
-			loopDone <- runWatchdogLoop(loopCtx, h.Path, tmuxPath, eng1.ShellPath(), compressedWatchdogTiming(), reedengine.OpenFileWatch, nil)
+			loopDone <- runWatchdogLoop(loopCtx, h.Path, tmuxPath, eng1.ShellPath(), compressedWatchdogTiming(), noWatch, reedengine.ListSessions, nil)
 		}()
 
 		// Both sessions must be discovered within a couple of discovery cycles.
 		waitForCondition(t, watchdogTestWait, func() bool {
 			return sessionListed(tmuxPath, socket, eng1.SessionName()) && sessionListed(tmuxPath, socket, eng2.SessionName())
 		})
-
-		eng2W, eng2H := watchdogWindowSize(t, tmuxPath, socket, eng2.SessionName())
-
-		_, eng1H := watchdogWindowSize(t, tmuxPath, socket, eng1.SessionName())
-		newH := eng1H + 10
-		watchdogResizeWindow(t, tmuxPath, socket, eng1.SessionName(), 90, newH)
-
-		waitForCondition(t, 15*time.Second, func() bool {
-			_, gotH := watchdogWindowSize(t, tmuxPath, socket, eng1.SessionName())
-			return gotH == newH
-		})
-
-		// Give eng1's own watch loop goroutine ample time to actually react before checking the sibling
-		// never moved — a false pass here would mean we checked before either loop had a chance to run.
-		time.Sleep(watchdogTestCycle * 10)
-
-		gotW2, gotH2 := watchdogWindowSize(t, tmuxPath, socket, eng2.SessionName())
-		if gotW2 != eng2W || gotH2 != eng2H {
-			t.Errorf("eng2's window size became %dx%d after resizing only eng1's window; want unchanged %dx%d — a resize must re-apply only the worktree whose own window actually resized", gotW2, gotH2, eng2W, eng2H)
-		}
 	}) {
 		return
 	}
@@ -475,39 +468,6 @@ func TestWatchdogDaemon(t *testing.T) {
 		cancelLoop()
 		<-loopDone
 	})
-}
-
-// watchdogWindowSize reads session's live #{window_width} and #{window_height} via a plain tmux
-// display-message, bypassing the engine entirely so a test can observe either worktree's window from
-// outside both — exactSessionWindowTarget's "=<name>:" form is used so two sessions sharing this
-// hub's one socket can never prefix-match each other.
-func watchdogWindowSize(t *testing.T, tmuxPath, socket, session string) (w, h int) {
-	t.Helper()
-	out, err := exec.Command(tmuxPath, "-L", socket, "display-message", "-p", "-t", "="+session+":", "#{window_width} #{window_height}").Output()
-	if err != nil {
-		t.Fatalf("display-message #{window_width} #{window_height} for %s: %v", session, err)
-	}
-	fields := strings.Fields(string(out))
-	if len(fields) != 2 {
-		t.Fatalf("display-message #{window_width} #{window_height} for %s = %q, want two fields", session, out)
-	}
-	w, errW := strconv.Atoi(fields[0])
-	h, errH := strconv.Atoi(fields[1])
-	if errW != nil || errH != nil {
-		t.Fatalf("parse window size %q for %s: width err=%v height err=%v", out, session, errW, errH)
-	}
-	return w, h
-}
-
-// watchdogResizeWindow issues a direct resize-window against session — the same live trigger
-// smoke_dotfill_test.go already drives against a single session — bypassing the engine entirely so a
-// test can resize one worktree's window from outside every engine.
-func watchdogResizeWindow(t *testing.T, tmuxPath, socket, session string, cols, rows int) {
-	t.Helper()
-	out, err := exec.Command(tmuxPath, "-L", socket, "resize-window", "-t", "="+session+":", "-x", strconv.Itoa(cols), "-y", strconv.Itoa(rows)).CombinedOutput()
-	if err != nil {
-		t.Fatalf("resize-window %s to %dx%d: %v (%s)", session, cols, rows, err, out)
-	}
 }
 
 // unusableHubPath returns a hub path that makes fabricengine.HubScratchDir(hub)'s MkdirAll fail: a

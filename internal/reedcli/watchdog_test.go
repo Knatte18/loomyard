@@ -16,12 +16,15 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
 //testtiming:keep pins the appeared and departed sets for the empty, populated, partial-overlap and unchanged listings, which the live daemon scenario reaches for two at most
@@ -433,6 +436,7 @@ func TestWatchdogDefaultTiming(t *testing.T) {
 	want := watchdogTiming{
 		DiscoveryCycle:   watchdogHubDiscoveryCycle,
 		DiscoveryCeiling: watchdogHubDiscoveryCeiling,
+		StopFloor:        watchdogStopFloor,
 		IdleCycles:       watchdogHubIdleCycles,
 		OrphanGoneCycles: watchdogOrphanGoneCycles,
 		ReapTimeout:      0,
@@ -441,7 +445,7 @@ func TestWatchdogDefaultTiming(t *testing.T) {
 		t.Errorf("watchdogDefaultTiming() = %+v, want %+v", got, want)
 	}
 	// A periodic wake below one second is the idle wake-up cost the daemon's cadence floor rules out.
-	for name, period := range map[string]time.Duration{"DiscoveryCycle": got.DiscoveryCycle, "DiscoveryCeiling": got.DiscoveryCeiling} {
+	for name, period := range map[string]time.Duration{"DiscoveryCycle": got.DiscoveryCycle, "DiscoveryCeiling": got.DiscoveryCeiling, "StopFloor": got.StopFloor} {
 		if period < time.Second {
 			t.Errorf("watchdogDefaultTiming().%s = %v, want at least one second", name, period)
 		}
@@ -449,12 +453,14 @@ func TestWatchdogDefaultTiming(t *testing.T) {
 }
 
 // TestDiscoveryWake pins the wake planner over scripted cycles and signals: the wait doubles to the ceiling across unchanged listings (order aside) and returns to the base on a changed set or a signal, and a signal runs its cycle once the base has passed since the last one, at once when it already has.
+// A signal carrying a stop request waits only for the stop floor, whichever signal arrives first, and the cycle that serves it restores the base.
 func TestDiscoveryWake(t *testing.T) {
 	t.Parallel()
-	const base, ceiling = 5 * time.Second, 20 * time.Second
+	const base, ceiling, stopFloor = 5 * time.Second, 20 * time.Second, time.Second
 	type step struct {
 		at     time.Duration
 		signal bool
+		stop   bool
 		live   []string
 		want   time.Duration
 	}
@@ -478,17 +484,36 @@ func TestDiscoveryWake(t *testing.T) {
 			step{at: 25 * time.Second, live: []string{"a"}, want: 10 * time.Second},
 		)},
 		{"a signal after the base runs at once", append(slices.Clone(backedOff), step{at: 100 * time.Second, signal: true, want: 0})},
+		{"a stop shortly after a cycle waits for the stop floor", []step{
+			{at: 300 * time.Millisecond, signal: true, stop: true, want: 700 * time.Millisecond},
+		}},
+		{"a stop after the stop floor runs at once", []step{
+			{at: 2 * time.Second, signal: true, stop: true, want: 0},
+		}},
+		{"a stop then an ordinary signal still waits only for the stop floor", []step{
+			{at: 300 * time.Millisecond, signal: true, stop: true, want: 700 * time.Millisecond},
+			{at: 400 * time.Millisecond, signal: true, want: 600 * time.Millisecond},
+		}},
+		{"an ordinary signal then a stop waits only for the stop floor", []step{
+			{at: 300 * time.Millisecond, signal: true, want: 4700 * time.Millisecond},
+			{at: 400 * time.Millisecond, signal: true, stop: true, want: 600 * time.Millisecond},
+		}},
+		{"a cycle after a stop restores the base floor", []step{
+			{at: 300 * time.Millisecond, signal: true, stop: true, want: 700 * time.Millisecond},
+			{at: time.Second, live: []string{"a"}, want: base},
+			{at: 1500 * time.Millisecond, signal: true, want: 4500 * time.Millisecond},
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-			wake := &discoveryWake{base: base, ceiling: ceiling, cadence: base, lastCycle: start}
+			wake := &discoveryWake{base: base, ceiling: ceiling, stopFloor: stopFloor, cadence: base, lastCycle: start}
 			var previous []string
 			for i, s := range tt.steps {
 				now := start.Add(s.at)
 				if s.signal {
-					wake.onSignal(now)
+					wake.onSignal(now, s.stop)
 				} else {
 					wake.afterCycle(now, !sameSessionSet(s.live, previous))
 					previous = s.live
@@ -501,36 +526,96 @@ func TestDiscoveryWake(t *testing.T) {
 	}
 }
 
-// TestConsumeDiscoverSignal pins that a present signal file is consumed and removed, an absent one answers false and leaves nothing, and a removal failure is an error.
+// TestConsumeDiscoverSignal pins that a present signal file is consumed and removed, and reports a stop only for the stop marker; an absent file answers false, false and leaves nothing; a read or removal failure is an error with both results false.
 func TestConsumeDiscoverSignal(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
-
-	present := filepath.Join(dir, "present.signal")
-	if err := os.WriteFile(present, nil, 0o644); err != nil {
-		t.Fatalf("write signal: %v", err)
+	tests := []struct {
+		name         string
+		setup        func(t *testing.T, dir string) string
+		wantConsumed bool
+		wantStop     bool
+		wantErr      bool
+		wantRemoved  bool
+	}{
+		{
+			name: "an empty file is a discover",
+			setup: func(t *testing.T, dir string) string {
+				path := filepath.Join(dir, "empty.signal")
+				if err := os.WriteFile(path, nil, 0o644); err != nil {
+					t.Fatalf("write signal: %v", err)
+				}
+				return path
+			},
+			wantConsumed: true,
+			wantRemoved:  true,
+		},
+		{
+			name: "the stop marker is a stop",
+			setup: func(t *testing.T, dir string) string {
+				path := filepath.Join(dir, "stop.signal")
+				if err := os.WriteFile(path, []byte(reedengine.DiscoverStopMarker), 0o644); err != nil {
+					t.Fatalf("write signal: %v", err)
+				}
+				return path
+			},
+			wantConsumed: true,
+			wantStop:     true,
+			wantRemoved:  true,
+		},
+		{
+			name: "an absent file is not consumed",
+			setup: func(t *testing.T, dir string) string {
+				return filepath.Join(dir, "absent.signal")
+			},
+			wantRemoved: true,
+		},
+		{
+			name: "a directory with a child fails the read",
+			setup: func(t *testing.T, dir string) string {
+				path := filepath.Join(dir, "unreadable")
+				if err := os.MkdirAll(filepath.Join(path, "child"), 0o755); err != nil {
+					t.Fatalf("mkdir: %v", err)
+				}
+				return path
+			},
+			wantErr: true,
+		},
+		{
+			name: "a readable file in a read-only directory fails the removal",
+			setup: func(t *testing.T, dir string) string {
+				if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+					t.Skip("removal from a read-only directory succeeds on Windows and as root")
+				}
+				locked := filepath.Join(dir, "locked")
+				if err := os.Mkdir(locked, 0o755); err != nil {
+					t.Fatalf("mkdir: %v", err)
+				}
+				path := filepath.Join(locked, "stop.signal")
+				if err := os.WriteFile(path, []byte(reedengine.DiscoverStopMarker), 0o644); err != nil {
+					t.Fatalf("write signal: %v", err)
+				}
+				if err := os.Chmod(locked, 0o555); err != nil {
+					t.Fatalf("chmod: %v", err)
+				}
+				t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+				return path
+			},
+			wantErr: true,
+		},
 	}
-	if consumed, err := consumeDiscoverSignal(present); err != nil || !consumed {
-		t.Errorf("consumeDiscoverSignal(present) = %v, %v; want true, nil", consumed, err)
-	}
-	if _, err := os.Stat(present); !errors.Is(err, fs.ErrNotExist) {
-		t.Errorf("signal file after consume: stat error = %v, want it removed", err)
-	}
-
-	absent := filepath.Join(dir, "absent.signal")
-	if consumed, err := consumeDiscoverSignal(absent); err != nil || consumed {
-		t.Errorf("consumeDiscoverSignal(absent) = %v, %v; want false, nil", consumed, err)
-	}
-	if _, err := os.Stat(absent); !errors.Is(err, fs.ErrNotExist) {
-		t.Errorf("absent signal path after consume: stat error = %v, want nothing left behind", err)
-	}
-
-	unremovable := filepath.Join(dir, "unremovable")
-	if err := os.MkdirAll(filepath.Join(unremovable, "child"), 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	if consumed, err := consumeDiscoverSignal(unremovable); err == nil || consumed {
-		t.Errorf("consumeDiscoverSignal(non-empty dir) = %v, %v; want false and an error", consumed, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			path := tt.setup(t, t.TempDir())
+			consumed, stop, err := consumeDiscoverSignal(path)
+			if (err != nil) != tt.wantErr || consumed != tt.wantConsumed || stop != tt.wantStop {
+				t.Errorf("consumeDiscoverSignal = %v, %v, %v; want %v, %v, error=%v", consumed, stop, err, tt.wantConsumed, tt.wantStop, tt.wantErr)
+			}
+			_, statErr := os.Stat(path)
+			if removed := errors.Is(statErr, fs.ErrNotExist); removed != tt.wantRemoved {
+				t.Errorf("signal path removed = %v, want %v (stat error %v)", removed, tt.wantRemoved, statErr)
+			}
+		})
 	}
 }
 
@@ -626,26 +711,128 @@ func TestExeReplaced(t *testing.T) {
 	}
 }
 
-// TestWatchdogCmd_ExitsZeroBeforeOrInsteadOfLooping drives watchdogCmd against a temp hub for the two ways it returns without running a loop to its end.
+// listerEnv is what a scripted session lister sees on one call.
+type listerEnv struct {
+	// call is the 1-based number of this call.
+	call int
+	// goneCall is the number of the first call that found the stop marker consumed, 0 while none has.
+	goneCall int
+	// writeStop writes the stop marker onto the discover signal path, the way Engine.writeDiscoverStop does.
+	writeStop func()
+	cancel    context.CancelFunc
+}
+
+// TestWatchdogCmd_ExitsZeroBeforeOrInsteadOfLooping is the table of watchdogCmd's exit paths.
 // Losing the lock race returns nil, respawns nothing and writes no trace file at the default verbosity.
-// A replaced binary releases the lock before it respawns, passes the hub, tmux and shell values and suppress true under go test, and logs the retirement.
+// A replaced binary with a live hub releases the lock before it respawns and passes the hub, tmux and shell values and suppress true under go test.
+// A replaced binary, an idle-cycle exit or a stop respawns only when the re-check after the loop still finds a session, and a cancelled context respawns nothing.
+// Each row asserts its own trace lines.
 // It points the process-global durable log sink at the hub's logs directory, so it is not parallel.
 func TestWatchdogCmd_ExitsZeroBeforeOrInsteadOfLooping(t *testing.T) {
 	const tmuxPath, shellPath = "/fixed/tmux", "/fixed/shell"
+	const manyCycles = 1000000
+	var idle, live = []string(nil), []string{"ghost"}
 	type respawnCall struct {
 		hub, tmux, shell string
 		suppress         bool
 		lockWasFree      bool
 	}
 	tests := []struct {
-		name         string
-		holdLock     bool
-		replacedExe  bool
+		name        string
+		holdLock    bool
+		replacedExe bool
+		idleCycles  int
+		// lister answers each session listing; nil answers idle.
+		lister func(env listerEnv) []string
+		// wantRunning has the test wait for the stop-woken cycle and two more lister calls, assert the command is still running, then cancel it.
+		wantRunning  bool
 		wantRespawns int
-		wantTrace    string
+		// wantNoCallsAfterGone asserts the lister is never called after the call that found the marker consumed.
+		wantNoCallsAfterGone bool
+		wantTrace            []string
+		wantNoTrace          []string
 	}{
-		{name: "lock already held", holdLock: true},
-		{name: "binary replaced", replacedExe: true, wantRespawns: 1, wantTrace: "reed: watchdog retired"},
+		{name: "lock already held", holdLock: true, idleCycles: watchdogHubIdleCycles},
+		{
+			name: "binary replaced, every listing affirmative", replacedExe: true, idleCycles: watchdogHubIdleCycles,
+			lister:       func(listerEnv) []string { return live },
+			wantRespawns: 1,
+			wantTrace:    []string{"reed: watchdog retired"},
+		},
+		{
+			name: "idle-cycle exit", idleCycles: watchdogHubIdleCycles,
+			wantNoTrace: []string{"successor was spawned"},
+			wantTrace:   []string{"exiting after consecutive idle discovery cycles"},
+		},
+		{
+			name: "idle-cycle exit, re-check affirmative", idleCycles: watchdogHubIdleCycles,
+			lister: func(env listerEnv) []string {
+				if env.call > watchdogHubIdleCycles {
+					return live
+				}
+				return idle
+			},
+			wantRespawns: 1,
+			wantTrace:    []string{"exiting after consecutive idle discovery cycles", "a successor was spawned for a live hub"},
+		},
+		{
+			name: "stop with an idle listing", idleCycles: manyCycles,
+			lister: func(env listerEnv) []string {
+				if env.call == 1 {
+					env.writeStop()
+				}
+				return idle
+			},
+			wantTrace:   []string{"exiting on a stop request"},
+			wantNoTrace: []string{"successor was spawned", "exiting after consecutive idle"},
+		},
+		{
+			name: "stop with an affirmative listing", idleCycles: manyCycles,
+			lister: func(env listerEnv) []string {
+				if env.call == 1 {
+					env.writeStop()
+				}
+				return live
+			},
+			wantRunning: true,
+			wantNoTrace: []string{"successor was spawned", "exiting on a stop request"},
+		},
+		{
+			name: "stop with an idle listing and a cancelled context", idleCycles: manyCycles,
+			lister: func(env listerEnv) []string {
+				switch {
+				case env.call == 1:
+					env.writeStop()
+					return idle
+				case env.goneCall == 0:
+					return idle
+				case env.call == env.goneCall:
+					env.cancel()
+					return idle
+				default:
+					return live
+				}
+			},
+			wantNoCallsAfterGone: true,
+			wantTrace:            []string{"exiting on a stop request"},
+			wantNoTrace:          []string{"successor was spawned"},
+		},
+		{
+			name: "binary replaced, idle cycle listing and idle re-check", replacedExe: true, idleCycles: manyCycles,
+			wantTrace:   []string{"retires on a replaced binary with no successor"},
+			wantNoTrace: []string{"watchdog retired", "successor was spawned"},
+		},
+		{
+			name: "binary replaced, idle cycle listing and affirmative re-check", replacedExe: true, idleCycles: manyCycles,
+			lister: func(env listerEnv) []string {
+				if env.call > 1 {
+					return live
+				}
+				return idle
+			},
+			wantRespawns: 1,
+			wantTrace:    []string{"retires on a replaced binary with no successor", "a successor was spawned for a live hub"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -659,6 +846,7 @@ func TestWatchdogCmd_ExitsZeroBeforeOrInsteadOfLooping(t *testing.T) {
 				t.Fatalf("mkdir scratch: %v", err)
 			}
 			lockPath := filepath.Join(scratch, watchdogLockFileName)
+			signalPath := filepath.Join(scratch, reedengine.DiscoverSignalFileName)
 			if tt.holdLock {
 				held, acquired, err := lock.TryAcquireWriteLock(lockPath)
 				if err != nil || !acquired {
@@ -673,9 +861,23 @@ func TestWatchdogCmd_ExitsZeroBeforeOrInsteadOfLooping(t *testing.T) {
 					t.Fatalf("write binary: %v", err)
 				}
 			}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
 			stats := 0
 			var respawns []respawnCall
-			timing := watchdogTiming{DiscoveryCycle: time.Millisecond, DiscoveryCeiling: time.Millisecond, IdleCycles: watchdogHubIdleCycles, OrphanGoneCycles: watchdogOrphanGoneCycles}
+			var calls, goneCall atomic.Int32
+			var stopWritten atomic.Bool
+			env := listerEnv{
+				cancel: cancel,
+				writeStop: func() {
+					if err := fsx.AtomicWriteBytes(signalPath, []byte(reedengine.DiscoverStopMarker)); err != nil {
+						t.Errorf("write the stop marker: %v", err)
+					}
+					stopWritten.Store(true)
+				},
+			}
+			timing := watchdogTiming{DiscoveryCycle: time.Millisecond, DiscoveryCeiling: time.Millisecond, StopFloor: time.Millisecond, IdleCycles: tt.idleCycles, OrphanGoneCycles: 1000}
 			c := &reedCLI{
 				watchdogTiming: &timing,
 				watchdogExeStat: func() (os.FileInfo, error) {
@@ -692,13 +894,47 @@ func TestWatchdogCmd_ExitsZeroBeforeOrInsteadOfLooping(t *testing.T) {
 					}
 					respawns = append(respawns, respawnCall{hub: hubPath, tmux: tmux, shell: shell, suppress: suppress, lockWasFree: err == nil && acquired})
 				},
+				watchdogListSessions: func(string, string) ([]string, error) {
+					call := env
+					call.call = int(calls.Add(1))
+					if _, err := os.Stat(signalPath); stopWritten.Load() && errors.Is(err, fs.ErrNotExist) {
+						goneCall.CompareAndSwap(0, int32(call.call))
+					}
+					call.goneCall = int(goneCall.Load())
+					if tt.lister == nil {
+						return idle, nil
+					}
+					return tt.lister(call), nil
+				},
 			}
 			cmd := c.watchdogCmd()
 			cmd.SetOut(&bytes.Buffer{})
 			cmd.SetArgs([]string{"--hub-path", hub, "--tmux", tmuxPath, "--shell", shellPath})
+			done := make(chan error, 1)
+			go func() { done <- cmd.ExecuteContext(ctx) }()
 
-			if err := cmd.ExecuteContext(context.Background()); err != nil {
-				t.Fatalf("watchdogCmd returned %v, want nil", err)
+			if tt.wantRunning {
+				deadline := time.Now().Add(10 * time.Second)
+				for gone := goneCall.Load(); gone == 0 || calls.Load() < gone+2; gone = goneCall.Load() {
+					if time.Now().After(deadline) {
+						t.Fatalf("lister calls = %d, marker consumed at call %d; want the command to run on past a consumed stop", calls.Load(), gone)
+					}
+					time.Sleep(5 * time.Millisecond)
+				}
+				select {
+				case err := <-done:
+					t.Fatalf("watchdogCmd returned %v after a stop with an affirmative listing, want it still running", err)
+				default:
+				}
+				cancel()
+			}
+			select {
+			case err := <-done:
+				if err != nil {
+					t.Fatalf("watchdogCmd returned %v, want nil", err)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("watchdogCmd did not return within 10s")
 			}
 
 			if len(respawns) != tt.wantRespawns {
@@ -709,6 +945,9 @@ func TestWatchdogCmd_ExitsZeroBeforeOrInsteadOfLooping(t *testing.T) {
 				if respawns[0] != want {
 					t.Errorf("respawn call = %+v, want %+v", respawns[0], want)
 				}
+			}
+			if tt.wantNoCallsAfterGone && calls.Load() != goneCall.Load() {
+				t.Errorf("lister calls = %d, want none after the call that found the marker consumed (%d)", calls.Load(), goneCall.Load())
 			}
 			var trace strings.Builder
 			entries, err := os.ReadDir(fabricengine.HubLogsDir(hub))
@@ -722,14 +961,23 @@ func TestWatchdogCmd_ExitsZeroBeforeOrInsteadOfLooping(t *testing.T) {
 				}
 				trace.Write(body)
 			}
-			if tt.wantTrace == "" {
-				if len(entries) != 0 {
-					t.Errorf("hub logs directory holds %d files, want none at the default verbosity", len(entries))
-				}
-				return
+			if tt.holdLock && len(entries) != 0 {
+				t.Errorf("hub logs directory holds %d files, want none at the default verbosity", len(entries))
 			}
-			if !strings.Contains(trace.String(), tt.wantTrace) {
-				t.Errorf("trace = %q, want it to hold %q", trace.String(), tt.wantTrace)
+			for _, want := range tt.wantTrace {
+				if !strings.Contains(trace.String(), want) {
+					t.Errorf("trace = %q, want it to hold %q", trace.String(), want)
+				}
+			}
+			for _, unwanted := range tt.wantNoTrace {
+				if strings.Contains(trace.String(), unwanted) {
+					t.Errorf("trace = %q, want it to omit %q", trace.String(), unwanted)
+				}
+			}
+			if tt.wantRunning {
+				if _, err := os.Stat(signalPath); !errors.Is(err, fs.ErrNotExist) {
+					t.Errorf("stop marker after the run: stat error = %v, want it consumed", err)
+				}
 			}
 		})
 	}

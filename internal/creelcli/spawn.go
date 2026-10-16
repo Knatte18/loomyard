@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
@@ -45,16 +46,17 @@ func openAppendCapped(path string) (*os.File, error) {
 	return file, nil
 }
 
-// spawnDaemon starts `<this binary> creel daemon --hub-path <hub>` detached from the hub directory, with null stdin and stdout and its stderr appended to the log at logPath, and returns its pid.
+// spawnDaemon starts `<this binary> creel daemon --hub-path <hub>` detached from the hub directory, with null stdin and stdout and its stderr appended to the log at logPath, and returns its pid with the signal of its exit.
+// A background wait on the daemon reaps it and sends that signal when it exits.
 // A log that cannot be opened leaves the daemon's stderr null.
 // Under go test it starts nothing and returns an error, so no test re-executes the test binary.
-func spawnDaemon(hubPath, logPath string) (int, error) {
+func spawnDaemon(hubPath, logPath string) (creelengine.Spawn, error) {
 	if testing.Testing() {
-		return 0, errors.New("creel: the daemon is not spawned under go test")
+		return creelengine.Spawn{}, errors.New("creel: the daemon is not spawned under go test")
 	}
 	exe, err := os.Executable()
 	if err != nil {
-		return 0, fmt.Errorf("creel: resolve this binary: %w", err)
+		return creelengine.Spawn{}, fmt.Errorf("creel: resolve this binary: %w", err)
 	}
 	cmd := exec.Command(exe, "creel", "daemon", "--hub-path", hubPath)
 	cmd.Dir = hubPath
@@ -63,10 +65,24 @@ func spawnDaemon(hubPath, logPath string) (int, error) {
 		cmd.Stderr = logFile
 	}
 	proc.Detach(cmd)
-	// A detached start with no wait: the spawn is logged and there is no teardown to observe.
 	logger.Info("creel: spawning the detached hub daemon", "exe", exe, "hub", hubPath, "log", logPath)
 	if err := cmd.Start(); err != nil {
-		return 0, fmt.Errorf("start %s: %w", exe, err)
+		return creelengine.Spawn{}, fmt.Errorf("start %s: %w", exe, err)
 	}
-	return cmd.Process.Pid, nil
+	return creelengine.Spawn{PID: cmd.Process.Pid, Exited: reapDaemon(cmd)}, nil
+}
+
+// reapDaemon waits on the started command in the background, logs its exit with the pid and the exit status, and sends one SpawnExit.
+// LostRace is true exactly when the exit status is 0: the daemon exits 0 when another daemon holds the lock or it stops cleanly, and 1 when its start fails.
+// A wait error that is no exit code reads as not a lost race.
+func reapDaemon(cmd *exec.Cmd) <-chan creelengine.SpawnExit {
+	exited := make(chan creelengine.SpawnExit, 1)
+	pid := cmd.Process.Pid
+	go func() {
+		waitErr := cmd.Wait()
+		status := cmd.ProcessState.ExitCode()
+		logger.Info("creel: the detached hub daemon exited", "pid", pid, "status", status, "error", waitErr)
+		exited <- creelengine.SpawnExit{LostRace: waitErr == nil && status == 0}
+	}()
+	return exited
 }

@@ -15,7 +15,9 @@ const (
 	// sweepBackoffBase is the wait between sweeps after a change.
 	sweepBackoffBase = 30 * time.Second
 	// sweepBackoffCeiling is the longest the wait between sweeps grows to while the strand set holds.
-	sweepBackoffCeiling = 4 * time.Minute
+	sweepBackoffCeiling = 50 * time.Second
+	// sweepConfirmInterval is the wait after a sweep that missed a holder for the first time, so the confirming sweep follows fast.
+	sweepConfirmInterval = 10 * time.Second
 	// goneAfterSweeps is how many successful sweeps in a row must miss a holder before it counts as gone.
 	goneAfterSweeps = 2
 )
@@ -23,14 +25,18 @@ const (
 // sweeper is the sweep loop's memory between sweeps.
 type sweeper struct {
 	// absent counts the successful sweeps in a row that found a holder in no reed state.
-	absent    map[string]int
-	names     string
-	haveNames bool
-	lastError string
+	absent map[string]int
+	// confirming is set from a sweep that missed a holder for the first time until the next successful listing.
+	confirming bool
+	names      string
+	haveNames  bool
+	lastError  string
 }
 
 // sweepLoop sweeps while unread mail or a queued inject exists.
-// The wait starts at 30 seconds and doubles to a 4-minute ceiling while the strand-name set holds, and it returns to the base on a change of that set, a new post or inject, or a failed sweep.
+// The wait starts at 30 seconds and doubles to a 50-second ceiling while the strand-name set holds, and it returns to the base on a change of that set or a failed sweep.
+// A sweep that misses a holder for the first time is followed by a confirming sweep after 10 seconds, whatever else would set the wait.
+// A new post or inject shortens a wait to the base when more is left, and never lengthens one; a pending confirm keeps its deadline.
 func (s *Scheduler) sweepLoop() {
 	defer s.wg.Done()
 	state := &sweeper{absent: map[string]int{}}
@@ -41,6 +47,7 @@ func (s *Scheduler) sweepLoop() {
 	for {
 		if !s.store.sweepNeeded() {
 			idle = true
+			state.confirming = false
 			select {
 			case <-s.sweepWake:
 				wait = sweepBackoffBase
@@ -52,6 +59,7 @@ func (s *Scheduler) sweepLoop() {
 		if idle {
 			seq, idle = s.store.mailSequence(), false
 		}
+		deadline := s.clock.Now().Add(wait)
 		timer := s.clock.After(wait)
 	waiting:
 		for {
@@ -60,37 +68,56 @@ func (s *Scheduler) sweepLoop() {
 				break waiting
 			case <-s.sweepWake:
 				if now := s.store.mailSequence(); now != seq {
-					seq, wait = now, sweepBackoffBase
-					timer = nil
-					break waiting
+					seq = now
+					now := s.clock.Now()
+					left := max(deadline.Sub(now), 0)
+					switch {
+					case state.confirming:
+						timer = s.clock.After(left)
+					case left > sweepBackoffBase:
+						wait, deadline = sweepBackoffBase, now.Add(sweepBackoffBase)
+						timer = s.clock.After(sweepBackoffBase)
+					default:
+						wait = sweepBackoffBase
+					}
 				}
 			case <-s.stop:
 				return
 			}
 		}
-		if timer == nil {
-			continue
-		}
-		switch ok, changed := s.sweepOnce(state); {
-		case !ok, changed:
+		ok, changed, firstMiss := s.sweepOnce(state)
+		switch {
+		case firstMiss:
+			wait, state.confirming = sweepConfirmInterval, true
+		case !ok && state.confirming:
+			wait = sweepConfirmInterval
+		case !ok:
 			wait = sweepBackoffBase
 		default:
-			wait = min(wait*2, sweepBackoffCeiling)
+			if state.confirming {
+				wait = sweepBackoffBase
+			}
+			state.confirming = false
+			if changed {
+				wait = sweepBackoffBase
+			} else {
+				wait = min(wait*2, sweepBackoffCeiling)
+			}
 		}
 	}
 }
 
 // sweepOnce lists the strands and moves what the gone holders hold.
-// It reports whether the listing succeeded, and whether the strand-name set differs from the previous successful sweep's.
+// It reports whether the listing succeeded, whether the strand-name set differs from the previous successful sweep's, and whether some holder was missed for the first time in a row.
 // A failed listing moves nothing and counts toward no streak.
-func (s *Scheduler) sweepOnce(state *sweeper) (ok, changed bool) {
+func (s *Scheduler) sweepOnce(state *sweeper) (ok, changed, firstMiss bool) {
 	strands, err := s.delivery.Strands()
 	if err != nil {
 		if state.lastError != err.Error() {
 			state.lastError = err.Error()
 			logger.Warn("creel sweep: could not list the hub's strands", "error", err)
 		}
-		return false, false
+		return false, false, false
 	}
 	state.lastError = ""
 	names := make([]string, len(strands))
@@ -111,6 +138,7 @@ func (s *Scheduler) sweepOnce(state *sweeper) (ok, changed bool) {
 			continue
 		}
 		state.absent[holder]++
+		firstMiss = firstMiss || state.absent[holder] == 1
 		if state.absent[holder] < goneAfterSweeps {
 			continue
 		}
@@ -124,7 +152,7 @@ func (s *Scheduler) sweepOnce(state *sweeper) (ok, changed bool) {
 			delete(state.absent, holder)
 		}
 	}
-	return true, changed
+	return true, changed, firstMiss
 }
 
 func contains(names []string, name string) bool {

@@ -51,7 +51,7 @@ type Idleness struct {
 	// Idle reports whether the strand's agent may be typed into.
 	Idle bool
 	// Stall names why a not-idle strand cannot take typed input.
-	// It is empty on an idle answer and on any not-idle reading that names no reason, such as a running turn, a dialog or an active operator.
+	// It is empty on an idle answer and on any not-idle reading that names no reason, such as a running turn or an active operator.
 	Stall Stall
 }
 
@@ -63,6 +63,8 @@ const (
 	StallTooShort Stall = "too-short"
 	// StallDraft means the strand's input box holds a draft.
 	StallDraft Stall = "draft"
+	// StallNoInputBox means the strand's pane shows no input box.
+	StallNoInputBox Stall = "no-input-box"
 )
 
 // Reason renders the stall for a reader, with the way forward where there is one.
@@ -73,6 +75,8 @@ func (s Stall) Reason() string {
 		return "the pane is too short to show the input box; way forward: give the strand's pane more rows, as `lyx reed attach` from a taller terminal does"
 	case StallDraft:
 		return "the input box holds a draft; the delivery waits until it is sent or cleared"
+	case StallNoInputBox:
+		return "the pane shows no input box: it runs no agent, or a dialog covers the box, and the delivery waits until the box shows"
 	default:
 		return string(s)
 	}
