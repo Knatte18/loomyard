@@ -246,6 +246,19 @@ func TestScheduler_Reminders(t *testing.T) {
 			if got := len(e.typed(beta)); got != sent+1 {
 				t.Errorf("a new message was not reminded at once: %d sent; want %d", got, sent+1)
 			}
+			var steps []int
+			for _, entry := range e.store.Log(creelengine.LogFilter{To: beta}) {
+				if entry.Event != "reminded" {
+					continue
+				}
+				if len(entry.Unread) == 0 {
+					t.Errorf("reminded entry %+v lists no unread ids", entry)
+				}
+				steps = append(steps, entry.Step)
+			}
+			if want := []int{0, 1, 2, 3, 4, 5, 6, 0}; !slices.Equal(steps, want) {
+				t.Errorf("reminded steps = %v; want %v", steps, want)
+			}
 		}},
 		{"TypedReminderClearsTheStall", func(t *testing.T, e *env) {
 			e.del.SetStall(beta, creelengine.StallDraft)

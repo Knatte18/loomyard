@@ -315,6 +315,13 @@ func TestCreelCLI(t *testing.T) {
 		if injected.code != 0 || injected.fields["outcome"] != string(creelengine.OutcomeInjected) {
 			t.Errorf("creel inject --wait on a send that lands = (%d, %q); want exit 0 injected", injected.code, injected.raw)
 		}
+		external, err := agentname.FormatProgram(r.short, agentname.External)
+		if err != nil {
+			t.Fatalf("FormatProgram: %v", err)
+		}
+		if injected.fields["sender"] != external {
+			t.Errorf("creel inject --wait printed sender %v; want %q", injected.fields["sender"], external)
+		}
 
 		r.delivery.SetSendError(creelengine.ErrNotLanded)
 		unconfirmed := runCreel(r.cwd, "inject", "--wait", alpha, "/clear")
@@ -347,6 +354,8 @@ func TestCreelCLI(t *testing.T) {
 		r.sweepLast()
 		if returned := awaitRun(t, waiting); returned.code != ExitReturnedUndelivered {
 			t.Errorf("creel post --wait-reply once the receiver left = (%d, %q); want exit %d", returned.code, returned.raw, ExitReturnedUndelivered)
+		} else if returned.fields["sender"] != external {
+			t.Errorf("creel post --wait-reply printed sender %v; want %q", returned.fields["sender"], external)
 		}
 	})
 
@@ -446,6 +455,38 @@ func TestCreelCLI(t *testing.T) {
 		messages, _ = again.fields["messages"].([]any)
 		if again.code != 0 || len(messages) != 0 || !strings.Contains(again.raw, "nothing unread") {
 			t.Errorf("creel read after the acknowledged one = (%d, %q); want exit 0 saying nothing unread", again.code, again.raw)
+		}
+	})
+
+	t.Run("log shows a reminded event with its unread ids and step and no id", func(t *testing.T) {
+		r := newRig(t)
+		alpha := r.name("alpha:driver")
+		r.delivery.SetStrands(creelfake.LiveStrand(alpha))
+		r.startDaemon(t)
+
+		post := runCreel(r.cwd, "post", alpha, "hello")
+		if post.code != 0 {
+			t.Fatalf("creel post = (%d, %q); want exit 0", post.code, post.raw)
+		}
+		r.awaitLogged(t, "reminded")
+		r.clock.AwaitWaitsWhere(1, isProbeWait)
+		r.clock.Advance(5 * time.Minute)
+		r.awaitLogged(t, `"step":1`)
+		var reminded map[string]any
+		entries, _ := runCreel(r.cwd, "log").fields["log"].([]any)
+		for _, entry := range entries {
+			if fields, _ := entry.(map[string]any); fields["event"] == "reminded" && fields["step"] != nil {
+				reminded = fields
+			}
+		}
+		if reminded == nil {
+			t.Fatalf("creel log holds no reminded event with a step: %v", entries)
+		}
+		if _, hasID := reminded["id"]; hasID {
+			t.Errorf("reminded event = %v; want no id", reminded)
+		}
+		if unread, _ := reminded["unread"].([]any); len(unread) != 1 || unread[0] != post.fields["id"] || reminded["step"] != float64(1) {
+			t.Errorf("reminded event = %v; want unread [%v] at step 1", reminded, post.fields["id"])
 		}
 	})
 

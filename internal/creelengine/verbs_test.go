@@ -583,6 +583,37 @@ func TestStore_InjectAndHold(t *testing.T) {
 				t.Errorf("Release with no hold journaled %v", entries)
 			}
 		}},
+		{"Release_OfAnUnknownNameIsRefusedNamingTheStrandsThatExist", func(t *testing.T, e *env) {
+			_, err := e.store.Release(program(batten), "ly:ghost:driver")
+			wantErr(t, err, "unknown strand", alpha, beta)
+			if entries := e.store.Log(creelengine.LogFilter{}); len(entries) != 0 {
+				t.Errorf("a refused Release journaled %v", entries)
+			}
+		}},
+		{"Release_EndsTheOwnersHoldOnAStrandThatIsGone", func(t *testing.T, e *env) {
+			if _, err := e.store.Hold(program(batten), alpha, time.Hour); err != nil {
+				t.Fatalf("Hold: %v", err)
+			}
+			e.del.SetStrands(creelfake.LiveStrand(beta), creelfake.LiveStrand(orch), creelfake.LiveStrand(orch2))
+			released, err := e.store.Release(program(batten), alpha)
+			if err != nil || !released {
+				t.Errorf("Release on a removed strand = %v, %v; want the hold released", released, err)
+			}
+			if got := eventsOf(e.store.Log(creelengine.LogFilter{To: alpha})); !slices.Equal(got, []string{"held", "released"}) {
+				t.Errorf("events = %v; want held, released", got)
+			}
+		}},
+		{"Release_WithNoHoldAndAnUnreadableStrandListingReturnsTheReadError", func(t *testing.T, e *env) {
+			e.del.SetStrandsError(errors.New("reed state is corrupt"))
+			released, err := e.store.Release(program(batten), alpha)
+			wantErr(t, err, "could not read the hub's strands", "reed state is corrupt")
+			if released {
+				t.Errorf("Release = true with the strand listing unreadable; want false")
+			}
+			if entries := e.store.Log(creelengine.LogFilter{}); len(entries) != 0 {
+				t.Errorf("a failed Release journaled %v", entries)
+			}
+		}},
 		{"Hold_OnOrchIsAcceptedAndJournaled", func(t *testing.T, e *env) {
 			for _, name := range []string{orch, orch2} {
 				if _, err := e.store.Hold(program(batten), name, time.Minute); err != nil {

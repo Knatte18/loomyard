@@ -108,7 +108,8 @@
 // # Holds
 //
 // hold keeps a receiver's deliveries to the holder's own for up to an hour: only the owner's injects pass and only the owner's mail is reminded, and a mail still arrives.
-// The same owner holding again renews it, another sender's hold on a held receiver is refused, and release ends the owner's hold.
+// The same owner holding again renews it, another sender's hold on a held receiver is refused, and release ends the owner's hold even on a strand removed since.
+// release refuses a name that neither holds nor exists, listing the strands that exist.
 //
 // # Pause
 //

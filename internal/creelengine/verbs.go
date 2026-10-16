@@ -554,15 +554,16 @@ func (s *Store) Hold(sender Sender, receiver string, duration time.Duration) (Ho
 	return result, err
 }
 
-// Release ends the caller's hold on receiver and reports whether there was one.
-// Another sender's hold is refused, and a receiver with no live hold changes nothing.
+// Release ends the caller's hold on receiver and reports whether there was one, even when the strand has since been removed.
+// Another sender's hold is refused; with no live hold, a name that is no existing strand is refused listing the strands that exist, and an existing strand changes nothing.
 func (s *Store) Release(sender Sender, receiver string) (bool, error) {
-	var released bool
+	var released, held bool
 	err := s.do(func() error {
 		hold := s.liveHoldLocked(receiver)
 		if hold == nil {
 			return nil
 		}
+		held = true
 		if hold.Owner != sender.Name {
 			return holdRefusal(receiver, hold)
 		}
@@ -573,5 +574,9 @@ func (s *Store) Release(sender Sender, receiver string) (bool, error) {
 		s.wakeLocked(receiver)
 		return nil
 	})
-	return released, err
+	if err != nil || held {
+		return released, err
+	}
+	_, err = s.strandTarget(receiver)
+	return false, err
 }

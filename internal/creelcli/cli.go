@@ -305,8 +305,9 @@ func injectCmd() *cobra.Command {
 		Short:       "type a line into an idle strand's pane",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `inject queues the text to be typed into the receiver's pane the moment it is
-idle, and prints the inject's id. Only the orch, a program and an external
-caller may inject; any other strand posts instead.
+idle, and prints the inject's id. EXTERNAL callers, programs and orch strands
+may inject, interrupt and hold on any strand, and any other strand on its own
+strand only.
 
 --interrupt stops the receiver's running turn first. --ttl sets how long the
 inject waits for an idle receiver before it expires. With --wait the call
@@ -362,7 +363,8 @@ func interruptCmd() *cobra.Command {
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `interrupt sends the guarded interrupt to the receiver's running turn and
 prints whether it stopped one. A receiver with no running turn is sent
-nothing. Only the orch, a program and an external caller may interrupt.
+nothing. EXTERNAL callers, programs and orch strands may inject, interrupt and
+hold on any strand, and any other strand on its own strand only.
 
 Example:
   lyx creel interrupt ly:impl`,
@@ -561,13 +563,22 @@ func parseSince(value string, now time.Time) (time.Time, error) {
 
 // logEntryFields renders a journal event, leaving out the fields it does not carry.
 func logEntryFields(entry creelengine.LogEntry) map[string]any {
-	fields := map[string]any{"event": entry.Event, "at": entry.At, "id": entry.ID}
+	fields := map[string]any{"event": entry.Event, "at": entry.At}
+	if entry.ID != 0 {
+		fields["id"] = entry.ID
+	}
 	for key, value := range map[string]string{
 		"from": entry.From, "to": entry.To, "by": entry.By, "receiver": entry.Receiver, "subject": entry.Subject, "notice": entry.Notice, "reason": entry.Reason,
 	} {
 		if value != "" {
 			fields[key] = value
 		}
+	}
+	if len(entry.Unread) > 0 {
+		fields["unread"] = entry.Unread
+	}
+	if entry.Step != 0 {
+		fields["step"] = entry.Step
 	}
 	return fields
 }
@@ -582,7 +593,8 @@ func holdCmd() *cobra.Command {
 		Long: `hold keeps the receiver's deliveries to the caller's: only the caller's injects
 pass and only its mail is reminded, until the hold lapses after --for or
 "lyx creel release". Holding again renews it; another sender's hold on a held
-receiver is refused.
+receiver is refused. EXTERNAL callers, programs and orch strands may inject,
+interrupt and hold on any strand, and any other strand on its own strand only.
 
 Example:
   lyx creel hold ly:impl --for 10m`,
@@ -611,7 +623,9 @@ func releaseCmd() *cobra.Command {
 		Short:       "end the caller's hold on a receiver",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `release ends the caller's hold on the receiver and prints whether there was
-one to end.
+one to end. An unknown name is refused with the names that exist. EXTERNAL
+callers, programs and orch strands may inject, interrupt and hold on any
+strand, and any other strand on its own strand only.
 
 Example:
   lyx creel release ly:impl`,

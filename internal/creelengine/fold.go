@@ -117,6 +117,10 @@ type LogEntry struct {
 	Notice   string
 	// Reason is the stall a stalled event names.
 	Reason string
+	// Unread is the message ids a reminded event listed, oldest first.
+	Unread []int64
+	// Step is the backoff step a reminded event was sent at.
+	Step int
 }
 
 // pool is the state folded from the journal.
@@ -355,6 +359,7 @@ func (p *pool) logEntryFor(rec record, day string) LogEntry {
 	entry := LogEntry{
 		Day: day, Event: rec.Event, At: rec.At, ID: rec.ID,
 		From: rec.From, To: rec.To, By: rec.By, Receiver: rec.Receiver, Notice: rec.Notice, Reason: rec.Reason,
+		Unread: rec.Unread, Step: rec.Step,
 	}
 	if msg := p.messages[rec.ID]; msg != nil {
 		entry.From, entry.Subject = msg.From, msg.Subject
