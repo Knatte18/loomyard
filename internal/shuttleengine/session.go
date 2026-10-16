@@ -175,7 +175,7 @@ func (r *Runner) CompactedSince(guid string, turnEnd Event, since time.Time) (Co
 // A ready reading beside a pane that does not show the provider idle still answers idle, and logs the disagreement with the pane's last lines at Debug.
 // An unknown reading, and a strand with no run record, fall back to the pane probe, which logs the cause at Debug.
 // The engine is the one the run's record names, the set's default for a strand with no record.
-// TooShort and Draft are filled only for an answer that is not idle, on the pane fallback as on the readiness reading.
+// TooShort, Draft and NoInputBox are filled only for an answer that is not idle, on the pane fallback as on the readiness reading.
 func (r *Runner) SessionIdle(guid string) (IdleProbe, error) {
 	if r.toldErr != nil {
 		return IdleProbe{}, r.toldErr
@@ -217,16 +217,18 @@ func (r *Runner) SessionIdle(guid string) (IdleProbe, error) {
 			return IdleProbe{Idle: true}, nil
 		case !reading.unknown:
 			logger.Debug("shuttle: session idle probe held", "strandGUID", guid, "reason", reading.reason)
-			return IdleProbe{Reason: reading.reason, Draft: reading.draft != "", TooShort: reading.reason == readinessReasonPaneTooShort}, nil
+			return IdleProbe{Reason: reading.reason, Draft: reading.draft != "", TooShort: reading.reason == readinessReasonPaneTooShort, NoInputBox: reading.reason == readinessReasonNoInputBox}, nil
 		}
 		logger.Debug("shuttle: session readiness unknown, reading the pane", "strandGUID", guid, "cause", reading.cause)
 	}
 	probe := IdleProbe{Idle: cycler.IdleSession(capture)}
 	if !probe.Idle {
 		probe.TooShort = cycler.PaneTooShort(capture)
-		probe.Draft = strings.TrimSpace(readBox(engine, capture).text) != ""
+		box := readBox(engine, capture)
+		probe.Draft = strings.TrimSpace(box.text) != ""
+		probe.NoInputBox = box.reader && !box.read && !probe.TooShort
 	}
-	logger.Debug("shuttle: session idle probe", "strandGUID", guid, "idle", probe.Idle, "tooShort", probe.TooShort, "draft", probe.Draft)
+	logger.Debug("shuttle: session idle probe", "strandGUID", guid, "idle", probe.Idle, "tooShort", probe.TooShort, "draft", probe.Draft, "noInputBox", probe.NoInputBox)
 	return probe, nil
 }
 

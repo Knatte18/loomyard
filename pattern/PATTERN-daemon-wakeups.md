@@ -20,10 +20,10 @@ An unbounded wait is a loop that lives as long as a run or a session and has no 
 - the `--until-stop` waiter in `internal/shedverbs/loopwait.go`, whose event source is `internal/fswatch` on the run's steps directory and whose timer starts at the one-second floor,
 - the step watchdog in `internal/shedverbs/loopwatchdog.go`, which wakes at most once a second and backs off to a minute while the child shows no change,
 - the status panes' loop in `internal/statuspane/pane.go`, which polls from one second and backs off to eight seconds while the text shows no change,
-- creel's delivery workers in `internal/creelengine/deliver.go`, which probe from one second and double to eight seconds after every wake that delivers nothing, returning to one second on a new post, reply, forward, inject or release and on a wake that delivers,
-- creel's removed-holder sweep in `internal/creelengine/sweep.go`, which runs while mail or injects exist, from 30 seconds doubling to 4 minutes while the strand-name set is unchanged,
+- creel's delivery workers in `internal/creelengine/deliver.go`, which probe from one second and double to eight seconds after every wake that delivers nothing, returning to one second on a new post, reply, forward, inject or release and on a wake that delivers, and capping a live, unpaused receiver's wait at its soonest queued inject's remaining TTL, never below one second,
+- creel's removed-holder sweep in `internal/creelengine/sweep.go`, which runs while mail or injects exist, from 30 seconds doubling to 50 seconds while the strand-name set is unchanged, with a 10-second confirm after a first miss,
 - creel's daemon poll in `internal/creelengine/server.go`, which asks once a second whether its binary was replaced and whether the UTC day changed,
-- creel's waiting verbs in `internal/creelengine/client.go` and `server.go` (`post --wait-reply`, `inject --wait` and `read --wait`), which wait on their connection and reconnect from one second.
+- creel's waiting verbs in `internal/creelengine/client.go` and `server.go` (`post --wait-reply`, `inject --wait` and `read --wait`), which wait on their connection and reconnect from one second; the client's connect wait after a spawn also ends on the exit of the daemon it started, other than a lost start race.
 
 A bounded wait that ends within a minute is outside the rule.
 

@@ -37,6 +37,7 @@ type stubOps struct {
 	idle         bool
 	tooShort     bool
 	draft        bool
+	noInputBox   bool
 	sendErr      error
 	interruptErr error
 }
@@ -44,7 +45,7 @@ type stubOps struct {
 func (s *stubOps) Status() (reedengine.StatusResult, error) { return s.status, s.statusErr }
 
 func (s *stubOps) SessionIdle(string) (shuttleengine.IdleProbe, error) {
-	return shuttleengine.IdleProbe{Idle: s.idle, TooShort: s.tooShort, Draft: s.draft}, nil
+	return shuttleengine.IdleProbe{Idle: s.idle, TooShort: s.tooShort, Draft: s.draft, NoInputBox: s.noInputBox}, nil
 }
 
 func (s *stubOps) Send(string, string) error { return s.sendErr }
@@ -334,6 +335,9 @@ func TestHubDelivery(t *testing.T) {
 			{"too short", stubOps{tooShort: true}, creelengine.Idleness{Stall: creelengine.StallTooShort}},
 			{"draft", stubOps{draft: true}, creelengine.Idleness{Stall: creelengine.StallDraft}},
 			{"too short and draft", stubOps{tooShort: true, draft: true}, creelengine.Idleness{Stall: creelengine.StallTooShort}},
+			{"no input box", stubOps{noInputBox: true}, creelengine.Idleness{Stall: creelengine.StallNoInputBox}},
+			{"too short and no input box", stubOps{tooShort: true, noInputBox: true}, creelengine.Idleness{Stall: creelengine.StallTooShort}},
+			{"draft and no input box", stubOps{draft: true, noInputBox: true}, creelengine.Idleness{Stall: creelengine.StallDraft}},
 			{"not idle with no reason", stubOps{}, creelengine.Idleness{}},
 		}
 		for _, tt := range tests {
