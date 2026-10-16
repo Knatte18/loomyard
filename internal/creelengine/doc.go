@@ -7,6 +7,7 @@
 // Creel decides what is delivered and when, shuttle knows the provider and its idle check and safe send, and reed knows the pane and does the keystrokes: creel → shuttle → reed → tmux.
 // The engine imports neither reed nor shuttle, and every keystroke goes through the Delivery seam; `PATTERN-creel-store` pins that with an import scan.
 // Delivery lists the hub's strands, asks whether a strand is idle, asks whether a pause covers it, types one line into its pane and sends the guarded interrupt.
+// Its idle answer carries a stall reason when a not-idle pane waits on something the operator can act on, a pane too short for the input box or a draft in it, and the engine journals each change of that reason as a `stalled` record.
 // `internal/creelcli` implements it over the hub's worktrees, reed's persisted state and status, the pause record, and a shuttle runner built per worktree at each call.
 // Shuttle's idle check, verified send and guarded interrupt work on a strand with no run record, such as a session added by hand with `lyx reed add`.
 // Send fails with ErrBusy when the pane guard held the write and nothing was typed, and with ErrNotLanded when the text was typed but its landing was not confirmed.
@@ -20,10 +21,12 @@
 // It removes a socket file no listener answers, listens on Geometry.SocketPath, and serves one request per connection.
 // The socket sits in the user's lyxtemp root and is named creel-<shortname>-<h>.sock, where <h> is the first eight hex digits of the hub path's hash, so two hubs sharing a shortname never meet.
 // A client that finds no daemon starts one and connects up to ConnectAttempts times, waiting from one second and doubling to eight.
+// The detached daemon's stderr goes to Geometry.DaemonLogPath in the state directory, which opens with DaemonStartHeader and whose logger lines open with DaemonLogPrefix.
+// A client that gives up connecting names the socket and the log, and quotes the log's lines from the daemon it started.
 //
 // The protocol is JSON lines: a request line carrying the verb, the sender's claim and the verb's fields, and one or more response lines.
 // Every response carries the hub path, and the client refuses a socket that answers for another hub.
-// A waiting verb gets a pending response with its id at once and its outcome as a later response.
+// A waiting verb gets a pending response with its id at once and its outcome as a later response; a waiting inject also gets a progress response for each change of its receiver's stall, and its expired response carries the last stall.
 // A waiting call whose connection drops reconnects up to MaxReconnects times and resumes the same wait with wait-reply or wait-inject.
 // A read's response is acknowledged on the same connection, and the daemon answers the acknowledgement with one confirming line once it is journaled.
 //
@@ -92,10 +95,13 @@
 // Queued injects are typed before reminders, oldest first, except that an interrupt-queued inject goes ahead of the others, newest first.
 // A sending event is journaled before the line is typed.
 // The outcome is injected, unconfirmed when the send answered ErrNotLanded, so the line is never typed twice, or expired; a busy send is requeued untouched.
-// inject --wait answers with the outcome.
+// inject --wait answers with the outcome, and hears each change of its receiver's stall reason as a progress line on stderr.
+// An expired answer carries the stall that stood when the TTL ran out, and the `expired` record names it as its reason.
 // inject --interrupt first sends the guarded interrupt and queues the line at the head.
 //
 // interrupt sends the guarded interrupt at once, bypassing the queue, and reports whether it stopped a running turn.
+// The interrupt clears a prompt the provider restored, and a clear that fails after the key was sent still counts as sent.
+// No delivery reaches the receiver while the interrupt runs, its settles and its clear included, and the receiver's worker probes afresh once it ends.
 // A covering pause, an unreadable pause record and another sender's hold refuse it.
 //
 // EXTERNAL senders, programs and orch strands may inject, interrupt and hold on any strand; any other strand may do so on its own strand only.
@@ -104,7 +110,8 @@
 // # Holds
 //
 // hold keeps a receiver's deliveries to the holder's own for up to an hour: only the owner's injects pass and only the owner's mail is reminded, and a mail still arrives.
-// The same owner holding again renews it, another sender's hold on a held receiver is refused, and release ends the owner's hold.
+// The same owner holding again renews it, another sender's hold on a held receiver is refused, and release ends the owner's hold even on a strand removed since.
+// release refuses a name that neither holds nor exists, listing the strands that exist.
 //
 // # Pause
 //
@@ -130,6 +137,7 @@
 //
 // log lists the journal's events oldest first with their ids, parties, times and subjects, narrowed by --id, --from, --to and --since.
 // It carries no body field.
+// A `stalled` record names the receiver and the stall reason a delivery probe read, and is written once per change of reason while something is pending for the receiver.
 //
 // # Delivery loop
 //
@@ -137,6 +145,8 @@
 // A worker probes from a one-second base and doubles the wait to eight seconds after every probe that delivers nothing; a wake from the store or a probe that delivers returns it to the base, and the worker ends when nothing is pending.
 // A probe finds the strand, skips a dormant or paused one, and types the first queued inject, or under a hold the owner's; with none due it types the reminder.
 // Each delivery asks the seam whether the strand is idle first, and every wait goes through the Clock, so a test never waits out an interval.
+// Every idle answer feeds the stall journal: a new non-empty reason is journaled, a repeat is not, and a reading with no reason, a probe error or a typed line clears it with no record.
+// The inject TTL keeps running while a strand is stalled, live and unpaused.
 //
 // # Unbuilt: stages 2 and 3
 //

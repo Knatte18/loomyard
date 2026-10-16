@@ -44,6 +44,29 @@ type Store struct {
 	mailSeq uint64
 	// agedWritten maps an inject id to the consumed seconds its last aged event recorded.
 	agedWritten map[int64]int64
+	// stalls maps a receiver to the last stall a probe read for it and the clock time it was read.
+	stalls map[string]stallNote
+	// paneLocks maps a receiver to the mutex that serialises an interrupt of its pane with its deliveries.
+	paneLocks map[string]*sync.Mutex
+}
+
+// paneLock returns the one mutex of receiver's pane.
+// An interrupt holds it while the interrupt runs, and a worker holds it from before it asks whether the pane is idle until its send or reminder ends.
+func (s *Store) paneLock(receiver string) *sync.Mutex {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	lock := s.paneLocks[receiver]
+	if lock == nil {
+		lock = &sync.Mutex{}
+		s.paneLocks[receiver] = lock
+	}
+	return lock
+}
+
+// stallNote is the last stall read for a receiver.
+type stallNote struct {
+	stall Stall
+	at    time.Time
 }
 
 // OpenStore folds the journal under geom.JournalDir into a pool and opens the journal for appending.
@@ -59,6 +82,7 @@ func OpenStore(geom Geometry, delivery Delivery, clock Clock) (*Store, error) {
 	return &Store{
 		geom: geom, delivery: delivery, clock: clock, state: state, writer: writer,
 		reserved: map[int64]string{}, waiters: map[waitKey][]*Waiter{}, agedWritten: map[int64]int64{},
+		stalls: map[string]stallNote{}, paneLocks: map[string]*sync.Mutex{},
 	}, nil
 }
 
@@ -195,9 +219,18 @@ const (
 )
 
 // Outcome is the answer to a Waiter; Message is the reply or the returned message, and zero for the others.
+// Stall and StallAt are the receiver's stall standing when an inject expired, empty and zero when none stood.
 type Outcome struct {
 	Kind    OutcomeKind
 	Message Message
+	Stall   Stall
+	StallAt time.Time
+}
+
+// StallNote is a stall a probe read for a receiver and the time it was read.
+type StallNote struct {
+	Stall Stall
+	At    time.Time
 }
 
 type waitKind int
@@ -218,10 +251,29 @@ type waitKey struct {
 // Waiter is one registered wait; its channel receives the outcome once, and the wait ends there.
 type Waiter struct {
 	// C receives the outcome.
-	C     <-chan Outcome
-	ch    chan Outcome
-	store *Store
-	key   waitKey
+	C <-chan Outcome
+	// Progress receives the stall of the inject's receiver each time it changes; only a wait on an inject has one, and a newer note replaces an unread older one.
+	Progress <-chan StallNote
+	ch       chan Outcome
+	progress chan StallNote
+	store    *Store
+	key      waitKey
+}
+
+// notify hands note to the waiter's progress channel, replacing a note nobody has read.
+// It runs under the store's mutex, the only place that sends, so the slot is free after a drain.
+func (w *Waiter) notify(note StallNote) {
+	for {
+		select {
+		case w.progress <- note:
+			return
+		default:
+		}
+		select {
+		case <-w.progress:
+		default:
+		}
+	}
 }
 
 // Cancel unregisters the wait; a waiter already answered is unaffected.
@@ -243,9 +295,14 @@ func (w *Waiter) Cancel() {
 }
 
 // addWaiterLocked registers a wait on key, and answers it at once when its outcome already stands in the pool.
+// A wait on an inject also gets the stall standing for the inject's receiver as its first progress note.
 func (s *Store) addWaiterLocked(key waitKey) (*Waiter, error) {
 	ch := make(chan Outcome, 1)
 	waiter := &Waiter{C: ch, ch: ch, store: s, key: key}
+	if key.kind == waitInject {
+		waiter.progress = make(chan StallNote, 1)
+		waiter.Progress = waiter.progress
+	}
 	outcome, settled, err := s.settledOutcomeLocked(key)
 	if err != nil {
 		return nil, err
@@ -253,6 +310,13 @@ func (s *Store) addWaiterLocked(key waitKey) (*Waiter, error) {
 	if settled {
 		ch <- outcome
 		return waiter, nil
+	}
+	if key.kind == waitInject {
+		if entry := s.state.injects[key.id]; entry != nil {
+			if note, ok := s.stalls[entry.Receiver]; ok {
+				waiter.notify(StallNote{Stall: note.stall, At: note.at})
+			}
+		}
 	}
 	s.waiters[key] = append(s.waiters[key], waiter)
 	return waiter, nil

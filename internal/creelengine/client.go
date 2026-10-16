@@ -31,14 +31,15 @@ const (
 type Client struct {
 	geom  Geometry
 	claim Claim
-	// spawn starts the daemon detached; the client calls it at most once per connect.
-	spawn func() error
+	// spawn starts the daemon detached and answers its pid; the client calls it at most once per connect.
+	spawn func() (int, error)
 	clock Clock
 }
 
 // NewClient returns a Client for the hub in geom.
-// claim states who the caller says it is, and spawn starts the daemon when none answers; nil spawns nothing.
-func NewClient(geom Geometry, claim Claim, spawn func() error, clock Clock) *Client {
+// claim states who the caller says it is, and spawn starts the daemon when none answers and answers the pid it started; nil spawns nothing.
+// A client that gives up connecting after a spawn quotes that pid's lines from geom.DaemonLogPath.
+func NewClient(geom Geometry, claim Claim, spawn func() (int, error), clock Clock) *Client {
 	return &Client{geom: geom, claim: claim, spawn: spawn, clock: clock}
 }
 
@@ -51,6 +52,7 @@ func (e *connLostError) Unwrap() error { return e.err }
 
 // connect dials the daemon's socket.
 // When nothing answers it starts the daemon once and retries up to ConnectAttempts times, sleeping on the told clock from one second between tries.
+// When it gives up, its error names the socket and the daemon log and quotes the log's lines from that start.
 func (c *Client) connect() (net.Conn, error) {
 	conn, err := net.Dial("unix", c.geom.SocketPath)
 	if err == nil {
@@ -60,7 +62,8 @@ func (c *Client) connect() (net.Conn, error) {
 		return nil, &connLostError{fmt.Errorf("creel: no daemon answers on %s: %w", c.geom.SocketPath, err)}
 	}
 	logger.Info("creel: no daemon answers, starting one", "socket", c.geom.SocketPath)
-	if spawnErr := c.spawn(); spawnErr != nil {
+	pid, spawnErr := c.spawn()
+	if spawnErr != nil {
 		return nil, fmt.Errorf("creel: start the daemon for %s: %w", c.geom.SocketPath, spawnErr)
 	}
 	wait := connectWaitBase
@@ -73,7 +76,8 @@ func (c *Client) connect() (net.Conn, error) {
 			wait = min(wait*2, connectWaitCeiling)
 		}
 	}
-	return nil, &connLostError{fmt.Errorf("creel: no daemon answers on %s after starting one and %d connects: %w", c.geom.SocketPath, ConnectAttempts, err)}
+	return nil, &connLostError{fmt.Errorf("creel: no daemon answers on %s after starting one and %d connects: %w; daemon log %s: %s",
+		c.geom.SocketPath, ConnectAttempts, err, c.geom.DaemonLogPath, daemonLogExcerpt(c.geom.DaemonLogPath, pid))}
 }
 
 // waitState remembers what a waiting call learned, so a reconnect can resume it.
@@ -87,6 +91,11 @@ type waitState struct {
 // A waiting call whose connection drops reconnects up to MaxReconnects times, starting the daemon if needed, and resumes the same wait.
 // A read's response is handed to handle, and acknowledged only when handle returns nil; a handle that fails leaves the messages unread.
 func (c *Client) Call(req Request, timeout time.Duration, handle func(Response) error) (Response, error) {
+	return c.CallWatching(req, timeout, handle, nil)
+}
+
+// CallWatching is Call that also hands every progress response of a waiting inject to progress, in the order they arrive; a nil progress ignores them.
+func (c *Client) CallWatching(req Request, timeout time.Duration, handle func(Response) error, progress func(Response)) (Response, error) {
 	req.Claim = c.claim
 	var timer <-chan time.Time
 	if req.Wait && timeout > 0 {
@@ -100,7 +109,7 @@ func (c *Client) Call(req Request, timeout time.Duration, handle func(Response) 
 		if err == nil {
 			established = true
 			var resp Response
-			if resp, err = c.exchange(conn, current, timer, state, handle); err == nil {
+			if resp, err = c.exchange(conn, current, timer, state, handle, progress); err == nil {
 				return resp, nil
 			}
 		}
@@ -145,8 +154,8 @@ type lineResult struct {
 	err  error
 }
 
-// exchange sends req on conn and reads responses until the final one.
-func (c *Client) exchange(conn net.Conn, req Request, timer <-chan time.Time, state *waitState, handle func(Response) error) (Response, error) {
+// exchange sends req on conn and reads responses until the final one, handing each progress response to progress.
+func (c *Client) exchange(conn net.Conn, req Request, timer <-chan time.Time, state *waitState, handle func(Response) error, progress func(Response)) (Response, error) {
 	defer conn.Close()
 	line, err := encodeLine(req)
 	if err != nil {
@@ -192,6 +201,12 @@ func (c *Client) exchange(conn net.Conn, req Request, timer <-chan time.Time, st
 			}
 			if resp.Pending {
 				state.id = resp.ID
+				continue
+			}
+			if resp.Progress {
+				if progress != nil {
+					progress(resp)
+				}
 				continue
 			}
 			if resp.AckRequired {

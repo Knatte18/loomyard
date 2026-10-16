@@ -11,4 +11,5 @@ An interrupt key reaches an agent pane only through shuttle's two pane guards, a
 - `Runner.Inject` skips the ready-pane check, so it refuses any input list holding a key of the engine's interrupt sequence (case-insensitive, `C-[` read as `Escape`) or a `Text` with a control character, whatever its `SettleMS` and neighbours, and names `lyx shuttle interrupt`.
   A tmux spelling of the interrupt key beyond those still passes, bounded by Inject having no production caller.
 - The orch watcher's hub-pause interrupt reaches the orch pane through the guarded interrupt and keeps the single-writer exemption (`PATTERN-orch-pane-single-writer`).
-- The tests that pin it: `TestRun_Interrupt_PlaysEscape`, `TestGuardedPickerClose` and `TestRunner_Inject_RefusesAnyInterruptKey` in `internal/shuttleengine`.
+- `Runner.InterruptRestoring` is a second entry point: its key goes only through the guarded interrupt, and its clear is the engine's restored-prompt clear of the box, never an interrupt key.
+- The tests that pin it: `TestRun_Interrupt_PlaysEscape`, `TestRunner_InterruptRestoring`, `TestGuardedPickerClose` and `TestRunner_Inject_RefusesAnyInterruptKey` in `internal/shuttleengine`.

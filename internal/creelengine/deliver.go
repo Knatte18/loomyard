@@ -160,7 +160,7 @@ func (w *worker) retire() bool {
 func (w *worker) finish() {
 	store := w.scheduler.store
 	if w.known && w.running {
-		w.report("journal", store.ageInjects(w.receiver, w.scheduler.clock.Now().Sub(w.lastProbe)))
+		w.report("journal", store.ageInjects(w.receiver, w.lastProbe, w.scheduler.clock.Now()))
 	}
 	w.report("journal", store.persistAged(w.receiver))
 }
@@ -187,7 +187,7 @@ func (w *worker) probe() (delivered, pending bool) {
 	}
 	now := clock.Now()
 	if w.known && w.running {
-		w.report("journal", store.ageInjects(w.receiver, now.Sub(w.lastProbe)))
+		w.report("journal", store.ageInjects(w.receiver, w.lastProbe, now))
 	}
 	w.lastProbe = now
 	strand, running := w.locate()
@@ -205,6 +205,10 @@ func (w *worker) probe() (delivered, pending bool) {
 	if !running {
 		return false, true
 	}
+	// Held through the send, so an interrupt of this pane runs with no delivery in flight and the next reading after it is a fresh one.
+	lock := store.paneLock(w.receiver)
+	lock.Lock()
+	defer lock.Unlock()
 	snap := store.snapshot(w.receiver)
 	for _, inject := range snap.injects {
 		if snap.holdOwner == "" || inject.From == snap.holdOwner {
@@ -232,10 +236,16 @@ func (w *worker) locate() (Strand, bool) {
 }
 
 // idle asks whether the strand may be typed into; an error counts as not idle.
+// Every reading goes to the stall journal, an error as a reading with no reason.
 func (w *worker) idle(strand Strand) bool {
-	idle, err := w.scheduler.delivery.Idle(strand)
+	answer, err := w.scheduler.delivery.Idle(strand)
 	w.report("idle", err)
-	return err == nil && idle
+	stall := answer.Stall
+	if err != nil {
+		stall = ""
+	}
+	w.report("journal", w.scheduler.store.noteStall(w.receiver, stall))
+	return err == nil && answer.Idle
 }
 
 // typeInject types the inject once the receiver is idle, journaling a sending event first and the outcome after.
@@ -253,10 +263,12 @@ func (w *worker) typeInject(strand Strand, inject QueuedInject) bool {
 	case err == nil:
 		w.report("send", nil)
 		w.report("journal", store.settleInject(inject.ID, eventInjected))
+		w.report("journal", store.noteStall(w.receiver, ""))
 		return true
 	case errors.Is(err, ErrNotLanded):
 		w.report("send", nil)
 		w.report("journal", store.settleInject(inject.ID, eventUnconfirmed))
+		w.report("journal", store.noteStall(w.receiver, ""))
 		return true
 	default:
 		if !errors.Is(err, ErrBusy) {
@@ -285,6 +297,7 @@ func (w *worker) remind(strand Strand, snap deliverySnapshot, now time.Time) boo
 	case err == nil, errors.Is(err, ErrNotLanded):
 		w.report("send", nil)
 		w.report("journal", w.scheduler.store.journalReminded(w.receiver, ids, step))
+		w.report("journal", w.scheduler.store.noteStall(w.receiver, ""))
 		return true
 	default:
 		if !errors.Is(err, ErrBusy) {
@@ -382,13 +395,18 @@ func (s *Store) snapshot(receiver string) deliverySnapshot {
 	return snap
 }
 
-// ageInjects counts elapsed against the TTL of every inject queued for receiver, and expires those that used it up.
-func (s *Store) ageInjects(receiver string, elapsed time.Duration) error {
-	if elapsed <= 0 {
-		return nil
-	}
+// ageInjects charges every inject queued for receiver the time from the later of since and its own posting to now against its TTL, and expires those that used it up.
+func (s *Store) ageInjects(receiver string, since, now time.Time) error {
 	return s.do(func() error {
 		for _, entry := range s.queuedEntriesLocked(receiver) {
+			from := since
+			if entry.Posted.After(from) {
+				from = entry.Posted
+			}
+			elapsed := now.Sub(from)
+			if elapsed <= 0 {
+				continue
+			}
 			entry.Consumed += elapsed
 			if entry.Consumed >= entry.TTL {
 				if err := s.settleInjectLocked(entry.ID, eventExpired); err != nil {
@@ -454,13 +472,44 @@ func (s *Store) settleInject(id int64, event string) error {
 	return s.do(func() error { return s.settleInjectLocked(id, event) })
 }
 
+// settleInjectLocked journals the end of an inject and answers its waiters.
+// An expired inject journals and answers with the receiver's stall standing at that moment, when there is one.
 func (s *Store) settleInjectLocked(id int64, event string) error {
-	if err := s.writer.append(record{Event: event, ID: id}); err != nil {
+	var standing stallNote
+	if entry := s.state.injects[id]; entry != nil && event == eventExpired {
+		standing = s.stalls[entry.Receiver]
+	}
+	if err := s.writer.append(record{Event: event, ID: id, Reason: string(standing.stall)}); err != nil {
 		return err
 	}
 	kinds := map[string]OutcomeKind{eventInjected: OutcomeInjected, eventUnconfirmed: OutcomeUnconfirmed, eventExpired: OutcomeExpired}
-	s.answerLocked(waitKey{kind: waitInject, id: id}, Outcome{Kind: kinds[event]})
+	s.answerLocked(waitKey{kind: waitInject, id: id}, Outcome{Kind: kinds[event], Stall: standing.stall, StallAt: standing.at})
 	return nil
+}
+
+// noteStall records the stall a probe read for receiver and journals a stalled record when it is non-empty and differs from the last one.
+// An empty stall clears the receiver's entry with no record.
+func (s *Store) noteStall(receiver string, stall Stall) error {
+	return s.do(func() error {
+		if stall == "" {
+			delete(s.stalls, receiver)
+			return nil
+		}
+		if s.stalls[receiver].stall == stall {
+			return nil
+		}
+		note := stallNote{stall: stall, at: s.clock.Now()}
+		s.stalls[receiver] = note
+		if err := s.writer.append(record{Event: eventStalled, To: receiver, Reason: string(stall)}); err != nil {
+			return err
+		}
+		for _, entry := range s.queuedEntriesLocked(receiver) {
+			for _, waiter := range s.waiters[waitKey{kind: waitInject, id: entry.ID}] {
+				waiter.notify(StallNote{Stall: note.stall, At: note.at})
+			}
+		}
+		return nil
+	})
 }
 
 // journalReminded records a reminder typed to receiver about the unread ids, at the given backoff step.

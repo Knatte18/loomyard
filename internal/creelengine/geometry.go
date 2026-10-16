@@ -23,6 +23,8 @@ type Geometry struct {
 	LockPath string
 	// SocketPath is the daemon's unix socket.
 	SocketPath string
+	// DaemonLogPath is the file the detached daemon's stderr is appended to, in StateDir.
+	DaemonLogPath string
 }
 
 // socketHashHexLen is how many hex digits of the hub path's hash the socket name carries.

@@ -46,6 +46,21 @@ type boxReading struct {
 	reader bool
 }
 
+// boxCapture takes the one pane capture a box reading decides on.
+// An engine with StyledBoxReader gets a styled capture turned plain with its placeholder blanked, and any other engine gets the plain capture.
+// An error is the capture's, unchanged.
+func boxCapture(reed ReedOps, engine Engine, guid string) (string, error) {
+	styledReader, ok := engine.(StyledBoxReader)
+	if !ok {
+		return reed.CapturePane(guid)
+	}
+	styled, err := reed.CapturePaneStyled(guid)
+	if err != nil {
+		return "", err
+	}
+	return styledReader.PlainBoxCapture(styled), nil
+}
+
 // readBox reads the input box out of capture.
 // An engine without an InputBoxReader reads no box and is never too short.
 func readBox(engine Engine, capture string) boxReading {

@@ -272,7 +272,7 @@ func (d *daemon) dispatch(conn *net.UnixConn, reader *bufio.Reader, sender Sende
 			if err != nil {
 				return err
 			}
-			return d.awaitOutcome(conn, reader, waiter, id)
+			return d.awaitOutcome(conn, reader, waiter, id, sender)
 		}
 		id, err := store.Post(sender, req.Receiver, req.Text)
 		if err != nil {
@@ -284,7 +284,7 @@ func (d *daemon) dispatch(conn *net.UnixConn, reader *bufio.Reader, sender Sende
 		if err != nil {
 			return err
 		}
-		return d.awaitOutcome(conn, reader, waiter, req.ID)
+		return d.awaitOutcome(conn, reader, waiter, req.ID, sender)
 	case VerbReply:
 		id, err := store.Reply(sender, req.ID, req.Text)
 		if err != nil {
@@ -312,7 +312,7 @@ func (d *daemon) dispatch(conn *net.UnixConn, reader *bufio.Reader, sender Sende
 			if err != nil {
 				return err
 			}
-			return d.awaitOutcome(conn, reader, waiter, result.ID)
+			return d.awaitOutcome(conn, reader, waiter, result.ID, sender)
 		}
 		result, err := store.Inject(sender, req.Receiver, req.Text, ttl, req.Interrupt)
 		if err != nil {
@@ -324,7 +324,7 @@ func (d *daemon) dispatch(conn *net.UnixConn, reader *bufio.Reader, sender Sende
 		if err != nil {
 			return err
 		}
-		return d.awaitOutcome(conn, reader, waiter, req.ID)
+		return d.awaitOutcome(conn, reader, waiter, req.ID, sender)
 	case VerbInterrupt:
 		sent, err := store.Interrupt(sender, req.Receiver)
 		if err != nil {
@@ -349,26 +349,48 @@ func (d *daemon) dispatch(conn *net.UnixConn, reader *bufio.Reader, sender Sende
 	return d.write(conn, ok)
 }
 
-// awaitOutcome answers a waiting verb: an interim response with the id at once, and the outcome when the waiter is answered.
+// awaitOutcome answers a waiting verb: an interim response with the id at once, a progress response for each stall note of a waiting inject, and the outcome when the waiter is answered.
+// The interim and final responses carry the resolved sender's name.
 // A client that closes its connection, or a daemon that shuts down, ends the wait with no answer.
-func (d *daemon) awaitOutcome(conn net.Conn, reader *bufio.Reader, waiter *Waiter, id int64) error {
+func (d *daemon) awaitOutcome(conn net.Conn, reader *bufio.Reader, waiter *Waiter, id int64, sender Sender) error {
 	defer waiter.Cancel()
-	if err := d.write(conn, Response{OK: true, Pending: true, ID: id}); err != nil {
+	if err := d.write(conn, Response{OK: true, Pending: true, ID: id, Sender: sender.Name}); err != nil {
 		return nil
 	}
 	watcher := watchClose(conn, reader)
 	defer watcher.stop()
-	select {
-	case outcome := <-waiter.C:
-		resp := Response{OK: true, ID: id, Outcome: outcome.Kind}
-		if outcome.Kind == OutcomeReply || outcome.Kind == OutcomeReturned {
-			resp.Message = &outcome.Message
+	for {
+		select {
+		case note := <-waiter.Progress:
+			if err := d.write(conn, progressResponse(id, note)); err != nil {
+				return nil
+			}
+		case outcome := <-waiter.C:
+			// A note read before the outcome still goes out first, so the client sees the last stall in order.
+			select {
+			case note := <-waiter.Progress:
+				if err := d.write(conn, progressResponse(id, note)); err != nil {
+					return nil
+				}
+			default:
+			}
+			resp := Response{OK: true, ID: id, Sender: sender.Name, Outcome: outcome.Kind, Stall: outcome.Stall, StallAt: outcome.StallAt}
+			if outcome.Kind == OutcomeReply || outcome.Kind == OutcomeReturned {
+				resp.Message = &outcome.Message
+			}
+			_ = d.write(conn, resp)
+			return nil
+		case <-watcher.closed:
+			return nil
+		case <-d.done:
+			return nil
 		}
-		_ = d.write(conn, resp)
-	case <-watcher.closed:
-	case <-d.done:
 	}
-	return nil
+}
+
+// progressResponse is the interim response that carries a stall note of the inject id.
+func progressResponse(id int64, note StallNote) Response {
+	return Response{OK: true, Progress: true, ID: id, Stall: note.Stall, StallAt: note.At}
 }
 
 // read answers a read: the caller's messages, reserved until the client acknowledges them on the same connection.
