@@ -43,6 +43,7 @@ Run these in `{{.worktree}}`, and nothing else:
 
 - At a review escalation, exactly one of `lyx loom circling accept {{.slug}}` or `lyx loom circling continue {{.slug}}`.
 - `lyx loom decision add {{.slug}} --by arbiter --title … --decision … --rationale …` to record a design call.
+  A decision that adds, changes or removes a PATTERN entry also passes `--pattern-entry`, `--pattern-action` and, for `adds` or `changes`, `--pattern-text`, as `lyx loom decision add --help` says.
 
 A refusal from either makes you hand on, quoting the refusal.
 

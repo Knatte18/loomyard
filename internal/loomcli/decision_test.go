@@ -174,7 +174,10 @@ func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
 		// darn runs the case on a darn run whose record is committed and unchanged; running also sets the status running at Darn-Write.
 		darn    bool
 		running bool
+		// pattern sets the three PATTERN-change flags.
+		pattern bool
 	}{
+		{name: "parent label with the PATTERN-change form", by: "parent", pattern: true},
 		{name: "darn run from an unnamed shell", by: "parent", darn: true},
 		{name: "darn run from the recorded parent", by: "parent", strandName: "hub:orch", parentName: "hub:orch", darn: true},
 		{name: "darn run while Darn-Write runs", by: "parent", darn: true, running: true},
@@ -200,12 +203,31 @@ func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
 			f.parent = hubgeom.Parent{Name: tc.parentName}
 			input := goodDecisionInput()
 			input.by = by
+			if tc.pattern {
+				input.patternEntry, input.patternAction, input.patternText = "PATTERN-x", "adds", "New rule."
+			}
 			var out bytes.Buffer
 			if code := decisionVerb(&out, "task-a", f.deps(), input); code != 0 {
 				t.Fatalf("exit = %d, out %s; want 0", code, out.String())
 			}
 
 			data := envelope.RequireOK(t, out.String()).Raw
+			if tc.pattern {
+				want := discussionparser.PatternChange{ID: "PATTERN-x", Action: "adds", Text: "New rule."}
+				if got := f.lastAdded.PatternChange; got == nil || *got != want {
+					t.Errorf("appended PatternChange = %v; want %+v", got, want)
+				}
+				if data["pattern_change"] != "- `PATTERN-x` — adds: New rule." {
+					t.Errorf("envelope pattern_change = %v; want the bullet", data["pattern_change"])
+				}
+			} else {
+				if f.lastAdded.PatternChange != nil {
+					t.Errorf("appended PatternChange = %+v; want nil without the form", f.lastAdded.PatternChange)
+				}
+				if _, ok := data["pattern_change"]; ok {
+					t.Errorf("envelope = %v; want no pattern_change without the form", data)
+				}
+			}
 			wantHeading := "Added after Discussion (" + by + ", 2026-03-04): Keep the cache"
 			if data["slug"] != "task-a" || data["record"] != f.path || data["heading"] != wantHeading {
 				t.Fatalf("envelope = %v; want the slug, the record path and heading %q", data, wantHeading)
@@ -457,6 +479,32 @@ func TestDecisionVerb_Refusals(t *testing.T) {
 				f.findings = []discussionparser.Finding{{Check: "sections", Detail: "missing ## Scope"}}
 			},
 			want: []string{"discussion check flags the record", "sections: missing ## Scope", "way forward:", "the record is restored"},
+		},
+		{
+			name:         "pattern action without an entry",
+			setup:        func(_ *decisionFake, in *decisionInput) { in.patternAction = "adds" },
+			inputRefusal: true,
+			want:         []string{"way forward:", "pass --pattern-entry and --pattern-action together", "--pattern-text for adds or changes"},
+		},
+		{
+			name:         "pattern text without an entry",
+			setup:        func(_ *decisionFake, in *decisionInput) { in.patternText = "New rule." },
+			inputRefusal: true,
+			want:         []string{"way forward:", "pass --pattern-entry and --pattern-action together"},
+		},
+		{
+			name:         "pattern entry without an action",
+			setup:        func(_ *decisionFake, in *decisionInput) { in.patternEntry = "PATTERN-x" },
+			inputRefusal: true,
+			want:         []string{"way forward:", "pass --pattern-entry and --pattern-action together"},
+		},
+		{
+			name: "pattern-change finding after the append",
+			setup: func(f *decisionFake, in *decisionInput) {
+				in.patternEntry, in.patternAction = "PATTERN-x", "adds"
+				f.findings = []discussionparser.Finding{{Check: "pattern-change-malformed", Detail: "line 12: adds needs its new text"}}
+			},
+			want: []string{"discussion check flags the record", "pattern-change-malformed: line 12", "way forward:", "the record is restored"},
 		},
 		{
 			name: "no Decisions heading",
