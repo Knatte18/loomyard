@@ -56,7 +56,6 @@ Its stop report then carries the arbiter's verdict path and question: read the v
   it answers the envelope's `question` from recorded operator decisions only, as the brief defines them, records and resumes by the brief's steps, and otherwise records nothing and reports back, and you bring the question to the operator.
   The fork falls under the open-fork rules of Investigating a stop: a repeat notice for the slug starts no second fork, and the slug is named in the orch note while its fork is open.
   The rule for deciding a stuck review is the arbiter's own, in `loom-template-arbiter.md`.
-
 - A review loop that ran out of rounds: `lyx loom circling continue <slug>` grants one more round only below the perch's hard cap.
   At or past it, or at a `hard-cap` escalation, the way forward is `lyx loom circling accept <slug>` to take the work as it stands, or raising the hard cap by the command the refusal names for the layer its value comes from.
   Either only records the decision,
