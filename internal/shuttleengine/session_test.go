@@ -176,6 +176,8 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 		idleFrame   = "IDLE\n❯ "
 		needleFrame = "working (esc to interrupt)\n❯ "
 		turnEnded   = "START\nSTOP:done\n"
+		// suggestionFrame is an idle pane whose box shows only a placeholder, marked the way a styled capture marks it.
+		suggestionFrame = "IDLE\n❯ ~Try something~"
 	)
 	shell := BackgroundTask{Kind: BackgroundShell, ID: "bsh1", Label: "sleep 600", Signal: SignalPayload}
 	tests := []struct {
@@ -183,7 +185,9 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 		// engine settings; the zero value is a live process.
 		dead, unproven, interrupted, tooShort bool
 		interactive, outputsExist             bool
-		outstanding                           []BackgroundTask
+		// styled gives the engine the styled box read, which blanks a capture's ~…~ spans.
+		styled      bool
+		outstanding []BackgroundTask
 		// progress is what the engine reads of any turn start.
 		progress TurnProgress
 		probes   []probe
@@ -200,6 +204,10 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 		{name: "an unknown reading falls back to an idle pane", unproven: true, probes: []probe{{events: turnEnded, capture: idleFrame, want: IdleProbe{Idle: true}}}},
 		{name: "an unknown reading falls back to a busy pane, too short or not", unproven: true, tooShort: true, probes: []probe{{events: turnEnded, capture: needleFrame, want: IdleProbe{TooShort: true}}}},
 		{name: "a draft in the box is held with its reason", probes: []probe{{events: turnEnded, capture: "IDLE\n❯ half a draft", want: IdleProbe{Reason: `the input box holds a draft: "half a draft"`, Draft: true}, wantReason: "draft"}}},
+		{name: "a placeholder in the box is idle for a styled box read", styled: true, probes: []probe{{events: turnEnded, capture: suggestionFrame, want: IdleProbe{Idle: true}}}},
+		{name: "a placeholder in the box is a draft for a plain box read", probes: []probe{{events: turnEnded, capture: suggestionFrame, want: IdleProbe{Reason: `the input box holds a draft: "~Try something~"`, Draft: true}, wantReason: "draft"}}},
+		{name: "an unknown reading over a placeholder falls back to an idle pane for a styled box read", unproven: true, styled: true, probes: []probe{{events: turnEnded, capture: suggestionFrame, want: IdleProbe{Idle: true}}}},
+		{name: "an unknown reading falls back to a busy pane holding a draft", unproven: true, probes: []probe{{events: turnEnded, capture: "BUSY\n❯ half a draft", want: IdleProbe{Draft: true}}}},
 		{name: "a pane too short is held and reported too short", tooShort: true, probes: []probe{{events: turnEnded, capture: "IDLE", want: IdleProbe{TooShort: true, Reason: readinessReasonPaneTooShort}, wantReason: "too short"}}},
 		{
 			name:    "a hook turn end beside a pane needle reads idle and logs the disagreement",
@@ -256,7 +264,11 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 			engine.interrupted = tt.interrupted
 			engine.progress = tt.progress
 			engine.outstanding = tt.outstanding
-			fx := newFixture(t, reed, engine, withStrand("strand-1"), withClock(clock))
+			var probed Engine = engine
+			if tt.styled {
+				probed = &styledReadinessEngine{readinessEngine: engine}
+			}
+			fx := newFixture(t, reed, probed, withStrand("strand-1"), withClock(clock))
 			runDir := filepath.Dir(fx.EventsPath)
 			state := RunState{RunID: "run-1", StrandGUID: "strand-1", EventsPath: fx.EventsPath, Interactive: tt.interactive}
 			if tt.outputsExist {
@@ -292,6 +304,40 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("a strand with no run record reads the pane for a draft", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			styled  bool
+			capture string
+			want    IdleProbe
+		}{
+			{name: "an idle pane", capture: "IDLE\n❯ ", want: IdleProbe{Idle: true}},
+			{name: "a busy pane holding a draft", capture: "BUSY\n❯ half a draft", want: IdleProbe{Draft: true}},
+			{name: "a placeholder in the box for a styled box read", styled: true, capture: "IDLE\n❯ ~Try something~", want: IdleProbe{Idle: true}},
+		}
+		for _, tt := range tests {
+			reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{tt.capture}}
+			engine := &readinessEngine{}
+			var probed Engine = engine
+			if tt.styled {
+				probed = &styledReadinessEngine{readinessEngine: engine}
+			}
+			got, err := newFixture(t, reed, probed).Runner.SessionIdle("strand-1")
+			if err != nil || got != tt.want {
+				t.Errorf("%s: SessionIdle = %+v, %v; want %+v, nil", tt.name, got, err, tt.want)
+			}
+		}
+	})
+
+	t.Run("a styled capture that fails is the probe's error", func(t *testing.T) {
+		captureErr := errors.New("pane gone")
+		reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureErr: captureErr}
+		runner := newFixture(t, reed, &styledReadinessEngine{readinessEngine: &readinessEngine{}}, withStrand("strand-1")).Runner
+		if _, err := runner.SessionIdle("strand-1"); !errors.Is(err, captureErr) {
+			t.Errorf("SessionIdle error = %v, want it to wrap %v", err, captureErr)
+		}
+	})
 
 	t.Run("an engine without the signal parser reads the pane", func(t *testing.T) {
 		// TooShort is reported only for a pane that is not idle.

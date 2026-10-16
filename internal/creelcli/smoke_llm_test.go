@@ -40,11 +40,11 @@ func TestSmokeCreelClaudeStrand(t *testing.T) {
 	// The booted session has no event to wait on, so the idle check is polled on a tick under a real-time deadline.
 	deadline := time.Now().Add(smokePaneWindow)
 	for {
-		idle, err := delivery.Idle(strand)
+		answer, err := delivery.Idle(strand)
 		if err != nil {
 			t.Fatalf("Idle() = %v", err)
 		}
-		if idle {
+		if answer.Idle {
 			break
 		}
 		if time.Now().After(deadline) {

@@ -86,6 +86,17 @@ func (e *env) typed(strandName string) []string {
 	return texts
 }
 
+// stalledReasons returns the reason of every stalled record to receiver, in order.
+func stalledReasons(e *env, receiver string) []string {
+	var reasons []string
+	for _, entry := range e.store.Log(creelengine.LogFilter{To: receiver}) {
+		if entry.Event == "stalled" {
+			reasons = append(reasons, entry.Reason)
+		}
+	}
+	return reasons
+}
+
 func reminderFor(count int, listed ...string) string {
 	return fmt.Sprintf("[creel] %d unread: %s — run lyx creel read", count, strings.Join(listed, ", "))
 }
@@ -234,6 +245,37 @@ func TestScheduler_Reminders(t *testing.T) {
 			e.probeWaits(before + 1)
 			if got := len(e.typed(beta)); got != sent+1 {
 				t.Errorf("a new message was not reminded at once: %d sent; want %d", got, sent+1)
+			}
+			var steps []int
+			for _, entry := range e.store.Log(creelengine.LogFilter{To: beta}) {
+				if entry.Event != "reminded" {
+					continue
+				}
+				if len(entry.Unread) == 0 {
+					t.Errorf("reminded entry %+v lists no unread ids", entry)
+				}
+				steps = append(steps, entry.Step)
+			}
+			if want := []int{0, 1, 2, 3, 4, 5, 6, 0}; !slices.Equal(steps, want) {
+				t.Errorf("reminded steps = %v; want %v", steps, want)
+			}
+		}},
+		{"TypedReminderClearsTheStall", func(t *testing.T, e *env) {
+			e.del.SetStall(beta, creelengine.StallDraft)
+			e.post(t, strand(alpha), beta, "hi")
+			e.start(t)
+			e.probeWaits(1)
+			e.del.SetStall(beta, "")
+			e.tick(time.Second)
+			if got := len(e.typed(beta)); got != 1 {
+				t.Fatalf("%d reminders typed once the draft was gone; want 1", got)
+			}
+			e.del.SetStall(beta, creelengine.StallDraft)
+			before := len(e.probeWaits(0))
+			e.post(t, strand(alpha), beta, "fresh")
+			e.probeWaits(before + 1)
+			if got := stalledReasons(e, beta); !slices.Equal(got, []string{"draft", "draft"}) {
+				t.Errorf("stalled reasons = %q; want one before the reminder and one after it", got)
 			}
 		}},
 		{"ReminderListsFiveMessagesAndCountsTheRest", func(t *testing.T, e *env) {
@@ -447,6 +489,196 @@ func TestScheduler_Injects(t *testing.T) {
 			}
 			if got := eventsOf(e.store.Log(creelengine.LogFilter{ID: muted.ID})); !slices.Contains(got, "expired") {
 				t.Errorf("events = %v; want the muted inject expired", got)
+			}
+		}},
+		{"InjectPostedMidWaitIsChargedFromItsPostingNotFromThePreviousProbe", func(t *testing.T, e *env) {
+			e.del.SetIdle(alpha, false)
+			inject(t, e, program(batten), alpha, "/keepalive", time.Hour, false)
+			e.start(t)
+			e.driveProbeWaits(4)
+			e.clock.Advance(7 * time.Second)
+			_, waiter, err := e.store.InjectWait(program(batten), alpha, "/short", time.Minute, false)
+			if err != nil {
+				t.Fatalf("InjectWait: %v", err)
+			}
+			e.tick(time.Second)
+			e.tick(58 * time.Second)
+			if queued := e.store.Queued(alpha); len(queued) != 2 {
+				t.Fatalf("Queued = %+v 59 s after the posting; want both injects still waiting", queued)
+			}
+			e.tick(8 * time.Second)
+			if outcome := awaitOutcome(t, waiter); outcome.Kind != creelengine.OutcomeExpired {
+				t.Errorf("wait answered %v; want expired at the first probe past 60 s since the posting", outcome.Kind)
+			}
+		}},
+		{"StopChargesAnInjectPostedDuringASendOnlyFromItsPosting", func(t *testing.T, e *env) {
+			entered, release := make(chan struct{}), make(chan struct{})
+			var once sync.Once
+			e.del.SetSendFunc(func(string, string) error {
+				once.Do(func() { close(entered) })
+				<-release
+				return nil
+			})
+			scheduler := creelengine.NewScheduler(e.store, e.del, e.clock)
+			scheduler.Start()
+			t.Cleanup(func() {
+				once.Do(func() { close(entered) })
+				select {
+				case <-release:
+				default:
+					close(release)
+				}
+				scheduler.Stop()
+			})
+			inject(t, e, program(batten), alpha, "/first", time.Hour, false)
+			<-entered
+			e.clock.Advance(30 * time.Second)
+			second := inject(t, e, program(batten), alpha, "/second", time.Minute, false)
+			e.clock.Advance(5 * time.Second)
+			// A worker that probes once more before it sees the stop finds the receiver busy, so the second inject is never typed.
+			e.del.SetIdle(alpha, false)
+			stopped := make(chan struct{})
+			go func() {
+				scheduler.Stop()
+				close(stopped)
+			}()
+			close(release)
+			<-stopped
+			want := fmt.Sprintf(`"id":%d,"consumed_s":5`, second)
+			if text := journalText(t, e.geom); !strings.Contains(text, want) {
+				t.Errorf("journal lacks %s; want the second inject's aged record counting 5 s since its posting:\n%s", want, text)
+			}
+		}},
+		{"ChangingStallIsJournaledOncePerChangeAndStopsOnceTyped", func(t *testing.T, e *env) {
+			e.del.SetStall(alpha, creelengine.StallDraft)
+			inject(t, e, program(batten), alpha, "/clear", 0, false)
+			e.start(t)
+			e.probeWaits(1)
+			e.tick(time.Second)
+			e.del.SetStall(alpha, creelengine.StallTooShort)
+			e.tick(2 * time.Second)
+			e.tick(4 * time.Second)
+			e.del.SetStall(alpha, "")
+			e.tick(8 * time.Second)
+			if got := e.typed(alpha); !slices.Equal(got, []string{"/clear"}) {
+				t.Fatalf("typed %q; want the inject typed once the stall cleared", got)
+			}
+			if got := stalledReasons(e, alpha); !slices.Equal(got, []string{"draft", "too-short"}) {
+				t.Errorf("stalled reasons = %q; want draft then too-short, repeats and the typed inject adding none", got)
+			}
+		}},
+		{"ReadingWithNoReasonAndAnErrorEachClearTheStall", func(t *testing.T, e *env) {
+			e.del.SetStall(alpha, creelengine.StallDraft)
+			inject(t, e, program(batten), alpha, "/clear", 0, false)
+			e.start(t)
+			e.probeWaits(1)
+			e.del.SetStall(alpha, "")
+			e.del.SetIdle(alpha, false)
+			e.tick(time.Second)
+			e.del.SetStall(alpha, creelengine.StallDraft)
+			e.tick(2 * time.Second)
+			e.del.SetStall(alpha, "")
+			e.del.SetIdleError(errors.New("pane capture failed"))
+			e.tick(4 * time.Second)
+			e.del.SetIdleError(nil)
+			e.del.SetStall(alpha, creelengine.StallDraft)
+			e.tick(8 * time.Second)
+			if got := stalledReasons(e, alpha); !slices.Equal(got, []string{"draft", "draft", "draft"}) {
+				t.Errorf("stalled reasons = %q; want three, one per episode", got)
+			}
+		}},
+		{"InjectStalledForItsWholeTTLStillExpiresWithOneStalledRecord", func(t *testing.T, e *env) {
+			e.del.SetStall(alpha, creelengine.StallDraft)
+			_, waiter, err := e.store.InjectWait(program(batten), alpha, "/clear", time.Minute, false)
+			if err != nil {
+				t.Fatalf("InjectWait: %v", err)
+			}
+			e.start(t)
+			e.probeWaits(1)
+			e.clock.Advance(2 * time.Minute)
+			if outcome := awaitOutcome(t, waiter); outcome.Kind != creelengine.OutcomeExpired {
+				t.Errorf("wait answered %v; want expired at the TTL", outcome.Kind)
+			}
+			if got := stalledReasons(e, alpha); !slices.Equal(got, []string{"draft"}) {
+				t.Errorf("stalled reasons = %q; want one", got)
+			}
+		}},
+		{"WaiterProgressKeepsOnlyTheNewestUnreadStall", func(t *testing.T, e *env) {
+			e.del.SetStall(alpha, creelengine.StallDraft)
+			_, waiter, err := e.store.InjectWait(program(batten), alpha, "/clear", 0, false)
+			if err != nil {
+				t.Fatalf("InjectWait: %v", err)
+			}
+			e.start(t)
+			e.probeWaits(1)
+			e.tick(time.Second)
+			e.del.SetStall(alpha, creelengine.StallTooShort)
+			e.tick(2 * time.Second)
+			select {
+			case note := <-waiter.Progress:
+				if note.Stall != creelengine.StallTooShort || note.At.IsZero() {
+					t.Errorf("progress = %+v; want the newer too-short note with its time", note)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("the waiter heard no stall")
+			}
+			select {
+			case note := <-waiter.Progress:
+				t.Errorf("a second progress note %+v; the older unread one must have been replaced", note)
+			default:
+			}
+		}},
+		{"RunningInterruptHoldsBackEveryDeliveryToTheReceiver", func(t *testing.T, e *env) {
+			e.del.SetIdle(alpha, false)
+			inject(t, e, program(batten), alpha, "/queued", 0, false)
+			e.post(t, strand(beta), alpha, "hi")
+			e.start(t)
+			e.probeWaits(1)
+			entered, release := make(chan struct{}), make(chan struct{})
+			e.del.SetInterruptFunc(func(string) error {
+				close(entered)
+				<-release
+				return nil
+			})
+			interrupted := make(chan error, 1)
+			go func() {
+				_, err := e.store.Interrupt(program(batten), alpha)
+				interrupted <- err
+			}()
+			<-entered
+			idleBefore := e.del.IdleCalls(alpha)
+			e.del.SetIdle(alpha, true)
+			for range 3 {
+				e.clock.Advance(10 * time.Second)
+			}
+			if got := e.del.IdleCalls(alpha); got != idleBefore {
+				t.Errorf("Idle was asked %d more times while the interrupt ran; want none", got-idleBefore)
+			}
+			if got := e.typed(alpha); len(got) != 0 {
+				t.Errorf("typed %q while the interrupt ran", got)
+			}
+			close(release)
+			if err := <-interrupted; err != nil {
+				t.Fatalf("Interrupt: %v", err)
+			}
+			e.probeWaits(2)
+			if got := e.typed(alpha); len(got) == 0 || got[0] != "/queued" {
+				t.Errorf("typed %q; want the queued inject typed first once the interrupt ended", got)
+			}
+		}},
+		{"EndOfAnInterruptWakesABackedOffWorker", func(t *testing.T, e *env) {
+			e.del.SetIdle(alpha, false)
+			inject(t, e, program(batten), alpha, "/queued", 0, false)
+			e.start(t)
+			e.driveProbeWaits(4)
+			e.del.SetIdle(alpha, true)
+			before := len(e.probeWaits(0))
+			if sent, err := e.store.Interrupt(program(batten), alpha); err != nil || !sent {
+				t.Fatalf("Interrupt = %v, %v; want sent", sent, err)
+			}
+			e.probeWaits(before + 1)
+			if got := e.typed(alpha); !slices.Equal(got, []string{"/queued"}) {
+				t.Errorf("typed %q; want the inject typed at the interrupt's end with no clock move", got)
 			}
 		}},
 		{"InterruptInjectInterruptsThenTypesItsTextFirstAtTheNextIdle", func(t *testing.T, e *env) {

@@ -57,6 +57,82 @@ func TestResolveLivePaneID(t *testing.T) {
 	}
 }
 
+// TestCapturePaneArgv pins each capture read's tmux argv, that it returns the capture unchanged, and that a failed capture reaches the caller wrapped.
+func TestCapturePaneArgv(t *testing.T) {
+	t.Parallel()
+
+	const styledScreen = "\x1b[2mTry something\x1b[0m\n"
+	tests := []struct {
+		name        string
+		capture     func(e *Engine) (string, error)
+		wantArgv    []string
+		answer      string
+		captureErr  error
+		wantCapture string
+	}{
+		{
+			name:        "plain read",
+			capture:     func(e *Engine) (string, error) { return e.CapturePane("a") },
+			wantArgv:    []string{"capture-pane", "-p", "-t", "%7"},
+			answer:      "plain screen\n",
+			wantCapture: "plain screen\n",
+		},
+		{
+			name:        "styled read",
+			capture:     func(e *Engine) (string, error) { return e.CapturePaneStyled("a") },
+			wantArgv:    []string{"capture-pane", "-e", "-p", "-t", "%7"},
+			answer:      styledScreen,
+			wantCapture: styledScreen,
+		},
+		{
+			name:       "failed plain read",
+			capture:    func(e *Engine) (string, error) { return e.CapturePane("a") },
+			wantArgv:   []string{"capture-pane", "-p", "-t", "%7"},
+			captureErr: errors.New("can't find pane: %7"),
+		},
+		{
+			name:       "failed styled read",
+			capture:    func(e *Engine) (string, error) { return e.CapturePaneStyled("a") },
+			wantArgv:   []string{"capture-pane", "-e", "-p", "-t", "%7"},
+			captureErr: errors.New("can't find pane: %7"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			e := newTestEngine(t)
+			fake := installIfAbsentTmux(t, e, "%7 0 0 100 20 4321\n")
+			st := &ReedState{Strands: []Strand{
+				{GUID: "a", PaneID: "%7", Display: render.Display{Anchor: render.AnchorBelowParent}},
+			}}
+			if err := SaveState(e.stateDir(), st); err != nil {
+				t.Fatalf("SaveState: %v", err)
+			}
+			fake.answer("capture-pane", tt.answer, tt.captureErr)
+
+			got, err := tt.capture(e)
+
+			argv := fake.ArgvFor("capture-pane")
+			if len(argv) != 1 || !reflect.DeepEqual(argv[0], tt.wantArgv) {
+				t.Errorf("capture-pane argv = %q; want one call %q", argv, tt.wantArgv)
+			}
+			if tt.captureErr != nil {
+				if !errors.Is(err, tt.captureErr) {
+					t.Errorf("capture error = %v; want it to wrap %v", err, tt.captureErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("capture: %v", err)
+			}
+			if got != tt.wantCapture {
+				t.Errorf("capture = %q; want %q", got, tt.wantCapture)
+			}
+		})
+	}
+}
+
 // TestPasteSubmitArgv pins the exact command list of a paste with and without the trailing Enter.
 func TestPasteSubmitArgv(t *testing.T) {
 	t.Parallel()

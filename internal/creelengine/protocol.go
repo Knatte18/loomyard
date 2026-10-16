@@ -66,6 +66,11 @@ type Response struct {
 	HubPath string `json:"hub_path"`
 	// Pending marks the interim response of a waiting verb: the request is accepted and the outcome follows.
 	Pending bool `json:"pending,omitempty"`
+	// Progress marks an interim response of a waiting inject: ID is the inject and Stall the stall its receiver's delivery waits on, read at StallAt.
+	Progress bool `json:"progress,omitempty"`
+	// Stall and StallAt also ride the expired answer of an inject, as the stall that stood when its TTL ran out.
+	Stall   Stall     `json:"stall,omitempty"`
+	StallAt time.Time `json:"stall_at,omitzero"`
 	// Sender is the sender the daemon resolved for the request.
 	Sender string `json:"sender,omitempty"`
 	// ID is the id of the message or inject the verb created or waits on.

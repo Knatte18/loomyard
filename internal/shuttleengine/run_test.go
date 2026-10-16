@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -872,6 +873,125 @@ func TestRun_Interrupt_PlaysEscape(t *testing.T) {
 			}
 			if runningErr != nil || running != tt.wantRunning {
 				t.Errorf("PaneRunningTurn() = %v, %v; want %v, nil", running, runningErr, tt.wantRunning)
+			}
+		})
+	}
+}
+
+// TestRunner_InterruptRestoring covers the interrupt that also clears the prompt the provider restored into the box, on a stateful pane:
+// the keys sent, the box left behind and the error.
+// The guarded key itself is pinned by TestRun_Interrupt_PlaysEscape.
+func TestRunner_InterruptRestoring(t *testing.T) {
+	t.Parallel()
+	boom := errors.New("boom")
+	twoRows := []string{"first line", "second line"}
+	threeRows := []string{"one", "two", "three"}
+	clearTwo := []string{"Escape", "C-u", "BSpace", "C-u"}
+	clearThree := []string{"Escape", "C-u", "BSpace", "C-u", "BSpace", "C-u"}
+	tests := []struct {
+		name          string
+		engine        string
+		before        string
+		idleBefore    bool
+		suggestion    string
+		restored      []string
+		lateRestore   bool
+		afterHead     string
+		captureErrs   []error
+		keyErrs       []error
+		activityErrs  []error
+		active        bool
+		recordless    bool
+		untracked     bool
+		wantKeys      []string
+		wantBox       string
+		wantErr       error
+		wantMsg       string
+		wantSettleSum time.Duration
+	}{
+		{name: "two-row restored prompt is emptied", restored: twoRows, wantKeys: clearTwo, wantSettleSum: 2 * time.Second},
+		{name: "three-row restored prompt is emptied", restored: threeRows, wantKeys: clearThree, wantSettleSum: 2 * time.Second},
+		{name: "blank middle row is counted", restored: []string{"one", "", "three"}, wantKeys: clearThree, wantSettleSum: 2 * time.Second},
+		{name: "a single C-u leaves text and sends nothing after it", engine: "single", restored: threeRows, wantKeys: []string{"Escape", "C-u"}, wantBox: "one two", wantSettleSum: 2 * time.Second},
+		{name: "a draft before the key gets the key alone", before: "my draft", restored: twoRows, wantKeys: []string{"Escape"}, wantBox: "first line second line"},
+		{name: "a suggestion reads empty on a styled engine", engine: "styled", suggestion: "try this", restored: twoRows, wantKeys: clearTwo, wantSettleSum: 2 * time.Second},
+		{name: "a suggestion reads a draft on a plain-capture engine", suggestion: "try this", restored: twoRows, wantKeys: []string{"Escape"}, wantBox: "first line second line"},
+		{name: "no restored prompt returns nil after two settles", wantKeys: []string{"Escape"}, wantSettleSum: 4 * time.Second},
+		{name: "a prompt drawn at the second read is cleared", restored: twoRows, lateRestore: true, wantKeys: clearTwo, wantSettleSum: 4 * time.Second},
+		{name: "a pane that reads not ready keeps the prompt", restored: twoRows, afterHead: "SHELL", wantKeys: []string{"Escape"}, wantBox: "first line second line", wantSettleSum: 2 * time.Second},
+		{name: "a running turn keeps the prompt", restored: twoRows, afterHead: "RUNNING", wantKeys: []string{"Escape"}, wantBox: "first line second line", wantSettleSum: 2 * time.Second},
+		{name: "an active operator keeps the prompt", restored: twoRows, active: true, wantKeys: []string{"Escape"}, wantBox: "first line second line", wantSettleSum: 2 * time.Second},
+		{name: "an unreadable box after the key gets the key alone", restored: []string{"kept"}, afterHead: "NOBOX", wantKeys: []string{"Escape"}, wantBox: "kept", wantSettleSum: 2 * time.Second},
+		{name: "an engine without the restored-prompt clear gets the key alone", engine: "plain", restored: twoRows, wantKeys: []string{"Escape"}, wantBox: "first line second line"},
+		{name: "a capture failing before the key sends nothing", restored: twoRows, captureErrs: []error{boom}, wantErr: boom},
+		{name: "a capture failing after the key reports the clear failed", restored: twoRows, captureErrs: []error{nil, nil, nil, boom}, wantKeys: []string{"Escape"}, wantBox: "first line second line", wantErr: ErrInterruptClearFailed, wantSettleSum: 2 * time.Second},
+		{name: "an activity query failing sends no clear key", restored: twoRows, activityErrs: []error{boom}, wantKeys: []string{"Escape"}, wantBox: "first line second line", wantErr: ErrInterruptClearFailed, wantSettleSum: 2 * time.Second},
+		{name: "a failed clear key reports the clear failed", restored: twoRows, keyErrs: []error{nil, boom}, wantKeys: []string{"Escape", "C-u"}, wantBox: "first line second line", wantErr: ErrInterruptClearFailed, wantSettleSum: 2 * time.Second},
+		{name: "a pane with no running turn sends nothing", idleBefore: true, restored: twoRows, wantErr: ErrNoRunningTurn},
+		{name: "a strand with no run record is resolved through the live strand", restored: twoRows, recordless: true, wantKeys: clearTwo, wantSettleSum: 2 * time.Second},
+		{name: "a guid no run record and no live strand names is refused", restored: twoRows, untracked: true, wantMsg: `"strand-1" is not a shuttle strand and not a live reed strand`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			status := liveStrandStatus(!tt.untracked)
+			reed := &restoreReed{
+				fakeReed:    &fakeReed{StatusQueue: status, CaptureErrQueue: tt.captureErrs, SendKeyErrQueue: tt.keyErrs, ActivityErrQueue: tt.activityErrs},
+				before:      tt.before,
+				idleBefore:  tt.idleBefore,
+				suggestion:  tt.suggestion,
+				restored:    tt.restored,
+				lateRestore: tt.lateRestore,
+				afterHead:   tt.afterHead,
+			}
+			if tt.active {
+				reed.ActiveQueue = []bool{true}
+			}
+			var engine Engine
+			switch tt.engine {
+			case "styled":
+				engine = &styledRestoreEngine{newRestoreEngine()}
+			case "single":
+				restoring := newRestoreEngine()
+				restoring.singleClear = true
+				engine = restoring
+			case "plain":
+				engine = &fakeEngine{Settle: 2 * time.Second, StartupScript: []StartupState{StartupReady}}
+			default:
+				engine = newRestoreEngine()
+			}
+			clock := newFakeClock(time.Now())
+			opts := []fixtureOpt{withConfig(Config{}), withClock(clock)}
+			if !tt.recordless && !tt.untracked {
+				opts = append(opts, withStrand("strand-1"))
+			}
+			runner := newFixture(t, reed, engine, opts...).Runner
+
+			err := runner.InterruptRestoring("strand-1")
+
+			switch {
+			case tt.wantErr == nil && tt.wantMsg == "" && err != nil:
+				t.Fatalf("InterruptRestoring() error: %v", err)
+			case tt.wantErr != nil && !errors.Is(err, tt.wantErr):
+				t.Fatalf("InterruptRestoring() error = %v; want it to wrap %v", err, tt.wantErr)
+			case tt.wantMsg != "" && (err == nil || !strings.Contains(err.Error(), tt.wantMsg)):
+				t.Fatalf("InterruptRestoring() error = %v; want it to contain %q", err, tt.wantMsg)
+			}
+			if tt.wantErr == ErrInterruptClearFailed && len(tt.captureErrs) == 4 && !errors.Is(err, boom) {
+				t.Errorf("InterruptRestoring() error = %v; want it to keep the capture's cause", err)
+			}
+			var gotKeys []string
+			for _, call := range reed.SendKeyCalls {
+				gotKeys = append(gotKeys, call.Key)
+			}
+			if !slices.Equal(gotKeys, tt.wantKeys) {
+				t.Errorf("keys sent = %v; want %v", gotKeys, tt.wantKeys)
+			}
+			if tt.wantKeys != nil && reed.boxText() != tt.wantBox {
+				t.Errorf("box after the call = %q; want %q", reed.boxText(), tt.wantBox)
+			}
+			if got := clock.Awake(); got != tt.wantSettleSum {
+				t.Errorf("clock slept %v; want %v", got, tt.wantSettleSum)
 			}
 		})
 	}
@@ -1801,7 +1921,17 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 		wantRecord bool
 		// recordless sends through a Runner whose run root holds no record of the strand, and asserts no pending-send record exists anywhere.
 		recordless bool
+		// suggestion is the prompt suggestion the tui pane draws in an empty box; styled gives the engine the styled box read that blanks it.
+		suggestion string
+		styled     bool
+		// wantNoPaste asserts the send held before pasting anything.
+		wantNoPaste bool
 	}{
+		{name: "a placeholder suggestion in the box is empty for a styled box read", text: shortPasted, pasteSubmits: true, suggestion: "Try something", styled: true, wantSubmit: true},
+		{
+			name: "a placeholder suggestion in the box is a draft for a plain box read", text: shortPasted, pasteSubmits: true, suggestion: "Try something",
+			wantErr: "Try something", wantIs: []error{ErrSessionBusy}, wantDraft: true, wantNoPaste: true,
+		},
 		{name: "recordless: a landed paste keeps no pending-send record", text: shortPasted, pasteSubmits: true, recordless: true, wantSubmit: true},
 		{
 			name: "recordless: a box still holding the text when the window closes is not cleared", text: shortPasted, pasteSubmits: true, recordless: true,
@@ -1860,6 +1990,13 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 			} else if tt.strayBox != "" {
 				reed = &tuiReed{fakeReed: base, clock: clock, swallowEnterUntil: clock.Now().Add(tt.swallowFor), box: tt.strayBox, keepOnClear: true}
 				engine = &strayPasteEngine{pasteEngine: &pasteEngine{tuiEngine: newTUIEngine(), pasteSubmits: tt.pasteSubmits}}
+			} else if tt.suggestion != "" {
+				reed = &tuiReed{fakeReed: base, clock: clock, swallowEnterUntil: clock.Now().Add(tt.swallowFor), suggestion: tt.suggestion}
+				stray := &strayPasteEngine{pasteEngine: &pasteEngine{tuiEngine: newTUIEngine(), pasteSubmits: tt.pasteSubmits}}
+				engine = stray
+				if tt.styled {
+					engine = &styledPasteEngine{strayPasteEngine: stray}
+				}
 			} else {
 				reed = &tuiReed{fakeReed: base, clock: clock, swallowEnterUntil: clock.Now().Add(tt.swallowFor)}
 				engine = &pasteEngine{tuiEngine: newTUIEngine(), pasteSubmits: tt.pasteSubmits}
@@ -1898,7 +2035,11 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 			if len(base.SendTextCalls) != 0 {
 				t.Errorf("SendText calls = %+v, want none on the paste path", base.SendTextCalls)
 			}
-			if len(base.PasteSubmitCalls) != 1 || base.PasteSubmitCalls[0].Text != tt.text || base.PasteSubmitCalls[0].Submit != tt.wantSubmit {
+			if tt.wantNoPaste {
+				if len(base.PasteSubmitCalls) != 0 {
+					t.Errorf("PasteSubmit calls = %+v, want none", base.PasteSubmitCalls)
+				}
+			} else if len(base.PasteSubmitCalls) != 1 || base.PasteSubmitCalls[0].Text != tt.text || base.PasteSubmitCalls[0].Submit != tt.wantSubmit {
 				t.Errorf("PasteSubmit calls = %+v, want one of %q with submit %v", base.PasteSubmitCalls, tt.text, tt.wantSubmit)
 			}
 			var gotKeys []string

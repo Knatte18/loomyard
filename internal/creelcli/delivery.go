@@ -88,7 +88,7 @@ func (o shuttleOps) SessionIdle(guid string) (shuttleengine.IdleProbe, error) {
 
 func (o shuttleOps) Send(guid, text string) error { return o.runner.Send(guid, text) }
 
-func (o shuttleOps) Interrupt(guid string) error { return o.runner.Interrupt(guid) }
+func (o shuttleOps) Interrupt(guid string) error { return o.runner.InterruptRestoring(guid) }
 
 // Strands lists every strand reed persists in any worktree of the hub.
 // A worktree that does not resolve, a reed state that cannot be read and a status that fails each fail the call naming the worktree,
@@ -177,17 +177,26 @@ func (d *hubDelivery) opsFor(strand creelengine.Strand) (worktreeOps, error) {
 	return ops, nil
 }
 
-// Idle reports whether the strand's agent can take typed input.
-func (d *hubDelivery) Idle(strand creelengine.Strand) (bool, error) {
+// Idle reports whether the strand's agent can take typed input, and for a pane that is not idle the stall the probe found.
+func (d *hubDelivery) Idle(strand creelengine.Strand) (creelengine.Idleness, error) {
 	ops, err := d.opsFor(strand)
 	if err != nil {
-		return false, err
+		return creelengine.Idleness{}, err
 	}
 	probe, err := ops.SessionIdle(strand.GUID)
 	if err != nil {
-		return false, err
+		return creelengine.Idleness{}, err
 	}
-	return probe.Idle, nil
+	if probe.Idle {
+		return creelengine.Idleness{Idle: true}, nil
+	}
+	switch {
+	case probe.TooShort:
+		return creelengine.Idleness{Stall: creelengine.StallTooShort}, nil
+	case probe.Draft:
+		return creelengine.Idleness{Stall: creelengine.StallDraft}, nil
+	}
+	return creelengine.Idleness{}, nil
 }
 
 // Paused reports whether a pause covers the strand.
@@ -235,6 +244,8 @@ func mapDeliveryError(err error) error {
 		return creelengine.ErrNotLanded
 	case errors.Is(err, shuttleengine.ErrNoRunningTurn):
 		return creelengine.ErrNoRunningTurn
+	case errors.Is(err, shuttleengine.ErrInterruptClearFailed):
+		return fmt.Errorf("%w: %s", creelengine.ErrClearFailed, err)
 	default:
 		return err
 	}

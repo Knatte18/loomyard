@@ -219,7 +219,7 @@ type busyHold struct {
 // Once stray records a clear, every reading of the attempt is a post-clear reading, and a box still holding exactly the recorded character reads as empty.
 // Every pane-reading hold whose box reads non-empty quotes the box.
 func busyReading(sc sendContext, cycler SessionCycler, hold *turnStartHold, stray *strayClear) busyHold {
-	capture, err := sc.reed.CapturePane(sc.guid)
+	capture, err := boxCapture(sc.reed, sc.engine, sc.guid)
 	if err != nil {
 		return busyHold{reason: fmt.Sprintf("the pane could not be captured: %v", err)}
 	}
@@ -765,7 +765,7 @@ func clearUnlandedText(sc sendContext, reader InputBoxReader, normalized string)
 
 // readInputBox returns the engine's reading of the strand's input box; ok is false when the capture failed or shows no readable box.
 func readInputBox(sc sendContext, reader InputBoxReader) (text string, ok bool) {
-	capture, err := sc.reed.CapturePane(sc.guid)
+	capture, err := boxCapture(sc.reed, sc.engine, sc.guid)
 	if err != nil {
 		return "", false
 	}

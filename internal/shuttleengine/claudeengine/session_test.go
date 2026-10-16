@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +19,17 @@ func readPaneFixture(t *testing.T, name string) string {
 		t.Fatalf("read fixture %s: %v", name, err)
 	}
 	return string(data)
+}
+
+// styledBox draws an input box around the styled caret line, as a pane capture with escapes shows it.
+func styledBox(caretLine string) string {
+	rule := "────────────────────────────────"
+	return rule + "\n" + caretLine + "\n" + rule + "\n  ? for shortcuts\n"
+}
+
+// plainBox is the plain capture Claude answers for a styled one.
+func plainBox(styled string) string {
+	return (&Claude{}).PlainBoxCapture(styled)
 }
 
 func TestIdleSession(t *testing.T) {
@@ -63,6 +75,12 @@ func TestIdleSession(t *testing.T) {
 		{"boxed side bars around a lone percent mark", "╭" + rule + "╮\n│ ❯     %   │\n╰" + rule + "╯\n", true},
 		{"percent beside other text is a draft", rule + "\n❯ 100% done\n" + rule + "\n  ? for shortcuts\n", false},
 		{"any other lone character is a draft", rule + "\n❯ #\n" + rule + "\n  ? for shortcuts\n", false},
+		{"styled placeholder fixture", plainBox(readPaneFixture(t, "pane-placeholder-styled.txt")), true},
+		{"styled restored prompt fixture", plainBox(readPaneFixture(t, "pane-restored-prompt-styled.txt")), false},
+		{"styled unstyled typed draft", plainBox(styledBox("❯ hello world")), false},
+		{"styled typed text followed by faint text", plainBox(styledBox("❯ hello \x1b[2mworld\x1b[0m")), false},
+		{"styled faint paste placeholder", plainBox(styledBox("❯ \x1b[2m[Pasted text #1 +4 lines]\x1b[0m")), false},
+		{"styled faint placeholder beside a lone percent mark", plainBox(styledBox("❯ \x1b[2mTry this\x1b[0m %")), true},
 	}
 	c := &Claude{}
 	for _, tt := range tests {
@@ -140,6 +158,17 @@ func TestInputBoxText(t *testing.T) {
 		{"boxed side bars around a lone percent mark", "╭" + rule + "╮\n│ ❯     %   │\n╰" + rule + "╯\n", "", true},
 		{"percent beside other text", rule + "\n❯ 100% done\n" + rule + "\n  ? for shortcuts\n", "100% done", true},
 		{"any other lone character", rule + "\n❯ #\n" + rule + "\n  ? for shortcuts\n", "#", true},
+		{"styled placeholder fixture", plainBox(readPaneFixture(t, "pane-placeholder-styled.txt")), "", true},
+		{
+			"styled restored prompt fixture",
+			plainBox(readPaneFixture(t, "pane-restored-prompt-styled.txt")),
+			"Please write a very long detailed essay about the history of the river Thames in London, covering the Roman period, the medieval bridges, the Victorian embankments, and the modern flood barrier, with at least twenty paragraphs",
+			true,
+		},
+		{"styled unstyled typed draft", plainBox(styledBox("❯ hello world")), "hello world", true},
+		{"styled typed text followed by faint text", plainBox(styledBox("❯ hello \x1b[2mworld\x1b[0m")), "hello world", true},
+		{"styled faint paste placeholder", plainBox(styledBox("❯ \x1b[2m[Pasted text #1 +4 lines]\x1b[0m")), "[Pasted text #1 +4 lines]", true},
+		{"styled faint placeholder beside a lone percent mark", plainBox(styledBox("❯ \x1b[2mTry this\x1b[0m %")), "", true},
 	}
 	c := &Claude{}
 	for _, tt := range tests {
@@ -149,6 +178,67 @@ func TestInputBoxText(t *testing.T) {
 			text, ok := c.InputBoxText(tt.capture)
 			if text != tt.wantText || ok != tt.wantOK {
 				t.Errorf("InputBoxText = (%q, %v); want (%q, %v)", text, ok, tt.wantText, tt.wantOK)
+			}
+		})
+	}
+}
+
+// TestPlainBoxCapture pins the plain capture a styled one answers: escapes removed, trailing ASCII spaces trimmed, and only a placeholder-only box blanked.
+func TestPlainBoxCapture(t *testing.T) {
+	t.Parallel()
+
+	sgr := regexp.MustCompile("\x1b\\[[0-9;]*m")
+	restored := readPaneFixture(t, "pane-restored-prompt-styled.txt")
+	tests := []struct {
+		name   string
+		styled string
+		want   string
+	}{
+		{"restored prompt fixture is the fixture without escapes", restored, sgr.ReplaceAllString(restored, "")},
+		{"capture with no box is stripped and right-trimmed", "\x1b[1mhello\x1b[0m   \nworld  \n", "hello\nworld\n"},
+		{
+			"faint line outside the box stays",
+			"\x1b[2m● old transcript\x1b[0m\n" + styledBox("❯ \x1b[2mTry this\x1b[0m"),
+			"● old transcript\n" + styledBox("❯ "),
+		},
+		{
+			"OSC 8 hyperlink is dropped and its text kept",
+			styledBox("❯ \x1b]8;;https://example.com\x1b\\link text\x1b]8;;\x1b\\"),
+			styledBox("❯ link text"),
+		},
+		{
+			"trailing spaces under a background colour are trimmed",
+			"\x1b[44mtext   \x1b[49m\n",
+			"text\n",
+		},
+		{"caret and NBSP alone keep the NBSP", styledBox("❯ "), styledBox("❯ ")},
+		{
+			"colour parameters set no faint",
+			styledBox("❯ \x1b[38;2;10;2;20mone\x1b[38;5;2m two\x1b[0m"),
+			styledBox("❯ one two"),
+		},
+		{
+			"a zero inside a colour clears no faint",
+			styledBox("❯ \x1b[2mTry\x1b[38;5;0m this\x1b[0m"),
+			styledBox("❯ "),
+		},
+		{
+			"faint cleared by 22 leaves typed text unblanked",
+			styledBox("❯ \x1b[2mTry\x1b[22m typed\x1b[0m"),
+			styledBox("❯ Try typed"),
+		},
+		{
+			"faint cleared by a bare m leaves typed text unblanked",
+			styledBox("❯ \x1b[2mTry\x1b[m typed"),
+			styledBox("❯ Try typed"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := plainBox(tt.styled); got != tt.want {
+				t.Errorf("PlainBoxCapture = %q; want %q", got, tt.want)
 			}
 		})
 	}
@@ -252,6 +342,38 @@ func TestClearInputSequence(t *testing.T) {
 	want := []shuttleengine.PaneInput{{Key: "C-u"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("ClearInputSequence = %#v; want %#v", got, want)
+	}
+
+	rule := "────────────────────────────────"
+	box := func(rows ...string) string {
+		return rule + "\n" + strings.Join(rows, "\n") + "\n" + rule + "\n  ? for shortcuts\n"
+	}
+	clear, join := shuttleengine.PaneInput{Key: "C-u"}, shuttleengine.PaneInput{Key: "BSpace"}
+	restoredTests := []struct {
+		name    string
+		capture string
+		want    []shuttleengine.PaneInput
+	}{
+		{"restored prompt fixture, three rows", plainBox(readPaneFixture(t, "pane-restored-prompt-styled.txt")), []shuttleengine.PaneInput{clear, join, clear, join, clear}},
+		{"two rows", box("❯ first", "  second"), []shuttleengine.PaneInput{clear, join, clear}},
+		{"blank middle row", box("❯ first", "", "  third"), []shuttleengine.PaneInput{clear, join, clear, join, clear}},
+		{"one row", box("❯ only"), []shuttleengine.PaneInput{clear}},
+		{"empty box", box("❯ "), nil},
+		{"no box", "● some transcript\n", nil},
+	}
+	for _, tt := range restoredTests {
+		t.Run("restored: "+tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := New().RestoredPromptClearSequence(tt.capture)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("RestoredPromptClearSequence = %#v; want %#v", got, tt.want)
+			}
+			for _, input := range got {
+				if input.Key == "Escape" || input.Key == "C-c" || input.Key == "Enter" {
+					t.Errorf("RestoredPromptClearSequence holds %q, which interrupts or submits", input.Key)
+				}
+			}
+		})
 	}
 }
 

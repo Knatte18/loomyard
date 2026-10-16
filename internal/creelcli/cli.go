@@ -3,16 +3,20 @@
 package creelcli
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -22,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtemp"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -50,10 +55,11 @@ func (realClock) Now() time.Time                         { return time.Now() }
 func (realClock) After(d time.Duration) <-chan time.Time { return time.After(d) }
 
 // clientSeam is the clock and daemon spawn every verb's client is built with.
+// spawn starts the daemon for a hub with its stderr appended to the log file at logPath and answers the daemon's pid.
 // A test replaces it, and so does not run in parallel.
 type clientSeam struct {
 	clock creelengine.Clock
-	spawn func(hubPath string) error
+	spawn func(hubPath, logPath string) (int, error)
 }
 
 var seam = clientSeam{clock: realClock{}, spawn: spawnDaemon}
@@ -92,6 +98,17 @@ func refuse(cmd *cobra.Command, err error) error {
 	return nil
 }
 
+// writeOk prints fields as one JSON line with ok set to true, as output.Ok does, and returns the write's error.
+func writeOk(w io.Writer, fields map[string]any) error {
+	fields["ok"] = true
+	data, err := json.Marshal(fields)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(w, string(data))
+	return err
+}
+
 // runVerb resolves the hub from the command's cwd, builds the verb's client and runs body, then prints what it returns.
 // A standalone directory is refused: creel needs a hub.
 func runVerb(cmd *cobra.Command, timeout time.Duration, body func(client *creelengine.Client, out io.Writer) (result, error)) error {
@@ -120,11 +137,11 @@ func runVerb(cmd *cobra.Command, timeout time.Duration, body func(client *creele
 		return refuse(cmd, err)
 	}
 	hubPath := location.HubPath
-	client := creelengine.NewClient(geometry, claimFor(cwd), func() error { return seam.spawn(hubPath) }, seam.clock)
+	client := creelengine.NewClient(geometry, claimFor(cwd), func() (int, error) { return seam.spawn(hubPath, geometry.DaemonLogPath) }, seam.clock)
 	res, err := body(client, out)
 	if errors.Is(err, creelengine.ErrWaitTimeout) {
 		clihelp.SetExit(ctx, ExitWaitTimeout)
-		output.ErrFields(out, "no outcome arrived before the timeout of "+timeout.String(), nil)
+		output.ErrFields(out, "no outcome arrived before the timeout of "+timeout.String(), res.fields)
 		return nil
 	}
 	if err != nil {
@@ -175,6 +192,14 @@ func parentProcessName() string {
 	return strings.TrimSpace(string(data))
 }
 
+// stallFields renders the stall a response carries as the stall, its reason text with the way forward and the time it was read; nil when it carries none.
+func stallFields(resp creelengine.Response) map[string]any {
+	if resp.Stall == "" {
+		return nil
+	}
+	return map[string]any{"stall": string(resp.Stall), "stall_reason": resp.Stall.Reason(), "stall_at": resp.StallAt.Format(time.RFC3339)}
+}
+
 // messageFields renders a message with its envelope and body.
 func messageFields(message creelengine.Message) map[string]any {
 	fields := map[string]any{"id": message.ID, "from": message.From, "kind": message.Kind, "body": message.Body, "posted": message.Posted}
@@ -186,6 +211,10 @@ func messageFields(message creelengine.Message) map[string]any {
 	}
 	if message.ReplyTo != 0 {
 		fields["reply_to"] = message.ReplyTo
+	}
+	if message.EndedUnreadBy != "" {
+		fields["ended_unread_by"] = message.EndedUnreadBy
+		fields["ended_unread_at"] = message.EndedUnreadAt
 	}
 	return fields
 }
@@ -280,8 +309,9 @@ func injectCmd() *cobra.Command {
 		Short:       "type a line into an idle strand's pane",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `inject queues the text to be typed into the receiver's pane the moment it is
-idle, and prints the inject's id. Only the orch, a program and an external
-caller may inject; any other strand posts instead.
+idle, and prints the inject's id. EXTERNAL callers, programs and orch strands
+may inject, interrupt and hold on any strand, and any other strand on its own
+strand only.
 
 --interrupt stops the receiver's running turn first. --ttl sets how long the
 inject waits for an idle receiver before it expires. With --wait the call
@@ -297,9 +327,13 @@ Example:
 					Verb: creelengine.VerbInject, Receiver: args[0], Text: args[1],
 					Interrupt: interrupt, TTLSeconds: int64(ttl / time.Second), Wait: wait,
 				}
-				resp, err := client.Call(req, timeout, nil)
+				var last creelengine.Response
+				resp, err := client.CallWatching(req, timeout, nil, func(note creelengine.Response) {
+					last = note
+					fmt.Fprintf(cmd.ErrOrStderr(), "creel: %s is stalled: %s (at %s)\n", args[0], note.Stall.Reason(), note.StallAt.Format(time.RFC3339))
+				})
 				if err != nil {
-					return result{}, err
+					return result{fields: stallFields(last)}, err
 				}
 				fields := map[string]any{"id": resp.ID, "sender": resp.Sender}
 				if !wait {
@@ -311,6 +345,7 @@ Example:
 				case creelengine.OutcomeUnconfirmed:
 					return result{fields: fields, code: ExitInjectUnconfirmed, note: "the text was typed but its landing was not confirmed"}, nil
 				case creelengine.OutcomeExpired:
+					maps.Copy(fields, stallFields(resp))
 					return result{fields: fields, code: ExitInjectExpired, note: "the inject expired before it could be typed"}, nil
 				}
 				return result{fields: fields}, nil
@@ -332,7 +367,8 @@ func interruptCmd() *cobra.Command {
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `interrupt sends the guarded interrupt to the receiver's running turn and
 prints whether it stopped one. A receiver with no running turn is sent
-nothing. Only the orch, a program and an external caller may interrupt.
+nothing. EXTERNAL callers, programs and orch strands may inject, interrupt and
+hold on any strand, and any other strand on its own strand only.
 
 Example:
   lyx creel interrupt ly:impl`,
@@ -378,6 +414,8 @@ Example:
 }
 
 // readCmd returns the `creel read` verb.
+// It acknowledges the messages only once its envelope was written; a write that fails leaves them unread and the verb refuses with the write's error.
+// A write that fails after part of the envelope went out leaves them unread too, so a consumer may hold a truncated envelope of messages it reads again later.
 func readCmd() *cobra.Command {
 	var (
 		from    string
@@ -409,15 +447,16 @@ Example:
 					if len(resp.Messages) == 0 {
 						fields["note"] = "nothing unread"
 					}
-					output.Ok(out, fields)
-					return nil
+					return writeOk(out, fields)
 				}
 				resp, err := client.Call(creelengine.Request{Verb: creelengine.VerbRead, From: from, All: all, Wait: wait}, timeout, printMessages)
 				if err != nil {
 					return result{}, err
 				}
 				if !printed {
-					_ = printMessages(resp)
+					if err := printMessages(resp); err != nil {
+						return result{}, err
+					}
 				}
 				return result{printed: true}, nil
 			})
@@ -528,13 +567,22 @@ func parseSince(value string, now time.Time) (time.Time, error) {
 
 // logEntryFields renders a journal event, leaving out the fields it does not carry.
 func logEntryFields(entry creelengine.LogEntry) map[string]any {
-	fields := map[string]any{"event": entry.Event, "at": entry.At, "id": entry.ID}
+	fields := map[string]any{"event": entry.Event, "at": entry.At}
+	if entry.ID != 0 {
+		fields["id"] = entry.ID
+	}
 	for key, value := range map[string]string{
-		"from": entry.From, "to": entry.To, "by": entry.By, "receiver": entry.Receiver, "subject": entry.Subject, "notice": entry.Notice,
+		"from": entry.From, "to": entry.To, "by": entry.By, "receiver": entry.Receiver, "subject": entry.Subject, "notice": entry.Notice, "reason": entry.Reason,
 	} {
 		if value != "" {
 			fields[key] = value
 		}
+	}
+	if len(entry.Unread) > 0 {
+		fields["unread"] = entry.Unread
+	}
+	if entry.Step != 0 {
+		fields["step"] = entry.Step
 	}
 	return fields
 }
@@ -549,7 +597,8 @@ func holdCmd() *cobra.Command {
 		Long: `hold keeps the receiver's deliveries to the caller's: only the caller's injects
 pass and only its mail is reminded, until the hold lapses after --for or
 "lyx creel release". Holding again renews it; another sender's hold on a held
-receiver is refused.
+receiver is refused. EXTERNAL callers, programs and orch strands may inject,
+interrupt and hold on any strand, and any other strand on its own strand only.
 
 Example:
   lyx creel hold ly:impl --for 10m`,
@@ -578,7 +627,9 @@ func releaseCmd() *cobra.Command {
 		Short:       "end the caller's hold on a receiver",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `release ends the caller's hold on the receiver and prints whether there was
-one to end.
+one to end. An unknown name is refused with the names that exist. EXTERNAL
+callers, programs and orch strands may inject, interrupt and hold on any
+strand, and any other strand on its own strand only.
 
 Example:
   lyx creel release ly:impl`,
@@ -613,7 +664,7 @@ the same hub it says so and exits 0.`,
 			if !filepath.IsAbs(hubPath) {
 				return refuse(cmd, fmt.Errorf("daemon: --hub-path %q is not an absolute path; way forward: pass the hub's absolute path", hubPath))
 			}
-			err := runDaemon(cmd.Context(), hubPath)
+			err := runDaemon(cmd.Context(), hubPath, cmd.ErrOrStderr())
 			if errors.Is(err, creelengine.ErrDaemonRunning) {
 				output.Ok(cmd.OutOrStdout(), map[string]any{"daemon": "another daemon already serves this hub"})
 				return nil
@@ -630,8 +681,52 @@ the same hub it says so and exits 0.`,
 	return cmd
 }
 
+// pidLineWriter writes the lines it is handed to dst, each opened with the creel daemon log's pid prefix of this process.
+// It buffers a line until its newline arrives and writes each line to dst in one call, so two daemons appending to one file never interleave inside a line.
+type pidLineWriter struct {
+	dst     io.Writer
+	mu      sync.Mutex
+	pending []byte
+}
+
+// Write splits p into lines and writes each completed line, prefixed, to dst; a trailing partial line waits for its newline.
+// It reports len(p) written unless dst fails.
+func (w *pidLineWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.pending = append(w.pending, p...)
+	prefix := creelengine.DaemonLogPrefix(os.Getpid())
+	for {
+		end := bytes.IndexByte(w.pending, '\n')
+		if end < 0 {
+			return len(p), nil
+		}
+		line := prefix + string(w.pending[:end+1])
+		w.pending = w.pending[end+1:]
+		if _, err := io.WriteString(w.dst, line); err != nil {
+			return len(p), err
+		}
+	}
+}
+
 // runDaemon serves the hub at hubPath until a signal or a replaced binary ends it.
-func runDaemon(ctx context.Context, hubPath string) error {
+// It first writes the daemon start header to stderr, then sends the logger's warnings there, each line tagged with this process's pid.
+// A start that fails for any reason but another daemon already serving is logged at Warn before it is returned.
+func runDaemon(ctx context.Context, hubPath string, stderr io.Writer) error {
+	if _, err := fmt.Fprintln(stderr, creelengine.DaemonStartHeader(os.Getpid(), time.Now())); err != nil {
+		return fmt.Errorf("write the daemon start header: %w", err)
+	}
+	logger.SetOutput(&pidLineWriter{dst: stderr})
+	logger.SetVerbosity(0)
+	err := serveDaemon(ctx, hubPath)
+	if err != nil && !errors.Is(err, creelengine.ErrDaemonRunning) {
+		logger.Warn("creel: the daemon did not start or ended with an error", "error", err)
+	}
+	return err
+}
+
+// serveDaemon resolves the hub's geometry and runs the engine's daemon over it.
+func serveDaemon(ctx context.Context, hubPath string) error {
 	root, err := lyxtemp.ProcessRoot()
 	if err != nil {
 		return fmt.Errorf("open the lyxtemp root: %w", err)

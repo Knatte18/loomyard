@@ -294,6 +294,15 @@ type InputBoxClearer interface {
 	ClearInputSequence() []PaneInput
 }
 
+// RestoredPromptClearer is an optional capability beside Engine: the provider's way of emptying an input box that holds the prompt of a turn lyx's own interrupt just stopped, which the provider restored there.
+// Such a prompt can span several box lines, so the clear is sized from the capture of the box.
+type RestoredPromptClearer interface {
+	// RestoredPromptClearSequence returns the keys that empty the input box capture shows.
+	// The sequence holds no Escape, C-c or Enter, only deletes box text, and is at most two keys per box line the capture shows.
+	// A capture showing no box text, or no box, answers no keys.
+	RestoredPromptClearSequence(capture string) []PaneInput
+}
+
 // StrayInputReader is an optional capability beside Engine: the provider's judgment of whether its input box holds a lone stray character.
 // The judgment is the provider's, since what a stray character looks like on screen is provider knowledge.
 type StrayInputReader interface {
@@ -314,6 +323,15 @@ type InterruptGuard interface {
 type RewindPickerReader interface {
 	// RewindPicker reports whether capture shows the provider's rewind picker.
 	RewindPicker(capture string) bool
+}
+
+// StyledBoxReader is an optional capability beside Engine: the provider's way of turning a styled pane capture into the plain capture its box readings take.
+type StyledBoxReader interface {
+	// PlainBoxCapture takes a capture reed's CapturePaneStyled returned and answers the plain capture:
+	// every SGR and other escape sequence removed and each line's trailing ASCII spaces (U+0020) trimmed as `capture-pane -p` trims them, with the cells of an input box holding only the provider's placeholder blanked to spaces.
+	// The answer therefore matches what `capture-pane -p` returns for a pane with no placeholder.
+	// A caller reads the box, the running turn and every other classification of one decision from the one plain capture it answers.
+	PlainBoxCapture(styled string) string
 }
 
 // TextPaster is an optional capability beside Engine: a provider that takes text as one bracketed paste.
@@ -358,7 +376,7 @@ type IdleProbe struct {
 	TooShort bool
 	// Reason says why the session is held when Idle is false and the hook-derived readiness reading decided; empty when Idle is true or the pane probe decided.
 	Reason string
-	// Draft is true when Idle is false because the input box holds text, the hold the readiness reading names as a draft; always false when Idle is true.
+	// Draft is true when Idle is false and the input box holds text, on either reading; always false when Idle is true.
 	Draft bool
 }
 

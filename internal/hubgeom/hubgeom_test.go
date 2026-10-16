@@ -289,12 +289,13 @@ func TestCreelGeometry(t *testing.T) {
 	}
 	stateDir := filepath.Join(fabricengine.HubScratchDir(hub), lyxdirs.CreelDirName)
 	want := creelengine.Geometry{
-		HubPath:    hub,
-		Shortname:  "abc",
-		StateDir:   stateDir,
-		JournalDir: filepath.Join(stateDir, "journal"),
-		LockPath:   filepath.Join(stateDir, "daemon.lock"),
-		SocketPath: filepath.Join(tempRoot, creelengine.SocketName("abc", hub)),
+		HubPath:       hub,
+		Shortname:     "abc",
+		StateDir:      stateDir,
+		JournalDir:    filepath.Join(stateDir, "journal"),
+		LockPath:      filepath.Join(stateDir, "daemon.lock"),
+		SocketPath:    filepath.Join(tempRoot, creelengine.SocketName("abc", hub)),
+		DaemonLogPath: filepath.Join(stateDir, "daemon.log"),
 	}
 	if got != want {
 		t.Errorf("CreelGeometry(%q) = %+v; want %+v", hub, got, want)

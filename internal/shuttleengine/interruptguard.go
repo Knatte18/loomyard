@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"unicode"
+
+	"github.com/Knatte18/loomyard/internal/logger"
 )
 
 // ErrNoRunningTurn marks an interrupt refused because the pane shows no running turn: there is nothing to stop.
@@ -40,6 +42,78 @@ func guardedInterrupt(reed ReedOps, engine Engine, clock Clock, guid string) err
 		return fmt.Errorf("%w (strand %q)", ErrNoRunningTurn, guid)
 	}
 	return playInputs(reed, guid, engine.InterruptSequence())
+}
+
+// ErrInterruptClearFailed marks an interrupt whose key was sent but whose clear of the restored prompt did not finish.
+// A caller treats the interrupt as sent: the turn was stopped, and only the box may still hold the restored text.
+var ErrInterruptClearFailed = errors.New("shuttle: the interrupt key was sent, but clearing the prompt it restored did not finish; treat the interrupt as sent")
+
+// clearRestoredPrompt empties the prompt the provider restored into guid's input box after lyx's own interrupt key, and does nothing for an engine without RestoredPromptClearer, InputBoxReader and InterruptGuard.
+// It waits the engine's interrupt settle on clock and reads the box.
+// A box read empty gets one more settle and one more read, and a box still empty, or one the engine cannot read, returns nil.
+// A box holding text is cleared only behind a guard reading taken from that same capture plus one operator-activity query:
+// the provider pane reads ready with no running turn, and the operator is not active.
+// A reading that fails any of these sends nothing and returns nil, leaving the text as a draft for the next send to hold on.
+// The clear is the engine's RestoredPromptClearSequence, played at most once per call; the box then settles for SubmitSettle and is read once more, and text still there is logged and nothing more is sent.
+// Its keys are the provider's restored-prompt clear, never an Escape, C-c or Enter.
+// A capture, the activity query or the play failing is logged and returned wrapping ErrInterruptClearFailed, and a failed guard reading sends no clear key.
+func clearRestoredPrompt(reed ReedOps, engine Engine, clock Clock, guid string) error {
+	clearer, canClear := engine.(RestoredPromptClearer)
+	reader, canRead := engine.(InputBoxReader)
+	guard, canGuard := engine.(InterruptGuard)
+	if !canClear || !canRead || !canGuard {
+		return nil
+	}
+	read := func() (string, boxReading, error) {
+		capture, err := boxCapture(reed, engine, guid)
+		if err != nil {
+			return "", boxReading{}, err
+		}
+		return capture, readBox(engine, capture), nil
+	}
+	settle := guard.InterruptSettle()
+	clock.Sleep(settle)
+	capture, box, err := read()
+	if err != nil {
+		return interruptClearFailed(guid, "capture the pane after the interrupt key", err)
+	}
+	if box.read && strings.TrimSpace(box.text) == "" {
+		clock.Sleep(settle)
+		if capture, box, err = read(); err != nil {
+			return interruptClearFailed(guid, "capture the pane after the interrupt key", err)
+		}
+	}
+	if !box.read || strings.TrimSpace(box.text) == "" {
+		return nil
+	}
+	if engine.Startup(capture) != StartupReady || guard.RunningTurn(capture) {
+		return nil
+	}
+	active, _, err := reed.OperatorActive(guid)
+	if err != nil {
+		return interruptClearFailed(guid, "read operator activity before the clear", err)
+	}
+	if active {
+		return nil
+	}
+	if err := playInputs(reed, guid, clearer.RestoredPromptClearSequence(capture)); err != nil {
+		return interruptClearFailed(guid, "clear the restored prompt", err)
+	}
+	clock.Sleep(reader.SubmitSettle())
+	_, after, err := read()
+	if err != nil {
+		return interruptClearFailed(guid, "capture the pane after the clear", err)
+	}
+	if after.read && strings.TrimSpace(after.text) != "" {
+		logger.Info("shuttle: the restored prompt survived its clear, sending nothing more", "strandGUID", guid)
+	}
+	return nil
+}
+
+// interruptClearFailed logs a failure after the interrupt key was sent and returns it wrapping ErrInterruptClearFailed.
+func interruptClearFailed(guid, step string, err error) error {
+	logger.Warn("shuttle: the interrupt key was sent but the restored-prompt clear failed", "strandGUID", guid, "step", step, "error", err)
+	return fmt.Errorf("%w (strand %q: %s: %w)", ErrInterruptClearFailed, guid, step, err)
 }
 
 // refuseInterruptKey fails when inputs hold a key of the engine's interrupt sequence or a text holding a control character.

@@ -1,6 +1,7 @@
 // Package creelfake fakes the two seams creelengine is told: Delivery, the hub's strands and their panes, and Clock.
 //
-// Delivery answers from scripted strands, idle and pause flags and errors, and records every send, interrupt and idle probe.
+// Delivery answers from scripted strands, idle and pause flags, stall reasons and errors, and records every send, interrupt and idle probe.
+// Its send and interrupt answers can also come from a function, which may block.
 // Clock advances only when a test says so and records every duration passed to After, in order.
 // Neither fake asserts anything or takes a testing.TB; a test reads the recorded values and asserts itself.
 //
@@ -44,9 +45,11 @@ type Delivery struct {
 	strands []creelengine.Strand
 	idle    map[string]bool
 	paused  map[string]bool
+	stalls  map[string]creelengine.Stall
 
 	strandsErr, idleErr, pausedErr, sendErr, interruptErr error
 	sendFn                                                func(strand, text string) error
+	interruptFn                                           func(strand string) error
 
 	sends      []Send
 	interrupts []string
@@ -55,7 +58,7 @@ type Delivery struct {
 
 // NewDelivery returns a Delivery with no strands.
 func NewDelivery() *Delivery {
-	return &Delivery{idle: map[string]bool{}, paused: map[string]bool{}, idleCalls: map[string]int{}}
+	return &Delivery{idle: map[string]bool{}, paused: map[string]bool{}, stalls: map[string]creelengine.Stall{}, idleCalls: map[string]int{}}
 }
 
 // SetStrands replaces the strand list; a strand with pane pid zero gets DefaultPanePID.
@@ -127,6 +130,13 @@ func (d *Delivery) SetInterruptError(err error) {
 	d.interruptErr = err
 }
 
+// SetInterruptFunc makes Interrupt answer with fn's result, called without the fake's lock held; nil restores the scripted error.
+func (d *Delivery) SetInterruptFunc(fn func(strand string) error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.interruptFn = fn
+}
+
 // Sends returns every call to Send, in order.
 func (d *Delivery) Sends() []Send {
 	d.mu.Lock()
@@ -159,15 +169,29 @@ func (d *Delivery) Strands() ([]creelengine.Strand, error) {
 }
 
 // Idle implements creelengine.Delivery.
-func (d *Delivery) Idle(strand creelengine.Strand) (bool, error) {
+func (d *Delivery) Idle(strand creelengine.Strand) (creelengine.Idleness, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.idleCalls[strand.Name]++
 	if d.idleErr != nil {
-		return false, d.idleErr
+		return creelengine.Idleness{}, d.idleErr
+	}
+	if stall := d.stalls[strand.Name]; stall != "" {
+		return creelengine.Idleness{Stall: stall}, nil
 	}
 	idle, scripted := d.idle[strand.Name]
-	return idle || !scripted, nil
+	return creelengine.Idleness{Idle: idle || !scripted}, nil
+}
+
+// SetStall scripts the stall reason the strand's not-idle answer carries; an empty stall clears it.
+func (d *Delivery) SetStall(name string, stall creelengine.Stall) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if stall == "" {
+		delete(d.stalls, name)
+		return
+	}
+	d.stalls[name] = stall
 }
 
 // Paused implements creelengine.Delivery.
@@ -193,11 +217,17 @@ func (d *Delivery) Send(strand creelengine.Strand, text string) error {
 }
 
 // Interrupt implements creelengine.Delivery.
+// It records the call, then returns what the interrupt function answers when one is set, else the scripted error.
+// The function runs without the fake's lock held, so it may block.
 func (d *Delivery) Interrupt(strand creelengine.Strand) error {
 	d.mu.Lock()
-	defer d.mu.Unlock()
 	d.interrupts = append(d.interrupts, strand.Name)
-	return d.interruptErr
+	fn, err := d.interruptFn, d.interruptErr
+	d.mu.Unlock()
+	if fn != nil {
+		return fn(strand.Name)
+	}
+	return err
 }
 
 type timer struct {
