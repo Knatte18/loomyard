@@ -276,7 +276,7 @@ func (e *Engine) sessionSubstrateLocked() (up bool, usable bool, err error) {
 
 // validateBootConfig refuses a boot-time config value that is wrong on its own, before any tmux round trip.
 // It validates debug_log, mouse, watchdog, the segment colors, window_share_max and window_split, and returns the tmux global flags debug_log selects and the mouse option value.
-// The boot path calls it, and so does an op that reads the strands' window's zoom before booting, so a pure config error surfaces ahead of that read.
+// The boot path calls it, and so does withBootOpLock, so a pure config error surfaces ahead of the boot's first tmux read.
 func (e *Engine) validateBootConfig() (debugArgs []string, mouse string, err error) {
 	// Validate debug_log before anything else touches tmux: a misconfigured
 	// value is a pure config error, unrelated to server/session state, so it
@@ -705,12 +705,26 @@ func (e *Engine) upLocked() (UpResult, bool, error) {
 	return result, booted, nil
 }
 
+// withBootOpLock is withOpLock for an op that always boots: a boot-time config error, an over-long socket path, an unresolvable shell or an unusable `tmux_conf` is refused before fn's first tmux round trip.
+// The boot itself makes the same refusals for the paths that reach it without this wrapper.
+func (e *Engine) withBootOpLock(fn func() error) error {
+	return e.withOpLock(func() error {
+		if _, _, err := e.validateBootConfig(); err != nil {
+			return err
+		}
+		if _, _, err := e.preflightBootHost(); err != nil {
+			return err
+		}
+		return fn()
+	})
+}
+
 // Up ensures the server and session exist.
 // Up never launches strands;
 // Resume rebuilds content after a server restart.
 func (e *Engine) Up() (UpResult, error) {
 	var result UpResult
-	err := e.withRevivalFirst(e.withBootOpLockKeepingZoom, func() error {
+	err := e.withRevivalFirst(e.withBootOpLock, func() error {
 		var err error
 		result, _, err = e.upLocked()
 		return err
@@ -744,10 +758,10 @@ func (e *Engine) ensureSessionLocked() (bool, error) {
 
 // EnsureSession boots this worktree's session only when there is nothing usable to attach to, and
 // reports whether a session was actually created.
-// It raises no state-level refusal on the warm path, since the only state it reads is the zoom bracket's, which swallows its errors, so a caller needing reed's state-level refusals must
+// It raises no state-level refusal on the warm path, since it reads no state there, so a caller needing reed's state-level refusals must
 // still make its own Status call.
 func (e *Engine) EnsureSession() (booted bool, err error) {
-	err = e.withRevivalFirst(e.withOpLockKeepingZoom, func() error {
+	err = e.withRevivalFirst(e.withOpLock, func() error {
 		var innerErr error
 		booted, innerErr = e.ensureSessionLocked()
 		return innerErr
@@ -759,7 +773,7 @@ func (e *Engine) EnsureSession() (booted bool, err error) {
 // drops non-live strands whose done-when paths all exist, relaunches the other non-live strands, and re-applies the layout.
 func (e *Engine) Resume() (ResumeResult, error) {
 	var result ResumeResult
-	err := e.withRevivalFirst(e.withBootOpLockKeepingZoom, func() error {
+	err := e.withRevivalFirst(e.withBootOpLock, func() error {
 		dropped := 0
 		booted, stripped, err := e.ensureServerAndSessionLocked()
 		if err != nil {

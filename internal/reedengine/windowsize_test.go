@@ -21,6 +21,17 @@ func resizedUnpinCount() int {
 	return 2
 }
 
+// bindKeyArgvCount is how many bind-key calls one pinBindingsLocked run issues with no session-switch command and no follow jump: every binding argv but the Alt+z unbind.
+func bindKeyArgvCount() int {
+	count := 0
+	for _, argv := range bindingArgvs("", "", false) {
+		if argv[0] == "bind-key" {
+			count++
+		}
+	}
+	return count
+}
+
 // wantResizedUnpins is the window-scoped then the session-scoped unpin of the window-resized hook on target.
 func wantResizedUnpins(target string) [][]string {
 	return [][]string{
@@ -124,8 +135,11 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 			}
 		}
 		// The fixture's tmux binary does not exist, so the two session-switch keys are left unbound and the follow jump is not pinned.
-		if want := len(bindingArgvs("", "", false)); bindings != want {
+		if want := bindKeyArgvCount(); bindings != want {
 			t.Errorf("pinGeometryOptionsLocked issued %d bind-key calls, want %d", bindings, want)
+		}
+		if got := fake.Count("unbind-key"); got != 1 {
+			t.Errorf("pinGeometryOptionsLocked issued %d unbind-key calls, want 1 for the retired Alt+z", got)
 		}
 		if firstBinding < lastOption {
 			t.Errorf("first bind-key call at %d precedes the last set-option call at %d, want the bindings after the option pins", firstBinding, lastOption)
@@ -158,7 +172,7 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 
 		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()), "")
 
-		if got, want := fake.Count("bind-key"), len(bindingArgvs("", "", false)); got != want {
+		if got, want := fake.Count("bind-key"), bindKeyArgvCount(); got != want {
 			t.Errorf("bind-key calls = %d after a failed follow-command write, want all %d still issued", got, want)
 		}
 		if !strings.Contains(logs.String(), "failed to unset the follow jump line") {
@@ -215,7 +229,7 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 		if got := fake.Count("set-option"); got != 8 {
 			t.Errorf("set-option calls = %d, want 8 (every pin still attempted)", got)
 		}
-		if got, want := fake.Count("bind-key"), len(bindingArgvs("", "", false)); got != want {
+		if got, want := fake.Count("bind-key"), bindKeyArgvCount(); got != want {
 			t.Errorf("bind-key calls = %d, want all %d still issued", got, want)
 		}
 		// The unseen-clear pin and both unpins are attempted while each errors, the session-scoped unpin after the failed window-scoped one.

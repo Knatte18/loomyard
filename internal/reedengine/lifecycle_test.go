@@ -34,7 +34,7 @@ func guids(strands []Strand) []string {
 // An over-long socket path, an unresolvable shell, a segment color outside the palette, an invalid watchdog value, an invalid window_split or a negative window_share_max each fail with an error naming it before any tmux round trip (validation ORDER, not just existence),
 // while "on" and "off" do not trip the watchdog check (the fixture's nonexistent tmux binary is expected to fail Up() past this point,
 // so the assertion is only that the error is NOT the watchdog validation error).
-// Each refusal is asserted at three boot entries: Up and Resume, whose op-lock brackets refuse before their zoom read, and ensureServerAndSessionLocked, which every other boot path reaches without that bracket.
+// Each refusal is asserted at three boot entries: Up and Resume, whose boot op lock refuses before any tmux round trip, and ensureServerAndSessionLocked, which every other boot path reaches without it.
 func TestUp_BootValidation(t *testing.T) {
 	tests := []struct {
 		name      string

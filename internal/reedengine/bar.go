@@ -2,7 +2,7 @@
 // The strings are built from tmux 3.6's own default status-format shape (list mode, the #{W:}, #{P:} and #{S:} loops, the < and > markers).
 // They read strands through the pane user options @strand and @strand_color and the window user option @lyx_strands, never through the current window.
 // They read own windows, the overview window among them, through the window user options @lyx_own, @strand_color and @lyx_unseen.
-// Line 1 follows window index order: the overview, the agents in start order, then the shell button with the strands' pane buttons.
+// Line 1 follows window index order: the overview, the agents in start order, then the shell button.
 // A window carrying the window user option @lyx_hidden still gets no button.
 // Every option read here is display only but one: no Go decision reads @strand_color or @lyx_unseen, while @lyx_follow, which the follow button shows, is the follow state that followingLocked reads.
 
@@ -25,13 +25,8 @@ const (
 	// unlitButtonStyle is the style of a button that is not the selected one: white text on dark grey.
 	unlitButtonStyle = "bg=colour236 fg=white"
 
-	// shellButtonFormat is the shell button, a user range labelled shell, lit while the window the #{W:} loop is on is active and not zoomed.
-	// It heads the strand buttons of the window carrying @lyx_strands.
-	shellButtonFormat = "#[range=user|shell #{?#{&&:#{window_active},#{!=:#{window_zoomed_flag},1}},list=focus bg=white fg=black bold," + unlitButtonStyle + "}] shell #[norange list=on default] "
-
-	// strandButtonFormat is one strand button, a pane range labelled with @strand.
-	// It is lit in the strand's color exactly when its pane is the zoomed active pane of its window, and unlit (the color on dark grey) otherwise.
-	strandButtonFormat = "#[range=pane|#{pane_id} #{?#{&&:#{window_zoomed_flag},#{pane_active}},list=focus bg=" + strandColorFormat + " fg=black bold,bg=colour236 fg=" + strandColorFormat + "}] #{@strand}" + strandWaitFormat + " #[norange list=on default] "
+	// shellButtonFormat is the shell button, a user range labelled shell, lit while the window the #{W:} loop is on is active.
+	shellButtonFormat = "#[range=user|shell #{?window_active,list=focus bg=white fg=black bold," + unlitButtonStyle + "}] shell #[norange list=on default] "
 
 	// windowButtonFormat is one window button, a window range labelled with the window name and lit while that window is current.
 	windowButtonFormat = "#[range=window|#{window_index} #{?window_active,list=focus bg=white fg=black bold," + unlitButtonStyle + "}] #{window_name} #[norange list=on default] "
@@ -44,11 +39,11 @@ const (
 	ownWindowButtonFormat = "#[range=window|#{window_index} #{?window_active,list=focus bg=" + strandColorFormat + " fg=black bold,bg=colour236 fg=" + strandColorFormat + "#{?#{@lyx_unseen}, underscore,}}] #{window_name}" + windowWaitFormat + " #[norange list=on default] "
 
 	// statusFormatButtons is status-format[0]: one run of buttons per window, in window index order.
-	// A window carrying @lyx_strands gives the shell button, then every strand of the window in pane order.
+	// A window carrying @lyx_strands gives the shell button alone.
 	// A window carrying @lyx_own and not @lyx_hidden gives one own-window button, whether or not the session has another window; an overview window is one and carries no @strand_color, so its button takes the plain window style.
 	// When the session has more than one window, every other window carrying none of @lyx_strands, @lyx_own and @lyx_hidden gives one window button.
 	statusFormatButtons = listPrologueFormat +
-		"#{W:#{?#{@lyx_strands}," + shellButtonFormat + "#{P:#{?#{@strand}," + strandButtonFormat + ",}},#{?#{&&:#{@lyx_own},#{!=:#{@lyx_hidden},1}}," + ownWindowButtonFormat + ",#{?#{&&:#{>:#{session_windows},1},#{!=:#{@lyx_hidden},1}}," + windowButtonFormat + ",}}}}"
+		"#{W:#{?#{@lyx_strands}," + shellButtonFormat + ",#{?#{&&:#{@lyx_own},#{!=:#{@lyx_hidden},1}}," + ownWindowButtonFormat + ",#{?#{&&:#{>:#{session_windows},1},#{!=:#{@lyx_hidden},1}}," + windowButtonFormat + ",}}}}"
 
 	// unseenClearHookName is the session hook that fires when the client moves to another window.
 	unseenClearHookName = "session-window-changed"

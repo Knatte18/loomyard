@@ -18,12 +18,6 @@ import (
 // It captures the process-global logger at Debug, so it stays serial.
 func TestCalleeFailuresLogOncePerEpisode(t *testing.T) {
 	const failedCalls = 3
-	zoomListing := "%1 0 0 10 3 1\n%2 0 3 10 3 2\n"
-	keepZoomStep := func(e *Engine) { _ = e.keepZoomLocked(func() error { return nil }) }
-	scriptZoomedWindow := func(e *Engine, f *fakeTmux) {
-		f.answerFormat(zoomStateFormat, "1 %2", nil)
-		f.answer("list-panes", zoomListing, nil)
-	}
 	healVerb := func(verb, out string) func(e *Engine, f *fakeTmux) {
 		return func(_ *Engine, f *fakeTmux) { f.answer(verb, out, nil) }
 	}
@@ -48,45 +42,6 @@ func TestCalleeFailuresLogOncePerEpisode(t *testing.T) {
 		// wantInfoAfterHeal is a message that logs at one more level=INFO line after the heal.
 		wantInfoAfterHeal string
 	}{
-		{
-			name:    "unzoom",
-			setup:   scriptZoomedWindow,
-			fail:    failVerb("resize-pane"),
-			heal:    healVerb("resize-pane", ""),
-			call:    keepZoomStep,
-			failMsg: "failed to unzoom the strands' window",
-			healMsg: "reed: unzooms the strands' window again",
-		},
-		{
-			name:    "post-step listing",
-			setup:   scriptZoomedWindow,
-			fail:    failVerb("list-panes"),
-			heal:    healVerb("list-panes", zoomListing),
-			call:    keepZoomStep,
-			failMsg: "failed to list the strands' window after a step",
-			healMsg: "reed: lists the strands' window after a step again",
-		},
-		{
-			name:  "re-zoom",
-			setup: scriptZoomedWindow,
-			fail: func(_ *Engine, f *fakeTmux, _ int) {
-				// Each call unzooms with the odd resize-pane and re-zooms with the even one.
-				resizes := 0
-				f.answerFunc("resize-pane", func([]string) (string, error) {
-					resizes++
-					if resizes%2 == 0 {
-						return "", errors.New("re-zoom failed")
-					}
-					return "", nil
-				})
-			},
-			heal: func(_ *Engine, f *fakeTmux) {
-				f.answerFunc("resize-pane", func([]string) (string, error) { return "", nil })
-			},
-			call:    keepZoomStep,
-			failMsg: "failed to re-zoom the strands' window",
-			healMsg: "reed: re-zooms the strands' window again",
-		},
 		{
 			name: "live pane generation read",
 			fail: failVerb("display-message"),
