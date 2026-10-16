@@ -635,7 +635,8 @@ func TestOwnWindow_RealTmux(t *testing.T) {
 		if err != nil || st == nil {
 			t.Fatalf("LoadState = (%+v, %v)", st, err)
 		}
-		s := Strand{GUID: guid, Name: guid, Cmd: cmd, PaneID: strings.TrimSpace(out), Display: render.Display{Anchor: render.Anchor("below-parent")}}
+		// ResumeCmd stays up so a relaunch of a leftover whose own command exits is observable as live.
+		s := Strand{GUID: guid, Name: guid, Cmd: cmd, ResumeCmd: "sleep 300", PaneID: strings.TrimSpace(out), Display: render.Display{Anchor: render.Anchor("below-parent")}}
 		st.Strands = append(st.Strands, s)
 		if err := SaveState(e.stateDir(), st); err != nil {
 			t.Fatalf("SaveState: %v", err)
