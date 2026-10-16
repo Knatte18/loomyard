@@ -292,7 +292,7 @@ func TestRunSuite_HubAbsent(t *testing.T) {
 
 // TestRunSuite_PerSuiteSpec verifies, for each suite runSuite is parameterized over, that a default run removes a stale sandbox-report.json before the agent launches, calls launchAgent with the repo directory, the resolved claude, the suite's default instruction and an empty binDir (a prod resolution), writes only its own scheme file with the fingerprint header and embedded doc body, and registers that file and the report in .git/info/exclude; and that a -prompt override reaches launchAgent verbatim.
 func TestRunSuite_PerSuiteSpec(t *testing.T) {
-	suites := []suiteSpec{mainSuite, reedSuite, shuttleSuite}
+	suites := []suiteSpec{mainSuite, reedSuite, shuttleSuite, creelSuite}
 	tests := []struct {
 		name string
 		spec suiteSpec
@@ -300,6 +300,7 @@ func TestRunSuite_PerSuiteSpec(t *testing.T) {
 		{"core", mainSuite},
 		{"reed", reedSuite},
 		{"shuttle", shuttleSuite},
+		{"creel", creelSuite},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -355,6 +356,13 @@ func TestRunSuite_PerSuiteSpec(t *testing.T) {
 				}
 				if !strings.Contains(string(scheme), tt.spec.doc) {
 					t.Errorf("%s does not contain the embedded suite doc body", tt.spec.fileName)
+				}
+				onDisk, err := os.ReadFile(tt.spec.fileName)
+				if err != nil {
+					t.Fatalf("read %s from the package directory: %v", tt.spec.fileName, err)
+				}
+				if string(onDisk) != tt.spec.doc {
+					t.Errorf("%s spec embeds a different file than %s", tt.name, tt.spec.fileName)
 				}
 				for _, other := range suites {
 					if other.fileName == tt.spec.fileName {
@@ -548,7 +556,7 @@ func TestSuiteSpecs_ReedTeardownFlag(t *testing.T) {
 	if mainSuite.reedTeardown {
 		t.Error("mainSuite.reedTeardown = true; the core suite boots no reed substrate")
 	}
-	for _, spec := range []suiteSpec{reedSuite, shuttleSuite, burlerSuite} {
+	for _, spec := range []suiteSpec{reedSuite, shuttleSuite, creelSuite, burlerSuite} {
 		if !spec.reedTeardown {
 			t.Errorf("%s: reedTeardown = false; live-reed suites must tear their substrate down", spec.fileName)
 		}
@@ -565,6 +573,7 @@ func TestRunSuite_ReedTeardown(t *testing.T) {
 		wantCalls   int
 	}{
 		{"live-reed suite tears down once after the agent", burlerSuite, 0, nil, 1},
+		{"creel suite tears down once after the agent", creelSuite, 0, nil, 1},
 		{"core suite never tears down", mainSuite, 0, nil, 0},
 		{"teardown runs after a non-zero agent exit", burlerSuite, 2, nil, 1},
 		{"a teardown failure is tolerated", burlerSuite, 0, fmt.Errorf("lyx reed down: exit status 1"), 1},

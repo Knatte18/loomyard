@@ -5,11 +5,11 @@ This is the **ordered procedure**;
 for the topology, repo layout, and design rationale see [sandbox-hub.md](sandbox-hub.md).
 
 All commands run from the lyx repo root (`C:\Code\loomyard\wts\loomyard` on Windows, the repo root on POSIX) unless stated otherwise.
-The sandbox launchers (`sandbox/win/build.cmd`, `sandbox/win/core-suite.cmd`, `sandbox/win/reed-suite.cmd`, `sandbox/win/shuttle-suite.cmd`, `sandbox/win/burler-suite.cmd`, `sandbox/win/fetch.cmd`) hardcode this machine's Hub parent `C:\Code`.
+The sandbox launchers (`sandbox/win/build.cmd`, `sandbox/win/core-suite.cmd`, `sandbox/win/reed-suite.cmd`, `sandbox/win/shuttle-suite.cmd`, `sandbox/win/creel-suite.cmd`, `sandbox/win/burler-suite.cmd`, `sandbox/win/fetch.cmd`) hardcode this machine's Hub parent `C:\Code`.
 The deploy launchers hardcode nothing: `update-plugins.cmd` puts production `lyx` into the machine's own `go env GOBIN` (else `GOPATH\bin`), and `deploy-dev.cmd` a dev build into a derived, per-worktree `.dev-bin` directory.
 Each sandbox launcher does exactly one thing (build / one suite / fetch).
 
-> **POSIX equivalents.** Every command below has a `sandbox/posix/*.sh` twin (`build.sh`, `core-suite.sh`, `reed-suite.sh`, `shuttle-suite.sh`, `burler-suite.sh`, `fetch.sh`), same subcommands and flags, `$HOME/Code` standing in for `C:\Code`. `update-plugins.sh`/`deploy-dev` are the POSIX twins of `update-plugins.cmd`/`deploy-dev.cmd`.
+> **POSIX equivalents.** Every command below has a `sandbox/posix/*.sh` twin (`build.sh`, `core-suite.sh`, `reed-suite.sh`, `shuttle-suite.sh`, `creel-suite.sh`, `burler-suite.sh`, `fetch.sh`), same subcommands and flags, `$HOME/Code` standing in for `C:\Code`. `update-plugins.sh`/`deploy-dev` are the POSIX twins of `update-plugins.cmd`/`deploy-dev.cmd`.
 
 **Run every suite launcher in a real, attached interactive terminal** — never backgrounded, detached, or with stdout/stderr redirected.
 The agent session is an interactive `claude` process;
@@ -149,18 +149,19 @@ sandbox/posix/reed-suite.sh -claude <path>   # override the claude binary (defau
 sandbox/posix/reed-suite.sh -prompt <text>   # override the instruction string
 ```
 
-### 4c. Run the shuttle or burler suite (optional, needs live tmux + logged-in claude)
+### 4c. Run the shuttle, creel or burler suite (optional, needs live tmux + logged-in claude)
 
 ```cmd
 sandbox/win/shuttle-suite.cmd
+sandbox/win/creel-suite.cmd
 sandbox/win/burler-suite.cmd
 ```
 
-Same operating model as 4b, for `lyx shuttle`'s and `lyx burler`'s scenarios respectively;
-both need a live tmux, PowerShell 7, a logged-in `claude`,
+Same operating model as 4b, for `lyx shuttle`'s, `lyx creel`'s and `lyx burler`'s scenarios respectively;
+each needs a live tmux, PowerShell 7, a logged-in `claude`,
 and an `lyx init`-ed code repo.
 Same `-claude`/`-prompt` overrides.
-After the session ends, the launcher runs `lyx reed down` in the code repo (for the reed, shuttle, and burler suites) so no tmux server outlives the run — an orphaned one holds handles inside the Hub and blocks the next `sandbox/win/build.cmd -reset` (`sandbox/posix/build.sh -reset`).
+After the session ends, the launcher runs `lyx reed down` in the code repo (for the reed, shuttle, creel, and burler suites) so no tmux server outlives the run — an orphaned one holds handles inside the Hub and blocks the next `sandbox/win/build.cmd -reset` (`sandbox/posix/build.sh -reset`).
 
 ### 4d. Run the reed watch suite (optional, needs live tmux + logged-in claude)
 
@@ -224,3 +225,4 @@ Then groom/spawn as usual.
 - [tools/sandbox/SANDBOX-CORE-SUITE.md](../tools/sandbox/SANDBOX-CORE-SUITE.md) — the embedded test scheme the agent follows.
 - [tools/sandbox/SANDBOX-REED-SUITE.md](../tools/sandbox/SANDBOX-REED-SUITE.md) — the embedded reed-specific test scheme `sandbox/win/reed-suite.cmd`/`sandbox/posix/reed-suite.sh` follows.
 - [tools/sandbox/SANDBOX-REED-WATCH-SUITE.md](../tools/sandbox/SANDBOX-REED-WATCH-SUITE.md) — the embedded, non-destructive reed scheme `sandbox/win/reed-watch-suite.cmd`/`sandbox/posix/reed-watch-suite.sh` follows.
+- [tools/sandbox/SANDBOX-CREEL-SUITE.md](../tools/sandbox/SANDBOX-CREEL-SUITE.md) — the embedded creel test scheme `sandbox/win/creel-suite.cmd`/`sandbox/posix/creel-suite.sh` follows.

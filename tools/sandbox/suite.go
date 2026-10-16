@@ -1,11 +1,8 @@
 // suite.go implements the "sandbox suite", "sandbox reed-suite", "sandbox reed-watch-suite",
-// "sandbox shuttle-suite", "sandbox burler-suite", and "sandbox webster-suite"
-// subcommands: copies one of the embedded suite templates (main, reed, reed-watch, shuttle,
-// burler, or webster) into the Hub warp repo, stamps a lyx binary fingerprint, registers the file
-// as a git exclude entry, and launches an interactive Claude session to execute it.
-// The six suites share every mechanic (fingerprinting, git-exclude, stale-report cleanup, agent
-// launch, post-session reed teardown) via the suiteSpec parameterization of runSuite;
-// only the file name, embedded doc body, default instruction, and reed-teardown flag differ --
+// "sandbox shuttle-suite", "sandbox creel-suite", "sandbox burler-suite", and "sandbox webster-suite"
+// subcommands: copies one of the embedded suite templates (main, reed, reed-watch, shuttle, creel, burler, or webster) into the Hub warp repo, stamps a lyx binary fingerprint, registers the file as a git exclude entry, and launches an interactive Claude session to execute it.
+// The suites share every mechanic (fingerprinting, git-exclude, stale-report cleanup, agent launch, post-session reed teardown) via the suiteSpec parameterization of runSuite.
+// Only the file name, embedded doc body, default instruction, and reed-teardown flag differ.
 // reedWatchSuite is the one spec that sets reedTeardown false, deliberately (see its own comment).
 
 package main
@@ -42,6 +39,9 @@ var reedWatchSandboxSuiteMD string
 //go:embed SANDBOX-SHUTTLE-SUITE.md
 var shuttleSandboxSuiteMD string
 
+//go:embed SANDBOX-CREEL-SUITE.md
+var creelSandboxSuiteMD string
+
 //go:embed SANDBOX-BURLER-SUITE.md
 var burlerSandboxSuiteMD string
 
@@ -51,8 +51,7 @@ var websterSandboxSuiteMD string
 //go:embed SANDBOX-FABRIC-SUITE.md
 var fabricSandboxSuiteMD string
 
-// suiteSpec parameterizes runSuite over the six supported suites (main,
-// reed, shuttle, burler, webster, and fabric): the file written into
+// suiteSpec parameterizes runSuite over every supported suite: the file written into
 // the Hub warp repo, the embedded doc body rendered into it, the default
 // prompt handed to claude when the operator supplies no -prompt override, and
 // whether the suite boots a live reed substrate that must be torn down after
@@ -113,6 +112,16 @@ var shuttleSuite = suiteSpec{
 	fileName:     "SANDBOX-SHUTTLE-SUITE.md",
 	doc:          shuttleSandboxSuiteMD,
 	instruction:  "Read ./SANDBOX-SHUTTLE-SUITE.md and follow the instructions in it exactly.",
+	reedTeardown: true,
+}
+
+// creelSuite is the SANDBOX-CREEL-SUITE spec: the dedicated scheme
+// exercising the lyx creel black-box agent scenarios.
+// It sets reedTeardown because its scenarios add reed strands, whose tmux server would otherwise block the next build -reset.
+var creelSuite = suiteSpec{
+	fileName:     "SANDBOX-CREEL-SUITE.md",
+	doc:          creelSandboxSuiteMD,
+	instruction:  "Read ./SANDBOX-CREEL-SUITE.md and follow the instructions in it exactly.",
 	reedTeardown: true,
 }
 
