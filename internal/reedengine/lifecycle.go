@@ -805,7 +805,7 @@ func (e *Engine) Resume() (ResumeResult, error) {
 		}
 		e.markResolvedStrandWindowLocked(st)
 
-		live, windows, err := e.listStrandAndWindowPanes(st)
+		live, windows, err := e.listReconcilePanesLocked(st)
 		if err != nil {
 			return fmt.Errorf("list panes: %w", err)
 		}

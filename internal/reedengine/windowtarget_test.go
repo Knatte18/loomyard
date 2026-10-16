@@ -14,13 +14,16 @@ func TestStrandWindowTarget(t *testing.T) {
 	current := exactSessionWindowTarget(session)
 
 	tests := []struct {
-		name      string
-		state     *ReedState
-		listing   string
-		listErr   error
-		want      string
-		wantErr   bool
-		wantLists int
+		name          string
+		state         *ReedState
+		listing       string
+		listErr       error
+		markers       string
+		markersErr    error
+		want          string
+		wantErr       bool
+		wantLists     int
+		wantMarkLists int
 	}{
 		{
 			name:      "SelvageWindowWins",
@@ -37,11 +40,12 @@ func TestStrandWindowTarget(t *testing.T) {
 			wantLists: 1,
 		},
 		{
-			name:      "OwnWindowStrandPaneIsNotTheStrandsWindow",
-			state:     &ReedState{Strands: []Strand{ownWindowTestStrand("o", "%2")}},
-			listing:   "%2 @5\n",
-			want:      current,
-			wantLists: 0,
+			name:          "OwnWindowStrandPaneIsNotTheStrandsWindowAndReadsTheMarker",
+			state:         &ReedState{Strands: []Strand{ownWindowTestStrand("o", "%2")}},
+			listing:       "%2 @5\n",
+			want:          current,
+			wantLists:     0,
+			wantMarkLists: 1,
 		},
 		{
 			name:      "SelvageWindowWinsOverAnOwnWindowStrand",
@@ -51,22 +55,53 @@ func TestStrandWindowTarget(t *testing.T) {
 			wantLists: 1,
 		},
 		{
-			name:      "NothingRecordedIsTheCurrentWindowWithoutARoundTrip",
-			state:     &ReedState{Strands: []Strand{{PaneID: ""}}},
+			name:          "NothingRecordedReadsTheMarkerAndFallsBackToTheCurrentWindow",
+			state:         &ReedState{Strands: []Strand{{PaneID: ""}}},
+			want:          current,
+			wantMarkLists: 1,
+		},
+		{
+			name:      "NilStateIsTheCurrentWindowWithoutARoundTrip",
 			want:      current,
 			wantLists: 0,
 		},
 		{
-			name:      "NilStateIsTheCurrentWindow",
-			want:      current,
-			wantLists: 0,
+			name:          "RecordedPaneOfAnotherSessionCountsAsAbsent",
+			state:         &ReedState{SelvagePaneID: "%1", Strands: []Strand{{PaneID: "%2"}}},
+			listing:       "%7 @4\n",
+			want:          current,
+			wantLists:     1,
+			wantMarkLists: 1,
 		},
 		{
-			name:      "RecordedPaneOfAnotherSessionCountsAsAbsent",
-			state:     &ReedState{SelvagePaneID: "%1", Strands: []Strand{{PaneID: "%2"}}},
-			listing:   "%7 @4\n",
-			want:      current,
-			wantLists: 1,
+			name:          "NoSelvageRecordedResolvesTheMarkedWindow",
+			state:         &ReedState{Strands: []Strand{ownWindowTestStrand("o", "%2")}},
+			markers:       "@2 0\n@4 1\n@6 1\n",
+			want:          "@4",
+			wantMarkLists: 1,
+		},
+		{
+			name:          "UnlistedSelvageResolvesTheMarkedWindow",
+			state:         &ReedState{SelvagePaneID: "%1"},
+			listing:       "%7 @9\n",
+			markers:       "@2 0\n@4 1\n",
+			want:          "@4",
+			wantLists:     1,
+			wantMarkLists: 1,
+		},
+		{
+			name:          "NoMarkedWindowFallsBackToTheCurrentWindow",
+			state:         &ReedState{},
+			markers:       "@2 0\n@4 0\n",
+			want:          current,
+			wantMarkLists: 1,
+		},
+		{
+			name:          "MarkerListingFailureIsReturned",
+			state:         &ReedState{},
+			markersErr:    errors.New("no server running"),
+			wantErr:       true,
+			wantMarkLists: 1,
 		},
 		{
 			name:      "ListingFailureIsReturned",
@@ -82,6 +117,7 @@ func TestStrandWindowTarget(t *testing.T) {
 			e := newTestEngine(t)
 			fake := installFakeTmux(t, e)
 			fake.answer(sessionListVerb, tt.listing, tt.listErr)
+			fake.answer(markerListVerb, tt.markers, tt.markersErr)
 
 			got, err := e.tmux.strandWindowTarget(session, tt.state)
 			if (err != nil) != tt.wantErr {
@@ -92,6 +128,15 @@ func TestStrandWindowTarget(t *testing.T) {
 			}
 			if lists := fake.Count(sessionListVerb); lists != tt.wantLists {
 				t.Errorf("session listings = %d, want %d", lists, tt.wantLists)
+			}
+			if lists := fake.Count(markerListVerb); lists != tt.wantMarkLists {
+				t.Errorf("marker listings = %d, want %d", lists, tt.wantMarkLists)
+			}
+			if tt.wantMarkLists > 0 {
+				want := []string{"list-windows", "-t", exactSessionTarget(session), "-F", strandsMarkerFormat}
+				if argv := fake.LastArgv(markerListVerb); !slices.Equal(argv, want) {
+					t.Errorf("marker listing argv = %v, want %v", argv, want)
+				}
 			}
 			if tt.wantLists == 0 {
 				return

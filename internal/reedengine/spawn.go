@@ -78,7 +78,7 @@ func sendKeysLiteralArg(text string) string {
 // a script write failure degrades to typing the composed line itself.
 // The script is written on every launch, so a relaunch with a different command or a different spawning executable always regenerates it.
 func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) error {
-	live, windows, err := e.listStrandAndWindowPanes(st)
+	live, windows, err := e.listReconcilePanesLocked(st)
 	if err != nil {
 		return fmt.Errorf("list panes: %w", err)
 	}
@@ -292,6 +292,21 @@ func (e *Engine) openOwnWindowLocked(st *ReedState, s *Strand, name, group strin
 	}
 	paneID, windowID := fields[0], fields[1]
 
+	e.markOwnWindowLocked(s, windowID, overview, !selectNew, group)
+	if selectNew {
+		if err := e.tmux.run("select-window", "-t", windowID); err != nil {
+			logger.Warn("reed: could not select the new agent window", "strand", s.GUID, "window", windowID, "err", err)
+		}
+	}
+
+	logger.Info("reed: opened own window", "socket", e.Socket(), "session", e.SessionName(), "strand", s.GUID, "window", windowID, "pane", paneID)
+	return paneID, nil
+}
+
+// markOwnWindowLocked sets the own-window options on windowID, the window of s's pane: the own marker always, and then the overview marker for an overview window.
+// Any other window gets the strand's @strand_color and, off Windows, @lyx_unseen when unseen is set; a non-empty group is recorded on the window.
+// A window option that fails to set is logged and never fails the step; a window missing the own marker is only never ended by reconcile.
+func (e *Engine) markOwnWindowLocked(s *Strand, windowID string, overview, unseen bool, group string) {
 	setOption := func(option, value string) {
 		if err := e.tmux.run("set-option", "-w", "-t", windowID, option, value); err != nil {
 			logger.Warn("reed: could not set an own-window option", "strand", s.GUID, "window", windowID, "option", option, "err", err)
@@ -306,21 +321,13 @@ func (e *Engine) openOwnWindowLocked(st *ReedState, s *Strand, name, group strin
 				setOption("@strand_color", tmuxColor)
 			}
 		}
-		if runtime.GOOS != "windows" && !selectNew {
+		if runtime.GOOS != "windows" && unseen {
 			setOption(unseenWindowOption, "1")
 		}
 	}
 	if group != "" {
 		setOption(groupWindowOption, group)
 	}
-	if selectNew {
-		if err := e.tmux.run("select-window", "-t", windowID); err != nil {
-			logger.Warn("reed: could not select the new agent window", "strand", s.GUID, "window", windowID, "err", err)
-		}
-	}
-
-	logger.Info("reed: opened own window", "socket", e.Socket(), "session", e.SessionName(), "strand", s.GUID, "window", windowID, "pane", paneID)
-	return paneID, nil
 }
 
 // loadOrInitStateLocked loads or initializes a ReedState stamped with
@@ -377,7 +384,7 @@ func (e *Engine) loadOrInitStateLocked() (*ReedState, error) {
 // pane bindings, and persists the state. It is the
 // shared tail every public op composes after mutation.
 func (e *Engine) reconcileApplyPersistLocked(st *ReedState) ([]LivePane, error) {
-	live, windows, err := e.listStrandAndWindowPanes(st)
+	live, windows, err := e.listReconcilePanesLocked(st)
 	if err != nil {
 		return nil, fmt.Errorf("list panes: %w", err)
 	}

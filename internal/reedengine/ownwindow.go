@@ -272,6 +272,80 @@ func (e *Engine) listStrandAndWindowPanes(st *ReedState) ([]LivePane, []windowPa
 	return live, windows, nil
 }
 
+// listReconcilePanesLocked returns the panes of the shell window and the panes of the whole session, after breaking any strand pane left in the shell window out into a window of its own.
+// The shell window is the one the Selvage pane or the @lyx_strands marker names; with neither, the current window is listed and nothing is moved, so a viewer on a shared agent window never has that window's panes broken out of it.
+// When a pane moved, both listings are taken again, so reconcile judges a moved pane only as an own-window pane.
+// A failed listing, before or after a move, is returned as an error.
+func (e *Engine) listReconcilePanesLocked(st *ReedState) ([]LivePane, []windowPane, error) {
+	shellWindow, ok, err := e.tmux.shellWindow(e.SessionName(), st)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !ok {
+		shellWindow = exactSessionWindowTarget(e.SessionName())
+	}
+	live, err := e.tmux.listPanes(shellWindow)
+	if err != nil {
+		return nil, nil, err
+	}
+	windows, err := e.tmux.listWindowPanes(e.SessionName())
+	if err != nil {
+		return nil, nil, err
+	}
+	if !ok {
+		return live, windows, nil
+	}
+	moves := planShellWindowMoves(st, live)
+	if len(moves) == 0 || !e.moveShellWindowStrandsLocked(st, shellWindow, moves) {
+		return live, windows, nil
+	}
+	live, err = e.tmux.listPanes(shellWindow)
+	if err != nil {
+		return nil, nil, err
+	}
+	windows, err = e.tmux.listWindowPanes(e.SessionName())
+	if err != nil {
+		return nil, nil, err
+	}
+	return live, windows, nil
+}
+
+// moveShellWindowStrandsLocked breaks each of paneIDs, strand panes in shellWindow, out into a window of its own placed just before shellWindow, and reports whether any pane moved.
+// A moved strand's anchor becomes own-window with no window group, which the op's own save persists.
+// A failed break-out, or one that answers anything but a window id, is logged and leaves that pane and its anchor for the next op, and the remaining panes are still tried.
+// A failed window marker is logged and the anchor is still rewritten, since the pane already sits in its own window.
+func (e *Engine) moveShellWindowStrandsLocked(st *ReedState, shellWindow string, paneIDs []string) bool {
+	moved := false
+	for _, paneID := range paneIDs {
+		var s *Strand
+		for i := range st.Strands {
+			if st.Strands[i].PaneID == paneID {
+				s = &st.Strands[i]
+				break
+			}
+		}
+		if s == nil {
+			continue
+		}
+		out, err := e.tmux.output("break-pane", "-d", "-b", "-s", paneID, "-t", shellWindow, "-n", strandLabel(s.Name), "-P", "-F", "#{window_id}")
+		if err != nil {
+			logger.Warn("reed: could not break a strand pane out of the shell window", "socket", e.Socket(), "session", e.SessionName(), "strand", s.GUID, "pane", paneID, "err", err)
+			continue
+		}
+		fields := strings.Fields(out)
+		if len(fields) != 1 || !strings.HasPrefix(fields[0], "@") {
+			logger.Warn("reed: break-pane answered no window id for a strand pane", "socket", e.Socket(), "session", e.SessionName(), "strand", s.GUID, "pane", paneID, "answer", strings.TrimSpace(out))
+			continue
+		}
+		e.markOwnWindowLocked(s, fields[0], false, true, "")
+		s.Display.Anchor = render.AnchorOwnWindow
+		s.Display.Window = ""
+		moved = true
+		logger.Info("reed: moved a strand pane out of the shell window", "socket", e.Socket(), "session", e.SessionName(), "strand", s.GUID, "window", fields[0], "pane", paneID)
+	}
+	return moved
+}
+
 // agentWindowPanes sorts the listed panes bound to strands of st by window: live holds each window with a bound own-window pane that is not dead, bound each window with any such pane, and overview the window of the overview strand's pane.
 // Panes in a window of skip are left out.
 func agentWindowPanes(st *ReedState, panes []windowPane, skip map[string]bool) (live, bound map[string]bool, overview string) {

@@ -248,3 +248,29 @@ func recordedPaneIDs(st *ReedState) []string {
 	}
 	return []string{st.SelvagePaneID}
 }
+
+// planShellWindowMoves returns, in listing order, the ids of the panes of shellPanes that a strand of st is bound to, alive or dead.
+// The recorded Selvage pane and any unbound pane are never returned.
+// With the Selvage pane absent from shellPanes the last bound pane stays, since breaking out a window's only pane would take the whole window with it.
+func planShellWindowMoves(st *ReedState, shellPanes []LivePane) []string {
+	bound := make(map[string]bool, len(st.Strands))
+	for _, s := range st.Strands {
+		if s.PaneID != "" {
+			bound[s.PaneID] = true
+		}
+	}
+	selvagePresent := false
+	var moves []string
+	for _, p := range shellPanes {
+		switch {
+		case st.SelvagePaneID != "" && p.ID == st.SelvagePaneID:
+			selvagePresent = true
+		case bound[p.ID]:
+			moves = append(moves, p.ID)
+		}
+	}
+	if !selvagePresent && len(moves) > 0 {
+		moves = moves[:len(moves)-1]
+	}
+	return moves
+}
