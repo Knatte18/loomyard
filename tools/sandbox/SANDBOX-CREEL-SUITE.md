@@ -257,7 +257,7 @@ Then `lyx tender pause` freezes the TTL and holds delivery, and `lyx tender resu
 **Goal:** "Replace the binary under a running daemon, damage the journal in the ways a crash or an old day file would, and confirm the daemon restarts on the same pool and says why when it cannot start."
 
 **Watch:** Replacing the binary ends the daemon within 2 s, and the next verb brings the same pool (a diff of `lyx creel log` before and after).
-A planted 8-day-old day file is carried forward and deleted, and a torn tail is cut.
+A planted 8-day-old day file is carried forward and deleted, and a torn tail is cut whether or not it ends in a newline, and a restart after the next append starts cleanly.
 A malformed middle line, planted while the daemon is stopped, gives the verb an error naming the daemon log, which quotes the start's error line with the journal file and line.
 
 **Verdict:** `FAIL` on a pool diff or lost unread mail.

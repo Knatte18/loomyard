@@ -171,16 +171,13 @@ func foldJournal(dir string) (*pool, error) {
 			return nil, fmt.Errorf("creel journal: read %s: %w", path, err)
 		}
 		lines := bytes.Split(data, []byte("\n"))
-		last := len(lines) - 1
-		for last >= 0 && len(bytes.TrimSpace(lines[last])) == 0 {
-			last--
-		}
+		last := lastNonBlankLine(lines)
 		for index, line := range lines {
 			if len(bytes.TrimSpace(line)) == 0 {
 				continue
 			}
-			var rec record
-			if err := json.Unmarshal(line, &rec); err != nil {
+			rec, err := parseRecord(line)
+			if err != nil {
 				if fileIndex == len(names)-1 && index == last {
 					logger.Warn("creel journal: skipping a torn last line left by a crash", "file", path, "line", index+1)
 					continue
@@ -192,6 +189,24 @@ func foldJournal(dir string) (*pool, error) {
 	}
 	p.finishFold()
 	return p, nil
+}
+
+// lastNonBlankLine returns the index of the last line whose trimmed text is not empty, or -1 when there is none.
+// The fold and the journal's tail repair share it, so the line the fold skips as torn is the line the repair cuts.
+func lastNonBlankLine(lines [][]byte) int {
+	last := len(lines) - 1
+	for last >= 0 && len(bytes.TrimSpace(lines[last])) == 0 {
+		last--
+	}
+	return last
+}
+
+// parseRecord decodes one journal line as a record.
+// A line that is valid JSON but no record, such as an array, fails.
+func parseRecord(line []byte) (record, error) {
+	var rec record
+	err := json.Unmarshal(line, &rec)
+	return rec, err
 }
 
 // finishFold settles what a crash leaves open: an inject with a sending event and no outcome folds as unconfirmed, so one in flight is never retyped.

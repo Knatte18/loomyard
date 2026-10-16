@@ -4,6 +4,7 @@ package creelengine
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -74,6 +75,16 @@ func TestJournal_Fold(t *testing.T) {
 	injectPosted := func(id int64, to, text string) string {
 		return line(record{Event: eventPosted, Kind: kindInject, ID: id, From: alpha, To: to, Body: text, TTLSeconds: 600})
 	}
+	const torn = `{"event":"posted","id":2,"fr`
+	kept := posted(1, alpha, beta, "kept") + "\n"
+	keptAndSecond := kept + posted(2, alpha, beta, "second") + "\n"
+	keptAndBlanks := kept + "\n\n"
+	empty, blanks := "", "\n\n"
+	onlyMessageOne := func(t *testing.T, p *pool) {
+		if len(p.messages) != 1 || p.messages[1] == nil {
+			t.Errorf("messages = %+v, want only message 1", shapesOf(p))
+		}
+	}
 	tests := []struct {
 		name string
 		// files maps a day file name to its raw content; a nil map leaves the journal directory missing.
@@ -81,6 +92,10 @@ func TestJournal_Fold(t *testing.T) {
 		wantErr  []string
 		wantWarn int
 		check    func(t *testing.T, p *pool)
+		// wantNewest, when set, is the newest day file's content after the journal opens over the folded pool;
+		// wantCutBytes is the byte count the repair's Warn names, zero for a repair that cuts nothing.
+		wantNewest   *string
+		wantCutBytes int
 	}{
 		{
 			name: "a missing journal directory folds to an empty pool",
@@ -152,14 +167,64 @@ func TestJournal_Fold(t *testing.T) {
 			},
 		},
 		{
-			name:     "a torn last line is skipped with one warning",
-			files:    map[string]string{"2026-10-01.jsonl": posted(1, alpha, beta, "kept") + "\n" + `{"event":"posted","id":2,"fr`},
-			wantWarn: 1,
+			name:         "a torn last line with no newline is skipped with one warning and cut",
+			files:        map[string]string{"2026-10-01.jsonl": kept + torn},
+			wantWarn:     1,
+			wantNewest:   &kept,
+			wantCutBytes: len(torn),
+			check:        onlyMessageOne,
+		},
+		{
+			name:         "a torn last line that ends in a newline is skipped and cut",
+			files:        map[string]string{"2026-10-01.jsonl": kept + torn + "\n"},
+			wantWarn:     1,
+			wantNewest:   &kept,
+			wantCutBytes: len(torn) + 1,
+			check:        onlyMessageOne,
+		},
+		{
+			name:         "a torn last line followed by blank lines is cut with them",
+			files:        map[string]string{"2026-10-01.jsonl": kept + torn + "\n\n  \n"},
+			wantWarn:     1,
+			wantNewest:   &kept,
+			wantCutBytes: len(torn) + len("\n\n  \n"),
+			check:        onlyMessageOne,
+		},
+		{
+			name:         "a newest file whose only line is torn is cut to empty",
+			files:        map[string]string{"2026-10-01.jsonl": torn},
+			wantWarn:     1,
+			wantNewest:   &empty,
+			wantCutBytes: len(torn),
+		},
+		{
+			name:         "a last line that is valid JSON but no record is skipped and cut",
+			files:        map[string]string{"2026-10-01.jsonl": kept + "[1]\n"},
+			wantWarn:     1,
+			wantNewest:   &kept,
+			wantCutBytes: len("[1]\n"),
+			check:        onlyMessageOne,
+		},
+		{
+			name:       "a complete last line missing its newline gets one and keeps its record",
+			files:      map[string]string{"2026-10-01.jsonl": kept + posted(2, alpha, beta, "second")},
+			wantNewest: &keptAndSecond,
 			check: func(t *testing.T, p *pool) {
-				if len(p.messages) != 1 || p.messages[1] == nil {
-					t.Errorf("messages = %+v, want only message 1", shapesOf(p))
+				if len(p.messages) != 2 {
+					t.Errorf("messages = %+v, want messages 1 and 2", shapesOf(p))
 				}
 			},
+		},
+		{
+			name:       "a complete last line followed by blank lines is left as it was",
+			files:      map[string]string{"2026-10-01.jsonl": kept + "\n\n"},
+			wantNewest: &keptAndBlanks,
+			check:      onlyMessageOne,
+		},
+		{
+			name:       "a newest file holding only blank lines is left as it was",
+			files:      map[string]string{"2026-10-01.jsonl": "\n\n"},
+			wantNewest: &blanks,
 		},
 		{
 			name:    "a malformed middle line fails naming the file and line",
@@ -254,8 +319,68 @@ func TestJournal_Fold(t *testing.T) {
 			if got := strings.Count(buf.String(), "level=WARN"); got != tt.wantWarn {
 				t.Errorf("WARN lines = %d, want %d; log:\n%s", got, tt.wantWarn, buf.String())
 			}
-			tt.check(t, p)
+			if tt.check != nil {
+				tt.check(t, p)
+			}
+			if tt.wantNewest != nil {
+				checkRepairedTail(t, dir, p, buf, tt.files, *tt.wantNewest, tt.wantCutBytes, line)
+			}
 		})
+	}
+}
+
+// checkRepairedTail opens the journal over the folded pool and pins the newest day file's content and the repair's warning.
+// It then appends one record, which only an empty file gets behind a high-water record, and pins that the directory folds again cleanly.
+func checkRepairedTail(t *testing.T, dir string, p *pool, buf *logcapture.Buffer, files map[string]string, wantNewest string, wantCutBytes int, line func(record) string) {
+	t.Helper()
+	newest := ""
+	for name := range files {
+		newest = max(newest, name)
+	}
+	logBefore := len(buf.String())
+	writer, err := openJournal(dir, &testClock{now: journalEpoch}, p)
+	if err != nil {
+		t.Fatalf("openJournal() error: %v", err)
+	}
+	repairLog := buf.String()[logBefore:]
+	if wantCutBytes == 0 && strings.Contains(repairLog, "cutting a torn last line") {
+		t.Errorf("repair log = %q, want no cut", repairLog)
+	}
+	if wantCutBytes > 0 && !strings.Contains(repairLog, fmt.Sprintf("bytes=%d", wantCutBytes)) {
+		t.Errorf("repair log = %q, want a cut of %d bytes", repairLog, wantCutBytes)
+	}
+	read := func() string {
+		data, err := os.ReadFile(filepath.Join(dir, newest))
+		if err != nil {
+			t.Fatalf("read %s: %v", newest, err)
+		}
+		return string(data)
+	}
+	if got := read(); got != wantNewest {
+		t.Errorf("newest file after open = %q, want %q", got, wantNewest)
+	}
+
+	wantAfter := wantNewest
+	if wantNewest == "" {
+		wantAfter += line(record{Event: eventHighWater, ID: p.maxID}) + "\n"
+	}
+	next := record{Event: eventPosted, ID: 100, From: alpha, To: beta, Body: "after the repair"}
+	if err := writer.append(next); err != nil {
+		t.Fatalf("append() error: %v", err)
+	}
+	if err := writer.close(); err != nil {
+		t.Fatalf("close() error: %v", err)
+	}
+	wantAfter += line(next) + "\n"
+	if got := read(); got != wantAfter {
+		t.Errorf("newest file after the append = %q, want %q", got, wantAfter)
+	}
+	refolded, err := foldJournal(dir)
+	if err != nil {
+		t.Fatalf("foldJournal() after the append error: %v", err)
+	}
+	if refolded.messages[100] == nil {
+		t.Errorf("refolded messages = %+v, want the appended message 100", shapesOf(refolded))
 	}
 }
 

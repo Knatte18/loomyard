@@ -158,18 +158,29 @@ func openJournal(dir string, clock Clock, state *pool) (*journalWriter, error) {
 	return &journalWriter{dir: dir, clock: clock, pool: state}, nil
 }
 
-// repairTail makes the file end on a newline: a complete last line gets its missing newline, and a torn one is cut off.
+// repairTail leaves the file ending on a clean line.
+// A complete last line that lacks its newline gets one.
+// A torn last non-blank line, with or without its newline, is cut off together with any blank lines after it.
+// It is the same line the fold skips as torn, so no record a fold applies is removed.
 func repairTail(path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("creel journal: read %s: %w", path, err)
 	}
-	if len(data) == 0 || data[len(data)-1] == '\n' {
+	lines := bytes.Split(data, []byte("\n"))
+	tail := lastNonBlankLine(lines)
+	if tail < 0 {
 		return nil
 	}
-	cut := bytes.LastIndexByte(data, '\n') + 1
-	if json.Valid(data[cut:]) {
-		return appendBytes(path, []byte("\n"))
+	if _, err := parseRecord(lines[tail]); err == nil {
+		if tail == len(lines)-1 {
+			return appendBytes(path, []byte("\n"))
+		}
+		return nil
+	}
+	cut := 0
+	for _, line := range lines[:tail] {
+		cut += len(line) + 1
 	}
 	logger.Warn("creel journal: cutting a torn last line left by a crash", "file", path, "bytes", len(data)-cut)
 	if err := os.Truncate(path, int64(cut)); err != nil {
