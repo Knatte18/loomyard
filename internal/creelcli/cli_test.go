@@ -37,10 +37,10 @@ import (
 
 var epoch = time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
 
-// isProbeWait and isSweepWait tell the delivery workers' waits (1 to 8 seconds) from the sweep's (30 seconds and up) on the daemon's clock.
+// isProbeWait and isSweepWait tell the delivery workers' waits (1 to 8 seconds) from the sweep's (longer than the probe ceiling) on the daemon's clock.
 func isProbeWait(d time.Duration) bool { return d <= 8*time.Second }
 
-func isSweepWait(d time.Duration) bool { return d >= 30*time.Second }
+func isSweepWait(d time.Duration) bool { return d > 8*time.Second }
 
 // cliRun is one verb's exit code and the JSON envelope it printed.
 type cliRun struct {

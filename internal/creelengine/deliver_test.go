@@ -16,10 +16,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
-// isProbeWait and isSweepWait tell the waits of the delivery workers (1 to 8 seconds) from the sweep's (30 seconds and up) on the shared fake clock.
+// isProbeWait and isSweepWait tell the waits of the delivery workers (1 to 8 seconds) from the sweep's (longer than the probe ceiling) on the shared fake clock.
 func isProbeWait(d time.Duration) bool { return d <= 8*time.Second }
 
-func isSweepWait(d time.Duration) bool { return d >= 30*time.Second }
+func isSweepWait(d time.Duration) bool { return d > 8*time.Second }
 
 // start runs a scheduler over the env's store and stops it when the test ends.
 func (e *env) start(t *testing.T) {
@@ -922,16 +922,81 @@ func TestSweep_RemovedHolders(t *testing.T) {
 			e.start(t)
 			e.post(t, strand(alpha), orch, "one")
 			waits := e.sweepWaits(1)
-			for len(waits) < 5 {
+			for len(waits) < 3 {
 				e.clock.Advance(waits[len(waits)-1])
 				waits = e.sweepWaits(len(waits) + 1)
 			}
-			if !slices.Equal(waits, seconds(30, 60, 120, 240, 240)) {
-				t.Fatalf("sweep waits = %v; want 30s doubling to a 4-minute ceiling", waits)
+			if !slices.Equal(waits, seconds(30, 50, 50)) {
+				t.Fatalf("sweep waits = %v; want 30s doubling to a 50-second ceiling", waits)
 			}
 			e.post(t, strand(beta), orch, "two")
-			if got := e.sweepWaits(6)[5]; got != 30*time.Second {
-				t.Errorf("sweep wait after a post = %v; want 30s", got)
+			if got := e.sweepWaits(4)[3]; got != 30*time.Second {
+				t.Errorf("sweep wait after a post with the full ceiling left = %v; want 30s", got)
+			}
+		}},
+		{"PostWithLessThanTheBaseLeftDoesNotDelayTheSweep", func(t *testing.T, e *env) {
+			// Only orch-role mail exists, which has no delivery worker, so every wait on the clock is the sweep's.
+			e.start(t)
+			e.post(t, strand(alpha), orch, "one")
+			e.clock.AwaitWaits(1)
+			e.clock.Advance(30 * time.Second)
+			e.clock.AwaitWaits(2)
+			e.clock.Advance(45 * time.Second)
+			e.post(t, strand(beta), orch, "two")
+			e.clock.Advance(5 * time.Second)
+			if got := e.clock.AwaitWaits(3)[2]; got != 50*time.Second {
+				t.Errorf("wait after the sweep that the post left at 5s = %v; want the 50s ceiling", got)
+			}
+		}},
+		{"RemovedHolderIsSettledWithin60sAtTheCeiling", func(t *testing.T, e *env) {
+			e.post(t, strand(alpha), orch, "orch mail")
+			e.post(t, strand(alpha), beta, "beta mail")
+			e.start(t)
+			e.sweepStep()
+			e.sweepStep()
+			if waits := e.sweepWaits(3); !slices.Equal(waits, seconds(30, 50, 50)) {
+				t.Fatalf("sweep waits = %v; want the ceiling reached at 30, 50, 50", waits)
+			}
+			without(e, orch, beta)
+			e.sweepStep()
+			if waits := e.sweepWaits(4); waits[3] != 10*time.Second {
+				t.Fatalf("wait after the first miss = %v; want the 10s confirm", waits[3])
+			}
+			e.sweepLast()
+			waits := e.sweepWaits(6)
+			if waits[4] != 50*time.Second || waits[5] != 30*time.Second {
+				t.Errorf("waits after the release = %v; want 50s armed by the releasing sweep and 30s re-armed by the returns' wake", waits[4:])
+			}
+			var endedBy []string
+			for _, msg := range holderOf(t, e, alpha) {
+				endedBy = append(endedBy, msg.EndedUnreadBy)
+			}
+			slices.Sort(endedBy)
+			if want := []string{beta, orch}; !slices.Equal(endedBy, want) {
+				t.Errorf("messages back with %s are marked ended unread by %v; want %v", alpha, endedBy, want)
+			}
+		}},
+		{"PostInsideTheConfirmIntervalKeepsTheConfirmDeadline", func(t *testing.T, e *env) {
+			// The removed holder is orch, whose mail has no worker, so the row reads every wait on the clock.
+			_, first, err := e.store.PostWait(external(), orch, "one")
+			if err != nil {
+				t.Fatalf("PostWait: %v", err)
+			}
+			without(e, orch)
+			e.start(t)
+			e.clock.AwaitWaits(1)
+			e.clock.Advance(30 * time.Second)
+			if waits := e.clock.AwaitWaits(2); waits[1] != 10*time.Second {
+				t.Fatalf("wait after the first miss = %v; want the 10s confirm", waits[1])
+			}
+			e.clock.Advance(5 * time.Second)
+			e.post(t, strand(alpha), orch2, "two")
+			if waits := e.clock.AwaitWaits(3); waits[2] != 5*time.Second {
+				t.Fatalf("wait after a post inside the confirm = %v; want the 5s left to the confirm deadline", waits[2])
+			}
+			e.clock.Advance(5 * time.Second)
+			if outcome := awaitOutcome(t, first); outcome.Kind != creelengine.OutcomeReturned {
+				t.Errorf("wait answered %+v; want the message returned undelivered at the confirm deadline", outcome)
 			}
 		}},
 		{"MailReturnsOneStepAtATimeThenIsUndeliveredAndAnswersItsWaiter", func(t *testing.T, e *env) {
@@ -969,26 +1034,46 @@ func TestSweep_RemovedHolders(t *testing.T) {
 		}},
 		{"StrandRemovedAndReAddedKeepsItsMail", func(t *testing.T, e *env) {
 			e.post(t, strand(alpha), beta, "kept")
+			e.post(t, strand(alpha), orch, "orch kept")
 			without(e, beta)
 			e.start(t)
+			// The confirm sweep 10 seconds after the miss finds beta back, and ends the confirm at the 30-second base since the strand-name set changed.
 			e.sweepStep()
 			without(e)
 			e.sweepStep()
-			e.sweepStep()
-			held := holderOf(t, e, beta)
-			if len(held) != 1 || held[0].Holder != beta || held[0].EndedUnreadBy != "" {
+			if waits := e.sweepWaits(3); !slices.Equal(waits, seconds(30, 10, 30)) {
+				t.Fatalf("sweep waits = %v; want the 10s confirm after the miss and the 30s base after it", waits)
+			}
+			if held := holderOf(t, e, beta); len(held) != 1 || held[0].Holder != beta || held[0].EndedUnreadBy != "" {
 				t.Errorf("the message is %+v; want it still with %s", held, beta)
+			}
+			// Beta is removed again for a first miss; at the confirm sweep beta is back and orch is gone, which is orch's first miss and a new confirm.
+			without(e, beta)
+			e.sweepStep()
+			without(e, orch)
+			e.sweepStep()
+			if waits := e.sweepWaits(5); !slices.Equal(waits[3:], seconds(10, 10)) {
+				t.Errorf("sweep waits after the second removal = %v; want a 10s confirm after each first miss", waits[3:])
+			}
+			if held := holderOf(t, e, orch); len(held) != 1 || held[0].Holder != orch {
+				t.Errorf("orch's mail is %+v; want it still with %s after one miss", held, orch)
 			}
 		}},
 		{"FailedListingMovesNothingAndCountsTowardNoStreak", func(t *testing.T, e *env) {
 			e.post(t, strand(alpha), beta, "kept")
-			without(e, beta)
+			e.del.SetStrandsError(errors.New("reed state unreadable"))
 			e.start(t)
+			e.sweepStep()
+			if waits := e.sweepWaits(2); waits[1] != 30*time.Second {
+				t.Errorf("wait after a failed sweep with no miss pending = %v; want 30s", waits[1])
+			}
+			e.del.SetStrandsError(nil)
+			without(e, beta)
 			e.sweepStep()
 			e.del.SetStrandsError(errors.New("reed state unreadable"))
 			e.sweepStep()
-			if waits := e.sweepWaits(3); waits[2] != 30*time.Second {
-				t.Errorf("wait after a failed sweep = %v; want 30s", waits[2])
+			if waits := e.sweepWaits(4); waits[2] != 10*time.Second || waits[3] != 10*time.Second {
+				t.Errorf("waits after the first miss and a failed sweep = %v; want 10s and 10s", waits[2:])
 			}
 			if held := holderOf(t, e, beta); len(held) != 1 {
 				t.Fatalf("a failed sweep moved the mail: %+v", held)

@@ -125,8 +125,10 @@
 //
 // # Removed holders
 //
-// A sweep runs while a strand holds unread mail or has an inject queued, starting 30 seconds apart and doubling to four minutes while the set of strand names holds, and returning to the base on a change, a new post or inject, or a failed listing.
-// A holder counts as gone after two successful sweeps in a row miss it.
+// A sweep runs while a strand holds unread mail or has an inject queued, starting 30 seconds apart and doubling to 50 seconds while the set of strand names holds, and returning to the base on a change or a failed listing.
+// A new post or inject shortens the wait to the base when more is left, and never lengthens it.
+// A holder counts as gone after two successful sweeps in a row, at least 10 seconds apart, miss it: a sweep that misses a holder for the first time is followed by a confirming sweep after 10 seconds, whatever else would set the wait, and a post or inject during that wait keeps its deadline.
+// A removed holder is settled within 60 seconds while listings succeed.
 // Each unread message of a gone holder goes one step back along its path, to the last forwarder or else the sender, and is marked with the receiver that ended without reading it.
 // When that step is no strand, the message is journaled undelivered and a waiting sender is answered that it returned undelivered.
 // Each inject queued for the gone holder expires.

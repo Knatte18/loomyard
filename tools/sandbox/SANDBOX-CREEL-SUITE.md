@@ -272,7 +272,7 @@ A malformed middle line, planted while the daemon is stopped, gives the verb an 
 **Goal:** "Remove the strand that holds forwarded mail and mail someone waits on, and confirm each message steps back or ends undelivered and the reader is told it bounced."
 
 **Watch:** Remove the strand holding forwarded mail and the one holding mail awaited with `--wait-reply`.
-Within about 60 s each message steps back one hop or ends `undelivered`, the waiter exits 5, and the reader of a bounced message sees `ended_unread_by` and `ended_unread_at` on it.
+Within 60 s of the removal each message steps back one hop or ends `undelivered`, the waiter exits 5, and the reader of a bounced message sees `ended_unread_by` and `ended_unread_at` on it.
 
 **Verdict:** `WARN` if the bounce is not shown.
 
