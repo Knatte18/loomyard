@@ -17,18 +17,41 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// RoundFans holds one segment's per-round fan lists: Review the reviewer's and Fix the fixer's, entry N for round N.
+// A round past the last entry takes the last entry, and an empty entry is a solo or single round.
+type RoundFans struct {
+	Review []string
+	Fix    []string
+}
+
+// roundFan returns the entry of fans for round, the last entry for every later round, and "" for an empty list.
+func roundFan(fans []string, round int) string {
+	switch {
+	case len(fans) == 0:
+		return ""
+	case round > len(fans):
+		return fans[len(fans)-1]
+	}
+	return fans[round-1]
+}
+
 // roundUsage is the usage record of one review round.
-// Fan is empty and Lenses nil for a solo round.
+// Fan and FixFan are the reviewer's and fixer's fans the round was spawned under, empty for a solo or single round; FansRecorded says they were written at the spawn, so an empty name is told from an absent one.
+// Lenses is nil for a solo round, and FixLenses and FixForks are set only for a twill fixer, FixForks a pointer so a single round carries no count.
 // Review and Fix are nil until the round's Burler completes, so a record is a completed round's exactly when its review half is present.
 // Seed and Judge list the Bouncer's passes for the round, one entry per pass.
 type roundUsage struct {
-	Round  int         `yaml:"round"`
-	Fan    string      `yaml:"fan"`
-	Lenses []string    `yaml:"lenses,omitempty"`
-	Review *halfUsage  `yaml:"review,omitempty"`
-	Fix    *halfUsage  `yaml:"fix,omitempty"`
-	Seed   []halfUsage `yaml:"seed,omitempty"`
-	Judge  []halfUsage `yaml:"judge,omitempty"`
+	Round        int         `yaml:"round"`
+	Fan          string      `yaml:"fan"`
+	FixFan       string      `yaml:"fix_fan"`
+	FansRecorded bool        `yaml:"fans_recorded,omitempty"`
+	Lenses       []string    `yaml:"lenses,omitempty"`
+	FixLenses    []string    `yaml:"fix_lenses,omitempty"`
+	FixForks     *int        `yaml:"fix_forks,omitempty"`
+	Review       *halfUsage  `yaml:"review,omitempty"`
+	Fix          *halfUsage  `yaml:"fix,omitempty"`
+	Seed         []halfUsage `yaml:"seed,omitempty"`
+	Judge        []halfUsage `yaml:"judge,omitempty"`
 }
 
 // halfUsage is one half's engine, model, run times and token reading.
@@ -120,6 +143,27 @@ func mergeRoundUsage(runDir string, round int, now func() time.Time, apply func(
 	}
 	apply(&u)
 	return writeRoundUsage(runDir, round, u)
+}
+
+// recordRoundFans writes the fan names round's reviewer and fixer are spawned under, with the flag that says they are there.
+// It is the only writer of the three keys; the empty names of a solo or single round are recorded like any other.
+func recordRoundFans(runDir string, round int, now func() time.Time, fan, fixFan string) error {
+	return mergeRoundUsage(runDir, round, now, func(u *roundUsage) {
+		u.Fan, u.FixFan, u.FansRecorded = fan, fixFan, true
+	})
+}
+
+// readRecordedFans returns the reviewer and fixer fan names recorded for round.
+// A missing record, one that does not decode and one without the flag are errors, since a record written by a binary that predates the names also decodes the reviewer's fan as "".
+func readRecordedFans(runDir string, round int) (fan, fixFan string, err error) {
+	u, err := readRoundUsage(runDir, round)
+	if err != nil {
+		return "", "", err
+	}
+	if !u.FansRecorded {
+		return "", "", errors.New("the record carries no fans_recorded flag")
+	}
+	return u.Fan, u.FixFan, nil
 }
 
 // readRoundUsage decodes round's usage record under runDir.

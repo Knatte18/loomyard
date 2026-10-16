@@ -22,7 +22,7 @@ import (
 // newFixProducer builds a BurlerFixProducer over runDir whose review row is named "burler-review", failing the test on constructor error.
 func newFixProducer(t *testing.T, runDir string, runner *shedfake.BurlerHalfRunner, spec halfProducerSpec) *BurlerFixProducer {
 	t.Helper()
-	p, err := NewBurlerFixProducer("burler-fix", "burler-review", BurlerHalfDeps{Runner: runner, Models: spec.models}, spec.profile, spec.opts, runDir, spec.now)
+	p, err := NewBurlerFixProducer("burler-fix", "burler-review", BurlerHalfDeps{Runner: runner, Models: spec.models, Fans: spec.fans, RequiresFans: spec.requiresFans}, spec.profile, spec.opts, runDir, spec.now)
 	if err != nil {
 		t.Fatalf("NewBurlerFixProducer() error = %v; want nil", err)
 	}
@@ -72,6 +72,59 @@ func TestBurlerFixProducer_Call_RefusesARoundWithNoAcceptedReview(t *testing.T) 
 			requireArchived(t, runDir, "round-1-acceptance.md", 0)
 		})
 	}
+
+	// On a row told to require fans, an accepted round whose record holds no usable names is refused once no live fixer is found.
+	live := burlerengine.LiveHalf{State: burlerengine.HalfLive}
+	unrecorded := []struct {
+		name      string
+		usage     string
+		liveFixer bool
+	}{
+		{name: "a record lacking the flag", usage: "round: 1\nfan: \"\"\nfix_fan: \"\"\n"},
+		{name: "a record that does not decode", usage: "round: [unterminated\n"},
+		{name: "a missing record"},
+		{name: "a flagless record with a live fixer resumes it", usage: "round: 1\nfan: \"\"\n", liveFixer: true},
+	}
+	for _, tt := range unrecorded {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			runDir := t.TempDir()
+			// Round 1 is judged, so the accepted round 2 is the one the fix row works on.
+			writeJudgedRound(t, runDir, 1)
+			writeAcceptedRound(t, runDir, 2, "d2")
+			if tt.usage != "" {
+				writeRoundFileWith(t, roundUsagePath(runDir, 2), tt.usage)
+			}
+			runner := &shedfake.BurlerHalfRunner{FixResults: []burlerengine.FixResult{fixDone}}
+			if tt.liveFixer {
+				runner.LiveFixes = []burlerengine.LiveHalf{live}
+				runner.ResumeFixResults = []burlerengine.FixResult{fixDone}
+			}
+			spec := newHalfSpec()
+			spec.requiresFans = true
+			p := newFixProducer(t, runDir, runner, spec)
+
+			_, _, err := p.Call(context.Background())
+
+			if tt.liveFixer {
+				if err != nil || runner.ResumeFixCalls != 1 || runner.FixCalls != 0 {
+					t.Errorf("Call() error = %v with %d Resume and %d Fix calls; want the live fixer resumed", err, runner.ResumeFixCalls, runner.FixCalls)
+				}
+				requireArchived(t, runDir, "round-2-review.md", 0)
+				return
+			}
+			want := "round 2's usage record holds no recorded fan names ("
+			if err == nil || !strings.Contains(err.Error(), want) || !strings.HasSuffix(err.Error(), wayForwardToReview) {
+				t.Fatalf("Call() error = %v; want one containing %q and ending with %q", err, want, wayForwardToReview)
+			}
+			if runner.FixCalls != 0 {
+				t.Errorf("Fix calls = %d; want none", runner.FixCalls)
+			}
+			for _, base := range []string{"round-2-review.md", "round-2-acceptance.md"} {
+				requireArchived(t, runDir, base, 1)
+			}
+		})
+	}
 }
 
 // TestBurlerFixProducer_Call_HandsOnAnUnjudgedRound proves the highest complete round with no recorded verdict is handed on BudgetExempt with its review as Path.
@@ -100,10 +153,17 @@ func TestBurlerFixProducer_Call_HandsOnAnUnjudgedRound(t *testing.T) {
 func TestBurlerFixProducer_Call_FinishedFixIsRecorded(t *testing.T) {
 	t.Parallel()
 	started := time.Date(2026, 8, 16, 15, 0, 0, 0, time.UTC)
+	two, zero := 2, 0
 	tests := []struct {
 		name      string
 		result    burlerengine.FixResult
 		wantSpans []shedengine.GateSpan
+		// recorded says the round's record carries fans_recorded with recordedFixFan; requiresFans is the row's deps flag.
+		recorded       bool
+		recordedFixFan string
+		requiresFans   bool
+		wantFixFan     string
+		wantForks      *int
 	}{
 		{
 			name: "a spawned fixer",
@@ -113,6 +173,21 @@ func TestBurlerFixProducer_Call_FinishedFixIsRecorded(t *testing.T) {
 			wantSpans: []shedengine.GateSpan{{Gate: "verify", Kind: shedengine.GateSpanKindRework, Start: "2026-08-16T15:00:00Z", End: "2026-08-16T15:00:02Z"}},
 		},
 		{name: "a skipped empty review", result: burlerengine.FixResult{Outcome: shuttleengine.OutcomeDone, Skipped: true}},
+		{
+			name:     "a row requiring fans passes the recorded fixer fan and records a twill fix",
+			result:   burlerengine.FixResult{Outcome: shuttleengine.OutcomeDone, Lenses: []string{"correctness", "scope"}, Forks: 2},
+			recorded: true, recordedFixFan: "fix-a", requiresFans: true, wantFixFan: "fix-a", wantForks: &two,
+		},
+		{
+			name:     "a twill fix whose audit counted no forks records zero",
+			result:   burlerengine.FixResult{Outcome: shuttleengine.OutcomeDone, Lenses: []string{"correctness"}},
+			recorded: true, recordedFixFan: "fix-a", requiresFans: true, wantFixFan: "fix-a", wantForks: &zero,
+		},
+		{
+			name:           "a row not requiring fans runs the single fixer over a flagless record",
+			result:         burlerengine.FixResult{Outcome: shuttleengine.OutcomeDone},
+			recordedFixFan: "ignored",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -120,10 +195,11 @@ func TestBurlerFixProducer_Call_FinishedFixIsRecorded(t *testing.T) {
 			runDir := filepath.Join(t.TempDir(), "plan")
 			writeJudgedRound(t, runDir, 1)
 			writeAcceptedRound(t, runDir, 2, "digest-2")
-			if err := writeRoundUsage(runDir, 2, roundUsage{Fan: "fanX", Review: &halfUsage{Model: "reviewer"}}); err != nil {
+			if err := writeRoundUsage(runDir, 2, roundUsage{Fan: "fanX", FixFan: tt.recordedFixFan, FansRecorded: tt.recorded, Review: &halfUsage{Model: "reviewer"}}); err != nil {
 				t.Fatalf("writeRoundUsage: %v", err)
 			}
 			spec := newHalfSpec()
+			spec.requiresFans = tt.requiresFans
 			spec.opts = burlerengine.RunOpts{Timeout: 3 * time.Minute, Gate: shuttleengine.GateSpec{{Name: "verify", Attempts: 1}}}
 			spec.models = burlerengine.RoundModels{Fix: []shuttleengine.ModelChoice{{Model: "f1"}, {Model: "f2"}}}
 			runner := &shedfake.BurlerHalfRunner{FixResults: []burlerengine.FixResult{tt.result}}
@@ -153,6 +229,12 @@ func TestBurlerFixProducer_Call_FinishedFixIsRecorded(t *testing.T) {
 			}
 			if tt.result.Fix.Engine != "" && usage.Fix.Engine != tt.result.Fix.Engine {
 				t.Errorf("fix usage engine = %q; want %q", usage.Fix.Engine, tt.result.Fix.Engine)
+			}
+			if profile.FixFan != tt.wantFixFan {
+				t.Errorf("profile FixFan = %q; want %q", profile.FixFan, tt.wantFixFan)
+			}
+			if !stringSlicesEqual(usage.FixLenses, tt.result.Lenses) || (usage.FixForks == nil) != (tt.wantForks == nil) || (usage.FixForks != nil && *usage.FixForks != *tt.wantForks) {
+				t.Errorf("fix_lenses %v and fix_forks %v; want %v and %v", usage.FixLenses, usage.FixForks, tt.result.Lenses, tt.wantForks)
 			}
 			requireArchived(t, runDir, "round-2-review.md", 0)
 			requireArchived(t, runDir, "round-2-acceptance.md", 0)

@@ -321,10 +321,10 @@ prose
 		t.Parallel()
 		dir := t.TempDir()
 		writeReview(t, dir)
-		if err := writeRoundUsage(dir, 1, roundUsage{Fan: "fanX", Lenses: []string{"alpha", "beta", "gamma"}, Review: &halfUsage{}}); err != nil {
+		if err := writeRoundUsage(dir, 1, roundUsage{Fan: "fanX", FansRecorded: true, Lenses: []string{"alpha", "beta", "gamma"}, Review: &halfUsage{}}); err != nil {
 			t.Fatalf("writeRoundUsage 1 = %v; want nil", err)
 		}
-		if err := writeRoundUsage(dir, 2, roundUsage{Fan: "fanX", Lenses: []string{"alpha", "beta"}, Review: &halfUsage{}}); err != nil {
+		if err := writeRoundUsage(dir, 2, roundUsage{Fan: "fanX", FansRecorded: true, Lenses: []string{"alpha", "beta"}, Review: &halfUsage{}}); err != nil {
 			t.Fatalf("writeRoundUsage 2 = %v; want nil", err)
 		}
 		writeFocusFile(t, dir, 2, focusFile{Round: 2, ExcludeLenses: []string{"gamma"}})
@@ -366,7 +366,7 @@ prose
 		if err := os.WriteFile(filepath.Join(dir, reportName(2)), []byte("no frontmatter here\n"), 0o644); err != nil {
 			t.Fatalf("WriteFile review = %v; want nil", err)
 		}
-		if err := writeRoundUsage(dir, 2, roundUsage{Fan: "fanX", Lenses: []string{"alpha"}, Review: &halfUsage{}}); err != nil {
+		if err := writeRoundUsage(dir, 2, roundUsage{Fan: "fanX", FansRecorded: true, Lenses: []string{"alpha"}, Review: &halfUsage{}}); err != nil {
 			t.Fatalf("writeRoundUsage 2 = %v; want nil", err)
 		}
 
@@ -401,7 +401,7 @@ prose
 		if err := writeRoundUsage(dropped, 1, seedOnly); err != nil {
 			t.Fatalf("writeRoundUsage 1 = %v; want nil", err)
 		}
-		if err := writeRoundUsage(dropped, 2, roundUsage{Fan: "fanX", Lenses: []string{"alpha"}, Review: &halfUsage{}}); err != nil {
+		if err := writeRoundUsage(dropped, 2, roundUsage{Fan: "fanX", FansRecorded: true, Lenses: []string{"alpha"}, Review: &halfUsage{}}); err != nil {
 			t.Fatalf("writeRoundUsage 2 = %v; want nil", err)
 		}
 		writeFocusFile(t, dropped, 2, focusFile{Round: 2, ExcludeLenses: []string{"gamma"}})
