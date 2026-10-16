@@ -136,7 +136,8 @@ func TestBouncer_JudgePromptOffersCirclingOnlyFromTheCheckpoint(t *testing.T) {
 //testtiming:keep pins that the exclude_lenses example line and rule reach the seed and judge prompts exactly when ClusterExcludes is set, and that the WebsterRecord note reaches the rubric in both
 func TestBouncer_ClusterExcludesReachesSeedAndJudgePrompts(t *testing.T) {
 	const websterRecord = "Webster has begun these batches."
-	rubric := withStencilOverrides(map[string]string{bouncerFixtureRubricName: "Record: {{.webster_record}}\n"})
+	rubric := withStencilOverrides(map[string]string{bouncerFixtureRubricName: "Record: {{.webster_record}}\nTiers:\n{{.verify_tiers}}\n"})
+	verifyTiers := []string{"build first", "vet second"}
 	for _, clusterExcludes := range []bool{false, true} {
 		t.Run(fmt.Sprintf("Seed_ClusterExcludes=%t", clusterExcludes), func(t *testing.T) {
 			shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
@@ -144,6 +145,7 @@ func TestBouncer_ClusterExcludesReachesSeedAndJudgePrompts(t *testing.T) {
 			cfg.Shuttle = shuttle
 			cfg.ClusterExcludes = clusterExcludes
 			cfg.WebsterRecord = func() string { return websterRecord }
+			cfg.VerifyTiers = verifyTiers
 			b, err := NewBouncer(cfg)
 			if err != nil {
 				t.Fatalf("NewBouncer(...) error = %v; want nil", err)
@@ -157,6 +159,9 @@ func TestBouncer_ClusterExcludesReachesSeedAndJudgePrompts(t *testing.T) {
 			if !strings.Contains(shuttle.GotSpec.Prompt, "Record: "+websterRecord) {
 				t.Errorf("seed prompt = %q; want the rubric to carry the WebsterRecord note", shuttle.GotSpec.Prompt)
 			}
+			if !strings.Contains(shuttle.GotSpec.Prompt, "- build first\n- vet second") {
+				t.Errorf("seed prompt = %q; want the rubric to carry the verify tier bullets", shuttle.GotSpec.Prompt)
+			}
 		})
 
 		t.Run(fmt.Sprintf("Judge_ClusterExcludes=%t", clusterExcludes), func(t *testing.T) {
@@ -165,6 +170,7 @@ func TestBouncer_ClusterExcludesReachesSeedAndJudgePrompts(t *testing.T) {
 			cfg.Shuttle = shuttle
 			cfg.ClusterExcludes = clusterExcludes
 			cfg.WebsterRecord = func() string { return websterRecord }
+			cfg.VerifyTiers = verifyTiers
 			b, err := NewBouncer(cfg)
 			if err != nil {
 				t.Fatalf("NewBouncer(...) error = %v; want nil", err)
@@ -184,6 +190,9 @@ func TestBouncer_ClusterExcludesReachesSeedAndJudgePrompts(t *testing.T) {
 			assertExcludeLensesText(t, shuttle.GotSpec.Prompt, clusterExcludes)
 			if !strings.Contains(shuttle.GotSpec.Prompt, "Record: "+websterRecord) {
 				t.Errorf("judge prompt = %q; want the rubric to carry the WebsterRecord note", shuttle.GotSpec.Prompt)
+			}
+			if !strings.Contains(shuttle.GotSpec.Prompt, "- build first\n- vet second") {
+				t.Errorf("judge prompt = %q; want the rubric to carry the verify tier bullets", shuttle.GotSpec.Prompt)
 			}
 		})
 	}

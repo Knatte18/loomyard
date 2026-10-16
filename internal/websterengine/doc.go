@@ -446,6 +446,7 @@
 // inherits no session context (see the fork-context-hygiene Shared
 // Decision).
 // The master and the recovery strand both load `scribe:prose`, `scribe:code-quality` and `scribe:testing` through their spawn spec's skills (`roleSkills`), followed by the hub's language skills from the `RunDeps.LanguageSkills` and `RecoverDeps.LanguageSkills` their wiring loads.
+// The fork and recovery prompts render the hub's verify tiers from `BeginDeps.VerifyTiers` and `RecoverDeps.VerifyTiers`, `none` for an empty list.
 // Their opening prompts render the parent directive (internal/parentdirective) from Geometry.ParentName, which hubgeom.WebsterGeometry fills from the worktree's origin record.
 // Forks get no skills and no directive: they inherit the master's context.
 // The recovery prompt also carries a block of the worktree's uncommitted paths (the optional uncommitted_paths marker, `none` on a clean tree), taken from UncommittedPaths when the strand is spawned.

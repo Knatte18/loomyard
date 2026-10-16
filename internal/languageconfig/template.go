@@ -9,7 +9,7 @@ import _ "embed"
 //go:embed template.yaml
 var configTemplate string
 
-// ConfigTemplate returns the default YAML template for language configuration: an empty skills list.
+// ConfigTemplate returns the default YAML template for language configuration: an empty skills list and an empty verify_tiers list.
 func ConfigTemplate() string {
 	return configTemplate
 }

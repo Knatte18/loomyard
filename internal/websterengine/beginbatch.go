@@ -138,6 +138,9 @@ type BeginDeps struct {
 	// internal/standalonegeom are the Told-Geometry Invariant's only Geometry-struct constructors and
 	// this value needs no geometry derivation.
 	FrictionDir string
+
+	// VerifyTiers are the hub's verify tiers the fork prompt renders; empty for none.
+	VerifyTiers []string
 }
 
 // BeginResult is what one successful BeginBatch call returns to its caller.
@@ -613,7 +616,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		return nil, fmt.Errorf("webster: resolve pack path: %w", err)
 	}
 	pack := buildKickstartPack(deps, index, batch, number)
-	prompt, packFile, err := RenderForkPrompt(batch, cardGates, batchGate, prevDigest, reportPath, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, OutcomePath(deps.Geom.WebsterDir), summaryparser.Path(deps.Geom.WebsterDir), deps.Config.SelfFixCap, notePath, packPath, packLayoutOf(deps.Config, deps.Geom), pack)
+	prompt, packFile, err := RenderForkPrompt(batch, cardGates, batchGate, prevDigest, reportPath, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.VerifyTiers, OutcomePath(deps.Geom.WebsterDir), summaryparser.Path(deps.Geom.WebsterDir), deps.Config.SelfFixCap, notePath, packPath, packLayoutOf(deps.Config, deps.Geom), pack)
 	if err != nil {
 		return nil, err
 	}

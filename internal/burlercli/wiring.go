@@ -114,10 +114,11 @@ func (c *burlerCLI) wireHub(loc *lyxcwd.Location, stencilsDirOverride, targetDir
 		return err
 	}
 
-	languageSkills, err := languageconfig.Load(fabricengine.ConfigDirs(loc))
+	language, err := languageconfig.Load(fabricengine.ConfigDirs(loc))
 	if err != nil {
 		return err
 	}
+	languageSkills := language.Skills
 
 	stencilsDir := fabricengine.StencilsDir(loc.HubPath)
 	if stencilsDirOverride != "" {

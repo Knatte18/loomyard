@@ -118,6 +118,10 @@ type websterCLI struct {
 	// wireHub loads them once per process from the hub's language.yaml; wireStandalone leaves them empty.
 	languageSkills []string
 
+	// verifyTiers are the hub's verify tiers the fork and recovery prompts render.
+	// wireHub loads them once per process from the hub's language.yaml; wireStandalone leaves them empty.
+	verifyTiers []string
+
 	// frictionDir is the absolute friction directory in hub mode, tolerantly resolved from loom's own
 	// config in wireHub, and the empty string in standalone -- a standalone webster run is not a loom
 	// run and has no friction directory. It is the reason this CLI imports internal/loomengine at

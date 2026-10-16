@@ -4,7 +4,7 @@
 cmd/lyx: 80
 cmd/testtiming: 21
 contracts/specs: 3
-contracts/stencils: 16
+contracts/stencils: 17
 internal/agentname: 9
 internal/alignment: 7
 internal/arbiterstop: 2
@@ -61,7 +61,7 @@ internal/idecli: 2
 internal/ideengine: 4
 internal/impactset: 5
 internal/landingshed: 87
-internal/languageconfig: 3
+internal/languageconfig: 4
 internal/lock: 4
 internal/logger: 37
 internal/loggerconfig: 3
@@ -73,7 +73,7 @@ internal/lyxcwd: 23
 internal/lyxtemp: 7
 internal/mergeresolve: 17
 internal/modelspec: 11
-internal/orchcli: 28
+internal/orchcli: 29
 internal/orchengine: 145
 internal/output: 4
 internal/pairteardown: 8
