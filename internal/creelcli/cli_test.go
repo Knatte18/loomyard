@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -272,11 +273,57 @@ func TestCreelCLI(t *testing.T) {
 	})
 
 	t.Run("daemon beside a live daemon exits 0 with its message", func(t *testing.T) {
+		// runDaemon redirects the process-global logger, so the capture restores it.
+		logcapture.Capture(t)
 		r := newRig(t)
 		r.startDaemon(t)
-		run := runCreel(r.cwd, "daemon", "--hub-path", r.hub.Path)
+		var stderr lockedBuffer
+		run := runCreelSplit(r.cwd, &stderr, "daemon", "--hub-path", r.hub.Path)
 		if run.code != 0 || !strings.Contains(run.raw, "another daemon") {
 			t.Errorf("creel daemon beside a live daemon = (%d, %q); want exit 0 saying another daemon serves the hub", run.code, run.raw)
+		}
+		if !strings.HasPrefix(stderr.String(), fmt.Sprintf("creel daemon start pid=%d at=", os.Getpid())) {
+			t.Errorf("daemon stderr = %q; want it to open with the start header of pid %d", stderr.String(), os.Getpid())
+		}
+	})
+
+	t.Run("a daemon whose journal has a malformed middle line exits non-zero with its start header and a pid-tagged error line on stderr", func(t *testing.T) {
+		logcapture.Capture(t)
+		r := newRig(t)
+		const posted = `{"event":"posted","at":"2026-10-01T11:00:00Z","id":%d,"from":"ly:BATTEN","to":"ly:alpha:driver","kind":"inject","body":"/clear","ttl_s":600}`
+		if err := os.MkdirAll(r.geometry.JournalDir, 0o755); err != nil {
+			t.Fatalf("MkdirAll() = %v", err)
+		}
+		journal := fmt.Sprintf(posted, 1) + "\nnot json\n" + fmt.Sprintf(posted, 2) + "\n"
+		if err := os.WriteFile(filepath.Join(r.geometry.JournalDir, "2026-10-01.jsonl"), []byte(journal), 0o644); err != nil {
+			t.Fatalf("WriteFile() = %v", err)
+		}
+		var stderr lockedBuffer
+		run := runCreelSplit(r.cwd, &stderr, "daemon", "--hub-path", r.hub.Path)
+		if run.code == 0 {
+			t.Errorf("creel daemon over a malformed journal = (%d, %q); want a non-zero exit", run.code, run.raw)
+		}
+		lines := strings.Split(strings.TrimSpace(stderr.String()), "\n")
+		if len(lines) < 2 || !strings.HasPrefix(lines[0], fmt.Sprintf("creel daemon start pid=%d at=", os.Getpid())) {
+			t.Fatalf("daemon stderr = %q; want the start header of pid %d first", stderr.String(), os.Getpid())
+		}
+		tagged := lines[1]
+		if !strings.HasPrefix(tagged, creelengine.DaemonLogPrefix(os.Getpid())) || !strings.Contains(tagged, "2026-10-01.jsonl") || !strings.Contains(tagged, "line 2") {
+			t.Errorf("second stderr line = %q; want a pid-tagged line naming the journal file and line 2", tagged)
+		}
+	})
+
+	t.Run("a pid line writer prefixes every line of a multi-line write and a line split across writes, each once", func(t *testing.T) {
+		var out bytes.Buffer
+		w := &pidLineWriter{dst: &out}
+		for _, chunk := range []string{"one\ntwo\n", "thr", "ee\n"} {
+			if n, err := w.Write([]byte(chunk)); err != nil || n != len(chunk) {
+				t.Fatalf("Write(%q) = (%d, %v); want the whole chunk", chunk, n, err)
+			}
+		}
+		prefix := creelengine.DaemonLogPrefix(os.Getpid())
+		if want := prefix + "one\n" + prefix + "two\n" + prefix + "three\n"; out.String() != want {
+			t.Errorf("pid line writer output = %q; want %q", out.String(), want)
 		}
 	})
 

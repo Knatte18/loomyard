@@ -3,6 +3,7 @@
 package creelcli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -15,6 +16,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -24,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtemp"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -661,7 +664,7 @@ the same hub it says so and exits 0.`,
 			if !filepath.IsAbs(hubPath) {
 				return refuse(cmd, fmt.Errorf("daemon: --hub-path %q is not an absolute path; way forward: pass the hub's absolute path", hubPath))
 			}
-			err := runDaemon(cmd.Context(), hubPath)
+			err := runDaemon(cmd.Context(), hubPath, cmd.ErrOrStderr())
 			if errors.Is(err, creelengine.ErrDaemonRunning) {
 				output.Ok(cmd.OutOrStdout(), map[string]any{"daemon": "another daemon already serves this hub"})
 				return nil
@@ -678,8 +681,52 @@ the same hub it says so and exits 0.`,
 	return cmd
 }
 
+// pidLineWriter writes the lines it is handed to dst, each opened with the creel daemon log's pid prefix of this process.
+// It buffers a line until its newline arrives and writes each line to dst in one call, so two daemons appending to one file never interleave inside a line.
+type pidLineWriter struct {
+	dst     io.Writer
+	mu      sync.Mutex
+	pending []byte
+}
+
+// Write splits p into lines and writes each completed line, prefixed, to dst; a trailing partial line waits for its newline.
+// It reports len(p) written unless dst fails.
+func (w *pidLineWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.pending = append(w.pending, p...)
+	prefix := creelengine.DaemonLogPrefix(os.Getpid())
+	for {
+		end := bytes.IndexByte(w.pending, '\n')
+		if end < 0 {
+			return len(p), nil
+		}
+		line := prefix + string(w.pending[:end+1])
+		w.pending = w.pending[end+1:]
+		if _, err := io.WriteString(w.dst, line); err != nil {
+			return len(p), err
+		}
+	}
+}
+
 // runDaemon serves the hub at hubPath until a signal or a replaced binary ends it.
-func runDaemon(ctx context.Context, hubPath string) error {
+// It first writes the daemon start header to stderr, then sends the logger's warnings there, each line tagged with this process's pid.
+// A start that fails for any reason but another daemon already serving is logged at Warn before it is returned.
+func runDaemon(ctx context.Context, hubPath string, stderr io.Writer) error {
+	if _, err := fmt.Fprintln(stderr, creelengine.DaemonStartHeader(os.Getpid(), time.Now())); err != nil {
+		return fmt.Errorf("write the daemon start header: %w", err)
+	}
+	logger.SetOutput(&pidLineWriter{dst: stderr})
+	logger.SetVerbosity(0)
+	err := serveDaemon(ctx, hubPath)
+	if err != nil && !errors.Is(err, creelengine.ErrDaemonRunning) {
+		logger.Warn("creel: the daemon did not start or ended with an error", "error", err)
+	}
+	return err
+}
+
+// serveDaemon resolves the hub's geometry and runs the engine's daemon over it.
+func serveDaemon(ctx context.Context, hubPath string) error {
 	root, err := lyxtemp.ProcessRoot()
 	if err != nil {
 		return fmt.Errorf("open the lyxtemp root: %w", err)
