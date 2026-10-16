@@ -15,11 +15,12 @@ Before starting a session:
    The suite resolves `.dev-bin` itself and prepends it to the agent's PATH (the fingerprint header's `Source: dev` line confirms the dev build is under test) -- no PATH setup needed, and production `lyx` stays untouched.
    The deployed binary is a snapshot -- re-deploy after any source change you want to test.
    Once a pane exists, run these checks inside a spawned agent pane:
-   - `command -v lyx` (`where lyx` on Windows) names the spawning binary, not the production install.
+   - `command -v lyx` (`where lyx` on Windows) is not a check this suite makes: its interactive strands, the plain `--cmd claude` and `--cmd bash` strands, each start a fresh shell that re-runs the operator's rc.
+     See `SANDBOX-REED-SUITE.md` for the pane-shell guarantee and `SANDBOX-SHUTTLE-SUITE.md` for the agent Bash tool check.
    - `LYX_BIN` is set inside that pane and names the same binary.
    - `claude` still resolves inside that pane.
      `claude` is looked up by bare name from the pane's PATH, so it is the property most exposed to any future change in how a pane's shell is started, and it is the one property no hermetic test can prove.
-   The first two are also live-substrate facts no `go test` can prove, which is why all three are pre-condition checks rather than assertions.
+   `LYX_BIN` being set is the live-substrate fact no `go test` can prove, and both remaining checks are pre-condition checks rather than assertions.
 2. **Materialize the hub.**
    Run `sandbox/build.cmd` (or `sandbox/build.cmd -reset` to start clean);
    the session cwd is the Hub's Fabric repo root, the same operating model as the main suite.

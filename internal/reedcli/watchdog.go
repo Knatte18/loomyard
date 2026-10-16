@@ -53,9 +53,13 @@ const watchdogHubDiscoveryCeiling = 60 * time.Second
 // watchdogHubIdleCycles is how many consecutive idle discovery cycles (see sessionsAreIdle) the
 // daemon tolerates before exiting.
 //
-// Three cycles covers a `down` immediately followed by an `up` without the daemon dying and
-// respawning in between.
+// Three cycles covers a `down` followed by an `up` for a daemon whose watch failed to open and so never sees the stop,
+// and a transient list-sessions error, which sessionsAreIdle counts as idle.
 const watchdogHubIdleCycles = 3
+
+// watchdogStopFloor is the shortest wait between a cycle and the next one a stop request wakes.
+// It is the one-second floor of PATTERN-daemon-wakeups, so a writer touching the stop in a loop costs one cycle per second.
+const watchdogStopFloor = time.Second
 
 // watchdogOrphanGoneCycles is how many consecutive **affirmative** discovery cycles a session name
 // must be observed gone (see worktreeRootGone) before the daemon reaps it — roughly 15s at the
@@ -73,11 +77,13 @@ const watchdogOrphanGoneCycles = 3
 // watchdogDefaultTiming.
 //
 // DiscoveryCycle is the base cadence and DiscoveryCeiling the cap it backs off to across unchanged cycles; a ceiling equal to the cycle means no backoff.
+// StopFloor is the shortest wait between a cycle and the next one a stop request wakes.
 // ReapTimeout bounds the reap's graceful wait before it force-kills.
 // Zero selects reedengine's own 15s reap budget, which is what production runs.
 type watchdogTiming struct {
 	DiscoveryCycle   time.Duration
 	DiscoveryCeiling time.Duration
+	StopFloor        time.Duration
 	IdleCycles       int
 	OrphanGoneCycles int
 	ReapTimeout      time.Duration
@@ -89,6 +95,7 @@ func watchdogDefaultTiming() watchdogTiming {
 	return watchdogTiming{
 		DiscoveryCycle:   watchdogHubDiscoveryCycle,
 		DiscoveryCeiling: watchdogHubDiscoveryCeiling,
+		StopFloor:        watchdogStopFloor,
 		IdleCycles:       watchdogHubIdleCycles,
 		OrphanGoneCycles: watchdogOrphanGoneCycles,
 	}
@@ -97,36 +104,47 @@ func watchdogDefaultTiming() watchdogTiming {
 // discoveryWake plans when the discovery loop runs its next cycle.
 // It holds the last cycle's time and the current cadence, which backs off while cycles find the session set unchanged.
 // A consumed discover signal runs a cycle sooner, but never sooner than the base after the last one, so a process touching the signal in a loop costs one cycle per base.
+// A signal that carried a stop request is held to the stop floor instead of the base.
 type discoveryWake struct {
-	base    time.Duration
-	ceiling time.Duration
+	base      time.Duration
+	ceiling   time.Duration
+	stopFloor time.Duration
 	// cadence is the wait that follows the last cycle.
 	cadence   time.Duration
 	lastCycle time.Time
 	// signalAt is when the pending signal was consumed; zero when none is pending.
 	signalAt time.Time
+	// stop is whether a pending signal carried a stop request.
+	stop bool
 }
 
 // afterCycle records a cycle that ran at now and moves the cadence: back to the base when the session set changed, otherwise doubled up to the ceiling.
-// It clears a pending signal, which the cycle served.
+// It clears a pending signal and its stop request, which the cycle served.
 func (d *discoveryWake) afterCycle(now time.Time, changed bool) {
 	d.lastCycle = now
 	d.cadence = reedengine.NextWakeCadence(d.cadence, d.base, d.ceiling, changed)
 	d.signalAt = time.Time{}
+	d.stop = false
 }
 
 // onSignal marks a discover signal consumed at now and returns the cadence to the base.
-func (d *discoveryWake) onSignal(now time.Time) {
+// A stop request is kept until the cycle runs, so a discover landing after a stop does not lose it.
+func (d *discoveryWake) onSignal(now time.Time, stop bool) {
 	d.signalAt = now
 	d.cadence = d.base
+	d.stop = d.stop || stop
 }
 
 // next returns how long to wait from now before the next cycle.
-// A pending signal's cycle is due at the later of the signal and the base after the last cycle; otherwise the cycle is due when the cadence ends.
+// A pending signal's cycle is due at the later of the signal and the base after the last cycle, or the stop floor after it when a stop is pending; otherwise the cycle is due when the cadence ends.
 func (d *discoveryWake) next(now time.Time) time.Duration {
 	due := d.lastCycle.Add(d.cadence)
 	if !d.signalAt.IsZero() {
-		due = d.lastCycle.Add(d.base)
+		floor := d.base
+		if d.stop {
+			floor = d.stopFloor
+		}
+		due = d.lastCycle.Add(floor)
 		if d.signalAt.After(due) {
 			due = d.signalAt
 		}
@@ -150,14 +168,22 @@ func sameSessionSet(a, b []string) bool {
 	return len(set) == len(other)
 }
 
-// consumeDiscoverSignal removes the discover signal file at path and reports whether it was there.
-// An absent file answers false with no error.
-func consumeDiscoverSignal(path string) (bool, error) {
-	err := os.Remove(path)
+// consumeDiscoverSignal reads and removes the discover signal file at path.
+// It reports whether the file was there, and stop when its trimmed content is reedengine.DiscoverStopMarker.
+// An absent file answers false, false with no error; an empty file, which a cold boot's touch leaves in place of a pending stop, answers true, false.
+// A read error other than not-exist, or a removal error after a successful read, is returned with both results false.
+func consumeDiscoverSignal(path string) (consumed, stop bool, err error) {
+	content, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
-		return false, nil
+		return false, false, nil
 	}
-	return err == nil, err
+	if err != nil {
+		return false, false, err
+	}
+	if err := os.Remove(path); err != nil {
+		return false, false, err
+	}
+	return true, strings.TrimSpace(string(content)) == reedengine.DiscoverStopMarker, nil
 }
 
 // sessionsAreIdle reports whether one discovery cycle's list-sessions round trip counts toward the
@@ -379,12 +405,19 @@ func dispatchReap(wg *sync.WaitGroup, done chan<- string, hub, tmuxPath, shellPa
 }
 
 // runWatchdogLoop is the daemon's outer loop: it polls hub for live sessions, enters newly-appeared sessions, tears down departed ones, reaps orphaned
-// ones, and returns once timing.IdleCycles consecutive cycles are idle (see sessionsAreIdle) or ctx
-// is done.
+// ones, and returns when one of these holds:
+//
+//   - a cycle woken by a stop request lists no live session: it returns nil at once, without waiting for timing.IdleCycles;
+//   - timing.IdleCycles consecutive cycles are idle (see sessionsAreIdle): it returns nil;
+//   - replaced answers true: it returns errWatchdogBinaryReplaced when that cycle's listing is affirmative, and nil when it is idle, since a successor is only for a live hub;
+//   - ctx is done: it returns ctx.Err().
+//
+// list is the session lister; it is called once per cycle with tmuxPath and the hub's server name.
 //
 // The wait between cycles starts at timing.DiscoveryCycle, doubles up to timing.DiscoveryCeiling across cycles that find the session set unchanged, and returns to the base when the set changes (discoveryWake).
 // The loop also waits on the hub-level discover signal file, opened through open: a consumed signal runs a cycle at once, never sooner than the base after the previous one.
-// When open fails the loop logs that once at Warn and keeps its backed-off cadence with no event wake.
+// A signal file holding reedengine.DiscoverStopMarker is a stop request, whose cycle runs no sooner than timing.StopFloor after the previous one.
+// When open fails the loop logs that once at Warn and keeps its backed-off cadence with no event wake, and never sees a stop.
 //
 // shellPath sits immediately after tmuxPath because the two are told together and travel together —
 // both are told-not-derived values the reap pass needs. An empty shellPath is logged once at Warn,
@@ -429,10 +462,10 @@ func dispatchReap(wg *sync.WaitGroup, done chan<- string, hub, tmuxPath, shellPa
 // effect once the entry leaves (this departure teardown) and re-enters (enterSession, on the next
 // appearance) — there is no other re-read path.
 //
-// replaced is called once on each timer tick, before the session listing, and a true answer returns errWatchdogBinaryReplaced through the deferred teardown above.
+// replaced is called once on each timer tick, after the session listing, and a true answer returns through the deferred teardown above.
 // A nil replaced is never called.
 // It adds no wakeup of its own and never runs on a discover-signal wake.
-func runWatchdogLoop(ctx context.Context, hub, tmuxPath, shellPath string, timing watchdogTiming, open reedengine.FileWatchOpener, replaced func() bool) error {
+func runWatchdogLoop(ctx context.Context, hub, tmuxPath, shellPath string, timing watchdogTiming, open reedengine.FileWatchOpener, list func(tmuxPath, socketKey string) ([]string, error), replaced func() bool) error {
 	logger.Info("reed: watchdog daemon starting", "hub", hub)
 	if shellPath == "" {
 		logger.Warn("reed: watchdog daemon starting with no shell path; the reap will kill pane root pids without their descendants on Windows", "hub", hub)
@@ -466,7 +499,7 @@ func runWatchdogLoop(ctx context.Context, hub, tmuxPath, shellPath string, timin
 	}
 
 	start := time.Now()
-	wake := &discoveryWake{base: timing.DiscoveryCycle, ceiling: timing.DiscoveryCeiling, cadence: timing.DiscoveryCycle, lastCycle: start}
+	wake := &discoveryWake{base: timing.DiscoveryCycle, ceiling: timing.DiscoveryCeiling, stopFloor: timing.StopFloor, cadence: timing.DiscoveryCycle, lastCycle: start}
 	timer := time.NewTimer(wake.next(start))
 	defer timer.Stop()
 
@@ -482,29 +515,38 @@ func runWatchdogLoop(ctx context.Context, hub, tmuxPath, shellPath string, timin
 				events = nil
 				continue
 			}
-			consumed, err := consumeDiscoverSignal(signalPath)
+			consumed, stop, err := consumeDiscoverSignal(signalPath)
 			if err != nil {
 				logger.Warn("reed: watchdog could not consume the discover signal", "hub", hub, "err", err)
 				continue
 			}
 			if consumed {
 				now := time.Now()
-				wake.onSignal(now)
+				wake.onSignal(now, stop)
 				timer.Reset(wake.next(now))
 			}
 			continue
 		}
 
-		if replaced != nil && replaced() {
-			return errWatchdogBinaryReplaced
-		}
-
-		live, err := reedengine.ListSessions(tmuxPath, reedengine.ServerName(hub))
+		stopWoken := wake.stop
+		live, err := list(tmuxPath, reedengine.ServerName(hub))
 		now := time.Now()
 		wake.afterCycle(now, !sameSessionSet(live, previousLive))
 		previousLive = live
 		timer.Reset(wake.next(now))
-		if sessionsAreIdle(live, err) {
+		idle := sessionsAreIdle(live, err)
+		if replaced != nil && replaced() {
+			if !idle {
+				return errWatchdogBinaryReplaced
+			}
+			logger.Info("reed: watchdog retires on a replaced binary with no successor of its own; the hub has no session", "hub", hub)
+			return nil
+		}
+		if idle {
+			if stopWoken {
+				logger.Info("reed: watchdog daemon exiting on a stop request", "hub", hub)
+				return nil
+			}
 			idleCycles++
 			if idleCycles >= timing.IdleCycles {
 				logger.Info("reed: watchdog daemon exiting after consecutive idle discovery cycles", "hub", hub, "cycles", idleCycles)
@@ -669,6 +711,49 @@ func hubIsLiveDir(hub string) bool {
 // fabricengine.HubScratchDir(hub).
 const watchdogLockFileName = "reed-watchdog.lock"
 
+// The bounds of the wait `down` makes for the watchdog to leave its loop after it ended the hub's server.
+// watchdogDownWait is the longest the wait lasts, and watchdogDownPoll the pause between lock probes.
+const (
+	watchdogDownWait = 10 * time.Second
+	watchdogDownPoll = 100 * time.Millisecond //lyx:one-shot bounded lock poll of at most watchdogDownWait
+)
+
+// probeWatchdogLock reports whether the watchdog lock at lockPath is free.
+// A probe that acquires the lock releases it at once and answers free; contention answers not free, and an unusable lock path is the error.
+func probeWatchdogLock(lockPath string) (free bool, err error) {
+	held, acquired, err := lock.TryAcquireWriteLock(lockPath)
+	if err != nil {
+		return false, err
+	}
+	if !acquired {
+		return false, nil
+	}
+	held.Release()
+	return true, nil
+}
+
+// waitWatchdogLockFree waits for hub's watchdog lock to come free, probing it through probe and pausing poll through sleep between probes.
+// The probes span at most wait, which is wait/poll + 1 of them.
+// A probe error means no scratch directory exists, so no daemon can hold the lock: it logs at Debug and returns.
+// When the probes run out it logs one Warn naming the hub and the lock path and returns; the wait never fails its caller.
+func waitWatchdogLockFree(hub string, wait, poll time.Duration, probe func(lockPath string) (bool, error), sleep func(time.Duration)) {
+	lockPath := filepath.Join(fabricengine.HubScratchDir(hub), watchdogLockFileName)
+	for probes := int(wait/poll) + 1; probes > 0; probes-- {
+		free, err := probe(lockPath)
+		if err != nil {
+			logger.Debug("reed: down could not probe the watchdog lock, not waiting for the watchdog", "hub", hub, "lock", lockPath, "err", err)
+			return
+		}
+		if free {
+			return
+		}
+		if probes > 1 {
+			sleep(poll)
+		}
+	}
+	logger.Warn("reed: down gave up waiting for the watchdog to release its lock", "hub", hub, "lock", lockPath)
+}
+
 // watchdogCmd builds the `watchdog` subcommand: a blocking, single-instance, per-hub daemon that
 // runs runWatchdogLoop until it idles out or its context is cancelled.
 //
@@ -698,9 +783,11 @@ is a real diagnosis path: its diagnostics land in the hub's durable log
 directory, and the foreground run honours -v, -vv, LYX_LOG_LEVEL and
 LYX_LOG_FILE like every other verb.
 
-The daemon retires and respawns itself when the lyx binary it was started
-from is replaced, checked on each discovery tick, so a deploy never leaves it
-laying out sessions with stale render code. A daemon started before this check
+The daemon retires when the lyx binary it was started from is replaced,
+checked on each discovery tick, and respawns only while the hub has a session,
+so a deploy never leaves it laying out sessions with stale render code. The
+last reed down asks the daemon to stop; it exits at its next cycle once no
+session is left. A daemon started before this check
 existed carries none and is ended once by hand after the deploy; the next
 reed up, attach or resume spawns a successor that has it.
 
@@ -759,21 +846,36 @@ Example:
 			if exeStat == nil {
 				exeStat = ownExecutableStat()
 			}
-			err = runWatchdogLoop(cmd.Context(), hubPath, tmuxPath, shellPath, timing, reedengine.OpenFileWatch, exeWatch(exeStat))
+			list := c.watchdogListSessions
+			if list == nil {
+				list = reedengine.ListSessions
+			}
+			respawn := c.respawnWatchdog
+			if respawn == nil {
+				respawn = reedengine.SpawnWatchdog
+			}
+			err = runWatchdogLoop(cmd.Context(), hubPath, tmuxPath, shellPath, timing, reedengine.OpenFileWatch, list, exeWatch(exeStat))
 			if errors.Is(err, errWatchdogBinaryReplaced) {
 				// The successor's lock race is lost while this process still holds the lock, so release it first;
 				// the deferred release that follows is a no-op on an unlocked flock.
 				fl.Release()
-				respawn := c.respawnWatchdog
-				if respawn == nil {
-					respawn = reedengine.SpawnWatchdog
-				}
 				respawn(hubPath, tmuxPath, shellPath, testing.Testing())
 				logger.Info("reed: watchdog retired; its binary was replaced and a successor was spawned", "hub", hubPath)
 				return nil
 			}
 			if err != nil {
 				logger.Warn("reed: watchdog daemon's loop returned", "hub", hubPath, "err", err)
+				return nil
+			}
+			// The lock is released before the re-check so a successor spawned for a session that appeared during the exit wins the lock race.
+			fl.Release()
+			if cmd.Context().Err() != nil {
+				return nil
+			}
+			names, listErr := list(tmuxPath, reedengine.ServerName(hubPath))
+			if !sessionsAreIdle(names, listErr) {
+				respawn(hubPath, tmuxPath, shellPath, testing.Testing())
+				logger.Info("reed: watchdog exited and a successor was spawned for a live hub", "hub", hubPath)
 			}
 			return nil
 		},

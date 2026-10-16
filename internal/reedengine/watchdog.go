@@ -28,8 +28,13 @@ func watchdogOption(raw string) (bool, error) {
 }
 
 // DiscoverSignalFileName is the discover signal file's name inside the hub scratch directory.
-// A cold session boot touches it, and the watchdog daemon's discovery loop wakes on it, so the teller and the daemon spell it once.
+// A cold session boot touches it, and `Engine.Down` writes DiscoverStopMarker into it when it ends the server;
+// the watchdog daemon's discovery loop wakes on it, so the teller and the daemon spell it once.
 const DiscoverSignalFileName = "reed-discover.signal"
+
+// DiscoverStopMarker is the fixed content of the discover signal file that asks the hub's watchdog daemon to stop.
+// The teller and the daemon spell it once.
+const DiscoverStopMarker = "stop"
 
 // NextWakeCadence is the backoff rule the daemon loops share: the wait after a cycle.
 // It returns base when the cycle changed something, otherwise twice current capped at ceiling.
