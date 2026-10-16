@@ -263,24 +263,23 @@ func masterTemplateMarkerValues() map[string]string {
 // friction_directive, the fork template's own one optional marker.
 func forkTemplateMarkerValues() map[string]string {
 	return map[string]string{
-		"card_pointers":         "- `_lyx/plan/02-list-tests.md`",
-		"card_gates":            testCardGates,
-		"batch_gate":            testBatchGate,
-		"report_path":           "/webster/reports/02-list-tests.yaml",
-		"self_fix_cap":          "2",
-		"worktree_root":         "/worktree",
-		"prev_digest":           "01-json-flag: done head_sha=abc123",
-		"specs_dir":             "/hub/repo/_board/_lyx/specs",
-		"verify_tiers":          "- run `x` on the listed packages",
-		"outcome_path":          testOutcomePath,
-		"summary_path":          testSummaryPath,
-		"locate":                "   Locate them with one `lyx quarry resolve <glyph>...` call.",
-		"card_read":             "Read the card file.",
-		"fresh_read":            "Inherited context can be stale.",
-		"kickstart_pack":        "\n\n## Kick-start pack\n\nthe pack.",
-		"friction_directive":    "## Friction note — optional, only if something went wrong\n\nWrite it to /webster/friction/02-list-tests.md.",
-		"kickstart_pack_inline": "\n\n## Kick-start pack\n\nthe inline pack.",
-		"card_pack_allowed":     ", `lyx loom card-pack`",
+		"card_pointers":      "- `_lyx/plan/02-list-tests.md`",
+		"card_gates":         testCardGates,
+		"batch_gate":         testBatchGate,
+		"report_path":        "/webster/reports/02-list-tests.yaml",
+		"self_fix_cap":       "2",
+		"worktree_root":      "/worktree",
+		"prev_digest":        "01-json-flag: done head_sha=abc123",
+		"specs_dir":          "/hub/repo/_board/_lyx/specs",
+		"verify_tiers":       "- run `x` on the listed packages",
+		"outcome_path":       testOutcomePath,
+		"summary_path":       testSummaryPath,
+		"locate":             "   Locate them with one `lyx quarry resolve <glyph>...` call.",
+		"card_read":          "Read the card file.",
+		"fresh_read":         "Inherited context can be stale.",
+		"kickstart_pack":     "\n\n## Kick-start pack\n\nthe pack.",
+		"friction_directive": "## Friction note — optional, only if something went wrong\n\nWrite it to /webster/friction/02-list-tests.md.",
+		"card_pack_allowed":  ", `lyx loom card-pack`",
 	}
 }
 
@@ -486,14 +485,14 @@ func TestTemplates_FillRequiresEveryRequiredMarker(t *testing.T) {
 			name:     "fork",
 			template: mustForkTemplate,
 			values:   forkTemplateMarkerValues,
-			optional: []string{"kickstart_pack", "kickstart_pack_inline", "card_pack_allowed", "friction_directive"},
+			optional: []string{"kickstart_pack", "card_pack_allowed", "friction_directive"},
 			required: []string{"card_pointers", "card_gates", "batch_gate", "report_path", "self_fix_cap", "worktree_root", "prev_digest", "specs_dir", "verify_tiers", "outcome_path", "summary_path", "locate", "card_read", "fresh_read"},
 		},
 		{
 			name:     "recovery",
 			template: mustRecoveryTemplate,
 			values:   recoveryTemplateMarkerValues,
-			optional: []string{"pattern_directive", "failure_digest", "uncommitted_paths", "kickstart_pack", "kickstart_pack_inline", "card_pack_allowed", "friction_directive", "parent_directive"},
+			optional: []string{"pattern_directive", "failure_digest", "uncommitted_paths", "kickstart_pack", "card_pack_allowed", "friction_directive", "parent_directive"},
 			required: []string{"card_pointers", "card_gates", "batch_gate", "report_path", "self_fix_cap", "worktree_root", "prev_digest", "specs_dir", "verify_tiers", "edit_directive", "locate", "card_read", "fresh_read"},
 		},
 	}
@@ -615,7 +614,6 @@ func writePrePackBody(t *testing.T, stencilsDir string) {
 	}
 	prePackBody := strings.NewReplacer(
 		"{{.kickstart_pack}}", "",
-		"{{.kickstart_pack_inline}}", "",
 		"{{.card_pack_allowed}}", "",
 		"{{.locate}}", trimmed(stencils.WebsterFragmentLocateQuarry),
 		"{{.card_read}}", trimmed(stencils.WebsterFragmentCardReadPlain),
@@ -625,24 +623,6 @@ func writePrePackBody(t *testing.T, stencilsDir string) {
 		t.Fatalf("the body has none of the locate, card_read, fresh_read or kickstart_pack markers")
 	}
 	if err := os.WriteFile(bodyPath, []byte(prePackBody), 0o644); err != nil {
-		t.Fatalf("WriteFile(%q) = %v; want nil", bodyPath, err)
-	}
-}
-
-// dropInlineMarker rewrites the implementer body in stencilsDir into the body as it stood before the inline layout: without the kickstart_pack_inline marker.
-func dropInlineMarker(t *testing.T, stencilsDir string) {
-	t.Helper()
-
-	bodyPath := stencilstore.Path(stencilsDir, "webster-body-implementer")
-	body, err := os.ReadFile(bodyPath)
-	if err != nil {
-		t.Fatalf("ReadFile(%q) = %v; want nil", bodyPath, err)
-	}
-	withoutMarker := strings.Replace(string(body), "{{.kickstart_pack_inline}}", "", 1)
-	if withoutMarker == string(body) {
-		t.Fatalf("the body has no kickstart_pack_inline marker")
-	}
-	if err := os.WriteFile(bodyPath, []byte(withoutMarker), 0o644); err != nil {
 		t.Fatalf("WriteFile(%q) = %v; want nil", bodyPath, err)
 	}
 }
@@ -845,13 +825,6 @@ func TestRenderPrompts(t *testing.T) {
 			if packFile != "" {
 				t.Errorf("nil-pack fork rendered a pack file %q; want none", packFile)
 			}
-			inlineText, inlinePackFile, inlineErr := renderForkWithPack(alpha, root, stencilsDir, specsDir, "", 2, "", websterengine.PackLayoutInline, nil, nil)
-			if inlinePackFile != "" {
-				t.Errorf("nil-pack fork in the inline layout rendered a pack file %q; want none", inlinePackFile)
-			}
-			if err == nil && inlineErr == nil && text != inlineText {
-				t.Errorf("nil-pack fork prompt differs between the file and inline layouts")
-			}
 			cardText, cardPackFile, cardErr := renderForkWithPack(alpha, root, stencilsDir, specsDir, "", 2, "", websterengine.PackLayoutCard, nil, nil)
 			if cardPackFile != "" {
 				t.Errorf("nil-pack fork in the per-card layout rendered a pack file %q; want none", cardPackFile)
@@ -889,17 +862,9 @@ func TestRenderPrompts(t *testing.T) {
 			twoCards := batcher.Batch{Cards: []planparser.Card{alpha.Cards[0], beta}}
 			text, err := renderForkPromptAndPack(t, twoCards, root, stencilsDir, specsDir, pack)
 
-			// The file layout is byte-identical to the one rendered before the inline layout existed:
-			// the prompt and the pack file equal the render of a body without the inline marker.
-			prompt, packFile, fileErr := renderForkWithPack(twoCards, root, stencilsDir, specsDir, "", 2, "", websterengine.PackLayoutFile, pack, nil)
-			_, noInlineDir := testLayout(t)
-			dropInlineMarker(t, noInlineDir)
-			wantPrompt, wantPackFile, noInlineErr := renderForkWithPack(twoCards, root, noInlineDir, specsDir, "", 2, "", websterengine.PackLayoutFile, pack, nil)
+			prompt, _, fileErr := renderForkWithPack(twoCards, root, stencilsDir, specsDir, "", 2, "", websterengine.PackLayoutFile, pack, nil)
 			if fileErr == nil && strings.Contains(prompt, "lyx loom card-pack") {
 				t.Errorf("file-layout prompt holds the per-card verb %q", "lyx loom card-pack")
-			}
-			if fileErr == nil && noInlineErr == nil && (prompt != wantPrompt || packFile != wantPackFile) {
-				t.Errorf("file-layout render differs from the render of a body without the kickstart_pack_inline marker")
 			}
 			return promptCheck{text: text, err: err,
 				contains:    []string{specsDir},
@@ -968,36 +933,6 @@ func TestRenderPrompts(t *testing.T) {
 			text, err := renderForkPromptAndPack(t, alpha, root, stencilsDir, newTestSpecsDir(t), pack)
 			return promptCheck{text: text, err: err,
 				inOrder: []string{"no member glyphs on this card", "#### Unresolved", "- `plan:internal/foo#New` — a member this batch creates"}}
-		}},
-		{"fork with an inline pack carries the inline fragments and the pack before the sandbox rule", func(t *testing.T) promptCheck {
-			pack := []planindex.CardPack{{Card: alpha.Cards[0], Pack: planindex.Pack{Resolved: []planindex.PackEntry{
-				{Glyph: "internal/foo#Baz", Declarations: []planindex.PackDeclaration{{File: "internal/foo/c.go", Start: 1, End: 2, Signature: "func Baz()"}}},
-			}}}}
-			root, stencilsDir := testLayout(t)
-			specsDir := newTestSpecsDir(t)
-			text, packFile, err := renderForkWithPack(alpha, root, stencilsDir, specsDir, "", 2, "", websterengine.PackLayoutInline, pack, nil)
-			if packFile != "" {
-				t.Errorf("inline fork rendered a pack file %q; want none", packFile)
-			}
-			return promptCheck{text: text, err: err,
-				contains:    []string{"Your first turn, before any edit, reads in parallel", "The kick-start pack below lists", "which your first turn read", specsDir},
-				notContains: []string{"## Start here", testPackPath, "kick-start pack file", "Read all of this in one turn", "{{", "1. Read the card file.", "lyx loom card-pack"},
-				inOrder: []string{
-					"## Kick-start pack",
-					"### `_lyx/plan/01-alpha.md`",
-					"  - `internal/foo/c.go:1-2` — func Baz()",
-					"## The sandbox rule",
-					"## Your final action: the minimal batch-report",
-				}}
-		}},
-		{"fork with an inline pack refuses a missing inline section stencil", func(t *testing.T) promptCheck {
-			pack := []planindex.CardPack{{Card: alpha.Cards[0], Pack: planindex.Pack{Unresolved: []planindex.PackUnresolved{{Ref: "internal/foo#Gone", Reason: "no such member"}}}}}
-			root, stencilsDir := testLayout(t)
-			if err := os.Remove(stencilstore.Path(stencilsDir, "webster-fragment-pack-section-inline")); err != nil {
-				t.Fatalf("Remove(inline section stencil) = %v; want nil", err)
-			}
-			_, _, err := renderForkWithPack(alpha, root, stencilsDir, newTestSpecsDir(t), "", 2, "", websterengine.PackLayoutInline, pack, nil)
-			return promptCheck{err: err, wantErr: true}
 		}},
 		{"fork with a per-card pack reads the card files first and fetches each card's pack", func(t *testing.T) promptCheck {
 			pack := []planindex.CardPack{{Card: alpha.Cards[0], Pack: planindex.Pack{Resolved: []planindex.PackEntry{

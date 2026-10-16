@@ -160,17 +160,11 @@
 // the batch-report section still names the report as the fork's last action.
 // Without a pack no pack file is written and the prompt ends with the batch-report section.
 //
-// The `kickstart_pack_file` key of webster.yaml, true by default, picks the layout of a built pack.
-// True is the file layout described above.
-// False is the inline layout: the `1e39afc10^` text, kept in three frozen fragments, the inline locate step, the inline FRESH-READ rule carrying the one-turn read, and the inline pack section.
-// The pack section sits between the per-card steps and the sandbox rule, in the body's kickstart_pack_inline marker, with no pack file and no `## Start here` line.
-// A prompt without a pack, and the recovery prompt, render the same bytes under either value.
-// Each begin-batch reads the key afresh, so a flip applies from the next call on;
-// a pack file an earlier file-layout call of the same batch wrote stays on disk, and the inline prompt never names it.
-//
-// The `kickstart_pack_per_card` key of webster.yaml, true by default, picks the per-card layout and overrides `kickstart_pack_file`, which then decides between the file and inline layouts only when the key is false.
+// The `kickstart_pack_per_card` key of webster.yaml, true by default, picks between the per-card layout and the file layout described above.
 // It applies in a hub geometry, where the anchor and the worktree are one directory (packLayoutOf);
-// a standalone geometry keeps the layout `kickstart_pack_file` picks, because `lyx loom card-pack` is a hub-only verb and every call of it would refuse.
+// a standalone geometry always gets the file layout, because `lyx loom card-pack` is a hub-only verb and every call of it would refuse.
+// A prompt without a pack, and the recovery prompt, render the same bytes under either value.
+// Each begin-batch reads the key afresh, so a flip applies from the next call on.
 // In the per-card layout the card files are the batch overview: the fork's first work turn reads every card file and nothing else.
 // Step 1 of each card then runs `lyx loom card-pack <N>` and reads the listed spans in one parallel turn before that card's first edit, so the spans are resolved against the tree as it stands at the card's start, earlier cards' edits included.
 // begin-batch writes no pack file, the prompt carries none of the pack's entries, and it ends with a `## Start here` section sending the fork to its card files.
@@ -188,7 +182,7 @@
 // and the card and batch gates, which run every card's tests, catch reasoning over stale content.
 //
 // Every begin-batch logs one Info line, `webster: kickstart pack`.
-// Its keys are batch, kickstart_pack (`on`, `off`, `language-none` or `empty`), resolved, unresolved and pack_layout (`file`, `inline`, `card` or `none`).
+// Its keys are batch, kickstart_pack (`on`, `off`, `language-none` or `empty`), resolved, unresolved and pack_layout (`file`, `card` or `none`).
 // The resolved and unresolved counts are distinct refs across the batch, so a ref listed under two cards counts once, and stay 0 when no pack is built.
 // pack_layout is `none` on every line where no pack was built.
 // The `kickstart_pack` key of webster.yaml switches the pack on and off, so runs with and without it can be compared;

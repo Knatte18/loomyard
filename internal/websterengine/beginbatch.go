@@ -405,7 +405,7 @@ func existingReportRemedy(number int, recorded *BatchState, retry bool) (string,
 // a parse error degrades to deps.Plan and batch.Cards instead, with a Warn, so building the pack never refuses the batch.
 // An index error is a Warn too, and the degraded pack the index returned is kept.
 // The logged resolved and unresolved counts are distinct refs across the batch, so a ref listed under two cards counts once.
-// The line's last key, pack_layout, is the PackLayout packLayoutOf picks (`file`, `inline` or `card`) when a pack is built, and `none` on every line where none is.
+// The line's last key, pack_layout, is the PackLayout packLayoutOf picks (`file` or `card`) when a pack is built, and `none` on every line where none is.
 // A per-card batch still builds the batch pack, so the off, language-none and empty outcomes and the counts keep their batch-start meaning; the prompt just never carries it.
 func buildKickstartPack(deps BeginDeps, index planindex.Index, batch batcher.Batch, number int) []planindex.CardPack {
 	logPack := func(state string, pack []planindex.CardPack) {
