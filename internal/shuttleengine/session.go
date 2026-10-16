@@ -170,12 +170,12 @@ func (r *Runner) CompactedSince(guid string, turnEnd Event, since time.Time) (Co
 }
 
 // SessionIdle reports whether the run identified by guid can take typed input.
-// The answer is the readiness reading over the run's hook-derived session state and one pane capture:
+// The answer is the readiness reading over the run's hook-derived session state and one pane capture, styled where the engine can blank its placeholder:
 // a ready reading is idle and a held one is not idle with its Reason, and the runner keeps one turn-start hold per strand across calls.
 // A ready reading beside a pane that does not show the provider idle still answers idle, and logs the disagreement with the pane's last lines at Debug.
 // An unknown reading, and a strand with no run record, fall back to the pane probe, which logs the cause at Debug.
 // The engine is the one the run's record names, the set's default for a strand with no record.
-// TooShort is filled only for an answer that is not idle.
+// TooShort and Draft are filled only for an answer that is not idle, on the pane fallback as on the readiness reading.
 func (r *Runner) SessionIdle(guid string) (IdleProbe, error) {
 	if r.toldErr != nil {
 		return IdleProbe{}, r.toldErr
@@ -195,7 +195,7 @@ func (r *Runner) SessionIdle(guid string) (IdleProbe, error) {
 	if err := requireLiveStrand(r.reed, guid); err != nil {
 		return IdleProbe{}, err
 	}
-	capture, err := r.reed.CapturePane(guid)
+	capture, err := boxCapture(r.reed, engine, guid)
 	if err != nil {
 		return IdleProbe{}, fmt.Errorf("shuttle: capture strand %q's pane to probe idleness: %w", guid, err)
 	}
@@ -224,8 +224,9 @@ func (r *Runner) SessionIdle(guid string) (IdleProbe, error) {
 	probe := IdleProbe{Idle: cycler.IdleSession(capture)}
 	if !probe.Idle {
 		probe.TooShort = cycler.PaneTooShort(capture)
+		probe.Draft = strings.TrimSpace(readBox(engine, capture).text) != ""
 	}
-	logger.Debug("shuttle: session idle probe", "strandGUID", guid, "idle", probe.Idle, "tooShort", probe.TooShort)
+	logger.Debug("shuttle: session idle probe", "strandGUID", guid, "idle", probe.Idle, "tooShort", probe.TooShort, "draft", probe.Draft)
 	return probe, nil
 }
 

@@ -1003,6 +1003,8 @@ type tuiReed struct {
 	clears int
 	// keepOnClear makes C-u leave the box as it is, as when a character survives the clear.
 	keepOnClear bool
+	// suggestion is the prompt suggestion drawn after the caret while the box is empty; empty draws nothing.
+	suggestion string
 }
 
 func (r *tuiReed) SendText(guid, text string, submit bool) error {
@@ -1059,11 +1061,76 @@ func (r *tuiReed) CapturePane(guid string) (string, error) {
 	if _, err := r.fakeReed.CapturePane(guid); err != nil {
 		return "", err
 	}
-	if r.clock.Now().Before(r.busyUntil) {
-		return "working (esc to interrupt)\n❯ " + r.box, nil
-	}
-	return "IDLE\n" + strings.Join(r.history, "\n") + "\n❯ " + r.box, nil
+	return r.frame(r.suggestion), nil
 }
+
+// CapturePaneStyled draws the pane as CapturePane does, with the suggestion wrapped in ~ marks the way a styled capture marks placeholder cells.
+func (r *tuiReed) CapturePaneStyled(guid string) (string, error) {
+	if _, err := r.fakeReed.CapturePaneStyled(guid); err != nil {
+		return "", err
+	}
+	suggestion := r.suggestion
+	if suggestion != "" {
+		suggestion = "~" + suggestion + "~"
+	}
+	return r.frame(suggestion), nil
+}
+
+// frame draws the pane with drawnSuggestion after the caret while the box is empty.
+func (r *tuiReed) frame(drawnSuggestion string) string {
+	box := r.box
+	if box == "" {
+		box = drawnSuggestion
+	}
+	if r.clock.Now().Before(r.busyUntil) {
+		return "working (esc to interrupt)\n❯ " + box
+	}
+	return "IDLE\n" + strings.Join(r.history, "\n") + "\n❯ " + box
+}
+
+// blankMarkedSpans replaces every ~…~ span of a fake capture, tildes included, by spaces, standing in for a provider's placeholder cells.
+func blankMarkedSpans(styled string) string {
+	var out strings.Builder
+	for {
+		open := strings.Index(styled, "~")
+		if open < 0 {
+			break
+		}
+		closeAt := strings.Index(styled[open+1:], "~")
+		if closeAt < 0 {
+			break
+		}
+		span := styled[open : open+1+closeAt+1]
+		out.WriteString(styled[:open])
+		out.WriteString(strings.Repeat(" ", len([]rune(span))))
+		styled = styled[open+len(span):]
+	}
+	out.WriteString(styled)
+	return out.String()
+}
+
+// styledReadinessEngine is a readinessEngine that reads a styled capture, blanking its ~…~ spans.
+type styledReadinessEngine struct {
+	*readinessEngine
+}
+
+func (e *styledReadinessEngine) PlainBoxCapture(styled string) string {
+	return blankMarkedSpans(styled)
+}
+
+// styledPasteEngine is a strayPasteEngine that reads a styled capture, blanking its ~…~ spans.
+type styledPasteEngine struct {
+	*strayPasteEngine
+}
+
+func (e *styledPasteEngine) PlainBoxCapture(styled string) string {
+	return blankMarkedSpans(styled)
+}
+
+var (
+	_ StyledBoxReader = (*styledReadinessEngine)(nil)
+	_ StyledBoxReader = (*styledPasteEngine)(nil)
+)
 
 var _ ReedOps = (*tuiReed)(nil)
 

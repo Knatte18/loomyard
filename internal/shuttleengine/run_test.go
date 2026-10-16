@@ -1801,7 +1801,17 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 		wantRecord bool
 		// recordless sends through a Runner whose run root holds no record of the strand, and asserts no pending-send record exists anywhere.
 		recordless bool
+		// suggestion is the prompt suggestion the tui pane draws in an empty box; styled gives the engine the styled box read that blanks it.
+		suggestion string
+		styled     bool
+		// wantNoPaste asserts the send held before pasting anything.
+		wantNoPaste bool
 	}{
+		{name: "a placeholder suggestion in the box is empty for a styled box read", text: shortPasted, pasteSubmits: true, suggestion: "Try something", styled: true, wantSubmit: true},
+		{
+			name: "a placeholder suggestion in the box is a draft for a plain box read", text: shortPasted, pasteSubmits: true, suggestion: "Try something",
+			wantErr: "Try something", wantIs: []error{ErrSessionBusy}, wantDraft: true, wantNoPaste: true,
+		},
 		{name: "recordless: a landed paste keeps no pending-send record", text: shortPasted, pasteSubmits: true, recordless: true, wantSubmit: true},
 		{
 			name: "recordless: a box still holding the text when the window closes is not cleared", text: shortPasted, pasteSubmits: true, recordless: true,
@@ -1860,6 +1870,13 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 			} else if tt.strayBox != "" {
 				reed = &tuiReed{fakeReed: base, clock: clock, swallowEnterUntil: clock.Now().Add(tt.swallowFor), box: tt.strayBox, keepOnClear: true}
 				engine = &strayPasteEngine{pasteEngine: &pasteEngine{tuiEngine: newTUIEngine(), pasteSubmits: tt.pasteSubmits}}
+			} else if tt.suggestion != "" {
+				reed = &tuiReed{fakeReed: base, clock: clock, swallowEnterUntil: clock.Now().Add(tt.swallowFor), suggestion: tt.suggestion}
+				stray := &strayPasteEngine{pasteEngine: &pasteEngine{tuiEngine: newTUIEngine(), pasteSubmits: tt.pasteSubmits}}
+				engine = stray
+				if tt.styled {
+					engine = &styledPasteEngine{strayPasteEngine: stray}
+				}
 			} else {
 				reed = &tuiReed{fakeReed: base, clock: clock, swallowEnterUntil: clock.Now().Add(tt.swallowFor)}
 				engine = &pasteEngine{tuiEngine: newTUIEngine(), pasteSubmits: tt.pasteSubmits}
@@ -1898,7 +1915,11 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 			if len(base.SendTextCalls) != 0 {
 				t.Errorf("SendText calls = %+v, want none on the paste path", base.SendTextCalls)
 			}
-			if len(base.PasteSubmitCalls) != 1 || base.PasteSubmitCalls[0].Text != tt.text || base.PasteSubmitCalls[0].Submit != tt.wantSubmit {
+			if tt.wantNoPaste {
+				if len(base.PasteSubmitCalls) != 0 {
+					t.Errorf("PasteSubmit calls = %+v, want none", base.PasteSubmitCalls)
+				}
+			} else if len(base.PasteSubmitCalls) != 1 || base.PasteSubmitCalls[0].Text != tt.text || base.PasteSubmitCalls[0].Submit != tt.wantSubmit {
 				t.Errorf("PasteSubmit calls = %+v, want one of %q with submit %v", base.PasteSubmitCalls, tt.text, tt.wantSubmit)
 			}
 			var gotKeys []string

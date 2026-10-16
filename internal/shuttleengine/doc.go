@@ -279,6 +279,9 @@
 // Runner.SessionIdle reports busy while a turn reads in flight.
 // When the session state is unknown, the reading falls back to the pane, which must classify ready and idle, and for an engine that parses session signals no turn start may be left unmatched by a later turn end; the cause is logged at Debug.
 // A fallback hold whose box reads non-empty quotes the box.
+// Styled box read: for an engine with StyledBoxReader, every box reading of a decision, the idle probe's, the pre-write guard's and the landing check's, takes one styled capture and reads the plain capture the engine makes of it, with a box holding only the provider's placeholder blanked.
+// So a placeholder or prompt suggestion in an otherwise empty box reads as empty, and a typed draft still reads as a draft.
+// An engine without the capability reads the plain capture as before; every other capture, such as the ready-pane, interrupt and picker checks, stays plain.
 //
 // Every interrupt key shuttle sends goes through a pane guard.
 // Run.Interrupt and Runner.Interrupt send the engine's interrupt sequence only after the ready-agent-pane check and one fresh capture the engine's InterruptGuard reads as a running turn.
@@ -399,6 +402,7 @@
 // Session state has two consumers: Runner.SessionIdle and the verified send's idle wait, which gate on the readiness reading built from it.
 // The reading is ready or held, or unknown when the state is, and an unknown reading falls back to the pane probe.
 // Runner.SessionIdle answers IdleProbe.Idle for a ready reading and, for a held one, IdleProbe.Reason, with TooShort set when the reason is the short pane and Draft set when the reading names a draft in the input box;
+// on the pane fallback, which a strand with no run record always takes, an answer that is not idle also sets Draft when the input box holds text;
 // the runner keeps one turn-start hold per strand guid, so the orch watcher's probes keep one hold across its ticks as a send keeps one across its polls.
 // A ready reading beside a pane that shows the needle still answers idle, and logs the disagreement with the pane's last lines at Debug.
 // Wait's own shadow logging below stays display only.

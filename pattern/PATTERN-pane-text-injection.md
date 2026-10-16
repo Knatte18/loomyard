@@ -10,6 +10,8 @@ The bounded exception is a lone stray character in an idle box: the guard clears
   After a clear of a lone stray character, the reading taken after the clear is the write's guard reading, with the same three facts.
   A write the guard holds fails wrapping `ErrSessionBusy` and writes nothing, and the caller retries later.
   The provider's box reading defines empty, and Claude's reads a lone `%`, the shell's end-of-line mark left on screen, as empty, so an operator draft of exactly `%` typed outside `operator_quiet_s` reads as empty and a write can merge with it.
+  Claude's box reading goes through a styled capture and takes a box holding only placeholder-styled text as empty.
+  That holds only when every non-blank cell, once the caret, the side bars and a lone `%` are stripped, is drawn in the placeholder style, so a typed draft, drawn unstyled, still reads as a draft, and a restyled placeholder reads as a draft, failing closed.
   Shuttle adds the residue reading, taken only after the clear, beside the provider's box reading: a box that still holds exactly the cleared character reads as empty, on the hook reading and the pane reading alike.
 - The watchdog's `/rename` name repair has no shuttle run; it stands behind reed's own activity check and goes out as the same paste-submit.
 - An Enter of lyx's own goes only into a box holding exactly the sent text, or the provider's placeholder for exactly that text.
