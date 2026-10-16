@@ -214,7 +214,7 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 			probes:  []probe{{events: turnEnded, capture: needleFrame, want: IdleProbe{Idle: true}}},
 			wantLog: "readiness reads ready beside a pane that does not show idle",
 		},
-		{name: "a pane with no readable box is held for an engine that reads one", probes: []probe{{events: turnEnded, capture: "no box here", want: IdleProbe{Reason: readinessReasonNoInputBox}, wantReason: "no input box"}}},
+		{name: "a pane with no readable box is held for an engine that reads one", probes: []probe{{events: turnEnded, capture: "no box here", want: IdleProbe{Reason: readinessReasonNoInputBox, NoInputBox: true}, wantReason: "no input box"}}},
 		{name: "an active operator is held with the activity reason", probes: []probe{{events: turnEnded, capture: idleFrame, active: true, want: IdleProbe{Reason: "the operator typed in this pane within the last 5 s"}, wantReason: "operator typed"}}},
 		{
 			name: "a turn start with no turn end is held, then released by a later turn end",
@@ -244,7 +244,7 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 		{name: "idle-fresh with an empty box is ready", probes: []probe{{events: "SESSIONSTART:startup\n", capture: idleFrame, want: IdleProbe{Idle: true}}}},
 		{name: "idle-fresh with a draft is held with its reason", probes: []probe{{events: "SESSIONSTART:clear\n", capture: "IDLE\n❯ half a draft", want: IdleProbe{Reason: `the input box holds a draft: "half a draft"`, Draft: true}, wantReason: "draft"}}},
 		{name: "idle-fresh with a pane too short is held and reported too short", tooShort: true, probes: []probe{{events: "SESSIONSTART:startup\n", capture: "IDLE", want: IdleProbe{TooShort: true, Reason: readinessReasonPaneTooShort}, wantReason: "too short"}}},
-		{name: "idle-fresh with no readable box is held", probes: []probe{{events: "SESSIONSTART:resume\n", capture: "no box here", want: IdleProbe{Reason: readinessReasonNoInputBox}, wantReason: "no input box"}}},
+		{name: "idle-fresh with no readable box is held", probes: []probe{{events: "SESSIONSTART:resume\n", capture: "no box here", want: IdleProbe{Reason: readinessReasonNoInputBox, NoInputBox: true}, wantReason: "no input box"}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -307,11 +307,15 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 
 	t.Run("a strand with no run record reads the pane for a draft", func(t *testing.T) {
 		tests := []struct {
-			name    string
-			styled  bool
-			capture string
-			want    IdleProbe
+			name   string
+			styled bool
+			// readsNoBox swaps in an engine that reads no input box.
+			readsNoBox bool
+			capture    string
+			want       IdleProbe
 		}{
+			{name: "a pane with no box for an engine that reads one", capture: "no box here", want: IdleProbe{NoInputBox: true}},
+			{name: "a pane with no box for an engine that reads none", readsNoBox: true, capture: "no box here", want: IdleProbe{}},
 			{name: "an idle pane", capture: "IDLE\n❯ ", want: IdleProbe{Idle: true}},
 			{name: "a busy pane holding a draft", capture: "BUSY\n❯ half a draft", want: IdleProbe{Draft: true}},
 			{name: "a placeholder in the box for a styled box read", styled: true, capture: "IDLE\n❯ ~Try something~", want: IdleProbe{Idle: true}},
@@ -322,6 +326,9 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 			var probed Engine = engine
 			if tt.styled {
 				probed = &styledReadinessEngine{readinessEngine: engine}
+			}
+			if tt.readsNoBox {
+				probed = &cyclerEngine{}
 			}
 			got, err := newFixture(t, reed, probed).Runner.SessionIdle("strand-1")
 			if err != nil || got != tt.want {

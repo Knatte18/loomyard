@@ -409,8 +409,8 @@
 //
 // Session state has two consumers: Runner.SessionIdle and the verified send's idle wait, which gate on the readiness reading built from it.
 // The reading is ready or held, or unknown when the state is, and an unknown reading falls back to the pane probe.
-// Runner.SessionIdle answers IdleProbe.Idle for a ready reading and, for a held one, IdleProbe.Reason, with TooShort set when the reason is the short pane and Draft set when the reading names a draft in the input box;
-// on the pane fallback, which a strand with no run record always takes, an answer that is not idle also sets Draft when the input box holds text;
+// Runner.SessionIdle answers IdleProbe.Idle for a ready reading and, for a held one, IdleProbe.Reason, with TooShort set when the reason is the short pane and Draft set when the reading names a draft in the input box and NoInputBox set when the reason is a pane showing no input box to an engine that reads one;
+// on the pane fallback, which a strand with no run record always takes, an answer that is not idle also sets Draft when the input box holds text and NoInputBox when an engine that reads an input box finds none on a pane tall enough to draw one;
 // the runner keeps one turn-start hold per strand guid, so the orch watcher's probes keep one hold across its ticks as a send keeps one across its polls.
 // A ready reading beside a pane that shows the needle still answers idle, and logs the disagreement with the pane's last lines at Debug.
 // Wait's own shadow logging below stays display only.
