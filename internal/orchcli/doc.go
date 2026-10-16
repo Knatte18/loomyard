@@ -9,6 +9,7 @@
 // A context cycle asks the session for an orch note at the path it names, following `.lyx/orch/note-template.md`, in place of a general handoff skill.
 // `lyx orch refresh` requests a clear cycle and `lyx orch distill` a compact cycle, whatever `cycle_mode` says; both write the note first.
 // The role file's `## Commands` section holds the operator command index.
+// Its `## This repository` section holds the prime worktree's `ORCHESTRATOR.md`, the repository's orch-only rules, re-read at every delivery.
 // `start` and `resume-context` render it in-process from the binary they run as, which the pane names;
 // the watcher outlives a deploy, so it runs `help index` from the `lyx` path the orch strand recorded and goes idle with a reason naming `lyx orch stop` when that path is missing or gone.
 //
