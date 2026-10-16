@@ -118,11 +118,6 @@ func (f *bindingsFixture) activePane(t *testing.T) string {
 	return f.display(t, f.strandWindow, "#{pane_id}")
 }
 
-func (f *bindingsFixture) zoomed(t *testing.T) string {
-	t.Helper()
-	return f.display(t, f.strandWindow, "#{window_zoomed_flag}")
-}
-
 // currentWindow returns the name of the window the client shows.
 func (f *bindingsFixture) currentWindow(t *testing.T) string {
 	t.Helper()
@@ -179,22 +174,6 @@ func wantFollowRecord(socketPath, session string) []string {
 	return []string{"reed", "follow", "--socket", socketPath, "--session", session, "--tmux"}
 }
 
-// selectStrandsWindow makes the strands' window current with pane the active one, unzoomed.
-func (f *bindingsFixture) selectStrandsWindow(t *testing.T, pane string) {
-	t.Helper()
-	if err := f.e.tmux.run("select-window", "-t", f.strandWindow); err != nil {
-		t.Fatalf("select-window: %v", err)
-	}
-	if err := f.e.tmux.run("select-pane", "-t", pane); err != nil {
-		t.Fatalf("select-pane: %v", err)
-	}
-	if f.zoomed(t) == "1" {
-		if err := f.e.tmux.run("resize-pane", "-Z", "-t", pane); err != nil {
-			t.Fatalf("unzoom: %v", err)
-		}
-	}
-}
-
 // doubleClickGap is longer than tmux's own double-click window, so two clicks of a test never merge into a DoubleClick1Status event the bindings do not take.
 const doubleClickGap = 400 * time.Millisecond
 
@@ -244,6 +223,8 @@ func TestBindings_AltUpDownStepWindowsInIndexOrderPastHiddenOnes(t *testing.T) {
 		key  string
 		want string
 	}{
+		{"\x1b[1;3B", "alpha"},
+		{"\x1b[1;3B", "beta"},
 		{"\x1b[1;3B", "extra"},
 		{"\x1b[1;3B", "agent"},
 		{"\x1b[1;3B", "shell"},
@@ -251,8 +232,9 @@ func TestBindings_AltUpDownStepWindowsInIndexOrderPastHiddenOnes(t *testing.T) {
 		{"\x1b[1;3A", "shell"},
 		{"\x1b[1;3A", "agent"},
 		{"\x1b[1;3A", "extra"},
+		{"\x1b[1;3A", "beta"},
+		{"\x1b[1;3A", "alpha"},
 		{"\x1b[1;3A", "overview"},
-		{"\x1b[1;3A", "shell"},
 	} {
 		f.send(t, step.key)
 		waitUntil(t, 5*time.Second, "the Alt step never reached the "+step.want+" window", func() bool { return f.currentWindow(t) == step.want })
@@ -273,20 +255,13 @@ func TestBindings_StatusBarClicksSelectAndZoomByRangeType(t *testing.T) {
 		f.click(t, row, label)
 	}
 
-	// The shell button selects the strands' window and leaves its zoom as it is.
-	f.selectStrandsWindow(t, f.alpha.PaneID)
-	if err := f.e.tmux.run("resize-pane", "-Z", "-t", f.alpha.PaneID); err != nil {
-		t.Fatalf("zoom alpha: %v", err)
+	// The shell button selects the shell window from a strand's own window.
+	if err := f.e.tmux.run("select-window", "-t", windowOfPane(t, f.e, f.alpha.PaneID)); err != nil {
+		t.Fatalf("select-window alpha: %v", err)
 	}
 	clickFollowingOn(0, " shell ")
-	settle()
-	if got := f.zoomed(t); got != "1" {
-		t.Errorf("a click on shell left zoom flag %q, want 1 (never unzoomed)", got)
-	}
+	waitUntil(t, 5*time.Second, "a click on shell from alpha's own window never selected the shell window", func() bool { return f.currentWindow(t) == "shell" })
 	f.assertFollow(t, "off")
-	if err := f.e.tmux.run("resize-pane", "-Z", "-t", f.alpha.PaneID); err != nil {
-		t.Fatalf("unzoom alpha: %v", err)
-	}
 
 	// A window button selects that window, and a click on the current window's own button writes follow off too.
 	clickFollowingOn(0, " extra ")
