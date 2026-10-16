@@ -11,7 +11,7 @@ import (
 )
 
 // consolePaneOption is the pane option marking the operator console pane, set to 1 by markSelvagePaneLocked.
-// The key bindings read it so the console joins the Alt+Up/Alt+Down cycle and takes Alt+z; no Go decision reads it.
+// The key bindings read it so the console joins the Alt+Up/Alt+Down cycle; no Go decision reads it.
 const consolePaneOption = "@lyx_console"
 
 // strandLabel returns the role segment of a strand name, or the full name when it does not parse.

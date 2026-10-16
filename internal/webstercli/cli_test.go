@@ -7,7 +7,6 @@ package webstercli
 
 import (
 	"bytes"
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -758,25 +757,23 @@ func TestValidateCmd_RebaselinesStalePlanFingerprint(t *testing.T) {
 	}
 }
 
-// TestBringUpDisposition_RecoverAndRun proves the two verbs that spawn an agent boot the standalone reed session first, each with its own watch disposition.
+// TestBringUpDisposition_RecoverAndRun proves the two verbs that spawn an agent boot the standalone reed session first.
 // recover-batch is R4-11's regression: it spawns a COLD recovery strand through reed.AddStrand, which needs a live reed session, but it never called the in-process bring-up seam wireStandalone arms, so in standalone mode (where the session is gone once a run ends) it failed inside AddStrand advising `lyx reed up`, a hub-only verb that cannot reach standalone geometry.
 // Its batch 99 exists in no plan, so findBatch refuses it immediately: the bring-up message can only win over the batch-not-found message if the guard runs before the spawn machinery, which makes this an ordering proof.
-// recover-batch is short-lived and its context would be gone before a bound watcher observed anything, so it passes watch: false; run binds the watcher to the run's own context and passes watch: true.
 // Each row's fake returns an error so the call ends right after the reedUp check, never reaching the spawn.
 func TestBringUpDisposition_RecoverAndRun(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name      string
-		verb      func(*websterCLI) *cobra.Command
-		args      []string
-		withRun   bool
-		wantWatch bool
+		name    string
+		verb    func(*websterCLI) *cobra.Command
+		args    []string
+		withRun bool
 		// notWant is a refusal that would mean the bring-up ran too late to matter.
 		notWant string
 	}{
-		{"recover-batch boots with watch false", (*websterCLI).recoverBatchCmd, []string{"99", "--wait", "1ns"}, true, false, "not found in the plan's execution batches"},
-		{"run boots with watch true", (*websterCLI).runCmd, []string{}, false, true, ""},
+		{"recover-batch boots", (*websterCLI).recoverBatchCmd, []string{"99", "--wait", "1ns"}, true, "not found in the plan's execution batches"},
+		{"run boots", (*websterCLI).runCmd, []string{}, false, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -796,10 +793,8 @@ func TestBringUpDisposition_RecoverAndRun(t *testing.T) {
 			}
 
 			bringUps := 0
-			var gotWatch bool
-			c.reedUp = func(ctx context.Context, watch bool) error {
+			c.reedUp = func() error {
 				bringUps++
-				gotWatch = watch
 				return errors.New("no tmux server available in this test")
 			}
 
@@ -808,9 +803,6 @@ func TestBringUpDisposition_RecoverAndRun(t *testing.T) {
 
 			if bringUps != 1 {
 				t.Fatalf("c.reedUp calls = %d; want exactly 1 -- the verb spawns an agent and must boot standalone's own reed session first", bringUps)
-			}
-			if gotWatch != tc.wantWatch {
-				t.Errorf("c.reedUp watch = %v; want %v", gotWatch, tc.wantWatch)
 			}
 			if exitCode != 1 {
 				t.Fatalf("verb with a failing reed bring-up = %d; want 1, output: %s", exitCode, out.String())

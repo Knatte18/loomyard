@@ -8,7 +8,6 @@
 package webstercli
 
 import (
-	"context"
 	"errors"
 	"fmt"
 
@@ -146,10 +145,11 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 	if err != nil {
 		return configLoadError("batcher.yaml", err)
 	}
-	languageSkills, err := languageconfig.Load(fabricengine.ConfigDirs(loc))
+	language, err := languageconfig.Load(fabricengine.ConfigDirs(loc))
 	if err != nil {
 		return configLoadError("language.yaml", err)
 	}
+	languageSkills := language.Skills
 	registry, err := modelspec.LoadRegistry(fabricengine.ConfigDirs(loc))
 	if err != nil {
 		return err
@@ -232,6 +232,7 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 	}
 	c.batcher = activeBatcher
 	c.languageSkills = languageSkills
+	c.verifyTiers = language.VerifyTiers
 	return nil
 }
 
@@ -312,21 +313,11 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	// Standalone reed is never booted by `lyx reed up` — that verb is hub-only — it is booted
 	// in-process by a long-lived supervising run that exists for exactly the session's working
 	// lifetime, and that supervising process is precisely what hub mode lacks and why hub mode needs
-	// a detached daemon at all — so reusing it here is the smaller mechanism, not a special case. The
-	// caller's ctx is what stops the watcher; standalone computes no hub lock path and spawns no
-	// daemon.
-	c.reedUp = func(ctx context.Context, watch bool) error {
-		if _, err := reedEngine.Up(); err != nil {
-			return err
-		}
-		if watch {
-			go func() {
-				if err := reedEngine.Watch(ctx); err != nil {
-					logger.Debug("webster: standalone resize watcher returned", "err", err)
-				}
-			}()
-		}
-		return nil
+	// a detached daemon at all — so reusing it here is the smaller mechanism, not a special case.
+	// Standalone computes no hub lock path and spawns no daemon.
+	c.reedUp = func() error {
+		_, err := reedEngine.Up()
+		return err
 	}
 
 	c.setRunner(runner, engines, reedEngine)

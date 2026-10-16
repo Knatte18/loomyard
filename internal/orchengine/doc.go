@@ -53,6 +53,9 @@
 //
 // The role file's `## Commands` section carries the operator command index, which every role-file render is handed as a string;
 // a role stencil without the `command_index` marker fails the render naming the stencil.
+// The role file's last section, `## This repository`, carries the `ORCHESTRATOR.md` at `Paths.RepoRulesPath`, read at every role-file render;
+// an absent or whitespace-only file renders a placeholder line, any other read failure fails the render naming the file,
+// and a stencil without the `repository_rules` marker fails naming the stencil.
 // The watcher is told an index source through NewWatcher, calls it before each of its three role-file renders, and returns to idle with the reason when the source or the render fails.
 //
 // DecideStart maps the strand and watcher liveness pair onto the branch `start` takes:

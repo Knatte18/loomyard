@@ -8,15 +8,12 @@
 package burlercli
 
 import (
-	"context"
-
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/cliwire"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/languageconfig"
-	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/preflight"
@@ -117,10 +114,11 @@ func (c *burlerCLI) wireHub(loc *lyxcwd.Location, stencilsDirOverride, targetDir
 		return err
 	}
 
-	languageSkills, err := languageconfig.Load(fabricengine.ConfigDirs(loc))
+	language, err := languageconfig.Load(fabricengine.ConfigDirs(loc))
 	if err != nil {
 		return err
 	}
+	languageSkills := language.Skills
 
 	stencilsDir := fabricengine.StencilsDir(loc.HubPath)
 	if stencilsDirOverride != "" {
@@ -219,21 +217,11 @@ func (c *burlerCLI) wireStandalone(cwd, stencilsDirOverride, targetDirFlag strin
 	// Standalone reed is never booted by `lyx reed up` — that verb is hub-only — it is booted
 	// in-process by a long-lived supervising run that exists for exactly the session's working
 	// lifetime, and that supervising process is precisely what hub mode lacks and why hub mode needs
-	// a detached daemon at all — so reusing it here is the smaller mechanism, not a special case. The
-	// caller's ctx is what stops the watcher; standalone computes no hub lock path and spawns no
-	// daemon.
-	c.reedUp = func(ctx context.Context, watch bool) error {
-		if _, err := reedEngine.Up(); err != nil {
-			return err
-		}
-		if watch {
-			go func() {
-				if err := reedEngine.Watch(ctx); err != nil {
-					logger.Debug("burler: standalone resize watcher returned", "err", err)
-				}
-			}()
-		}
-		return nil
+	// a detached daemon at all — so reusing it here is the smaller mechanism, not a special case.
+	// Standalone computes no hub lock path and spawns no daemon.
+	c.reedUp = func() error {
+		_, err := reedEngine.Up()
+		return err
 	}
 
 	// A `lyx burler` run is not a loom run and has no friction directory in either mode.

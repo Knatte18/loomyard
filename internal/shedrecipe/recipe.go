@@ -72,6 +72,9 @@ type Env struct {
 	// WebsterRecord returns the webster run-record note the Plan-Review rubric renders, read by the BurlerReview and Bouncer entries each time a segment builds its producers.
 	// Nil renders `none`.
 	WebsterRecord func() string
+	// VerifyTiers is the hub's verify tier list the Plan-Review rubric's verify_tiers marker renders, read by the BurlerReview and Bouncer entries each time a segment builds its producers.
+	// Nil renders `none`.
+	VerifyTiers []string
 	// StatusPath is the told status file path, read by LoomPreflight.
 	StatusPath string
 	// StatusLockPath is the told status lock file path, read by LoomPreflight.

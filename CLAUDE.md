@@ -17,9 +17,8 @@ A new cross-cutting invariant goes into PATTERN in the same commit as the code.
 
 `update-plugins.sh` (`.cmd` on Windows) is the only route to production: from a clean, pushed `main`, it deploys the plugins, builds `lyx` into the Go bin dir and moves `prod` to that commit.
 Never run it unasked, never move `prod` by hand, never install `lyx` elsewhere.
-The one standing exception is the hub orchestrator in the prime: batten's Land row runs the hub's `deploy` command after a landing, and the orchestrator runs `update-plugins.sh` itself only after its own pushed fix, on a clean `main`, and says so in its report.
-The second standing route is the alignment agent's approve at PR-Gate: it lands a task with no orch turn, and batten's Land row then runs the hub's `deploy`.
-`alignment_pr_approve: false` in the hub's `loom.yaml` withdraws that landing.
+Batten's Land row runs the hub's `deploy` command after every landing, including one the alignment agent's approve at PR-Gate makes with no orch turn.
+`alignment_pr_approve: false` in the hub's `loom.yaml` withdraws that approve's landing.
 For internal tests, `./deploy-dev` builds into `.dev-bin` instead.
 There is no versioning: plugins stay at `1.0.0`.
 
@@ -28,6 +27,7 @@ There is no versioning: plugins stay at `1.0.0`.
 Task worktrees are torn down on merge, and the file-based `memory/` store goes with them.
 Put durable notes in this file, `_lyx/raddle/` or code comments.
 `_lyx/raddle/` reaches the parent by being regenerated against the parent's HEAD at landing, never through a merge.
+A rule or workaround only the orch needs goes in `ORCHESTRATOR.md`, never in `CLAUDE.md`.
 
 ## Worktrees
 
@@ -68,19 +68,7 @@ These are conversational shorthands; never rename code, files or docs to them un
   Each review segment wires its own pair; there is no perch type.
 - **board**: the task tracker, read and written only through `lyx board`; **Bolt** is the nickname of the records repository's `main` branch, the board's git home, never the tracker.
 
-## Watching runs
-
-The operator watches each run in its own terminal window, never in VS Code.
-Batten's `Open-Window` row opens it once the task's run is seeded in the new pair, switched by `batten.yaml`'s `open_window` and forced on by `lyx batten run <slug> --window`: Konsole on Linux, Windows Terminal into WSL on WSL, titled with the slug and running `lyx reed attach` in the pair.
-Where no launcher is known, its output says no window was opened.
-VS Code opens only when the operator asks for it, through `lyx ide` or `batten.yaml`'s `open_ide`.
-
 ## Filesystem links
 
 All links go through `internal/fslink` (`CreateDirLink`): directory junctions on Windows, symlinks elsewhere.
 Never rely on Windows file symlinks.
-
-## Workarounds
-
-- Issue #673: `lyx reed add` with no `--parent` uses its default anchor `below-parent` and splits the new strand into the selvage `shell` window.
-  Until #673 is fixed, pass `--anchor own-window` to every `lyx reed add` that names no `--parent`.

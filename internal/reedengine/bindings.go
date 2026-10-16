@@ -1,8 +1,8 @@
-// bindings.go declares the server-wide key and mouse bindings of reed's navigation: the five Alt keys and the left click on the status bar.
+// bindings.go declares the server-wide key and mouse bindings of reed's navigation: the four Alt keys and the left click on the status bar.
 // Alt+Up and Alt+Down step across windows in index order, and a left click on the shell button returns to the strands' window.
 // The builder is pure; pinBindingsLocked issues its argvs, each non-fatal, from the geometry pin path that boot and the attach pre-flight both run.
 // The pin stamps the server with the build that made it, and every op under the blocking op lock re-pins when the stamp is absent, unparseable or another build's with a commit time not after the running build's, so a deploy reaches a running server at its first reed op.
-// Alt+Up, Alt+Down and the shell, pane and window clicks write the follow state off, and the follow button toggles it; @lyx_follow is the one option these bindings write that a Go decision reads.
+// Alt+Up, Alt+Down and the shell and window clicks write the follow state off, and the follow button toggles it; @lyx_follow is the one option these bindings write that a Go decision reads.
 
 package reedengine
 
@@ -18,10 +18,6 @@ import (
 )
 
 const (
-	// zoomBindingCondition is true only in the window marked @lyx_strands, and there on a strand pane, on the pane marked as the console, or in a zoomed window.
-	// A batten window carries no @lyx_strands, so Alt+z does nothing there.
-	zoomBindingCondition = "#{&&:#{@lyx_strands},#{||:#{@strand},#{||:#{" + consolePaneOption + "},#{window_zoomed_flag}}}}"
-
 	// hiddenWindowCondition is true in a window a step landed on that carries @lyx_hidden.
 	hiddenWindowCondition = "#{@lyx_hidden}"
 
@@ -32,14 +28,8 @@ const (
 	// It is expanded by run-shell -C at click time.
 	selectStrandsWindowCommand = "run-shell -C \"#{?" + viewWindowID + ",select-window -t " + viewWindowID + ",}\""
 
-	// shellClickCommand selects the strands' window, the shell window, and unzooms it when zoomed.
-	// The zoom flag it hands the nested if-shell is escaped once, its closing brace as `#}` because a bare `}` ends the enclosing conditional early.
-	shellClickCommand = "run-shell -C \"#{?" + viewWindowID + ",select-window -t " + viewWindowID +
-		" ; if-shell -F -t " + viewWindowID + " '##{window_zoomed_flag#}' 'resize-pane -Z -t " + viewWindowID + "',}\""
-
-	// paneClickCommand selects the clicked pane in its window and zooms it, keeping the zoom on when it already is.
-	// tmux resolves a pane range's `=` target only inside the client's current window, so the strands' window, the only one that carries pane ranges, is selected first.
-	paneClickCommand = selectStrandsWindowCommand + " ; select-pane -Z -t= ; if-shell -F -t= '#{window_zoomed_flag}' '' 'resize-pane -Z -t='"
+	// shellClickCommand selects the strands' window, the shell window.
+	shellClickCommand = selectStrandsWindowCommand
 )
 
 // followCommandOption is the server-global user option holding the shell line the follow button runs.
@@ -91,10 +81,9 @@ type statusClickBranch struct {
 }
 
 // statusClickBranches lists the left-click dispatch on `#{mouse_status_range}`, in order.
-// The shell, pane and window branches write follow off first, also for a click on the current window; the session branch leaves the follow state alone.
+// The shell and window branches write follow off first, also for a click on the current window; the session branch leaves the follow state alone.
 var statusClickBranches = []statusClickBranch{
 	{"shell", followOffCommand + " ; " + shellClickCommand},
-	{"pane", followOffCommand + " ; " + paneClickCommand},
 	{"window", followOffCommand + " ; select-window -t="},
 	{"session", "switch-client -t="},
 }
@@ -108,7 +97,7 @@ func followClickCommand(followJump bool) string {
 	return "if-shell -F '#{==:#{" + followSessionOption + "},off}' '" + turnOn + "' '" + followOffCommand + "'"
 }
 
-// bindingArgvs returns the `bind-key -n` argvs of the Alt keys and the status click, each in the root table.
+// bindingArgvs returns the argvs of the Alt keys and the status click, each in the root table: first an `unbind-key -n M-z` that removes the Alt+z an older build bound, since a `bind-key` re-pin never removes a binding, then the `bind-key -n` argvs.
 // switchPrev and switchNext are the shell lines run-shell runs for M-Left and M-Right;
 // an empty one leaves its key unbound.
 // followJump reports that the follow button's jump line is pinned in followCommandOption, so a click that turns follow on runs it.
@@ -119,7 +108,7 @@ func followClickCommand(followJump bool) string {
 // The click dispatch ends in the follow button's branch.
 func bindingArgvs(switchPrev, switchNext string, followJump bool) [][]string {
 	argvs := [][]string{
-		{"bind-key", "-n", "M-z", "if-shell", "-F", zoomBindingCondition, "resize-pane -Z"},
+		{"unbind-key", "-n", "M-z"},
 		{"bind-key", "-n", "M-Up", "set-option", followSessionOption, "off", `\;`, "previous-window", `\;`, "if-shell", "-F", "-t", ":", hiddenWindowCondition, selectStrandsWindowCommand},
 		{"bind-key", "-n", "M-Down", "set-option", followSessionOption, "off", `\;`, "next-window", `\;`, "if-shell", "-F", "-t", ":", hiddenWindowCondition, "select-window -t :^"},
 	}

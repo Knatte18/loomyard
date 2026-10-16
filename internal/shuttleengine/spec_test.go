@@ -103,10 +103,10 @@ func TestSpec_Validate(t *testing.T) {
 		},
 		{
 			name: "anchor passes through when set",
-			spec: Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}, Display: render.Display{Anchor: render.AnchorBelowParent}},
+			spec: Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}, Display: render.Display{Anchor: render.AnchorHidden}},
 			check: func(t *testing.T, s *Spec) {
-				if s.Display.Anchor != render.AnchorBelowParent {
-					t.Errorf("Display.Anchor = %q, want unchanged %q", s.Display.Anchor, render.AnchorBelowParent)
+				if s.Display.Anchor != render.AnchorHidden {
+					t.Errorf("Display.Anchor = %q, want unchanged %q", s.Display.Anchor, render.AnchorHidden)
 				}
 			},
 		},

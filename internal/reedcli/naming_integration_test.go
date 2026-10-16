@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -218,15 +219,41 @@ func TestStrandNamingAndList(t *testing.T) {
 			t.Errorf("names after removing the full name = %v, want %q gone", names, fullFirst)
 		}
 
-		// An own-window strand is named like any other, and an anchor outside the vocabulary names own-window among the choices.
+		// An own-window strand is named like any other, and a retired anchor names own-window among the choices.
 		runVerb(t, worktree, "add", "--role", "explorer", "--anchor", "own-window", "--cmd", "sleep 300")
 		fullExplorer := "tst:" + namingSlug + ":explorer"
 		if names = statusNames(t, worktree); !contains(names, fullExplorer) {
 			t.Errorf("names after adding the own-window strand = %v, want %q", names, fullExplorer)
 		}
 		var rejected bytes.Buffer
-		if code := RunCLIIn(worktree, &rejected, []string{"add", "--anchor", "sideways", "--cmd", "sleep 300"}); code == 0 || !strings.Contains(rejected.String(), "own-window") {
-			t.Errorf("add --anchor sideways = %d, output %q; want a non-zero exit whose error lists own-window", code, rejected.String())
+		if code := RunCLIIn(worktree, &rejected, []string{"add", "--anchor", "below-parent", "--cmd", "sleep 300"}); code == 0 || !strings.Contains(rejected.String(), "own-window") {
+			t.Errorf("add --anchor below-parent = %d, output %q; want a non-zero exit whose error lists own-window", code, rejected.String())
+		}
+
+		// An add with no --anchor opens its strand in a window of its own, with or without a --parent, and removing the parent recursively removes both.
+		tmuxOut := func(args ...string) string {
+			t.Helper()
+			out, err := exec.Command(cfg.Tmux, append([]string{"-L", reedengine.ServerName(h.Path)}, args...)...).Output()
+			if err != nil {
+				t.Fatalf("tmux %v: %v", args, err)
+			}
+			return strings.TrimSpace(string(out))
+		}
+		selvage := selvagePaneID(t, worktree)
+		parentGUID, _ := runVerb(t, worktree, "add", "--role", "plain", "--cmd", "sleep 300")["guid"].(string)
+		childGUID, _ := runVerb(t, worktree, "add", "--role", "plain-child", "--parent", parentGUID, "--cmd", "sleep 300")["guid"].(string)
+		for _, guid := range []string{parentGUID, childGUID} {
+			paneID := paneIDForStrandIn(t, worktree, guid)
+			if own := tmuxOut("display-message", "-p", "-t", paneID, "#{@lyx_own}"); own != "1" {
+				t.Errorf("strand %s window @lyx_own = %q, want 1", guid, own)
+			}
+		}
+		if shellPanes := strings.Fields(tmuxOut("list-panes", "-t", selvage, "-F", "#{pane_id}")); !slices.Equal(shellPanes, []string{selvage}) {
+			t.Errorf("shell window panes = %v, want only the Selvage pane %s", shellPanes, selvage)
+		}
+		runVerb(t, worktree, "remove", "--recursive", parentGUID)
+		if names = statusNames(t, worktree); contains(names, "tst:"+namingSlug+":plain") || contains(names, "tst:"+namingSlug+":plain-child") {
+			t.Errorf("names after the recursive remove = %v, want both default-anchor strands gone", names)
 		}
 	})
 }

@@ -29,7 +29,6 @@ var keybindingsBlockEntries = []struct{ key, text string }{
 	{"alt+down", `\u001b[1;3B`},
 	{"alt+right", `\u001b[1;3C`},
 	{"alt+left", `\u001b[1;3D`},
-	{"alt+z", `\u001bz`},
 }
 
 // KeybindingsOutcome is what SeedKeybindings did to the user's file.

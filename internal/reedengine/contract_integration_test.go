@@ -195,7 +195,7 @@ func TestMultiplexerContract(t *testing.T) {
 		t.Fatalf("send-keys C-c: %v", err)
 	}
 
-	// (b) split-window: the tallest-pane split path launchStrandLocked uses.
+	// (b) split-window: the raw split the wire contract still has to honour, though launchStrandLocked now creates every pane through new-window.
 	splitOut, err := reed.output("split-window", "-t", initialPane.ID, "-P", "-F", "#{pane_id}")
 	if err != nil {
 		t.Fatalf("split-window: %v", err)
@@ -205,11 +205,8 @@ func TestMultiplexerContract(t *testing.T) {
 		t.Fatalf("split-window -P -F #{pane_id} = %q, want a new, distinct pane id (target %s)", splitOut, initialPane.ID)
 	}
 
-	// (c) select-layout succeeds against the live pane set: a built-in
-	// tmux/psmux layout keyword is enough here — apply_test.go's hermetic
-	// tests already pin the render.Rules-generated layout string's shape;
-	// this only needs to prove the subcommand itself works against a live,
-	// two-pane session.
+	// (c) select-layout succeeds against the live pane set.
+	// A built-in tmux/psmux layout keyword is enough here, since this only needs to prove the subcommand itself works against a live, two-pane session.
 	if err := reed.run("select-layout", "-t", session, "even-vertical"); err != nil {
 		t.Fatalf("select-layout: %v", err)
 	}
@@ -677,7 +674,7 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 	// add time; a long-lived command so it is still running when removed.
 	strand, err := e.AddStrand(AddSpec{
 		Cmd:     "sleep 300",
-		Display: render.Display{Anchor: render.AnchorBelowParent},
+		Display: render.Display{Anchor: render.AnchorOwnWindow},
 	})
 	if err != nil {
 		t.Fatalf("AddStrand: %v", err)
@@ -723,16 +720,13 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 	}
 }
 
-// TestDeadSelvagePaneIsHealedByUpWithoutCorruptingLayout drives the dead-Selvage lifecycle the
-// fable-header-r1 round found broken, end to end against a real multiplexer: Selvage's shell
-// process exits (pane_dead=1 under remain-on-exit), a subsequent AddStrand must keep the corpse
-// enumerable (reconcile's dead-kill exemption) and lay out with no window-bottom overflow and no
-// stale-cell scramble (planLayout's presence filter), and the next Up must heal Selvage — kill
-// the corpse, split a fresh Selvage back in at the physical bottom, persist the new id — instead of
-// treating the corpse as a working Selvage (the old presence-keyed idempotency check) or wedging on
-// a too-short split target (the old first-alive targeting).
-// Pre-fix this sequence scrambled every strand's height on the add and then failed every up with
-// "no space for new pane" until a full down.
+// TestDeadSelvagePaneIsHealedByUpWithoutCorruptingLayout drives the dead-Selvage lifecycle end to end against a real multiplexer.
+// Selvage's shell process exits (pane_dead=1 under remain-on-exit), and the next Up must heal Selvage:
+// split a fresh Selvage off the corpse, which is the window's only pane, kill the corpse and persist the new id.
+// It must not treat the corpse as a working Selvage.
+// After a fresh up, after the healing up and after a resize-window of the session run with no client attached, the shell window lists exactly one pane.
+// That pane is the alive Selvage, and its height equals the window's height.
+// The fixture attaches no client, so window-size latest has none to follow.
 func TestDeadSelvagePaneIsHealedByUpWithoutCorruptingLayout(t *testing.T) {
 	tmpDir := t.TempDir()
 	seedReedConfig(t, tmpDir)
@@ -774,9 +768,7 @@ func TestDeadSelvagePaneIsHealedByUpWithoutCorruptingLayout(t *testing.T) {
 	}
 	deadSelvageID := st.SelvagePaneID
 
-	if _, err := e.AddStrand(AddSpec{Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorBelowParent}}); err != nil {
-		t.Fatalf("AddStrand (first): %v", err)
-	}
+	assertOnlySelvageFillsTheWindow(t, e, st.SelvagePaneID, "after a fresh up")
 
 	// Kill Selvage's shell by pid: Selvage does not read stdin the way a
 	// script-driven pane would react to typed input, so killing
@@ -811,36 +803,9 @@ func TestDeadSelvagePaneIsHealedByUpWithoutCorruptingLayout(t *testing.T) {
 		return false
 	})
 
-	// An add with Selvage dead: must succeed, keep the corpse enumerable,
-	// and produce a sane layout (no pane past the window's bottom edge — the
-	// stale-cell scramble's signature was positional misassignment).
-	if _, err := e.AddStrand(AddSpec{Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorBelowParent}}); err != nil {
-		t.Fatalf("AddStrand with dead Selvage: %v", err)
-	}
-	live, err = e.tmux.listPanes(exactSessionWindowTarget(e.SessionName()))
-	if err != nil {
-		t.Fatalf("listPanes after add-with-dead-Selvage: %v", err)
-	}
-	corpsePresent := false
-	for _, p := range live {
-		if p.ID == deadSelvageID {
-			corpsePresent = true
-			if !p.Dead {
-				t.Errorf("Selvage corpse %s reports alive after add, want still dead", deadSelvageID)
-			}
-		}
-		if p.Top+p.Height > cfg.Height {
-			t.Errorf("pane %s top+height = %d+%d exceeds window height %d after add-with-dead-Selvage (stale-cell scramble)", p.ID, p.Top, p.Height, cfg.Height)
-		}
-	}
-	if !corpsePresent {
-		t.Fatalf("Selvage corpse %s was killed by the add's reconcile; it must stay enumerable until up/resume heals it (panes: %+v)", deadSelvageID, live)
-	}
-
-	// The heal: Up must replace the corpse with a fresh, alive, physically
-	// bottommost Selvage and persist its id.
+	// The heal: Up must replace the corpse, which is the window's only pane, with a fresh, alive Selvage that fills the window, and persist its id.
 	if _, err := e.Up(); err != nil {
-		t.Fatalf("Up (heal) = %v, want success — pre-fix this wedged on \"no space for new pane\"", err)
+		t.Fatalf("Up (heal) = %v, want success", err)
 	}
 	st, err = LoadState(e.stateDir())
 	if err != nil || st == nil || st.SelvagePaneID == "" {
@@ -849,134 +814,50 @@ func TestDeadSelvagePaneIsHealedByUpWithoutCorruptingLayout(t *testing.T) {
 	if st.SelvagePaneID == deadSelvageID {
 		t.Fatalf("SelvagePaneID still names the corpse %s after the healing Up", deadSelvageID)
 	}
-	live, err = e.tmux.listPanes(exactSessionWindowTarget(e.SessionName()))
-	if err != nil {
-		t.Fatalf("listPanes after healing Up: %v", err)
+	assertOnlySelvageFillsTheWindow(t, e, st.SelvagePaneID, "after the healing Up")
+
+	// No client is attached, so window-size latest has none to follow and the resize holds.
+	target := exactSessionWindowTarget(e.SessionName())
+	if err := e.tmux.run("resize-window", "-t", target, "-x", "100", "-y", "40"); err != nil {
+		t.Fatalf("resize-window: %v", err)
 	}
-	selvageSeen := false
-	for _, p := range live {
-		if p.ID == deadSelvageID {
-			t.Errorf("Selvage corpse %s still present after the healing Up, want it killed and replaced", deadSelvageID)
-		}
-		if p.ID == st.SelvagePaneID {
-			selvageSeen = true
-			if p.Dead {
-				t.Errorf("healed Selvage pane %s reports dead", p.ID)
-			}
-			if p.Top+p.Height != cfg.Height {
-				t.Errorf("healed Selvage pane %s top+height = %d+%d, want == window height %d (physically bottommost — render.Rules emits its cell last)", p.ID, p.Top, p.Height, cfg.Height)
-			}
-		}
-		if p.Top+p.Height > cfg.Height {
-			t.Errorf("pane %s top+height = %d+%d exceeds window height %d after the healing Up", p.ID, p.Top, p.Height, cfg.Height)
-		}
-	}
-	if !selvageSeen {
-		t.Fatalf("healed Selvage pane %s missing from live panes %+v", st.SelvagePaneID, live)
-	}
+	assertOnlySelvageFillsTheWindow(t, e, st.SelvagePaneID, "after a resize-window")
 }
 
-// TestSelvageNeverGetsZeroHeightLayoutCell pins clampBandHeight's never-below-1 floor (height.go)
-// against a real multiplexer.
-// A pathological config — height_rows large relative to a tiny window height — used to let
-// clampBandHeight legally return 0, which bandSelvage would then emit as a literal "WxH,..."
-// Selvage cell with H=0 in the window_layout string.
-// Manual probing against a live tmux 3.6 instance showed that a genuinely zero-height cell is NOT
-// rendered as "no Selvage": select-layout accepts the string (no error),
-// but silently keeps a row for the Selvage pane anyway, pushing every pane above it up by one row
-// and overflowing the bottom of the window by exactly one row (the last pane's top+height exceeds
-// the window height).
-// clampBandHeight now floors Selvage at 1 row whenever it exists, which this test confirms
-// produces a layout the real multiplexer applies cleanly, with every pane's top+height staying
-// within the window.
-func TestSelvageNeverGetsZeroHeightLayoutCell(t *testing.T) {
-	tmpDir := t.TempDir()
-	seedReedConfig(t, tmpDir)
-
-	cfg, err := LoadConfig(configengine.Dirs{Anchor: tmpDir}, "reed")
+// assertOnlySelvageFillsTheWindow asserts the shell window lists exactly one pane, the alive Selvage selvagePaneID,
+// and that its height equals the window's height.
+func assertOnlySelvageFillsTheWindow(t *testing.T, e *Engine, selvagePaneID, step string) {
+	t.Helper()
+	target := exactSessionWindowTarget(e.SessionName())
+	live, err := e.tmux.listPanes(target)
 	if err != nil {
-		t.Fatalf("LoadConfig: %v", err)
+		t.Fatalf("(%s) listPanes: %v", step, err)
 	}
-
-	if _, err := exec.LookPath(cfg.Tmux); err != nil {
-		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Tmux, err)
+	if len(live) != 1 || live[0].ID != selvagePaneID {
+		t.Fatalf("(%s) panes = %+v, want exactly the Selvage pane %s", step, live, selvagePaneID)
 	}
-
-	const windowRows = 6
-	socket := tmuxkit.Socket(t, cfg.Tmux)
-	session := "selvage-floor-session"
-	reed := NewTmuxCmd(cfg.Tmux, socket)
-
-	if err := reed.run("new-session", "-d", "-s", session, "-x", "80", "-y", strconv.Itoa(windowRows), cfg.Shell); err != nil {
-		t.Fatalf("new-session: %v", err)
+	if live[0].Dead {
+		t.Errorf("(%s) Selvage pane %s reports dead", step, selvagePaneID)
 	}
-
-	selvageOut, err := reed.output("split-window", "-t", session, "-P", "-F", "#{pane_id}")
+	out := mustTmuxOutput(t, e, "display-message", "-p", "-t", target, "#{window_height}")
+	windowHeight, err := strconv.Atoi(strings.TrimSpace(out))
 	if err != nil {
-		t.Fatalf("split-window (Selvage): %v", err)
+		t.Fatalf("(%s) window_height %q: %v", step, out, err)
 	}
-	selvagePaneID := strings.TrimSpace(selvageOut)
-
-	live, err := reed.listPanes(exactSessionWindowTarget(session))
-	if err != nil {
-		t.Fatalf("list panes: %v", err)
-	}
-	if len(live) != 2 {
-		t.Fatalf("listPanes after split = %d pane(s), want 2", len(live))
-	}
-	var strandPaneID string
-	for _, p := range live {
-		if p.ID != selvagePaneID {
-			strandPaneID = p.ID
-		}
-	}
-	if strandPaneID == "" {
-		t.Fatalf("could not identify the non-Selvage pane among %+v", live)
-	}
-
-	// A pathological config (MinFullRows far larger than the window, plus an
-	// oversized configured height_rows) that pre-fix would have driven
-	// clampBandHeight all the way to 0.
-	strands := []render.Strand{
-		{GUID: "s1", PaneID: strandPaneID, Display: render.Display{Anchor: render.AnchorBelowParent}, Live: true},
-	}
-	box := render.Box{X: 0, Y: 0, W: 80, H: windowRows}
-	params := render.Params{
-		MinFullRows: windowRows * 5,
-		Selvage:     render.Selvage{PaneID: selvagePaneID, HeightRows: windowRows * 5},
-	}
-	layout, _, err := render.Rules(strands, box, params, []string{strandPaneID, selvagePaneID})
-	if err != nil {
-		t.Fatalf("render.Rules: %v", err)
-	}
-
-	if err := reed.run("select-layout", "-t", session, layout); err != nil {
-		t.Fatalf("select-layout %q: %v (a real multiplexer rejecting this layout means clampBandHeight's floor no longer matches what select-layout accepts)", layout, err)
-	}
-
-	live, err = reed.listPanes(exactSessionWindowTarget(session))
-	if err != nil {
-		t.Fatalf("list panes after select-layout: %v", err)
-	}
-	for _, p := range live {
-		if p.Height < 1 {
-			t.Errorf("pane %s height = %d after select-layout %q, want >= 1 (a zero-height cell must never survive the real multiplexer)", p.ID, p.Height, layout)
-		}
-		if p.Top+p.Height > windowRows {
-			t.Errorf("pane %s top+height = %d+%d = %d after select-layout %q, want <= window height %d (the off-by-one overflow a bare H=0 Selvage cell used to cause)", p.ID, p.Top, p.Height, p.Top+p.Height, layout, windowRows)
-		}
+	if live[0].Height != windowHeight {
+		t.Errorf("(%s) Selvage pane %s height = %d, want the window's height %d", step, selvagePaneID, live[0].Height, windowHeight)
 	}
 }
 
 // TestStrandOpsIgnoreASecondCurrentWindow pins the window seam against a real multiplexer:
 // with another window made current in the session, the seam still resolves the window holding the strands.
-// A layout-and-enumeration op (AddStrand) then lands the new strand in that window and leaves the other window's pane unreaped, and the session-scoped pane-generation read still answers.
+// An enumeration op (AddStrand) then lands the new strand in a window of its own and leaves the other window's pane unreaped, and the session-scoped pane-generation read still answers.
 func TestStrandOpsIgnoreASecondCurrentWindow(t *testing.T) {
 	e := newColdScratchEngine(t)
 	if _, err := e.Up(); err != nil {
 		t.Fatalf("Up: %v", err)
 	}
-	first, err := e.AddStrand(AddSpec{Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorBelowParent}})
+	first, err := e.AddStrand(AddSpec{Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorOwnWindow}})
 	if err != nil {
 		t.Fatalf("AddStrand (first): %v", err)
 	}
@@ -1004,7 +885,7 @@ func TestStrandOpsIgnoreASecondCurrentWindow(t *testing.T) {
 		t.Errorf("strand window target = %q with %q current, want the strand window %q", target, otherWindow, strandWindow)
 	}
 
-	second, err := e.AddStrand(AddSpec{Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorBelowParent}})
+	second, err := e.AddStrand(AddSpec{Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorOwnWindow}})
 	if err != nil {
 		t.Fatalf("AddStrand (second) with another window current: %v", err)
 	}
@@ -1017,8 +898,8 @@ func TestStrandOpsIgnoreASecondCurrentWindow(t *testing.T) {
 		if idx == -1 {
 			t.Fatalf("strand %q missing from state %+v", guid, after.Strands)
 		}
-		if got := windowOfPane(t, e, after.Strands[idx].PaneID); got != strandWindow {
-			t.Errorf("strand %q pane is in window %q, want the strand window %q", guid, got, strandWindow)
+		if got := windowOfPane(t, e, after.Strands[idx].PaneID); got == strandWindow || got == otherWindow {
+			t.Errorf("strand %q pane is in window %q, want a window of its own apart from the strand window %q and the other window %q", guid, got, strandWindow, otherWindow)
 		}
 	}
 	if got := windowOfPane(t, e, otherPane); got != otherWindow {

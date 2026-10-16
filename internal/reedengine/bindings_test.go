@@ -22,15 +22,19 @@ func TestBindingArgvs_BindsTheFiveAltKeysAndTheStatusClickInTheRootTableOnly(t *
 		prev, next string
 		wantKeys   []string
 	}{
-		{"both switch commands", prev, next, []string{"M-z", "M-Up", "M-Down", "M-Left", "M-Right", "MouseDown1Status"}},
-		{"no switch commands leaves their keys unbound", "", "", []string{"M-z", "M-Up", "M-Down", "MouseDown1Status"}},
+		{"both switch commands", prev, next, []string{"M-Up", "M-Down", "M-Left", "M-Right", "MouseDown1Status"}},
+		{"no switch commands leaves their keys unbound", "", "", []string{"M-Up", "M-Down", "MouseDown1Status"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
+			argvs := bindingArgvs(tt.prev, tt.next, false)
+			if want := []string{"unbind-key", "-n", "M-z"}; !slices.Equal(argvs[0], want) {
+				t.Fatalf("first binding argv = %q, want %q ahead of every bind-key", argvs[0], want)
+			}
 			var keys []string
-			for _, argv := range bindingArgvs(tt.prev, tt.next, false) {
+			for _, argv := range argvs[1:] {
 				if len(argv) < 4 || argv[0] != "bind-key" || argv[1] != "-n" {
 					t.Fatalf("binding argv %q, want it to start with bind-key -n <key> <command>", argv)
 				}
@@ -57,7 +61,7 @@ func TestBindingArgvs_BindsTheFiveAltKeysAndTheStatusClickInTheRootTableOnly(t *
 		}
 	})
 
-	t.Run("M-z zooms in the strands' window and the steps move across windows past hidden ones", func(t *testing.T) {
+	t.Run("the steps move across windows past hidden ones", func(t *testing.T) {
 		t.Parallel()
 
 		got := map[string][]string{}
@@ -65,7 +69,6 @@ func TestBindingArgvs_BindsTheFiveAltKeysAndTheStatusClickInTheRootTableOnly(t *
 			got[argv[2]] = argv
 		}
 		want := map[string][]string{
-			"M-z":    {"bind-key", "-n", "M-z", "if-shell", "-F", "#{&&:#{@lyx_strands},#{||:#{@strand},#{||:#{" + consolePaneOption + "},#{window_zoomed_flag}}}}", "resize-pane -Z"},
 			"M-Up":   {"bind-key", "-n", "M-Up", "set-option", "@lyx_follow", "off", `\;`, "previous-window", `\;`, "if-shell", "-F", "-t", ":", "#{@lyx_hidden}", selectStrandsWindowCommand},
 			"M-Down": {"bind-key", "-n", "M-Down", "set-option", "@lyx_follow", "off", `\;`, "next-window", `\;`, "if-shell", "-F", "-t", ":", "#{@lyx_hidden}", "select-window -t :^"},
 		}
@@ -81,22 +84,25 @@ func TestBindingArgvs_BindsTheFiveAltKeysAndTheStatusClickInTheRootTableOnly(t *
 
 		click := clickArgv(t, bindingArgvs(prev, next, true))
 		joined := strings.Join(click, " ")
-		for _, rangeType := range []string{"shell", "pane", "window", "session", "follow"} {
+		for _, rangeType := range []string{"shell", "window", "session", "follow"} {
 			if !strings.Contains(joined, "#{==:#{mouse_status_range},"+rangeType+"}") {
 				t.Errorf("status click binding %q does not dispatch on range %q", joined, rangeType)
 			}
 		}
-		// The four listed branches and the follow branch, joined by one separator fewer than the branch count.
+		if strings.Contains(joined, "mouse_status_range},pane}") {
+			t.Errorf("status click binding %q dispatches on the retired pane range", joined)
+		}
+		// The three listed branches and the follow branch, joined by one separator fewer than the branch count.
 		if got := strings.Count(joined, `\;`); got != len(statusClickBranches) {
 			t.Errorf("status click binding joins its branches with %d escaped separators, want %d", got, len(statusClickBranches))
 		}
 	})
 
-	t.Run("the shell, pane and window clicks write follow off first and the session click does not", func(t *testing.T) {
+	t.Run("the shell and window clicks write follow off first and the session click does not", func(t *testing.T) {
 		t.Parallel()
 
 		click := clickArgv(t, bindingArgvs(prev, next, true))
-		for _, rangeType := range []string{"shell", "pane", "window"} {
+		for _, rangeType := range []string{"shell", "window"} {
 			if got := clickBranchCommand(t, click, rangeType); !strings.HasPrefix(got, "set-option @lyx_follow off ; ") {
 				t.Errorf("%s click command = %q, want it to start with the follow-off write", rangeType, got)
 			}

@@ -102,9 +102,9 @@ func TestOwnWindow_RealTmux(t *testing.T) {
 		return StrandStatus{}, false
 	}
 	ownDisplay := render.Display{Anchor: render.AnchorOwnWindow}
-	windowZero := render.Display{Anchor: render.AnchorBelowParent}
+	hiddenDisplay := render.Display{Anchor: render.AnchorHidden}
 
-	if _, err := e.AddStrand(AddSpec{Role: "base", Cmd: "sleep 300", Display: windowZero}); err != nil {
+	if _, err := e.AddStrand(AddSpec{Role: "base", Cmd: "sleep 300", Display: ownDisplay}); err != nil {
 		t.Fatalf("AddStrand(base): %v", err)
 	}
 
@@ -157,24 +157,15 @@ func TestOwnWindow_RealTmux(t *testing.T) {
 		if err != nil {
 			t.Fatalf("AddStrand(dying own-window): %v", err)
 		}
-		dyingZero, err := e.AddStrand(AddSpec{Role: "dying-zero", Cmd: "exit", Display: windowZero})
-		if err != nil {
-			t.Fatalf("AddStrand(dying window 0): %v", err)
-		}
 		waitUntil(t, 10*time.Second, "dying own-window pane never died", func() bool { return paneDead(dyingOwn.PaneID) })
-		waitUntil(t, 10*time.Second, "dying window 0 pane never died", func() bool { return paneDead(dyingZero.PaneID) })
 
-		if _, err := e.AddStrand(AddSpec{Role: "later", Cmd: "sleep 300", Display: windowZero}); err != nil {
+		if _, err := e.AddStrand(AddSpec{Role: "later", Cmd: "sleep 300", Display: ownDisplay}); err != nil {
 			t.Fatalf("AddStrand(later): %v", err)
 		}
 
 		own, ok := statusOf(dyingOwn.GUID)
 		if !ok || own.PaneID != dyingOwn.PaneID || own.Live || !own.Present {
 			t.Errorf("Status of the dead own-window strand = %+v (found %v), want it bound to %s, not live and present", own, ok, dyingOwn.PaneID)
-		}
-		zero, ok := statusOf(dyingZero.GUID)
-		if !ok || zero.PaneID != "" || zero.Present {
-			t.Errorf("Status of the dead window 0 strand = %+v (found %v), want its pane killed and its binding cleared", zero, ok)
 		}
 	})
 
@@ -192,7 +183,7 @@ func TestOwnWindow_RealTmux(t *testing.T) {
 			t.Fatalf("mark the orphan own: %v", err)
 		}
 
-		if _, err := e.AddStrand(AddSpec{Role: "after-orphan", Cmd: "sleep 300", Display: windowZero}); err != nil {
+		if _, err := e.AddStrand(AddSpec{Role: "after-orphan", Cmd: "sleep 300", Display: ownDisplay}); err != nil {
 			t.Fatalf("AddStrand(after-orphan): %v", err)
 		}
 
@@ -222,7 +213,7 @@ func TestOwnWindow_RealTmux(t *testing.T) {
 	t.Run("UpdateStrandRefusesAMoveOutOfOwnWindow", func(t *testing.T) {
 		ownWindow := windowOfPane(t, e, explorer.PaneID)
 
-		_, err := e.UpdateStrand(explorer.GUID, windowZero)
+		_, err := e.UpdateStrand(explorer.GUID, hiddenDisplay)
 		if err == nil || !strings.Contains(err.Error(), "way forward: lyx reed remove") {
 			t.Fatalf("UpdateStrand = %v, want a refusal naming lyx reed remove", err)
 		}
@@ -631,6 +622,188 @@ func TestOwnWindow_RealTmux(t *testing.T) {
 		if windowListed(window) {
 			t.Errorf("window %s is still listed after its last strand was removed, want it ended", window)
 		}
+	})
+
+	// leftover splits a pane running cmd into the shell window and binds a new strand to it through a reed.json that records anchor below-parent, the shape an older binary left behind.
+	leftover := func(t *testing.T, guid, cmd string) Strand {
+		t.Helper()
+		out, err := e.tmux.output("split-window", "-d", "-t", strandWindow(), "-P", "-F", "#{pane_id}", cmd)
+		if err != nil {
+			t.Fatalf("split a leftover pane into the shell window: %v", err)
+		}
+		st, err := LoadState(e.stateDir())
+		if err != nil || st == nil {
+			t.Fatalf("LoadState = (%+v, %v)", st, err)
+		}
+		// ResumeCmd stays up so a relaunch of a leftover whose own command exits is observable as live.
+		s := Strand{GUID: guid, Name: guid, Cmd: cmd, ResumeCmd: "sleep 300", PaneID: strings.TrimSpace(out), Display: render.Display{Anchor: render.Anchor("below-parent")}}
+		st.Strands = append(st.Strands, s)
+		if err := SaveState(e.stateDir(), st); err != nil {
+			t.Fatalf("SaveState: %v", err)
+		}
+		return s
+	}
+	storedStrand := func(t *testing.T, guid string) Strand {
+		t.Helper()
+		st, err := LoadState(e.stateDir())
+		if err != nil || st == nil {
+			t.Fatalf("LoadState = (%+v, %v)", st, err)
+		}
+		for _, s := range st.Strands {
+			if s.GUID == guid {
+				return s
+			}
+		}
+		t.Fatalf("strand %s is not recorded", guid)
+		return Strand{}
+	}
+	assertMovedIntoItsOwnWindow := func(t *testing.T, s Strand) string {
+		t.Helper()
+		window := windowOfPane(t, e, s.PaneID)
+		shell := strandWindow()
+		if window == shell {
+			t.Fatalf("pane %s is still in the shell window %s, want it moved out", s.PaneID, shell)
+		}
+		if got := display(window, "#{@lyx_own}"); got != "1" {
+			t.Errorf("moved window @lyx_own = %q, want 1", got)
+		}
+		windows, err := e.tmux.listSessionWindows(e.SessionName())
+		if err != nil {
+			t.Fatalf("list windows: %v", err)
+		}
+		indexOf := func(id string) int {
+			w, _ := findSessionWindow(windows, id)
+			return w.Index
+		}
+		if indexOf(window) >= indexOf(shell) {
+			t.Errorf("moved window index %d, want it before the shell window at %d", indexOf(window), indexOf(shell))
+		}
+		if got := storedStrand(t, s.GUID).Display.Anchor; got != render.AnchorOwnWindow {
+			t.Errorf("recorded anchor = %q after the move, want own-window", got)
+		}
+		return window
+	}
+	assertShellWindowHoldsOnlySelvage := func(t *testing.T) {
+		t.Helper()
+		st, err := LoadState(e.stateDir())
+		if err != nil || st == nil {
+			t.Fatalf("LoadState = (%+v, %v)", st, err)
+		}
+		shell := strandWindow()
+		if got := windowPanes(shell); !slices.Equal(got, []string{st.SelvagePaneID}) {
+			t.Errorf("shell window panes = %v, want only the Selvage pane %s", got, st.SelvagePaneID)
+		}
+		if height, windowHeight := display(st.SelvagePaneID, "#{pane_height}"), display(shell, "#{window_height}"); height != windowHeight {
+			t.Errorf("Selvage pane height = %s, want the window's %s", height, windowHeight)
+		}
+	}
+
+	t.Run("LivePaneLeftInTheShellWindowIsMovedKeepingItsProcess", func(t *testing.T) {
+		s := leftover(t, "stayer", "sleep 300")
+		pidBefore := display(s.PaneID, "#{pane_pid}")
+
+		addOwn("after-stayer")
+
+		window := assertMovedIntoItsOwnWindow(t, s)
+		if got := display(s.PaneID, "#{pane_pid}"); got != pidBefore {
+			t.Errorf("pane pid = %s after the move, want it unchanged %s", got, pidBefore)
+		}
+		if paneDead(s.PaneID) {
+			t.Errorf("moved pane %s is dead, want its process kept", s.PaneID)
+		}
+		assertShellWindowHoldsOnlySelvage(t)
+		if _, err := e.RemoveStrand(s.GUID, false); err != nil {
+			t.Fatalf("RemoveStrand(%s): %v", s.GUID, err)
+		}
+		if windowListed(window) {
+			t.Errorf("moved window %s is still listed after its strand was removed", window)
+		}
+	})
+
+	t.Run("DeadPaneLeftInTheShellWindowIsMovedAndResumeRelaunchesItWithoutACopy", func(t *testing.T) {
+		s := leftover(t, "corpse", "exit")
+		waitUntil(t, 10*time.Second, "leftover pane never died", func() bool { return paneDead(s.PaneID) })
+
+		addOwn("after-corpse")
+
+		assertMovedIntoItsOwnWindow(t, s)
+		if _, err := e.Resume(); err != nil {
+			t.Fatalf("Resume: %v", err)
+		}
+		status, ok := statusOf(s.GUID)
+		if !ok || !status.Live || !status.OwnWindow {
+			t.Fatalf("Status after Resume = %+v (found %v), want the strand relaunched live in an own window", status, ok)
+		}
+		if status.PaneID == s.PaneID {
+			t.Errorf("relaunched pane is the old pane %s, want a fresh one", s.PaneID)
+		}
+		out, err := e.tmux.output("list-panes", "-s", "-t", exactSessionTarget(e.SessionName()), "-F", "#{pane_id}")
+		if err != nil {
+			t.Fatalf("list panes: %v", err)
+		}
+		if slices.Contains(strings.Fields(out), s.PaneID) {
+			t.Errorf("old pane %s is still listed after the relaunch, want no second copy", s.PaneID)
+		}
+		assertShellWindowHoldsOnlySelvage(t)
+		if _, err := e.RemoveStrand(s.GUID, false); err != nil {
+			t.Fatalf("RemoveStrand(%s): %v", s.GUID, err)
+		}
+	})
+
+	t.Run("RemovingAMovedStrandLeavesTheShellWindowAndItsViewer", func(t *testing.T) {
+		s := leftover(t, "remover", "sleep 300")
+		addOwn("after-remover")
+		assertMovedIntoItsOwnWindow(t, s)
+		shell := strandWindow()
+		if err := e.tmux.run("select-window", "-t", shell); err != nil {
+			t.Fatalf("select-window: %v", err)
+		}
+
+		if _, err := e.RemoveStrand(s.GUID, false); err != nil {
+			t.Fatalf("RemoveStrand(%s): %v", s.GUID, err)
+		}
+
+		if !windowListed(shell) {
+			t.Errorf("shell window %s is gone after the removal", shell)
+		}
+		if got := currentWindow(); got != shell {
+			t.Errorf("current window = %q after the removal, want the viewer left on the shell window %q", got, shell)
+		}
+	})
+
+	t.Run("SoleLeftoverPaneWithoutSelvageStaysUntilSelvageIsHealed", func(t *testing.T) {
+		st, err := LoadState(e.stateDir())
+		if err != nil || st == nil {
+			t.Fatalf("LoadState = (%+v, %v)", st, err)
+		}
+		selvage := st.SelvagePaneID
+		s := leftover(t, "sole", "sleep 300")
+		shell := strandWindow()
+		if err := e.tmux.run("kill-pane", "-t", selvage); err != nil {
+			t.Fatalf("kill-pane(Selvage): %v", err)
+		}
+
+		extra := addOwn("beside-sole")
+		if _, err := e.RemoveStrand(extra.GUID, false); err != nil {
+			t.Fatalf("RemoveStrand(%s): %v", extra.GUID, err)
+		}
+
+		if got := windowOfPane(t, e, s.PaneID); got != shell {
+			t.Errorf("sole leftover pane is in %s, want it left in the shell window %s", got, shell)
+		}
+		if got := display(shell, "#{@lyx_strands}"); got != "1" {
+			t.Errorf("shell window @lyx_strands = %q, want the marker intact", got)
+		}
+
+		if err := e.tmux.run("select-window", "-t", windowOfPane(t, e, addOwn("viewed-sole").PaneID)); err != nil {
+			t.Fatalf("select-window: %v", err)
+		}
+		if _, err := e.Up(); err != nil {
+			t.Fatalf("Up: %v", err)
+		}
+
+		assertMovedIntoItsOwnWindow(t, s)
+		assertShellWindowHoldsOnlySelvage(t)
 	})
 
 	// This subtest tears the session down, so it runs last.

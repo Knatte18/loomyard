@@ -70,7 +70,7 @@ func newRepairTestEngine(t *testing.T, strands []Strand, live []LivePane) (*Engi
 }
 
 func repairStrand(guid, name, pane, session string) Strand {
-	return Strand{GUID: guid, Name: name, PaneID: pane, SessionID: session, Display: render.Display{Anchor: render.AnchorBelowParent}}
+	return Strand{GUID: guid, Name: name, PaneID: pane, SessionID: session, Display: render.Display{Anchor: render.AnchorOwnWindow}}
 }
 
 //testtiming:keep pins which strands get a title repair: a bound live drifted pane only, never a matching, dead, unbound or vanished one; its covering tests run this code without asserting it

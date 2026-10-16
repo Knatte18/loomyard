@@ -1,4 +1,4 @@
-// calleefailures_test.go pins that a failure repeating on every tick of the watch loop or the name-repair loop logs once per episode: Warn at the first failure, Debug while it goes on, Info at recovery.
+// calleefailures_test.go pins that a failure repeating on every tick of the name-repair loop logs once per episode: Warn at the first failure, Debug while it goes on, Info at recovery.
 
 package reedengine
 
@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
@@ -19,12 +18,6 @@ import (
 // It captures the process-global logger at Debug, so it stays serial.
 func TestCalleeFailuresLogOncePerEpisode(t *testing.T) {
 	const failedCalls = 3
-	zoomListing := "%1 0 0 10 3 1\n%2 0 3 10 3 2\n"
-	keepZoomStep := func(e *Engine) { _ = e.keepZoomLocked(func() error { return nil }) }
-	scriptZoomedWindow := func(e *Engine, f *fakeTmux) {
-		f.answerFormat(zoomStateFormat, "1 %2", nil)
-		f.answer("list-panes", zoomListing, nil)
-	}
 	healVerb := func(verb, out string) func(e *Engine, f *fakeTmux) {
 		return func(_ *Engine, f *fakeTmux) { f.answer(verb, out, nil) }
 	}
@@ -49,83 +42,6 @@ func TestCalleeFailuresLogOncePerEpisode(t *testing.T) {
 		// wantInfoAfterHeal is a message that logs at one more level=INFO line after the heal.
 		wantInfoAfterHeal string
 	}{
-		{
-			name:    "live window size query",
-			fail:    failVerb("display-message"),
-			heal:    healVerb("display-message", "220 50"),
-			call:    func(e *Engine) { e.liveBoxLocked(exactSessionWindowTarget(e.SessionName())) },
-			failMsg: "falling back to configured box",
-			healMsg: "reed: live window size query answers again",
-		},
-		{
-			name: "malformed live window size answer joins the query episode",
-			fail: func(_ *Engine, f *fakeTmux, call int) {
-				if call%2 == 0 {
-					f.answer("display-message", "", errors.New("display-message failed"))
-					return
-				}
-				f.answer("display-message", "abc def", nil)
-			},
-			heal:    healVerb("display-message", "220 50"),
-			call:    func(e *Engine) { e.liveBoxLocked(exactSessionWindowTarget(e.SessionName())) },
-			failMsg: "falling back to configured box",
-			healMsg: "reed: live window size query answers again",
-		},
-		{
-			name:    "pane-border-status readback",
-			fail:    failVerb("display-message"),
-			heal:    healVerb("display-message", "top"),
-			call:    func(e *Engine) { e.readBorderTitleRowLocked(exactSessionWindowTarget(e.SessionName())) },
-			failMsg: "failed to read back pane-border-status",
-			healMsg: "reed: pane-border-status reads back again",
-		},
-		{
-			name:    "unzoom",
-			setup:   scriptZoomedWindow,
-			fail:    failVerb("resize-pane"),
-			heal:    healVerb("resize-pane", ""),
-			call:    keepZoomStep,
-			failMsg: "failed to unzoom the strands' window",
-			healMsg: "reed: unzooms the strands' window again",
-		},
-		{
-			name:    "post-step listing",
-			setup:   scriptZoomedWindow,
-			fail:    failVerb("list-panes"),
-			heal:    healVerb("list-panes", zoomListing),
-			call:    keepZoomStep,
-			failMsg: "failed to list the strands' window after a step",
-			healMsg: "reed: lists the strands' window after a step again",
-		},
-		{
-			name:  "re-zoom",
-			setup: scriptZoomedWindow,
-			fail: func(_ *Engine, f *fakeTmux, _ int) {
-				// Each call unzooms with the odd resize-pane and re-zooms with the even one.
-				resizes := 0
-				f.answerFunc("resize-pane", func([]string) (string, error) {
-					resizes++
-					if resizes%2 == 0 {
-						return "", errors.New("re-zoom failed")
-					}
-					return "", nil
-				})
-			},
-			heal: func(_ *Engine, f *fakeTmux) {
-				f.answerFunc("resize-pane", func([]string) (string, error) { return "", nil })
-			},
-			call:    keepZoomStep,
-			failMsg: "failed to re-zoom the strands' window",
-			healMsg: "reed: re-zooms the strands' window again",
-		},
-		{
-			name:    "pane height pin",
-			fail:    failVerb("resize-pane"),
-			heal:    healVerb("resize-pane", ""),
-			call:    func(e *Engine) { e.runResizePinsLocked([]render.Pin{{PaneID: "%2", Height: 10}}) },
-			failMsg: "failed to pin a pane height",
-			healMsg: "reed: pane height pin works again",
-		},
 		{
 			name: "live pane generation read",
 			fail: failVerb("display-message"),
@@ -239,4 +155,15 @@ func TestCalleeFailuresLogOncePerEpisode(t *testing.T) {
 			}
 		})
 	}
+}
+
+// countLogLines counts the captured lines at level that carry msg.
+func countLogLines(output, level, msg string) int {
+	count := 0
+	for _, line := range strings.Split(output, "\n") {
+		if strings.Contains(line, "level="+level) && strings.Contains(line, msg) {
+			count++
+		}
+	}
+	return count
 }

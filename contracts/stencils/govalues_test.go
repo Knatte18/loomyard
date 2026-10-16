@@ -89,3 +89,24 @@ func TestTwillStencils_HostNeutral(t *testing.T) {
 		}
 	}
 }
+
+// TestHubGenericStencils_NameNoGoTiers asserts the plan, Plan-Review and implementer prompts spell no Go verify-tier command,
+// so a hub whose verify_tiers list is empty gets none; a hub with a list gets its tiers through the verify_tiers marker.
+//
+//lyx:guard
+func TestHubGenericStencils_NameNoGoTiers(t *testing.T) {
+	t.Parallel()
+
+	banned := []string{"go build", "go vet", "go test", "-tags tmux", "-tags llm", "go -C"}
+	for _, name := range []string{"loom-template-plan", "loom-rubric-plan-review", "webster-body-implementer"} {
+		text, ok := Registry().Default(name)
+		if !ok {
+			t.Fatalf("stencil %q is not registered", name)
+		}
+		for _, phrase := range banned {
+			if strings.Contains(string(text), phrase) {
+				t.Errorf("stencil %q contains the Go tier command %q; a hub's tiers arrive through the verify_tiers marker", name, phrase)
+			}
+		}
+	}
+}
