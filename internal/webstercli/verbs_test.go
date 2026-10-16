@@ -898,6 +898,44 @@ func TestRecoverBatchCmd_NeedsFreshEnvelope(t *testing.T) {
 	}
 }
 
+// TestRenameToolMissingEnvelope proves begin-batch and recover-batch over a batch holding a symbol Rename pair, with no rename tool listed, exit non-zero with rename_tool_missing, name the way forward and spawn nothing.
+func TestRenameToolMissingEnvelope(t *testing.T) {
+	t.Setenv("FABRIC_SKIP_GIT", "1")
+	for _, verb := range []string{"begin-batch", "recover-batch"} {
+		t.Run(verb, func(t *testing.T) {
+			fx := newVerbsFixture(t)
+			plan := onlyCreatePlan("", "internal/only/new.go")
+			plan.Cards[0].Groups = []plankit.Group{{Label: "Rename", Targets: []string{"`sub#Foo` -> `plan:sub#Bar`"}}}
+			plankit.Write(t, fx.CLI.geom.PlanDir, plan)
+			st := fx.initState(t)
+			st.Batches[1] = &websterengine.BatchState{
+				Slug: "only", Kind: "fork", Terminal: true, Status: websterengine.DigestStatusFailed,
+				Digest: &websterengine.Digest{Batch: "01-only", Status: websterengine.DigestStatusFailed},
+			}
+			if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
+				t.Fatalf("SaveState() error = %v", err)
+			}
+
+			cmd, args := fx.CLI.beginBatchCmd(), []string{"1"}
+			if verb == "recover-batch" {
+				cmd, args = fx.CLI.recoverBatchCmd(), []string{"1", "--wait", "1ns"}
+			}
+			var out strings.Builder
+			if code := clihelp.Execute(cmd, &out, args); code == 0 {
+				t.Fatalf("%s 1 = 0; want non-zero, output: %s", verb, out.String())
+			}
+			for _, want := range []string{`"rename_tool_missing":true`, "lyx webster " + verb + " 1"} {
+				if !strings.Contains(out.String(), want) {
+					t.Errorf("output missing %q; got %q", want, out.String())
+				}
+			}
+			if fx.Engine.PrepareCalls != 0 {
+				t.Errorf("engine PrepareCalls = %d; want 0, the refusal comes before any spawn", fx.Engine.PrepareCalls)
+			}
+		})
+	}
+}
+
 // TestRebaselineCmd_EditedCardOfFailedBatchThenRecover proves a one-card fix needs no reset:
 // `rebaseline --card 1` over a failed batch's edited card exits 0 and keeps the batch's start SHA,
 // and `recover-batch 1` then spawns with the edited card's gate in its prompt.

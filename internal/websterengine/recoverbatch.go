@@ -247,6 +247,10 @@ func rendersNewAmendment(prior *BatchState) bool {
 func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prevDigest string, clk Clock) (*BatchState, error) {
 	number, slug := batchIdentity(batch)
 
+	if err := renameToolRefusal(deps.Plan, batch, deps.RenameTools, "recover-batch"); err != nil {
+		return nil, err
+	}
+
 	patternChanges, err := discussionparser.DeclaredPatternChanges(deps.Geom.DecisionRecordPath)
 	if err != nil {
 		return nil, fmt.Errorf("%w re-run `lyx webster recover-batch %d`", err, number)

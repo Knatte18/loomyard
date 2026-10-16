@@ -173,8 +173,38 @@ func TestBeginBatch_Refusals(t *testing.T) {
 		// wantText lists what the error names; wantNotText what it must not.
 		wantText    []string
 		wantNotText []string
-		check       func(t *testing.T, fx *beginFixture)
+		// proceeds marks a row whose call passes the rename-tool check and so may end in no error or in a refusal of its own.
+		proceeds bool
+		check    func(t *testing.T, fx *beginFixture)
 	}{
+		{
+			name: "a symbol Rename pair under an empty rename tool list refuses and records no batch",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				fx.Deps.Batches[0].Cards[0].Pairs = []planparser.MovePair{{Old: "sub#Foo", New: "plan:sub#Bar"}}
+			},
+			wantIs:   websterengine.ErrRenameToolMissing,
+			wantText: []string{"sub#Foo", "1-json-flag", `way forward: set rename_tools with "lyx config language"`, "lyx webster begin-batch 1"},
+			check: func(t *testing.T, fx *beginFixture) {
+				if len(fx.Deps.State.Batches) != 0 {
+					t.Errorf("state batches = %v; want none recorded", fx.Deps.State.Batches)
+				}
+			},
+		},
+		{
+			name: "a symbol Rename pair under a listed rename tool passes the check",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				fx.Deps.Batches[0].Cards[0].Pairs = []planparser.MovePair{{Old: "sub#Foo", New: "plan:sub#Bar"}}
+				fx.Deps.RenameTools = []string{"rename Go symbols with `gopls rename`"}
+			},
+			proceeds: true,
+		},
+		{
+			name: "a file Rename pair under an empty rename tool list passes the check",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				fx.Deps.Batches[0].Cards[0].Pairs = []planparser.MovePair{{Old: "internal/a/old.go#", New: "internal/a/new.go#"}}
+			},
+			proceeds: true,
+		},
 		{
 			name: "a plan edited after run init points at the reset-to-start route",
 			prepare: func(t *testing.T, fx *beginFixture) {
@@ -379,6 +409,12 @@ func TestBeginBatch_Refusals(t *testing.T) {
 			tt.prepare(t, fx)
 
 			_, err := websterengine.BeginBatch(fx.Deps, 1)
+			if tt.proceeds {
+				if errors.Is(err, websterengine.ErrRenameToolMissing) {
+					t.Errorf("BeginBatch() error = %v; want the rename-tool check passed", err)
+				}
+				return
+			}
 			if err == nil {
 				t.Fatal("BeginBatch() error = nil; want a refusal")
 			}

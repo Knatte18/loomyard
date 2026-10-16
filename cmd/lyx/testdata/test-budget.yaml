@@ -147,7 +147,7 @@ internal/twilldirective: 4
 internal/verifyrun: 4
 internal/verifytree: 7
 internal/vscode: 12
-internal/webstercli: 81
+internal/webstercli: 82
 internal/websterengine: 203
 internal/weftname: 1
 internal/yamlengine: 19

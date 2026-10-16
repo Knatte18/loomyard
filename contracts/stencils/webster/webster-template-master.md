@@ -137,6 +137,8 @@ You never read raw fork output beyond its own turn, and you never open a file to
 - `recover-batch <NN>` refuses with `{"recovery_exhausted": true}` → the batch has had its two recoveries, so no third can run.
   Write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` quoting the refusal's message, and stop.
   Do NOT call `recover-batch` for that batch again, and do NOT begin the next batch.
+- `begin-batch <NN>` or `recover-batch <NN>` refuses with `{"rename_tool_missing": true}` → the batch holds a symbol Rename pair and the hub lists no rename tool, which is the operator's to set.
+  Write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` quoting the refusal's message, and stop.
 - `recover-batch <NN>` refuses with `{"audit_not_acceptable": true}` → the batch failed on read-only fabric references that `recover-batch` would accept in line, but its evidence does not hold, such as a worktree with changes.
   Master cannot clean the tree: write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` quoting the refusal's message, and stop.
   Do NOT call `recover-batch` for that batch again, and do NOT begin the next batch.

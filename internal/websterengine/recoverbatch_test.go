@@ -1281,6 +1281,37 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 			},
 		},
 		{
+			name: "a batch holding a symbol Rename pair under an empty rename tool list refuses before any strand starts",
+			setup: func(fx *recoverFixture) {
+				fx.Deps.Batches[0].Cards[0].Pairs = []planparser.MovePair{{Old: "sub#Foo", New: "plan:sub#Bar"}}
+				fx.Deps.State.Batches[1] = failedRecord("correctness finding")
+			},
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				if !errors.Is(err, websterengine.ErrRenameToolMissing) {
+					t.Fatalf("RecoverSpawnOrAttach() error = %v; want ErrRenameToolMissing", err)
+				}
+				if !strings.Contains(err.Error(), "lyx webster recover-batch 1") {
+					t.Errorf("error %q lacks the recover-batch way forward", err)
+				}
+				if spawned || fx.Engine.PrepareCalls != 0 {
+					t.Errorf("spawned = %v, prepareCalls = %d; want no strand started", spawned, fx.Engine.PrepareCalls)
+				}
+				if rec := fx.Deps.State.Batches[1]; !rec.Terminal || rec.Status != websterengine.DigestStatusFailed || rec.StrandGUID != "" {
+					t.Errorf("record changed: %+v", rec)
+				}
+			},
+		},
+		{
+			name: "a batch holding only a file Rename pair under an empty rename tool list spawns",
+			setup: func(fx *recoverFixture) {
+				fx.Deps.Batches[0].Cards[0].Pairs = []planparser.MovePair{{Old: "internal/a/old.go#", New: "internal/a/new.go#"}}
+				fx.Deps.State.Batches[1] = failedRecord("correctness finding")
+			},
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				requireSpawned(t, spawned, err)
+			},
+		},
+		{
 			name: "a third counted spawn refuses ErrRecoveryExhausted naming the reset routes",
 			setup: func(fx *recoverFixture) {
 				fx.Deps.State.Batches[1] = &websterengine.BatchState{Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead", Recoveries: 2}

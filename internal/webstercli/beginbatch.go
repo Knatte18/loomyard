@@ -158,6 +158,10 @@ Example:
 					clihelp.SetExit(cmd.Context(), output.ErrFields(out, err.Error(), map[string]any{"recovery_exhausted": true}))
 					return nil
 				}
+				if errors.Is(err, websterengine.ErrRenameToolMissing) {
+					clihelp.SetExit(cmd.Context(), output.ErrFields(out, err.Error(), map[string]any{"rename_tool_missing": true}))
+					return nil
+				}
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}

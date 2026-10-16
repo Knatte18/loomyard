@@ -332,6 +332,27 @@ func findBatch(batches []batcher.Batch, number int) (batcher.Batch, error) {
 	return batcher.Batch{}, fmt.Errorf("webster: batch %d not found in the plan's execution batches; way forward: `lyx webster status` lists the run's batches, name one of those", number)
 }
 
+// ErrRenameToolMissing is the sentinel a refusal unwraps to when a batch holds a symbol Rename pair and the hub lists no rename tool.
+var ErrRenameToolMissing = errors.New("webster: the batch holds a symbol Rename pair and the hub lists no rename tool")
+
+// renameToolRefusal refuses a batch holding a symbol Rename pair when renameTools is empty, because the fork has no tool to run the rename with.
+// It returns nil when renameTools is non-empty or the batch holds only file pairs.
+// verb names the webster verb the way forward re-runs.
+func renameToolRefusal(plan *planparser.Plan, batch batcher.Batch, renameTools []string, verb string) error {
+	if len(renameTools) > 0 {
+		return nil
+	}
+	number, slug := batchIdentity(batch)
+	for _, card := range batch.Cards {
+		pairs := planparser.SymbolRenamePairs(plan, []planparser.Card{card})
+		if len(pairs) == 0 {
+			continue
+		}
+		return fmt.Errorf("%w: batch %02d-%s, symbol pair %s -> %s on card %s; way forward: set rename_tools with \"lyx config language\" from the prime, or recast the card, then re-run `lyx webster %s %d`", ErrRenameToolMissing, number, slug, pairs[0].Old, pairs[0].New, card.ID(), verb, number)
+	}
+	return nil
+}
+
 // digestSummaryLine renders d into the one-line summary RenderForkPrompt's prevDigest parameter expects.
 func digestSummaryLine(d *Digest) string {
 	if d == nil {
@@ -482,6 +503,13 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 
 	if err := PlanEditError(deps.State, deps.Plan.Dir, deps.Geom.WebsterDir); err != nil {
 		return nil, err
+	}
+
+	// An unknown batch falls through to the findBatch refusal below.
+	if requested, findErr := findBatch(deps.Batches, batchNumber); findErr == nil {
+		if err := renameToolRefusal(deps.Plan, requested, deps.RenameTools, "begin-batch"); err != nil {
+			return nil, err
+		}
 	}
 
 	// Re-resolve the plan against the current tree before a pack is built, never from a cache.
