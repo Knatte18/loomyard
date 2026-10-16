@@ -3,5 +3,6 @@
 //
 // Every operator verb resolves the mode from its cwd and refuses a standalone directory, since creel needs a hub.
 // The first verb of a hub starts its daemon detached, and `daemon` is what that spawn runs.
+// `read` acknowledges its messages only once its envelope was written, so output that cannot be written leaves them unread.
 // The hub delivery in this package implements the engine's delivery seam over the hub's worktrees, reed's persisted state and shuttle.
 package creelcli

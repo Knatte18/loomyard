@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -88,6 +89,20 @@ func runCreelSplit(cwd string, stderr io.Writer, args ...string) cliRun {
 	run := cliRun{code: code, raw: out.String()}
 	_ = json.Unmarshal([]byte(strings.TrimSpace(run.raw)), &run.fields)
 	return run
+}
+
+// failingWriter is an output that refuses every write.
+type failingWriter struct{}
+
+func (failingWriter) Write(p []byte) (int, error) { return 0, errors.New("write refused") }
+
+// runCreelInto runs the creel command as runCreel does but prints to out, and returns the exit code.
+func runCreelInto(cwd string, out io.Writer, args ...string) int {
+	cmd := Command()
+	cmd.SetOut(out)
+	cmd.SetErr(io.Discard)
+	cmd.SetArgs(args)
+	return clihelp.RunRootCtx(lyxcwd.WithCwd(context.Background(), cwd), cmd, out)
 }
 
 // awaitStderr polls the buffer until it holds want, under a real-time deadline that only bounds a failing test.
@@ -431,6 +446,73 @@ func TestCreelCLI(t *testing.T) {
 		messages, _ = again.fields["messages"].([]any)
 		if again.code != 0 || len(messages) != 0 || !strings.Contains(again.raw, "nothing unread") {
 			t.Errorf("creel read after the acknowledged one = (%d, %q); want exit 0 saying nothing unread", again.code, again.raw)
+		}
+	})
+
+	t.Run("read into an output that cannot be written exits non-zero and acknowledges nothing", func(t *testing.T) {
+		r := newRig(t)
+		alpha := r.name("alpha:driver")
+		t.Setenv(agentname.StrandNameEnv, alpha)
+		strand := creelfake.LiveStrand(alpha)
+		strand.PanePID = os.Getpid()
+		r.delivery.SetStrands(strand)
+		r.startDaemon(t)
+
+		if code := runCreelInto(r.cwd, failingWriter{}, "read"); code == 0 {
+			t.Errorf("creel read of nothing unread into a failing writer exited 0; want non-zero")
+		}
+		if post := runCreel(r.cwd, "post", alpha, "note to self"); post.code != 0 {
+			t.Fatalf("creel post = (%d, %q); want exit 0", post.code, post.raw)
+		}
+		if code := runCreelInto(r.cwd, failingWriter{}, "read"); code == 0 {
+			t.Errorf("creel read of a message into a failing writer exited 0; want non-zero")
+		}
+		// The daemon releases the dropped read's reservation only once it sees the connection close, so the retry runs under a real-time deadline.
+		deadline := time.Now().Add(10 * time.Second)
+		for {
+			read := runCreel(r.cwd, "read")
+			if messages, _ := read.fields["messages"].([]any); read.code == 0 && len(messages) == 1 && strings.Contains(read.raw, "note to self") {
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("creel read after the failed write = (%d, %q); want the message still unread", read.code, read.raw)
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	})
+
+	t.Run("read shows the receiver a message was returned from", func(t *testing.T) {
+		r := newRig(t)
+		alpha, beta := r.name("alpha:driver"), r.name("beta:driver")
+		t.Setenv(agentname.StrandNameEnv, alpha)
+		strand := creelfake.LiveStrand(alpha)
+		strand.PanePID = os.Getpid()
+		r.delivery.SetStrands(strand, creelfake.LiveStrand(beta))
+		r.startDaemon(t)
+
+		if post := runCreel(r.cwd, "post", beta, "anyone?"); post.code != 0 {
+			t.Fatalf("creel post = (%d, %q); want exit 0", post.code, post.raw)
+		}
+		r.awaitLogged(t, "anyone?")
+		r.clock.AwaitWaitsWhere(1, isSweepWait)
+		r.delivery.SetStrands(strand)
+		r.sweepStep()
+		r.sweepLast()
+		deadline := time.Now().Add(10 * time.Second)
+		for {
+			read := runCreel(r.cwd, "read")
+			messages, _ := read.fields["messages"].([]any)
+			if len(messages) == 1 {
+				message, _ := messages[0].(map[string]any)
+				if message["ended_unread_by"] != beta || message["ended_unread_at"] == nil {
+					t.Errorf("returned message = %v; want ended_unread_by %s and an ended_unread_at", message, beta)
+				}
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("creel read after the sweeps = (%d, %q); want the returned message", read.code, read.raw)
+			}
+			time.Sleep(10 * time.Millisecond)
 		}
 	})
 }

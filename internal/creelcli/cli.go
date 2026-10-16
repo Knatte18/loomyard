@@ -4,6 +4,7 @@ package creelcli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -91,6 +92,17 @@ type result struct {
 func refuse(cmd *cobra.Command, err error) error {
 	clihelp.SetExit(cmd.Context(), output.Err(cmd.OutOrStdout(), err.Error()))
 	return nil
+}
+
+// writeOk prints fields as one JSON line with ok set to true, as output.Ok does, and returns the write's error.
+func writeOk(w io.Writer, fields map[string]any) error {
+	fields["ok"] = true
+	data, err := json.Marshal(fields)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(w, string(data))
+	return err
 }
 
 // runVerb resolves the hub from the command's cwd, builds the verb's client and runs body, then prints what it returns.
@@ -195,6 +207,10 @@ func messageFields(message creelengine.Message) map[string]any {
 	}
 	if message.ReplyTo != 0 {
 		fields["reply_to"] = message.ReplyTo
+	}
+	if message.EndedUnreadBy != "" {
+		fields["ended_unread_by"] = message.EndedUnreadBy
+		fields["ended_unread_at"] = message.EndedUnreadAt
 	}
 	return fields
 }
@@ -392,6 +408,8 @@ Example:
 }
 
 // readCmd returns the `creel read` verb.
+// It acknowledges the messages only once its envelope was written; a write that fails leaves them unread and the verb refuses with the write's error.
+// A write that fails after part of the envelope went out leaves them unread too, so a consumer may hold a truncated envelope of messages it reads again later.
 func readCmd() *cobra.Command {
 	var (
 		from    string
@@ -423,15 +441,16 @@ Example:
 					if len(resp.Messages) == 0 {
 						fields["note"] = "nothing unread"
 					}
-					output.Ok(out, fields)
-					return nil
+					return writeOk(out, fields)
 				}
 				resp, err := client.Call(creelengine.Request{Verb: creelengine.VerbRead, From: from, All: all, Wait: wait}, timeout, printMessages)
 				if err != nil {
 					return result{}, err
 				}
 				if !printed {
-					_ = printMessages(resp)
+					if err := printMessages(resp); err != nil {
+						return result{}, err
+					}
 				}
 				return result{printed: true}, nil
 			})
