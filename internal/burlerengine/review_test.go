@@ -22,6 +22,19 @@ func doneReview(review string) *fakeShuttle {
 	return &fakeShuttle{review: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, writes: review}}
 }
 
+// writeDeclaredPatternRecord writes an active PATTERN.md and a decision record whose `## PATTERN changes` section holds body under root, and returns the record's path.
+func writeDeclaredPatternRecord(t *testing.T, root, body string) string {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(root, "PATTERN.md"), []byte("# PATTERN\n\n- `PATTERN-existing-entry` — a rule.\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(PATTERN.md) = %v; want nil", err)
+	}
+	record := filepath.Join(root, "decision-record.md")
+	if err := os.WriteFile(record, []byte("# Record\n\n## PATTERN changes\n\n"+body+"\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(decision record) = %v; want nil", err)
+	}
+	return record
+}
+
 // TestEngine_Review_TableShape proves Review starts exactly one seat and builds its spec and gate as the review half pins them:
 // the review role, segment and skills, the review file as the only output, the opts' review model choice, timeout and round, the review-parse gate that passes on its cap, and ForkSubagents exactly when the profile names a cluster fan.
 func TestEngine_Review_TableShape(t *testing.T) {
@@ -46,8 +59,17 @@ func TestEngine_Review_TableShape(t *testing.T) {
 		wantRole       string
 		wantForkFlag   bool
 		wantSkills     []string
+		// declaredBullet, when set, is written as the one bullet of a decision record the geometry is told, and the reviewer's instruction files must carry it.
+		declaredBullet string
 	}{
 		{name: "solo reviewer", wantSegment: segmentcolor.Review, wantRole: reviewHalfRole, wantSkills: burlerSkills},
+		{
+			name:           "declared PATTERN change",
+			wantSegment:    segmentcolor.Review,
+			wantRole:       reviewHalfRole,
+			wantSkills:     burlerSkills,
+			declaredBullet: "- `PATTERN-example-entry` — adds: the new rule text",
+		},
 		{name: "cluster reviewer", clusterFan: "standard", wantSegment: segmentcolor.Review, wantRole: reviewHalfRole, wantForkFlag: true, wantSkills: burlerSkills},
 		{name: "merge-segment reviewer", segment: segmentcolor.Merge, rolePrefix: "merge", wantSegment: segmentcolor.Merge, wantRole: "merge-" + reviewHalfRole, wantSkills: burlerSkills},
 		{
@@ -75,10 +97,33 @@ func TestEngine_Review_TableShape(t *testing.T) {
 			p.LanguageSkills = tt.codeRound
 			p.RolePrefix = tt.rolePrefix
 			shuttle := doneReview(approvedReview)
-			e := New(shuttle, Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug"}, clusterTestConfig, newTestStencilsDir(t), "", tt.languageSkills)
+			geom := Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug"}
+			if tt.declaredBullet != "" {
+				geom.RepoRoot = root
+				geom.PatternRecordPath = writeDeclaredPatternRecord(t, root, tt.declaredBullet)
+			}
+			e := New(shuttle, geom, clusterTestConfig, newTestStencilsDir(t), "", tt.languageSkills)
 
 			// A cluster reviewer with no fork audit is refused after the spawn; the spec is what this test reads.
 			_, _ = e.Review(p, opts)
+
+			if tt.declaredBullet != "" {
+				instructions, err := filepath.Glob(filepath.Join(root, ".lyx", "burler", "review-*", "*"))
+				if err != nil || len(instructions) == 0 {
+					t.Fatalf("Glob(review instruction files) = %v, %v; want the composed files", instructions, err)
+				}
+				var all strings.Builder
+				for _, path := range instructions {
+					data, err := os.ReadFile(path)
+					if err != nil {
+						t.Fatalf("ReadFile(%s) = %v; want nil", path, err)
+					}
+					all.Write(data)
+				}
+				if !strings.Contains(all.String(), tt.declaredBullet) {
+					t.Errorf("review instruction files lack the declared bullet %q", tt.declaredBullet)
+				}
+			}
 
 			if want := []string{tt.wantRole}; !slices.Equal(shuttle.started, want) {
 				t.Fatalf("started seats = %v; want %v, the one chair", shuttle.started, want)
@@ -147,7 +192,10 @@ func TestEngine_Review_Outcomes(t *testing.T) {
 		wantNilGate    bool
 		// wantEngine is the engine the reviewer's half must carry from the scripted result.
 		wantEngine string
+		// malformedRecord tells the geometry a decision record whose PATTERN changes section is malformed; no seat may start.
+		malformedRecord bool
 	}{
+		{name: "a malformed PATTERN changes section refuses before any seat", malformedRecord: true, wantErrText: "lyx loom validate-discussion", wantNilGate: true},
 		{name: "an accepted blocking review", script: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Engine: "claude"}, writes: blockingReview}, wantOutcome: shuttleengine.OutcomeDone, wantVerdict: VerdictBlocking, wantFindings: 1, wantEngine: "claude"},
 		{name: "an accepted approved review", script: halfScript{result: done, writes: approvedReview}, wantOutcome: shuttleengine.OutcomeDone, wantVerdict: VerdictApproved},
 		{name: "a review missing a finding's fix is refused by the strict parse", script: halfScript{result: done, writes: noFixReview}, wantOutcome: shuttleengine.OutcomeDone, wantErrText: "missing a non-empty fix"},
@@ -167,10 +215,18 @@ func TestEngine_Review_Outcomes(t *testing.T) {
 			root, p := newEngineTestProfile(t)
 			p.ClusterFan = tt.clusterFan
 			shuttle := &fakeShuttle{review: tt.script, stopErr: tt.stopErr}
-			e := newEngineWith(t, Geometry{WorktreeRoot: root, AnchorPath: root}, clusterTestConfig, shuttle)
+			geom := Geometry{WorktreeRoot: root, AnchorPath: root}
+			if tt.malformedRecord {
+				geom.RepoRoot = root
+				geom.PatternRecordPath = writeDeclaredPatternRecord(t, root, "- `PATTERN-example-entry` — frobnicates: nothing")
+			}
+			e := newEngineWith(t, geom, clusterTestConfig, shuttle)
 
 			got, err := e.Review(p, RunOpts{})
 
+			if tt.malformedRecord && len(shuttle.started) != 0 {
+				t.Errorf("started seats = %v; want none", shuttle.started)
+			}
 			wantErr := tt.wantErrText != "" || tt.wantErrIs != nil
 			if (err != nil) != wantErr {
 				t.Fatalf("Review() error = %v; wantErr %v", err, wantErr)

@@ -64,6 +64,9 @@
 // The digest's `deviations` list is the glyph scope guard's file list over the batch delta, the files changed outside the batch's own targets.
 // Record-batch and recover-batch fill it.
 // The list is ALWAYS informational, never a failure condition.
+// The digest's `departures` list holds one `<subject>: <value>` line per `Pattern-Departure:` trailer on the batch's non-merge commits from the batch's start head to its recorded head, oldest first.
+// Record-batch and recover-batch fill it, a recovery over the whole bracket, and a parent merge-in's commits are never counted.
+// It is informational like `deviations`, and the prior-batch line and the resume trail carry it to the next fork and a resumed Master.
 // A fork returns FAILED on a failed card gate, card `**Verify:**` or batch gate, never on deviation alone and never on a slot-busy exit.
 // Plan-predicted file impact is frequently incomplete, so treating deviation as failure would make the system impractically brittle.
 // Within one fork's batch, each card lands as its own commit (BatchState.CardSHAs records the ordered per-card SHA trail — one element under the identity batcher, more once a grouping batchifier ships), and each card's own optional `verify:` runs and must pass before that card's commit.
@@ -160,17 +163,11 @@
 // the batch-report section still names the report as the fork's last action.
 // Without a pack no pack file is written and the prompt ends with the batch-report section.
 //
-// The `kickstart_pack_file` key of webster.yaml, true by default, picks the layout of a built pack.
-// True is the file layout described above.
-// False is the inline layout: the `1e39afc10^` text, kept in three frozen fragments, the inline locate step, the inline FRESH-READ rule carrying the one-turn read, and the inline pack section.
-// The pack section sits between the per-card steps and the sandbox rule, in the body's kickstart_pack_inline marker, with no pack file and no `## Start here` line.
-// A prompt without a pack, and the recovery prompt, render the same bytes under either value.
-// Each begin-batch reads the key afresh, so a flip applies from the next call on;
-// a pack file an earlier file-layout call of the same batch wrote stays on disk, and the inline prompt never names it.
-//
-// The `kickstart_pack_per_card` key of webster.yaml, true by default, picks the per-card layout and overrides `kickstart_pack_file`, which then decides between the file and inline layouts only when the key is false.
+// The `kickstart_pack_per_card` key of webster.yaml, true by default, picks between the per-card layout and the file layout described above.
 // It applies in a hub geometry, where the anchor and the worktree are one directory (packLayoutOf);
-// a standalone geometry keeps the layout `kickstart_pack_file` picks, because `lyx loom card-pack` is a hub-only verb and every call of it would refuse.
+// a standalone geometry always gets the file layout, because `lyx loom card-pack` is a hub-only verb and every call of it would refuse.
+// A prompt without a pack, and the recovery prompt, render the same bytes under either value.
+// Each begin-batch reads the key afresh, so a flip applies from the next call on.
 // In the per-card layout the card files are the batch overview: the fork's first work turn reads every card file and nothing else.
 // Step 1 of each card then runs `lyx loom card-pack <N>` and reads the listed spans in one parallel turn before that card's first edit, so the spans are resolved against the tree as it stands at the card's start, earlier cards' edits included.
 // begin-batch writes no pack file, the prompt carries none of the pack's entries, and it ends with a `## Start here` section sending the fork to its card files.
@@ -188,7 +185,7 @@
 // and the card and batch gates, which run every card's tests, catch reasoning over stale content.
 //
 // Every begin-batch logs one Info line, `webster: kickstart pack`.
-// Its keys are batch, kickstart_pack (`on`, `off`, `language-none` or `empty`), resolved, unresolved and pack_layout (`file`, `inline`, `card` or `none`).
+// Its keys are batch, kickstart_pack (`on`, `off`, `language-none` or `empty`), resolved, unresolved and pack_layout (`file`, `card` or `none`).
 // The resolved and unresolved counts are distinct refs across the batch, so a ref listed under two cards counts once, and stay 0 when no pack is built.
 // pack_layout is `none` on every line where no pack was built.
 // The `kickstart_pack` key of webster.yaml switches the pack on and off, so runs with and without it can be compared;
@@ -447,7 +444,9 @@
 // Decision).
 // The master and the recovery strand both load `scribe:prose`, `scribe:code-quality` and `scribe:testing` through their spawn spec's skills (`roleSkills`), followed by the hub's language skills from the `RunDeps.LanguageSkills` and `RecoverDeps.LanguageSkills` their wiring loads.
 // The fork and recovery prompts render the hub's verify tiers from `BeginDeps.VerifyTiers` and `RecoverDeps.VerifyTiers`, `none` for an empty list.
+// They also fill the implementer body's required `rename_tools` marker from `BeginDeps.RenameTools` and `RecoverDeps.RenameTools`, which the hub's `language.yaml` supplies and a standalone run leaves empty, and its required `plan_verify` marker from the plan's `## verify:` command; both render `none` when empty.
 // Their opening prompts render the parent directive (internal/parentdirective) from Geometry.ParentName, which hubgeom.WebsterGeometry fills from the worktree's origin record.
+// The master and recovery prompts also render the task's declared PATTERN changes, read from Geometry.DecisionRecordPath; standalone mode leaves it empty and renders none.
 // Forks get no skills and no directive: they inherit the master's context.
 // The recovery prompt also carries a block of the worktree's uncommitted paths (the optional uncommitted_paths marker, `none` on a clean tree), taken from UncommittedPaths when the strand is spawned.
 // Each path is grouped by the run's write evidence (loadRunWrites), which covers Master, every fork and every recovery session: "Written by this run" is the earlier attempt's unfinished work, which the strand keeps as its starting point after checking it against the card, and "Not written by this run", which includes every path the evidence cannot attribute, the strand leaves untouched and never stages or commits.
@@ -599,6 +598,7 @@
 // Otherwise it fails with the dirty paths when the tree is not clean, and runs no verify.
 // Once a pre-fix head is recorded, every commit from it to HEAD on the first-parent chain must be a non-merge commit or a clean parent merge (fixCommitRejection, in gitwrap.go);
 // any other fails the gate `Terminal`, which ends the run at once with the commit and the reason.
+// The non-merge commits in that range, with the `Pattern-Departure:` trailers their messages declare, are recorded in the gate's notes at each evaluation, and Run appends them after the wait as a `## Verify gate fix commits` section of summary.md (AppendVerifyGateFixCommits): one bullet per `fix:` commit, then one per departure.
 // A plan with no `## verify:` section passes with a warning.
 // Otherwise verifytree.Verify runs the command under the site label `webster gate`, and a pass records the tree.
 // A failure is parsed from the log and rerun once: a rerun pass passes the gate, and the identities that failed once are flaky, which Run reports after the wait as a warning, a summary.md section and a friction note (VerifyGateNotes.Apply).

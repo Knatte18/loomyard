@@ -2290,3 +2290,37 @@ func TestValidate_PatternEntryLineCap(t *testing.T) {
 		})
 	}
 }
+
+func TestSymbolRenamePairs(t *testing.T) {
+	t.Parallel()
+	symbolPair := planparser.MovePair{Old: "internal/greeter#Hello", New: "plan:internal/greeter#Farewell"}
+	otherSymbolPair := planparser.MovePair{Old: "internal/greeter#Bye", New: "plan:internal/greeter#Leave"}
+	filePair := planparser.MovePair{Old: "internal/greeter/old.go#", New: "internal/greeter/new.go#"}
+	cardWith := func(number int, pairs ...planparser.MovePair) planparser.Card {
+		return planparser.Card{Number: number, Slug: "c", Pairs: pairs}
+	}
+	tests := []struct {
+		name     string
+		language string
+		cards    []planparser.Card
+		want     []planparser.MovePair
+	}{
+		{"member glyph to plan handle is returned", "go", []planparser.Card{cardWith(1, symbolPair)}, []planparser.MovePair{symbolPair}},
+		{"file self glyph pair is not returned", "go", []planparser.Card{cardWith(1, filePair)}, nil},
+		{"card with both returns only the symbol pair", "go", []planparser.Card{cardWith(1, filePair, symbolPair)}, []planparser.MovePair{symbolPair}},
+		{"plan with no Rename card returns nil", "go", []planparser.Card{cardWith(1)}, nil},
+		{"two-path pair under language none is not returned", "none", []planparser.Card{cardWith(1, planparser.MovePair{Old: "a/old.txt", New: "a/new.txt"})}, nil},
+		{"bare symbols under language none are returned", "none", []planparser.Card{cardWith(1, planparser.MovePair{Old: "greeter.OldName", New: "greeter.NewName"})}, []planparser.MovePair{{Old: "greeter.OldName", New: "greeter.NewName"}}},
+		{"pairs of two cards keep card order", "go", []planparser.Card{cardWith(1, symbolPair), cardWith(2, otherSymbolPair)}, []planparser.MovePair{symbolPair, otherSymbolPair}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			plan := &planparser.Plan{Format: 5, Language: tt.language}
+			got := planparser.SymbolRenamePairs(plan, tt.cards)
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("SymbolRenamePairs() = %v; want %v", got, tt.want)
+			}
+		})
+	}
+}

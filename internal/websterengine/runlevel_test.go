@@ -35,6 +35,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -815,6 +816,17 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 				return nil
 			},
 			wayForward: []string{"verify", "drop the"},
+		},
+		{
+			name:  "a decision record with a malformed PATTERN changes section",
+			cards: 1,
+			setup: func(t *testing.T, fx *runFixture) func() {
+				fx.Deps.Geom.DecisionRecordPath = filepath.Join(fx.Worktree, "decision-record.md")
+				writeWorktreeFile(t, fx.Worktree, "decision-record.md", "## PATTERN changes\n\n- `PATTERN-a` — renames: x\n")
+				return nil
+			},
+			errIs:      discussionparser.ErrPatternChangesInvalid,
+			wayForward: []string{"lyx loom validate-discussion", "lyx webster run"},
 		},
 		{
 			name:  "the provider does not come up",

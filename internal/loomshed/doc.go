@@ -20,6 +20,12 @@
 // A done card is also frozen: ValidatePlan appends a blocking `done-card-edited` finding for each one whose file no longer hashes to what its batch recorded at begin, naming the follow-up card as the way forward.
 // A plan with no run record or no recorded hashes reports nothing, and an unreadable card file is a returned error.
 //
+// Every plan gate, and every `validate-plan` mode, also takes a PlanContext and appends two blocking checks outside planparser.
+// `rename-tool-missing` is one finding per symbol `Rename` pair of a card not recorded done when the context's rename tools are empty, with `lyx config language` as the way forward.
+// `pattern-changes-mismatch` is one finding per `## PATTERN changes` bullet that the overview and the context's decision record do not both declare.
+// An absent record adds nothing, and a malformed record section is a returned error naming `lyx loom validate-discussion`.
+// The zero PlanContext runs neither check.
+//
 // A plan gate that passes on informational findings alone records them as a count and a file path in its log line, and writes the findings, one per line, to `<gate>-informational-findings.txt` under the run's told ephemeral scratch directory.
 // A gate told no scratch directory, such as a standalone validate, and a gate whose file cannot be written keep the findings inline in the log line.
 // The blocking path is unchanged: the findings go to the writer and the log line in full.

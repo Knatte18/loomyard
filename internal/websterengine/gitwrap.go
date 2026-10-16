@@ -428,6 +428,57 @@ func nonMergeCommitsBetween(worktree, base, head string) (bool, error) {
 	return strings.TrimSpace(stdout) != "", nil
 }
 
+// departureTrailerKey is the trailer key a fork's commit message declares a PATTERN departure under.
+const departureTrailerKey = "Pattern-Departure:"
+
+// commitLog returns, oldest first, the non-merge commits on head's first-parent line after base.
+// It walks head's first-parent line through gitrepo and stops at base; a walk that reaches the root without meeting base is an error.
+func commitLog(worktree, base, head string) ([]CommitLogEntry, error) {
+	walked, err := gitrepo.New(worktree).Log(head, gitrepo.LogQuery{FirstParent: true})
+	if err != nil {
+		return nil, fmt.Errorf("websterengine: log of %s in %s: %w", head, worktree, err)
+	}
+	var entries []CommitLogEntry
+	metBase := false
+	for _, commit := range walked {
+		if commit.SHA == base {
+			metBase = true
+			break
+		}
+		if len(commit.Parents) >= 2 {
+			continue
+		}
+		subject, _, _ := strings.Cut(commit.Message, "\n")
+		entries = append(entries, CommitLogEntry{
+			SHA:        commit.SHA,
+			Subject:    strings.TrimSpace(subject),
+			Departures: departureTrailers(commit.Message),
+		})
+	}
+	if !metBase {
+		return nil, fmt.Errorf("websterengine: %s is not on the first-parent line of %s in %s", base, head, worktree)
+	}
+	slices.Reverse(entries)
+	return entries, nil
+}
+
+// departureTrailers returns the values of the departure trailer lines in message's last paragraph, where git reads trailers, each trimmed and otherwise verbatim.
+// A message of one paragraph has no trailers.
+func departureTrailers(message string) []string {
+	trimmed := strings.TrimSpace(strings.ReplaceAll(message, "\r\n", "\n"))
+	cut := strings.LastIndex(trimmed, "\n\n")
+	if cut < 0 {
+		return nil
+	}
+	var values []string
+	for _, line := range strings.Split(trimmed[cut+2:], "\n") {
+		if len(line) >= len(departureTrailerKey) && strings.EqualFold(line[:len(departureTrailerKey)], departureTrailerKey) {
+			values = append(values, strings.TrimSpace(line[len(departureTrailerKey):]))
+		}
+	}
+	return values
+}
+
 // dirtyTrackedPaths returns the slash-separated worktree-relative paths of tracked files whose content differs from HEAD, staged or not, sorted.
 // Untracked files are not listed.
 // It wraps gitexec.Run directly for the same reason dirty does.

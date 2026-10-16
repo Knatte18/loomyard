@@ -116,6 +116,32 @@ func TestReworkTable(t *testing.T) {
 		})
 	}
 
+	t.Run("a declared PATTERN change reaches the lead's pattern_directive, and a malformed section fails the table", func(t *testing.T) {
+		t.Parallel()
+		for _, malformed := range []bool{false, true} {
+			layout := planTableLayout(t, "")
+			body := declaredBullet
+			if malformed {
+				body = malformedDeclaredBullet
+			}
+			writeDeclaredPatternRecord(t, layout, body)
+
+			table, err := ReworkTable(layout, newTestStencilsDir(t), newTestSpecsDir(t), Config{Plan: "opus[effort=high]", PlanTimeoutMin: 90}, reg, 4, "prior")
+			if malformed {
+				if err == nil || !strings.Contains(err.Error(), "lyx loom validate-discussion") {
+					t.Errorf("ReworkTable(malformed section) = _, %v; want an error naming lyx loom validate-discussion", err)
+				}
+				continue
+			}
+			if err != nil {
+				t.Fatalf("ReworkTable(declared section) = _, %v; want nil error", err)
+			}
+			if !strings.Contains(table.Values["pattern_directive"], declaredBullet) {
+				t.Errorf("pattern_directive = %q; want it to carry %q", table.Values["pattern_directive"], declaredBullet)
+			}
+		}
+	})
+
 	t.Run("missing stencil is refused", func(t *testing.T) {
 		t.Parallel()
 		layout := planTableLayout(t, "")

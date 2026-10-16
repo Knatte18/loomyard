@@ -31,7 +31,13 @@ type gateFake struct {
 	// logs are the contents of the verify logs, one per verify call in call order.
 	// The last one repeats.
 	logs []string
+	// commitLogs are the entries the commitLog seam returns.
+	commitLogs []CommitLogEntry
+	// commitLogErr is returned by the commitLog seam in place of commitLogs.
+	commitLogErr error
 
+	// commitLogCalls counts the commitLog seam's calls.
+	commitLogCalls int
 	// issuedLogs are the log paths the verify calls named, in call order.
 	issuedLogs     []string
 	verifyCalls    int
@@ -55,6 +61,13 @@ func (f *gateFake) seams() verifyGateSeams {
 			return f.rejection[0], f.rejection[1], nil
 		},
 		commitsSince: func(string) ([]string, error) { return f.commits, nil },
+		commitLog: func(string) ([]CommitLogEntry, error) {
+			f.commitLogCalls++
+			if f.commitLogErr != nil {
+				return nil, f.commitLogErr
+			}
+			return f.commitLogs, nil
+		},
 		verify: func(site verifytree.Site, command string) (verifytree.Result, error) {
 			f.sites = append(f.sites, site)
 			res := f.results[min(f.verifyCalls, len(f.results)-1)]
@@ -312,6 +325,60 @@ func TestVerifyGate_FailedEvaluationWritesReport(t *testing.T) {
 	}
 	if !strings.HasPrefix(second.Findings, verifyGateWayForward(testFixPromptPath)+"\n") {
 		t.Errorf("findings = %q; want them to open with the way forward naming %s", second.Findings, testFixPromptPath)
+	}
+}
+
+// TestVerifyGate_NotesFixCommitsOnce pins that the gate reads the commit log only once a pre-fix head is recorded.
+// The notes keep each commit once across evaluations and list the `fix:` commit with its departure but not a plain commit.
+// A failing commit log read is the gate's error.
+func TestVerifyGate_NotesFixCommitsOnce(t *testing.T) {
+	t.Parallel()
+
+	fix := CommitLogEntry{SHA: "fix1", Subject: "fix: repair a", Departures: []string{"PATTERN-x — differs"}}
+	plain := CommitLogEntry{SHA: "other1", Subject: "chore: tidy"}
+	f := &gateFake{
+		outcome:    outcomeDone,
+		command:    "go test ./...",
+		head:       "head0",
+		results:    []verifytree.Result{failedResult(), failedResult(), passedResult()},
+		logs:       []string{failingPackageLog},
+		commitLogs: []CommitLogEntry{fix, plain},
+	}
+	notes := &VerifyGateNotes{}
+	gate := newVerifyGate(t.TempDir(), 3, notes, testFixPromptPath, f.seams())
+
+	if res, err := gate(); err != nil || res.Passed {
+		t.Fatalf("first gate() = %+v, %v; want a failure", res, err)
+	}
+	if f.commitLogCalls != 0 {
+		t.Errorf("commit log read %d time(s) before any pre-fix head; want none", f.commitLogCalls)
+	}
+	for i := 0; i < 2; i++ {
+		if res, err := gate(); err != nil || !res.Passed {
+			t.Fatalf("gate() after the fix = %+v, %v; want a pass", res, err)
+		}
+	}
+	if f.commitLogCalls != 2 {
+		t.Errorf("commit log read %d time(s); want one per evaluation after the failure", f.commitLogCalls)
+	}
+	if got, want := notes.FixCommits(), []CommitLogEntry{fix}; !reflect.DeepEqual(got, want) {
+		t.Errorf("notes.FixCommits() = %+v; want %+v once", got, want)
+	}
+
+	failing := &gateFake{
+		outcome:      outcomeDone,
+		command:      "go test ./...",
+		head:         "head0",
+		results:      []verifytree.Result{failedResult()},
+		logs:         []string{failingPackageLog},
+		commitLogErr: errors.New("log unreadable"),
+	}
+	second := newVerifyGate(t.TempDir(), 3, &VerifyGateNotes{}, testFixPromptPath, failing.seams())
+	if res, err := second(); err != nil || res.Passed {
+		t.Fatalf("second gate's first gate() = %+v, %v; want a failure", res, err)
+	}
+	if _, err := second(); err == nil || !strings.Contains(err.Error(), "log unreadable") {
+		t.Fatalf("gate() error = %v; want the commit log failure", err)
 	}
 }
 

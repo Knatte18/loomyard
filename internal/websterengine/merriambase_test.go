@@ -12,6 +12,8 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/discussionparser"
+	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
@@ -165,6 +167,51 @@ func TestMerriamBase(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "DIRECTORY.md") {
 			t.Errorf("MerriamBase() error = %q; want it to contain %q", err.Error(), "DIRECTORY.md")
+		}
+	})
+
+	t.Run("the base grows by the declared changes of the decision record and ignores a malformed record", func(t *testing.T) {
+		write(t, overview, "# plan\n")
+		repoRoot := t.TempDir()
+		write(t, filepath.Join(repoRoot, "PATTERN.md"), "# PATTERN\n\nsome constraints\n")
+		record := filepath.Join(worktree, "decision-record.md")
+		patternGeom := geom
+		patternGeom.RepoRoot = repoRoot
+		patternGeom.DecisionRecordPath = record
+
+		noRecord, err := websterengine.MerriamBase(patternGeom, nil)
+		if err != nil {
+			t.Fatalf("MerriamBase() with no record error = %v; want nil", err)
+		}
+
+		write(t, record, "## PATTERN changes\n\n- `PATTERN-x` — removes\n")
+		bullets, err := discussionparser.DeclaredPatternChanges(record)
+		if err != nil || len(bullets) != 1 {
+			t.Fatalf("DeclaredPatternChanges() = %v, %v; want one bullet, nil", bullets, err)
+		}
+		with, err := pattern.Directive(repoRoot, stencilsDir, pattern.RoleOrchestrator, bullets)
+		if err != nil {
+			t.Fatalf("pattern.Directive() with the bullet error = %v; want nil", err)
+		}
+		without, err := pattern.Directive(repoRoot, stencilsDir, pattern.RoleOrchestrator, nil)
+		if err != nil {
+			t.Fatalf("pattern.Directive() with no bullet error = %v; want nil", err)
+		}
+		got, err := websterengine.MerriamBase(patternGeom, nil)
+		if err != nil {
+			t.Fatalf("MerriamBase() with a record error = %v; want nil", err)
+		}
+		if want := noRecord.Lines + websterengine.MerriamBaseOf(with).Lines - websterengine.MerriamBaseOf(without).Lines; got.Lines != want || got.Lines <= noRecord.Lines {
+			t.Errorf("MerriamBase().Lines = %d; want %d, the rendered fragment's lines over the no-record base %d", got.Lines, want, noRecord.Lines)
+		}
+
+		write(t, record, "## PATTERN changes\n\n- `PATTERN-a` — renames: x\n")
+		malformed, err := websterengine.MerriamBase(patternGeom, nil)
+		if err != nil {
+			t.Fatalf("MerriamBase() with a malformed record error = %v; want nil", err)
+		}
+		if malformed != noRecord {
+			t.Errorf("MerriamBase() with a malformed record = %+v; want the no-record base %+v", malformed, noRecord)
 		}
 	})
 

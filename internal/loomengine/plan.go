@@ -34,6 +34,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -69,7 +70,11 @@ func PlanTable(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir, spe
 		return seatengine.Table{}, fmt.Errorf("loom: PlanTable: plan role model-spec: %w", err)
 	}
 
-	patternDirective, err := pattern.Directive(layout.WorktreePath(), stencilsDir, pattern.RoleImplementer)
+	declaredChanges, err := discussionparser.DeclaredPatternChanges(DiscussionDecisionRecord(layout))
+	if err != nil {
+		return seatengine.Table{}, fmt.Errorf("loom: PlanTable: %w re-step the row with %q", err, "lyx loom start")
+	}
+	patternDirective, err := pattern.Directive(layout.WorktreePath(), stencilsDir, pattern.RoleImplementer, declaredChanges)
 	if err != nil {
 		return seatengine.Table{}, fmt.Errorf("loom: PlanTable: %w", err)
 	}

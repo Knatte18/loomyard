@@ -154,6 +154,7 @@ The mechanics of reading and writing the board are in the `ly:board` skill; this
 - An operator decision made in chat is recorded in the same turn, split by who holds the entry:
   - A decision on an entry no run holds is written into that entry's body through `lyx board`.
   - A decision on a task a run holds is recorded with `lyx loom decision add <slug> --by parent`.
+    A decision that adds, changes or removes a PATTERN entry also passes `--pattern-entry`, `--pattern-action` and, for `adds` or `changes`, `--pattern-text`, as `lyx loom decision add --help` says.
   - When that verb refuses because the run has no decision record (batten's pre-loom rows such as `running · Worktree-Create`, `Preflight` and `Loom-Preflight`, or a halt before Discussion-Write), the decision becomes a board note of its own through `lyx board upsert` with kind note, naming the held task's slug.
   - Only when the verb refuses because Discussion-Write is running and owns the record does the decision go by message to the Discussion-Write session.
     A darn run's verb refuses until Darn-Write has committed its record, and then the decision goes by message to the Darn-Write session.

@@ -38,7 +38,11 @@
 // # Why the overview is inlined and the background files are not
 //
 // Each directive stencil carries one required `{{.pattern_overview}}` marker,
-// which Directive fills with the overview's content.
+// which Directive fills with the overview's content, and one optional `{{.pattern_changes}}` marker right after it, which Directive fills with the task's declared PATTERN changes.
+// The caller passes the declared changes in as rendered bullet lines, read by `discussionparser.DeclaredPatternChanges`, because this package stays a leaf that imports no parser.
+// A non-empty list renders the `pattern-fragment-changes` stencil, whose one required `pattern_change_list` marker takes the lines,
+// and the fragment states that a listed entry is followed and judged by its listed new text, never the overview's current text.
+// A nil or empty list reads no fragment and fills the marker with nothing.
 // Inlining the overview means every agent is guaranteed to see the rules,
 // saves it a read turn, and keeps the prompt prefix cache-stable.
 // The background files stay a fixed relative `pattern/` pointer in the stencil's own body,

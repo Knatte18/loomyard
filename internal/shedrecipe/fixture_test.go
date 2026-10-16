@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -33,11 +34,32 @@ var fakeWebsterRun shedadapters.WebsterRunner = func(websterengine.RunDeps, webs
 // placeholderIndex is a non-nil planindex.Index for constructor checks: it panics if a method is called, which no test here does.
 type placeholderIndex struct{ planindex.Index }
 
-// noFindingsPlanIndex is a planindex.Index whose ValidateFormat, the one method ValidatePlan calls when the anchor holds no webster record, answers no findings and a nil error; any other method panics.
+// noFindingsPlanIndex is a planindex.Index whose ValidateFormat and ValidateRework, the methods the plan gates call, answer no findings and a nil error; any other method panics.
 type noFindingsPlanIndex struct{ planindex.Index }
 
 func (noFindingsPlanIndex) ValidateFormat(*planparser.Plan, string, []planparser.Card) ([]planindex.Finding, error) {
 	return nil, nil
+}
+
+func (noFindingsPlanIndex) ValidateRework(*planparser.Plan, string, int) ([]planindex.Finding, error) {
+	return nil, nil
+}
+
+// symbolRenamePlan returns a one-card plan whose card renames a symbol, and so needs the hub's rename tool.
+func symbolRenamePlan() plankit.Plan {
+	return plankit.Plan{
+		Approved: true,
+		Language: "none",
+		Framing:  "Framing.",
+		Sections: []plankit.Section{{Heading: "Rename mechanic", Body: "1. Run the rename tool."}},
+		Cards: []plankit.Card{{
+			Number:  1,
+			Slug:    "first-card",
+			Summary: "placeholder",
+			Groups:  []plankit.Group{{Label: "Rename", Targets: []string{"`sub#Foo` -> `plan:sub#Bar`"}}},
+			Intent:  "placeholder.",
+		}},
+	}
 }
 
 // writeStencilFile writes content to the on-disk location stencilstore.Read(dir, name) resolves name to, creating any parent directory the family convention requires.

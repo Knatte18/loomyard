@@ -217,6 +217,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		RunRoot:            mustMkdir(t, filepath.Join(dir, "run-root")),
 		RunScratchDir:      mustMkdir(t, filepath.Join(dir, "run-scratch")),
 		DecisionRecordPath: filepath.Join(dir, "decision-record.md"),
+		PatternRecordPath:  filepath.Join(dir, "decision-record.md"),
 		SupportLogPath:     filepath.Join(dir, "support-log.md"),
 		RelevantPath:       filepath.Join(dir, "relevant.md"),
 		DescriptionPath:    filepath.Join(dir, "description.md"),

@@ -137,6 +137,40 @@ func TestRepositoryProbes(t *testing.T) {
 		}
 	})
 
+	t.Run("commitLog returns the first-parent non-merge commits with their trailer values", func(t *testing.T) {
+		repo := gitwrapNewScratchRepo(t)
+		base := gitkit.CommitFile(t, repo, "a.txt", "one", "base")
+		branch := strings.TrimSpace(gitkit.Git(t, repo, "branch", "--show-current"))
+		gitkit.CommitFile(t, repo, "b.txt", "two", "first work\n\nPattern-Departure: kept a legacy name\nPattern-Departure: skipped a scan")
+		gitkit.CommitFile(t, repo, "c.txt", "three", "second work\n\nPattern-Departure: malformed: text; with, odd (punctuation)")
+		gitkit.Git(t, repo, "switch", "-c", "side")
+		gitkit.CommitFile(t, repo, "side.txt", "side", "side work\n\nPattern-Departure: from the side")
+		gitkit.Git(t, repo, "switch", branch)
+		gitkit.Git(t, repo, "merge", "--no-ff", "-m", "merge side", "side")
+		head := strings.TrimSpace(gitkit.Git(t, repo, "rev-parse", "HEAD"))
+
+		got, err := commitLog(repo, base, head)
+		if err != nil {
+			t.Fatalf("commitLog() error = %v; want nil", err)
+		}
+		want := []CommitLogEntry{
+			{Subject: "first work", Departures: []string{"kept a legacy name", "skipped a scan"}},
+			{Subject: "second work", Departures: []string{"malformed: text; with, odd (punctuation)"}},
+		}
+		if len(got) != len(want) {
+			t.Fatalf("commitLog() = %+v; want %d commits", got, len(want))
+		}
+		for i := range want {
+			if got[i].Subject != want[i].Subject || !slices.Equal(got[i].Departures, want[i].Departures) {
+				t.Errorf("commitLog()[%d] = %+v; want subject %q and departures %v", i, got[i], want[i].Subject, want[i].Departures)
+			}
+		}
+
+		if _, err := commitLog(repo, strings.TrimSpace(gitkit.Git(t, repo, "rev-parse", "side")), head); err == nil {
+			t.Error("commitLog() with a base off the first-parent line error = nil; want an error")
+		}
+	})
+
 	t.Run("commitsFromBatchCheck keeps the commit lines", func(t *testing.T) {
 		for _, tt := range []struct {
 			name    string

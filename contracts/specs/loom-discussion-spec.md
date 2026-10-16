@@ -8,7 +8,7 @@
 
 The decision record is the plan writer's design input, and `relevant.md` is its code head start;
 the plan writer reads nothing else from the discussion directory.
-It carries these H2 sections, in this exact order, and no others besides the optional eighth:
+It carries these H2 sections, in this exact order, and no others besides the two optional ones:
 
 1. `## Goal`
 2. `## Scope`
@@ -17,10 +17,25 @@ It carries these H2 sections, in this exact order, and no others besides the opt
 5. `## Auto-mode assumptions`
 6. `## Open risks`
 7. `## Acceptance criteria`
-8. `## Notes for the plan writer` (optional — design hints for the plan writer, never a completeness requirement;
+8. `## PATTERN changes` (optional — the PATTERN entries the task adds, changes or removes, placed after `## Acceptance criteria` and before `## Notes for the plan writer`)
+9. `## Notes for the plan writer` (optional — design hints for the plan writer, never a completeness requirement;
    a hint may name the symbol it is about)
 
 No frontmatter: no `format:` field, no `approved:` field.
+
+### The PATTERN changes section
+
+The designer lists here every PATTERN entry its design adds, changes or removes.
+The PATTERN edit itself lands in a Webster card, never in the discussion.
+Each entry is one bullet, with `<id>` matching `[a-z0-9-]+`:
+
+- `` - `PATTERN-<id>` — adds: <new entry text> ``
+- `` - `PATTERN-<id>` — changes: <new entry text> ``
+- `` - `PATTERN-<id>` — removes ``
+
+An entry ID is listed at most once.
+`lyx loom decision add` appends a bullet with the suffix ` — added after Discussion (<by>, <date>)`.
+A record without the section is valid.
 
 ### Compaction rules
 
@@ -40,6 +55,9 @@ No frontmatter: no `format:` field, no `approved:` field.
 
 - `### Added after Discussion (<by>, <date>): <title>` entries under `## Decisions` are appended only by `lyx loom decision add`.
   A writer never edits or removes one, and a record that drops an entry its history held fails the format check.
+- A `## PATTERN changes` bullet carrying the ` — added after Discussion (<by>, <date>)` suffix is appended only by `lyx loom decision add`.
+  A writer never edits or removes one, and a record that drops a bullet its history held fails the format check wherever the check for dropped `### Added after Discussion` entries runs: the darn discussion gate, `lyx loom validate-discussion` on a darn run and the verb's darn-record check.
+  A loom run's discussion check reads no history for either.
 - `<!-- lyx:carry-over … -->` blocks under `## Open risks` are written only by Go.
   A writer never authors, edits or removes one.
 

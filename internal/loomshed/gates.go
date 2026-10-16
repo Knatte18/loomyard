@@ -182,7 +182,7 @@ func NewDarnDiscussionGate(decisionRecordPath, supportLogPath string, history fu
 	}
 }
 
-// NewPlanGate returns the Plan-Write row's gate closure, a shuttleengine.Gate that parses the plan through planparser.ParsePlan(planparser.PlanDir(anchorPath)) and then runs ValidatePlan(plan, anchorPath, worktreeRoot, index), mapping the result onto the gate contract.
+// NewPlanGate returns the Plan-Write row's gate closure, a shuttleengine.Gate that parses the plan through planparser.ParsePlan(planparser.PlanDir(anchorPath)) and then runs ValidatePlan(plan, anchorPath, worktreeRoot, index, pc), mapping the result onto the gate contract.
 //
 // The two path parameters are separate because planparser.PlanDir and webster's run record take the anchor path while index.ValidateFormat takes the worktree root, and they are not the same value.
 //
@@ -221,9 +221,9 @@ func NewDarnDiscussionGate(decisionRecordPath, supportLogPath string, history fu
 // It encodes a crucible-round finding that planindex.Severity is an open string type, so testing not-informational rather than equals-blocking is what keeps an unrecognized or zero-valued severity from silently passing.
 //
 // scratchDir is the run's told ephemeral scratch directory, where an informational pass records its findings; empty keeps them inline in the log line.
-func NewPlanGate(anchorPath, worktreeRoot, scratchDir string, index planindex.Index) shuttleengine.Gate {
+func NewPlanGate(anchorPath, worktreeRoot, scratchDir string, index planindex.Index, pc PlanContext) shuttleengine.Gate {
 	return planGate("Plan-Gate", anchorPath, scratchDir, func(plan *planparser.Plan) ([]planindex.Finding, error) {
-		return ValidatePlan(plan, anchorPath, worktreeRoot, index)
+		return ValidatePlan(plan, anchorPath, worktreeRoot, index, pc)
 	})
 }
 
@@ -234,7 +234,9 @@ func NewPlanGate(anchorPath, worktreeRoot, scratchDir string, index planindex.In
 //
 // A done card whose file no longer hashes to what its batch recorded at begin adds one blocking done-card-edited finding, since a done card is frozen.
 // It reads the record and the card bytes alone; an unreadable card file is a returned error.
-func ValidatePlan(plan *planparser.Plan, anchorPath, worktreeRoot string, index planindex.Index) ([]planindex.Finding, error) {
+//
+// The findings of planContextFindings over pc follow, scoped to the cards not recorded done, since a done card's rename already ran.
+func ValidatePlan(plan *planparser.Plan, anchorPath, worktreeRoot string, index planindex.Index, pc PlanContext) ([]planindex.Finding, error) {
 	st, err := websterengine.LoadState(websterengine.Dir(anchorPath), websterengine.ScratchDir(anchorPath))
 	if err != nil {
 		return nil, err
@@ -255,7 +257,22 @@ func ValidatePlan(plan *planparser.Plan, anchorPath, worktreeRoot string, index 
 			Severity: planindex.SeverityBlocking,
 		})
 	}
-	return findings, nil
+
+	done := make(map[int]bool)
+	for _, c := range websterengine.DoneCards(plan, st) {
+		done[c.Number] = true
+	}
+	var pending []planparser.Card
+	for _, c := range plan.Cards {
+		if !done[c.Number] {
+			pending = append(pending, c)
+		}
+	}
+	contextFindings, err := planContextFindings(plan, pending, pc)
+	if err != nil {
+		return nil, err
+	}
+	return append(findings, contextFindings...), nil
 }
 
 // doneCardEditedCheck names the finding ValidatePlan appends for an edited done card.
@@ -266,9 +283,9 @@ const doneCardEditedCheck = "done-card-edited"
 //
 // Parse failures, the blocking-versus-informational split and the logging follow the plan gate's contract.
 // It only adds a refusal over NewPlanGate's set: a writer that never records the lens review spends the gate's existing re-prompt budget.
-func NewLensReviewPlanGate(anchorPath, worktreeRoot, scratchDir string, index planindex.Index) shuttleengine.Gate {
+func NewLensReviewPlanGate(anchorPath, worktreeRoot, scratchDir string, index planindex.Index, pc PlanContext) shuttleengine.Gate {
 	return planGate("Plan-Gate", anchorPath, scratchDir, func(plan *planparser.Plan) ([]planindex.Finding, error) {
-		return ValidatePlanLensReview(plan, anchorPath, worktreeRoot, index)
+		return ValidatePlanLensReview(plan, anchorPath, worktreeRoot, index, pc)
 	})
 }
 
@@ -276,8 +293,8 @@ func NewLensReviewPlanGate(anchorPath, worktreeRoot, scratchDir string, index pl
 // An error from ValidatePlan is returned unchanged.
 // The file is checked for presence only and never parsed; its content and timing are not checked.
 // Any read error but not-exist is a returned error, never a finding.
-func ValidatePlanLensReview(plan *planparser.Plan, anchorPath, worktreeRoot string, index planindex.Index) ([]planindex.Finding, error) {
-	findings, err := ValidatePlan(plan, anchorPath, worktreeRoot, index)
+func ValidatePlanLensReview(plan *planparser.Plan, anchorPath, worktreeRoot string, index planindex.Index, pc PlanContext) ([]planindex.Finding, error) {
+	findings, err := ValidatePlan(plan, anchorPath, worktreeRoot, index, pc)
 	if err != nil {
 		return nil, err
 	}
@@ -305,9 +322,9 @@ const lensReviewMissingCheck = "lens-review-missing"
 //
 // Parse failures, the blocking-versus-informational split and the logging follow the plan gate's contract.
 // A plan that cannot be read as committed at HEAD is a returned error, never a finding: the rework session cannot fix a missing baseline.
-func NewReworkPlanGate(anchorPath, worktreeRoot, scratchDir string, index planindex.Index, readCommitted func(anchorRel string) ([]byte, bool, error)) shuttleengine.Gate {
+func NewReworkPlanGate(anchorPath, worktreeRoot, scratchDir string, index planindex.Index, readCommitted func(anchorRel string) ([]byte, bool, error), pc PlanContext) shuttleengine.Gate {
 	return planGate("Rework-Plan-Gate", anchorPath, scratchDir, func(plan *planparser.Plan) ([]planindex.Finding, error) {
-		return ValidateReworkPlan(plan, worktreeRoot, index, readCommitted)
+		return ValidateReworkPlan(plan, worktreeRoot, index, readCommitted, pc)
 	})
 }
 
@@ -315,12 +332,21 @@ func NewReworkPlanGate(anchorPath, worktreeRoot, scratchDir string, index planin
 // The told number is NextReworkCardNumber over the plan committed at HEAD, which still holds the retired generation until the round commit, so it is stable for the gate's whole window.
 // readCommitted returns an anchor-relative file as committed at HEAD, with found false when HEAD has no such file.
 // A plan that cannot be read as committed at HEAD is a returned error.
-func ValidateReworkPlan(plan *planparser.Plan, worktreeRoot string, index planindex.Index, readCommitted func(anchorRel string) ([]byte, bool, error)) ([]planindex.Finding, error) {
+// The findings of planContextFindings over pc and every card of the fresh generation follow.
+func ValidateReworkPlan(plan *planparser.Plan, worktreeRoot string, index planindex.Index, readCommitted func(anchorRel string) ([]byte, bool, error), pc PlanContext) ([]planindex.Finding, error) {
 	told, err := NextReworkCardNumber(plan.Dir, readCommitted)
 	if err != nil {
 		return nil, fmt.Errorf("read the plan committed at HEAD: %w", err)
 	}
-	return index.ValidateRework(plan, worktreeRoot, told)
+	findings, err := index.ValidateRework(plan, worktreeRoot, told)
+	if err != nil {
+		return nil, err
+	}
+	contextFindings, err := planContextFindings(plan, plan.Cards, pc)
+	if err != nil {
+		return nil, err
+	}
+	return append(findings, contextFindings...), nil
 }
 
 // planGate builds a plan gate closure named gateName in its log lines: it parses the plan under anchorPath, runs validate over it, and maps the result onto the gate contract.

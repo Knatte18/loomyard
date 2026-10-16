@@ -173,8 +173,38 @@ func TestBeginBatch_Refusals(t *testing.T) {
 		// wantText lists what the error names; wantNotText what it must not.
 		wantText    []string
 		wantNotText []string
-		check       func(t *testing.T, fx *beginFixture)
+		// proceeds marks a row whose call passes the rename-tool check and so may end in no error or in a refusal of its own.
+		proceeds bool
+		check    func(t *testing.T, fx *beginFixture)
 	}{
+		{
+			name: "a symbol Rename pair under an empty rename tool list refuses and records no batch",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				fx.Deps.Batches[0].Cards[0].Pairs = []planparser.MovePair{{Old: "sub#Foo", New: "plan:sub#Bar"}}
+			},
+			wantIs:   websterengine.ErrRenameToolMissing,
+			wantText: []string{"sub#Foo", "1-json-flag", `way forward: set rename_tools with "lyx config language"`, "lyx webster begin-batch 1"},
+			check: func(t *testing.T, fx *beginFixture) {
+				if len(fx.Deps.State.Batches) != 0 {
+					t.Errorf("state batches = %v; want none recorded", fx.Deps.State.Batches)
+				}
+			},
+		},
+		{
+			name: "a symbol Rename pair under a listed rename tool passes the check",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				fx.Deps.Batches[0].Cards[0].Pairs = []planparser.MovePair{{Old: "sub#Foo", New: "plan:sub#Bar"}}
+				fx.Deps.RenameTools = []string{"rename Go symbols with `gopls rename`"}
+			},
+			proceeds: true,
+		},
+		{
+			name: "a file Rename pair under an empty rename tool list passes the check",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				fx.Deps.Batches[0].Cards[0].Pairs = []planparser.MovePair{{Old: "internal/a/old.go#", New: "internal/a/new.go#"}}
+			},
+			proceeds: true,
+		},
 		{
 			name: "a plan edited after run init points at the reset-to-start route",
 			prepare: func(t *testing.T, fx *beginFixture) {
@@ -379,6 +409,12 @@ func TestBeginBatch_Refusals(t *testing.T) {
 			tt.prepare(t, fx)
 
 			_, err := websterengine.BeginBatch(fx.Deps, 1)
+			if tt.proceeds {
+				if errors.Is(err, websterengine.ErrRenameToolMissing) {
+					t.Errorf("BeginBatch() error = %v; want the rename-tool check passed", err)
+				}
+				return
+			}
 			if err == nil {
 				t.Fatal("BeginBatch() error = nil; want a refusal")
 			}
@@ -457,6 +493,16 @@ func TestBeginBatch_PromptFile(t *testing.T) {
 			want:   []string{"scope-guard deviations=a.go,docs/b.md"},
 		},
 		{
+			name: "the predecessor digest names the batch's pattern departures",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				d := done(1, "json-flag", "deadbeef")
+				d.Digest.Departures = []string{"1: json-flag: kept a legacy name", "1: json-flag: skipped a scan"}
+				fx.Deps.State.Batches = map[int]*websterengine.BatchState{1: d}
+			},
+			number: 2,
+			want:   []string{"pattern departures=1: json-flag: kept a legacy name; 1: json-flag: skipped a scan"},
+		},
+		{
 			name: "reordered execution: the predecessor is the batch that ran before it",
 			prepare: func(t *testing.T, fx *beginFixture) {
 				reordered(t, fx)
@@ -478,6 +524,15 @@ func TestBeginBatch_PromptFile(t *testing.T) {
 			},
 			number: 1,
 			want:   []string{"- run `go test` on the listed packages\n"},
+		},
+		{
+			name: "the hub's rename tools and the plan's verify command render",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				fx.Deps.RenameTools = []string{"rename Go symbols with `gopls rename`"}
+				fx.Deps.Plan.Verify = "go test ./..."
+			},
+			number: 1,
+			want:   []string{"- rename Go symbols with `gopls rename`\n", "verify command follows:\n\ngo test ./...\n"},
 		},
 		{
 			name: "each card carries its gate steps",
@@ -1127,7 +1182,6 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 	const plainStepOne = "1. Read the card file."
 	const perCardFreshRead = "Your first work turn"
 	const perCardStepOne = "lyx loom card-pack <N>"
-	const inlineFirstTurn = "Your first turn, before any edit"
 	resolvedBaz := []string{
 		packHeading,
 		"- `internal/foo#Baz`",
@@ -1145,19 +1199,15 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 		prepare  func(index *fakeIndex)
 		// cardHeadings are card file base names whose pointer bullet and pack subsection heading the prompt must hold.
 		cardHeadings []string
-		// inline sets kickstart_pack_file false before the first call.
-		inline bool
 		// perCard sets kickstart_pack_per_card true before the first call.
 		perCard bool
 		// standaloneGeom gives the anchor a directory apart from the worktree, as a standalone geometry does.
 		standaloneGeom bool
-		// flip makes the case call begin-batch once, flip kickstart_pack_file and call it again, and assert on the second call's files.
+		// flip makes the case call begin-batch once, flip kickstart_pack_per_card and call it again, and assert on the second call's files.
 		flip bool
-		// flipPerCard makes flip toggle kickstart_pack_per_card instead of kickstart_pack_file.
-		flipPerCard bool
 		// stalePack says the pack file the first call wrote is still on disk after the second, which names neither the read line nor the pack path, so the needles are checked against the prompt alone.
 		stalePack bool
-		// layoutBlind makes the case call begin-batch again with kickstart_pack_file and kickstart_pack_per_card both flipped and require the same prompt bytes, still no pack file and its first log needle on both calls.
+		// layoutBlind makes the case call begin-batch again with kickstart_pack_per_card flipped and require the same prompt bytes, still no pack file and its first log needle on both calls.
 		layoutBlind bool
 		// noPack says begin-batch writes no pack file.
 		noPack bool
@@ -1197,35 +1247,6 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 			wantLog: []string{"batch=1 kickstart_pack=on resolved=0 unresolved=1 pack_layout=file"},
 		},
 		{
-			name:          "the inline layout carries the pack in the prompt and writes no pack file",
-			inline:        true,
-			noPack:        true,
-			wantPrompt:    append([]string{inlineFirstTurn}, resolvedBaz...),
-			wantNotPrompt: []string{"## Start here", packFirstTurn},
-			wantLog:       []string{"batch=1 kickstart_pack=on resolved=1 unresolved=0 pack_layout=inline"},
-		},
-		{
-			name:       "a flip from inline to file writes the pack file",
-			inline:     true,
-			flip:       true,
-			wantPrompt: append([]string{packFirstTurn}, resolvedBaz...),
-			wantLog: []string{
-				"batch=1 kickstart_pack=on resolved=1 unresolved=0 pack_layout=inline",
-				"batch=1 kickstart_pack=on resolved=1 unresolved=0 pack_layout=file",
-			},
-		},
-		{
-			name:          "a flip from file to inline leaves a prompt that names no pack file",
-			flip:          true,
-			stalePack:     true,
-			wantPrompt:    []string{packHeading, inlineFirstTurn},
-			wantNotPrompt: []string{"## Start here"},
-			wantLog: []string{
-				"batch=1 kickstart_pack=on resolved=1 unresolved=0 pack_layout=file",
-				"batch=1 kickstart_pack=on resolved=1 unresolved=0 pack_layout=inline",
-			},
-		},
-		{
 			name:          "the per-card layout writes no pack file and names card-pack",
 			perCard:       true,
 			noPack:        true,
@@ -1234,18 +1255,8 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 			wantLog:       []string{"batch=1 kickstart_pack=on resolved=1 unresolved=0 pack_layout=card"},
 		},
 		{
-			name:          "the per-card switch overrides kickstart_pack_file",
-			perCard:       true,
-			inline:        true,
-			noPack:        true,
-			wantPrompt:    []string{perCardFreshRead, perCardStepOne, "## Start here"},
-			wantNotPrompt: []string{packFirstTurn, packHeading, "- `internal/foo#Baz`", "internal/foo/impl.go"},
-			wantLog:       []string{"batch=1 kickstart_pack=on resolved=1 unresolved=0 pack_layout=card"},
-		},
-		{
 			name:          "a flip from file to per-card leaves a prompt that names no pack file",
 			flip:          true,
-			flipPerCard:   true,
 			stalePack:     true,
 			wantPrompt:    []string{perCardFreshRead, perCardStepOne, "## Start here"},
 			wantNotPrompt: []string{packFirstTurn, packHeading},
@@ -1255,11 +1266,10 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 			},
 		},
 		{
-			name:        "a flip from per-card to file writes the pack file",
-			perCard:     true,
-			flip:        true,
-			flipPerCard: true,
-			wantPrompt:  append([]string{packFirstTurn}, resolvedBaz...),
+			name:       "a flip from per-card to file writes the pack file",
+			perCard:    true,
+			flip:       true,
+			wantPrompt: append([]string{packFirstTurn}, resolvedBaz...),
 			wantLog: []string{
 				"batch=1 kickstart_pack=on resolved=1 unresolved=0 pack_layout=card",
 				"batch=1 kickstart_pack=on resolved=1 unresolved=0 pack_layout=file",
@@ -1379,7 +1389,6 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 				fx.Deps.Batches = []batcher.Batch{{Cards: plan.Cards}}
 			}
 			fx.Deps.Config.KickstartPack = !tt.off
-			fx.Deps.Config.KickstartPackFile = !tt.inline
 			fx.Deps.Config.KickstartPackPerCard = tt.perCard
 			if tt.standaloneGeom {
 				fx.Deps.Geom.AnchorRoot = t.TempDir()
@@ -1397,15 +1406,7 @@ func TestBeginBatch_KickstartPack(t *testing.T) {
 				t.Fatalf("read the first prompt file: %v", err)
 			}
 			if tt.flip || tt.layoutBlind {
-				switch {
-				case tt.layoutBlind:
-					fx.Deps.Config.KickstartPackFile = !fx.Deps.Config.KickstartPackFile
-					fx.Deps.Config.KickstartPackPerCard = !fx.Deps.Config.KickstartPackPerCard
-				case tt.flipPerCard:
-					fx.Deps.Config.KickstartPackPerCard = !fx.Deps.Config.KickstartPackPerCard
-				default:
-					fx.Deps.Config.KickstartPackFile = !fx.Deps.Config.KickstartPackFile
-				}
+				fx.Deps.Config.KickstartPackPerCard = !fx.Deps.Config.KickstartPackPerCard
 				result, err = websterengine.BeginBatch(fx.Deps, 1)
 				if err != nil {
 					t.Fatalf("second BeginBatch() error = %v; want nil", err)

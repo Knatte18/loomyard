@@ -30,7 +30,7 @@ internal/configsync: 9
 internal/creelcli: 4
 internal/creelengine: 11
 internal/darnengine: 4
-internal/discussionparser: 20
+internal/discussionparser: 22
 internal/dotgit: 3
 internal/durfmt: 2
 internal/editdirective: 2
@@ -83,7 +83,7 @@ internal/parentlock: 16
 internal/parentreview: 54
 internal/pattern: 8
 internal/planglyph: 87
-internal/planparser: 96
+internal/planparser: 97
 internal/preflight: 7
 internal/preflightshed: 8
 internal/proc: 18
@@ -147,7 +147,7 @@ internal/twilldirective: 4
 internal/verifyrun: 4
 internal/verifytree: 7
 internal/vscode: 12
-internal/webstercli: 81
+internal/webstercli: 82
 internal/websterengine: 203
 internal/weftname: 1
 internal/yamlengine: 19

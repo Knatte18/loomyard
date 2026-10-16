@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -65,6 +66,7 @@ func resolveModelChoice(raw string, reg modelspec.Registry) (shuttleengine.Model
 // The seats' opening stencils are read at call time from stencilsDir, the lead's prompt points at the format spec under specsDir, and every seat's parent directive is rendered by the seat engine from its geometry.
 // The table carries no gate; the producer entry sets it.
 // A lead with no advisors decides each question itself, as its prompt says.
+// The PATTERN directive renders the PATTERN changes the decision record declares; a malformed section fails the table, naming the way forward.
 // A PATTERN directive or Tier 2 friction directive that cannot be rendered is left empty, the friction failure logged, and never fails the table.
 func DiscussionTable(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir, specsDir string, cfg Config, reg modelspec.Registry, slug string) (seatengine.Table, error) {
 	if slug == "" {
@@ -76,7 +78,11 @@ func DiscussionTable(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDi
 		return seatengine.Table{}, fmt.Errorf("loom: DiscussionTable: discussion role model-spec: %w", err)
 	}
 
-	patternDirective, err := pattern.Directive(layout.WorktreePath(), stencilsDir, pattern.RoleDesigner)
+	declaredChanges, err := discussionparser.DeclaredPatternChanges(DiscussionDecisionRecord(layout))
+	if err != nil {
+		return seatengine.Table{}, fmt.Errorf("loom: DiscussionTable: %w re-step the row with %q", err, "lyx loom start")
+	}
+	patternDirective, err := pattern.Directive(layout.WorktreePath(), stencilsDir, pattern.RoleDesigner, declaredChanges)
 	if err != nil {
 		return seatengine.Table{}, fmt.Errorf("loom: DiscussionTable: pattern directive: %w", err)
 	}

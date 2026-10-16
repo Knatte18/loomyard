@@ -1,8 +1,6 @@
-// sections.go extracts the overview's three optional plan-level body sections — "## Shared
-// Decisions", "## Rename mechanic", and "## verify:" — into Plan's SharedDecisions, RenameMechanic,
-// and Verify fields.
-// All three are read once from 00-overview.md's body by ParsePlan; nothing else in this package
-// re-parses them.
+// sections.go extracts the overview's four optional plan-level body sections into Plan's SharedDecisions, RenameMechanic, Verify and PatternChanges fields.
+// The sections are "## Shared Decisions", "## Rename mechanic", "## verify:" and "## PATTERN changes".
+// All four are read once from 00-overview.md's body by ParsePlan; nothing else in this package re-parses them.
 
 package planparser
 
@@ -75,9 +73,74 @@ func joinVerifyCommands(section []string) string {
 	return strings.Join(commands, verifyCommandJoiner)
 }
 
-// extractPlanSections populates plan's three plan-level body sections from the overview's body.
+// patternChangesHeading is the exact "## " heading loom-plan-spec.md pins for the overview's optional PATTERN changes section.
+const patternChangesHeading = "## PATTERN changes"
+
+// patternEntryPrefix opens the backticked entry id of a PATTERN changes bullet.
+const patternEntryPrefix = "PATTERN-"
+
+// patternChangeSeparator joins a bullet's entry id to its action.
+const patternChangeSeparator = " — "
+
+// PatternChange is one bullet of the overview's "## PATTERN changes" section: the PATTERN entry the task changes, how, and the declared text.
+// A line fitting no bullet shape is kept with an empty ID and Action and the whole line as Text, so a comparison against the decision record flags it.
+type PatternChange struct {
+	// ID is the backticked entry id without the backticks, such as "PATTERN-cwd-resolution".
+	ID string
+	// Action is the verb before the colon, or "removes" for a bullet that ends there.
+	Action string
+	// Text is the trimmed declared text after the colon, empty for "removes".
+	Text string
+}
+
+// parsePatternChanges reads each non-blank, non-fence line of section as a PATTERN change.
+// A line of the shape "- `PATTERN-<id>` — <action>: <text>" or "- `PATTERN-<id>` — removes" yields its id, action and text;
+// any other line yields an entry with only Text set to the trimmed line.
+// It returns nil when the section holds no such line.
+func parsePatternChanges(section []string) []PatternChange {
+	var changes []PatternChange
+	for _, raw := range section {
+		line := strings.TrimSpace(raw)
+		if line == "" || strings.HasPrefix(line, "```") || strings.HasPrefix(line, "~~~") {
+			continue
+		}
+		if change, ok := parsePatternChangeBullet(line); ok {
+			changes = append(changes, change)
+			continue
+		}
+		changes = append(changes, PatternChange{Text: line})
+	}
+	return changes
+}
+
+// parsePatternChangeBullet reports line's id, action and text when it fits the PATTERN change bullet shape.
+func parsePatternChangeBullet(line string) (PatternChange, bool) {
+	rest, ok := strings.CutPrefix(line, "- `"+patternEntryPrefix)
+	if !ok {
+		return PatternChange{}, false
+	}
+	id, rest, ok := strings.Cut(rest, "`"+patternChangeSeparator)
+	if !ok || id == "" {
+		return PatternChange{}, false
+	}
+	change := PatternChange{ID: patternEntryPrefix + id}
+	if rest == "removes" {
+		change.Action = rest
+		return change, true
+	}
+	action, text, ok := strings.Cut(rest, ": ")
+	if !ok || action == "" || strings.ContainsAny(action, " \t") {
+		return PatternChange{}, false
+	}
+	change.Action = action
+	change.Text = strings.TrimSpace(text)
+	return change, true
+}
+
+// extractPlanSections populates plan's four plan-level body sections from the overview's body.
 func extractPlanSections(plan *Plan, body string) {
 	plan.SharedDecisions = joinSectionBody(extractSection(body, sharedDecisionsHeading))
 	plan.RenameMechanic = joinSectionBody(extractSection(body, renameMechanicHeading))
 	plan.Verify = joinVerifyCommands(extractSection(body, planVerifyHeading))
+	plan.PatternChanges = parsePatternChanges(extractSection(body, patternChangesHeading))
 }

@@ -9,6 +9,7 @@ package websterengine_test
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -132,6 +133,10 @@ func newRecordFixture(t *testing.T, scripted []shuttleengine.ForkAudit) *recordF
 func newRecordFixtureOver(t *testing.T, worktree string, git websterengine.Git, startSHA, headSHA string, scripted []shuttleengine.ForkAudit) *recordFixture {
 	t.Helper()
 
+	// A caller's startSHA stays on head's first-parent line, so the digest's commit read answers over a fake.
+	if fake, ok := git.(*fakeGit); ok {
+		fake.ensureOnFirstParentLine(startSHA, headSHA)
+	}
 	fakeIdx, index := indexOver(git)
 	cards := []planparser.Card{{Number: 1, Slug: "json-flag", Title: "json-flag", Intent: "add the --json flag"}}
 	batches := []batcher.Batch{{Cards: cards}}
@@ -1939,6 +1944,7 @@ func TestRecordBatch_ScopeGuardDegradesOnDeltaUnavailable(t *testing.T) {
 	})
 	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
 	fx.Deps.State.Batches[1].StartSHA = "does-not-exist-rev"
+	fx.Git.ensureOnFirstParentLine("does-not-exist-rev", fx.HeadSHA)
 	fx.Index.deltaErr = fmt.Errorf("%w: delta does-not-exist-rev..%s: unknown revision", planglyph.ErrQuarryUnavailable, fx.HeadSHA)
 
 	result, err := websterengine.RecordBatch(fx.Deps, 1)
@@ -2031,6 +2037,8 @@ func TestRecordBatch_ParentMovedHead(t *testing.T) {
 		// wantRefusal lists what the refusal contains; nil means the call records.
 		wantRefusal func(fx *recordFixture, newHead string) []string
 		check       func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, merges []string)
+		// heal undoes a refusal's cause beyond HEAD before the retry.
+		heal func(fx *recordFixture)
 	}{
 		{
 			// The merge commit is both the new HEAD and the one walked merge.
@@ -2142,6 +2150,64 @@ func TestRecordBatch_ParentMovedHead(t *testing.T) {
 			},
 		},
 		{
+			name: "a trailer before StartSHA and one on a parent merge-in's side commit are not recorded",
+			move: func(fx *recordFixture) []string {
+				fx.Git.prependCommitWith("earlier work", "predates the batch")
+				merge, tip := fx.Git.merge("")
+				fx.Git.logs[tip] = websterengine.CommitLogEntry{SHA: tip, Subject: "parent side", Departures: []string{"from the parent branch"}}
+				return []string{merge}
+			},
+			check: func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, merges []string) {
+				if len(result.Digest.Departures) != 0 {
+					t.Errorf("Digest.Departures = %v; want none", result.Digest.Departures)
+				}
+				persisted, err := json.Marshal(fx.Deps.State.Batches[1].Digest)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if strings.Contains(string(persisted), "departures") {
+					t.Errorf("persisted digest %s holds a departures key; want none for a batch without trailers", persisted)
+				}
+			},
+		},
+		{
+			name: "a batch commit's trailers are recorded as subject and value",
+			move: func(fx *recordFixture) []string {
+				fx.Git.logs[fx.HeadSHA] = websterengine.CommitLogEntry{SHA: fx.HeadSHA, Subject: "1: json-flag", Departures: []string{"first", "second: with a colon"}}
+				return nil
+			},
+			check: func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, merges []string) {
+				want := []string{"1: json-flag: first", "1: json-flag: second: with a colon"}
+				if !slices.Equal(result.Digest.Departures, want) {
+					t.Errorf("Digest.Departures = %v; want %v", result.Digest.Departures, want)
+				}
+			},
+		},
+		{
+			name: "a record with an empty StartSHA records none without reading the log",
+			move: func(fx *recordFixture) []string {
+				fx.Git.logs[fx.HeadSHA] = websterengine.CommitLogEntry{SHA: fx.HeadSHA, Subject: "1: json-flag", Departures: []string{"unread"}}
+				fx.Deps.State.Batches[1].StartSHA = ""
+				return nil
+			},
+			check: func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, merges []string) {
+				if len(result.Digest.Departures) != 0 || fx.Git.commitLogCalls != 0 {
+					t.Errorf("Departures = %v after %d CommitLog calls; want none after none", result.Digest.Departures, fx.Git.commitLogCalls)
+				}
+			},
+		},
+		{
+			name: "a StartSHA the repository does not hold is a transient refusal",
+			move: func(fx *recordFixture) []string {
+				fx.Deps.State.Batches[1].StartSHA = strings.Repeat("0", 40)
+				return nil
+			},
+			wantRefusal: func(fx *recordFixture, newHead string) []string {
+				return []string{"departures", "way forward: transient, re-run the verb"}
+			},
+			heal: func(fx *recordFixture) { fx.Deps.State.Batches[1].StartSHA = fx.StartSHA },
+		},
+		{
 			// Content outside the audited StartSHA..head_sha delta can never ride in on a merge commit.
 			name: "a parent merge carrying an extra edit is refused",
 			move: func(fx *recordFixture) []string {
@@ -2184,6 +2250,9 @@ func TestRecordBatch_ParentMovedHead(t *testing.T) {
 			// Taking the way forward: HEAD goes back to the report's head_sha and the same call records.
 			fx.Git.head = fx.HeadSHA
 			restore()
+			if tc.heal != nil {
+				tc.heal(fx)
+			}
 			if _, err := websterengine.RecordBatch(fx.Deps, 1); err != nil {
 				t.Fatalf("retry RecordBatch() error = %v; want nil", err)
 			}

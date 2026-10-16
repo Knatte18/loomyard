@@ -554,9 +554,15 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		return &RecordResult{Digest: bs.Digest, Failed: true, Warnings: warnings}, bfe
 	}
 
+	departures, err := batchDepartures(deps.Geom, bs.StartSHA, report.HeadSHA)
+	if err != nil {
+		return nil, err
+	}
+
 	digest := distill(report)
 	digest.Batch = polledID
 	digest.Deviations = deviations
+	digest.Departures = departures
 
 	bs.Digest = &digest
 	bs.CardSHAs = []string{report.HeadSHA}

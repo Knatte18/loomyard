@@ -76,6 +76,8 @@ func TestRun_VerifyGate(t *testing.T) {
 
 		var findings string
 		var reprompts int
+		var fixSHA string
+		const fixSubject = "fix: repair batch1"
 		fx.Starter.handle = &runFakeHandle{
 			strandGUID: "master-strand-gatepass",
 			result: shuttleengine.Result{
@@ -112,6 +114,7 @@ func TestRun_VerifyGate(t *testing.T) {
 				if err := os.WriteFile(okFile, nil, 0o644); err != nil {
 					t.Fatalf("write ok file: %v", err)
 				}
+				fixSHA = gitkit.CommitFile(t, fx.Worktree, "fix.txt", "fix\n", fixSubject+"\n\nPattern-Departure: PATTERN-x — differs from the card")
 				second, err := entry.Gate()
 				if err != nil || !second.Passed {
 					t.Fatalf("second gate evaluation = %+v, %v; want a pass", second, err)
@@ -138,6 +141,18 @@ func TestRun_VerifyGate(t *testing.T) {
 		}
 		if _, err := os.Stat(websterengine.VerifyGateReportPath(fx.Deps.Geom.ReportsDir)); err != nil {
 			t.Errorf("verify-gate report: %v; want one written by the failed evaluation", err)
+		}
+		summary, err := os.ReadFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"))
+		if err != nil {
+			t.Fatalf("read summary.md: %v", err)
+		}
+		for _, want := range []string{"## Verify gate fix commits", fixSHA, fixSubject, fixSubject + ": PATTERN-x — differs from the card"} {
+			if !strings.Contains(string(summary), want) {
+				t.Errorf("summary.md = %q; want %q in it", summary, want)
+			}
+		}
+		if strings.Contains(string(summary), "## Integration suite triage") {
+			t.Errorf("summary.md = %q; want no flaky identity recorded", summary)
 		}
 	})
 

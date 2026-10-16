@@ -734,6 +734,9 @@ func TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig(t *testing.T) {
 	if c.env.DecisionRecordPath != loomengine.DiscussionDecisionRecord(location) {
 		t.Errorf("env.DecisionRecordPath = %q; want %q", c.env.DecisionRecordPath, loomengine.DiscussionDecisionRecord(location))
 	}
+	if c.env.PatternRecordPath != loomengine.DiscussionDecisionRecord(location) {
+		t.Errorf("env.PatternRecordPath = %q; want %q", c.env.PatternRecordPath, loomengine.DiscussionDecisionRecord(location))
+	}
 	if c.env.SupportLogPath != loomengine.DiscussionSupportLog(location) {
 		t.Errorf("env.SupportLogPath = %q; want %q", c.env.SupportLogPath, loomengine.DiscussionSupportLog(location))
 	}
@@ -757,6 +760,10 @@ func TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig(t *testing.T) {
 	darn.wireLightweight(location, location.AnchorPath())
 	if darn.env.DiscussionHistory == nil || darn.env.CommitDiscussion == nil {
 		t.Error("a darn-recipe wireLightweight left a discussion seam nil; want the history and commit seams")
+	}
+	// A darn run takes no PATTERN declaration, so its review rows are told no record.
+	if darn.env.PatternRecordPath != "" {
+		t.Errorf("darn env.PatternRecordPath = %q; want empty", darn.env.PatternRecordPath)
 	}
 	// Nothing that a module config would have filled may be populated: that is what proves no load
 	// happened rather than merely that none failed.
@@ -1022,12 +1029,14 @@ func TestWire_LanguageSkills(t *testing.T) {
 		wantKey    string
 		wantSkills []string
 		wantTiers  []string
+		wantTools  []string
 	}{
 		{
 			name:       "a listed language reaches the Webster deps and the darn writer after its own",
-			content:    "skills:\n  - scribe:golang-comments\n  - scribe:golang-testing\nverify_tiers:\n  - build first\n  - vet second\n",
+			content:    "skills:\n  - scribe:golang-comments\n  - scribe:golang-testing\nverify_tiers:\n  - build first\n  - vet second\nrename_tools:\n  - gopls rename\n",
 			wantSkills: []string{"scribe:golang-comments", "scribe:golang-testing"},
 			wantTiers:  []string{"build first", "vet second"},
+			wantTools:  []string{"gopls rename"},
 		},
 		{
 			name:    "an empty skills entry halts wire naming skills and the way forward",
@@ -1069,6 +1078,9 @@ func TestWire_LanguageSkills(t *testing.T) {
 			}
 			if !slices.Equal(c.env.VerifyTiers, tt.wantTiers) {
 				t.Errorf("env.VerifyTiers = %q; want %q", c.env.VerifyTiers, tt.wantTiers)
+			}
+			if !slices.Equal(c.env.RenameTools, tt.wantTools) {
+				t.Errorf("env.RenameTools = %q; want %q", c.env.RenameTools, tt.wantTools)
 			}
 			if !slices.Equal(c.languageSkills, tt.wantSkills) || !slices.Equal(c.runDeps.LanguageSkills, tt.wantSkills) {
 				t.Errorf("languageSkills = %v, runDeps.LanguageSkills = %v; want %v", c.languageSkills, c.runDeps.LanguageSkills, tt.wantSkills)

@@ -58,8 +58,8 @@ var requiredDiscussionSections = []string{
 // supportLogPath -- a not-exist yields exactly one Finding and a nil error, any other stat error
 // returns immediately as a returned error with a nil findings slice.
 // Then os.ReadFile decisionRecordPath, with the identical two-way split.
-// Only then does the heading check run, which is the sole place findings accumulate -- one Finding
-// per missing heading.
+// Only then do the checks that accumulate findings run: the heading check, one Finding per missing heading, and then the optional `## PATTERN changes` section's shape check, one Finding per malformed bullet.
+// A record without that section passes it.
 //
 // A clean run returns a nil (or empty) slice and a nil error. Validate never returns a non-empty
 // findings slice together with a non-nil error.
@@ -90,6 +90,12 @@ func Validate(decisionRecordPath, supportLogPath string) ([]Finding, error) {
 			Path:   decisionRecordPath,
 			Detail: "decision record is missing required section " + missing,
 		})
+	}
+
+	_, patternFindings := ParsePatternChanges(data)
+	for _, f := range patternFindings {
+		f.Path = decisionRecordPath
+		findings = append(findings, f)
 	}
 
 	return findings, nil

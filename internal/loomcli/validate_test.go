@@ -16,8 +16,10 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
@@ -316,11 +318,28 @@ func planFixture(t *testing.T, anchorPath, worktreeRoot string, approved bool) *
 		}},
 	})
 
-	return &loomCLI{env: shedrecipe.Env{
+	return &loomCLI{location: hubLocationAt(t, anchorPath, ""), env: shedrecipe.Env{
 		PlanIndex:    planglyph.NewIndex(fabricengine.NewReferenceRule()),
 		AnchorPath:   anchorPath,
 		WorktreeRoot: worktreeRoot,
 	}}
+}
+
+// hubLocationAt returns a Location whose anchor is anchorPath, under a hub that holds the hub-wide language.yaml languageContent when that is non-empty and none otherwise.
+// The hub is anchorPath's parent directory, so a test's plan fixtures and its language file share one temp tree.
+func hubLocationAt(t *testing.T, anchorPath, languageContent string) *lyxcwd.Location {
+	t.Helper()
+	loc := &lyxcwd.Location{HubPath: filepath.Dir(anchorPath), WorktreeName: filepath.Base(anchorPath), AnchorRel: "."}
+	if languageContent != "" {
+		languagePath := configengine.ConfigFile(fabricengine.BoardDir(loc.HubPath), "language")
+		if err := os.MkdirAll(filepath.Dir(languagePath), 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(languagePath), err)
+		}
+		if err := os.WriteFile(languagePath, []byte(languageContent), 0o644); err != nil {
+			t.Fatalf("WriteFile(%q) = %v; want nil", languagePath, err)
+		}
+	}
+	return loc
 }
 
 // glyphPlanFixture writes a syntactically complete, one-card language: go plan under
@@ -343,7 +362,7 @@ func glyphPlanFixture(t *testing.T, anchorPath, worktreeRoot, createTarget strin
 		}},
 	})
 
-	return &loomCLI{env: shedrecipe.Env{
+	return &loomCLI{location: hubLocationAt(t, anchorPath, ""), env: shedrecipe.Env{
 		PlanIndex:    planglyph.NewIndex(fabricengine.NewReferenceRule()),
 		AnchorPath:   anchorPath,
 		WorktreeRoot: worktreeRoot,
@@ -429,7 +448,7 @@ func TestValidatePlanCmd_ReworkReportsGateFindingsForFirstCardMismatch(t *testin
 	plankit.WriteTree(t, worktreeRoot, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
 	c := reworkParityFixture(t, anchorPath, worktreeRoot, 1, "", "", "", true)
 
-	result, err := loomshed.NewReworkPlanGate(c.env.AnchorPath, c.env.WorktreeRoot, c.env.RunScratchDir, planglyph.NewIndex(fabricengine.NewReferenceRule()), c.env.Rework.ReadCommitted)()
+	result, err := loomshed.NewReworkPlanGate(c.env.AnchorPath, c.env.WorktreeRoot, c.env.RunScratchDir, planglyph.NewIndex(fabricengine.NewReferenceRule()), c.env.Rework.ReadCommitted, loomshed.PlanContext{})()
 	if err != nil || result.Passed {
 		t.Fatalf("gate = %+v, %v; want a failing verdict", result, err)
 	}
@@ -510,7 +529,7 @@ func TestValidatePlanCmd(t *testing.T) {
 		{
 			name: "ParseFault_NoPlanDirectory",
 			build: func(anchorPath, worktreeRoot string) *loomCLI {
-				return &loomCLI{env: shedrecipe.Env{
+				return &loomCLI{location: hubLocationAt(t, anchorPath, ""), env: shedrecipe.Env{
 					PlanIndex:    planglyph.NewIndex(fabricengine.NewReferenceRule()),
 					AnchorPath:   anchorPath,
 					WorktreeRoot: worktreeRoot,
@@ -577,6 +596,32 @@ func TestValidatePlanCmd(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("UnusableLanguageConfigIsRefusedNamingTheWayForward", func(t *testing.T) {
+		anchorPath := t.TempDir()
+		c := planFixture(t, anchorPath, t.TempDir(), true)
+		c.location = hubLocationAt(t, anchorPath, "rename_tools: [\"\"]\n")
+
+		var out bytes.Buffer
+		if exitCode := clihelp.Execute(c.validatePlanCmd(), &out, nil); exitCode != 1 {
+			t.Fatalf("exit code = %d; want 1 (output: %q)", exitCode, out.String())
+		}
+		envelope.RequireErr(t, out.String(), "lyx config language")
+	})
+
+	t.Run("LensReviewReportsASymbolRenameWithNoRenameTool", func(t *testing.T) {
+		anchorPath := t.TempDir()
+		c := symbolRenamePlanFixture(t, anchorPath, t.TempDir())
+		c.location = hubLocationAt(t, anchorPath, "")
+
+		var out bytes.Buffer
+		if exitCode := clihelp.Execute(c.validatePlanCmd(), &out, []string{"--lens-review"}); exitCode != 1 {
+			t.Fatalf("exit code = %d; want 1 (output: %q)", exitCode, out.String())
+		}
+		if !strings.Contains(out.String(), "rename-tool-missing") {
+			t.Errorf("output = %q; want it to report rename-tool-missing", out.String())
+		}
+	})
 }
 
 // envelopeContains reports whether v -- expected to be a []any of strings, as JSON decodes the

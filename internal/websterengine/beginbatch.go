@@ -141,6 +141,9 @@ type BeginDeps struct {
 
 	// VerifyTiers are the hub's verify tiers the fork prompt renders; empty for none.
 	VerifyTiers []string
+
+	// RenameTools are the hub's structure-aware rename tools the fork prompt renders; empty for none.
+	RenameTools []string
 }
 
 // BeginResult is what one successful BeginBatch call returns to its caller.
@@ -329,6 +332,27 @@ func findBatch(batches []batcher.Batch, number int) (batcher.Batch, error) {
 	return batcher.Batch{}, fmt.Errorf("webster: batch %d not found in the plan's execution batches; way forward: `lyx webster status` lists the run's batches, name one of those", number)
 }
 
+// ErrRenameToolMissing is the sentinel a refusal unwraps to when a batch holds a symbol Rename pair and the hub lists no rename tool.
+var ErrRenameToolMissing = errors.New("webster: the batch holds a symbol Rename pair and the hub lists no rename tool")
+
+// renameToolRefusal refuses a batch holding a symbol Rename pair when renameTools is empty, because the fork has no tool to run the rename with.
+// It returns nil when renameTools is non-empty or the batch holds only file pairs.
+// verb names the webster verb the way forward re-runs.
+func renameToolRefusal(plan *planparser.Plan, batch batcher.Batch, renameTools []string, verb string) error {
+	if len(renameTools) > 0 {
+		return nil
+	}
+	number, slug := batchIdentity(batch)
+	for _, card := range batch.Cards {
+		pairs := planparser.SymbolRenamePairs(plan, []planparser.Card{card})
+		if len(pairs) == 0 {
+			continue
+		}
+		return fmt.Errorf("%w: batch %02d-%s, symbol pair %s -> %s on card %s; way forward: set rename_tools with \"lyx config language\" from the prime, or recast the card, then re-run `lyx webster %s %d`", ErrRenameToolMissing, number, slug, pairs[0].Old, pairs[0].New, card.ID(), verb, number)
+	}
+	return nil
+}
+
 // digestSummaryLine renders d into the one-line summary RenderForkPrompt's prevDigest parameter expects.
 func digestSummaryLine(d *Digest) string {
 	if d == nil {
@@ -338,6 +362,9 @@ func digestSummaryLine(d *Digest) string {
 	line := fmt.Sprintf("%s: %s head_sha=%s", d.Batch, d.Status, d.HeadSHA)
 	if len(d.Deviations) > 0 {
 		line += fmt.Sprintf(" scope-guard deviations=%s", strings.Join(d.Deviations, ","))
+	}
+	if len(d.Departures) > 0 {
+		line += fmt.Sprintf(" pattern departures=%s", strings.Join(d.Departures, "; "))
 	}
 	return line
 }
@@ -405,7 +432,7 @@ func existingReportRemedy(number int, recorded *BatchState, retry bool) (string,
 // a parse error degrades to deps.Plan and batch.Cards instead, with a Warn, so building the pack never refuses the batch.
 // An index error is a Warn too, and the degraded pack the index returned is kept.
 // The logged resolved and unresolved counts are distinct refs across the batch, so a ref listed under two cards counts once.
-// The line's last key, pack_layout, is the PackLayout packLayoutOf picks (`file`, `inline` or `card`) when a pack is built, and `none` on every line where none is.
+// The line's last key, pack_layout, is the PackLayout packLayoutOf picks (`file` or `card`) when a pack is built, and `none` on every line where none is.
 // A per-card batch still builds the batch pack, so the off, language-none and empty outcomes and the counts keep their batch-start meaning; the prompt just never carries it.
 func buildKickstartPack(deps BeginDeps, index planindex.Index, batch batcher.Batch, number int) []planindex.CardPack {
 	logPack := func(state string, pack []planindex.CardPack) {
@@ -479,6 +506,13 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 
 	if err := PlanEditError(deps.State, deps.Plan.Dir, deps.Geom.WebsterDir); err != nil {
 		return nil, err
+	}
+
+	// An unknown batch falls through to the findBatch refusal below.
+	if requested, findErr := findBatch(deps.Batches, batchNumber); findErr == nil {
+		if err := renameToolRefusal(deps.Plan, requested, deps.RenameTools, "begin-batch"); err != nil {
+			return nil, err
+		}
 	}
 
 	// Re-resolve the plan against the current tree before a pack is built, never from a cache.
@@ -616,7 +650,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		return nil, fmt.Errorf("webster: resolve pack path: %w", err)
 	}
 	pack := buildKickstartPack(deps, index, batch, number)
-	prompt, packFile, err := RenderForkPrompt(batch, cardGates, batchGate, prevDigest, reportPath, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.VerifyTiers, OutcomePath(deps.Geom.WebsterDir), summaryparser.Path(deps.Geom.WebsterDir), deps.Config.SelfFixCap, notePath, packPath, packLayoutOf(deps.Config, deps.Geom), pack)
+	prompt, packFile, err := RenderForkPrompt(batch, cardGates, batchGate, prevDigest, reportPath, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.VerifyTiers, deps.RenameTools, deps.Plan.Verify, OutcomePath(deps.Geom.WebsterDir), summaryparser.Path(deps.Geom.WebsterDir), deps.Config.SelfFixCap, notePath, packPath, packLayoutOf(deps.Config, deps.Geom), pack)
 	if err != nil {
 		return nil, err
 	}

@@ -28,13 +28,42 @@ const verifyGateName = "verify"
 // verifyGateSite is the site label the gate's verify call writes to the running marker.
 const verifyGateSite = "webster gate"
 
-// VerifyGateNotes collects what a gate's evaluations observed that is not a failure: the identities that failed once and passed on rerun.
-// Run applies it after the wait, so a flaky pass reaches the warnings, summary.md and a friction note.
+// VerifyGateNotes collects what a gate's evaluations observed that is not a failure: the identities that failed once and passed on rerun, and the commits made above the pre-fix head.
+// Run applies it after the wait, so a flaky pass reaches the warnings, summary.md and a friction note, and the fixer's commits reach summary.md.
 type VerifyGateNotes struct {
 	frictionDir string
 
-	mu    sync.Mutex
-	flaky []string
+	mu      sync.Mutex
+	flaky   []string
+	commits []CommitLogEntry
+}
+
+// addCommits records entries, keeping each commit once by SHA in first-seen order.
+func (n *VerifyGateNotes) addCommits(entries []CommitLogEntry) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	for _, entry := range entries {
+		found := false
+		for _, have := range n.commits {
+			found = found || have.SHA == entry.SHA
+		}
+		if !found {
+			n.commits = append(n.commits, entry)
+		}
+	}
+}
+
+// FixCommits returns the recorded commits whose subject starts with `fix:` or that carry a departure, in first-seen order.
+func (n *VerifyGateNotes) FixCommits() []CommitLogEntry {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	var kept []CommitLogEntry
+	for _, entry := range n.commits {
+		if strings.HasPrefix(entry.Subject, "fix:") || len(entry.Departures) > 0 {
+			kept = append(kept, entry)
+		}
+	}
+	return kept
 }
 
 // addFlaky records ids as flaky, skipping any already recorded.
@@ -60,20 +89,48 @@ func (n *VerifyGateNotes) Flaky() []string {
 }
 
 // Apply writes the flaky identities into the summary.md under websterDir and a friction note, and returns the warnings that name them.
-// It does nothing, and returns no warnings, when no identity was flaky.
+// It writes the flaky identities only when some were flaky, and returns no warnings otherwise.
+// It then appends the fixer's commits through AppendVerifyGateFixCommits, which Run's wait precedes, so the section lands after the Master's last rewrite of summary.md.
 // The friction note is best-effort, like the rest of the friction plumbing: a failed note is logged and never fails the run.
 func (n *VerifyGateNotes) Apply(websterDir string) ([]string, error) {
-	flaky := n.Flaky()
-	if len(flaky) == 0 {
-		return nil, nil
+	var warnings []string
+	if flaky := n.Flaky(); len(flaky) > 0 {
+		if err := AppendIntegrationTriage(websterDir, flaky); err != nil {
+			return nil, err
+		}
+		if err := writeTriageFrictionNote(n.frictionDir, flaky); err != nil {
+			logger.Warn("websterengine: verify gate friction note not written", "cause", err)
+		}
+		warnings = triageWarnings(flaky)
 	}
-	if err := AppendIntegrationTriage(websterDir, flaky); err != nil {
+	if err := AppendVerifyGateFixCommits(websterDir, n.FixCommits()); err != nil {
 		return nil, err
 	}
-	if err := writeTriageFrictionNote(n.frictionDir, flaky); err != nil {
-		logger.Warn("websterengine: verify gate friction note not written", "cause", err)
+	return warnings, nil
+}
+
+// AppendVerifyGateFixCommits appends a "Verify gate fix commits" section to the summary.md under websterDir:
+// one bullet per `fix:` commit naming its SHA and subject, then one bullet per departure line of every commit in commits, a non-`fix:` commit's included.
+// It appends nothing when no commit's subject starts with `fix:`.
+func AppendVerifyGateFixCommits(websterDir string, commits []CommitLogEntry) error {
+	var b strings.Builder
+	var departures []string
+	fixes := 0
+	for _, commit := range commits {
+		if strings.HasPrefix(commit.Subject, "fix:") {
+			fixes++
+			fmt.Fprintf(&b, "- `%s` %s\n", commit.SHA, commit.Subject)
+		}
+		departures = append(departures, commit.DepartureLines()...)
 	}
-	return triageWarnings(flaky), nil
+	if fixes == 0 {
+		return nil
+	}
+	for _, line := range departures {
+		fmt.Fprintf(&b, "- %s\n", line)
+	}
+	section := "\n\n## Verify gate fix commits\n\nThe verify-fix fork's commits above the pre-fix head, and the PATTERN departures their messages declare.\n\n" + b.String()
+	return appendToSummary(websterDir, "verify gate fix commits", section)
 }
 
 // verifyGateSeams are the reads and runs the gate closure makes, injectable so the closure's own logic is testable offline.
@@ -90,6 +147,8 @@ type verifyGateSeams struct {
 	fixRejection func(base string) (commit, reason string, err error)
 	// commitsSince returns the commits from base to HEAD, oldest first.
 	commitsSince func(base string) ([]string, error)
+	// commitLog returns the non-merge first-parent commits from base to HEAD, oldest first, with their departures.
+	commitLog func(base string) ([]CommitLogEntry, error)
 	// verify runs the verify command through verifytree.
 	verify func(site verifytree.Site, command string) (verifytree.Result, error)
 	// readLog returns the content of the verify log at path.
@@ -117,7 +176,7 @@ type verifyGateSeams struct {
 // At each arrival the closure does, in order:
 // it passes without verifying when outcome.yaml names an outcome other than done;
 // it fails with the dirty paths when the tree is not clean;
-// once a pre-fix head is recorded, it fails `Terminal` when a commit above it is neither a non-merge commit nor a clean parent merge;
+// once a pre-fix head is recorded, it fails `Terminal` when a commit above it is neither a non-merge commit nor a clean parent merge, and otherwise records those commits in the notes;
 // it passes with a warning when the plan has no `## verify:` section;
 // otherwise it runs verifytree.Verify, reruns once on a failure, and passes a flaky failure whose rerun passed.
 // A run that timed out or hung, as classifyHang reads its log and exit code, is not re-run: it fails at once.
@@ -148,6 +207,13 @@ func NewVerifyGate(geom Geometry, attempts int, batches []batcher.Batch, parentB
 			return fixCommitRejection(geom.WorktreeRoot, base, parentBranch)
 		},
 		commitsSince: func(base string) ([]string, error) { return commitsSince(geom.WorktreeRoot, base) },
+		commitLog: func(base string) ([]CommitLogEntry, error) {
+			head, err := geom.git().HeadSHA(geom.WorktreeRoot)
+			if err != nil {
+				return nil, err
+			}
+			return geom.git().CommitLog(geom.WorktreeRoot, base, head)
+		},
 		verify: func(site verifytree.Site, command string) (verifytree.Result, error) {
 			return verifytree.Verify(context.Background(), paths, site, command, verifytree.Timeout, geom.GateSlots)
 		},
@@ -304,6 +370,11 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixP
 				findings := fmt.Sprintf("Commit %s, made above the pre-fix head %s, is neither a non-merge commit nor a clean merge of the parent branch: %s.", commit, preFix, reason)
 				return shuttleengine.GateResult{Passed: false, Terminal: true, Findings: findings}, nil
 			}
+			entries, err := s.commitLog(preFix)
+			if err != nil {
+				return shuttleengine.GateResult{}, err
+			}
+			notes.addCommits(entries)
 		}
 
 		command, err := s.verifyCommand()

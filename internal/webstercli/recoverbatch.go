@@ -73,6 +73,7 @@ func (c *websterCLI) recoverDeps(plan *planparser.Plan, batches []batcher.Batch,
 		ParentBranch:   c.parentBranch,
 		LanguageSkills: c.languageSkills,
 		VerifyTiers:    c.verifyTiers,
+		RenameTools:    c.renameTools,
 	}
 }
 
@@ -206,6 +207,10 @@ Example:
 				}
 				if errors.Is(err, websterengine.ErrRecoveryExhausted) {
 					clihelp.SetExit(cmd.Context(), output.ErrFields(out, err.Error(), map[string]any{"recovery_exhausted": true}))
+					return nil
+				}
+				if errors.Is(err, websterengine.ErrRenameToolMissing) {
+					clihelp.SetExit(cmd.Context(), output.ErrFields(out, err.Error(), map[string]any{"rename_tool_missing": true}))
 					return nil
 				}
 				if errors.Is(err, websterengine.ErrRecoveryDeleteReferenced) {

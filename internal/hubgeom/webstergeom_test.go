@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/verifytree"
@@ -91,6 +92,9 @@ func TestWebsterGeometry(t *testing.T) {
 			}
 			if want := verifytree.Dir(anchorPath); got.VerifyDir != want {
 				t.Errorf("WebsterGeometry(l).VerifyDir = %q; want %q", got.VerifyDir, want)
+			}
+			if want := loomengine.DiscussionDecisionRecord(l); got.DecisionRecordPath != want {
+				t.Errorf("WebsterGeometry(l).DecisionRecordPath = %q; want %q", got.DecisionRecordPath, want)
 			}
 			if want := gateslot.WaitDir(anchorPath); got.GateWaitDir != want {
 				t.Errorf("WebsterGeometry(l).GateWaitDir = %q; want %q", got.GateWaitDir, want)

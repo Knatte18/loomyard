@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -99,6 +100,9 @@ type RecoverDeps struct {
 
 	// VerifyTiers are the hub's verify tiers the recovery prompt renders; empty for none.
 	VerifyTiers []string
+
+	// RenameTools are the hub's structure-aware rename tools the recovery prompt renders; empty for none.
+	RenameTools []string
 }
 
 // RecoverResult is what one RecoverAwait call hands back: Digest (nil while Running), Running (true if wait elapsed non-terminal), ElapsedS (since spawn), and Warnings (non-fatal substrate-cleanup failures, plus the moved-HEAD notice when only merge commits sit between the report's head_sha and the worktree's HEAD).
@@ -243,6 +247,15 @@ func rendersNewAmendment(prior *BatchState) bool {
 func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prevDigest string, clk Clock) (*BatchState, error) {
 	number, slug := batchIdentity(batch)
 
+	if err := renameToolRefusal(deps.Plan, batch, deps.RenameTools, "recover-batch"); err != nil {
+		return nil, err
+	}
+
+	patternChanges, err := discussionparser.DeclaredPatternChanges(deps.Geom.DecisionRecordPath)
+	if err != nil {
+		return nil, fmt.Errorf("%w re-run `lyx webster recover-batch %d`", err, number)
+	}
+
 	head, err := deps.Geom.git().HeadSHA(deps.Geom.WorktreeRoot)
 	if err != nil {
 		return nil, fmt.Errorf("webster: read HEAD before spawning the recovery of batch %02d: %w; way forward: transient, re-run `lyx webster recover-batch %d`", number, err, number)
@@ -295,7 +308,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		return nil, fmt.Errorf("webster: list the worktree's uncommitted paths for batch %s: %w; way forward: transient, re-run `lyx webster recover-batch %d`", batchName, err, number)
 	}
 	batchGate := renderBatchGate(deps.Plan, batch.Cards, deps.Geom.WorktreeRoot)
-	prompt, err := RenderRecoveryPrompt(batch, cardGates, batchGate, prevDigest, failureDigestBlock(prior), uncommittedPaths, reportPath, deps.Geom.RepoRoot, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.VerifyTiers, deps.Config.SelfFixCap, notePath, deps.Geom.ParentName)
+	prompt, err := RenderRecoveryPrompt(batch, cardGates, batchGate, prevDigest, failureDigestBlock(prior), uncommittedPaths, reportPath, deps.Geom.RepoRoot, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.VerifyTiers, deps.RenameTools, patternChanges, deps.Plan.Verify, deps.Config.SelfFixCap, notePath, deps.Geom.ParentName)
 	if err != nil {
 		return nil, err
 	}
@@ -693,7 +706,13 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 		return warnings, bfe
 	}
 
+	departures, err := batchDepartures(deps.Geom, bs.StartSHA, head)
+	if err != nil {
+		return warnings, err
+	}
+
 	digest.Deviations = deviations
+	digest.Departures = departures
 	bs.Digest = digest
 	bs.Terminal = true
 	bs.Status = digest.Status

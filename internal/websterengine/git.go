@@ -44,6 +44,26 @@ type Git interface {
 	CommitBlob(worktree, commit, path string) (string, error)
 	// TreePathsWithBlob returns, sorted, every path in commit's tree whose object id is blob.
 	TreePathsWithBlob(worktree, commit, blob string) ([]string, error)
+	// CommitLog returns, oldest first, the non-merge commits on head's first-parent line after base, both full SHAs.
+	// A base that is not on that line, or a SHA the repository does not hold, is an error.
+	CommitLog(worktree, base, head string) ([]CommitLogEntry, error)
+}
+
+// CommitLogEntry is one commit CommitLog returned, with the departures its message declares.
+type CommitLogEntry struct {
+	SHA     string
+	Subject string
+	// Departures holds the value of each `Pattern-Departure:` trailer line of the commit message, in order and verbatim.
+	Departures []string
+}
+
+// DepartureLines renders each departure as "<subject>: <value>", in order.
+func (e CommitLogEntry) DepartureLines() []string {
+	lines := make([]string, 0, len(e.Departures))
+	for _, departure := range e.Departures {
+		lines = append(lines, e.Subject+": "+departure)
+	}
+	return lines
 }
 
 // realGit is Git over the repository on disk, each method delegating to the helper in gitwrap.go that owns the git call.
@@ -99,6 +119,10 @@ func (realGit) CommitBlob(worktree, commit, path string) (string, error) {
 
 func (realGit) TreePathsWithBlob(worktree, commit, blob string) ([]string, error) {
 	return treePathsWithBlob(worktree, commit, blob)
+}
+
+func (realGit) CommitLog(worktree, base, head string) ([]CommitLogEntry, error) {
+	return commitLog(worktree, base, head)
 }
 
 // git returns the Git the geometry was told, or the real one when none was.

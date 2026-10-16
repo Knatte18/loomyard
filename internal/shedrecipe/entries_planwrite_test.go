@@ -286,6 +286,36 @@ func TestPlanWriteEntry_GateConfig(t *testing.T) {
 		}
 	})
 
+	t.Run("PlanWriteForkedGateChecksSymbolRenamesAgainstTheEnvsRenameTools", func(t *testing.T) {
+		for _, tt := range []struct {
+			name  string
+			tools []string
+			want  bool
+		}{
+			{"no rename tool", nil, true},
+			{"a rename tool", []string{"gopls rename"}, false},
+		} {
+			t.Run(tt.name, func(t *testing.T) {
+				env := newTestEnv(t)
+				env.PlanIndex = noFindingsPlanIndex{}
+				env.RenameTools = tt.tools
+				plankit.Write(t, planparser.PlanDir(env.AnchorPath), symbolRenamePlan())
+
+				gateSpec, err := planWriteGateSpec(gatesCfg("plan", 3), env)
+				if err != nil {
+					t.Fatalf("planWriteGateSpec() error = %v; want nil", err)
+				}
+				result, err := gateSpec[0].Forked()
+				if err != nil {
+					t.Fatalf("Forked() error = %v; want nil", err)
+				}
+				if got := strings.Contains(result.Findings, "rename-tool-missing"); got != tt.want {
+					t.Errorf("Forked() = %+v; want rename-tool-missing: %v", result, tt.want)
+				}
+			})
+		}
+	})
+
 	t.Run("PlanWriteSetsForkedOnItsPlanEntry", func(t *testing.T) {
 		env := newTestEnv(t)
 		env.PlanIndex = noFindingsPlanIndex{}

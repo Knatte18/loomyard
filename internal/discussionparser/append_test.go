@@ -25,6 +25,9 @@ func addedDecision() AddedDecision {
 const wantEntry = "\n### Added after Discussion (parent, 2026-03-04): Keep the cache\n\n" +
 	"Decision: Keep the cache per run.\n\nRationale: A shared cache races.\n"
 
+// wantBullet is the PATTERN changes bullet addedDecision's author and day produce for a `PATTERN-new` adds change.
+const wantBullet = "- `PATTERN-new` — adds: New rule. — added after Discussion (parent, 2026-03-04)"
+
 func readFile(t *testing.T, path string) string {
 	t.Helper()
 	data, err := os.ReadFile(path)
@@ -55,12 +58,39 @@ func TestAppendDecision_AppendsAtEndOfDecisionsSection(t *testing.T) {
 	fenced := strings.Replace(allSectionsContent(), "## Decisions\n\nbody text.\n",
 		"## Decisions\n\n```\n## Not a heading\n```\n", 1)
 
+	// withEntry returns record with wantEntry placed after its Decisions section's body, where AppendDecision puts it.
+	withEntry := func(record string) string {
+		return strings.Replace(record, "## Decisions\n\nbody text.\n", "## Decisions\n\nbody text.\n"+wantEntry, 1)
+	}
+	pattern := &PatternChange{ID: "PATTERN-new", Action: "adds", Text: "New rule."}
+	notes := "## Notes for the plan writer\n\nhint.\n"
+	withSection := allSectionsContent() + "## PATTERN changes\n\n- `PATTERN-old` — removes\n\n" + notes
+
 	tests := []struct {
-		name     string
-		prior    string
-		relevant string
-		want     string
+		name          string
+		prior         string
+		relevant      string
+		patternChange *PatternChange
+		want          string
 	}{
+		{
+			name:          "PATTERN change without the section goes before the notes",
+			prior:         allSectionsContent() + notes,
+			patternChange: pattern,
+			want:          withEntry(allSectionsContent()) + "## PATTERN changes\n\n" + wantBullet + "\n\n" + notes,
+		},
+		{
+			name:          "PATTERN change without the section or the notes goes at the end",
+			prior:         allSectionsContent(),
+			patternChange: pattern,
+			want:          withEntry(allSectionsContent()) + "## PATTERN changes\n\n" + wantBullet + "\n",
+		},
+		{
+			name:          "PATTERN change with the section goes after its last bullet",
+			prior:         withSection,
+			patternChange: pattern,
+			want:          withEntry(strings.Replace(withSection, "removes\n", "removes\n"+wantBullet+"\n", 1)),
+		},
 		{
 			// The entry follows the section's last non-blank line; the blank line before the next H2 stays.
 			name:  "followed by further sections",
@@ -92,7 +122,9 @@ func TestAppendDecision_AppendsAtEndOfDecisionsSection(t *testing.T) {
 				}
 			}
 
-			findings, err := AppendDecision(decisionPath, supportPath, addedDecision())
+			d := addedDecision()
+			d.PatternChange = tt.patternChange
+			findings, err := AppendDecision(decisionPath, supportPath, d)
 			if err != nil || len(findings) != 0 {
 				t.Fatalf("AppendDecision() = %v, %v; want no findings and nil error", findings, err)
 			}
@@ -105,6 +137,13 @@ func TestAppendDecision_AppendsAtEndOfDecisionsSection(t *testing.T) {
 			added, err := ParseAddedDecisions([]byte(readFile(t, decisionPath)))
 			if err != nil || len(added) != 1 || added[0].By != "parent" || added[0].Title != "Keep the cache" || !added[0].Date.Equal(time.Date(2026, 3, 4, 0, 0, 0, 0, time.UTC)) {
 				t.Errorf("ParseAddedDecisions() = %+v, %v; want the appended entry's author, date and title", added, err)
+			}
+			if tt.patternChange != nil {
+				changes, problems := ParsePatternChanges([]byte(readFile(t, decisionPath)))
+				last := changes[len(changes)-1]
+				if len(problems) != 0 || last.ID != "PATTERN-new" || last.By != "parent" || !last.Date.Equal(time.Date(2026, 3, 4, 0, 0, 0, 0, time.UTC)) {
+					t.Errorf("ParsePatternChanges() = %+v, %v; want the appended bullet last with its author and date", changes, problems)
+				}
 			}
 		})
 	}
@@ -158,18 +197,33 @@ func TestAppendDecision_MissingRecordIsNotExist(t *testing.T) {
 
 func TestAppendDecision_FindingRestoresRecord(t *testing.T) {
 	t.Parallel()
-	prior := strings.Replace(allSectionsContent(), "## Goal", "## Aim", 1)
-	decisionPath, supportPath := writeFixture(t, t.TempDir(), prior, "log")
+	tests := []struct {
+		name          string
+		prior         string
+		patternChange *PatternChange
+		wantCheck     string
+	}{
+		{"MissingSection", strings.Replace(allSectionsContent(), "## Goal", "## Aim", 1), nil, checkSectionMissing},
+		{"UnknownPatternAction", allSectionsContent(), &PatternChange{ID: "PATTERN-new", Action: "renames", Text: "x"}, checkPatternChangeMalformed},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			decisionPath, supportPath := writeFixture(t, t.TempDir(), tt.prior, "log")
+			d := addedDecision()
+			d.PatternChange = tt.patternChange
 
-	findings, err := AppendDecision(decisionPath, supportPath, addedDecision())
-	if err != nil {
-		t.Fatalf("AppendDecision() error = %v; want nil", err)
-	}
-	if len(findings) != 1 || findings[0].Check != checkSectionMissing {
-		t.Errorf("findings = %v; want one %s finding", findings, checkSectionMissing)
-	}
-	if got := readFile(t, decisionPath); got != prior {
-		t.Errorf("record not restored:\n%q", got)
+			findings, err := AppendDecision(decisionPath, supportPath, d)
+			if err != nil {
+				t.Fatalf("AppendDecision() error = %v; want nil", err)
+			}
+			if len(findings) != 1 || findings[0].Check != tt.wantCheck {
+				t.Errorf("findings = %v; want one %s finding", findings, tt.wantCheck)
+			}
+			if got := readFile(t, decisionPath); got != tt.prior {
+				t.Errorf("record not restored:\n%q", got)
+			}
+		})
 	}
 }
 
@@ -247,13 +301,45 @@ func TestCheckAddedDecisionsKept(t *testing.T) {
 		return "### Added after Discussion (alice, " + date + "): " + title
 	}
 
+	appended := "- `PATTERN-a` — removes — added after Discussion (alice, 2026-03-01)"
+	withSection := func(lines ...string) []byte {
+		return []byte("## Decisions\n\n## PATTERN changes\n\n" + strings.Join(lines, "\n") + "\n")
+	}
+
 	tests := []struct {
 		name         string
 		record       []byte
 		versions     [][]byte
 		wantHeadings []string
+		wantBullets  []string
 		wantParseErr bool
 	}{
+		{
+			name:        "a record dropping an appended bullet a version held",
+			record:      record(),
+			versions:    [][]byte{withSection(appended)},
+			wantBullets: []string{"PATTERN-a"},
+		},
+		{
+			name:     "a record keeping the appended bullet",
+			record:   withSection(appended),
+			versions: [][]byte{withSection(appended)},
+		},
+		{
+			name:     "a bullet without the suffix is the writer's to drop",
+			record:   record(),
+			versions: [][]byte{withSection("- `PATTERN-a` — removes")},
+		},
+		{
+			name:     "a version whose section holds a malformed bullet contributes no bullet",
+			record:   record(),
+			versions: [][]byte{withSection(appended, "stray line")},
+		},
+		{
+			name:     "a record whose own section is malformed yields no bullet finding",
+			record:   withSection("stray line"),
+			versions: [][]byte{withSection(appended)},
+		},
 		{name: "no versions", record: record(entry("2026-03-01", "one"))},
 		{
 			name:     "a version whose entry the record keeps",
@@ -300,12 +386,18 @@ func TestCheckAddedDecisionsKept(t *testing.T) {
 				}
 				return
 			}
-			if len(got) != len(tt.wantHeadings) {
-				t.Fatalf("CheckAddedDecisionsKept() = %+v; want %d findings", got, len(tt.wantHeadings))
+			if len(got) != len(tt.wantHeadings)+len(tt.wantBullets) {
+				t.Fatalf("CheckAddedDecisionsKept() = %+v; want %d findings", got, len(tt.wantHeadings)+len(tt.wantBullets))
 			}
 			for i, want := range tt.wantHeadings {
 				if got[i].Check != checkAddedDecisionDropped || !strings.Contains(got[i].Detail, want) {
 					t.Errorf("finding %d = %+v; want check %q naming %q", i, got[i], checkAddedDecisionDropped, want)
+				}
+			}
+			for i, want := range tt.wantBullets {
+				f := got[len(tt.wantHeadings)+i]
+				if f.Check != checkPatternChangeDropped || !strings.Contains(f.Detail, want) {
+					t.Errorf("finding %d = %+v; want check %q naming %q", len(tt.wantHeadings)+i, f, checkPatternChangeDropped, want)
 				}
 			}
 		})

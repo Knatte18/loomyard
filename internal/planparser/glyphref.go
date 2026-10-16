@@ -29,6 +29,37 @@ func planLanguage(plan *Plan) (glyph.Language, bool) {
 	}
 }
 
+// SymbolRenamePairs returns, in card order and pair order, every pair of every cards entry's Pairs that is a symbol pair: every pair but a file pair.
+// Under a language planLanguage accepts, a file pair is one isFileRenamePair reports;
+// under a language it rejects, such as none, a file pair is one whose two sides both classify as file paths.
+// It returns nil when no card holds a symbol pair and never reads the disk.
+// plan supplies only the language, so a caller passes the cards it checks: the whole plan's for the plan gate, a batch's for webster.
+func SymbolRenamePairs(plan *Plan, cards []Card) []MovePair {
+	lang, typed := planLanguage(plan)
+	var symbolPairs []MovePair
+	for _, card := range cards {
+		for _, pair := range card.Pairs {
+			if typed && isFileRenamePair(lang, pair) {
+				continue
+			}
+			if !typed && isUntypedFileRenamePair(pair) {
+				continue
+			}
+			symbolPairs = append(symbolPairs, pair)
+		}
+	}
+	return symbolPairs
+}
+
+// isUntypedFileRenamePair reports whether both sides of p classify as file paths, the only file-pair test a plan with no glyph alphabet has.
+func isUntypedFileRenamePair(p MovePair) bool {
+	if _, disp := lookup(gateUntypedFileRenamePair, p.Old); disp != dispKeep {
+		return false
+	}
+	_, disp := lookup(gateUntypedFileRenamePair, p.New)
+	return disp == dispKeep
+}
+
 // GlyphLanguage is planLanguage's exported form, so internal/planglyph can delete its verbatim
 // resolveLanguage duplicate (internal/planglyph/planglyph.go).
 func (p *Plan) GlyphLanguage() (glyph.Language, bool) {

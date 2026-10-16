@@ -247,7 +247,7 @@ func TestValidatePlanCmd_Overlay(t *testing.T) {
 			if tc.setup != nil {
 				tc.setup(t, anchorPath)
 			}
-			c := &loomCLI{env: shedrecipe.Env{
+			c := &loomCLI{location: hubLocationAt(t, anchorPath, ""), env: shedrecipe.Env{
 				PlanIndex:    planglyph.NewIndex(fabricengine.NewReferenceRule()),
 				AnchorPath:   anchorPath,
 				WorktreeRoot: worktreeRoot,

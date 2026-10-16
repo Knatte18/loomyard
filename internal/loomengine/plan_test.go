@@ -213,6 +213,32 @@ func TestPlanTable(t *testing.T) {
 		}
 	})
 
+	t.Run("a declared PATTERN change reaches the lead's pattern_directive, and a malformed section fails the table", func(t *testing.T) {
+		t.Parallel()
+		for _, malformed := range []bool{false, true} {
+			layout := planTableLayout(t, "")
+			body := declaredBullet
+			if malformed {
+				body = malformedDeclaredBullet
+			}
+			writeDeclaredPatternRecord(t, layout, body)
+
+			table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, newTestStencilsDir(t), newTestSpecsDir(t), planTableConfig(""), reg, nil)
+			if malformed {
+				if err == nil || !strings.Contains(err.Error(), "lyx loom validate-discussion") {
+					t.Errorf("PlanTable(malformed section) = _, %v; want an error naming lyx loom validate-discussion", err)
+				}
+				continue
+			}
+			if err != nil {
+				t.Fatalf("PlanTable(declared section) = _, %v; want nil error", err)
+			}
+			if !strings.Contains(table.Values["pattern_directive"], declaredBullet) {
+				t.Errorf("pattern_directive = %q; want it to carry %q", table.Values["pattern_directive"], declaredBullet)
+			}
+		}
+	})
+
 	t.Run("the friction note path reaches the lead prompt, and an off friction renders nothing", func(t *testing.T) {
 		t.Parallel()
 		layout := planTableLayout(t, "")
@@ -450,6 +476,25 @@ func writeTestPattern(t *testing.T, dir string) {
 		t.Fatalf("WriteFile(PATTERN.md) = %v; want nil", err)
 	}
 }
+
+// declaredBullet is the one declared PATTERN change the record planted by writeDeclaredPatternRecord holds.
+const declaredBullet = "- `PATTERN-example-entry` — adds: the new rule text"
+
+// writeDeclaredPatternRecord writes an active PATTERN.md at layout's worktree root and a decision record whose `## PATTERN changes` section holds body.
+func writeDeclaredPatternRecord(t *testing.T, layout *lyxcwd.Location, body string) {
+	t.Helper()
+	writeTestPattern(t, layout.WorktreePath())
+	record := DiscussionDecisionRecord(layout)
+	if err := os.MkdirAll(filepath.Dir(record), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(record), err)
+	}
+	if err := os.WriteFile(record, []byte("# Record\n\n## PATTERN changes\n\n"+body+"\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(decision record) = %v; want nil", err)
+	}
+}
+
+// malformedDeclaredBullet is a PATTERN changes bullet with an unknown action.
+const malformedDeclaredBullet = "- `PATTERN-example-entry` — frobnicates: nothing"
 
 // newTestSpecsDir returns a real, non-empty directory to pass as the specsDir parameter of PlanTable, ReworkTable and their spec predecessors, alongside newTestStencilsDir.
 // A real directory rather than an empty-string placeholder is required: specs_dir is a required marker, so an empty value fails the table's validation.

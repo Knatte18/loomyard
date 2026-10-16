@@ -60,11 +60,14 @@ const (
 	decisionWayRetry      = `way forward: re-run "lyx loom decision add"; nothing is appended`
 	decisionWayFindings   = `way forward: the record is restored; fix the named section and re-run the verb`
 	decisionWayArbiter    = `way forward: the "arbiter" label is the run's own arbiter's; pass --by parent from the run's parent, or --by operator from the operator's own shell`
+	decisionWayPattern    = `way forward: pass --pattern-entry and --pattern-action together, and --pattern-text for adds or changes`
 )
 
-// decisionInput is the four flag values of one `decision add` call.
+// decisionInput is the flag values of one `decision add` call.
+// The three pattern fields are the optional PATTERN-change form and are all empty without it.
 type decisionInput struct {
-	by, title, decision, rationale string
+	by, title, decision, rationale           string
+	patternEntry, patternAction, patternText string
 }
 
 // decisionDeps is every side effect decisionVerb performs, injected so tests supply fakes.
@@ -145,6 +148,10 @@ func committedHoldsEntry(deps decisionDeps, added discussionparser.AddedDecision
 }
 
 // decisionVerb appends the decision in input to the record and commits it, or refuses with a way forward.
+//
+// The optional PATTERN-change form appends one bullet of the record's PATTERN-change shape beside the entry, in the same write.
+// It passes through the verb's existing checks and its --by parent|operator|arbiter caller guards, so only the run's parent, the operator's own shell or the run's own arbiter declares a change after Discussion.
+// The form removes and rewrites nothing.
 func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionInput) int {
 	refuse := func(format string, args ...any) int {
 		return output.Err(out, fmt.Sprintf("loom: %s add: ", decisionGroup)+fmt.Sprintf(format, args...))
@@ -176,6 +183,11 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 		}
 	}
 
+	patternForm := input.patternEntry != ""
+	if patternForm != (input.patternAction != "") || (!patternForm && input.patternText != "") {
+		return refuse("--pattern-entry, --pattern-action and --pattern-text are one form; %s", decisionWayPattern)
+	}
+
 	st, found, err := deps.readStatus()
 	if err != nil {
 		return refuse("read the run status: %s; %s", err, decisionWayRetry)
@@ -205,6 +217,16 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 		Rationale: input.rationale,
 		Date:      deps.now().UTC(),
 	}
+	var patternBullet string
+	if patternForm {
+		change := discussionparser.PatternChange{
+			ID:     strings.TrimSpace(input.patternEntry),
+			Action: strings.TrimSpace(input.patternAction),
+			Text:   strings.TrimSpace(input.patternText),
+		}
+		added.PatternChange = &change
+		patternBullet = change.Bullet()
+	}
 	findings, err := deps.append(added)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
@@ -229,11 +251,15 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 			return refuse("%s under %q; %s", cause, addedDecisionHeading(added), decisionWayEntryLost)
 		}
 	}
-	return output.Ok(out, map[string]any{
+	result := map[string]any{
 		"slug":    slug,
 		"record":  deps.recordPath,
 		"heading": addedDecisionHeading(added),
-	})
+	}
+	if patternForm {
+		result["pattern_change"] = patternBullet
+	}
+	return output.Ok(out, result)
 }
 
 // addedDecisionHeading is the heading AppendDecision writes for d, without its leading marker.
@@ -363,8 +389,15 @@ history held, and a commit after which the committed record lacks the entry.
 That bounds the append to a record the writer validated and has not touched,
 and to an entry that reached the fabric.
 
+A decision that adds, changes or removes a PATTERN entry also passes
+--pattern-entry <PATTERN-id>, --pattern-action adds|changes|removes and, for
+adds or changes, --pattern-text <new entry text>. One call then appends the
+entry and one bullet of the record's "## PATTERN changes" section, creating the
+section when the record has none; the bullet is checked with the record.
+
 Example:
-  lyx loom decision add <slug> --by parent --title "Keep the cache" --decision "Keep the cache per run." --rationale "A shared cache races."`,
+  lyx loom decision add <slug> --by parent --title "Keep the cache" --decision "Keep the cache per run." --rationale "A shared cache races."
+  lyx loom decision add <slug> --by parent --title "..." --decision "..." --rationale "..." --pattern-entry PATTERN-x --pattern-action adds --pattern-text "..."`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -378,6 +411,9 @@ Example:
 	add.Flags().StringVar(&st.input.title, "title", "", "the decision's heading title")
 	add.Flags().StringVar(&st.input.decision, "decision", "", "what was decided")
 	add.Flags().StringVar(&st.input.rationale, "rationale", "", "why it was decided")
+	add.Flags().StringVar(&st.input.patternEntry, "pattern-entry", "", "the PATTERN entry the decision adds, changes or removes, as PATTERN-<id>")
+	add.Flags().StringVar(&st.input.patternAction, "pattern-action", "", "what the decision does to the entry: adds, changes or removes")
+	add.Flags().StringVar(&st.input.patternText, "pattern-text", "", "the entry's new text, for adds or changes")
 
 	group.AddCommand(add)
 	return group

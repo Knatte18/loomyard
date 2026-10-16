@@ -29,11 +29,15 @@ type AddedDecision struct {
 	Decision  string
 	Rationale string
 	Date      time.Time
+	// PatternChange, when set, is a PATTERN entry the decision adds, changes or removes.
+	// AppendDecision declares it as a bullet of the record's `## PATTERN changes` section in the same write as the decision's entry.
+	PatternChange *PatternChange
 }
 
 // AppendDecision adds d as the last entry of the decision record's `## Decisions` section and then
 // runs Validate over the result.
-// It writes only that section; the `## Open risks` section has its own write path.
+// It writes only that section and, when d.PatternChange is set, one bullet of the `## PATTERN changes` section, creating the section when the record has none; the `## Open risks` section has its own write path.
+// The bullet carries the suffix ` — added after Discussion (<by>, <date>)`, and a bullet of the wrong shape comes back as a finding like any other.
 //
 // It reads decisionRecordPath first; a missing file comes back as an error wrapping os.ErrNotExist,
 // so the caller can refuse with its own way forward.
@@ -73,11 +77,23 @@ func AppendDecision(decisionRecordPath, supportLogPath string, d AddedDecision) 
 		entry = "\n" + entry
 	}
 
+	updated := content[:at] + entry + content[at:]
+	if d.PatternChange != nil {
+		bullet := patternChangeAppendedBullet(*d.PatternChange, by, d.Date)
+		patternAt, needHeading := patternChangesInsertOffset(content)
+		insertion := patternChangesInsertion(content, patternAt, needHeading, bullet)
+		if patternAt >= at {
+			updated = content[:at] + entry + content[at:patternAt] + insertion + content[patternAt:]
+		} else {
+			updated = content[:patternAt] + insertion + content[patternAt:at] + entry + content[at:]
+		}
+	}
+
 	info, err := os.Stat(decisionRecordPath)
 	if err != nil {
 		return nil, err
 	}
-	if err := os.WriteFile(decisionRecordPath, []byte(content[:at]+entry+content[at:]), info.Mode().Perm()); err != nil {
+	if err := os.WriteFile(decisionRecordPath, []byte(updated), info.Mode().Perm()); err != nil {
 		return nil, err
 	}
 
@@ -125,14 +141,62 @@ const checkAddedDecisionDropped = "added-decision-dropped"
 // CheckAddedDecisionsKept returns one Finding per distinct added-decision entry, by author, date and title, that some of versions holds and record does not, in the order of first appearance across versions.
 // Each finding's Detail names the entry's full heading and says to restore it from the record's history, since an added entry is never the writer's to remove.
 //
+// It then returns one pattern-change-dropped Finding per appended `## PATTERN changes` bullet, by entry ID, author and date, that some of versions holds and record does not, in the same order and with a Detail that names the bullet and says to restore it.
+//
 // A record whose added-decision heading does not parse is one finding carrying the parse error, because the writer can fix it.
 // A version whose heading does not parse contributes no entries: only `lyx loom decision add` writes these headings, and a garbled historical copy must not block the run.
+// A version whose PATTERN changes section does not parse contributes no bullets, and a record whose own section does not parse yields no bullet finding, since Validate reports it.
 // It reads nothing from disk.
 func CheckAddedDecisionsKept(record []byte, versions [][]byte) []Finding {
 	kept, err := ParseAddedDecisions(record)
 	if err != nil {
 		return []Finding{{Check: checkAddedDecisionDropped, Detail: err.Error()}}
 	}
+	return append(checkDroppedAddedDecisions(kept, versions), checkDroppedPatternBullets(record, versions)...)
+}
+
+// checkPatternChangeDropped names a Finding produced when a record lacks an appended PATTERN change bullet an earlier version of it held.
+const checkPatternChangeDropped = "pattern-change-dropped"
+
+// checkDroppedPatternBullets returns the pattern-change-dropped findings CheckAddedDecisionsKept reports.
+func checkDroppedPatternBullets(record []byte, versions [][]byte) []Finding {
+	keptBullets, problems := ParsePatternChanges(record)
+	if len(problems) > 0 {
+		return nil
+	}
+	type bulletKey struct{ id, by, date string }
+	keyOf := func(c PatternChange) bulletKey {
+		return bulletKey{c.ID, c.By, c.Date.UTC().Format("2006-01-02")}
+	}
+	seen := make(map[bulletKey]bool, len(keptBullets))
+	for _, c := range keptBullets {
+		seen[keyOf(c)] = true
+	}
+
+	var findings []Finding
+	for _, version := range versions {
+		held, problems := ParsePatternChanges(version)
+		if len(problems) > 0 {
+			continue
+		}
+		for _, c := range held {
+			key := keyOf(c)
+			if c.By == "" || seen[key] {
+				continue
+			}
+			seen[key] = true
+			findings = append(findings, Finding{
+				Check: checkPatternChangeDropped,
+				Detail: fmt.Sprintf("the record dropped the `%s` bullet added after Discussion (%s, %s) from its `%s` section; restore it from the record's history, since an appended bullet is never the writer's to remove",
+					key.id, key.by, key.date, patternChangesHeading),
+			})
+		}
+	}
+	return findings
+}
+
+// checkDroppedAddedDecisions returns the added-decision-dropped findings for the entries of versions that kept lacks.
+func checkDroppedAddedDecisions(kept []AddedDecision, versions [][]byte) []Finding {
 	type entryKey struct{ by, date, title string }
 	keyOf := func(d AddedDecision) entryKey {
 		return entryKey{d.By, d.Date.UTC().Format("2006-01-02"), d.Title}
