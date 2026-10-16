@@ -82,6 +82,8 @@ Do not flag any of the following as a finding:
   An entry between `<!-- lyx:carry-over … -->` marker lines in the decision record's `## Open risks` is not part of the answer key, and it licenses no card's scope.
   In a rework generation the live generation's `findings.md` joins the decision record as the answer key:
   every finding in it is covered by some card, and every card's scope is licensed by the decision record or by a finding.
+  A finding in `findings.md` is a reviewer's claim the rework plan answers, never a ruling;
+  it licenses a card's scope unless it overturns a Decision of the decision record, and a card carrying a finding that overturns a Decision with no `Added after Discussion` entry recording it is a finding.
   The live generation's round is, among `_lyx/loom/rework/round-<N>/` directories, the highest `N` whose `record.json` carries a `class` and whose `first_card` equals the `first_card` in `_lyx/plan/00-overview.md`'s frontmatter (absent means `1`).
   With no such round (generation 0, or a fresh Plan-Write plan after an operator `goto Plan-Write`), the decision record alone is the answer key.
   The round's `prior-generation/` archive is context only, and a finding raised against anything inside it is never legitimate.
