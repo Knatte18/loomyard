@@ -44,6 +44,15 @@ One sanctioned deviation from the pure black-box rule, mirroring the reed suite'
 - **Direct `tmux -L <socket> list-panes`/`ls`** is allowed only to confirm a strand's pane exists (or was cleaned up), where `<socket>` is read from the shuttle run's strand guid cross-referenced against `lyx reed status` output.
 - **Scenario S2's operator attach** is operator-assisted -- see S2 below.
 
+### Controlled creel exceptions
+
+The creel scenarios (C1 to C13) need these non-black-box steps and nothing more:
+
+- **Listing the tmux and lyxtemp socket directories read-only** (C1), to compare the sandbox hub's sockets with the live hub's.
+- **Planting or editing a journal day file while the daemon is stopped** (C10), under the hub's creel state directory.
+- **Running a process detached from a strand's pane** (C12), to check that a process outside the pane is not taken for the strand.
+  The disagreeing-strand-name check of C12 is operator-assisted when the agent's harness refuses a command naming the strand variable: the agent asks the operator to run it in the pane and reports what the operator saw.
+
 ## Fingerprint header
 
 The launcher prepends a "binary under test" fingerprint block to this file when it copies it into the Hub's Fabric repo.
@@ -89,7 +98,7 @@ After all scenarios are run, write **all** `WARN`/`FAIL` findings to `./sandbox-
 
 - `source` is the literal string `"sandbox-report"`.
 - `items[]` holds only `WARN`/`FAIL` findings -- do not record `OK` scenarios here.
-- `ref` is the scenario id (`S1`-`S3`).
+- `ref` is the scenario id (`S1`-`S9`, `C1`-`C13`).
 - `title` is a short one-line summary.
 - `body` folds the detail, repro steps, and verdict into one markdown string.
 
@@ -275,6 +284,191 @@ A reminder typed into a busy turn, a line typed twice, or a body field in the lo
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
+---
+
+**Creel scenario fixtures.**
+The creel scenarios C1 to C13 reuse the fixtures of the creel audit, which the agent sets up in the Hub as steps of its own:
+
+- Bash strands, added with `lyx reed add --cmd bash`, stand in for plain shell agents.
+- A fake idle pane that swallows input: a script that draws a ready marker and an empty input box and reads lines without echoing them.
+- A fake input box that ignores Enter, so a typed line stays in the box.
+- An orch-role copy of the idle pane, added with `--role orch`.
+
+The agent stops the creel daemon only by replacing its binary, never by killing a process it did not start.
+
+### C1 -- First verb and isolation
+
+**Covers:** creel
+
+**Goal:** "Run the first creel verb of the sandbox hub and confirm it shares no path with any other hub on the machine."
+
+**Watch:** The first verb starts the hub's daemon.
+The daemon socket name carries the sandbox hub's shortname and path hash, the sandbox reed `-L` key differs from the live hub's, and the daemon's binary is the sandbox build.
+Listing the tmux and lyxtemp socket directories read-only shows the sandbox sockets beside the live ones and none shared.
+
+**Verdict:** `FAIL` if any path is shared with the live hub.
+
+---
+
+### C2 -- Reminder timing
+
+**Covers:** creel
+
+**Goal:** "Post a message to a Claude strand that is busy with a long task, and confirm its reminder is typed after the turn and only once."
+
+**Watch:** Busy a Claude strand with a long inject, then post mid-turn.
+The reminder lands only after the turn ends and appears once in the pane's scrollback.
+
+**Verdict:** `FAIL` on a reminder typed into a busy turn, or a duplicate.
+
+---
+
+### C3 -- Reminder backoff
+
+**Covers:** creel
+
+**Goal:** "Leave a message unread while the strand keeps answering its reminders, and confirm the reminders back off and a new message is reminded at once."
+
+**Watch:** The strand answers reminders without reading.
+`reminded` events in `lyx creel log` come about 5 and 10 minutes apart, and a new message is reminded at once.
+
+**Verdict:** `WARN` if the timing drifts by more than 30 s.
+
+---
+
+### C4 -- Read sets and acknowledgement
+
+**Covers:** creel
+
+**Goal:** "Leave interleaved mail from several senders, read it in every way the verb offers, and confirm each read returns the right set and that mail whose output could not be written stays unread."
+
+**Watch:** Interleave mail from EXTERNAL and a shell strand, then check plain `read`, `read --from`, `read --all` and `inbox`.
+`lyx creel read > /dev/full` exits non-zero and leaves the mail unread, so a following `read` still returns it.
+
+**Verdict:** `FAIL` on a wrong set or lost mail.
+
+---
+
+### C5 -- Reply chain
+
+**Covers:** creel
+
+**Goal:** "Wait for a reply to a posted message, answer it, forward a message on and answer that, and confirm every reply reaches the right sender and the refused cases are refused."
+
+**Watch:** `post --wait-reply` is answered by `--reply`.
+A forward followed by a reply goes back to the sender.
+Forwarding to oneself, forwarding a message not held and forwarding one already read are refused.
+
+**Verdict:** `FAIL` on a misrouted reply.
+
+---
+
+### C6 -- Injects
+
+**Covers:** creel
+
+**Goal:** "Inject a line into panes that take it, ignore Enter, or never go idle, and confirm each ends as it should without a line typed twice."
+
+**Watch:** `inject --wait` into an idle pane gives `injected`.
+A fake box that ignores Enter gives `unconfirmed`, and the line is not typed again once the box is cleared.
+A short `--ttl` into a never-idle pane expires on time.
+
+**Verdict:** `FAIL` on a retype or an early expiry.
+
+---
+
+### C7 -- Interrupt
+
+**Covers:** creel
+
+**Goal:** "Interrupt a Claude strand mid-turn, with and without an inject, and confirm the line lands without anyone clearing the box."
+
+**Watch:** `interrupt` and `inject --interrupt` mid-turn.
+Claude puts the interrupted prompt back in the input box, and creel clears it, so the inject lands with no hand-clearing.
+A box holding the operator's own text is left alone, and the inject waits.
+
+**Verdict:** `FAIL` if the inject waits behind the restored prompt.
+
+---
+
+### C8 -- Hold and pause
+
+**Covers:** creel
+
+**Goal:** "Hold a strand for one sender, send from another, then pause the hub and resume it, and confirm delivery follows the hold and the pause."
+
+**Watch:** A privileged sender holds the strand, injects and mail from another sender are held back, and the owner's inject passes.
+After `release` the held inject is typed and the mail reminded.
+Then `lyx tender pause` freezes the TTL and holds delivery, and `lyx tender resume` delivers.
+
+**Verdict:** `FAIL` on delivery during a hold or pause, or a TTL that runs while paused.
+
+---
+
+### C9 -- Orch
+
+**Covers:** creel
+
+**Goal:** "Send mail, an inject and an interrupt to an orch-role strand, and confirm nothing is typed into its pane."
+
+**Watch:** Mail to the orch-role strand is stored with a `withheld` record, `inject` and `interrupt` are refused, and the orch's own `inbox` shows the mail as withheld.
+
+**Verdict:** `FAIL` on any keystroke in an orch pane.
+
+---
+
+### C10 -- Daemon life and journal
+
+**Covers:** creel
+
+**Goal:** "Replace the binary under a running daemon, damage the journal in the ways a crash or an old day file would, and confirm the daemon restarts on the same pool and says why when it cannot start."
+
+**Watch:** Replacing the binary ends the daemon within 2 s, and the next verb brings the same pool (a diff of `lyx creel log` before and after).
+A planted 8-day-old day file is carried forward and deleted, and a torn tail is cut.
+A malformed middle line, planted while the daemon is stopped, gives the verb an error naming the daemon log, which quotes the start's error line with the journal file and line.
+
+**Verdict:** `FAIL` on a pool diff or lost unread mail.
+
+---
+
+### C11 -- Removed holder
+
+**Covers:** creel
+
+**Goal:** "Remove the strand that holds forwarded mail and mail someone waits on, and confirm each message steps back or ends undelivered and the reader is told it bounced."
+
+**Watch:** Remove the strand holding forwarded mail and the one holding mail awaited with `--wait-reply`.
+Within about 60 s each message steps back one hop or ends `undelivered`, the waiter exits 5, and the reader of a bounced message sees `ended_unread_by` and `ended_unread_at` on it.
+
+**Verdict:** `WARN` if the bounce is not shown.
+
+---
+
+### C12 -- Identity
+
+**Covers:** creel
+
+**Goal:** "Post from inside a pane, from a terminal, from a detached process and from a pane under another strand's name, and confirm each is who it should be or is refused."
+
+**Watch:** Pane processes resolve to their own strand and a terminal to EXTERNAL.
+A process detached from a strand's pane that keeps the strand name is refused.
+A disagreeing strand name inside a pane is refused; this check is operator-assisted when the harness refuses a command naming the strand variable.
+
+**Verdict:** `FAIL` on a spoof that succeeds.
+
+---
+
+### C13 -- Collapsed and hand-added strands
+
+**Covers:** creel
+
+**Goal:** "Post to a Claude strand added by hand and to one squeezed into a stacked 3-row pane, and confirm each receives its reminder or creel says why it cannot deliver."
+
+**Watch:** A plain `lyx reed add --cmd claude` strand receives its reminder.
+A stacked 3-row strand's stall reason shows as a `stalled` event in `lyx creel log` and as a progress line on stderr of `lyx creel inject --wait`.
+
+**Verdict:** `FAIL` on a silent stall.
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -288,6 +482,19 @@ S2: <OK|WARN|FAIL> -- <one-line note if not OK>
 S3: <OK|WARN|FAIL> -- <one-line note if not OK>
 S8: <OK|WARN|FAIL> -- <one-line note if not OK>
 S9: <OK|WARN|FAIL> -- <one-line note if not OK>
+C1: <OK|WARN|FAIL> -- <one-line note if not OK>
+C2: <OK|WARN|FAIL> -- <one-line note if not OK>
+C3: <OK|WARN|FAIL> -- <one-line note if not OK>
+C4: <OK|WARN|FAIL> -- <one-line note if not OK>
+C5: <OK|WARN|FAIL> -- <one-line note if not OK>
+C6: <OK|WARN|FAIL> -- <one-line note if not OK>
+C7: <OK|WARN|FAIL> -- <one-line note if not OK>
+C8: <OK|WARN|FAIL> -- <one-line note if not OK>
+C9: <OK|WARN|FAIL> -- <one-line note if not OK>
+C10: <OK|WARN|FAIL> -- <one-line note if not OK>
+C11: <OK|WARN|FAIL> -- <one-line note if not OK>
+C12: <OK|WARN|FAIL> -- <one-line note if not OK>
+C13: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```
@@ -298,3 +505,4 @@ sandbox-report.json written: <count of WARN/FAIL items>
 
 - Warp/weft scenarios stay in `SANDBOX-CORE-SUITE.md`, reed/tmux scenarios stay in `SANDBOX-REED-SUITE.md`;
   this suite grows with shuttle (a second engine, cluster reviews) -- add `S` scenarios here, not in either other suite.
+- Creel scenarios go here as `C` scenarios beside the shuttle `S` ones, with a `**Covers:** creel` line.
