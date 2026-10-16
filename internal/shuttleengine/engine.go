@@ -229,7 +229,7 @@ type SessionResumer interface {
 	CheckResume(sessionID, workdir string) (warning string, err error)
 }
 
-// OpenSpec describes one named session that runs with no prompt: the caller's strand role, the resolved model choice and the segment its window is colored by.
+// OpenSpec describes one named session that runs with no prompt: the caller's strand role, the resolved model choice, the segment its window is colored by and its permission mode.
 type OpenSpec struct {
 	// Role is the strand role, from the caller's flag.
 	Role string
@@ -238,11 +238,17 @@ type OpenSpec struct {
 	ModelChoice
 	// Segment is the loom segment the session's window is colored by.
 	Segment segmentcolor.Segment
+	// PermissionMode is the caller-owned engine vocabulary for the session's permission mode.
+	// Empty keeps the engine's interactive default.
+	// Open and the CLI pass it uninspected; the engine is the sole validator and realizer.
+	PermissionMode string
 }
 
 // SessionOpener is an optional capability beside Engine: the provider's way of opening a named interactive session with no prompt.
 // OpenLaunch returns the launch and resume lines and the session id of a session that runs with no prompt, no run directory and no run artifacts.
 // The session runs under the caller's own worktree settings, takes no turn, and is opened by Runner.Open.
+// An implementing engine honours spec.PermissionMode or refuses it from OpenLaunch,
+// so the refusal lands before Runner.Open mints the marker token, creates the marker directory or adds a strand.
 // It is separate from Engine for the same reason SessionCycler is: most implementers and test fakes never open a session.
 type SessionOpener interface {
 	OpenLaunch(spec OpenSpec, cfg Config) (Launch, error)
