@@ -472,6 +472,14 @@ func TestBeginBatch_PromptFile(t *testing.T) {
 			want:    []string{"none (first batch)"},
 		},
 		{
+			name: "the hub's verify tiers render as bullets",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				fx.Deps.VerifyTiers = []string{"run `go test` on the listed packages"}
+			},
+			number: 1,
+			want:   []string{"- run `go test` on the listed packages\n"},
+		},
+		{
 			name: "each card carries its gate steps",
 			prepare: func(t *testing.T, fx *beginFixture) {
 				if err := os.MkdirAll(filepath.Join(fx.Worktree, "internal", "alpha"), 0o755); err != nil {

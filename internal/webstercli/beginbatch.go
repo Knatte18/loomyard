@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -27,6 +28,20 @@ const fabricSyncWayForward = "way forward: the state is saved locally; `lyx fabr
 
 // rebaselineWayForward is the trailing clause of every refusal raised because persisting the plan-fingerprint re-baseline failed.
 const rebaselineWayForward = "way forward: re-run the same verb; the re-baseline is recomputed from the plan on disk"
+
+// beginDeps builds the websterengine.BeginDeps for this CLI's current wiring over the loaded plan, execution batches and run state.
+func (c *websterCLI) beginDeps(plan *planparser.Plan, batches []batcher.Batch, st *websterengine.State) websterengine.BeginDeps {
+	return websterengine.BeginDeps{
+		Plan:        plan,
+		Batches:     batches,
+		State:       st,
+		Config:      c.cfg,
+		Stopper:     c.runner,
+		Geom:        c.geom,
+		FrictionDir: c.frictionDir,
+		VerifyTiers: c.verifyTiers,
+	}
+}
 
 // beginBatchCmd builds the `begin-batch <nn>` subcommand.
 func (c *websterCLI) beginBatchCmd() *cobra.Command {
@@ -106,15 +121,7 @@ Example:
 				return nil
 			}
 
-			deps := websterengine.BeginDeps{
-				Plan:        plan,
-				Batches:     batches,
-				State:       st,
-				Config:      c.cfg,
-				Stopper:     c.runner,
-				Geom:        c.geom,
-				FrictionDir: c.frictionDir,
-			}
+			deps := c.beginDeps(plan, batches, st)
 
 			fingerprintBefore := st.PlanFingerprint
 

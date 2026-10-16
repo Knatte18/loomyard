@@ -4,7 +4,7 @@
 cmd/lyx: 80
 cmd/testtiming: 21
 contracts/specs: 3
-contracts/stencils: 16
+contracts/stencils: 17
 internal/agentname: 9
 internal/alignment: 7
 internal/arbiterstop: 2

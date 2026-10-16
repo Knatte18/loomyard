@@ -696,12 +696,14 @@ func TestWireHub_LanguageSkills(t *testing.T) {
 		name         string
 		fileContents string
 		wantSkills   []string
+		wantTiers    []string
 		wantRefusal  bool
 	}{
 		{
-			name:         "ListedSkillsReachRunAndRecoverDeps",
-			fileContents: "skills:\n  - scribe:golang-comments\n  - scribe:golang-testing\n",
+			name:         "ListedSkillsAndTiersReachRunBeginAndRecoverDeps",
+			fileContents: "skills:\n  - scribe:golang-comments\n  - scribe:golang-testing\nverify_tiers:\n  - run the unit tier\n  - compile the tmux tier\n",
 			wantSkills:   []string{"scribe:golang-comments", "scribe:golang-testing"},
+			wantTiers:    []string{"run the unit tier", "compile the tmux tier"},
 		},
 		{
 			name:         "EntryWithLeadingSpaceIsRefused",
@@ -755,6 +757,15 @@ func TestWireHub_LanguageSkills(t *testing.T) {
 			}
 			if got := c.recoverDeps(nil, nil, nil).LanguageSkills; !slices.Equal(got, tt.wantSkills) {
 				t.Errorf("recoverDeps().LanguageSkills = %v; want %v", got, tt.wantSkills)
+			}
+			if !slices.Equal(c.verifyTiers, tt.wantTiers) {
+				t.Errorf("c.verifyTiers = %v; want %v", c.verifyTiers, tt.wantTiers)
+			}
+			if got := c.beginDeps(nil, nil, nil).VerifyTiers; !slices.Equal(got, tt.wantTiers) {
+				t.Errorf("beginDeps().VerifyTiers = %v; want %v", got, tt.wantTiers)
+			}
+			if got := c.recoverDeps(nil, nil, nil).VerifyTiers; !slices.Equal(got, tt.wantTiers) {
+				t.Errorf("recoverDeps().VerifyTiers = %v; want %v", got, tt.wantTiers)
 			}
 		})
 	}
