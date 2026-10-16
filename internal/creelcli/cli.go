@@ -592,7 +592,7 @@ func logEntryFields(entry creelengine.LogEntry) map[string]any {
 		fields["id"] = entry.ID
 	}
 	for key, value := range map[string]string{
-		"from": entry.From, "to": entry.To, "by": entry.By, "receiver": entry.Receiver, "subject": entry.Subject, "notice": entry.Notice, "reason": entry.Reason,
+		"from": entry.From, "to": entry.To, "by": entry.By, "receiver": entry.Receiver, "subject": entry.Subject, "notice": entry.Notice, "reason": entry.Reason, "kind": entry.Kind,
 	} {
 		if value != "" {
 			fields[key] = value

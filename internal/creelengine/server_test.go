@@ -959,6 +959,15 @@ func TestDaemon_Lifecycle(t *testing.T) {
 			if text := journalText(t, r.geom); !strings.Contains(text, `"event":"carried"`) || !strings.Contains(text, "old mail") {
 				t.Errorf("the new day file lacks the carried unread message: %q", text)
 			}
+			var carried int
+			for _, entry := range mustCall(t, r.client(externalClaim(), nil, creelfake.NewClock(epoch)), creelengine.Request{Verb: creelengine.VerbLog, ID: 1}).Log {
+				if entry.Event == "carried" && entry.Kind == "mail" {
+					carried++
+				}
+			}
+			if carried != 1 {
+				t.Errorf("log --id 1 lists %d carried mail entries after the poll; want 1", carried)
+			}
 		}},
 		{"ReplacedBinaryLetsTheInFlightSendFinishThenRunReturnsAndTheLockIsFree", func(t *testing.T, r *rig) {
 			entered, release := make(chan struct{}), make(chan struct{})

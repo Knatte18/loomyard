@@ -487,6 +487,28 @@ func TestCreelCLI(t *testing.T) {
 		}
 	})
 
+	t.Run("log --id prints a carried entry's kind", func(t *testing.T) {
+		r := newRig(t)
+		alpha, beta := r.name("alpha:driver"), r.name("beta:driver")
+		r.delivery.SetStrands(creelfake.LiveStrand(alpha), creelfake.LiveStrand(beta))
+		if err := os.MkdirAll(r.geometry.JournalDir, 0o755); err != nil {
+			t.Fatalf("MkdirAll() = %v", err)
+		}
+		carried := fmt.Sprintf(`{"event":"carried","at":"2026-10-01T11:00:00Z","of":"posted","id":1,"from":%q,"to":%q,"body":"old mail","orig_at":"2026-09-20T11:00:00Z"}`, alpha, beta)
+		if err := os.WriteFile(filepath.Join(r.geometry.JournalDir, "2026-10-01.jsonl"), []byte(carried+"\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile() = %v", err)
+		}
+		r.startDaemon(t)
+
+		entries, _ := runCreel(r.cwd, "log", "--id", "1").fields["log"].([]any)
+		if len(entries) != 1 {
+			t.Fatalf("creel log --id 1 listed %d entries; want the carried one", len(entries))
+		}
+		if fields, _ := entries[0].(map[string]any); fields["event"] != "carried" || fields["kind"] != "mail" {
+			t.Errorf("creel log --id 1 entry = %v; want event carried with kind mail", entries[0])
+		}
+	})
+
 	t.Run("as a strand read prints the message and acknowledges it", func(t *testing.T) {
 		r := newRig(t)
 		alpha := r.name("alpha:driver")

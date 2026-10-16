@@ -156,7 +156,8 @@ func TestJournal_Fold(t *testing.T) {
 		{
 			name: "an unknown key and an unknown event name are ignored",
 			files: map[string]string{"2026-10-01.jsonl": `{"event":"posted","id":1,"from":"` + alpha + `","to":"` + beta + `","body":"hi","at":"2026-10-01T12:00:00Z","zzz":{"a":1}}` + "\n" +
-				`{"event":"from-the-future","id":9,"at":"2026-10-01T12:00:00Z"}` + "\n"},
+				`{"event":"from-the-future","id":9,"at":"2026-10-01T12:00:00Z"}` + "\n" +
+				`{"event":"carried","of":"from-the-future","id":8,"at":"2026-10-01T12:00:00Z"}` + "\n"},
 			check: func(t *testing.T, p *pool) {
 				if got := shapesOf(p); !reflect.DeepEqual(got, map[int64]messageShape{1: {Holder: beta, Status: StatusUnread}}) {
 					t.Errorf("messages = %+v, want only message 1", got)
@@ -464,6 +465,19 @@ func TestJournal_Retention(t *testing.T) {
 		if !p.programs["ly:BATTEN"] || p.maxID != 6 {
 			t.Errorf("%s: programs = %v and maxID = %d, want ly:BATTEN known and 6", label, p.programs, p.maxID)
 		}
+		dayEleven := journalEpoch.AddDate(0, 0, 10)
+		wantMail := []LogEntry{{Day: "2026-10-11", Event: eventCarried, At: dayEleven, ID: 1, From: alpha, To: gamma, Kind: kindMail, Subject: "unread"}}
+		if got := carriedEntries(p, 1); !reflect.DeepEqual(got, wantMail) {
+			t.Errorf("%s: carried entries of message 1 = %+v, want %+v", label, got, wantMail)
+		}
+		wantInject := []LogEntry{{Day: "2026-10-11", Event: eventCarried, At: dayEleven, ID: 3, From: alpha, To: beta, Kind: kindInject}}
+		if got := carriedEntries(p, 3); !reflect.DeepEqual(got, wantInject) {
+			t.Errorf("%s: carried entries of inject 3 = %+v, want %+v", label, got, wantInject)
+		}
+		wantHold := []LogEntry{{Day: "2026-10-11", Event: eventCarried, At: dayEleven, To: beta, By: alpha}}
+		if got := carriedEntries(p, 0); !reflect.DeepEqual(got, wantHold) {
+			t.Errorf("%s: carried entries of the live hold = %+v, want %+v", label, got, wantHold)
+		}
 	}
 	check("the writer's pool", state)
 	refolded, err := foldJournal(dir)
@@ -492,4 +506,32 @@ func TestJournal_Retention(t *testing.T) {
 	if crashed.injects[3] == nil || crashed.injects[3].Consumed != 30*time.Second {
 		t.Errorf("after a crash between carry and delete: inject 3 = %+v, want one entry with its consumed TTL", crashed.injects[3])
 	}
+
+	// Message 1, still unread and carried in day eleven's file, is carried again once that file is past retention.
+	// The earlier carry's entry goes with its deleted file, so the carry of the day just opened is the one the log shows.
+	dayNineteen := journalEpoch.AddDate(0, 0, 18)
+	clock.now = dayNineteen
+	appendRecord(record{Event: eventPosted, ID: 7, From: alpha, To: beta, Body: "later"})
+	wantLater := []LogEntry{{Day: "2026-10-19", Event: eventCarried, At: dayNineteen, ID: 1, From: alpha, To: gamma, Kind: kindMail, Subject: "unread"}}
+	if got := carriedEntries(state, 1); !reflect.DeepEqual(got, wantLater) {
+		t.Errorf("the writer's pool after a second carry: carried entries of message 1 = %+v, want %+v", got, wantLater)
+	}
+	refoldedLater, err := foldJournal(dir)
+	if err != nil {
+		t.Fatalf("foldJournal after the second retention: %v", err)
+	}
+	if got := carriedEntries(refoldedLater, 1); !reflect.DeepEqual(got, wantLater) {
+		t.Errorf("the refolded journal after a second carry: carried entries of message 1 = %+v, want %+v", got, wantLater)
+	}
+}
+
+// carriedEntries returns the carried entries of the log for id, oldest first; id 0 selects the entries of holds.
+func carriedEntries(p *pool, id int64) []LogEntry {
+	var carried []LogEntry
+	for _, entry := range p.events {
+		if entry.Event == eventCarried && entry.ID == id {
+			carried = append(carried, entry)
+		}
+	}
+	return carried
 }

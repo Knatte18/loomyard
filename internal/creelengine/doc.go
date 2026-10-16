@@ -64,6 +64,7 @@
 //
 // At a UTC day change the writer carries what is still live out of files older than seven days: it appends a carried record for each unread message, queued inject and live hold to the new day file, syncs, and only then deletes the old files.
 // The fold is idempotent by id, so a crash between the carry and the deletion leaves both and folds to one entry.
+// Each carried record is also a `carried` log event, after a fold and in the running daemon, holding the snapshot's id, parties and kind at the carry's time.
 //
 // The pool holds each message once, with its id, its original sender and its current holder; forwarding changes the holder only.
 // Only the daemon writes the journal.
@@ -140,6 +141,7 @@
 //
 // log lists the journal's events oldest first with their ids, parties, times and subjects, narrowed by --id, --from, --to and --since.
 // It carries no body field.
+// A `carried` event shows the kind of the message or inject carried, and a message carried again at a later retention gets one `carried` event per carry that is still in a kept file.
 // A `stalled` record names the receiver and the stall reason a delivery probe read, and is written once per change of reason while something is pending for the receiver, and again for a stall read after it went stale.
 //
 // # Delivery loop

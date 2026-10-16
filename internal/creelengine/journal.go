@@ -276,6 +276,7 @@ func (w *journalWriter) rotate(now time.Time, day string) error {
 
 // retain appends a carried record for every unread message, queued inject and live hold recorded in a file older than the retention, then deletes those files.
 // The carried records are synced before any deletion, so a crash between the two leaves both and the fold collapses them by id.
+// Each carried record is also folded into the pool, so the log lists the carry at once.
 func (w *journalWriter) retain(now time.Time) error {
 	names, err := listJournalFiles(w.dir)
 	if err != nil {
@@ -295,6 +296,7 @@ func (w *journalWriter) retain(now time.Time) error {
 		if err := w.writeLine(rec); err != nil {
 			return err
 		}
+		w.pool.apply(rec, w.day)
 	}
 	w.pool.moveOrigins(cutoff, w.day, now)
 	for _, name := range old {

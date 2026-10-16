@@ -4,6 +4,7 @@ package creelengine
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -114,7 +115,9 @@ type LogEntry struct {
 	By       string
 	Receiver string
 	Subject  string
-	Notice   string
+	// Kind is the kind of the message or inject a carried entry snapshots, empty on every other entry.
+	Kind   string
+	Notice string
 	// Reason is the stall a stalled event names.
 	Reason string
 	// Unread is the message ids a reminded event listed, oldest first.
@@ -275,8 +278,9 @@ func (p *pool) apply(rec record, day string) {
 	case eventWithheld:
 		p.withheld[rec.To] = withheldEntry{At: rec.At, Notice: rec.Notice}
 	case eventCarried:
-		p.applyCarried(rec, day)
-		return
+		if !p.applyCarried(rec, day) {
+			return
+		}
 	default:
 		logger.Debug("creel journal: ignoring a record of an event this binary does not know", "event", rec.Event, "id", rec.ID)
 		return
@@ -323,7 +327,8 @@ func (p *pool) applyRead(rec record) {
 }
 
 // applyCarried folds a retention snapshot; an entry the pool already holds is left as the original lines made it.
-func (p *pool) applyCarried(rec record, day string) {
+// It reports whether the record snapshots a hold, message or inject this binary knows.
+func (p *pool) applyCarried(rec record, day string) bool {
 	switch {
 	case rec.Of == eventHeld:
 		p.holds[rec.To] = &holdEntry{Owner: rec.By, Expires: rec.ExpiresAt, origin: day}
@@ -354,7 +359,9 @@ func (p *pool) applyCarried(rec record, day string) {
 		}
 	default:
 		logger.Debug("creel journal: ignoring a carried record of an entry this binary does not know", "of", rec.Of, "id", rec.ID)
+		return false
 	}
+	return true
 }
 
 func (p *pool) setStatus(id int64, status Status) {
@@ -370,6 +377,7 @@ func (p *pool) setOutcome(id int64, outcome string) {
 }
 
 // logEntryFor builds the log line of rec: parties and subject from the message or inject it concerns, never a body.
+// A carried record's line carries the snapshot's kind, mail when the record names none.
 func (p *pool) logEntryFor(rec record, day string) LogEntry {
 	entry := LogEntry{
 		Day: day, Event: rec.Event, At: rec.At, ID: rec.ID,
@@ -385,6 +393,13 @@ func (p *pool) logEntryFor(rec record, day string) LogEntry {
 		entry.From = inject.From
 		if entry.To == "" {
 			entry.To = inject.Receiver
+		}
+	}
+	if rec.Event == eventCarried {
+		// A carried record's receiver field holds who a returned message ended unread for, which the entry does not show.
+		entry.Receiver = ""
+		if rec.Of == eventPosted {
+			entry.Kind = cmp.Or(rec.Kind, kindMail)
 		}
 	}
 	return entry
