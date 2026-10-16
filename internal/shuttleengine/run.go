@@ -883,6 +883,12 @@ func (run *Run) StrandGUID() string {
 	return run.state.StrandGUID
 }
 
+// SessionID returns the provider session id the run's launch named: minted for a fresh launch, the resumed id for a resume.
+// It is available as soon as Start returns, as StrandGUID is.
+func (run *Run) SessionID() string {
+	return run.state.SessionID
+}
+
 // Run starts spec and blocks until it reaches a terminal outcome — the Start+Wait convenience for a
 // caller with no need to Interrupt/Send between the two.
 // A not-ready start (the provider never passed its startup gates) is preserved as a terminal

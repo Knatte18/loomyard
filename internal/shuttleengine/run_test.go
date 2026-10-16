@@ -249,8 +249,8 @@ func TestRunner_Start_HappyPath(t *testing.T) {
 			t.Errorf("AddStrand spec = %+v, want %+v", got, want)
 		}
 
-		if run.state.SessionID != "session-1" {
-			t.Errorf("state.SessionID = %q, want %q", run.state.SessionID, "session-1")
+		if got := run.SessionID(); got != "session-1" {
+			t.Errorf("SessionID() = %q, want %q", got, "session-1")
 		}
 		if run.state.StrandGUID != "strand-1" {
 			t.Errorf("state.StrandGUID = %q, want %q", run.state.StrandGUID, "strand-1")

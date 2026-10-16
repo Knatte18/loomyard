@@ -74,7 +74,7 @@ internal/lyxtemp: 7
 internal/mergeresolve: 17
 internal/modelspec: 11
 internal/orchcli: 28
-internal/orchengine: 144
+internal/orchengine: 145
 internal/output: 4
 internal/pairteardown: 8
 internal/pauserecord: 14
@@ -83,7 +83,7 @@ internal/parentlock: 16
 internal/parentreview: 54
 internal/pattern: 8
 internal/planglyph: 87
-internal/planparser: 95
+internal/planparser: 96
 internal/preflight: 7
 internal/preflightshed: 8
 internal/proc: 18

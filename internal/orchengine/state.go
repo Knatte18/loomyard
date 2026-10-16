@@ -58,6 +58,11 @@ const (
 type State struct {
 	Strand string `json:"strand"` // Guid of the orch strand, written by start.
 
+	// SessionID is the provider session id of the session Strand runs:
+	// written by start at every fresh launch, cleared when start binds another live strand, and kept current by the watcher.
+	// It is optional on read: a state file an older binary wrote decodes with it empty.
+	SessionID string `json:"session_id"`
+
 	Phase             Phase     `json:"phase"`               // Persisted cycle phase.
 	PhaseStrand       string    `json:"phase_strand"`        // Strand the phase belongs to.
 	PhaseEnteredAt    time.Time `json:"phase_entered_at"`    // When the phase was entered.
@@ -302,7 +307,8 @@ func NewHandoffPath(p Paths, now time.Time) string {
 // The context reading and the turn end it was taken through are cleared, since they describe the previous session;
 // the new session's first turn end sets them again.
 // CompactionBaseline becomes launchedAt, so a compaction boundary the session already carried never triggers a reload, and LaunchedAt records it.
-// LastHandoff, CycleCount, CycleTrigger and LastDeferral survive.
+// LastHandoff, CycleCount, CycleTrigger, LastDeferral and SessionID survive;
+// the caller sets SessionID for the session it launched or bound.
 func ResetForFreshLaunch(s State, strand string, launchedAt time.Time) State {
 	s.CompactionBaseline = launchedAt
 	s.LaunchedAt = launchedAt
