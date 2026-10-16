@@ -92,6 +92,31 @@ func TestRunCLI_Run_FlagValidation(t *testing.T) {
 			args:    []string{"--output-file", "out.md"},
 			wantErr: "exactly one of --prompt or --prompt-file",
 		},
+		{
+			name:    "AnchorBelowParent",
+			args:    []string{"--prompt", "do the thing", "--output-file", "out.md", "--anchor", "below-parent"},
+			wantErr: "own-window",
+		},
+		{
+			name:    "AnchorTop",
+			args:    []string{"--prompt", "do the thing", "--output-file", "out.md", "--anchor", "top"},
+			wantErr: "own-window",
+		},
+		{
+			name:    "AnchorOverview",
+			args:    []string{"--prompt", "do the thing", "--output-file", "out.md", "--anchor", "overview"},
+			wantErr: "own-window",
+		},
+		{
+			name:    "AnchorUnknown",
+			args:    []string{"--prompt", "do the thing", "--output-file", "out.md", "--anchor", "sideways"},
+			wantErr: "own-window",
+		},
+		{
+			name:    "AnchorEmpty",
+			args:    []string{"--prompt", "do the thing", "--output-file", "out.md", "--anchor", ""},
+			wantErr: "own-window",
+		},
 	}
 
 	for _, tt := range tests {
