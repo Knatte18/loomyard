@@ -25,22 +25,53 @@ func TestRenderFiles_WriteWithoutLeadingComment(t *testing.T) {
 	cases := []struct {
 		name   string
 		file   string
-		render func(dir, path string) error
+		render func(dir, path, rulesPath string) error
 		want   []string
+		// rules is the rules file content to seed, none when empty; secondRules rewrites it before a second render.
+		rules, secondRules string
+		// wantRules is the text the role file ends with after the last render.
+		wantRules string
+		// wantGone is text the last render must not carry.
+		wantGone string
 	}{
-		{"role", "role.md", func(dir, path string) error { return RenderRoleFile(dir, path, testIndex) }, []string{"## Commands\n", testIndex}},
-		{"note template", "note-template.md", RenderNoteTemplateFile, nil},
+		{name: "role", file: "role.md", render: renderRole, want: []string{"## Commands\n", testIndex, "## This repository\n"}, wantRules: noRepositoryRules},
+		{name: "role with rules", file: "role.md", render: renderRole, want: []string{"## This repository\n", "Only the orch deploys.\n"}, rules: "Only the orch deploys.\n", wantRules: "Only the orch deploys."},
+		{name: "role rules rewritten", file: "role.md", render: renderRole, rules: "Only the orch deploys.\n", secondRules: "Only the operator deploys.\n", want: []string{"Only the operator deploys.\n"}, wantRules: "Only the operator deploys.", wantGone: "Only the orch deploys."},
+		{name: "role whitespace-only rules", file: "role.md", render: renderRole, rules: "  \n\t\n", wantRules: noRepositoryRules},
+		{name: "note template", file: "note-template.md", render: func(dir, path, _ string) error { return RenderNoteTemplateFile(dir, path) }},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			path := filepath.Join(t.TempDir(), "orch", c.file)
-			if err := c.render(seedStencils(t), path); err != nil {
+			root := t.TempDir()
+			path := filepath.Join(root, "orch", c.file)
+			rulesPath := filepath.Join(root, "ORCHESTRATOR.md")
+			if c.rules != "" {
+				if err := os.WriteFile(rulesPath, []byte(c.rules), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			dir := seedStencils(t)
+			if err := c.render(dir, path, rulesPath); err != nil {
 				t.Fatal(err)
+			}
+			if c.secondRules != "" {
+				if err := os.WriteFile(rulesPath, []byte(c.secondRules), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				if err := c.render(dir, path, rulesPath); err != nil {
+					t.Fatal(err)
+				}
 			}
 			data, err := os.ReadFile(path)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if c.wantRules != "" && !strings.HasSuffix(strings.TrimRight(string(data), " \t\r\n"), c.wantRules) {
+				t.Errorf("%s file does not end with %q", c.name, c.wantRules)
+			}
+			if c.wantGone != "" && strings.Contains(string(data), c.wantGone) {
+				t.Errorf("%s file keeps %q after the rules were rewritten", c.name, c.wantGone)
 			}
 			if len(data) == 0 {
 				t.Errorf("%s file is empty", c.name)
@@ -57,18 +88,53 @@ func TestRenderFiles_WriteWithoutLeadingComment(t *testing.T) {
 	}
 }
 
-func TestRenderRoleFile_RefusesStencilWithoutIndexMarker(t *testing.T) {
-	dir := seedStencils(t)
-	if err := os.WriteFile(stencilstore.Path(dir, roleStencilName), []byte("# Hub orchestrator\n\nNo marker here.\n"), 0o644); err != nil {
-		t.Fatal(err)
+func renderRole(dir, path, rulesPath string) error {
+	return RenderRoleFile(dir, path, testIndex, rulesPath)
+}
+
+func TestRenderRoleFile_RefusalsWriteNoFile(t *testing.T) {
+	cases := []struct {
+		name string
+		// override replaces the shipped role stencil when non-empty.
+		override string
+		// rulesDir creates a directory at the rules path.
+		rulesDir bool
+		// wantNamed lists substrings the error carries.
+		wantNamed func(rulesPath string) []string
+	}{
+		{"no marker", "# Hub orchestrator\n\nNo marker here.\n", false, func(string) []string { return []string{roleStencilName, commandIndexMarker} }},
+		{"no rules marker", "# Hub orchestrator\n\n{{.command_index}}\n", false, func(string) []string { return []string{roleStencilName, repositoryRulesMarker} }},
+		{"unreadable rules", "", true, func(rulesPath string) []string { return []string{rulesPath} }},
 	}
-	path := filepath.Join(t.TempDir(), "role.md")
-	err := RenderRoleFile(dir, path, testIndex)
-	if err == nil || !strings.Contains(err.Error(), roleStencilName) || !strings.Contains(err.Error(), commandIndexMarker) {
-		t.Fatalf("want an error naming %s and the %s marker, got %v", roleStencilName, commandIndexMarker, err)
-	}
-	if _, statErr := os.Stat(path); statErr == nil {
-		t.Error("a refused render wrote the role file")
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			dir := seedStencils(t)
+			if c.override != "" {
+				if err := os.WriteFile(stencilstore.Path(dir, roleStencilName), []byte(c.override), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			root := t.TempDir()
+			path, rulesPath := filepath.Join(root, "role.md"), filepath.Join(root, "ORCHESTRATOR.md")
+			if c.rulesDir {
+				if err := os.MkdirAll(rulesPath, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			err := RenderRoleFile(dir, path, testIndex, rulesPath)
+			if err == nil {
+				t.Fatal("RenderRoleFile = nil; want a refusal")
+			}
+			for _, want := range c.wantNamed(rulesPath) {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("RenderRoleFile error = %v; want it to name %q", err, want)
+				}
+			}
+			if _, statErr := os.Stat(path); statErr == nil {
+				t.Error("a refused render wrote the role file")
+			}
+		})
 	}
 }
 
