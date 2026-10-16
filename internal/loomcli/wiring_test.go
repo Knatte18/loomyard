@@ -1029,12 +1029,14 @@ func TestWire_LanguageSkills(t *testing.T) {
 		wantKey    string
 		wantSkills []string
 		wantTiers  []string
+		wantTools  []string
 	}{
 		{
 			name:       "a listed language reaches the Webster deps and the darn writer after its own",
-			content:    "skills:\n  - scribe:golang-comments\n  - scribe:golang-testing\nverify_tiers:\n  - build first\n  - vet second\n",
+			content:    "skills:\n  - scribe:golang-comments\n  - scribe:golang-testing\nverify_tiers:\n  - build first\n  - vet second\nrename_tools:\n  - gopls rename\n",
 			wantSkills: []string{"scribe:golang-comments", "scribe:golang-testing"},
 			wantTiers:  []string{"build first", "vet second"},
+			wantTools:  []string{"gopls rename"},
 		},
 		{
 			name:    "an empty skills entry halts wire naming skills and the way forward",
@@ -1076,6 +1078,9 @@ func TestWire_LanguageSkills(t *testing.T) {
 			}
 			if !slices.Equal(c.env.VerifyTiers, tt.wantTiers) {
 				t.Errorf("env.VerifyTiers = %q; want %q", c.env.VerifyTiers, tt.wantTiers)
+			}
+			if !slices.Equal(c.env.RenameTools, tt.wantTools) {
+				t.Errorf("env.RenameTools = %q; want %q", c.env.RenameTools, tt.wantTools)
 			}
 			if !slices.Equal(c.languageSkills, tt.wantSkills) || !slices.Equal(c.runDeps.LanguageSkills, tt.wantSkills) {
 				t.Errorf("languageSkills = %v, runDeps.LanguageSkills = %v; want %v", c.languageSkills, c.runDeps.LanguageSkills, tt.wantSkills)

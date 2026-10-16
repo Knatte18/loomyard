@@ -245,6 +245,7 @@ func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) err
 // they read committed history and commit through the fabric at call time.
 // It loads no module config, constructs no engine, and can fail only if loomengine's own path accessors do,
 // which they cannot.
+// validate-plan loads the hub-wide language.yaml itself for its rename-tool-missing check, and that read is none of wire()'s module configs.
 //
 // It exists because wire() below loads eight module configs, a model-spec registry and the active
 // batchifier before any verb body runs, so a fault in ANY of them refused "lyx loom status" and
@@ -258,6 +259,7 @@ func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) err
 // pre-handoff self-check, mid-run, while a sibling process may be actively rewriting any of the eight
 // configs wire() loads -- and validateDiscussionCmd/validatePlanCmd (validate.go) read only
 // DecisionRecordPath/SupportLogPath/AnchorPath/WorktreeRoot, none of which need any config load.
+// validatePlanCmd reads language.yaml alone, on its own.
 // validate-description joined for the same reason, reading DescriptionPath alone.
 //
 // approve is on this path because it builds no producer: it reads the status file, opens the fabric
@@ -680,6 +682,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 			return loomshed.WebsterRecordNote(anchorPath)
 		},
 		VerifyTiers:        language.VerifyTiers,
+		RenameTools:        language.RenameTools,
 		StatusPath:         statusPath,
 		StatusLockPath:     statusLockPath,
 		DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),

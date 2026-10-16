@@ -11,6 +11,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/planglyph"
@@ -177,6 +179,9 @@ format-only checks over the whole new plan plus a check that its first_card
 equals the card number the rework session was told. The default and --rework
 modes include the card-fabric-reference, fabric-vocabulary-name and
 edit-test-file checks; --require-approved leaves all three out.
+Every mode but --require-approved also runs rename-tool-missing, which reads
+the hub's language.yaml, and pattern-changes-mismatch, which compares the
+overview's PATTERN changes with the decision record's.
 
 --lens-review: the no-flag checks plus the check that the plan directory's
 lens-review.md holds a recorded lens review, the check set of a twill
@@ -250,16 +255,26 @@ Example:
 				return nil
 			}
 
+			var pc loomshed.PlanContext
+			if !requireApproved {
+				language, loadErr := languageconfig.Load(fabricengine.ConfigDirs(c.location))
+				if loadErr != nil {
+					clihelp.SetExit(cmd.Context(), output.Err(out, "loom: validate-plan: "+loadErr.Error()))
+					return nil
+				}
+				pc = loomshed.PlanContext{RenameTools: language.RenameTools, DecisionRecordPath: c.env.PatternRecordPath}
+			}
+
 			var findings []planglyph.Finding
 			switch {
 			case requireApproved:
 				findings, err = c.env.PlanIndex.Validate(plan, c.env.WorktreeRoot)
 			case rework:
-				findings, err = loomshed.ValidateReworkPlan(plan, c.env.WorktreeRoot, c.env.PlanIndex, c.env.Rework.ReadCommitted)
+				findings, err = loomshed.ValidateReworkPlan(plan, c.env.WorktreeRoot, c.env.PlanIndex, c.env.Rework.ReadCommitted, pc)
 			case lensReview:
-				findings, err = loomshed.ValidatePlanLensReview(plan, c.env.AnchorPath, c.env.WorktreeRoot, c.env.PlanIndex)
+				findings, err = loomshed.ValidatePlanLensReview(plan, c.env.AnchorPath, c.env.WorktreeRoot, c.env.PlanIndex, pc)
 			default:
-				findings, err = loomshed.ValidatePlan(plan, c.env.AnchorPath, c.env.WorktreeRoot, c.env.PlanIndex)
+				findings, err = loomshed.ValidatePlan(plan, c.env.AnchorPath, c.env.WorktreeRoot, c.env.PlanIndex, pc)
 			}
 			if err != nil {
 				// Named for quarry, not the plan: an operator reading this envelope must never be

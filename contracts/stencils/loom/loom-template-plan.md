@@ -150,6 +150,8 @@ A handle referenced but never declared, or two `Create:` bullets declaring the s
 Always write `approved: false` — you never self-approve;
 `Plan-Bouncer`'s approved settle writes it to `true`.
 Body: a short task-framing paragraph, then an ordered **Card Index** (`N — <card-slug> — <one-line intent>`), then the optional plan-level sections `## Shared Decisions`, `## Rename mechanic` (required when any card is type `Rename`), `## verify:`.
+When the decision record has a `## PATTERN changes` section, copy its bullets into the overview's `## PATTERN changes` section, one per entry, without the added-after-Discussion suffix; the plan gate refuses a mismatch.
+A symbol `Rename` needs the hub's `rename_tools` in `language.yaml`; the plan gate refuses one when the list is empty.
 
 ### Each `NN-<card-slug>.md`
 

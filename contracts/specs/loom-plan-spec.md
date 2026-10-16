@@ -379,6 +379,11 @@ The rows that name `internal/planglyph` as their emitter are an exception: that 
 `glyph-ambiguous` is not raised for a member declared once per mutually exclusive build-constraint set, which resolves as one member.
 `card-fabric-reference` is the other exception: it is a `planparser` function outside both entry points, which the plan index appends to its own format validation.
 `done-card-edited` is the third: `loomshed.ValidatePlan` appends it after the index's validation.
+`rename-tool-missing` and `pattern-changes-mismatch` join it, appended by `loomshed` outside the `planparser` entry points in every mode (default, `--lens-review` and `--rework`, and the Plan-Write, Plan-Burler-Fix and PR-Rework gates).
+`rename-tool-missing` is one blocking finding per symbol `Rename` pair of a card not recorded done, raised when `language.yaml` lists no `rename_tools`; its way forward is to set `rename_tools` with `lyx config language` from the prime, or recast the card.
+A file pair raises none.
+`pattern-changes-mismatch` is one blocking finding per entry (ID, action and text) that the decision record's `## PATTERN changes` section and the overview's section do not both declare; its way forward is to copy the record's bullets into the overview's section, one per entry, without the added-after-Discussion suffix.
+It runs only on a loom run, and an absent record adds nothing; a record whose section is malformed is a returned error naming `lyx loom validate-discussion`, since the plan writer cannot fix the record.
 `fabric-vocabulary-name` is the fourth: it is a `planparser` function outside both entry points, which the plan index appends to its format, rework and dispatch validation.
 `edit-test-file` is the fifth: it is a `planparser` function outside both entry points, which the plan index appends to its format and rework validation.
 The rows below stay in one fixed order regardless of which entry point runs them, and `plan-unapproved` keeps its position-three slot in that order even though it alone belongs to the wider entry point:
