@@ -448,6 +448,13 @@
 // RunGated's not-ready result carries the start error's text in Result.StartError.
 // The startup probe starts at the poll interval and backs off to the dismissal gap (the poll interval times liveness_every_n_polls) while the pane does not change.
 // Startup-gate dismissals are at least one dismissal gap apart.
+// Runner.AcceptStartupGate is the one dismissal outside a run's own startup step, for a strand already live, such as a session added by hand:
+// it captures the pane once, runs the engine's startup classification on it and plays the engine's gate-accept sequence for that capture only when the engine reads a gate.
+// A ready or pending pane, and a gate whose accepting option the engine cannot locate, send nothing, and the call reports whether it sent any input.
+// The engine is the one the run's record names, or the live strand's provider when there is no record.
+// It plays only the provider's own accept sequence, on the strand the caller names, so it grants no permission the strand did not request;
+// for claude that covers the folder-trust gate, which adds the strand's working directory to the operator's Claude trust list, and the bypass-permissions risk gate, shown only to a strand whose launch flags or settings already ask for bypass permissions.
+// Its only caller is the llm smoke test's helper in internal/creelcli, and `TestProviderSeamImportRule` pins that no production file outside this package calls it; a production caller is a new decision.
 // A launch that declares Launch.RecordsSessionStarts, recorded as RunState.RecordsSessionStarts, starts only once the events file holds a session-start line of any source beside the ready pane;
 // until both hold the run stays not started and the startup error names the missing line or the unreadable events file, while gate detection and dismissal run as for any run.
 // Such a launch is also started once its events file holds a session start followed by a turn start, checked before the pane capture and in start's probe only,
