@@ -146,6 +146,90 @@ func parsePatternBullet(line string) (PatternChange, string) {
 	return change, ""
 }
 
+// notesHeading is the optional H2 heading a new PATTERN changes section is placed before.
+const notesHeading = "## Notes for the plan writer"
+
+// patternChangeAppendedBullet renders change as the bullet AppendDecision writes, with the appended-after-Discussion suffix naming by and the UTC day of date.
+// The fields are trimmed, and a `removes` bullet that still carries text keeps it, so the record's own check refuses it.
+func patternChangeAppendedBullet(change PatternChange, by string, date time.Time) string {
+	change.ID = strings.TrimSpace(change.ID)
+	change.Action = strings.TrimSpace(change.Action)
+	change.Text = strings.TrimSpace(change.Text)
+	bullet := change.Bullet()
+	if change.Action == patternActionRemoves && change.Text != "" {
+		bullet += ": " + change.Text
+	}
+	return bullet + " — added after Discussion (" + by + ", " + date.UTC().Format("2006-01-02") + ")"
+}
+
+// patternChangesInsertOffset returns the byte offset in content where a new PATTERN changes bullet or section goes.
+// When the section exists, the offset is just after its last non-blank line and needHeading is false.
+// Otherwise needHeading is true and the offset is the start of the `## Notes for the plan writer` heading line, or the end of content when that heading is absent.
+// Headings inside a fenced code block are not headings.
+func patternChangesInsertOffset(content string) (offset int, needHeading bool) {
+	lines := strings.Split(content, "\n")
+	starts := make([]int, len(lines))
+	position := 0
+	for i, line := range lines {
+		starts[i] = position
+		position += len(line) + 1
+	}
+
+	fenced := fencedLines(lines)
+	head, end, notes := -1, len(lines), -1
+	for i, line := range lines {
+		if fenced[i] {
+			continue
+		}
+		trimmed := strings.TrimRight(line, " \t\r")
+		if head < 0 {
+			if trimmed == patternChangesHeading {
+				head = i
+			} else if trimmed == notesHeading && notes < 0 {
+				notes = i
+			}
+			continue
+		}
+		if strings.HasPrefix(trimmed, "## ") {
+			end = i
+			break
+		}
+	}
+
+	if head < 0 {
+		if notes < 0 {
+			return len(content), true
+		}
+		return starts[notes], true
+	}
+	for end-1 > head && strings.TrimSpace(lines[end-1]) == "" {
+		end--
+	}
+	if end == len(lines) {
+		return len(content), false
+	}
+	return starts[end], false
+}
+
+// patternChangesInsertion returns the text AppendDecision inserts into content at offset, where patternChangesInsertOffset reported offset and needHeading: the bullet alone, or a new section holding it.
+func patternChangesInsertion(content string, offset int, needHeading bool, bullet string) string {
+	prefix := ""
+	if offset == len(content) && offset > 0 && content[offset-1] != '\n' {
+		prefix = "\n"
+	}
+	if !needHeading {
+		return prefix + bullet + "\n"
+	}
+	section := patternChangesHeading + "\n\n" + bullet + "\n"
+	if offset < len(content) {
+		return section + "\n"
+	}
+	if !strings.HasSuffix(content, "\n\n") {
+		prefix += "\n"
+	}
+	return prefix + section
+}
+
 // DeclaredPatternChanges returns the bullets of the decision record's `## PATTERN changes` section, in order and without the appended suffix, for a caller to render into an agent's prompt.
 // An empty recordPath or a record that does not exist returns nil and no error, as does a record without the section.
 // A read error is returned.
