@@ -64,7 +64,9 @@ first_card: 1                            # optional positive integer, default 1;
 ```
 
 The body carries a short task-framing paragraph, an ordered **Card Index** whose entries read `N — <card-slug> — <one-line intent>`,
-and the optional plan-level body sections `## Shared Decisions`, `## Rename mechanic`, and `## verify:`.
+and the optional plan-level body sections `## Shared Decisions`, `## Rename mechanic`, `## verify:` and `## PATTERN changes`.
+
+`## PATTERN changes` carries the decision record's `## PATTERN changes` entries, one bullet each, in the bullet shape `loom-discussion-spec.md` defines, without the record's added-after-Discussion suffix.
 
 `NN-<card-slug>.md` — one file per card (`NN` = zero-padded card order);
 the file *is* the card.

@@ -90,6 +90,10 @@ type Plan struct {
 	// RenameMechanic is the raw body text of the overview's optional "## Rename mechanic" section.
 	RenameMechanic string
 
+	// PatternChanges is the overview's optional "## PATTERN changes" section, one entry per bullet in body order.
+	// It is nil when the overview has no such section or the section holds no bullet.
+	PatternChanges []PatternChange
+
 	// OverviewText is the raw text of 00-overview.md, read only by CheckCardFabricReference.
 	OverviewText string
 

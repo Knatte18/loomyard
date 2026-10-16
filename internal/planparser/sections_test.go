@@ -1,12 +1,13 @@
-// sections_test.go covers the three plan-level body sections extracted from 00-overview.md: they
-// are exposed verbatim from the format-4 golden fixture,
-// and each is empty when its heading is absent from the overview.
+// sections_test.go covers the plan-level body sections extracted from 00-overview.md.
+// The first three are exposed verbatim from the format-4 golden fixture, and each is empty when its heading is absent from the overview.
+// The PATTERN changes section parses into entries.
 
 package planparser_test
 
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -79,7 +80,63 @@ func TestParsePlan_PlanLevelSections(t *testing.T) {
 		if plan.Verify != "" {
 			t.Errorf("plan.Verify = %q; want empty (section absent)", plan.Verify)
 		}
+		if plan.PatternChanges != nil {
+			t.Errorf("plan.PatternChanges = %v; want nil (section absent)", plan.PatternChanges)
+		}
 	})
+
+	patternChangesTests := []struct {
+		name    string
+		section string
+		want    []planparser.PatternChange
+	}{
+		{
+			"adds, changes and removes bullets parse in order",
+			"- `PATTERN-a` — adds: the new entry text\n- `PATTERN-b` — changes: the reworded text\n- `PATTERN-c` — removes\n",
+			[]planparser.PatternChange{
+				{ID: "PATTERN-a", Action: "adds", Text: "the new entry text"},
+				{ID: "PATTERN-b", Action: "changes", Text: "the reworded text"},
+				{ID: "PATTERN-c", Action: "removes"},
+			},
+		},
+		{
+			"a line fitting no bullet shape keeps its text with an empty ID",
+			"- `PATTERN-a` — adds: text\nnot a bullet at all\n",
+			[]planparser.PatternChange{
+				{ID: "PATTERN-a", Action: "adds", Text: "text"},
+				{Text: "not a bullet at all"},
+			},
+		},
+		{
+			"bullets inside a fenced block yield no entry for the fence lines",
+			"```markdown\n- `PATTERN-a` — adds: text\n```\n",
+			[]planparser.PatternChange{{ID: "PATTERN-a", Action: "adds", Text: "text"}},
+		},
+		{"a section with no bullet leaves nil", "\n\n", nil},
+	}
+	for _, tt := range patternChangesTests {
+		t.Run("PATTERN changes: "+tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			overview := "---\nformat: 5\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — only — a card\n\n## PATTERN changes\n\n" + tt.section
+			card := "# Card 1 — only\n\n**Edit:**\n- `a.go`\n**Intent:** placeholder.\n"
+			if err := os.WriteFile(filepath.Join(dir, "00-overview.md"), []byte(overview), 0o644); err != nil {
+				t.Fatalf("write overview fixture: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "01-only.md"), []byte(card), 0o644); err != nil {
+				t.Fatalf("write card fixture: %v", err)
+			}
+
+			plan, err := planparser.ParsePlan(dir)
+			if err != nil {
+				t.Fatalf("ParsePlan(%q) error = %v; want nil", dir, err)
+			}
+			if !slices.Equal(plan.PatternChanges, tt.want) {
+				t.Errorf("plan.PatternChanges = %v; want %v", plan.PatternChanges, tt.want)
+			}
+		})
+	}
 }
 
 // TestParsePlan_VerifySection_ChainsEveryLine pins that a multi-line "## verify:" section is carried whole, one command per line chained with " && ", rather than truncated to its first line: the plan stencil tells the planner the section holds one or more commands, and a plan whose section read `go vet ./...` then `go test ./...` had its tests silently skipped by webster's integration gate (crucible round fable-high-r2).
