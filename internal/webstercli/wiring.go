@@ -234,6 +234,7 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 	c.batcher = activeBatcher
 	c.languageSkills = languageSkills
 	c.verifyTiers = language.VerifyTiers
+	c.renameTools = language.RenameTools
 	return nil
 }
 

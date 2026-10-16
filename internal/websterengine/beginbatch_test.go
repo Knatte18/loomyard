@@ -480,6 +480,15 @@ func TestBeginBatch_PromptFile(t *testing.T) {
 			want:   []string{"- run `go test` on the listed packages\n"},
 		},
 		{
+			name: "the hub's rename tools and the plan's verify command render",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				fx.Deps.RenameTools = []string{"rename Go symbols with `gopls rename`"}
+				fx.Deps.Plan.Verify = "go test ./..."
+			},
+			number: 1,
+			want:   []string{"- rename Go symbols with `gopls rename`\n", "verify command follows:\n\ngo test ./...\n"},
+		},
+		{
 			name: "each card carries its gate steps",
 			prepare: func(t *testing.T, fx *beginFixture) {
 				if err := os.MkdirAll(filepath.Join(fx.Worktree, "internal", "alpha"), 0o755); err != nil {

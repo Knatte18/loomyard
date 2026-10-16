@@ -441,6 +441,7 @@
 // Decision).
 // The master and the recovery strand both load `scribe:prose`, `scribe:code-quality` and `scribe:testing` through their spawn spec's skills (`roleSkills`), followed by the hub's language skills from the `RunDeps.LanguageSkills` and `RecoverDeps.LanguageSkills` their wiring loads.
 // The fork and recovery prompts render the hub's verify tiers from `BeginDeps.VerifyTiers` and `RecoverDeps.VerifyTiers`, `none` for an empty list.
+// They also fill the implementer body's required `rename_tools` marker from `BeginDeps.RenameTools` and `RecoverDeps.RenameTools`, which the hub's `language.yaml` supplies and a standalone run leaves empty, and its required `plan_verify` marker from the plan's `## verify:` command; both render `none` when empty.
 // Their opening prompts render the parent directive (internal/parentdirective) from Geometry.ParentName, which hubgeom.WebsterGeometry fills from the worktree's origin record.
 // The master and recovery prompts also render the task's declared PATTERN changes, read from Geometry.DecisionRecordPath; standalone mode leaves it empty and renders none.
 // Forks get no skills and no directive: they inherit the master's context.

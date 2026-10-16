@@ -73,6 +73,7 @@ func (c *websterCLI) recoverDeps(plan *planparser.Plan, batches []batcher.Batch,
 		ParentBranch:   c.parentBranch,
 		LanguageSkills: c.languageSkills,
 		VerifyTiers:    c.verifyTiers,
+		RenameTools:    c.renameTools,
 	}
 }
 

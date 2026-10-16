@@ -40,6 +40,7 @@ func (c *websterCLI) beginDeps(plan *planparser.Plan, batches []batcher.Batch, s
 		Geom:        c.geom,
 		FrictionDir: c.frictionDir,
 		VerifyTiers: c.verifyTiers,
+		RenameTools: c.renameTools,
 	}
 }
 

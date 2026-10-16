@@ -697,13 +697,15 @@ func TestWireHub_LanguageSkills(t *testing.T) {
 		fileContents string
 		wantSkills   []string
 		wantTiers    []string
+		wantRename   []string
 		wantRefusal  bool
 	}{
 		{
-			name:         "ListedSkillsAndTiersReachRunBeginAndRecoverDeps",
-			fileContents: "skills:\n  - scribe:golang-comments\n  - scribe:golang-testing\nverify_tiers:\n  - run the unit tier\n  - compile the tmux tier\n",
+			name:         "ListedSkillsTiersAndRenameToolsReachRunBeginAndRecoverDeps",
+			fileContents: "skills:\n  - scribe:golang-comments\n  - scribe:golang-testing\nverify_tiers:\n  - run the unit tier\n  - compile the tmux tier\nrename_tools:\n  - rename Go symbols with gopls rename\n",
 			wantSkills:   []string{"scribe:golang-comments", "scribe:golang-testing"},
 			wantTiers:    []string{"run the unit tier", "compile the tmux tier"},
+			wantRename:   []string{"rename Go symbols with gopls rename"},
 		},
 		{
 			name:         "EntryWithLeadingSpaceIsRefused",
@@ -766,6 +768,15 @@ func TestWireHub_LanguageSkills(t *testing.T) {
 			}
 			if got := c.recoverDeps(nil, nil, nil).VerifyTiers; !slices.Equal(got, tt.wantTiers) {
 				t.Errorf("recoverDeps().VerifyTiers = %v; want %v", got, tt.wantTiers)
+			}
+			if !slices.Equal(c.renameTools, tt.wantRename) {
+				t.Errorf("c.renameTools = %v; want %v", c.renameTools, tt.wantRename)
+			}
+			if got := c.beginDeps(nil, nil, nil).RenameTools; !slices.Equal(got, tt.wantRename) {
+				t.Errorf("beginDeps().RenameTools = %v; want %v", got, tt.wantRename)
+			}
+			if got := c.recoverDeps(nil, nil, nil).RenameTools; !slices.Equal(got, tt.wantRename) {
+				t.Errorf("recoverDeps().RenameTools = %v; want %v", got, tt.wantRename)
 			}
 		})
 	}

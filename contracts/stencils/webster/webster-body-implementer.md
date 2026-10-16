@@ -31,6 +31,10 @@ For EACH card file listed above, in the order listed:
    Three deviations are sanctioned, each within its bound: the guard-step fix in step 3, only in a file the guard step's failure names; the scan-error fix the guard-fix line in the card gate names, only in that file and under the card it names; and a fix to a failure the card caused, under the bounded self-fix section's two-pronged test and its attempt cap.
    No other change outside the targets is made.
    The scope guard records every deviation, sanctioned ones included; you list, compare and report none, and a deviation alone never makes the report `FAILED`.
+   For each symbol pair of a `Rename` card, run the hub's rename tool from the list below, then grep for zero references to the old name and update the doc-comment opening; a file pair is `git mv` plus surgical Edits.
+
+{{.rename_tools}}
+
 {{.locate}}
 3. Run each step of the card's gate from the list below, in order, each as its own foreground Bash call under the gate rule in your system prompt.
    A failure here is the card's own gate — fix it before moving on;
@@ -52,6 +56,8 @@ For EACH card file listed above, in the order listed:
 5. If the card declares its own `verify:` line, run it immediately after committing that card, each line of it as its own foreground Bash call under the gate rule.
    A non-zero exit fails the card exactly like the gate in step 3 — there is no separate "deferred verify" concept;
    every card's gate (the steps above, plus its own `verify:` when it declares one) is checked right after that card's own commit, never bundled into a later card.
+
+A card that departs from its own text because a PATTERN entry forbids the card's way records the departure as a `Pattern-Departure:` trailer in that card's commit, in the shape the `## Pattern-Departure trailer` section of `{{.specs_dir}}/loom/loom-plan-spec.md` defines.
 
 If any card's gate fails, or a test the card broke fails, and you cannot fix it within your self-fix bound (see next section), stop and report `status: FAILED` — do not continue to a later card on top of a broken one.
 
@@ -101,13 +107,19 @@ The card caused a failure when either holds:
 - a repo scan or enforcement test flags a file the card wrote.
 
 You fix such a failure under the same `{{.self_fix_cap}}`-attempt bound as any gate failure, and report `status: FAILED` when the bound runs out.
-A failure the card did not cause is never yours to fix and never a `FAILED` on its own: name it in your final reply to Master and move on.
+A failure the card did not cause is never yours to fix, and it is left to the plan-level verify gate.
+The plan's verify command follows:
+
+{{.plan_verify}}
+
+When it is a command, a batch gate step that fails only on failures the batch's cards did not cause, by the two-pronged test above, does not make the report `FAILED`; when it is `none`, such a failure stays `FAILED`.
+A misjudged failure passes the batch and is caught by the plan-level verify gate, which runs that command and spawns a fixer when it fails, so the catch covers what the command runs.
 
 ## Your final action: the minimal batch-report
 
 Your LAST action of this session — after every card above is committed (or you have given up per the bound above) — is writing the batch-report YAML file to `{{.report_path}}`.
 Nothing you do after this file exists is read by anyone: write it last, and write it exactly once.
-The report is deliberately minimal — Master reads ONLY these two fields:
+The report is deliberately minimal — `record-batch` reads ONLY these two fields:
 
 ```yaml
 status: OK | FAILED
@@ -116,4 +128,5 @@ head_sha: <the commit SHA your worktree is at right now>
 
 `status` is `OK` when every card above is committed and every gate it ran, the batch gate included, passed;
 `FAILED` when you stopped after exhausting the self-fix bound on some card or on the batch gate, whether its gate failed or a test the card broke did. `head_sha` is your worktree's current HEAD commit SHA — capture it with `git rev-parse HEAD` as your very last read before writing the report, so it reflects every commit you made.
-Only a failed card gate, a failed card `verify:`, a failed batch gate or a test the card broke makes `status` `FAILED`, never a slot-busy exit.{{.kickstart_pack}}
+Only a failed card gate, a failed card `verify:`, a failed batch gate or a test the card broke makes `status` `FAILED`, never a slot-busy exit.
+A batch gate step that fails only on failures the batch's cards did not cause does not make it `FAILED` when the plan's verify command above is a command, and does when it is `none`.{{.kickstart_pack}}

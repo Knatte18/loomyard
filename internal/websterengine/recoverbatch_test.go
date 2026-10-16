@@ -1619,6 +1619,21 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 			},
 		},
 		{
+			name: "the prompt carries the hub's rename tools and the plan's verify command",
+			setup: func(fx *recoverFixture) {
+				fx.Deps.RenameTools = []string{"rename Go symbols with `gopls rename`"}
+				fx.Deps.Plan.Verify = "go test ./..."
+			},
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				requireSpawned(t, spawned, err)
+				for _, want := range []string{"- rename Go symbols with `gopls rename`\n", "verify command follows:\n\ngo test ./...\n"} {
+					if !strings.Contains(fx.Engine.LastPrompt, want) {
+						t.Errorf("recovery prompt does not contain %q; got:\n%s", want, fx.Engine.LastPrompt)
+					}
+				}
+			},
+		},
+		{
 			name: "a marked guard test renders the same guard step the begin prompt carries",
 			setup: func(fx *recoverFixture) {
 				writeWorktreeFile(t, fx.Worktree, "go.mod", "module m\n")
