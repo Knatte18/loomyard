@@ -170,6 +170,12 @@ func resolveParentReviewClosure(entry string, attempts int, env Env) (gate, fina
 	return gate, final, parentreview.NewExpiryProbe(pr), nil
 }
 
+// planContextOf builds the plan gates' PlanContext from env: the hub's rename tools, and the decision record on a loom run.
+// A darn run has no PatternRecordPath, so its plan is not compared with a record.
+func planContextOf(env Env) loomshed.PlanContext {
+	return loomshed.PlanContext{RenameTools: env.RenameTools, DecisionRecordPath: env.PatternRecordPath}
+}
+
 // resolvePlainGateClosure resolves the five validator names that carry no Final closure.
 func resolvePlainGateClosure(entry, row string, index int, name string, env Env) (shuttleengine.Gate, error) {
 	switch name {
@@ -200,7 +206,7 @@ func resolvePlainGateClosure(entry, row string, index int, name string, env Env)
 		if err := requireSeam(entry, "PlanIndex", env.PlanIndex); err != nil {
 			return nil, err
 		}
-		return loomshed.NewPlanGate(env.AnchorPath, env.WorktreeRoot, env.RunScratchDir, env.PlanIndex), nil
+		return loomshed.NewPlanGate(env.AnchorPath, env.WorktreeRoot, env.RunScratchDir, env.PlanIndex, planContextOf(env)), nil
 	case "rework-plan":
 		if err := requireAbsRoot(entry, "AnchorPath", env.AnchorPath); err != nil {
 			return nil, err
@@ -214,7 +220,7 @@ func resolvePlainGateClosure(entry, row string, index int, name string, env Env)
 		if err := requireSeam(entry, "Rework.ReadCommitted", env.Rework.ReadCommitted); err != nil {
 			return nil, err
 		}
-		return loomshed.NewReworkPlanGate(env.AnchorPath, env.WorktreeRoot, env.RunScratchDir, env.PlanIndex, env.Rework.ReadCommitted), nil
+		return loomshed.NewReworkPlanGate(env.AnchorPath, env.WorktreeRoot, env.RunScratchDir, env.PlanIndex, env.Rework.ReadCommitted, planContextOf(env)), nil
 	case "description":
 		if err := requireAbsRoot(entry, "DescriptionPath", env.DescriptionPath); err != nil {
 			return nil, err

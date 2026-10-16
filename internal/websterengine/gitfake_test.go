@@ -26,7 +26,7 @@ import (
 )
 
 // fakeGit answers every websterengine.Git question from fields a test sets.
-// Its history is the commits registered through commit and merge; a SHA never registered does not exist.
+// Its history is the commits registered through commit, commitWith and merge; a SHA never registered does not exist.
 // The zero values answer as a clean, single-worktree repository with no ignored path.
 type fakeGit struct {
 	// head is the SHA HeadSHA returns.
@@ -56,6 +56,10 @@ type fakeGit struct {
 	commitBlobs map[string]string
 	// treeBlobPaths maps "<commit>:<blob>" to the paths TreePathsWithBlob returns.
 	treeBlobPaths map[string][]string
+	// logs maps a registered commit to the entry CommitLog returns for it; a commit not listed has an empty subject and no departures.
+	logs map[string]websterengine.CommitLogEntry
+	// commitLogCalls counts the CommitLog calls.
+	commitLogCalls int
 	// registered counts the SHAs minted so far.
 	registered int
 }
@@ -177,6 +181,7 @@ func newFakeGit() *fakeGit {
 		differing:     map[string]bool{},
 		commitBlobs:   map[string]string{},
 		treeBlobPaths: map[string][]string{},
+		logs:          map[string]websterengine.CommitLogEntry{},
 	}
 	g.commit()
 	return g
@@ -198,8 +203,50 @@ func (g *fakeGit) commit() string {
 		parents = []string{g.head}
 	}
 	g.parents[sha] = parents
+	g.logs[sha] = websterengine.CommitLogEntry{SHA: sha}
 	g.head = sha
 	return sha
+}
+
+// commitWith is commit with the given subject and Pattern-Departure trailer values recorded for CommitLog.
+func (g *fakeGit) commitWith(subject string, departures ...string) string {
+	sha := g.commit()
+	g.logs[sha] = websterengine.CommitLogEntry{SHA: sha, Subject: subject, Departures: departures}
+	return sha
+}
+
+// prependCommitWith registers a commit with the given subject and departures below the root of head's first-parent line, standing for history that predates every batch.
+func (g *fakeGit) prependCommitWith(subject string, departures ...string) string {
+	root := g.head
+	for len(g.parents[root]) > 0 {
+		root = g.parents[root][0]
+	}
+	sha := g.mint()
+	g.parents[sha] = nil
+	g.logs[sha] = websterengine.CommitLogEntry{SHA: sha, Subject: subject, Departures: departures}
+	g.parents[root] = []string{sha}
+	return sha
+}
+
+// ensureOnFirstParentLine makes base an ancestor on head's first-parent line.
+// A base the fake does not hold is registered as a new root and made the parent of the line's root commit.
+func (g *fakeGit) ensureOnFirstParentLine(base, head string) {
+	root := head
+	for cur := head; ; {
+		if cur == base {
+			return
+		}
+		parents := g.parents[cur]
+		if len(parents) == 0 {
+			root = cur
+			break
+		}
+		cur = parents[0]
+	}
+	if _, held := g.parents[base]; !held {
+		g.parents[base] = nil
+	}
+	g.parents[root] = []string{base}
 }
 
 // merge registers a merge of the current head and a new commit standing for the parent branch's tip, makes the merge the head, and returns its SHA and that tip.
@@ -292,6 +339,28 @@ func (g *fakeGit) NonMergeCommitsBetween(_, base, head string) (bool, error) {
 		cur = parents[0]
 	}
 	return false, nil
+}
+
+// CommitLog walks head's first-parent line down to base, skipping commits with two parents, and returns the commits oldest first.
+// A head or base the fake does not hold, or a base off the line, is an error.
+func (g *fakeGit) CommitLog(_, base, head string) ([]websterengine.CommitLogEntry, error) {
+	g.commitLogCalls++
+	if !g.SHAExists("", base) || !g.SHAExists("", head) {
+		return nil, errors.New("fakeGit: unknown commit")
+	}
+	var entries []websterengine.CommitLogEntry
+	for cur := head; cur != base; {
+		parents := g.parents[cur]
+		if len(parents) == 0 {
+			return nil, fmt.Errorf("fakeGit: %s is not on the first-parent line of %s", base, head)
+		}
+		if len(parents) < 2 {
+			entries = append(entries, g.logs[cur])
+		}
+		cur = parents[0]
+	}
+	slices.Reverse(entries)
+	return entries, nil
 }
 
 func (g *fakeGit) IgnoredPath(_, path string) (bool, error) { return g.ignored[path], nil }

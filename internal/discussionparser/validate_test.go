@@ -1,6 +1,7 @@
 package discussionparser
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -32,6 +33,114 @@ func writeFixture(t *testing.T, dir, decisionContent, supportContent string) (st
 		t.Fatalf("write support log: %v", err)
 	}
 	return decisionPath, supportPath
+}
+
+// patternChangesSection returns a `## PATTERN changes` section holding the given lines, closed by a blank line.
+func patternChangesSection(lines ...string) string {
+	return patternChangesHeading + "\n\n" + strings.Join(lines, "\n") + "\n\n"
+}
+
+// TestValidate_PatternChanges asserts each defect of the `## PATTERN changes` section yields exactly one pattern-change-malformed finding at the decision record's path, naming the line.
+func TestValidate_PatternChanges(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		section string
+		wantLn  string
+	}{
+		{"UnknownAction", patternChangesSection("- `PATTERN-a` — renames: x"), "unknown action"},
+		{"AddsWithoutText", patternChangesSection("- `PATTERN-a` — adds"), "needs its new text"},
+		{"ChangesWithoutText", patternChangesSection("- `PATTERN-a` — changes:"), "needs its new text"},
+		{"RemovesWithText", patternChangesSection("- `PATTERN-a` — removes: x"), "takes no text"},
+		{"StrayLine", patternChangesSection("some prose"), "not a bullet"},
+		{"IDOutsideCharset", patternChangesSection("- `PATTERN-Foo_bar` — removes"), "not a bullet"},
+		{"RepeatedID", patternChangesSection("- `PATTERN-a` — removes", "- `PATTERN-a` — adds: x"), "second bullet"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			decisionPath, supportPath := writeFixture(t, t.TempDir(), allSectionsContent()+tt.section, "log")
+
+			findings, err := Validate(decisionPath, supportPath)
+			if err != nil {
+				t.Fatalf("Validate() error = %v; want nil", err)
+			}
+			if len(findings) != 1 {
+				t.Fatalf("Validate() findings = %v; want exactly one", findings)
+			}
+			f := findings[0]
+			if f.Check != checkPatternChangeMalformed {
+				t.Errorf("Check = %q; want %q", f.Check, checkPatternChangeMalformed)
+			}
+			if f.Path != decisionPath {
+				t.Errorf("Path = %q; want %q", f.Path, decisionPath)
+			}
+			if !strings.Contains(f.Detail, "line ") || !strings.Contains(f.Detail, tt.wantLn) {
+				t.Errorf("Detail = %q; want it to name the line and contain %q", f.Detail, tt.wantLn)
+			}
+		})
+	}
+}
+
+// TestDeclaredPatternChanges asserts the rendered bullets of a clean section, nil for a missing path, file or section, and an ErrPatternChangesInvalid refusal naming the validate verb for a malformed one.
+func TestDeclaredPatternChanges(t *testing.T) {
+	t.Parallel()
+
+	write := func(t *testing.T, content string) string {
+		t.Helper()
+		path, _ := writeFixture(t, t.TempDir(), content, "log")
+		return path
+	}
+
+	t.Run("NothingDeclared", func(t *testing.T) {
+		t.Parallel()
+		for name, path := range map[string]string{
+			"EmptyPath":     "",
+			"AbsentFile":    filepath.Join(t.TempDir(), "missing.md"),
+			"NoSection":     write(t, allSectionsContent()),
+			"EmptySection":  write(t, allSectionsContent()+patternChangesSection()),
+			"SectionInHere": write(t, "```\n"+patternChangesHeading+"\n- junk\n```\n"),
+		} {
+			got, err := DeclaredPatternChanges(path)
+			if err != nil || got != nil {
+				t.Errorf("%s: DeclaredPatternChanges() = %v, %v; want nil, nil", name, got, err)
+			}
+		}
+	})
+
+	t.Run("CleanSection", func(t *testing.T) {
+		t.Parallel()
+		path := write(t, allSectionsContent()+patternChangesSection(
+			"- `PATTERN-a` — adds: New rule.",
+			"- `PATTERN-b` — removes — added after Discussion (parent, 2026-10-16)",
+		))
+		got, err := DeclaredPatternChanges(path)
+		if err != nil {
+			t.Fatalf("DeclaredPatternChanges() error = %v; want nil", err)
+		}
+		want := []string{"- `PATTERN-a` — adds: New rule.", "- `PATTERN-b` — removes"}
+		if !slices.Equal(got, want) {
+			t.Errorf("DeclaredPatternChanges() = %q; want %q", got, want)
+		}
+	})
+
+	t.Run("MalformedSection", func(t *testing.T) {
+		t.Parallel()
+		path := write(t, allSectionsContent()+patternChangesSection("- `PATTERN-a` — adds"))
+		got, err := DeclaredPatternChanges(path)
+		if !errors.Is(err, ErrPatternChangesInvalid) {
+			t.Fatalf("DeclaredPatternChanges() error = %v; want it to wrap ErrPatternChangesInvalid", err)
+		}
+		if got != nil {
+			t.Errorf("DeclaredPatternChanges() = %q; want nil alongside the error", got)
+		}
+		for _, want := range []string{path, patternChangesHeading, "lyx loom validate-discussion"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("error %q; want it to contain %q", err, want)
+			}
+		}
+	})
 }
 
 // sectionsWithout returns a decision record carrying every required heading except the given ones.
@@ -76,6 +185,13 @@ func TestValidate_CleanRecords(t *testing.T) {
 		{name: "heading with trailing whitespace still counts", content: padded.String()},
 		{name: "headings out of order are not validated", content: outOfOrder.String()},
 		{name: "extra unexpected heading", content: allSectionsContent() + "## Some Extra Heading\n\nextra body.\n"},
+		{name: "PATTERN changes section of every action", content: allSectionsContent() + patternChangesSection(
+			"- `PATTERN-cwd-resolution` — adds: Resolve a cwd only in `internal/lyxcwd`.",
+			"- `PATTERN-hub-suffix` — changes: `-LYXHUB` is the sole suffix.",
+			"- `PATTERN-old-rule` — removes",
+			"- `PATTERN-late-rule` — changes: Reworded. — added after Discussion (parent, 2026-10-16)",
+			"- `PATTERN-late-gone` — removes — added after Discussion (arbiter, 2026-10-16)",
+		) + "## Notes for the plan writer\n\nhint.\n"},
 		// os.Stat accepts a directory as "exists", so the support-log check is exhaustively "both files exist"; an is-regular-file test would be a new check.
 		{name: "support log path is a directory", content: allSectionsContent(), supportIsDir: true},
 	}

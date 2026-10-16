@@ -6,6 +6,7 @@ package hubgeom
 import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/verifytree"
@@ -22,22 +23,24 @@ import (
 // subpath-anchored hub, where the anchor path and the worktree path diverge.
 // RepoRoot is l.WorktreePath(), the directory holding PATTERN.md.
 // ParentName is what ResolveParent returns; an unresolvable parent logs a warning and leaves it empty, as reedGeometry does.
+// DecisionRecordPath is the location's decision record, where the task's declared PATTERN changes are read from.
 func WebsterGeometry(l *lyxcwd.Location) websterengine.Geometry {
 	anchorPath := l.AnchorPath()
 	return websterengine.Geometry{
-		AnchorRoot:   anchorPath,
-		WorktreeRoot: anchorPath,
-		RepoRoot:     l.WorktreePath(),
-		WebsterDir:   websterengine.Dir(anchorPath),
-		ReportsDir:   websterengine.ReportsDir(anchorPath),
-		ScratchDir:   websterengine.ScratchDir(anchorPath),
-		PromptsDir:   websterengine.PromptsDir(anchorPath),
-		StencilsDir:  fabricengine.StencilsDir(l.HubPath),
-		SpecsDir:     fabricengine.SpecsDir(l.HubPath),
-		PlanDir:      planparser.PlanDir(anchorPath),
-		VerifyDir:    verifytree.Dir(anchorPath),
-		GateSlots:    GateSlots(l),
-		GateWaitDir:  gateslot.WaitDir(anchorPath),
-		ParentName:   parentNameOrEmpty(l, "webster prompts"),
+		AnchorRoot:         anchorPath,
+		WorktreeRoot:       anchorPath,
+		RepoRoot:           l.WorktreePath(),
+		WebsterDir:         websterengine.Dir(anchorPath),
+		ReportsDir:         websterengine.ReportsDir(anchorPath),
+		ScratchDir:         websterengine.ScratchDir(anchorPath),
+		PromptsDir:         websterengine.PromptsDir(anchorPath),
+		StencilsDir:        fabricengine.StencilsDir(l.HubPath),
+		SpecsDir:           fabricengine.SpecsDir(l.HubPath),
+		PlanDir:            planparser.PlanDir(anchorPath),
+		VerifyDir:          verifytree.Dir(anchorPath),
+		GateSlots:          GateSlots(l),
+		GateWaitDir:        gateslot.WaitDir(anchorPath),
+		ParentName:         parentNameOrEmpty(l, "webster prompts"),
+		DecisionRecordPath: loomengine.DiscussionDecisionRecord(l),
 	}
 }

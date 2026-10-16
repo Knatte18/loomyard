@@ -38,6 +38,8 @@ func readSummaryFile(t *testing.T, dir string) string {
 
 const triageSectionHead = "\n\n## Integration suite triage\n\nThe plan-level `## verify:` suite failed, but webster's triage did not attribute the failure to this run.\n"
 
+const fixCommitsSectionHead = "\n\n## Verify gate fix commits\n\nThe verify-fix fork's commits above the pre-fix head, and the PATTERN departures their messages declare.\n\n"
+
 // TestAppendSummarySections pins each Append* helper: an empty list leaves the file
 // byte-identical, and a non-empty list appends its section after the existing content in order.
 func TestAppendSummarySections(t *testing.T) {
@@ -85,6 +87,35 @@ func TestAppendSummarySections(t *testing.T) {
 				return websterengine.AppendIntegrationTriage(dir, []string{"TestF1", "TestF2"})
 			},
 			want: "# S\n" + triageSectionHead + "\nFlaky (passed on rerun):\n\n- `TestF1`\n- `TestF2`\n",
+		},
+		{
+			name: "fix commits: each fix commit and departure line follows the existing content",
+			append: func(dir string) error {
+				return websterengine.AppendVerifyGateFixCommits(dir, []websterengine.CommitLogEntry{
+					{SHA: "aaa111", Subject: "fix: repair a", Departures: []string{"PATTERN-x — differs"}},
+					{SHA: "bbb222", Subject: "fix: repair b"},
+				})
+			},
+			want: "# S\n" + fixCommitsSectionHead + "- `aaa111` fix: repair a\n- `bbb222` fix: repair b\n- fix: repair a: PATTERN-x — differs\n",
+		},
+		{
+			name: "fix commits: a non-fix commit's departure is listed beside a fix commit",
+			append: func(dir string) error {
+				return websterengine.AppendVerifyGateFixCommits(dir, []websterengine.CommitLogEntry{
+					{SHA: "aaa111", Subject: "fix: repair a"},
+					{SHA: "ccc333", Subject: "refactor: move b", Departures: []string{"PATTERN-y — moved"}},
+				})
+			},
+			want: "# S\n" + fixCommitsSectionHead + "- `aaa111` fix: repair a\n- refactor: move b: PATTERN-y — moved\n",
+		},
+		{
+			name: "fix commits: no fix subject appends nothing, even with a departure",
+			append: func(dir string) error {
+				return websterengine.AppendVerifyGateFixCommits(dir, []websterengine.CommitLogEntry{
+					{SHA: "ccc333", Subject: "refactor: move b", Departures: []string{"PATTERN-y — moved"}},
+				})
+			},
+			want: "# S\n",
 		},
 	}
 	for _, tt := range tests {

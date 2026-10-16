@@ -35,14 +35,11 @@ func TestStencils_TopLevelMarkers(t *testing.T) {
 		{"twill-relaunch", TwillRelaunch, []string{"disposition_place", "format_step", "relaunch_files", "self_check_command", "self_check_step"}},
 		{"webster-fragment-locate-quarry", WebsterFragmentLocateQuarry, nil},
 		{"webster-fragment-locate-pack", WebsterFragmentLocatePack, []string{"specs_dir"}},
-		{"webster-fragment-locate-pack-inline", WebsterFragmentLocatePackInline, []string{"specs_dir"}},
 		{"webster-fragment-card-read-plain", WebsterFragmentCardReadPlain, nil},
 		{"webster-fragment-card-read-pack", WebsterFragmentCardReadPack, nil},
 		{"webster-fragment-fresh-read-plain", WebsterFragmentFreshReadPlain, nil},
 		{"webster-fragment-fresh-read-pack", WebsterFragmentFreshReadPack, nil},
-		{"webster-fragment-fresh-read-pack-inline", WebsterFragmentFreshReadPackInline, nil},
 		{"webster-fragment-pack-section", WebsterFragmentPackSection, []string{"pack_cards"}},
-		{"webster-fragment-pack-section-inline", WebsterFragmentPackSectionInline, []string{"pack_cards"}},
 		{"webster-fragment-pack-read", WebsterFragmentPackRead, []string{"pack_path"}},
 		{"webster-fragment-pack-card", WebsterFragmentPackCard, []string{"card_path", "pack_entries", "pack_unresolved"}},
 		{"webster-fragment-pack-unresolved", WebsterFragmentPackUnresolved, []string{"pack_unresolved"}},
@@ -62,6 +59,7 @@ func TestStencils_TopLevelMarkers(t *testing.T) {
 		{"webster-body-verify-fix", WebsterBodyVerifyFix, []string{"friction_directive", "outcome_path", "plan_dir", "report_path", "summary_path", "worktree_root"}},
 		{"bouncer-template-escalation", BouncerTemplateEscalation, []string{"cause", "decide_options", "decision_record_path", "judge_stencil_path", "ledger_path", "review_path", "round", "segment", "slug", "verdict_path", "worktree"}},
 		{"bouncer-fragment-decide-capped", BouncerFragmentDecideCapped, []string{"slug"}},
+		{"pattern-fragment-changes", PatternFragmentChanges, []string{"pattern_change_list"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -118,7 +116,6 @@ func TestStencils_MarkerPositions(t *testing.T) {
 		atEnd bool
 	}{
 		{"implementer ends with the kick-start pack", "webster-body-implementer", "", "{{.kickstart_pack}}\n", true},
-		{"implementer holds the inline pack before the sandbox rule", "webster-body-implementer", "", "{{.kickstart_pack_inline}}\n\n## The sandbox rule", false},
 		{"plan twill directive", "loom-template-plan", "## Step 2 — Explore the codebase", "{{.twill_directive}}", false},
 		{"discussion twill directive", "loom-template-discussion", "## Step 4 — How to get answers", "{{.twill_directive}}", false},
 		{"discussion decision record path", "loom-template-discussion", "## What you may write", "{{.decision_record_path}}", false},

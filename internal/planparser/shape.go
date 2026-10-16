@@ -94,6 +94,8 @@ const (
 	gateResignTarget refGate = "resign-target"
 	// gateEditTestFile is CheckEditTestFile's (edittestfile.go) policy: only a glyph-shaped ref can be a `_test.go` file self glyph under Edit; every other kind is skipped.
 	gateEditTestFile refGate = "edit-test-file"
+	// gateUntypedFileRenamePair is SymbolRenamePairs' policy for a plan whose language has no glyph alphabet, applied identically to both sides of a Rename pair: only a path-shaped side is a candidate for a file-rename pair; every other kind is skipped, meaning "not a file-rename pair".
+	gateUntypedFileRenamePair refGate = "untyped-file-rename-pair"
 )
 
 // allRefKinds is the canonical, complete list of every refKind classify.go's enum declares. The
@@ -193,6 +195,12 @@ var ledger = map[refGate]map[refKind]disposition{
 		refKindPath:   dispSkip,
 		refKindSymbol: dispSkip,
 		refKindGlyph:  dispKeep,
+		refKindHandle: dispSkip,
+	},
+	gateUntypedFileRenamePair: {
+		refKindPath:   dispKeep,
+		refKindSymbol: dispSkip,
+		refKindGlyph:  dispSkip,
 		refKindHandle: dispSkip,
 	},
 }

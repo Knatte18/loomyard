@@ -196,22 +196,31 @@ func TestBouncer_JudgeCall_PatternDirective(t *testing.T) {
 		name string
 		root func(t *testing.T) string
 		want bool
+		// bullet, when set, is the one declared PATTERN change of the decision record the config is told; the prompt must carry it after the overview.
+		bullet string
 	}{
-		{"PatternAtRoot", writeJudgePattern, true},
-		{"RootWithoutPattern", func(t *testing.T) string { return t.TempDir() }, false},
-		{"EmptyRoot", func(t *testing.T) string { return "" }, false},
+		{"PatternAtRoot", writeJudgePattern, true, ""},
+		{"DeclaredChange", writeJudgePattern, true, "- `PATTERN-example-entry` — adds: the new rule text"},
+		{"RootWithoutPattern", func(t *testing.T) string { return t.TempDir() }, false, ""},
+		{"EmptyRoot", func(t *testing.T) string { return "" }, false, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			shuttle := judgeFakeShuttle(1, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(1), true)
 			fx := newBouncerFixture(t, withShuttle(shuttle))
 			fx.Config.WorktreeRoot = tt.root(t)
+			if tt.bullet != "" {
+				fx.Config.PatternRecordPath = writePatternRecord(t, tt.bullet)
+			}
 			b, cfg := fx.Build()
 			layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
 			shedfake.CallOK(t, b)
 
 			prompt := shuttle.GotSpec.Prompt
+			if tt.bullet != "" && strings.Index(prompt, tt.bullet) < strings.Index(prompt, patternMarkerLine) {
+				t.Errorf("judge prompt lacks the declared bullet %q after the overview", tt.bullet)
+			}
 			if got := strings.Contains(prompt, patternMarkerLine); got != tt.want {
 				t.Errorf("judge prompt contains the PATTERN overview = %v; want %v", got, tt.want)
 			}
@@ -228,22 +237,51 @@ func TestBouncer_JudgeCall_PatternDirective(t *testing.T) {
 	}
 }
 
-// TestBouncer_JudgeCall_PatternDirectiveFailureDegrades asserts an active PATTERN whose directive stencil cannot be read degrades the judge call rather than spawning a judge without the directive.
-func TestBouncer_JudgeCall_PatternDirectiveFailureDegrades(t *testing.T) {
-	logBuf := logcapture.Capture(t)
-	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	fx := newBouncerFixture(t, withShuttle(shuttle), withoutStencils("pattern-directive-judge"))
-	fx.Config.WorktreeRoot = writeJudgePattern(t)
-	b, cfg := fx.Build()
-	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
-
-	outcome, ptr, err := b.Call(context.Background())
-	assertJudgeDegraded(t, outcome, ptr, err)
-	if !strings.Contains(logBuf.String(), "pattern directive unreadable") {
-		t.Errorf("Call() log = %q; want the pattern directive degrade message", logBuf.String())
+// writePatternRecord writes a decision record whose `## PATTERN changes` section holds body and returns its path.
+func writePatternRecord(t *testing.T, body string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "decision-record.md")
+	if err := os.WriteFile(path, []byte("# Record\n\n## PATTERN changes\n\n"+body+"\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(decision record) = %v; want nil", err)
 	}
-	if shuttle.GotSpec.Prompt != "" {
-		t.Error("Call() spawned a judge after a failed directive read; want no spawn")
+	return path
+}
+
+// TestBouncer_JudgeCall_PatternDirectiveFailureDegrades asserts an active PATTERN whose directive stencil cannot be read, or whose decision record's PATTERN changes section is malformed, degrades the judge call rather than spawning a judge without the directive.
+func TestBouncer_JudgeCall_PatternDirectiveFailureDegrades(t *testing.T) {
+	tests := []struct {
+		name         string
+		missingStenc []string
+		malformed    bool
+		wantLog      string
+	}{
+		{name: "StencilUnreadable", missingStenc: []string{"pattern-directive-judge"}, wantLog: "pattern directive unreadable"},
+		{name: "MalformedRecord", malformed: true, wantLog: "declared PATTERN changes unreadable"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logBuf := logcapture.Capture(t)
+			shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+			fx := newBouncerFixture(t, withShuttle(shuttle), withoutStencils(tt.missingStenc...))
+			fx.Config.WorktreeRoot = writeJudgePattern(t)
+			if tt.malformed {
+				fx.Config.PatternRecordPath = writePatternRecord(t, "- `PATTERN-example-entry` — frobnicates: nothing")
+			}
+			b, cfg := fx.Build()
+			layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
+
+			outcome, ptr, err := b.Call(context.Background())
+			assertJudgeDegraded(t, outcome, ptr, err)
+			if !strings.Contains(logBuf.String(), tt.wantLog) {
+				t.Errorf("Call() log = %q; want it to contain %q", logBuf.String(), tt.wantLog)
+			}
+			if tt.malformed && !strings.Contains(ptr.Reason, "lyx loom start") {
+				t.Errorf("Call() Reason = %q; want it to name `lyx loom start`", ptr.Reason)
+			}
+			if shuttle.GotSpec.Prompt != "" {
+				t.Error("Call() spawned a judge after a failed directive read; want no spawn")
+			}
+		})
 	}
 }
 

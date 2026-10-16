@@ -1071,8 +1071,8 @@ func TestDispatchLayers(t *testing.T) {
 			},
 		},
 		{
-			name: "worktree layer refuses a kickstart_pack_file that is not a boolean and never syncs", module: "webster",
-			setFlags: []string{"kickstart_pack_file=maybe"}, seedBoard: websterTemplate(), wantCode: 1, wantErr: "webster config",
+			name: "worktree layer refuses a kickstart_pack_per_card that is not a boolean and never syncs", module: "webster",
+			setFlags: []string{"kickstart_pack_per_card=maybe"}, seedBoard: websterTemplate(), wantCode: 1, wantErr: "webster config",
 			check: func(t *testing.T, fx hubFixture, out string) {
 				if _, err := os.Stat(configengine.ConfigFile(fx.worktree, "webster")); !os.IsNotExist(err) {
 					t.Errorf("worktree webster.yaml exists after a refused value; stat err = %v", err)

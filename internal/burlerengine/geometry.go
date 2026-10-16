@@ -30,4 +30,7 @@ type Geometry struct {
 	// An empty Slug gives the two-segment name form.
 	Shortname string
 	Slug      string
+	// PatternRecordPath is the decision record whose declared PATTERN changes the review round's directive renders.
+	// An empty path renders none.
+	PatternRecordPath string
 }

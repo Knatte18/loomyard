@@ -43,6 +43,7 @@ You never run a Bash call in the background, and you end your turn only after yo
 - Never touch the plan directory `{{.plan_dir}}` or anything under `_lyx`: they sit outside every code commit, and the run-exit audit flags a fork that writes there.
 - Commit each fix to the repo with normal git from your working directory, with the subject `fix: <summary>`, where `<summary>` says what the fix repairs.
   Never commit a path under `_lyx`.
+- A fix that departs from a PATTERN entry because the entry forbids the way the findings call for records the departure as a `Pattern-Departure:` trailer in that `fix:` commit, in the shape `loom-plan-spec.md`'s `## Pattern-Departure trailer` section defines.
 - Never write, create or delete Merriam's contract files `{{.outcome_path}}` and `{{.summary_path}}`, even though you inherit Merriam's instruction to write them as a final action.
   A fixer writing either forges the run's terminal judgment and halts the run at its exit audit.
 - Before you report, run `lyx gate test --tags integration <the findings' packages>` as a foreground Bash call under the gate rule in your system prompt, and fix what it still reports.
@@ -51,5 +52,5 @@ You never run a Bash call in the background, and you end your turn only after yo
 
 ## Your final action
 
-Your last action is ending your turn with a short reply naming each commit you made and any failure you could not fix.
-Merriam reads only that reply.
+Your last action is ending your turn with a short reply naming any failure you could not fix.
+Merriam reads only that reply; Go reads your commits from git.

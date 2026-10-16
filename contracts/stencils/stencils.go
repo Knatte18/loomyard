@@ -247,17 +247,12 @@ var WebsterFragmentLocateQuarry []byte
 //go:embed webster/webster-fragment-locate-pack.md
 var WebsterFragmentLocatePack []byte
 
-// WebsterFragmentLocatePackInline is webster's frozen inline-layout pack locate fragment, filled into the shared implementer-job body's locate marker when the fork prompt carries the kick-start pack inline.
-//
-//go:embed webster/webster-fragment-locate-pack-inline.md
-var WebsterFragmentLocatePackInline []byte
-
 // WebsterFragmentCardReadPlain is webster's shipped-default pack-off first step of each card, filled into the shared implementer-job body's card_read marker when the fork has no kick-start pack and for every recovery prompt.
 //
 //go:embed webster/webster-fragment-card-read-plain.md
 var WebsterFragmentCardReadPlain []byte
 
-// WebsterFragmentCardReadPack is webster's shipped-default pack-on first step of each card, filled into the shared implementer-job body's card_read marker when the fork prompt carries a kick-start pack in the file or inline layout.
+// WebsterFragmentCardReadPack is webster's shipped-default pack-on first step of each card, filled into the shared implementer-job body's card_read marker when the fork prompt carries a kick-start pack in the file layout.
 //
 //go:embed webster/webster-fragment-card-read-pack.md
 var WebsterFragmentCardReadPack []byte
@@ -272,20 +267,10 @@ var WebsterFragmentFreshReadPlain []byte
 //go:embed webster/webster-fragment-fresh-read-pack.md
 var WebsterFragmentFreshReadPack []byte
 
-// WebsterFragmentFreshReadPackInline is webster's frozen inline-layout FRESH-READ rule, filled into the shared implementer-job body's fresh_read marker when the fork prompt carries the kick-start pack inline.
-//
-//go:embed webster/webster-fragment-fresh-read-pack-inline.md
-var WebsterFragmentFreshReadPackInline []byte
-
 // WebsterFragmentPackSection is webster's shipped-default kick-start pack file: the fork's one-turn read instruction followed by one subsection per card.
 //
 //go:embed webster/webster-fragment-pack-section.md
 var WebsterFragmentPackSection []byte
-
-// WebsterFragmentPackSectionInline is webster's frozen inline-layout kick-start pack section, filled into the shared implementer-job body's kickstart_pack_inline marker: one subsection per card, with no read instruction.
-//
-//go:embed webster/webster-fragment-pack-section-inline.md
-var WebsterFragmentPackSectionInline []byte
 
 // WebsterFragmentPackRead is webster's shipped-default pack read line, filled into the shared implementer-job body's kickstart_pack marker in the file layout alone so the fork prompt ends by sending the fork to its kick-start pack file.
 //
@@ -417,6 +402,11 @@ var PatternDirectiveDesigner []byte
 //
 //go:embed pattern/pattern-directive-judge.md
 var PatternDirectiveJudge []byte
+
+// PatternFragmentChanges is the shipped-default fragment a PATTERN directive appends to list the task's declared PATTERN changes.
+//
+//go:embed pattern/pattern-fragment-changes.md
+var PatternFragmentChanges []byte
 
 // FrictionDirectiveImplementer is the shipped-default friction directive for RoleImplementer.
 //
@@ -577,14 +567,11 @@ var entries = []registryEntry{
 	{"webster-body-implementer", &WebsterBodyImplementer},
 	{"webster-fragment-locate-quarry", &WebsterFragmentLocateQuarry},
 	{"webster-fragment-locate-pack", &WebsterFragmentLocatePack},
-	{"webster-fragment-locate-pack-inline", &WebsterFragmentLocatePackInline},
 	{"webster-fragment-card-read-plain", &WebsterFragmentCardReadPlain},
 	{"webster-fragment-card-read-pack", &WebsterFragmentCardReadPack},
 	{"webster-fragment-fresh-read-plain", &WebsterFragmentFreshReadPlain},
 	{"webster-fragment-fresh-read-pack", &WebsterFragmentFreshReadPack},
-	{"webster-fragment-fresh-read-pack-inline", &WebsterFragmentFreshReadPackInline},
 	{"webster-fragment-pack-section", &WebsterFragmentPackSection},
-	{"webster-fragment-pack-section-inline", &WebsterFragmentPackSectionInline},
 	{"webster-fragment-pack-read", &WebsterFragmentPackRead},
 	{"webster-fragment-pack-card", &WebsterFragmentPackCard},
 	{"webster-fragment-pack-unresolved", &WebsterFragmentPackUnresolved},
@@ -611,6 +598,7 @@ var entries = []registryEntry{
 	{"pattern-directive-orchestrator", &PatternDirectiveOrchestrator},
 	{"pattern-directive-designer", &PatternDirectiveDesigner},
 	{"pattern-directive-judge", &PatternDirectiveJudge},
+	{"pattern-fragment-changes", &PatternFragmentChanges},
 	{"friction-directive-implementer", &FrictionDirectiveImplementer},
 	{"friction-directive-review-fix", &FrictionDirectiveReviewFix},
 	{"friction-directive-orchestrator", &FrictionDirectiveOrchestrator},

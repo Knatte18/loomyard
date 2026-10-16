@@ -80,7 +80,7 @@ func planWriteGateSpec(cfg Config, env Env) (shuttleengine.GateSpec, error) {
 	}
 	for i := range spec {
 		if spec[i].Name == "plan" {
-			spec[i].Forked = loomshed.NewLensReviewPlanGate(env.AnchorPath, env.WorktreeRoot, env.RunScratchDir, env.PlanIndex)
+			spec[i].Forked = loomshed.NewLensReviewPlanGate(env.AnchorPath, env.WorktreeRoot, env.RunScratchDir, env.PlanIndex, planContextOf(env))
 		}
 	}
 	return spec, nil

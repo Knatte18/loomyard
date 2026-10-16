@@ -235,7 +235,7 @@ func planFixtureInvalidFormat(t *testing.T, anchorPath, worktreeRoot string) *lo
 		}
 	}
 
-	return &loomCLI{env: shedrecipe.Env{
+	return &loomCLI{location: hubLocationAt(t, anchorPath, ""), env: shedrecipe.Env{
 		PlanIndex:    planglyph.NewIndex(fabricengine.NewReferenceRule()),
 		AnchorPath:   anchorPath,
 		WorktreeRoot: worktreeRoot,
@@ -270,7 +270,7 @@ func verifyPlanFixture(t *testing.T, anchorPath, worktreeRoot, verifyBody, cardV
 		}},
 	})
 
-	return &loomCLI{env: shedrecipe.Env{
+	return &loomCLI{location: hubLocationAt(t, anchorPath, ""), env: shedrecipe.Env{
 		PlanIndex:    planglyph.NewIndex(fabricengine.NewReferenceRule()),
 		AnchorPath:   anchorPath,
 		WorktreeRoot: worktreeRoot,
@@ -305,6 +305,31 @@ func glyphRepoPlanFixture(t *testing.T, anchorPath, worktreeRoot, createTarget, 
 		}},
 	})
 
+	return &loomCLI{location: hubLocationAt(t, anchorPath, ""), env: shedrecipe.Env{
+		PlanIndex:    planglyph.NewIndex(fabricengine.NewReferenceRule()),
+		AnchorPath:   anchorPath,
+		WorktreeRoot: worktreeRoot,
+	}}
+}
+
+// symbolRenamePlanFixture writes a one-card plan whose card renames a symbol, so the plan needs the hub's rename tool, and returns a *loomCLI wired with anchorPath and worktreeRoot.
+func symbolRenamePlanFixture(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
+	t.Helper()
+
+	plankit.Write(t, filepath.Join(anchorPath, "_lyx", "plan"), plankit.Plan{
+		Approved: true,
+		Language: "none",
+		Sections: []plankit.Section{{Heading: "Rename mechanic", Body: "1. Run the rename tool."}},
+		Cards: []plankit.Card{{
+			Number:  1,
+			Slug:    "validate-fixture",
+			Summary: "a minimal fixture card",
+			Groups:  []plankit.Group{{Label: "Rename", Targets: []string{"`sub#Foo` -> `plan:sub#Bar`"}}},
+			Intent:  "minimal fixture card for validate-plan tests.",
+			Commit:  "1: validate-fixture",
+		}},
+	})
+
 	return &loomCLI{env: shedrecipe.Env{
 		PlanIndex:    planglyph.NewIndex(fabricengine.NewReferenceRule()),
 		AnchorPath:   anchorPath,
@@ -334,6 +359,11 @@ type planParityCase struct {
 	wantFinding string
 	// lensReview builds the gate with NewLensReviewPlanGate and runs the verb with --lens-review.
 	lensReview bool
+	// languageContent is the hub's language.yaml the verb loads, and rename_tools the gate is told the same list; both empty lists no tool.
+	languageContent string
+	renameTools     []string
+	// absentFinding, when set, is a substring neither the gate's findings nor the verb's envelope may carry.
+	absentFinding string
 }
 
 // TestGateParity_PlanGate drives NewPlanGate and the validate-plan verb, flag-absent mode.
@@ -466,7 +496,7 @@ func TestGateParity_PlanGate(t *testing.T) {
 			// rather than folded into the pv == cv comparison every other fixture uses.
 			name: "NoPlanDirectory",
 			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
-				return &loomCLI{env: shedrecipe.Env{AnchorPath: anchorPath, WorktreeRoot: worktreeRoot, PlanIndex: planglyph.NewIndex(fabricengine.NewReferenceRule())}}
+				return &loomCLI{location: hubLocationAt(t, anchorPath, ""), env: shedrecipe.Env{AnchorPath: anchorPath, WorktreeRoot: worktreeRoot, PlanIndex: planglyph.NewIndex(fabricengine.NewReferenceRule())}}
 			},
 			wantGate: verdictStuck,
 			wantCLI:  verdictError,
@@ -516,7 +546,7 @@ func TestGateParity_PlanGate(t *testing.T) {
 						Commit:        "1: validate-fixture",
 					}},
 				})
-				return &loomCLI{env: shedrecipe.Env{
+				return &loomCLI{location: hubLocationAt(t, anchorPath, ""), env: shedrecipe.Env{
 					PlanIndex:    planglyph.NewIndex(fabricengine.NewReferenceRule()),
 					AnchorPath:   anchorPath,
 					WorktreeRoot: worktreeRoot,
@@ -573,6 +603,27 @@ func TestGateParity_PlanGate(t *testing.T) {
 			wantGate: verdictDone,
 			wantCLI:  verdictDone,
 		},
+		{
+			name: "SymbolRenameWithNoRenameTool",
+			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
+				return symbolRenamePlanFixture(t, anchorPath, worktreeRoot)
+			},
+			wantGate:    verdictStuck,
+			wantCLI:     verdictStuck,
+			wantFinding: "rename-tool-missing",
+		},
+		{
+			// The verb reads the hub's language.yaml itself, so a listed tool clears the finding on both sides.
+			name: "SymbolRenameWithARenameTool",
+			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
+				return symbolRenamePlanFixture(t, anchorPath, worktreeRoot)
+			},
+			languageContent: "rename_tools:\n  - gopls rename\n",
+			renameTools:     []string{"gopls rename"},
+			wantGate:        verdictDone,
+			wantCLI:         verdictDone,
+			absentFinding:   "rename-tool-missing",
+		},
 	}
 
 	for _, tc := range cases {
@@ -580,14 +631,14 @@ func TestGateParity_PlanGate(t *testing.T) {
 			anchorPath := t.TempDir()
 			worktreeRoot := t.TempDir()
 			c := tc.build(t, anchorPath, worktreeRoot)
-
+			c.location = hubLocationAt(t, anchorPath, tc.languageContent)
 			newGate := loomshed.NewPlanGate
 			var args []string
 			if tc.lensReview {
 				newGate = loomshed.NewLensReviewPlanGate
 				args = []string{"--lens-review"}
 			}
-			gate := newGate(c.env.AnchorPath, c.env.WorktreeRoot, c.env.RunScratchDir, planglyph.NewIndex(fabricengine.NewReferenceRule()))
+			gate := newGate(c.env.AnchorPath, c.env.WorktreeRoot, c.env.RunScratchDir, planglyph.NewIndex(fabricengine.NewReferenceRule()), loomshed.PlanContext{RenameTools: tc.renameTools})
 			result, err := gate()
 			pv := producerVerdict(result, err)
 
@@ -611,6 +662,9 @@ func TestGateParity_PlanGate(t *testing.T) {
 			}
 			if tc.wantFinding != "" && (!strings.Contains(result.Findings, tc.wantFinding) || !strings.Contains(out.String(), tc.wantFinding)) {
 				t.Errorf("fixture %q: want %q in both the gate findings %q and the verb output %q", tc.name, tc.wantFinding, result.Findings, out.String())
+			}
+			if tc.absentFinding != "" && (strings.Contains(result.Findings, tc.absentFinding) || strings.Contains(out.String(), tc.absentFinding)) {
+				t.Errorf("fixture %q: want %q in neither the gate findings %q nor the verb output %q", tc.name, tc.absentFinding, result.Findings, out.String())
 			}
 		})
 	}
@@ -767,7 +821,7 @@ func reworkParityFixture(t *testing.T, anchorPath, worktreeRoot string, cardNumb
 			head[path.Join(planparser.PlanDirRel(), name)] = data
 		}
 	}
-	return &loomCLI{env: shedrecipe.Env{
+	return &loomCLI{location: hubLocationAt(t, anchorPath, ""), env: shedrecipe.Env{
 		PlanIndex:    planglyph.NewIndex(fabricengine.NewReferenceRule()),
 		AnchorPath:   anchorPath,
 		WorktreeRoot: worktreeRoot,
@@ -809,7 +863,7 @@ func TestGateParity_ReworkPlanGate(t *testing.T) {
 			})
 			c := reworkParityFixture(t, anchorPath, worktreeRoot, tt.cardNumber, tt.uses, tt.edit, tt.verify, tt.committed)
 
-			result, err := loomshed.NewReworkPlanGate(c.env.AnchorPath, c.env.WorktreeRoot, c.env.RunScratchDir, planglyph.NewIndex(fabricengine.NewReferenceRule()), c.env.Rework.ReadCommitted)()
+			result, err := loomshed.NewReworkPlanGate(c.env.AnchorPath, c.env.WorktreeRoot, c.env.RunScratchDir, planglyph.NewIndex(fabricengine.NewReferenceRule()), c.env.Rework.ReadCommitted, loomshed.PlanContext{})()
 			pv := producerVerdict(result, err)
 
 			var out bytes.Buffer
@@ -827,4 +881,42 @@ func TestGateParity_ReworkPlanGate(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("SymbolRenameWithNoRenameTool", func(t *testing.T) {
+		anchorPath := t.TempDir()
+		c := symbolRenamePlanFixture(t, anchorPath, t.TempDir())
+		c.location = hubLocationAt(t, anchorPath, "")
+		committed := map[string][]byte{}
+		for name, data := range plankit.Render(plankit.Plan{
+			Approved: true,
+			Language: "none",
+			Cards: []plankit.Card{{
+				Number:  1,
+				Slug:    "first-card",
+				Summary: "placeholder card 1",
+				Groups:  []plankit.Group{{Label: "Create", Targets: []string{"internal/firstcard/new.go"}}},
+				Intent:  "placeholder card.",
+			}},
+		}) {
+			committed[path.Join(planparser.PlanDirRel(), name)] = data
+		}
+		c.env.Rework.ReadCommitted = func(rel string) ([]byte, bool, error) {
+			data, ok := committed[rel]
+			return data, ok, nil
+		}
+
+		result, err := loomshed.NewReworkPlanGate(c.env.AnchorPath, c.env.WorktreeRoot, c.env.RunScratchDir, planglyph.NewIndex(fabricengine.NewReferenceRule()), c.env.Rework.ReadCommitted, loomshed.PlanContext{})()
+		pv := producerVerdict(result, err)
+
+		var out bytes.Buffer
+		exitCode := clihelp.Execute(c.validatePlanCmd(), &out, []string{"--rework"})
+		cv := cliVerdict(envelope.Decode(t, out.String()))
+
+		if pv != cv || pv != verdictStuck {
+			t.Errorf("gate verdict = %q (result=%+v, err=%v); CLI verdict = %q (exit=%d, raw=%q); want both %q", pv, result, err, cv, exitCode, out.String(), verdictStuck)
+		}
+		if !strings.Contains(result.Findings, "rename-tool-missing") || !strings.Contains(out.String(), "rename-tool-missing") {
+			t.Errorf("want rename-tool-missing in both the gate findings %q and the verb output %q", result.Findings, out.String())
+		}
+	})
 }

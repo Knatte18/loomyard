@@ -2,13 +2,16 @@ package shedrecipe
 
 import (
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/parentreview"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 )
 
 // gatesCfg builds a row Config carrying a one-entry "gates" list, the shape every shipped gated row has.
@@ -54,6 +57,46 @@ func TestResolveGateSpec_ValidOneEntryPerVocabularyName(t *testing.T) {
 				t.Errorf("resolveGateSpec()[0] = %+v; want closure set, Name %q, Attempts 4, PassOnCap false", spec[0], name)
 			}
 		})
+	}
+
+	// The plan gates check a symbol Rename against the env's rename tools, so a site passing a zero PlanContext fails here.
+	for _, name := range []string{"plan", "rework-plan"} {
+		for _, tt := range []struct {
+			name  string
+			tools []string
+			want  bool
+		}{
+			{"no rename tool", nil, true},
+			{"a rename tool", []string{"gopls rename"}, false},
+		} {
+			t.Run(name+" with "+tt.name, func(t *testing.T) {
+				env := reworkTestEnv(t)
+				env.PlanIndex = noFindingsPlanIndex{}
+				env.RenameTools = tt.tools
+				plan := symbolRenamePlan()
+				plankit.Write(t, planparser.PlanDir(env.AnchorPath), plan)
+				committed := map[string][]byte{}
+				for file, data := range plankit.Render(plan) {
+					committed[path.Join(planparser.PlanDirRel(), file)] = data
+				}
+				env.Rework.ReadCommitted = func(rel string) ([]byte, bool, error) {
+					data, ok := committed[rel]
+					return data, ok, nil
+				}
+
+				spec, err := resolveGateSpec("Row", gatesCfg(name, 4), env)
+				if err != nil {
+					t.Fatalf("resolveGateSpec() error = %v; want nil", err)
+				}
+				result, err := spec[0].Gate()
+				if err != nil {
+					t.Fatalf("Gate() error = %v; want nil", err)
+				}
+				if got := strings.Contains(result.Findings, "rename-tool-missing"); got != tt.want {
+					t.Errorf("Gate() = %+v; want rename-tool-missing: %v", result, tt.want)
+				}
+			})
+		}
 	}
 
 	// A history seam selects the darn form of the "discussion" gate: it fails on an entry the record dropped and commits only on a pass.

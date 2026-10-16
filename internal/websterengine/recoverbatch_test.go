@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/planglyph"
@@ -916,6 +917,22 @@ func TestRecoverBatch_TerminalRunsTheSamePostBatchChecksAsRecordBatch(t *testing
 	if !again.Spawned {
 		t.Errorf("third call = %+v; want Spawned=true after a failed recovery", again)
 	}
+
+	// The fresh strand lands: the card declares no unlanded work any more, and the fork's commit and the recovery's commit both carry trailers.
+	landed := planparser.Card{Number: 1, Slug: "json-flag", Title: "json-flag", Intent: "add the --json flag"}
+	fx.Deps.Plan.Cards = []planparser.Card{landed}
+	fx.Deps.Batches[0].Cards = []planparser.Card{landed}
+	fx.Git.commitWith("fork work", "fork departure")
+	fx.Git.commitWith("recovery work", "recovery departure")
+	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+fx.Git.head+"\n")
+	recovered, err := driveRecoverBatch(fx.Deps, 1, 2*time.Second, clk)
+	if err != nil {
+		t.Fatalf("RecoverBatch() fourth call error = %v; want nil", err)
+	}
+	wantDepartures := []string{"fork work: fork departure", "recovery work: recovery departure"}
+	if recovered.Digest == nil || !slices.Equal(recovered.Digest.Departures, wantDepartures) {
+		t.Errorf("recovered Digest = %+v; want Departures %v from the whole bracket", recovered.Digest, wantDepartures)
+	}
 }
 
 // TestRecoverBatch_AmendedCards walks one batch's amendment through its recoveries.
@@ -1256,6 +1273,61 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 			},
 		},
 		{
+			name: "a decision record with a malformed PATTERN changes section refuses before any strand starts",
+			setup: func(fx *recoverFixture) {
+				fx.Deps.Geom.DecisionRecordPath = filepath.Join(fx.Worktree, "decision-record.md")
+				writeWorktreeFile(t, fx.Worktree, "decision-record.md", "## PATTERN changes\n\n- `PATTERN-a` — renames: x\n")
+				fx.Deps.State.Batches[1] = failedRecord("correctness finding")
+			},
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				if !errors.Is(err, discussionparser.ErrPatternChangesInvalid) {
+					t.Fatalf("RecoverSpawnOrAttach() error = %v; want ErrPatternChangesInvalid", err)
+				}
+				for _, want := range []string{"lyx loom validate-discussion", "lyx webster recover-batch 1"} {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("error %q lacks %q", err, want)
+					}
+				}
+				if spawned || fx.Engine.PrepareCalls != 0 {
+					t.Errorf("spawned = %v, prepareCalls = %d; want no strand started", spawned, fx.Engine.PrepareCalls)
+				}
+				if rec := fx.Deps.State.Batches[1]; !rec.Terminal || rec.Status != websterengine.DigestStatusFailed || rec.StrandGUID != "" {
+					t.Errorf("record changed: %+v", rec)
+				}
+			},
+		},
+		{
+			name: "a batch holding a symbol Rename pair under an empty rename tool list refuses before any strand starts",
+			setup: func(fx *recoverFixture) {
+				fx.Deps.Batches[0].Cards[0].Pairs = []planparser.MovePair{{Old: "sub#Foo", New: "plan:sub#Bar"}}
+				fx.Deps.State.Batches[1] = failedRecord("correctness finding")
+			},
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				if !errors.Is(err, websterengine.ErrRenameToolMissing) {
+					t.Fatalf("RecoverSpawnOrAttach() error = %v; want ErrRenameToolMissing", err)
+				}
+				if !strings.Contains(err.Error(), "lyx webster recover-batch 1") {
+					t.Errorf("error %q lacks the recover-batch way forward", err)
+				}
+				if spawned || fx.Engine.PrepareCalls != 0 {
+					t.Errorf("spawned = %v, prepareCalls = %d; want no strand started", spawned, fx.Engine.PrepareCalls)
+				}
+				if rec := fx.Deps.State.Batches[1]; !rec.Terminal || rec.Status != websterengine.DigestStatusFailed || rec.StrandGUID != "" {
+					t.Errorf("record changed: %+v", rec)
+				}
+			},
+		},
+		{
+			name: "a batch holding only a file Rename pair under an empty rename tool list spawns",
+			setup: func(fx *recoverFixture) {
+				fx.Deps.Batches[0].Cards[0].Pairs = []planparser.MovePair{{Old: "internal/a/old.go#", New: "internal/a/new.go#"}}
+				fx.Deps.State.Batches[1] = failedRecord("correctness finding")
+			},
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				requireSpawned(t, spawned, err)
+			},
+		},
+		{
 			name: "a third counted spawn refuses ErrRecoveryExhausted naming the reset routes",
 			setup: func(fx *recoverFixture) {
 				fx.Deps.State.Batches[1] = &websterengine.BatchState{Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead", Recoveries: 2}
@@ -1590,6 +1662,21 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 				requireSpawned(t, spawned, err)
 				if !strings.Contains(fx.Engine.LastPrompt, "none (first batch)") {
 					t.Errorf("recovery prompt does not contain the first-batch sentinel; got:\n%s", fx.Engine.LastPrompt)
+				}
+			},
+		},
+		{
+			name: "the prompt carries the hub's rename tools and the plan's verify command",
+			setup: func(fx *recoverFixture) {
+				fx.Deps.RenameTools = []string{"rename Go symbols with `gopls rename`"}
+				fx.Deps.Plan.Verify = "go test ./..."
+			},
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				requireSpawned(t, spawned, err)
+				for _, want := range []string{"- rename Go symbols with `gopls rename`\n", "verify command follows:\n\ngo test ./...\n"} {
+					if !strings.Contains(fx.Engine.LastPrompt, want) {
+						t.Errorf("recovery prompt does not contain %q; got:\n%s", want, fx.Engine.LastPrompt)
+					}
 				}
 			},
 		},

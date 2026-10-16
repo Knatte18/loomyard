@@ -99,6 +99,35 @@ func firstCardPlan(approved bool, language, createTarget, useTarget string) plan
 	return plankit.Plan{Approved: approved, Language: language, Framing: "Framing.", Cards: []plankit.Card{card}}
 }
 
+// seedPlanContextFixture writes a one-card plan under anchorPath whose card renames by renamePair, a complete "`old` -> `new`" line, or edits a file when renamePair is empty.
+// planSection is the body of the overview's `## PATTERN changes` section, omitted when empty.
+// It writes a decision record next to the plan holding recordSection as its `## PATTERN changes` body, a record without the section when recordSection is empty, and no record when it is the literal "absent".
+// The returned PlanContext names the record path and lists no rename tool.
+func seedPlanContextFixture(t *testing.T, anchorPath, renamePair, planSection, recordSection string) PlanContext {
+	t.Helper()
+	plan := firstCardPlan(true, "none", "internal/firstcard/new.go", "")
+	if renamePair != "" {
+		plan.Cards[0].Groups = []plankit.Group{{Label: "Rename", Targets: []string{renamePair}}}
+		plan.Sections = append(plan.Sections, plankit.Section{Heading: "Rename mechanic", Body: "1. Run the rename tool."})
+	}
+	if planSection != "" {
+		plan.Sections = append(plan.Sections, plankit.Section{Heading: "PATTERN changes", Body: planSection})
+	}
+	plankit.Write(t, filepath.Join(anchorPath, lyxdirs.LyxDirName, "plan"), plan)
+
+	recordPath := filepath.Join(anchorPath, "decision-record.md")
+	if recordSection != "absent" {
+		record := validDecisionRecord
+		if recordSection != "" {
+			record += "\n## PATTERN changes\n\n" + recordSection + "\n"
+		}
+		if err := os.WriteFile(recordPath, []byte(record), 0o644); err != nil {
+			t.Fatalf("write decision record: %v", err)
+		}
+	}
+	return PlanContext{DecisionRecordPath: recordPath}
+}
+
 // seedFormatInvalidPlanFixture writes a plan whose overview declares an unrecognized format,
 // tripping format-unrecognized regardless of requireApproved — the mode dimension must not change a
 // format-invalid plan's Stuck disposition either way.

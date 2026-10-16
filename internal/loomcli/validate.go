@@ -11,6 +11,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/planglyph"
@@ -163,32 +165,31 @@ func (c *loomCLI) validatePlanCmd() *cobra.Command {
 		Short:       "run the checks Plan-Write's, a twill Plan-Write run's, Plan-Burler-Fix's or PR-Rework's own gate runs standalone against the current plan",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `validate-plan parses the current worktree's plan and checks it in one of
-five modes, reporting the result as one JSON envelope that carries
-informational findings under their own key even on success. It takes no
-arguments.
+five modes, reporting one JSON envelope that carries informational findings
+under their own key even on success. It takes no arguments.
 
 No flag: the index's ValidateFormat, the format-only check set Plan-Write's and
 Plan-Burler-Fix's own gate runs, which the plan writer calls before handoff.
 The cards of batches webster's run record holds done are history, and their
 tree-dependent checks are skipped. --require-approved: the index's Validate,
-the same set plus the plan-unapproved check no gate runs, which this flag alone
-reaches standalone. --rework: the set PR-Rework's own gate runs, the
-format-only checks over the whole new plan plus a check that its first_card
-equals the card number the rework session was told. The default and --rework
+the same set plus the plan-unapproved check no gate runs. --rework: the set
+PR-Rework's own gate runs, the format-only checks over the whole new plan plus
+a check that its first_card equals the card number the rework session was told. The default and --rework
 modes include the card-fabric-reference, fabric-vocabulary-name and
 edit-test-file checks; --require-approved leaves all three out.
+Every mode but --require-approved also runs rename-tool-missing and
+pattern-changes-mismatch, which read language.yaml and the decision record.
 
 --lens-review: the no-flag checks plus the check that the plan directory's
 lens-review.md holds a recorded lens review, the check set of a twill
-Plan-Write run's own gate. The no-flag mode ignores that file.
+Plan-Write run's own gate.
 
 --overlay: the no-flag checks over the plan with proposed contents laid over
 its files, in memory; nothing is written. Pipe one JSON object on stdin, keys
 the file names and values their full content. A name is 00-overview.md or a
-card file the Card Index on disk lists; adding, removing or renumbering a card
-still goes through insert-card and remove-card. Handles are canonicalized in
-memory, and {} checks the plan as it is. It validates target-list,
-verify-command and card-text changes, never a proposed code change.
+card file the Card Index lists; adding, removing or renumbering a card still
+goes through insert-card and remove-card. {} checks the plan as it is. It
+validates target-list, verify-command and card-text changes, never code.
 
 The four flags are mutually exclusive.
 
@@ -250,16 +251,26 @@ Example:
 				return nil
 			}
 
+			var pc loomshed.PlanContext
+			if !requireApproved {
+				language, loadErr := languageconfig.Load(fabricengine.ConfigDirs(c.location))
+				if loadErr != nil {
+					clihelp.SetExit(cmd.Context(), output.Err(out, "loom: validate-plan: "+loadErr.Error()))
+					return nil
+				}
+				pc = loomshed.PlanContext{RenameTools: language.RenameTools, DecisionRecordPath: c.env.PatternRecordPath}
+			}
+
 			var findings []planglyph.Finding
 			switch {
 			case requireApproved:
 				findings, err = c.env.PlanIndex.Validate(plan, c.env.WorktreeRoot)
 			case rework:
-				findings, err = loomshed.ValidateReworkPlan(plan, c.env.WorktreeRoot, c.env.PlanIndex, c.env.Rework.ReadCommitted)
+				findings, err = loomshed.ValidateReworkPlan(plan, c.env.WorktreeRoot, c.env.PlanIndex, c.env.Rework.ReadCommitted, pc)
 			case lensReview:
-				findings, err = loomshed.ValidatePlanLensReview(plan, c.env.AnchorPath, c.env.WorktreeRoot, c.env.PlanIndex)
+				findings, err = loomshed.ValidatePlanLensReview(plan, c.env.AnchorPath, c.env.WorktreeRoot, c.env.PlanIndex, pc)
 			default:
-				findings, err = loomshed.ValidatePlan(plan, c.env.AnchorPath, c.env.WorktreeRoot, c.env.PlanIndex)
+				findings, err = loomshed.ValidatePlan(plan, c.env.AnchorPath, c.env.WorktreeRoot, c.env.PlanIndex, pc)
 			}
 			if err != nil {
 				// Named for quarry, not the plan: an operator reading this envelope must never be
