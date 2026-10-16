@@ -50,22 +50,46 @@ func providerSeamViolations(t *testing.T, base string) ([]string, int) {
 	return violations, scanned
 }
 
-// TestProviderSeamImportRule verifies that no production file in the module imports a concrete engine package except from that engine's own directory tree or from internal/shuttleengines.
-// It also verifies that the scan finds a violation when one exists.
+// startupGateCallers returns the production files under base outside internal/shuttleengine/ that contain a call of AcceptStartupGate, with the count of files scanned.
+// The method is the engine-neutral startup-gate acceptance, and a caller of it outside the package is a new decision.
+func startupGateCallers(t *testing.T, base string) ([]string, int) {
+	t.Helper()
+	var callers []string
+	scanned := scankit.Walk(t, scankit.Options{Base: base}, func(f *scankit.File) {
+		directory := path.Dir(f.Rel)
+		if directory == "internal/shuttleengine" || strings.HasPrefix(directory, engineDirectoryPrefix) {
+			return
+		}
+		if strings.Contains(string(f.Data), ".AcceptStartupGate(") {
+			callers = append(callers, f.Rel)
+		}
+	})
+	return callers, scanned
+}
+
+// TestProviderSeamImportRule verifies that no production file in the module imports a concrete engine package except from that engine's own directory tree or from internal/shuttleengines,
+// and that no production file outside internal/shuttleengine/ calls AcceptStartupGate.
+// It also verifies that each scan finds a violation when one exists and lets a file inside the package through.
 //
-//testtiming:keep scans every production file's imports for a concrete engine package outside its own directory and the registry, which no other test reads
+//testtiming:keep scans every production file's imports for a concrete engine package outside its own directory and the registry, and its calls for AcceptStartupGate outside this package, which no other test reads
+//lyx:guard
 func TestProviderSeamImportRule(t *testing.T) {
 	t.Parallel()
 
 	const importsClaude = "package x\n\nimport _ \"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine\"\n"
+	const callsGate = "package x\n\nfunc f(r interface{ AcceptStartupGate(string) (bool, error) }) { _, _ = r.AcceptStartupGate(\"g\") }\n"
 	tests := []struct {
 		name  string
 		files map[string]string
 		want  []string
+		// wantCallers is the files the AcceptStartupGate call-site scan flags.
+		wantCallers []string
 	}{
-		{"ImportFromAnotherPackage", map[string]string{"internal/x/x.go": importsClaude}, []string{"internal/x/x.go"}},
-		{"ImportFromTheEnginesOwnDirectory", map[string]string{"internal/shuttleengine/claudeengine/a.go": importsClaude}, nil},
-		{"ImportFromTheRegistry", map[string]string{"internal/shuttleengines/b.go": importsClaude}, nil},
+		{"ImportFromAnotherPackage", map[string]string{"internal/x/x.go": importsClaude}, []string{"internal/x/x.go"}, nil},
+		{"ImportFromTheEnginesOwnDirectory", map[string]string{"internal/shuttleengine/claudeengine/a.go": importsClaude}, nil, nil},
+		{"ImportFromTheRegistry", map[string]string{"internal/shuttleengines/b.go": importsClaude}, nil, nil},
+		{"AcceptStartupGateCalledFromAnotherPackage", map[string]string{"internal/x/x.go": callsGate}, nil, []string{"internal/x/x.go"}},
+		{"AcceptStartupGateCalledInsideTheShuttlePackage", map[string]string{"internal/shuttleengine/y.go": callsGate}, nil, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -84,6 +108,9 @@ func TestProviderSeamImportRule(t *testing.T) {
 			if strings.Join(got, ",") != strings.Join(tt.want, ",") {
 				t.Errorf("providerSeamViolations = %v; want %v", got, tt.want)
 			}
+			if callers, _ := startupGateCallers(t, base); strings.Join(callers, ",") != strings.Join(tt.wantCallers, ",") {
+				t.Errorf("startupGateCallers = %v; want %v", callers, tt.wantCallers)
+			}
 		})
 	}
 
@@ -94,6 +121,11 @@ func TestProviderSeamImportRule(t *testing.T) {
 		if len(got) > 0 {
 			t.Errorf("provider-seam import rule violated (Shared Decision \"provider-seam import rule\"): "+
 				"only internal/shuttleengines and an engine's own directory import a concrete engine, but found one imported in: %v", got)
+		}
+		callers, scanned := startupGateCallers(t, scankit.Root(t))
+		scankit.RequireFloor(t, scanned, 1, "module-wide startup-gate call-site scan")
+		if len(callers) > 0 {
+			t.Errorf("AcceptStartupGate is called outside internal/shuttleengine/, which is a new decision: %v", callers)
 		}
 	})
 }

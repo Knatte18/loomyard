@@ -1588,3 +1588,87 @@ func TestStartup_SendFailuresTearDown(t *testing.T) {
 		})
 	}
 }
+
+// TestRunner_AcceptStartupGate covers the seam that accepts a provider's startup gate on a live strand:
+// a gate capture plays the engine's accept sequence with that same capture.
+// A ready, pending or unlocatable-gate capture sends nothing.
+// A strand with no run record is accepted through its live provider's engine.
+// A damaged run record, a dead strand and a failing capture each return an error with nothing sent.
+func TestRunner_AcceptStartupGate(t *testing.T) {
+	t.Parallel()
+	const gateCapture = "❯ No, exit\n  Yes, I trust this folder"
+	tests := []struct {
+		name          string
+		startup       StartupState
+		undismissable bool
+		// recordless leaves the strand with no run record and names a second engine as its provider.
+		recordless bool
+		damaged    bool
+		dead       bool
+		captureErr error
+		wantSent   bool
+		wantErr    bool
+	}{
+		{name: "a trust gate is accepted", startup: StartupTrustPrompt, wantSent: true},
+		{name: "a ready pane sends nothing", startup: StartupReady},
+		{name: "a pending pane sends nothing", startup: StartupPending},
+		{name: "a gate with no locatable accepting option sends nothing", startup: StartupTrustPrompt, undismissable: true},
+		{name: "a strand with no run record is accepted through its provider's engine", startup: StartupTrustPrompt, recordless: true, wantSent: true},
+		{name: "a run record that cannot be read is an error", startup: StartupTrustPrompt, damaged: true, wantErr: true},
+		{name: "a dead strand is an error", startup: StartupTrustPrompt, dead: true, wantErr: true},
+		{name: "a failing capture is an error", startup: StartupTrustPrompt, captureErr: errors.New("pane gone"), wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			reed := &fakeReed{StatusQueue: liveStrandStatus(!tt.dead), CaptureQueue: []string{gateCapture}, CaptureErr: tt.captureErr}
+			first := &fakeEngine{StartupScript: []StartupState{tt.startup}}
+			second := &fakeEngine{StartupScript: []StartupState{tt.startup}}
+			var engine Engine = first
+			if tt.undismissable {
+				engine = &undismissableEngine{fakeEngine: first}
+			}
+			handler := first
+			opts := []fixtureOpt{withStrand("strand-1")}
+			if tt.recordless {
+				reed.StatusQueue[0].Strands[0].Provider = "second"
+				opts = []fixtureOpt{withEngines(NewEngineSet("first", map[string]Engine{"first": engine, "second": second}))}
+				handler = second
+			}
+			fx := newFixture(t, reed, engine, opts...)
+			if tt.damaged {
+				if err := os.WriteFile(filepath.Join(fx.RunRoot, "run-1", runStateFileName), []byte("{"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			sent, err := fx.Runner.AcceptStartupGate("strand-1")
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("AcceptStartupGate error = %v; want error %v", err, tt.wantErr)
+			}
+			if sent != tt.wantSent {
+				t.Errorf("AcceptStartupGate sent = %v; want %v", sent, tt.wantSent)
+			}
+			var wantKeys []struct{ GUID, Key string }
+			var wantCaptures []string
+			if tt.wantSent {
+				wantKeys = append(wantKeys, struct{ GUID, Key string }{"strand-1", "Enter"})
+				wantCaptures = []string{gateCapture}
+			}
+			if !reflect.DeepEqual(reed.SendKeyCalls, wantKeys) {
+				t.Errorf("SendKey calls = %+v; want %+v", reed.SendKeyCalls, wantKeys)
+			}
+			if tt.undismissable || tt.wantErr || tt.startup != StartupTrustPrompt {
+				return
+			}
+			if got := handler.TrustDismissCaptures(); !reflect.DeepEqual(got, wantCaptures) {
+				t.Errorf("TrustDismissCaptures = %v; want %v", got, wantCaptures)
+			}
+			if tt.recordless {
+				if got := first.TrustDismissCaptures(); len(got) != 0 {
+					t.Errorf("the default engine was handed %v; want only the provider's engine consulted", got)
+				}
+			}
+		})
+	}
+}

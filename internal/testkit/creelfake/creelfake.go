@@ -290,6 +290,42 @@ func (c *Clock) Advance(d time.Duration) {
 	c.timers = pending
 }
 
+// AdvanceByWaitsWhere advances the clock by the last recorded wait keep accepts, then waits for the next such wait to be recorded before the next step, until done closes.
+// It never jumps to a pending timer, so a timer of a loop whose waits keep rejects is not fired between two steps.
+// Like AwaitWaitsWhere it gives up after a real ten seconds, so a failing test fails on its own assertion instead of hanging.
+func (c *Clock) AdvanceByWaitsWhere(keep func(time.Duration) bool, done <-chan struct{}) {
+	deadline := time.After(10 * time.Second)
+	stepped := 0
+	for {
+		select {
+		case <-done:
+			return
+		default:
+		}
+		c.mu.Lock()
+		var kept []time.Duration
+		for _, wait := range c.waits {
+			if keep(wait) {
+				kept = append(kept, wait)
+			}
+		}
+		changed := c.changed
+		c.mu.Unlock()
+		if len(kept) > stepped {
+			stepped = len(kept)
+			c.Advance(kept[len(kept)-1])
+			continue
+		}
+		select {
+		case <-changed:
+		case <-done:
+			return
+		case <-deadline:
+			return
+		}
+	}
+}
+
 // AutoAdvance moves the clock to the next pending timer, and again for each timer armed after, until done is closed.
 // A test uses it to run through the sleeps of a call that retries on this clock.
 func (c *Clock) AutoAdvance(done <-chan struct{}) {

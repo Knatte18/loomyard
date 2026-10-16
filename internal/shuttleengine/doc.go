@@ -409,8 +409,8 @@
 //
 // Session state has two consumers: Runner.SessionIdle and the verified send's idle wait, which gate on the readiness reading built from it.
 // The reading is ready or held, or unknown when the state is, and an unknown reading falls back to the pane probe.
-// Runner.SessionIdle answers IdleProbe.Idle for a ready reading and, for a held one, IdleProbe.Reason, with TooShort set when the reason is the short pane and Draft set when the reading names a draft in the input box;
-// on the pane fallback, which a strand with no run record always takes, an answer that is not idle also sets Draft when the input box holds text;
+// Runner.SessionIdle answers IdleProbe.Idle for a ready reading and, for a held one, IdleProbe.Reason, with TooShort set when the reason is the short pane and Draft set when the reading names a draft in the input box and NoInputBox set when the reason is a pane showing no input box to an engine that reads one;
+// on the pane fallback, which a strand with no run record always takes, an answer that is not idle also sets Draft when the input box holds text and NoInputBox when an engine that reads an input box finds none on a pane tall enough to draw one;
 // the runner keeps one turn-start hold per strand guid, so the orch watcher's probes keep one hold across its ticks as a send keeps one across its polls.
 // A ready reading beside a pane that shows the needle still answers idle, and logs the disagreement with the pane's last lines at Debug.
 // Wait's own shadow logging below stays display only.
@@ -448,6 +448,13 @@
 // RunGated's not-ready result carries the start error's text in Result.StartError.
 // The startup probe starts at the poll interval and backs off to the dismissal gap (the poll interval times liveness_every_n_polls) while the pane does not change.
 // Startup-gate dismissals are at least one dismissal gap apart.
+// Runner.AcceptStartupGate is the one dismissal outside a run's own startup step, for a strand already live, such as a session added by hand:
+// it captures the pane once, runs the engine's startup classification on it and plays the engine's gate-accept sequence for that capture only when the engine reads a gate.
+// A ready or pending pane, and a gate whose accepting option the engine cannot locate, send nothing, and the call reports whether it sent any input.
+// The engine is the one the run's record names, or the live strand's provider when there is no record.
+// It plays only the provider's own accept sequence, on the strand the caller names, so it grants no permission the strand did not request;
+// for claude that covers the folder-trust gate, which adds the strand's working directory to the operator's Claude trust list, and the bypass-permissions risk gate, shown only to a strand whose launch flags or settings already ask for bypass permissions.
+// Its only caller is the llm smoke test's helper in internal/creelcli, and `TestProviderSeamImportRule` pins that no production file outside this package calls it; a production caller is a new decision.
 // A launch that declares Launch.RecordsSessionStarts, recorded as RunState.RecordsSessionStarts, starts only once the events file holds a session-start line of any source beside the ready pane;
 // until both hold the run stays not started and the startup error names the missing line or the unreadable events file, while gate detection and dismissal run as for any run.
 // Such a launch is also started once its events file holds a session start followed by a turn start, checked before the pane capture and in start's probe only,

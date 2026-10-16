@@ -7,7 +7,7 @@
 // Creel decides what is delivered and when, shuttle knows the provider and its idle check and safe send, and reed knows the pane and does the keystrokes: creel → shuttle → reed → tmux.
 // The engine imports neither reed nor shuttle, and every keystroke goes through the Delivery seam; `PATTERN-creel-store` pins that with an import scan.
 // Delivery lists the hub's strands, asks whether a strand is idle, asks whether a pause covers it, types one line into its pane and sends the guarded interrupt.
-// Its idle answer carries a stall reason when a not-idle pane waits on something the operator can act on, a pane too short for the input box or a draft in it, and the engine journals each change of that reason as a `stalled` record.
+// Its idle answer carries a stall reason when a not-idle pane waits on something the operator can act on, a pane too short for the input box, a draft in it or a pane showing no input box, and the engine journals each change of that reason as a `stalled` record.
 // `internal/creelcli` implements it over the hub's worktrees, reed's persisted state and status, the pause record, and a shuttle runner built per worktree at each call.
 // Shuttle's idle check, verified send and guarded interrupt work on a strand with no run record, such as a session added by hand with `lyx reed add`.
 // Send fails with ErrBusy when the pane guard held the write and nothing was typed, and with ErrNotLanded when the text was typed but its landing was not confirmed.
@@ -21,12 +21,14 @@
 // It removes a socket file no listener answers, listens on Geometry.SocketPath, and serves one request per connection.
 // The socket sits in the user's lyxtemp root and is named creel-<shortname>-<h>.sock, where <h> is the first eight hex digits of the hub path's hash, so two hubs sharing a shortname never meet.
 // A client that finds no daemon starts one and connects up to ConnectAttempts times, waiting from one second and doubling to eight.
+// The client also stops waiting when the daemon it started exits other than by a lost start race: it connects once more at once and, if that fails, gives up.
+// An exit by a lost start race keeps the backoff, since the winner may not answer yet.
 // The detached daemon's stderr goes to Geometry.DaemonLogPath in the state directory, which opens with DaemonStartHeader and whose logger lines open with DaemonLogPrefix.
 // A client that gives up connecting names the socket and the log, and quotes the log's lines from the daemon it started.
 //
 // The protocol is JSON lines: a request line carrying the verb, the sender's claim and the verb's fields, and one or more response lines.
 // Every response carries the hub path, and the client refuses a socket that answers for another hub.
-// A waiting verb gets a pending response with its id at once and its outcome as a later response; a waiting inject also gets a progress response for each change of its receiver's stall, and its expired response carries the last stall.
+// A waiting verb gets a pending response with its id at once and its outcome as a later response; a waiting inject also gets a progress response for each change of its receiver's stall it sees, once each, and its expired response carries the receiver's stall only when a probe read it no more than twice the probe ceiling before.
 // A waiting call whose connection drops reconnects up to MaxReconnects times and resumes the same wait with wait-reply or wait-inject.
 // A read's response is acknowledged on the same connection, and the daemon answers the acknowledgement with one confirming line once it is journaled.
 //
@@ -57,11 +59,12 @@
 // An append writes one line and syncs it before it returns, and a new day file opens with a high-water record of the largest id issued so far, so an id is never reused, also after retention deleted the files holding the largest ones.
 //
 // A reader ignores keys it does not know and a line whose event name it does not know, so a newer binary's records never stop an older one.
-// A torn last line left by a crash is skipped with one warning; a malformed line anywhere else fails the load naming the file and line, since skipping it could drop a message silently.
+// A torn last line of the newest file left by a crash, with or without its newline, is skipped with one warning by the fold and cut when the journal opens, so the next append starts on a clean line; a malformed line anywhere else fails the load naming the file and line, since skipping it could drop a message silently.
 // An inject with a sending event and no outcome folds as unconfirmed, so one in flight at a crash is never typed again.
 //
 // At a UTC day change the writer carries what is still live out of files older than seven days: it appends a carried record for each unread message, queued inject and live hold to the new day file, syncs, and only then deletes the old files.
 // The fold is idempotent by id, so a crash between the carry and the deletion leaves both and folds to one entry.
+// Each carried record is also a `carried` log event, after a fold and in the running daemon, holding the snapshot's id, parties and kind at the carry's time.
 //
 // The pool holds each message once, with its id, its original sender and its current holder; forwarding changes the holder only.
 // Only the daemon writes the journal.
@@ -95,8 +98,9 @@
 // Queued injects are typed before reminders, oldest first, except that an interrupt-queued inject goes ahead of the others, newest first.
 // A sending event is journaled before the line is typed.
 // The outcome is injected, unconfirmed when the send answered ErrNotLanded, so the line is never typed twice, or expired; a busy send is requeued untouched.
-// inject --wait answers with the outcome, and hears each change of its receiver's stall reason as a progress line on stderr.
-// An expired answer carries the stall that stood when the TTL ran out, and the `expired` record names it as its reason.
+// inject --wait answers with the outcome, and hears each change of its receiver's stall reason as a progress line on stderr, once each.
+// A waiter hears a stall only from a reading no older than twice the probe ceiling, a stall that persists from the next reading when none was seeded, and the time printed is when the stall began.
+// An expired answer carries the stall that stood when the TTL ran out, and the `expired` record names it as its reason, only when a probe read that stall no more than twice the probe ceiling before; otherwise both carry none.
 // inject --interrupt first sends the guarded interrupt and queues the line at the head.
 //
 // interrupt sends the guarded interrupt at once, bypassing the queue, and reports whether it stopped a running turn.
@@ -121,8 +125,10 @@
 //
 // # Removed holders
 //
-// A sweep runs while a strand holds unread mail or has an inject queued, starting 30 seconds apart and doubling to four minutes while the set of strand names holds, and returning to the base on a change, a new post or inject, or a failed listing.
-// A holder counts as gone after two successful sweeps in a row miss it.
+// A sweep runs while a strand holds unread mail or has an inject queued, starting 30 seconds apart and doubling to 50 seconds while the set of strand names holds, and returning to the base on a change or a failed listing.
+// A new post or inject shortens the wait to the base when more is left, and never lengthens it.
+// A holder counts as gone after two successful sweeps in a row, at least 10 seconds apart, miss it: a sweep that misses a holder for the first time is followed by a confirming sweep after 10 seconds, whatever else would set the wait, and a post or inject during that wait keeps its deadline.
+// A removed holder is settled within 60 seconds while listings succeed.
 // Each unread message of a gone holder goes one step back along its path, to the last forwarder or else the sender, and is marked with the receiver that ended without reading it.
 // When that step is no strand, the message is journaled undelivered and a waiting sender is answered that it returned undelivered.
 // Each inject queued for the gone holder expires.
@@ -137,15 +143,17 @@
 //
 // log lists the journal's events oldest first with their ids, parties, times and subjects, narrowed by --id, --from, --to and --since.
 // It carries no body field.
-// A `stalled` record names the receiver and the stall reason a delivery probe read, and is written once per change of reason while something is pending for the receiver.
+// A `carried` event shows the kind of the message or inject carried, and a message carried again at a later retention gets one `carried` event per carry that is still in a kept file.
+// A `stalled` record names the receiver and the stall reason a delivery probe read, and is written once per change of reason while something is pending for the receiver, and again for a stall read after it went stale.
 //
 // # Delivery loop
 //
 // The Scheduler runs one worker per receiver with a queued inject or unread mail, and at most one delivery is in flight per receiver.
 // A worker probes from a one-second base and doubles the wait to eight seconds after every probe that delivers nothing; a wake from the store or a probe that delivers returns it to the base, and the worker ends when nothing is pending.
+// While the receiver is live and unpaused, the wait is capped at its soonest queued inject's remaining TTL, never below one second, so an inject expires when its TTL runs out and not at the next backed-off probe.
 // A probe finds the strand, skips a dormant or paused one, and types the first queued inject, or under a hold the owner's; with none due it types the reminder.
 // Each delivery asks the seam whether the strand is idle first, and every wait goes through the Clock, so a test never waits out an interval.
-// Every idle answer feeds the stall journal: a new non-empty reason is journaled, a repeat is not, and a reading with no reason, a probe error or a typed line clears it with no record.
+// Every idle answer feeds the stall journal: a new non-empty reason is journaled, a repeat only stamps when it was read, and a reading with no reason, a probe error or a typed line clears it with no record.
 // The inject TTL keeps running while a strand is stalled, live and unpaused.
 //
 // # Unbuilt: stages 2 and 3

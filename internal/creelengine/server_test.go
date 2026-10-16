@@ -140,11 +140,11 @@ func (r *rig) spawn() error {
 	}
 }
 
-// client returns a client over the rig whose spawn, when set, answers pid 0.
+// client returns a client over the rig whose spawn, when set, answers pid 0 with no exit signal.
 func (r *rig) client(claim creelengine.Claim, spawn func() error, clock creelengine.Clock) *creelengine.Client {
-	var adapted func() (int, error)
+	var adapted func() (creelengine.Spawn, error)
 	if spawn != nil {
-		adapted = func() (int, error) { return 0, spawn() }
+		adapted = func() (creelengine.Spawn, error) { return creelengine.Spawn{}, spawn() }
 	}
 	return creelengine.NewClient(r.geom, claim, adapted, clock)
 }
@@ -417,10 +417,12 @@ func TestDaemon_Protocol(t *testing.T) {
 			c := r.client(externalClaim(), nil, creelfake.NewClock(epoch))
 			progress := make(chan creelengine.Response, 8)
 			done := make(chan callResult, 1)
+			returned := make(chan struct{})
 			go func() {
 				resp, err := c.CallWatching(creelengine.Request{Verb: creelengine.VerbInject, Receiver: alpha, Text: "/clear", TTLSeconds: 60, Wait: true}, 0, nil,
 					func(note creelengine.Response) { progress <- note })
 				done <- callResult{resp, err}
+				close(returned)
 			}()
 			r.clock.AwaitWaitsWhere(1, isProbeWait)
 			r.clock.Advance(time.Second)
@@ -433,8 +435,7 @@ func TestDaemon_Protocol(t *testing.T) {
 			if note := nextProgress(t, progress); note.Stall != creelengine.StallTooShort {
 				t.Errorf("second progress = %+v; want the too-short stall", note)
 			}
-			r.clock.AwaitWaitsWhere(3, isProbeWait)
-			r.clock.Advance(61 * time.Second)
+			r.clock.AdvanceByWaitsWhere(isProbeWait, returned)
 			got := result(t, done)
 			if got.err != nil || got.resp.Outcome != creelengine.OutcomeExpired || got.resp.Stall != creelengine.StallTooShort || got.resp.StallAt.IsZero() {
 				t.Errorf("inject --wait = %+v, %v; want expired carrying the too-short stall", got.resp, got.err)
@@ -456,15 +457,17 @@ func TestDaemon_Protocol(t *testing.T) {
 			r.clock.AwaitWaitsWhere(2, isProbeWait)
 			progress := make(chan creelengine.Response, 8)
 			done := make(chan callResult, 1)
+			returned := make(chan struct{})
 			go func() {
 				resp, err := c.CallWatching(creelengine.Request{Verb: creelengine.VerbWaitInject, ID: queued.ID, Wait: true}, 0, nil,
 					func(note creelengine.Response) { progress <- note })
 				done <- callResult{resp, err}
+				close(returned)
 			}()
 			if note := nextProgress(t, progress); note.ID != queued.ID || note.Stall != creelengine.StallDraft {
 				t.Errorf("resumed wait progress = %+v; want the standing draft stall for inject %d", note, queued.ID)
 			}
-			r.clock.Advance(61 * time.Second)
+			r.clock.AdvanceByWaitsWhere(isProbeWait, returned)
 			if got := result(t, done); got.err != nil || got.resp.Outcome != creelengine.OutcomeExpired || got.resp.Stall != creelengine.StallDraft {
 				t.Errorf("wait-inject = %+v, %v; want expired carrying the draft stall", got.resp, got.err)
 			}
@@ -591,6 +594,8 @@ func TestDaemon_Lifecycle(t *testing.T) {
 				// absent leaves the file uncreated.
 				absent bool
 				mode   os.FileMode
+				// lostRace has the spawn fire a lost-race exit at once.
+				lostRace bool
 				// skipRoot skips the row on Windows and as root, where the mode denies nothing.
 				skipRoot bool
 				want     []string
@@ -610,6 +615,13 @@ func TestDaemon_Lifecycle(t *testing.T) {
 					mode:    0o644,
 					want:    []string{"pid=4242 own warning", "cannot attribute"},
 					notWant: []string{"an unattributed line", "pid=88"},
+				},
+				{
+					name:     "ALostRaceExitKeepsTheBackoffAndTheSameError",
+					content:  header4242 + "\npid=4242 own warning\n",
+					mode:     0o644,
+					lostRace: true,
+					want:     []string{"pid=4242 own warning", header4242},
 				},
 				{
 					name:    "TaggedLinesWithNoHeaderSurviveATruncation",
@@ -669,7 +681,16 @@ func TestDaemon_Lifecycle(t *testing.T) {
 					go clock.AutoAdvance(done)
 					defer close(done)
 					var spawns int
-					c := creelengine.NewClient(r.geom, externalClaim(), func() (int, error) { spawns++; return 4242, nil }, clock)
+					c := creelengine.NewClient(r.geom, externalClaim(), func() (creelengine.Spawn, error) {
+						spawns++
+						spawned := creelengine.Spawn{PID: 4242}
+						if tt.lostRace {
+							exited := make(chan creelengine.SpawnExit, 1)
+							exited <- creelengine.SpawnExit{LostRace: true}
+							spawned.Exited = exited
+						}
+						return spawned, nil
+					}, clock)
 					_, err := c.Call(creelengine.Request{Verb: creelengine.VerbLog}, 0, nil)
 					if err == nil || !strings.Contains(err.Error(), r.geom.SocketPath) || !strings.Contains(err.Error(), r.geom.DaemonLogPath) {
 						t.Fatalf("Call = %v; want an error naming the socket and the daemon log", err)
@@ -691,6 +712,97 @@ func TestDaemon_Lifecycle(t *testing.T) {
 						t.Errorf("sleeps = %v; want %d, from one second", waits, creelengine.ConnectAttempts-1)
 					}
 				})
+			}
+		}},
+		{"ClientWhoseSpawnedDaemonExitsAtOnceReturnsTheLogErrorWithoutTheBackoff", func(t *testing.T, r *rig) {
+			exited := make(chan creelengine.SpawnExit, 1)
+			exited <- creelengine.SpawnExit{}
+			clock := creelfake.NewClock(epoch)
+			c := creelengine.NewClient(r.geom, externalClaim(), func() (creelengine.Spawn, error) {
+				return creelengine.Spawn{PID: 4242, Exited: exited}, nil
+			}, clock)
+			got := result(t, callAsync(c, creelengine.Request{Verb: creelengine.VerbLog}, 0))
+			if got.err == nil || !strings.Contains(got.err.Error(), r.geom.SocketPath) || !strings.Contains(got.err.Error(), r.geom.DaemonLogPath) {
+				t.Errorf("Call = %v; want an error naming the socket and the daemon log", got.err)
+			}
+			if !clock.Now().Equal(epoch) {
+				t.Errorf("the client clock reads %v; want it never advanced from %v", clock.Now(), epoch)
+			}
+		}},
+		{"ClientWhoseSpawnedDaemonExitsMidWaitConnectsOnceMoreToADaemonThatServes", func(t *testing.T, r *rig) {
+			exited := make(chan creelengine.SpawnExit, 1)
+			clock := creelfake.NewClock(epoch)
+			c := creelengine.NewClient(r.geom, externalClaim(), func() (creelengine.Spawn, error) {
+				return creelengine.Spawn{PID: 4242, Exited: exited}, nil
+			}, clock)
+			waiting := callAsync(c, creelengine.Request{Verb: creelengine.VerbLog}, 0)
+			clock.AwaitWaits(1)
+			r.start()
+			exited <- creelengine.SpawnExit{}
+			if got := result(t, waiting); got.err != nil {
+				t.Errorf("Call = %v; want it to connect to the daemon that serves once the spawn exited", got.err)
+			}
+		}},
+		{"ClientWhoseSpawnLostTheStartRaceKeepsTheBackoffAndConnects", func(t *testing.T, r *rig) {
+			exited := make(chan creelengine.SpawnExit, 1)
+			exited <- creelengine.SpawnExit{LostRace: true}
+			clock := creelfake.NewClock(epoch)
+			c := creelengine.NewClient(r.geom, externalClaim(), func() (creelengine.Spawn, error) {
+				return creelengine.Spawn{PID: 4242, Exited: exited}, nil
+			}, clock)
+			waiting := callAsync(c, creelengine.Request{Verb: creelengine.VerbLog}, 0)
+			clock.AwaitWaits(1)
+			select {
+			case got := <-waiting:
+				t.Fatalf("Call returned %+v, %v before the backoff passed; want it to keep waiting after a lost race", got.resp, got.err)
+			default:
+			}
+			r.start()
+			clock.Advance(time.Second)
+			if got := result(t, waiting); got.err != nil {
+				t.Errorf("Call = %v; want it to connect after the backoff", got.err)
+			}
+		}},
+		{"WaitingCallThatReconnectsWaitsOnlyOnItsOwnSpawnsSignal", func(t *testing.T, r *rig) {
+			r.del.SetIdle(alpha, false)
+			firstExited := make(chan creelengine.SpawnExit, 1)
+			secondExited := make(chan creelengine.SpawnExit, 1)
+			var stopFirst func()
+			var spawns atomic.Int32
+			clientClock := creelfake.NewClock(epoch)
+			c := creelengine.NewClient(r.geom, externalClaim(), func() (creelengine.Spawn, error) {
+				if spawns.Add(1) > 1 {
+					return creelengine.Spawn{PID: 4243, Exited: secondExited}, nil
+				}
+				ctx, cancel := context.WithCancel(context.Background())
+				done := make(chan error, 1)
+				go func() { done <- creelengine.Run(ctx, r.options(nil)) }()
+				stopFirst = sync.OnceFunc(func() {
+					cancel()
+					<-done
+				})
+				t.Cleanup(stopFirst)
+				<-r.serving
+				return creelengine.Spawn{PID: 4242, Exited: firstExited}, nil
+			}, clientClock)
+			waiting := callAsync(c, creelengine.Request{Verb: creelengine.VerbInject, Receiver: alpha, Text: "/clear", Wait: true}, 0)
+			r.clock.AwaitWaitsWhere(1, isProbeWait)
+			stopFirst()
+			firstExited <- creelengine.SpawnExit{}
+			clientClock.AwaitWaits(1)
+			clientClock.Advance(time.Second)
+			clientClock.AwaitWaits(2)
+			select {
+			case got := <-waiting:
+				t.Fatalf("Call returned %+v, %v on the first spawn's exit; want it to wait on its own spawn's signal", got.resp, got.err)
+			default:
+			}
+			r.del.SetIdle(alpha, true)
+			r.start()
+			r.clock.AwaitWaitsWhere(1, isProbeWait)
+			clientClock.Advance(time.Second)
+			if got := result(t, waiting); got.err != nil || got.resp.Outcome != creelengine.OutcomeInjected {
+				t.Errorf("inject --wait = %+v, %v; want injected", got.resp, got.err)
 			}
 		}},
 		{"StaleSocketFileIsRemovedAndRebound", func(t *testing.T, r *rig) {
@@ -846,6 +958,15 @@ func TestDaemon_Lifecycle(t *testing.T) {
 			}
 			if text := journalText(t, r.geom); !strings.Contains(text, `"event":"carried"`) || !strings.Contains(text, "old mail") {
 				t.Errorf("the new day file lacks the carried unread message: %q", text)
+			}
+			var carried int
+			for _, entry := range mustCall(t, r.client(externalClaim(), nil, creelfake.NewClock(epoch)), creelengine.Request{Verb: creelengine.VerbLog, ID: 1}).Log {
+				if entry.Event == "carried" && entry.Kind == "mail" {
+					carried++
+				}
+			}
+			if carried != 1 {
+				t.Errorf("log --id 1 lists %d carried mail entries after the poll; want 1", carried)
 			}
 		}},
 		{"ReplacedBinaryLetsTheInFlightSendFinishThenRunReturnsAndTheLockIsFree", func(t *testing.T, r *rig) {

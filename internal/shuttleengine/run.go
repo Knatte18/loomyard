@@ -1191,6 +1191,38 @@ func (r *Runner) Inject(guid string, inputs []PaneInput) error {
 	return playInputs(r.reed, guid, inputs)
 }
 
+// AcceptStartupGate accepts the startup gate the pane of the live strand identified by guid shows, through the strand's engine.
+// It captures the pane once and plays the engine's gate-accept sequence only when the engine reads that capture as a gate; a ready or pending pane, and a gate whose accepting option the engine cannot locate, send nothing.
+// It reports whether it sent any input, and fails when the strand is not live, its run record cannot be read, the capture fails or a send fails.
+// The engine is the one the run's record names, or for a strand with no run record the live strand's provider.
+// Accepting a gate is the engine's own choreography, so the call grants no permission the strand did not already ask for.
+func (r *Runner) AcceptStartupGate(guid string) (bool, error) {
+	engine, err := r.interruptEngine(guid)
+	if err != nil {
+		return false, err
+	}
+	if err := requireLiveStrand(r.reed, guid); err != nil {
+		return false, err
+	}
+	capture, err := r.reed.CapturePane(guid)
+	if err != nil {
+		return false, fmt.Errorf("shuttle: capture strand %q's pane to read its startup gate: %w", guid, err)
+	}
+	if engine.Startup(capture) != StartupTrustPrompt {
+		return false, nil
+	}
+	inputs := engine.TrustDismissSequence(capture)
+	sent, err := playInputsSent(r.reed, guid, inputs)
+	if err != nil {
+		return sent > 0, err
+	}
+	if sent == 0 {
+		return false, nil
+	}
+	logger.Info("shuttle: accepted startup gate", "strandGUID", guid, "inputs", sent)
+	return true, nil
+}
+
 const (
 	sendVerifyAttempts = 20
 	sendVerifyInterval = 250 * time.Millisecond
