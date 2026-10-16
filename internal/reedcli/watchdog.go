@@ -711,6 +711,49 @@ func hubIsLiveDir(hub string) bool {
 // fabricengine.HubScratchDir(hub).
 const watchdogLockFileName = "reed-watchdog.lock"
 
+// The bounds of the wait `down` makes for the watchdog to leave its loop after it ended the hub's server.
+// watchdogDownWait is the longest the wait lasts, and watchdogDownPoll the pause between lock probes.
+const (
+	watchdogDownWait = 10 * time.Second
+	watchdogDownPoll = 100 * time.Millisecond //lyx:one-shot bounded lock poll of at most watchdogDownWait
+)
+
+// probeWatchdogLock reports whether the watchdog lock at lockPath is free.
+// A probe that acquires the lock releases it at once and answers free; contention answers not free, and an unusable lock path is the error.
+func probeWatchdogLock(lockPath string) (free bool, err error) {
+	held, acquired, err := lock.TryAcquireWriteLock(lockPath)
+	if err != nil {
+		return false, err
+	}
+	if !acquired {
+		return false, nil
+	}
+	held.Release()
+	return true, nil
+}
+
+// waitWatchdogLockFree waits for hub's watchdog lock to come free, probing it through probe and pausing poll through sleep between probes.
+// The probes span at most wait, which is wait/poll + 1 of them.
+// A probe error means no scratch directory exists, so no daemon can hold the lock: it logs at Debug and returns.
+// When the probes run out it logs one Warn naming the hub and the lock path and returns; the wait never fails its caller.
+func waitWatchdogLockFree(hub string, wait, poll time.Duration, probe func(lockPath string) (bool, error), sleep func(time.Duration)) {
+	lockPath := filepath.Join(fabricengine.HubScratchDir(hub), watchdogLockFileName)
+	for probes := int(wait/poll) + 1; probes > 0; probes-- {
+		free, err := probe(lockPath)
+		if err != nil {
+			logger.Debug("reed: down could not probe the watchdog lock, not waiting for the watchdog", "hub", hub, "lock", lockPath, "err", err)
+			return
+		}
+		if free {
+			return
+		}
+		if probes > 1 {
+			sleep(poll)
+		}
+	}
+	logger.Warn("reed: down gave up waiting for the watchdog to release its lock", "hub", hub, "lock", lockPath)
+}
+
 // watchdogCmd builds the `watchdog` subcommand: a blocking, single-instance, per-hub daemon that
 // runs runWatchdogLoop until it idles out or its context is cancelled.
 //

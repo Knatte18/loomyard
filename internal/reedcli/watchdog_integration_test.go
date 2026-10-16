@@ -224,7 +224,7 @@ func TestWatchdogDaemon(t *testing.T) {
 	// A non-last down leaves the daemon running across five discovery cycles; the last down's stop ends it within the step's bound, and the lock is then free.
 	// The previous step left its lock file behind, so it is removed first: the daemon recreating it is what proves the daemon is running before the sessions go away.
 	if !t.Run("DownStopsTheDaemonAndReleasesLock", func(t *testing.T) {
-		primeEng := watchdogIntegrationEngine(t, prime)
+		watchdogIntegrationEngine(t, prime)
 		pairEng := watchdogIntegrationEngine(t, pair)
 		if err := os.Remove(lockPath); err != nil {
 			t.Fatalf("remove the previous daemon's lock file %s: %v", lockPath, err)
@@ -249,23 +249,25 @@ func TestWatchdogDaemon(t *testing.T) {
 		case <-time.After(5 * watchdogTestCycle):
 		}
 
-		if _, err := primeEng.Down(); err != nil {
-			t.Fatalf("primeEng.Down(): %v", err)
+		// The last down runs as the verb, so the stop and the bounded wait are proven together: the lock is free as soon as the verb returns.
+		var downOut bytes.Buffer
+		if code := RunCLIIn(prime, &downOut, []string{"down"}); code != 0 {
+			t.Fatalf("lyx reed down exited %d: %s", code, downOut.String())
 		}
+		envelope.RequireOK(t, downOut.String())
+		held, acquired, err := lock.TryAcquireWriteLock(lockPath)
+		if err != nil || !acquired {
+			t.Fatalf("watchdog lock right after the verb returned: acquired=%v err=%v; want it free", acquired, err)
+		}
+		held.Release()
 		select {
 		case err := <-done:
 			if err != nil {
 				t.Errorf("watchdogCmd RunE returned %v; want nil", err)
 			}
 		case <-time.After(watchdogTestWait):
-			t.Fatal("watchdog daemon did not exit after the last down's stop")
+			t.Fatal("watchdog daemon did not return after the last down's stop")
 		}
-
-		held, acquired, err := lock.TryAcquireWriteLock(lockPath)
-		if err != nil || !acquired {
-			t.Fatalf("watchdog lock after the daemon exited: acquired=%v err=%v; want it free", acquired, err)
-		}
-		held.Release()
 	}) {
 		return
 	}

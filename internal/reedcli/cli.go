@@ -17,6 +17,7 @@ import (
 	"io"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -66,10 +67,18 @@ type reedCLI struct {
 
 	// watchdogListSessions is the test seam for the daemon's session listing, in its loop and in its exit re-check; nil means reedengine.ListSessions.
 	watchdogListSessions func(tmuxPath, socketKey string) ([]string, error)
+
+	// downLockWait, downLockPoll, downLockProbe and downLockSleep are test seams for the wait `down` makes for the watchdog lock;
+	// zero or nil means watchdogDownWait, watchdogDownPoll, probeWatchdogLock and time.Sleep.
+	downLockWait  time.Duration
+	downLockPoll  time.Duration
+	downLockProbe func(lockPath string) (bool, error)
+	downLockSleep func(time.Duration)
 }
 
-// strandOps is the slice of *reedengine.Engine the remove and status verbs call.
+// strandOps is the slice of *reedengine.Engine the down, remove and status verbs call.
 type strandOps interface {
+	Down() (reedengine.DownResult, error)
 	ResolveStrandGUID(name string) (string, error)
 	MarkRetiring(guid string, retiring bool) error
 	RemoveStrand(guid string, recursive bool) (reedengine.Removed, error)

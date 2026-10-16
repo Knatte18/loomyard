@@ -7,6 +7,7 @@
 // Idle exit and orphan reap each count three consecutive cycles, so at the backed-off cadence they take up to three minutes.
 // A signal file holding the stop marker is a stop request, written by the `down` that ends the hub's server: a stop-woken cycle that lists no session exits at once, never sooner than one second after the previous cycle.
 // After any clean exit the daemon releases its lock and lists the hub's sessions once more, and spawns a successor only when that listing finds a session, so a session that appeared during the exit is not left without a watchdog.
+// When `down` ends the hub's server it then polls the daemon's lock for up to ten seconds, so the daemon has left its loop when the verb returns; a lock still held at the bound logs one Warn and `down` still succeeds.
 //
 // `add` places the strand in a window of its own, or its group's, and its `--anchor` takes `own-window` (the default) or `hidden`; any other value is refused.
 //
