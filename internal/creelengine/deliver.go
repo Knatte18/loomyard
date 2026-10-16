@@ -205,6 +205,10 @@ func (w *worker) probe() (delivered, pending bool) {
 	if !running {
 		return false, true
 	}
+	// Held through the send, so an interrupt of this pane runs with no delivery in flight and the next reading after it is a fresh one.
+	lock := store.paneLock(w.receiver)
+	lock.Lock()
+	defer lock.Unlock()
 	snap := store.snapshot(w.receiver)
 	for _, inject := range snap.injects {
 		if snap.holdOwner == "" || inject.From == snap.holdOwner {

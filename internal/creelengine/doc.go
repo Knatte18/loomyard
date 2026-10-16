@@ -98,6 +98,8 @@
 // inject --interrupt first sends the guarded interrupt and queues the line at the head.
 //
 // interrupt sends the guarded interrupt at once, bypassing the queue, and reports whether it stopped a running turn.
+// The interrupt clears a prompt the provider restored, and a clear that fails after the key was sent still counts as sent.
+// No delivery reaches the receiver while the interrupt runs, its settles and its clear included, and the receiver's worker probes afresh once it ends.
 // A covering pause, an unreadable pause record and another sender's hold refuse it.
 //
 // EXTERNAL senders, programs and orch strands may inject, interrupt and hold on any strand; any other strand may do so on its own strand only.

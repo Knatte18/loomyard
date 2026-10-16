@@ -41,7 +41,8 @@ type Delivery interface {
 	// It returns ErrBusy when the pane guard held the write, and ErrNotLanded when the text was typed but not confirmed.
 	Send(strand Strand, text string) error
 	// Interrupt sends the guarded interrupt to the strand's running turn.
-	// It returns ErrNoRunningTurn when there is none.
+	// It clears a prompt the provider restored by the interrupt.
+	// It returns ErrNoRunningTurn when there is none, and an error wrapping ErrClearFailed when the interrupt key was sent and only the clear after it failed.
 	Interrupt(strand Strand) error
 }
 
@@ -84,6 +85,8 @@ var (
 	ErrNotLanded = errors.New("creel: the text was typed but not confirmed")
 	// ErrNoRunningTurn means an interrupt found no running turn and sent nothing.
 	ErrNoRunningTurn = errors.New("creel: the receiver has no running turn")
+	// ErrClearFailed means an interrupt key was sent and only the clear of the prompt it restored failed, so the interrupt counts as sent.
+	ErrClearFailed = errors.New("creel: the interrupt was sent, but clearing the prompt it restored failed")
 )
 
 // SenderKind tells the three kinds of caller apart.

@@ -46,6 +46,21 @@ type Store struct {
 	agedWritten map[int64]int64
 	// stalls maps a receiver to the last stall a probe read for it and the clock time it was read.
 	stalls map[string]stallNote
+	// paneLocks maps a receiver to the mutex that serialises an interrupt of its pane with its deliveries.
+	paneLocks map[string]*sync.Mutex
+}
+
+// paneLock returns the one mutex of receiver's pane.
+// An interrupt holds it while the interrupt runs, and a worker holds it from before it asks whether the pane is idle until its send or reminder ends.
+func (s *Store) paneLock(receiver string) *sync.Mutex {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	lock := s.paneLocks[receiver]
+	if lock == nil {
+		lock = &sync.Mutex{}
+		s.paneLocks[receiver] = lock
+	}
+	return lock
 }
 
 // stallNote is the last stall read for a receiver.
@@ -67,7 +82,7 @@ func OpenStore(geom Geometry, delivery Delivery, clock Clock) (*Store, error) {
 	return &Store{
 		geom: geom, delivery: delivery, clock: clock, state: state, writer: writer,
 		reserved: map[int64]string{}, waiters: map[waitKey][]*Waiter{}, agedWritten: map[int64]int64{},
-		stalls: map[string]stallNote{},
+		stalls: map[string]stallNote{}, paneLocks: map[string]*sync.Mutex{},
 	}, nil
 }
 

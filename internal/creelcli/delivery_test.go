@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -24,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 )
 
 const pairSlug = hubforge.TemplatePairSlug
@@ -48,6 +50,81 @@ func (s *stubOps) SessionIdle(string) (shuttleengine.IdleProbe, error) {
 func (s *stubOps) Send(string, string) error { return s.sendErr }
 
 func (s *stubOps) Interrupt(string) error { return s.interruptErr }
+
+// restoringPane is a pane drawn like Claude's across an interrupt: a running turn over an empty box until the Escape, then the stopped turn's prompt restored into the box until a C-u deletes it.
+type restoringPane struct {
+	mu       sync.Mutex
+	escaped  bool
+	restored string
+}
+
+func (p *restoringPane) capture(string) (string, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	switch {
+	case !p.escaped:
+		return "RUNNING\n❯ ", nil
+	default:
+		return "IDLE\n❯ " + p.restored, nil
+	}
+}
+
+func (p *restoringPane) sendKey(_, key string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	switch key {
+	case "Escape":
+		p.escaped, p.restored = true, "write the tests"
+	case "C-u":
+		p.restored = ""
+	}
+	return nil
+}
+
+// restoringEngine is a shuttlefake engine for a restoringPane: RUNNING reads as a running turn, the box is the text after the caret, and the restored-prompt clear is one C-u.
+type restoringEngine struct {
+	*shuttlefake.Engine
+}
+
+var (
+	_ shuttleengine.InputBoxReader        = (*restoringEngine)(nil)
+	_ shuttleengine.RestoredPromptClearer = (*restoringEngine)(nil)
+	_ shuttleengine.InterruptGuard        = (*restoringEngine)(nil)
+)
+
+func (e *restoringEngine) InterruptSequence() []shuttleengine.PaneInput {
+	return []shuttleengine.PaneInput{{Key: "Escape"}}
+}
+
+func (e *restoringEngine) RunningTurn(capture string) bool {
+	return strings.Contains(capture, "RUNNING")
+}
+
+func (e *restoringEngine) InterruptSettle() time.Duration { return 2 * time.Second }
+
+func (e *restoringEngine) InputBoxText(capture string) (string, bool) {
+	_, box, found := strings.Cut(capture, "❯")
+	return strings.TrimSpace(box), found
+}
+
+func (e *restoringEngine) SubmitSettle() time.Duration { return 0 }
+
+func (e *restoringEngine) TypeSequence(text string) []shuttleengine.PaneInput {
+	return []shuttleengine.PaneInput{{Text: text}}
+}
+
+func (e *restoringEngine) RestoredPromptClearSequence(string) []shuttleengine.PaneInput {
+	return []shuttleengine.PaneInput{{Key: "C-u"}}
+}
+
+// stepClock is a shuttleengine.Clock whose Sleep advances its time and returns, so a runner's settles cost nothing.
+type stepClock struct {
+	now time.Time
+}
+
+func (c *stepClock) Now() time.Time { return c.now }
+
+func (c *stepClock) Sleep(d time.Duration) { c.now = c.now.Add(d) }
 
 // newStubbedDelivery returns the delivery of hub with its wiring answered by stubs keyed by worktree path.
 func newStubbedDelivery(hub *hubforge.Hub, stubs map[string]*stubOps) *hubDelivery {
@@ -211,6 +288,36 @@ func TestHubDelivery(t *testing.T) {
 			if got := delivery.Interrupt(strand); got != tt.want {
 				t.Errorf("Interrupt() with %s = %v; want %v", tt.name, got, tt.want)
 			}
+		}
+		clearFailed := fmt.Errorf("wrapped: %w", shuttleengine.ErrInterruptClearFailed)
+		stub := &stubOps{interruptErr: clearFailed}
+		got := newStubbedDelivery(hub, map[string]*stubOps{prime: stub}).Interrupt(strand)
+		if !errors.Is(got, creelengine.ErrClearFailed) || !strings.Contains(got.Error(), clearFailed.Error()) {
+			t.Errorf("Interrupt() with a failed clear = %v; want it wrapping ErrClearFailed and keeping shuttle's message", got)
+		}
+	})
+
+	t.Run("Interrupt through a runner on a strand with no run record sends the key and then the restored-prompt clear", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		pane := &restoringPane{}
+		reed := &shuttlefake.Reed{
+			Strands:       []reedengine.StrandStatus{{GUID: "guid-hand", Name: "ly:hand", PaneID: "%1", Live: true}},
+			CapturePaneFn: pane.capture,
+			SendKeyFn:     pane.sendKey,
+		}
+		runner := shuttleengine.NewRunner(reed, shuttlefake.EngineSet(&restoringEngine{Engine: &shuttlefake.Engine{}}), dir, dir, shuttleengine.Config{})
+		runner.SetClock(&stepClock{now: time.Unix(0, 0)})
+
+		if err := (shuttleOps{runner: runner}).Interrupt("guid-hand"); err != nil {
+			t.Fatalf("shuttleOps.Interrupt() = %v; want the key and the clear to go through", err)
+		}
+		var keys []string
+		for _, call := range reed.SendKeyCalls {
+			keys = append(keys, call.Key)
+		}
+		if diff := cmp.Diff([]string{"Escape", "C-u"}, keys); diff != "" {
+			t.Errorf("keys sent mismatch (-want +got):\n%s", diff)
 		}
 	})
 

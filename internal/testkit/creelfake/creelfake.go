@@ -1,6 +1,7 @@
 // Package creelfake fakes the two seams creelengine is told: Delivery, the hub's strands and their panes, and Clock.
 //
 // Delivery answers from scripted strands, idle and pause flags, stall reasons and errors, and records every send, interrupt and idle probe.
+// Its send and interrupt answers can also come from a function, which may block.
 // Clock advances only when a test says so and records every duration passed to After, in order.
 // Neither fake asserts anything or takes a testing.TB; a test reads the recorded values and asserts itself.
 //
@@ -48,6 +49,7 @@ type Delivery struct {
 
 	strandsErr, idleErr, pausedErr, sendErr, interruptErr error
 	sendFn                                                func(strand, text string) error
+	interruptFn                                           func(strand string) error
 
 	sends      []Send
 	interrupts []string
@@ -126,6 +128,13 @@ func (d *Delivery) SetInterruptError(err error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.interruptErr = err
+}
+
+// SetInterruptFunc makes Interrupt answer with fn's result, called without the fake's lock held; nil restores the scripted error.
+func (d *Delivery) SetInterruptFunc(fn func(strand string) error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.interruptFn = fn
 }
 
 // Sends returns every call to Send, in order.
@@ -208,11 +217,17 @@ func (d *Delivery) Send(strand creelengine.Strand, text string) error {
 }
 
 // Interrupt implements creelengine.Delivery.
+// It records the call, then returns what the interrupt function answers when one is set, else the scripted error.
+// The function runs without the fake's lock held, so it may block.
 func (d *Delivery) Interrupt(strand creelengine.Strand) error {
 	d.mu.Lock()
-	defer d.mu.Unlock()
 	d.interrupts = append(d.interrupts, strand.Name)
-	return d.interruptErr
+	fn, err := d.interruptFn, d.interruptErr
+	d.mu.Unlock()
+	if fn != nil {
+		return fn(strand.Name)
+	}
+	return err
 }
 
 type timer struct {

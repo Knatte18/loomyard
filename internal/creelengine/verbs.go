@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/Knatte18/loomyard/internal/logger"
 )
 
 const holdTimeLayout = time.RFC3339
@@ -473,6 +475,8 @@ func (s *Store) Interrupt(sender Sender, receiver string) (bool, error) {
 }
 
 // interruptTarget runs the checks that follow privilege and orch, in order, then the interrupt: a covering pause, an unreadable pause record, another sender's hold.
+// The interrupt runs under the receiver's pane lock, so no delivery reaches the receiver meanwhile, and the receiver's worker is woken once it ends.
+// An interrupt whose key was sent and whose clear failed counts as sent.
 func (s *Store) interruptTarget(sender Sender, target Strand) (bool, error) {
 	paused, err := s.delivery.Paused(target)
 	if err != nil {
@@ -491,8 +495,19 @@ func (s *Store) interruptTarget(sender Sender, target Strand) (bool, error) {
 	if holdErr != nil {
 		return false, holdErr
 	}
-	switch err := s.delivery.Interrupt(target); {
-	case err == nil:
+	lock := s.paneLock(target.Name)
+	lock.Lock()
+	err = s.delivery.Interrupt(target)
+	lock.Unlock()
+	_ = s.do(func() error {
+		s.wakeLocked(target.Name)
+		return nil
+	})
+	switch {
+	case err == nil, errors.Is(err, ErrClearFailed):
+		if err != nil {
+			logger.Warn("creel interrupt: the clear after the key failed", "receiver", target.Name, "error", err)
+		}
 		return true, s.do(func() error {
 			return s.writer.append(record{Event: eventInterrupted, By: sender.Name, To: target.Name})
 		})

@@ -88,7 +88,7 @@ func (o shuttleOps) SessionIdle(guid string) (shuttleengine.IdleProbe, error) {
 
 func (o shuttleOps) Send(guid, text string) error { return o.runner.Send(guid, text) }
 
-func (o shuttleOps) Interrupt(guid string) error { return o.runner.Interrupt(guid) }
+func (o shuttleOps) Interrupt(guid string) error { return o.runner.InterruptRestoring(guid) }
 
 // Strands lists every strand reed persists in any worktree of the hub.
 // A worktree that does not resolve, a reed state that cannot be read and a status that fails each fail the call naming the worktree,
@@ -244,6 +244,8 @@ func mapDeliveryError(err error) error {
 		return creelengine.ErrNotLanded
 	case errors.Is(err, shuttleengine.ErrNoRunningTurn):
 		return creelengine.ErrNoRunningTurn
+	case errors.Is(err, shuttleengine.ErrInterruptClearFailed):
+		return fmt.Errorf("%w: %s", creelengine.ErrClearFailed, err)
 	default:
 		return err
 	}

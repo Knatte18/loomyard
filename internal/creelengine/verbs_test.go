@@ -528,6 +528,21 @@ func TestStore_InjectAndHold(t *testing.T) {
 			if queued := e.store.Queued(alpha); len(queued) != 2 {
 				t.Errorf("Queued = %+v; the failed inject must queue nothing", queued)
 			}
+			e.del.SetInterruptError(fmt.Errorf("clear: %w", creelengine.ErrClearFailed))
+			sent, err := e.store.Interrupt(program(batten), alpha)
+			if err != nil || !sent {
+				t.Errorf("Interrupt whose clear failed = %v, %v; want sent with no error", sent, err)
+			}
+			if got := eventsOf(e.store.Log(creelengine.LogFilter{To: alpha})); !slices.Contains(got, "interrupted") {
+				t.Errorf("events = %v; want an interrupted record for the sent key", got)
+			}
+			result, err = e.store.Inject(program(batten), alpha, "after a failed clear", 0, true)
+			if err != nil || !result.Interrupted {
+				t.Errorf("Inject --interrupt whose clear failed = %+v, %v; want interrupted", result, err)
+			}
+			if queued := e.store.Queued(alpha); len(queued) != 3 || queued[0].Text != "after a failed clear" {
+				t.Errorf("Queued = %+v; want the inject queued at the head", queued)
+			}
 		}},
 		{"Hold_RefusesWhatItShould", func(t *testing.T, e *env) {
 			_, err := e.store.Hold(program(batten), alpha, time.Hour+time.Second)

@@ -557,6 +557,59 @@ func TestScheduler_Injects(t *testing.T) {
 			default:
 			}
 		}},
+		{"RunningInterruptHoldsBackEveryDeliveryToTheReceiver", func(t *testing.T, e *env) {
+			e.del.SetIdle(alpha, false)
+			inject(t, e, program(batten), alpha, "/queued", 0, false)
+			e.post(t, strand(beta), alpha, "hi")
+			e.start(t)
+			e.probeWaits(1)
+			entered, release := make(chan struct{}), make(chan struct{})
+			e.del.SetInterruptFunc(func(string) error {
+				close(entered)
+				<-release
+				return nil
+			})
+			interrupted := make(chan error, 1)
+			go func() {
+				_, err := e.store.Interrupt(program(batten), alpha)
+				interrupted <- err
+			}()
+			<-entered
+			idleBefore := e.del.IdleCalls(alpha)
+			e.del.SetIdle(alpha, true)
+			for range 3 {
+				e.clock.Advance(10 * time.Second)
+			}
+			if got := e.del.IdleCalls(alpha); got != idleBefore {
+				t.Errorf("Idle was asked %d more times while the interrupt ran; want none", got-idleBefore)
+			}
+			if got := e.typed(alpha); len(got) != 0 {
+				t.Errorf("typed %q while the interrupt ran", got)
+			}
+			close(release)
+			if err := <-interrupted; err != nil {
+				t.Fatalf("Interrupt: %v", err)
+			}
+			e.probeWaits(2)
+			if got := e.typed(alpha); len(got) == 0 || got[0] != "/queued" {
+				t.Errorf("typed %q; want the queued inject typed first once the interrupt ended", got)
+			}
+		}},
+		{"EndOfAnInterruptWakesABackedOffWorker", func(t *testing.T, e *env) {
+			e.del.SetIdle(alpha, false)
+			inject(t, e, program(batten), alpha, "/queued", 0, false)
+			e.start(t)
+			e.driveProbeWaits(4)
+			e.del.SetIdle(alpha, true)
+			before := len(e.probeWaits(0))
+			if sent, err := e.store.Interrupt(program(batten), alpha); err != nil || !sent {
+				t.Fatalf("Interrupt = %v, %v; want sent", sent, err)
+			}
+			e.probeWaits(before + 1)
+			if got := e.typed(alpha); !slices.Equal(got, []string{"/queued"}) {
+				t.Errorf("typed %q; want the inject typed at the interrupt's end with no clock move", got)
+			}
+		}},
 		{"InterruptInjectInterruptsThenTypesItsTextFirstAtTheNextIdle", func(t *testing.T, e *env) {
 			e.del.SetIdle(alpha, false)
 			inject(t, e, program(batten), alpha, "/first", 0, false)
