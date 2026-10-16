@@ -4,6 +4,8 @@
 // AppendDecision adds a post-Discussion design call to the record's `## Decisions` section.
 // WriteCarryOver keeps one review segment's carry-over entry, the findings still open when the segment closed, in its `## Open risks` section.
 // CheckAddedDecisionsKept reports the added-decision entries a record dropped that any earlier version of it held, read from told bytes.
+// The record may carry an optional `## PATTERN changes` section listing the PATTERN entries the task adds, changes or removes.
+// Validate checks its bullets through ParsePatternChanges, and DeclaredPatternChanges returns them rendered for the directives that show them to an agent.
 // It takes told absolute paths and declares no on-disk location of its own.
 // loomengine's DiscussionDecisionRecord, DiscussionSupportLog and DiscussionRelevant accessors remain the sole declarers of where `_lyx/discussion/` is.
 // Those accessors take a *lyxcwd.Location, which this stdlib-only leaf may not import.

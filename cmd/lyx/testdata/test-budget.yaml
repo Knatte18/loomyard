@@ -30,7 +30,7 @@ internal/configsync: 9
 internal/creelcli: 4
 internal/creelengine: 11
 internal/darnengine: 4
-internal/discussionparser: 20
+internal/discussionparser: 22
 internal/dotgit: 3
 internal/durfmt: 2
 internal/editdirective: 2
