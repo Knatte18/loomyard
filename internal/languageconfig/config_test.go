@@ -29,9 +29,10 @@ func TestLoad_ResolvesSkills(t *testing.T) {
 	tests := []struct {
 		name string
 		// seed writes files under board and anchor; both dirs are told to Load unless noBoard is set.
-		seed    func(t *testing.T, board, anchor string)
-		noBoard bool
-		want    []string
+		seed      func(t *testing.T, board, anchor string)
+		noBoard   bool
+		want      []string
+		wantTiers []string
 	}{
 		{
 			name:    "no board dir ignores a worktree file",
@@ -39,25 +40,37 @@ func TestLoad_ResolvesSkills(t *testing.T) {
 			seed: func(t *testing.T, _, anchor string) {
 				writeFile(t, configengine.ConfigFile(anchor, "language"), "skills:\n  - scribe:a\n")
 			},
-			want: []string{},
+			want:      []string{},
+			wantTiers: []string{},
 		},
 		{
-			name: "board dir without _lyx",
-			want: []string{},
+			name:      "board dir without _lyx",
+			want:      []string{},
+			wantTiers: []string{},
 		},
 		{
 			name: "board file holding the template",
 			seed: func(t *testing.T, board, _ string) {
 				writeFile(t, configengine.ConfigFile(board, "language"), languageconfig.ConfigTemplate())
 			},
-			want: []string{},
+			want:      []string{},
+			wantTiers: []string{},
 		},
 		{
 			name: "board file listing skills keeps file order and repeats",
 			seed: func(t *testing.T, board, _ string) {
 				writeFile(t, configengine.ConfigFile(board, "language"), "skills:\n  - scribe:a\n  - scribe:b\n  - scribe:a\n")
 			},
-			want: []string{"scribe:a", "scribe:b", "scribe:a"},
+			want:      []string{"scribe:a", "scribe:b", "scribe:a"},
+			wantTiers: []string{},
+		},
+		{
+			name: "board file listing both keys keeps each in file order",
+			seed: func(t *testing.T, board, _ string) {
+				writeFile(t, configengine.ConfigFile(board, "language"), "skills:\n  - scribe:a\nverify_tiers:\n  - build first\n  - vet second\n")
+			},
+			want:      []string{"scribe:a"},
+			wantTiers: []string{"build first", "vet second"},
 		},
 	}
 	for _, tt := range tests {
@@ -76,8 +89,11 @@ func TestLoad_ResolvesSkills(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Load: %v", err)
 			}
-			if !slices.Equal(got, tt.want) {
-				t.Errorf("Load = %q, want %q", got, tt.want)
+			if got.Skills == nil || !slices.Equal(got.Skills, tt.want) {
+				t.Errorf("Load skills = %#v, want non-nil %q", got.Skills, tt.want)
+			}
+			if got.VerifyTiers == nil || !slices.Equal(got.VerifyTiers, tt.wantTiers) {
+				t.Errorf("Load verify tiers = %#v, want non-nil %q", got.VerifyTiers, tt.wantTiers)
 			}
 		})
 	}
@@ -89,14 +105,23 @@ func TestLoad_InvalidFailsNamingKey(t *testing.T) {
 		name string
 		// seed writes files under board and anchor.
 		seed func(t *testing.T, board, anchor string)
+		// key is the key the error must name; empty for a failure with no single key.
+		key string
 		// wantUnusable is false for a failure that is not a content failure.
 		wantUnusable bool
 	}{
-		{"empty entry", boardFile(`skills: [""]` + "\n"), true},
-		{"leading whitespace", boardFile(`skills: [" scribe:a"]` + "\n"), true},
-		{"trailing whitespace", boardFile(`skills: ["scribe:a "]` + "\n"), true},
-		{"scalar value", boardFile("skills: scribe:a\n"), true},
-		{"unparseable yaml", boardFile("skills: [\n"), true},
+		{"empty entry", boardFile(`skills: [""]` + "\n"), "skills", true},
+		{"leading whitespace", boardFile(`skills: [" scribe:a"]` + "\n"), "skills", true},
+		{"trailing whitespace", boardFile(`skills: ["scribe:a "]` + "\n"), "skills", true},
+		{"scalar value", boardFile("skills: scribe:a\n"), "skills", true},
+		{"unparseable yaml", boardFile("skills: [\n"), "", true},
+		{"verify_tiers scalar value", boardFile("verify_tiers: build\n"), "verify_tiers", true},
+		{"verify_tiers non-string entry", boardFile("verify_tiers: [1]\n"), "verify_tiers", true},
+		{"verify_tiers empty entry", boardFile(`verify_tiers: [""]` + "\n"), "verify_tiers", true},
+		{"verify_tiers leading whitespace", boardFile(`verify_tiers: [" build"]` + "\n"), "verify_tiers", true},
+		{"verify_tiers trailing whitespace", boardFile(`verify_tiers: ["build "]` + "\n"), "verify_tiers", true},
+		{"verify_tiers entry holding a newline", boardFile(`verify_tiers: ["a\nb"]` + "\n"), "verify_tiers", true},
+		{"verify_tiers entry holding a carriage return", boardFile(`verify_tiers: ["a\rb"]` + "\n"), "verify_tiers", true},
 		{
 			name: "local override holding skills",
 			seed: func(t *testing.T, board, anchor string) {
@@ -106,6 +131,19 @@ func TestLoad_InvalidFailsNamingKey(t *testing.T) {
 				}
 				writeFile(t, configengine.LocalFile(anchor, "language"), "skills:\n  - scribe:a\n")
 			},
+			key:          "skills",
+			wantUnusable: true,
+		},
+		{
+			name: "local override holding verify_tiers",
+			seed: func(t *testing.T, board, anchor string) {
+				writeFile(t, configengine.ConfigFile(board, "language"), languageconfig.ConfigTemplate())
+				if err := os.MkdirAll(configengine.ConfigDir(anchor), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				writeFile(t, configengine.LocalFile(anchor, "language"), "verify_tiers:\n  - build\n")
+			},
+			key:          "verify_tiers",
 			wantUnusable: true,
 		},
 		{
@@ -136,10 +174,40 @@ func TestLoad_InvalidFailsNamingKey(t *testing.T) {
 			if !tt.wantUnusable {
 				return
 			}
-			for _, want := range []string{"skills", `lyx config language`} {
-				if !strings.Contains(err.Error(), want) {
-					t.Errorf("error %q lacks %q", err, want)
+			if !strings.Contains(err.Error(), `lyx config language`) {
+				t.Errorf("error %q lacks the way forward", err)
+			}
+			if tt.key != "" && !strings.Contains(err.Error(), tt.key) {
+				t.Errorf("error %q lacks the key %q", err, tt.key)
+			}
+			if tt.key == "" {
+				for _, key := range []string{"skills", "verify_tiers"} {
+					if strings.Contains(err.Error(), key) {
+						t.Errorf("error %q names %q, want no key", err, key)
+					}
 				}
+			}
+		})
+	}
+}
+
+func TestVerifyTiersValue(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		tiers []string
+		want  string
+	}{
+		{"nil list", nil, "none"},
+		{"empty list", []string{}, "none"},
+		{"two entries as ordered bullets", []string{"build first", "then vet"}, "- build first\n- then vet"},
+		{"entry holding template syntax is verbatim", []string{"{{.x}}"}, "- {{.x}}"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := languageconfig.VerifyTiersValue(tt.tiers); got != tt.want {
+				t.Errorf("VerifyTiersValue(%q) = %q, want %q", tt.tiers, got, tt.want)
 			}
 		})
 	}

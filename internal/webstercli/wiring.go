@@ -146,10 +146,11 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 	if err != nil {
 		return configLoadError("batcher.yaml", err)
 	}
-	languageSkills, err := languageconfig.Load(fabricengine.ConfigDirs(loc))
+	language, err := languageconfig.Load(fabricengine.ConfigDirs(loc))
 	if err != nil {
 		return configLoadError("language.yaml", err)
 	}
+	languageSkills := language.Skills
 	registry, err := modelspec.LoadRegistry(fabricengine.ConfigDirs(loc))
 	if err != nil {
 		return err
@@ -232,6 +233,7 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 	}
 	c.batcher = activeBatcher
 	c.languageSkills = languageSkills
+	c.verifyTiers = language.VerifyTiers
 	return nil
 }
 

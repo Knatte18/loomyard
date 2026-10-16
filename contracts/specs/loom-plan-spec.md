@@ -284,8 +284,8 @@ and halt Stuck on failure before anything is pushed or landed.
 Both also halt Stuck on a dirty tree, so only committed content is ever verified, pushed or landed.
 The section must cover what a parent merge can break.
 
-The section runs, in this order, `go build ./...`, `go vet` under each of `-tags integration`, `-tags tmux` and `-tags llm`, the untagged tier (`go test`), then the `integration` tier (`go test -tags integration`).
-The `tmux` tier is run at Publish by landing config's `publish_verify` where the repo sets it, never by the plan.
+The section runs the hub's verify tiers in the order and form `language.yaml`'s `verify_tiers` gives, and with none set it builds the code and then runs the tests of every package a card targets.
+A tier run at Publish is run by landing config's `publish_verify` where the repo sets it, and a tier `verify_tiers` says is compiled rather than run is never run by the plan.
 Webster's gate, Publish and Finalize run the section itself, and Publish then runs `publish_verify` after it.
 The Webster-Burler-Fix round gate instead runs a derived impacted-set command between rounds.
 

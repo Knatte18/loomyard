@@ -500,11 +500,12 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	if err != nil {
 		return fmt.Errorf("%w; %s", err, hubConfigWayForward)
 	}
-	// The error already names skills and its own way forward.
-	languageSkills, err := languageconfig.Load(fabricengine.ConfigDirs(location))
+	// The error already names the failing key and its own way forward.
+	language, err := languageconfig.Load(fabricengine.ConfigDirs(location))
 	if err != nil {
 		return err
 	}
+	languageSkills := language.Skills
 	// burlerengine.LoadConfig is an optional-file loader: an absent burler.yaml yields a zero
 	// Config and a nil error rather than a load failure.
 	burlerCfg, err := burlerengine.LoadConfig(fabricengine.ConfigDirs(location))
@@ -669,6 +670,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		WebsterRecord: func() string {
 			return loomshed.WebsterRecordNote(anchorPath)
 		},
+		VerifyTiers:        language.VerifyTiers,
 		StatusPath:         statusPath,
 		StatusLockPath:     statusLockPath,
 		DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),
@@ -775,7 +777,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// PlanTable is evaluated per Call, not resolved here, so the stencil is read at call time -- what the Stencil Ownership Invariant requires.
 		// It takes no autonomous argument: the Plan producer is autonomous by design and its table is never interactive.
 		PlanTable: func() (seatengine.Table, error) {
-			return loomengine.PlanTable(location, fabricengine.ConfigDirs(location), websterGeom.StencilsDir, websterGeom.SpecsDir, loomCfg, registry)
+			return loomengine.PlanTable(location, fabricengine.ConfigDirs(location), websterGeom.StencilsDir, websterGeom.SpecsDir, loomCfg, registry, language.VerifyTiers)
 		},
 		// CommitPlan mirrors CommitDiscussion above: it keeps the working tree clean for the rows
 		// that follow, makes the artifact durable across a crash or a resume, and sweeps the
@@ -923,6 +925,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 
 	// wireDarn and wireLanding tell the list to the writer and the conflict session.
 	c.languageSkills = languageSkills
+	c.language = language
 
 	// A darn run swaps in the darn recipe's verify source and Describe spec and fills the Darn-Write row's seams; a loom run leaves them nil.
 	if c.recipe == shedrun.RecipeDarn {

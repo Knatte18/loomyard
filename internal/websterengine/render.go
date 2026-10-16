@@ -37,7 +37,9 @@
 // RenderForkPrompt and RenderRecoveryPrompt each also take a specsDir parameter, immediately after
 // their stencilsDir parameter, filled into the shared implementer-job body's required specs_dir
 // marker. It is required, not optional: a blank render would silently reproduce a dead
-// cross-repository reference in the agent's own instructions. RenderMasterPrompt and
+// cross-repository reference in the agent's own instructions.
+// Both also take a verifyTiers parameter, immediately after specsDir, filled into the same body's required verify_tiers marker.
+// RenderMasterPrompt and
 // RenderVerifyFixPrompt gain no such parameter — neither the Master template nor the verify-fix
 // body cites a normative spec.
 
@@ -51,6 +53,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/friction"
+	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/pattern"
@@ -350,6 +353,7 @@ func cardPointerPath(c planparser.Card, planDirDisplay string) string {
 // friction.Directive error swallowed as a Warn rather than propagated.
 // specsDir is the told deployed-specs directory, filled into the shared implementer-job body's
 // required specs_dir marker.
+// verifyTiers is the hub's verify tiers, filled into the body's required verify_tiers marker as bullets, or as "none" when empty.
 // cardGates is the caller-rendered per-card gate step list followed by any guard notice (renderCardGates), filled into the body's required card_gates marker.
 // batchGate is the caller-rendered batch package list and gate (renderBatchGate), filled into the body's required batch_gate marker.
 // outcomePath and summaryPath are Merriam's two contract files, filled into the fork prefix's outcome_path and summary_path markers so the fork is told never to write them.
@@ -360,7 +364,7 @@ func cardPointerPath(c planparser.Card, planDirDisplay string) string {
 // With PackLayoutCard the prompt carries none of the pack's entries and packFile is nil: the fork reads the card files first and fetches each card's pack with `lyx loom card-pack` at that card's start, and the prompt ends with a section sending it to the card files.
 // A nil pack renders the pack-off fragments, leaves the pack markers empty and returns a nil packFile, whichever layout is.
 // The plan is not a parameter, per the fork-context-hygiene rule.
-func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, reportPath, planDir, promptWorktreeRoot, stencilsDir, specsDir, outcomePath, summaryPath string, selfFixCap int, notePath, packPath string, layout PackLayout, pack []planindex.CardPack) (prompt, packFile []byte, err error) {
+func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, reportPath, planDir, promptWorktreeRoot, stencilsDir, specsDir string, verifyTiers []string, outcomePath, summaryPath string, selfFixCap int, notePath, packPath string, layout PackLayout, pack []planindex.CardPack) (prompt, packFile []byte, err error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
 		digestLine = noPrecedingBatchDigest
@@ -425,6 +429,7 @@ func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, rep
 		"worktree_root":         promptWorktreeRoot,
 		"prev_digest":           digestLine,
 		"specs_dir":             specsDir,
+		"verify_tiers":          languageconfig.VerifyTiersValue(verifyTiers),
 		"outcome_path":          outcomePath,
 		"summary_path":          summaryPath,
 		"locate":                locate,
@@ -461,13 +466,14 @@ func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, rep
 // pattern.Directive call immediately above, which does propagate.
 // specsDir is the told deployed-specs directory, filled into the shared implementer-job body's
 // required specs_dir marker.
+// verifyTiers is the hub's verify tiers, filled into the body's required verify_tiers marker as bullets, or as "none" when empty.
 // cardGates is the caller-rendered per-card gate step list followed by any guard notice, and batchGate the caller-rendered batch package list and gate.
 // parentName is the told parent agent name; an empty one renders parentdirective's no-parent variant.
 // failureDigest is the prior failed record's reasons and suspect paths, or "" when the batch was not failed;
 // it fills the optional failure_digest marker, rendered as "none" when empty, and being optional it leaves an older deployed stencil rendering.
 // uncommittedPaths is the caller-rendered block of the worktree's uncommitted paths grouped by who wrote them, or "" for a clean tree;
 // it fills the optional uncommitted_paths marker the same way.
-func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, failureDigest, uncommittedPaths, reportPath, repoRoot, planDir, promptWorktreeRoot, stencilsDir, specsDir string, selfFixCap int, notePath, parentName string) ([]byte, error) {
+func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, failureDigest, uncommittedPaths, reportPath, repoRoot, planDir, promptWorktreeRoot, stencilsDir, specsDir string, verifyTiers []string, selfFixCap int, notePath, parentName string) ([]byte, error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
 		digestLine = noPrecedingBatchDigest
@@ -523,6 +529,7 @@ func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest,
 		"uncommitted_paths": uncommittedLine,
 		"pattern_directive": directive,
 		"specs_dir":         specsDir,
+		"verify_tiers":      languageconfig.VerifyTiersValue(verifyTiers),
 		"locate":            locate,
 		"card_read":         cardRead,
 		"fresh_read":        freshRead,

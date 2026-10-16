@@ -62,7 +62,7 @@ func burlerReviewEntry(name string, cfg Config, env Env) (shedengine.ShedProduce
 		return nil, err
 	}
 
-	var notes shedadapters.RubricNotes
+	notes := shedadapters.RubricNotes{VerifyTiers: env.VerifyTiers}
 	if env.PublishFailure != nil {
 		notes.PublishFailure = env.PublishFailure()
 	}

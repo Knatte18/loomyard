@@ -174,6 +174,9 @@ type BouncerConfig struct {
 	// RolePrefix leads the seed and judge sessions' roles, as `<RolePrefix>-bouncer-seed` and `<RolePrefix>-bouncer-judge`.
 	// The zero value keeps the roles unprefixed.
 	RolePrefix string
+	// VerifyTiers is the hub's verify tier list, which fills the rubric's verify_tiers marker in the seed and judge prompts.
+	// The zero value renders `none`.
+	VerifyTiers []string
 }
 
 // Bouncer is the shedadapters adapter implementing the generic review-gate producer: it composes
@@ -1164,7 +1167,7 @@ func (b *Bouncer) seedCall(ctx context.Context) (shedengine.Outcome, shedengine.
 
 // rubricNotes gathers the notes the rubric's markers are filled from, each blank when no function is configured for it.
 func (b *Bouncer) rubricNotes() RubricNotes {
-	var notes RubricNotes
+	notes := RubricNotes{VerifyTiers: b.cfg.VerifyTiers}
 	if b.cfg.PublishFailure != nil {
 		notes.PublishFailure = b.cfg.PublishFailure()
 	}

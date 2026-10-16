@@ -64,7 +64,7 @@ An `awaiting` envelope that carries a non-empty `parent_notice` goes to `## Arbi
 The `parent_notice` is relayed only after the arbiter command hands on, refuses, times out or returns a malformed verdict, and never after a `resume`.
 An `awaiting` envelope without one keeps the hand-off above.
 A run halted at the gate re-runs only the gate on resume,
-so a fix committed by hand outside the run is pushed by the operator before `approve`, or goes through `reject` instead.
+so a fix to a halted run is made by the run's own agents, through `reject` or a backward `goto`, which you report and never run, as `## Ways forward` says.
 
 ## Error and interrupted stops
 

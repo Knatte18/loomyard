@@ -72,15 +72,21 @@ The sandbox ban covers mutating `lyx fabric` verbs only.
 After the last card's commit and that card's own `verify:`, and before writing the report, run the batch gate once, each step as its own foreground Bash call under the gate rule.
 A failure counts as a gate failure under the self-fix bound below and makes the report `FAILED` once the bound runs out.
 
-## Slot-busy exits and raw `go` runs
+## Slot-busy exits and raw test runs
 
 A step that exits with code `75`, with a JSON error naming the slot holders, found every gate slot held: that is not a failure.
 It costs no self-fix attempt, never makes the report `FAILED`, and you re-run the same step.
 
-You may run raw `go test` on the batch's listed packages only.
-A module-wide run or a `tmux`-tier run goes through `lyx gate test`, never a raw `go` command.
-A `lyx gate test` step runs as written, whatever its `--tags`.
-A test under the `tmux` or `llm` tag that no gate step names is compiled, never run, through `lyx gate test --tags <tag> <packages> -- -run '^$'`;
+You may run a raw test run of the hub's language on the batch's listed packages only.
+The hub's verify tiers follow:
+
+{{.verify_tiers}}
+
+A tier the list says is compiled rather than run is compiled, never run, as the list says.
+With `none`, a raw run is still limited to the listed packages and to what the sentences below allow.
+A module-wide, `tmux`-tier or `llm`-tier run, which the shell guard refuses raw, goes through `lyx gate test`.
+A `lyx gate test` step runs as written, whatever its `--tags`, so the list's compile-only rule governs raw runs and runs no gate step names, never a rendered card or batch gate step.
+A test under the `tmux` or `llm` tag that no gate step names is compiled, never run, through `lyx gate test --tags <tag> <packages> -- -run '^$'`, and the list's compile-only rule adds tiers beyond those two;
 running those tiers is left to the gates after webster.
 
 ## Bounded self-fix, then stop
