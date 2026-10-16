@@ -17,7 +17,7 @@ import (
 )
 
 // TestStrandOps_RealTmux runs its steps in order on one cold session.
-// EmptyCmdLeavesALivePane relies on the three-strand stack ReplaceKeepsTheTopSlot leaves behind and asserts only on its own strand.
+// EmptyCmdLeavesALivePane relies on the three strands ReplaceKeepsTheTopSlot leaves behind and asserts only on its own strand.
 func TestStrandOps_RealTmux(t *testing.T) {
 	t.Parallel()
 	e := newColdScratchEngine(t)

@@ -19,13 +19,11 @@ import (
 type Anchor string
 
 const (
-	// AnchorOwnWindow gives a strand a tmux window of its own, or its group's shared window, outside window 0.
-	// Window 0's layout never places it.
+	// AnchorOwnWindow gives a strand a tmux window of its own, or its group's shared window, apart from the shell window.
 	AnchorOwnWindow Anchor = "own-window"
 	// AnchorOverview gives the session's one overview strand a window of its own that is always the session's first window.
-	// Window 0's layout never places it.
 	AnchorOverview Anchor = "overview"
-	// AnchorHidden excludes a strand from the layout entirely.
+	// AnchorHidden places a strand in no window.
 	// A hidden strand never owns a pane.
 	AnchorHidden Anchor = "hidden"
 )

@@ -1,7 +1,7 @@
 //go:build tmux && linux
 
-// bar_integration_test.go expands the two-line status bar and the pane-border title against a real tmux server and an attached client,
-// and asserts the acceptance rows: which button is lit, which strands and windows get a button, the wait mark, and the session line.
+// bar_integration_test.go expands the two-line status bar against a real tmux server and an attached client,
+// and asserts the acceptance rows: which button is lit, which windows get a button, the wait mark, and the session line.
 // The formats are expanded with display-message -c <client>, so the client's own session and current window are the context.
 // The client is attached through the pty harness attachgeometry_integration_test.go defines.
 

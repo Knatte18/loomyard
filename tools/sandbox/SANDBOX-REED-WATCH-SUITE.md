@@ -9,9 +9,8 @@ scenarios -- real defects hide there, but they are hard for an operator to follo
 half of them tear the session down or kill a process out from under it. This suite is the calm
 counterpart: no scenario here kills a server, kills a pane, renames a worktree, corrupts state, or
 tears the session down. The operator attaches once, near the start, and stays attached through
-every remaining step, watching the pane layout evolve live -- strands appearing, a parent
-collapsing as a child appears, a real (cheap) Claude Code agent visibly working in its own pane,
-a live terminal resize reflowing everything in front of them. Not an automated suite -- an agent
+every remaining step, watching the window list evolve live -- strands appearing in windows of their own,
+a real (cheap) Claude Code agent visibly working in its own window. Not an automated suite -- an agent
 drives it, an operator watches continuously, without the visual whiplash of the destructive suite.
 
 This suite intentionally never runs `lyx reed down`. Unlike every other reed-touching sandbox
@@ -129,7 +128,7 @@ placeholder `sleep`."
 **Watch:** `lyx reed add --cmd 'claude --model haiku --dangerously-skip-permissions "write a
 one-file Go program that prints a distinctive, short string, then run it with go run and show the
 output"'` returns a guid;
-the pane appears in the attach window and the operator watches Haiku's output scroll live,
+the strand's own window appears in the attach window's status bar, the operator switches to it, and watches Haiku's output scroll live,
 ending with the program's real output visible in the pane.
 `--dangerously-skip-permissions` on this nested call is required, not optional -- this pane has no
 one present to approve a tool-use prompt, and an unattended Claude session stalled on a permission
@@ -138,7 +137,7 @@ This is only safe because the strand runs inside the disposable Hub warp repo, t
 suite's own driving agent is launched the same way (see `suite.go`'s `launchAgent`).
 A pane that never produces visible output, stalls waiting on a permission prompt, or exits
 immediately with no output is a `FAIL`.
-Keep this strand's guid -- W3 adds a child under it.
+Keep this strand's guid -- W4 correlates it against `status`.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -158,21 +157,7 @@ The W1 pane keeps running untouched.
 
 ---
 
-### W3 -- A child strand collapses its parent live
-
-**Covers:** reed
-
-**Goal:** "Add a child strand under the W1 Haiku strand and watch the parent visibly collapse to a
-compact strip in real time while the child takes the bulk of the window."
-
-**Watch:** `lyx reed add --parent <W1-guid> --cmd <a plain long-running command>` -- both strands
-read `live: true` in `status`, and the operator watches, in the attach window, the parent's pane
-shrink to `collapsed_rows` as the split happens, with the child's pane taking the rest of
-the window.
-A parent that does not visibly shrink, a child pane that never appears, or either strand flipping
-to `live: false` is a `FAIL`.
-
-**Verdict:** `OK` / `WARN` / `FAIL`
+### W3 -- Retired: the live parent collapse is removed with the shell-window stack
 
 ---
 
@@ -180,48 +165,20 @@ to `live: false` is a `FAIL`.
 
 **Goal:** "Check status and correlate it against what the operator can see in the attach window."
 
-**Watch:** `lyx reed status` lists every strand added so far (W1, W2, W3) with `live`/`paneId`
-values that match what the operator observes: three panes visible for W1+W3 (W2 stays paneless),
-and the parent/child geometry from W3 still holding.
+**Watch:** `lyx reed status` lists every strand added so far (W1, W2) with `live`/`paneId`
+values that match what the operator observes: a window of its own for W1 (W2 stays paneless).
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
 ---
 
-### W5 -- Live resize, both directions (operator-assisted visual)
-
-**Covers:** reed
-
-**Goal:** "Prove a live terminal resize re-applies the layout on its own, in both directions, using
-the same attach window from W0 -- no new attach needed."
-
-**Watch:** With the operator still attached from W0, have them **drag the terminal window
-larger** and confirm the layout re-applies within about a second, with no `lyx` command run.
-Then have them **drag it smaller** and confirm the same.
-The shrink direction is the non-negotiable half of this scenario -- it is the one SIGWINCH misses
-entirely, and a watcher that only self-heals on growth must be reported as a `FAIL` here, not a
-`WARN`.
-Confirm the cursor did NOT jump to another pane across either resize, and that a pane focused
-before the resize stays focused after it.
-Rationale: the agent session owns the current terminal, so it cannot demonstrate or observe a live
-client resize itself.
-
-The confirmed mechanism, if dots briefly appear during either drag: they are tmux's own padding or stale paint in the region of a client's terminal the window does not cover, never reed content,
-and both the resize trigger here and the cross-client trigger below are the same underlying mismatch between a client's terminal size and the window's size.
-No repaint entry shipped for this task -- see `internal/reedengine/doc.go`'s decision log (the Measurement record and the bullets that follow it) for which candidates were tried and why both were rejected -- so expect the roughly one-second smear the watchdog's own round trip heals, not a brief flicker, on each drag.
-
-Also try the cross-client trigger, since the original finding could not explain it on its own: attach a second `lyx reed attach` client of a **different** size to the same session from another terminal,
-then move the pointer into or type into that second window -- no click required -- and watch the *first* client fill with dots.
-When the observed client is larger than the client that just became most-recently-used, those dots are correct tmux behavior for uncovered real estate and are **expected** -- report the scenario `OK` for that case rather than filing it again.
-reed now logs a `logger.Warn` at attach time naming any already-attached client whose size differs from the one attaching, which is the searchable trace for this exact condition.
-
-**Verdict:** `OK` / `WARN` / `FAIL`
+### W5 -- Retired: the live resize self-heal is removed with the shell-window stack
 
 ## Session end
 
 **No `down` is run as part of this suite, on purpose.**
-Once W5 finishes, the reed session is left live and attached so the operator can keep exploring by
-hand afterward -- add more strands, watch Haiku work longer, resize again.
+Once W4 finishes, the reed session is left live and attached so the operator can keep exploring by
+hand afterward -- add more strands, watch Haiku work longer.
 This is the one difference from every other reed-touching sandbox suite: `runSuite`'s automatic
 post-session `lyx reed down` (see `suite.go`'s `reedTeardown` field) is deliberately turned off for
 this suite's `suiteSpec`, specifically so the session survives past the driving agent's own turn
@@ -251,7 +208,7 @@ sandbox-report.json written: <count of WARN/FAIL items>
 
 - This suite exists alongside, not instead of, `SANDBOX-REED-SUITE.md` -- that suite's
   crash/kill/rename/corruption scenarios (M8-M11, M15-M17, M19-M25) still need their own run;
-  this one only replaces the *experience* of watching the calm subset (M2-M5, M12-M14, M18, M26)
+  this one only replaces the *experience* of watching the calm subset (M2-M5, M12-M14)
   with one continuous attach session plus a real live agent, never the coverage.
 - Grow this suite with more calm, visually-interesting scenarios (more nesting depth, more
   concurrent strands) -- never with anything that kills a process or tears the session down; that

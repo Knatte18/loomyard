@@ -93,12 +93,12 @@ func TestRunCLI_Run_FlagValidation(t *testing.T) {
 			wantErr: "exactly one of --prompt or --prompt-file",
 		},
 		{
-			name:    "AnchorBelowParent",
+			name:    "AnchorRetiredBelowSpelling",
 			args:    []string{"--prompt", "do the thing", "--output-file", "out.md", "--anchor", "below-parent"},
 			wantErr: "own-window",
 		},
 		{
-			name:    "AnchorTop",
+			name:    "AnchorRetiredTopSpelling",
 			args:    []string{"--prompt", "do the thing", "--output-file", "out.md", "--anchor", "top"},
 			wantErr: "own-window",
 		},

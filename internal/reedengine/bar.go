@@ -1,4 +1,4 @@
-// bar.go declares the tmux format strings of reed's two-line status bar and the strand pane-border title.
+// bar.go declares the tmux format strings of reed's two-line status bar.
 // The strings are built from tmux 3.6's own default status-format shape (list mode, the #{W:}, #{P:} and #{S:} loops, the < and > markers).
 // They read strands through the pane user options @strand and @strand_color and the window user option @lyx_strands, never through the current window.
 // They read own windows, the overview window among them, through the window user options @lyx_own, @strand_color and @lyx_unseen.

@@ -79,8 +79,3 @@ VS Code opens only when the operator asks for it, through `lyx ide` or `batten.y
 
 All links go through `internal/fslink` (`CreateDirLink`): directory junctions on Windows, symlinks elsewhere.
 Never rely on Windows file symlinks.
-
-## Workarounds
-
-- Issue #673: `lyx reed add` with no `--parent` uses its default anchor `below-parent` and splits the new strand into the selvage `shell` window.
-  Until #673 is fixed, pass `--anchor own-window` to every `lyx reed add` that names no `--parent`.

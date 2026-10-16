@@ -1,6 +1,7 @@
 // ownwindow.go holds the own-window placement.
 // That is the session-wide window listing, the presence of own-window panes, and the windows' creation, grouping and removal.
-// An own-window strand lives outside window 0, so window 0's layout never places it; its pane is read through the session listing instead.
+// An own-window strand lives outside the shell window; its pane is read through the session listing instead.
+// It also holds the move that breaks a strand pane an older lyx left in the shell window out into a window of its own.
 
 package reedengine
 
