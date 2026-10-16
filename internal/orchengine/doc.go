@@ -94,6 +94,9 @@
 // Each color typing that lands, at start or in a reload, records in State the strand and State.LaunchedAt it was typed for.
 // Binding sets the color pending only when those differ from the bound session's, so a watcher that re-execs onto a new binary types no color into a session already showing it.
 // A failed color typing is logged and dropped, records nothing, and is typed again by the next watcher that binds, since the color is display only.
+//
+// Each tick reads the strand's session id from shuttle's files-only reading and records it in State.SessionID when it changes, through the strand-checked save.
+// An unreadable reading, or one naming no id, leaves the recorded id.
 // Every provider and reed interaction goes through the Session seam, so the state machine runs against a fake in unit tests.
 //
 // # Idle rules
@@ -316,7 +319,7 @@
 //
 // Everything orch writes lives under the prime's `<anchor>/.lyx/orch/`, declared once in internal/orchcli/paths.go:
 //
-//   - state.json and state.json.lock: the persisted State and its lock.
+//   - state.json and state.json.lock: the persisted State and its lock; the state carries the orch session's id and outlives `lyx orch stop`.
 //   - watch.lock: held for the watcher's life.
 //   - start.lock: serializes `start`.
 //   - cycle-request: the JSON marker `refresh` and `distill` write and the watcher consumes.
@@ -424,4 +427,7 @@
 //     `TestSmokeOrch_AdoptLargeSession` (opt-in through `LYX_SMOKE_ADOPT_SESSION`) adopted a copy of a hub session's transcript of 12827281 bytes on 2026-10-05, Claude Code 2.1.289.
 //     Startup took 43.8s against a `startup_timeout_s` of 90, so a transcript of this size uses about half the budget.
 //   - A visible plain run in the prime shares the orch pane's window and can squeeze it too short to draw an input box, which makes the idle probe fail and holds every cycle until the pane is tall again.
+//   - The recorded session id is right only while the provider names the parent session id in a subagent's or fork's hook lines.
+//     The orch strand runs with `ForkSubagents` and the claude engine takes each hook line's `session_id` as given,
+//     so a provider that names the subagent's own id there records the subagent's session.
 package orchengine
