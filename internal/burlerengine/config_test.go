@@ -145,11 +145,11 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 
 	cfg := loadSeededConfig(t)
 
-	const wantLenses = 23
+	const wantLenses = 35
 	if len(cfg.Lenses) != wantLenses {
 		t.Errorf("seeded template has %d lenses; want %d", len(cfg.Lenses), wantLenses)
 	}
-	const wantFans = 6
+	const wantFans = 10
 	if len(cfg.Fans) != wantFans {
 		t.Errorf("seeded template has %d fans; want %d", len(cfg.Fans), wantFans)
 	}
@@ -160,7 +160,7 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 			}
 		}
 	}
-	for fanName, wantEntries := range map[string]int{"standard": 5, "full": 8, "discussion": 5, "plan": 5, "twill-discussion": 6, "twill-plan": 5} {
+	for fanName, wantEntries := range map[string]int{"standard": 5, "full": 8, "discussion": 5, "plan": 5, "twill-discussion": 6, "twill-plan": 5, "review-discussion": 4, "review-plan": 3, "fix-discussion": 4, "fix-plan": 4} {
 		entries, ok := cfg.Fans[fanName]
 		if !ok {
 			t.Errorf("seeded template is missing fan %q", fanName)
@@ -170,15 +170,29 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 		}
 	}
 	wantOrders := map[string][]string{
-		"discussion":       {"generic", "goal-scope", "pattern-fit", "scenarios", "leanness"},
-		"plan":             {"generic", "decision-coverage", "card-structure", "verify-tests", "pattern-fit"},
-		"twill-discussion": {"premises", "goal-scope", "board-fit", "pattern-fit", "scenarios", "leanness"},
-		"twill-plan":       {"criteria-coverage", "branch-coverage", "row-reachability", "forced-edits", "test-economy"},
+		"discussion":        {"generic", "goal-scope", "pattern-fit", "scenarios", "leanness"},
+		"plan":              {"generic", "decision-coverage", "card-structure", "verify-tests", "pattern-fit"},
+		"twill-discussion":  {"premises", "goal-scope", "board-fit", "pattern-fit", "scenarios", "leanness"},
+		"twill-plan":        {"criteria-coverage", "branch-coverage", "row-reachability", "forced-edits", "test-economy"},
+		"review-discussion": {"interactions", "existing-paths", "bound-breaker", "walkthrough"},
+		"review-plan":       {"affected-set", "guard-reach", "way-forward"},
+		"fix-discussion":    {"fix-consistency", "fix-claims", "fix-proposal", "fix-way-forward"},
+		"fix-plan":          {"fix-consistency", "fix-claims", "fix-proposal", "fix-affected-set"},
 	}
+	procedureLenses := map[string]bool{}
 	for fanName, wantOrder := range wantOrders {
 		lenses, err := ResolveFan(Config{}, fanName)
 		if err != nil {
 			t.Fatalf("ResolveFan(%s) returned unexpected error: %v", fanName, err)
+		}
+		if len(lenses) != len(wantOrder) {
+			t.Errorf("ResolveFan(%s) has %d lenses; want %d", fanName, len(lenses), len(wantOrder))
+			continue
+		}
+		if strings.HasPrefix(fanName, "review-") || strings.HasPrefix(fanName, "fix-") {
+			for _, name := range wantOrder {
+				procedureLenses[name] = true
+			}
 		}
 		for i, wantName := range wantOrder {
 			if lenses[i].Name != wantName {
@@ -202,7 +216,7 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 		if strings.TrimSpace(text) == "" {
 			t.Errorf("lens %q has empty text", name)
 		}
-		if name != "generic" && !strings.HasSuffix(strings.Join(strings.Fields(text), " "), emphasisLine) {
+		if name != "generic" && !procedureLenses[name] && !strings.HasSuffix(strings.Join(strings.Fields(text), " "), emphasisLine) {
 			t.Errorf("lens %q text does not end with the emphasis line", name)
 		}
 		if strings.Contains(text, "ignore ") {

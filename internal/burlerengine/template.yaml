@@ -24,11 +24,15 @@
 #
 # my-fan: [generic, my-lens, my-lens]
 #
-# Lens prose is always phrased as EMPHASIS, never exclusion — no lens tells a
-# fork to ignore anything, because hard "ignore everything else" lenses
-# measurably suppressed cross-category coverage in the spike behind this
-# design (docs/research/session-fork-spike.md, Q2). A fork keeps full tool
-# access and its inherited context regardless of which lens it carries.
+# The dormant lenses are phrased as EMPHASIS, never exclusion. The procedure
+# lenses of the four production fans (review-discussion, review-plan,
+# fix-discussion, fix-plan) are each a procedure that ends in its own list
+# instead, and a fixer lens may end with no list. The no-"ignore" rule holds
+# for every lens: none tells a fork to ignore anything, because hard "ignore
+# everything else" lenses measurably suppressed cross-category coverage in the
+# spike behind this design (docs/research/session-fork-spike.md, Q2). A fork
+# keeps full tool access and its inherited context regardless of which lens it
+# carries.
 
 lenses:
   generic: |
@@ -182,6 +186,94 @@ lenses:
     `cmd/lyx/testdata/test-budget.yaml` does not budget. Apply the Plan-Review
     rubric's "Test economy". Report anything else you notice too — emphasis,
     never exclusion.
+  interactions: |
+    Own the interactions between the record's own decisions. List every pair
+    of decisions that act on the same state, file, key, command, ordering or
+    invariant, including a pair where one adds a mechanism and the other adds
+    another mechanism over the same state. For each pair, run the first
+    decision's paths, its failure and restart paths included, with the second
+    in force, and say whether both still hold; then check each acceptance
+    criterion and constraint against every decision it touches. A pair where
+    one decision silently undoes, outruns or contradicts the other is a
+    finding. Your list: the pairs you checked, one line each, held or broken.
+  existing-paths: |
+    Own what the record's changes meet in the code that already runs. For each
+    state, setting, file or invariant a decision introduces or changes, find
+    every existing code path that also writes, resets, reapplies or reads it,
+    such as other verbs, hooks, resize or apply steps, restart and resume
+    paths and background processes, starting from the definitions your
+    context holds. For each path, say whether the decision's result survives
+    it, and for a path that reads the state, whether it still reads the state
+    right under the new behaviour. A path that undoes or misreads a decision
+    while the record is silent about it is a design finding about that
+    decision, never a missing call-site list. Your list: the paths you traced,
+    per decision, survives or breaks.
+  bound-breaker: |
+    Own the record's claims and bounds. For every bound, guard, guarantee,
+    ordering promise and claim about existing code the record states, try to
+    build a concrete input, interleaving or path that breaks it: a concurrent
+    caller, a process the code spawns, another entry point that reaches the
+    same verb, a state that already exists or was left by an older version,
+    a file in an unexpected shape. Go one hop past what the record cites. A
+    claim you break is a finding with its counterexample. Your list: each
+    claim you attacked, held or broken.
+  walkthrough: |
+    Own the decisions' mechanisms run end to end. For each decision, take one
+    concrete case and execute its mechanism step by step, with the data each
+    step is handed by the step before it, not the data the record says it
+    should be handed. Check the end state against the decision's own stated
+    purpose. A step whose input differs from what the previous step produces,
+    and an end state that misses the purpose, are findings. Your list: each
+    decision, the case you used, purpose met or not.
+  affected-set: |
+    Own what each card's change forces outside the card. For each output, key,
+    string, file shape or behaviour a card changes, find everything that reads
+    or asserts it, tests, callers, docs and fixtures, from the pre-read and a
+    search for what the pre-read lacks. For each change, find the cards that
+    cover the set. A card that covers part of a set is one finding about the
+    method, naming the members it missed. Your list: per change, the set you
+    found and the cards that cover it.
+  guard-reach: |
+    Own whether each guard can be reached. For each guard, refusal, branch or
+    test row a card adds, trace the sequence of states a real entry point
+    passes through to reach it. Say whether the state it guards can occur at
+    that point, and whether the guarded site recurs elsewhere on a path the
+    card does not guard. A guard whose state cannot occur, and a guarded site
+    that recurs unguarded, are findings. Your list: per guard, reachable or
+    not.
+  way-forward: |
+    Own the failure and recovery ends. For each refusal, stop, reset or
+    recovery step a card adds, find the next step it names and check whether
+    that step can succeed from the state the refusal leaves. A refusal that
+    names no next step, and a next step that cannot succeed from that state,
+    are findings. Your list: per refusal, the next step, progresses or not.
+  fix-consistency: |
+    Own the agreement of the change set with its surroundings. Check that every
+    sibling decision, card, criterion, row or cross-reference the changed text
+    touches or depends on still agrees with it, and look for a change made in
+    one place whose twin elsewhere was left as it was.
+  fix-claims: |
+    Own the claims the fix made. Check that every sentence the fix added or
+    rewrote that asserts a bound, a guarantee, a behaviour, a count or a fact
+    about the code holds against the code at this worktree's HEAD, including a
+    claim taken over from the reviewer's proposed fix.
+  fix-proposal: |
+    Own the reviewer's proposals the fix carried out. For each finding the
+    fixer fixed as proposed, challenge the proposal itself rather than check
+    that it was carried out: build the concrete case where the proposed change
+    is wrong, or name what it breaks elsewhere in the artifact. A case you
+    build, or a breakage you name, is a finding with its evidence.
+  fix-way-forward: |
+    Own the ways forward the fix introduced. Check that every refusal, error,
+    next step, row or test the fix introduced can be carried out or reached
+    from the state it names, and leads somewhere that makes progress.
+  fix-affected-set: |
+    Own the sets the fix had to cover. For each finding whose premise is a set,
+    tests, callers or sites under one key, rerun the finding's own search with
+    one tool call per finding, and check the fix covers every member, not only
+    those the review named. When these findings exceed your tool-call cap,
+    rerun the searches for the most severe findings first. Your list: each
+    finding you left unchecked.
 
 fans:
   standard:
@@ -224,3 +316,22 @@ fans:
     - row-reachability
     - forced-edits
     - test-economy
+  review-discussion:
+    - interactions
+    - existing-paths
+    - bound-breaker
+    - walkthrough
+  review-plan:
+    - affected-set
+    - guard-reach
+    - way-forward
+  fix-discussion:
+    - fix-consistency
+    - fix-claims
+    - fix-proposal
+    - fix-way-forward
+  fix-plan:
+    - fix-consistency
+    - fix-claims
+    - fix-proposal
+    - fix-affected-set
