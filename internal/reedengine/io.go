@@ -310,6 +310,18 @@ func (e *Engine) SetWaitMark(guid, label string, start time.Time) error {
 // CapturePane returns guid's live pane's current screen contents.
 // It is read-only: no reconcile, re-apply, or persist.
 func (e *Engine) CapturePane(guid string) (string, error) {
+	return e.capturePane(guid, false)
+}
+
+// CapturePaneStyled returns guid's live pane's current screen contents with its SGR attributes, as tmux's `capture-pane -e` prints them.
+// The text is returned verbatim; reed interprets none of the escapes.
+// It is read-only: no reconcile, re-apply, or persist.
+func (e *Engine) CapturePaneStyled(guid string) (string, error) {
+	return e.capturePane(guid, true)
+}
+
+// capturePane reads guid's live pane, with its SGR attributes when styled.
+func (e *Engine) capturePane(guid string, styled bool) (string, error) {
 	var captured string
 	err := e.withOpLock(func() error {
 		if err := e.requireSessionLocked(); err != nil {
@@ -326,7 +338,11 @@ func (e *Engine) CapturePane(guid string) (string, error) {
 			return err
 		}
 
-		out, err := e.tmux.output("capture-pane", "-p", "-t", paneID)
+		args := []string{"capture-pane", "-p", "-t", paneID}
+		if styled {
+			args = []string{"capture-pane", "-e", "-p", "-t", paneID}
+		}
+		out, err := e.tmux.output(args...)
 		if err != nil {
 			return fmt.Errorf("capture pane: %w", err)
 		}

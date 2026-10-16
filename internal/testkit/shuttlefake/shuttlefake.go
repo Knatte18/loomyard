@@ -263,14 +263,16 @@ type Reed struct {
 	// Quiet is the quiet window OperatorActive answers when OperatorActiveFn is nil; zero answers 5 s.
 	Quiet time.Duration
 
-	AddStrandFn      func(spec reedengine.AddSpec) (reedengine.Strand, error)
-	RemoveStrandFn   func(guid string, recursive bool) (reedengine.Removed, error)
-	StatusFn         func() (reedengine.StatusResult, error)
-	SendTextFn       func(guid, text string, submit bool) error
-	SendKeyFn        func(guid, key string) error
-	CapturePaneFn    func(guid string) (string, error)
-	PasteSubmitFn    func(guid, text string, submit bool) error
-	OperatorActiveFn func(guid string) (bool, time.Duration, error)
+	AddStrandFn    func(spec reedengine.AddSpec) (reedengine.Strand, error)
+	RemoveStrandFn func(guid string, recursive bool) (reedengine.Removed, error)
+	StatusFn       func() (reedengine.StatusResult, error)
+	SendTextFn     func(guid, text string, submit bool) error
+	SendKeyFn      func(guid, key string) error
+	CapturePaneFn  func(guid string) (string, error)
+	// CapturePaneStyledFn answers CapturePaneStyled; nil answers an empty capture.
+	CapturePaneStyledFn func(guid string) (string, error)
+	PasteSubmitFn       func(guid, text string, submit bool) error
+	OperatorActiveFn    func(guid string) (bool, time.Duration, error)
 }
 
 // PasteSubmitCall is one recorded PasteSubmit call.
@@ -436,6 +438,17 @@ func (r *Reed) CapturePane(guid string) (string, error) {
 	r.mu.Unlock()
 	if r.CapturePaneFn != nil {
 		return r.CapturePaneFn(guid)
+	}
+	return "", nil
+}
+
+// CapturePaneStyled records the call and answers CapturePaneStyledFn, else an empty capture.
+func (r *Reed) CapturePaneStyled(guid string) (string, error) {
+	r.mu.Lock()
+	r.CaptureCalls = append(r.CaptureCalls, guid)
+	r.mu.Unlock()
+	if r.CapturePaneStyledFn != nil {
+		return r.CapturePaneStyledFn(guid)
 	}
 	return "", nil
 }

@@ -233,9 +233,18 @@ func (m *fakeReed) SetWaitMark(guid, label string, _ time.Time) error {
 }
 
 func (m *fakeReed) CapturePane(guid string) (string, error) {
+	return m.capture("CapturePane")
+}
+
+// CapturePaneStyled answers from the same queues as CapturePane, logging CapturePaneStyled.
+func (m *fakeReed) CapturePaneStyled(guid string) (string, error) {
+	return m.capture("CapturePaneStyled")
+}
+
+func (m *fakeReed) capture(logTag string) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.CallLog = append(m.CallLog, "CapturePane")
+	m.CallLog = append(m.CallLog, logTag)
 	if m.CaptureErr != nil {
 		return "", m.CaptureErr
 	}

@@ -17,7 +17,7 @@ import (
 // ReedOps is the subset of reed's engine API the shuttle run loop drives.
 // AddStrand/RemoveStrand register and tear down the strand a run's pane lives in;
 // Status reports strand liveness;
-// SendText/SendKey/CapturePane are the pane-transport ops;
+// SendText/SendKey/CapturePane/CapturePaneStyled are the pane-transport ops;
 // PasteSubmit is the pane-write transport op, one bracketed paste with an optional Enter behind it;
 // OperatorActive is the operator-activity query that answers whether an attached client is active on the strand's pane within a quiet window;
 // SetWaitMark sets or, with an empty label, clears the strand's pane wait mark, which is display only.
@@ -29,6 +29,7 @@ type ReedOps interface {
 	SendText(guid, text string, submit bool) error
 	SendKey(guid, key string) error
 	CapturePane(guid string) (string, error)
+	CapturePaneStyled(guid string) (string, error)
 	PasteSubmit(guid, text string, submit bool) error
 	OperatorActive(guid string) (active bool, quiet time.Duration, err error)
 	SetWaitMark(guid, label string, start time.Time) error
