@@ -193,7 +193,7 @@ func TestWouldFormCycle(t *testing.T) {
 	}
 }
 
-//testtiming:keep pins the add-time launch decision: a hidden add never launches and a below-parent add does; its covering tests run this code without asserting it
+//testtiming:keep pins the add-time launch decision: a hidden add never launches and an own-window add does; its covering tests run this code without asserting it
 func TestNeedsLaunchOnAdd(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -201,7 +201,7 @@ func TestNeedsLaunchOnAdd(t *testing.T) {
 		want   bool
 	}{
 		{"Hidden_NoLaunch", render.AnchorHidden, false},
-		{"BelowParent_Launches", render.AnchorBelowParent, true},
+		{"OwnWindow_Launches", render.AnchorOwnWindow, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -221,9 +221,9 @@ func TestNeedsLaunchOnSurface(t *testing.T) {
 		anchor    render.Anchor
 		want      bool
 	}{
-		{"HiddenToVisible_Surfaces", true, render.AnchorBelowParent, true},
+		{"HiddenToVisible_Surfaces", true, render.AnchorOwnWindow, true},
 		{"HiddenToHidden_NoOpNotASurface", true, render.AnchorHidden, false},
-		{"VisibleToVisible_NotASurface", false, render.AnchorBelowParent, false},
+		{"VisibleToVisible_NotASurface", false, render.AnchorOwnWindow, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -241,7 +241,7 @@ func TestNeedsLaunchOnSurface(t *testing.T) {
 // A hidden->hidden update and a focus-only change of an own-window strand are accepted and launch nothing.
 // A window-move refusal names the way forward, lyx reed remove.
 func TestUpdateStrandLocked(t *testing.T) {
-	visible := render.Display{Anchor: render.AnchorBelowParent}
+	visible := render.Display{Anchor: render.AnchorOwnWindow}
 	hidden := render.Display{Anchor: render.AnchorHidden}
 	own := render.Display{Anchor: render.AnchorOwnWindow, Window: "pair", WindowSize: 2}
 	overview := render.Display{Anchor: render.AnchorOverview}
@@ -253,11 +253,11 @@ func TestUpdateStrandLocked(t *testing.T) {
 		display render.Display
 		wantErr string
 	}{
-		{"VisibleToHiddenRejected", Strand{GUID: "g1", PaneID: "%1", Display: visible}, "g1", hidden, "cannot hide"},
+		{"VisibleToHiddenRejected", Strand{GUID: "g1", PaneID: "%1", Display: visible}, "g1", hidden, "cannot move between"},
 		{"MistypedAnchorRejected", Strand{GUID: "g1", PaneID: "%1", Display: visible}, "g1", render.Display{Anchor: render.Anchor("sideways")}, "invalid anchor"},
 		{"UnknownGuidRejected", Strand{GUID: "g1", PaneID: "%1", Display: visible}, "does-not-exist", render.Display{}, "invalid anchor"},
-		{"BelowParentToOwnWindowRejected", Strand{GUID: "g1", PaneID: "%1", Display: visible}, "g1", own, moveWayForward},
-		{"OwnWindowToBelowParentRejected", Strand{GUID: "g1", PaneID: "%1", Display: own}, "g1", visible, moveWayForward},
+		{"UngroupedToGroupedOwnWindowRejected", Strand{GUID: "g1", PaneID: "%1", Display: visible}, "g1", own, moveWayForward},
+		{"GroupedToUngroupedOwnWindowRejected", Strand{GUID: "g1", PaneID: "%1", Display: own}, "g1", visible, moveWayForward},
 		{"OverviewToOwnWindowRejected", Strand{GUID: "g1", PaneID: "%1", Display: overview}, "g1", render.Display{Anchor: render.AnchorOwnWindow}, moveWayForward},
 		{"OwnWindowToOverviewRejected", Strand{GUID: "g1", PaneID: "%1", Display: render.Display{Anchor: render.AnchorOwnWindow}}, "g1", overview, moveWayForward},
 		{"HiddenToOwnWindowRejected", Strand{GUID: "g1", Display: hidden, Cmd: "claude"}, "g1", own, moveWayForward},
@@ -385,7 +385,7 @@ func TestRemovalEmptiedSession(t *testing.T) {
 			name: "SessionGone_OneRemainingNonHidden_False",
 			remaining: []Strand{
 				{GUID: "a", Display: render.Display{Anchor: render.AnchorHidden}},
-				{GUID: "b", Display: render.Display{Anchor: render.AnchorBelowParent}},
+				{GUID: "b", Display: render.Display{Anchor: render.AnchorOwnWindow}},
 			},
 			sessionGone: true,
 			want:        false,
@@ -412,7 +412,7 @@ func TestRemovalEmptiedSession(t *testing.T) {
 // Testing section enumerates: an empty-PaneID candidate, a candidate bound to a pane present but not
 // alive, and a hidden strand sharing a name with a not-alive visible one.
 func TestClassifyIfAbsent(t *testing.T) {
-	visible := render.Display{Anchor: render.AnchorBelowParent}
+	visible := render.Display{Anchor: render.AnchorOwnWindow}
 	hidden := render.Display{Anchor: render.AnchorHidden}
 
 	tests := []struct {
@@ -576,7 +576,7 @@ func TestAddStrand_IfAbsent_NoOps(t *testing.T) {
 			persisted: Strand{
 				GUID: "persisted-guid", Name: "tc:tslug:claude", PaneID: "%1",
 				Cmd: "old-cmd", ResumeCmd: "old-resume", Parent: "old-parent",
-				Display: render.Display{Anchor: render.AnchorBelowParent, Focus: false},
+				Display: render.Display{Anchor: render.AnchorOwnWindow, Focus: false},
 			},
 		},
 		{
@@ -593,7 +593,7 @@ func TestAddStrand_IfAbsent_NoOps(t *testing.T) {
 		{
 			name:      "RoleSegmentMatchesFullName",
 			paneLines: "%1 0 0 100 20 4321\n",
-			persisted: Strand{GUID: "persisted-guid", Name: "tc:tslug:claude", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}},
+			persisted: Strand{GUID: "persisted-guid", Name: "tc:tslug:claude", PaneID: "%1", Display: render.Display{Anchor: render.AnchorOwnWindow}},
 		},
 	}
 	for _, tt := range tests {
@@ -607,7 +607,7 @@ func TestAddStrand_IfAbsent_NoOps(t *testing.T) {
 			got, err := e.AddStrand(AddSpec{
 				IfAbsent: true, NameOverride: "claude",
 				Cmd: "new-cmd", ResumeCmd: "new-resume", Parent: "new-parent",
-				Display: render.Display{Anchor: render.AnchorBelowParent, Focus: true},
+				Display: render.Display{Anchor: render.AnchorOwnWindow, Focus: true},
 			})
 			if err != nil {
 				t.Fatalf("AddStrand(--if-absent): %v", err)
@@ -636,9 +636,9 @@ func TestAddStrandUnless_NamedStrandSkips(t *testing.T) {
 		before []Strand
 		orch   Strand
 	}{
-		{"Live", nil, Strand{GUID: "orch-guid", Name: "tc:tslug:orch", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}}},
-		{"AfterAnotherStrand", []Strand{{GUID: "other-guid", Name: "tc:tslug:other", Display: render.Display{Anchor: render.AnchorBelowParent}}}, Strand{GUID: "orch-guid", Name: "tc:tslug:orch", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}}},
-		{"DormantPaneGone", nil, Strand{GUID: "orch-guid", Name: "tc:tslug:orch", PaneID: "%9", Display: render.Display{Anchor: render.AnchorBelowParent}}},
+		{"Live", nil, Strand{GUID: "orch-guid", Name: "tc:tslug:orch", PaneID: "%1", Display: render.Display{Anchor: render.AnchorOwnWindow}}},
+		{"AfterAnotherStrand", []Strand{{GUID: "other-guid", Name: "tc:tslug:other", Display: render.Display{Anchor: render.AnchorOwnWindow}}}, Strand{GUID: "orch-guid", Name: "tc:tslug:orch", PaneID: "%1", Display: render.Display{Anchor: render.AnchorOwnWindow}}},
+		{"DormantPaneGone", nil, Strand{GUID: "orch-guid", Name: "tc:tslug:orch", PaneID: "%9", Display: render.Display{Anchor: render.AnchorOwnWindow}}},
 		{"Hidden", nil, Strand{GUID: "orch-guid", Name: "tc:tslug:orch", Display: render.Display{Anchor: render.AnchorHidden}}},
 	}
 	for _, tt := range tests {
@@ -660,7 +660,7 @@ func TestAddStrandUnless_NamedStrandSkips(t *testing.T) {
 				t.Fatalf("read state: %v", err)
 			}
 
-			got, skipped, err := e.AddStrandUnless(AddSpec{NameOverride: "claude", Display: render.Display{Anchor: render.AnchorBelowParent, Focus: true}}, "orch")
+			got, skipped, err := e.AddStrandUnless(AddSpec{NameOverride: "claude", Display: render.Display{Anchor: render.AnchorOwnWindow, Focus: true}}, "orch")
 			if err != nil {
 				t.Fatalf("AddStrandUnless: %v", err)
 			}
@@ -668,7 +668,7 @@ func TestAddStrandUnless_NamedStrandSkips(t *testing.T) {
 				t.Errorf("AddStrandUnless = (%+v, %v), want (%+v, true)", got, skipped, tt.orch)
 			}
 			for _, c := range fake.Sequence() {
-				if c == "split-window" || c == "select-layout" || c == "select-pane" || c == "kill-pane" {
+				if c == "new-window" || c == "select-layout" || c == "select-pane" || c == "kill-pane" {
 					t.Errorf("tmux %s issued by a skipped add", c)
 				}
 			}
@@ -691,7 +691,7 @@ func TestAddStrandUnless_NoNamedStrandAdds(t *testing.T) {
 		name      string
 		persisted []Strand
 	}{
-		{"OtherStrandOnly", []Strand{{GUID: "other-guid", Name: "tc:tslug:other", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}}}},
+		{"OtherStrandOnly", []Strand{{GUID: "other-guid", Name: "tc:tslug:other", PaneID: "%1", Display: render.Display{Anchor: render.AnchorOwnWindow}}}},
 		{"NoOrch", nil},
 	}
 	for _, tt := range tests {
@@ -1158,7 +1158,7 @@ func TestRemoveStrand_NeverKillsAPaneOutsideThisSession(t *testing.T) {
 
 	st := &ReedState{
 		SelvagePaneID: thisSessionPane,
-		Strands:       []Strand{{GUID: "copied", Name: "copied", PaneID: siblingPane, Display: render.Display{Anchor: render.AnchorBelowParent}}},
+		Strands:       []Strand{{GUID: "copied", Name: "copied", PaneID: siblingPane, Display: render.Display{Anchor: render.AnchorOwnWindow}}},
 	}
 	if err := SaveState(e.stateDir(), st); err != nil {
 		t.Fatalf("SaveState: %v", err)
@@ -1175,6 +1175,72 @@ func TestRemoveStrand_NeverKillsAPaneOutsideThisSession(t *testing.T) {
 	for _, id := range killed {
 		if id == siblingPane {
 			t.Fatalf("RemoveStrand issued kill-pane against %s, a pane outside this worktree's session; killed=%v", siblingPane, killed)
+		}
+	}
+}
+
+// TestWriteOps_RefuseARetiredAnchor pins that each write op refuses a Go-built display naming a retired anchor before any pane or state changes.
+// ReplaceStrand removes the old strand and kills its pane before it adds, so its refusal has to come at its head, which the replace rows pin.
+func TestWriteOps_RefuseARetiredAnchor(t *testing.T) {
+	t.Parallel()
+
+	const persistedGUID = "persisted-guid"
+	ops := []struct {
+		name string
+		run  func(e *Engine, display render.Display) error
+	}{
+		{"AddStrand", func(e *Engine, display render.Display) error {
+			_, err := e.AddStrand(AddSpec{NameOverride: "fresh", Cmd: "x", Display: display})
+			return err
+		}},
+		{"AddStrandUnless", func(e *Engine, display render.Display) error {
+			_, _, err := e.AddStrandUnless(AddSpec{NameOverride: "fresh", Cmd: "x", Display: display}, "absent")
+			return err
+		}},
+		{"UpdateStrand", func(e *Engine, display render.Display) error {
+			_, err := e.UpdateStrand(persistedGUID, display)
+			return err
+		}},
+		{"ReplaceStrand", func(e *Engine, display render.Display) error {
+			_, err := e.ReplaceStrand(persistedGUID, AddSpec{NameOverride: "fresh", Cmd: "x", Display: display})
+			return err
+		}},
+	}
+	for _, op := range ops {
+		for _, anchor := range []render.Anchor{"below-parent", "top"} {
+			t.Run(op.name+"_"+string(anchor), func(t *testing.T) {
+				t.Parallel()
+
+				e := newTestEngine(t)
+				fake := installIfAbsentTmux(t, e, "%1 0 0 100 20 4321\n")
+				fake.mustNotCall("split-window", "new-window", "kill-pane")
+				persisted := Strand{GUID: persistedGUID, Name: "tc:tslug:keep", PaneID: "%1", Display: render.Display{Anchor: render.AnchorOwnWindow}}
+				if err := SaveState(e.stateDir(), &ReedState{Strands: []Strand{persisted}}); err != nil {
+					t.Fatalf("SaveState: %v", err)
+				}
+				statePath := filepath.Join(e.stateDir(), reedStateFileName)
+				stateBefore, err := os.ReadFile(statePath)
+				if err != nil {
+					t.Fatalf("read state: %v", err)
+				}
+
+				err = op.run(e, render.Display{Anchor: anchor})
+				if err == nil {
+					t.Fatalf("%s = nil error, want the retired anchor %q refused", op.name, anchor)
+				}
+				for _, want := range []string{string(anchor), "retired", string(render.AnchorOwnWindow)} {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("%s error = %q, want it to contain %q", op.name, err, want)
+					}
+				}
+				stateAfter, err := os.ReadFile(statePath)
+				if err != nil {
+					t.Fatalf("read state: %v", err)
+				}
+				if string(stateAfter) != string(stateBefore) {
+					t.Errorf("persisted state after the refusal = %s, want unchanged %s", stateAfter, stateBefore)
+				}
+			})
 		}
 	}
 }

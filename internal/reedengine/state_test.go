@@ -38,7 +38,7 @@ func TestSaveState_ThenLoadState_RoundTrips(t *testing.T) {
 				LyxBin:    "/opt/lyx/bin/lyx",
 				PaneID:    "%1",
 				Display: render.Display{
-					Anchor: render.AnchorBelowParent,
+					Anchor: render.AnchorOwnWindow,
 					Focus:  true,
 				},
 			},
@@ -50,7 +50,7 @@ func TestSaveState_ThenLoadState_RoundTrips(t *testing.T) {
 				Cmd:      "claude --session-id def",
 				PaneID:   "%2",
 				Display: render.Display{
-					Anchor: render.AnchorBelowParent},
+					Anchor: render.AnchorOwnWindow},
 			},
 		},
 	}

@@ -1,5 +1,5 @@
 // selvagepane.go owns every piece of Selvage-specific code in this package: the pane's create/heal
-// lifecycle, the reconcile exemption policy, the strand-claim seed and the split-target decision.
+// lifecycle, the reconcile exemption policy and the strand-claim seed.
 // lifecycle.go, reconcile.go and spawn.go each call into this
 // file's narrow seams rather than carrying their own Selvage logic inline.
 
@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
 
 // reapPolicy answers the three Selvage-related questions planReconcile asks: whether a given pane is
@@ -71,119 +70,6 @@ func (p reapPolicy) exemptFromUntrackedReap(paneID string) bool {
 // session's only alive pane.
 func (p reapPolicy) authorizesReap() bool {
 	return p.paneID != "" && p.alive
-}
-
-// planPaneTarget always yields a split target for the next strand realization
-// — it never adopts an existing pane. The surviving rules are a pure function
-// of st's Selvage pane id and live: prefer the tallest alive non-Selvage pane, fall
-// back to any present non-Selvage pane (a corpse) when none is alive, and fall
-// back to live[0] (Selvage itself) when no non-Selvage pane exists at all.
-//
-// Adoption used to give a fresh session's initial pane a use rather than
-// splitting a needless second one, but the seam it required — deciding
-// whether a candidate pane was reed's own idle initial pane or a foreign one
-// — could not be made safely, and produced two live findings: R4-F5 (after
-// .lyx/reed.json was scrubbed from a running session, adoption picked the
-// previous header pane — still running "lyx reed header --blocking" — and the
-// strand's command was typed onto its screen and never ran, with status
-// reporting live:true and no such process on the box) and M16 (adoption
-// claimed an operator's own manually-created split-window pane). Once the
-// untracked reap is authorized by an alive Selvage (reconcile.go), the initial
-// pane is disposed of like any other untracked pane before this function ever
-// runs, so a fresh split — idle by construction — costs one kill-pane plus
-// one split-window and buys correctness back.
-//
-// A top-anchored display takes none of those tiers.
-// It splits below the physically lowest alive pane bound to another top-anchored strand of st, so top strands stack in insertion order.
-// With no such pane it splits the window's physically top-most present pane with `-f -b`, a full-width split above every pane that takes its rows from the whole window.
-// A collapsed one-row top pane therefore cannot make it fail, and Selvage stays bottom-most.
-//
-// For any other display, above is true only when the third tier fires — no non-Selvage pane exists at all, so Selvage
-// itself is the chosen target — and false for the tallest-alive and present-corpse tiers. This is
-// exactly equivalent to the condition launchStrandLocked used to compute at its call site: it
-// appended -b when the chosen target equalled the Selvage pane id, and that can only hold when tier
-// three fired, because tiers one and two both exclude the Selvage pane by construction and tier three
-// is reachable only when every present pane IS the Selvage pane. When tier three fires, splitting
-// below Selvage — tmux's default — would put the new strand pane physically below Selvage;
-// -b keeps it above Selvage instead, preserving the bottom-most invariant on exactly the
-// one path that would otherwise violate it. Every other split target is a strand, and inserting below
-// another strand never touches Selvage's position.
-func planPaneTarget(st *ReedState, live []LivePane, display render.Display) (paneSplit, error) {
-	if len(live) == 0 {
-		return paneSplit{}, fmt.Errorf("session has no panes to split")
-	}
-	if display.Anchor == render.AnchorTop {
-		return planTopPaneTarget(st, live), nil
-	}
-	selvagePaneID := st.SelvagePaneID
-
-	splitTargetID := ""
-	insertAbove := false
-	tallestAlive := -1
-	for _, p := range live {
-		if p.ID == selvagePaneID || p.Dead {
-			continue
-		}
-		if p.Height > tallestAlive {
-			tallestAlive = p.Height
-			splitTargetID = p.ID
-		}
-	}
-	if splitTargetID == "" {
-		// No alive non-Selvage pane: fall back to any present non-Selvage
-		// pane (a dead corpse), mirroring the pre-Selvage "every pane dead"
-		// fallback.
-		for _, p := range live {
-			if p.ID != selvagePaneID {
-				splitTargetID = p.ID
-				break
-			}
-		}
-	}
-	if splitTargetID == "" {
-		// No non-Selvage pane exists at all: every strand has been removed
-		// and only Selvage remains. Split Selvage itself so this add
-		// still has a pane to split.
-		splitTargetID = live[0].ID
-		insertAbove = true
-	}
-	return paneSplit{target: splitTargetID, above: insertAbove}, nil
-}
-
-// paneSplit is one planned strand split.
-// It names the pane to split, whether the new pane goes above it (`-b`), and whether the split spans the full window width and takes its rows from the whole window (`-f`).
-type paneSplit struct {
-	target string
-	above  bool
-	full   bool
-}
-
-// planTopPaneTarget plans the split of a top-anchored strand's pane; live is non-empty.
-func planTopPaneTarget(st *ReedState, live []LivePane) paneSplit {
-	topPaneIDs := make(map[string]bool)
-	for _, s := range st.Strands {
-		if s.Display.Anchor == render.AnchorTop && s.PaneID != "" {
-			topPaneIDs[s.PaneID] = true
-		}
-	}
-
-	lowestTop := -1
-	for i, p := range live {
-		if topPaneIDs[p.ID] && !p.Dead && (lowestTop < 0 || p.Top > live[lowestTop].Top) {
-			lowestTop = i
-		}
-	}
-	if lowestTop >= 0 {
-		return paneSplit{target: live[lowestTop].ID}
-	}
-
-	topmost := 0
-	for i, p := range live {
-		if p.Top < live[topmost].Top {
-			topmost = i
-		}
-	}
-	return paneSplit{target: live[topmost].ID, above: true, full: true}
 }
 
 // seedSelvageClaim adds st's Selvage pane id to claimed when it is non-empty.
@@ -345,7 +231,7 @@ func (e *Engine) splitPaneBelowLocked(target string, preSplitLive []LivePane, la
 
 // shellWindowOf returns the id of the window holding the recorded console pane, alive or a dead corpse, read from windowByPane, a session-wide pane-to-window listing.
 // It reports false when st records no console pane or the listing does not carry it.
-// It never falls back to another window: a session resolved only through a top or below-parent strand, or the current window, has no shell window.
+// It never falls back to another window: a session with no recorded console pane has no shell window.
 func shellWindowOf(st *ReedState, windowByPane map[string]string) (string, bool) {
 	if st == nil || st.SelvagePaneID == "" {
 		return "", false
@@ -354,20 +240,11 @@ func shellWindowOf(st *ReedState, windowByPane map[string]string) (string, bool)
 	return windowID, ok
 }
 
-// recordedPaneIDs lists the pane ids st records, Selvage first, then the strands in order.
-// An own-window strand's pane is skipped, since it is not placed in the strands' window.
+// recordedPaneIDs lists the pane ids st records in the shell window, which is the recorded Selvage pane alone.
+// A strand's pane is skipped, since every strand lives in a window of its own.
 func recordedPaneIDs(st *ReedState) []string {
-	if st == nil {
+	if st == nil || st.SelvagePaneID == "" {
 		return nil
 	}
-	var ids []string
-	if st.SelvagePaneID != "" {
-		ids = append(ids, st.SelvagePaneID)
-	}
-	for _, s := range st.Strands {
-		if s.PaneID != "" && !isOwnWindow(s.Display) {
-			ids = append(ids, s.PaneID)
-		}
-	}
-	return ids
+	return []string{st.SelvagePaneID}
 }

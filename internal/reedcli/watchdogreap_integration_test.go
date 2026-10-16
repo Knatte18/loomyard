@@ -81,7 +81,7 @@ func orphanWorktree(t *testing.T, worktreeRoot string) {
 // so a case can snapshot a session's pane process pids from outside any Engine.
 func reapListPanePIDs(t *testing.T, tmuxPath, socket, session string) []int {
 	t.Helper()
-	out, err := exec.Command(tmuxPath, "-L", socket, "list-panes", "-t", "="+session+":", "-F", "#{pane_pid}").Output()
+	out, err := exec.Command(tmuxPath, "-L", socket, "list-panes", "-s", "-t", "="+session+":", "-F", "#{pane_pid}").Output()
 	if err != nil {
 		return nil
 	}
@@ -249,7 +249,7 @@ func TestWatchdogReap(t *testing.T) {
 		grandchildFile := filepath.Join(dir, "grandchild.pid")
 		script := reapDescendantScript(t, dir, rootFile, childFile, grandchildFile)
 
-		if _, err := orphanEng.AddStrand(reedengine.AddSpec{Cmd: script, Display: render.Display{Anchor: render.AnchorBelowParent}}); err != nil {
+		if _, err := orphanEng.AddStrand(reedengine.AddSpec{Cmd: script, Display: render.Display{Anchor: render.AnchorOwnWindow}}); err != nil {
 			t.Fatalf("AddStrand(descendant script): %v", err)
 		}
 

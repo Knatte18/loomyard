@@ -37,13 +37,6 @@ func TestStrandWindowTarget(t *testing.T) {
 			wantLists: 1,
 		},
 		{
-			name:      "StrandPaneResolvesWithoutSelvage",
-			state:     &ReedState{SelvagePaneID: "%1", Strands: []Strand{{PaneID: ""}, {PaneID: "%2"}}},
-			listing:   "%2 @5\n%9 @7\n",
-			want:      "@5",
-			wantLists: 1,
-		},
-		{
 			name:      "OwnWindowStrandPaneIsNotTheStrandsWindow",
 			state:     &ReedState{Strands: []Strand{ownWindowTestStrand("o", "%2")}},
 			listing:   "%2 @5\n",

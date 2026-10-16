@@ -39,7 +39,7 @@ func TestPasteSubmit_DeliversTextAndLeavesTheBufferStackAlone(t *testing.T) {
 	if _, err := e.Up(); err != nil {
 		t.Fatalf("Up: %v", err)
 	}
-	strand, err := e.AddStrand(AddSpec{Cmd: "cat", Display: render.Display{Anchor: render.AnchorBelowParent}})
+	strand, err := e.AddStrand(AddSpec{Cmd: "cat", Display: render.Display{Anchor: render.AnchorOwnWindow}})
 	if err != nil {
 		t.Fatalf("AddStrand: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestPasteSubmit_DeliversTextAndLeavesTheBufferStackAlone(t *testing.T) {
 	// A long line, dash-leading and semicolon-ending, goes whole through standard input.
 	// The pane's terminal is made non-canonical because a canonical tty line holds at most 4095 bytes.
 	sinkFile := filepath.Join(t.TempDir(), "long-paste.txt")
-	sink, err := e.AddStrand(AddSpec{Cmd: "stty -icanon -echo; cat > " + sinkFile, Display: render.Display{Anchor: render.AnchorBelowParent}})
+	sink, err := e.AddStrand(AddSpec{Cmd: "stty -icanon -echo; cat > " + sinkFile, Display: render.Display{Anchor: render.AnchorOwnWindow}})
 	if err != nil {
 		t.Fatalf("AddStrand(sink): %v", err)
 	}

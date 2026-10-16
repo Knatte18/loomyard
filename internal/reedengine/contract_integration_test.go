@@ -195,7 +195,7 @@ func TestMultiplexerContract(t *testing.T) {
 		t.Fatalf("send-keys C-c: %v", err)
 	}
 
-	// (b) split-window: the tallest-pane split path launchStrandLocked uses.
+	// (b) split-window: the raw split the wire contract still has to honour, though launchStrandLocked now creates every pane through new-window.
 	splitOut, err := reed.output("split-window", "-t", initialPane.ID, "-P", "-F", "#{pane_id}")
 	if err != nil {
 		t.Fatalf("split-window: %v", err)
@@ -674,7 +674,7 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 	// add time; a long-lived command so it is still running when removed.
 	strand, err := e.AddStrand(AddSpec{
 		Cmd:     "sleep 300",
-		Display: render.Display{Anchor: render.AnchorBelowParent},
+		Display: render.Display{Anchor: render.AnchorOwnWindow},
 	})
 	if err != nil {
 		t.Fatalf("AddStrand: %v", err)
@@ -851,13 +851,13 @@ func assertOnlySelvageFillsTheWindow(t *testing.T, e *Engine, selvagePaneID, ste
 
 // TestStrandOpsIgnoreASecondCurrentWindow pins the window seam against a real multiplexer:
 // with another window made current in the session, the seam still resolves the window holding the strands.
-// A layout-and-enumeration op (AddStrand) then lands the new strand in that window and leaves the other window's pane unreaped, and the session-scoped pane-generation read still answers.
+// An enumeration op (AddStrand) then lands the new strand in a window of its own and leaves the other window's pane unreaped, and the session-scoped pane-generation read still answers.
 func TestStrandOpsIgnoreASecondCurrentWindow(t *testing.T) {
 	e := newColdScratchEngine(t)
 	if _, err := e.Up(); err != nil {
 		t.Fatalf("Up: %v", err)
 	}
-	first, err := e.AddStrand(AddSpec{Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorBelowParent}})
+	first, err := e.AddStrand(AddSpec{Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorOwnWindow}})
 	if err != nil {
 		t.Fatalf("AddStrand (first): %v", err)
 	}
@@ -885,7 +885,7 @@ func TestStrandOpsIgnoreASecondCurrentWindow(t *testing.T) {
 		t.Errorf("strand window target = %q with %q current, want the strand window %q", target, otherWindow, strandWindow)
 	}
 
-	second, err := e.AddStrand(AddSpec{Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorBelowParent}})
+	second, err := e.AddStrand(AddSpec{Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorOwnWindow}})
 	if err != nil {
 		t.Fatalf("AddStrand (second) with another window current: %v", err)
 	}
@@ -898,8 +898,8 @@ func TestStrandOpsIgnoreASecondCurrentWindow(t *testing.T) {
 		if idx == -1 {
 			t.Fatalf("strand %q missing from state %+v", guid, after.Strands)
 		}
-		if got := windowOfPane(t, e, after.Strands[idx].PaneID); got != strandWindow {
-			t.Errorf("strand %q pane is in window %q, want the strand window %q", guid, got, strandWindow)
+		if got := windowOfPane(t, e, after.Strands[idx].PaneID); got == strandWindow || got == otherWindow {
+			t.Errorf("strand %q pane is in window %q, want a window of its own apart from the strand window %q and the other window %q", guid, got, strandWindow, otherWindow)
 		}
 	}
 	if got := windowOfPane(t, e, otherPane); got != otherWindow {

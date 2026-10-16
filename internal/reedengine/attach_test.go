@@ -61,10 +61,13 @@ const (
 	oneAttachListPane   = "%1 0 0 40 20 4321\n"
 )
 
-// goodAttachStrands is the strand table this file's tests persist via SaveState; its one strand is bound to the first pane of goodAttachListPanes.
+// goodAttachSelvagePane is the console pane newAttachTestEngine records when the strand table is not empty; it is the first pane of goodAttachListPanes and sits in the shell window.
+const goodAttachSelvagePane = "%1"
+
+// goodAttachStrands is the strand table this file's tests persist via SaveState; its one strand is bound to the second pane of goodAttachListPanes.
 func goodAttachStrands() []Strand {
 	return []Strand{
-		{GUID: "a", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}},
+		{GUID: "a", PaneID: "%2", Display: render.Display{Anchor: render.AnchorOwnWindow}},
 	}
 }
 
@@ -73,7 +76,11 @@ func goodAttachStrands() []Strand {
 func newAttachTestEngine(t *testing.T, strands []Strand) (*Engine, *fakeTmux) {
 	t.Helper()
 	e := newTestEngine(t)
-	if err := SaveState(e.stateDir(), &ReedState{Strands: strands}); err != nil {
+	persisted := &ReedState{Strands: strands}
+	if len(strands) > 0 {
+		persisted.SelvagePaneID = goodAttachSelvagePane
+	}
+	if err := SaveState(e.stateDir(), persisted); err != nil {
 		t.Fatalf("SaveState: %v", err)
 	}
 	fake := installFakeTmux(t, e)
@@ -188,8 +195,8 @@ func TestAttachArgv_PreflightOnAKnownGoodSession(t *testing.T) {
 	want := e.AttachArgv(80, 24)
 	assertBareArgv(t, e, want)
 
-	// The five bar pins plus the window-size pin, the one follow-command pin (set, or unset when the jump cannot be composed), the build-stamp unset, the window marker and the strand pane's two options.
-	wantSetOptionCalls := 11 + wantShellPins
+	// The five bar pins plus the window-size pin, the one follow-command pin (set, or unset when the jump cannot be composed), the build-stamp unset, the window marker, the strand pane's two options and the console marker on the recorded Selvage pane.
+	wantSetOptionCalls := 12 + wantShellPins
 	if setOptions := fake.ArgvFor("set-option"); len(setOptions) != wantSetOptionCalls {
 		t.Fatalf("AttachArgv() issued %d set-option calls, want %d: %v", len(setOptions), wantSetOptionCalls, setOptions)
 	}
@@ -237,7 +244,7 @@ func TestAttachArgv_PreflightOnAKnownGoodSession(t *testing.T) {
 	}
 }
 
-// assertStrandOptionsReasserted asserts the pre-flight marked the strand window and set the pane options on the live bound pane %1, and none on the unbound pane %2.
+// assertStrandOptionsReasserted asserts the pre-flight marked the strand window and set the pane options on the live bound pane %2, and none on the console pane %1.
 // It also asserts the pre-flight issued exactly wantShellPins session shell pins, none where the configured shell does not resolve.
 func assertStrandOptionsReasserted(t *testing.T, fake *fakeTmux, wantShellPins int) {
 	t.Helper()
@@ -251,8 +258,8 @@ func assertStrandOptionsReasserted(t *testing.T, fake *fakeTmux, wantShellPins i
 			marked = true
 		case containsArg(argv, "@strand"):
 			labeled = true
-			if !containsArg(argv, "%1") {
-				t.Errorf("@strand set with %v, want it on the bound pane %%1 only", argv)
+			if !containsArg(argv, "%2") {
+				t.Errorf("@strand set with %v, want it on the bound pane %%2 only", argv)
 			}
 		}
 	}
@@ -266,7 +273,7 @@ func assertStrandOptionsReasserted(t *testing.T, fake *fakeTmux, wantShellPins i
 
 // relevantWindowFixture returns the state and the scripted window listings of a session with the shell window @0, the overview @3 at index 0 and two agent windows, alpha @1 and beta @2 in start order.
 // alphaDead and betaDead mark that agent's pane dead.
-// The strands also hold the window 0 strand of goodAttachStrands.
+// The strands also hold the strand of goodAttachStrands, whose pane is not listed.
 func relevantWindowFixture(alphaDead, betaDead bool) (strands []Strand, windows, panes string) {
 	flag := func(dead bool) string {
 		if dead {

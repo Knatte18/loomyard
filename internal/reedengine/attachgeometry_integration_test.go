@@ -120,7 +120,7 @@ func setupAttachGeometryFixture(t *testing.T) *Engine {
 
 	parent, err := e.AddStrand(AddSpec{
 		Cmd:     "sleep 300",
-		Display: render.Display{Anchor: render.AnchorBelowParent},
+		Display: render.Display{Anchor: render.AnchorOwnWindow},
 	})
 	if err != nil {
 		t.Fatalf("AddStrand(parent): %v", err)
@@ -128,7 +128,7 @@ func setupAttachGeometryFixture(t *testing.T) *Engine {
 	if _, err := e.AddStrand(AddSpec{
 		Cmd:     "sleep 300",
 		Parent:  parent.GUID,
-		Display: render.Display{Anchor: render.AnchorBelowParent},
+		Display: render.Display{Anchor: render.AnchorOwnWindow},
 	}); err != nil {
 		t.Fatalf("AddStrand(child): %v", err)
 	}

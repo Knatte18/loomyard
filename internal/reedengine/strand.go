@@ -60,24 +60,27 @@ type Removed struct {
 
 // validateDisplay rejects an invalid Display at the op boundary,
 // before any pane is launched or state persisted.
-// The anchor must be below-parent, hidden, top, own-window or overview, and render must accept the whole display.
+// The anchor must be hidden, own-window or overview, and render must accept the whole display.
+// The retired below-parent and top anchors are refused with the way forward.
 // An overview display takes no window group, since it always gets the window of its own.
 func validateDisplay(display render.Display) error {
 	switch display.Anchor {
-	case render.AnchorBelowParent, render.AnchorHidden, render.AnchorTop, render.AnchorOwnWindow:
+	case render.AnchorHidden, render.AnchorOwnWindow:
 		return render.ValidateDisplay(display)
+	case "below-parent", "top":
+		return fmt.Errorf("anchor %q is retired; way forward: use %s", display.Anchor, render.AnchorOwnWindow)
 	case render.AnchorOverview:
 		if display.Window != "" || display.WindowSize != 0 {
 			return fmt.Errorf("anchor %q takes no window group; way forward: drop the group, or use %s", display.Anchor, render.AnchorOwnWindow)
 		}
 		return render.ValidateDisplay(display)
 	default:
-		return fmt.Errorf("invalid anchor %q; want below-parent|hidden|top|own-window|overview", display.Anchor)
+		return fmt.Errorf("invalid anchor %q; want own-window|hidden|overview", display.Anchor)
 	}
 }
 
 // refuseWindowMove refuses an update that moves a strand into or out of the own-window or overview anchor, between those two, or changes an own-window strand's window group.
-// A strand's pane lives in window 0 or in a window of its own from launch on, so such a move would strand the pane where the new display does not expect it.
+// A strand's pane lives in a window of its own from launch on, so such a move would strand the pane where the new display does not expect it.
 // The error names the way forward: remove the strand and add it again.
 func refuseWindowMove(name string, current, next render.Display) error {
 	if isOwnWindow(current) != isOwnWindow(next) || isOverview(current) != isOverview(next) {
@@ -512,6 +515,10 @@ func (e *Engine) AddStrandUnless(spec AddSpec, unlessName string) (Strand, bool,
 		// it must surface before the session pre-flight below — a rejected call must never deposit
 		// a spawned tmux server as residue over what is actually a missing --name.
 		if err := validateIfAbsent(spec); err != nil {
+			return err
+		}
+		// A display naming a retired or unknown anchor is refused here too, so a refused add boots no server.
+		if err := validateDisplay(spec.Display); err != nil {
 			return err
 		}
 		// Likewise a name no told prefix can form: refused before the pre-flight so it never boots a tmux server.

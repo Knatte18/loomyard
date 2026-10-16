@@ -51,7 +51,7 @@ func TestSmokeSelvage(t *testing.T) {
 		RunCLIIn(prime, &buf, []string{"down"})
 	})
 
-	// SurvivesUpAddRemoveAndReconcile pins Selvage's keepalive guarantee: the always-present Selvage pane must survive a full up -> add -> remove -> add cycle and every reconcile along the way, and it is never a strand's pane — because a strand's pane is always a fresh split (planPaneTarget never targets Selvage while any non-Selvage pane exists), and Selvage is exempt from both halves of reconcile's kill schedule — and, the whole point, still alive even when the strand table momentarily drops to zero after a remove.
+	// SurvivesUpAddRemoveAndReconcile pins Selvage's keepalive guarantee: the always-present Selvage pane must survive a full up -> add -> remove -> add cycle and every reconcile along the way, and it is never a strand's pane — because a strand's pane is always created fresh in a window of its own, and Selvage is exempt from both halves of reconcile's kill schedule — and, the whole point, still alive even when the strand table momentarily drops to zero after a remove.
 	// It mirrors TestSmokeLifecycle/UpWithOnlyForeignPanesKeepsSessionUsable's tmux-driven verification style (list-panes via the real binary, not reed's own reporting) but for Selvage instead of a foreign pane.
 	if !t.Run("SurvivesUpAddRemoveAndReconcile", func(t *testing.T) {
 		restartSession(t, prime)
@@ -71,7 +71,7 @@ func TestSmokeSelvage(t *testing.T) {
 		requireSelvageAlive("right after up (zero strands)")
 
 		// add: the preceding up's own reconcile already reaped the session's pre-Selvage pane (the same zero-strands-plus-alive-Selvage reap TestSmokeLifecycle/UpWithOnlyForeignPanesKeepsSessionUsable pins), so Selvage is the session's only pane when this first strand is added.
-		// planPaneTarget's Selvage-as-last-resort fallback then splits off Selvage itself — Selvage stays alive as the split TARGET, and the strand lands on the freshly split pane, never on Selvage.
+		// The strand then lands on a pane in a window of its own, never on Selvage.
 		guid := addStrandIn(t, prime, "pwsh -NoExit -Command Write-Host ready", "--name", "first")
 		requireSelvageAlive("after add")
 

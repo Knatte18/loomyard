@@ -102,9 +102,9 @@ func TestOwnWindow_RealTmux(t *testing.T) {
 		return StrandStatus{}, false
 	}
 	ownDisplay := render.Display{Anchor: render.AnchorOwnWindow}
-	windowZero := render.Display{Anchor: render.AnchorBelowParent}
+	hiddenDisplay := render.Display{Anchor: render.AnchorHidden}
 
-	if _, err := e.AddStrand(AddSpec{Role: "base", Cmd: "sleep 300", Display: windowZero}); err != nil {
+	if _, err := e.AddStrand(AddSpec{Role: "base", Cmd: "sleep 300", Display: ownDisplay}); err != nil {
 		t.Fatalf("AddStrand(base): %v", err)
 	}
 
@@ -157,24 +157,15 @@ func TestOwnWindow_RealTmux(t *testing.T) {
 		if err != nil {
 			t.Fatalf("AddStrand(dying own-window): %v", err)
 		}
-		dyingZero, err := e.AddStrand(AddSpec{Role: "dying-zero", Cmd: "exit", Display: windowZero})
-		if err != nil {
-			t.Fatalf("AddStrand(dying window 0): %v", err)
-		}
 		waitUntil(t, 10*time.Second, "dying own-window pane never died", func() bool { return paneDead(dyingOwn.PaneID) })
-		waitUntil(t, 10*time.Second, "dying window 0 pane never died", func() bool { return paneDead(dyingZero.PaneID) })
 
-		if _, err := e.AddStrand(AddSpec{Role: "later", Cmd: "sleep 300", Display: windowZero}); err != nil {
+		if _, err := e.AddStrand(AddSpec{Role: "later", Cmd: "sleep 300", Display: ownDisplay}); err != nil {
 			t.Fatalf("AddStrand(later): %v", err)
 		}
 
 		own, ok := statusOf(dyingOwn.GUID)
 		if !ok || own.PaneID != dyingOwn.PaneID || own.Live || !own.Present {
 			t.Errorf("Status of the dead own-window strand = %+v (found %v), want it bound to %s, not live and present", own, ok, dyingOwn.PaneID)
-		}
-		zero, ok := statusOf(dyingZero.GUID)
-		if !ok || zero.PaneID != "" || zero.Present {
-			t.Errorf("Status of the dead window 0 strand = %+v (found %v), want its pane killed and its binding cleared", zero, ok)
 		}
 	})
 
@@ -192,7 +183,7 @@ func TestOwnWindow_RealTmux(t *testing.T) {
 			t.Fatalf("mark the orphan own: %v", err)
 		}
 
-		if _, err := e.AddStrand(AddSpec{Role: "after-orphan", Cmd: "sleep 300", Display: windowZero}); err != nil {
+		if _, err := e.AddStrand(AddSpec{Role: "after-orphan", Cmd: "sleep 300", Display: ownDisplay}); err != nil {
 			t.Fatalf("AddStrand(after-orphan): %v", err)
 		}
 
@@ -222,7 +213,7 @@ func TestOwnWindow_RealTmux(t *testing.T) {
 	t.Run("UpdateStrandRefusesAMoveOutOfOwnWindow", func(t *testing.T) {
 		ownWindow := windowOfPane(t, e, explorer.PaneID)
 
-		_, err := e.UpdateStrand(explorer.GUID, windowZero)
+		_, err := e.UpdateStrand(explorer.GUID, hiddenDisplay)
 		if err == nil || !strings.Contains(err.Error(), "way forward: lyx reed remove") {
 			t.Fatalf("UpdateStrand = %v, want a refusal naming lyx reed remove", err)
 		}

@@ -45,6 +45,10 @@ func (e *Engine) ReplaceStrand(guid string, spec AddSpec) (Strand, error) {
 		if _, err := e.validateNaming(spec); err != nil {
 			return err
 		}
+		// Refused before the old strand is removed and its pane killed: addStrandLocked's own check comes too late to keep it.
+		if err := validateDisplay(spec.Display); err != nil {
+			return err
+		}
 		if err := validateWindowConfig(e.cfg); err != nil {
 			return err
 		}

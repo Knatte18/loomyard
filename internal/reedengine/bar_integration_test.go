@@ -31,12 +31,12 @@ func newBarFixture(t *testing.T) *barFixture {
 	if _, err := e.Up(); err != nil {
 		t.Fatalf("Up: %v", err)
 	}
-	below := render.Display{Anchor: render.AnchorBelowParent}
-	alpha, err := e.AddStrand(AddSpec{NameOverride: "alpha", Segment: "review", Cmd: "sleep 300", Display: below})
+	own := render.Display{Anchor: render.AnchorOwnWindow}
+	alpha, err := e.AddStrand(AddSpec{NameOverride: "alpha", Segment: "review", Cmd: "sleep 300", Display: own})
 	if err != nil {
 		t.Fatalf("AddStrand(alpha): %v", err)
 	}
-	beta, err := e.AddStrand(AddSpec{NameOverride: "beta", Segment: "plan", Cmd: "sleep 300", Display: below})
+	beta, err := e.AddStrand(AddSpec{NameOverride: "beta", Segment: "plan", Cmd: "sleep 300", Display: own})
 	if err != nil {
 		t.Fatalf("AddStrand(beta): %v", err)
 	}

@@ -153,7 +153,7 @@ func TestAddStrand_LogsAttributionOnlyOnColdBoot(t *testing.T) {
 
 	const attributionLine = "reed: add self-healed a cold worktree's session"
 
-	if _, err := e.AddStrand(AddSpec{Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorBelowParent}}); err != nil {
+	if _, err := e.AddStrand(AddSpec{Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorOwnWindow}}); err != nil {
 		t.Fatalf("AddStrand (cold) = %v, want a nil error", err)
 	}
 	if !strings.Contains(logs.String(), attributionLine) {
@@ -161,7 +161,7 @@ func TestAddStrand_LogsAttributionOnlyOnColdBoot(t *testing.T) {
 	}
 
 	logs.Reset()
-	if _, err := e.AddStrand(AddSpec{Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorBelowParent}}); err != nil {
+	if _, err := e.AddStrand(AddSpec{Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorOwnWindow}}); err != nil {
 		t.Fatalf("AddStrand (warm) = %v, want a nil error", err)
 	}
 	if strings.Contains(logs.String(), attributionLine) {

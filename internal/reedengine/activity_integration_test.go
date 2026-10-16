@@ -17,11 +17,11 @@ func TestOperatorActive_ReadsAnAttachedClientsKeystroke(t *testing.T) {
 	if _, err := e.Up(); err != nil {
 		t.Fatalf("Up: %v", err)
 	}
-	strand, err := e.AddStrand(AddSpec{Cmd: "cat", Display: render.Display{Anchor: render.AnchorBelowParent}})
+	strand, err := e.AddStrand(AddSpec{Cmd: "cat", Display: render.Display{Anchor: render.AnchorOwnWindow}})
 	if err != nil {
 		t.Fatalf("AddStrand: %v", err)
 	}
-	other, err := e.AddStrand(AddSpec{Cmd: "cat", Display: render.Display{Anchor: render.AnchorBelowParent}})
+	other, err := e.AddStrand(AddSpec{Cmd: "cat", Display: render.Display{Anchor: render.AnchorOwnWindow}})
 	if err != nil {
 		t.Fatalf("AddStrand(other): %v", err)
 	}

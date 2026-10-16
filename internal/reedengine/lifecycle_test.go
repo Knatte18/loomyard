@@ -323,10 +323,10 @@ func TestStripAgentNameEnv_DropsNameAndParentOnly(t *testing.T) {
 func TestPlanUpLaunches_NeverLaunchesAnyStrand(t *testing.T) {
 	tables := [][]Strand{
 		nil,
-		{{GUID: "a", Display: render.Display{Anchor: render.AnchorBelowParent}}},
+		{{GUID: "a", Display: render.Display{Anchor: render.AnchorOwnWindow}}},
 		{
 			{GUID: "a", Display: render.Display{Anchor: render.AnchorHidden}},
-			{GUID: "b", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}},
+			{GUID: "b", PaneID: "%1", Display: render.Display{Anchor: render.AnchorOwnWindow}},
 		},
 	}
 	for _, strands := range tables {
@@ -464,8 +464,8 @@ func TestPruneServerLogsLocked_ServerAndClientPrefixesPrunedIndependently(t *tes
 }
 
 func TestPlanResumeLaunches_ThreeLifecycleStates(t *testing.T) {
-	notLive := Strand{GUID: "a", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}}
-	stillLive := Strand{GUID: "b", PaneID: "%2", Display: render.Display{Anchor: render.AnchorBelowParent}}
+	notLive := Strand{GUID: "a", PaneID: "%1", Display: render.Display{Anchor: render.AnchorOwnWindow}}
+	stillLive := Strand{GUID: "b", PaneID: "%2", Display: render.Display{Anchor: render.AnchorOwnWindow}}
 	hidden := Strand{GUID: "c", Display: render.Display{Anchor: render.AnchorHidden}}
 	withDoneWhen := func(s Strand, paths ...string) Strand {
 		s.DoneWhen = paths
