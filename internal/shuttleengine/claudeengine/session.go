@@ -173,8 +173,43 @@ func (c *Claude) SubmitSettle() time.Duration {
 // ClearInputSequence returns one C-u, which deletes from the caret to the start of the line.
 // Sent text is one line with the caret at its end, and so is a lone stray-character candidate, so that empties the box;
 // C-u is neither Escape nor C-c, so it never interrupts a running turn.
+// A restored multi-line prompt takes RestoredPromptClearSequence instead, since one C-u deletes only the caret's row.
 func (c *Claude) ClearInputSequence() []shuttleengine.PaneInput {
 	return []shuttleengine.PaneInput{{Key: "C-u"}}
+}
+
+var _ shuttleengine.RestoredPromptClearer = (*Claude)(nil)
+
+// RestoredPromptClearSequence returns the keys that empty the input box capture shows, a plain capture holding the prompt of a turn that was just interrupted.
+// The box's lines are counted from the first interior row that holds text to the last, blank rows between them included.
+// For n lines it returns n C-u with one BSpace between each pair: C-u deletes the caret's row, and a BSpace at a row's start joins it to the row above.
+// A capture with no box, or a box with no text, answers no keys.
+// The sequence holds no Escape, C-c or Enter, so it never interrupts a running turn.
+func (c *Claude) RestoredPromptClearSequence(capture string) []shuttleengine.PaneInput {
+	interior, ok := inputBoxInterior(capture)
+	if !ok {
+		return nil
+	}
+	stripper := strings.NewReplacer(gateCaretMarker, "", "│", "")
+	first, last := -1, -1
+	for i, row := range interior {
+		if strings.TrimSpace(stripper.Replace(row)) == "" {
+			continue
+		}
+		if first == -1 {
+			first = i
+		}
+		last = i
+	}
+	if first == -1 {
+		return nil
+	}
+	lines := last - first + 1
+	keys := []shuttleengine.PaneInput{{Key: "C-u"}}
+	for i := 1; i < lines; i++ {
+		keys = append(keys, shuttleengine.PaneInput{Key: "BSpace"}, shuttleengine.PaneInput{Key: "C-u"})
+	}
+	return keys
 }
 
 // pasteSubmitsOnEnter is whether an Enter right after a bracketed paste's end submits the pasted text in Claude Code.

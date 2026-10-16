@@ -343,6 +343,38 @@ func TestClearInputSequence(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("ClearInputSequence = %#v; want %#v", got, want)
 	}
+
+	rule := "────────────────────────────────"
+	box := func(rows ...string) string {
+		return rule + "\n" + strings.Join(rows, "\n") + "\n" + rule + "\n  ? for shortcuts\n"
+	}
+	clear, join := shuttleengine.PaneInput{Key: "C-u"}, shuttleengine.PaneInput{Key: "BSpace"}
+	restoredTests := []struct {
+		name    string
+		capture string
+		want    []shuttleengine.PaneInput
+	}{
+		{"restored prompt fixture, three rows", plainBox(readPaneFixture(t, "pane-restored-prompt-styled.txt")), []shuttleengine.PaneInput{clear, join, clear, join, clear}},
+		{"two rows", box("❯ first", "  second"), []shuttleengine.PaneInput{clear, join, clear}},
+		{"blank middle row", box("❯ first", "", "  third"), []shuttleengine.PaneInput{clear, join, clear, join, clear}},
+		{"one row", box("❯ only"), []shuttleengine.PaneInput{clear}},
+		{"empty box", box("❯ "), nil},
+		{"no box", "● some transcript\n", nil},
+	}
+	for _, tt := range restoredTests {
+		t.Run("restored: "+tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := New().RestoredPromptClearSequence(tt.capture)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("RestoredPromptClearSequence = %#v; want %#v", got, tt.want)
+			}
+			for _, input := range got {
+				if input.Key == "Escape" || input.Key == "C-c" || input.Key == "Enter" {
+					t.Errorf("RestoredPromptClearSequence holds %q, which interrupts or submits", input.Key)
+				}
+			}
+		})
+	}
 }
 
 func TestPastePlaceholder(t *testing.T) {

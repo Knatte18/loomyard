@@ -161,6 +161,7 @@
 // ComposeSend is the text step and the Enter, TypeSequence the text step alone, and the session commands and the color command are their text and an Enter with no pause between them.
 // ClearInputSequence is one `C-u`, which deletes from the caret to the start of the line and so empties a one-line draft without interrupting a running turn.
 // It serves sent text and a lone stray-character candidate alike, since both are one line with the caret at its end.
+// RestoredPromptClearSequence is the clear beside it for the prompt an interrupt restored into the box: sized from the box capture, it is n `C-u` with one `BSpace` between each pair for n box lines, since one `C-u` deletes only the caret's row and a `BSpace` at a row's start joins it to the row above.
 // OwnPastePlaceholder recognises the `[Pasted text #<n>]` or `[Pasted text #<n> +<m> lines]` form Claude Code collapses a pasted draft into, which a box reading cannot otherwise match against the pasted text.
 // It answers true only for a text of at least `PasteCollapseMinChars` characters, whose newline count equals `m` when the placeholder shows one.
 // The box reading takes a box holding only a lone `%`, the shell's end-of-line mark, as empty.

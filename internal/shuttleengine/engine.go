@@ -294,6 +294,15 @@ type InputBoxClearer interface {
 	ClearInputSequence() []PaneInput
 }
 
+// RestoredPromptClearer is an optional capability beside Engine: the provider's way of emptying an input box that holds the prompt of a turn lyx's own interrupt just stopped, which the provider restored there.
+// Such a prompt can span several box lines, so the clear is sized from the capture of the box.
+type RestoredPromptClearer interface {
+	// RestoredPromptClearSequence returns the keys that empty the input box capture shows.
+	// The sequence holds no Escape, C-c or Enter, only deletes box text, and is at most two keys per box line the capture shows.
+	// A capture showing no box text, or no box, answers no keys.
+	RestoredPromptClearSequence(capture string) []PaneInput
+}
+
 // StrayInputReader is an optional capability beside Engine: the provider's judgment of whether its input box holds a lone stray character.
 // The judgment is the provider's, since what a stray character looks like on screen is provider knowledge.
 type StrayInputReader interface {
