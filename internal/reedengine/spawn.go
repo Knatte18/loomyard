@@ -66,9 +66,7 @@ func sendKeysLiteralArg(text string) string {
 // This does not call SaveState: AddStrand and UpdateStrand only persist after this function returns
 // nil, so a split-window or send-keys failure here returns with panes already killed in tmux while
 // the corresponding binding clears live only in memory — reed.json itself is untouched. That window
-// is accepted rather than closed, because it is self-healing (Status and toRenderStrands derive
-// liveness from the live pane set, never the persisted binding, and the next mutating verb's own
-// reconcile clears the now-stale bindings for real) and because closing it here would be worse:
+// is accepted rather than closed, because it is self-healing (Status derives liveness from the live pane set, never the persisted binding, and the next mutating verb's own reconcile clears the now-stale bindings for real) and because closing it here would be worse:
 // persisting inside this helper would write the half-added strand record on the add path, turning a
 // clean failure into a phantom strand Resume would later try to launch. If this window ever needs
 // closing, the right shape is reaping before the strand record is appended to st.Strands, not
@@ -437,7 +435,7 @@ func (e *Engine) loadOrInitStateLocked() (*ReedState, error) {
 }
 
 // reconcileApplyPersistLocked fetches current panes, reconciles dead
-// pane bindings, reapplies the layout, and persists the state. It is the
+// pane bindings, and persists the state. It is the
 // shared tail every public op composes after mutation.
 func (e *Engine) reconcileApplyPersistLocked(st *ReedState) ([]LivePane, error) {
 	live, windows, err := e.listStrandAndWindowPanes(st)
@@ -450,18 +448,14 @@ func (e *Engine) reconcileApplyPersistLocked(st *ReedState) ([]LivePane, error) 
 		return nil, fmt.Errorf("reconcile: %w", err)
 	}
 	if len(killed) > 0 {
-		// Order matters: kill dead -> re-enumerate live -> compute layout
-		// -> apply. The kill-pane calls above mutate the pane set the next
-		// select-layout must enumerate, so enumeration must follow them.
+		// The kill-pane calls above changed the pane set.
+		// Callers read the returned panes, so enumeration must follow them.
 		live, err = e.listStrandPanes(st)
 		if err != nil {
 			return nil, fmt.Errorf("list panes after reconcile: %w", err)
 		}
 	}
 
-	if err := e.applyLayoutLocked(st, live); err != nil {
-		return nil, fmt.Errorf("apply layout: %w", err)
-	}
 	if err := SaveState(e.stateDir(), st); err != nil {
 		return nil, fmt.Errorf("save state: %w", err)
 	}

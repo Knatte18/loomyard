@@ -20,7 +20,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
-	"github.com/Knatte18/loomyard/internal/shell"
 )
 
 func guids(strands []Strand) []string {
@@ -181,65 +180,27 @@ func TestServerSpawnArgv(t *testing.T) {
 	}
 }
 
-// TestPinBootOptionsLocked_InstallsTheSignalEntry pins that a fresh boot's pins end in a zero-pin rebuild of the window-resized hook array when the watchdog is on, the clear and the signal entry alone,
-// and that watchdog off leaves the one unset and installs no entry.
-// Both steps also see the unseen-clear hook pinned once.
-// Windows issues no hook call and cannot be faked, so both steps skip there.
-func TestPinBootOptionsLocked_InstallsTheSignalEntry(t *testing.T) {
-	bootPins := func(t *testing.T, watchdog string) (*Engine, *fakeTmux) {
-		t.Helper()
-		if runtime.GOOS == "windows" {
-			t.Skip("the window-resized hook is never installed on Windows")
-		}
-		e := newTestEngine(t)
-		e.cfg.Watchdog = watchdog
-		fake := installFakeTmux(t, e)
-		if err := e.pinBootOptionsLocked("off", ""); err != nil {
-			t.Fatalf("pinBootOptionsLocked() = %v, want nil", err)
-		}
-		return e, fake
+// TestPinBootOptionsLocked_ClearsTheWindowResizedHook pins that a fresh boot unpins the window-resized hook in both scopes and installs no entry, whatever the watchdog value.
+// Windows issues no hook call and cannot be faked, so it skips there.
+func TestPinBootOptionsLocked_ClearsTheWindowResizedHook(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the window-resized hook is never touched on Windows")
 	}
-
-	t.Run("WatchdogOn", func(t *testing.T) {
-		e, fake := bootPins(t, "on")
-		target := exactSessionWindowTarget(e.SessionName())
-
-		var hooks [][]string
-		lastOption, firstHook := -1, -1
-		for i, call := range fake.Calls() {
-			switch {
-			case call[0] == "set-option":
-				lastOption = i
-			case call[0] == "set-hook" && containsArg(call, windowResizedHookName):
-				hooks = append(hooks, call)
-				if firstHook == -1 {
-					firstHook = i
-				}
+	for _, watchdog := range []string{"on", "off"} {
+		t.Run("Watchdog_"+watchdog, func(t *testing.T) {
+			e := newTestEngine(t)
+			e.cfg.Watchdog = watchdog
+			fake := installFakeTmux(t, e)
+			if err := e.pinBootOptionsLocked("off", ""); err != nil {
+				t.Fatalf("pinBootOptionsLocked() = %v, want nil", err)
 			}
-		}
-		assertUnseenClearHookPinned(t, e, fake)
-		want := [][]string{
-			{"set-hook", "-u", "-w", "-t", target, windowResizedHookName},
-			{"set-hook", "-w", "-t", target, windowResizedHookName, resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())},
-		}
-		if !slices.EqualFunc(hooks, want, slices.Equal[[]string]) {
-			t.Errorf("set-hook calls = %v, want the clear and the signal entry alone: %v", hooks, want)
-		}
-		if firstHook < lastOption {
-			t.Errorf("first set-hook call at %d precedes the last set-option call at %d, want the install after the geometry pins", firstHook, lastOption)
-		}
-	})
 
-	t.Run("WatchdogOff", func(t *testing.T) {
-		e, fake := bootPins(t, "off")
-
-		hooks := fake.SetHookCalls(windowResizedHookName)
-		assertUnseenClearHookPinned(t, e, fake)
-		want := [][]string{{"set-hook", "-u", "-t", exactSessionWindowTarget(e.SessionName()), windowResizedHookName}}
-		if !slices.EqualFunc(hooks, want, slices.Equal[[]string]) {
-			t.Errorf("set-hook calls = %v, want the one unset %v", hooks, want)
-		}
-	})
+			if got, want := fake.SetHookCalls(windowResizedHookName), wantResizedUnpins(exactSessionWindowTarget(e.SessionName())); !slices.EqualFunc(got, want, slices.Equal[[]string]) {
+				t.Errorf("set-hook calls naming %s = %v, want the two unpins and no installing entry: %v", windowResizedHookName, got, want)
+			}
+			assertUnseenClearHookPinned(t, e, fake)
+		})
+	}
 }
 
 // TestStatus_ReportsSegmentColor pins that Status carries each strand's resolved segment color, and none for a strand recorded without a segment.

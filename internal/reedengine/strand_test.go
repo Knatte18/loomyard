@@ -92,9 +92,6 @@ func TestAddStrandLocked(t *testing.T) {
 		{"OwnWindowNegativeWindowSize", AddSpec{Cmd: "x", Display: render.Display{Anchor: render.AnchorOwnWindow, WindowSize: -1}}},
 		{"MistypedAnchor", AddSpec{Cmd: "x", Display: render.Display{Anchor: render.Anchor("sideways")}}},
 		{"EmptyAnchor", AddSpec{Cmd: "x", Display: render.Display{Anchor: render.Anchor("")}}},
-		{"TopPositionalDisplay", AddSpec{Cmd: "x", Display: render.Display{Anchor: render.AnchorTop}}},
-		{"TopSharingDisplay", AddSpec{Cmd: "x", Display: render.Display{Anchor: render.AnchorTop, Size: render.Size{Kind: render.SizeSharing}}}},
-		{"ContentDisplayWithZeroShareDenominator", AddSpec{Cmd: "x", Display: render.Display{Anchor: render.AnchorBelowParent, Size: render.Size{Kind: render.SizeContent, ShareNum: 1, MinRows: 3}}}},
 	}
 	for _, tt := range rejected {
 		t.Run(tt.name, func(t *testing.T) {
@@ -133,7 +130,6 @@ func TestAddStrandLocked(t *testing.T) {
 			display render.Display
 			wantErr string
 		}{
-			{"SizeIgnored", render.Display{Anchor: render.AnchorOverview, Size: render.Size{Kind: render.SizeContent, ShareNum: 1, ShareDen: 8, MinRows: 3}}, ""},
 			{"WindowGroupRefused", render.Display{Anchor: render.AnchorOverview, Window: "table"}, "takes no window group"},
 			{"WindowSizeRefused", render.Display{Anchor: render.AnchorOverview, WindowSize: 2}, "takes no window group"},
 		}
@@ -259,7 +255,6 @@ func TestUpdateStrandLocked(t *testing.T) {
 	}{
 		{"VisibleToHiddenRejected", Strand{GUID: "g1", PaneID: "%1", Display: visible}, "g1", hidden, "cannot hide"},
 		{"MistypedAnchorRejected", Strand{GUID: "g1", PaneID: "%1", Display: visible}, "g1", render.Display{Anchor: render.Anchor("sideways")}, "invalid anchor"},
-		{"TopPositionalDisplayRejected", Strand{GUID: "g1", PaneID: "%1", Display: visible}, "g1", render.Display{Anchor: render.AnchorTop}, "content-sized"},
 		{"UnknownGuidRejected", Strand{GUID: "g1", PaneID: "%1", Display: visible}, "does-not-exist", render.Display{}, "invalid anchor"},
 		{"BelowParentToOwnWindowRejected", Strand{GUID: "g1", PaneID: "%1", Display: visible}, "g1", own, moveWayForward},
 		{"OwnWindowToBelowParentRejected", Strand{GUID: "g1", PaneID: "%1", Display: own}, "g1", visible, moveWayForward},
@@ -1181,96 +1176,5 @@ func TestRemoveStrand_NeverKillsAPaneOutsideThisSession(t *testing.T) {
 		if id == siblingPane {
 			t.Fatalf("RemoveStrand issued kill-pane against %s, a pane outside this worktree's session; killed=%v", siblingPane, killed)
 		}
-	}
-}
-
-// TestSetContentRows pins the content-rows report against a state holding a top content strand on %1 and a positional strand on %2.
-// A count below 1 is refused before any tmux call.
-// An unknown name, a strand that is not content-sized and a pane that is not the strand's are refused with the recorded count unchanged and no layout applied.
-// A new count is persisted and applied with the pins and the hook rebuilt but no focus change, and the same count again touches nothing.
-func TestSetContentRows(t *testing.T) {
-	t.Parallel()
-
-	const (
-		contentName    = "tc:tslug:top"
-		positionalName = "tc:tslug:pos"
-	)
-	tests := []struct {
-		name       string
-		reportName string
-		paneID     string
-		rows       int
-		recorded   int
-		wantErr    bool
-		wantRows   int
-		wantApply  bool
-		wantNoTmux bool
-	}{
-		{name: "RowsBelowOneRefusedBeforeAnyTmuxCall", reportName: contentName, paneID: "%1", rows: 0, wantErr: true, wantNoTmux: true},
-		{name: "UnknownNameRefused", reportName: "tc:tslug:nobody", paneID: "%1", rows: 4, wantErr: true},
-		{name: "PositionalStrandRefused", reportName: positionalName, paneID: "%2", rows: 4, wantErr: true},
-		{name: "ContentStrandReportedFromAnotherPaneRefused", reportName: contentName, paneID: "%2", rows: 4, wantErr: true},
-		{name: "NewCountIsPersistedAndApplied", reportName: contentName, paneID: "%1", rows: 4, wantRows: 4, wantApply: true},
-		{name: "SameCountTouchesNeitherStateNorLayout", reportName: contentName, paneID: "%1", rows: 4, recorded: 4, wantRows: 4},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			e := newTestEngine(t)
-			fake := installIfAbsentTmux(t, e, "%1 0 0 100 10 4321\n%2 0 11 100 10 4321\n")
-			seeded := &ReedState{Strands: []Strand{
-				{GUID: "g-top", Name: contentName, PaneID: "%1", ContentRows: tt.recorded, Display: render.Display{Anchor: render.AnchorTop, Size: render.Size{Kind: render.SizeContent, ShareNum: 1, ShareDen: 3, MinRows: 3}}},
-				{GUID: "g-pos", Name: positionalName, PaneID: "%2", Display: render.Display{Anchor: render.AnchorBelowParent}},
-			}}
-			if err := SaveState(e.stateDir(), seeded); err != nil {
-				t.Fatalf("SaveState: %v", err)
-			}
-			statePath := filepath.Join(e.stateDir(), reedStateFileName)
-			stateBefore, err := os.ReadFile(statePath)
-			if err != nil {
-				t.Fatalf("read state: %v", err)
-			}
-
-			err = e.SetContentRows(tt.reportName, tt.paneID, tt.rows)
-
-			if (err != nil) != tt.wantErr {
-				t.Fatalf("SetContentRows(%q, %q, %d) error = %v, wantErr %v", tt.reportName, tt.paneID, tt.rows, err, tt.wantErr)
-			}
-			if tt.wantNoTmux {
-				if calls := fake.Calls(); len(calls) != 0 {
-					t.Errorf("SetContentRows issued tmux calls %v, want none", calls)
-				}
-			}
-			loaded, err := LoadState(e.stateDir())
-			if err != nil {
-				t.Fatalf("LoadState: %v", err)
-			}
-			if got := loaded.Strands[0].ContentRows; got != tt.wantRows {
-				t.Errorf("persisted ContentRows = %d, want %d", got, tt.wantRows)
-			}
-			if layouts := fake.Count("select-layout"); (layouts == 1) != tt.wantApply || layouts > 1 {
-				t.Errorf("select-layout issued %d time(s), want applied = %v", layouts, tt.wantApply)
-			}
-			if !tt.wantApply {
-				stateAfter, err := os.ReadFile(statePath)
-				if err != nil {
-					t.Fatalf("read state: %v", err)
-				}
-				if string(stateAfter) != string(stateBefore) {
-					t.Errorf("persisted state = %s, want unchanged %s", stateAfter, stateBefore)
-				}
-				return
-			}
-			if fake.Count("resize-pane") == 0 {
-				t.Error("no resize-pane pin issued for the content cell")
-			}
-			if fake.Count("set-hook") == 0 {
-				t.Error("window-resized hook array was not rebuilt")
-			}
-			if fake.Count("select-pane") != 0 {
-				t.Error("select-pane issued, want the operator's focus left alone")
-			}
-		})
 	}
 }

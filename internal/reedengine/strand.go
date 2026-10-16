@@ -675,56 +675,6 @@ func (e *Engine) UpdateStrand(guid string, display render.Display) (Strand, erro
 	return result, err
 }
 
-// SetContentRows records the visible content line count rows that the pane process of the content-sized strand named name reports, then re-applies the layout and its pins.
-// It refuses rows < 1 before taking any lock, and, each with an error naming the strand and the reason, an unknown name, a strand that is not content-sized, and a strand whose recorded pane is not paneID.
-// A count equal to the recorded one touches neither reed.json nor tmux.
-// It changes nothing but that strand's ContentRows and the layout and pins derived from it, and never moves the operator's focus.
-// The name and pane checks are what bound the operation: a hand-run or replaced pane process reports from a pane the strand does not hold, so it can resize no strand.
-func (e *Engine) SetContentRows(name, paneID string, rows int) error {
-	if rows < 1 {
-		return fmt.Errorf("content rows %d for strand %q must be at least 1", rows, name)
-	}
-	return e.withOpLockKeepingZoom(func() error {
-		if err := e.requireSessionLocked(); err != nil {
-			return err
-		}
-
-		st, err := e.loadOrInitStateLocked()
-		if err != nil {
-			return err
-		}
-
-		idx := strandNamed(st.Strands, name)
-		if idx == -1 {
-			return fmt.Errorf("unknown strand %q", name)
-		}
-		strand := &st.Strands[idx]
-		if strand.Display.Size.Kind != render.SizeContent {
-			return fmt.Errorf("strand %q is not content-sized", name)
-		}
-		if strand.PaneID != paneID {
-			return fmt.Errorf("strand %q holds pane %q, not the reporting pane %q", name, strand.PaneID, paneID)
-		}
-		if strand.ContentRows == rows {
-			return nil
-		}
-
-		strand.ContentRows = rows
-		if err := SaveState(e.stateDir(), st); err != nil {
-			return fmt.Errorf("persist content rows: %w", err)
-		}
-
-		live, err := e.listStrandPanes(st)
-		if err != nil {
-			return fmt.Errorf("list panes: %w", err)
-		}
-		if _, err := e.applyLayoutLockedOpts(st, live, applyOpts{SkipFocus: true, InstallPins: true}); err != nil {
-			return fmt.Errorf("apply layout: %w", err)
-		}
-		return nil
-	})
-}
-
 // safeReapRoot reports whether p's #{pane_pid} may be used as a descendant-closure root by a
 // pane-destroying op.
 // Only a still-running pane qualifies: tmux keeps reporting a dead pane's recorded #{pane_pid} long

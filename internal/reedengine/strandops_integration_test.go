@@ -17,12 +17,12 @@ import (
 )
 
 // TestStrandOps_RealTmux runs its steps in order on one cold session.
-// EmptyCmdLeavesALivePane relies on the three-strand stack ReplaceKeepsTopSlotAtCollapsedRows leaves behind and asserts only on its own strand.
+// EmptyCmdLeavesALivePane relies on the three-strand stack ReplaceKeepsTheTopSlot leaves behind and asserts only on its own strand.
 func TestStrandOps_RealTmux(t *testing.T) {
 	t.Parallel()
 	e := newColdScratchEngine(t)
 
-	t.Run("ReplaceKeepsTopSlotAtCollapsedRows", func(t *testing.T) {
+	t.Run("ReplaceKeepsTheTopSlot", func(t *testing.T) {
 		var added []Strand
 		for _, name := range []string{"top", "middle", "bottom"} {
 			s, err := e.AddStrand(AddSpec{
@@ -78,17 +78,9 @@ func TestStrandOps_RealTmux(t *testing.T) {
 			t.Fatalf("listPanes: %v", err)
 		}
 		var sawTop bool
-		windowRowZeroPane := paneIDsByTop(live)[0]
 		for _, p := range live {
 			if p.ID == after.Strands[0].PaneID {
 				sawTop = true
-				wantHeight := e.cfg.CollapsedRows
-				if p.ID == windowRowZeroPane {
-					wantHeight-- // the title row takes one row of the cell at window row 0
-				}
-				if p.Height != wantHeight {
-					t.Errorf("replacement pane height = %d, want %d (cfg.CollapsedRows, less the title row when it sits at window row 0)", p.Height, wantHeight)
-				}
 			}
 			if p.ID == added[0].PaneID {
 				t.Errorf("replaced strand's pane %s is still live", p.ID)

@@ -67,7 +67,4 @@ const (
 	// statusFormatSessions is status-format[1]: one button per session in the #{S:} loop's own session-id order, then the follow button, then the time right-aligned.
 	// Each loop body is wrapped in reedSessionFilter, so a session that does not count as reed's gets no button.
 	statusFormatSessions = listPrologueFormat + "#{S:#{?" + reedSessionFilter + "," + sessionButtonFormat + ",}," + "#{?" + reedSessionFilter + "," + currentSessionButtonFormat + ",}}" + followButtonFormat + "#[nolist align=right]%H:%M "
-
-	// paneBorderFormat is the pane-border title: " <@strand> " in the strand's color, bold on the active pane, and " selvage " for a pane without @strand.
-	paneBorderFormat = "#{?#{@strand},#[fg=" + strandColorFormat + "]#{?pane_active,#[bold],} #{@strand} #[default],#[default] selvage }"
 )

@@ -1,6 +1,5 @@
-// retiredkeys_test.go pins that a reed.json still carrying the retired display keys fixedRows and
-// shrinkWhenWaitingOnChild keeps loading, with both keys ignored: it decodes and lays out exactly
-// like one without them.
+// retiredkeys_test.go pins that a reed.json still carrying the retired display keys fixedRows, shrinkWhenWaitingOnChild and size, and the retired strand key contentRows, keeps loading with all ignored.
+// It decodes exactly like one without them.
 
 package reedengine
 
@@ -8,14 +7,12 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
 
 const retiredKeysState = `{
   "strands": [
     {"guid": "root", "paneId": "%1", "display": {"anchor": "below-parent", "focus": false, "shrinkWhenWaitingOnChild": true, "fixedRows": 3}},
-    {"guid": "leaf", "paneId": "%2", "display": {"anchor": "below-parent", "focus": true, "shrinkWhenWaitingOnChild": false, "fixedRows": 7}}
+    {"guid": "leaf", "paneId": "%2", "contentRows": 4, "display": {"anchor": "below-parent", "focus": true, "shrinkWhenWaitingOnChild": false, "fixedRows": 7, "size": {"kind": "content", "shareNum": 1, "shareDen": 3, "minRows": 2}}}
   ]
 }`
 
@@ -45,7 +42,7 @@ func loadStateFromJSON(t *testing.T, doc string) *ReedState {
 	return got
 }
 
-//testtiming:keep pins a reed.json still carrying the retired display keys loading with them ignored and laying out exactly like one without; its covering tests run this code without asserting it
+//testtiming:keep pins a reed.json still carrying the retired display keys, the size object and the strand's contentRows loading with them ignored and decoding exactly like one without; its covering tests run this code without asserting it
 func TestLoadState_RetiredDisplayKeysIgnoredAndLayoutUnchanged(t *testing.T) {
 	old := loadStateFromJSON(t, retiredKeysState)
 	current := loadStateFromJSON(t, currentKeysState)
@@ -57,20 +54,5 @@ func TestLoadState_RetiredDisplayKeysIgnoredAndLayoutUnchanged(t *testing.T) {
 		if old.Strands[i].Display != current.Strands[i].Display {
 			t.Errorf("strand %d Display = %+v, want %+v", i, old.Strands[i].Display, current.Strands[i].Display)
 		}
-	}
-
-	live := map[string]bool{"%1": true, "%2": true}
-	box := render.Box{W: 100, H: 30}
-	params := render.Params{CollapsedRows: 3, MinFullRows: 3}
-	wantLayout, wantFocus, err := render.Rules(toRenderStrands(current.Strands, live), box, params, nil)
-	if err != nil {
-		t.Fatalf("Rules(current): %v", err)
-	}
-	gotLayout, gotFocus, err := render.Rules(toRenderStrands(old.Strands, live), box, params, nil)
-	if err != nil {
-		t.Fatalf("Rules(retired keys): %v", err)
-	}
-	if gotLayout != wantLayout || gotFocus != wantFocus {
-		t.Errorf("layout = %q focus = %q, want %q focus %q", gotLayout, gotFocus, wantLayout, wantFocus)
 	}
 }

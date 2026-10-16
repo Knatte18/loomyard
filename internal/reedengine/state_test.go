@@ -1,5 +1,4 @@
-// state_test.go round-trips ReedState through Save/Load and verifies toRenderStrands' field mapping
-// and Live derivation.
+// state_test.go round-trips ReedState through Save/Load and pins the unreadable-file refusals.
 
 package reedengine
 
@@ -80,33 +79,6 @@ func TestSaveState_ThenLoadState_RoundTrips(t *testing.T) {
 	for i := range want.Strands {
 		if !reflect.DeepEqual(got.Strands[i], want.Strands[i]) {
 			t.Errorf("Strands[%d] = %+v, want %+v", i, got.Strands[i], want.Strands[i])
-		}
-	}
-}
-
-//testtiming:keep pins toRenderStrands mapping every strand field and marking Live only for panes in the set, without filtering; its covering tests run this code without asserting it
-func TestToRenderStrands_MapsFieldsAndSetsLiveFromPaneSet(t *testing.T) {
-	strands := []Strand{
-		{GUID: "g1", Parent: "", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent, Focus: true}},
-		{GUID: "g2", Parent: "g1", PaneID: "%2", Display: render.Display{Anchor: render.AnchorBelowParent}},
-		{GUID: "g3", Parent: "g1", PaneID: "", Display: render.Display{Anchor: render.AnchorHidden}},
-	}
-	liveIDs := map[string]bool{"%1": true}
-
-	got := toRenderStrands(strands, liveIDs)
-
-	if len(got) != len(strands) {
-		t.Fatalf("toRenderStrands returned %d strands, want %d (must map all, not filter)", len(got), len(strands))
-	}
-
-	want := []render.Strand{
-		{GUID: "g1", Parent: "", Display: strands[0].Display, PaneID: "%1", Live: true},
-		{GUID: "g2", Parent: "g1", Display: strands[1].Display, PaneID: "%2", Live: false},
-		{GUID: "g3", Parent: "g1", Display: strands[2].Display, PaneID: "", Live: false},
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("toRenderStrands()[%d] = %+v, want %+v", i, got[i], want[i])
 		}
 	}
 }

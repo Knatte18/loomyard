@@ -294,10 +294,8 @@ func (e *Engine) validateBootConfig() (debugArgs []string, mouse string, err err
 		return nil, "", err
 	}
 
-	// The boolean is discarded here: this is the one consumer of watchdogOption with an error
-	// channel, and its only job is to make a typo fail `lyx reed up` loudly and by name — the hook
-	// install (pinGeometryOptionsLocked) and the watch loop each read the key again and fail safe
-	// toward "no watchdog" instead.
+	// The boolean is discarded here: this is the one consumer of watchdogOption with an error channel.
+	// Its only job is to make a typo fail `lyx reed up` loudly and by name, since every other reader of the key fails safe toward "no watchdog" instead.
 	if _, err = watchdogOption(e.cfg.Watchdog); err != nil {
 		return nil, "", err
 	}
@@ -553,10 +551,8 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 }
 
 // pinBootOptionsLocked pins the options a fresh boot sets on the server and session it just spawned.
-// The `remain-on-exit` and `mouse` pins are correctness dependencies and fail the boot; the geometry pins and the hook install are non-fatal.
+// The `remain-on-exit` and `mouse` pins are correctness dependencies and fail the boot; the geometry pins, which include the `window-resized` unpin, are non-fatal.
 // Boot options never re-apply to an already-up session, which is why the attach pre-flight re-pins the geometry ones itself.
-// When the watchdog is on (POSIX only), it ends with a zero-pin rebuild of the window-resized hook array, the clear and the signal entry alone, so a session with fewer than two panes or no placed strand promotes its watcher out of poll mode without waiting for a layout apply.
-// That install sits here and not in pinGeometryOptionsLocked, which the attach pre-flight also runs: a degrading attach returns before its own install, and a zero-pin rebuild there would wipe the session's resize pins.
 // Assumes the op lock is already held.
 func (e *Engine) pinBootOptionsLocked(mouse, shellPath string) error {
 	// remain-on-exit keeps a pane whose command exits around as
@@ -580,12 +576,7 @@ func (e *Engine) pinBootOptionsLocked(mouse, shellPath string) error {
 	// support for both is unverified anywhere in this repo, so a capability
 	// reed cannot confirm must not be able to take the boot down (Shared
 	// Decision geometry-tmux-failures-are-non-fatal-everywhere).
-	target := exactSessionWindowTarget(e.SessionName())
-	e.pinGeometryOptionsLocked(target, shellPath)
-
-	if e.resizeSignalHookCommand() != "" {
-		e.installResizePinsLocked(target, nil)
-	}
+	e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()), shellPath)
 	return nil
 }
 

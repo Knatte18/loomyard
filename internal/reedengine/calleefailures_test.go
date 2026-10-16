@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
@@ -50,36 +49,6 @@ func TestCalleeFailuresLogOncePerEpisode(t *testing.T) {
 		wantInfoAfterHeal string
 	}{
 		{
-			name:    "live window size query",
-			fail:    failVerb("display-message"),
-			heal:    healVerb("display-message", "220 50"),
-			call:    func(e *Engine) { e.liveBoxLocked(exactSessionWindowTarget(e.SessionName())) },
-			failMsg: "falling back to configured box",
-			healMsg: "reed: live window size query answers again",
-		},
-		{
-			name: "malformed live window size answer joins the query episode",
-			fail: func(_ *Engine, f *fakeTmux, call int) {
-				if call%2 == 0 {
-					f.answer("display-message", "", errors.New("display-message failed"))
-					return
-				}
-				f.answer("display-message", "abc def", nil)
-			},
-			heal:    healVerb("display-message", "220 50"),
-			call:    func(e *Engine) { e.liveBoxLocked(exactSessionWindowTarget(e.SessionName())) },
-			failMsg: "falling back to configured box",
-			healMsg: "reed: live window size query answers again",
-		},
-		{
-			name:    "pane-border-status readback",
-			fail:    failVerb("display-message"),
-			heal:    healVerb("display-message", "top"),
-			call:    func(e *Engine) { e.readBorderTitleRowLocked(exactSessionWindowTarget(e.SessionName())) },
-			failMsg: "failed to read back pane-border-status",
-			healMsg: "reed: pane-border-status reads back again",
-		},
-		{
 			name:    "unzoom",
 			setup:   scriptZoomedWindow,
 			fail:    failVerb("resize-pane"),
@@ -117,14 +86,6 @@ func TestCalleeFailuresLogOncePerEpisode(t *testing.T) {
 			call:    keepZoomStep,
 			failMsg: "failed to re-zoom the strands' window",
 			healMsg: "reed: re-zooms the strands' window again",
-		},
-		{
-			name:    "pane height pin",
-			fail:    failVerb("resize-pane"),
-			heal:    healVerb("resize-pane", ""),
-			call:    func(e *Engine) { e.runResizePinsLocked([]render.Pin{{PaneID: "%2", Height: 10}}) },
-			failMsg: "failed to pin a pane height",
-			healMsg: "reed: pane height pin works again",
 		},
 		{
 			name: "live pane generation read",

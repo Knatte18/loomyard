@@ -80,7 +80,7 @@ func TestSmokeLifecycle(t *testing.T) {
 	}
 
 	// StackedAddsKeepEverySessionPane pins the composed split-path defect this round fixed:
-	// with several below-parent strands added in sequence, each add's session-target split-window must genuinely create a new pane rather than reusing an existing one — the old path could fail SILENTLY (exit 0, no new pane, prints an existing pane's id), binding the new strand to an existing pane, whose next select-layout's duplicate pane number made tmux destroy every pane in the session.
+	// with several below-parent strands added in sequence, each add's session-target split-window must genuinely create a new pane rather than reusing an existing one — the old path could fail SILENTLY (exit 0, no new pane, prints an existing pane's id), binding the new strand to an existing pane.
 	// The fix splits the tallest alive pane explicitly and hard-errors on a non-new reported id, so this sequence must now yield one live pane per visible strand, plus one more for the always-present Selvage pane.
 	if !t.Run("StackedAddsKeepEverySessionPane", func(t *testing.T) {
 		restartSession(t, prime)
@@ -114,10 +114,7 @@ func TestSmokeLifecycle(t *testing.T) {
 		return
 	}
 
-	// UpWithOnlyForeignPanesKeepsSessionUsable pins the empty-layout defect this round fixed:
-	// with ZERO strands tracked and a foreign pane in the session (an operator's raw split-window), the old apply emitted a layout string enumerating no cells, which tmux answers (exit 0) by destroying EVERY pane — leaving a zero-pane zombie session in which add fails forever ("session has no panes to split") while up kept reporting success.
-	// That empty-layout hazard is now covered at the unit tier by apply_test.go's TestApplyLayoutLockedOpts_GuardSkipsReturnZeroResult (applyLayoutLockedOpts' anyPlacedStrand guard skips select-layout whenever no strand owns a present pane): this fixture's two up calls always arrive at apply holding exactly one pane, well under the len(live) < 2 guard applyLayoutLockedOpts checks first, so the anyPlacedStrand branch is never even reached from here anymore.
-	// What this step still proves instead: with zero strands tracked, an ALIVE Selvage now authorizes reconcile's deterministic untracked-pane reap (reconcile.go), so an up against a session holding only foreign panes leaves a USABLE session — Selvage intact, every foreign pane gone — not the old zero-pane wedge, and a subsequent add comes up live on its own fresh pane without ever displacing Selvage.
+	// UpWithOnlyForeignPanesKeepsSessionUsable proves that with zero strands tracked, an ALIVE Selvage authorizes reconcile's deterministic untracked-pane reap (reconcile.go), so an up against a session holding only foreign panes leaves a USABLE session — Selvage intact, every foreign pane gone — not a zero-pane wedge, and a subsequent add comes up live on its own fresh pane without ever displacing Selvage.
 	if !t.Run("UpWithOnlyForeignPanesKeepsSessionUsable", func(t *testing.T) {
 		restartSession(t, prime)
 		socket, session := socketAndSessionIn(t, prime)
@@ -143,7 +140,7 @@ func TestSmokeLifecycle(t *testing.T) {
 		// The second up: with zero strands tracked and Selvage alive,
 		// reconcile's untracked reap fires again and kills the foreign pane too
 		// — this up must still exit 0 and leave the session usable, never the
-		// zero-pane wedge the old empty-layout-apply defect produced.
+		// zero-pane wedge.
 		mustRunReed(t, prime, "up")
 		if panes := listPaneLines(t, tmuxPath, socket, session); len(panes) != 1 || !paneLiveOnSession(panes, selvage) {
 			t.Fatalf("up with only a foreign pane must reap it, leaving exactly Selvage %s alive; got panes=%v", selvage, panes)
@@ -152,8 +149,7 @@ func TestSmokeLifecycle(t *testing.T) {
 		// The session must still be able to host a strand: the add both proves
 		// the substrate survived and (documented policy) deterministically reaps
 		// the untracked foreign pane via reconcile — the strand's own pane must
-		// be the one that survives, never the foreign one (psmux's positional
-		// layout reaping would pick an indeterminate victim).
+		// be the one that survives, never the foreign one (psmux's positional pane reaping would pick an indeterminate victim).
 		guid := addStrandIn(t, prime, "pwsh -NoExit -Command Write-Host ready", "--name", "after-foreign")
 		statusOut := mustRunReed(t, prime, "status")
 		strand, found := statusStrand(t, statusOut, guid)
@@ -236,9 +232,9 @@ func TestSmokeLifecycle(t *testing.T) {
 
 	// UpSurvivesAScrubbedStateFileWhileTheSessionIsUp is the end-to-end regression guard for the R4 review's R4-F4 and the M22 regression, driven at the CLI seam a real operator uses.
 	//
-	// Reproduced live before the R4-F4 fix: with the session up, a strand added and the default one-row Selvage band laid out, deleting .lyx/reed.json — a never-tracked machine-local tree the Durable-vs-Ephemeral State Invariant makes disposable, and exactly what `git clean -xdf` in the worktree removes — permanently wedged the worktree.
-	// `lyx reed up` and `lyx reed resume` both failed, on every subsequent invocation, with `split Selvage pane: exit status 1: no space for new pane`, because the physically bottom-most pane was now an UNTRACKED one-row Selvage band that tmux cannot split, while `lyx reed status` kept reporting the session healthy and nothing named the one escape (`down`, then `up`).
-	// A strand is added first so applyLayoutLocked actually applies reed's layout and the Selvage band is squeezed down to its configured one row — the whole precondition for the wedge.
+	// Reproduced live before the R4-F4 fix: with the session up and a strand added, deleting .lyx/reed.json — a never-tracked machine-local tree the Durable-vs-Ephemeral State Invariant makes disposable, and exactly what `git clean -xdf` in the worktree removes — permanently wedged the worktree.
+	// `lyx reed up` and `lyx reed resume` both failed, on every subsequent invocation, with `split Selvage pane: exit status 1: no space for new pane`, because the physically bottom-most pane was now an UNTRACKED short Selvage pane that tmux cannot split, while `lyx reed status` kept reporting the session healthy and nothing named the one escape (`down`, then `up`).
+	// The Selvage split is now a full-width `-f` split that takes its rows from the whole window, so a short bottom pane cannot refuse it.
 	//
 	// The recovering `up` must exit 0, and the M22 regression is that the scrubbed state converges on that `up` itself, not one verb later.
 	// The pre-fix defect converged one verb late — the recovering up left the old Selvage pane and the orphaned strand pane both untracked-but-alive alongside the freshly split Selvage pane, and only a FOLLOW-UP verb's reconcile cleared them.
@@ -249,7 +245,7 @@ func TestSmokeLifecycle(t *testing.T) {
 	// The orphaned strand pane's captured #{pane_pid} is polled gone too, under a bounded deadline (kill-pane terminates asynchronously) — smokeReapLaunchCmd's launched command is a CHILD of that pane's own process, not #{pane_pid} itself, so it is deliberately not what this step asserts on:
 	// the leak this pins is the pane and its own process, not the whole subtree (RemoveStrand's and Down's own tests pin subtree reaping).
 	//
-	// The Selvage-only, full-height end state is the accepted outcome, not a layout defect to "fix" by synthesizing a spacer pane: applyLayoutLockedOpts deliberately skips select-layout when no strand owns a present pane (anyPlacedStrand, apply.go).
+	// The Selvage-only, full-height end state is the accepted outcome, not a defect to "fix" by synthesizing a spacer pane.
 	// The following `add` proves the session is genuinely usable again, not merely non-erroring.
 	if !t.Run("UpSurvivesAScrubbedStateFileWhileTheSessionIsUp", func(t *testing.T) {
 		restartSession(t, prime)
@@ -299,8 +295,8 @@ func TestSmokeLifecycle(t *testing.T) {
 				t.Errorf("orphaned strand pane %s still present after the recovering up; want it reaped", oldStrandPaneID)
 			}
 		}
-		if fields := strings.Fields(panes[0]); len(fields) < 3 || fields[2] != "1" {
-			t.Errorf("rebuilt Selvage pane row %q; want pane_top 1 — as the session's sole pane, Selvage must land directly below the title row at the top of the window or select-layout misassigns its cell", panes[0])
+		if fields := strings.Fields(panes[0]); len(fields) < 3 || fields[2] != "0" {
+			t.Errorf("rebuilt Selvage pane row %q; want pane_top 0 — as the session's sole pane, Selvage must sit at the top of the window", panes[0])
 		}
 
 		pollProcessGone(t, oldStrandPID, 20*time.Second)

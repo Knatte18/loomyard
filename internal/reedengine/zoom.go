@@ -93,23 +93,3 @@ func (e *Engine) withBootOpLockKeepingZoom(fn func() error) error {
 		return e.keepZoomLocked(fn)
 	})
 }
-
-// zoomRecordHookBody is the window-resized hook entry that records a zoomed window in zoomRecordFlagOption and unzooms it.
-// It tests the zoom when the hook fires, not when the entry is built.
-const zoomRecordHookBody = "if-shell -F '#{window_zoomed_flag}' 'set-option -w " + zoomRecordFlagOption + " 1 ; resize-pane -Z'"
-
-// zoomRestoreHookBody is the window-resized hook entry that zooms the active pane again when zoomRecordHookBody recorded a zoom, and clears the record.
-const zoomRestoreHookBody = "if-shell -F '#{" + zoomRecordFlagOption + "}' 'resize-pane -Z ; set-option -wu " + zoomRecordFlagOption + "'"
-
-// zoomRecordChainArgv returns the attach-chain elements that record a zoomed windowTarget and unzoom it.
-// The chain runs in the client's context, so every command names the window explicitly.
-func zoomRecordChainArgv(windowTarget string) []string {
-	return []string{"if-shell", "-F", "-t", windowTarget, "#{window_zoomed_flag}",
-		"set-option -w -t " + windowTarget + " " + zoomRecordFlagOption + " 1 ; resize-pane -Z -t " + windowTarget}
-}
-
-// zoomRestoreChainArgv returns the attach-chain elements that zoom windowTarget's active pane again when zoomRecordChainArgv recorded a zoom, and clear the record.
-func zoomRestoreChainArgv(windowTarget string) []string {
-	return []string{"if-shell", "-F", "-t", windowTarget, "#{" + zoomRecordFlagOption + "}",
-		"resize-pane -Z -t " + windowTarget + " ; set-option -wu -t " + windowTarget + " " + zoomRecordFlagOption}
-}

@@ -76,11 +76,6 @@ func (f *barFixture) expand(t *testing.T, format string) string {
 	return strings.TrimSpace(mustTmuxOutput(t, f.e, "display-message", "-c", f.client, "-p", format))
 }
 
-func (f *barFixture) paneBorder(t *testing.T, paneID string) string {
-	t.Helper()
-	return strings.TrimSpace(mustTmuxOutput(t, f.e, "display-message", "-p", "-t", paneID, "#{E:pane-border-format}"))
-}
-
 func TestBar_LineOneButtonsFollowTheWindowZoomAndWaitMarks(t *testing.T) {
 	f := newBarFixture(t)
 	e := f.e
@@ -229,7 +224,7 @@ func TestBar_LineOneButtonsFollowTheWindowZoomAndWaitMarks(t *testing.T) {
 	}
 }
 
-func TestBar_LineTwoListsSessionsInIDOrderAndTheBorderNamesStrands(t *testing.T) {
+func TestBar_LineTwoListsSessionsInIDOrder(t *testing.T) {
 	f := newBarFixture(t)
 
 	// The current session is lit with its full name and the other is cut to 12 characters, in session-id order.
@@ -267,16 +262,5 @@ func TestBar_LineTwoListsSessionsInIDOrderAndTheBorderNamesStrands(t *testing.T)
 		if at < strings.LastIndex(line, other) || at > strings.Index(line, "nolist align=right") {
 			t.Errorf("line 2 with follow %s = %q, want the follow button after the last session button and before the time", tt.name, line)
 		}
-	}
-
-	if got := f.paneBorder(t, f.selvagePane); !strings.Contains(got, "selvage") || strings.Contains(got, "fg=") {
-		t.Errorf("Selvage's border title = %q, want it to read selvage with no strand color", got)
-	}
-	got := f.paneBorder(t, f.alpha.PaneID)
-	if !strings.Contains(got, "fg=colour208") || !strings.Contains(got, " alpha ") {
-		t.Errorf("alpha's border title = %q, want its name in its segment color", got)
-	}
-	if got := f.paneBorder(t, f.beta.PaneID); !strings.Contains(got, "fg=cyan") {
-		t.Errorf("beta's border title = %q, want its name in cyan", got)
 	}
 }

@@ -59,8 +59,8 @@ func newBindingsFixture(t *testing.T) *bindingsFixture {
 	if _, err := e.Up(); err != nil {
 		t.Fatalf("Up: %v", err)
 	}
-	// alpha is a top content strand above the positional beta, the prime's runs-above-orch shape.
-	topContent := render.Display{Anchor: render.AnchorTop, Size: render.Size{Kind: render.SizeContent, ShareNum: 1, ShareDen: 3, MinRows: 3}}
+	// alpha is a top strand above the positional beta, the prime's runs-above-orch shape.
+	topContent := render.Display{Anchor: render.AnchorTop}
 	below := render.Display{Anchor: render.AnchorBelowParent}
 	alpha, err := e.AddStrand(AddSpec{NameOverride: "alpha", Segment: "review", Cmd: "sleep 300", Display: topContent})
 	if err != nil {

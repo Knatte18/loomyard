@@ -287,10 +287,7 @@ func TestWindowOrder_RealTmux(t *testing.T) {
 		if _, err := e.RemoveStrand(overview.GUID, false); err != nil {
 			t.Fatalf("RemoveStrand(overview): %v", err)
 		}
-		top, err := e.AddStrand(AddSpec{NameOverride: "status", Cmd: "sleep 300", Display: render.Display{
-			Anchor: render.AnchorTop,
-			Size:   render.Size{Kind: render.SizeContent, ShareNum: 1, ShareDen: 8, MinRows: 3},
-		}})
+		top, err := e.AddStrand(AddSpec{NameOverride: "status", Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorTop}})
 		if err != nil {
 			t.Fatalf("AddStrand(top): %v", err)
 		}
