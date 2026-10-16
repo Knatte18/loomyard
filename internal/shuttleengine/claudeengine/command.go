@@ -188,11 +188,32 @@ const envFileKey = "CLAUDE_ENV_FILE"
 // envFileName is the file Prepare writes beside settings.json for envFileKey to name.
 const envFileName = "bash-env.sh"
 
-// envFileContent makes /dev/null the default stdin of the Bash tool's shell, so an interpreter left reading the tool's open stdin ends at once instead of hanging the session.
-// The file runs one `exec </dev/null` and nothing else.
-// It changes only the default stdin of the tool's own shell: a heredoc, pipe or redirect attached to a command still supplies that command's stdin,
+// envFileContentPosix is the env file's content on a host whose Bash tool reads native paths.
+// Its first statement makes /dev/null the default stdin of the Bash tool's shell, so an interpreter left reading the tool's open stdin ends at once instead of hanging the session.
+// Its second prepends the parent directory of the spawning binary's path, which reed's pane prelude exports in LYX_BIN, to PATH,
+// so the tool's shell resolves `lyx` to that binary after the operator's rc has reordered PATH.
+// It adds nothing when LYX_BIN is unset or empty.
+// The file runs those two statements and nothing else, and every expansion is double-quoted so a path with spaces holds.
+// It changes only the default stdin and PATH of the tool's own shell: a heredoc, pipe or redirect attached to a command still supplies that command's stdin,
 // a child `bash` the agent starts does not re-run the file, and it grants or denies nothing, so the agents' permission rules are untouched.
-const envFileContent = "exec </dev/null\n"
+const envFileContentPosix = "exec </dev/null\n" +
+	"if [ -n \"${" + agentname.LyxBinEnv + ":-}\" ]; then PATH=\"${" + agentname.LyxBinEnv + "%/*}:$PATH\"; fi\n"
+
+// envFileContentWindows is the env file's content on a Windows host, where LYX_BIN holds a native path the Bash tool's shell must convert first.
+// It behaves as the POSIX content, but converts LYX_BIN with `cygpath -u` into the scratch variable __lyx_bin_dir before taking the parent directory, and unsets the variable afterwards.
+// It changes nothing about PATH when `cygpath` is absent or LYX_BIN is unset or empty.
+const envFileContentWindows = "exec </dev/null\n" +
+	"if [ -n \"${" + agentname.LyxBinEnv + ":-}\" ] && command -v cygpath >/dev/null 2>&1; then " +
+	"__lyx_bin_dir=\"$(cygpath -u \"$" + agentname.LyxBinEnv + "\")\"; " +
+	"PATH=\"${__lyx_bin_dir%/*}:$PATH\"; unset __lyx_bin_dir; fi\n"
+
+// envFileContentFor returns the env file's content for the host goos names.
+func envFileContentFor(goos string) string {
+	if goos == "windows" {
+		return envFileContentWindows
+	}
+	return envFileContentPosix
+}
 
 // buildLaunchCmd composes the pane-shell line that starts a claude session.
 // A fresh session is named with --session-id;

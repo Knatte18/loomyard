@@ -18,8 +18,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 func guids(strands []Strand) []string {
@@ -604,6 +606,103 @@ func TestDown_ListsEveryWindowsPanesOverACorruptState(t *testing.T) {
 	}
 	if _, err := os.Stat(statePath); !os.IsNotExist(err) {
 		t.Errorf("stat %s error = %v; want the state file deleted", statePath, err)
+	}
+}
+
+// TestDown_WritesTheDiscoverStopOnlyWhenItEndsTheServer pins that Down asks the hub's watchdog to stop through the discover signal file exactly when it takes its server-teardown branch.
+// It also pins that a write failure or an unconfirmed server death never hides the stop or swallows the error, and that a cold boot's touch turns a stop back into an ordinary discover.
+// It is not parallel: logcapture redirects the process-global logger.
+func TestDown_WritesTheDiscoverStopOnlyWhenItEndsTheServer(t *testing.T) {
+	notGone := errors.New("server still holds the socket")
+	tests := []struct {
+		name            string
+		sessions        string
+		sessionsErr     error
+		noPathTold      bool
+		pathIsDirectory bool
+		goneErr         error
+		wantEnded       bool
+		wantMarker      bool
+		wantWarn        bool
+		wantErr         error
+	}{
+		{name: "LastSession", wantEnded: true, wantMarker: true},
+		{name: "ListingErrors", sessionsErr: errors.New("no server"), wantEnded: true, wantMarker: true},
+		{name: "SiblingLive", sessions: "sibling-session\n"},
+		{name: "NoPathTold", noPathTold: true, wantEnded: true},
+		{name: "PathIsDirectory", pathIsDirectory: true, wantEnded: true, wantWarn: true},
+		{name: "ServerNotConfirmedGone", goneErr: notGone, wantEnded: true, wantMarker: true, wantErr: notGone},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newTestEngine(t)
+			logs := logcapture.Capture(t)
+			scratch := fabricengine.HubScratchDir(e.geom.HubPath)
+			signalPath := filepath.Join(scratch, DiscoverSignalFileName)
+			if err := os.MkdirAll(scratch, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if !tt.noPathTold {
+				e.geom.DiscoverSignalPath = signalPath
+			}
+			if tt.pathIsDirectory {
+				if err := os.Mkdir(signalPath, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tt.goneErr != nil {
+				e.ensureServerGone = func(int) error { return tt.goneErr }
+			}
+			entriesBefore, err := os.ReadDir(scratch)
+			if err != nil {
+				t.Fatal(err)
+			}
+			fake := installFakeTmux(t, e)
+			// A dead pane is listed but never reaped, so the test touches no real process.
+			fake.answer("list-panes", "%1 1 0 80 24 4242\n", nil)
+			fake.answer("list-sessions", tt.sessions, tt.sessionsErr)
+
+			result, err := e.Down()
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("Down() error = %v; want %v", err, tt.wantErr)
+			}
+			if tt.wantErr == nil && result.EndedServer != tt.wantEnded {
+				t.Errorf("Down().EndedServer = %v; want %v", result.EndedServer, tt.wantEnded)
+			}
+			if got := strings.Count(logs.String(), "could not write the discover stop"); (got == 1) != tt.wantWarn || got > 1 {
+				t.Errorf("discover stop Warn count = %d; want warn %v\nlogs: %s", got, tt.wantWarn, logs.String())
+			}
+			if tt.wantWarn && !strings.Contains(logs.String(), signalPath) {
+				t.Errorf("logs = %q; want the Warn to name %s", logs.String(), signalPath)
+			}
+
+			if tt.pathIsDirectory {
+				return
+			}
+			content, readErr := os.ReadFile(signalPath)
+			if !tt.wantMarker {
+				if !os.IsNotExist(readErr) {
+					t.Errorf("read %s error = %v; want no signal file", signalPath, readErr)
+				}
+				entriesAfter, err := os.ReadDir(scratch)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(entriesAfter) != len(entriesBefore) {
+					t.Errorf("hub scratch entries = %d; want the %d it held before", len(entriesAfter), len(entriesBefore))
+				}
+				return
+			}
+			if readErr != nil || string(content) != DiscoverStopMarker {
+				t.Fatalf("read %s = %q, %v; want exactly %q", signalPath, content, readErr, DiscoverStopMarker)
+			}
+			// A cold boot between the stop and the daemon consuming it turns the stop back into a discover.
+			e.touchDiscoverSignal()
+			info, err := os.Stat(signalPath)
+			if err != nil || info.Size() != 0 {
+				t.Errorf("after touchDiscoverSignal stat %s = %v, %v; want an existing empty file", signalPath, info, err)
+			}
+		})
 	}
 }
 

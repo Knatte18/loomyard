@@ -18,11 +18,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/shell"
 )
 
-// lyxBinEnvKey is the env key the prelude exports. It carries the absolute path of the binary
-// itself, never its directory, so a script or prompt can invoke it explicitly without re-appending a
-// platform-specific "lyx" / "lyx.exe" name.
-const lyxBinEnvKey = "LYX_BIN"
-
 // executablePath is a package-local testability seam over os.Executable, modelled on
 // tools/sandbox/resolve.go's own devBinPath seam. Under `go test` the live value is the test
 // binary's path, so hermetic tests inject a path here instead of asserting against the real one —
@@ -31,13 +26,13 @@ const lyxBinEnvKey = "LYX_BIN"
 var executablePath = os.Executable
 
 // paneBinPrelude returns the pure, injectable pane-binary composition for exe on sh's dialect: sh's
-// own PrependPathEntry of exe's parent directory, then sh's own ExportEnv of lyxBinEnvKey to exe,
+// own PrependPathEntry of exe's parent directory, then sh's own ExportEnv of agentname.LyxBinEnv to exe,
 // joined by sh.Chain. The prepend is unconditional — no guard against the directory already being on
 // the pane's PATH — because every strand pane is a fresh pane with a fresh shell, so nothing
 // accumulates across relaunches or resumes, and the one nesting case (a pane whose command itself
 // spawns another strand pane) produces a duplicate PATH entry that resolves identically.
 func paneBinPrelude(sh shell.Shell, exe string) string {
-	return sh.Chain(sh.PrependPathEntry(filepath.Dir(exe)), sh.ExportEnv(lyxBinEnvKey, exe))
+	return sh.Chain(sh.PrependPathEntry(filepath.Dir(exe)), sh.ExportEnv(agentname.LyxBinEnv, exe))
 }
 
 // nameExports returns the statements exporting the strand's full name and, when parent is non-empty, its worktree's parent, on sh's dialect.

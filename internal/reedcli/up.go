@@ -7,6 +7,8 @@
 package reedcli
 
 import (
+	"time"
+
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/spf13/cobra"
@@ -72,8 +74,11 @@ func (c *reedCLI) downCmd() *cobra.Command {
 		Long: `down kills this worktree's tmux session and deletes its persisted
 strand state. Sibling worktrees sharing the hub's server are untouched;
 when this was the server's last session, the now-empty server is shut down
-too (down waits until the server process has actually exited). down is
-idempotent: calling it again with no session up still succeeds.
+too (down waits until the server process has actually exited). When down
+ends the hub's server it also asks the watchdog daemon to stop and waits up
+to ten seconds for the daemon to leave, warning and still succeeding on
+timeout. down is idempotent: calling it again with no session up still
+succeeds.
 
 When this worktree's state was recorded against a DIFFERENT session that is
 still running on the hub's server — after the worktree directory was renamed,
@@ -90,10 +95,27 @@ Example:
 			}
 			out := cmd.OutOrStdout()
 
-			result, err := c.eng.Down()
+			result, err := c.strandEngine().Down()
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
+			}
+			if result.EndedServer {
+				// The wait asks nothing of the watchdog: Down already wrote the stop, and this only holds the verb until the daemon has left its loop.
+				wait, poll, probe, sleep := c.downLockWait, c.downLockPoll, c.downLockProbe, c.downLockSleep
+				if wait == 0 {
+					wait = watchdogDownWait
+				}
+				if poll == 0 {
+					poll = watchdogDownPoll
+				}
+				if probe == nil {
+					probe = probeWatchdogLock
+				}
+				if sleep == nil {
+					sleep = time.Sleep
+				}
+				waitWatchdogLockFree(c.hubPath, wait, poll, probe, sleep)
 			}
 
 			payload := map[string]any{"session": result.Session}

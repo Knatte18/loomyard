@@ -52,6 +52,8 @@ type Engine struct {
 	build buildvcs.Identity
 	// scrub is the set of environment keys the tmux server spawn must not inherit.
 	scrub EnvScrub
+	// ensureServerGone is a test seam for the server-gone wait Down runs after kill-server; nil means ensureServerGoneLocked and production never sets it.
+	ensureServerGone func(serverPID int) error
 }
 
 // New builds an Engine for the given Config, Geometry and EnvScrub.

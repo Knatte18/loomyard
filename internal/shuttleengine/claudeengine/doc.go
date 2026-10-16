@@ -40,10 +40,14 @@
 // Each task carries the signal that reported it.
 //
 // Every Bash command an agent runs gets `/dev/null` as its default stdin through Claude Code's `CLAUDE_ENV_FILE`:
-// Prepare writes `bash-env.sh` beside settings.json with the content `exec </dev/null`, and both the launch and the resume line lead with `CLAUDE_ENV_FILE` naming its absolute path,
+// Prepare writes `bash-env.sh` beside settings.json, and both the launch and the resume line lead with `CLAUDE_ENV_FILE` naming its absolute path,
 // so an interpreter left reading the tool's open stdin ends at once instead of hanging the session, and a resumed session keeps the default.
-// The file runs that one statement and nothing else.
-// It changes only the default stdin of the tool's own shell: a heredoc, pipe or redirect attached to a command still supplies that command's stdin,
+// The file runs two statements and nothing else: `exec </dev/null`, then one that prepends the parent directory of `LYX_BIN` to `PATH`, double-quoted so a path with spaces holds.
+// The PATH statement reads `agentname.LyxBinEnv`, the key reed's pane prelude exports with the spawning binary's path, when Claude Code runs the file before each Bash command,
+// so a resumed session follows the binary its pane's latest prelude exported, and the Bash tool shadows exactly the executables the pane shell shadows even after the operator's rc reorders `PATH`.
+// On Windows the statement first converts `LYX_BIN` with `cygpath -u`, through the scratch variable `__lyx_bin_dir` it unsets afterwards.
+// It adds no directory when `LYX_BIN` is unset or empty or, on Windows, when `cygpath` is absent.
+// It changes only the default stdin and `PATH` of the tool's own shell: a heredoc, pipe or redirect attached to a command still supplies that command's stdin,
 // a child `bash` the agent starts does not re-run the file, and it grants or denies nothing, so the agents' permission rules are untouched.
 // A `CLAUDE_ENV_FILE` the operator's own environment exports is overridden for lyx-spawned sessions only.
 //

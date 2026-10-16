@@ -14,12 +14,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
-// fakeStrandOps records the calls the remove and status verbs make, in order.
+// fakeStrandOps records the calls the down, remove and status verbs make, in order.
 type fakeStrandOps struct {
 	calls     *[]string
 	removeErr error
 	status    reedengine.StatusResult
 	markErrs  map[bool]error
+	down      reedengine.DownResult
+	downErr   error
+}
+
+func (f *fakeStrandOps) Down() (reedengine.DownResult, error) {
+	return f.down, f.downErr
 }
 
 func (f *fakeStrandOps) ResolveStrandGUID(name string) (string, error) {

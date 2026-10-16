@@ -15,7 +15,8 @@ Before starting a session:
    The suite resolves `.dev-bin` itself and prepends it to the agent's PATH (the fingerprint header's `Source: dev` line confirms the dev build is under test) -- no PATH setup needed, and production `lyx` stays untouched.
    The deployed binary is a snapshot -- re-deploy after any source change you want to test.
    Once a pane exists, run these checks:
-   - `command -v lyx` (`where lyx` on Windows) run inside a spawned strand pane names the spawning binary, not the production install.
+   - `command -v lyx` (`where lyx` on Windows) run in the pane shell of a strand whose command does not start a fresh shell names the spawning binary, not the production install.
+     A strand whose command starts one (`--cmd bash`, a plain `--cmd claude`'s Bash tool) re-runs the operator's rc, so its bare `lyx` follows that rc's `PATH`, with `LYX_BIN` still naming the spawning binary.
    - `LYX_BIN` is set inside that pane and names the same binary.
    These are live-substrate facts no `go test` can prove, which is why they are pre-condition checks rather than assertions.
    See `SANDBOX-SHUTTLE-SUITE.md` for the agent-pane half -- this suite's strands run operator-supplied commands and spawn no agent pane, so a `claude`-resolution check has nothing to exercise here.

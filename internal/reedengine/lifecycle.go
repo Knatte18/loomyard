@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
@@ -63,6 +64,8 @@ type DownResult struct {
 	// naming it. Empty in every ordinary teardown. See Down for why it is reported rather than
 	// killed.
 	AbandonedSession string
+	// EndedServer is true when Down took its server-teardown branch: no session was left, or the session listing errored.
+	EndedServer bool
 }
 
 // StrandStatus is one strand's status in StatusResult.
@@ -623,6 +626,19 @@ func (e *Engine) touchDiscoverSignal() {
 	}
 }
 
+// writeDiscoverStop writes DiscoverStopMarker as the whole content of the told discover signal file, asking the hub's watchdog daemon to stop.
+// The write is atomic, a temp file renamed onto the path, so the daemon's watch never sees the file created empty before the marker lands.
+// It does nothing when no path is told, and a failure is logged at Warn, never failing Down.
+func (e *Engine) writeDiscoverStop() {
+	path := e.geom.DiscoverSignalPath
+	if path == "" {
+		return
+	}
+	if err := fsx.AtomicWriteBytes(path, []byte(DiscoverStopMarker)); err != nil {
+		logger.Warn("reed: could not write the discover stop", "socket", e.Socket(), "path", path, "err", err)
+	}
+}
+
 // stripTraceID removes LYX_TRACE_ID from env before the tmux server inherits it.
 // The server is a long-lived singleton reattached by unrelated invocations.
 func stripTraceID(env []string) []string {
@@ -948,7 +964,10 @@ func (e *Engine) Down() (DownResult, error) {
 		// pre-boot check applies regardless).
 		var serverErr error
 		if out, err := e.tmux.output(listSessionsArgv(runtime.GOOS, "#{session_name}")...); err != nil || strings.TrimSpace(out) == "" {
+			result.EndedServer = true
 			logger.Info("reed: tearing down tmux server", "socket", e.Socket(), "serverPID", serverPID)
+			// Written before kill-server so the stop is asked for whether or not the server then confirms gone.
+			e.writeDiscoverStop()
 			// Best-effort — the more significant "server did not confirm
 			// gone" outcome is already covered at Warn by ensureServerGoneLocked
 			// below; this earlier, routine kill-server discard only needs a
@@ -956,7 +975,11 @@ func (e *Engine) Down() (DownResult, error) {
 			if err := e.tmux.run("kill-server"); err != nil {
 				logger.Debug("reed: best-effort kill-server failed", "socket", e.Socket(), "serverPID", serverPID, "err", err)
 			}
-			serverErr = e.ensureServerGoneLocked(serverPID)
+			ensureGone := e.ensureServerGone
+			if ensureGone == nil {
+				ensureGone = e.ensureServerGoneLocked
+			}
+			serverErr = ensureGone(serverPID)
 			if serverErr != nil {
 				logger.Warn("reed: server did not confirm gone after kill-server", "socket", e.Socket(), "serverPID", serverPID, "err", serverErr)
 			}
@@ -1003,7 +1026,8 @@ func (e *Engine) Down() (DownResult, error) {
 			logger.Warn("reed: could not delete launch script directory", "path", launchScriptDir(e.stateDir()), "err", err)
 		}
 
-		result = DownResult{Session: e.SessionName(), AbandonedSession: abandoned}
+		result.Session = e.SessionName()
+		result.AbandonedSession = abandoned
 		return nil
 	})
 	return result, err
