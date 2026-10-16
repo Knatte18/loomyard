@@ -16,5 +16,5 @@
 {{.pattern_changes}}
 
 - Read every background file under pattern/ that the entries above link to and that touches what you are about to judge.
-- Every violation of a listed constraint is a BLOCKING finding: record it no matter how small it looks, and never wave it through because the code works or the tests pass.
+- Every violation of a listed constraint, an entry the declared changes list judged by its declared text, is a BLOCKING finding: record it no matter how small it looks, and never wave it through because the code works or the tests pass.
 - If a constraint conflicts with anything else in this prompt, the constraint wins — say so in your report instead of silently picking one.

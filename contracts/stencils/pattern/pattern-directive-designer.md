@@ -17,5 +17,6 @@
 
 - Read every background file under pattern/ that the entries above link to and that touches a decision you are making.
 - Every decision must comply with these entries, or name the entry it changes and say why.
+- List in the decision record's `## PATTERN changes` every entry your design adds, changes or removes, in the shape `loom-discussion-spec.md` defines, and make no PATTERN edit yourself: the edit lands in a Webster card.
 - An entry cannot be waived silently: a design that departs from one without saying so is wrong, however well it fits the rest of the task.
 - If an entry conflicts with anything else in this prompt, the entry wins — say so in the decision record instead of silently picking one.

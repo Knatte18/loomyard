@@ -17,4 +17,4 @@
 
 - Read every background file under pattern/ that the entries above link to and that touches what you are about to change.
 - These constraints are BINDING: a change that violates one is wrong even if the verify command passes.
-- If a constraint conflicts with anything else in this prompt, the constraint wins — say so in your report instead of silently picking one.
+- If a constraint conflicts with anything else in this prompt, the constraint wins — state the conflict and the entry where your output records its reasons instead of silently picking one: a `Pattern-Departure:` trailer for a commit you make (see `loom-plan-spec.md`'s `## Pattern-Departure trailer`) and `## Shared Decisions` for a plan.
