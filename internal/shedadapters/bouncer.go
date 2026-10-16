@@ -81,6 +81,9 @@ type BouncerConfig struct {
 	// WorktreeRoot is the absolute repository worktree root holding PATTERN.md, which the judge's PATTERN directive is read from.
 	// Empty means no directive, so a config that tells no root judges exactly as before.
 	WorktreeRoot string
+	// PatternRecordPath is the decision record whose declared PATTERN changes the judge's PATTERN directive renders.
+	// Empty renders none.
+	PatternRecordPath string
 	// SpecsDir is the absolute deployed-specs directory the rubric's {{.specs_dir}} marker is
 	// filled from.
 	SpecsDir string
@@ -1316,7 +1319,11 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 	if err != nil {
 		return b.degrade(ctx, "shedadapters: bouncer rubric unreadable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
 	}
-	patternDirective, err := pattern.Directive(b.cfg.WorktreeRoot, b.cfg.StencilsDir, pattern.RoleJudge, nil)
+	declaredChanges, err := discussionparser.DeclaredPatternChanges(b.cfg.PatternRecordPath)
+	if err != nil {
+		return b.degrade(ctx, fmt.Sprintf("shedadapters: bouncer declared PATTERN changes unreadable: %v run `lyx loom start` to re-step the row", err), "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
+	}
+	patternDirective, err := pattern.Directive(b.cfg.WorktreeRoot, b.cfg.StencilsDir, pattern.RoleJudge, declaredChanges)
 	if err != nil {
 		return b.degrade(ctx, "shedadapters: bouncer pattern directive unreadable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
 	}

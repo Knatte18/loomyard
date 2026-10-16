@@ -91,6 +91,9 @@ type Env struct {
 	// DecisionRecordPath is the told decision record path, read by the gate resolver's "discussion"
 	// gate and by the Bouncer entry, which names it in the escalation brief.
 	DecisionRecordPath string
+	// PatternRecordPath is the told decision record whose declared PATTERN changes the review rows render, read by the Bouncer entry.
+	// Empty on a darn run, which takes no PATTERN declaration.
+	PatternRecordPath string
 	// SupportLogPath is the told support log path, read by the gate resolver's "discussion" gate.
 	SupportLogPath string
 	// RelevantPath is the told relevant list path.

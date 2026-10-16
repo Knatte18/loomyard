@@ -734,6 +734,9 @@ func TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig(t *testing.T) {
 	if c.env.DecisionRecordPath != loomengine.DiscussionDecisionRecord(location) {
 		t.Errorf("env.DecisionRecordPath = %q; want %q", c.env.DecisionRecordPath, loomengine.DiscussionDecisionRecord(location))
 	}
+	if c.env.PatternRecordPath != loomengine.DiscussionDecisionRecord(location) {
+		t.Errorf("env.PatternRecordPath = %q; want %q", c.env.PatternRecordPath, loomengine.DiscussionDecisionRecord(location))
+	}
 	if c.env.SupportLogPath != loomengine.DiscussionSupportLog(location) {
 		t.Errorf("env.SupportLogPath = %q; want %q", c.env.SupportLogPath, loomengine.DiscussionSupportLog(location))
 	}
@@ -757,6 +760,10 @@ func TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig(t *testing.T) {
 	darn.wireLightweight(location, location.AnchorPath())
 	if darn.env.DiscussionHistory == nil || darn.env.CommitDiscussion == nil {
 		t.Error("a darn-recipe wireLightweight left a discussion seam nil; want the history and commit seams")
+	}
+	// A darn run takes no PATTERN declaration, so its review rows are told no record.
+	if darn.env.PatternRecordPath != "" {
+		t.Errorf("darn env.PatternRecordPath = %q; want empty", darn.env.PatternRecordPath)
 	}
 	// Nothing that a module config would have filled may be populated: that is what proves no load
 	// happened rather than merely that none failed.

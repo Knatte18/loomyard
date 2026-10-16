@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -87,7 +88,11 @@ func ReworkTable(layout *lyxcwd.Location, stencilsDir, specsDir string, cfg Conf
 		priorPlan:      priorPlanDir,
 	}
 
-	patternDirective, err := pattern.Directive(layout.WorktreePath(), stencilsDir, pattern.RoleImplementer, nil)
+	declaredChanges, err := discussionparser.DeclaredPatternChanges(paths.decisionRecord)
+	if err != nil {
+		return seatengine.Table{}, fmt.Errorf("loom: ReworkTable: %w re-step the row with %q", err, "lyx loom start")
+	}
+	patternDirective, err := pattern.Directive(layout.WorktreePath(), stencilsDir, pattern.RoleImplementer, declaredChanges)
 	if err != nil {
 		return seatengine.Table{}, fmt.Errorf("loom: ReworkTable: %w", err)
 	}

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/pattern"
@@ -81,7 +82,11 @@ func (e *Engine) Review(p Profile, opts RunOpts) (ReviewResult, error) {
 
 	logger.Info("burler: review starting", "round", opts.Round, "clusterFan", p.ClusterFan, "forkCount", len(p.clusterLenses), "reviewPath", p.ReviewPath)
 
-	directive, err := pattern.Directive(e.geom.RepoRoot, e.stencilsDir, pattern.RoleReviewFix, nil)
+	declared, err := discussionparser.DeclaredPatternChanges(e.geom.PatternRecordPath)
+	if err != nil {
+		return ReviewResult{}, fmt.Errorf("burler: %w re-step the review row with %q", err, "lyx loom start")
+	}
+	directive, err := pattern.Directive(e.geom.RepoRoot, e.stencilsDir, pattern.RoleReviewFix, declared)
 	if err != nil {
 		return ReviewResult{}, fmt.Errorf("burler: %w", err)
 	}

@@ -295,6 +295,9 @@ func (c *loomCLI) wireLightweight(location *lyxcwd.Location, cwd string) {
 	c.env.WorktreeRoot = location.WorktreePath()
 	c.env.StencilsDir = fabricengine.StencilsDir(location.HubPath)
 	c.env.DecisionRecordPath = loomengine.DiscussionDecisionRecord(location)
+	if c.recipe != shedrun.RecipeDarn {
+		c.env.PatternRecordPath = loomengine.DiscussionDecisionRecord(location)
+	}
 	c.env.SupportLogPath = loomengine.DiscussionSupportLog(location)
 	c.env.RelevantPath = loomengine.DiscussionRelevant(location)
 	c.env.DescriptionPath = summaryparser.Path(loomengine.LandingDir(location))
@@ -576,6 +579,12 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	if err != nil {
 		return err
 	}
+	// A darn run takes no PATTERN declaration, so its review rows are told no record.
+	patternRecordPath := ""
+	if c.recipe != shedrun.RecipeDarn {
+		patternRecordPath = loomengine.DiscussionDecisionRecord(location)
+	}
+	burlerGeom.PatternRecordPath = patternRecordPath
 	burlerEngine := burlerengine.New(seatengine.RunnerShuttle(runner), burlerGeom, burlerCfg, websterGeom.StencilsDir, frictionDir, languageSkills)
 
 	runDeps := websterengine.RunDeps{
@@ -674,6 +683,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		StatusPath:         statusPath,
 		StatusLockPath:     statusLockPath,
 		DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),
+		PatternRecordPath:  patternRecordPath,
 		SupportLogPath:     loomengine.DiscussionSupportLog(location),
 		RelevantPath:       loomengine.DiscussionRelevant(location),
 		ParentName:         c.parentName,

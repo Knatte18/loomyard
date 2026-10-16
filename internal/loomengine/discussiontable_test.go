@@ -276,6 +276,20 @@ func TestDiscussionTable(t *testing.T) {
 		}
 	})
 
+	t.Run("a declared PATTERN change reaches the chair's pattern_directive", func(t *testing.T) {
+		t.Parallel()
+		layout := discussionTableLayout(t)
+		writeDeclaredPatternRecord(t, layout, declaredBullet)
+
+		table, err := DiscussionTable(layout, discussionTableDirs(layout), newTestStencilsDir(t), discussionTableSpecsDir, discussionTableConfig(1, false), reg, discussionTableSlug)
+		if err != nil {
+			t.Fatalf("DiscussionTable(...) = _, %v; want nil error", err)
+		}
+		if !strings.Contains(table.Values["pattern_directive"], declaredBullet) {
+			t.Errorf("pattern_directive = %q; want it to carry %q", table.Values["pattern_directive"], declaredBullet)
+		}
+	})
+
 	t.Run("an on-disk edit of the chair stencil reaches the chair prompt", func(t *testing.T) {
 		t.Parallel()
 		layout := discussionTableLayout(t)
@@ -481,13 +495,16 @@ func TestDiscussionTable_Refuses(t *testing.T) {
 		name       string
 		slug       string
 		missingDir bool
-		mutate     func(*Config)
+		// malformedRecord plants a decision record whose PATTERN changes section is malformed.
+		malformedRecord bool
+		mutate          func(*Config)
 		// burlerYAML, when non-empty, is planted as the anchor's burler.yaml.
 		burlerYAML  string
 		wantErrHold []string
 	}{
 		{name: "empty slug", slug: "", wantErrHold: []string{"slug must not be empty"}},
 		{name: "missing stencils directory", slug: discussionTableSlug, missingDir: true, wantErrHold: []string{"pattern-directive-designer"}},
+		{name: "malformed PATTERN changes section", slug: discussionTableSlug, malformedRecord: true, wantErrHold: []string{"lyx loom validate-discussion", "lyx loom start"}},
 		{name: "unparsable chair model", slug: discussionTableSlug, mutate: func(c *Config) { c.Discussion = "opus[effort" }, wantErrHold: []string{"discussion role model-spec"}},
 		{name: "advisor the registry does not define", slug: discussionTableSlug, mutate: func(c *Config) {
 			c.DiscussionAdvisors = DiscussionAdvisorList{{Name: "critic", Model: "sonnet[low]"}, {Name: "skeptic", Model: "ghost"}}
@@ -507,6 +524,9 @@ func TestDiscussionTable_Refuses(t *testing.T) {
 				if err := os.WriteFile(filepath.Join(layout.WorktreePath(), "PATTERN.md"), []byte("- PATTERN-sample: a rule\n"), 0o644); err != nil {
 					t.Fatalf("WriteFile(PATTERN.md) = %v; want nil", err)
 				}
+			}
+			if tt.malformedRecord {
+				writeDeclaredPatternRecord(t, layout, malformedDeclaredBullet)
 			}
 			if tt.burlerYAML != "" {
 				writeBurlerYAML(t, layout, tt.burlerYAML)
