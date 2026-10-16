@@ -467,13 +467,14 @@ func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, rep
 // specsDir is the told deployed-specs directory, filled into the shared implementer-job body's
 // required specs_dir marker.
 // verifyTiers is the hub's verify tiers, filled into the body's required verify_tiers marker as bullets, or as "none" when empty.
+// patternChanges is the task's declared PATTERN changes as rendered bullet lines, passed to the pattern directive; nil renders none.
 // cardGates is the caller-rendered per-card gate step list followed by any guard notice, and batchGate the caller-rendered batch package list and gate.
 // parentName is the told parent agent name; an empty one renders parentdirective's no-parent variant.
 // failureDigest is the prior failed record's reasons and suspect paths, or "" when the batch was not failed;
 // it fills the optional failure_digest marker, rendered as "none" when empty, and being optional it leaves an older deployed stencil rendering.
 // uncommittedPaths is the caller-rendered block of the worktree's uncommitted paths grouped by who wrote them, or "" for a clean tree;
 // it fills the optional uncommitted_paths marker the same way.
-func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, failureDigest, uncommittedPaths, reportPath, repoRoot, planDir, promptWorktreeRoot, stencilsDir, specsDir string, verifyTiers []string, selfFixCap int, notePath, parentName string) ([]byte, error) {
+func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, failureDigest, uncommittedPaths, reportPath, repoRoot, planDir, promptWorktreeRoot, stencilsDir, specsDir string, verifyTiers, patternChanges []string, selfFixCap int, notePath, parentName string) ([]byte, error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
 		digestLine = noPrecedingBatchDigest
@@ -496,7 +497,7 @@ func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest,
 		return nil, fmt.Errorf("webster: render recovery read rules: %w", err)
 	}
 
-	directive, err := pattern.Directive(repoRoot, stencilsDir, pattern.RoleImplementer, nil)
+	directive, err := pattern.Directive(repoRoot, stencilsDir, pattern.RoleImplementer, patternChanges)
 	if err != nil {
 		return nil, fmt.Errorf("webster: recovery prompt directive: %w", err)
 	}
@@ -623,14 +624,15 @@ func masterPlanDirDisplay(paneCwd, planDir string) string {
 // verifyFixPromptPath is the Go-rendered verify-gate fixer fork prompt file Merriam forwards to its one fixer fork.
 // pattern_directive is injected via pattern.RoleOrchestrator if PATTERN is active (Master never
 // edits code, only forks).
+// patternChanges is the task's declared PATTERN changes as rendered bullet lines, passed to the pattern directive; nil renders none.
 // parentName is the told parent agent name; an empty one renders parentdirective's no-parent variant.
 // notePath is the caller-composed friction note path (friction.NotePath), or "" when Tier 2 is off;
 // friction_directive is injected via friction.RoleOrchestrator when Tier 2 is on — Master never
 // edits code, only forks — with a friction.Directive error swallowed as a Warn rather than
 // propagated, deliberately unlike the pattern.Directive call immediately above, which does
 // propagate.
-func RenderMasterPrompt(batches []batcher.Batch, st *State, outcomePath, summaryPath, verifyFixPromptPath, planDir string, selfFixCap int, worktreeRoot, repoRoot, stencilsDir string, notePath, parentName string) ([]byte, error) {
-	directive, err := pattern.Directive(repoRoot, stencilsDir, pattern.RoleOrchestrator, nil)
+func RenderMasterPrompt(batches []batcher.Batch, st *State, outcomePath, summaryPath, verifyFixPromptPath, planDir string, selfFixCap int, worktreeRoot, repoRoot, stencilsDir string, patternChanges []string, notePath, parentName string) ([]byte, error) {
+	directive, err := pattern.Directive(repoRoot, stencilsDir, pattern.RoleOrchestrator, patternChanges)
 	if err != nil {
 		return nil, fmt.Errorf("webster: master prompt directive: %w", err)
 	}

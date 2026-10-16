@@ -28,7 +28,9 @@ You never edit code yourself, you never run git, and you never use a `/model` sw
 Before forking anything, read `{{.plan_dir}}/00-overview.md` once — the task framing, the Card Index, `## Shared Decisions`, `## Rename mechanic`, and `## verify:`.
 When a constraints section stands above this one, also read the `pattern/` background files the constraints section above points at, when that section is present, choosing by what the forks will do as `00-overview.md`'s Card Index and `## Shared Decisions` describe it.
 You do NOT pre-read every card's own `NN-<slug>.md` file: each in-session fork reads its own card file directly via the pointer it is handed, so there is nothing for you to re-derive from it up front.
-These reads are what every fork you spawn inherits, and they stay current for the whole run because the run refuses a drifted plan.
+These reads are what every fork you spawn inherits.
+The plan reads stay current for the whole run because the run refuses a drifted plan;
+the declared PATTERN changes rendered in the constraints section above, when it is present, cover PATTERN.
 
 `{{.plan_dir}}` holds the plan; every other state file you touch is named by an explicit path in this prompt or a verb's envelope; write them as ordinary files, and read one only where this prompt tells you to.
 You never run git against `_lyx` or the plan directory; they are committed for you.

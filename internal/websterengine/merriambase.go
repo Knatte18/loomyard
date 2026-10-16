@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/pattern"
 )
 
@@ -33,7 +34,7 @@ func MerriamBaseOf(texts ...string) batcher.StartBase {
 	return batcher.StartBase{Lines: lines, Fixed: merriamFixedContext}
 }
 
-// MerriamBase returns the start base of the Merriam session geom describes: the named instruction files at the worktree root when present, the Master stencil with the orchestrator PATTERN directive, and the plan's 00-overview.md.
+// MerriamBase returns the start base of the Merriam session geom describes: the named instruction files at the worktree root when present, the Master stencil with the orchestrator PATTERN directive and the declared changes of geom.DecisionRecordPath, and the plan's 00-overview.md.
 // An absent instruction file adds nothing; any other failure is refused naming the file and the cause, with no way forward.
 func MerriamBase(geom Geometry, instructionFiles []string) (batcher.StartBase, error) {
 	var texts []string
@@ -52,7 +53,12 @@ func MerriamBase(geom Geometry, instructionFiles []string) (batcher.StartBase, e
 	if err != nil {
 		return batcher.StartBase{}, merriamBaseError("webster-template-master", err)
 	}
-	directive, err := pattern.Directive(geom.RepoRoot, geom.StencilsDir, pattern.RoleOrchestrator, nil)
+	// A record that fails to parse leaves its changes out: the master prompt render refuses on it, with the way forward that fits.
+	patternChanges, err := discussionparser.DeclaredPatternChanges(geom.DecisionRecordPath)
+	if err != nil {
+		patternChanges = nil
+	}
+	directive, err := pattern.Directive(geom.RepoRoot, geom.StencilsDir, pattern.RoleOrchestrator, patternChanges)
 	if err != nil {
 		return batcher.StartBase{}, merriamBaseError("PATTERN.md", err)
 	}

@@ -364,18 +364,18 @@ func renderForkPromptAndPack(t *testing.T, batch batcher.Batch, root, stencilsDi
 // renderRecovery renders the recovery prompt for batch with the shared placeholder paths; the plan
 // directory and prompt worktree root derive from anchorRoot, and PATTERN.md is read from repoRoot.
 func renderRecovery(batch batcher.Batch, repoRoot, anchorRoot, stencilsDir, specsDir, failureDigest, notePath, parent string) (string, error) {
-	return renderRecoveryWithUncommitted(batch, repoRoot, anchorRoot, stencilsDir, specsDir, failureDigest, "", notePath, parent, nil)
+	return renderRecoveryWithUncommitted(batch, repoRoot, anchorRoot, stencilsDir, specsDir, failureDigest, "", notePath, parent, nil, nil)
 }
 
-// renderRecoveryWithUncommitted is renderRecovery with the caller-rendered uncommitted-paths block and the hub's verify tiers.
-func renderRecoveryWithUncommitted(batch batcher.Batch, repoRoot, anchorRoot, stencilsDir, specsDir, failureDigest, uncommittedPaths, notePath, parent string, verifyTiers []string) (string, error) {
-	got, err := websterengine.RenderRecoveryPrompt(batch, testCardGates, testBatchGate, "", failureDigest, uncommittedPaths, "/reports/01-alpha.yaml", repoRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, specsDir, verifyTiers, 2, notePath, parent)
+// renderRecoveryWithUncommitted is renderRecovery with the caller-rendered uncommitted-paths block, the hub's verify tiers and the declared PATTERN changes.
+func renderRecoveryWithUncommitted(batch batcher.Batch, repoRoot, anchorRoot, stencilsDir, specsDir, failureDigest, uncommittedPaths, notePath, parent string, verifyTiers, patternChanges []string) (string, error) {
+	got, err := websterengine.RenderRecoveryPrompt(batch, testCardGates, testBatchGate, "", failureDigest, uncommittedPaths, "/reports/01-alpha.yaml", repoRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, specsDir, verifyTiers, patternChanges, 2, notePath, parent)
 	return string(got), err
 }
 
-// renderMaster renders Merriam's prompt for batches with a nil state and the shared placeholder paths.
-func renderMaster(batches []batcher.Batch, anchorRoot, repoRoot, stencilsDir, notePath, parent string) (string, error) {
-	got, err := websterengine.RenderMasterPrompt(batches, nil, testOutcomePath, testSummaryPath, testVerifyFixPromptPath, filepath.Join(anchorRoot, "_lyx", "plan"), 2, anchorRoot, repoRoot, stencilsDir, notePath, parent)
+// renderMaster renders Merriam's prompt for batches with a nil state, the shared placeholder paths and the declared PATTERN changes.
+func renderMaster(batches []batcher.Batch, anchorRoot, repoRoot, stencilsDir, notePath, parent string, patternChanges []string) (string, error) {
+	got, err := websterengine.RenderMasterPrompt(batches, nil, testOutcomePath, testSummaryPath, testVerifyFixPromptPath, filepath.Join(anchorRoot, "_lyx", "plan"), 2, anchorRoot, repoRoot, stencilsDir, patternChanges, notePath, parent)
 	return string(got), err
 }
 
@@ -781,6 +781,11 @@ func TestRenderPrompts(t *testing.T) {
 			text, err := renderRecovery(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", "", "")
 			return promptCheck{text: text, err: err, contains: []string{"some constraints", "## Constraints"}}
 		}},
+		{"recovery carries a declared PATTERN change under the declared-changes heading", func(t *testing.T) promptCheck {
+			root, stencilsDir := patternActiveLayout(t)
+			text, err := renderRecoveryWithUncommitted(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", "", "", "", nil, []string{"- `PATTERN-x` adds: a rule"})
+			return promptCheck{text: text, err: err, inOrder: []string{"### Declared PATTERN changes", "- `PATTERN-x` adds: a rule"}}
+		}},
 		{"recovery reads PATTERN.md from the told repo root", func(t *testing.T) promptCheck {
 			repoRoot, stencilsDir := patternActiveLayout(t)
 			text, err := renderRecovery(alpha, repoRoot, filepath.Join(repoRoot, "backend"), stencilsDir, newTestSpecsDir(t), "", "", "")
@@ -805,7 +810,7 @@ func TestRenderPrompts(t *testing.T) {
 		{"recovery renders the uncommitted-paths block verbatim", func(t *testing.T) promptCheck {
 			const block = "Written by this run:\n- internal/x/y.go\n\nNot written by this run:\n- notes.txt"
 			root, stencilsDir := testLayout(t)
-			text, err := renderRecoveryWithUncommitted(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", block, "", "", nil)
+			text, err := renderRecoveryWithUncommitted(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", block, "", "", nil, nil)
 			return promptCheck{text: text, err: err, contains: []string{"What the worktree holds\n\n" + block + "\n"}, notContains: []string{"{{.uncommitted_paths}}"}}
 		}},
 		{"fork renders each verify tier as a bullet, verbatim and in order", func(t *testing.T) promptCheck {
@@ -815,7 +820,7 @@ func TestRenderPrompts(t *testing.T) {
 		}},
 		{"recovery renders each verify tier as a bullet, verbatim and in order", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)
-			text, err := renderRecoveryWithUncommitted(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", "", "", "", testVerifyTiers)
+			text, err := renderRecoveryWithUncommitted(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", "", "", "", testVerifyTiers, nil)
 			return promptCheck{text: text, err: err, contains: []string{testVerifyTiersBullets}, notContains: []string{"{{.verify_tiers}}"}}
 		}},
 		{"fork renders none for no verify tiers", func(t *testing.T) promptCheck {
@@ -825,7 +830,7 @@ func TestRenderPrompts(t *testing.T) {
 		}},
 		{"recovery renders none for no verify tiers", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)
-			text, err := renderRecoveryWithUncommitted(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", "", "", "", nil)
+			text, err := renderRecoveryWithUncommitted(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", "", "", "", nil, nil)
 			return promptCheck{text: text, err: err, contains: []string{"follow:\n\nnone\n\n"}, notContains: []string{"\n- \n", "{{.verify_tiers}}"}}
 		}},
 		{"recovery renders none for a clean worktree", func(t *testing.T) promptCheck {
@@ -1038,12 +1043,12 @@ func TestRenderPrompts(t *testing.T) {
 		}},
 		{"master never fills worktree_root", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)
-			text, err := renderMaster(seamBatches, root, root, stencilsDir, "", "")
+			text, err := renderMaster(seamBatches, root, root, stencilsDir, "", "", nil)
 			return promptCheck{text: text, err: err, notContains: []string{"worktree_root", root}}
 		}},
 		{"master names the fixer prompt", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)
-			text, err := renderMaster(seamBatches, root, root, stencilsDir, "", "")
+			text, err := renderMaster(seamBatches, root, root, stencilsDir, "", "", nil)
 			return promptCheck{text: text, err: err, contains: []string{testVerifyFixPromptPath}}
 		}},
 		{"master lists the batches in the sequenced order it was handed", func(t *testing.T) promptCheck {
@@ -1052,34 +1057,39 @@ func TestRenderPrompts(t *testing.T) {
 				{Cards: []planparser.Card{cardWithSourcePath(1, "first", "do the first thing")}},
 			}
 			root, stencilsDir := testLayout(t)
-			text, err := renderMaster(batches, root, root, stencilsDir, "", "")
+			text, err := renderMaster(batches, root, root, stencilsDir, "", "", nil)
 			return promptCheck{text: text, err: err, inOrder: []string{"02 — second", "01 — first"}}
 		}},
 		{"master with PATTERN inactive renders no constraints block", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)
-			text, err := renderMaster(seamBatches, root, root, stencilsDir, "", "")
+			text, err := renderMaster(seamBatches, root, root, stencilsDir, "", "", nil)
 			return promptCheck{text: text, err: err,
 				notContains: []string{"{{", "## Constraints", "\n\n\n\n"}}
 		}},
 		{"master places the PATTERN directive ahead of the first work instruction", func(t *testing.T) promptCheck {
 			root, stencilsDir := patternActiveLayout(t)
-			text, err := renderMaster(seamBatches, root, root, stencilsDir, "", "")
+			text, err := renderMaster(seamBatches, root, root, stencilsDir, "", "", nil)
 			return promptCheck{text: text, err: err, inOrder: []string{"some constraints", "## Orientation"}}
+		}},
+		{"master carries a declared PATTERN change under the declared-changes heading", func(t *testing.T) promptCheck {
+			root, stencilsDir := patternActiveLayout(t)
+			text, err := renderMaster(seamBatches, root, root, stencilsDir, "", "", []string{"- `PATTERN-x` adds: a rule"})
+			return promptCheck{text: text, err: err, inOrder: []string{"### Declared PATTERN changes", "- `PATTERN-x` adds: a rule", "## Orientation"}}
 		}},
 		{"master reads PATTERN.md from the told repo root", func(t *testing.T) promptCheck {
 			repoRoot, stencilsDir := patternActiveLayout(t)
-			text, err := renderMaster(seamBatches, filepath.Join(repoRoot, "backend"), repoRoot, stencilsDir, "", "")
+			text, err := renderMaster(seamBatches, filepath.Join(repoRoot, "backend"), repoRoot, stencilsDir, "", "", nil)
 			return promptCheck{text: text, err: err, contains: []string{"some constraints"}}
 		}},
 		{"master does not read PATTERN.md from the anchor root", func(t *testing.T) promptCheck {
 			repoRoot, stencilsDir := patternActiveLayout(t)
 			anchorRoot := filepath.Join(repoRoot, "backend")
-			text, err := renderMaster(seamBatches, anchorRoot, anchorRoot, stencilsDir, "", "")
+			text, err := renderMaster(seamBatches, anchorRoot, anchorRoot, stencilsDir, "", "", nil)
 			return promptCheck{text: text, err: err, notContains: []string{"some constraints"}}
 		}},
 		{"master refuses a missing pattern-directive stencil", func(t *testing.T) promptCheck {
 			root, stencilsDir := patternActiveMissingPatternStencilsLayout(t)
-			_, err := renderMaster(seamBatches, root, root, stencilsDir, "", "")
+			_, err := renderMaster(seamBatches, root, root, stencilsDir, "", "", nil)
 			return promptCheck{err: err, wantErr: true}
 		}},
 		{"fixer prompt names the gate report and the contract files", func(t *testing.T) promptCheck {
@@ -1127,7 +1137,7 @@ func TestRenderPrompts_FrictionDirective(t *testing.T) {
 			return renderRecovery(alpha, anchorRoot, anchorRoot, stencilsDir, newTestSpecsDir(t), "", notePath, "")
 		}},
 		{"master", "webster-template-master", "webster-master.md", func(anchorRoot, stencilsDir, notePath string) (string, error) {
-			return renderMaster(seamBatches, anchorRoot, anchorRoot, stencilsDir, notePath, "")
+			return renderMaster(seamBatches, anchorRoot, anchorRoot, stencilsDir, notePath, "", nil)
 		}},
 		{"verify-fix", "webster-body-verify-fix", "webster-verify-fix.md", func(anchorRoot, stencilsDir, notePath string) (string, error) {
 			return renderVerifyFix("/reports/verify-gate.yaml", anchorRoot, stencilsDir, notePath)
@@ -1173,7 +1183,7 @@ func TestRenderPrompts_ParentDirective(t *testing.T) {
 	batches := []batcher.Batch{{Cards: []planparser.Card{cardWithSourcePath(1, "alpha", "add the flag")}}}
 	anchorRoot, stencilsDir := testLayout(t)
 	master := func(parent string) string {
-		got, err := renderMaster(batches, anchorRoot, anchorRoot, stencilsDir, "", parent)
+		got, err := renderMaster(batches, anchorRoot, anchorRoot, stencilsDir, "", parent, nil)
 		if err != nil {
 			t.Fatalf("RenderMasterPrompt() = _, %v; want nil error", err)
 		}

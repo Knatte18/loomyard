@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -243,6 +244,11 @@ func rendersNewAmendment(prior *BatchState) bool {
 func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prevDigest string, clk Clock) (*BatchState, error) {
 	number, slug := batchIdentity(batch)
 
+	patternChanges, err := discussionparser.DeclaredPatternChanges(deps.Geom.DecisionRecordPath)
+	if err != nil {
+		return nil, fmt.Errorf("%w re-run `lyx webster recover-batch %d`", err, number)
+	}
+
 	head, err := deps.Geom.git().HeadSHA(deps.Geom.WorktreeRoot)
 	if err != nil {
 		return nil, fmt.Errorf("webster: read HEAD before spawning the recovery of batch %02d: %w; way forward: transient, re-run `lyx webster recover-batch %d`", number, err, number)
@@ -295,7 +301,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		return nil, fmt.Errorf("webster: list the worktree's uncommitted paths for batch %s: %w; way forward: transient, re-run `lyx webster recover-batch %d`", batchName, err, number)
 	}
 	batchGate := renderBatchGate(deps.Plan, batch.Cards, deps.Geom.WorktreeRoot)
-	prompt, err := RenderRecoveryPrompt(batch, cardGates, batchGate, prevDigest, failureDigestBlock(prior), uncommittedPaths, reportPath, deps.Geom.RepoRoot, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.VerifyTiers, deps.Config.SelfFixCap, notePath, deps.Geom.ParentName)
+	prompt, err := RenderRecoveryPrompt(batch, cardGates, batchGate, prevDigest, failureDigestBlock(prior), uncommittedPaths, reportPath, deps.Geom.RepoRoot, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.VerifyTiers, patternChanges, deps.Config.SelfFixCap, notePath, deps.Geom.ParentName)
 	if err != nil {
 		return nil, err
 	}

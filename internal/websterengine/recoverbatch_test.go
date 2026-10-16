@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/planglyph"
@@ -1252,6 +1253,30 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 				}
 				if got, want := fx.Deps.State.Batches[1].RecoveryEngines, map[string]string{"earlier-session": "claude", "fake-session": shuttlefake.EngineName}; !maps.Equal(got, want) {
 					t.Errorf("recovery BatchState.RecoveryEngines = %v; want the first entry kept and the second added: %v", got, want)
+				}
+			},
+		},
+		{
+			name: "a decision record with a malformed PATTERN changes section refuses before any strand starts",
+			setup: func(fx *recoverFixture) {
+				fx.Deps.Geom.DecisionRecordPath = filepath.Join(fx.Worktree, "decision-record.md")
+				writeWorktreeFile(t, fx.Worktree, "decision-record.md", "## PATTERN changes\n\n- `PATTERN-a` — renames: x\n")
+				fx.Deps.State.Batches[1] = failedRecord("correctness finding")
+			},
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				if !errors.Is(err, discussionparser.ErrPatternChangesInvalid) {
+					t.Fatalf("RecoverSpawnOrAttach() error = %v; want ErrPatternChangesInvalid", err)
+				}
+				for _, want := range []string{"lyx loom validate-discussion", "lyx webster recover-batch 1"} {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("error %q lacks %q", err, want)
+					}
+				}
+				if spawned || fx.Engine.PrepareCalls != 0 {
+					t.Errorf("spawned = %v, prepareCalls = %d; want no strand started", spawned, fx.Engine.PrepareCalls)
+				}
+				if rec := fx.Deps.State.Batches[1]; !rec.Terminal || rec.Status != websterengine.DigestStatusFailed || rec.StrandGUID != "" {
+					t.Errorf("record changed: %+v", rec)
 				}
 			},
 		},
