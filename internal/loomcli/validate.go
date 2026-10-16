@@ -165,35 +165,31 @@ func (c *loomCLI) validatePlanCmd() *cobra.Command {
 		Short:       "run the checks Plan-Write's, a twill Plan-Write run's, Plan-Burler-Fix's or PR-Rework's own gate runs standalone against the current plan",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `validate-plan parses the current worktree's plan and checks it in one of
-five modes, reporting the result as one JSON envelope that carries
-informational findings under their own key even on success. It takes no
-arguments.
+five modes, reporting one JSON envelope that carries informational findings
+under their own key even on success. It takes no arguments.
 
 No flag: the index's ValidateFormat, the format-only check set Plan-Write's and
 Plan-Burler-Fix's own gate runs, which the plan writer calls before handoff.
 The cards of batches webster's run record holds done are history, and their
 tree-dependent checks are skipped. --require-approved: the index's Validate,
-the same set plus the plan-unapproved check no gate runs, which this flag alone
-reaches standalone. --rework: the set PR-Rework's own gate runs, the
-format-only checks over the whole new plan plus a check that its first_card
-equals the card number the rework session was told. The default and --rework
+the same set plus the plan-unapproved check no gate runs. --rework: the set
+PR-Rework's own gate runs, the format-only checks over the whole new plan plus
+a check that its first_card equals the card number the rework session was told. The default and --rework
 modes include the card-fabric-reference, fabric-vocabulary-name and
 edit-test-file checks; --require-approved leaves all three out.
-Every mode but --require-approved also runs rename-tool-missing, which reads
-the hub's language.yaml, and pattern-changes-mismatch, which compares the
-overview's PATTERN changes with the decision record's.
+Every mode but --require-approved also runs rename-tool-missing and
+pattern-changes-mismatch, which read language.yaml and the decision record.
 
 --lens-review: the no-flag checks plus the check that the plan directory's
 lens-review.md holds a recorded lens review, the check set of a twill
-Plan-Write run's own gate. The no-flag mode ignores that file.
+Plan-Write run's own gate.
 
 --overlay: the no-flag checks over the plan with proposed contents laid over
 its files, in memory; nothing is written. Pipe one JSON object on stdin, keys
 the file names and values their full content. A name is 00-overview.md or a
-card file the Card Index on disk lists; adding, removing or renumbering a card
-still goes through insert-card and remove-card. Handles are canonicalized in
-memory, and {} checks the plan as it is. It validates target-list,
-verify-command and card-text changes, never a proposed code change.
+card file the Card Index lists; adding, removing or renumbering a card still
+goes through insert-card and remove-card. {} checks the plan as it is. It
+validates target-list, verify-command and card-text changes, never code.
 
 The four flags are mutually exclusive.
 

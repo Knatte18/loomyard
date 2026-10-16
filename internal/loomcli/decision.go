@@ -393,8 +393,7 @@ A decision that adds, changes or removes a PATTERN entry also passes
 --pattern-entry <PATTERN-id>, --pattern-action adds|changes|removes and, for
 adds or changes, --pattern-text <new entry text>. One call then appends the
 entry and one bullet of the record's "## PATTERN changes" section, creating the
-section when the record has none, and the bullet is checked with the record.
-The form appends only that bullet and removes and rewrites nothing.
+section when the record has none; the bullet is checked with the record.
 
 Example:
   lyx loom decision add <slug> --by parent --title "Keep the cache" --decision "Keep the cache per run." --rationale "A shared cache races."
