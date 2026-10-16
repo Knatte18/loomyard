@@ -31,10 +31,12 @@ type BurlerFixProducer struct {
 	reviewRow string
 	runner    BurlerHalfRunner
 	models    burlerengine.RoundModels
-	profile   burlerengine.Profile
-	opts      burlerengine.RunOpts
-	runDir    string
-	now       func() time.Time
+	// requiresFans makes the producer read the round's recorded fixer fan and refuse a round that holds none.
+	requiresFans bool
+	profile      burlerengine.Profile
+	opts         burlerengine.RunOpts
+	runDir       string
+	now          func() time.Time
 }
 
 // Compile-time proof that *BurlerFixProducer satisfies shedengine.ShedProducer.
@@ -57,7 +59,7 @@ func NewBurlerFixProducer(name, reviewRow string, deps BurlerHalfDeps, profile b
 	if now == nil {
 		now = time.Now
 	}
-	return &BurlerFixProducer{name: name, reviewRow: reviewRow, runner: deps.Runner, models: deps.Models, profile: profile, opts: opts, runDir: runDir, now: now}, nil
+	return &BurlerFixProducer{name: name, reviewRow: reviewRow, runner: deps.Runner, models: deps.Models, requiresFans: deps.RequiresFans, profile: profile, opts: opts, runDir: runDir, now: now}, nil
 }
 
 // wayForward is the way forward every refusal that needs the round reviewed again ends with.
@@ -84,7 +86,8 @@ func (p *BurlerFixProducer) archiveReport(round int) {
 }
 
 // Call runs one fix: resolve the round to fix from disk and hand control on without spawning when the highest complete round is still unjudged.
-// It refuses a round with no accepted review, runs at most two attempts over the accepted review (a second only on a died/timeout first attempt), and maps the outcome onto shedengine's contract.
+// It refuses a round with no accepted review, and on a row told to require fans a round whose usage record holds no recorded fan names once no live fixer is found; the refusal archives the round's review, fixer report and acceptance record.
+// Otherwise it runs at most two attempts over the accepted review (a second only on a died/timeout first attempt), and maps the outcome onto shedengine's contract.
 //
 // A live fixer is probed before anything is archived, because archiving renames the very file a live fixer is about to write.
 // Only a stale fixer report is archived before an attempt.
@@ -129,8 +132,26 @@ func (p *BurlerFixProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 	profile.FixerReportPath = roundFixerReportPath(p.runDir, round)
 	archiveRound := func() { p.archiveWholeRound(round) }
 
+	// A row told to require fans runs the fixer fan its reviewer was spawned with, so a list edited between the halves cannot reach this round.
+	// A round with no recorded names can only hold a fixer an older binary spawned, which is probed as the single fixer it was; the refusal waits for that probe.
+	var unrecorded error
+	if p.requiresFans {
+		_, fixFan, recordedErr := readRecordedFans(p.runDir, round)
+		profile.FixFan = fixFan
+		if recordedErr != nil {
+			unrecorded = fmt.Errorf("shedadapters: %s (%s): round %d's usage record holds no recorded fan names (%v); %s", p.name, burlerFixEngineLabel, round, recordedErr, p.wayForward())
+		}
+	}
+
 	if outcome, ptr, exitErr, handled := p.probeLiveFix(ctx, round, profile, digest, archiveRound); handled {
 		return outcome, ptr, exitErr
+	}
+	if unrecorded != nil {
+		archiveRound()
+		if cerr := cancelErr(ctx, p.name, burlerFixEngineLabel); cerr != nil {
+			return "", shedengine.OutputPointer{}, cerr
+		}
+		return "", shedengine.OutputPointer{}, unrecorded
 	}
 
 	var priorResult burlerengine.FixResult
@@ -224,7 +245,7 @@ func (p *BurlerFixProducer) errorExit(ctx context.Context, round int, token, ver
 //
 // A failed fixer gate archives the review, fixer report and acceptance record and returns a counted Stuck with an empty Path, the gate's reason and attempts.
 // The Bouncer's next round then reviews afresh; a gate exhaustion is a determinate verdict, so it consumes no retry.
-// Otherwise it merges the fix half's usage into the round's usage record and returns Stuck with the review as Path, BudgetExempt.
+// Otherwise it merges the fix half's usage, and a twill fixer's lenses and fork count, into the round's usage record and returns Stuck with the review as Path, BudgetExempt.
 // A cancellation observed after the fix finished still yields an error, but a finished round's artifacts survive.
 func (p *BurlerFixProducer) fixedExit(ctx context.Context, round int, result burlerengine.FixResult, archiveRound func()) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if result.Gate != nil && !result.Gate.Passed {
@@ -240,7 +261,14 @@ func (p *BurlerFixProducer) fixedExit(ctx context.Context, round int, result bur
 	}
 	_, fix := p.models.Pick(round)
 	half := newHalfUsage(fix, result.Fix)
-	if err := mergeRoundUsage(p.runDir, round, p.now, func(u *roundUsage) { u.Fix = &half }); err != nil {
+	err := mergeRoundUsage(p.runDir, round, p.now, func(u *roundUsage) {
+		u.Fix = &half
+		if len(result.Lenses) > 0 {
+			forks := result.Forks
+			u.FixLenses, u.FixForks = result.Lenses, &forks
+		}
+	})
+	if err != nil {
 		logger.Warn("shedadapters: burler fix's usage record was not written", "producer", p.name, "engine", burlerFixEngineLabel, "round", round, "error", err)
 	}
 	return shedengine.Stuck, shedengine.OutputPointer{Path: roundReviewPath(p.runDir, round), GateAttempts: gateAttemptsPointer(result.Gate), GateSpans: gateSpansOf(result.Gate), BudgetExempt: true}, nil

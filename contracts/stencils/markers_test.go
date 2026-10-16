@@ -24,6 +24,11 @@ func TestStencils_TopLevelMarkers(t *testing.T) {
 		want []string
 	}{
 		{"burler-focus-directive", BurlerFocusDirective, []string{"focus_path"}},
+		{"burler-fork-reading", BurlerForkReading, nil},
+		{"burler-cluster-solo", BurlerClusterSolo, nil},
+		{"burler-cluster-fan", BurlerClusterFan, []string{"lens_list"}},
+		{"burler-fix-self-check", BurlerFixSelfCheck, []string{"lens_list", "rubric_path"}},
+		{"burler-fix-check-rubric", BurlerFixCheckRubric, nil},
 		{"loom-template-prior-plan", LoomTemplatePriorPlan, []string{"archive_dir", "moved_files"}},
 		{"orch-template-role", OrchTemplateRole, []string{"command_index", "repository_rules"}},
 		{"seat-directive-chair", SeatDirectiveChair, []string{"advisor_names", "inputs", "output_files"}},

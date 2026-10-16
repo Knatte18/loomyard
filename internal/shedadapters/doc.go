@@ -62,7 +62,7 @@
 //     From round 2 on only a BLOCKING finding, or a gating-class finding at MEDIUM or worse on a key the facts file lists as open in an earlier round, rules CONTINUE;
 //     a gating finding on a key first raised in the latest round converges and is carried into the decision record's `## Open risks` through the CarryOver seam.
 //     A parse-error line in the facts file's earlier-open list, from a missing or unparseable earlier ledger, sends the judge back to round 1's rule.
-//     A fanned segment's facts file (BouncerConfig.ClusterExcludes) also carries a `## Lenses` section:
+//     A fanned round's facts file (see ClusterFans below) also carries a `## Lenses` section:
 //     the fan and lenses the latest round ran, read from its usage record, the lenses already excluded, and the latest review's finding counts per `origin` by severity and class.
 //     A missing usage record or an unparseable review renders as a line saying so, and a solo segment's file carries no such section.
 //     A Go guard backs the prompt: a CIRCLING verdict with no decision file recorded for its round is read as CONTINUE, with a warning,
@@ -182,6 +182,9 @@
 // Only the judge call asks for exclude_lenses, and only when told ClusterExcludes, meaning its round runs a cluster
 // fan the excludes can trim; the seed call and every other judge prompt request focus alone, so the key may be absent
 // from a written file.
+// A Bouncer told BouncerConfig.ClusterFans, the partner review row's effective per-round reviewer fan list, decides per round instead:
+// the judge of round N asks for exclude_lenses, and the facts file carries its lens section, only when round N's recorded fan is non-empty and equals the list's entry for round N+1.
+// A round whose usage record is missing, does not decode or lacks `fans_recorded` counts as a round that ran no fan, and the facts file says so in one line; it never fails the judge.
 // The fanned judge prompt states three rules.
 // An exclusion is permanent for the segment generation.
 // A lens is excluded only when the latest round ran it and its area is settled, meaning nothing at MEDIUM or worse from it and not in the next round's focus.
@@ -197,11 +200,11 @@
 // N+1, hydrating from a generation the Bouncer had already discarded.
 // A fanned round's exclusions accumulate across the generation, held in Go:
 // the round's ClusterExclude is the union of the eligible exclude_lenses of focus files 2 through the round, and ClusterExcludeHeld the union through the round before.
-// An entry in round k's focus file is eligible only when round k-1's usage record names the same fan and lists the lens among those it ran,
-// so a missing record, a switch from solo or from another fan, or a lens already excluded drops it, with a warning for the round's own file.
+// An entry in round k's focus file is eligible only when round k-1's usage record carries `fans_recorded`, names the same fan and lists the lens among those it ran,
+// so a missing or flagless record, a switch from solo or from another fan, or a lens already excluded drops it, with a warning for the round's own file.
 // Round 1 runs the whole fan and drops a focus file's excludes, and an excluded lens returns only with a new generation, since an archived generation moves the whole run directory aside.
 // Every completed round, solo and fanned, also leaves round-<N>-usage.yaml beside them:
-// the fan and lenses the round ran, and each half's engine and model, run times, wall time and tokens, forks included, with an unknown reading left unknown rather than zero.
+// the fan and lenses the round ran, the fixer fan and, for a twill fixer, its `fix_lenses` and `fix_forks`, and each half's engine and model, run times, wall time and tokens, forks included, with an unknown reading left unknown rather than zero.
 // The record also carries the Bouncer's `seed` and `judge` lists, one entry per pass in the same half shape.
 // The Bouncer appends an entry for every pass whose result reached the Call, a judgment the guard refuses included, so a re-judged round lists every pass it took;
 // a pass whose run errored, and a judgment a later Call settles from disk, record nothing, and a failed write only logs a warning.
@@ -303,7 +306,13 @@
 // The review row resolves the round from the highest complete round, and hands on BudgetExempt without spawning in two cases:
 // the highest complete round has no recorded verdict, and the next round's review already carries an acceptance record, so a restart with the fixer pending resumes at the fix row.
 // Otherwise it probes for a live reviewer before archiving anything, resumes one it finds, and spawns at most two attempts, the second only after a died or timed-out first.
-// An accepted review writes its record, merges the half's usage into the round's usage record and hands on with the review as the pointer's path.
+// A row told BurlerHalfDeps.Fans picks the round's reviewer and fixer fans from the per-round lists, entry N for round N and the last entry for every later round;
+// a nil Fans runs the profile's own cluster fan and records no names.
+// After the probe finds no live reviewer, and before the first attempt, `recordRoundFans` writes `fan`, `fix_fan` and `fans_recorded: true` to the round's usage record, an empty name for a solo or single round included.
+// It is the only writer of the three keys, and a failed write is a failure exit that spawns nothing.
+// The fix half, a resumed reviewer and the Bouncer read the names through `readRecordedFans`, and `fans_recorded`, never the `fan` key, says they are there.
+// A live reviewer is probed and resumed under the fan already recorded for its round, so a list edited since changes only rounds spawned after the edit.
+// An accepted review writes its record, merges the lenses and the half's usage into the round's usage record, leaving the recorded names as they are, and hands on with the review as the pointer's path.
 // Every other end, a gate or strict-parse failure included, is a hard error that archives the round's review, fixer report and acceptance record;
 // a reviewer that could not be stopped returns bare, with nothing archived.
 // A review with no record beside it is an orphan and is reviewed again.
@@ -312,7 +321,10 @@
 // Without them it is a hard error whose way forward is a goto to the review row and a resume, since the review row's hand-on never produces that state:
 // its inputs are a goto into the fix row with no accepted review, and a resume after the fix row archived a review that changed since acceptance.
 // It probes for a live fixer first and resumes it against the recorded digest, then spawns at most two attempts under that digest.
-// A finished fix, a skipped empty review included, merges the fix half's usage and hands on BudgetExempt with the review as the pointer's path.
+// A row told BurlerHalfDeps.RequiresFans runs the fixer fan recorded for the round, so a list edited between the halves cannot reach it;
+// a round whose record holds no names has, once no live fixer is found, its review, fixer report and acceptance record archived and is refused with the goto to the review row, which spawns a fresh reviewer that records them.
+// A live fixer over such a record is resumed as the single fixer it was spawned as, and a row not told RequiresFans reads no names and runs the single fixer.
+// A finished fix, a skipped empty review included, merges the fix half's usage, and a twill fixer's lenses and fork count, and hands on BudgetExempt with the review as the pointer's path.
 // A finished fix whose gate failed archives the review, fixer report and acceptance record and returns a counted Stuck with an empty path, so the Bouncer's next round reviews afresh.
 // A review that changed after acceptance archives the same three and ends with the same way forward.
 // Any other failure archives the fixer report alone, keeping the accepted review and its record so a resume re-spawns the fixer without re-running the reviewer.

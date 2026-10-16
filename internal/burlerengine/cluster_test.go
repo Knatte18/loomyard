@@ -31,7 +31,67 @@ func TestAuditClusterRound(t *testing.T) {
 		errSubstr    string
 		wantErrIs    error
 		wantWarnings []string
+		// fix drives auditFixRound instead of auditClusterRound, and wantForks is the fork count it must report.
+		fix       bool
+		wantForks int
 	}{
+		{
+			name:      "fix: exact count is clean",
+			audit:     &shuttleengine.ForkAudit{Forks: []shuttleengine.ForkReport{cleanFork("a"), cleanFork("b")}},
+			wantN:     2,
+			fix:       true,
+			wantForks: 2,
+		},
+		{
+			name:         "fix: a nil audit is a count warning",
+			audit:        nil,
+			wantN:        2,
+			wantWarnings: []string{"twill fixer spawned 0 fork(s) for 2 lens(es)"},
+			fix:          true,
+		},
+		{
+			name:         "fix: no forks is a count warning",
+			audit:        &shuttleengine.ForkAudit{},
+			wantN:        2,
+			wantWarnings: []string{"twill fixer spawned 0 fork(s) for 2 lens(es)"},
+			fix:          true,
+		},
+		{
+			name:         "fix: fewer forks than lenses is a count warning",
+			audit:        &shuttleengine.ForkAudit{Forks: []shuttleengine.ForkReport{cleanFork("a")}},
+			wantN:        3,
+			wantWarnings: []string{"twill fixer spawned 1 fork(s) for 3 lens(es)"},
+			fix:          true,
+			wantForks:    1,
+		},
+		{
+			name:         "fix: more forks than lenses is a count warning",
+			audit:        &shuttleengine.ForkAudit{Forks: []shuttleengine.ForkReport{cleanFork("a"), cleanFork("b"), cleanFork("c")}},
+			wantN:        2,
+			wantWarnings: []string{"twill fixer spawned 3 fork(s) for 2 lens(es)"},
+			fix:          true,
+			wantForks:    3,
+		},
+		{
+			name: "fix: a report not returned is a warning",
+			audit: &shuttleengine.ForkAudit{
+				Forks: []shuttleengine.ForkReport{cleanFork("a"), {TranscriptPath: "b", ReportReturned: false}},
+			},
+			wantN:        2,
+			wantWarnings: []string{`fork "b" never returned a final report`},
+			fix:          true,
+			wantForks:    2,
+		},
+		{
+			name: "fix: a write call in a fork is the twill fixer violation",
+			audit: &shuttleengine.ForkAudit{
+				Forks: []shuttleengine.ForkReport{cleanFork("a"), {TranscriptPath: "b", ReportReturned: true, WriteCalls: 2}},
+			},
+			wantN:     2,
+			wantErr:   true,
+			errSubstr: `twill fixer fork "b" attempted 2 write/edit tool call(s)`,
+			fix:       true,
+		},
 		{
 			name: "exact N passes clean",
 			audit: &shuttleengine.ForkAudit{
@@ -138,7 +198,20 @@ func TestAuditClusterRound(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			warnings, err := auditClusterRound(tt.audit, tt.wantN)
+			var warnings []string
+			var err error
+			if tt.fix {
+				var forks int
+				warnings, forks, err = auditFixRound(tt.audit, tt.wantN)
+				if !tt.wantErr && forks != tt.wantForks {
+					t.Errorf("auditFixRound() forks = %d; want %d", forks, tt.wantForks)
+				}
+				if wayForward := "; way forward: inspect the target's working-tree changes, revert what the fork wrote, and resume the run"; tt.wantErr && (err == nil || !strings.Contains(err.Error(), wayForward)) {
+					t.Errorf("auditFixRound() error = %v; want it to contain %q", err, wayForward)
+				}
+			} else {
+				warnings, err = auditClusterRound(tt.audit, tt.wantN)
+			}
 
 			if tt.wantErr {
 				if err == nil {

@@ -48,10 +48,14 @@ type Profile struct {
 	// It applies in place of ClusterExclude when ClusterExclude would empty the fan.
 	ClusterExcludeHeld []string
 	clusterLenses      []Lens
-	ReviewPath         string
-	FixerReportPath    string
-	PriorReviews       []string
-	PriorFixerReports  []string
+	// FixFan names the fan whose lenses a forking fixer's self-check runs; empty is the single fixer.
+	// Naming a fan is what makes the fix half a twill round.
+	FixFan            string
+	fixLenses         []Lens
+	ReviewPath        string
+	FixerReportPath   string
+	PriorReviews      []string
+	PriorFixerReports []string
 	// FocusDirective is an optional path to this round's focus directive file, kept apart from PriorReviews.
 	// It is steering input the reviewer reads before forming findings, and is never subject to the prior-rounds clean-room rule.
 	FocusDirective string
@@ -90,6 +94,10 @@ type RunOpts struct {
 	// ReviewKey names the config key the reviewer's model came from, so a refusal of an engine that cannot run the reviewer names the key to change.
 	// The zero value stands for a reviewer whose key no caller names.
 	ReviewKey shuttleengine.ModelKey
+	// FixKey names the config key the fixer's model came from, and FixFanKey the key or profile field its fixer fan came from, so a refusal of an engine that cannot fork names both.
+	// They are read only when the profile names a fixer fan.
+	FixKey    shuttleengine.ModelKey
+	FixFanKey string
 	Timeout   time.Duration
 	Round     string
 	// NoteID is the caller-supplied friction-note stem for this round --
@@ -163,7 +171,7 @@ func (p *Profile) validateReview(worktreeRoot string, cfg Config) error {
 	}
 	if p.ClusterFan != "" {
 		// Resolve fan now so bad names fail upfront.
-		lenses, err := ResolveFan(cfg, p.ClusterFan)
+		lenses, err := resolveRecordedFan(cfg, p.ClusterFan)
 		if err != nil {
 			return err
 		}
@@ -184,10 +192,20 @@ func (p *Profile) validateReview(worktreeRoot string, cfg Config) error {
 	return nil
 }
 
+// resolveRecordedFan resolves fan against cfg and adds the way forward for a fan that no longer resolves.
+// A fan reaches a half from a name recorded at spawn time, which an edit of burler.yaml before a later half or a resume can leave undefined.
+func resolveRecordedFan(cfg Config, fan string) ([]Lens, error) {
+	lenses, err := ResolveFan(cfg, fan)
+	if err != nil {
+		return nil, fmt.Errorf("%w; way forward: define the fan in burler.yaml, then resume the run or re-run the verb", err)
+	}
+	return lenses, nil
+}
+
 // validateFix normalizes the fix half's path fields in place and reports a fail-loud error if the fix half is not runnable:
-// the resolved Target.Paths exist, FixScope is legal, and the review and fixer-report paths are non-empty and distinct.
+// the resolved Target.Paths exist, FixScope is legal, the review and fixer-report paths are non-empty and distinct, and a non-empty FixFan resolves against cfg into fixLenses.
 // The fixer holds no fasit or rubric, so neither is required.
-func (p *Profile) validateFix(worktreeRoot string) error {
+func (p *Profile) validateFix(worktreeRoot string, cfg Config) error {
 	p.Target.Paths = resolvePaths(worktreeRoot, p.Target.Paths)
 	p.ReviewPath = resolvePath(worktreeRoot, p.ReviewPath)
 	p.FixerReportPath = resolvePath(worktreeRoot, p.FixerReportPath)
@@ -206,6 +224,13 @@ func (p *Profile) validateFix(worktreeRoot string) error {
 	}
 	if p.ReviewPath == p.FixerReportPath {
 		return fmt.Errorf("burler: profile.ReviewPath and profile.FixerReportPath must not be the same path (got %q for both)", p.ReviewPath)
+	}
+	if p.FixFan != "" {
+		lenses, err := resolveRecordedFan(cfg, p.FixFan)
+		if err != nil {
+			return err
+		}
+		p.fixLenses = lenses
 	}
 	return nil
 }

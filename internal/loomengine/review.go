@@ -24,8 +24,18 @@ type ReviewSettings struct {
 	Discussion burlerengine.RoundModels
 	Plan       burlerengine.RoundModels
 	Webster    burlerengine.RoundModels
+	// DiscussionKeys and PlanKeys name the loom.yaml keys each of those segments' models came from.
+	DiscussionKeys SegmentKeys
+	PlanKeys       SegmentKeys
 	// Timeout is one review round's shuttle-run deadline, derived from cfg.ReviewTimeoutMin.
 	Timeout time.Duration
+}
+
+// SegmentKeys names the loom.yaml keys one review segment's reviewer and fixer model lists came from:
+// the segment's own key when it is set, else the run-wide key.
+type SegmentKeys struct {
+	Review string
+	Fix    string
 }
 
 // BouncerModels is one review segment's resolved seed and judge pair, each an already-resolved engine, model, effort and version.
@@ -116,48 +126,46 @@ func ResolveReview(cfg Config, reg modelspec.Registry) (ReviewSettings, error) {
 
 	runWide := burlerengine.RoundModels{Review: review, Fix: fix}
 
-	fanReview, err := resolveModelChoices("fan_review", cfg.FanReview, reg)
+	discussion, err := resolveSegmentModels("discussion", cfg.DiscussionReview, cfg.DiscussionFix, runWide, reg)
 	if err != nil {
 		return ReviewSettings{}, err
 	}
-
-	discussion, err := resolveSegmentModels("discussion", cfg.DiscussionReview, cfg.DiscussionFix, fannedReview(cfg.DiscussionFan, fanReview), runWide, reg)
+	plan, err := resolveSegmentModels("plan", cfg.PlanReview, cfg.PlanFix, runWide, reg)
 	if err != nil {
 		return ReviewSettings{}, err
 	}
-	plan, err := resolveSegmentModels("plan", cfg.PlanReview, cfg.PlanFix, fannedReview(cfg.PlanFan, fanReview), runWide, reg)
-	if err != nil {
-		return ReviewSettings{}, err
-	}
-	webster, err := resolveSegmentModels("webster", cfg.WebsterReview, cfg.WebsterFix, nil, runWide, reg)
+	webster, err := resolveSegmentModels("webster", cfg.WebsterReview, cfg.WebsterFix, runWide, reg)
 	if err != nil {
 		return ReviewSettings{}, err
 	}
 
 	return ReviewSettings{
-		Models:     runWide,
-		Discussion: discussion,
-		Plan:       plan,
-		Webster:    webster,
-		Timeout:    time.Duration(cfg.ReviewTimeoutMin) * time.Minute,
+		Models:         runWide,
+		Discussion:     discussion,
+		Plan:           plan,
+		Webster:        webster,
+		DiscussionKeys: segmentKeys("discussion", cfg.DiscussionReview, cfg.DiscussionFix),
+		PlanKeys:       segmentKeys("plan", cfg.PlanReview, cfg.PlanFix),
+		Timeout:        time.Duration(cfg.ReviewTimeoutMin) * time.Minute,
 	}, nil
 }
 
-// fannedReview returns fanReview when fan names a fan, else nil, which leaves a segment's reviewer list to its own keys.
-func fannedReview(fan string, fanReview []shuttleengine.ModelChoice) []shuttleengine.ModelChoice {
-	if fan == "" {
-		return nil
+// segmentKeys returns the loom.yaml keys one segment's reviewer and fixer lists came from: the segment's own key when its list is set, else the run-wide key.
+func segmentKeys(segment string, reviewSpecs, fixSpecs ModelSpecList) SegmentKeys {
+	keys := SegmentKeys{Review: "review", Fix: "fix"}
+	if !isUnsetModelSpecList(reviewSpecs) {
+		keys.Review = segment + "_review"
 	}
-	return fanReview
+	if !isUnsetModelSpecList(fixSpecs) {
+		keys.Fix = segment + "_fix"
+	}
+	return keys
 }
 
 // resolveSegmentModels resolves one review segment's reviewer and fixer lists, each falling back independently to runWide when its key is unset.
-// A non-nil fanReview replaces the reviewer list outright, since a fanned segment's reviewer runs on fan_review; the fixer list is unaffected.
-func resolveSegmentModels(segment string, reviewSpecs, fixSpecs ModelSpecList, fanReview []shuttleengine.ModelChoice, runWide burlerengine.RoundModels, reg modelspec.Registry) (burlerengine.RoundModels, error) {
+func resolveSegmentModels(segment string, reviewSpecs, fixSpecs ModelSpecList, runWide burlerengine.RoundModels, reg modelspec.Registry) (burlerengine.RoundModels, error) {
 	models := runWide
-	if fanReview != nil {
-		models.Review = fanReview
-	} else if !isUnsetModelSpecList(reviewSpecs) {
+	if !isUnsetModelSpecList(reviewSpecs) {
 		review, err := resolveModelChoices(segment+"_review", reviewSpecs, reg)
 		if err != nil {
 			return burlerengine.RoundModels{}, err

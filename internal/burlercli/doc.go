@@ -5,6 +5,7 @@
 // `lyx burler run` drives one review+fix round from a profile file, in hub mode or standalone.
 // The round is two sequential sessions: the reviewer under the role burler-review, then the fixer under the role burler-fix.
 // The fixer runs only when the review reached done and the engine accepted it, and it is told the digest of the accepted review.
+// A profile's `fix-fan` key names a fan from burler.yaml and runs the twill fixer, whose forks check its fix before the fixer-report is written; an unknown fan is refused before any spawn.
 // A review with no findings spawns no fixer: the engine writes the fixer report itself and the envelope reports `fixSkipped`.
 // A reviewer that died or timed out is the envelope's outcome, and runs no fixer.
 // `lyx burler validate-review <review-file>` is the review gate's read-only self-check and needs no hub, mode or git repository.

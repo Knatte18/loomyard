@@ -1,6 +1,6 @@
-// recipe.go declares this package's three exported types: Constructor, the fixed-signature
-// registry value type; Config, the recipe row's portable configuration; and Env, the caller-filled
-// bundle of told roots and injected seams every entry may read from.
+// recipe.go declares this package's exported types: Constructor, the fixed-signature
+// registry value type; Config, the recipe row's portable configuration; Env, the caller-filled
+// bundle of told roots and injected seams every entry may read from; and RowModelKeys, the config keys a Burler row's settings came from.
 
 package shedrecipe
 
@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -36,6 +37,14 @@ type Constructor func(name string, cfg Config, env Env) (shedengine.ShedProducer
 // Each entry extracts and validates only the keys it recognises, and an unrecognised key is an
 // error.
 type Config map[string]any
+
+// RowModelKeys names the config keys one Burler row's settings came from, so a refusal of an engine that cannot run the row names the key to change.
+// Review and Fix are the keys of the reviewer's and the fixer's model, and FixFan is the name of the key the fixer fan came from; an empty FixFan says the row is told no fixer fan.
+type RowModelKeys struct {
+	Review shuttleengine.ModelKey
+	Fix    shuttleengine.ModelKey
+	FixFan string
+}
 
 // Env carries roots and run-wide values only -- never a value that differs between two rows.
 // Anything per-row is a relative path or scalar in Config, resolved against one of these roots by
@@ -113,9 +122,15 @@ type Env struct {
 	// RowReviewModels holds a BurlerReview or BurlerFix row's own reviewer and fixer model lists, keyed by row name like SegmentBounces.
 	// A row with no entry, and a nil map, take ReviewModels.
 	RowReviewModels map[string]burlerengine.RoundModels
-	// RowClusterFans holds the burler cluster fan a review segment runs, keyed by the name of each of the segment's two rows.
-	// A row with no entry, and a nil map, take no fan from it.
-	RowClusterFans map[string]string
+	// RowClusterFans holds the per-round reviewer fan list of a review segment, entry N for round N, keyed by the name of the segment's Bouncer and review rows.
+	// A row with no entry, and a nil map, take no fan from it, and a list whose every entry is "" counts as absent beside a recipe fan.
+	RowClusterFans map[string][]string
+	// RowFixFans holds the per-round fixer fan list of a review segment, keyed by the name of the segment's review row.
+	// A row with no entry, and a nil map, take no fixer fan from it.
+	RowFixFans map[string][]string
+	// RowModelKeys holds the config keys a Burler review or fix row's models and fixer fan came from, keyed by row name.
+	// A row with no entry, and a nil map, take the zero keys, which name none.
+	RowModelKeys map[string]RowModelKeys
 
 	// ReviewMaxBounces is the run-wide bounce budget of every review segment, read by loomrecipe alone.
 	// It is set on each row of a segment holding a Bouncer row, because the recipe declares no max_bounces there.

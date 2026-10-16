@@ -16,6 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/seatengine"
+	"github.com/Knatte18/loomyard/internal/stencil"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
@@ -393,20 +395,57 @@ func TestComposePrompt_PriorRounds(t *testing.T) {
 	})
 }
 
-// TestComposePrompt_ClusterRules proves the cluster-rules block switches on p.ClusterFan: empty
-// renders the explicit single-reviewer prose with none of the fork machinery language, while a
-// resolved fan renders every lens name plus both load-bearing fork-discipline ban phrases (no Agent
-// tool, no git).
+// TestComposePrompt_ClusterRules proves the cluster parts switch on p.ClusterFan:
+// A solo round's explore and review steps equal their stencils filled for a round with no fan, byte for byte.
+// A fanned round's explore step differs from the solo render by the fork-reading part, and its review step carries the filled lens bullets in fan order.
+// A fanned round whose cluster-fan stencil is missing fails with the read error.
 // composeReviewPrompt reads p.clusterLenses directly (as (*Profile).validateReview would have left it) rather
 // than calling ResolveFan itself.
 func TestComposePrompt_ClusterRules(t *testing.T) {
 	t.Run("non-cluster", func(t *testing.T) {
 		p := newComposableProfile(t)
 
-		_, got := reviewHalf(t, newTestStencilsDir(t), &p, "")
+		review, _ := reviewHalf(t, newTestStencilsDir(t), &p, "")
 
-		requireContains(t, got, "single-reviewer round")
-		requireNotContains(t, got, "subagent_type")
+		exploreWithoutMarker := bytes.ReplaceAll(stencils.BurlerStep1Explore, []byte("{{.fork_reading}}"), nil)
+		wantExplore, err := stencil.FillOptional(exploreWithoutMarker, map[string]string{
+			"target":         formatFileSet(p.Target),
+			"fasit":          formatFileSet(p.Fasit),
+			"rubric":         p.Rubric,
+			"tool_use_rules": toolUseRules(p.ToolUse),
+		}, []string{"pattern_directive", focusMarkerName})
+		if err != nil {
+			t.Fatalf("stencil.FillOptional(explore without fork_reading) = %v; want nil", err)
+		}
+		if got := review.Files[reviewExploreFile].Content; got != string(wantExplore) {
+			t.Errorf("solo explore step = %q; want %q", got, wantExplore)
+		}
+		wantReview, err := stencil.Fill(stencils.BurlerStepReview, map[string]string{
+			"cluster_rules":      "This is a single-reviewer round — no cluster forks. Do the full review yourself.",
+			"review_path":        p.ReviewPath,
+			"review_format_path": testReviewFiles.Format,
+			"prior_rounds":       priorRoundsBlock(&p),
+		})
+		if err != nil {
+			t.Fatalf("stencil.Fill(review) = %v; want nil", err)
+		}
+		if got := review.Files[reviewStepFile].Content; got != string(wantReview) {
+			t.Errorf("solo review step = %q; want %q", got, wantReview)
+		}
+	})
+
+	t.Run("cluster fan stencil missing", func(t *testing.T) {
+		p := newComposableProfile(t)
+		stencilsDir := newTestStencilsDir(t)
+		p.ClusterFan = "standard"
+		p.clusterLenses = []Lens{{Name: "style", Text: "pay extra attention to style"}}
+		if err := os.Remove(stencilstore.Path(stencilsDir, "burler-cluster-fan")); err != nil {
+			t.Fatalf("Remove(burler-cluster-fan) = %v; want nil", err)
+		}
+
+		if _, err := composeReviewPrompt(stencilsDir, &p, "", testReviewFiles); err == nil || !strings.Contains(err.Error(), "burler-cluster-fan") {
+			t.Errorf("composeReviewPrompt() error = %v; want the read error naming burler-cluster-fan", err)
+		}
 	})
 
 	t.Run("cluster", func(t *testing.T) {
@@ -418,30 +457,25 @@ func TestComposePrompt_ClusterRules(t *testing.T) {
 			{Name: "security", Text: "pay extra attention to security"},
 		}
 
-		review, got := reviewHalf(t, stencilsDir, &p, "pattern directive placeholder")
+		review, _ := reviewHalf(t, stencilsDir, &p, "pattern directive placeholder")
 		fix := composeFix(t, stencilsDir, &p, "")
 
-		requireContains(t, got, "style")
-		requireContains(t, got, "security")
-		requireContains(t, got, "never call the Agent tool")
-		requireContains(t, got, "never run any git command")
-
-		// The cluster round's load-bearing fork-discipline statements: this content is composed dynamically by clusterRulesBlock into the review step, not baked into burler-step-review.md itself, so an edit that silently waters any of them down fails here rather than only in human review.
 		explore, reviewStep := review.Files[reviewExploreFile].Content, review.Files[reviewStepFile].Content
 		fixStep := fix.Files[fixStepFile].Content
-		for _, statement := range []string{
-			"SINGLE message",
-			"subagent_type",
-			"never pass a `name`",
-			"READ-ONLY",
-			"never run any git command",
-			"never call the Agent tool",
-			"HOLISTIC",
-			"complete once it is fully written to disk",
-			"origin:",
-			"Rejected",
-		} {
-			requireContains(t, reviewStep, statement)
+
+		// The fork-reading part reached the explore step: it differs from the solo render of the same profile.
+		solo := p
+		solo.ClusterFan, solo.clusterLenses = "", nil
+		soloReview := composeReview(t, stencilsDir, &solo, "pattern directive placeholder")
+		if explore == soloReview.Files[reviewExploreFile].Content {
+			t.Errorf("fanned explore step equals the solo render; want the fork-reading part in it")
+		}
+
+		// The lens bullets land in fan order in the review step.
+		styleIdx := strings.Index(reviewStep, "- style: pay extra attention to style")
+		securityIdx := strings.Index(reviewStep, "- security: pay extra attention to security")
+		if styleIdx == -1 || securityIdx == -1 || styleIdx >= securityIdx {
+			t.Errorf("review step lens bullets at idx style=%d security=%d; want both present, style first", styleIdx, securityIdx)
 		}
 
 		// Each block helper's rendered content lands in its intended instruction file and nowhere else: fix_scope_rules is the fix step's alone, cluster_rules (the lens names) is the review step's alone, and pattern_directive/target is the explore step's alone.

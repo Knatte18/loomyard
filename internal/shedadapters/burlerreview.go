@@ -46,6 +46,11 @@ type BurlerHalfDeps struct {
 	Runner BurlerHalfRunner
 	// Models holds the per-round review and fix model lists; each round runs on the pick for its number.
 	Models burlerengine.RoundModels
+	// Fans holds the segment's per-round reviewer and fixer fan lists, read by the review producer.
+	// Nil is a row that records no names and runs its profile's own ClusterFan.
+	Fans *RoundFans
+	// RequiresFans makes the fix producer read the fan names the review producer recorded, and refuse a round that holds none.
+	RequiresFans bool
 }
 
 // checkHalfProducerArgs returns the constructor error of a half producer named name under label, or nil.
@@ -75,6 +80,7 @@ type BurlerReviewProducer struct {
 	name    string
 	runner  BurlerHalfRunner
 	models  burlerengine.RoundModels
+	fans    *RoundFans
 	profile burlerengine.Profile
 	opts    burlerengine.RunOpts
 	runDir  string
@@ -97,17 +103,18 @@ func NewBurlerReviewProducer(name string, deps BurlerHalfDeps, profile burlereng
 	if now == nil {
 		now = time.Now
 	}
-	return &BurlerReviewProducer{name: name, runner: deps.Runner, models: deps.Models, profile: profile, opts: opts, runDir: runDir, now: now}, nil
+	return &BurlerReviewProducer{name: name, runner: deps.Runner, models: deps.Models, fans: deps.Fans, profile: profile, opts: opts, runDir: runDir, now: now}, nil
 }
 
-// roundProfile returns a fresh per-round copy of the stored template profile for round:
-// the round's own review and fixer-report paths, focus directive, hydration of earlier complete rounds and, from round 2 on, the cluster exclusions.
+// roundProfile returns a fresh per-round copy of the stored template profile for round running under fan:
+// the fan itself, the round's own review and fixer-report paths, focus directive, hydration of earlier complete rounds and, from round 2 on, the cluster exclusions.
 // The stored template itself is never mutated -- every slice field set is a freshly allocated slice.
-func (p *BurlerReviewProducer) roundProfile(round int) burlerengine.Profile {
+func (p *BurlerReviewProducer) roundProfile(round int, fan string) burlerengine.Profile {
 	focus := readRoundFocus(p.name, p.runDir, round)
 	priorReviews, priorFixerReports, _ := hydrationPaths(p.runDir, round)
 
 	profile := p.profile
+	profile.ClusterFan = fan
 	profile.ReviewPath = roundReviewPath(p.runDir, round)
 	profile.FixerReportPath = roundFixerReportPath(p.runDir, round)
 	profile.FocusDirective = focus.DirectivePath
@@ -116,14 +123,14 @@ func (p *BurlerReviewProducer) roundProfile(round int) burlerengine.Profile {
 	profile.ClusterExclude = nil
 	profile.ClusterExcludeHeld = nil
 	switch {
-	case p.profile.ClusterFan != "" && round >= 2:
+	case fan != "" && round >= 2:
 		var dropped []string
-		profile.ClusterExclude, dropped = excludedLenses(p.name, p.runDir, round, p.profile.ClusterFan)
-		profile.ClusterExcludeHeld, _ = excludedLenses(p.name, p.runDir, round-1, p.profile.ClusterFan)
+		profile.ClusterExclude, dropped = excludedLenses(p.name, p.runDir, round, fan)
+		profile.ClusterExcludeHeld, _ = excludedLenses(p.name, p.runDir, round-1, fan)
 		if len(dropped) > 0 {
 			logger.Warn("shedadapters: focus file excludes lenses the previous round did not run under this fan; dropping them", "producer", p.name, "engine", burlerReviewEngineLabel, "round", round, "lenses", dropped)
 		}
-	case p.profile.ClusterFan != "" && len(focus.ExcludeLenses) > 0:
+	case fan != "" && len(focus.ExcludeLenses) > 0:
 		logger.Warn("shedadapters: round 1 focus file names cluster excludes but the whole fan runs in round 1; dropping them", "producer", p.name, "engine", burlerReviewEngineLabel, "round", round, "lenses", focus.ExcludeLenses)
 	case len(focus.ExcludeLenses) > 0:
 		logger.Warn("shedadapters: focus file names cluster excludes but this round's profile has no cluster fan; dropping them", "producer", p.name, "engine", burlerReviewEngineLabel, "round", round, "lenses", focus.ExcludeLenses)
@@ -139,6 +146,7 @@ func (p *BurlerReviewProducer) roundProfile(round int) burlerengine.Profile {
 // A round whose review already carries an acceptance record is handed on the same way, so a restart with the fixer pending resumes at the fix row without re-running the reviewer.
 //
 // A live reviewer is probed before anything is archived, because archiving renames the very file a live reviewer is about to write.
+// On a row with fan lists the round's reviewer and fixer fan names are recorded in its usage record just before the first spawn; a failed write is a failure exit with nothing spawned.
 // Every return in which the review was not accepted archives the round's review, fixer report and acceptance record first.
 // Two exits archive nothing: a reviewer that could not be stopped, whose files a live session may still be writing, and a cancellation observed after the review was accepted and recorded.
 //
@@ -172,7 +180,21 @@ func (p *BurlerReviewProducer) Call(ctx context.Context) (shedengine.Outcome, sh
 		return p.handOn(ctx, reviewPath, fmt.Sprintf("round %d review is accepted; handing on to the fixer", round))
 	}
 
-	profile := p.roundProfile(round)
+	fan, fixFan := p.profile.ClusterFan, ""
+	probeFan := fan
+	if p.fans != nil {
+		fan, fixFan = roundFan(p.fans.Review, round), roundFan(p.fans.Fix, round)
+		probeFan = fan
+		// A reviewer spawned before a list edit is probed and audited under the fan it was spawned with.
+		if recordedFan, _, recordedErr := readRecordedFans(p.runDir, round); recordedErr == nil {
+			probeFan = recordedFan
+		}
+	}
+	profile := p.roundProfile(round, fan)
+	probeProfile := profile
+	if probeFan != fan {
+		probeProfile = p.roundProfile(round, probeFan)
+	}
 	paths := []string{profile.ReviewPath, profile.FixerReportPath, roundAcceptancePath(p.runDir, round)}
 	archiveRound := func() {
 		if archErr := archiveStaleOutputs(paths, p.now); archErr != nil {
@@ -187,8 +209,15 @@ func (p *BurlerReviewProducer) Call(ctx context.Context) (shedengine.Outcome, sh
 		return "", shedengine.OutputPointer{}, primaryErr
 	}
 
-	if outcome, ptr, exitErr, handled := p.probeLiveReview(ctx, round, profile, archiveRound); handled {
+	if outcome, ptr, exitErr, handled := p.probeLiveReview(ctx, round, probeProfile, archiveRound); handled {
 		return outcome, ptr, exitErr
+	}
+
+	// The names are fixed before the spawn, so the fix half and a resumed reviewer read the fans this round was spawned under.
+	if p.fans != nil {
+		if err := recordRoundFans(p.runDir, round, p.now, fan, fixFan); err != nil {
+			return failureExit(fmt.Errorf("shedadapters: %s (%s): round %d: record the round's fan names: %w", p.name, burlerReviewEngineLabel, round, err))
+		}
 	}
 
 	var priorResult burlerengine.ReviewResult
@@ -269,7 +298,7 @@ func (p *BurlerReviewProducer) unstoppedExit(ctx context.Context, err error) (sh
 }
 
 // acceptedExit maps a review that reached OutcomeDone onto Call's contract, for a spawned and a resumed review alike.
-// It records the accepted review's digest in the round's acceptance record and merges the review half's usage into the round's usage record.
+// It records the accepted review's digest in the round's acceptance record and merges the lenses and review half's usage into the round's usage record, leaving the fan names the spawn recorded as they are.
 // It returns Stuck with the review as Path, BudgetExempt.
 // A failed acceptance write is a hard error with the round's paths archived, since a review with no record would be reviewed again on resume.
 // A cancellation observed after the record was written still yields an error, but the accepted review and its record survive.
@@ -287,7 +316,7 @@ func (p *BurlerReviewProducer) acceptedExit(ctx context.Context, round int, resu
 	review, _ := p.models.Pick(round)
 	half := reviewHalfUsage(review, result.Review)
 	err := mergeRoundUsage(p.runDir, round, p.now, func(u *roundUsage) {
-		u.Fan, u.Lenses, u.Review = p.profile.ClusterFan, result.Lenses, &half
+		u.Lenses, u.Review = result.Lenses, &half
 	})
 	if err != nil {
 		logger.Warn("shedadapters: burler review's usage record was not written", "producer", p.name, "engine", burlerReviewEngineLabel, "round", round, "error", err)

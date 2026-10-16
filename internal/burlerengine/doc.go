@@ -72,6 +72,21 @@
 // so `premise false` means false against the code it reads.
 // The fixer is the round's only friction-note writer.
 //
+// # The fixer fan (twill fixer)
+//
+// Profile.FixFan names a fan from the burler.yaml lens/fan library, and validateFix resolves it into the fixer's lenses before any spawn, so an unknown fixer fan fails the half.
+// A profile with no FixFan is the single fixer, whose files render the same bytes as before the fan existed.
+// With a fan, the fixer is spawned with fork subagents authorized and its fix step renders the burler-fix-self-check part before the fixer-report rule:
+// before it writes the fixer-report, the fixer reads the deployed burler-fix-check-rubric stencil and spawns one read-only fork per lens over the change set it just made, then judges each fork finding by the fix step's own three dispositions and records them in a `## Self-check` section of the fixer-report.
+// One fork pass per fixer session: a fixer re-prompted by its gate, or resumed after its forks were lost, spawns no further forks and names each lost fork as "no report".
+// A forking fixer still carries its row's gates, because a turn end with a fork outstanding is a wait, so no gate runs while a fork is live.
+//
+// A done twill fixer is audited by auditFixRound before its gate is looked at.
+// A fork that wrote, ran a mutating git command, called the Agent tool or was spawned with a name is a hard error with a way forward, whether or not the gate passed, since the fork may have corrupted the fix.
+// A fork count other than the lens count, and a fork that never returned a report, are warnings only, since the fix is on disk and failing the half would redo a finished fix.
+// FixResult carries the fixer fan's Lenses, the audited Forks count and the Warnings.
+// A start refusal of an engine without fork support is worded by twillEngineRefusal with the model key and the fan key RunOpts.FixKey and RunOpts.FixFanKey carry, and a fan recorded for the round that no longer resolves carries the way forward to define it in burler.yaml.
+//
 // # Review before fix
 //
 // Review-before-fix is a hard gate, not advisory: the review is fully on disk, and accepted by Go, before the fix half spawns at all, so no target file is touched before then.
@@ -260,6 +275,11 @@
 // All three phases are part of the review, so review-before-fix is intact exactly as in a solo round:
 // the consolidated review is fully written to disk, and accepted, before the fix half spawns.
 //
+// The prose of a cluster round is stencil text read at call time, never composed in Go.
+// The explore step's optional fork_reading marker renders the burler-fork-reading stencil in a fanned round only, so the handler's pre-read is the forks' inherited reading and a solo round's explore step renders the same bytes as without the marker.
+// The review step's cluster_rules marker renders burler-cluster-solo for a solo round and burler-cluster-fan, filled with the round's lens list, for a fanned one;
+// the fanned part carries the spawn mechanics, the fork rules and the consolidation rules.
+//
 // Fork discipline is fixed boilerplate the handler composes into every
 // fork's prompt, never per-lens: read-only evidence gathering only (no
 // Write/Edit/delete of any file, repo or `_lyx`), no git commands of any
@@ -323,7 +343,7 @@
 // ParseReview enforces unique, non-empty ids fail-loud, so cross-round hydration and audit can cite a finding unambiguously;
 // the caller judges progress across rounds holistically via its own verdict judge, not by tracking finding-key identity.
 // It also carries the resolved ReviewPath, the reviewer's SessionID/StrandGUID/LastAssistantMessage/RunDir (ReviewResult.Review, with StartError set only on a half that never started), ForkAudit, ClusterWarnings and its Gate, the reviewer's review-parse gate outcome passed through and nil when the reviewer never ran gated.
-// FixResult carries the fixer's Outcome, the resolved FixerReportPath, the fixer's Half, its Gate passed through, Skipped and NotStarted.
+// FixResult carries the fixer's Outcome, the resolved FixerReportPath, the fixer's Half, its Gate passed through, Skipped, NotStarted and, for a twill fixer, Lenses, Forks and Warnings.
 // Each Half also carries its run's StartedAt, EndedAt and session Usage (forks included) from its terminal shuttle Result, and ReviewResult.Lenses names the lenses the reviewer ran, nil for a solo round; no decision reads them.
 // Review and Fix return a nil error for every shuttleengine outcome except a hard failure:
 // an invalid profile, a shuttle start failure, a half that cannot be stopped, a changed review,

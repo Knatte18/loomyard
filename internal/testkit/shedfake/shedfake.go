@@ -187,6 +187,9 @@ type BurlerHalfRunner struct {
 	GotProbeReviewOpts []burlerengine.RunOpts
 	GotProbeFixOpts    []burlerengine.RunOpts
 	GotResumeFixOpts   []burlerengine.RunOpts
+	// GotProbeReviewProfiles and GotResumeReviewProfiles hold every Profile handed to ProbeReview and ResumeReview, in order.
+	GotProbeReviewProfiles  []burlerengine.Profile
+	GotResumeReviewProfiles []burlerengine.Profile
 	// GotFixProfiles, GotFixOpts and GotFixDigests hold every Profile, RunOpts and digest handed to Fix, in order; GotResumeFixDigests holds the digests handed to ResumeFix.
 	GotFixProfiles      []burlerengine.Profile
 	GotFixOpts          []burlerengine.RunOpts
@@ -215,21 +218,23 @@ func (f *BurlerHalfRunner) Review(p burlerengine.Profile, opts burlerengine.RunO
 	return scripted(f.ReviewResults, i), scripted(f.ReviewErrs, i)
 }
 
-// ProbeReview counts the call, records opts and answers the scripted LiveHalf and error for this invocation.
-func (f *BurlerHalfRunner) ProbeReview(_ burlerengine.Profile, opts burlerengine.RunOpts) (burlerengine.LiveHalf, error) {
+// ProbeReview counts the call, records p and opts and answers the scripted LiveHalf and error for this invocation.
+func (f *BurlerHalfRunner) ProbeReview(p burlerengine.Profile, opts burlerengine.RunOpts) (burlerengine.LiveHalf, error) {
 	f.mu.Lock()
 	i := f.ProbeReviewCalls
 	f.ProbeReviewCalls++
+	f.GotProbeReviewProfiles = append(f.GotProbeReviewProfiles, p)
 	f.GotProbeReviewOpts = append(f.GotProbeReviewOpts, opts)
 	f.mu.Unlock()
 	return scripted(f.LiveReviews, i), scripted(f.ProbeReviewErrs, i)
 }
 
-// ResumeReview counts the call, records live and answers the scripted ReviewResult and error for this invocation.
-func (f *BurlerHalfRunner) ResumeReview(_ burlerengine.Profile, _ burlerengine.RunOpts, live burlerengine.LiveHalf) (burlerengine.ReviewResult, error) {
+// ResumeReview counts the call, records p and live and answers the scripted ReviewResult and error for this invocation.
+func (f *BurlerHalfRunner) ResumeReview(p burlerengine.Profile, _ burlerengine.RunOpts, live burlerengine.LiveHalf) (burlerengine.ReviewResult, error) {
 	f.mu.Lock()
 	i := f.ResumeReviewCalls
 	f.ResumeReviewCalls++
+	f.GotResumeReviewProfiles = append(f.GotResumeReviewProfiles, p)
 	f.GotLiveReviews = append(f.GotLiveReviews, live)
 	f.mu.Unlock()
 	return scripted(f.ResumeReviewResults, i), scripted(f.ResumeReviewErrs, i)

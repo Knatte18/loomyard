@@ -14,6 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+
+	"gopkg.in/yaml.v3"
 )
 
 // minimalReviewConfig returns a Config carrying only the required BurlerReview keys:
@@ -65,7 +67,7 @@ func captureReview(t *testing.T, name string, cfg Config, env Env) (burlerengine
 	return fake.GotReviewProfiles[0], fake.GotReviewOpts[0]
 }
 
-// captureFix constructs a BurlerFix entry from cfg and env, accepts a round-1 review in the run directory the row's run_subdir names so the producer reaches its runner, drives one Call and returns the Profile and RunOpts env.Burler's fake recorded for Fix.
+// captureFix constructs a BurlerFix entry from cfg and env, accepts a round-1 review in the run directory the row's run_subdir names, with a usage record of recorded fans, so the producer reaches its runner, drives one Call and returns the Profile and RunOpts env.Burler's fake recorded for Fix.
 func captureFix(t *testing.T, name string, cfg Config, env Env) (burlerengine.Profile, burlerengine.RunOpts) {
 	t.Helper()
 	producer, err := burlerFixEntry(name, cfg, env)
@@ -79,6 +81,10 @@ func captureFix(t *testing.T, name string, cfg Config, env Env) (burlerengine.Pr
 	}
 	if err := os.WriteFile(filepath.Join(runDir, "round-1-acceptance.md"), []byte("---\nround: 1\ndigest: abc\n---\n"), 0o644); err != nil {
 		t.Fatalf("write the round-1 acceptance record: %v", err)
+	}
+	// A fix row told a fixer fan key reads the names its reviewer recorded, so the round carries a record with the flag.
+	if err := os.WriteFile(filepath.Join(runDir, "round-1-usage.yaml"), []byte("round: 1\nfan: \"\"\nfix_fan: \"\"\nfans_recorded: true\n"), 0o644); err != nil {
+		t.Fatalf("write the round-1 usage record: %v", err)
 	}
 	_, _, _ = producer.Call(context.Background())
 
@@ -351,42 +357,90 @@ func TestBurlerHalfEntries_EnvFallback(t *testing.T) {
 	}
 }
 
+// TestBurlerReviewEntry_ClusterFan covers how a review row's per-round fan lists form from the wiring's Env lists and the recipe profile's fans:
+// round 1's profile carries the list's first entry, the round's usage record carries both names, and a wiring list naming a fan beside the recipe's own is a construction error.
+// It also covers the row's RowModelKeys entry reaching the reviewer's model key.
 func TestBurlerReviewEntry_ClusterFan(t *testing.T) {
-	t.Run("RowClusterFansEntryReachesItsOwnRowOnly", func(t *testing.T) {
+	type recordedFans struct {
+		Fan          string `yaml:"fan"`
+		FixFan       string `yaml:"fix_fan"`
+		FansRecorded bool   `yaml:"fans_recorded"`
+	}
+	tests := []struct {
+		name         string
+		clusterFans  map[string][]string
+		fixFans      map[string][]string
+		recipeFans   map[string]any
+		wantErr      []string
+		wantFan      string
+		wantFixFan   string
+		wantRecorded bool
+	}{
+		{name: "WiringListsReachTheirOwnRow", clusterFans: map[string][]string{"review-row": {"env-fan", "later-fan"}}, fixFans: map[string][]string{"review-row": {"env-fix"}}, wantFan: "env-fan", wantFixFan: "env-fix", wantRecorded: true},
+		{name: "RecipeClusterFanAloneReachesRoundOne", recipeFans: map[string]any{"cluster-fan": "recipe-fan"}, wantFan: "recipe-fan", wantRecorded: true},
+		{name: "RecipeFixFanAloneIsRecorded", recipeFans: map[string]any{"fix-fan": "recipe-fix"}, wantFixFan: "recipe-fix", wantRecorded: true},
+		{name: "ListsNamingAnotherRowLeaveThisRowToTheRecipe", clusterFans: map[string][]string{"other-row": {"env-fan"}}, recipeFans: map[string]any{"cluster-fan": "recipe-fan"}, wantFan: "recipe-fan", wantRecorded: true},
+		{name: "EmptyWiringListsRecordASoloRound", clusterFans: map[string][]string{"review-row": {""}}, fixFans: map[string][]string{"review-row": nil}, wantRecorded: true},
+		{name: "EmptyWiringListsYieldToRecipeFans", clusterFans: map[string][]string{"review-row": {""}}, fixFans: map[string][]string{"review-row": {""}}, recipeFans: map[string]any{"cluster-fan": "recipe-fan", "fix-fan": "recipe-fix"}, wantFan: "recipe-fan", wantFixFan: "recipe-fix", wantRecorded: true},
+		{name: "NoListsAndNoRecipeFansRecordNothing"},
+		{name: "ClusterListBesideRecipeClusterFanNamesBoth", clusterFans: map[string][]string{"review-row": {"env-fan"}}, recipeFans: map[string]any{"cluster-fan": "recipe-fan"}, wantErr: []string{"review-row", "env-fan", "recipe-fan", "loom.yaml", "remove cluster-fan"}},
+		{name: "FixListBesideRecipeFixFanNamesBoth", fixFans: map[string][]string{"review-row": {"env-fix"}}, recipeFans: map[string]any{"fix-fan": "recipe-fix"}, wantErr: []string{"review-row", "env-fix", "recipe-fix", "loom.yaml", "remove fix-fan"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := newTestEnv(t)
+			env.RowClusterFans, env.RowFixFans = tt.clusterFans, tt.fixFans
+			cfg := minimalReviewConfig()
+			for key, value := range tt.recipeFans {
+				cfg["profile"].(map[string]any)[key] = value
+			}
+			if len(tt.wantErr) > 0 {
+				_, err := burlerReviewEntry("review-row", cfg, env)
+				for _, want := range tt.wantErr {
+					assertErrContains(t, err, want)
+				}
+				return
+			}
+
+			profile, _ := captureReview(t, "review-row", cfg, env)
+			if profile.ClusterFan != tt.wantFan {
+				t.Errorf("round 1 profile.ClusterFan = %q; want %q", profile.ClusterFan, tt.wantFan)
+			}
+			content, err := os.ReadFile(filepath.Join(env.RunRoot, "review-segment", "round-1-usage.yaml"))
+			if !tt.wantRecorded {
+				if err == nil {
+					t.Errorf("round-1-usage.yaml exists with %q; want none from a row that records no fans", content)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("read round-1-usage.yaml: %v", err)
+			}
+			var got recordedFans
+			if err := yaml.Unmarshal(content, &got); err != nil {
+				t.Fatalf("decode round-1-usage.yaml: %v", err)
+			}
+			if want := (recordedFans{Fan: tt.wantFan, FixFan: tt.wantFixFan, FansRecorded: true}); got != want {
+				t.Errorf("round-1 usage record fans = %+v; want %+v", got, want)
+			}
+		})
+	}
+
+	t.Run("RowModelKeysEntryReachesTheReviewerKey", func(t *testing.T) {
 		env := newTestEnv(t)
-		env.RowClusterFans = map[string]string{"review-row": "env-fan"}
+		want := shuttleengine.ModelKey{Module: "loom", Key: "discussion_review"}
+		env.RowModelKeys = map[string]RowModelKeys{"review-row": {Review: want}}
 
-		profile, opts := captureReview(t, "review-row", minimalReviewConfig(), env)
-		if profile.ClusterFan != "env-fan" {
-			t.Errorf("profile.ClusterFan = %q; want the row's RowClusterFans entry env-fan", profile.ClusterFan)
-		}
-		if want := (shuttleengine.ModelKey{Module: "loom", Key: "fan_review"}); opts.ReviewKey != want {
-			t.Errorf("cluster-fan row ReviewKey = %+v; want %+v", opts.ReviewKey, want)
-		}
-
-		_, soloOpts := captureReview(t, "solo-row", minimalReviewConfig(), newTestEnv(t))
-		if soloOpts.ReviewKey != (shuttleengine.ModelKey{}) {
-			t.Errorf("solo row ReviewKey = %+v; want the zero key", soloOpts.ReviewKey)
+		_, opts := captureReview(t, "review-row", minimalReviewConfig(), env)
+		if opts.ReviewKey != want {
+			t.Errorf("ReviewKey = %+v; want the row's RowModelKeys entry %+v", opts.ReviewKey, want)
 		}
 
 		otherEnv := newTestEnv(t)
-		otherEnv.RowClusterFans = env.RowClusterFans
-		cfg := minimalReviewConfig()
-		cfg["profile"].(map[string]any)["cluster-fan"] = "recipe-fan"
-		other, _ := captureReview(t, "other-row", cfg, otherEnv)
-		if other.ClusterFan != "recipe-fan" {
-			t.Errorf("other row's ClusterFan = %q; want the recipe's recipe-fan, the map names another row", other.ClusterFan)
-		}
-	})
-
-	t.Run("EnvFanBesideRecipeClusterFanNamesBoth", func(t *testing.T) {
-		env := newTestEnv(t)
-		env.RowClusterFans = map[string]string{"review-row": "env-fan"}
-		cfg := minimalReviewConfig()
-		cfg["profile"].(map[string]any)["cluster-fan"] = "recipe-fan"
-		_, err := burlerReviewEntry("review-row", cfg, env)
-		for _, want := range []string{"review-row", "env-fan", "recipe-fan", "loom.yaml", "remove cluster-fan"} {
-			assertErrContains(t, err, want)
+		otherEnv.RowModelKeys = env.RowModelKeys
+		_, otherOpts := captureReview(t, "other-row", minimalReviewConfig(), otherEnv)
+		if otherOpts.ReviewKey != (shuttleengine.ModelKey{}) {
+			t.Errorf("row without an entry ReviewKey = %+v; want the zero key", otherOpts.ReviewKey)
 		}
 	})
 }
@@ -478,7 +532,7 @@ func TestBurlerHalfEntries_StrictUnknownKeys(t *testing.T) {
 			return cfg
 		}, key})
 	}
-	for _, key := range []string{"fasit", "rubric", "rubric_stencil", "tool-use", "cluster-fan", "review-path"} {
+	for _, key := range []string{"fasit", "rubric", "rubric_stencil", "tool-use", "cluster-fan", "fix-fan", "review-path"} {
 		tests = append(tests, struct {
 			name  string
 			entry string
@@ -498,6 +552,14 @@ func TestBurlerHalfEntries_StrictUnknownKeys(t *testing.T) {
 			assertErrContains(t, err, tt.want)
 		})
 	}
+
+	t.Run("ReviewProfileAcceptsFixFan", func(t *testing.T) {
+		cfg := minimalReviewConfig()
+		cfg["profile"].(map[string]any)["fix-fan"] = "recipe-fix"
+		if _, err := burlerReviewEntry("a-row", cfg, newTestEnv(t)); err != nil {
+			t.Errorf("burlerReviewEntry() error = %v; want nil for a review profile naming fix-fan", err)
+		}
+	})
 }
 
 // TestBurlerHalfEntries_ColorSegment covers the optional per-half keys that map onto the profile, color_segment, role_prefix and language-skills:
@@ -677,6 +739,17 @@ func TestBurlerFixEntry_GateConfig(t *testing.T) {
 		}
 		if !strings.Contains(result.Findings, "plan overview not found") {
 			t.Errorf("opts.Gate[0].Gate() Findings = %q; want it to name the missing plan overview, proving the plan validator ran", result.Findings)
+		}
+	})
+
+	t.Run("RowModelKeysEntryReachesFixKeyAndFixFanKey", func(t *testing.T) {
+		env := newTestEnv(t)
+		want := RowModelKeys{Fix: shuttleengine.ModelKey{Module: "loom", Key: "fix"}, FixFan: "fix_fan"}
+		env.RowModelKeys = map[string]RowModelKeys{"fix-row": want}
+
+		_, opts := captureFix(t, "fix-row", minimalFixConfig(), env)
+		if opts.FixKey != want.Fix || opts.FixFanKey != want.FixFan {
+			t.Errorf("FixKey, FixFanKey = %+v, %q; want %+v, %q", opts.FixKey, opts.FixFanKey, want.Fix, want.FixFan)
 		}
 	})
 

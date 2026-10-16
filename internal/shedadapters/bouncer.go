@@ -121,6 +121,10 @@ type BouncerConfig struct {
 	// Only then does the judge prompt ask for exclude_lenses, and the seed prompt never does;
 	// the zero value asks the judge for focus alone.
 	ClusterExcludes bool
+	// ClusterFans is the effective per-round reviewer fan list of the partner Burler review row, as that row's RoundFans.Review.
+	// When non-nil it replaces ClusterExcludes: the judge of round N asks for exclude_lenses, and the facts file carries its lens section, only when round N ran a fan and round N+1 resolves to the same fan.
+	// Nil leaves ClusterExcludes as the whole answer.
+	ClusterFans []string
 	// Skip is the optional seam a caller tells this Bouncer when the artifact under review may need no review at all.
 	// True settles the segment as approved without a seed or judge spawn;
 	// false reviews as usual;
@@ -1274,6 +1278,21 @@ func (b *Bouncer) runSeedSpawn(focusPathValue string) error {
 	return nil
 }
 
+// excludesLenses reports whether round's judge asks for exclude_lenses, with a note naming why the usage record could not answer, empty when it could.
+// A Bouncer told no ClusterFans answers with ClusterExcludes.
+// Otherwise the answer is true exactly when round ran a fan and round+1 resolves to that same fan;
+// a record that is missing, does not decode or lacks fans_recorded counts as a round that ran no fan, and never fails the judge.
+func (b *Bouncer) excludesLenses(round int) (bool, string) {
+	if b.cfg.ClusterFans == nil {
+		return b.cfg.ClusterExcludes, ""
+	}
+	fan, _, err := readRecordedFans(b.cfg.RunDir, round)
+	if err != nil {
+		return false, err.Error()
+	}
+	return fan != "" && fan == roundFan(b.cfg.ClusterFans, round+1), ""
+}
+
 // judgeCall runs the Bouncer's per-round judge pass for round n: read the round's report,
 // resolve the previous-ledger marker, compose and run the judge spawn, then harvest whatever the
 // spawn produced. A judgment that provably happened (judged(n) holds after the run returns) is
@@ -1345,7 +1364,8 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 
 	// The facts file is regenerated on every judge call, including one that ends up attaching to a live judge, since the render is deterministic.
 	// A write failure degrades like an unreadable template, because the prompt would name a file that does not exist.
-	if err := writeRoundFacts(b.cfg.Name, b.cfg.RunDir, n, b.cfg.ReportName, b.cfg.ClusterExcludes); err != nil {
+	excludesLenses, usageNote := b.excludesLenses(n)
+	if err := writeRoundFacts(b.cfg.Name, b.cfg.RunDir, n, b.cfg.ReportName, excludesLenses, usageNote); err != nil {
 		return b.degrade(ctx, "shedadapters: bouncer facts file unwritable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
 	}
 
@@ -1367,7 +1387,7 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 	if patternDirective != "" {
 		judgeValues["pattern_directive"] = patternDirective
 	}
-	maps.Copy(judgeValues, focusSchemaMarkers(b.cfg.ClusterExcludes))
+	maps.Copy(judgeValues, focusSchemaMarkers(excludesLenses))
 	prompt, err := stencil.FillOptional(judgeTemplate, judgeValues, []string{"pattern_directive"})
 	if err != nil {
 		return b.degrade(ctx, "shedadapters: bouncer judge prompt fill failed", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)

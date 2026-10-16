@@ -103,9 +103,10 @@ func templateConfig() Config {
 		PlanFix:                  ModelSpecList{""},
 		WebsterReview:            ModelSpecList{"sonnet[high]"},
 		WebsterFix:               ModelSpecList{""},
-		DiscussionFan:            "",
-		PlanFan:                  "",
-		FanReview:                ModelSpecList{"sonnet[high]"},
+		DiscussionFan:            FanList{""},
+		PlanFan:                  FanList{""},
+		DiscussionFixFan:         FanList{""},
+		PlanFixFan:               FanList{""},
 		Judge:                    "sonnet[medium]",
 		ReviewTimeoutMin:         240,
 		Friction:                 "sonnet[medium]",
@@ -197,11 +198,24 @@ review_timeout_min: 240
 			mutate: func(c *Config) { c.DiscussionFix = ModelSpecList{} },
 		},
 		{
-			name:   "discussion_fan and plan_fan name template fans, fan_review a per-round list",
-			values: map[string]string{"discussion_fan": "standard", "plan_fan": "full", "fan_review": "\n  - sonnet[low]\n  - opus[high]"},
+			name:   "each fan key as one fan name",
+			values: map[string]string{"discussion_fan": "standard", "plan_fan": "full", "discussion_fix_fan": "fix-discussion", "plan_fix_fan": "fix-plan"},
 			mutate: func(c *Config) {
-				c.DiscussionFan, c.PlanFan = "standard", "full"
-				c.FanReview = ModelSpecList{"sonnet[low]", "opus[high]"}
+				c.DiscussionFan, c.PlanFan = FanList{"standard"}, FanList{"full"}
+				c.DiscussionFixFan, c.PlanFixFan = FanList{"fix-discussion"}, FanList{"fix-plan"}
+			},
+		},
+		{
+			name: "each fan key as a per-round list, an empty entry running its round solo",
+			values: map[string]string{
+				"discussion_fan":     "\n  - \"\"\n  - review-discussion",
+				"plan_fan":           "\n  - review-plan\n  - \"\"",
+				"discussion_fix_fan": "\n  - \"\"\n  - fix-discussion",
+				"plan_fix_fan":       "\n  - fix-plan\n  - \"\"",
+			},
+			mutate: func(c *Config) {
+				c.DiscussionFan, c.PlanFan = FanList{"", "review-discussion"}, FanList{"review-plan", ""}
+				c.DiscussionFixFan, c.PlanFixFan = FanList{"", "fix-discussion"}, FanList{"fix-plan", ""}
 			},
 		},
 		{
@@ -426,11 +440,12 @@ review_timeout_min: 240
 	t.Run("hub stack", func(t *testing.T) {
 		t.Parallel()
 		tests := []struct {
-			name     string
-			board    string
-			worktree string
-			local    string
-			mutate   func(*Config)
+			name       string
+			board      string
+			boardExtra string
+			worktree   string
+			local      string
+			mutate     func(*Config)
 		}{
 			{
 				name:   "a local value wins over the repo default",
@@ -443,6 +458,11 @@ review_timeout_min: 240
 				board:    "review: [\"opus[medium]\"]\n",
 				worktree: "review: [\"sonnet[low]\", \"sonnet[high]\"]\n",
 				mutate:   func(c *Config) { c.Review = ModelSpecList{"sonnet[low]", "sonnet[high]"} },
+			},
+			{
+				name:       "a retired fan_review in the repo default is ignored",
+				boardExtra: "fan_review: sonnet[high]\n",
+				mutate:     func(*Config) {},
 			},
 			{
 				name:   "a local driver_kind go is open to the local layer",
@@ -461,7 +481,7 @@ review_timeout_min: 240
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
 				board, anchor := t.TempDir(), t.TempDir()
-				seedLoomConfig(t, board, loomTemplateWith(t, tt.board))
+				seedLoomConfig(t, board, loomTemplateWith(t, tt.board)+tt.boardExtra)
 				if tt.worktree != "" {
 					seedLoomConfig(t, anchor, tt.worktree)
 				}
@@ -589,11 +609,16 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"malformed plan_fix spec", "plan_fix", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
 		{"malformed webster_review spec", "webster_review", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
 		{"malformed later webster_fix entry", "webster_fix", "\n  - sonnet[low]\n  - \"opus[effort\"", []string{"entry 2", "a non-empty list of model-specs"}, ""},
-		{"unknown discussion_fan", "discussion_fan", "nosuchfan", []string{`"nosuchfan"`, "known fans: ", "standard", "to empty to run the segment solo"}, ""},
-		{"unknown plan_fan", "plan_fan", "nosuchfan", []string{`"nosuchfan"`, "known fans: ", "full", "to empty to run the segment solo"}, ""},
+		{"unknown discussion_fan", "discussion_fan", "nosuchfan", []string{`"nosuchfan"`, "known fans: ", "standard", "entry 1", `set the entry to ""`}, ""},
+		{"unknown plan_fan", "plan_fan", "nosuchfan", []string{`"nosuchfan"`, "known fans: ", "full", "entry 1", `set the entry to ""`}, ""},
+		{"unknown second discussion_fix_fan entry", "discussion_fix_fan", "\n  - \"\"\n  - nosuchfan", []string{"entry 2", `"nosuchfan"`, "known fans: ", "define the fan in burler.yaml", `set the entry to ""`}, ""},
+		{"empty discussion_fan list", "discussion_fan", "[]", []string{"the list is empty", `write ""`}, ""},
+		{"empty plan_fan list", "plan_fan", "[]", []string{"the list is empty", `write ""`}, ""},
+		{"empty discussion_fix_fan list", "discussion_fix_fan", "[]", []string{"the list is empty", `write ""`}, ""},
+		{"empty plan_fix_fan list", "plan_fix_fan", "[]", []string{"the list is empty", `write ""`}, ""},
+		{"mapping discussion_fix_fan value", "discussion_fix_fan", "\n  model: opus", []string{"line ", "neither a fan name nor a list of fan names", "a list of fan names"}, ""},
+		{"mapping inside a plan_fan list", "plan_fan", "\n  - full\n  - model: opus", []string{"line ", "neither a fan name nor a list of fan names", "a list of fan names"}, ""},
 		{"set discussion_fan with a malformed burler.yaml", "discussion_fan", "standard", []string{"burler: config file ", "parse doc YAML", "fix burler.yaml, or set the key to empty"}, malformedBurlerYAML},
-		{"malformed fan_review spec", "fan_review", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
-		{"empty fan_review list", "fan_review", "[]", []string{"empty", "a non-empty list of model-specs"}, ""},
 		{"string discussion_advisors entry", "discussion_advisors", `["sonnet[high]"]`, []string{"entry 1", advisorEntryWayForward}, ""},
 		{"string discussion_advisors entry after a mapping", "discussion_advisors", `[{name: critic, model: "sonnet[high]"}, "sonnet[low]"]`, []string{"entry 2", advisorEntryWayForward}, ""},
 		{"blank discussion_advisors name", "discussion_advisors", `[{name: "", model: "sonnet[high]"}]`, []string{"entry 1", "missing or blank", advisorWayForward}, ""},
@@ -701,6 +726,28 @@ func TestLoadConfig_Refuses(t *testing.T) {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
 			}
+		}
+	})
+
+	t.Run("a local fan key is refused naming the local file and the key", func(t *testing.T) {
+		t.Parallel()
+		for _, key := range []string{"discussion_fan", "plan_fan", "discussion_fix_fan", "plan_fix_fan"} {
+			t.Run(key, func(t *testing.T) {
+				t.Parallel()
+				board, anchor := t.TempDir(), t.TempDir()
+				seedLoomConfig(t, board, ConfigTemplate())
+				localPath := writeLocalLoomConfig(t, anchor, key+": standard\n")
+
+				_, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "loom")
+				if !errors.Is(err, configengine.ErrInvalid) {
+					t.Fatalf("LoadConfig() error = %v; want ErrInvalid", err)
+				}
+				for _, want := range []string{localPath, key} {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
+					}
+				}
+			})
 		}
 	})
 
@@ -1200,7 +1247,7 @@ func containsConfigKey(text, key string) bool {
 	return false
 }
 
-// TestMigrateConfig_RetiresSkipMergeReview pins what MigrateConfig rewrites for skip_merge_review: an old-schema document, recognised by its skip_merge_review key, has each zero per-perch budget turned to null and skip_merge_review true turned to merge_max_bounces: 0 before the key goes;
+// TestMigrateConfig_RetiresSkipMergeReview pins what MigrateConfig rewrites for skip_merge_review and removes for fan_review: an old-schema document, recognised by its skip_merge_review key, has each zero per-perch budget turned to null and skip_merge_review true turned to merge_max_bounces: 0 before the key goes;
 // a document without the key keeps its zeros as the zero-rounds meaning; a second run changes nothing, a below-floor step_idle_timeout_min is still raised, and an unparseable document is refused.
 func TestMigrateConfig_RetiresSkipMergeReview(t *testing.T) {
 	t.Parallel()
@@ -1236,6 +1283,13 @@ func TestMigrateConfig_RetiresSkipMergeReview(t *testing.T) {
 			name:     "a document without skip_merge_review keeps its zero",
 			document: "plan_max_bounces: 0\n",
 			wantKeys: map[string]any{"plan_max_bounces": 0},
+		},
+		{
+			name:      "fan_review goes with its reconcile line",
+			document:  "fan_review: sonnet[high]\nplan_max_bounces: 2\n",
+			wantLines: []string{"fan_review: removed; a fanned round's reviewer now runs on its segment's own reviewer list"},
+			wantKeys:  map[string]any{"plan_max_bounces": 2},
+			wantGone:  []string{"fan_review"},
 		},
 		{
 			name:      "a below-floor step_idle_timeout_min is still raised",

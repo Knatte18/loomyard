@@ -69,6 +69,9 @@ func TestDecodeProfile(t *testing.T) {
 				if profile.ClusterFan != "standard" {
 					t.Errorf("ClusterFan = %q; want %q", profile.ClusterFan, "standard")
 				}
+				if profile.FixFan != "fix-plan" {
+					t.Errorf("FixFan = %q; want %q", profile.FixFan, "fix-plan")
+				}
 				if profile.ReviewPath != "review.md" {
 					t.Errorf("ReviewPath = %q; want %q", profile.ReviewPath, "review.md")
 				}
@@ -93,6 +96,7 @@ rubric: "BLOCKING: x. NIT: y."
 fix-scope: source
 tool-use: true
 cluster-fan: "standard"
+fix-fan: "fix-plan"
 review-path: review.md
 fixer-report-path: fixer-report.md
 prior-reviews: ["prior-review.md"]
