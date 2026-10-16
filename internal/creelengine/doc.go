@@ -24,7 +24,7 @@
 //
 // The protocol is JSON lines: a request line carrying the verb, the sender's claim and the verb's fields, and one or more response lines.
 // Every response carries the hub path, and the client refuses a socket that answers for another hub.
-// A waiting verb gets a pending response with its id at once and its outcome as a later response.
+// A waiting verb gets a pending response with its id at once and its outcome as a later response; a waiting inject also gets a progress response for each change of its receiver's stall, and its expired response carries the last stall.
 // A waiting call whose connection drops reconnects up to MaxReconnects times and resumes the same wait with wait-reply or wait-inject.
 // A read's response is acknowledged on the same connection, and the daemon answers the acknowledgement with one confirming line once it is journaled.
 //
@@ -93,7 +93,8 @@
 // Queued injects are typed before reminders, oldest first, except that an interrupt-queued inject goes ahead of the others, newest first.
 // A sending event is journaled before the line is typed.
 // The outcome is injected, unconfirmed when the send answered ErrNotLanded, so the line is never typed twice, or expired; a busy send is requeued untouched.
-// inject --wait answers with the outcome.
+// inject --wait answers with the outcome, and hears each change of its receiver's stall reason as a progress line on stderr.
+// An expired answer carries the stall that stood when the TTL ran out, and the `expired` record names it as its reason.
 // inject --interrupt first sends the guarded interrupt and queues the line at the head.
 //
 // interrupt sends the guarded interrupt at once, bypassing the queue, and reports whether it stopped a running turn.

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -124,7 +125,7 @@ func runVerb(cmd *cobra.Command, timeout time.Duration, body func(client *creele
 	res, err := body(client, out)
 	if errors.Is(err, creelengine.ErrWaitTimeout) {
 		clihelp.SetExit(ctx, ExitWaitTimeout)
-		output.ErrFields(out, "no outcome arrived before the timeout of "+timeout.String(), nil)
+		output.ErrFields(out, "no outcome arrived before the timeout of "+timeout.String(), res.fields)
 		return nil
 	}
 	if err != nil {
@@ -173,6 +174,14 @@ func parentProcessName() string {
 		return ""
 	}
 	return strings.TrimSpace(string(data))
+}
+
+// stallFields renders the stall a response carries as the stall, its reason text with the way forward and the time it was read; nil when it carries none.
+func stallFields(resp creelengine.Response) map[string]any {
+	if resp.Stall == "" {
+		return nil
+	}
+	return map[string]any{"stall": string(resp.Stall), "stall_reason": resp.Stall.Reason(), "stall_at": resp.StallAt.Format(time.RFC3339)}
 }
 
 // messageFields renders a message with its envelope and body.
@@ -297,9 +306,13 @@ Example:
 					Verb: creelengine.VerbInject, Receiver: args[0], Text: args[1],
 					Interrupt: interrupt, TTLSeconds: int64(ttl / time.Second), Wait: wait,
 				}
-				resp, err := client.Call(req, timeout, nil)
+				var last creelengine.Response
+				resp, err := client.CallWatching(req, timeout, nil, func(note creelengine.Response) {
+					last = note
+					fmt.Fprintf(cmd.ErrOrStderr(), "creel: %s is stalled: %s (at %s)\n", args[0], note.Stall.Reason(), note.StallAt.Format(time.RFC3339))
+				})
 				if err != nil {
-					return result{}, err
+					return result{fields: stallFields(last)}, err
 				}
 				fields := map[string]any{"id": resp.ID, "sender": resp.Sender}
 				if !wait {
@@ -311,6 +324,7 @@ Example:
 				case creelengine.OutcomeUnconfirmed:
 					return result{fields: fields, code: ExitInjectUnconfirmed, note: "the text was typed but its landing was not confirmed"}, nil
 				case creelengine.OutcomeExpired:
+					maps.Copy(fields, stallFields(resp))
 					return result{fields: fields, code: ExitInjectExpired, note: "the inject expired before it could be typed"}, nil
 				}
 				return result{fields: fields}, nil

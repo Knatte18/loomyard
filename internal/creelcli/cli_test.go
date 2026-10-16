@@ -9,18 +9,22 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtemp"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/proc"
@@ -53,6 +57,50 @@ func runCreel(cwd string, args ...string) cliRun {
 	run := cliRun{code: code, raw: out.String()}
 	_ = json.Unmarshal([]byte(strings.TrimSpace(run.raw)), &run.fields)
 	return run
+}
+
+// lockedBuffer is a buffer a test reads while a verb in another goroutine still writes it.
+type lockedBuffer struct {
+	mu   sync.Mutex
+	data bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.data.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.data.String()
+}
+
+// runCreelSplit runs the creel command as runCreel does but writes stderr to the writer it is handed, and returns the stdout run.
+func runCreelSplit(cwd string, stderr io.Writer, args ...string) cliRun {
+	var out bytes.Buffer
+	cmd := Command()
+	cmd.SetOut(&out)
+	cmd.SetErr(stderr)
+	cmd.SetArgs(args)
+	code := clihelp.RunRootCtx(lyxcwd.WithCwd(context.Background(), cwd), cmd, &out)
+	run := cliRun{code: code, raw: out.String()}
+	_ = json.Unmarshal([]byte(strings.TrimSpace(run.raw)), &run.fields)
+	return run
+}
+
+// awaitStderr polls the buffer until it holds want, under a real-time deadline that only bounds a failing test.
+func awaitStderr(t *testing.T, stderr *lockedBuffer, want string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if strings.Contains(stderr.String(), want) {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("stderr = %q; want it to hold %q", stderr.String(), want)
 }
 
 func runAsync(cwd string, args ...string) <-chan cliRun {
@@ -284,6 +332,58 @@ func TestCreelCLI(t *testing.T) {
 		r.sweepLast()
 		if returned := awaitRun(t, waiting); returned.code != ExitReturnedUndelivered {
 			t.Errorf("creel post --wait-reply once the receiver left = (%d, %q); want exit %d", returned.code, returned.raw, ExitReturnedUndelivered)
+		}
+	})
+
+	t.Run("a waiting inject hears the stall on stderr and an expired answer carries it", func(t *testing.T) {
+		r := newRig(t)
+		alpha := r.name("alpha:driver")
+		r.delivery.SetStrands(creelfake.LiveStrand(alpha))
+		r.delivery.SetStall(alpha, creelengine.StallDraft)
+		r.startDaemon(t)
+
+		probesBefore := len(r.clock.AwaitWaitsWhere(0, isProbeWait))
+		var stderr lockedBuffer
+		done := make(chan cliRun, 1)
+		go func() { done <- runCreelSplit(r.cwd, &stderr, "inject", "--wait", "--ttl", "1m", alpha, "/clear") }()
+		r.clock.AwaitWaitsWhere(probesBefore+1, isProbeWait)
+		r.clock.Advance(time.Second)
+		awaitStderr(t, &stderr, "is stalled: "+creelengine.StallDraft.Reason())
+		r.clock.Advance(61 * time.Second)
+		expired := awaitRun(t, done)
+		if expired.code != ExitInjectExpired {
+			t.Fatalf("creel inject --wait past its TTL = (%d, %q); want exit %d", expired.code, expired.raw, ExitInjectExpired)
+		}
+		if expired.fields["stall"] != string(creelengine.StallDraft) || expired.fields["stall_reason"] != creelengine.StallDraft.Reason() || expired.fields["stall_at"] == nil {
+			t.Errorf("expired envelope = %q; want stall draft with its reason and time", expired.raw)
+		}
+		if strings.Contains(expired.raw, "is stalled") {
+			t.Errorf("stdout = %q; the progress line belongs on stderr", expired.raw)
+		}
+	})
+
+	t.Run("a timed-out waiting inject carries the last stall beside the timeout", func(t *testing.T) {
+		r := newRig(t)
+		alpha := r.name("alpha:driver")
+		r.delivery.SetStrands(creelfake.LiveStrand(alpha))
+		r.delivery.SetStall(alpha, creelengine.StallTooShort)
+		r.startDaemon(t)
+
+		probesBefore := len(r.clock.AwaitWaitsWhere(0, isProbeWait))
+		var stderr lockedBuffer
+		done := make(chan cliRun, 1)
+		go func() { done <- runCreelSplit(r.cwd, &stderr, "inject", "--wait", "--timeout", "5s", alpha, "/clear") }()
+		r.clientClock.AwaitWaits(1)
+		r.clock.AwaitWaitsWhere(probesBefore+1, isProbeWait)
+		r.clock.Advance(time.Second)
+		awaitStderr(t, &stderr, "is stalled: "+creelengine.StallTooShort.Reason())
+		r.clientClock.Advance(5 * time.Second)
+		timedOut := awaitRun(t, done)
+		if timedOut.code != ExitWaitTimeout || timedOut.fields["stall"] != string(creelengine.StallTooShort) || timedOut.fields["stall_at"] == nil {
+			t.Fatalf("creel inject --wait --timeout 5s = (%d, %q); want exit %d with the too-short stall", timedOut.code, timedOut.raw, ExitWaitTimeout)
+		}
+		if reason, _ := timedOut.fields["stall_reason"].(string); !strings.Contains(reason, "lyx reed attach") {
+			t.Errorf("stall_reason = %q; want the way forward naming lyx reed attach", reason)
 		}
 	})
 

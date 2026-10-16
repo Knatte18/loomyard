@@ -463,12 +463,18 @@ func (s *Store) settleInject(id int64, event string) error {
 	return s.do(func() error { return s.settleInjectLocked(id, event) })
 }
 
+// settleInjectLocked journals the end of an inject and answers its waiters.
+// An expired inject journals and answers with the receiver's stall standing at that moment, when there is one.
 func (s *Store) settleInjectLocked(id int64, event string) error {
-	if err := s.writer.append(record{Event: event, ID: id}); err != nil {
+	var standing stallNote
+	if entry := s.state.injects[id]; entry != nil && event == eventExpired {
+		standing = s.stalls[entry.Receiver]
+	}
+	if err := s.writer.append(record{Event: event, ID: id, Reason: string(standing.stall)}); err != nil {
 		return err
 	}
 	kinds := map[string]OutcomeKind{eventInjected: OutcomeInjected, eventUnconfirmed: OutcomeUnconfirmed, eventExpired: OutcomeExpired}
-	s.answerLocked(waitKey{kind: waitInject, id: id}, Outcome{Kind: kinds[event]})
+	s.answerLocked(waitKey{kind: waitInject, id: id}, Outcome{Kind: kinds[event], Stall: standing.stall, StallAt: standing.at})
 	return nil
 }
 
@@ -483,8 +489,17 @@ func (s *Store) noteStall(receiver string, stall Stall) error {
 		if s.stalls[receiver].stall == stall {
 			return nil
 		}
-		s.stalls[receiver] = stallNote{stall: stall, at: s.clock.Now()}
-		return s.writer.append(record{Event: eventStalled, To: receiver, Reason: string(stall)})
+		note := stallNote{stall: stall, at: s.clock.Now()}
+		s.stalls[receiver] = note
+		if err := s.writer.append(record{Event: eventStalled, To: receiver, Reason: string(stall)}); err != nil {
+			return err
+		}
+		for _, entry := range s.queuedEntriesLocked(receiver) {
+			for _, waiter := range s.waiters[waitKey{kind: waitInject, id: entry.ID}] {
+				waiter.notify(StallNote{Stall: note.stall, At: note.at})
+			}
+		}
+		return nil
 	})
 }
 

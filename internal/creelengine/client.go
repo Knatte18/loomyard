@@ -87,6 +87,11 @@ type waitState struct {
 // A waiting call whose connection drops reconnects up to MaxReconnects times, starting the daemon if needed, and resumes the same wait.
 // A read's response is handed to handle, and acknowledged only when handle returns nil; a handle that fails leaves the messages unread.
 func (c *Client) Call(req Request, timeout time.Duration, handle func(Response) error) (Response, error) {
+	return c.CallWatching(req, timeout, handle, nil)
+}
+
+// CallWatching is Call that also hands every progress response of a waiting inject to progress, in the order they arrive; a nil progress ignores them.
+func (c *Client) CallWatching(req Request, timeout time.Duration, handle func(Response) error, progress func(Response)) (Response, error) {
 	req.Claim = c.claim
 	var timer <-chan time.Time
 	if req.Wait && timeout > 0 {
@@ -100,7 +105,7 @@ func (c *Client) Call(req Request, timeout time.Duration, handle func(Response) 
 		if err == nil {
 			established = true
 			var resp Response
-			if resp, err = c.exchange(conn, current, timer, state, handle); err == nil {
+			if resp, err = c.exchange(conn, current, timer, state, handle, progress); err == nil {
 				return resp, nil
 			}
 		}
@@ -145,8 +150,8 @@ type lineResult struct {
 	err  error
 }
 
-// exchange sends req on conn and reads responses until the final one.
-func (c *Client) exchange(conn net.Conn, req Request, timer <-chan time.Time, state *waitState, handle func(Response) error) (Response, error) {
+// exchange sends req on conn and reads responses until the final one, handing each progress response to progress.
+func (c *Client) exchange(conn net.Conn, req Request, timer <-chan time.Time, state *waitState, handle func(Response) error, progress func(Response)) (Response, error) {
 	defer conn.Close()
 	line, err := encodeLine(req)
 	if err != nil {
@@ -192,6 +197,12 @@ func (c *Client) exchange(conn net.Conn, req Request, timer <-chan time.Time, st
 			}
 			if resp.Pending {
 				state.id = resp.ID
+				continue
+			}
+			if resp.Progress {
+				if progress != nil {
+					progress(resp)
+				}
 				continue
 			}
 			if resp.AckRequired {

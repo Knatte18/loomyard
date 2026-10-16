@@ -532,6 +532,31 @@ func TestScheduler_Injects(t *testing.T) {
 				t.Errorf("stalled reasons = %q; want one", got)
 			}
 		}},
+		{"WaiterProgressKeepsOnlyTheNewestUnreadStall", func(t *testing.T, e *env) {
+			e.del.SetStall(alpha, creelengine.StallDraft)
+			_, waiter, err := e.store.InjectWait(program(batten), alpha, "/clear", 0, false)
+			if err != nil {
+				t.Fatalf("InjectWait: %v", err)
+			}
+			e.start(t)
+			e.probeWaits(1)
+			e.tick(time.Second)
+			e.del.SetStall(alpha, creelengine.StallTooShort)
+			e.tick(2 * time.Second)
+			select {
+			case note := <-waiter.Progress:
+				if note.Stall != creelengine.StallTooShort || note.At.IsZero() {
+					t.Errorf("progress = %+v; want the newer too-short note with its time", note)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("the waiter heard no stall")
+			}
+			select {
+			case note := <-waiter.Progress:
+				t.Errorf("a second progress note %+v; the older unread one must have been replaced", note)
+			default:
+			}
+		}},
 		{"InterruptInjectInterruptsThenTypesItsTextFirstAtTheNextIdle", func(t *testing.T, e *env) {
 			e.del.SetIdle(alpha, false)
 			inject(t, e, program(batten), alpha, "/first", 0, false)

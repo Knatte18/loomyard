@@ -178,6 +178,29 @@ func result(t *testing.T, results <-chan callResult) callResult {
 	}
 }
 
+// nextProgress waits for the next progress response of a watching call; the real-time deadline only bounds a failing test.
+func nextProgress(t *testing.T, progress <-chan creelengine.Response) creelengine.Response {
+	t.Helper()
+	select {
+	case note := <-progress:
+		return note
+	case <-time.After(10 * time.Second):
+		t.Fatal("no progress response arrived")
+		return creelengine.Response{}
+	}
+}
+
+// expiredLine returns the journal line of the first expired event.
+func expiredLine(t *testing.T, geom creelengine.Geometry) string {
+	t.Helper()
+	for _, line := range strings.Split(journalText(t, geom), "\n") {
+		if strings.Contains(line, `"event":"expired"`) {
+			return line
+		}
+	}
+	return ""
+}
+
 func mustCall(t *testing.T, c *creelengine.Client, req creelengine.Request) creelengine.Response {
 	t.Helper()
 	got := result(t, callAsync(c, req, 0))
@@ -379,8 +402,66 @@ func TestDaemon_Protocol(t *testing.T) {
 			waiting := callAsync(c, creelengine.Request{Verb: creelengine.VerbInject, Receiver: alpha, Text: "/clear", TTLSeconds: 60, Wait: true}, 0)
 			r.clock.AwaitWaitsWhere(1, isProbeWait)
 			r.clock.Advance(61 * time.Second)
-			if got := result(t, waiting); got.err != nil || got.resp.Outcome != creelengine.OutcomeExpired {
-				t.Errorf("inject --wait = %+v, %v; want expired", got.resp, got.err)
+			if got := result(t, waiting); got.err != nil || got.resp.Outcome != creelengine.OutcomeExpired || got.resp.Stall != "" {
+				t.Errorf("inject --wait = %+v, %v; want expired with no stall", got.resp, got.err)
+			}
+		}},
+		{"InjectWaitHearsEachStallChangeAndExpiresWithTheLastOne", false, func(t *testing.T, r *rig) {
+			r.start()
+			r.del.SetStall(alpha, creelengine.StallDraft)
+			c := r.client(externalClaim(), nil, creelfake.NewClock(epoch))
+			progress := make(chan creelengine.Response, 8)
+			done := make(chan callResult, 1)
+			go func() {
+				resp, err := c.CallWatching(creelengine.Request{Verb: creelengine.VerbInject, Receiver: alpha, Text: "/clear", TTLSeconds: 60, Wait: true}, 0, nil,
+					func(note creelengine.Response) { progress <- note })
+				done <- callResult{resp, err}
+			}()
+			r.clock.AwaitWaitsWhere(1, isProbeWait)
+			r.clock.Advance(time.Second)
+			if note := nextProgress(t, progress); !note.Progress || note.Stall != creelengine.StallDraft || note.StallAt.IsZero() {
+				t.Errorf("first progress = %+v; want the draft stall with its time", note)
+			}
+			r.del.SetStall(alpha, creelengine.StallTooShort)
+			r.clock.AwaitWaitsWhere(2, isProbeWait)
+			r.clock.Advance(2 * time.Second)
+			if note := nextProgress(t, progress); note.Stall != creelengine.StallTooShort {
+				t.Errorf("second progress = %+v; want the too-short stall", note)
+			}
+			r.clock.AwaitWaitsWhere(3, isProbeWait)
+			r.clock.Advance(61 * time.Second)
+			got := result(t, done)
+			if got.err != nil || got.resp.Outcome != creelengine.OutcomeExpired || got.resp.Stall != creelengine.StallTooShort || got.resp.StallAt.IsZero() {
+				t.Errorf("inject --wait = %+v, %v; want expired carrying the too-short stall", got.resp, got.err)
+			}
+			if len(progress) != 0 {
+				t.Errorf("%d further progress responses; want exactly the two changes", len(progress))
+			}
+			if !strings.Contains(expiredLine(t, r.geom), `"reason":"too-short"`) {
+				t.Errorf("the expired line = %q; want it to carry reason too-short", expiredLine(t, r.geom))
+			}
+		}},
+		{"ResumedInjectWaitHearsTheStandingStallAtOnce", false, func(t *testing.T, r *rig) {
+			r.start()
+			r.del.SetStall(alpha, creelengine.StallDraft)
+			c := r.client(externalClaim(), nil, creelfake.NewClock(epoch))
+			queued := mustCall(t, c, creelengine.Request{Verb: creelengine.VerbInject, Receiver: alpha, Text: "/clear", TTLSeconds: 60})
+			r.clock.AwaitWaitsWhere(1, isProbeWait)
+			r.clock.Advance(time.Second)
+			r.clock.AwaitWaitsWhere(2, isProbeWait)
+			progress := make(chan creelengine.Response, 8)
+			done := make(chan callResult, 1)
+			go func() {
+				resp, err := c.CallWatching(creelengine.Request{Verb: creelengine.VerbWaitInject, ID: queued.ID, Wait: true}, 0, nil,
+					func(note creelengine.Response) { progress <- note })
+				done <- callResult{resp, err}
+			}()
+			if note := nextProgress(t, progress); note.ID != queued.ID || note.Stall != creelengine.StallDraft {
+				t.Errorf("resumed wait progress = %+v; want the standing draft stall for inject %d", note, queued.ID)
+			}
+			r.clock.Advance(61 * time.Second)
+			if got := result(t, done); got.err != nil || got.resp.Outcome != creelengine.OutcomeExpired || got.resp.Stall != creelengine.StallDraft {
+				t.Errorf("wait-inject = %+v, %v; want expired carrying the draft stall", got.resp, got.err)
 			}
 		}},
 		{"PostWaitReplyIsAnsweredWhenTheMessageReturnsUndelivered", false, func(t *testing.T, r *rig) {

@@ -349,7 +349,7 @@ func (d *daemon) dispatch(conn *net.UnixConn, reader *bufio.Reader, sender Sende
 	return d.write(conn, ok)
 }
 
-// awaitOutcome answers a waiting verb: an interim response with the id at once, and the outcome when the waiter is answered.
+// awaitOutcome answers a waiting verb: an interim response with the id at once, a progress response for each stall note of a waiting inject, and the outcome when the waiter is answered.
 // A client that closes its connection, or a daemon that shuts down, ends the wait with no answer.
 func (d *daemon) awaitOutcome(conn net.Conn, reader *bufio.Reader, waiter *Waiter, id int64) error {
 	defer waiter.Cancel()
@@ -358,17 +358,38 @@ func (d *daemon) awaitOutcome(conn net.Conn, reader *bufio.Reader, waiter *Waite
 	}
 	watcher := watchClose(conn, reader)
 	defer watcher.stop()
-	select {
-	case outcome := <-waiter.C:
-		resp := Response{OK: true, ID: id, Outcome: outcome.Kind}
-		if outcome.Kind == OutcomeReply || outcome.Kind == OutcomeReturned {
-			resp.Message = &outcome.Message
+	for {
+		select {
+		case note := <-waiter.Progress:
+			if err := d.write(conn, progressResponse(id, note)); err != nil {
+				return nil
+			}
+		case outcome := <-waiter.C:
+			// A note read before the outcome still goes out first, so the client sees the last stall in order.
+			select {
+			case note := <-waiter.Progress:
+				if err := d.write(conn, progressResponse(id, note)); err != nil {
+					return nil
+				}
+			default:
+			}
+			resp := Response{OK: true, ID: id, Outcome: outcome.Kind, Stall: outcome.Stall, StallAt: outcome.StallAt}
+			if outcome.Kind == OutcomeReply || outcome.Kind == OutcomeReturned {
+				resp.Message = &outcome.Message
+			}
+			_ = d.write(conn, resp)
+			return nil
+		case <-watcher.closed:
+			return nil
+		case <-d.done:
+			return nil
 		}
-		_ = d.write(conn, resp)
-	case <-watcher.closed:
-	case <-d.done:
 	}
-	return nil
+}
+
+// progressResponse is the interim response that carries a stall note of the inject id.
+func progressResponse(id int64, note StallNote) Response {
+	return Response{OK: true, Progress: true, ID: id, Stall: note.Stall, StallAt: note.At}
 }
 
 // read answers a read: the caller's messages, reserved until the client acknowledges them on the same connection.
