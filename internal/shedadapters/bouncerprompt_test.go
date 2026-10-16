@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
@@ -193,6 +194,84 @@ func TestBouncer_ClusterExcludesReachesSeedAndJudgePrompts(t *testing.T) {
 			}
 			if !strings.Contains(shuttle.GotSpec.Prompt, "- build first\n- vet second") {
 				t.Errorf("judge prompt = %q; want the rubric to carry the verify tier bullets", shuttle.GotSpec.Prompt)
+			}
+		})
+	}
+
+	// A judge call of round 1 over a record written the way the review row leaves it: the spawn's names, then the review half merged.
+	recordedFan := func(fan string) func(t *testing.T, runDir string) {
+		return func(t *testing.T, runDir string) {
+			t.Helper()
+			if err := recordRoundFans(runDir, 1, time.Now, fan, ""); err != nil {
+				t.Fatalf("recordRoundFans() = %v; want nil", err)
+			}
+			err := mergeRoundUsage(runDir, 1, time.Now, func(u *roundUsage) { u.Lenses, u.Review = []string{"a"}, &halfUsage{} })
+			if err != nil {
+				t.Fatalf("mergeRoundUsage() = %v; want nil", err)
+			}
+		}
+	}
+	for _, tt := range []struct {
+		name     string
+		fans     []string
+		record   func(t *testing.T, runDir string)
+		wantAsk  bool
+		wantNote bool
+	}{
+		{name: "a fan followed by solo asks for none", fans: []string{"fan-a", ""}, record: recordedFan("fan-a")},
+		{name: "the same fan next round asks", fans: []string{"fan-a"}, record: recordedFan("fan-a"), wantAsk: true},
+		{name: "a different fan next round asks for none", fans: []string{"fan-a", "fan-b"}, record: recordedFan("fan-a")},
+		{name: "a recorded empty fan asks for none", fans: []string{""}, record: recordedFan("")},
+		{name: "a missing record asks for none and notes it", fans: []string{"fan-a"}, wantNote: true},
+		{
+			name: "a flagless record asks for none and notes it",
+			fans: []string{"fan-a"},
+			record: func(t *testing.T, runDir string) {
+				t.Helper()
+				if err := writeRoundUsage(runDir, 1, roundUsage{Fan: "fan-a", Lenses: []string{"a"}, Review: &halfUsage{}}); err != nil {
+					t.Fatalf("writeRoundUsage() = %v; want nil", err)
+				}
+			},
+			wantNote: true,
+		},
+		{
+			name: "a record that does not decode asks for none and notes it",
+			fans: []string{"fan-a"},
+			record: func(t *testing.T, runDir string) {
+				writeRoundFileWith(t, roundUsagePath(runDir, 1), "round: [unterminated\n")
+			},
+			wantNote: true,
+		},
+	} {
+		t.Run("Judge_ClusterFans/"+tt.name, func(t *testing.T) {
+			shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+			cfg := newBouncerFixture(t, rubric).Config
+			cfg.Shuttle = shuttle
+			cfg.ClusterFans = tt.fans
+			b, err := NewBouncer(cfg)
+			if err != nil {
+				t.Fatalf("NewBouncer(...) error = %v; want nil", err)
+			}
+			report := cfg.RunDir + "/" + cfg.ReportName(1)
+			if err := os.WriteFile(report, []byte("# Round 1 report\n\nA finding.\n"), 0o644); err != nil {
+				t.Fatalf("WriteFile(%q) = %v; want nil", report, err)
+			}
+			if tt.record != nil {
+				tt.record(t, cfg.RunDir)
+			}
+
+			shedfake.CallOK(t, b)
+
+			assertExcludeLensesText(t, shuttle.GotSpec.Prompt, tt.wantAsk)
+			facts, err := os.ReadFile(factsPath(cfg.RunDir, 1))
+			if err != nil {
+				t.Fatalf("ReadFile(facts) = %v; want nil", err)
+			}
+			if has := strings.Contains(string(facts), "## Lenses"); has != tt.wantAsk {
+				t.Errorf("facts file holds a lens section = %v; want %v\n%s", has, tt.wantAsk, facts)
+			}
+			if has := strings.Contains(string(facts), "so this round counts as solo for lens exclusions: "); has != tt.wantNote {
+				t.Errorf("facts file holds the usage note = %v; want %v\n%s", has, tt.wantNote, facts)
 			}
 		})
 	}

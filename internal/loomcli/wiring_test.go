@@ -33,6 +33,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -942,38 +943,81 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	}
 
 	// The template's empty fans leave every fan entry empty, and Webster rows never carry one.
-	for row, fan := range c.env.RowClusterFans {
-		if fan != "" {
-			t.Errorf("RowClusterFans[%q] = %q; want empty under the template's empty fans", row, fan)
+	for _, fansByRow := range []map[string][]string{c.env.RowClusterFans, c.env.RowFixFans} {
+		for row, fans := range fansByRow {
+			if !reflect.DeepEqual(fans, []string{""}) {
+				t.Errorf("fan list for %q = %q; want the one empty entry under the template's empty fans", row, fans)
+			}
 		}
+	}
+	// Each Discussion and Plan Burler row names the loom keys its models came from, the fix rows the fixer fan key as well, whatever the fans.
+	loomKey := func(key string) shuttleengine.ModelKey { return shuttleengine.ModelKey{Module: "loom", Key: key} }
+	wantSoloKeys := map[string]shedrecipe.RowModelKeys{
+		loomshed.NameDiscussionBurlerReview: {Review: loomKey("review")},
+		loomshed.NameDiscussionBurlerFix:    {Fix: loomKey("fix"), FixFan: "discussion_fix_fan"},
+		loomshed.NamePlanBurlerReview:       {Review: loomKey("plan_review")},
+		loomshed.NamePlanBurlerFix:          {Fix: loomKey("fix"), FixFan: "plan_fix_fan"},
+	}
+	if !reflect.DeepEqual(c.env.RowModelKeys, wantSoloKeys) {
+		t.Errorf("RowModelKeys = %+v; want %+v", c.env.RowModelKeys, wantSoloKeys)
 	}
 	for _, row := range []string{loomshed.NameWebsterBurlerReview, loomshed.NameWebsterBurlerFix, loomshed.NameWebsterBouncer, loomshed.NameMergeBurlerReview, loomshed.NameMergeBurlerFix, loomshed.NameMergeBouncer} {
 		if _, present := c.env.RowClusterFans[row]; present {
 			t.Errorf("RowClusterFans has an entry for %q; want none, Webster-Review and Merge-Review stay solo", row)
 		}
+		if _, present := c.env.RowFixFans[row]; present {
+			t.Errorf("RowFixFans has an entry for %q; want none, Webster-Review and Merge-Review run the single fixer", row)
+		}
+		if _, present := c.env.RowModelKeys[row]; present {
+			t.Errorf("RowModelKeys has an entry for %q; want none, Webster-Review and Merge-Review carry no fan key", row)
+		}
 	}
 
-	// Both fan keys set reach each segment's Bouncer and review row, never its fix row, and the fanned reviewer lists come from fan_review.
+	// Per-round fan lists reach each segment's Bouncer and review row, and the fixer fan lists the review rows alone.
+	// A fanned reviewer runs on its segment's own reviewer list, discussion_review here.
 	fannedLoc := hubLocation(t, "pair", ".")
-	seedLoomConfigWithKeys(t, fannedLoc.AnchorPath(), map[string]string{"discussion_fan": "standard", "plan_fan": "full", "fan_review": "opus[effort=low]"})
+	seedLoomConfigWithKeys(t, fannedLoc.AnchorPath(), map[string]string{
+		"discussion_fan":     "\n  - \"\"\n  - review-discussion",
+		"plan_fan":           "full",
+		"discussion_fix_fan": "fix-discussion",
+		"plan_fix_fan":       "\n  - fix-plan\n  - \"\"",
+		"discussion_review":  "opus[effort=low]",
+	})
 	fanned := &loomCLI{runID: shedrun.SelfRunID}
 	if err := fanned.wire(fannedLoc, fannedLoc.AnchorPath()); err != nil {
 		t.Fatalf("wire() with fans = %v; want nil", err)
 	}
-	wantFans := map[string]string{
-		loomshed.NameDiscussionBouncer:      "standard",
-		loomshed.NameDiscussionBurlerReview: "standard",
-		loomshed.NamePlanBouncer:            "full",
-		loomshed.NamePlanBurlerReview:       "full",
+	wantFans := map[string][]string{
+		loomshed.NameDiscussionBouncer:      {"", "review-discussion"},
+		loomshed.NameDiscussionBurlerReview: {"", "review-discussion"},
+		loomshed.NamePlanBouncer:            {"full"},
+		loomshed.NamePlanBurlerReview:       {"full"},
 	}
 	if !reflect.DeepEqual(fanned.env.RowClusterFans, wantFans) {
 		t.Errorf("RowClusterFans = %v; want %v", fanned.env.RowClusterFans, wantFans)
 	}
-	for _, row := range []string{loomshed.NameDiscussionBurlerReview, loomshed.NamePlanBurlerReview} {
-		got := fanned.env.RowReviewModels[row].Review
-		if len(got) != 1 || got[0].Model != "opus" || got[0].Effort != "low" {
-			t.Errorf("RowReviewModels[%q].Review = %+v; want the fan_review entry, opus of effort low", row, got)
-		}
+	wantFixFans := map[string][]string{
+		loomshed.NameDiscussionBurlerReview: {"fix-discussion"},
+		loomshed.NamePlanBurlerReview:       {"fix-plan", ""},
+	}
+	if !reflect.DeepEqual(fanned.env.RowFixFans, wantFixFans) {
+		t.Errorf("RowFixFans = %v; want %v", fanned.env.RowFixFans, wantFixFans)
+	}
+	wantKeys := map[string]shedrecipe.RowModelKeys{
+		loomshed.NameDiscussionBurlerReview: {Review: loomKey("discussion_review")},
+		loomshed.NameDiscussionBurlerFix:    {Fix: loomKey("fix"), FixFan: "discussion_fix_fan"},
+		loomshed.NamePlanBurlerReview:       {Review: loomKey("review")},
+		loomshed.NamePlanBurlerFix:          {Fix: loomKey("fix"), FixFan: "plan_fix_fan"},
+	}
+	if !reflect.DeepEqual(fanned.env.RowModelKeys, wantKeys) {
+		t.Errorf("RowModelKeys = %+v; want %+v", fanned.env.RowModelKeys, wantKeys)
+	}
+	got := fanned.env.RowReviewModels[loomshed.NameDiscussionBurlerReview].Review
+	if len(got) != 1 || got[0].Model != "opus" || got[0].Effort != "low" {
+		t.Errorf("RowReviewModels[%q].Review = %+v; want the discussion_review entry, opus of effort low", loomshed.NameDiscussionBurlerReview, got)
+	}
+	if got, want := fanned.env.RowReviewModels[loomshed.NamePlanBurlerReview].Review, fanned.env.ReviewModels.Review; !reflect.DeepEqual(got, want) {
+		t.Errorf("RowReviewModels[%q].Review = %+v; want the run-wide %+v under plan_fan", loomshed.NamePlanBurlerReview, got, want)
 	}
 }
 

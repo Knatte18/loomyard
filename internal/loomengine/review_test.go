@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
@@ -33,7 +32,6 @@ func TestResolveReview(t *testing.T) {
 		PlanReview:    ModelSpecList{"sonnet[effort=low]", "opus[effort=high]"},
 		WebsterReview: ModelSpecList{""},
 		WebsterFix:    ModelSpecList{""},
-		FanReview:     ModelSpecList{"sonnet[effort=medium]", "opus[effort=low]"},
 	}
 
 	reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
@@ -72,26 +70,24 @@ func TestResolveReview(t *testing.T) {
 		t.Errorf("ResolveReview(...).Timeout = %s; want %s", settings.Timeout, wantTimeout)
 	}
 
-	// A set fan key replaces the segment's reviewer list with fan_review, keeps its own fixer list, and leaves a solo segment and Webster unchanged.
-	cfg.DiscussionFan = "standard"
-	cfg.PlanFan = "full"
+	// Each of the two segments records the loom key its models came from: its own key when set, else the run-wide key.
+	if want := (SegmentKeys{Review: "review", Fix: "discussion_fix"}); settings.DiscussionKeys != want {
+		t.Errorf("ResolveReview(...).DiscussionKeys = %+v; want %+v", settings.DiscussionKeys, want)
+	}
+	if want := (SegmentKeys{Review: "plan_review", Fix: "fix"}); settings.PlanKeys != want {
+		t.Errorf("ResolveReview(...).PlanKeys = %+v; want %+v", settings.PlanKeys, want)
+	}
+
+	// A set fan key changes no model: a fanned segment's reviewer list is still its own review list, else the run-wide one.
+	cfg.DiscussionFan = FanList{"standard"}
+	cfg.PlanFan = FanList{"", "full"}
+	cfg.DiscussionFixFan = FanList{"fix-discussion"}
 	fanned, err := ResolveReview(cfg, reg)
 	if err != nil {
 		t.Fatalf("ResolveReview(fanned cfg) = _, %v; want nil error", err)
 	}
-	for name, got := range map[string]burlerengine.RoundModels{"Discussion": fanned.Discussion, "Plan": fanned.Plan} {
-		if len(got.Review) != 2 || got.Review[0].Effort != "medium" || got.Review[1].Effort != "low" {
-			t.Errorf("ResolveReview(fanned cfg).%s.Review = %+v; want the fan_review list (medium, low)", name, got.Review)
-		}
-	}
-	if got := fanned.Discussion.Fix; len(got) != 1 || got[0].Effort != "high" {
-		t.Errorf("ResolveReview(fanned cfg).Discussion.Fix = %+v; want its own high-effort fixer", got)
-	}
-	if !reflect.DeepEqual(fanned.Plan.Fix, settings.Models.Fix) {
-		t.Errorf("ResolveReview(fanned cfg).Plan.Fix = %+v; want the run-wide fix list", fanned.Plan.Fix)
-	}
-	if !reflect.DeepEqual(fanned.Webster, settings.Models) {
-		t.Errorf("ResolveReview(fanned cfg).Webster = %+v; want the run-wide %+v", fanned.Webster, settings.Models)
+	if !reflect.DeepEqual(fanned, settings) {
+		t.Errorf("ResolveReview(fanned cfg) = %+v; want the settings of the unfanned cfg, %+v", fanned, settings)
 	}
 
 	// Each entry carries the engine its alias resolves to, in list order.
@@ -109,11 +105,6 @@ func TestResolveReview(t *testing.T) {
 	}
 	if got := engineSettings.Models.Fix; len(got) != 1 || got[0].Engine != "other" {
 		t.Errorf("ResolveReview(engine registry).Models.Fix = %+v; want one entry on engine other", got)
-	}
-
-	cfg.FanReview = ModelSpecList{"opus[effort"}
-	if _, err := ResolveReview(cfg, reg); err == nil || !strings.Contains(err.Error(), "fan_review entry 1") {
-		t.Errorf("ResolveReview(bad fan_review) error = %v; want it to name fan_review entry 1", err)
 	}
 }
 

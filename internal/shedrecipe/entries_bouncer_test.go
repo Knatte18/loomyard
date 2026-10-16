@@ -958,10 +958,21 @@ func TestBouncerEntry_ApproveSeam(t *testing.T) {
 // boolean values observed through the judge prompt a Call renders, the type check, and the
 // allowlist entry that admits exactly this spelling.
 func TestBouncerEntry_ClusterExcludes(t *testing.T) {
-	judgePrompt := func(t *testing.T, cfgValue any, set bool, rowFans map[string]string) string {
+	// A row told fans reads round 1's recorded fan from the usage record, which the review producer writes in a real run and this helper hand-builds because recordRoundFans is unexported in shedadapters.
+	judgePrompt := func(t *testing.T, cfgValue any, set bool, rowFans map[string][]string) string {
 		t.Helper()
 		env := newTestEnv(t)
 		env.RowClusterFans = rowFans
+		if rowFans != nil {
+			runDir := filepath.Join(env.RunRoot, "review-segment")
+			if err := os.MkdirAll(runDir, 0o755); err != nil {
+				t.Fatalf("MkdirAll(%q) = %v; want nil", runDir, err)
+			}
+			usage := "round: 1\nfan: env-fan\nfans_recorded: true\nreview:\n  model: opus\n  effort: low\n  tokens_known: false\n"
+			if err := os.WriteFile(filepath.Join(runDir, "round-1-usage.yaml"), []byte(usage), 0o644); err != nil {
+				t.Fatalf("write round-1-usage.yaml: %v", err)
+			}
+		}
 		shuttle := judgeSeamShuttle()
 		env.Shuttle = shuttle
 		writeStencil(t, env.StencilsDir, "bouncer-template-judge", "rules:\n{{.focus_list_rules}}\n")
@@ -997,14 +1008,26 @@ func TestBouncerEntry_ClusterExcludes(t *testing.T) {
 	})
 
 	t.Run("EnvFanRendersExcludeLenses", func(t *testing.T) {
-		if p := judgePrompt(t, nil, false, map[string]string{"review-bounce": "env-fan"}); !strings.Contains(p, "exclude_lenses") {
-			t.Errorf("prompt lacks exclude_lenses with a RowClusterFans entry for the row:\n%s", p)
+		if p := judgePrompt(t, nil, false, map[string][]string{"review-bounce": {"env-fan"}}); !strings.Contains(p, "exclude_lenses") {
+			t.Errorf("prompt lacks exclude_lenses with a RowClusterFans entry that runs the recorded fan again:\n%s", p)
+		}
+	})
+
+	t.Run("EnvFanChangingNextRoundOmitsExcludeLenses", func(t *testing.T) {
+		if p := judgePrompt(t, nil, false, map[string][]string{"review-bounce": {"env-fan", "other-fan"}}); strings.Contains(p, "exclude_lenses") {
+			t.Errorf("prompt mentions exclude_lenses with a RowClusterFans entry whose next round runs another fan:\n%s", p)
 		}
 	})
 
 	t.Run("EmptyEnvFanOmitsExcludeLenses", func(t *testing.T) {
-		if p := judgePrompt(t, nil, false, map[string]string{"review-bounce": ""}); strings.Contains(p, "exclude_lenses") {
-			t.Errorf("prompt mentions exclude_lenses with an empty RowClusterFans entry:\n%s", p)
+		if p := judgePrompt(t, nil, false, map[string][]string{"review-bounce": {""}}); strings.Contains(p, "exclude_lenses") {
+			t.Errorf("prompt mentions exclude_lenses with an all-empty RowClusterFans entry:\n%s", p)
+		}
+	})
+
+	t.Run("EmptyEnvFanKeepsClusterExcludesKey", func(t *testing.T) {
+		if p := judgePrompt(t, true, true, map[string][]string{"review-bounce": {""}}); !strings.Contains(p, "exclude_lenses") {
+			t.Errorf("prompt lacks exclude_lenses with cluster_excludes true beside an all-empty RowClusterFans entry:\n%s", p)
 		}
 	})
 

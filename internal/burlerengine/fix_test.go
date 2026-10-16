@@ -4,6 +4,7 @@
 package burlerengine
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -13,8 +14,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/contracts/stencils"
+	"github.com/Knatte18/loomyard/internal/friction"
+	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/stencil"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 )
 
 const (
@@ -64,10 +71,28 @@ func fixInstructionFiles(t *testing.T, root string) map[string]string {
 	return files
 }
 
-// TestEngine_Fix_TableShapeAndFiles proves Fix spawns exactly one seat for a review holding only a NIT finding, and builds its spec and gate as the fix half pins them.
+// TestEngine_Fix_TableShapeAndFiles proves Fix spawns exactly one seat for a review holding only a NIT finding, and builds its spec and gate as the fix half pins them, for a single fixer and for a twill fixer.
 // It also proves the instruction files hold the review path, the review format and the target paths and none of the rubric, fasit, PATTERN directive, focus file or prior rounds.
+// The single row's fix step equals the fix stencil with the self-check marker removed and has no lenses;
+// the twill row's forks, empty seat model key, self-check part and lenses are the fixer fan's.
 func TestEngine_Fix_TableShapeAndFiles(t *testing.T) {
 	t.Parallel()
+
+	for _, twill := range []bool{false, true} {
+		name := "single fixer"
+		if twill {
+			name = "twill fixer"
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			checkFixTableShapeAndFiles(t, twill)
+		})
+	}
+}
+
+// checkFixTableShapeAndFiles runs one row of TestEngine_Fix_TableShapeAndFiles: a fix over a NIT review whose profile names a fixer fan exactly when twill is set.
+func checkFixTableShapeAndFiles(t *testing.T, twill bool) {
+	t.Helper()
 
 	root, p, digest := newFixCase(t, nitReview)
 	writeFixtureFile(t, root, "focus.md", "focus text")
@@ -79,8 +104,13 @@ func TestEngine_Fix_TableShapeAndFiles(t *testing.T) {
 	p.LanguageSkills = true
 	p.RolePrefix = "merge"
 	fixRole := "merge-" + fixHalfRole
+	cfg := testClusterFanConfig()
+	if twill {
+		p.FixFan = "standard"
+	}
 	shuttle := &fakeShuttle{fix: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, writes: "nothing fixed"}}
-	e := New(shuttle, Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug"}, Config{}, newTestStencilsDir(t), "", []string{"scribe:golang-testing"})
+	stencilsDir := newTestStencilsDir(t)
+	e := New(shuttle, Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug"}, cfg, stencilsDir, "", []string{"scribe:golang-testing"})
 
 	var gateCalls int
 	opts := RunOpts{
@@ -89,6 +119,14 @@ func TestEngine_Fix_TableShapeAndFiles(t *testing.T) {
 		Timeout: 5 * time.Minute,
 		Round:   "1",
 		Gate:    gateOf("build", shuttleengine.GateResult{Passed: false, Findings: "build broke"}, nil, &gateCalls),
+	}
+	if twill {
+		opts.FixKey = shuttleengine.ModelKey{Module: "loom", Key: "discussion_fix"}
+		opts.FixFanKey = "discussion_fix_fan"
+	}
+	resolved := p
+	if err := resolved.validateFix(root, cfg); err != nil {
+		t.Fatalf("validateFix() = %v; want nil", err)
 	}
 	got, err := e.Fix(p, opts, digest)
 	if err != nil {
@@ -105,8 +143,11 @@ func TestEngine_Fix_TableShapeAndFiles(t *testing.T) {
 	if want := []string{filepath.Join(root, "fixer-report.md")}; !slices.Equal(spec.OutputFiles, want) {
 		t.Errorf("spec.OutputFiles = %v; want %v", spec.OutputFiles, want)
 	}
-	if spec.Segment != segmentcolor.Merge || spec.Interactive || spec.ForkSubagents {
-		t.Errorf("spec segment %q interactive %v forks %v; want the profile's merge segment, neither interactive nor forking", spec.Segment, spec.Interactive, spec.ForkSubagents)
+	if spec.Segment != segmentcolor.Merge || spec.Interactive || spec.ForkSubagents != twill {
+		t.Errorf("spec segment %q interactive %v forks %v; want the profile's merge segment, not interactive, forking %v", spec.Segment, spec.Interactive, spec.ForkSubagents, twill)
+	}
+	if seat := resolved.fixTable(opts, nil, nil).Seats[0]; seat.ModelKey != (shuttleengine.ModelKey{}) || seat.ForkSubagents != twill {
+		t.Errorf("fixer seat model key %+v forks %v; want the zero key and forks %v", seat.ModelKey, seat.ForkSubagents, twill)
 	}
 	if spec.ModelChoice != opts.Fix {
 		t.Errorf("spec model choice = %+v; want %+v", spec.ModelChoice, opts.Fix)
@@ -136,6 +177,36 @@ func TestEngine_Fix_TableShapeAndFiles(t *testing.T) {
 	if format == "" {
 		t.Errorf("review-format.md is empty; want the review-file format written")
 	}
+	singleStep, err := stencil.FillOptional(bytes.ReplaceAll(stencils.BurlerStepFix, []byte("{{.self_check}}"), nil), map[string]string{
+		"work":              fixWork(resolved.ReviewPath, ""),
+		"fix_scope_rules":   fixScopeRules(&resolved),
+		"review_path":       resolved.ReviewPath,
+		"fixer_report_path": resolved.FixerReportPath,
+	}, []string{friction.MarkerName})
+	if err != nil {
+		t.Fatalf("stencil.FillOptional(fix step without self_check) = %v; want nil", err)
+	}
+	if !twill {
+		if fixStep != string(singleStep) {
+			t.Errorf("single fix step = %q; want the fix stencil filled without the self_check marker, %q", fixStep, singleStep)
+		}
+		if got.Lenses != nil {
+			t.Errorf("FixResult.Lenses = %v; want nil for a single fixer", got.Lenses)
+		}
+	} else {
+		if fixStep == string(singleStep) {
+			t.Errorf("twill fix step equals the single render; want the self-check part in it")
+		}
+		requireContains(t, fixStep, stencilstore.Path(stencilsDir, "burler-fix-check-rubric"))
+		styleIdx, securityIdx := strings.Index(fixStep, "- style: style prose"), strings.Index(fixStep, "- security: security prose")
+		if styleIdx == -1 || securityIdx == -1 || styleIdx >= securityIdx {
+			t.Errorf("fix step lens bullets at idx style=%d security=%d; want both present, style first", styleIdx, securityIdx)
+		}
+		if want := []string{"style", "security"}; !slices.Equal(got.Lenses, want) {
+			t.Errorf("FixResult.Lenses = %v; want %v", got.Lenses, want)
+		}
+	}
+
 	all := spec.Prompt + fixStep + format
 	for _, absent := range []string{p.Rubric, filepath.Join(root, "fasit.txt"), "focus text", "prior review", filepath.Join(root, "prior-review.md"), "## Constraints"} {
 		if strings.Contains(all, absent) {
@@ -170,7 +241,13 @@ func TestEngine_Fix_Outcomes(t *testing.T) {
 		wantNotStart bool
 		wantErrIs    error
 		wantErrText  string
+		// fixFan makes the profile name a fixer fan, and wantForks and wantWarnings are the audited fork count and warnings the result must carry.
+		fixFan       bool
+		wantForks    int
+		wantWarnings []string
 	}{
+		{name: "a twill fixer whose fork wrote is the violation error with its gate", review: blockingReview, script: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Reason: "spent"}, ForkAudit: &shuttleengine.ForkAudit{Forks: []shuttleengine.ForkReport{{TranscriptPath: "t1", ReportReturned: true, WriteCalls: 1}, {TranscriptPath: "t2", ReportReturned: true}}}}, writes: "fixed"}, gateResult: passing, fixFan: true, wantOutcome: shuttleengine.OutcomeDone, wantSpawn: true, wantGate: true, wantErrText: "burler: twill fixer fork \"t1\" attempted 1 write/edit tool call(s)", wantForks: 2},
+		{name: "a twill fixer with no fork audit is a count warning", review: blockingReview, script: halfScript{result: done, writes: "fixed"}, gateResult: passing, fixFan: true, wantOutcome: shuttleengine.OutcomeDone, wantSpawn: true, wantWarnings: []string{"twill fixer spawned 0 fork(s) for 2 lens(es)"}},
 		{name: "a review with findings spawns the fixer", review: blockingReview, script: halfScript{result: done, writes: "fixed"}, gateResult: passing, wantOutcome: shuttleengine.OutcomeDone, wantSpawn: true},
 		{name: "an empty review over passing gates is skipped with no session", review: approvedReview, gateResult: passing, wantOutcome: shuttleengine.OutcomeDone, wantSkipped: true},
 		{name: "an empty review over a failing gate spawns the fixer with the gate findings as its work", review: approvedReview, script: halfScript{result: done, writes: "fixed"}, gateResult: failing, wantOutcome: shuttleengine.OutcomeDone, wantSpawn: true, wantGate: true},
@@ -181,6 +258,7 @@ func TestEngine_Fix_Outcomes(t *testing.T) {
 		{name: "a fixer that died", review: blockingReview, script: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}}, gateResult: passing, wantOutcome: shuttleengine.OutcomeDied, wantSpawn: true},
 		{name: "a fixer that timed out", review: blockingReview, script: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}}, gateResult: passing, wantOutcome: shuttleengine.OutcomeTimeout, wantSpawn: true},
 		{name: "a provider that never came up is a not-started death", review: blockingReview, script: halfScript{startErr: notStarted}, gateResult: passing, wantOutcome: shuttleengine.OutcomeDied, wantSpawn: true, wantNotStart: true},
+		{name: "a single fixer's unmet-requirements start error keeps the generic wrap with no fan key", review: blockingReview, script: halfScript{startErr: fmt.Errorf("seatengine: start: %w", shuttleengine.ErrRequirementsUnmet)}, gateResult: passing, wantSpawn: true, wantErrIs: shuttleengine.ErrRequirementsUnmet, wantErrText: "burler: shuttle run: "},
 		{name: "any other start error is wrapped", review: blockingReview, script: halfScript{startErr: errors.New("reed: add strand failed")}, gateResult: passing, wantSpawn: true, wantErrText: "burler: shuttle run: "},
 		{name: "a timed-out fixer that cannot be stopped is ErrHalfNotStopped", review: blockingReview, script: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}}, stopErr: errors.New("reed unreachable"), gateResult: passing, wantOutcome: shuttleengine.OutcomeTimeout, wantSpawn: true, wantErrIs: ErrHalfNotStopped},
 	}
@@ -200,8 +278,11 @@ func TestEngine_Fix_Outcomes(t *testing.T) {
 				}
 			}
 			shuttle := &fakeShuttle{fix: script, stopErr: tt.stopErr}
-			e := newEngineForTest(t, root, shuttle)
+			e := newEngineWith(t, Geometry{WorktreeRoot: root, AnchorPath: root}, testClusterFanConfig(), shuttle)
 			var calls int
+			if tt.fixFan {
+				p.FixFan = "standard"
+			}
 
 			got, err := e.Fix(p, RunOpts{Gate: gateOf("build", tt.gateResult, tt.gateErr, &calls)}, digest)
 
@@ -221,6 +302,12 @@ func TestEngine_Fix_Outcomes(t *testing.T) {
 			if spawned := len(shuttle.started) == 1; spawned != tt.wantSpawn {
 				t.Errorf("started seats = %v; want a spawn: %v", shuttle.started, tt.wantSpawn)
 			}
+			if got.Forks != tt.wantForks || !slices.Equal(got.Warnings, tt.wantWarnings) {
+				t.Errorf("forks %d warnings %v; want %d and %v", got.Forks, got.Warnings, tt.wantForks, tt.wantWarnings)
+			}
+			if tt.fixFan && tt.wantErrText != "" && !strings.Contains(err.Error(), "; way forward: inspect the target's working-tree changes") {
+				t.Errorf("Fix() error = %q; want the twill fixer violation's way forward", err)
+			}
 			if gotGate := got.Gate != nil && !got.Gate.Passed; gotGate != tt.wantGate {
 				t.Errorf("Gate = %+v; want a failed gate passed through: %v", got.Gate, tt.wantGate)
 			}
@@ -239,6 +326,56 @@ func TestEngine_Fix_Outcomes(t *testing.T) {
 				if !strings.Contains(files["instruction-fix.md"], "gate-findings.md") {
 					t.Errorf("instruction-fix.md does not name the gate-findings file as the fixer's work")
 				}
+			}
+		})
+	}
+
+	refusals := []struct {
+		name         string
+		fixFan       string
+		opts         RunOpts
+		wantContains []string
+	}{
+		{
+			name:   "a twill fixer under a loom key names the key, the fan key and the resume step",
+			fixFan: "standard",
+			opts:   RunOpts{FixKey: shuttleengine.ModelKey{Module: "loom", Key: "discussion_fix"}, FixFanKey: "discussion_fix_fan"},
+			wantContains: []string{
+				"burler: the twill fixer's fan from discussion_fix_fan needs fork subagents, which the engine of discussion_fix in loom.yaml cannot run",
+				"move discussion_fix in loom.yaml to an engine with forks, then resume",
+			},
+		},
+		{
+			name:   "a twill fixer under the default engine names shuttle.yaml and the profile field",
+			fixFan: "standard",
+			opts:   RunOpts{FixKey: shuttleengine.ModelKey{DefaultEngine: true}, FixFanKey: "fix-fan"},
+			wantContains: []string{
+				"which the engine of engine: in shuttle.yaml cannot run",
+				"remove fix-fan from the profile, and re-run",
+			},
+		},
+	}
+	for _, tt := range refusals {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			root, p, digest := newFixCase(t, blockingReview)
+			p.FixFan = tt.fixFan
+			reed := &shuttlefake.Reed{}
+			runner := shuttleengine.NewRunner(reed, shuttlefake.EngineSet(&shuttlefake.Engine{}), root, root, shuttleengine.Config{RunDir: t.TempDir(), RunTimeoutMin: 60, StartupTimeoutS: 30})
+			e := New(seatengine.RunnerShuttle(runner), Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug"}, testClusterFanConfig(), newTestStencilsDir(t), "", nil)
+
+			_, err := e.Fix(p, tt.opts, digest)
+
+			if !errors.Is(err, shuttleengine.ErrRequirementsUnmet) {
+				t.Fatalf("Fix() error = %v; want it to wrap ErrRequirementsUnmet", err)
+			}
+			for _, want := range tt.wantContains {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("Fix() error = %q; want it to contain %q", err, want)
+				}
+			}
+			if n := strings.Count(err.Error(), "way forward:"); n != 1 {
+				t.Errorf("Fix() error = %q; want exactly one way forward, found %d", err, n)
 			}
 		})
 	}

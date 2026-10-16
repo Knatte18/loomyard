@@ -8,7 +8,9 @@
      optional, filled via stencil.FillOptional, and renders as nothing when PATTERN is inactive.
      focus_directive is the sixth marker, optional, filled via stencil.FillOptional, and renders
      nothing when the round has no directive.
-     Both stay at the top level, before the first work heading, so their optional-blank semantics hold. -->
+     Both stay at the top level, before the first work heading, so their optional-blank semantics hold.
+     fork_reading is the seventh marker, optional, filled via stencil.FillOptional, and renders nothing in a solo round;
+     it sits directly after tool_use_rules on the same line, so an empty value adds no byte. -->
 
 {{.pattern_directive}}
 {{.focus_directive}}
@@ -34,4 +36,4 @@ Each finding also carries one of the four classes — `design`, `scope`, `decisi
 
 ## Tool-use rules — how you gather evidence
 
-{{.tool_use_rules}}
+{{.tool_use_rules}}{{.fork_reading}}

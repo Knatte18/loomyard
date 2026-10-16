@@ -78,6 +78,7 @@ type lensFacts struct {
 // EarlierOpen lists every key open in at least one ledger before Round, with the ledger rounds it was open in,
 // and EarlierLedgerErrs names each earlier ledger that is missing or fails to parse, so a degraded read never empties the list silently.
 // Lenses is set only for a fanned segment.
+// UsageNote is non-empty when the round's recorded fan names could not be read, so it counts as solo for lens exclusions.
 type roundFacts struct {
 	Round             int
 	Rows              []roundFactsRow
@@ -85,6 +86,7 @@ type roundFacts struct {
 	EarlierOpen       []recurringKey
 	EarlierLedgerErrs []string
 	Lenses            *lensFacts
+	UsageNote         string
 }
 
 // computeLensFacts reads the fan and the lenses round ran from its usage record, counts round's review by origin through burlerengine.ParseReview,
@@ -371,6 +373,9 @@ func renderRoundFacts(f roundFacts) []byte {
 	for _, errLine := range f.EarlierLedgerErrs {
 		fmt.Fprintf(&b, "- parse error: %s\n", errLine)
 	}
+	if f.UsageNote != "" {
+		fmt.Fprintf(&b, "\nUsage record unreadable, so this round counts as solo for lens exclusions: %s\n", escapeCell(f.UsageNote))
+	}
 	if f.Lenses != nil {
 		renderLensFacts(&b, *f.Lenses)
 	}
@@ -442,8 +447,10 @@ func escapeCell(s string) string {
 
 // writeRoundFacts computes and renders round's facts file and writes it at factsPath, overwriting any earlier render.
 // The lens section is computed, identifying itself as name in its warnings, only when clusterExcludes is true, so a solo segment's file carries none.
-func writeRoundFacts(name, runDir string, round int, reportName func(int) string, clusterExcludes bool) error {
+// A non-empty usageNote is rendered as one line saying the round's recorded fan names could not be read.
+func writeRoundFacts(name, runDir string, round int, reportName func(int) string, clusterExcludes bool, usageNote string) error {
 	facts := computeRoundFacts(runDir, round, reportName)
+	facts.UsageNote = usageNote
 	if clusterExcludes {
 		lenses := computeLensFacts(name, runDir, round, reportName)
 		facts.Lenses = &lenses

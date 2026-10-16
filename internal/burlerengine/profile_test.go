@@ -8,6 +8,7 @@ package burlerengine
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -90,7 +91,31 @@ func TestProfile_Validate(t *testing.T) {
 		check     func(t *testing.T, root string, got Profile)
 		// fix drives validateFix instead of validateReview.
 		fix bool
+		// wantWayForward asserts the error carries the way forward for a fan that does not resolve.
+		wantWayForward bool
 	}{
+		{
+			name: "fix half resolves its fixer fan in fan order",
+			fix:  true,
+			mutate: func(t *testing.T, root string, p *Profile) {
+				p.FixFan = "standard"
+			},
+			check: func(t *testing.T, root string, got Profile) {
+				if names := lensNames(got.fixLenses); !slices.Equal(names, []string{"style", "security"}) {
+					t.Errorf("fixLenses = %v; want [style security]", names)
+				}
+			},
+		},
+		{
+			name: "fix half refuses an unknown fixer fan before any spawn",
+			fix:  true,
+			mutate: func(t *testing.T, root string, p *Profile) {
+				p.FixFan = "missing"
+			},
+			wantErr:        true,
+			errSubstr:      `unknown fan "missing"`,
+			wantWayForward: true,
+		},
 		{
 			name: "fix half accepts a profile with no fasit or rubric",
 			fix:  true,
@@ -315,8 +340,9 @@ func TestProfile_Validate(t *testing.T) {
 			mutate: func(t *testing.T, root string, p *Profile) {
 				p.ClusterFan = "missing"
 			},
-			wantErr:   true,
-			errSubstr: "unknown fan",
+			wantErr:        true,
+			errSubstr:      "unknown fan",
+			wantWayForward: true,
 		},
 		{
 			name: "clusterfan unknown lens",
@@ -402,7 +428,7 @@ func TestProfile_Validate(t *testing.T) {
 
 			var err error
 			if tt.fix {
-				err = p.validateFix(root)
+				err = p.validateFix(root, cfg)
 			} else {
 				err = p.validateReview(root, cfg)
 			}
@@ -416,6 +442,9 @@ func TestProfile_Validate(t *testing.T) {
 				}
 				if !strings.HasPrefix(err.Error(), "burler: ") {
 					t.Errorf("validate() error = %q; want burler: -prefixed message", err.Error())
+				}
+				if wayForward := "; way forward: define the fan in burler.yaml"; tt.wantWayForward && !strings.Contains(err.Error(), wayForward) {
+					t.Errorf("validate() error = %q; want it to contain %q", err.Error(), wayForward)
 				}
 				// Every validate error carries exactly one "burler: " prefix.
 				// A wrapped ResolveFan error that also spells its own

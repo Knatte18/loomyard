@@ -11,7 +11,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // burlerRowModels returns the review and fix model lists of the row called name: its env.RowReviewModels entry, else env.ReviewModels.
@@ -21,6 +20,27 @@ func burlerRowModels(name string, env Env) burlerengine.RoundModels {
 		return rowModels
 	}
 	return env.ReviewModels
+}
+
+// hasFanName reports whether any entry of the fan list names a fan; a nil list and a list of "" entries name none.
+func hasFanName(fans []string) bool {
+	for _, fan := range fans {
+		if fan != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// effectiveFanList returns the per-round fan list a row runs: the wiring's list when it names a fan, else the recipe profile's one fan, else the wiring's list.
+func effectiveFanList(wiring []string, profileFan string) []string {
+	switch {
+	case hasFanName(wiring):
+		return wiring
+	case profileFan != "":
+		return []string{profileFan}
+	}
+	return wiring
 }
 
 // burlerRowTimeout returns the round deadline of a row whose timeout_s Config key read timeoutS: the row's own value, else env.ReviewTimeout.
@@ -36,7 +56,8 @@ func burlerRowTimeout(timeoutS int, env Env) time.Duration {
 // burlerReviewEntry is the Constructor for the "BurlerReview" registry row: it validates cfg and env, maps cfg's profile map onto a burlerengine.Profile, joins and creates the run directory this row's segment shares with its Bouncer and fix rows, and returns shedadapters.NewBurlerReviewProducer(name, shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: burlerRowModels(name, env)}, profile, opts, runDir, env.Now).
 //
 // The row takes no "gates" key: its only gate is the engine's review-parse entry.
-// A cluster fan from env.RowClusterFans reaches the profile, and one also set in the recipe's profile is a construction error.
+// The row's per-round reviewer and fixer fan lists come from env.RowClusterFans and env.RowFixFans, else from the recipe profile's cluster-fan and fix-fan, and a wiring list naming a fan beside the recipe's own is a construction error.
+// A row with either list or either profile fan records its round's fans; a row with neither runs solo and records nothing.
 func burlerReviewEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	runSubdir, err := configString(cfg, "run_subdir", true)
 	if err != nil {
@@ -79,23 +100,31 @@ func burlerReviewEntry(name string, cfg Config, env Env) (shedengine.ShedProduce
 	profile.Segment = colorSegment
 	profile.RolePrefix = rolePrefix
 
-	if fan := env.RowClusterFans[name]; fan != "" {
-		if profile.ClusterFan != "" {
-			return nil, fmt.Errorf("shedrecipe: BurlerReview: row %q: cluster fan %q from loom.yaml through the wiring conflicts with cluster-fan %q set in the recipe's profile; way forward: remove cluster-fan from the recipe's profile for this row", name, fan, profile.ClusterFan)
+	clusterList, fixList := env.RowClusterFans[name], env.RowFixFans[name]
+	if hasFanName(clusterList) && profile.ClusterFan != "" {
+		return nil, fmt.Errorf("shedrecipe: BurlerReview: row %q: cluster fan list %v from loom.yaml through the wiring conflicts with cluster-fan %q set in the recipe's profile; way forward: remove cluster-fan from the recipe's profile for this row", name, clusterList, profile.ClusterFan)
+	}
+	if hasFanName(fixList) && profile.FixFan != "" {
+		return nil, fmt.Errorf("shedrecipe: BurlerReview: row %q: fix fan list %v from loom.yaml through the wiring conflicts with fix-fan %q set in the recipe's profile; way forward: remove fix-fan from the recipe's profile for this row", name, fixList, profile.FixFan)
+	}
+	var fans *shedadapters.RoundFans
+	_, hasClusterEntry := env.RowClusterFans[name]
+	_, hasFixEntry := env.RowFixFans[name]
+	if hasClusterEntry || hasFixEntry || profile.ClusterFan != "" || profile.FixFan != "" {
+		fans = &shedadapters.RoundFans{
+			Review: effectiveFanList(clusterList, profile.ClusterFan),
+			Fix:    effectiveFanList(fixList, profile.FixFan),
 		}
-		profile.ClusterFan = fan
+		// The producer picks each round's fans from the lists, so the profile carries none.
+		profile.ClusterFan, profile.FixFan = "", ""
 	}
 
 	runDir, err := burlerRunDir("BurlerReview", runSubdir, env)
 	if err != nil {
 		return nil, err
 	}
-	opts := burlerengine.RunOpts{Timeout: burlerRowTimeout(timeoutS, env)}
-	if profile.ClusterFan != "" {
-		// A fanned reviewer runs on the fan_review list, so a refusal of its engine names that key.
-		opts.ReviewKey = shuttleengine.ModelKey{Module: "loom", Key: "fan_review"}
-	}
-	producer, err := shedadapters.NewBurlerReviewProducer(name, shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: burlerRowModels(name, env)}, profile, opts, runDir, env.Now)
+	opts := burlerengine.RunOpts{Timeout: burlerRowTimeout(timeoutS, env), ReviewKey: env.RowModelKeys[name].Review}
+	producer, err := shedadapters.NewBurlerReviewProducer(name, shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: burlerRowModels(name, env), Fans: fans}, profile, opts, runDir, env.Now)
 	if err != nil {
 		return nil, fmt.Errorf("shedrecipe: BurlerReview: %w", err)
 	}
@@ -106,7 +135,7 @@ func burlerReviewEntry(name string, cfg Config, env Env) (shedengine.ShedProduce
 //
 // All four fix rows share this one constructor, which is why the validator is selected by the "gates" key rather than implied by the constructor:
 // the Webster and Darn fixers name the "verify" gate, so a round that changed code ends with a passing verify, and the two review segments name their own validators.
-// The row takes no cluster fan, since the fixer runs no fan.
+// The row names no fan: a fixer fan reaches it through the review row's recorded round, and only when env.RowModelKeys names a fixer fan key for the row.
 func burlerFixEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	runSubdir, err := configString(cfg, "run_subdir", true)
 	if err != nil {
@@ -150,8 +179,10 @@ func burlerFixEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, 
 	if err != nil {
 		return nil, err
 	}
-	opts := burlerengine.RunOpts{Timeout: burlerRowTimeout(timeoutS, env), Gate: gate}
-	producer, err := shedadapters.NewBurlerFixProducer(name, reviewRow, shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: burlerRowModels(name, env)}, profile, opts, runDir, env.Now)
+	keys := env.RowModelKeys[name]
+	opts := burlerengine.RunOpts{Timeout: burlerRowTimeout(timeoutS, env), Gate: gate, FixKey: keys.Fix, FixFanKey: keys.FixFan}
+	deps := shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: burlerRowModels(name, env), RequiresFans: keys.FixFan != ""}
+	producer, err := shedadapters.NewBurlerFixProducer(name, reviewRow, deps, profile, opts, runDir, env.Now)
 	if err != nil {
 		return nil, fmt.Errorf("shedrecipe: BurlerFix: %w", err)
 	}
@@ -206,11 +237,11 @@ func burlerRoundFileSet(entry, field string, cfg Config) (burlerengine.FileSet, 
 	return burlerengine.FileSet{Paths: paths, Instructions: instructions}, nil
 }
 
-// burlerRoundProfile maps cfg's profile map onto a burlerengine.Profile, recognising exactly eight keys:
-// target, fasit, rubric, rubric_stencil, fix-scope, tool-use, cluster-fan and language-skills.
+// burlerRoundProfile maps cfg's profile map onto a burlerengine.Profile, recognising exactly nine keys:
+// target, fasit, rubric, rubric_stencil, fix-scope, tool-use, cluster-fan, fix-fan and language-skills.
 // All are optional at this level individually, subject to the rubric/rubric_stencil mutual-exclusivity rule below.
 //
-// Seven of these eight key names are a hand-maintained duplicate of internal/burlercli's profileYAML
+// Eight of these nine key names are a hand-maintained duplicate of internal/burlercli's profileYAML
 // kebab-case shape, kept identical deliberately so a human who has written a burler profile file
 // reads a recipe row without a second vocabulary. review-path, fixer-report-path, prior-reviews,
 // prior-fixer-reports, and cluster-exclude are deliberately absent.
@@ -261,11 +292,15 @@ func burlerRoundProfile(cfg Config, stencilsDir, specsDir string, notes shedadap
 	if err != nil {
 		return burlerengine.Profile{}, err
 	}
+	fixFan, err := configString(cfg, "fix-fan", false)
+	if err != nil {
+		return burlerengine.Profile{}, err
+	}
 	languageSkills, err := configBool(cfg, "language-skills", false)
 	if err != nil {
 		return burlerengine.Profile{}, err
 	}
-	if err := configRejectUnknown(cfg, "target", "fasit", "rubric", "rubric_stencil", "fix-scope", "tool-use", "cluster-fan", "language-skills"); err != nil {
+	if err := configRejectUnknown(cfg, "target", "fasit", "rubric", "rubric_stencil", "fix-scope", "tool-use", "cluster-fan", "fix-fan", "language-skills"); err != nil {
 		return burlerengine.Profile{}, err
 	}
 
@@ -319,12 +354,13 @@ func burlerRoundProfile(cfg Config, stencilsDir, specsDir string, notes shedadap
 		FixScope:       burlerengine.FixScope(fixScope),
 		ToolUse:        toolUse,
 		ClusterFan:     clusterFan,
+		FixFan:         fixFan,
 		LanguageSkills: languageSkills,
 	}, nil
 }
 
 // burlerFixProfile maps cfg's profile map onto the burlerengine.Profile of a fix row, recognising exactly three keys -- target, fix-scope and language-skills -- all optional at this level.
-// The fixer holds no fasit, rubric or cluster fan, so those keys are rejected as unrecognised; profile.target.paths follows burlerRoundProfile's relative-path exception.
+// The fixer holds no fasit, rubric, cluster fan or fix fan, so those keys are rejected as unrecognised; profile.target.paths follows burlerRoundProfile's relative-path exception.
 func burlerFixProfile(cfg Config) (burlerengine.Profile, error) {
 	targetCfg, err := configMap(cfg, "target", false)
 	if err != nil {

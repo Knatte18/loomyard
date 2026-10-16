@@ -4,6 +4,7 @@
 // auditClusterRound is the single place that turns the raw audit facts (shuttleengine's own
 // knowledge — never this package's) into burler's hard-error/warning split, per the
 // fail-loud-posture Shared Decision.
+// auditFixRound applies the same per-fork checks to a twill fixer's self-check forks, where a wrong fork count is a warning.
 
 package burlerengine
 
@@ -36,33 +37,63 @@ func auditClusterRound(audit *shuttleengine.ForkAudit, wantN int) ([]string, err
 		return nil, fmt.Errorf("burler: %w (requested %d, spawned %d)", ErrClusterForksMissing, wantN, gotN)
 	}
 
+	if violation := forkViolation(audit); violation != nil {
+		return nil, fmt.Errorf("burler: %w", violation)
+	}
+	return unreturnedForkWarnings(audit), nil
+}
+
+// forkViolation returns the first Agent-call, write, mutating-git or named-spawn violation of audit, checked in that order, or nil when the forks are clean.
+// The error carries no burler prefix, so each caller adds its own.
+func forkViolation(audit *shuttleengine.ForkAudit) error {
 	for _, fork := range audit.Forks {
 		if fork.AgentCalls > 0 {
-			return nil, fmt.Errorf("burler: fork %q attempted %d Agent tool call(s) — forks cannot nest and must never call the Agent tool, even when the attempt was denied", fork.TranscriptPath, fork.AgentCalls)
+			return fmt.Errorf("fork %q attempted %d Agent tool call(s) — forks cannot nest and must never call the Agent tool, even when the attempt was denied", fork.TranscriptPath, fork.AgentCalls)
 		}
 	}
 	for _, fork := range audit.Forks {
 		if fork.WriteCalls > 0 {
-			return nil, fmt.Errorf("burler: fork %q attempted %d write/edit tool call(s) — a fork reviewer must never mutate a file", fork.TranscriptPath, fork.WriteCalls)
+			return fmt.Errorf("fork %q attempted %d write/edit tool call(s) — a fork must never mutate a file", fork.TranscriptPath, fork.WriteCalls)
 		}
 	}
 	for _, fork := range audit.Forks {
 		for _, cmd := range fork.BashCommands {
 			if mutatingGitPattern.MatchString(cmd) {
-				return nil, fmt.Errorf("burler: fork %q ran a git-mutating command (%q) — a fork reviewer must never run a state-mutating git command", fork.TranscriptPath, cmd)
+				return fmt.Errorf("fork %q ran a git-mutating command (%q) — a fork must never run a state-mutating git command", fork.TranscriptPath, cmd)
 			}
 		}
 	}
 	if audit.NamedSpawns > 0 {
-		return nil, fmt.Errorf("burler: %d fork(s) were spawned with a name — named forks silently lose inherited context, which is a silent quality-degradation defect, not an advisory", audit.NamedSpawns)
+		return fmt.Errorf("%d fork(s) were spawned with a name — named forks silently lose inherited context, which is a silent quality-degradation defect, not an advisory", audit.NamedSpawns)
 	}
+	return nil
+}
 
-	// A fork that never returned a report is surfaced as a warning, not a failure.
+// unreturnedForkWarnings returns one warning per fork of audit that never returned a final report; such a fork is sloppiness, not a failure.
+func unreturnedForkWarnings(audit *shuttleengine.ForkAudit) []string {
 	var warnings []string
 	for _, fork := range audit.Forks {
 		if !fork.ReportReturned {
 			warnings = append(warnings, fmt.Sprintf("fork %q never returned a final report", fork.TranscriptPath))
 		}
 	}
-	return warnings, nil
+	return warnings
+}
+
+// auditFixRound enforces the twill fixer's fork policy over audit, the audit of a fixer that spawned self-check forks for wantN lenses.
+// A fork violation is a hard error, wrapped with its way forward; a fork count other than wantN, none included, is a warning, since the fix is on disk and failing the half would redo a finished fix.
+// It returns the warnings, which also include one per fork that never returned a report, and the audited fork count, 0 for a nil audit.
+func auditFixRound(audit *shuttleengine.ForkAudit, wantN int) (warnings []string, forks int, err error) {
+	if audit == nil {
+		return []string{fmt.Sprintf("twill fixer spawned 0 fork(s) for %d lens(es)", wantN)}, 0, nil
+	}
+	if violation := forkViolation(audit); violation != nil {
+		return nil, len(audit.Forks), fmt.Errorf("burler: twill fixer %w; way forward: inspect the target's working-tree changes, revert what the fork wrote, and resume the run", violation)
+	}
+	forks = len(audit.Forks)
+	if forks != wantN {
+		warnings = append(warnings, fmt.Sprintf("twill fixer spawned %d fork(s) for %d lens(es)", forks, wantN))
+	}
+	warnings = append(warnings, unreturnedForkWarnings(audit)...)
+	return warnings, forks, nil
 }

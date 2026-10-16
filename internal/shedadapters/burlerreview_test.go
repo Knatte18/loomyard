@@ -30,6 +30,9 @@ type halfProducerSpec struct {
 	opts    burlerengine.RunOpts
 	models  burlerengine.RoundModels
 	now     func() time.Time
+	// fans and requiresFans are the deps' per-round fan lists and fix-half requirement; the zero value is a row that records no names.
+	fans         *RoundFans
+	requiresFans bool
 }
 
 // newHalfSpec returns a spec over the minimal profile and a fixed clock.
@@ -40,7 +43,7 @@ func newHalfSpec() halfProducerSpec {
 // newReviewProducer builds a BurlerReviewProducer over runDir, failing the test on constructor error.
 func newReviewProducer(t *testing.T, runDir string, runner *shedfake.BurlerHalfRunner, spec halfProducerSpec) *BurlerReviewProducer {
 	t.Helper()
-	p, err := NewBurlerReviewProducer("burler-review", BurlerHalfDeps{Runner: runner, Models: spec.models}, spec.profile, spec.opts, runDir, spec.now)
+	p, err := NewBurlerReviewProducer("burler-review", BurlerHalfDeps{Runner: runner, Models: spec.models, Fans: spec.fans, RequiresFans: spec.requiresFans}, spec.profile, spec.opts, runDir, spec.now)
 	if err != nil {
 		t.Fatalf("NewBurlerReviewProducer() error = %v; want nil", err)
 	}
@@ -304,7 +307,7 @@ func TestBurlerReviewProducer_Call_ProfileAndOpts(t *testing.T) {
 	runDir := t.TempDir()
 	writeJudgedRound(t, runDir, 1)
 	writeJudgedRound(t, runDir, 2)
-	if err := writeRoundUsage(runDir, 2, roundUsage{Fan: "fanX", Lenses: []string{"a", "b", "c"}, Review: &halfUsage{}}); err != nil {
+	if err := writeRoundUsage(runDir, 2, roundUsage{Fan: "fanX", FansRecorded: true, Lenses: []string{"a", "b", "c"}, Review: &halfUsage{}}); err != nil {
 		t.Fatalf("writeRoundUsage: %v", err)
 	}
 	focus := writeFocusFile(t, runDir, 3, focusFile{Round: 3, ExcludeLenses: []string{"a"}, Focus: []string{"look at the seam"}})
@@ -342,6 +345,157 @@ func TestBurlerReviewProducer_Call_ProfileAndOpts(t *testing.T) {
 	if len(spec.profile.PriorReviews) != 1 {
 		t.Errorf("the stored template's PriorReviews = %v; want it untouched", spec.profile.PriorReviews)
 	}
+
+	picks := []struct {
+		name       string
+		review     []string
+		fix        []string
+		judged     int
+		wantFan    string
+		wantFixFan string
+	}{
+		{name: "round 1 takes the first entries", review: []string{"fan-a", "fan-b"}, fix: []string{"fix-a", "fix-b"}, wantFan: "fan-a", wantFixFan: "fix-a"},
+		{name: "round 3 of a two-entry list takes the last entries", review: []string{"fan-a", "fan-b"}, fix: []string{"fix-a", "fix-b"}, judged: 2, wantFan: "fan-b", wantFixFan: "fix-b"},
+		{name: "an empty entry runs solo", review: []string{"", "fan-b"}, fix: []string{"", "fix-b"}},
+	}
+	for _, tt := range picks {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			runDir := t.TempDir()
+			for round := 1; round <= tt.judged; round++ {
+				writeJudgedRound(t, runDir, round)
+			}
+			spec := newHalfSpec()
+			spec.fans = &RoundFans{Review: tt.review, Fix: tt.fix}
+			runner := &shedfake.BurlerHalfRunner{ReviewResults: []burlerengine.ReviewResult{reviewDone("d")}}
+			p := newReviewProducer(t, runDir, runner, spec)
+
+			shedfake.CallOK(t, p)
+
+			if got := runner.GotReviewProfiles[0].ClusterFan; got != tt.wantFan {
+				t.Errorf("ClusterFan = %q; want %q", got, tt.wantFan)
+			}
+			fan, fixFan, err := readRecordedFans(runDir, tt.judged+1)
+			if fan != tt.wantFan || fixFan != tt.wantFixFan || err != nil {
+				t.Errorf("recorded fans = %q, %q, %v; want %q, %q", fan, fixFan, err, tt.wantFan, tt.wantFixFan)
+			}
+		})
+	}
+
+	t.Run("a record without fans_recorded drops the focus file's exclusion", func(t *testing.T) {
+		t.Parallel()
+		runDir := t.TempDir()
+		writeJudgedRound(t, runDir, 1)
+		writeJudgedRound(t, runDir, 2)
+		if err := writeRoundUsage(runDir, 2, roundUsage{Fan: "fanX", Lenses: []string{"a", "b", "c"}, Review: &halfUsage{}}); err != nil {
+			t.Fatalf("writeRoundUsage: %v", err)
+		}
+		writeFocusFile(t, runDir, 3, focusFile{Round: 3, ExcludeLenses: []string{"a"}, Focus: []string{"look at the seam"}})
+		spec := newHalfSpec()
+		spec.fans = &RoundFans{Review: []string{"fanX"}}
+		runner := &shedfake.BurlerHalfRunner{ReviewResults: []burlerengine.ReviewResult{reviewDone("d")}}
+		p := newReviewProducer(t, runDir, runner, spec)
+
+		shedfake.CallOK(t, p)
+
+		if got := runner.GotReviewProfiles[0].ClusterExclude; len(got) != 0 {
+			t.Errorf("ClusterExclude = %v; want none, since round 2's record does not say its names were recorded", got)
+		}
+	})
+}
+
+// TestBurlerReviewProducer_Call_RecordsRoundFans proves a row with fan lists writes the round's names, with the flag, before the reviewer is spawned.
+// Its DuringReview hook reads the record, so each recording row proves the write came first.
+// It proves a failed write spawns nothing and archives the round, a row with no lists writes no flag, and an already accepted round is handed on with the record left unwritten.
+func TestBurlerReviewProducer_Call_RecordsRoundFans(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		fans  *RoundFans
+		setup func(t *testing.T, runDir string)
+		// wantAtSpawn is the names the record held when the reviewer was spawned, nil when no spawn is expected to see the flag.
+		wantAtSpawn *[2]string
+		wantErr     bool
+		wantSpawns  int
+		wantFlag    bool
+		wantStale   int
+	}{
+		{name: "a fanned entry", fans: &RoundFans{Review: []string{"fan-a"}, Fix: []string{"fix-a"}}, wantAtSpawn: &[2]string{"fan-a", "fix-a"}, wantSpawns: 1, wantFlag: true},
+		{name: "an empty entry records empty names with the flag", fans: &RoundFans{Review: []string{""}, Fix: []string{""}}, wantAtSpawn: &[2]string{"", ""}, wantSpawns: 1, wantFlag: true},
+		{
+			name: "a failed write spawns nothing and archives the round",
+			fans: &RoundFans{Review: []string{"fan-a"}},
+			setup: func(t *testing.T, runDir string) {
+				writeRoundFile(t, roundReviewPath(runDir, 1))
+				if err := os.Mkdir(roundUsagePath(runDir, 1), 0o755); err != nil {
+					t.Fatalf("Mkdir: %v", err)
+				}
+			},
+			wantErr: true, wantStale: 1,
+		},
+		{name: "a row with no lists writes no flag", wantSpawns: 1},
+		{
+			name: "a flagless record left by a refused fix half is recorded afresh",
+			fans: &RoundFans{Review: []string{"fan-a"}, Fix: []string{"fix-a"}},
+			setup: func(t *testing.T, runDir string) {
+				if err := writeRoundUsage(runDir, 1, roundUsage{Fan: "stale"}); err != nil {
+					t.Fatalf("writeRoundUsage: %v", err)
+				}
+			},
+			wantAtSpawn: &[2]string{"fan-a", "fix-a"}, wantSpawns: 1, wantFlag: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			runDir := t.TempDir()
+			if tt.setup != nil {
+				tt.setup(t, runDir)
+			}
+			spec := newHalfSpec()
+			spec.fans = tt.fans
+			runner := &shedfake.BurlerHalfRunner{ReviewResults: []burlerengine.ReviewResult{reviewDone("d")}}
+			var atSpawn *[2]string
+			runner.DuringReview = func(int) {
+				if fan, fixFan, err := readRecordedFans(runDir, 1); err == nil {
+					atSpawn = &[2]string{fan, fixFan}
+				}
+			}
+			p := newReviewProducer(t, runDir, runner, spec)
+
+			_, _, err := p.Call(context.Background())
+
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Call() error = %v; want an error: %v", err, tt.wantErr)
+			}
+			if runner.ReviewCalls != tt.wantSpawns {
+				t.Errorf("Review calls = %d; want %d", runner.ReviewCalls, tt.wantSpawns)
+			}
+			if !reflect.DeepEqual(atSpawn, tt.wantAtSpawn) {
+				t.Errorf("names recorded when the reviewer was spawned = %v; want %v", atSpawn, tt.wantAtSpawn)
+			}
+			requireArchived(t, runDir, "round-1-review.md", tt.wantStale)
+			if usage, readErr := readRoundUsage(runDir, 1); !tt.wantErr && (readErr != nil || usage.FansRecorded != tt.wantFlag) {
+				t.Errorf("usage record = %+v, %v; want fans_recorded %v", usage, readErr, tt.wantFlag)
+			}
+		})
+	}
+
+	t.Run("an already accepted round is handed on and the record stays unwritten", func(t *testing.T) {
+		t.Parallel()
+		runDir := t.TempDir()
+		writeAcceptedRound(t, runDir, 1, "d1")
+		spec := newHalfSpec()
+		spec.fans = &RoundFans{Review: []string{"fan-a"}, Fix: []string{"fix-a"}}
+		runner := &shedfake.BurlerHalfRunner{}
+		p := newReviewProducer(t, runDir, runner, spec)
+
+		shedfake.CallOK(t, p)
+
+		if _, err := os.Stat(roundUsagePath(runDir, 1)); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("Stat(usage record) = %v; want it absent", err)
+		}
+	})
 }
 
 // TestBurlerReviewProducer_Call_AcceptedReviewIsRecorded proves an accepted review hands on as a BudgetExempt Stuck, never Done, with the review as Path.
@@ -367,7 +521,11 @@ func requireAcceptedReviewRecorded(t *testing.T, engine string) {
 	t.Helper()
 	runDir := t.TempDir()
 	spec := newHalfSpec()
-	spec.profile.ClusterFan = "fanX"
+	// The record holds the fan the round was spawned under; the template's own fan, edited since, must not overwrite it.
+	spec.profile.ClusterFan = "edited"
+	if err := recordRoundFans(runDir, 1, spec.now, "fanX", ""); err != nil {
+		t.Fatalf("recordRoundFans() = %v; want nil", err)
+	}
 	spec.models = burlerengine.RoundModels{Review: []shuttleengine.ModelChoice{{Model: "reviewer", Effort: "low"}}}
 	started := time.Date(2026, 8, 16, 15, 0, 0, 0, time.UTC)
 	result := burlerengine.ReviewResult{
@@ -627,6 +785,56 @@ func TestBurlerReviewProducer_Call_ProbeAndResume(t *testing.T) {
 			}
 			if len(runner.GotProbeReviewOpts) != 1 || runner.GotProbeReviewOpts[0].Round != "1" {
 				t.Errorf("probe opts = %+v; want one probe under round token 1", runner.GotProbeReviewOpts)
+			}
+		})
+	}
+
+	// The round recorded fan-a when its reviewer was spawned; the list now says fan-b.
+	fansRows := []struct {
+		name        string
+		resume      burlerengine.ReviewResult
+		wantResumes int
+		wantSpawns  int
+		wantFan     string
+	}{
+		{name: "a live reviewer is probed and resumed under the fan it was spawned with", resume: reviewDone("resumed"), wantResumes: 1, wantFan: "fan-a"},
+		{name: "a resumed reviewer that had already died is respawned under the current list", resume: burlerengine.ReviewResult{Outcome: shuttleengine.OutcomeDied}, wantResumes: 1, wantSpawns: 1, wantFan: "fan-b"},
+	}
+	for _, tt := range fansRows {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			runDir := t.TempDir()
+			spec := newHalfSpec()
+			spec.fans = &RoundFans{Review: []string{"fan-b"}}
+			if err := recordRoundFans(runDir, 1, spec.now, "fan-a", ""); err != nil {
+				t.Fatalf("recordRoundFans() = %v; want nil", err)
+			}
+			writeRoundFile(t, roundReviewPath(runDir, 1))
+			runner := &shedfake.BurlerHalfRunner{
+				LiveReviews:         []burlerengine.LiveHalf{live},
+				ResumeReviewResults: []burlerengine.ReviewResult{tt.resume},
+				ReviewResults:       []burlerengine.ReviewResult{reviewDone("spawned")},
+			}
+			p := newReviewProducer(t, runDir, runner, spec)
+
+			shedfake.CallOK(t, p)
+
+			if runner.ResumeReviewCalls != tt.wantResumes || runner.ReviewCalls != tt.wantSpawns {
+				t.Errorf("ResumeReview calls %d, Review calls %d; want %d and %d", runner.ResumeReviewCalls, runner.ReviewCalls, tt.wantResumes, tt.wantSpawns)
+			}
+			if got := runner.GotProbeReviewProfiles[0].ClusterFan; got != "fan-a" {
+				t.Errorf("probe ran under fan %q; want the recorded fan-a", got)
+			}
+			if got := runner.GotResumeReviewProfiles[0].ClusterFan; got != "fan-a" {
+				t.Errorf("resume ran under fan %q; want the recorded fan-a", got)
+			}
+			if tt.wantSpawns > 0 {
+				if got := runner.GotReviewProfiles[0].ClusterFan; got != tt.wantFan {
+					t.Errorf("spawn ran under fan %q; want %q", got, tt.wantFan)
+				}
+			}
+			if fan, _, err := readRecordedFans(runDir, 1); fan != tt.wantFan || err != nil {
+				t.Errorf("recorded fan = %q, %v; want %q", fan, err, tt.wantFan)
 			}
 		})
 	}

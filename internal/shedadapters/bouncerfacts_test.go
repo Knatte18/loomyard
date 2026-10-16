@@ -145,7 +145,7 @@ func TestComputeRoundFacts_ClasslessReviewIsAParseErrorRow(t *testing.T) {
 		t.Errorf("round 2 row = %+v; want its counts rendered", facts.Rows[1])
 	}
 
-	if err := writeRoundFacts("gate", dir, 2, reportName, false); err != nil {
+	if err := writeRoundFacts("gate", dir, 2, reportName, false, ""); err != nil {
 		t.Fatalf("writeRoundFacts = %v; want nil", err)
 	}
 	raw, err := os.ReadFile(factsPath(dir, 2))
@@ -225,7 +225,7 @@ func TestWriteRoundFacts_IsDeterministic(t *testing.T) {
 	writeFactsReview(t, dir, 2, factsFinding{burlerengine.SeverityLow, "scope"})
 	writeFactsLedger(t, dir, 1, "k:open:[1]", "j:open:[1]")
 
-	if err := writeRoundFacts("gate", dir, 2, reportName, false); err != nil {
+	if err := writeRoundFacts("gate", dir, 2, reportName, false, ""); err != nil {
 		t.Fatalf("writeRoundFacts first = %v; want nil", err)
 	}
 	first, err := os.ReadFile(factsPath(dir, 2))
@@ -241,7 +241,7 @@ func TestWriteRoundFacts_IsDeterministic(t *testing.T) {
 	if round1 := string(renderRoundFacts(computeRoundFacts(dir, 1, reportName))); !strings.Contains(round1, "No ledger key was open in an earlier round.") {
 		t.Errorf("round 1 facts = %q; want the empty earlier-open line", round1)
 	}
-	if err := writeRoundFacts("gate", dir, 2, reportName, false); err != nil {
+	if err := writeRoundFacts("gate", dir, 2, reportName, false, ""); err != nil {
 		t.Fatalf("writeRoundFacts second = %v; want nil", err)
 	}
 	second, err := os.ReadFile(factsPath(dir, 2))
@@ -301,7 +301,7 @@ prose
 `
 	writeFacts := func(t *testing.T, dir string) string {
 		t.Helper()
-		if err := writeRoundFacts("gate", dir, 2, reportName, true); err != nil {
+		if err := writeRoundFacts("gate", dir, 2, reportName, true, ""); err != nil {
 			t.Fatalf("writeRoundFacts = %v; want nil", err)
 		}
 		raw, err := os.ReadFile(factsPath(dir, 2))
@@ -321,10 +321,10 @@ prose
 		t.Parallel()
 		dir := t.TempDir()
 		writeReview(t, dir)
-		if err := writeRoundUsage(dir, 1, roundUsage{Fan: "fanX", Lenses: []string{"alpha", "beta", "gamma"}, Review: &halfUsage{}}); err != nil {
+		if err := writeRoundUsage(dir, 1, roundUsage{Fan: "fanX", FansRecorded: true, Lenses: []string{"alpha", "beta", "gamma"}, Review: &halfUsage{}}); err != nil {
 			t.Fatalf("writeRoundUsage 1 = %v; want nil", err)
 		}
-		if err := writeRoundUsage(dir, 2, roundUsage{Fan: "fanX", Lenses: []string{"alpha", "beta"}, Review: &halfUsage{}}); err != nil {
+		if err := writeRoundUsage(dir, 2, roundUsage{Fan: "fanX", FansRecorded: true, Lenses: []string{"alpha", "beta"}, Review: &halfUsage{}}); err != nil {
 			t.Fatalf("writeRoundUsage 2 = %v; want nil", err)
 		}
 		writeFocusFile(t, dir, 2, focusFile{Round: 2, ExcludeLenses: []string{"gamma"}})
@@ -366,7 +366,7 @@ prose
 		if err := os.WriteFile(filepath.Join(dir, reportName(2)), []byte("no frontmatter here\n"), 0o644); err != nil {
 			t.Fatalf("WriteFile review = %v; want nil", err)
 		}
-		if err := writeRoundUsage(dir, 2, roundUsage{Fan: "fanX", Lenses: []string{"alpha"}, Review: &halfUsage{}}); err != nil {
+		if err := writeRoundUsage(dir, 2, roundUsage{Fan: "fanX", FansRecorded: true, Lenses: []string{"alpha"}, Review: &halfUsage{}}); err != nil {
 			t.Fatalf("writeRoundUsage 2 = %v; want nil", err)
 		}
 
@@ -380,6 +380,25 @@ prose
 		}
 		if strings.Contains(lenses, "| Origin |") {
 			t.Errorf("lens section = %q; want no per-origin table", lenses)
+		}
+	})
+
+	t.Run("a usage note renders its line and no lens section when the round counts as solo", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		writeReview(t, dir)
+		if err := writeRoundFacts("gate", dir, 2, reportName, false, "the record carries no fans_recorded flag"); err != nil {
+			t.Fatalf("writeRoundFacts = %v; want nil", err)
+		}
+		raw, err := os.ReadFile(factsPath(dir, 2))
+		if err != nil {
+			t.Fatalf("ReadFile facts = %v; want nil", err)
+		}
+		if want := "\nUsage record unreadable, so this round counts as solo for lens exclusions: the record carries no fans_recorded flag\n"; !strings.Contains(string(raw), want) {
+			t.Errorf("facts file = %q; want it to contain %q", raw, want)
+		}
+		if strings.Contains(string(raw), "## Lenses") {
+			t.Errorf("facts file = %q; want no lens section", raw)
 		}
 	})
 
@@ -401,7 +420,7 @@ prose
 		if err := writeRoundUsage(dropped, 1, seedOnly); err != nil {
 			t.Fatalf("writeRoundUsage 1 = %v; want nil", err)
 		}
-		if err := writeRoundUsage(dropped, 2, roundUsage{Fan: "fanX", Lenses: []string{"alpha"}, Review: &halfUsage{}}); err != nil {
+		if err := writeRoundUsage(dropped, 2, roundUsage{Fan: "fanX", FansRecorded: true, Lenses: []string{"alpha"}, Review: &halfUsage{}}); err != nil {
 			t.Fatalf("writeRoundUsage 2 = %v; want nil", err)
 		}
 		writeFocusFile(t, dropped, 2, focusFile{Round: 2, ExcludeLenses: []string{"gamma"}})
