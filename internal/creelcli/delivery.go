@@ -195,6 +195,8 @@ func (d *hubDelivery) Idle(strand creelengine.Strand) (creelengine.Idleness, err
 		return creelengine.Idleness{Stall: creelengine.StallTooShort}, nil
 	case probe.Draft:
 		return creelengine.Idleness{Stall: creelengine.StallDraft}, nil
+	case probe.NoInputBox:
+		return creelengine.Idleness{Stall: creelengine.StallNoInputBox}, nil
 	}
 	return creelengine.Idleness{}, nil
 }

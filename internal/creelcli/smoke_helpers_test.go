@@ -136,6 +136,16 @@ func (s *smokeHub) creel(args ...string) (int, string) {
 	return code, out.String()
 }
 
+// lastPane returns the strand's pane as it reads now, for a failure message.
+func (s *smokeHub) lastPane(t *testing.T, guid string) string {
+	t.Helper()
+	capture, err := s.reed.CapturePane(guid)
+	if err != nil {
+		t.Fatalf("CapturePane(%s) = %v", guid, err)
+	}
+	return capture
+}
+
 // awaitPane polls the strand's pane once a second until it shows want or smokePaneWindow passes, and returns the last capture.
 // The pane has no event to wait on, so it polls on a tick under a real-time deadline.
 func (s *smokeHub) awaitPane(t *testing.T, guid, want string) (string, bool) {

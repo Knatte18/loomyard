@@ -177,7 +177,7 @@ The reminder lands only after the turn ends and appears once in the pane's scrol
 **Goal:** "Leave interleaved mail from several senders, read it in every way the verb offers, and confirm each read returns the right set and that mail whose output could not be written stays unread."
 
 **Watch:** Interleave mail from EXTERNAL and a shell strand, then check plain `read`, `read --from`, `read --all` and `inbox`.
-`lyx creel read > /dev/full` exits non-zero and leaves the mail unread, so a following `read` still returns it.
+`lyx creel read > /dev/full` exits 1, writes a `creel:` line to stderr and leaves the mail unread, so a following `read` still returns it.
 
 **Verdict:** `FAIL` on a wrong set or lost mail.
 
@@ -205,7 +205,7 @@ Forwarding to oneself, forwarding a message not held and forwarding one already 
 
 **Watch:** `inject --wait` into an idle pane gives `injected`.
 A fake box that ignores Enter gives `unconfirmed`, and the line is not typed again once the box is cleared.
-A short `--ttl` into a never-idle pane expires on time.
+A short `--ttl` into a never-idle pane expires within a second of its TTL, and into a bash strand it names the stall `no-input-box`.
 
 **Verdict:** `FAIL` on a retype or an early expiry.
 
@@ -233,6 +233,7 @@ A box holding the operator's own text is left alone, and the inject waits.
 
 **Watch:** A privileged sender holds the strand, injects and mail from another sender are held back, and the owner's inject passes.
 After `release` the held inject is typed and the mail reminded.
+An `inject --wait` started after a draft was cleared under a hold prints no stall line and ends injected.
 Then `lyx tender pause` freezes the TTL and holds delivery, and `lyx tender resume` delivers.
 
 **Verdict:** `FAIL` on delivery during a hold or pause, or a TTL that runs while paused.
@@ -258,7 +259,7 @@ Then `lyx tender pause` freezes the TTL and holds delivery, and `lyx tender resu
 **Goal:** "Replace the binary under a running daemon, damage the journal in the ways a crash or an old day file would, and confirm the daemon restarts on the same pool and says why when it cannot start."
 
 **Watch:** Replacing the binary ends the daemon within 2 s, and the next verb brings the same pool (a diff of `lyx creel log` before and after).
-A planted 8-day-old day file is carried forward and deleted, and a torn tail is cut.
+A planted 8-day-old day file is carried forward and deleted, and a torn tail is cut whether or not it ends in a newline, and a restart after the next append starts cleanly.
 A malformed middle line, planted while the daemon is stopped, gives the verb an error naming the daemon log, which quotes the start's error line with the journal file and line.
 
 **Verdict:** `FAIL` on a pool diff or lost unread mail.
@@ -272,7 +273,7 @@ A malformed middle line, planted while the daemon is stopped, gives the verb an 
 **Goal:** "Remove the strand that holds forwarded mail and mail someone waits on, and confirm each message steps back or ends undelivered and the reader is told it bounced."
 
 **Watch:** Remove the strand holding forwarded mail and the one holding mail awaited with `--wait-reply`.
-Within about 60 s each message steps back one hop or ends `undelivered`, the waiter exits 5, and the reader of a bounced message sees `ended_unread_by` and `ended_unread_at` on it.
+Within 60 s of the removal each message steps back one hop or ends `undelivered`, the waiter exits 5, and the reader of a bounced message sees `ended_unread_by` and `ended_unread_at` on it.
 
 **Verdict:** `WARN` if the bounce is not shown.
 

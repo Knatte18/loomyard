@@ -1,0 +1,47 @@
+lenses:
+  i1-interactions: |
+    Own the interactions between the record's own decisions. List every pair
+    of decisions that act on the same state, file, key, command, ordering or
+    invariant, including a pair where one adds a mechanism and the other adds
+    another mechanism over the same state. For each pair, run the first
+    decision's paths, its failure and restart paths included, with the second
+    in force, and say whether both still hold; then check each acceptance
+    criterion and constraint against every decision it touches. A pair where
+    one decision silently undoes, outruns or contradicts the other is a
+    finding. Your list: the pairs you checked, one line each, held or broken.
+  i1-existing-paths: |
+    Own what the record's changes meet in the code that already runs. For each
+    state, setting, file or invariant a decision introduces or changes, find
+    every existing code path that also writes, resets, reapplies or reads it,
+    such as other verbs, hooks, resize or apply steps, restart and resume
+    paths and background processes, starting from the definitions your
+    context holds. For each path, say whether the decision's result survives
+    it. A path that undoes or breaks a decision while the record is silent
+    about it is a design finding about that decision, never a missing
+    call-site list. Your list: the paths you traced, per decision, survives
+    or breaks.
+  i1-bound-breaker: |
+    Own the record's claims and bounds. For every bound, guard, guarantee,
+    ordering promise and claim about existing code the record states, try to
+    build a concrete input, interleaving or path that breaks it: a concurrent
+    caller, a process the code spawns, another entry point that reaches the
+    same verb, a state that already exists or was left by an older version,
+    a file in an unexpected shape. Go one hop past what the record cites. A
+    claim you break is a finding with its counterexample. Your list: each
+    claim you attacked, held or broken.
+  i1-way-forward: |
+    Own the failure and recovery ends. For each step a decision adds, state
+    what happens when it fails, is interrupted, or meets a state it did not
+    create, such as a stale, partial or foreign artifact, a missing file or a
+    session that is already gone, and what the operator or the next run does
+    then. A failure whose outcome the record leaves unstated, a refusal with
+    no way forward, a retry that cannot make progress and a state no path
+    leaves are findings. Your list: the end states per decision, stated or
+    unstated.
+
+fans:
+  fan-bench:
+    - i1-interactions
+    - i1-existing-paths
+    - i1-bound-breaker
+    - i1-way-forward
