@@ -290,6 +290,12 @@
 // The close waits the engine's interrupt settle, captures the pane once more and sends nothing further, so it never selects an entry.
 // It always fails the operation with ErrRewindPickerOpen, which never wraps ErrSessionBusy, so nothing is typed or interrupted after it.
 // A verified send whose picker capture fails skips the close when the idle wait's polls follow, and fails closed when no polls do.
+// Runner.InterruptRestoring is the interrupt for a caller that must leave the box empty: its key goes only through that same guarded interrupt, and it then clears the prompt the provider restores into the box.
+// For an engine with RestoredPromptClearer and InputBoxReader, it reads the box before the key, and only a box read empty then is cleared after it.
+// After the engine's interrupt settle it reads the box, and a box still empty gets one more settle and one more read.
+// Restored text is cleared once, with the provider's restored-prompt clear, only behind a guard reading of the same capture plus one operator-activity query: the pane reads ready with no running turn, the box is readable and the operator is not active.
+// A failed guard reading sends no clear, so the text stays for the receiver's next send to hold on as a draft.
+// A failure after the key wraps ErrInterruptClearFailed, so a caller treats the interrupt as sent.
 // Runner.InterruptSettle is the settle a caller that retries an interrupt waits after its first key, and Runner.PaneRunningTurn reads whether a strand's pane shows a running turn.
 // Stray character: for an engine with StrayInputReader, InputBoxClearer and InputBoxReader, a box holding exactly one stray-character candidate is cleared once per send attempt.
 // It counts on the hook reading held only for that draft, and on the pane reading that is ready but not idle.

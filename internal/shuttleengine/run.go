@@ -1016,24 +1016,57 @@ func validateSendText(text string) error {
 // The interrupt goes only into a pane showing a running turn: a pane with none gets no key and ErrNoRunningTurn.
 // An open rewind picker is closed with one key and the call fails with ErrRewindPickerOpen.
 func (r *Runner) Interrupt(guid string) error {
+	engine, err := r.interruptEngine(guid)
+	if err != nil {
+		return err
+	}
+	return guardedInterrupt(r.reed, engine, r.clock, guid)
+}
+
+// InterruptRestoring is Interrupt for a caller that must leave the box empty: it also clears the prompt the provider restores into the box after the interrupt key.
+// The key goes only through the guarded interrupt, whose errors return unchanged with no clear.
+// The clear runs only when the box read empty before the key, for an engine with RestoredPromptClearer and InputBoxReader, at most once per call and never without a passing guard reading;
+// a box that held a draft before the key, or a restored prompt the guard reading finds unsafe to clear, gets the key alone and nil.
+// Its keys are the provider's restored-prompt clear, never an Escape, C-c or Enter, at most two per line the read showed.
+// The cleared text is the stopped turn's own prompt, already in the transcript.
+// A failure after the key wraps ErrInterruptClearFailed, and a caller then treats the interrupt as sent.
+func (r *Runner) InterruptRestoring(guid string) error {
+	engine, err := r.interruptEngine(guid)
+	if err != nil {
+		return err
+	}
+	beforeCapture, err := boxCapture(r.reed, engine, guid)
+	if err != nil {
+		return fmt.Errorf("shuttle: capture strand %q's pane before the interrupt: %w", guid, err)
+	}
+	before := readBox(engine, beforeCapture)
+	if err := guardedInterrupt(r.reed, engine, r.clock, guid); err != nil {
+		return err
+	}
+	if !before.read || strings.TrimSpace(before.text) != "" {
+		return nil
+	}
+	return clearRestoredPrompt(r.reed, engine, r.clock, guid)
+}
+
+// interruptEngine resolves the engine of the strand guid names: its run record's engine, or for a strand with no run record the live strand's provider.
+// A guid that is neither a shuttle strand nor a live reed strand is refused.
+func (r *Runner) interruptEngine(guid string) (Engine, error) {
 	if r.toldErr != nil {
-		return r.toldErr
+		return nil, r.toldErr
 	}
 	state, _, err := FindRun(r.cfg, r.anchorPath, guid)
 	if errors.Is(err, ErrNoRunRecord) {
 		strand, liveErr := liveStrand(r.reed, guid)
 		if liveErr != nil {
-			return notShuttleOrLiveStrandError(guid, liveErr)
+			return nil, notShuttleOrLiveStrandError(guid, liveErr)
 		}
 		state = RunState{Engine: strand.Provider}
 	} else if err != nil {
-		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
+		return nil, fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
 	}
 	engine, _, err := r.engineFor(state)
-	if err != nil {
-		return err
-	}
-	return guardedInterrupt(r.reed, engine, r.clock, guid)
+	return engine, err
 }
 
 // InterruptSettle returns how long after an interrupt key the pane of the run identified by guid needs before it is read again, or 0 for an engine that does not say.

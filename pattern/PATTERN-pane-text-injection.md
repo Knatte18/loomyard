@@ -19,6 +19,10 @@ The bounded exception is a lone stray character in an idle box: the guard clears
 - A send that may have left its text in the box records `{text, events offset}` in the run directory's `pending-send.json`.
   The next send to the strand reads it: the same text with a turn start past the offset went out already and types nothing; otherwise the send types as usual.
 - A send to a strand with no run record takes the pane-only readiness reading, keeps no pending-send record and never clears its unlanded text, so the next send holds on the non-empty box.
-- Explicit key deliveries stay outside the rule: `Runner.Interrupt`, `Runner.Inject`, `InterruptSequence`, the trust-prompt dismissal and the clear sent into a box holding exactly one stray-character candidate the guard reading found.
+- A second bounded clear sits beside the stray-character one: `Runner.InterruptRestoring` empties the prompt Claude restores into the box after lyx's own interrupt key.
+  It fires only on text that appeared in a box read empty before the key, at most once per call and never without a passing guard reading: the pane ready, no running turn, a readable box and no active operator.
+  Its keys are the provider's restored-prompt clear, no `Escape`, `C-c` or Enter, at most two per line the read showed, and the text is the stopped turn's own prompt, already in the transcript.
+  A guard reading that fails sends nothing, and the text stays as a draft the next send holds on.
+- Explicit key deliveries stay outside the rule: `Runner.Interrupt`, `Runner.InterruptRestoring`, `Runner.Inject`, `InterruptSequence`, the trust-prompt dismissal, the clear sent into a box holding exactly one stray-character candidate the guard reading found and the restored-prompt clear.
   Each names its keys itself and is not text for a draft box.
   `Runner.Interrupt` and `Runner.Inject` stay outside this rule as explicit key deliveries, but their interrupt key follows `PATTERN-guarded-interrupt`.

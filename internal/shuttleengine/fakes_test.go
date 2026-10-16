@@ -1118,6 +1118,212 @@ func (e *styledReadinessEngine) PlainBoxCapture(styled string) string {
 	return blankMarkedSpans(styled)
 }
 
+// restoreReed is a fakeReed whose pane is stateful across an interrupt, like Claude's: it draws a running turn and a box before the key, and after an Escape a box holding the restored prompt that C-u and BSpace then delete.
+// Each capture first runs the embedded fakeReed's capture, so CaptureErrQueue fails a scripted capture, counted over every capture of the call, and each key is recorded through the embedded fakeReed, whose SendKeyErrQueue fails a scripted key.
+type restoreReed struct {
+	*fakeReed
+	// before is the box text before the key; empty for an empty box.
+	before string
+	// idleBefore draws no RUNNING before the key.
+	idleBefore bool
+	// suggestion is a placeholder drawn in an empty box before the key: plain in CapturePane and wrapped in ~ marks in CapturePaneStyled.
+	suggestion string
+	// restored are the box lines drawn after the key.
+	restored []string
+	// lateRestore draws the restored lines only from the second capture after the key.
+	lateRestore bool
+	// afterHead is the first line of every frame after the key, IDLE when empty; NOBOX draws no caret line at all.
+	afterHead string
+
+	escaped       bool
+	capturesAfter int
+	rows          []string
+}
+
+func (r *restoreReed) CapturePane(guid string) (string, error) {
+	if _, err := r.fakeReed.CapturePane(guid); err != nil {
+		return "", err
+	}
+	return r.frame(false), nil
+}
+
+func (r *restoreReed) CapturePaneStyled(guid string) (string, error) {
+	if _, err := r.fakeReed.CapturePaneStyled(guid); err != nil {
+		return "", err
+	}
+	return r.frame(true), nil
+}
+
+func (r *restoreReed) SendKey(guid, key string) error {
+	if err := r.fakeReed.SendKey(guid, key); err != nil {
+		return err
+	}
+	switch {
+	case key == "Escape":
+		r.escaped = true
+		r.rows = append([]string(nil), r.restored...)
+		if len(r.rows) == 0 {
+			r.rows = []string{""}
+		}
+	case key == "C-u" && r.escaped:
+		r.rows[len(r.rows)-1] = ""
+	case key == "BSpace" && r.escaped:
+		last := len(r.rows) - 1
+		switch {
+		case r.rows[last] == "" && last > 0:
+			r.rows = r.rows[:last]
+		case r.rows[last] != "":
+			runes := []rune(r.rows[last])
+			r.rows[last] = string(runes[:len(runes)-1])
+		}
+	}
+	return nil
+}
+
+// frame draws the pane: styled wraps the suggestion in ~ marks, as the styled capture marks its placeholder cells.
+func (r *restoreReed) frame(styled bool) string {
+	if !r.escaped {
+		head := "RUNNING"
+		if r.idleBefore {
+			head = "IDLE"
+		}
+		box := r.before
+		if box == "" && r.suggestion != "" {
+			box = r.suggestion
+			if styled {
+				box = "~" + box + "~"
+			}
+		}
+		return head + "\n❯ " + box
+	}
+	r.capturesAfter++
+	head := r.afterHead
+	if head == "" {
+		head = "IDLE"
+	}
+	if head == "NOBOX" {
+		return head
+	}
+	rows := r.rows
+	if r.lateRestore && r.capturesAfter == 1 {
+		rows = []string{""}
+	}
+	lines := []string{head}
+	for index, row := range rows {
+		if index == 0 {
+			lines = append(lines, "❯ "+row)
+		} else {
+			lines = append(lines, "  "+row)
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// boxText is the text the box holds now, its non-empty rows joined by a space.
+func (r *restoreReed) boxText() string {
+	var texts []string
+	for _, row := range r.rows {
+		if row != "" {
+			texts = append(texts, row)
+		}
+	}
+	return strings.Join(texts, " ")
+}
+
+// restoreEngine is a fakeEngine for a pane drawn by restoreReed: RUNNING reads as a running turn and the settle is 2 s, Startup reads ready unless the capture holds SHELL, and it clears a restored prompt as Claude does.
+type restoreEngine struct {
+	*fakeEngine
+	// singleClear makes RestoredPromptClearSequence answer one bare C-u whatever the box holds.
+	singleClear bool
+}
+
+func newRestoreEngine() *restoreEngine {
+	return &restoreEngine{fakeEngine: &fakeEngine{Settle: 2 * time.Second}}
+}
+
+func (e *restoreEngine) Startup(capture string) StartupState {
+	if strings.Contains(capture, "SHELL") {
+		return StartupPending
+	}
+	return StartupReady
+}
+
+// InputBoxText reads the caret row and the rows after it, joined by a space.
+func (e *restoreEngine) InputBoxText(capture string) (string, bool) {
+	rows, ok := boxRows(capture)
+	if !ok {
+		return "", false
+	}
+	return strings.TrimSpace(strings.Join(rows, " ")), true
+}
+
+func (e *restoreEngine) SubmitSettle() time.Duration { return 0 }
+
+func (e *restoreEngine) TypeSequence(text string) []PaneInput {
+	return []PaneInput{{Text: text}}
+}
+
+// RestoredPromptClearSequence is n C-u with one BSpace between each pair, n counting from the first to the last row holding text with the blank rows between them.
+func (e *restoreEngine) RestoredPromptClearSequence(capture string) []PaneInput {
+	if e.singleClear {
+		return []PaneInput{{Key: "C-u"}}
+	}
+	rows, ok := boxRows(capture)
+	if !ok {
+		return nil
+	}
+	first, last := -1, -1
+	for index, row := range rows {
+		if row != "" {
+			if first < 0 {
+				first = index
+			}
+			last = index
+		}
+	}
+	if first < 0 {
+		return nil
+	}
+	var keys []PaneInput
+	for count := 0; count <= last-first; count++ {
+		if count > 0 {
+			keys = append(keys, PaneInput{Key: "BSpace"})
+		}
+		keys = append(keys, PaneInput{Key: "C-u"})
+	}
+	return keys
+}
+
+// boxRows returns the trimmed text of the caret row and every row after it; ok is false when the capture holds no caret row.
+func boxRows(capture string) (rows []string, ok bool) {
+	for _, line := range strings.Split(capture, "\n") {
+		if !ok {
+			if text, found := strings.CutPrefix(line, "❯"); found {
+				ok = true
+				rows = append(rows, strings.TrimSpace(text))
+			}
+			continue
+		}
+		rows = append(rows, strings.TrimSpace(line))
+	}
+	return rows, ok
+}
+
+// styledRestoreEngine is a restoreEngine that reads a styled capture, blanking its ~…~ spans.
+type styledRestoreEngine struct {
+	*restoreEngine
+}
+
+func (e *styledRestoreEngine) PlainBoxCapture(styled string) string {
+	return blankMarkedSpans(styled)
+}
+
+var (
+	_ InputBoxReader        = (*restoreEngine)(nil)
+	_ RestoredPromptClearer = (*restoreEngine)(nil)
+	_ StyledBoxReader       = (*styledRestoreEngine)(nil)
+)
+
 // styledPasteEngine is a strayPasteEngine that reads a styled capture, blanking its ~…~ spans.
 type styledPasteEngine struct {
 	*strayPasteEngine
