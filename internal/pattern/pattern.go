@@ -27,6 +27,15 @@ const patternDirName = "pattern"
 // overviewMarker is the one marker every directive stencil carries, which Directive fills with the overview.
 const overviewMarker = "pattern_overview"
 
+// changesMarker is the optional marker every directive stencil carries, which Directive fills with the rendered declared changes.
+const changesMarker = "pattern_changes"
+
+// changesFragmentStencil names the stencil that renders the declared changes, whose one required marker is changesListMarker.
+const changesFragmentStencil = "pattern-fragment-changes"
+
+// changesListMarker is the fragment's marker, filled with the declared bullet lines.
+const changesListMarker = "pattern_change_list"
+
 // File returns the path to the PATTERN.md overview within a repository's worktree root.
 func File(worktreeRoot string) string {
 	return filepath.Join(worktreeRoot, patternFileName)
@@ -78,14 +87,16 @@ var (
 
 // Directive returns the role's directive text to inject into the agent's prompt,
 // read from stencilsDir, stripped of its leading banner and carrying the PATTERN overview inlined at its marker.
+// declared is the task's declared PATTERN changes as rendered bullet lines;
+// a non-empty declared adds the declared-changes fragment after the overview, and nil or empty adds nothing.
 // It returns ("", nil) with no read attempted for an empty worktreeRoot, and for an inactive PATTERN:
 // an absent File(worktreeRoot), a directory in its place, or whitespace-only content.
 // An unknown or zero role also returns ("", nil), and the stencil is never read.
 // It returns ("", err) when the file's stat fails for a reason other than not-existing,
 // when reading an existing file fails,
-// or when PATTERN is active, role is known, and the stencil read or fill fails.
+// or when PATTERN is active, role is known, and a stencil read or fill fails.
 // Any other content is inlined verbatim, however malformed; format violations are the checker's job.
-func Directive(worktreeRoot, stencilsDir string, role Role) (string, error) {
+func Directive(worktreeRoot, stencilsDir string, role Role, declared []string) (string, error) {
 	if worktreeRoot == "" {
 		return "", nil
 	}
@@ -124,20 +135,49 @@ func Directive(worktreeRoot, stencilsDir string, role Role) (string, error) {
 		// house prefix, not the stencil name a second time.
 		return "", fmt.Errorf("pattern: directive stencil: %w", err)
 	}
-	return FillDirective(name, string(content), overview)
+	changes, err := renderChanges(stencilsDir, declared)
+	if err != nil {
+		return "", err
+	}
+	return fillDirective(name, string(content), overview, changes)
 }
 
 // FillDirective renders a directive from stencil text and PATTERN overview text already in hand:
-// it strips the stencil's leading banner and fills its overview marker with the overview.
+// it strips the stencil's leading banner and fills its overview marker with the overview, and its optional changes marker with nothing.
 // A whitespace-only overview is an inactive PATTERN and returns ("", nil).
 // A fill failure is returned wrapped with stencilName, which appears only in that error text.
 func FillDirective(stencilName, stencilText, overview string) (string, error) {
+	return fillDirective(stencilName, stencilText, overview, "")
+}
+
+// fillDirective strips the stencil's leading banner and fills its overview marker with overview and its optional changes marker with changes.
+// A whitespace-only overview returns ("", nil).
+func fillDirective(stencilName, stencilText, overview, changes string) (string, error) {
 	if strings.TrimSpace(overview) == "" {
 		return "", nil
 	}
-	filled, err := stencil.Fill([]byte(stencil.StripLeadingComment(stencilText)), map[string]string{overviewMarker: overview})
+	values := map[string]string{overviewMarker: overview, changesMarker: changes}
+	filled, err := stencil.FillOptional([]byte(stencil.StripLeadingComment(stencilText)), values, []string{changesMarker})
 	if err != nil {
 		return "", fmt.Errorf("pattern: fill directive stencil %q: %w", stencilName, err)
+	}
+	return string(filled), nil
+}
+
+// renderChanges returns the declared-changes fragment filled with the declared bullet lines joined by newlines.
+// It returns ("", nil) with no stencil read when declared is empty.
+// A fragment read or fill failure is returned wrapped.
+func renderChanges(stencilsDir string, declared []string) (string, error) {
+	if len(declared) == 0 {
+		return "", nil
+	}
+	content, err := stencilstore.Read(stencilsDir, changesFragmentStencil)
+	if err != nil {
+		return "", fmt.Errorf("pattern: changes fragment stencil: %w", err)
+	}
+	filled, err := stencil.Fill([]byte(stencil.StripLeadingComment(string(content))), map[string]string{changesListMarker: strings.Join(declared, "\n")})
+	if err != nil {
+		return "", fmt.Errorf("pattern: fill changes fragment stencil %q: %w", changesFragmentStencil, err)
 	}
 	return string(filled), nil
 }

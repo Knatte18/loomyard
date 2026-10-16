@@ -496,7 +496,7 @@ func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest,
 		return nil, fmt.Errorf("webster: render recovery read rules: %w", err)
 	}
 
-	directive, err := pattern.Directive(repoRoot, stencilsDir, pattern.RoleImplementer)
+	directive, err := pattern.Directive(repoRoot, stencilsDir, pattern.RoleImplementer, nil)
 	if err != nil {
 		return nil, fmt.Errorf("webster: recovery prompt directive: %w", err)
 	}
@@ -630,7 +630,7 @@ func masterPlanDirDisplay(paneCwd, planDir string) string {
 // propagated, deliberately unlike the pattern.Directive call immediately above, which does
 // propagate.
 func RenderMasterPrompt(batches []batcher.Batch, st *State, outcomePath, summaryPath, verifyFixPromptPath, planDir string, selfFixCap int, worktreeRoot, repoRoot, stencilsDir string, notePath, parentName string) ([]byte, error) {
-	directive, err := pattern.Directive(repoRoot, stencilsDir, pattern.RoleOrchestrator)
+	directive, err := pattern.Directive(repoRoot, stencilsDir, pattern.RoleOrchestrator, nil)
 	if err != nil {
 		return nil, fmt.Errorf("webster: master prompt directive: %w", err)
 	}

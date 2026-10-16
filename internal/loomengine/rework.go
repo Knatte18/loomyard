@@ -87,7 +87,7 @@ func ReworkTable(layout *lyxcwd.Location, stencilsDir, specsDir string, cfg Conf
 		priorPlan:      priorPlanDir,
 	}
 
-	patternDirective, err := pattern.Directive(layout.WorktreePath(), stencilsDir, pattern.RoleImplementer)
+	patternDirective, err := pattern.Directive(layout.WorktreePath(), stencilsDir, pattern.RoleImplementer, nil)
 	if err != nil {
 		return seatengine.Table{}, fmt.Errorf("loom: ReworkTable: %w", err)
 	}

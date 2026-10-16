@@ -76,7 +76,7 @@ func DiscussionTable(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDi
 		return seatengine.Table{}, fmt.Errorf("loom: DiscussionTable: discussion role model-spec: %w", err)
 	}
 
-	patternDirective, err := pattern.Directive(layout.WorktreePath(), stencilsDir, pattern.RoleDesigner)
+	patternDirective, err := pattern.Directive(layout.WorktreePath(), stencilsDir, pattern.RoleDesigner, nil)
 	if err != nil {
 		return seatengine.Table{}, fmt.Errorf("loom: DiscussionTable: pattern directive: %w", err)
 	}

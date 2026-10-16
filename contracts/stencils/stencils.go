@@ -418,6 +418,11 @@ var PatternDirectiveDesigner []byte
 //go:embed pattern/pattern-directive-judge.md
 var PatternDirectiveJudge []byte
 
+// PatternFragmentChanges is the shipped-default fragment a PATTERN directive appends to list the task's declared PATTERN changes.
+//
+//go:embed pattern/pattern-fragment-changes.md
+var PatternFragmentChanges []byte
+
 // FrictionDirectiveImplementer is the shipped-default friction directive for RoleImplementer.
 //
 //go:embed friction/friction-directive-implementer.md
@@ -611,6 +616,7 @@ var entries = []registryEntry{
 	{"pattern-directive-orchestrator", &PatternDirectiveOrchestrator},
 	{"pattern-directive-designer", &PatternDirectiveDesigner},
 	{"pattern-directive-judge", &PatternDirectiveJudge},
+	{"pattern-fragment-changes", &PatternFragmentChanges},
 	{"friction-directive-implementer", &FrictionDirectiveImplementer},
 	{"friction-directive-review-fix", &FrictionDirectiveReviewFix},
 	{"friction-directive-orchestrator", &FrictionDirectiveOrchestrator},

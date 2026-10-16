@@ -87,7 +87,7 @@ func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Ta
 		return seatengine.Table{}, fmt.Errorf("darn: DarnTable: writer model-spec: %w", err)
 	}
 
-	patternDirective, err := pattern.Directive(in.WorktreeRoot, in.StencilsDir, pattern.RoleImplementer)
+	patternDirective, err := pattern.Directive(in.WorktreeRoot, in.StencilsDir, pattern.RoleImplementer, nil)
 	if err != nil {
 		return seatengine.Table{}, fmt.Errorf("darn: DarnTable: %w", err)
 	}

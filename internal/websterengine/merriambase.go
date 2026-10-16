@@ -52,7 +52,7 @@ func MerriamBase(geom Geometry, instructionFiles []string) (batcher.StartBase, e
 	if err != nil {
 		return batcher.StartBase{}, merriamBaseError("webster-template-master", err)
 	}
-	directive, err := pattern.Directive(geom.RepoRoot, geom.StencilsDir, pattern.RoleOrchestrator)
+	directive, err := pattern.Directive(geom.RepoRoot, geom.StencilsDir, pattern.RoleOrchestrator, nil)
 	if err != nil {
 		return batcher.StartBase{}, merriamBaseError("PATTERN.md", err)
 	}

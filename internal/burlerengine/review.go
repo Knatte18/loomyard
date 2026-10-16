@@ -81,7 +81,7 @@ func (e *Engine) Review(p Profile, opts RunOpts) (ReviewResult, error) {
 
 	logger.Info("burler: review starting", "round", opts.Round, "clusterFan", p.ClusterFan, "forkCount", len(p.clusterLenses), "reviewPath", p.ReviewPath)
 
-	directive, err := pattern.Directive(e.geom.RepoRoot, e.stencilsDir, pattern.RoleReviewFix)
+	directive, err := pattern.Directive(e.geom.RepoRoot, e.stencilsDir, pattern.RoleReviewFix, nil)
 	if err != nil {
 		return ReviewResult{}, fmt.Errorf("burler: %w", err)
 	}

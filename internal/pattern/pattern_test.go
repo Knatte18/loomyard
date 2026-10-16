@@ -14,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/stencil"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
@@ -63,7 +64,7 @@ func TestDirective_PerRole(t *testing.T) {
 	texts := make(map[string]string, len(tests))
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := Directive(root, stencilsDir, tt.role)
+			got, err := Directive(root, stencilsDir, tt.role, nil)
 			if err != nil {
 				t.Fatalf("Directive(active, %v) = _, %v; want nil error", tt.role, err)
 			}
@@ -80,15 +81,26 @@ func TestDirective_PerRole(t *testing.T) {
 			if !strings.Contains(got, patternDirName+"/") {
 				t.Errorf("Directive(%v) = %q; want the literal background pointer %q", tt.role, got, patternDirName+"/")
 			}
-			filled, err := stencil.Fill([]byte(stencil.StripLeadingComment(string(tt.embeddedDefault))), map[string]string{"pattern_overview": overview})
+			filled, err := stencil.FillOptional([]byte(stencil.StripLeadingComment(string(tt.embeddedDefault))), map[string]string{"pattern_overview": overview}, []string{"pattern_changes"})
 			if err != nil {
 				t.Fatalf("Fill(embedded default, %v) = _, %v; want nil error", tt.role, err)
 			}
 			if want := string(filled); got != want {
-				t.Errorf("Directive(%v) = %q; want %q (the embedded default, banner stripped and overview filled)", tt.role, got, want)
+				t.Errorf("Directive(%v) = %q; want %q (the embedded default, banner stripped, overview filled and changes empty)", tt.role, got, want)
 			}
 
-			got, err = Directive(root, emptyStencilsDir, tt.role)
+			withChanges, err := Directive(root, stencilsDir, tt.role, []string{declaredBullet})
+			if err != nil {
+				t.Fatalf("Directive(active, %v, declared) = _, %v; want nil error", tt.role, err)
+			}
+			overviewAt := strings.Index(withChanges, overview)
+			headingAt := strings.Index(withChanges, "### Declared PATTERN changes")
+			bulletAt := strings.Index(withChanges, declaredBullet)
+			if overviewAt < 0 || headingAt < overviewAt || bulletAt < headingAt {
+				t.Errorf("Directive(%v, declared) = %q; want the overview, then the fragment heading, then the declared bullet", tt.role, withChanges)
+			}
+
+			got, err = Directive(root, emptyStencilsDir, tt.role, nil)
 			if err == nil {
 				t.Fatalf("Directive(active, %v, empty stencilsDir) = %q, nil; want a non-nil error", tt.role, got)
 			}
@@ -105,7 +117,27 @@ func TestDirective_PerRole(t *testing.T) {
 			}
 		}
 	}
+
+	// renderChanges does not depend on the role, so its failures are pinned once.
+	declared := []string{declaredBullet}
+	missingFragmentDir := newTestStencilsDir(t)
+	stencilkit.Remove(t, missingFragmentDir, changesFragmentStencil)
+	if got, err := Directive(root, missingFragmentDir, RoleImplementer, declared); err == nil || !strings.Contains(err.Error(), changesFragmentStencil) {
+		t.Errorf("Directive(declared, no fragment stencil) = %q, %v; want an error naming %q", got, err, changesFragmentStencil)
+	}
+
+	extraMarkerDir := newTestStencilsDir(t)
+	extraMarker := "{{.pattern_change_list}}\n{{.extra_required}}\n"
+	if err := os.WriteFile(stencilstore.Path(extraMarkerDir, changesFragmentStencil), []byte(extraMarker), 0o644); err != nil {
+		t.Fatalf("WriteFile(fragment) = %v", err)
+	}
+	if got, err := Directive(root, extraMarkerDir, RoleImplementer, declared); err == nil || !strings.Contains(err.Error(), "fill changes fragment stencil") {
+		t.Errorf("Directive(declared, fragment with an extra required marker) = %q, %v; want an error naming the fragment's fill", got, err)
+	}
 }
+
+// declaredBullet is a declared-change bullet line the tests pass to Directive.
+const declaredBullet = "- `PATTERN-cwd-resolution` — replaces: resolve the cwd in `internal/lyxcwd` only."
 
 // TestDirective_RendersNothing pins every case that renders no directive and reads no stencil, asserted by pointing stencilsDir at a path that does not exist:
 // a stray directory without PATTERN.md, nothing at all, an empty or whitespace-only file (neither carries an overview to inline), PATTERN.md as a directory (not a readable index), a subdirectory of a root that holds the overview (Directive reads <root>/PATTERN.md and nothing else, so callers pass the worktree root, never an anchor path), an empty root, and an unknown or zero Role even when PATTERN is active.
@@ -119,6 +151,8 @@ func TestDirective_RendersNothing(t *testing.T) {
 		// setup prepares a fresh root and returns the root to pass to Directive.
 		setup func(t *testing.T, root string) string
 		role  Role
+		// declared is the declared-changes list passed to Directive.
+		declared []string
 	}{
 		{
 			name: "DirPresentFileAbsent",
@@ -194,13 +228,31 @@ func TestDirective_RendersNothing(t *testing.T) {
 			},
 			role: Role(99),
 		},
+		{
+			name: "InactivePatternWithDeclaredChange",
+			setup: func(t *testing.T, root string) string {
+				writePatternFile(t, root, " \n")
+				return root
+			},
+			role:     RoleImplementer,
+			declared: []string{declaredBullet},
+		},
+		{
+			name: "UnknownRoleWithDeclaredChange",
+			setup: func(t *testing.T, root string) string {
+				writePatternFile(t, root, "content")
+				return root
+			},
+			role:     Role(99),
+			declared: []string{declaredBullet},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			root := tt.setup(t, t.TempDir())
 
-			got, err := Directive(root, missingStencilsDir, tt.role)
+			got, err := Directive(root, missingStencilsDir, tt.role, tt.declared)
 			if err != nil {
 				t.Fatalf("Directive(%s, %v) = _, %v; want nil error", tt.name, tt.role, err)
 			}
@@ -246,7 +298,7 @@ func TestDirective_FilesystemFailuresAreErrors(t *testing.T) {
 			writePatternFile(t, root, "content")
 			tt.swap(t)
 
-			got, err := Directive(root, newTestStencilsDir(t), RoleImplementer)
+			got, err := Directive(root, newTestStencilsDir(t), RoleImplementer, nil)
 			if err == nil {
 				t.Fatalf("Directive(%s) = %q, nil; want a non-nil error", tt.name, got)
 			}
@@ -266,7 +318,7 @@ func TestDirective_EmptyRoot(t *testing.T) {
 	}
 	t.Cleanup(func() { statFile = original })
 
-	got, err := Directive("", newTestStencilsDir(t), RoleImplementer)
+	got, err := Directive("", newTestStencilsDir(t), RoleImplementer, []string{declaredBullet})
 	if err != nil {
 		t.Fatalf("Directive(\"\", RoleImplementer) = _, %v; want nil error", err)
 	}

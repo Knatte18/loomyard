@@ -62,6 +62,7 @@ func TestStencils_TopLevelMarkers(t *testing.T) {
 		{"webster-body-verify-fix", WebsterBodyVerifyFix, []string{"friction_directive", "outcome_path", "plan_dir", "report_path", "summary_path", "worktree_root"}},
 		{"bouncer-template-escalation", BouncerTemplateEscalation, []string{"cause", "decide_options", "decision_record_path", "judge_stencil_path", "ledger_path", "review_path", "round", "segment", "slug", "verdict_path", "worktree"}},
 		{"bouncer-fragment-decide-capped", BouncerFragmentDecideCapped, []string{"slug"}},
+		{"pattern-fragment-changes", PatternFragmentChanges, []string{"pattern_change_list"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

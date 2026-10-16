@@ -69,7 +69,7 @@ func PlanTable(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir, spe
 		return seatengine.Table{}, fmt.Errorf("loom: PlanTable: plan role model-spec: %w", err)
 	}
 
-	patternDirective, err := pattern.Directive(layout.WorktreePath(), stencilsDir, pattern.RoleImplementer)
+	patternDirective, err := pattern.Directive(layout.WorktreePath(), stencilsDir, pattern.RoleImplementer, nil)
 	if err != nil {
 		return seatengine.Table{}, fmt.Errorf("loom: PlanTable: %w", err)
 	}
