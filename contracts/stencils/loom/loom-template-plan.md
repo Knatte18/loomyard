@@ -207,7 +207,6 @@ With `none`, the section builds the code and then runs the tests of every packag
 You may leave a tier the list calls compiled rather than run unrun in the section.
 Plan-Review flags a targeted package the section leaves unrun.
 See `{{.specs_dir}}/loom/loom-plan-spec.md`'s verify model section for the tier definitions themselves — this file does not restate them.
-See `{{.specs_dir}}/loom/loom-plan-spec.md`'s verify model section for the tier definitions themselves — this file does not restate them.
 
 ### `## Rename mechanic` — reproduce verbatim when any card is type `Rename`
 
