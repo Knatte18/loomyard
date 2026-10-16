@@ -613,19 +613,36 @@ func TestScheduler_Injects(t *testing.T) {
 			}
 		}},
 		{"InjectStalledForItsWholeTTLStillExpiresWithOneStalledRecord", func(t *testing.T, e *env) {
-			e.del.SetStall(alpha, creelengine.StallDraft)
+			e.del.SetStall(alpha, creelengine.StallNoInputBox)
 			_, waiter, err := e.store.InjectWait(program(batten), alpha, "/clear", time.Minute, false)
 			if err != nil {
 				t.Fatalf("InjectWait: %v", err)
 			}
 			e.start(t)
 			e.probeWaits(1)
-			e.clock.Advance(2 * time.Minute)
-			if outcome := awaitOutcome(t, waiter); outcome.Kind != creelengine.OutcomeExpired {
-				t.Errorf("wait answered %v; want expired at the TTL", outcome.Kind)
+			var outcome creelengine.Outcome
+			for answered := false; !answered; {
+				e.tick(8 * time.Second)
+				select {
+				case outcome = <-waiter.C:
+					answered = true
+				default:
+				}
 			}
-			if got := stalledReasons(e, alpha); !slices.Equal(got, []string{"draft"}) {
+			if outcome.Kind != creelengine.OutcomeExpired || outcome.Stall != creelengine.StallNoInputBox {
+				t.Errorf("wait answered %v with stall %q; want expired at the TTL with stall no-input-box", outcome.Kind, outcome.Stall)
+			}
+			if got := stalledReasons(e, alpha); !slices.Equal(got, []string{"no-input-box"}) {
 				t.Errorf("stalled reasons = %q; want one", got)
+			}
+			var expiredReasons []string
+			for _, entry := range e.store.Log(creelengine.LogFilter{To: alpha}) {
+				if entry.Event == "expired" {
+					expiredReasons = append(expiredReasons, entry.Reason)
+				}
+			}
+			if !slices.Equal(expiredReasons, []string{"no-input-box"}) {
+				t.Errorf("expired log reasons = %q; want no-input-box", expiredReasons)
 			}
 		}},
 		{"WaiterProgressKeepsOnlyTheNewestUnreadStall", func(t *testing.T, e *env) {
