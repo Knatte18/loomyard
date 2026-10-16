@@ -1,9 +1,6 @@
-// selvagepane_enforcement_test.go enforces the Selvage-confinement rule this batch's extraction
-// exists to satisfy: every identifier naming Selvage lives in selvagepane.go, with two narrow
-// carve-outs elsewhere. selvagepane.go owns the whole Selvage seam; state.go is allowed only for the
-// SelvagePaneID field declaration ReedState carries (state.go's subject is the persisted record in
-// general, not Selvage specifically); config.go is allowed only for SelvageConfig and Config.Selvage,
-// the resolved-config plumbing every module's config file carries for its own knobs.
+// selvagepane_enforcement_test.go enforces the Selvage-confinement rule this batch's extraction exists to satisfy: every identifier naming Selvage lives in selvagepane.go, with one narrow carve-out elsewhere.
+// selvagepane.go owns the whole Selvage seam;
+// state.go is allowed only for the SelvagePaneID field declaration ReedState carries (state.go's subject is the persisted record in general, not Selvage specifically).
 //
 // The match is case-insensitive on purpose: a case-sensitive rule would silently permit exactly the
 // selvagePaneID-shaped parameters and locals this extraction exists to eliminate from the four host
@@ -11,9 +8,8 @@
 //
 // Honest residual: the call-position exemption below covers same-package calls only, so a
 // Selvage-named function exported from another package would be exempt at its call site and
-// unscanned at its declaration. That is latent rather than open today -- internal/reedengine/render/
-// exports the type Selvage (caught here as a composite-literal type, since a type reference is never
-// a call's Fun) and no Selvage-named function, so nothing currently exploits the gap.
+// unscanned at its declaration. That is latent rather than open today: internal/reedengine/render/
+// exports no Selvage-named identifier, so nothing currently exploits the gap.
 //
 // This file introduces the file-level allowlist pattern to the repository: no existing enforcement
 // test here uses one. The nearest precedent is internal/gitkit/callerset_enforcement_test.go's single
@@ -43,11 +39,10 @@ const selvageScanMinFiles = 10
 var selvagePaneAllowlist = []scankit.Entry{
 	{Key: "internal/reedengine/selvagepane.go", Why: "owns the whole Selvage seam"},
 	{Key: "internal/reedengine/state.go", Why: "carries the SelvagePaneID field declaration of ReedState"},
-	{Key: "internal/reedengine/config.go", Why: "carries SelvageConfig and Config.Selvage, the resolved-config plumbing"},
 }
 
 // TestSelvageIdentifiersConfinedToSelvagePane verifies that no file in internal/reedengine, other
-// than the three named in selvagePaneAllowlist, declares or references a Selvage-naming identifier
+// than the two named in selvagePaneAllowlist, declares or references a Selvage-naming identifier
 // outside the two exemptions selvageIdentViolations knows about.
 // It spawns no process, so it carries no build tag.
 // It parses every non-_test.go .go file directly inside internal/reedengine -- never
@@ -70,7 +65,7 @@ func TestSelvageIdentifiersConfinedToSelvagePane(t *testing.T) {
 	allow.RequireNoStale(t)
 
 	if len(failures) > 0 {
-		t.Errorf("Selvage-confinement check violated: %d identifier(s) outside selvagepane.go/state.go/config.go carry \"selvage\" (case-insensitive): %v -- move the code owning them into selvagepane.go", len(failures), failures)
+		t.Errorf("Selvage-confinement check violated: %d identifier(s) outside selvagepane.go/state.go carry \"selvage\" (case-insensitive): %v -- move the code owning them into selvagepane.go", len(failures), failures)
 	}
 }
 

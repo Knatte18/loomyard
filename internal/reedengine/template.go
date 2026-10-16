@@ -11,7 +11,7 @@ package reedengine
 // ConfigTemplate returns the default YAML template for reed configuration.
 // The keys that use the ${env:VAR:-default} syntax, allowing environment-based overrides while preserving defaults when not set, are:
 // the two machine tool paths (tmux, shell), debug_log, mouse, watchdog and tmux_conf.
-// The layout-tuning keys (width, height, collapsed_rows, min_full_rows) and the selvage and segment_colors blocks are plain literals.
+// The session size keys (width, height) and the segment_colors block are plain literals.
 // No provider tool is named here: reed stays provider-invariant per the Shuttle Provider-Seam
 // Invariant, so a claude path belongs to shuttle's template, never this one.
 // On Windows the tmux/shell defaults are the machine's pinned psmux.exe/pwsh.exe paths;
