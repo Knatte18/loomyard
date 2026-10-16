@@ -51,7 +51,12 @@ The verdict reaches the writer through the gate only, so neither you nor the for
 The driver, webster or a review loop that cannot go on escalates to you, its parent.
 The driver hands a stop it cannot settle to an arbiter first, so an escalation from the driver arrives only when the arbiter handed on.
 Its stop report then carries the arbiter's verdict path and question: read the verdict first and act on its question instead of re-deriving the stop.
-- A hand-on of a review loop follows a fixed rule: accept unless a finding makes the design wrong, and hand a blocker that remains after round 3 to the operator.
+- A review escalation whose stop report names an arbiter attempt whose `envelope.json`, in the attempt directory beside the verdict file the stop report names, carries verdict `hand-on` and an empty `cause` is the arbiter agent's own hand-on, and goes to a one-shot fork.
+  The fork is handed the escalation brief's path and that `envelope.json`'s path, and follows the brief:
+  it answers the envelope's `question` from recorded operator decisions only, as the brief defines them, records and resumes by the brief's steps, and otherwise records nothing and reports back, and you bring the question to the operator.
+  The fork falls under the open-fork rules of Investigating a stop: a repeat notice for the slug starts no second fork, and the slug is named in the orch note while its fork is open.
+  The rule for deciding a stuck review is the arbiter's own, in `loom-template-arbiter.md`.
+
 - A review loop that ran out of rounds: `lyx loom circling continue <slug>` grants one more round only below the perch's hard cap.
   At or past it, or at a `hard-cap` escalation, the way forward is `lyx loom circling accept <slug>` to take the work as it stands, or raising the hard cap by the command the refusal names for the layer its value comes from.
   Either only records the decision,
@@ -64,8 +69,14 @@ Its stop report then carries the arbiter's verdict path and question: read the v
   Never a goto to Plan-Bouncer, since the plan does not change.
 - A parent lock held too long: `lyx batten lock list` shows who holds each parent lock, and `lyx batten lock release <branch>` frees one whose owner is alive but wedged.
   A release never stops a run: the released run takes the lock again at its next lock-taking row and reroutes if the parent moved meanwhile.
-- A design call the child cannot make: decide it and record it with `lyx loom decision add`.
-- An escalation naming a peer run that has its own open escalation is handled together with that peer's.
+- A design call the child cannot make, in an escalation that is not a review escalation: decide it and record it with `lyx loom decision add`; a review escalation never takes this bullet and follows the hand-on bullet or the fault paragraph below.
+- An escalation naming a peer run: classify each as a hand-on or a fault first, and investigate a fault as a stop.
+  Two runs with related work never talk to each other; you align them: the peers' hand-on escalations go to one joint one-shot fork that reads both decision records under the same settle rule and bound, with each slug named in the orch note as an open fork.
+  A peer's hand-on escalation that arrives while that fork is open waits for its report and the re-check, then goes to a fresh fork under the same rule that also reads the first fork's finished outcome.
+
+A review escalation without the arbiter agent's own hand-on is a fault, handled under Investigating a stop and never decided by you as a design call.
+The cases are: cause `budget`; an arbiter refusal, which leaves no envelope; a `hand-on` carrying a `cause` (`timeout`, `died`, `missing`, `unparseable`, `precondition`); a job exit without an envelope; a failed re-launch after a `resume` verdict; and the arbiter switched off or out of spawns.
+When the fault is diagnosed and acted on and a design question still stands, you bring that question to the operator.
 
 ## Investigating a stop
 
@@ -89,9 +100,7 @@ A slug named in the orch note whose fork report has not arrived after the cycle 
 
 Before reading an idle notice, a transcript gap or a long phase as a stall, check the system log for a suspend window (on Linux `journalctl -o short-iso | grep -E "Performing sleep operation|System returned from sleep"`): the operator's machine often sleeps while runs are in flight, and a gap that matches a sleep window is no fault.
 
-Work that spans runs stays with you: comparing plans across runs, comparing PRs that touch the same packages, and deciding when held runs go on.
-Two runs with related work never talk to each other; you align them.
-Read both Discussions yourself at parent-review and settle shared files and shared rules, pause both after Plan-Write (`lyx loom pause --after Plan-Write`, a boundary halt a goto can move) to compare the plans before Webster, and review both PRs side by side at PR-Gate.
+Deciding when held runs go on stays with you.
 
 ## Fixing a run
 
@@ -115,7 +124,7 @@ Start a one-shot reviewer fork that judges the run against its own board goal an
 Code review is left to the Webster and Merge reviews, so the fork does not repeat it.
 The fork reads the carried-over `Merge-Review` open risks in the decision record as part of the run.
 Never widen the scope through rejects: a reject names a defect in the task's own goal.
-A small defect in that goal is fixed on the task branch; new hardening goes on the board as its own entry.
+A small defect in that goal is fixed by the run's own agents through the reject, since `lyx loom reject` sends the findings to the recipe's rework row (`PR-Rework` in loom, a fresh `Darn-Write` in darn); new hardening goes on the board as its own entry.
 Approve with `lyx loom approve`, or reject with `lyx loom reject <review-file>`, in the task worktree.
 Batten reads the decision and resumes the child itself, so you run no `lyx loom start` loop after either.
 After approving yourself, amend the board entries the run superseded.
@@ -128,11 +137,10 @@ It syncs the task branch with main, squashes it onto main, marks the board task 
 
 A landing needs nothing more from you than these steps: batten's Land row pulls the prime, runs the hub's landing `deploy` command and prunes the board, and then Worktree-Teardown removes the pair.
 A `[batten notice]` naming a Land or Worktree-Teardown failure is a stop, handled under Investigating a stop.
-- A `[batten notice]` reading `<slug>: landed` means the task landed: count it as no longer running, run the inbox check under Where a finding goes, start each task the notice names after `newly ready:` with `lyx batten run <slug> --window`, and, while the hub's landing `deploy` key is empty, run `update-plugins.sh` by hand.
+- A `[batten notice]` reading `<slug>: landed` means the task landed: count it as no longer running, run the inbox check under Where a finding goes, start each task the notice names after `newly ready:` with `lyx batten run <slug> --window`.
 - At every wake, any task you count as running whose board entry is `done` or gone from the board, or whose pair is gone, is treated as landed and no longer running, since its notice may have been dropped.
 - For such a task, read its `<slug>: landed; newly ready:` line in the hub notice log (`.lyx/notices.log` in the prime) and start each task it names that the board still shows ready and that has not started.
   Any other ready task waits for the operator's approval, as the board policy requires, so the fallback never starts a task the operator has not released.
-- Only while the landing `deploy` key is empty, at every wake, and only for landings into a `require_pr_to_base` branch: compare `origin/prod`, which `update-plugins.sh` moves to the commit it deploys, with `origin/main`, and run `update-plugins.sh` when `origin/main` holds a commit `origin/prod` lacks.
 
 A hub config edit you make carries its own fabric commit whenever you make one; it is no landing step.
 Read the driver's drive reports from the prime's own copies only when the run had trouble: a halt, a block, a failed or repaired step, or a hub intervention.
@@ -164,7 +172,7 @@ The mechanics of reading and writing the board are in the `ly:board` skill; this
 ## Where a finding goes
 
 A bug in lyx goes to a GitHub issue, filed with `lyx selfreport create`.
-When you work around a bug by hand, file it in the same turn with what was seen, the workaround and the expected behaviour; the workaround itself is written down only in the repository's CLAUDE.md, with the issue number, and removed with the fix.
+When you work around a bug by hand, file it in the same turn with what was seen, the workaround and the expected behaviour; the workaround is written down with the issue number in the repository's `ORCHESTRATOR.md` when only you apply it, and in its `CLAUDE.md` only when every agent needs it, and removed with the fix.
 Design, features and hardening go to the board.
 Every issue, whether you filed it or a run's Friction-Reflect did, reaches the board through the inbox check below, so no issue body enters your context.
 
@@ -204,7 +212,7 @@ Talk to the operator in the language they write; every file, board entry, review
 ## Scratch and notes
 
 `.scratch/` holds drafts only, and the operator may wipe it at any time: nothing you need later lives there.
-Machine-local records go under `.lyx/`, durable rules in git, run state in the orch note.
+Machine-local records go under `.lyx/`, durable rules in git, with durable orch-only rules in the repository's `ORCHESTRATOR.md`, run state in the orch note.
 `.scratch/handoff.md` is written only when the operator orders a handoff, and never updated in between.
 
 ## Messaging
