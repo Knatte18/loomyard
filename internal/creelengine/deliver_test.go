@@ -86,6 +86,17 @@ func (e *env) typed(strandName string) []string {
 	return texts
 }
 
+// stalledReasons returns the reason of every stalled record to receiver, in order.
+func stalledReasons(e *env, receiver string) []string {
+	var reasons []string
+	for _, entry := range e.store.Log(creelengine.LogFilter{To: receiver}) {
+		if entry.Event == "stalled" {
+			reasons = append(reasons, entry.Reason)
+		}
+	}
+	return reasons
+}
+
 func reminderFor(count int, listed ...string) string {
 	return fmt.Sprintf("[creel] %d unread: %s — run lyx creel read", count, strings.Join(listed, ", "))
 }
@@ -234,6 +245,24 @@ func TestScheduler_Reminders(t *testing.T) {
 			e.probeWaits(before + 1)
 			if got := len(e.typed(beta)); got != sent+1 {
 				t.Errorf("a new message was not reminded at once: %d sent; want %d", got, sent+1)
+			}
+		}},
+		{"TypedReminderClearsTheStall", func(t *testing.T, e *env) {
+			e.del.SetStall(beta, creelengine.StallDraft)
+			e.post(t, strand(alpha), beta, "hi")
+			e.start(t)
+			e.probeWaits(1)
+			e.del.SetStall(beta, "")
+			e.tick(time.Second)
+			if got := len(e.typed(beta)); got != 1 {
+				t.Fatalf("%d reminders typed once the draft was gone; want 1", got)
+			}
+			e.del.SetStall(beta, creelengine.StallDraft)
+			before := len(e.probeWaits(0))
+			e.post(t, strand(alpha), beta, "fresh")
+			e.probeWaits(before + 1)
+			if got := stalledReasons(e, beta); !slices.Equal(got, []string{"draft", "draft"}) {
+				t.Errorf("stalled reasons = %q; want one before the reminder and one after it", got)
 			}
 		}},
 		{"ReminderListsFiveMessagesAndCountsTheRest", func(t *testing.T, e *env) {
@@ -447,6 +476,60 @@ func TestScheduler_Injects(t *testing.T) {
 			}
 			if got := eventsOf(e.store.Log(creelengine.LogFilter{ID: muted.ID})); !slices.Contains(got, "expired") {
 				t.Errorf("events = %v; want the muted inject expired", got)
+			}
+		}},
+		{"ChangingStallIsJournaledOncePerChangeAndStopsOnceTyped", func(t *testing.T, e *env) {
+			e.del.SetStall(alpha, creelengine.StallDraft)
+			inject(t, e, program(batten), alpha, "/clear", 0, false)
+			e.start(t)
+			e.probeWaits(1)
+			e.tick(time.Second)
+			e.del.SetStall(alpha, creelengine.StallTooShort)
+			e.tick(2 * time.Second)
+			e.tick(4 * time.Second)
+			e.del.SetStall(alpha, "")
+			e.tick(8 * time.Second)
+			if got := e.typed(alpha); !slices.Equal(got, []string{"/clear"}) {
+				t.Fatalf("typed %q; want the inject typed once the stall cleared", got)
+			}
+			if got := stalledReasons(e, alpha); !slices.Equal(got, []string{"draft", "too-short"}) {
+				t.Errorf("stalled reasons = %q; want draft then too-short, repeats and the typed inject adding none", got)
+			}
+		}},
+		{"ReadingWithNoReasonAndAnErrorEachClearTheStall", func(t *testing.T, e *env) {
+			e.del.SetStall(alpha, creelengine.StallDraft)
+			inject(t, e, program(batten), alpha, "/clear", 0, false)
+			e.start(t)
+			e.probeWaits(1)
+			e.del.SetStall(alpha, "")
+			e.del.SetIdle(alpha, false)
+			e.tick(time.Second)
+			e.del.SetStall(alpha, creelengine.StallDraft)
+			e.tick(2 * time.Second)
+			e.del.SetStall(alpha, "")
+			e.del.SetIdleError(errors.New("pane capture failed"))
+			e.tick(4 * time.Second)
+			e.del.SetIdleError(nil)
+			e.del.SetStall(alpha, creelengine.StallDraft)
+			e.tick(8 * time.Second)
+			if got := stalledReasons(e, alpha); !slices.Equal(got, []string{"draft", "draft", "draft"}) {
+				t.Errorf("stalled reasons = %q; want three, one per episode", got)
+			}
+		}},
+		{"InjectStalledForItsWholeTTLStillExpiresWithOneStalledRecord", func(t *testing.T, e *env) {
+			e.del.SetStall(alpha, creelengine.StallDraft)
+			_, waiter, err := e.store.InjectWait(program(batten), alpha, "/clear", time.Minute, false)
+			if err != nil {
+				t.Fatalf("InjectWait: %v", err)
+			}
+			e.start(t)
+			e.probeWaits(1)
+			e.clock.Advance(2 * time.Minute)
+			if outcome := awaitOutcome(t, waiter); outcome.Kind != creelengine.OutcomeExpired {
+				t.Errorf("wait answered %v; want expired at the TTL", outcome.Kind)
+			}
+			if got := stalledReasons(e, alpha); !slices.Equal(got, []string{"draft"}) {
+				t.Errorf("stalled reasons = %q; want one", got)
 			}
 		}},
 		{"InterruptInjectInterruptsThenTypesItsTextFirstAtTheNextIdle", func(t *testing.T, e *env) {

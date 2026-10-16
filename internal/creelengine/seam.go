@@ -33,7 +33,8 @@ type Delivery interface {
 	// An error names what could not be read: the worktree list or one reed state.
 	Strands() ([]Strand, error)
 	// Idle reports whether the strand's agent is idle and may be typed into.
-	Idle(strand Strand) (bool, error)
+	// A not-idle answer names the reason in Stall when the pane shows one the operator can act on, and leaves it empty otherwise.
+	Idle(strand Strand) (Idleness, error)
 	// Paused reports whether a pause covers the strand; an error means the pause record could not be read.
 	Paused(strand Strand) (bool, error)
 	// Send types one line into the strand's pane and confirms it landed.
@@ -42,6 +43,38 @@ type Delivery interface {
 	// Interrupt sends the guarded interrupt to the strand's running turn.
 	// It returns ErrNoRunningTurn when there is none.
 	Interrupt(strand Strand) error
+}
+
+// Idleness is the answer of Delivery.Idle.
+type Idleness struct {
+	// Idle reports whether the strand's agent may be typed into.
+	Idle bool
+	// Stall names why a not-idle strand cannot take typed input.
+	// It is empty on an idle answer and on any not-idle reading that names no reason, such as a running turn, a dialog or an active operator.
+	Stall Stall
+}
+
+// Stall is the reason a delivery to a live strand waits on something the operator can act on.
+type Stall string
+
+const (
+	// StallTooShort means the strand's pane is too short to show the input box.
+	StallTooShort Stall = "too-short"
+	// StallDraft means the strand's input box holds a draft.
+	StallDraft Stall = "draft"
+)
+
+// Reason renders the stall for a reader, with the way forward where there is one.
+// An unknown stall renders as its own text.
+func (s Stall) Reason() string {
+	switch s {
+	case StallTooShort:
+		return "the pane is too short to show the input box; way forward: give the strand's pane more rows, as `lyx reed attach` from a taller terminal does"
+	case StallDraft:
+		return "the input box holds a draft; the delivery waits until it is sent or cleared"
+	default:
+		return string(s)
+	}
 }
 
 var (

@@ -115,6 +115,8 @@ type LogEntry struct {
 	Receiver string
 	Subject  string
 	Notice   string
+	// Reason is the stall a stalled event names.
+	Reason string
 }
 
 // pool is the state folded from the journal.
@@ -246,7 +248,7 @@ func (p *pool) apply(rec record, day string) {
 		if entry := p.injects[rec.ID]; entry != nil {
 			entry.Consumed = time.Duration(rec.ConsumedSeconds) * time.Second
 		}
-	case eventInterrupted:
+	case eventInterrupted, eventStalled:
 	case eventHeld:
 		p.holds[rec.To] = &holdEntry{Owner: rec.By, Expires: rec.ExpiresAt, origin: day}
 	case eventReleased:
@@ -352,7 +354,7 @@ func (p *pool) setOutcome(id int64, outcome string) {
 func (p *pool) logEntryFor(rec record, day string) LogEntry {
 	entry := LogEntry{
 		Day: day, Event: rec.Event, At: rec.At, ID: rec.ID,
-		From: rec.From, To: rec.To, By: rec.By, Receiver: rec.Receiver, Notice: rec.Notice,
+		From: rec.From, To: rec.To, By: rec.By, Receiver: rec.Receiver, Notice: rec.Notice, Reason: rec.Reason,
 	}
 	if msg := p.messages[rec.ID]; msg != nil {
 		entry.From, entry.Subject = msg.From, msg.Subject

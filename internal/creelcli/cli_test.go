@@ -287,6 +287,29 @@ func TestCreelCLI(t *testing.T) {
 		}
 	})
 
+	t.Run("log shows a stalled event with its receiver and reason", func(t *testing.T) {
+		r := newRig(t)
+		alpha := r.name("alpha:driver")
+		r.delivery.SetStrands(creelfake.LiveStrand(alpha))
+		r.delivery.SetStall(alpha, creelengine.StallTooShort)
+		r.startDaemon(t)
+
+		if inject := runCreel(r.cwd, "inject", alpha, "/clear"); inject.code != 0 {
+			t.Fatalf("creel inject = (%d, %q); want exit 0", inject.code, inject.raw)
+		}
+		r.awaitLogged(t, "stalled")
+		var stalled []map[string]any
+		entries, _ := runCreel(r.cwd, "log").fields["log"].([]any)
+		for _, entry := range entries {
+			if fields, _ := entry.(map[string]any); fields["event"] == "stalled" {
+				stalled = append(stalled, fields)
+			}
+		}
+		if len(stalled) != 1 || stalled[0]["to"] != alpha || stalled[0]["reason"] != string(creelengine.StallTooShort) {
+			t.Errorf("creel log stalled events = %v; want one to %s with reason %q", stalled, alpha, creelengine.StallTooShort)
+		}
+	})
+
 	t.Run("as a strand read prints the message and acknowledges it", func(t *testing.T) {
 		r := newRig(t)
 		alpha := r.name("alpha:driver")

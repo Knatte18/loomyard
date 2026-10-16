@@ -44,6 +44,14 @@ type Store struct {
 	mailSeq uint64
 	// agedWritten maps an inject id to the consumed seconds its last aged event recorded.
 	agedWritten map[int64]int64
+	// stalls maps a receiver to the last stall a probe read for it and the clock time it was read.
+	stalls map[string]stallNote
+}
+
+// stallNote is the last stall read for a receiver.
+type stallNote struct {
+	stall Stall
+	at    time.Time
 }
 
 // OpenStore folds the journal under geom.JournalDir into a pool and opens the journal for appending.
@@ -59,6 +67,7 @@ func OpenStore(geom Geometry, delivery Delivery, clock Clock) (*Store, error) {
 	return &Store{
 		geom: geom, delivery: delivery, clock: clock, state: state, writer: writer,
 		reserved: map[int64]string{}, waiters: map[waitKey][]*Waiter{}, agedWritten: map[int64]int64{},
+		stalls: map[string]stallNote{},
 	}, nil
 }
 

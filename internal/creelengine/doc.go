@@ -7,6 +7,7 @@
 // Creel decides what is delivered and when, shuttle knows the provider and its idle check and safe send, and reed knows the pane and does the keystrokes: creel → shuttle → reed → tmux.
 // The engine imports neither reed nor shuttle, and every keystroke goes through the Delivery seam; `PATTERN-creel-store` pins that with an import scan.
 // Delivery lists the hub's strands, asks whether a strand is idle, asks whether a pause covers it, types one line into its pane and sends the guarded interrupt.
+// Its idle answer carries a stall reason when a not-idle pane waits on something the operator can act on, a pane too short for the input box or a draft in it, and the engine journals each change of that reason as a `stalled` record.
 // `internal/creelcli` implements it over the hub's worktrees, reed's persisted state and status, the pause record, and a shuttle runner built per worktree at each call.
 // Shuttle's idle check, verified send and guarded interrupt work on a strand with no run record, such as a session added by hand with `lyx reed add`.
 // Send fails with ErrBusy when the pane guard held the write and nothing was typed, and with ErrNotLanded when the text was typed but its landing was not confirmed.
@@ -130,6 +131,7 @@
 //
 // log lists the journal's events oldest first with their ids, parties, times and subjects, narrowed by --id, --from, --to and --since.
 // It carries no body field.
+// A `stalled` record names the receiver and the stall reason a delivery probe read, and is written once per change of reason while something is pending for the receiver.
 //
 // # Delivery loop
 //
@@ -137,6 +139,8 @@
 // A worker probes from a one-second base and doubles the wait to eight seconds after every probe that delivers nothing; a wake from the store or a probe that delivers returns it to the base, and the worker ends when nothing is pending.
 // A probe finds the strand, skips a dormant or paused one, and types the first queued inject, or under a hold the owner's; with none due it types the reminder.
 // Each delivery asks the seam whether the strand is idle first, and every wait goes through the Clock, so a test never waits out an interval.
+// Every idle answer feeds the stall journal: a new non-empty reason is journaled, a repeat is not, and a reading with no reason, a probe error or a typed line clears it with no record.
+// The inject TTL keeps running while a strand is stalled, live and unpaused.
 //
 // # Unbuilt: stages 2 and 3
 //

@@ -530,7 +530,7 @@ func parseSince(value string, now time.Time) (time.Time, error) {
 func logEntryFields(entry creelengine.LogEntry) map[string]any {
 	fields := map[string]any{"event": entry.Event, "at": entry.At, "id": entry.ID}
 	for key, value := range map[string]string{
-		"from": entry.From, "to": entry.To, "by": entry.By, "receiver": entry.Receiver, "subject": entry.Subject, "notice": entry.Notice,
+		"from": entry.From, "to": entry.To, "by": entry.By, "receiver": entry.Receiver, "subject": entry.Subject, "notice": entry.Notice, "reason": entry.Reason,
 	} {
 		if value != "" {
 			fields[key] = value

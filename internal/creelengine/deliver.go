@@ -232,10 +232,16 @@ func (w *worker) locate() (Strand, bool) {
 }
 
 // idle asks whether the strand may be typed into; an error counts as not idle.
+// Every reading goes to the stall journal, an error as a reading with no reason.
 func (w *worker) idle(strand Strand) bool {
-	idle, err := w.scheduler.delivery.Idle(strand)
+	answer, err := w.scheduler.delivery.Idle(strand)
 	w.report("idle", err)
-	return err == nil && idle
+	stall := answer.Stall
+	if err != nil {
+		stall = ""
+	}
+	w.report("journal", w.scheduler.store.noteStall(w.receiver, stall))
+	return err == nil && answer.Idle
 }
 
 // typeInject types the inject once the receiver is idle, journaling a sending event first and the outcome after.
@@ -253,10 +259,12 @@ func (w *worker) typeInject(strand Strand, inject QueuedInject) bool {
 	case err == nil:
 		w.report("send", nil)
 		w.report("journal", store.settleInject(inject.ID, eventInjected))
+		w.report("journal", store.noteStall(w.receiver, ""))
 		return true
 	case errors.Is(err, ErrNotLanded):
 		w.report("send", nil)
 		w.report("journal", store.settleInject(inject.ID, eventUnconfirmed))
+		w.report("journal", store.noteStall(w.receiver, ""))
 		return true
 	default:
 		if !errors.Is(err, ErrBusy) {
@@ -285,6 +293,7 @@ func (w *worker) remind(strand Strand, snap deliverySnapshot, now time.Time) boo
 	case err == nil, errors.Is(err, ErrNotLanded):
 		w.report("send", nil)
 		w.report("journal", w.scheduler.store.journalReminded(w.receiver, ids, step))
+		w.report("journal", w.scheduler.store.noteStall(w.receiver, ""))
 		return true
 	default:
 		if !errors.Is(err, ErrBusy) {
@@ -461,6 +470,22 @@ func (s *Store) settleInjectLocked(id int64, event string) error {
 	kinds := map[string]OutcomeKind{eventInjected: OutcomeInjected, eventUnconfirmed: OutcomeUnconfirmed, eventExpired: OutcomeExpired}
 	s.answerLocked(waitKey{kind: waitInject, id: id}, Outcome{Kind: kinds[event]})
 	return nil
+}
+
+// noteStall records the stall a probe read for receiver and journals a stalled record when it is non-empty and differs from the last one.
+// An empty stall clears the receiver's entry with no record.
+func (s *Store) noteStall(receiver string, stall Stall) error {
+	return s.do(func() error {
+		if stall == "" {
+			delete(s.stalls, receiver)
+			return nil
+		}
+		if s.stalls[receiver].stall == stall {
+			return nil
+		}
+		s.stalls[receiver] = stallNote{stall: stall, at: s.clock.Now()}
+		return s.writer.append(record{Event: eventStalled, To: receiver, Reason: string(stall)})
+	})
 }
 
 // journalReminded records a reminder typed to receiver about the unread ids, at the given backoff step.

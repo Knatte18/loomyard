@@ -32,8 +32,10 @@ const (
 	eventExpired     = "expired"
 	eventAged        = "aged"
 	eventInterrupted = "interrupted"
-	eventHeld        = "held"
-	eventReleased    = "released"
+	// eventStalled marks a receiver whose delivery waits on a stall reason that changed.
+	eventStalled  = "stalled"
+	eventHeld     = "held"
+	eventReleased = "released"
 	// eventWithheld marks an orch receiver's reminder held back until creel-notices.
 	eventWithheld = "withheld"
 	// eventCarried is written by retention: a snapshot of an entry whose original lines are about to be deleted.
@@ -89,6 +91,8 @@ type record struct {
 	ExpiresAt time.Time `json:"expires_at,omitzero"`
 	// Notice names what a withheld reminder waits for.
 	Notice string `json:"notice,omitempty"`
+	// Reason is the stall a stalled record names.
+	Reason string `json:"reason,omitempty"`
 	// Step is the reminder backoff step of a reminded record.
 	Step int `json:"step,omitempty"`
 	// Unread is the set of message ids a reminded record reminded about.

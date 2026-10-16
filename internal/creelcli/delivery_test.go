@@ -33,6 +33,8 @@ type stubOps struct {
 	status       reedengine.StatusResult
 	statusErr    error
 	idle         bool
+	tooShort     bool
+	draft        bool
 	sendErr      error
 	interruptErr error
 }
@@ -40,7 +42,7 @@ type stubOps struct {
 func (s *stubOps) Status() (reedengine.StatusResult, error) { return s.status, s.statusErr }
 
 func (s *stubOps) SessionIdle(string) (shuttleengine.IdleProbe, error) {
-	return shuttleengine.IdleProbe{Idle: s.idle}, nil
+	return shuttleengine.IdleProbe{Idle: s.idle, TooShort: s.tooShort, Draft: s.draft}, nil
 }
 
 func (s *stubOps) Send(string, string) error { return s.sendErr }
@@ -216,10 +218,22 @@ func TestHubDelivery(t *testing.T) {
 		t.Parallel()
 		hub, prime, _ := newHub(t)
 		strand := creelengine.Strand{Name: "ly:orch", GUID: "guid-orch", Worktree: prime}
-		for _, idle := range []bool{true, false} {
-			delivery := newStubbedDelivery(hub, map[string]*stubOps{prime: {idle: idle}})
-			if got, err := delivery.Idle(strand); err != nil || got != idle {
-				t.Errorf("Idle() = (%v, %v); want (%v, nil)", got, err, idle)
+		tests := []struct {
+			name string
+			stub stubOps
+			want creelengine.Idleness
+		}{
+			{"idle", stubOps{idle: true}, creelengine.Idleness{Idle: true}},
+			{"too short", stubOps{tooShort: true}, creelengine.Idleness{Stall: creelengine.StallTooShort}},
+			{"draft", stubOps{draft: true}, creelengine.Idleness{Stall: creelengine.StallDraft}},
+			{"too short and draft", stubOps{tooShort: true, draft: true}, creelengine.Idleness{Stall: creelengine.StallTooShort}},
+			{"not idle with no reason", stubOps{}, creelengine.Idleness{}},
+		}
+		for _, tt := range tests {
+			stub := tt.stub
+			delivery := newStubbedDelivery(hub, map[string]*stubOps{prime: &stub})
+			if got, err := delivery.Idle(strand); err != nil || got != tt.want {
+				t.Errorf("Idle() with %s = (%+v, %v); want (%+v, nil)", tt.name, got, err, tt.want)
 			}
 		}
 	})
