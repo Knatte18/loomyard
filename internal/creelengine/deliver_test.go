@@ -478,6 +478,64 @@ func TestScheduler_Injects(t *testing.T) {
 				t.Errorf("events = %v; want the muted inject expired", got)
 			}
 		}},
+		{"InjectPostedMidWaitIsChargedFromItsPostingNotFromThePreviousProbe", func(t *testing.T, e *env) {
+			e.del.SetIdle(alpha, false)
+			inject(t, e, program(batten), alpha, "/keepalive", time.Hour, false)
+			e.start(t)
+			e.driveProbeWaits(4)
+			e.clock.Advance(7 * time.Second)
+			_, waiter, err := e.store.InjectWait(program(batten), alpha, "/short", time.Minute, false)
+			if err != nil {
+				t.Fatalf("InjectWait: %v", err)
+			}
+			e.tick(time.Second)
+			e.tick(58 * time.Second)
+			if queued := e.store.Queued(alpha); len(queued) != 2 {
+				t.Fatalf("Queued = %+v 59 s after the posting; want both injects still waiting", queued)
+			}
+			e.tick(8 * time.Second)
+			if outcome := awaitOutcome(t, waiter); outcome.Kind != creelengine.OutcomeExpired {
+				t.Errorf("wait answered %v; want expired at the first probe past 60 s since the posting", outcome.Kind)
+			}
+		}},
+		{"StopChargesAnInjectPostedDuringASendOnlyFromItsPosting", func(t *testing.T, e *env) {
+			entered, release := make(chan struct{}), make(chan struct{})
+			var once sync.Once
+			e.del.SetSendFunc(func(string, string) error {
+				once.Do(func() { close(entered) })
+				<-release
+				return nil
+			})
+			scheduler := creelengine.NewScheduler(e.store, e.del, e.clock)
+			scheduler.Start()
+			t.Cleanup(func() {
+				once.Do(func() { close(entered) })
+				select {
+				case <-release:
+				default:
+					close(release)
+				}
+				scheduler.Stop()
+			})
+			inject(t, e, program(batten), alpha, "/first", time.Hour, false)
+			<-entered
+			e.clock.Advance(30 * time.Second)
+			second := inject(t, e, program(batten), alpha, "/second", time.Minute, false)
+			e.clock.Advance(5 * time.Second)
+			// A worker that probes once more before it sees the stop finds the receiver busy, so the second inject is never typed.
+			e.del.SetIdle(alpha, false)
+			stopped := make(chan struct{})
+			go func() {
+				scheduler.Stop()
+				close(stopped)
+			}()
+			close(release)
+			<-stopped
+			want := fmt.Sprintf(`"id":%d,"consumed_s":5`, second)
+			if text := journalText(t, e.geom); !strings.Contains(text, want) {
+				t.Errorf("journal lacks %s; want the second inject's aged record counting 5 s since its posting:\n%s", want, text)
+			}
+		}},
 		{"ChangingStallIsJournaledOncePerChangeAndStopsOnceTyped", func(t *testing.T, e *env) {
 			e.del.SetStall(alpha, creelengine.StallDraft)
 			inject(t, e, program(batten), alpha, "/clear", 0, false)

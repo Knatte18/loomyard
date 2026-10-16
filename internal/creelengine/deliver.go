@@ -160,7 +160,7 @@ func (w *worker) retire() bool {
 func (w *worker) finish() {
 	store := w.scheduler.store
 	if w.known && w.running {
-		w.report("journal", store.ageInjects(w.receiver, w.scheduler.clock.Now().Sub(w.lastProbe)))
+		w.report("journal", store.ageInjects(w.receiver, w.lastProbe, w.scheduler.clock.Now()))
 	}
 	w.report("journal", store.persistAged(w.receiver))
 }
@@ -187,7 +187,7 @@ func (w *worker) probe() (delivered, pending bool) {
 	}
 	now := clock.Now()
 	if w.known && w.running {
-		w.report("journal", store.ageInjects(w.receiver, now.Sub(w.lastProbe)))
+		w.report("journal", store.ageInjects(w.receiver, w.lastProbe, now))
 	}
 	w.lastProbe = now
 	strand, running := w.locate()
@@ -395,13 +395,18 @@ func (s *Store) snapshot(receiver string) deliverySnapshot {
 	return snap
 }
 
-// ageInjects counts elapsed against the TTL of every inject queued for receiver, and expires those that used it up.
-func (s *Store) ageInjects(receiver string, elapsed time.Duration) error {
-	if elapsed <= 0 {
-		return nil
-	}
+// ageInjects charges every inject queued for receiver the time from the later of since and its own posting to now against its TTL, and expires those that used it up.
+func (s *Store) ageInjects(receiver string, since, now time.Time) error {
 	return s.do(func() error {
 		for _, entry := range s.queuedEntriesLocked(receiver) {
+			from := since
+			if entry.Posted.After(from) {
+				from = entry.Posted
+			}
+			elapsed := now.Sub(from)
+			if elapsed <= 0 {
+				continue
+			}
 			entry.Consumed += elapsed
 			if entry.Consumed >= entry.TTL {
 				if err := s.settleInjectLocked(entry.ID, eventExpired); err != nil {
