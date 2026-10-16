@@ -34,6 +34,7 @@ type profileYAML struct {
 	FixScope          string      `yaml:"fix-scope"`
 	ToolUse           bool        `yaml:"tool-use"`
 	ClusterFan        string      `yaml:"cluster-fan"`
+	FixFan            string      `yaml:"fix-fan"`
 	ReviewPath        string      `yaml:"review-path"`
 	FixerReportPath   string      `yaml:"fixer-report-path"`
 	PriorReviews      []string    `yaml:"prior-reviews"`
@@ -76,6 +77,7 @@ func decodeProfile(data []byte) (burlerengine.Profile, error) {
 		FixScope:          burlerengine.FixScope(parsed.FixScope),
 		ToolUse:           parsed.ToolUse,
 		ClusterFan:        parsed.ClusterFan,
+		FixFan:            parsed.FixFan,
 		ReviewPath:        parsed.ReviewPath,
 		FixerReportPath:   parsed.FixerReportPath,
 		PriorReviews:      parsed.PriorReviews,
@@ -108,7 +110,9 @@ result as a single JSON envelope.
 
 The round runs two sessions one after the other. A reviewer (role
 burler-review) writes the review file. Once lyx has accepted the review,
-a fixer (role burler-fix) fixes what the reviewer found. A review with no
+a fixer (role burler-fix) fixes what the reviewer found. A profile naming a fixer fan runs
+the twill fixer, whose forks check its fix before the fixer-report is written.
+A review with no
 findings spawns no fixer: lyx writes the fixer report itself, and the envelope
 reports fixSkipped true. A reviewer that did not finish runs no fixer. The
 envelope reports each half's identity under review and fix.
@@ -128,6 +132,7 @@ Example profile YAML:
   fix-scope: source
   tool-use: false
   cluster-fan: ""  # naming a fan from burler.yaml activates cluster review, one fork per fan entry
+  fix-fan: ""  # naming a fan from burler.yaml runs the twill fixer, whose forks check its fix
   language-skills: false  # true loads the hub's language skills after burler's own on both seats
   review-path: _lyx/burler/review.md
   fixer-report-path: _lyx/burler/fixer-report.md
@@ -183,6 +188,9 @@ the config default.`,
 				Fix:    shuttleengine.ModelChoice{Model: fixModel, Effort: fixEffort},
 				// The command resolves no key, so its reviewer's engine is the shuttle.yaml default.
 				ReviewKey: shuttleengine.ModelKey{DefaultEngine: true},
+				// The same holds for the fixer, and its fan comes from the profile's own key.
+				FixKey:    shuttleengine.ModelKey{DefaultEngine: true},
+				FixFanKey: "fix-fan",
 				Timeout:   timeout,
 				Round:     round,
 			}

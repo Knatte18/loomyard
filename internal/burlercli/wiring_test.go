@@ -46,6 +46,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -648,8 +649,8 @@ fixer-report-path: reviews/fixer-report.md
 			"---\n### [BLOCKING] colors do not match\n**Location:** target.txt:1\n**Issue:** found a mismatch\n"
 	)
 
-	// newRound builds a CLI over an engine on a halfShuttle whose reviewer writes review, rooted at a fresh directory holding the profile.
-	newRound := func(t *testing.T, review string) (c *burlerCLI, shuttle *halfShuttle, profilePath, root string) {
+	// newRoundWith builds a CLI over an engine on a halfShuttle whose reviewer writes review, rooted at a fresh directory holding profile and told cfg.
+	newRoundWith := func(t *testing.T, review, profile string, cfg burlerengine.Config) (c *burlerCLI, shuttle *halfShuttle, profilePath, root string) {
 		t.Helper()
 		root = t.TempDir()
 		for _, name := range []string{"target.txt", "fasit.txt"} {
@@ -658,13 +659,19 @@ fixer-report-path: reviews/fixer-report.md
 			}
 		}
 		profilePath = filepath.Join(root, "profile.yaml")
-		if err := os.WriteFile(profilePath, []byte(profileYAML), 0o644); err != nil {
+		if err := os.WriteFile(profilePath, []byte(profile), 0o644); err != nil {
 			t.Fatalf("write profile: %v", err)
 		}
 		shuttle = &halfShuttle{review: review}
-		engine := burlerengine.New(shuttle, burlerengine.Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug"}, burlerengine.Config{}, stencilkit.Seed(t), "", nil)
+		engine := burlerengine.New(shuttle, burlerengine.Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug"}, cfg, stencilkit.Seed(t), "", nil)
 		c = &burlerCLI{cwd: root, engine: engine, mode: "standalone"}
 		return c, shuttle, profilePath, root
+	}
+
+	// newRound is newRoundWith over the plain profile and an empty burler.yaml.
+	newRound := func(t *testing.T, review string) (c *burlerCLI, shuttle *halfShuttle, profilePath, root string) {
+		t.Helper()
+		return newRoundWith(t, review, profileYAML, burlerengine.Config{})
 	}
 
 	// runEnvelope runs the verb over args and returns its decoded envelope.
@@ -736,10 +743,35 @@ fixer-report-path: reviews/fixer-report.md
 			if spec.Engine != "" {
 				t.Errorf("%s spec engine = %q; want empty, the default engine", spec.Role, spec.Engine)
 			}
+			if spec.ForkSubagents {
+				t.Errorf("%s spec ForkSubagents = true; want false for a profile naming no fix-fan", spec.Role)
+			}
 		}
 		want := map[string][2]string{reviewChairRole: {"rm", "re"}, fixChairRole: {"fm", "fe"}}
 		if len(got) != len(want) || got[reviewChairRole] != want[reviewChairRole] || got[fixChairRole] != want[fixChairRole] {
 			t.Errorf("started halves' (model, effort) = %v; want %v", got, want)
+		}
+	})
+
+	t.Run("a profile naming a fix-fan runs the twill fixer with forks", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := burlerengine.Config{
+			Lenses: map[string]string{"correctness": "check the fix is correct"},
+			Fans:   map[string][]string{"fix-plan": {"correctness"}},
+		}
+		c, shuttle, profilePath, _ := newRoundWith(t, blockingReview, profileYAML+"fix-fan: fix-plan\n", cfg)
+		envelope := runEnvelope(t, c, "--profile", profilePath)
+
+		if envelope["outcome"] != "done" {
+			t.Errorf("envelope outcome = %v; want done", envelope["outcome"])
+		}
+		forks := map[string]bool{}
+		for _, spec := range shuttle.specs {
+			forks[spec.Role] = spec.ForkSubagents
+		}
+		if want := (map[string]bool{reviewChairRole: false, fixChairRole: true}); !maps.Equal(forks, want) {
+			t.Errorf("started halves' ForkSubagents = %v; want %v", forks, want)
 		}
 	})
 
