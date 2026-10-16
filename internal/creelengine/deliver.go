@@ -112,6 +112,7 @@ type worker struct {
 
 // run probes the receiver from a 1-second base and doubles the wait to 8 seconds after every probe that delivers nothing.
 // A wake notification or a probe that delivers returns the wait to the base, and the worker ends when nothing is pending.
+// While the receiver is live and unpaused, the wait is capped at the soonest queued inject's remaining TTL, never below the base, so the probe that expires the inject runs when its TTL runs out.
 func (w *worker) run() {
 	defer w.scheduler.wg.Done()
 	var lastWait time.Duration
@@ -134,6 +135,11 @@ func (w *worker) run() {
 			next = min(lastWait*2, probeBackoffCeiling)
 		}
 		lastWait = next
+		if w.running {
+			if remaining, queued := w.scheduler.store.remainingTTL(w.receiver); queued {
+				next = min(next, max(remaining, probeBackoffBase))
+			}
+		}
 		select {
 		case <-w.wake:
 			lastWait = 0
@@ -416,6 +422,20 @@ func (s *Store) ageInjects(receiver string, since, now time.Time) error {
 		}
 		return nil
 	})
+}
+
+// remainingTTL returns the shortest TTL left, the TTL less what it has consumed, among the injects queued for receiver, and false when none is queued.
+func (s *Store) remainingTTL(receiver string) (time.Duration, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var shortest time.Duration
+	var queued bool
+	for _, entry := range s.queuedEntriesLocked(receiver) {
+		if remaining := entry.TTL - entry.Consumed; !queued || remaining < shortest {
+			shortest, queued = remaining, true
+		}
+	}
+	return shortest, queued
 }
 
 // queuedEntriesLocked returns the injects still queued for receiver, oldest first.

@@ -204,7 +204,7 @@ Forwarding to oneself, forwarding a message not held and forwarding one already 
 
 **Watch:** `inject --wait` into an idle pane gives `injected`.
 A fake box that ignores Enter gives `unconfirmed`, and the line is not typed again once the box is cleared.
-A short `--ttl` into a never-idle pane expires on time.
+A short `--ttl` into a never-idle pane expires within a second of its TTL, and into a bash strand it names the stall `no-input-box`.
 
 **Verdict:** `FAIL` on a retype or an early expiry.
 

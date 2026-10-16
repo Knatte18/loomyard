@@ -477,17 +477,52 @@ func TestScheduler_Injects(t *testing.T) {
 		}},
 		{"TTLIsFrozenWhilePausedAndWhileDormant", func(t *testing.T, e *env) {
 			e.del.SetPaused(alpha, true)
-			inject(t, e, program(batten), alpha, "/paused", 0, false)
+			inject(t, e, program(batten), alpha, "/paused", 3*time.Second, false)
 			e.start(t)
-			e.probeWaits(1)
-			e.tick(time.Hour)
+			if got := e.driveProbeWaits(5); !slices.Equal(got, seconds(1, 2, 4, 8, 8)) {
+				t.Fatalf("probe waits under the pause = %v; want 1, 2, 4, 8, 8 seconds, uncapped by the frozen TTL", got)
+			}
 			e.del.SetPaused(alpha, false)
 			e.del.SetStrands(creelfake.DormantStrand(alpha), creelfake.LiveStrand(beta), creelfake.LiveStrand(orch), creelfake.LiveStrand(orch2))
-			e.tick(time.Hour)
+			e.tick(8 * time.Second)
+			e.tick(8 * time.Second)
+			if got := e.probeWaits(7)[5:]; !slices.Equal(got, seconds(8, 8)) {
+				t.Errorf("probe waits while dormant = %v; want 8, 8 seconds, uncapped by the frozen TTL", got)
+			}
+			if queued := e.store.Queued(alpha); len(queued) != 1 {
+				t.Fatalf("Queued = %+v after the pause and the dormancy; want the inject still waiting", queued)
+			}
 			e.del.SetStrands(creelfake.LiveStrand(alpha), creelfake.LiveStrand(beta), creelfake.LiveStrand(orch), creelfake.LiveStrand(orch2))
-			e.tick(time.Hour)
+			e.tick(8 * time.Second)
 			if got := e.typed(alpha); !slices.Equal(got, []string{"/paused"}) {
-				t.Errorf("typed %q; want the inject typed once live and unpaused, after hours of freeze", got)
+				t.Errorf("typed %q; want the inject typed once live and unpaused, after its TTL stood still", got)
+			}
+		}},
+		{"InjectExpiresWithinASecondOfItsTTLBetweenBackoffSteps", func(t *testing.T, _ *env) {
+			for _, ttl := range seconds(10, 20, 37) {
+				e := newEnv(t)
+				e.del.SetIdle(alpha, false)
+				posted := e.clock.Now()
+				_, waiter, err := e.store.InjectWait(program(batten), alpha, "/slow", ttl, false)
+				if err != nil {
+					t.Fatalf("InjectWait: %v", err)
+				}
+				e.start(t)
+				done := make(chan struct{})
+				go e.clock.AdvanceByWaitsWhere(isProbeWait, done)
+				outcome := awaitOutcome(t, waiter)
+				close(done)
+				if outcome.Kind != creelengine.OutcomeExpired {
+					t.Errorf("TTL %v: wait answered %v; want expired", ttl, outcome.Kind)
+				}
+				if late := e.clock.Now().Sub(posted) - ttl; late < 0 || late > time.Second {
+					t.Errorf("TTL %v: expired %v past the TTL; want within a second", ttl, late)
+				}
+				for _, wait := range e.clock.Waits() {
+					if isProbeWait(wait) && wait < time.Second {
+						t.Errorf("TTL %v: recorded probe wait %v is under the one-second floor", ttl, wait)
+					}
+				}
 			}
 		}},
 		{"TTLRunsUnderAnotherSendersHoldAndExpiresUntyped", func(t *testing.T, e *env) {
@@ -619,16 +654,10 @@ func TestScheduler_Injects(t *testing.T) {
 				t.Fatalf("InjectWait: %v", err)
 			}
 			e.start(t)
-			e.probeWaits(1)
-			var outcome creelengine.Outcome
-			for answered := false; !answered; {
-				e.tick(8 * time.Second)
-				select {
-				case outcome = <-waiter.C:
-					answered = true
-				default:
-				}
-			}
+			done := make(chan struct{})
+			go e.clock.AdvanceByWaitsWhere(isProbeWait, done)
+			outcome := awaitOutcome(t, waiter)
+			close(done)
 			if outcome.Kind != creelengine.OutcomeExpired || outcome.Stall != creelengine.StallNoInputBox {
 				t.Errorf("wait answered %v with stall %q; want expired at the TTL with stall no-input-box", outcome.Kind, outcome.Stall)
 			}
