@@ -891,16 +891,21 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 			loomshed.NameDarnBurlerReview: reviewSettings.Webster,
 			loomshed.NameDarnBurlerFix:    reviewSettings.Webster,
 		},
-		// A segment's fan reaches its Bouncer and its review row from one key, so the two agree by construction; the fix row runs no fan.
-		// Each list holds the one entry of the segment's fan, empty when the key is unset.
+		// A segment's fan list reaches its Bouncer and its review row from one key, so the two agree by construction; the fix row reads the round's recorded names.
+		// Each list is the segment's per-round fans, an empty entry running that round solo.
+		// A review row also takes its segment's fixer fan list.
 		// Webster-Review stays solo: its forks may run no git and its subject exists only through git.
 		RowClusterFans: map[string][]string{
-			loomshed.NameDiscussionBouncer:      {loomCfg.DiscussionFan},
-			loomshed.NameDiscussionBurlerReview: {loomCfg.DiscussionFan},
-			loomshed.NamePlanBouncer:            {loomCfg.PlanFan},
-			loomshed.NamePlanBurlerReview:       {loomCfg.PlanFan},
+			loomshed.NameDiscussionBouncer:      loomCfg.DiscussionFan,
+			loomshed.NameDiscussionBurlerReview: loomCfg.DiscussionFan,
+			loomshed.NamePlanBouncer:            loomCfg.PlanFan,
+			loomshed.NamePlanBurlerReview:       loomCfg.PlanFan,
 		},
-		RowModelKeys: reviewRowModelKeys(loomCfg),
+		RowFixFans: map[string][]string{
+			loomshed.NameDiscussionBurlerReview: loomCfg.DiscussionFixFan,
+			loomshed.NamePlanBurlerReview:       loomCfg.PlanFixFan,
+		},
+		RowModelKeys: reviewRowModelKeys(reviewSettings),
 
 		RowBouncerModels: map[string]shedadapters.BouncerModels{
 			loomshed.NameDiscussionBouncer: shedadapters.BouncerModels(judgeSettings.Discussion),
@@ -972,18 +977,19 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	return nil
 }
 
-// reviewRowModelKeys names loom.yaml's fan_review key as the reviewer model key of each Discussion and Plan review row whose segment's fan is set.
-// A row whose segment runs solo gets no entry, so its engine refusals name no key.
-func reviewRowModelKeys(cfg loomengine.Config) map[string]shedrecipe.RowModelKeys {
-	fanReviewKey := shuttleengine.ModelKey{Module: "loom", Key: "fan_review"}
-	keys := map[string]shedrecipe.RowModelKeys{}
-	if cfg.DiscussionFan != "" {
-		keys[loomshed.NameDiscussionBurlerReview] = shedrecipe.RowModelKeys{Review: fanReviewKey}
+// reviewRowModelKeys names the loom.yaml keys each Discussion and Plan Burler row's settings came from:
+// the review row's reviewer model key, and the fix row's fixer model key and fixer fan key.
+// A fanned reviewer's engine refusal then names its reviewer list's key, and a fix row refuses an unrecorded round.
+func reviewRowModelKeys(settings loomengine.ReviewSettings) map[string]shedrecipe.RowModelKeys {
+	loomKey := func(key string) shuttleengine.ModelKey {
+		return shuttleengine.ModelKey{Module: "loom", Key: key}
 	}
-	if cfg.PlanFan != "" {
-		keys[loomshed.NamePlanBurlerReview] = shedrecipe.RowModelKeys{Review: fanReviewKey}
+	return map[string]shedrecipe.RowModelKeys{
+		loomshed.NameDiscussionBurlerReview: {Review: loomKey(settings.DiscussionKeys.Review)},
+		loomshed.NameDiscussionBurlerFix:    {Fix: loomKey(settings.DiscussionKeys.Fix), FixFan: "discussion_fix_fan"},
+		loomshed.NamePlanBurlerReview:       {Review: loomKey(settings.PlanKeys.Review)},
+		loomshed.NamePlanBurlerFix:          {Fix: loomKey(settings.PlanKeys.Fix), FixFan: "plan_fix_fan"},
 	}
-	return keys
 }
 
 // perchMaxBounces maps loom.yaml's per-perch budget keys onto the Discussion, Plan, Webster and Merge Bouncer rows' names.

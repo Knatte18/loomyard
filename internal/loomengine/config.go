@@ -1,11 +1,13 @@
 // config.go — configuration for the loom module.
 //
 // Defines the Config type mirroring loom.yaml's keys and LoadConfig, which uses internal/configengine.Load with ConfigTemplate() to strictly validate and resolve loom's config file,
-// then validates the discussion, plan, judge, friction, and driver role model-specs and every entry of the review and fix model-spec lists' grammar via modelspec.Parse, plus every entry of the six per-segment lists (discussion_review, discussion_fix, plan_review, plan_fix, webster_review, webster_fix) that are set, an empty value meaning the run-wide list, rejects a negative value on each of the four timeout knobs, and rejects a parent_review_wait_min, review_circling_checkpoint or review_hard_max_bounces below 1, rejects a review_max_bounces, discussion_max_bounces, plan_max_bounces, webster_max_bounces or merge_max_bounces below 0 (0 giving zero rounds, null taking review_max_bounces) or any per-perch hard cap below 0, rejects a perch whose resolved hard cap is below its resolved budget, validates every entry of fan_review, and resolves each non-empty discussion_fan and plan_fan through burlerengine.ResolveFan,
+// then validates the discussion, plan, judge, friction, and driver role model-specs and every entry of the review and fix model-spec lists' grammar via modelspec.Parse, plus every entry of the six per-segment lists (discussion_review, discussion_fix, plan_review, plan_fix, webster_review, webster_fix) that are set, an empty value meaning the run-wide list, rejects a negative value on each of the four timeout knobs, and rejects a parent_review_wait_min, review_circling_checkpoint or review_hard_max_bounces below 1, rejects a review_max_bounces, discussion_max_bounces, plan_max_bounces, webster_max_bounces or merge_max_bounces below 0 (0 giving zero rounds, null taking review_max_bounces) or any per-perch hard cap below 0, rejects a perch whose resolved hard cap is below its resolved budget, and resolves each non-empty entry of discussion_fan, plan_fan, discussion_fix_fan and plan_fix_fan through burlerengine.ResolveFan,
 // so a mistake in any of those validated keys fails loud at load time rather than hours into a run when the discussion, plan, review, judge, friction, or driver producer first spawns.
 // step_idle_timeout_min is the minutes a --until-stop step may show no activity before the loop kills it; a value below 1 is raised to 1 with one Warn and never refused.
-// discussion_fan and plan_fan each name a fan from burler.yaml and turn the lens fan on for Discussion-Review and Plan-Review; empty, the default, runs that segment solo.
-// fan_review is the reviewer model-spec list of a fanned segment, and the forks' model too, since forks run on the reviewer session's model.
+// discussion_fan and plan_fan each name a fan from burler.yaml, or list one per round, and turn the lens fan on for Discussion-Review and Plan-Review; an empty entry, the default, runs that round solo.
+// discussion_fix_fan and plan_fix_fan do the same for the fixer: an empty entry runs the single fixer, and a fan name runs the twill fixer with that fan's lenses.
+// A list's last entry serves every later round, and a reviewer fanned or not runs on its segment's own reviewer list, whose model the forks inherit.
+// fan_review is retired: MigrateConfig removes it.
 // There is no webster_fan key: Webster-Review always runs solo.
 // discussion_max_bounces, plan_max_bounces and webster_max_bounces set one perch's bounce budget, null takes review_max_bounces and 0 gives the perch zero rounds, its Bouncer settling approved at once;
 // review_hard_max_bounces is the round number at or past which no perch continues a round, refused below 1, and discussion_hard_max_bounces, plan_hard_max_bounces, webster_hard_max_bounces and merge_hard_max_bounces set one perch's own, where 0 takes review_hard_max_bounces and a negative value is refused;
@@ -406,9 +408,10 @@ type Config struct {
 	PlanFix               ModelSpecList `yaml:"plan_fix"`
 	WebsterReview         ModelSpecList `yaml:"webster_review"`
 	WebsterFix            ModelSpecList `yaml:"webster_fix"`
-	DiscussionFan         string        `yaml:"discussion_fan"`
-	PlanFan               string        `yaml:"plan_fan"`
-	FanReview             ModelSpecList `yaml:"fan_review"`
+	DiscussionFan         FanList       `yaml:"discussion_fan"`
+	PlanFan               FanList       `yaml:"plan_fan"`
+	DiscussionFixFan      FanList       `yaml:"discussion_fix_fan"`
+	PlanFixFan            FanList       `yaml:"plan_fix_fan"`
 	Judge                 string        `yaml:"judge"`
 	Seed                  string        `yaml:"seed"`
 	DiscussionJudge       string        `yaml:"discussion_judge"`
@@ -520,6 +523,42 @@ func (l *ModelSpecList) UnmarshalYAML(node *yaml.Node) error {
 	}
 }
 
+// FanList is a fan key's value: one fan name for every round, or a list of fan names, one per round, whose last entry serves every later round.
+// An empty entry runs its round solo, or with the single fixer.
+// A YAML scalar loads as a list of one.
+type FanList []string
+
+// fanShapeError reports a fan key whose value is neither a scalar nor a sequence of scalars.
+// line is the value's line in the file, which LoadConfig uses to name the key.
+type fanShapeError struct {
+	line int
+}
+
+func (e *fanShapeError) Error() string {
+	return fmt.Sprintf(`value at line %d is neither a fan name nor a list of fan names; set the key to a fan name, or to a list of fan names, with "" for a solo or single round`, e.line)
+}
+
+// UnmarshalYAML accepts a scalar or a block sequence of scalars and rejects any other shape.
+func (l *FanList) UnmarshalYAML(node *yaml.Node) error {
+	switch node.Kind {
+	case yaml.ScalarNode:
+		*l = FanList{node.Value}
+		return nil
+	case yaml.SequenceNode:
+		fans := make(FanList, 0, len(node.Content))
+		for _, entry := range node.Content {
+			if entry.Kind != yaml.ScalarNode {
+				return &fanShapeError{line: entry.Line}
+			}
+			fans = append(fans, entry.Value)
+		}
+		*l = fans
+		return nil
+	default:
+		return &fanShapeError{line: node.Line}
+	}
+}
+
 // DiscussionAdvisor is one Discussion-Write advisor: Name is its seat name and Model its model-spec.
 type DiscussionAdvisor struct {
 	Name  string `yaml:"name"`
@@ -563,7 +602,7 @@ func (l *DiscussionAdvisorList) UnmarshalYAML(node *yaml.Node) error {
 
 // ConfigOpenMaps returns the loom.yaml keys whose value is a scalar, a per-round list or a list of entries, which configengine carries whole through reconcile and --set.
 func ConfigOpenMaps() []string {
-	return []string{"review", "fix", "discussion_review", "discussion_fix", "plan_review", "plan_fix", "webster_review", "webster_fix", "fan_review", "discussion_advisors"}
+	return []string{"review", "fix", "discussion_review", "discussion_fix", "plan_review", "plan_fix", "webster_review", "webster_fix", "discussion_fan", "plan_fan", "discussion_fix_fan", "plan_fix_fan", "discussion_advisors"}
 }
 
 // ConfigSpec returns loom's layered-load spec.
@@ -598,7 +637,8 @@ func ConfigSpec() configengine.Spec {
 			"webster_fix":                none,
 			"discussion_fan":             guard,
 			"plan_fan":                   guard,
-			"fan_review":                 none,
+			"discussion_fix_fan":         guard,
+			"plan_fix_fan":               guard,
 			"judge":                      none,
 			"seed":                       none,
 			"discussion_judge":           none,
@@ -626,6 +666,9 @@ func ConfigSpec() configengine.Spec {
 			"parent_review_wait_min":     guard,
 			"step_idle_timeout_min":      none,
 			"review_circling_checkpoint": none,
+		},
+		RetiredKeys: map[string]configengine.Category{
+			"fan_review": none,
 		},
 	}
 	for key, category := range reviewbudget.Categories(reviewPerchNames()) {
@@ -727,38 +770,45 @@ func validateDiscussionAdvisors(advisors DiscussionAdvisorList, reg modelspec.Re
 	return nil
 }
 
-// validateFanKeys resolves each non-empty fan key of cfg through burler.yaml, which falls back per name to the embedded template.
-// A fan that does not resolve is refused naming the key, the unknown name and the fans that exist,
-// and an unreadable burler.yaml is refused naming the first set key.
-// With both fan keys empty, burler.yaml is never read.
+// validateFanKeys refuses an empty list on each of the four fan keys of cfg and resolves each non-empty entry through burler.yaml, which falls back per name to the embedded template.
+// A fan that does not resolve is refused naming the key, the 1-based entry, the unknown name and the fans that exist,
+// and an unreadable burler.yaml is refused naming the first key with a non-empty entry.
+// With every entry empty, burler.yaml is never read.
 func validateFanKeys(dirs configengine.Dirs, cfg Config) error {
 	var burlerCfg *burlerengine.Config
 	for _, fan := range []struct {
-		key  string
-		name string
+		key   string
+		names FanList
 	}{
 		{"discussion_fan", cfg.DiscussionFan},
 		{"plan_fan", cfg.PlanFan},
+		{"discussion_fix_fan", cfg.DiscussionFixFan},
+		{"plan_fix_fan", cfg.PlanFixFan},
 	} {
-		if fan.name == "" {
-			continue
+		if len(fan.names) == 0 {
+			return fmt.Errorf(`loom config key %q: the list is empty; write "" to run the round solo or with the single fixer`, fan.key)
 		}
-		if burlerCfg == nil {
-			loaded, err := burlerengine.LoadConfig(dirs)
-			if err != nil {
-				return fmt.Errorf("loom config key %q: %w; fix burler.yaml, or set the key to empty to run the segment solo", fan.key, err)
+		for i, name := range fan.names {
+			if name == "" {
+				continue
 			}
-			burlerCfg = &loaded
-		}
-		if _, err := burlerengine.ResolveFan(*burlerCfg, fan.name); err != nil {
-			return fmt.Errorf("loom config key %q: %w; set the key to one of those fans, or to empty to run the segment solo", fan.key, err)
+			if burlerCfg == nil {
+				loaded, err := burlerengine.LoadConfig(dirs)
+				if err != nil {
+					return fmt.Errorf("loom config key %q: %w; fix burler.yaml, or set the key to empty to run the segment solo", fan.key, err)
+				}
+				burlerCfg = &loaded
+			}
+			if _, err := burlerengine.ResolveFan(*burlerCfg, name); err != nil {
+				return fmt.Errorf(`loom config key %q entry %d: %w; define the fan in burler.yaml, or set the entry to ""`, fan.key, i+1, err)
+			}
 		}
 	}
 	return nil
 }
 
 // MigrateConfig rewrites a loom.yaml document for lyx config reconcile and returns the rewritten bytes with one line per rewrite.
-// It raises a below-floor or null step_idle_timeout_min to its floor, replaces the retired producer keys and retires skip_merge_review.
+// It raises a below-floor or null step_idle_timeout_min to its floor, replaces the retired producer keys and retires skip_merge_review and fan_review.
 // The producer keys:
 // discussion_producer twill becomes discussion_lenses twill-discussion, and single, seats and any other value become an empty discussion_lenses;
 // plan_producer twill becomes plan_lenses twill-plan, and any other value an empty plan_lenses.
@@ -793,6 +843,11 @@ func MigrateConfig(existing []byte) ([]byte, []string, error) {
 		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate loom config: %w", err))
 	}
 	rewrites = append(rewrites, retiredLines...)
+	migrated, fanReviewLines, err := retireFanReview(migrated)
+	if err != nil {
+		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate loom config: %w", err))
+	}
+	rewrites = append(rewrites, fanReviewLines...)
 	migrated, shedLines, err := migrateShedOverrides(migrated)
 	if err != nil {
 		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate loom config: %w", err))
@@ -1073,6 +1128,35 @@ func retireSkipMergeReview(document []byte) ([]byte, []string, error) {
 	return out.Bytes(), lines, nil
 }
 
+// retireFanReview removes the retired fan_review key from document and returns the rewritten bytes with one line reporting it.
+// A document without the key comes back unchanged.
+func retireFanReview(document []byte) ([]byte, []string, error) {
+	var parsed yaml.Node
+	if err := yaml.Unmarshal(document, &parsed); err != nil {
+		return nil, nil, fmt.Errorf("unmarshal yaml: %w", err)
+	}
+	if parsed.Kind != yaml.DocumentNode || len(parsed.Content) == 0 || parsed.Content[0].Kind != yaml.MappingNode {
+		return document, nil, nil
+	}
+	root := parsed.Content[0]
+	at := mappingKeyIndex(root, "fan_review")
+	if at < 0 {
+		return document, nil, nil
+	}
+	root.Content = append(root.Content[:at], root.Content[at+2:]...)
+
+	var out bytes.Buffer
+	encoder := yaml.NewEncoder(&out)
+	encoder.SetIndent(2)
+	if err := encoder.Encode(&parsed); err != nil {
+		return nil, nil, fmt.Errorf("encode yaml: %w", err)
+	}
+	if err := encoder.Close(); err != nil {
+		return nil, nil, fmt.Errorf("encode yaml: %w", err)
+	}
+	return out.Bytes(), []string{"fan_review: removed; a fanned round's reviewer now runs on its segment's own reviewer list"}, nil
+}
+
 // mappingKeyIndex returns the index of key in mapping's Content, or -1 when mapping lacks it.
 func mappingKeyIndex(mapping *yaml.Node, key string) int {
 	for i := 0; i+1 < len(mapping.Content); i += 2 {
@@ -1143,6 +1227,10 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		if errors.As(err, &shape) {
 			return Config{}, fmt.Errorf("loom config key %q: %w", keyAtLine(resolved, shape.line), err)
 		}
+		var fanShape *fanShapeError
+		if errors.As(err, &fanShape) {
+			return Config{}, fmt.Errorf("loom config key %q: %w", keyAtLine(resolved, fanShape.line), err)
+		}
 		var advisorShape *advisorShapeError
 		if errors.As(err, &advisorShape) {
 			return Config{}, fmt.Errorf("loom config key %q: %w", discussionAdvisorsKey, err)
@@ -1173,10 +1261,6 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		if err := validateModelSpecList(segment.key, segment.specs); err != nil {
 			return Config{}, err
 		}
-	}
-
-	if err := validateModelSpecList("fan_review", cfg.FanReview); err != nil {
-		return Config{}, err
 	}
 
 	if err := validateFanKeys(dirs, cfg); err != nil {
