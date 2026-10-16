@@ -9,7 +9,6 @@ package webstercli
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -1611,7 +1610,7 @@ func TestRecoverBatchCmd_FabricSyncAndReedBootWayForward(t *testing.T) {
 	fx := newVerbsFixture(t)
 	fx.initState(t)
 
-	fx.CLI.reedUp = func(context.Context, bool) error { return fmt.Errorf("tmux not ready (injected)") }
+	fx.CLI.reedUp = func() error { return fmt.Errorf("tmux not ready (injected)") }
 	var out strings.Builder
 	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &out, []string{"1", "--wait", "1ns"}); code == 0 {
 		t.Fatalf("recover-batch 1 with a failing reed boot = 0; want non-zero, output: %s", out.String())

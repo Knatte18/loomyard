@@ -1,8 +1,8 @@
 // state.go defines the persisted strand record and ReedState container, plus the .lyx/reed.json
-// load/save wrappers and the mapper that projects the persisted record down to render.Strand.
+// load/save wrappers.
 // This is the module's dumb-carrier contract in concrete form: Strand stores every field a caller
 // writes (cmd, resumeCmd, sessionId, worktree, name) and reedengine itself reads none of them
-// semantically — only Display feeds the layout decision, via toRenderStrands.
+// semantically — only Display decides where a strand's pane goes.
 // Retiring is the one field reed itself owns: lifecycle bookkeeping set by a reed verb (MarkRetiring), never written by a caller of AddStrand.
 
 package reedengine
@@ -31,9 +31,6 @@ type Strand struct {
 	SessionID string         `json:"sessionId,omitempty"`
 	PaneID    string         `json:"paneId"`
 	Display   render.Display `json:"display"`
-	// ContentRows is the visible content line count the strand's pane last reported, the height a content-sized strand takes.
-	// 0 means not reported yet; a strand recorded before the field existed decodes with none.
-	ContentRows int `json:"contentRows,omitempty"`
 	// Retiring records that a caller of `reed remove --detach` asked for this strand's removal.
 	// It grants nothing by itself: a caller that finds it set only completes the request.
 	Retiring bool `json:"retiring,omitempty"`
@@ -199,21 +196,4 @@ func SaveState(dotLyxDir string, s *ReedState) error {
 	path := filepath.Join(dotLyxDir, reedStateFileName)
 	lockPath := path + ".lock"
 	return state.WriteJSON(path, lockPath, s)
-}
-
-// toRenderStrands maps persisted strands to the render projection, setting
-// Live from liveIDs[PaneID].
-func toRenderStrands(strands []Strand, liveIDs map[string]bool) []render.Strand {
-	out := make([]render.Strand, len(strands))
-	for i, s := range strands {
-		out[i] = render.Strand{
-			GUID:        s.GUID,
-			Parent:      s.Parent,
-			Display:     s.Display,
-			PaneID:      s.PaneID,
-			Live:        liveIDs[s.PaneID],
-			ContentRows: s.ContentRows,
-		}
-	}
-	return out
 }

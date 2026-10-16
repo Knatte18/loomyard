@@ -1,7 +1,7 @@
 //go:build tmux && linux
 
 // bindings_integration_test.go drives the Alt-key and status-bar bindings against a real tmux server and an attached client.
-// The terminal's own byte sequences are written into the client's pty (ESC z, ESC [1;3A..D, SGR mouse clicks at the bar's cells), so the whole key path is exercised.
+// The terminal's own byte sequences are written into the client's pty (ESC [1;3A..D, SGR mouse clicks at the bar's cells), so the whole key path is exercised.
 // The client is attached through the pty harness attachgeometry_integration_test.go defines.
 // Every test swaps the package-level executablePath seam and so never runs in parallel.
 
@@ -59,14 +59,12 @@ func newBindingsFixture(t *testing.T) *bindingsFixture {
 	if _, err := e.Up(); err != nil {
 		t.Fatalf("Up: %v", err)
 	}
-	// alpha is a top content strand above the positional beta, the prime's runs-above-orch shape.
-	topContent := render.Display{Anchor: render.AnchorTop, Size: render.Size{Kind: render.SizeContent, ShareNum: 1, ShareDen: 3, MinRows: 3}}
-	below := render.Display{Anchor: render.AnchorBelowParent}
-	alpha, err := e.AddStrand(AddSpec{NameOverride: "alpha", Segment: "review", Cmd: "sleep 300", Display: topContent})
+	own := render.Display{Anchor: render.AnchorOwnWindow}
+	alpha, err := e.AddStrand(AddSpec{NameOverride: "alpha", Segment: "review", Cmd: "sleep 300", Display: own})
 	if err != nil {
 		t.Fatalf("AddStrand(alpha): %v", err)
 	}
-	beta, err := e.AddStrand(AddSpec{NameOverride: "beta", Segment: "plan", Cmd: "sleep 300", Display: below})
+	beta, err := e.AddStrand(AddSpec{NameOverride: "beta", Segment: "plan", Cmd: "sleep 300", Display: own})
 	if err != nil {
 		t.Fatalf("AddStrand(beta): %v", err)
 	}
@@ -118,11 +116,6 @@ func (f *bindingsFixture) display(t *testing.T, target, format string) string {
 func (f *bindingsFixture) activePane(t *testing.T) string {
 	t.Helper()
 	return f.display(t, f.strandWindow, "#{pane_id}")
-}
-
-func (f *bindingsFixture) zoomed(t *testing.T) string {
-	t.Helper()
-	return f.display(t, f.strandWindow, "#{window_zoomed_flag}")
 }
 
 // currentWindow returns the name of the window the client shows.
@@ -181,22 +174,6 @@ func wantFollowRecord(socketPath, session string) []string {
 	return []string{"reed", "follow", "--socket", socketPath, "--session", session, "--tmux"}
 }
 
-// selectStrandsWindow makes the strands' window current with pane the active one, unzoomed.
-func (f *bindingsFixture) selectStrandsWindow(t *testing.T, pane string) {
-	t.Helper()
-	if err := f.e.tmux.run("select-window", "-t", f.strandWindow); err != nil {
-		t.Fatalf("select-window: %v", err)
-	}
-	if err := f.e.tmux.run("select-pane", "-t", pane); err != nil {
-		t.Fatalf("select-pane: %v", err)
-	}
-	if f.zoomed(t) == "1" {
-		if err := f.e.tmux.run("resize-pane", "-Z", "-t", pane); err != nil {
-			t.Fatalf("unzoom: %v", err)
-		}
-	}
-}
-
 // doubleClickGap is longer than tmux's own double-click window, so two clicks of a test never merge into a DoubleClick1Status event the bindings do not take.
 const doubleClickGap = 400 * time.Millisecond
 
@@ -213,36 +190,6 @@ func (f *bindingsFixture) click(t *testing.T, row int, label string) {
 	x := len([]rune(text[:at])) + 2
 	y := bindingsClientRows - 1 + row
 	f.send(t, "\x1b[<0;"+strconv.Itoa(x)+";"+strconv.Itoa(y)+"M\x1b[<0;"+strconv.Itoa(x)+";"+strconv.Itoa(y)+"m")
-}
-
-func TestBindings_AltZTogglesStrandAndSelvageZoomInTheStrandsWindowOnly(t *testing.T) {
-	f := newBindingsFixture(t)
-	f.selectStrandsWindow(t, f.alpha.PaneID)
-	f.setFollow(t, f.e.SessionName(), "on")
-
-	f.send(t, "\x1bz")
-	waitUntil(t, 5*time.Second, "Alt+z never zoomed the strand", func() bool { return f.zoomed(t) == "1" })
-	f.send(t, "\x1bz")
-	waitUntil(t, 5*time.Second, "Alt+z never unzoomed the strand", func() bool { return f.zoomed(t) == "0" })
-
-	f.selectStrandsWindow(t, f.selvagePane)
-	f.send(t, "\x1bz")
-	waitUntil(t, 5*time.Second, "Alt+z never zoomed Selvage", func() bool { return f.zoomed(t) == "1" && f.activePane(t) == f.selvagePane })
-	f.send(t, "\x1bz")
-	waitUntil(t, 5*time.Second, "Alt+z never unzoomed Selvage", func() bool { return f.zoomed(t) == "0" })
-
-	if err := f.e.tmux.run("select-window", "-t", f.otherWindow); err != nil {
-		t.Fatalf("select-window extra: %v", err)
-	}
-	f.send(t, "\x1bz")
-	settle()
-	if got := f.display(t, f.otherWindow, "#{window_zoomed_flag}"); got != "0" {
-		t.Errorf("Alt+z in the second window zoomed it: flag %q, want 0", got)
-	}
-	if got := f.zoomed(t); got != "0" {
-		t.Errorf("Alt+z in the second window zoomed the strands' window: flag %q, want 0", got)
-	}
-	f.assertFollow(t, "on")
 }
 
 func TestBindings_AltUpDownStepWindowsInIndexOrderPastHiddenOnes(t *testing.T) {
@@ -276,6 +223,8 @@ func TestBindings_AltUpDownStepWindowsInIndexOrderPastHiddenOnes(t *testing.T) {
 		key  string
 		want string
 	}{
+		{"\x1b[1;3B", "alpha"},
+		{"\x1b[1;3B", "beta"},
 		{"\x1b[1;3B", "extra"},
 		{"\x1b[1;3B", "agent"},
 		{"\x1b[1;3B", "shell"},
@@ -283,8 +232,9 @@ func TestBindings_AltUpDownStepWindowsInIndexOrderPastHiddenOnes(t *testing.T) {
 		{"\x1b[1;3A", "shell"},
 		{"\x1b[1;3A", "agent"},
 		{"\x1b[1;3A", "extra"},
+		{"\x1b[1;3A", "beta"},
+		{"\x1b[1;3A", "alpha"},
 		{"\x1b[1;3A", "overview"},
-		{"\x1b[1;3A", "shell"},
 	} {
 		f.send(t, step.key)
 		waitUntil(t, 5*time.Second, "the Alt step never reached the "+step.want+" window", func() bool { return f.currentWindow(t) == step.want })
@@ -298,35 +248,19 @@ func TestBindings_StatusBarClicksSelectAndZoomByRangeType(t *testing.T) {
 	f := newBindingsFixture(t)
 	session := f.e.SessionName()
 	socketPath := strings.TrimSpace(mustTmuxOutput(t, f.e, "display-message", "-p", "#{socket_path}"))
-	// The strand, shell and window clicks write follow off, so each starts from follow on.
+	// The shell and window clicks write follow off, so each starts from follow on.
 	clickFollowingOn := func(row int, label string) {
 		t.Helper()
 		f.setFollow(t, session, "on")
 		f.click(t, row, label)
 	}
 
-	// A strand button selects its pane and zooms it, and a second click keeps the zoom on.
-	f.selectStrandsWindow(t, f.alpha.PaneID)
-	clickFollowingOn(0, " alpha ")
-	waitUntil(t, 5*time.Second, "a click on alpha's button never zoomed it", func() bool {
-		return f.activePane(t) == f.alpha.PaneID && f.zoomed(t) == "1"
-	})
-	f.assertFollow(t, "off")
-	clickFollowingOn(0, " beta ")
-	waitUntil(t, 5*time.Second, "a click on beta's button never moved the zoom to it", func() bool {
-		return f.activePane(t) == f.beta.PaneID && f.zoomed(t) == "1"
-	})
-	f.assertFollow(t, "off")
-	clickFollowingOn(0, " beta ")
-	settle()
-	if got := f.zoomed(t); got != "1" {
-		t.Errorf("a second click on beta's button left zoom flag %q, want 1 (never toggled off)", got)
+	// The shell button selects the shell window from a strand's own window.
+	if err := f.e.tmux.run("select-window", "-t", windowOfPane(t, f.e, f.alpha.PaneID)); err != nil {
+		t.Fatalf("select-window alpha: %v", err)
 	}
-	f.assertFollow(t, "off")
-
-	// The shell button unzooms the strands' window.
 	clickFollowingOn(0, " shell ")
-	waitUntil(t, 5*time.Second, "a click on shell never unzoomed the strands' window", func() bool { return f.zoomed(t) == "0" })
+	waitUntil(t, 5*time.Second, "a click on shell from alpha's own window never selected the shell window", func() bool { return f.currentWindow(t) == "shell" })
 	f.assertFollow(t, "off")
 
 	// A window button selects that window, and a click on the current window's own button writes follow off too.
@@ -347,15 +281,20 @@ func TestBindings_StatusBarClicksSelectAndZoomByRangeType(t *testing.T) {
 	})
 	f.assertFollow(t, "off")
 
-	// A strand button from the second window selects and zooms the strand in its own window.
+	// With @lyx_strands unset on every window, the shell click's command leaves the current window where it is.
 	if err := f.e.tmux.run("select-window", "-t", f.otherWindow); err != nil {
 		t.Fatalf("select-window extra: %v", err)
 	}
-	clickFollowingOn(0, " alpha ")
-	waitUntil(t, 5*time.Second, "a click on alpha's button from the second window never zoomed it", func() bool {
-		return f.currentWindow(t) != "extra" && f.activePane(t) == f.alpha.PaneID && f.zoomed(t) == "1"
-	})
-	f.assertFollow(t, "off")
+	if err := f.e.tmux.run("set-option", "-w", "-u", "-t", f.strandWindow, "@lyx_strands"); err != nil {
+		t.Fatalf("unset @lyx_strands: %v", err)
+	}
+	if err := f.e.tmux.run("if-shell", "-F", "1", shellClickCommand); err != nil {
+		t.Fatalf("run the shell click command: %v", err)
+	}
+	settle()
+	if got := f.currentWindow(t); got != "extra" {
+		t.Errorf("the shell click with no strands' window left window %q current, want extra", got)
+	}
 
 	// The follow button on line 2 toggles the state: a click from on writes off, keeps the window and runs no recorder.
 	// A click from off writes on and runs the jump line with the told socket, this session and the tmux path.
