@@ -42,6 +42,7 @@ into an entry and closes it with a pointer, and close closes noise with a stated
 		RunE: clihelp.GroupRunE,
 	}
 
+	var listFull bool
 	listCmd := &cobra.Command{
 		Use:         "list",
 		Short:       "list open inbox issues no board entry records, to triage them",
@@ -49,15 +50,19 @@ into an entry and closes it with a pointer, and close closes noise with a stated
 		Long: `List the open issues of the inbox repository that no board entry records, pull requests excluded.
 Takes no payload.
 
-Prints {"issues":[...]}, each with number, title, body, labels, url, comments (the comment count) and created_at.
+Prints {"issues":[...]} with the number and title of each issue.
+With --full, each issue also carries body, labels, url, comments (the comment count) and created_at.
+The filtering is the same in both modes.
 
-Example:
-  lyx board intake list`,
+Examples:
+  lyx board intake list
+  lyx board intake list --full`,
 		Args: cobra.NoArgs,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
-			return intakeList(out, board())
+			return intakeList(out, board(), listFull)
 		}),
 	}
+	listCmd.Flags().BoolVar(&listFull, "full", false, "print body, labels, url, comments and created_at too")
 
 	importCmd := &cobra.Command{
 		Use:         "import {issue, slug|into, title?, brief?, labels?}",
@@ -134,7 +139,13 @@ func isImportPointer(body string) bool {
 	return importPointerPattern.MatchString(strings.TrimSpace(body))
 }
 
-// intakeIssueView is the view of an inbox issue that list prints.
+// intakeIssueSummary is the view of an inbox issue that list prints by default.
+type intakeIssueSummary struct {
+	Number int    `json:"number"`
+	Title  string `json:"title"`
+}
+
+// intakeIssueView is the view of an inbox issue that list --full prints.
 type intakeIssueView struct {
 	Number    int       `json:"number"`
 	Title     string    `json:"title"`
@@ -145,8 +156,8 @@ type intakeIssueView struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// intakeList prints the open inbox issues that no board entry records.
-func intakeList(out io.Writer, b *boardengine.Board) int {
+// intakeList prints the open inbox issues that no board entry records, as number and title unless full is set.
+func intakeList(out io.Writer, b *boardengine.Board, full bool) int {
 	issues, err := selfreportengine.ListOpenIssues()
 	if err != nil {
 		return outputError(out, err.Error())
@@ -155,9 +166,14 @@ func intakeList(out io.Writer, b *boardengine.Board) int {
 	if err != nil {
 		return outputError(out, err.Error())
 	}
+	summaries := []intakeIssueSummary{}
 	views := []intakeIssueView{}
 	for _, issue := range issues {
 		if _, done := recorded[issue.Number]; done {
+			continue
+		}
+		if !full {
+			summaries = append(summaries, intakeIssueSummary{Number: issue.Number, Title: issue.Title})
 			continue
 		}
 		views = append(views, intakeIssueView{
@@ -169,6 +185,9 @@ func intakeList(out io.Writer, b *boardengine.Board) int {
 			Comments:  issue.Comments,
 			CreatedAt: issue.CreatedAt,
 		})
+	}
+	if !full {
+		return output.Ok(out, map[string]any{"issues": summaries})
 	}
 	return output.Ok(out, map[string]any{"issues": views})
 }
