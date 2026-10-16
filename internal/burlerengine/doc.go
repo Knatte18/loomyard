@@ -260,6 +260,11 @@
 // All three phases are part of the review, so review-before-fix is intact exactly as in a solo round:
 // the consolidated review is fully written to disk, and accepted, before the fix half spawns.
 //
+// The prose of a cluster round is stencil text read at call time, never composed in Go.
+// The explore step's optional fork_reading marker renders the burler-fork-reading stencil in a fanned round only, so the handler's pre-read is the forks' inherited reading and a solo round's explore step renders the same bytes as without the marker.
+// The review step's cluster_rules marker renders burler-cluster-solo for a solo round and burler-cluster-fan, filled with the round's lens list, for a fanned one;
+// the fanned part carries the spawn mechanics, the fork rules and the consolidation rules.
+//
 // Fork discipline is fixed boilerplate the handler composes into every
 // fork's prompt, never per-lens: read-only evidence gathering only (no
 // Write/Edit/delete of any file, repo or `_lyx`), no git commands of any

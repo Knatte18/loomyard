@@ -160,6 +160,21 @@ var BurlerStepFix []byte
 //go:embed burler/burler-focus-directive.md
 var BurlerFocusDirective []byte
 
+// BurlerForkReading is burler's shipped-default fork-reading part: the pre-read a fanned round's handler does in the explore step, so every fork inherits the reading.
+//
+//go:embed burler/burler-fork-reading.md
+var BurlerForkReading []byte
+
+// BurlerClusterSolo is burler's shipped-default cluster-rules part of a round that names no fan: the single-reviewer statement.
+//
+//go:embed burler/burler-cluster-solo.md
+var BurlerClusterSolo []byte
+
+// BurlerClusterFan is burler's shipped-default cluster-rules part of a fanned round: the spawn mechanics, the fork rules and the consolidation rules, filled with the round's lens list.
+//
+//go:embed burler/burler-cluster-fan.md
+var BurlerClusterFan []byte
+
 // BouncerTemplateSeed is the Bouncer's shipped-default seed prompt: the focus-setting pass that
 // runs before any round has been reviewed.
 //
@@ -551,6 +566,9 @@ var entries = []registryEntry{
 	{"burler-review-format", &BurlerReviewFormat},
 	{"burler-step-fix", &BurlerStepFix},
 	{"burler-focus-directive", &BurlerFocusDirective},
+	{"burler-fork-reading", &BurlerForkReading},
+	{"burler-cluster-solo", &BurlerClusterSolo},
+	{"burler-cluster-fan", &BurlerClusterFan},
 	{"bouncer-template-seed", &BouncerTemplateSeed},
 	{"bouncer-template-judge", &BouncerTemplateJudge},
 	{"bouncer-template-escalation", &BouncerTemplateEscalation},

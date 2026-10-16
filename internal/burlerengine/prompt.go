@@ -1,4 +1,4 @@
-// prompt.go composes a half's prompt: it reads the half's instruction stencils from stencilsDir at call time via stencilstore.Read — the explore, review and review-format stencils for the review half, the fix step and review-format stencils for the fix half, and the focus directive block when the round carries one — each with only its own marker subset, and returns the seat's stencil marker values plus the rendered (path, content) instruction pairs the half (Engine.Review or Engine.Fix) writes to disk.
+// prompt.go composes a half's prompt: it reads the half's instruction stencils from stencilsDir at call time via stencilstore.Read — the explore, review and review-format stencils for the review half, the fix step and review-format stencils for the fix half, the focus directive block when the round carries one, and the fork-reading and the solo or fanned cluster-rules parts of the review half — each with only its own marker subset, and returns the seat's stencil marker values plus the rendered (path, content) instruction pairs the half (Engine.Review or Engine.Fix) writes to disk.
 // The seat stencil itself is filled by the seats engine from those values.
 // composeReviewPrompt is called only after (*Profile).validateReview has run, and composeFixPrompt after (*Profile).validateFix, so every path field they read is already a cleaned absolute path and p.clusterLenses (when ClusterFan was set) is already resolved.
 // They do no filesystem access beyond the directory check formatFileSet already performs on each Target/Fasit path and the stencilstore.Read calls.
@@ -109,6 +109,10 @@ func composeReviewPrompt(stencilsDir string, p *Profile, patternDirective string
 		return halfPrompt{}, err
 	}
 	warnIfFocusMarkerAbsent(exploreTemplate, "burler-step-1-explore", focusDirective)
+	forkReading, err := forkReadingBlock(stencilsDir, p)
+	if err != nil {
+		return halfPrompt{}, err
+	}
 	explore, err := stencil.FillOptional(exploreTemplate, map[string]string{
 		"pattern_directive": patternDirective,
 		focusMarkerName:     focusDirective,
@@ -116,7 +120,8 @@ func composeReviewPrompt(stencilsDir string, p *Profile, patternDirective string
 		"fasit":             formatFileSet(p.Fasit),
 		"rubric":            p.Rubric,
 		"tool_use_rules":    toolUseRules(p.ToolUse),
-	}, []string{"pattern_directive", focusMarkerName})
+		"fork_reading":      forkReading,
+	}, []string{"pattern_directive", focusMarkerName, "fork_reading"})
 	if err != nil {
 		return halfPrompt{}, fmt.Errorf("burler: compose prompt: %w", err)
 	}
@@ -125,8 +130,12 @@ func composeReviewPrompt(stencilsDir string, p *Profile, patternDirective string
 	if err != nil {
 		return halfPrompt{}, err
 	}
+	clusterRules, err := clusterRulesBlock(stencilsDir, p)
+	if err != nil {
+		return halfPrompt{}, err
+	}
 	review, err := stencil.Fill(reviewTemplate, map[string]string{
-		"cluster_rules":      clusterRulesBlock(p),
+		"cluster_rules":      clusterRules,
 		"review_path":        p.ReviewPath,
 		"review_format_path": paths.Format,
 		"prior_rounds":       priorRoundsBlock(p),
@@ -336,42 +345,53 @@ func priorRoundsBlock(p *Profile) string {
 	return b.String()
 }
 
-// clusterRulesBlock returns the review step's fork-cluster prose: the plain single-reviewer statement when p carries no ClusterFan, or the full phase/spawn/consolidation discipline composed from p.clusterLenses when it does.
+// clusterRulesBlock renders the review step's cluster-rules value from the cluster stencils:
+// the solo part's body when p carries no ClusterFan, or the fanned part filled with p's lens list when it does.
+// The value carries no trailing newline, since the review step's marker sits on a line of its own.
 // p.clusterLenses is assumed already resolved by (*Profile).validateReview — composeReviewPrompt never calls ResolveFan itself.
-func clusterRulesBlock(p *Profile) string {
+func clusterRulesBlock(stencilsDir string, p *Profile) (string, error) {
+	name, values := "burler-cluster-solo", map[string]string(nil)
+	if p.ClusterFan != "" {
+		name, values = "burler-cluster-fan", map[string]string{"lens_list": lensList(p.clusterLenses)}
+	}
+	template, err := stencilstore.Read(stencilsDir, name)
+	if err != nil {
+		return "", err
+	}
+	rules, err := stencil.Fill(template, values)
+	if err != nil {
+		return "", fmt.Errorf("burler: compose prompt: %w", err)
+	}
+	return strings.TrimRight(string(rules), "\n"), nil
+}
+
+// forkReadingBlock renders the fork-reading stencil for the explore step's optional fork_reading marker.
+// A round with no ClusterFan returns "" without reading anything.
+// The value is led by the blank line that separates it from the tool-use rules; the stencil loader drops a stencil's leading blank lines, so the separator is added here, and the trailing newline is left to the explore stencil.
+func forkReadingBlock(stencilsDir string, p *Profile) (string, error) {
 	if p.ClusterFan == "" {
-		return "This is a single-reviewer round — no cluster forks. Do the full review yourself."
+		return "", nil
 	}
-
-	var lenses strings.Builder
-	for _, lens := range p.clusterLenses {
-		lenses.WriteString("- ")
-		lenses.WriteString(lens.Name)
-		lenses.WriteString(": ")
-		lenses.WriteString(lens.Text)
-		lenses.WriteString("\n")
+	template, err := stencilstore.Read(stencilsDir, "burler-fork-reading")
+	if err != nil {
+		return "", err
 	}
+	reading, err := stencil.Fill(template, nil)
+	if err != nil {
+		return "", fmt.Errorf("burler: compose prompt: %w", err)
+	}
+	return "\n\n" + strings.TrimRight(string(reading), "\n"), nil
+}
 
-	return "This is a cluster round: after exploring the target fully, spawn ALL of the fork " +
-		"reviewers below in a SINGLE message via the Agent tool with `subagent_type: \"fork\"`, " +
-		"one per lens listed here — never pass a `name` (named forks silently lose inherited " +
-		"context).\n\n" +
-		"Lenses for this round:\n\n" + lenses.String() + "\n" +
-		"Each fork's prompt is this boilerplate plus that lens's emphasis text below: prefer " +
-		"your inherited context and fetch only what your lens needs; you are READ-ONLY — never " +
-		"Write/Edit/delete any file, never run any git command, never touch the two round " +
-		"output files, and never call the Agent tool yourself (forks cannot nest); return your " +
-		"findings ONLY as your final message, each with a severity, a class, a location, and a " +
-		"one-line summary.\n\n" +
-		"While the forks run, YOU (the handler) do your own HOLISTIC review — architecture, " +
-		"cross-file invariants, PATTERN-fit — and prepare the ground truths and the " +
-		"severity rubric you will judge every finding against.\n\n" +
-		"Consolidation: judge every fork finding and your own holistic findings with EQUAL " +
-		"skepticism, dedup findings that describe the same defect across lenses, tag every " +
-		"kept finding's frontmatter with an `origin:` key (`lens:<name>` or `handler`), move " +
-		"false positives to a `## Rejected` prose section below the frontmatter with a " +
-		"one-line reason each (a rejected item never appears in `findings:`), and order kept " +
-		"findings by severity. The consolidated review is the ONE review file, and the review is " +
-		"complete once it is fully written to disk — consolidation is part of the review, " +
-		"not a separate step after it."
+// lensList renders lenses as one "- <name>: <text>" bullet per lens in fan order, each bullet ending in a newline.
+func lensList(lenses []Lens) string {
+	var list strings.Builder
+	for _, lens := range lenses {
+		list.WriteString("- ")
+		list.WriteString(lens.Name)
+		list.WriteString(": ")
+		list.WriteString(lens.Text)
+		list.WriteString("\n")
+	}
+	return list.String()
 }

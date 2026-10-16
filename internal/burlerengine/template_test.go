@@ -65,11 +65,12 @@ func fixStepMarkerValues() map[string]string {
 	}
 }
 
-// instruction1MarkerValues returns a values map with every one of the explore step's four required top-level markers set to a non-empty placeholder, plus pattern_directive and focus_directive — the two optional markers, filled via stencil.FillOptional — set to a placeholder too, so tests can delete one key at a time to prove stencil.FillOptional's per-marker error.
+// instruction1MarkerValues returns a values map with every one of the explore step's four required top-level markers set to a non-empty placeholder, plus pattern_directive, focus_directive and fork_reading — the three optional markers, filled via stencil.FillOptional — set to a placeholder too, so tests can delete one key at a time to prove stencil.FillOptional's per-marker error.
 func instruction1MarkerValues() map[string]string {
 	return map[string]string{
 		"pattern_directive": "## Constraints — do this before you judge anything\n\n- Read the overview.",
 		"focus_directive":   "## Focus directive for this round",
+		"fork_reading":      "\n\n## Reading for the fork reviewers",
 		"target":            "target placeholder",
 		"fasit":             "fasit placeholder",
 		"rubric":            "rubric placeholder",
@@ -124,7 +125,7 @@ func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 			name:            "explore step",
 			template:        stencils.BurlerStep1Explore,
 			values:          instruction1MarkerValues(),
-			optional:        []string{"pattern_directive", "focus_directive"},
+			optional:        []string{"pattern_directive", "focus_directive", "fork_reading"},
 			requiredMarkers: []string{"target", "fasit", "rubric", "tool_use_rules"},
 		},
 	}
@@ -161,19 +162,23 @@ func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 	}
 }
 
-// TestTemplate_OptionalDirectives asserts pattern_directive and focus_directive each behave as an optional marker on the explore step: an empty value renders cleanly with no leftover `{{`, no orphan heading and, for pattern_directive, no stray blank-line block where the directive would have sat, and a non-empty value places the directive block ahead of the first work instruction ("## What to review (the target)").
+// TestTemplate_OptionalDirectives asserts pattern_directive, focus_directive and fork_reading each behave as an optional marker on the explore step: an empty value renders cleanly with no leftover `{{`, no orphan heading and, for pattern_directive, no stray blank-line block where the directive would have sat, and a non-empty value places the block where its row says: the two directives ahead of the first work instruction ("## What to review (the target)"), the fork reading after the tool-use rules at the end of the stencil.
 // The fix step's friction_directive renders an empty value cleanly too.
 func TestTemplate_OptionalDirectives(t *testing.T) {
 	t.Parallel()
 
-	optional := []string{"pattern_directive", "focus_directive"}
+	optional := []string{"pattern_directive", "focus_directive", "fork_reading"}
 	tests := []struct {
 		marker            string
 		orphanHeading     string
 		noStrayBlankBlock bool
+		placement         string
+		wantBefore        bool
+		anchor            string
 	}{
-		{marker: "pattern_directive", orphanHeading: "## Constraints", noStrayBlankBlock: true},
-		{marker: "focus_directive", orphanHeading: "## Focus directive"},
+		{marker: "pattern_directive", orphanHeading: "## Constraints", noStrayBlankBlock: true, placement: "precedes the first work instruction", wantBefore: true, anchor: "## What to review (the target)"},
+		{marker: "focus_directive", orphanHeading: "## Focus directive", placement: "precedes the first work instruction", wantBefore: true, anchor: "## What to review (the target)"},
+		{marker: "fork_reading", orphanHeading: "## Reading for the fork reviewers", placement: "follows the tool-use rules", anchor: "## Tool-use rules — how you gather evidence"},
 	}
 
 	for _, tt := range tests {
@@ -200,7 +205,7 @@ func TestTemplate_OptionalDirectives(t *testing.T) {
 				}
 			})
 
-			t.Run("non-empty value precedes the first work instruction", func(t *testing.T) {
+			t.Run("non-empty value is placed", func(t *testing.T) {
 				t.Parallel()
 				values := instruction1MarkerValues()
 				got, err := stencil.FillOptional(stencils.BurlerStep1Explore, values, optional)
@@ -208,10 +213,10 @@ func TestTemplate_OptionalDirectives(t *testing.T) {
 					t.Fatalf("stencil.FillOptional() = %v; want nil", err)
 				}
 				text := string(got)
-				directiveIdx := strings.Index(text, values[tt.marker])
-				workIdx := strings.Index(text, "## What to review (the target)")
-				if directiveIdx == -1 || workIdx == -1 || directiveIdx >= workIdx {
-					t.Errorf("%s (idx %d) does not precede the first work instruction (idx %d)", tt.marker, directiveIdx, workIdx)
+				valueIdx := strings.Index(text, strings.TrimSpace(values[tt.marker]))
+				anchorIdx := strings.Index(text, tt.anchor)
+				if valueIdx == -1 || anchorIdx == -1 || (valueIdx < anchorIdx) != tt.wantBefore {
+					t.Errorf("%s (idx %d) does not satisfy %q against %q (idx %d)", tt.marker, valueIdx, tt.placement, tt.anchor, anchorIdx)
 				}
 			})
 		})
