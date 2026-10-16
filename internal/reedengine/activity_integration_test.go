@@ -29,11 +29,15 @@ func TestOperatorActive_ReadsAnAttachedClientsKeystroke(t *testing.T) {
 		t.Fatalf("new-window: %v", err)
 	}
 
+	client := startInPTY(t, append([]string{e.cfg.Tmux}, e.AttachArgv(120, 30)...), 120, 30)
+	waitForClientAttached(t, e, 15*time.Second)
+	// The attach pre-flight selects the newest agent window, which is other's; move the client onto strand's window afterwards.
+	if err := e.tmux.run("select-window", "-t", windowOfPane(t, e, strand.PaneID)); err != nil {
+		t.Fatalf("select-window: %v", err)
+	}
 	if err := e.tmux.run("select-pane", "-t", strand.PaneID); err != nil {
 		t.Fatalf("select-pane: %v", err)
 	}
-	client := startInPTY(t, append([]string{e.cfg.Tmux}, e.AttachArgv(120, 30)...), 120, 30)
-	waitForClientAttached(t, e, 15*time.Second)
 
 	if _, err := client.master.Write([]byte("x")); err != nil {
 		t.Fatalf("write keystroke to the client pty: %v", err)
