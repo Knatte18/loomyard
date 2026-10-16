@@ -4,7 +4,8 @@
      same way into internal/burlerengine's own review prompt.
      It is a marker VALUE, never a template -- its only markers are the ones ReadRubric fills, and
      internal/stencil's StripLeadingComment removes this leading comment before either consumer ever
-     sees it. -->
+     sees it.
+     Among those markers, verify_tiers is filled by ReadRubric from the hub's language.yaml list, as bullets or none. -->
 
 # Plan-Review rubric
 
@@ -81,6 +82,8 @@ Do not flag any of the following as a finding:
   An entry between `<!-- lyx:carry-over … -->` marker lines in the decision record's `## Open risks` is not part of the answer key, and it licenses no card's scope.
   In a rework generation the live generation's `findings.md` joins the decision record as the answer key:
   every finding in it is covered by some card, and every card's scope is licensed by the decision record or by a finding.
+  A finding in `findings.md` is a reviewer's claim the rework plan answers, never a ruling;
+  it licenses a card's scope unless it overturns a Decision of the decision record, and a card carrying a finding that overturns a Decision with no `Added after Discussion` entry recording it is a finding.
   The live generation's round is, among `_lyx/loom/rework/round-<N>/` directories, the highest `N` whose `record.json` carries a `class` and whose `first_card` equals the `first_card` in `_lyx/plan/00-overview.md`'s frontmatter (absent means `1`).
   With no such round (generation 0, or a fresh Plan-Write plan after an operator `goto Plan-Write`), the decision record alone is the answer key.
   The round's `prior-generation/` archive is context only, and a finding raised against anything inside it is never legitimate.
@@ -90,11 +93,16 @@ Do not flag any of the following as a finding:
 - **Card order.**
   A card that depends on something a later card does breaks the rule in `{{.specs_dir}}/loom/loom-plan-spec.md`'s "Plan vs. schedule" section; the finding names the card and the later card it depends on.
 - **Verify coverage.**
-  A package a card targets whose tests the plan's `## verify:` section does not run is a finding against the plan, hermetic build-tagged tests (for example `-tags integration`) included.
-  The `llm` tag that the section compiles rather than runs (for example `go vet -tags llm <packages>`) is not a finding.
-  A section that compiles the `tmux` tier (for example `go vet -tags tmux <packages>`) rather than running it is not a finding either; Publish runs that tier.
-  A section out of the order the plan template states is a finding.
-  A nested module's packages count as covered by a command run inside that module (`go -C <module>`).
+  A package a card targets whose tests the plan's `## verify:` section does not run is a finding against the plan, its hermetic build-tagged tests included.
+  The hub's verify tiers, in the order and form the plan writer was given:
+{{.verify_tiers}}
+  A tier the list says is compiled rather than run is not a finding, and a section out of the list's order is a finding.
+  With `none`, only the coverage rule applies.
+  An entry that calls a tier compiled rather than run lets a plan leave that tier unrun, and this review accepts it.
+  Only the hub operator writes the list, because its key is Guard-classified in a board-only file.
+  Inside webster the card and batch gates still run the untagged and `-tags integration` tests over the batch's packages whatever an entry says,
+  and at landing the skip is bounded only by landing config's `publish_verify`;
+  the shell guard and the plan gate refuse what they refuse whatever an entry says.
 - **The attack-surface question.**
   For every new verb, flag, escape hatch or routing edge, and every guard that is removed, downgraded or bypassable, the card that introduces the change states in its `**Intent:**` what it can now skip or let through and what bounds it.
   A card that introduces one with no stated bound is a finding.

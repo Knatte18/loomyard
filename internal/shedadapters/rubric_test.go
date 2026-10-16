@@ -45,9 +45,26 @@ func TestReadRubric(t *testing.T) {
 		websterRecord string
 		// mergeReview is the note ReadRubric fills the merge_review marker from.
 		mergeReview string
+		// verifyTiers is the list ReadRubric fills the verify_tiers marker from.
+		verifyTiers []string
 		want        string
 		wantErr     string
 	}{
+		{
+			name:        "renders the verify tiers as bullets, verbatim and in order",
+			rubric:      "bouncer-rubric-test",
+			body:        "# Rubric\n\nTiers:\n{{.verify_tiers}}\n",
+			specsDir:    "/abs/specs",
+			verifyTiers: []string{"build first", "then {{.x}}"},
+			want:        "# Rubric\n\nTiers:\n- build first\n- then {{.x}}\n",
+		},
+		{
+			name:     "no verify tiers render none",
+			rubric:   "bouncer-rubric-test",
+			body:     "# Rubric\n\nTiers:\n{{.verify_tiers}}\n",
+			specsDir: "/abs/specs",
+			want:     "# Rubric\n\nTiers:\nnone\n",
+		},
 		{
 			name:        "renders the merge review note",
 			rubric:      "bouncer-rubric-test",
@@ -150,7 +167,7 @@ func TestReadRubric(t *testing.T) {
 				writeStampedRubric(t, dir, tt.rubric, tt.body)
 			}
 
-			got, err := ReadRubric(dir, tt.rubric, tt.specsDir, RubricNotes{PublishFailure: tt.publishFailure, WebsterRecord: tt.websterRecord, MergeReview: tt.mergeReview})
+			got, err := ReadRubric(dir, tt.rubric, tt.specsDir, RubricNotes{PublishFailure: tt.publishFailure, WebsterRecord: tt.websterRecord, MergeReview: tt.mergeReview, VerifyTiers: tt.verifyTiers})
 			if tt.wantErr != "" {
 				if err == nil {
 					t.Fatalf("ReadRubric() = nil error; want one containing %q", tt.wantErr)

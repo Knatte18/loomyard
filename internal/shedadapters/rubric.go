@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
@@ -23,6 +24,9 @@ type RubricNotes struct {
 	WebsterRecord string
 	// MergeReview fills the merge_review marker, the rendered merge record only the Merge-Review rubric carries.
 	MergeReview string
+	// VerifyTiers fills the verify_tiers marker, only the Plan-Review rubric carrying it.
+	// The marker's value is the entries as bullets, or `none` for an empty list; ReadRubric never parses it.
+	VerifyTiers []string
 }
 
 // ReadRubric reads the rubric stencil name from stencilsDir, strips its stamp banner, fills it as its own template with specsDir, stencilsDir and notes, and returns the filled result.
@@ -38,6 +42,7 @@ type RubricNotes struct {
 //
 // specs_dir and stencils_dir are required markers here -- plain Fill, never FillOptional.
 // A rubric that carries {{.specs_dir}} or {{.stencils_dir}} and is handed an empty value must error rather than render a blank path, because a blank path is precisely the dead reference this task removes.
+// verify_tiers is filled from notes.VerifyTiers, so the strict fill never meets an empty value; only the Plan-Review rubric carries it.
 // A rubric that carries no marker at all renders unchanged, so this helper is safe to route every stencil-sourced rubric through from the moment it exists.
 //
 // This helper is for stencil-sourced rubrics only. A literal rubric string -- author-written prose
@@ -56,6 +61,7 @@ func ReadRubric(stencilsDir, name, specsDir string, notes RubricNotes) (string, 
 		"publish_failure": noteOrNone(notes.PublishFailure),
 		"webster_record":  noteOrNone(notes.WebsterRecord),
 		"merge_review":    noteOrNone(notes.MergeReview),
+		"verify_tiers":    languageconfig.VerifyTiersValue(notes.VerifyTiers),
 	})
 	if err != nil {
 		return "", fmt.Errorf("shedadapters: read rubric %q: %w", name, err)
