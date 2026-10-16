@@ -63,6 +63,9 @@ type reedCLI struct {
 	// watchdogExeStat and respawnWatchdog are test seams for watchdogCmd's replaced-binary retirement; nil means a stat of this process's own binary and reedengine.SpawnWatchdog.
 	watchdogExeStat func() (os.FileInfo, error)
 	respawnWatchdog func(hubPath, tmuxPath, shellPath string, suppress bool)
+
+	// watchdogListSessions is the test seam for the daemon's session listing, in its loop and in its exit re-check; nil means reedengine.ListSessions.
+	watchdogListSessions func(tmuxPath, socketKey string) ([]string, error)
 }
 
 // strandOps is the slice of *reedengine.Engine the remove and status verbs call.

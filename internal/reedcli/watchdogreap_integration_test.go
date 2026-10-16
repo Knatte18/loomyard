@@ -112,7 +112,7 @@ func startReapLoop(fx reapFixture, shellPath string, timing watchdogTiming) (con
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- runWatchdogLoop(ctx, fx.hub.Path, fx.tmuxPath, shellPath, timing, reedengine.OpenFileWatch, nil)
+		done <- runWatchdogLoop(ctx, fx.hub.Path, fx.tmuxPath, shellPath, timing, reedengine.OpenFileWatch, reedengine.ListSessions, nil)
 	}()
 	return cancel, done
 }
