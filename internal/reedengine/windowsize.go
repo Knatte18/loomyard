@@ -1,7 +1,6 @@
 // windowsize.go owns the live-window-size query and its fallback and the geometry option pins (the two-line status bar, the pane-border title and window-size latest).
 // It also owns the effective-value readbacks the attach path gates the chain on and the title-row readback the pins are adjusted by,
 // and the whole write side of the `window-resized` hook array: both the resize-pane pins and the watchdog's own resize-signal entry, which are one array and are therefore installed by one function (installResizePinsLocked).
-// The array's READ side is reapply.go's hookInstalledLocked.
 // Every tmux interaction here is non-fatal, per the Shared Decision geometry-tmux-failures-are-non-fatal-everywhere:
 // a failure is logged via logger.Warn and answered with a safe fallback, never returned as an error.
 

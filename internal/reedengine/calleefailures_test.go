@@ -1,4 +1,4 @@
-// calleefailures_test.go pins that a failure repeating on every tick of the watch loop or the name-repair loop logs once per episode: Warn at the first failure, Debug while it goes on, Info at recovery.
+// calleefailures_test.go pins that a failure repeating on every tick of the name-repair loop logs once per episode: Warn at the first failure, Debug while it goes on, Info at recovery.
 
 package reedengine
 
@@ -239,4 +239,15 @@ func TestCalleeFailuresLogOncePerEpisode(t *testing.T) {
 			}
 		})
 	}
+}
+
+// countLogLines counts the captured lines at level that carry msg.
+func countLogLines(output, level, msg string) int {
+	count := 0
+	for _, line := range strings.Split(output, "\n") {
+		if strings.Contains(line, "level="+level) && strings.Contains(line, msg) {
+			count++
+		}
+	}
+	return count
 }

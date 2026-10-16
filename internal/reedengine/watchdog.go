@@ -1,5 +1,4 @@
-// watchdog.go owns the resize watchdog's pure surface: the config validator, the loop's fixed
-// timings, the signal file's location, and the window-resized hook command string.
+// watchdog.go owns the resize watchdog's pure surface: the config validator, the signal file's location, and the window-resized hook command string.
 // Everything here is I/O-free apart from resizeSignalPath's filepath.Join — no tmux round trip, no
 // lock, no goroutine. Those live in batches 2 and 3.
 
@@ -31,27 +30,6 @@ func watchdogOption(raw string) (bool, error) {
 		return false, fmt.Errorf("invalid watchdog value %q: want \"on\" or \"off\"", raw)
 	}
 }
-
-// The watch loop's fixed, non-configurable timings.
-const (
-	// watchdogDebounceQuiet is how long the loop waits for resize signals to stop arriving before
-	// treating a burst as one settled event.
-	watchdogDebounceQuiet = 200 * time.Millisecond //lyx:one-shot a debounce armed once after a resize event
-	// watchdogPollCycle is the poll-mode base cadence, used only where the signal-file
-	// mechanism is unavailable.
-	watchdogPollCycle = 2 * time.Second
-	// watchdogPollCeiling is the longest wait poll mode backs off to while nothing changes.
-	watchdogPollCeiling = 60 * time.Second
-	// watchdogRetryBaseDelay is the base of one debounced event's escalating retry delay
-	// (watchdogRetryBaseDelay << (attempt-1)).
-	watchdogRetryBaseDelay = 200 * time.Millisecond //lyx:one-shot a bounded retry after a failed apply, capped by watchdogMaxAttempts
-	// watchdogMaxAttempts caps one debounced event's retries, never the watcher itself.
-	watchdogMaxAttempts = 3
-	// watchdogDormantCycle is the cadence a watcher runs at once it is told its worktree root is
-	// provably gone. It exists so a session abandoned by `down` costs one log line and a
-	// minute-scale poll rather than a warning every two seconds forever.
-	watchdogDormantCycle = 60 * time.Second
-)
 
 // resizeSignalFileName is the resize signal file's name inside stateDir().
 // The file's existence alone is the signal — the watcher consumes it by removing it, so no

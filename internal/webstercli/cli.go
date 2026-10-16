@@ -20,7 +20,6 @@ package webstercli
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -51,8 +50,7 @@ type websterCLI struct {
 	engines websterengine.AuditEngines
 	reed    shuttleengine.ReedOps
 
-	// reedUp brings the standalone reed session up, idempotently, and, when watch is true and the
-	// boot succeeded, also starts that session's in-process resize watcher bound to ctx. It is set by
+	// reedUp brings the standalone reed session up, idempotently. It is set by
 	// wireStandalone alone — run calls it immediately before spawning Master and recover-batch
 	// immediately before spawning its cold recovery strand, because standalone mode has no other way
 	// to a live session: `lyx reed up` is hub-only (its pre-run requires lyxcwd.Resolve), so the
@@ -61,16 +59,11 @@ type websterCLI struct {
 	// already do for hub mode. It stays nil in hub mode, where bringing reed up remains the
 	// operator's (or loom's) own act.
 	//
-	// watch is an explicit parameter, not an implicit rule, precisely so the recover-batch asymmetry
-	// is visible at the call sites themselves rather than rediscovered from a comment: run passes
-	// true, recover-batch passes false, because recover-batch is a short-lived verb whose context
-	// would be gone before a bound watcher observed anything.
-	//
 	// It is called by those two spawning verbs alone, never from wiring, so validate, status and await-batch still boot no tmux server.
 	// The membership rule is "does this verb start an OS process of its own", not "does it write":
 	// begin-batch and record-batch mutate state but only inject into or read around a pane Master already owns,
 	// so a session they could reach exists by construction whenever they are legitimately called.
-	reedUp func(ctx context.Context, watch bool) error
+	reedUp func() error
 
 	// planDirOverridden reports whether --plan-dir moved the plan off the mode's own default
 	// (<stateDir>/_lyx/plan in standalone, the hub anchor's _lyx/plan in hub mode). Set by BOTH
