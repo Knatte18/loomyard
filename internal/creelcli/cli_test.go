@@ -490,7 +490,7 @@ func TestCreelCLI(t *testing.T) {
 	t.Run("log --id prints a carried entry's kind", func(t *testing.T) {
 		r := newRig(t)
 		alpha, beta := r.name("alpha:driver"), r.name("beta:driver")
-		r.delivery.SetStrands(creelfake.LiveStrand(alpha), creelfake.LiveStrand(beta))
+		r.delivery.SetStrands(creelfake.LiveStrand(alpha), creelfake.DormantStrand(beta))
 		if err := os.MkdirAll(r.geometry.JournalDir, 0o755); err != nil {
 			t.Fatalf("MkdirAll() = %v", err)
 		}

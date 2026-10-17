@@ -401,6 +401,29 @@ func TestScheduler_Reminders(t *testing.T) {
 				t.Errorf("typed %q after the hold ended; want %q", got, want)
 			}
 		}},
+		{"LogByIDListsTheRemindedEventsThatHoldTheID", func(t *testing.T, e *env) {
+			e.start(t)
+			first := e.post(t, strand(alpha), beta, "one")
+			e.probeWaits(1)
+			e.readBodies(t, strand(beta), "", false)
+			before := len(e.probeWaits(0))
+			second := e.post(t, strand(alpha), beta, "two")
+			e.probeWaits(before + 1)
+			logs := []struct {
+				filter creelengine.LogFilter
+				want   []string
+			}{
+				{creelengine.LogFilter{ID: first}, []string{"posted", "reminded", "read"}},
+				{creelengine.LogFilter{ID: second}, []string{"posted", "reminded"}},
+				{creelengine.LogFilter{ID: second, To: beta}, []string{"posted", "reminded"}},
+				{creelengine.LogFilter{ID: second, From: alpha}, []string{"posted"}},
+			}
+			for _, l := range logs {
+				if got := eventsOf(e.store.Log(l.filter)); !slices.Equal(got, l.want) {
+					t.Errorf("Log(%+v) events = %v; want %v", l.filter, got, l.want)
+				}
+			}
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

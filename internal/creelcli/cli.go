@@ -537,7 +537,7 @@ func logCmd() *cobra.Command {
 		Long: `log prints the journal's events, oldest first: who posted, read, forwarded,
 injected or held, and when. It never prints a message body.
 
---id limits it to one message, --from and --to to a sender and a receiver,
+--id limits it to one message and the reminders that list it, --from and --to to a sender and a receiver,
 and --since to events after a time: an RFC 3339 timestamp, or a duration
 such as 2h meaning that long ago.
 
@@ -567,7 +567,7 @@ Example:
 			})
 		},
 	}
-	cmd.Flags().Int64Var(&id, "id", 0, "show only the events of the message with this id")
+	cmd.Flags().Int64Var(&id, "id", 0, "show only the events of the message with this id and the reminders that list it")
 	cmd.Flags().StringVar(&from, "from", "", "show only the events from this sender")
 	cmd.Flags().StringVar(&to, "to", "", "show only the events to this receiver")
 	cmd.Flags().StringVar(&since, "since", "", "show only the events after this RFC 3339 time, or this long ago")
