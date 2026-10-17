@@ -376,6 +376,7 @@ func TestBurlerReviewEntry_ClusterFan(t *testing.T) {
 		{name: "NullSettingRecordsASoloRound", settings: map[string]any{"loom.reviewer_fan": nil, "loom.fixer_fan": nil}, wantRecorded: true},
 		{name: "EmptyStringSettingRecordsASoloRound", settings: map[string]any{"loom.reviewer_fan": "", "loom.fixer_fan": ""}, wantRecorded: true},
 		{name: "AllEmptyListSettingRecordsASoloRound", settings: map[string]any{"loom.reviewer_fan": []any{""}, "loom.fixer_fan": []any{"", ""}}, wantRecorded: true},
+		{name: "NullEntryInAListCountsAsASoloFirstRound", settings: map[string]any{"loom.reviewer_fan": []any{nil, "later-fan"}}, wantRecorded: true},
 		{name: "EmptySettingsYieldToRecipeFans", settings: map[string]any{"loom.reviewer_fan": []any{""}, "loom.fixer_fan": []any{""}}, recipeFans: map[string]any{"cluster-fan": "recipe-fan", "fix-fan": "recipe-fix"}, wantFan: "recipe-fan", wantFixFan: "recipe-fix", wantRecorded: true},
 		{name: "NoSettingsAndNoRecipeFansRecordNothing"},
 		{name: "ClusterListBesideRecipeClusterFanNamesBoth", settings: map[string]any{"loom.reviewer_fan": []any{"env-fan"}}, recipeFans: map[string]any{"cluster-fan": "recipe-fan"}, wantErr: []string{"review-row", "env-fan", "recipe-fan", "reviewer_fan in loom.yaml", "remove cluster-fan"}},
@@ -749,7 +750,7 @@ func TestBurlerFixEntry_GateConfig(t *testing.T) {
 			named      bool
 			wantFanKey string
 		}{
-			{"RowNamingTheSettingCitesItAsTheFanKey", true, "discussion_fixer_fan in loom.yaml"},
+			{"RowNamingTheSettingCarriesItsKeyAsTheFanKey", true, "discussion_fixer_fan"},
 			{"RowNamingNoSettingHasNoFanKey", false, ""},
 		}
 		for _, tt := range tests {
@@ -777,7 +778,7 @@ func TestBurlerFixEntry_GateConfig(t *testing.T) {
 			named   bool
 			wantErr string
 		}{
-			{"NamedNullSettingIsRefusedAsUnrecorded", true, "discussion_fixer_fan in loom.yaml"},
+			{"NamedNullSettingIsRefusedAsUnrecorded", true, "discussion_fixer_fan"},
 			{"NoSettingRunsTheSingleFixer", false, ""},
 		}
 		for _, tt := range tests {

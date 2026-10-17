@@ -68,7 +68,7 @@ func readSetting(entry string, row RowIdentity, cfg Config, key string, env Env)
 }
 
 // fanSetting reads the setting cfg's key names as a per-round fan list.
-// A string is a one-entry list and a list of strings is the list; a null, an empty string and a list whose every entry is "" give a nil list with named still true.
+// A string is a one-entry list and a list of strings is the list, a null entry of it counting as ""; a null, an empty string and a list whose every entry is "" give a nil list with named still true.
 // Any other shape is refused naming the entry, the row, the key, the reference and the shape.
 func fanSetting(entry string, row RowIdentity, cfg Config, key string, env Env) (fans []string, ref settingReference, named bool, err error) {
 	value, ref, named, err := readSetting(entry, row, cfg, key, env)
@@ -89,11 +89,14 @@ func fanSetting(entry string, row RowIdentity, cfg Config, key string, env Env) 
 	case []any:
 		list := make([]string, len(v))
 		for i, element := range v {
-			name, ok := element.(string)
-			if !ok {
+			switch name := element.(type) {
+			case nil:
+				list[i] = ""
+			case string:
+				list[i] = name
+			default:
 				return nil, ref, true, refuse(fmt.Sprintf("a list whose entry %d is a %T", i, element))
 			}
-			list[i] = name
 		}
 		if !hasFanName(list) {
 			return nil, ref, true, nil
