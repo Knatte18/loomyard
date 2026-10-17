@@ -168,7 +168,7 @@ func TestWireLanding_TellsLanguageSkills(t *testing.T) {
 		t.Fatalf("WriteFile(undecodable seed) error = %v; want nil", err)
 	}
 	err = c.wireLanding()
-	if err == nil || !strings.Contains(err.Error(), seedFile) || !strings.Contains(err.Error(), "then lyx shed seed self --recipe loom --driver go --param parent=") {
-		t.Errorf("wireLanding() with an undecodable seed = %v; want an error naming %s and the re-seed way forward", err, seedFile)
+	if err == nil || !strings.Contains(err.Error(), seedFile) || !strings.Contains(err.Error(), "then lyx shed seed self --recipe loom --driver go --param parent=") || !strings.Contains(err.Error(), "restore the original started_at in the seed") {
+		t.Errorf("wireLanding() with an undecodable seed = %v; want an error naming %s, the re-seed way forward and the started_at remedy", err, seedFile)
 	}
 }

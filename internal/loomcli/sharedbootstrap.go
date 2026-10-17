@@ -324,7 +324,7 @@ func (c *loomCLI) wireLanding() error {
 	}
 	runStart, err := seedRunStart(c.location)
 	if err != nil {
-		return fmt.Errorf("%w; way forward: rm %s, then lyx shed seed self --recipe loom --driver go --param parent=%s", err, shedrun.SeedFile(c.location, shedrun.SelfRunID), parentBranch)
+		return fmt.Errorf("%w; way forward: rm %s, then lyx shed seed self --recipe loom --driver go --param parent=%s; a re-seed made after Publish opened the pull request moves the run's start past it, so PR-Gate, PR-Align and Finalize find no pull request and Publish stops on it as an older open one: restore the original started_at in the seed, or close that pull request and resume with lyx loom start", err, shedrun.SeedFile(c.location, shedrun.SelfRunID), parentBranch)
 	}
 	syncOpts := fabricengine.EnvSyncOptions()
 	pushBranch := func() error {
