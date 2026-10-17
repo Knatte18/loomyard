@@ -1043,11 +1043,11 @@ func TestDispatchLayers(t *testing.T) {
 		},
 		{
 			name: "local layer still writes a per-round list the loader takes", module: "loom", layer: "local",
-			setFlags: []string{`plan_review=["opus[medium]", "sonnet[high]"]`}, seedBoard: loomTemplate(),
+			setFlags: []string{`plan_reviewer_model=["opus[medium]", "sonnet[high]"]`}, seedBoard: loomTemplate(),
 			check: func(t *testing.T, fx hubFixture, out string) {
 				data, err := os.ReadFile(configengine.LocalFile(fx.worktree, "loom"))
-				if err != nil || string(data) != "plan_review: [\"opus[medium]\", \"sonnet[high]\"]\n" {
-					t.Errorf("local loom.yaml = %q, %v; want plan_review as a list", data, err)
+				if err != nil || string(data) != "plan_reviewer_model: [\"opus[medium]\", \"sonnet[high]\"]\n" {
+					t.Errorf("local loom.yaml = %q, %v; want plan_reviewer_model as a list", data, err)
 				}
 			},
 		},

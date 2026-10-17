@@ -121,8 +121,8 @@ func checkFixTableShapeAndFiles(t *testing.T, twill bool) {
 		Gate:    gateOf("build", shuttleengine.GateResult{Passed: false, Findings: "build broke"}, nil, &gateCalls),
 	}
 	if twill {
-		opts.FixKey = shuttleengine.ModelKey{Module: "loom", Key: "discussion_fix"}
-		opts.FixFanKey = "discussion_fix_fan"
+		opts.FixKey = shuttleengine.ModelKey{Module: "loom", Key: "discussion_fixer_model"}
+		opts.FixFanKey = "discussion_fixer_fan"
 	}
 	resolved := p
 	if err := resolved.validateFix(root, cfg); err != nil {
@@ -339,10 +339,10 @@ func TestEngine_Fix_Outcomes(t *testing.T) {
 		{
 			name:   "a twill fixer under a loom key names the key, the fan key and the resume step",
 			fixFan: "standard",
-			opts:   RunOpts{FixKey: shuttleengine.ModelKey{Module: "loom", Key: "discussion_fix"}, FixFanKey: "discussion_fix_fan"},
+			opts:   RunOpts{FixKey: shuttleengine.ModelKey{Module: "loom", Key: "discussion_fixer_model"}, FixFanKey: "discussion_fixer_fan"},
 			wantContains: []string{
-				"burler: the twill fixer's fan from discussion_fix_fan needs fork subagents, which the engine of discussion_fix in loom.yaml cannot run",
-				"move discussion_fix in loom.yaml to an engine with forks, then resume",
+				"burler: the twill fixer's fan from discussion_fixer_fan needs fork subagents, which the engine of discussion_fixer_model in loom.yaml cannot run",
+				"move discussion_fixer_model in loom.yaml to an engine with forks, then resume",
 			},
 		},
 		{

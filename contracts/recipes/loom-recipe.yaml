@@ -167,7 +167,7 @@ producers:
         # commits this round's approved settle.
         fix-scope: overlay
         tool-use: true
-      # No model/effort key: model choice lives in loom.yaml's review and fix keys only.
+      # No model/effort key: model choice lives in loom.yaml's reviewer and fixer model keys only.
       # No timeout_s key, for the same Env fallback reason as Discussion-Bouncer.
 
   - name: Discussion-Burler-Fix
@@ -297,7 +297,7 @@ producers:
         # variable and only the Card Index names it), resolves symbol-shaped target entries against
         # the repo, and reads the decision record.
         tool-use: true
-      # No model/effort key: model choice lives in loom.yaml's review and fix keys only.
+      # No model/effort key: model choice lives in loom.yaml's reviewer and fixer model keys only.
       # No timeout_s key, for the same Env fallback reason as Plan-Bouncer.
 
   - name: Plan-Burler-Fix
@@ -412,9 +412,9 @@ producers:
         tool-use: true
         # The round reviews code, so its seats load the hub's language skills after their own.
         language-skills: true
-        # No cluster-fan key: the row's reviewer and fixer fans come from loom.yaml's webster_fan
-        # and webster_fix_fan, whose forks reach the diff through read-only git.
-      # No model/effort key: model choice lives in loom.yaml's review and fix keys only.
+        # No cluster-fan key: the row's reviewer and fixer fans come from loom.yaml's
+        # webster_reviewer_fan and webster_fixer_fan, whose forks reach the diff through read-only git.
+      # No model/effort key: model choice lives in loom.yaml's reviewer and fixer model keys only.
       # No timeout_s key, for the same Env fallback reason as Webster-Bouncer.
 
   - name: Webster-Burler-Fix
@@ -530,9 +530,9 @@ producers:
         tool-use: true
         # The round reviews code, so its seats load the hub's language skills after their own.
         language-skills: true
-        # No cluster-fan key: the row's reviewer and fixer fans come from loom.yaml's merge_fan and
-        # merge_fix_fan.
-      # No model/effort key: model choice lives in loom.yaml's review and fix keys only.
+        # No cluster-fan key: the row's reviewer and fixer fans come from loom.yaml's
+        # merge_reviewer_fan and merge_fixer_fan.
+      # No model/effort key: model choice lives in loom.yaml's reviewer and fixer model keys only.
       # No timeout_s key, for the same Env fallback reason as Merge-Bouncer.
 
   - name: Merge-Burler-Fix

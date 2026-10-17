@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/reviewbudget"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
+	"github.com/Knatte18/loomyard/internal/yamlengine"
 	"gopkg.in/yaml.v3"
 )
 
@@ -31,6 +32,14 @@ func ConfigTemplate() string {
 
 // configModule is the config module name darn.yaml is loaded under.
 const configModule = "darn"
+
+// The darn.yaml keys holding the Darn-Review perch's reviewer and fixer model lists and fan lists.
+const (
+	ReviewerModelKey = "darn_reviewer_model"
+	FixerModelKey    = "darn_fixer_model"
+	ReviewerFanKey   = "darn_reviewer_fan"
+	FixerFanKey      = "darn_fixer_fan"
+)
 
 // verifyWayForward is the way forward a missing or empty verify command names.
 const verifyWayForward = "run \"lyx config darn --set verify=<command>\" from the prime, then \"lyx loom resume\""
@@ -51,10 +60,14 @@ type Config struct {
 	ReviewMaxBounces int `yaml:"review_max_bounces"`
 	// ReviewHardMaxBounces is the round number at or past which the Darn-Review perch never continues a round; it is at least 1 and not below ReviewMaxBounces, and settable per run.
 	ReviewHardMaxBounces int `yaml:"review_hard_max_bounces"`
-	// ReviewFan and ReviewFixFan are the Darn-Review perch's per-round reviewer and fixer fan lists, each entry a burler.yaml fan name;
+	// ReviewerModel and FixerModel are the Darn-Review perch's per-round reviewer and fixer model lists;
+	// an empty key takes loom.yaml's shared reviewer_model or fixer_model.
+	ReviewerModel burlerengine.ModelSpecList `yaml:"darn_reviewer_model"`
+	FixerModel    burlerengine.ModelSpecList `yaml:"darn_fixer_model"`
+	// ReviewerFan and FixerFan are the Darn-Review perch's per-round reviewer and fixer fan lists, each entry a burler.yaml fan name;
 	// an empty entry runs that round solo or with the single fixer.
-	ReviewFan    burlerengine.FanList `yaml:"review_fan"`
-	ReviewFixFan burlerengine.FanList `yaml:"review_fix_fan"`
+	ReviewerFan burlerengine.FanList `yaml:"darn_reviewer_fan"`
+	FixerFan    burlerengine.FanList `yaml:"darn_fixer_fan"`
 	// DriverKind, Tackler, TacklerTimeoutMin and TacklerMaxSpawns override shed.yaml's keys of the same names for a darn run;
 	// an empty string, a zero and a null inherit shed.yaml, and a set TacklerMaxSpawns of 0 turns the tackler off.
 	DriverKind        string `yaml:"driver_kind"`
@@ -75,7 +88,26 @@ func (c Config) ShedOverride() sheddriver.Override {
 
 // ConfigOpenMaps returns the darn.yaml keys whose value is a scalar or a per-round list, which configengine carries whole through reconcile and --set.
 func ConfigOpenMaps() []string {
-	return []string{"review_fan", "review_fix_fan"}
+	return []string{ReviewerModelKey, FixerModelKey, ReviewerFanKey, FixerFanKey}
+}
+
+// retiredKeyRenames maps each retired darn.yaml fan key onto the key that replaced it.
+var retiredKeyRenames = []yamlengine.KeyRename{
+	{From: "review_fan", To: ReviewerFanKey},
+	{From: "review_fix_fan", To: FixerFanKey},
+}
+
+// MigrateConfig rewrites a darn.yaml document for lyx config reconcile and returns the rewritten bytes with one line per rewrite.
+// It renames the retired review_fan and review_fix_fan keys to darn_reviewer_fan and darn_fixer_fan with their values;
+// a document already holding the new name keeps its value and drops the old key.
+// A document without a retired key is returned unchanged, so a migrated file is unchanged on a second pass.
+// A document that does not parse returns an error marked configengine.ErrInvalid.
+func MigrateConfig(existing []byte) ([]byte, []string, error) {
+	migrated, lines, err := yamlengine.RenameKeys([]byte(ConfigTemplate()), existing, retiredKeyRenames)
+	if err != nil {
+		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate darn config: %w", err))
+	}
+	return migrated, lines, nil
 }
 
 // ConfigSpec returns darn's layered-load spec.
@@ -88,8 +120,10 @@ func ConfigSpec() configengine.Spec {
 		"writer_timeout_min": configengine.CategoryNone,
 		"verify":             configengine.CategoryExecutable,
 		"verify_attempts":    configengine.CategoryNone,
-		"review_fan":         configengine.CategoryGuard,
-		"review_fix_fan":     configengine.CategoryGuard,
+		ReviewerModelKey:     configengine.CategoryNone,
+		FixerModelKey:        configengine.CategoryNone,
+		ReviewerFanKey:       configengine.CategoryGuard,
+		FixerFanKey:          configengine.CategoryGuard,
 
 		"driver_kind":         configengine.CategoryNone,
 		"tackler":             configengine.CategoryNone,
@@ -123,7 +157,8 @@ func ValidateLocalValues(document []byte) error {
 
 // LoadConfig loads and unmarshals the darn module's configuration strictly through the hub-wide layer stack under dirs.
 // It validates the writer key's model-spec grammar at load time and leaves verify, verify_attempts and review_max_bounces to their readers.
-// review_fan and review_fix_fan are refused as an empty list, a value that is neither a fan name nor a list of them, or an entry naming a fan burler.yaml does not resolve.
+// darn_reviewer_model and darn_fixer_model, when set, are refused as an empty list, a value that is neither a model-spec nor a list of them, or an entry that is no model-spec.
+// darn_reviewer_fan and darn_fixer_fan are refused as an empty list, a value that is neither a fan name nor a list of them, or an entry naming a fan burler.yaml does not resolve.
 // review_max_bounces is refused below 0, and review_hard_max_bounces, default 4, below 1 and below review_max_bounces;
 // each refusal names the command that fixes it for the layer the value comes from.
 func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
@@ -143,6 +178,10 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		if errors.As(err, &fanShape) {
 			return Config{}, fmt.Errorf("darn config key %q: %w", configengine.KeyAtLine(resolved, fanShape.Line), err)
 		}
+		var modelShape *burlerengine.ModelSpecShapeError
+		if errors.As(err, &modelShape) {
+			return Config{}, fmt.Errorf("darn config key %q: %w", configengine.KeyAtLine(resolved, modelShape.Line), err)
+		}
 		return Config{}, fmt.Errorf("unmarshal darn config: %w", err)
 	}
 
@@ -154,7 +193,23 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		return Config{}, err
 	}
 
-	fanKeys := []burlerengine.FanKey{{Key: "review_fan", Fans: cfg.ReviewFan}, {Key: "review_fix_fan", Fans: cfg.ReviewFixFan}}
+	// An empty model key takes loom.yaml's shared list at run start, so only a set one is validated.
+	for _, model := range []struct {
+		key   string
+		specs burlerengine.ModelSpecList
+	}{
+		{ReviewerModelKey, cfg.ReviewerModel},
+		{FixerModelKey, cfg.FixerModel},
+	} {
+		if model.specs.Unset() {
+			continue
+		}
+		if err := burlerengine.ValidateModelSpecList(configModule, model.key, model.specs); err != nil {
+			return Config{}, err
+		}
+	}
+
+	fanKeys := []burlerengine.FanKey{{Key: ReviewerFanKey, Fans: cfg.ReviewerFan}, {Key: FixerFanKey, Fans: cfg.FixerFan}}
 	if err := burlerengine.ValidateFanKeys(dirs, configModule, fanKeys); err != nil {
 		return Config{}, err
 	}

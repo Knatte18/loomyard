@@ -178,7 +178,7 @@ func TestEngine_Run_StartFailureEndingTheRunStopsEveryStartedSeat(t *testing.T) 
 	}{
 		{name: "the discussion chair", forks: true, requires: forkWake, key: shuttleengine.ModelKey{Module: "loom", Key: "discussion"}, wantText: "set discussion in loom.yaml to an alias whose engine meets them"},
 		{name: "the plan chair", forks: true, requires: forkWake, key: shuttleengine.ModelKey{Module: "loom", Key: "plan"}, wantText: "set plan in loom.yaml to an alias whose engine meets them"},
-		{name: "the cluster-fan reviewer", forks: true, key: shuttleengine.ModelKey{Module: "loom", Key: "discussion_review"}, wantText: "set discussion_review in loom.yaml to an alias whose engine meets them"},
+		{name: "the cluster-fan reviewer", forks: true, key: shuttleengine.ModelKey{Module: "loom", Key: "discussion_reviewer_model"}, wantText: "set discussion_reviewer_model in loom.yaml to an alias whose engine meets them"},
 		{name: "a recipe seat of a two-seat table", advisors: 1, wantText: "set the seat's model to an alias whose engine meets them"},
 	}
 	for _, tt := range unmet {

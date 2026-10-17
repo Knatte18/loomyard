@@ -1,4 +1,4 @@
-// wiring_darn_test.go covers the wiring a darn run adds to wire: the darn seams, the verify source and attempts, the Darn-Review fan lists and keys, the early refusal of an empty verify command, the routing per recipe, the rename of retired darn rows when a verb arms, and the Darn-Write row's status and failure-record seams.
+// wiring_darn_test.go covers the wiring a darn run adds to wire: the darn seams, the verify source and attempts, the Darn-Review model and fan lists and their keys, the early refusal of an empty verify command, the routing per recipe, the rename of retired darn rows when a verb arms, and the Darn-Write row's status and failure-record seams.
 // Every test is Tier 1: wire resolves no cwd and spawns no process over a hand-built hub.
 
 package loomcli
@@ -115,22 +115,43 @@ func TestWire_DarnRecipe(t *testing.T) {
 		}
 	})
 
-	// The Darn rows take Webster-Review's model keys, and the fixer fan key names darn.yaml; the template's empty fans run every round solo with the single fixer.
+	// The Darn rows take darn.yaml's model keys, an empty one taking loom.yaml's shared key, and the fixer fan key names darn.yaml;
+	// the template's empty fans run every round solo with the single fixer.
+	loomKey := func(key string) shuttleengine.ModelKey { return shuttleengine.ModelKey{Module: "loom", Key: key} }
+	darnKey := func(key string) shuttleengine.ModelKey { return shuttleengine.ModelKey{Module: "darn", Key: key} }
 	for _, tt := range []struct {
 		name         string
 		replacements []string
 		wantFan      []string
 		wantFixFan   []string
+		wantKeys     map[string]shedrecipe.RowModelKeys
+		// wantReview and wantFix are the first entry's model and effort, or "" for the shared list.
+		wantReview, wantFix string
 	}{
-		{name: "the template's empty fans", wantFan: []string{""}, wantFixFan: []string{""}},
 		{
-			name:         "set fans",
-			replacements: []string{`review_fan: ""`, "review_fan:\n  - review-code\n  - \"\"", `review_fix_fan: ""`, "review_fix_fan: fix-code"},
-			wantFan:      []string{"review-code", ""},
-			wantFixFan:   []string{"fix-code"},
+			name: "the template's empty fans and models", wantFan: []string{""}, wantFixFan: []string{""},
+			wantKeys: map[string]shedrecipe.RowModelKeys{
+				loomshed.NameDarnBurlerReview: {Review: darnKey("darn_reviewer_model")},
+				loomshed.NameDarnBurlerFix:    {Fix: loomKey("fixer_model"), FixFan: "darn_fixer_fan in darn.yaml"},
+			},
+			wantReview: "sonnet high",
+		},
+		{
+			name: "set fans and models",
+			replacements: []string{
+				`darn_reviewer_fan: ""`, "darn_reviewer_fan:\n  - review-code\n  - \"\"", `darn_fixer_fan: ""`, "darn_fixer_fan: fix-code",
+				"darn_reviewer_model: sonnet[high]", `darn_reviewer_model: ""`, `darn_fixer_model: ""`, "darn_fixer_model: sonnet[low]",
+			},
+			wantFan:    []string{"review-code", ""},
+			wantFixFan: []string{"fix-code"},
+			wantKeys: map[string]shedrecipe.RowModelKeys{
+				loomshed.NameDarnBurlerReview: {Review: loomKey("reviewer_model")},
+				loomshed.NameDarnBurlerFix:    {Fix: darnKey("darn_fixer_model"), FixFan: "darn_fixer_fan in darn.yaml"},
+			},
+			wantFix: "sonnet low",
 		},
 	} {
-		t.Run("darn.yaml's fan keys reach the Darn-Review rows under "+tt.name, func(t *testing.T) {
+		t.Run("darn.yaml's model and fan keys reach the Darn-Review rows under "+tt.name, func(t *testing.T) {
 			t.Parallel()
 			loc := hubLocation(t, "pair", ".")
 			seedDarnHubConfig(t, loc.HubPath, `"go test ./..."`, "3", tt.replacements...)
@@ -146,18 +167,51 @@ func TestWire_DarnRecipe(t *testing.T) {
 			if got := c.env.RowFixFans[loomshed.NameDarnBurlerReview]; !reflect.DeepEqual(got, tt.wantFixFan) {
 				t.Errorf("RowFixFans[%q] = %q; want %q", loomshed.NameDarnBurlerReview, got, tt.wantFixFan)
 			}
-			loomKey := func(key string) shuttleengine.ModelKey { return shuttleengine.ModelKey{Module: "loom", Key: key} }
-			wantKeys := map[string]shedrecipe.RowModelKeys{
-				loomshed.NameDarnBurlerReview: {Review: loomKey("webster_review")},
-				loomshed.NameDarnBurlerFix:    {Fix: loomKey("fix"), FixFan: "review_fix_fan in darn.yaml"},
-			}
-			for row, want := range wantKeys {
+			for row, want := range tt.wantKeys {
 				if got := c.env.RowModelKeys[row]; got != want {
 					t.Errorf("RowModelKeys[%q] = %+v; want %+v", row, got, want)
 				}
 			}
+			for _, row := range []string{loomshed.NameDarnBurlerReview, loomshed.NameDarnBurlerFix} {
+				models := c.env.RowReviewModels[row]
+				for _, half := range []struct {
+					name   string
+					got    []shuttleengine.ModelChoice
+					shared []shuttleengine.ModelChoice
+					want   string
+				}{
+					{"Review", models.Review, c.env.ReviewModels.Review, tt.wantReview},
+					{"Fix", models.Fix, c.env.ReviewModels.Fix, tt.wantFix},
+				} {
+					if half.want == "" {
+						if !reflect.DeepEqual(half.got, half.shared) {
+							t.Errorf("RowReviewModels[%q].%s = %+v; want the shared %+v", row, half.name, half.got, half.shared)
+						}
+						continue
+					}
+					if len(half.got) != 1 || half.got[0].Model+" "+half.got[0].Effort != half.want {
+						t.Errorf("RowReviewModels[%q].%s = %+v; want one %s entry", row, half.name, half.got, half.want)
+					}
+				}
+			}
 		})
 	}
+
+	t.Run("a darn.yaml model the registry does not define is refused naming the key and darn.yaml", func(t *testing.T) {
+		t.Parallel()
+		loc := hubLocation(t, "pair", ".")
+		seedDarnHubConfig(t, loc.HubPath, `"go test ./..."`, "3", "darn_reviewer_model: sonnet[high]", "darn_reviewer_model: ghost")
+		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeDarn}
+		err := c.wire(loc, loc.AnchorPath())
+		if err == nil {
+			t.Fatal("wire() = nil; want a refusal naming darn_reviewer_model")
+		}
+		for _, want := range []string{"darn_reviewer_model entry 1", "set that entry in darn.yaml"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("wire() error = %q; want it to contain %q", err.Error(), want)
+			}
+		}
+	})
 
 	t.Run("a loom seed leaves the darn seams nil", func(t *testing.T) {
 		t.Parallel()

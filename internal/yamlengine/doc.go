@@ -8,6 +8,7 @@
 // [MissingKeys] reports the template leaf paths the file lacks, treating a template list as a default and not a minimum length.
 // [SetValues] applies dotted key=value pairs to the template-shaped tree and refuses a key the template does not know.
 // [RaiseIntFloor] raises one top-level integer key to a floor, carrying every other key and comment through unchanged, for a module's migration hook.
+// [RenameKeys] renames retired top-level keys to their new names with their values and the template's line comment for each new name, for a module's migration hook.
 //
 // # Layer operations
 //

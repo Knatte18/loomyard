@@ -249,6 +249,8 @@
 // FanList is the value of a module's per-round fan key, one fan name or a list of them whose last entry serves every later round, an empty entry running its round solo or with the single fixer.
 // Its decoder refuses any other shape with a FanShapeError carrying the value's line, and ValidateFanKeys refuses an empty list and resolves every named fan through burler.yaml, each refusal naming the module, the key and the entry.
 // loom and darn declare their review perches' fan keys in this one grammar.
+// ModelSpecList is the matching value of a reviewer or fixer model key, one model-spec or a per-round list:
+// its decoder refuses any other shape with a ModelSpecShapeError carrying the value's line, its Unset reports the empty value a segment key reads as "take the shared list", and ValidateModelSpecList refuses an empty list and an entry that is no model-spec, naming the module, the key and the entry.
 //
 // A fork reviewer and a fix-check fork may run git that reads, such as `git diff`, `git log` and `git show`, so a fan reaches a subject that exists only through git;
 // the fork stencils forbid every git command that changes state, and the round audits refuse a fork that ran one.

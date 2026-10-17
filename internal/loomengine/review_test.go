@@ -15,24 +15,25 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// TestResolveReview verifies ResolveReview returns the expected model/effort/version triple and
-// timeout for the embedded template's own review values.
+// TestResolveReview verifies ResolveReview and ResolveDarnReview return the expected model/effort/version triples, the keys each segment's models came from, and the timeout.
 func TestResolveReview(t *testing.T) {
 	cfg := Config{
-		Review:           ModelSpecList{"opus[effort=high]", "sonnet[medium]"},
-		Fix:              ModelSpecList{"opus[effort=low]"},
+		ReviewerModel:    burlerengine.ModelSpecList{"opus[effort=high]", "sonnet[medium]"},
+		FixerModel:       burlerengine.ModelSpecList{"opus[effort=low]"},
 		ReviewTimeoutMin: 240,
-		// Discussion sets its fix list only, Plan its review list only, and Webster leaves both unset (one empty entry, as the template loads).
-		DiscussionFix: ModelSpecList{"sonnet[effort=high]"},
-		PlanReview:    ModelSpecList{"sonnet[effort=low]", "opus[effort=high]"},
-		WebsterReview: ModelSpecList{""},
-		WebsterFix:    ModelSpecList{""},
+		// Discussion sets its fixer list only, Plan and Merge their reviewer list only, and Webster leaves both unset (one empty entry, as the template loads).
+		DiscussionFixerModel: burlerengine.ModelSpecList{"sonnet[effort=high]"},
+		PlanReviewerModel:    burlerengine.ModelSpecList{"sonnet[effort=low]", "opus[effort=high]"},
+		WebsterReviewerModel: burlerengine.ModelSpecList{""},
+		WebsterFixerModel:    burlerengine.ModelSpecList{""},
+		MergeReviewerModel:   burlerengine.ModelSpecList{"sonnet[effort=low]"},
 	}
 
 	reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
@@ -66,28 +67,48 @@ func TestResolveReview(t *testing.T) {
 	if !reflect.DeepEqual(settings.Webster, settings.Models) {
 		t.Errorf("ResolveReview(...).Webster = %+v; want the run-wide %+v", settings.Webster, settings.Models)
 	}
+	if got := settings.Merge; len(got.Review) != 1 || got.Review[0].Effort != "low" || !reflect.DeepEqual(got.Fix, settings.Models.Fix) {
+		t.Errorf("ResolveReview(...).Merge = %+v; want a one-entry low-effort review list and the run-wide fix list", got)
+	}
 	wantTimeout := 240 * time.Minute
 	if settings.Timeout != wantTimeout {
 		t.Errorf("ResolveReview(...).Timeout = %s; want %s", settings.Timeout, wantTimeout)
 	}
 
-	// Each segment records the loom key its models came from: its own key when set, else the run-wide key.
-	if want := (SegmentKeys{Review: "review", Fix: "discussion_fix"}); settings.DiscussionKeys != want {
-		t.Errorf("ResolveReview(...).DiscussionKeys = %+v; want %+v", settings.DiscussionKeys, want)
+	// Each segment records the key its models came from: its own key when set, else loom.yaml's shared key.
+	loomKey := func(key string) shuttleengine.ModelKey { return shuttleengine.ModelKey{Module: "loom", Key: key} }
+	for _, tt := range []struct {
+		segment   string
+		got, want SegmentKeys
+	}{
+		{"Discussion", settings.DiscussionKeys, SegmentKeys{Review: loomKey("reviewer_model"), Fix: loomKey("discussion_fixer_model")}},
+		{"Plan", settings.PlanKeys, SegmentKeys{Review: loomKey("plan_reviewer_model"), Fix: loomKey("fixer_model")}},
+		{"Webster", settings.WebsterKeys, SegmentKeys{Review: loomKey("reviewer_model"), Fix: loomKey("fixer_model")}},
+		{"Merge", settings.MergeKeys, SegmentKeys{Review: loomKey("merge_reviewer_model"), Fix: loomKey("fixer_model")}},
+	} {
+		if tt.got != tt.want {
+			t.Errorf("ResolveReview(...).%sKeys = %+v; want %+v", tt.segment, tt.got, tt.want)
+		}
 	}
-	if want := (SegmentKeys{Review: "plan_review", Fix: "fix"}); settings.PlanKeys != want {
-		t.Errorf("ResolveReview(...).PlanKeys = %+v; want %+v", settings.PlanKeys, want)
+
+	// Darn-Review reads darn.yaml's keys, an empty one taking loom.yaml's shared list.
+	darnModels, darnKeys, err := ResolveDarnReview(settings.Models, darnengine.Config{ReviewerModel: burlerengine.ModelSpecList{""}, FixerModel: burlerengine.ModelSpecList{"sonnet[effort=high]"}}, reg)
+	if err != nil {
+		t.Fatalf("ResolveDarnReview(...) = _, _, %v; want nil error", err)
 	}
-	if want := (SegmentKeys{Review: "review", Fix: "fix"}); settings.WebsterKeys != want {
-		t.Errorf("ResolveReview(...).WebsterKeys = %+v; want %+v", settings.WebsterKeys, want)
+	if !reflect.DeepEqual(darnModels.Review, settings.Models.Review) || len(darnModels.Fix) != 1 || darnModels.Fix[0].Effort != "high" {
+		t.Errorf("ResolveDarnReview(...) models = %+v; want the run-wide review list and a fix list of one high-effort entry", darnModels)
+	}
+	if want := (SegmentKeys{Review: loomKey("reviewer_model"), Fix: shuttleengine.ModelKey{Module: "darn", Key: "darn_fixer_model"}}); darnKeys != want {
+		t.Errorf("ResolveDarnReview(...) keys = %+v; want %+v", darnKeys, want)
 	}
 
 	// A set fan key changes no model: a fanned segment's reviewer list is still its own review list, else the run-wide one.
-	cfg.DiscussionFan = burlerengine.FanList{"standard"}
-	cfg.PlanFan = burlerengine.FanList{"", "full"}
-	cfg.DiscussionFixFan = burlerengine.FanList{"fix-discussion"}
-	cfg.WebsterFan = burlerengine.FanList{"review-code"}
-	cfg.MergeFixFan = burlerengine.FanList{"fix-code"}
+	cfg.DiscussionReviewerFan = burlerengine.FanList{"standard"}
+	cfg.PlanReviewerFan = burlerengine.FanList{"", "full"}
+	cfg.DiscussionFixerFan = burlerengine.FanList{"fix-discussion"}
+	cfg.WebsterReviewerFan = burlerengine.FanList{"review-code"}
+	cfg.MergeFixerFan = burlerengine.FanList{"fix-code"}
 	fanned, err := ResolveReview(cfg, reg)
 	if err != nil {
 		t.Fatalf("ResolveReview(fanned cfg) = _, %v; want nil error", err)
@@ -101,7 +122,7 @@ func TestResolveReview(t *testing.T) {
 		"alpha": {Engine: "claude", Model: "alpha-model"},
 		"beta":  {Engine: "other", Model: "beta-model"},
 	}
-	engineSettings, err := ResolveReview(Config{Review: ModelSpecList{"alpha", "beta"}, Fix: ModelSpecList{"beta"}}, engineReg)
+	engineSettings, err := ResolveReview(Config{ReviewerModel: burlerengine.ModelSpecList{"alpha", "beta"}, FixerModel: burlerengine.ModelSpecList{"beta"}}, engineReg)
 	if err != nil {
 		t.Fatalf("ResolveReview(engine registry) = _, %v; want nil error", err)
 	}
@@ -234,18 +255,28 @@ func TestResolveReviewAndJudge_MalformedSpec(t *testing.T) {
 		wantIn  []string
 	}{
 		{
-			name: "review",
-			role: "review",
-			cfg:  Config{Review: ModelSpecList{"opus[effort"}, ReviewTimeoutMin: 240},
+			name: "reviewer_model",
+			role: "reviewer_model",
+			cfg:  Config{ReviewerModel: burlerengine.ModelSpecList{"opus[effort"}, ReviewTimeoutMin: 240},
 			resolve: func(cfg Config, reg modelspec.Registry) error {
 				_, err := ResolveReview(cfg, reg)
 				return err
 			},
 		},
 		{
-			name:   "later review entry",
-			role:   "review",
-			cfg:    Config{Review: ModelSpecList{"sonnet[medium]", "opus[effort"}, Fix: ModelSpecList{"opus[medium]"}},
+			name:   "later reviewer_model entry",
+			role:   "reviewer_model",
+			cfg:    Config{ReviewerModel: burlerengine.ModelSpecList{"sonnet[medium]", "opus[effort"}, FixerModel: burlerengine.ModelSpecList{"opus[medium]"}},
+			wantIn: []string{"entry 2", "in loom.yaml", "a model-spec the registry defines"},
+			resolve: func(cfg Config, reg modelspec.Registry) error {
+				_, err := ResolveReview(cfg, reg)
+				return err
+			},
+		},
+		{
+			name:   "fixer_model entry",
+			role:   "fixer_model",
+			cfg:    Config{ReviewerModel: burlerengine.ModelSpecList{"sonnet[medium]"}, FixerModel: burlerengine.ModelSpecList{"opus[medium]", "opus[effort"}},
 			wantIn: []string{"entry 2", "a model-spec the registry defines"},
 			resolve: func(cfg Config, reg modelspec.Registry) error {
 				_, err := ResolveReview(cfg, reg)
@@ -253,12 +284,21 @@ func TestResolveReviewAndJudge_MalformedSpec(t *testing.T) {
 			},
 		},
 		{
-			name:   "fix entry",
-			role:   "fix",
-			cfg:    Config{Review: ModelSpecList{"sonnet[medium]"}, Fix: ModelSpecList{"opus[medium]", "opus[effort"}},
-			wantIn: []string{"entry 2", "a model-spec the registry defines"},
+			name:   "merge_fixer_model entry",
+			role:   "merge_fixer_model",
+			cfg:    Config{ReviewerModel: burlerengine.ModelSpecList{"sonnet[medium]"}, FixerModel: burlerengine.ModelSpecList{"opus[medium]"}, MergeFixerModel: burlerengine.ModelSpecList{"ghost"}},
+			wantIn: []string{"entry 1", "in loom.yaml"},
 			resolve: func(cfg Config, reg modelspec.Registry) error {
 				_, err := ResolveReview(cfg, reg)
+				return err
+			},
+		},
+		{
+			name:   "darn_reviewer_model entry",
+			role:   "darn_reviewer_model",
+			wantIn: []string{"entry 1", "in darn.yaml", "a model-spec the registry defines"},
+			resolve: func(_ Config, reg modelspec.Registry) error {
+				_, _, err := ResolveDarnReview(burlerengine.RoundModels{}, darnengine.Config{ReviewerModel: burlerengine.ModelSpecList{"ghost"}}, reg)
 				return err
 			},
 		},

@@ -884,32 +884,29 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 			loomshed.NamePlanBurlerFix:          reviewSettings.Plan,
 			loomshed.NameWebsterBurlerReview:    reviewSettings.Webster,
 			loomshed.NameWebsterBurlerFix:       reviewSettings.Webster,
-			// The merge review reviews a committed diff as Webster-Review does, so it takes that segment's models.
-			loomshed.NameMergeBurlerReview: reviewSettings.Webster,
-			loomshed.NameMergeBurlerFix:    reviewSettings.Webster,
-			// The darn recipe's Darn-Review perch reviews a committed diff as Webster-Review does, so it takes that segment's models.
-			loomshed.NameDarnBurlerReview: reviewSettings.Webster,
-			loomshed.NameDarnBurlerFix:    reviewSettings.Webster,
+			loomshed.NameMergeBurlerReview:      reviewSettings.Merge,
+			loomshed.NameMergeBurlerFix:         reviewSettings.Merge,
+			// wireDarn adds the Darn-Review rows' models from darn.yaml.
 		},
 		// A segment's fan list reaches its Bouncer and its review row from one key, so the two agree by construction; the fix row reads the round's recorded names.
 		// Each list is the segment's per-round fans, an empty entry running that round solo.
 		// A review row also takes its segment's fixer fan list.
 		// wireDarn adds the Darn-Review rows' lists from darn.yaml.
 		RowClusterFans: map[string][]string{
-			loomshed.NameDiscussionBouncer:      loomCfg.DiscussionFan,
-			loomshed.NameDiscussionBurlerReview: loomCfg.DiscussionFan,
-			loomshed.NamePlanBouncer:            loomCfg.PlanFan,
-			loomshed.NamePlanBurlerReview:       loomCfg.PlanFan,
-			loomshed.NameWebsterBouncer:         loomCfg.WebsterFan,
-			loomshed.NameWebsterBurlerReview:    loomCfg.WebsterFan,
-			loomshed.NameMergeBouncer:           loomCfg.MergeFan,
-			loomshed.NameMergeBurlerReview:      loomCfg.MergeFan,
+			loomshed.NameDiscussionBouncer:      loomCfg.DiscussionReviewerFan,
+			loomshed.NameDiscussionBurlerReview: loomCfg.DiscussionReviewerFan,
+			loomshed.NamePlanBouncer:            loomCfg.PlanReviewerFan,
+			loomshed.NamePlanBurlerReview:       loomCfg.PlanReviewerFan,
+			loomshed.NameWebsterBouncer:         loomCfg.WebsterReviewerFan,
+			loomshed.NameWebsterBurlerReview:    loomCfg.WebsterReviewerFan,
+			loomshed.NameMergeBouncer:           loomCfg.MergeReviewerFan,
+			loomshed.NameMergeBurlerReview:      loomCfg.MergeReviewerFan,
 		},
 		RowFixFans: map[string][]string{
-			loomshed.NameDiscussionBurlerReview: loomCfg.DiscussionFixFan,
-			loomshed.NamePlanBurlerReview:       loomCfg.PlanFixFan,
-			loomshed.NameWebsterBurlerReview:    loomCfg.WebsterFixFan,
-			loomshed.NameMergeBurlerReview:      loomCfg.MergeFixFan,
+			loomshed.NameDiscussionBurlerReview: loomCfg.DiscussionFixerFan,
+			loomshed.NamePlanBurlerReview:       loomCfg.PlanFixerFan,
+			loomshed.NameWebsterBurlerReview:    loomCfg.WebsterFixerFan,
+			loomshed.NameMergeBurlerReview:      loomCfg.MergeFixerFan,
 		},
 		RowModelKeys: reviewRowModelKeys(reviewSettings),
 
@@ -983,24 +980,19 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	return nil
 }
 
-// reviewRowModelKeys names the loom.yaml keys each loom Burler row's settings came from:
+// reviewRowModelKeys names the config keys each loom Burler row's settings came from:
 // the review row's reviewer model key, and the fix row's fixer model key and fixer fan key.
 // A fanned reviewer's engine refusal then names its reviewer list's key, and a fix row refuses an unrecorded round.
-// Merge-Review runs on Webster-Review's models, so its model keys are Webster's.
 func reviewRowModelKeys(settings loomengine.ReviewSettings) map[string]shedrecipe.RowModelKeys {
-	loomKey := func(key string) shuttleengine.ModelKey {
-		return shuttleengine.ModelKey{Module: "loom", Key: key}
-	}
-	websterReview, websterFix := loomKey(settings.WebsterKeys.Review), loomKey(settings.WebsterKeys.Fix)
 	return map[string]shedrecipe.RowModelKeys{
-		loomshed.NameDiscussionBurlerReview: {Review: loomKey(settings.DiscussionKeys.Review)},
-		loomshed.NameDiscussionBurlerFix:    {Fix: loomKey(settings.DiscussionKeys.Fix), FixFan: "discussion_fix_fan"},
-		loomshed.NamePlanBurlerReview:       {Review: loomKey(settings.PlanKeys.Review)},
-		loomshed.NamePlanBurlerFix:          {Fix: loomKey(settings.PlanKeys.Fix), FixFan: "plan_fix_fan"},
-		loomshed.NameWebsterBurlerReview:    {Review: websterReview},
-		loomshed.NameWebsterBurlerFix:       {Fix: websterFix, FixFan: "webster_fix_fan"},
-		loomshed.NameMergeBurlerReview:      {Review: websterReview},
-		loomshed.NameMergeBurlerFix:         {Fix: websterFix, FixFan: "merge_fix_fan"},
+		loomshed.NameDiscussionBurlerReview: {Review: settings.DiscussionKeys.Review},
+		loomshed.NameDiscussionBurlerFix:    {Fix: settings.DiscussionKeys.Fix, FixFan: "discussion_fixer_fan"},
+		loomshed.NamePlanBurlerReview:       {Review: settings.PlanKeys.Review},
+		loomshed.NamePlanBurlerFix:          {Fix: settings.PlanKeys.Fix, FixFan: "plan_fixer_fan"},
+		loomshed.NameWebsterBurlerReview:    {Review: settings.WebsterKeys.Review},
+		loomshed.NameWebsterBurlerFix:       {Fix: settings.WebsterKeys.Fix, FixFan: "webster_fixer_fan"},
+		loomshed.NameMergeBurlerReview:      {Review: settings.MergeKeys.Review},
+		loomshed.NameMergeBurlerFix:         {Fix: settings.MergeKeys.Fix, FixFan: "merge_fixer_fan"},
 	}
 }
 

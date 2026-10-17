@@ -1,5 +1,5 @@
 // review.go implements ResolveReview, the review segment's config-to-settings resolver:
-// a pure composer that parses and resolves the review and fix roles' model-spec lists and pairs them with the review round timeout.
+// a pure composer that parses and resolves each review segment's reviewer and fixer model-spec lists, Darn-Review's through ResolveDarnReview, and pairs them with the review round timeout.
 // Unlike DiscussionTable and PlanTable, it returns no seatengine.Table.
 // There is no seat to build here, because the review segment's prompts are the Bouncer's own stencils, composed inside internal/shedadapters at call time.
 // The caller threads ReviewSettings' values onto shedrecipe.Env instead.
@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -18,25 +19,49 @@ import (
 // ReviewSettings is the review segment's run-wide model and timeout settings, resolved once from
 // Config and threaded onto shedrecipe.Env for every review-segment row to fall back to.
 type ReviewSettings struct {
-	// Models holds the resolved review and fix model lists the burler round picks from per round.
+	// Models holds the resolved shared reviewer and fixer model lists, the fallback of every segment whose own key is empty.
 	Models burlerengine.RoundModels
-	// Discussion, Plan and Webster hold each review segment's resolved models: its own list where loom.yaml sets one, else the run-wide list in Models.
+	// Discussion, Plan, Webster and Merge hold each loom review segment's resolved models: its own list where loom.yaml sets one, else the shared list in Models.
 	Discussion burlerengine.RoundModels
 	Plan       burlerengine.RoundModels
 	Webster    burlerengine.RoundModels
-	// DiscussionKeys, PlanKeys and WebsterKeys name the loom.yaml keys each of those segments' models came from.
+	Merge      burlerengine.RoundModels
+	// DiscussionKeys, PlanKeys, WebsterKeys and MergeKeys name the config keys each of those segments' models came from.
 	DiscussionKeys SegmentKeys
 	PlanKeys       SegmentKeys
 	WebsterKeys    SegmentKeys
+	MergeKeys      SegmentKeys
 	// Timeout is one review round's shuttle-run deadline, derived from cfg.ReviewTimeoutMin.
 	Timeout time.Duration
 }
 
-// SegmentKeys names the loom.yaml keys one review segment's reviewer and fixer model lists came from:
-// the segment's own key when it is set, else the run-wide key.
+// SegmentKeys names the config keys one review segment's reviewer and fixer model lists came from:
+// the segment's own key when it is set, else loom.yaml's shared key.
 type SegmentKeys struct {
-	Review string
-	Fix    string
+	Review shuttleengine.ModelKey
+	Fix    shuttleengine.ModelKey
+}
+
+// segmentModelSource is one review segment's own reviewer and fixer model lists with the config keys holding them.
+type segmentModelSource struct {
+	reviewKey, fixKey shuttleengine.ModelKey
+	review, fix       burlerengine.ModelSpecList
+}
+
+// loomSegmentModelSource returns the loom.yaml model lists of the review segment named segment, held by <segment>_reviewer_model and <segment>_fixer_model.
+func loomSegmentModelSource(segment string, review, fix burlerengine.ModelSpecList) segmentModelSource {
+	return segmentModelSource{
+		reviewKey: shuttleengine.ModelKey{Module: loomModule, Key: segment + "_reviewer_model"},
+		fixKey:    shuttleengine.ModelKey{Module: loomModule, Key: segment + "_fixer_model"},
+		review:    review,
+		fix:       fix,
+	}
+}
+
+// sharedSegmentKeys names loom.yaml's shared reviewer and fixer model keys.
+var sharedSegmentKeys = SegmentKeys{
+	Review: shuttleengine.ModelKey{Module: loomModule, Key: "reviewer_model"},
+	Fix:    shuttleengine.ModelKey{Module: loomModule, Key: "fixer_model"},
 }
 
 // BouncerModels is one review segment's resolved seed and judge pair, each an already-resolved engine, model, effort and version.
@@ -112,89 +137,84 @@ func resolveKeyedModelChoice(key, raw string, reg modelspec.Registry) (shuttleen
 	return shuttleengine.NewModelChoice(resolved), nil
 }
 
-// ResolveReview resolves every entry of the review and fix model-spec lists and of each set per-segment list through reg,
+// ResolveReview resolves every entry of the shared reviewer and fixer model-spec lists and of each loom segment's set list through reg,
 // and pairs them with the review round timeout, returning the ReviewSettings the caller threads onto shedrecipe.Env.
 // Every entry is resolved at run start, so a bad later-round entry fails before round 1.
 func ResolveReview(cfg Config, reg modelspec.Registry) (ReviewSettings, error) {
-	review, err := resolveModelChoices("review", cfg.Review, reg)
+	review, err := resolveModelChoices(sharedSegmentKeys.Review, cfg.ReviewerModel, reg)
 	if err != nil {
 		return ReviewSettings{}, err
 	}
-	fix, err := resolveModelChoices("fix", cfg.Fix, reg)
-	if err != nil {
-		return ReviewSettings{}, err
-	}
-
-	runWide := burlerengine.RoundModels{Review: review, Fix: fix}
-
-	discussion, err := resolveSegmentModels("discussion", cfg.DiscussionReview, cfg.DiscussionFix, runWide, reg)
-	if err != nil {
-		return ReviewSettings{}, err
-	}
-	plan, err := resolveSegmentModels("plan", cfg.PlanReview, cfg.PlanFix, runWide, reg)
-	if err != nil {
-		return ReviewSettings{}, err
-	}
-	webster, err := resolveSegmentModels("webster", cfg.WebsterReview, cfg.WebsterFix, runWide, reg)
+	fix, err := resolveModelChoices(sharedSegmentKeys.Fix, cfg.FixerModel, reg)
 	if err != nil {
 		return ReviewSettings{}, err
 	}
 
-	return ReviewSettings{
-		Models:         runWide,
-		Discussion:     discussion,
-		Plan:           plan,
-		Webster:        webster,
-		DiscussionKeys: segmentKeys("discussion", cfg.DiscussionReview, cfg.DiscussionFix),
-		PlanKeys:       segmentKeys("plan", cfg.PlanReview, cfg.PlanFix),
-		WebsterKeys:    segmentKeys("webster", cfg.WebsterReview, cfg.WebsterFix),
-		Timeout:        time.Duration(cfg.ReviewTimeoutMin) * time.Minute,
-	}, nil
-}
-
-// segmentKeys returns the loom.yaml keys one segment's reviewer and fixer lists came from: the segment's own key when its list is set, else the run-wide key.
-func segmentKeys(segment string, reviewSpecs, fixSpecs ModelSpecList) SegmentKeys {
-	keys := SegmentKeys{Review: "review", Fix: "fix"}
-	if !isUnsetModelSpecList(reviewSpecs) {
-		keys.Review = segment + "_review"
+	settings := ReviewSettings{
+		Models:  burlerengine.RoundModels{Review: review, Fix: fix},
+		Timeout: time.Duration(cfg.ReviewTimeoutMin) * time.Minute,
 	}
-	if !isUnsetModelSpecList(fixSpecs) {
-		keys.Fix = segment + "_fix"
-	}
-	return keys
-}
-
-// resolveSegmentModels resolves one review segment's reviewer and fixer lists, each falling back independently to runWide when its key is unset.
-func resolveSegmentModels(segment string, reviewSpecs, fixSpecs ModelSpecList, runWide burlerengine.RoundModels, reg modelspec.Registry) (burlerengine.RoundModels, error) {
-	models := runWide
-	if !isUnsetModelSpecList(reviewSpecs) {
-		review, err := resolveModelChoices(segment+"_review", reviewSpecs, reg)
+	for _, segment := range []struct {
+		source segmentModelSource
+		models *burlerengine.RoundModels
+		keys   *SegmentKeys
+	}{
+		{loomSegmentModelSource("discussion", cfg.DiscussionReviewerModel, cfg.DiscussionFixerModel), &settings.Discussion, &settings.DiscussionKeys},
+		{loomSegmentModelSource("plan", cfg.PlanReviewerModel, cfg.PlanFixerModel), &settings.Plan, &settings.PlanKeys},
+		{loomSegmentModelSource("webster", cfg.WebsterReviewerModel, cfg.WebsterFixerModel), &settings.Webster, &settings.WebsterKeys},
+		{loomSegmentModelSource("merge", cfg.MergeReviewerModel, cfg.MergeFixerModel), &settings.Merge, &settings.MergeKeys},
+	} {
+		*segment.models, *segment.keys, err = resolveSegmentModels(segment.source, settings.Models, reg)
 		if err != nil {
-			return burlerengine.RoundModels{}, err
+			return ReviewSettings{}, err
 		}
-		models.Review = review
 	}
-	if !isUnsetModelSpecList(fixSpecs) {
-		fix, err := resolveModelChoices(segment+"_fix", fixSpecs, reg)
-		if err != nil {
-			return burlerengine.RoundModels{}, err
-		}
-		models.Fix = fix
-	}
-	return models, nil
+	return settings, nil
 }
 
-// resolveModelChoices parses and resolves each entry of specs, naming key and the 1-based entry index in an error.
-func resolveModelChoices(key string, specs ModelSpecList, reg modelspec.Registry) ([]shuttleengine.ModelChoice, error) {
+// ResolveDarnReview resolves the Darn-Review perch's reviewer and fixer models from darn.yaml's darn_reviewer_model and darn_fixer_model through reg, and returns them with the config keys they came from.
+// Each empty key takes its list in shared, the resolved ReviewSettings.Models.
+func ResolveDarnReview(shared burlerengine.RoundModels, darn darnengine.Config, reg modelspec.Registry) (burlerengine.RoundModels, SegmentKeys, error) {
+	return resolveSegmentModels(segmentModelSource{
+		reviewKey: shuttleengine.ModelKey{Module: "darn", Key: darnengine.ReviewerModelKey},
+		fixKey:    shuttleengine.ModelKey{Module: "darn", Key: darnengine.FixerModelKey},
+		review:    darn.ReviewerModel,
+		fix:       darn.FixerModel,
+	}, shared, reg)
+}
+
+// resolveSegmentModels resolves one review segment's reviewer and fixer lists and returns them with the keys they came from.
+// Each list falls back independently to shared when its key is unset.
+func resolveSegmentModels(source segmentModelSource, shared burlerengine.RoundModels, reg modelspec.Registry) (burlerengine.RoundModels, SegmentKeys, error) {
+	models, keys := shared, sharedSegmentKeys
+	if !source.review.Unset() {
+		review, err := resolveModelChoices(source.reviewKey, source.review, reg)
+		if err != nil {
+			return burlerengine.RoundModels{}, SegmentKeys{}, err
+		}
+		models.Review, keys.Review = review, source.reviewKey
+	}
+	if !source.fix.Unset() {
+		fix, err := resolveModelChoices(source.fixKey, source.fix, reg)
+		if err != nil {
+			return burlerengine.RoundModels{}, SegmentKeys{}, err
+		}
+		models.Fix, keys.Fix = fix, source.fixKey
+	}
+	return models, keys, nil
+}
+
+// resolveModelChoices parses and resolves each entry of specs, naming key, its file and the 1-based entry index in an error.
+func resolveModelChoices(key shuttleengine.ModelKey, specs burlerengine.ModelSpecList, reg modelspec.Registry) ([]shuttleengine.ModelChoice, error) {
 	choices := make([]shuttleengine.ModelChoice, 0, len(specs))
 	for i, raw := range specs {
 		spec, err := modelspec.Parse(raw)
 		if err != nil {
-			return nil, fmt.Errorf("loom: ResolveReview: %s entry %d: %w; set that entry in loom.yaml to a model-spec the registry defines", key, i+1, err)
+			return nil, fmt.Errorf("loom: ResolveReview: %s entry %d: %w; set that entry in %s.yaml to a model-spec the registry defines", key.Key, i+1, err, key.Module)
 		}
 		resolved, err := reg.Resolve(spec)
 		if err != nil {
-			return nil, fmt.Errorf("loom: ResolveReview: %s entry %d: %w; set that entry in loom.yaml to a model-spec the registry defines", key, i+1, err)
+			return nil, fmt.Errorf("loom: ResolveReview: %s entry %d: %w; set that entry in %s.yaml to a model-spec the registry defines", key.Key, i+1, err, key.Module)
 		}
 		choices = append(choices, shuttleengine.NewModelChoice(resolved))
 	}

@@ -23,8 +23,9 @@
 # segment's rows declare no max_bounces: their budget is darn.yaml's review_max_bounces, applied by
 # internal/loomrecipe, and a budget of 0 turns the perch off by routing Darn-Write's Done straight
 # to Merge-In, past Describe, so the writer's own description stands.
-# The perch's judge, reviewer
-# and fixer models are loom.yaml's Webster-Review keys, the other committed-diff review.
+# The perch's judge and seed models are loom.yaml's Webster-Review keys, the other committed-diff review;
+# its reviewer and fixer models are darn.yaml's darn_reviewer_model and darn_fixer_model, an empty one
+# taking loom.yaml's reviewer_model or fixer_model.
 # The perch's rows share one role_prefix, which leads their sessions' roles,
 # so ly:<slug>:darn-burler-review names its segment.
 #
@@ -133,8 +134,8 @@ producers:
         tool-use: true
         # The round reviews code, so its seats load the hub's language skills after their own.
         language-skills: true
-        # No cluster-fan key: the row's reviewer and fixer fans come from darn.yaml's review_fan and
-        # review_fix_fan.
+        # No cluster-fan key: the row's reviewer and fixer fans come from darn.yaml's
+        # darn_reviewer_fan and darn_fixer_fan.
 
   - name: Darn-Burler-Fix
     engine: BurlerFix
