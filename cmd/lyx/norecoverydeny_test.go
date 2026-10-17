@@ -53,7 +53,7 @@ const deniedRecoveryMarker = "never "
 // deniedRecoveryTextSurfaces are the module-root-relative directories whose files are scanned as plain text.
 var deniedRecoveryTextSurfaces = []string{"contracts/specs", "contracts/stencils", "plugins/ly/skills"}
 
-// deniedRecoveryGoModulePrefixes are the directory-name prefixes under internal/ whose non-test Go string literals are scanned: the modules with a refusal-spec section.
+// deniedRecoveryGoModulePrefixes are the directory-name prefixes under internal/ whose non-test Go string literals are scanned: the modules PATTERN-refusal-way-forward binds.
 var deniedRecoveryGoModulePrefixes = []string{"webster", "shed", "loom"}
 
 // deniedRecoveryHit is one denied form found at a line of a scanned file.

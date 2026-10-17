@@ -11,7 +11,7 @@ When a recovery needs a denied step, lyx performs the step itself behind a guard
   The raw `go` deny also refuses a command naming the slot, strand or prebuilt-binary variable, so no refusal, stencil or spec may spell one.
 - The computed-path `rm` deny and the in-place spellings beyond the bare `sed -i` and `perl -i` (`-i<suffix>`, `--in-place` and its abbreviations, a short cluster holding `i`) and the `systemctl` sleep verbs behind flag words are pattern-shaped and stay outside the closed list and its token scan.
 - A form matches only as a whole command token sequence, so `git push --force-with-lease` is not `git push --force`.
-- The scanned surface is `contracts/specs/`, `contracts/stencils/`, `plugins/ly/skills/` and the string literals of the non-test Go files under `internal/webster*`, `internal/shed*` and `internal/loom*`, the modules with a refusal-spec section.
+- The scanned surface is `contracts/specs/`, `contracts/stencils/`, `plugins/ly/skills/` and the string literals of the non-test Go files under `internal/webster*`, `internal/shed*` and `internal/loom*`, the modules `PATTERN-refusal-way-forward` binds.
   `pattern/` itself is unscanned, because these background files name the denied forms to explain the rule.
   Test files are unscanned too, since they plant the forms on purpose.
 - The one exemption marker is `never ` immediately before the form, case-insensitive, with an optional backtick between: it marks the form as forbidden.

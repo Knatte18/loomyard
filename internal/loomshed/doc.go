@@ -4,7 +4,7 @@
 // it. It takes told absolute paths and has no direct production import of internal/lyxcwd -- see
 // PATTERN-told-geometry.
 //
-// The stops its gate rows halt on each name a way forward, tabulated in contracts/specs/refusal-spec.md.
+// The stops its gate rows halt on each name a way forward, as contracts/specs/refusal-spec.md defines one.
 // Loom-Preflight's half-finished-run stop names `lyx loom goto` as that way forward.
 //
 // Loom-Preflight also loads `batcher.yaml` through the layer stack under the told `configengine.Dirs` after a passing seed check, as the Batchifier row does, so a stale file in any layer stops the run before any LLM row.
