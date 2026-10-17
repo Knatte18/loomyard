@@ -851,7 +851,7 @@ func (d *goDriver) handBackStop(stop Stop, decision driveDecision, cause error) 
 			logger.Warn("sheddriver: drive: writing the friction note failed", "run", d.deps.RunID, "error", err)
 		}
 	}
-	h := driveHandBack{WatchedVerifyLine: decision.WatchedVerifyLine}
+	var h driveHandBack
 	if cause != nil {
 		logger.Warn("sheddriver: drive: the driver could not act at the stop; handing back", "run", d.deps.RunID, "error", cause)
 		h.Rules = []string{"the driver could not act: " + cause.Error()}
