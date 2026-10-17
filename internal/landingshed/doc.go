@@ -114,7 +114,7 @@
 // The block is landing.yaml's trailer_text, then the engine_trailers text of each engine the task's sessions ran under, in engine-name order, each copied verbatim with no prefix.
 // Finalize reads those engines through the told Deps.EnginesRun before any parent-side mutation, and a read failure is an error with nothing merged.
 // An empty trailer_text adds no fixed line, an engine left out of engine_trailers or mapped to empty text adds no engine line, and both empty land the commit with no trailer block.
-// lyx config reconcile moves a retired co_authored_by value into engine_trailers as the claude entry `Co-Authored-By: <value>`.
+// lyx config reconcile moves a retired co_authored_by value into engine_trailers as the claude entry `Co-Authored-By: <value>`, and drops an empty one without an entry.
 // Before the catch-up merge-in, Finalize reads the per-worktree config files the task changed away from both its fork point and the parent's current tip, so a parent-side change never reads as a task edit, and, at Done, queues one notice about them naming the base, task tip and parent tip for the hub's orchestrator;
 // it never carries those files to the parent,
 // and a read failure or a failed notice never stops the landing.

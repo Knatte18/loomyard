@@ -21,7 +21,7 @@ type engineLedger struct {
 }
 
 // recordEngineRun adds engineName to the engine ledger at root, keeping the names sorted and each once.
-// The ledger records start attempts that passed Prepare, so an attempt that later fails to register its strand still counts.
+// The ledger records start attempts that passed Prepare, so an attempt that later fails, such as at strand registration, still counts.
 func recordEngineRun(root, engineName string) error {
 	path := filepath.Join(root, engineLedgerFileName)
 	return state.UpdateJSON(path, path+".lock", func(cur engineLedger, _ bool) (engineLedger, error) {

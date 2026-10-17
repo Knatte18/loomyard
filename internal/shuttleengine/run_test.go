@@ -560,8 +560,9 @@ func TestRunner_Start_LedgerWriteFailure_CleansRunDirAndRegistersNoStrand(t *tes
 		t.Fatalf("create ledger blocker: %v", err)
 	}
 
-	if _, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}}); err == nil {
-		t.Fatal("Start() = nil error, want the engine ledger write failure to propagate")
+	_, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}})
+	if err == nil || !strings.Contains(err.Error(), "record engine run") {
+		t.Fatalf("Start() error = %v, want the engine ledger write failure to propagate", err)
 	}
 
 	if len(reed.AddStrandCalls) != 0 {
