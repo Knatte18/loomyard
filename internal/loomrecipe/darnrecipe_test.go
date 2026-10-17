@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/preflightshed"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrecipe"
 )
 
 // wantDarnProducerTable is the darn recipe's rows in order.
@@ -79,12 +80,19 @@ func TestNewDarn_RowsMatchTheDarnTable(t *testing.T) {
 	}
 }
 
+// setDarnBudget sets the Darn-Review segment's budget in env, keeping its config key and file.
+func setDarnBudget(env *shedrecipe.Env, budget int) {
+	settings := env.Segments["Darn-Review"]
+	settings.MaxBounces = budget
+	env.Segments["Darn-Review"] = settings
+}
+
 // TestNewDarn_Routing pins PR-Gate's bounce to Darn-Write inside PR-Review, the Darn-Review perch, then Describe and Merge-In between Darn-Write and Publish with the review budget on all three perch rows, PR-Align between Publish and PR-Gate with no segment and no on_stuck, the reroute edge of the three landing rows back to Merge-In, and a review budget of 0 routing Darn-Write straight to Merge-In.
 func TestNewDarn_Routing(t *testing.T) {
 	build := func(t *testing.T, reviewBudget int) map[string]shedengine.ProducerDef {
 		t.Helper()
 		env, paths := testEnv(t)
-		env.DarnReviewMaxBounces = reviewBudget
+		setDarnBudget(&env, reviewBudget)
 		shed, err := NewDarn(env, paths)
 		if err != nil {
 			t.Fatalf("NewDarn() error = %v; want nil", err)
@@ -201,15 +209,30 @@ func TestDarnVerifyBudget(t *testing.T) {
 
 	t.Run("a review budget below 0 is refused with the way forward before any row builds", func(t *testing.T) {
 		env, paths := testEnv(t)
-		env.DarnReviewMaxBounces = -1
+		env.Segments["Darn-Review"] = shedrecipe.SegmentSettings{MaxBounces: -1, MaxBouncesKey: "review_max_bounces", ConfigFile: "darn.yaml"}
 		env.Landing.OpenFabric = nil
 		shed, err := NewDarn(env, paths)
 		if err == nil || shed != nil {
 			t.Fatalf("NewDarn() = %v, %v; want nil and an error", shed, err)
 		}
-		want := `loomrecipe: darn review_max_bounces = -1; want 0 or more; way forward: run "lyx config darn --set review_max_bounces=<n>" from the prime, then "lyx loom resume"`
+		want := `loomrecipe: bounce budget of review segment "Darn-Review" = -1 from review_max_bounces in darn.yaml; want 0 or more; way forward: run "lyx config darn --set review_max_bounces=<n>" from the prime, then "lyx loom resume"`
 		if err.Error() != want {
 			t.Errorf("NewDarn() error = %q; want %q", err.Error(), want)
+		}
+	})
+
+	t.Run("a missing Darn-Review segment is refused before any row builds", func(t *testing.T) {
+		env, paths := testEnv(t)
+		delete(env.Segments, "Darn-Review")
+		env.Landing.OpenFabric = nil
+		shed, err := NewDarn(env, paths)
+		if err == nil || shed != nil {
+			t.Fatalf("NewDarn() = %v, %v; want nil and an error", shed, err)
+		}
+		for _, want := range []string{"Darn-Review", "darn wiring", "review_max_bounces"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("NewDarn() error = %q; want it to contain %q", err, want)
+			}
 		}
 	})
 
@@ -225,7 +248,7 @@ func TestDarnVerifyBudget(t *testing.T) {
 // TestDarnRouting pins the projection's rows and its review budget applied as NewDarn applies it, Darn-Write's route to Merge-In under a budget of 0, and the refusal of a budget below 0.
 func TestDarnRouting(t *testing.T) {
 	t.Run("rows and the review budget on the perch", func(t *testing.T) {
-		routing, err := DarnRouting(2)
+		routing, err := DarnRouting(map[string]int{"Darn-Review": 2})
 		if err != nil {
 			t.Fatalf("DarnRouting() error = %v; want nil", err)
 		}
@@ -250,7 +273,7 @@ func TestDarnRouting(t *testing.T) {
 	})
 
 	t.Run("a review budget of 0 routes Darn-Write straight to Merge-In", func(t *testing.T) {
-		routing, err := DarnRouting(0)
+		routing, err := DarnRouting(map[string]int{"Darn-Review": 0})
 		if err != nil {
 			t.Fatalf("DarnRouting() error = %v; want nil", err)
 		}
@@ -261,9 +284,27 @@ func TestDarnRouting(t *testing.T) {
 		}
 	})
 
-	t.Run("a review budget below 0 is refused", func(t *testing.T) {
-		if _, err := DarnRouting(-1); err == nil {
-			t.Error("DarnRouting(-1) error = nil; want non-nil")
+	t.Run("a review budget below 0 is refused with the way forward", func(t *testing.T) {
+		_, err := DarnRouting(map[string]int{"Darn-Review": -1})
+		if err == nil {
+			t.Fatal("DarnRouting() with a negative entry error = nil; want non-nil")
+		}
+		for _, want := range []string{"Darn-Review", "review_max_bounces", "darn.yaml", `"lyx config darn --set review_max_bounces=<n>" from the prime, then "lyx loom resume"`} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("DarnRouting() error = %q; want it to contain %q", err, want)
+			}
+		}
+	})
+
+	t.Run("a map lacking Darn-Review is refused", func(t *testing.T) {
+		_, err := DarnRouting(map[string]int{})
+		if err == nil {
+			t.Fatal("DarnRouting() without a Darn-Review entry error = nil; want non-nil")
+		}
+		for _, want := range []string{"Darn-Review", "darn wiring"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("DarnRouting() error = %q; want it to contain %q", err, want)
+			}
 		}
 	})
 }

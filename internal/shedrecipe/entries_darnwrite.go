@@ -16,7 +16,7 @@ import (
 //
 // The table arrives as an injected func(loomshed.DarnTold) for the reason planWriteEntry gives, evaluated with the values the producer tells each session it builds.
 // The resolved gate is stamped onto each table it returns, so the row's "gates" key guards the writer.
-func darnWriteEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
+func darnWriteEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	gate, err := resolveGateSpec("DarnWrite", cfg, env)
 	if err != nil {
 		return nil, err
@@ -55,7 +55,7 @@ func darnWriteEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, 
 			table.Gate = gate
 			return table, nil
 		}
-		return shedadapters.NewMultiLLMProducerSourced(name, tables, env.Seats, env.Now, nil)
+		return shedadapters.NewMultiLLMProducerSourced(row.Name, tables, env.Seats, env.Now, nil)
 	}
-	return loomshed.NewDarnWrite(name, session, dw), nil
+	return loomshed.NewDarnWrite(row.Name, session, dw), nil
 }

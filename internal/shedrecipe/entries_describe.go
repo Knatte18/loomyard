@@ -21,7 +21,7 @@ import (
 //
 // The table arrives as an injected shedadapters.TableSource closure because building it needs the fabric's landing geometry, which the Shed Recipe Registry Invariant bars this package from deriving.
 // The resolved gate is stamped onto each table the source returns, so the row's "gates" key guards the lead.
-func describeEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
+func describeEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	gate, err := resolveGateSpec("Describe", cfg, env)
 	if err != nil {
 		return nil, err
@@ -46,6 +46,6 @@ func describeEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, e
 		table.Gate = gate
 		return table, nil
 	}
-	inner := shedadapters.NewMultiLLMProducerSourced(name, tables, env.Seats, env.Now, nil)
-	return loomshed.NewDiscussionWrite(name, inner, env.CommitDescription), nil
+	inner := shedadapters.NewMultiLLMProducerSourced(row.Name, tables, env.Seats, env.Now, nil)
+	return loomshed.NewDiscussionWrite(row.Name, inner, env.CommitDescription), nil
 }

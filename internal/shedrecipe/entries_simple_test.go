@@ -258,7 +258,7 @@ func simpleEntryCases() []simpleEntryCase {
 func TestSimpleEntries_HappyPath(t *testing.T) {
 	for _, tt := range simpleEntryCases() {
 		t.Run(tt.registryKey, func(t *testing.T) {
-			producer, err := tt.entry("row-name", Config{}, tt.buildEnv(t))
+			producer, err := tt.entry(RowIdentity{Name: "row-name"}, Config{}, tt.buildEnv(t))
 			if err != nil {
 				t.Fatalf("%s() error = %v; want nil", tt.registryKey, err)
 			}
@@ -275,7 +275,7 @@ func TestSimpleEntries_UnderfilledEnv(t *testing.T) {
 			for _, field := range tt.validatedFields {
 				t.Run("Blank"+strings.ReplaceAll(field, ".", "_"), func(t *testing.T) {
 					env := zeroEnvField(tt.buildEnv(t), field)
-					_, err := tt.entry("row-name", Config{}, env)
+					_, err := tt.entry(RowIdentity{Name: "row-name"}, Config{}, env)
 					if err == nil {
 						t.Fatalf("%s() error = nil; want non-nil when Env.%s is blank", tt.registryKey, field)
 					}
@@ -287,7 +287,7 @@ func TestSimpleEntries_UnderfilledEnv(t *testing.T) {
 
 			t.Run("BlankUnreadField_"+tt.unreadField, func(t *testing.T) {
 				env := zeroEnvField(tt.buildEnv(t), tt.unreadField)
-				producer, err := tt.entry("row-name", Config{}, env)
+				producer, err := tt.entry(RowIdentity{Name: "row-name"}, Config{}, env)
 				if err != nil {
 					t.Fatalf("%s() error = %v; want nil when the blanked field (%s) is not one this entry reads", tt.registryKey, err, tt.unreadField)
 				}
@@ -307,7 +307,7 @@ func TestWebsterEntry_SeamFields(t *testing.T) {
 	for _, field := range seamFields {
 		t.Run("Nil"+strings.ReplaceAll(field, ".", "_"), func(t *testing.T) {
 			env := zeroEnvField(newTestEnv(t), field)
-			_, err := websterEntry("Webster", Config{}, env)
+			_, err := websterEntry(RowIdentity{Name: "Webster"}, Config{}, env)
 			if err == nil {
 				t.Fatalf("websterEntry() error = nil; want non-nil when %s is nil", field)
 			}
@@ -322,7 +322,7 @@ func TestWebsterEntry_SeamFields(t *testing.T) {
 		if env.WebsterDeps.Batcher != nil {
 			t.Fatalf("newTestEnv(t).WebsterDeps.Batcher = %v; want nil by default", env.WebsterDeps.Batcher)
 		}
-		producer, err := websterEntry("Webster", Config{}, env)
+		producer, err := websterEntry(RowIdentity{Name: "Webster"}, Config{}, env)
 		if err != nil {
 			t.Fatalf("websterEntry() error = %v; want nil", err)
 		}
@@ -336,7 +336,7 @@ func TestWebsterEntry_SeamFields(t *testing.T) {
 // an absent "gates" constructs (the shipped row's own ungated shape), and a named validator is rejected by resolveGateSpec's closed vocabulary, since no Webster validator exists to name.
 func TestWebsterEntry_GateKeys(t *testing.T) {
 	t.Run("AbsentGateConstructs", func(t *testing.T) {
-		producer, err := websterEntry("Webster", Config{}, newTestEnv(t))
+		producer, err := websterEntry(RowIdentity{Name: "Webster"}, Config{}, newTestEnv(t))
 		if err != nil {
 			t.Fatalf("websterEntry() error = %v; want nil", err)
 		}
@@ -346,7 +346,7 @@ func TestWebsterEntry_GateKeys(t *testing.T) {
 	})
 
 	t.Run("UnknownValidatorRejected", func(t *testing.T) {
-		_, err := websterEntry("Webster", gatesCfg("webster", 3), newTestEnv(t))
+		_, err := websterEntry(RowIdentity{Name: "Webster"}, gatesCfg("webster", 3), newTestEnv(t))
 		if err == nil {
 			t.Fatalf("websterEntry() error = nil; want non-nil for an unregistered validator name")
 		}
@@ -361,7 +361,7 @@ func TestWebsterEntry_GateKeys(t *testing.T) {
 // raw.
 func TestPublishEntry_LandingRejected(t *testing.T) {
 	env := newTestEnv(t)
-	_, err := publishEntry("row-name", Config{}, env)
+	_, err := publishEntry(RowIdentity{Name: "row-name"}, Config{}, env)
 	if err == nil {
 		t.Fatalf("publishEntry() error = nil; want non-nil for a zero Env.Landing")
 	}
@@ -376,7 +376,7 @@ func TestPRGateEntry(t *testing.T) {
 		env := newTestEnv(t)
 		env.Landing = validLandingDeps(t)
 		armPRGate(&env.Landing)
-		producer, err := prGateEntry("row-name", Config{}, env)
+		producer, err := prGateEntry(RowIdentity{Name: "row-name"}, Config{}, env)
 		if err != nil {
 			t.Fatalf("prGateEntry() error = %v; want nil", err)
 		}
@@ -390,7 +390,7 @@ func TestPRGateEntry(t *testing.T) {
 		env.Landing = validLandingDeps(t)
 		armPRGate(&env.Landing)
 		env.Landing.TaskHead = nil
-		_, err := prGateEntry("row-name", Config{}, env)
+		_, err := prGateEntry(RowIdentity{Name: "row-name"}, Config{}, env)
 		if err == nil {
 			t.Fatalf("prGateEntry() error = nil; want non-nil for a nil TaskHead")
 		}
@@ -403,7 +403,7 @@ func TestPRGateEntry(t *testing.T) {
 // TestFinalizeEntry_LandingRejected is publishEntry's failure-path twin over finalizeEntry.
 func TestFinalizeEntry_LandingRejected(t *testing.T) {
 	env := newTestEnv(t)
-	_, err := finalizeEntry("row-name", Config{}, env)
+	_, err := finalizeEntry(RowIdentity{Name: "row-name"}, Config{}, env)
 	if err == nil {
 		t.Fatalf("finalizeEntry() error = nil; want non-nil for a zero Env.Landing")
 	}
@@ -417,7 +417,7 @@ func TestFinalizeEntry_LandingRejected(t *testing.T) {
 func TestBatchifierEntry_RelativeAnchorPath(t *testing.T) {
 	env := newTestEnv(t)
 	env.ConfigDirs.Anchor = "relative/path"
-	_, err := batchifierEntry("row-name", Config{}, env)
+	_, err := batchifierEntry(RowIdentity{Name: "row-name"}, Config{}, env)
 	if err == nil {
 		t.Fatalf("batchifierEntry() error = nil; want non-nil for a relative Env.ConfigDirs.Anchor")
 	}
@@ -429,7 +429,7 @@ func TestBatchifierEntry_RelativeAnchorPath(t *testing.T) {
 func TestFrictionReflectEntry_NilClosureRejected(t *testing.T) {
 	env := newTestEnv(t)
 	env.ReflectFriction = nil
-	producer, err := frictionReflectEntry("Friction-Reflect", Config{}, env)
+	producer, err := frictionReflectEntry(RowIdentity{Name: "Friction-Reflect"}, Config{}, env)
 	if err == nil {
 		t.Fatal("frictionReflectEntry(nil closure) error = nil; want non-nil")
 	}

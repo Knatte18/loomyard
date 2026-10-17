@@ -19,7 +19,7 @@ import (
 //
 // The table arrives as an injected func(loomshed.ReworkTold) for the reason planWriteEntry gives, evaluated with the value the producer tells each session it builds.
 // The resolved gate is stamped onto each table it returns, so the row's "gates" key guards the lead.
-func prReworkEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
+func prReworkEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	gate, err := resolveGateSpec("PRRework", cfg, env)
 	if err != nil {
 		return nil, err
@@ -67,7 +67,7 @@ func prReworkEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, e
 			table.Gate = gate
 			return table, nil
 		}
-		return shedadapters.NewMultiLLMProducerSourced(name, tables, env.Seats, env.Now, nil)
+		return shedadapters.NewMultiLLMProducerSourced(row.Name, tables, env.Seats, env.Now, nil)
 	}
-	return loomshed.NewPRRework(name, session, rw), nil
+	return loomshed.NewPRRework(row.Name, session, rw), nil
 }

@@ -148,7 +148,7 @@ func newPRFixture(t *testing.T) *prFixture {
 		if err != nil {
 			t.Fatalf("shedrecipe.Lookup(%q) = %v; want nil", row.Engine, err)
 		}
-		if f.producer, err = construct(row.Name, row.Config, env); err != nil {
+		if f.producer, err = construct(shedrecipe.RowIdentity{Name: row.Name, Segment: row.Segment}, row.Config, env); err != nil {
 			t.Fatalf("build Discussion-Write = %v; want nil", err)
 		}
 	}
