@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
@@ -18,7 +19,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/reviewbudget"
 	"github.com/Knatte18/loomyard/internal/seatengine"
+	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -27,6 +30,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifytree"
 	"gopkg.in/yaml.v3"
 )
+
+// darnReviewSegment is the darn recipe's review segment, the key of its entry in shedrecipe.Env.Segments.
+const darnReviewSegment = "Darn-Review"
 
 // reworkRowFor returns the name of the row that answers an operator rejection in recipe: the Darn-Write row for the darn recipe, PR-Rework otherwise.
 func reworkRowFor(recipe string) string {
@@ -168,8 +174,9 @@ func (c *loomCLI) darnReviewBudget() (int, error) {
 // The models resolve through registry, each empty darn.yaml model key taking its shared list in env.ReviewModels, and a refusal names the key the failing value came from.
 // The review row records each round's fans and the fix row reads them, so the two entries are added together; the fixer fan key names darn.yaml, the file it lives in.
 // env's maps are the ones wire filled for every recipe.
-func wireDarnReview(env *shedrecipe.Env, cfg darnengine.Config, registry modelspec.Registry) error {
-	models, keys, err := loomengine.ResolveDarnReview(env.ReviewModels, cfg, registry)
+// It also adds the Darn-Review segment's settings to env.Segments, whose Bouncer pair is bouncer and whose models fall back to shared.
+func wireDarnReview(env *shedrecipe.Env, cfg darnengine.Config, shared burlerengine.RoundModels, bouncer shedadapters.BouncerModels, registry modelspec.Registry) error {
+	models, keys, err := loomengine.ResolveDarnReview(shared, cfg, registry)
 	if err != nil {
 		return err
 	}
@@ -180,12 +187,26 @@ func wireDarnReview(env *shedrecipe.Env, cfg darnengine.Config, registry modelsp
 	env.RowFixFans[loomshed.NameDarnBurlerReview] = cfg.FixerFan
 	env.RowModelKeys[loomshed.NameDarnBurlerReview] = shedrecipe.RowModelKeys{Review: keys.Review}
 	env.RowModelKeys[loomshed.NameDarnBurlerFix] = shedrecipe.RowModelKeys{Fix: keys.Fix, FixFan: darnengine.FixerFanKey + " in darn.yaml"}
+	if env.Segments == nil {
+		env.Segments = map[string]shedrecipe.SegmentSettings{}
+	}
+	env.Segments[darnReviewSegment] = shedrecipe.SegmentSettings{
+		Models:            models,
+		ReviewKey:         keys.Review,
+		FixKey:            keys.Fix,
+		Bouncer:           bouncer,
+		MaxBounces:        cfg.ReviewMaxBounces,
+		MaxBouncesKey:     reviewbudget.RunSoftKey,
+		HardMaxBounces:    cfg.ReviewHardMaxBounces,
+		HardMaxBouncesKey: reviewbudget.RunHardKey,
+		ConfigFile:        "darn.yaml",
+	}
 	return nil
 }
 
 // wireDarn fills the Env fields a darn run reads beyond the ones wire fills for every recipe, and replaces the loom DescribeTable with the darn one, which reads the decision record but no run record.
 // It loads the hub-wide darn.yaml strictly and reads its verify command once, so start, run, step and resume refuse an absent or empty command before any row builds.
-func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, frictionDir string, landingCfg landingshed.Config, registry modelspec.Registry) error {
+func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, frictionDir string, landingCfg landingshed.Config, registry modelspec.Registry, shared burlerengine.RoundModels, bouncer shedadapters.BouncerModels) error {
 	dirs := fabricengine.ConfigDirs(location)
 	cfg, err := darnengine.LoadConfig(dirs, "darn")
 	if err != nil {
@@ -204,7 +225,7 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 		c.env.RowHardMaxBounces = map[string]int{}
 	}
 	c.env.RowHardMaxBounces[loomshed.NameDarnBouncer] = cfg.ReviewHardMaxBounces
-	if err := wireDarnReview(&c.env, cfg, registry); err != nil {
+	if err := wireDarnReview(&c.env, cfg, shared, bouncer, registry); err != nil {
 		return err
 	}
 	c.darnCfg = &cfg

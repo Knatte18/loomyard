@@ -113,6 +113,10 @@ func TestWire_DarnRecipe(t *testing.T) {
 		if got := c.env.RowHardMaxBounces[loomshed.NameDarnBouncer]; got != 3 {
 			t.Errorf("c.env.RowHardMaxBounces[%q] = %d; want the local 3", loomshed.NameDarnBouncer, got)
 		}
+		segment := c.env.Segments["Darn-Review"]
+		if segment.MaxBounces != 2 || segment.MaxBouncesKey != "review_max_bounces" || segment.HardMaxBounces != 3 || segment.HardMaxBouncesKey != "review_hard_max_bounces" || segment.ConfigFile != "darn.yaml" {
+			t.Errorf("Segments[Darn-Review] = %+v; want the local budget 2 and hard cap 3 under their run-wide keys in darn.yaml", segment)
+		}
 	})
 
 	// The Darn rows take darn.yaml's model keys, an empty one taking loom.yaml's shared key, and the fixer fan key names darn.yaml;
@@ -127,6 +131,8 @@ func TestWire_DarnRecipe(t *testing.T) {
 		wantKeys     map[string]shedrecipe.RowModelKeys
 		// wantReview and wantFix are the first entry's model and effort, or "" for the shared list.
 		wantReview, wantFix string
+		// wantFixerFanSetting is what env.Setting answers for darn_fixer_fan.
+		wantFixerFanSetting string
 	}{
 		{
 			name: "the template's empty fans and models", wantFan: []string{""}, wantFixFan: []string{""},
@@ -148,7 +154,8 @@ func TestWire_DarnRecipe(t *testing.T) {
 				loomshed.NameDarnBurlerReview: {Review: loomKey("reviewer_model")},
 				loomshed.NameDarnBurlerFix:    {Fix: darnKey("darn_fixer_model"), FixFan: "darn_fixer_fan in darn.yaml"},
 			},
-			wantFix: "sonnet low",
+			wantFix:             "sonnet low",
+			wantFixerFanSetting: "fix-code",
 		},
 	} {
 		t.Run("darn.yaml's model and fan keys reach the Darn-Review rows under "+tt.name, func(t *testing.T) {
@@ -171,6 +178,22 @@ func TestWire_DarnRecipe(t *testing.T) {
 				if got := c.env.RowModelKeys[row]; got != want {
 					t.Errorf("RowModelKeys[%q] = %+v; want %+v", row, got, want)
 				}
+			}
+			wantSegment := shedrecipe.SegmentSettings{
+				Models:         c.env.RowReviewModels[loomshed.NameDarnBurlerReview],
+				ReviewKey:      tt.wantKeys[loomshed.NameDarnBurlerReview].Review,
+				FixKey:         tt.wantKeys[loomshed.NameDarnBurlerFix].Fix,
+				Bouncer:        c.env.RowBouncerModels[loomshed.NameDarnBouncer],
+				MaxBounces:     1,
+				MaxBouncesKey:  "review_max_bounces",
+				HardMaxBounces: 4, HardMaxBouncesKey: "review_hard_max_bounces",
+				ConfigFile: "darn.yaml",
+			}
+			if got := c.env.Segments["Darn-Review"]; !reflect.DeepEqual(got, wantSegment) {
+				t.Errorf("Segments[Darn-Review] = %+v; want %+v", got, wantSegment)
+			}
+			if got, err := c.env.Setting("darn", "darn_fixer_fan"); err != nil || got != tt.wantFixerFanSetting {
+				t.Errorf("env.Setting(darn, darn_fixer_fan) = %v, %v; want %q, nil", got, err, tt.wantFixerFanSetting)
 			}
 			for _, row := range []string{loomshed.NameDarnBurlerReview, loomshed.NameDarnBurlerFix} {
 				models := c.env.RowReviewModels[row]

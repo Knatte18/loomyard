@@ -970,6 +970,37 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	if !reflect.DeepEqual(c.env.RowModelKeys, wantSoloKeys) {
 		t.Errorf("RowModelKeys = %+v; want %+v", c.env.RowModelKeys, wantSoloKeys)
 	}
+	// Each loom segment's entry joins the models, keys and Bouncer pair asserted above with its resolved budget and hard cap:
+	// plan_max_bounces, webster_max_bounces, merge_max_bounces and plan_hard_max_bounces name their own keys, the rest fall back to the run-wide ones.
+	wantSegments := map[string]shedrecipe.SegmentSettings{
+		"Discussion-Review": {
+			Models: c.env.RowReviewModels[loomshed.NameDiscussionBurlerReview], ReviewKey: loomKey("reviewer_model"), FixKey: loomKey("fixer_model"),
+			Bouncer:    wantBouncerModels[loomshed.NameDiscussionBouncer],
+			MaxBounces: c.env.ReviewMaxBounces, MaxBouncesKey: "review_max_bounces",
+			HardMaxBounces: 4, HardMaxBouncesKey: "review_hard_max_bounces", ConfigFile: "loom.yaml",
+		},
+		"Plan-Review": {
+			Models: c.env.RowReviewModels[loomshed.NamePlanBurlerReview], ReviewKey: loomKey("plan_reviewer_model"), FixKey: loomKey("fixer_model"),
+			Bouncer:    wantBouncerModels[loomshed.NamePlanBouncer],
+			MaxBounces: 2, MaxBouncesKey: "plan_max_bounces",
+			HardMaxBounces: 5, HardMaxBouncesKey: "plan_hard_max_bounces", ConfigFile: "loom.yaml",
+		},
+		"Webster-Review": {
+			Models: c.env.RowReviewModels[loomshed.NameWebsterBurlerReview], ReviewKey: loomKey("webster_reviewer_model"), FixKey: loomKey("fixer_model"),
+			Bouncer:    wantBouncerModels[loomshed.NameWebsterBouncer],
+			MaxBounces: 1, MaxBouncesKey: "webster_max_bounces",
+			HardMaxBounces: 4, HardMaxBouncesKey: "review_hard_max_bounces", ConfigFile: "loom.yaml",
+		},
+		"Merge-Review": {
+			Models: c.env.RowReviewModels[loomshed.NameMergeBurlerReview], ReviewKey: loomKey("merge_reviewer_model"), FixKey: loomKey("fixer_model"),
+			Bouncer:    wantBouncerModels[loomshed.NameMergeBouncer],
+			MaxBounces: 0, MaxBouncesKey: "merge_max_bounces",
+			HardMaxBounces: 4, HardMaxBouncesKey: "review_hard_max_bounces", ConfigFile: "loom.yaml",
+		},
+	}
+	if !reflect.DeepEqual(c.env.Segments, wantSegments) {
+		t.Errorf("Segments = %+v; want %+v", c.env.Segments, wantSegments)
+	}
 
 	// Per-round fan lists reach each segment's Bouncer and review row, and the fixer fan lists the review rows alone.
 	// A fanned reviewer runs on its segment's own reviewer list, discussion_reviewer_model here.
@@ -1025,6 +1056,21 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	}
 	if !reflect.DeepEqual(fanned.env.RowModelKeys, wantKeys) {
 		t.Errorf("RowModelKeys = %+v; want %+v", fanned.env.RowModelKeys, wantKeys)
+	}
+	// A segment's own model keys reach its entry, which carries the same models as its Burler rows.
+	discussion, webster := fanned.env.Segments["Discussion-Review"], fanned.env.Segments["Webster-Review"]
+	if discussion.ReviewKey != loomKey("discussion_reviewer_model") || !reflect.DeepEqual(discussion.Models, fanned.env.RowReviewModels[loomshed.NameDiscussionBurlerReview]) {
+		t.Errorf("Segments[Discussion-Review] ReviewKey = %+v, Models = %+v; want discussion_reviewer_model and the Discussion-Burler-Review models", discussion.ReviewKey, discussion.Models)
+	}
+	if webster.FixKey != loomKey("webster_fixer_model") || !reflect.DeepEqual(webster.Models, fanned.env.RowReviewModels[loomshed.NameWebsterBurlerFix]) {
+		t.Errorf("Segments[Webster-Review] FixKey = %+v, Models = %+v; want webster_fixer_model and the Webster-Burler-Fix models", webster.FixKey, webster.Models)
+	}
+	// Setting answers a loom key from the pair's resolved config.
+	if fanned.env.Setting == nil {
+		t.Fatal("env.Setting = nil; want the told setting lookup")
+	}
+	if got, err := fanned.env.Setting("loom", "plan_reviewer_fan"); err != nil || got != "full" {
+		t.Errorf("env.Setting(loom, plan_reviewer_fan) = %v, %v; want full, nil", got, err)
 	}
 	got := fanned.env.RowReviewModels[loomshed.NameDiscussionBurlerReview].Review
 	if len(got) != 1 || got[0].Model != "opus" || got[0].Effort != "low" {
