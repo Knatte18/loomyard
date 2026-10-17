@@ -334,8 +334,15 @@ func TestRunner_EngineSetDispatch(t *testing.T) {
 
 		rig.start("b")
 		_, runDir := rig.record()
-		if err := os.RemoveAll(runDir); err != nil {
-			t.Fatalf("remove run dir: %v", err)
+		root := runDirRoot(rig.fx.Runner.cfg, rig.fx.Anchor)
+		removed, err := sweepOrphans(root, map[string]bool{}, time.Minute, time.Now().Add(time.Hour))
+		if err != nil || !slices.Equal(removed, []string{runDir}) {
+			t.Fatalf("sweepOrphans() = %v, %v; want only the run dir %q removed", removed, err, runDir)
+		}
+		for _, name := range []string{engineLedgerFileName, engineLedgerFileName + ".lock"} {
+			if _, err := os.Stat(filepath.Join(root, name)); err != nil {
+				t.Errorf("%s after the orphan sweep: %v; want it kept", name, err)
+			}
 		}
 		if got, err := rig.fx.Runner.EnginesRun(); err != nil || !slices.Equal(got, []string{"b"}) {
 			t.Errorf("EnginesRun() after the run dir was swept = %v, %v; want [b]", got, err)
