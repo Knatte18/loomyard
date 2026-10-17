@@ -422,8 +422,8 @@ func settingValue(value any) string {
 	return strings.TrimSuffix(out.String(), "\n")
 }
 
-// codeSpan wraps s in a code span whose backtick fence is longer than any backtick run in s,
-// padded with a space on each side when s starts or ends with a backtick.
+// codeSpan wraps s in a code span whose backtick fence is longer than any backtick run in s.
+// It pads s with a space on each side when s starts or ends with a backtick.
 func codeSpan(s string) string {
 	longest, run := 0, 0
 	for _, r := range s {
