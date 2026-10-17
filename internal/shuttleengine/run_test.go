@@ -547,6 +547,31 @@ func TestRunner_Start_ValidationFailure_ShortCircuitsBeforeReedCall(t *testing.T
 	}
 }
 
+func TestRunner_Start_LedgerWriteFailure_CleansRunDirAndRegistersNoStrand(t *testing.T) {
+	reed := &fakeReed{}
+	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd"}}
+	fx := newFixture(t, reed, engine, withConfig(fastConfig))
+	runner, anchorPath := fx.Runner, fx.Anchor
+
+	// A directory where the ledger file belongs makes the ledger write fail.
+	root := runDirRoot(runner.cfg, anchorPath)
+	blocker := filepath.Join(root, engineLedgerFileName)
+	if err := os.MkdirAll(blocker, 0o755); err != nil {
+		t.Fatalf("create ledger blocker: %v", err)
+	}
+
+	if _, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}}); err == nil {
+		t.Fatal("Start() = nil error, want the engine ledger write failure to propagate")
+	}
+
+	if len(reed.AddStrandCalls) != 0 {
+		t.Errorf("AddStrand calls = %d, want 0 (a failed ledger write precedes strand registration)", len(reed.AddStrandCalls))
+	}
+	if dirs := runDirsUnder(t, root); !slices.Equal(dirs, []string{blocker}) {
+		t.Errorf("run dir root directories = %v, want only the blocker %q (the failed start must remove its run dir)", dirs, blocker)
+	}
+}
+
 func TestRunner_Start_AddStrandFailure_CleansRunDir(t *testing.T) {
 	reed := &fakeReed{AddStrandErr: fmt.Errorf("boom")}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd"}}
