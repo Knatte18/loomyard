@@ -374,7 +374,7 @@ func entryCell(t Task) string {
 		cell += cellBullet + cellText(t.Brief)
 	}
 	for _, setting := range settingLines(t.RunSettings) {
-		cell += cellBullet + "`" + cellText(setting) + "`"
+		cell += cellBullet + codeSpan(cellText(setting))
 	}
 	return cell
 }
@@ -413,9 +413,32 @@ func settingValue(value any) string {
 	if s, ok := value.(string); ok {
 		return s
 	}
-	// The value was decoded from the board's JSON, so it always marshals back.
-	data, _ := json.Marshal(value)
-	return string(data)
+	// The value was decoded from the board's JSON, so it always encodes back.
+	// HTML escaping is off so a list holding <, > or & renders as stored.
+	var out strings.Builder
+	encoder := json.NewEncoder(&out)
+	encoder.SetEscapeHTML(false)
+	_ = encoder.Encode(value)
+	return strings.TrimSuffix(out.String(), "\n")
+}
+
+// codeSpan wraps s in a code span whose backtick fence is longer than any backtick run in s,
+// padded with a space on each side when s starts or ends with a backtick.
+func codeSpan(s string) string {
+	longest, run := 0, 0
+	for _, r := range s {
+		if r == '`' {
+			run++
+			longest = max(longest, run)
+		} else {
+			run = 0
+		}
+	}
+	fence := strings.Repeat("`", longest+1)
+	if strings.HasPrefix(s, "`") || strings.HasSuffix(s, "`") {
+		s = " " + s + " "
+	}
+	return fence + s + fence
 }
 
 // recipeCell is the recipe the task runs, loom when its recipe field is empty.
