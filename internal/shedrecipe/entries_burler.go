@@ -191,7 +191,7 @@ func burlerFixEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduc
 	}
 	opts := burlerengine.RunOpts{Timeout: burlerRowTimeout(timeoutS, env), Gate: gate, FixKey: segment.FixKey}
 	if fixFanNamed {
-		opts.FixFanKey = fixFanRef.String()
+		opts.FixFanKey = fixFanRef.Key
 	}
 	deps := shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: segment.Models, RequiresFans: fixFanNamed}
 	producer, err := shedadapters.NewBurlerFixProducer(row.Name, reviewRow, deps, profile, opts, runDir, env.Now)
