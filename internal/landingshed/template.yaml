@@ -4,7 +4,9 @@ conflict: opus[high]  # model-spec for the conflict-resolution session both prod
 conflict_timeout_min: 60  # minutes the conflict-resolution session's shuttle run is allowed to run
 describe: sonnet[medium]  # model-spec for the Describe row's session, which writes the change description that becomes the PR title and body and the landing commit message (see contracts/specs/llm-model-spec.md)
 describe_timeout_min: 30  # minutes the Describe session's shuttle run is allowed to run
-co_authored_by: Claude <noreply@anthropic.com>  # value of the landing commit's single Co-Authored-By trailer; a run involves several models, so the default names Claude generically
+trailer_text: ""  # fixed lines copied verbatim into every landing commit's trailer block, before any engine line; empty adds none
+engine_trailers:  # engine name to the trailer text copied verbatim into the landing commit when that engine ran a session in the task; an engine left out or set to "" adds nothing
+  claude: "Co-Authored-By: Claude <noreply@anthropic.com>"
 publish_verify: ""  # shell command Publish runs in the task worktree after the plan's verify passes, such as a test tier the plan's verify leaves out; empty runs nothing; Finalize never runs it
 deploy: ""  # shell command batten's Land row runs in the prime after a landing into a branch listed in require_pr_to_base; empty runs nothing; the same trust class as publish_verify
 parent_lock_idle_release_min: 10  # minutes a waiting run, or an undecided PR-Gate hand-off, keeps its parent lock before the lock is released; a value below 1 reads as 10

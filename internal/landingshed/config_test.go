@@ -7,6 +7,8 @@ package landingshed
 
 import (
 	"errors"
+	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"gopkg.in/yaml.v3"
 )
 
 // seedLandingConfig creates <baseDir>/_lyx/config/landing.yaml with the given contents.
@@ -58,8 +61,11 @@ func TestLoadConfig_TemplateDefaults(t *testing.T) {
 	if cfg.DescribeTimeoutMin != 30 {
 		t.Errorf("cfg.DescribeTimeoutMin = %d; want 30", cfg.DescribeTimeoutMin)
 	}
-	if cfg.CoAuthoredBy != "Claude <noreply@anthropic.com>" {
-		t.Errorf("cfg.CoAuthoredBy = %q; want %q", cfg.CoAuthoredBy, "Claude <noreply@anthropic.com>")
+	if cfg.TrailerText != "" {
+		t.Errorf("cfg.TrailerText = %q; want empty", cfg.TrailerText)
+	}
+	if want := map[string]string{"claude": "Co-Authored-By: Claude <noreply@anthropic.com>"}; !maps.Equal(cfg.EngineTrailers, want) {
+		t.Errorf("cfg.EngineTrailers = %v; want %v", cfg.EngineTrailers, want)
 	}
 	if cfg.Deploy != "" {
 		t.Errorf("cfg.Deploy = %q; want empty", cfg.Deploy)
@@ -89,18 +95,118 @@ func TestConfig_IdleRelease(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_InvalidKeys verifies a hand-edited landing.yaml with an ungrammatical model-spec or an empty co_authored_by fails loud at load time, naming the key, rather than being silently carried into the spawn site that reads it.
+// TestConfig_TrailerBlock verifies the trailer block holds the fixed text, then the text of each engine that ran in name order, and drops an empty or whitespace-only text and an engine with no entry.
+func TestConfig_TrailerBlock(t *testing.T) {
+	t.Parallel()
+
+	engineTrailers := map[string]string{"alpha": "Co-Authored-By: Alpha <a@x>\n", "beta": "Co-Authored-By: Beta <b@x>", "blank": "  "}
+	tests := []struct {
+		name       string
+		cfg        Config
+		enginesRun []string
+		want       string
+	}{
+		{"FixedThenEnginesInNameOrder", Config{TrailerText: "Created using Loomyard\nSecond line\n", EngineTrailers: engineTrailers}, []string{"beta", "alpha"}, "Created using Loomyard\nSecond line\nCo-Authored-By: Alpha <a@x>\nCo-Authored-By: Beta <b@x>"},
+		{"EngineThatDidNotRunAddsNothing", Config{EngineTrailers: engineTrailers}, []string{"beta"}, "Co-Authored-By: Beta <b@x>"},
+		{"EngineWithoutEntryOrWithBlankTextAddsNothing", Config{TrailerText: "Fixed", EngineTrailers: engineTrailers}, []string{"gamma", "blank"}, "Fixed"},
+		{"EngineNamedTwiceAddsOneLine", Config{EngineTrailers: engineTrailers}, []string{"alpha", "alpha"}, "Co-Authored-By: Alpha <a@x>"},
+		{"BothEmpty", Config{TrailerText: " \n"}, []string{"alpha"}, ""},
+		{"NoEngineRan", Config{EngineTrailers: engineTrailers}, nil, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := tt.cfg.TrailerBlock(tt.enginesRun); got != tt.want {
+				t.Errorf("TrailerBlock(%v) = %q; want %q", tt.enginesRun, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestMigrateConfig verifies a retired co_authored_by moves into engine_trailers as the claude line, an engine_trailers already set wins over it, and a migrated document passes unchanged.
+func TestMigrateConfig(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		existing     string
+		wantTrailers map[string]string
+		wantLines    int
+	}{
+		{"MovesToClaudeLine", "squash: true\nco_authored_by: Someone <s@x>\n", map[string]string{"claude": "Co-Authored-By: Someone <s@x>"}, 1},
+		{"ExistingEngineTrailersWins", "co_authored_by: Someone <s@x>\nengine_trailers: {}\n", map[string]string{}, 1},
+		{"ExistingEntriesKept", "co_authored_by: Someone <s@x>\nengine_trailers:\n  claude: \"Co-Authored-By: Kept <k@x>\"\n", map[string]string{"claude": "Co-Authored-By: Kept <k@x>"}, 1},
+		{"EmptyValueDroppedWithoutEntry", "squash: true\nco_authored_by: \"  \"\n", nil, 1},
+		{"NonScalarValueDroppedWithoutEntry", "co_authored_by: [a, b]\n", nil, 1},
+		{"NoRetiredKeyUnchanged", "engine_trailers:\n  claude: \"Co-Authored-By: Kept <k@x>\"\n", map[string]string{"claude": "Co-Authored-By: Kept <k@x>"}, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			migrated, lines, err := MigrateConfig([]byte(tt.existing))
+			if err != nil {
+				t.Fatalf("MigrateConfig() error = %v; want nil", err)
+			}
+			if len(lines) != tt.wantLines {
+				t.Errorf("MigrateConfig() lines = %q; want %d line(s)", lines, tt.wantLines)
+			}
+			var got map[string]any
+			if err := yaml.Unmarshal(migrated, &got); err != nil {
+				t.Fatalf("unmarshal migrated document: %v", err)
+			}
+			if _, ok := got["co_authored_by"]; ok {
+				t.Errorf("migrated document %q still holds co_authored_by", migrated)
+			}
+			var trailers struct {
+				EngineTrailers map[string]string `yaml:"engine_trailers"`
+			}
+			if err := yaml.Unmarshal(migrated, &trailers); err != nil {
+				t.Fatalf("unmarshal migrated engine_trailers: %v", err)
+			}
+			if !maps.Equal(trailers.EngineTrailers, tt.wantTrailers) {
+				t.Errorf("migrated engine_trailers = %v; want %v", trailers.EngineTrailers, tt.wantTrailers)
+			}
+			again, againLines, err := MigrateConfig(migrated)
+			if err != nil || len(againLines) != 0 || string(again) != string(migrated) {
+				t.Errorf("second MigrateConfig() = %q, %q, %v; want the document unchanged with no lines", again, againLines, err)
+			}
+		})
+	}
+}
+
+// TestMigrateConfig_InvalidDocument verifies an unparsable document and a non-mapping root return an error marked configengine.ErrInvalid.
+func TestMigrateConfig_InvalidDocument(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		existing string
+	}{
+		{"Unparsable", "co_authored_by: [unclosed\n"},
+		{"NonMappingRoot", "- co_authored_by\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if _, _, err := MigrateConfig([]byte(tt.existing)); !errors.Is(err, configengine.ErrInvalid) {
+				t.Errorf("MigrateConfig(%q) error = %v; want one marked configengine.ErrInvalid", tt.existing, err)
+			}
+		})
+	}
+}
+
+// TestLoadConfig_InvalidKeys verifies a hand-edited landing.yaml with an ungrammatical model-spec or an engine_trailers key naming no engine fails loud at load time, naming the key, rather than being silently carried into the site that reads it.
 func TestLoadConfig_InvalidKeys(t *testing.T) {
 	t.Parallel()
 
 	const wellFormed = "require_pr_to_base: [\"main\"]\nsquash: true\nconflict: opus[high]\nconflict_timeout_min: 60\n" +
-		"describe: sonnet[medium]\ndescribe_timeout_min: 30\nco_authored_by: Claude <noreply@anthropic.com>\n"
+		"describe: sonnet[medium]\ndescribe_timeout_min: 30\nengine_trailers:\n  claude: \"Co-Authored-By: Claude <noreply@anthropic.com>\"\n"
 	cases := []struct {
 		name, valid, invalid, key string
 	}{
 		{"malformed conflict", "conflict: opus[high]", "conflict: \"opus[high\"", "conflict"},
 		{"malformed describe", "describe: sonnet[medium]", "describe: \"sonnet[medium\"", "describe"},
-		{"empty co_authored_by", "co_authored_by: Claude <noreply@anthropic.com>", "co_authored_by: \"  \"", "co_authored_by"},
+		{"engine_trailers key naming no engine", "  claude:", "  claud:", "engine_trailers.claud"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -192,11 +298,14 @@ func TestLoadConfig_OptionalStringKeys(t *testing.T) {
 	t.Parallel()
 
 	const withoutKeys = "require_pr_to_base: [\"main\"]\nsquash: true\nconflict: opus[high]\nconflict_timeout_min: 60\n" +
-		"describe: sonnet[medium]\ndescribe_timeout_min: 30\nco_authored_by: Claude <noreply@anthropic.com>\n"
+		"describe: sonnet[medium]\ndescribe_timeout_min: 30\n"
 	cases := []struct {
 		name, contents, want string
 		field                func(Config) string
 	}{
+		{"trailer_text set", withoutKeys + "trailer_text: |\n  Created using Loomyard\n  Second line\n", "Created using Loomyard\nSecond line\n", func(c Config) string { return c.TrailerText }},
+		{"trailer_text absent", withoutKeys, "", func(c Config) string { return c.TrailerText }},
+		{"engine_trailers empty names no engine", withoutKeys + "engine_trailers: {}\n", "map[]", func(c Config) string { return fmt.Sprint(c.EngineTrailers) }},
 		{"publish_verify set", withoutKeys + "publish_verify: go test -tags tmux ./...\n", "go test -tags tmux ./...", func(c Config) string { return c.PublishVerify }},
 		{"publish_verify absent", withoutKeys, "", func(c Config) string { return c.PublishVerify }},
 		{"deploy set", withoutKeys + "deploy: ./update-plugins.sh\n", "./update-plugins.sh", func(c Config) string { return c.Deploy }},

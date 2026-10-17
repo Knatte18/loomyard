@@ -480,7 +480,7 @@ func (r *Runner) StartGated(spec Spec, gate GateSpec) (*Run, error) {
 // start is StartGated's whole body: it prepares one run, registers it with reed, persists run.json,
 // then blocks on the new *Run's awaitStartup before ever returning it.
 // Every pre-strand failure (told-path validation, spec validation, run-dir creation,
-// engine.Prepare, AddStrand, saveRunState) returns (nil, Result{}, err) exactly as StartGated's body
+// engine.Prepare, the engine ledger write, AddStrand, saveRunState) returns (nil, Result{}, err) exactly as StartGated's body
 // always has. Past that point it calls run.awaitStartup() and returns (nil, result, err) when that
 // did not resolve ready — result and err carry whatever awaitStartup returned, including a
 // not-ready Result.Outcome and an err for which errors.Is(err, ErrNotStarted) holds on a genuine
@@ -527,6 +527,11 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 	if err != nil {
 		_ = os.RemoveAll(runDir)
 		return nil, Result{}, fmt.Errorf("shuttle: prepare run: %w", err)
+	}
+
+	if err := recordEngineRun(root, engineName); err != nil {
+		_ = os.RemoveAll(runDir)
+		return nil, Result{}, fmt.Errorf("shuttle: record engine run: %w", err)
 	}
 
 	// An ungated run's output files are its finished signal, so reed's resume drops a finished strand;

@@ -83,14 +83,27 @@ func seedStartupFakes(reed *fakeReed, engine *fakeEngine) {
 func soleStartupRunDir(t *testing.T, cfg Config, anchorPath string) string {
 	t.Helper()
 	root := runDirRoot(cfg, anchorPath)
+	dirs := runDirsUnder(t, root)
+	if len(dirs) != 1 {
+		t.Fatalf("run dir root %s has %d run directories; want exactly 1", root, len(dirs))
+	}
+	return dirs[0]
+}
+
+// runDirsUnder returns the paths of the directories under root, skipping the files Start keeps beside them; an absent root holds none.
+func runDirsUnder(t *testing.T, root string) []string {
+	t.Helper()
 	entries, err := os.ReadDir(root)
-	if err != nil {
+	if err != nil && !os.IsNotExist(err) {
 		t.Fatalf("read run dir root %s: %v", root, err)
 	}
-	if len(entries) != 1 {
-		t.Fatalf("run dir root %s has %d entries; want exactly 1", root, len(entries))
+	var dirs []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			dirs = append(dirs, filepath.Join(root, entry.Name()))
+		}
 	}
-	return filepath.Join(root, entries[0].Name())
+	return dirs
 }
 
 // TestStartup_TrustPromptThenReady covers the readiness path that also dismisses a trust gate along

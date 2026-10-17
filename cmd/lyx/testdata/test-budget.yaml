@@ -60,7 +60,7 @@ internal/hubreconcile: 18
 internal/idecli: 2
 internal/ideengine: 4
 internal/impactset: 5
-internal/landingshed: 87
+internal/landingshed: 90
 internal/languageconfig: 4
 internal/lock: 4
 internal/logger: 37
@@ -113,7 +113,7 @@ internal/shell: 14
 internal/shellguard: 3
 internal/shortcutcli: 2
 internal/shuttlecli: 27
-internal/shuttleengine: 180
+internal/shuttleengine: 181
 internal/shuttleengine/claudeengine: 114
 internal/shuttleengines: 6
 internal/sleepjournal: 2

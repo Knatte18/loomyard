@@ -52,6 +52,7 @@ var intentionallyNil = map[string]string{
 	"Landing.OpenParentFabric":    "loom-only seam, batten lands no branch",
 	"Landing.TaskHead":            "loom-only seam, batten lands no branch",
 	"Landing.Shuttle":             "loom-only seam, batten lands no branch",
+	"Landing.EnginesRun":          "loom-only seam, batten lands no branch",
 	"Landing.Lock.Store":          "loom-only seam, batten lands no branch",
 	"Landing.Lock.Owner":          "loom-only seam, batten lands no branch",
 	"Landing.Lock.PauseRequested": "loom-only seam, batten lands no branch",

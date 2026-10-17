@@ -160,6 +160,7 @@ func landingDeps(
 		GateSlots:              hubgeom.GateSlots(l),
 		VerifyWaitMark:         verifyWaitMark,
 		Shuttle:                runner,
+		EnginesRun:             runner.EnginesRun,
 		Registry:               registry,
 		Config:                 cfg,
 		Lock:                   lock,

@@ -123,8 +123,13 @@ func newFinalizeAt(t *testing.T, taskBranch, taskCode, parentCode string, shuttl
 		Squash:             squash,
 		Conflict:           "claude:test-model",
 		ConflictTimeoutMin: 1,
-		CoAuthoredBy:       "Test Author <test@example.com>",
+		TrailerText:        "Created using Loomyard\n",
+		EngineTrailers: map[string]string{
+			"claude": "Co-Authored-By: Test Author <test@example.com>",
+			"other":  "Co-Authored-By: Other <other@example.com>",
+		},
 	}
+	deps.EnginesRun = func() ([]string, error) { return []string{"claude"}, nil }
 	fz, err := landingshed.NewFinalize(deps)
 	if err != nil {
 		t.Fatalf("NewFinalize() error = %v; want nil", err)
@@ -208,20 +213,17 @@ func TestFinalize_OverRealHub(t *testing.T) {
 			t.Errorf("parent code HEAD %s has %d parents; want exactly 1 (a squash commit)", codeHEAD, got)
 		}
 
-		// The landing commit's subject is the description title, its body is the description body, and
-		// exactly one Co-Authored-By trailer carries the configured value.
+		// The landing commit's subject is the description title, its body is the description body,
+		// and its trailer block is the fixed line, then the line of the one engine that ran.
 		msgCmd := exec.Command("git", "log", "-1", "--format=%B")
 		msgCmd.Dir = parentCode
 		msgOut, err := msgCmd.Output()
 		if err != nil {
 			t.Fatalf("git log -1 --format=%%B in %s: %v", parentCode, err)
 		}
-		wantMsg := "A landing title\n\nA landing body.\n\nCo-Authored-By: Test Author <test@example.com>"
+		wantMsg := "A landing title\n\nA landing body.\n\nCreated using Loomyard\nCo-Authored-By: Test Author <test@example.com>"
 		if got := strings.TrimSpace(string(msgOut)); got != wantMsg {
 			t.Errorf("landing commit message = %q; want %q", got, wantMsg)
-		}
-		if n := strings.Count(string(msgOut), "Co-Authored-By:"); n != 1 {
-			t.Errorf("landing commit carries %d Co-Authored-By lines; want exactly 1", n)
 		}
 
 		// No merge record is left behind on either pair. fabricengine's own MergeRecordExistsForTest is
