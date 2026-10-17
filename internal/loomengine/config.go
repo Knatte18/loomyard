@@ -715,7 +715,7 @@ func fanKeys(cfg Config) []burlerengine.FanKey {
 // each of the four per-perch budgets that is the integer 0 becomes null, skip_merge_review true becomes merge_max_bounces: 0, and the key is removed.
 // A document without skip_merge_review keeps every budget as written, since its 0 already means zero rounds.
 // The retired reviewer, fixer and fan keys, review, fix, <segment>_review, <segment>_fix, <segment>_fan and <segment>_fix_fan, are renamed to reviewer_model, fixer_model, <segment>_reviewer_model, <segment>_fixer_model, <segment>_reviewer_fan and <segment>_fixer_fan with their values, and a document already holding the new name keeps its value and drops the old key.
-// Before the rename, a document holding webster_review or webster_fix and not merge_reviewer_model or merge_fixer_model gets that Merge key set to the Webster key's value, so Merge-Review keeps the models it ran on.
+// Before the rename, a document holding webster_review or webster_fix and not merge_reviewer_model or merge_fixer_model gets that Merge key set to the Webster key's value, or to the renamed webster_reviewer_model or webster_fixer_model value when the document holds that too, so Merge-Review keeps the models it ran on.
 // The driver_kind, tackler, tackler_timeout_min and tackler_max_spawns keys the retired template spelled out as llm, haiku, 10 and 4 become the values that inherit shed.yaml, and each of the four keys carrying the retired template's comment gets the current one.
 // A document without a retired key or comment is returned unchanged, so a migrated file is unchanged on a second pass.
 // Everything else is carried through yaml node editing with its comments;
