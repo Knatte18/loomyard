@@ -53,7 +53,7 @@ func lookupEntry(t *testing.T, name string) Constructor {
 // That error is not this helper's concern, only what the runner recorded is.
 func captureReview(t *testing.T, name string, cfg Config, env Env) (burlerengine.Profile, burlerengine.RunOpts) {
 	t.Helper()
-	producer, err := burlerReviewEntry(name, cfg, env)
+	producer, err := burlerReviewEntry(reviewRow(name), cfg, env)
 	if err != nil {
 		t.Fatalf("burlerReviewEntry() error = %v; want nil", err)
 	}
@@ -70,7 +70,7 @@ func captureReview(t *testing.T, name string, cfg Config, env Env) (burlerengine
 // captureFix constructs a BurlerFix entry from cfg and env, accepts a round-1 review in the run directory the row's run_subdir names, with a usage record of recorded fans, so the producer reaches its runner, drives one Call and returns the Profile and RunOpts env.Burler's fake recorded for Fix.
 func captureFix(t *testing.T, name string, cfg Config, env Env) (burlerengine.Profile, burlerengine.RunOpts) {
 	t.Helper()
-	producer, err := burlerFixEntry(name, cfg, env)
+	producer, err := burlerFixEntry(reviewRow(name), cfg, env)
 	if err != nil {
 		t.Fatalf("burlerFixEntry() error = %v; want nil", err)
 	}
@@ -213,7 +213,7 @@ func TestBurlerReviewEntry_RubricStencil(t *testing.T) {
 			"run_subdir": "review-segment",
 			"profile":    map[string]any{"rubric": "a literal rubric", "rubric_stencil": "round-rubric"},
 		}
-		_, err := burlerReviewEntry("review-row", cfg, env)
+		_, err := burlerReviewEntry(reviewRow("review-row"), cfg, env)
 		assertErrContains(t, err, "rubric")
 		assertErrContains(t, err, "rubric_stencil")
 	})
@@ -224,7 +224,7 @@ func TestBurlerReviewEntry_RubricStencil(t *testing.T) {
 			"run_subdir": "review-segment",
 			"profile":    map[string]any{"fix-scope": "source"},
 		}
-		_, err := burlerReviewEntry("review-row", cfg, env)
+		_, err := burlerReviewEntry(reviewRow("review-row"), cfg, env)
 		assertErrContains(t, err, "rubric")
 		assertErrContains(t, err, "rubric_stencil")
 	})
@@ -235,17 +235,17 @@ func TestBurlerReviewEntry_RubricStencil(t *testing.T) {
 			"run_subdir": "review-segment",
 			"profile":    map[string]any{"rubric_stencil": "no-such-round-rubric"},
 		}
-		_, err := burlerReviewEntry("review-row", cfg, env)
+		_, err := burlerReviewEntry(reviewRow("review-row"), cfg, env)
 		assertErrContains(t, err, "no-such-round-rubric")
 	})
 
 	t.Run("EmptyStencilsDirFailsOnRubricStencilPathOnly", func(t *testing.T) {
 		env := newTestEnv(t)
 		env.StencilsDir = ""
-		_, err := burlerReviewEntry("review-row", stencilCfg, env)
+		_, err := burlerReviewEntry(reviewRow("review-row"), stencilCfg, env)
 		assertErrContains(t, err, "StencilsDir")
 
-		if _, err := burlerReviewEntry("review-row", minimalReviewConfig(), env); err != nil {
+		if _, err := burlerReviewEntry(reviewRow("review-row"), minimalReviewConfig(), env); err != nil {
 			t.Fatalf("burlerReviewEntry() with a literal rubric error = %v; want nil", err)
 		}
 	})
@@ -254,10 +254,10 @@ func TestBurlerReviewEntry_RubricStencil(t *testing.T) {
 		env := newTestEnv(t)
 		writeStencil(t, env.StencilsDir, "round-rubric", "BLOCKING: a round bug.\n")
 		env.SpecsDir = ""
-		_, err := burlerReviewEntry("review-row", stencilCfg, env)
+		_, err := burlerReviewEntry(reviewRow("review-row"), stencilCfg, env)
 		assertErrContains(t, err, "SpecsDir")
 
-		if _, err := burlerReviewEntry("review-row", minimalReviewConfig(), env); err != nil {
+		if _, err := burlerReviewEntry(reviewRow("review-row"), minimalReviewConfig(), env); err != nil {
 			t.Fatalf("burlerReviewEntry() with a literal rubric error = %v; want nil", err)
 		}
 	})
@@ -350,7 +350,7 @@ func TestBurlerHalfEntries_EnvFallback(t *testing.T) {
 			t.Run("FractionalTimeoutRejected", func(t *testing.T) {
 				cfg := half.cfg()
 				cfg["timeout_s"] = 30.5
-				_, err := lookupEntry(t, half.entry)("a-row", cfg, newTestEnv(t))
+				_, err := lookupEntry(t, half.entry)(reviewRow("a-row"), cfg, newTestEnv(t))
 				assertErrContains(t, err, "timeout_s")
 			})
 		})
@@ -395,7 +395,7 @@ func TestBurlerReviewEntry_ClusterFan(t *testing.T) {
 				cfg["profile"].(map[string]any)[key] = value
 			}
 			if len(tt.wantErr) > 0 {
-				_, err := burlerReviewEntry("review-row", cfg, env)
+				_, err := burlerReviewEntry(reviewRow("review-row"), cfg, env)
 				for _, want := range tt.wantErr {
 					assertErrContains(t, err, want)
 				}
@@ -547,7 +547,7 @@ func TestBurlerHalfEntries_StrictUnknownKeys(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := lookupEntry(t, tt.entry)("a-row", tt.cfg(), newTestEnv(t))
+			_, err := lookupEntry(t, tt.entry)(reviewRow("a-row"), tt.cfg(), newTestEnv(t))
 			assertErrContains(t, err, "unrecognized config key")
 			assertErrContains(t, err, tt.want)
 		})
@@ -556,7 +556,7 @@ func TestBurlerHalfEntries_StrictUnknownKeys(t *testing.T) {
 	t.Run("ReviewProfileAcceptsFixFan", func(t *testing.T) {
 		cfg := minimalReviewConfig()
 		cfg["profile"].(map[string]any)["fix-fan"] = "recipe-fix"
-		if _, err := burlerReviewEntry("a-row", cfg, newTestEnv(t)); err != nil {
+		if _, err := burlerReviewEntry(reviewRow("a-row"), cfg, newTestEnv(t)); err != nil {
 			t.Errorf("burlerReviewEntry() error = %v; want nil for a review profile naming fix-fan", err)
 		}
 	})
@@ -594,7 +594,7 @@ func TestBurlerHalfEntries_ColorSegment(t *testing.T) {
 		t.Run(e.name+"Unknown", func(t *testing.T) {
 			cfg := e.cfg()
 			cfg["color_segment"] = "teal"
-			_, err := e.entry("a-row", cfg, newTestEnv(t))
+			_, err := e.entry(reviewRow("a-row"), cfg, newTestEnv(t))
 			assertErrContains(t, err, "color_segment")
 			assertErrContains(t, err, "teal")
 			assertErrContains(t, err, "merge")
@@ -610,7 +610,7 @@ func TestBurlerHalfEntries_ColorSegment(t *testing.T) {
 		t.Run(e.name+"LanguageSkillsNotBool", func(t *testing.T) {
 			cfg := e.cfg()
 			cfg["profile"].(map[string]any)["language-skills"] = "yes"
-			_, err := e.entry("a-row", cfg, newTestEnv(t))
+			_, err := e.entry(reviewRow("a-row"), cfg, newTestEnv(t))
 			assertErrContains(t, err, "language-skills")
 		})
 		t.Run(e.name+"RolePrefix", func(t *testing.T) {
@@ -630,7 +630,7 @@ func TestBurlerHalfEntries_ColorSegment(t *testing.T) {
 		t.Run(e.name+"RolePrefixInvalid", func(t *testing.T) {
 			cfg := e.cfg()
 			cfg["role_prefix"] = "Plan!"
-			_, err := e.entry("a-row", cfg, newTestEnv(t))
+			_, err := e.entry(reviewRow("a-row"), cfg, newTestEnv(t))
 			assertErrContains(t, err, "role_prefix")
 			assertErrContains(t, err, "Plan!")
 		})
@@ -643,8 +643,14 @@ func TestBurlerHalfEntries_RunDirectory(t *testing.T) {
 		build func(name string, cfg Config, env Env) error
 		cfg   func() Config
 	}{
-		{"Review", func(name string, cfg Config, env Env) error { _, err := burlerReviewEntry(name, cfg, env); return err }, minimalReviewConfig},
-		{"Fix", func(name string, cfg Config, env Env) error { _, err := burlerFixEntry(name, cfg, env); return err }, minimalFixConfig},
+		{"Review", func(name string, cfg Config, env Env) error {
+			_, err := burlerReviewEntry(reviewRow(name), cfg, env)
+			return err
+		}, minimalReviewConfig},
+		{"Fix", func(name string, cfg Config, env Env) error {
+			_, err := burlerFixEntry(reviewRow(name), cfg, env)
+			return err
+		}, minimalFixConfig},
 	}
 	for _, half := range halves {
 		t.Run(half.name+"/CreatedBeforeAnyCall", func(t *testing.T) {
@@ -675,13 +681,13 @@ func TestBurlerHalfEntries_RunDirectory(t *testing.T) {
 		bouncerCfg := minimalBouncerConfig(t, env)
 		bouncerCfg["run_subdir"] = "review-segment"
 
-		if _, err := burlerReviewEntry("review-row", minimalReviewConfig(), env); err != nil {
+		if _, err := burlerReviewEntry(reviewRow("review-row"), minimalReviewConfig(), env); err != nil {
 			t.Fatalf("burlerReviewEntry() error = %v; want nil", err)
 		}
-		if _, err := burlerFixEntry("fix-row", minimalFixConfig(), env); err != nil {
+		if _, err := burlerFixEntry(reviewRow("fix-row"), minimalFixConfig(), env); err != nil {
 			t.Fatalf("burlerFixEntry() error = %v; want nil", err)
 		}
-		if _, err := bouncerEntry("review-bounce", bouncerCfg, env); err != nil {
+		if _, err := bouncerEntry(reviewRow("review-bounce"), bouncerCfg, env); err != nil {
 			t.Fatalf("bouncerEntry() error = %v; want nil", err)
 		}
 
@@ -764,7 +770,7 @@ func TestBurlerFixEntry_GateConfig(t *testing.T) {
 		cfg := minimalFixConfig()
 		cfg["gates"] = gatesCfg("webster", 3)["gates"]
 
-		_, err := burlerFixEntry("fix-row", cfg, newTestEnv(t))
+		_, err := burlerFixEntry(reviewRow("fix-row"), cfg, newTestEnv(t))
 		assertErrContains(t, err, "name")
 		assertErrContains(t, err, "discussion")
 		assertErrContains(t, err, "plan")
@@ -774,7 +780,7 @@ func TestBurlerFixEntry_GateConfig(t *testing.T) {
 		cfg := minimalFixConfig()
 		cfg["profile"].(map[string]any)["gates"] = gatesCfg("plan", 3)["gates"]
 
-		_, err := burlerFixEntry("fix-row", cfg, newTestEnv(t))
+		_, err := burlerFixEntry(reviewRow("fix-row"), cfg, newTestEnv(t))
 		assertErrContains(t, err, "unrecognized config key")
 		assertErrContains(t, err, "gates")
 	})
@@ -792,11 +798,11 @@ func TestBurlerHalfEntries_ConstructionFailures(t *testing.T) {
 	for _, half := range halves {
 		build := func(t *testing.T, cfg Config, env Env) error {
 			t.Helper()
-			_, err := lookupEntry(t, half.entry)("a-row", cfg, env)
+			_, err := lookupEntry(t, half.entry)(reviewRow("a-row"), cfg, env)
 			return err
 		}
 		t.Run(half.name+"/HappyPath", func(t *testing.T) {
-			producer, err := lookupEntry(t, half.entry)("a-row", half.cfg(), newTestEnv(t))
+			producer, err := lookupEntry(t, half.entry)(reviewRow("a-row"), half.cfg(), newTestEnv(t))
 			if err != nil || producer == nil {
 				t.Fatalf("entry() = %v, %v; want a producer", producer, err)
 			}
@@ -829,7 +835,7 @@ func TestBurlerHalfEntries_ConstructionFailures(t *testing.T) {
 	t.Run("FixMissingReviewRow", func(t *testing.T) {
 		cfg := minimalFixConfig()
 		delete(cfg, "review_row")
-		_, err := burlerFixEntry("fix-row", cfg, newTestEnv(t))
+		_, err := burlerFixEntry(reviewRow("fix-row"), cfg, newTestEnv(t))
 		assertErrContains(t, err, "review_row")
 	})
 }
@@ -868,7 +874,7 @@ func TestBurlerHalfEntries_FileSetErrorsNameTheirOwnMap(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := Config{"run_subdir": "review-segment", "profile": tt.profile}
 
-			_, err := burlerReviewEntry("review-row", cfg, newTestEnv(t))
+			_, err := burlerReviewEntry(reviewRow("review-row"), cfg, newTestEnv(t))
 			if err == nil {
 				t.Fatal("burlerReviewEntry() error = nil; want non-nil")
 			}
@@ -881,7 +887,7 @@ func TestBurlerHalfEntries_FileSetErrorsNameTheirOwnMap(t *testing.T) {
 		cfg := minimalFixConfig()
 		cfg["profile"].(map[string]any)["target"] = map[string]any{"paths": "not-a-list"}
 
-		_, err := burlerFixEntry("fix-row", cfg, newTestEnv(t))
+		_, err := burlerFixEntry(reviewRow("fix-row"), cfg, newTestEnv(t))
 		assertErrContains(t, err, "target")
 		assertErrContains(t, err, "BurlerFix")
 	})

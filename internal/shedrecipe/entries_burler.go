@@ -58,7 +58,7 @@ func burlerRowTimeout(timeoutS int, env Env) time.Duration {
 // The row takes no "gates" key: its only gate is the engine's review-parse entry.
 // The row's per-round reviewer and fixer fan lists come from env.RowClusterFans and env.RowFixFans, else from the recipe profile's cluster-fan and fix-fan, and a wiring list naming a fan beside the recipe's own is a construction error.
 // A row with either list or either profile fan records its round's fans; a row with neither runs solo and records nothing.
-func burlerReviewEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
+func burlerReviewEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	runSubdir, err := configString(cfg, "run_subdir", true)
 	if err != nil {
 		return nil, err
@@ -100,16 +100,16 @@ func burlerReviewEntry(name string, cfg Config, env Env) (shedengine.ShedProduce
 	profile.Segment = colorSegment
 	profile.RolePrefix = rolePrefix
 
-	clusterList, fixList := env.RowClusterFans[name], env.RowFixFans[name]
+	clusterList, fixList := env.RowClusterFans[row.Name], env.RowFixFans[row.Name]
 	if hasFanName(clusterList) && profile.ClusterFan != "" {
-		return nil, fmt.Errorf("shedrecipe: BurlerReview: row %q: cluster fan list %v from the hub config through the wiring conflicts with cluster-fan %q set in the recipe's profile; way forward: remove cluster-fan from the recipe's profile for this row", name, clusterList, profile.ClusterFan)
+		return nil, fmt.Errorf("shedrecipe: BurlerReview: row %q: cluster fan list %v from the hub config through the wiring conflicts with cluster-fan %q set in the recipe's profile; way forward: remove cluster-fan from the recipe's profile for this row", row.Name, clusterList, profile.ClusterFan)
 	}
 	if hasFanName(fixList) && profile.FixFan != "" {
-		return nil, fmt.Errorf("shedrecipe: BurlerReview: row %q: fix fan list %v from the hub config through the wiring conflicts with fix-fan %q set in the recipe's profile; way forward: remove fix-fan from the recipe's profile for this row", name, fixList, profile.FixFan)
+		return nil, fmt.Errorf("shedrecipe: BurlerReview: row %q: fix fan list %v from the hub config through the wiring conflicts with fix-fan %q set in the recipe's profile; way forward: remove fix-fan from the recipe's profile for this row", row.Name, fixList, profile.FixFan)
 	}
 	var fans *shedadapters.RoundFans
-	_, hasClusterEntry := env.RowClusterFans[name]
-	_, hasFixEntry := env.RowFixFans[name]
+	_, hasClusterEntry := env.RowClusterFans[row.Name]
+	_, hasFixEntry := env.RowFixFans[row.Name]
 	if hasClusterEntry || hasFixEntry || profile.ClusterFan != "" || profile.FixFan != "" {
 		fans = &shedadapters.RoundFans{
 			Review: effectiveFanList(clusterList, profile.ClusterFan),
@@ -123,8 +123,8 @@ func burlerReviewEntry(name string, cfg Config, env Env) (shedengine.ShedProduce
 	if err != nil {
 		return nil, err
 	}
-	opts := burlerengine.RunOpts{Timeout: burlerRowTimeout(timeoutS, env), ReviewKey: env.RowModelKeys[name].Review}
-	producer, err := shedadapters.NewBurlerReviewProducer(name, shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: burlerRowModels(name, env), Fans: fans}, profile, opts, runDir, env.Now)
+	opts := burlerengine.RunOpts{Timeout: burlerRowTimeout(timeoutS, env), ReviewKey: env.RowModelKeys[row.Name].Review}
+	producer, err := shedadapters.NewBurlerReviewProducer(row.Name, shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: burlerRowModels(row.Name, env), Fans: fans}, profile, opts, runDir, env.Now)
 	if err != nil {
 		return nil, fmt.Errorf("shedrecipe: BurlerReview: %w", err)
 	}
@@ -136,7 +136,7 @@ func burlerReviewEntry(name string, cfg Config, env Env) (shedengine.ShedProduce
 // All four fix rows share this one constructor, which is why the validator is selected by the "gates" key rather than implied by the constructor:
 // the Webster and Darn fixers name the "verify" gate, so a round that changed code ends with a passing verify, and the two review segments name their own validators.
 // The row names no fan: a fixer fan reaches it through the review row's recorded round, and only when env.RowModelKeys names a fixer fan key for the row.
-func burlerFixEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
+func burlerFixEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	runSubdir, err := configString(cfg, "run_subdir", true)
 	if err != nil {
 		return nil, err
@@ -153,7 +153,7 @@ func burlerFixEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, 
 	if err != nil {
 		return nil, err
 	}
-	gate, err := resolveRowGateSpec("BurlerFix", name, cfg, env)
+	gate, err := resolveRowGateSpec("BurlerFix", row.Name, cfg, env)
 	if err != nil {
 		return nil, err
 	}
@@ -179,10 +179,10 @@ func burlerFixEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, 
 	if err != nil {
 		return nil, err
 	}
-	keys := env.RowModelKeys[name]
+	keys := env.RowModelKeys[row.Name]
 	opts := burlerengine.RunOpts{Timeout: burlerRowTimeout(timeoutS, env), Gate: gate, FixKey: keys.Fix, FixFanKey: keys.FixFan}
-	deps := shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: burlerRowModels(name, env), RequiresFans: keys.FixFan != ""}
-	producer, err := shedadapters.NewBurlerFixProducer(name, reviewRow, deps, profile, opts, runDir, env.Now)
+	deps := shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: burlerRowModels(row.Name, env), RequiresFans: keys.FixFan != ""}
+	producer, err := shedadapters.NewBurlerFixProducer(row.Name, reviewRow, deps, profile, opts, runDir, env.Now)
 	if err != nil {
 		return nil, fmt.Errorf("shedrecipe: BurlerFix: %w", err)
 	}

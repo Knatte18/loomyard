@@ -15,14 +15,14 @@ import (
 
 // preflightEntry is the Constructor for the "Preflight" registry row: it validates Env.Cwd and
 // returns preflightshed.NewPreflight(name, env.Cwd).
-func preflightEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
+func preflightEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err
 	}
 	if err := requireAbsRoot("Preflight", "Cwd", env.Cwd); err != nil {
 		return nil, err
 	}
-	return preflightshed.NewPreflight(name, env.Cwd), nil
+	return preflightshed.NewPreflight(row.Name, env.Cwd), nil
 }
 
 // publishEntry is the Constructor for the "Publish" registry row: it returns
@@ -36,7 +36,7 @@ func preflightEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, 
 //
 // It validates no Env field of its own: landingshed.NewPublish already rejects the nil closures in
 // landingshed.Deps, so this entry inherits that check rather than duplicating it.
-func publishEntry(_ string, cfg Config, env Env) (shedengine.ShedProducer, error) {
+func publishEntry(_ RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err
 	}
@@ -53,7 +53,7 @@ func publishEntry(_ string, cfg Config, env Env) (shedengine.ShedProducer, error
 // landingshed.Deps carries no name field, and Merge-In's own identity is a package constant.
 //
 // It validates no Env field of its own: landingshed.NewMergeIn already rejects the nil seams and the empty merge record path it requires.
-func mergeInEntry(_ string, cfg Config, env Env) (shedengine.ShedProducer, error) {
+func mergeInEntry(_ RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err
 	}
@@ -70,7 +70,7 @@ func mergeInEntry(_ string, cfg Config, env Env) (shedengine.ShedProducer, error
 // landingshed.Deps carries no name field, and the gate's own identity is a package constant.
 //
 // It validates no Env field of its own: landingshed.NewPRGate already rejects an empty ApprovalPath, an empty RejectionPath and a nil TaskHead.
-func prGateEntry(_ string, cfg Config, env Env) (shedengine.ShedProducer, error) {
+func prGateEntry(_ RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err
 	}
@@ -85,7 +85,7 @@ func prGateEntry(_ string, cfg Config, env Env) (shedengine.ShedProducer, error)
 //
 // name is discarded for the same reason as prGateEntry's, and it validates no Env field of its own:
 // landingshed.NewPRAlign already rejects the missing record paths, TaskHead and Alignment seams.
-func prAlignEntry(_ string, cfg Config, env Env) (shedengine.ShedProducer, error) {
+func prAlignEntry(_ RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err
 	}
@@ -106,7 +106,7 @@ func prAlignEntry(_ string, cfg Config, env Env) (shedengine.ShedProducer, error
 //
 // It validates no Env field of its own, for the same reason as publishEntry: landingshed.NewFinalize
 // already rejects the nil closures in landingshed.Deps.
-func finalizeEntry(_ string, cfg Config, env Env) (shedengine.ShedProducer, error) {
+func finalizeEntry(_ RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err
 	}
@@ -123,11 +123,11 @@ func finalizeEntry(_ string, cfg Config, env Env) (shedengine.ShedProducer, erro
 //
 // It validates no Env field of its own and inherits loomshed.NewFrictionReflect's nil-closure
 // refusal, the same delegate-to-constructor split publishEntry uses with landingshed.NewPublish.
-func frictionReflectEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
+func frictionReflectEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err
 	}
-	p, err := loomshed.NewFrictionReflect(name, env.ReflectFriction)
+	p, err := loomshed.NewFrictionReflect(row.Name, env.ReflectFriction)
 	if err != nil {
 		return nil, fmt.Errorf("shedrecipe: FrictionReflect: %w", err)
 	}
@@ -137,7 +137,7 @@ func frictionReflectEntry(name string, cfg Config, env Env) (shedengine.ShedProd
 // loomPreflightEntry is the Constructor for the "LoomPreflight" registry row.
 // It validates Env.StatusPath, Env.StatusLockPath and Env.ConfigDirs.Anchor and returns
 // loomshed.NewLoomPreflight(name, env.StatusPath, env.StatusLockPath, env.ConfigDirs).
-func loomPreflightEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
+func loomPreflightEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err
 	}
@@ -150,28 +150,28 @@ func loomPreflightEntry(name string, cfg Config, env Env) (shedengine.ShedProduc
 	if err := requireAbsRoot("LoomPreflight", "ConfigDirs.Anchor", env.ConfigDirs.Anchor); err != nil {
 		return nil, err
 	}
-	return loomshed.NewLoomPreflight(name, env.StatusPath, env.StatusLockPath, env.ConfigDirs), nil
+	return loomshed.NewLoomPreflight(row.Name, env.StatusPath, env.StatusLockPath, env.ConfigDirs), nil
 }
 
 // batchifierEntry is the Constructor for the "Batchifier" registry row.
 // It validates Env.ConfigDirs.Anchor and returns loomshed.NewBatchifier(name, env.ConfigDirs).
-func batchifierEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
+func batchifierEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err
 	}
 	if err := requireAbsRoot("Batchifier", "ConfigDirs.Anchor", env.ConfigDirs.Anchor); err != nil {
 		return nil, err
 	}
-	return loomshed.NewBatchifier(name, env.ConfigDirs), nil
+	return loomshed.NewBatchifier(row.Name, env.ConfigDirs), nil
 }
 
 // stubEntry is the Constructor for the "Stub" registry row: it validates no Env field and returns
 // loomshed.NewStub(name).
-func stubEntry(name string, cfg Config, _ Env) (shedengine.ShedProducer, error) {
+func stubEntry(row RowIdentity, cfg Config, _ Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err
 	}
-	return loomshed.NewStub(name), nil
+	return loomshed.NewStub(row.Name), nil
 }
 
 // websterEntry is the Constructor for the "Webster" registry row: it resolves the row's "gates" Config key through resolveGateSpec onto RunDeps.Gate, validates Env.ConfigDirs.Anchor, Env.WebsterRun, Env.CommitWebster, and exactly four inner fields of Env.WebsterDeps -- Starter, Stopper, Engine, and RefMatcher -- and returns loomshed.NewWebsterProducer(name, env.ConfigDirs, env.WebsterRun, deps, env.CommitWebster).
@@ -187,7 +187,7 @@ func stubEntry(name string, cfg Config, _ Env) (shedengine.ShedProducer, error) 
 // overwritten by loomshed's own wrapper on every Call, and that wrapper's own field doc says the
 // caller leaves it nil; and ShuttleCfg, Roles, Config, and Geom are value and map types whose validation belongs to
 // websterengine.Run, not to this wiring layer.
-func websterEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
+func websterEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	gate, err := resolveGateSpec("Webster", cfg, env)
 	if err != nil {
 		return nil, err
@@ -218,5 +218,5 @@ func websterEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 	}
 	deps := env.WebsterDeps
 	deps.Gate = gate
-	return loomshed.NewWebsterProducer(name, env.ConfigDirs, env.WebsterRun, deps, env.CommitWebster), nil
+	return loomshed.NewWebsterProducer(row.Name, env.ConfigDirs, env.WebsterRun, deps, env.CommitWebster), nil
 }

@@ -74,6 +74,14 @@ func writeStencilFile(t *testing.T, dir, name, content string) {
 	}
 }
 
+// testReviewSegment is the segment every Bouncer, BurlerReview and BurlerFix test row belongs to.
+const testReviewSegment = "Test-Review"
+
+// reviewRow returns the identity of a review-segment row called name, in testReviewSegment.
+func reviewRow(name string) RowIdentity {
+	return RowIdentity{Name: name, Segment: testReviewSegment}
+}
+
 // newTestEnv builds an Env whose every path field is an absolute path derived from a single t.TempDir(), one subdirectory per field: a directory field (Cwd, WorktreeRoot, StencilsDir, SpecsDir, RunRoot, AnchorPath, ScratchDir) is created with os.MkdirAll, while a file field (StatusPath, StatusLockPath, DecisionRecordPath, SupportLogPath, RelevantPath, PrimeLock.Path) is left as a joined path nobody creates.
 // It fills Shuttle and Burler with shedfake's fakes and WebsterRun with this file's fake, fills WebsterDeps with shedfake.WebsterSeams, fills DiscussionTable with a closure returning a one-chair seatengine.Table over one absolute output path under the same temp root, fills CommitDiscussion with a closure returning nil, fills PlanTable with a closure returning a one-lead seatengine.Table over one absolute output path under the same temp root, fills CommitPlan with a closure returning nil, leaves Landing zero, and leaves Now nil.
 //

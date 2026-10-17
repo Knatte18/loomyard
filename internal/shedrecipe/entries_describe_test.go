@@ -48,7 +48,7 @@ func TestDescribeEntry_ConstructionFailures(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			env := newDescribeTestEnv(t)
 			tc.mutate(&env)
-			_, err := describeEntry("Row", tc.cfg, env)
+			_, err := describeEntry(RowIdentity{Name: "Row"}, tc.cfg, env)
 			if err == nil {
 				t.Fatalf("describeEntry() error = nil; want non-nil")
 			}
@@ -64,7 +64,7 @@ func TestDescribeEntry_HappyPath(t *testing.T) {
 	env := newDescribeTestEnv(t)
 	fake := &shedfake.SeatRunner{Results: []seatengine.Result{leadDoneResult(env.DescriptionPath)}}
 	env.Seats = fake
-	p, err := describeEntry("Row", gatesCfg("description", 2), env)
+	p, err := describeEntry(RowIdentity{Name: "Row"}, gatesCfg("description", 2), env)
 	if err != nil {
 		t.Fatalf("describeEntry() error = %v; want nil", err)
 	}

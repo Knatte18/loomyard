@@ -64,7 +64,7 @@ func TestBouncerEntry_HappyPath(t *testing.T) {
 	env := newTestEnv(t)
 	cfg := minimalBouncerConfig(t, env)
 
-	producer, err := bouncerEntry("review-bounce", cfg, env)
+	producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 	if err != nil {
 		t.Fatalf("bouncerEntry() error = %v; want nil", err)
 	}
@@ -79,7 +79,7 @@ func TestBouncerEntry_HappyPath(t *testing.T) {
 	env.VerifyTiers = []string{"build first", "vet second"}
 	writeStencil(t, env.StencilsDir, "bouncer-template-seed", "{{.rubric}}\n")
 	writeStencil(t, env.StencilsDir, "bouncer-rubric", "Record: {{.webster_record}}\nTiers:\n{{.verify_tiers}}\n")
-	producer, err = bouncerEntry("review-bounce", cfg, env)
+	producer, err = bouncerEntry(reviewRow("review-bounce"), cfg, env)
 	if err != nil {
 		t.Fatalf("bouncerEntry() error = %v; want nil", err)
 	}
@@ -100,7 +100,7 @@ func TestBouncerEntry_RunDirectory(t *testing.T) {
 		env := newTestEnv(t)
 		cfg := minimalBouncerConfig(t, env)
 
-		if _, err := bouncerEntry("review-bounce", cfg, env); err != nil {
+		if _, err := bouncerEntry(reviewRow("review-bounce"), cfg, env); err != nil {
 			t.Fatalf("bouncerEntry() error = %v; want nil", err)
 		}
 
@@ -121,10 +121,10 @@ func TestBouncerEntry_RunDirectory(t *testing.T) {
 		cfgA := Config{"run_subdir": "segment-a", "artifact_paths": []string{"artifact.md"}, "rubric_stencil": "bouncer-rubric"}
 		cfgB := Config{"run_subdir": "segment-b", "artifact_paths": []string{"artifact.md"}, "rubric_stencil": "bouncer-rubric"}
 
-		if _, err := bouncerEntry("a", cfgA, env); err != nil {
+		if _, err := bouncerEntry(reviewRow("a"), cfgA, env); err != nil {
 			t.Fatalf("bouncerEntry(a) error = %v; want nil", err)
 		}
-		if _, err := bouncerEntry("b", cfgB, env); err != nil {
+		if _, err := bouncerEntry(reviewRow("b"), cfgB, env); err != nil {
 			t.Fatalf("bouncerEntry(b) error = %v; want nil", err)
 		}
 
@@ -149,7 +149,7 @@ func TestBouncerEntry_RunDirectory(t *testing.T) {
 		writeStencil(t, env.StencilsDir, "bouncer-rubric", "BLOCKING: a bug.\n")
 		cfg := Config{"run_subdir": "../escape", "artifact_paths": []string{"artifact.md"}, "rubric_stencil": "bouncer-rubric"}
 
-		_, err := bouncerEntry("review-bounce", cfg, env)
+		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		assertErrContains(t, err, "run_subdir")
 	})
 }
@@ -166,7 +166,7 @@ func TestBouncerEntry_ArtifactPathsResolveUnderAnchorPath(t *testing.T) {
 	writeStencil(t, env.StencilsDir, "bouncer-template-seed", "{{.artifacts}}\n")
 	cfg := minimalBouncerConfig(t, env)
 
-	producer, err := bouncerEntry("review-bounce", cfg, env)
+	producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 	if err != nil {
 		t.Fatalf("bouncerEntry() error = %v; want nil", err)
 	}
@@ -200,7 +200,7 @@ func TestBouncerEntry_ReportNamePinning(t *testing.T) {
 	writeStencil(t, env.StencilsDir, "bouncer-template-seed", "seed template, no markers\n")
 	writeStencil(t, env.StencilsDir, "bouncer-template-judge", "judge template, no markers\n")
 
-	producer, err := bouncerEntry("review-bounce", cfg, env)
+	producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 	if err != nil {
 		t.Fatalf("bouncerEntry() error = %v; want nil", err)
 	}
@@ -249,7 +249,7 @@ func TestBouncerEntry_EnvJudgeFallback(t *testing.T) {
 		for key, value := range extra {
 			cfg[key] = value
 		}
-		producer, err := bouncerEntry("review-bounce", cfg, env)
+		producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		if err != nil {
 			t.Fatalf("bouncerEntry() error = %v; want nil", err)
 		}
@@ -303,7 +303,7 @@ func TestBouncerEntry_ReportNameKeyRejected(t *testing.T) {
 	cfg := minimalBouncerConfig(t, env)
 	cfg["report_name"] = "round-%d-review.md"
 
-	_, err := bouncerEntry("review-bounce", cfg, env)
+	_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 	assertErrContains(t, err, "report_name")
 }
 
@@ -311,7 +311,7 @@ func TestBouncerEntry_ConstructionFailures(t *testing.T) {
 	t.Run("NoRowBouncerModelsEntry", func(t *testing.T) {
 		env := newTestEnv(t)
 		cfg := minimalBouncerConfig(t, env)
-		_, err := bouncerEntry("unwired-row", cfg, env)
+		_, err := bouncerEntry(reviewRow("unwired-row"), cfg, env)
 		assertErrContains(t, err, "unwired-row")
 		assertErrContains(t, err, "Env.RowBouncerModels")
 	})
@@ -321,7 +321,7 @@ func TestBouncerEntry_ConstructionFailures(t *testing.T) {
 			env := newTestEnv(t)
 			cfg := minimalBouncerConfig(t, env)
 			cfg[key] = "x"
-			_, err := bouncerEntry("review-bounce", cfg, env)
+			_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 			assertErrContains(t, err, key)
 		})
 	}
@@ -330,7 +330,7 @@ func TestBouncerEntry_ConstructionFailures(t *testing.T) {
 		env := newTestEnv(t)
 		writeStencil(t, env.StencilsDir, "bouncer-rubric", "BLOCKING: a bug.\n")
 		cfg := Config{"run_subdir": "review-segment", "rubric_stencil": "bouncer-rubric"}
-		_, err := bouncerEntry("review-bounce", cfg, env)
+		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		assertErrContains(t, err, "artifact_paths")
 	})
 
@@ -338,7 +338,7 @@ func TestBouncerEntry_ConstructionFailures(t *testing.T) {
 		env := newTestEnv(t)
 		writeStencil(t, env.StencilsDir, "bouncer-rubric", "BLOCKING: a bug.\n")
 		cfg := Config{"run_subdir": "review-segment", "artifact_paths": []string{}, "rubric_stencil": "bouncer-rubric"}
-		_, err := bouncerEntry("review-bounce", cfg, env)
+		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		assertErrContains(t, err, "artifact_paths")
 	})
 
@@ -346,7 +346,7 @@ func TestBouncerEntry_ConstructionFailures(t *testing.T) {
 		env := newTestEnv(t)
 		writeStencil(t, env.StencilsDir, "bouncer-rubric", "BLOCKING: a bug.\n")
 		cfg := Config{"run_subdir": "review-segment", "artifact_paths": []string{"/etc/passwd"}, "rubric_stencil": "bouncer-rubric"}
-		_, err := bouncerEntry("review-bounce", cfg, env)
+		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		assertErrContains(t, err, "artifact_paths")
 	})
 
@@ -354,21 +354,21 @@ func TestBouncerEntry_ConstructionFailures(t *testing.T) {
 		env := newTestEnv(t)
 		writeStencil(t, env.StencilsDir, "bouncer-rubric", "BLOCKING: a bug.\n")
 		cfg := Config{"run_subdir": "review-segment", "artifact_paths": []string{"../escape.md"}, "rubric_stencil": "bouncer-rubric"}
-		_, err := bouncerEntry("review-bounce", cfg, env)
+		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		assertErrContains(t, err, "artifact_paths")
 	})
 
 	t.Run("MissingRubricStencil", func(t *testing.T) {
 		env := newTestEnv(t)
 		cfg := Config{"run_subdir": "review-segment", "artifact_paths": []string{"artifact.md"}}
-		_, err := bouncerEntry("review-bounce", cfg, env)
+		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		assertErrContains(t, err, "rubric_stencil")
 	})
 
 	t.Run("RubricStencilDoesNotExist", func(t *testing.T) {
 		env := newTestEnv(t)
 		cfg := Config{"run_subdir": "review-segment", "artifact_paths": []string{"artifact.md"}, "rubric_stencil": "no-such-rubric"}
-		_, err := bouncerEntry("review-bounce", cfg, env)
+		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		assertErrContains(t, err, "no-such-rubric")
 	})
 
@@ -376,7 +376,7 @@ func TestBouncerEntry_ConstructionFailures(t *testing.T) {
 		env := newTestEnv(t)
 		cfg := minimalBouncerConfig(t, env)
 		env.RunRoot = ""
-		_, err := bouncerEntry("review-bounce", cfg, env)
+		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		assertErrContains(t, err, "RunRoot")
 	})
 
@@ -384,7 +384,7 @@ func TestBouncerEntry_ConstructionFailures(t *testing.T) {
 		env := newTestEnv(t)
 		cfg := minimalBouncerConfig(t, env)
 		env.AnchorPath = ""
-		_, err := bouncerEntry("review-bounce", cfg, env)
+		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		assertErrContains(t, err, "AnchorPath")
 	})
 
@@ -394,7 +394,7 @@ func TestBouncerEntry_ConstructionFailures(t *testing.T) {
 		env := newTestEnv(t)
 		cfg := minimalBouncerConfig(t, env)
 		env.WorktreeRoot = ""
-		producer, err := bouncerEntry("review-bounce", cfg, env)
+		producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		if err != nil {
 			t.Fatalf("bouncerEntry() error = %v; want nil", err)
 		}
@@ -407,7 +407,7 @@ func TestBouncerEntry_ConstructionFailures(t *testing.T) {
 		env := newTestEnv(t)
 		cfg := minimalBouncerConfig(t, env)
 		env.StencilsDir = ""
-		_, err := bouncerEntry("review-bounce", cfg, env)
+		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		assertErrContains(t, err, "StencilsDir")
 	})
 
@@ -415,7 +415,7 @@ func TestBouncerEntry_ConstructionFailures(t *testing.T) {
 		env := newTestEnv(t)
 		cfg := minimalBouncerConfig(t, env)
 		env.SpecsDir = ""
-		_, err := bouncerEntry("review-bounce", cfg, env)
+		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		assertErrContains(t, err, "SpecsDir")
 	})
 
@@ -423,7 +423,7 @@ func TestBouncerEntry_ConstructionFailures(t *testing.T) {
 		env := newTestEnv(t)
 		cfg := minimalBouncerConfig(t, env)
 		env.Shuttle = nil
-		_, err := bouncerEntry("review-bounce", cfg, env)
+		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		assertErrContains(t, err, "Shuttle")
 	})
 
@@ -432,7 +432,7 @@ func TestBouncerEntry_ConstructionFailures(t *testing.T) {
 			env := newTestEnv(t)
 			cfg := minimalBouncerConfig(t, env)
 			env.ReviewCirclingCheckpoint = checkpoint
-			_, err := bouncerEntry("review-bounce", cfg, env)
+			_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 			assertErrContains(t, err, "ReviewCirclingCheckpoint")
 		}
 	})
@@ -441,7 +441,7 @@ func TestBouncerEntry_ConstructionFailures(t *testing.T) {
 		env := newTestEnv(t)
 		cfg := minimalBouncerConfig(t, env)
 		env.ReviewCirclingCheckpoint = 4
-		producer, err := bouncerEntry("review-bounce", cfg, env)
+		producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		if err != nil || producer == nil {
 			t.Fatalf("bouncerEntry() = (%v, %v); want a producer and nil", producer, err)
 		}
@@ -451,7 +451,7 @@ func TestBouncerEntry_ConstructionFailures(t *testing.T) {
 		env := newTestEnv(t)
 		cfg := minimalBouncerConfig(t, env)
 		cfg["color_segment"] = "teal"
-		_, err := bouncerEntry("review-bounce", cfg, env)
+		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		assertErrContains(t, err, "color_segment")
 		assertErrContains(t, err, "teal")
 	})
@@ -460,7 +460,7 @@ func TestBouncerEntry_ConstructionFailures(t *testing.T) {
 		env := newTestEnv(t)
 		cfg := minimalBouncerConfig(t, env)
 		cfg["role_prefix"] = "Plan!"
-		_, err := bouncerEntry("review-bounce", cfg, env)
+		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		assertErrContains(t, err, "role_prefix")
 		assertErrContains(t, err, "Plan!")
 	})
@@ -469,7 +469,7 @@ func TestBouncerEntry_ConstructionFailures(t *testing.T) {
 		env := newTestEnv(t)
 		cfg := minimalBouncerConfig(t, env)
 		cfg["blocking_escalates"] = "yes"
-		_, err := bouncerEntry("review-bounce", cfg, env)
+		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		assertErrContains(t, err, "blocking_escalates")
 	})
 
@@ -477,7 +477,7 @@ func TestBouncerEntry_ConstructionFailures(t *testing.T) {
 		env := newTestEnv(t)
 		cfg := minimalBouncerConfig(t, env)
 		env.Now = nil
-		producer, err := bouncerEntry("review-bounce", cfg, env)
+		producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		if err != nil {
 			t.Fatalf("bouncerEntry() error = %v; want nil", err)
 		}
@@ -536,7 +536,7 @@ func TestBouncerEntry_CommitSeam(t *testing.T) {
 		cfg["commit_seam"] = "plan"
 		layoutBouncerRound1Report(t, env)
 
-		producer, err := bouncerEntry("review-bounce", cfg, env)
+		producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		if err != nil {
 			t.Fatalf("bouncerEntry() error = %v; want nil", err)
 		}
@@ -560,7 +560,7 @@ func TestBouncerEntry_CommitSeam(t *testing.T) {
 		cfg["commit_seam"] = "discussion"
 		layoutBouncerRound1Report(t, env)
 
-		producer, err := bouncerEntry("review-bounce", cfg, env)
+		producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		if err != nil {
 			t.Fatalf("bouncerEntry() error = %v; want nil", err)
 		}
@@ -586,7 +586,7 @@ func TestBouncerEntry_CommitSeam(t *testing.T) {
 		cfg := minimalBouncerConfig(t, env)
 		layoutBouncerRound1Report(t, env)
 
-		producer, err := bouncerEntry("review-bounce", cfg, env)
+		producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		if err != nil {
 			t.Fatalf("bouncerEntry() error = %v; want nil", err)
 		}
@@ -606,7 +606,7 @@ func TestBouncerEntry_CommitSeam(t *testing.T) {
 		cfg := minimalBouncerConfig(t, env)
 		cfg["commit_seam"] = "bogus"
 
-		_, err := bouncerEntry("review-bounce", cfg, env)
+		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		assertErrContains(t, err, "commit_seam")
 	})
 
@@ -617,7 +617,7 @@ func TestBouncerEntry_CommitSeam(t *testing.T) {
 			cfg := minimalBouncerConfig(t, env)
 			cfg["commit_seam"] = "plan"
 
-			_, err := bouncerEntry("review-bounce", cfg, env)
+			_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 			assertErrContains(t, err, "CommitPlan")
 		})
 
@@ -627,7 +627,7 @@ func TestBouncerEntry_CommitSeam(t *testing.T) {
 			cfg := minimalBouncerConfig(t, env)
 			cfg["commit_seam"] = "discussion"
 
-			_, err := bouncerEntry("review-bounce", cfg, env)
+			_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 			assertErrContains(t, err, "CommitDiscussion")
 		})
 	})
@@ -638,7 +638,7 @@ func TestBouncerEntry_CommitSeam(t *testing.T) {
 		env.CommitDiscussion = nil
 		cfg := minimalBouncerConfig(t, env)
 
-		producer, err := bouncerEntry("review-bounce", cfg, env)
+		producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		if err != nil {
 			t.Fatalf("bouncerEntry() error = %v; want nil (the guard is on the key's presence, not on the Env field)", err)
 		}
@@ -655,7 +655,7 @@ func TestBouncerEntry_SkipSeam(t *testing.T) {
 		env.SkipPlanReview = nil
 		cfg := minimalBouncerConfig(t, env)
 
-		if _, err := bouncerEntry("review-bounce", cfg, env); err != nil {
+		if _, err := bouncerEntry(reviewRow("review-bounce"), cfg, env); err != nil {
 			t.Fatalf("bouncerEntry() error = %v; want nil", err)
 		}
 	})
@@ -666,7 +666,7 @@ func TestBouncerEntry_SkipSeam(t *testing.T) {
 		cfg := minimalBouncerConfig(t, env)
 		cfg["skip_seam"] = "rework-exempt"
 
-		if _, err := bouncerEntry("review-bounce", cfg, env); err != nil {
+		if _, err := bouncerEntry(reviewRow("review-bounce"), cfg, env); err != nil {
 			t.Fatalf("bouncerEntry() error = %v; want nil", err)
 		}
 	})
@@ -677,7 +677,7 @@ func TestBouncerEntry_SkipSeam(t *testing.T) {
 		cfg := minimalBouncerConfig(t, env)
 		cfg["skip_seam"] = "rework-exempt"
 
-		_, err := bouncerEntry("review-bounce", cfg, env)
+		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		assertErrContains(t, err, "SkipPlanReview")
 	})
 
@@ -690,7 +690,7 @@ func TestBouncerEntry_SkipSeam(t *testing.T) {
 		cfg := minimalBouncerConfig(t, env)
 		cfg["skip_seam"] = "merge-overlap"
 
-		producer, err := bouncerEntry("review-bounce", cfg, env)
+		producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		if err != nil {
 			t.Fatalf("bouncerEntry() error = %v; want nil", err)
 		}
@@ -709,7 +709,7 @@ func TestBouncerEntry_SkipSeam(t *testing.T) {
 		cfg := minimalBouncerConfig(t, env)
 		cfg["skip_seam"] = "merge-overlap"
 
-		_, err := bouncerEntry("review-bounce", cfg, env)
+		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		assertErrContains(t, err, "SkipMergeReview")
 	})
 
@@ -727,7 +727,7 @@ func TestBouncerEntry_SkipSeam(t *testing.T) {
 		cfg["commit_seam"] = "plan"
 		cfg["skip_seam"] = "rework-exempt"
 
-		producer, err := bouncerEntry("review-bounce", cfg, env)
+		producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		if err != nil {
 			t.Fatalf("bouncerEntry() error = %v; want nil", err)
 		}
@@ -748,7 +748,7 @@ func TestBouncerEntry_SkipSeam(t *testing.T) {
 		cfg := minimalBouncerConfig(t, env)
 		cfg["zero_rounds"] = "yes"
 
-		_, err := bouncerEntry("review-bounce", cfg, env)
+		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		assertErrContains(t, err, "zero_rounds")
 	})
 
@@ -757,7 +757,7 @@ func TestBouncerEntry_SkipSeam(t *testing.T) {
 		cfg := minimalBouncerConfig(t, env)
 		cfg["skip_seam"] = "plan"
 
-		_, err := bouncerEntry("review-bounce", cfg, env)
+		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		assertErrContains(t, err, "skip_seam")
 		assertErrContains(t, err, "rework-exempt")
 		assertErrContains(t, err, "merge-overlap")
@@ -772,7 +772,7 @@ func TestBouncerEntry_CarryOver(t *testing.T) {
 		env.Shuttle = judgeSeamShuttle()
 		writeStencil(t, env.StencilsDir, "bouncer-template-judge", "judge template, no markers\n")
 		layoutBouncerRound1Report(t, env)
-		producer, err := bouncerEntry("review-bounce", cfg, env)
+		producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		if err != nil {
 			t.Fatalf("bouncerEntry() error = %v; want nil", err)
 		}
@@ -818,7 +818,7 @@ func TestBouncerEntry_CarryOver(t *testing.T) {
 		cfg := minimalBouncerConfig(t, env)
 		cfg["carry_over"] = "Plan-Review"
 
-		_, err := bouncerEntry("review-bounce", cfg, env)
+		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		assertErrContains(t, err, "CarryOver")
 	})
 }
@@ -843,7 +843,7 @@ func TestBouncerEntry_ApproveSeam(t *testing.T) {
 		cfg["approve_seam"] = "plan"
 		layoutBouncerRound1Report(t, env)
 
-		producer, err := bouncerEntry("review-bounce", cfg, env)
+		producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		if err != nil {
 			t.Fatalf("bouncerEntry() error = %v; want nil", err)
 		}
@@ -866,7 +866,7 @@ func TestBouncerEntry_ApproveSeam(t *testing.T) {
 		cfg["approve_seam"] = "merge"
 		layoutBouncerRound1Report(t, env)
 
-		producer, err := bouncerEntry("review-bounce", cfg, env)
+		producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		if err != nil {
 			t.Fatalf("bouncerEntry() error = %v; want nil", err)
 		}
@@ -884,7 +884,7 @@ func TestBouncerEntry_ApproveSeam(t *testing.T) {
 		cfg := minimalBouncerConfig(t, env)
 		cfg["approve_seam"] = "merge"
 
-		_, err := bouncerEntry("review-bounce", cfg, env)
+		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		assertErrContains(t, err, "ApproveMergeReview")
 	})
 
@@ -897,7 +897,7 @@ func TestBouncerEntry_ApproveSeam(t *testing.T) {
 		cfg := minimalBouncerConfig(t, env)
 		layoutBouncerRound1Report(t, env)
 
-		producer, err := bouncerEntry("review-bounce", cfg, env)
+		producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		if err != nil {
 			t.Fatalf("bouncerEntry() error = %v; want nil", err)
 		}
@@ -914,7 +914,7 @@ func TestBouncerEntry_ApproveSeam(t *testing.T) {
 		cfg := minimalBouncerConfig(t, env)
 		cfg["approve_seam"] = "discussion"
 
-		_, err := bouncerEntry("review-bounce", cfg, env)
+		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		assertErrContains(t, err, "approve_seam")
 		assertErrContains(t, err, "plan")
 		assertErrContains(t, err, "merge")
@@ -926,7 +926,7 @@ func TestBouncerEntry_ApproveSeam(t *testing.T) {
 		cfg := minimalBouncerConfig(t, env)
 		cfg["approve_seam"] = "plan"
 
-		_, err := bouncerEntry("review-bounce", cfg, env)
+		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		assertErrContains(t, err, "ApprovePlan")
 	})
 
@@ -935,7 +935,7 @@ func TestBouncerEntry_ApproveSeam(t *testing.T) {
 		env.ApprovePlan = nil
 		cfg := minimalBouncerConfig(t, env)
 
-		producer, err := bouncerEntry("review-bounce", cfg, env)
+		producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		if err != nil {
 			t.Fatalf("bouncerEntry() error = %v; want nil (the guard is on the key's presence, not on the Env field)", err)
 		}
@@ -949,7 +949,7 @@ func TestBouncerEntry_ApproveSeam(t *testing.T) {
 		cfg := minimalBouncerConfig(t, env)
 		cfg["approve-seam"] = "plan"
 
-		_, err := bouncerEntry("review-bounce", cfg, env)
+		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		assertErrContains(t, err, "approve-seam")
 	})
 }
@@ -982,7 +982,7 @@ func TestBouncerEntry_ClusterExcludes(t *testing.T) {
 		}
 		layoutBouncerRound1Report(t, env)
 
-		producer, err := bouncerEntry("review-bounce", cfg, env)
+		producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		if err != nil {
 			t.Fatalf("bouncerEntry() error = %v; want nil", err)
 		}
@@ -1042,7 +1042,7 @@ func TestBouncerEntry_ClusterExcludes(t *testing.T) {
 		cfg := minimalBouncerConfig(t, env)
 		cfg["cluster_excludes"] = "yes"
 
-		_, err := bouncerEntry("review-bounce", cfg, env)
+		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		assertErrContains(t, err, "cluster_excludes")
 	})
 
@@ -1051,7 +1051,7 @@ func TestBouncerEntry_ClusterExcludes(t *testing.T) {
 		cfg := minimalBouncerConfig(t, env)
 		cfg["cluster_exclude"] = true
 
-		_, err := bouncerEntry("review-bounce", cfg, env)
+		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		assertErrContains(t, err, `unrecognized config key "cluster_exclude"`)
 	})
 }
@@ -1116,7 +1116,7 @@ func TestBouncerEntry_ParentNamePassesToJudgePrompt(t *testing.T) {
 			writeStencil(t, env.StencilsDir, "parent-directive-operator-ban", "ban\n")
 			layoutBouncerRound1Report(t, env)
 
-			producer, err := bouncerEntry("review-bounce", cfg, env)
+			producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 			if err != nil {
 				t.Fatalf("bouncerEntry() error = %v; want nil", err)
 			}
@@ -1143,7 +1143,7 @@ func TestBouncerEntry_CirclingReasonSlugAndBudget(t *testing.T) {
 		cfg := minimalBouncerConfig(t, env)
 		layoutBouncerCirclingRounds(t, env)
 
-		producer, err := bouncerEntry("review-bounce", cfg, env)
+		producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		if err != nil {
 			t.Fatalf("bouncerEntry() error = %v; want nil", err)
 		}
@@ -1253,7 +1253,7 @@ func TestBouncerEntry_BlockingEscalatesAndColorSegment(t *testing.T) {
 			}
 			layoutBouncerRound1Report(t, env)
 
-			producer, err := bouncerEntry("review-bounce", cfg, env)
+			producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 			if err != nil {
 				t.Fatalf("bouncerEntry() error = %v; want nil", err)
 			}

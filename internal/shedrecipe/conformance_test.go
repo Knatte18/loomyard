@@ -101,13 +101,13 @@ func TestEveryEntry_RejectsUnknownConfigKey(t *testing.T) {
 			}
 
 			env := row.env(t)
-			if producer, err := constructor("row-name", row.cfg(t, env), env); err != nil || producer == nil {
+			if producer, err := constructor(reviewRow("row-name"), row.cfg(t, env), env); err != nil || producer == nil {
 				t.Fatalf("%s() with its minimal config = %v, %v; want a producer", name, producer, err)
 			}
 
 			cfg := row.cfg(t, env)
 			cfg["bogus_key"] = "x"
-			_, err = constructor("row-name", cfg, env)
+			_, err = constructor(reviewRow("row-name"), cfg, env)
 			assertErrContains(t, err, "bogus_key")
 		})
 	}

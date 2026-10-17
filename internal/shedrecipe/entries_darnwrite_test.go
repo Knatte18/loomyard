@@ -56,7 +56,7 @@ func TestDarnWriteEntry_ConstructionFailures(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			env := darnTestEnv(t)
 			tt.edit(&env)
-			_, err := darnWriteEntry("Row", tt.cfg, env)
+			_, err := darnWriteEntry(RowIdentity{Name: "Row"}, tt.cfg, env)
 			if err == nil {
 				t.Fatalf("darnWriteEntry() error = nil; want non-nil")
 			}
@@ -82,7 +82,7 @@ func TestDarnWriteEntry_HappyPath(t *testing.T) {
 	}
 	fake := &shedfake.SeatRunner{Results: []seatengine.Result{leadDoneResult(output)}}
 	env.Seats = fake
-	producer, err := darnWriteEntry("Row", cfg, env)
+	producer, err := darnWriteEntry(RowIdentity{Name: "Row"}, cfg, env)
 	if err != nil {
 		t.Fatalf("darnWriteEntry() error = %v; want nil", err)
 	}

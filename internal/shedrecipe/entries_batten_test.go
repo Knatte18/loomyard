@@ -125,7 +125,7 @@ func lifecycleEntryCases() []lifecycleEntryCase {
 func TestLifecycleEntries_HappyPath(t *testing.T) {
 	for _, tt := range lifecycleEntryCases() {
 		t.Run(tt.registryKey, func(t *testing.T) {
-			producer, err := tt.entry("row-name", Config{}, tt.buildEnv(t))
+			producer, err := tt.entry(RowIdentity{Name: "row-name"}, Config{}, tt.buildEnv(t))
 			if err != nil {
 				t.Fatalf("%s() error = %v; want nil", tt.registryKey, err)
 			}
@@ -141,7 +141,7 @@ func TestLifecycleEntries_RejectsEmptySlug(t *testing.T) {
 		t.Run(tt.registryKey, func(t *testing.T) {
 			env := tt.buildEnv(t)
 			env.Slug = ""
-			_, err := tt.entry("row-name", Config{}, env)
+			_, err := tt.entry(RowIdentity{Name: "row-name"}, Config{}, env)
 			if err == nil {
 				t.Fatalf("%s() error = nil; want non-nil for an empty Env.Slug", tt.registryKey)
 			}
@@ -157,7 +157,7 @@ func TestLifecycleEntries_RejectsBadScratchDir(t *testing.T) {
 		t.Run(tt.registryKey+"_Empty", func(t *testing.T) {
 			env := tt.buildEnv(t)
 			env.ScratchDir = ""
-			_, err := tt.entry("row-name", Config{}, env)
+			_, err := tt.entry(RowIdentity{Name: "row-name"}, Config{}, env)
 			if err == nil {
 				t.Fatalf("%s() error = nil; want non-nil for an empty Env.ScratchDir", tt.registryKey)
 			}
@@ -169,7 +169,7 @@ func TestLifecycleEntries_RejectsBadScratchDir(t *testing.T) {
 		t.Run(tt.registryKey+"_Relative", func(t *testing.T) {
 			env := tt.buildEnv(t)
 			env.ScratchDir = "relative/scratch"
-			_, err := tt.entry("row-name", Config{}, env)
+			_, err := tt.entry(RowIdentity{Name: "row-name"}, Config{}, env)
 			if err == nil {
 				t.Fatalf("%s() error = nil; want non-nil for a relative Env.ScratchDir", tt.registryKey)
 			}
@@ -186,7 +186,7 @@ func TestLifecycleEntries_RejectsNilSeams(t *testing.T) {
 			for _, seam := range tt.zeroSeams {
 				t.Run("Nil"+strings.ReplaceAll(seam.field, ".", "_"), func(t *testing.T) {
 					env := seam.zero(tt.buildEnv(t))
-					_, err := tt.entry("row-name", Config{}, env)
+					_, err := tt.entry(RowIdentity{Name: "row-name"}, Config{}, env)
 					if err == nil {
 						t.Fatalf("%s() error = nil; want non-nil when Env.%s is nil", tt.registryKey, seam.field)
 					}
@@ -206,7 +206,7 @@ func TestInnerRunEntry_NilSleepIsAccepted(t *testing.T) {
 	if env.InnerRun.Sleep != nil {
 		t.Fatalf("newTestEnv(t).InnerRun.Sleep is non-nil; want nil by default")
 	}
-	producer, err := innerRunEntry("InnerRun", Config{}, env)
+	producer, err := innerRunEntry(RowIdentity{Name: "InnerRun"}, Config{}, env)
 	if err != nil {
 		t.Fatalf("innerRunEntry() error = %v; want nil", err)
 	}
@@ -222,7 +222,7 @@ func TestInnerRunEntry_NilNowIsAccepted(t *testing.T) {
 	if env.InnerRun.Now != nil {
 		t.Fatalf("newTestEnv(t).InnerRun.Now is non-nil; want nil by default")
 	}
-	producer, err := innerRunEntry("InnerRun", Config{}, env)
+	producer, err := innerRunEntry(RowIdentity{Name: "InnerRun"}, Config{}, env)
 	if err != nil {
 		t.Fatalf("innerRunEntry() error = %v; want nil", err)
 	}
@@ -240,7 +240,7 @@ func TestInnerRunEntry_PollConfigKeys(t *testing.T) {
 		if defaultInnerRunPollIntervalS < 1 {
 			t.Errorf("defaultInnerRunPollIntervalS = %d; want at least one second, the producer's poll floor", defaultInnerRunPollIntervalS)
 		}
-		producer, err := innerRunEntry("InnerRun", Config{}, newTestEnv(t))
+		producer, err := innerRunEntry(RowIdentity{Name: "InnerRun"}, Config{}, newTestEnv(t))
 		if err != nil {
 			t.Fatalf("innerRunEntry() error = %v; want nil", err)
 		}
@@ -250,7 +250,7 @@ func TestInnerRunEntry_PollConfigKeys(t *testing.T) {
 	})
 
 	t.Run("ExplicitPollIntervalS", func(t *testing.T) {
-		producer, err := innerRunEntry("InnerRun", Config{"poll_interval_s": 30}, newTestEnv(t))
+		producer, err := innerRunEntry(RowIdentity{Name: "InnerRun"}, Config{"poll_interval_s": 30}, newTestEnv(t))
 		if err != nil {
 			t.Fatalf("innerRunEntry() error = %v; want nil", err)
 		}
@@ -260,7 +260,7 @@ func TestInnerRunEntry_PollConfigKeys(t *testing.T) {
 	})
 
 	t.Run("NegativePollIntervalSIsRejected", func(t *testing.T) {
-		_, err := innerRunEntry("InnerRun", Config{"poll_interval_s": -1}, newTestEnv(t))
+		_, err := innerRunEntry(RowIdentity{Name: "InnerRun"}, Config{"poll_interval_s": -1}, newTestEnv(t))
 		if err == nil {
 			t.Fatalf("innerRunEntry() error = nil; want non-nil for a negative poll_interval_s")
 		}
@@ -270,7 +270,7 @@ func TestInnerRunEntry_PollConfigKeys(t *testing.T) {
 	})
 
 	t.Run("PollAttemptsIsRejectedAsUnrecognised", func(t *testing.T) {
-		_, err := innerRunEntry("InnerRun", Config{"poll_attempts": 3}, newTestEnv(t))
+		_, err := innerRunEntry(RowIdentity{Name: "InnerRun"}, Config{"poll_attempts": 3}, newTestEnv(t))
 		if err == nil {
 			t.Fatalf("innerRunEntry() error = nil; want non-nil now that poll_attempts is retired")
 		}
@@ -286,21 +286,21 @@ func TestInnerRunEntry_NoticeQuietKey(t *testing.T) {
 		if defaultInnerRunNoticeQuietMin != 30 {
 			t.Errorf("defaultInnerRunNoticeQuietMin = %d; want 30", defaultInnerRunNoticeQuietMin)
 		}
-		producer, err := innerRunEntry("InnerRun", Config{}, newTestEnv(t))
+		producer, err := innerRunEntry(RowIdentity{Name: "InnerRun"}, Config{}, newTestEnv(t))
 		if err != nil || producer == nil {
 			t.Fatalf("innerRunEntry() = %v, %v; want a producer", producer, err)
 		}
 	})
 
 	t.Run("ExplicitValue", func(t *testing.T) {
-		producer, err := innerRunEntry("InnerRun", Config{"notice_quiet_min": 10}, newTestEnv(t))
+		producer, err := innerRunEntry(RowIdentity{Name: "InnerRun"}, Config{"notice_quiet_min": 10}, newTestEnv(t))
 		if err != nil || producer == nil {
 			t.Fatalf("innerRunEntry() = %v, %v; want a producer", producer, err)
 		}
 	})
 
 	t.Run("NegativeIsRejected", func(t *testing.T) {
-		_, err := innerRunEntry("InnerRun", Config{"notice_quiet_min": -1}, newTestEnv(t))
+		_, err := innerRunEntry(RowIdentity{Name: "InnerRun"}, Config{"notice_quiet_min": -1}, newTestEnv(t))
 		if err == nil || !strings.Contains(err.Error(), "notice_quiet_min") {
 			t.Errorf("innerRunEntry() error = %v; want it to name %q", err, "notice_quiet_min")
 		}
@@ -313,21 +313,21 @@ func TestInnerRunEntry_DriverExitGraceKey(t *testing.T) {
 		if defaultInnerRunDriverExitGraceS != 900 {
 			t.Errorf("defaultInnerRunDriverExitGraceS = %d; want 900", defaultInnerRunDriverExitGraceS)
 		}
-		producer, err := innerRunEntry("InnerRun", Config{}, newTestEnv(t))
+		producer, err := innerRunEntry(RowIdentity{Name: "InnerRun"}, Config{}, newTestEnv(t))
 		if err != nil || producer == nil {
 			t.Fatalf("innerRunEntry() = %v, %v; want a producer", producer, err)
 		}
 	})
 
 	t.Run("ExplicitValue", func(t *testing.T) {
-		producer, err := innerRunEntry("InnerRun", Config{"driver_exit_grace_s": 60}, newTestEnv(t))
+		producer, err := innerRunEntry(RowIdentity{Name: "InnerRun"}, Config{"driver_exit_grace_s": 60}, newTestEnv(t))
 		if err != nil || producer == nil {
 			t.Fatalf("innerRunEntry() = %v, %v; want a producer", producer, err)
 		}
 	})
 
 	t.Run("NegativeIsRejected", func(t *testing.T) {
-		_, err := innerRunEntry("InnerRun", Config{"driver_exit_grace_s": -1}, newTestEnv(t))
+		_, err := innerRunEntry(RowIdentity{Name: "InnerRun"}, Config{"driver_exit_grace_s": -1}, newTestEnv(t))
 		if err == nil || !strings.Contains(err.Error(), "driver_exit_grace_s") {
 			t.Errorf("innerRunEntry() error = %v; want it to name %q", err, "driver_exit_grace_s")
 		}
@@ -340,21 +340,21 @@ func TestInnerRunEntry_NoticeProbeKey(t *testing.T) {
 		if defaultInnerRunNoticeProbeS != 30 {
 			t.Errorf("defaultInnerRunNoticeProbeS = %d; want 30", defaultInnerRunNoticeProbeS)
 		}
-		producer, err := innerRunEntry("InnerRun", Config{}, newTestEnv(t))
+		producer, err := innerRunEntry(RowIdentity{Name: "InnerRun"}, Config{}, newTestEnv(t))
 		if err != nil || producer == nil {
 			t.Fatalf("innerRunEntry() = %v, %v; want a producer", producer, err)
 		}
 	})
 
 	t.Run("ExplicitValue", func(t *testing.T) {
-		producer, err := innerRunEntry("InnerRun", Config{"notice_probe_s": 5}, newTestEnv(t))
+		producer, err := innerRunEntry(RowIdentity{Name: "InnerRun"}, Config{"notice_probe_s": 5}, newTestEnv(t))
 		if err != nil || producer == nil {
 			t.Fatalf("innerRunEntry() = %v, %v; want a producer", producer, err)
 		}
 	})
 
 	t.Run("NegativeIsRejected", func(t *testing.T) {
-		_, err := innerRunEntry("InnerRun", Config{"notice_probe_s": -1}, newTestEnv(t))
+		_, err := innerRunEntry(RowIdentity{Name: "InnerRun"}, Config{"notice_probe_s": -1}, newTestEnv(t))
 		if err == nil || !strings.Contains(err.Error(), "notice_probe_s") {
 			t.Errorf("innerRunEntry() error = %v; want it to name %q", err, "notice_probe_s")
 		}

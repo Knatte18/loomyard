@@ -1,4 +1,5 @@
-// recipe.go declares this package's exported types: Constructor, the fixed-signature
+// recipe.go declares this package's exported types: RowIdentity, the recipe row's name and segment;
+// Constructor, the fixed-signature
 // registry value type; Config, the recipe row's portable configuration; Env, the caller-filled
 // bundle of told roots and injected seams every entry may read from; and RowModelKeys, the config keys a Burler row's settings came from.
 
@@ -25,12 +26,19 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// Constructor is the registry's value type: name is the recipe row's Name, threaded into each
-// producer's own name parameter, and cfg/env are the row's portable configuration and the caller's
-// told environment, respectively.
-// The two exceptions are Publish and Finalize, whose underlying constructors take no name at all --
-// their Constructor entries accept and discard name.
-type Constructor func(name string, cfg Config, env Env) (shedengine.ShedProducer, error)
+// RowIdentity names the recipe row a Constructor builds.
+// Name is the row's name, and Segment is its segment: value, empty for a row outside any segment.
+type RowIdentity struct {
+	Name    string
+	Segment string
+}
+
+// Constructor is the registry's value type.
+// row is the recipe row's identity, whose Name is threaded into each producer's own name parameter.
+// cfg and env are the row's portable configuration and the caller's told environment.
+// The two exceptions are Publish and Finalize, whose underlying constructors take no name at all,
+// so their Constructor entries accept and discard row.
+type Constructor func(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error)
 
 // Config is the recipe row's static, portable, already-decoded configuration.
 // The caller decodes the recipe file into it; this package never learns the recipe file's format.

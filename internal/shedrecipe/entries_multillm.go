@@ -19,7 +19,7 @@ import (
 // multiLLMEntry is the Constructor for the "MultiLLM" registry row.
 // It validates cfg and env, builds the seat table the row describes, checks it against the told stencils directory, and returns shedadapters.NewMultiLLMProducer(name, table, env.Seats, env.Now).
 // Table.Validate runs here, so an unreadable stencil, an unresolvable include, a nested include and a reserved or blank value fail at construction rather than at the first Call.
-func multiLLMEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
+func multiLLMEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	role, err := configString(cfg, "role", true)
 	if err != nil {
 		return nil, err
@@ -99,7 +99,7 @@ func multiLLMEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, e
 		return nil, fmt.Errorf("shedrecipe: MultiLLM: %w", err)
 	}
 
-	return shedadapters.NewMultiLLMProducer(name, table, env.Seats, env.Now), nil
+	return shedadapters.NewMultiLLMProducer(row.Name, table, env.Seats, env.Now), nil
 }
 
 // multiLLMSeat builds the i-th seat of a MultiLLM row from its "seats" element.

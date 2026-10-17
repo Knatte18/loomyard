@@ -27,7 +27,7 @@ func rolePrefixKey(entry string, cfg Config) (string, error) {
 }
 
 // bouncerEntry is the Constructor for the "Bouncer" registry row: it validates cfg and env, joins and creates the run directory a segment's Bouncer, BurlerReview and BurlerFix rows share, resolves artifact_paths against env.AnchorPath, takes the row's seed and judge models from env.RowBouncerModels, resolves the optional commit_seam key to one of env.CommitPlan or env.CommitDiscussion, resolves the optional approve_seam key to env.ApprovePlan or env.ApproveMergeReview, resolves the optional skip_seam key to env.SkipPlanReview or env.SkipMergeReview, reads the optional boolean zero_rounds key (default false; true makes the Bouncer settle approved at once over any skip_seam, and the recipe declares it on no row because loomrecipe stamps it), reads the optional boolean blocking_escalates key (default false) and the optional color_segment and role_prefix keys, reads the optional carry_over key, the segment name that selects env.CarryOver, reads the optional boolean cluster_excludes key (default false) telling the judge whether its partner BurlerReview row has a cluster fan, passes the row's env.RowClusterFans list as the per-round fan list when it names a fan, and returns shedadapters.NewBouncer(cfg).
-func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
+func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	runSubdir, err := configString(cfg, "run_subdir", true)
 	if err != nil {
 		return nil, err
@@ -74,8 +74,8 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 	}
 	// A wiring list naming a fan makes the judge decide per round from the usage record; a row without one keeps its cluster_excludes key.
 	var clusterFans []string
-	if hasFanName(env.RowClusterFans[name]) {
-		clusterFans = env.RowClusterFans[name]
+	if hasFanName(env.RowClusterFans[row.Name]) {
+		clusterFans = env.RowClusterFans[row.Name]
 	}
 	// There is deliberately no "report_name" key: BouncerConfig.ReportName is pinned below, not
 	// recipe-authorable, so a "report_name" entry in cfg is rejected here as unrecognised rather
@@ -88,9 +88,9 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 	if err := configRejectUnknown(cfg, "run_subdir", "artifact_paths", "rubric_stencil", "commit_seam", "approve_seam", "skip_seam", "carry_over", "cluster_excludes", "blocking_escalates", "zero_rounds", "color_segment", "role_prefix"); err != nil {
 		return nil, err
 	}
-	models, ok := env.RowBouncerModels[name]
+	models, ok := env.RowBouncerModels[row.Name]
 	if !ok {
-		return nil, fmt.Errorf("shedrecipe: Bouncer: row %q has no entry in Env.RowBouncerModels; the wiring must fill one per Bouncer row", name)
+		return nil, fmt.Errorf("shedrecipe: Bouncer: row %q has no entry in Env.RowBouncerModels; the wiring must fill one per Bouncer row", row.Name)
 	}
 
 	// commit_seam and approve_seam are two independent optional config keys: commit_seam names
@@ -220,11 +220,11 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 	// a caller filling neither keeps a working Bouncer whose escalation Reason omits the slug, whose brief render degrades, and which never escalates on budget.
 	var bounces func() (count, budget int, ok bool, err error)
 	if env.SegmentBounces != nil {
-		bounces = func() (int, int, bool, error) { return env.SegmentBounces(name) }
+		bounces = func() (int, int, bool, error) { return env.SegmentBounces(row.Name) }
 	}
 
 	bouncerCfg := shedadapters.BouncerConfig{
-		Name:          name,
+		Name:          row.Name,
 		RunDir:        runDir,
 		ArtifactPaths: resolvedArtifactPaths,
 		// ReportName is pinned rather than configurable: shedadapters.BurlerReviewProducer writes its
@@ -256,8 +256,8 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 		Slug:              env.Slug,
 		ParentName:        env.ParentName,
 		Bounces:           bounces,
-		AutoAccept:        env.RowAutoAccept[name],
-		HardCap:           env.RowHardMaxBounces[name],
+		AutoAccept:        env.RowAutoAccept[row.Name],
+		HardCap:           env.RowHardMaxBounces[row.Name],
 
 		BlockingEscalates: blockingEscalates,
 		ColorSegment:      colorSegment,
