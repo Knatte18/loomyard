@@ -217,13 +217,13 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 // readmeTypes is the type-label order the README goldens render Notes sections in.
 var readmeTypes = []string{"bug", "enhancement"}
 
-// readmeFixture holds tasks and notes with labels, two entries with dates and the rest without, plus a done task that another task depends on, an abandoned note, a body, an isolated task, a two-layer chain, a title with a pipe, a two-line brief, a note whose type label is not in readmeTypes, a high-priority task, and a low-priority note listed before a normal one of the same type.
+// readmeFixture holds tasks and notes with labels, two entries with dates and the rest without, plus a done task that another task depends on, an abandoned note, a body, an isolated task, a two-layer chain, a title with a pipe, a two-line brief, a note whose type label is not in readmeTypes, a high-priority task, a low-priority note listed before a normal one of the same type, and run settings on three tasks: two keys in one module, a nested key with a pipe in its value beside a list value, and one key with no brief.
 func readmeFixture() []boardengine.Task {
 	task, note := boardengine.KindTask, boardengine.KindNote
 	return []boardengine.Task{
-		{ID: 1, Slug: "base", Title: "Base work", Kind: task, Labels: []string{"enhancement"}, Brief: "The foundation.", Created: renderTime.AddDate(0, 0, -40), Revised: renderTime.AddDate(0, 0, -3)},
-		{ID: 2, Slug: "top", Title: "Top | work", Kind: task, Labels: []string{"bug", "area"}, Status: stringPtr("running"), Brief: "Builds on base.\nSecond brief line.", Body: "Design.\nSecond line.", DependsOn: []string{"base", "shipped"}},
-		{ID: 6, Slug: "alone", Title: "Alone work", Kind: task, Labels: []string{"enhancement"}, Isolated: true, Priority: boardengine.PriorityHigh, Recipe: "darn"},
+		{ID: 1, Slug: "base", Title: "Base work", Kind: task, Labels: []string{"enhancement"}, Brief: "The foundation.", Created: renderTime.AddDate(0, 0, -40), Revised: renderTime.AddDate(0, 0, -3), RunSettings: map[string]any{"loom": map[string]any{"review_max_bounces": 2.0, "review_hard_max_bounces": 3.0}}},
+		{ID: 2, Slug: "top", Title: "Top | work", Kind: task, Labels: []string{"bug", "area"}, Status: stringPtr("running"), Brief: "Builds on base.\nSecond brief line.", Body: "Design.\nSecond line.", DependsOn: []string{"base", "shipped"}, RunSettings: map[string]any{"darn": map[string]any{"models": map[string]any{"writer": "opus|fast"}, "skip": []any{"a", "b"}}}},
+		{ID: 6, Slug: "alone", Title: "Alone work", Kind: task, Labels: []string{"enhancement"}, Isolated: true, Priority: boardengine.PriorityHigh, Recipe: "darn", RunSettings: map[string]any{"darn": map[string]any{"review_max_bounces": 1.0}}},
 		{ID: 3, Slug: "idea", Title: "An idea", Kind: note, Labels: []string{"enhancement", "undecided"}, Priority: boardengine.PriorityLow},
 		{ID: 8, Slug: "plain", Title: "Plain idea", Kind: note, Labels: []string{"enhancement"}},
 		{ID: 4, Slug: "dropped", Title: "Dropped idea", Kind: note, Labels: []string{"bug"}, Status: stringPtr("abandoned"), Brief: "No longer wanted."},
@@ -234,6 +234,7 @@ func readmeFixture() []boardengine.Task {
 
 // TestRenderReadmeGolden pins the README tables for a fixture with tasks and notes, notes grouped by type in Outputs.Types order and an Other group, a done entry, an abandoned note, a slug linked to its design doc, only non-type labels, an After cell that leaves out a done dependency, an isolated task, and a Ready task with one in Layer A after it.
 // The same row pins that each open group splits into one table per priority present, under a `####` priority heading, high, normal, low, with no heading for an absent priority and the rows numbered on across the group's tables, that a low note follows a normal note with a higher ID, and that a pipe in a title is escaped and a line break in a brief becomes a space, so each row stays one table row.
+// The same row pins that each run setting stacks as a code-span bullet in the entry cell after any brief, sorted, a nested key as its dotted path, a non-string value as JSON and a pipe escaped, adding no column.
 // Every Tasks table pins a Recipe column after the slug, loom for an empty recipe and the stored name otherwise, and the Notes and Done tables pin its absence.
 // Every README pins the render time at its top, and every table pins the Age and Revised columns before Labels, as of that time and blank for an unknown date.
 // A second row pins that Ready renders _None._ when empty, and that the Done section and every empty Notes subsection are omitted when no entry is done and no note exists for them.
@@ -269,7 +270,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"| # | Task | Slug | Recipe | After | Age | Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- | --- | --- |\n" +
-				"| 1 | **Base work**<br>• The foundation. | `base` | loom |  | 5w | 3d |  |\n" +
+				"| 1 | **Base work**<br>• The foundation.<br>• `loom: review_hard_max_bounces 3`<br>• `loom: review_max_bounces 2` | `base` | loom |  | 5w | 3d |  |\n" +
 				"\n" +
 				"### Layer A\n" +
 				"\n" +
@@ -279,7 +280,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"| # | Task | Slug | Recipe | After | Age | Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- | --- | --- |\n" +
-				"| 1 | **Top \\| work**<br>• Builds on base. Second brief line. | [`top`](design-top.md) | loom | `base` |  |  | area |\n" +
+				"| 1 | **Top \\| work**<br>• Builds on base. Second brief line.<br>• `darn: models.writer opus\\|fast`<br>• `darn: skip [\"a\",\"b\"]` | [`top`](design-top.md) | loom | `base` |  |  | area |\n" +
 				"\n" +
 				"### Independent\n" +
 				"\n" +
@@ -289,7 +290,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"| # | Task | Slug | Recipe | After | Age | Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- | --- | --- |\n" +
-				"| 1 | **Alone work** | `alone` | darn |  |  |  |  |\n" +
+				"| 1 | **Alone work**<br>• `darn: review_max_bounces 1` | `alone` | darn |  |  |  |  |\n" +
 				"\n" +
 				"## Notes\n" +
 				"\n" +

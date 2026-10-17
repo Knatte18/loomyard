@@ -4,7 +4,7 @@
 // The README reads like a roadmap: Tasks split into Running, Ready, dependency layers and Independent, Notes with one subsection per type label, then Done.
 // Each open subsection holds one markdown table per priority present, high, normal, low, each under a `#### <Priority> priority` heading, numbered on from 1 across them, and Done one table numbered from 1;
 // the README opens with the time it was rendered,
-// and the rows show the bold title with the brief as a bullet under it, the linked slug, the entry's age and time since its last revision as of that time, and the labels that are not type labels;
+// and the rows show the bold title with the brief and each run setting as a bullet under it, the linked slug, the entry's age and time since its last revision as of that time, and the labels that are not type labels;
 // every Tasks table adds the recipe after the slug, loom for an empty one;
 // Running adds where its run stands, and Ready and the layers add the open entries each waits on.
 // The section names, their meaning lines and the table columns are declared here alone;
@@ -367,13 +367,55 @@ func priorityHeading(priority string) string {
 	return "#### " + strings.ToUpper(priority[:1]) + priority[1:] + " priority"
 }
 
-// entryCell is the bold title, with the brief as one bullet under it when there is one.
+// entryCell is the bold title, with the brief as one bullet under it when there is one, then one code-span bullet per run setting.
 func entryCell(t Task) string {
 	cell := "**" + cellText(t.Title) + "**"
 	if t.Brief != "" {
 		cell += cellBullet + cellText(t.Brief)
 	}
+	for _, setting := range settingLines(t.RunSettings) {
+		cell += cellBullet + "`" + cellText(setting) + "`"
+	}
 	return cell
+}
+
+// settingLines is one `<module>: <key path> <value>` line per leaf of a task's run settings, nested keys joined by dots, in sorted order.
+func settingLines(settings map[string]any) []string {
+	var lines []string
+	for module, value := range settings {
+		lines = appendSettingLeaves(lines, module, "", value)
+	}
+	slices.Sort(lines)
+	return lines
+}
+
+// appendSettingLeaves appends one setting line per leaf under value, path being the dotted key path from the module down to value.
+func appendSettingLeaves(lines []string, module, path string, value any) []string {
+	if nested, ok := value.(map[string]any); ok {
+		for key, child := range nested {
+			childPath := key
+			if path != "" {
+				childPath = path + "." + key
+			}
+			lines = appendSettingLeaves(lines, module, childPath, child)
+		}
+		return lines
+	}
+	line := module + ":"
+	if path != "" {
+		line += " " + path
+	}
+	return append(lines, line+" "+settingValue(value))
+}
+
+// settingValue is a string setting as itself and any other value as its compact JSON, the form the board stores it in.
+func settingValue(value any) string {
+	if s, ok := value.(string); ok {
+		return s
+	}
+	// The value was decoded from the board's JSON, so it always marshals back.
+	data, _ := json.Marshal(value)
+	return string(data)
 }
 
 // recipeCell is the recipe the task runs, loom when its recipe field is empty.
