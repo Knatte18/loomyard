@@ -21,6 +21,7 @@ type engineLedger struct {
 }
 
 // recordEngineRun adds engineName to the engine ledger at root, keeping the names sorted and each once.
+// The ledger records start attempts that passed Prepare, so an attempt that later fails to register its strand still counts.
 func recordEngineRun(root, engineName string) error {
 	path := filepath.Join(root, engineLedgerFileName)
 	return state.UpdateJSON(path, path+".lock", func(cur engineLedger, _ bool) (engineLedger, error) {
@@ -33,7 +34,7 @@ func recordEngineRun(root, engineName string) error {
 }
 
 // EnginesRun returns the sorted names of the engines this runner's run directory root holds a run of, each once.
-// It reads the engine ledger Start writes and the engine of every run record still under the root,
+// It reads the root's engine ledger and the engine of every run record still under the root,
 // so a run whose directory was swept still counts and a run started before the ledger existed counts while its record lasts.
 // A run record with no engine counts as the engine set's default, and an unreadable run record is skipped.
 // An absent root returns no names.

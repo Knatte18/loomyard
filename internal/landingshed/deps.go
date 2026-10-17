@@ -230,8 +230,7 @@ type Deps struct {
 	// EnginesRun returns the names of the engines the task's sessions ran under, which pick Config.EngineTrailers' lines for the landing commit.
 	// Finalize calls it once per Call, before any parent-side mutation, and a returned error is returned from Call.
 	//
-	// Nil means "no engine ran", following CommitStatus's nil-is-absent convention, so the commit carries no engine line.
-	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
+	// Nil means "no engine ran", so the commit carries no engine line.
 	EnginesRun func() ([]string, error)
 
 	// Registry is the resolved model-spec registry both producers' resolver constructions read the
