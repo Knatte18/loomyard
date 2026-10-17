@@ -1085,6 +1085,7 @@ var retiredReviewKeyRenames = []yamlengine.KeyRename{
 }
 
 // copyWebsterModelsOntoMerge sets merge_reviewer_model and merge_fixer_model of document to the values of its retired webster_review and webster_fix, each only when the document holds the Webster key and not the Merge one.
+// When the document also holds the renamed webster_reviewer_model or webster_fixer_model, that value is copied instead, since it is the one the rename keeps.
 // Merge-Review ran on Webster-Review's models before it had keys of its own, so the copy keeps it on them.
 // It returns the rewritten bytes with one line per copied key, and document itself, with no lines, when nothing is copied.
 func copyWebsterModelsOntoMerge(document []byte) ([]byte, []string, error) {
@@ -1101,18 +1102,23 @@ func copyWebsterModelsOntoMerge(document []byte) ([]byte, []string, error) {
 	}
 	root := parsed.Content[0]
 	var lines []string
-	for _, copied := range []struct{ webster, merge, darn string }{
-		{"webster_review", "merge_reviewer_model", "darn_reviewer_model"},
-		{"webster_fix", "merge_fixer_model", "darn_fixer_model"},
+	for _, copied := range []struct{ webster, websterRenamed, merge, darn string }{
+		{"webster_review", "webster_reviewer_model", "merge_reviewer_model", "darn_reviewer_model"},
+		{"webster_fix", "webster_fixer_model", "merge_fixer_model", "darn_fixer_model"},
 	} {
-		at := mappingKeyIndex(root, copied.webster)
-		if at < 0 || mappingKeyIndex(root, copied.merge) >= 0 {
+		retiredAt := mappingKeyIndex(root, copied.webster)
+		if retiredAt < 0 || mappingKeyIndex(root, copied.merge) >= 0 {
 			continue
+		}
+		// The rename keeps the new Webster key over the retired one, so Merge follows the new key's value.
+		source, at := copied.webster, retiredAt
+		if renamedAt := mappingKeyIndex(root, copied.websterRenamed); renamedAt >= 0 {
+			source, at = copied.websterRenamed, renamedAt
 		}
 		value := *root.Content[at+1]
 		value.LineComment = mappingValueNode(template.Content[0], copied.merge).LineComment
 		root.Content = append(root.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: copied.merge}, &value)
-		lines = append(lines, fmt.Sprintf("%s: set to %s's value, the models Merge-Review ran on; Darn-Review now reads %s in darn.yaml, which this rewrite cannot set", copied.merge, copied.webster, copied.darn))
+		lines = append(lines, fmt.Sprintf("%s: set to %s's value, the models Merge-Review ran on; Darn-Review now reads %s in darn.yaml, which this rewrite cannot set", copied.merge, source, copied.darn))
 	}
 	if len(lines) == 0 {
 		return document, nil, nil

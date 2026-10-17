@@ -1359,6 +1359,16 @@ func TestMigrateConfig_RetiredKeys(t *testing.T) {
 			wantGone: []string{"webster_review", "webster_fix"},
 		},
 		{
+			name:     "a set new webster key is the value copied onto merge",
+			document: "webster_review: opus[high]\nwebster_reviewer_model: sonnet[low]\n",
+			wantLines: []string{
+				"merge_reviewer_model: set to webster_reviewer_model's value, the models Merge-Review ran on; Darn-Review now reads darn_reviewer_model in darn.yaml, which this rewrite cannot set",
+				"webster_review: removed, webster_reviewer_model already set",
+			},
+			wantKeys: map[string]any{"webster_reviewer_model": "sonnet[low]", "merge_reviewer_model": "sonnet[low]"},
+			wantGone: []string{"webster_review"},
+		},
+		{
 			name:      "a set merge key keeps its value",
 			document:  "webster_review: sonnet[medium]\nmerge_reviewer_model: opus[high]\n",
 			wantLines: []string{"webster_review: renamed to webster_reviewer_model"},
