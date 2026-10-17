@@ -383,8 +383,8 @@ func TestBurlerReviewEntry_ClusterFan(t *testing.T) {
 		{name: "EmptyWiringListsRecordASoloRound", clusterFans: map[string][]string{"review-row": {""}}, fixFans: map[string][]string{"review-row": nil}, wantRecorded: true},
 		{name: "EmptyWiringListsYieldToRecipeFans", clusterFans: map[string][]string{"review-row": {""}}, fixFans: map[string][]string{"review-row": {""}}, recipeFans: map[string]any{"cluster-fan": "recipe-fan", "fix-fan": "recipe-fix"}, wantFan: "recipe-fan", wantFixFan: "recipe-fix", wantRecorded: true},
 		{name: "NoListsAndNoRecipeFansRecordNothing"},
-		{name: "ClusterListBesideRecipeClusterFanNamesBoth", clusterFans: map[string][]string{"review-row": {"env-fan"}}, recipeFans: map[string]any{"cluster-fan": "recipe-fan"}, wantErr: []string{"review-row", "env-fan", "recipe-fan", "loom.yaml", "remove cluster-fan"}},
-		{name: "FixListBesideRecipeFixFanNamesBoth", fixFans: map[string][]string{"review-row": {"env-fix"}}, recipeFans: map[string]any{"fix-fan": "recipe-fix"}, wantErr: []string{"review-row", "env-fix", "recipe-fix", "loom.yaml", "remove fix-fan"}},
+		{name: "ClusterListBesideRecipeClusterFanNamesBoth", clusterFans: map[string][]string{"review-row": {"env-fan"}}, recipeFans: map[string]any{"cluster-fan": "recipe-fan"}, wantErr: []string{"review-row", "env-fan", "recipe-fan", "the hub config", "remove cluster-fan"}},
+		{name: "FixListBesideRecipeFixFanNamesBoth", fixFans: map[string][]string{"review-row": {"env-fix"}}, recipeFans: map[string]any{"fix-fan": "recipe-fix"}, wantErr: []string{"review-row", "env-fix", "recipe-fix", "the hub config", "remove fix-fan"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

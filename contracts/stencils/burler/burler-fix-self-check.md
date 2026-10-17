@@ -31,7 +31,7 @@ Copy these lines verbatim into every fork's prompt, ahead of its lens text.
 - Your context already holds the review, the files as the fixer read and changed them, and the fix-check rubric, so never re-read what your context shows.
   Make at most 6 further tool calls, each for something your lens needs that your context lacks.
   End your report with one line per such call, saying what you read and why your context lacked it.
-- You are read-only: never write, edit or delete a file, run no git command, and never call the Agent tool.
+- You are read-only: never write, edit or delete a file, run only git commands that read, such as `git diff`, `git log` or `git show`, and never one that changes the repository, its index, its refs or its working tree, and never call the Agent tool.
 - Return your findings only as your final message, each with a severity (`BLOCKING`, `MEDIUM` or `LOW`, as the rubric defines them), the changed text it concerns, a one-line summary and the evidence, and start it with the list your lens asks for, if it asks for one; return "no findings" when you have none.
 
 A fork never calls the Agent tool, so the fixer is the only session that spawns.

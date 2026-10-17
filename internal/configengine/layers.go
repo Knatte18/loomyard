@@ -463,3 +463,20 @@ func topLevelKeys(doc *yaml.Node) []string {
 	}
 	return keys
 }
+
+// KeyAtLine returns the top-level key of a resolved document whose entry spans line, or "" when none does.
+// An entry spans from its key's line up to the next key's line, so a loader names the key a value decoding error at that line belongs to.
+func KeyAtLine(contents []byte, line int) string {
+	var root yaml.Node
+	if err := yaml.Unmarshal(contents, &root); err != nil || len(root.Content) == 0 {
+		return ""
+	}
+	keys := root.Content[0].Content
+	found := ""
+	for i := 0; i < len(keys); i += 2 {
+		if keys[i].Line <= line {
+			found = keys[i].Value
+		}
+	}
+	return found
+}

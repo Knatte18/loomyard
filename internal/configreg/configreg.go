@@ -116,7 +116,7 @@ func Modules() []Module {
 		{Name: "batten", Template: battenshed.ConfigTemplate, CheckValues: battenshed.ValidateLocalValues, CheckLoad: checkLoad(battenshed.LoadConfig), Spec: battenshed.ConfigSpec},
 		{Name: "board", Template: boardengine.ConfigTemplate, OpenMaps: boardengine.ConfigOpenMaps(), HubWide: true, CheckLoad: checkLoadNamed(boardengine.LoadConfig, "board"), Spec: boardengine.ConfigSpec},
 		{Name: "burler", Template: burlerengine.ConfigTemplate, SeedOnly: true, CheckLoad: checkLoad(burlerengine.LoadConfig), Spec: burlerengine.ConfigSpec},
-		{Name: "darn", Template: darnengine.ConfigTemplate, HubWide: true, CheckValues: darnengine.ValidateLocalValues, CheckLoad: checkLoadNamed(darnengine.LoadConfig, "darn"), Spec: darnengine.ConfigSpec},
+		{Name: "darn", Template: darnengine.ConfigTemplate, OpenMaps: darnengine.ConfigOpenMaps(), HubWide: true, CheckValues: darnengine.ValidateLocalValues, CheckLoad: checkLoadNamed(darnengine.LoadConfig, "darn"), Spec: darnengine.ConfigSpec},
 		{Name: "fabric", Template: fabricengine.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(fabricengine.LoadConfig), Spec: fabricengine.ConfigSpec},
 		{Name: "gate", Template: gateslot.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(gateslot.LoadConfig), Spec: gateslot.ConfigSpec},
 		{Name: "landing", Template: landingshed.ConfigTemplate, HubWide: true, SeedsFromPrime: true, CheckLoad: checkLoadNamed(landingshed.LoadConfig, "landing"), Spec: landingshed.ConfigSpec},

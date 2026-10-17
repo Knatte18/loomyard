@@ -25,9 +25,9 @@
 # my-fan: [generic, my-lens, my-lens]
 #
 # The dormant lenses are phrased as EMPHASIS, never exclusion. The procedure
-# lenses of the four production fans (review-discussion, review-plan,
-# fix-discussion, fix-plan) are each a procedure that ends in its own list
-# instead, and a fixer lens may end with no list. The no-"ignore" rule holds
+# lenses of the production fans (each review-* and fix-* fan) are each a
+# procedure that ends in its own list instead, and a fixer lens may end with
+# no list. The no-"ignore" rule holds
 # for every lens: none tells a fork to ignore anything, because hard "ignore
 # everything else" lenses measurably suppressed cross-category coverage in the
 # spike behind this design (docs/research/session-fork-spike.md, Q2). A fork
@@ -247,6 +247,44 @@ lenses:
     that step can succeed from the state the refusal leaves. A refusal that
     names no next step, and a next step that cannot succeed from that state,
     are findings. Your list: per refusal, the next step, progresses or not.
+  code-correctness: |
+    Own the correctness of the code the diff changes. For each function,
+    branch and error path the diff adds or changes, take one concrete input,
+    including an empty, nil, zero or boundary value and a failure of each call
+    it makes, and run the code step by step with the data each step is handed.
+    A wrong result, a swallowed or misreported error and a state left
+    inconsistent on a failure path are findings, as the rubric's "Finding
+    class" defines `design`. Your list: each function or branch, the case you
+    ran, correct or not.
+  code-affected-set: |
+    Own what the diff's changes force outside the lines it touches. For each
+    signature, output, key, message, file shape or behaviour the diff changes,
+    find everything that calls, reads or asserts it, callers, tests, docs,
+    stencils and fixtures, from the definitions your context holds and a
+    search for what it lacks. A member of the set the diff leaves wrong is a
+    finding. Apply the rubric's "Stencil wording" and "The repository's own
+    rules" where this round's rubric carries them. Your list: per change, the
+    set you found, covered or not.
+  code-tests: |
+    Own the tests of the diff. For each behaviour the diff adds or changes,
+    find the test row that would fail if it were broken, and for each new test
+    or row, open the existing tests of the same function. Apply the rubric's
+    "Test economy". Your list: per behaviour, the test that pins it, or none.
+  code-pattern-fit: |
+    Own the diff's fit with the repository's rules. Read the repository's
+    constraints document and the pattern files the diff touches, and check
+    every changed file against each rule that applies to it. Apply whichever
+    of the rubric's "The repository's own rules", "Declared PATTERN changes
+    landed", "Commit messages and departures", "A broken invariant" and "A
+    pattern the parent changed" this round's rubric carries. Your list: each
+    rule you checked, held or broken.
+  fix-code-correctness: |
+    Own the correctness of the code the fix changed. For each function or
+    branch the fix added or changed, take one concrete input, including a
+    failure of each call it makes, and run it step by step. Check that every
+    caller of a changed signature or behaviour still holds, and that each test
+    the fix added fails with the defect in place. A wrong result, a caller left
+    broken and a test that passes with the defect in place are findings.
   fix-consistency: |
     Own the agreement of the change set with its surroundings. Check that every
     sibling decision, card, criterion, row or cross-reference the changed text
@@ -333,5 +371,15 @@ fans:
   fix-plan:
     - fix-consistency
     - fix-claims
+    - fix-proposal
+    - fix-affected-set
+  review-code:
+    - code-correctness
+    - code-affected-set
+    - code-tests
+    - code-pattern-fit
+  fix-code:
+    - fix-code-correctness
+    - fix-consistency
     - fix-proposal
     - fix-affected-set

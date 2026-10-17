@@ -1,4 +1,4 @@
-// wiring_darn_test.go covers the wiring a darn run adds to wire: the darn seams, the verify source and attempts, the early refusal of an empty verify command, the routing per recipe, the rename of retired darn rows when a verb arms, and the Darn-Write row's status and failure-record seams.
+// wiring_darn_test.go covers the wiring a darn run adds to wire: the darn seams, the verify source and attempts, the Darn-Review fan lists and keys, the early refusal of an empty verify command, the routing per recipe, the rename of retired darn rows when a verb arms, and the Darn-Write row's status and failure-record seams.
 // Every test is Tier 1: wire resolves no cwd and spawns no process over a hand-built hub.
 
 package loomcli
@@ -6,6 +6,7 @@ package loomcli
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -16,14 +17,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
 // seedDarnHubConfig writes the hub-wide darn.yaml into hub's board directory with verify and verifyAttempts substituted into the template.
-func seedDarnHubConfig(t *testing.T, hub, verify, verifyAttempts string) {
+// Each old, new pair of replacements is applied after them.
+func seedDarnHubConfig(t *testing.T, hub, verify, verifyAttempts string, replacements ...string) {
 	t.Helper()
 	configDir := filepath.Join(fabricengine.BoardDir(hub), "_lyx", "config")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
@@ -31,6 +35,7 @@ func seedDarnHubConfig(t *testing.T, hub, verify, verifyAttempts string) {
 	}
 	contents := strings.Replace(darnengine.ConfigTemplate(), `verify: ""`, "verify: "+verify, 1)
 	contents = strings.Replace(contents, "verify_attempts: 3", "verify_attempts: "+verifyAttempts, 1)
+	contents = strings.NewReplacer(replacements...).Replace(contents)
 	if err := os.WriteFile(filepath.Join(configDir, "darn.yaml"), []byte(contents), 0o644); err != nil {
 		t.Fatalf("WriteFile darn.yaml = %v; want nil", err)
 	}
@@ -109,6 +114,50 @@ func TestWire_DarnRecipe(t *testing.T) {
 			t.Errorf("c.env.RowHardMaxBounces[%q] = %d; want the local 3", loomshed.NameDarnBouncer, got)
 		}
 	})
+
+	// The Darn rows take Webster-Review's model keys, and the fixer fan key names darn.yaml; the template's empty fans run every round solo with the single fixer.
+	for _, tt := range []struct {
+		name         string
+		replacements []string
+		wantFan      []string
+		wantFixFan   []string
+	}{
+		{name: "the template's empty fans", wantFan: []string{""}, wantFixFan: []string{""}},
+		{
+			name:         "set fans",
+			replacements: []string{`review_fan: ""`, "review_fan:\n  - review-code\n  - \"\"", `review_fix_fan: ""`, "review_fix_fan: fix-code"},
+			wantFan:      []string{"review-code", ""},
+			wantFixFan:   []string{"fix-code"},
+		},
+	} {
+		t.Run("darn.yaml's fan keys reach the Darn-Review rows under "+tt.name, func(t *testing.T) {
+			t.Parallel()
+			loc := hubLocation(t, "pair", ".")
+			seedDarnHubConfig(t, loc.HubPath, `"go test ./..."`, "3", tt.replacements...)
+			c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeDarn}
+			if err := c.wire(loc, loc.AnchorPath()); err != nil {
+				t.Fatalf("wire() = %v; want nil", err)
+			}
+			for _, row := range []string{loomshed.NameDarnBouncer, loomshed.NameDarnBurlerReview} {
+				if got := c.env.RowClusterFans[row]; !reflect.DeepEqual(got, tt.wantFan) {
+					t.Errorf("RowClusterFans[%q] = %q; want %q", row, got, tt.wantFan)
+				}
+			}
+			if got := c.env.RowFixFans[loomshed.NameDarnBurlerReview]; !reflect.DeepEqual(got, tt.wantFixFan) {
+				t.Errorf("RowFixFans[%q] = %q; want %q", loomshed.NameDarnBurlerReview, got, tt.wantFixFan)
+			}
+			loomKey := func(key string) shuttleengine.ModelKey { return shuttleengine.ModelKey{Module: "loom", Key: key} }
+			wantKeys := map[string]shedrecipe.RowModelKeys{
+				loomshed.NameDarnBurlerReview: {Review: loomKey("webster_review")},
+				loomshed.NameDarnBurlerFix:    {Fix: loomKey("fix"), FixFan: "review_fix_fan in darn.yaml"},
+			}
+			for row, want := range wantKeys {
+				if got := c.env.RowModelKeys[row]; got != want {
+					t.Errorf("RowModelKeys[%q] = %+v; want %+v", row, got, want)
+				}
+			}
+		})
+	}
 
 	t.Run("a loom seed leaves the darn seams nil", func(t *testing.T) {
 		t.Parallel()

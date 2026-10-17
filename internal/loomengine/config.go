@@ -1,14 +1,13 @@
 // config.go — configuration for the loom module.
 //
 // Defines the Config type mirroring loom.yaml's keys and LoadConfig, which uses internal/configengine.Load with ConfigTemplate() to strictly validate and resolve loom's config file,
-// then validates the discussion, plan, judge, friction, and driver role model-specs and every entry of the review and fix model-spec lists' grammar via modelspec.Parse, plus every entry of the six per-segment lists (discussion_review, discussion_fix, plan_review, plan_fix, webster_review, webster_fix) that are set, an empty value meaning the run-wide list, rejects a negative value on each of the four timeout knobs, and rejects a parent_review_wait_min, review_circling_checkpoint or review_hard_max_bounces below 1, rejects a review_max_bounces, discussion_max_bounces, plan_max_bounces, webster_max_bounces or merge_max_bounces below 0 (0 giving zero rounds, null taking review_max_bounces) or any per-perch hard cap below 0, rejects a perch whose resolved hard cap is below its resolved budget, and resolves each non-empty entry of discussion_fan, plan_fan, discussion_fix_fan and plan_fix_fan through burlerengine.ResolveFan,
+// then validates the discussion, plan, judge, friction, and driver role model-specs and every entry of the review and fix model-spec lists' grammar via modelspec.Parse, plus every entry of the six per-segment lists (discussion_review, discussion_fix, plan_review, plan_fix, webster_review, webster_fix) that are set, an empty value meaning the run-wide list, rejects a negative value on each of the four timeout knobs, and rejects a parent_review_wait_min, review_circling_checkpoint or review_hard_max_bounces below 1, rejects a review_max_bounces, discussion_max_bounces, plan_max_bounces, webster_max_bounces or merge_max_bounces below 0 (0 giving zero rounds, null taking review_max_bounces) or any per-perch hard cap below 0, rejects a perch whose resolved hard cap is below its resolved budget, and resolves each non-empty entry of every perch's fan and fix fan key through burlerengine.ValidateFanKeys,
 // so a mistake in any of those validated keys fails loud at load time rather than hours into a run when the discussion, plan, review, judge, friction, or driver producer first spawns.
 // step_idle_timeout_min is the minutes a --until-stop step may show no activity before the loop kills it; a value below 1 is raised to 1 with one Warn and never refused.
-// discussion_fan and plan_fan each name a fan from burler.yaml, or list one per round, and turn the lens fan on for Discussion-Review and Plan-Review; an empty entry, the default, runs that round solo.
-// discussion_fix_fan and plan_fix_fan do the same for the fixer: an empty entry runs the single fixer, and a fan name runs the twill fixer with that fan's lenses.
+// discussion_fan, plan_fan, webster_fan and merge_fan each name a fan from burler.yaml, or list one per round, and turn the lens fan on for Discussion-Review, Plan-Review, Webster-Review and Merge-Review; an empty entry, the default, runs that round solo.
+// discussion_fix_fan, plan_fix_fan, webster_fix_fan and merge_fix_fan do the same for the fixer: an empty entry runs the single fixer, and a fan name runs the twill fixer with that fan's lenses.
 // A list's last entry serves every later round, and a reviewer fanned or not runs on its segment's own reviewer list, whose model the forks inherit.
 // fan_review is retired: MigrateConfig removes it.
-// There is no webster_fan key: Webster-Review always runs solo.
 // discussion_max_bounces, plan_max_bounces and webster_max_bounces set one perch's bounce budget, null takes review_max_bounces and 0 gives the perch zero rounds, its Bouncer settling approved at once;
 // review_hard_max_bounces is the round number at or past which no perch continues a round, refused below 1, and discussion_hard_max_bounces, plan_hard_max_bounces, webster_hard_max_bounces and merge_hard_max_bounces set one perch's own, where 0 takes review_hard_max_bounces and a negative value is refused;
 // a perch whose resolved hard cap is below its resolved budget is refused too, and every one of these refusals names the command that changes the key in the layer its value comes from.
@@ -395,38 +394,42 @@ func LoomFrictionLock(l *lyxcwd.Location) string {
 
 // Config represents the resolved loom.yaml configuration: role model-specs and timeout knobs.
 type Config struct {
-	Discussion            string        `yaml:"discussion"`
-	DiscussionTimeoutMin  int           `yaml:"discussion_timeout_min"`
-	DiscussionInteractive bool          `yaml:"discussion_interactive"`
-	Plan                  string        `yaml:"plan"`
-	PlanTimeoutMin        int           `yaml:"plan_timeout_min"`
-	Review                ModelSpecList `yaml:"review"`
-	Fix                   ModelSpecList `yaml:"fix"`
-	DiscussionReview      ModelSpecList `yaml:"discussion_review"`
-	DiscussionFix         ModelSpecList `yaml:"discussion_fix"`
-	PlanReview            ModelSpecList `yaml:"plan_review"`
-	PlanFix               ModelSpecList `yaml:"plan_fix"`
-	WebsterReview         ModelSpecList `yaml:"webster_review"`
-	WebsterFix            ModelSpecList `yaml:"webster_fix"`
-	DiscussionFan         FanList       `yaml:"discussion_fan"`
-	PlanFan               FanList       `yaml:"plan_fan"`
-	DiscussionFixFan      FanList       `yaml:"discussion_fix_fan"`
-	PlanFixFan            FanList       `yaml:"plan_fix_fan"`
-	Judge                 string        `yaml:"judge"`
-	Seed                  string        `yaml:"seed"`
-	DiscussionJudge       string        `yaml:"discussion_judge"`
-	PlanJudge             string        `yaml:"plan_judge"`
-	WebsterJudge          string        `yaml:"webster_judge"`
-	DiscussionSeed        string        `yaml:"discussion_seed"`
-	PlanSeed              string        `yaml:"plan_seed"`
-	WebsterSeed           string        `yaml:"webster_seed"`
-	Rework                string        `yaml:"rework"`
-	ReviewTimeoutMin      int           `yaml:"review_timeout_min"`
-	Friction              string        `yaml:"friction"`
-	FrictionTimeoutMin    int           `yaml:"friction_timeout_min"`
-	Driver                string        `yaml:"driver"`
-	ParentReviewWaitMin   int           `yaml:"parent_review_wait_min"`
-	StepIdleTimeoutMin    int           `yaml:"step_idle_timeout_min"`
+	Discussion            string               `yaml:"discussion"`
+	DiscussionTimeoutMin  int                  `yaml:"discussion_timeout_min"`
+	DiscussionInteractive bool                 `yaml:"discussion_interactive"`
+	Plan                  string               `yaml:"plan"`
+	PlanTimeoutMin        int                  `yaml:"plan_timeout_min"`
+	Review                ModelSpecList        `yaml:"review"`
+	Fix                   ModelSpecList        `yaml:"fix"`
+	DiscussionReview      ModelSpecList        `yaml:"discussion_review"`
+	DiscussionFix         ModelSpecList        `yaml:"discussion_fix"`
+	PlanReview            ModelSpecList        `yaml:"plan_review"`
+	PlanFix               ModelSpecList        `yaml:"plan_fix"`
+	WebsterReview         ModelSpecList        `yaml:"webster_review"`
+	WebsterFix            ModelSpecList        `yaml:"webster_fix"`
+	DiscussionFan         burlerengine.FanList `yaml:"discussion_fan"`
+	PlanFan               burlerengine.FanList `yaml:"plan_fan"`
+	WebsterFan            burlerengine.FanList `yaml:"webster_fan"`
+	MergeFan              burlerengine.FanList `yaml:"merge_fan"`
+	DiscussionFixFan      burlerengine.FanList `yaml:"discussion_fix_fan"`
+	PlanFixFan            burlerengine.FanList `yaml:"plan_fix_fan"`
+	WebsterFixFan         burlerengine.FanList `yaml:"webster_fix_fan"`
+	MergeFixFan           burlerengine.FanList `yaml:"merge_fix_fan"`
+	Judge                 string               `yaml:"judge"`
+	Seed                  string               `yaml:"seed"`
+	DiscussionJudge       string               `yaml:"discussion_judge"`
+	PlanJudge             string               `yaml:"plan_judge"`
+	WebsterJudge          string               `yaml:"webster_judge"`
+	DiscussionSeed        string               `yaml:"discussion_seed"`
+	PlanSeed              string               `yaml:"plan_seed"`
+	WebsterSeed           string               `yaml:"webster_seed"`
+	Rework                string               `yaml:"rework"`
+	ReviewTimeoutMin      int                  `yaml:"review_timeout_min"`
+	Friction              string               `yaml:"friction"`
+	FrictionTimeoutMin    int                  `yaml:"friction_timeout_min"`
+	Driver                string               `yaml:"driver"`
+	ParentReviewWaitMin   int                  `yaml:"parent_review_wait_min"`
+	StepIdleTimeoutMin    int                  `yaml:"step_idle_timeout_min"`
 
 	// DiscussionAdvisors are the Discussion-Write advisors, one seat each; an empty list runs the lead alone.
 	DiscussionAdvisors DiscussionAdvisorList `yaml:"discussion_advisors"`
@@ -523,42 +526,6 @@ func (l *ModelSpecList) UnmarshalYAML(node *yaml.Node) error {
 	}
 }
 
-// FanList is a fan key's value: one fan name for every round, or a list of fan names, one per round, whose last entry serves every later round.
-// An empty entry runs its round solo, or with the single fixer.
-// A YAML scalar loads as a list of one.
-type FanList []string
-
-// fanShapeError reports a fan key whose value is neither a scalar nor a sequence of scalars.
-// line is the value's line in the file, which LoadConfig uses to name the key.
-type fanShapeError struct {
-	line int
-}
-
-func (e *fanShapeError) Error() string {
-	return fmt.Sprintf(`value at line %d is neither a fan name nor a list of fan names; set the key to a fan name, or to a list of fan names, with "" for a solo or single round`, e.line)
-}
-
-// UnmarshalYAML accepts a scalar or a block sequence of scalars and rejects any other shape.
-func (l *FanList) UnmarshalYAML(node *yaml.Node) error {
-	switch node.Kind {
-	case yaml.ScalarNode:
-		*l = FanList{node.Value}
-		return nil
-	case yaml.SequenceNode:
-		fans := make(FanList, 0, len(node.Content))
-		for _, entry := range node.Content {
-			if entry.Kind != yaml.ScalarNode {
-				return &fanShapeError{line: entry.Line}
-			}
-			fans = append(fans, entry.Value)
-		}
-		*l = fans
-		return nil
-	default:
-		return &fanShapeError{line: node.Line}
-	}
-}
-
 // DiscussionAdvisor is one Discussion-Write advisor: Name is its seat name and Model its model-spec.
 type DiscussionAdvisor struct {
 	Name  string `yaml:"name"`
@@ -602,7 +569,7 @@ func (l *DiscussionAdvisorList) UnmarshalYAML(node *yaml.Node) error {
 
 // ConfigOpenMaps returns the loom.yaml keys whose value is a scalar, a per-round list or a list of entries, which configengine carries whole through reconcile and --set.
 func ConfigOpenMaps() []string {
-	return []string{"review", "fix", "discussion_review", "discussion_fix", "plan_review", "plan_fix", "webster_review", "webster_fix", "discussion_fan", "plan_fan", "discussion_fix_fan", "plan_fix_fan", "discussion_advisors"}
+	return []string{"review", "fix", "discussion_review", "discussion_fix", "plan_review", "plan_fix", "webster_review", "webster_fix", "discussion_fan", "plan_fan", "webster_fan", "merge_fan", "discussion_fix_fan", "plan_fix_fan", "webster_fix_fan", "merge_fix_fan", "discussion_advisors"}
 }
 
 // ConfigSpec returns loom's layered-load spec.
@@ -637,8 +604,12 @@ func ConfigSpec() configengine.Spec {
 			"webster_fix":                none,
 			"discussion_fan":             guard,
 			"plan_fan":                   guard,
+			"webster_fan":                guard,
+			"merge_fan":                  guard,
 			"discussion_fix_fan":         guard,
 			"plan_fix_fan":               guard,
+			"webster_fix_fan":            guard,
+			"merge_fix_fan":              guard,
 			"judge":                      none,
 			"seed":                       none,
 			"discussion_judge":           none,
@@ -700,23 +671,6 @@ func isUnsetModelSpecList(specs ModelSpecList) bool {
 	return len(specs) == 0 || (len(specs) == 1 && specs[0] == "")
 }
 
-// keyAtLine returns the top-level key of contents whose entry spans line, or "" when none does.
-// An entry spans from its key's line up to the next key's line.
-func keyAtLine(contents []byte, line int) string {
-	var root yaml.Node
-	if err := yaml.Unmarshal(contents, &root); err != nil || len(root.Content) == 0 {
-		return ""
-	}
-	keys := root.Content[0].Content
-	found := ""
-	for i := 0; i < len(keys); i += 2 {
-		if keys[i].Line <= line {
-			found = keys[i].Value
-		}
-	}
-	return found
-}
-
 // validateModelSpecList rejects an empty list and an entry that is not a model-spec, naming key and the 1-based entry index.
 func validateModelSpecList(key string, specs ModelSpecList) error {
 	if len(specs) == 0 {
@@ -770,41 +724,18 @@ func validateDiscussionAdvisors(advisors DiscussionAdvisorList, reg modelspec.Re
 	return nil
 }
 
-// validateFanKeys refuses an empty list on each of the four fan keys of cfg and resolves each non-empty entry through burler.yaml, which falls back per name to the embedded template.
-// A fan that does not resolve is refused naming the key, the 1-based entry, the unknown name and the fans that exist,
-// and an unreadable burler.yaml is refused naming the first key with a non-empty entry.
-// With every entry empty, burler.yaml is never read.
-func validateFanKeys(dirs configengine.Dirs, cfg Config) error {
-	var burlerCfg *burlerengine.Config
-	for _, fan := range []struct {
-		key   string
-		names FanList
-	}{
-		{"discussion_fan", cfg.DiscussionFan},
-		{"plan_fan", cfg.PlanFan},
-		{"discussion_fix_fan", cfg.DiscussionFixFan},
-		{"plan_fix_fan", cfg.PlanFixFan},
-	} {
-		if len(fan.names) == 0 {
-			return fmt.Errorf(`loom config key %q: the list is empty; write "" to run the round solo or with the single fixer`, fan.key)
-		}
-		for i, name := range fan.names {
-			if name == "" {
-				continue
-			}
-			if burlerCfg == nil {
-				loaded, err := burlerengine.LoadConfig(dirs)
-				if err != nil {
-					return fmt.Errorf("loom config key %q: %w; fix burler.yaml, or set the key to empty to run the segment solo", fan.key, err)
-				}
-				burlerCfg = &loaded
-			}
-			if _, err := burlerengine.ResolveFan(*burlerCfg, name); err != nil {
-				return fmt.Errorf(`loom config key %q entry %d: %w; define the fan in burler.yaml, or set the entry to ""`, fan.key, i+1, err)
-			}
-		}
+// fanKeys returns the review perches' reviewer and fixer fan keys of cfg.
+func fanKeys(cfg Config) []burlerengine.FanKey {
+	return []burlerengine.FanKey{
+		{Key: "discussion_fan", Fans: cfg.DiscussionFan},
+		{Key: "plan_fan", Fans: cfg.PlanFan},
+		{Key: "webster_fan", Fans: cfg.WebsterFan},
+		{Key: "merge_fan", Fans: cfg.MergeFan},
+		{Key: "discussion_fix_fan", Fans: cfg.DiscussionFixFan},
+		{Key: "plan_fix_fan", Fans: cfg.PlanFixFan},
+		{Key: "webster_fix_fan", Fans: cfg.WebsterFixFan},
+		{Key: "merge_fix_fan", Fans: cfg.MergeFixFan},
 	}
-	return nil
 }
 
 // MigrateConfig rewrites a loom.yaml document for lyx config reconcile and returns the rewritten bytes with one line per rewrite.
@@ -1225,11 +1156,11 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	if err := yaml.Unmarshal(resolved, &cfg); err != nil {
 		var shape *modelSpecShapeError
 		if errors.As(err, &shape) {
-			return Config{}, fmt.Errorf("loom config key %q: %w", keyAtLine(resolved, shape.line), err)
+			return Config{}, fmt.Errorf("loom config key %q: %w", configengine.KeyAtLine(resolved, shape.line), err)
 		}
-		var fanShape *fanShapeError
+		var fanShape *burlerengine.FanShapeError
 		if errors.As(err, &fanShape) {
-			return Config{}, fmt.Errorf("loom config key %q: %w", keyAtLine(resolved, fanShape.line), err)
+			return Config{}, fmt.Errorf("loom config key %q: %w", configengine.KeyAtLine(resolved, fanShape.Line), err)
 		}
 		var advisorShape *advisorShapeError
 		if errors.As(err, &advisorShape) {
@@ -1263,7 +1194,7 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		}
 	}
 
-	if err := validateFanKeys(dirs, cfg); err != nil {
+	if err := burlerengine.ValidateFanKeys(dirs, "loom", fanKeys(cfg)); err != nil {
 		return Config{}, err
 	}
 

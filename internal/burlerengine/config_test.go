@@ -145,11 +145,11 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 
 	cfg := loadSeededConfig(t)
 
-	const wantLenses = 35
+	const wantLenses = 40
 	if len(cfg.Lenses) != wantLenses {
 		t.Errorf("seeded template has %d lenses; want %d", len(cfg.Lenses), wantLenses)
 	}
-	const wantFans = 10
+	const wantFans = 12
 	if len(cfg.Fans) != wantFans {
 		t.Errorf("seeded template has %d fans; want %d", len(cfg.Fans), wantFans)
 	}
@@ -160,7 +160,7 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 			}
 		}
 	}
-	for fanName, wantEntries := range map[string]int{"standard": 5, "full": 8, "discussion": 5, "plan": 5, "twill-discussion": 6, "twill-plan": 5, "review-discussion": 4, "review-plan": 3, "fix-discussion": 4, "fix-plan": 4} {
+	for fanName, wantEntries := range map[string]int{"standard": 5, "full": 8, "discussion": 5, "plan": 5, "twill-discussion": 6, "twill-plan": 5, "review-discussion": 4, "review-plan": 3, "fix-discussion": 4, "fix-plan": 4, "review-code": 4, "fix-code": 4} {
 		entries, ok := cfg.Fans[fanName]
 		if !ok {
 			t.Errorf("seeded template is missing fan %q", fanName)
@@ -178,6 +178,8 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 		"review-plan":       {"affected-set", "guard-reach", "way-forward"},
 		"fix-discussion":    {"fix-consistency", "fix-claims", "fix-proposal", "fix-way-forward"},
 		"fix-plan":          {"fix-consistency", "fix-claims", "fix-proposal", "fix-affected-set"},
+		"review-code":       {"code-correctness", "code-affected-set", "code-tests", "code-pattern-fit"},
+		"fix-code":          {"fix-code-correctness", "fix-consistency", "fix-proposal", "fix-affected-set"},
 	}
 	procedureLenses := map[string]bool{}
 	for fanName, wantOrder := range wantOrders {

@@ -78,7 +78,7 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 		"claude":  {"binary", "deny_agent_tool", "deny_ask_user_question"},
 		"reed":    {"debug_log", "mouse", "shell", "tmux", "tmux_conf"},
 		"shuttle": {"deny_python", "run_dir"},
-		"loom":    {"alignment", "alignment_pr_approve", "discussion_advisors", "discussion_auto_accept", "discussion_fan", "discussion_fix_fan", "discussion_lenses", "merge_auto_accept", "parent_review_wait_min", "plan_auto_accept", "plan_fan", "plan_fix_fan", "plan_lenses", "skip_alignment", "webster_auto_accept"},
+		"loom":    {"alignment", "alignment_pr_approve", "discussion_advisors", "discussion_auto_accept", "discussion_fan", "discussion_fix_fan", "discussion_lenses", "merge_auto_accept", "merge_fan", "merge_fix_fan", "parent_review_wait_min", "plan_auto_accept", "plan_fan", "plan_fix_fan", "plan_lenses", "skip_alignment", "webster_auto_accept", "webster_fan", "webster_fix_fan"},
 		"burler":  {"fans", "lenses"},
 	}
 	for _, m := range Modules() {
@@ -221,7 +221,8 @@ func TestLookup(t *testing.T) {
 	}{
 		{"batcher", true, []string{"profiles"}},
 		{"board", true, []string{"types", "labels"}},
-		{"loom", true, []string{"review", "fix", "discussion_review", "discussion_fix", "plan_review", "plan_fix", "webster_review", "webster_fix", "discussion_fan", "plan_fan", "discussion_fix_fan", "plan_fix_fan", "discussion_advisors"}},
+		{"loom", true, []string{"review", "fix", "discussion_review", "discussion_fix", "plan_review", "plan_fix", "webster_review", "webster_fix", "discussion_fan", "plan_fan", "webster_fan", "merge_fan", "discussion_fix_fan", "plan_fix_fan", "webster_fix_fan", "merge_fix_fan", "discussion_advisors"}},
+		{"darn", true, []string{"review_fan", "review_fix_fan"}},
 		{"shuttle", true, nil},
 		{"bogus", false, nil},
 	}

@@ -244,6 +244,14 @@
 // every seeded fan is dormant until a profile names it.
 // Fan and lens names resolve against burler.yaml first and, per name, against the embedded template,
 // so an operator-defined name wins and an absent burler.yaml resolves wholly from the template.
+// The embedded template's production fans are the `review-*` and `fix-*` fans, one pair for design records, one for plans and one, `review-code` and `fix-code`, for a committed diff.
+//
+// FanList is the value of a module's per-round fan key, one fan name or a list of them whose last entry serves every later round, an empty entry running its round solo or with the single fixer.
+// Its decoder refuses any other shape with a FanShapeError carrying the value's line, and ValidateFanKeys refuses an empty list and resolves every named fan through burler.yaml, each refusal naming the module, the key and the entry.
+// loom and darn declare their review perches' fan keys in this one grammar.
+//
+// A fork reviewer and a fix-check fork may run git that reads, such as `git diff`, `git log` and `git show`, so a fan reaches a subject that exists only through git;
+// the fork stencils forbid every git command that changes state, and the round audits refuse a fork that ran one.
 //
 // ClusterExclude names lenses to drop from the fan ClusterFan resolves to,
 // applied inside validateReview after ResolveFan, with the survivors stored in
@@ -280,29 +288,21 @@
 // The review step's cluster_rules marker renders burler-cluster-solo for a solo round and burler-cluster-fan, filled with the round's lens list, for a fanned one;
 // the fanned part carries the spawn mechanics, the fork rules and the consolidation rules.
 //
-// Fork discipline is fixed boilerplate the handler composes into every
-// fork's prompt, never per-lens: read-only evidence gathering only (no
-// Write/Edit/delete of any file, repo or `_lyx`), no git commands of any
-// kind, no touching the round's ReviewPath/FixerReportPath, and no nested
-// Agent calls (forks cannot spawn forks). Two enforcement layers back this
-// discipline mechanically rather than trusting the prompt alone: a
-// session-level PreToolUse(Agent) hook that allows only unnamed
-// subagent_type:"fork" calls through and denies everything else (policing
-// Agent calls made from inside a fork's own pane too, not just the
-// handler's); and, once the run reaches shuttleengine.OutcomeDone,
-// auditClusterRound in cluster.go, which reads the shuttleengine.ForkAudit
-// the engine attaches to the run (per-fork AgentCalls/WriteCalls/
-// BashCommands facts from shuttleengine.AuditForks — never this package's
-// own knowledge of the transcript layout) and enforces the fail-loud
-// posture: exactly len(clusterLenses) fork transcripts or
-// ErrClusterForksMissing (naming requested vs actual — a shortfall,
-// including zero, is an infrastructure defect, never a degrade-to-solo);
-// any fork with AgentCalls > 0, WriteCalls > 0, or a git-mutating Bash
-// command is a hard error; any named spawn is a hard error. A fork that
-// ran clean but never returned a report is sloppiness no mechanism
-// prevents in advance — it is collected into ReviewResult.ClusterWarnings, never
-// failing the round, since the handler's own consolidation phase already
-// judges each fork's output on its merits.
+// Fork discipline is fixed boilerplate the handler composes into every fork's prompt, never per-lens:
+// read-only evidence gathering only (no Write/Edit/delete of any file, repo or `_lyx`);
+// git commands that read only, such as git diff, git log and git show, and none that changes the repository, its index, its refs or its working tree;
+// no touching the round's ReviewPath/FixerReportPath;
+// and no nested Agent calls (forks cannot spawn forks).
+// Two enforcement layers back this discipline mechanically rather than trusting the prompt alone:
+// a session-level PreToolUse(Agent) hook that allows only unnamed subagent_type:"fork" calls through and denies everything else (policing Agent calls made from inside a fork's own pane too, not just the handler's);
+// and, once the run reaches shuttleengine.OutcomeDone, auditClusterRound in cluster.go.
+// auditClusterRound reads the shuttleengine.ForkAudit the engine attaches to the run (per-fork AgentCalls/WriteCalls/BashCommands facts from shuttleengine.AuditForks — never this package's own knowledge of the transcript layout).
+// It enforces the fail-loud posture:
+// exactly len(clusterLenses) fork transcripts or ErrClusterForksMissing (naming requested vs actual — a shortfall, including zero, is an infrastructure defect, never a degrade-to-solo);
+// any fork with AgentCalls > 0, WriteCalls > 0, or a git-mutating Bash command is a hard error;
+// any named spawn is a hard error.
+// A fork that ran clean but never returned a report is sloppiness no mechanism prevents in advance.
+// It is collected into ReviewResult.ClusterWarnings and never fails the round, since the handler's own consolidation phase already judges each fork's output on its merits.
 //
 // Run mechanics: forks run IN the handler's own shuttle session, under the
 // handler's own model — there is no model-per-fork axis (a Claude Code

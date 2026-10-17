@@ -942,7 +942,7 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 		t.Errorf("c.env.WebsterRecord() = %q; want none for an anchor with no webster run record", got)
 	}
 
-	// The template's empty fans leave every fan entry empty, and Webster rows never carry one.
+	// The template's empty fans leave every fan entry empty, and every review perch carries one.
 	for _, fansByRow := range []map[string][]string{c.env.RowClusterFans, c.env.RowFixFans} {
 		for row, fans := range fansByRow {
 			if !reflect.DeepEqual(fans, []string{""}) {
@@ -950,27 +950,26 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 			}
 		}
 	}
-	// Each Discussion and Plan Burler row names the loom keys its models came from, the fix rows the fixer fan key as well, whatever the fans.
+	for _, row := range []string{loomshed.NameDiscussionBouncer, loomshed.NamePlanBouncer, loomshed.NameWebsterBouncer, loomshed.NameMergeBouncer} {
+		if _, present := c.env.RowClusterFans[row]; !present {
+			t.Errorf("RowClusterFans has no entry for %q; want the perch's fan list", row)
+		}
+	}
+	// Each loom Burler row names the loom keys its models came from, the fix rows the fixer fan key as well, whatever the fans.
+	// Merge-Review runs on Webster-Review's models, so it names Webster's keys.
 	loomKey := func(key string) shuttleengine.ModelKey { return shuttleengine.ModelKey{Module: "loom", Key: key} }
 	wantSoloKeys := map[string]shedrecipe.RowModelKeys{
 		loomshed.NameDiscussionBurlerReview: {Review: loomKey("review")},
 		loomshed.NameDiscussionBurlerFix:    {Fix: loomKey("fix"), FixFan: "discussion_fix_fan"},
 		loomshed.NamePlanBurlerReview:       {Review: loomKey("plan_review")},
 		loomshed.NamePlanBurlerFix:          {Fix: loomKey("fix"), FixFan: "plan_fix_fan"},
+		loomshed.NameWebsterBurlerReview:    {Review: loomKey("webster_review")},
+		loomshed.NameWebsterBurlerFix:       {Fix: loomKey("fix"), FixFan: "webster_fix_fan"},
+		loomshed.NameMergeBurlerReview:      {Review: loomKey("webster_review")},
+		loomshed.NameMergeBurlerFix:         {Fix: loomKey("fix"), FixFan: "merge_fix_fan"},
 	}
 	if !reflect.DeepEqual(c.env.RowModelKeys, wantSoloKeys) {
 		t.Errorf("RowModelKeys = %+v; want %+v", c.env.RowModelKeys, wantSoloKeys)
-	}
-	for _, row := range []string{loomshed.NameWebsterBurlerReview, loomshed.NameWebsterBurlerFix, loomshed.NameWebsterBouncer, loomshed.NameMergeBurlerReview, loomshed.NameMergeBurlerFix, loomshed.NameMergeBouncer} {
-		if _, present := c.env.RowClusterFans[row]; present {
-			t.Errorf("RowClusterFans has an entry for %q; want none, Webster-Review and Merge-Review stay solo", row)
-		}
-		if _, present := c.env.RowFixFans[row]; present {
-			t.Errorf("RowFixFans has an entry for %q; want none, Webster-Review and Merge-Review run the single fixer", row)
-		}
-		if _, present := c.env.RowModelKeys[row]; present {
-			t.Errorf("RowModelKeys has an entry for %q; want none, Webster-Review and Merge-Review carry no fan key", row)
-		}
 	}
 
 	// Per-round fan lists reach each segment's Bouncer and review row, and the fixer fan lists the review rows alone.
@@ -981,7 +980,12 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 		"plan_fan":           "full",
 		"discussion_fix_fan": "fix-discussion",
 		"plan_fix_fan":       "\n  - fix-plan\n  - \"\"",
+		"webster_fan":        "review-code",
+		"merge_fan":          "\n  - review-code\n  - \"\"",
+		"webster_fix_fan":    "fix-code",
+		"merge_fix_fan":      "\n  - \"\"\n  - fix-code",
 		"discussion_review":  "opus[effort=low]",
+		"webster_fix":        "sonnet[low]",
 	})
 	fanned := &loomCLI{runID: shedrun.SelfRunID}
 	if err := fanned.wire(fannedLoc, fannedLoc.AnchorPath()); err != nil {
@@ -992,6 +996,10 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 		loomshed.NameDiscussionBurlerReview: {"", "review-discussion"},
 		loomshed.NamePlanBouncer:            {"full"},
 		loomshed.NamePlanBurlerReview:       {"full"},
+		loomshed.NameWebsterBouncer:         {"review-code"},
+		loomshed.NameWebsterBurlerReview:    {"review-code"},
+		loomshed.NameMergeBouncer:           {"review-code", ""},
+		loomshed.NameMergeBurlerReview:      {"review-code", ""},
 	}
 	if !reflect.DeepEqual(fanned.env.RowClusterFans, wantFans) {
 		t.Errorf("RowClusterFans = %v; want %v", fanned.env.RowClusterFans, wantFans)
@@ -999,6 +1007,8 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	wantFixFans := map[string][]string{
 		loomshed.NameDiscussionBurlerReview: {"fix-discussion"},
 		loomshed.NamePlanBurlerReview:       {"fix-plan", ""},
+		loomshed.NameWebsterBurlerReview:    {"fix-code"},
+		loomshed.NameMergeBurlerReview:      {"", "fix-code"},
 	}
 	if !reflect.DeepEqual(fanned.env.RowFixFans, wantFixFans) {
 		t.Errorf("RowFixFans = %v; want %v", fanned.env.RowFixFans, wantFixFans)
@@ -1008,6 +1018,10 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 		loomshed.NameDiscussionBurlerFix:    {Fix: loomKey("fix"), FixFan: "discussion_fix_fan"},
 		loomshed.NamePlanBurlerReview:       {Review: loomKey("review")},
 		loomshed.NamePlanBurlerFix:          {Fix: loomKey("fix"), FixFan: "plan_fix_fan"},
+		loomshed.NameWebsterBurlerReview:    {Review: loomKey("webster_review")},
+		loomshed.NameWebsterBurlerFix:       {Fix: loomKey("webster_fix"), FixFan: "webster_fix_fan"},
+		loomshed.NameMergeBurlerReview:      {Review: loomKey("webster_review")},
+		loomshed.NameMergeBurlerFix:         {Fix: loomKey("webster_fix"), FixFan: "merge_fix_fan"},
 	}
 	if !reflect.DeepEqual(fanned.env.RowModelKeys, wantKeys) {
 		t.Errorf("RowModelKeys = %+v; want %+v", fanned.env.RowModelKeys, wantKeys)
