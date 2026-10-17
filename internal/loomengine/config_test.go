@@ -96,22 +96,24 @@ func templateConfig() Config {
 		DiscussionInteractive:    false,
 		Plan:                     "opus[medium]",
 		PlanTimeoutMin:           120,
-		Review:                   ModelSpecList{"opus[medium]"},
-		Fix:                      ModelSpecList{"opus[medium]"},
-		DiscussionReview:         ModelSpecList{""},
-		DiscussionFix:            ModelSpecList{""},
-		PlanReview:               ModelSpecList{""},
-		PlanFix:                  ModelSpecList{""},
-		WebsterReview:            ModelSpecList{"sonnet[high]"},
-		WebsterFix:               ModelSpecList{""},
-		DiscussionFan:            burlerengine.FanList{""},
-		PlanFan:                  burlerengine.FanList{""},
-		WebsterFan:               burlerengine.FanList{""},
-		MergeFan:                 burlerengine.FanList{""},
-		DiscussionFixFan:         burlerengine.FanList{""},
-		PlanFixFan:               burlerengine.FanList{""},
-		WebsterFixFan:            burlerengine.FanList{""},
-		MergeFixFan:              burlerengine.FanList{""},
+		ReviewerModel:            burlerengine.ModelSpecList{"opus[medium]"},
+		FixerModel:               burlerengine.ModelSpecList{"opus[medium]"},
+		DiscussionReviewerModel:  burlerengine.ModelSpecList{""},
+		DiscussionFixerModel:     burlerengine.ModelSpecList{""},
+		PlanReviewerModel:        burlerengine.ModelSpecList{""},
+		PlanFixerModel:           burlerengine.ModelSpecList{""},
+		WebsterReviewerModel:     burlerengine.ModelSpecList{"sonnet[high]"},
+		WebsterFixerModel:        burlerengine.ModelSpecList{""},
+		MergeReviewerModel:       burlerengine.ModelSpecList{"sonnet[high]"},
+		MergeFixerModel:          burlerengine.ModelSpecList{""},
+		DiscussionReviewerFan:    burlerengine.FanList{""},
+		PlanReviewerFan:          burlerengine.FanList{""},
+		WebsterReviewerFan:       burlerengine.FanList{""},
+		MergeReviewerFan:         burlerengine.FanList{""},
+		DiscussionFixerFan:       burlerengine.FanList{""},
+		PlanFixerFan:             burlerengine.FanList{""},
+		WebsterFixerFan:          burlerengine.FanList{""},
+		MergeFixerFan:            burlerengine.FanList{""},
 		Judge:                    "sonnet[medium]",
 		ReviewTimeoutMin:         240,
 		Friction:                 "sonnet[medium]",
@@ -155,7 +157,7 @@ discussion_timeout_min: 480
 discussion_interactive: false
 plan: opus[effort=high]
 plan_timeout_min: 120
-review: opus[effort=high]
+reviewer_model: opus[effort=high]
 review_timeout_min: 240
 `
 	tests := []struct {
@@ -178,57 +180,64 @@ review_timeout_min: 240
 			mutate:   func(*Config) {},
 		},
 		{
-			name:   "review as a per-round list",
-			values: map[string]string{"review": "\n  - sonnet[low]\n  - opus[high]"},
-			mutate: func(c *Config) { c.Review = ModelSpecList{"sonnet[low]", "opus[high]"} },
+			name:   "reviewer_model as a per-round list",
+			values: map[string]string{"reviewer_model": "\n  - sonnet[low]\n  - opus[high]"},
+			mutate: func(c *Config) { c.ReviewerModel = burlerengine.ModelSpecList{"sonnet[low]", "opus[high]"} },
 		},
 		{
-			name:   "fix as a per-round list",
-			values: map[string]string{"fix": "\n  - opus[low]\n  - opus[high]"},
-			mutate: func(c *Config) { c.Fix = ModelSpecList{"opus[low]", "opus[high]"} },
+			name:   "fixer_model as a per-round list",
+			values: map[string]string{"fixer_model": "\n  - opus[low]\n  - opus[high]"},
+			mutate: func(c *Config) { c.FixerModel = burlerengine.ModelSpecList{"opus[low]", "opus[high]"} },
 		},
 		{
-			name:   "plan_review as a per-round list",
-			values: map[string]string{"plan_review": "\n  - sonnet[low]\n  - opus[high]"},
-			mutate: func(c *Config) { c.PlanReview = ModelSpecList{"sonnet[low]", "opus[high]"} },
+			name:   "plan_reviewer_model as a per-round list",
+			values: map[string]string{"plan_reviewer_model": "\n  - sonnet[low]\n  - opus[high]"},
+			mutate: func(c *Config) { c.PlanReviewerModel = burlerengine.ModelSpecList{"sonnet[low]", "opus[high]"} },
 		},
 		{
-			name:   "webster_fix as one model-spec",
-			values: map[string]string{"webster_fix": "opus[low]"},
-			mutate: func(c *Config) { c.WebsterFix = ModelSpecList{"opus[low]"} },
+			name:   "webster_fixer_model as one model-spec",
+			values: map[string]string{"webster_fixer_model": "opus[low]"},
+			mutate: func(c *Config) { c.WebsterFixerModel = burlerengine.ModelSpecList{"opus[low]"} },
 		},
 		{
-			name:   "empty segment list takes the run-wide list",
-			values: map[string]string{"discussion_fix": "[]"},
-			mutate: func(c *Config) { c.DiscussionFix = ModelSpecList{} },
+			name:   "merge_reviewer_model and merge_fixer_model set",
+			values: map[string]string{"merge_reviewer_model": "\n  - opus[high]\n  - sonnet[low]", "merge_fixer_model": "sonnet[medium]"},
+			mutate: func(c *Config) {
+				c.MergeReviewerModel, c.MergeFixerModel = burlerengine.ModelSpecList{"opus[high]", "sonnet[low]"}, burlerengine.ModelSpecList{"sonnet[medium]"}
+			},
+		},
+		{
+			name:   "empty segment list takes the shared list",
+			values: map[string]string{"discussion_fixer_model": "[]"},
+			mutate: func(c *Config) { c.DiscussionFixerModel = burlerengine.ModelSpecList{} },
 		},
 		{
 			name:   "each fan key as one fan name",
-			values: map[string]string{"discussion_fan": "standard", "plan_fan": "full", "webster_fan": "review-code", "merge_fan": "standard", "discussion_fix_fan": "fix-discussion", "plan_fix_fan": "fix-plan", "webster_fix_fan": "fix-code", "merge_fix_fan": "fix-code"},
+			values: map[string]string{"discussion_reviewer_fan": "standard", "plan_reviewer_fan": "full", "webster_reviewer_fan": "review-code", "merge_reviewer_fan": "standard", "discussion_fixer_fan": "fix-discussion", "plan_fixer_fan": "fix-plan", "webster_fixer_fan": "fix-code", "merge_fixer_fan": "fix-code"},
 			mutate: func(c *Config) {
-				c.DiscussionFan, c.PlanFan = burlerengine.FanList{"standard"}, burlerengine.FanList{"full"}
-				c.WebsterFan, c.MergeFan = burlerengine.FanList{"review-code"}, burlerengine.FanList{"standard"}
-				c.DiscussionFixFan, c.PlanFixFan = burlerengine.FanList{"fix-discussion"}, burlerengine.FanList{"fix-plan"}
-				c.WebsterFixFan, c.MergeFixFan = burlerengine.FanList{"fix-code"}, burlerengine.FanList{"fix-code"}
+				c.DiscussionReviewerFan, c.PlanReviewerFan = burlerengine.FanList{"standard"}, burlerengine.FanList{"full"}
+				c.WebsterReviewerFan, c.MergeReviewerFan = burlerengine.FanList{"review-code"}, burlerengine.FanList{"standard"}
+				c.DiscussionFixerFan, c.PlanFixerFan = burlerengine.FanList{"fix-discussion"}, burlerengine.FanList{"fix-plan"}
+				c.WebsterFixerFan, c.MergeFixerFan = burlerengine.FanList{"fix-code"}, burlerengine.FanList{"fix-code"}
 			},
 		},
 		{
 			name: "each fan key as a per-round list, an empty entry running its round solo",
 			values: map[string]string{
-				"discussion_fan":     "\n  - \"\"\n  - review-discussion",
-				"plan_fan":           "\n  - review-plan\n  - \"\"",
-				"webster_fan":        "\n  - review-code\n  - \"\"",
-				"merge_fan":          "\n  - \"\"\n  - review-code",
-				"discussion_fix_fan": "\n  - \"\"\n  - fix-discussion",
-				"plan_fix_fan":       "\n  - fix-plan\n  - \"\"",
-				"webster_fix_fan":    "\n  - fix-code\n  - \"\"",
-				"merge_fix_fan":      "\n  - \"\"\n  - fix-code",
+				"discussion_reviewer_fan": "\n  - \"\"\n  - review-discussion",
+				"plan_reviewer_fan":       "\n  - review-plan\n  - \"\"",
+				"webster_reviewer_fan":    "\n  - review-code\n  - \"\"",
+				"merge_reviewer_fan":      "\n  - \"\"\n  - review-code",
+				"discussion_fixer_fan":    "\n  - \"\"\n  - fix-discussion",
+				"plan_fixer_fan":          "\n  - fix-plan\n  - \"\"",
+				"webster_fixer_fan":       "\n  - fix-code\n  - \"\"",
+				"merge_fixer_fan":         "\n  - \"\"\n  - fix-code",
 			},
 			mutate: func(c *Config) {
-				c.DiscussionFan, c.PlanFan = burlerengine.FanList{"", "review-discussion"}, burlerengine.FanList{"review-plan", ""}
-				c.WebsterFan, c.MergeFan = burlerengine.FanList{"review-code", ""}, burlerengine.FanList{"", "review-code"}
-				c.DiscussionFixFan, c.PlanFixFan = burlerengine.FanList{"", "fix-discussion"}, burlerengine.FanList{"fix-plan", ""}
-				c.WebsterFixFan, c.MergeFixFan = burlerengine.FanList{"fix-code", ""}, burlerengine.FanList{"", "fix-code"}
+				c.DiscussionReviewerFan, c.PlanReviewerFan = burlerengine.FanList{"", "review-discussion"}, burlerengine.FanList{"review-plan", ""}
+				c.WebsterReviewerFan, c.MergeReviewerFan = burlerengine.FanList{"review-code", ""}, burlerengine.FanList{"", "review-code"}
+				c.DiscussionFixerFan, c.PlanFixerFan = burlerengine.FanList{"", "fix-discussion"}, burlerengine.FanList{"fix-plan", ""}
+				c.WebsterFixerFan, c.MergeFixerFan = burlerengine.FanList{"fix-code", ""}, burlerengine.FanList{"", "fix-code"}
 			},
 		},
 		{
@@ -391,7 +400,7 @@ review_timeout_min: 240
 			name:     "keys absent from a seeded file take template defaults",
 			contents: legacyContents,
 			mutate: func(c *Config) {
-				c.Discussion, c.Plan, c.Review = "opus[effort=high]", "opus[effort=high]", ModelSpecList{"opus[effort=high]"}
+				c.Discussion, c.Plan, c.ReviewerModel = "opus[effort=high]", "opus[effort=high]", burlerengine.ModelSpecList{"opus[effort=high]"}
 			},
 		},
 		{
@@ -468,9 +477,9 @@ review_timeout_min: 240
 			},
 			{
 				name:     "a worktree list replaces the default's whole",
-				board:    "review: [\"opus[medium]\"]\n",
-				worktree: "review: [\"sonnet[low]\", \"sonnet[high]\"]\n",
-				mutate:   func(c *Config) { c.Review = ModelSpecList{"sonnet[low]", "sonnet[high]"} },
+				board:    "reviewer_model: [\"opus[medium]\"]\n",
+				worktree: "reviewer_model: [\"sonnet[low]\", \"sonnet[high]\"]\n",
+				mutate:   func(c *Config) { c.ReviewerModel = burlerengine.ModelSpecList{"sonnet[low]", "sonnet[high]"} },
 			},
 			{
 				name:       "a retired fan_review in the repo default is ignored",
@@ -611,31 +620,33 @@ func TestLoadConfig_Refuses(t *testing.T) {
 	}{
 		{"malformed discussion spec", "discussion", `"opus[effort"`, nil, ""},
 		{"malformed plan spec", "plan", `"opus[effort"`, nil, ""},
-		{"malformed review spec", "review", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
-		{"malformed fix spec", "fix", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
-		{"malformed later review entry", "review", "\n  - sonnet[low]\n  - \"opus[effort\"", []string{"entry 2", "a non-empty list of model-specs"}, ""},
-		{"empty review list", "review", "[]", []string{"empty", "a non-empty list of model-specs"}, ""},
-		{"empty fix list", "fix", "[]", []string{"empty", "a non-empty list of model-specs"}, ""},
-		{"malformed discussion_review spec", "discussion_review", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
-		{"malformed discussion_fix spec", "discussion_fix", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
-		{"malformed plan_review spec", "plan_review", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
-		{"malformed plan_fix spec", "plan_fix", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
-		{"malformed webster_review spec", "webster_review", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
-		{"malformed later webster_fix entry", "webster_fix", "\n  - sonnet[low]\n  - \"opus[effort\"", []string{"entry 2", "a non-empty list of model-specs"}, ""},
-		{"unknown discussion_fan", "discussion_fan", "nosuchfan", []string{`"nosuchfan"`, "known fans: ", "standard", "entry 1", `set the entry to ""`}, ""},
-		{"unknown plan_fan", "plan_fan", "nosuchfan", []string{`"nosuchfan"`, "known fans: ", "full", "entry 1", `set the entry to ""`}, ""},
-		{"unknown second discussion_fix_fan entry", "discussion_fix_fan", "\n  - \"\"\n  - nosuchfan", []string{"entry 2", `"nosuchfan"`, "known fans: ", "define the fan in burler.yaml", `set the entry to ""`}, ""},
-		{"empty discussion_fan list", "discussion_fan", "[]", []string{"the list is empty", `write ""`}, ""},
-		{"empty plan_fan list", "plan_fan", "[]", []string{"the list is empty", `write ""`}, ""},
-		{"empty discussion_fix_fan list", "discussion_fix_fan", "[]", []string{"the list is empty", `write ""`}, ""},
-		{"empty plan_fix_fan list", "plan_fix_fan", "[]", []string{"the list is empty", `write ""`}, ""},
-		{"unknown webster_fan", "webster_fan", "nosuchfan", []string{`loom config key "webster_fan" entry 1`, `"nosuchfan"`, "known fans: ", `set the entry to ""`}, ""},
-		{"unknown second merge_fix_fan entry", "merge_fix_fan", "\n  - \"\"\n  - nosuchfan", []string{`loom config key "merge_fix_fan" entry 2`, `"nosuchfan"`, "define the fan in burler.yaml"}, ""},
-		{"empty merge_fan list", "merge_fan", "[]", []string{`loom config key "merge_fan"`, "the list is empty", `write ""`}, ""},
-		{"mapping webster_fix_fan value", "webster_fix_fan", "\n  model: opus", []string{`loom config key "webster_fix_fan"`, "neither a fan name nor a list of fan names"}, ""},
-		{"mapping discussion_fix_fan value", "discussion_fix_fan", "\n  model: opus", []string{"line ", "neither a fan name nor a list of fan names", "a list of fan names"}, ""},
-		{"mapping inside a plan_fan list", "plan_fan", "\n  - full\n  - model: opus", []string{"line ", "neither a fan name nor a list of fan names", "a list of fan names"}, ""},
-		{"set discussion_fan with a malformed burler.yaml", "discussion_fan", "standard", []string{"burler: config file ", "parse doc YAML", "fix burler.yaml, or set the key to empty"}, malformedBurlerYAML},
+		{"malformed reviewer_model spec", "reviewer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
+		{"malformed fixer_model spec", "fixer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
+		{"malformed later reviewer_model entry", "reviewer_model", "\n  - sonnet[low]\n  - \"opus[effort\"", []string{"entry 2", "a non-empty list of model-specs"}, ""},
+		{"empty reviewer_model list", "reviewer_model", "[]", []string{"empty", "a non-empty list of model-specs"}, ""},
+		{"empty fixer_model list", "fixer_model", "[]", []string{"empty", "a non-empty list of model-specs"}, ""},
+		{"malformed discussion_reviewer_model spec", "discussion_reviewer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
+		{"malformed discussion_fixer_model spec", "discussion_fixer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
+		{"malformed plan_reviewer_model spec", "plan_reviewer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
+		{"malformed plan_fixer_model spec", "plan_fixer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
+		{"malformed webster_reviewer_model spec", "webster_reviewer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
+		{"malformed later webster_fixer_model entry", "webster_fixer_model", "\n  - sonnet[low]\n  - \"opus[effort\"", []string{"entry 2", "a non-empty list of model-specs"}, ""},
+		{"malformed merge_reviewer_model spec", "merge_reviewer_model", `"opus[effort"`, []string{`loom config key "merge_reviewer_model" entry 1`, "a non-empty list of model-specs"}, ""},
+		{"malformed later merge_fixer_model entry", "merge_fixer_model", "\n  - sonnet[low]\n  - \"opus[effort\"", []string{`loom config key "merge_fixer_model" entry 2`, "a non-empty list of model-specs"}, ""},
+		{"unknown discussion_reviewer_fan", "discussion_reviewer_fan", "nosuchfan", []string{`"nosuchfan"`, "known fans: ", "standard", "entry 1", `set the entry to ""`}, ""},
+		{"unknown plan_reviewer_fan", "plan_reviewer_fan", "nosuchfan", []string{`"nosuchfan"`, "known fans: ", "full", "entry 1", `set the entry to ""`}, ""},
+		{"unknown second discussion_fixer_fan entry", "discussion_fixer_fan", "\n  - \"\"\n  - nosuchfan", []string{"entry 2", `"nosuchfan"`, "known fans: ", "define the fan in burler.yaml", `set the entry to ""`}, ""},
+		{"empty discussion_reviewer_fan list", "discussion_reviewer_fan", "[]", []string{"the list is empty", `write ""`}, ""},
+		{"empty plan_reviewer_fan list", "plan_reviewer_fan", "[]", []string{"the list is empty", `write ""`}, ""},
+		{"empty discussion_fixer_fan list", "discussion_fixer_fan", "[]", []string{"the list is empty", `write ""`}, ""},
+		{"empty plan_fixer_fan list", "plan_fixer_fan", "[]", []string{"the list is empty", `write ""`}, ""},
+		{"unknown webster_reviewer_fan", "webster_reviewer_fan", "nosuchfan", []string{`loom config key "webster_reviewer_fan" entry 1`, `"nosuchfan"`, "known fans: ", `set the entry to ""`}, ""},
+		{"unknown second merge_fixer_fan entry", "merge_fixer_fan", "\n  - \"\"\n  - nosuchfan", []string{`loom config key "merge_fixer_fan" entry 2`, `"nosuchfan"`, "define the fan in burler.yaml"}, ""},
+		{"empty merge_reviewer_fan list", "merge_reviewer_fan", "[]", []string{`loom config key "merge_reviewer_fan"`, "the list is empty", `write ""`}, ""},
+		{"mapping webster_fixer_fan value", "webster_fixer_fan", "\n  model: opus", []string{`loom config key "webster_fixer_fan"`, "neither a fan name nor a list of fan names"}, ""},
+		{"mapping discussion_fixer_fan value", "discussion_fixer_fan", "\n  model: opus", []string{"line ", "neither a fan name nor a list of fan names", "a list of fan names"}, ""},
+		{"mapping inside a plan_reviewer_fan list", "plan_reviewer_fan", "\n  - full\n  - model: opus", []string{"line ", "neither a fan name nor a list of fan names", "a list of fan names"}, ""},
+		{"set discussion_reviewer_fan with a malformed burler.yaml", "discussion_reviewer_fan", "standard", []string{"burler: config file ", "parse doc YAML", "fix burler.yaml, or set the key to empty"}, malformedBurlerYAML},
 		{"string discussion_advisors entry", "discussion_advisors", `["sonnet[high]"]`, []string{"entry 1", advisorEntryWayForward}, ""},
 		{"string discussion_advisors entry after a mapping", "discussion_advisors", `[{name: critic, model: "sonnet[high]"}, "sonnet[low]"]`, []string{"entry 2", advisorEntryWayForward}, ""},
 		{"blank discussion_advisors name", "discussion_advisors", `[{name: "", model: "sonnet[high]"}]`, []string{"entry 1", "missing or blank", advisorWayForward}, ""},
@@ -647,8 +658,8 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"unknown discussion_advisors alias", "discussion_advisors", `[{name: critic, model: "sonnet[high]"}, {name: skeptic, model: ghost}]`, []string{"entry 2", "ghost", advisorWayForward}, ""},
 		{"mapping discussion_advisors value", "discussion_advisors", "\n  model: opus", []string{"line ", advisorWayForward}, ""},
 		{"scalar discussion_advisors value", "discussion_advisors", `"sonnet[high]"`, []string{"line ", advisorWayForward}, ""},
-		{"mapping review value", "review", "\n  model: opus", []string{"a non-empty list of model-specs"}, ""},
-		{"mapping inside a fix list", "fix", "\n  - model: opus", []string{"a non-empty list of model-specs"}, ""},
+		{"mapping reviewer_model value", "reviewer_model", "\n  model: opus", []string{"a non-empty list of model-specs"}, ""},
+		{"mapping inside a fixer_model list", "fixer_model", "\n  - model: opus", []string{"a non-empty list of model-specs"}, ""},
 		{"malformed judge spec", "judge", `"sonnet[medium"`, nil, ""},
 		{"malformed seed spec", "seed", `"opus[effort"`, nil, ""},
 		{"malformed discussion_judge spec", "discussion_judge", `"opus[effort"`, nil, ""},
@@ -748,7 +759,7 @@ func TestLoadConfig_Refuses(t *testing.T) {
 
 	t.Run("a local fan key is refused naming the local file and the key", func(t *testing.T) {
 		t.Parallel()
-		for _, key := range []string{"discussion_fan", "plan_fan", "webster_fan", "merge_fan", "discussion_fix_fan", "plan_fix_fan", "webster_fix_fan", "merge_fix_fan"} {
+		for _, key := range []string{"discussion_reviewer_fan", "plan_reviewer_fan", "webster_reviewer_fan", "merge_reviewer_fan", "discussion_fixer_fan", "plan_fixer_fan", "webster_fixer_fan", "merge_fixer_fan"} {
 			t.Run(key, func(t *testing.T) {
 				t.Parallel()
 				board, anchor := t.TempDir(), t.TempDir()
@@ -1264,9 +1275,10 @@ func containsConfigKey(text, key string) bool {
 	return false
 }
 
-// TestMigrateConfig_RetiresSkipMergeReview pins what MigrateConfig rewrites for skip_merge_review and removes for fan_review: an old-schema document, recognised by its skip_merge_review key, has each zero per-perch budget turned to null and skip_merge_review true turned to merge_max_bounces: 0 before the key goes;
-// a document without the key keeps its zeros as the zero-rounds meaning; a second run changes nothing, a below-floor step_idle_timeout_min is still raised, and an unparseable document is refused.
-func TestMigrateConfig_RetiresSkipMergeReview(t *testing.T) {
+// TestMigrateConfig_RetiredKeys pins what MigrateConfig rewrites for skip_merge_review, removes for fan_review and renames for the retired reviewer, fixer and fan keys: an old-schema document, recognised by its skip_merge_review key, has each zero per-perch budget turned to null and skip_merge_review true turned to merge_max_bounces: 0 before the key goes;
+// a document without the key keeps its zeros as the zero-rounds meaning; a retired model or fan key takes its new name and the template's line comment unless the new name is already set, and Webster's retired models are copied onto unset Merge keys;
+// a second run changes nothing, a below-floor step_idle_timeout_min is still raised, and an unparseable document is refused.
+func TestMigrateConfig_RetiredKeys(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name      string
@@ -1314,6 +1326,62 @@ func TestMigrateConfig_RetiresSkipMergeReview(t *testing.T) {
 			wantLines: []string{"step_idle_timeout_min: raised from 0 to 1"},
 			wantKeys:  map[string]any{"step_idle_timeout_min": 1},
 		},
+		{
+			name:     "the retired reviewer, fixer and fan keys are renamed with their values",
+			document: "review: opus[high]\nfix: sonnet[low]\ndiscussion_review: \"\"\nplan_fix: opus[low]\ndiscussion_fan: standard\nmerge_fix_fan: fix-code\n",
+			wantLines: []string{
+				"review: renamed to reviewer_model",
+				"fix: renamed to fixer_model",
+				"discussion_review: renamed to discussion_reviewer_model",
+				"plan_fix: renamed to plan_fixer_model",
+				"discussion_fan: renamed to discussion_reviewer_fan",
+				"merge_fix_fan: renamed to merge_fixer_fan",
+			},
+			wantKeys: map[string]any{
+				"reviewer_model": "opus[high]", "fixer_model": "sonnet[low]", "discussion_reviewer_model": "", "plan_fixer_model": "opus[low]",
+				"discussion_reviewer_fan": "standard", "merge_fixer_fan": "fix-code",
+			},
+			wantGone: []string{"review", "fix", "discussion_review", "plan_fix", "discussion_fan", "merge_fix_fan"},
+		},
+		{
+			name:     "webster's models are copied onto the unset merge keys",
+			document: "webster_review: sonnet[medium]\nwebster_fix: sonnet[low]\n",
+			wantLines: []string{
+				"merge_reviewer_model: set to webster_review's value, the models Merge-Review ran on; Darn-Review now reads darn_reviewer_model in darn.yaml, which this rewrite cannot set",
+				"merge_fixer_model: set to webster_fix's value, the models Merge-Review ran on; Darn-Review now reads darn_fixer_model in darn.yaml, which this rewrite cannot set",
+				"webster_review: renamed to webster_reviewer_model",
+				"webster_fix: renamed to webster_fixer_model",
+			},
+			wantKeys: map[string]any{
+				"webster_reviewer_model": "sonnet[medium]", "webster_fixer_model": "sonnet[low]",
+				"merge_reviewer_model": "sonnet[medium]", "merge_fixer_model": "sonnet[low]",
+			},
+			wantGone: []string{"webster_review", "webster_fix"},
+		},
+		{
+			name:     "a set new webster key is the value copied onto merge",
+			document: "webster_review: opus[high]\nwebster_reviewer_model: sonnet[low]\n",
+			wantLines: []string{
+				"merge_reviewer_model: set to webster_reviewer_model's value, the models Merge-Review ran on; Darn-Review now reads darn_reviewer_model in darn.yaml, which this rewrite cannot set",
+				"webster_review: removed, webster_reviewer_model already set",
+			},
+			wantKeys: map[string]any{"webster_reviewer_model": "sonnet[low]", "merge_reviewer_model": "sonnet[low]"},
+			wantGone: []string{"webster_review"},
+		},
+		{
+			name:      "a set merge key keeps its value",
+			document:  "webster_review: sonnet[medium]\nmerge_reviewer_model: opus[high]\n",
+			wantLines: []string{"webster_review: renamed to webster_reviewer_model"},
+			wantKeys:  map[string]any{"webster_reviewer_model": "sonnet[medium]", "merge_reviewer_model": "opus[high]"},
+			wantGone:  []string{"webster_review", "merge_fixer_model"},
+		},
+		{
+			name:      "a set new key wins over its retired one",
+			document:  "review: opus[high]\nreviewer_model: sonnet[low]\n",
+			wantLines: []string{"review: removed, reviewer_model already set"},
+			wantKeys:  map[string]any{"reviewer_model": "sonnet[low]"},
+			wantGone:  []string{"review"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1346,6 +1414,26 @@ func TestMigrateConfig_RetiresSkipMergeReview(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("a renamed key and a copied merge key carry the template's line comment", func(t *testing.T) {
+		t.Parallel()
+		got, _, err := MigrateConfig([]byte("webster_fan: review-code # the retired comment\nwebster_review: sonnet[medium]\n"))
+		if err != nil {
+			t.Fatalf("MigrateConfig() error = %v; want nil", err)
+		}
+		var document, template yaml.Node
+		if err := yaml.Unmarshal(got, &document); err != nil {
+			t.Fatalf("decode migrated %q: %v", got, err)
+		}
+		if err := yaml.Unmarshal([]byte(ConfigTemplate()), &template); err != nil {
+			t.Fatalf("decode template: %v", err)
+		}
+		for _, key := range []string{"webster_reviewer_fan", "merge_reviewer_model"} {
+			if got, want := mappingValueNode(document.Content[0], key).LineComment, mappingValueNode(template.Content[0], key).LineComment; got != want {
+				t.Errorf("migrated %s line comment = %q; want the template's %q", key, got, want)
+			}
+		}
+	})
 
 	t.Run("an unparseable document is refused", func(t *testing.T) {
 		t.Parallel()

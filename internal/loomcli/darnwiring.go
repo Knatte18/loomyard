@@ -164,16 +164,23 @@ func (c *loomCLI) darnReviewBudget() (int, error) {
 	return template.ReviewMaxBounces, nil
 }
 
-// wireDarnFans adds the Darn-Review perch's fan lists from cfg to env, and the config keys its Burler rows' settings came from.
-// The perch runs on Webster-Review's models, so its rows take the Webster rows' model keys, and its fixer fan key names darn.yaml, the file it lives in.
-// The review row records each round's fans and the fix row reads them, so the two entries are added together.
+// wireDarnReview adds the Darn-Review perch's models and fan lists from cfg to env, and the config keys its Burler rows' settings came from.
+// The models resolve through registry, each empty darn.yaml model key taking its shared list in env.ReviewModels, and a refusal names the key the failing value came from.
+// The review row records each round's fans and the fix row reads them, so the two entries are added together; the fixer fan key names darn.yaml, the file it lives in.
 // env's maps are the ones wire filled for every recipe.
-func wireDarnFans(env *shedrecipe.Env, cfg darnengine.Config) {
-	env.RowClusterFans[loomshed.NameDarnBouncer] = cfg.ReviewFan
-	env.RowClusterFans[loomshed.NameDarnBurlerReview] = cfg.ReviewFan
-	env.RowFixFans[loomshed.NameDarnBurlerReview] = cfg.ReviewFixFan
-	env.RowModelKeys[loomshed.NameDarnBurlerReview] = shedrecipe.RowModelKeys{Review: env.RowModelKeys[loomshed.NameWebsterBurlerReview].Review}
-	env.RowModelKeys[loomshed.NameDarnBurlerFix] = shedrecipe.RowModelKeys{Fix: env.RowModelKeys[loomshed.NameWebsterBurlerFix].Fix, FixFan: "review_fix_fan in darn.yaml"}
+func wireDarnReview(env *shedrecipe.Env, cfg darnengine.Config, registry modelspec.Registry) error {
+	models, keys, err := loomengine.ResolveDarnReview(env.ReviewModels, cfg, registry)
+	if err != nil {
+		return err
+	}
+	env.RowReviewModels[loomshed.NameDarnBurlerReview] = models
+	env.RowReviewModels[loomshed.NameDarnBurlerFix] = models
+	env.RowClusterFans[loomshed.NameDarnBouncer] = cfg.ReviewerFan
+	env.RowClusterFans[loomshed.NameDarnBurlerReview] = cfg.ReviewerFan
+	env.RowFixFans[loomshed.NameDarnBurlerReview] = cfg.FixerFan
+	env.RowModelKeys[loomshed.NameDarnBurlerReview] = shedrecipe.RowModelKeys{Review: keys.Review}
+	env.RowModelKeys[loomshed.NameDarnBurlerFix] = shedrecipe.RowModelKeys{Fix: keys.Fix, FixFan: darnengine.FixerFanKey + " in darn.yaml"}
+	return nil
 }
 
 // wireDarn fills the Env fields a darn run reads beyond the ones wire fills for every recipe, and replaces the loom DescribeTable with the darn one, which reads the decision record but no run record.
@@ -197,7 +204,9 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 		c.env.RowHardMaxBounces = map[string]int{}
 	}
 	c.env.RowHardMaxBounces[loomshed.NameDarnBouncer] = cfg.ReviewHardMaxBounces
-	wireDarnFans(&c.env, cfg)
+	if err := wireDarnReview(&c.env, cfg, registry); err != nil {
+		return err
+	}
 	c.darnCfg = &cfg
 	// The Darn-Review perch's CIRCLING Reason names the budget the darn routing applies, not loom's.
 	c.env.SegmentBounces = segmentBounces(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, func() (shedengine.Routing, error) {

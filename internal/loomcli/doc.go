@@ -170,7 +170,7 @@
 // While a pause covers the slug the driver holds in the pause wait before any re-step, goto, agent spawn or hand-over.
 //
 // A hand-back leaves a Go-authored stop report, commits the run records and writes the park marker through the code `lyx loom commit-records --park` runs, and queues the parent messages the LLM driver's notify rules send.
-// A watching batten announces the run, so only the parent notice, a question, a friction-failed done and a watched verify halt are sent; an unwatched run also gets one line naming the run-id and the report.
+// A watching batten announces the run and retries a matching verify halt itself, so only the parent notice, a question and a friction-failed done are sent; an unwatched run also gets one line naming the run-id and the report.
 // A paused stop that carries no reason also writes a `go-driver-paused` friction note.
 // A done run commits its records, and one that finished with `friction: failed` also gets a report and a notice without being parked.
 //

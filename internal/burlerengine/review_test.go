@@ -46,7 +46,7 @@ func TestEngine_Review_TableShape(t *testing.T) {
 		Timeout: 5 * time.Minute,
 		Round:   "1",
 
-		ReviewKey: shuttleengine.ModelKey{Module: "loom", Key: "discussion_review"},
+		ReviewKey: shuttleengine.ModelKey{Module: "loom", Key: "discussion_reviewer_model"},
 	}
 	tests := []struct {
 		name           string
