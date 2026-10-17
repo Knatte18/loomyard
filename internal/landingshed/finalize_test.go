@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/go-github/v75/github"
 
@@ -582,6 +583,7 @@ func TestFinalize_ClosingPullRequestAfterLanding(t *testing.T) {
 	lookupOnly := []string{"GET /repos/acme/widgets/pulls"}
 	lookupCommentClose := []string{"GET /repos/acme/widgets/pulls", "POST /repos/acme/widgets/issues/7/comments", "PATCH /repos/acme/widgets/pulls/7"}
 	committed := fabricengine.MergeResult{Committed: true}
+	runStart := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 	tests := []struct {
 		name         string
 		listBody     string
@@ -597,6 +599,8 @@ func TestFinalize_ClosingPullRequestAfterLanding(t *testing.T) {
 		{"already up to date counts as landed", `[{"number":7,"state":"open"}]`, false, nil, fabricengine.MergeResult{AlreadyUpToDate: true}, "parentheadsha", lookupCommentClose, []string{"parentheadsha"}},
 		{"leaves a non-open pull request alone", `[{"number":7,"state":"closed"}]`, false, nil, committed, "abc123landed", lookupOnly, nil},
 		{"a failed close still ends Done", `[{"number":7,"state":"open"}]`, true, nil, committed, "abc123landed", lookupCommentClose, nil},
+		{"leaves an older open pull request alone", `[{"number":7,"state":"open","created_at":"2026-01-01T00:00:00Z"}]`, false, func(d *Deps) { d.RunStart = runStart }, committed, "abc123landed", lookupOnly, nil},
+		{"closes an open pull request created after the run started", `[{"number":7,"state":"open","created_at":"2026-07-01T00:00:00Z"}]`, false, func(d *Deps) { d.RunStart = runStart }, committed, "abc123landed", lookupCommentClose, []string{"abc123landed"}},
 		{"no GitHub call when the parent needs no pull request", `[{"number":7,"state":"open"}]`, false, func(d *Deps) { d.Config.RequirePRToBase = []string{"other"} }, committed, "abc123landed", nil, nil},
 		{"no GitHub call when the push is skipped", `[{"number":7,"state":"open"}]`, false, func(d *Deps) { d.PushSkipped = true }, committed, "abc123landed", nil, nil},
 	}

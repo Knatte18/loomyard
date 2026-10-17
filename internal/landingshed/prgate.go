@@ -85,7 +85,7 @@ func (g *PRGate) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outpu
 		logger.Warn("landingshed: github call failed", "producer", prGateName, "action", "new github client", "cause", err)
 		return g.awaiting(ctx, fmt.Sprintf("github client unavailable: %v", err), "")
 	}
-	pr, err := FindPullRequest(ctx, client, owner, repo, g.deps.TaskBranch, g.deps.ParentBranch)
+	pr, _, err := FindPullRequest(ctx, client, owner, repo, g.deps.TaskBranch, g.deps.ParentBranch, g.deps.RunStart)
 	if err != nil {
 		logger.Warn("landingshed: github call failed", "producer", prGateName, "action", "query existing pull request", "owner", owner, "repo", repo, "cause", err)
 		if terr := transientFailure(ctx, prGateName, "query existing pull request", err); terr != nil {

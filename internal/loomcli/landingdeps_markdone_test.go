@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -31,7 +32,7 @@ func markDoneFixtureDir(t *testing.T) (markDone func() error, board *boardengine
 	boardDir = fabricengine.BoardDir(location.HubPath)
 
 	deps := landingDeps(location, shedrun.RecipeLoom, websterengine.Geometry{}, "task", "https://example.com/o.git", "main",
-		true, func() error { return nil }, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, nil, planVerifySource(location), parentLockDeps(location, shedrun.SelfRunID, "", ""))
+		true, func() error { return nil }, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, nil, planVerifySource(location), parentLockDeps(location, shedrun.SelfRunID, "", ""), time.Time{})
 
 	board, err := boardengine.OpenHub(location.HubPath)
 	if err != nil {

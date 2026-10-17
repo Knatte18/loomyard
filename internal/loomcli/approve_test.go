@@ -15,6 +15,9 @@ import (
 	"github.com/google/go-github/v75/github"
 )
 
+// fixtureRunStart is the run start the approve and reject fixtures read from their seed.
+var fixtureRunStart = time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+
 // approveFixture builds approveDeps that pass every check, plus a pointer to the recorded
 // approvals; each test breaks one seam.
 func approveFixture() (approveDeps, *[]landingshed.Approval) {
@@ -26,7 +29,8 @@ func approveFixture() (approveDeps, *[]landingshed.Approval) {
 		branches: func() (string, string, string, error) {
 			return "task", "main", "https://github.com/acme/widgets.git", nil
 		},
-		findPR: func(context.Context, string, string, string, string) (*github.PullRequest, error) {
+		runStart: func() (time.Time, error) { return fixtureRunStart, nil },
+		findPR: func(context.Context, string, string, string, string, time.Time) (*github.PullRequest, error) {
 			return &github.PullRequest{
 				Number:  github.Ptr(7),
 				State:   github.Ptr("open"),
@@ -73,7 +77,9 @@ func TestApproveVerb_Refusals(t *testing.T) {
 		{
 			name: "NoPullRequest",
 			mutate: func(d *approveDeps) {
-				d.findPR = func(context.Context, string, string, string, string) (*github.PullRequest, error) { return nil, nil }
+				d.findPR = func(context.Context, string, string, string, string, time.Time) (*github.PullRequest, error) {
+					return nil, nil
+				}
 			},
 			wantMsg: "no pull request",
 			wantWay: []string{"lyx loom goto --to Publish"},
@@ -82,7 +88,7 @@ func TestApproveVerb_Refusals(t *testing.T) {
 		{
 			name: "PullRequestNotOpen",
 			mutate: func(d *approveDeps) {
-				d.findPR = func(context.Context, string, string, string, string) (*github.PullRequest, error) {
+				d.findPR = func(context.Context, string, string, string, string, time.Time) (*github.PullRequest, error) {
 					return &github.PullRequest{Number: github.Ptr(7), State: github.Ptr("closed")}, nil
 				}
 			},
@@ -102,11 +108,19 @@ func TestApproveVerb_Refusals(t *testing.T) {
 		{
 			name: "LookupError",
 			mutate: func(d *approveDeps) {
-				d.findPR = func(context.Context, string, string, string, string) (*github.PullRequest, error) {
+				d.findPR = func(context.Context, string, string, string, string, time.Time) (*github.PullRequest, error) {
 					return nil, errors.New("boom")
 				}
 			},
 			wantMsg: "boom",
+		},
+		{
+			name: "SeedUnreadable",
+			mutate: func(d *approveDeps) {
+				d.runStart = func() (time.Time, error) { return time.Time{}, errors.New("seed broke") }
+			},
+			wantMsg: "read the run's start",
+			wantWay: []string{"transient, re-run lyx loom approve"},
 		},
 	}
 	for _, tt := range tests {
@@ -160,9 +174,18 @@ func TestApproveVerb_Success(t *testing.T) {
 			d.readStatus = func() (shedengine.Status, bool, error) {
 				return shedengine.Status{State: state, CurrentProducer: loomshed.NamePRGate}, true, nil
 			}
+			findPR := d.findPR
+			var gotSince time.Time
+			d.findPR = func(ctx context.Context, owner, repo, head, base string, since time.Time) (*github.PullRequest, error) {
+				gotSince = since
+				return findPR(ctx, owner, repo, head, base, since)
+			}
 			var out bytes.Buffer
 			if code := approveVerb(context.Background(), &out, d); code != 0 {
 				t.Fatalf("exit = %d; want 0; out = %s", code, out.String())
+			}
+			if !gotSince.Equal(fixtureRunStart) {
+				t.Errorf("findPR since = %v; want the fixture's run start %v", gotSince, fixtureRunStart)
 			}
 			want := landingshed.Approval{PRNumber: 7, HeadSHA: "abc123", ApprovedAt: "2026-09-30T12:00:00Z"}
 			if len(*written) != 1 || (*written)[0] != want {

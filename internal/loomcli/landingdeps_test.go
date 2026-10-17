@@ -71,6 +71,7 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 		func() (string, error) { return "", nil },
 		planVerifySource(loc),
 		parentLockDeps(loc, shedrun.SelfRunID, "", ""),
+		time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
 	)
 
 	if deps.ParentName != "parent-session" {

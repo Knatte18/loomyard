@@ -34,8 +34,10 @@ type rejectDeps struct {
 	readStatus func() (st shedengine.Status, found bool, err error)
 	// branches resolves the task branch, the branch it lands on, and the origin URL.
 	branches func() (taskBranch, parentBranch, originURL string, err error)
-	// findPR looks up the pull request from head to base in owner/repo, nil when none exists.
-	findPR func(ctx context.Context, owner, repo, head, base string) (*github.PullRequest, error)
+	// runStart reads the run's start from its seed; the zero time means the lookup is unbounded.
+	runStart func() (time.Time, error)
+	// findPR looks up the pull request from head to base in owner/repo created at or after since, nil when none exists.
+	findPR func(ctx context.Context, owner, repo, head, base string, since time.Time) (*github.PullRequest, error)
 	// headSHA reads the local task HEAD.
 	headSHA func() (string, error)
 	// readReviewFile reads the operator's review file.
@@ -94,7 +96,11 @@ func rejectVerb(ctx context.Context, out io.Writer, d rejectDeps, reviewFile str
 	if err != nil {
 		return output.Err(out, "loom: reject: origin URL unusable: "+err.Error())
 	}
-	pr, err := d.findPR(ctx, owner, repo, taskBranch, parentBranch)
+	since, err := d.runStart()
+	if err != nil {
+		return output.Err(out, "loom: reject: read the run's start: "+err.Error()+"; way forward: transient, re-run lyx loom reject")
+	}
+	pr, err := d.findPR(ctx, owner, repo, taskBranch, parentBranch, since)
 	if err != nil {
 		return output.Err(out, "loom: reject: look up the pull request: "+err.Error())
 	}
@@ -159,6 +165,7 @@ pending rejection for a new one to replace.
 
 It refuses unless the pull request is open, the local task HEAD equals the
 pull request's head commit, and the review file is readable and non-empty.
+It also refuses when the run's seed cannot be read.
 At PR-Gate it also refuses once the rework budget is exhausted; "lyx loom
 approve" is then the only way forward. At PR-Rework the budget is not
 consulted. reject writes the rejection record and never resumes the run; run
@@ -215,13 +222,8 @@ Example:
 					}
 					return task, parent, originURL, nil
 				},
-				findPR: func(ctx context.Context, owner, repo, head, base string) (*github.PullRequest, error) {
-					client, err := landingshed.NewGitHubClient()
-					if err != nil {
-						return nil, err
-					}
-					return landingshed.FindPullRequest(ctx, client, owner, repo, head, base)
-				},
+				runStart: func() (time.Time, error) { return seedRunStart(location) },
+				findPR:   findRunPullRequest,
 				headSHA: func() (string, error) {
 					f, err := open()
 					if err != nil {

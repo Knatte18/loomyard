@@ -148,6 +148,7 @@ func TestParentReviewAligner(t *testing.T) {
 	for _, row := range []struct {
 		name        string
 		answer      string
+		notesBefore []boardengine.Task
 		change      func(t *testing.T, f *alignerFixture)
 		wantVerdict string
 		wantReason  string
@@ -166,16 +167,62 @@ func TestParentReviewAligner(t *testing.T) {
 				}
 			},
 			wantVerdict: alignment.VerdictEscalate,
-			wantReason:  decisionRecordedReason,
+			wantReason:  alignment.DecisionRecordedReason,
 		},
 		{
-			name:   "an approve after a note naming the slug",
+			name:   "an approve after a note naming the slug outside its title",
 			answer: approve,
 			change: func(t *testing.T, f *alignerFixture) {
-				f.notes = append(f.notes, boardengine.Task{ID: 7, Kind: boardengine.KindNote, Title: "hold pair on x"})
+				f.notes = append(f.notes, boardengine.Task{ID: 7, Kind: boardengine.KindNote, Title: "hold pair on x", Brief: "pair", Body: "hold pair"})
+			},
+			wantVerdict: alignment.VerdictApprove,
+			wantReason:  "in scope",
+		},
+		{
+			name:   "an approve after a note titled with the decision form",
+			answer: approve,
+			change: func(t *testing.T, f *alignerFixture) {
+				f.notes = append(f.notes, boardengine.Task{ID: 7, Kind: boardengine.KindNote, Title: "Decision for pair: hold the landing"})
 			},
 			wantVerdict: alignment.VerdictEscalate,
-			wantReason:  decisionRecordedReason,
+			wantReason:  alignment.DecisionRecordedReason,
+		},
+		{
+			name:        "an approve after a counted decision note's body changed",
+			answer:      approve,
+			notesBefore: []boardengine.Task{{ID: 7, Kind: boardengine.KindNote, Title: "Decision for pair: hold the landing", Body: "first"}},
+			change: func(t *testing.T, f *alignerFixture) {
+				f.notes[0].Body = "second"
+			},
+			wantVerdict: alignment.VerdictEscalate,
+			wantReason:  alignment.DecisionRecordedReason,
+		},
+		{
+			name:   "an approve after a decision note for a longer slug",
+			answer: approve,
+			change: func(t *testing.T, f *alignerFixture) {
+				f.notes = append(f.notes, boardengine.Task{ID: 7, Kind: boardengine.KindNote, Title: "Decision for pair-other: x"})
+			},
+			wantVerdict: alignment.VerdictApprove,
+			wantReason:  "in scope",
+		},
+		{
+			name:   "an approve after a task titled with the decision form",
+			answer: approve,
+			change: func(t *testing.T, f *alignerFixture) {
+				f.notes = append(f.notes, boardengine.Task{ID: 7, Kind: boardengine.KindTask, Title: "Decision for pair: x"})
+			},
+			wantVerdict: alignment.VerdictApprove,
+			wantReason:  "in scope",
+		},
+		{
+			name:   "an approve after a note titled with the decision form in another case",
+			answer: approve,
+			change: func(t *testing.T, f *alignerFixture) {
+				f.notes = append(f.notes, boardengine.Task{ID: 7, Kind: boardengine.KindNote, Title: "decision for pair: x"})
+			},
+			wantVerdict: alignment.VerdictApprove,
+			wantReason:  "in scope",
 		},
 		{
 			name:   "an approve after a note naming another slug",
@@ -196,6 +243,7 @@ func TestParentReviewAligner(t *testing.T) {
 		t.Run(row.name, func(t *testing.T) {
 			t.Parallel()
 			f := newAlignerFixture(t)
+			f.notes = append(f.notes, row.notesBefore...)
 			aligner := f.aligner(t)
 			spawned, err := aligner.Spawn(1)
 			if err != nil {

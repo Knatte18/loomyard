@@ -273,7 +273,7 @@ func TestDecisionVerb_Refusals(t *testing.T) {
 				f.readRecordErr = fmt.Errorf("read: %w", fs.ErrNotExist)
 			},
 			inputRefusal: true,
-			want:         []string{"no decision record", "way forward:", "message the running Darn-Write session", "board note naming the task"},
+			want:         []string{"no decision record", "way forward:", "message the running Darn-Write session", "board note titled", "Decision for <slug>:"},
 		},
 		{
 			name: "darn record not committed",
