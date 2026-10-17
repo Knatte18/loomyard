@@ -632,6 +632,34 @@ func TestCreelCLI(t *testing.T) {
 		}
 	})
 
+	t.Run("a refusal into an output that cannot be written prints the creel: prefix once", func(t *testing.T) {
+		r := newRig(t)
+		alpha := r.name("alpha:driver")
+		r.delivery.SetStrands(creelfake.LiveStrand(alpha))
+		r.startDaemon(t)
+		plainRepo := t.TempDir()
+		gitkit.Git(t, plainRepo, "init", "-b", "main")
+
+		tests := []struct {
+			name string
+			cwd  string
+			args []string
+		}{
+			{"UnknownReceiver", r.cwd, []string{"post", r.name("nobody:driver"), "text"}},
+			{"ExternalInbox", r.cwd, []string{"inbox"}},
+			{"NeedsAHub", plainRepo, []string{"inbox"}},
+			{"PostArguments", r.cwd, []string{"post", "text"}},
+		}
+		for _, tt := range tests {
+			var stderr lockedBuffer
+			code := runCreelInto(tt.cwd, failingWriter{}, &stderr, tt.args...)
+			line := strings.TrimSuffix(stderr.String(), "\n")
+			if code != 1 || strings.Contains(line, "\n") || !strings.HasPrefix(line, "creel: ") || strings.Count(line, "creel: ") != 1 {
+				t.Errorf("%s: creel %v into a failing writer = (%d, %q); want exit 1 and one line opening with creel: once", tt.name, tt.args, code, stderr.String())
+			}
+		}
+	})
+
 	t.Run("read shows the receiver a message was returned from", func(t *testing.T) {
 		r := newRig(t)
 		alpha, beta := r.name("alpha:driver"), r.name("beta:driver")

@@ -99,7 +99,8 @@ func refuse(cmd *cobra.Command, err error) error {
 }
 
 // writeRefusal prints the JSON error envelope, with ok false, the trimmed msg and fields, to the command's stdout and records code as the exit.
-// When that write fails it writes one line "creel: <msg>" to the command's stderr instead, so a refusal is never lost; the exit code stays code.
+// When that write fails it writes one line to the command's stderr instead, so a refusal is never lost; the exit code stays code.
+// The line is msg with "creel: " prepended unless msg already opens with it.
 func writeRefusal(cmd *cobra.Command, msg string, fields map[string]any, code int) {
 	clihelp.SetExit(cmd.Context(), code)
 	msg = strings.TrimSpace(msg)
@@ -113,7 +114,10 @@ func writeRefusal(cmd *cobra.Command, msg string, fields map[string]any, code in
 		_, err = fmt.Fprintln(cmd.OutOrStdout(), string(data))
 	}
 	if err != nil {
-		fmt.Fprintln(cmd.ErrOrStderr(), "creel: "+msg)
+		if !strings.HasPrefix(msg, "creel: ") {
+			msg = "creel: " + msg
+		}
+		fmt.Fprintln(cmd.ErrOrStderr(), msg)
 	}
 }
 
