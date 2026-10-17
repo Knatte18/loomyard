@@ -84,9 +84,12 @@ func (s *Summary) CommitMessage() string {
 	return s.Title + "\n\n" + strings.TrimLeft(s.Body, " \t\r\n")
 }
 
-// LandingMessage composes the landing commit message: CommitMessage's title/blank/body, a blank
-// line, then exactly one Co-Authored-By trailer naming coAuthoredBy.
+// LandingMessage composes the landing commit message: CommitMessage's title/blank/body, then a blank line and trailers verbatim when trailers is non-empty.
+// An empty trailers yields CommitMessage alone.
 // It never inspects the body for an existing trailer; the description gate guarantees there is none.
-func (s *Summary) LandingMessage(coAuthoredBy string) string {
-	return s.CommitMessage() + "\n\nCo-Authored-By: " + coAuthoredBy
+func (s *Summary) LandingMessage(trailers string) string {
+	if trailers == "" {
+		return s.CommitMessage()
+	}
+	return s.CommitMessage() + "\n\n" + trailers
 }

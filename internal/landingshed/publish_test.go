@@ -82,8 +82,9 @@ func newTestDeps(t *testing.T) Deps {
 			Squash:             true,
 			Conflict:           "sonnet",
 			ConflictTimeoutMin: 30,
-			CoAuthoredBy:       "Test Author <test@example.com>",
+			EngineTrailers:     map[string]string{"claude": "Co-Authored-By: Test Author <test@example.com>"},
 		},
+		EnginesRun: func() ([]string, error) { return []string{"claude"}, nil },
 		Lock: ParentLockDeps{
 			Store:    &parentlock.Store{Dir: filepath.Join(t.TempDir(), "locks"), Alive: func(int, string) bool { return true }},
 			Owner:    func() (parentlock.Owner, error) { return owner, nil },

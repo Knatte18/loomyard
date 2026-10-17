@@ -547,6 +547,32 @@ func TestRunner_Start_ValidationFailure_ShortCircuitsBeforeReedCall(t *testing.T
 	}
 }
 
+func TestRunner_Start_LedgerWriteFailure_CleansRunDirAndRegistersNoStrand(t *testing.T) {
+	reed := &fakeReed{}
+	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd"}}
+	fx := newFixture(t, reed, engine, withConfig(fastConfig))
+	runner, anchorPath := fx.Runner, fx.Anchor
+
+	// A directory where the ledger file belongs makes the ledger write fail.
+	root := runDirRoot(runner.cfg, anchorPath)
+	blocker := filepath.Join(root, engineLedgerFileName)
+	if err := os.MkdirAll(blocker, 0o755); err != nil {
+		t.Fatalf("create ledger blocker: %v", err)
+	}
+
+	_, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}})
+	if err == nil || !strings.Contains(err.Error(), "record engine run") {
+		t.Fatalf("Start() error = %v, want the engine ledger write failure to propagate", err)
+	}
+
+	if len(reed.AddStrandCalls) != 0 {
+		t.Errorf("AddStrand calls = %d, want 0 (a failed ledger write precedes strand registration)", len(reed.AddStrandCalls))
+	}
+	if dirs := runDirsUnder(t, root); !slices.Equal(dirs, []string{blocker}) {
+		t.Errorf("run dir root directories = %v, want only the blocker %q (the failed start must remove its run dir)", dirs, blocker)
+	}
+}
+
 func TestRunner_Start_AddStrandFailure_CleansRunDir(t *testing.T) {
 	reed := &fakeReed{AddStrandErr: fmt.Errorf("boom")}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd"}}
@@ -557,13 +583,8 @@ func TestRunner_Start_AddStrandFailure_CleansRunDir(t *testing.T) {
 		t.Fatal("Start() = nil error, want AddStrand failure to propagate")
 	}
 
-	root := runDirRoot(runner.cfg, anchorPath)
-	entries, rerr := os.ReadDir(root)
-	if rerr != nil && !os.IsNotExist(rerr) {
-		t.Fatalf("read run dir root: %v", rerr)
-	}
-	if len(entries) != 0 {
-		t.Errorf("run dir root has %d leftover entr(y/ies), want 0 (AddStrand failure must clean up)", len(entries))
+	if dirs := runDirsUnder(t, runDirRoot(runner.cfg, anchorPath)); len(dirs) != 0 {
+		t.Errorf("run dir root has %d leftover run director(y/ies), want 0 (AddStrand failure must clean up)", len(dirs))
 	}
 }
 
@@ -634,13 +655,8 @@ func TestRunner_Start_SaveRunStateFailure(t *testing.T) {
 			if tt.removeStrandErr != nil {
 				return
 			}
-			root := runDirRoot(runner.cfg, anchorPath)
-			entries, rerr := os.ReadDir(root)
-			if rerr != nil && !os.IsNotExist(rerr) {
-				t.Fatalf("read run dir root: %v", rerr)
-			}
-			if len(entries) != 0 {
-				t.Errorf("run dir root has %d leftover entr(y/ies), want 0 (save-state failure must clean up)", len(entries))
+			if dirs := runDirsUnder(t, runDirRoot(runner.cfg, anchorPath)); len(dirs) != 0 {
+				t.Errorf("run dir root has %d leftover run director(y/ies), want 0 (save-state failure must clean up)", len(dirs))
 			}
 		})
 	}
