@@ -92,23 +92,28 @@ by itself on the first verb.`,
 }
 
 // result is what a verb's body hands back: the fields to print, the exit code and, for a non-zero code, the message that goes with it.
+// done is the verb's own statement of what it already stored or changed before the answer is written, empty when it did nothing or nothing was changed.
 type result struct {
 	fields map[string]any
 	code   int
 	note   string
+	done   string
 	// printed says the body already wrote its output.
 	printed bool
 }
 
 // refuse prints err as a refusal and records exit 1.
 func refuse(cmd *cobra.Command, err error) error {
-	writeRefusal(cmd, err.Error(), nil, 1)
+	writeRefusal(cmd, "", err.Error(), nil, 1)
 	return nil
 }
 
 // writeRefusal prints the JSON error envelope, with ok false, the trimmed msg and fields, to the command's stdout and records code as the exit.
-// When that write fails it writes one line "creel: <msg>" to the command's stderr instead, so a refusal is never lost; the exit code stays code.
-func writeRefusal(cmd *cobra.Command, msg string, fields map[string]any, code int) {
+// When that write fails it writes one line to the command's stderr instead, so a refusal is never lost; the exit code stays code.
+// The line is "creel: <done>; <msg>" when done, what the verb already did before it refused, is non-empty.
+// Otherwise it is msg with "creel: " prepended unless msg already opens with it.
+// The envelope carries no done.
+func writeRefusal(cmd *cobra.Command, done, msg string, fields map[string]any, code int) {
 	clihelp.SetExit(cmd.Context(), code)
 	msg = strings.TrimSpace(msg)
 	if fields == nil {
@@ -121,7 +126,14 @@ func writeRefusal(cmd *cobra.Command, msg string, fields map[string]any, code in
 		_, err = fmt.Fprintln(cmd.OutOrStdout(), string(data))
 	}
 	if err != nil {
-		fmt.Fprintln(cmd.ErrOrStderr(), "creel: "+msg)
+		line := msg
+		switch {
+		case done != "":
+			line = "creel: " + done + "; " + msg
+		case !strings.HasPrefix(msg, "creel: "):
+			line = "creel: " + msg
+		}
+		fmt.Fprintln(cmd.ErrOrStderr(), line)
 	}
 }
 
@@ -138,6 +150,7 @@ func writeOk(w io.Writer, fields map[string]any) error {
 
 // runVerb resolves the hub from the command's cwd, builds the verb's client and runs body, then prints what it returns.
 // A standalone directory is refused: creel needs a hub.
+// A success envelope that cannot be written records exit 1 and writes one line straight to stderr, naming what the verb already did when result.done says so; no error envelope follows.
 func runVerb(cmd *cobra.Command, timeout time.Duration, body func(client *creelengine.Client, out io.Writer) (result, error)) error {
 	if clihelp.ShouldAbort(cmd.Context()) {
 		return nil
@@ -167,7 +180,7 @@ func runVerb(cmd *cobra.Command, timeout time.Duration, body func(client *creele
 	client := creelengine.NewClient(geometry, claimFor(cwd), func() (creelengine.Spawn, error) { return seam.spawn(hubPath, geometry.DaemonLogPath) }, seam.clock)
 	res, err := body(client, out)
 	if errors.Is(err, creelengine.ErrWaitTimeout) {
-		writeRefusal(cmd, "no outcome arrived before the timeout of "+timeout.String(), res.fields, ExitWaitTimeout)
+		writeRefusal(cmd, "", "no outcome arrived before the timeout of "+timeout.String(), res.fields, ExitWaitTimeout)
 		return nil
 	}
 	if err != nil {
@@ -177,10 +190,17 @@ func runVerb(cmd *cobra.Command, timeout time.Duration, body func(client *creele
 		return nil
 	}
 	if res.code != 0 {
-		writeRefusal(cmd, res.note, res.fields, res.code)
+		writeRefusal(cmd, res.done, res.note, res.fields, res.code)
 		return nil
 	}
-	output.Ok(out, res.fields)
+	if err := writeOk(out, res.fields); err != nil {
+		clihelp.SetExit(ctx, 1)
+		line := "creel: the answer could not be written: " + err.Error()
+		if res.done != "" {
+			line = "creel: " + res.done + ", but its answer could not be written: " + err.Error()
+		}
+		fmt.Fprintln(cmd.ErrOrStderr(), line)
+	}
 	return nil
 }
 
@@ -292,26 +312,27 @@ Example:
 					if err != nil {
 						return result{}, err
 					}
-					return result{fields: map[string]any{"id": resp.ID, "sender": resp.Sender}}, nil
+					return result{fields: map[string]any{"id": resp.ID, "sender": resp.Sender}, done: fmt.Sprintf("message #%d was posted", resp.ID)}, nil
 				}
 				resp, err := client.Call(creelengine.Request{Verb: creelengine.VerbPost, Receiver: args[0], Text: args[1], Wait: waitReply}, timeout, nil)
 				if err != nil {
 					return result{}, err
 				}
 				fields := map[string]any{"id": resp.ID, "sender": resp.Sender}
+				done := fmt.Sprintf("message #%d was posted", resp.ID)
 				if !waitReply {
-					return result{fields: fields}, nil
+					return result{fields: fields, done: done}, nil
 				}
 				fields["outcome"] = resp.Outcome
 				if resp.Message == nil {
-					return result{fields: fields}, nil
+					return result{fields: fields, done: done}, nil
 				}
 				if resp.Outcome == creelengine.OutcomeReturned {
 					fields["returned"] = messageFields(*resp.Message)
-					return result{fields: fields, code: ExitReturnedUndelivered, note: "the message returned undelivered"}, nil
+					return result{fields: fields, done: done, code: ExitReturnedUndelivered, note: "the message returned undelivered"}, nil
 				}
 				fields["reply"] = messageFields(*resp.Message)
-				return result{fields: fields}, nil
+				return result{fields: fields, done: done}, nil
 			})
 		},
 	}
@@ -361,19 +382,20 @@ Example:
 					return result{fields: stallFields(last)}, err
 				}
 				fields := map[string]any{"id": resp.ID, "sender": resp.Sender}
+				done := fmt.Sprintf("inject #%d was queued", resp.ID)
 				if !wait {
 					fields["interrupted"] = resp.Interrupted
-					return result{fields: fields}, nil
+					return result{fields: fields, done: done}, nil
 				}
 				fields["outcome"] = resp.Outcome
 				switch resp.Outcome {
 				case creelengine.OutcomeUnconfirmed:
-					return result{fields: fields, code: ExitInjectUnconfirmed, note: "the text was typed but its landing was not confirmed"}, nil
+					return result{fields: fields, done: done, code: ExitInjectUnconfirmed, note: "the text was typed but its landing was not confirmed"}, nil
 				case creelengine.OutcomeExpired:
 					maps.Copy(fields, stallFields(resp))
-					return result{fields: fields, code: ExitInjectExpired, note: "the inject expired before it could be typed"}, nil
+					return result{fields: fields, done: done, code: ExitInjectExpired, note: "the inject expired before it could be typed"}, nil
 				}
-				return result{fields: fields}, nil
+				return result{fields: fields, done: done}, nil
 			})
 		},
 	}
@@ -404,7 +426,11 @@ Example:
 				if err != nil {
 					return result{}, err
 				}
-				return result{fields: map[string]any{"sent": resp.Sent}}, nil
+				res := result{fields: map[string]any{"sent": resp.Sent}}
+				if resp.Sent {
+					res.done = "the interrupt took effect"
+				}
+				return res, nil
 			})
 		},
 	}
@@ -432,7 +458,7 @@ Example:
 				if _, err := client.Call(creelengine.Request{Verb: creelengine.VerbForward, ID: id, Receiver: args[1]}, 0, nil); err != nil {
 					return result{}, err
 				}
-				return result{fields: map[string]any{"forwarded": id, "to": args[1]}}, nil
+				return result{fields: map[string]any{"forwarded": id, "to": args[1]}, done: "the forward took effect"}, nil
 			})
 		},
 	}
@@ -545,7 +571,7 @@ func logCmd() *cobra.Command {
 		Long: `log prints the journal's events, oldest first: who posted, read, forwarded,
 injected or held, and when. It never prints a message body.
 
---id limits it to one message, --from and --to to a sender and a receiver,
+--id limits it to one message and the reminders that list it, --from and --to to a sender and a receiver,
 and --since to events after a time: an RFC 3339 timestamp, or a duration
 such as 2h meaning that long ago.
 
@@ -575,7 +601,7 @@ Example:
 			})
 		},
 	}
-	cmd.Flags().Int64Var(&id, "id", 0, "show only the events of the message with this id")
+	cmd.Flags().Int64Var(&id, "id", 0, "show only the events of the message with this id and the reminders that list it")
 	cmd.Flags().StringVar(&from, "from", "", "show only the events from this sender")
 	cmd.Flags().StringVar(&to, "to", "", "show only the events to this receiver")
 	cmd.Flags().StringVar(&since, "since", "", "show only the events after this RFC 3339 time, or this long ago")
@@ -639,7 +665,7 @@ Example:
 				}
 				return result{fields: map[string]any{"hold": map[string]any{
 					"owner": resp.Hold.Owner, "expires": resp.Hold.Expires, "renewed": resp.Hold.Renewed,
-				}}}, nil
+				}}, done: "the hold took effect"}, nil
 			})
 		},
 	}
@@ -668,7 +694,7 @@ Example:
 				if err != nil {
 					return result{}, err
 				}
-				return result{fields: map[string]any{"released": resp.Released}}, nil
+				return result{fields: map[string]any{"released": resp.Released}, done: "the release took effect"}, nil
 			})
 		},
 	}

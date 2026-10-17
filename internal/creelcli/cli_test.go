@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -98,6 +99,41 @@ func runCreelSplit(cwd string, stderr io.Writer, args ...string) cliRun {
 type failingWriter struct{}
 
 func (failingWriter) Write(p []byte) (int, error) { return 0, errors.New("write refused") }
+
+// partialWriter is an output that takes the first half of its first write and then refuses it, and accepts and records every later write.
+type partialWriter struct {
+	mu      sync.Mutex
+	data    bytes.Buffer
+	written bool
+}
+
+func (w *partialWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if !w.written {
+		w.written = true
+		n, _ := w.data.Write(p[:len(p)/2])
+		return n, errors.New("write refused")
+	}
+	return w.data.Write(p)
+}
+
+func (w *partialWriter) String() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.data.String()
+}
+
+// logHasEvent reports whether the log run lists an entry of the given event.
+func logHasEvent(run cliRun, event string) bool {
+	entries, _ := run.fields["log"].([]any)
+	for _, entry := range entries {
+		if fields, _ := entry.(map[string]any); fields["event"] == event {
+			return true
+		}
+	}
+	return false
+}
 
 // runCreelInto runs the creel command as runCreel does but prints to out and writes stderr to the writer it is handed, and returns the exit code.
 func runCreelInto(cwd string, out, stderr io.Writer, args ...string) int {
@@ -490,7 +526,7 @@ func TestCreelCLI(t *testing.T) {
 	t.Run("log --id prints a carried entry's kind", func(t *testing.T) {
 		r := newRig(t)
 		alpha, beta := r.name("alpha:driver"), r.name("beta:driver")
-		r.delivery.SetStrands(creelfake.LiveStrand(alpha), creelfake.LiveStrand(beta))
+		r.delivery.SetStrands(creelfake.LiveStrand(alpha), creelfake.DormantStrand(beta))
 		if err := os.MkdirAll(r.geometry.JournalDir, 0o755); err != nil {
 			t.Fatalf("MkdirAll() = %v", err)
 		}
@@ -603,16 +639,56 @@ func TestCreelCLI(t *testing.T) {
 	t.Run("a waiting verb's envelope that cannot be written keeps its exit code and goes to stderr", func(t *testing.T) {
 		r := newRig(t)
 		alpha := r.name("alpha:driver")
-		r.delivery.SetStrands(creelfake.LiveStrand(alpha))
+		beta := r.name("beta:driver")
+		r.delivery.SetStrands(creelfake.LiveStrand(alpha), creelfake.LiveStrand(beta))
 		r.startDaemon(t)
 
 		r.delivery.SetSendError(creelengine.ErrNotLanded)
+		var writtenStderr lockedBuffer
+		written := runCreelSplit(r.cwd, &writtenStderr, "inject", "--wait", alpha, "/clear")
+		if _, hasDone := written.fields["done"]; written.code != ExitInjectUnconfirmed || writtenStderr.String() != "" || written.fields["error"] != "the text was typed but its landing was not confirmed" || hasDone {
+			t.Errorf("creel inject --wait on a send answering ErrNotLanded = (%d, %q, stderr %q); want exit %d, the unconfirmed error, no done key and an empty stderr", written.code, written.raw, writtenStderr.String(), ExitInjectUnconfirmed)
+		}
 		var unconfirmedStderr lockedBuffer
 		code := runCreelInto(r.cwd, failingWriter{}, &unconfirmedStderr, "inject", "--wait", alpha, "/clear")
-		if text := unconfirmedStderr.String(); code != ExitInjectUnconfirmed || !strings.HasPrefix(text, "creel: ") || !strings.Contains(text, "not confirmed") {
-			t.Errorf("creel inject --wait on a send answering ErrNotLanded into a failing writer = (%d, %q); want exit %d and a creel: line naming the unconfirmed landing", code, text, ExitInjectUnconfirmed)
+		line := strings.TrimSuffix(unconfirmedStderr.String(), "\n")
+		unconfirmed := regexp.MustCompile(`^creel: inject #(\d+) was queued; the text was typed but its landing was not confirmed$`).FindStringSubmatch(line)
+		if code != ExitInjectUnconfirmed || unconfirmed == nil {
+			t.Fatalf("creel inject --wait on a send answering ErrNotLanded into a failing writer = (%d, %q); want exit %d and a creel: line naming the queued inject and the unconfirmed landing", code, line, ExitInjectUnconfirmed)
+		}
+		if !logHasEvent(runCreel(r.cwd, "log", "--id", unconfirmed[1]), "posted") {
+			t.Errorf("creel log --id %s lists no posted event; want the unconfirmed inject stored", unconfirmed[1])
 		}
 		r.delivery.SetSendError(nil)
+
+		r.delivery.SetStall(alpha, creelengine.StallDraft)
+		probesBefore := len(r.clock.AwaitWaitsWhere(0, isProbeWait))
+		var expiredStderr lockedBuffer
+		expiredCodes := make(chan int, 1)
+		returned := make(chan struct{})
+		go func() {
+			expiredCodes <- runCreelInto(r.cwd, failingWriter{}, &expiredStderr, "inject", "--wait", "--ttl", "1m", alpha, "/clear")
+			close(returned)
+		}()
+		r.clock.AwaitWaitsWhere(probesBefore+1, isProbeWait)
+		r.clock.Advance(time.Second)
+		awaitStderr(t, &expiredStderr, "is stalled: "+creelengine.StallDraft.Reason())
+		r.clock.AdvanceByWaitsWhere(isProbeWait, returned)
+		select {
+		case code := <-expiredCodes:
+			lines := strings.Split(strings.TrimSuffix(expiredStderr.String(), "\n"), "\n")
+			for _, note := range lines[:len(lines)-1] {
+				if !strings.Contains(note, "is stalled: ") {
+					t.Errorf("stderr line %q before the answer; want only stall notes", note)
+				}
+			}
+			if last := lines[len(lines)-1]; code != ExitInjectExpired || !regexp.MustCompile(`^creel: inject #(\d+) was queued; the inject expired before it could be typed$`).MatchString(last) {
+				t.Errorf("creel inject --wait past its TTL into a failing writer = (%d, last line %q); want exit %d and a creel: line naming the queued inject and the expiry", code, last, ExitInjectExpired)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatal("the expired inject did not return")
+		}
+		r.delivery.SetStall(alpha, "")
 
 		r.delivery.SetIdle(alpha, false)
 		var timeoutStderr lockedBuffer
@@ -624,11 +700,149 @@ func TestCreelCLI(t *testing.T) {
 		r.clientClock.Advance(5 * time.Second)
 		select {
 		case code := <-codes:
-			if text := timeoutStderr.String(); code != ExitWaitTimeout || !strings.HasPrefix(text, "creel: ") || !strings.Contains(text, "no outcome arrived") {
-				t.Errorf("creel inject --wait --timeout 5s into a failing writer = (%d, %q); want exit %d and a creel: line naming the timeout", code, text, ExitWaitTimeout)
+			if text := timeoutStderr.String(); code != ExitWaitTimeout || text != "creel: no outcome arrived before the timeout of 5s\n" {
+				t.Errorf("creel inject --wait --timeout 5s into a failing writer = (%d, %q); want exit %d and a creel: line naming the timeout and no id", code, text, ExitWaitTimeout)
 			}
 		case <-time.After(10 * time.Second):
 			t.Fatal("the verb did not return")
+		}
+
+		var returnedStderr lockedBuffer
+		returnedCodes := make(chan int, 1)
+		go func() {
+			returnedCodes <- runCreelInto(r.cwd, failingWriter{}, &returnedStderr, "post", "--wait-reply", beta, "anyone?")
+		}()
+		r.awaitLogged(t, "anyone?")
+		r.clock.AwaitWaitsWhere(1, isSweepWait)
+		r.delivery.SetStrands(creelfake.LiveStrand(alpha))
+		r.sweepStep()
+		r.sweepLast()
+		select {
+		case code := <-returnedCodes:
+			line := strings.TrimSuffix(returnedStderr.String(), "\n")
+			if code != ExitReturnedUndelivered || !regexp.MustCompile(`^creel: message #(\d+) was posted; the message returned undelivered$`).MatchString(line) {
+				t.Errorf("creel post --wait-reply returned undelivered into a failing writer = (%d, %q); want exit %d and a creel: line naming the posted message", code, line, ExitReturnedUndelivered)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatal("the returned post did not return")
+		}
+	})
+
+	t.Run("a verb whose answer cannot be written exits 1 with one creel: line naming what it did", func(t *testing.T) {
+		r := newRig(t)
+		alpha, beta := r.name("alpha:driver"), r.name("beta:driver")
+		r.delivery.SetStrands(creelfake.LiveStrand(alpha), creelfake.LiveStrand(beta))
+		r.startDaemon(t)
+
+		lost := func(args ...string) (int, string) {
+			var stderr lockedBuffer
+			code := runCreelInto(r.cwd, failingWriter{}, &stderr, args...)
+			return code, strings.TrimSuffix(stderr.String(), "\n")
+		}
+		wantLine := func(args []string, want string) {
+			t.Helper()
+			if code, line := lost(args...); code != 1 || line != want {
+				t.Errorf("creel %v into a failing writer = (%d, %q); want exit 1 and %q", args, code, line, want)
+			}
+		}
+		wantIDLine := func(args []string, pattern string) string {
+			t.Helper()
+			code, line := lost(args...)
+			match := regexp.MustCompile(pattern).FindStringSubmatch(line)
+			if code != 1 || match == nil {
+				t.Errorf("creel %v into a failing writer = (%d, %q); want exit 1 and a line matching %s", args, code, line, pattern)
+				return ""
+			}
+			return match[1]
+		}
+		wantStored := func(id string) {
+			t.Helper()
+			if !logHasEvent(runCreel(r.cwd, "log", "--id", id), "posted") {
+				t.Errorf("creel log --id %s lists no posted event; want the stored message or inject", id)
+			}
+		}
+
+		var writtenStderr lockedBuffer
+		if run := runCreelSplit(r.cwd, &writtenStderr, "post", alpha, "seen"); run.code != 0 || strings.Contains(writtenStderr.String(), "creel: ") {
+			t.Errorf("creel post = (%d, %q, stderr %q); want exit 0 and no creel: line", run.code, run.raw, writtenStderr.String())
+		}
+		wantStored(wantIDLine([]string{"post", alpha, "hello"}, `^creel: message #(\d+) was posted, but its answer could not be written: write refused$`))
+		wantStored(wantIDLine([]string{"inject", alpha, "/clear"}, `^creel: inject #(\d+) was queued, but its answer could not be written: write refused$`))
+		wantLine([]string{"interrupt", alpha}, "creel: the interrupt took effect, but its answer could not be written: write refused")
+		r.delivery.SetInterruptError(creelengine.ErrNoRunningTurn)
+		wantLine([]string{"interrupt", alpha}, "creel: the answer could not be written: write refused")
+		r.delivery.SetInterruptError(nil)
+		wantLine([]string{"hold", alpha, "--for", "1m"}, "creel: the hold took effect, but its answer could not be written: write refused")
+		if !logHasEvent(runCreel(r.cwd, "log", "--to", alpha), "held") {
+			t.Errorf("creel log --to %s lists no held event; want the hold to stand", alpha)
+		}
+		wantLine([]string{"release", alpha}, "creel: the release took effect, but its answer could not be written: write refused")
+		wantLine([]string{"log"}, "creel: the answer could not be written: write refused")
+
+		if code := runCreelInto(r.cwd, failingWriter{}, failingWriter{}, "log"); code != 1 {
+			t.Errorf("creel log into failing stdout and stderr = exit %d; want exit 1", code)
+		}
+
+		var partial partialWriter
+		var partialStderr lockedBuffer
+		code := runCreelInto(r.cwd, &partial, &partialStderr, "log")
+		if line := partialStderr.String(); code != 1 || line != "creel: the answer could not be written: write refused\n" {
+			t.Errorf("creel log into a partial writer = (%d, %q); want exit 1 and the lost-answer line with the write's error", code, line)
+		}
+		if got := partial.String(); got == "" || strings.Contains(got, `"ok":false`) || strings.Contains(got, "\n") {
+			t.Errorf("partial writer holds %q; want only the half line it took, with no error envelope after it", got)
+		}
+
+		t.Setenv(agentname.StrandNameEnv, alpha)
+		self := creelfake.LiveStrand(alpha)
+		self.PanePID = os.Getpid()
+		r.delivery.SetStrands(self, creelfake.LiveStrand(beta))
+		wantLine([]string{"inbox"}, "creel: the answer could not be written: write refused")
+		note := runCreel(r.cwd, "post", alpha, "note to self")
+		if note.code != 0 {
+			t.Fatalf("creel post = (%d, %q); want exit 0", note.code, note.raw)
+		}
+		if read := runCreel(r.cwd, "read"); read.code != 0 {
+			t.Fatalf("creel read = (%d, %q); want exit 0", read.code, read.raw)
+		}
+		noteID := fmt.Sprint(note.fields["id"])
+		replyID := wantIDLine([]string{"post", "--reply", noteID, "answer"}, `^creel: message #(\d+) was posted, but its answer could not be written: write refused$`)
+		if replyID == noteID {
+			t.Errorf("the reply is message #%s, the replied one; want a new message", replyID)
+		}
+		wantStored(replyID)
+		pass := runCreel(r.cwd, "post", alpha, "pass on")
+		if pass.code != 0 {
+			t.Fatalf("creel post = (%d, %q); want exit 0", pass.code, pass.raw)
+		}
+		wantLine([]string{"forward", fmt.Sprint(pass.fields["id"]), beta}, "creel: the forward took effect, but its answer could not be written: write refused")
+	})
+
+	t.Run("a refusal into an output that cannot be written prints the creel: prefix once", func(t *testing.T) {
+		r := newRig(t)
+		alpha := r.name("alpha:driver")
+		r.delivery.SetStrands(creelfake.LiveStrand(alpha))
+		r.startDaemon(t)
+		plainRepo := t.TempDir()
+		gitkit.Git(t, plainRepo, "init", "-b", "main")
+
+		tests := []struct {
+			name string
+			cwd  string
+			args []string
+		}{
+			{"UnknownReceiver", r.cwd, []string{"post", r.name("nobody:driver"), "text"}},
+			{"ExternalInbox", r.cwd, []string{"inbox"}},
+			{"NeedsAHub", plainRepo, []string{"inbox"}},
+			{"PostArguments", r.cwd, []string{"post", "text"}},
+		}
+		for _, tt := range tests {
+			var stderr lockedBuffer
+			code := runCreelInto(tt.cwd, failingWriter{}, &stderr, tt.args...)
+			line := strings.TrimSuffix(stderr.String(), "\n")
+			if code != 1 || strings.Contains(line, "\n") || !strings.HasPrefix(line, "creel: ") || strings.Count(line, "creel: ") != 1 {
+				t.Errorf("%s: creel %v into a failing writer = (%d, %q); want exit 1 and one line opening with creel: once", tt.name, tt.args, code, stderr.String())
+			}
 		}
 	})
 

@@ -318,12 +318,13 @@ type LogFilter struct {
 }
 
 // Log returns the journal events matching the filter, oldest first, with ids, parties, times and subjects and never a body.
+// The id filter also keeps an event whose unread ids hold the id, such as a reminder.
 func (s *Store) Log(filter LogFilter) []LogEntry {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var entries []LogEntry
 	for _, entry := range s.state.events {
-		if (filter.ID == 0 || entry.ID == filter.ID) &&
+		if (filter.ID == 0 || entry.ID == filter.ID || slices.Contains(entry.Unread, filter.ID)) &&
 			(filter.From == "" || entry.From == filter.From) &&
 			(filter.To == "" || entry.To == filter.To) &&
 			(filter.Since.IsZero() || !entry.At.Before(filter.Since)) {
