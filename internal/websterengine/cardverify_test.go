@@ -63,7 +63,7 @@ func TestRerunCardVerifies_Slotted(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(unusableConfig), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(unusableConfig, []byte("slots: 0\ngo_parallel: 6\ncli_wait_sec: 300\n"), 0o644); err != nil {
+	if err := os.WriteFile(unusableConfig, []byte("slots: 0\ngo_parallel: 6\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	tests := []struct {

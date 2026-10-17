@@ -82,7 +82,7 @@ func runGateHelper() int {
 	if standIn := os.Getenv(helperGoEnv); standIn != "" {
 		goBinary = standIn
 	}
-	code := clihelp.ExecuteIn(newCommand(goBinary, time.Second), os.Getenv(helperCwdEnv), os.Stdout, os.Args[1:])
+	code := clihelp.ExecuteIn(newCommand(goBinary, time.Second, time.Second), os.Getenv(helperCwdEnv), os.Stdout, os.Args[1:])
 	// The helper stands for `lyx`'s main, which removes the process run directory on exit.
 	_ = lyxtemp.Remove()
 	return code
@@ -261,7 +261,7 @@ func TestGateTest_Scenario(t *testing.T) {
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	gateConfig := "slots: 1\ngo_parallel: 3\ncli_wait_sec: 1\n"
+	gateConfig := "slots: 1\ngo_parallel: 3\n"
 	if err := os.WriteFile(configengine.ConfigFile(h.BoardDir(), "gate"), []byte(gateConfig), 0o644); err != nil {
 		t.Fatalf("seed gate.yaml: %v", err)
 	}
@@ -315,7 +315,7 @@ func TestGateTest_Scenario(t *testing.T) {
 		requireFree(t)
 	})
 
-	t.Run("every slot held past the wait bound exits SlotBusyExit naming the holders", func(t *testing.T) {
+	t.Run("every slot held past the wait cap answers slot_free false naming the holders and exits SlotBusyExit", func(t *testing.T) {
 		held, err := pool.Acquire(context.Background(), gateslot.Holder{Worktree: "/other/worktree", Site: "holder site"})
 		if err != nil {
 			t.Fatalf("Acquire: %v", err)
@@ -327,16 +327,17 @@ func TestGateTest_Scenario(t *testing.T) {
 		}
 
 		var envelope struct {
-			OK      bool                `json:"ok"`
-			Error   string              `json:"error"`
-			Holders []map[string]string `json:"holders"`
+			OK       bool                `json:"ok"`
+			SlotFree *bool               `json:"slot_free"`
+			Message  string              `json:"message"`
+			Holders  []map[string]string `json:"holders"`
 		}
 		if err := json.Unmarshal(g.stdout.Bytes(), &envelope); err != nil {
 			t.Fatalf("stdout %q is not a JSON envelope: %v", g.stdout.String(), err)
 		}
 		wantHolders := []map[string]string{{"worktree": "/other/worktree", "site": "holder site"}}
-		if code != SlotBusyExit || envelope.OK || !strings.Contains(envelope.Error, "re-run the same command") || !slices.EqualFunc(envelope.Holders, wantHolders, func(a, b map[string]string) bool { return a["worktree"] == b["worktree"] && a["site"] == b["site"] }) {
-			t.Errorf("gate = exit %d, %+v; want exit %d, ok false, a re-run way forward and holders %v", code, envelope, SlotBusyExit, wantHolders)
+		if code != SlotBusyExit || !envelope.OK || envelope.SlotFree == nil || *envelope.SlotFree || !strings.Contains(envelope.Message, "run the same command again in a turn that does nothing else") || !slices.EqualFunc(envelope.Holders, wantHolders, func(a, b map[string]string) bool { return a["worktree"] == b["worktree"] && a["site"] == b["site"] }) {
+			t.Errorf("gate = exit %d, %+v; want exit %d, ok true, slot_free false, a re-run message and holders %v", code, envelope, SlotBusyExit, wantHolders)
 		}
 		if _, err := os.Stat(g.record); err == nil {
 			t.Error("the stand-in ran although no slot was free")
@@ -636,7 +637,7 @@ func TestGateTest_Scenario(t *testing.T) {
 			name: "a gate.yaml value below 1 names lyx config gate",
 			setup: func(t *testing.T) func() {
 				configPath := configengine.ConfigFile(h.BoardDir(), "gate")
-				if err := os.WriteFile(configPath, []byte("slots: 0\ngo_parallel: 3\ncli_wait_sec: 1\n"), 0o644); err != nil {
+				if err := os.WriteFile(configPath, []byte("slots: 0\ngo_parallel: 3\n"), 0o644); err != nil {
 					t.Fatal(err)
 				}
 				return func() {

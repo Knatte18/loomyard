@@ -13,7 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 )
 
-var templateDefaults = Config{Slots: 2, GoParallel: 4, CLIWaitSec: 300, BusyQuitSec: 120}
+var templateDefaults = Config{Slots: 2, GoParallel: 4, BusyQuitSec: 120}
 
 func seedGateConfig(t *testing.T, contents string) string {
 	t.Helper()
@@ -40,12 +40,12 @@ func TestLoadConfig(t *testing.T) {
 		wantErr  string
 	}{
 		{"template loads to its defaults", ConfigTemplate(), templateDefaults, ""},
-		{"zero slots", "slots: 0\ngo_parallel: 4\ncli_wait_sec: 300\n", Config{}, `gate config key "slots": 0; want at least 1; fix it with "lyx config gate" from the prime`},
-		{"zero go_parallel", "slots: 2\ngo_parallel: 0\ncli_wait_sec: 300\n", Config{}, `gate config key "go_parallel": 0; want at least 1; fix it with "lyx config gate" from the prime`},
-		{"zero cli_wait_sec", "slots: 2\ngo_parallel: 4\ncli_wait_sec: 0\n", Config{}, `gate config key "cli_wait_sec": 0; want at least 1; fix it with "lyx config gate" from the prime`},
-		{"busy_quit_sec zero turns the watchdog off", "slots: 2\ngo_parallel: 4\ncli_wait_sec: 300\nbusy_quit_sec: 0\n", Config{Slots: 2, GoParallel: 4, CLIWaitSec: 300, BusyQuitSec: 0}, ""},
-		{"absent busy_quit_sec takes the template value", "slots: 2\ngo_parallel: 4\ncli_wait_sec: 300\n", templateDefaults, ""},
-		{"negative busy_quit_sec", "slots: 2\ngo_parallel: 4\ncli_wait_sec: 300\nbusy_quit_sec: -1\n", Config{}, `gate config key "busy_quit_sec": -1; want at least 0; fix it with "lyx config gate" from the prime`},
+		{"zero slots", "slots: 0\ngo_parallel: 4\n", Config{}, `gate config key "slots": 0; want at least 1; fix it with "lyx config gate" from the prime`},
+		{"zero go_parallel", "slots: 2\ngo_parallel: 0\n", Config{}, `gate config key "go_parallel": 0; want at least 1; fix it with "lyx config gate" from the prime`},
+		{"a retired cli_wait_sec still loads", "slots: 3\ngo_parallel: 4\ncli_wait_sec: 180\n", Config{Slots: 3, GoParallel: 4, BusyQuitSec: 120}, ""},
+		{"busy_quit_sec zero turns the watchdog off", "slots: 2\ngo_parallel: 4\nbusy_quit_sec: 0\n", Config{Slots: 2, GoParallel: 4, BusyQuitSec: 0}, ""},
+		{"absent busy_quit_sec takes the template value", "slots: 2\ngo_parallel: 4\n", templateDefaults, ""},
+		{"negative busy_quit_sec", "slots: 2\ngo_parallel: 4\nbusy_quit_sec: -1\n", Config{}, `gate config key "busy_quit_sec": -1; want at least 0; fix it with "lyx config gate" from the prime`},
 		{"absent file names the one way forward", "", Config{}, `gate config absent; run "lyx fabric reconcile"; a session lyx refuses the verb from reports status: FAILED and the orch runs it`},
 	}
 	for _, tc := range tests {
@@ -94,7 +94,7 @@ func TestTemplateConfigAndLimits(t *testing.T) {
 	if err != nil || cfg != templateDefaults {
 		t.Fatalf("TemplateConfig() = (%+v, %v); want (%+v, nil)", cfg, err, templateDefaults)
 	}
-	want := Limits{Slots: 2, GoParallel: 4, CLIWait: 300 * time.Second, BusyQuit: 120 * time.Second}
+	want := Limits{Slots: 2, GoParallel: 4, BusyQuit: 120 * time.Second}
 	if got := cfg.Limits(); got != want {
 		t.Errorf("Limits() = %+v; want %+v", got, want)
 	}

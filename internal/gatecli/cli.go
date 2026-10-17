@@ -15,10 +15,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// SlotBusyExit is the exit code `lyx gate test` returns when no slot frees within the hub's `cli_wait_sec`.
-// It is EX_TEMPFAIL, so a caller can tell a busy hub from a failing test run.
+// SlotBusyExit is the exit code `lyx gate test` returns when no slot frees within the keep-cache-warm cap.
+// It is EX_TEMPFAIL and no failure: the caller runs the same command again, and can tell a busy hub from a failing test run.
 const SlotBusyExit = 75
 
 // defaultGoBinary is the go command `lyx gate test` runs.
@@ -26,11 +27,11 @@ const defaultGoBinary = "go"
 
 // Command builds the cobra command tree for the gate module.
 func Command() *cobra.Command {
-	return newCommand(defaultGoBinary, defaultSamplePeriod)
+	return newCommand(defaultGoBinary, defaultSamplePeriod, shuttleengine.DefaultAwaitCap)
 }
 
-// newCommand builds the gate command tree over goBinary, the go command the test verb spawns, and samplePeriod, how often the CPU watchdog samples go test's process tree.
-func newCommand(goBinary string, samplePeriod time.Duration) *cobra.Command {
+// newCommand builds the gate command tree over goBinary, the go command the test verb spawns, samplePeriod, how often the CPU watchdog samples go test's process tree, and slotWait, the longest the test verb waits for a free slot.
+func newCommand(goBinary string, samplePeriod, slotWait time.Duration) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "gate",
 		Short: "run go tests inside the hub's gate-slot pool",
@@ -44,9 +45,11 @@ func newCommand(goBinary string, samplePeriod time.Duration) *cobra.Command {
 		Use:         "test <packages>...",
 		Short:       "run go test over packages once a hub gate slot is free",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `test runs "go test" over the named packages inside one of the hub's gate slots,
+		Long: fmt.Sprintf(`test runs "go test" over the named packages inside one of the hub's gate slots,
 so the hub never runs more gate builds and tests at once than its configured slot count allows.
-It waits for a free slot for up to the hub's cli_wait_sec, then exits with 75 and names the holders.
+It waits for a free slot for up to %s, under the prompt-cache lifetime.
+When none frees, it prints ok with slot_free false naming the holders and exits %d, which is no failure:
+run the same command again in a turn that does nothing else, so the prompt cache stays warm between calls.
 Inside a slot already held by an enclosing gate run it runs without acquiring another.
 Outside every hub it runs unslotted under the template's -p cap.
 The output and exit code are go test's own.
@@ -56,13 +59,13 @@ Examples:
 
   lyx gate test ./internal/foo
   lyx gate test -C backend --tags integration ./internal/foo ./internal/bar
-  lyx gate test ./... -- -run TestSomething -count=1`,
+  lyx gate test ./... -- -run TestSomething -count=1`, slotWait, SlotBusyExit),
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
 			}
-			request := testRequest{goBinary: goBinary, samplePeriod: samplePeriod, stderr: cmd.ErrOrStderr(), dir: dir, tags: tags, packages: args}
+			request := testRequest{goBinary: goBinary, samplePeriod: samplePeriod, slotWait: slotWait, stderr: cmd.ErrOrStderr(), dir: dir, tags: tags, packages: args}
 			if dash := cmd.ArgsLenAtDash(); dash >= 0 {
 				request.packages, request.flags = args[:dash], args[dash:]
 			}
@@ -96,6 +99,8 @@ type testRequest struct {
 	goBinary string
 	// samplePeriod is how often the CPU watchdog samples go test's process tree.
 	samplePeriod time.Duration
+	// slotWait is the longest the run waits for a free slot.
+	slotWait time.Duration
 	// stderr receives the line the CPU watchdog prints after a quit.
 	stderr io.Writer
 	// dir is the -C value as typed; empty means the seam cwd.

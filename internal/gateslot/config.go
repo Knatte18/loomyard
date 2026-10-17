@@ -19,8 +19,6 @@ type Config struct {
 	Slots int `yaml:"slots"`
 	// GoParallel is the `-p` cap every slotted run gets.
 	GoParallel int `yaml:"go_parallel"`
-	// CLIWaitSec is how many seconds `lyx gate test` waits for a slot.
-	CLIWaitSec int `yaml:"cli_wait_sec"`
 	// BusyQuitSec is the continuous seconds a Go test binary may keep a core busy before the watchdog quits it; 0 turns the watchdog off.
 	BusyQuitSec int `yaml:"busy_quit_sec"`
 }
@@ -30,6 +28,7 @@ var ErrConfigAbsent = errors.New("gate config absent; run \"lyx fabric reconcile
 
 // ConfigSpec returns gate's layered-load spec.
 // Every key is one hub-wide budget all pairs share, so none may be set in the local layer.
+// `cli_wait_sec` is retired, so a hub file that still sets it loads and reconcile prunes it.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:     "gate",
@@ -38,8 +37,10 @@ func ConfigSpec() configengine.Spec {
 		Categories: map[string]configengine.Category{
 			"slots":         configengine.CategoryCrossPair,
 			"go_parallel":   configengine.CategoryCrossPair,
-			"cli_wait_sec":  configengine.CategoryCrossPair,
 			"busy_quit_sec": configengine.CategoryCrossPair,
+		},
+		RetiredKeys: map[string]configengine.Category{
+			"cli_wait_sec": configengine.CategoryCrossPair,
 		},
 	}
 }
@@ -81,7 +82,7 @@ func decodeConfig(data []byte) (Config, error) {
 	for _, key := range []struct {
 		name  string
 		value int
-	}{{"slots", cfg.Slots}, {"go_parallel", cfg.GoParallel}, {"cli_wait_sec", cfg.CLIWaitSec}} {
+	}{{"slots", cfg.Slots}, {"go_parallel", cfg.GoParallel}} {
 		if key.value < 1 {
 			return Config{}, fmt.Errorf("gate config key %q: %d; want at least 1", key.name, key.value)
 		}
@@ -92,12 +93,11 @@ func decodeConfig(data []byte) (Config, error) {
 	return cfg, nil
 }
 
-// Limits converts the config to the pool limits, cli_wait_sec and busy_quit_sec as durations.
+// Limits converts the config to the pool limits, busy_quit_sec as a duration.
 func (c Config) Limits() Limits {
 	return Limits{
 		Slots:      c.Slots,
 		GoParallel: c.GoParallel,
-		CLIWait:    time.Duration(c.CLIWaitSec) * time.Second,
 		BusyQuit:   time.Duration(c.BusyQuitSec) * time.Second,
 	}
 }

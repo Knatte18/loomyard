@@ -81,8 +81,8 @@ A failure counts as a gate failure under the self-fix bound below and makes the 
 
 ## Slot-busy exits and raw test runs
 
-A step that exits with code `75`, with a JSON error naming the slot holders, found every gate slot held: that is not a failure.
-It costs no self-fix attempt, never makes the report `FAILED`, and you re-run the same step.
+A step that exits with code `75`, answering `slot_free: false` and naming the slot holders, found every gate slot held: that is not a failure.
+It costs no self-fix attempt, never makes the report `FAILED`, and you re-run the same step in a turn that does nothing else, so the prompt cache stays warm between calls.
 
 You may run a raw test run of the hub's language on the batch's listed packages only.
 The hub's verify tiers follow:

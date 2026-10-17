@@ -23,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtemp"
 	"github.com/Knatte18/loomyard/internal/preflight"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // resourceRow is the measured cost of one package.
@@ -134,7 +135,7 @@ func takeGateSlot(ctx context.Context, cwd string, baseEnv []string) (env []stri
 	if err != nil {
 		return nil, 0, nil, fmt.Errorf("read the hub's gate limits: %w", err)
 	}
-	waitCtx, cancel := context.WithTimeout(ctx, limits.CLIWait)
+	waitCtx, cancel := context.WithTimeout(ctx, shuttleengine.DefaultAwaitCap)
 	defer cancel()
 	lease, err := pool.Acquire(waitCtx, gateslot.Holder{Worktree: location.WorktreePath(), Site: "testtiming -resources"})
 	if err != nil {

@@ -130,7 +130,7 @@ const forbiddenNoticeChars = forbiddenSteerChars + "\n\r"
 // Rows returns a fresh slice of the shell guard rows in table order.
 // foreground is the engine's phrase for running a long command in the foreground, which the raw go row's steer and notice carry.
 func Rows(foreground string) []Row {
-	rawGoSteer := "raw module-wide, tmux-tier and llm-tier go runs are refused here. Gate rule: run lyx gate test in the foreground " + foreground + ", never in the background, for example lyx gate test ./internal/x, and use its --tags flag for a tag. Run every other check in the foreground too, and never cd into the directory you already work in. The slot, strand and prebuilt-binary environment variables belong to lyx, and a command naming any of them is refused"
+	rawGoSteer := "raw module-wide, tmux-tier and llm-tier go runs are refused here. Gate rule: run lyx gate test in the foreground " + foreground + ", never in the background, for example lyx gate test ./internal/x, and use its --tags flag for a tag. When it answers that no gate slot is free yet, run the same command again in a turn that does nothing else, so the prompt cache stays warm between calls. Run every other check in the foreground too, and never cd into the directory you already work in. The slot, strand and prebuilt-binary environment variables belong to lyx, and a command naming any of them is refused"
 	return []Row{
 		{
 			// A guardrail, not a barrier.

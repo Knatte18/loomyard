@@ -21,7 +21,8 @@
 //
 // # Config
 //
-// The hub-wide `gate` config module keeps `slots`, `go_parallel`, `cli_wait_sec` and `busy_quit_sec` at `<BoardDir>/_lyx/config/gate.yaml`, seeded from template.yaml by the hub-wide reconcile.
+// The hub-wide `gate` config module keeps `slots`, `go_parallel` and `busy_quit_sec` at `<BoardDir>/_lyx/config/gate.yaml`, seeded from template.yaml by the hub-wide reconcile.
+// `cli_wait_sec` is a retired key: every load drops it and reconcile prunes it, since the slot wait is bounded by the keep-cache-warm cap with no knob.
 // LoadConfig reads it strictly and refuses any value below 1 naming its key, except `busy_quit_sec`, which accepts 0 and is refused below it; Config.Limits converts it to the Limits a Pool reads.
 // TemplateConfig decodes the template alone, for a run outside every hub.
 //

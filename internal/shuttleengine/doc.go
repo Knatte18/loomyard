@@ -120,7 +120,7 @@
 // The notice is never typed into the pane and changes no outcome.
 //
 // AwaitAny is the shared wait: it stats the told paths once a second until one exists or the cap elapses, and watches no directory.
-// It is the poll every capped keep-cache-warm wait verb runs on, and DefaultAwaitCap is the cap those verbs default to.
+// It is the poll every capped keep-cache-warm wait verb runs on, and DefaultAwaitCap is the cap those verbs default to and the bound of the gate's slot wait.
 //
 // # Pending prompt
 //

@@ -46,7 +46,6 @@ func newWaitWorld(t *testing.T, scripts ...childScript) *waitWorld {
 	if err := os.MkdirAll(w.stepsDir, 0o755); err != nil {
 		t.Fatalf("create the steps directory: %v", err)
 	}
-	w.spec.Loop.LockGrace = 20 * time.Millisecond
 	w.spec.Loop.Spawn = w.spawnDetached
 	w.spec.Loop.Sleep = w.sleep
 	w.spec.Loop.Watch = func(string, ...string) (<-chan struct{}, func(), error) {
