@@ -290,8 +290,8 @@
 //
 // Fork discipline is fixed boilerplate the handler composes into every
 // fork's prompt, never per-lens: read-only evidence gathering only (no
-// Write/Edit/delete of any file, repo or `_lyx`), no git commands of any
-// kind, no touching the round's ReviewPath/FixerReportPath, and no nested
+// Write/Edit/delete of any file, repo or `_lyx`), git commands that read only,
+// such as git diff, git log and git show, and none that changes the repository, its index, its refs or its working tree, no touching the round's ReviewPath/FixerReportPath, and no nested
 // Agent calls (forks cannot spawn forks). Two enforcement layers back this
 // discipline mechanically rather than trusting the prompt alone: a
 // session-level PreToolUse(Agent) hook that allows only unnamed
