@@ -788,6 +788,84 @@ func TestComputeTiming(t *testing.T) {
 			},
 		},
 		{
+			name: "a pause before Plan-Write counts under paused and not plan, splits over the day buckets it crosses and leaves active with an overlapping wait taken out once",
+			setup: func(w *world) {
+				start := at(23)
+				batten := battenRecordOf(
+					entryAt(battenrecipe.NameWorktreeCreate, start),
+					changeAt("child running → paused at "+loomshed.NamePlanWrite, secondsAfter(start, 1260)),
+					changeAt("child paused → running at "+loomshed.NamePlanWrite, secondsAfter(start, 7260)),
+					changeAt("child running → done at "+loomshed.NameFinalize, secondsAfter(start, 8400)),
+					entryAt(battenrecipe.NameLand, secondsAfter(start, 8500)),
+				)
+				loom := []shedengine.HistoryEntry{
+					entryAt(loomshed.NamePreflight, secondsAfter(start, 600)),
+					entryAt(loomshed.NameDiscussionWrite, secondsAfter(start, 1200)),
+					entryAt(loomshed.NamePlanWrite, secondsAfter(start, 8000)),
+					entryAt(loomshed.NameFinalize, secondsAfter(start, 8300)),
+				}
+				round := parentRoundTimed(1, secondsAfter(start, 7000), secondsAfter(start, 7500), time.Time{})
+				landedRunWith(w, "paused", "t1", 30, seedText("loom"), loom, round, batten)
+			},
+			check: func(t *testing.T, got TimingReport) {
+				got1 := runOf(t, got, "paused")
+				wantPhases(t, got1, map[string]int64{
+					PhaseSetup: 600, PhaseDiscussion: 600, PhasePlan: 800, PhasePaused: 6000,
+					PhasePublishFinalize: 400, PhaseLand: 100,
+				})
+				if review := got1.Waits[WaitParentReview]; review != 500 {
+					t.Errorf("parent_review wait = %d; want 500", review)
+				}
+				// The paused 1260-7260 and the round 7000-7500 overlap by 260 seconds, which active loses once.
+				if got1.SpanSeconds != 8500 || got1.ActiveSeconds != 2260 {
+					t.Errorf("span, active = %d, %d; want 8500, 2260", got1.SpanSeconds, got1.ActiveSeconds)
+				}
+				first, second := bucketOf(t, got, "2026-01-05"), bucketOf(t, got, "2026-01-06")
+				if first.Phases[PhasePaused] != 2340 || first.ActiveSeconds != 1260 {
+					t.Errorf("bucket 2026-01-05 = %+v; want paused 2340 and active 1260", first)
+				}
+				if second.Phases[PhasePaused] != 3660 || second.ActiveSeconds != 1000 {
+					t.Errorf("bucket 2026-01-06 = %+v; want paused 3660 and active 1000", second)
+				}
+				if median := got.Phases[PhasePaused]; median.Runs != 1 || median.Seconds == nil || *median.Seconds != 6000 {
+					t.Errorf("paused median = %+v; want 6000 over one run", median)
+				}
+				if len(got.Findings) != 0 {
+					t.Errorf("findings = %+v; want none", got.Findings)
+				}
+			},
+		},
+		{
+			name: "a run in flight whose child stands paused runs to the snapshot under paused",
+			live: []string{"flight"},
+			setup: func(w *world) {
+				start := at(198)
+				w.battenRecord("fl-b", 195, "flight", battenRecordOf(
+					entryAt(battenrecipe.NameWorktreeCreate, start),
+					changeAt("child running → paused at "+loomshed.NamePlanWrite, secondsAfter(start, 1800)),
+				))
+				status := shedengine.Status{
+					State:           shedengine.StatePaused,
+					CurrentProducer: loomshed.NamePlanWrite,
+					History: []shedengine.HistoryEntry{
+						entryAt(loomshed.NamePreflight, secondsAfter(start, 600)),
+						entryAt(loomshed.NameDiscussionWrite, secondsAfter(start, 1500)),
+					},
+				}
+				w.pairBranch("flight", "pf1", at(199), seedStartedAt(start), statusJSON(w.t, status), nil)
+			},
+			check: func(t *testing.T, got TimingReport) {
+				flight := runOf(t, got, "flight")
+				wantPhases(t, flight, map[string]int64{PhaseSetup: 600, PhaseDiscussion: 900, PhasePlan: 300, PhasePaused: 5400})
+				if flight.SpanSeconds != 7200 || flight.ActiveSeconds != 1800 {
+					t.Errorf("span, active = %d, %d; want 7200, 1800", flight.SpanSeconds, flight.ActiveSeconds)
+				}
+				if len(got.Findings) != 0 {
+					t.Errorf("findings = %+v; want none", got.Findings)
+				}
+			},
+		},
+		{
 			name: "a change into awaiting at PR-Gate is pr_gate, at another row escalation, and into blocked or failed halt, each running to the next row after it",
 			setup: func(w *world) {
 				batten := battenRecordOf(

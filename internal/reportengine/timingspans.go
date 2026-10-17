@@ -141,7 +141,8 @@ func mergeRows(row RunRow) ([]timedRow, []Finding) {
 
 // phaseOf returns the phase the row at index counts under, and false when it is a loom row the phase table does not name, which counts under PhaseOther.
 // A batten row counts by position: before batten's first Run-Shed entry under PhaseSetup, after it under PhaseLand.
-// A Run-Shed entry records the child's state changes and counts under the phase of the producer its change names, else the phase of the latest loom row before it, else PhaseSetup.
+// A Run-Shed entry records the child's state changes: a change from paused closes the pause and counts under PhasePaused,
+// and any other counts under the phase of the producer its change names, else the phase of the latest loom row before it, else PhaseSetup.
 func phaseOf(rows []timedRow, index int) (string, bool) {
 	row := rows[index]
 	if !row.batten {
@@ -152,7 +153,11 @@ func phaseOf(rows []timedRow, index int) (string, bool) {
 	}
 
 	if row.producer == battenrecipe.NameRunShed {
-		if change, ok := battenshed.ParseStateChange(row.output); ok && change.Producer != "" {
+		change, ok := battenshed.ParseStateChange(row.output)
+		if ok && change.From == shedengine.StatePaused {
+			return PhasePaused, true
+		}
+		if ok && change.Producer != "" {
 			if phase, known := loomRowPhase(change.Producer); known {
 				return phase, true
 			}
@@ -201,7 +206,7 @@ func spanOpening(row RunRow, rows []timedRow) (opening time.Time, found bool, fi
 }
 
 // timeRun times one run: its span, the sleep inside it and the span split over the phases.
-// The span opens as spanOpening says and closes at the last stamp of either history, or at snapshot for a run in flight, whose trailing interval counts under the phase of its loom status's current producer.
+// The span opens as spanOpening says and closes at the last stamp of either history, or at snapshot for a run in flight, whose trailing interval counts under the phase of its loom status's current producer, or under PhasePaused while its child stands paused.
 // Each row's interval runs from the latest stamp so far to the row's own stamp; a stamp earlier than the latest, or none, gives a zero interval and a finding.
 // A run no stamp opens a span for comes back as the zero TimingRun with a finding.
 // Every boundary is cut to a whole second, as the row stamps are, so the truncated figures add up to the truncated span.
@@ -239,6 +244,9 @@ func timeRun(row RunRow, opts TimingOptions, snapshot time.Time) (TimingRun, []F
 
 	if row.inFlight && snapshot.After(latest) {
 		phase, known := loomRowPhase(row.currentProducer)
+		if standsPaused(rows) {
+			phase, known = PhasePaused, true
+		}
 		if !known {
 			phase = PhaseOther
 			if row.currentProducer != "" {
@@ -277,11 +285,17 @@ func timeRun(row RunRow, opts TimingOptions, snapshot time.Time) (TimingRun, []F
 
 	netByKind := netWaits(clipWaits(runWaits(row, rows, span.To), span), sleeps)
 	waitSeconds := map[string]int64{}
-	var waitUnion []Interval
+	var inactive []Interval
 	for _, kind := range timingWaitKinds {
 		waitSeconds[kind] = int64(lengthOf(netByKind[kind]) / time.Second)
-		waitUnion = append(waitUnion, netByKind[kind]...)
+		inactive = append(inactive, netByKind[kind]...)
 	}
+	for _, part := range parts {
+		if part.phase == PhasePaused {
+			inactive = append(inactive, part.Interval)
+		}
+	}
+	inactive = unionIntervals(inactive)
 	attempts, attemptFindings := runAttempts(row, rows, span, sleeps)
 	findings = append(findings, attemptFindings...)
 	stops, stopFindings := runStops(row, rows)
@@ -308,10 +322,23 @@ func timeRun(row RunRow, opts TimingOptions, snapshot time.Time) (TimingRun, []F
 		sleeps:       sleeps,
 		parts:        parts,
 		waitParts:    netByKind,
-		waitUnion:    waitUnion,
+		inactive:     inactive,
 	}
-	run.ActiveSeconds = run.SpanSeconds - run.SleepSeconds - int64(lengthOf(waitUnion)/time.Second)
+	run.ActiveSeconds = run.SpanSeconds - run.SleepSeconds - int64(lengthOf(inactive)/time.Second)
 	return run, findings
+}
+
+// standsPaused reports whether the last of rows is batten's record of the child's change into paused, so the child has not resumed since.
+func standsPaused(rows []timedRow) bool {
+	if len(rows) == 0 {
+		return false
+	}
+	last := rows[len(rows)-1]
+	if !last.batten || last.producer != battenrecipe.NameRunShed {
+		return false
+	}
+	change, ok := battenshed.ParseStateChange(last.output)
+	return ok && change.To == shedengine.StatePaused
 }
 
 // length is the interval's duration, zero for an empty or reversed one.
