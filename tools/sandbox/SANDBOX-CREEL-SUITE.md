@@ -293,14 +293,15 @@ A disagreeing strand name inside a pane is refused; this check is operator-assis
 
 ---
 
-### C13 -- Collapsed and hand-added strands
+### C13 -- Hand-added and stalled strands
 
 **Covers:** creel
 
-**Goal:** "Post to a Claude strand added by hand and to one squeezed into a stacked 3-row pane, and confirm each receives its reminder or creel says why it cannot deliver."
+**Goal:** "Post to a Claude strand added by hand and to a strand whose window shows no input box, and confirm each receives its reminder or creel says why it cannot deliver."
 
 **Watch:** A plain `lyx reed add --cmd claude` strand receives its reminder.
-A stacked 3-row strand's stall reason shows as a `stalled` event in `lyx creel log` and as a progress line on stderr of `lyx creel inject --wait`.
+A `lyx reed add --cmd bash` strand, which reed places in a window of its own, shows no input box.
+Its stall reason, `no-input-box`, shows as a `stalled` event in `lyx creel log` and as a progress line on stderr of `lyx creel inject --wait`.
 
 **Verdict:** `FAIL` on a silent stall.
 
