@@ -484,9 +484,13 @@ func TestWire_DefaultConfig(t *testing.T) {
 			t.Fatalf("WriteJSON(status) = %v; want nil", err)
 		}
 
-		routing, err := loomrecipe.Routing(c.cfg.ReviewMaxBounces, c.env.RowMaxBounces)
+		routing, err := loomrecipe.Routing(loomSegmentBudgets(c.cfg))
 		if err != nil {
-			t.Fatalf("loomrecipe.Routing(%d) = %v; want nil", c.cfg.ReviewMaxBounces, err)
+			t.Fatalf("loomrecipe.Routing(loomSegmentBudgets) = %v; want nil", err)
+		}
+		projected, err := c.recipeRouting()
+		if err != nil {
+			t.Fatalf("recipeRouting() = %v; want nil", err)
 		}
 		wantCount, wantBudget, wantIn := routing.Bounces(row, history)
 		if !wantIn || wantCount == 0 {
@@ -502,13 +506,25 @@ func TestWire_DefaultConfig(t *testing.T) {
 		if err != nil {
 			t.Fatalf("loomrecipe.New(wired env) = %v; want nil", err)
 		}
+		projectedBudgets := map[string]int{}
+		for _, def := range projected.Producers {
+			projectedBudgets[def.Name] = def.MaxBounces
+		}
+		reviewRows := 0
 		for _, def := range shed.Producers {
-			if def.Name != row {
+			if _, isReview := loomSegmentPerches[def.Segment]; !isReview {
 				continue
 			}
-			if def.MaxBounces != wantBudget {
+			reviewRows++
+			if want := projectedBudgets[def.Name]; def.MaxBounces != want {
+				t.Errorf("built Shed row %q MaxBounces = %d; the status path's recipeRouting projects %d; want equal", def.Name, def.MaxBounces, want)
+			}
+			if def.Name == row && def.MaxBounces != wantBudget {
 				t.Errorf("built Shed row %q MaxBounces = %d; SegmentBounces reports budget %d; want equal", row, def.MaxBounces, wantBudget)
 			}
+		}
+		if reviewRows == 0 {
+			t.Error("built Shed holds no review-segment row; want every Bouncer segment's rows compared")
 		}
 
 		count, budget, inSegment, err := c.env.SegmentBounces(row)

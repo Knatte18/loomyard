@@ -867,7 +867,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// Slug and SegmentBounces tell each Bouncer row the verbs' slug and the live bounce budget its CIRCLING Reason names.
 		Slug: seedSlug(location.WorktreeName),
 		SegmentBounces: segmentBounces(statusPath, statusLockPath, func() (shedengine.Routing, error) {
-			return loomrecipe.Routing(loomCfg.ReviewMaxBounces, perchMaxBounces(loomCfg))
+			return loomrecipe.Routing(loomSegmentBudgets(loomCfg))
 		}),
 
 		Segments: loomSegmentSettings(loomCfg, reviewSettings, judgeSettings),
@@ -1033,6 +1033,17 @@ var loomSegmentPerches = map[string]loomengine.Perch{
 	"Plan-Review":       loomengine.PerchPlan,
 	"Webster-Review":    loomengine.PerchWebster,
 	"Merge-Review":      loomengine.PerchMerge,
+}
+
+// loomSegmentBudgets maps each loom review segment to its perch's resolved soft bounce cap, the value loomSegmentSettings puts in MaxBounces.
+// The status path and the build share this table and its resolution.
+func loomSegmentBudgets(cfg loomengine.Config) map[string]int {
+	budgets := make(map[string]int, len(loomSegmentPerches))
+	for segment, perch := range loomSegmentPerches {
+		budgets[segment] = cfg.Caps(perch).Soft
+	}
+
+	return budgets
 }
 
 // loomSegmentSettings builds one shedrecipe.SegmentSettings per loom review segment.

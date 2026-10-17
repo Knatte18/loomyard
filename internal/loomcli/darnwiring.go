@@ -148,26 +148,26 @@ func (c *loomCLI) renameRetiredDarnRows() error {
 	return nil
 }
 
-// darnReviewBudget returns darn.yaml's review_max_bounces for the routing projection.
+// darnReviewBudget returns the Darn-Review segment's budget, darn.yaml's review_max_bounces, for the routing projection.
 // The full wiring has already loaded darn.yaml into c.darnCfg; the lightweight wiring loads no config, so it reads the hub-wide file here.
 // An unreadable file degrades to the template's default with a warning, because the lightweight verbs (status, pause) must not refuse over a config they otherwise never read.
-func (c *loomCLI) darnReviewBudget() (int, error) {
+func (c *loomCLI) darnReviewBudget() (map[string]int, error) {
 	if c.darnCfg != nil {
-		return c.darnCfg.ReviewMaxBounces, nil
+		return map[string]int{darnReviewSegment: c.darnCfg.ReviewMaxBounces}, nil
 	}
 
 	cfg, err := darnengine.LoadConfig(fabricengine.ConfigDirs(c.location), "darn")
 	if err == nil {
-		return cfg.ReviewMaxBounces, nil
+		return map[string]int{darnReviewSegment: cfg.ReviewMaxBounces}, nil
 	}
 	logger.Warn("loom: could not read darn.yaml for the review bounce budget; reporting the template default", "error", err)
 
 	var template darnengine.Config
 	if err := yaml.Unmarshal([]byte(darnengine.ConfigTemplate()), &template); err != nil {
-		return 0, err
+		return nil, err
 	}
 
-	return template.ReviewMaxBounces, nil
+	return map[string]int{darnReviewSegment: template.ReviewMaxBounces}, nil
 }
 
 // wireDarnReview adds the Darn-Review perch's models and fan lists from cfg to env, and the config keys its Burler rows' settings came from.
@@ -231,7 +231,7 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 	c.darnCfg = &cfg
 	// The Darn-Review perch's CIRCLING Reason names the budget the darn routing applies, not loom's.
 	c.env.SegmentBounces = segmentBounces(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, func() (shedengine.Routing, error) {
-		return loomrecipe.DarnRouting(cfg.ReviewMaxBounces)
+		return loomrecipe.DarnRouting(map[string]int{darnReviewSegment: cfg.ReviewMaxBounces})
 	})
 	c.env.Darn = darnDeps(location, c.runID, c.env.VerifyDir)
 	// The history seam turns the Darn-Write row's "discussion" gate into the darn gate.

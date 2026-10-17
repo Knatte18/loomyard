@@ -35,8 +35,8 @@ func newEscalationShed(t *testing.T) (*shedengine.Shed, string, *shedfake.Burler
 
 	_, env, paths := buildSequenceFixture(t)
 	designWrongBouncerJudge(env)
-	env.ReviewMaxBounces = budgetEscalationBudget
 	discussion := env.Segments["Discussion-Review"]
+	discussion.MaxBounces = budgetEscalationBudget
 	discussion.HardMaxBounces = budgetEscalationBudget + 1
 	env.Segments["Discussion-Review"] = discussion
 	env.SegmentBounces = func(row string) (int, int, bool, error) {
@@ -44,7 +44,7 @@ func newEscalationShed(t *testing.T) (*shedengine.Shed, string, *shedfake.Burler
 		if err != nil || !found {
 			return 0, 0, false, err
 		}
-		routing, err := Routing(budgetEscalationBudget, nil)
+		routing, err := Routing(budgetsOf(env))
 		if err != nil {
 			return 0, 0, false, err
 		}
@@ -102,7 +102,7 @@ func TestEscalation_DarnPerchRuleContinuesThenHardCapAcceptReachesDescribe(t *te
 		if err != nil || !found {
 			return 0, 0, false, err
 		}
-		routing, err := DarnRouting(env.DarnReviewMaxBounces)
+		routing, err := DarnRouting(budgetsOf(env))
 		if err != nil {
 			return 0, 0, false, err
 		}
@@ -263,8 +263,7 @@ func TestEscalation_PerchBudgetOneWithAutoAccept(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, env, paths := buildSequenceFixture(t)
-			rowBudgets := map[string]int{loomshed.NameWebsterBouncer: 1}
-			env.RowMaxBounces = rowBudgets
+			setBudgets(&env, 3, map[string]int{"Webster-Review": 1})
 			env.Setting = func(module, key string) (any, error) {
 				if module == "loom" && key == "webster_auto_accept" {
 					return true, nil
@@ -287,7 +286,7 @@ func TestEscalation_PerchBudgetOneWithAutoAccept(t *testing.T) {
 				if err != nil || !found {
 					return 0, 0, false, err
 				}
-				routing, err := Routing(env.ReviewMaxBounces, rowBudgets)
+				routing, err := Routing(budgetsOf(env))
 				if err != nil {
 					return 0, 0, false, err
 				}

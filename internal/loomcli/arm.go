@@ -223,19 +223,19 @@ func (c *loomCLI) loadRouting() error {
 // recipeRouting returns the routing of the run's recipe, with its review bounce budget applied: the darn recipe's for a darn run, loom's otherwise.
 func (c *loomCLI) recipeRouting() (shedengine.Routing, error) {
 	if c.recipe == shedrun.RecipeDarn {
-		budget, err := c.darnReviewBudget()
+		budgets, err := c.darnReviewBudget()
 		if err != nil {
 			return shedengine.Routing{}, err
 		}
-		return loomrecipe.DarnRouting(budget)
+		return loomrecipe.DarnRouting(budgets)
 	}
 
-	budget, rowBudgets, err := c.reviewBudget()
+	budgets, err := c.reviewBudget()
 	if err != nil {
 		return shedengine.Routing{}, err
 	}
 
-	return loomrecipe.Routing(budget, rowBudgets)
+	return loomrecipe.Routing(budgets)
 }
 
 // newShed builds the shed of the run's recipe over c.env and c.shedPaths.
@@ -256,26 +256,26 @@ func (c *loomCLI) verifySource() verifySource {
 	return planVerifySource(c.location)
 }
 
-// reviewBudget returns the run-wide review bounce budget, and the per-perch budget map the routing projection reports.
+// reviewBudget returns the per-segment review bounce budgets the routing projection reports.
 // The full wiring has already loaded loom.yaml into c.cfg, which holds a hard cap of at least 1 once loaded, since the run-wide budget may be 0; the lightweight wiring loads no config, so it reads loom.yaml here once more.
 // An unreadable loom.yaml degrades to the template's defaults with a warning, because the lightweight verbs (status, pause) must not refuse over a config they otherwise never read.
-func (c *loomCLI) reviewBudget() (int, map[string]int, error) {
+func (c *loomCLI) reviewBudget() (map[string]int, error) {
 	if c.cfg.ReviewHardMaxBounces > 0 {
-		return c.cfg.ReviewMaxBounces, perchMaxBounces(c.cfg), nil
+		return loomSegmentBudgets(c.cfg), nil
 	}
 
 	cfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(c.location), "loom")
 	if err == nil {
-		return cfg.ReviewMaxBounces, perchMaxBounces(cfg), nil
+		return loomSegmentBudgets(cfg), nil
 	}
 	logger.Warn("loom: could not read loom.yaml for the review bounce budget; reporting the template default", "error", err)
 
 	var template loomengine.Config
 	if err := yaml.Unmarshal([]byte(loomengine.ConfigTemplate()), &template); err != nil {
-		return 0, nil, err
+		return nil, err
 	}
 
-	return template.ReviewMaxBounces, perchMaxBounces(template), nil
+	return loomSegmentBudgets(template), nil
 }
 
 // specFor fills a Spec from c's already-wired fields, performing no resolution, no wire call, and
