@@ -474,7 +474,7 @@ User-facing modules each get one `lyx <module>` namespace:
   A run whose current producer is Publish or Finalize is let through over a parked fabric `merge-in` of its own parent branch, since that row aborts and redoes it; `lyx loom resume` makes the same exception.
   `lyx loom resume` wakes a halted run's live, parked driver through the same branch, and a run awaiting at a review segment's Bouncer row with a pending circling decision takes that branch too, since its driver's step re-calls the Bouncer, which acts on the decision;
   it never spawns an LLM driver, adds a strand or brings reed up, but spawns a Go driver for a halted go-seeded run that has none, while `start` still resumes as before;
-  it reads the driver strand from reed's sessionless directory, and refuses every other state with its way forward, as the loom section of [refusal-spec.md](../contracts/specs/refusal-spec.md) lists.
+  it reads the driver strand from reed's sessionless directory, and refuses every other state with its way forward, as [refusal-spec.md](../contracts/specs/refusal-spec.md) defines one.
   `run` is the no-tmux escape hatch that runs the phase machine in the foreground, for debugging and CI.
   `step` bootstraps idempotently, exactly as `start` does, and drives exactly one producer through `shedengine.Shed`'s own `Step`, emitting a JSON envelope; it spawns no detached driver, making it the single-producer primitive an external supervisor drives.
   `step --until-stop` runs one child step after another in a loop and returns the one envelope of the first stop, with a `loop` object beside the stop step's envelope.

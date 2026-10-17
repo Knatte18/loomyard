@@ -109,7 +109,7 @@ Do not flag any of the following as a finding:
 - **Reachability of a prescribed refusal.**
   A card that prescribes a refusal or guard branch with no named input that reaches it, or no named test that reaches it, is a finding.
   So is one whose named input an upstream check rejects; the finding names that upstream check.
-  A propagated raw I/O error that joins its section's grouped transient row in `refusal-spec.md` is exempt, and so is a fail-loud wiring guard in that file's sense, which takes no per-row test.
+  A propagated raw I/O error, which `refusal-spec.md` exempts as transient, is exempt, and so is a fail-loud wiring guard in that file's sense, which takes no reaching test.
   A test that calls only the refusal's error constructor does not reach the refusal.
 - **The writer/reviewer symmetry note.**
   The plan writer's own stencil is `{{.stencils_dir}}/loom/loom-template-plan.md`.

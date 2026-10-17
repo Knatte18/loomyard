@@ -187,8 +187,8 @@ A card that introduces a new verb, flag, escape hatch or routing edge, or remove
 Plan-Review flags one left unbounded.
 
 A card that prescribes a refusal or guard branch names in its `**Intent:**` the input that reaches it after every upstream check passes, and the test that reaches it.
-A propagated raw I/O error that joins its section's grouped transient row in `refusal-spec.md` is exempt.
-A branch that upstream validation already rules out is not prescribed: drop it, or, when it guards an invariant, write it as a fail-loud wiring guard in `refusal-spec.md`'s sense, which takes no per-row test.
+A propagated raw I/O error, which `refusal-spec.md` exempts as transient, is exempt.
+A branch that upstream validation already rules out is not prescribed: drop it, or, when it guards an invariant, write it as a fail-loud wiring guard in `refusal-spec.md`'s sense, which takes no reaching test.
 A test that calls only the refusal's error constructor does not reach it.
 
 A field with no content is omitted entirely — never write a `none` sentinel on any field.

@@ -2541,7 +2541,7 @@ func runToDone(t *testing.T, fx *runFixture, strandGUID, sessionID string, forks
 	return result
 }
 
-// requireWayForward fails unless err carries the trailing "way forward:" clause and every want fragment after it, so each reaching test matches the message the way the refusal table does.
+// requireWayForward fails unless err carries the trailing "way forward:" clause and every want fragment after it, so each reaching test pins the way forward the message names.
 func requireWayForward(t *testing.T, err error, wants ...string) {
 	t.Helper()
 	if err == nil {

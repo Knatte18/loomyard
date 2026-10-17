@@ -75,7 +75,7 @@
 //
 // Two stops name goto as their way forward in a trailing `way forward:` clause:
 // the missing-producer refusal, which lists every valid producer name, and the budget-exhausted reason, whose ReasonBounceBudgetExhausted stays its exact prefix.
-// Every refusal's way forward is tabulated in contracts/specs/refusal-spec.md, which this documentation links rather than restates.
+// Every refusal names its way forward, as contracts/specs/refusal-spec.md defines one.
 //
 // # The reroute edge and the halting Stuck
 //

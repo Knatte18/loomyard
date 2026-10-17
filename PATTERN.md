@@ -20,7 +20,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-config-strictness` — Loading config: a caller adopts exactly one of strict `configengine.Load` or `LoadOrTemplate`. — [background](pattern/PATTERN-config-strictness.md)
 - `PATTERN-config-layers` — Resolving a module's config: only `configengine` reads, stacks and locates layer files. — [background](pattern/PATTERN-config-layers.md)
 - `PATTERN-binary-change-reconcile` — Reconciling a hub's config after a binary change: only through `hubreconcile.Ensure`, which owns the build stamp and the hub lock.
-- `PATTERN-refusal-way-forward` — Adding a webster, shed or loom refusal: name the way forward, land its spec row with it, add a test. — [background](pattern/PATTERN-refusal-way-forward.md)
+- `PATTERN-refusal-way-forward` — Adding a webster, shed or loom refusal: its message names the way forward, and a test reaches it. — [background](pattern/PATTERN-refusal-way-forward.md)
 - `PATTERN-no-denied-recovery` — Naming a step in a refusal, stencil or spec: never a command the agents' settings deny. (test) — [background](pattern/PATTERN-no-denied-recovery.md)
 
 ## Fabric and git
