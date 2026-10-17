@@ -296,8 +296,7 @@
 // Two enforcement layers back this discipline mechanically rather than trusting the prompt alone:
 // a session-level PreToolUse(Agent) hook that allows only unnamed subagent_type:"fork" calls through and denies everything else (policing Agent calls made from inside a fork's own pane too, not just the handler's);
 // and, once the run reaches shuttleengine.OutcomeDone, auditClusterRound in cluster.go.
-// auditClusterRound reads the shuttleengine.ForkAudit the engine attaches to the run
-// (per-fork AgentCalls/WriteCalls/BashCommands facts from shuttleengine.AuditForks — never this package's own knowledge of the transcript layout).
+// auditClusterRound reads the shuttleengine.ForkAudit the engine attaches to the run (per-fork AgentCalls/WriteCalls/BashCommands facts from shuttleengine.AuditForks — never this package's own knowledge of the transcript layout).
 // It enforces the fail-loud posture:
 // exactly len(clusterLenses) fork transcripts or ErrClusterForksMissing (naming requested vs actual — a shortfall, including zero, is an infrastructure defect, never a degrade-to-solo);
 // any fork with AgentCalls > 0, WriteCalls > 0, or a git-mutating Bash command is a hard error;
