@@ -230,4 +230,7 @@
 // It reads `skip_alignment`, `alignment`, `alignment_timeout_min` and `alignment_pr_approve` from loom.yaml on each call, for a loom run and a darn run alike.
 // Its decision snapshot covers the decision record and the board notes titled `Decision for <slug>:`, so a decision recorded while the agent runs turns its approve into an escalation to the run's parent.
 // A darn run's prompt names no plan directory and carries darn's pr-gate measure; every other recipe's names the plan directory and loom's measure.
+//
+// The landing wiring reads the run's start from the pair's seed and fails on a seed it cannot decode.
+// `lyx loom approve` and `lyx loom reject` look up the pull request created at or after that start and refuse when the seed cannot be read.
 package loomcli
