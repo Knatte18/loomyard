@@ -135,6 +135,9 @@ func TestMigrateConfig(t *testing.T) {
 	}{
 		{"MovesToClaudeLine", "squash: true\nco_authored_by: Someone <s@x>\n", map[string]string{"claude": "Co-Authored-By: Someone <s@x>"}, 1},
 		{"ExistingEngineTrailersWins", "co_authored_by: Someone <s@x>\nengine_trailers: {}\n", map[string]string{}, 1},
+		{"ExistingEntriesKept", "co_authored_by: Someone <s@x>\nengine_trailers:\n  claude: \"Co-Authored-By: Kept <k@x>\"\n", map[string]string{"claude": "Co-Authored-By: Kept <k@x>"}, 1},
+		{"EmptyValueDroppedWithoutEntry", "squash: true\nco_authored_by: \"  \"\n", nil, 1},
+		{"NonScalarValueDroppedWithoutEntry", "co_authored_by: [a, b]\n", nil, 1},
 		{"NoRetiredKeyUnchanged", "engine_trailers:\n  claude: \"Co-Authored-By: Kept <k@x>\"\n", map[string]string{"claude": "Co-Authored-By: Kept <k@x>"}, 0},
 	}
 	for _, tt := range tests {
@@ -166,6 +169,27 @@ func TestMigrateConfig(t *testing.T) {
 			again, againLines, err := MigrateConfig(migrated)
 			if err != nil || len(againLines) != 0 || string(again) != string(migrated) {
 				t.Errorf("second MigrateConfig() = %q, %q, %v; want the document unchanged with no lines", again, againLines, err)
+			}
+		})
+	}
+}
+
+// TestMigrateConfig_InvalidDocument verifies an unparsable document and a non-mapping root return an error marked configengine.ErrInvalid.
+func TestMigrateConfig_InvalidDocument(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		existing string
+	}{
+		{"Unparsable", "co_authored_by: [unclosed\n"},
+		{"NonMappingRoot", "- co_authored_by\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if _, _, err := MigrateConfig([]byte(tt.existing)); !errors.Is(err, configengine.ErrInvalid) {
+				t.Errorf("MigrateConfig(%q) error = %v; want one marked configengine.ErrInvalid", tt.existing, err)
 			}
 		})
 	}

@@ -154,7 +154,8 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 
 // MigrateConfig rewrites a landing.yaml document for lyx config reconcile and returns the rewritten bytes with one line per rewrite.
 // It moves a retired co_authored_by value into engine_trailers as the claude entry `Co-Authored-By: <value>`;
-// a document already holding engine_trailers keeps it and drops co_authored_by.
+// a document already holding engine_trailers keeps it and drops co_authored_by,
+// and an empty or non-scalar co_authored_by is dropped without an entry, as empty means off.
 // A document without co_authored_by is returned unchanged, so a migrated file is unchanged on a second pass.
 // A document that does not parse, or whose root is not a mapping, returns an error marked configengine.ErrInvalid.
 func MigrateConfig(existing []byte) ([]byte, []string, error) {
@@ -198,10 +199,14 @@ func migrateCoAuthoredBy(existing []byte) ([]byte, string, error) {
 
 	value := root.Content[legacyIndex+1].Value
 	var line string
-	if currentIndex >= 0 {
+	switch {
+	case strings.TrimSpace(value) == "":
+		line = "co_authored_by: empty, dropped"
+		root.Content = append(root.Content[:legacyIndex], root.Content[legacyIndex+2:]...)
+	case currentIndex >= 0:
 		line = fmt.Sprintf("co_authored_by: %s dropped, %s already set", value, engineTrailersKey)
 		root.Content = append(root.Content[:legacyIndex], root.Content[legacyIndex+2:]...)
-	} else {
+	default:
 		root.Content[legacyIndex] = &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: engineTrailersKey}
 		root.Content[legacyIndex+1] = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map", Content: []*yaml.Node{
 			{Kind: yaml.ScalarNode, Tag: "!!str", Value: "claude"},
