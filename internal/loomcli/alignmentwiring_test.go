@@ -166,7 +166,7 @@ func TestParentReviewAligner(t *testing.T) {
 				}
 			},
 			wantVerdict: alignment.VerdictEscalate,
-			wantReason:  decisionRecordedReason,
+			wantReason:  alignment.DecisionRecordedReason,
 		},
 		{
 			name:   "an approve after a note naming the slug",
@@ -175,7 +175,7 @@ func TestParentReviewAligner(t *testing.T) {
 				f.notes = append(f.notes, boardengine.Task{ID: 7, Kind: boardengine.KindNote, Title: "hold pair on x"})
 			},
 			wantVerdict: alignment.VerdictEscalate,
-			wantReason:  decisionRecordedReason,
+			wantReason:  alignment.DecisionRecordedReason,
 		},
 		{
 			name:   "an approve after a note naming another slug",

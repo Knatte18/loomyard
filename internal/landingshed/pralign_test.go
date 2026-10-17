@@ -288,7 +288,7 @@ func TestPRAlign(t *testing.T) {
 		{
 			name: "an approve over a changed snapshot leaves a note and no record", listBody: openPR(3, prGateHead),
 			setup:  func(t *testing.T, f *alignFixture) { f.session.onPoll = func() { f.snapshot = "changed" } },
-			script: []alignment.Outcome{approveOutcome()}, wantBegins: 1, wantSpawned: 1, wantNote: decisionRecordedReason,
+			script: []alignment.Outcome{approveOutcome()}, wantBegins: 1, wantSpawned: 1, wantNote: alignment.DecisionRecordedReason,
 		},
 		{
 			name: "a first reject records the rejection with the report as findings, after the count", listBody: openPR(3, prGateHead),

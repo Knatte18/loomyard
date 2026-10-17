@@ -25,9 +25,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// decisionRecordedReason is the reason an approve becomes an escalation when the decision snapshot moved while the agent ran.
-const decisionRecordedReason = "a decision was recorded for this task while the alignment agent ran"
-
 // alignmentOff reports whether alignment is off for this run: skip_alignment is set, or the hub has no board dir for the agent to read.
 func alignmentOff(location *lyxcwd.Location, cfg loomengine.Config) bool {
 	if cfg.SkipAlignment {
@@ -182,7 +179,7 @@ func (p *parentReviewAligner) Poll(a parentreview.Alignment) (parentreview.Align
 			return parentreview.AlignmentPoll{}, err
 		}
 		if current != attempt.Snapshot {
-			return parentreview.AlignmentPoll{Done: true, Verdict: alignment.VerdictEscalate, Report: report, Reason: decisionRecordedReason}, nil
+			return parentreview.AlignmentPoll{Done: true, Verdict: alignment.VerdictEscalate, Report: report, Reason: alignment.DecisionRecordedReason}, nil
 		}
 	case alignment.VerdictEscalate:
 		return parentreview.AlignmentPoll{Done: true, Verdict: verdict.Verdict, Report: report, Reason: verdict.Question}, nil

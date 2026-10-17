@@ -25,9 +25,8 @@ const alignmentTickFloor = time.Second
 
 // The reasons a note carries when the agent's approve or reject is not applied.
 const (
-	decisionRecordedReason = "a decision was recorded for this task while the alignment agent ran"
-	approveNotGivenReason  = "the alignment agent approves; alignment_pr_approve is false, so the approval is the run's parent's to give"
-	secondRejectReason     = "the alignment agent rejected this run once already; a second agent reject goes to the run's parent"
+	approveNotGivenReason = "the alignment agent approves; alignment_pr_approve is false, so the approval is the run's parent's to give"
+	secondRejectReason    = "the alignment agent rejected this run once already; a second agent reject goes to the run's parent"
 )
 
 // AlignmentConfig is the alignment settings PR-Align reads on each call.
@@ -268,7 +267,7 @@ func (p *PRAlign) apply(ctx context.Context, cfg AlignmentConfig, attempt alignm
 			return leave(note)
 		}
 		if current != attempt.Snapshot {
-			note.Reason = decisionRecordedReason
+			note.Reason = alignment.DecisionRecordedReason
 			return leave(note)
 		}
 		if !cfg.PRApprove {
