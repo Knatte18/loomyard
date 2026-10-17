@@ -29,7 +29,18 @@ func seedDarnConfig(t *testing.T, baseDir, contents string) {
 	}
 }
 
-// TestLoadConfig covers the template's defaults, a review budget of 0, the fan keys' grammar and refusals, a writer that fails the model-spec grammar, and a base directory with no darn.yaml.
+// templateConfig returns the Config the embedded template loads as, changed by mutate.
+func templateConfig(mutate func(*Config)) Config {
+	cfg := Config{
+		Writer: "opus[medium]", WriterTimeoutMin: 180, Verify: "", VerifyAttempts: 3, ReviewMaxBounces: 1, ReviewHardMaxBounces: 4,
+		ReviewerModel: burlerengine.ModelSpecList{"sonnet[high]"}, FixerModel: burlerengine.ModelSpecList{""},
+		ReviewerFan: burlerengine.FanList{""}, FixerFan: burlerengine.FanList{""},
+	}
+	mutate(&cfg)
+	return cfg
+}
+
+// TestLoadConfig covers the template's defaults, a review budget of 0, the model and fan keys' grammar and refusals, a writer that fails the model-spec grammar, and a base directory with no darn.yaml.
 func TestLoadConfig(t *testing.T) {
 	t.Parallel()
 
@@ -42,32 +53,51 @@ func TestLoadConfig(t *testing.T) {
 	}{
 		{
 			name: "template defaults", contents: ConfigTemplate(), seed: true,
-			want: Config{Writer: "opus[medium]", WriterTimeoutMin: 180, Verify: "", VerifyAttempts: 3, ReviewMaxBounces: 1, ReviewHardMaxBounces: 4, ReviewFan: burlerengine.FanList{""}, ReviewFixFan: burlerengine.FanList{""}},
+			want: templateConfig(func(*Config) {}),
 		},
 		{
 			name: "review off", seed: true,
 			contents: strings.Replace(ConfigTemplate(), "review_max_bounces: 1", "review_max_bounces: 0", 1),
-			want:     Config{Writer: "opus[medium]", WriterTimeoutMin: 180, Verify: "", VerifyAttempts: 3, ReviewMaxBounces: 0, ReviewHardMaxBounces: 4, ReviewFan: burlerengine.FanList{""}, ReviewFixFan: burlerengine.FanList{""}},
+			want:     templateConfig(func(c *Config) { c.ReviewMaxBounces = 0 }),
+		},
+		{
+			name: "per-round model lists", seed: true,
+			contents: strings.NewReplacer("darn_reviewer_model: sonnet[high]", "darn_reviewer_model:\n  - opus[high]\n  - sonnet[medium]", "darn_fixer_model: \"\"", "darn_fixer_model: sonnet[low]").Replace(ConfigTemplate()),
+			want: templateConfig(func(c *Config) {
+				c.ReviewerModel, c.FixerModel = burlerengine.ModelSpecList{"opus[high]", "sonnet[medium]"}, burlerengine.ModelSpecList{"sonnet[low]"}
+			}),
+		},
+		{
+			name: "model entry that is no model-spec", seed: true,
+			contents: strings.Replace(ConfigTemplate(), "darn_fixer_model: \"\"", "darn_fixer_model:\n  - sonnet[low]\n  - \"opus[effort\"", 1),
+			wantErr:  []string{`darn config key "darn_fixer_model" entry 2`, "set the key to a model-spec"},
+		},
+		{
+			name: "model value of the wrong shape", seed: true,
+			contents: strings.Replace(ConfigTemplate(), "darn_reviewer_model: sonnet[high]", "darn_reviewer_model:\n  model: opus", 1),
+			wantErr:  []string{`darn config key "darn_reviewer_model"`, "neither a model-spec nor a list of model-specs"},
 		},
 		{
 			name: "per-round fan lists", seed: true,
-			contents: strings.NewReplacer("review_fan: \"\"", "review_fan:\n  - review-code\n  - \"\"", "review_fix_fan: \"\"", "review_fix_fan: fix-code").Replace(ConfigTemplate()),
-			want:     Config{Writer: "opus[medium]", WriterTimeoutMin: 180, Verify: "", VerifyAttempts: 3, ReviewMaxBounces: 1, ReviewHardMaxBounces: 4, ReviewFan: burlerengine.FanList{"review-code", ""}, ReviewFixFan: burlerengine.FanList{"fix-code"}},
+			contents: strings.NewReplacer("darn_reviewer_fan: \"\"", "darn_reviewer_fan:\n  - review-code\n  - \"\"", "darn_fixer_fan: \"\"", "darn_fixer_fan: fix-code").Replace(ConfigTemplate()),
+			want: templateConfig(func(c *Config) {
+				c.ReviewerFan, c.FixerFan = burlerengine.FanList{"review-code", ""}, burlerengine.FanList{"fix-code"}
+			}),
 		},
 		{
 			name: "undefined fan", seed: true,
-			contents: strings.Replace(ConfigTemplate(), "review_fix_fan: \"\"", "review_fix_fan:\n  - \"\"\n  - nosuchfan", 1),
-			wantErr:  []string{`darn config key "review_fix_fan" entry 2`, `"nosuchfan"`, "define the fan in burler.yaml", `set the entry to ""`},
+			contents: strings.Replace(ConfigTemplate(), "darn_fixer_fan: \"\"", "darn_fixer_fan:\n  - \"\"\n  - nosuchfan", 1),
+			wantErr:  []string{`darn config key "darn_fixer_fan" entry 2`, `"nosuchfan"`, "define the fan in burler.yaml", `set the entry to ""`},
 		},
 		{
 			name: "empty fan list", seed: true,
-			contents: strings.Replace(ConfigTemplate(), "review_fan: \"\"", "review_fan: []", 1),
-			wantErr:  []string{`darn config key "review_fan"`, "the list is empty", `write ""`},
+			contents: strings.Replace(ConfigTemplate(), "darn_reviewer_fan: \"\"", "darn_reviewer_fan: []", 1),
+			wantErr:  []string{`darn config key "darn_reviewer_fan"`, "the list is empty", `write ""`},
 		},
 		{
 			name: "fan value of the wrong shape", seed: true,
-			contents: strings.Replace(ConfigTemplate(), "review_fan: \"\"", "review_fan:\n  model: opus", 1),
-			wantErr:  []string{`darn config key "review_fan"`, "neither a fan name nor a list of fan names"},
+			contents: strings.Replace(ConfigTemplate(), "darn_reviewer_fan: \"\"", "darn_reviewer_fan:\n  model: opus", 1),
+			wantErr:  []string{`darn config key "darn_reviewer_fan"`, "neither a fan name nor a list of fan names"},
 		},
 		{
 			name: "invalid writer spec", seed: true,
@@ -135,7 +165,7 @@ func TestLoadConfig(t *testing.T) {
 		}
 	})
 
-	for key, local := range map[string]string{"verify": "verify: rm -rf .\n", "review_fan": "review_fan: review-code\n", "review_fix_fan": "review_fix_fan: \"\"\n"} {
+	for key, local := range map[string]string{"verify": "verify: rm -rf .\n", "darn_reviewer_fan": "darn_reviewer_fan: review-code\n", "darn_fixer_fan": "darn_fixer_fan: \"\"\n"} {
 		t.Run("a local "+key+" is refused naming the local file and the key", func(t *testing.T) {
 			t.Parallel()
 			board, anchor := t.TempDir(), t.TempDir()
@@ -235,6 +265,71 @@ func TestLoadConfig(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestMigrateConfig covers the rename of the retired fan keys with their values and the new key's template comment, a new key already set winning over its retired one, and a migrated document passing unchanged.
+func TestMigrateConfig(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		existing  string
+		want      string
+		wantLines []string
+	}{
+		{
+			name:      "retired fan keys are renamed",
+			existing:  "writer: opus[medium]\nreview_fan: [review-code, \"\"] # old comment\nreview_fix_fan: fix-code\n",
+			want:      "writer: opus[medium]\ndarn_reviewer_fan: [review-code, \"\"] # " + templateLineComment(t, ReviewerFanKey) + "\ndarn_fixer_fan: fix-code # " + templateLineComment(t, FixerFanKey) + "\n",
+			wantLines: []string{"review_fan: renamed to darn_reviewer_fan", "review_fix_fan: renamed to darn_fixer_fan"},
+		},
+		{
+			name:      "a set new key wins",
+			existing:  "review_fan: review-code\ndarn_reviewer_fan: \"\"\n",
+			want:      "darn_reviewer_fan: \"\"\n",
+			wantLines: []string{"review_fan: removed, darn_reviewer_fan already set"},
+		},
+		{
+			name:     "a migrated document is unchanged",
+			existing: "darn_reviewer_fan: review-code\n",
+			want:     "darn_reviewer_fan: review-code\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, lines, err := MigrateConfig([]byte(tt.existing))
+			if err != nil {
+				t.Fatalf("MigrateConfig() = _, _, %v; want nil error", err)
+			}
+			if string(got) != tt.want {
+				t.Errorf("MigrateConfig() document = %q; want %q", got, tt.want)
+			}
+			if !reflect.DeepEqual(lines, tt.wantLines) {
+				t.Errorf("MigrateConfig() lines = %q; want %q", lines, tt.wantLines)
+			}
+		})
+	}
+
+	t.Run("a document that does not parse is invalid", func(t *testing.T) {
+		t.Parallel()
+		if _, _, err := MigrateConfig([]byte("review_fan: [unterminated\n")); !errors.Is(err, configengine.ErrInvalid) {
+			t.Errorf("MigrateConfig(unparsable) error = %v; want ErrInvalid", err)
+		}
+	})
+}
+
+// templateLineComment returns the template's line comment on key, without its leading "# ".
+func templateLineComment(t *testing.T, key string) string {
+	t.Helper()
+	for _, line := range strings.Split(ConfigTemplate(), "\n") {
+		if strings.HasPrefix(line, key+":") {
+			_, comment, _ := strings.Cut(line, "  # ")
+			return comment
+		}
+	}
+	t.Fatalf("the template holds no key %q", key)
+	return ""
 }
 
 // writeLocalDarnConfig writes contents as anchor's local darn override and returns its path.

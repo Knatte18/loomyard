@@ -48,7 +48,7 @@
 // It refuses when the map holds a list,
 // and removing an entry stays an editor edit.
 // A key that is itself a declared open map holding a scalar or a list, such as loom's per-round model keys `review`, `fix` and each segment's `*_review` and `*_fix`, and each perch's per-round fan keys `*_fan` and `*_fix_fan` in loom and darn, takes either shape:
-// a value starting with `[` is written as a YAML flow list of scalars or mappings of scalars and any other value as a string, as in `lyx config loom --set 'plan_review=["opus[medium]", "sonnet[high]"]'`.
+// a value starting with `[` is written as a YAML flow list of scalars or mappings of scalars and any other value as a string, as in `lyx config loom --set 'plan_reviewer_model=["opus[medium]", "sonnet[high]"]'`.
 // An entry holding `[` or `]` must be quoted, and a bracketed value that is not such a list is refused, never written as a string.
 // Any other key must exist in the template;
 // pre-existing keys the template lacks are preserved and reported in a `preserved` field.
