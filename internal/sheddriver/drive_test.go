@@ -238,9 +238,9 @@ func TestGoDriver_Settle(t *testing.T) {
 			wantActions: []string{shedrun.SettleVerifyRetry, shedrun.SettleHandBack}, wantReports: 1, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
 		},
 		{
-			name: "watched verify halt parks with no goto", steps: []func(*testing.T) []byte{verifyHalt}, statuses: []shedengine.Status{verifyHaltStatus()},
+			name: "watched verify halt parks with no goto and no notice", steps: []func(*testing.T) []byte{verifyHalt}, statuses: []shedengine.Status{verifyHaltStatus()},
 			haltTarget: "Build", watched: true, orchRecorded: true,
-			wantCalls: []string{"step"}, wantActions: []string{shedrun.SettleHandBack}, wantReports: 1, wantParked: true, wantNotifies: 1, wantHandBack: true, wantExit: ExitHandBack,
+			wantCalls: []string{"step"}, wantActions: []string{shedrun.SettleHandBack}, wantReports: 1, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
 		},
 		{
 			name: "verify halt whose retry another actor spent parks with no goto", steps: []func(*testing.T) []byte{verifyHalt}, statuses: []shedengine.Status{verifyHaltStatus()},

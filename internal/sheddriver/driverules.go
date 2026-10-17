@@ -156,12 +156,11 @@ const (
 
 // driveDecision is the table's answer for one stop.
 // Rule is the rule text the stop report quotes.
-// FrictionNote asks for a friction note on a paused stop that carries no reason, and WatchedVerifyLine asks the hand-back to send the parent the unwatched-verify line.
+// FrictionNote asks for a friction note on a paused stop that carries no reason.
 type driveDecision struct {
-	Action            driveAction
-	Rule              string
-	FrictionNote      bool
-	WatchedVerifyLine bool
+	Action       driveAction
+	Rule         string
+	FrictionNote bool
 }
 
 // binaryEligible reports whether a newer on-disk build could change what happens at the stop:
@@ -212,7 +211,7 @@ func decideDrive(stop Stop, facts driveFacts) driveDecision {
 	case state == string(shedengine.StateBlocked) && facts.VerifyMatches:
 		switch {
 		case facts.Watched:
-			return driveDecision{Action: driveActionHandBack, Rule: "a verify halt matching the failure record under a watching batten: hand back", WatchedVerifyLine: true}
+			return driveDecision{Action: driveActionHandBack, Rule: "a verify halt matching the failure record under a watching batten: hand back"}
 		case !facts.VerifyRetrySpent:
 			return driveDecision{Action: driveActionVerifyGoto, Rule: "a verify halt matching the failure record: one goto to the record's target, then re-step"}
 		}
