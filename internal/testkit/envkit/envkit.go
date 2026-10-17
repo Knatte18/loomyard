@@ -9,6 +9,7 @@ package envkit
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -18,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/alignment"
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
@@ -34,6 +36,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
+	"gopkg.in/yaml.v3"
 )
 
 // nilLegal holds the dotted paths NilSeams skips: seams whose nil is a documented default rather than a missing wiring.
@@ -204,6 +207,25 @@ func ReworkDeps(t testing.TB, dir string) loomshed.PRReworkDeps {
 	}
 }
 
+// TemplateSetting answers any registered config module's key from the module's embedded template.
+// It errors naming the module when it is unregistered, and naming the key when the template lacks it.
+// A recipe that names a new setting key needs no kit change.
+func TemplateSetting(module, key string) (any, error) {
+	registered, ok := configreg.Lookup(module)
+	if !ok {
+		return nil, fmt.Errorf("envkit: module %q is not a registered config module", module)
+	}
+	var template map[string]any
+	if err := yaml.Unmarshal([]byte(registered.Template()), &template); err != nil {
+		return nil, fmt.Errorf("envkit: decode %s template: %w", module, err)
+	}
+	value, ok := template[key]
+	if !ok {
+		return nil, fmt.Errorf("envkit: key %q is not in the %s template", key, module)
+	}
+	return value, nil
+}
+
 // FullEnv returns a `shedrecipe.Env` with every path field an absolute path under one `t.TempDir()` and every seam any registered engine requires filled.
 // A seam added to the registry's requirements must be filled here, which NilSeams(FullEnv(t)) catches.
 func FullEnv(t testing.TB) shedrecipe.Env {
@@ -237,6 +259,14 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			loomshed.NameWebsterBouncer:    {},
 			loomshed.NameMergeBouncer:      {},
 			loomshed.NameDarnBouncer:       {},
+		},
+		Setting: TemplateSetting,
+		Segments: map[string]shedrecipe.SegmentSettings{
+			"Discussion-Review": fullEnvSegment(3, "loom.yaml"),
+			"Plan-Review":       fullEnvSegment(3, "loom.yaml"),
+			"Webster-Review":    fullEnvSegment(3, "loom.yaml"),
+			"Merge-Review":      fullEnvSegment(3, "loom.yaml"),
+			"Darn-Review":       fullEnvSegment(1, "darn.yaml"),
 		},
 		WebsterRun: func(websterengine.RunDeps, websterengine.RunOptions) (websterengine.RunResult, error) {
 			return websterengine.RunResult{}, nil
@@ -411,6 +441,15 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		OpenWindow: offSwitch(),
 		SeedIDE:    offSwitch(),
 		OpenIDE:    offSwitch(),
+	}
+}
+
+// fullEnvSegment returns a review segment's settings with empty models and the given bounce budget, resolved from review_max_bounces in configFile.
+func fullEnvSegment(maxBounces int, configFile string) shedrecipe.SegmentSettings {
+	return shedrecipe.SegmentSettings{
+		MaxBounces:    maxBounces,
+		MaxBouncesKey: "review_max_bounces",
+		ConfigFile:    configFile,
 	}
 }
 
