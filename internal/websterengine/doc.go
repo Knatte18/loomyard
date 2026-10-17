@@ -393,8 +393,7 @@
 // A HEAD-relative guard therefore never refuses toward a verb that cannot clear the state: it refuses only on an uncleared contract file, a plan path differing from the recorded plan and a suspect path differing from HEAD, each naming its clearing step and then the reset, and drops every other pending finding with a warning.
 // A branch rewritten under the run passes, and the dropped findings stay readable in the archived state.
 //
-// Every refusal this package can return, and the way forward from it, is tabulated in contracts/specs/refusal-spec.md;
-// this documentation links that table rather than restating its rows.
+// Every refusal this package can return ends in a trailing `way forward:` clause, as contracts/specs/refusal-spec.md defines one.
 //
 // # bracket verbs, not spawn/poll
 //
@@ -698,7 +697,6 @@
 // A failed UncommittedPaths read leaves `uncommitted` out and adds a warning, since the reset and any archive are already done.
 // A refusal before the remote update is a bare error envelope.
 // A checkout rewrite that fails after the remote moved is an error envelope carrying `mutations` and `partial: true`, and re-running the reset converges.
-// Each refusal has a row in contracts/specs/refusal-spec.md.
 //
 // # The verify-gate report and findings
 //

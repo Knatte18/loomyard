@@ -1,7 +1,7 @@
 <!-- This is the shed driver's repair guide: the reference the one-shot fork a driver spawns at an `error` or `interrupted` stop reads before it repairs or escalates.
      The driver stencil points at it by its deployed path through its guide_path marker and never paraphrases it; the guide is not an opening stencil and joins no role's list.
      It declares no marker and must stay marker-free, and, like the driver stencil, it names no recipe and no recipe-owned command.
-     Refusal text and its ways forward live in the refusal spec the driver stencil points at, never restated here. -->
+     Refusal text and its ways forward live in the refusal messages, never restated here. -->
 
 # Repair guide for a stopped run
 

@@ -85,7 +85,7 @@
 // A journal naming anything but the overview or a card file at the top level of the plan directory is refused before any file is written.
 //
 // The three verbs read only the resolved anchor, so they join the lightweight wiring and are not held up by an unrelated module's config.
-// `renumberRefusal` words every refusal with its way forward; the rows are in `contracts/specs/refusal-spec.md`.
+// `renumberRefusal` words every refusal with its way forward.
 //
 // # Format verb
 //
@@ -94,7 +94,6 @@
 // `planGoFormat` checks and formats every file before any write: a path that does not exist, lies outside the worktree (a symlink resolving outside it included), does not end in `.go`, cannot be read or does not parse refuses the whole call and writes nothing.
 // The success envelope's `changed` lists the files rewritten as named; a file already formatted is left untouched and unreported.
 // A write that fails stops the call, naming `written` and `failed`.
-// The rows are in `contracts/specs/refusal-spec.md`.
 //
 // # Card pack verb
 //
@@ -105,7 +104,6 @@
 // A card number the plan lacks, a plan that does not parse and a missing plan directory are refused with a way forward, the locate fallback; a standalone run's plan lives in its state directory, so the verb never works there.
 // It reads only path fields and the index, so it joins the lightweight wiring, which fills the stencils directory for it, and its argument is a card number, never a run-id.
 // It is a `lyx loom` verb because the claudeengine hook refuses every `lyx webster` command from a fork.
-// The rows are in `contracts/specs/refusal-spec.md`.
 //
 // # Validate plan lens review
 //
@@ -120,7 +118,7 @@
 // The verb builds a `planparser.Overlay` over the plan directory, parses it, and runs the flag-less check set (`loomshed.ValidatePlan`) over the overlaid plan, reporting through the same envelope.
 // Handle canonicalization and the done-card comparison read and rewrite through the overlay, and no byte under the plan directory is written.
 // The overlay cannot change the tree the glyphs resolve against, so it validates target-list, verify-command and card-text changes, never a proposed code change, and it adds, removes or renames no plan file.
-// It is exclusive with `--rework` and `--require-approved`, refused before stdin is read; a terminal or empty stdin, input that is not one object of distinct names and string values, an unusable name and a card file missing from disk are each refused with their way forward in `overlayRefusal`, and the rows are in `contracts/specs/refusal-spec.md`.
+// It is exclusive with `--rework` and `--require-approved`, refused before stdin is read; a terminal or empty stdin, input that is not one object of distinct names and string values, an unusable name and a card file missing from disk are each refused with their way forward in `overlayRefusal`.
 //
 // # Arbiter
 //
