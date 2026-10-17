@@ -31,7 +31,7 @@ import (
 // siteLabelPrefix starts every holder and wait record this verb writes, so `lyx loom status` names the command that holds or waits for a slot.
 const siteLabelPrefix = "lyx gate test"
 
-// runTest runs request and returns the verb's exit code: go test's own, SlotBusyExit for a hub whose slots stay held past its wait bound, 128 plus the signal number after a terminating signal, and 1 for a refusal.
+// runTest runs request and returns the verb's exit code: go test's own, SlotBusyExit for a hub whose slots stay held past request.slotWait, 128 plus the signal number after a terminating signal, and 1 for a refusal.
 func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	if len(request.packages) == 0 {
 		return refusePackages(out)
@@ -74,7 +74,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 		if inherited := os.Getenv(gateslot.InheritEnv); inherited != "" && pool.Inherited(inherited) {
 			logger.Info("gate test: running inside the slot an enclosing gate run holds", "slot", inherited, "dir", dir)
 		} else {
-			lease, code := acquireSlot(runCtx, out, pool, limits, location, request)
+			lease, code := acquireSlot(runCtx, out, pool, location, request)
 			if lease == nil {
 				return exitAfterSignal(caught, code)
 			}
@@ -154,9 +154,9 @@ func resolveHub(dir string) (*lyxcwd.Location, bool, error) {
 	return location, true, nil
 }
 
-// acquireSlot waits for a slot of pool, keeping a wait record in the worktree's wait directory until the acquire returns, for at most limits.CLIWait.
+// acquireSlot waits for a slot of pool, keeping a wait record in the worktree's wait directory until the acquire returns, for at most request.slotWait.
 // It returns the held lease, or a nil lease and the exit code to return: SlotBusyExit with the holders named once the wait bound passes, and 1 for any other failure, a cancelled ctx included.
-func acquireSlot(ctx context.Context, out io.Writer, pool *gateslot.Pool, limits gateslot.Limits, location *lyxcwd.Location, request testRequest) (*gateslot.Lease, int) {
+func acquireSlot(ctx context.Context, out io.Writer, pool *gateslot.Pool, location *lyxcwd.Location, request testRequest) (*gateslot.Lease, int) {
 	site := siteLabelPrefix + " " + strings.Join(request.packages, " ")
 	waitPath, err := gateslot.WriteWait(gateslot.WaitDir(location.AnchorPath()), gateslot.Wait{Site: site, PID: os.Getpid(), Started: time.Now()})
 	if err != nil {
@@ -165,7 +165,7 @@ func acquireSlot(ctx context.Context, out io.Writer, pool *gateslot.Pool, limits
 		defer os.Remove(waitPath)
 	}
 
-	waitCtx, cancel := context.WithTimeout(ctx, limits.CLIWait)
+	waitCtx, cancel := context.WithTimeout(ctx, request.slotWait)
 	defer cancel()
 	lease, err := pool.Acquire(waitCtx, gateslot.Holder{Worktree: location.WorktreePath(), Site: site})
 	switch {
@@ -174,14 +174,14 @@ func acquireSlot(ctx context.Context, out io.Writer, pool *gateslot.Pool, limits
 	case ctx.Err() != nil:
 		return nil, 1
 	case errors.Is(err, context.DeadlineExceeded):
-		return nil, refuseSlotBusy(out, pool, limits)
+		return nil, answerSlotBusy(out, pool, request.slotWait)
 	default:
 		return nil, output.Err(out, fmt.Sprintf("gate test: cannot acquire a gate slot: %v; way forward: re-run the same command", err))
 	}
 }
 
-// refuseSlotBusy writes the slot-busy refusal naming each holder's worktree and site, and returns SlotBusyExit.
-func refuseSlotBusy(out io.Writer, pool *gateslot.Pool, limits gateslot.Limits) int {
+// answerSlotBusy writes the ok answer that no slot freed within waited, naming each holder's worktree and site and telling the caller to run the same command again, and returns SlotBusyExit.
+func answerSlotBusy(out io.Writer, pool *gateslot.Pool, waited time.Duration) int {
 	holders, err := pool.Holders()
 	if err != nil {
 		logger.Warn("gate test: could not read the gate holders", "cause", err)
@@ -192,8 +192,8 @@ func refuseSlotBusy(out io.Writer, pool *gateslot.Pool, limits gateslot.Limits) 
 		named = append(named, map[string]string{"worktree": holder.Worktree, "site": holder.Site})
 		described = append(described, fmt.Sprintf("%s (%s)", holder.Worktree, holder.Site))
 	}
-	message := fmt.Sprintf("gate test: no gate slot freed within %s; held by %s; way forward: re-run the same command", limits.CLIWait, strings.Join(described, ", "))
-	output.ErrFields(out, message, map[string]any{"holders": named})
+	message := fmt.Sprintf("gate test: no gate slot is free yet after %s; held by %s; run the same command again in a turn that does nothing else, so the prompt cache stays warm between calls", waited, strings.Join(described, ", "))
+	output.Ok(out, map[string]any{"slot_free": false, "holders": named, "message": message})
 	return SlotBusyExit
 }
 

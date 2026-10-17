@@ -739,6 +739,7 @@ func TestBuildDenyNotice_SentenceContent(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Gate rule: run lyx gate test in the foreground with the Bash tool timeout set to 3600000, never in the background",
+		"When it answers that no gate slot is free yet, run the same command again in a turn that does nothing else, so the prompt cache stays warm between calls",
 		"never cd into the directory you already work in",
 	} {
 		if !strings.Contains(nonFork, want) {

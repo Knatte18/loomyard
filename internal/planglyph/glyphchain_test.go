@@ -1048,7 +1048,7 @@ func unusableGatePool(t *testing.T) *gateslot.Pool {
 	if err := os.MkdirAll(filepath.Dir(config), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(config, []byte("slots: 0\ngo_parallel: 1\ncli_wait_sec: 1\n"), 0o644); err != nil {
+	if err := os.WriteFile(config, []byte("slots: 0\ngo_parallel: 1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return &gateslot.Pool{
