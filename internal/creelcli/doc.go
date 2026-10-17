@@ -9,5 +9,8 @@
 // The daemon writes its start header and its pid-tagged warnings to its stderr, which that spawn points at the daemon log, so a start failure reaches the file.
 // `read` acknowledges its messages only once its envelope was written, so output that cannot be written leaves them unread.
 // A refusal whose JSON envelope cannot be written to stdout writes the error to stderr with the same exit code, on one line that opens with `creel: ` once, whether or not the error already carried the prefix.
+// A success envelope that cannot be written exits 1 with one `creel: ` answer line on stderr, after any stall notes.
+// For post and inject the line names what they already stored, and for a forward, hold, release or interrupt it says the verb took effect.
+// The refusal fallback line opens with that statement too for a post or inject that stored before it refused.
 // The hub delivery in this package implements the engine's delivery seam over the hub's worktrees, reed's persisted state and shuttle.
 package creelcli
