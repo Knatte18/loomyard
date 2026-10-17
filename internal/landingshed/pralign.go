@@ -342,7 +342,7 @@ func (p *PRAlign) findPullRequest(ctx context.Context) (pr *github.PullRequest, 
 		logger.Warn("landingshed: github call failed", "producer", prAlignName, "action", "new github client", "cause", err)
 		return nil, true, nil
 	}
-	found, err := FindPullRequest(ctx, client, owner, repo, p.deps.TaskBranch, p.deps.ParentBranch)
+	found, _, err := FindPullRequest(ctx, client, owner, repo, p.deps.TaskBranch, p.deps.ParentBranch, p.deps.RunStart)
 	if err != nil {
 		logger.Warn("landingshed: github call failed", "producer", prAlignName, "action", "query existing pull request", "owner", owner, "repo", repo, "cause", err)
 		if terr := transientFailure(ctx, prAlignName, "query existing pull request", err); terr != nil {

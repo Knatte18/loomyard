@@ -8,8 +8,11 @@ package loomcli
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -82,6 +85,7 @@ func TestWire_Real_PublishRejectedPushNamesRemoteTip(t *testing.T) {
 		nil,
 		planVerifySource(location),
 		parentLockDeps(location, shedrun.SelfRunID, "", ""),
+		time.Time{},
 	)
 	// The pair has no run status file to commit and no plan to read a verify command from.
 	deps.CommitStatus = nil
@@ -144,5 +148,27 @@ func TestWireLanding_TellsLanguageSkills(t *testing.T) {
 
 	if want := []string{"scribe:golang-testing"}; !slices.Equal(c.env.Landing.LanguageSkills, want) {
 		t.Errorf("env.Landing.LanguageSkills = %v; want %v", c.env.Landing.LanguageSkills, want)
+	}
+
+	seedFile := shedrun.SeedFile(location, shedrun.SelfRunID)
+	if err := os.MkdirAll(filepath.Dir(seedFile), 0o755); err != nil {
+		t.Fatalf("MkdirAll(run directory) error = %v; want nil", err)
+	}
+	if err := os.WriteFile(seedFile, []byte(`{"recipe":"loom","driver":"go","started_at":"2026-10-01T08:00:00Z"}`), 0o644); err != nil {
+		t.Fatalf("WriteFile(seed) error = %v; want nil", err)
+	}
+	if err := c.wireLanding(); err != nil {
+		t.Fatalf("wireLanding() with a seeded start = %v; want nil", err)
+	}
+	if want := time.Date(2026, 10, 1, 8, 0, 0, 0, time.UTC); !c.env.Landing.RunStart.Equal(want) {
+		t.Errorf("env.Landing.RunStart = %v; want %v", c.env.Landing.RunStart, want)
+	}
+
+	if err := os.WriteFile(seedFile, []byte("{not json"), 0o644); err != nil {
+		t.Fatalf("WriteFile(undecodable seed) error = %v; want nil", err)
+	}
+	err = c.wireLanding()
+	if err == nil || !strings.Contains(err.Error(), seedFile) || !strings.Contains(err.Error(), "then lyx shed seed self --recipe loom --driver go --param parent=") {
+		t.Errorf("wireLanding() with an undecodable seed = %v; want an error naming %s and the re-seed way forward", err, seedFile)
 	}
 }

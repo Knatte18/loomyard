@@ -199,6 +199,15 @@ func TestPRAlign(t *testing.T) {
 		{name: "no pull request ends Done and spawns nothing", listBody: "[]"},
 		{name: "a closed pull request ends Done and spawns nothing", listBody: closedPR},
 		{
+			name: "an older open pull request spawns nothing and records nothing", listBody: `[{"number":3,"state":"open","created_at":"2026-01-01T00:00:00Z","head":{"sha":"` + prGateHead + `"}}]`,
+			setup: func(t *testing.T, f *alignFixture) { f.deps.RunStart = time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC) },
+		},
+		{
+			name: "an open pull request created after the run started is aligned and its approve applied", listBody: `[{"number":3,"state":"open","created_at":"2026-07-01T00:00:00Z","head":{"sha":"` + prGateHead + `"}}]`,
+			setup:  func(t *testing.T, f *alignFixture) { f.deps.RunStart = time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC) },
+			script: []alignment.Outcome{approveOutcome()}, wantBegins: 1, wantSpawned: 1, wantApproval: true,
+		},
+		{
 			name: "a snapshot error spawns nothing and leaves a note", listBody: openPR(3, prGateHead),
 			setup:    func(t *testing.T, f *alignFixture) { f.snapErr = errors.New("board down") },
 			wantNote: "board down",

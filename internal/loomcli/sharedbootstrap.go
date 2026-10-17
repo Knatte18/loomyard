@@ -322,6 +322,10 @@ func (c *loomCLI) wireLanding() error {
 		// empty string rather than refusing this build itself.
 		originURL = ""
 	}
+	runStart, err := seedRunStart(c.location)
+	if err != nil {
+		return fmt.Errorf("%w; way forward: rm %s, then lyx shed seed self --recipe loom --driver go --param parent=%s", err, shedrun.SeedFile(c.location, shedrun.SelfRunID), parentBranch)
+	}
 	syncOpts := fabricengine.EnvSyncOptions()
 	pushBranch := func() error {
 		_, err := handle.PushBranch(syncOpts)
@@ -345,6 +349,7 @@ func (c *loomCLI) wireLanding() error {
 		conflictSessionStopper(c.reed.Status, c.runner.StopStrand),
 		c.verifySource(),
 		parentLockDeps(c.location, c.runID, c.shedPaths.StatusPath, c.shedPaths.StatusLockPath),
+		runStart,
 	)
 	return nil
 }

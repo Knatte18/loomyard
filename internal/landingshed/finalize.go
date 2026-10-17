@@ -348,7 +348,7 @@ func (fz *Finalize) closePullRequest(ctx context.Context, parentHandle parentMer
 		warn("new github client", err)
 		return
 	}
-	pr, err := FindPullRequest(ctx, client, owner, repo, fz.deps.TaskBranch, fz.deps.ParentBranch)
+	pr, _, err := FindPullRequest(ctx, client, owner, repo, fz.deps.TaskBranch, fz.deps.ParentBranch, fz.deps.RunStart)
 	if err != nil {
 		warn("query pull request", err)
 		return

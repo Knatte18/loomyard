@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/go-github/v75/github"
 
@@ -507,19 +508,23 @@ func TestPublish_OpenPullRequest(t *testing.T) {
 		name       string
 		prTitle    string
 		prBody     string
+		createdAt  string
+		runStart   time.Time
 		editStatus int
 		wantEdits  int
 		wantOut    shedengine.Outcome
 		wantClass  shedengine.TransientClass
 	}{
-		{"differing description is edited", "Old Title", "Old body.", http.StatusOK, 1, shedengine.Done, ""},
-		{"matching description is left alone", "New Title", "\nNew body.\n", http.StatusOK, 0, shedengine.Done, ""},
-		{"502 edit failure is an error", "Old", "Old", http.StatusBadGateway, 1, "", shedengine.TransientGitHubAPI},
-		{"422 edit failure stays Stuck", "Old", "Old", http.StatusUnprocessableEntity, 1, shedengine.Stuck, ""},
+		{"differing description is edited", "Old Title", "Old body.", "", time.Time{}, http.StatusOK, 1, shedengine.Done, ""},
+		{"matching description is left alone", "New Title", "\nNew body.\n", "", time.Time{}, http.StatusOK, 0, shedengine.Done, ""},
+		{"502 edit failure is an error", "Old", "Old", "", time.Time{}, http.StatusBadGateway, 1, "", shedengine.TransientGitHubAPI},
+		{"422 edit failure stays Stuck", "Old", "Old", "", time.Time{}, http.StatusUnprocessableEntity, 1, shedengine.Stuck, ""},
+		{"created after the run started is edited", "Old Title", "Old body.", "2026-07-01T00:00:00Z", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), http.StatusOK, 1, shedengine.Done, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			deps := newTestDeps(t)
+			deps.RunStart = tt.runStart
 			writeSummary(t, deps.DescriptionPath, "New Title", "New body.")
 			var order []string
 			deps.PushBranch = func() error { order = append(order, "push"); return nil }
@@ -528,7 +533,11 @@ func TestPublish_OpenPullRequest(t *testing.T) {
 			// No "merged"/"merged_at" key at all: the real List Pull Requests endpoint never sets "merged"
 			// on an open PR and reports "merged_at": null (crucible round 3, F-R3-1) -- an absent key decodes
 			// to the same nil field either way.
-			list, err := json.Marshal([]map[string]any{{"number": 7, "state": "open", "title": tt.prTitle, "body": tt.prBody}})
+			entry := map[string]any{"number": 7, "state": "open", "title": tt.prTitle, "body": tt.prBody}
+			if tt.createdAt != "" {
+				entry["created_at"] = tt.createdAt
+			}
+			list, err := json.Marshal([]map[string]any{entry})
 			if err != nil {
 				t.Fatalf("marshal list body: %v", err)
 			}
@@ -571,20 +580,27 @@ func TestPublish_OpenPullRequest(t *testing.T) {
 // The list bodies are deliberately the real List response shape, so a mock the real API would never produce cannot pass here.
 func TestPublish_ExistingClosedPullRequest(t *testing.T) {
 	const prURL = "https://github.com/owner/repo/pull/7"
+	runStart := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 	tests := []struct {
-		name       string
-		listBody   string
-		wantOut    shedengine.Outcome
-		wantReason string
+		name        string
+		listBody    string
+		runStart    time.Time
+		wantOut     shedengine.Outcome
+		wantReason  string
+		wantCreates int
 	}{
-		{"merged", `[{"number":7,"state":"closed","merged_at":"2026-09-13T16:49:32Z"}]`, shedengine.Done, ""},
-		{"unmerged without a URL", `[{"number":7,"state":"closed"}]`, shedengine.Stuck, "the pull request was closed without being merged"},
-		{"unmerged with a URL", `[{"number":7,"state":"closed","html_url":"` + prURL + `"}]`, shedengine.Stuck, "the pull request was closed without being merged: " + prURL},
+		{"merged", `[{"number":7,"state":"closed","merged_at":"2026-09-13T16:49:32Z"}]`, time.Time{}, shedengine.Done, "", 0},
+		{"unmerged without a URL", `[{"number":7,"state":"closed"}]`, time.Time{}, shedengine.Stuck, "the pull request was closed without being merged", 0},
+		{"unmerged with a URL", `[{"number":7,"state":"closed","html_url":"` + prURL + `"}]`, time.Time{}, shedengine.Stuck, "the pull request was closed without being merged: " + prURL, 0},
+		{"older unmerged is replaced", `[{"number":7,"state":"closed","created_at":"2026-01-01T00:00:00Z"}]`, runStart, shedengine.Done, "", 1},
+		{"older merged is replaced", `[{"number":7,"state":"closed","created_at":"2026-01-01T00:00:00Z","merged_at":"2026-01-02T00:00:00Z"}]`, runStart, shedengine.Done, "", 1},
+		{"unmerged created after the run started", `[{"number":7,"state":"closed","created_at":"2026-07-01T00:00:00Z"}]`, runStart, shedengine.Stuck, "the pull request was closed without being merged", 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			deps := newTestDeps(t)
 			deps.PushBranch = func() error { return nil }
+			deps.RunStart = tt.runStart
 			p := &Publish{deps: deps}
 
 			var order []string
@@ -595,6 +611,9 @@ func TestPublish_ExistingClosedPullRequest(t *testing.T) {
 			ptr := shedfake.RequireOutcome(t, p, tt.wantOut)
 			if tt.wantOut == shedengine.Stuck && ptr.Reason != tt.wantReason {
 				t.Errorf("reason = %q; want %q", ptr.Reason, tt.wantReason)
+			}
+			if len(srv.createdBodies) != tt.wantCreates {
+				t.Errorf("created pull requests = %d; want %d", len(srv.createdBodies), tt.wantCreates)
 			}
 		})
 	}
@@ -652,33 +671,58 @@ func TestPublishGitHubErrorReason_ClassifiesDistinctly(t *testing.T) {
 	}
 }
 
+// TestFindPullRequest_QueryParametersAndEmptyList pins the one list query and how the run's start splits the listed pull requests into the run's own and the newest older open one.
 func TestFindPullRequest_QueryParametersAndEmptyList(t *testing.T) {
-	var got url.Values
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		got = r.URL.Query()
-		_, _ = w.Write([]byte("[]"))
-	}))
-	t.Cleanup(srv.Close)
+	since := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name          string
+		listBody      string
+		since         time.Time
+		wantPR        int
+		wantOlderOpen int
+	}{
+		{"empty list", `[]`, since, 0, 0},
+		{"zero since returns an older closed one", `[{"number":3,"state":"closed","created_at":"2026-01-01T00:00:00Z"}]`, time.Time{}, 3, 0},
+		{"only an older closed one", `[{"number":3,"state":"closed","created_at":"2026-01-01T00:00:00Z"}]`, since, 0, 0},
+		{"newer closed above an older open one", `[{"number":5,"state":"closed","created_at":"2026-07-01T00:00:00Z"},{"number":3,"state":"open","created_at":"2026-01-01T00:00:00Z"}]`, since, 5, 3},
+		{"older closed above an older open one", `[{"number":4,"state":"closed","created_at":"2026-02-01T00:00:00Z"},{"number":3,"state":"open","created_at":"2026-01-01T00:00:00Z"}]`, since, 0, 3},
+		{"two older open ones", `[{"number":4,"state":"open","created_at":"2026-02-01T00:00:00Z"},{"number":3,"state":"open","created_at":"2026-01-01T00:00:00Z"}]`, since, 0, 4},
+		{"created exactly at since", `[{"number":6,"state":"open","created_at":"2026-06-01T00:00:00Z"}]`, since, 6, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var got url.Values
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				got = r.URL.Query()
+				_, _ = w.Write([]byte(tt.listBody))
+			}))
+			t.Cleanup(srv.Close)
 
-	client := github.NewClient(nil).WithAuthToken("test-token")
-	parsed, err := url.Parse(srv.URL + "/")
-	if err != nil {
-		t.Fatalf("url.Parse: %v", err)
-	}
-	client.BaseURL = parsed
+			client := github.NewClient(nil).WithAuthToken("test-token")
+			parsed, err := url.Parse(srv.URL + "/")
+			if err != nil {
+				t.Fatalf("url.Parse: %v", err)
+			}
+			client.BaseURL = parsed
 
-	pr, err := FindPullRequest(context.Background(), client, "o", "r", "task", "parent")
-	if err != nil {
-		t.Fatalf("FindPullRequest: %v", err)
-	}
-	if pr != nil {
-		t.Errorf("pr = %v, want nil for an empty list", pr)
-	}
-	want := map[string]string{"state": "all", "head": "o:task", "base": "parent", "sort": "created", "direction": "desc"}
-	for k, v := range want {
-		if got.Get(k) != v {
-			t.Errorf("query %s = %q, want %q", k, got.Get(k), v)
-		}
+			pr, olderOpen, err := FindPullRequest(context.Background(), client, "o", "r", "task", "parent", tt.since)
+			if err != nil {
+				t.Fatalf("FindPullRequest: %v", err)
+			}
+			if pr.GetNumber() != tt.wantPR || (pr == nil) != (tt.wantPR == 0) {
+				t.Errorf("pr = %v; want number %d", pr, tt.wantPR)
+			}
+			if olderOpen.GetNumber() != tt.wantOlderOpen || (olderOpen == nil) != (tt.wantOlderOpen == 0) {
+				t.Errorf("olderOpen = %v; want number %d", olderOpen, tt.wantOlderOpen)
+			}
+			want := map[string]string{"state": "all", "head": "o:task", "base": "parent", "sort": "created", "direction": "desc"}
+			for k, v := range want {
+				if got.Get(k) != v {
+					t.Errorf("query %s = %q, want %q", k, got.Get(k), v)
+				}
+			}
+		})
 	}
 }
 
