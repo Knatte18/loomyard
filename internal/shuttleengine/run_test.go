@@ -557,13 +557,8 @@ func TestRunner_Start_AddStrandFailure_CleansRunDir(t *testing.T) {
 		t.Fatal("Start() = nil error, want AddStrand failure to propagate")
 	}
 
-	root := runDirRoot(runner.cfg, anchorPath)
-	entries, rerr := os.ReadDir(root)
-	if rerr != nil && !os.IsNotExist(rerr) {
-		t.Fatalf("read run dir root: %v", rerr)
-	}
-	if len(entries) != 0 {
-		t.Errorf("run dir root has %d leftover entr(y/ies), want 0 (AddStrand failure must clean up)", len(entries))
+	if dirs := runDirsUnder(t, runDirRoot(runner.cfg, anchorPath)); len(dirs) != 0 {
+		t.Errorf("run dir root has %d leftover run director(y/ies), want 0 (AddStrand failure must clean up)", len(dirs))
 	}
 }
 
@@ -634,13 +629,8 @@ func TestRunner_Start_SaveRunStateFailure(t *testing.T) {
 			if tt.removeStrandErr != nil {
 				return
 			}
-			root := runDirRoot(runner.cfg, anchorPath)
-			entries, rerr := os.ReadDir(root)
-			if rerr != nil && !os.IsNotExist(rerr) {
-				t.Fatalf("read run dir root: %v", rerr)
-			}
-			if len(entries) != 0 {
-				t.Errorf("run dir root has %d leftover entr(y/ies), want 0 (save-state failure must clean up)", len(entries))
+			if dirs := runDirsUnder(t, runDirRoot(runner.cfg, anchorPath)); len(dirs) != 0 {
+				t.Errorf("run dir root has %d leftover run director(y/ies), want 0 (save-state failure must clean up)", len(dirs))
 			}
 		})
 	}

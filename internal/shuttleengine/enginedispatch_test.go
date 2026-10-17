@@ -325,6 +325,31 @@ func TestRunner_EngineSetDispatch(t *testing.T) {
 		}
 	})
 
+	t.Run("EnginesRun_counts_a_swept_run_and_a_record_without_an_engine", func(t *testing.T) {
+		t.Parallel()
+		rig := newDispatchRig(t)
+		if got, err := rig.fx.Runner.EnginesRun(); err != nil || len(got) != 0 {
+			t.Fatalf("EnginesRun() before any run = %v, %v; want no names", got, err)
+		}
+
+		rig.start("b")
+		_, runDir := rig.record()
+		if err := os.RemoveAll(runDir); err != nil {
+			t.Fatalf("remove run dir: %v", err)
+		}
+		if got, err := rig.fx.Runner.EnginesRun(); err != nil || !slices.Equal(got, []string{"b"}) {
+			t.Errorf("EnginesRun() after the run dir was swept = %v, %v; want [b]", got, err)
+		}
+
+		legacyDir := filepath.Join(runDirRoot(rig.fx.Runner.cfg, rig.fx.Anchor), "legacy")
+		if err := saveRunState(legacyDir, RunState{RunID: "legacy", StrandGUID: "strand-legacy"}); err != nil {
+			t.Fatalf("save legacy run record: %v", err)
+		}
+		if got, err := rig.fx.Runner.EnginesRun(); err != nil || !slices.Equal(got, []string{"a", "b"}) {
+			t.Errorf("EnginesRun() with a record naming no engine = %v, %v; want [a b]", got, err)
+		}
+	})
+
 	t.Run("Open_resolves_the_named_engine_and_refuses_one_without_a_session_opener", func(t *testing.T) {
 		t.Parallel()
 		tests := []struct {
