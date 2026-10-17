@@ -102,7 +102,7 @@ func TestBurlerFixProducer_Call_RefusesARoundWithNoAcceptedReview(t *testing.T) 
 			}
 			spec := newHalfSpec()
 			spec.requiresFans = true
-			spec.opts.FixFanKey = "discussion_fixer_fan in loom.yaml"
+			spec.opts.FixFanKey = "discussion_fixer_fan"
 			p := newFixProducer(t, runDir, runner, spec)
 
 			_, _, err := p.Call(context.Background())
@@ -115,7 +115,7 @@ func TestBurlerFixProducer_Call_RefusesARoundWithNoAcceptedReview(t *testing.T) 
 				return
 			}
 			want := "round 2's usage record holds no recorded fan names ("
-			source := "the row's fixer fan comes from discussion_fixer_fan in loom.yaml"
+			source := "the row's fixer fan comes from discussion_fixer_fan"
 			if err == nil || !strings.Contains(err.Error(), want) || !strings.Contains(err.Error(), source) || !strings.HasSuffix(err.Error(), wayForwardToReview) {
 				t.Fatalf("Call() error = %v; want one containing %q and %q and ending with %q", err, want, source, wayForwardToReview)
 			}
