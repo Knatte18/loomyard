@@ -170,7 +170,7 @@ func TestFinalize_MergeMarkPushOrderAndVerdict(t *testing.T) {
 
 // TestFinalize_MergeOptionsCarriesComposedMessage asserts the merge-in runs first and a successful parent-side merge passes MergeOptions carrying the task branch as its source, both the composed final-summary message and the configured Squash value, for both merge shapes -- the message is set whether or not Squash is true.
 //
-//testtiming:keep pins the composed MergeOptions.Message, its Co-Authored-By trailer and the Squash value for both merge shapes, which its covering tests do not assert
+//testtiming:keep pins the composed MergeOptions.Message, its engine trailer and the Squash value for both merge shapes, which its covering tests do not assert
 func TestFinalize_MergeOptionsCarriesComposedMessage(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -202,11 +202,11 @@ func TestFinalize_MergeOptionsCarriesComposedMessage(t *testing.T) {
 				t.Errorf("parent-side merge source = %q; want %q", merger.calls[0].source, deps.TaskBranch)
 			}
 			got := merger.calls[0].opts
-			want := summary.LandingMessage(deps.Config.CoAuthoredBy)
+			want := summary.LandingMessage(deps.Config.TrailerBlock([]string{"claude"}))
 			if got.Message != want {
 				t.Errorf("MergeOptions.Message = %q; want %q", got.Message, want)
 			}
-			if trailer := "Co-Authored-By: " + deps.Config.CoAuthoredBy; !strings.HasSuffix(got.Message, trailer) {
+			if trailer := "\n\n" + deps.Config.EngineTrailers["claude"]; !strings.HasSuffix(got.Message, trailer) {
 				t.Errorf("MergeOptions.Message = %q; want suffix %q", got.Message, trailer)
 			}
 			if got.Squash != tt.squash {
@@ -216,24 +216,29 @@ func TestFinalize_MergeOptionsCarriesComposedMessage(t *testing.T) {
 	}
 }
 
-// TestFinalize_UnusableSummaryArtifact_ErrorBeforeMergeOrCommit asserts a missing or malformed final-summary artifact makes Call return an error with no merge attempted and no status commit performed -- proving the top-of-Call parse runs before either.
-func TestFinalize_UnusableSummaryArtifact_ErrorBeforeMergeOrCommit(t *testing.T) {
+// TestFinalize_UnusableMessageInput_ErrorBeforeMergeOrCommit asserts a missing or malformed final-summary artifact, or an unreadable set of engines the task ran under, makes Call return an error with no merge attempted and no status commit performed -- proving the top-of-Call reads run before either.
+func TestFinalize_UnusableMessageInput_ErrorBeforeMergeOrCommit(t *testing.T) {
 	tests := []struct {
 		name   string
-		damage func(t *testing.T, path string)
+		damage func(t *testing.T, deps *Deps)
 	}{
-		{"missing", func(t *testing.T, _ string) {}},
-		{"malformed", func(t *testing.T, path string) {
-			if err := os.WriteFile(path, []byte("not a heading\n"), 0o644); err != nil {
+		{"missing", func(t *testing.T, deps *Deps) {
+			deps.DescriptionPath = filepath.Join(t.TempDir(), "summary.md")
+		}},
+		{"malformed", func(t *testing.T, deps *Deps) {
+			deps.DescriptionPath = filepath.Join(t.TempDir(), "summary.md")
+			if err := os.WriteFile(deps.DescriptionPath, []byte("not a heading\n"), 0o644); err != nil {
 				t.Fatalf("WriteFile(malformed summary): %v", err)
 			}
+		}},
+		{"engines_unreadable", func(t *testing.T, deps *Deps) {
+			deps.EnginesRun = func() ([]string, error) { return nil, errors.New("engine ledger unreadable") }
 		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			deps := newTestDeps(t)
-			deps.DescriptionPath = filepath.Join(t.TempDir(), "summary.md")
-			tt.damage(t, deps.DescriptionPath)
+			tt.damage(t, &deps)
 			committed := false
 			deps.CommitStatus = func() error { committed = true; return nil }
 			res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
@@ -242,7 +247,7 @@ func TestFinalize_UnusableSummaryArtifact_ErrorBeforeMergeOrCommit(t *testing.T)
 
 			outcome, _, err := fz.Call(context.Background())
 			if err == nil {
-				t.Fatal("Call() error = nil; want an error for an unusable change description")
+				t.Fatal("Call() error = nil; want an error for an unusable landing message input")
 			}
 			if outcome != "" {
 				t.Errorf("Call() outcome = %q; want empty on a hard error", outcome)
@@ -318,7 +323,7 @@ func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 			if ptr.Reroute != tt.wantReroute {
 				t.Errorf("OutputPointer.Reroute = %v; want %v", ptr.Reroute, tt.wantReroute)
 			}
-			want := summary.LandingMessage(deps.Config.CoAuthoredBy)
+			want := summary.LandingMessage(deps.Config.TrailerBlock([]string{"claude"}))
 			for i, call := range merger.calls {
 				if call.opts.Message != want {
 					t.Errorf("attempt %d MergeOptions.Message = %q; want %q (the same composed message every attempt)", i+1, call.opts.Message, want)
