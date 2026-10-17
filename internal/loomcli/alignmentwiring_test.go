@@ -148,6 +148,7 @@ func TestParentReviewAligner(t *testing.T) {
 	for _, row := range []struct {
 		name        string
 		answer      string
+		notesBefore []boardengine.Task
 		change      func(t *testing.T, f *alignerFixture)
 		wantVerdict string
 		wantReason  string
@@ -182,6 +183,16 @@ func TestParentReviewAligner(t *testing.T) {
 			answer: approve,
 			change: func(t *testing.T, f *alignerFixture) {
 				f.notes = append(f.notes, boardengine.Task{ID: 7, Kind: boardengine.KindNote, Title: "Decision for pair: hold the landing"})
+			},
+			wantVerdict: alignment.VerdictEscalate,
+			wantReason:  alignment.DecisionRecordedReason,
+		},
+		{
+			name:        "an approve after a counted decision note's body changed",
+			answer:      approve,
+			notesBefore: []boardengine.Task{{ID: 7, Kind: boardengine.KindNote, Title: "Decision for pair: hold the landing", Body: "first"}},
+			change: func(t *testing.T, f *alignerFixture) {
+				f.notes[0].Body = "second"
 			},
 			wantVerdict: alignment.VerdictEscalate,
 			wantReason:  alignment.DecisionRecordedReason,
@@ -232,6 +243,7 @@ func TestParentReviewAligner(t *testing.T) {
 		t.Run(row.name, func(t *testing.T) {
 			t.Parallel()
 			f := newAlignerFixture(t)
+			f.notes = append(f.notes, row.notesBefore...)
 			aligner := f.aligner(t)
 			spawned, err := aligner.Spawn(1)
 			if err != nil {
