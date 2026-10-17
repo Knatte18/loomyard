@@ -25,9 +25,8 @@ const alignmentTickFloor = time.Second
 
 // The reasons a note carries when the agent's approve or reject is not applied.
 const (
-	decisionRecordedReason = "a decision was recorded for this task while the alignment agent ran"
-	approveNotGivenReason  = "the alignment agent approves; alignment_pr_approve is false, so the approval is the run's parent's to give"
-	secondRejectReason     = "the alignment agent rejected this run once already; a second agent reject goes to the run's parent"
+	approveNotGivenReason = "the alignment agent approves; alignment_pr_approve is false, so the approval is the run's parent's to give"
+	secondRejectReason    = "the alignment agent rejected this run once already; a second agent reject goes to the run's parent"
 )
 
 // AlignmentConfig is the alignment settings PR-Align reads on each call.
@@ -62,7 +61,7 @@ type AlignmentDeps struct {
 	Config func() (AlignmentConfig, error)
 	// Session is the agent's session at the PR-Gate point.
 	Session AlignmentSession
-	// Snapshot reads the decision snapshot: the decision record and the notes naming the task.
+	// Snapshot reads the decision snapshot: the decision record and the board notes titled "Decision for <slug>:".
 	Snapshot func() (string, error)
 	// Prompt holds the run's static prompt fields; PR-Align fills the point, the parent branch, the pull request number and head.
 	Prompt alignment.PromptInput
@@ -268,7 +267,7 @@ func (p *PRAlign) apply(ctx context.Context, cfg AlignmentConfig, attempt alignm
 			return leave(note)
 		}
 		if current != attempt.Snapshot {
-			note.Reason = decisionRecordedReason
+			note.Reason = alignment.DecisionRecordedReason
 			return leave(note)
 		}
 		if !cfg.PRApprove {
@@ -343,7 +342,7 @@ func (p *PRAlign) findPullRequest(ctx context.Context) (pr *github.PullRequest, 
 		logger.Warn("landingshed: github call failed", "producer", prAlignName, "action", "new github client", "cause", err)
 		return nil, true, nil
 	}
-	found, err := FindPullRequest(ctx, client, owner, repo, p.deps.TaskBranch, p.deps.ParentBranch)
+	found, _, err := FindPullRequest(ctx, client, owner, repo, p.deps.TaskBranch, p.deps.ParentBranch, p.deps.RunStart)
 	if err != nil {
 		logger.Warn("landingshed: github call failed", "producer", prAlignName, "action", "query existing pull request", "owner", owner, "repo", repo, "cause", err)
 		if terr := transientFailure(ctx, prAlignName, "query existing pull request", err); terr != nil {

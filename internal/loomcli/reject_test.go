@@ -43,7 +43,8 @@ func rejectFixture() (rejectDeps, *rejectCalls) {
 		branches: func() (string, string, string, error) {
 			return "task", "main", "https://github.com/acme/widgets.git", nil
 		},
-		findPR: func(context.Context, string, string, string, string) (*github.PullRequest, error) {
+		runStart: func() (time.Time, error) { return fixtureRunStart, nil },
+		findPR: func(context.Context, string, string, string, string, time.Time) (*github.PullRequest, error) {
 			return &github.PullRequest{
 				Number:  github.Ptr(7),
 				State:   github.Ptr("open"),
@@ -183,14 +184,23 @@ func TestRejectVerb_Refusals(t *testing.T) {
 		{
 			name: "NoPullRequest",
 			mutate: func(d *rejectDeps) {
-				d.findPR = func(context.Context, string, string, string, string) (*github.PullRequest, error) { return nil, nil }
+				d.findPR = func(context.Context, string, string, string, string, time.Time) (*github.PullRequest, error) {
+					return nil, nil
+				}
 			},
 			wantMsg: "no pull request",
 		},
 		{
+			name: "SeedUnreadable",
+			mutate: func(d *rejectDeps) {
+				d.runStart = func() (time.Time, error) { return time.Time{}, errors.New("seed broke") }
+			},
+			wantMsg: "read the run's start: seed broke; way forward: transient, re-run lyx loom reject",
+		},
+		{
 			name: "PullRequestNotOpen",
 			mutate: func(d *rejectDeps) {
-				d.findPR = func(context.Context, string, string, string, string) (*github.PullRequest, error) {
+				d.findPR = func(context.Context, string, string, string, string, time.Time) (*github.PullRequest, error) {
 					return &github.PullRequest{Number: github.Ptr(7), State: github.Ptr("closed")}, nil
 				}
 			},
@@ -260,9 +270,18 @@ func TestRejectVerb_Success(t *testing.T) {
 				asDarn(&d, true)
 			}
 			d.readStatus = func() (shedengine.Status, bool, error) { return tt.status, true, nil }
+			findPR := d.findPR
+			var gotSince time.Time
+			d.findPR = func(ctx context.Context, owner, repo, head, base string, since time.Time) (*github.PullRequest, error) {
+				gotSince = since
+				return findPR(ctx, owner, repo, head, base, since)
+			}
 			var out bytes.Buffer
 			if code := rejectVerb(context.Background(), &out, d, "review.md"); code != 0 {
 				t.Fatalf("exit = %d; want 0; out = %s", code, out.String())
+			}
+			if !gotSince.Equal(fixtureRunStart) {
+				t.Errorf("findPR since = %v; want the fixture's run start %v", gotSince, fixtureRunStart)
 			}
 			want := landingshed.Rejection{PRNumber: 7, HeadSHA: "abc123", RejectedAt: "2026-09-30T12:00:00Z", Findings: "fix the thing\n"}
 			if len(calls.written) != 1 || calls.written[0] != want {

@@ -66,6 +66,12 @@ type Deps struct {
 	// not compute.
 	ScratchDir string
 
+	// RunStart is the run's start, the `started_at` stamp of the pair's seed.
+	// Told by the caller and derived by nothing here.
+	// Every pull-request lookup in this package is bounded by it: a pull request created before it belongs to an earlier run and reads as none.
+	// Zero means unbounded.
+	RunStart time.Time
+
 	// OriginURL is the told remote URL string Publish parses into an owner/repo pair via
 	// githubclient.ParseOwnerRepo. Read by the caller, never resolved here.
 	OriginURL string
