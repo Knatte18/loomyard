@@ -17,6 +17,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
@@ -103,10 +104,14 @@ func templateConfig() Config {
 		PlanFix:                  ModelSpecList{""},
 		WebsterReview:            ModelSpecList{"sonnet[high]"},
 		WebsterFix:               ModelSpecList{""},
-		DiscussionFan:            FanList{""},
-		PlanFan:                  FanList{""},
-		DiscussionFixFan:         FanList{""},
-		PlanFixFan:               FanList{""},
+		DiscussionFan:            burlerengine.FanList{""},
+		PlanFan:                  burlerengine.FanList{""},
+		WebsterFan:               burlerengine.FanList{""},
+		MergeFan:                 burlerengine.FanList{""},
+		DiscussionFixFan:         burlerengine.FanList{""},
+		PlanFixFan:               burlerengine.FanList{""},
+		WebsterFixFan:            burlerengine.FanList{""},
+		MergeFixFan:              burlerengine.FanList{""},
 		Judge:                    "sonnet[medium]",
 		ReviewTimeoutMin:         240,
 		Friction:                 "sonnet[medium]",
@@ -199,10 +204,12 @@ review_timeout_min: 240
 		},
 		{
 			name:   "each fan key as one fan name",
-			values: map[string]string{"discussion_fan": "standard", "plan_fan": "full", "discussion_fix_fan": "fix-discussion", "plan_fix_fan": "fix-plan"},
+			values: map[string]string{"discussion_fan": "standard", "plan_fan": "full", "webster_fan": "review-code", "merge_fan": "standard", "discussion_fix_fan": "fix-discussion", "plan_fix_fan": "fix-plan", "webster_fix_fan": "fix-code", "merge_fix_fan": "fix-code"},
 			mutate: func(c *Config) {
-				c.DiscussionFan, c.PlanFan = FanList{"standard"}, FanList{"full"}
-				c.DiscussionFixFan, c.PlanFixFan = FanList{"fix-discussion"}, FanList{"fix-plan"}
+				c.DiscussionFan, c.PlanFan = burlerengine.FanList{"standard"}, burlerengine.FanList{"full"}
+				c.WebsterFan, c.MergeFan = burlerengine.FanList{"review-code"}, burlerengine.FanList{"standard"}
+				c.DiscussionFixFan, c.PlanFixFan = burlerengine.FanList{"fix-discussion"}, burlerengine.FanList{"fix-plan"}
+				c.WebsterFixFan, c.MergeFixFan = burlerengine.FanList{"fix-code"}, burlerengine.FanList{"fix-code"}
 			},
 		},
 		{
@@ -210,12 +217,18 @@ review_timeout_min: 240
 			values: map[string]string{
 				"discussion_fan":     "\n  - \"\"\n  - review-discussion",
 				"plan_fan":           "\n  - review-plan\n  - \"\"",
+				"webster_fan":        "\n  - review-code\n  - \"\"",
+				"merge_fan":          "\n  - \"\"\n  - review-code",
 				"discussion_fix_fan": "\n  - \"\"\n  - fix-discussion",
 				"plan_fix_fan":       "\n  - fix-plan\n  - \"\"",
+				"webster_fix_fan":    "\n  - fix-code\n  - \"\"",
+				"merge_fix_fan":      "\n  - \"\"\n  - fix-code",
 			},
 			mutate: func(c *Config) {
-				c.DiscussionFan, c.PlanFan = FanList{"", "review-discussion"}, FanList{"review-plan", ""}
-				c.DiscussionFixFan, c.PlanFixFan = FanList{"", "fix-discussion"}, FanList{"fix-plan", ""}
+				c.DiscussionFan, c.PlanFan = burlerengine.FanList{"", "review-discussion"}, burlerengine.FanList{"review-plan", ""}
+				c.WebsterFan, c.MergeFan = burlerengine.FanList{"review-code", ""}, burlerengine.FanList{"", "review-code"}
+				c.DiscussionFixFan, c.PlanFixFan = burlerengine.FanList{"", "fix-discussion"}, burlerengine.FanList{"fix-plan", ""}
+				c.WebsterFixFan, c.MergeFixFan = burlerengine.FanList{"fix-code", ""}, burlerengine.FanList{"", "fix-code"}
 			},
 		},
 		{
@@ -616,6 +629,10 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"empty plan_fan list", "plan_fan", "[]", []string{"the list is empty", `write ""`}, ""},
 		{"empty discussion_fix_fan list", "discussion_fix_fan", "[]", []string{"the list is empty", `write ""`}, ""},
 		{"empty plan_fix_fan list", "plan_fix_fan", "[]", []string{"the list is empty", `write ""`}, ""},
+		{"unknown webster_fan", "webster_fan", "nosuchfan", []string{`loom config key "webster_fan" entry 1`, `"nosuchfan"`, "known fans: ", `set the entry to ""`}, ""},
+		{"unknown second merge_fix_fan entry", "merge_fix_fan", "\n  - \"\"\n  - nosuchfan", []string{`loom config key "merge_fix_fan" entry 2`, `"nosuchfan"`, "define the fan in burler.yaml"}, ""},
+		{"empty merge_fan list", "merge_fan", "[]", []string{`loom config key "merge_fan"`, "the list is empty", `write ""`}, ""},
+		{"mapping webster_fix_fan value", "webster_fix_fan", "\n  model: opus", []string{`loom config key "webster_fix_fan"`, "neither a fan name nor a list of fan names"}, ""},
 		{"mapping discussion_fix_fan value", "discussion_fix_fan", "\n  model: opus", []string{"line ", "neither a fan name nor a list of fan names", "a list of fan names"}, ""},
 		{"mapping inside a plan_fan list", "plan_fan", "\n  - full\n  - model: opus", []string{"line ", "neither a fan name nor a list of fan names", "a list of fan names"}, ""},
 		{"set discussion_fan with a malformed burler.yaml", "discussion_fan", "standard", []string{"burler: config file ", "parse doc YAML", "fix burler.yaml, or set the key to empty"}, malformedBurlerYAML},
@@ -731,7 +748,7 @@ func TestLoadConfig_Refuses(t *testing.T) {
 
 	t.Run("a local fan key is refused naming the local file and the key", func(t *testing.T) {
 		t.Parallel()
-		for _, key := range []string{"discussion_fan", "plan_fan", "discussion_fix_fan", "plan_fix_fan"} {
+		for _, key := range []string{"discussion_fan", "plan_fan", "webster_fan", "merge_fan", "discussion_fix_fan", "plan_fix_fan", "webster_fix_fan", "merge_fix_fan"} {
 			t.Run(key, func(t *testing.T) {
 				t.Parallel()
 				board, anchor := t.TempDir(), t.TempDir()

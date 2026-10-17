@@ -102,10 +102,10 @@ func burlerReviewEntry(name string, cfg Config, env Env) (shedengine.ShedProduce
 
 	clusterList, fixList := env.RowClusterFans[name], env.RowFixFans[name]
 	if hasFanName(clusterList) && profile.ClusterFan != "" {
-		return nil, fmt.Errorf("shedrecipe: BurlerReview: row %q: cluster fan list %v from loom.yaml through the wiring conflicts with cluster-fan %q set in the recipe's profile; way forward: remove cluster-fan from the recipe's profile for this row", name, clusterList, profile.ClusterFan)
+		return nil, fmt.Errorf("shedrecipe: BurlerReview: row %q: cluster fan list %v from the hub config through the wiring conflicts with cluster-fan %q set in the recipe's profile; way forward: remove cluster-fan from the recipe's profile for this row", name, clusterList, profile.ClusterFan)
 	}
 	if hasFanName(fixList) && profile.FixFan != "" {
-		return nil, fmt.Errorf("shedrecipe: BurlerReview: row %q: fix fan list %v from loom.yaml through the wiring conflicts with fix-fan %q set in the recipe's profile; way forward: remove fix-fan from the recipe's profile for this row", name, fixList, profile.FixFan)
+		return nil, fmt.Errorf("shedrecipe: BurlerReview: row %q: fix fan list %v from the hub config through the wiring conflicts with fix-fan %q set in the recipe's profile; way forward: remove fix-fan from the recipe's profile for this row", name, fixList, profile.FixFan)
 	}
 	var fans *shedadapters.RoundFans
 	_, hasClusterEntry := env.RowClusterFans[name]

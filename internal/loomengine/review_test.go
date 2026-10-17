@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
@@ -70,18 +71,23 @@ func TestResolveReview(t *testing.T) {
 		t.Errorf("ResolveReview(...).Timeout = %s; want %s", settings.Timeout, wantTimeout)
 	}
 
-	// Each of the two segments records the loom key its models came from: its own key when set, else the run-wide key.
+	// Each segment records the loom key its models came from: its own key when set, else the run-wide key.
 	if want := (SegmentKeys{Review: "review", Fix: "discussion_fix"}); settings.DiscussionKeys != want {
 		t.Errorf("ResolveReview(...).DiscussionKeys = %+v; want %+v", settings.DiscussionKeys, want)
 	}
 	if want := (SegmentKeys{Review: "plan_review", Fix: "fix"}); settings.PlanKeys != want {
 		t.Errorf("ResolveReview(...).PlanKeys = %+v; want %+v", settings.PlanKeys, want)
 	}
+	if want := (SegmentKeys{Review: "review", Fix: "fix"}); settings.WebsterKeys != want {
+		t.Errorf("ResolveReview(...).WebsterKeys = %+v; want %+v", settings.WebsterKeys, want)
+	}
 
 	// A set fan key changes no model: a fanned segment's reviewer list is still its own review list, else the run-wide one.
-	cfg.DiscussionFan = FanList{"standard"}
-	cfg.PlanFan = FanList{"", "full"}
-	cfg.DiscussionFixFan = FanList{"fix-discussion"}
+	cfg.DiscussionFan = burlerengine.FanList{"standard"}
+	cfg.PlanFan = burlerengine.FanList{"", "full"}
+	cfg.DiscussionFixFan = burlerengine.FanList{"fix-discussion"}
+	cfg.WebsterFan = burlerengine.FanList{"review-code"}
+	cfg.MergeFixFan = burlerengine.FanList{"fix-code"}
 	fanned, err := ResolveReview(cfg, reg)
 	if err != nil {
 		t.Fatalf("ResolveReview(fanned cfg) = _, %v; want nil error", err)

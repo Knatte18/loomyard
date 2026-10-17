@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
@@ -163,6 +164,18 @@ func (c *loomCLI) darnReviewBudget() (int, error) {
 	return template.ReviewMaxBounces, nil
 }
 
+// wireDarnFans adds the Darn-Review perch's fan lists from cfg to env, and the config keys its Burler rows' settings came from.
+// The perch runs on Webster-Review's models, so its rows take the Webster rows' model keys, and its fixer fan key names darn.yaml, the file it lives in.
+// The review row records each round's fans and the fix row reads them, so the two entries are added together.
+// env's maps are the ones wire filled for every recipe.
+func wireDarnFans(env *shedrecipe.Env, cfg darnengine.Config) {
+	env.RowClusterFans[loomshed.NameDarnBouncer] = cfg.ReviewFan
+	env.RowClusterFans[loomshed.NameDarnBurlerReview] = cfg.ReviewFan
+	env.RowFixFans[loomshed.NameDarnBurlerReview] = cfg.ReviewFixFan
+	env.RowModelKeys[loomshed.NameDarnBurlerReview] = shedrecipe.RowModelKeys{Review: env.RowModelKeys[loomshed.NameWebsterBurlerReview].Review}
+	env.RowModelKeys[loomshed.NameDarnBurlerFix] = shedrecipe.RowModelKeys{Fix: env.RowModelKeys[loomshed.NameWebsterBurlerFix].Fix, FixFan: "review_fix_fan in darn.yaml"}
+}
+
 // wireDarn fills the Env fields a darn run reads beyond the ones wire fills for every recipe, and replaces the loom DescribeTable with the darn one, which reads the decision record but no run record.
 // It loads the hub-wide darn.yaml strictly and reads its verify command once, so start, run, step and resume refuse an absent or empty command before any row builds.
 func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, frictionDir string, landingCfg landingshed.Config, registry modelspec.Registry) error {
@@ -184,6 +197,7 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 		c.env.RowHardMaxBounces = map[string]int{}
 	}
 	c.env.RowHardMaxBounces[loomshed.NameDarnBouncer] = cfg.ReviewHardMaxBounces
+	wireDarnFans(&c.env, cfg)
 	c.darnCfg = &cfg
 	// The Darn-Review perch's CIRCLING Reason names the budget the darn routing applies, not loom's.
 	c.env.SegmentBounces = segmentBounces(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, func() (shedengine.Routing, error) {

@@ -133,7 +133,8 @@ producers:
         tool-use: true
         # The round reviews code, so its seats load the hub's language skills after their own.
         language-skills: true
-        # No cluster-fan key: fork reviewers may run no git, and the subject exists only through git.
+        # No cluster-fan key: the row's reviewer and fixer fans come from darn.yaml's review_fan and
+        # review_fix_fan.
 
   - name: Darn-Burler-Fix
     engine: BurlerFix

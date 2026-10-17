@@ -244,6 +244,14 @@
 // every seeded fan is dormant until a profile names it.
 // Fan and lens names resolve against burler.yaml first and, per name, against the embedded template,
 // so an operator-defined name wins and an absent burler.yaml resolves wholly from the template.
+// The embedded template's production fans are the `review-*` and `fix-*` fans, one pair for design records, one for plans and one, `review-code` and `fix-code`, for a committed diff.
+//
+// FanList is the value of a module's per-round fan key, one fan name or a list of them whose last entry serves every later round, an empty entry running its round solo or with the single fixer.
+// Its decoder refuses any other shape with a FanShapeError carrying the value's line, and ValidateFanKeys refuses an empty list and resolves every named fan through burler.yaml, each refusal naming the module, the key and the entry.
+// loom and darn declare their review perches' fan keys in this one grammar.
+//
+// A fork reviewer and a fix-check fork may run git that reads, such as `git diff`, `git log` and `git show`, so a fan reaches a subject that exists only through git;
+// the fork stencils forbid every git command that changes state, and the round audits refuse a fork that ran one.
 //
 // ClusterExclude names lenses to drop from the fan ClusterFan resolves to,
 // applied inside validateReview after ResolveFan, with the survivors stored in

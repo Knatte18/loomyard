@@ -25,7 +25,7 @@ const gateQuiescenceFailureMessage = "a turn end whose Stop payload reports an o
 // gatedRowFanViolations returns one message per gated row of r that breaks the fork rule.
 // A row is gated when its config carries a non-empty "gates" list.
 // A gated row receives a fan from its profile's "cluster-fan" or from fans, a row-name to fan-list map as Env.RowClusterFans carries them, when any entry of its list is non-empty.
-// A gated row must be a writer engine (DiscussionWrite, PlanWrite, Describe, PRRework) or BurlerFix, and none of them may receive a cluster fan.
+// A gated row must be a writer engine (DiscussionWrite, PlanWrite, DarnWrite, Describe, PRRework) or BurlerFix, and none of them may receive a cluster fan.
 // A writer engine's spec factory never sets shuttleengine.Spec.ForkSubagents, and burlerengine.Engine.Review sets it from a non-empty fan alone, so a cluster fan on the ungated BurlerReview row is the one legal reviewer fork.
 // A gated BurlerFix fixer forks only under the fixer fan the review row recorded, which this check does not see.
 func gatedRowFanViolations(r shedbuild.Recipe, fans map[string][]string) []string {
@@ -49,20 +49,20 @@ func gatedRowFanViolations(r shedbuild.Recipe, fans map[string][]string) []strin
 		}
 
 		switch row.Engine {
-		case "DiscussionWrite", "PlanWrite", "Describe", "PRRework", "BurlerFix":
+		case "DiscussionWrite", "PlanWrite", "DarnWrite", "Describe", "PRRework", "BurlerFix":
 			if fan != "" {
 				violations = append(violations, fmt.Sprintf("row %q (engine %q): receives fan %q; want no fan on a gated row -- %s", row.Name, row.Engine, fan, gateQuiescenceFailureMessage))
 			}
 		default:
-			violations = append(violations, fmt.Sprintf("row %q: carries a \"gates\" config list with engine %q, neither a writer engine (DiscussionWrite/PlanWrite/Describe/PRRework) nor BurlerFix -- %s", row.Name, row.Engine, gateQuiescenceFailureMessage))
+			violations = append(violations, fmt.Sprintf("row %q: carries a \"gates\" config list with engine %q, neither a writer engine (DiscussionWrite/PlanWrite/DarnWrite/Describe/PRRework) nor BurlerFix -- %s", row.Name, row.Engine, gateQuiescenceFailureMessage))
 		}
 	}
 	return violations
 }
 
-// TestNoGatedRowAuthorizesForkSubagents asserts the fork rule over the shipped recipe with fans set for the Discussion-Review and Plan-Review rows through the loomshed row names, and over hand-authored recipes.
+// TestNoGatedRowAuthorizesForkSubagents asserts the fork rule over the shipped loom and darn recipes with fans set for every review perch's rows through the loomshed row names, and over hand-authored recipes.
 // A gated writer or BurlerFix row receiving a fan, from its profile or from the map, fails; an ungated BurlerReview row with a fan passes.
-// It also pins that no shipped row carries a literal "cluster-fan" key, the Webster rows included, since a fan reaches a row only through loom.yaml.
+// It also pins that no shipped loom row carries a literal "cluster-fan" key, since a fan reaches a row only through the hub config.
 //
 //testtiming:keep pins that no gated shipped row authorizes fork subagents outside an ungated BurlerReview reviewer, a guard that fires on the recipe file, which TestApproveSeam_FailsToBuild never reads
 func TestNoGatedRowAuthorizesForkSubagents(t *testing.T) {
@@ -78,7 +78,7 @@ func TestNoGatedRowAuthorizesForkSubagents(t *testing.T) {
 		}
 		if profile, ok := row.Config["profile"].(map[string]any); ok {
 			if _, has := profile["cluster-fan"]; has {
-				t.Errorf("row %q (engine %q): profile carries a literal \"cluster-fan\" key; want none, a fan reaches a row only through loom.yaml", row.Name, row.Engine)
+				t.Errorf("row %q (engine %q): profile carries a literal \"cluster-fan\" key; want none, a fan reaches a row only through the hub config", row.Name, row.Engine)
 			}
 		}
 	}
@@ -106,6 +106,16 @@ func TestNoGatedRowAuthorizesForkSubagents(t *testing.T) {
 		loomshed.NameDiscussionBurlerReview: {"standard"},
 		loomshed.NamePlanBouncer:            {"full"},
 		loomshed.NamePlanBurlerReview:       {"full"},
+		loomshed.NameWebsterBouncer:         {"review-code"},
+		loomshed.NameWebsterBurlerReview:    {"review-code"},
+		loomshed.NameMergeBouncer:           {"review-code"},
+		loomshed.NameMergeBurlerReview:      {"review-code"},
+		loomshed.NameDarnBouncer:            {"review-code"},
+		loomshed.NameDarnBurlerReview:       {"review-code"},
+	}
+	shippedDarn, err := shedbuild.Parse(recipes.DarnRecipe)
+	if err != nil {
+		t.Fatalf("shedbuild.Parse(recipes.DarnRecipe) error = %v; want nil", err)
 	}
 
 	tests := []struct {
@@ -114,7 +124,8 @@ func TestNoGatedRowAuthorizesForkSubagents(t *testing.T) {
 		fans           map[string][]string
 		wantViolations int
 	}{
-		{name: "shipped recipe with Discussion-Review and Plan-Review fans", recipe: shipped, fans: reviewFans},
+		{name: "shipped loom recipe with a fan on every review perch", recipe: shipped, fans: reviewFans},
+		{name: "shipped darn recipe with a Darn-Review fan", recipe: shippedDarn, fans: reviewFans},
 		{name: "gated writer row receiving a fan from the map", recipe: gatedWriter(nil), fans: map[string][]string{"Writer": {"", "standard"}}, wantViolations: 1},
 		{name: "gated writer row receiving a fan from its profile", recipe: gatedWriter("standard"), wantViolations: 1},
 		{name: "gated writer row with no fan", recipe: gatedWriter(nil)},
