@@ -412,10 +412,8 @@ producers:
         tool-use: true
         # The round reviews code, so its seats load the hub's language skills after their own.
         language-skills: true
-        # No cluster-fan key: Webster-Review stays solo, because fork reviewers are read-only and
-        # may never run any git command, which burlerengine's fork boilerplate states and its own
-        # round audit enforces, so under a fan the forks could not reach a subject that exists
-        # only through git. Discussion-Review and Plan-Review take their fan from loom.yaml.
+        # No cluster-fan key: the row's reviewer and fixer fans come from loom.yaml's webster_fan
+        # and webster_fix_fan, whose forks reach the diff through read-only git.
       # No model/effort key: model choice lives in loom.yaml's review and fix keys only.
       # No timeout_s key, for the same Env fallback reason as Webster-Bouncer.
 
@@ -532,7 +530,8 @@ producers:
         tool-use: true
         # The round reviews code, so its seats load the hub's language skills after their own.
         language-skills: true
-        # No cluster-fan key: the subject exists only through read-only git, which a fan's forks may not run.
+        # No cluster-fan key: the row's reviewer and fixer fans come from loom.yaml's merge_fan and
+        # merge_fix_fan.
       # No model/effort key: model choice lives in loom.yaml's review and fix keys only.
       # No timeout_s key, for the same Env fallback reason as Merge-Bouncer.
 

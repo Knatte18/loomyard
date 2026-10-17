@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 )
@@ -28,7 +29,7 @@ func seedDarnConfig(t *testing.T, baseDir, contents string) {
 	}
 }
 
-// TestLoadConfig covers the template's defaults, a review budget of 0, a writer that fails the model-spec grammar, and a base directory with no darn.yaml.
+// TestLoadConfig covers the template's defaults, a review budget of 0, the fan keys' grammar and refusals, a writer that fails the model-spec grammar, and a base directory with no darn.yaml.
 func TestLoadConfig(t *testing.T) {
 	t.Parallel()
 
@@ -41,12 +42,32 @@ func TestLoadConfig(t *testing.T) {
 	}{
 		{
 			name: "template defaults", contents: ConfigTemplate(), seed: true,
-			want: Config{Writer: "opus[medium]", WriterTimeoutMin: 180, Verify: "", VerifyAttempts: 3, ReviewMaxBounces: 1, ReviewHardMaxBounces: 4},
+			want: Config{Writer: "opus[medium]", WriterTimeoutMin: 180, Verify: "", VerifyAttempts: 3, ReviewMaxBounces: 1, ReviewHardMaxBounces: 4, ReviewFan: burlerengine.FanList{""}, ReviewFixFan: burlerengine.FanList{""}},
 		},
 		{
 			name: "review off", seed: true,
 			contents: strings.Replace(ConfigTemplate(), "review_max_bounces: 1", "review_max_bounces: 0", 1),
-			want:     Config{Writer: "opus[medium]", WriterTimeoutMin: 180, Verify: "", VerifyAttempts: 3, ReviewMaxBounces: 0, ReviewHardMaxBounces: 4},
+			want:     Config{Writer: "opus[medium]", WriterTimeoutMin: 180, Verify: "", VerifyAttempts: 3, ReviewMaxBounces: 0, ReviewHardMaxBounces: 4, ReviewFan: burlerengine.FanList{""}, ReviewFixFan: burlerengine.FanList{""}},
+		},
+		{
+			name: "per-round fan lists", seed: true,
+			contents: strings.NewReplacer("review_fan: \"\"", "review_fan:\n  - review-code\n  - \"\"", "review_fix_fan: \"\"", "review_fix_fan: fix-code").Replace(ConfigTemplate()),
+			want:     Config{Writer: "opus[medium]", WriterTimeoutMin: 180, Verify: "", VerifyAttempts: 3, ReviewMaxBounces: 1, ReviewHardMaxBounces: 4, ReviewFan: burlerengine.FanList{"review-code", ""}, ReviewFixFan: burlerengine.FanList{"fix-code"}},
+		},
+		{
+			name: "undefined fan", seed: true,
+			contents: strings.Replace(ConfigTemplate(), "review_fix_fan: \"\"", "review_fix_fan:\n  - \"\"\n  - nosuchfan", 1),
+			wantErr:  []string{`darn config key "review_fix_fan" entry 2`, `"nosuchfan"`, "define the fan in burler.yaml", `set the entry to ""`},
+		},
+		{
+			name: "empty fan list", seed: true,
+			contents: strings.Replace(ConfigTemplate(), "review_fan: \"\"", "review_fan: []", 1),
+			wantErr:  []string{`darn config key "review_fan"`, "the list is empty", `write ""`},
+		},
+		{
+			name: "fan value of the wrong shape", seed: true,
+			contents: strings.Replace(ConfigTemplate(), "review_fan: \"\"", "review_fan:\n  model: opus", 1),
+			wantErr:  []string{`darn config key "review_fan"`, "neither a fan name nor a list of fan names"},
 		},
 		{
 			name: "invalid writer spec", seed: true,
@@ -93,7 +114,7 @@ func TestLoadConfig(t *testing.T) {
 			if err != nil {
 				t.Fatalf("LoadConfig() = _, %v; want nil error", err)
 			}
-			if got != tt.want {
+			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("LoadConfig() = %+v; want %+v", got, tt.want)
 			}
 		})
@@ -114,22 +135,24 @@ func TestLoadConfig(t *testing.T) {
 		}
 	})
 
-	t.Run("a local verify is refused naming the local file and the key", func(t *testing.T) {
-		t.Parallel()
-		board, anchor := t.TempDir(), t.TempDir()
-		seedDarnConfig(t, board, ConfigTemplate())
-		localPath := writeLocalDarnConfig(t, anchor, "verify: rm -rf .\n")
+	for key, local := range map[string]string{"verify": "verify: rm -rf .\n", "review_fan": "review_fan: review-code\n", "review_fix_fan": "review_fix_fan: \"\"\n"} {
+		t.Run("a local "+key+" is refused naming the local file and the key", func(t *testing.T) {
+			t.Parallel()
+			board, anchor := t.TempDir(), t.TempDir()
+			seedDarnConfig(t, board, ConfigTemplate())
+			localPath := writeLocalDarnConfig(t, anchor, local)
 
-		_, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "darn")
-		if !errors.Is(err, configengine.ErrInvalid) {
-			t.Fatalf("LoadConfig() error = %v; want ErrInvalid", err)
-		}
-		for _, want := range []string{localPath, "verify"} {
-			if !strings.Contains(err.Error(), want) {
-				t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
+			_, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "darn")
+			if !errors.Is(err, configengine.ErrInvalid) {
+				t.Fatalf("LoadConfig() error = %v; want ErrInvalid", err)
 			}
-		}
-	})
+			for _, want := range []string{localPath, key} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
+				}
+			}
+		})
+	}
 
 	t.Run("a local budget and hard cap load", func(t *testing.T) {
 		t.Parallel()

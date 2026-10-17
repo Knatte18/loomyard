@@ -24,9 +24,10 @@ type ReviewSettings struct {
 	Discussion burlerengine.RoundModels
 	Plan       burlerengine.RoundModels
 	Webster    burlerengine.RoundModels
-	// DiscussionKeys and PlanKeys name the loom.yaml keys each of those segments' models came from.
+	// DiscussionKeys, PlanKeys and WebsterKeys name the loom.yaml keys each of those segments' models came from.
 	DiscussionKeys SegmentKeys
 	PlanKeys       SegmentKeys
+	WebsterKeys    SegmentKeys
 	// Timeout is one review round's shuttle-run deadline, derived from cfg.ReviewTimeoutMin.
 	Timeout time.Duration
 }
@@ -146,6 +147,7 @@ func ResolveReview(cfg Config, reg modelspec.Registry) (ReviewSettings, error) {
 		Webster:        webster,
 		DiscussionKeys: segmentKeys("discussion", cfg.DiscussionReview, cfg.DiscussionFix),
 		PlanKeys:       segmentKeys("plan", cfg.PlanReview, cfg.PlanFix),
+		WebsterKeys:    segmentKeys("webster", cfg.WebsterReview, cfg.WebsterFix),
 		Timeout:        time.Duration(cfg.ReviewTimeoutMin) * time.Minute,
 	}, nil
 }

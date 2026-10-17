@@ -9,9 +9,11 @@ package darnengine
 
 import (
 	_ "embed"
+	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/reviewbudget"
@@ -49,6 +51,10 @@ type Config struct {
 	ReviewMaxBounces int `yaml:"review_max_bounces"`
 	// ReviewHardMaxBounces is the round number at or past which the Darn-Review perch never continues a round; it is at least 1 and not below ReviewMaxBounces, and settable per run.
 	ReviewHardMaxBounces int `yaml:"review_hard_max_bounces"`
+	// ReviewFan and ReviewFixFan are the Darn-Review perch's per-round reviewer and fixer fan lists, each entry a burler.yaml fan name;
+	// an empty entry runs that round solo or with the single fixer.
+	ReviewFan    burlerengine.FanList `yaml:"review_fan"`
+	ReviewFixFan burlerengine.FanList `yaml:"review_fix_fan"`
 	// DriverKind, Tackler, TacklerTimeoutMin and TacklerMaxSpawns override shed.yaml's keys of the same names for a darn run;
 	// an empty string, a zero and a null inherit shed.yaml, and a set TacklerMaxSpawns of 0 turns the tackler off.
 	DriverKind        string `yaml:"driver_kind"`
@@ -67,8 +73,14 @@ func (c Config) ShedOverride() sheddriver.Override {
 	}
 }
 
+// ConfigOpenMaps returns the darn.yaml keys whose value is a scalar or a per-round list, which configengine carries whole through reconcile and --set.
+func ConfigOpenMaps() []string {
+	return []string{"review_fan", "review_fix_fan"}
+}
+
 // ConfigSpec returns darn's layered-load spec.
 // verify runs a shell command, so it may not be set in the local layer.
+// The two fan keys are closed to the local layer too, so no local override or task run_settings changes the perch's fans.
 // The two budget keys come from reviewbudget and are ordinary keys, so a task's local layer, and its run_settings, set them.
 func ConfigSpec() configengine.Spec {
 	categories := map[string]configengine.Category{
@@ -76,6 +88,8 @@ func ConfigSpec() configengine.Spec {
 		"writer_timeout_min": configengine.CategoryNone,
 		"verify":             configengine.CategoryExecutable,
 		"verify_attempts":    configengine.CategoryNone,
+		"review_fan":         configengine.CategoryGuard,
+		"review_fix_fan":     configengine.CategoryGuard,
 
 		"driver_kind":         configengine.CategoryNone,
 		"tackler":             configengine.CategoryNone,
@@ -89,6 +103,7 @@ func ConfigSpec() configengine.Spec {
 		Name:       configModule,
 		Template:   []byte(ConfigTemplate()),
 		HubWide:    true,
+		OpenMaps:   ConfigOpenMaps(),
 		Categories: categories,
 	}
 }
@@ -108,6 +123,7 @@ func ValidateLocalValues(document []byte) error {
 
 // LoadConfig loads and unmarshals the darn module's configuration strictly through the hub-wide layer stack under dirs.
 // It validates the writer key's model-spec grammar at load time and leaves verify, verify_attempts and review_max_bounces to their readers.
+// review_fan and review_fix_fan are refused as an empty list, a value that is neither a fan name nor a list of them, or an entry naming a fan burler.yaml does not resolve.
 // review_max_bounces is refused below 0, and review_hard_max_bounces, default 4, below 1 and below review_max_bounces;
 // each refusal names the command that fixes it for the layer the value comes from.
 func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
@@ -123,6 +139,10 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 
 	var cfg Config
 	if err := yaml.Unmarshal(resolved, &cfg); err != nil {
+		var fanShape *burlerengine.FanShapeError
+		if errors.As(err, &fanShape) {
+			return Config{}, fmt.Errorf("darn config key %q: %w", configengine.KeyAtLine(resolved, fanShape.Line), err)
+		}
 		return Config{}, fmt.Errorf("unmarshal darn config: %w", err)
 	}
 
@@ -131,6 +151,11 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	}
 
 	if err := sheddriver.CheckOverride(configModule, cfg.ShedOverride()); err != nil {
+		return Config{}, err
+	}
+
+	fanKeys := []burlerengine.FanKey{{Key: "review_fan", Fans: cfg.ReviewFan}, {Key: "review_fix_fan", Fans: cfg.ReviewFixFan}}
+	if err := burlerengine.ValidateFanKeys(dirs, configModule, fanKeys); err != nil {
 		return Config{}, err
 	}
 
