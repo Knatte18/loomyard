@@ -104,6 +104,8 @@ var nilLegal = map[string]bool{
 	"RowMaxBounces":                     true,
 	"RowAutoAccept":                     true,
 	"RowHardMaxBounces":                 true,
+	"Segments":                          true,
+	"Setting":                           true,
 }
 
 // noFindingsIndex is a planindex.Index that answers no findings, so the packages built on the kit do not link the resolve-backed index.

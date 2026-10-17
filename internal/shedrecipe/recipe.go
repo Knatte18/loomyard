@@ -1,6 +1,6 @@
 // recipe.go declares this package's exported types: RowIdentity, the recipe row's name and segment;
 // Constructor, the fixed-signature
-// registry value type; Config, the recipe row's portable configuration; Env, the caller-filled
+// registry value type; Config, the recipe row's portable configuration; SegmentSettings, one review segment's resolved values; Env, the caller-filled
 // bundle of told roots and injected seams every entry may read from; and RowModelKeys, the config keys a Burler row's settings came from.
 
 package shedrecipe
@@ -54,8 +54,31 @@ type RowModelKeys struct {
 	FixFan string
 }
 
-// Env carries roots and run-wide values only -- never a value that differs between two rows.
-// Anything per-row is a relative path or scalar in Config, resolved against one of these roots by
+// SegmentSettings holds one review segment's resolved values, shared by the segment's Bouncer, BurlerReview and BurlerFix rows.
+type SegmentSettings struct {
+	// Models is the segment's reviewer and fixer round models, already fallen back to the shared reviewer_model and fixer_model.
+	Models burlerengine.RoundModels
+	// ReviewKey is the config key the reviewer models came from.
+	ReviewKey shuttleengine.ModelKey
+	// FixKey is the config key the fixer models came from.
+	FixKey shuttleengine.ModelKey
+	// Bouncer is the Bouncer's seed and judge pair.
+	Bouncer shedadapters.BouncerModels
+	// MaxBounces is the resolved bounce budget; 0 means zero rounds.
+	MaxBounces int
+	// MaxBouncesKey is the config key MaxBounces resolved from.
+	MaxBouncesKey string
+	// HardMaxBounces is the resolved hard cap as a round number; 0 means none.
+	HardMaxBounces int
+	// HardMaxBouncesKey is the config key HardMaxBounces resolved from.
+	HardMaxBouncesKey string
+	// ConfigFile is the file both keys live in, loom.yaml or darn.yaml.
+	ConfigFile string
+}
+
+// Env carries roots, run-wide values and the per-segment settings of Segments -- never a value that differs between two rows.
+// Segments is keyed by segment, so a segment's rows share one entry, and Setting is keyed by a row's own reference.
+// Anything else per-row is a relative path or scalar in Config, resolved against one of these roots by
 // the entry that reads it.
 // A caller fills only the fields its own recipe needs, because each entry validates only the fields
 // it reads.
@@ -124,7 +147,7 @@ type Env struct {
 
 	// ReviewModels holds the reviewer's and the fixer's model lists, which the BurlerReview and BurlerFix rows pick from per round.
 	// ReviewTimeout is the run-wide review round deadline, used when a BurlerReview or BurlerFix row's timeout_s is absent.
-	// Both are legal on Env at all because Env carries roots and run-wide values only, and one review model list shared by every review segment is exactly such a value.
+	// Both are legal on Env at all because Env carries roots and run-wide values, and one review model list shared by every review segment is exactly such a value.
 	ReviewModels  burlerengine.RoundModels
 	ReviewTimeout time.Duration
 	// RowReviewModels holds a BurlerReview or BurlerFix row's own reviewer and fixer model lists, keyed by row name like SegmentBounces.
@@ -139,6 +162,14 @@ type Env struct {
 	// RowModelKeys holds the config keys a Burler review or fix row's models and fixer fan came from, keyed by row name.
 	// A row with no entry, and a nil map, take the zero keys, which name none.
 	RowModelKeys map[string]RowModelKeys
+
+	// Segments holds each review segment's resolved settings, keyed by the recipe's segment: value, read by the Bouncer, BurlerReview and BurlerFix entries and by internal/loomrecipe.
+	// It is legal on Env because a segment's three rows share one entry.
+	// Nil is legal for a recipe with no review segment.
+	Segments map[string]SegmentSettings
+	// Setting is the told setting lookup a row reaches by naming module and key, returning the module's resolved value from the pair's config stack.
+	// Nil is legal for a caller whose recipe names no setting.
+	Setting func(module, key string) (any, error)
 
 	// ReviewMaxBounces is the run-wide bounce budget of every review segment, read by loomrecipe alone.
 	// It is set on each row of a segment holding a Bouncer row, because the recipe declares no max_bounces there.

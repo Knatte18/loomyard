@@ -39,7 +39,7 @@ The question the discussion worked through was whether the *other* rows (the loo
 **Live seams**, alongside geometry, are the other thing never in a recipe: `shedadapters.Shuttle`, `shedadapters.BurlerHalfRunner`, `shedadapters.WebsterRunner`, `shedadapters.SeatRunner` (`Env.Seats`), `websterengine.RunDeps`, `landingshed.Deps`'s closures and its `modelspec.Registry`, and the injected clock.
 None of these can be written in a file at all — a recipe row names an `Engine` and carries `Config`, and a seam is neither.
 They travel in the same told bundle as geometry, `shedrecipe.Env`, filled once by whichever caller invokes the registry — this extends the existing discipline rather than inventing a second one.
-The rule that makes the `Env`-versus-`Config` split decidable: `Env` holds roots and run-wide values only, never a value that differs between two rows, and anything per-row is a relative path or scalar in `Config`, resolved against one of those roots by the entry that reads it.
+The rule that makes the `Env`-versus-`Config` split decidable: `Env` holds roots, run-wide values and the per-segment settings of `Segments`, keyed by segment so a segment's rows share one entry, and anything per-row is a relative path or scalar in `Config`, resolved against one of those roots by the entry that reads it.
 
 A `Config` key may **select** among the seams the told `Env` already carries, by name, without carrying one — this does not break the rule above, it extends it.
 A `Bouncer` row's `commit_seam` key takes one of exactly two literal values, `plan` and `discussion`, resolving to `Env.CommitPlan` and `Env.CommitDiscussion` respectively.
