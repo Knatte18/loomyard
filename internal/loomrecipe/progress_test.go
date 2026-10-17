@@ -9,7 +9,7 @@ import "testing"
 // TestRouting_ProgressAt asserts, over loom's real recipe, that every row maps to a step, the three rows of each review segment map to the same step and a Burler row reports its segment's step name, and Friction-Reflect is the last main-line step.
 func TestRouting_ProgressAt(t *testing.T) {
 	t.Parallel()
-	routing, err := Routing(5, nil)
+	routing, err := Routing(map[string]int{"Discussion-Review": 5, "Plan-Review": 5, "Webster-Review": 5, "Merge-Review": 5})
 	if err != nil {
 		t.Fatalf("Routing() = _, %v; want nil", err)
 	}

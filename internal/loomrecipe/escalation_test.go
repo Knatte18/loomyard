@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
@@ -34,14 +35,16 @@ func newEscalationShed(t *testing.T) (*shedengine.Shed, string, *shedfake.Burler
 
 	_, env, paths := buildSequenceFixture(t)
 	designWrongBouncerJudge(env)
-	env.ReviewMaxBounces = budgetEscalationBudget
-	env.RowHardMaxBounces = map[string]int{loomshed.NameDiscussionBouncer: budgetEscalationBudget + 1}
+	discussion := env.Segments["Discussion-Review"]
+	discussion.MaxBounces = budgetEscalationBudget
+	discussion.HardMaxBounces = budgetEscalationBudget + 1
+	env.Segments["Discussion-Review"] = discussion
 	env.SegmentBounces = func(row string) (int, int, bool, error) {
 		st, found, err := state.ReadJSONNoMkdir[shedengine.Status](env.StatusPath, env.StatusLockPath)
 		if err != nil || !found {
 			return 0, 0, false, err
 		}
-		routing, err := Routing(budgetEscalationBudget, nil)
+		routing, err := Routing(budgetsOf(env))
 		if err != nil {
 			return 0, 0, false, err
 		}
@@ -91,13 +94,15 @@ func TestEscalation_DarnPerchRuleContinuesThenHardCapAcceptReachesDescribe(t *te
 		carried = append(carried, entry)
 		return nil
 	}
-	env.RowHardMaxBounces = map[string]int{loomshed.NameDarnBouncer: 2}
+	darn := env.Segments["Darn-Review"]
+	darn.HardMaxBounces = 2
+	env.Segments["Darn-Review"] = darn
 	env.SegmentBounces = func(row string) (int, int, bool, error) {
 		st, found, err := state.ReadJSONNoMkdir[shedengine.Status](env.StatusPath, env.StatusLockPath)
 		if err != nil || !found {
 			return 0, 0, false, err
 		}
-		routing, err := DarnRouting(env.DarnReviewMaxBounces)
+		routing, err := DarnRouting(budgetsOf(env))
 		if err != nil {
 			return 0, 0, false, err
 		}
@@ -258,9 +263,13 @@ func TestEscalation_PerchBudgetOneWithAutoAccept(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, env, paths := buildSequenceFixture(t)
-			rowBudgets := map[string]int{loomshed.NameWebsterBouncer: 1}
-			env.RowMaxBounces = rowBudgets
-			env.RowAutoAccept = map[string]bool{loomshed.NameWebsterBouncer: true}
+			setBudgets(&env, 3, map[string]int{"Webster-Review": 1})
+			env.Setting = func(module, key string) (any, error) {
+				if module == "loom" && key == "webster_auto_accept" {
+					return true, nil
+				}
+				return envkit.TemplateSetting(module, key)
+			}
 			env.Burler.(*shedfake.BurlerHalfRunner).FixResults = tt.fixResults
 
 			shuttle := env.Shuttle.(*shedfake.Shuttle)
@@ -277,7 +286,7 @@ func TestEscalation_PerchBudgetOneWithAutoAccept(t *testing.T) {
 				if err != nil || !found {
 					return 0, 0, false, err
 				}
-				routing, err := Routing(env.ReviewMaxBounces, rowBudgets)
+				routing, err := Routing(budgetsOf(env))
 				if err != nil {
 					return 0, 0, false, err
 				}

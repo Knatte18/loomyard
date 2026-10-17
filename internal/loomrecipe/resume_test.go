@@ -309,7 +309,7 @@ func TestBounceRouting_EmptyTargetBlocksInstead(t *testing.T) {
 // its last Done) is therefore the whole run: every Stuck entry it authors counts.
 // The Burler rows it bounces through consume none of Discussion-Bouncer's own budget, since each producer's episode count is its own.
 //
-// Discussion-Bouncer's budget is the fixture's Env.ReviewMaxBounces, which New applies to the row
+// Discussion-Bouncer's budget is the fixture's Env.Segments["Discussion-Review"].MaxBounces, which New applies to the row
 // (the recipe declares none), not inherited from ShedPaths.MaxBounces the way
 // Discussion-Validate's budget once was, so this test drives that budget+1 round
 // trips rather than parameterizing a small paths.MaxBounces.
@@ -319,7 +319,7 @@ func TestBounceRouting_EmptyTargetBlocksInstead(t *testing.T) {
 func TestBounceRouting_BudgetExhaustionBlocks(t *testing.T) {
 	_, env, paths := buildSequenceFixture(t)
 	blockBouncerJudge(env)
-	discussionBouncerMaxBounces := env.ReviewMaxBounces
+	discussionBouncerMaxBounces := env.Segments["Discussion-Review"].MaxBounces
 
 	shed, err := New(env, paths)
 	if err != nil {

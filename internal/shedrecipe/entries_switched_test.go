@@ -41,12 +41,12 @@ func TestSwitchedEntries_BuildOverTheirOwnSeamsAndRefuseANilOne(t *testing.T) {
 
 			env := newTestEnvWithSwitches(t)
 			tc.seams(&env).Enabled = nil
-			_, err = constructor("row-name", Config{}, env)
+			_, err = constructor(RowIdentity{Name: "row-name"}, Config{}, env)
 			assertErrContains(t, err, tc.engine+".Enabled")
 
 			env = newTestEnvWithSwitches(t)
 			tc.seams(&env).Act = nil
-			_, err = constructor("row-name", Config{}, env)
+			_, err = constructor(RowIdentity{Name: "row-name"}, Config{}, env)
 			assertErrContains(t, err, tc.engine+".Act")
 		})
 	}

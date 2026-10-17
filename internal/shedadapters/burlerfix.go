@@ -139,7 +139,7 @@ func (p *BurlerFixProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 		_, fixFan, recordedErr := readRecordedFans(p.runDir, round)
 		profile.FixFan = fixFan
 		if recordedErr != nil {
-			unrecorded = fmt.Errorf("shedadapters: %s (%s): round %d's usage record holds no recorded fan names (%v); %s", p.name, burlerFixEngineLabel, round, recordedErr, p.wayForward())
+			unrecorded = fmt.Errorf("shedadapters: %s (%s): round %d's usage record holds no recorded fan names (%v); the row's fixer fan comes from %s; %s", p.name, burlerFixEngineLabel, round, recordedErr, p.opts.FixFanKey, p.wayForward())
 		}
 	}
 

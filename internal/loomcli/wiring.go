@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
@@ -866,57 +867,15 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// Slug and SegmentBounces tell each Bouncer row the verbs' slug and the live bounce budget its CIRCLING Reason names.
 		Slug: seedSlug(location.WorktreeName),
 		SegmentBounces: segmentBounces(statusPath, statusLockPath, func() (shedengine.Routing, error) {
-			return loomrecipe.Routing(loomCfg.ReviewMaxBounces, perchMaxBounces(loomCfg))
+			return loomrecipe.Routing(loomSegmentBudgets(loomCfg))
 		}),
 
-		ReviewMaxBounces:         loomCfg.ReviewMaxBounces,
-		RowMaxBounces:            perchMaxBounces(loomCfg),
-		RowAutoAccept:            perchAutoAccept(loomCfg),
-		RowHardMaxBounces:        perchHardMaxBounces(loomCfg),
+		Segments: loomSegmentSettings(loomCfg, reviewSettings, judgeSettings),
+		// Setting is one lookup per wiring, so every row of a recipe build reads one snapshot of each module's stack.
+		Setting: configreg.SettingLookup(fabricengine.ConfigDirs(location)),
+
 		ReviewCirclingCheckpoint: loomCfg.ReviewCirclingCheckpoint,
-
-		ReviewModels:  reviewSettings.Models,
-		ReviewTimeout: reviewSettings.Timeout,
-		RowReviewModels: map[string]burlerengine.RoundModels{
-			loomshed.NameDiscussionBurlerReview: reviewSettings.Discussion,
-			loomshed.NameDiscussionBurlerFix:    reviewSettings.Discussion,
-			loomshed.NamePlanBurlerReview:       reviewSettings.Plan,
-			loomshed.NamePlanBurlerFix:          reviewSettings.Plan,
-			loomshed.NameWebsterBurlerReview:    reviewSettings.Webster,
-			loomshed.NameWebsterBurlerFix:       reviewSettings.Webster,
-			loomshed.NameMergeBurlerReview:      reviewSettings.Merge,
-			loomshed.NameMergeBurlerFix:         reviewSettings.Merge,
-			// wireDarn adds the Darn-Review rows' models from darn.yaml.
-		},
-		// A segment's fan list reaches its Bouncer and its review row from one key, so the two agree by construction; the fix row reads the round's recorded names.
-		// Each list is the segment's per-round fans, an empty entry running that round solo.
-		// A review row also takes its segment's fixer fan list.
-		// wireDarn adds the Darn-Review rows' lists from darn.yaml.
-		RowClusterFans: map[string][]string{
-			loomshed.NameDiscussionBouncer:      loomCfg.DiscussionReviewerFan,
-			loomshed.NameDiscussionBurlerReview: loomCfg.DiscussionReviewerFan,
-			loomshed.NamePlanBouncer:            loomCfg.PlanReviewerFan,
-			loomshed.NamePlanBurlerReview:       loomCfg.PlanReviewerFan,
-			loomshed.NameWebsterBouncer:         loomCfg.WebsterReviewerFan,
-			loomshed.NameWebsterBurlerReview:    loomCfg.WebsterReviewerFan,
-			loomshed.NameMergeBouncer:           loomCfg.MergeReviewerFan,
-			loomshed.NameMergeBurlerReview:      loomCfg.MergeReviewerFan,
-		},
-		RowFixFans: map[string][]string{
-			loomshed.NameDiscussionBurlerReview: loomCfg.DiscussionFixerFan,
-			loomshed.NamePlanBurlerReview:       loomCfg.PlanFixerFan,
-			loomshed.NameWebsterBurlerReview:    loomCfg.WebsterFixerFan,
-			loomshed.NameMergeBurlerReview:      loomCfg.MergeFixerFan,
-		},
-		RowModelKeys: reviewRowModelKeys(reviewSettings),
-
-		RowBouncerModels: map[string]shedadapters.BouncerModels{
-			loomshed.NameDiscussionBouncer: shedadapters.BouncerModels(judgeSettings.Discussion),
-			loomshed.NamePlanBouncer:       shedadapters.BouncerModels(judgeSettings.Plan),
-			loomshed.NameWebsterBouncer:    shedadapters.BouncerModels(judgeSettings.Webster),
-			loomshed.NameMergeBouncer:      shedadapters.BouncerModels(judgeSettings.Webster),
-			loomshed.NameDarnBouncer:       shedadapters.BouncerModels(judgeSettings.Webster),
-		},
+		ReviewTimeout:            reviewSettings.Timeout,
 
 		// Landing is deliberately left unfilled here, for a different reason than the four above:
 		// Env.Landing is assembled in run.go, immediately before loomrecipe.New, because NewPublish/NewFinalize both open their fabric pair eagerly at construction.
@@ -952,7 +911,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 
 	// A darn run swaps in the darn recipe's verify source and Describe spec and fills the Darn-Write row's seams; a loom run leaves them nil.
 	if c.recipe == shedrun.RecipeDarn {
-		if err := c.wireDarn(location, websterGeom.StencilsDir, websterGeom.SpecsDir, frictionDir, landingCfg, registry); err != nil {
+		if err := c.wireDarn(location, websterGeom.StencilsDir, websterGeom.SpecsDir, frictionDir, landingCfg, registry, reviewSettings.Models, shedadapters.BouncerModels(judgeSettings.Webster)); err != nil {
 			return err
 		}
 	}
@@ -980,39 +939,6 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	return nil
 }
 
-// reviewRowModelKeys names the config keys each loom Burler row's settings came from:
-// the review row's reviewer model key, and the fix row's fixer model key and fixer fan key.
-// A fanned reviewer's engine refusal then names its reviewer list's key, and a fix row refuses an unrecorded round.
-func reviewRowModelKeys(settings loomengine.ReviewSettings) map[string]shedrecipe.RowModelKeys {
-	return map[string]shedrecipe.RowModelKeys{
-		loomshed.NameDiscussionBurlerReview: {Review: settings.DiscussionKeys.Review},
-		loomshed.NameDiscussionBurlerFix:    {Fix: settings.DiscussionKeys.Fix, FixFan: "discussion_fixer_fan"},
-		loomshed.NamePlanBurlerReview:       {Review: settings.PlanKeys.Review},
-		loomshed.NamePlanBurlerFix:          {Fix: settings.PlanKeys.Fix, FixFan: "plan_fixer_fan"},
-		loomshed.NameWebsterBurlerReview:    {Review: settings.WebsterKeys.Review},
-		loomshed.NameWebsterBurlerFix:       {Fix: settings.WebsterKeys.Fix, FixFan: "webster_fixer_fan"},
-		loomshed.NameMergeBurlerReview:      {Review: settings.MergeKeys.Review},
-		loomshed.NameMergeBurlerFix:         {Fix: settings.MergeKeys.Fix, FixFan: "merge_fixer_fan"},
-	}
-}
-
-// perchMaxBounces maps loom.yaml's per-perch budget keys onto the Discussion, Plan, Webster and Merge Bouncer rows' names.
-// A perch whose key is null has no entry and takes the run-wide review_max_bounces; an entry of 0 gives the perch zero rounds.
-func perchMaxBounces(cfg loomengine.Config) map[string]int {
-	budgets := map[string]int{}
-	for row, budget := range map[string]*int{
-		loomshed.NameDiscussionBouncer: cfg.DiscussionMaxBounces,
-		loomshed.NamePlanBouncer:       cfg.PlanMaxBounces,
-		loomshed.NameWebsterBouncer:    cfg.WebsterMaxBounces,
-		loomshed.NameMergeBouncer:      cfg.MergeMaxBounces,
-	} {
-		if budget != nil {
-			budgets[row] = *budget
-		}
-	}
-	return budgets
-}
-
 // loomPerches maps each loom Bouncer row's name to the review perch it belongs to.
 var loomPerches = map[string]loomengine.Perch{
 	loomshed.NameDiscussionBouncer: loomengine.PerchDiscussion,
@@ -1021,23 +947,63 @@ var loomPerches = map[string]loomengine.Perch{
 	loomshed.NameMergeBouncer:      loomengine.PerchMerge,
 }
 
-// perchHardMaxBounces maps each loom Bouncer row's name to its perch's resolved hard cap, which is at least 1 once loom.yaml has loaded.
-func perchHardMaxBounces(cfg loomengine.Config) map[string]int {
-	hardCaps := make(map[string]int, len(loomPerches))
-	for row, perch := range loomPerches {
-		hardCaps[row] = cfg.Caps(perch).Hard
-	}
-	return hardCaps
+// loomSegmentPerches maps each loom review segment's name to its review perch, the table the segment settings are read through.
+// A new loom perch also adds a row to loomPerches, which keys the circling lookup by Bouncer row.
+var loomSegmentPerches = map[string]loomengine.Perch{
+	"Discussion-Review": loomengine.PerchDiscussion,
+	"Plan-Review":       loomengine.PerchPlan,
+	"Webster-Review":    loomengine.PerchWebster,
+	"Merge-Review":      loomengine.PerchMerge,
 }
 
-// perchAutoAccept maps loom.yaml's per-perch auto-accept keys onto the Discussion, Plan, Webster and Merge Bouncer rows' names.
-func perchAutoAccept(cfg loomengine.Config) map[string]bool {
-	return map[string]bool{
-		loomshed.NameDiscussionBouncer: cfg.DiscussionAutoAccept,
-		loomshed.NamePlanBouncer:       cfg.PlanAutoAccept,
-		loomshed.NameWebsterBouncer:    cfg.WebsterAutoAccept,
-		loomshed.NameMergeBouncer:      cfg.MergeAutoAccept,
+// loomSegmentBudgets maps each loom review segment to its perch's resolved soft bounce cap, the value loomSegmentSettings puts in MaxBounces.
+// The status path and the build share this table and its resolution.
+func loomSegmentBudgets(cfg loomengine.Config) map[string]int {
+	budgets := make(map[string]int, len(loomSegmentPerches))
+	for segment, perch := range loomSegmentPerches {
+		budgets[segment] = cfg.Caps(perch).Soft
 	}
+
+	return budgets
+}
+
+// loomSegmentSettings builds one shedrecipe.SegmentSettings per loom review segment.
+// Models and their keys come from review, the Bouncer pair from judge (the Merge segment takes the Webster pair), and the budget and hard cap with their keys from cfg.Caps, which resolves them through reviewbudget.
+func loomSegmentSettings(cfg loomengine.Config, review loomengine.ReviewSettings, judge loomengine.JudgeSettings) map[string]shedrecipe.SegmentSettings {
+	models := map[loomengine.Perch]burlerengine.RoundModels{
+		loomengine.PerchDiscussion: review.Discussion,
+		loomengine.PerchPlan:       review.Plan,
+		loomengine.PerchWebster:    review.Webster,
+		loomengine.PerchMerge:      review.Merge,
+	}
+	keys := map[loomengine.Perch]loomengine.SegmentKeys{
+		loomengine.PerchDiscussion: review.DiscussionKeys,
+		loomengine.PerchPlan:       review.PlanKeys,
+		loomengine.PerchWebster:    review.WebsterKeys,
+		loomengine.PerchMerge:      review.MergeKeys,
+	}
+	bouncers := map[loomengine.Perch]loomengine.BouncerModels{
+		loomengine.PerchDiscussion: judge.Discussion,
+		loomengine.PerchPlan:       judge.Plan,
+		loomengine.PerchWebster:    judge.Webster,
+		loomengine.PerchMerge:      judge.Webster,
+	}
+	settings := make(map[string]shedrecipe.SegmentSettings, len(loomSegmentPerches))
+	for segment, perch := range loomSegmentPerches {
+		caps := cfg.Caps(perch)
+		settings[segment] = shedrecipe.SegmentSettings{
+			Models:            models[perch],
+			ReviewKey:         keys[perch].Review,
+			FixKey:            keys[perch].Fix,
+			Bouncer:           shedadapters.BouncerModels(bouncers[perch]),
+			MaxBounces:        caps.Soft,
+			MaxBouncesKey:     caps.SoftKey,
+			HardMaxBounces:    caps.Hard,
+			HardMaxBouncesKey: caps.HardKey,
+			ConfigFile:        "loom.yaml",
+		}
+	}
+	return settings
 }
 
 // segmentBounces returns the Env.SegmentBounces seam over the status file at statusPath, locked by statusLockPath.

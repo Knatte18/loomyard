@@ -10,7 +10,6 @@ package shedbuild
 import (
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
@@ -82,14 +81,16 @@ func TestBuild_EveryRegisteredEngineBuilds(t *testing.T) {
 	writeStencilFile(t, env.StencilsDir, bouncerRubricStencil, "Rubric body with no markers.\n")
 
 	configByEngine := engineMinimalConfig(advisorStencil, multiLLMLeadStencil, bouncerRubricStencil)
-	env.RowBouncerModels = map[string]shedadapters.BouncerModels{"Row-Bouncer": {}}
+
+	// The three review engines read their segment's settings, which FullEnv wires for Plan-Review.
+	reviewSegments := map[string]string{"Bouncer": "Plan-Review", "BurlerReview": "Plan-Review", "BurlerFix": "Plan-Review"}
 
 	for _, name := range shedrecipe.Names() {
 		name := name
 		t.Run(name, func(t *testing.T) {
 			r := Recipe{
 				Producers: []Row{
-					{Name: "Row-" + name, Engine: name, Config: configByEngine[name]},
+					{Name: "Row-" + name, Engine: name, Segment: reviewSegments[name], Config: configByEngine[name]},
 				},
 			}
 			defs, err := Build(r, env)

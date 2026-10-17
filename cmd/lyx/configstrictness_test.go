@@ -72,6 +72,7 @@ var configStrictnessStrictSet = map[string]bool{
 	"internal/darnengine":   true,
 	"internal/gateslot":     true,
 	"internal/configcli":    true,
+	"internal/configreg":    true,
 }
 
 // configStrictnessMinScannedFiles is the vacuous-scan floor for this guard's

@@ -64,7 +64,7 @@ func TestDiscussionWriteEntry_ConstructionFailures(t *testing.T) {
 			t.Parallel()
 			env := newTestEnv(t)
 			tt.mutate(&env)
-			_, err := discussionWriteEntry("Row", tt.cfg, env)
+			_, err := discussionWriteEntry(RowIdentity{Name: "Row"}, tt.cfg, env)
 			for _, want := range tt.wantErr {
 				assertErrContains(t, err, want)
 			}
@@ -76,7 +76,7 @@ func TestDiscussionWriteEntry_ConstructionFailures(t *testing.T) {
 func TestDiscussionWriteEntry_HappyPath(t *testing.T) {
 	t.Parallel()
 	env := newTestEnv(t)
-	producer, err := discussionWriteEntry("Row", Config{}, env)
+	producer, err := discussionWriteEntry(RowIdentity{Name: "Row"}, Config{}, env)
 	if err != nil {
 		t.Fatalf("discussionWriteEntry() error = %v; want nil", err)
 	}
@@ -99,7 +99,7 @@ func TestDiscussionWriteEntry_CallDone(t *testing.T) {
 	fake := &shedfake.SeatRunner{Results: []seatengine.Result{leadDoneResult(output)}}
 	env.Seats = fake
 
-	producer, err := discussionWriteEntry("Row", gatesCfg("discussion", 2), env)
+	producer, err := discussionWriteEntry(RowIdentity{Name: "Row"}, gatesCfg("discussion", 2), env)
 	if err != nil {
 		t.Fatalf("discussionWriteEntry() error = %v; want nil", err)
 	}
@@ -157,7 +157,7 @@ func TestDiscussionWriteEntry_GateConfig(t *testing.T) {
 	t.Run("UnrecognisedGateValueFails", func(t *testing.T) {
 		t.Parallel()
 		env := newTestEnv(t)
-		_, err := discussionWriteEntry("Row", gatesCfg("bogus", 3), env)
+		_, err := discussionWriteEntry(RowIdentity{Name: "Row"}, gatesCfg("bogus", 3), env)
 		if err == nil {
 			t.Fatal("discussionWriteEntry() error = nil; want non-nil for an unrecognised gate value")
 		}
@@ -222,7 +222,7 @@ func TestDiscussionWriteEntry_ParentReviewBeginRound(t *testing.T) {
 				}
 				env.Seats = fake
 
-				producer, err := discussionWriteEntry("Row", parentReviewCfg(tt.attempts), env)
+				producer, err := discussionWriteEntry(RowIdentity{Name: "Row"}, parentReviewCfg(tt.attempts), env)
 				if err != nil {
 					t.Fatalf("discussionWriteEntry() error = %v; want nil", err)
 				}
@@ -259,7 +259,7 @@ func TestDiscussionWriteEntry_ParentReviewBeginRound(t *testing.T) {
 		if err := env.ParentReview.Store.RecordVerdict(parentreview.VerdictReject, review); err != nil {
 			t.Fatalf("RecordVerdict() error = %v", err)
 		}
-		producer, err := discussionWriteEntry("Row", parentReviewCfg(3), env)
+		producer, err := discussionWriteEntry(RowIdentity{Name: "Row"}, parentReviewCfg(3), env)
 		if err != nil {
 			t.Fatalf("discussionWriteEntry() error = %v", err)
 		}
@@ -290,7 +290,7 @@ func TestDiscussionWriteEntry_ParentReviewBeginRound(t *testing.T) {
 		fake := &shedfake.SeatRunner{}
 		env.Seats = fake
 
-		producer, err := discussionWriteEntry("Row", parentReviewCfg(3), env)
+		producer, err := discussionWriteEntry(RowIdentity{Name: "Row"}, parentReviewCfg(3), env)
 		if err != nil {
 			t.Fatalf("discussionWriteEntry() error = %v; want nil", err)
 		}

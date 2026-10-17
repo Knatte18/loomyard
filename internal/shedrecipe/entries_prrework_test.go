@@ -79,7 +79,7 @@ func withPendingRework(t *testing.T, env Env) Env {
 }
 
 func TestPRReworkEntry_HappyPath(t *testing.T) {
-	producer, err := prReworkEntry("Row", Config{}, reworkTestEnv(t))
+	producer, err := prReworkEntry(RowIdentity{Name: "Row"}, Config{}, reworkTestEnv(t))
 	if err != nil {
 		t.Fatalf("prReworkEntry() error = %v; want nil", err)
 	}
@@ -95,7 +95,7 @@ func TestPRReworkEntry_EvaluatesReworkTableWithToldValue(t *testing.T) {
 		got = append(got, told)
 		return seatengine.Table{}, errors.New("stop here")
 	}
-	producer, err := prReworkEntry("Row", Config{}, env)
+	producer, err := prReworkEntry(RowIdentity{Name: "Row"}, Config{}, env)
 	if err != nil {
 		t.Fatalf("prReworkEntry() error = %v; want nil", err)
 	}
@@ -127,7 +127,7 @@ func TestPRReworkEntry_ConstructionFailures(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			env := reworkTestEnv(t)
 			tt.edit(&env)
-			_, err := prReworkEntry("Row", Config{}, env)
+			_, err := prReworkEntry(RowIdentity{Name: "Row"}, Config{}, env)
 			if err == nil {
 				t.Fatalf("prReworkEntry() error = nil; want non-nil")
 			}
@@ -162,7 +162,7 @@ func TestPRReworkEntry_Config(t *testing.T) {
 		env := withPendingRework(t, reworkTestEnv(t))
 		fake := &shedfake.SeatRunner{}
 		env.Seats = fake
-		producer, err := prReworkEntry("Row", gatesCfg("rework-plan", 3), env)
+		producer, err := prReworkEntry(RowIdentity{Name: "Row"}, gatesCfg("rework-plan", 3), env)
 		if err != nil {
 			t.Fatalf("prReworkEntry() error = %v; want nil", err)
 		}

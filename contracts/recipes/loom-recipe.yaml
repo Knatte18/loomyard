@@ -123,6 +123,8 @@ producers:
     config:
       run_subdir: discussion
       role_prefix: discussion
+      reviewer_fan_setting: loom.discussion_reviewer_fan
+      auto_accept_setting: loom.discussion_auto_accept
       artifact_paths:
         - _lyx/discussion/decision-record.md
         - _lyx/discussion/support-log.md
@@ -150,6 +152,8 @@ producers:
       # shared run directory.
       run_subdir: discussion
       role_prefix: discussion
+      reviewer_fan_setting: loom.discussion_reviewer_fan
+      fixer_fan_setting: loom.discussion_fixer_fan
       profile:
         target:
           paths:
@@ -181,6 +185,7 @@ producers:
     config:
       run_subdir: discussion
       role_prefix: discussion
+      fixer_fan_setting: loom.discussion_fixer_fan
       # review_row names this segment's review row, which a refusal's way forward sends the
       # operator back to.
       review_row: Discussion-Burler-Review
@@ -217,6 +222,8 @@ producers:
     config:
       run_subdir: plan
       role_prefix: plan
+      reviewer_fan_setting: loom.plan_reviewer_fan
+      auto_accept_setting: loom.plan_auto_accept
       # A plan is 00-overview.md plus a variable number of card files, so no enumeration written
       # here stays correct across plans -- the single directory entry is what stays right. Both
       # consumers accept a directory: shedadapters.NewBouncer stats nothing, and burlerengine's own
@@ -261,6 +268,8 @@ producers:
       # shared run directory.
       run_subdir: plan
       role_prefix: plan
+      reviewer_fan_setting: loom.plan_reviewer_fan
+      fixer_fan_setting: loom.plan_fixer_fan
       profile:
         target:
           paths:
@@ -311,6 +320,7 @@ producers:
     config:
       run_subdir: plan
       role_prefix: plan
+      fixer_fan_setting: loom.plan_fixer_fan
       review_row: Plan-Burler-Review
       # gates holds this row's handoff until the artifact is mechanically valid: each entry names a
       # validator and re-prompts the live session up to its attempts times, so a failure never
@@ -342,6 +352,8 @@ producers:
     config:
       run_subdir: webster
       role_prefix: webster
+      reviewer_fan_setting: loom.webster_reviewer_fan
+      auto_accept_setting: loom.webster_auto_accept
       # The subject under review is the committed diff, which artifact_paths cannot name at all:
       # the key is required and non-empty, every entry resolves to an absolute path under
       # Env.AnchorPath, and the generic bouncer-template-judge.md renders the list as the
@@ -379,6 +391,8 @@ producers:
       # shared run directory.
       run_subdir: webster
       role_prefix: webster
+      reviewer_fan_setting: loom.webster_reviewer_fan
+      fixer_fan_setting: loom.webster_fixer_fan
       profile:
         target:
           # No paths key, deliberately: burlerengine's own Profile.validate resolves and stats
@@ -412,7 +426,7 @@ producers:
         tool-use: true
         # The round reviews code, so its seats load the hub's language skills after their own.
         language-skills: true
-        # No cluster-fan key: the row's reviewer and fixer fans come from loom.yaml's
+        # No cluster-fan key: the row's reviewer_fan_setting and fixer_fan_setting keys name loom.yaml's
         # webster_reviewer_fan and webster_fixer_fan, whose forks reach the diff through read-only git.
       # No model/effort key: model choice lives in loom.yaml's reviewer and fixer model keys only.
       # No timeout_s key, for the same Env fallback reason as Webster-Bouncer.
@@ -428,6 +442,7 @@ producers:
     config:
       run_subdir: webster
       role_prefix: webster
+      fixer_fan_setting: loom.webster_fixer_fan
       review_row: Webster-Burler-Review
       # The verify gate runs on the committed tree after each round and re-prompts the round
       # session with the findings until it passes. It first runs the headroom lint from the merge
@@ -476,6 +491,8 @@ producers:
     config:
       run_subdir: merge
       role_prefix: merge
+      reviewer_fan_setting: loom.merge_reviewer_fan
+      auto_accept_setting: loom.merge_auto_accept
       # The subject under review is the merge-in, which artifact_paths cannot name: the key is
       # required and non-empty, so it takes the decision record the review measures the merge
       # against. The rubric names the merge as the subject for the judge and the fixer alike.
@@ -509,6 +526,8 @@ producers:
       # shared run directory.
       run_subdir: merge
       role_prefix: merge
+      reviewer_fan_setting: loom.merge_reviewer_fan
+      fixer_fan_setting: loom.merge_fixer_fan
       color_segment: merge
       profile:
         target:
@@ -530,7 +549,7 @@ producers:
         tool-use: true
         # The round reviews code, so its seats load the hub's language skills after their own.
         language-skills: true
-        # No cluster-fan key: the row's reviewer and fixer fans come from loom.yaml's
+        # No cluster-fan key: the row's reviewer_fan_setting and fixer_fan_setting keys name loom.yaml's
         # merge_reviewer_fan and merge_fixer_fan.
       # No model/effort key: model choice lives in loom.yaml's reviewer and fixer model keys only.
       # No timeout_s key, for the same Env fallback reason as Merge-Bouncer.
@@ -546,6 +565,7 @@ producers:
     config:
       run_subdir: merge
       role_prefix: merge
+      fixer_fan_setting: loom.merge_fixer_fan
       review_row: Merge-Burler-Review
       color_segment: merge
       # The verify gate runs as Webster-Burler-Fix's does.

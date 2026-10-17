@@ -99,7 +99,7 @@ func TestMultiLLMEntry_ConstructionFailures(t *testing.T) {
 			writeMultiLLMStencils(t, env)
 			cfg := validMultiLLMConfig()
 			tc.mutate(&env, cfg)
-			_, err := multiLLMEntry("Row", cfg, env)
+			_, err := multiLLMEntry(RowIdentity{Name: "Row"}, cfg, env)
 			assertErrContains(t, err, tc.want)
 		})
 	}
@@ -111,7 +111,7 @@ func TestMultiLLMEntry_ConstructionFailures(t *testing.T) {
 		writeStencilFile(t, env.StencilsDir, "multillm-seat", `{{template "multillm-block"}}`+"\n")
 		writeStencilFile(t, env.StencilsDir, "multillm-block", `{{template "multillm-other"}}`+"\n")
 		writeStencilFile(t, env.StencilsDir, "multillm-other", "Leaf.\n")
-		_, err := multiLLMEntry("Row", validMultiLLMConfig(), env)
+		_, err := multiLLMEntry(RowIdentity{Name: "Row"}, validMultiLLMConfig(), env)
 		assertErrContains(t, err, "includes resolve one level deep")
 	})
 }
@@ -133,7 +133,7 @@ func TestMultiLLMEntry_ComposedTable(t *testing.T) {
 	cfg["tokens"] = map[string]any{"topic": "caching"}
 	cfg["gates"] = []any{map[string]any{"name": "plan", "attempts": 2}}
 
-	producer, err := multiLLMEntry("Row", cfg, env)
+	producer, err := multiLLMEntry(RowIdentity{Name: "Row"}, cfg, env)
 	if err != nil {
 		t.Fatalf("multiLLMEntry() error = %v; want nil", err)
 	}

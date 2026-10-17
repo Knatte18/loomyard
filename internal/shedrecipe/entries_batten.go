@@ -37,7 +37,7 @@ const defaultInnerRunNoticeQuietMin = 30
 // Env.Slug, Env.ScratchDir, Env.CreateWorktree, Env.PrimeLock.Acquire, and Env.PrimeLock.Path, and
 // returns battenshed.NewWorktreeCreate(name, env.Slug, env.CreateWorktree, env.PrimeLock,
 // env.ScratchDir).
-func worktreeCreateEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
+func worktreeCreateEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err
 	}
@@ -56,14 +56,14 @@ func worktreeCreateEntry(name string, cfg Config, env Env) (shedengine.ShedProdu
 	if err := requireAbsRoot("WorktreeCreate", "PrimeLock.Path", env.PrimeLock.Path); err != nil {
 		return nil, err
 	}
-	return battenshed.NewWorktreeCreate(name, env.Slug, env.CreateWorktree, env.PrimeLock, env.ScratchDir), nil
+	return battenshed.NewWorktreeCreate(row.Name, env.Slug, env.CreateWorktree, env.PrimeLock, env.ScratchDir), nil
 }
 
 // worktreeTeardownEntry is the Constructor for the "WorktreeTeardown" registry row: worktreeCreateEntry's
 // twin, validating the same Slug/ScratchDir/PrimeLock fields under the "WorktreeTeardown" entry name,
 // plus Env.Teardown.Shutdown and Env.Teardown.Remove, and returns
 // battenshed.NewWorktreeTeardown(name, env.Slug, env.Teardown, env.PrimeLock, env.ScratchDir).
-func worktreeTeardownEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
+func worktreeTeardownEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err
 	}
@@ -85,7 +85,7 @@ func worktreeTeardownEntry(name string, cfg Config, env Env) (shedengine.ShedPro
 	if err := requireAbsRoot("WorktreeTeardown", "PrimeLock.Path", env.PrimeLock.Path); err != nil {
 		return nil, err
 	}
-	return battenshed.NewWorktreeTeardown(name, env.Slug, env.Teardown, env.PrimeLock, env.ScratchDir), nil
+	return battenshed.NewWorktreeTeardown(row.Name, env.Slug, env.Teardown, env.PrimeLock, env.ScratchDir), nil
 }
 
 // innerRunEntry is the Constructor for the "InnerRun" registry row: it reads the optional int Config key poll_interval_s through configInt, defaulting to defaultInnerRunPollIntervalS when the extracted value is zero -- configInt reports an absent key and an explicit zero identically, so both resolve to the same default -- and rejects a negative value with an error naming the key.
@@ -94,7 +94,7 @@ func worktreeTeardownEntry(name string, cfg Config, env Env) (shedengine.ShedPro
 // poll_attempts is retired: the wait lives in the producer's own call, not on a Config key this entry reads, so poll_attempts is rejected as an unrecognised key rather than silently read.
 // It validates Env.Slug, Env.ScratchDir, and Env.InnerRun.Spawn/ResolveStatus/ReadStatus/ReadDecision/DriverAlive -- and not Env.InnerRun.Sleep or Env.InnerRun.Now, whose nil values are legitimate and select the production sleep and clock.
 // It returns battenshed.NewInnerRun(name, env.Slug, env.InnerRun, time.Duration(pollIntervalS)*time.Second, env.ScratchDir, time.Duration(driverExitGraceS)*time.Second).
-func innerRunEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
+func innerRunEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	pollIntervalS, err := configInt(cfg, "poll_interval_s", false)
 	if err != nil {
 		return nil, err
@@ -166,13 +166,13 @@ func innerRunEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, e
 	deps := env.InnerRun
 	deps.NoticeQuiet = time.Duration(noticeQuietMin) * time.Minute
 	deps.NoticeProbe = time.Duration(noticeProbeS) * time.Second
-	return battenshed.NewInnerRun(name, env.Slug, deps, time.Duration(pollIntervalS)*time.Second, env.ScratchDir, time.Duration(driverExitGraceS)*time.Second), nil
+	return battenshed.NewInnerRun(row.Name, env.Slug, deps, time.Duration(pollIntervalS)*time.Second, env.ScratchDir, time.Duration(driverExitGraceS)*time.Second), nil
 }
 
 // seedChildEntry is the Constructor for the "SeedChild" registry row: it validates Env.Slug,
 // Env.ScratchDir, and all five Env.SeedChild closures, and returns
 // battenshed.NewSeedChild(name, env.Slug, env.SeedChild, env.ScratchDir).
-func seedChildEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
+func seedChildEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err
 	}
@@ -197,14 +197,14 @@ func seedChildEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, 
 	if err := requireSeam("SeedChild", "SeedChild.PushSeed", env.SeedChild.PushSeed); err != nil {
 		return nil, err
 	}
-	return battenshed.NewSeedChild(name, env.Slug, env.SeedChild, env.ScratchDir), nil
+	return battenshed.NewSeedChild(row.Name, env.Slug, env.SeedChild, env.ScratchDir), nil
 }
 
 // landEntry is the Constructor for the "Land" registry row: it rejects any Config key.
 // It validates Env.Slug, Env.ScratchDir, Env.PrimeLock.Acquire, Env.PrimeLock.Path, Env.Land.LandLock.Acquire, Env.Land.LandLock.Path and the Env.Land seams ParentBranch, PrimeBranch, PrimeDirty, Pull, Landing, RunDeploy, ReadyTasks, PruneBoard and PauseRequested.
 // It returns battenshed.NewLand(name, env.Slug, env.Land, env.PrimeLock, env.ScratchDir).
 // It does not validate Env.Land.Sleep, Env.Land.Now or Env.Land.Notices, whose nil values are legitimate defaults.
-func landEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
+func landEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err
 	}
@@ -244,5 +244,5 @@ func landEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error
 			return nil, err
 		}
 	}
-	return battenshed.NewLand(name, env.Slug, env.Land, env.PrimeLock, env.ScratchDir), nil
+	return battenshed.NewLand(row.Name, env.Slug, env.Land, env.PrimeLock, env.ScratchDir), nil
 }

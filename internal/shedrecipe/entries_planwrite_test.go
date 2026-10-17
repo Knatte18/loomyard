@@ -43,7 +43,7 @@ func TestPlanWriteEntry_ConstructionFailures(t *testing.T) {
 	t.Run("NilPlanTable", func(t *testing.T) {
 		env := newTestEnv(t)
 		env.PlanTable = nil
-		_, err := planWriteEntry("Row", Config{}, env)
+		_, err := planWriteEntry(RowIdentity{Name: "Row"}, Config{}, env)
 		if err == nil {
 			t.Fatalf("planWriteEntry() error = nil; want non-nil when Env.PlanTable is nil")
 		}
@@ -55,7 +55,7 @@ func TestPlanWriteEntry_ConstructionFailures(t *testing.T) {
 	t.Run("NilCommitPlan", func(t *testing.T) {
 		env := newTestEnv(t)
 		env.CommitPlan = nil
-		_, err := planWriteEntry("Row", Config{}, env)
+		_, err := planWriteEntry(RowIdentity{Name: "Row"}, Config{}, env)
 		if err == nil {
 			t.Fatalf("planWriteEntry() error = nil; want non-nil when Env.CommitPlan is nil")
 		}
@@ -67,7 +67,7 @@ func TestPlanWriteEntry_ConstructionFailures(t *testing.T) {
 	t.Run("NilSeats", func(t *testing.T) {
 		env := newTestEnv(t)
 		env.Seats = nil
-		_, err := planWriteEntry("Row", Config{}, env)
+		_, err := planWriteEntry(RowIdentity{Name: "Row"}, Config{}, env)
 		if err == nil {
 			t.Fatalf("planWriteEntry() error = nil; want non-nil when Env.Seats is nil")
 		}
@@ -79,7 +79,7 @@ func TestPlanWriteEntry_ConstructionFailures(t *testing.T) {
 	t.Run("EmptyAnchorPath", func(t *testing.T) {
 		env := newTestEnv(t)
 		env.AnchorPath = ""
-		_, err := planWriteEntry("Row", Config{}, env)
+		_, err := planWriteEntry(RowIdentity{Name: "Row"}, Config{}, env)
 		if err == nil {
 			t.Fatalf("planWriteEntry() error = nil; want non-nil when Env.AnchorPath is empty")
 		}
@@ -91,7 +91,7 @@ func TestPlanWriteEntry_ConstructionFailures(t *testing.T) {
 	t.Run("NilArchiveWebster", func(t *testing.T) {
 		env := newTestEnv(t)
 		env.Rework.ArchiveWebster = nil
-		_, err := planWriteEntry("Row", Config{}, env)
+		_, err := planWriteEntry(RowIdentity{Name: "Row"}, Config{}, env)
 		if err == nil {
 			t.Fatalf("planWriteEntry() error = nil; want non-nil when Env.Rework.ArchiveWebster is nil")
 		}
@@ -103,7 +103,7 @@ func TestPlanWriteEntry_ConstructionFailures(t *testing.T) {
 	t.Run("EmptyStencilsDir", func(t *testing.T) {
 		env := newTestEnv(t)
 		env.StencilsDir = ""
-		_, err := planWriteEntry("Row", Config{}, env)
+		_, err := planWriteEntry(RowIdentity{Name: "Row"}, Config{}, env)
 		if err == nil {
 			t.Fatalf("planWriteEntry() error = nil; want non-nil when Env.StencilsDir is empty")
 		}
@@ -117,7 +117,7 @@ func TestPlanWriteEntry_ConstructionFailures(t *testing.T) {
 // error.
 func TestPlanWriteEntry_HappyPath(t *testing.T) {
 	env := newTestEnv(t)
-	producer, err := planWriteEntry("Row", Config{}, env)
+	producer, err := planWriteEntry(RowIdentity{Name: "Row"}, Config{}, env)
 	if err != nil {
 		t.Fatalf("planWriteEntry() error = %v; want nil", err)
 	}
@@ -142,7 +142,7 @@ func TestPlanWriteEntry_CallDone(t *testing.T) {
 	fake := &shedfake.SeatRunner{Results: []seatengine.Result{leadDoneResult(output)}}
 	env.Seats = fake
 
-	producer, err := planWriteEntry("Row", gatesCfg("plan", 2), env)
+	producer, err := planWriteEntry(RowIdentity{Name: "Row"}, gatesCfg("plan", 2), env)
 	if err != nil {
 		t.Fatalf("planWriteEntry() error = %v; want nil", err)
 	}
@@ -198,7 +198,7 @@ func TestPlanWriteEntry_CallAppendsPriorPlanBlock(t *testing.T) {
 		fake := &shedfake.SeatRunner{Results: []seatengine.Result{leadDoneResult(filepath.Join(planDir, "00-overview.md"))}}
 		env.Seats = fake
 
-		producer, err := planWriteEntry("Row", Config{}, env)
+		producer, err := planWriteEntry(RowIdentity{Name: "Row"}, Config{}, env)
 		if err != nil {
 			t.Fatalf("planWriteEntry() error = %v; want nil", err)
 		}
@@ -233,7 +233,7 @@ func TestPlanWriteEntry_CallAppendsPriorPlanBlock(t *testing.T) {
 		}
 		env.Seats = fake
 
-		producer, err := planWriteEntry("Row", Config{}, env)
+		producer, err := planWriteEntry(RowIdentity{Name: "Row"}, Config{}, env)
 		if err != nil {
 			t.Fatalf("planWriteEntry() error = %v; want nil", err)
 		}

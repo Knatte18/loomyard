@@ -40,7 +40,7 @@ func Build(r Recipe, env shedrecipe.Env) ([]shedengine.ProducerDef, error) {
 		if err != nil {
 			return nil, fmt.Errorf("shedbuild: producer %d %q: %w", i, row.Name, err)
 		}
-		producer, err := ctor(row.Name, shedrecipe.Config(row.Config), env)
+		producer, err := ctor(shedrecipe.RowIdentity{Name: row.Name, Segment: row.Segment}, shedrecipe.Config(row.Config), env)
 		if err != nil {
 			return nil, fmt.Errorf("shedbuild: producer %d %q: %w", i, row.Name, err)
 		}

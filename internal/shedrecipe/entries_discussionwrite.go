@@ -24,7 +24,7 @@ import (
 //
 // The row carries a "gates" key even though this entry's own dedicated constructor could imply the validator, so that one key means one thing at every gated site and a reader of the recipe can see which validator guards each row without opening Go;
 // this entry therefore never hard-codes a validator choice of its own.
-func discussionWriteEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
+func discussionWriteEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	gate, err := resolveGateSpec("DiscussionWrite", cfg, env)
 	if err != nil {
 		return nil, err
@@ -60,6 +60,6 @@ func discussionWriteEntry(name string, cfg Config, env Env) (shedengine.ShedProd
 		table.Gate = gate
 		return table, nil
 	}
-	inner := shedadapters.NewMultiLLMProducerSourced(name, tables, env.Seats, env.Now, prepare)
-	return loomshed.NewDiscussionWrite(name, inner, env.CommitDiscussion), nil
+	inner := shedadapters.NewMultiLLMProducerSourced(row.Name, tables, env.Seats, env.Now, prepare)
+	return loomshed.NewDiscussionWrite(row.Name, inner, env.CommitDiscussion), nil
 }

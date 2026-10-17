@@ -25,7 +25,7 @@ internal/cliwire: 12
 internal/commentlint: 3
 internal/configcli: 12
 internal/configengine: 18
-internal/configreg: 10
+internal/configreg: 11
 internal/configsync: 9
 internal/creelcli: 4
 internal/creelengine: 11
@@ -67,7 +67,7 @@ internal/logger: 37
 internal/loggerconfig: 3
 internal/loomcli: 237
 internal/loomengine: 58
-internal/loomrecipe: 56
+internal/loomrecipe: 57
 internal/loomshed: 76
 internal/lyxcwd: 23
 internal/lyxtemp: 7

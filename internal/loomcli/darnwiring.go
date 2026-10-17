@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
@@ -18,7 +19,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/reviewbudget"
 	"github.com/Knatte18/loomyard/internal/seatengine"
+	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -27,6 +30,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifytree"
 	"gopkg.in/yaml.v3"
 )
+
+// darnReviewSegment is the darn recipe's review segment, the key of its entry in shedrecipe.Env.Segments.
+const darnReviewSegment = "Darn-Review"
 
 // reworkRowFor returns the name of the row that answers an operator rejection in recipe: the Darn-Write row for the darn recipe, PR-Rework otherwise.
 func reworkRowFor(recipe string) string {
@@ -142,50 +148,56 @@ func (c *loomCLI) renameRetiredDarnRows() error {
 	return nil
 }
 
-// darnReviewBudget returns darn.yaml's review_max_bounces for the routing projection.
+// darnReviewBudget returns the Darn-Review segment's budget, darn.yaml's review_max_bounces, for the routing projection.
 // The full wiring has already loaded darn.yaml into c.darnCfg; the lightweight wiring loads no config, so it reads the hub-wide file here.
 // An unreadable file degrades to the template's default with a warning, because the lightweight verbs (status, pause) must not refuse over a config they otherwise never read.
-func (c *loomCLI) darnReviewBudget() (int, error) {
+func (c *loomCLI) darnReviewBudget() (map[string]int, error) {
 	if c.darnCfg != nil {
-		return c.darnCfg.ReviewMaxBounces, nil
+		return map[string]int{darnReviewSegment: c.darnCfg.ReviewMaxBounces}, nil
 	}
 
 	cfg, err := darnengine.LoadConfig(fabricengine.ConfigDirs(c.location), "darn")
 	if err == nil {
-		return cfg.ReviewMaxBounces, nil
+		return map[string]int{darnReviewSegment: cfg.ReviewMaxBounces}, nil
 	}
 	logger.Warn("loom: could not read darn.yaml for the review bounce budget; reporting the template default", "error", err)
 
 	var template darnengine.Config
 	if err := yaml.Unmarshal([]byte(darnengine.ConfigTemplate()), &template); err != nil {
-		return 0, err
+		return nil, err
 	}
 
-	return template.ReviewMaxBounces, nil
+	return map[string]int{darnReviewSegment: template.ReviewMaxBounces}, nil
 }
 
-// wireDarnReview adds the Darn-Review perch's models and fan lists from cfg to env, and the config keys its Burler rows' settings came from.
-// The models resolve through registry, each empty darn.yaml model key taking its shared list in env.ReviewModels, and a refusal names the key the failing value came from.
-// The review row records each round's fans and the fix row reads them, so the two entries are added together; the fixer fan key names darn.yaml, the file it lives in.
-// env's maps are the ones wire filled for every recipe.
-func wireDarnReview(env *shedrecipe.Env, cfg darnengine.Config, registry modelspec.Registry) error {
-	models, keys, err := loomengine.ResolveDarnReview(env.ReviewModels, cfg, registry)
+// wireDarnReview adds the Darn-Review segment's settings from cfg to env.Segments.
+// The models resolve through registry, each empty darn.yaml model key taking its shared list, and a refusal names the key the failing value came from.
+// The segment's Bouncer pair is bouncer.
+func wireDarnReview(env *shedrecipe.Env, cfg darnengine.Config, shared burlerengine.RoundModels, bouncer shedadapters.BouncerModels, registry modelspec.Registry) error {
+	models, keys, err := loomengine.ResolveDarnReview(shared, cfg, registry)
 	if err != nil {
 		return err
 	}
-	env.RowReviewModels[loomshed.NameDarnBurlerReview] = models
-	env.RowReviewModels[loomshed.NameDarnBurlerFix] = models
-	env.RowClusterFans[loomshed.NameDarnBouncer] = cfg.ReviewerFan
-	env.RowClusterFans[loomshed.NameDarnBurlerReview] = cfg.ReviewerFan
-	env.RowFixFans[loomshed.NameDarnBurlerReview] = cfg.FixerFan
-	env.RowModelKeys[loomshed.NameDarnBurlerReview] = shedrecipe.RowModelKeys{Review: keys.Review}
-	env.RowModelKeys[loomshed.NameDarnBurlerFix] = shedrecipe.RowModelKeys{Fix: keys.Fix, FixFan: darnengine.FixerFanKey + " in darn.yaml"}
+	if env.Segments == nil {
+		env.Segments = map[string]shedrecipe.SegmentSettings{}
+	}
+	env.Segments[darnReviewSegment] = shedrecipe.SegmentSettings{
+		Models:            models,
+		ReviewKey:         keys.Review,
+		FixKey:            keys.Fix,
+		Bouncer:           bouncer,
+		MaxBounces:        cfg.ReviewMaxBounces,
+		MaxBouncesKey:     reviewbudget.RunSoftKey,
+		HardMaxBounces:    cfg.ReviewHardMaxBounces,
+		HardMaxBouncesKey: reviewbudget.RunHardKey,
+		ConfigFile:        "darn.yaml",
+	}
 	return nil
 }
 
 // wireDarn fills the Env fields a darn run reads beyond the ones wire fills for every recipe, and replaces the loom DescribeTable with the darn one, which reads the decision record but no run record.
 // It loads the hub-wide darn.yaml strictly and reads its verify command once, so start, run, step and resume refuse an absent or empty command before any row builds.
-func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, frictionDir string, landingCfg landingshed.Config, registry modelspec.Registry) error {
+func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, frictionDir string, landingCfg landingshed.Config, registry modelspec.Registry, shared burlerengine.RoundModels, bouncer shedadapters.BouncerModels) error {
 	dirs := fabricengine.ConfigDirs(location)
 	cfg, err := darnengine.LoadConfig(dirs, "darn")
 	if err != nil {
@@ -199,18 +211,13 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 	c.env.VerifyMergeBase = pairMergeBase(location)
 	c.env.VerifyWholeDiff = true
 	c.env.DarnVerifyAttempts = cfg.VerifyAttempts
-	c.env.DarnReviewMaxBounces = cfg.ReviewMaxBounces
-	if c.env.RowHardMaxBounces == nil {
-		c.env.RowHardMaxBounces = map[string]int{}
-	}
-	c.env.RowHardMaxBounces[loomshed.NameDarnBouncer] = cfg.ReviewHardMaxBounces
-	if err := wireDarnReview(&c.env, cfg, registry); err != nil {
+	if err := wireDarnReview(&c.env, cfg, shared, bouncer, registry); err != nil {
 		return err
 	}
 	c.darnCfg = &cfg
 	// The Darn-Review perch's CIRCLING Reason names the budget the darn routing applies, not loom's.
 	c.env.SegmentBounces = segmentBounces(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, func() (shedengine.Routing, error) {
-		return loomrecipe.DarnRouting(cfg.ReviewMaxBounces)
+		return loomrecipe.DarnRouting(map[string]int{darnReviewSegment: cfg.ReviewMaxBounces})
 	})
 	c.env.Darn = darnDeps(location, c.runID, c.env.VerifyDir)
 	// The history seam turns the Darn-Write row's "discussion" gate into the darn gate.
