@@ -42,6 +42,7 @@
 // # Decision snapshot
 //
 // `Snapshot` hashes the decision record and the recorded notes, so a decision recorded after an attempt spawned is detectable when its verdict arrives.
+// `DecisionNoteTitle` declares the decision-note title form the snapshot's caller filters on.
 //
 // # Told geometry
 //

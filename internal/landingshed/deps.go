@@ -66,6 +66,12 @@ type Deps struct {
 	// not compute.
 	ScratchDir string
 
+	// RunStart is the run's start, the `started_at` stamp of the pair's seed.
+	// Told by the caller and derived by nothing here.
+	// Every pull-request lookup in this package is bounded by it: a pull request created before it belongs to an earlier run and reads as none.
+	// Zero means unbounded.
+	RunStart time.Time
+
 	// OriginURL is the told remote URL string Publish parses into an owner/repo pair via
 	// githubclient.ParseOwnerRepo. Read by the caller, never resolved here.
 	OriginURL string
@@ -220,6 +226,12 @@ type Deps struct {
 	// it, so without this field neither producer could build a resolver at all, and the conflict
 	// session could never spawn.
 	Shuttle mergeresolve.Shuttle
+
+	// EnginesRun returns the names of the engines the task's sessions ran under, which pick Config.EngineTrailers' lines for the landing commit.
+	// Finalize calls it once per Call, before any parent-side mutation, and a returned error is returned from Call.
+	//
+	// Nil means "no engine ran", so the commit carries no engine line.
+	EnginesRun func() ([]string, error)
 
 	// Registry is the resolved model-spec registry both producers' resolver constructions read the
 	// conflict spec's alias against.

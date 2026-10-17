@@ -54,6 +54,8 @@
 // shuttle.yaml carries no provider key but the neutral python guard switch `deny_python`; the keys a provider owns live in that engine's own config module.
 // Its retired Claude keys still load from an unreconciled layer and are dropped.
 // MigrateConfig raises the module's below-floor poll_interval_ms to its floor and renames a legacy `claude_deny_python` to `deny_python` for lyx config reconcile.
+// Start adds each run's engine name to `engines-run.json` at the run directory root before it registers the strand, a file the orphan sweep never removes.
+// Runner.EnginesRun returns the union of that ledger and the engines of the run records still under the root, so a caller learns which engines a worktree's sessions ran under after their directories are swept.
 // The cross-run readers ReadAgentActivity, ReadSessionStates and ReadAgentWaits read each run through the engine its run record names, the engine set's default for a record naming none, and skip a run whose engine the set does not hold.
 // The run-loop half — Runner/Run in run.go, Wait in wait.go, and Attach in attach.go — drives a
 // LIVE agent through the ReedOps seam: it registers and removes strands, polls a real pane's capture
@@ -120,7 +122,7 @@
 // The notice is never typed into the pane and changes no outcome.
 //
 // AwaitAny is the shared wait: it stats the told paths once a second until one exists or the cap elapses, and watches no directory.
-// It is the poll every capped keep-cache-warm wait verb runs on, and DefaultAwaitCap is the cap those verbs default to.
+// It is the poll every capped keep-cache-warm wait verb runs on, and DefaultAwaitCap is the cap those verbs default to and the bound of the gate's slot wait.
 //
 // # Pending prompt
 //

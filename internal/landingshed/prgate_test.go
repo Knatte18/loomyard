@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedtransient"
@@ -142,6 +143,20 @@ func TestPRGate_Verdicts(t *testing.T) {
 			want:  shedengine.Done,
 		},
 		{name: "no pull request awaits", listBody: "[]", want: shedengine.Awaiting, reasonHas: []string{"reopen", "abandon"}},
+		{
+			name: "an older merged pull request awaits naming no pull request", listBody: `[{"number":3,"state":"closed","created_at":"2026-01-01T00:00:00Z","merged_at":"2026-01-02T00:00:00Z","head":{"sha":"zzz"}}]`,
+			setup:     func(t *testing.T, f *prGateFixture) { f.deps.RunStart = time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC) },
+			want:      shedengine.Awaiting,
+			reasonHas: []string{"no pull request exists"},
+		},
+		{
+			name: "an open pull request created after the run started with a matching approval is Done", listBody: fmt.Sprintf(`[{"number":3,"state":"open","created_at":"2026-07-01T00:00:00Z","head":{"sha":%q}}]`, prGateHead),
+			setup: func(t *testing.T, f *prGateFixture) {
+				f.deps.RunStart = time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+				writeApprovalAt(t, f.deps.ApprovalPath, 3, prGateHead)
+			},
+			want: shedengine.Done,
+		},
 		{
 			name: "closed outranks a matching approval", listBody: closedAtHead,
 			setup:     func(t *testing.T, f *prGateFixture) { writeApprovalAt(t, f.deps.ApprovalPath, 3, prGateHead) },

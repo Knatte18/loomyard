@@ -34,8 +34,10 @@ type approveDeps struct {
 	readStatus func() (st shedengine.Status, found bool, err error)
 	// branches resolves the task branch, the branch it lands on, and the origin URL.
 	branches func() (taskBranch, parentBranch, originURL string, err error)
-	// findPR looks up the pull request from head to base in owner/repo, nil when none exists.
-	findPR func(ctx context.Context, owner, repo, head, base string) (*github.PullRequest, error)
+	// runStart reads the run's start from its seed; the zero time means the lookup is unbounded.
+	runStart func() (time.Time, error)
+	// findPR looks up the pull request from head to base in owner/repo created at or after since, nil when none exists.
+	findPR func(ctx context.Context, owner, repo, head, base string, since time.Time) (*github.PullRequest, error)
 	// headSHA reads the local task HEAD.
 	headSHA func() (string, error)
 	// recordApproval records the approval, removing any pending rejection and replacing any earlier approval.
@@ -67,7 +69,11 @@ func approveVerb(ctx context.Context, out io.Writer, d approveDeps) int {
 	if err != nil {
 		return output.Err(out, "loom: approve: origin URL unusable: "+err.Error()+"; way forward: transient, re-run lyx loom approve")
 	}
-	pr, err := d.findPR(ctx, owner, repo, taskBranch, parentBranch)
+	since, err := d.runStart()
+	if err != nil {
+		return output.Err(out, "loom: approve: read the run's start: "+err.Error()+"; way forward: transient, re-run lyx loom approve")
+	}
+	pr, err := d.findPR(ctx, owner, repo, taskBranch, parentBranch, since)
 	if err != nil {
 		return output.Err(out, "loom: approve: look up the pull request: "+err.Error()+"; way forward: transient, re-run lyx loom approve")
 	}
@@ -113,7 +119,7 @@ func (c *loomCLI) approveCmd() *cobra.Command {
 		Long: `approve records the operator's approval of the task's open pull request,
 for a run awaiting or blocked at PR-Gate, and removes any pending rejection. It refuses unless the run is awaiting or blocked at PR-Gate,
 the pull request is open, and the local task HEAD equals the pull request's
-head commit. It writes the approval record and never resumes the run; run
+head commit. It also refuses when the run's seed cannot be read. It writes the approval record and never resumes the run; run
 "lyx loom start" afterwards to land it.
 
 Example:
@@ -161,13 +167,8 @@ Example:
 					}
 					return task, parent, originURL, nil
 				},
-				findPR: func(ctx context.Context, owner, repo, head, base string) (*github.PullRequest, error) {
-					client, err := landingshed.NewGitHubClient()
-					if err != nil {
-						return nil, err
-					}
-					return landingshed.FindPullRequest(ctx, client, owner, repo, head, base)
-				},
+				runStart: func() (time.Time, error) { return seedRunStart(location) },
+				findPR:   findRunPullRequest,
 				headSHA: func() (string, error) {
 					f, err := open()
 					if err != nil {

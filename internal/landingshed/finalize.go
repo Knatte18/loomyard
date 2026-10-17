@@ -167,6 +167,15 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: parse change description: %w", finalizeName, err)
 	}
 
+	// Step 1a2: read the engines the task ran under, for the same reason: the trailer block is part of step 4's message.
+	var enginesRun []string
+	if fz.deps.EnginesRun != nil {
+		if enginesRun, err = fz.deps.EnginesRun(); err != nil {
+			return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: read the engines the task ran under: %w", finalizeName, err)
+		}
+	}
+	landingMessage := summary.LandingMessage(fz.deps.Config.TrailerBlock(enginesRun))
+
 	// Step 1b: commit the product's own status file, so the pair carries no tracked modification
 	// when the merge guard below runs. This must happen inside Call rather than once at bootstrap:
 	// Shed rewrites that file on every transition, including the persist a resumed run makes
@@ -215,7 +224,7 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 	// Step 4: the parent-side merge, this producer's own merge critical section. Message is set
 	// whether or not Config.Squash is true -- it is the conclude-commit message for both merge
 	// shapes, so gating it on Squash would leave the non-squash landing commit with an unset message.
-	mergeOpts := fabricengine.MergeOptions{Squash: fz.deps.Config.Squash, Message: summary.LandingMessage(fz.deps.Config.CoAuthoredBy)}
+	mergeOpts := fabricengine.MergeOptions{Squash: fz.deps.Config.Squash, Message: landingMessage}
 	_, mergeErr := parentHandle.Merge(fz.deps.TaskBranch, mergeOpts)
 	if mergeErr == nil {
 		fz.markTaskDone()
@@ -348,7 +357,7 @@ func (fz *Finalize) closePullRequest(ctx context.Context, parentHandle parentMer
 		warn("new github client", err)
 		return
 	}
-	pr, err := FindPullRequest(ctx, client, owner, repo, fz.deps.TaskBranch, fz.deps.ParentBranch)
+	pr, _, err := FindPullRequest(ctx, client, owner, repo, fz.deps.TaskBranch, fz.deps.ParentBranch, fz.deps.RunStart)
 	if err != nil {
 		warn("query pull request", err)
 		return

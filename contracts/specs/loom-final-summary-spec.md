@@ -33,7 +33,7 @@ The contract names no location: the artifact's directory belongs to whichever pr
 The artifact has two consumers today, both in `internal/landingshed`:
 
 - **`Publish`** uses the parsed title and body as the pull request's own title and body fields.
-- **`Finalize`** uses `LandingMessage` — the title, a blank line, the body with its leading whitespace trimmed, then exactly one `Co-Authored-By` trailer carrying `landing.yaml`'s `co_authored_by` — as the landing merge commit's message.
+- **`Finalize`** uses `LandingMessage` — the title, a blank line, the body with its leading whitespace trimmed, then, after a blank line, the trailer block Go composes from `landing.yaml`'s `trailer_text` and the `engine_trailers` entries of the engines that ran a session in the task — as the landing merge commit's message.
 
 `Finalize`'s read is unconditional: a missing or malformed artifact there is a hard error.
 `Publish`'s read is reached only when the parent branch requires a pull request: it opens one from the artifact, or refreshes an open one's title and body, so a re-run Publish carries a rewritten description onto the pull request.

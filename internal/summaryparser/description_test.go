@@ -70,14 +70,26 @@ func TestFinding_Error(t *testing.T) {
 
 func TestLandingMessage(t *testing.T) {
 	t.Parallel()
-	s := &summaryparser.Summary{Title: "T", Body: "\nbody\n"}
-	want := "T\n\nbody\n\n\nCo-Authored-By: A <a@b>"
-	if got := s.LandingMessage("A <a@b>"); got != want || strings.Count(got, "Co-Authored-By:") != 1 {
-		t.Errorf("LandingMessage = %q; want %q", got, want)
+	withBody := &summaryparser.Summary{Title: "T", Body: "\nbody\n"}
+	titleOnly := &summaryparser.Summary{Title: "T"}
+	tests := []struct {
+		name     string
+		summary  *summaryparser.Summary
+		trailers string
+		want     string
+	}{
+		{"BodyAndTrailers", withBody, "Created using Loomyard\nCo-Authored-By: A <a@b>", "T\n\nbody\n\n\nCreated using Loomyard\nCo-Authored-By: A <a@b>"},
+		{"BodyNoTrailers", withBody, "", "T\n\nbody\n"},
+		{"TitleOnlyAndTrailers", titleOnly, "Co-Authored-By: A", "T\n\nCo-Authored-By: A"},
+		{"TitleOnlyNoTrailers", titleOnly, "", "T"},
 	}
-	empty := &summaryparser.Summary{Title: "T"}
-	if got := empty.LandingMessage("A"); got != "T\n\nCo-Authored-By: A" {
-		t.Errorf("empty-body LandingMessage = %q", got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := tt.summary.LandingMessage(tt.trailers); got != tt.want {
+				t.Errorf("LandingMessage(%q) = %q; want %q", tt.trailers, got, tt.want)
+			}
+		})
 	}
 }
 

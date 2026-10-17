@@ -80,6 +80,14 @@ by itself on the first verb.`,
 	creel.AddCommand(
 		postCmd(), injectCmd(), interruptCmd(), forwardCmd(), readCmd(), inboxCmd(), logCmd(), holdCmd(), releaseCmd(), daemonCmd(),
 	)
+	// Creel reads no stencils, and the seed pass's log lines would mix into the stderr its verbs use for refusals and stall progress.
+	// The long-lived daemon must also never commit seed writes into the hub.
+	for _, cmd := range append([]*cobra.Command{creel}, creel.Commands()...) {
+		if cmd.Annotations == nil {
+			cmd.Annotations = map[string]string{}
+		}
+		cmd.Annotations[clihelp.SkipStencilSeedAnnotation] = clihelp.AnnotationEnabled
+	}
 	return creel
 }
 
