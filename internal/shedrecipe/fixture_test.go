@@ -4,6 +4,7 @@ package shedrecipe
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -77,6 +78,18 @@ func writeStencilFile(t *testing.T, dir, name, content string) {
 // testReviewSegment is the segment every Bouncer, BurlerReview and BurlerFix test row belongs to.
 const testReviewSegment = "Test-Review"
 
+// fakeSetting returns a setting lookup answering values["module.key"], and an error naming the reference for one values lacks.
+func fakeSetting(values map[string]any) func(module, key string) (any, error) {
+	return func(module, key string) (any, error) {
+		reference := module + "." + key
+		value, ok := values[reference]
+		if !ok {
+			return nil, fmt.Errorf("fake setting lookup: unknown setting %s", reference)
+		}
+		return value, nil
+	}
+}
+
 // reviewRow returns the identity of a review-segment row called name, in testReviewSegment.
 func reviewRow(name string) RowIdentity {
 	return RowIdentity{Name: name, Segment: testReviewSegment}
@@ -135,6 +148,7 @@ func newTestEnv(t *testing.T) Env {
 		Seats:              &shedfake.SeatRunner{},
 		Models:             modelspec.Registry{"opus": {Engine: "claude", Model: "claude-opus-test"}},
 		RowBouncerModels:   bouncerRowModels("review-bounce", "a", "b", "row-name"),
+		Segments:           map[string]SegmentSettings{testReviewSegment: {}},
 		WebsterRun:         fakeWebsterRun,
 		CommitWebster:      func() error { return nil },
 		ReflectFriction:    func() string { return "skipped" },

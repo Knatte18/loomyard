@@ -226,7 +226,7 @@ func TestBouncerEntry_ReportNamePinning(t *testing.T) {
 }
 
 // TestBouncerEntry_EnvJudgeFallback covers where a Bouncer row's models and roles come from:
-// the row takes its env.RowBouncerModels entry's seed triple on the seed spawn and its judge triple on the judge spawn, never the Review* values and never another row's entry.
+// the row takes its segment's Bouncer seed triple on the seed spawn and its judge triple on the judge spawn.
 // It also pins the role each spawn carries, led by the row's role_prefix when set, and that the attach probe before the spawn carries the same role.
 // shedadapters.BouncerConfig's cfg field is unexported and this is a
 // different package, so the triples are asserted through behaviour instead: one Call is
@@ -241,7 +241,7 @@ func TestBouncerEntry_EnvJudgeFallback(t *testing.T) {
 	callAndCaptureSpec := func(t *testing.T, writeReport bool, extra Config) (spawn, attach shuttleengine.Spec) {
 		t.Helper()
 		env := newTestEnv(t)
-		env.RowBouncerModels["review-bounce"] = shedadapters.BouncerModels{Seed: seed, Judge: judge}
+		env.Segments[testReviewSegment] = SegmentSettings{Bouncer: shedadapters.BouncerModels{Seed: seed, Judge: judge}}
 		writeStencil(t, env.StencilsDir, "bouncer-template-seed", "seed template, no markers\n")
 		writeStencil(t, env.StencilsDir, "bouncer-template-judge", "judge template, no markers\n")
 
@@ -308,12 +308,79 @@ func TestBouncerEntry_ReportNameKeyRejected(t *testing.T) {
 }
 
 func TestBouncerEntry_ConstructionFailures(t *testing.T) {
-	t.Run("NoRowBouncerModelsEntry", func(t *testing.T) {
+	segmentRefusals := []struct {
+		name string
+		row  RowIdentity
+		want []string
+	}{
+		{"EmptySegment", RowIdentity{Name: "unwired-row"}, []string{"Bouncer", `row "unwired-row" has no segment`, "way forward: put the row in a review segment with segment: in the recipe"}},
+		{"SegmentWithNoEntry", RowIdentity{Name: "unwired-row", Segment: "Other-Review"}, []string{"Bouncer", `row "unwired-row"`, `segment "Other-Review" has no Env.Segments entry`, `way forward: wire segment "Other-Review"'s settings in the caller's Env.Segments`}},
+	}
+	for _, tt := range segmentRefusals {
+		t.Run(tt.name, func(t *testing.T) {
+			env := newTestEnv(t)
+			cfg := minimalBouncerConfig(t, env)
+			_, err := bouncerEntry(tt.row, cfg, env)
+			for _, want := range tt.want {
+				assertErrContains(t, err, want)
+			}
+		})
+	}
+
+	settingRefusals := []struct {
+		name       string
+		key        string
+		value      any
+		lookup     map[string]any
+		nilSetting bool
+		want       []string
+	}{
+		{"ReferenceWithNoDot", "reviewer_fan_setting", "loomfan", nil, false, []string{`row "review-bounce"`, "reviewer_fan_setting", `"loomfan"`, "way forward: set reviewer_fan_setting to a module.key"}},
+		{"ReferenceWithEmptyModule", "reviewer_fan_setting", ".x", nil, false, []string{`row "review-bounce"`, "reviewer_fan_setting", `".x"`, "way forward: set reviewer_fan_setting to a module.key"}},
+		{"ReferenceWithEmptyKey", "reviewer_fan_setting", "loom.", nil, false, []string{`row "review-bounce"`, "reviewer_fan_setting", `"loom."`, "way forward: set reviewer_fan_setting to a module.key"}},
+		{"ReferenceNotAString", "reviewer_fan_setting", 3, nil, false, []string{"reviewer_fan_setting", "must be a string"}},
+		{"NamedSettingWithNilLookup", "auto_accept_setting", "loom.discussion_auto_accept", nil, true, []string{`row "review-bounce"`, "auto_accept_setting", "loom.discussion_auto_accept", "way forward: fill Env.Setting in the caller that builds this recipe"}},
+		{"UnknownReference", "reviewer_fan_setting", "loom.unknown", map[string]any{}, false, []string{`row "review-bounce"`, "reviewer_fan_setting", "loom.unknown", "fake setting lookup: unknown setting loom.unknown"}},
+		{"FanValueNotAFanOrList", "reviewer_fan_setting", "loom.fan", map[string]any{"loom.fan": 3}, false, []string{`row "review-bounce"`, "reviewer_fan_setting", "loom.fan", "fan in loom.yaml", "int", "way forward: point reviewer_fan_setting at"}},
+		{"FanListHoldingANonString", "reviewer_fan_setting", "loom.fan", map[string]any{"loom.fan": []any{"a", 1}}, false, []string{`row "review-bounce"`, "reviewer_fan_setting", "loom.fan", "entry 1", "int"}},
+		{"AutoAcceptNotABool", "auto_accept_setting", "loom.accept", map[string]any{"loom.accept": "yes"}, false, []string{`row "review-bounce"`, "auto_accept_setting", "loom.accept", "string", "way forward: point auto_accept_setting at"}},
+	}
+	for _, tt := range settingRefusals {
+		t.Run(tt.name, func(t *testing.T) {
+			env := newTestEnv(t)
+			cfg := minimalBouncerConfig(t, env)
+			cfg[tt.key] = tt.value
+			env.Setting = fakeSetting(tt.lookup)
+			if tt.nilSetting {
+				env.Setting = nil
+			}
+			_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
+			for _, want := range tt.want {
+				assertErrContains(t, err, want)
+			}
+		})
+	}
+
+	t.Run("UnknownReferenceCarriesNoWayForward", func(t *testing.T) {
 		env := newTestEnv(t)
 		cfg := minimalBouncerConfig(t, env)
-		_, err := bouncerEntry(reviewRow("unwired-row"), cfg, env)
-		assertErrContains(t, err, "unwired-row")
-		assertErrContains(t, err, "Env.RowBouncerModels")
+		cfg["reviewer_fan_setting"] = "loom.unknown"
+		env.Setting = fakeSetting(nil)
+		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
+		if err == nil || strings.Contains(err.Error(), "way forward") {
+			t.Fatalf("error = %v; want the lookup's own text with no way forward added", err)
+		}
+	})
+
+	t.Run("EmptyReferenceNeedsNoLookup", func(t *testing.T) {
+		env := newTestEnv(t)
+		cfg := minimalBouncerConfig(t, env)
+		cfg["reviewer_fan_setting"] = ""
+		env.Setting = nil
+		producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
+		if err != nil || producer == nil {
+			t.Fatalf("bouncerEntry() = (%v, %v); want a producer and nil", producer, err)
+		}
 	})
 
 	for _, key := range []string{"model", "effort", "version"} {
@@ -959,11 +1026,12 @@ func TestBouncerEntry_ApproveSeam(t *testing.T) {
 // allowlist entry that admits exactly this spelling.
 func TestBouncerEntry_ClusterExcludes(t *testing.T) {
 	// A row told fans reads round 1's recorded fan from the usage record, which the review producer writes in a real run and this helper hand-builds because recordRoundFans is unexported in shedadapters.
-	judgePrompt := func(t *testing.T, cfgValue any, set bool, rowFans map[string][]string) string {
+	// A non-nil settings map makes the row name reviewer_fan_setting: loom.fan, answered from it.
+	judgePrompt := func(t *testing.T, cfgValue any, set bool, settings map[string]any) string {
 		t.Helper()
 		env := newTestEnv(t)
-		env.RowClusterFans = rowFans
-		if rowFans != nil {
+		if settings != nil {
+			env.Setting = fakeSetting(settings)
 			runDir := filepath.Join(env.RunRoot, "review-segment")
 			if err := os.MkdirAll(runDir, 0o755); err != nil {
 				t.Fatalf("MkdirAll(%q) = %v; want nil", runDir, err)
@@ -979,6 +1047,9 @@ func TestBouncerEntry_ClusterExcludes(t *testing.T) {
 		cfg := minimalBouncerConfig(t, env)
 		if set {
 			cfg["cluster_excludes"] = cfgValue
+		}
+		if settings != nil {
+			cfg["reviewer_fan_setting"] = "loom.fan"
 		}
 		layoutBouncerRound1Report(t, env)
 
@@ -1007,27 +1078,29 @@ func TestBouncerEntry_ClusterExcludes(t *testing.T) {
 		}
 	})
 
-	t.Run("EnvFanRendersExcludeLenses", func(t *testing.T) {
-		if p := judgePrompt(t, nil, false, map[string][]string{"review-bounce": {"env-fan"}}); !strings.Contains(p, "exclude_lenses") {
-			t.Errorf("prompt lacks exclude_lenses with a RowClusterFans entry that runs the recorded fan again:\n%s", p)
+	t.Run("SettingFanRendersExcludeLenses", func(t *testing.T) {
+		if p := judgePrompt(t, nil, false, map[string]any{"loom.fan": []any{"env-fan"}}); !strings.Contains(p, "exclude_lenses") {
+			t.Errorf("prompt lacks exclude_lenses with a fan setting that runs the recorded fan again:\n%s", p)
 		}
 	})
 
-	t.Run("EnvFanChangingNextRoundOmitsExcludeLenses", func(t *testing.T) {
-		if p := judgePrompt(t, nil, false, map[string][]string{"review-bounce": {"env-fan", "other-fan"}}); strings.Contains(p, "exclude_lenses") {
-			t.Errorf("prompt mentions exclude_lenses with a RowClusterFans entry whose next round runs another fan:\n%s", p)
+	t.Run("SettingFanChangingNextRoundOmitsExcludeLenses", func(t *testing.T) {
+		if p := judgePrompt(t, nil, false, map[string]any{"loom.fan": []any{"env-fan", "other-fan"}}); strings.Contains(p, "exclude_lenses") {
+			t.Errorf("prompt mentions exclude_lenses with a fan setting whose next round runs another fan:\n%s", p)
 		}
 	})
 
-	t.Run("EmptyEnvFanOmitsExcludeLenses", func(t *testing.T) {
-		if p := judgePrompt(t, nil, false, map[string][]string{"review-bounce": {""}}); strings.Contains(p, "exclude_lenses") {
-			t.Errorf("prompt mentions exclude_lenses with an all-empty RowClusterFans entry:\n%s", p)
+	t.Run("EmptyOrNullSettingFanOmitsExcludeLenses", func(t *testing.T) {
+		for name, value := range map[string]any{"all-empty list": []any{""}, "null": nil} {
+			if p := judgePrompt(t, nil, false, map[string]any{"loom.fan": value}); strings.Contains(p, "exclude_lenses") {
+				t.Errorf("prompt mentions exclude_lenses with a %s fan setting:\n%s", name, p)
+			}
 		}
 	})
 
-	t.Run("EmptyEnvFanKeepsClusterExcludesKey", func(t *testing.T) {
-		if p := judgePrompt(t, true, true, map[string][]string{"review-bounce": {""}}); !strings.Contains(p, "exclude_lenses") {
-			t.Errorf("prompt lacks exclude_lenses with cluster_excludes true beside an all-empty RowClusterFans entry:\n%s", p)
+	t.Run("EmptySettingFanKeepsClusterExcludesKey", func(t *testing.T) {
+		if p := judgePrompt(t, true, true, map[string]any{"loom.fan": []any{""}}); !strings.Contains(p, "exclude_lenses") {
+			t.Errorf("prompt lacks exclude_lenses with cluster_excludes true beside an all-empty fan setting:\n%s", p)
 		}
 	})
 
@@ -1216,14 +1289,16 @@ func TestBouncerEntry_BlockingEscalatesAndColorSegment(t *testing.T) {
 	tests := []struct {
 		name        string
 		extra       Config
+		autoAccept  any
 		hardCap     int
 		wantOutcome shedengine.Outcome
 		wantSegment segmentcolor.Segment
 	}{
-		{name: "absent keys auto-accept in the review color", wantOutcome: shedengine.Done, wantSegment: segmentcolor.Review},
-		{name: "blocking_escalates sends the open BLOCKING entry to the rule, which continues", extra: Config{"blocking_escalates": true}, wantOutcome: shedengine.Stuck, wantSegment: segmentcolor.Review},
-		{name: "a hard cap of 1 offers only accept", extra: Config{"blocking_escalates": true}, hardCap: 1, wantOutcome: shedengine.Awaiting, wantSegment: segmentcolor.Review},
-		{name: "color_segment colors the judge", extra: Config{"color_segment": "merge"}, wantOutcome: shedengine.Done, wantSegment: segmentcolor.Merge},
+		{name: "absent keys auto-accept in the review color", autoAccept: true, wantOutcome: shedengine.Done, wantSegment: segmentcolor.Review},
+		{name: "blocking_escalates sends the open BLOCKING entry to the rule, which continues", extra: Config{"blocking_escalates": true}, autoAccept: true, wantOutcome: shedengine.Stuck, wantSegment: segmentcolor.Review},
+		{name: "a null auto-accept is false, so the soft-cap rule runs", autoAccept: nil, wantOutcome: shedengine.Stuck, wantSegment: segmentcolor.Review},
+		{name: "a hard cap of 1 offers only accept", extra: Config{"blocking_escalates": true}, autoAccept: true, hardCap: 1, wantOutcome: shedengine.Awaiting, wantSegment: segmentcolor.Review},
+		{name: "color_segment colors the judge", extra: Config{"color_segment": "merge"}, autoAccept: true, wantOutcome: shedengine.Done, wantSegment: segmentcolor.Merge},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1241,13 +1316,12 @@ func TestBouncerEntry_BlockingEscalatesAndColorSegment(t *testing.T) {
 					return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil
 				},
 			}
-			env.RowAutoAccept = map[string]bool{"review-bounce": true}
-			if tt.hardCap != 0 {
-				env.RowHardMaxBounces = map[string]int{"review-bounce": tt.hardCap}
-			}
+			env.Segments[testReviewSegment] = SegmentSettings{HardMaxBounces: tt.hardCap}
+			env.Setting = fakeSetting(map[string]any{"loom.accept": tt.autoAccept})
 			env.SegmentBounces = func(string) (int, int, bool, error) { return 1, 1, true, nil }
 			writeStencil(t, env.StencilsDir, "bouncer-template-judge", "judge template, no markers\n")
 			cfg := minimalBouncerConfig(t, env)
+			cfg["auto_accept_setting"] = "loom.accept"
 			for key, value := range tt.extra {
 				cfg[key] = value
 			}

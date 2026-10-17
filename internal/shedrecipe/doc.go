@@ -35,4 +35,24 @@
 // "color_segment" names the loom segment their sessions are colored by.
 // "role_prefix" leads their sessions' roles, as <prefix>-bouncer-seed, <prefix>-bouncer-judge, <prefix>-burler-review and <prefix>-burler-fix, so reed's strand, window and bar names tell the segments apart;
 // a value agentname.ValidateRole rejects is refused when the row is built, before any spawn.
+//
+// # Segment settings and row settings
+//
+// A Constructor is handed its row's RowIdentity, the row's name and its recipe segment: value.
+// Env.Segments holds one SegmentSettings per review segment, keyed by that segment value, so a segment's Bouncer, BurlerReview and BurlerFix rows share one entry.
+// A segment carries the values a segment's rows resolve alike: the reviewer and fixer round models, the model keys they came from, the Bouncer's seed and judge pair and the hard bounce cap.
+// Each of the three entries refuses a row with no segment, and a segment with no Env.Segments entry, naming the entry, the row and the segment.
+//
+// A value that is not shared by a whole segment is a setting the row names in its Config.
+// A key ending in "_setting" holds a `module.key` reference, split at the first dot, and the entry reads it through Env.Setting, the told lookup answering a registered config module's resolved value.
+// The Bouncer reads reviewer_fan_setting as its per-round reviewer fan list and auto_accept_setting as its auto-accept flag.
+// BurlerReview reads reviewer_fan_setting and fixer_fan_setting, which become the fan lists its rounds record.
+// BurlerFix reads fixer_fan_setting; naming it makes the row require the round's recorded fan names, and the reference, as `<key> in <module>.yaml`, is the source a refusal cites.
+//
+// A fan value is a fan name or a list of fan names; a null, an empty string and a list of empty names count as no fan, and any other shape is refused.
+// An auto-accept value is a bool, and a null is false.
+// Every setting a row names is read when the row is built, so a malformed reference, a nil Env.Setting, a lookup error and a value of the wrong shape each refuse before any row runs.
+//
+// The lookup is read-only and answers only template keys of registered config modules, a guard-category key included.
+// Only rows of the recipes embedded in the binary name settings, so a key that a local layer cannot override is never read from one.
 package shedrecipe

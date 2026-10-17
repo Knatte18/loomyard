@@ -264,7 +264,7 @@ func TestBurlerReviewEntry_RubricStencil(t *testing.T) {
 }
 
 // TestBurlerHalfEntries_EnvFallback covers the model and timeout_s resolution both entries share:
-// each half's model is the first pick of its list in env.ReviewModels and a row has no key to change it;
+// each half's model is the first pick of its list in its row's segment and a row has no key to change it;
 // a row omitting timeout_s takes env.ReviewTimeout and a row setting it overrides the Env value;
 // both absent with an empty Env leaves the zero values.
 func TestBurlerHalfEntries_EnvFallback(t *testing.T) {
@@ -279,12 +279,12 @@ func TestBurlerHalfEntries_EnvFallback(t *testing.T) {
 	}
 	for _, half := range halves {
 		t.Run(half.name, func(t *testing.T) {
-			t.Run("RowOmitsTakesEnvValues", func(t *testing.T) {
+			t.Run("RowOmitsTakesSegmentModelsAndEnvTimeout", func(t *testing.T) {
 				env := newTestEnv(t)
-				env.ReviewModels = burlerengine.RoundModels{
+				env.Segments[testReviewSegment] = SegmentSettings{Models: burlerengine.RoundModels{
 					Review: []shuttleengine.ModelChoice{{Model: "env-model", Effort: "env-effort"}},
 					Fix:    []shuttleengine.ModelChoice{{Model: "env-fix-model", Effort: "env-fix-effort"}},
-				}
+				}}
 				env.ReviewTimeout = 45 * time.Second
 
 				_, opts := half.capture(t, "a-row", half.cfg(), env)
@@ -299,29 +299,22 @@ func TestBurlerHalfEntries_EnvFallback(t *testing.T) {
 				}
 			})
 
-			t.Run("RowMapEntryReplacesEnvModelsForItsOwnRowOnly", func(t *testing.T) {
+			t.Run("RowTakesOnlyItsOwnSegmentsModels", func(t *testing.T) {
 				env := newTestEnv(t)
-				env.ReviewModels = burlerengine.RoundModels{
-					Review: []shuttleengine.ModelChoice{{Model: "env-model"}},
-					Fix:    []shuttleengine.ModelChoice{{Model: "env-fix-model"}},
-				}
-				env.RowReviewModels = map[string]burlerengine.RoundModels{
-					"a-row": {
-						Review: []shuttleengine.ModelChoice{{Model: "row-model"}},
-						Fix:    []shuttleengine.ModelChoice{{Model: "row-fix-model"}},
-					},
+				env.Segments = map[string]SegmentSettings{
+					testReviewSegment: {Models: burlerengine.RoundModels{
+						Review: []shuttleengine.ModelChoice{{Model: "own-model"}},
+						Fix:    []shuttleengine.ModelChoice{{Model: "own-fix-model"}},
+					}},
+					"Other-Review": {Models: burlerengine.RoundModels{
+						Review: []shuttleengine.ModelChoice{{Model: "other-model"}},
+						Fix:    []shuttleengine.ModelChoice{{Model: "other-fix-model"}},
+					}},
 				}
 
 				_, opts := half.capture(t, "a-row", half.cfg(), env)
-				if opts.Review.Model != "row-model" || opts.Fix.Model != "row-fix-model" {
-					t.Errorf("opts models = (%+v, %+v); want the row's own entry (row-model, row-fix-model)", opts.Review, opts.Fix)
-				}
-
-				otherEnv := newTestEnv(t)
-				otherEnv.ReviewModels, otherEnv.RowReviewModels = env.ReviewModels, env.RowReviewModels
-				_, other := half.capture(t, "other-row", half.cfg(), otherEnv)
-				if other.Review.Model != "env-model" || other.Fix.Model != "env-fix-model" {
-					t.Errorf("other row's models = (%+v, %+v); want Env.ReviewModels (env-model, env-fix-model)", other.Review, other.Fix)
+				if opts.Review.Model != "own-model" || opts.Fix.Model != "own-fix-model" {
+					t.Errorf("opts models = (%+v, %+v); want the row's own segment (own-model, own-fix-model)", opts.Review, opts.Fix)
 				}
 			})
 
@@ -357,40 +350,48 @@ func TestBurlerHalfEntries_EnvFallback(t *testing.T) {
 	}
 }
 
-// TestBurlerReviewEntry_ClusterFan covers how a review row's per-round fan lists form from the wiring's Env lists and the recipe profile's fans:
-// round 1's profile carries the list's first entry, the round's usage record carries both names, and a wiring list naming a fan beside the recipe's own is a construction error.
-// It also covers the row's RowModelKeys entry reaching the reviewer's model key.
+// TestBurlerReviewEntry_ClusterFan covers how a review row's per-round fan lists form from the settings the row names and the recipe profile's fans:
+// round 1's profile carries the list's first entry, the round's usage record carries both names, and a setting's list naming a fan beside the recipe's own is a construction error.
+// It also covers the row's segment's review key reaching the reviewer's model key.
 func TestBurlerReviewEntry_ClusterFan(t *testing.T) {
 	type recordedFans struct {
 		Fan          string `yaml:"fan"`
 		FixFan       string `yaml:"fix_fan"`
 		FansRecorded bool   `yaml:"fans_recorded"`
 	}
+	// A settings key present in a row's settings map makes the row name that setting: loom.reviewer_fan under reviewer_fan_setting, loom.fixer_fan under fixer_fan_setting.
 	tests := []struct {
 		name         string
-		clusterFans  map[string][]string
-		fixFans      map[string][]string
+		settings     map[string]any
 		recipeFans   map[string]any
 		wantErr      []string
 		wantFan      string
 		wantFixFan   string
 		wantRecorded bool
 	}{
-		{name: "WiringListsReachTheirOwnRow", clusterFans: map[string][]string{"review-row": {"env-fan", "later-fan"}}, fixFans: map[string][]string{"review-row": {"env-fix"}}, wantFan: "env-fan", wantFixFan: "env-fix", wantRecorded: true},
+		{name: "SettingListsReachTheirOwnRow", settings: map[string]any{"loom.reviewer_fan": []any{"env-fan", "later-fan"}, "loom.fixer_fan": []any{"env-fix"}}, wantFan: "env-fan", wantFixFan: "env-fix", wantRecorded: true},
+		{name: "ScalarSettingRunsAsAOneEntryList", settings: map[string]any{"loom.reviewer_fan": "env-fan"}, wantFan: "env-fan", wantRecorded: true},
 		{name: "RecipeClusterFanAloneReachesRoundOne", recipeFans: map[string]any{"cluster-fan": "recipe-fan"}, wantFan: "recipe-fan", wantRecorded: true},
 		{name: "RecipeFixFanAloneIsRecorded", recipeFans: map[string]any{"fix-fan": "recipe-fix"}, wantFixFan: "recipe-fix", wantRecorded: true},
-		{name: "ListsNamingAnotherRowLeaveThisRowToTheRecipe", clusterFans: map[string][]string{"other-row": {"env-fan"}}, recipeFans: map[string]any{"cluster-fan": "recipe-fan"}, wantFan: "recipe-fan", wantRecorded: true},
-		{name: "EmptyWiringListsRecordASoloRound", clusterFans: map[string][]string{"review-row": {""}}, fixFans: map[string][]string{"review-row": nil}, wantRecorded: true},
-		{name: "EmptyWiringListsYieldToRecipeFans", clusterFans: map[string][]string{"review-row": {""}}, fixFans: map[string][]string{"review-row": {""}}, recipeFans: map[string]any{"cluster-fan": "recipe-fan", "fix-fan": "recipe-fix"}, wantFan: "recipe-fan", wantFixFan: "recipe-fix", wantRecorded: true},
-		{name: "NoListsAndNoRecipeFansRecordNothing"},
-		{name: "ClusterListBesideRecipeClusterFanNamesBoth", clusterFans: map[string][]string{"review-row": {"env-fan"}}, recipeFans: map[string]any{"cluster-fan": "recipe-fan"}, wantErr: []string{"review-row", "env-fan", "recipe-fan", "the hub config", "remove cluster-fan"}},
-		{name: "FixListBesideRecipeFixFanNamesBoth", fixFans: map[string][]string{"review-row": {"env-fix"}}, recipeFans: map[string]any{"fix-fan": "recipe-fix"}, wantErr: []string{"review-row", "env-fix", "recipe-fix", "the hub config", "remove fix-fan"}},
+		{name: "NullSettingRecordsASoloRound", settings: map[string]any{"loom.reviewer_fan": nil, "loom.fixer_fan": nil}, wantRecorded: true},
+		{name: "EmptyStringSettingRecordsASoloRound", settings: map[string]any{"loom.reviewer_fan": "", "loom.fixer_fan": ""}, wantRecorded: true},
+		{name: "AllEmptyListSettingRecordsASoloRound", settings: map[string]any{"loom.reviewer_fan": []any{""}, "loom.fixer_fan": []any{"", ""}}, wantRecorded: true},
+		{name: "EmptySettingsYieldToRecipeFans", settings: map[string]any{"loom.reviewer_fan": []any{""}, "loom.fixer_fan": []any{""}}, recipeFans: map[string]any{"cluster-fan": "recipe-fan", "fix-fan": "recipe-fix"}, wantFan: "recipe-fan", wantFixFan: "recipe-fix", wantRecorded: true},
+		{name: "NoSettingsAndNoRecipeFansRecordNothing"},
+		{name: "ClusterListBesideRecipeClusterFanNamesBoth", settings: map[string]any{"loom.reviewer_fan": []any{"env-fan"}}, recipeFans: map[string]any{"cluster-fan": "recipe-fan"}, wantErr: []string{"review-row", "env-fan", "recipe-fan", "reviewer_fan in loom.yaml", "remove cluster-fan"}},
+		{name: "FixListBesideRecipeFixFanNamesBoth", settings: map[string]any{"loom.fixer_fan": []any{"env-fix"}}, recipeFans: map[string]any{"fix-fan": "recipe-fix"}, wantErr: []string{"review-row", "env-fix", "recipe-fix", "fixer_fan in loom.yaml", "remove fix-fan"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			env := newTestEnv(t)
-			env.RowClusterFans, env.RowFixFans = tt.clusterFans, tt.fixFans
+			env.Setting = fakeSetting(tt.settings)
 			cfg := minimalReviewConfig()
+			if _, ok := tt.settings["loom.reviewer_fan"]; ok {
+				cfg["reviewer_fan_setting"] = "loom.reviewer_fan"
+			}
+			if _, ok := tt.settings["loom.fixer_fan"]; ok {
+				cfg["fixer_fan_setting"] = "loom.fixer_fan"
+			}
 			for key, value := range tt.recipeFans {
 				cfg["profile"].(map[string]any)[key] = value
 			}
@@ -426,21 +427,14 @@ func TestBurlerReviewEntry_ClusterFan(t *testing.T) {
 		})
 	}
 
-	t.Run("RowModelKeysEntryReachesTheReviewerKey", func(t *testing.T) {
+	t.Run("SegmentReviewKeyReachesTheReviewerKey", func(t *testing.T) {
 		env := newTestEnv(t)
 		want := shuttleengine.ModelKey{Module: "loom", Key: "discussion_reviewer_model"}
-		env.RowModelKeys = map[string]RowModelKeys{"review-row": {Review: want}}
+		env.Segments[testReviewSegment] = SegmentSettings{ReviewKey: want}
 
 		_, opts := captureReview(t, "review-row", minimalReviewConfig(), env)
 		if opts.ReviewKey != want {
-			t.Errorf("ReviewKey = %+v; want the row's RowModelKeys entry %+v", opts.ReviewKey, want)
-		}
-
-		otherEnv := newTestEnv(t)
-		otherEnv.RowModelKeys = env.RowModelKeys
-		_, otherOpts := captureReview(t, "other-row", minimalReviewConfig(), otherEnv)
-		if otherOpts.ReviewKey != (shuttleengine.ModelKey{}) {
-			t.Errorf("row without an entry ReviewKey = %+v; want the zero key", otherOpts.ReviewKey)
+			t.Errorf("ReviewKey = %+v; want the segment's %+v", opts.ReviewKey, want)
 		}
 	})
 }
@@ -748,14 +742,78 @@ func TestBurlerFixEntry_GateConfig(t *testing.T) {
 		}
 	})
 
-	t.Run("RowModelKeysEntryReachesFixKeyAndFixFanKey", func(t *testing.T) {
-		env := newTestEnv(t)
-		want := RowModelKeys{Fix: shuttleengine.ModelKey{Module: "loom", Key: "fixer_model"}, FixFan: "discussion_fixer_fan"}
-		env.RowModelKeys = map[string]RowModelKeys{"fix-row": want}
+	t.Run("SegmentFixKeyAndNamedSettingReachFixKeyAndFixFanKey", func(t *testing.T) {
+		wantKey := shuttleengine.ModelKey{Module: "loom", Key: "fixer_model"}
+		tests := []struct {
+			name       string
+			named      bool
+			wantFanKey string
+		}{
+			{"RowNamingTheSettingCitesItAsTheFanKey", true, "discussion_fixer_fan in loom.yaml"},
+			{"RowNamingNoSettingHasNoFanKey", false, ""},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				env := newTestEnv(t)
+				env.Segments[testReviewSegment] = SegmentSettings{FixKey: wantKey}
+				env.Setting = fakeSetting(map[string]any{"loom.discussion_fixer_fan": "a-fan"})
+				cfg := minimalFixConfig()
+				if tt.named {
+					cfg["fixer_fan_setting"] = "loom.discussion_fixer_fan"
+				}
 
-		_, opts := captureFix(t, "fix-row", minimalFixConfig(), env)
-		if opts.FixKey != want.Fix || opts.FixFanKey != want.FixFan {
-			t.Errorf("FixKey, FixFanKey = %+v, %q; want %+v, %q", opts.FixKey, opts.FixFanKey, want.Fix, want.FixFan)
+				_, opts := captureFix(t, "fix-row", cfg, env)
+				if opts.FixKey != wantKey || opts.FixFanKey != tt.wantFanKey {
+					t.Errorf("FixKey, FixFanKey = %+v, %q; want %+v, %q", opts.FixKey, opts.FixFanKey, wantKey, tt.wantFanKey)
+				}
+			})
+		}
+	})
+
+	// A round with no usage record is refused by a row naming a fixer fan setting whatever its value, and run solo by a row naming none.
+	t.Run("NamedSettingRequiresTheRecordedRound", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			named   bool
+			wantErr string
+		}{
+			{"NamedNullSettingIsRefusedAsUnrecorded", true, "discussion_fixer_fan in loom.yaml"},
+			{"NoSettingRunsTheSingleFixer", false, ""},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				env := newTestEnv(t)
+				env.Setting = fakeSetting(map[string]any{"loom.discussion_fixer_fan": nil})
+				cfg := minimalFixConfig()
+				if tt.named {
+					cfg["fixer_fan_setting"] = "loom.discussion_fixer_fan"
+				}
+				producer, err := burlerFixEntry(reviewRow("fix-row"), cfg, env)
+				if err != nil {
+					t.Fatalf("burlerFixEntry() error = %v; want nil", err)
+				}
+				runDir := filepath.Join(env.RunRoot, "review-segment")
+				if err := os.WriteFile(filepath.Join(runDir, "round-1-review.md"), []byte("review\n"), 0o644); err != nil {
+					t.Fatalf("write the round-1 review: %v", err)
+				}
+				if err := os.WriteFile(filepath.Join(runDir, "round-1-acceptance.md"), []byte("---\nround: 1\ndigest: abc\n---\n"), 0o644); err != nil {
+					t.Fatalf("write the round-1 acceptance record: %v", err)
+				}
+
+				_, _, err = producer.Call(context.Background())
+
+				fake := env.Burler.(*shedfake.BurlerHalfRunner)
+				if tt.named {
+					assertErrContains(t, err, tt.wantErr)
+					if len(fake.GotFixProfiles) != 0 {
+						t.Errorf("Fix calls = %d; want none for a refused round", len(fake.GotFixProfiles))
+					}
+					return
+				}
+				if len(fake.GotFixProfiles) != 1 || fake.GotFixProfiles[0].FixFan != "" {
+					t.Errorf("Fix profiles = %+v; want one call with no fixer fan", fake.GotFixProfiles)
+				}
+			})
 		}
 	})
 
@@ -829,6 +887,32 @@ func TestBurlerHalfEntries_ConstructionFailures(t *testing.T) {
 			if err := build(t, half.cfg(), env); err != nil {
 				t.Fatalf("entry() error = %v; want nil", err)
 			}
+		})
+		t.Run(half.name+"/SegmentRefusals", func(t *testing.T) {
+			noSegment := RowIdentity{Name: "a-row"}
+			_, err := lookupEntry(t, half.entry)(noSegment, half.cfg(), newTestEnv(t))
+			assertErrContains(t, err, half.entry)
+			assertErrContains(t, err, `row "a-row" has no segment`)
+			assertErrContains(t, err, "way forward: put the row in a review segment with segment: in the recipe")
+
+			env := newTestEnv(t)
+			env.Segments = nil
+			err = build(t, half.cfg(), env)
+			assertErrContains(t, err, half.entry)
+			assertErrContains(t, err, `row "a-row"`)
+			assertErrContains(t, err, `segment "`+testReviewSegment+`" has no Env.Segments entry`)
+			assertErrContains(t, err, "way forward: wire segment")
+		})
+		t.Run(half.name+"/UnknownFanSettingReference", func(t *testing.T) {
+			env := newTestEnv(t)
+			env.Setting = fakeSetting(nil)
+			cfg := half.cfg()
+			cfg["fixer_fan_setting"] = "loom.unknown_fixer_fan"
+			err := build(t, cfg, env)
+			assertErrContains(t, err, half.entry)
+			assertErrContains(t, err, `row "a-row"`)
+			assertErrContains(t, err, "fixer_fan_setting")
+			assertErrContains(t, err, "loom.unknown_fixer_fan")
 		})
 	}
 

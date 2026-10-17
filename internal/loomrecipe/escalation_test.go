@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
@@ -35,7 +36,9 @@ func newEscalationShed(t *testing.T) (*shedengine.Shed, string, *shedfake.Burler
 	_, env, paths := buildSequenceFixture(t)
 	designWrongBouncerJudge(env)
 	env.ReviewMaxBounces = budgetEscalationBudget
-	env.RowHardMaxBounces = map[string]int{loomshed.NameDiscussionBouncer: budgetEscalationBudget + 1}
+	discussion := env.Segments["Discussion-Review"]
+	discussion.HardMaxBounces = budgetEscalationBudget + 1
+	env.Segments["Discussion-Review"] = discussion
 	env.SegmentBounces = func(row string) (int, int, bool, error) {
 		st, found, err := state.ReadJSONNoMkdir[shedengine.Status](env.StatusPath, env.StatusLockPath)
 		if err != nil || !found {
@@ -91,7 +94,9 @@ func TestEscalation_DarnPerchRuleContinuesThenHardCapAcceptReachesDescribe(t *te
 		carried = append(carried, entry)
 		return nil
 	}
-	env.RowHardMaxBounces = map[string]int{loomshed.NameDarnBouncer: 2}
+	darn := env.Segments["Darn-Review"]
+	darn.HardMaxBounces = 2
+	env.Segments["Darn-Review"] = darn
 	env.SegmentBounces = func(row string) (int, int, bool, error) {
 		st, found, err := state.ReadJSONNoMkdir[shedengine.Status](env.StatusPath, env.StatusLockPath)
 		if err != nil || !found {
@@ -260,7 +265,12 @@ func TestEscalation_PerchBudgetOneWithAutoAccept(t *testing.T) {
 			_, env, paths := buildSequenceFixture(t)
 			rowBudgets := map[string]int{loomshed.NameWebsterBouncer: 1}
 			env.RowMaxBounces = rowBudgets
-			env.RowAutoAccept = map[string]bool{loomshed.NameWebsterBouncer: true}
+			env.Setting = func(module, key string) (any, error) {
+				if module == "loom" && key == "webster_auto_accept" {
+					return true, nil
+				}
+				return envkit.TemplateSetting(module, key)
+			}
 			env.Burler.(*shedfake.BurlerHalfRunner).FixResults = tt.fixResults
 
 			shuttle := env.Shuttle.(*shedfake.Shuttle)
