@@ -220,7 +220,7 @@
 //
 // The wiring sets the parent-review gate's Aligner to an adapter over an `internal/alignment` session rooted at the run's `parent-review` alignment directory, one agent per round (key `round-<N>`).
 // Alignment is off, and the gate delivers straight to the run's parent, when `skip_alignment` is set or the hub has no board dir.
-// The decision snapshot taken at spawn covers the decision record and every board note naming the task; an agent approve is turned into an escalation when the snapshot has changed by the time it is polled, so a decision recorded during the review is never passed over.
+// The decision snapshot taken at spawn covers the decision record and the board notes titled `Decision for <slug>:`; an agent approve is turned into an escalation when the snapshot has changed by the time it is polled, so a decision recorded during the review is never passed over.
 // An escalation, a timeout or any failure leaves the gate to deliver to the parent, with the reviewer brief naming the agent's report and the reason.
 // The status commit stages the alignment directory with the run records.
 //
@@ -228,6 +228,9 @@
 //
 // PR-Align runs an `internal/alignment` session rooted at the run's `pr-gate` alignment directory, one agent per pull request head (key `pr-<number>-<head>`), with the alignment note beside it.
 // It reads `skip_alignment`, `alignment`, `alignment_timeout_min` and `alignment_pr_approve` from loom.yaml on each call, for a loom run and a darn run alike.
-// Its decision snapshot covers the decision record and the board notes naming the task, so a decision recorded while the agent runs turns its approve into an escalation to the run's parent.
+// Its decision snapshot covers the decision record and the board notes titled `Decision for <slug>:`, so a decision recorded while the agent runs turns its approve into an escalation to the run's parent.
 // A darn run's prompt names no plan directory and carries darn's pr-gate measure; every other recipe's names the plan directory and loom's measure.
+//
+// The landing wiring reads the run's start from the pair's seed and fails on a seed it cannot decode.
+// `lyx loom approve` and `lyx loom reject` look up the pull request created at or after that start and refuse when the seed cannot be read.
 package loomcli

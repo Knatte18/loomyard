@@ -4,6 +4,8 @@
 // parent branch.
 // When the parent is absent from that list, Publish is a no-op: Done immediately, no push, no GitHub call.
 // When the parent is present, Publish runs the repo's `publish_verify`, pushes the task branch, and opens the pull request, or refreshes an open one's title and body, from the change description (the file the Describe row writes, one source shared with the landing commit), then returns Done.
+// Every landing row's pull-request lookup takes the newest pull request created at or after the run's start, `Deps.RunStart`, whatever its state, and a zero start keeps the unbounded lookup.
+// When the lookup finds none of the run's own but an open pull request from before the run started, Publish creates nothing, since GitHub allows one open pull request per head and base, and is Stuck with a way forward: close that pull request on GitHub, then resume the run with `lyx loom start`.
 // The merge-in and the plan's verify are Merge-In's, which runs ahead of Publish in a recipe's order.
 // The PR-Gate producer in this package then owns approval, rejection and the wait for the reviewer;
 // PRGate.Call documents its decision table.

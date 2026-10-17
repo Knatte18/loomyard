@@ -34,7 +34,7 @@ func TestRenderFiles_WriteWithoutLeadingComment(t *testing.T) {
 		// wantGone is text the last render must not carry.
 		wantGone string
 	}{
-		{name: "role", file: "role.md", render: renderRole, want: []string{"## Commands\n", testIndex, "## This repository\n"}, wantRules: noRepositoryRules},
+		{name: "role", file: "role.md", render: renderRole, want: []string{"## Commands\n", testIndex, "## This repository\n", "Decision for <slug>:"}, wantRules: noRepositoryRules},
 		{name: "role with rules", file: "role.md", render: renderRole, want: []string{"## This repository\n", "Only the orch deploys.\n"}, rules: "Only the orch deploys.\n", wantRules: "Only the orch deploys."},
 		{name: "role rules rewritten", file: "role.md", render: renderRole, rules: "Only the orch deploys.\n", secondRules: "Only the operator deploys.\n", want: []string{"Only the operator deploys.\n"}, wantRules: "Only the operator deploys.", wantGone: "Only the orch deploys."},
 		{name: "role whitespace-only rules", file: "role.md", render: renderRole, rules: "  \n\t\n", wantRules: noRepositoryRules},
@@ -105,6 +105,7 @@ func TestRenderRoleFile_RefusalsWriteNoFile(t *testing.T) {
 	}{
 		{"no marker", "# Hub orchestrator\n\nNo marker here.\n", false, func(string) []string { return []string{roleStencilName, commandIndexMarker} }},
 		{"no rules marker", "# Hub orchestrator\n\n{{.command_index}}\n", false, func(string) []string { return []string{roleStencilName, repositoryRulesMarker} }},
+		{"no decision note title marker", "# Hub orchestrator\n\n{{.command_index}}\n\n{{.repository_rules}}\n", false, func(string) []string { return []string{roleStencilName, decisionNoteTitleMarker} }},
 		{"unreadable rules", "", true, func(rulesPath string) []string { return []string{rulesPath} }},
 	}
 	for _, c := range cases {
