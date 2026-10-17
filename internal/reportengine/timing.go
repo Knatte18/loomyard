@@ -30,7 +30,9 @@ const (
 	PhaseMerge           = "merge"
 	PhasePublishFinalize = "publish-finalize"
 	PhaseLand            = "land"
-	PhaseOther           = "other"
+	// PhasePaused is the time the child stood paused at a producer boundary, from batten's change into paused to its change out of it.
+	PhasePaused = "paused"
+	PhaseOther  = "other"
 )
 
 // The states of a timed run.
@@ -42,7 +44,7 @@ const (
 )
 
 // timingPhases lists every phase in report order.
-var timingPhases = []string{PhaseSetup, PhaseDiscussion, PhasePlan, PhaseWebster, PhaseMerge, PhasePublishFinalize, PhaseLand, PhaseOther}
+var timingPhases = []string{PhaseSetup, PhaseDiscussion, PhasePlan, PhaseWebster, PhaseMerge, PhasePublishFinalize, PhaseLand, PhasePaused, PhaseOther}
 
 // Interval is a span of time from From to To.
 type Interval struct {
@@ -89,7 +91,7 @@ type TimingRun struct {
 	Phases        map[string]*int64 `json:"phases"`
 
 	// Waits maps every wait kind to its net seconds, and Attempts holds the arbiter and alignment attempts that served the waits.
-	// Active, the waits and sleep add up to the span.
+	// Active is the span less sleep, every net wait and the paused phase's time, a wait inside a pause taken out once.
 	Waits    map[string]int64 `json:"waits"`
 	Attempts TimingAttempts   `json:"attempts"`
 
@@ -104,9 +106,9 @@ type TimingRun struct {
 	sleeps []Interval
 	parts  []phasedInterval
 
-	// waitParts are the net wait intervals per kind, and waitUnion the union of every kind's.
+	// waitParts are the net wait intervals per kind, and inactive the union of every kind's with the paused phase's parts, the time active leaves out beside sleep.
 	waitParts map[string][]Interval
-	waitUnion []Interval
+	inactive  []Interval
 }
 
 // PhaseMedian is the median seconds of one phase over the landed runs holding it.
@@ -391,8 +393,8 @@ func bucketRuns(runs []TimingRun, windows []bucketWindow) []TimingBucket {
 			bucket.Runs++
 			sleepIn := lengthOf(clipIntervals(run.sleeps, w.Interval))
 			sleep += sleepIn
-			waitIn := lengthOf(clipIntervals(run.waitUnion, w.Interval))
-			active += lengthOf(clipIntervals([]Interval{run.span}, w.Interval)) - sleepIn - waitIn
+			inactiveIn := lengthOf(clipIntervals(run.inactive, w.Interval))
+			active += lengthOf(clipIntervals([]Interval{run.span}, w.Interval)) - sleepIn - inactiveIn
 			for kind, parts := range run.waitParts {
 				waitTime[kind] += lengthOf(clipIntervals(parts, w.Interval))
 			}

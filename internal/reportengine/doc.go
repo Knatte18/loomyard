@@ -115,10 +115,12 @@
 // Each row's interval runs from the latest stamp so far, the span's opening for the first row, to its own stamp, so a batten row between two loom rows splits their gap.
 // A stamp earlier than the latest, or none, gives a zero interval and a finding.
 // The span closes at the last stamp of either history, or at Sources.SnapshotAt for a run in flight, whose trailing interval counts under the phase of its loom status's current producer.
+// That trailing interval counts under paused instead when the last row is the batten record's entry for the child's change into paused.
 //
 // Each interval counts under one phase of a closed table.
-// setup holds every batten row before batten's first Run-Shed entry and loom's Preflight and Loom-Preflight; discussion every Discussion row; plan every Plan row and Batchifier; webster every Webster row and Describe; merge every Merge row; publish-finalize Publish, PR-Align, PR-Gate, PR-Rework, every Darn row, Finalize and Friction-Reflect; land every batten row other than Run-Shed after batten's first Run-Shed entry.
-// A Run-Shed entry records the child's state changes and counts under the phase of the producer its change names, else of the latest loom row before it, else under setup.
+// setup holds every batten row before batten's first Run-Shed entry and loom's Preflight and Loom-Preflight; discussion every Discussion row; plan every Plan row and Batchifier; webster every Webster row and Describe; merge every Merge row; publish-finalize Publish, PR-Align, PR-Gate, PR-Rework, every Darn row, Finalize and Friction-Reflect; land every batten row other than Run-Shed after batten's first Run-Shed entry;
+// paused every Run-Shed entry whose change is from paused, so the time the child stood paused at a producer boundary counts apart from the row it paused at.
+// Any other Run-Shed entry records a change of the child's state and counts under the phase of the producer its change names, else of the latest loom row before it, else under setup.
 // Any other row counts under other and adds a finding.
 // Without the batten source land is nil and setup holds the loom rows alone.
 //
@@ -134,7 +136,8 @@
 // A batten stuck entry written before routed_to existed has it empty even when an edge bounced it, so an older batten record reads such a bounce as a batten-row halt.
 // A wait with no later row and no verdict runs to the span's close, which is Sources.SnapshotAt for a run in flight, so an open wait there runs to the snapshot with no finding; a parent-review round with no request opens no wait.
 // Each wait is clipped to the span, sleep comes out first, and then each kind's union loses every earlier kind's, so overlapping waits count once under the kind listed first and a sleep inside a wait counts as sleep alone.
-// Waits stay inside their phase's time; a run's active seconds are its span less sleep less every net wait, so active, the waits and sleep sum to the span.
+// Waits stay inside their phase's time; a run's active seconds are its span less sleep less the union of every net wait and the paused phase's time.
+// Active, the waits, the paused phase and sleep so sum to the span when no wait overlaps a pause.
 //
 // An attempt is one spawn: every arbiter attempt, every PR-Gate alignment attempt and every parent-review round's alignment record.
 // Its time runs, net of sleep, from its spawned_at to the first row of either history stamped after it, or to the span's close in a run in flight.

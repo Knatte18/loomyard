@@ -415,7 +415,7 @@ User-facing modules each get one `lyx <module>` namespace:
   ✅ Implemented. See the `internal/cleanupcli` package documentation.
 - **report** — the read-only convergence and timing reports (`internal/reportcli` + `internal/reportengine`; `lyx report convergence [--since <date>] [--fresh-days <n>] [--format json|markdown]` and `lyx report timing [--since <date>] [--by day|week] [--format json|markdown]`, prime only).
   The convergence report says, per finished run and per ISO week, what woke the orch, what stopped and repaired runs, how many review rounds each segment took and how landings fared.
-  The timing report says where run time went, per run, per phase and per day or week, with machine sleep and waits apart and who settled each stop.
+  The timing report says where run time went, per run, per phase and per day or week, with machine sleep, waits and the time a run stood paused apart, and who settled each stop.
   Both read records lyx already writes.
   ✅ Implemented. See the `internal/reportengine` package documentation.
 - **tender** — the one ordered pause that makes the hub safe to suspend within seconds (`internal/tendercli` + `internal/tenderengine`; `lyx tender pause [<slug>] [--grace <seconds>]`, `lyx tender resume [<slug>]`, `lyx tender revive [<slug>]` and `lyx tender status`, from any worktree of the hub; `lyx pause` and `lyx p`, and `lyx resume` and `lyx r`, are shortcuts for the first two verbs).
