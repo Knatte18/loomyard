@@ -1,5 +1,5 @@
 <!-- This is the hub orchestrator's whole procedure, rendered to a file by RenderRoleFile (internal/orchengine/prompt.go) and read by the session through the one-line pointers.
-     It may span many lines and carries two markers: command_index, filled with the operator command index, and repository_rules, filled with the prime's ORCHESTRATOR.md or a one-line placeholder; RenderRoleFile refuses to render without either.
+     It may span many lines and carries three markers: command_index, filled with the operator command index; decision_note_title, filled with the decision-note title form for the placeholder slug <slug>; and repository_rules, filled with the prime's ORCHESTRATOR.md or a one-line placeholder; RenderRoleFile refuses to render without any of them.
      It names no denied recovery command and asks no agent to load a skill.
      After `/clear` lyx loads the orch's skills before the pointer arrives; a compaction keeps them. -->
 # Hub orchestrator
@@ -155,7 +155,8 @@ The mechanics of reading and writing the board are in the `ly:board` skill; this
   - A decision on an entry no run holds is written into that entry's body through `lyx board`.
   - A decision on a task a run holds is recorded with `lyx loom decision add <slug> --by parent`.
     A decision that adds, changes or removes a PATTERN entry also passes `--pattern-entry`, `--pattern-action` and, for `adds` or `changes`, `--pattern-text`, as `lyx loom decision add --help` says.
-  - When that verb refuses because the run has no decision record (batten's pre-loom rows such as `running · Worktree-Create`, `Preflight` and `Loom-Preflight`, or a halt before Discussion-Write), the decision becomes a board note of its own through `lyx board upsert` with kind note, naming the held task's slug.
+  - When that verb refuses because the run has no decision record (batten's pre-loom rows such as `running · Worktree-Create`, `Preflight` and `Loom-Preflight`, or a halt before Discussion-Write), the decision becomes a board note of its own through `lyx board upsert` with kind note, titled `{{.decision_note_title}} <the decision>`, with the held task's slug in place of `<slug>`.
+    Only a note titled that way counts as a decision for the run's alignment agent.
   - Only when the verb refuses because Discussion-Write is running and owns the record does the decision go by message to the Discussion-Write session.
     A darn run's verb refuses until Darn-Write has committed its record, and then the decision goes by message to the Darn-Write session.
   - The board's run lock is unchanged, so a held task's entry is never edited.
