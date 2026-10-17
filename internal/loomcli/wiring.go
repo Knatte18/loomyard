@@ -948,7 +948,7 @@ var loomPerches = map[string]loomengine.Perch{
 }
 
 // loomSegmentPerches maps each loom review segment's name to its review perch, the table the segment settings are read through.
-// A new loom perch also adds a row to loomPerches, which the hard-cap lookup keeps.
+// A new loom perch also adds a row to loomPerches, which keys the circling lookup by Bouncer row.
 var loomSegmentPerches = map[string]loomengine.Perch{
 	"Discussion-Review": loomengine.PerchDiscussion,
 	"Plan-Review":       loomengine.PerchPlan,
