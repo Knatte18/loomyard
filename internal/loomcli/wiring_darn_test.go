@@ -75,11 +75,8 @@ func TestWire_DarnRecipe(t *testing.T) {
 		if c.env.DarnVerifyAttempts != 5 {
 			t.Errorf("c.env.DarnVerifyAttempts = %d; want 5", c.env.DarnVerifyAttempts)
 		}
-		if c.env.DarnReviewMaxBounces != 1 || c.darnCfg == nil {
-			t.Errorf("c.env.DarnReviewMaxBounces = %d, c.darnCfg nil = %v; want the template's 1 and the loaded config", c.env.DarnReviewMaxBounces, c.darnCfg == nil)
-		}
-		if got := c.env.RowHardMaxBounces[loomshed.NameDarnBouncer]; got != 4 {
-			t.Errorf("c.env.RowHardMaxBounces[%q] = %d; want the template's 4", loomshed.NameDarnBouncer, got)
+		if segment := c.env.Segments["Darn-Review"]; segment.MaxBounces != 1 || segment.HardMaxBounces != 4 || c.darnCfg == nil {
+			t.Errorf("Segments[Darn-Review] = %+v, c.darnCfg nil = %v; want the template's budget 1 and hard cap 4 and the loaded config", segment, c.darnCfg == nil)
 		}
 		if command, err := c.env.VerifyCommand(); err != nil || command != "go test ./..." {
 			t.Errorf("c.env.VerifyCommand() = %q, %v; want %q, nil", command, err, "go test ./...")
@@ -107,39 +104,27 @@ func TestWire_DarnRecipe(t *testing.T) {
 		if err := c.wire(loc, loc.AnchorPath()); err != nil {
 			t.Fatalf("wire() = %v; want nil", err)
 		}
-		if c.env.DarnReviewMaxBounces != 2 {
-			t.Errorf("c.env.DarnReviewMaxBounces = %d; want the local 2", c.env.DarnReviewMaxBounces)
-		}
-		if got := c.env.RowHardMaxBounces[loomshed.NameDarnBouncer]; got != 3 {
-			t.Errorf("c.env.RowHardMaxBounces[%q] = %d; want the local 3", loomshed.NameDarnBouncer, got)
-		}
 		segment := c.env.Segments["Darn-Review"]
 		if segment.MaxBounces != 2 || segment.MaxBouncesKey != "review_max_bounces" || segment.HardMaxBounces != 3 || segment.HardMaxBouncesKey != "review_hard_max_bounces" || segment.ConfigFile != "darn.yaml" {
 			t.Errorf("Segments[Darn-Review] = %+v; want the local budget 2 and hard cap 3 under their run-wide keys in darn.yaml", segment)
 		}
 	})
 
-	// The Darn rows take darn.yaml's model keys, an empty one taking loom.yaml's shared key, and the fixer fan key names darn.yaml;
-	// the template's empty fans run every round solo with the single fixer.
+	// The Darn-Review segment takes darn.yaml's model keys, an empty one taking loom.yaml's shared key.
 	loomKey := func(key string) shuttleengine.ModelKey { return shuttleengine.ModelKey{Module: "loom", Key: key} }
 	darnKey := func(key string) shuttleengine.ModelKey { return shuttleengine.ModelKey{Module: "darn", Key: key} }
 	for _, tt := range []struct {
-		name         string
-		replacements []string
-		wantFan      []string
-		wantFixFan   []string
-		wantKeys     map[string]shedrecipe.RowModelKeys
+		name                      string
+		replacements              []string
+		wantReviewKey, wantFixKey shuttleengine.ModelKey
 		// wantReview and wantFix are the first entry's model and effort, or "" for the shared list.
 		wantReview, wantFix string
 		// wantFixerFanSetting is what env.Setting answers for darn_fixer_fan.
 		wantFixerFanSetting string
 	}{
 		{
-			name: "the template's empty fans and models", wantFan: []string{""}, wantFixFan: []string{""},
-			wantKeys: map[string]shedrecipe.RowModelKeys{
-				loomshed.NameDarnBurlerReview: {Review: darnKey("darn_reviewer_model")},
-				loomshed.NameDarnBurlerFix:    {Fix: loomKey("fixer_model"), FixFan: "darn_fixer_fan in darn.yaml"},
-			},
+			name:          "the template's empty fans and models",
+			wantReviewKey: darnKey("darn_reviewer_model"), wantFixKey: loomKey("fixer_model"),
 			wantReview: "sonnet high",
 		},
 		{
@@ -148,12 +133,8 @@ func TestWire_DarnRecipe(t *testing.T) {
 				`darn_reviewer_fan: ""`, "darn_reviewer_fan:\n  - review-code\n  - \"\"", `darn_fixer_fan: ""`, "darn_fixer_fan: fix-code",
 				"darn_reviewer_model: sonnet[high]", `darn_reviewer_model: ""`, `darn_fixer_model: ""`, "darn_fixer_model: sonnet[low]",
 			},
-			wantFan:    []string{"review-code", ""},
-			wantFixFan: []string{"fix-code"},
-			wantKeys: map[string]shedrecipe.RowModelKeys{
-				loomshed.NameDarnBurlerReview: {Review: loomKey("reviewer_model")},
-				loomshed.NameDarnBurlerFix:    {Fix: darnKey("darn_fixer_model"), FixFan: "darn_fixer_fan in darn.yaml"},
-			},
+			wantReviewKey:       loomKey("reviewer_model"),
+			wantFixKey:          darnKey("darn_fixer_model"),
 			wantFix:             "sonnet low",
 			wantFixerFanSetting: "fix-code",
 		},
@@ -166,24 +147,12 @@ func TestWire_DarnRecipe(t *testing.T) {
 			if err := c.wire(loc, loc.AnchorPath()); err != nil {
 				t.Fatalf("wire() = %v; want nil", err)
 			}
-			for _, row := range []string{loomshed.NameDarnBouncer, loomshed.NameDarnBurlerReview} {
-				if got := c.env.RowClusterFans[row]; !reflect.DeepEqual(got, tt.wantFan) {
-					t.Errorf("RowClusterFans[%q] = %q; want %q", row, got, tt.wantFan)
-				}
-			}
-			if got := c.env.RowFixFans[loomshed.NameDarnBurlerReview]; !reflect.DeepEqual(got, tt.wantFixFan) {
-				t.Errorf("RowFixFans[%q] = %q; want %q", loomshed.NameDarnBurlerReview, got, tt.wantFixFan)
-			}
-			for row, want := range tt.wantKeys {
-				if got := c.env.RowModelKeys[row]; got != want {
-					t.Errorf("RowModelKeys[%q] = %+v; want %+v", row, got, want)
-				}
-			}
+			shared := c.env.Segments["Discussion-Review"].Models
 			wantSegment := shedrecipe.SegmentSettings{
-				Models:         c.env.RowReviewModels[loomshed.NameDarnBurlerReview],
-				ReviewKey:      tt.wantKeys[loomshed.NameDarnBurlerReview].Review,
-				FixKey:         tt.wantKeys[loomshed.NameDarnBurlerFix].Fix,
-				Bouncer:        c.env.RowBouncerModels[loomshed.NameDarnBouncer],
+				Models:         c.env.Segments["Darn-Review"].Models,
+				ReviewKey:      tt.wantReviewKey,
+				FixKey:         tt.wantFixKey,
+				Bouncer:        c.env.Segments["Webster-Review"].Bouncer,
 				MaxBounces:     1,
 				MaxBouncesKey:  "review_max_bounces",
 				HardMaxBounces: 4, HardMaxBouncesKey: "review_hard_max_bounces",
@@ -195,26 +164,24 @@ func TestWire_DarnRecipe(t *testing.T) {
 			if got, err := c.env.Setting("darn", "darn_fixer_fan"); err != nil || got != tt.wantFixerFanSetting {
 				t.Errorf("env.Setting(darn, darn_fixer_fan) = %v, %v; want %q, nil", got, err, tt.wantFixerFanSetting)
 			}
-			for _, row := range []string{loomshed.NameDarnBurlerReview, loomshed.NameDarnBurlerFix} {
-				models := c.env.RowReviewModels[row]
-				for _, half := range []struct {
-					name   string
-					got    []shuttleengine.ModelChoice
-					shared []shuttleengine.ModelChoice
-					want   string
-				}{
-					{"Review", models.Review, c.env.ReviewModels.Review, tt.wantReview},
-					{"Fix", models.Fix, c.env.ReviewModels.Fix, tt.wantFix},
-				} {
-					if half.want == "" {
-						if !reflect.DeepEqual(half.got, half.shared) {
-							t.Errorf("RowReviewModels[%q].%s = %+v; want the shared %+v", row, half.name, half.got, half.shared)
-						}
-						continue
+			models := c.env.Segments["Darn-Review"].Models
+			for _, half := range []struct {
+				name   string
+				got    []shuttleengine.ModelChoice
+				shared []shuttleengine.ModelChoice
+				want   string
+			}{
+				{"Review", models.Review, shared.Review, tt.wantReview},
+				{"Fix", models.Fix, shared.Fix, tt.wantFix},
+			} {
+				if half.want == "" {
+					if !reflect.DeepEqual(half.got, half.shared) {
+						t.Errorf("Segments[Darn-Review].Models.%s = %+v; want the shared %+v", half.name, half.got, half.shared)
 					}
-					if len(half.got) != 1 || half.got[0].Model+" "+half.got[0].Effort != half.want {
-						t.Errorf("RowReviewModels[%q].%s = %+v; want one %s entry", row, half.name, half.got, half.want)
-					}
+					continue
+				}
+				if len(half.got) != 1 || half.got[0].Model+" "+half.got[0].Effort != half.want {
+					t.Errorf("Segments[Darn-Review].Models.%s = %+v; want one %s entry", half.name, half.got, half.want)
 				}
 			}
 		})

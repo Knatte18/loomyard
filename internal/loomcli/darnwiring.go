@@ -170,23 +170,14 @@ func (c *loomCLI) darnReviewBudget() (map[string]int, error) {
 	return map[string]int{darnReviewSegment: template.ReviewMaxBounces}, nil
 }
 
-// wireDarnReview adds the Darn-Review perch's models and fan lists from cfg to env, and the config keys its Burler rows' settings came from.
-// The models resolve through registry, each empty darn.yaml model key taking its shared list in env.ReviewModels, and a refusal names the key the failing value came from.
-// The review row records each round's fans and the fix row reads them, so the two entries are added together; the fixer fan key names darn.yaml, the file it lives in.
-// env's maps are the ones wire filled for every recipe.
-// It also adds the Darn-Review segment's settings to env.Segments, whose Bouncer pair is bouncer and whose models fall back to shared.
+// wireDarnReview adds the Darn-Review segment's settings from cfg to env.Segments.
+// The models resolve through registry, each empty darn.yaml model key taking its shared list, and a refusal names the key the failing value came from.
+// The segment's Bouncer pair is bouncer.
 func wireDarnReview(env *shedrecipe.Env, cfg darnengine.Config, shared burlerengine.RoundModels, bouncer shedadapters.BouncerModels, registry modelspec.Registry) error {
 	models, keys, err := loomengine.ResolveDarnReview(shared, cfg, registry)
 	if err != nil {
 		return err
 	}
-	env.RowReviewModels[loomshed.NameDarnBurlerReview] = models
-	env.RowReviewModels[loomshed.NameDarnBurlerFix] = models
-	env.RowClusterFans[loomshed.NameDarnBouncer] = cfg.ReviewerFan
-	env.RowClusterFans[loomshed.NameDarnBurlerReview] = cfg.ReviewerFan
-	env.RowFixFans[loomshed.NameDarnBurlerReview] = cfg.FixerFan
-	env.RowModelKeys[loomshed.NameDarnBurlerReview] = shedrecipe.RowModelKeys{Review: keys.Review}
-	env.RowModelKeys[loomshed.NameDarnBurlerFix] = shedrecipe.RowModelKeys{Fix: keys.Fix, FixFan: darnengine.FixerFanKey + " in darn.yaml"}
 	if env.Segments == nil {
 		env.Segments = map[string]shedrecipe.SegmentSettings{}
 	}
@@ -220,11 +211,6 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 	c.env.VerifyMergeBase = pairMergeBase(location)
 	c.env.VerifyWholeDiff = true
 	c.env.DarnVerifyAttempts = cfg.VerifyAttempts
-	c.env.DarnReviewMaxBounces = cfg.ReviewMaxBounces
-	if c.env.RowHardMaxBounces == nil {
-		c.env.RowHardMaxBounces = map[string]int{}
-	}
-	c.env.RowHardMaxBounces[loomshed.NameDarnBouncer] = cfg.ReviewHardMaxBounces
 	if err := wireDarnReview(&c.env, cfg, shared, bouncer, registry); err != nil {
 		return err
 	}

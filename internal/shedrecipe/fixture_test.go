@@ -105,15 +105,6 @@ func reviewRow(name string) RowIdentity {
 // No test in this package may reference a path outside its own t.TempDir(): a real repo path would
 // mask a told-geometry violation, which is the exact property this package's own Env validation
 // exists to enforce.
-// bouncerRowModels returns an Env.RowBouncerModels entry with empty pairs for each of rows, the names the package's tests pass to bouncerEntry.
-func bouncerRowModels(rows ...string) map[string]shedadapters.BouncerModels {
-	models := make(map[string]shedadapters.BouncerModels, len(rows))
-	for _, row := range rows {
-		models[row] = shedadapters.BouncerModels{}
-	}
-	return models
-}
-
 func newTestEnv(t *testing.T) Env {
 	t.Helper()
 
@@ -147,7 +138,6 @@ func newTestEnv(t *testing.T) Env {
 		Burler:             &shedfake.BurlerHalfRunner{},
 		Seats:              &shedfake.SeatRunner{},
 		Models:             modelspec.Registry{"opus": {Engine: "claude", Model: "claude-opus-test"}},
-		RowBouncerModels:   bouncerRowModels("review-bounce", "a", "b", "row-name"),
 		Segments:           map[string]SegmentSettings{testReviewSegment: {}},
 		WebsterRun:         fakeWebsterRun,
 		CommitWebster:      func() error { return nil },

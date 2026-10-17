@@ -1,7 +1,7 @@
 // recipe.go declares this package's exported types: RowIdentity, the recipe row's name and segment;
 // Constructor, the fixed-signature
 // registry value type; Config, the recipe row's portable configuration; SegmentSettings, one review segment's resolved values; Env, the caller-filled
-// bundle of told roots and injected seams every entry may read from; and RowModelKeys, the config keys a Burler row's settings came from.
+// bundle of told roots and injected seams every entry may read from.
 
 package shedrecipe
 
@@ -45,14 +45,6 @@ type Constructor func(row RowIdentity, cfg Config, env Env) (shedengine.ShedProd
 // Each entry extracts and validates only the keys it recognises, and an unrecognised key is an
 // error.
 type Config map[string]any
-
-// RowModelKeys names the config keys one Burler row's settings came from, so a refusal of an engine that cannot run the row names the key to change.
-// Review and Fix are the keys of the reviewer's and the fixer's model, and FixFan is the name of the key the fixer fan came from; an empty FixFan says the row is told no fixer fan.
-type RowModelKeys struct {
-	Review shuttleengine.ModelKey
-	Fix    shuttleengine.ModelKey
-	FixFan string
-}
 
 // SegmentSettings holds one review segment's resolved values, shared by the segment's Bouncer, BurlerReview and BurlerFix rows.
 type SegmentSettings struct {
@@ -145,23 +137,9 @@ type Env struct {
 	// resolver's "description" gate.
 	DescriptionPath string
 
-	// ReviewModels holds the reviewer's and the fixer's model lists, which the BurlerReview and BurlerFix rows pick from per round.
 	// ReviewTimeout is the run-wide review round deadline, used when a BurlerReview or BurlerFix row's timeout_s is absent.
-	// Both are legal on Env at all because Env carries roots and run-wide values, and one review model list shared by every review segment is exactly such a value.
-	ReviewModels  burlerengine.RoundModels
+	// It is legal on Env because Env carries roots and run-wide values, and one deadline shared by every review segment is exactly such a value.
 	ReviewTimeout time.Duration
-	// RowReviewModels holds a BurlerReview or BurlerFix row's own reviewer and fixer model lists, keyed by row name like SegmentBounces.
-	// A row with no entry, and a nil map, take ReviewModels.
-	RowReviewModels map[string]burlerengine.RoundModels
-	// RowClusterFans holds the per-round reviewer fan list of a review segment, entry N for round N, keyed by the name of the segment's Bouncer and review rows.
-	// A row with no entry, and a nil map, take no fan from it, and a list whose every entry is "" counts as absent beside a recipe fan.
-	RowClusterFans map[string][]string
-	// RowFixFans holds the per-round fixer fan list of a review segment, keyed by the name of the segment's review row.
-	// A row with no entry, and a nil map, take no fixer fan from it.
-	RowFixFans map[string][]string
-	// RowModelKeys holds the config keys a Burler review or fix row's models and fixer fan came from, keyed by row name.
-	// A row with no entry, and a nil map, take the zero keys, which name none.
-	RowModelKeys map[string]RowModelKeys
 
 	// Segments holds each review segment's resolved settings, keyed by the recipe's segment: value, read by the Bouncer, BurlerReview and BurlerFix entries and by internal/loomrecipe.
 	// It is legal on Env because a segment's three rows share one entry.
@@ -171,29 +149,9 @@ type Env struct {
 	// Nil is legal for a caller whose recipe names no setting.
 	Setting func(module, key string) (any, error)
 
-	// ReviewMaxBounces is the run-wide bounce budget of every review segment, read by loomrecipe alone.
-	// It is set on each row of a segment holding a Bouncer row, because the recipe declares no max_bounces there.
-	ReviewMaxBounces int
-	// RowMaxBounces is the bounce budget of each review segment, keyed by the segment's Bouncer row name as RowBouncerModels is, read by loomrecipe alone.
-	// A nil map and a missing entry take ReviewMaxBounces, and an entry of 0 gives the perch zero rounds.
-	RowMaxBounces map[string]int
-	// RowAutoAccept is the auto-accept flag of each Bouncer row, keyed by row name; a nil map and a missing entry mean false.
-	// A Bouncer told true accepts a harvested round at a spent bounce budget instead of running the soft-cap rule.
-	// A replay or a blocking_escalates round goes to the rule.
-	RowAutoAccept map[string]bool
-	// RowHardMaxBounces is the resolved hard cap of each Bouncer row as a round number, keyed by row name as RowAutoAccept is.
-	// A nil map, a missing entry and 0 tell the row no hard cap.
-	// Its values are already resolved, since the per-perch fallback lives in the caller's config.
-	RowHardMaxBounces map[string]int
-
 	// ReviewCirclingCheckpoint is the run-wide first round a Bouncer's judge may rule CIRCLING in.
 	// The Bouncer entry requires it positive and passes it to shedadapters.BouncerConfig.CirclingCheckpoint.
 	ReviewCirclingCheckpoint int
-
-	// RowBouncerModels is the resolved seed and judge pair of each Bouncer row, keyed by row name as RowReviewModels and RowClusterFans are.
-	// A Bouncer row with no entry is a construction error.
-	// BurlerReview and BurlerFix rows keep reading the Review* fields above.
-	RowBouncerModels map[string]shedadapters.BouncerModels
 
 	// Shuttle is the injected shedadapters.Shuttle seam, an already-constructed engine (or a
 	// factory over one), read by the Bouncer row and the Burler rows' attach probes.
@@ -289,9 +247,6 @@ type Env struct {
 	// DarnVerifyAttempts is the verify gate's attempt budget of the darn recipe, which `darn.yaml`'s verify_attempts supplies.
 	// internal/loomrecipe alone reads it, stamping it onto the verify gates of the Darn-Write and Darn-Burler-Fix rows at every build.
 	DarnVerifyAttempts int
-	// DarnReviewMaxBounces is the bounce budget of the darn recipe's Darn-Review perch, which `darn.yaml`'s review_max_bounces supplies; 0 runs no review.
-	// internal/loomrecipe alone reads it.
-	DarnReviewMaxBounces int
 	// Darn is a whole-struct passthrough to loomshed.NewDarnWrite, for the reason Rework is.
 	Darn loomshed.DarnDeps
 	// PlanIndex is the code index the "plan" and "rework-plan" gates resolve plan refs against.

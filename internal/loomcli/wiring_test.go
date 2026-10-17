@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
@@ -377,8 +378,15 @@ func TestWire_DefaultConfig(t *testing.T) {
 			t.Fatalf("loomengine.ResolveReview(c.cfg, registry) = %v; want nil", err)
 		}
 
-		if !reflect.DeepEqual(c.env.ReviewModels, want.Models) {
-			t.Errorf("c.env.ReviewModels = %+v; want %+v", c.env.ReviewModels, want.Models)
+		for segment, wantModels := range map[string]burlerengine.RoundModels{
+			"Discussion-Review": want.Discussion,
+			"Plan-Review":       want.Plan,
+			"Webster-Review":    want.Webster,
+			"Merge-Review":      want.Merge,
+		} {
+			if got := c.env.Segments[segment].Models; !reflect.DeepEqual(got, wantModels) {
+				t.Errorf("c.env.Segments[%q].Models = %+v; want %+v", segment, got, wantModels)
+			}
 		}
 		if c.env.ReviewTimeout != want.Timeout {
 			t.Errorf("c.env.ReviewTimeout = %s; want %s", c.env.ReviewTimeout, want.Timeout)
@@ -444,10 +452,10 @@ func TestWire_DefaultConfig(t *testing.T) {
 		}
 	})
 
-	// The template's merge_max_bounces is 1, so the Merge-Bouncer has no budget entry of 0.
+	// The template's merge_max_bounces is 1, so the Merge-Review segment has a budget.
 	t.Run("merge review stays on by default", func(t *testing.T) {
-		if budget, ok := c.env.RowMaxBounces[loomshed.NameMergeBouncer]; ok && budget == 0 {
-			t.Error("c.env.RowMaxBounces[Merge-Bouncer] = 0; want no zero entry under the template")
+		if budget := c.env.Segments["Merge-Review"].MaxBounces; budget == 0 {
+			t.Error("c.env.Segments[Merge-Review].MaxBounces = 0; want a non-zero budget under the template")
 		}
 	})
 
@@ -866,10 +874,10 @@ func seedLoomConfigWithKeys(t *testing.T, anchorPath string, values map[string]s
 }
 
 // TestWire_ReviewKeysReachTheEnv verifies the loom.yaml keys that tune a review round reach the Env:
-// plan_reviewer_model lands in the Plan-Burler-* rows' RowReviewModels entries alone, and the Discussion-Burler-* rows keep the run-wide models.
-// The Webster-Burler-* and Merge-Burler-* rows take the template's webster_reviewer_model and merge_reviewer_model (one sonnet entry of effort high each) with the run-wide fix models.
-// plan_judge, seed and webster_seed land in each Bouncer row's RowBouncerModels entry, the darn recipe's Darn-Bouncer taking Webster-Bouncer's.
-// The per-perch budget, hard cap and auto-accept keys land in RowMaxBounces, RowHardMaxBounces and RowAutoAccept under the Bouncer rows' names.
+// plan_reviewer_model lands in the Plan-Review segment's models alone, and Discussion-Review keeps the run-wide models.
+// Webster-Review and Merge-Review take the template's webster_reviewer_model and merge_reviewer_model (one sonnet entry of effort high each) with the run-wide fix models.
+// plan_judge, seed and webster_seed land in each segment's Bouncer pair, Merge-Review taking Webster-Review's.
+// The per-perch budget and hard cap keys land in each segment's MaxBounces and HardMaxBounces, and every segment's entry is pinned whole.
 func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	t.Parallel()
 
@@ -885,71 +893,43 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 		t.Fatalf("wire() = %v; want nil", err)
 	}
 
-	// The Discussion-Bouncer row has no entry since its key is null, and merge_max_bounces: 0 gives the Merge-Bouncer row an entry of 0.
-	// The Merge-Bouncer row keeps the template's merge_auto_accept.
-	wantRowMaxBounces := map[string]int{loomshed.NamePlanBouncer: 2, loomshed.NameWebsterBouncer: 1, loomshed.NameMergeBouncer: 0}
-	if !reflect.DeepEqual(c.env.RowMaxBounces, wantRowMaxBounces) {
-		t.Errorf("RowMaxBounces = %v; want %v", c.env.RowMaxBounces, wantRowMaxBounces)
-	}
-	wantRowAutoAccept := map[string]bool{loomshed.NameDiscussionBouncer: false, loomshed.NamePlanBouncer: false, loomshed.NameWebsterBouncer: true, loomshed.NameMergeBouncer: true}
-	if !reflect.DeepEqual(c.env.RowAutoAccept, wantRowAutoAccept) {
-		t.Errorf("RowAutoAccept = %v; want %v", c.env.RowAutoAccept, wantRowAutoAccept)
-	}
-	// Plan-Bouncer takes its own hard cap; the other rows take the template's review_hard_max_bounces.
-	wantRowHardMaxBounces := map[string]int{loomshed.NameDiscussionBouncer: 4, loomshed.NamePlanBouncer: 5, loomshed.NameWebsterBouncer: 4, loomshed.NameMergeBouncer: 4}
-	if !reflect.DeepEqual(c.env.RowHardMaxBounces, wantRowHardMaxBounces) {
-		t.Errorf("RowHardMaxBounces = %v; want %v", c.env.RowHardMaxBounces, wantRowHardMaxBounces)
-	}
-
-	// Each Bouncer row takes its segment's resolved pair: the template's judge is sonnet of effort medium.
+	// Each Bouncer pair is its segment's resolved one: the template's judge is sonnet of effort medium.
 	wantBouncerModels := map[string]shedadapters.BouncerModels{
-		loomshed.NameDiscussionBouncer: {
+		"Discussion-Review": {
 			Seed:  shuttleengine.ModelChoice{Engine: "claude", Model: "haiku", Effort: "low"},
 			Judge: shuttleengine.ModelChoice{Engine: "claude", Model: "sonnet", Effort: "medium"},
 		},
-		loomshed.NamePlanBouncer: {
+		"Plan-Review": {
 			Seed:  shuttleengine.ModelChoice{Engine: "claude", Model: "haiku", Effort: "low"},
 			Judge: shuttleengine.ModelChoice{Engine: "claude", Model: "opus", Effort: "high"},
 		},
-		loomshed.NameWebsterBouncer: {
+		"Webster-Review": {
 			Seed:  shuttleengine.ModelChoice{Engine: "claude", Model: "opus", Effort: "low"},
 			Judge: shuttleengine.ModelChoice{Engine: "claude", Model: "sonnet", Effort: "medium"},
 		},
-		// The merge review and the darn recipe's Darn-Review perch take Webster-Review's pair.
-		loomshed.NameMergeBouncer: {
+		// The merge review takes Webster-Review's pair.
+		"Merge-Review": {
 			Seed:  shuttleengine.ModelChoice{Engine: "claude", Model: "opus", Effort: "low"},
 			Judge: shuttleengine.ModelChoice{Engine: "claude", Model: "sonnet", Effort: "medium"},
 		},
-		loomshed.NameDarnBouncer: {
-			Seed:  shuttleengine.ModelChoice{Engine: "claude", Model: "opus", Effort: "low"},
-			Judge: shuttleengine.ModelChoice{Engine: "claude", Model: "sonnet", Effort: "medium"},
-		},
-	}
-	if !reflect.DeepEqual(c.env.RowBouncerModels, wantBouncerModels) {
-		t.Errorf("RowBouncerModels = %+v; want %+v", c.env.RowBouncerModels, wantBouncerModels)
 	}
 
-	for _, row := range []string{loomshed.NamePlanBurlerReview, loomshed.NamePlanBurlerFix} {
-		plan := c.env.RowReviewModels[row]
-		if len(plan.Review) != 1 || plan.Review[0].Effort != "low" {
-			t.Errorf("RowReviewModels[%q].Review = %+v; want one opus entry of effort low", row, plan.Review)
-		}
-		if !reflect.DeepEqual(plan.Fix, c.env.ReviewModels.Fix) {
-			t.Errorf("RowReviewModels[%q].Fix = %+v; want the run-wide %+v", row, plan.Fix, c.env.ReviewModels.Fix)
-		}
+	// Discussion-Review keeps the run-wide models, which the other segments' fixers fall back to.
+	shared := c.env.Segments["Discussion-Review"].Models
+	plan := c.env.Segments["Plan-Review"].Models
+	if len(plan.Review) != 1 || plan.Review[0].Effort != "low" {
+		t.Errorf("Segments[Plan-Review].Models.Review = %+v; want one opus entry of effort low", plan.Review)
 	}
-	for _, row := range []string{loomshed.NameDiscussionBurlerReview, loomshed.NameDiscussionBurlerFix} {
-		if got := c.env.RowReviewModels[row]; !reflect.DeepEqual(got, c.env.ReviewModels) {
-			t.Errorf("RowReviewModels[%q] = %+v; want the run-wide %+v", row, got, c.env.ReviewModels)
-		}
+	if !reflect.DeepEqual(plan.Fix, shared.Fix) {
+		t.Errorf("Segments[Plan-Review].Models.Fix = %+v; want the run-wide %+v", plan.Fix, shared.Fix)
 	}
-	for _, row := range []string{loomshed.NameWebsterBurlerReview, loomshed.NameWebsterBurlerFix, loomshed.NameMergeBurlerReview, loomshed.NameMergeBurlerFix} {
-		webster := c.env.RowReviewModels[row]
+	for _, segment := range []string{"Webster-Review", "Merge-Review"} {
+		webster := c.env.Segments[segment].Models
 		if len(webster.Review) != 1 || webster.Review[0].Model != "sonnet" || webster.Review[0].Effort != "high" {
-			t.Errorf("RowReviewModels[%q].Review = %+v; want one sonnet entry of effort high", row, webster.Review)
+			t.Errorf("Segments[%q].Models.Review = %+v; want one sonnet entry of effort high", segment, webster.Review)
 		}
-		if !reflect.DeepEqual(webster.Fix, c.env.ReviewModels.Fix) {
-			t.Errorf("RowReviewModels[%q].Fix = %+v; want the run-wide %+v", row, webster.Fix, c.env.ReviewModels.Fix)
+		if !reflect.DeepEqual(webster.Fix, shared.Fix) {
+			t.Errorf("Segments[%q].Models.Fix = %+v; want the run-wide %+v", segment, webster.Fix, shared.Fix)
 		}
 	}
 	if c.env.WebsterRecord == nil {
@@ -958,58 +938,31 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 		t.Errorf("c.env.WebsterRecord() = %q; want none for an anchor with no webster run record", got)
 	}
 
-	// The template's empty fans leave every fan entry empty, and every review perch carries one.
-	for _, fansByRow := range []map[string][]string{c.env.RowClusterFans, c.env.RowFixFans} {
-		for row, fans := range fansByRow {
-			if !reflect.DeepEqual(fans, []string{""}) {
-				t.Errorf("fan list for %q = %q; want the one empty entry under the template's empty fans", row, fans)
-			}
-		}
-	}
-	for _, row := range []string{loomshed.NameDiscussionBouncer, loomshed.NamePlanBouncer, loomshed.NameWebsterBouncer, loomshed.NameMergeBouncer} {
-		if _, present := c.env.RowClusterFans[row]; !present {
-			t.Errorf("RowClusterFans has no entry for %q; want the perch's fan list", row)
-		}
-	}
-	// Each loom Burler row names the loom keys its models came from, the fix rows the fixer fan key as well, whatever the fans.
-	loomKey := func(key string) shuttleengine.ModelKey { return shuttleengine.ModelKey{Module: "loom", Key: key} }
-	wantSoloKeys := map[string]shedrecipe.RowModelKeys{
-		loomshed.NameDiscussionBurlerReview: {Review: loomKey("reviewer_model")},
-		loomshed.NameDiscussionBurlerFix:    {Fix: loomKey("fixer_model"), FixFan: "discussion_fixer_fan"},
-		loomshed.NamePlanBurlerReview:       {Review: loomKey("plan_reviewer_model")},
-		loomshed.NamePlanBurlerFix:          {Fix: loomKey("fixer_model"), FixFan: "plan_fixer_fan"},
-		loomshed.NameWebsterBurlerReview:    {Review: loomKey("webster_reviewer_model")},
-		loomshed.NameWebsterBurlerFix:       {Fix: loomKey("fixer_model"), FixFan: "webster_fixer_fan"},
-		loomshed.NameMergeBurlerReview:      {Review: loomKey("merge_reviewer_model")},
-		loomshed.NameMergeBurlerFix:         {Fix: loomKey("fixer_model"), FixFan: "merge_fixer_fan"},
-	}
-	if !reflect.DeepEqual(c.env.RowModelKeys, wantSoloKeys) {
-		t.Errorf("RowModelKeys = %+v; want %+v", c.env.RowModelKeys, wantSoloKeys)
-	}
-	// Each loom segment's entry joins the models, keys and Bouncer pair asserted above with its resolved budget and hard cap:
+	// Each loom segment's entry joins the models, keys and Bouncer pair with its resolved budget and hard cap:
 	// plan_max_bounces, webster_max_bounces, merge_max_bounces and plan_hard_max_bounces name their own keys, the rest fall back to the run-wide ones.
+	loomKey := func(key string) shuttleengine.ModelKey { return shuttleengine.ModelKey{Module: "loom", Key: key} }
 	wantSegments := map[string]shedrecipe.SegmentSettings{
 		"Discussion-Review": {
-			Models: c.env.RowReviewModels[loomshed.NameDiscussionBurlerReview], ReviewKey: loomKey("reviewer_model"), FixKey: loomKey("fixer_model"),
-			Bouncer:    wantBouncerModels[loomshed.NameDiscussionBouncer],
-			MaxBounces: c.env.ReviewMaxBounces, MaxBouncesKey: "review_max_bounces",
+			Models: c.env.Segments["Discussion-Review"].Models, ReviewKey: loomKey("reviewer_model"), FixKey: loomKey("fixer_model"),
+			Bouncer:    wantBouncerModels["Discussion-Review"],
+			MaxBounces: c.cfg.ReviewMaxBounces, MaxBouncesKey: "review_max_bounces",
 			HardMaxBounces: 4, HardMaxBouncesKey: "review_hard_max_bounces", ConfigFile: "loom.yaml",
 		},
 		"Plan-Review": {
-			Models: c.env.RowReviewModels[loomshed.NamePlanBurlerReview], ReviewKey: loomKey("plan_reviewer_model"), FixKey: loomKey("fixer_model"),
-			Bouncer:    wantBouncerModels[loomshed.NamePlanBouncer],
+			Models: plan, ReviewKey: loomKey("plan_reviewer_model"), FixKey: loomKey("fixer_model"),
+			Bouncer:    wantBouncerModels["Plan-Review"],
 			MaxBounces: 2, MaxBouncesKey: "plan_max_bounces",
 			HardMaxBounces: 5, HardMaxBouncesKey: "plan_hard_max_bounces", ConfigFile: "loom.yaml",
 		},
 		"Webster-Review": {
-			Models: c.env.RowReviewModels[loomshed.NameWebsterBurlerReview], ReviewKey: loomKey("webster_reviewer_model"), FixKey: loomKey("fixer_model"),
-			Bouncer:    wantBouncerModels[loomshed.NameWebsterBouncer],
+			Models: c.env.Segments["Webster-Review"].Models, ReviewKey: loomKey("webster_reviewer_model"), FixKey: loomKey("fixer_model"),
+			Bouncer:    wantBouncerModels["Webster-Review"],
 			MaxBounces: 1, MaxBouncesKey: "webster_max_bounces",
 			HardMaxBounces: 4, HardMaxBouncesKey: "review_hard_max_bounces", ConfigFile: "loom.yaml",
 		},
 		"Merge-Review": {
-			Models: c.env.RowReviewModels[loomshed.NameMergeBurlerReview], ReviewKey: loomKey("merge_reviewer_model"), FixKey: loomKey("fixer_model"),
-			Bouncer:    wantBouncerModels[loomshed.NameMergeBouncer],
+			Models: c.env.Segments["Merge-Review"].Models, ReviewKey: loomKey("merge_reviewer_model"), FixKey: loomKey("fixer_model"),
+			Bouncer:    wantBouncerModels["Merge-Review"],
 			MaxBounces: 0, MaxBouncesKey: "merge_max_bounces",
 			HardMaxBounces: 4, HardMaxBouncesKey: "review_hard_max_bounces", ConfigFile: "loom.yaml",
 		},
@@ -1038,48 +991,13 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	if err := fanned.wire(fannedLoc, fannedLoc.AnchorPath()); err != nil {
 		t.Fatalf("wire() with fans = %v; want nil", err)
 	}
-	wantFans := map[string][]string{
-		loomshed.NameDiscussionBouncer:      {"", "review-discussion"},
-		loomshed.NameDiscussionBurlerReview: {"", "review-discussion"},
-		loomshed.NamePlanBouncer:            {"full"},
-		loomshed.NamePlanBurlerReview:       {"full"},
-		loomshed.NameWebsterBouncer:         {"review-code"},
-		loomshed.NameWebsterBurlerReview:    {"review-code"},
-		loomshed.NameMergeBouncer:           {"review-code", ""},
-		loomshed.NameMergeBurlerReview:      {"review-code", ""},
-	}
-	if !reflect.DeepEqual(fanned.env.RowClusterFans, wantFans) {
-		t.Errorf("RowClusterFans = %v; want %v", fanned.env.RowClusterFans, wantFans)
-	}
-	wantFixFans := map[string][]string{
-		loomshed.NameDiscussionBurlerReview: {"fix-discussion"},
-		loomshed.NamePlanBurlerReview:       {"fix-plan", ""},
-		loomshed.NameWebsterBurlerReview:    {"fix-code"},
-		loomshed.NameMergeBurlerReview:      {"", "fix-code"},
-	}
-	if !reflect.DeepEqual(fanned.env.RowFixFans, wantFixFans) {
-		t.Errorf("RowFixFans = %v; want %v", fanned.env.RowFixFans, wantFixFans)
-	}
-	wantKeys := map[string]shedrecipe.RowModelKeys{
-		loomshed.NameDiscussionBurlerReview: {Review: loomKey("discussion_reviewer_model")},
-		loomshed.NameDiscussionBurlerFix:    {Fix: loomKey("fixer_model"), FixFan: "discussion_fixer_fan"},
-		loomshed.NamePlanBurlerReview:       {Review: loomKey("reviewer_model")},
-		loomshed.NamePlanBurlerFix:          {Fix: loomKey("fixer_model"), FixFan: "plan_fixer_fan"},
-		loomshed.NameWebsterBurlerReview:    {Review: loomKey("webster_reviewer_model")},
-		loomshed.NameWebsterBurlerFix:       {Fix: loomKey("webster_fixer_model"), FixFan: "webster_fixer_fan"},
-		loomshed.NameMergeBurlerReview:      {Review: loomKey("merge_reviewer_model")},
-		loomshed.NameMergeBurlerFix:         {Fix: loomKey("fixer_model"), FixFan: "merge_fixer_fan"},
-	}
-	if !reflect.DeepEqual(fanned.env.RowModelKeys, wantKeys) {
-		t.Errorf("RowModelKeys = %+v; want %+v", fanned.env.RowModelKeys, wantKeys)
-	}
-	// A segment's own model keys reach its entry, which carries the same models as its Burler rows.
+	// A segment's own model keys reach its entry, and a fanned reviewer runs on its segment's own reviewer list.
 	discussion, webster := fanned.env.Segments["Discussion-Review"], fanned.env.Segments["Webster-Review"]
-	if discussion.ReviewKey != loomKey("discussion_reviewer_model") || !reflect.DeepEqual(discussion.Models, fanned.env.RowReviewModels[loomshed.NameDiscussionBurlerReview]) {
-		t.Errorf("Segments[Discussion-Review] ReviewKey = %+v, Models = %+v; want discussion_reviewer_model and the Discussion-Burler-Review models", discussion.ReviewKey, discussion.Models)
+	if discussion.ReviewKey != loomKey("discussion_reviewer_model") {
+		t.Errorf("Segments[Discussion-Review].ReviewKey = %+v; want discussion_reviewer_model", discussion.ReviewKey)
 	}
-	if webster.FixKey != loomKey("webster_fixer_model") || !reflect.DeepEqual(webster.Models, fanned.env.RowReviewModels[loomshed.NameWebsterBurlerFix]) {
-		t.Errorf("Segments[Webster-Review] FixKey = %+v, Models = %+v; want webster_fixer_model and the Webster-Burler-Fix models", webster.FixKey, webster.Models)
+	if webster.FixKey != loomKey("webster_fixer_model") {
+		t.Errorf("Segments[Webster-Review].FixKey = %+v; want webster_fixer_model", webster.FixKey)
 	}
 	// Setting answers a loom key from the pair's resolved config.
 	if fanned.env.Setting == nil {
@@ -1088,12 +1006,8 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	if got, err := fanned.env.Setting("loom", "plan_reviewer_fan"); err != nil || got != "full" {
 		t.Errorf("env.Setting(loom, plan_reviewer_fan) = %v, %v; want full, nil", got, err)
 	}
-	got := fanned.env.RowReviewModels[loomshed.NameDiscussionBurlerReview].Review
-	if len(got) != 1 || got[0].Model != "opus" || got[0].Effort != "low" {
-		t.Errorf("RowReviewModels[%q].Review = %+v; want the discussion_reviewer_model entry, opus of effort low", loomshed.NameDiscussionBurlerReview, got)
-	}
-	if got, want := fanned.env.RowReviewModels[loomshed.NamePlanBurlerReview].Review, fanned.env.ReviewModels.Review; !reflect.DeepEqual(got, want) {
-		t.Errorf("RowReviewModels[%q].Review = %+v; want the run-wide %+v under plan_reviewer_fan", loomshed.NamePlanBurlerReview, got, want)
+	if got := discussion.Models.Review; len(got) != 1 || got[0].Model != "opus" || got[0].Effort != "low" {
+		t.Errorf("Segments[Discussion-Review].Models.Review = %+v; want the discussion_reviewer_model entry, opus of effort low", got)
 	}
 }
 
@@ -1110,8 +1024,8 @@ func TestWire_MergeReviewSeams(t *testing.T) {
 		t.Fatalf("wire() = %v; want nil", err)
 	}
 
-	if budget, ok := c.env.RowMaxBounces[loomshed.NameMergeBouncer]; !ok || budget != 0 {
-		t.Errorf("c.env.RowMaxBounces[Merge-Bouncer] = %d, %v; want 0 from merge_max_bounces: 0", budget, ok)
+	if budget := c.env.Segments["Merge-Review"].MaxBounces; budget != 0 {
+		t.Errorf("c.env.Segments[Merge-Review].MaxBounces = %d; want 0 from merge_max_bounces: 0", budget)
 	}
 	if skip, err := c.env.SkipMergeReview(); err != nil || skip {
 		t.Errorf("SkipMergeReview() with no record = %v, %v; want false, nil", skip, err)

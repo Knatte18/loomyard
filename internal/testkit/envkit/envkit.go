@@ -99,14 +99,6 @@ var nilLegal = map[string]bool{
 	"Teardown.Notices.Sleep":            true,
 	"PrimeLock.Sleep":                   true,
 	"SegmentBounces":                    true,
-	"RowReviewModels":                   true,
-	"RowClusterFans":                    true,
-	"RowFixFans":                        true,
-	"RowModelKeys":                      true,
-	"RowBouncerModels":                  true,
-	"RowMaxBounces":                     true,
-	"RowAutoAccept":                     true,
-	"RowHardMaxBounces":                 true,
 	"Segments":                          true,
 	"Setting":                           true,
 }
@@ -253,14 +245,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		Burler:             &shedfake.BurlerHalfRunner{},
 		Seats:              &shedfake.SeatRunner{},
 		Models:             modelspec.Registry{"opus": {Engine: "claude", Model: "claude-opus-test"}},
-		RowBouncerModels: map[string]shedadapters.BouncerModels{
-			loomshed.NameDiscussionBouncer: {},
-			loomshed.NamePlanBouncer:       {},
-			loomshed.NameWebsterBouncer:    {},
-			loomshed.NameMergeBouncer:      {},
-			loomshed.NameDarnBouncer:       {},
-		},
-		Setting: TemplateSetting,
+		Setting:            TemplateSetting,
 		Segments: map[string]shedrecipe.SegmentSettings{
 			"Discussion-Review": fullEnvSegment(3, "loom.yaml"),
 			"Plan-Review":       fullEnvSegment(3, "loom.yaml"),
@@ -324,9 +309,8 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 				}},
 			}, nil
 		},
-		Rework:               ReworkDeps(t, dir),
-		DarnVerifyAttempts:   3,
-		DarnReviewMaxBounces: 1,
+		Rework:             ReworkDeps(t, dir),
+		DarnVerifyAttempts: 3,
 		DarnTable: func(loomshed.DarnTold) (seatengine.Table, error) {
 			return seatengine.Table{
 				RolePrefix: "darn",
@@ -349,7 +333,6 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		PlanIndex: noFindingsIndex{},
 
 		Slug:                     "test-slug",
-		ReviewMaxBounces:         3,
 		ReviewCirclingCheckpoint: 3,
 
 		ScratchDir:     mustMkdir(t, filepath.Join(dir, "scratch")),
