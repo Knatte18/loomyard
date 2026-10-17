@@ -68,6 +68,11 @@ func TestLoadConfig(t *testing.T) {
 			}),
 		},
 		{
+			name: "empty model list reads as unset", seed: true,
+			contents: strings.Replace(ConfigTemplate(), "darn_reviewer_model: sonnet[high]", "darn_reviewer_model: []", 1),
+			want:     templateConfig(func(c *Config) { c.ReviewerModel = burlerengine.ModelSpecList{} }),
+		},
+		{
 			name: "model entry that is no model-spec", seed: true,
 			contents: strings.Replace(ConfigTemplate(), "darn_fixer_model: \"\"", "darn_fixer_model:\n  - sonnet[low]\n  - \"opus[effort\"", 1),
 			wantErr:  []string{`darn config key "darn_fixer_model" entry 2`, "set the key to a model-spec"},
