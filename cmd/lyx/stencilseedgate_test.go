@@ -1,6 +1,6 @@
 // stencilseedgate_test.go pins two things about the stencil-seed skip gate this batch adds:
 // skipStencilSeed's predicate against synthetic *cobra.Command values,
-// and that "lyx reed switch" and "lyx reed follow" actually carry the annotation the predicate reads. It deliberately does NOT pin any ordering
+// and that "lyx reed switch", "lyx reed follow" and every creel command actually carry the annotation the predicate reads. It deliberately does NOT pin any ordering
 // between skipStencilSeed and stencilSeedTarget, and does NOT assert "no `git rev-parse` was
 // spawned": seedStencils returns under testing.Testing() before either step runs, so an in-process
 // test can never observe their relative order, and "no git rev-parse was spawned" is the unfalsifiable
@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/reedcli"
 )
 
@@ -30,7 +31,7 @@ func reedSubcommand(t *testing.T, name string) *cobra.Command {
 	return nil
 }
 
-// TestSkipStencilSeed_HonoursTheAnnotation drives skipStencilSeed directly against synthetic *cobra.Command values, and against the real "lyx reed switch" and "lyx reed follow" commands, which must carry the annotation or the gate is worthless.
+// TestSkipStencilSeed_HonoursTheAnnotation drives skipStencilSeed directly against synthetic *cobra.Command values, and against the real "lyx reed switch" and "lyx reed follow" commands and every creel command, which must carry the annotation or the gate is worthless.
 func TestSkipStencilSeed_HonoursTheAnnotation(t *testing.T) {
 	t.Parallel()
 
@@ -80,6 +81,14 @@ func TestSkipStencilSeed_HonoursTheAnnotation(t *testing.T) {
 			cmd:  reedSubcommand(t, "follow"),
 			want: true,
 		},
+	}
+	creel := creelcli.Command()
+	for _, cmd := range append([]*cobra.Command{creel}, creel.Commands()...) {
+		tests = append(tests, struct {
+			name string
+			cmd  *cobra.Command
+			want bool
+		}{name: cmd.CommandPath() + " carries the annotation", cmd: cmd, want: true})
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
