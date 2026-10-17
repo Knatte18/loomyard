@@ -175,14 +175,22 @@ func TestFinalize_MergeOptionsCarriesComposedMessage(t *testing.T) {
 	tests := []struct {
 		name   string
 		squash bool
+		// nilEnginesRun leaves the Deps.EnginesRun seam nil, so no engine ran and the message carries no engine line.
+		nilEnginesRun bool
 	}{
-		{"Squash", true},
-		{"NoSquash", false},
+		{"Squash", true, false},
+		{"NoSquash", false, false},
+		{"NilEnginesRun", true, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			deps := newTestDeps(t)
 			deps.Config.Squash = tt.squash
+			enginesRun := []string{"claude"}
+			if tt.nilEnginesRun {
+				deps.EnginesRun = nil
+				enginesRun = nil
+			}
 			summary, err := summaryparser.Parse(deps.DescriptionPath)
 			if err != nil {
 				t.Fatalf("summaryparser.Parse() error = %v; want nil", err)
@@ -202,12 +210,13 @@ func TestFinalize_MergeOptionsCarriesComposedMessage(t *testing.T) {
 				t.Errorf("parent-side merge source = %q; want %q", merger.calls[0].source, deps.TaskBranch)
 			}
 			got := merger.calls[0].opts
-			want := summary.LandingMessage(deps.Config.TrailerBlock([]string{"claude"}))
+			want := summary.LandingMessage(deps.Config.TrailerBlock(enginesRun))
 			if got.Message != want {
 				t.Errorf("MergeOptions.Message = %q; want %q", got.Message, want)
 			}
-			if trailer := "\n\n" + deps.Config.EngineTrailers["claude"]; !strings.HasSuffix(got.Message, trailer) {
-				t.Errorf("MergeOptions.Message = %q; want suffix %q", got.Message, trailer)
+			trailer := deps.Config.EngineTrailers["claude"]
+			if hasLine := strings.HasSuffix(got.Message, "\n\n"+trailer); hasLine == tt.nilEnginesRun {
+				t.Errorf("MergeOptions.Message = %q; engine line %q present = %v; want %v", got.Message, trailer, hasLine, !tt.nilEnginesRun)
 			}
 			if got.Squash != tt.squash {
 				t.Errorf("MergeOptions.Squash = %v; want %v (threaded from configuration)", got.Squash, tt.squash)
