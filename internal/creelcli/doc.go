@@ -2,6 +2,7 @@
 // The design, the protocol and the delivery rules are documented in internal/creelengine; this package wires them to the hub, its worktrees and their agent panes.
 //
 // Every operator verb resolves the mode from its cwd and refuses a standalone directory, since creel needs a hub.
+// Every creel command, the group and the daemon included, skips the root pre-run's stencil-seed pass, so a verb's stderr carries only creel's own lines.
 // The first verb of a hub starts its daemon detached, and `daemon` is what that spawn runs.
 // The spawn appends the daemon's stderr to the hub's daemon log, truncating a log over one mebibyte first, and leaves it null when the log cannot be opened.
 // The spawn reaps the detached daemon in the background, logs its exit with its pid and status, and reads exit status 0 as a lost start race; the client's connect wait ends on any other exit.
