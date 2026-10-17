@@ -29,7 +29,7 @@ internal/configreg: 10
 internal/configsync: 9
 internal/creelcli: 4
 internal/creelengine: 11
-internal/darnengine: 4
+internal/darnengine: 5
 internal/discussionparser: 22
 internal/dotgit: 3
 internal/durfmt: 2

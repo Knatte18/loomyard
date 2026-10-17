@@ -86,6 +86,25 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantInvalid: true,
 		},
 		{
+			name:        "a retired loom fan key is renamed by loom's Migrate and refused as a guard key",
+			settings:    map[string]any{"loom": map[string]any{"discussion_fan": "standard"}},
+			wantRefusal: "discussion_reviewer_fan",
+			wantModule:  "loom",
+			wantInvalid: true,
+		},
+		{
+			name:     "a retired webster model key is renamed by loom's Migrate and copied onto merge",
+			settings: map[string]any{"loom": map[string]any{"webster_review": "sonnet[high]"}},
+			wantDocs: map[string]string{"loom": "webster_reviewer_model: sonnet[high] # model-spec for the Webster-Review reviewer; empty takes reviewer_model, a set value (one model-spec, or a per-round list whose last entry serves every later round) replaces it for this segment\nmerge_reviewer_model: sonnet[high] # model-spec for the Merge-Review reviewer; empty takes reviewer_model, a set value (one model-spec, or a per-round list whose last entry serves every later round) replaces it for this segment\n"},
+		},
+		{
+			name:        "a retired darn fan key is renamed by darn's Migrate and refused as a guard key",
+			settings:    map[string]any{"darn": map[string]any{"review_fix_fan": "fix-code"}},
+			wantRefusal: "darn_fixer_fan",
+			wantModule:  "darn",
+			wantInvalid: true,
+		},
+		{
 			name:         "empty module object is dropped",
 			settings:     map[string]any{"loom": map[string]any{}},
 			wantDocs:     map[string]string{},

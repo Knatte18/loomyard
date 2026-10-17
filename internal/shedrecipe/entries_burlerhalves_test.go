@@ -428,7 +428,7 @@ func TestBurlerReviewEntry_ClusterFan(t *testing.T) {
 
 	t.Run("RowModelKeysEntryReachesTheReviewerKey", func(t *testing.T) {
 		env := newTestEnv(t)
-		want := shuttleengine.ModelKey{Module: "loom", Key: "discussion_review"}
+		want := shuttleengine.ModelKey{Module: "loom", Key: "discussion_reviewer_model"}
 		env.RowModelKeys = map[string]RowModelKeys{"review-row": {Review: want}}
 
 		_, opts := captureReview(t, "review-row", minimalReviewConfig(), env)
@@ -744,7 +744,7 @@ func TestBurlerFixEntry_GateConfig(t *testing.T) {
 
 	t.Run("RowModelKeysEntryReachesFixKeyAndFixFanKey", func(t *testing.T) {
 		env := newTestEnv(t)
-		want := RowModelKeys{Fix: shuttleengine.ModelKey{Module: "loom", Key: "fix"}, FixFan: "fix_fan"}
+		want := RowModelKeys{Fix: shuttleengine.ModelKey{Module: "loom", Key: "fixer_model"}, FixFan: "discussion_fixer_fan"}
 		env.RowModelKeys = map[string]RowModelKeys{"fix-row": want}
 
 		_, opts := captureFix(t, "fix-row", minimalFixConfig(), env)
