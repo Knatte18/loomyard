@@ -169,13 +169,49 @@ func TestParentReviewAligner(t *testing.T) {
 			wantReason:  alignment.DecisionRecordedReason,
 		},
 		{
-			name:   "an approve after a note naming the slug",
+			name:   "an approve after a note naming the slug outside its title",
 			answer: approve,
 			change: func(t *testing.T, f *alignerFixture) {
-				f.notes = append(f.notes, boardengine.Task{ID: 7, Kind: boardengine.KindNote, Title: "hold pair on x"})
+				f.notes = append(f.notes, boardengine.Task{ID: 7, Kind: boardengine.KindNote, Title: "hold pair on x", Brief: "pair", Body: "hold pair"})
+			},
+			wantVerdict: alignment.VerdictApprove,
+			wantReason:  "in scope",
+		},
+		{
+			name:   "an approve after a note titled with the decision form",
+			answer: approve,
+			change: func(t *testing.T, f *alignerFixture) {
+				f.notes = append(f.notes, boardengine.Task{ID: 7, Kind: boardengine.KindNote, Title: "Decision for pair: hold the landing"})
 			},
 			wantVerdict: alignment.VerdictEscalate,
 			wantReason:  alignment.DecisionRecordedReason,
+		},
+		{
+			name:   "an approve after a decision note for a longer slug",
+			answer: approve,
+			change: func(t *testing.T, f *alignerFixture) {
+				f.notes = append(f.notes, boardengine.Task{ID: 7, Kind: boardengine.KindNote, Title: "Decision for pair-other: x"})
+			},
+			wantVerdict: alignment.VerdictApprove,
+			wantReason:  "in scope",
+		},
+		{
+			name:   "an approve after a task titled with the decision form",
+			answer: approve,
+			change: func(t *testing.T, f *alignerFixture) {
+				f.notes = append(f.notes, boardengine.Task{ID: 7, Kind: boardengine.KindTask, Title: "Decision for pair: x"})
+			},
+			wantVerdict: alignment.VerdictApprove,
+			wantReason:  "in scope",
+		},
+		{
+			name:   "an approve after a note titled with the decision form in another case",
+			answer: approve,
+			change: func(t *testing.T, f *alignerFixture) {
+				f.notes = append(f.notes, boardengine.Task{ID: 7, Kind: boardengine.KindNote, Title: "decision for pair: x"})
+			},
+			wantVerdict: alignment.VerdictApprove,
+			wantReason:  "in scope",
 		},
 		{
 			name:   "an approve after a note naming another slug",

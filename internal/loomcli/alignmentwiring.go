@@ -54,7 +54,7 @@ func hubBoardTasks(location *lyxcwd.Location) func() ([]boardengine.Task, error)
 	}
 }
 
-// alignmentSnapshot returns the closure that reads the decision snapshot of a task: the decision record's bytes and the text of every note naming slug, sorted by id.
+// alignmentSnapshot returns the closure that reads the decision snapshot of a task: the decision record's bytes and the text of every note titled with the decision-note title form of slug, sorted by id.
 // A decision record that does not exist yet reads as empty.
 func alignmentSnapshot(decisionRecord, slug string, notes func() ([]boardengine.Task, error)) func() (string, error) {
 	return func() (string, error) {
@@ -69,10 +69,10 @@ func alignmentSnapshot(decisionRecord, slug string, notes func() ([]boardengine.
 		tasks = slices.Clone(tasks)
 		slices.SortFunc(tasks, func(a, b boardengine.Task) int { return a.ID - b.ID })
 		var texts []string
+		titleForm := alignment.DecisionNoteTitle(slug)
 		for _, task := range tasks {
-			text := strings.Join([]string{task.Title, task.Brief, task.Body}, "\n")
-			if task.Kind == boardengine.KindNote && strings.Contains(text, slug) {
-				texts = append(texts, text)
+			if task.Kind == boardengine.KindNote && strings.HasPrefix(task.Title, titleForm) {
+				texts = append(texts, strings.Join([]string{task.Title, task.Brief, task.Body}, "\n"))
 			}
 		}
 		return alignment.Snapshot(record, texts), nil

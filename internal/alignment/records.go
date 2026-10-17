@@ -249,6 +249,13 @@ func ParseAttemptDir(files map[string][]byte) (Attempt, *Verdict, error) {
 // The PR-Gate point and the parent-review point both give it.
 const DecisionRecordedReason = "a decision was recorded for this task while the alignment agent ran"
 
+// DecisionNoteTitle returns the title prefix a decision note for the held task slug starts with: "Decision for <slug>:".
+// It is the one declaration of the form: the snapshot filter and the orch role both call it.
+// The colon keeps a slug from matching a longer slug that starts with it, and the match is case-sensitive.
+func DecisionNoteTitle(slug string) string {
+	return "Decision for " + slug + ":"
+}
+
 // Snapshot returns the hex SHA-256 over the decision record's bytes and the notes' texts, in the order given.
 // Each part is length-prefixed, so a changed record or note changes it, and so does an added or removed note.
 func Snapshot(decisionRecord []byte, notes []string) string {

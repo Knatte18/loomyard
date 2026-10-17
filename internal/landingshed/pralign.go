@@ -61,7 +61,7 @@ type AlignmentDeps struct {
 	Config func() (AlignmentConfig, error)
 	// Session is the agent's session at the PR-Gate point.
 	Session AlignmentSession
-	// Snapshot reads the decision snapshot: the decision record and the notes naming the task.
+	// Snapshot reads the decision snapshot: the decision record and the board notes titled "Decision for <slug>:".
 	Snapshot func() (string, error)
 	// Prompt holds the run's static prompt fields; PR-Align fills the point, the parent branch, the pull request number and head.
 	Prompt alignment.PromptInput
