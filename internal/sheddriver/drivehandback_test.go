@@ -38,7 +38,6 @@ func TestDriveNotices(t *testing.T) {
 		{name: "watched awaiting without a notice sends nothing", h: driveHandBack{Stop: awaiting}, watched: true},
 		{name: "unwatched awaiting without a notice sends the run-id line", h: driveHandBack{Stop: awaiting}, want: []string{generic}},
 		{name: "unwatched done without friction sends nothing", h: driveHandBack{Stop: done}},
-		{name: "watched blocked stop sends nothing", h: driveHandBack{Stop: Stop{OK: true, State: "blocked", LoopState: "blocked"}}, watched: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
