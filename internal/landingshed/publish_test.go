@@ -514,12 +514,21 @@ func TestPublish_OpenPullRequest(t *testing.T) {
 		wantEdits  int
 		wantOut    shedengine.Outcome
 		wantClass  shedengine.TransientClass
+		// listBody, when set, replaces the single open pull request the other fields describe.
+		listBody string
+		// wantReason, when set, is the exact reason a Stuck row carries.
+		wantReason string
 	}{
-		{"differing description is edited", "Old Title", "Old body.", "", time.Time{}, http.StatusOK, 1, shedengine.Done, ""},
-		{"matching description is left alone", "New Title", "\nNew body.\n", "", time.Time{}, http.StatusOK, 0, shedengine.Done, ""},
-		{"502 edit failure is an error", "Old", "Old", "", time.Time{}, http.StatusBadGateway, 1, "", shedengine.TransientGitHubAPI},
-		{"422 edit failure stays Stuck", "Old", "Old", "", time.Time{}, http.StatusUnprocessableEntity, 1, shedengine.Stuck, ""},
-		{"created after the run started is edited", "Old Title", "Old body.", "2026-07-01T00:00:00Z", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), http.StatusOK, 1, shedengine.Done, ""},
+		{"differing description is edited", "Old Title", "Old body.", "", time.Time{}, http.StatusOK, 1, shedengine.Done, "", "", ""},
+		{"matching description is left alone", "New Title", "\nNew body.\n", "", time.Time{}, http.StatusOK, 0, shedengine.Done, "", "", ""},
+		{"502 edit failure is an error", "Old", "Old", "", time.Time{}, http.StatusBadGateway, 1, "", shedengine.TransientGitHubAPI, "", ""},
+		{"422 edit failure stays Stuck", "Old", "Old", "", time.Time{}, http.StatusUnprocessableEntity, 1, shedengine.Stuck, "", "", ""},
+		{"created after the run started is edited", "Old Title", "Old body.", "2026-07-01T00:00:00Z", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), http.StatusOK, 1, shedengine.Done, "", "", ""},
+		{
+			"an older open pull request blocks a new one", "", "", "", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), http.StatusOK, 0, shedengine.Stuck, "",
+			`[{"number":4,"state":"open","created_at":"2026-01-01T00:00:00Z","html_url":"https://github.com/acme/proj/pull/4"}]`,
+			"an open pull request opened before this run started blocks a new one for the task branch: https://github.com/acme/proj/pull/4; way forward: close that pull request on GitHub, then resume the run with `lyx loom start`",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -542,6 +551,9 @@ func TestPublish_OpenPullRequest(t *testing.T) {
 				t.Fatalf("marshal list body: %v", err)
 			}
 			srv.listBody = string(list)
+			if tt.listBody != "" {
+				srv.listBody = tt.listBody
+			}
 			srv.editStatus = tt.editStatus
 			if tt.editStatus != http.StatusOK {
 				srv.editBody = `{"message":"nope"}`
@@ -558,6 +570,9 @@ func TestPublish_OpenPullRequest(t *testing.T) {
 				t.Fatalf("Call() = %q, %v; want %q, nil", outcome, err, tt.wantOut)
 			case tt.wantOut == shedengine.Stuck:
 				requireReason(t, ptr)
+				if tt.wantReason != "" && ptr.Reason != tt.wantReason {
+					t.Errorf("reason = %q; want %q", ptr.Reason, tt.wantReason)
+				}
 			}
 			if len(srv.createdBodies) != 0 {
 				t.Errorf("created pull requests = %d; want 0 (an open PR already exists)", len(srv.createdBodies))
