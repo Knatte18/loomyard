@@ -289,25 +289,21 @@
 // the fanned part carries the spawn mechanics, the fork rules and the consolidation rules.
 //
 // Fork discipline is fixed boilerplate the handler composes into every fork's prompt, never per-lens:
-// read-only evidence gathering only (no Write/Edit/delete of any file, repo or `_lyx`),
-// git commands that read only, such as git diff, git log and git show,
-// and none that changes the repository, its index, its refs or its working tree,
-// no touching the round's ReviewPath/FixerReportPath,
+// read-only evidence gathering only (no Write/Edit/delete of any file, repo or `_lyx`);
+// git commands that read only, such as git diff, git log and git show, and none that changes the repository, its index, its refs or its working tree;
+// no touching the round's ReviewPath/FixerReportPath;
 // and no nested Agent calls (forks cannot spawn forks).
 // Two enforcement layers back this discipline mechanically rather than trusting the prompt alone:
-// a session-level PreToolUse(Agent) hook that allows only unnamed subagent_type:"fork" calls through and denies everything else
-// (policing Agent calls made from inside a fork's own pane too, not just the handler's);
-// and, once the run reaches shuttleengine.OutcomeDone,
-// auditClusterRound in cluster.go, which reads the shuttleengine.ForkAudit the engine attaches to the run
-// (per-fork AgentCalls/WriteCalls/BashCommands facts from shuttleengine.AuditForks — never this package's own knowledge of the transcript layout)
-// and enforces the fail-loud posture:
-// exactly len(clusterLenses) fork transcripts or ErrClusterForksMissing
-// (naming requested vs actual — a shortfall, including zero, is an infrastructure defect, never a degrade-to-solo);
+// a session-level PreToolUse(Agent) hook that allows only unnamed subagent_type:"fork" calls through and denies everything else (policing Agent calls made from inside a fork's own pane too, not just the handler's);
+// and, once the run reaches shuttleengine.OutcomeDone, auditClusterRound in cluster.go.
+// auditClusterRound reads the shuttleengine.ForkAudit the engine attaches to the run
+// (per-fork AgentCalls/WriteCalls/BashCommands facts from shuttleengine.AuditForks — never this package's own knowledge of the transcript layout).
+// It enforces the fail-loud posture:
+// exactly len(clusterLenses) fork transcripts or ErrClusterForksMissing (naming requested vs actual — a shortfall, including zero, is an infrastructure defect, never a degrade-to-solo);
 // any fork with AgentCalls > 0, WriteCalls > 0, or a git-mutating Bash command is a hard error;
 // any named spawn is a hard error.
-// A fork that ran clean but never returned a report is sloppiness no mechanism prevents in advance —
-// it is collected into ReviewResult.ClusterWarnings, never failing the round,
-// since the handler's own consolidation phase already judges each fork's output on its merits.
+// A fork that ran clean but never returned a report is sloppiness no mechanism prevents in advance.
+// It is collected into ReviewResult.ClusterWarnings and never fails the round, since the handler's own consolidation phase already judges each fork's output on its merits.
 //
 // Run mechanics: forks run IN the handler's own shuttle session, under the
 // handler's own model — there is no model-per-fork axis (a Claude Code
