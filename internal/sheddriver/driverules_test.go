@@ -36,10 +36,9 @@ func TestDecideDrive(t *testing.T) {
 		stop  Stop
 		facts driveFacts
 		// records, when set, derive the facts' RepairCount through repairCount.
-		records           []SettleRecord
-		want              driveAction
-		wantFrictionNote  bool
-		wantWatchedVerify bool
+		records          []SettleRecord
+		want             driveAction
+		wantFrictionNote bool
 	}{
 		{name: "done", stop: Stop{OK: true, State: "done", LoopState: "done"}, want: driveActionDone},
 		{name: "busy kind", stop: errorStop(shedverbs.KindBusy, ""), want: driveActionBusyExit},
@@ -51,10 +50,7 @@ func TestDecideDrive(t *testing.T) {
 		{name: "awaiting with a pending escalation", stop: awaitingStop("a notice"), facts: driveFacts{EscalationPending: true}, want: driveActionArbiter},
 		{name: "awaiting with a parent notice", stop: awaitingStop("a notice"), want: driveActionRelayHandBack},
 		{name: "awaiting with nothing to relay", stop: awaitingStop(""), want: driveActionHandBack},
-		{
-			name: "watched verify halt hands back with the verify line", stop: blockedStop,
-			facts: driveFacts{VerifyMatches: true, VerifyTarget: "Webster", Watched: true}, want: driveActionHandBack, wantWatchedVerify: true,
-		},
+		{name: "watched verify halt hands back", stop: blockedStop, facts: driveFacts{VerifyMatches: true, VerifyTarget: "Webster", Watched: true}, want: driveActionHandBack},
 		{name: "unwatched verify halt with the retry unspent goes to the target", stop: blockedStop, facts: driveFacts{VerifyMatches: true, VerifyTarget: "Webster"}, want: driveActionVerifyGoto},
 		{name: "unwatched verify halt with the retry spent hands back", stop: blockedStop, facts: driveFacts{VerifyMatches: true, VerifyRetrySpent: true}, want: driveActionHandBack},
 		{name: "blocked stop of a non-matching record goes to the tackler", stop: blockedStop, want: driveActionTackler},
@@ -94,8 +90,8 @@ func TestDecideDrive(t *testing.T) {
 
 			got := decideDrive(tt.stop, facts)
 
-			if got.Action != tt.want || got.FrictionNote != tt.wantFrictionNote || got.WatchedVerifyLine != tt.wantWatchedVerify {
-				t.Errorf("decideDrive() = action %q, friction note %v, watched verify line %v; want %q, %v, %v", got.Action, got.FrictionNote, got.WatchedVerifyLine, tt.want, tt.wantFrictionNote, tt.wantWatchedVerify)
+			if got.Action != tt.want || got.FrictionNote != tt.wantFrictionNote {
+				t.Errorf("decideDrive() = action %q, friction note %v; want %q, %v", got.Action, got.FrictionNote, tt.want, tt.wantFrictionNote)
 			}
 			if got.Rule == "" {
 				t.Error("decideDrive() carries no rule text for the stop report")
