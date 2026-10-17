@@ -83,6 +83,7 @@ func NewPublish(deps Deps) (*Publish, error) {
 // A push the remote rejects is never retried: it is Stuck with a reason naming the remote tip, the commits it holds that the local branch lacks and the resume.
 // Done after a created or open pull request is safe because the next row is the PR-Gate producer, which owns approval, rejection and the wait;
 // an open pull request's title and body are refreshed from the change description first.
+// An open pull request opened before the run started, with none created since, blocks a new one: Call creates nothing and is Stuck with a reason naming it and the way forward, closing it on GitHub and resuming with `lyx loom start`.
 // Out of scope: Finalize's pull-request close calls only warn;
 // batten's Worktree-Create row keeps a failed fabricengine.Add push as Stuck, because Add retries a bare `(failed)` refusal itself and rolls back what it created, so a push that still fails is left Stuck for a human;
 // the status-commit and Seed-Child pushes only warn;
@@ -150,7 +151,7 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 		return p.stuckOrCancelled(ctx, fmt.Sprintf("github client unavailable: %v", err), "error", err)
 	}
 
-	pr, err := FindPullRequest(ctx, client, owner, repo, p.deps.TaskBranch, p.deps.ParentBranch)
+	pr, olderOpen, err := FindPullRequest(ctx, client, owner, repo, p.deps.TaskBranch, p.deps.ParentBranch, p.deps.RunStart)
 	if err != nil {
 		logger.Warn("landingshed: github call failed", "producer", publishName, "action", "query existing pull request", "owner", owner, "repo", repo, "cause", err)
 		if terr := transientFailure(ctx, publishName, "query existing pull request", err); terr != nil {
@@ -161,6 +162,10 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 
 	// Step 8: branch on what the query found.
 	if pr == nil {
+		// GitHub refuses a second open pull request for the same head and base, so an open one from before this run cannot be replaced.
+		if olderOpen != nil {
+			return p.stuckOrCancelled(ctx, withPRURL("an open pull request opened before this run started blocks a new one for the task branch", olderOpen.GetHTMLURL())+"; way forward: close that pull request on GitHub, then resume the run with `lyx loom start`")
+		}
 		summary, err := summaryparser.Parse(p.deps.DescriptionPath)
 		if err != nil {
 			return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: parse change description: %w", publishName, err)

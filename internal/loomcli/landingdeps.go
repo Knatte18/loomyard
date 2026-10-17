@@ -64,6 +64,7 @@ func landingDeps(
 	stopConflictSession func() (string, error),
 	verify verifySource,
 	lock landingshed.ParentLockDeps,
+	runStart time.Time,
 ) landingshed.Deps {
 	return landingshed.Deps{
 		ParentName:      parentName,
@@ -162,6 +163,7 @@ func landingDeps(
 		Registry:               registry,
 		Config:                 cfg,
 		Lock:                   lock,
+		RunStart:               runStart,
 		// The parent reads run over the task pair, opened at call time like the other fabric seams.
 		ReadParentTips: func(fetch bool) (fabricengine.ParentTips, error) {
 			f, err := fabricengine.Open(l)
