@@ -1,4 +1,4 @@
-// cli_test.go covers the parts of `lyx gate test` that spawn nothing: the refusals that precede hub resolution.
+// cli_test.go covers the parts of `lyx gate test` that spawn nothing: the refusals that precede hub resolution and the slot wait its help text names.
 
 package gatecli
 
@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 func TestGateTest_RefusesBeforeResolvingTheHub(t *testing.T) {
@@ -58,4 +60,14 @@ func TestGateTest_RefusesBeforeResolvingTheHub(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("help names the shared keep-cache-warm cap as the slot wait", func(t *testing.T) {
+		t.Parallel()
+		var out bytes.Buffer
+		RunCLI(&out, []string{"test", "--help"})
+		want := "for up to " + shuttleengine.DefaultAwaitCap.String()
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("RunCLI(test --help) output %q lacks %q", out.String(), want)
+		}
+	})
 }
