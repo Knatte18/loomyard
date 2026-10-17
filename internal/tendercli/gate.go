@@ -14,11 +14,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
 // InstallNetworkGate installs the pause gate that holds this process's network git and GitHub calls while a pause covers it.
 // The hub is the one the context's working directory resolves to; outside a hub nothing is installed.
+// A git worktree whose parent holds no board-level _lyx, such as an agent worktree nested in a repository, is outside a hub,
+// so no in-flight marker is written under a hub path guessed from its parent.
 // The gate is told the process's strand name, pid and start time, so its in-flight markers tell a live process from a dead one, and reads whether a live parent lock record names the slug it is asked about.
 func InstallNetworkGate(ctx context.Context) {
 	cwd, err := lyxcwd.CwdFrom(ctx)
@@ -26,7 +29,7 @@ func InstallNetworkGate(ctx context.Context) {
 		return
 	}
 	location, err := lyxcwd.Resolve(cwd)
-	if err != nil {
+	if err != nil || !preflight.BoardLyxPresent(location) {
 		return
 	}
 	geometry, err := hubgeom.PauseGeometry(location)

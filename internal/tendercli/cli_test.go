@@ -7,6 +7,7 @@ package tendercli
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -221,12 +223,21 @@ func TestInstallNetworkGate_TellsThePairsSlugAndInstallsNothingOutsideAHub(t *te
 	sentinel := pauserecord.Geometry{RecordPath: filepath.Join(t.TempDir(), "sentinel", pauserecord.RecordFileName)}
 	t.Cleanup(pauserecord.InstallGate(pauserecord.Gate{Geometry: sentinel}))
 
-	InstallNetworkGate(lyxcwd.WithCwd(t.Context(), t.TempDir()))
-	_, probeDone := pauserecord.Network("probe")
-	probeDone()
+	// An agent worktree nested in the prime is a git worktree whose parent is no hub.
+	agentWorktrees := filepath.Join(h.PrimeWorktree(), ".claude", "worktrees")
+	agentWorktree := filepath.Join(agentWorktrees, "agent")
+	gitkit.Git(t, h.PrimeWorktree(), "worktree", "add", "--detach", agentWorktree)
+	for _, outside := range []string{t.TempDir(), agentWorktree} {
+		InstallNetworkGate(lyxcwd.WithCwd(t.Context(), outside))
+		_, probeDone := pauserecord.Network("probe")
+		probeDone()
+	}
 	pauserecord.Network("left-in-flight")
 	if ops, err := pauserecord.ListNetOps(sentinel.RecordPath, allAlive); err != nil || len(ops) != 1 || ops[0].Op != "left-in-flight" {
 		t.Fatalf("operations under the sentinel gate = %+v, %v; want the one left in flight, since nothing was installed outside a hub", ops, err)
+	}
+	if _, err := os.Stat(filepath.Join(agentWorktrees, "_board")); !os.IsNotExist(err) {
+		t.Errorf("Stat(agent worktree's sibling _board) error = %v; want it absent", err)
 	}
 
 	InstallNetworkGate(lyxcwd.WithCwd(t.Context(), h.PairCodeWorktree(pairSlug)))

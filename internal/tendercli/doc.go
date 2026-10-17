@@ -29,5 +29,6 @@
 //
 // InstallNetworkGate installs the process gate that holds network git and GitHub calls while a pause covers the process.
 // It resolves the working directory and installs nothing outside a hub.
+// A git worktree whose parent holds no board-level `_lyx`, such as an agent worktree nested in the prime, is outside one.
 // The gate's waits write one line to stderr and the trace.
 package tendercli
