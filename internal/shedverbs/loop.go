@@ -81,8 +81,6 @@ type LoopSpec struct {
 	OnWake func()
 	// Delivered is the path of the delivered record of a loop id, where a retired envelope of that loop lands.
 	Delivered func(loopID string) string
-	// LockGrace is how long a starting loop waits for the loop lock before it gives up; zero selects loopLockGrace.
-	LockGrace time.Duration
 	// Spawn starts the detached loop with the given command line after the executable and returns a channel closed when it exits; nil selects spawnLoop.
 	Spawn func(argv []string) (<-chan struct{}, error)
 	// Watch reports file events in dir for the named entries through the channel it returns, with the function that stops watching; nil selects fswatch.
@@ -167,15 +165,11 @@ func (r childResult) ok() bool {
 // A loop that cannot take the lock within the grace period, or that finds the teardown's mark, an undelivered envelope or a dead loop's pid file, returns 1 at once, before any step and without an envelope.
 func runLoop(ctx context.Context, spec *Spec, loopID string, argv []string, out io.Writer) int {
 	loop := spec.Loop
-	grace := loop.LockGrace
-	if grace == 0 {
-		grace = loopLockGrace
-	}
 	if err := os.MkdirAll(filepath.Dir(loop.LockPath), 0o755); err != nil {
 		logger.Warn("shed: loop could not create its directory", "loop_id", loopID, "error", err.Error())
 		return 1
 	}
-	held, locked, err := lock.AcquireWriteLockWithin(loop.LockPath, grace)
+	held, locked, err := lock.AcquireWriteLockWithin(loop.LockPath, loopLockGrace)
 	if err != nil || !locked {
 		logger.Warn("shed: loop could not take the loop lock, so another loop owns the run", "loop_id", loopID, "error", errorText(err))
 		return 1
