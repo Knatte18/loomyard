@@ -62,10 +62,14 @@ func pushRebaseFreeLogged(path string) error {
 }
 
 // unpushedOutcome maps the result of a rebase-free push of path to fabric's contract.
-// A diverged remote and a remote that kept refusing the push both log a Warn and return nil, leaving the commits unpushed for a later push; any other error is returned.
+// A diverged remote and a remote that kept refusing the push both log a Warn and return nil, leaving the commits unpushed for a later push;
+// a branch carrying the local-only mark logs an Info and returns nil, since it is never pushed; any other error is returned.
 func unpushedOutcome(path string, err error) error {
 	switch {
 	case err == nil:
+		return nil
+	case errors.Is(err, gitrepo.ErrLocalBranch):
+		logger.Info("fabricengine: local-only branch, not pushed", "path", path)
 		return nil
 	case errors.Is(err, gitrepo.ErrPushRejected):
 		logger.Warn("fabricengine: push rejected, remote diverged; commits left unpushed", "path", path)

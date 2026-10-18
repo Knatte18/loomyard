@@ -125,6 +125,26 @@ func TestPushAnchored_PushesAndRecordsBranchPush(t *testing.T) {
 	if !strings.HasPrefix(pushed.Detail, "side=records repo=") || !strings.Contains(pushed.Detail, " remote=") {
 		t.Errorf("KindBranchPushed Detail = %q; want prefix %q and a %q part", pushed.Detail, "side=records repo=", " remote=")
 	}
+
+	// A records branch carrying the local-only mark is reported skipped: nil error, no push record, remote tip unchanged.
+	recordsBranch := gitkit.CurrentBranch(t, h.PrimeRecords())
+	if err := gitrepo.New(h.PrimeRecords()).MarkBranchLocal(recordsBranch); err != nil {
+		t.Fatalf("MarkBranchLocal(%s) error = %v; want nil", recordsBranch, err)
+	}
+	gitkit.CommitFile(t, h.PrimeRecords(), "weft-file-2.txt", "weft change never pushed", "weft change never pushed")
+	res, err = fabricengine.PushAnchored(h.Location, fabricengine.SyncOptions{}, fabricengine.LockWaitUnbounded)
+	if err != nil {
+		t.Fatalf("PushAnchored() with a local-marked records branch error = %v; want nil", err)
+	}
+	if len(res.LocalSkipped) != 1 || res.LocalSkipped[0] != recordsBranch {
+		t.Errorf("LocalSkipped = %v; want [%s]", res.LocalSkipped, recordsBranch)
+	}
+	if got := countBranchPushed(res, ""); got != 0 {
+		t.Errorf("PushAnchored() record = %+v; want no KindBranchPushed entry for a skipped branch", res.Mutated().Entries())
+	}
+	if got := fabricengine.BareBranchSHAForTest(t, h.RecordsBare, fabricengine.RecordsBranchName("main")); got != weftSHA {
+		t.Errorf("weft bare = %q; want it unchanged at %q", got, weftSHA)
+	}
 }
 
 // TestPushAnchored_DivergedWeftRemote_ReturnsErrPushRejectedUnwrapped covers the rejection path a
@@ -398,6 +418,32 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 			t.Errorf("PushPairAnchored() error = %q; want it to contain %q", err, want)
 		}
 	}
+
+	// A code branch carrying the local-only mark is reported skipped and left unpushed, while the records side still pushes.
+	t.Run("LocalMarkedCodeBranchIsReportedSkipped", func(t *testing.T) {
+		q := newPushPair(t)
+		if err := gitrepo.New(q.warpPath).MarkBranchLocal(q.warpBranch); err != nil {
+			t.Fatalf("MarkBranchLocal(%s) error = %v; want nil", q.warpBranch, err)
+		}
+		codeBefore := fabricengine.BareBranchSHAForTest(t, q.hub.CodeBare, q.warpBranch)
+		gitkit.CommitFile(t, q.warpPath, "warp-file.txt", "warp change never pushed", "warp change never pushed")
+		weftSHA := gitkit.CommitFile(t, q.weftPath, "weft-file.txt", "weft change", "weft change")
+
+		res, err := fabricengine.PushPairAnchored(q.location, fabricengine.SyncOptions{}, fabricengine.LockWaitUnbounded)
+
+		if err != nil {
+			t.Fatalf("PushPairAnchored() with a local-marked code branch error = %v; want nil", err)
+		}
+		if len(res.LocalSkipped) != 1 || res.LocalSkipped[0] != q.warpBranch {
+			t.Errorf("LocalSkipped = %v; want [%s]", res.LocalSkipped, q.warpBranch)
+		}
+		if got := fabricengine.BareBranchSHAForTest(t, q.hub.CodeBare, q.warpBranch); got != codeBefore {
+			t.Errorf("code bare = %q; want it unchanged at %q", got, codeBefore)
+		}
+		if got := fabricengine.BareBranchSHAForTest(t, q.hub.RecordsBare, q.weftBranch); got != weftSHA {
+			t.Errorf("records bare = %q; want local HEAD %q", got, weftSHA)
+		}
+	})
 
 	// The prime pushes the records side only and reports its unpushed code branch.
 	t.Run("PrimePushesRecordsSideOnly", func(t *testing.T) {

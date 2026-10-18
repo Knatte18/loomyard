@@ -83,6 +83,7 @@ func pushRebaseFreeRetryingOnce(repo *gitrepo.Repo) error {
 // It resolves its target the same way CommitAnchoredPaths does, from l alone via RecordsWorktree(l),
 // so a caller outside the Fabric Vocabulary Invariant's owner set never learns the weft exists.
 // It pushes the records side only.
+// A records branch carrying the local-only mark is not pushed and is named in PushResult.LocalSkipped, with a nil error.
 //
 // The push runs under the weft-side absorbing push lock,
 // so it never races a detached push child or another pushing verb.
@@ -115,6 +116,9 @@ func PushAnchored(l *lyxcwd.Location, opts SyncOptions, lockWait time.Duration) 
 	repo := gitrepo.New(target)
 	hadUnpushed, hadUnpushedErr := repo.HasUnpushed()
 	if err := pushRebaseFreeRetryingOnce(repo); err != nil {
+		if errors.Is(err, gitrepo.ErrLocalBranch) {
+			return PushResult{LocalSkipped: localSkippedBranch(repo)}, nil
+		}
 		return PushResult{}, err
 	}
 	recordPushIfAdvanced(rec, repo, "records", target, hadUnpushed, hadUnpushedErr)
@@ -127,7 +131,7 @@ func PushAnchored(l *lyxcwd.Location, opts SyncOptions, lockWait time.Duration) 
 // a code branch with unpushed commits is reported in PushResult.CodePushSkipped, naming the branch and saying it was left for the operator to push.
 // Otherwise the code side is pushed first.
 // The records side is attempted even when the code side failed.
-// A side whose HEAD is unborn is skipped.
+// A side whose HEAD is unborn is skipped, and so is a side whose branch carries the local-only mark, which PushResult.LocalSkipped names.
 // Each side retries a rejection once, after a fetch, when the remote tip is already contained in local HEAD.
 // A failing side's error is wrapped as `fabricengine: push <side> side at <path>: %w` with the side named code or records,
 // so errors.Is(err, gitrepo.ErrPushRejected) holds for a rejected side;
@@ -160,6 +164,7 @@ func PushPairAnchored(l *lyxcwd.Location, opts SyncOptions, lockWait time.Durati
 	}
 	defer func() { _ = held.Release() }()
 
+	var localSkipped []string
 	pushSide := func(side, path string) error {
 		head, err := headOrEmpty(path)
 		if err != nil {
@@ -171,6 +176,10 @@ func PushPairAnchored(l *lyxcwd.Location, opts SyncOptions, lockWait time.Durati
 		repo := gitrepo.New(path)
 		hadUnpushed, hadUnpushedErr := repo.HasUnpushed()
 		if err := pushRebaseFreeRetryingOnce(repo); err != nil {
+			if errors.Is(err, gitrepo.ErrLocalBranch) {
+				localSkipped = append(localSkipped, localSkippedBranch(repo)...)
+				return nil
+			}
 			return fmt.Errorf("fabricengine: push %s side at %s: %w", side, path, err)
 		}
 		recordPushIfAdvanced(rec, repo, side, path, hadUnpushed, hadUnpushedErr)
@@ -185,7 +194,17 @@ func PushPairAnchored(l *lyxcwd.Location, opts SyncOptions, lockWait time.Durati
 		warpErr = pushSide("code", warpPath)
 	}
 	weftErr := pushSide("records", weftPath)
-	return PushResult{CodePushSkipped: codePushSkipped}, errors.Join(warpErr, weftErr)
+	return PushResult{CodePushSkipped: codePushSkipped, LocalSkipped: localSkipped}, errors.Join(warpErr, weftErr)
+}
+
+// localSkippedBranch returns repo's current branch as the one-entry LocalSkipped list of a push the local-only mark refused.
+// The mark is read from that branch, so the name is readable; an unreadable one yields an empty list.
+func localSkippedBranch(repo *gitrepo.Repo) []string {
+	branch, err := repo.CurrentBranch()
+	if err != nil {
+		return nil
+	}
+	return []string{branch}
 }
 
 // unpushedCodeBranchNote returns the CodePushSkipped text for the code worktree at path, or "" when its branch has nothing unpushed or the state cannot be read.
