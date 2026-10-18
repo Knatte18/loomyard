@@ -415,7 +415,8 @@ func buildConfigLong() string {
 		"A value the module's loader refuses is refused, naming the key.\n" +
 		"Pre-existing config keys not recognized by the current template are\n" +
 		"preserved and reported via a \"preserved\" field in the JSON success output;\n" +
-		"run \"lyx config reconcile\" to remove them.\n\n" +
+		"run \"lyx config reconcile --layer default --apply\" from the prime to remove them from the\n" +
+		"board dir's files, and \"lyx config reconcile --apply\" to remove them from a worktree file.\n\n" +
 		"--layer default|worktree|local picks the file to print or write: default is the board's\n" +
 		"repo default, committed from the prime; local is an untracked override.\n\n" +
 		"--resolved <module> prints the merged result, each unit's line comment naming the\n" +
@@ -473,12 +474,12 @@ func runReconcile(ctx context.Context, out io.Writer, apply bool, layer string) 
 		return output.Err(out, err.Error())
 	}
 
-	if layer != "" && layer != string(configengine.LayerDefault) {
-		return output.Err(out, fmt.Sprintf("reconcile takes --layer %s alone, for the files under the hub's board dir; way forward: run it with no --layer to reconcile this worktree's own and local files", configengine.LayerDefault))
-	}
 	boardDir := fabricengine.BoardDir(l.HubPath)
 	if filepath.Clean(l.WorktreePath()) == filepath.Clean(boardDir) {
 		return output.Err(out, fmt.Sprintf("reconcile is refused in the board dir %s, whose files are the hub's, not a worktree's; way forward: run \"lyx config reconcile --layer default\" from the hub's prime worktree", boardDir))
+	}
+	if layer != "" && layer != string(configengine.LayerDefault) {
+		return output.Err(out, fmt.Sprintf("reconcile takes --layer %s alone, for the files under the hub's board dir; way forward: run it with no --layer to reconcile this worktree's own and local files", configengine.LayerDefault))
 	}
 	if layer != "" {
 		return reconcileDefaultLayer(l, out, apply, realHubWriteGuard(l))
