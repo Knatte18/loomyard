@@ -77,9 +77,12 @@ type record struct {
 	By   string `json:"by,omitempty"`
 	Kind string `json:"kind,omitempty"`
 	// Body is a message body or an inject's text.
-	Body    string   `json:"body,omitempty"`
-	ReplyTo int64    `json:"reply_to,omitempty"`
-	Path    []string `json:"path,omitempty"`
+	Body string `json:"body,omitempty"`
+	// Command and Argument are a command inject's command; a record without them is a text inject.
+	Command  CommandName `json:"command,omitempty"`
+	Argument string      `json:"argument,omitempty"`
+	ReplyTo  int64       `json:"reply_to,omitempty"`
+	Path     []string    `json:"path,omitempty"`
 	// Receiver is the receiver that ended a returned message unread.
 	Receiver string `json:"receiver,omitempty"`
 	// TTLSeconds is an inject's time to live, and ConsumedSeconds the part of it already used.

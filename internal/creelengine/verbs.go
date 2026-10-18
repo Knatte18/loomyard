@@ -334,16 +334,32 @@ type InjectResult struct {
 // Inject queues text to be typed into receiver's pane at its next idle, behind earlier injects.
 // A zero ttl takes the default; interrupt first sends the guarded interrupt and queues the text at the head.
 func (s *Store) Inject(sender Sender, receiver, text string, ttl time.Duration, interrupt bool) (InjectResult, error) {
-	result, _, err := s.inject(sender, receiver, text, ttl, interrupt, false)
+	result, _, err := s.inject(sender, receiver, text, Command{}, ttl, interrupt, false)
 	return result, err
 }
 
 // InjectWait is Inject that also registers a wait for the inject's outcome, before any outcome can happen.
 func (s *Store) InjectWait(sender Sender, receiver, text string, ttl time.Duration, interrupt bool) (InjectResult, *Waiter, error) {
-	return s.inject(sender, receiver, text, ttl, interrupt, true)
+	return s.inject(sender, receiver, text, Command{}, ttl, interrupt, true)
 }
 
-func (s *Store) inject(sender Sender, receiver, text string, ttl time.Duration, interrupt, wait bool) (InjectResult, *Waiter, error) {
+// InjectCommand queues a command to be run in an orch strand's session at its next idle, behind earlier injects, under every rule of a text inject.
+// Only a program sender may queue one, and only for an orch strand; an invalid command is refused.
+func (s *Store) InjectCommand(sender Sender, receiver string, command Command, ttl time.Duration) (InjectResult, error) {
+	if sender.Kind != KindProgram {
+		return InjectResult{}, fmt.Errorf("creel: %s may not queue a command inject; only a program may, through the Go client", sender.Name)
+	}
+	if !isOrchName(receiver) {
+		return InjectResult{}, fmt.Errorf("creel: a command inject goes to an orch strand only, not to %s", receiver)
+	}
+	if err := command.validate(); err != nil {
+		return InjectResult{}, err
+	}
+	result, _, err := s.inject(sender, receiver, "", command, ttl, false, false)
+	return result, err
+}
+
+func (s *Store) inject(sender Sender, receiver, text string, command Command, ttl time.Duration, interrupt, wait bool) (InjectResult, *Waiter, error) {
 	if strings.IndexFunc(text, unicode.IsControl) >= 0 {
 		return InjectResult{}, nil, errors.New("creel: an inject is a single line without control characters")
 	}
@@ -371,7 +387,8 @@ func (s *Store) inject(sender Sender, receiver, text string, ttl time.Duration, 
 		id := s.state.newID()
 		if err := s.writer.append(record{
 			Event: eventPosted, Kind: kindInject, ID: id, From: sender.Name, To: target.Name,
-			Body: text, TTLSeconds: int64(ttl / time.Second), Head: interrupt,
+			Body: text, Command: command.Name, Argument: command.Argument,
+			TTLSeconds: int64(ttl / time.Second), Head: interrupt,
 		}); err != nil {
 			return err
 		}
@@ -394,7 +411,9 @@ type QueuedInject struct {
 	ID   int64
 	From string
 	Text string
-	TTL  time.Duration
+	// Command is the command a command inject carries, zero for a text inject.
+	Command Command
+	TTL     time.Duration
 	// Head marks an inject queued ahead of the others by an interrupt.
 	Head bool
 }
@@ -408,7 +427,7 @@ func (s *Store) Queued(receiver string) []QueuedInject {
 		if entry.Receiver != receiver || entry.Outcome != injectQueued {
 			continue
 		}
-		queued := QueuedInject{ID: entry.ID, From: entry.From, Text: entry.Text, TTL: entry.TTL, Head: entry.Head}
+		queued := QueuedInject{ID: entry.ID, From: entry.From, Text: entry.Text, Command: entry.Command, TTL: entry.TTL, Head: entry.Head}
 		if entry.Head {
 			heads = append(heads, queued)
 		} else {

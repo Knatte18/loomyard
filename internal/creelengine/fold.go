@@ -65,13 +65,15 @@ const (
 	injectExpired     = "expired"
 )
 
-// injectEntry is one text queued to be typed into a receiver's pane.
+// injectEntry is one text or command queued to be typed into a receiver's pane.
 type injectEntry struct {
 	ID       int64
 	From     string
 	Receiver string
 	Text     string
-	TTL      time.Duration
+	// Command is the command a command inject carries, zero for a text inject.
+	Command Command
+	TTL     time.Duration
 	// Consumed is the part of TTL already used, from the last aged event.
 	Consumed time.Duration
 	// Head marks an inject queued at the head of its receiver's queue.
@@ -108,7 +110,11 @@ type LogEntry struct {
 	To       string
 	By       string
 	Receiver string
-	Subject  string
+	// Subject is a message's first line, or a text inject's text.
+	Subject string
+	// Command and Argument are a command inject's command, empty on every other entry.
+	Command  CommandName
+	Argument string
 	// Kind is the kind of the message or inject a carried entry snapshots, empty on every other entry.
 	Kind   string
 	Notice string
@@ -283,7 +289,8 @@ func (p *pool) applyPosted(rec record, day string) {
 		if p.injects[rec.ID] == nil {
 			p.injects[rec.ID] = &injectEntry{
 				ID: rec.ID, From: rec.From, Receiver: rec.To, Text: rec.Body,
-				TTL: time.Duration(rec.TTLSeconds) * time.Second, Head: rec.Head,
+				Command: Command{Name: rec.Command, Argument: rec.Argument},
+				TTL:     time.Duration(rec.TTLSeconds) * time.Second, Head: rec.Head,
 				Outcome: injectQueued, Posted: rec.At, origin: day,
 			}
 		}
@@ -326,6 +333,7 @@ func (p *pool) applyCarried(rec record, day string) bool {
 		if p.injects[rec.ID] == nil {
 			p.injects[rec.ID] = &injectEntry{
 				ID: rec.ID, From: rec.From, Receiver: rec.To, Text: rec.Body,
+				Command:  Command{Name: rec.Command, Argument: rec.Argument},
 				TTL:      time.Duration(rec.TTLSeconds) * time.Second,
 				Consumed: time.Duration(rec.ConsumedSeconds) * time.Second,
 				Head:     rec.Head, Outcome: injectQueued, Posted: rec.OrigAt, origin: day,
@@ -381,6 +389,8 @@ func (p *pool) logEntryFor(rec record, day string) LogEntry {
 		}
 	} else if inject := p.injects[rec.ID]; inject != nil {
 		entry.From = inject.From
+		entry.Command, entry.Argument = inject.Command.Name, inject.Command.Argument
+		entry.Subject = inject.Text
 		if entry.To == "" {
 			entry.To = inject.Receiver
 		}
@@ -411,7 +421,7 @@ func (p *pool) carryRecords(cutoffDay string, now time.Time) []record {
 		if entry.origin < cutoffDay && entry.Outcome == injectQueued {
 			carried = append(carried, record{
 				Event: eventCarried, At: now, Of: eventPosted, Kind: kindInject, ID: entry.ID, From: entry.From, To: entry.Receiver,
-				Body: entry.Text, TTLSeconds: int64(entry.TTL / time.Second), ConsumedSeconds: int64(entry.Consumed / time.Second),
+				Body: entry.Text, Command: entry.Command.Name, Argument: entry.Command.Argument, TTLSeconds: int64(entry.TTL / time.Second), ConsumedSeconds: int64(entry.Consumed / time.Second),
 				Head: entry.Head, OrigAt: entry.Posted,
 			})
 		}

@@ -307,6 +307,17 @@ func (d *daemon) dispatch(conn *net.UnixConn, reader *bufio.Reader, sender Sende
 		ok.Log = store.Log(LogFilter{ID: req.ID, From: req.From, To: req.Receiver, Since: req.Since})
 	case VerbInject:
 		ttl := time.Duration(req.TTLSeconds) * time.Second
+		if req.Command != "" || req.Argument != "" {
+			if req.Wait || req.Interrupt {
+				return errors.New("creel: a command inject takes neither wait nor interrupt")
+			}
+			result, err := store.InjectCommand(sender, req.Receiver, Command{Name: req.Command, Argument: req.Argument}, ttl)
+			if err != nil {
+				return err
+			}
+			ok.ID = result.ID
+			break
+		}
 		if req.Wait {
 			result, waiter, err := store.InjectWait(sender, req.Receiver, req.Text, ttl, req.Interrupt)
 			if err != nil {

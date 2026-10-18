@@ -40,6 +40,9 @@ type Request struct {
 	Receiver string `json:"receiver,omitempty"`
 	// Text is the body of post and reply, and the text of inject.
 	Text string `json:"text,omitempty"`
+	// Command and Argument make inject a command inject; Text is then empty.
+	Command  CommandName `json:"command,omitempty"`
+	Argument string      `json:"argument,omitempty"`
 	// ID is the message or inject a verb concerns: the message to reply to or forward, the id a wait resumes, the id filter of log.
 	ID int64 `json:"id,omitempty"`
 	// From is the sender filter of read and log.

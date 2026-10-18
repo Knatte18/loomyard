@@ -264,7 +264,12 @@ func (w *worker) typeInject(strand Strand, inject QueuedInject) bool {
 		w.report("journal", err)
 		return false
 	}
-	err := w.scheduler.delivery.Send(strand, inject.Text)
+	var err error
+	if inject.Command.IsZero() {
+		err = w.scheduler.delivery.Send(strand, inject.Text)
+	} else {
+		err = w.scheduler.delivery.Command(strand, inject.Command)
+	}
 	switch {
 	case err == nil:
 		w.report("send", nil)

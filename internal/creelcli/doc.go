@@ -15,4 +15,6 @@
 // The refusal fallback line opens with that statement too for a post or inject that stored before it refused.
 // `inbox` prints the caller's unread counts as `inbox.senders`, a list of `{from, unread}`, and no other key.
 // The hub delivery in this package implements the engine's delivery seam over the hub's worktrees, reed's persisted state and shuttle.
+// Its Command operation runs a command inject through the worktree's shuttle runner: clear, compact with the argument as focus, reload-plugins, color with the argument as segment color, and load-skills with the argument's space-separated skills.
+// Shuttle's busy and not-confirmed answers map onto the engine's ErrBusy and ErrNotLanded, as they do for a typed line.
 package creelcli

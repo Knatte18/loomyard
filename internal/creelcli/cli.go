@@ -564,7 +564,8 @@ func logCmd() *cobra.Command {
 		Short:       "show the events of the message journal, without bodies",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `log prints the journal's events, oldest first: who posted, read, forwarded,
-injected or held, and when. It never prints a message body.
+injected or held, and when. A text inject's line is its subject, and a command inject
+shows its command and argument. It never prints a message body.
 
 --id limits it to one message and the reminders that list it, --from and --to to a sender and a receiver,
 and --since to events after a time: an RFC 3339 timestamp, or a duration
@@ -622,6 +623,7 @@ func logEntryFields(entry creelengine.LogEntry) map[string]any {
 	}
 	for key, value := range map[string]string{
 		"from": entry.From, "to": entry.To, "by": entry.By, "receiver": entry.Receiver, "subject": entry.Subject, "notice": entry.Notice, "reason": entry.Reason, "kind": entry.Kind,
+		"command": string(entry.Command), "argument": entry.Argument,
 	} {
 		if value != "" {
 			fields[key] = value

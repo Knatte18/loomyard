@@ -634,6 +634,73 @@ func TestStore_InjectAndHold(t *testing.T) {
 				}
 			}
 		}},
+		{"InjectCommand_AProgramsIsQueuedInOrderBehindATextInject", func(t *testing.T, e *env) {
+			if _, err := e.store.Inject(program(batten), orch, "first", 0, false); err != nil {
+				t.Fatalf("Inject: %v", err)
+			}
+			result, err := e.store.InjectCommand(program(batten), orch, creelengine.Command{Name: creelengine.CommandCompact, Argument: "keep the plan"}, 0)
+			if err != nil || result.ID == 0 {
+				t.Fatalf("InjectCommand = %+v, %v; want a queued inject", result, err)
+			}
+			queued := e.store.Queued(orch)
+			if len(queued) != 2 || queued[0].Text != "first" || !queued[0].Command.IsZero() ||
+				queued[1].Command != (creelengine.Command{Name: creelengine.CommandCompact, Argument: "keep the plan"}) {
+				t.Errorf("Queued = %+v; want the text inject, then the compact command", queued)
+			}
+			if commands := e.del.Commands(); len(commands) != 0 {
+				t.Errorf("InjectCommand ran %v; the store only queues", commands)
+			}
+		}},
+		{"InjectCommand_RefusesWhatIsNotAProgramToAnOrchStrand", func(t *testing.T, e *env) {
+			clearCommand := creelengine.Command{Name: creelengine.CommandClear}
+			for _, tt := range []struct {
+				sender   creelengine.Sender
+				receiver string
+				want     string
+			}{
+				{program(batten), alpha, "orch strand only"},
+				{external(), orch, "only a program"},
+				{strand(alpha), orch, "only a program"},
+				{strand(orch2), orch, "only a program"},
+			} {
+				_, err := e.store.InjectCommand(tt.sender, tt.receiver, clearCommand, 0)
+				wantErr(t, err, tt.want)
+			}
+			if queued := e.store.Queued(orch); len(queued) != 0 {
+				t.Errorf("a refused command inject left %v queued", queued)
+			}
+		}},
+		{"InjectCommand_RefusesAnInvalidCommand", func(t *testing.T, e *env) {
+			for _, tt := range []struct {
+				command creelengine.Command
+				want    string
+			}{
+				{creelengine.Command{Name: "reboot"}, "unknown command"},
+				{creelengine.Command{Name: creelengine.CommandCompact}, "compact"},
+				{creelengine.Command{Name: creelengine.CommandCompact, Argument: "two\nlines"}, "compact"},
+				{creelengine.Command{Name: creelengine.CommandColor}, "needs an argument"},
+				{creelengine.Command{Name: creelengine.CommandLoadSkills}, "needs an argument"},
+				{creelengine.Command{Name: creelengine.CommandClear, Argument: "x"}, "takes no argument"},
+				{creelengine.Command{Name: creelengine.CommandReloadPlugins, Argument: "x"}, "takes no argument"},
+			} {
+				_, err := e.store.InjectCommand(program(batten), orch, tt.command, 0)
+				wantErr(t, err, tt.want)
+			}
+			if queued := e.store.Queued(orch); len(queued) != 0 {
+				t.Errorf("a refused command inject left %v queued", queued)
+			}
+		}},
+		{"InjectCommand_AnotherOwnersHoldKeepsItQueued", func(t *testing.T, e *env) {
+			if _, err := e.store.Hold(program(batten), orch, time.Minute); err != nil {
+				t.Fatalf("Hold: %v", err)
+			}
+			if _, err := e.store.InjectCommand(program("ly:TENDER"), orch, creelengine.Command{Name: creelengine.CommandClear}, 0); err != nil {
+				t.Fatalf("InjectCommand: %v", err)
+			}
+			if queued := e.store.Queued(orch); len(queued) != 1 {
+				t.Errorf("Queued = %+v; want the command inject kept queued under another owner's hold", queued)
+			}
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -6,7 +6,7 @@
 //
 // Creel decides what is delivered and when, shuttle knows the provider and its idle check and safe send, and reed knows the pane and does the keystrokes: creel → shuttle → reed → tmux.
 // The engine imports neither reed nor shuttle, and every keystroke goes through the Delivery seam; `PATTERN-creel-store` pins that with an import scan.
-// Delivery lists the hub's strands, asks whether a strand is idle, asks whether a pause covers it, types one line into its pane and sends the guarded interrupt.
+// Delivery lists the hub's strands, asks whether a strand is idle, asks whether a pause covers it, types one line into its pane, runs one command of a closed set in its session and sends the guarded interrupt.
 // Its idle answer carries a stall reason when a not-idle pane waits on something the operator can act on, a pane too short for the input box, a draft in it or a pane showing no input box, and the engine journals each change of that reason as a `stalled` record.
 // `internal/creelcli` implements it over the hub's worktrees, reed's persisted state and status, the pause record, and a shuttle runner built per worktree at each call.
 // Shuttle's idle check, verified send and guarded interrupt work on a strand with no run record, such as a session added by hand with `lyx reed add`.
@@ -104,6 +104,13 @@
 // An expired answer carries the stall that stood when the TTL ran out, and the `expired` record names it as its reason, only when a probe read that stall no more than twice the probe ceiling before; otherwise both carry none.
 // inject --interrupt first sends the guarded interrupt and queues the line at the head.
 //
+// A command inject carries a Command instead of a line: a neutral name from the closed set clear, compact, reload-plugins, color and load-skills, and the argument that name takes.
+// The engine knows no slash spelling or key name; the Delivery seam's Command operation maps the name onto the provider, with the same ErrBusy and ErrNotLanded contract as the typing of a line.
+// compact takes a one-line focus, color a segment color, load-skills a space-separated skill list, and clear and reload-plugins no argument.
+// Store.InjectCommand queues one under every rule of a text inject: TTL, hold, pause, queue order, dormant receivers, the sending event before the run and the outcome after, never run twice.
+// Only a program sender may queue one, and only for an orch strand; the CLI has no flag for it, and a request that sets Wait or Interrupt with a command is refused.
+// A journal record without the command fields folds as a text inject.
+//
 // interrupt sends the guarded interrupt at once, bypassing the queue, and reports whether it stopped a running turn.
 // The interrupt clears a prompt the provider restored, and a clear that fails after the key was sent still counts as sent.
 // No delivery reaches the receiver while the interrupt runs, its settles and its clear included, and the receiver's worker probes afresh once it ends.
@@ -144,7 +151,7 @@
 // # Log
 //
 // log lists the journal's events oldest first with their ids, parties, times and subjects, narrowed by --id, --from, --to and --since.
-// It carries no body field.
+// It carries no body field; a text inject's line is the `subject` of each of its events, and a command inject's events carry its `command` and `argument`.
 // --id also lists the `reminded` events whose unread ids hold that id.
 // A `carried` event shows the kind of the message or inject carried, and a message carried again at a later retention gets one `carried` event per carry that is still in a kept file.
 // A `stalled` record names the receiver and the stall reason a delivery probe read, and is written once per change of reason while something is pending for the receiver, and again for a stall read after it went stale.

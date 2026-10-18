@@ -5,6 +5,7 @@ package creelengine_test
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -86,6 +87,16 @@ func awaitTyped(t *testing.T, e *env, strandName string, want ...string) {
 		}
 		time.Sleep(time.Millisecond)
 	}
+}
+
+// injectCommand queues a command inject from a program to receiver and fails the test when it is refused.
+func injectCommand(t *testing.T, e *env, receiver string, command creelengine.Command) creelengine.InjectResult {
+	t.Helper()
+	result, err := e.store.InjectCommand(program(batten), receiver, command, 0)
+	if err != nil {
+		t.Fatalf("InjectCommand(%s): %v", command.Name, err)
+	}
+	return result
 }
 
 // typed returns the texts sent to the strand, in order.
@@ -648,6 +659,126 @@ func TestScheduler_Injects(t *testing.T) {
 			want := fmt.Sprintf(`"id":%d,"consumed_s":5`, second)
 			if text := journalText(t, e.geom); !strings.Contains(text, want) {
 				t.Errorf("journal lacks %s; want the second inject's aged record counting 5 s since its posting:\n%s", want, text)
+			}
+		}},
+		{"CommandInjectIsRunThroughCommandAndJournaledSendingThenInjected", func(t *testing.T, e *env) {
+			command := creelengine.Command{Name: creelengine.CommandCompact, Argument: "keep the plan"}
+			result := injectCommand(t, e, orch, command)
+			e.start(t)
+			e.probeWaits(1)
+			want := []creelfake.CommandCall{{Strand: orch, Command: command}}
+			if got := e.del.Commands(); !reflect.DeepEqual(got, want) {
+				t.Errorf("Commands = %+v; want %+v", got, want)
+			}
+			if sends := e.del.Sends(); len(sends) != 0 {
+				t.Errorf("a command inject also typed %v through Send", sends)
+			}
+			entries := e.store.Log(creelengine.LogFilter{ID: result.ID})
+			if got := eventsOf(entries); !slices.Equal(got, []string{"posted", "sending", "injected"}) {
+				t.Errorf("events = %v; want posted, sending, injected", got)
+			}
+			for _, entry := range entries {
+				if entry.Command != creelengine.CommandCompact || entry.Argument != "keep the plan" {
+					t.Errorf("log entry %+v lacks the command and argument", entry)
+				}
+			}
+		}},
+		{"CommandInjectUnconfirmedIsJournaledAndNeverRerun", func(t *testing.T, e *env) {
+			e.del.SetCommandError(creelengine.ErrNotLanded)
+			result := injectCommand(t, e, orch, creelengine.Command{Name: creelengine.CommandClear})
+			e.start(t)
+			e.probeWaits(1)
+			e.clock.Advance(time.Hour)
+			if got := e.del.Commands(); len(got) != 1 {
+				t.Errorf("Commands = %+v; an unconfirmed command inject must never be rerun", got)
+			}
+			if got := eventsOf(e.store.Log(creelengine.LogFilter{ID: result.ID})); !slices.Equal(got, []string{"posted", "sending", "unconfirmed"}) {
+				t.Errorf("events = %v; want posted, sending, unconfirmed", got)
+			}
+		}},
+		{"BusyCommandIsRequeuedAndRunOnceAtTheNextProbe", func(t *testing.T, e *env) {
+			e.del.SetCommandError(creelengine.ErrBusy)
+			result := injectCommand(t, e, orch, creelengine.Command{Name: creelengine.CommandReloadPlugins})
+			e.start(t)
+			e.probeWaits(1)
+			e.del.SetCommandError(nil)
+			e.tick(time.Second)
+			if got := e.del.Commands(); len(got) != 2 {
+				t.Errorf("Commands = %+v; want the busy attempt and one retry", got)
+			}
+			if events := eventsOf(e.store.Log(creelengine.LogFilter{ID: result.ID})); events[len(events)-1] != "injected" {
+				t.Errorf("events = %v; want the inject to end injected", events)
+			}
+		}},
+		{"CommandInjectWaitsOutAPauseAndExpiresAfterItsTTL", func(t *testing.T, e *env) {
+			e.del.SetPaused(orch, true)
+			injectCommand(t, e, orch, creelengine.Command{Name: creelengine.CommandClear})
+			e.start(t)
+			e.driveProbeWaits(3)
+			if got := e.del.Commands(); len(got) != 0 {
+				t.Fatalf("Commands = %+v under a covering pause; want none", got)
+			}
+			e.del.SetPaused(orch, false)
+			e.tick(4 * time.Second)
+			if got := e.del.Commands(); len(got) != 1 {
+				t.Errorf("Commands = %+v after the pause lifted; want the command run once", got)
+			}
+
+			expiring := newEnv(t)
+			expiring.del.SetIdle(orch, false)
+			result, err := expiring.store.InjectCommand(program(batten), orch, creelengine.Command{Name: creelengine.CommandClear}, 10*time.Second)
+			if err != nil {
+				t.Fatalf("InjectCommand: %v", err)
+			}
+			expiring.start(t)
+			done := make(chan struct{})
+			go expiring.clock.AdvanceByWaitsWhere(isProbeWait, done)
+			defer close(done)
+			deadline := time.Now().Add(10 * time.Second)
+			for {
+				events := eventsOf(expiring.store.Log(creelengine.LogFilter{ID: result.ID}))
+				if slices.Contains(events, "expired") {
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatalf("events = %v; want the command inject expired", events)
+				}
+				time.Sleep(time.Millisecond)
+			}
+			if got := expiring.del.Commands(); len(got) != 0 {
+				t.Errorf("Commands = %+v; an expired command inject runs nothing", got)
+			}
+		}},
+		{"CommandInjectToADormantOrchStaysQueuedUntilItIsLive", func(t *testing.T, e *env) {
+			e.del.SetStrands(creelfake.LiveStrand(alpha), creelfake.LiveStrand(beta), creelfake.DormantStrand(orch), creelfake.LiveStrand(orch2))
+			injectCommand(t, e, orch, creelengine.Command{Name: creelengine.CommandClear})
+			e.start(t)
+			e.probeWaits(1)
+			if got := e.del.Commands(); len(got) != 0 {
+				t.Fatalf("Commands = %+v for a dormant orch; want none", got)
+			}
+			e.del.SetStrands(creelfake.LiveStrand(alpha), creelfake.LiveStrand(beta), creelfake.LiveStrand(orch), creelfake.LiveStrand(orch2))
+			e.tick(time.Second)
+			if got := e.del.Commands(); len(got) != 1 {
+				t.Errorf("Commands = %+v once the orch is live; want the command run once", got)
+			}
+		}},
+		{"TextAndCommandInjectsAreTypedInQueueOrder", func(t *testing.T, e *env) {
+			first := inject(t, e, program(batten), orch, "/one", 0, false)
+			second := injectCommand(t, e, orch, creelengine.Command{Name: creelengine.CommandClear}).ID
+			third := inject(t, e, program(batten), orch, "/three", 0, false)
+			e.start(t)
+			e.probeWaits(1)
+			e.tick(time.Second)
+			e.tick(time.Second)
+			var sending []int64
+			for _, entry := range e.store.Log(creelengine.LogFilter{To: orch}) {
+				if entry.Event == "sending" {
+					sending = append(sending, entry.ID)
+				}
+			}
+			if want := []int64{first, second, third}; !slices.Equal(sending, want) {
+				t.Errorf("sending events = %v; want the ids in queue order %v", sending, want)
 			}
 		}},
 		{"ChangingStallIsJournaledOncePerChangeAndStopsOnceTyped", func(t *testing.T, e *env) {

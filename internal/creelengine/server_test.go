@@ -447,6 +447,36 @@ func TestDaemon_Protocol(t *testing.T) {
 				t.Errorf("the expired line = %q; want it to carry reason too-short", expiredLine(t, r.geom))
 			}
 		}},
+		{"ProgramCommandInjectIsAnsweredWithItsIdAndLoggedWithItsCommand", false, func(t *testing.T, r *rig) {
+			r.start()
+			c := r.client(programClaim("ly:BATTEN"), nil, creelfake.NewClock(epoch))
+			queued := mustCall(t, c, creelengine.Request{Verb: creelengine.VerbInject, Receiver: orch, Command: creelengine.CommandCompact, Argument: "keep the plan"})
+			if queued.ID == 0 {
+				t.Fatalf("command inject answered %+v; want its id", queued)
+			}
+			logged := mustCall(t, c, creelengine.Request{Verb: creelengine.VerbLog, ID: queued.ID})
+			if len(logged.Log) == 0 {
+				t.Fatalf("log of inject %d is empty", queued.ID)
+			}
+			for _, entry := range logged.Log {
+				if entry.Command != creelengine.CommandCompact || entry.Argument != "keep the plan" {
+					t.Errorf("log entry %+v lacks the command and argument", entry)
+				}
+			}
+		}},
+		{"CommandInjectWithWaitOrInterruptIsRefused", false, func(t *testing.T, r *rig) {
+			r.start()
+			c := r.client(programClaim("ly:BATTEN"), nil, creelfake.NewClock(epoch))
+			for _, req := range []creelengine.Request{
+				{Verb: creelengine.VerbInject, Receiver: orch, Command: creelengine.CommandClear, Wait: true},
+				{Verb: creelengine.VerbInject, Receiver: orch, Command: creelengine.CommandClear, Interrupt: true},
+			} {
+				got := result(t, callAsync(c, req, 0))
+				if got.err == nil || !strings.Contains(got.err.Error(), "neither wait nor interrupt") {
+					t.Errorf("%+v answered %v; want the refusal naming wait and interrupt", req, got.err)
+				}
+			}
+		}},
 		{"ResumedInjectWaitHearsTheStandingStallAtOnce", false, func(t *testing.T, r *rig) {
 			r.start()
 			r.del.SetStall(alpha, creelengine.StallDraft)
