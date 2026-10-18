@@ -37,7 +37,7 @@ const noticeReportWait = 3 * time.Minute
 // noticeRelayWait is how long after the stop report an awaiting child whose driver handed the run's parent a notice is left to that relay, with no decision record, before the notice goes anyway.
 const noticeRelayWait = 10 * time.Minute
 
-// noticeMaxAttempts is how many times a notice that was not queued is tried before it is dropped.
+// noticeMaxAttempts is how many times a notice that was not posted is tried before it is dropped.
 const noticeMaxAttempts = 3
 
 // The conditions a notice reports.
@@ -293,10 +293,10 @@ func (p *innerRunProducer) noticeStep(ctx context.Context, w *childWait) {
 	p.saveEpisode(kept, old)
 }
 
-// noticeDriverBusy queues one orch notice per stall on a busy driver pane, and does nothing once one is queued or when no Notify was wired.
+// noticeDriverBusy posts one orch notice as creel mail per stall on a busy driver pane, and does nothing once one is posted or when no Notify was wired.
 // The notice carries the fixed condition and the child's own status, then cause, the spawn error that refused the resume, as one line cut at noticeErrorMax, so the box text it quotes reaches the orch.
 // The notice key stays the condition, so one stall sends one notice.
-// Every failure is a Warn, and the flag is set only once deliver reports the notice queued, so a refused attempt is tried again on the next refusal.
+// Every failure is a Warn, and the flag is set only once deliver reports the notice posted, so a refused attempt is tried again on the next refusal.
 func (p *innerRunProducer) noticeDriverBusy(ctx context.Context, w *childWait, cause error) {
 	if !p.notices || p.driverBusyNoticed {
 		return
@@ -507,8 +507,8 @@ func (p *innerRunProducer) undecided() bool {
 	return !found
 }
 
-// deliver makes one attempt to send line, honouring the retry spacing, the missing orch strand and the attempt cap, and reports whether the notice was queued.
-// The attempts are spaced by noticeProbe; a notice not queued after noticeMaxAttempts is dropped with a Warn.
+// deliver makes one attempt to send line, honouring the retry spacing, the missing orch strand and the attempt cap, and reports whether the notice was posted as creel mail.
+// The attempts are spaced by noticeProbe; a notice not posted after noticeMaxAttempts is dropped with a Warn.
 func (p *innerRunProducer) deliver(ctx context.Context, key, condition, line string) bool {
 	d := p.episode.deliveries[key]
 	if d == nil {

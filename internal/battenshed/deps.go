@@ -44,7 +44,7 @@ var ErrDisagreeingChildSeed = errors.New("battenshed: task worktree already seed
 var ErrChildNotParked = errors.New("battenshed: the task worktree's driver has not parked yet")
 
 // ErrChildDriverBusy is the sentinel an InnerRunDeps.Spawn closure wraps when the child's bootstrap refused because its parked driver's pane holds a draft, an active operator or another busy reading, so the resume line was not typed.
-// InnerRun treats it as ErrChildNotParked is treated: a retryable wait on the approval-resume path that records nothing and spawns again, at most once per notice probe, and it queues one orch notice per stall.
+// InnerRun treats it as ErrChildNotParked is treated: a retryable wait on the approval-resume path that records nothing and spawns again, at most once per notice probe, and it posts one orch notice per stall.
 var ErrChildDriverBusy = errors.New("battenshed: the task worktree's driver pane is busy")
 
 // ErrChildRunBusy is the sentinel an InnerRunDeps.Goto closure wraps when the child's goto verb refused because its run lock is held.
@@ -192,9 +192,9 @@ type InnerRunDeps struct {
 	// A nil Awake resolves in NewInnerRun to Go's monotonic reading, measured from an origin taken at construction.
 	// That reading stops during suspend on Linux and macOS; on Windows it keeps running, so a nil Awake there leaves the idle clocks counting suspended time as before.
 	Awake func() time.Duration
-	// Notify hands one run notice line to whoever tells the orch, queued behind a seam so this package never imports the orch, and reports whether the line was queued.
-	// A notice is recorded as sent only when it was queued.
-	// The wait invokes it once per condition per episode (see notice.go) and retries an error or an unqueued line at most once per notice probe and at most three times; its failure is only warned about and never changes the row's outcome.
+	// Notify hands one run notice line to whoever tells the orch, posted as creel mail behind a seam so this package never imports the orch, and reports whether the line was posted.
+	// A notice is recorded as sent only when it was posted.
+	// The wait invokes it once per condition per episode (see notice.go) and retries an error or an unposted line at most once per notice probe and at most three times; its failure is only warned about and never changes the row's outcome.
 	// A nil Notify resolves to a no-op in NewInnerRun, the same way a nil Sleep resolves, and then no notice step runs at all.
 	Notify func(ctx context.Context, line string) (queued bool, err error)
 	// OrchStrandRecorded reports whether the orch the notices go to has a strand recorded to receive them.

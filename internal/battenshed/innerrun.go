@@ -331,7 +331,7 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 //   - awaiting first revives a dead driver strand once per episode and resumes the child when its parent moved under the gate row (staleBaseResume); with no decision record it reports the hand-off;
 //   - awaiting with a decision not yet acted on spawns the child's driver again (the child's own bootstrap resumes an approved or rejected run), records the decision in the decision-acted marker only once the spawn succeeded, and goes on waiting until the child leaves awaiting;
 //     a spawn refused with ErrChildNotParked records nothing and is retried at most once per noticeProbe until the driver parks or the state changes;
-//     one refused with ErrChildDriverBusy is retried the same way and queues one orch notice per stall;
+//     one refused with ErrChildDriverBusy is retried the same way and posts one orch notice per stall;
 //   - awaiting with a decision already acted on and the child's history length unchanged since that resume does not spawn, and reports that the resume was delivered and the child's driver has not re-stepped yet;
 //   - awaiting with a decision already acted on and the child's history longer (or an old-layout marker) does not spawn, and reports the recovery of deciding again;
 //   - done records the first-sight time in the done-seen marker and returns Done once the driver strand is gone or driverExitGrace has elapsed since first sight, and otherwise reports the wait for the driver to finish its stop report;
