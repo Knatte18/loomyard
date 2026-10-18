@@ -113,7 +113,7 @@
 // A run in flight takes the batten snapshots committed after its slug's newest archive tag, so a reused slug never reads an earlier run's.
 // A run enters the report when its span overlaps the window.
 //
-// A run's span opens at the first entry of its batten record, else at the seed's started_at, else at the first loom row with a finding saying so.
+// A run's span opens at the first entry of its batten record, else at the seed's started_at, else at the first child row with a finding saying so.
 // The loom history and the batten record's history merge in stamp order, each keeping its own order, a row's stamp being its last_at when set, else its at.
 // Each row's interval runs from the latest stamp so far, the span's opening for the first row, to its own stamp, so a batten row between two loom rows splits their gap.
 // A stamp earlier than the latest, or none, gives a zero interval and a finding.
@@ -125,7 +125,7 @@
 // paused every Run-Shed entry whose change is from paused, so the time the child stood paused at a producer boundary counts apart from the row it paused at.
 // A loom run's setup also holds Preflight and Loom-Preflight; discussion every Discussion row; plan every Plan row and Batchifier; webster every Webster row and Describe; merge every Merge row; publish-finalize Publish, PR-Align, PR-Gate, PR-Rework, Finalize and Friction-Reflect.
 // A darn run's setup also holds Preflight; write Darn-Write, its retired name Darn, and Describe; review every Darn-Review row (Darn-Bouncer, Darn-Burler-Review, Darn-Burler-Fix); merge Merge-In; publish-finalize Publish, PR-Align, PR-Gate, Finalize and Friction-Reflect.
-// Any other Run-Shed entry records a change of the child's state and counts under the phase the run's recipe table gives the producer its change names, else the latest loom row before it, else under setup.
+// Any other Run-Shed entry records a change of the child's state and counts under the phase the run's recipe table gives the producer its change names, else the latest child row before it, else under setup.
 // Any other row counts under other and adds a finding, so a row a recipe gains before its table does shows up rather than vanishing.
 // Without the batten source land is nil and setup holds the loom rows alone.
 //

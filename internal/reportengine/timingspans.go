@@ -193,7 +193,7 @@ func mergeRows(row RunRow) ([]timedRow, []Finding) {
 // phaseOf returns the phase the row at index of a run of recipe counts under, and false when it is a child row the recipe's phase table does not name, which counts under PhaseOther.
 // A batten row counts by position: before batten's first Run-Shed entry under PhaseSetup, after it under PhaseLand.
 // A Run-Shed entry records the child's state changes: a change from paused closes the pause and counts under PhasePaused,
-// and any other counts under the phase of the producer its change names, else the phase of the latest loom row before it, else PhaseSetup.
+// and any other counts under the phase of the producer its change names, else the phase of the latest child row before it, else PhaseSetup.
 func phaseOf(recipe string, rows []timedRow, index int) (string, bool) {
 	row := rows[index]
 	if !row.batten {
@@ -235,7 +235,7 @@ func phaseOf(recipe string, rows []timedRow, index int) (string, bool) {
 	return PhaseSetup, true
 }
 
-// spanOpening returns where a run's span opens: the first entry of the batten record, else the seed's started_at, else the first stamped loom row.
+// spanOpening returns where a run's span opens: the first entry of the batten record, else the seed's started_at, else the first stamped child row.
 // The last case adds a finding saying so, and found is false when no row carries a stamp at all.
 func spanOpening(row RunRow, rows []timedRow) (opening time.Time, found bool, finding *Finding) {
 	if n := len(row.battenSnapshots); n > 0 {
@@ -250,7 +250,7 @@ func spanOpening(row RunRow, rows []timedRow) (opening time.Time, found bool, fi
 	}
 	for _, candidate := range rows {
 		if !candidate.batten && candidate.stamped {
-			return candidate.stamp, true, &Finding{Tag: row.Tag, File: statusFileOf(row.Slug), Error: "neither the batten record nor the seed carries a stamp: the span opens at the first stamped loom row"}
+			return candidate.stamp, true, &Finding{Tag: row.Tag, File: statusFileOf(row.Slug), Error: "neither the batten record nor the seed carries a stamp: the span opens at the first stamped child row"}
 		}
 	}
 	return time.Time{}, false, nil
