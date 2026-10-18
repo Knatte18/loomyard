@@ -80,7 +80,7 @@ func pushRebaseFreeRetryingOnce(repo *gitrepo.Repo) error {
 // PushAnchored pushes unpushed commits in l's weft sibling worktree rebase-free.
 // It resolves its target the same way CommitAnchoredPaths does, from l alone via RecordsWorktree(l),
 // so a caller outside the Fabric Vocabulary Invariant's owner set never learns the weft exists.
-// It pushes the records side only.
+// It pushes the records side only, and waits for the push: it is the entry for a caller outside that owner set that needs the records side on the remote before it goes on.
 // A records branch carrying the local-only mark is not pushed and is named in PushResult.LocalSkipped, with a nil error.
 //
 // The push runs under the weft-side absorbing push lock,
