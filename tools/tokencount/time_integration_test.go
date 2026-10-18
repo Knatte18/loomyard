@@ -21,6 +21,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
+// burlerSessions returns the sessions cell of the burler part row in a -detail segment table, empty when the row is absent.
+func burlerSessions(section string) string {
+	for _, line := range strings.Split(section, "\n") {
+		if cells := strings.Split(line, "|"); strings.HasPrefix(line, "| └ burler |") && len(cells) > 7 {
+			return strings.TrimSpace(cells[7])
+		}
+	}
+	return ""
+}
+
 func TestRunReadsArchivedShedStatus(t *testing.T) {
 	t.Parallel()
 	records, hub := t.TempDir(), t.TempDir()
@@ -135,7 +145,8 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 	// -no-sleep keeps the host's journal out of the figures.
 	withBlind := readsFor(false)
 	withBlind["blind"] = shuttleengine.RecordReads{}
-	args := []string{"-hub", hub, "-" + repositoryFlag, records, "-out", reportPath, "-no-sleep", "done", "live", "solo"}
+	// -detail shows the sessions column the counted sessions are read from.
+	args := []string{"-hub", hub, "-" + repositoryFlag, records, "-out", reportPath, "-no-sleep", "-detail", "done", "live", "solo"}
 	if err := run(args, &stdout, withBlind); err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -163,11 +174,11 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 		{"finished run", donePart, "Session transcripts left out: 1; they started before the slug's previous run ended, at 2026-01-01T09:00:00Z.\n"},
 		{"in-flight run", livePart, "Session transcripts left out: 1; they started before the slug's previous run ended, at 2026-01-01T12:00:00Z.\n"},
 	} {
-		if !strings.Contains(c.part, c.want) || !strings.Contains(c.part, "| burler | 1 |") {
+		if !strings.Contains(c.part, c.want) || burlerSessions(c.part) != "1" {
 			t.Errorf("%s section lacks %q beside one counted session:\n%s", c.name, c.want, c.part)
 		}
 	}
-	if strings.Contains(soloPart, "left out") || !strings.Contains(soloPart, "| burler | 1 |") {
+	if strings.Contains(soloPart, "left out") || burlerSessions(soloPart) != "1" {
 		t.Errorf("one-tag run = %q; want its transcript counted and no left-out line", soloPart)
 	}
 	const sleepOffLine = "Machine sleep counts as time: -no-sleep is set.\n"
@@ -200,7 +211,7 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 
 	// Under -no-cutoff the earlier sessions and the untimestamped one count, and the span keeps the seed's start instead of the older tag's date.
 	noCutoffPath := filepath.Join(t.TempDir(), "no-cutoff.md")
-	args = []string{"-hub", hub, "-" + repositoryFlag, records, "-out", noCutoffPath, "-no-cutoff", "-no-sleep", "done", "live", "early"}
+	args = []string{"-hub", hub, "-" + repositoryFlag, records, "-out", noCutoffPath, "-no-cutoff", "-no-sleep", "-detail", "done", "live", "early"}
 	if err := run(args, &stdout, readsFor(true)); err != nil {
 		t.Fatalf("run with -no-cutoff: %v", err)
 	}
@@ -222,7 +233,7 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 	donePart, afterLive, _ = strings.Cut(afterDone, "## live\n")
 	livePart, earlyPart, _ := strings.Cut(afterLive, "## early\n")
 	for name, part := range map[string]string{"done": donePart, "live": livePart, "early": earlyPart} {
-		if !strings.Contains(part, "| burler | 2 |") {
+		if burlerSessions(part) != "2" {
 			t.Errorf("-no-cutoff %s section lacks both transcripts counted:\n%s", name, part)
 		}
 	}
