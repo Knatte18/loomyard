@@ -91,8 +91,7 @@ func unpushedOutcome(path string, err error) error {
 // the process cwd (which ensureWeftLockDirAt("") would do — mkdir .weft and git rev-parse relative
 // to cwd).
 // It blocks until the lock is free and marks the sides it pushes pending, so it also respawns a side another pusher left flagged.
-// This is a latent edge only: the detached push child always supplies the weft path, so production never hits this guard.
-// It supplies the warp path too, except in the prime (see SpawnDetachedPush and Fabric.Commit's spawnDetachedPushFn call).
+// Its callers are foreground ones; the detached push child runs CoalescePushRequest instead.
 // warpPath may still be empty when weftPath is present — that pushes only the weft side;
 // a warp-only push (warpPath set, weftPath empty) is not a supported coalescing entry and is
 // rejected by the same guard.

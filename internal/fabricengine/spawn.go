@@ -7,8 +7,8 @@
 // PushWarpAt is the warp-side sibling of recordsgit.go's pushWeftAt — the synchronous, no-Fabric-
 // instance push primitive for the warp side.
 // It has no production caller today: the detached child's bypass handler (internal/fabriccli's
-// `push` RunE) drives CoalescePushBothAt instead, which pushes both sides through PushRebaseFree
-// under one absorbing lock rather than calling either per-side primitive.
+// `push` RunE) drives DetachedPush instead, which runs CoalescePushRequest to push both sides through
+// PushRebaseFree under one absorbing lock rather than calling either per-side primitive.
 // It is retained as pushWeftAt's symmetric counterpart, and the distinction matters — see PushWarpAt's
 // own doc comment for the operational consequence.
 // PushWarpRebaseFreeAt is a second warp-side push primitive, routing to gitrepo.PushRebaseFree
@@ -128,6 +128,7 @@ func absoluteOrAsGiven(path string) string {
 // in a task pair both sides are pushed, held and teardown-guarded under the pair's own slug.
 // The child starts in the hub's board worktree, outside both of the pair's worktrees.
 // A side whose current branch is local-only is left out of the request and named in LocalSkipped, and with no side left no child is spawned.
+// A local-only records branch spawns nothing either, since the child's push cannot run without the records side.
 // A failed or never-run push leaves the commits local; the next detached push carries them, and creates a never-pushed branch's upstream.
 func SpawnStatusPush(l *lyxcwd.Location, gateSlug string) (SpawnResult, error) {
 	req, localSkipped, err := statusPushRequest(l, gateSlug)
@@ -135,7 +136,7 @@ func SpawnStatusPush(l *lyxcwd.Location, gateSlug string) (SpawnResult, error) {
 		return SpawnResult{}, err
 	}
 	res := SpawnResult{Request: req, LocalSkipped: localSkipped}
-	if req.WarpPath == "" && req.WeftPath == "" {
+	if req.WeftPath == "" {
 		return res, nil
 	}
 	res.Spawned = true
@@ -194,7 +195,7 @@ func SpawnPairPush(l *lyxcwd.Location) error {
 // involved — the warp-side analog of recordsgit.go's pushWeftAt.
 // Gating matches pushWeftAt exactly.
 //
-// It has NO production caller. The detached push child's bypass handler drives CoalescePushBothAt,
+// It has NO production caller. The detached push child's bypass handler drives DetachedPush,
 // not this function, so nothing in shipped fabric ever runs gitrepo.PushCoalesced against a warp
 // worktree.
 // That is worth stating rather than leaving to a reader to rediscover: PushCoalesced writes its

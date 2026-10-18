@@ -104,6 +104,31 @@ func TestSpawnStatusPush(t *testing.T) {
 		requireOneCall(t, "", h.PairRecordsSibling(pairSlug), pairSlug, pairSlug)
 	})
 
+	t.Run("OrdinaryPairWithMarkedRecordsBranchSpawnsNothing", func(t *testing.T) {
+		recorder.Reset()
+		l := resolve(t, h.PairCodeWorktree(pairSlug))
+		records := gitrepo.New(h.PairRecordsSibling(pairSlug))
+		branch, err := records.CurrentBranch()
+		if err != nil {
+			t.Fatalf("CurrentBranch: %v", err)
+		}
+		if err := records.MarkBranchLocal(branch); err != nil {
+			t.Fatalf("MarkBranchLocal: %v", err)
+		}
+		t.Cleanup(func() { records.ClearBranchLocalMark(branch) }) //nolint:errcheck
+
+		res, err := fabricengine.SpawnStatusPush(l, "")
+		if err != nil {
+			t.Fatalf("SpawnStatusPush: %v", err)
+		}
+		if res.Spawned || !slices.Equal(res.LocalSkipped, []string{branch}) {
+			t.Errorf("result = %+v; want nothing spawned and only %q skipped", res, branch)
+		}
+		if calls := recorder.Calls(); len(calls) != 0 {
+			t.Errorf("recorded requests = %+v; want none without a records side", calls)
+		}
+	})
+
 	t.Run("LocalPairSpawnsNothingAndItsCommitReportsTheSkip", func(t *testing.T) {
 		recorder.Reset()
 		if _, err := h.Topology.AddLocal(h.Location, localSlug); err != nil {
