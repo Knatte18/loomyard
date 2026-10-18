@@ -28,8 +28,10 @@ type Paths struct {
 	CycleRequestPath string // Marker file a `refresh` or `distill` request writes.
 	ResumeMarkPath   string // Delivery mark the session-start hook's verb writes after rendering the pointer.
 	HandoffsDir      string // One timestamped handoff file per cycle.
-	NoticesDir       string // One file per queued notice, delivered by the watcher.
-	WatchLogPath     string // Detached watcher's stdout and stderr.
+	NoticesDir       string // The retired notice queue's directory, which only `cleanup` still touches.
+	// RetiredNoticeLogPath is the retired `.lyx/notices.log` of the prime, which only `cleanup` still touches.
+	RetiredNoticeLogPath string
+	WatchLogPath         string // Detached watcher's stdout and stderr.
 
 	RolePath         string // Role file rendered from the role stencil before every delivery.
 	NoteTemplatePath string // Note template file rendered before every note request.

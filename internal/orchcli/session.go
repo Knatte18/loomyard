@@ -3,6 +3,7 @@
 package orchcli
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -48,6 +49,19 @@ func (s runnerSession) SessionIdle(guid string) (shuttleengine.IdleProbe, error)
 // SessionState delegates to Runner.SessionState, which reads the run's files only.
 func (s runnerSession) SessionState(guid string) (shuttleengine.RunSessionState, error) {
 	return s.runner.SessionState(guid)
+}
+
+// StrandName returns the name reed gives the tracked strand guid, which creel addresses it by.
+func (s runnerSession) StrandName(guid string) (string, error) {
+	strands, err := s.strands.Strands()
+	if err != nil {
+		return "", err
+	}
+	strand, tracked := trackedStrand(strands, guid)
+	if !tracked {
+		return "", fmt.Errorf("orch: reed tracks no strand with guid %q", guid)
+	}
+	return strand.Name, nil
 }
 
 // Send delegates to Runner.Send, which types into the pane through tmux.

@@ -52,7 +52,12 @@ A second watcher finding the first alive reports already_running and exits.`,
 
 			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
 			defer stop()
-			watcher := orchengine.NewWatcher(runnerSession{runner: c.runner, strands: c.strands}, c.cfg, c.paths, c.stencilsDir, orchSkills, c.watcherIndexSource(), realClock{})
+			creel, err := c.newCreel()
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
+			watcher := orchengine.NewWatcher(runnerSession{runner: c.runner, strands: c.strands}, creel, c.cfg, c.paths, c.stencilsDir, orchSkills, c.watcherIndexSource(), realClock{})
 			pauseGeometry, err := hubgeom.PauseGeometry(c.location)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))

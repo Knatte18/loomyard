@@ -114,16 +114,19 @@ func (w *Watcher) recordStoppingOnCancel(ctx context.Context, runReturned <-chan
 	}
 }
 
-// dropQueueWithoutStrand drops the notice queue when the orch state records no strand, since nothing queued then has a session to reach.
-func (w *Watcher) dropQueueWithoutStrand() error {
-	st, err := LoadState(w.paths)
-	if err != nil {
-		return err
-	}
-	if st.Strand != "" {
+// readMailboxAtStart reads the watcher's creel mailbox once, so creel knows the program as a receiver before any reply can arrive.
+// No request is pending yet, so each message is logged and dropped.
+// A failed read is logged and changes nothing else.
+func (w *Watcher) readMailboxAtStart() {
+	err := w.creel.ReadMailbox(func(messages []CreelMessage) error {
+		for _, message := range messages {
+			logger.Info("orch: creel message dropped, no request is pending", "messageID", message.ID, "from", message.From, "replyTo", message.ReplyTo)
+		}
 		return nil
+	})
+	if err != nil {
+		logger.Warn("orch: reading the creel mailbox at start failed", "error", err)
 	}
-	return DropNotices(w.paths)
 }
 
 // WatchBinary tells the watcher the function that re-execs the process onto a replaced binary, which Run calls at a restart-safe tick; a watcher never told one never calls it.
@@ -154,6 +157,7 @@ func (w *Watcher) restartSafe() bool {
 
 // Run holds the watch lock and calls Tick every PollInterval until Tick reports done, ctx is cancelled, or the cap on consecutive tick errors is reached.
 // It returns ErrWatcherRunning when another watcher holds the lock through every retry.
+// It reads the creel mailbox once before its first tick; a failed read is logged and is not a tick error.
 // A run of failing ticks warns at its first failure and logs the rest at Debug, then logs one Info at the next tick that succeeds.
 // After a tick that succeeded and returned not done, and before the poll sleep, it calls the function WatchBinary was told when restartSafe reports true, so the check adds no wake of its own.
 func (w *Watcher) Run(ctx context.Context, sleep func(time.Duration)) error {
@@ -169,9 +173,7 @@ func (w *Watcher) Run(ctx context.Context, sleep func(time.Duration)) error {
 	if err := w.recordExit(""); err != nil {
 		return err
 	}
-	if err := w.dropQueueWithoutStrand(); err != nil {
-		return err
-	}
+	w.readMailboxAtStart()
 
 	// The goroutine ends before the lock is released,
 	// so its record can never land after a successor watcher cleared it.

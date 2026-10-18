@@ -1,12 +1,10 @@
 package orchengine
 
 import (
-	"cmp"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -60,6 +58,8 @@ type fakeSession struct {
 	settle time.Duration
 	// settleErr is returned by every InterruptSettle while set.
 	settleErr error
+	// strandNameErr is returned by every StrandName while set.
+	strandNameErr error
 }
 
 func (f *fakeSession) SessionState(string) (shuttleengine.RunSessionState, error) {
@@ -74,6 +74,16 @@ func (f *fakeSession) SessionState(string) (shuttleengine.RunSessionState, error
 		}
 	}
 	return shuttleengine.RunSessionState{State: state, SessionStartAt: f.sessionStartAt, SessionID: f.sessionID}, nil
+}
+
+// fakeOrchStrandName is the name the fake session answers for every strand.
+const fakeOrchStrandName = "tst:orch"
+
+func (f *fakeSession) StrandName(string) (string, error) {
+	if f.strandNameErr != nil {
+		return "", f.strandNameErr
+	}
+	return fakeOrchStrandName, nil
 }
 
 func (f *fakeSession) LoadSkills(_ string, skills []string) error {
@@ -212,6 +222,7 @@ type watchEnv struct {
 	t     *testing.T
 	w     *Watcher
 	s     *fakeSession
+	c     *fakeCreel
 	clock *fakeClock
 	paths Paths
 	stDir string
@@ -243,38 +254,16 @@ func newWatchEnv(t *testing.T) *watchEnv {
 		paths: testPaths(t),
 		stDir: seedStencils(t),
 		s:     &fakeSession{alive: true, idle: true, usage: map[string]int{}},
+		c:     &fakeCreel{},
 		cfg:   Config{ThresholdTokens: 1000, IdleGraceS: 10, HandoffTimeoutS: 100, CycleMode: CycleClear},
 		clock: &fakeClock{now: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)},
 	}
-	e.paths.NoticesDir = filepath.Join(e.paths.Dir, "notices")
 	e.pausePath = filepath.Join(t.TempDir(), "pause", pauserecord.RecordFileName)
 	if err := SaveState(e.paths, State{Strand: "s1", Phase: PhaseIdle}); err != nil {
 		t.Fatal(err)
 	}
 	e.w = e.newWatcher()
 	return e
-}
-
-// queue queues line as a notice, failing the test when it is not queued.
-func (e *watchEnv) queue(line string) {
-	e.t.Helper()
-	e.clock.advance(time.Millisecond)
-	if queued, err := QueueNotice(e.paths, line, e.clock.now); err != nil || !queued {
-		e.t.Fatalf("QueueNotice(%q) = %v, %v", line, queued, err)
-	}
-}
-
-func (e *watchEnv) noticeLines() []string {
-	e.t.Helper()
-	ns, err := ListNotices(e.paths)
-	if err != nil {
-		e.t.Fatal(err)
-	}
-	var lines []string
-	for _, n := range ns {
-		lines = append(lines, n.Line)
-	}
-	return lines
 }
 
 func (e *watchEnv) newWatcher() *Watcher {
@@ -285,7 +274,7 @@ func (e *watchEnv) newWatcher() *Watcher {
 		}
 		return testIndex, nil
 	}
-	w := NewWatcher(e.s, e.cfg, e.paths, e.stDir, e.skills, index, e.clock)
+	w := NewWatcher(e.s, e.c, e.cfg, e.paths, e.stDir, e.skills, index, e.clock)
 	w.WatchPause(PauseWatch{RecordPath: e.pausePath, Alive: func(int, string) bool { return true }})
 	return w
 }
@@ -2257,78 +2246,6 @@ func TestWatcher_RequestedCycleFiresOnSmallReadingWithoutReread(t *testing.T) {
 	}
 }
 
-func TestWatcher_NoticesDeliveredOldestFirstOnePerTick(t *testing.T) {
-	e := newWatchEnv(t)
-	e.queue("first")
-	e.queue("second")
-
-	e.tick()
-	if got := strings.Join(e.s.calls, "|"); got != "send:first" {
-		t.Fatalf("calls after tick 1 = %q, want send:first", got)
-	}
-	if got := e.noticeLines(); len(got) != 1 || got[0] != "second" {
-		t.Errorf("queue after tick 1 = %v, want [second]", got)
-	}
-
-	e.tick()
-	if got := strings.Join(e.s.calls, "|"); got != "send:first|send:second" {
-		t.Fatalf("calls after tick 2 = %q", got)
-	}
-	if got := e.noticeLines(); len(got) != 0 {
-		t.Errorf("queue after tick 2 = %v, want empty", got)
-	}
-}
-
-func TestWatcher_NoticeWaitsOnANonIdleProbe(t *testing.T) {
-	e := newWatchEnv(t)
-	e.s.idle = false
-	e.queue("hold")
-	e.tick()
-	e.assertNoCalls()
-	if got := e.noticeLines(); len(got) != 1 {
-		t.Errorf("queue = %v, want the notice kept", got)
-	}
-
-	e.s.idle = true
-	e.tick()
-	if got := strings.Join(e.s.calls, "|"); got != "send:hold" {
-		t.Errorf("calls = %q, want send:hold", got)
-	}
-}
-
-func TestWatcher_NoticeWaitsOutANonIdlePhase(t *testing.T) {
-	e := newWatchEnv(t)
-	e.injectHandoff()
-	e.s.calls = nil
-	e.queue("later")
-	e.tick()
-	if n := e.s.count("send:later"); n != 0 {
-		t.Fatalf("notice typed during a cycle: %v", e.s.calls)
-	}
-	if got := e.noticeLines(); len(got) != 1 {
-		t.Errorf("queue = %v, want the notice kept", got)
-	}
-}
-
-func TestWatcher_TickThatStartsACycleDeliversNoNotice(t *testing.T) {
-	e := newWatchEnv(t)
-	e.s.usage["a"] = 2000
-	e.s.events = []shuttleengine.Event{stop("a")}
-	e.tick()
-	e.queue("not now")
-	e.clock.advance(11 * time.Second)
-	e.tick()
-	if st := e.state(); st.Phase != PhaseHandoffRequested {
-		t.Fatalf("phase = %s, want handoff-requested", st.Phase)
-	}
-	if n := e.s.count("send:not now"); n != 0 {
-		t.Errorf("notice typed on the cycle's own tick: %v", e.s.calls)
-	}
-	if got := e.noticeLines(); len(got) != 1 {
-		t.Errorf("queue = %v, want the notice kept", got)
-	}
-}
-
 func TestWatcher_StartTypesTheColorOnTheFirstIdleTickOnly(t *testing.T) {
 	t.Parallel()
 
@@ -2426,198 +2343,6 @@ func TestWatcher_RestartMidColorStepTypesItOnceWhenIdle(t *testing.T) {
 	}
 }
 
-// TestWatcher_LogsDisagreementBetweenIdleProbeAndSessionState drives notice deliveries, whose idle probe is the one door every probe goes through.
-// Each row counts its Info lines, one per disagreement episode, and the same ticks with the state unreadable change neither the saved State, the session calls nor the queue.
-// The log is captured process-wide, so the test does not run in parallel.
-func TestWatcher_LogsDisagreementBetweenIdleProbeAndSessionState(t *testing.T) {
-	t0 := time.Date(2026, 10, 8, 8, 0, 0, 0, time.UTC)
-	tests := []struct {
-		name     string
-		idleSeq  []bool
-		tooShort bool
-		state    shuttleengine.SessionStateName
-		// cause is the scripted state's cause, turn when empty.
-		cause string
-		// sinces are consumed one per tick into the scripted state's Since, the last one sticking.
-		sinces   []time.Time
-		notices  int
-		wantWarn int
-	}{
-		{name: "an idle probe beside busy logs once across two ticks", idleSeq: []bool{true, true}, state: shuttleengine.SessionBusy, notices: 2, wantWarn: 1},
-		{name: "a not-idle probe beside asking agrees", idleSeq: []bool{false, false}, state: shuttleengine.SessionAsking, notices: 2},
-		{name: "a not-idle probe beside idle-done logs", idleSeq: []bool{false}, state: shuttleengine.SessionIdleDone, notices: 1, wantWarn: 1},
-		{name: "a not-idle probe beside idle-stalled logs", idleSeq: []bool{false}, state: shuttleengine.SessionIdleStalled, notices: 1, wantWarn: 1},
-		{name: "a not-idle probe beside idle-fresh logs", idleSeq: []bool{false}, state: shuttleengine.SessionIdleFresh, notices: 1, wantWarn: 1},
-		{name: "an idle probe beside idle-done agrees", idleSeq: []bool{true}, state: shuttleengine.SessionIdleDone, notices: 1},
-		{name: "an idle probe beside busy on background work agrees", idleSeq: []bool{true}, state: shuttleengine.SessionBusy, cause: shuttleengine.SessionCauseBackground, notices: 1},
-		{name: "a not-idle probe beside busy agrees", idleSeq: []bool{false}, state: shuttleengine.SessionBusy, notices: 1},
-		{name: "a too-short pane is not compared", idleSeq: []bool{false}, tooShort: true, state: shuttleengine.SessionIdleStalled, notices: 1},
-		{name: "a disagreement with the same since logs once across an agreement between", idleSeq: []bool{true, false, true}, state: shuttleengine.SessionBusy, notices: 3, wantWarn: 1},
-		{name: "a disagreement with a new since logs again", idleSeq: []bool{true, true, true}, state: shuttleengine.SessionBusy, sinces: []time.Time{t0, t0, t0.Add(time.Minute)}, notices: 3, wantWarn: 2},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			type outcome struct {
-				state  State
-				calls  []string
-				queue  []string
-				warned int
-			}
-			drive := func(stateErr error) outcome {
-				buf := logcapture.CaptureVerbose(t)
-				e := newWatchEnv(t)
-				// The start color takes the first idle probe, so it is typed before the probe sequence is scripted.
-				e.tick()
-				e.s.idleSeq, e.s.tooShort = slices.Clone(tt.idleSeq), tt.tooShort
-				e.s.sessionSinces = slices.Clone(tt.sinces)
-				e.s.sessionState, e.s.sessionStateErr = shuttleengine.SessionState{Name: tt.state, Cause: cmp.Or(tt.cause, "turn")}, stateErr
-				for i := range tt.notices {
-					e.queue("notice " + string(rune('a'+i)))
-				}
-				for range len(tt.idleSeq) {
-					e.tick()
-				}
-				var infoLines int
-				for _, line := range strings.Split(buf.String(), "\n") {
-					if strings.Contains(line, "orch: session state disagrees with the idle probe") {
-						if !strings.Contains(line, "level=INFO") {
-							t.Errorf("disagreement line %q is not at Info", line)
-						}
-						infoLines++
-					}
-				}
-				return outcome{e.state(), e.s.calls, e.noticeLines(), infoLines}
-			}
-
-			read := drive(nil)
-			unreadable := drive(errBoom)
-			if read.warned != tt.wantWarn {
-				t.Errorf("disagreement lines = %d, want %d", read.warned, tt.wantWarn)
-			}
-			if unreadable.warned != 0 {
-				t.Errorf("an unreadable state logged %d disagreement lines, want none", unreadable.warned)
-			}
-			if !reflect.DeepEqual(read.state, unreadable.state) || !slices.Equal(read.calls, unreadable.calls) || !slices.Equal(read.queue, unreadable.queue) {
-				t.Errorf("an unreadable state changed the outcome: state %+v vs %+v, calls %q vs %q, queue %q vs %q",
-					read.state, unreadable.state, read.calls, unreadable.calls, read.queue, unreadable.queue)
-			}
-		})
-	}
-}
-
-// TestWatcher_DraftHoldLogsOnceWithoutTheDraftText drives a notice over three ticks whose operator draft grows by one character each, by each route a draft reaches the watcher.
-// Each row asserts the hold logs once, no log line holds the draft, and State.Stuck is the constant draft reason.
-// The log is captured process-wide, so the test does not run in parallel.
-func TestWatcher_DraftHoldLogsOnceWithoutTheDraftText(t *testing.T) {
-	drafts := []string{"zqa", "zqab", "zqabc"}
-	// quoting returns a shuttle-style hold error for draft built by wrap.
-	heldBy := func(wrap func(draft string) error) []error {
-		var errs []error
-		for _, draft := range drafts {
-			errs = append(errs, wrap(draft))
-		}
-		return errs
-	}
-	tests := []struct {
-		name string
-		// arrange scripts the session for the three ticks.
-		arrange  func(s *fakeSession)
-		wantHeld string
-	}{
-		{
-			name: "the probe route",
-			arrange: func(s *fakeSession) {
-				s.idleSeq = []bool{false, false, false}
-				s.draft = true
-			},
-			wantHeld: "orch: injection held",
-		},
-		{
-			name: "the send route held by the idle wait",
-			arrange: func(s *fakeSession) {
-				s.sendErrs = heldBy(func(draft string) error {
-					return &shuttleengine.SessionBusyError{Reason: "the input box holds a draft: " + draft, Draft: true, Err: fmt.Errorf("%w: the input box holds a draft: %q", shuttleengine.ErrSessionBusy, draft)}
-				})
-			},
-			wantHeld: "orch: injection held by the session",
-		},
-		{
-			name: "the send route refused over foreign box text",
-			arrange: func(s *fakeSession) {
-				s.sendErrs = heldBy(func(draft string) error { return fmt.Errorf("%w: %q", shuttleengine.ErrForeignBoxText, draft) })
-			},
-			wantHeld: "orch: injection held by the session",
-		},
-		{
-			name: "the send route whose text merged with a draft",
-			arrange: func(s *fakeSession) {
-				s.sendErrs = heldBy(func(draft string) error {
-					return fmt.Errorf("%w: the input box holds %q", shuttleengine.ErrSentTextInDraft, draft)
-				})
-			},
-			wantHeld: "orch: injection held by the session",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			buf := logcapture.CaptureVerbose(t)
-			e := newWatchEnv(t)
-			// The start color takes the first idle probe, so it is typed before the draft is scripted.
-			e.tick()
-			e.queue("notice")
-			tt.arrange(e.s)
-			// The probe route's reason quotes the draft, as shuttle's does.
-			for _, draft := range drafts {
-				e.s.reason = "the input box holds a draft: " + draft
-				e.tick()
-			}
-
-			if got := strings.Count(buf.String(), `msg="`+tt.wantHeld+`"`); got != 1 {
-				t.Errorf("%q lines = %d, want 1; logs: %s", tt.wantHeld, got, buf.String())
-			}
-			if strings.Contains(buf.String(), drafts[0]) {
-				t.Errorf("a log line holds the draft text: %s", buf.String())
-			}
-			if st := e.state(); st.Stuck != draftHoldReason {
-				t.Errorf("State.Stuck = %q, want %q", st.Stuck, draftHoldReason)
-			}
-		})
-	}
-}
-
-// TestWatcher_HeldNoticeWaitsForTheOperatorAndRecordsWhy pins an idle-phase notice that shuttle held:
-// the notice file stays and the tick returns no error, and the reason is recorded in State.Stuck with StuckBySend.
-// A probe that is not idle leaves that reason alone, and the first send that passes clears it and removes the notice.
-func TestWatcher_HeldNoticeWaitsForTheOperatorAndRecordsWhy(t *testing.T) {
-	t.Parallel()
-
-	e := newWatchEnv(t)
-	e.queue("notice")
-	e.s.sendErrs = []error{errHeld}
-	e.tick()
-	if got := e.noticeLines(); !slices.Equal(got, []string{"notice"}) {
-		t.Fatalf("notices = %v, want the held notice kept", got)
-	}
-	if st := e.state(); st.Stuck != errHeld.Error() || !st.StuckBySend || st.StuckByHold {
-		t.Fatalf("state = %+v, want the held reason recorded by the send", st)
-	}
-
-	e.s.idle = false
-	e.tick()
-	if st := e.state(); st.Stuck != errHeld.Error() || !st.StuckBySend {
-		t.Errorf("state = %+v after a probe that is not idle, want the send's reason left alone", st)
-	}
-
-	e.s.idle = true
-	e.tick()
-	if got := e.noticeLines(); len(got) != 0 {
-		t.Errorf("notices = %v, want the notice removed once its send passed", got)
-	}
-	if st := e.state(); st.Stuck != "" || st.StuckBySend {
-		t.Errorf("state = %+v, want the send's reason cleared", st)
-	}
-}
-
 // TestWatcher_HeldTypedStepRetriesOnTheNextTickWithoutAdvancing pins every typed step of the cycle that shuttle held:
 // the tick returns no error, the phase and step stay unconfirmed, and the next tick types the same step.
 func TestWatcher_HeldTypedStepRetriesOnTheNextTickWithoutAdvancing(t *testing.T) {
@@ -2709,68 +2434,4 @@ func TestWatcher_HeldTypedStepRetriesOnTheNextTickWithoutAdvancing(t *testing.T)
 // reloadStepOf returns the normalised reload step st is in.
 func (e *watchEnv) reloadStepOf(st State) int {
 	return e.w.reloadStep(st)
-}
-
-func TestWatcher_ConditionalNoticeDeliveredOnlyWhileItsStateReads(t *testing.T) {
-	t.Parallel()
-
-	stalled := shuttleengine.SessionState{Name: shuttleengine.SessionIdleStalled, Cause: shuttleengine.SessionCauseAPIError}
-	when := NoticeCondition{State: stalled.Name, Cause: stalled.Cause}
-	queueConditional := func(e *watchEnv, line string) {
-		e.t.Helper()
-		e.clock.advance(time.Millisecond)
-		if queued, err := QueueConditionalNotice(e.paths, line, when, e.clock.now); err != nil || !queued {
-			e.t.Fatalf("QueueConditionalNotice(%q) = %v, %v", line, queued, err)
-		}
-	}
-
-	t.Run("a state that reads the condition types the notice", func(t *testing.T) {
-		t.Parallel()
-		e := newWatchEnv(t)
-		e.s.sessionState = stalled
-		queueConditional(e, "carry on")
-		e.tick()
-		if got := strings.Join(e.s.calls, "|"); got != "send:carry on" {
-			t.Errorf("calls = %q, want send:carry on", got)
-		}
-		if got := e.noticeLines(); len(got) != 0 {
-			t.Errorf("queue = %v, want it empty", got)
-		}
-	})
-
-	for name, state := range map[string]shuttleengine.SessionState{
-		"busy":      {Name: shuttleengine.SessionBusy, Cause: shuttleengine.SessionCauseTurn},
-		"idle-done": {Name: shuttleengine.SessionIdleDone, Cause: shuttleengine.SessionCauseDone},
-	} {
-		t.Run("a "+name+" state drops the notice untyped, and the unconditioned one behind it goes out next tick", func(t *testing.T) {
-			t.Parallel()
-			e := newWatchEnv(t)
-			e.s.sessionState = state
-			queueConditional(e, "carry on")
-			e.queue("plain")
-			e.tick()
-			e.assertNoCalls()
-			if got := e.noticeLines(); !slices.Equal(got, []string{"plain"}) {
-				t.Fatalf("queue after the dropping tick = %v, want [plain]", got)
-			}
-			e.tick()
-			if got := strings.Join(e.s.calls, "|"); got != "send:plain" {
-				t.Errorf("calls = %q, want send:plain", got)
-			}
-		})
-	}
-
-	t.Run("an unreadable state keeps the notice and returns the error", func(t *testing.T) {
-		t.Parallel()
-		e := newWatchEnv(t)
-		e.s.sessionStateErr = errors.New("events unreadable")
-		queueConditional(e, "carry on")
-		if _, err := e.w.Tick(); err == nil {
-			t.Fatal("Tick error = nil, want the state read error")
-		}
-		e.assertNoCalls()
-		if got := e.noticeLines(); !slices.Equal(got, []string{"carry on"}) {
-			t.Errorf("queue = %v, want the notice kept", got)
-		}
-	})
 }

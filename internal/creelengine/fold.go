@@ -115,7 +115,7 @@ type LogEntry struct {
 	// Command and Argument are a command inject's command, empty on every other entry.
 	Command  CommandName
 	Argument string
-	// Kind is the kind of the message or inject a carried entry snapshots, empty on every other entry.
+	// Kind is the kind of the message or inject a posted or carried entry records, empty on every other entry.
 	Kind   string
 	Notice string
 	// Reason is the stall a stalled event names.
@@ -375,7 +375,7 @@ func (p *pool) setOutcome(id int64, outcome string) {
 }
 
 // logEntryFor builds the log line of rec: parties and subject from the message or inject it concerns, never a body.
-// A carried record's line carries the snapshot's kind, mail when the record names none.
+// A posted or carried record's line carries the kind of the message or inject, mail when the record names none.
 func (p *pool) logEntryFor(rec record, day string) LogEntry {
 	entry := LogEntry{
 		Day: day, Event: rec.Event, At: rec.At, ID: rec.ID,
@@ -401,6 +401,9 @@ func (p *pool) logEntryFor(rec record, day string) LogEntry {
 		if rec.Of == eventPosted {
 			entry.Kind = cmp.Or(rec.Kind, kindMail)
 		}
+	}
+	if rec.Event == eventPosted {
+		entry.Kind = cmp.Or(rec.Kind, kindMail)
 	}
 	return entry
 }

@@ -140,7 +140,7 @@
 //
 // The probe is the shuttle engine's readiness reading: the session state the hooks derived decides, and the pane decides only while that reading is unknown.
 // Every idle probe goes through one watcher helper.
-// A probe that is not idle holds cycles and notice delivery, and records why in State.Stuck:
+// A probe that is not idle holds cycles and records why in State.Stuck:
 // its own reason when the reading decided, `orch pane too short for the idle probe; resize or use the larger client` for a pane too short to draw an input box, else a fixed pane text.
 // A hold by text in the input box, on the probe or on a typed step's refusal, carries the constant reason `the input box holds a draft` in place of shuttle's text, which quotes the draft, so neither the log nor `State.Stuck` holds the operator's typing and the reason does not change with each keystroke.
 // The reason is saved and logged as `orch: injection held` at Info with the phase, the reload step, the reason and the time since the phase began, once per change of reason within a hold, a run of probes that are not idle which the next passing probe ends; the last reason is watcher memory and not State.
@@ -150,18 +150,18 @@
 // A typed step can still be held after its idle probe passed: shuttle's pre-write guard reads the box, the operator's activity and readiness again at the write, and refuses with an error wrapping `shuttleengine.ErrSessionBusy`.
 // That refusal means nothing was typed.
 // Every typed step routes its error through one watcher helper, which logs `orch: injection held by the session` at Info once per change of reason and answers held;
-// a held step returns no error, so the tick counts nothing toward the consecutive-error limit, and it leaves its phase, `PhaseInjected` and a notice file as they are, so the next tick types the same text again.
+// a held step returns no error, so the tick counts nothing toward the consecutive-error limit, and it leaves its phase and `PhaseInjected` as they are, so the next tick types the same text again.
 // In the idle phase the reason is also recorded in State.Stuck with State.StuckBySend, unless a Stuck that no hold and no send wrote is already there.
 // A hold's passing probe leaves a send's reason alone; only a later send that passes clears it.
 // A color that was held stays pending, and a held reload color step does not advance to the plugins step.
 // A cycle phase held for good is still marked stuck by the handoff timeout.
 //
 // Session.SessionState reads the orch session's state from its shuttle run record, which is interactive with a never-written sentinel output, so its turn ends read `asking`.
-// The watcher logs it, and reads it to drop a conditioned notice: after a successful probe that is not too short, a probe that reads idle beside the state `busy`, or not idle beside `idle-done`, `idle-stalled` or `idle-fresh`, logs `orch: session state disagrees with the idle probe` at Info.
+// The watcher logs it: after a successful probe that is not too short, a probe that reads idle beside the state `busy`, or not idle beside `idle-done`, `idle-stalled` or `idle-fresh`, logs `orch: session state disagrees with the idle probe` at Info.
 // An idle probe beside `busy` on background work agrees, and so does a probe that is not idle beside `asking`.
 // A disagreement is logged once per episode, the key being the idle answer, the state, its cause and when the state began; a probe that agrees forgets nothing, so only a changed key logs again, the last pair being watcher memory and not State.
 // A state that cannot be read is logged at Debug.
-// The drop of a conditioned notice at delivery is the one decision that reads the state: no probe result, cycle or State write depends on it.
+// No probe result, cycle or State write depends on the state.
 // The same read logs the hook's session-start event as `orch: session start signal read` at Info, once per new time.
 //
 // A soft cycle holds the same gates with `soft_idle_s` in place of the idle grace, and adds one:
@@ -332,39 +332,28 @@
 //   - watch.log: the detached watcher's stdout and stderr.
 //   - handoffs/: one timestamped handoff file per cycle.
 //     The one State.LastHandoff names is kept, and `lyx orch cleanup --apply` removes the rest.
-//   - notices/: one file per queued notice, removed on delivery.
+//   - notices/: the retired notice queue, which nothing writes now; `lyx orch cleanup` lists it beside the prime's retired `.lyx/notices.log` under `retired` and `--apply` removes both.
 //   - session-*.never: one sentinel per launch, an output file nothing ever writes.
 //     A shuttle Spec needs an output file to validate, and the watcher, not shuttle's Wait, owns the session's lifetime.
 //
-// # Notices
+// # The creel seam
 //
-// Another module tells the orchestrator about a change through `QueueNotice`, never by typing into its pane:
-// only the orch watcher types into the orch session (PATTERN-orch-pane-single-writer), so the orchestrator keeps no watcher of its own.
+// The watcher reaches creel, the hub's message and inject daemon, through the `Creel` interface beside its `Session` seam, and `orchcli` implements it over the creelcli Go client signing as the `ORCHWATCH` program.
+// The engine imports no creel package: `CreelMessage`, `CreelStep`, `CreelOutcome`, `CreelSent` and `CreelWithdrawn` carry the values it needs, and every call addresses a receiver by its full strand name.
+// The watcher reads that name from reed through `Session.StrandName` at each call, so a strand renamed or rebound never leaves it addressing a stale name.
 //
-//   - A notice is one line, written as one file under `notices/` whose name sorts by arrival (UTC time to the nanosecond, then a random suffix), so concurrent writers never share a file.
-//     A line containing a newline or beginning with `/` is refused, since it would be typed as several lines or read as a command.
-//   - With no strand recorded in the orch state, the notice is logged and not queued.
-//   - The queue holds at most 50 notices: after a write the oldest beyond the cap are removed and logged.
-//     Concurrent appenders can overshoot the cap transiently by at most one notice each.
-//   - In phase idle, when `tickIdle` has not started a cycle on the tick and the idle probe passes on that tick, the watcher types the oldest notice as a turn and then removes its file.
-//     It delivers one notice per tick, and a non-idle probe, a running cycle or a watcher that is down leaves the queue untouched.
-//   - Delivery is at least once: a watcher that dies between typing and removing types the notice again after a restart.
-//   - `QueueConditionalNotice` queues a notice that carries a session state, `NoticeCondition`, in its file name as `.when-<state>+<cause>` after the random suffix, and ends the name in `.cnotice` in place of `.notice`.
-//     It queues nothing when a notice with the same line and condition is already queued, so a second revive before delivery queues no second notice; two calls racing may each queue one.
-//     At delivery the watcher reads the session state of the oldest notice that carries a condition before the idle probe, and removes the notice without typing it, logging one Info, when the state's name or cause differs from the condition;
-//     it delivers nothing on that tick.
-//     A state that cannot be read returns the error and keeps the notice.
-//     A watcher that lists only `.notice` names leaves a conditioned notice queued and never types it unchecked.
-//   - A notice can be delayed by a busy session, a too-short pane or a cycle, but is never typed over a draft or a running turn.
-//   - `Watcher.Run` drops the queue at start when the orch state records no strand.
+//   - Another module tells the orchestrator about a change by posting creel mail to its strand, never by typing into its pane (PATTERN-orch-pane-single-writer); there is no notice queue.
+//   - `Watcher.Run` reads the watcher's mailbox once before its first tick, so creel knows the program as a receiver before a reply can arrive.
+//     No request is pending yet, so each message is logged and dropped; a failed read is logged and is not a tick error.
+//   - The retired notice queue is only cleaned up: `CleanupRetiredNotices` lists and removes `Paths.NoticesDir` and `Paths.RetiredNoticeLogPath`.
 //
 // # Hub pause
 //
-// The watcher alone covers the orch under a hub pause entry, so it stays the single writer into the orch pane.
+// The watcher alone covers the orch under a hub pause entry, and its guarded interrupt is the one keystroke it still sends here.
 // A watcher told a PauseWatch (the pause record path and a process liveness check) reads the record after each tick's events read and before the phase switch.
 // A slug entry never covers the orch.
 //
-//   - While a live hub entry stands the tick returns there: no notice is delivered and no context cycle starts or advances, however long the pause lasts.
+//   - While a live hub entry stands the tick returns there: no context cycle starts or advances, however long the pause lasts.
 //   - Each live hub entry is acted on once, remembered in memory by its PausedAt.
 //     Nothing is interrupted or recorded for an entry the orch itself ran, one that already owns the orch's session, one that began at or before State.LaunchedAt (a zero LaunchedAt reads as launched before every entry), or one whose grace end lay before the watcher's first tick.
 //   - Before the grace end, an orch the idle probe reads idle with no network operation marker naming the orch is left alone; any other waits.
@@ -372,7 +361,8 @@
 //     A later tick at least the provider's settle time after it re-probes and, when the orch still reads busy, sends the guarded second and last key.
 //     A guarded refusal reads as an idle orch, with one Info line; an open rewind picker gets one Warn line and no further key.
 //     An entry resumed before that point or during the settle, one a live entry already owns the orch in, and a watcher restarted during the settle send no key.
-//   - After the entry is resumed, an orch it owns gets the resume line once, queued as a notice and delivered idle-gated, then marked noticed in the record.
+//   - After the entry is resumed, an orch it owns gets the resume line once, posted as creel mail to the orch strand's name, which creel reminds once the pause is lifted, then marked noticed in the record.
+//     Mail has no TTL, so the line cannot expire while the orch stays busy, and the mark follows the post, so a failed post is posted again on the next tick.
 //     An orch the entry does not own, such as an idle one or the caller, gets none.
 //   - An unreadable record holds nothing, with one Warn per change of error.
 //

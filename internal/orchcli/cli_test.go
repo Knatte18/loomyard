@@ -91,6 +91,7 @@ func newTestCLI(t *testing.T, fake *fakeStrands) *orchCLI {
 		strands:     fake,
 		engines:     shuttleengine.NewEngineSet("claude", map[string]shuttleengine.Engine{"claude": claudeengine.New()}),
 		indexRunner: func(string) (string, error) { return fakeRunnerIndex, nil },
+		newCreel:    func() (orchengine.Creel, error) { return &fakeCreel{}, nil },
 		paths: orchengine.Paths{
 			Dir:              dir,
 			StatePath:        filepath.Join(dir, "state.json"),
@@ -449,6 +450,18 @@ func TestCleanup_Envelope(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			// The retired notice queue directory and notice log, which nothing writes any more.
+			c.paths.NoticesDir = filepath.Join(c.paths.Dir, "notices")
+			c.paths.RetiredNoticeLogPath = filepath.Join(filepath.Dir(c.paths.Dir), "notices.log")
+			if err := os.MkdirAll(c.paths.NoticesDir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(c.paths.NoticesDir, "a.notice"), []byte("line"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(c.paths.RetiredNoticeLogPath, []byte("log"), 0o644); err != nil {
+				t.Fatal(err)
+			}
 
 			var out bytes.Buffer
 			code := clihelp.Execute(c.cleanupCmd(), &out, args)
@@ -457,13 +470,15 @@ func TestCleanup_Envelope(t *testing.T) {
 				t.Fatalf("output %q is not one JSON object: %v", out.String(), err)
 			}
 
-			want := map[string]any{"ok": true, "applied": apply, "kept": "keep.md", "removed": []any{"old.md"}, "reason": ""}
+			want := map[string]any{"ok": true, "applied": apply, "kept": "keep.md", "removed": []any{"old.md"}, "reason": "", "retired": []any{"notices", "notices.log"}}
 			if code != 0 || !reflect.DeepEqual(env, want) {
 				t.Errorf("exit = %d, envelope = %v; want %v", code, env, want)
 			}
-			_, err := os.Stat(filepath.Join(c.paths.HandoffsDir, "old.md"))
-			if gone := errors.Is(err, os.ErrNotExist); gone != apply {
-				t.Errorf("old.md removed = %v, want %v", gone, apply)
+			for _, path := range []string{filepath.Join(c.paths.HandoffsDir, "old.md"), c.paths.NoticesDir, c.paths.RetiredNoticeLogPath} {
+				_, err := os.Stat(path)
+				if gone := errors.Is(err, os.ErrNotExist); gone != apply {
+					t.Errorf("%s removed = %v, want %v", filepath.Base(path), gone, apply)
+				}
 			}
 		})
 	}

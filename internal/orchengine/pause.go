@@ -1,5 +1,5 @@
-// pause.go is the orch watcher's reading of the hub pause record: it holds the cycle machine while a hub entry is live, interrupts a busy orch at the entry's grace end, and queues the orch's resume line after the entry is resumed.
-// The watcher stays the only writer into the orch pane; a slug entry never covers the orch.
+// pause.go is the orch watcher's reading of the hub pause record: it holds the cycle machine while a hub entry is live, interrupts a busy orch at the entry's grace end, and posts the orch's resume line as creel mail after the entry is resumed.
+// The guarded interrupt is the watcher's only keystroke here; a slug entry never covers the orch.
 
 package orchengine
 
@@ -36,7 +36,7 @@ func (w *Watcher) WatchPause(p PauseWatch) {
 // pauseTick reads the pause record and acts on it for this tick.
 // held is true while a live hub entry stands, and the caller then runs nothing else this tick.
 // Under a live hub entry a busy orch gets the first guarded key at the entry's grace end, and a second only on a tick at least the provider's settle time later that still reads it busy;
-// with no live entry, the resume line of an orch the last entry interrupted is queued once.
+// with no live entry, the resume line of an orch the last entry interrupted is posted once.
 // An unreadable record holds nothing and logs one Warn per change of error.
 func (w *Watcher) pauseTick(st State, now time.Time) (held bool, err error) {
 	if w.firstTick.IsZero() {
@@ -213,8 +213,9 @@ func (w *Watcher) recordOrchInEntry(entry pauserecord.Entry, st State, now time.
 	return err
 }
 
-// queueResumeLine queues the resume line of the newest resumed entry that owns the orch and has not yet noticed it, then marks it noticed under the record lock.
-// The line is queued before the mark, so a crash between the two delivers it twice rather than never.
+// queueResumeLine posts the resume line of the newest resumed entry that owns the orch and has not yet noticed it as creel mail to the orch strand, then marks it noticed under the record lock.
+// Creel reminds mail once the pause is lifted and mail has no TTL, so the line cannot expire while the orch stays busy.
+// The line is posted before the mark, so a crash or a failed post between the two posts it again rather than never.
 func (w *Watcher) queueResumeLine(record pauserecord.Record, st State, now time.Time) error {
 	var resumed pauserecord.Entry
 	found := false
@@ -229,10 +230,14 @@ func (w *Watcher) queueResumeLine(record pauserecord.Record, st State, now time.
 	if !found {
 		return nil
 	}
-	if _, err := QueueNotice(w.paths, pauserecord.ResumeLine, now); err != nil {
+	name, err := w.session.StrandName(st.Strand)
+	if err != nil {
 		return err
 	}
-	_, err := pauserecord.Update(w.pause.RecordPath, now, func(record *pauserecord.Record) error {
+	if _, err := w.creel.Post(name, pauserecord.ResumeLine); err != nil {
+		return err
+	}
+	_, err = pauserecord.Update(w.pause.RecordPath, now, func(record *pauserecord.Record) error {
 		for i := range record.Resumed {
 			entry := &record.Resumed[i]
 			if !entry.PausedAt.Equal(resumed.PausedAt) || entry.Scope != resumed.Scope {
