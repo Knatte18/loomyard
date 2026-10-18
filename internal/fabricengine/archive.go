@@ -41,6 +41,7 @@ var ErrArchiveFailed = errors.New("archiving the pair's records before teardown 
 // The tip is the local refs/heads/<weftBranch> when present, else the origin's copy, fetched.
 // The tag name is deterministic from slug and tip, so a resumed teardown on the same tip finds its own tag and succeeds, while a new tip archives under a new name.
 //
+// A weft branch carrying the local-only mark returns no tag, a skippedReason and no error, before any tip is resolved or origin is touched.
 // No origin remote returns no tag, a skippedReason and no error.
 // A branch present neither locally nor on origin returns no tag, no reason and no error, since there is nothing to archive.
 // An existing tag of that name pointing elsewhere, and any push failure, are returned errors.
@@ -56,6 +57,14 @@ func archiveWeftTip(rec *Mutations, l *lyxcwd.Location, slug, weftBranch string)
 	weftRoot, err := RecordsRepoRoot(l)
 	if err != nil {
 		return "", "", fmt.Errorf("archive weft tip of %q: resolve weft repo: %w", weftBranch, err)
+	}
+
+	marked, err := gitrepo.New(weftRoot).BranchMarkedLocal(weftBranch)
+	if err != nil {
+		return "", "", fmt.Errorf("archive weft tip of %q: %w", weftBranch, err)
+	}
+	if marked {
+		return "", "the branch is local-only, so it is not archived", nil
 	}
 
 	if _, urlErr := gitrepo.New(weftRoot).RemoteURL(originRemoteName); urlErr != nil {

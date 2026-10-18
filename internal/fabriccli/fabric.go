@@ -1105,7 +1105,7 @@ func runRemoveWithFlag(ctx context.Context, out io.Writer, args []string, force,
 
 // removeFields builds the envelope fields for a remove result.
 // New RemoveResult fields must be added here explicitly — the map is hand-built, not reflected.
-// code_branch_kept_reason, remote_code_branch_kept_reason, stray_path and abandoned_session appear only when set.
+// code_branch_kept_reason, remote_code_branch_kept_reason, stray_path, local, local_mark_branch, dropped_records_tip and abandoned_session appear only when set.
 func removeFields(r fabricengine.RemoveResult, session pairteardown.SessionResult) map[string]any {
 	steps := r.Steps
 	if steps == nil {
@@ -1132,6 +1132,15 @@ func removeFields(r fabricengine.RemoveResult, session pairteardown.SessionResul
 	}
 	if r.StrayPath != "" {
 		fields["stray_path"] = r.StrayPath
+	}
+	if r.Local {
+		fields["local"] = true
+	}
+	if r.LocalMarkBranch != "" {
+		fields["local_mark_branch"] = r.LocalMarkBranch
+	}
+	if r.DroppedRecordsTip != "" {
+		fields["dropped_records_tip"] = r.DroppedRecordsTip
 	}
 	if session.AbandonedSession != "" {
 		fields["abandoned_session"] = session.AbandonedSession

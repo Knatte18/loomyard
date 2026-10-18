@@ -487,6 +487,12 @@
 // `Topology.RemoveRefusal` is the read-only probe of every refusal `Remove` raises before its first mutation.
 // A pair already half removed is finished rather than refused: `Remove` does whatever teardown remains, reports its `Steps` and any `StrayPath`, and returns `ErrPairNotFound` when nothing is left.
 // With `remote`, `Remove` also deletes the landed task branch on origin, leased to the observed tip and gated on the branch being landed; a refusal or lost lease is reported in `RemoteCodeBranchKeptReason` and does not fail the removal.
+// A pair one of whose surviving branches carries the local-only mark (`pairState.localMark`, read from the task branch first, then the sibling branch, so a pair whose other branch was deleted by hand is still local) is removed as local, after the same refusals.
+// `Remove` then commits and archives nothing and calls no origin function: it reads the sibling branch's tip into `DroppedRecordsTip`, and `removeLocalWeft` removes the sibling worktree through `removeGitWorktree` and deletes its local branch, reporting `RemoveStepRecordsDropped`.
+// The sibling's worktree is removed under `dirtyRecordsDisposable`, a dirtiness declaration that passes and makes git discard what the worktree holds uncommitted: a local pair's records are disposable by its contract, so no `force` answers them, and content outside the record pathspec was already refused by `RemoveRefusal`.
+// The task branch goes through the same landed-work gate as an ordinary pair's, so unlanded work keeps it with `CodeBranchKeptReason`, still marked.
+// With `remote`, a local remove sets `RemoteSkippedReason` and deletes nothing on origin; the result carries `Local`, `LocalMarkBranch` and `DroppedRecordsTip`.
+// Two checks stand behind that path for any other caller: `archiveWeftTip` returns no tag and a skipped reason for a marked weft branch, and the remote-branch gate refuses to delete the remote copy of a branch whose local copy is marked, naming `lyx fabric remove`.
 // The result names the code branch's fate in `CodeBranchDeleted` and `CodeBranchKeptReason` (JSON `code_branch_deleted`, `code_branch_kept_reason`, `remote_code_branch_deleted`, `remote_code_branch_kept_reason`).
 // `PairStatus`, `PruneEntry` and `ReconcilePairResult` carry the pair's paths as `CodeWorktree` and `RecordsWorktree` (JSON `code_worktree`, `records_worktree`).
 //
