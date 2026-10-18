@@ -976,6 +976,8 @@ func TestDaemon_Lifecycle(t *testing.T) {
 			}
 		}},
 		{"WaiterReconnectsAcrossARestartAndReceivesAMessageReturnedUndelivered", func(t *testing.T, r *rig) {
+			// Busy, so the EXTERNAL mail is not carried into the pane and marked read before alpha goes.
+			r.del.SetIdle(alpha, false)
 			first := r.start()
 			clientClock := creelfake.NewClock(epoch)
 			waiting := callAsync(r.client(externalClaim(), r.spawn, clientClock), creelengine.Request{Verb: creelengine.VerbPost, Receiver: alpha, Text: "anyone?", Wait: true}, 0)

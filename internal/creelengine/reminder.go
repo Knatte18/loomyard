@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/Knatte18/loomyard/internal/agentname"
 )
 
 const (
@@ -17,19 +19,20 @@ const (
 	reminderBackoffCeiling = time.Hour
 	// maxReminderMessages is how many unread messages a reminder lists; the rest are counted.
 	maxReminderMessages = 5
-	// maxNoticeBytes is the longest body a program's message may have and still be typed as a notice line.
-	maxNoticeBytes = 2048
+	// maxNoticeBytes is the longest body a message may have and still be carried in full in its own line.
+	maxNoticeBytes = 4096
 )
 
-// isNotice reports whether msg is typed into its receiver's pane as a notice line instead of being reminded: a program's message, which takes no reply, whose body is one line without control characters and at most maxNoticeBytes long.
-// A program's name is accepted only from an orch pane or the Go client, so its text cannot be an agent posing as an instruction.
+// isNotice reports whether msg is carried in full in its own line instead of being reminded: a message from a program or EXTERNAL, any sender but an agent strand, whose body is at most maxNoticeBytes long.
+// Mail from an agent strand is never carried, so an agent's text cannot pose as an instruction in another agent's pane.
 func isNotice(msg *Message) bool {
-	return isProgramMailbox(msg.From) && len(msg.Body) <= maxNoticeBytes && strings.IndexFunc(msg.Body, unicode.IsControl) < 0
+	return agentname.IsProgram(msg.From) && len(msg.Body) <= maxNoticeBytes
 }
 
-// composeNotice renders the line that carries a notice: its sender and its body.
+// composeNotice renders the line that carries a notice: its id, so the receiver can reply without a read, its sender and its body, with every run of control characters and line breaks turned into one space.
 func composeNotice(msg Message) string {
-	return fmt.Sprintf("[creel] %s: %s", msg.From, msg.Body)
+	body := strings.Join(strings.FieldsFunc(msg.Body, unicode.IsControl), " ")
+	return fmt.Sprintf("[creel] #%d from %s: %s", msg.ID, msg.From, strings.TrimSpace(body))
 }
 
 // reminderBackoff returns the wait after the reminder at the given step of an unchanged unread set: 5 minutes, doubling to the 1-hour ceiling.

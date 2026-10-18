@@ -1003,7 +1003,7 @@ func TestWatcher_NoteRequestRendersTemplateFileBeforeTyping(t *testing.T) {
 			t.Fatalf("note template file not rendered before the request: %v", err)
 		}
 		body := e.c.posts[0].Body
-		for _, want := range []string{e.paths.NoteTemplatePath, e.state().PendingHandoff, "lyx creel post --reply", `"written ` + e.state().PendingHandoff + `"`, "lyx creel read"} {
+		for _, want := range []string{e.paths.NoteTemplatePath, e.state().PendingHandoff, "lyx creel post --reply", `"written ` + e.state().PendingHandoff + `"`, "[creel]"} {
 			if !strings.Contains(body, want) {
 				t.Errorf("note request %q must name %q", body, want)
 			}

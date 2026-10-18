@@ -435,6 +435,8 @@ func TestCreelCLI(t *testing.T) {
 			t.Errorf("creel inject --wait --timeout 5s = (%d, %q); want exit %d saying no outcome arrived", timedOut.code, timedOut.raw, ExitWaitTimeout)
 		}
 
+		// Busy, so the EXTERNAL mail is not carried into the pane and marked read before beta goes.
+		r.delivery.SetIdle(beta, false)
 		waiting := runAsync(r.cwd, "post", "--wait-reply", beta, "anyone?")
 		r.awaitLogged(t, "anyone?")
 		r.clock.AwaitWaitsWhere(1, isSweepWait)
@@ -549,7 +551,7 @@ func TestCreelCLI(t *testing.T) {
 		}
 	})
 
-	t.Run("as a strand read prints the messages as text, or as JSON with --json, and acknowledges them", func(t *testing.T) {
+	t.Run("as a strand read prints the messages as text, or as JSON with --envelope, and acknowledges them", func(t *testing.T) {
 		r := newRig(t)
 		alpha := r.name("alpha:driver")
 		t.Setenv(agentname.StrandNameEnv, alpha)
@@ -573,13 +575,13 @@ func TestCreelCLI(t *testing.T) {
 		if post := runCreel(r.cwd, "post", alpha, "as json"); post.code != 0 {
 			t.Fatalf("creel post = (%d, %q); want exit 0", post.code, post.raw)
 		}
-		asJSON := runCreel(r.cwd, "read", "--json")
+		asJSON := runCreel(r.cwd, "read", "--envelope")
 		messages, _ := asJSON.fields["messages"].([]any)
 		if asJSON.code != 0 || len(messages) != 1 {
-			t.Fatalf("creel read --json = (%d, %q); want exit 0 with one message", asJSON.code, asJSON.raw)
+			t.Fatalf("creel read --envelope = (%d, %q); want exit 0 with one message", asJSON.code, asJSON.raw)
 		}
 		if message, _ := messages[0].(map[string]any); message["body"] != "as json" || message["from"] != alpha {
-			t.Fatalf("creel read --json = (%d, %q); want exit 0 with the one message's fields", asJSON.code, asJSON.raw)
+			t.Fatalf("creel read --envelope = (%d, %q); want exit 0 with the one message's fields", asJSON.code, asJSON.raw)
 		}
 		if again := runCreel(r.cwd, "read"); again.code != 0 || again.raw != "nothing unread\n" {
 			t.Errorf("creel read after the acknowledged ones = (%d, %q); want exit 0 printing nothing unread", again.code, again.raw)
@@ -589,7 +591,11 @@ func TestCreelCLI(t *testing.T) {
 	t.Run("log shows a reminded event with its unread ids and step and no id", func(t *testing.T) {
 		r := newRig(t)
 		alpha := r.name("alpha:driver")
-		r.delivery.SetStrands(creelfake.LiveStrand(alpha))
+		// Posted from alpha's own pane, since only an agent strand's mail is reminded rather than carried.
+		t.Setenv(agentname.StrandNameEnv, alpha)
+		strand := creelfake.LiveStrand(alpha)
+		strand.PanePID = os.Getpid()
+		r.delivery.SetStrands(strand)
 		r.startDaemon(t)
 
 		post := runCreel(r.cwd, "post", alpha, "hello")
@@ -642,7 +648,7 @@ func TestCreelCLI(t *testing.T) {
 		// The daemon releases the dropped read's reservation only once it sees the connection close, so the retry runs under a real-time deadline.
 		deadline := time.Now().Add(10 * time.Second)
 		for {
-			read := runCreel(r.cwd, "read", "--json")
+			read := runCreel(r.cwd, "read", "--envelope")
 			if messages, _ := read.fields["messages"].([]any); read.code == 0 && len(messages) == 1 && strings.Contains(read.raw, "note to self") {
 				return
 			}
@@ -724,6 +730,8 @@ func TestCreelCLI(t *testing.T) {
 			t.Fatal("the verb did not return")
 		}
 
+		// Busy, so the EXTERNAL mail is not carried into the pane and marked read before beta goes.
+		r.delivery.SetIdle(beta, false)
 		var returnedStderr lockedBuffer
 		returnedCodes := make(chan int, 1)
 		go func() {
@@ -882,7 +890,7 @@ func TestCreelCLI(t *testing.T) {
 		r.sweepLast()
 		deadline := time.Now().Add(10 * time.Second)
 		for {
-			read := runCreel(r.cwd, "read", "--json")
+			read := runCreel(r.cwd, "read", "--envelope")
 			messages, _ := read.fields["messages"].([]any)
 			if len(messages) == 1 {
 				message, _ := messages[0].(map[string]any)
@@ -1003,7 +1011,8 @@ func TestCreelCLI(t *testing.T) {
 		if program.Shortname() != r.short {
 			t.Errorf("Shortname() = %q; want %q", program.Shortname(), r.short)
 		}
-		// Two lines, so the mail is no notice the delivery types and marks read before the strand reads it.
+		// Busy, so the delivery does not carry the program's mail into the pane and mark it read before the strand reads it.
+		r.delivery.SetIdle(orch, false)
 		if _, err := program.Post(orch, "from the program\nsecond line"); err != nil {
 			t.Fatalf("Post() = %v", err)
 		}

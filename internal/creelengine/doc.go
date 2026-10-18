@@ -74,12 +74,13 @@
 // post stores a message for a receiver and answers its id once the line is journaled.
 // A body is non-empty and at most 64 KiB; a longer message is a file the sender writes and the mail names.
 //
-// A notice is a program's message, which takes no reply, whose body is one line without control characters and at most 2 KiB.
-// It is typed as its own line when the receiver is idle, `[creel] <sender>: <body>`, and journaled read once the line was typed, landed or not; a busy send leaves it unread for the next probe.
-// A program's name is accepted only from an orch pane or the Go client, so a notice's text cannot be an agent posing as an instruction.
-// A crash between the typing and the read record types that notice once more.
+// A notice is a message from any sender but an agent strand, a program or EXTERNAL, whose body is at most 4 KiB.
+// It is carried in full in its own line, typed when the receiver is idle, `[creel] #<id> from <sender>: <body>`, with every run of line breaks and other control characters turned into one space.
+// The line opens with the id, so a sender that takes replies is answered with `lyx creel post --reply <id>` and no read; creel does not know which senders answer.
+// It is journaled read once the line was typed, landed or not; a busy send leaves it unread for the next probe, and a crash between the typing and the read record types it once more.
+// Mail from an agent strand is never carried, so an agent's text cannot pose as an instruction in another agent's pane.
 //
-// Every other unread message is reminded by one line, typed when the receiver is idle: `[creel] N unread: #id from <sender>, … — run lyx creel read`.
+// Every other unread message, an agent strand's or one over the cap, is reminded by one line, typed when the receiver is idle: `[creel] N unread: #id from <sender>, … — run lyx creel read`.
 // A reminder lists at most five messages and counts the rest, and carries no text a sender wrote, so it cannot pose as an instruction; under a hold it reads `lyx creel read --from <owner>`.
 // An orch strand is reminded like any other strand.
 // A new unread set is reminded at once, and an unchanged set after a backoff that starts at five minutes and doubles to an hour.

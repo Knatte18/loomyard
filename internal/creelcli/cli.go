@@ -477,8 +477,7 @@ const readAgeShown = 5 * time.Minute
 
 // writeMessagesText prints messages as plain text for the agent that reads them, or "nothing unread" when there are none.
 // Each message is a header line and then its body, and a blank line separates two messages.
-// The header names the id, the sender and the reply command for mail that takes a reply, and only the sender for a program's message, which takes none;
-// it names the message a reply answers, the receiver a returned message ended unread at, and the posting time once the message is older than readAgeShown at now.
+// The header names the id, the sender and the reply command, and also the message a reply answers, the receiver a returned message ended unread at, and the posting time once the message is older than readAgeShown at now.
 func writeMessagesText(out io.Writer, messages []creelengine.Message, now time.Time) error {
 	if len(messages) == 0 {
 		_, err := fmt.Fprintln(out, "nothing unread")
@@ -489,12 +488,7 @@ func writeMessagesText(out io.Writer, messages []creelengine.Message, now time.T
 		if i > 0 {
 			text.WriteString("\n")
 		}
-		_, program, err := agentname.ParseProgram(message.From)
-		takesReply := err != nil || program == agentname.External
-		header := "from " + message.From
-		if takesReply {
-			header = fmt.Sprintf("#%d %s", message.ID, header)
-		}
+		header := fmt.Sprintf("#%d from %s", message.ID, message.From)
 		if message.ReplyTo != 0 {
 			header += fmt.Sprintf(", in reply to #%d", message.ReplyTo)
 		}
@@ -504,9 +498,7 @@ func writeMessagesText(out io.Writer, messages []creelengine.Message, now time.T
 		if now.Sub(message.Posted) > readAgeShown {
 			header += ", posted " + message.Posted.UTC().Format(time.RFC3339)
 		}
-		if takesReply {
-			header += fmt.Sprintf(" — reply with: lyx creel post --reply %d <text>", message.ID)
-		}
+		header += fmt.Sprintf(" — reply with: lyx creel post --reply %d <text>", message.ID)
 		text.WriteString(header + "\n" + strings.TrimSuffix(message.Body, "\n") + "\n")
 	}
 	_, err := io.WriteString(out, text.String())
@@ -518,24 +510,24 @@ func writeMessagesText(out io.Writer, messages []creelengine.Message, now time.T
 // A write that fails after part of the output went out leaves them unread too, so a consumer may hold a truncated output of messages it reads again later.
 func readCmd() *cobra.Command {
 	var (
-		from    string
-		wait    bool
-		jsonOut bool
-		timeout time.Duration
+		from     string
+		wait     bool
+		envelope bool
+		timeout  time.Duration
 	)
 	cmd := &cobra.Command{
 		Use:         "read",
 		Short:       "print the messages left for the caller and mark them read",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
 		Long: `read prints every unread message left for the caller, oldest first, and then
-marks them read. Each message is a header line and its body: mail that takes a
-reply names its id, its sender and the reply command, and a program's message
-names only its sender. The time it was posted is shown once it is more than
-five minutes old. With nothing unread it prints "nothing unread" and exits 0.
+marks them read. Each message is a header line naming its id, its sender and
+the reply command, and then its body. The time it was posted is shown once it
+is more than five minutes old. With nothing unread it prints "nothing unread"
+and exits 0.
 
 --from prints only the unread messages from one sender, --wait waits for unread
-mail, up to --timeout, before it reads, and --json prints the messages as one
-JSON line with every field, for programs.
+mail, up to --timeout, before it reads, and --envelope prints the messages as
+one JSON envelope line with every field, for programs.
 
 Example:
   lyx creel read
@@ -547,7 +539,7 @@ Example:
 				printMessages := func(resp creelengine.Response) error {
 					printed = true
 					var err error
-					if jsonOut {
+					if envelope {
 						fields := map[string]any{"messages": messagesFields(resp.Messages)}
 						if len(resp.Messages) == 0 {
 							fields["note"] = "nothing unread"
@@ -576,7 +568,7 @@ Example:
 	}
 	cmd.Flags().StringVar(&from, "from", "", "read only the messages from this sender")
 	cmd.Flags().BoolVar(&wait, "wait", false, "wait for unread mail before reading")
-	cmd.Flags().BoolVar(&jsonOut, "json", false, "print the messages as one JSON line with every field")
+	cmd.Flags().BoolVar(&envelope, "envelope", false, "print the messages as one JSON envelope line with every field")
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, "give up waiting after this long, 0 for never")
 	return cmd
 }

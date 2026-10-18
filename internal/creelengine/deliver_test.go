@@ -381,7 +381,7 @@ func TestScheduler_Reminders(t *testing.T) {
 			e.start(t)
 			e.probeWaits(1)
 			e.tick(time.Second)
-			want := []string{"[creel] " + batten + ": task-x: landed; newly ready: task-y", reminderFor(1, "", "#2 from "+alpha)}
+			want := []string{"[creel] #1 from " + batten + ": task-x: landed; newly ready: task-y", reminderFor(1, "", "#2 from "+alpha)}
 			if got := e.typed(beta); !slices.Equal(got, want) {
 				t.Errorf("typed %q; want %q", got, want)
 			}
@@ -393,14 +393,20 @@ func TestScheduler_Reminders(t *testing.T) {
 				t.Errorf("Inbox = %+v, %v; want senders %v", inbox, err, wantInbox)
 			}
 		}},
-		{"ProgramMailThatIsNoNoticeAndOtherSendersAreReminded", func(t *testing.T, e *env) {
-			e.post(t, program(batten), beta, "first line\nsecond line")
-			e.post(t, program(batten), beta, strings.Repeat("x", 2049))
+		{"MultiLineAndExternalMailIsCarriedAndOverCapAndStrandMailIsReminded", func(t *testing.T, e *env) {
+			e.post(t, program(batten), beta, "first line\n\tsecond line\n")
+			e.post(t, program(batten), beta, strings.Repeat("x", 4097))
 			e.post(t, external(), beta, "from a terminal")
 			e.post(t, strand(alpha), beta, "from a strand")
 			e.start(t)
 			e.probeWaits(1)
-			want := []string{reminderFor(4, "", "#1 from "+batten, "#2 from "+batten, "#3 from "+external().Name, "#4 from "+alpha)}
+			e.tick(time.Second)
+			e.tick(time.Second)
+			want := []string{
+				"[creel] #1 from " + batten + ": first line second line",
+				"[creel] #3 from " + external().Name + ": from a terminal",
+				reminderFor(2, "", "#2 from "+batten, "#4 from "+alpha),
+			}
 			if got := e.typed(beta); !slices.Equal(got, want) {
 				t.Errorf("typed %q; want %q", got, want)
 			}
@@ -415,7 +421,7 @@ func TestScheduler_Reminders(t *testing.T) {
 			}
 			e.del.SetSendError(creelengine.ErrNotLanded)
 			e.tick(time.Second)
-			want := []string{"[creel] " + batten + ": busy", "[creel] " + batten + ": busy"}
+			want := []string{"[creel] #1 from " + batten + ": busy", "[creel] #1 from " + batten + ": busy"}
 			if got := e.typed(beta); !slices.Equal(got, want) {
 				t.Errorf("typed %q; want the busy try and the retry", got)
 			}
@@ -468,9 +474,9 @@ func TestScheduler_Reminders(t *testing.T) {
 			before := len(e.probeWaits(0))
 			e.post(t, program(batten), beta, "from the owner")
 			e.probeWaits(before + 1)
-			e.post(t, program(batten), beta, "two lines\nfrom the owner")
+			e.post(t, program(batten), beta, strings.Repeat("y", 4097))
 			e.probeWaits(before + 2)
-			want := []string{"[creel] " + batten + ": from the owner", reminderFor(1, batten, "#3 from "+batten)}
+			want := []string{"[creel] #2 from " + batten + ": from the owner", reminderFor(1, batten, "#3 from "+batten)}
 			if got := e.typed(beta); !slices.Equal(got, want) {
 				t.Fatalf("typed %q; want only the owner's notice and mail", got)
 			}
@@ -1305,7 +1311,8 @@ func TestSweep_RemovedHolders(t *testing.T) {
 			}
 		}},
 		{"MailReturnsOneStepAtATimeThenIsUndeliveredAndAnswersItsWaiter", func(t *testing.T, e *env) {
-			id, waiter, err := e.store.PostWait(external(), orch2, "chain")
+			// Over the carried-line cap, so the returned mail stays unread behind a reminder and returns again once orch2 is gone.
+			id, waiter, err := e.store.PostWait(external(), orch2, strings.Repeat("chain ", 700))
 			if err != nil {
 				t.Fatalf("PostWait: %v", err)
 			}
