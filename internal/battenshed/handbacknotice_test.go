@@ -50,7 +50,6 @@ func TestHandBackNotice(t *testing.T) {
 					return true, nil
 				},
 				OrchStrandRecorded: func() (bool, error) { return tt.recorded, nil },
-				NoticeLog:          fixedNoticeLog(filepath.Join(t.TempDir(), "notices.log")),
 			}
 			if tt.nilNotify {
 				deps.Notify = nil

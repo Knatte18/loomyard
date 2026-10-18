@@ -5,10 +5,10 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 ## Paths and geometry
 
 - `PATTERN-cwd-resolution` — Resolving a cwd or worktree root: only `internal/lyxcwd` does; nothing else calls `os.Getwd` or `git rev-parse`. — [background](pattern/PATTERN-cwd-resolution.md)
-- `PATTERN-told-geometry` — Writing an engine: it is handed the absolute paths it works on and derives none, so it never imports `internal/lyxcwd`. — [background](pattern/PATTERN-told-geometry.md)
+- `PATTERN-told-geometry` — Writing an engine: it is handed its absolute paths and derives none, never importing `internal/lyxcwd`. — [background](pattern/PATTERN-told-geometry.md)
 - `PATTERN-lyxdirs-single-declarer` — Naming `_lyx` or `.lyx` in a path: only `internal/lyxdirs` declares them, bar one variable block heading a `tools/` script.
 - `PATTERN-lyx-temp-root` — Creating a temp file or directory: under `internal/lyxtemp`'s run directory, never in `os.TempDir()`. (test) — [background](pattern/PATTERN-lyx-temp-root.md)
-- `PATTERN-durable-vs-ephemeral-state` — Adding a file: tracked under `_lyx`, never-tracked under `.lyx`, same subpath. — [background](pattern/PATTERN-durable-vs-ephemeral-state.md)
+- `PATTERN-durable-vs-ephemeral-state` — Adding a file: tracked under `_lyx`, never-tracked under `.lyx`, same subpath; nothing a run, the orch or a landing depends on lives only under `.lyx`. — [background](pattern/PATTERN-durable-vs-ephemeral-state.md)
 - `PATTERN-hub-containment` — Linking hub-level containers: from the hub only, never junctioned into a worktree. — [background](pattern/PATTERN-hub-containment.md)
 - `PATTERN-hub-wide-config` — A hub-level config module: `HubWide` in `configreg`, its file on the board only. — [background](pattern/PATTERN-hub-wide-config.md)
 - `PATTERN-hub-suffix` — Touching hub naming: `-LYXHUB` is the sole hub container suffix, and no code recognises the retired `-HUB`. (test) — [background](pattern/PATTERN-hub-suffix.md)
@@ -30,7 +30,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-fabric-destruction-chokepoint` — Destroying anything in fabric: only `internal/fabricengine/destroy.go`. — [background](pattern/PATTERN-fabric-destruction-chokepoint.md)
 - `PATTERN-fabric-write-containment` — Writing under `_launchers` or `_portals` from `fabricengine`: through an `os.Root` rooted at the hub, never raw `os.MkdirAll`, `os.WriteFile` or `fslink`.
 - `PATTERN-push-both-sides` — Pushing run records from Go: the pair's code branch goes along. — [background](pattern/PATTERN-push-both-sides.md)
-- `PATTERN-mutation-record` — Adding a mutating fabric verb: it fills a `*Mutations` record, and its result embeds `MutationRecord` under fixed envelope keys. — [background](pattern/PATTERN-mutation-record.md)
+- `PATTERN-mutation-record` — Adding a mutating fabric verb: it fills a `*Mutations` record and its result embeds `MutationRecord`. — [background](pattern/PATTERN-mutation-record.md)
 - `PATTERN-pair-teardown` — Tearing down a pair: only through `internal/pairteardown`. (test) — [background](pattern/PATTERN-pair-teardown.md)
 - `PATTERN-batten-bookend` — Creating or destroying a task worktree: the producer never runs from inside it. — [background](pattern/PATTERN-batten-bookend.md)
 - `PATTERN-github-auth` — Calling GitHub: all authentication goes through `internal/githubclient`, and no other production package shells out to `gh`.
@@ -45,7 +45,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 ## Shed and loom
 
 - `PATTERN-shed-producer-seam` — Importing into `internal/shedengine`: only stdlib, `state` and `lock`, and its status and lock paths are caller-supplied.
-- `PATTERN-shed-recipe-registry` — Registering a shed producer: one `map[string]Constructor` in `internal/shedrecipe`, reached through `Lookup`/`Names`, with no `init()`, no `Register`, no `lyxcwd`.
+- `PATTERN-shed-recipe-registry` — Registering a shed producer: one `map[string]Constructor` in `internal/shedrecipe` behind `Lookup`/`Names`; no `init()`, `Register` or `lyxcwd`.
 - `PATTERN-shed-verb-set` — Adding a run, step, status, pause or goto verb: the generic bodies live in `internal/shedverbs` only. (test) — [background](pattern/PATTERN-shed-verb-set.md)
 - `PATTERN-shed-driver` — Driving a shed run in Go, deciding its stops or spawning a tackler: only `internal/sheddriver`. (test) — [background](pattern/PATTERN-shed-driver.md)
 - `PATTERN-shed-run-directory` — Touching run directories or `seed.json`: `internal/shedrun` alone declares their paths, ids and `Seed`. — [background](pattern/PATTERN-shed-run-directory.md)
@@ -67,11 +67,11 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 ## Agents and prompts
 
 - `PATTERN-agent-name` — Forming an agent name: only `internal/agentname`, once by reed. — [background](pattern/PATTERN-agent-name.md)
-- `PATTERN-creel-store` — Writing the creel journal or reaching a pane: only `internal/creelengine` writes it and reaches a pane, only via its `Delivery` seam. (test) — [background](pattern/PATTERN-creel-store.md)
+- `PATTERN-creel-store` — Writing the creel journal or reaching a pane: only `internal/creelengine`, a pane only via its `Delivery` seam. (test) — [background](pattern/PATTERN-creel-store.md)
 - `PATTERN-stencil-ownership` — Reading a prompt or spec: at call time via `internal/stencilstore` from a told directory, never embedded. — [background](pattern/PATTERN-stencil-ownership.md)
 - `PATTERN-producer-pointer-rule` — Writing an instruction file: it points at another producer's format contract and never duplicates or paraphrases it.
 - `PATTERN-friction-capture` — Halting a loom run or refusing in webster: Go writes a friction note, archived only once a reflection covers it. (test) — [background](pattern/PATTERN-friction-capture.md)
-- `PATTERN-completion-signal` — Finalizing a negative "did this run finish" answer in `internal/shuttleengine`: consult `allOutputFilesExist` first. (test) — [background](pattern/PATTERN-completion-signal.md)
+- `PATTERN-completion-signal` — Finding a run unfinished in `internal/shuttleengine`: consult `allOutputFilesExist` first. (test) — [background](pattern/PATTERN-completion-signal.md)
 - `PATTERN-shuttle-provider-seam` — Referencing a provider: its specifics live only under `internal/shuttleengine/<engine>`. (test) — [background](pattern/PATTERN-shuttle-provider-seam.md)
 - `PATTERN-model-choice-mapping` — Mapping a resolved model-spec onto a spawn: only `shuttleengine.NewModelChoice` reads its fields. (test) — [background](pattern/PATTERN-model-choice-mapping.md)
 - `PATTERN-shuttle-stop` — Stopping a shuttle run's strand from Go outside `internal/shuttleengine`: only through shuttle's stop verb. (test) — [background](pattern/PATTERN-shuttle-stop.md)
@@ -86,7 +86,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-edit-directive` — Writing a spawned role's opening stencil: it renders `internal/editdirective`'s directive; orch stencils are exempt. (test) — [background](pattern/PATTERN-edit-directive.md)
 - `PATTERN-spawn-color` — Coloring a spawned session: its spawner names a segment on the launch spec. — [background](pattern/PATTERN-spawn-color.md)
 - `PATTERN-wait-mark-display-only` — Marking a wait on screen: set the wait marks only through reed's `SetWaitMark`; no Go decision reads them. — [background](pattern/PATTERN-wait-mark-display-only.md)
-- `PATTERN-spawn-observability` — Starting a real OS process from a `lyx` command: log the spawn, and the teardown where it waits, via `internal/logger`. — [background](pattern/PATTERN-spawn-observability.md)
+- `PATTERN-spawn-observability` — Starting an OS process from `lyx`: log the spawn, and a teardown it waits for, via `internal/logger`. — [background](pattern/PATTERN-spawn-observability.md)
 
 ## Daemons and waits
 
@@ -115,4 +115,4 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 
 - `PATTERN-markdown-link-integrity` — Linking in a `.md` file under `docs/`: every inline link resolves, file part and `#anchor`. (test) — [background](pattern/PATTERN-markdown-link-integrity.md)
 - `PATTERN-comment-line-breaks` — Writing a Go comment: one sentence per line, checked by `lyx loom lint-comments` alone. (test) — [background](pattern/PATTERN-comment-line-breaks.md)
-- `PATTERN-documentation-lifecycle` — Deciding which docs are kept: keep no design doc for unbuilt work; a built design lives in its package's `doc.go`. — [background](pattern/PATTERN-documentation-lifecycle.md)
+- `PATTERN-documentation-lifecycle` — Design docs: none for unbuilt work; a built design lives in its package's `doc.go`. — [background](pattern/PATTERN-documentation-lifecycle.md)

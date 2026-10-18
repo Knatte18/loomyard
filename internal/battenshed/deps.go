@@ -226,8 +226,6 @@ type InnerRunDeps struct {
 	// PairDir returns the task worktree directory a notice renders its paths relative to.
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
 	PairDir func() (string, error)
-	// NoticeLog receives every notice the producer composes, once per composition.
-	NoticeLog NoticeLog
 	// DriverStrand reports the child's driver strand in its reed state.
 	// Call invokes it when a running child's spawn was not confirmed by this process, to tell a child that still has a driver from one that needs its bootstrap run again.
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.

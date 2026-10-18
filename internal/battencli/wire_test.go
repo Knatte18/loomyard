@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -31,8 +30,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
-	"github.com/Knatte18/loomyard/internal/shell"
-	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
 )
 
 // TestWire_BuildsLazilyForANonexistentTaskWorktree asserts wire returns no error even though the managed task worktree named by slug does not exist anywhere on disk -- the mechanical proof that wire itself resolves nothing about that worktree -- and that all lazy seams are each present as an injected closure after wire returns, not already-evaluated values: the status-path resolver (Env.InnerRun.ResolveStatus), the spawn directory (Env.InnerRun.Spawn), both teardown halves (Env.Teardown.Shutdown, Env.Teardown.Remove) and the rest listed below, plus the durable status file's commit seam (shedPaths.CommitStatus).
@@ -745,29 +742,6 @@ func TestTeardownRefusal_RecordsRemedyNamesCommitRecordsNeverForce(t *testing.T)
 	other := errors.New("the task worktree has uncommitted changes")
 	if got := teardownRefusal(other, "some-slug"); got != other {
 		t.Errorf("teardownRefusal(other) = %v; want the same error passed through", got)
-	}
-}
-
-// TestNoticeLog_NamesTheHubLogAndTheQuotedAttach asserts the notice log seam names the prime's notice log and an attach command that changes into the pair directory, quoted, before `lyx reed attach`.
-func TestNoticeLog_NamesTheHubLogAndTheQuotedAttach(t *testing.T) {
-	t.Parallel()
-
-	hub := filepath.Join(t.TempDir(), "my hub")
-	prime := locationkit.Location(hub, "prime", ".")
-
-	got := noticeLog(prime, "task-slug")
-
-	if want := shedrun.NoticeLog(prime); got.Path != want {
-		t.Errorf("Path = %q; want %q", got.Path, want)
-	}
-	pairDir := filepath.Join(hub, "task-slug")
-	if want := shell.ForGOOS().ChangeDir(pairDir) + " && lyx reed attach"; got.AttachCommand != want {
-		t.Errorf("AttachCommand = %q; want %q", got.AttachCommand, want)
-	}
-	if runtime.GOOS != "windows" {
-		if want := "cd '" + pairDir + "' && lyx reed attach"; got.AttachCommand != want {
-			t.Errorf("AttachCommand = %q; want the directory single-quoted: %q", got.AttachCommand, want)
-		}
 	}
 }
 
