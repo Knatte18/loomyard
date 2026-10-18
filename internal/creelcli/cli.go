@@ -70,8 +70,10 @@ func Command() *cobra.Command {
 		Use:   "creel",
 		Short: "send messages and injects between the agents of the hub through its message daemon",
 		Long: `creel is the hub's message daemon and its verbs. post leaves a message for a
-strand, which gets a one-line reminder typed when it is idle, and read hands
-the message over. inject types a line into an idle strand at once, interrupt
+strand; a message from an agent strand is announced by a one-line reminder
+typed when the receiver is idle and handed over by read, while mail from
+EXTERNAL or a program is carried in full in the typed line when it fits the
+line cap. inject types a line into an idle strand at once, interrupt
 stops a running turn, forward passes a message on, hold keeps a receiver to
 one sender for a while, and inbox and log show the pool. The daemon starts
 by itself on the first verb.`,
@@ -293,8 +295,11 @@ func postCmd() *cobra.Command {
 		Short:       "leave a message for a strand, or reply to one",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `post leaves the text as a message for the receiver strand and prints its id.
-The receiver gets a one-line reminder typed when it is idle, and reads the
-message with "lyx creel read".
+A message from an agent strand is announced to the receiver by a one-line
+reminder typed when it is idle, and read with "lyx creel read". Mail from
+EXTERNAL or a program is carried in full in the typed line and needs no read,
+unless it is longer than the line cap, when it is announced and read like an
+agent's.
 
 With --reply <id> the text answers message <id> and goes to its sender, so no
 receiver is given. With --wait-reply the call waits for the reply, up to
@@ -472,26 +477,62 @@ Example:
 	}
 }
 
+// readAgeShown is how old a message must be before read prints when it was posted.
+const readAgeShown = 5 * time.Minute
+
+// writeMessagesText prints messages as plain text for the agent that reads them, or "nothing unread" when there are none.
+// Each message is a header line and then its body, and a blank line separates two messages.
+// The header names the id, the sender and the reply command, and also the message a reply answers, the receiver a returned message ended unread at, and the posting time once the message is older than readAgeShown at now.
+func writeMessagesText(out io.Writer, messages []creelengine.Message, now time.Time) error {
+	if len(messages) == 0 {
+		_, err := fmt.Fprintln(out, "nothing unread")
+		return err
+	}
+	var text strings.Builder
+	for i, message := range messages {
+		if i > 0 {
+			text.WriteString("\n")
+		}
+		header := fmt.Sprintf("#%d from %s", message.ID, message.From)
+		if message.ReplyTo != 0 {
+			header += fmt.Sprintf(", in reply to #%d", message.ReplyTo)
+		}
+		if message.EndedUnreadBy != "" {
+			header += ", returned unread by " + message.EndedUnreadBy
+		}
+		if now.Sub(message.Posted) > readAgeShown {
+			header += ", posted " + message.Posted.UTC().Format(time.RFC3339)
+		}
+		header += fmt.Sprintf(" — reply with: lyx creel post --reply %d <text>", message.ID)
+		text.WriteString(header + "\n" + strings.TrimSuffix(message.Body, "\n") + "\n")
+	}
+	_, err := io.WriteString(out, text.String())
+	return err
+}
+
 // readCmd returns the `creel read` verb.
-// It acknowledges the messages only once its envelope was written; a write that fails leaves them unread and the verb refuses with the write's error.
-// A write that fails after part of the envelope went out leaves them unread too, so a consumer may hold a truncated envelope of messages it reads again later.
+// It acknowledges the messages only once its output was written; a write that fails leaves them unread and the verb refuses with the write's error.
+// A write that fails after part of the output went out leaves them unread too, so a consumer may hold a truncated output of messages it reads again later.
 func readCmd() *cobra.Command {
 	var (
-		from    string
-		all     bool
-		wait    bool
-		timeout time.Duration
+		from     string
+		wait     bool
+		envelope bool
+		timeout  time.Duration
 	)
 	cmd := &cobra.Command{
 		Use:         "read",
 		Short:       "print the messages left for the caller and mark them read",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
-		Long: `read prints the oldest unread message left for the caller and every other
-unread message from its sender, each with its sender, envelope and body, and
-then marks them read. With nothing unread it says so and exits 0.
+		Long: `read prints every unread message left for the caller, oldest first, and then
+marks them read. Each message is a header line naming its id, its sender and
+the reply command, and then its body. The time it was posted is shown once it
+is more than five minutes old. With nothing unread it prints "nothing unread"
+and exits 0.
 
---from prints every unread message from one sender, --all prints every unread
-message, and --wait waits for unread mail, up to --timeout, before it reads.
+--from prints only the unread messages from one sender, --wait waits for unread
+mail, up to --timeout, before it reads, and --envelope prints the messages as
+one JSON envelope line with every field, for programs.
 
 Example:
   lyx creel read
@@ -502,16 +543,22 @@ Example:
 				printed := false
 				printMessages := func(resp creelengine.Response) error {
 					printed = true
-					fields := map[string]any{"messages": messagesFields(resp.Messages)}
-					if len(resp.Messages) == 0 {
-						fields["note"] = "nothing unread"
+					var err error
+					if envelope {
+						fields := map[string]any{"messages": messagesFields(resp.Messages)}
+						if len(resp.Messages) == 0 {
+							fields["note"] = "nothing unread"
+						}
+						err = writeOk(out, fields)
+					} else {
+						err = writeMessagesText(out, resp.Messages, seam.clock.Now())
 					}
-					if err := writeOk(out, fields); err != nil {
+					if err != nil {
 						return fmt.Errorf("creel read: could not write the messages, so they stay unread: %w", err)
 					}
 					return nil
 				}
-				resp, err := client.Call(creelengine.Request{Verb: creelengine.VerbRead, From: from, All: all, Wait: wait}, timeoutWhenWaiting(wait, timeout), printMessages)
+				resp, err := client.Call(creelengine.Request{Verb: creelengine.VerbRead, From: from, Wait: wait}, timeoutWhenWaiting(wait, timeout), printMessages)
 				if err != nil {
 					return result{}, err
 				}
@@ -525,8 +572,8 @@ Example:
 		},
 	}
 	cmd.Flags().StringVar(&from, "from", "", "read only the messages from this sender")
-	cmd.Flags().BoolVar(&all, "all", false, "read every unread message, not only the oldest sender's")
 	cmd.Flags().BoolVar(&wait, "wait", false, "wait for unread mail before reading")
+	cmd.Flags().BoolVar(&envelope, "envelope", false, "print the messages as one JSON envelope line with every field")
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, "give up waiting after this long, 0 for never")
 	return cmd
 }

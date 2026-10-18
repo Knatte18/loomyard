@@ -74,12 +74,18 @@
 // post stores a message for a receiver and answers its id once the line is journaled.
 // A body is non-empty and at most 64 KiB; a longer message is a file the sender writes and the mail names.
 //
-// The receiver is reminded by one line, typed when it is idle: `[creel] N unread: #id from <sender>, … — run lyx creel read`.
+// A notice is a message from any sender but an agent strand, a program or EXTERNAL, whose body is at most 4 KiB.
+// It is carried in full in its own line, typed when the receiver is idle, `[creel] #<id> from <sender>: <body>`, with every run of line breaks and other control characters turned into one space.
+// The line opens with the id, so a sender that takes replies is answered with `lyx creel post --reply <id>` and no read; creel does not know which senders answer.
+// It is journaled read once the line was typed, landed or not; a busy send leaves it unread for the next probe, and a crash between the typing and the read record types it once more.
+// Mail from an agent strand is never carried, so an agent's text cannot pose as an instruction in another agent's pane.
+//
+// Every other unread message, an agent strand's or one over the cap, is reminded by one line, typed when the receiver is idle: `[creel] N unread: #id from <sender>, … — run lyx creel read`.
 // A reminder lists at most five messages and counts the rest, and carries no text a sender wrote, so it cannot pose as an instruction; under a hold it reads `lyx creel read --from <owner>`.
 // An orch strand is reminded like any other strand.
 // A new unread set is reminded at once, and an unchanged set after a backoff that starts at five minutes and doubles to an hour.
 //
-// read returns the caller's unread messages oldest first: plain read the oldest one and every other unread message from its sender, --from every unread message from that sender, and --all every unread message.
+// read returns the caller's unread messages oldest first: every one, or with --from every one from that sender.
 // They are reserved until the client acknowledges them on the same connection, and only then are they journaled as read, so a client that dies before writing them leaves them unread.
 // An EXTERNAL caller holds no mail and is refused.
 // read --wait first waits until the caller holds unread mail, and a program's first read makes its mailbox known.
@@ -96,7 +102,7 @@
 //
 // inject queues one line, without control characters, to be typed into the receiver's pane when it is idle.
 // Its TTL is ten minutes unless the sender names one up to an hour, and it runs only while the receiver is live and no pause covers it; an inject that used it up expires.
-// Queued injects are typed before reminders, oldest first, except that an interrupt-queued inject goes ahead of the others, newest first.
+// Queued injects are typed before notices and reminders, oldest first, except that an interrupt-queued inject goes ahead of the others, newest first.
 // A sending event is journaled before the line is typed.
 // The outcome is injected, unconfirmed when the send answered ErrNotLanded, so the line is never typed twice, or expired; a busy send is requeued untouched.
 // inject --wait answers with the outcome, and hears each change of its receiver's stall reason as a progress line on stderr, once each.
@@ -179,7 +185,7 @@
 // The Scheduler runs one worker per receiver with a queued inject or unread mail, and at most one delivery is in flight per receiver.
 // A worker probes from a one-second base and doubles the wait to eight seconds after every probe that delivers nothing; a wake from the store or a probe that delivers returns it to the base, and the worker ends when nothing is pending.
 // While the receiver is live and unpaused, the wait is capped at its soonest queued inject's remaining TTL, never below one second, so an inject expires when its TTL runs out and not at the next backed-off probe.
-// A probe finds the strand, skips a dormant or paused one, and types the first queued inject, or under a hold the owner's; with none due it types the reminder.
+// A probe finds the strand, skips a dormant or paused one, and types the first queued inject, or under a hold the owner's; with none due it types the oldest notice no read holds reserved, under a hold the owner's, and with none of those the reminder.
 // Each delivery asks the seam whether the strand is idle first, and every wait goes through the Clock, so a test never waits out an interval.
 // Every idle answer feeds the stall journal: a new non-empty reason is journaled, a repeat only stamps when it was read, and a reading with no reason, a probe error or a typed line clears it with no record.
 // The inject TTL keeps running while a strand is stalled, live and unpaused.

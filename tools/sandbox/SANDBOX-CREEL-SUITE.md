@@ -106,12 +106,13 @@ Confine all free text to the `title`/`body` string fields so the JSON stays well
 
 **Covers:** creel
 
-**Goal:** "Post a message to an interactive agent that was added by hand, watch its reminder get typed once the agent is idle, have the agent read the message, inject a line into it, and confirm the log shows the events without any body."
+**Goal:** "Post a message to an interactive agent that was added by hand from the terminal and from another agent, watch the terminal's message carried in full and the agent's reminded once the receiver is idle, have the receiver read the agent's message, inject a line into it, and confirm the log shows the events without any body."
 
-**Watch:** Add a strand with `lyx reed add --cmd claude` and let it reach its idle prompt.
-`lyx creel post <strand name> "please say READ"` prints one JSON envelope with the message `id`, and the first creel verb of the hub starts its daemon by itself.
-At the agent's next idle moment a one-line reminder naming the sender appears typed in its pane; the reminder is not repeated while the agent works.
-Asking the agent to run `lyx creel read` prints the message with its sender and body, and a second `lyx creel read` prints that nothing is unread.
+**Watch:** Add a strand with `lyx reed add --cmd claude` and let it reach its idle prompt, and add a shell strand with `lyx reed add --cmd bash`.
+`lyx creel post <strand name> "please say CARRIED"` from the operator's shell prints one JSON envelope with the message `id`, and the first creel verb of the hub starts its daemon by itself.
+The terminal is EXTERNAL, so at the agent's next idle moment `[creel] #<id> from <shortname>:EXTERNAL: please say CARRIED` appears typed in its pane, and the message is read with no `lyx creel read`.
+`lyx creel post <strand name> "please say READ"` run in the shell strand's pane is agent mail: at the agent's next idle moment a one-line reminder naming the shell strand appears typed in its pane, and the reminder is not repeated while the agent works.
+Asking the agent to run `lyx creel read` prints, as plain text, the message's id, its sender and the reply command on one line and its body below, and a second `lyx creel read` prints `nothing unread`.
 `lyx creel inject <strand name> "say INJECTED" --wait` types the line into the pane at idle and exits 0 with `"outcome":"injected"`.
 `lyx creel log --id <id>` lists the message's events `posted`, each `reminded` event whose unread ids hold it, and `read`, oldest first, with their times and subject, and no event has a body field.
 A reminder typed into a busy turn, a line typed twice, or a body field in the log is a real failure here.
@@ -150,7 +151,7 @@ Listing the tmux and lyxtemp socket directories read-only shows the sandbox sock
 
 **Goal:** "Post a message to a Claude strand that is busy with a long task, and confirm its reminder is typed after the turn and only once."
 
-**Watch:** Busy a Claude strand with a long inject, then post mid-turn.
+**Watch:** Busy a Claude strand with a long inject, then post mid-turn from a shell strand's pane, since only an agent strand's mail is reminded.
 The reminder lands only after the turn ends and appears once in the pane's scrollback.
 
 **Verdict:** `FAIL` on a reminder typed into a busy turn, or a duplicate.
@@ -163,7 +164,7 @@ The reminder lands only after the turn ends and appears once in the pane's scrol
 
 **Goal:** "Leave a message unread while the strand keeps answering its reminders, and confirm the reminders back off and a new message is reminded at once."
 
-**Watch:** The strand answers reminders without reading.
+**Watch:** The message comes from a shell strand's pane, and the strand answers reminders without reading.
 `reminded` events in `lyx creel log` come about 5 and 10 minutes apart, and a new message is reminded at once.
 
 **Verdict:** `WARN` if the timing drifts by more than 30 s.
@@ -176,7 +177,7 @@ The reminder lands only after the turn ends and appears once in the pane's scrol
 
 **Goal:** "Leave interleaved mail from several senders, read it in every way the verb offers, and confirm each read returns the right set and that mail whose output could not be written stays unread."
 
-**Watch:** Interleave mail from EXTERNAL and a shell strand, then check plain `read`, `read --from`, `read --all` and `inbox`.
+**Watch:** Interleave mail from EXTERNAL and a shell strand to a receiver kept busy, so the EXTERNAL mail is not carried before the reads, then check that plain `read` returns every sender's mail at once, that `read --from` narrows it to one sender, that `read --envelope` prints the same set as one JSON line, and `inbox`.
 `lyx creel read > /dev/full` exits 1, writes a `creel:` line to stderr and leaves the mail unread, so a following `read` still returns it.
 
 **Verdict:** `FAIL` on a wrong set or lost mail.
@@ -300,9 +301,9 @@ A disagreeing strand name inside a pane is refused; this check is operator-assis
 
 **Covers:** creel
 
-**Goal:** "Post to a Claude strand added by hand and to a strand whose window shows no input box, and confirm each receives its reminder or creel says why it cannot deliver."
+**Goal:** "Post to a Claude strand added by hand and to a strand whose window shows no input box, and confirm each receives its line or creel says why it cannot deliver."
 
-**Watch:** A plain `lyx reed add --cmd claude` strand receives its reminder.
+**Watch:** A plain `lyx reed add --cmd claude` strand receives the line carrying a post from the operator's shell.
 A `lyx reed add --cmd bash` strand, which reed places in a window of its own, shows no input box.
 Its stall reason, `no-input-box`, shows as a `stalled` event in `lyx creel log` and as a progress line on stderr of `lyx creel inject --wait`.
 

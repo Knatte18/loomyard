@@ -16,7 +16,7 @@ import (
 )
 
 // TestSmokeCreelClaudeStrand adds a strand running claude to a hub and drives creel into it.
-// The adapter reads the booted session idle, a posted message's reminder and an inject are typed at idle, and the agent's pane shows both.
+// The adapter reads the booted session idle, a posted message's carried line and an inject are typed at idle, and the agent's pane shows both.
 func TestSmokeCreelClaudeStrand(t *testing.T) {
 	claudePath := llmkit.Claude(t, "LYX_REED_CLAUDE")
 	// The strand name in the environment is process-global state, set by newSmokeHub.
@@ -86,8 +86,9 @@ func TestSmokeCreelClaudeStrand(t *testing.T) {
 	if code, out := smoke.creel("post", name, "creel smoke message"); code != 0 {
 		t.Fatalf("lyx creel post = %d; output: %s", code, out)
 	}
-	if capture, ok := smoke.awaitPane(t, guid, "[creel] 1 unread"); !ok {
-		t.Fatalf("the reminder was not typed into the agent's pane; pane:\n%s", capture)
+	// The test process posts as EXTERNAL, whose mail is carried in its own line rather than reminded.
+	if capture, ok := smoke.awaitPane(t, guid, "[creel] #1 from "); !ok {
+		t.Fatalf("the carried line was not typed into the agent's pane; pane:\n%s", capture)
 	}
 	code, out := smoke.creel("inject", "--wait", "--timeout", "120s", name, "creel smoke inject")
 	if code != 0 || !strings.Contains(out, `"outcome":"injected"`) {
