@@ -328,6 +328,11 @@ func TestLayerRunSettings(t *testing.T) {
 			wantRefusal: []string{`run profile "light"`, "loom", "no_such_key"},
 		},
 		{
+			name:        "a profile's batten open_ide_command is refused by the local layer's executable category",
+			profile:     map[string]any{"batten": map[string]any{"open_ide_command": "x"}},
+			wantRefusal: []string{`run profile "light"`, "batten", "open_ide_command"},
+		},
+		{
 			name:        "a refused task key names the module and the key",
 			profile:     map[string]any{"loom": map[string]any{"plan_max_bounces": float64(1)}},
 			settings:    map[string]any{"loom": map[string]any{"discussion_lenses": []any{}}},
