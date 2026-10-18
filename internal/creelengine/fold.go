@@ -271,6 +271,9 @@ func (p *pool) apply(rec record, day string) {
 	case eventInterrupted, eventStalled, eventWithheld:
 	case eventHeld:
 		p.holds[rec.To] = &holdEntry{Owner: rec.By, Expires: rec.ExpiresAt, origin: day}
+	case eventRenewed:
+		p.holds[rec.To] = &holdEntry{Owner: rec.By, Expires: rec.ExpiresAt, origin: day}
+		return
 	case eventReleased:
 		delete(p.holds, rec.To)
 	case eventCarried:
