@@ -293,8 +293,9 @@ func postCmd() *cobra.Command {
 		Short:       "leave a message for a strand, or reply to one",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `post leaves the text as a message for the receiver strand and prints its id.
-The receiver gets a one-line reminder typed when it is idle, and reads the
-message with "lyx creel read".
+A message from an agent strand is announced to the receiver by a one-line
+reminder typed when it is idle, and read with "lyx creel read". Mail from
+EXTERNAL or a program is carried in full in the typed line and needs no read.
 
 With --reply <id> the text answers message <id> and goes to its sender, so no
 receiver is given. With --wait-reply the call waits for the reply, up to
