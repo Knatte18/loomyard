@@ -96,14 +96,22 @@ func TestResumeContext_FailureReturnsErrorAndWritesNoMark(t *testing.T) {
 				t.Fatal(err)
 			}
 		}, nil},
-		{"unreadable repository rules", func(t *testing.T, p Paths, stencils string) {
+		{"unreadable hub rules", func(t *testing.T, p Paths, stencils string) {
 			if err := SaveState(p, State{Strand: "s1", Phase: PhaseIdle}); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.MkdirAll(p.RepoRulesPath, 0o755); err != nil {
+			if err := os.MkdirAll(p.HubRulesPath, 0o755); err != nil {
 				t.Fatal(err)
 			}
-		}, func(p Paths) string { return p.RepoRulesPath }},
+		}, func(p Paths) string { return p.HubRulesPath }},
+		{"unreadable own rules", func(t *testing.T, p Paths, stencils string) {
+			if err := SaveState(p, State{Strand: "s1", Phase: PhaseIdle}); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.MkdirAll(p.OwnRulesPath, 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}, func(p Paths) string { return p.OwnRulesPath }},
 		{"no state file", func(*testing.T, Paths, string) {}, nil},
 	}
 	for _, tt := range tests {
