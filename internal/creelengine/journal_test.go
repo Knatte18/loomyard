@@ -426,7 +426,7 @@ func TestJournal_Retention(t *testing.T) {
 	livePast := journalEpoch.AddDate(0, 0, 30)
 	renewedPast := livePast.AddDate(0, 0, 1)
 
-	// Day one: two messages (one read), two injects (one finished), and three holds (one live, one expiring before the carry, one released).
+	// Day one: two messages (one read), two injects (one finished), and three holds (one live and renewed to a later expiry, one expiring before the carry, one released).
 	appendRecord(record{Event: eventPosted, ID: 1, From: alpha, To: beta, Body: "unread"})
 	appendRecord(record{Event: eventForwarded, ID: 1, By: beta, To: gamma})
 	appendRecord(record{Event: eventPosted, ID: 2, From: alpha, To: beta, Body: "read"})
@@ -441,10 +441,12 @@ func TestJournal_Retention(t *testing.T) {
 	appendRecord(record{Event: eventHeld, To: gamma, By: alpha, ExpiresAt: journalEpoch.AddDate(0, 0, 1)})
 	appendRecord(record{Event: eventHeld, To: delta, By: alpha, ExpiresAt: livePast})
 	appendRecord(record{Event: eventReleased, To: delta, By: alpha})
+	appendRecord(record{Event: eventHeld, To: alpha, By: beta, ExpiresAt: livePast})
 
 	// Day five is inside the retention and keeps its file.
 	clock.now = journalEpoch.AddDate(0, 0, 4)
 	appendRecord(record{Event: eventPosted, ID: 5, From: alpha, To: beta, Body: "mid"})
+	appendRecord(record{Event: eventRenewed, To: alpha, By: beta, ExpiresAt: renewedPast})
 	dayOne, err := os.ReadFile(filepath.Join(dir, "2026-10-01.jsonl"))
 	if err != nil {
 		t.Fatalf("read day one: %v", err)
@@ -480,8 +482,12 @@ func TestJournal_Retention(t *testing.T) {
 			holds = append(holds, receiver)
 		}
 		slices.Sort(holds)
-		if !reflect.DeepEqual(holds, []string{beta}) {
-			t.Errorf("%s: holds on %v, want only the live hold on %s", label, holds, beta)
+		if !reflect.DeepEqual(holds, []string{alpha, beta}) {
+			t.Errorf("%s: holds on %v, want only the live holds on %s and %s", label, holds, alpha, beta)
+		}
+		// The renewal on day five sits inside the retention, so that hold stays in its file and is not carried.
+		if hold := p.holds[alpha]; hold == nil || hold.Owner != beta || !hold.Expires.Equal(renewedPast) {
+			t.Errorf("%s: hold on %s = %+v, want owner %s with the renewed expiry %v", label, alpha, hold, beta, renewedPast)
 		}
 		if got := p.messages[1].Posted; !got.Equal(journalEpoch) {
 			t.Errorf("%s: message 1 posted at %v, want its original time", label, got)

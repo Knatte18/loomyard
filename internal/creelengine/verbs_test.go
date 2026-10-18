@@ -547,7 +547,7 @@ func TestStore_InjectAndHold(t *testing.T) {
 			_, err = e.store.Release(external(), alpha)
 			wantErr(t, err, batten, held.Expires.UTC().Format(time.RFC3339))
 		}},
-		{"Hold_OwnerRenewsAndReleases", func(t *testing.T, e *env) {
+		{"Hold_OwnerRenewsReleasesAndRetakesAfterExpiry", func(t *testing.T, e *env) {
 			first, err := e.store.Hold(program(batten), alpha, 10*time.Minute)
 			if err != nil {
 				t.Fatalf("Hold: %v", err)
