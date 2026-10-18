@@ -13,7 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/orchengine"
 )
 
-// orchDirName is the module's own subdirectory beneath the anchor's .lyx directory.
+// orchDirName is the module's own subdirectory name, beneath the anchor's .lyx directory and beneath _lyx, where the rules files live.
 const orchDirName = "orch"
 
 // PrimePaths returns the orch paths for the prime at location, so another module's CLI wiring reaches the orch state without re-deriving it.
