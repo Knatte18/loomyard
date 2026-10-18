@@ -46,6 +46,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 
 - `PATTERN-shed-producer-seam` — Importing into `internal/shedengine`: only stdlib, `state` and `lock`, and its status and lock paths are caller-supplied.
 - `PATTERN-shed-recipe-registry` — Registering a shed producer: one `map[string]Constructor` in `internal/shedrecipe` behind `Lookup`/`Names`; no `init()`, `Register` or `lyxcwd`.
+- `PATTERN-recipe-setting-lookup` — Giving a recipe row a config value: a plain one is `module.key` via `Env.Setting`, a review segment's resolved one a `SegmentSettings` field; never its own `Env` field.
 - `PATTERN-shed-verb-set` — Adding a run, step, status, pause or goto verb: the generic bodies live in `internal/shedverbs` only. (test) — [background](pattern/PATTERN-shed-verb-set.md)
 - `PATTERN-shed-driver` — Driving a shed run in Go, deciding its stops or spawning a tackler: only `internal/sheddriver`. (test) — [background](pattern/PATTERN-shed-driver.md)
 - `PATTERN-shed-run-directory` — Touching run directories or `seed.json`: `internal/shedrun` alone declares their paths, ids and `Seed`. — [background](pattern/PATTERN-shed-run-directory.md)
@@ -54,10 +55,10 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-failure-stop-visible` — An `--until-stop` failure as sole lock holder: status is non-running before the waiter returns. (test) — [background](pattern/PATTERN-failure-stop-visible.md)
 - `PATTERN-driver-choice-single-site` — Reading a seed driver: once per recipe, in its bootstrap verbs, for the surface only. (test) — [background](pattern/PATTERN-driver-choice-single-site.md)
 - `PATTERN-treadle-runner-seam` — Importing into `internal/treadleengine`: never `burlerengine` or an `internal/*cli` package, and only its allowlist, not `lyxcwd`.
-- `PATTERN-plan-generation` — Archiving a plan: `_lyx/plan/`'s top-level files hold one generation; a retired one moves to `round-<N>/prior-generation/`. — [background](pattern/PATTERN-plan-generation.md)
+- `PATTERN-plan-generation` — Archiving a plan: `_lyx/plan/`'s top-level files hold one generation. — [background](pattern/PATTERN-plan-generation.md)
 - `PATTERN-ref-shape-registry` — Classifying a plan ref or `plan:` handle: `internal/planparser` alone declares and decides. (test) — [background](pattern/PATTERN-ref-shape-registry.md)
 - `PATTERN-glyph-conversion-chokepoint` — Converting glyphs and paths: only via `glyph`. — [background](pattern/PATTERN-glyph-conversion-chokepoint.md)
-- `PATTERN-gate-self-check-parity` — Adding a mechanical gate: its closure and its CLI self-check call one package function and land in one task. — [background](pattern/PATTERN-gate-self-check-parity.md)
+- `PATTERN-gate-self-check-parity` — Adding a mechanical gate: its closure and CLI self-check call one package function. — [background](pattern/PATTERN-gate-self-check-parity.md)
 - `PATTERN-verified-tree` — Running a verify command: through `verifytree.Verify` only. (test) — [background](pattern/PATTERN-verified-tree.md)
 - `PATTERN-gate-slot` — Running a gate build or test: only in a `-p`-capped hub slot of `internal/gateslot`.
 - `PATTERN-batcher-registry` — Choosing webster's execution unit: the batch the active `batcher.yaml` profile derives via `internal/batcher`. — [background](pattern/PATTERN-batcher-registry.md)
@@ -85,7 +86,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-parent-directive` — Writing a spawned role's top-level stencil: it renders the parent directive. (test) — [background](pattern/PATTERN-parent-directive.md)
 - `PATTERN-edit-directive` — Writing a spawned role's opening stencil: it renders `internal/editdirective`'s directive; orch stencils are exempt. (test) — [background](pattern/PATTERN-edit-directive.md)
 - `PATTERN-spawn-color` — Coloring a spawned session: its spawner names a segment on the launch spec. — [background](pattern/PATTERN-spawn-color.md)
-- `PATTERN-wait-mark-display-only` — Marking a wait on screen: set the wait marks only through reed's `SetWaitMark`; no Go decision reads them. — [background](pattern/PATTERN-wait-mark-display-only.md)
+- `PATTERN-wait-mark-display-only` — Marking a wait on screen: only through reed's `SetWaitMark`; no Go decision reads the marks. — [background](pattern/PATTERN-wait-mark-display-only.md)
 - `PATTERN-spawn-observability` — Starting an OS process from `lyx`: log the spawn, and a teardown it waits for, via `internal/logger`. — [background](pattern/PATTERN-spawn-observability.md)
 
 ## Daemons and waits

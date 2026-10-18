@@ -4,6 +4,7 @@ package shedrecipe
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -74,6 +75,26 @@ func writeStencilFile(t *testing.T, dir, name, content string) {
 	}
 }
 
+// testReviewSegment is the segment every Bouncer, BurlerReview and BurlerFix test row belongs to.
+const testReviewSegment = "Test-Review"
+
+// fakeSetting returns a setting lookup answering values["module.key"], and an error naming the reference for one values lacks.
+func fakeSetting(values map[string]any) func(module, key string) (any, error) {
+	return func(module, key string) (any, error) {
+		reference := module + "." + key
+		value, ok := values[reference]
+		if !ok {
+			return nil, fmt.Errorf("fake setting lookup: unknown setting %s", reference)
+		}
+		return value, nil
+	}
+}
+
+// reviewRow returns the identity of a review-segment row called name, in testReviewSegment.
+func reviewRow(name string) RowIdentity {
+	return RowIdentity{Name: name, Segment: testReviewSegment}
+}
+
 // newTestEnv builds an Env whose every path field is an absolute path derived from a single t.TempDir(), one subdirectory per field: a directory field (Cwd, WorktreeRoot, StencilsDir, SpecsDir, RunRoot, AnchorPath, ScratchDir) is created with os.MkdirAll, while a file field (StatusPath, StatusLockPath, DecisionRecordPath, SupportLogPath, RelevantPath, PrimeLock.Path) is left as a joined path nobody creates.
 // It fills Shuttle and Burler with shedfake's fakes and WebsterRun with this file's fake, fills WebsterDeps with shedfake.WebsterSeams, fills DiscussionTable with a closure returning a one-chair seatengine.Table over one absolute output path under the same temp root, fills CommitDiscussion with a closure returning nil, fills PlanTable with a closure returning a one-lead seatengine.Table over one absolute output path under the same temp root, fills CommitPlan with a closure returning nil, leaves Landing zero, and leaves Now nil.
 //
@@ -84,15 +105,6 @@ func writeStencilFile(t *testing.T, dir, name, content string) {
 // No test in this package may reference a path outside its own t.TempDir(): a real repo path would
 // mask a told-geometry violation, which is the exact property this package's own Env validation
 // exists to enforce.
-// bouncerRowModels returns an Env.RowBouncerModels entry with empty pairs for each of rows, the names the package's tests pass to bouncerEntry.
-func bouncerRowModels(rows ...string) map[string]shedadapters.BouncerModels {
-	models := make(map[string]shedadapters.BouncerModels, len(rows))
-	for _, row := range rows {
-		models[row] = shedadapters.BouncerModels{}
-	}
-	return models
-}
-
 func newTestEnv(t *testing.T) Env {
 	t.Helper()
 
@@ -126,7 +138,7 @@ func newTestEnv(t *testing.T) Env {
 		Burler:             &shedfake.BurlerHalfRunner{},
 		Seats:              &shedfake.SeatRunner{},
 		Models:             modelspec.Registry{"opus": {Engine: "claude", Model: "claude-opus-test"}},
-		RowBouncerModels:   bouncerRowModels("review-bounce", "a", "b", "row-name"),
+		Segments:           map[string]SegmentSettings{testReviewSegment: {}},
 		WebsterRun:         fakeWebsterRun,
 		CommitWebster:      func() error { return nil },
 		ReflectFriction:    func() string { return "skipped" },

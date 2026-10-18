@@ -46,7 +46,7 @@ The question it rules on is fixed, rendered by `decisionRuleMarker` in `internal
 
 `judge` in `loom.yaml` (`_lyx/config/loom.yaml`, template `internal/loomengine/template.yaml`), today `sonnet[medium]`, sets every Bouncer row's judge pass, and `discussion_judge`, `plan_judge` and `webster_judge` override it per segment.
 `seed` sets every row's seed pass, and `discussion_seed`, `plan_seed` and `webster_seed` override it per segment; an empty seed key takes that segment's resolved judge.
-`loomengine.ResolveJudge` resolves every key through `models.yaml` once at run start, and loomcli's wire threads each segment's seed and judge pair to its Bouncer row through `shedrecipe.Env.RowBouncerModels`.
+`loomengine.ResolveJudge` resolves every key through `models.yaml` once at run start, and loomcli's wire threads each segment's seed and judge pair to its Bouncer row through the segment's `Bouncer` field in `shedrecipe.Env.Segments`.
 A Bouncer row's recipe `config` takes no `model`, `effort` or `version` key: `bouncerEntry` refuses one as unknown.
 
 So the operator can switch the judge or the seed of one row from `loom.yaml`, without a code change.

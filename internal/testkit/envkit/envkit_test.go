@@ -6,12 +6,52 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/contracts/recipes"
+	"github.com/Knatte18/loomyard/internal/shedbuild"
 )
 
 func TestFullEnv_FillsEverySeam(t *testing.T) {
 	if got := NilSeams(FullEnv(t)); len(got) != 0 {
 		t.Errorf("NilSeams(FullEnv) = %v; want none", got)
 	}
+
+	t.Run("TemplateSetting_AnswersATemplateKey", func(t *testing.T) {
+		got, err := TemplateSetting("loom", "plan_auto_accept")
+		if err != nil {
+			t.Fatalf("TemplateSetting(loom, plan_auto_accept): %v", err)
+		}
+		if got != false {
+			t.Errorf("TemplateSetting(loom, plan_auto_accept) = %v; want false", got)
+		}
+	})
+
+	t.Run("TemplateSetting_RefusesUnknownModuleAndKey", func(t *testing.T) {
+		if _, err := TemplateSetting("no-such-module", "plan_auto_accept"); err == nil || !strings.Contains(err.Error(), "no-such-module") {
+			t.Errorf("TemplateSetting(no-such-module, ...) error = %v; want one naming the module", err)
+		}
+		if _, err := TemplateSetting("loom", "no_such_key"); err == nil || !strings.Contains(err.Error(), "no_such_key") {
+			t.Errorf("TemplateSetting(loom, no_such_key) error = %v; want one naming the key", err)
+		}
+	})
+
+	t.Run("Segments_HoldEveryReviewSegmentOfTheEmbeddedRecipes", func(t *testing.T) {
+		segments := FullEnv(t).Segments
+		for name, data := range map[string][]byte{"loom": recipes.LoomRecipe, "darn": recipes.DarnRecipe} {
+			recipe, err := shedbuild.Parse(data)
+			if err != nil {
+				t.Fatalf("parse the %s recipe: %v", name, err)
+			}
+			for _, row := range recipe.Producers {
+				if row.Engine != "Bouncer" {
+					continue
+				}
+				if _, ok := segments[row.Segment]; !ok {
+					t.Errorf("FullEnv(t).Segments lacks the %s recipe's review segment %q", name, row.Segment)
+				}
+			}
+		}
+	})
 }
 
 func TestNilSeams_ReportsExactPaths(t *testing.T) {

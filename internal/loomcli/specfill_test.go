@@ -11,10 +11,12 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"gopkg.in/yaml.v3"
 )
 
 // TestSpecFor_FillsRunIdentityForSelf verifies that a spec armed for "self" reports the worktree
@@ -44,6 +46,26 @@ func TestSpecFor_FillsRunIdentityForSelf(t *testing.T) {
 	}
 	if spec.Routing.MaxBounces != 3 {
 		t.Errorf("Routing.MaxBounces = %d, want 3", spec.Routing.MaxBounces)
+	}
+
+	// With no Segments and no config file, the status path degrades to the template: each review row carries its perch's template cap.
+	var template loomengine.Config
+	if err := yaml.Unmarshal([]byte(loomengine.ConfigTemplate()), &template); err != nil {
+		t.Fatalf("unmarshal loom template: %v", err)
+	}
+	reviewRows := 0
+	for _, def := range spec.Routing.Producers {
+		perch, isReview := loomSegmentPerches[def.Segment]
+		if !isReview {
+			continue
+		}
+		reviewRows++
+		if want := template.Caps(perch).Soft; def.MaxBounces != want {
+			t.Errorf("Routing row %q (segment %q) MaxBounces = %d; want %d from the loom template", def.Name, def.Segment, def.MaxBounces, want)
+		}
+	}
+	if reviewRows == 0 {
+		t.Error("Routing holds no review-segment row; want each perch's rows checked")
 	}
 
 	// The watchdog's pause seam reads the hub's record for the run's slug.

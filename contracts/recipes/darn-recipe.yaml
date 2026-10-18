@@ -83,6 +83,7 @@ producers:
     config:
       run_subdir: darn
       role_prefix: darn
+      reviewer_fan_setting: darn.darn_reviewer_fan
       # The subject under review is the committed diff, which artifact_paths cannot name; the key is
       # required, so it names the change description the writer committed, the writer's own claim
       # of what the diff does. The rubric names the diff as the subject and the amended board entry
@@ -107,6 +108,8 @@ producers:
       # shared run directory.
       run_subdir: darn
       role_prefix: darn
+      reviewer_fan_setting: darn.darn_reviewer_fan
+      fixer_fan_setting: darn.darn_fixer_fan
       profile:
         target:
           # No paths key: a diff has no file on disk for the profile's path check to stat.
@@ -134,7 +137,7 @@ producers:
         tool-use: true
         # The round reviews code, so its seats load the hub's language skills after their own.
         language-skills: true
-        # No cluster-fan key: the row's reviewer and fixer fans come from darn.yaml's
+        # No cluster-fan key: the row's reviewer_fan_setting and fixer_fan_setting keys name darn.yaml's
         # darn_reviewer_fan and darn_fixer_fan.
 
   - name: Darn-Burler-Fix
@@ -147,6 +150,7 @@ producers:
     config:
       run_subdir: darn
       role_prefix: darn
+      fixer_fan_setting: darn.darn_fixer_fan
       review_row: Darn-Burler-Review
       # The verify gate runs darn.yaml's verify command on the committed tree after each round and
       # re-prompts the fix session with the findings until it passes. Its attempts here is a

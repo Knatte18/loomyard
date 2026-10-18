@@ -28,7 +28,7 @@ import (
 // It carries a "gates" key even though this entry's own dedicated constructor could imply the validator, so that one key means one thing at every gated site and a reader of the recipe can see which validator guards each row without opening Go;
 // the key still names the validator.
 // The entry adds only the lens-review closure that shuttle evaluates in place of the "plan" closure for a run whose lead carries fork authorization, which the table sets exactly when plan_lenses is set.
-func planWriteEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
+func planWriteEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	gate, err := planWriteGateSpec(cfg, env)
 	if err != nil {
 		return nil, err
@@ -66,8 +66,8 @@ func planWriteEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, 
 		table.Gate = gate
 		return table, nil
 	}
-	inner := shedadapters.NewMultiLLMProducerSourced(name, tables, env.Seats, env.Now, rotate)
-	return loomshed.NewPlanWrite(name, inner, env.CommitPlan), nil
+	inner := shedadapters.NewMultiLLMProducerSourced(row.Name, tables, env.Seats, env.Now, rotate)
+	return loomshed.NewPlanWrite(row.Name, inner, env.CommitPlan), nil
 }
 
 // planWriteGateSpec resolves the PlanWrite row's "gates" key through resolveGateSpec, then sets Forked on every resolved entry named "plan" to loomshed.NewLensReviewPlanGate over the same roots and index.

@@ -30,9 +30,9 @@ import (
 // check used to.
 //
 // New sets MaxBounces on every row of a review segment (a segment holding a
-// Bouncer row) after the build: the segment's Bouncer's env.RowMaxBounces entry when the map holds one, 0 included, env.ReviewMaxBounces otherwise.
-// A segment whose resolved budget is 0 has zero_rounds stamped on its Bouncer row before the build, so the Bouncer settles approved at once.
-// It refuses an env.ReviewMaxBounces below 0 as its first act.
+// Bouncer row) after the build, to the segment's env.Segments[segment].MaxBounces.
+// A segment whose budget is 0 has zero_rounds stamped on its Bouncer row before the build, so the Bouncer settles approved at once.
+// It refuses a review segment with no env.Segments entry, naming the segment and the loom wiring's segment-to-perch table, and a negative budget, naming the segment, its MaxBouncesKey and ConfigFile.
 // The recipe declares no max_bounces on those rows; the budget comes from loom.yaml.
 //
 // New makes one further check of its own, and it is a coherence check across its two arguments rather
@@ -61,10 +61,6 @@ func New(env shedrecipe.Env, paths shedbuild.ShedPaths) (*shedengine.Shed, error
 		return nil, err
 	}
 
-	if err := checkReviewBudget("ReviewMaxBounces", env.ReviewMaxBounces); err != nil {
-		return nil, err
-	}
-
 	parsed, err := shedbuild.Parse(recipes.LoomRecipe)
 	if err != nil {
 		return nil, fmt.Errorf("loomrecipe: %w", err)
@@ -74,19 +70,30 @@ func New(env shedrecipe.Env, paths shedbuild.ShedPaths) (*shedengine.Shed, error
 	if err != nil {
 		return nil, err
 	}
-	stampZeroRounds(&parsed, segments, env.ReviewMaxBounces, env.RowMaxBounces)
+	budgets, err := segmentBudgets(segments, env, loomSegmentTableWayForward)
+	if err != nil {
+		return nil, err
+	}
+	stampZeroRounds(&parsed, segments, budgets)
 
 	shed, err := shedbuild.NewShedFrom(parsed, env, paths)
 	if err != nil {
 		return nil, fmt.Errorf("loomrecipe: %w", err)
 	}
 
-	if err := applyReviewBudget(shed.Producers, segments, env.ReviewMaxBounces, env.RowMaxBounces); err != nil {
-		return nil, err
-	}
+	applyReviewBudget(shed.Producers, segments, budgets)
 
 	return shed, nil
 }
+
+// loomSegmentTableWayForward is the way forward of a loom review segment missing from the wiring.
+const loomSegmentTableWayForward = "add the segment's row to the loom wiring's segment-to-perch table"
+
+// darnReviewSegment is the darn recipe's review segment.
+const darnReviewSegment = "Darn-Review"
+
+// darnBudgetWayForward is the way forward of a negative darn review budget.
+const darnBudgetWayForward = `run "lyx config darn --set review_max_bounces=<n>" from the prime, then "lyx loom resume"`
 
 // checkStatusPaths refuses an env whose status and status-lock paths differ from paths' copies of them.
 func checkStatusPaths(env shedrecipe.Env, paths shedbuild.ShedPaths) error {
@@ -104,15 +111,11 @@ func checkStatusPaths(env shedrecipe.Env, paths shedbuild.ShedPaths) error {
 // that never builds a Shed (the status verb) can compute progress. A parse error is returned
 // prefixed with "loomrecipe: ". Routing.MaxBounces is left 0.
 //
-// Every row of a review segment carries its Bouncer's rowMaxBounces entry, or reviewMaxBounces where the map holds none, as its MaxBounces, the same value New
+// Every row of a review segment carries budgets' entry for its segment as its MaxBounces, the same value New
 // applies, so the projection never reports the engine default for a review row.
 // The exception is a zero-round segment: its rows carry MaxBounces 0, which the progress projection reads as shedengine's inherited budget.
-// A reviewMaxBounces below 0 is refused, naming ReviewMaxBounces, and a negative rowMaxBounces entry for a Bouncer row is refused, naming the row.
-func Routing(reviewMaxBounces int, rowMaxBounces map[string]int) (shedengine.Routing, error) {
-	if err := checkReviewBudget("ReviewMaxBounces", reviewMaxBounces); err != nil {
-		return shedengine.Routing{}, err
-	}
-
+// A review segment budgets lacks is refused naming the segment and the loom wiring's segment-to-perch table, and a negative entry is refused naming the segment.
+func Routing(budgets map[string]int) (shedengine.Routing, error) {
 	routing, err := shedbuild.RoutingOf(recipes.LoomRecipe)
 	if err != nil {
 		return shedengine.Routing{}, fmt.Errorf("loomrecipe: %w", err)
@@ -122,20 +125,61 @@ func Routing(reviewMaxBounces int, rowMaxBounces map[string]int) (shedengine.Rou
 	if err != nil {
 		return shedengine.Routing{}, err
 	}
-	if err := applyReviewBudget(routing.Producers, segments, reviewMaxBounces, rowMaxBounces); err != nil {
+	if err := checkSegmentBudgets(segments, budgets, loomSegmentTableWayForward); err != nil {
 		return shedengine.Routing{}, err
 	}
+	applyReviewBudget(routing.Producers, segments, budgets)
 
 	return routing, nil
 }
 
-// checkReviewBudget refuses a review bounce budget below 0; name is the caller's own name for the value.
-func checkReviewBudget(name string, budget int) error {
-	if budget < 0 {
-		return fmt.Errorf("loomrecipe: %s = %d; want 0 or more (set review_max_bounces in loom.yaml)", name, budget)
+// segmentBudgets maps each review segment of segments to env.Segments' MaxBounces for it.
+// A segment with no env.Segments entry is refused naming the segment and wayForward, and a negative budget is refused naming the segment, its MaxBouncesKey and ConfigFile.
+func segmentBudgets(segments map[string]string, env shedrecipe.Env, wayForward string) (map[string]int, error) {
+	budgets := make(map[string]int, len(segments))
+	for segment := range segments {
+		settings, ok := env.Segments[segment]
+		if !ok {
+			return nil, fmt.Errorf("loomrecipe: review segment %q has no Env.Segments entry; way forward: %s", segment, wayForward)
+		}
+		if settings.MaxBounces < 0 {
+			return nil, negativeBudgetError(segment, settings.MaxBounces, settings.MaxBouncesKey, settings.ConfigFile)
+		}
+		budgets[segment] = settings.MaxBounces
+	}
+
+	return budgets, nil
+}
+
+// checkSegmentBudgets refuses a review segment of segments that budgets lacks, naming the segment and wayForward, and a negative entry, naming the segment.
+func checkSegmentBudgets(segments map[string]string, budgets map[string]int, wayForward string) error {
+	for segment := range segments {
+		budget, ok := budgets[segment]
+		if !ok {
+			return fmt.Errorf("loomrecipe: review segment %q has no budget entry; way forward: %s", segment, wayForward)
+		}
+		if budget >= 0 {
+			continue
+		}
+		if segment == darnReviewSegment {
+			return negativeBudgetError(segment, budget, "review_max_bounces", "darn.yaml")
+		}
+
+		return fmt.Errorf("loomrecipe: bounce budget of review segment %q = %d; want 0 or more; way forward: set the perch's <perch>_max_bounces, or review_max_bounces, in loom.yaml", segment, budget)
 	}
 
 	return nil
+}
+
+// negativeBudgetError refuses a negative budget of segment, naming the config key and file it resolved from.
+// The darn segment's way forward is the runnable command pair; any other names the key to set.
+func negativeBudgetError(segment string, budget int, key, file string) error {
+	wayForward := fmt.Sprintf("set %s in %s", key, file)
+	if segment == darnReviewSegment {
+		wayForward = darnBudgetWayForward
+	}
+
+	return fmt.Errorf("loomrecipe: bounce budget of review segment %q = %d from %s in %s; want 0 or more; way forward: %s", segment, budget, key, file, wayForward)
 }
 
 // reviewSegments maps each segment of the recipe source that holds a Bouncer row to that Bouncer row's name.
@@ -155,32 +199,22 @@ func reviewSegments(source []byte) (map[string]string, error) {
 	return segments, nil
 }
 
-// applyReviewBudget sets MaxBounces on every producer whose segment is a review segment.
-// A segment's rows take its Bouncer's rowMaxBounces entry whenever the map holds one, 0 included, and fallback otherwise.
-// A negative entry for a Bouncer row of segments is a wiring error naming that row.
-func applyReviewBudget(producers []shedengine.ProducerDef, segments map[string]string, fallback int, rowMaxBounces map[string]int) error {
-	for _, bouncer := range segments {
-		if budget := rowMaxBounces[bouncer]; budget < 0 {
-			return fmt.Errorf("loomrecipe: bounce budget of Bouncer row %q = %d; want 0 or more (set the perch's max_bounces key in loom.yaml)", bouncer, budget)
-		}
-	}
-
+// applyReviewBudget sets MaxBounces on every producer whose segment is a review segment, to budgets' entry for the segment.
+// It reads the map alone: every key of segments has already been checked.
+func applyReviewBudget(producers []shedengine.ProducerDef, segments map[string]string, budgets map[string]int) {
 	for i := range producers {
-		bouncer, ok := segments[producers[i].Segment]
-		if !ok {
+		if _, ok := segments[producers[i].Segment]; !ok {
 			continue
 		}
-		producers[i].MaxBounces = resolvedBudget(bouncer, fallback, rowMaxBounces)
+		producers[i].MaxBounces = budgets[producers[i].Segment]
 	}
-
-	return nil
 }
 
-// stampZeroRounds sets zero_rounds on the Bouncer row of every review segment whose resolved budget is 0.
-// The budget resolves as applyReviewBudget resolves it, so a stamped Bouncer settles approved at once exactly where its rows carry MaxBounces 0.
-func stampZeroRounds(recipe *shedbuild.Recipe, segments map[string]string, fallback int, rowMaxBounces map[string]int) {
-	for _, bouncer := range segments {
-		if resolvedBudget(bouncer, fallback, rowMaxBounces) != 0 {
+// stampZeroRounds sets zero_rounds on the Bouncer row of every review segment whose budget is 0.
+// A stamped Bouncer settles approved at once exactly where its rows carry MaxBounces 0 under applyReviewBudget.
+func stampZeroRounds(recipe *shedbuild.Recipe, segments map[string]string, budgets map[string]int) {
+	for segment, bouncer := range segments {
+		if budgets[segment] != 0 {
 			continue
 		}
 		for i := range recipe.Producers {
@@ -193,13 +227,4 @@ func stampZeroRounds(recipe *shedbuild.Recipe, segments map[string]string, fallb
 			recipe.Producers[i].Config["zero_rounds"] = true
 		}
 	}
-}
-
-// resolvedBudget returns the Bouncer row's entry in rowMaxBounces when the map holds one, else fallback.
-func resolvedBudget(bouncer string, fallback int, rowMaxBounces map[string]int) int {
-	if budget, ok := rowMaxBounces[bouncer]; ok {
-		return budget
-	}
-
-	return fallback
 }

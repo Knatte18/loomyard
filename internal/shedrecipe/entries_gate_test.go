@@ -236,7 +236,7 @@ func TestGateCapableEntries_RejectLeftoverOldKeys(t *testing.T) {
 	for name, entry := range gateCapableEntries() {
 		for _, key := range []string{"gate", "gate_attempts"} {
 			t.Run(name+"/"+key, func(t *testing.T) {
-				_, err := entry("Row", Config{key: "plan"}, reworkTestEnv(t))
+				_, err := entry(reviewRow("Row"), Config{key: "plan"}, reworkTestEnv(t))
 				assertErrContains(t, err, "unrecognized config key")
 				assertErrContains(t, err, key)
 			})
@@ -247,7 +247,7 @@ func TestGateCapableEntries_RejectLeftoverOldKeys(t *testing.T) {
 		t.Run("BurlerFix/"+key, func(t *testing.T) {
 			cfg := minimalFixConfig()
 			cfg[key] = "plan"
-			_, err := burlerFixEntry("Row", cfg, newTestEnv(t))
+			_, err := burlerFixEntry(reviewRow("Row"), cfg, newTestEnv(t))
 			assertErrContains(t, err, "unrecognized config key")
 			assertErrContains(t, err, key)
 		})

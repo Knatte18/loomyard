@@ -1,6 +1,7 @@
-// recipe.go declares this package's exported types: Constructor, the fixed-signature
-// registry value type; Config, the recipe row's portable configuration; Env, the caller-filled
-// bundle of told roots and injected seams every entry may read from; and RowModelKeys, the config keys a Burler row's settings came from.
+// recipe.go declares this package's exported types: RowIdentity, the recipe row's name and segment;
+// Constructor, the fixed-signature
+// registry value type; Config, the recipe row's portable configuration; SegmentSettings, one review segment's resolved values; Env, the caller-filled
+// bundle of told roots and injected seams every entry may read from.
 
 package shedrecipe
 
@@ -25,12 +26,19 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// Constructor is the registry's value type: name is the recipe row's Name, threaded into each
-// producer's own name parameter, and cfg/env are the row's portable configuration and the caller's
-// told environment, respectively.
-// The two exceptions are Publish and Finalize, whose underlying constructors take no name at all --
-// their Constructor entries accept and discard name.
-type Constructor func(name string, cfg Config, env Env) (shedengine.ShedProducer, error)
+// RowIdentity names the recipe row a Constructor builds.
+// Name is the row's name, and Segment is its segment: value, empty for a row outside any segment.
+type RowIdentity struct {
+	Name    string
+	Segment string
+}
+
+// Constructor is the registry's value type.
+// row is the recipe row's identity, whose Name is threaded into each producer's own name parameter.
+// cfg and env are the row's portable configuration and the caller's told environment.
+// The two exceptions are Publish and Finalize, whose underlying constructors take no name at all,
+// so their Constructor entries accept and discard row.
+type Constructor func(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error)
 
 // Config is the recipe row's static, portable, already-decoded configuration.
 // The caller decodes the recipe file into it; this package never learns the recipe file's format.
@@ -38,16 +46,31 @@ type Constructor func(name string, cfg Config, env Env) (shedengine.ShedProducer
 // error.
 type Config map[string]any
 
-// RowModelKeys names the config keys one Burler row's settings came from, so a refusal of an engine that cannot run the row names the key to change.
-// Review and Fix are the keys of the reviewer's and the fixer's model, and FixFan is the name of the key the fixer fan came from; an empty FixFan says the row is told no fixer fan.
-type RowModelKeys struct {
-	Review shuttleengine.ModelKey
-	Fix    shuttleengine.ModelKey
-	FixFan string
+// SegmentSettings holds one review segment's resolved values, shared by the segment's Bouncer, BurlerReview and BurlerFix rows.
+type SegmentSettings struct {
+	// Models is the segment's reviewer and fixer round models, already fallen back to the shared reviewer_model and fixer_model.
+	Models burlerengine.RoundModels
+	// ReviewKey is the config key the reviewer models came from.
+	ReviewKey shuttleengine.ModelKey
+	// FixKey is the config key the fixer models came from.
+	FixKey shuttleengine.ModelKey
+	// Bouncer is the Bouncer's seed and judge pair.
+	Bouncer shedadapters.BouncerModels
+	// MaxBounces is the resolved bounce budget; 0 means zero rounds.
+	MaxBounces int
+	// MaxBouncesKey is the config key MaxBounces resolved from.
+	MaxBouncesKey string
+	// HardMaxBounces is the resolved hard cap as a round number; 0 means none.
+	HardMaxBounces int
+	// HardMaxBouncesKey is the config key HardMaxBounces resolved from.
+	HardMaxBouncesKey string
+	// ConfigFile is the file both keys live in, loom.yaml or darn.yaml.
+	ConfigFile string
 }
 
-// Env carries roots and run-wide values only -- never a value that differs between two rows.
-// Anything per-row is a relative path or scalar in Config, resolved against one of these roots by
+// Env carries roots, run-wide values and the per-segment settings of Segments -- never a value that differs between two rows.
+// Segments is keyed by segment, so a segment's rows share one entry, and Setting is keyed by a row's own reference.
+// Anything else per-row is a relative path or scalar in Config, resolved against one of these roots by
 // the entry that reads it.
 // A caller fills only the fields its own recipe needs, because each entry validates only the fields
 // it reads.
@@ -114,47 +137,21 @@ type Env struct {
 	// resolver's "description" gate.
 	DescriptionPath string
 
-	// ReviewModels holds the reviewer's and the fixer's model lists, which the BurlerReview and BurlerFix rows pick from per round.
 	// ReviewTimeout is the run-wide review round deadline, used when a BurlerReview or BurlerFix row's timeout_s is absent.
-	// Both are legal on Env at all because Env carries roots and run-wide values only, and one review model list shared by every review segment is exactly such a value.
-	ReviewModels  burlerengine.RoundModels
+	// It is legal on Env because Env carries roots and run-wide values, and one deadline shared by every review segment is exactly such a value.
 	ReviewTimeout time.Duration
-	// RowReviewModels holds a BurlerReview or BurlerFix row's own reviewer and fixer model lists, keyed by row name like SegmentBounces.
-	// A row with no entry, and a nil map, take ReviewModels.
-	RowReviewModels map[string]burlerengine.RoundModels
-	// RowClusterFans holds the per-round reviewer fan list of a review segment, entry N for round N, keyed by the name of the segment's Bouncer and review rows.
-	// A row with no entry, and a nil map, take no fan from it, and a list whose every entry is "" counts as absent beside a recipe fan.
-	RowClusterFans map[string][]string
-	// RowFixFans holds the per-round fixer fan list of a review segment, keyed by the name of the segment's review row.
-	// A row with no entry, and a nil map, take no fixer fan from it.
-	RowFixFans map[string][]string
-	// RowModelKeys holds the config keys a Burler review or fix row's models and fixer fan came from, keyed by row name.
-	// A row with no entry, and a nil map, take the zero keys, which name none.
-	RowModelKeys map[string]RowModelKeys
 
-	// ReviewMaxBounces is the run-wide bounce budget of every review segment, read by loomrecipe alone.
-	// It is set on each row of a segment holding a Bouncer row, because the recipe declares no max_bounces there.
-	ReviewMaxBounces int
-	// RowMaxBounces is the bounce budget of each review segment, keyed by the segment's Bouncer row name as RowBouncerModels is, read by loomrecipe alone.
-	// A nil map and a missing entry take ReviewMaxBounces, and an entry of 0 gives the perch zero rounds.
-	RowMaxBounces map[string]int
-	// RowAutoAccept is the auto-accept flag of each Bouncer row, keyed by row name; a nil map and a missing entry mean false.
-	// A Bouncer told true accepts a harvested round at a spent bounce budget instead of running the soft-cap rule.
-	// A replay or a blocking_escalates round goes to the rule.
-	RowAutoAccept map[string]bool
-	// RowHardMaxBounces is the resolved hard cap of each Bouncer row as a round number, keyed by row name as RowAutoAccept is.
-	// A nil map, a missing entry and 0 tell the row no hard cap.
-	// Its values are already resolved, since the per-perch fallback lives in the caller's config.
-	RowHardMaxBounces map[string]int
+	// Segments holds each review segment's resolved settings, keyed by the recipe's segment: value, read by the Bouncer, BurlerReview and BurlerFix entries and by internal/loomrecipe.
+	// It is legal on Env because a segment's three rows share one entry.
+	// Nil is legal for a recipe with no review segment.
+	Segments map[string]SegmentSettings
+	// Setting is the told setting lookup a row reaches by naming module and key, returning the module's resolved value from the pair's config stack.
+	// Nil is legal for a caller whose recipe names no setting.
+	Setting func(module, key string) (any, error)
 
 	// ReviewCirclingCheckpoint is the run-wide first round a Bouncer's judge may rule CIRCLING in.
 	// The Bouncer entry requires it positive and passes it to shedadapters.BouncerConfig.CirclingCheckpoint.
 	ReviewCirclingCheckpoint int
-
-	// RowBouncerModels is the resolved seed and judge pair of each Bouncer row, keyed by row name as RowReviewModels and RowClusterFans are.
-	// A Bouncer row with no entry is a construction error.
-	// BurlerReview and BurlerFix rows keep reading the Review* fields above.
-	RowBouncerModels map[string]shedadapters.BouncerModels
 
 	// Shuttle is the injected shedadapters.Shuttle seam, an already-constructed engine (or a
 	// factory over one), read by the Bouncer row and the Burler rows' attach probes.
@@ -250,9 +247,6 @@ type Env struct {
 	// DarnVerifyAttempts is the verify gate's attempt budget of the darn recipe, which `darn.yaml`'s verify_attempts supplies.
 	// internal/loomrecipe alone reads it, stamping it onto the verify gates of the Darn-Write and Darn-Burler-Fix rows at every build.
 	DarnVerifyAttempts int
-	// DarnReviewMaxBounces is the bounce budget of the darn recipe's Darn-Review perch, which `darn.yaml`'s review_max_bounces supplies; 0 runs no review.
-	// internal/loomrecipe alone reads it.
-	DarnReviewMaxBounces int
 	// Darn is a whole-struct passthrough to loomshed.NewDarnWrite, for the reason Rework is.
 	Darn loomshed.DarnDeps
 	// PlanIndex is the code index the "plan" and "rework-plan" gates resolve plan refs against.
