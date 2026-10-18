@@ -237,14 +237,19 @@ func TestRunTimeByRole(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	orch := OrchTally{Charges: map[string]*OrchCharge{"r": {Weight: 5e6}}}
-	if err := (Report{Runs: []RunTally{run}, Orch: &orch}).WriteMarkdown(&buf); err != nil {
+	orch := OrchTally{Charges: map[string]*OrchCharge{"r": {Session: OrchShare{Weight: 5e6}}}}
+	if err := (Report{Runs: []RunTally{run}, Orch: &orch, Detail: true}).WriteMarkdown(&buf); err != nil {
 		t.Fatal(err)
 	}
+	// Detail adds the sessions and token columns; an orch part carries its weight alone.
 	for _, want := range []string{
-		"| orch | | | | | | 5.0M | ",
-		"| role | sessions | output | cache write | cache read | input | weight | share | time | time share | est. cost | models (messages) |",
-		"| idle | | | | | | | | 29m0s | 69.0% | | |",
+		"| segment | cost | share | time | time share | models (messages) | sessions | output | cache write | cache read | input | weight |\n|---|---|---|---|---|---|---|---|---|---|---|---|\n",
+		"| **Other** | unpriced | 0.0% | 13m0s | 31.0% | : 6 | 3 | 6 | 0 | 0 | 6 | 0.0M |\n",
+		"| └ burler | unpriced | 0.0% | 11m0s | 26.2% | : 5 | 2 | 5 | 0 | 0 | 5 | 0.0M |\n",
+		"| └ burler forks | unpriced | 0.0% | 2m0s | 4.8% | : 1 | 1 | 1 | 0 | 0 | 1 | 0.0M |\n",
+		"| └ session | $0.00 | 0.0% |  |  |  | | | | | | 5.0M |\n",
+		"| idle | | | 29m0s | 69.0% | | | | | | | |\n",
+		", total weight 5.0M;",
 	} {
 		if !strings.Contains(buf.String(), want) {
 			t.Errorf("report lacks %q:\n%s", want, buf.String())
@@ -284,8 +289,7 @@ func TestRunTimeByRole(t *testing.T) {
 	}
 	all, _, _ := strings.Cut(buf.String(), "## r\n")
 	for _, want := range []string{
-		"| burler | 2 | 2 | 0 | 0 | 2 | 0.0M | 100.0% | 4m0s | 50.0% |",
-		"| idle | | | | | | | | 4m0s | 50.0% | | |",
+		"| **Other** | unpriced | 0.0% | 4m0s | 50.0% | : 2 |\n| └ burler | unpriced | 0.0% | 4m0s | 50.0% | : 2 |\n| idle | | | 4m0s | 50.0% | |\n",
 		"Time is turn time:",
 		"An interval into a line that starts a turn, or longer than the stall cap of 30m0s, is idle.",
 		"The union of working time plus idle is the span.",
@@ -514,7 +518,7 @@ func TestCountRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"## my-task", "## All runs", "| webster+sub | 3 | 10 | 0 | 18 | 4 | 0.0M | 58.0% |", "opus: 3, sonnet: 1",
+		"## my-task", "## All runs", "| └ forks | unpriced | 0.0% |", "opus: 3, sonnet: 1",
 		"## Webster forks\n\n| run | cards | start context | messages | peak context | weight |\n|---|---|---|---|---|---|\n" +
 			"| my-task | 01-alpha, 02-beta | 6 | 2 | 10 | 0.0M |\n| my-task | unattributed | 3 | 1 | 3 | 0.0M |\n| my-task | unattributed | 3 | 1 | 3 | 0.0M |\n",
 	} {
@@ -921,7 +925,7 @@ func TestShedRecordSpanAndProducers(t *testing.T) {
 	for _, want := range []string{
 		"Every time figure leaves out machine sleep, 8m0s over these runs.\n",
 		"Machine sleep left out of the span: 8m0s.\n",
-		"| idle | | | | | | | | 4m0s | 66.7% | | |",
+		"| idle | | | 4m0s | 66.7% | |",
 	} {
 		if !strings.Contains(buf.String(), want) {
 			t.Errorf("report with a sleep lacks %q:\n%s", want, buf.String())

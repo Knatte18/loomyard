@@ -591,7 +591,7 @@ func CountRun(reads ReadSet, worktree, slug string, bound time.Time) (RunTally, 
 			if role == websterMasterRole {
 				fork = &ForkTally{Slug: slug, File: forkRead.ID, Session: session.Main.ID, Started: forkRead.Started}
 			}
-			run.countFile(l.engine, pricer, forkRead, role+"+sub", seen, fork)
+			run.countFile(l.engine, pricer, forkRead, role+forkSuffix, seen, fork)
 			if fork != nil {
 				run.Forks = append(run.Forks, *fork)
 			}
@@ -674,58 +674,60 @@ type Report struct {
 	Runs []RunTally
 	// Orch is the hub orchestrator's usage charged to the runs, nil when it was not counted.
 	Orch *OrchTally
+	// Detail adds the sessions and token columns to every segment table.
+	Detail bool
 }
 
-// WriteMarkdown writes the total first, each role summed over all runs, then the orchestrator section, then one table per run.
-// When the orch was counted, each role table gains an orch row of the orch usage charged to its runs.
+// WriteMarkdown writes the most expensive parts over all runs, the cost per run, the segment table summed over all runs, then the orchestrator section, then one segment table per run.
+// When the orch was counted, each segment table gains an Orch segment of the orch usage charged to its runs.
 func (r Report) WriteMarkdown(w io.Writer) error {
-	total := map[string]*RoleTally{}
+	perRun := make([][]Segment, len(r.Runs))
+	slugs := make([]string, len(r.Runs))
 	duplicates := 0
-	grand := 0.0
-	var orchTotal *OrchCharge
-	if r.Orch != nil {
-		orchTotal = &OrchCharge{}
-	}
-	totalTimes := tableTime{Roles: map[string]time.Duration{}}
+	all := segmentTable{Runs: len(r.Runs), Detail: r.Detail}
 	var slept time.Duration
-	for _, run := range r.Runs {
+	for i, run := range r.Runs {
+		var charge *OrchCharge
+		if r.Orch != nil {
+			charge = r.Orch.Charges[run.Slug]
+		}
+		perRun[i] = run.Segments(charge)
+		slugs[i] = run.Slug
 		duplicates += run.Duplicates
-		totalTimes.Idle += run.Idle()
-		totalTimes.Span += run.AwakeSpan()
+		all.Idle += run.Idle()
+		all.Span += run.AwakeSpan()
 		slept += run.Slept()
-		for role := range run.Roles {
-			totalTimes.Roles[role] += run.RoleTime(role)
-		}
-		if orchTotal != nil {
-			charge := r.Orch.Charges[run.Slug]
-			orchTotal.Tokens += charge.Tokens
-			orchTotal.Weight += charge.Weight
-			orchTotal.Cost.add(charge.Cost)
-			grand += charge.Weight
-		}
-		for role, t := range run.Roles {
-			grand += t.Usage.Weight()
-			sum := total[role]
-			if sum == nil {
-				sum = &RoleTally{Role: role, Models: map[string]int{}}
-				total[role] = sum
-			}
-			sum.Sessions += t.Sessions
-			sum.Usage.add(t.Usage)
-			sum.Cost.add(t.Cost)
-			for model, n := range t.Models {
-				sum.Models[model] += n
-			}
-		}
 	}
+	summed := perRun
+	if r.Orch != nil {
+		// The orch usage charged to no run joins the summed Orch segment, so it carries the whole orch cost of the counted period.
+		unattributed := r.Orch.Unattributed.Total()
+		summed = append(slices.Clip(perRun), []Segment{{Name: orchSegment, Parts: []*Part{
+			{Label: orchUnattributedLabel, Charged: true, Weight: unattributed.Weight, Cost: unattributed.Cost},
+		}}})
+	}
+	total := mergeSegments(summed)
+	cost := totalCost(total)
 
+	writeMostExpensiveParts(w, total, len(r.Runs))
+	writeCostPerRun(w, slugs, perRun)
 	fmt.Fprintf(w, "## All runs\n\n")
-	writeTable(w, total, totalTimes, orchTotal)
-	fmt.Fprintf(w, "Total weight %.1fM; %d repeated transcript lines skipped.\n\n", grand/1e6, duplicates)
+	all.write(w, total)
+	fmt.Fprintf(w, "Total cost %s", cost)
+	if r.Detail {
+		var weight float64
+		for _, s := range total {
+			for _, p := range s.Parts {
+				weight += p.Weight
+			}
+		}
+		fmt.Fprintf(w, ", total weight %.1fM", weight/1e6)
+	}
+	fmt.Fprintf(w, "; %d repeated transcript lines skipped.\n\n", duplicates)
 	fmt.Fprintln(w, "Time is turn time: a session works from a user or assistant line until the line that ends its turn.")
 	fmt.Fprintf(w, "An interval into a line that starts a turn, or longer than the stall cap of %s, is idle.\n", stallCap)
 	fmt.Fprintln(w, "Idle is the time no session of the run is in a turn, which holds parent review, PR-Gate, gate-slot waits, a parked driver and Go-only work such as verify and push.")
-	fmt.Fprintln(w, "Time shares can sum past 100% where sessions overlap, a `+sub` row overlapping its parent.")
+	fmt.Fprintln(w, "A segment's time is the union of its parts' working time, and time shares can sum past 100% where sessions overlap, a forks row overlapping its parent.")
 	fmt.Fprintln(w, "The union of working time plus idle is the span.")
 	if slept > 0 {
 		fmt.Fprintf(w, "Every time figure leaves out machine sleep, %s over these runs.\n", slept.Round(time.Second))
@@ -734,13 +736,6 @@ func (r Report) WriteMarkdown(w io.Writer) error {
 	if rows := sumProducers(r.Runs); len(rows) > 0 {
 		writeProducers(w, rows)
 	}
-	var cost Cost
-	for _, t := range total {
-		cost.add(t.Cost)
-	}
-	if orchTotal != nil {
-		cost.add(orchTotal.Cost)
-	}
 	if len(cost.Unpriced) > 0 {
 		fmt.Fprintf(w, "Unpriced models (messages), in no cost figure: %s.\n\n", models(cost.Unpriced))
 	}
@@ -748,17 +743,9 @@ func (r Report) WriteMarkdown(w io.Writer) error {
 		r.Orch.WriteMarkdown(w, r.Runs)
 	}
 
-	for _, run := range r.Runs {
+	for i, run := range r.Runs {
 		fmt.Fprintf(w, "## %s\n\n", run.Slug)
-		var charge *OrchCharge
-		if r.Orch != nil {
-			charge = r.Orch.Charges[run.Slug]
-		}
-		times := tableTime{Roles: map[string]time.Duration{}, Idle: run.Idle(), Span: run.AwakeSpan()}
-		for role := range run.Roles {
-			times.Roles[role] = run.RoleTime(role)
-		}
-		writeTable(w, run.Roles, times, charge)
+		segmentTable{Idle: run.Idle(), Span: run.AwakeSpan(), Detail: r.Detail}.write(w, perRun[i])
 		if run.LeftOut > 0 {
 			fmt.Fprintf(w, "Session transcripts left out: %d; they started before the slug's previous run ended, at %s.\n\n", run.LeftOut, run.Bound.Format(time.RFC3339))
 		}
@@ -787,60 +774,6 @@ func (r Report) WriteMarkdown(w io.Writer) error {
 	}
 	fmt.Fprintln(w)
 	return nil
-}
-
-// tableTime is one role table's time figures: a duration per role, the idle duration and the span duration.
-type tableTime struct {
-	Roles map[string]time.Duration
-	Idle  time.Duration
-	Span  time.Duration
-}
-
-// writeTable writes one role table, then an idle row, and below it an orch row of the charge orch when orch is not nil;
-// the shares divide by the table's total weight, the orch row's included, and the time shares by the span in times.
-func writeTable(w io.Writer, roles map[string]*RoleTally, times tableTime, orch *OrchCharge) {
-	tallies := make([]*RoleTally, 0, len(roles))
-	for _, t := range roles {
-		tallies = append(tallies, t)
-	}
-	sort.Slice(tallies, func(i, j int) bool {
-		if tallies[i].Usage.Weight() != tallies[j].Usage.Weight() {
-			return tallies[i].Usage.Weight() > tallies[j].Usage.Weight()
-		}
-		return tallies[i].Role < tallies[j].Role
-	})
-	tableWeight := 0.0
-	for _, t := range tallies {
-		tableWeight += t.Usage.Weight()
-	}
-	if orch != nil {
-		tableWeight += orch.Weight
-	}
-	share := func(weight float64) float64 {
-		if tableWeight == 0 {
-			return 0
-		}
-		return 100 * weight / tableWeight
-	}
-	timeCells := func(d time.Duration) string {
-		pct := 0.0
-		if times.Span > 0 {
-			pct = 100 * float64(d) / float64(times.Span)
-		}
-		return fmt.Sprintf("%s | %.1f%%", d.Round(time.Second), pct)
-	}
-	fmt.Fprintln(w, "| role | sessions | output | cache write | cache read | input | weight | share | time | time share | est. cost | models (messages) |")
-	fmt.Fprintln(w, "|---|---|---|---|---|---|---|---|---|---|---|---|")
-	for _, t := range tallies {
-		u := t.Usage
-		fmt.Fprintf(w, "| %s | %d | %d | %d | %d | %d | %.1fM | %.1f%% | %s | %s | %s |\n",
-			t.Role, t.Sessions, u.Output, u.CacheCreate, u.CacheRead, u.Input, u.Weight()/1e6, share(u.Weight()), timeCells(times.Roles[t.Role]), t.Cost, models(t.Models))
-	}
-	fmt.Fprintf(w, "| idle | | | | | | | | %s | | |\n", timeCells(times.Idle))
-	if orch != nil {
-		fmt.Fprintf(w, "| %s | | | | | | %.1fM | %.1f%% | | | %s | |\n", orchRole, orch.Weight/1e6, share(orch.Weight), orch.Cost)
-	}
-	fmt.Fprintln(w)
 }
 
 func models(counts map[string]int) string {

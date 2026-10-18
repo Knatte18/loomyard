@@ -29,13 +29,40 @@ type OrchPart struct {
 	Cost     Cost
 }
 
-// OrchCharge is the orch usage charged to one run, or left unattributed.
+// OrchShare is an amount of charged orch usage.
 // Tokens and Weight are fractional because a message in several runs' windows is split equally among them.
-type OrchCharge struct {
+type OrchShare struct {
 	Tokens float64
-	// Weight is the charged messages' Usage.Weight, the unit of the role tables' weight and share columns.
+	// Weight is the charged messages' Usage.Weight, the unit of the segment tables' weight column.
 	Weight float64
 	Cost   Cost
+}
+
+// OrchCharge is the orch usage charged to one run, or left unattributed, split into the orch sessions' own messages and their sub-agents'.
+type OrchCharge struct {
+	Session, Forks OrchShare
+}
+
+// Total is the whole charge, session and forks together.
+func (c OrchCharge) Total() OrchShare {
+	var total OrchShare
+	total.add(c.Session)
+	total.add(c.Forks)
+	return total
+}
+
+// side is the session or forks share of the charge.
+func (c *OrchCharge) side(fork bool) *OrchShare {
+	if fork {
+		return &c.Forks
+	}
+	return &c.Session
+}
+
+func (s *OrchShare) add(o OrchShare) {
+	s.Tokens += o.Tokens
+	s.Weight += o.Weight
+	s.Cost.add(o.Cost)
 }
 
 // OrchTally is the hub orchestrator's usage between the earliest start and the latest end of the counted runs' active windows, charged to those runs.
@@ -96,7 +123,7 @@ func CountOrch(reads ReadSet, prime string, runs []RunTally) (OrchTally, error) 
 		_, messages := tally.readTranscript(l.engine, pricer, session.Main, seen)
 		tally.Main.add(messages)
 		for _, m := range messages {
-			tally.chargeByTime(m, runs)
+			tally.chargeByTime(m, runs, false)
 		}
 
 		for _, forkRead := range session.Forks {
@@ -110,9 +137,9 @@ func CountOrch(reads ReadSet, prime string, runs []RunTally) (OrchTally, error) 
 			}
 			for _, m := range messages {
 				if len(named) == 1 {
-					tally.Charges[named[0]].add(m, 1)
+					tally.Charges[named[0]].Forks.charge(m, 1)
 				} else {
-					tally.chargeByTime(m, runs)
+					tally.chargeByTime(m, runs, true)
 				}
 			}
 		}
@@ -145,8 +172,9 @@ func (tally *OrchTally) readTranscript(engine string, pricer shuttleengine.Messa
 	return prompt, messages
 }
 
-// chargeByTime splits a message equally among the runs whose active window holds its timestamp, or leaves it unattributed when none does.
-func (tally *OrchTally) chargeByTime(m orchMessage, runs []RunTally) {
+// chargeByTime splits a message equally among the runs whose active window holds its timestamp, or leaves it unattributed when none does;
+// fork says whether it charges the forks side or the session side.
+func (tally *OrchTally) chargeByTime(m orchMessage, runs []RunTally, fork bool) {
 	var holders []string
 	for _, run := range runs {
 		if !run.First.IsZero() && !m.At.Before(run.First) && !m.At.After(run.Last) {
@@ -154,12 +182,12 @@ func (tally *OrchTally) chargeByTime(m orchMessage, runs []RunTally) {
 		}
 	}
 	if len(holders) == 0 {
-		tally.Unattributed.add(m, 1)
+		tally.Unattributed.side(fork).charge(m, 1)
 		return
 	}
 	share := 1 / float64(len(holders))
 	for _, slug := range holders {
-		tally.Charges[slug].add(m, share)
+		tally.Charges[slug].side(fork).charge(m, share)
 	}
 }
 
@@ -174,11 +202,11 @@ func (p *OrchPart) add(messages []orchMessage) {
 	}
 }
 
-// add charges the fraction f of message m.
-func (c *OrchCharge) add(m orchMessage, f float64) {
-	c.Tokens += float64(m.Usage.Total()) * f
-	c.Weight += m.Usage.Weight() * f
-	c.Cost.add(m.Cost.share(f))
+// charge adds the fraction f of message m.
+func (s *OrchShare) charge(m orchMessage, f float64) {
+	s.Tokens += float64(m.Usage.Total()) * f
+	s.Weight += m.Usage.Weight() * f
+	s.Cost.add(m.Cost.share(f))
 }
 
 // WriteMarkdown writes the "Orchestrator" section: the counted orch usage split into main sessions and sub-agents, then each run's charge beside the run's own cost, the unattributed rest and the attribution rule.
@@ -201,7 +229,7 @@ func (tally OrchTally) WriteMarkdown(w io.Writer, runs []RunTally) {
 	for _, row := range []struct {
 		name string
 		part OrchPart
-	}{{orchRole, tally.Main}, {orchRole + "+sub", tally.Sub}, {"total", total}} {
+	}{{orchSessionLabel, tally.Main}, {orchForksLabel, tally.Sub}, {"total", total}} {
 		fmt.Fprintf(w, "| %s | %d | %d | %.1fM | %s |\n", row.name, row.part.Sessions, row.part.Messages, float64(row.part.Usage.Total())/1e6, row.part.Cost)
 	}
 	fmt.Fprintln(w)
@@ -209,7 +237,7 @@ func (tally OrchTally) WriteMarkdown(w io.Writer, runs []RunTally) {
 	fmt.Fprintln(w, "| run | orch tokens | orch cost | run cost | orch share of run cost |")
 	fmt.Fprintln(w, "|---|---|---|---|---|")
 	for _, run := range runs {
-		charge := tally.Charges[run.Slug]
+		charge := tally.Charges[run.Slug].Total()
 		own := run.Cost()
 		share := "n/a"
 		if whole := own.USD + charge.Cost.USD; whole > 0 {
@@ -217,6 +245,7 @@ func (tally OrchTally) WriteMarkdown(w io.Writer, runs []RunTally) {
 		}
 		fmt.Fprintf(w, "| %s | %.1fM | %s | %s | %s |\n", run.Slug, charge.Tokens/1e6, charge.Cost, own, share)
 	}
-	fmt.Fprintf(w, "| unattributed | %.1fM | %s | | |\n\n", tally.Unattributed.Tokens/1e6, tally.Unattributed.Cost)
+	unattributed := tally.Unattributed.Total()
+	fmt.Fprintf(w, "| unattributed | %.1fM | %s | | |\n\n", unattributed.Tokens/1e6, unattributed.Cost)
 	fmt.Fprintf(w, "%s\n\n", orchAttributionRule)
 }
