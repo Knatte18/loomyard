@@ -531,7 +531,13 @@ func TestComputeTiming(t *testing.T) {
 				for k, row := range darnRowPhases {
 					darn[k] = entryAt(row.row, secondsAfter(run, 600+60*k))
 				}
-				landedRun(w, "darned", "t1", 3, fmt.Sprintf(`{"recipe":"darn","driver":"go","started_at":%q}`, run.Format(time.RFC3339)), darn)
+				// The Run-Shed row's change names a darn review producer, which only the darn table maps to review:
+				// its 30s counts under review and not under write, the phase of the Darn-Write row before it.
+				batten := battenRecordOf(
+					entryAt(battenrecipe.NameWorktreeCreate, run),
+					changeAt("child running → running at "+loomshed.NameDarnBurlerReview, secondsAfter(run, 750)),
+				)
+				landedRun(w, "darned", "t1", 3, fmt.Sprintf(`{"recipe":"darn","driver":"go","started_at":%q}`, run.Format(time.RFC3339)), darn, batten)
 				landedRun(w, "loomed", "t2", 14, seedStartedAt(at(10)), []shedengine.HistoryEntry{entryAt(loomshed.NameFinalize, secondsAfter(at(10), 900))})
 				start := at(199)
 				status := shedengine.Status{
