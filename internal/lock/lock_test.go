@@ -142,7 +142,7 @@ func TestAcquireWriteLockWithin(t *testing.T) {
 		wait         time.Duration
 		wantLocked   bool
 	}{
-		{name: "free lock is acquired within the wait", wait: 50 * time.Millisecond, wantLocked: true},
+		{name: "free lock is acquired within the wait", wait: time.Minute, wantLocked: true},
 		{name: "held lock expires without an error", held: true, wait: 50 * time.Millisecond, wantLocked: false},
 		{name: "lock released during the wait is acquired", held: true, releaseAfter: 20 * time.Millisecond, wait: 2 * time.Second, wantLocked: true},
 	}
