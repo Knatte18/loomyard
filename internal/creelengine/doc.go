@@ -111,6 +111,24 @@
 // Only a program sender may queue one, and only for an orch strand; the CLI has no flag for it, and a request that sets Wait or Interrupt with a command is refused.
 // A journal record without the command fields folds as a text inject.
 //
+// withdraw is a Go-client verb: the CLI has no verb for it, and only a program sender may send it.
+// Store.Withdraw removes the caller's own queued injects to one receiver and its own unread, unreserved mail held by that receiver.
+// Each inject is journaled `expired` and each message `undelivered`, both with the reason `withdrawn`; a wait on an inject is answered expired and a wait on a message's reply is answered returned.
+// An inject already `sending` and a message already read or being read are left alone.
+// It acts on the receiver by name whether or not creel still lists that strand, and answers an empty result when nothing of the caller's is queued there.
+// The response carries the ids of the withdrawn injects and the id and subject of each withdrawn message.
+//
+// # Refusal code
+//
+// The refusal of a strand claim that names a strand creel lists, from a process in no strand pane, is the only refusal that carries a code: the response's `code` is `strand-claim-outside-pane`.
+// The Go client returns such a refusal as an error with the daemon's message as its text that `errors.Is` matches against `ErrStrandClaimOutsidePane`.
+// A claim from another strand's pane, a program claim from a non-orch pane and the refusal while a pane process is unknown carry no code.
+//
+// # Call timeout
+//
+// The Go client's timeout bounds every request, waiting or not, and zero means none; its expiry returns `ErrWaitTimeout`.
+// A non-waiting call to a daemon that accepts and never answers therefore returns at the timeout.
+//
 // interrupt sends the guarded interrupt at once, bypassing the queue, and reports whether it stopped a running turn.
 // The interrupt clears a prompt the provider restored, and a clear that fails after the key was sent still counts as sent.
 // No delivery reaches the receiver while the interrupt runs, its settles and its clear included, and the receiver's worker probes afresh once it ends.

@@ -1,4 +1,4 @@
-// verbs.go implements the pool's verbs: post, reply, read, inbox, forward, log, inject, interrupt, hold and release, with the privilege rules.
+// verbs.go implements the pool's verbs: post, reply, read, inbox, forward, log, inject, interrupt, hold, release and withdraw, with the privilege rules.
 
 package creelengine
 
@@ -562,6 +562,54 @@ func (s *Store) Hold(sender Sender, receiver string, duration time.Duration) (Ho
 		}
 		result = HoldResult{Owner: sender.Name, Expires: s.clock.Now().UTC().Add(duration), Renewed: current != nil}
 		return s.writer.append(record{Event: eventHeld, By: sender.Name, To: target.Name, ExpiresAt: result.Expires})
+	})
+	return result, err
+}
+
+// WithdrawnReason is the journal reason of an inject expired, and of a message returned undelivered, by a withdraw.
+const WithdrawnReason = "withdrawn"
+
+// WithdrawnMessage is one unread message a withdraw removed.
+type WithdrawnMessage struct {
+	ID      int64
+	Subject string
+}
+
+// WithdrawResult is what Withdraw answers: the ids of the injects it expired and the messages it returned undelivered, both in id order.
+type WithdrawResult struct {
+	Injects  []int64
+	Messages []WithdrawnMessage
+}
+
+// Withdraw removes the caller's own queued injects to receiver and its own unread, unreserved mail held by receiver.
+// Each inject is journaled expired and each message undelivered, with reason WithdrawnReason; a wait on an inject is answered expired and a wait on a message's reply is answered returned.
+// An inject already sending and a message already read or being read are left alone.
+// Only a program may withdraw, and it acts on receiver by name whether or not creel still lists that strand; with nothing queued the result is empty.
+func (s *Store) Withdraw(sender Sender, receiver string) (WithdrawResult, error) {
+	if sender.Kind != KindProgram {
+		return WithdrawResult{}, fmt.Errorf("creel: %s may not withdraw; only a program may, through the Go client", sender.Name)
+	}
+	var result WithdrawResult
+	err := s.do(func() error {
+		for _, entry := range s.queuedEntriesLocked(receiver) {
+			if entry.From != sender.Name {
+				continue
+			}
+			if err := s.writer.append(record{Event: eventExpired, ID: entry.ID, Reason: WithdrawnReason}); err != nil {
+				return err
+			}
+			s.answerLocked(waitKey{kind: waitInject, id: entry.ID}, Outcome{Kind: OutcomeExpired})
+			result.Injects = append(result.Injects, entry.ID)
+		}
+		unread := s.unreadLocked(receiver, sender.Name)
+		for _, msg := range unread {
+			if err := s.writer.append(record{Event: eventUndelivered, ID: msg.ID, Reason: WithdrawnReason}); err != nil {
+				return err
+			}
+			s.answerLocked(waitKey{kind: waitReply, id: msg.ID}, Outcome{Kind: OutcomeReturned, Message: *msg})
+			result.Messages = append(result.Messages, WithdrawnMessage{ID: msg.ID, Subject: msg.Subject})
+		}
+		return nil
 	})
 	return result, err
 }

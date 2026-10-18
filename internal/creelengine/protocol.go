@@ -26,7 +26,12 @@ const (
 	VerbInterrupt  = "interrupt"
 	VerbHold       = "hold"
 	VerbRelease    = "release"
+	// VerbWithdraw removes a program's own queued injects and unread mail to one receiver; only the Go client sends it.
+	VerbWithdraw = "withdraw"
 )
+
+// CodeStrandClaimOutsidePane is the Response.Code of the refusal of a strand claim that names a listed strand from a process in no strand pane.
+const CodeStrandClaimOutsidePane = "strand-claim-outside-pane"
 
 // maxRequestBytes bounds one request line: a 64 KiB body whose every byte is escaped fits.
 const maxRequestBytes = 1 << 20
@@ -36,7 +41,7 @@ const maxRequestBytes = 1 << 20
 type Request struct {
 	Verb  string `json:"verb"`
 	Claim Claim  `json:"claim"`
-	// Receiver is the receiver of post, forward, inject, interrupt, hold and release, and the To filter of log.
+	// Receiver is the receiver of post, forward, inject, interrupt, hold, release and withdraw, and the To filter of log.
 	Receiver string `json:"receiver,omitempty"`
 	// Text is the body of post and reply, and the text of inject.
 	Text string `json:"text,omitempty"`
@@ -64,8 +69,10 @@ type Request struct {
 // Response is what the daemon answers on a connection; every one carries the hub path.
 // A waiting verb first gets a Pending response carrying the id it waits on, and its outcome as a later response.
 type Response struct {
-	OK      bool   `json:"ok"`
-	Error   string `json:"error,omitempty"`
+	OK    bool   `json:"ok"`
+	Error string `json:"error,omitempty"`
+	// Code names the kind of a refusal a Go caller tells apart, empty for every other refusal.
+	Code    string `json:"code,omitempty"`
 	HubPath string `json:"hub_path"`
 	// Pending marks the interim response of a waiting verb: the request is accepted and the outcome follows.
 	Pending bool `json:"pending,omitempty"`
@@ -92,6 +99,8 @@ type Response struct {
 	// Hold is the hold a hold verb set; Released says a release ended one.
 	Hold     *HoldResult `json:"hold,omitempty"`
 	Released bool        `json:"released,omitempty"`
+	// Withdrawn is what a withdraw removed.
+	Withdrawn *WithdrawResult `json:"withdrawn,omitempty"`
 }
 
 // ackLine is the client's acknowledgement that it wrote the messages of a read.

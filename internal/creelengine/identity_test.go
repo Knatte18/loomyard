@@ -72,6 +72,11 @@ func TestResolveSender(t *testing.T) {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("resolveSender = %+v, %v; want an error containing %q", got, err, tt.wantErr)
 				}
+				// Only the refusal of a claim from a process in no pane wraps the sentinel: the other-pane and unknown-pane-process refusals do not.
+				outside := strings.Contains(tt.wantErr, "runs in no strand pane")
+				if got := errors.Is(err, ErrStrandClaimOutsidePane); got != outside {
+					t.Errorf("errors.Is(%v, ErrStrandClaimOutsidePane) = %v; want %v", err, got, outside)
+				}
 				return
 			}
 			if err != nil {

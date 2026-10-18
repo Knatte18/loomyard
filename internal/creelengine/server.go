@@ -231,8 +231,13 @@ func (d *daemon) write(conn net.Conn, resp Response) error {
 	return err
 }
 
+// fail answers a refusal, with the code of the refusals a Go caller tells apart.
 func (d *daemon) fail(conn net.Conn, err error) {
-	_ = d.write(conn, Response{OK: false, Error: err.Error()})
+	resp := Response{OK: false, Error: err.Error()}
+	if errors.Is(err, ErrStrandClaimOutsidePane) {
+		resp.Code = CodeStrandClaimOutsidePane
+	}
+	_ = d.write(conn, resp)
 }
 
 // closeWatcher notices the client closing a connection while the daemon waits for an outcome.
@@ -354,6 +359,12 @@ func (d *daemon) dispatch(conn *net.UnixConn, reader *bufio.Reader, sender Sende
 			return err
 		}
 		ok.Released = released
+	case VerbWithdraw:
+		withdrawn, err := store.Withdraw(sender, req.Receiver)
+		if err != nil {
+			return err
+		}
+		ok.Withdrawn = &withdrawn
 	default:
 		return fmt.Errorf("creel: unknown verb %q", req.Verb)
 	}

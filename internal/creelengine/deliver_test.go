@@ -661,6 +661,43 @@ func TestScheduler_Injects(t *testing.T) {
 				t.Errorf("journal lacks %s; want the second inject's aged record counting 5 s since its posting:\n%s", want, text)
 			}
 		}},
+		{"WithdrawLeavesAnInjectAlreadySendingAndItSettlesInjected", func(t *testing.T, e *env) {
+			entered, release := make(chan struct{}), make(chan struct{})
+			var once sync.Once
+			e.del.SetSendFunc(func(string, string) error {
+				once.Do(func() { close(entered) })
+				<-release
+				return nil
+			})
+			scheduler := creelengine.NewScheduler(e.store, e.del, e.clock)
+			scheduler.Start()
+			t.Cleanup(func() {
+				once.Do(func() { close(entered) })
+				select {
+				case <-release:
+				default:
+					close(release)
+				}
+				scheduler.Stop()
+			})
+			sending, waiter, err := e.store.InjectWait(program(batten), alpha, "/first", time.Hour, false)
+			if err != nil {
+				t.Fatalf("InjectWait: %v", err)
+			}
+			<-entered
+			queued := inject(t, e, program(batten), alpha, "/second", time.Hour, false)
+			got, err := e.store.Withdraw(program(batten), alpha)
+			if err != nil || !slices.Equal(got.Injects, []int64{queued}) {
+				t.Fatalf("Withdraw = %+v, %v; want only the queued inject %d", got, err, queued)
+			}
+			close(release)
+			if outcome := awaitOutcome(t, waiter); outcome.Kind != creelengine.OutcomeInjected {
+				t.Errorf("wait answered %v; want the sending inject to settle injected", outcome.Kind)
+			}
+			if events := eventsOf(e.store.Log(creelengine.LogFilter{ID: sending.ID})); !slices.Equal(events, []string{"posted", "sending", "injected"}) {
+				t.Errorf("events of the sending inject = %v; want posted, sending, injected", events)
+			}
+		}},
 		{"CommandInjectIsRunThroughCommandAndJournaledSendingThenInjected", func(t *testing.T, e *env) {
 			command := creelengine.Command{Name: creelengine.CommandCompact, Argument: "keep the plan"}
 			result := injectCommand(t, e, orch, command)

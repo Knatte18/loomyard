@@ -701,6 +701,90 @@ func TestStore_InjectAndHold(t *testing.T) {
 				t.Errorf("Queued = %+v; want the command inject kept queued under another owner's hold", queued)
 			}
 		}},
+		{"Withdraw_RemovesTheCallersQueuedInjectsAndUnreadMailAndNoOneElses", func(t *testing.T, e *env) {
+			const tender = "ly:TENDER"
+			e.post(t, program(batten), orch, "read already")
+			wantBodies(t, e.readBodies(t, strand(orch), "", true), "read already")
+			firstInject, err := e.store.Inject(program(batten), orch, "first", 0, false)
+			if err != nil {
+				t.Fatalf("Inject: %v", err)
+			}
+			othersInject, err := e.store.Inject(program(tender), orch, "other's", 0, false)
+			if err != nil {
+				t.Fatalf("Inject: %v", err)
+			}
+			waitedInject, injectWaiter, err := e.store.InjectWait(program(batten), orch, "waited", 0, false)
+			if err != nil {
+				t.Fatalf("InjectWait: %v", err)
+			}
+			secondMail := e.post(t, program(batten), orch, "second\nmore")
+			thirdMail, mailWaiter, err := e.store.PostWait(program(batten), orch, "third")
+			if err != nil {
+				t.Fatalf("PostWait: %v", err)
+			}
+			e.post(t, program(tender), orch, "other's mail")
+
+			got, err := e.store.Withdraw(program(batten), orch)
+			if err != nil {
+				t.Fatalf("Withdraw: %v", err)
+			}
+			want := creelengine.WithdrawResult{
+				Injects:  []int64{firstInject.ID, waitedInject.ID},
+				Messages: []creelengine.WithdrawnMessage{{ID: secondMail, Subject: "second"}, {ID: thirdMail, Subject: "third"}},
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("Withdraw = %+v; want %+v", got, want)
+			}
+			if queued := e.store.Queued(orch); len(queued) != 1 || queued[0].ID != othersInject.ID {
+				t.Errorf("Queued = %+v; want only the other program's inject", queued)
+			}
+			wantBodies(t, e.readBodies(t, strand(orch), "", true), "other's mail")
+			for name, waiter := range map[string]*creelengine.Waiter{"inject": injectWaiter, "message": mailWaiter} {
+				wantKind := creelengine.OutcomeExpired
+				if name == "message" {
+					wantKind = creelengine.OutcomeReturned
+				}
+				select {
+				case outcome := <-waiter.C:
+					if outcome.Kind != wantKind {
+						t.Errorf("the waiter on the withdrawn %s was answered %q; want %q", name, outcome.Kind, wantKind)
+					}
+				default:
+					t.Errorf("the waiter on the withdrawn %s was not answered", name)
+				}
+			}
+			withdrawn := map[string][]int64{}
+			for _, entry := range e.store.Log(creelengine.LogFilter{}) {
+				if entry.Reason == creelengine.WithdrawnReason {
+					withdrawn[entry.Event] = append(withdrawn[entry.Event], entry.ID)
+				}
+			}
+			wantJournal := map[string][]int64{"expired": want.Injects, "undelivered": {secondMail, thirdMail}}
+			if !reflect.DeepEqual(withdrawn, wantJournal) {
+				t.Errorf("records with reason %q = %v; want %v", creelengine.WithdrawnReason, withdrawn, wantJournal)
+			}
+		}},
+		{"Withdraw_OnANameCreelNoLongerListsWithNothingQueuedAnswersEmpty", func(t *testing.T, e *env) {
+			got, err := e.store.Withdraw(program(batten), "ly:ghost:driver")
+			if err != nil || len(got.Injects) != 0 || len(got.Messages) != 0 {
+				t.Errorf("Withdraw = %+v, %v; want an empty result", got, err)
+			}
+			if entries := e.store.Log(creelengine.LogFilter{}); len(entries) != 0 {
+				t.Errorf("an empty Withdraw journaled %v", entries)
+			}
+		}},
+		{"Withdraw_IsRefusedForAnythingButAProgram", func(t *testing.T, e *env) {
+			if _, err := e.store.Inject(program(batten), orch, "stay", 0, false); err != nil {
+				t.Fatalf("Inject: %v", err)
+			}
+			for _, sender := range []creelengine.Sender{strand(orch2), external()} {
+				_, err := e.store.Withdraw(sender, orch)
+				wantErr(t, err, "only a program")
+			}
+			if queued := e.store.Queued(orch); len(queued) != 1 {
+				t.Errorf("a refused Withdraw left %v queued; want the inject kept", queued)
+			}
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

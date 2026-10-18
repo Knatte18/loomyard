@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"slices"
 	"strings"
@@ -551,6 +552,69 @@ func TestDaemon_Protocol(t *testing.T) {
 			liar := r.client(strandClaim(beta), nil, creelfake.NewClock(epoch))
 			if _, err := liar.Call(creelengine.Request{Verb: creelengine.VerbPost, Receiver: alpha, Text: "forged"}, 0, nil); err == nil || !strings.Contains(err.Error(), "runs in the pane of") {
 				t.Errorf("a claim naming another strand: %v; want it refused", err)
+			}
+		}},
+		{"WithdrawByAProgramClientIsAnsweredWithTheResult", false, func(t *testing.T, r *rig) {
+			r.del.SetIdle(alpha, false)
+			r.start()
+			c := r.client(programClaim(batten), nil, creelfake.NewClock(epoch))
+			inject := mustCall(t, c, creelengine.Request{Verb: creelengine.VerbInject, Receiver: alpha, Text: "/clear"})
+			mail := mustCall(t, c, creelengine.Request{Verb: creelengine.VerbPost, Receiver: alpha, Text: "note\nmore"})
+			resp := mustCall(t, c, creelengine.Request{Verb: creelengine.VerbWithdraw, Receiver: alpha})
+			want := &creelengine.WithdrawResult{Injects: []int64{inject.ID}, Messages: []creelengine.WithdrawnMessage{{ID: mail.ID, Subject: "note"}}}
+			if !reflect.DeepEqual(resp.Withdrawn, want) {
+				t.Errorf("withdraw answered %+v; want %+v", resp.Withdrawn, want)
+			}
+		}},
+		{"StrandClaimFromOutsideEveryPaneCarriesTheRefusalCode", false, func(t *testing.T, r *rig) {
+			if runtime.GOOS != "linux" {
+				t.Skip("the outside-pane refusal rests on D4's Linux-only ancestry check")
+			}
+			r.start()
+			c := r.client(strandClaim(alpha), nil, creelfake.NewClock(epoch))
+			_, err := c.Call(creelengine.Request{Verb: creelengine.VerbLog}, 0, nil)
+			if !errors.Is(err, creelengine.ErrStrandClaimOutsidePane) || !strings.Contains(err.Error(), "runs in no strand pane") {
+				t.Errorf("a strand claim from outside every pane: %v; want an error matching ErrStrandClaimOutsidePane with the daemon's message", err)
+			}
+			if resp := r.rawExchange(`{"verb":"log","claim":{"strand_name":"` + alpha + `"}}`); resp.OK || resp.Code != creelengine.CodeStrandClaimOutsidePane {
+				t.Errorf("raw refusal = %+v; want the code %q", resp, creelengine.CodeStrandClaimOutsidePane)
+			}
+			if resp := r.rawExchange(`{"verb":"frobnicate"}`); resp.OK || resp.Code != "" {
+				t.Errorf("an unrelated refusal = %+v; want no code", resp)
+			}
+		}},
+		{"NonWaitingCallToAListenerThatNeverAnswersTimesOut", false, func(t *testing.T, r *rig) {
+			listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: r.geom.SocketPath, Net: "unix"})
+			if err != nil {
+				t.Fatalf("listen: %v", err)
+			}
+			var held []net.Conn
+			var heldMu sync.Mutex
+			go func() {
+				for {
+					conn, err := listener.Accept()
+					if err != nil {
+						return
+					}
+					heldMu.Lock()
+					held = append(held, conn)
+					heldMu.Unlock()
+				}
+			}()
+			t.Cleanup(func() {
+				_ = listener.Close()
+				heldMu.Lock()
+				defer heldMu.Unlock()
+				for _, conn := range held {
+					_ = conn.Close()
+				}
+			})
+			clientClock := creelfake.NewClock(epoch)
+			calling := callAsync(r.client(externalClaim(), nil, clientClock), creelengine.Request{Verb: creelengine.VerbLog}, 5*time.Second)
+			clientClock.AwaitWaits(1)
+			clientClock.Advance(5 * time.Second)
+			if got := result(t, calling); !errors.Is(got.err, creelengine.ErrWaitTimeout) {
+				t.Errorf("non-waiting call = %+v, %v; want ErrWaitTimeout at the timeout", got.resp, got.err)
 			}
 		}},
 	}

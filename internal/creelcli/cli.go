@@ -273,6 +273,14 @@ func messagesFields(messages []creelengine.Message) []map[string]any {
 	return rendered
 }
 
+// timeoutWhenWaiting is the --timeout a call passes the client: the flag when the call waits, and none otherwise, since the client bounds every request by its timeout.
+func timeoutWhenWaiting(waiting bool, timeout time.Duration) time.Duration {
+	if waiting {
+		return timeout
+	}
+	return 0
+}
+
 // postCmd returns the `creel post` verb.
 func postCmd() *cobra.Command {
 	var (
@@ -314,7 +322,7 @@ Example:
 					}
 					return result{fields: map[string]any{"id": resp.ID, "sender": resp.Sender}, done: fmt.Sprintf("message #%d was posted", resp.ID)}, nil
 				}
-				resp, err := client.Call(creelengine.Request{Verb: creelengine.VerbPost, Receiver: args[0], Text: args[1], Wait: waitReply}, timeout, nil)
+				resp, err := client.Call(creelengine.Request{Verb: creelengine.VerbPost, Receiver: args[0], Text: args[1], Wait: waitReply}, timeoutWhenWaiting(waitReply, timeout), nil)
 				if err != nil {
 					return result{}, err
 				}
@@ -374,7 +382,7 @@ Example:
 					Interrupt: interrupt, TTLSeconds: int64(ttl / time.Second), Wait: wait,
 				}
 				var last creelengine.Response
-				resp, err := client.CallWatching(req, timeout, nil, func(note creelengine.Response) {
+				resp, err := client.CallWatching(req, timeoutWhenWaiting(wait, timeout), nil, func(note creelengine.Response) {
 					last = note
 					fmt.Fprintf(cmd.ErrOrStderr(), "creel: %s is stalled: %s (at %s)\n", args[0], note.Stall.Reason(), note.StallAt.Format(time.RFC3339))
 				})
@@ -503,7 +511,7 @@ Example:
 					}
 					return nil
 				}
-				resp, err := client.Call(creelengine.Request{Verb: creelengine.VerbRead, From: from, All: all, Wait: wait}, timeout, printMessages)
+				resp, err := client.Call(creelengine.Request{Verb: creelengine.VerbRead, From: from, All: all, Wait: wait}, timeoutWhenWaiting(wait, timeout), printMessages)
 				if err != nil {
 					return result{}, err
 				}
