@@ -35,6 +35,7 @@ func layerPath(dirs Dirs, spec Spec, layer Layer) (path, owner string, err error
 // The base layer is scaffolded from the template when absent and written with yamlengine.SetValues, and a freshly-scaffolded file is removed on error, mirroring Edit's contract;
 // a layer above the base is sparse, so only the keys set are written through yamlengine.SetSparse and nothing is scaffolded.
 // A write to the local layer is checked with [ValidateLocal] first, and a refused one writes nothing.
+// A spec with JSONEntries writes each pair as one whole top-level entry through yamlengine.SetEntries on every layer, scaffolding an absent base layer from the template.
 // Returns the sorted list of pre-existing keys not in the template that were preserved verbatim;
 // nil on any error.
 func Set(dirs Dirs, spec Spec, layer Layer, pairs []yamlengine.KV) ([]string, error) {
@@ -47,6 +48,9 @@ func Set(dirs Dirs, spec Spec, layer Layer, pairs []yamlengine.KV) ([]string, er
 	}
 	template := string(spec.Template)
 
+	if spec.JSONEntries {
+		return nil, setEntries(spec, layer, path, layer == BaseLayer(dirs, spec), pairs)
+	}
 	if layer != BaseLayer(dirs, spec) {
 		return setSparse(spec, layer, path, pairs)
 	}
@@ -84,6 +88,32 @@ func Set(dirs Dirs, spec Spec, layer Layer, pairs []yamlengine.KV) ([]string, er
 	}
 
 	return result.Preserved, nil
+}
+
+// setEntries writes each pair as a whole top-level entry into the layer file at path.
+// An absent base file starts from the template and any other absent file from nothing;
+// a local write is checked against the local rule first, and a refused write leaves the file as it was.
+func setEntries(spec Spec, layer Layer, path string, base bool, pairs []yamlengine.KV) error {
+	existing, err := os.ReadFile(path)
+	switch {
+	case os.IsNotExist(err) && base:
+		existing = spec.Template
+	case err != nil && !os.IsNotExist(err):
+		return err
+	}
+	merged, err := yamlengine.SetEntries(existing, pairs)
+	if err != nil {
+		return err
+	}
+	if layer == LayerLocal {
+		if err := ValidateLocal(spec, merged); err != nil {
+			return err
+		}
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create config directory: %w", err)
+	}
+	return os.WriteFile(path, merged, 0o644)
 }
 
 // setSparse writes pairs into the sparse layer file at path, creating it when absent.
