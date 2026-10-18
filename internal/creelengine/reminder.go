@@ -1,4 +1,4 @@
-// reminder.go composes the one-line reminder typed to a receiver with unread mail and decides when the next one is due.
+// reminder.go composes the lines typed to a receiver with unread mail, a program's notice and the reminder of the rest, and decides when the next reminder is due.
 
 package creelengine
 
@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 )
 
 const (
@@ -16,7 +17,20 @@ const (
 	reminderBackoffCeiling = time.Hour
 	// maxReminderMessages is how many unread messages a reminder lists; the rest are counted.
 	maxReminderMessages = 5
+	// maxNoticeBytes is the longest body a program's message may have and still be typed as a notice line.
+	maxNoticeBytes = 2048
 )
+
+// isNotice reports whether msg is typed into its receiver's pane as a notice line instead of being reminded: a program's message, which takes no reply, whose body is one line without control characters and at most maxNoticeBytes long.
+// A program's name is accepted only from an orch pane or the Go client, so its text cannot be an agent posing as an instruction.
+func isNotice(msg *Message) bool {
+	return isProgramMailbox(msg.From) && len(msg.Body) <= maxNoticeBytes && strings.IndexFunc(msg.Body, unicode.IsControl) < 0
+}
+
+// composeNotice renders the line that carries a notice: its sender and its body.
+func composeNotice(msg Message) string {
+	return fmt.Sprintf("[creel] %s: %s", msg.From, msg.Body)
+}
 
 // reminderBackoff returns the wait after the reminder at the given step of an unchanged unread set: 5 minutes, doubling to the 1-hour ceiling.
 func reminderBackoff(step int) time.Duration {

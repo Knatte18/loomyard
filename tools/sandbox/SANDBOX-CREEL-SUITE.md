@@ -111,7 +111,7 @@ Confine all free text to the `title`/`body` string fields so the JSON stays well
 **Watch:** Add a strand with `lyx reed add --cmd claude` and let it reach its idle prompt.
 `lyx creel post <strand name> "please say READ"` prints one JSON envelope with the message `id`, and the first creel verb of the hub starts its daemon by itself.
 At the agent's next idle moment a one-line reminder naming the sender appears typed in its pane; the reminder is not repeated while the agent works.
-Asking the agent to run `lyx creel read` prints the message with its sender and body, and a second `lyx creel read` prints that nothing is unread.
+Asking the agent to run `lyx creel read` prints, as plain text, the message's id, its sender and the reply command on one line and its body below, and a second `lyx creel read` prints `nothing unread`.
 `lyx creel inject <strand name> "say INJECTED" --wait` types the line into the pane at idle and exits 0 with `"outcome":"injected"`.
 `lyx creel log --id <id>` lists the message's events `posted`, each `reminded` event whose unread ids hold it, and `read`, oldest first, with their times and subject, and no event has a body field.
 A reminder typed into a busy turn, a line typed twice, or a body field in the log is a real failure here.
@@ -176,7 +176,7 @@ The reminder lands only after the turn ends and appears once in the pane's scrol
 
 **Goal:** "Leave interleaved mail from several senders, read it in every way the verb offers, and confirm each read returns the right set and that mail whose output could not be written stays unread."
 
-**Watch:** Interleave mail from EXTERNAL and a shell strand, then check plain `read`, `read --from`, `read --all` and `inbox`.
+**Watch:** Interleave mail from EXTERNAL and a shell strand, then check that plain `read` returns every sender's mail at once, that `read --from` narrows it to one sender, that `read --json` prints the same set as one JSON line, and `inbox`.
 `lyx creel read > /dev/full` exits 1, writes a `creel:` line to stderr and leaves the mail unread, so a following `read` still returns it.
 
 **Verdict:** `FAIL` on a wrong set or lost mail.

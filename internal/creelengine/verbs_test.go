@@ -74,9 +74,9 @@ func (e *env) post(t *testing.T, from creelengine.Sender, to, body string) int64
 }
 
 // readBodies reads as the sender, acks, and returns the bodies handed out.
-func (e *env) readBodies(t *testing.T, as creelengine.Sender, from string, all bool) []string {
+func (e *env) readBodies(t *testing.T, as creelengine.Sender, from string) []string {
 	t.Helper()
-	reading, err := e.store.Read(as, from, all)
+	reading, err := e.store.Read(as, from)
 	if err != nil {
 		t.Fatalf("Read(%s): %v", as.Name, err)
 	}
@@ -134,7 +134,7 @@ func TestStore_Mail(t *testing.T) {
 			if !reflect.DeepEqual(woken, []string{beta, beta}) {
 				t.Errorf("wake hook saw %v; want beta twice", woken)
 			}
-			wantBodies(t, e.readBodies(t, strand(beta), "", false), "hello", "again")
+			wantBodies(t, e.readBodies(t, strand(beta), ""), "hello", "again")
 		}},
 		{"Post_RefusesEmptyAndOversizedBody", func(t *testing.T, e *env) {
 			_, err := e.store.Post(strand(alpha), beta, "  ")
@@ -166,12 +166,12 @@ func TestStore_Mail(t *testing.T) {
 			wantErr(t, err, "unknown receiver")
 			e.post(t, program(batten), alpha, "from the program")
 			e.post(t, strand(alpha), batten, "reply by mail")
-			wantBodies(t, e.readBodies(t, program(batten), "", false), "reply by mail")
+			wantBodies(t, e.readBodies(t, program(batten), ""), "reply by mail")
 		}},
 		{"Read_ProgramMailboxKnownAfterFirstRead", func(t *testing.T, e *env) {
-			wantBodies(t, e.readBodies(t, program(batten), "", false))
+			wantBodies(t, e.readBodies(t, program(batten), ""))
 			e.post(t, strand(alpha), batten, "now known")
-			wantBodies(t, e.readBodies(t, program(batten), "", false), "now known")
+			wantBodies(t, e.readBodies(t, program(batten), ""), "now known")
 		}},
 		{"Read_SetsAndInbox", func(t *testing.T, e *env) {
 			e.post(t, program(batten), beta, "b1")
@@ -187,23 +187,15 @@ func TestStore_Mail(t *testing.T) {
 			if !reflect.DeepEqual(inbox.Senders, wantInbox) {
 				t.Errorf("Inbox = %+v; want senders %v", inbox, wantInbox)
 			}
-			wantBodies(t, e.readBodies(t, strand(beta), "", false), "b1", "b2")
+			wantBodies(t, e.readBodies(t, strand(beta), batten), "b1", "b2")
 			inbox, err = e.store.Inbox(strand(beta))
 			wantInbox = []creelengine.InboxEntry{{From: alpha, Unread: 3}}
 			if err != nil || !reflect.DeepEqual(inbox.Senders, wantInbox) {
 				t.Errorf("Inbox after the first read = %+v, %v; want senders %v", inbox, err, wantInbox)
 			}
-			wantBodies(t, e.readBodies(t, strand(beta), "", false), "a1", "a2", "a3")
-			wantBodies(t, e.readBodies(t, strand(beta), "", false))
-			e.post(t, strand(alpha), beta, "a4")
 			e.post(t, program(batten), beta, "b3")
-			e.post(t, strand(alpha), beta, "a5")
-			wantBodies(t, e.readBodies(t, strand(beta), batten, false), "b3")
-			e.post(t, program(batten), beta, "b4")
-			wantBodies(t, e.readBodies(t, strand(beta), batten, true), "b4")
-			e.post(t, program(batten), beta, "b5")
-			wantBodies(t, e.readBodies(t, strand(beta), "", true), "a4", "a5", "b5")
-			wantBodies(t, e.readBodies(t, strand(beta), "", true))
+			wantBodies(t, e.readBodies(t, strand(beta), ""), "a1", "a2", "a3", "b3")
+			wantBodies(t, e.readBodies(t, strand(beta), ""))
 			inbox, err = e.store.Inbox(strand(beta))
 			if err != nil || len(inbox.Senders) != 0 {
 				t.Errorf("Inbox after reading everything = %+v, %v; want an empty set", inbox, err)
@@ -220,26 +212,26 @@ func TestStore_Mail(t *testing.T) {
 		}},
 		{"Read_ReservesUntilAckedOrReleased", func(t *testing.T, e *env) {
 			e.post(t, strand(alpha), beta, "one")
-			first, err := e.store.Read(strand(beta), "", false)
+			first, err := e.store.Read(strand(beta), "")
 			if err != nil || len(first.Messages) != 1 {
 				t.Fatalf("first Read = %+v, %v; want one message", first, err)
 			}
-			second, err := e.store.Read(strand(beta), "", false)
+			second, err := e.store.Read(strand(beta), "")
 			if err != nil || len(second.Messages) != 0 {
 				t.Errorf("a read while the first is un-acked = %+v, %v; want none", second, err)
 			}
 			first.Release()
-			again, err := e.store.Read(strand(beta), "", false)
+			again, err := e.store.Read(strand(beta), "")
 			if err != nil || len(again.Messages) != 1 {
 				t.Fatalf("Read after Release = %+v, %v; want the message back", again, err)
 			}
 			if err := again.Ack(); err != nil {
 				t.Fatalf("Ack: %v", err)
 			}
-			wantBodies(t, e.readBodies(t, strand(beta), "", false))
+			wantBodies(t, e.readBodies(t, strand(beta), ""))
 		}},
 		{"Read_RefusesExternalCaller", func(t *testing.T, e *env) {
-			_, err := e.store.Read(external(), "", false)
+			_, err := e.store.Read(external(), "")
 			wantErr(t, err, "--wait-reply")
 			_, err = e.store.Inbox(external())
 			wantErr(t, err, "--wait-reply")
@@ -249,8 +241,8 @@ func TestStore_Mail(t *testing.T) {
 			if err := e.store.Forward(strand(beta), id, orch); err != nil {
 				t.Fatalf("Forward: %v", err)
 			}
-			wantBodies(t, e.readBodies(t, strand(beta), "", false))
-			reading, err := e.store.Read(strand(orch), "", false)
+			wantBodies(t, e.readBodies(t, strand(beta), ""))
+			reading, err := e.store.Read(strand(orch), "")
 			if err != nil || len(reading.Messages) != 1 {
 				t.Fatalf("Read as the new holder = %+v, %v; want the message", reading, err)
 			}
@@ -266,17 +258,17 @@ func TestStore_Mail(t *testing.T) {
 			wantErr(t, e.store.Forward(strand(beta), id, "ly:EXTERNAL"), "--wait-reply")
 			wantErr(t, e.store.Forward(strand(beta), id, "ly:nobody:driver"), "unknown receiver")
 			wantErr(t, e.store.Forward(strand(beta), 999, orch), "no longer")
-			e.readBodies(t, strand(beta), "", false)
+			e.readBodies(t, strand(beta), "")
 			wantErr(t, e.store.Forward(strand(beta), id, orch), "already read")
 		}},
 		{"Reply_ToAStrandIsMail", func(t *testing.T, e *env) {
 			id := e.post(t, strand(alpha), beta, "question")
-			e.readBodies(t, strand(beta), "", false)
+			e.readBodies(t, strand(beta), "")
 			replyID, err := e.store.Reply(strand(beta), id, "answer")
 			if err != nil {
 				t.Fatalf("Reply: %v", err)
 			}
-			reading, err := e.store.Read(strand(alpha), "", false)
+			reading, err := e.store.Read(strand(alpha), "")
 			if err != nil || len(reading.Messages) != 1 {
 				t.Fatalf("Read as the original sender = %+v, %v; want the reply", reading, err)
 			}
@@ -704,7 +696,7 @@ func TestStore_InjectAndHold(t *testing.T) {
 		{"Withdraw_RemovesTheCallersQueuedInjectsAndUnreadMailAndNoOneElses", func(t *testing.T, e *env) {
 			const tender = "ly:TENDER"
 			e.post(t, program(batten), orch, "read already")
-			wantBodies(t, e.readBodies(t, strand(orch), "", true), "read already")
+			wantBodies(t, e.readBodies(t, strand(orch), ""), "read already")
 			firstInject, err := e.store.Inject(program(batten), orch, "first", 0, false)
 			if err != nil {
 				t.Fatalf("Inject: %v", err)
@@ -738,7 +730,7 @@ func TestStore_InjectAndHold(t *testing.T) {
 			if queued := e.store.Queued(orch); len(queued) != 1 || queued[0].ID != othersInject.ID {
 				t.Errorf("Queued = %+v; want only the other program's inject", queued)
 			}
-			wantBodies(t, e.readBodies(t, strand(orch), "", true), "other's mail")
+			wantBodies(t, e.readBodies(t, strand(orch), ""), "other's mail")
 			for name, waiter := range map[string]*creelengine.Waiter{"inject": injectWaiter, "message": mailWaiter} {
 				wantKind := creelengine.OutcomeExpired
 				if name == "message" {

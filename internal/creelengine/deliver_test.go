@@ -199,7 +199,7 @@ func TestScheduler_Reminders(t *testing.T) {
 		}},
 		{"ReplyToAStrandWithNoWorkerIsRemindedOnce", func(t *testing.T, e *env) {
 			first := e.post(t, strand(beta), alpha, "question")
-			e.readBodies(t, strand(alpha), "", false)
+			e.readBodies(t, strand(alpha), "")
 			e.start(t)
 			if _, err := e.store.Reply(strand(alpha), first, "answer"); err != nil {
 				t.Fatalf("Reply: %v", err)
@@ -375,6 +375,54 @@ func TestScheduler_Reminders(t *testing.T) {
 				t.Errorf("typed %q; want %q", got, want)
 			}
 		}},
+		{"ProgramNoticeIsTypedAsItsLineReadAndLeftOutOfTheReminder", func(t *testing.T, e *env) {
+			notice := e.post(t, program(batten), beta, "task-x: landed; newly ready: task-y")
+			e.post(t, strand(alpha), beta, "hello")
+			e.start(t)
+			e.probeWaits(1)
+			e.tick(time.Second)
+			want := []string{"[creel] " + batten + ": task-x: landed; newly ready: task-y", reminderFor(1, "", "#2 from "+alpha)}
+			if got := e.typed(beta); !slices.Equal(got, want) {
+				t.Errorf("typed %q; want %q", got, want)
+			}
+			if got, want := eventsOf(e.store.Log(creelengine.LogFilter{ID: notice})), []string{"posted", "read"}; !slices.Equal(got, want) {
+				t.Errorf("Log(#%d) events = %v; want %v", notice, got, want)
+			}
+			inbox, err := e.store.Inbox(strand(beta))
+			if wantInbox := []creelengine.InboxEntry{{From: alpha, Unread: 1}}; err != nil || !reflect.DeepEqual(inbox.Senders, wantInbox) {
+				t.Errorf("Inbox = %+v, %v; want senders %v", inbox, err, wantInbox)
+			}
+		}},
+		{"ProgramMailThatIsNoNoticeAndOtherSendersAreReminded", func(t *testing.T, e *env) {
+			e.post(t, program(batten), beta, "first line\nsecond line")
+			e.post(t, program(batten), beta, strings.Repeat("x", 2049))
+			e.post(t, external(), beta, "from a terminal")
+			e.post(t, strand(alpha), beta, "from a strand")
+			e.start(t)
+			e.probeWaits(1)
+			want := []string{reminderFor(4, "", "#1 from "+batten, "#2 from "+batten, "#3 from "+external().Name, "#4 from "+alpha)}
+			if got := e.typed(beta); !slices.Equal(got, want) {
+				t.Errorf("typed %q; want %q", got, want)
+			}
+		}},
+		{"BusyNoticeStaysUnreadAndANotLandedOneIsRead", func(t *testing.T, e *env) {
+			busy := e.post(t, program(batten), beta, "busy")
+			e.del.SetSendError(creelengine.ErrBusy)
+			e.start(t)
+			e.probeWaits(1)
+			if got := eventsOf(e.store.Log(creelengine.LogFilter{ID: busy})); !slices.Equal(got, []string{"posted"}) {
+				t.Fatalf("Log(#%d) events after a busy send = %v; want only posted", busy, got)
+			}
+			e.del.SetSendError(creelengine.ErrNotLanded)
+			e.tick(time.Second)
+			want := []string{"[creel] " + batten + ": busy", "[creel] " + batten + ": busy"}
+			if got := e.typed(beta); !slices.Equal(got, want) {
+				t.Errorf("typed %q; want the busy try and the retry", got)
+			}
+			if got := eventsOf(e.store.Log(creelengine.LogFilter{ID: busy})); !slices.Equal(got, []string{"posted", "read"}) {
+				t.Errorf("Log(#%d) events after a not-landed send = %v; want posted and read", busy, got)
+			}
+		}},
 		{"ProgramMailboxIsNeverReminded", func(t *testing.T, e *env) {
 			e.start(t)
 			e.post(t, program(batten), alpha, "hello")
@@ -420,12 +468,14 @@ func TestScheduler_Reminders(t *testing.T) {
 			before := len(e.probeWaits(0))
 			e.post(t, program(batten), beta, "from the owner")
 			e.probeWaits(before + 1)
-			want := []string{reminderFor(1, batten, "#2 from "+batten)}
+			e.post(t, program(batten), beta, "two lines\nfrom the owner")
+			e.probeWaits(before + 2)
+			want := []string{"[creel] " + batten + ": from the owner", reminderFor(1, batten, "#3 from "+batten)}
 			if got := e.typed(beta); !slices.Equal(got, want) {
-				t.Fatalf("typed %q; want only the owner's mail reminded", got)
+				t.Fatalf("typed %q; want only the owner's notice and mail", got)
 			}
 			e.tick(31 * time.Minute)
-			want = append(want, reminderFor(2, "", "#1 from "+alpha, "#2 from "+batten))
+			want = append(want, reminderFor(2, "", "#1 from "+alpha, "#3 from "+batten))
 			if got := e.typed(beta); !slices.Equal(got, want) {
 				t.Errorf("typed %q after the hold ended; want %q", got, want)
 			}
@@ -434,7 +484,7 @@ func TestScheduler_Reminders(t *testing.T) {
 			e.start(t)
 			first := e.post(t, strand(alpha), beta, "one")
 			e.probeWaits(1)
-			e.readBodies(t, strand(beta), "", false)
+			e.readBodies(t, strand(beta), "")
 			before := len(e.probeWaits(0))
 			second := e.post(t, strand(alpha), beta, "two")
 			e.probeWaits(before + 1)
@@ -1162,7 +1212,7 @@ func TestSweep_RemovedHolders(t *testing.T) {
 	// holder reads the message as its holder without consuming it, so a test can see where it ended up.
 	holderOf := func(t *testing.T, e *env, as string) []creelengine.Message {
 		t.Helper()
-		reading, err := e.store.Read(strand(as), "", true)
+		reading, err := e.store.Read(strand(as), "")
 		if err != nil {
 			t.Fatalf("Read(%s): %v", as, err)
 		}
@@ -1270,8 +1320,10 @@ func TestSweep_RemovedHolders(t *testing.T) {
 			if len(held) != 1 || held[0].Holder != orch2 || held[0].EndedUnreadBy != alpha || len(held[0].Path) != 0 {
 				t.Fatalf("after two sweeps the message is %+v; want it back with %s, marked as ended unread by %s", held, orch2, alpha)
 			}
+			// The returned mail's reminder may already be journaled, since the worker types it without the test advancing the clock.
 			want := []string{"posted", "forwarded", "returned"}
-			if got := eventsOf(e.store.Log(creelengine.LogFilter{ID: id})); !slices.Equal(got, want) {
+			got := slices.DeleteFunc(eventsOf(e.store.Log(creelengine.LogFilter{ID: id})), func(event string) bool { return event == "reminded" })
+			if !slices.Equal(got, want) {
 				t.Errorf("events = %v; want %v", got, want)
 			}
 			awaitTyped(t, e, orch2, reminderFor(1, "", "#1 from "+external().Name))

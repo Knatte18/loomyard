@@ -549,7 +549,7 @@ func TestCreelCLI(t *testing.T) {
 		}
 	})
 
-	t.Run("as a strand read prints the message and acknowledges it", func(t *testing.T) {
+	t.Run("as a strand read prints the messages as text, or as JSON with --json, and acknowledges them", func(t *testing.T) {
 		r := newRig(t)
 		alpha := r.name("alpha:driver")
 		t.Setenv(agentname.StrandNameEnv, alpha)
@@ -558,18 +558,31 @@ func TestCreelCLI(t *testing.T) {
 		r.delivery.SetStrands(strand)
 		r.startDaemon(t)
 
-		if post := runCreel(r.cwd, "post", alpha, "note to self"); post.code != 0 {
+		for _, body := range []string{"note to self", "and another"} {
+			if post := runCreel(r.cwd, "post", alpha, body); post.code != 0 {
+				t.Fatalf("creel post = (%d, %q); want exit 0", post.code, post.raw)
+			}
+		}
+		r.clientClock.Advance(6 * time.Minute)
+		read := runCreel(r.cwd, "read")
+		posted := epoch.Format(time.RFC3339)
+		want := fmt.Sprintf("#1 from %[1]s, posted %[2]s — reply with: lyx creel post --reply 1 <text>\nnote to self\n\n#2 from %[1]s, posted %[2]s — reply with: lyx creel post --reply 2 <text>\nand another\n", alpha, posted)
+		if read.code != 0 || read.raw != want {
+			t.Fatalf("creel read = (%d, %q); want exit 0 with %q", read.code, read.raw, want)
+		}
+		if post := runCreel(r.cwd, "post", alpha, "as json"); post.code != 0 {
 			t.Fatalf("creel post = (%d, %q); want exit 0", post.code, post.raw)
 		}
-		read := runCreel(r.cwd, "read")
-		messages, _ := read.fields["messages"].([]any)
-		if read.code != 0 || len(messages) != 1 || !strings.Contains(read.raw, "note to self") {
-			t.Fatalf("creel read = (%d, %q); want exit 0 with the one message", read.code, read.raw)
+		asJSON := runCreel(r.cwd, "read", "--json")
+		messages, _ := asJSON.fields["messages"].([]any)
+		if asJSON.code != 0 || len(messages) != 1 {
+			t.Fatalf("creel read --json = (%d, %q); want exit 0 with one message", asJSON.code, asJSON.raw)
 		}
-		again := runCreel(r.cwd, "read")
-		messages, _ = again.fields["messages"].([]any)
-		if again.code != 0 || len(messages) != 0 || !strings.Contains(again.raw, "nothing unread") {
-			t.Errorf("creel read after the acknowledged one = (%d, %q); want exit 0 saying nothing unread", again.code, again.raw)
+		if message, _ := messages[0].(map[string]any); message["body"] != "as json" || message["from"] != alpha {
+			t.Fatalf("creel read --json = (%d, %q); want exit 0 with the one message's fields", asJSON.code, asJSON.raw)
+		}
+		if again := runCreel(r.cwd, "read"); again.code != 0 || again.raw != "nothing unread\n" {
+			t.Errorf("creel read after the acknowledged ones = (%d, %q); want exit 0 printing nothing unread", again.code, again.raw)
 		}
 	})
 
@@ -629,7 +642,7 @@ func TestCreelCLI(t *testing.T) {
 		// The daemon releases the dropped read's reservation only once it sees the connection close, so the retry runs under a real-time deadline.
 		deadline := time.Now().Add(10 * time.Second)
 		for {
-			read := runCreel(r.cwd, "read")
+			read := runCreel(r.cwd, "read", "--json")
 			if messages, _ := read.fields["messages"].([]any); read.code == 0 && len(messages) == 1 && strings.Contains(read.raw, "note to self") {
 				return
 			}
@@ -869,7 +882,7 @@ func TestCreelCLI(t *testing.T) {
 		r.sweepLast()
 		deadline := time.Now().Add(10 * time.Second)
 		for {
-			read := runCreel(r.cwd, "read")
+			read := runCreel(r.cwd, "read", "--json")
 			messages, _ := read.fields["messages"].([]any)
 			if len(messages) == 1 {
 				message, _ := messages[0].(map[string]any)
@@ -990,7 +1003,8 @@ func TestCreelCLI(t *testing.T) {
 		if program.Shortname() != r.short {
 			t.Errorf("Shortname() = %q; want %q", program.Shortname(), r.short)
 		}
-		if _, err := program.Post(orch, "from the program"); err != nil {
+		// Two lines, so the mail is no notice the delivery types and marks read before the strand reads it.
+		if _, err := program.Post(orch, "from the program\nsecond line"); err != nil {
 			t.Fatalf("Post() = %v", err)
 		}
 		strand, err := NewStrandClient(location, orch)
@@ -1004,7 +1018,7 @@ func TestCreelCLI(t *testing.T) {
 		}); err != nil {
 			t.Fatalf("ReadAll() = %v", err)
 		}
-		if len(read) != 1 || read[0].Body != "from the program" || read[0].From != r.short+":BATTEN" {
+		if len(read) != 1 || read[0].Body != "from the program\nsecond line" || read[0].From != r.short+":BATTEN" {
 			t.Errorf("the strand read %+v; want one message from %s:BATTEN", read, r.short)
 		}
 	})

@@ -8,7 +8,11 @@
 // The spawn reaps the detached daemon in the background, logs its exit with its pid and status, and reads exit status 0 as a lost start race; the client's connect wait ends on any other exit.
 // A client that gives up connecting quotes the started daemon's lines from that log.
 // The daemon writes its start header and its pid-tagged warnings to its stderr, which that spawn points at the daemon log, so a start failure reaches the file.
-// `read` acknowledges its messages only once its envelope was written, so output that cannot be written leaves them unread.
+// `read` prints plain text: each message is a header line and its body, with a blank line between two.
+// The header of mail that takes a reply, from a strand or EXTERNAL, names its id, its sender and the `lyx creel post --reply <id>` command; a program's message names only its sender.
+// It also names the message a reply answers and the receiver a returned message ended unread at, and the posting time once the message is more than five minutes old by the client's clock.
+// `read --json` prints the messages as one JSON line with every field instead, for programs.
+// `read` acknowledges its messages only once its output was written, so output that cannot be written leaves them unread.
 // A refusal whose JSON envelope cannot be written to stdout writes the error to stderr with the same exit code, on one line that opens with `creel: ` once, whether or not the error already carried the prefix.
 // A success envelope that cannot be written exits 1 with one `creel: ` answer line on stderr, after any stall notes.
 // For post and inject the line names what they already stored, and for a forward, hold, release or interrupt it says the verb took effect.
