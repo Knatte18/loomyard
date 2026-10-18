@@ -70,8 +70,10 @@ func Command() *cobra.Command {
 		Use:   "creel",
 		Short: "send messages and injects between the agents of the hub through its message daemon",
 		Long: `creel is the hub's message daemon and its verbs. post leaves a message for a
-strand, which gets a one-line reminder typed when it is idle, and read hands
-the message over. inject types a line into an idle strand at once, interrupt
+strand; a message from an agent strand is announced by a one-line reminder
+typed when the receiver is idle and handed over by read, while mail from
+EXTERNAL or a program is carried in full in the typed line when it fits the
+line cap. inject types a line into an idle strand at once, interrupt
 stops a running turn, forward passes a message on, hold keeps a receiver to
 one sender for a while, and inbox and log show the pool. The daemon starts
 by itself on the first verb.`,
@@ -295,7 +297,9 @@ func postCmd() *cobra.Command {
 		Long: `post leaves the text as a message for the receiver strand and prints its id.
 A message from an agent strand is announced to the receiver by a one-line
 reminder typed when it is idle, and read with "lyx creel read". Mail from
-EXTERNAL or a program is carried in full in the typed line and needs no read.
+EXTERNAL or a program is carried in full in the typed line and needs no read,
+unless it is longer than the line cap, when it is announced and read like an
+agent's.
 
 With --reply <id> the text answers message <id> and goes to its sender, so no
 receiver is given. With --wait-reply the call waits for the reply, up to

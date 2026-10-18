@@ -588,7 +588,8 @@ func (s *Store) tellStallLocked(receiver string, stall Stall, note stallNote) {
 
 // markNoticeRead journals the notice id read by receiver, the pane it was typed into.
 // A notice that left the receiver, was read or is reserved by a read meanwhile is left to that.
-// A reserved notice whose read is released rather than acknowledged is unread and unreserved again, so its line is typed a second time; the journal still holds one read.
+// A reserved notice whose read is released rather than acknowledged is unread and unreserved again, so its line is typed a second time;
+// the journal still holds one read.
 func (s *Store) markNoticeRead(receiver string, id int64) error {
 	return s.do(func() error {
 		msg := s.state.messages[id]
