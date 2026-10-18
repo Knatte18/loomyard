@@ -255,9 +255,14 @@ func snapshotBoardConfig(board string) (map[string]fileSnapshot, error) {
 	return prior, nil
 }
 
-// restoreBoardConfig puts every file of prior back and returns cause, joined with any restore failure.
+// restoreBoardConfig puts back every file of prior that differs from its snapshot and returns cause, joined with any restore failure.
+// A file already as snapshotted is left alone, so a failure before any write reports no restore failure.
 func restoreBoardConfig(prior map[string]fileSnapshot, cause error) error {
 	for path, snap := range prior {
+		current, err := snapshotFile(path)
+		if err == nil && current.existed == snap.existed && bytes.Equal(current.data, snap.data) {
+			continue
+		}
 		cause = rollBack(path, snap, cause)
 	}
 	return cause
