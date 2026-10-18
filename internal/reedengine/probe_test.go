@@ -146,7 +146,7 @@ func TestProbeCapabilityLocked_GoesThroughTheSocketScopedTmuxCmd(t *testing.T) {
 
 	sawArgs := fake.Calls()
 	if len(sawArgs) != 2 {
-		t.Fatalf("TmuxCmd saw %d probe call(s) (%v); want exactly 2 (-V and list-commands) — every probe call must carry reed's own -L socket", len(sawArgs), sawArgs)
+		t.Fatalf("TmuxCmd saw %d probe call(s) (%v); want exactly 2 (-V and list-commands) — every probe call must carry an explicit -L socket", len(sawArgs), sawArgs)
 	}
 	if sawArgs[0][0] != "-V" {
 		t.Errorf("first probe call = %v; want -V", sawArgs[0])
