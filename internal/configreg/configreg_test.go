@@ -75,6 +75,7 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 		"landing": {"conflict", "conflict_timeout_min", "describe", "describe_timeout_min"},
 	}
 	wantLocalDenied := map[string][]string{
+		"batten":  {"open_ide_command", "open_window_command", "seed_ide_command"},
 		"claude":  {"binary", "deny_agent_tool", "deny_ask_user_question"},
 		"reed":    {"debug_log", "mouse", "shell", "tmux", "tmux_conf"},
 		"shuttle": {"deny_python", "run_dir"},

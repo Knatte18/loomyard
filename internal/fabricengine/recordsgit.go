@@ -279,9 +279,12 @@ func (f *Fabric) commitWeft(pathspec []string, message string, opts SyncOptions,
 //
 // CodePushSkipped is non-empty only when the push ran in the hub's prime and left the code side's unpushed commits alone:
 // it names the branch and says it was left for the operator to push.
+//
+// LocalSkipped names the branches a push left unpublished because they carry the local-only mark.
 type PushResult struct {
 	MutationRecord
-	CodePushSkipped string `json:"code_push_skipped,omitempty"`
+	CodePushSkipped string   `json:"code_push_skipped,omitempty"`
+	LocalSkipped    []string `json:"local_skipped,omitempty"`
 }
 
 // recordPushIfAdvanced records KindBranchPushed for repo's current branch when hasUnpushedBefore and

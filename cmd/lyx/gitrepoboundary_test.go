@@ -78,6 +78,8 @@ var gitrepoPinnedRunBoundMethods = []string{
 	"DeleteRemoteBranch",
 	"DeleteRemoteBranchLeased",
 	"UpdateRemoteBranchLeased",
+	"MarkBranchLocal",
+	"ClearBranchLocalMark",
 	"CommitsNotIn",
 	"BlameLines",
 	"MergeStart",

@@ -98,6 +98,8 @@ var nilLegal = map[string]bool{
 	"SegmentBounces":                    true,
 	"Segments":                          true,
 	"Setting":                           true,
+	"Command.Setting":                   true,
+	"Command.ExecutableSetting":         true,
 }
 
 // noFindingsIndex is a planindex.Index that answers no findings, so the packages built on the kit do not link the resolve-backed index.
@@ -243,6 +245,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		Seats:              &shedfake.SeatRunner{},
 		Models:             modelspec.Registry{"opus": {Engine: "claude", Model: "claude-opus-test"}},
 		Setting:            TemplateSetting,
+		ExecutableSetting:  TemplateSetting,
 		Segments: map[string]shedrecipe.SegmentSettings{
 			"Discussion-Review": fullEnvSegment(3, "loom.yaml"),
 			"Plan-Review":       fullEnvSegment(3, "loom.yaml"),
@@ -418,9 +421,17 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			PushSeed:             func(context.Context) error { return nil },
 			MarkWatched:          func(context.Context) (bool, error) { return false, nil },
 		},
-		OpenWindow: offSwitch(),
-		SeedIDE:    offSwitch(),
-		OpenIDE:    offSwitch(),
+		Command: shedadapters.CommandDeps{
+			Lyx:     "lyx",
+			Slug:    "fullenv-slug",
+			TaskDir: func() (string, error) { return "", nil },
+			Dir:     dir,
+			LogPath: func(string) string { return "" },
+			Run: func(context.Context, string, string, string, time.Duration) (shedadapters.CommandResult, error) {
+				return shedadapters.CommandResult{}, nil
+			},
+			Rerun: "lyx batten run fullenv-slug",
+		},
 	}
 }
 
@@ -430,14 +441,6 @@ func fullEnvSegment(maxBounces int, configFile string) shedrecipe.SegmentSetting
 		MaxBounces:    maxBounces,
 		MaxBouncesKey: "review_max_bounces",
 		ConfigFile:    configFile,
-	}
-}
-
-// offSwitch returns a switched seam pair whose flag is off and whose action does nothing.
-func offSwitch() shedadapters.SwitchedAction {
-	return shedadapters.SwitchedAction{
-		Enabled: func() (bool, error) { return false, nil },
-		Act:     func(context.Context) error { return nil },
 	}
 }
 

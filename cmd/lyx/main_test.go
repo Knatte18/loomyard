@@ -12,6 +12,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
@@ -97,4 +100,46 @@ func TestRootHook_NoVerboseFlagKeepsTheLevelSetAtInit(t *testing.T) {
 	if !strings.Contains(buf.String(), "debug after the root hook") {
 		t.Errorf("stderr output = %q after the root hook with no -v; want the Debug record", buf.String())
 	}
+}
+
+// TestPauseSlugOverride covers the pause slug the root hook hands the network gate: a set flag's value, empty included, and nil for an unset or undeclared flag.
+func TestPauseSlugOverride(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		declared bool
+		args     []string
+		want     *string
+	}{
+		{"SetToSlug", true, []string{"--pause-slug", "child"}, ptr("child")},
+		{"SetToEmpty", true, []string{"--pause-slug="}, ptr("")},
+		{"DeclaredButUnset", true, nil, nil},
+		{"NotDeclared", false, nil, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			cmd := &cobra.Command{Use: "push"}
+			if tt.declared {
+				cmd.Flags().String(fabricengine.PauseSlugFlag, "", "")
+			}
+			if err := cmd.ParseFlags(tt.args); err != nil {
+				t.Fatalf("ParseFlags(%q): %v", tt.args, err)
+			}
+			got := pauseSlugOverride(cmd)
+			switch {
+			case got == nil && tt.want == nil:
+			case got == nil || tt.want == nil:
+				t.Errorf("pauseSlugOverride = %v; want %v", got, tt.want)
+			case *got != *tt.want:
+				t.Errorf("pauseSlugOverride = %q; want %q", *got, *tt.want)
+			}
+		})
+	}
+}
+
+// ptr returns a pointer to a copy of s.
+func ptr(s string) *string {
+	return &s
 }

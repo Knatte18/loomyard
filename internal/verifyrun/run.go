@@ -2,6 +2,7 @@
 //
 // It is the single shell runner shared by plan-verify (through internal/verifytree) and the per-card `**Verify:**` rerun,
 // so shell selection lives in one place.
+// The quoting of one literal argument for that shell, QuoteArg, sits beside the shell choice so the two cannot differ.
 // It cannot live in internal/shell: that package is stdlib-only under the Shell Mechanics Seam, and this one logs through internal/logger.
 // It imports only the standard library, internal/logger and internal/proc.
 package verifyrun
@@ -13,6 +14,7 @@ import (
 	"io"
 	"os/exec"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -38,12 +40,36 @@ func Run(ctx context.Context, command, dir string, env []string, out io.Writer) 
 	return run(ctx, command, dir, env, out, waitDelay)
 }
 
+// ErrPercentUnderCmd is returned by QuoteArg for a Windows value holding a percent sign:
+// cmd expands %NAME% even inside double quotes, so no quoting makes such a value one literal argument.
+var ErrPercentUnderCmd = errors.New("verifyrun: cmd expands % inside quotes; a value holding % cannot be passed as one literal argument")
+
+// shellFor returns the shell and its command flag that Run uses on goos: sh -c everywhere but Windows, which gets cmd /C.
+func shellFor(goos string) (name, flag string) {
+	if goos == "windows" {
+		return "cmd", "/C"
+	}
+	return "sh", "-c"
+}
+
+// QuoteArg quotes value as one literal argument for the shell shellFor(goos) names,
+// so a caller can splice it into a command Run executes.
+// For sh it wraps the value in single quotes, writing each embedded single quote as '\”.
+// For cmd it wraps the value in double quotes, doubling each embedded double quote;
+// a value holding a percent sign returns ErrPercentUnderCmd and no quoted text.
+func QuoteArg(goos, value string) (string, error) {
+	if goos == "windows" {
+		if strings.Contains(value, "%") {
+			return "", ErrPercentUnderCmd
+		}
+		return `"` + strings.ReplaceAll(value, `"`, `""`) + `"`, nil
+	}
+	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'", nil
+}
+
 // run is Run with the wait delay as a parameter, so a test can shorten the wait for a lingering pipe holder.
 func run(ctx context.Context, command, dir string, env []string, out io.Writer, delay time.Duration) (int, error) {
-	shellName, flag := "sh", "-c"
-	if runtime.GOOS == "windows" {
-		shellName, flag = "cmd", "/C"
-	}
+	shellName, flag := shellFor(runtime.GOOS)
 
 	cmd := exec.CommandContext(ctx, shellName, flag, command)
 	cmd.Dir = dir

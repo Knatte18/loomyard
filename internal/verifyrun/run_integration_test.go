@@ -43,9 +43,19 @@ func TestRun(t *testing.T) {
 		workingDirectory, echoVariable = "cd", "echo %VERIFYRUN_TOLD_VARIABLE%"
 	}
 
+	quotedValue := `two words, 'single' and "double" and 100%`
+	quotedArgument, err := QuoteArg(runtime.GOOS, quotedValue)
+	if err != nil && runtime.GOOS != "windows" {
+		t.Fatal(err)
+	}
+
 	tests := []struct {
 		name    string
 		command string
+		// wantExact, when set, expects the whole output to equal it.
+		wantExact string
+		// skipWindows skips a row whose command needs a POSIX utility.
+		skipWindows bool
 		// discard sends the output to io.Discard instead of a buffer.
 		discard bool
 		// env is the told environment; nil runs with the parent's.
@@ -66,6 +76,13 @@ func TestRun(t *testing.T) {
 			env:        append(os.Environ(), "VERIFYRUN_TOLD_VARIABLE=from-told-env"),
 			wantOutput: []string{"from-told-env"},
 		},
+		{
+			name:        "a quoted argument reaches the command as one literal",
+			command:     "printf '%s|' " + quotedArgument,
+			wantOutput:  []string{quotedValue + "|"},
+			wantExact:   quotedValue + "|",
+			skipWindows: true,
+		},
 		{name: "non-zero exit into a buffer", command: "exit 3", wantCode: 3},
 		{name: "non-zero exit with output discarded", command: "exit 3", discard: true, wantCode: 3},
 		{
@@ -77,6 +94,9 @@ func TestRun(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+			if tt.skipWindows && runtime.GOOS == "windows" {
+				t.Skip("needs a POSIX utility")
+			}
 
 			dir, err := filepath.EvalSymlinks(t.TempDir())
 			if err != nil {
@@ -97,6 +117,9 @@ func TestRun(t *testing.T) {
 				if !strings.Contains(out.String(), want) {
 					t.Errorf("out = %q; want it to contain %q", out.String(), want)
 				}
+			}
+			if tt.wantExact != "" && out.String() != tt.wantExact {
+				t.Errorf("out = %q; want %q", out.String(), tt.wantExact)
 			}
 			if tt.wantOutputIsDir {
 				if got := strings.TrimSpace(out.String()); !strings.EqualFold(got, dir) {

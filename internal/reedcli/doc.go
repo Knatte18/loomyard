@@ -14,6 +14,9 @@
 // `attach` execs tmux over the lyx process on Unix, so no lyx process outlives the handover, and keeps a child process on Windows.
 // Nothing runs after it in the process, so a shortcut that runs `reed attach` runs it as its last argv.
 //
+// `window <worktree-dir> [--title <title>]` opens one desktop terminal window through `internal/termwindow` whose shell runs `lyx reed attach` in that directory, and returns once the launcher process has started.
+// It reads no location, config or engine; a directory that does not exist is refused before any launcher runs, and a machine with no launcher reports why on the envelope.
+//
 // `follow` turns follow on for a session told by `--socket`, `--session` and `--tmux`, and selects the session's relevant window from tmux facts alone.
 // It reads no working directory, config or state, skips the root pre-run's stencil-seed pass, and prints nothing on success; the status bar's follow button runs it through run-shell.
 // A missing flag or a failed tmux call is an error envelope with a non-zero exit.

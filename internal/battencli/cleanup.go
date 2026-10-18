@@ -2,7 +2,7 @@
 //
 // Cleanup is the one function the verb and "lyx cleanup" both call; every refusal and skip lives in cleanup, so neither caller can remove more than cleanup decides.
 // It deletes only a done slug's records run directory and the scratch contents beside its lock files, or an aged orphan's scratch contents.
-// It never touches a pair, a branch, a lock file or another slug, and it pushes the records side only.
+// It never touches a pair, a branch, a lock file or another slug, and it spawns the push of the records side only.
 
 package battencli
 
@@ -50,7 +50,7 @@ type CleanupReport struct {
 	Emptied []string
 	// Skipped lists every slug left alone, with its reason.
 	Skipped []CleanupSkip
-	// PushError is the records push failure, empty when the push succeeded or none was due.
+	// PushError is the records push spawn failure, empty when the push was spawned or none was due.
 	// The commits stay for the next records sync.
 	PushError string
 }
@@ -61,8 +61,8 @@ type cleanupDeps struct {
 	Committed func(relPath string) (data []byte, found bool, err error)
 	// Commit commits the anchor-relative paths on the records side with msg and reports whether a commit was made.
 	Commit func(relPaths []string, msg string) (committed bool, err error)
-	// Push pushes the records side.
-	Push func() error
+	// Spawn starts the detached push of the records side.
+	Spawn func() error
 	// Now reads the clock the orphan age is measured against.
 	Now func() time.Time
 }
@@ -77,8 +77,8 @@ func fabricCleanupDeps(location *lyxcwd.Location) cleanupDeps {
 			_, committed, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, relPaths, msg, fabricengine.EnvSyncOptions())
 			return committed, err
 		},
-		Push: func() error {
-			_, err := fabricengine.PushAnchored(location, fabricengine.EnvSyncOptions(), fabricengine.StatusPushLockWait)
+		Spawn: func() error {
+			_, err := spawnStatusPush(location, "")
 			return err
 		},
 		Now: time.Now,
@@ -88,7 +88,7 @@ func fabricCleanupDeps(location *lyxcwd.Location) cleanupDeps {
 // Cleanup removes, from the hub's prime worktree, the records run directory and scratch contents of every done run, and the scratch contents of every aged orphan.
 // With apply false it changes nothing and reports exactly what apply true removes.
 // It refuses outside the prime worktree.
-// A records commit error stops the pass with that error; a push error is reported on the result.
+// A records commit error stops the pass with that error; a push spawn error is reported on the result.
 func Cleanup(location *lyxcwd.Location, apply bool) (CleanupReport, error) {
 	if err := RefuseUnlessPrime(location); err != nil {
 		return CleanupReport{}, err
@@ -116,7 +116,7 @@ func cleanup(location *lyxcwd.Location, apply bool, deps cleanupDeps) (CleanupRe
 	}
 
 	if committedAny {
-		if err := deps.Push(); err != nil {
+		if err := deps.Spawn(); err != nil {
 			report.PushError = err.Error()
 		}
 	}
@@ -370,7 +370,7 @@ func (c *battenCLI) cleanupCmd() *cobra.Command {
 With --apply it removes the records run directory of every done run and commits the removal
 on the records side, empties that run's scratch beside its lock files, empties the scratch of
 any orphan (a scratch directory with no records run directory, untouched for a day), and then
-pushes the records. A run that is running, paused, blocked, awaiting or failed, or whose run
+spawns the push of the records. A run that is running, paused, blocked, awaiting or failed, or whose run
 lock is held, is skipped and reported with its reason. It never touches a pair, a branch, a
 lock file or another run.
 

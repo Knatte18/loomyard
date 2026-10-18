@@ -46,6 +46,7 @@ const remoteRefAbsentTrigger = "remote ref does not exist"
 // retrying.
 // The worktree must be clean.
 // Callers must re-read CurrentSHA after Push if SHAs were captured beforehand.
+// A branch carrying the local-only mark is refused with an error satisfying errors.Is(err, ErrLocalBranch).
 func (r *Repo) Push() error {
 	return r.pushWithRebaseRetry()
 }
@@ -116,8 +117,12 @@ func (r *Repo) pushWithRebaseRetry() error {
 }
 
 // pushPlainWithRetry runs the plain push through PushWithRetry for the checked-out branch.
+// A branch carrying the local-only mark is refused with ErrLocalBranch before git runs, and a mark that cannot be read is returned as the error.
 // A branch that cannot be read leaves the ref empty, so nothing is retried.
 func (r *Repo) pushPlainWithRetry() error {
+	if err := r.refuseMarkedCurrentBranch(); err != nil {
+		return err
+	}
 	branch, _ := r.CurrentBranch()
 	return PushWithRetry(func() error {
 		_, err := r.runChecked("-c", "push.autoSetupRemote=true", "push")
@@ -127,7 +132,7 @@ func (r *Repo) pushPlainWithRetry() error {
 
 // PushRebaseFree runs git push without rebasing, establishing upstream via
 // push.autoSetupRemote=true.
-// Returns ErrPushRejected on divergence.
+// Returns ErrPushRejected on divergence, and an error satisfying errors.Is(err, ErrLocalBranch) for a branch carrying the local-only mark.
 // A remote "(failed)" or "cannot lock ref" refusal is retried a bounded number of times, and an exhausted retry wraps ErrPushRetriesExhausted rather than mapping to ErrPushRejected.
 // Lock-free.
 func (r *Repo) PushRebaseFree() error {
@@ -222,6 +227,9 @@ func containsAny(s string, substrs []string) bool {
 // Returns immediately if nothing is unpushed once the lock is acquired.
 // Shares Push's rebase-retry and SHA invalidation caveat.
 func (r *Repo) PushCoalesced() error {
+	if err := r.refuseMarkedCurrentBranch(); err != nil {
+		return err
+	}
 	l, err := lock.AcquireWriteLock(filepath.Join(r.path, PushLockFileName))
 	if err != nil {
 		return fmt.Errorf("gitrepo: acquire push lock: %w", err)

@@ -89,6 +89,8 @@ var destructiveGuardAllowlist = []scankit.Entry{
 	{Key: "internal/fabricengine/destroy.go", Why: "the gate's own file — the one file the invariant permits to perform a destructive primitive"},
 	{Key: "internal/fabricengine/gitexclude.go", Why: "writeFileAtomically's os.Remove(tempPath) cleans up a temp file the same function created " +
 		"under a repo-wide flock, never operator content"},
+	{Key: "internal/fabricengine/pendingflags.go", Why: "takePending's os.Remove(taken) deletes the pending-push flag file it renamed to a name private to the call one line earlier, " +
+		"a fabric-internal marker in the records worktree's untracked lock directory, never operator content"},
 	{Key: "internal/fabricengine/recordsprobe.go", Why: "the binding probe's os.RemoveAll(probeDir) removes the throwaway probe clone directory the " +
 		"same function created moments earlier"},
 	{Key: "internal/fabricengine/index.go", Why: "refreshCorrIndexAfterSwitch's os.Remove(path) deliberately deletes the correspondence-index " +

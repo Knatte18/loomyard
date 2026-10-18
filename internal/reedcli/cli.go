@@ -57,6 +57,9 @@ type reedCLI struct {
 	strands     strandOps
 	spawnRemove func(guid string, recursive bool) error
 
+	// openTerminal is the test seam for the window verb; nil means termwindow.Resolve then Launcher.OpenAttach.
+	openTerminal func(dir, title, lyxPath string) error
+
 	// watchdogTiming, when non-nil, replaces watchdogDefaultTiming() in watchdogCmd's loop so a test can shorten how long it waits on the daemon.
 	// Production never sets it.
 	watchdogTiming *watchdogTiming
@@ -120,11 +123,12 @@ rather than booting substrate it cannot reach.`,
 		// emits a JSON error envelope instead of falling through to cobra's plain-text help.
 		RunE: clihelp.GroupRunE,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			// Guard: skip cwd/location/config resolution entirely when the reed group command itself is invoked (bare listing or unknown-subcommand error path via GroupRunE), or when the watchdog daemon, the switch verb or the follow verb is invoked.
+			// Guard: skip cwd/location/config resolution entirely when the reed group command itself is invoked (bare listing or unknown-subcommand error path via GroupRunE), or when the watchdog daemon, the switch verb, the follow verb or the window verb is invoked.
 			// The daemon is told its hub path on its own flags and must never be reached through c.eng.
 			// Letting it run the normal pre-run would make it refuse to start outside a worktree and hold a geometry it must not use.
 			// switch is told its socket and client the same way, and follow its socket and session.
-			if cmd.Name() == "reed" || cmd.Name() == "watchdog" || cmd.Name() == "switch" || cmd.Name() == "follow" {
+			// window is told a worktree directory that may lie outside the hub's worktrees, so resolving a location would refuse it.
+			if cmd.Name() == "reed" || cmd.Name() == "watchdog" || cmd.Name() == "switch" || cmd.Name() == "follow" || cmd.Name() == "window" {
 				return nil
 			}
 
@@ -171,7 +175,7 @@ rather than booting substrate it cannot reach.`,
 		},
 	}
 
-	parent.AddCommand(c.upCmd(), c.downCmd(), c.addCmd(), c.removeCmd(), c.statusCmd(), c.resumeCmd(), c.attachCmd(), c.watchdogCmd(), c.listCmd(), c.switchCmd(), c.followCmd())
+	parent.AddCommand(c.upCmd(), c.downCmd(), c.addCmd(), c.removeCmd(), c.statusCmd(), c.resumeCmd(), c.attachCmd(), c.windowCmd(), c.watchdogCmd(), c.listCmd(), c.switchCmd(), c.followCmd())
 
 	return parent
 }

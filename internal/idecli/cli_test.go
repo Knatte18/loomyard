@@ -8,11 +8,13 @@ package idecli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/ideengine"
 )
@@ -23,12 +25,20 @@ import (
 func TestRunCLI_SpawnScenario(t *testing.T) {
 	// Create a real hub so lyxcwd.Resolve succeeds inside the PersistentPreRunE.
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	hubforge.AddPairWith(t, h, "child", fabricengine.AddOptions{SkipPush: true})
+
+	// Stub ideengine.CodeLauncher with a recorder so the test does not open VS Code.
+	originalLauncher, originalKeybindingsPath := ideengine.CodeLauncher, ideengine.KeybindingsPath
+	defer func() { ideengine.CodeLauncher, ideengine.KeybindingsPath = originalLauncher, originalKeybindingsPath }()
+	var launches []string
+	var launchErr error
+	ideengine.CodeLauncher = func(dir string) error {
+		launches = append(launches, dir)
+		return launchErr
+	}
 
 	if !t.Run("dispatch", func(t *testing.T) {
-		// Stub ideengine.CodeLauncher so the test does not open VS Code, and point the keybindings seam at a temporary file.
-		originalLauncher, originalKeybindingsPath := ideengine.CodeLauncher, ideengine.KeybindingsPath
-		defer func() { ideengine.CodeLauncher, ideengine.KeybindingsPath = originalLauncher, originalKeybindingsPath }()
-		ideengine.CodeLauncher = func(dir string) error { return nil }
+		// Point the keybindings seam at a temporary file.
 		keybindingsPath := filepath.Join(t.TempDir(), "keybindings.json")
 		ideengine.KeybindingsPath = func() (string, error) { return keybindingsPath, nil }
 
@@ -73,6 +83,73 @@ func TestRunCLI_SpawnScenario(t *testing.T) {
 			t.Errorf("RunCLI(spawn) output missing \"spawn\"; got: %q", out.String())
 		}
 	})
+
+	t.Run("seed writes the config and launches nothing", func(t *testing.T) {
+		launches = nil
+		var out bytes.Buffer
+		code := RunCLIIn(h.PrimeWorktree(), &out, []string{"seed", "child"})
+
+		if code != 0 {
+			t.Fatalf("RunCLI(seed child) = %d; output: %s", code, out.String())
+		}
+		for _, name := range []string{"settings.json", "tasks.json"} {
+			if _, err := os.Stat(filepath.Join(h.PairCodeWorktree("child"), ".vscode", name)); err != nil {
+				t.Errorf(".vscode/%s: %v", name, err)
+			}
+		}
+		if len(launches) != 0 {
+			t.Errorf("seed launched %v; want no launch", launches)
+		}
+	})
+
+	t.Run("open launches once on the pair folder", func(t *testing.T) {
+		launches = nil
+		var out bytes.Buffer
+		code := RunCLIIn(h.PrimeWorktree(), &out, []string{"open", "child"})
+
+		if code != 0 {
+			t.Fatalf("RunCLI(open child) = %d; output: %s", code, out.String())
+		}
+		if len(launches) != 1 || launches[0] != h.PairCodeWorktree("child") {
+			t.Errorf("launches = %v; want exactly [%s]", launches, h.PairCodeWorktree("child"))
+		}
+	})
+
+	refusals := []struct {
+		name      string
+		args      []string
+		launchErr error
+		wantVerb  string
+		wantUsage bool
+	}{
+		{name: "seed without a slug", args: []string{"seed"}, wantVerb: "usage: lyx ide seed", wantUsage: true},
+		{name: "seed of a slug with no pair", args: []string{"seed", "nosuch"}, wantVerb: "seed"},
+		{name: "open of a slug with no pair", args: []string{"open", "nosuch"}, wantVerb: "open"},
+		{name: "open of a path-shaped slug", args: []string{"open", "../child"}, wantVerb: "open"},
+		{name: "open whose launcher fails", args: []string{"open", "child"}, launchErr: errors.New("no editor"), wantVerb: "open"},
+	}
+	for _, tt := range refusals {
+		t.Run(tt.name, func(t *testing.T) {
+			launches, launchErr = nil, tt.launchErr
+			defer func() { launchErr = nil }()
+			var out bytes.Buffer
+			code := RunCLIIn(h.PrimeWorktree(), &out, tt.args)
+
+			if code == 0 {
+				t.Fatalf("RunCLI(%v) = 0; want non-zero; output: %s", tt.args, out.String())
+			}
+			if !strings.Contains(out.String(), tt.wantVerb) {
+				t.Errorf("RunCLI(%v) output = %q; want it to name %q", tt.args, out.String(), tt.wantVerb)
+			}
+			wantLaunches := 0
+			if tt.launchErr != nil {
+				wantLaunches = 1
+			}
+			if len(launches) != wantLaunches {
+				t.Errorf("RunCLI(%v) recorded launches %v; want %d", tt.args, launches, wantLaunches)
+			}
+		})
+	}
 }
 
 // TestRunCLI_NotAGitRepo verifies that "lyx ide menu" run from a non-git temp directory surfaces

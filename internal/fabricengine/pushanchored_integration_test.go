@@ -125,6 +125,26 @@ func TestPushAnchored_PushesAndRecordsBranchPush(t *testing.T) {
 	if !strings.HasPrefix(pushed.Detail, "side=records repo=") || !strings.Contains(pushed.Detail, " remote=") {
 		t.Errorf("KindBranchPushed Detail = %q; want prefix %q and a %q part", pushed.Detail, "side=records repo=", " remote=")
 	}
+
+	// A records branch carrying the local-only mark is reported skipped: nil error, no push record, remote tip unchanged.
+	recordsBranch := gitkit.CurrentBranch(t, h.PrimeRecords())
+	if err := gitrepo.New(h.PrimeRecords()).MarkBranchLocal(recordsBranch); err != nil {
+		t.Fatalf("MarkBranchLocal(%s) error = %v; want nil", recordsBranch, err)
+	}
+	gitkit.CommitFile(t, h.PrimeRecords(), "weft-file-2.txt", "weft change never pushed", "weft change never pushed")
+	res, err = fabricengine.PushAnchored(h.Location, fabricengine.SyncOptions{}, fabricengine.LockWaitUnbounded)
+	if err != nil {
+		t.Fatalf("PushAnchored() with a local-marked records branch error = %v; want nil", err)
+	}
+	if len(res.LocalSkipped) != 1 || res.LocalSkipped[0] != recordsBranch {
+		t.Errorf("LocalSkipped = %v; want [%s]", res.LocalSkipped, recordsBranch)
+	}
+	if got := countBranchPushed(res, ""); got != 0 {
+		t.Errorf("PushAnchored() record = %+v; want no KindBranchPushed entry for a skipped branch", res.Mutated().Entries())
+	}
+	if got := fabricengine.BareBranchSHAForTest(t, h.RecordsBare, fabricengine.RecordsBranchName("main")); got != weftSHA {
+		t.Errorf("weft bare = %q; want it unchanged at %q", got, weftSHA)
+	}
 }
 
 // TestPushAnchored_DivergedWeftRemote_ReturnsErrPushRejectedUnwrapped covers the rejection path a
@@ -399,6 +419,32 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 		}
 	}
 
+	// A code branch carrying the local-only mark is reported skipped and left unpushed, while the records side still pushes.
+	t.Run("LocalMarkedCodeBranchIsReportedSkipped", func(t *testing.T) {
+		q := newPushPair(t)
+		if err := gitrepo.New(q.warpPath).MarkBranchLocal(q.warpBranch); err != nil {
+			t.Fatalf("MarkBranchLocal(%s) error = %v; want nil", q.warpBranch, err)
+		}
+		codeBefore := fabricengine.BareBranchSHAForTest(t, q.hub.CodeBare, q.warpBranch)
+		gitkit.CommitFile(t, q.warpPath, "warp-file.txt", "warp change never pushed", "warp change never pushed")
+		weftSHA := gitkit.CommitFile(t, q.weftPath, "weft-file.txt", "weft change", "weft change")
+
+		res, err := fabricengine.PushPairAnchored(q.location, fabricengine.SyncOptions{}, fabricengine.LockWaitUnbounded)
+
+		if err != nil {
+			t.Fatalf("PushPairAnchored() with a local-marked code branch error = %v; want nil", err)
+		}
+		if len(res.LocalSkipped) != 1 || res.LocalSkipped[0] != q.warpBranch {
+			t.Errorf("LocalSkipped = %v; want [%s]", res.LocalSkipped, q.warpBranch)
+		}
+		if got := fabricengine.BareBranchSHAForTest(t, q.hub.CodeBare, q.warpBranch); got != codeBefore {
+			t.Errorf("code bare = %q; want it unchanged at %q", got, codeBefore)
+		}
+		if got := fabricengine.BareBranchSHAForTest(t, q.hub.RecordsBare, q.weftBranch); got != weftSHA {
+			t.Errorf("records bare = %q; want local HEAD %q", got, weftSHA)
+		}
+	})
+
 	// The prime pushes the records side only and reports its unpushed code branch.
 	t.Run("PrimePushesRecordsSideOnly", func(t *testing.T) {
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -445,6 +491,7 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 
 // TestPushLock_BoundedWaitGivesUpAndUnboundedWaitBlocks covers the push lock both entries take:
 // with the lock held by the test, a bounded wait returns ErrPushLockBusy naming neither side and moves no remote;
+// the detached child's push returns nil at once with nothing pushed and a pending.records flag left on disk;
 // SkipPush and SkipGit return at once;
 // and an unbounded wait returns only once the lock is released and then pushes.
 func TestPushLock_BoundedWaitGivesUpAndUnboundedWaitBlocks(t *testing.T) {
@@ -507,6 +554,21 @@ func TestPushLock_BoundedWaitGivesUpAndUnboundedWaitBlocks(t *testing.T) {
 			}
 			if got := fabricengine.BareBranchSHAForTest(t, p.hub.RecordsBare, p.weftBranch); got != weftBefore {
 				t.Errorf("weft bare = %q; want it unmoved at %q", got, weftBefore)
+			}
+
+			childErr := func() error {
+				_, err := fabricengine.CoalescePushRequest(fabricengine.PushSpawn{WarpPath: p.warpPath, WeftPath: p.weftPath}, fabricengine.SyncOptions{})
+				return err
+			}()
+			if childErr != nil {
+				t.Errorf("CoalescePushRequest under a held lock error = %v; want nil at once", childErr)
+			}
+			if got := fabricengine.BareBranchSHAForTest(t, p.hub.RecordsBare, p.weftBranch); got != weftBefore {
+				t.Errorf("records bare after the child = %q; want it unmoved at %q", got, weftBefore)
+			}
+			recordsFlag := filepath.Join(filepath.Dir(fabricengine.PushLockPathForTest(t, p.weftPath)), "pending.records")
+			if _, err := os.Stat(recordsFlag); err != nil {
+				t.Errorf("pending.records after the child found the lock held: %v; want it left on disk", err)
 			}
 
 			for _, opts := range []fabricengine.SyncOptions{{SkipPush: true}, {SkipGit: true}} {

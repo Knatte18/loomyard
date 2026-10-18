@@ -202,7 +202,7 @@ func TestCommitLock_ReleasedBeforePush(t *testing.T) {
 
 	var lockWasFreeDuringPush bool
 	original := spawnDetachedPushFn
-	spawnDetachedPushFn = func(gotWarpPath, gotWeftPath string) error {
+	spawnDetachedPushFn = func(PushSpawn) error {
 		probe, acquired, err := lock.TryAcquireWriteLock(lockPath)
 		if err != nil {
 			t.Errorf("TryAcquireWriteLock(%q) error = %v", lockPath, err)

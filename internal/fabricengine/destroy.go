@@ -467,6 +467,7 @@ const (
 	pathDirtinessNA
 	pathDirtinessTrackedExcept
 	pathDirtinessTrackedOn
+	pathDirtinessRecordsDisposable
 )
 
 // pathDirtiness declares which dirtiness probe (or N/A) the pipeline runs against a pathRequest's
@@ -480,6 +481,13 @@ type pathDirtiness struct {
 	ownPaths []string
 	// onPaths serves dirtyTrackedOn only: worktree-relative, slash-separated.
 	onPaths []string
+}
+
+// dirtyRecordsDisposable declares that the pipeline's dirtiness step passes and the act discards what the worktree holds uncommitted:
+// the records on a local-only pair's weft worktree are disposable by that pair's contract.
+// Content outside the record pathspec is refused earlier, by RemoveRefusal, so this declaration answers no dirtiness the caller has not already judged.
+func dirtyRecordsDisposable() pathDirtiness {
+	return pathDirtiness{kind: pathDirtinessRecordsDisposable}
 }
 
 // dirtyTrackedOn declares that the pipeline's dirtiness step probes tracked files only, and refuses only on a dirty tracked path in paths (worktree-relative, slash-separated).
@@ -927,7 +935,7 @@ func checkPathRequest(req pathRequest) error {
 // future call path than the residual risk warrants — but "the gate executes rather than approves"
 // must not be read as "the probe and the act are one transaction".
 func checkPathDirtiness(req pathRequest) error {
-	if req.dirtiness.kind == pathDirtinessNA {
+	if req.dirtiness.kind == pathDirtinessNA || req.dirtiness.kind == pathDirtinessRecordsDisposable {
 		return nil
 	}
 	if req.force {
@@ -1147,6 +1155,14 @@ func checkRemoteBranchRequest(req remoteBranchRequest) error {
 		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: "no dirtiness declared"}
 	}
 
+	marked, markErr := gitrepo.New(req.repoDir).BranchMarkedLocal(req.branch)
+	if markErr != nil {
+		return &destructiveRefusal{Check: CheckOwnership, What: req.what, Target: req.branch, Reason: fmt.Sprintf("read the local-only mark of %q: %v", req.branch, markErr)}
+	}
+	if marked {
+		return &destructiveRefusal{Check: CheckOwnership, What: req.what, Target: req.branch, Reason: "the branch is local-only, never on a remote; nothing to delete; remove the pair with `lyx fabric remove <slug>`, which runs no origin step"}
+	}
+
 	if ok, reason := resolveBranchOwnership(req.ownership, req.branch); !ok {
 		return &destructiveRefusal{Check: CheckOwnership, What: req.what, Target: req.branch, Reason: reason}
 	}
@@ -1325,7 +1341,7 @@ func removeGitWorktree(rec *Mutations, req pathRequest, repoDir string) error {
 	}
 
 	args := []string{"worktree", "remove"}
-	if req.force {
+	if req.force || req.dirtiness.kind == pathDirtinessRecordsDisposable {
 		args = append(args, "--force")
 	}
 	args = append(args, req.target)

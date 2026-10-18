@@ -43,9 +43,7 @@ var registry = map[string]Constructor{
 	"SeedChild":        seedChildEntry,
 	"WorktreeTeardown": worktreeTeardownEntry,
 	"Land":             landEntry,
-	"OpenWindow":       openWindowEntry,
-	"SeedIDE":          seedIDEEntry,
-	"OpenIDE":          openIDEEntry,
+	"Command":          commandEntry,
 }
 
 // Lookup resolves name against the registry, returning its Constructor.

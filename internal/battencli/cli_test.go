@@ -202,7 +202,7 @@ func TestRunInWindow(t *testing.T) {
 			name:         "FreshWindowPrintsItsId",
 			opened:       reedengine.WindowResult{WindowID: "@3", Name: "batten:some-slug"},
 			wantArgs:     []string{"batten", "run", "some-slug"},
-			wantTerminal: "opens through konsole",
+			wantTerminal: "open_window_command, whose default opens through konsole",
 		},
 		{
 			name:         "NoLauncherStartsTheRunWithoutATerminal",
@@ -224,7 +224,7 @@ func TestRunInWindow(t *testing.T) {
 			childSet:     true,
 			opened:       reedengine.WindowResult{WindowID: "@3", Name: "batten:some-slug"},
 			wantArgs:     []string{"batten", "run", "some-slug", "--driver", "go", "--child-driver", "go"},
-			wantTerminal: "opens through konsole",
+			wantTerminal: "open_window_command, whose default opens through konsole",
 		},
 		{
 			name:     "NoSessionNamesOrchStartOrATerminal",
@@ -261,7 +261,7 @@ func TestRunInWindow(t *testing.T) {
 			status:       shedengine.StateBlocked,
 			opened:       reedengine.WindowResult{WindowID: "@3", Name: "batten:some-slug"},
 			wantArgs:     []string{"batten", "run", "some-slug"},
-			wantTerminal: "opens through konsole",
+			wantTerminal: "open_window_command, whose default opens through konsole",
 		},
 	}
 	for _, tt := range tests {

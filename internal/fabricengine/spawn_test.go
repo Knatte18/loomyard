@@ -10,32 +10,33 @@ package fabricengine
 import (
 	"errors"
 	"path/filepath"
+	"slices"
 	"testing"
-
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // TestSpawnDetachedPush_SkipEnvAndEmptyPaths covers every case where SpawnDetachedPush must return
 // nil without forking a child: FABRIC_SKIP_GIT set, FABRIC_SKIP_PUSH set, and both paths empty (with
 // neither env var set).
+// With both paths set and no skip env it returns ErrSpawnUnderTest instead of forking the test binary.
 func TestSpawnDetachedPush_SkipEnvAndEmptyPaths(t *testing.T) {
 	tests := []struct {
-		name     string
-		envKey   string
-		warpPath string
-		weftPath string
+		name    string
+		envKey  string
+		req     PushSpawn
+		wantErr error
 	}{
-		{name: "SkipGit", envKey: "FABRIC_SKIP_GIT", warpPath: "/warp", weftPath: "/weft"},
-		{name: "SkipPush", envKey: "FABRIC_SKIP_PUSH", warpPath: "/warp", weftPath: "/weft"},
-		{name: "BothPathsEmpty", warpPath: "", weftPath: ""},
+		{name: "SkipGit", envKey: "FABRIC_SKIP_GIT", req: PushSpawn{WarpPath: "/warp", WeftPath: "/weft"}},
+		{name: "SkipPush", envKey: "FABRIC_SKIP_PUSH", req: PushSpawn{WarpPath: "/warp", WeftPath: "/weft"}},
+		{name: "BothPathsEmpty", req: PushSpawn{}},
+		{name: "UnderTest", req: PushSpawn{WarpPath: "/warp", WeftPath: "/weft"}, wantErr: ErrSpawnUnderTest},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.envKey != "" {
 				t.Setenv(tt.envKey, "1")
 			}
-			if err := SpawnDetachedPush(tt.warpPath, tt.weftPath); err != nil {
-				t.Errorf("SpawnDetachedPush(%q, %q) = %v; want nil", tt.warpPath, tt.weftPath, err)
+			if err := SpawnDetachedPush(tt.req); !errors.Is(err, tt.wantErr) {
+				t.Errorf("SpawnDetachedPush(%+v) = %v; want %v", tt.req, err, tt.wantErr)
 			}
 		})
 	}
@@ -60,27 +61,50 @@ func TestPushWarpAt_Gating(t *testing.T) {
 	}
 }
 
-// TestSpawnPairPush_HandsTheDetachedPushBothSidesOfThePair asserts SpawnPairPush resolves the code worktree and its paired records worktree from the location alone, and returns the spawn's error.
-// Serial: the test assigns the package-level spawnDetachedPushFn.
-func TestSpawnPairPush_HandsTheDetachedPushBothSidesOfThePair(t *testing.T) {
-	l := &lyxcwd.Location{HubPath: filepath.Join(t.TempDir(), "hub-LYXHUB"), WorktreeName: "task", AnchorRel: "."}
-	spawnErr := errors.New("spawn failed")
+// TestPushSpawnCommand covers the child's arguments and working directory: a flag is present only when its field is set, except the pause flag, which is always present.
+func TestPushSpawnCommand(t *testing.T) {
+	t.Parallel()
 
-	original := spawnDetachedPushFn
-	t.Cleanup(func() { spawnDetachedPushFn = original })
-	var gotWarpPath, gotWeftPath string
-	spawnDetachedPushFn = func(warpPath, weftPath string) error {
-		gotWarpPath, gotWeftPath = warpPath, weftPath
-		return spawnErr
-	}
+	warp := filepath.Join(t.TempDir(), "warp")
+	weft := filepath.Join(t.TempDir(), "weft")
+	board := filepath.Join(t.TempDir(), "_board")
 
-	if err := SpawnPairPush(l); !errors.Is(err, spawnErr) {
-		t.Errorf("SpawnPairPush() = %v; want %v", err, spawnErr)
+	tests := []struct {
+		name     string
+		req      PushSpawn
+		wantArgs []string
+	}{
+		{
+			"EveryFieldSet",
+			PushSpawn{WarpPath: warp, WeftPath: weft, PauseSlug: "task", TeardownSlug: "task", WorkDir: board},
+			[]string{"fabric", "--warp-path", warp, "--weft-path", weft, "--teardown-slug", "task", "--pause-slug=task", "push"},
+		},
+		{
+			"EmptyWarpPathOmitsItsFlagOnly",
+			PushSpawn{WeftPath: weft, PauseSlug: "task", TeardownSlug: "task", WorkDir: board},
+			[]string{"fabric", "--weft-path", weft, "--teardown-slug", "task", "--pause-slug=task", "push"},
+		},
+		{
+			"EmptyTeardownSlugOmitsItsFlagOnly",
+			PushSpawn{WeftPath: weft, PauseSlug: "gate", WorkDir: board},
+			[]string{"fabric", "--weft-path", weft, "--pause-slug=gate", "push"},
+		},
+		{
+			"EmptyPauseSlugIsStillWritten",
+			PushSpawn{WeftPath: weft, WorkDir: board},
+			[]string{"fabric", "--weft-path", weft, "--pause-slug=", "push"},
+		},
 	}
-	if gotWarpPath != l.WorktreePath() {
-		t.Errorf("warp path = %q; want %q", gotWarpPath, l.WorktreePath())
-	}
-	if want := RecordsWorktree(l); gotWeftPath != want {
-		t.Errorf("weft path = %q; want %q", gotWeftPath, want)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			args, dir := pushSpawnCommand(tt.req)
+			if !slices.Equal(args, tt.wantArgs) {
+				t.Errorf("pushSpawnCommand(%+v) args = %q; want %q", tt.req, args, tt.wantArgs)
+			}
+			if dir != board {
+				t.Errorf("pushSpawnCommand(%+v) dir = %q; want %q", tt.req, dir, board)
+			}
+		})
 	}
 }

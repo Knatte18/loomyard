@@ -260,8 +260,14 @@ func TestCommit_InvokesPushRecorder(t *testing.T) {
 		if len(calls) != 1 {
 			t.Fatalf("push recorder invocation count = %d; want 1 (calls: %+v)", len(calls), calls)
 		}
-		if calls[0].WarpPath != "" || calls[0].WeftPath != weftPath {
-			t.Errorf("push recorder called with (%q, %q); want (%q, %q)", calls[0].WarpPath, calls[0].WeftPath, "", weftPath)
+		// The push request names the records worktree of the warp location, which the plain fixture's separate weft repo is not.
+		warpLocation, err := lyxcwd.ResolveWorktree(warpPath)
+		if err != nil {
+			t.Fatalf("ResolveWorktree: %v", err)
+		}
+		wantWeft := fabricengine.RecordsWorktree(warpLocation)
+		if calls[0].WarpPath != "" || calls[0].WeftPath != wantWeft {
+			t.Errorf("push recorder called with (%q, %q); want (%q, %q)", calls[0].WarpPath, calls[0].WeftPath, "", wantWeft)
 		}
 	})
 

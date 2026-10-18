@@ -30,7 +30,7 @@ var coversLinePattern = regexp.MustCompile(`^\*\*Covers:\*\*\s*(.+)$`)
 var excludedModules = []scankit.Entry{
 	{
 		Key: "ide",
-		Why: "side-effect heavy: spawn opens a real VS Code window, menu is an interactive stdin picker",
+		Why: "side-effect heavy: open and spawn start a real VS Code window, seed writes into a task worktree a scenario would have to create a pair for, menu is an interactive stdin picker",
 	},
 	{
 		Key: "selfreport",

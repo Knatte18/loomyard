@@ -4,7 +4,7 @@ Loomyard is a Go toolkit of one-shot CLI modules.
 Each invocation starts a process, runs one command, writes JSON to stdout, and exits — there is no daemon and no shared memory.
 State lives on disk per module and is coordinated with file locks, so concurrent `lyx` processes on a machine cooperate through the filesystem.
 The first module, **board** (a task tracker), is implemented;
-**fabric** (the git-coordination module over the code and its records) is implemented;
+**fabric** (the git-coordination module over the code and its records, with `lyx fabric add --local` for pairs that never reach origin) is implemented;
 and **reed**, the clean tmux overlay built on what its now-deleted proof-of-concept (`muxpoc`) proved, is implemented.
 
 In the long term, Loomyard is intended to **replace mill/millhouse (Python)** entirely.
@@ -263,7 +263,7 @@ github.com/Knatte18/loomyard/
 ├── internal/shedverbs/           the generic run/step/status/pause/goto cobra verb bodies shared by every module that arms a `*shedengine.Shed` onto a CLI subtree
 ├── internal/sheddriver/          the shed layer's Go driver: its settle loop, rule table and hand-back, the tackler agent call, and the `shed` config module, told its paths and seams by the arming module
 ├── internal/shedcli/             the `lyx shed` subtree: a named-recipe arming table for the loom, darn and batten recipes plus the three CLI seams that register it under the lyx root
-├── internal/statuscommit/        the shared per-transition status commit core (skip while mid-merge, commit hard-errors, push warns) that `loomcli` and `battencli` wrap
+├── internal/statuscommit/        the shared per-transition status commit core (skip while mid-merge, commit hard-errors, push spawn warns) that `loomcli` and `battencli` wrap
 ├── internal/statuspane/          the pane mechanics the runs overview and the gate checklist share: a redraw-in-place pane loop and a lock-free status-file reader
 ├── internal/landingshed/         landing's four general ShedProducers, Publish, PR-Align, PR-Gate and Finalize, shared by reference across producer lists
 ├── internal/darnengine/          the darn recipe's hub-wide `darn.yaml` config and the verify command every darn verify reads
@@ -602,15 +602,16 @@ User-facing modules each get one `lyx <module>` namespace:
   See the board's `hardener` note.
 - **batten** — drives one task worktree's whole lifecycle — create, seed the child's own inner run from the Board task's own `recipe` (`loom`, or `darn` for a darn child, empty meaning `loom`), run it to a terminal state, land it into the prime, and tear down — as a single Shed run from the hub's prime worktree (`internal/battenshed` + `internal/battenrecipe` + `internal/battencli`; `lyx batten run|step|status|pause <run-id>`, `lyx batten lock list|release` for the hub's parent locks, and `lyx batten cleanup [--apply]`).
   The hidden `lyx batten overview` is the pane process of the prime's `runs` strand, which `lyx orch start` ensures: it lists the runs in flight with their state, stage, time in stage, age and reed session, the stage cell carrying the stage's entry number (`7. Land`, `6.5 Plan-Write` for a child stage under Run-Shed), and reads files only; a run a live pause covers shows `paused <minutes>` in its state cell.
-  `lyx batten cleanup` is a dry run unless given `--apply`: it removes each done run's records run directory with a records commit and push, and empties that run's scratch beside its lock files and any orphan scratch older than a day.
+  `lyx batten cleanup` is a dry run unless given `--apply`: it removes each done run's records run directory with a records commit and a spawned push, and empties that run's scratch beside its lock files and any orphan scratch older than a day.
   `lyx batten run <slug> --window` starts the same run in its own tmux window of the orch's reed session and returns at once; the window lives as long as the reed session.
   `lyx batten run` drives its own run through the same driver body in-process, over the loop `step --until-stop` runs: an unexpected stop meets the driver's rule table, and a stop no rule settles meets a cold tackler agent in the prime's reed session, before it is handed to the orch.
   The tackler is set by `batten.yaml`'s `tackler`, `tackler_timeout_min` and `tackler_max_spawns`, overrides of `shed.yaml`'s keys of the same names.
   The process holds the run's driver lock for its life, so a second `lyx batten run` for the slug is refused.
-  Between `Seed-Child` and `Run-Shed`, three switched rows run `internal/shedadapters`' switched producer, each switched by its `batten.yaml` flag, which a task's `run_settings` may set: `Open-Window` (`open_window`, on by default) opens one desktop terminal window on the task worktree, titled with the slug and running `lyx reed attach`, through `internal/termwindow`'s per-platform launcher: Konsole on Linux, Windows Terminal into `wsl.exe` on WSL;
-  `Seed-IDE` (`seed_ide`, on) writes the task worktree's VS Code colour and `.vscode/` config as `lyx ide spawn` does, without the user's key bindings;
-  `Open-IDE` (`open_ide`, off) opens VS Code on it.
-  A failed action only warns, and the row passes on.
+  Between `Seed-Child` and `Run-Shed`, three `Command` rows each run one shell command from `internal/shedadapters`' `Command` producer, switched by a `batten.yaml` key a task's `run_settings` may set: `Open-Window` (`open_window`, on by default, command `open_window_command`) opens one desktop terminal window on the task worktree, titled with the slug, through `lyx reed window`;
+  `Seed-IDE` (`seed_ide`, on, command `seed_ide_command`) runs `lyx ide seed`, which writes the task worktree's VS Code colour and `.vscode/` config as `lyx ide spawn` does, without the user's key bindings;
+  `Open-IDE` (`open_ide`, off, command `open_ide_command`) runs `lyx ide open`, which opens VS Code on it.
+  A command key is read from the template and the board default layer only; `lyx config batten --layer default --set <key>=<value>` from the prime changes one, and a different value in the task worktree's own layers is ignored with a warning.
+  A failed command only warns, and the row passes on.
   `--window` turns `Open-Window` on for its run; where no launcher is known, the run goes on and the envelope's `terminal_window` says none was opened.
   The Board task's `recipe` must be `loom`, `darn` or empty: `Run-Shed` starts `lyx loom start` inside the task worktree, which serves both recipes, so `Seed-Child` refuses any other registered recipe before writing a seed rather than committing one the child's own bootstrap would refuse.
   `Seed-Child` halts `blocked` with a named `stuck_reason`, not a hard failure, for all three ways `WriteSeed` can refuse: an unknown recipe, a recipe the task worktree cannot bootstrap, and a pre-existing child seed that disagrees with the one being written (`shedrun.ErrDisagreeingSeed`/`battenshed.ErrDisagreeingChildSeed`) — the same business-judgment treatment for all three, since none of them is a path-resolution or write failure.
