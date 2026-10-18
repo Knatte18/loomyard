@@ -118,8 +118,9 @@ Callers never see raw YAML or unexpanded tokens.
 
 Existing config files in the old commented format (all lines commented out) are treated as empty by `Reconcile`.
 Running `lyx config reconcile --apply` from the code worktree reconciles all module configs against their templates, rewriting old-format files to live templates with all keys present.
-Because the code worktree's `_lyx` is a directory junction into its records sibling's `_lyx`, a single `lyx config reconcile` there reaches all config files (board, worktree, and fabric).
+Because the code worktree's `_lyx` is a directory junction into its records sibling's `_lyx`, a single `lyx config reconcile` there reaches the worktree's own and local config files.
 No separate command in the records sibling is needed.
+The files under the hub's board dir, the hub-wide modules' files and the per-worktree repo defaults, are reconciled by `lyx config reconcile --layer default`, applied from the hub's prime, and by the hub reconcile the first start verb after a binary change runs.
 
 ## Exported functions
 

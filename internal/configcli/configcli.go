@@ -454,11 +454,12 @@ func runResolved(ctx context.Context, out io.Writer, module string) int {
 
 // runReconcile is the package-private handler for the lyx config reconcile subcommand.
 //
-// It reconciles all module config files against their templates via configsync.ReconcileAll
-// and emits a JSON envelope. When apply is false (dry-run) no files are written; when
-// apply is true, changes are committed to disk atomically. Returns exit code 0 on success,
+// With no layer it reconciles the worktree's own and local config files against their templates via configsync.ReconcileAll;
+// with layer default it reconciles every file under the hub's board dir instead, guarded and committed in _board on apply.
+// Any other layer is refused, and so is a run whose worktree is the board dir itself, which would reconcile the hub's files as a worktree's.
+// It emits a JSON envelope. When apply is false (dry-run) no files are written. Returns exit code 0 on success,
 // 1 on any error.
-func runReconcile(ctx context.Context, out io.Writer, apply bool) int {
+func runReconcile(ctx context.Context, out io.Writer, apply bool, layer string) int {
 	// Resolve the seam cwd and layout.
 	cwd, err := lyxcwd.CwdFrom(ctx)
 	if err != nil {
@@ -472,16 +473,30 @@ func runReconcile(ctx context.Context, out io.Writer, apply bool) int {
 		return output.Err(out, err.Error())
 	}
 
+	if layer != "" && layer != string(configengine.LayerDefault) {
+		return output.Err(out, fmt.Sprintf("reconcile takes --layer %s alone, for the files under the hub's board dir; way forward: run it with no --layer to reconcile this worktree's own and local files", configengine.LayerDefault))
+	}
+	boardDir := fabricengine.BoardDir(l.HubPath)
+	if filepath.Clean(l.WorktreePath()) == filepath.Clean(boardDir) {
+		return output.Err(out, fmt.Sprintf("reconcile is refused in the board dir %s, whose files are the hub's, not a worktree's; way forward: run \"lyx config reconcile --layer default\" from the hub's prime worktree", boardDir))
+	}
+	if layer != "" {
+		return reconcileDefaultLayer(l, out, apply, realHubWriteGuard(l))
+	}
+
 	// Compute baseDir as the enclosing _lyx parent: the worktree root joined with the relative path.
 	baseDir := baseDirOf(l)
 
 	// Reconcile all modules; apply controls whether changes are written to disk.
-	results, err := configsync.ReconcileAll(baseDir, fabricengine.BoardDir(l.HubPath), configsync.Options{Apply: apply})
+	results, err := configsync.ReconcileAll(baseDir, boardDir, configsync.Options{Apply: apply})
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("reconcile: %v", err))
 	}
+	return output.Ok(out, reconcileEnvelope(apply, results))
+}
 
-	// Build module result objects for JSON output.
+// reconcileEnvelope builds the reconcile verb's success fields: the aggregate applied flag and one object per result.
+func reconcileEnvelope(apply bool, results []configsync.Result) map[string]any {
 	modules := make([]map[string]any, len(results))
 	for i, result := range results {
 		m := map[string]any{
@@ -526,14 +541,16 @@ func runReconcile(ctx context.Context, out io.Writer, apply bool) int {
 		if len(result.Overwritten) > 0 {
 			m["overwritten"] = result.Overwritten
 		}
+		// seed is set only by a reconcile of the board dir's files.
+		if result.Seed != "" {
+			m["seed"] = result.Seed
+		}
 		modules[i] = m
 	}
-
-	// Emit the JSON envelope with the aggregate applied flag and per-module details.
-	return output.Ok(out, map[string]any{
+	return map[string]any{
 		"applied": apply,
 		"modules": modules,
-	})
+	}
 }
 
 // Command returns the cobra command for lyx config.
@@ -610,11 +627,19 @@ file even when the reconcile adds and removes nothing.
 Hub-wide modules (fabric, board) are reported, not reconciled here: a leftover
 per-worktree copy is "retired" when the hub file holds everything it holds
 (--apply deletes it), or "divergent" when it holds an entry the hub file lacks
-(it is left in place).`,
+(it is left in place).
+
+--layer default reconciles every file under the hub's board dir instead: the
+hub-wide modules' files and each per-worktree module's repo default, seeding
+an absent one from the prime. Renamed keys are migrated and keys the template
+lacks are removed. --apply with it runs only from the hub's prime worktree,
+outside a task session, and commits the files in _board and pushes.
+Reconcile is refused in the board dir itself.`,
 	}
 	apply := reconcileCmd.Flags().Bool("apply", false, "apply changes to disk (default: dry-run)")
+	reconcileLayer := reconcileCmd.Flags().String("layer", "", "default reconciles the files under the hub's board dir (default: this worktree's own and local files)")
 	reconcileCmd.RunE = clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int {
-		return runReconcile(ctx, out, *apply)
+		return runReconcile(ctx, out, *apply, *reconcileLayer)
 	})
 	configCmd.AddCommand(reconcileCmd)
 

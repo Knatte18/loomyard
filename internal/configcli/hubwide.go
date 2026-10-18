@@ -12,10 +12,12 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
+	"github.com/Knatte18/loomyard/internal/configsync"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -141,6 +143,82 @@ func newHubCommit(boardDir string) hubCommitFunc {
 		}
 		return bolt.Push(opts)
 	}
+}
+
+// reconcileDefaultLayer reconciles every module's file under the hub's board dir against its template, seeded from the prime's anchor, and reports the reconcile envelope.
+// A dry run writes nothing and takes no guard.
+// apply is refused when guard refuses.
+// Otherwise it holds the board write lock and runs a dry run first, so a file that fails to reconcile leaves every file unwritten.
+// Then the reconcile writes, its files are committed in _board and the commit is pushed.
+// A write that succeeded but was not committed or pushed is reported as an error naming the files left for the next board sync.
+func reconcileDefaultLayer(l *lyxcwd.Location, out io.Writer, apply bool, guard func() (string, error)) int {
+	board := fabricengine.ConfigDirs(l).Board
+	if board == "" {
+		return output.Err(out, "reconcile --layer default needs a hub's board dir, and this checkout is not a hub; way forward: run it with no --layer")
+	}
+	worktrees, err := fabricengine.CodeWorktrees(l.WorktreePath())
+	if err != nil {
+		return output.Err(out, fmt.Sprintf("list the hub's code worktrees: %v", err))
+	}
+	primeAnchor := ""
+	for _, w := range worktrees {
+		if w.Main {
+			primeAnchor = w.Anchor
+		}
+	}
+	opts := configsync.HubWideOptions{SeedDefaults: true}
+
+	if !apply {
+		results, err := configsync.ReconcileHubWideAt(board, primeAnchor, opts)
+		if err != nil {
+			return output.Err(out, fmt.Sprintf("reconcile: %v", err))
+		}
+		return output.Ok(out, reconcileEnvelope(false, results))
+	}
+
+	refusal, err := guard()
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+	if refusal != "" {
+		return output.Err(out, refusal)
+	}
+	bolt := fabricengine.NewBolt(board)
+	syncOpts := fabricengine.EnvSyncOptions()
+	var results []configsync.Result
+	var written []string
+	_, committed, err := bolt.CommitWritten("config: reconcile the board dir's files", func() ([]string, error) {
+		if _, err := configsync.ReconcileHubWideAt(board, primeAnchor, opts); err != nil {
+			return nil, err
+		}
+		applyOpts := opts
+		applyOpts.Apply = true
+		var err error
+		results, err = configsync.ReconcileHubWideAt(board, primeAnchor, applyOpts)
+		if err != nil {
+			return nil, err
+		}
+		for _, result := range results {
+			if !result.Applied {
+				continue
+			}
+			written = append(written, configengine.ConfigFileRel(result.Module))
+			for _, legacy := range result.MigratedFrom {
+				written = append(written, configengine.ConfigFileRel(legacy))
+			}
+		}
+		return written, nil
+	}, syncOpts)
+	if err == nil && committed {
+		err = bolt.Push(syncOpts)
+	}
+	switch {
+	case err != nil && results == nil:
+		return output.Err(out, fmt.Sprintf("reconcile: %v", err))
+	case err != nil:
+		return output.Err(out, fmt.Sprintf("reconciled %s in %s but did not commit and push them: %v; the next board sync carries them", strings.Join(written, ", "), board, err))
+	}
+	return output.Ok(out, reconcileEnvelope(true, results))
 }
 
 // fileSnapshot is a file's bytes, or its absence, taken so a failed write can put the file back.
