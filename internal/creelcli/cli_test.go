@@ -15,8 +15,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"runtime"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -955,6 +958,147 @@ func TestCreelCLI(t *testing.T) {
 			for _, want := range []string{fmt.Sprintf("pid=%d", pid), tt.wantStatus} {
 				if !strings.Contains(captured.String(), want) {
 					t.Errorf("%s: logger output = %q; want it to hold %q", tt.name, captured.String(), want)
+				}
+			}
+		}
+	})
+
+	// The Go client rows make the test process the pane of the hub's orch strand, the one pane that may also claim a program name.
+	orchRig := func(t *testing.T) (r *rig, orch string, location *lyxcwd.Location) {
+		t.Helper()
+		r = newRig(t)
+		orch = r.name("orch")
+		t.Setenv(agentname.StrandNameEnv, orch)
+		strand := creelfake.LiveStrand(orch)
+		strand.PanePID = os.Getpid()
+		r.delivery.SetStrands(strand)
+		r.startDaemon(t)
+		location, err := lyxcwd.Resolve(r.cwd)
+		if err != nil {
+			t.Fatalf("Resolve(%q) = %v", r.cwd, err)
+		}
+		return r, orch, location
+	}
+
+	t.Run("a program client signs as the program whatever the environment holds and its mail reaches the strand", func(t *testing.T) {
+		r, orch, location := orchRig(t)
+		program, err := NewProgramClient(location, "BATTEN")
+		if err != nil {
+			t.Fatalf("NewProgramClient() = %v", err)
+		}
+		if program.Shortname() != r.short {
+			t.Errorf("Shortname() = %q; want %q", program.Shortname(), r.short)
+		}
+		if _, err := program.Post(orch, "from the program"); err != nil {
+			t.Fatalf("Post() = %v", err)
+		}
+		strand, err := NewStrandClient(location, orch)
+		if err != nil {
+			t.Fatalf("NewStrandClient() = %v", err)
+		}
+		var read []creelengine.Message
+		if err := strand.ReadAll(func(messages []creelengine.Message) error {
+			read = messages
+			return nil
+		}); err != nil {
+			t.Fatalf("ReadAll() = %v", err)
+		}
+		if len(read) != 1 || read[0].Body != "from the program" || read[0].From != r.short+":BATTEN" {
+			t.Errorf("the strand read %+v; want one message from %s:BATTEN", read, r.short)
+		}
+	})
+
+	t.Run("a program client's command inject is typed through the delivery and the log shows its command and argument", func(t *testing.T) {
+		r, orch, location := orchRig(t)
+		program, err := NewProgramClient(location, "TENDER")
+		if err != nil {
+			t.Fatalf("NewProgramClient() = %v", err)
+		}
+		command := creelengine.Command{Name: creelengine.CommandCompact, Argument: "keep the plan"}
+		id, err := program.InjectCommand(orch, command, 0)
+		if err != nil {
+			t.Fatalf("InjectCommand() = %v", err)
+		}
+		r.clock.AwaitWaitsWhere(1, isProbeWait)
+		if got, want := r.delivery.Commands(), []creelfake.CommandCall{{Strand: orch, Command: command}}; !reflect.DeepEqual(got, want) {
+			t.Errorf("Commands = %+v; want %+v", got, want)
+		}
+		run := runCreel(r.cwd, "log", "--id", strconv.FormatInt(id, 10))
+		if !strings.Contains(run.raw, `"command":"compact"`) || !strings.Contains(run.raw, `"argument":"keep the plan"`) {
+			t.Errorf("creel log --id %d = %q; want the command and argument", id, run.raw)
+		}
+		entries, err := program.Log(creelengine.LogFilter{ID: id})
+		if err != nil || len(entries) == 0 || entries[0].Command != creelengine.CommandCompact {
+			t.Errorf("Log() = %+v, %v; want the inject's entries carrying its command", entries, err)
+		}
+	})
+
+	t.Run("a program client's ReadAll with a failing handler leaves the reply unread for the next ReadAll", func(t *testing.T) {
+		r, orch, location := orchRig(t)
+		program, err := NewProgramClient(location, "BATTEN")
+		if err != nil {
+			t.Fatalf("NewProgramClient() = %v", err)
+		}
+		// A program's mailbox is known once it has read.
+		if err := program.ReadAll(func([]creelengine.Message) error { return nil }); err != nil {
+			t.Fatalf("first ReadAll() = %v", err)
+		}
+		strand, err := NewStrandClient(location, orch)
+		if err != nil {
+			t.Fatalf("NewStrandClient() = %v", err)
+		}
+		if _, err := strand.Post(r.short+":BATTEN", "the reply"); err != nil {
+			t.Fatalf("Post() = %v", err)
+		}
+		refused := errors.New("handler refused")
+		if err := program.ReadAll(func([]creelengine.Message) error { return refused }); !errors.Is(err, refused) {
+			t.Fatalf("ReadAll() with a failing handler = %v; want %v", err, refused)
+		}
+		// The daemon releases the reservation once it sees the connection close, which no signal reaches the test, so it retries on a short tick under a real-time deadline.
+		var read []creelengine.Message
+		deadline := time.Now().Add(10 * time.Second)
+		for len(read) == 0 && time.Now().Before(deadline) {
+			if err := program.ReadAll(func(messages []creelengine.Message) error {
+				read = messages
+				return nil
+			}); err != nil {
+				t.Fatalf("second ReadAll() = %v", err)
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		if len(read) != 1 || read[0].Body != "the reply" {
+			t.Errorf("second ReadAll handed %+v; want the unread reply", read)
+		}
+	})
+
+	t.Run("a program client's withdraw removes its queued inject and the log names the reason", func(t *testing.T) {
+		r, orch, location := orchRig(t)
+		r.delivery.SetIdle(orch, false)
+		program, err := NewProgramClient(location, "BATTEN")
+		if err != nil {
+			t.Fatalf("NewProgramClient() = %v", err)
+		}
+		id, err := program.Inject(orch, "/clear", 0)
+		if err != nil {
+			t.Fatalf("Inject() = %v", err)
+		}
+		got, err := program.Withdraw(orch)
+		if err != nil || !slices.Equal(got.Injects, []int64{id}) {
+			t.Fatalf("Withdraw() = %+v, %v; want the inject %d", got, err, id)
+		}
+		if run := runCreel(r.cwd, "log", "--id", strconv.FormatInt(id, 10)); !strings.Contains(run.raw, `"reason":"withdrawn"`) {
+			t.Errorf("creel log --id %d = %q; want the withdrawn reason", id, run.raw)
+		}
+	})
+
+	t.Run("a Go client on a location outside a hub is refused naming the way forward", func(t *testing.T) {
+		for name, build := range map[string]func(*lyxcwd.Location) (*GoClient, error){
+			"program": func(l *lyxcwd.Location) (*GoClient, error) { return NewProgramClient(l, "BATTEN") },
+			"strand":  func(l *lyxcwd.Location) (*GoClient, error) { return NewStrandClient(l, "ly:orch") },
+		} {
+			for _, location := range []*lyxcwd.Location{nil, {}} {
+				if _, err := build(location); err == nil || !strings.Contains(err.Error(), "way forward") {
+					t.Errorf("%s client on %+v = %v; want a refusal naming the way forward", name, location, err)
 				}
 			}
 		}

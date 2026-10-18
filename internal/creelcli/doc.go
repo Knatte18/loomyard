@@ -14,6 +14,13 @@
 // For post and inject the line names what they already stored, and for a forward, hold, release or interrupt it says the verb took effect.
 // The refusal fallback line opens with that statement too for a post or inject that stored before it refused.
 // `inbox` prints the caller's unread counts as `inbox.senders`, a list of `{from, unread}`, and no other key.
+// GoClient is the one Go-side caller of creel, so no other module builds a creel request by hand.
+// NewProgramClient signs as `<shortname>:<PROGRAM>` and claims no strand, whatever `$LYX_STRAND_NAME` holds, and NewStrandClient claims a strand and no program; the daemon's identity rules still decide who the caller is.
+// Both refuse a location outside a hub with the way forward, start the daemon through the spawn seam when none answers, and connect on the first call.
+// Every call passes a 30-second timeout, so a caller under a lock waits at most that long per call.
+// Post, Inject, InjectCommand, Hold, Release and Withdraw send the matching verb; withdraw has no CLI verb.
+// ReadAll reads every unread message without waiting and hands them to its handler before the client acknowledges them, so a handler error leaves them unread, and Log answers the journal entries matching a filter.
+// The refusal of a strand claim from a process in no strand pane reaches a Go caller as an error matching `creelengine.ErrStrandClaimOutsidePane`, while the CLI prints it as any refusal.
 // The hub delivery in this package implements the engine's delivery seam over the hub's worktrees, reed's persisted state and shuttle.
 // Its Command operation runs a command inject through the worktree's shuttle runner: clear, compact with the argument as focus, reload-plugins, color with the argument as segment color, and load-skills with the argument's space-separated skills.
 // Shuttle's busy and not-confirmed answers map onto the engine's ErrBusy and ErrNotLanded, as they do for a typed line.
