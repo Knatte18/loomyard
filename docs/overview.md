@@ -303,6 +303,7 @@ github.com/Knatte18/loomyard/
 ├── internal/creelengine/         the per-hub message daemon: the journal-folded pool of mail and queued injects, sender identity, reminders, injects, holds, the removed-holder sweep and the socket protocol, over a delivery seam
 ├── internal/output/              shared JSON output
 ├── internal/modelspec/           model-spec parser + models.yaml registry leaf
+├── internal/runprofile/          the hub's named run profiles in profiles.yaml: template, layered-load spec, loader and lookup
 ├── internal/pattern/             PATTERN directive leaf (root PATTERN.md inlined per role) + format checker
 ├── internal/friction/            the Tier 2 friction-note directive leaf, consumed by webster, burler, and loom
 ├── internal/shell/               provider-invariant pane-shell mechanics leaf (pwsh + posix)
@@ -346,6 +347,7 @@ User-facing modules each get one `lyx <module>` namespace:
   `lyx board intake` lists open inbox issues not yet on the board, imports one as a note or folds it into an entry, and closes noise with a stated reason.
   The README renders Tasks split into Running, Ready (waiting on nothing open) and dependency layers whose entries can run in parallel, then Notes grouped by type label, each subsection one numbered table that links each slug to its design doc.
   An entry may carry a priority, `high` or `low`, absent meaning normal, which orders it first or last within its subsection.
+  A task may name a run profile in its `profile` field, and `lyx board profiles` prints the hub's profiles with their settings.
   Agents use the board through the `ly:board` skill.
   ✅ Implemented.
 - **config** — bare `lyx config` lists modules and verbs, `lyx config menu` picks a module to edit interactively, and `lyx config <module>` edits that module's config;
@@ -357,7 +359,9 @@ User-facing modules each get one `lyx <module>` namespace:
   Every `--set` write is then loaded through the module's own loader, and a value it refuses, such as a list given to loom's single-model `plan`, is refused naming the key with the file left as it was.
   A module resolves key by key through the embedded template, the repo default at `<BoardDir>/_lyx/config/<module>.yaml`, the worktree's sparse file and the untracked local override at `<anchor>/.lyx/config/<module>.local.yaml`; see [internal/configengine](../internal/configengine/doc.go).
   `lyx config --layer default|worktree|local` picks the layer a verb addresses, and `lyx config <module> --resolved` prints the merged result with each unit annotated by its layer.
-  A board task's `run_settings` reach the pair's local layer at batten's Seed-Child, bounded by `configreg`'s `LocalKeys` and `LocalDenied`. ✅ Implemented.
+  A board task's `run_settings` reach the pair's local layer at batten's Seed-Child, bounded by `configreg`'s `LocalKeys` and `LocalDenied`.
+  A task's `profile` names a run profile in the hub-wide, seed-only `profiles.yaml`, whose settings Seed-Child writes under the task's `run_settings`;
+  `lyx config profiles --set <name>='<json object>'` adds or replaces one whole profile (see [internal/runprofile](../internal/runprofile/doc.go)). ✅ Implemented.
 - **fabric** — the sole git-coordination module over the code and its records, unified over two `internal/gitrepo.Repo` instances: clone (the hub creator), dual-worktree add/remove, coordinated checkout (switches code and records together + re-points junctions), reconcile, status, prune, cleanup, records content-sync (commit/push/pull/sync/diff; in the prime, push, commit and sync push the records side only and `push` reports an unpushed code branch as `code_push_skipped`), and a merge/conflict lifecycle (`merge-in`/`merge`/`merge-stage`/`merge --continue`/`merge --abort`, mirroring git's own exit codes and surfacing conflicts as unified, worktree-relative paths; `merge-stage` marks resolved paths so `--continue`'s index gate can pass, and is the only route for a conflict under a wired junction name, which git refuses to stage through), all in one command tree (`internal/fabriccli` + `internal/fabricengine`);
   CLI surface is `lyx fabric clone|add|list|remove|checkout|pairs|reconcile|prune|cleanup|unwire|shortname|status|commit|push|pull|sync|diff|merge-in|merge|merge-stage`.
   `clone` takes the records URL first with the code URL optional, derived from the code binding recorded on the records main branch when omitted;
