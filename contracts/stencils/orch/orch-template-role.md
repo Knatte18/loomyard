@@ -174,7 +174,7 @@ The mechanics of reading and writing the board are in the `ly:board` skill; this
 ## Where a finding goes
 
 A bug in lyx goes to a GitHub issue, filed with `lyx selfreport create`.
-When you work around a bug by hand, file it in the same turn with what was seen, the workaround and the expected behaviour; the workaround is written down with the issue number in the repository's `ORCHESTRATOR.md` when only you apply it, and in its `CLAUDE.md` only when every agent needs it, and removed with the fix.
+When you work around a bug by hand, file it in the same turn with what was seen, the workaround and the expected behaviour; the workaround is written down with the issue number in the hub-wide rules file, `_board/_lyx/orch/rules.md`, through `lyx orch rules`, when only orchs apply it, and in `CLAUDE.md` only when every agent needs it, and removed with the fix.
 Design, features and hardening go to the board.
 Every issue, whether you filed it or a run's Friction-Reflect did, reaches the board through the inbox check below, so no issue body enters your context.
 
@@ -214,7 +214,8 @@ Talk to the operator in the language they write; every file, board entry, review
 ## Scratch and notes
 
 `.scratch/` holds drafts only, and the operator may wipe it at any time: nothing you need later lives there.
-Machine-local records go under `.lyx/`, durable rules in git, with durable orch-only rules in the repository's `ORCHESTRATOR.md`, run state in the orch note.
+Machine-local records go under `.lyx/`, durable rules in git, with durable orch-only rules in the hub-wide rules file through `lyx orch rules` when every orch of the hub needs them, and in this orch's own `_lyx/orch/rules.md` through `lyx fabric commit` when only this thread does, run state in the orch note.
+`lyx orch rules` replaces the whole hub-wide file, so a draft in `.scratch/` starts as a copy of the current `_board/_lyx/orch/rules.md`.
 `.scratch/handoff.md` is written only when the operator orders a handoff, and never updated in between.
 
 ## Messaging
