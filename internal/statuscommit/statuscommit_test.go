@@ -5,11 +5,9 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
-
-	"github.com/Knatte18/loomyard/internal/gitrepo"
 )
 
-// TestNew_OrdinaryPath covers the path with no merge in progress: the seam commits with the message its prefix names, then runs afterCommit, then pushes.
+// TestNew_OrdinaryPath covers the path with no merge in progress: the seam commits with the message its prefix names, then runs afterCommit, then spawns the push only when the commit landed something.
 func TestNew_OrdinaryPath(t *testing.T) {
 	t.Parallel()
 
@@ -18,10 +16,13 @@ func TestNew_OrdinaryPath(t *testing.T) {
 		prefix      string
 		producer    string
 		state       string
+		committed   bool
 		wantMessage string
+		wantSpawn   bool
 	}{
-		{name: "loom", prefix: "loom", producer: "Discussion-Write", state: "running", wantMessage: "loom: Discussion-Write -> running"},
-		{name: "batten", prefix: "batten", producer: "Run-Shed", state: "running", wantMessage: "batten: Run-Shed -> running"},
+		{name: "loom", prefix: "loom", producer: "Discussion-Write", state: "running", committed: true, wantMessage: "loom: Discussion-Write -> running", wantSpawn: true},
+		{name: "batten", prefix: "batten", producer: "Run-Shed", state: "running", committed: true, wantMessage: "batten: Run-Shed -> running", wantSpawn: true},
+		{name: "NothingLanded", prefix: "loom", producer: "Discussion-Write", state: "running", committed: false, wantMessage: "loom: Discussion-Write -> running", wantSpawn: false},
 	}
 
 	for _, tt := range tests {
@@ -32,13 +33,13 @@ func TestNew_OrdinaryPath(t *testing.T) {
 			var gotMessage string
 			deps := Deps{
 				MergeActive: func() (bool, error) { return false, nil },
-				Commit: func(msg string) error {
+				Commit: func(msg string) (bool, error) {
 					calls = append(calls, "commit")
 					gotMessage = msg
-					return nil
+					return tt.committed, nil
 				},
-				Push: func() error {
-					calls = append(calls, "push")
+				Spawn: func() error {
+					calls = append(calls, "spawn")
 					return nil
 				},
 			}
@@ -51,7 +52,10 @@ func TestNew_OrdinaryPath(t *testing.T) {
 				t.Fatalf("seam(...) = %v; want nil", err)
 			}
 
-			want := []string{"commit", fmt.Sprintf("after:%s:%s", tt.producer, tt.state), "push"}
+			want := []string{"commit", fmt.Sprintf("after:%s:%s", tt.producer, tt.state)}
+			if tt.wantSpawn {
+				want = append(want, "spawn")
+			}
 			if !reflect.DeepEqual(calls, want) {
 				t.Errorf("calls = %v; want %v", calls, want)
 			}
@@ -92,20 +96,20 @@ func TestNew_CommitErrorPropagates(t *testing.T) {
 	t.Parallel()
 
 	commitErr := errors.New("commit failed")
-	pushCalled := false
+	spawnCalled := false
 	afterCalled := false
 	deps := Deps{
 		MergeActive: func() (bool, error) { return false, nil },
-		Commit:      func(msg string) error { return commitErr },
-		Push:        func() error { pushCalled = true; return nil },
+		Commit:      func(msg string) (bool, error) { return false, commitErr },
+		Spawn:       func() error { spawnCalled = true; return nil },
 	}
 
 	seam := New(deps, "loom", "loomcli", func(string, string) { afterCalled = true })
 	if err := seam("Discussion-Write", "running"); !errors.Is(err, commitErr) {
 		t.Errorf("seam(...) = %v; want %v", err, commitErr)
 	}
-	if pushCalled {
-		t.Error("Push was called; want it skipped when Commit errors")
+	if spawnCalled {
+		t.Error("Spawn was called; want it skipped when Commit errors")
 	}
 	if afterCalled {
 		t.Error("afterCommit was called; want it skipped when Commit errors")
@@ -140,7 +144,7 @@ func TestNew_CommitFailureExplainedByTheReProbeTakesTheSkip(t *testing.T) {
 			t.Parallel()
 
 			probes := 0
-			pushCalled := false
+			spawnCalled := false
 			deps := Deps{
 				MergeActive: func() (bool, error) {
 					probes++
@@ -149,8 +153,8 @@ func TestNew_CommitFailureExplainedByTheReProbeTakesTheSkip(t *testing.T) {
 					}
 					return tt.reProbe()
 				},
-				Commit: func(msg string) error { return tt.commitErr },
-				Push:   func() error { pushCalled = true; return nil },
+				Commit: func(msg string) (bool, error) { return false, tt.commitErr },
+				Spawn:  func() error { spawnCalled = true; return nil },
 			}
 
 			seam := New(deps, "loom", "loomcli", nil)
@@ -160,8 +164,8 @@ func TestNew_CommitFailureExplainedByTheReProbeTakesTheSkip(t *testing.T) {
 			if probes != 2 {
 				t.Errorf("MergeActive called %d time(s); want exactly 2 -- once before the commit, once to explain its failure", probes)
 			}
-			if pushCalled {
-				t.Error("Push was called; want it skipped -- nothing was committed to push")
+			if spawnCalled {
+				t.Error("Spawn was called; want it skipped -- nothing was committed to push")
 			}
 		})
 	}
@@ -170,32 +174,19 @@ func TestNew_CommitFailureExplainedByTheReProbeTakesTheSkip(t *testing.T) {
 func TestNew_PushErrorReturnsNil(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name    string
-		pushErr error
-	}{
-		{"Generic", errors.New("push failed")},
-		{"Rejected", gitrepo.ErrPushRejected},
+	commits := 0
+	deps := Deps{
+		MergeActive: func() (bool, error) { return false, nil },
+		Commit:      func(msg string) (bool, error) { commits++; return true, nil },
+		Spawn:       func() error { return errors.New("spawn failed") },
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			commitCalled := false
-			deps := Deps{
-				MergeActive: func() (bool, error) { return false, nil },
-				Commit:      func(msg string) error { commitCalled = true; return nil },
-				Push:        func() error { return tt.pushErr },
-			}
-
-			seam := New(deps, "loom", "loomcli", nil)
-			if err := seam("Discussion-Write", "running"); err != nil {
-				t.Errorf("seam(...) = %v; want nil -- a failed push never halts a run", err)
-			}
-			if !commitCalled {
-				t.Error("Commit was not called; want it to have run before Push")
-			}
-		})
+	seam := New(deps, "loom", "loomcli", nil)
+	if err := seam("Discussion-Write", "running"); err != nil {
+		t.Errorf("seam(...) = %v; want nil -- a push that fails to spawn never halts a run", err)
+	}
+	if commits != 1 {
+		t.Errorf("Commit called %d time(s); want exactly 1 -- the transition is not retried", commits)
 	}
 }
 
@@ -216,8 +207,8 @@ func TestNew_MergeActiveSkips(t *testing.T) {
 			var called []string
 			deps := Deps{
 				MergeActive: tt.mergeActive,
-				Commit:      func(msg string) error { called = append(called, "commit"); return nil },
-				Push:        func() error { called = append(called, "push"); return nil },
+				Commit:      func(msg string) (bool, error) { called = append(called, "commit"); return true, nil },
+				Spawn:       func() error { called = append(called, "spawn"); return nil },
 			}
 
 			seam := New(deps, "loom", "loomcli", func(string, string) { called = append(called, "after") })

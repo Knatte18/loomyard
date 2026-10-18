@@ -1,5 +1,5 @@
 // wiring_commitstatus_test.go pins loom's side of the per-transition status seam -- its board status write and both ShedPaths fill sites -- and the status pathspec.
-// The seam's three dispositions -- commit-hard-errors, push-warns, skip-while-mid-merge -- live in internal/statuscommit and are pinned there.
+// The seam's three dispositions -- commit-hard-errors, spawn-warns, skip-while-mid-merge -- live in internal/statuscommit and are pinned there.
 // Every test here drives newCommitStatusSeam against injected commitStatusDeps stub closures, spawning no git
 // and no process, so the file stays Tier 1 with no hub fixture.
 
@@ -24,39 +24,45 @@ func selfStatusRel(location *lyxcwd.Location) string {
 	return shedrun.StatusRel(location, shedrun.SelfRunID)
 }
 
-// TestNewCommitStatusSeam_OrdinaryPath asserts that, with MergeActive false, Commit nil, and Push
-// nil, the seam calls Commit exactly once and Push exactly once, in that order, and returns nil.
+// TestNewCommitStatusSeam_OrdinaryPath asserts that, with MergeActive false and no board-status writer, a commit that landed something is followed by one Spawn, in that order, and a commit that landed nothing spawns nothing; both return nil.
 //
-//testtiming:keep pins the seam with no board-status writer calling commit then push once each, in that order; the board-status test always installs a writer
+//testtiming:keep pins the seam with no board-status writer calling commit then spawn once each, in that order, and spawning nothing for a no-op commit; the board-status test always installs a writer
 func TestNewCommitStatusSeam_OrdinaryPath(t *testing.T) {
 	t.Parallel()
 
-	var calls []string
-	deps := commitStatusDeps{
-		MergeActive: func() (bool, error) { return false, nil },
-		Commit: func(msg string) error {
-			calls = append(calls, "commit")
-			return nil
-		},
-		Push: func() error {
-			calls = append(calls, "push")
-			return nil
-		},
+	tests := []struct {
+		name      string
+		committed bool
+		want      []string
+	}{
+		{"committed transition spawns once", true, []string{"commit", "spawn"}},
+		{"no-op transition spawns none", false, []string{"commit"}},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	seam := newCommitStatusSeam(deps)
-	if err := seam("Discussion-Write", "running"); err != nil {
-		t.Fatalf("seam(...) = %v; want nil", err)
-	}
+			var calls []string
+			deps := commitStatusDeps{
+				MergeActive: func() (bool, error) { return false, nil },
+				Commit: func(msg string) (bool, error) {
+					calls = append(calls, "commit")
+					return tt.committed, nil
+				},
+				Spawn: func() error {
+					calls = append(calls, "spawn")
+					return nil
+				},
+			}
 
-	want := []string{"commit", "push"}
-	if len(calls) != len(want) {
-		t.Fatalf("calls = %v; want %v", calls, want)
-	}
-	for i := range want {
-		if calls[i] != want[i] {
-			t.Errorf("calls[%d] = %q; want %q", i, calls[i], want[i])
-		}
+			seam := newCommitStatusSeam(deps)
+			if err := seam("Discussion-Write", "running"); err != nil {
+				t.Fatalf("seam(...) = %v; want nil", err)
+			}
+			if !reflect.DeepEqual(calls, tt.want) {
+				t.Errorf("calls = %v; want %v", calls, tt.want)
+			}
+		})
 	}
 }
 
@@ -66,15 +72,18 @@ func TestNewCommitStatusSeam_BoardStatus(t *testing.T) {
 	t.Parallel()
 
 	var written []string
-	commits := 0
+	commits, spawns := 0, 0
 	failNext := false
 	deps := commitStatusDeps{
 		MergeActive: func() (bool, error) { return false, nil },
-		Commit: func(string) error {
+		Commit: func(string) (bool, error) {
 			commits++
+			return true, nil
+		},
+		Spawn: func() error {
+			spawns++
 			return nil
 		},
-		Push: func() error { return nil },
 		SetBoardStatus: func(status string) error {
 			if failNext {
 				failNext = false
@@ -110,6 +119,9 @@ func TestNewCommitStatusSeam_BoardStatus(t *testing.T) {
 	}
 	if commits != len(steps) {
 		t.Errorf("commits = %d; want %d", commits, len(steps))
+	}
+	if spawns != len(steps) {
+		t.Errorf("spawns = %d; want %d -- one per committed transition", spawns, len(steps))
 	}
 }
 

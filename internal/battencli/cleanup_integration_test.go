@@ -1,16 +1,14 @@
 //go:build integration
 
-// cleanup_integration_test.go drives "lyx batten cleanup" through RunCLIIn over a hubforge hub: the prime-only refusal, the dry run and the applied removal with its records commit and push.
+// cleanup_integration_test.go drives "lyx batten cleanup" through RunCLIIn over a hubforge hub: the prime-only refusal, the dry run and the applied removal with its records commit; the push is spawned, and the test binary's spawn forks nothing.
 // It stays a white-box "package battencli" test, like the other integration files here.
 
 package battencli
 
 import (
 	"bytes"
-	"os/exec"
 	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -38,15 +36,6 @@ func runCleanup(t *testing.T, cwd string, args ...string) (string, int) {
 	var out bytes.Buffer
 	code := RunCLIIn(cwd, &out, append([]string{"cleanup"}, args...))
 	return out.String(), code
-}
-
-func gitOutput(t *testing.T, dir string, args ...string) string {
-	t.Helper()
-	out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).Output()
-	if err != nil {
-		t.Fatalf("git %v in %s: %v", args, dir, err)
-	}
-	return strings.TrimSpace(string(out))
 }
 
 func TestCleanupIntegration_RefusesOutsideThePrimeThenDryRunsThenRemovesAndPushes(t *testing.T) {
@@ -108,8 +97,8 @@ func TestCleanupIntegration_RefusesOutsideThePrimeThenDryRunsThenRemovesAndPushe
 
 	out, code = runCleanup(t, h.PrimeWorktree(), "--apply")
 	applied := envelope.RequireOK(t, out)
-	if code != 0 || applied.Raw["applied"] != true || applied.Raw["push_error"] != "" {
-		t.Errorf("apply: code=%d applied=%v push_error=%v", code, applied.Raw["applied"], applied.Raw["push_error"])
+	if code != 0 || applied.Raw["applied"] != true {
+		t.Errorf("apply: code=%d applied=%v", code, applied.Raw["applied"])
 	}
 	if got := stringsOf(t, applied.Raw["removed"]); !slices.Equal(got, []string{slug}) {
 		t.Errorf("apply removed = %v, want [%s]", got, slug)
@@ -120,11 +109,6 @@ func TestCleanupIntegration_RefusesOutsideThePrimeThenDryRunsThenRemovesAndPushe
 	}
 	if _, found, err := fabricengine.CommittedAnchoredFile(h.Location, shedrun.StatusRel(h.Location, slug)); err != nil || found {
 		t.Errorf("committed status found=%v err=%v, want it gone from the records HEAD", found, err)
-	}
-	records := h.PrimeRecords()
-	branch := gitOutput(t, records, "rev-parse", "--abbrev-ref", "HEAD")
-	if local, remote := gitOutput(t, records, "rev-parse", "HEAD"), gitOutput(t, h.RecordsBare, "rev-parse", "refs/heads/"+branch); local != remote {
-		t.Errorf("records tip %s was not pushed: remote %s is at %s", local, branch, remote)
 	}
 	for _, name := range []string{"run.lock", "status.json.lock"} {
 		if !pathExists(filepath.Join(scratch, name)) {

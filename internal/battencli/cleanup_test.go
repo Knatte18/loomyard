@@ -44,8 +44,8 @@ type cleanupStubs struct {
 	committed  map[string][]byte
 	commits    [][]string
 	messages   []string
-	pushes     int
-	pushErr    error
+	spawns     int
+	spawnErr   error
 	commitHook func()
 }
 
@@ -67,9 +67,9 @@ func (s *cleanupStubs) deps() cleanupDeps {
 			s.messages = append(s.messages, msg)
 			return true, nil
 		},
-		Push: func() error {
-			s.pushes++
-			return s.pushErr
+		Spawn: func() error {
+			s.spawns++
+			return s.spawnErr
 		},
 		Now: func() time.Time { return cleanupNow },
 	}
@@ -169,13 +169,13 @@ func TestCleanup(t *testing.T) {
 		holdRunLock  string
 		denyRunsRoot bool
 		// legacySelf adds a done run under a directory literally named "self", which no slug-addressed path reaches.
-		legacySelf  bool
-		pushErr     error
-		wantRemoved []string
-		wantEmptied []string
-		wantSkipped map[string]string
-		wantCommits []string
-		wantPushErr bool
+		legacySelf   bool
+		spawnErr     error
+		wantRemoved  []string
+		wantEmptied  []string
+		wantSkipped  map[string]string
+		wantCommits  []string
+		wantSpawnErr bool
 	}{
 		{
 			name:        "done run is removed, committed and its scratch emptied",
@@ -251,13 +251,13 @@ func TestCleanup(t *testing.T) {
 			wantSkipped:  map[string]string{"locked": "stat run directory"},
 		},
 		{
-			name:        "push failure is reported with the commit made",
-			fixtures:    []cleanupFixture{{slug: "alpha", runState: "done", scratchAge: time.Hour}},
-			pushErr:     errors.New("remote refused"),
-			wantRemoved: []string{"alpha"},
-			wantEmptied: []string{"alpha"},
-			wantCommits: []string{"alpha"},
-			wantPushErr: true,
+			name:         "spawn failure is reported with the commit made",
+			fixtures:     []cleanupFixture{{slug: "alpha", runState: "done", scratchAge: time.Hour}},
+			spawnErr:     errors.New("remote refused"),
+			wantRemoved:  []string{"alpha"},
+			wantEmptied:  []string{"alpha"},
+			wantCommits:  []string{"alpha"},
+			wantSpawnErr: true,
 		},
 	}
 
@@ -270,7 +270,7 @@ func TestCleanup(t *testing.T) {
 
 			location := newCleanupLocation(t)
 			stubs := newCleanupStubs()
-			stubs.pushErr = tt.pushErr
+			stubs.spawnErr = tt.spawnErr
 			for _, fixture := range tt.fixtures {
 				buildCleanupFixture(t, location, stubs, fixture)
 			}
@@ -324,15 +324,15 @@ func TestCleanup(t *testing.T) {
 					t.Errorf("commit %d message %q does not name %q", i, stubs.messages[i], slug)
 				}
 			}
-			wantPushes := 0
+			wantSpawns := 0
 			if len(tt.wantCommits) > 0 {
-				wantPushes = 1
+				wantSpawns = 1
 			}
-			if stubs.pushes != wantPushes {
-				t.Errorf("pushes = %d, want %d", stubs.pushes, wantPushes)
+			if stubs.spawns != wantSpawns {
+				t.Errorf("spawns = %d, want %d", stubs.spawns, wantSpawns)
 			}
-			if (report.PushError != "") != tt.wantPushErr {
-				t.Errorf("PushError = %q, want error: %v", report.PushError, tt.wantPushErr)
+			if (report.PushError != "") != tt.wantSpawnErr {
+				t.Errorf("PushError = %q, want error: %v", report.PushError, tt.wantSpawnErr)
 			}
 
 			for _, fixture := range tt.fixtures {
@@ -396,8 +396,8 @@ func TestCleanup_DryRunListsExactlyWhatApplyRemovesAndChangesNothing(t *testing.
 	if !slices.Equal(dryBefore, dryAfter) {
 		t.Errorf("a dry run changed the tree:\nbefore %v\nafter  %v", dryBefore, dryAfter)
 	}
-	if len(dryStubs.commits) != 0 || dryStubs.pushes != 0 {
-		t.Errorf("a dry run committed %v and pushed %d times", dryStubs.commits, dryStubs.pushes)
+	if len(dryStubs.commits) != 0 || dryStubs.spawns != 0 {
+		t.Errorf("a dry run committed %v and spawned %d pushes", dryStubs.commits, dryStubs.spawns)
 	}
 	if want := []string{"done-one", "done-two", "gone"}; !slices.Equal(applyReport.Removed, want) {
 		t.Errorf("apply Removed = %v, want %v", applyReport.Removed, want)
