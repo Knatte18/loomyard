@@ -20,7 +20,6 @@ func TestInterruptPolicyFor(t *testing.T) {
 		{"webster handback", NameWebster, shedverbs.InterruptPolicyHandback},
 		{"gate reinvoke", NamePreflight, shedverbs.InterruptPolicyReinvoke},
 		{"writer reinvoke", NameDiscussionWrite, shedverbs.InterruptPolicyReinvoke},
-		{"batchifier reinvoke", NameBatchifier, shedverbs.InterruptPolicyReinvoke},
 		{"bouncer reinvoke", NameDiscussionBouncer, shedverbs.InterruptPolicyReinvoke},
 		{"burler review reinvoke", NameDiscussionBurlerReview, shedverbs.InterruptPolicyReinvoke},
 		{"burler fix reinvoke", NameDarnBurlerFix, shedverbs.InterruptPolicyReinvoke},

@@ -23,13 +23,16 @@ type phaseTable struct {
 	families map[string]string
 }
 
+// retiredBatchifierRow is the loom row that batched the plan before the implementer took batching over; a past run's history still carries it.
+const retiredBatchifierRow = "Batchifier"
+
 // recipePhaseTables holds the phase table of every recipe a report selects.
 var recipePhaseTables = map[string]phaseTable{
 	shedrun.RecipeLoom: {
 		exact: map[string]string{
 			loomshed.NamePreflight:       PhaseSetup,
 			loomshed.NameLoomPreflight:   PhaseSetup,
-			loomshed.NameBatchifier:      PhasePlan,
+			retiredBatchifierRow:         PhaseWebster,
 			loomshed.NameDescribe:        PhaseWebster,
 			loomshed.NamePublish:         PhasePublishFinalize,
 			loomshed.NamePRAlign:         PhasePublishFinalize,

@@ -5,6 +5,7 @@
 ## What it is
 
 Webster is Loomyard's implementer module: one long-lived **Master** session reads a plan once and forks one implementer per execution batch in-session, sequentially, until the plan is built.
+It is the `webster` implementer of loom's implementer row, whose in, out and outcomes [implementer-spec.md](implementer-spec.md) pins.
 This file pins only the shapes another module is entitled to depend on.
 Everything about *how* webster reaches those shapes — the fork mechanism, the bracket verbs, the audit policy, crash/resume, the verify gate's mechanics — is `internal/websterengine`'s own business; see its package documentation for that design.
 

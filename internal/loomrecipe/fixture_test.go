@@ -390,10 +390,7 @@ func writeBatcherConfig(t *testing.T, anchorPath, content string) {
 	}
 }
 
-// buildSequenceFixture builds a temp anchor whose on-disk state makes rows 3 (Discussion-Write's own
-// gate), 7 (Plan-Write's own gate), and 9 (Batchifier) -- the three real, non-injectable producers
-// this task builds -- genuinely pass, and returns the anchor path alongside the
-// shedrecipe.Env/shedbuild.ShedPaths pair pointing at it.
+// buildSequenceFixture builds a temp anchor whose on-disk state makes Discussion-Write's own gate, Plan-Write's own gate, and Webster's batcher load -- the three real, non-injectable checks on the main line -- genuinely pass, and returns the anchor path alongside the shedrecipe.Env/shedbuild.ShedPaths pair pointing at it.
 // The Env starts from envkit.FullEnv and overrides the anchor, the paths, the loom shuttle, the burler, and the specs the sequence tests script.
 //
 // Discussion-Write's gate: both discussion files are written, the decision record carrying all
@@ -404,8 +401,8 @@ func writeBatcherConfig(t *testing.T, anchorPath, content string) {
 // internal/planparser/testdata/goodplan/00-overview.md and 01-json-flag.md model. Seeded unapproved
 // rather than approved: both gate sites run planglyph.ValidateFormat, which never demands the
 // approval flag, and an approved seed would misrepresent what the real Plan-Write producer is ever
-// allowed to write. Batchifier: no batcher.yaml is written at all, so batcher.Active resolves the
-// embedded template, which is a Done.
+// allowed to write. Webster: no batcher.yaml is written at all, so batcher.Active resolves the
+// embedded template.
 //
 // The status file is seeded through the production loomshed.Seed, never by hand-writing JSON, so a
 // Seed regression would not pass unnoticed here. Row 1 is not injected here: New builds it from
