@@ -1240,6 +1240,22 @@ func TestConfigTemplate_ContainsEveryConfigYAMLTag(t *testing.T) {
 	}
 }
 
+// TestConfigTemplate_ImplementerDefaultsToWebsterAndAcceptsALocalValue pins the implementer key, which no Config field carries because the recipe reads it where it builds the Implementer row:
+// the template defaults it to webster and ConfigSpec leaves it unguarded, so the local layer may set it.
+func TestConfigTemplate_ImplementerDefaultsToWebsterAndAcceptsALocalValue(t *testing.T) {
+	t.Parallel()
+	var template map[string]any
+	if err := yaml.Unmarshal([]byte(ConfigTemplate()), &template); err != nil {
+		t.Fatalf("parse ConfigTemplate(): %v", err)
+	}
+	if got := template["implementer"]; got != "webster" {
+		t.Errorf("ConfigTemplate() implementer = %v; want webster", got)
+	}
+	if got := ConfigSpec().Categories["implementer"]; got != configengine.CategoryNone {
+		t.Errorf("ConfigSpec() category of implementer = %v; want %v", got, configengine.CategoryNone)
+	}
+}
+
 // TestPathsOutsideRunRecords pins that PathsOutsideRunRecords drops every path under the run directory, the loom durable directory and the reviews directory, and keeps a code path and a path that only shares a records directory's name as a prefix.
 func TestPathsOutsideRunRecords(t *testing.T) {
 	t.Parallel()
