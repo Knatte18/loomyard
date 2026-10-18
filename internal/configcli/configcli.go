@@ -403,7 +403,7 @@ func buildConfigLong() string {
 		"notepad on Windows, or nano and then vi elsewhere.\n\n" +
 		"Use --print to print the on-disk YAML without launching the editor.\n\n" +
 		"Use --set key=value (repeatable) to write one or more config values directly,\n" +
-		"bypassing the editor entirely, e.g.\n" +
+		"with no editor, e.g.\n" +
 		"  lyx config board --set design_prefix=foo- --set readme=Home.md\n" +
 		"A list-valued key takes a YAML flow list and is replaced whole, e.g.\n" +
 		"  lyx config landing --set 'require_pr_to_base=[]'\n" +

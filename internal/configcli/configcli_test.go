@@ -915,6 +915,90 @@ func TestDispatchHubWideBoard(t *testing.T) {
 	}
 }
 
+// TestDispatchSetProfiles drives --set on the hub-wide profiles module.
+// A JSON object adds a profile or replaces one whole, leaving the others, and an absent hub file starts from the template's profiles.
+// A value that is not an object, or a profile no module takes, is refused with the file left as it was.
+func TestDispatchSetProfiles(t *testing.T) {
+	t.Parallel()
+
+	const seeded = "# operator notes\nlight:\n  loom: {plan_max_bounces: 1}\n"
+	rows := []struct {
+		name string
+		// absent leaves the hub file unwritten instead of seeded.
+		absent      bool
+		setFlag     string
+		wantCode    int
+		wantFile    string
+		wantContain []string
+		wantErr     string
+	}{
+		{
+			name:     "a new profile is added beside the existing one",
+			setFlag:  `wide={"darn":{"review_max_bounces":2}}`,
+			wantFile: "# operator notes\nlight:\n    loom: {plan_max_bounces: 1}\nwide:\n    darn: {review_max_bounces: 2}\n",
+		},
+		{
+			name:     "an existing profile is replaced whole",
+			setFlag:  `light={"loom":{"merge_max_bounces":1}}`,
+			wantFile: "# operator notes\nlight:\n    loom: {merge_max_bounces: 1}\n",
+		},
+		{
+			name:        "an absent hub file starts from the template's profiles",
+			absent:      true,
+			setFlag:     `wide={"darn":{"review_max_bounces":2}}`,
+			wantContain: []string{"light:", "budget:", "docs:", "wide:\n    darn: {review_max_bounces: 2}"},
+		},
+		{
+			name:     "a value that is not a JSON object is refused",
+			setFlag:  `light=3`,
+			wantCode: 1,
+			wantFile: seeded,
+			wantErr:  "JSON object",
+		},
+		{
+			name:     "a profile key no module takes is refused",
+			setFlag:  `odd={"loom":{"no_such_key":1}}`,
+			wantCode: 1,
+			wantFile: seeded,
+			wantErr:  `run profile "odd"`,
+		},
+	}
+	for _, row := range rows {
+		t.Run(row.name, func(t *testing.T) {
+			t.Parallel()
+
+			fx := newHubFixture(t)
+			if !row.absent {
+				seedModuleConfig(t, fx.board, "profiles", seeded)
+			}
+			commit := &fakeHubCommit{}
+			sync := &fakeSyncTracker{}
+			var out bytes.Buffer
+
+			code := dispatch(fx.layout, &out, []string{"profiles"}, makeNeverCalledEditor(t), sync.syncFunc(), commit.commitFunc(), false, []string{row.setFlag}, "", nil, true)
+
+			if code != row.wantCode {
+				t.Errorf("dispatch = %d; want %d; output: %q", code, row.wantCode, out.String())
+			}
+			hubFile, err := os.ReadFile(configengine.ConfigFile(fx.board, "profiles"))
+			if err != nil {
+				t.Fatalf("read hub profiles.yaml: %v", err)
+			}
+			if row.wantFile != "" && string(hubFile) != row.wantFile {
+				t.Errorf("hub file = %q; want %q", hubFile, row.wantFile)
+			}
+			for _, want := range row.wantContain {
+				if !strings.Contains(string(hubFile), want) {
+					t.Errorf("hub file = %q; want it to contain %q", hubFile, want)
+				}
+			}
+			if row.wantErr != "" {
+				assertJSONErrContains(t, out.String(), row.wantErr)
+			}
+		})
+	}
+}
+
 // TestDispatchLayers drives --layer through dispatch over a hub fixture: an unknown layer is refused naming the three, the default layer is written and committed from the prime only, a hub-wide module has no worktree layer, a local override is written uncommitted and refuses a key the local layer closes, a worktree write under a board is sparse, and --print reads the selected layer.
 func TestDispatchLayers(t *testing.T) {
 	t.Parallel()

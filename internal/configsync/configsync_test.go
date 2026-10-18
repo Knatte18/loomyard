@@ -458,6 +458,20 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 			wantAbsent:   []string{"prime/"},
 		},
 		{
+			name:         "profiles absent starts from the template's starting profiles",
+			module:       "profiles",
+			wantSeed:     SeedTemplate,
+			wantContains: []string{"light:", "budget:", "docs:"},
+		},
+		{
+			name:         "profiles present with a starting profile removed is never rewritten",
+			module:       "profiles",
+			hubFile:      "wide:\n  darn: {review_max_bounces: 2}\n",
+			wantSeed:     SeedHub,
+			wantContains: []string{"wide:"},
+			wantAbsent:   []string{"light:", "budget:", "docs:"},
+		},
+		{
 			name:         "fabric absent with a legacy warp.yaml folds it in",
 			module:       "fabric",
 			legacyFirst:  "branch_prefix: legacy/\n",
