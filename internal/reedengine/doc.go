@@ -247,7 +247,7 @@
 //
 // Operator config: a server reed starts reads no `~/.tmux.conf`.
 // The server spawn (serverSpawnArgv) and the capability probe's two invocations carry `-f /dev/null` on every platform but Windows;
-// the probe needs it because `list-commands` can start a transient server on reed's socket, and a config that creates a session would keep that server alive for the boot's `new-session` to join.
+// the probe needs it because `list-commands` starts a transient server on the probe's private socket, and a config that creates a session would keep that server alive.
 // A running server ignores the flag, and every other engine call keeps its argv.
 // The skip covers the operator's whole `~/.tmux.conf` on reed's per-hub servers only, every option, key binding and hook in it, and leaves the operator's own servers alone.
 // It takes effect at a hub server's next start, so a server an older lyx started keeps the operator's config until it exits.
@@ -382,9 +382,12 @@
 // list-commands, and those two differ in a way that matters: -V is
 // answered CLIENT-SIDE and contacts no server, while list-commands is
 // answered BY a server and starts one if none is running. Both are
-// therefore issued through TmuxCmd, carrying reed's own -L socket, so the
-// probe can never start a server on the operator's GLOBAL DEFAULT socket
-// — see probeCapabilityLocked for what that cost while it did.
+// therefore issued through TmuxCmd with an explicit -L socket, so the
+// probe never starts a server on the operator's GLOBAL DEFAULT socket.
+// Off Windows that socket is a fresh private key per probe, never the hub's.
+// The transient server `list-commands` starts exits as soon as it has answered;
+// on the hub's socket a sibling worktree's concurrent boot could connect to it while it exited and fail with `server exited unexpectedly`.
+// The probe removes the private key's socket file afterwards.
 // Every verb named above is REQUIRED: a binary missing any of them is
 // unusable, and requiredSubcommands (probe.go) fails the capability probe
 // on it.

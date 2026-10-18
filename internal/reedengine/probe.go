@@ -2,12 +2,13 @@
 // pure core (probeCapability) that checks a multiplexer's `-V` version against this GOOS's pinned
 // floor (minMultiplexerVersion, version.go) and its `list-commands` output against the engine's
 // required subcommand set, plus a thin Engine method (probeCapabilityLocked) that binds the pure
-// core to this engine's own socket-scoped TmuxCmd.
+// core to this engine's TmuxCmd, re-pointed off Windows at a private socket.
 
 package reedengine
 
 import (
 	"fmt"
+	"math/rand/v2"
 	"os"
 	"runtime"
 	"strings"
@@ -113,32 +114,34 @@ func parseCommandNames(out string) map[string]bool {
 	return names
 }
 
-// probeCapabilityLocked runs the capability probe against the configured multiplexer binary through
-// this engine's own TmuxCmd, so both probe calls carry reed's -L socket.
+// probeCapabilityLocked runs the capability probe against the configured multiplexer binary through a copy of this engine's own TmuxCmd, so both probe calls carry an explicit -L socket.
 //
-// The -L is load-bearing, not incidental tidiness. An earlier version shelled out to the binary
-// directly, which meant tmux fell back to the operator's GLOBAL DEFAULT socket: `-V` is answered
-// client-side and creates nothing, but `list-commands` is answered by a SERVER, so tmux started one
-// on the operator's own default socket every time `lyx reed up` or `resume` probed — a live-substrate
-// spawn outside the "exactly one named tmux server per hub" model, on a socket reed neither owns nor
-// tears down. Sharing that global made the probe race every other concurrent reed invocation on the
-// box, and `up` then aborted with `run list-commands: exit status 1` for a reason having nothing to
-// do with the hub it was booting (reproduced twice in nine runs of a 3x concurrent smoke sweep).
-//
-// Through TmuxCmd instead: `-V` still creates nothing, and `list-commands` is answered by this hub's
-// own server when it is already up — spawning nothing at all — or otherwise by a transient server on
-// reed's OWN socket that exits as soon as it has answered, leaving behind only the socket file the
-// boot about to follow would create anyway.
-// That transient server reads `-f /dev/null` and not the operator's config.
-// Nothing the operator's config does, such as creating a session, can keep it alive for the boot's `new-session` to join.
+// The socket is load-bearing: `-V` is answered client-side and creates nothing,
+// but `list-commands` is answered by a SERVER, and on a socket with none tmux starts a transient one that exits as soon as it has answered.
+// A shared socket makes that transient server a race: a concurrent reed invocation whose client connects while it exits fails with `server exited unexpectedly`.
+// Off Windows the probe therefore addresses a private `-L` key of its own, which no client of the hub's socket can reach.
+// It also reads `-f /dev/null`, so an operator config that creates a session cannot keep the transient server alive.
+// The probe removes the private key's socket file once the server is gone, logging a failure without failing the probe.
 // Windows keeps the engine's own TmuxCmd, since psmux has no /dev/null.
-// Routing through TmuxCmd additionally puts the probe on wrapTmuxError, so a failure now carries
-// tmux's own stderr instead of a bare exit status; every other tmux call in this package already had
-// that and the probe was the one site that had opted out.
+// Routing through TmuxCmd additionally puts the probe on wrapTmuxError, so a failure carries tmux's own stderr instead of a bare exit status.
 func (e *Engine) probeCapabilityLocked() error {
-	probe := e.tmux
-	if runtime.GOOS != "windows" {
-		probe.configFile = os.DevNull
+	if runtime.GOOS == "windows" {
+		return probeCapability(e.tmux.output)
 	}
+	probe := e.tmux
+	probe.configFile = os.DevNull
+	probe.socket = newProbeSocketKey()
+	defer func() {
+		if err := removeSocketFileOnceGone(socketDirFromEnv(), probe.socket, socketGoneWait); err != nil {
+			logger.Warn("reed: could not remove the capability probe's socket file", "socket", probe.socket, "err", err)
+		}
+	}()
 	return probeCapability(probe.output)
+}
+
+// newProbeSocketKey returns a fresh `-L` key for one capability probe: `lyx-p` and seven random hex digits.
+// Its 12 bytes are no more than any hub socket key reed forms, so the probe's socket path fits wherever the hub's passed the path-length check.
+// Two concurrent probes drawing the same key share one transient server, which only costs the isolation.
+func newProbeSocketKey() string {
+	return fmt.Sprintf("lyx-p%07x", rand.Uint32()>>4)
 }
