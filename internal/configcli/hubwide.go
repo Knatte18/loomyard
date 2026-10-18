@@ -148,9 +148,10 @@ func newHubCommit(boardDir string) hubCommitFunc {
 // reconcileDefaultLayer reconciles every module's file under the hub's board dir against its template, seeded from the prime's anchor, and reports the reconcile envelope.
 // A dry run writes nothing and takes no guard.
 // apply is refused when guard refuses.
-// Otherwise it holds the board write lock and runs a dry run first, so a file that fails to reconcile leaves every file unwritten.
+// Otherwise it holds the board write lock and runs a dry run first, so a file that fails to parse or migrate leaves every file unwritten.
 // Then the reconcile writes, its files are committed in _board and the commit is pushed.
-// A write that succeeded but was not committed or pushed is reported as an error naming the files left for the next board sync.
+// A write that fails part-way is undone, restoring every config file of the board dir.
+// A write that succeeded but was not committed, or committed but not pushed, is reported as an error naming the files left for the next board sync.
 func reconcileDefaultLayer(l *lyxcwd.Location, out io.Writer, apply bool, guard func() (string, error)) int {
 	board := fabricengine.ConfigDirs(l).Board
 	if board == "" {
@@ -187,16 +188,20 @@ func reconcileDefaultLayer(l *lyxcwd.Location, out io.Writer, apply bool, guard 
 	syncOpts := fabricengine.EnvSyncOptions()
 	var results []configsync.Result
 	var written []string
-	_, committed, err := bolt.CommitWritten("config: reconcile the board dir's files", func() ([]string, error) {
+	_, committed, commitErr := bolt.CommitWritten("config: reconcile the board dir's files", func() ([]string, error) {
 		if _, err := configsync.ReconcileHubWideAt(board, primeAnchor, opts); err != nil {
+			return nil, err
+		}
+		prior, err := snapshotBoardConfig(board)
+		if err != nil {
 			return nil, err
 		}
 		applyOpts := opts
 		applyOpts.Apply = true
-		var err error
 		results, err = configsync.ReconcileHubWideAt(board, primeAnchor, applyOpts)
 		if err != nil {
-			return nil, err
+			results = nil
+			return nil, restoreBoardConfig(prior, err)
 		}
 		for _, result := range results {
 			if !result.Applied {
@@ -209,16 +214,53 @@ func reconcileDefaultLayer(l *lyxcwd.Location, out io.Writer, apply bool, guard 
 		}
 		return written, nil
 	}, syncOpts)
-	if err == nil && committed {
-		err = bolt.Push(syncOpts)
-	}
 	switch {
-	case err != nil && results == nil:
-		return output.Err(out, fmt.Sprintf("reconcile: %v", err))
-	case err != nil:
-		return output.Err(out, fmt.Sprintf("reconciled %s in %s but did not commit and push them: %v; the next board sync carries them", strings.Join(written, ", "), board, err))
+	case commitErr != nil && results == nil:
+		return output.Err(out, fmt.Sprintf("reconcile: %v", commitErr))
+	case commitErr != nil:
+		return output.Err(out, fmt.Sprintf("reconciled %s in %s but did not commit them: %v; the next board sync commits them", strings.Join(written, ", "), board, commitErr))
+	}
+	if committed {
+		if pushErr := bolt.Push(syncOpts); pushErr != nil {
+			return output.Err(out, fmt.Sprintf("reconciled %s in %s and committed them in _board but did not push: %v; the next board push carries them", strings.Join(written, ", "), board, pushErr))
+		}
 	}
 	return output.Ok(out, reconcileEnvelope(true, results))
+}
+
+// snapshotBoardConfig reads every file in the board dir's config dir and every registry module's config file there; an absent module file maps to a snapshot of absence.
+func snapshotBoardConfig(board string) (map[string]fileSnapshot, error) {
+	prior := make(map[string]fileSnapshot)
+	configDir := configengine.ConfigDir(board)
+	entries, err := os.ReadDir(configDir)
+	if err != nil && !os.IsNotExist(err) {
+		return nil, fmt.Errorf("snapshot config dir %s: %w", configDir, err)
+	}
+	paths := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			paths = append(paths, filepath.Join(configDir, entry.Name()))
+		}
+	}
+	for _, module := range configreg.Modules() {
+		paths = append(paths, configengine.ConfigFile(board, module.Name))
+	}
+	for _, path := range paths {
+		snap, err := snapshotFile(path)
+		if err != nil {
+			return nil, err
+		}
+		prior[path] = snap
+	}
+	return prior, nil
+}
+
+// restoreBoardConfig puts every file of prior back and returns cause, joined with any restore failure.
+func restoreBoardConfig(prior map[string]fileSnapshot, cause error) error {
+	for path, snap := range prior {
+		cause = rollBack(path, snap, cause)
+	}
+	return cause
 }
 
 // fileSnapshot is a file's bytes, or its absence, taken so a failed write can put the file back.
