@@ -228,6 +228,23 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantInvalid: true,
 		},
 		{
+			name:     "a batten open_ide switch on is open to run settings",
+			settings: map[string]any{"batten": map[string]any{"open_ide": true}},
+			wantDocs: map[string]string{"batten": "open_ide: true\n"},
+		},
+		{
+			name:     "a batten open_ide switch off is open to run settings",
+			settings: map[string]any{"batten": map[string]any{"open_ide": false}},
+			wantDocs: map[string]string{"batten": "open_ide: false\n"},
+		},
+		{
+			name:        "a batten open_ide_command is refused by the local layer's executable category",
+			settings:    map[string]any{"batten": map[string]any{"open_ide_command": "x"}},
+			wantRefusal: "open_ide_command",
+			wantModule:  "batten",
+			wantInvalid: true,
+		},
+		{
 			name:     "shed's tackler_max_spawns is open to run settings",
 			settings: map[string]any{"shed": map[string]any{"tackler_max_spawns": float64(0)}},
 			wantDocs: map[string]string{"shed": "tackler_max_spawns: 0\n"},
@@ -309,6 +326,11 @@ func TestLayerRunSettings(t *testing.T) {
 			name:        "a refused profile key names the profile, the module and the key",
 			profile:     map[string]any{"loom": map[string]any{"no_such_key": float64(1)}},
 			wantRefusal: []string{`run profile "light"`, "loom", "no_such_key"},
+		},
+		{
+			name:        "a profile's batten open_ide_command is refused by the local layer's executable category",
+			profile:     map[string]any{"batten": map[string]any{"open_ide_command": "x"}},
+			wantRefusal: []string{`run profile "light"`, "batten", "open_ide_command"},
 		},
 		{
 			name:        "a refused task key names the module and the key",

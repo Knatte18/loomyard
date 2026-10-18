@@ -23,18 +23,29 @@ import (
 // A git worktree whose parent holds no board-level _lyx, such as an agent worktree nested in a repository, is outside a hub,
 // so no in-flight marker is written under a hub path guessed from its parent.
 // The gate is told the process's strand name, pid and start time, so its in-flight markers tell a live process from a dead one, and reads whether a live parent lock record names the slug it is asked about.
-func InstallNetworkGate(ctx context.Context) {
+// A nil pauseSlug takes the slug from the working directory's worktree.
+// A non-nil pauseSlug is the slug the process is held under, empty for the prime's, and the working directory is resolved as a worktree root:
+// a detached push child starts in the hub's board worktree, which says nothing of the pair it serves and which the gated resolution refuses on a hub with a subpath anchor.
+func InstallNetworkGate(ctx context.Context, pauseSlug *string) {
 	cwd, err := lyxcwd.CwdFrom(ctx)
 	if err != nil {
 		return
 	}
-	location, err := lyxcwd.Resolve(cwd)
+	var location *lyxcwd.Location
+	if pauseSlug == nil {
+		location, err = lyxcwd.Resolve(cwd)
+	} else {
+		location, err = lyxcwd.ResolveWorktree(cwd)
+	}
 	if err != nil || !preflight.BoardLyxPresent(location) {
 		return
 	}
 	geometry, err := hubgeom.PauseGeometry(location)
 	if err != nil {
 		return
+	}
+	if pauseSlug != nil {
+		geometry.Slug = *pauseSlug
 	}
 	pid := os.Getpid()
 	startTime, _ := proc.StartTime(pid)

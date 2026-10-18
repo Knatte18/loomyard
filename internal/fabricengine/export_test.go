@@ -290,8 +290,11 @@ func writeWarpFile(t *testing.T, warpPath, name, content string) {
 // obtained from an exported function, and holding such a value via `:=` type inference, without ever
 // needing to spell the unexported type name.
 type pushCall struct {
-	WarpPath string
-	WeftPath string
+	WarpPath     string
+	WeftPath     string
+	PauseSlug    string
+	TeardownSlug string
+	WorkDir      string
 }
 
 // pushRecorder collects spawnDetachedPushFn invocations under a mutex.
@@ -303,13 +306,28 @@ type pushCall struct {
 type pushRecorder struct {
 	mu    sync.Mutex
 	calls []pushCall
+	// Err is what the swapped seam returns, nil unless a test sets it.
+	Err error
 }
 
 // record appends one invocation.
-func (r *pushRecorder) record(warpPath, weftPath string) {
+func (r *pushRecorder) record(req PushSpawn) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.calls = append(r.calls, pushCall{WarpPath: warpPath, WeftPath: weftPath})
+	r.calls = append(r.calls, pushCall{
+		WarpPath:     req.WarpPath,
+		WeftPath:     req.WeftPath,
+		PauseSlug:    req.PauseSlug,
+		TeardownSlug: req.TeardownSlug,
+		WorkDir:      req.WorkDir,
+	})
+}
+
+// Reset forgets everything recorded so far.
+func (r *pushRecorder) Reset() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls = nil
 }
 
 // Calls returns a copy of everything recorded so far, safe to read while other goroutines are still
@@ -334,9 +352,11 @@ func swapPushRecorder(t *testing.T) *pushRecorder {
 
 	recorder := &pushRecorder{}
 	original := spawnDetachedPushFn
-	spawnDetachedPushFn = func(warpPath, weftPath string) error {
-		recorder.record(warpPath, weftPath)
-		return nil
+	spawnDetachedPushFn = func(req PushSpawn) error {
+		recorder.record(req)
+		recorder.mu.Lock()
+		defer recorder.mu.Unlock()
+		return recorder.Err
 	}
 	t.Cleanup(func() { spawnDetachedPushFn = original })
 	return recorder
@@ -579,6 +599,16 @@ func SetAddBeforeWeftReplaceHookForTest(t testing.TB, fn func()) {
 	t.Cleanup(func() { addBeforeWeftReplaceHook = original })
 }
 
+// SetAddFailAfterWarpHookForTest sets addFailAfterWarpHook to hook and restores the previous value in t.Cleanup.
+// It mutates a package var, so it is usable only from a non-parallel test.
+func SetAddFailAfterWarpHookForTest(t testing.TB, hook func() error) {
+	t.Helper()
+
+	original := addFailAfterWarpHook
+	addFailAfterWarpHook = hook
+	t.Cleanup(func() { addFailAfterWarpHook = original })
+}
+
 // DeleteTaskBranchAtTipForTest re-exports deleteTaskBranchAtTip for package fabricengine_test integration tests that need to hand the gated deletion a tip other than the one currently on origin, to prove the lease holds.
 // It passes a throwaway NewMutations("") recorder, since its callers assert nothing about the record.
 func DeleteTaskBranchAtTipForTest(l *lyxcwd.Location, warpBranch, parentBranch, tip string) (deleted bool, keptReason string) {
@@ -602,6 +632,26 @@ func CleanupRemoteWarpWithHookForTest(t *Topology, l *lyxcwd.Location, apply boo
 // It sets the seam on the one Topology, so parallel tests inject per instance.
 func SetLeftoverSeamForTest(t *Topology, remove func(container, target string) (removed, wasDir bool, err error), sleep func(delay time.Duration)) {
 	t.leftover = leftoverSeam{remove: remove, sleep: sleep}
+}
+
+// SetTeardownWaitForTest shortens how long t's Remove waits for the pair's teardown lock.
+// It sets the wait on the one Topology, so parallel tests inject per instance.
+func SetTeardownWaitForTest(t *Topology, wait time.Duration) {
+	t.teardownWait = wait
+}
+
+// SetTeardownHooksForTest sets the two teardown hooks until the test ends and restores nil on cleanup.
+// A nil argument leaves that hook unset.
+// It changes process-global state, so the calling test must not be parallel.
+func SetTeardownHooksForTest(t *testing.T, heldByPush, afterRemoveTeardown func()) {
+	t.Helper()
+
+	detachedPushHeldHook = heldByPush
+	removeAfterTeardownHook = afterRemoveTeardown
+	t.Cleanup(func() {
+		detachedPushHeldHook = nil
+		removeAfterTeardownHook = nil
+	})
 }
 
 // DropSeedCommitsForTest re-exports dropSeedCommits for package fabricengine_test integration tests that drive the board seed-commit drop's gate directly.

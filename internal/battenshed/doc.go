@@ -60,9 +60,12 @@
 // The tmux window lives as long as the reed session, and a second batten for the slug is refused by the run's own driver lock inside the window, in batten's own log.
 // "lyx batten run" steps the lifecycle through the Go driver, so an unexpected stop meets the driver's rule table and a cold tackler before the orch, and the driver lock refuses a second run for the slug.
 //
-// Between Seed-Child and Run-Shed, three switched rows run shedadapters' switched producer: Open-Window opens the operator's terminal window attached to the pair's reed session, Seed-IDE writes the pair's VS Code colour and .vscode/ config, and Open-IDE opens VS Code on the pair.
-// Each runs its action only when its batten.yaml flag is on, open_window, seed_ide and open_ide in turn, of which only open_ide is off by default, and is Done either way, a failed action only warning.
-// The flags are read from the pair's own config stack when the row runs, after Seed-Child has written the task's run settings into the pair's local layer, so a task's run_settings sets them per task.
+// Between Seed-Child and Run-Shed, three Command rows run one shell command each: Open-Window opens the operator's terminal window attached to the pair's reed session, Seed-IDE writes the pair's VS Code colour and .vscode/ config, and Open-IDE opens VS Code on the pair.
+// Each runs its command only when its batten.yaml switch is on, open_window, seed_ide and open_ide in turn, of which only open_ide is off by default, and is Done either way, a failed command only warning.
+// The switches are read from the pair's own config stack when the row runs, after Seed-Child has written the task's run settings into the pair's local layer, so a task's run_settings sets them per task.
+// The commands are the open_window_command, seed_ide_command and open_ide_command keys, read from the template and the board default layer only, so a task's run settings and a worktree's own batten.yaml cannot change them;
+// `lyx config batten --layer default --set <key>=<value>` from the prime changes one, and a different value in another layer is ignored with a warning.
+// A command may hold the placeholders {lyx}, {slug} and {task_dir}.
 // "--window" passes the hidden "--open-terminal", which turns Open-Window on for that run whatever batten.yaml says.
 // A run resumed past Open-Window opens no window.
 //

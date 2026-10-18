@@ -28,6 +28,6 @@
 // # The bound
 //
 // The verb removes nothing a segment's own verb would refuse to remove: every refusal and skip lives in the module function both call, and this package adds only flag parsing, the prime check and output.
-// It adds no `--force`, touches no remote except the records and board pushes batten cleanup and board prune already make, and no landing or batten row calls it.
+// It adds no `--force`, touches no remote except the records push batten cleanup spawns and the board push board prune already makes, and no landing or batten row calls it.
 // It does not call `lyx fabric prune` or `lyx fabric cleanup`.
 package cleanupcli

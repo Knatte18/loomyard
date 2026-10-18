@@ -1,7 +1,10 @@
 // cli.go exposes the cobra command tree for the ide module.
 //
-// Command() returns the root "ide" command with two subcommands — spawn and menu — each wrapping
-// the existing handler bodies.
+// Command() returns the root "ide" command with four subcommands — spawn, menu, seed and open.
+// spawn and menu wrap the existing handler bodies;
+// seed writes an existing pair's .vscode/ config and title-bar colour and launches nothing.
+// open starts VS Code on that pair's folder.
+// Both take a slug.
 // Layout resolution happens once in a PersistentPreRunE so that the no-arg "lyx ide" listing never
 // requires a git repo.
 
@@ -12,7 +15,9 @@ import (
 	"io"
 	"os"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/ideengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -95,8 +100,51 @@ func Command() *cobra.Command {
 		},
 	}
 
-	cmd.AddCommand(spawnCmd, menuCmd)
+	seedCmd := slugVerbCommand(&l, "seed", "write a task worktree's VS Code config and title-bar colour", ideengine.SeedTask)
+	openCmd := slugVerbCommand(&l, "open", "open a task worktree's folder in VS Code", ideengine.OpenTask)
+
+	cmd.AddCommand(spawnCmd, menuCmd, seedCmd, openCmd)
 	return cmd
+}
+
+// slugVerbCommand builds the operator-audience verb name <slug> that runs action on an existing pair of the hub.
+// Before calling action it refuses a slug failing the slug grammar and one whose worktree directory under the hub does not exist,
+// so the verb acts only on a directory directly under the hub.
+// The location is read through l when the verb runs, after the root's pre-run has resolved it.
+func slugVerbCommand(l **lyxcwd.Location, name, short string, action func(*lyxcwd.Location, string) error) *cobra.Command {
+	return &cobra.Command{
+		Use:         name + " <slug>",
+		Short:       short,
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if clihelp.ShouldAbort(cmd.Context()) {
+				return nil
+			}
+
+			if len(args) < 1 {
+				clihelp.SetExit(cmd.Context(), output.Err(cmd.OutOrStdout(), "usage: lyx ide "+name+" <slug>"))
+				return nil
+			}
+			slug := args[0]
+
+			if err := agentname.ValidateSlug(slug); err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(cmd.OutOrStdout(), fmt.Sprintf("%s failed: %v", name, err)))
+				return nil
+			}
+			worktreeDir := fabricengine.WorktreePath(*l, slug)
+			if info, err := os.Stat(worktreeDir); err != nil || !info.IsDir() {
+				clihelp.SetExit(cmd.Context(), output.Err(cmd.OutOrStdout(), fmt.Sprintf("%s failed: no pair worktree %s for slug %q", name, worktreeDir, slug)))
+				return nil
+			}
+
+			if err := action(*l, slug); err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(cmd.OutOrStdout(), fmt.Sprintf("%s failed: %v", name, err)))
+				return nil
+			}
+			clihelp.SetExit(cmd.Context(), output.Ok(cmd.OutOrStdout(), map[string]any{"slug": slug}))
+			return nil
+		},
+	}
 }
 
 // RunCLI is the public seam for the ide module CLI.

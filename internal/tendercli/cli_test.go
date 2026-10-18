@@ -16,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -228,7 +229,7 @@ func TestInstallNetworkGate_TellsThePairsSlugAndInstallsNothingOutsideAHub(t *te
 	agentWorktree := filepath.Join(agentWorktrees, "agent")
 	gitkit.Git(t, h.PrimeWorktree(), "worktree", "add", "--detach", agentWorktree)
 	for _, outside := range []string{t.TempDir(), agentWorktree} {
-		InstallNetworkGate(lyxcwd.WithCwd(t.Context(), outside))
+		InstallNetworkGate(lyxcwd.WithCwd(t.Context(), outside), nil)
 		_, probeDone := pauserecord.Network("probe")
 		probeDone()
 	}
@@ -240,7 +241,7 @@ func TestInstallNetworkGate_TellsThePairsSlugAndInstallsNothingOutsideAHub(t *te
 		t.Errorf("Stat(agent worktree's sibling _board) error = %v; want it absent", err)
 	}
 
-	InstallNetworkGate(lyxcwd.WithCwd(t.Context(), h.PairCodeWorktree(pairSlug)))
+	InstallNetworkGate(lyxcwd.WithCwd(t.Context(), h.PairCodeWorktree(pairSlug)), nil)
 	pauserecord.Network("pair-probe")
 	geometry, err := hubgeom.PauseGeometry(h.Location)
 	if err != nil {
@@ -249,5 +250,33 @@ func TestInstallNetworkGate_TellsThePairsSlugAndInstallsNothingOutsideAHub(t *te
 	ops, err := pauserecord.ListNetOps(geometry.RecordPath, allAlive)
 	if err != nil || len(ops) != 1 || ops[0].Slug != pairSlug || ops[0].Op != "pair-probe" {
 		t.Errorf("operations under the hub's record = %+v, %v; want one marked with the pair's slug", ops, err)
+	}
+
+	// A detached push child starts in the hub's board worktree and is told its slug.
+	boardTests := []struct {
+		name      string
+		anchor    string
+		pauseSlug string
+	}{
+		{"TellsItsSlug", ".", "child"},
+		{"EmptySlugIsKeptNotBoard", ".", ""},
+		{"SubpathAnchoredHub", "backend", "child"},
+	}
+	for _, tt := range boardTests {
+		t.Run(tt.name, func(t *testing.T) {
+			hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: tt.anchor})
+			slug := tt.pauseSlug
+			boardWorktree := fabricengine.BoardDir(hub.Location.HubPath)
+			InstallNetworkGate(lyxcwd.WithCwd(t.Context(), boardWorktree), &slug)
+			pauserecord.Network("board-probe")
+			geometry, err := hubgeom.PauseGeometry(hub.Location)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ops, err := pauserecord.ListNetOps(geometry.RecordPath, allAlive)
+			if err != nil || len(ops) != 1 || ops[0].Slug != tt.pauseSlug || ops[0].Op != "board-probe" {
+				t.Errorf("operations under the hub's record = %+v, %v; want one marked with slug %q", ops, err, tt.pauseSlug)
+			}
+		})
 	}
 }

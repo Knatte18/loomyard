@@ -13,6 +13,8 @@
 
 package fabricengine
 
+import "time"
+
 // Topology is the high-level facade over hub-scoped worktree-topology operations.
 // It holds the configuration needed by all topology methods.
 type Topology struct {
@@ -21,6 +23,8 @@ type Topology struct {
 	leftover leftoverSeam
 	// inFlight answers which other pairs' sessions are live when a pair is removed; nil answers none.
 	inFlight InFlightProbe
+	// teardownWait bounds how long Remove waits for a push of the pair to let go of the pair's teardown lock.
+	teardownWait time.Duration
 }
 
 // SetInFlightProbe sets the probe Remove's store housekeeping consults before it runs gc.
@@ -31,6 +35,7 @@ func (t *Topology) SetInFlightProbe(probe InFlightProbe) {
 // NewTopology returns a Topology operating with the given config.
 func NewTopology(cfg Config) *Topology {
 	return &Topology{
-		cfg: cfg,
+		cfg:          cfg,
+		teardownWait: StatusPushLockWait,
 	}
 }

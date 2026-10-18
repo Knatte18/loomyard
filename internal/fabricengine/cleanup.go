@@ -93,6 +93,8 @@ type CleanupBranchEntry struct {
 	// ArchiveTag names the archive/<slug>/<tip> tag pushed to the weft origin before this branch was deleted; empty on a dry run, when no origin is configured, and when the archive failed.
 	// An archive failure sets Error and leaves the branch, local and remote, in place.
 	ArchiveTag string `json:"archive_tag,omitempty"`
+	// Local is true when the branch carries the local-only mark: it is never archived or deleted on origin, so the entry carries no ArchiveTag.
+	Local bool `json:"local,omitempty"`
 }
 
 // CleanupResult is the top-level result type returned by Cleanup.
@@ -122,6 +124,7 @@ type CleanupResult struct {
 // repo's origin remote; see this file's header for the flag matrix. A remote deletion failure never
 // makes Cleanup return a non-nil error — it is recorded on the entry and the sweep continues.
 // Under apply, each orphan branch's tip is archived (archiveWeftTip) before the branch is deleted, whatever remote says; an archive failure fills the entry's Error and keeps the branch, local and remote, without aborting the sweep.
+// An orphan carrying the local-only mark is reported with Local set, dry run included; under apply it is neither archived nor deleted on origin, and goes locally as a disposable records branch.
 func (t *Topology) Cleanup(l *lyxcwd.Location, apply, force, remote bool) (res CleanupResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
@@ -176,6 +179,10 @@ func (t *Topology) Cleanup(l *lyxcwd.Location, apply, force, remote bool) (res C
 	if err != nil {
 		return CleanupResult{}, fmt.Errorf("list weft branches: %w", err)
 	}
+	weftRepoRoot, err := RecordsRepoRoot(l)
+	if err != nil {
+		return CleanupResult{}, fmt.Errorf("resolve weft repo root: %w", err)
+	}
 
 	for _, weftBranch := range weftBranches {
 		branch := weftBranch.Branch
@@ -215,7 +222,22 @@ func (t *Topology) Cleanup(l *lyxcwd.Location, apply, force, remote bool) (res C
 			continue
 		}
 
+		marked, markErr := gitrepo.New(weftRepoRoot).BranchMarkedLocal(branch)
+		if markErr != nil {
+			entry.Error = fmt.Sprintf("read the local-only mark of weft branch %q: %v", branch, markErr)
+			result.Entries = append(result.Entries, entry)
+			continue
+		}
+		entry.Local = marked
+
 		if !apply {
+			result.Entries = append(result.Entries, entry)
+			continue
+		}
+
+		if marked {
+			// A local pair's orphan records branch was never archived or pushed: it goes locally as a disposable records branch, and origin is never asked.
+			entry.Deleted = deleteWeftBranch(rec, l, branch, t.cfg.BranchPrefix, &entry)
 			result.Entries = append(result.Entries, entry)
 			continue
 		}

@@ -289,6 +289,81 @@ func TestPush(t *testing.T) {
 				t.Errorf("bare remote %s = %q; want it to match local HEAD %q", branch, got, localHead)
 			}
 		}},
+		// The local-only mark: every push primitive refuses a marked branch and leaves the remote alone, clearing the mark lets the same commit through, and an unreadable config publishes nothing.
+		// The last sub-step corrupts clone A's config, so it runs after every use of git in clone A.
+		{"a marked branch is refused by every push primitive until the mark is cleared", func(t *testing.T) {
+			resetToUpstream(t, cloneAPath)
+			remoteTip := remoteBranchSHA(t, bareRemote, "main")
+
+			if err := repoA.MarkBranchLocal("main"); err != nil {
+				t.Fatalf("MarkBranchLocal(main) error = %v; want nil", err)
+			}
+			writeFile(t, cloneAPath, "local.txt", "local only")
+			commitAll(t, cloneAPath, "local-only commit")
+			localHead := requireCurrentSHA(t, repoA)
+
+			pushes := []struct {
+				name string
+				push func() error
+			}{
+				{"Push", repoA.Push},
+				{"PushRebaseFree", repoA.PushRebaseFree},
+				{"PushCoalesced", repoA.PushCoalesced},
+			}
+			for _, p := range pushes {
+				if err := p.push(); !errors.Is(err, gitrepo.ErrLocalBranch) {
+					t.Errorf("%s() on a marked branch error = %v; want errors.Is(err, gitrepo.ErrLocalBranch)", p.name, err)
+				}
+				if got := remoteBranchSHA(t, bareRemote, "main"); got != remoteTip {
+					t.Errorf("bare remote main after %s() = %q; want unchanged %q", p.name, got, remoteTip)
+				}
+			}
+			if _, err := os.Stat(filepath.Join(cloneAPath, gitrepo.PushLockFileName)); err == nil {
+				t.Errorf("%s exists after a refused PushCoalesced(); want no lock residue", gitrepo.PushLockFileName)
+			}
+
+			marked, err := repoA.BranchMarkedLocal("main")
+			if err != nil || !marked {
+				t.Errorf("BranchMarkedLocal(main) = %v, %v; want true, nil", marked, err)
+			}
+			for i, wantCleared := range []bool{true, false} {
+				cleared, err := repoA.ClearBranchLocalMark("main")
+				if err != nil || cleared != wantCleared {
+					t.Errorf("ClearBranchLocalMark(main) call %d = %v, %v; want %v, nil", i+1, cleared, err, wantCleared)
+				}
+			}
+
+			if err := repoA.PushRebaseFree(); err != nil {
+				t.Fatalf("PushRebaseFree() after clearing the mark error = %v; want nil", err)
+			}
+			if got := remoteBranchSHA(t, bareRemote, "main"); got != localHead {
+				t.Errorf("bare remote main after the cleared push = %q; want local HEAD %q", got, localHead)
+			}
+
+			if marked, err := repoA.BranchMarkedLocal("never-marked"); err != nil || marked {
+				t.Errorf("BranchMarkedLocal(never-marked) = %v, %v; want false, nil", marked, err)
+			}
+			gitkit.MustRun(t, cloneAPath, "git", "config", "branch.set-false.lyxlocal", "false")
+			if marked, err := repoA.BranchMarkedLocal("set-false"); err != nil || marked {
+				t.Errorf("BranchMarkedLocal(set-false) = %v, %v; want false, nil", marked, err)
+			}
+
+			writeFile(t, cloneAPath, "after.txt", "after the cleared push")
+			commitAll(t, cloneAPath, "commit before the config is corrupted")
+			tipBeforeCorruption := remoteBranchSHA(t, bareRemote, "main")
+			if err := os.WriteFile(filepath.Join(cloneAPath, ".git", "config"), []byte("[[[ not a git config\n"), 0o644); err != nil {
+				t.Fatalf("overwrite clone A's .git/config: %v", err)
+			}
+			if _, err := repoA.BranchMarkedLocal("main"); err == nil {
+				t.Error("BranchMarkedLocal(main) over an unparsable config error = nil; want an error")
+			}
+			if err := repoA.PushRebaseFree(); err == nil {
+				t.Error("PushRebaseFree() over an unparsable config error = nil; want the unreadable-mark error")
+			}
+			if got := remoteBranchSHA(t, bareRemote, "main"); got != tipBeforeCorruption {
+				t.Errorf("bare remote main after the unreadable-mark push = %q; want unchanged %q", got, tipBeforeCorruption)
+			}
+		}},
 	}
 	for _, step := range steps {
 		if !t.Run(step.name, step.run) {
