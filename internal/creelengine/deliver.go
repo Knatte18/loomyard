@@ -1,4 +1,4 @@
-// deliver.go runs the Scheduler, one worker per receiver that types queued injects and reminders into its pane through the delivery seam, and the Store side those workers act on.
+// deliver.go runs the Scheduler, one worker per receiver that types queued injects, notices and reminders into its pane through the delivery seam, and the Store side those workers act on.
 
 package creelengine
 
@@ -221,6 +221,9 @@ func (w *worker) probe() (delivered, pending bool) {
 			return w.typeInject(strand, inject), true
 		}
 	}
+	if len(snap.notices) > 0 {
+		return w.typeNotice(strand, snap.notices[0]), true
+	}
 	return w.remind(strand, snap, now), true
 }
 
@@ -286,6 +289,27 @@ func (w *worker) typeInject(strand Strand, inject QueuedInject) bool {
 			w.report("send", err)
 		}
 		store.requeue(inject.ID)
+		return false
+	}
+}
+
+// typeNotice types the notice's line once the receiver is idle, and journals the notice read once the line was typed, landed or not.
+// A busy send leaves it unread for the next probe.
+func (w *worker) typeNotice(strand Strand, notice Message) bool {
+	if !w.idle(strand) {
+		return false
+	}
+	err := w.scheduler.delivery.Send(strand, composeNotice(notice))
+	switch {
+	case err == nil, errors.Is(err, ErrNotLanded):
+		w.report("send", nil)
+		w.report("journal", w.scheduler.store.markNoticeRead(w.receiver, notice.ID))
+		w.report("journal", w.scheduler.store.noteStall(w.receiver, ""))
+		return true
+	default:
+		if !errors.Is(err, ErrBusy) {
+			w.report("send", err)
+		}
 		return false
 	}
 }
@@ -383,7 +407,9 @@ type deliverySnapshot struct {
 	injects []QueuedInject
 	// holdOwner is the owner of a live hold on the receiver, empty when there is none.
 	holdOwner string
-	// unread are the unread messages the receiver may be reminded about: all of them, or under a hold only the hold owner's.
+	// notices are the unread notices no read holds reserved, oldest first, typed as their own lines; under a hold only the hold owner's.
+	notices []Message
+	// unread are the other unread messages, which the receiver is reminded about: all of them, or under a hold only the hold owner's.
 	unread      []Message
 	reminder    reminderEntry
 	hasReminder bool
@@ -396,11 +422,17 @@ func (s *Store) snapshot(receiver string) deliverySnapshot {
 	if hold := s.liveHoldLocked(receiver); hold != nil {
 		snap.holdOwner = hold.Owner
 	}
-	for _, msg := range s.state.messages {
-		if msg.Holder == receiver && msg.Status == StatusUnread && (snap.holdOwner == "" || msg.From == snap.holdOwner) {
+	for id, msg := range s.state.messages {
+		if msg.Holder != receiver || msg.Status != StatusUnread || (snap.holdOwner != "" && msg.From != snap.holdOwner) {
+			continue
+		}
+		if isNotice(msg) && s.reserved[id] == "" {
+			snap.notices = append(snap.notices, *msg)
+		} else {
 			snap.unread = append(snap.unread, *msg)
 		}
 	}
+	sort.Slice(snap.notices, func(i, j int) bool { return snap.notices[i].ID < snap.notices[j].ID })
 	sort.Slice(snap.unread, func(i, j int) bool { return snap.unread[i].ID < snap.unread[j].ID })
 	snap.reminder, snap.hasReminder = s.state.reminders[receiver]
 	return snap
@@ -552,6 +584,20 @@ func (s *Store) tellStallLocked(receiver string, stall Stall, note stallNote) {
 			}
 		}
 	}
+}
+
+// markNoticeRead journals the notice id read by receiver, the pane it was typed into.
+// A notice that left the receiver, was read or is reserved by a read meanwhile is left to that.
+// A reserved notice whose read is released rather than acknowledged is unread and unreserved again, so its line is typed a second time;
+// the journal still holds one read.
+func (s *Store) markNoticeRead(receiver string, id int64) error {
+	return s.do(func() error {
+		msg := s.state.messages[id]
+		if msg == nil || msg.Holder != receiver || msg.Status != StatusUnread || s.reserved[id] != "" {
+			return nil
+		}
+		return s.writer.append(record{Event: eventRead, ID: id, By: receiver})
+	})
 }
 
 // journalReminded records a reminder typed to receiver about the unread ids, at the given backoff step.

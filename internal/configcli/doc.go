@@ -52,6 +52,9 @@
 // An entry holding `[` or `]` must be quoted, and a bracketed value that is not such a list is refused, never written as a string.
 // Any other key must exist in the template;
 // pre-existing keys the template lacks are preserved and reported in a `preserved` field.
+// A module whose spec sets `configengine.Spec.JSONEntries`, the run profiles of `profiles`, takes instead a top-level name and a JSON object, as in `lyx config profiles --set wide='{"darn":{"review_max_bounces":2}}'`:
+// the object replaces that entry whole or is appended as a new one, the other entries left as they are, and a value that is not a JSON object is refused.
+// An absent hub file starts from the template.
 //
 // Every `--set` write, on any layer, is then checked by loading the module through its own loader (`configreg.Module.CheckLoad`), and the written file is put back as it was when the load fails.
 // A board-dir write loads the board file alone, and any other write loads the worktree's stack.
@@ -62,4 +65,13 @@
 // it is a dry run unless applied.
 // A module that retires keys or floors a value declares a migration, which reconcile runs over its present file first;
 // the dry run lists each rewrite under the module's `migrated` key, and applying writes the migrated file, even when the reconcile itself adds and removes nothing.
+// With no `--layer` it reconciles the worktree's own and local files.
+// `lyx config reconcile --layer default` reconciles every file under `<BoardDir>/_lyx/config/` instead, the hub-wide modules' files and each per-worktree module's repo default, through the call the hub reconcile after a binary change makes:
+// renamed keys are migrated, keys the template lacks are pruned, an absent repo default is seeded from the prime, and each entry carries the `seed` it started from.
+// `--apply` with it passes the default-layer write guard above, then under the board write lock runs a dry run, so a file that fails to parse or migrate leaves every file unwritten, then writes, commits the written files in `_board` and pushes.
+// A write that fails part-way is undone by restoring the board dir's config files.
+// A write that is made but not committed, or committed but not pushed, is reported as an error naming the files left for the next board sync.
+// A dry run is never guarded.
+// Any other `--layer` value is refused, and so is any reconcile whose worktree is the board dir itself, which would strip the hub's files as a sparse worktree layer;
+// both refusals name the way forward.
 package configcli

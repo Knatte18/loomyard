@@ -286,8 +286,6 @@ var loomRowPhases = []struct{ row, phase string }{
 	{loomshed.NamePRAlign, PhasePublishFinalize},
 	{loomshed.NamePRGate, PhasePublishFinalize},
 	{loomshed.NamePRRework, PhasePublishFinalize},
-	{loomshed.NameDarnWrite, PhasePublishFinalize},
-	{loomshed.NameDarnBouncer, PhasePublishFinalize},
 	{loomshed.NameFinalize, PhasePublishFinalize},
 	{loomshed.NameFrictionReflect, PhasePublishFinalize},
 	{loomshed.NameDiscussionBurlerReview, PhaseDiscussion},
@@ -298,8 +296,23 @@ var loomRowPhases = []struct{ row, phase string }{
 	{loomshed.NameWebsterBurlerFix, PhaseWebster},
 	{loomshed.NameMergeBurlerReview, PhaseMerge},
 	{loomshed.NameMergeBurlerFix, PhaseMerge},
-	{loomshed.NameDarnBurlerReview, PhasePublishFinalize},
-	{loomshed.NameDarnBurlerFix, PhasePublishFinalize},
+}
+
+// darnRowPhases lists every darn row, the retired writer row name included, with the phase it counts under, in the order the rows run.
+var darnRowPhases = []struct{ row, phase string }{
+	{loomshed.NamePreflight, PhaseSetup},
+	{"Darn", PhaseWrite},
+	{loomshed.NameDarnWrite, PhaseWrite},
+	{loomshed.NameDarnBouncer, PhaseReview},
+	{loomshed.NameDarnBurlerReview, PhaseReview},
+	{loomshed.NameDarnBurlerFix, PhaseReview},
+	{loomshed.NameDescribe, PhaseWrite},
+	{loomshed.NameMergeIn, PhaseMerge},
+	{loomshed.NamePublish, PhasePublishFinalize},
+	{loomshed.NamePRAlign, PhasePublishFinalize},
+	{loomshed.NamePRGate, PhasePublishFinalize},
+	{loomshed.NameFinalize, PhasePublishFinalize},
+	{loomshed.NameFrictionReflect, PhasePublishFinalize},
 }
 
 func TestComputeTiming(t *testing.T) {
@@ -502,9 +515,65 @@ func TestComputeTiming(t *testing.T) {
 			},
 			check: func(t *testing.T, got TimingReport) {
 				wantPhases(t, runOf(t, got, "every"), map[string]int64{
-					PhaseSetup: 600, PhaseDiscussion: 240, PhasePlan: 345, PhaseWebster: 270,
-					PhaseMerge: 240, PhasePublishFinalize: 585, PhaseLand: 180,
+					PhaseSetup: 600, PhaseDiscussion: 240, PhasePlan: 315, PhaseWebster: 330,
+					PhaseMerge: 210, PhasePublishFinalize: 345, PhaseLand: 420,
 				})
+				if len(got.Findings) != 0 {
+					t.Errorf("findings = %+v; want none, since every row names a phase", got.Findings)
+				}
+			},
+		},
+		{
+			name: "a darn run counts each row under its darn phase, and its medians and a darn run in flight stay apart from loom's",
+			live: []string{"darn-flight"},
+			setup: func(w *world) {
+				darn := make([]shedengine.HistoryEntry, len(darnRowPhases))
+				for k, row := range darnRowPhases {
+					darn[k] = entryAt(row.row, secondsAfter(run, 600+60*k))
+				}
+				// The Run-Shed row's change names a darn review producer, which only the darn table maps to review:
+				// its 30s counts under review and not under write, the phase of the Darn-Write row before it.
+				batten := battenRecordOf(
+					entryAt(battenrecipe.NameWorktreeCreate, run),
+					changeAt("child running → running at "+loomshed.NameDarnBurlerReview, secondsAfter(run, 750)),
+				)
+				landedRun(w, "darned", "t1", 3, fmt.Sprintf(`{"recipe":"darn","driver":"go","started_at":%q}`, run.Format(time.RFC3339)), darn, batten)
+				landedRun(w, "loomed", "t2", 14, seedStartedAt(at(10)), []shedengine.HistoryEntry{entryAt(loomshed.NameFinalize, secondsAfter(at(10), 900))})
+				start := at(199)
+				status := shedengine.Status{
+					State:           shedengine.StateRunning,
+					CurrentProducer: loomshed.NameDarnBouncer,
+					History:         []shedengine.HistoryEntry{entryAt(loomshed.NameDarnWrite, secondsAfter(start, 600))},
+				}
+				w.pairBranch("darn-flight", "pf1", secondsAfter(start, 700), fmt.Sprintf(`{"recipe":"darn","driver":"go","started_at":%q}`, start.Format(time.RFC3339)), statusJSON(w.t, status), nil)
+			},
+			check: func(t *testing.T, got TimingReport) {
+				darned := runOf(t, got, "darned")
+				if darned.Recipe != shedrun.RecipeDarn || runOf(t, got, "loomed").Recipe != shedrun.RecipeLoom {
+					t.Errorf("recipes = %s, %s; want darn and loom", darned.Recipe, runOf(t, got, "loomed").Recipe)
+				}
+				wantPhases(t, darned, map[string]int64{PhaseSetup: 600, PhaseWrite: 180, PhaseReview: 180, PhaseMerge: 60, PhasePublishFinalize: 300})
+				flight := runOf(t, got, "darn-flight")
+				if flight.Recipe != shedrun.RecipeDarn || flight.State != RunStateInFlight {
+					t.Errorf("run in flight = %s %s; want a darn run in flight", flight.Recipe, flight.State)
+				}
+				wantPhases(t, flight, map[string]int64{PhaseWrite: 600, PhaseReview: int64(snapshotAt.Sub(secondsAfter(at(199), 600)) / time.Second)})
+
+				darnMedians, loomMedians := got.Phases[shedrun.RecipeDarn], got.Phases[shedrun.RecipeLoom]
+				if median := darnMedians[PhasePublishFinalize]; median == nil || median.Runs != 1 || median.Seconds == nil || *median.Seconds != 300 {
+					t.Errorf("darn publish-finalize median = %+v; want the landed darn run's 300 alone", median)
+				}
+				if median := loomMedians[PhasePublishFinalize]; median == nil || median.Runs != 1 || median.Seconds == nil || *median.Seconds != 900 {
+					t.Errorf("loom publish-finalize median = %+v; want the loom run's 900 alone", median)
+				}
+				darnKeys := slices.Sorted(maps.Keys(darnMedians))
+				wantKeys := []string{PhaseLand, PhaseMerge, PhaseOther, PhasePaused, PhasePublishFinalize, PhaseReview, PhaseSetup, PhaseWrite}
+				if !slices.Equal(darnKeys, wantKeys) {
+					t.Errorf("darn median phases = %v; want %v", darnKeys, wantKeys)
+				}
+				if _, held := loomMedians[PhaseWrite]; held {
+					t.Errorf("loom medians = %+v; want no write phase", loomMedians)
+				}
 				if len(got.Findings) != 0 {
 					t.Errorf("findings = %+v; want none, since every row names a phase", got.Findings)
 				}
@@ -576,7 +645,7 @@ func TestComputeTiming(t *testing.T) {
 				landedRun(w, "early", "t1", 3, seedStartedAt(run), []shedengine.HistoryEntry{entryAt(loomshed.NameFinalize, secondsAfter(run, 600))})
 			},
 			check: func(t *testing.T, got TimingReport) {
-				if len(got.Runs) != 0 || len(got.Buckets) != 0 || got.Phases[PhasePublishFinalize].Seconds != nil {
+				if len(got.Runs) != 0 || len(got.Buckets) != 0 || got.Phases[shedrun.RecipeLoom][PhasePublishFinalize].Seconds != nil {
 					t.Errorf("report = %+v; want no run, no bucket and nil medians", got)
 				}
 			},
@@ -617,12 +686,12 @@ func TestComputeTiming(t *testing.T) {
 				landedRun(w, "long", "t2", 14, seedStartedAt(at(11)), []shedengine.HistoryEntry{entryAt(loomshed.NameFinalize, secondsAfter(at(11), 301))})
 			},
 			check: func(t *testing.T, got TimingReport) {
-				median := got.Phases[PhasePublishFinalize]
+				median := got.Phases[shedrun.RecipeLoom][PhasePublishFinalize]
 				if median.Runs != 2 || median.Seconds == nil || *median.Seconds != 300 {
 					t.Errorf("publish-finalize median = %+v; want 300 over two runs", median)
 				}
-				if got.Phases[PhaseLand].Seconds != nil || got.Phases[PhaseLand].Runs != 0 {
-					t.Errorf("land median = %+v; want nil over no run", got.Phases[PhaseLand])
+				if land := got.Phases[shedrun.RecipeLoom][PhaseLand]; land.Seconds != nil || land.Runs != 0 {
+					t.Errorf("land median = %+v; want nil over no run", land)
 				}
 			},
 		},
@@ -648,10 +717,10 @@ func TestComputeTiming(t *testing.T) {
 					t.Errorf("run = %s %s ending %v; want in-flight under its branch name and ending at the snapshot", flight.State, flight.Tag, flight.End)
 				}
 				wantPhases(t, flight, map[string]int64{PhaseSetup: 600, PhaseDiscussion: 1200, PhasePlan: 1800})
-				if median := got.Phases[PhasePublishFinalize]; median.Runs != 1 || *median.Seconds != 300 {
+				if median := got.Phases[shedrun.RecipeLoom][PhasePublishFinalize]; median.Runs != 1 || *median.Seconds != 300 {
 					t.Errorf("publish-finalize median = %+v; want the landed run's 300 alone", median)
 				}
-				if median := got.Phases[PhasePlan]; median.Runs != 0 || median.Seconds != nil {
+				if median := got.Phases[shedrun.RecipeLoom][PhasePlan]; median.Runs != 0 || median.Seconds != nil {
 					t.Errorf("plan median = %+v; want none, since a run in flight enters no median", median)
 				}
 				if bucket := bucketOf(t, got, "2026-01-13"); bucket.Runs != 1 || bucket.Phases[PhasePlan] != 1800 {
@@ -694,7 +763,7 @@ func TestComputeTiming(t *testing.T) {
 				status := statusJSON(w.t, shedengine.Status{State: shedengine.StateRunning, CurrentProducer: loomshed.NamePreflight})
 				w.pairBranch("unseeded", "p1", at(198), "", status, nil)
 				w.pairBranch("statusless", "p2", at(198), seedStartedAt(at(198)), "", nil)
-				w.pairBranch("other", "p3", at(198), `{"recipe":"darn","driver":"go"}`, status, nil)
+				w.pairBranch("other", "p3", at(198), seedText(shedrun.RecipeBatten), status, nil)
 			},
 			check: func(t *testing.T, got TimingReport) {
 				if len(got.Runs) != 0 || len(got.Findings) != 0 {
@@ -827,7 +896,7 @@ func TestComputeTiming(t *testing.T) {
 				if second.Phases[PhasePaused] != 3660 || second.ActiveSeconds != 1000 {
 					t.Errorf("bucket 2026-01-06 = %+v; want paused 3660 and active 1000", second)
 				}
-				if median := got.Phases[PhasePaused]; median.Runs != 1 || median.Seconds == nil || *median.Seconds != 6000 {
+				if median := got.Phases[shedrun.RecipeLoom][PhasePaused]; median.Runs != 1 || median.Seconds == nil || *median.Seconds != 6000 {
 					t.Errorf("paused median = %+v; want 6000 over one run", median)
 				}
 				if len(got.Findings) != 0 {
@@ -1121,8 +1190,8 @@ func TestComputeTiming(t *testing.T) {
 					entryAt(loomshed.NameMergeIn, secondsAfter(run, 3200)),
 					stuckAt(loomshed.NamePublish, secondsAfter(run, 3990)),
 					gotoAt(loomshed.NamePublish, secondsAfter(run, 4100), "orch"),
-					stuckAt(loomshed.NameDarnWrite, secondsAfter(run, 4990)),
-					gotoAt(loomshed.NameDarnWrite, secondsAfter(run, 5100), "orch"),
+					stuckAt(loomshed.NamePRRework, secondsAfter(run, 4990)),
+					gotoAt(loomshed.NamePRRework, secondsAfter(run, 5100), "orch"),
 					stuckAt(loomshed.NameBatchifier, secondsAfter(run, 5990)),
 					gotoAt(loomshed.NameBatchifier, secondsAfter(run, 6100), shedengine.CallerShed),
 					stuckAt(loomshed.NameDiscussionWrite, secondsAfter(run, 6990)),
@@ -1131,7 +1200,7 @@ func TestComputeTiming(t *testing.T) {
 					entryAt(loomshed.NameDescribe, secondsAfter(run, 8100)),
 					entryAt(loomshed.NameFinalize, secondsAfter(run, 8500)),
 				}
-				halted := []string{loomshed.NamePlanWrite, loomshed.NameWebster, loomshed.NameMergeIn, loomshed.NamePublish, loomshed.NameDarnWrite, loomshed.NameBatchifier, loomshed.NameDiscussionWrite, loomshed.NameDescribe}
+				halted := []string{loomshed.NamePlanWrite, loomshed.NameWebster, loomshed.NameMergeIn, loomshed.NamePublish, loomshed.NamePRRework, loomshed.NameBatchifier, loomshed.NameDiscussionWrite, loomshed.NameDescribe}
 				batten := []shedengine.HistoryEntry{entryAt(battenrecipe.NameWorktreeCreate, run)}
 				extra := arbiterAttemptFiles(w.t, "settlers", 1, loomengine.ArbiterAttempt{
 					StopKey:   shedrun.StopKey{CurrentProducer: loomshed.NameMergeIn, State: "blocked"},
@@ -1149,7 +1218,7 @@ func TestComputeTiming(t *testing.T) {
 				stopRun(w, "settlers", loom, batten, []shedrun.SettleRecord{
 					settleRecord(loomshed.NamePlanWrite, 2, "blocked", shedrun.SettlerGoRule, shedrun.SettleRestep),
 					settleRecord(loomshed.NameWebster, 4, "blocked", shedrun.SettlerTackler, shedrun.SettleRestep),
-					settleRecord(loomshed.NameDarnWrite, 10, "blocked", shedrun.SettlerGoRule, shedrun.SettleMoved),
+					settleRecord(loomshed.NamePRRework, 10, "blocked", shedrun.SettlerGoRule, shedrun.SettleMoved),
 					settleRecord(loomshed.NameDescribe, 16, "blocked", shedrun.SettlerGoRule, shedrun.SettleVerifyRetry),
 				}, nil, extra)
 			},
@@ -1192,7 +1261,7 @@ func TestComputeTiming(t *testing.T) {
 		{
 			name: "a record that settles nothing by itself leaves the stop to the entry that moved it on, here a goto by operator",
 			setup: func(w *world) {
-				producers := []string{loomshed.NamePlanWrite, loomshed.NameWebster, loomshed.NameDescribe, loomshed.NameDarnWrite, loomshed.NameBatchifier, loomshed.NameDiscussionWrite}
+				producers := []string{loomshed.NamePlanWrite, loomshed.NameWebster, loomshed.NameDescribe, loomshed.NamePRRework, loomshed.NameBatchifier, loomshed.NameDiscussionWrite}
 				records := []shedrun.SettleRecord{
 					settleRecord(producers[0], 2, "blocked", shedrun.SettlerGoRule, shedrun.SettleBusyExit),
 					settleRecord(producers[1], 4, "blocked", shedrun.SettlerGoRule, shedrun.SettleRunningExit),
@@ -1441,14 +1510,17 @@ func TestRenderTimingMarkdown(t *testing.T) {
 		Selection: TimingSelection{RecordsBranch: "records", RecordsTip: "tip1", Since: at(0), By: BucketDay, SnapshotAt: at(200)},
 		Runs: []TimingRun{
 			{
-				Slug: "short", State: RunStateLanded, Start: at(1), SpanSeconds: 3725, ActiveSeconds: 3000, SleepSeconds: 90,
+				Slug: "short", Recipe: shedrun.RecipeDarn, State: RunStateLanded, Start: at(1), SpanSeconds: 3725, ActiveSeconds: 3000, SleepSeconds: 90,
 				Waits:    map[string]int64{WaitParentReview: 0, WaitPRGate: 600, WaitEscalation: 0, WaitHalt: 35},
 				Phases:   map[string]*int64{PhaseSetup: seconds(45), PhaseLand: nil, PhasePublishFinalize: landTime},
 				Attempts: TimingAttempts{Arbiter: AttemptFigure{Count: 2, Seconds: seconds(250)}},
 			},
 			{Slug: "long", State: RunStateInFlight, Start: at(2), SpanSeconds: 183600, Phases: map[string]*int64{}},
 		},
-		Phases:    map[string]*PhaseMedian{PhaseSetup: {Seconds: seconds(45), Runs: 1}, PhaseLand: {Runs: 0}},
+		Phases: map[string]map[string]*PhaseMedian{
+			shedrun.RecipeLoom: {PhaseSetup: {Seconds: seconds(45), Runs: 1}, PhaseLand: {Runs: 0}},
+			shedrun.RecipeDarn: {PhaseWrite: {Seconds: seconds(300), Runs: 1}},
+		},
 		Buckets:   []TimingBucket{{Label: "2026-01-05", Runs: 2, SleepSeconds: 90, Settlers: map[string]map[string]int{StopKindStop: {"orch": 2, SettledByShed: 1}}}},
 		SleepNote: "from the test",
 		Findings:  []Finding{{Tag: "t", Error: "e"}},
@@ -1470,6 +1542,7 @@ func TestRenderTimingMarkdown(t *testing.T) {
 
 	runs := markdownSection(t, got, HeadingTimingRuns)
 	for _, tt := range []struct{ run, column, want string }{
+		{"short", "Recipe", shedrun.RecipeDarn},
 		{"short", "Span", "1h02m05s"},
 		{"long", "Span", "2d03h"},
 		{"short", PhaseLand, "no data"},
@@ -1484,8 +1557,11 @@ func TestRenderTimingMarkdown(t *testing.T) {
 			t.Errorf("run %s column %s = %q; want %q", tt.run, tt.column, cell, tt.want)
 		}
 	}
-	if cell := markdownCell(t, markdownSection(t, got, HeadingTimingPhases), "Median", PhaseLand); cell != "no data" {
-		t.Errorf("land median = %q; want no data", cell)
+	medians := markdownSection(t, got, HeadingTimingPhases)
+	for _, row := range []string{"| loom | setup | 45s | 1 |\n", "| loom | land | no data | 0 |\n", "| darn | write | 5m00s | 1 |\n"} {
+		if !strings.Contains(medians, row) {
+			t.Errorf("phase medians = %q; want the row %q", medians, row)
+		}
 	}
 	if cell := markdownCell(t, markdownSection(t, got, HeadingTimingBuckets), "Sleep", "2026-01-05"); cell != "1m30s" {
 		t.Errorf("bucket sleep = %q; want 1m30s", cell)

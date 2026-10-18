@@ -398,6 +398,77 @@ func assertMergedKeyValue(t *testing.T, result SetResult, key, want string) {
 	}
 }
 
+// TestSetEntries pins whole-entry sets: a new entry is appended, an existing one replaced whole with its key's comment kept, the other entries and comments untouched, and a value that is not a JSON object or an empty name refused.
+func TestSetEntries(t *testing.T) {
+	t.Parallel()
+	const existing = "# head\nlight:\n  loom: {plan_max_bounces: 1}\n# about docs\ndocs:\n  darn: {writer: sonnet}\n"
+	tests := []struct {
+		name     string
+		existing string
+		pairs    []KV
+		want     string
+		wantErr  []string
+	}{
+		{
+			name:     "a new entry is appended",
+			existing: existing,
+			pairs:    []KV{{Key: "wide", Value: `{"darn":{"review_max_bounces":2}}`}},
+			want:     "# head\nlight:\n    loom: {plan_max_bounces: 1}\n# about docs\ndocs:\n    darn: {writer: sonnet}\nwide:\n    darn: {review_max_bounces: 2}\n",
+		},
+		{
+			name:     "an existing entry is replaced whole",
+			existing: existing,
+			pairs:    []KV{{Key: "docs", Value: `{"loom":{"merge_max_bounces":1}}`}},
+			want:     "# head\nlight:\n    loom: {plan_max_bounces: 1}\n# about docs\ndocs:\n    loom: {merge_max_bounces: 1}\n",
+		},
+		{
+			name:  "a string needing quotes stays a string",
+			pairs: []KV{{Key: "docs", Value: `{"darn":{"writer":"sonnet[medium]","note":"2"}}`}},
+			want:  "docs:\n    darn: {writer: 'sonnet[medium]', note: \"2\"}\n",
+		},
+		{
+			name:  "an empty document takes the entry",
+			pairs: []KV{{Key: "light", Value: `{}`}},
+			want:  "light: {}\n",
+		},
+		{
+			name:     "a value that is not a JSON object is refused",
+			existing: existing,
+			pairs:    []KV{{Key: "light", Value: `[1]`}},
+			wantErr:  []string{"light", "JSON object"},
+		},
+		{
+			name:     "an empty name is refused",
+			existing: existing,
+			pairs:    []KV{{Key: "", Value: `{}`}},
+			wantErr:  []string{"entry name"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := SetEntries([]byte(tt.existing), tt.pairs)
+			if tt.wantErr != nil {
+				if err == nil {
+					t.Fatalf("SetEntries() = %q; want an error", got)
+				}
+				for _, want := range tt.wantErr {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("SetEntries() error = %q; want it to name %q", err, want)
+					}
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("SetEntries() error = %v", err)
+			}
+			if string(got) != tt.want {
+				t.Errorf("SetEntries() = %q; want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 // extractYAMLValue is a minimal top-level-key extractor for asserting a
 // single scalar value out of merged YAML bytes without pulling in a full
 // YAML-to-map round-trip (which would normalize quoting and defeat the

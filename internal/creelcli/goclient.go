@@ -81,7 +81,7 @@ func (c *GoClient) Post(receiver, body string) (int64, error) {
 // The daemon marks them read only once handle returns nil, so a handler error leaves them unread.
 // With nothing unread handle is not called.
 func (c *GoClient) ReadAll(handle func([]creelengine.Message) error) error {
-	_, err := c.client.Call(creelengine.Request{Verb: creelengine.VerbRead, All: true}, goCallTimeout, func(resp creelengine.Response) error {
+	_, err := c.client.Call(creelengine.Request{Verb: creelengine.VerbRead}, goCallTimeout, func(resp creelengine.Response) error {
 		return handle(resp.Messages)
 	})
 	return err

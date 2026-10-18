@@ -4,7 +4,7 @@
 // The README reads like a roadmap: Tasks split into Running, Ready, dependency layers and Independent, Notes with one subsection per type label, then Done.
 // Each open subsection holds one markdown table per priority present, high, normal, low, each under a `#### <Priority> priority` heading, numbered on from 1 across them, and Done one table numbered from 1;
 // the README opens with the time it was rendered,
-// and the rows show the bold title with the brief and each run setting as a bullet under it, the linked slug, the entry's age and time since its last revision as of that time, and the labels that are not type labels;
+// and the rows show the bold title with the brief, the run profile and each run setting as a bullet under it, the linked slug, the entry's age and time since its last revision as of that time, and the labels that are not type labels;
 // every Tasks table adds the recipe after the slug, loom for an empty one;
 // Running adds where its run stands, and Ready and the layers add the open entries each waits on.
 // The section names, their meaning lines and the table columns are declared here alone;
@@ -367,11 +367,14 @@ func priorityHeading(priority string) string {
 	return "#### " + strings.ToUpper(priority[:1]) + priority[1:] + " priority"
 }
 
-// entryCell is the bold title, with the brief as one bullet under it when there is one, then one code-span bullet per run setting.
+// entryCell is the bold title, with the brief as one bullet under it when there is one, then a code-span bullet naming the run profile when there is one and one per run setting.
 func entryCell(t Task) string {
 	cell := "**" + cellText(t.Title) + "**"
 	if t.Brief != "" {
 		cell += cellBullet + cellText(t.Brief)
+	}
+	if t.Profile != "" {
+		cell += cellBullet + codeSpan(cellText("profile: "+t.Profile))
 	}
 	for _, setting := range settingLines(t.RunSettings) {
 		cell += cellBullet + codeSpan(cellText(setting))

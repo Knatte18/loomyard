@@ -74,7 +74,7 @@ func (e *scriptProviderEngine) CompactSessionSequence(string) []shuttleengine.Pa
 func (e *scriptProviderEngine) ReloadPluginsSequence() []shuttleengine.PaneInput { return nil }
 
 // TestSmokeCreelFakeProviderPane runs the real daemon on the real socket over a hub whose one strand is the fake provider.
-// A post is acknowledged and its reminder is typed into the pane, a privileged inject is typed and reported injected, and the log shows the events.
+// A post is acknowledged and its carried line is typed into the pane, a privileged inject is typed and reported injected, and the log shows the events.
 func TestSmokeCreelFakeProviderPane(t *testing.T) {
 	// The strand name in the environment is process-global state, set by newSmokeHub.
 	smoke := newSmokeHub(t)
@@ -94,8 +94,9 @@ func TestSmokeCreelFakeProviderPane(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("lyx creel post = %d; output: %s", code, posted)
 	}
-	if capture, ok := smoke.awaitPane(t, guid, "[creel] 1 unread"); !ok {
-		t.Fatalf("the reminder was not typed into the pane; pane:\n%s", capture)
+	// The test process posts as EXTERNAL, whose mail is carried in its own line rather than reminded.
+	if capture, ok := smoke.awaitPane(t, guid, "[creel] #1 from "); !ok {
+		t.Fatalf("the carried line was not typed into the pane; pane:\n%s", capture)
 	}
 
 	const injected = "creel-injected-line"

@@ -53,9 +53,10 @@
 //
 // The role file's `## Commands` section carries the operator command index, which every role-file render is handed as a string;
 // a role stencil without the `command_index` marker fails the render naming the stencil.
-// The role file's last section, `## This repository`, carries the `ORCHESTRATOR.md` at `Paths.RepoRulesPath`, read at every role-file render;
-// an absent or whitespace-only file renders a placeholder line, any other read failure fails the render naming the file,
-// and a stencil without the `repository_rules` marker fails naming the stencil.
+// The role file's last two sections, `## Hub-wide rules` and `## This orch's rules`, carry the files at `Paths.HubRulesPath` and `Paths.OwnRulesPath`, read at every role-file render;
+// each absent or whitespace-only file renders a placeholder line naming its path, any other read failure fails the render naming the file,
+// and a stencil without the `hub_rules` or `orch_rules` marker fails naming the stencil.
+// The file at `Paths.HubRulesPath` is written only through `lyx orch rules`, and the one at `Paths.OwnRulesPath` is committed through `lyx fabric commit`.
 // A role stencil without the `decision_note_title` marker fails the render naming the stencil, as for the other two.
 // The watcher is told an index source through NewWatcher, calls it before each of its three role-file renders, and returns to idle with the reason when the source or the render fails.
 //
@@ -164,7 +165,7 @@
 // The watcher saves State before every side effect, so a restarted watcher resumes from it.
 //
 //   - handoff-requested: the note request is posted as creel mail to the orch strand, naming a new timestamped file under handoffs/ and the template the note follows.
-//     Creel assigns the mail's id when it is journaled, so the body tells the orch to reply to the id `lyx creel read` prints beside it, and the watcher saves the id the post answers in State.RequestID.
+//     Creel assigns the mail's id when it is journaled, so the body tells the orch to reply to the id the `[creel]` line carrying it opens with, and the watcher saves the id the post answers in State.RequestID.
 //     The orch answers with `lyx creel post --reply <id> "written <path>"` once the note is written, or, to a soft request only, `lyx creel post --reply <id> defer`.
 //     Each tick reads the watcher's own mailbox without waiting, through readReplies, which runs before the client acknowledges the read, so a failed save leaves the reply unread for the next watcher.
 //     Only a reply from the orch strand whose reply_to is State.RequestID counts; every other message, a reply to an earlier request included, is logged and dropped.

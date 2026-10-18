@@ -915,6 +915,99 @@ func TestDispatchHubWideBoard(t *testing.T) {
 	}
 }
 
+// TestDispatchSetProfiles drives --set on the hub-wide profiles module.
+// A JSON object adds a profile or replaces one whole, leaving the others, and an absent hub file starts from the template's profiles.
+// A value that is not an object, or a profile no module takes, is refused with the file left as it was.
+func TestDispatchSetProfiles(t *testing.T) {
+	t.Parallel()
+
+	const seeded = "# operator notes\nlight:\n  loom: {plan_max_bounces: 1}\n"
+	rows := []struct {
+		name string
+		// absent leaves the hub file unwritten instead of seeded.
+		absent      bool
+		setFlag     string
+		layer       string
+		wantCode    int
+		wantFile    string
+		wantContain []string
+		wantErr     string
+	}{
+		{
+			name:     "a local write is refused because no profile key is open to the local layer",
+			setFlag:  `wide={"darn":{"review_max_bounces":2}}`,
+			layer:    "local",
+			wantCode: 1,
+			wantFile: seeded,
+			wantErr:  "local override",
+		},
+		{
+			name:     "a new profile is added beside the existing one",
+			setFlag:  `wide={"darn":{"review_max_bounces":2}}`,
+			wantFile: "# operator notes\nlight:\n    loom: {plan_max_bounces: 1}\nwide:\n    darn: {review_max_bounces: 2}\n",
+		},
+		{
+			name:     "an existing profile is replaced whole",
+			setFlag:  `light={"loom":{"merge_max_bounces":1}}`,
+			wantFile: "# operator notes\nlight:\n    loom: {merge_max_bounces: 1}\n",
+		},
+		{
+			name:        "an absent hub file starts from the template's profiles",
+			absent:      true,
+			setFlag:     `wide={"darn":{"review_max_bounces":2}}`,
+			wantContain: []string{"light:", "budget:", "docs:", "wide:\n    darn: {review_max_bounces: 2}"},
+		},
+		{
+			name:     "a value that is not a JSON object is refused",
+			setFlag:  `light=3`,
+			wantCode: 1,
+			wantFile: seeded,
+			wantErr:  "JSON object",
+		},
+		{
+			name:     "a profile key no module takes is refused",
+			setFlag:  `odd={"loom":{"no_such_key":1}}`,
+			wantCode: 1,
+			wantFile: seeded,
+			wantErr:  `run profile "odd"`,
+		},
+	}
+	for _, row := range rows {
+		t.Run(row.name, func(t *testing.T) {
+			t.Parallel()
+
+			fx := newHubFixture(t)
+			if !row.absent {
+				seedModuleConfig(t, fx.board, "profiles", seeded)
+			}
+			commit := &fakeHubCommit{}
+			sync := &fakeSyncTracker{}
+			var out bytes.Buffer
+
+			code := dispatch(fx.layout, &out, []string{"profiles"}, makeNeverCalledEditor(t), sync.syncFunc(), commit.commitFunc(), false, []string{row.setFlag}, row.layer, nil, true)
+
+			if code != row.wantCode {
+				t.Errorf("dispatch = %d; want %d; output: %q", code, row.wantCode, out.String())
+			}
+			hubFile, err := os.ReadFile(configengine.ConfigFile(fx.board, "profiles"))
+			if err != nil {
+				t.Fatalf("read hub profiles.yaml: %v", err)
+			}
+			if row.wantFile != "" && string(hubFile) != row.wantFile {
+				t.Errorf("hub file = %q; want %q", hubFile, row.wantFile)
+			}
+			for _, want := range row.wantContain {
+				if !strings.Contains(string(hubFile), want) {
+					t.Errorf("hub file = %q; want it to contain %q", hubFile, want)
+				}
+			}
+			if row.wantErr != "" {
+				assertJSONErrContains(t, out.String(), row.wantErr)
+			}
+		})
+	}
+}
+
 // TestDispatchLayers drives --layer through dispatch over a hub fixture: an unknown layer is refused naming the three, the default layer is written and committed from the prime only, a hub-wide module has no worktree layer, a local override is written uncommitted and refuses a key the local layer closes, a worktree write under a board is sparse, and --print reads the selected layer.
 func TestDispatchLayers(t *testing.T) {
 	t.Parallel()
@@ -1271,5 +1364,52 @@ func TestPrintResolved(t *testing.T) {
 			}
 			assertJSONErrContains(t, out.String(), tt.wantErr)
 		})
+	}
+}
+
+// TestRestoreBoardConfig covers the undo of a part-way board-dir apply:
+// a file changed, a file removed and a file created since the snapshot all return to their snapshotted state.
+func TestRestoreBoardConfig(t *testing.T) {
+	t.Parallel()
+	board := t.TempDir()
+	changed := configengine.ConfigFile(board, "changed")
+	untouched := configengine.ConfigFile(board, "untouched")
+	removed := configengine.ConfigFile(board, "removed")
+	// A registry module's file, which the snapshot records as absent.
+	created := configengine.ConfigFile(board, "loom")
+	for path, content := range map[string]string{changed: "a: 1\n", untouched: "b: 1\n", removed: "c: 1\n"} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("create the config dir: %v", err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatalf("seed %s: %v", path, err)
+		}
+	}
+
+	prior, err := snapshotBoardConfig(board)
+	if err != nil {
+		t.Fatalf("snapshotBoardConfig() = %v; want nil", err)
+	}
+	if err := os.WriteFile(changed, []byte("a: 2\n"), 0o644); err != nil {
+		t.Fatalf("change %s: %v", changed, err)
+	}
+	if err := os.Remove(removed); err != nil {
+		t.Fatalf("remove %s: %v", removed, err)
+	}
+	if err := os.WriteFile(created, []byte("d: 1\n"), 0o644); err != nil {
+		t.Fatalf("create %s: %v", created, err)
+	}
+
+	cause := errors.New("apply failed")
+	if got := restoreBoardConfig(prior, cause); got != cause {
+		t.Errorf("restoreBoardConfig() = %v; want the cause alone", got)
+	}
+	for path, want := range map[string]string{changed: "a: 1\n", untouched: "b: 1\n", removed: "c: 1\n"} {
+		if got, err := os.ReadFile(path); err != nil || string(got) != want {
+			t.Errorf("%s = %q, %v after the restore; want %q", path, got, err, want)
+		}
+	}
+	if _, err := os.Stat(created); !os.IsNotExist(err) {
+		t.Errorf("%s exists after the restore; stat err = %v; want it removed", created, err)
 	}
 }

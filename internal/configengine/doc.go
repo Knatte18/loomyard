@@ -8,12 +8,15 @@
 // neither writes a file.
 // A key missing inside a list element is the one gap fill cannot close, and is an error.
 // The result is resolved through envsource's markers once, after the merge.
+// A default- or worktree-layer file holding units the template lacks, open-map entries and retired keys aside, still loads, and is logged at Warn naming the file, the keys and the `lyx config reconcile` that removes them;
+// the warning is logged once per file and key list in a process.
 //
 // A present file whose content fails to parse, lacks a key inside a list element or fails to resolve returns an error marked [ErrInvalid];
 // an absent base file or `_lyx/`, an unreadable file and a base directory failure stay unmarked.
 // A caller marks its own unmarshal and validation failures with [MarkInvalid], which leaves the error text unchanged.
 //
 // [Set] writes dotted key=value pairs into a module's file, scaffolding it from the template when absent, with no editor and no validation loop.
+// For a spec with `JSONEntries` it writes each pair as one whole top-level entry from a JSON object instead, with no template key check.
 // [Edit] is the interactive counterpart.
 // An editor that leaves the file empty or whitespace-only aborts the edit with [ErrAborted] before the YAML parse:
 // a scaffolded file is removed and a pre-existing one is written back to the bytes it held on entry, so a layer cannot be emptied through the editor.

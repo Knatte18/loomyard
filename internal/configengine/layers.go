@@ -59,6 +59,7 @@ const (
 // OpenMaps are the dotted paths of the module's open maps;
 // HubWide marks a module whose file lives at the hub only;
 // WholeEntries makes each top-level key one unit, open to the local layer.
+// JSONEntries makes a set write each pair as one whole top-level entry from a JSON object, with no template key check.
 // Categories classifies the template by dotted path: an entry covers its own path and every path under it.
 // RetiredKeys are the dotted keys the module no longer reads, each mapped to the category it held as a template key;
 // they stay out of Categories and OpenMaps, the local layer admits them by that category, and a load drops them from the stacked document.
@@ -68,6 +69,7 @@ type Spec struct {
 	OpenMaps     []string
 	HubWide      bool
 	WholeEntries bool
+	JSONEntries  bool
 	Categories   map[string]Category
 	RetiredKeys  map[string]Category
 }

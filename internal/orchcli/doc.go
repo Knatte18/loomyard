@@ -1,5 +1,5 @@
 // Package orchcli is the CLI for the hub orchestrator: the long-lived session in the hub's prime worktree that runs the task loop for the operator.
-// Its verbs (`start`, `status`, `refresh`, `distill`, `stop`, `cleanup` and the watcher behind them) host that session as an interactive agent in a reed strand and cycle its context before it fills; this comment records the loop the session runs, which the verbs exist to serve.
+// Its verbs (`start`, `status`, `refresh`, `distill`, `stop`, `cleanup`, `rules` and the watcher behind them) host that session as an interactive agent in a reed strand and cycle its context before it fills; this comment records the loop the session runs, which the verbs exist to serve.
 //
 // # The role file and the note
 //
@@ -9,9 +9,15 @@
 // A context cycle asks the session for an orch note at the path it names, following `.lyx/orch/note-template.md`, in place of a general handoff skill.
 // `lyx orch refresh` requests a clear cycle and `lyx orch distill` a compact cycle, whatever `cycle_mode` says; both write the note first.
 // The role file's `## Commands` section holds the operator command index.
-// Its `## This repository` section holds the prime worktree's `ORCHESTRATOR.md`, the repository's orch-only rules, re-read at every delivery.
+// Its `## Hub-wide rules` and `## This orch's rules` sections hold the hub-wide rules file on Bolt and this orch thread's own rules file under its worktree's `_lyx/orch/`, re-read at every delivery.
 // `start` and `resume-context` render it in-process from the binary they run as, which the pane names;
 // the watcher outlives a deploy, so it runs `help index` from the `lyx` path the orch strand recorded and goes idle with a reason naming `lyx orch stop` when that path is missing or gone.
+//
+// # The orch rules
+//
+// `lyx orch rules --from <file>` replaces the hub-wide rules file on Bolt with the file's content, pulling Bolt first and pushing before and after the commit.
+// The verb commits only that one path, and an empty file clears the rules.
+// The orch thread's own rules file is committed through `lyx fabric commit`.
 //
 // # The orchestrator acts and fixes
 //
@@ -27,7 +33,7 @@
 //
 //  1. Create the task worktree with `lyx fabric add <slug>`, then start its run from inside it with `lyx loom start`.
 //     The run's status file is `_lyx/shed/<slug>/status.json` under the worktree, and its `state` is one of running, awaiting, blocked, failed or done.
-//  2. Keep no watch loop of your own: batten notices arrive as creel mail, announced by creel's reminder, and on one you read the mail and check the run with `lyx batten status <slug>`.
+//  2. Keep no watch loop of your own: a batten notice posted as batten's program arrives in full as its own `[creel] #<id> from <shortname>:BATTEN: …` line, one posted under a strand claim as mail announced by creel's reminder that you read, and on either you check the run with `lyx batten status <slug>`.
 //  3. At an awaiting Publish, review the PR: a small diff yourself, with build, vet and test over the touched packages; a large one through a read-only background subagent.
 //     Then `lyx loom approve` in the worktree; batten resumes the child itself, so no `lyx loom start` follows.
 //     Finalize squash-merges, closes the PR and marks the board task done.
