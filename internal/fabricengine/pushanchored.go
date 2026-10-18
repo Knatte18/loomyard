@@ -15,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// StatusPushLockWait is the bounded push-lock wait the per-transition status pushes and `commit-records` pass.
+// StatusPushLockWait is the bounded push-lock wait `commit-records` passes, and the default of the wait Remove gives a push of the pair for the pair's teardown lock.
 // It is long enough to ride out a detached push child, and short enough that a stuck holder never stalls a run.
 const StatusPushLockWait = 30 * time.Second
 

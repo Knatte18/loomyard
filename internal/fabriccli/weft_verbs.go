@@ -240,12 +240,24 @@ Related commands:
 				rec := fabricengine.NewMutations("")
 				pauseSlug, _ := cmd.Flags().GetString(fabricengine.PauseSlugFlag)
 				teardownSlug, _ := cmd.Flags().GetString(fabricengine.TeardownSlugFlag)
-				res, err := fabricengine.CoalescePushRequest(fabricengine.PushSpawn{
+				// The child starts in the hub's board worktree, so the hub is the parent of the worktree root the ungated resolution finds there.
+				cwd, err := lyxcwd.CwdFrom(cmd.Context())
+				if err != nil {
+					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+					return nil
+				}
+				hubLocation, err := lyxcwd.ResolveWorktree(cwd)
+				if err != nil {
+					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+					return nil
+				}
+				logger.SetDurableSinkDir(fabricengine.HubLogsDir(hubLocation.HubPath))
+				res, err := fabricengine.DetachedPush(hubLocation.HubPath, fabricengine.PushSpawn{
 					WarpPath:     warpPath,
 					WeftPath:     weftPath,
 					PauseSlug:    pauseSlug,
 					TeardownSlug: teardownSlug,
-				}, fabricengine.SyncOptions{})
+				})
 				rec.Extend(res.Mutated())
 				if err != nil {
 					// The detached child's stdout goes nowhere, so the trace log is the only place its failure surfaces.

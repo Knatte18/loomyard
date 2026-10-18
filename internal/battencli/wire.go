@@ -365,11 +365,15 @@ func teardownRequest(slug string) pairteardown.Request {
 // fabric's own refusal for a dirty pair sibling leaves --force as the way out, and --force would discard exactly the records this task exists to keep.
 // The teardown commits the run records itself, so this refusal means content outside the record paths in the pair's sibling worktree under the hub;
 // the remedy names inspecting it, committing or removing it by hand, and resuming.
+// A push of the pair still running past the teardown's wait is refused before any mutation too, and the remedy names the resume once the push finishes.
 // A failed archive runs before any teardown mutation, so the pair is still whole and a plain resume retries it once the failure is fixed.
 // That failure is most often an unreachable remote, but not always, so the remedy points at the wrapped cause rather than naming one.
 func teardownRefusal(err error, slug string) error {
 	if errors.Is(err, fabricengine.ErrArchiveFailed) {
 		return fmt.Errorf("the pair for %q was left in place because archiving its run records to the remote failed: %w; fix the failure named here (most often an unreachable remote), then resume this run with \"lyx batten run %s\"", slug, err, slug)
+	}
+	if errors.Is(err, fabricengine.ErrPairPushRunning) {
+		return fmt.Errorf("the pair for %q was left in place because a push of it is still running; once it finishes, resume this run with \"lyx batten run %s\": %w", slug, slug, err)
 	}
 	if !errors.Is(err, fabricengine.ErrPairSiblingDirty) {
 		return err

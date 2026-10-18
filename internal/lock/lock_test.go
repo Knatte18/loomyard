@@ -180,6 +180,49 @@ func TestAcquireWriteLockWithin(t *testing.T) {
 	}
 }
 
+// TestTryAcquireReadLock verifies shared holders coexist, an exclusive holder makes the attempt report false without an error, and the lock is acquirable once the exclusive holder releases.
+func TestTryAcquireReadLock(t *testing.T) {
+	t.Parallel()
+
+	lockPath := filepath.Join(t.TempDir(), "tryread.lock")
+
+	first, ok, err := lock.TryAcquireReadLock(lockPath)
+	if err != nil || !ok {
+		t.Fatalf("first TryAcquireReadLock() = (%v, %v, %v); want (lock, true, nil)", first, ok, err)
+	}
+	second, ok, err := lock.TryAcquireReadLock(lockPath)
+	if err != nil || !ok {
+		t.Fatalf("second TryAcquireReadLock() = (%v, %v, %v); want (lock, true, nil) beside a shared holder", second, ok, err)
+	}
+	if err := first.Release(); err != nil {
+		t.Fatalf("Release() error = %v; want nil", err)
+	}
+	if err := second.Release(); err != nil {
+		t.Fatalf("Release() error = %v; want nil", err)
+	}
+
+	writer, err := lock.AcquireWriteLock(lockPath)
+	if err != nil {
+		t.Fatalf("AcquireWriteLock() error = %v; want nil", err)
+	}
+	blocked, ok, err := lock.TryAcquireReadLock(lockPath)
+	if err != nil {
+		t.Errorf("TryAcquireReadLock() error = %v; want nil (contention is not an error)", err)
+	}
+	if ok || blocked != nil {
+		t.Errorf("TryAcquireReadLock() = (%v, %v); want (nil, false) against an exclusive holder", blocked, ok)
+	}
+	if err := writer.Release(); err != nil {
+		t.Fatalf("Release() error = %v; want nil", err)
+	}
+
+	after, ok, err := lock.TryAcquireReadLock(lockPath)
+	if err != nil || !ok {
+		t.Fatalf("TryAcquireReadLock() after the exclusive release = (%v, %v, %v); want (lock, true, nil)", after, ok, err)
+	}
+	defer after.Release()
+}
+
 func TestAcquireReadLock(t *testing.T) {
 	t.Parallel()
 

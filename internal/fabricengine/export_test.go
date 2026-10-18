@@ -634,6 +634,26 @@ func SetLeftoverSeamForTest(t *Topology, remove func(container, target string) (
 	t.leftover = leftoverSeam{remove: remove, sleep: sleep}
 }
 
+// SetTeardownWaitForTest shortens how long t's Remove waits for the pair's teardown lock.
+// It sets the wait on the one Topology, so parallel tests inject per instance.
+func SetTeardownWaitForTest(t *Topology, wait time.Duration) {
+	t.teardownWait = wait
+}
+
+// SetTeardownHooksForTest sets the two teardown hooks until the test ends and restores nil on cleanup.
+// A nil argument leaves that hook unset.
+// It changes process-global state, so the calling test must not be parallel.
+func SetTeardownHooksForTest(t *testing.T, heldByPush, afterRemoveTeardown func()) {
+	t.Helper()
+
+	detachedPushHeldHook = heldByPush
+	removeAfterTeardownHook = afterRemoveTeardown
+	t.Cleanup(func() {
+		detachedPushHeldHook = nil
+		removeAfterTeardownHook = nil
+	})
+}
+
 // DropSeedCommitsForTest re-exports dropSeedCommits for package fabricengine_test integration tests that drive the board seed-commit drop's gate directly.
 var DropSeedCommitsForTest = dropSeedCommits
 

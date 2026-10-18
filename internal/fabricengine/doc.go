@@ -620,7 +620,7 @@
 // the second pushes the code side and then the records side, except in the hub's prime, where it pushes the records side only and reports a code branch with unpushed commits in `PushResult.CodePushSkipped`;
 // and both run under the weft-side absorbing push lock that `CoalescePushBothAt` also holds.
 // `lockWait` bounds only the wait for that lock:
-// `StatusPushLockWait` is the bound the per-transition status pushes pass;
+// `StatusPushLockWait` is the bound `commit-records` passes, and the default of the wait `Remove` gives a push of the pair for the pair's teardown lock;
 // an expiry returns an error wrapping `ErrPushLockBusy` with nothing pushed;
 // and `LockWaitUnbounded` blocks.
 //
@@ -635,6 +635,19 @@
 // The last holder to release therefore always sees a flag set after its last push, and no committed transition is left unpushed.
 // A synchronous pusher returns `ErrPushLockBusy` only when its first acquire misses its wait; a missed re-acquire after its own push landed returns nil.
 // A holder that hangs delays every later push of that records worktree until it exits.
+//
+// A pair's teardown lock is `TeardownLockPath(hub, slug)`, `<HubScratchDir>/teardown/<slug>.lock`, outside both of the pair's worktrees.
+// Neither the lock file nor a child's working directory or log therefore sits in a tree `Remove` deletes.
+// The detached push child (`DetachedPush`) carrying a teardown slug takes the lock shared through `lock.TryAcquireReadLock` for its whole run.
+// It exits with a warning and a nil error when a removal holds the lock.
+// Every child then checks that each worktree path it was given is still a directory, before it creates anything, and exits with a warning and a nil error when one is gone.
+// `Remove` takes the lock exclusive after its refusals and the pair inspection, and before its first mutation, local path included, waiting at most the topology's teardown wait (`StatusPushLockWait`);
+// when the wait runs out it returns an error wrapping `ErrPairPushRunning` with nothing mutated.
+// It holds the lock past the worktree teardown and the store housekeeping, and releases it as its last step.
+// A `Remove` that fails after taking the lock and leaves a worktree of the pair in place respawns the pair's push once the lock is released:
+// through `SpawnStatusPush` over the pair's location while the task worktree stands, else a records-side-only request when only the records worktree stands and the pair is not local.
+// A push of the prime's records side carries no teardown slug, so it never delays a `Remove`.
+// A child run by hand with a wrong or empty teardown slug takes no lock of the pair and can race a removal.
 // A rejected push is retried once, after a fetch, only when the fetched remote tip is already contained in local HEAD,
 // so a stale remote-tracking ref recovers by itself while a real divergence does not.
 // A caller treats the `gitrepo.ErrPushRejected` that remains as a human-decidable condition.

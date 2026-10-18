@@ -147,6 +147,9 @@ type RemoveResult struct {
 // A path at the task worktree's location that is not a registered linked worktree is reported in StrayPath and never deleted.
 // A pair one of whose surviving branches carries the local-only mark is removed as local: after the same refusals, it commits and archives nothing, runs no origin step and discards the sibling's records with its branch, uncommitted ones included, without force.
 // It reports Local, LocalMarkBranch and the dropped sibling tip, and with remote sets RemoteSkippedReason to say the pair is not on origin.
+// After the refusals and the pair inspection, and before its first mutation, local path included, Remove takes the pair's teardown lock exclusive, waiting at most the topology's teardown wait for a push of the pair to let go of it;
+// when the wait runs out it returns, before any mutation, an error wrapping ErrPairPushRunning.
+// It holds the lock past its last step, and a failure after taking it that leaves a worktree of the pair in place respawns the pair's push once the lock is released.
 // After a successful teardown, and before it returns, Remove disables auto gc in both hub stores and runs a best-effort foreground `git gc --auto` in each;
 // a failure there is logged and never fails the Remove, and a refused or failed Remove runs none of it.
 func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (res RemoveResult, err error) {
@@ -167,6 +170,19 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (
 		return RemoveResult{}, err
 	}
 	steps := []string{}
+
+	// The pair's detached pushes hold this lock shared, so no push runs against a worktree this call deletes.
+	// A failure after this point that leaves a worktree behind respawns the pair's push once the lock is released, since a child may have exited on the held lock.
+	releaseTeardown, err := t.lockPairTeardown(rec, l, slug)
+	if err != nil {
+		return RemoveResult{}, err
+	}
+	defer func() {
+		releaseTeardown()
+		if err != nil && (pathPresent(target) || pathPresent(RecordsWorktreePath(l, slug))) {
+			respawnPairPush(l, slug, pair.localMark != "")
+		}
+	}()
 
 	// Read the recorded parent now: the record lives in the weft worktree the teardown deletes. A
 	// missing or unreadable record leaves parentBranch empty, which asks the gate for the stricter
@@ -271,6 +287,10 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (
 		return RemoveResult{}, err
 	}
 	steps = append(steps, siblingSteps...)
+
+	if removeAfterTeardownHook != nil {
+		removeAfterTeardownHook()
+	}
 
 	warpDeleted, warpKeptReason := deleteWarpBranch(rec, l, warpBranch, parentBranch)
 	if warpDeleted {
