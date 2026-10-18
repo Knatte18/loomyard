@@ -471,7 +471,7 @@ func stepRealReadStatus_OnAFreshPairReportsAbsentRatherThanErroring(t *testing.T
 	}
 }
 
-// stepFourRowRun_SeedsChildCommitsAndTearsDown drives a spawn stub plus a read-status answering StateDone through the whole row list one row at a time: Worktree-Create, Seed-Child, the three switched rows, Run-Shed, Land, Worktree-Teardown.
+// stepFourRowRun_SeedsChildCommitsAndTearsDown drives a spawn stub plus a read-status answering StateDone through the whole row list one row at a time: Worktree-Create, Seed-Child, the three Command rows, Run-Shed, Land, Worktree-Teardown.
 // It asserts the pair exists on disk after the create row, that the child's own _lyx/shed/<slug>/seed.json exists after the seed row, names the Board task's own "type" as its recipe, carries the pair's recorded parent branch as params.parent, and is committed (not merely written) on the child's own records pair, and that the pair is gone after the teardown row.
 // It runs once per recipe a child may run.
 func stepFourRowRun_SeedsChildCommitsAndTearsDown(t *testing.T, h *hubforge.Hub) {
