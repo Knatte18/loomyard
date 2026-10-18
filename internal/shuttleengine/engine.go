@@ -86,6 +86,7 @@ type Event struct {
 	Message     string           // Agent's final message (EventStop, EventWaiting) or question text (EventAsk); "" if event carried none.
 	Raw         []byte           // Exact JSON line this Event was parsed from.
 	Outstanding []BackgroundTask // Background tasks still running at the turn end; set only on an EventWaiting.
+	At          time.Time        // Hook-side time of the line this Event was parsed from; zero when the engine gives none. Only Runner.ReadEvents sets it.
 }
 
 // BackgroundKind tells a forked subagent from a background shell.

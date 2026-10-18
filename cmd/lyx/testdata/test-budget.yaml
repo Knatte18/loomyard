@@ -139,7 +139,7 @@ internal/testkit/lyxbin: 5
 internal/testkit/plankit: 4
 internal/testkit/scankit: 10
 internal/testkit/shedfake: 9
-internal/testkit/shuttlefake: 8
+internal/testkit/shuttlefake: 9
 internal/testkit/stencilkit: 3
 internal/testkit/tmuxkit: 16
 internal/treadleengine: 34

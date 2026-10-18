@@ -442,6 +442,11 @@
 // waiting and running read busy, held reads idle-stalled, idle-fresh or asking, done reads idle-done, died reads dead.
 // Two pairings are expected and log nothing: a gate wait with every output present beside idle-done, and done beside busy on background work.
 // The loop never branches on the state; an engine without the parser, an unreadable events file or a failed fact read logs once at Debug and changes no verdict, notice, wait mark or return.
+// Event.At is the hook-side time of the line an event was parsed from, zero when the engine gives none, and Runner.ReadEvents is the only place that sets it.
+// For an engine with the parser, ReadEvents parses events from the bytes the signal reading consumed only and advances the offset by that count, so a stamp read ahead of its Stop payload stays unconsumed and is read with it on the next call.
+// It pairs in file order each event with the signals whose Event flag is set and gives the event that signal's time;
+// when the marked signals and the events do not pair one to one, every event of that read gets the zero time, so no Stop is stamped from another line.
+// An engine without the parser keeps the last-newline offset rule and gives every event the zero time.
 //
 // Start/StartGated/Run/RunGated run the startup probe (readiness plus dismissal of any one-time
 // startup gate, through the Engine seam's startup classification and trust-dismiss sequence) before

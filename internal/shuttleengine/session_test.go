@@ -52,28 +52,70 @@ func (e *cyclerEngine) CompactSessionSequence(focus string) []PaneInput {
 // TestRunner_ReadEvents covers ReadEvents' offset rules: it advances past complete lines only, so a
 // partial trailing line is left for the next read; an absent events file keeps the caller's offset;
 // and an unknown strand guid is an error.
+// Over an engine that reads session signals it also covers the event times.
+// Each event takes its stamp's time, a stamp ahead of its payload stays unconsumed, and a read whose marked signals do not pair with its events gives every event the zero time.
+// An engine without a signal reading gives the zero time.
 func TestRunner_ReadEvents(t *testing.T) {
 	const complete = "STOP:one\nSTOP:two\n"
+	stampOne := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
+	stampTwo := stampOne.Add(time.Minute)
 	tests := []struct {
 		name string
 		// events is the events file's seed; nil leaves it absent.
-		events      *string
+		events *string
+		// signals runs the row over a sessionFakeEngine that marks event lines; false runs it over a fakeEngine.
+		signals     bool
 		guid        string
 		fromOffset  int64
 		wantMessage []string
+		wantAt      []time.Time
 		wantOffset  int64
-		wantErr     bool
+		// appended is written to the events file after the first read, and the file is read again from the returned offset.
+		appended         string
+		wantMessageAfter []string
+		wantAtAfter      []time.Time
+		wantOffsetAfter  int64
+		wantErr          bool
 	}{
 		{
 			name: "advances past complete lines only", events: ptrTo(complete + "STOP:par"), guid: "strand-1",
-			wantMessage: []string{"one", "two"}, wantOffset: int64(len(complete)),
+			wantMessage: []string{"one", "two"}, wantAt: []time.Time{{}, {}}, wantOffset: int64(len(complete)),
 		},
 		{name: "an absent file keeps the offset", guid: "strand-1", fromOffset: 7, wantOffset: 7},
 		{name: "an unknown guid is an error", guid: "nope", wantErr: true},
+		{
+			name: "a stamped stop takes its stamp's time", signals: true, guid: "strand-1",
+			events:      ptrTo("@" + stampOne.Format(time.RFC3339) + "\nSTOP:one\n@" + stampTwo.Format(time.RFC3339) + "\nSTOP:two\n"),
+			wantMessage: []string{"one", "two"}, wantAt: []time.Time{stampOne, stampTwo},
+			wantOffset: int64(len("@" + stampOne.Format(time.RFC3339) + "\nSTOP:one\n@" + stampTwo.Format(time.RFC3339) + "\nSTOP:two\n")),
+		},
+		{
+			name: "a stop with no stamp takes the zero time", signals: true, guid: "strand-1",
+			events:      ptrTo(complete),
+			wantMessage: []string{"one", "two"}, wantAt: []time.Time{{}, {}}, wantOffset: int64(len(complete)),
+		},
+		{
+			name: "a stamp with no payload stays unconsumed until the payload arrives", signals: true, guid: "strand-1",
+			events:      ptrTo("STOP:one\n@" + stampTwo.Format(time.RFC3339) + "\n"),
+			wantMessage: []string{"one"}, wantAt: []time.Time{{}}, wantOffset: int64(len("STOP:one\n")),
+			appended:         "STOP:two\n",
+			wantMessageAfter: []string{"two"}, wantAtAfter: []time.Time{stampTwo},
+			wantOffsetAfter: int64(len("STOP:one\n@" + stampTwo.Format(time.RFC3339) + "\nSTOP:two\n")),
+		},
+		{
+			name: "marked signals outnumbering the events leave every event unstamped", signals: true, guid: "strand-1",
+			events:      ptrTo("@" + stampOne.Format(time.RFC3339) + "\nSTOP:one\nMARK\n"),
+			wantMessage: []string{"one"}, wantAt: []time.Time{{}},
+			wantOffset: int64(len("@" + stampOne.Format(time.RFC3339) + "\nSTOP:one\nMARK\n")),
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fx := newFixture(t, &fakeReed{}, &fakeEngine{}, withStrand("strand-1"))
+			var engine Engine = &fakeEngine{}
+			if tt.signals {
+				engine = &sessionFakeEngine{markEvents: true}
+			}
+			fx := newFixture(t, &fakeReed{}, engine, withStrand("strand-1"))
 			runner, eventsPath := fx.Runner, fx.EventsPath
 			if tt.events != nil {
 				if err := os.WriteFile(eventsPath, []byte(*tt.events), 0o644); err != nil {
@@ -91,15 +133,24 @@ func TestRunner_ReadEvents(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ReadEvents: %v", err)
 			}
-			var got []string
-			for _, event := range events {
-				got = append(got, event.Message)
-			}
-			if !reflect.DeepEqual(got, tt.wantMessage) {
-				t.Errorf("events = %+v, want messages %v", events, tt.wantMessage)
-			}
-			if off != tt.wantOffset {
-				t.Errorf("offset = %d, want %d", off, tt.wantOffset)
+			checkReadEvents(t, events, off, tt.wantMessage, tt.wantAt, tt.wantOffset)
+
+			if tt.appended != "" {
+				f, err := os.OpenFile(eventsPath, os.O_APPEND|os.O_WRONLY, 0o644)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := f.WriteString(tt.appended); err != nil {
+					t.Fatal(err)
+				}
+				if err := f.Close(); err != nil {
+					t.Fatal(err)
+				}
+				events, off, err = runner.ReadEvents(tt.guid, off)
+				if err != nil {
+					t.Fatalf("ReadEvents after append: %v", err)
+				}
+				checkReadEvents(t, events, off, tt.wantMessageAfter, tt.wantAtAfter, tt.wantOffsetAfter)
 			}
 
 			// A re-read from the returned offset finds nothing new and leaves the offset where it is.
@@ -108,6 +159,26 @@ func TestRunner_ReadEvents(t *testing.T) {
 				t.Errorf("re-read = %+v, %d, %v; want no events and offset %d", again, off2, err, off)
 			}
 		})
+	}
+}
+
+// checkReadEvents asserts a ReadEvents answer: the events' messages and times, in order, and the returned offset.
+func checkReadEvents(t *testing.T, events []Event, offset int64, wantMessage []string, wantAt []time.Time, wantOffset int64) {
+	t.Helper()
+	var gotMessage []string
+	var gotAt []time.Time
+	for _, event := range events {
+		gotMessage = append(gotMessage, event.Message)
+		gotAt = append(gotAt, event.At)
+	}
+	if !reflect.DeepEqual(gotMessage, wantMessage) {
+		t.Errorf("events = %+v, want messages %v", events, wantMessage)
+	}
+	if !reflect.DeepEqual(gotAt, wantAt) {
+		t.Errorf("event times = %v, want %v", gotAt, wantAt)
+	}
+	if offset != wantOffset {
+		t.Errorf("offset = %d, want %d", offset, wantOffset)
 	}
 }
 

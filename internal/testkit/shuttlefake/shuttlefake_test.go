@@ -2,6 +2,8 @@ package shuttlefake
 
 import (
 	"errors"
+	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -35,6 +37,54 @@ func TestEngine_InertDefaults(t *testing.T) {
 	}
 	if e.RunningTurn("x") || e.RewindPicker("x") || e.InterruptSettle() != 0 {
 		t.Error("guard readings must default to no running turn, no picker and no settle")
+	}
+	if _, ok := any(e).(shuttleengine.SessionSignalParser); ok {
+		t.Error("Engine implements SessionSignalParser; the signal reading belongs to SignalEngine alone")
+	}
+}
+
+func TestSignalEngine_PairsStampsAndHoldsTrailingStamps(t *testing.T) {
+	t.Parallel()
+	stamp := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
+	stampLine := "@" + stamp.Format(time.RFC3339) + "\n"
+	tests := []struct {
+		name         string
+		data         string
+		wantAt       []time.Time
+		wantConsumed int
+	}{
+		{"StampedStop", stampLine + "STOP:one\n", []time.Time{stamp}, len(stampLine + "STOP:one\n")},
+		{"StopWithNoStamp", "STOP:one\n", []time.Time{{}}, len("STOP:one\n")},
+		{"StopWithMalformedStamp", "@nonsense\nSTOP:one\n", []time.Time{{}}, len("@nonsense\nSTOP:one\n")},
+		{"StampAppliesToTheNextLineOnly", stampLine + "STOP:one\nSTOP:two\n", []time.Time{stamp, {}}, len(stampLine + "STOP:one\nSTOP:two\n")},
+		{"NonStopLineYieldsNoSignal", stampLine + "other\nSTOP:one\n", []time.Time{{}}, len(stampLine + "other\nSTOP:one\n")},
+		{"TrailingStampsAreHeld", "STOP:one\n" + stampLine + stampLine, []time.Time{{}}, len("STOP:one\n")},
+		{"PartialTrailingLineIsHeld", "STOP:one\nSTOP:tw", []time.Time{{}}, len("STOP:one\n")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			e := &SignalEngine{Engine: &Engine{ParseEventsFn: func(data []byte) ([]shuttleengine.Event, error) {
+				if msg, ok := strings.CutPrefix(strings.TrimSpace(string(data)), "STOP:"); ok {
+					return []shuttleengine.Event{{Kind: shuttleengine.EventStop, Message: msg}}, nil
+				}
+				return nil, nil
+			}}}
+			signals, consumed := e.ParseSessionSignals([]byte(tt.data))
+			var gotAt []time.Time
+			for _, signal := range signals {
+				if signal.Kind != shuttleengine.SessionSignalTurnEnd || !signal.Event {
+					t.Errorf("signal = %+v; want a turn end with Event set", signal)
+				}
+				gotAt = append(gotAt, signal.At)
+			}
+			if !reflect.DeepEqual(gotAt, tt.wantAt) {
+				t.Errorf("signal times = %v, want %v", gotAt, tt.wantAt)
+			}
+			if consumed != tt.wantConsumed {
+				t.Errorf("consumed = %d, want %d", consumed, tt.wantConsumed)
+			}
+		})
 	}
 }
 
