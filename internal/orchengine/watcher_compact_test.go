@@ -31,15 +31,15 @@ func (e *watchEnv) compactFocus() string {
 	return focus
 }
 
-// finishNote writes the pending note and reads a turn end after it, then ticks once: the note gate passes and `/compact` is typed.
+// finishNote writes the pending note and answers the request with `written <path>`, then ticks once: the note gate passes and the next step is sent.
 func (e *watchEnv) finishNote() {
 	e.t.Helper()
-	e.writeHandoff()
-	e.s.events = append(e.s.events, stop("note"))
+	path := e.writeHandoff()
+	e.reply("written " + path)
 	e.tick()
 }
 
-// reachCompacting makes one over-threshold turn end and ticks until `/compact` is typed, through the note gate.
+// reachCompacting makes one over-threshold turn end and ticks until `/compact` is sent, through the note gate.
 func (e *watchEnv) reachCompacting() {
 	e.t.Helper()
 	e.injectHandoff()
@@ -67,65 +67,30 @@ func (e *watchEnv) assertCompactCalls(n int) {
 	}
 }
 
-func TestCompact_TriggerTypesCompactOnlyOnIdlePass(t *testing.T) {
+func TestCompact_PersistsCompactingBeforeTyping(t *testing.T) {
 	e := newCompactEnv(t)
-	e.s.idle = false
-	e.s.usage["a"] = 2000
-	e.s.events = []shuttleengine.Event{stop("a")}
-	e.tick()
-	e.clock.advance(11 * time.Second)
-	e.tick()
-	e.assertNoCalls()
-	if e.state().Phase != PhaseIdle {
-		t.Fatalf("phase = %s, want idle", e.state().Phase)
+	var stateAtCompact State
+	e.injectHandoff()
+	e.s.onSend = func() {
+		if strings.HasPrefix(e.s.calls[len(e.s.calls)-1], "compact:") {
+			stateAtCompact = e.state()
+		}
 	}
-
-	e.s.idle = true
-	e.tick()
-	if st := e.state(); st.Phase != PhaseHandoffRequested || st.CycleMode != CycleCompact || st.PendingHandoff == "" {
-		t.Fatalf("state = %+v, want a compact-mode note request", st)
+	e.finishNote()
+	if stateAtCompact.Phase != PhaseCompacting || stateAtCompact.Pending == nil || stateAtCompact.Pending.Command != commandCompact || stateAtCompact.Pending.ID != 0 {
+		t.Errorf("state when /compact was sent = %+v, want compacting with the compact pending and no id", stateAtCompact)
 	}
-	e.assertCompactCalls(0)
-	note := e.writeHandoff()
-	e.s.events = append(e.s.events, stop("note"))
-	e.tick()
 	want := "compact:" + e.compactFocus()
 	if got := e.s.calls[len(e.s.calls)-1]; got != want {
 		t.Fatalf("last call = %q, want %q", got, want)
 	}
-	e.assertCompactCalls(1)
 	st := e.state()
-	if st.Phase != PhaseCompacting || !st.PhaseInjected || st.CycleTrigger != TriggerHard {
+	if st.Phase != PhaseCompacting || st.Pending == nil || st.Pending.ID == 0 || st.CycleTrigger != TriggerHard || st.LastHandoff == "" {
 		t.Errorf("state = %+v", st)
-	}
-	if st.LastHandoff != note {
-		t.Errorf("LastHandoff = %q, want the note %q", st.LastHandoff, note)
 	}
 	if st.ReadingTurnEnd == nil || st.ReadingTurnEnd.Message != "a" {
 		t.Errorf("ReadingTurnEnd = %+v, want the turn end a", st.ReadingTurnEnd)
 	}
-}
-
-func TestCompact_PersistsCompactingBeforeTyping(t *testing.T) {
-	e := newCompactEnv(t)
-	var phaseAtCompact Phase
-	e.injectHandoff()
-	e.w.session = &phaseProbeSession{fakeSession: e.s, probe: func() { phaseAtCompact = e.state().Phase }}
-	e.finishNote()
-	if phaseAtCompact != PhaseCompacting {
-		t.Errorf("phase when /compact was typed = %s, want compacting", phaseAtCompact)
-	}
-}
-
-// phaseProbeSession runs probe whenever CompactSession is called.
-type phaseProbeSession struct {
-	*fakeSession
-	probe func()
-}
-
-func (p *phaseProbeSession) CompactSession(guid, focus string) error {
-	p.probe()
-	return p.fakeSession.CompactSession(guid, focus)
 }
 
 func TestCompact_RequestedCycleClearsRequestAndCompactsAfterNote(t *testing.T) {
@@ -156,12 +121,15 @@ func TestCompact_RenderFailureAfterNoteChangesNothing(t *testing.T) {
 	if err := os.WriteFile(stencilstore.Path(e.stDir, compactStencilName), []byte("one\ntwo\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	e.writeHandoff()
-	e.s.events = append(e.s.events, stop("note"))
+	path := e.writeHandoff()
+	e.reply("written " + path)
 	e.tickErr()
 	e.assertCompactCalls(0)
 	if st := e.state(); st.Phase != PhaseHandoffRequested || st.LastHandoff != "" {
 		t.Errorf("state = %+v, want the note phase kept and no LastHandoff", st)
+	}
+	if len(e.c.mailbox) != 1 {
+		t.Errorf("mailbox = %+v, want the reply left unread", e.c.mailbox)
 	}
 }
 
@@ -171,14 +139,20 @@ func TestCompact_CompletesOnBoundaryAfterEntryAndIdle(t *testing.T) {
 	for _, c := range []struct {
 		name          string
 		turnEndsAfter int
+		// unconfirmed scripts the /compact inject as typed but not seen to be taken, which keeps the search going.
+		unconfirmed bool
 	}{
-		{"no turn end after the boundary", 0},
-		{"a turn end answered after the boundary", 2},
+		{"no turn end after the boundary", 0, false},
+		{"a turn end answered after the boundary", 2, false},
+		{"an unconfirmed compact", 0, true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			e := newCompactEnv(t)
 			e.reachCompacting()
+			if c.unconfirmed {
+				e.setOutcome(e.lastInjectID(), CreelOutcome{State: CreelUnconfirmed})
+			}
 			entered := e.state().PhaseEnteredAt
 
 			for _, at := range []time.Time{entered.Add(-time.Second), entered} {
@@ -191,13 +165,6 @@ func TestCompact_CompletesOnBoundaryAfterEntryAndIdle(t *testing.T) {
 			}
 
 			e.landBoundaryFollowedBy(entered.Add(2*time.Second), 150, c.turnEndsAfter)
-			e.s.idle = false
-			e.tick()
-			if st := e.state(); st.Phase != PhaseCompacting {
-				t.Fatalf("phase = %s, want compacting while the pane is not idle", st.Phase)
-			}
-
-			e.s.idle = true
 			e.tick()
 			st := e.state()
 			if st.Phase != PhaseResuming || st.CycleCount != 1 || st.LastContextTokens != 150 || !st.LastContextKnown {
@@ -274,12 +241,12 @@ func TestCompact_CycleReloadsPluginsThenPointerNamingTheNote(t *testing.T) {
 	e.withSkills()
 	e.reachCompacting()
 	e.landBoundary(e.state().PhaseEnteredAt.Add(time.Second), 150)
-	e.tick() // boundary read and the pane idle: the color typed
-	if st := e.state(); st.Phase != PhaseResuming || st.ReloadStep != ReloadStepPlugins || !st.ReloadSkipsSkills {
+	e.tick() // boundary read: the color queued
+	if st := e.state(); st.Phase != PhaseResuming || st.ReloadStep != ReloadStepColor || !st.ReloadSkipsSkills {
 		t.Fatalf("state = %+v", st)
 	}
-	e.tick() // the plugins reloaded
-	e.tick() // the pointer
+	e.tick() // the color typed, the plugins queued
+	e.tick() // the plugins typed, the pointer queued
 	e.endTurn("resumed")
 	e.assertReload("compact:", e.state().LastHandoff, false)
 	if role, err := os.ReadFile(e.paths.RolePath); err != nil || !strings.Contains(string(role), testIndex) {
@@ -296,38 +263,54 @@ func TestCompact_CycleReloadsPluginsThenPointerNamingTheNote(t *testing.T) {
 }
 
 func TestCompact_TimeoutReturnsToIdleAndHoldsAutomaticTriggers(t *testing.T) {
-	e := newCompactEnv(t)
-	e.reachCompacting()
-	e.s.usage["a"] = 1500
-	e.clock.advance(100 * time.Second)
-	e.tick()
-	st := e.state()
-	if st.Phase != PhaseIdle || st.LastAbortReason != "compaction timed out" {
-		t.Fatalf("state = %+v", st)
-	}
-	if !st.LastDeferral.Equal(e.clock.Now()) {
-		t.Errorf("LastDeferral = %v, want now %v", st.LastDeferral, e.clock.Now())
-	}
-	if st.LastContextTokens != 1500 || !st.LastContextKnown {
-		t.Errorf("reading was not re-read: %d known=%v", st.LastContextTokens, st.LastContextKnown)
-	}
-	if st.CycleCount != 0 {
-		t.Errorf("a timed-out compaction counted as a cycle: %d", st.CycleCount)
-	}
+	t.Parallel()
 
-	// A hard trigger is held for soft_idle_s (60s) after the failure.
-	e.s.usage["b"] = 2000
-	e.s.events = append(e.s.events, stop("b"))
-	e.tick()
-	e.clock.advance(11 * time.Second)
-	e.tick()
-	if st := e.state(); st.Phase != PhaseIdle {
-		t.Fatalf("phase = %s, want the hard trigger held in idle", st.Phase)
-	}
-	e.clock.advance(50 * time.Second)
-	e.tick()
-	if st := e.state(); st.Phase != PhaseHandoffRequested {
-		t.Fatalf("phase = %s, want a note request once the hold ended", st.Phase)
+	for _, c := range []struct {
+		name        string
+		unconfirmed bool
+	}{
+		{"a compact that was typed", false},
+		{"an unconfirmed compact", true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			e := newCompactEnv(t)
+			e.reachCompacting()
+			if c.unconfirmed {
+				e.setOutcome(e.lastInjectID(), CreelOutcome{State: CreelUnconfirmed})
+			}
+			e.s.usage["a"] = 1500
+			e.clock.advance(100 * time.Second)
+			e.tick()
+			st := e.state()
+			if st.Phase != PhaseIdle || st.LastAbortReason != "compaction timed out" {
+				t.Fatalf("state = %+v", st)
+			}
+			if !st.LastDeferral.Equal(e.clock.Now()) {
+				t.Errorf("LastDeferral = %v, want now %v", st.LastDeferral, e.clock.Now())
+			}
+			if st.LastContextTokens != 1500 || !st.LastContextKnown {
+				t.Errorf("reading was not re-read: %d known=%v", st.LastContextTokens, st.LastContextKnown)
+			}
+			if st.CycleCount != 0 {
+				t.Errorf("a timed-out compaction counted as a cycle: %d", st.CycleCount)
+			}
+
+			// A hard trigger is held for soft_idle_s (60s) after the failure.
+			e.s.usage["b"] = 2000
+			e.s.events = append(e.s.events, stop("b"))
+			e.tick()
+			e.clock.advance(11 * time.Second)
+			e.tick()
+			if st := e.state(); st.Phase != PhaseIdle {
+				t.Fatalf("phase = %s, want the hard trigger held in idle", st.Phase)
+			}
+			e.clock.advance(50 * time.Second)
+			e.tick()
+			if st := e.state(); st.Phase != PhaseHandoffRequested {
+				t.Fatalf("phase = %s, want a note request once the hold ended", st.Phase)
+			}
+		})
 	}
 }
 
@@ -389,20 +372,35 @@ func TestCompact_TimeoutDoesNotHoldRequestedCycle(t *testing.T) {
 	e.assertCompactCalls(2)
 }
 
+// TestCompact_RestartRetypesOnlyOnIdleWithNoBoundary pins that a restart in compacting reads the saved compact's outcome and sends nothing again.
+// The compact is sent once more only when its id was never saved and creel journaled none.
 func TestCompact_RestartRetypesOnlyOnIdleWithNoBoundary(t *testing.T) {
-	e := newCompactEnv(t)
-	e.reachCompacting()
+	t.Parallel()
 
-	e.w = e.newWatcher()
-	e.s.idle = false
-	e.tick()
-	e.assertCompactCalls(1)
-
-	e.s.idle = true
-	e.tick()
-	e.assertCompactCalls(2)
-	if st := e.state(); st.Phase != PhaseCompacting || !st.PhaseInjected {
-		t.Errorf("state = %+v", st)
+	cases := []struct {
+		name string
+		// arrange leaves the compact pending as the row says and scripts the journal.
+		arrange      func(e *watchEnv)
+		wantCompacts int
+	}{
+		{"a saved id is read and not sent again", func(e *watchEnv) {}, 1},
+		{"an id never saved and none journaled sends it once more", func(e *watchEnv) { e.forgetLastSend() }, 2},
+		{"an id never saved and one journaled adopts it", func(e *watchEnv) { e.c.sent = []CreelSent{e.forgetLastSend()} }, 1},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			e := newCompactEnv(t)
+			e.reachCompacting()
+			c.arrange(e)
+			e.w = e.newWatcher()
+			e.tick()
+			e.tick()
+			e.assertCompactCalls(c.wantCompacts)
+			if st := e.state(); st.Phase != PhaseCompacting || !st.PhaseInjected && st.Pending == nil {
+				t.Errorf("state = %+v", st)
+			}
+		})
 	}
 }
 
@@ -411,16 +409,11 @@ func TestCompact_RestartWithBoundaryReadTypesNothing(t *testing.T) {
 
 	cases := []struct {
 		name string
-		idle bool
 		// turnEndsAfter is the number of turn ends after the boundary in the transcript.
 		turnEndsAfter int
-		wantPhase     Phase
-		// wantCycles is the cycle count the restarted tick must have recorded.
-		wantCycles int
 	}{
-		{"idle pane completes without retyping", true, 0, PhaseResuming, 1},
-		{"idle pane completes on a boundary followed by a turn end", true, 2, PhaseResuming, 1},
-		{"busy pane keeps compacting", false, 0, PhaseCompacting, 0},
+		{"completes without retyping", 0},
+		{"completes on a boundary followed by a turn end", 2},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -430,15 +423,11 @@ func TestCompact_RestartWithBoundaryReadTypesNothing(t *testing.T) {
 			e.landBoundaryFollowedBy(e.state().PhaseEnteredAt.Add(time.Second), 150, c.turnEndsAfter)
 
 			e.w = e.newWatcher()
-			e.s.idle = c.idle
 			e.tick()
 			e.assertCompactCalls(1)
 			st := e.state()
-			if st.Phase != c.wantPhase || st.CycleCount != c.wantCycles {
-				t.Errorf("state = %+v, want phase %s after %d cycles", st, c.wantPhase, c.wantCycles)
-			}
-			if c.idle && st.LastContextTokens != 150 {
-				t.Errorf("LastContextTokens = %d, want 150", st.LastContextTokens)
+			if st.Phase != PhaseResuming || st.CycleCount != 1 || st.LastContextTokens != 150 {
+				t.Errorf("state = %+v, want the completed compaction", st)
 			}
 		})
 	}
@@ -527,7 +516,7 @@ func TestCompact_SoftCycleHonoursDefer(t *testing.T) {
 	if st := e.state(); st.Phase != PhaseHandoffRequested || st.CycleTrigger != TriggerSoft {
 		t.Fatalf("state = %+v, want a soft note request", st)
 	}
-	e.s.events = append(e.s.events, stop("DEFER"))
+	e.reply("defer")
 	e.tick()
 	if st := e.state(); st.Phase != PhaseIdle || st.LastAbortReason != "deferred" || st.LastDeferral.IsZero() {
 		t.Errorf("state = %+v, want idle after the deferral", st)
@@ -556,9 +545,10 @@ func TestCycleRequest_AbandonedWithinTimeoutOfRequest(t *testing.T) {
 		}
 		e.assertCompactCalls(0)
 	})
-	t.Run("idle probe never passes", func(t *testing.T) {
+	t.Run("hold never granted", func(t *testing.T) {
 		e := newCompactEnv(t)
-		e.s.idle = false
+		e.c.failNext("hold", errBoom)
+		e.c.failNext("hold", errBoom)
 		e.s.usage["a"] = 10
 		e.s.events = []shuttleengine.Event{stop("a")}
 		if err := RequestCycle(e.paths, CycleClear, e.clock.now); err != nil {
@@ -572,7 +562,6 @@ func TestCycleRequest_AbandonedWithinTimeoutOfRequest(t *testing.T) {
 		if _, pending, _ := CycleRequested(e.paths); pending {
 			t.Error("request still pending past the timeout")
 		}
-		e.s.idle = true
 		e.clock.advance(11 * time.Second)
 		e.tick()
 		e.assertNoCalls()
@@ -632,25 +621,5 @@ func TestCycleRequest_RestartedWatcherMeasuresFromRequestTime(t *testing.T) {
 	e.tick()
 	if st := e.state(); st.Phase != PhaseIdle || st.LastAbortReason != "handoff timed out" {
 		t.Errorf("state = %+v, want the restarted watcher to time out from the request time", st)
-	}
-}
-
-func TestCompact_HeldCompactStaysUnconfirmedAndRetypesOnTheNextTick(t *testing.T) {
-	t.Parallel()
-
-	e := newCompactEnv(t)
-	e.injectHandoff()
-	e.s.compactErr = errHeld
-	e.finishNote()
-	if st := e.state(); st.Phase != PhaseCompacting || st.PhaseInjected {
-		t.Fatalf("state = %+v, want compacting with the /compact unconfirmed after a held send", st)
-	}
-	e.assertCompactCalls(1)
-
-	e.s.compactErr = nil
-	e.tick()
-	e.assertCompactCalls(2)
-	if st := e.state(); !st.PhaseInjected {
-		t.Errorf("state = %+v, want the /compact confirmed by the retry", st)
 	}
 }

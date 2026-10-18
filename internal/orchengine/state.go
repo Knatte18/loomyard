@@ -28,12 +28,29 @@ type Paths struct {
 	CycleRequestPath string // Marker file a `refresh` or `distill` request writes.
 	ResumeMarkPath   string // Delivery mark the session-start hook's verb writes after rendering the pointer.
 	HandoffsDir      string // One timestamped handoff file per cycle.
-	NoticesDir       string // One file per queued notice, delivered by the watcher.
-	WatchLogPath     string // Detached watcher's stdout and stderr.
+	NoticesDir       string // The retired notice queue's directory, which only `cleanup` still touches.
+	// RetiredNoticeLogPath is the retired `.lyx/notices.log` of the prime, which only `cleanup` still touches.
+	RetiredNoticeLogPath string
+	WatchLogPath         string // Detached watcher's stdout and stderr.
 
 	RolePath         string // Role file rendered from the role stencil before every delivery.
 	NoteTemplatePath string // Note template file rendered before every note request.
 	RepoRulesPath    string // The repository's ORCHESTRATOR.md, read at every role-file render.
+}
+
+// PendingStep is one post or inject the watcher persisted before sending it to creel.
+type PendingStep struct {
+	// Mail is true for a post of Text as mail and false for an inject.
+	Mail bool `json:"mail"`
+	// Command and Argument name a command inject; both are empty for mail and for a text inject.
+	Command  string `json:"command"`
+	Argument string `json:"argument"`
+	// Text is the mail body or the text inject's line; empty for a command inject.
+	Text string `json:"text"`
+	// PersistedAt is when the step was persisted, which a lookup of what creel journaled since then starts from.
+	PersistedAt time.Time `json:"persisted_at"`
+	// ID is the id creel answered for the call that sent the step; zero until it answered.
+	ID int64 `json:"id"`
 }
 
 // Phase is a step of a cycle: the four-phase clear cycle, or the compact cycle's one non-idle phase.
@@ -68,7 +85,14 @@ type State struct {
 	PhaseStrand       string    `json:"phase_strand"`        // Strand the phase belongs to.
 	PhaseEnteredAt    time.Time `json:"phase_entered_at"`    // When the phase was entered.
 	PhaseEventsOffset int64     `json:"phase_events_offset"` // Events-file position at phase entry.
-	PhaseInjected     bool      `json:"phase_injected"`      // Whether the phase's injection is confirmed.
+	PhaseInjected     bool      `json:"phase_injected"`      // Whether the phase's step was sent and its inject typed; the pending step's own outcome is read until then.
+
+	// Pending is the step the watcher has persisted to send to the orch and not yet settled; nil when none.
+	// Its ID is zero from the moment it is persisted until creel answers the call that sent it.
+	Pending *PendingStep `json:"pending_step"`
+	// RequestID is the id creel gave the posted note request; zero while none was posted.
+	// Only a reply to this id passes the note gate.
+	RequestID int64 `json:"request_id"`
 
 	PendingHandoff string `json:"pending_handoff"` // Handoff path the handoff-requested phase asked for.
 	PendingResume  string `json:"pending_resume"`  // Resume prompt rendered for PendingHandoff, sent verbatim by resuming.
@@ -83,16 +107,23 @@ type State struct {
 
 	CycleCount      int    `json:"cycle_count"`       // Cycles that reached /clear, plus compactions that completed.
 	LastAbortReason string `json:"last_abort_reason"` // Why the last cycle aborted.
-	Stuck           string `json:"stuck"`             // Why the current phase is overdue and waiting on the session; empty while on time.
-	StuckByHold     bool   `json:"stuck_by_hold"`     // Whether Stuck is an idle probe's hold reason, which a passing probe clears.
-	StuckBySend     bool   `json:"stuck_by_send"`     // Whether Stuck is a held idle-phase step's reason, which only a later send that passes clears.
-	WatcherExit     string `json:"watcher_exit"`      // Why the last watcher exited; empty while one runs.
+	// Stuck is the stall reason creel last reported for the pending inject, or the creel failure holding the cycle; empty while neither stands.
+	Stuck string `json:"stuck"`
+	// StuckByCreel is true when Stuck is a creel failure rather than a stall reason; a tick whose creel calls all succeed clears both.
+	StuckByCreel bool `json:"stuck_by_creel"`
+	// FreshLaunchFailure is the error text of a withdraw or release `start` made around a fresh launch that failed; empty when none did.
+	// While it is set the watcher retries both on every tick and posts and queues nothing.
+	FreshLaunchFailure string `json:"fresh_launch_failure"`
+	// ResumeLineWithdrawn is true when a retry's withdraw removed the resume line but clearing the pause record's noticed mark failed.
+	// The next retry's withdraw answers an empty list, so this field stands in for the removed line until the clear succeeds.
+	ResumeLineWithdrawn bool   `json:"resume_line_withdrawn"`
+	WatcherExit         string `json:"watcher_exit"` // Why the last watcher exited; empty while one runs.
 	// WatcherStopping is set by a watcher that has received SIGINT or SIGTERM and not yet released watch.lock,
 	// so `start` waits for it instead of reading it as live.
 	WatcherStopping bool `json:"watcher_stopping"`
 
 	CycleTrigger string    `json:"cycle_trigger"` // Trigger that started the current or last cycle: TriggerSoft, TriggerHard or TriggerRequested.
-	LastDeferral time.Time `json:"last_deferral"` // When the last DEFER turn end was read; zero when none.
+	LastDeferral time.Time `json:"last_deferral"` // When the last deferral reply was read; zero when none.
 
 	CycleMode        string    `json:"cycle_mode"`         // Mode of the current or last cycle: CycleClear or CycleCompact.
 	CycleRequestedAt time.Time `json:"cycle_requested_at"` // When the request that started the cycle was made; zero for an automatic trigger.
@@ -111,7 +142,8 @@ type State struct {
 	CompactionBaseline time.Time `json:"compaction_baseline"`
 	// ReloadStep is the resuming phase's current step: ReloadStepColor, ReloadStepPlugins, ReloadStepSkills, ReloadStepRetry, or any other value for the pointer step.
 	ReloadStep int `json:"reload_step"`
-	// ReloadTypedAt is when the current step was first typed; zero while it has not been.
+	// ReloadTypedAt is when the current step was first queued; zero while it has not been.
+	// It is kept across every requeue and restart, and the step's timeout counts from it.
 	ReloadTypedAt time.Time `json:"reload_typed_at"`
 	// ReloadRetry is the skills the retry step still loads; empty outside it.
 	ReloadRetry []string `json:"reload_retry"`
@@ -305,6 +337,7 @@ func NewHandoffPath(p Paths, now time.Time) string {
 // ResetForFreshLaunch returns s prepared for a newly launched session on strand.
 // A non-idle phase is recorded in LastAbortReason as abandoned;
 // the offsets are zeroed because a new run has a new events file.
+// The pending step, the note request's id, the stuck reason and the recorded fresh-launch failure are cleared too, since they belong to the abandoned phase or the earlier launch.
 // The context reading and the turn end it was taken through are cleared, since they describe the previous session;
 // the new session's first turn end sets them again.
 // CompactionBaseline becomes launchedAt, so a compaction boundary the session already carried never triggers a reload, and LaunchedAt records it.
@@ -326,7 +359,9 @@ func ResetForFreshLaunch(s State, strand string, launchedAt time.Time) State {
 	s.PhaseInjected = false
 	s.PendingHandoff = ""
 	s.PendingResume = ""
-	s.Stuck, s.StuckByHold, s.StuckBySend = "", false, false
+	s.Pending, s.RequestID = nil, 0
+	s.Stuck, s.StuckByCreel = "", false
+	s.FreshLaunchFailure, s.ResumeLineWithdrawn = "", false
 	s.WatcherExit = ""
 	return s
 }

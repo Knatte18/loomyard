@@ -51,13 +51,16 @@
 // No send is retried.
 //
 // For the hub scope only, Revive then reads the orch's state through `Deps.Prime`, and no other prime session is read, revived or reported.
-// An orch stalled on an API error is reported `paused` when a hub entry is live, and otherwise its conditioned notice is queued through `Deps.QueueOrchRevive`;
-// the report says `queued` or `already-queued`, that the notice is conditional, and whether an orch watcher is live to deliver it.
+// An orch stalled on an API error gets its line as a checked creel inject, injected through `Deps.InjectOrchRevive`.
+// The pending check and the inject run inside one `pauserecord.Update` that changes no entry, the lock that serialises tender's task-session revive sends:
+// under it a live hub entry answers `paused`, a revive inject of tender's own that has no outcome yet answers `pending` through `Deps.OrchRevivePending`, and otherwise the line is injected and the report says `injected` with the inject's id.
+// So two concurrent revives inject at most once.
 // The engine never types into the orch's pane.
 //
-// Bound: Revive types one fixed line only into a session that reads stalled on an API error at the conditioned send's own reading, or, for the orch, at the notice's delivery.
-// It sends no key, kills nothing and changes no live entry, so a second revive finds a revived session busy or done and sends nothing, and finds the orch's notice still queued and queues none.
-// A pause, resume or orch watcher record write waits at most one conditioned send's hold, since `pauserecord.Update` blocks on the lock with no timeout; coverage reads take no lock.
+// Bound: Revive types one fixed line only into a session that reads stalled on an API error at the conditioned send's own reading, or, for the orch, through creel's own checked delivery.
+// It sends no key, kills nothing and changes no live entry, so a second revive finds a revived session busy or done and sends nothing, and finds the orch's inject still without an outcome and injects none.
+// A pause, resume or orch watcher record write waits at most one conditioned send's hold, or one orch revive's creel lookup and inject, each capped by the Go client's call timeout, since `pauserecord.Update` blocks on the lock with no timeout; coverage reads take no lock.
+// The orch's condition is read before the inject instead of at typing, so a session that leaves the stall within the inject's one-minute time to live can still get the line typed, which starts one extra turn.
 // A pause added while a line is in flight takes its entry after that session's turn start reads or its turn-start wait ends, so its grace poll reads a started turn busy.
 // A line that landed with no turn start seen is reported `sent_no_turn_start`, and status shows the session busy under any live entry, so the operator can pause that slug again.
 //

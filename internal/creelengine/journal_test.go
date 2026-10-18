@@ -148,9 +148,6 @@ func TestJournal_Fold(t *testing.T) {
 				if !reflect.DeepEqual(p.programs, map[string]bool{"ly:BATTEN": true}) {
 					t.Errorf("program mailboxes = %v, want only ly:BATTEN (EXTERNAL has none)", p.programs)
 				}
-				if got := p.withheld[orch].Notice; got != "creel-notices" {
-					t.Errorf("withheld notice for the orch = %q, want creel-notices", got)
-				}
 			},
 		},
 		{
@@ -258,6 +255,31 @@ func TestJournal_Fold(t *testing.T) {
 				want := map[int64]string{1: injectUnconfirmed, 2: injectInjected, 3: injectQueued}
 				if !reflect.DeepEqual(got, want) {
 					t.Errorf("inject outcomes = %v, want %v", got, want)
+				}
+			},
+		},
+		{
+			name: "a command inject folds with its command, a record without the fields as a text inject, and a carried command inject keeps it",
+			files: map[string]string{"2026-10-01.jsonl": strings.Join([]string{
+				line(record{Event: eventPosted, Kind: kindInject, ID: 1, From: "ly:BATTEN", To: orch, Command: CommandCompact, Argument: "keep the plan", TTLSeconds: 600}),
+				injectPosted(2, beta, "/clear"),
+				line(record{Event: eventCarried, Of: eventPosted, Kind: kindInject, ID: 3, From: "ly:BATTEN", To: orch, Command: CommandColor, Argument: "blue", TTLSeconds: 600}),
+			}, "\n") + "\n"},
+			check: func(t *testing.T, p *pool) {
+				got := map[int64]Command{}
+				for id, entry := range p.injects {
+					got[id] = entry.Command
+				}
+				want := map[int64]Command{
+					1: {Name: CommandCompact, Argument: "keep the plan"},
+					2: {},
+					3: {Name: CommandColor, Argument: "blue"},
+				}
+				if !reflect.DeepEqual(got, want) {
+					t.Errorf("inject commands = %v, want %v", got, want)
+				}
+				if p.injects[2].Text != "/clear" {
+					t.Errorf("text inject text = %q, want /clear", p.injects[2].Text)
 				}
 			},
 		},
@@ -470,7 +492,7 @@ func TestJournal_Retention(t *testing.T) {
 		if got := carriedEntries(p, 1); !reflect.DeepEqual(got, wantMail) {
 			t.Errorf("%s: carried entries of message 1 = %+v, want %+v", label, got, wantMail)
 		}
-		wantInject := []LogEntry{{Day: "2026-10-11", Event: eventCarried, At: dayEleven, ID: 3, From: alpha, To: beta, Kind: kindInject}}
+		wantInject := []LogEntry{{Day: "2026-10-11", Event: eventCarried, At: dayEleven, ID: 3, From: alpha, To: beta, Kind: kindInject, Subject: "/clear"}}
 		if got := carriedEntries(p, 3); !reflect.DeepEqual(got, wantInject) {
 			t.Errorf("%s: carried entries of inject 3 = %+v, want %+v", label, got, wantInject)
 		}

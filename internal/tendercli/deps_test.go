@@ -1,4 +1,4 @@
-// deps_test.go pins the readings shuttlePair derives from a run's session state: running turn, and background work left by an ended turn.
+// deps_test.go pins the readings shuttlePair derives from a run's session state: running turn, and background work left by an ended turn, and the pending reading of tender's orch revive injects.
 // It spawns nothing and touches neither reed nor the runner, so it stays out of the integration-tagged cli_test.go.
 
 package tendercli
@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
@@ -95,6 +96,33 @@ func TestShuttlePairReadings(t *testing.T) {
 			labels, background, err := pair.Background("g-a")
 			if err != nil || background != tt.wantBackground || !reflect.DeepEqual(labels, tt.wantLabels) {
 				t.Errorf("Background = %v, %v, %v; want %v, %v", labels, background, err, tt.wantLabels, tt.wantBackground)
+			}
+		})
+	}
+}
+
+func TestRevivePending(t *testing.T) {
+	t.Parallel()
+	posted := creelengine.LogEntry{Event: "posted", ID: 7}
+	outcome := func(kind creelengine.OutcomeKind) creelengine.LogEntry {
+		return creelengine.LogEntry{Event: string(kind), ID: 7}
+	}
+	tests := []struct {
+		name    string
+		entries []creelengine.LogEntry
+		want    bool
+	}{
+		{"None", nil, false},
+		{"PostedWithNoOutcome", []creelengine.LogEntry{posted}, true},
+		{"PostedThenInjected", []creelengine.LogEntry{posted, outcome(creelengine.OutcomeInjected)}, false},
+		{"PostedThenUnconfirmed", []creelengine.LogEntry{posted, outcome(creelengine.OutcomeUnconfirmed)}, false},
+		{"PostedThenExpired", []creelengine.LogEntry{posted, outcome(creelengine.OutcomeExpired)}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := revivePending(tt.entries); got != tt.want {
+				t.Errorf("revivePending(%+v) = %v; want %v", tt.entries, got, tt.want)
 			}
 		})
 	}

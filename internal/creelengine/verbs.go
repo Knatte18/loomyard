@@ -1,4 +1,4 @@
-// verbs.go implements the pool's verbs: post, reply, read, inbox, forward, log, inject, interrupt, hold and release, with the privilege rules.
+// verbs.go implements the pool's verbs: post, reply, read, inbox, forward, log, inject, interrupt, hold, release and withdraw, with the privilege rules.
 
 package creelengine
 
@@ -37,11 +37,8 @@ func (s *Store) appendPostedLocked(sender Sender, receiver, kind, body string, r
 	return id, err
 }
 
-// deliverMailLocked finishes a post, reply or forward to receiver: the withheld line for an orch, the holder's waiters and the wake.
+// deliverMailLocked finishes a post, reply or forward to receiver: the holder's waiters and the wake.
 func (s *Store) deliverMailLocked(id int64, receiver string) error {
-	if err := s.appendWithheldLocked(id, receiver); err != nil {
-		return err
-	}
 	s.answerLocked(waitKey{kind: waitHolder, holder: receiver}, Outcome{Kind: OutcomeMail})
 	s.mailSeq++
 	s.wakeLocked(receiver)
@@ -248,12 +245,9 @@ type InboxEntry struct {
 	Unread int
 }
 
-// InboxResult is what Inbox answers: the unread counts per sender, and for an orch caller that its reminders are withheld.
+// InboxResult is what Inbox answers: the unread counts per sender.
 type InboxResult struct {
 	Senders []InboxEntry
-	// Withheld is set for an orch caller, whose reminders creel does not type until Notice.
-	Withheld bool
-	Notice   string
 }
 
 // Inbox returns the senders of the caller's unread mail with their counts, in name order.
@@ -273,9 +267,6 @@ func (s *Store) Inbox(sender Sender) (InboxResult, error) {
 			result.Senders = append(result.Senders, InboxEntry{From: from, Unread: unread})
 		}
 		sort.Slice(result.Senders, func(i, j int) bool { return result.Senders[i].From < result.Senders[j].From })
-		if isOrchName(sender.Name) {
-			result.Withheld, result.Notice = true, noticesName
-		}
 		return nil
 	})
 	return result, err
@@ -343,16 +334,32 @@ type InjectResult struct {
 // Inject queues text to be typed into receiver's pane at its next idle, behind earlier injects.
 // A zero ttl takes the default; interrupt first sends the guarded interrupt and queues the text at the head.
 func (s *Store) Inject(sender Sender, receiver, text string, ttl time.Duration, interrupt bool) (InjectResult, error) {
-	result, _, err := s.inject(sender, receiver, text, ttl, interrupt, false)
+	result, _, err := s.inject(sender, receiver, text, Command{}, ttl, interrupt, false)
 	return result, err
 }
 
 // InjectWait is Inject that also registers a wait for the inject's outcome, before any outcome can happen.
 func (s *Store) InjectWait(sender Sender, receiver, text string, ttl time.Duration, interrupt bool) (InjectResult, *Waiter, error) {
-	return s.inject(sender, receiver, text, ttl, interrupt, true)
+	return s.inject(sender, receiver, text, Command{}, ttl, interrupt, true)
 }
 
-func (s *Store) inject(sender Sender, receiver, text string, ttl time.Duration, interrupt, wait bool) (InjectResult, *Waiter, error) {
+// InjectCommand queues a command to be run in an orch strand's session at its next idle, behind earlier injects, under every rule of a text inject.
+// Only a program sender may queue one, and only for an orch strand; an invalid command is refused.
+func (s *Store) InjectCommand(sender Sender, receiver string, command Command, ttl time.Duration) (InjectResult, error) {
+	if sender.Kind != KindProgram {
+		return InjectResult{}, fmt.Errorf("creel: %s may not queue a command inject; only a program may, through the Go client", sender.Name)
+	}
+	if !isOrchName(receiver) {
+		return InjectResult{}, fmt.Errorf("creel: a command inject goes to an orch strand only, not to %s", receiver)
+	}
+	if err := command.validate(); err != nil {
+		return InjectResult{}, err
+	}
+	result, _, err := s.inject(sender, receiver, "", command, ttl, false, false)
+	return result, err
+}
+
+func (s *Store) inject(sender Sender, receiver, text string, command Command, ttl time.Duration, interrupt, wait bool) (InjectResult, *Waiter, error) {
 	if strings.IndexFunc(text, unicode.IsControl) >= 0 {
 		return InjectResult{}, nil, errors.New("creel: an inject is a single line without control characters")
 	}
@@ -380,7 +387,8 @@ func (s *Store) inject(sender Sender, receiver, text string, ttl time.Duration, 
 		id := s.state.newID()
 		if err := s.writer.append(record{
 			Event: eventPosted, Kind: kindInject, ID: id, From: sender.Name, To: target.Name,
-			Body: text, TTLSeconds: int64(ttl / time.Second), Head: interrupt,
+			Body: text, Command: command.Name, Argument: command.Argument,
+			TTLSeconds: int64(ttl / time.Second), Head: interrupt,
 		}); err != nil {
 			return err
 		}
@@ -403,7 +411,9 @@ type QueuedInject struct {
 	ID   int64
 	From string
 	Text string
-	TTL  time.Duration
+	// Command is the command a command inject carries, zero for a text inject.
+	Command Command
+	TTL     time.Duration
 	// Head marks an inject queued ahead of the others by an interrupt.
 	Head bool
 }
@@ -417,7 +427,7 @@ func (s *Store) Queued(receiver string) []QueuedInject {
 		if entry.Receiver != receiver || entry.Outcome != injectQueued {
 			continue
 		}
-		queued := QueuedInject{ID: entry.ID, From: entry.From, Text: entry.Text, TTL: entry.TTL, Head: entry.Head}
+		queued := QueuedInject{ID: entry.ID, From: entry.From, Text: entry.Text, Command: entry.Command, TTL: entry.TTL, Head: entry.Head}
 		if entry.Head {
 			heads = append(heads, queued)
 		} else {
@@ -450,14 +460,11 @@ func (s *Store) strandTarget(receiver string) (Strand, error) {
 	return Strand{}, fmt.Errorf("creel: unknown strand %q; the strands that exist: %s", receiver, listing)
 }
 
-// checkMayAct applies the privilege and orch rules to a sender acting on a strand's pane.
-// A privileged sender (EXTERNAL, a program, an orch strand) may act on any strand and any other sender on its own, and nothing types into an orch strand.
+// checkMayAct applies the privilege rule to a sender acting on a strand's pane.
+// A privileged sender (EXTERNAL, a program, an orch strand) may act on any strand, an orch strand included, and any other sender on its own.
 func (s *Store) checkMayAct(sender Sender, receiver, action string) error {
 	if !sender.privileged() && sender.Name != receiver {
 		return fmt.Errorf("creel: %s may not %s another strand's pane; send it mail with `lyx creel post`", sender.Name, action)
-	}
-	if isOrchName(receiver) {
-		return fmt.Errorf("creel: %s is an orch strand and creel never types into one in this stage; use `lyx orch distill` or `lyx orch refresh`, or type into the orch's own pane", receiver)
 	}
 	return nil
 }
@@ -532,6 +539,7 @@ type HoldResult struct {
 
 // Hold holds receiver's deliveries for the given duration: only the owner's injects pass and only its mail is reminded.
 // The same owner holding again renews the hold; another sender's hold on a held receiver is refused.
+// An orch strand is held by a program only.
 func (s *Store) Hold(sender Sender, receiver string, duration time.Duration) (HoldResult, error) {
 	if duration <= 0 || duration > maxHoldDuration {
 		return HoldResult{}, fmt.Errorf("creel: a hold lasts at most %s", maxHoldDuration)
@@ -543,6 +551,9 @@ func (s *Store) Hold(sender Sender, receiver string, duration time.Duration) (Ho
 	if !sender.privileged() && sender.Name != target.Name {
 		return HoldResult{}, fmt.Errorf("creel: %s may not hold another strand; send it mail with `lyx creel post`", sender.Name)
 	}
+	if isOrchName(target.Name) && sender.Kind != KindProgram {
+		return HoldResult{}, fmt.Errorf("creel: only a program may hold an orch strand, and %s is not one; send %s mail with `lyx creel post`, or cycle the orch with `lyx orch distill` or `lyx orch refresh`", sender.Name, target.Name)
+	}
 	var result HoldResult
 	err = s.do(func() error {
 		current := s.liveHoldLocked(target.Name)
@@ -551,6 +562,54 @@ func (s *Store) Hold(sender Sender, receiver string, duration time.Duration) (Ho
 		}
 		result = HoldResult{Owner: sender.Name, Expires: s.clock.Now().UTC().Add(duration), Renewed: current != nil}
 		return s.writer.append(record{Event: eventHeld, By: sender.Name, To: target.Name, ExpiresAt: result.Expires})
+	})
+	return result, err
+}
+
+// WithdrawnReason is the journal reason of an inject expired, and of a message returned undelivered, by a withdraw.
+const WithdrawnReason = "withdrawn"
+
+// WithdrawnMessage is one unread message a withdraw removed.
+type WithdrawnMessage struct {
+	ID      int64
+	Subject string
+}
+
+// WithdrawResult is what Withdraw answers: the ids of the injects it expired and the messages it returned undelivered, both in id order.
+type WithdrawResult struct {
+	Injects  []int64
+	Messages []WithdrawnMessage
+}
+
+// Withdraw removes the caller's own queued injects to receiver and its own unread, unreserved mail held by receiver.
+// Each inject is journaled expired and each message undelivered, with reason WithdrawnReason; a wait on an inject is answered expired and a wait on a message's reply is answered returned.
+// An inject already sending and a message already read or being read are left alone.
+// Only a program may withdraw, and it acts on receiver by name whether or not creel still lists that strand; with nothing queued the result is empty.
+func (s *Store) Withdraw(sender Sender, receiver string) (WithdrawResult, error) {
+	if sender.Kind != KindProgram {
+		return WithdrawResult{}, fmt.Errorf("creel: %s may not withdraw; only a program may, through the Go client", sender.Name)
+	}
+	var result WithdrawResult
+	err := s.do(func() error {
+		for _, entry := range s.queuedEntriesLocked(receiver) {
+			if entry.From != sender.Name {
+				continue
+			}
+			if err := s.writer.append(record{Event: eventExpired, ID: entry.ID, Reason: WithdrawnReason}); err != nil {
+				return err
+			}
+			s.answerLocked(waitKey{kind: waitInject, id: entry.ID}, Outcome{Kind: OutcomeExpired})
+			result.Injects = append(result.Injects, entry.ID)
+		}
+		unread := s.unreadLocked(receiver, sender.Name)
+		for _, msg := range unread {
+			if err := s.writer.append(record{Event: eventUndelivered, ID: msg.ID, Reason: WithdrawnReason}); err != nil {
+				return err
+			}
+			s.answerLocked(waitKey{kind: waitReply, id: msg.ID}, Outcome{Kind: OutcomeReturned, Message: *msg})
+			result.Messages = append(result.Messages, WithdrawnMessage{ID: msg.ID, Subject: msg.Subject})
+		}
+		return nil
 	})
 	return result, err
 }

@@ -30,7 +30,8 @@ This list holds every `lyx` command you may use, and `lyx <command> --help` give
 3. Check a run with `lyx batten status <slug>`, hold it with `lyx batten pause <slug>`, and send it to a producer with `lyx batten goto <slug> --to <producer>`.
    Both leave the batten run paused, so resume it with `lyx batten run <slug>`, which starts or resumes the lifecycle run.
 4. Keep no polling shell and start no Monitor for a run.
-   A line starting with `[batten notice]` is the wake-up.
+   The wake-up is creel's reminder that you have unread mail: read it with the command the reminder names, `lyx creel read --from <owner>` under a hold and `lyx creel read --all` otherwise.
+   Each mail body starting with `[batten notice]` is a notice.
    Every `landed` notice goes to After landing, and every other `[batten notice]` is handled as under Investigating a stop.
 5. A ready PR is "awaiting", never "blocked".
    Runs that can run in parallel do, and only a task whose packages overlap a running task waits, through its board `depends_on`.
@@ -138,7 +139,7 @@ A landing needs nothing more from you than these steps: batten's Land row pulls 
 A `[batten notice]` naming a Land or Worktree-Teardown failure is a stop, handled under Investigating a stop.
 - A `[batten notice]` reading `<slug>: landed` means the task landed: count it as no longer running, run the inbox check under Where a finding goes, start each task the notice names after `newly ready:` with `lyx batten run <slug> --window`.
 - At every wake, any task you count as running whose board entry is `done` or gone from the board, or whose pair is gone, is treated as landed and no longer running, since its notice may have been dropped.
-- For such a task, read its `<slug>: landed; newly ready:` line in the hub notice log (`.lyx/notices.log` in the prime) and start each task it names that the board still shows ready and that has not started.
+- For such a task, read its `<slug>: landed; newly ready:` line in your unread mail with `lyx creel read`, and for a notice already read or returned undelivered in `lyx creel log --to <your strand name>`, and start each task it names that the board still shows ready and that has not started.
   Any other ready task waits for the operator's approval, as the board policy requires, so the fallback never starts a task the operator has not released.
 
 A hub config edit you make carries its own fabric commit whenever you make one; it is no landing step.
@@ -202,7 +203,7 @@ Act and fix without asking: start the runs the operator approved, un-wedge stuck
 Ask the operator only about what to build, its priority and design choices.
 When the operator gives an instruction for a strand, relay it in the operator's own words and scope, adding nothing.
 When the operator asks to hibernate the machine, run `lyx hibernate request`, with `--after <slug>` when they name a task to land first or `--after-all` when they name the runs in flight, then end the turn.
-lyx itself pauses the hub, confirms every session paused, hibernates the machine and lifts its pause on wake, and queues a notice when it is done or failed.
+lyx itself pauses the hub, confirms every session paused, hibernates the machine and lifts its pause on wake, and mails you a notice when it is done or failed.
 `lyx hibernate status` shows the request and `lyx hibernate cancel` withdraws it.
 
 ## Status reports

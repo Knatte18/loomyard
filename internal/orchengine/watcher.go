@@ -1,16 +1,16 @@
-// watcher.go — the watcher's decision core: one poll of the idle check and the persisted cycle, whose mode (State.CycleMode) picks between two machines.
-// Both modes start with the note gate: idle, then handoff-requested, which writes the note.
+// watcher.go — the watcher's decision core: one poll of the persisted cycle, whose mode (State.CycleMode) picks between two machines.
+// Both modes start with the note gate: idle, then handoff-requested, which posts the note request as creel mail and waits for the orch's reply.
 // Clear mode then runs clearing and resuming;
-// compact mode then runs compacting, which types `/compact` with a focus text.
+// compact mode then runs compacting, which injects `/compact` with a focus text.
 // Neither clears or compacts before the note gate passed.
 // The cycle's mode is the request's for an operator request and Config.Mode for an automatic trigger.
 // Both share the idle trigger selection, its gates and its re-read of the context.
 //
-// Every provider and reed interaction goes through the Session seam, so the whole state machine runs against a fake in untagged unit tests.
-// The watcher saves State before every side effect, and a restarted watcher resumes from it:
-// a non-idle phase's injection is treated as unconfirmed until a turn end proves it landed or a passing idle probe shows it did not, and then it is sent again;
-// in compacting, a compaction boundary read from the transcript proves it instead of a turn end.
-// Nothing is typed into the pane, text, `/clear` or `/compact`, unless the idle probe passed on the same tick.
+// Every provider and reed interaction goes through the Session seam and every delivery into the orch through the Creel seam, so the whole state machine runs against fakes in untagged unit tests.
+// The watcher types nothing into the pane itself: each step is a creel post or inject, and creel's own idle check gates its delivery.
+// The watcher saves State, with the step it is about to send as State.Pending, before each send, and a restarted watcher resumes from it:
+// a pending step with no id is looked up in what creel journaled before it is sent again, and one with an id has its outcome read.
+// While a cycle runs the watcher holds the orch strand in creel, so other mail waits until the cycle returns to idle.
 
 package orchengine
 
@@ -18,15 +18,45 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// deferReply is the whole turn-end message with which a session declines a soft cycle.
-const deferReply = "DEFER"
+const (
+	// stepInjectTTL is how long a cycle step's inject may wait for the orch's next idle before creel expires it, which is creel's default inject time to live.
+	stepInjectTTL = 10 * time.Minute
+	// cycleHoldDuration is how long one creel hold on the orch strand lasts; every tick outside idle renews it, and one a dead watcher leaves lapses on its own.
+	cycleHoldDuration = 10 * time.Minute
+)
+
+// The creel command names the cycle injects, in creel's neutral spelling.
+const (
+	commandClear         = "clear"
+	commandCompact       = "compact"
+	commandReloadPlugins = "reload-plugins"
+	commandColor         = "color"
+	commandLoadSkills    = "load-skills"
+)
+
+// The two answers the orch gives the note request, as the bodies of its reply.
+const (
+	// replyWritten is followed by the note path once the note is written.
+	replyWritten = "written"
+	// replyDefer declines a soft cycle.
+	replyDefer = "defer"
+)
+
+// errNotBound reports that the watcher has not yet set its events cursor for the recorded strand, so it cannot act on a reply.
+var errNotBound = errors.New("orch: the watcher is not bound to the recorded strand yet")
+
+// errResetPending reports that a phase belonging to another strand could not be reset because a creel call failed; the next tick runs the reset again.
+var errResetPending = errors.New("orch: resetting a phase of another strand is held by a creel failure")
 
 // Session is the seam between the cycle machine and the live orchestrator session.
 // Production satisfies it with an adapter over shuttleengine.Runner and reed.
@@ -38,21 +68,15 @@ type Session interface {
 	// ContextTokens returns the context reading of the run identified by guid as of turnEnd; a reading with Known false means unreadable.
 	ContextTokens(guid string, turnEnd shuttleengine.Event) (shuttleengine.ContextReading, error)
 	// SessionIdle probes whether the session shows an empty input box with no turn in progress, and whether the pane is too short to tell.
+	// Only the hub pause's handling reads it.
 	SessionIdle(guid string) (shuttleengine.IdleProbe, error)
-	// SessionState returns the session's state as read from the run's files; the watcher logs it, reads it to drop a conditioned notice, and records its session id.
+	// SessionState returns the session's state as read from the run's files; the watcher logs its session start and records its session id.
 	SessionState(guid string) (shuttleengine.RunSessionState, error)
-	// Send types text into the session as a new turn.
-	Send(guid, text string) error
-	// ClearSession types the provider's clear command into the session.
-	ClearSession(guid string) error
-	// ReloadPlugins types the provider's plugin reload command into the session.
-	ReloadPlugins(guid string) error
-	// TypeColor types the provider's color command for the strand's palette color into the session; a strand with no color types nothing.
-	TypeColor(guid string) error
-	// CompactSession types the provider's compact command into the session, with focus as its single-line instruction.
-	CompactSession(guid, focus string) error
-	// LoadSkills types the provider's one-turn load message for skills into the session.
-	LoadSkills(guid string, skills []string) error
+	// StrandName returns the full name of the strand guid, read from reed at each call, which the watcher addresses creel calls with.
+	// It fails when guid names no tracked strand.
+	StrandName(guid string) (string, error)
+	// StrandColor returns the strand's palette color from reed, empty for none.
+	StrandColor(guid string) (string, error)
 	// ClassifySkillLoad classifies the load turn of skills that turnEnd ended in the run identified by guid.
 	ClassifySkillLoad(guid string, turnEnd shuttleengine.Event, skills []string) (shuttleengine.SkillLoadReport, error)
 	// CompactedSince returns the newest compaction boundary after since in the transcript turnEnd names, with the turn ends that follow it, for the run identified by guid.
@@ -73,6 +97,7 @@ type Clock interface {
 // Watcher runs the orch cycle, one Tick per poll.
 type Watcher struct {
 	session     Session
+	creel       Creel
 	cfg         Config
 	paths       Paths
 	stencilsDir string
@@ -88,39 +113,30 @@ type Watcher struct {
 	// It is memory only: a restarted watcher finds the boundary again at its next turn end, since the baseline has not moved.
 	compactedAt time.Time
 
-	// colorPending is true from binding to a session the color was not yet typed for until the first idle tick types it.
+	// colorPending is true from binding to a session the color was not yet queued for until its inject settles.
 	colorPending bool
+	// colorInjectID is the id of the bind color's inject, zero while none was queued.
+	// It is memory only: a restarted watcher may queue the color once more, which is display only.
+	colorInjectID int64
 
 	started bool   // Whether the cursor has been initialised from state.
 	strand  string // Strand the cursor belongs to.
 	cursor  int64  // Events-file position read through.
-
-	// replaying is true from a restart into a non-idle phase until the first read,
-	// whose events predate the restart in unknown order against the handoff file.
-	replaying bool
 
 	newest     *shuttleengine.Event // Newest event read since the last return to idle.
 	newestRead time.Time            // When newest was first read.
 
 	seen phaseEvents // What the current non-idle phase has read so far.
 
-	// idleDisagreement is the pair last logged as a disagreement between the idle probe and the session state, valid while hasIdleDisagreement.
-	// It is memory only, and binding to another strand clears it; a probe that agrees leaves it as it is.
-	idleDisagreement    idleStatePair
-	hasIdleDisagreement bool
-
-	// A hold is a run of consecutive probes that are not idle, ended by the next passing probe.
-	// lastHeld is the reason the current hold last held an injection for, as logged, and heldSince when the hold began; empty and zero outside a hold.
-	// heldWaited is how long the hold the last passing probe ended lasted, zero when it ended none, and sessionStartLogged the newest session-start time logged.
-	// All four are memory only: binding to another strand clears them, and a restarted watcher logs again.
-	lastHeld           string
-	heldSince          time.Time
-	heldWaited         time.Duration
+	// sessionStartLogged is the newest session-start time logged; memory only, so a restarted watcher logs again.
 	sessionStartLogged time.Time
 
-	// lastSendHeld is the reason a typed step was last held by the session, as logged, empty once a typed step passes.
-	// It is memory only: binding to another strand clears it.
-	lastSendHeld string
+	// creelFailedTick is true once a creel call failed in the running tick, which keeps that tick from clearing a creel failure.
+	creelFailedTick bool
+	// lastCreelError is the text of the creel failure last logged, empty while the calls succeed.
+	lastCreelError string
+	// repliesRead is true when the running tick's mailbox read handed over messages.
+	repliesRead bool
 
 	// pause is the told pause-record reading, nil when the watcher was never told one.
 	pause *PauseWatch
@@ -139,38 +155,18 @@ type Watcher struct {
 	netOpsFailures logger.Episode
 }
 
-// idleStatePair is one idle probe answer beside the session state it disagreed with, and when that state began.
-// Together they are the key of a disagreement episode.
-type idleStatePair struct {
-	idle  bool
-	state shuttleengine.SessionStateName
-	cause string
-	since time.Time
-}
-
 // phaseEvents records what the current non-idle phase has observed, which the cursor has moved past and a later tick must still know.
 type phaseEvents struct {
-	turnEnd      bool
-	firstTurnEnd shuttleengine.Event
-	ask          bool
-
-	// handoffWritten is set once a stat taken before a tick's event read finds the handoff file written.
-	handoffWritten bool
-	// turnEndAfterHandoff is set by a turn end read after handoffWritten was set,
-	// so a turn end that predates the file never opens the clear gate.
-	turnEndAfterHandoff bool
-
-	// deferred is set by the first turn end read in a soft cycle's handoff-requested phase whose message is exactly DEFER;
-	// deferRead is when it was read.
-	deferred  bool
-	deferRead time.Time
+	// turnEnds lists the turn ends read since the phase or its current step began, oldest first.
+	turnEnds []shuttleengine.Event
+	ask      bool
 }
 
-// NewWatcher builds a watcher over session.
-// skills is the orch skill list the reload sequence types after a clear.
+// NewWatcher builds a watcher over session and creel.
+// skills is the orch skill list the reload sequence loads after a clear.
 // index supplies the operator command index each role-file render fills in.
-func NewWatcher(session Session, cfg Config, paths Paths, stencilsDir string, skills []string, index func() (string, error), clock Clock) *Watcher {
-	return &Watcher{session: session, cfg: cfg, paths: paths, stencilsDir: stencilsDir, skills: skills, index: index, clock: clock}
+func NewWatcher(session Session, creel Creel, cfg Config, paths Paths, stencilsDir string, skills []string, index func() (string, error), clock Clock) *Watcher {
+	return &Watcher{session: session, creel: creel, cfg: cfg, paths: paths, stencilsDir: stencilsDir, skills: skills, index: index, clock: clock}
 }
 
 // renderRoleFile fetches the command index and renders the role file with it.
@@ -196,18 +192,37 @@ func isTurnEnd(ev shuttleengine.Event) bool {
 // An error leaves the persisted phase as it was for the next tick or watcher.
 // A tick whose state is bound to another strand while it runs saves nothing and returns no error,
 // and the next tick follows the new strand.
+// A failed creel call is no error: it is recorded in State.Stuck and holds the cycle until a tick whose creel calls all succeed clears it.
 func (w *Watcher) Tick() (done bool, err error) {
+	w.creelFailedTick = false
 	done, err = w.tick()
 	if errors.Is(err, errStrandReplaced) {
 		logger.Info("orch: state was bound to another strand mid-tick; the next tick follows it", "strandGUID", w.strand)
 		return false, nil
 	}
-	return done, err
+	if err != nil || done || w.creelFailedTick {
+		return done, err
+	}
+	w.lastCreelError = ""
+	return false, w.clearCreelStuck()
 }
 
 // save persists st unless the state has been bound to another strand since this tick loaded it.
 func (w *Watcher) save(st State) error {
 	return saveStateForStrand(w.paths, st)
+}
+
+// clearCreelStuck ends a creel failure recorded in the state, after a tick whose creel calls all succeeded.
+func (w *Watcher) clearCreelStuck() error {
+	st, err := LoadState(w.paths)
+	if err != nil || !st.StuckByCreel {
+		return err
+	}
+	st.Stuck, st.StuckByCreel = "", false
+	if err := w.save(st); err != nil && !errors.Is(err, errStrandReplaced) {
+		return err
+	}
+	return nil
 }
 
 func (w *Watcher) tick() (done bool, err error) {
@@ -230,19 +245,15 @@ func (w *Watcher) tick() (done bool, err error) {
 
 	if !w.started || w.strand != st.Strand {
 		if st, err = w.initCursor(st); err != nil {
+			if errors.Is(err, errResetPending) {
+				return false, nil
+			}
 			return false, err
 		}
 	}
 
 	if err := w.recordSessionID(&st); err != nil {
 		return false, err
-	}
-
-	if st.Phase == PhaseHandoffRequested && !w.seen.handoffWritten {
-		// Stat before the event read, so every turn end read from here on was read after the file was seen written.
-		if w.seen.handoffWritten, err = handoffWritten(st.PendingHandoff); err != nil {
-			return false, err
-		}
 	}
 
 	events, next, err := w.session.ReadEvents(st.Strand, w.cursor)
@@ -296,22 +307,26 @@ func (w *Watcher) tick() (done bool, err error) {
 		if ev.Kind == shuttleengine.EventAsk {
 			w.seen.ask = true
 		}
-		if !isTurnEnd(ev) {
-			continue
-		}
-		if !w.seen.turnEnd {
-			w.seen.turnEnd, w.seen.firstTurnEnd = true, ev
-		}
-		if w.seen.handoffWritten && !w.replaying {
-			w.seen.turnEndAfterHandoff = true
-		}
-		if st.Phase == PhaseHandoffRequested && st.CycleTrigger == TriggerSoft && !w.seen.deferred && strings.TrimSpace(ev.Message) == deferReply {
-			w.seen.deferred, w.seen.deferRead = true, now
+		if isTurnEnd(ev) {
+			w.seen.turnEnds = append(w.seen.turnEnds, ev)
 		}
 	}
-	w.replaying = false
 	if readingChanged {
 		if err := w.save(st); err != nil {
+			return false, err
+		}
+	}
+
+	if st.FreshLaunchFailure != "" {
+		retried, err := w.retryFreshLaunch(&st)
+		if err != nil || !retried {
+			return false, err
+		}
+	}
+
+	if st.Phase != PhaseIdle {
+		held, err := w.renewHold(&st)
+		if err != nil || !held {
 			return false, err
 		}
 	}
@@ -324,16 +339,23 @@ func (w *Watcher) tick() (done bool, err error) {
 		return false, nil
 	}
 
+	if st, err = w.readMailbox(st); err != nil {
+		return false, err
+	}
+
 	if err := w.typeStartColor(&st); err != nil {
 		return false, err
 	}
 
-	switch st.Phase {
-	case PhaseIdle:
-		if err := w.tickIdle(st, now); err != nil {
+	if st.Phase != PhaseIdle && st.Pending != nil && st.Pending.ID == 0 {
+		if err := w.recoverPending(&st, now); err != nil {
 			return false, err
 		}
-		return false, w.deliverNotice()
+	}
+
+	switch st.Phase {
+	case PhaseIdle:
+		return false, w.tickIdle(st, now)
 	case PhaseHandoffRequested:
 		return false, w.tickHandoff(st, now)
 	case PhaseClearing:
@@ -347,6 +369,7 @@ func (w *Watcher) tick() (done bool, err error) {
 }
 
 // recordSessionID records in st the session id shuttle's files-only reading of the strand names, when it differs from the recorded one.
+// It also logs the reading's session-start time once per new time.
 // An unreadable reading, such as a bound strand with no shuttle run, leaves the recorded id and never fails the tick; an empty reading id writes nothing.
 // The save is strand-checked, so a strand a concurrent start bound is never written onto.
 func (w *Watcher) recordSessionID(st *State) error {
@@ -354,6 +377,10 @@ func (w *Watcher) recordSessionID(st *State) error {
 	if err != nil {
 		logger.Debug("orch: session id unreadable", "strandGUID", st.Strand, "cause", err)
 		return nil
+	}
+	if at := reading.SessionStartAt; !at.IsZero() && !at.Equal(w.sessionStartLogged) {
+		w.sessionStartLogged = at
+		logger.Info("orch: session start signal read", "strandGUID", st.Strand, "sessionStartAt", at)
 	}
 	if reading.SessionID == "" || reading.SessionID == st.SessionID {
 		return nil
@@ -363,9 +390,358 @@ func (w *Watcher) recordSessionID(st *State) error {
 	return w.save(*st)
 }
 
-// typeStartColor types the strand's color on the first tick whose idle probe passes after binding, before anything else that tick types, then clears the mark.
+// orchName returns the full name of the orch strand the state records, read from reed at each call.
+func (w *Watcher) orchName(st State) (string, error) {
+	return w.session.StrandName(st.Strand)
+}
+
+// creelFailed records a failed creel call: it is logged once per change of error and written to st.Stuck with StuckByCreel set.
+// The failure is no tick error, so a creel outage holds the cycle and never ends the watcher; the returned error is only a failed save.
+func (w *Watcher) creelFailed(st *State, err error) error {
+	w.creelFailedTick = true
+	text := err.Error()
+	if text != w.lastCreelError {
+		logger.Warn("orch: a creel call failed; the cycle is held until creel answers", "strandGUID", st.Strand, "phase", string(st.Phase), "cause", text)
+		w.lastCreelError = text
+	}
+	if st.Stuck == text && st.StuckByCreel {
+		return nil
+	}
+	st.Stuck, st.StuckByCreel = text, true
+	return w.save(*st)
+}
+
+// retryFreshLaunch retries the withdraw and the release `start` made around a fresh launch and recorded as failed in State.FreshLaunchFailure, on the orch strand's name.
+// It answers true once both succeeded, having cleared the field and State.Stuck in one save and handed a withdrawn resume line to ClearResumeNoticed.
+// A failure, a failed ClearResumeNoticed included, rewrites State.Stuck with the failure and leaves State.StuckByCreel unset, so no successful creel call clears it while the field is set, and answers false with no error.
+// A resume line the withdraw removed whose clear failed is kept in State.ResumeLineWithdrawn, so a later retry clears the mark although its own withdraw finds nothing.
+func (w *Watcher) retryFreshLaunch(st *State) (bool, error) {
+	var failures []string
+	lineWithdrawnBefore := st.ResumeLineWithdrawn
+	name, err := w.orchName(*st)
+	if err != nil {
+		failures = append(failures, err.Error())
+	} else {
+		withdrawn, err := w.creel.Withdraw(name)
+		if err != nil {
+			failures = append(failures, err.Error())
+		} else if w.pause != nil {
+			if st.ResumeLineWithdrawn {
+				withdrawn = append(withdrawn, CreelWithdrawn{Subject: pauserecord.ResumeLine})
+			}
+			err := ClearResumeNoticed(w.pause.RecordPath, st.Strand, withdrawn, w.clock.Now())
+			st.ResumeLineWithdrawn = err != nil && slices.ContainsFunc(withdrawn, func(message CreelWithdrawn) bool { return message.Subject == pauserecord.ResumeLine })
+			if err != nil {
+				failures = append(failures, err.Error())
+			}
+		}
+		if err := w.creel.Release(name); err != nil {
+			failures = append(failures, err.Error())
+		}
+	}
+	if len(failures) > 0 {
+		w.creelFailedTick = true
+		text := strings.Join(failures, "; ")
+		if text != w.lastCreelError {
+			logger.Warn("orch: retrying the fresh launch's withdraw failed; nothing is posted or queued until it succeeds", "strandGUID", st.Strand, "cause", text)
+			w.lastCreelError = text
+		}
+		if st.Stuck == text && !st.StuckByCreel && st.ResumeLineWithdrawn == lineWithdrawnBefore {
+			return false, nil
+		}
+		st.Stuck, st.StuckByCreel = text, false
+		return false, w.save(*st)
+	}
+	logger.Info("orch: the fresh launch's withdraw and release succeeded on retry", "strandGUID", st.Strand)
+	st.FreshLaunchFailure, st.Stuck, st.StuckByCreel = "", "", false
+	return true, w.save(*st)
+}
+
+// renewHold takes or renews the watcher's creel hold on the orch strand for cycleHoldDuration.
+// It answers whether the hold stands; a creel refusal or failure is recorded through creelFailed and answers false with no error.
+func (w *Watcher) renewHold(st *State) (bool, error) {
+	name, err := w.orchName(*st)
+	if err != nil {
+		return false, w.creelFailed(st, err)
+	}
+	if err := w.creel.Hold(name, cycleHoldDuration); err != nil {
+		return false, w.creelFailed(st, err)
+	}
+	return true, nil
+}
+
+// releaseHold ends the watcher's creel hold on the orch strand.
+// A failed release is recorded through creelFailed and changes nothing else: the hold lapses within cycleHoldDuration.
+func (w *Watcher) releaseHold(st *State) error {
+	name, err := w.orchName(*st)
+	if err != nil {
+		return w.creelFailed(st, err)
+	}
+	if err := w.creel.Release(name); err != nil {
+		return w.creelFailed(st, err)
+	}
+	return nil
+}
+
+// readMailbox reads the watcher's own creel mailbox without waiting, handing it to readReplies, and returns the state as the handler left it.
+// A handler error is a local failure and fails the tick; a failed read is a creel failure and holds the cycle.
+func (w *Watcher) readMailbox(st State) (State, error) {
+	w.repliesRead = false
+	var handlerErr error
+	err := w.creel.ReadMailbox(func(messages []CreelMessage) error {
+		w.repliesRead = true
+		handlerErr = w.readReplies(messages)
+		return handlerErr
+	})
+	if handlerErr != nil {
+		return st, handlerErr
+	}
+	if err != nil {
+		if w.repliesRead {
+			// The handler already moved the persisted state; saving the pre-handler copy would move the phase back.
+			reloaded, loadErr := LoadState(w.paths)
+			if loadErr != nil {
+				return st, loadErr
+			}
+			st = reloaded
+		}
+		return st, w.creelFailed(&st, err)
+	}
+	if !w.repliesRead {
+		return st, nil
+	}
+	return LoadState(w.paths)
+}
+
+// readReplies is the read handler of the watcher's mailbox: it runs before the client acknowledges the read, so a failure leaves the messages unread.
+// Only a reply from the orch strand whose reply_to is the pending note request counts; every other message is logged and dropped.
+// A `written <path>` body naming the requested note, written and non-empty, moves the phase on to clearing or compacting and persists the move;
+// any other body is logged and leaves the phase waiting.
+// A `defer` body declines a soft cycle whose note is still unwritten, and is ignored in any other cycle.
+func (w *Watcher) readReplies(messages []CreelMessage) error {
+	st, err := LoadState(w.paths)
+	if err != nil {
+		return err
+	}
+	if !w.started || w.strand != st.Strand {
+		return errNotBound
+	}
+	now := w.clock.Now()
+	for _, message := range messages {
+		if st.Phase != PhaseHandoffRequested || st.RequestID == 0 || message.ReplyTo != st.RequestID {
+			logger.Info("orch: creel message dropped, it answers no pending request", "messageID", message.ID, "from", message.From, "replyTo", message.ReplyTo)
+			continue
+		}
+		name, err := w.orchName(st)
+		if err != nil {
+			return err
+		}
+		if message.From != name {
+			logger.Info("orch: creel message dropped, it is not from the orch strand", "messageID", message.ID, "from", message.From, "orch", name)
+			continue
+		}
+		body := strings.TrimSpace(message.Body)
+		if body == replyDefer {
+			if st.CycleTrigger != TriggerSoft {
+				logger.Info("orch: defer ignored, only a soft cycle may be declined", "messageID", message.ID, "trigger", st.CycleTrigger)
+				continue
+			}
+			written, err := handoffWritten(st.PendingHandoff)
+			if err != nil {
+				return err
+			}
+			if written {
+				logger.Info("orch: defer ignored, the note is already written", "messageID", message.ID)
+				continue
+			}
+			st.LastDeferral = now
+			return w.toIdle(st, "deferred")
+		}
+		path, isWritten := strings.CutPrefix(body, replyWritten)
+		if !isWritten || (path != "" && strings.TrimSpace(path) == path) {
+			logger.Info("orch: reply left unanswered, it is neither `written <path>` nor `defer`", "messageID", message.ID)
+			continue
+		}
+		path = strings.TrimSpace(path)
+		if !w.isRequestedNote(path, st) {
+			logger.Info("orch: reply left unanswered, it names another path", "messageID", message.ID, "path", path, "requested", st.PendingHandoff)
+			continue
+		}
+		written, err := handoffWritten(st.PendingHandoff)
+		if err != nil {
+			return err
+		}
+		if !written {
+			logger.Info("orch: reply left unanswered, the note is missing or empty", "messageID", message.ID, "path", st.PendingHandoff)
+			continue
+		}
+		if st.CycleMode == CycleCompact {
+			return w.startCompacting(st, now)
+		}
+		return w.startClearing(st, now)
+	}
+	return nil
+}
+
+// isRequestedNote reports whether path, resolved against the prime when relative, is the note the pending request asked for.
+func (w *Watcher) isRequestedNote(path string, st State) bool {
+	if path == "" {
+		return false
+	}
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(filepath.Dir(w.paths.RepoRulesPath), path)
+	}
+	return filepath.Clean(path) == filepath.Clean(st.PendingHandoff)
+}
+
+// sendStep persists the step as State.Pending with no id, then posts it as mail (mail true, body as the mail body) or injects it into the orch strand, and saves the id creel answers.
+// A mail ends as the note request: its id becomes State.RequestID and nothing stays pending.
+// A step is sent only after a re-read of the state file finds its phase still non-idle on its strand; otherwise nothing is persisted or sent and the tick ends.
+// A failed call is recorded through creelFailed and leaves the step pending with no id for adoptPending to look up on a later tick.
+func (w *Watcher) sendStep(st *State, mail bool, step CreelStep, body string, now time.Time) error {
+	current, err := LoadState(w.paths)
+	if err != nil {
+		return err
+	}
+	if current.Phase == PhaseIdle || current.Phase == "" || current.Strand != st.Strand {
+		return fmt.Errorf("orch: the phase ended or moved to another strand before its step was sent: %w", errStrandReplaced)
+	}
+	pending := PendingStep{Mail: mail, PersistedAt: now}
+	if mail {
+		pending.Text = body
+	} else {
+		pending.Command, pending.Argument, pending.Text = step.Command, step.Argument, step.Text
+	}
+	st.Pending = &pending
+	if err := w.save(*st); err != nil {
+		return err
+	}
+	name, err := w.orchName(*st)
+	if err != nil {
+		return w.creelFailed(st, err)
+	}
+	var id int64
+	if mail {
+		id, err = w.creel.Post(name, body)
+	} else {
+		id, err = w.creel.Inject(name, step, stepInjectTTL)
+	}
+	if err != nil {
+		return w.creelFailed(st, err)
+	}
+	logger.Info("orch: cycle step sent to creel", "strandGUID", st.Strand, "phase", string(st.Phase), "mail", mail, "command", pending.Command, "id", id, "sincePhase", w.sincePhase(*st, now))
+	if mail {
+		st.Pending, st.RequestID, st.PhaseInjected = nil, id, true
+	} else {
+		st.Pending.ID = id
+	}
+	return w.save(*st)
+}
+
+// recoverPending resolves a pending step that has no id: it adopts what creel journaled for it, and sends it again only when creel journaled nothing.
+func (w *Watcher) recoverPending(st *State, now time.Time) error {
+	settled, err := w.adoptPending(st)
+	if err != nil || settled {
+		return err
+	}
+	pending := st.Pending
+	return w.sendStep(st, pending.Mail, CreelStep{Command: pending.Command, Argument: pending.Argument, Text: pending.Text}, pending.Text, now)
+}
+
+// adoptPending looks up what creel journaled for the pending step that has no id, since the step was persisted: a failed call may have journaled its request.
+// It adopts only a post or inject whose command and argument, or text (a post's first line), match the step.
+// It answers true when the tick must not send the step: an id was adopted, or the lookup failed and is held through creelFailed.
+func (w *Watcher) adoptPending(st *State) (bool, error) {
+	pending := st.Pending
+	if pending == nil || pending.ID != 0 {
+		return false, nil
+	}
+	name, err := w.orchName(*st)
+	if err != nil {
+		return true, w.creelFailed(st, err)
+	}
+	sent, err := w.creel.Sent(name, pending.PersistedAt)
+	if err != nil {
+		return true, w.creelFailed(st, err)
+	}
+	for _, candidate := range sent {
+		if candidate.At.Before(pending.PersistedAt) || !pendingMatches(*pending, candidate) {
+			continue
+		}
+		logger.Info("orch: pending step adopted from creel's journal", "strandGUID", st.Strand, "phase", string(st.Phase), "id", candidate.ID)
+		if pending.Mail {
+			st.Pending, st.RequestID, st.PhaseInjected = nil, candidate.ID, true
+		} else {
+			pending.ID = candidate.ID
+		}
+		return true, w.save(*st)
+	}
+	return false, nil
+}
+
+// pendingMatches reports whether sent is the post or inject the pending step would have made.
+func pendingMatches(pending PendingStep, sent CreelSent) bool {
+	switch {
+	case pending.Mail:
+		firstLine, _, _ := strings.Cut(pending.Text, "\n")
+		return sent.Mail && sent.Subject == firstLine
+	case pending.Command != "":
+		return !sent.Mail && sent.Step.Command == pending.Command && sent.Step.Argument == pending.Argument
+	}
+	return !sent.Mail && sent.Step.Command == "" && sent.Subject == pending.Text
+}
+
+// stepOutcome reads the pending inject's outcome from creel without blocking the tick.
+// It answers true when the inject was typed, injected or unconfirmed, and the outcome says which;
+// an expired inject is queued again with its stall reason recorded in State.Stuck, and a withdrawn one is left to the caller, which returns the cycle to idle.
+// A pending step with no id, or a post, has no outcome to read and answers the zero outcome.
+func (w *Watcher) stepOutcome(st *State) (CreelOutcome, bool, error) {
+	pending := st.Pending
+	if pending == nil || pending.ID == 0 || pending.Mail {
+		return CreelOutcome{}, false, nil
+	}
+	outcome, err := w.creel.InjectOutcome(pending.ID)
+	if err != nil {
+		return CreelOutcome{}, false, w.creelFailed(st, err)
+	}
+	switch outcome.State {
+	case CreelInjected, CreelUnconfirmed:
+		if st.Stuck != "" && !st.StuckByCreel {
+			st.Stuck = ""
+			return outcome, true, w.save(*st)
+		}
+		return outcome, true, nil
+	case CreelExpired:
+		reason := outcome.Stall
+		if reason == "" {
+			reason = "the inject expired before the orch session took it"
+		}
+		if err := w.markStuck(st, reason); err != nil {
+			return outcome, false, err
+		}
+		step := CreelStep{Command: pending.Command, Argument: pending.Argument, Text: pending.Text}
+		return outcome, false, w.sendStep(st, false, step, "", w.clock.Now())
+	}
+	return outcome, false, nil
+}
+
+// turnEndAfterSending returns the first turn end read since the current step began whose hook-side second is after the second of sendingAt, the newest sending record of the step's inject.
+// A turn end with no time never counts, and neither does any turn end while sendingAt is zero.
+func (w *Watcher) turnEndAfterSending(sendingAt time.Time) (shuttleengine.Event, bool) {
+	if sendingAt.IsZero() {
+		return shuttleengine.Event{}, false
+	}
+	for _, ev := range w.seen.turnEnds {
+		if !ev.At.IsZero() && ev.At.Unix() > sendingAt.Unix() {
+			return ev, true
+		}
+	}
+	return shuttleengine.Event{}, false
+}
+
+// typeStartColor queues the strand's color on the first tick after binding, before anything else that tick queues, then reads its outcome until it settles.
 // A session resumed at the reload sequence's color step is left to that step.
-// A failed typing is logged and dropped, since the color is display only; a held one stays pending for the next tick.
+// A failed or expired color is logged and dropped, since the color is display only; an unconfirmed one counts as typed.
 func (w *Watcher) typeStartColor(st *State) error {
 	if !w.colorPending {
 		return nil
@@ -374,66 +750,123 @@ func (w *Watcher) typeStartColor(st *State) error {
 		w.colorPending = false
 		return nil
 	}
-	probe, err := w.probeIdle(st)
+	if w.colorInjectID == 0 {
+		return w.typeColor(st)
+	}
+	outcome, err := w.creel.InjectOutcome(w.colorInjectID)
 	if err != nil {
-		return err
-	}
-	if !probe.Idle {
+		logger.Warn("orch: reading the strand color's outcome failed; trying again", "strandGUID", st.Strand, "cause", err)
 		return nil
 	}
-	if w.typeColor(st) {
+	switch outcome.State {
+	case CreelInjected, CreelUnconfirmed:
+		w.colorPending, w.colorInjectID = false, 0
+		return w.recordColorTyped(st)
+	case CreelExpired, CreelWithdrawnState:
+		logger.Warn("orch: the strand color was not typed", "strandGUID", st.Strand, "outcome", string(outcome.State), "reason", outcome.Stall)
+		w.colorPending, w.colorInjectID = false, 0
+	}
+	return nil
+}
+
+// typeColor queues the strand's color as a creel command inject and remembers its id for typeStartColor to read.
+// A strand with no color queues nothing and counts as done.
+// A failure is logged and drops the color instead of failing the tick, so the color never wedges a start or a reload.
+func (w *Watcher) typeColor(st *State) error {
+	color, err := w.session.StrandColor(st.Strand)
+	if err != nil {
+		logger.Warn("orch: reading the strand color failed", "strandGUID", st.Strand, "cause", err)
+		w.colorPending = false
 		return nil
 	}
-	w.colorPending = false
-	if !colorTyped(*st) {
-		return nil
+	if color == "" {
+		w.colorPending = false
+		return w.recordColorTyped(st)
 	}
-	w.logTyped(*st, "start-color")
+	name, err := w.orchName(*st)
+	if err == nil {
+		w.colorInjectID, err = w.creel.Inject(name, CreelStep{Command: commandColor, Argument: color}, stepInjectTTL)
+	}
+	if err != nil {
+		logger.Warn("orch: queueing the strand color failed", "strandGUID", st.Strand, "cause", err)
+		w.colorPending, w.colorInjectID = false, 0
+	}
+	return nil
+}
+
+// recordColorTyped records in st that the strand's color counts as typed for its current strand and launch, so a watcher binding to the same session queues no start color.
+func (w *Watcher) recordColorTyped(st *State) error {
+	st.ColorStrand, st.ColorLaunchedAt = st.Strand, st.LaunchedAt
 	return w.save(*st)
 }
 
-// typeColor types the strand's color and logs a failure instead of returning it, so the color never wedges a start or a reload.
-// held is true when the session held the write, so the caller keeps the color pending and tries again on a later tick.
-// A typing that lands records the strand and launch in st, for the caller to save.
-func (w *Watcher) typeColor(st *State) (held bool) {
-	err := w.session.TypeColor(st.Strand)
-	held, saveErr := w.heldTyping(st, "color", err)
-	if saveErr != nil {
-		logger.Warn("orch: recording the held strand color failed", "strandGUID", st.Strand, "cause", saveErr)
-	}
-	switch {
-	case held:
-	case err != nil:
-		logger.Warn("orch: typing the strand color failed", "strandGUID", st.Strand, "cause", err)
-	default:
-		st.ColorStrand, st.ColorLaunchedAt = st.Strand, st.LaunchedAt
-	}
-	return held
-}
-
 // initCursor sets the read cursor from st on the watcher's first tick for a strand.
-// A phase belonging to another strand is reset to idle,
-// and a same-strand phase's injection is marked unconfirmed so the landed check runs again.
+// A phase belonging to another strand is reset to idle through resetForOtherStrand.
+// A Stuck that neither a pending step, a creel failure nor a recorded fresh-launch failure owns is cleared, since only the old watcher's hold bookkeeping could have left it.
 func (w *Watcher) initCursor(st State) (State, error) {
 	w.started, w.strand = true, st.Strand
-	w.newest, w.seen, w.replaying = nil, phaseEvents{}, false
+	w.newest, w.seen = nil, phaseEvents{}
 	w.compactedAt = time.Time{}
-	w.idleDisagreement, w.hasIdleDisagreement = idleStatePair{}, false
-	w.lastHeld, w.heldSince, w.heldWaited, w.sessionStartLogged = "", time.Time{}, 0, time.Time{}
-	w.lastSendHeld = ""
+	w.sessionStartLogged = time.Time{}
+	w.colorInjectID = 0
+	staleStuck := st.Stuck != "" && st.Pending == nil && !st.StuckByCreel && st.FreshLaunchFailure == ""
+	if staleStuck {
+		st.Stuck = ""
+	}
 	switch {
 	case st.Phase == PhaseIdle:
 		w.cursor = st.LastInjectionOffset
 		w.colorPending = !colorTyped(st)
+		if staleStuck {
+			return st, w.save(st)
+		}
 		return st, nil
 	case st.PhaseStrand != st.Strand:
-		st = ResetForFreshLaunch(st, st.Strand, w.clock.Now())
-		w.cursor = 0
-	default:
-		st.PhaseInjected = false
-		w.cursor = st.PhaseEventsOffset
-		w.replaying = true
+		return w.resetForOtherStrand(st)
 	}
+	w.cursor = st.PhaseEventsOffset
+	w.colorPending = !colorTyped(st)
+	return st, w.save(st)
+}
+
+// resetForOtherStrand resets a phase that belongs to another strand to idle: it withdraws the watcher's queued injects and unread mail to the orch strand, releases its hold and drops its pending ids.
+// The resume-noticed mark of each pause entry whose resume line the withdraw removed is cleared, so a continued session gets the line posted again.
+// A failed withdraw or release goes through creelFailed, saves no reset and leaves the watcher unbound, so the next tick runs the reset again; it then answers errResetPending.
+func (w *Watcher) resetForOtherStrand(st State) (State, error) {
+	held := func(err error) (State, error) {
+		w.started = false
+		if saveErr := w.creelFailed(&st, err); saveErr != nil {
+			return st, saveErr
+		}
+		return st, errResetPending
+	}
+	name, err := w.orchName(st)
+	if err != nil {
+		return held(err)
+	}
+	withdrawn, err := w.creel.Withdraw(name)
+	if err != nil {
+		return held(err)
+	}
+	if w.pause != nil {
+		if st.ResumeLineWithdrawn {
+			withdrawn = append(withdrawn, CreelWithdrawn{Subject: pauserecord.ResumeLine})
+		}
+		if err := ClearResumeNoticed(w.pause.RecordPath, st.Strand, withdrawn, w.clock.Now()); err != nil {
+			// The withdraw removed the line for good; keep that fact so the next tick's reset still clears the mark.
+			st.ResumeLineWithdrawn = slices.ContainsFunc(withdrawn, func(message CreelWithdrawn) bool { return message.Subject == pauserecord.ResumeLine })
+			w.started = false
+			if saveErr := w.save(st); saveErr != nil {
+				return st, saveErr
+			}
+			return st, err
+		}
+	}
+	if err := w.creel.Release(name); err != nil {
+		return held(err)
+	}
+	st = ResetForFreshLaunch(st, st.Strand, w.clock.Now())
+	w.cursor = 0
 	w.colorPending = !colorTyped(st)
 	return st, w.save(st)
 }
@@ -445,12 +878,14 @@ func colorTyped(st State) bool {
 
 // toIdle returns st to idle, persisting the cursor read through and forgetting the newest event,
 // so only a turn end read after the return can qualify for the next injection.
+// It releases the creel hold; a failed release is recorded and does not keep the phase.
 func (w *Watcher) toIdle(st State, abortReason string) error {
 	st.Phase = PhaseIdle
 	st.PhaseInjected = false
+	st.Pending, st.RequestID = nil, 0
 	st.PendingHandoff, st.PendingResume = "", ""
 	st.ReloadStep, st.ReloadTypedAt, st.ReloadRetry, st.ReloadSkipsSkills = ReloadStepSkills, time.Time{}, nil, false
-	st.Stuck, st.StuckByHold, st.StuckBySend = "", false, false
+	st.Stuck, st.StuckByCreel = "", false
 	st.LastInjectionOffset = w.cursor
 	if abortReason != "" {
 		st.LastAbortReason = abortReason
@@ -459,152 +894,39 @@ func (w *Watcher) toIdle(st State, abortReason string) error {
 	if err := ClearResumeMark(w.paths); err != nil {
 		return err
 	}
+	if err := w.releaseHold(&st); err != nil {
+		return err
+	}
 	return w.save(st)
 }
 
-// enter persists a new non-idle phase, unconfirmed, before its side effect.
+// enter persists a new non-idle phase before its first step is sent.
 func (w *Watcher) enter(st State, phase Phase, now time.Time) (State, error) {
 	st.Phase = phase
 	st.PhaseStrand = st.Strand
 	st.PhaseEnteredAt = now
 	st.PhaseEventsOffset = w.cursor
 	st.PhaseInjected = false
-	st.Stuck, st.StuckByHold, st.StuckBySend = "", false, false
+	st.Pending, st.RequestID = nil, 0
+	st.Stuck, st.StuckByCreel = "", false
 	w.seen = phaseEvents{}
 	return st, w.save(st)
 }
 
-// confirm persists that the phase's injection landed.
-func (w *Watcher) confirm(st State) error {
-	st.PhaseInjected = true
-	return w.save(st)
-}
-
-// markStuck records reason as the current phase's stuck condition for `status`,
+// markStuck records reason as the stall creel reported for the pending inject, for `status`,
 // saving and logging it only when it changes so a long wait logs once.
-func (w *Watcher) markStuck(st State, reason string) error {
-	if st.Stuck == reason {
+func (w *Watcher) markStuck(st *State, reason string) error {
+	if st.Stuck == reason && !st.StuckByCreel {
 		return nil
 	}
-	logger.Warn("orch: cycle phase stuck", "phase", string(st.Phase), "reason", reason, "strandGUID", st.Strand)
-	st.Stuck, st.StuckByHold, st.StuckBySend = reason, false, false
-	return w.save(st)
-}
-
-// heldTyping folds the error of a typed step into whether shuttle held the write.
-// A nil error and one that does not wrap shuttleengine.ErrSessionBusy answer held false, and the caller returns the error as it did before.
-// A held write typed nothing: it is logged at Info once per change of reason, a draft hold under the constant draftHoldReason so the operator's typing never changes it, and the caller returns nil leaving its phase as it is, so the next tick retypes the same text and the tick counts no error.
-// In the idle phase the reason is also recorded in st.Stuck with StuckBySend and saved, unless a Stuck that no hold and no send wrote is already there.
-func (w *Watcher) heldTyping(st *State, step string, err error) (held bool, saveErr error) {
-	if err == nil {
-		w.lastSendHeld = ""
-		return false, nil
-	}
-	if !errors.Is(err, shuttleengine.ErrSessionBusy) {
-		return false, nil
-	}
-	reason, _, _ := strings.Cut(err.Error(), "\n")
-	if shuttleengine.IsDraftHold(err) {
-		reason = draftHoldReason
-	}
-	if reason != w.lastSendHeld {
-		logger.Info("orch: injection held by the session", "strandGUID", st.Strand, "step", step, "reason", reason)
-	}
-	w.lastSendHeld = reason
-	if st.Phase != PhaseIdle || st.Stuck == reason || st.Stuck != "" && !st.StuckByHold && !st.StuckBySend {
-		return true, nil
-	}
-	st.Stuck, st.StuckByHold, st.StuckBySend = reason, false, true
-	return true, w.save(*st)
-}
-
-// clearSendStuck ends a Stuck that a held step wrote, once a send has passed.
-func (w *Watcher) clearSendStuck(st *State) error {
-	if !st.StuckBySend {
-		return nil
-	}
-	st.Stuck, st.StuckBySend = "", false
+	logger.Warn("orch: cycle step stalled", "phase", string(st.Phase), "reason", reason, "strandGUID", st.Strand)
+	st.Stuck, st.StuckByCreel = reason, false
 	return w.save(*st)
 }
 
-// paneTooShortReason is the State.Stuck text recorded while the idle probe reports a pane too short to draw an input box.
-const paneTooShortReason = "orch pane too short for the idle probe; resize or use the larger client"
-
-// paneNotIdleReason is the hold reason of a probe that is not idle and gives no reason of its own: the pane probe decided.
-const paneNotIdleReason = "the pane does not show an empty input box with no turn in progress"
-
-// draftHoldReason is the reason recorded for a hold by text in the session's input box, in place of the reason shuttle names, which quotes the operator's draft.
-const draftHoldReason = "the input box holds a draft"
-
-// heldReason returns why probe holds an injection: the draft constant for a draft hold, else its own reason, else the pane-too-short text, else the pane fallback.
-func heldReason(probe shuttleengine.IdleProbe) string {
-	switch {
-	case probe.Draft:
-		return draftHoldReason
-	case probe.Reason != "":
-		return probe.Reason
-	case probe.TooShort:
-		return paneTooShortReason
-	}
-	return paneNotIdleReason
-}
-
-// probeIdle runs the idle probe, the one door every watcher probe goes through.
-// A probe that is not idle is logged and recorded in st.Stuck through logHeld;
-// a passing probe ends the hold and clears a Stuck that a hold wrote, and only that.
-func (w *Watcher) probeIdle(st *State) (shuttleengine.IdleProbe, error) {
-	probe, err := w.session.SessionIdle(st.Strand)
-	if err != nil {
-		return probe, err
-	}
-	w.logIdleStateDisagreement(st.Strand, probe)
-	if !probe.Idle {
-		return probe, w.logHeld(st, probe)
-	}
-	w.heldWaited = 0
-	if !w.heldSince.IsZero() {
-		w.heldWaited = w.clock.Now().Sub(w.heldSince)
-	}
-	w.lastHeld, w.heldSince = "", time.Time{}
-	if st.StuckByHold {
-		st.Stuck, st.StuckByHold = "", false
-		return probe, w.save(*st)
-	}
-	return probe, nil
-}
-
-// logHeld logs why the probe holds the injection, once per change of reason, and records the reason in st.Stuck.
-// A Stuck written by anything but a hold is left alone.
-func (w *Watcher) logHeld(st *State, probe shuttleengine.IdleProbe) error {
-	reason := heldReason(probe)
-	now := w.clock.Now()
-	if w.heldSince.IsZero() {
-		w.heldSince = now
-	}
-	if reason != w.lastHeld {
-		logger.Info("orch: injection held", "strandGUID", st.Strand, "phase", string(st.Phase), "step", w.stepName(*st), "reason", reason, "sincePhase", w.sincePhase(*st, now))
-	}
-	w.lastHeld = reason
-	if st.Stuck != "" && !st.StuckByHold || st.Stuck == reason {
-		return nil
-	}
-	st.Stuck, st.StuckByHold = reason, true
-	return w.save(*st)
-}
-
-// logTyped logs that step was typed into the session, with how long the hold the caller's passing probe ended lasted.
+// logTyped logs that step of the cycle was typed into the session.
 func (w *Watcher) logTyped(st State, step string) {
-	now := w.clock.Now()
-	logger.Info("orch: injection typed", "strandGUID", st.Strand, "phase", string(st.Phase), "step", step, "waited", w.heldWaited, "sincePhase", w.sincePhase(st, now))
-	w.heldWaited = 0
-}
-
-// stepName names the reload step st is in while it is resuming, and is empty in every other phase.
-func (w *Watcher) stepName(st State) string {
-	if st.Phase != PhaseResuming {
-		return ""
-	}
-	return reloadStepName(w.reloadStep(st))
+	logger.Info("orch: injection typed", "strandGUID", st.Strand, "phase", string(st.Phase), "step", step, "sincePhase", w.sincePhase(st, w.clock.Now()))
 }
 
 // sincePhase returns how long st's phase has run at now, or since the newest event was read while idle.
@@ -633,43 +955,6 @@ func reloadStepName(step int) string {
 	return "pointer"
 }
 
-// logIdleStateDisagreement logs at Info, once per episode, when probe reads idle beside the state busy, or not idle beside idle-done, idle-stalled or idle-fresh.
-// An idle probe beside busy on background work agrees, as does a probe that is not idle beside asking.
-// An episode is the idle answer, state, cause and the state's since; the line logs only when that differs from the last pair logged, and an agreeing probe forgets nothing.
-// It also logs the hook's session-start event once per new time.
-// A probe that reports the pane too short is not compared.
-// A state that cannot be read is logged at Debug, and the watcher takes two decisions from the state: dropping a conditioned notice and recording the session id.
-func (w *Watcher) logIdleStateDisagreement(strand string, probe shuttleengine.IdleProbe) {
-	reading, err := w.session.SessionState(strand)
-	if err != nil {
-		logger.Debug("orch: session state unreadable", "strandGUID", strand, "cause", err)
-		return
-	}
-	if at := reading.SessionStartAt; !at.IsZero() && !at.Equal(w.sessionStartLogged) {
-		w.sessionStartLogged = at
-		logger.Info("orch: session start signal read", "strandGUID", strand, "sessionStartAt", at)
-	}
-	if probe.TooShort {
-		return
-	}
-	state := reading.State
-	var disagrees bool
-	if probe.Idle {
-		disagrees = state.Name == shuttleengine.SessionBusy && state.Cause != shuttleengine.SessionCauseBackground
-	} else {
-		disagrees = state.Name == shuttleengine.SessionIdleDone || state.Name == shuttleengine.SessionIdleStalled || state.Name == shuttleengine.SessionIdleFresh
-	}
-	if !disagrees {
-		return
-	}
-	pair := idleStatePair{idle: probe.Idle, state: state.Name, cause: state.Cause, since: state.Since}
-	if w.hasIdleDisagreement && w.idleDisagreement == pair {
-		return
-	}
-	w.idleDisagreement, w.hasIdleDisagreement = pair, true
-	logger.Info("orch: session state disagrees with the idle probe", "strandGUID", strand, "idle", probe.Idle, "state", string(state.Name), "cause", state.Cause, "since", state.Since)
-}
-
 // storeReading records reading in st, taken through turnEnd; an unknown reading is stored as zero tokens.
 func storeReading(st *State, reading shuttleengine.ContextReading, turnEnd shuttleengine.Event) {
 	st.ReadingTurnEnd = &turnEnd
@@ -677,54 +962,6 @@ func storeReading(st *State, reading shuttleengine.ContextReading, turnEnd shutt
 	if !reading.Known {
 		st.LastContextTokens = 0
 	}
-}
-
-// deliverNotice types the oldest queued notice into the session as a turn, then removes its file.
-// It runs after tickIdle and delivers only when the persisted phase is still idle, so a tick that started a cycle delivers nothing,
-// and only when the idle probe passes, so a notice is never typed over a draft or a running turn.
-// Delivery is at least once: a watcher that dies between typing and removing types the notice again after restart.
-// A notice carrying a condition is first checked against the session state, read before the idle probe:
-// one whose state or cause differs is removed without typing and the tick delivers nothing, and a state that cannot be read keeps the notice and returns the error.
-func (w *Watcher) deliverNotice() error {
-	notices, err := ListNotices(w.paths)
-	if err != nil || len(notices) == 0 {
-		return err
-	}
-	st, err := LoadState(w.paths)
-	if err != nil {
-		return err
-	}
-	if st.Phase != PhaseIdle {
-		return nil
-	}
-	if when := notices[0].Condition; when != nil {
-		reading, err := w.session.SessionState(st.Strand)
-		if err != nil {
-			return err
-		}
-		if reading.State.Name != when.State || reading.State.Cause != when.Cause {
-			logger.Info("orch: conditioned notice dropped, its session state no longer reads", "strandGUID", st.Strand, "notice", notices[0].Line, "wantState", string(when.State), "wantCause", when.Cause, "state", string(reading.State.Name), "cause", reading.State.Cause)
-			return RemoveNotice(notices[0])
-		}
-	}
-	probe, err := w.probeIdle(&st)
-	if err != nil {
-		return err
-	}
-	if !probe.Idle {
-		return nil
-	}
-	err = w.session.Send(st.Strand, notices[0].Line)
-	if held, saveErr := w.heldTyping(&st, "notice", err); saveErr != nil || held {
-		return saveErr
-	}
-	if err != nil {
-		return err
-	}
-	if err := w.clearSendStuck(&st); err != nil {
-		return err
-	}
-	return RemoveNotice(notices[0])
 }
 
 func (w *Watcher) tickIdle(st State, now time.Time) error {
@@ -736,7 +973,7 @@ func (w *Watcher) tickIdle(st State, now time.Time) error {
 		return err
 	}
 	if requested && now.Sub(req.RequestedAt) >= w.cfg.HandoffTimeout() {
-		// The time is on disk, so this covers a request whose idle probe never passed and a marker a dead watcher left.
+		// The time is on disk, so this covers a marker a dead watcher left.
 		logger.Warn("orch: stale cycle request removed", "mode", req.Mode, "age", now.Sub(req.RequestedAt).String(), "strandGUID", st.Strand)
 		if err := ClearCycleRequest(w.paths); err != nil {
 			return err
@@ -765,7 +1002,7 @@ func (w *Watcher) tickIdle(st State, now time.Time) error {
 	deferralHolds := !st.LastDeferral.IsZero() && now.Sub(st.LastDeferral) < w.cfg.SoftIdle()
 	quiet := w.cfg.IdleGrace()
 	if trigger == TriggerRequested {
-		// The operator asked for this cycle at a moment of their choosing; the idle probe alone guards the pane.
+		// The operator asked for this cycle at a moment of their choosing; creel's idle check alone guards the pane.
 		quiet = 0
 	}
 	if trigger == TriggerSoft {
@@ -779,13 +1016,6 @@ func (w *Watcher) tickIdle(st State, now time.Time) error {
 		return nil
 	}
 	if now.Sub(w.newestRead) < quiet {
-		return nil
-	}
-	probe, err := w.probeIdle(&st)
-	if err != nil {
-		return err
-	}
-	if !probe.Idle {
 		return nil
 	}
 	if trigger != TriggerRequested {
@@ -808,8 +1038,12 @@ func (w *Watcher) tickIdle(st State, now time.Time) error {
 	}
 
 	path := NewHandoffPath(w.paths, now)
-	text, err := w.renderHandoffRequest(trigger, path)
+	body, err := w.renderHandoffRequest(trigger, path)
 	if err != nil {
+		return err
+	}
+	held, err := w.renewHold(&st)
+	if err != nil || !held {
 		return err
 	}
 	st.PendingHandoff = path
@@ -822,14 +1056,7 @@ func (w *Watcher) tickIdle(st State, now time.Time) error {
 	if err := ClearCycleRequest(w.paths); err != nil {
 		return err
 	}
-	err = w.session.Send(st.Strand, text)
-	if held, saveErr := w.heldTyping(&st, "handoff request", err); saveErr != nil || held {
-		return saveErr
-	}
-	if err != nil {
-		return err
-	}
-	return w.confirm(st)
+	return w.sendStep(&st, true, CreelStep{}, body, now)
 }
 
 // renderHandoffRequest renders the note template file, then the note request for trigger: the soft stencil for a soft cycle, the plain one otherwise.
@@ -843,35 +1070,11 @@ func (w *Watcher) renderHandoffRequest(trigger, handoffPath string) (string, err
 	return RenderHandoffInstruction(w.stencilsDir, handoffPath, w.paths.NoteTemplatePath)
 }
 
+// tickHandoff waits for the orch's reply to the note request, which readReplies handles, and times the phase out.
+// A request not yet posted, because a restart came before the post was persisted, is posted again.
 func (w *Watcher) tickHandoff(st State, now time.Time) error {
 	if w.seen.ask {
 		return w.toIdle(st, "session asked a question during the handoff")
-	}
-	if w.seen.turnEndAfterHandoff {
-		probe, err := w.probeIdle(&st)
-		if err != nil {
-			return err
-		}
-		if probe.Idle {
-			if st.CycleMode == CycleCompact {
-				return w.startCompacting(st, now)
-			}
-			return w.startClearing(st, now)
-		}
-	}
-	if w.seen.deferred {
-		// A file written between the stat and this tick wins over the DEFER, so the file is re-statted before returning to idle.
-		if !w.seen.handoffWritten {
-			written, err := handoffWritten(st.PendingHandoff)
-			if err != nil {
-				return err
-			}
-			w.seen.handoffWritten = written
-			if !written {
-				st.LastDeferral = w.seen.deferRead
-				return w.toIdle(st, "deferred")
-			}
-		}
 	}
 	// A requested cycle's clock starts at the request, which predates the phase entry.
 	started := st.PhaseEnteredAt
@@ -881,31 +1084,14 @@ func (w *Watcher) tickHandoff(st State, now time.Time) error {
 	if now.Sub(started) >= w.cfg.HandoffTimeout() {
 		return w.toIdle(st, "handoff timed out")
 	}
-	if st.PhaseInjected {
+	if st.Pending != nil || st.RequestID != 0 {
 		return nil
 	}
-	if w.seen.turnEnd {
-		return w.confirm(st)
-	}
-	probe, err := w.probeIdle(&st)
+	body, err := w.renderHandoffRequest(st.CycleTrigger, st.PendingHandoff)
 	if err != nil {
 		return err
 	}
-	if !probe.Idle {
-		return nil
-	}
-	text, err := w.renderHandoffRequest(st.CycleTrigger, st.PendingHandoff)
-	if err != nil {
-		return err
-	}
-	err = w.session.Send(st.Strand, text)
-	if held, saveErr := w.heldTyping(&st, "handoff request", err); saveErr != nil || held {
-		return saveErr
-	}
-	if err != nil {
-		return err
-	}
-	return w.confirm(st)
+	return w.sendStep(&st, true, CreelStep{}, body, now)
 }
 
 // handoffWritten reports whether the handoff file exists and is non-empty.
@@ -920,8 +1106,8 @@ func handoffWritten(path string) (bool, error) {
 	return info.Size() > 0, nil
 }
 
-// startClearing renders the role file and the resume prompt first, so what the cleared session needs is known good before /clear runs, then persists clearing and types /clear.
-// The caller must have seen the session idle on this tick.
+// startClearing renders the role file and the resume prompt first, so what the cleared session needs is known good before /clear is injected, then persists clearing.
+// The `/clear` itself is sent by the next tickClearing.
 func (w *Watcher) startClearing(st State, now time.Time) error {
 	if err := w.renderRoleFile(); err != nil {
 		return w.toIdle(st, err.Error())
@@ -932,51 +1118,30 @@ func (w *Watcher) startClearing(st State, now time.Time) error {
 	}
 	st.LastHandoff = st.PendingHandoff
 	st.PendingResume = resume
-	if st, err = w.enter(st, PhaseClearing, now); err != nil {
-		return err
-	}
-	err = w.session.ClearSession(st.Strand)
-	if held, saveErr := w.heldTyping(&st, "clear", err); saveErr != nil || held {
-		return saveErr
-	}
-	if err != nil {
-		return err
-	}
-	return w.confirm(st)
+	_, err = w.enter(st, PhaseClearing, now)
+	return err
 }
 
-// tickClearing types nothing while the session is not idle, however long that lasts;
-// past the handoff timeout it records the wait in State.Stuck instead.
-// Once idle, an unconfirmed clear is typed again before the timeout and skipped after it, and a confirmed one moves on to resuming.
+// tickClearing injects `/clear` and waits for creel to type it, however long the orch stays busy;
+// `lyx orch status` shows the stall creel reports meanwhile.
+// An injected or unconfirmed `/clear` moves on to resuming, and a withdrawn one returns to idle.
 func (w *Watcher) tickClearing(st State, now time.Time) error {
-	timedOut := now.Sub(st.PhaseEnteredAt) >= w.cfg.HandoffTimeout()
-	probe, err := w.probeIdle(&st)
+	if st.Pending == nil {
+		return w.sendStep(&st, false, CreelStep{Command: commandClear}, "", now)
+	}
+	outcome, typed, err := w.stepOutcome(&st)
 	if err != nil {
 		return err
 	}
-	if !probe.Idle {
-		if timedOut && !probe.TooShort {
-			return w.markStuck(st, "clearing timed out with the session not idle; nothing is typed until it is idle")
-		}
+	if outcome.State == CreelWithdrawnState {
+		return w.toIdle(st, "the clear was withdrawn")
+	}
+	if !typed {
 		return nil
 	}
-	if !st.PhaseInjected && !timedOut {
-		// A clear that errored never reached the pane, and a pre-clear pane passes the idle probe too.
-		err := w.session.ClearSession(st.Strand)
-		if held, saveErr := w.heldTyping(&st, "clear", err); saveErr != nil || held {
-			return saveErr
-		}
-		if err != nil {
-			return err
-		}
-		return w.confirm(st)
-	}
-
-	if st.PhaseInjected {
-		st.CycleCount++
-		if err := w.removeSatisfiedRequest(CycleClear, now); err != nil {
-			return err
-		}
+	st.CycleCount++
+	if err := w.removeSatisfiedRequest(CycleClear, now); err != nil {
+		return err
 	}
 	return w.startReload(st, now, false)
 }
@@ -995,17 +1160,15 @@ func (w *Watcher) removeSatisfiedRequest(mode string, effectAt time.Time) error 
 	return ClearCycleRequest(w.paths)
 }
 
-// startAutoReload reloads the plugins and the role after an auto-compaction read at a turn end, once the idle probe passes.
+// startAutoReload reloads the plugins and the role after an auto-compaction read at a turn end, once the creel hold is taken.
 // The baseline moves to the boundary when the phase is entered, so no boundary reloads twice.
 // A role-file render failure, the command index's included, returns to idle with the reason, as a clear cycle's does.
 // It also forgets the boundary, so the failure is reported once and the next turn end retries it.
+// A refused hold keeps the boundary and tries again on the next tick.
 func (w *Watcher) startAutoReload(st State, now time.Time) error {
-	probe, err := w.probeIdle(&st)
-	if err != nil {
+	held, err := w.renewHold(&st)
+	if err != nil || !held {
 		return err
-	}
-	if !probe.Idle {
-		return nil
 	}
 	if err := w.renderRoleFile(); err != nil {
 		w.compactedAt = time.Time{}
@@ -1021,9 +1184,9 @@ func (w *Watcher) startAutoReload(st State, now time.Time) error {
 	return w.startReload(st, now, true)
 }
 
-// startReload enters the resuming phase at its color step and types it.
+// startReload enters the resuming phase at its color step and queues it.
 // skipsSkills is true for a reload after a compaction, which keeps the session's skills, and false after `/clear`, which loses them.
-// The caller must have seen the session idle on this tick and set st.PendingResume to the pointer line.
+// The caller must have set st.PendingResume to the pointer line.
 func (w *Watcher) startReload(st State, now time.Time, skipsSkills bool) error {
 	st.ReloadStep, st.ReloadTypedAt, st.ReloadRetry, st.ReloadSkipsSkills = ReloadStepColor, time.Time{}, nil, skipsSkills
 	st, err := w.enter(st, PhaseResuming, now)
@@ -1052,11 +1215,10 @@ func (w *Watcher) reloadStep(st State) int {
 	return ReloadStepPointer
 }
 
-// typeReloadStep types the current step, the color, the plugins reload, the skills load, the retry load or the pointer: the caller must have seen the session idle on this tick.
-// The first typing persists the step's time and events offset first, so a turn end read before it never confirms the step.
-// A re-typing after a restart keeps both, so the step's timeout never restarts.
-// The color and plugins steps end no turn,
-// so each persists the move to the next step itself and types nothing else on this tick.
+// typeReloadStep queues the current step, the color, the plugins reload, the skills load, the retry load or the pointer, as one creel inject.
+// The first queueing persists the step's time and events offset first, so a turn end read before it never confirms the step.
+// A requeue after a restart or an expiry keeps both, so the step's timeout never restarts.
+// A strand with no color has no color step to queue and moves straight to the plugins step.
 func (w *Watcher) typeReloadStep(st State, now time.Time) error {
 	if st.ReloadTypedAt.IsZero() {
 		st.ReloadTypedAt = now
@@ -1067,56 +1229,35 @@ func (w *Watcher) typeReloadStep(st State, now time.Time) error {
 			return err
 		}
 	}
-	var err error
-	step := w.reloadStep(st)
-	switch step {
+	switch step := w.reloadStep(st); step {
 	case ReloadStepColor:
-		if w.typeColor(&st) {
-			return nil
-		}
-		w.logTyped(st, reloadStepName(step))
-		st.ReloadStep, st.ReloadTypedAt = ReloadStepPlugins, time.Time{}
-		st.PhaseEventsOffset = w.cursor
-		st.PhaseInjected = false
-		w.seen = phaseEvents{}
-		return w.save(st)
-	case ReloadStepPlugins:
-		err := w.session.ReloadPlugins(st.Strand)
-		if held, saveErr := w.heldTyping(&st, reloadStepName(step), err); saveErr != nil || held {
-			return saveErr
-		}
+		color, err := w.session.StrandColor(st.Strand)
 		if err != nil {
-			return err
+			logger.Warn("orch: reading the strand color failed; the reload goes on without it", "strandGUID", st.Strand, "cause", err)
+			color = ""
 		}
-		w.logTyped(st, reloadStepName(step))
-		next := ReloadStepSkills
-		if st.ReloadSkipsSkills {
-			next = ReloadStepPointer
+		if color == "" {
+			return w.finishColorStep(st, now)
 		}
-		st.ReloadStep, st.ReloadTypedAt = next, time.Time{}
-		st.PhaseEventsOffset = w.cursor
-		st.PhaseInjected = false
-		w.seen = phaseEvents{}
-		return w.save(st)
+		return w.sendStep(&st, false, CreelStep{Command: commandColor, Argument: color}, "", now)
+	case ReloadStepPlugins:
+		return w.sendStep(&st, false, CreelStep{Command: commandReloadPlugins}, "", now)
 	case ReloadStepSkills:
-		err = w.session.LoadSkills(st.Strand, w.skills)
+		return w.sendStep(&st, false, CreelStep{Command: commandLoadSkills, Argument: strings.Join(w.skills, " ")}, "", now)
 	case ReloadStepRetry:
-		err = w.session.LoadSkills(st.Strand, st.ReloadRetry)
-	default:
-		if mark, delivered := w.hookDelivered(st); delivered {
-			logger.Info("orch: pointer delivered by the session-start hook", "strandGUID", st.Strand, "markAt", mark.At)
-			return w.toIdle(st, "")
-		}
-		err = w.session.Send(st.Strand, st.PendingResume)
+		return w.sendStep(&st, false, CreelStep{Command: commandLoadSkills, Argument: strings.Join(st.ReloadRetry, " ")}, "", now)
 	}
-	if held, saveErr := w.heldTyping(&st, reloadStepName(step), err); saveErr != nil || held {
-		return saveErr
+	if mark, delivered := w.hookDelivered(st); delivered {
+		logger.Info("orch: pointer delivered by the session-start hook", "strandGUID", st.Strand, "markAt", mark.At)
+		return w.toIdle(st, "")
 	}
-	if err != nil {
-		return err
-	}
-	w.logTyped(st, reloadStepName(step))
-	return w.confirm(st)
+	return w.sendStep(&st, false, CreelStep{Text: st.PendingResume}, "", now)
+}
+
+// finishColorStep moves the reload from its color step to the plugins step, recording the strand's color as typed for the session.
+func (w *Watcher) finishColorStep(st State, now time.Time) error {
+	st.ColorStrand, st.ColorLaunchedAt = st.Strand, st.LaunchedAt
+	return w.advanceReload(st, now, ReloadStepPlugins, nil)
 }
 
 // hookDelivered returns the delivery mark and true when the session-start hook already delivered the pending pointer:
@@ -1131,12 +1272,17 @@ func (w *Watcher) hookDelivered(st State) (ResumeMark, bool) {
 	return mark, found && !mark.At.Before(st.CompactionBaseline) && mark.Text == st.PendingResume
 }
 
-// advanceReload persists the move to step, with retry as the skills its retry step loads and its offset taken at the cursor, and goes on to type it when the idle probe passes.
+// advanceReload persists the move to step, with retry as the skills its retry step loads and its offset taken at the cursor, and goes on to queue it.
+// The move ends the stall reason of the step it leaves.
 func (w *Watcher) advanceReload(st State, now time.Time, step int, retry []string) error {
 	st.ReloadStep, st.ReloadRetry = step, retry
 	st.ReloadTypedAt = time.Time{}
 	st.PhaseEventsOffset = w.cursor
 	st.PhaseInjected = false
+	st.Pending = nil
+	if !st.StuckByCreel {
+		st.Stuck = ""
+	}
 	w.seen = phaseEvents{}
 	if err := w.save(st); err != nil {
 		return err
@@ -1149,11 +1295,11 @@ func (w *Watcher) skipSkill(st State, skill, cause string) {
 	logger.Warn("orch: skill skipped", "skill", skill, "cause", cause, "strandGUID", st.Strand)
 }
 
-// settleSkillTurn classifies the load turn of skills that the step's first turn end ended, logs what is skipped and moves on:
+// settleSkillTurn classifies the load turn of skills that turnEnd ended, logs what is skipped and moves on:
 // to the retry step when the skills step left skills missing, else to the pointer.
 // An unreadable turn is confirmed unverified, with no retry.
-func (w *Watcher) settleSkillTurn(st State, now time.Time, step int, skills []string) error {
-	report, err := w.session.ClassifySkillLoad(st.Strand, w.seen.firstTurnEnd, skills)
+func (w *Watcher) settleSkillTurn(st State, now time.Time, step int, skills []string, turnEnd shuttleengine.Event) error {
+	report, err := w.session.ClassifySkillLoad(st.Strand, turnEnd, skills)
 	if err != nil {
 		return err
 	}
@@ -1174,94 +1320,95 @@ func (w *Watcher) settleSkillTurn(st State, now time.Time, step int, skills []st
 }
 
 // tickResuming walks the reload sequence: the color step, the plugins step, the skills step after `/clear`, the retry step when skills were left missing, then the pointer.
-// The color and plugins steps have no confirmation and no timeout: each is typed again until the move off it is persisted.
-// A skills or retry step is confirmed by a turn end read after it was typed, and settled from that turn.
-// Past its timeout, from its first typing, every skill it loads is skipped with no retry.
-// The pointer step ends the phase at its first turn end and times out the same way.
-// Nothing is typed unless the idle probe passed on the same tick, and a step typed before a restart is typed again until confirmed.
+// The color and plugins steps move on once creel typed their inject, injected or unconfirmed.
+// A skills or retry step is confirmed by a turn end read after its inject's newest sending record, and settled from that turn.
+// The pointer step ends the phase at such a turn end.
+// Every step times out from its first queueing: the color and plugins steps are logged as skipped, the skills every skill it loads, and the pointer ends the phase as `resume timed out`.
+// A withdrawn inject returns to idle.
 func (w *Watcher) tickResuming(st State, now time.Time) error {
-	typed := !st.ReloadTypedAt.IsZero()
-	timedOut := typed && now.Sub(st.ReloadTypedAt) >= w.cfg.HandoffTimeout()
 	step := w.reloadStep(st)
-	if step == ReloadStepColor || step == ReloadStepPlugins {
-		return w.typeReloadStepWhenIdle(st, now)
+	skills := w.skills
+	if step == ReloadStepRetry {
+		skills = st.ReloadRetry
 	}
-	if step != ReloadStepPointer {
-		skills := w.skills
-		if step == ReloadStepRetry {
-			skills = st.ReloadRetry
-		}
-		if typed {
-			if w.seen.turnEnd {
-				return w.settleSkillTurn(st, now, step, skills)
+	outcome, typed, err := w.stepOutcome(&st)
+	if err != nil {
+		return err
+	}
+	if outcome.State == CreelWithdrawnState {
+		return w.toIdle(st, "a reload step was withdrawn")
+	}
+	if typed {
+		switch step {
+		case ReloadStepColor:
+			w.logTyped(st, reloadStepName(step))
+			return w.finishColorStep(st, now)
+		case ReloadStepPlugins:
+			w.logTyped(st, reloadStepName(step))
+			next := ReloadStepSkills
+			if st.ReloadSkipsSkills {
+				next = ReloadStepPointer
 			}
-			if timedOut {
-				for _, skill := range skills {
-					w.skipSkill(st, skill, "timeout")
+			return w.advanceReload(st, now, next, nil)
+		case ReloadStepPointer:
+			if turnEnd, ok := w.turnEndAfterSending(outcome.SendingAt); ok {
+				reading, err := w.session.ContextTokens(st.Strand, turnEnd)
+				if err != nil {
+					return err
 				}
-				return w.advanceReload(st, now, ReloadStepPointer, nil)
+				storeReading(&st, reading, turnEnd)
+				return w.toIdle(st, "")
 			}
-			if st.PhaseInjected {
-				return nil
+		default:
+			if turnEnd, ok := w.turnEndAfterSending(outcome.SendingAt); ok {
+				return w.settleSkillTurn(st, now, step, skills, turnEnd)
 			}
 		}
-	} else if typed {
-		if w.seen.turnEnd {
-			reading, err := w.session.ContextTokens(st.Strand, w.seen.firstTurnEnd)
-			if err != nil {
-				return err
+	}
+	if !st.ReloadTypedAt.IsZero() && now.Sub(st.ReloadTypedAt) >= w.cfg.HandoffTimeout() {
+		switch step {
+		case ReloadStepColor, ReloadStepPlugins:
+			logger.Warn("orch: reload step skipped", "step", reloadStepName(step), "cause", "timeout", "strandGUID", st.Strand)
+			next := ReloadStepPlugins
+			if step == ReloadStepPlugins {
+				next = ReloadStepSkills
+				if st.ReloadSkipsSkills {
+					next = ReloadStepPointer
+				}
 			}
-			storeReading(&st, reading, w.seen.firstTurnEnd)
-			return w.toIdle(st, "")
-		}
-		if timedOut {
+			return w.advanceReload(st, now, next, nil)
+		case ReloadStepPointer:
 			// The persisted reading predates the reload and says nothing about the new context.
 			st.LastContextTokens, st.LastContextKnown = 0, false
 			return w.toIdle(st, "resume timed out")
 		}
-		if st.PhaseInjected {
-			return nil
+		for _, skill := range skills {
+			w.skipSkill(st, skill, "timeout")
 		}
+		return w.advanceReload(st, now, ReloadStepPointer, nil)
 	}
-	return w.typeReloadStepWhenIdle(st, now)
+	if st.Pending == nil {
+		return w.typeReloadStep(st, now)
+	}
+	return nil
 }
 
-// typeReloadStepWhenIdle types the current step when the idle probe passes on this tick, and types nothing otherwise.
-func (w *Watcher) typeReloadStepWhenIdle(st State, now time.Time) error {
-	probe, err := w.probeIdle(&st)
-	if err != nil {
-		return err
-	}
-	if !probe.Idle {
-		return nil
-	}
-	return w.typeReloadStep(st, now)
-}
-
-// startCompacting renders the focus first, so a stencil failure changes nothing, then persists compacting and types `/compact`.
-// The caller must have seen the session idle on this tick and the note gate pass, so the note becomes LastHandoff.
+// startCompacting renders the focus first, so a stencil failure changes nothing, then persists compacting.
+// The caller must have seen the note gate pass, so the note becomes LastHandoff.
+// The `/compact` itself is sent by the next tickCompacting.
 func (w *Watcher) startCompacting(st State, now time.Time) error {
-	focus, err := RenderCompactFocus(w.stencilsDir)
-	if err != nil {
+	if _, err := RenderCompactFocus(w.stencilsDir); err != nil {
 		return err
 	}
 	st.LastHandoff = st.PendingHandoff
-	if st, err = w.enter(st, PhaseCompacting, now); err != nil {
+	if _, err := w.enter(st, PhaseCompacting, now); err != nil {
 		return err
 	}
 	w.newest = nil
-	err = w.session.CompactSession(st.Strand, focus)
-	if held, saveErr := w.heldTyping(&st, "compact", err); saveErr != nil || held {
-		return saveErr
-	}
-	if err != nil {
-		return err
-	}
-	return w.confirm(st)
+	return nil
 }
 
 // reloadAfterCompaction renders the role file and the resume pointer naming the cycle's note, then enters the reload sequence.
-// The caller must have seen the session idle on this tick.
 // A stencil failure returns to idle with the reason, as a clear cycle's does.
 func (w *Watcher) reloadAfterCompaction(st State, now time.Time) error {
 	if err := w.renderRoleFile(); err != nil {
@@ -1277,9 +1424,9 @@ func (w *Watcher) reloadAfterCompaction(st State, now time.Time) error {
 
 // tickCompacting searches the transcript State.ReadingTurnEnd names for a compaction boundary every tick, since a compaction ends without a turn end.
 // The boundary is searched for rather than read off the newest entry, because a message answered right after the boundary hides it there.
-// The phase completes on a boundary after the phase was entered, whatever follows it, once the idle probe passes; an earlier boundary never completes it.
+// The phase completes on a boundary after the phase was entered, whatever follows it; an earlier boundary never completes it.
 // Past the handoff timeout it returns to idle and holds the next automatic trigger for the soft idle, through LastDeferral.
-// An unconfirmed `/compact` is typed again only when the idle probe passes and no qualifying boundary has been found.
+// The `/compact` is injected once: an expired one is queued again, and an unconfirmed one keeps the search going for the boundary.
 func (w *Watcher) tickCompacting(st State, now time.Time) error {
 	var boundary shuttleengine.CompactionBoundary
 	qualifying := false
@@ -1301,34 +1448,29 @@ func (w *Watcher) tickCompacting(st State, now time.Time) error {
 		return nil
 	}
 
-	idleProbed, idle := false, false
-	probe := func() (bool, error) {
-		if !idleProbed {
-			p, err := w.probeIdle(&st)
-			if err != nil {
-				return false, err
-			}
-			idle, idleProbed = p.Idle, true
-		}
-		return idle, nil
-	}
-
 	if qualifying {
-		idle, err := probe()
-		if err != nil {
+		logger.Info("orch: compaction boundary found", "strandGUID", st.Strand, "boundaryAt", boundary.At)
+		if err := storeCurrentReading(); err != nil {
 			return err
 		}
-		if idle {
-			logger.Info("orch: compaction boundary found", "strandGUID", st.Strand, "boundaryAt", boundary.At)
-			if err := storeCurrentReading(); err != nil {
-				return err
-			}
-			st.CycleCount++
-			st.CompactionBaseline = boundary.At
-			if err := w.removeSatisfiedRequest(CycleCompact, boundary.At); err != nil {
-				return err
-			}
-			return w.reloadAfterCompaction(st, now)
+		st.CycleCount++
+		st.CompactionBaseline = boundary.At
+		if err := w.removeSatisfiedRequest(CycleCompact, boundary.At); err != nil {
+			return err
+		}
+		return w.reloadAfterCompaction(st, now)
+	}
+	outcome, typed, err := w.stepOutcome(&st)
+	if err != nil {
+		return err
+	}
+	if outcome.State == CreelWithdrawnState {
+		return w.toIdle(st, "the compact was withdrawn")
+	}
+	if typed {
+		st.Pending, st.PhaseInjected = nil, true
+		if err := w.save(st); err != nil {
+			return err
 		}
 	}
 	if now.Sub(st.PhaseEnteredAt) >= w.cfg.HandoffTimeout() {
@@ -1338,26 +1480,12 @@ func (w *Watcher) tickCompacting(st State, now time.Time) error {
 		st.LastDeferral = now
 		return w.toIdle(st, "compaction timed out")
 	}
-	if qualifying || st.PhaseInjected {
-		return nil
-	}
-	idle, err := probe()
-	if err != nil {
-		return err
-	}
-	if !idle {
+	if st.Pending != nil || st.PhaseInjected {
 		return nil
 	}
 	focus, err := RenderCompactFocus(w.stencilsDir)
 	if err != nil {
 		return err
 	}
-	err = w.session.CompactSession(st.Strand, focus)
-	if held, saveErr := w.heldTyping(&st, "compact", err); saveErr != nil || held {
-		return saveErr
-	}
-	if err != nil {
-		return err
-	}
-	return w.confirm(st)
+	return w.sendStep(&st, false, CreelStep{Command: commandCompact, Argument: focus}, "", now)
 }

@@ -184,8 +184,8 @@ func TestStore_Mail(t *testing.T) {
 				t.Fatalf("Inbox: %v", err)
 			}
 			wantInbox := []creelengine.InboxEntry{{From: batten, Unread: 2}, {From: alpha, Unread: 3}}
-			if !reflect.DeepEqual(inbox.Senders, wantInbox) || inbox.Withheld {
-				t.Errorf("Inbox = %+v; want senders %v and nothing withheld", inbox, wantInbox)
+			if !reflect.DeepEqual(inbox.Senders, wantInbox) {
+				t.Errorf("Inbox = %+v; want senders %v", inbox, wantInbox)
 			}
 			wantBodies(t, e.readBodies(t, strand(beta), "", false), "b1", "b2")
 			inbox, err = e.store.Inbox(strand(beta))
@@ -209,11 +209,12 @@ func TestStore_Mail(t *testing.T) {
 				t.Errorf("Inbox after reading everything = %+v, %v; want an empty set", inbox, err)
 			}
 		}},
-		{"Inbox_OrchCallerSeesWithheldReminders", func(t *testing.T, e *env) {
+		{"Inbox_OrchCallerSeesPlainCounts", func(t *testing.T, e *env) {
 			for _, name := range []string{orch, orch2} {
+				e.post(t, strand(alpha), name, "one")
 				inbox, err := e.store.Inbox(strand(name))
-				if err != nil || !inbox.Withheld || inbox.Notice != "creel-notices" {
-					t.Errorf("Inbox(%s) = %+v, %v; want withheld until creel-notices", name, inbox, err)
+				if want := []creelengine.InboxEntry{{From: alpha, Unread: 1}}; err != nil || !reflect.DeepEqual(inbox, creelengine.InboxResult{Senders: want}) {
+					t.Errorf("Inbox(%s) = %+v, %v; want only the senders %v", name, inbox, err, want)
 				}
 			}
 		}},
@@ -322,25 +323,21 @@ func TestStore_Mail(t *testing.T) {
 				t.Errorf("events of the reply = %v; want posted, undelivered", got)
 			}
 		}},
-		{"Reply_ToOrchIsWithheld", func(t *testing.T, e *env) {
+		{"Reply_ToOrchJournalsPostedOnly", func(t *testing.T, e *env) {
 			id := e.post(t, strand(orch), beta, "question")
 			replyID, err := e.store.Reply(strand(beta), id, "answer")
 			if err != nil {
 				t.Fatalf("Reply: %v", err)
 			}
-			entries := e.store.Log(creelengine.LogFilter{ID: replyID})
-			if got := eventsOf(entries); !slices.Equal(got, []string{"posted", "withheld"}) {
-				t.Fatalf("events of the reply = %v; want posted, withheld", got)
-			}
-			if entries[1].Notice != "creel-notices" || entries[1].To != orch {
-				t.Errorf("withheld line = %+v; want it naming creel-notices for %s", entries[1], orch)
+			if got := eventsOf(e.store.Log(creelengine.LogFilter{ID: replyID})); !slices.Equal(got, []string{"posted"}) {
+				t.Errorf("events of the reply = %v; want posted only", got)
 			}
 		}},
-		{"Post_ToOrchJournalsOneWithheldLine", func(t *testing.T, e *env) {
+		{"Post_ToOrchJournalsPostedOnly", func(t *testing.T, e *env) {
 			for _, name := range []string{orch, orch2} {
 				id := e.post(t, strand(alpha), name, "for the orch")
-				if got := eventsOf(e.store.Log(creelengine.LogFilter{ID: id})); !slices.Equal(got, []string{"posted", "withheld"}) {
-					t.Errorf("events of the post to %s = %v; want posted, withheld", name, got)
+				if got := eventsOf(e.store.Log(creelengine.LogFilter{ID: id})); !slices.Equal(got, []string{"posted"}) {
+					t.Errorf("events of the post to %s = %v; want posted only", name, got)
 				}
 			}
 		}},
@@ -418,29 +415,29 @@ func TestStore_InjectAndHold(t *testing.T) {
 				t.Errorf("a refusal left queued %v and interrupts %v", queued, e.del.Interrupts())
 			}
 		}},
-		{"Inject_SelfInjectPassesExceptForOrch", func(t *testing.T, e *env) {
-			if _, err := e.store.Inject(strand(beta), beta, "/compact", 0, false); err != nil {
-				t.Errorf("self-inject: %v", err)
-			}
-			for _, name := range []string{orch, orch2} {
-				_, err := e.store.Inject(strand(name), name, "/compact", 0, false)
-				wantErr(t, err, "lyx orch distill", "lyx orch refresh")
-			}
-		}},
-		{"Inject_AndInterruptIntoOrchAreRefused", func(t *testing.T, e *env) {
-			for _, name := range []string{orch, orch2} {
-				_, err := e.store.Inject(program(batten), name, "/clear", 0, false)
-				wantErr(t, err, "lyx orch distill", "lyx orch refresh", "own pane")
-				_, err = e.store.Inject(program(batten), name, "/clear", 0, true)
-				wantErr(t, err, "lyx orch distill")
-				_, err = e.store.Interrupt(program(batten), name)
-				wantErr(t, err, "lyx orch distill", "lyx orch refresh")
-				if queued := e.store.Queued(name); len(queued) != 0 {
-					t.Errorf("a refusal queued %v for %s", queued, name)
+		{"Inject_SelfInjectPasses", func(t *testing.T, e *env) {
+			for _, name := range []string{beta, orch, orch2} {
+				if _, err := e.store.Inject(strand(name), name, "/compact", 0, false); err != nil {
+					t.Errorf("self-inject by %s: %v", name, err)
 				}
 			}
-			if interrupts := e.del.Interrupts(); len(interrupts) != 0 {
-				t.Errorf("interrupted %v; an orch is never interrupted", interrupts)
+		}},
+		{"Inject_AndInterruptIntoOrchSucceed", func(t *testing.T, e *env) {
+			for _, name := range []string{orch, orch2} {
+				for _, sender := range []creelengine.Sender{program(batten), external(), strand(orch2)} {
+					if sender.Name == name {
+						continue
+					}
+					if _, err := e.store.Inject(sender, name, "/clear", 0, false); err != nil {
+						t.Errorf("Inject by %s into %s: %v", sender.Name, name, err)
+					}
+					if _, err := e.store.Interrupt(sender, name); err != nil {
+						t.Errorf("Interrupt by %s into %s: %v", sender.Name, name, err)
+					}
+				}
+			}
+			if interrupts := e.del.Interrupts(); len(interrupts) == 0 {
+				t.Errorf("no interrupt reached the orch strands")
 			}
 		}},
 		{"Inject_RefusesControlCharactersAndBadTTL", func(t *testing.T, e *env) {
@@ -614,8 +611,18 @@ func TestStore_InjectAndHold(t *testing.T) {
 				t.Errorf("a failed Release journaled %v", entries)
 			}
 		}},
-		{"Hold_OnOrchIsAcceptedAndJournaled", func(t *testing.T, e *env) {
+		{"Hold_OnOrchIsAProgramsAlone", func(t *testing.T, e *env) {
 			for _, name := range []string{orch, orch2} {
+				for _, sender := range []creelengine.Sender{external(), strand(orch), strand(orch2)} {
+					_, err := e.store.Hold(sender, name, time.Minute)
+					want := fmt.Sprintf("creel: only a program may hold an orch strand, and %s is not one; send %s mail with `lyx creel post`, or cycle the orch with `lyx orch distill` or `lyx orch refresh`", sender.Name, name)
+					if err == nil || err.Error() != want {
+						t.Errorf("Hold by %s on %s = %v; want the refusal %q", sender.Name, name, err, want)
+					}
+				}
+				if got := eventsOf(e.store.Log(creelengine.LogFilter{To: name})); len(got) != 0 {
+					t.Errorf("refused holds on %s journaled %v", name, got)
+				}
 				if _, err := e.store.Hold(program(batten), name, time.Minute); err != nil {
 					t.Errorf("Hold on %s: %v", name, err)
 				}
@@ -625,6 +632,157 @@ func TestStore_InjectAndHold(t *testing.T) {
 				if got := eventsOf(e.store.Log(creelengine.LogFilter{To: name})); !slices.Equal(got, []string{"held", "released"}) {
 					t.Errorf("events for %s = %v; want held, released", name, got)
 				}
+			}
+		}},
+		{"InjectCommand_AProgramsIsQueuedInOrderBehindATextInject", func(t *testing.T, e *env) {
+			if _, err := e.store.Inject(program(batten), orch, "first", 0, false); err != nil {
+				t.Fatalf("Inject: %v", err)
+			}
+			result, err := e.store.InjectCommand(program(batten), orch, creelengine.Command{Name: creelengine.CommandCompact, Argument: "keep the plan"}, 0)
+			if err != nil || result.ID == 0 {
+				t.Fatalf("InjectCommand = %+v, %v; want a queued inject", result, err)
+			}
+			queued := e.store.Queued(orch)
+			if len(queued) != 2 || queued[0].Text != "first" || !queued[0].Command.IsZero() ||
+				queued[1].Command != (creelengine.Command{Name: creelengine.CommandCompact, Argument: "keep the plan"}) {
+				t.Errorf("Queued = %+v; want the text inject, then the compact command", queued)
+			}
+			if commands := e.del.Commands(); len(commands) != 0 {
+				t.Errorf("InjectCommand ran %v; the store only queues", commands)
+			}
+		}},
+		{"InjectCommand_RefusesWhatIsNotAProgramToAnOrchStrand", func(t *testing.T, e *env) {
+			clearCommand := creelengine.Command{Name: creelengine.CommandClear}
+			for _, tt := range []struct {
+				sender   creelengine.Sender
+				receiver string
+				want     string
+			}{
+				{program(batten), alpha, "orch strand only"},
+				{external(), orch, "only a program"},
+				{strand(alpha), orch, "only a program"},
+				{strand(orch2), orch, "only a program"},
+			} {
+				_, err := e.store.InjectCommand(tt.sender, tt.receiver, clearCommand, 0)
+				wantErr(t, err, tt.want)
+			}
+			if queued := e.store.Queued(orch); len(queued) != 0 {
+				t.Errorf("a refused command inject left %v queued", queued)
+			}
+		}},
+		{"InjectCommand_RefusesAnInvalidCommand", func(t *testing.T, e *env) {
+			for _, tt := range []struct {
+				command creelengine.Command
+				want    string
+			}{
+				{creelengine.Command{Name: "reboot"}, "unknown command"},
+				{creelengine.Command{Name: creelengine.CommandCompact}, "compact"},
+				{creelengine.Command{Name: creelengine.CommandCompact, Argument: "two\nlines"}, "compact"},
+				{creelengine.Command{Name: creelengine.CommandColor}, "needs an argument"},
+				{creelengine.Command{Name: creelengine.CommandLoadSkills}, "needs an argument"},
+				{creelengine.Command{Name: creelengine.CommandClear, Argument: "x"}, "takes no argument"},
+				{creelengine.Command{Name: creelengine.CommandReloadPlugins, Argument: "x"}, "takes no argument"},
+			} {
+				_, err := e.store.InjectCommand(program(batten), orch, tt.command, 0)
+				wantErr(t, err, tt.want)
+			}
+			if queued := e.store.Queued(orch); len(queued) != 0 {
+				t.Errorf("a refused command inject left %v queued", queued)
+			}
+		}},
+		{"InjectCommand_AnotherOwnersHoldKeepsItQueued", func(t *testing.T, e *env) {
+			if _, err := e.store.Hold(program(batten), orch, time.Minute); err != nil {
+				t.Fatalf("Hold: %v", err)
+			}
+			if _, err := e.store.InjectCommand(program("ly:TENDER"), orch, creelengine.Command{Name: creelengine.CommandClear}, 0); err != nil {
+				t.Fatalf("InjectCommand: %v", err)
+			}
+			if queued := e.store.Queued(orch); len(queued) != 1 {
+				t.Errorf("Queued = %+v; want the command inject kept queued under another owner's hold", queued)
+			}
+		}},
+		{"Withdraw_RemovesTheCallersQueuedInjectsAndUnreadMailAndNoOneElses", func(t *testing.T, e *env) {
+			const tender = "ly:TENDER"
+			e.post(t, program(batten), orch, "read already")
+			wantBodies(t, e.readBodies(t, strand(orch), "", true), "read already")
+			firstInject, err := e.store.Inject(program(batten), orch, "first", 0, false)
+			if err != nil {
+				t.Fatalf("Inject: %v", err)
+			}
+			othersInject, err := e.store.Inject(program(tender), orch, "other's", 0, false)
+			if err != nil {
+				t.Fatalf("Inject: %v", err)
+			}
+			waitedInject, injectWaiter, err := e.store.InjectWait(program(batten), orch, "waited", 0, false)
+			if err != nil {
+				t.Fatalf("InjectWait: %v", err)
+			}
+			secondMail := e.post(t, program(batten), orch, "second\nmore")
+			thirdMail, mailWaiter, err := e.store.PostWait(program(batten), orch, "third")
+			if err != nil {
+				t.Fatalf("PostWait: %v", err)
+			}
+			e.post(t, program(tender), orch, "other's mail")
+
+			got, err := e.store.Withdraw(program(batten), orch)
+			if err != nil {
+				t.Fatalf("Withdraw: %v", err)
+			}
+			want := creelengine.WithdrawResult{
+				Injects:  []int64{firstInject.ID, waitedInject.ID},
+				Messages: []creelengine.WithdrawnMessage{{ID: secondMail, Subject: "second"}, {ID: thirdMail, Subject: "third"}},
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("Withdraw = %+v; want %+v", got, want)
+			}
+			if queued := e.store.Queued(orch); len(queued) != 1 || queued[0].ID != othersInject.ID {
+				t.Errorf("Queued = %+v; want only the other program's inject", queued)
+			}
+			wantBodies(t, e.readBodies(t, strand(orch), "", true), "other's mail")
+			for name, waiter := range map[string]*creelengine.Waiter{"inject": injectWaiter, "message": mailWaiter} {
+				wantKind := creelengine.OutcomeExpired
+				if name == "message" {
+					wantKind = creelengine.OutcomeReturned
+				}
+				select {
+				case outcome := <-waiter.C:
+					if outcome.Kind != wantKind {
+						t.Errorf("the waiter on the withdrawn %s was answered %q; want %q", name, outcome.Kind, wantKind)
+					}
+				default:
+					t.Errorf("the waiter on the withdrawn %s was not answered", name)
+				}
+			}
+			withdrawn := map[string][]int64{}
+			for _, entry := range e.store.Log(creelengine.LogFilter{}) {
+				if entry.Reason == creelengine.WithdrawnReason {
+					withdrawn[entry.Event] = append(withdrawn[entry.Event], entry.ID)
+				}
+			}
+			wantJournal := map[string][]int64{"expired": want.Injects, "undelivered": {secondMail, thirdMail}}
+			if !reflect.DeepEqual(withdrawn, wantJournal) {
+				t.Errorf("records with reason %q = %v; want %v", creelengine.WithdrawnReason, withdrawn, wantJournal)
+			}
+		}},
+		{"Withdraw_OnANameCreelNoLongerListsWithNothingQueuedAnswersEmpty", func(t *testing.T, e *env) {
+			got, err := e.store.Withdraw(program(batten), "ly:ghost:driver")
+			if err != nil || len(got.Injects) != 0 || len(got.Messages) != 0 {
+				t.Errorf("Withdraw = %+v, %v; want an empty result", got, err)
+			}
+			if entries := e.store.Log(creelengine.LogFilter{}); len(entries) != 0 {
+				t.Errorf("an empty Withdraw journaled %v", entries)
+			}
+		}},
+		{"Withdraw_IsRefusedForAnythingButAProgram", func(t *testing.T, e *env) {
+			if _, err := e.store.Inject(program(batten), orch, "stay", 0, false); err != nil {
+				t.Fatalf("Inject: %v", err)
+			}
+			for _, sender := range []creelengine.Sender{strand(orch2), external()} {
+				_, err := e.store.Withdraw(sender, orch)
+				wantErr(t, err, "only a program")
+			}
+			if queued := e.store.Queued(orch); len(queued) != 1 {
+				t.Errorf("a refused Withdraw left %v queued; want the inject kept", queued)
 			}
 		}},
 	}

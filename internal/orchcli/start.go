@@ -14,10 +14,13 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -120,6 +123,111 @@ func orchStrands(strands []reedengine.StrandStatus) []reedengine.StrandStatus {
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// withdrawWayForward is the way forward `start` appends to a first withdraw that failed.
+// Creel's refusals for these causes carry no code, so one fixed text names them all.
+const withdrawWayForward = "way forward: repair what the error names, such as a worktree whose reed state it names as unreadable or a daemon that would not start, whose log lines it quotes; " +
+	"when creel refused the ORCHWATCH program claim from a non-orch strand's pane, run `lyx orch start` from the orch's pane or from a terminal outside every strand pane; " +
+	"when the error names a strand whose pane process is unknown, restart or remove that strand; then run `lyx orch start` again"
+
+// orchStrandFullName returns the full name creel addresses the orch strand by: the listed strand's name, else the fixed `<shortname>:orch`.
+func orchStrandFullName(listed reedengine.StrandStatus, hasStrand bool, shortname string) string {
+	if hasStrand {
+		return listed.Name
+	}
+	return agentname.Name{Shortname: shortname, Role: orchStrandName}.String()
+}
+
+// orchReceiver returns the name of the orch strand creel is addressed by.
+// A listed strand needs no shortname record; an unlisted one fails when the hub records none, since creel cannot serve such a hub either.
+func (c *orchCLI) orchReceiver(listed reedengine.StrandStatus, hasStrand bool) (string, error) {
+	if hasStrand {
+		return orchStrandFullName(listed, true, ""), nil
+	}
+	shortname, found := fabricengine.ReadShortname(fabricengine.BoardDir(c.location.HubPath))
+	if !found {
+		return "", fmt.Errorf("orch: the hub of %s has no usable shortname record to name the orch strand; way forward: run `lyx fabric shortname <shortname>`, then run `lyx orch start` again", c.location.WorktreePath())
+	}
+	return orchStrandFullName(listed, false, shortname), nil
+}
+
+// withdrawFirst runs the round before a fresh launch: it withdraws the old cycle's queued steps on the orch strand's name and, when listed, releases the hold.
+// A failed withdraw is the error, which makes `start` launch nothing.
+// A failed release is answered as text for State.FreshLaunchFailure and is no error.
+// A withdrawn resume line clears the noticed mark of the orch session the state still records.
+func (c *orchCLI) withdrawFirst(creel orchengine.Creel, name string, listed bool) (string, error) {
+	withdrawn, err := creel.Withdraw(name)
+	if err != nil {
+		return "", fmt.Errorf("orch: creel could not withdraw the old cycle's steps for %s: %w; %s", name, err, withdrawWayForward)
+	}
+	c.clearResumeNoticed(withdrawn)
+	if !listed {
+		return "", nil
+	}
+	if err := creel.Release(name); err != nil {
+		return fmt.Sprintf("release before the fresh launch: %v", err), nil
+	}
+	return "", nil
+}
+
+// withdrawSecond runs the round after a fresh launch's reset state is saved: a withdraw and a release on the orch strand's name, catching a step an old watcher queued in between.
+// It answers the text of each failure, empty when both succeeded.
+func (c *orchCLI) withdrawSecond(creel orchengine.Creel, name string) string {
+	var failures []string
+	withdrawn, err := creel.Withdraw(name)
+	if err != nil {
+		failures = append(failures, fmt.Sprintf("withdraw after the fresh launch: %v", err))
+	} else {
+		c.clearResumeNoticed(withdrawn)
+	}
+	if err := creel.Release(name); err != nil {
+		failures = append(failures, fmt.Sprintf("release after the fresh launch: %v", err))
+	}
+	return strings.Join(failures, "; ")
+}
+
+// clearResumeNoticed hands a withdrawn resume line to orchengine.ClearResumeNoticed with the orch GUID the persisted state records.
+// A failure is logged and no error: the worst outcome is a resume line that is not posted again.
+func (c *orchCLI) clearResumeNoticed(withdrawn []orchengine.CreelWithdrawn) {
+	if len(withdrawn) == 0 {
+		return
+	}
+	st, err := orchengine.LoadState(c.paths)
+	if err == nil {
+		var geometry pauserecord.Geometry
+		if geometry, err = hubgeom.PauseGeometry(c.location); err == nil {
+			err = orchengine.ClearResumeNoticed(geometry.RecordPath, st.Strand, withdrawn, time.Now())
+		}
+	}
+	if err != nil {
+		logger.Warn("orch: clearing the resume-noticed mark after a withdraw failed", "cause", err)
+	}
+}
+
+// joinFailures joins the non-empty failure texts.
+func joinFailures(texts ...string) string {
+	var kept []string
+	for _, text := range texts {
+		if text != "" {
+			kept = append(kept, text)
+		}
+	}
+	return strings.Join(kept, "; ")
+}
+
+// saveFreshLaunch saves next, the state reset onto a fresh launch, with the first round's failure, runs the second round and saves its failure on top.
+func (c *orchCLI) saveFreshLaunch(next orchengine.State, firstFailure string, creel orchengine.Creel, name string) error {
+	next.FreshLaunchFailure = firstFailure
+	if err := orchengine.SaveState(c.paths, next); err != nil {
+		return err
+	}
+	secondFailure := c.withdrawSecond(creel, name)
+	if secondFailure == "" {
+		return nil
+	}
+	next.FreshLaunchFailure = joinFailures(firstFailure, secondFailure)
+	return orchengine.SaveState(c.paths, next)
 }
 
 // startFields builds the success envelope.
@@ -272,6 +380,18 @@ session.`,
 			envAction, promptSource, guid, warning, hint := "", "", strand.GUID, "", ""
 			switch action {
 			case orchengine.StartRelaunch:
+				receiver, err := c.orchReceiver(strand, hasStrand)
+				if err != nil {
+					return fail(err)
+				}
+				creel, err := c.newCreel()
+				if err != nil {
+					return fail(fmt.Errorf("orch: reach creel: %w; %s", err, withdrawWayForward))
+				}
+				firstFailure, err := c.withdrawFirst(creel, receiver, hasStrand)
+				if err != nil {
+					return fail(err)
+				}
 				if hasStrand {
 					if err := c.strands.RemoveStrand(strand.GUID); err != nil {
 						return fail(err)
@@ -303,7 +423,7 @@ session.`,
 				guid, warning = started.GUID, started.Warning
 				next := orchengine.ResetForFreshLaunch(st, guid, time.Now())
 				next.SessionID = started.SessionID
-				if err := orchengine.SaveState(c.paths, next); err != nil {
+				if err := c.saveFreshLaunch(next, firstFailure, creel, receiver); err != nil {
 					return fail(err)
 				}
 				if resumeSessionID != "" {
@@ -319,7 +439,7 @@ session.`,
 				}
 				envAction, promptSource = actionRelaunched, source
 			case orchengine.StartSpawnWatcher:
-				if err := c.adoptStrand(st, guid); err != nil {
+				if err := c.adoptListedStrand(st, strand); err != nil {
 					return fail(err)
 				}
 				if err := c.spawnWatcher(); err != nil {
@@ -327,7 +447,7 @@ session.`,
 				}
 				envAction = actionSpawnedWatcher
 			default:
-				if err := c.adoptStrand(st, guid); err != nil {
+				if err := c.adoptListedStrand(st, strand); err != nil {
 					return fail(err)
 				}
 				envAction = actionAlreadyRunning
@@ -358,13 +478,29 @@ session.`,
 	return cmd
 }
 
-// adoptStrand resets the persisted state onto guid when it belongs to another run than the recorded one.
+// adoptListedStrand binds the persisted state to the live listed orch strand, reaching creel only when the state names another run.
+func (c *orchCLI) adoptListedStrand(st orchengine.State, strand reedengine.StrandStatus) error {
+	if st.Strand == strand.GUID {
+		return nil
+	}
+	creel, err := c.newCreel()
+	if err != nil {
+		return fmt.Errorf("orch: reach creel: %w; %s", err, withdrawWayForward)
+	}
+	return c.adoptStrand(st, strand.GUID, creel, strand.Name)
+}
+
+// adoptStrand resets the persisted state onto guid when it belongs to another run than the recorded one, with the two withdraw rounds around the reset on the orch strand's name.
 // The reset clears the recorded session id, since it named the other run's session; the watcher's first reading of guid's run fills it.
-func (c *orchCLI) adoptStrand(st orchengine.State, guid string) error {
+func (c *orchCLI) adoptStrand(st orchengine.State, guid string, creel orchengine.Creel, name string) error {
 	if st.Strand == guid {
 		return nil
 	}
+	firstFailure, err := c.withdrawFirst(creel, name, true)
+	if err != nil {
+		return err
+	}
 	next := orchengine.ResetForFreshLaunch(st, guid, time.Now())
 	next.SessionID = ""
-	return orchengine.SaveState(c.paths, next)
+	return c.saveFreshLaunch(next, firstFailure, creel, name)
 }

@@ -101,59 +101,54 @@ func TestWatcherLive(t *testing.T) {
 	}
 }
 
+// TestRun_ReturnsWhenStrandGone asserts Run reads the creel mailbox once before its first tick and returns when the strand is gone.
+// A mailbox read that fails is logged only: Run still ticks and returns, and records no tick error.
 func TestRun_ReturnsWhenStrandGone(t *testing.T) {
-	e := newWatchEnv(t)
-	e.s.alive = false
-	st, _ := LoadState(e.paths)
-	st.WatcherExit = "stale"
-	if err := SaveState(e.paths, st); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := e.w.Run(context.Background(), noSleep); err != nil {
-		t.Fatalf("Run: %v", err)
-	}
-	got, _ := LoadState(e.paths)
-	if got.WatcherExit != "strand gone" {
-		t.Errorf("WatcherExit = %q, want %q", got.WatcherExit, "strand gone")
-	}
-	if live, _ := WatcherLive(e.paths); live {
-		t.Error("watch lock still held after Run returned")
-	}
-}
-
-func TestRun_NoticeQueueAtExit(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
-		name          string
-		clearStrand   bool
-		wantNotices   int
-		wantDirAbsent bool
+	tests := []struct {
+		name string
+		// mailboxErr, when set, fails the start read.
+		mailboxErr error
+		// unread is how many messages wait in the mailbox, which the start read leaves for the first tick since the watcher is not bound yet.
+		unread int
 	}{
-		{"dropped when no strand is recorded", true, 0, true},
-		{"kept when a strand is recorded", false, 1, false},
+		{name: "a mailbox that reads"},
+		{name: "a mailbox read that fails", mailboxErr: errBoom},
+		{name: "a message waiting for the first tick stays unread", unread: 1},
 	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			e := newWatchEnv(t)
 			e.s.alive = false
-			e.queue("notice")
-			if c.clearStrand {
-				e.setState(func(st *State) { st.Strand = "" })
+			if tt.mailboxErr != nil {
+				e.c.failNext("readmailbox", tt.mailboxErr)
+			}
+			for range tt.unread {
+				e.c.mailbox = append(e.c.mailbox, CreelMessage{ID: 7, From: fakeOrchStrandName, ReplyTo: 3, Body: "written /n.md"})
+			}
+			st, _ := LoadState(e.paths)
+			st.WatcherExit = "stale"
+			if err := SaveState(e.paths, st); err != nil {
+				t.Fatal(err)
 			}
 
 			if err := e.w.Run(context.Background(), noSleep); err != nil {
 				t.Fatalf("Run: %v", err)
 			}
-			if got := e.noticeLines(); len(got) != c.wantNotices {
-				t.Errorf("queue = %v, want %d notices", got, c.wantNotices)
+			if e.c.mailboxReads != 1 {
+				t.Errorf("mailbox reads = %d, want one before the first tick", e.c.mailboxReads)
 			}
-			if c.wantDirAbsent {
-				if _, err := os.Stat(e.paths.NoticesDir); !os.IsNotExist(err) {
-					t.Errorf("notices dir stat = %v, want absent", err)
-				}
+			if len(e.c.mailbox) != tt.unread {
+				t.Errorf("unread messages = %d, want %d left for the first tick", len(e.c.mailbox), tt.unread)
+			}
+			got, _ := LoadState(e.paths)
+			if got.WatcherExit != "strand gone" {
+				t.Errorf("WatcherExit = %q, want %q", got.WatcherExit, "strand gone")
+			}
+			if live, _ := WatcherLive(e.paths); live {
+				t.Error("watch lock still held after Run returned")
 			}
 		})
 	}
@@ -248,7 +243,7 @@ func TestRun_StopsAtErrorCap(t *testing.T) {
 	for i := 0; i < maxConsecutiveTickErrors+10; i++ {
 		fs.errs = append(fs.errs, true)
 	}
-	w := NewWatcher(fs, e.cfg, e.paths, e.stDir, nil, func() (string, error) { return testIndex, nil }, e.clock)
+	w := NewWatcher(fs, e.c, e.cfg, e.paths, e.stDir, nil, func() (string, error) { return testIndex, nil }, e.clock)
 
 	err := w.Run(context.Background(), noSleep)
 	if !errors.Is(err, errBoom) {
@@ -276,7 +271,7 @@ func TestRun_SuccessfulTickResetsErrorCount(t *testing.T) {
 	for i := 0; i < maxConsecutiveTickErrors+5; i++ {
 		fs.errs = append(fs.errs, true)
 	}
-	w := NewWatcher(fs, e.cfg, e.paths, e.stDir, nil, func() (string, error) { return testIndex, nil }, e.clock)
+	w := NewWatcher(fs, e.c, e.cfg, e.paths, e.stDir, nil, func() (string, error) { return testIndex, nil }, e.clock)
 
 	if err := w.Run(context.Background(), noSleep); !errors.Is(err, errBoom) {
 		t.Fatalf("Run = %v, want errBoom", err)
@@ -354,8 +349,14 @@ func TestRun_ChecksTheBinaryOnlyAtARestartSafeTick(t *testing.T) {
 		{
 			name: "a state file that turns unreadable after the tick's last save never checks",
 			arrange: func(e *watchEnv) {
-				e.queue("hello")
-				e.s.onSend = func() {
+				// The start color is already typed, so the tick saves nothing after the strand liveness probe.
+				e.setState(func(st *State) { st.ColorStrand = st.Strand })
+				broken := false
+				e.s.onAlive = func() {
+					if broken {
+						return
+					}
+					broken = true
 					if err := os.Remove(e.paths.StatePath); err != nil {
 						e.t.Error(err)
 					}

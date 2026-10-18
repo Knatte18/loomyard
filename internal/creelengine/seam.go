@@ -40,6 +40,9 @@ type Delivery interface {
 	// Send types one line into the strand's pane and confirms it landed.
 	// It returns ErrBusy when the pane guard held the write, and ErrNotLanded when the text was typed but not confirmed.
 	Send(strand Strand, text string) error
+	// Command runs one command of the closed set in the strand's session and confirms it landed.
+	// It returns ErrBusy when the pane guard held it, and ErrNotLanded when it was typed but not confirmed.
+	Command(strand Strand, command Command) error
 	// Interrupt sends the guarded interrupt to the strand's running turn.
 	// It clears a prompt the provider restored by the interrupt.
 	// It returns ErrNoRunningTurn when there is none, and an error wrapping ErrClearFailed when the interrupt key was sent and only the clear after it failed.

@@ -78,6 +78,12 @@ func (r *Runner) ClassifySkillLoad(guid string, turnEnd Event, skills []string) 
 // ReadEvents returns the events of the run identified by guid that lie past byte offset, and the offset to resume from.
 // A partial trailing line stays unconsumed, a parse error returns the original offset,
 // and an absent events file returns no events and the original offset, matching pollEventsTick.
+//
+// When the run's engine reads session signals, each event gets the time of the signal marked as yielding an event from the same line, paired in file order.
+// The offset then advances only by the bytes the signal reading consumed.
+// A time stamp read ahead of its payload therefore stays unconsumed until the payload arrives.
+// When the marked signals and the events do not pair one to one, every event of the read gets the zero time.
+// An engine without a signal reading advances to the last complete line and gives every event the zero time.
 func (r *Runner) ReadEvents(guid string, offset int64) ([]Event, int64, error) {
 	if r.toldErr != nil {
 		return nil, offset, r.toldErr
@@ -97,11 +103,41 @@ func (r *Runner) ReadEvents(guid string, offset int64) ([]Event, int64, error) {
 	if len(data) == 0 {
 		return nil, offset, nil
 	}
-	events, err := engine.ParseEvents(data)
+	parser, canParseSignals := engine.(SessionSignalParser)
+	if !canParseSignals {
+		events, err := engine.ParseEvents(data)
+		if err != nil {
+			return nil, offset, err
+		}
+		return events, newOffset, nil
+	}
+	signals, consumed := parser.ParseSessionSignals(data)
+	if consumed == 0 {
+		return nil, offset, nil
+	}
+	events, err := engine.ParseEvents(data[:consumed])
 	if err != nil {
 		return nil, offset, err
 	}
-	return events, newOffset, nil
+	stampEventTimes(events, signals)
+	return events, offset + int64(consumed), nil
+}
+
+// stampEventTimes sets each event's At to the time of the signal marked as yielding an event, paired in file order.
+// It stamps nothing when the marked signals and the events differ in count, so no event takes another line's time.
+func stampEventTimes(events []Event, signals []SessionSignal) {
+	var marked []SessionSignal
+	for _, signal := range signals {
+		if signal.Event {
+			marked = append(marked, signal)
+		}
+	}
+	if len(marked) != len(events) {
+		return
+	}
+	for i := range events {
+		events[i].At = marked[i].At
+	}
 }
 
 // SessionState returns the session state of the run identified by guid, read from files at the runner's clock.

@@ -171,9 +171,9 @@ type Deps struct {
 
 	// Notify queues one single-line notice for the hub's orchestrator.
 	// Finalize calls it once at Done when ConfigChanges produced a line, and only logs a failure:
-	// the landing has happened whatever the notice queue says.
+	// the landing has happened whatever the notice delivery says.
 	// landingshed names no orchestrator path,
-	// so the queue wiring lives in the closure.
+	// so the delivery wiring lives in the closure.
 	//
 	// Nil means "no one to notify", following CommitStatus's nil-is-absent convention.
 	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.

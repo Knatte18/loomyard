@@ -244,11 +244,14 @@ Then `lyx tender pause` freezes the TTL and holds delivery, and `lyx tender resu
 
 **Covers:** creel
 
-**Goal:** "Send mail, an inject and an interrupt to an orch-role strand, and confirm nothing is typed into its pane."
+**Goal:** "Send mail, an inject, an interrupt and a hold to an orch-role strand, and confirm creel delivers the first three and refuses the hold."
 
-**Watch:** Mail to the orch-role strand is stored with a `withheld` record, `inject` and `interrupt` are refused, and the orch's own `inbox` shows the mail as withheld.
+**Watch:** Mail to the orch-role strand is reminded in its pane when it is idle.
+A text `inject` and an `interrupt` from EXTERNAL are accepted.
+A `hold` on it from EXTERNAL or from another orch strand is refused with the message that only a program may hold an orch strand.
+The orch's own `inbox` shows plain unread counts and no `withheld` or `notice` key.
 
-**Verdict:** `FAIL` on any keystroke in an orch pane.
+**Verdict:** `FAIL` on a hold accepted from a non-program, or on a keystroke in an orch pane that no creel verb caused.
 
 ---
 

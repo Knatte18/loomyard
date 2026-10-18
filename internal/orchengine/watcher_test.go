@@ -1,12 +1,11 @@
 package orchengine
 
 import (
-	"cmp"
+	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -25,25 +24,21 @@ func (c *fakeClock) advance(d time.Duration) { c.now = c.now.Add(d) }
 
 // fakeSession scripts the Session seam; event offsets are indexes into events.
 type fakeSession struct {
-	alive      bool
-	events     []shuttleengine.Event
-	usage      map[string]int // Turn-end message to tokens; a missing message is unknown.
-	idle       bool
-	idleSeq    []bool // Consumed before idle.
-	tooShort   bool   // Reported with every probe that is not idle.
-	reason     string // Reported with every probe that is not idle.
-	draft      bool   // Reported as IdleProbe.Draft with every probe that is not idle.
-	sendErrs   []error
-	clearErr   error // Returned by every ClearSession while set.
-	clearErrs  []error
-	compactErr error    // Returned by every CompactSession while set.
-	skillsErr  error    // Returned by every LoadSkills while set.
-	colorErr   error    // Returned by every TypeColor while set.
-	colors     int      // TypeColor calls, kept out of calls so a test of any other behavior ignores the color typing.
-	calls      []string // "send:<text>", "clear", "reload-plugins", "skills:<list>" and "compact:<focus>", in order.
-	tokenAsks  []string
-	onSend     func()
-	onAlive    func()
+	alive    bool
+	events   []shuttleengine.Event
+	usage    map[string]int // Turn-end message to tokens; a missing message is unknown.
+	idle     bool           // Answered by SessionIdle, which only the hub pause reads.
+	idleSeq  []bool         // Consumed before idle.
+	color    string         // Answered by StrandColor.
+	colorErr error          // Returned by every StrandColor while set.
+	// colors counts the color command injects the cycle sent, kept out of calls so a test of any other behavior ignores them.
+	colors int
+	// calls lists the steps the fake creel accepted in order, "send:<text>" for a post or a text inject, "clear", "reload-plugins", "skills:<list>" and "compact:<focus>", then every interrupt.
+	calls        []string
+	tokenAsks    []string
+	onSend       func()
+	onAlive      func()
+	onReadEvents func()
 
 	skillLoads  map[string]shuttleengine.SkillLoadReport    // Turn-end message to the report ClassifySkillLoad answers, else a report with every skill loaded.
 	autoCompact map[string]shuttleengine.CompactionBoundary // Turn-end message to a main-chain compaction boundary CompactedSince finds through it.
@@ -60,6 +55,8 @@ type fakeSession struct {
 	settle time.Duration
 	// settleErr is returned by every InterruptSettle while set.
 	settleErr error
+	// strandNameErr is returned by every StrandName while set.
+	strandNameErr error
 }
 
 func (f *fakeSession) SessionState(string) (shuttleengine.RunSessionState, error) {
@@ -76,9 +73,18 @@ func (f *fakeSession) SessionState(string) (shuttleengine.RunSessionState, error
 	return shuttleengine.RunSessionState{State: state, SessionStartAt: f.sessionStartAt, SessionID: f.sessionID}, nil
 }
 
-func (f *fakeSession) LoadSkills(_ string, skills []string) error {
-	f.calls = append(f.calls, "skills:"+strings.Join(skills, ","))
-	return f.skillsErr
+// fakeOrchStrandName is the name the fake session answers for every strand.
+const fakeOrchStrandName = "tst:orch"
+
+func (f *fakeSession) StrandName(string) (string, error) {
+	if f.strandNameErr != nil {
+		return "", f.strandNameErr
+	}
+	return fakeOrchStrandName, nil
+}
+
+func (f *fakeSession) StrandColor(string) (string, error) {
+	return f.color, f.colorErr
 }
 
 func (f *fakeSession) ClassifySkillLoad(guid string, turnEnd shuttleengine.Event, skills []string) (shuttleengine.SkillLoadReport, error) {
@@ -101,6 +107,9 @@ func (f *fakeSession) StrandAlive(string) (bool, error) {
 }
 
 func (f *fakeSession) ReadEvents(_ string, offset int64) ([]shuttleengine.Event, int64, error) {
+	if f.onReadEvents != nil {
+		f.onReadEvents()
+	}
 	if offset > int64(len(f.events)) {
 		offset = int64(len(f.events))
 	}
@@ -119,11 +128,7 @@ func (f *fakeSession) SessionIdle(string) (shuttleengine.IdleProbe, error) {
 		idle = f.idleSeq[0]
 		f.idleSeq = f.idleSeq[1:]
 	}
-	probe := shuttleengine.IdleProbe{Idle: idle}
-	if !idle {
-		probe.TooShort, probe.Reason, probe.Draft = f.tooShort, f.reason, f.draft
-	}
-	return probe, nil
+	return shuttleengine.IdleProbe{Idle: idle}, nil
 }
 
 func (f *fakeSession) Interrupt(string) error {
@@ -143,50 +148,6 @@ func (f *fakeSession) InterruptSettle(guid string) (time.Duration, error) {
 	return f.settle, nil
 }
 
-func (f *fakeSession) Send(_, text string) error {
-	f.calls = append(f.calls, "send:"+text)
-	if f.onSend != nil {
-		f.onSend()
-	}
-	if len(f.sendErrs) > 0 {
-		err := f.sendErrs[0]
-		f.sendErrs = f.sendErrs[1:]
-		return err
-	}
-	return nil
-}
-
-func (f *fakeSession) ClearSession(string) error {
-	f.calls = append(f.calls, "clear")
-	if f.clearErr != nil {
-		return f.clearErr
-	}
-	if len(f.clearErrs) > 0 {
-		err := f.clearErrs[0]
-		f.clearErrs = f.clearErrs[1:]
-		return err
-	}
-	return nil
-}
-
-func (f *fakeSession) ReloadPlugins(string) error {
-	f.calls = append(f.calls, reloadPluginsCall)
-	return nil
-}
-
-func (f *fakeSession) TypeColor(string) error {
-	f.colors++
-	return f.colorErr
-}
-
-func (f *fakeSession) CompactSession(_, focus string) error {
-	f.calls = append(f.calls, "compact:"+focus)
-	if f.compactErr != nil {
-		return f.compactErr
-	}
-	return nil
-}
-
 func (f *fakeSession) count(prefix string) int {
 	n := 0
 	for _, c := range f.calls {
@@ -199,19 +160,30 @@ func (f *fakeSession) count(prefix string) int {
 
 var errBoom = errors.New("boom")
 
-// errHeld is what shuttle returns for a write its pre-write guard held: nothing was typed, and the session may take it later.
-var errHeld = fmt.Errorf("%w: strand \"s1\": the input box holds a draft; retry once the session is idle", shuttleengine.ErrSessionBusy)
-
 // reloadPluginsCall is the call the fake records for the plugins step.
 const reloadPluginsCall = "reload-plugins"
 
 // interruptCall is the call the fake records for an interrupt.
 const interruptCall = "interrupt"
 
+// callOf spells an inject the way fakeSession.calls records it.
+func callOf(step CreelStep) string {
+	switch step.Command {
+	case "":
+		return "send:" + step.Text
+	case commandCompact:
+		return "compact:" + step.Argument
+	case commandLoadSkills:
+		return "skills:" + strings.ReplaceAll(step.Argument, " ", ",")
+	}
+	return step.Command
+}
+
 type watchEnv struct {
 	t     *testing.T
 	w     *Watcher
 	s     *fakeSession
+	c     *fakeCreel
 	clock *fakeClock
 	paths Paths
 	stDir string
@@ -236,45 +208,38 @@ func ask(msg string) shuttleengine.Event {
 }
 
 // newWatchEnv builds an idle orch state on strand s1 with threshold 1000, grace 10s, timeout 100s.
+// The fake creel lands every inject at once, sent at the clock's time, until a test scripts an outcome.
 func newWatchEnv(t *testing.T) *watchEnv {
 	t.Helper()
 	e := &watchEnv{
 		t:     t,
 		paths: testPaths(t),
 		stDir: seedStencils(t),
-		s:     &fakeSession{alive: true, idle: true, usage: map[string]int{}},
+		s:     &fakeSession{alive: true, idle: true, usage: map[string]int{}, color: "colour208"},
+		c:     &fakeCreel{autoLand: true},
 		cfg:   Config{ThresholdTokens: 1000, IdleGraceS: 10, HandoffTimeoutS: 100, CycleMode: CycleClear},
 		clock: &fakeClock{now: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)},
 	}
-	e.paths.NoticesDir = filepath.Join(e.paths.Dir, "notices")
+	e.c.clock = func() time.Time { return e.clock.now }
+	e.c.onSend = func(mail bool, step CreelStep, body string) {
+		switch {
+		case mail:
+			e.s.calls = append(e.s.calls, "send:"+body)
+		case step.Command == commandColor:
+			e.s.colors++
+		default:
+			e.s.calls = append(e.s.calls, callOf(step))
+		}
+		if e.s.onSend != nil {
+			e.s.onSend()
+		}
+	}
 	e.pausePath = filepath.Join(t.TempDir(), "pause", pauserecord.RecordFileName)
 	if err := SaveState(e.paths, State{Strand: "s1", Phase: PhaseIdle}); err != nil {
 		t.Fatal(err)
 	}
 	e.w = e.newWatcher()
 	return e
-}
-
-// queue queues line as a notice, failing the test when it is not queued.
-func (e *watchEnv) queue(line string) {
-	e.t.Helper()
-	e.clock.advance(time.Millisecond)
-	if queued, err := QueueNotice(e.paths, line, e.clock.now); err != nil || !queued {
-		e.t.Fatalf("QueueNotice(%q) = %v, %v", line, queued, err)
-	}
-}
-
-func (e *watchEnv) noticeLines() []string {
-	e.t.Helper()
-	ns, err := ListNotices(e.paths)
-	if err != nil {
-		e.t.Fatal(err)
-	}
-	var lines []string
-	for _, n := range ns {
-		lines = append(lines, n.Line)
-	}
-	return lines
 }
 
 func (e *watchEnv) newWatcher() *Watcher {
@@ -285,7 +250,7 @@ func (e *watchEnv) newWatcher() *Watcher {
 		}
 		return testIndex, nil
 	}
-	w := NewWatcher(e.s, e.cfg, e.paths, e.stDir, e.skills, index, e.clock)
+	w := NewWatcher(e.s, e.c, e.cfg, e.paths, e.stDir, e.skills, index, e.clock)
 	w.WatchPause(PauseWatch{RecordPath: e.pausePath, Alive: func(int, string) bool { return true }})
 	return w
 }
@@ -325,7 +290,66 @@ func (e *watchEnv) setState(mut func(*State)) {
 	}
 }
 
-// injectHandoff makes one over-threshold turn end and ticks until the handoff instruction is sent.
+// lastInjectID returns the id of the newest inject the fake creel accepted.
+func (e *watchEnv) lastInjectID() int64 {
+	e.t.Helper()
+	if len(e.c.injects) == 0 {
+		e.t.Fatal("no inject was accepted")
+	}
+	return e.c.injects[len(e.c.injects)-1].ID
+}
+
+// setOutcome scripts where inject id stands, ahead of the fake's own landing.
+func (e *watchEnv) setOutcome(id int64, outcome CreelOutcome) {
+	if e.c.outcomes == nil {
+		e.c.outcomes = map[int64]CreelOutcome{}
+	}
+	e.c.outcomes[id] = outcome
+}
+
+// reply leaves the orch's reply to the pending note request in the watcher's mailbox.
+func (e *watchEnv) reply(body string) {
+	e.t.Helper()
+	e.c.mailbox = append(e.c.mailbox, CreelMessage{ID: int64(100 + len(e.c.mailbox)), From: fakeOrchStrandName, ReplyTo: e.state().RequestID, Body: body})
+}
+
+// forgetLastSend rewinds the state to the instant after the newest post or inject was persisted and before creel answered it:
+// the step is pending with no id.
+// It returns the journal entry creel holds for that request.
+func (e *watchEnv) forgetLastSend() CreelSent {
+	e.t.Helper()
+	var (
+		lastID int64
+		mail   bool
+		step   CreelStep
+		body   string
+	)
+	for _, post := range e.c.posts {
+		if post.ID > lastID {
+			lastID, mail, body = post.ID, true, post.Body
+		}
+	}
+	for _, inject := range e.c.injects {
+		if inject.ID > lastID {
+			lastID, mail, step = inject.ID, false, inject.Step
+		}
+	}
+	st := e.state()
+	pending := PendingStep{Mail: mail, Command: step.Command, Argument: step.Argument, Text: step.Text, PersistedAt: e.clock.now}
+	entry := CreelSent{ID: 900, At: e.clock.now, Mail: mail, Step: step, Subject: step.Text}
+	if mail {
+		pending.Text = body
+		st.RequestID = 0
+		entry.Subject, _, _ = strings.Cut(body, "\n")
+	}
+	st.Pending, st.PhaseInjected = &pending, false
+	if err := SaveState(e.paths, st); err != nil {
+		e.t.Fatal(err)
+	}
+	return entry
+}
+
+// injectHandoff makes one over-threshold turn end and ticks until the note request is posted.
 func (e *watchEnv) injectHandoff() {
 	e.t.Helper()
 	e.s.usage["a"] = 2000
@@ -350,19 +374,17 @@ func (e *watchEnv) writeHandoff() string {
 	return path
 }
 
-// reachClearing completes the handoff so the state is clearing with the clear sent.
+// reachClearing completes the note so the state is clearing with the clear sent.
 func (e *watchEnv) reachClearing() {
 	e.t.Helper()
 	e.injectHandoff()
-	e.writeHandoff()
-	e.s.events = append(e.s.events, stop("handoff"))
-	e.tick()
+	e.finishNote()
 	if st := e.state(); st.Phase != PhaseClearing {
 		e.t.Fatalf("phase = %s, want clearing", st.Phase)
 	}
 }
 
-// reachResuming continues from reachClearing until the resume prompt is sent: the color on one tick, the plugins reload on the next, the pointer on the one after.
+// reachResuming continues from reachClearing until the resume pointer is sent: the color on one tick, the plugins reload on the next, the pointer on the one after.
 func (e *watchEnv) reachResuming() {
 	e.t.Helper()
 	e.reachClearing()
@@ -372,6 +394,29 @@ func (e *watchEnv) reachResuming() {
 		e.t.Fatalf("phase = %s, want resuming", st.Phase)
 	}
 	e.tick()
+}
+
+// reachReloadStep drives a clear cycle until the reload's step is queued and its inject typed.
+// The skills and retry steps need the watcher told its skills first.
+func (e *watchEnv) reachReloadStep(step int) {
+	e.t.Helper()
+	e.reachClearing()
+	e.tick() // the clear typed: resuming, the color queued
+	if step == ReloadStepColor {
+		return
+	}
+	e.tick() // the color typed: the plugins reload queued
+	if step == ReloadStepPlugins {
+		return
+	}
+	e.tick() // the plugins reload typed: the skills load queued, or the pointer with no skills
+	if step == ReloadStepSkills || len(e.skills) == 0 {
+		return
+	}
+	if step == ReloadStepRetry {
+		e.s.skillLoads = map[string]shuttleengine.SkillLoadReport{"t1": {Verified: true, Missing: []string{"ly:board"}}}
+	}
+	e.endTurn("t1")
 }
 
 func (e *watchEnv) assertNoCalls() {
@@ -396,18 +441,21 @@ func TestWatcher_BelowThresholdNoInjection(t *testing.T) {
 
 func TestWatcher_AboveThresholdInjectsHandoffPersistedFirst(t *testing.T) {
 	e := newWatchEnv(t)
-	var phaseAtSend Phase
-	e.s.onSend = func() { phaseAtSend = e.state().Phase }
+	var stateAtSend State
+	e.s.onSend = func() { stateAtSend = e.state() }
 	e.injectHandoff()
-	if phaseAtSend != PhaseHandoffRequested {
-		t.Errorf("phase at send = %s, want handoff-requested", phaseAtSend)
+	if stateAtSend.Phase != PhaseHandoffRequested || stateAtSend.Pending == nil || !stateAtSend.Pending.Mail || stateAtSend.Pending.ID != 0 {
+		t.Errorf("state at send = %+v, want handoff-requested with the request pending and no id", stateAtSend)
 	}
 	st := e.state()
 	if len(e.s.calls) != 1 || !strings.Contains(e.s.calls[0], st.PendingHandoff) {
 		t.Fatalf("calls = %v, pending %q", e.s.calls, st.PendingHandoff)
 	}
-	if !st.PhaseInjected || st.PhaseStrand != "s1" || st.PhaseEventsOffset != 1 {
-		t.Errorf("state = %+v", st)
+	if !st.PhaseInjected || st.PhaseStrand != "s1" || st.PhaseEventsOffset != 1 || st.Pending != nil || st.RequestID != e.c.posts[0].ID {
+		t.Errorf("state = %+v, want the request's id saved and nothing pending", st)
+	}
+	if e.c.posts[0].Receiver != fakeOrchStrandName {
+		t.Errorf("request posted to %q, want %q", e.c.posts[0].Receiver, fakeOrchStrandName)
 	}
 }
 
@@ -419,73 +467,6 @@ func TestWatcher_AskEventBlocksInjection(t *testing.T) {
 	e.clock.advance(11 * time.Second)
 	e.tick()
 	e.assertNoCalls()
-}
-
-func TestWatcher_IdleProbeFalseThenPasses(t *testing.T) {
-	e := newWatchEnv(t)
-	e.s.idle = false
-	e.s.usage["a"] = 2000
-	e.s.events = []shuttleengine.Event{stop("a")}
-	e.tick()
-	e.clock.advance(11 * time.Second)
-	e.tick()
-	e.assertNoCalls()
-	e.s.idle = true
-	e.tick()
-	if e.s.count("send:") != 1 {
-		t.Fatalf("calls = %v", e.s.calls)
-	}
-}
-
-func TestWatcher_TooShortProbeRecordsStuckInIdlePhaseAndPassingProbeClearsIt(t *testing.T) {
-	e := newWatchEnv(t)
-	e.s.idle, e.s.tooShort = false, true
-	e.s.usage["a"] = 2000
-	e.s.events = []shuttleengine.Event{stop("a")}
-	e.tick()
-	e.clock.advance(11 * time.Second)
-	e.tick()
-	e.assertNoCalls()
-	st := e.state()
-	if st.Phase != PhaseIdle || st.Stuck != paneTooShortReason {
-		t.Fatalf("state = %+v, want idle stuck on the too-short reason", st)
-	}
-
-	e.s.tooShort = false
-	e.tick()
-	if st := e.state(); st.Stuck != paneNotIdleReason {
-		t.Errorf("Stuck = %q after a probe that is not too short, want the pane fallback reason", st.Stuck)
-	}
-	e.assertNoCalls()
-
-	// A restarted watcher has no hold in memory, and the passing probe still clears the hold's reason.
-	e.w = e.newWatcher()
-	e.s.idle = true
-	e.tick()
-	e.clock.advance(11 * time.Second)
-	e.tick()
-	if st := e.state(); st.Stuck != "" {
-		t.Errorf("Stuck = %q after a passing probe, want cleared", st.Stuck)
-	}
-	if e.s.count("send:") != 1 {
-		t.Errorf("calls = %v, want the handoff request once the pane is idle", e.s.calls)
-	}
-}
-
-func TestWatcher_PassingProbeLeavesOtherStuckReasonsAlone(t *testing.T) {
-	e := newWatchEnv(t)
-	if err := SaveState(e.paths, State{Strand: "s1", Phase: PhaseIdle, Stuck: "something else"}); err != nil {
-		t.Fatal(err)
-	}
-	e.s.idle = false
-	e.s.usage["a"] = 2000
-	e.s.events = []shuttleengine.Event{stop("a")}
-	e.tick()
-	e.clock.advance(11 * time.Second)
-	e.tick()
-	if got := e.state().Stuck; got != "something else" {
-		t.Errorf("Stuck = %q, want an unrelated reason untouched by the probe", got)
-	}
 }
 
 func TestWatcher_NewerEventRestartsIdleGrace(t *testing.T) {
@@ -535,16 +516,6 @@ func TestWatcher_ManualRequestBelowThresholdCyclesWithoutGrace(t *testing.T) {
 	}
 }
 
-func TestWatcher_HandoffFileWithoutTurnEndNoClear(t *testing.T) {
-	e := newWatchEnv(t)
-	e.injectHandoff()
-	e.writeHandoff()
-	e.tick()
-	if e.s.count("clear") != 0 || e.state().Phase != PhaseHandoffRequested {
-		t.Fatalf("calls = %v phase = %s", e.s.calls, e.state().Phase)
-	}
-}
-
 func TestWatcher_HandoffTurnEndWithoutFileNoClear(t *testing.T) {
 	e := newWatchEnv(t)
 	e.injectHandoff()
@@ -586,13 +557,17 @@ func TestWatcher_HandoffCompleteClearsThenResumes(t *testing.T) {
 	if e.s.count("clear") != 1 {
 		t.Fatalf("calls = %v", e.s.calls)
 	}
+	if got := e.c.count("hold:"); got < 2 || e.c.count("release:") != 0 {
+		t.Fatalf("holds = %d releases = %d, want the hold taken at the cycle start and renewed since", got, e.c.count("release:"))
+	}
+	holds := e.c.count("hold:")
 	e.tick()
 	st := e.state()
 	if st.Phase != PhaseResuming || st.CycleCount != 1 || st.LastHandoff != handoff {
 		t.Fatalf("state = %+v", st)
 	}
 	if e.s.colors != 2 || e.s.count(reloadPluginsCall) != 0 {
-		t.Fatalf("colors = %d calls = %v, want the color typed and no plugins reload yet", e.s.colors, e.s.calls)
+		t.Fatalf("colors = %d calls = %v, want the color queued and no plugins reload yet", e.s.colors, e.s.calls)
 	}
 	e.tick()
 	if last := e.s.calls[len(e.s.calls)-1]; last != reloadPluginsCall {
@@ -602,6 +577,16 @@ func TestWatcher_HandoffCompleteClearsThenResumes(t *testing.T) {
 	last := e.s.calls[len(e.s.calls)-1]
 	if !strings.HasPrefix(last, "send:") || !strings.Contains(last, handoff) {
 		t.Errorf("resume prompt = %q, want one naming %s", last, handoff)
+	}
+	if got := e.c.count("hold:"); got != holds+3 || e.c.count("release:") != 0 {
+		t.Errorf("holds = %d releases = %d, want the hold renewed on each of the three ticks and still kept", got, e.c.count("release:"))
+	}
+	e.endTurn("resumed")
+	if st := e.state(); st.Phase != PhaseIdle {
+		t.Fatalf("phase = %s, want idle", st.Phase)
+	}
+	if got := e.c.count("release:"); got != 1 {
+		t.Errorf("releases = %d, want the hold released once when the pointer's turn end ended the phase", got)
 	}
 }
 
@@ -635,31 +620,35 @@ func TestWatcher_ConfirmedClearRemovesOnlyASatisfiedClearRequest(t *testing.T) {
 	}
 }
 
+// TestWatcher_ClearingTimeoutNeverTypesWhileBusy pins that a clear creel has not typed is waited for however long that lasts.
+// Its stall reason shows in State.Stuck, and it is queued again only after creel expired it.
 func TestWatcher_ClearingTimeoutNeverTypesWhileBusy(t *testing.T) {
 	t.Parallel()
 
 	e := newWatchEnv(t)
 	e.reachClearing()
-	e.s.idle = false
+	e.setOutcome(e.lastInjectID(), CreelOutcome{State: CreelQueued})
 	e.tick()
-	if e.state().Phase != PhaseClearing {
-		t.Fatalf("phase = %s", e.state().Phase)
-	}
 	e.clock.advance(101 * time.Second)
 	e.tick()
 	e.tick()
 	st := e.state()
-	if st.Phase != PhaseClearing || st.Stuck == "" || e.s.count("send:") != 1 || e.s.count("clear") != 1 {
-		t.Fatalf("typed into a busy pane or stuck unrecorded: state = %+v calls = %v", st, e.s.calls)
+	if st.Phase != PhaseClearing || e.s.count("clear") != 1 {
+		t.Fatalf("phase = %s calls = %v, want one clear still waiting for the busy orch", st.Phase, e.s.calls)
 	}
-	e.s.idle = true
+
+	e.setOutcome(e.lastInjectID(), CreelOutcome{State: CreelExpired, Stall: "the orch is busy"})
+	e.tick()
+	if st := e.state(); st.Phase != PhaseClearing || st.Stuck != "the orch is busy" || e.s.count("clear") != 2 {
+		t.Fatalf("state = %+v calls = %v, want the clear queued again with the stall shown", st, e.s.calls)
+	}
 	e.tick()
 	st = e.state()
-	if st.Phase != PhaseResuming || st.CycleCount != 1 || st.Stuck != "" || e.s.count(reloadPluginsCall) != 0 || e.s.count("send:") != 1 {
+	if st.Phase != PhaseResuming || st.CycleCount != 1 || st.Stuck != "" || e.s.count(reloadPluginsCall) != 0 {
 		t.Fatalf("state = %+v calls = %v", st, e.s.calls)
 	}
 	e.tick()
-	if e.s.count(reloadPluginsCall) != 1 || e.s.count("send:") != 1 {
+	if e.s.count(reloadPluginsCall) != 1 {
 		t.Fatalf("calls = %v", e.s.calls)
 	}
 	e.tick()
@@ -668,87 +657,37 @@ func TestWatcher_ClearingTimeoutNeverTypesWhileBusy(t *testing.T) {
 	}
 }
 
-func TestWatcher_HandoffGateWaitsForIdleBeforeClear(t *testing.T) {
-	e := newWatchEnv(t)
-	e.injectHandoff()
-	e.writeHandoff()
-	e.s.events = append(e.s.events, stop("handoff"))
-	e.s.idle = false
-	e.tick()
-	e.tick()
-	if e.s.count("clear") != 0 || e.state().Phase != PhaseHandoffRequested {
-		t.Fatalf("cleared a busy pane: calls = %v phase = %s", e.s.calls, e.state().Phase)
-	}
-	e.s.idle = true
-	e.tick()
-	if e.s.count("clear") != 1 || e.state().Phase != PhaseClearing {
-		t.Fatalf("calls = %v phase = %s", e.s.calls, e.state().Phase)
-	}
-}
-
-func TestWatcher_TurnEndBeforeHandoffFileDoesNotOpenClearGate(t *testing.T) {
-	e := newWatchEnv(t)
-	e.injectHandoff()
-	e.s.events = append(e.s.events, stop("before the file"))
-	e.tick()
-	e.writeHandoff()
-	e.tick()
-	e.tick()
-	if e.s.count("clear") != 0 || e.state().Phase != PhaseHandoffRequested {
-		t.Fatalf("an earlier turn end opened the gate: calls = %v phase = %s", e.s.calls, e.state().Phase)
-	}
-	e.s.events = append(e.s.events, stop("after the file"))
-	e.tick()
-	if e.s.count("clear") != 1 || e.state().Phase != PhaseClearing {
-		t.Fatalf("calls = %v phase = %s", e.s.calls, e.state().Phase)
-	}
-}
-
-func TestWatcher_RestartReplayedTurnEndDoesNotOpenClearGate(t *testing.T) {
-	e := newWatchEnv(t)
-	e.injectHandoff()
-	e.writeHandoff()
-	e.s.events = append(e.s.events, stop("handoff"))
-	e.w = e.newWatcher()
-	e.tick()
-	e.tick()
-	if e.s.count("clear") != 0 {
-		t.Fatalf("a replayed turn end opened the gate: %v", e.s.calls)
-	}
-	e.s.events = append(e.s.events, stop("later"))
-	e.tick()
-	if e.s.count("clear") != 1 || e.state().Phase != PhaseClearing {
-		t.Fatalf("calls = %v phase = %s", e.s.calls, e.state().Phase)
-	}
-}
-
-func TestWatcher_ClearRetryWaitsForIdle(t *testing.T) {
-	e := newWatchEnv(t)
-	e.injectHandoff()
-	e.writeHandoff()
-	e.s.events = append(e.s.events, stop("handoff"))
-	e.s.clearErrs = []error{errBoom}
-	e.tickErr()
-	e.s.idle = false
-	e.tick()
-	e.clock.advance(101 * time.Second)
-	e.tick()
-	if e.s.count("clear") != 1 || e.s.count("send:") != 1 {
-		t.Fatalf("typed into a busy pane: %v", e.s.calls)
-	}
-	if e.state().Stuck == "" {
-		t.Error("an overdue clearing phase should record Stuck")
-	}
-}
-
 func TestWatcher_ResumeTurnNeverEndingReturnsIdleUnknown(t *testing.T) {
-	e := newWatchEnv(t)
-	e.reachResuming()
-	e.clock.advance(101 * time.Second)
-	e.tick()
-	st := e.state()
-	if st.Phase != PhaseIdle || st.LastAbortReason == "" || st.LastContextKnown {
-		t.Fatalf("state = %+v", st)
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// outcome scripts the pointer inject's outcome, none when it stays landed.
+		outcome *CreelOutcome
+	}{
+		{"a landed pointer whose turn never ends", nil},
+		{"an unconfirmed pointer keeps waiting for its turn end", &CreelOutcome{State: CreelUnconfirmed}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			e := newWatchEnv(t)
+			e.reachResuming()
+			if tt.outcome != nil {
+				e.setOutcome(e.lastInjectID(), *tt.outcome)
+			}
+			e.clock.advance(50 * time.Second)
+			e.tick()
+			if st := e.state(); st.Phase != PhaseResuming {
+				t.Fatalf("phase = %s, want resuming while the turn has not ended", st.Phase)
+			}
+			e.clock.advance(51 * time.Second)
+			e.tick()
+			st := e.state()
+			if st.Phase != PhaseIdle || st.LastAbortReason != "resume timed out" || st.LastContextKnown {
+				t.Fatalf("state = %+v", st)
+			}
+		})
 	}
 }
 
@@ -756,8 +695,7 @@ func TestWatcher_ResumeTurnEndTakesFirstPostCycleReading(t *testing.T) {
 	e := newWatchEnv(t)
 	e.reachResuming()
 	e.s.usage["resumed"] = 300
-	e.s.events = append(e.s.events, stop("resumed"))
-	e.tick()
+	e.endTurn("resumed")
 	st := e.state()
 	if st.Phase != PhaseIdle || st.LastContextTokens != 300 || !st.LastContextKnown {
 		t.Fatalf("state = %+v", st)
@@ -771,14 +709,15 @@ func TestWatcher_PreClearTurnEndNeverReadNorCyclesAgain(t *testing.T) {
 	e := newWatchEnv(t)
 	e.reachClearing()
 	e.s.usage["pre"] = 5000
-	e.s.events = append(e.s.events, stop("pre"))
-	e.tick() // clearing: probe passes, moves to resuming past the stray turn end.
+	// The stray turn end predates the clear's sending record.
+	e.s.events = append(e.s.events, shuttleengine.Event{Kind: shuttleengine.EventStop, Message: "pre", At: e.clock.now.Add(-10 * time.Second)})
+	e.tick() // clearing: the clear typed, moves to resuming past the stray turn end.
 	if e.state().Phase != PhaseResuming {
 		t.Fatalf("phase = %s", e.state().Phase)
 	}
 	e.clock.advance(101 * time.Second)
 	e.tick() // the plugins step follows the color
-	e.tick() // the pointer is typed after the plugins step
+	e.tick() // the pointer follows the plugins step
 	sends := e.s.count("send:")
 	for i := 0; i < 3; i++ {
 		e.clock.advance(60 * time.Second)
@@ -841,9 +780,7 @@ func TestWatcher_EveryAbortReturnPersistsCursor(t *testing.T) {
 		}},
 		{"resume render failure", func(e *watchEnv) {
 			breakStencil(e.t, e.stDir, resumeStencilName)
-			e.writeHandoff()
-			e.s.events = append(e.s.events, stop("handoff"))
-			e.tick()
+			e.finishNote()
 		}},
 	}
 	for _, tt := range tests {
@@ -879,50 +816,137 @@ func TestWatcher_RestartInIdleAfterResumeTimeoutStartsNoCycle(t *testing.T) {
 	}
 }
 
+// TestWatcher_RestartLandedInjectionNoDuplicateSend pins that a restart in any non-idle phase, over a pending step whose id is saved, takes the hold again before anything else.
+// The restarted watcher reads the step's outcome and posts or injects nothing again.
 func TestWatcher_RestartLandedInjectionNoDuplicateSend(t *testing.T) {
-	e := newWatchEnv(t)
-	e.injectHandoff()
-	sends := e.s.count("send:")
-	e.s.events = append(e.s.events, stop("handoff")) // no file yet: the phase keeps waiting
-	e.w = e.newWatcher()
-	e.tick()
-	if e.s.count("send:") != sends {
-		t.Fatalf("duplicate send in handoff-requested: %v", e.s.calls)
-	}
-	if !e.state().PhaseInjected {
-		t.Error("landed injection should be confirmed")
-	}
+	t.Parallel()
 
-	e2 := newWatchEnv(t)
-	e2.reachResuming()
-	sends = e2.s.count("send:")
-	e2.s.events = append(e2.s.events, stop("resumed"))
-	e2.w = e2.newWatcher()
-	e2.tick()
-	if e2.s.count("send:") != sends || e2.state().Phase != PhaseIdle {
-		t.Fatalf("calls = %v phase = %s", e2.s.calls, e2.state().Phase)
+	tests := []struct {
+		name string
+		// env builds the env and drives it into the phase.
+		env func(t *testing.T) *watchEnv
+		// after runs the restarted watcher's measured tick and returns the phase wanted afterwards.
+		after func(e *watchEnv) Phase
+	}{
+		{"handoff-requested", func(t *testing.T) *watchEnv {
+			e := newWatchEnv(t)
+			e.injectHandoff()
+			return e
+		}, func(e *watchEnv) Phase {
+			e.s.events = append(e.s.events, stop("handoff")) // no reply yet: the phase keeps waiting
+			e.tick()
+			return PhaseHandoffRequested
+		}},
+		{"clearing", func(t *testing.T) *watchEnv {
+			e := newWatchEnv(t)
+			e.reachClearing()
+			return e
+		}, func(e *watchEnv) Phase {
+			e.tick()
+			return PhaseResuming
+		}},
+		{"resuming", func(t *testing.T) *watchEnv {
+			e := newWatchEnv(t)
+			e.reachResuming()
+			return e
+		}, func(e *watchEnv) Phase {
+			e.endTurn("resumed")
+			return PhaseIdle
+		}},
+		{"compacting", func(t *testing.T) *watchEnv {
+			e := newCompactEnv(t)
+			e.reachCompacting()
+			return e
+		}, func(e *watchEnv) Phase {
+			e.tick()
+			return PhaseCompacting
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			e := tt.env(t)
+			sends, colors, creelCalls := len(e.s.calls), e.s.colors, len(e.c.calls)
+			e.w = e.newWatcher()
+			wantPhase := tt.after(e)
+			if len(e.s.calls) != sends {
+				t.Fatalf("calls = %v, want nothing posted or injected again", e.s.calls[sends:])
+			}
+			if wantPhase != PhaseResuming && e.s.colors != colors {
+				t.Errorf("colors = %d, want %d", e.s.colors, colors)
+			}
+			if got := e.state().Phase; got != wantPhase {
+				t.Errorf("phase = %s, want %s", got, wantPhase)
+			}
+			if first := e.c.calls[creelCalls]; first != "hold:"+fakeOrchStrandName {
+				t.Errorf("first creel call of the restarted watcher = %q, want the hold taken again", first)
+			}
+		})
 	}
 }
 
+// TestWatcher_RestartUnlandedInjectionResendsOnce pins that a restart over a pending step with no saved id adopts the step when creel journaled it.
+// It sends the step once when creel journaled nothing.
 func TestWatcher_RestartUnlandedInjectionResendsOnce(t *testing.T) {
-	e := newWatchEnv(t)
-	e.injectHandoff()
-	first := e.s.calls[0]
-	e.w = e.newWatcher()
-	e.tick()
-	e.tick()
-	if len(e.s.calls) != 2 || e.s.calls[1] != first {
-		t.Fatalf("handoff calls = %v", e.s.calls)
-	}
+	t.Parallel()
 
-	e2 := newWatchEnv(t)
-	e2.reachResuming()
-	resume := e2.s.calls[len(e2.s.calls)-1]
-	e2.w = e2.newWatcher()
-	e2.tick()
-	e2.tick()
-	if e2.s.count("send:") != 3 || e2.s.calls[len(e2.s.calls)-1] != resume {
-		t.Fatalf("resume calls = %v", e2.s.calls)
+	tests := []struct {
+		name string
+		env  func(t *testing.T) *watchEnv
+	}{
+		{"note request", func(t *testing.T) *watchEnv {
+			e := newWatchEnv(t)
+			e.injectHandoff()
+			return e
+		}},
+		{"clear", func(t *testing.T) *watchEnv {
+			e := newWatchEnv(t)
+			e.reachClearing()
+			return e
+		}},
+		{"resume pointer", func(t *testing.T) *watchEnv {
+			e := newWatchEnv(t)
+			e.reachResuming()
+			return e
+		}},
+		{"compact", func(t *testing.T) *watchEnv {
+			e := newCompactEnv(t)
+			e.reachCompacting()
+			return e
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name+" absent from the journal is sent once", func(t *testing.T) {
+			t.Parallel()
+			e := tt.env(t)
+			want := e.s.calls[len(e.s.calls)-1]
+			sends := len(e.s.calls)
+			e.forgetLastSend()
+			e.w = e.newWatcher()
+			e.tick()
+			if len(e.s.calls) != sends+1 || e.s.calls[sends] != want {
+				t.Fatalf("calls = %v, want %q sent once more", e.s.calls[sends:], want)
+			}
+		})
+		t.Run(tt.name+" in the journal is adopted", func(t *testing.T) {
+			t.Parallel()
+			e := tt.env(t)
+			sends := len(e.s.calls)
+			entry := e.forgetLastSend()
+			e.c.sent = []CreelSent{entry}
+			e.w = e.newWatcher()
+			e.tick()
+			if len(e.s.calls) != sends {
+				t.Fatalf("calls = %v, want the journaled step adopted and nothing sent", e.s.calls[sends:])
+			}
+			st := e.state()
+			if entry.Mail && (st.RequestID != entry.ID || st.Pending != nil) {
+				t.Errorf("state = %+v, want the adopted post's id as the request id", st)
+			}
+			if !entry.Mail && (st.Pending == nil || st.Pending.ID != entry.ID) && st.Phase != PhaseResuming {
+				t.Errorf("pending = %+v, want the adopted inject's id", st.Pending)
+			}
+		})
 	}
 }
 
@@ -930,16 +954,12 @@ func TestWatcher_RestartInClearingClearsOnceAndCountsOnce(t *testing.T) {
 	e := newWatchEnv(t)
 	e.reachClearing()
 	e.w = e.newWatcher()
-	e.tick() // unconditional re-clear
-	if e.s.count("clear") != 2 {
-		t.Fatalf("calls = %v", e.s.calls)
-	}
-	e.tick() // probe passes
+	e.tick() // the saved clear is read as typed
 	st := e.state()
 	if st.Phase != PhaseResuming || st.CycleCount != 1 {
 		t.Fatalf("state = %+v", st)
 	}
-	if e.s.count("clear") != 2 {
+	if e.s.count("clear") != 1 {
 		t.Errorf("clear repeated: %v", e.s.calls)
 	}
 }
@@ -953,7 +973,9 @@ func breakStencil(t *testing.T, dir, name string) {
 
 func TestWatcher_FailingHandoffRenderChangesNothing(t *testing.T) {
 	e := newWatchEnv(t)
-	breakStencil(t, e.stDir, handoffStencilName)
+	if err := os.WriteFile(stencilstore.Path(e.stDir, handoffStencilName), []byte("{{.nope}}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	e.s.usage["a"] = 2000
 	e.s.events = []shuttleengine.Event{stop("a")}
 	if err := RequestCycle(e.paths, CycleClear, e.clock.now); err != nil {
@@ -963,29 +985,43 @@ func TestWatcher_FailingHandoffRenderChangesNothing(t *testing.T) {
 	e.clock.advance(11 * time.Second)
 	e.tickErr()
 	e.assertNoCalls()
-	if e.state().Phase != PhaseIdle {
-		t.Errorf("phase = %s", e.state().Phase)
+	if e.state().Phase != PhaseIdle || e.c.count("hold:") != 0 {
+		t.Errorf("phase = %s holds = %d, want idle and no hold taken", e.state().Phase, e.c.count("hold:"))
 	}
 	if _, requested, _ := CycleRequested(e.paths); !requested {
 		t.Error("cycle request should be kept")
 	}
 }
 
+// TestWatcher_NoteRequestRendersTemplateFileBeforeTyping pins that the note template file is rendered before the request is posted,
+// and that the request body names the note, the template and the answers the orch gives.
 func TestWatcher_NoteRequestRendersTemplateFileBeforeTyping(t *testing.T) {
-	e := newWatchEnv(t)
-	e.injectHandoff()
-	if _, err := os.Stat(e.paths.NoteTemplatePath); err != nil {
-		t.Fatalf("note template file not rendered before the request: %v", err)
-	}
-	var sent string
-	for _, c := range e.s.calls {
-		if strings.HasPrefix(c, "send:") {
-			sent = c
+	t.Run("hard request", func(t *testing.T) {
+		e := newWatchEnv(t)
+		e.injectHandoff()
+		if _, err := os.Stat(e.paths.NoteTemplatePath); err != nil {
+			t.Fatalf("note template file not rendered before the request: %v", err)
 		}
-	}
-	if !strings.Contains(sent, e.paths.NoteTemplatePath) || !strings.Contains(sent, e.state().PendingHandoff) {
-		t.Errorf("note request %q must name the template and the note path", sent)
-	}
+		body := e.c.posts[0].Body
+		for _, want := range []string{e.paths.NoteTemplatePath, e.state().PendingHandoff, "lyx creel post --reply", `"written ` + e.state().PendingHandoff + `"`, "lyx creel read"} {
+			if !strings.Contains(body, want) {
+				t.Errorf("note request %q must name %q", body, want)
+			}
+		}
+		if strings.Contains(body, "defer") {
+			t.Errorf("a hard request %q must not offer to defer", body)
+		}
+	})
+	t.Run("soft request", func(t *testing.T) {
+		e := newSoftEnv(t)
+		e.injectSoft(stop("a"))
+		body := e.c.posts[0].Body
+		for _, want := range []string{e.paths.NoteTemplatePath, e.state().PendingHandoff, `"written ` + e.state().PendingHandoff + `"`, "lyx creel post --reply <id> defer"} {
+			if !strings.Contains(body, want) {
+				t.Errorf("soft note request %q must name %q", body, want)
+			}
+		}
+	})
 }
 
 var reloadSkills = []string{"scribe:prose", "ly:board"}
@@ -1008,10 +1044,10 @@ func (e *watchEnv) callsAfter(prefix string) []string {
 	return nil
 }
 
-// endTurn reads one turn end and ticks.
+// endTurn reads one turn end stamped two seconds past the clock, after any step sent so far, and ticks.
 func (e *watchEnv) endTurn(msg string) {
 	e.t.Helper()
-	e.s.events = append(e.s.events, stop(msg))
+	e.s.events = append(e.s.events, shuttleengine.Event{Kind: shuttleengine.EventStop, Message: msg, At: e.clock.now.Add(2 * time.Second)})
 	e.tick()
 }
 
@@ -1047,31 +1083,26 @@ func TestWatcher_ClearCycleReloadsSkillsThenPointer(t *testing.T) {
 	e := newWatchEnv(t)
 	e.withSkills()
 	e.reachClearing()
-	e.s.idleSeq = []bool{true, false}
 	colorsBefore := e.s.colors
-	e.tick() // clearing -> resuming, the color typed and nothing else
-	if st := e.state(); st.Phase != PhaseResuming || st.ReloadStep != ReloadStepPlugins || !st.ReloadTypedAt.IsZero() {
-		t.Fatalf("state = %+v, want the plugins step not yet typed", st)
+	e.tick() // the clear typed: resuming, the color queued and nothing else
+	if st := e.state(); st.Phase != PhaseResuming || st.ReloadStep != ReloadStepColor || st.ReloadTypedAt.IsZero() {
+		t.Fatalf("state = %+v, want the color step queued", st)
 	}
 	if got := e.callsAfter("clear"); len(got) != 0 || e.s.colors != colorsBefore+1 {
-		t.Fatalf("calls after clear = %v colors = %d, want only the color typed", got, e.s.colors-colorsBefore)
+		t.Fatalf("calls after clear = %v colors = %d, want only the color queued", got, e.s.colors-colorsBefore)
 	}
-	e.tick() // the idle probe fails: nothing is typed
-	if got := e.callsAfter("clear"); len(got) != 0 {
-		t.Fatalf("typed behind a failing probe: %v", got)
-	}
-	e.s.idle = true
-	e.tick() // plugins typed on a later tick, and nothing else
-	if st := e.state(); st.Phase != PhaseResuming || st.ReloadStep != ReloadStepSkills || !st.ReloadTypedAt.IsZero() || st.ReloadSkipsSkills {
-		t.Fatalf("state = %+v, want the skills step not yet typed", st)
+	e.tick() // the color typed: the plugins reload queued
+	if st := e.state(); st.Phase != PhaseResuming || st.ReloadStep != ReloadStepPlugins || st.ReloadTypedAt.IsZero() || st.ReloadSkipsSkills {
+		t.Fatalf("state = %+v, want the plugins step queued", st)
 	}
 	if got := e.callsAfter("clear"); !slices.Equal(got, []string{reloadPluginsCall}) {
 		t.Fatalf("calls after clear = %v, want only the plugins reload", got)
 	}
-	e.tick() // skills typed on the next tick
+	e.tick() // the plugins reload typed: the skills load queued
 	if st := e.state(); st.Phase != PhaseResuming || st.ReloadStep != ReloadStepSkills || st.ReloadTypedAt.IsZero() {
 		t.Fatalf("state = %+v", st)
 	}
+	holds := e.c.count("hold:")
 	e.endTurn("t1")
 	if st := e.state(); st.Phase != PhaseResuming || st.ReloadStep != ReloadStepPointer {
 		t.Fatalf("state = %+v, want the pointer step", st)
@@ -1081,6 +1112,9 @@ func TestWatcher_ClearCycleReloadsSkillsThenPointer(t *testing.T) {
 	e.assertReload("clear", e.state().LastHandoff, true)
 	if st := e.state(); st.Phase != PhaseIdle || st.LastContextTokens != 300 || st.ReloadStep != ReloadStepSkills {
 		t.Errorf("state = %+v", st)
+	}
+	if got := e.c.count("hold:"); got != holds+2 || e.c.count("release:") != 1 {
+		t.Errorf("holds = %d releases = %d, want the hold renewed on each tick and released once at the end", got-holds, e.c.count("release:"))
 	}
 }
 
@@ -1093,7 +1127,7 @@ func TestWatcher_SkillSkipCauses(t *testing.T) {
 	tests := []struct {
 		name      string
 		loads     map[string]shuttleengine.SkillLoadReport
-		timeout   bool     // the last load turn typed never ends and passes its timeout
+		timeout   bool     // the last load turn queued never ends and passes its timeout
 		endTurns  []string // turn ends read before the timeout and the pointer's
 		wantSkill []string // the skills calls after the plugins reload
 		wantSkips int      // the skill skipped warnings
@@ -1155,15 +1189,15 @@ func TestWatcher_SkillSkipCauses(t *testing.T) {
 			e.withSkills()
 			e.s.skillLoads = tt.loads
 			e.reachClearing()
-			e.tick() // color typed
-			e.tick() // plugins typed
-			e.tick() // skills typed
+			e.tick() // clear typed, color queued
+			e.tick() // color typed, plugins queued
+			e.tick() // plugins typed, skills queued
 			for _, turn := range tt.endTurns {
 				e.endTurn(turn)
 			}
 			if tt.timeout {
 				e.clock.advance(101 * time.Second)
-				e.tick() // the silent turn's skills are skipped, the pointer typed on the same tick
+				e.tick() // the silent turn's skills are skipped, the pointer queued on the same tick
 			}
 			if st := e.state(); st.Phase != PhaseResuming || st.ReloadStep != ReloadStepPointer || len(st.ReloadRetry) != 0 {
 				t.Fatalf("state = %+v, want the pointer step with nothing left to retry", st)
@@ -1196,52 +1230,57 @@ func TestWatcher_SkillSkipCauses(t *testing.T) {
 	}
 }
 
+// TestWatcher_ReloadRestartRetypesOnlyTheUnconfirmedStep pins that a restart at each reload step, with the step pending and no id saved, adopts that step's own journal entry.
+// It never adopts an earlier or later step's.
 func TestWatcher_ReloadRestartRetypesOnlyTheUnconfirmedStep(t *testing.T) {
 	t.Parallel()
 
-	e := newWatchEnv(t)
-	e.withSkills()
-	e.reachClearing()
-	e.tick() // color typed
-	e.tick() // plugins typed
-	e.tick() // skills typed
-	typedAt := e.state().ReloadTypedAt
+	steps := []int{ReloadStepColor, ReloadStepPlugins, ReloadStepSkills, ReloadStepRetry, ReloadStepPointer}
+	for _, step := range steps {
+		t.Run(reloadStepName(step), func(t *testing.T) {
+			t.Parallel()
+			e := newWatchEnv(t)
+			e.withSkills()
+			e.reachReloadStep(step)
+			pointer := e.state().PendingResume
+			catalog := map[int]CreelSent{
+				ReloadStepColor:   {Step: CreelStep{Command: commandColor, Argument: "colour208"}},
+				ReloadStepPlugins: {Step: CreelStep{Command: commandReloadPlugins}},
+				ReloadStepSkills:  {Step: CreelStep{Command: commandLoadSkills, Argument: strings.Join(reloadSkills, " ")}},
+				ReloadStepRetry:   {Step: CreelStep{Command: commandLoadSkills, Argument: "ly:board"}},
+				ReloadStepPointer: {Subject: pointer},
+			}
+			own := e.forgetLastSend()
+			sends, injects := len(e.s.calls), len(e.c.injects)
+			// Every other step's entry sits in the journal at the same time, and the own entry comes last.
+			e.c.sent = nil
+			for _, other := range steps {
+				if other != step {
+					entry := catalog[other]
+					entry.ID, entry.At = int64(10+other+3), e.clock.now
+					e.c.sent = append(e.c.sent, entry)
+				}
+			}
+			e.c.sent = append(e.c.sent, own)
+			e.w = e.newWatcher()
+			e.tick()
+			st := e.state()
+			if st.Pending == nil || st.Pending.ID != own.ID {
+				t.Fatalf("pending = %+v, want the step's own journal entry %d adopted", st.Pending, own.ID)
+			}
+			if len(e.s.calls) != sends || len(e.c.injects) != injects {
+				t.Errorf("calls = %v, want nothing sent", e.s.calls[sends:])
+			}
+			if e.reloadStepOf(st) != step {
+				t.Errorf("reload step = %d, want it kept at %d", e.reloadStepOf(st), step)
+			}
+		})
+	}
+}
 
-	e.clock.advance(50 * time.Second)
-	e.w = e.newWatcher()
-	e.s.idle = false
-	e.tick()
-	if got := e.callsAfter("clear"); len(got) != 2 {
-		t.Fatalf("typed behind a failing probe: %v", got)
-	}
-	e.s.idle = true
-	e.tick()
-	got := e.callsAfter("clear")
-	if len(got) != 3 || got[2] != reloadSkillsCall {
-		t.Fatalf("calls after clear = %v, want the unconfirmed skills step typed again", got)
-	}
-	if st := e.state(); !st.ReloadTypedAt.Equal(typedAt) || st.ReloadStep != ReloadStepSkills {
-		t.Errorf("state = %+v, want the step and its first typing time kept", st)
-	}
-
-	// A restart at the plugins step, long past the timeout and with a turn end read, types /reload-plugins again and only that.
-	e2 := newWatchEnv(t)
-	e2.withSkills()
-	e2.reachClearing()
-	e2.tick() // color typed and moved past
-	e2.tick() // plugins typed and moved past
-	e2.setState(func(st *State) {
-		st.ReloadStep, st.ReloadTypedAt = ReloadStepPlugins, e2.clock.now.Add(-200*time.Second)
-	})
-	e2.s.events = append(e2.s.events, stop("t"))
-	e2.w = e2.newWatcher()
-	e2.tick()
-	if got := e2.callsAfter("clear"); !slices.Equal(got, []string{reloadPluginsCall, reloadPluginsCall}) {
-		t.Fatalf("calls after clear = %v, want the plugins reload typed again and nothing else", got)
-	}
-	if st := e2.state(); st.Phase != PhaseResuming || st.ReloadStep != ReloadStepSkills || !st.ReloadTypedAt.IsZero() {
-		t.Errorf("state = %+v, want the move to the untyped skills step", st)
-	}
+// reloadStepOf returns the normalised reload step st is in.
+func (e *watchEnv) reloadStepOf(st State) int {
+	return e.w.reloadStep(st)
 }
 
 func TestWatcher_ReloadRestartAroundTheRetryStep(t *testing.T) {
@@ -1253,20 +1292,20 @@ func TestWatcher_ReloadRestartAroundTheRetryStep(t *testing.T) {
 		"t2": {Verified: true, Missing: []string{"ly:board"}},
 	}
 	e.reachClearing()
-	e.tick()        // color typed
-	e.tick()        // plugins typed
-	e.tick()        // skills typed
-	e.endTurn("t1") // moves to the retry step, typed on the same tick
+	e.tick()        // clear typed, color queued
+	e.tick()        // color typed, plugins queued
+	e.tick()        // plugins typed, skills queued
+	e.endTurn("t1") // moves to the retry step, queued on the same tick
 	if st := e.state(); st.ReloadStep != ReloadStepRetry || len(st.ReloadRetry) != 1 || st.ReloadRetry[0] != "ly:board" {
 		t.Fatalf("state = %+v, want the retry step naming ly:board", st)
 	}
 
-	// A restart in the retry step re-sends only the retry, and never retries a second time.
+	// A restart in the retry step reads the saved retry's outcome and sends nothing, and never retries a second time.
 	e.w = e.newWatcher()
 	e.tick()
 	got := e.callsAfter("clear")
-	if len(got) != 4 || got[3] != "skills:ly:board" {
-		t.Fatalf("calls after clear = %v, want only the retry typed again", got)
+	if len(got) != 3 || got[2] != "skills:ly:board" {
+		t.Fatalf("calls after clear = %v, want the retry sent once", got)
 	}
 	e.endTurn("t2")
 	if st := e.state(); st.ReloadStep != ReloadStepPointer || len(st.ReloadRetry) != 0 {
@@ -1276,10 +1315,8 @@ func TestWatcher_ReloadRestartAroundTheRetryStep(t *testing.T) {
 	// A restart in the pointer step starts no retry.
 	e.w = e.newWatcher()
 	e.tick()
-	for _, c := range e.callsAfter("clear") {
-		if c == "skills:ly:board" && e.s.count("skills:ly:board") > 2 {
-			t.Fatalf("a second retry was typed: %v", e.s.calls)
-		}
+	if e.s.count("skills:ly:board") != 1 {
+		t.Fatalf("a second retry was sent: %v", e.s.calls)
 	}
 }
 
@@ -1299,101 +1336,18 @@ func TestWatcher_ReloadReadsAnUnreadableStepAsThePointer(t *testing.T) {
 			e := newWatchEnv(t)
 			e.withSkills()
 			e.reachClearing()
-			e.tick() // color
-			e.tick() // plugins
-			e.setState(func(st *State) { st.ReloadStep, st.ReloadRetry, st.ReloadTypedAt = tt.step, tt.retry, time.Time{} })
+			e.tick() // clear typed, color queued
+			e.tick() // color typed, plugins queued
+			e.setState(func(st *State) {
+				st.ReloadStep, st.ReloadRetry, st.ReloadTypedAt, st.Pending = tt.step, tt.retry, time.Time{}, nil
+			})
 			e.w = e.newWatcher()
 			e.tick()
 			got := e.callsAfter("clear")
 			if len(got) != 2 || !strings.HasPrefix(got[1], "send:") {
-				t.Fatalf("calls after clear = %v, want the pointer typed after the persisted step", got)
+				t.Fatalf("calls after clear = %v, want the pointer sent after the persisted step", got)
 			}
 		})
-	}
-}
-
-func TestWatcher_ReloadTypesNothingWhenIdleProbeFails(t *testing.T) {
-	t.Parallel()
-
-	e := newWatchEnv(t)
-	e.withSkills()
-	e.reachClearing()
-	e.s.idleSeq = []bool{true, true, true, false, false}
-	e.tick() // clearing probe passes, color typed
-	e.tick() // probe passes, plugins typed
-	e.tick() // probe passes, skills typed
-	e.s.events = append(e.s.events, stop("t1"))
-	e.tick() // confirmed, but the next probe fails
-	e.tick()
-	if got := e.callsAfter("clear"); len(got) != 2 {
-		t.Fatalf("typed behind a failing probe: %v", got)
-	}
-	e.s.idle = true
-	e.tick()
-	if got := e.callsAfter("clear"); len(got) != 3 || !strings.HasPrefix(got[2], "send:") {
-		t.Fatalf("calls after clear = %v", got)
-	}
-}
-
-func TestWatcher_HeldInjectionRecordsReasonLogsOncePerChangeWithinAHoldAndTypedLogsWait(t *testing.T) {
-	// Not parallel: it captures the process-global logger.
-	buf := logcapture.CaptureVerbose(t)
-	e := newWatchEnv(t)
-	count := func(msg string) int { return strings.Count(buf.String(), msg) }
-
-	// A hold that a passing probe ends before an injection that is no reload step is still over.
-	e.injectHandoff()
-	e.writeHandoff()
-	e.s.events = append(e.s.events, stop("handoff"))
-	e.s.idle, e.s.reason = false, "a turn is running"
-	e.tick()
-	e.s.idle, e.s.reason = true, ""
-	e.tick()
-	if st := e.state(); st.Phase != PhaseClearing {
-		t.Fatalf("phase = %s, want clearing", st.Phase)
-	}
-
-	e.s.idle, e.s.reason = false, "a turn is running"
-	e.s.sessionStartAt = e.clock.now
-	e.tick()
-	e.tick()
-	if st := e.state(); st.Stuck != "a turn is running" {
-		t.Errorf("Stuck = %q, want the probe's reason", st.Stuck)
-	}
-	if got := count("orch: injection held"); got != 2 {
-		t.Errorf("held logged %d times over two holds for an unchanged reason, want once per hold", got)
-	}
-	if got := count("orch: session start signal read"); got != 1 {
-		t.Errorf("session start logged %d times for one time, want once", got)
-	}
-
-	e.s.reason = "a tool is running"
-	e.tick()
-	if st := e.state(); st.Stuck != "a tool is running" {
-		t.Errorf("Stuck = %q, want the changed reason", st.Stuck)
-	}
-	if got := count("orch: injection held"); got != 3 {
-		t.Errorf("held logged %d times after the reason changed, want 3", got)
-	}
-
-	e.s.idle = true
-	e.tick() // the color step
-	e.s.sessionStartAt = e.clock.now.Add(time.Second)
-	e.s.idle = false
-	e.tick()
-	if got := count("orch: session start signal read"); got != 2 {
-		t.Errorf("session start logged %d times for a second time, want 2", got)
-	}
-	e.clock.advance(7 * time.Second)
-	e.s.idle = true
-	e.tick() // the plugins step, held for 7s
-	if st := e.state(); st.Stuck != "" {
-		t.Errorf("Stuck = %q after the step was typed, want cleared", st.Stuck)
-	}
-	for _, want := range []string{"orch: injection typed", "step=start-color", "step=plugins", "waited=7s"} {
-		if !strings.Contains(buf.String(), want) {
-			t.Errorf("log lacks %q:\n%s", want, buf.String())
-		}
 	}
 }
 
@@ -1425,9 +1379,6 @@ func TestWatcher_HookDeliveredPointerIsSkippedAndAnythingElseIsTyped(t *testing.
 			boundary := e.clock.now.Add(time.Second)
 			e.s.autoCompact = map[string]shuttleengine.CompactionBoundary{"a": freshBoundary(boundary)}
 			e.s.usage["a"] = 100
-			// A draft in the input box holds the reload until after the hook has delivered.
-			e.s.idle, e.s.reason = false, "a draft is in the input box"
-			e.endTurn("a")
 			pointer, err := RenderReloadPrompt(e.stDir, e.paths.RolePath)
 			if err != nil {
 				t.Fatal(err)
@@ -1437,10 +1388,9 @@ func TestWatcher_HookDeliveredPointerIsSkippedAndAnythingElseIsTyped(t *testing.
 					t.Fatal(err)
 				}
 			}
-			e.s.idle = true
-			e.tick() // the color step
-			e.tick() // the plugins step
-			e.tick() // the pointer step
+			e.endTurn("a") // the boundary is read and the reload starts: the color queued
+			e.tick()       // the color typed, the plugins queued
+			e.tick()       // the plugins typed, the pointer step
 
 			wantCalls := []string{reloadPluginsCall}
 			if tt.wantTyped {
@@ -1472,14 +1422,20 @@ func TestWatcher_AutoCompactionReloadsPluginsThenPointer(t *testing.T) {
 	e.s.autoCompact = map[string]shuttleengine.CompactionBoundary{"a": freshBoundary(boundary)}
 	e.s.usage["a"] = 100
 	e.endTurn("a")
-	if st := e.state(); st.Phase != PhaseResuming || !st.CompactionBaseline.Equal(boundary) || !st.ReloadSkipsSkills || st.ReloadStep != ReloadStepPlugins {
-		t.Fatalf("state = %+v, want resuming at the plugins step with the baseline at the boundary", st)
+	if st := e.state(); st.Phase != PhaseResuming || !st.CompactionBaseline.Equal(boundary) || !st.ReloadSkipsSkills || st.ReloadStep != ReloadStepColor {
+		t.Fatalf("state = %+v, want resuming at the color step with the baseline at the boundary", st)
+	}
+	if got := e.c.count("hold:"); got != 1 {
+		t.Fatalf("holds = %d, want the hold taken when the reload started", got)
 	}
 	if role, err := os.ReadFile(e.paths.RolePath); err != nil || !strings.Contains(string(role), testIndex) {
 		t.Errorf("role file = %q, %v; want it rendered with the index", role, err)
 	}
-	e.tick() // the plugins reload after the color
-	e.tick() // the pointer, with no skills step in between
+	e.tick() // the color typed, the plugins reload queued
+	e.tick() // the plugins typed, the pointer queued with no skills step in between
+	if got := e.c.count("hold:"); got != 3 || e.c.count("release:") != 0 {
+		t.Errorf("holds = %d releases = %d, want the hold renewed through the steps and kept", got, e.c.count("release:"))
+	}
 	e.endTurn("resumed")
 	if got := e.s.calls; len(got) != 2 || got[0] != reloadPluginsCall || e.s.count("skills:") != 0 {
 		t.Fatalf("calls = %v, want the plugins reload then the pointer and no skills load", got)
@@ -1490,6 +1446,9 @@ func TestWatcher_AutoCompactionReloadsPluginsThenPointer(t *testing.T) {
 	}
 	if st := e.state(); st.Phase != PhaseIdle {
 		t.Errorf("phase = %s, want idle", st.Phase)
+	}
+	if got := e.c.count("release:"); got != 1 {
+		t.Errorf("releases = %d, want the hold released when the reload ended", got)
 	}
 	e.endTurn("later") // the same boundary again: no second reload
 	e.tick()
@@ -1510,33 +1469,6 @@ func TestWatcher_AutoCompactionBoundaryAtOrBeforeBaselineTriggersNothing(t *test
 	e.assertNoCalls()
 	if st := e.state(); st.Phase != PhaseIdle {
 		t.Errorf("phase = %s", st.Phase)
-	}
-}
-
-func TestWatcher_AutoCompactionWaitsForIdleProbe(t *testing.T) {
-	// Not parallel: it captures the process-global logger.
-	buf := logcapture.CaptureVerbose(t)
-	e := newWatchEnv(t)
-	e.withSkills()
-	e.s.autoCompact = map[string]shuttleengine.CompactionBoundary{"a": freshBoundary(e.clock.now.Add(time.Second))}
-	e.s.usage["a"] = 100
-	e.s.idle, e.s.reason = false, "a turn is running"
-	e.endTurn("a")
-	e.assertNoCalls()
-	if st := e.state(); st.Phase != PhaseIdle || !st.CompactionBaseline.IsZero() || st.Stuck != "a turn is running" {
-		t.Fatalf("state = %+v, want idle with the baseline unmoved and the hold recorded", st)
-	}
-	if got := strings.Count(buf.String(), "orch: compaction boundary found"); got != 1 {
-		t.Errorf("boundary found logged %d times, want once when read at the turn end", got)
-	}
-	e.s.idle = true
-	e.tick()
-	if e.s.count(reloadPluginsCall) != 0 || e.s.colors == 0 {
-		t.Fatalf("calls = %v colors = %d, want only the color typed", e.s.calls, e.s.colors)
-	}
-	e.tick()
-	if e.s.count(reloadPluginsCall) != 1 {
-		t.Fatalf("calls = %v", e.s.calls)
 	}
 }
 
@@ -1592,8 +1524,8 @@ func TestWatcher_AutoCompactionReloadsOnlyAFreshBoundary(t *testing.T) {
 				t.Fatalf("baseline = %v, want it left where it was", st.CompactionBaseline)
 			}
 			e.endTurn("b")
-			if st := e.state(); st.Phase != PhaseResuming || st.ReloadStep != ReloadStepPlugins {
-				t.Fatalf("state = %+v, want the reload entered at its plugins step after the color", st)
+			if st := e.state(); st.Phase != PhaseResuming || st.ReloadStep != ReloadStepColor {
+				t.Fatalf("state = %+v, want the reload entered at its color step", st)
 			}
 		}},
 		{"no later turn end types nothing and keeps the baseline", func(t *testing.T, e *watchEnv, boundary time.Time) {
@@ -1604,15 +1536,17 @@ func TestWatcher_AutoCompactionReloadsOnlyAFreshBoundary(t *testing.T) {
 				t.Fatalf("baseline = %v, want it left where it was", st.CompactionBaseline)
 			}
 		}},
-		{"held boundary found stale by the next turn end types nothing and holds nothing", func(t *testing.T, e *watchEnv, boundary time.Time) {
+		{"boundary held by a refused hold found stale by the next turn end types nothing", func(t *testing.T, e *watchEnv, boundary time.Time) {
 			e.s.autoCompact = map[string]shuttleengine.CompactionBoundary{
 				"a": freshBoundary(boundary),
 				"b": {At: boundary, TurnEndsAfter: 2, ReadTurnEndAfter: true},
 			}
-			e.s.idle = false
+			e.c.failNext("hold", errBoom)
 			e.endTurn("a")
 			e.assertNoCalls()
-			e.s.idle = true
+			if st := e.state(); st.Phase != PhaseIdle || !st.StuckByCreel {
+				t.Fatalf("state = %+v, want idle with the refused hold recorded", st)
+			}
 			e.endTurn("b")
 			e.tick()
 			e.assertNoCalls()
@@ -1622,13 +1556,12 @@ func TestWatcher_AutoCompactionReloadsOnlyAFreshBoundary(t *testing.T) {
 		}},
 		{"boundary held for the old strand never reloads the new one", func(t *testing.T, e *watchEnv, boundary time.Time) {
 			e.s.autoCompact = map[string]shuttleengine.CompactionBoundary{"a": freshBoundary(boundary)}
-			e.s.idle = false
+			e.c.failNext("hold", errBoom)
 			e.endTurn("a")
 			e.setState(func(st *State) {
 				st.Strand = "s2"
 				st.LastInjectionOffset = int64(len(e.s.events))
 			})
-			e.s.idle = true
 			e.tick()
 			e.assertNoCalls()
 		}},
@@ -1647,9 +1580,7 @@ func TestWatcher_AutoCompactionReloadsOnlyAFreshBoundary(t *testing.T) {
 func TestWatcher_ClearRendersRoleFileBeforeResume(t *testing.T) {
 	e := newWatchEnv(t)
 	e.injectHandoff()
-	e.writeHandoff()
-	e.s.events = append(e.s.events, stop("handoff"))
-	e.tick()
+	e.finishNote()
 	if e.s.count("clear") != 1 {
 		t.Fatalf("calls = %v; want the clear sent", e.s.calls)
 	}
@@ -1694,9 +1625,7 @@ func TestWatcher_FailingRenderAbortsWithoutClear(t *testing.T) {
 			} else if err := os.WriteFile(stencilstore.Path(e.stDir, c.stencil), []byte(c.content), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			e.writeHandoff()
-			e.s.events = append(e.s.events, stop("handoff"))
-			e.tick()
+			e.finishNote()
 			st := e.state()
 			if st.Phase != PhaseIdle || e.s.count("clear") != 0 || !strings.HasPrefix(st.LastAbortReason, c.wantReason) {
 				t.Fatalf("state = %+v calls = %v", st, e.s.calls)
@@ -1709,180 +1638,156 @@ func TestWatcher_FailingRenderAbortsWithoutClear(t *testing.T) {
 }
 
 func TestWatcher_HandoffSendErrorResendsSamePathOnce(t *testing.T) {
-	for _, behindFailingProbe := range []bool{false, true} {
-		e := newWatchEnv(t)
-		e.s.sendErrs = []error{errBoom}
-		e.s.usage["a"] = 2000
-		e.s.events = []shuttleengine.Event{stop("a")}
-		e.tick()
-		e.clock.advance(11 * time.Second)
-		e.tickErr()
-		first := e.s.calls[0]
-		if behindFailingProbe {
-			e.s.idle = false
-			e.tick()
-			if len(e.s.calls) != 1 {
-				t.Fatalf("re-sent behind a failing probe: %v", e.s.calls)
-			}
-			e.s.idle = true
-		}
-		e.tick()
-		e.tick()
-		if len(e.s.calls) != 2 || e.s.calls[1] != first {
-			t.Fatalf("calls = %v", e.s.calls)
-		}
+	e := newWatchEnv(t)
+	e.c.failNext("post", errBoom)
+	e.s.usage["a"] = 2000
+	e.s.events = []shuttleengine.Event{stop("a")}
+	e.tick()
+	e.clock.advance(11 * time.Second)
+	e.tick()
+	st := e.state()
+	if st.Phase != PhaseHandoffRequested || st.Pending == nil || st.Pending.ID != 0 || st.Stuck != errBoom.Error() || !st.StuckByCreel {
+		t.Fatalf("state = %+v, want the request pending with no id and the failure recorded", st)
+	}
+	if len(e.s.calls) != 0 {
+		t.Fatalf("calls = %v, want nothing accepted by the failed call", e.s.calls)
+	}
+	e.tick()
+	e.tick()
+	if len(e.s.calls) != 1 || !strings.Contains(e.s.calls[0], st.PendingHandoff) {
+		t.Fatalf("calls = %v, want the same request posted once, naming %s", e.s.calls, st.PendingHandoff)
+	}
+	if st := e.state(); st.Pending != nil || st.RequestID == 0 || st.Stuck != "" {
+		t.Errorf("state = %+v, want the request's id saved and the failure cleared", st)
 	}
 }
 
 func TestWatcher_ResumeSendErrorResendsOnce(t *testing.T) {
 	e := newWatchEnv(t)
 	e.reachClearing()
-	e.tick() // color typed
-	e.tick() // plugins typed
-	e.s.sendErrs = []error{errBoom}
-	e.tickErr()
-	resume := e.s.calls[len(e.s.calls)-1]
+	e.tick() // clear typed, color queued
+	e.tick() // color typed, plugins queued
+	e.c.failNext("inject", errBoom)
+	e.tick() // plugins typed, the pointer's inject fails
+	if st := e.state(); st.Pending == nil || st.Pending.ID != 0 || e.s.count("send:") != 1 {
+		t.Fatalf("state = %+v calls = %v, want the pointer pending with no id", st, e.s.calls)
+	}
 	e.tick()
 	e.tick()
-	if e.s.count("send:") != 3 || e.s.calls[len(e.s.calls)-1] != resume {
-		t.Fatalf("calls = %v", e.s.calls)
+	if e.s.count("send:") != 2 || e.s.calls[len(e.s.calls)-1] != "send:"+e.state().PendingResume {
+		t.Fatalf("calls = %v, want the pointer sent once", e.s.calls)
 	}
 }
 
-func TestWatcher_ResumeSendErrorButLandedNoResend(t *testing.T) {
-	e := newWatchEnv(t)
-	e.reachClearing()
-	e.tick() // color typed
-	e.tick() // plugins typed
-	e.s.sendErrs = []error{errBoom}
-	e.tickErr()
-	sends := e.s.count("send:")
-	e.s.usage["resumed"] = 200
-	e.s.events = append(e.s.events, stop("resumed"))
-	e.tick()
-	if e.s.count("send:") != sends || e.state().Phase != PhaseIdle {
-		t.Fatalf("calls = %v phase = %s", e.s.calls, e.state().Phase)
-	}
-}
-
-func TestWatcher_ClearTimeoutSendErrorResendsOnlyOncePassing(t *testing.T) {
-	e := newWatchEnv(t)
-	e.reachClearing()
-	e.s.idle = false
-	e.clock.advance(101 * time.Second)
-	e.tick()
-	e.s.idle = true
-	e.tick() // color typed
-	e.tick() // plugins typed
-	e.s.sendErrs = []error{errBoom}
-	e.tickErr()
-	e.s.idle = false
-	resume := e.s.calls[len(e.s.calls)-1]
-	sends := e.s.count("send:")
-	e.tick()
-	e.tick()
-	if e.s.count("send:") != sends {
-		t.Fatalf("re-sent while the probe failed: %v", e.s.calls)
-	}
-	e.s.idle = true
-	e.tick()
-	e.tick()
-	if e.s.count("send:") != sends+1 || e.s.calls[len(e.s.calls)-1] != resume {
-		t.Fatalf("calls = %v", e.s.calls)
-	}
-}
-
-func TestWatcher_ResumeSendErrorWhileTurnRunningNoResend(t *testing.T) {
-	e := newWatchEnv(t)
-	e.reachClearing()
-	e.tick() // color typed
-	e.tick() // plugins typed
-	e.s.sendErrs = []error{errBoom}
-	e.tickErr()
-	sends := e.s.count("send:")
-	e.s.idle = false
-	e.tick()
-	e.s.events = append(e.s.events, stop("resumed"))
-	e.tick()
-	if e.s.count("send:") != sends || e.state().Phase != PhaseIdle {
-		t.Fatalf("calls = %v phase = %s", e.s.calls, e.state().Phase)
-	}
-}
-
-func TestWatcher_RestartResumingInjectedTrueFailingThenPassingResendsOnce(t *testing.T) {
-	e := newWatchEnv(t)
-	e.reachResuming()
-	sends := e.s.count("send:")
-	if !e.state().PhaseInjected {
-		t.Fatal("precondition: injection persisted true")
-	}
-	e.w = e.newWatcher()
-	// The restarted watcher's pending color probes first, then the resuming step.
-	e.s.idleSeq = []bool{false, false}
-	e.tick()
-	if e.s.count("send:") != sends {
-		t.Fatalf("re-sent behind a failing probe: %v", e.s.calls)
-	}
-	e.tick()
-	e.tick()
-	if e.s.count("send:") != sends+1 {
-		t.Fatalf("calls = %v", e.s.calls)
-	}
-}
-
-func TestWatcher_ClearErrorThenSuccessMovesOnce(t *testing.T) {
-	e := newWatchEnv(t)
-	e.injectHandoff()
-	e.writeHandoff()
-	e.s.events = append(e.s.events, stop("handoff"))
-	e.s.clearErrs = []error{errBoom}
-	e.tickErr()
-	if e.state().PhaseInjected {
-		t.Fatal("a failed clear must stay unconfirmed")
-	}
-	e.tick() // re-clear succeeds
-	e.tick() // probe passes
-	st := e.state()
-	if st.Phase != PhaseResuming || st.CycleCount != 1 || e.s.count("clear") != 2 {
-		t.Fatalf("state = %+v calls = %v", st, e.s.calls)
-	}
-}
-
-func TestWatcher_ClearErrorsUntilTimeoutResumesWithoutCounting(t *testing.T) {
-	e := newWatchEnv(t)
-	e.injectHandoff()
-	e.writeHandoff()
-	e.s.events = append(e.s.events, stop("handoff"))
-	e.s.clearErr = errBoom
-	e.tickErr()
-	e.tickErr()
-	e.clock.advance(101 * time.Second)
-	e.tick()
-	st := e.state()
-	if st.Phase != PhaseResuming || st.CycleCount != 0 {
-		t.Fatalf("state = %+v", st)
-	}
-	e.tick() // the plugins reload follows the color
-	e.tick() // the pointer follows the plugins reload
-	if !strings.HasPrefix(e.s.calls[len(e.s.calls)-1], "send:") {
-		t.Errorf("resume prompt not sent: %v", e.s.calls)
-	}
-}
-
+// TestWatcher_PhaseForDifferentStrandIsReset pins the reset of a phase that belongs to another strand:
+// it withdraws, releases the old hold and clears the noticed mark of an entry whose resume line it withdrew,
+// and a reset whose withdraw fails saves no reset and runs again on the next tick.
 func TestWatcher_PhaseForDifferentStrandIsReset(t *testing.T) {
-	e := newWatchEnv(t)
-	e.setState(func(s *State) {
-		s.Phase = PhaseResuming
-		s.PhaseStrand = "old"
-		s.PendingResume = "resume"
-	})
-	e.tick()
-	e.tick()
-	st := e.state()
-	if st.Phase != PhaseIdle || !strings.Contains(st.LastAbortReason, "resuming") {
-		t.Fatalf("state = %+v", st)
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		run  func(t *testing.T, e *watchEnv)
+	}{
+		{"the reset withdraws, releases the old hold and clears the mark of an entry whose resume line was withdrawn", func(t *testing.T, e *watchEnv) {
+			e.noticedResumedEntry()
+			e.c.withdrawn = []CreelWithdrawn{{ID: 5, Subject: pauserecord.ResumeLine}}
+			e.tick()
+			st := e.state()
+			if st.Phase != PhaseIdle || !strings.Contains(st.LastAbortReason, "resuming") || st.Pending != nil || st.RequestID != 0 {
+				t.Fatalf("state = %+v", st)
+			}
+			if e.c.count("withdraw:") != 1 || e.c.count("release:") != 1 {
+				t.Errorf("creel calls = %v, want one withdraw and one release", e.c.calls)
+			}
+			// The cleared mark has the watcher post the withdrawn line again on the same tick, and mark it noticed once more.
+			if bodies := e.c.postBodies(fakeOrchStrandName); !slices.Equal(bodies, []string{pauserecord.ResumeLine}) {
+				t.Errorf("posts to the orch = %v, want the resume line posted again", bodies)
+			}
+			if sessions := e.orchSessions(); len(sessions) != 1 || !sessions[0].ResumeNoticed {
+				t.Errorf("orch sessions = %+v, want the line noticed again", sessions)
+			}
+		}},
+		{"an entry is left alone when the withdrawn message is not the resume line", func(t *testing.T, e *watchEnv) {
+			e.noticedResumedEntry()
+			e.c.withdrawn = []CreelWithdrawn{{ID: 5, Subject: "some other mail"}}
+			e.tick()
+			if st := e.state(); st.Phase != PhaseIdle {
+				t.Fatalf("state = %+v", st)
+			}
+			if sessions := e.orchSessions(); len(sessions) != 1 || !sessions[0].ResumeNoticed {
+				t.Errorf("orch sessions = %+v, want the mark kept", sessions)
+			}
+			e.assertNoCalls()
+		}},
+		{"a reset whose mark clear fails after the withdraw removed the resume line still clears the mark on the next tick", func(t *testing.T, e *watchEnv) {
+			e.noticedResumedEntry()
+			e.c.withdrawn = []CreelWithdrawn{{ID: 5, Subject: pauserecord.ResumeLine}}
+			lock := e.pausePath + ".lock"
+			if err := os.Remove(lock); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Mkdir(lock, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			e.tickErr()
+			if st := e.state(); st.Phase != PhaseResuming || !st.ResumeLineWithdrawn {
+				t.Fatalf("state = %+v, want the phase kept and the withdrawn line recorded", st)
+			}
+			if err := os.Remove(lock); err != nil {
+				t.Fatal(err)
+			}
+			e.c.withdrawn = nil
+			e.tick()
+			if st := e.state(); st.Phase != PhaseIdle || st.ResumeLineWithdrawn {
+				t.Fatalf("state = %+v, want the reset done and the record cleared", st)
+			}
+			if bodies := e.c.postBodies(fakeOrchStrandName); !slices.Equal(bodies, []string{pauserecord.ResumeLine}) {
+				t.Errorf("posts to the orch = %v, want the resume line posted again", bodies)
+			}
+		}},
+		{"a reset whose withdraw fails saves no reset and runs again on the next tick", func(t *testing.T, e *watchEnv) {
+			e.c.failNext("withdraw", errBoom)
+			e.tick()
+			st := e.state()
+			if st.Phase != PhaseResuming || st.PhaseStrand != "old" || st.Stuck != errBoom.Error() || !st.StuckByCreel {
+				t.Fatalf("state = %+v, want the phase kept with the failure recorded", st)
+			}
+			e.tick()
+			if st := e.state(); st.Phase != PhaseIdle || st.Stuck != "" || e.c.count("withdraw:") != 2 {
+				t.Fatalf("state = %+v creel calls = %v, want the reset run again and the failure cleared", st, e.c.calls)
+			}
+		}},
 	}
-	e.assertNoCalls()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			e := newWatchEnv(t)
+			e.setState(func(s *State) {
+				s.Phase = PhaseResuming
+				s.PhaseStrand = "old"
+				s.PendingResume = "resume"
+				s.Pending = &PendingStep{Command: "clear", ID: 9}
+				s.RequestID = 4
+			})
+			tt.run(t, e)
+		})
+	}
+}
+
+// noticedResumedEntry records a resumed hub entry that owns the orch s1 and has noticed its resume line.
+func (e *watchEnv) noticedResumedEntry() {
+	e.t.Helper()
+	entry := pauserecord.Entry{
+		Scope: pauserecord.ScopeHub, PausedAt: e.clock.now.Add(-time.Minute), ResumedAt: e.clock.now,
+		Sessions: []pauserecord.Session{{GUID: "s1", Orch: true, ResumeNoticed: true}},
+	}
+	if _, err := pauserecord.Update(e.pausePath, e.clock.now, func(r *pauserecord.Record) error {
+		r.Resumed = append(r.Resumed, entry)
+		return nil
+	}); err != nil {
+		e.t.Fatal(err)
+	}
 }
 
 func TestWatcher_StrandGoneIsDone(t *testing.T) {
@@ -1951,7 +1856,8 @@ func TestWatcher_RecordsTheSessionIDItReads(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := newWatchEnv(t)
-			// The first tick types the start color, so the measured tick has nothing else to save.
+			// The first two ticks queue the start color and record it, so the measured tick has nothing else to save.
+			e.tick()
 			e.tick()
 			e.setState(func(s *State) { s.SessionID = tt.recorded })
 			past := e.clock.now.Add(-time.Hour)
@@ -2013,7 +1919,7 @@ func TestWatcher_SoftTriggerFiresOnStopAndWaitingAfterSoftIdle(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			e := newSoftEnv(t)
 			e.injectSoft(ev)
-			if len(e.s.calls) != 1 || !strings.Contains(e.s.calls[0], "DEFER") {
+			if len(e.s.calls) != 1 || !strings.Contains(e.s.calls[0], "defer") {
 				t.Fatalf("calls = %v, want one soft request", e.s.calls)
 			}
 		})
@@ -2023,7 +1929,7 @@ func TestWatcher_SoftTriggerFiresOnStopAndWaitingAfterSoftIdle(t *testing.T) {
 func TestWatcher_SoftDeferWithoutFileReturnsIdleAndBlocksNextAttempt(t *testing.T) {
 	e := newSoftEnv(t)
 	e.injectSoft(stop("a"))
-	e.s.events = append(e.s.events, stop("DEFER"))
+	e.reply("defer")
 	e.tick()
 	read := e.clock.Now()
 	st := e.state()
@@ -2037,7 +1943,7 @@ func TestWatcher_SoftDeferWithoutFileReturnsIdleAndBlocksNextAttempt(t *testing.
 	e.clock.advance(19 * time.Second)
 	e.tick()
 	if e.s.count("send:") != sends {
-		t.Fatalf("soft attempt before soft_idle_s after the DEFER: %v", e.s.calls)
+		t.Fatalf("soft attempt before soft_idle_s after the deferral: %v", e.s.calls)
 	}
 	e.clock.advance(time.Second)
 	e.tick()
@@ -2046,12 +1952,12 @@ func TestWatcher_SoftDeferWithoutFileReturnsIdleAndBlocksNextAttempt(t *testing.
 	}
 }
 
-// TestWatcher_SoftDeferTurnEndAloneNeverRequalifies pins that a DEFER needs a fresh turn end after it:
-// the DEFER turn end itself never starts another soft cycle, however long the session stays quiet.
+// TestWatcher_SoftDeferTurnEndAloneNeverRequalifies pins that a deferral needs a fresh turn end after it:
+// the deferral itself never starts another soft cycle, however long the session stays quiet.
 func TestWatcher_SoftDeferTurnEndAloneNeverRequalifies(t *testing.T) {
 	e := newSoftEnv(t)
 	e.injectSoft(stop("a"))
-	e.s.events = append(e.s.events, stop("DEFER"))
+	e.reply("defer")
 	e.tick()
 	if st := e.state(); st.Phase != PhaseIdle || st.LastAbortReason != "deferred" {
 		t.Fatalf("state = %+v, want idle after the deferral", st)
@@ -2060,14 +1966,14 @@ func TestWatcher_SoftDeferTurnEndAloneNeverRequalifies(t *testing.T) {
 	e.clock.advance(time.Hour)
 	e.tick()
 	if e.s.count("send:") != sends || e.state().Phase != PhaseIdle {
-		t.Fatalf("a soft request was re-sent with no turn end after the DEFER: calls = %v", e.s.calls)
+		t.Fatalf("a soft request was re-sent with no turn end after the deferral: calls = %v", e.s.calls)
 	}
 }
 
 func TestWatcher_SoftDeferAmongOtherTextDoesNotDefer(t *testing.T) {
 	e := newSoftEnv(t)
 	e.injectSoft(stop("a"))
-	e.s.events = append(e.s.events, stop("DEFER, but first a note"))
+	e.reply("defer, but first a note")
 	e.tick()
 	if st := e.state(); st.Phase != PhaseHandoffRequested || !st.LastDeferral.IsZero() {
 		t.Fatalf("state = %+v", st)
@@ -2077,8 +1983,13 @@ func TestWatcher_SoftDeferAmongOtherTextDoesNotDefer(t *testing.T) {
 func TestWatcher_SoftDeferWithHandoffWrittenProceedsToClearing(t *testing.T) {
 	e := newSoftEnv(t)
 	e.injectSoft(stop("a"))
-	e.writeHandoff()
-	e.s.events = append(e.s.events, stop("DEFER"))
+	path := e.writeHandoff()
+	e.reply("defer")
+	e.tick()
+	if st := e.state(); st.Phase != PhaseHandoffRequested || !st.LastDeferral.IsZero() {
+		t.Fatalf("state = %+v, want a defer ignored once the note is written", st)
+	}
+	e.reply("written " + path)
 	e.tick()
 	if st := e.state(); st.Phase != PhaseClearing || !st.LastDeferral.IsZero() {
 		t.Fatalf("state = %+v", st)
@@ -2089,7 +2000,7 @@ func TestWatcher_DeferIgnoredInHardAndRequestedCycles(t *testing.T) {
 	t.Run("hard", func(t *testing.T) {
 		e := newWatchEnv(t)
 		e.injectHandoff()
-		e.s.events = append(e.s.events, stop("DEFER"))
+		e.reply("defer")
 		e.tick()
 		if st := e.state(); st.Phase != PhaseHandoffRequested || st.CycleTrigger != TriggerHard {
 			t.Fatalf("state = %+v", st)
@@ -2110,7 +2021,7 @@ func TestWatcher_DeferIgnoredInHardAndRequestedCycles(t *testing.T) {
 		e.tick()
 		e.clock.advance(11 * time.Second)
 		e.tick()
-		e.s.events = append(e.s.events, stop("DEFER"))
+		e.reply("defer")
 		e.tick()
 		if st := e.state(); st.Phase != PhaseHandoffRequested || st.CycleTrigger != TriggerRequested {
 			t.Fatalf("state = %+v", st)
@@ -2134,7 +2045,7 @@ func TestWatcher_HardTriggerFiresOnWaitingAfterIdleGrace(t *testing.T) {
 	if st.Phase != PhaseHandoffRequested || st.CycleTrigger != TriggerHard {
 		t.Fatalf("state = %+v", st)
 	}
-	if len(e.s.calls) != 1 || strings.Contains(e.s.calls[0], "DEFER") {
+	if len(e.s.calls) != 1 || strings.Contains(e.s.calls[0], "defer") {
 		t.Fatalf("calls = %v, want the plain handoff request", e.s.calls)
 	}
 }
@@ -2189,11 +2100,12 @@ func TestWatcher_RestartInSoftHandoffResendsSoftStencil(t *testing.T) {
 	e := newSoftEnv(t)
 	e.injectSoft(stop("a"))
 	first := e.s.calls[0]
+	e.forgetLastSend()
 	e.w = e.newWatcher()
 	e.tick()
 	e.tick()
-	if len(e.s.calls) != 2 || e.s.calls[1] != first || !strings.Contains(e.s.calls[1], "DEFER") {
-		t.Fatalf("calls = %v", e.s.calls)
+	if len(e.s.calls) != 2 || e.s.calls[1] != first || !strings.Contains(e.s.calls[1], "defer") {
+		t.Fatalf("calls = %v, want the soft stencil posted again", e.s.calls)
 	}
 }
 
@@ -2257,141 +2169,147 @@ func TestWatcher_RequestedCycleFiresOnSmallReadingWithoutReread(t *testing.T) {
 	}
 }
 
-func TestWatcher_NoticesDeliveredOldestFirstOnePerTick(t *testing.T) {
-	e := newWatchEnv(t)
-	e.queue("first")
-	e.queue("second")
-
-	e.tick()
-	if got := strings.Join(e.s.calls, "|"); got != "send:first" {
-		t.Fatalf("calls after tick 1 = %q, want send:first", got)
+// colorInjects counts the color command injects the fake creel accepted.
+func (e *watchEnv) colorInjects() int {
+	n := 0
+	for _, inject := range e.c.injects {
+		if inject.Step.Command == commandColor {
+			n++
+		}
 	}
-	if got := e.noticeLines(); len(got) != 1 || got[0] != "second" {
-		t.Errorf("queue after tick 1 = %v, want [second]", got)
-	}
-
-	e.tick()
-	if got := strings.Join(e.s.calls, "|"); got != "send:first|send:second" {
-		t.Fatalf("calls after tick 2 = %q", got)
-	}
-	if got := e.noticeLines(); len(got) != 0 {
-		t.Errorf("queue after tick 2 = %v, want empty", got)
-	}
-}
-
-func TestWatcher_NoticeWaitsOnANonIdleProbe(t *testing.T) {
-	e := newWatchEnv(t)
-	e.s.idle = false
-	e.queue("hold")
-	e.tick()
-	e.assertNoCalls()
-	if got := e.noticeLines(); len(got) != 1 {
-		t.Errorf("queue = %v, want the notice kept", got)
-	}
-
-	e.s.idle = true
-	e.tick()
-	if got := strings.Join(e.s.calls, "|"); got != "send:hold" {
-		t.Errorf("calls = %q, want send:hold", got)
-	}
-}
-
-func TestWatcher_NoticeWaitsOutANonIdlePhase(t *testing.T) {
-	e := newWatchEnv(t)
-	e.injectHandoff()
-	e.s.calls = nil
-	e.queue("later")
-	e.tick()
-	if n := e.s.count("send:later"); n != 0 {
-		t.Fatalf("notice typed during a cycle: %v", e.s.calls)
-	}
-	if got := e.noticeLines(); len(got) != 1 {
-		t.Errorf("queue = %v, want the notice kept", got)
-	}
-}
-
-func TestWatcher_TickThatStartsACycleDeliversNoNotice(t *testing.T) {
-	e := newWatchEnv(t)
-	e.s.usage["a"] = 2000
-	e.s.events = []shuttleengine.Event{stop("a")}
-	e.tick()
-	e.queue("not now")
-	e.clock.advance(11 * time.Second)
-	e.tick()
-	if st := e.state(); st.Phase != PhaseHandoffRequested {
-		t.Fatalf("phase = %s, want handoff-requested", st.Phase)
-	}
-	if n := e.s.count("send:not now"); n != 0 {
-		t.Errorf("notice typed on the cycle's own tick: %v", e.s.calls)
-	}
-	if got := e.noticeLines(); len(got) != 1 {
-		t.Errorf("queue = %v, want the notice kept", got)
-	}
+	return n
 }
 
 func TestWatcher_StartTypesTheColorOnTheFirstIdleTickOnly(t *testing.T) {
 	t.Parallel()
 
-	e := newWatchEnv(t)
-	e.s.idle = false
-	e.tick()
-	if e.s.colors != 0 {
-		t.Fatalf("colors = %d, want none while the probe fails", e.s.colors)
-	}
-	e.s.idle = true
-	e.tick()
-	e.tick()
-	if e.s.colors != 1 {
-		t.Fatalf("colors = %d, want the color typed once", e.s.colors)
-	}
-	e.assertNoCalls()
+	t.Run("queued once per launch and recorded", func(t *testing.T) {
+		t.Parallel()
+		e := newWatchEnv(t)
+		e.tick()
+		if e.s.colors != 1 || e.c.injects[0].Step.Argument != "colour208" || e.c.injects[0].Receiver != fakeOrchStrandName {
+			t.Fatalf("colors = %d injects = %+v, want the strand's color queued for the orch at the first tick", e.s.colors, e.c.injects)
+		}
+		e.tick()
+		e.tick()
+		if e.s.colors != 1 {
+			t.Fatalf("colors = %d, want the color queued once", e.s.colors)
+		}
+		e.assertNoCalls()
 
-	// A watcher restarted on the same session, as a re-exec onto a new binary is, types nothing.
-	e.w = e.newWatcher()
-	e.tick()
-	if e.s.colors != 1 {
-		t.Fatalf("colors = %d, want the restarted watcher to type nothing", e.s.colors)
-	}
+		// A watcher restarted on the same session, as a re-exec onto a new binary is, queues nothing.
+		e.w = e.newWatcher()
+		e.tick()
+		if e.s.colors != 1 {
+			t.Fatalf("colors = %d, want the restarted watcher to queue nothing", e.s.colors)
+		}
 
-	// A new launch on the strand types it once again.
-	e.setState(func(st *State) { st.LaunchedAt = st.LaunchedAt.Add(time.Minute) })
-	e.w = e.newWatcher()
-	e.tick()
-	e.tick()
-	if e.s.colors != 2 {
-		t.Fatalf("colors = %d, want the color typed once for the new launch", e.s.colors)
-	}
-
-	// A failed typing records nothing, so a restarted watcher types it again.
-	e.setState(func(st *State) { st.LaunchedAt = st.LaunchedAt.Add(time.Minute) })
-	e.s.colorErr = errBoom
-	e.w = e.newWatcher()
-	e.tick()
-	e.s.colorErr = nil
-	e.w = e.newWatcher()
-	e.tick()
-	e.tick()
-	if e.s.colors != 4 {
-		t.Fatalf("colors = %d, want the failed color dropped and typed again after a restart", e.s.colors)
-	}
+		// A new launch on the strand queues it once again.
+		e.setState(func(st *State) { st.LaunchedAt = st.LaunchedAt.Add(time.Minute) })
+		e.w = e.newWatcher()
+		e.tick()
+		e.tick()
+		e.tick()
+		if e.s.colors != 2 {
+			t.Fatalf("colors = %d, want the color queued once for the new launch", e.s.colors)
+		}
+	})
+	t.Run("a strand with no color queues no color inject and counts as done", func(t *testing.T) {
+		t.Parallel()
+		e := newWatchEnv(t)
+		e.s.color = ""
+		e.tick()
+		e.tick()
+		if e.colorInjects() != 0 {
+			t.Fatalf("color injects = %d, want none", e.colorInjects())
+		}
+		if st := e.state(); !colorTyped(st) {
+			t.Errorf("state = %+v, want the color recorded as typed", st)
+		}
+	})
+	t.Run("an expired bind color is logged and not queued again", func(t *testing.T) {
+		t.Parallel()
+		e := newWatchEnv(t)
+		e.c.autoLand = false
+		e.tick()
+		e.setOutcome(e.lastInjectID(), CreelOutcome{State: CreelExpired, Stall: "the orch is busy"})
+		e.tick()
+		e.tick()
+		e.w = e.newWatcher()
+		if e.colorInjects() != 1 {
+			t.Fatalf("color injects = %d, want the expired color dropped, not queued again", e.colorInjects())
+		}
+		if st := e.state(); colorTyped(st) {
+			t.Errorf("state = %+v, want an expired color not recorded as typed", st)
+		}
+	})
+	t.Run("a refused bind color is logged and not queued again", func(t *testing.T) {
+		t.Parallel()
+		e := newWatchEnv(t)
+		e.c.failNext("inject", errBoom)
+		e.tick()
+		e.tick()
+		e.tick()
+		if e.colorInjects() != 0 || e.state().Stuck != "" {
+			t.Fatalf("color injects = %d stuck = %q, want a display-only color dropped silently", e.colorInjects(), e.state().Stuck)
+		}
+	})
+	t.Run("an unconfirmed bind color counts as typed", func(t *testing.T) {
+		t.Parallel()
+		e := newWatchEnv(t)
+		e.c.autoLand = false
+		e.tick()
+		e.setOutcome(e.lastInjectID(), CreelOutcome{State: CreelUnconfirmed})
+		e.tick()
+		if st := e.state(); !colorTyped(st) {
+			t.Errorf("state = %+v, want the unconfirmed color recorded as typed", st)
+		}
+	})
 }
 
 func TestWatcher_ReloadTypesTheColorFirstAndAFailingColorNeverWedgesIt(t *testing.T) {
 	t.Parallel()
 
-	e := newWatchEnv(t)
-	e.reachClearing()
-	e.s.colorErr = errBoom
-	e.tick() // clearing -> resuming, the failing color typed and logged
-	if st := e.state(); st.Phase != PhaseResuming || st.ReloadStep != ReloadStepPlugins {
-		t.Fatalf("state = %+v, want the plugins step after the failed color", st)
+	tests := []struct {
+		name string
+		// arrange makes the strand's color unavailable.
+		arrange func(e *watchEnv)
+		// wantColor is whether the reload queues a color inject.
+		wantColor bool
+	}{
+		{"a strand with a color queues it first", func(*watchEnv) {}, true},
+		{"a strand with no color moves to the plugins step with no color inject", func(e *watchEnv) { e.s.color = "" }, false},
+		{"a failing color read is logged and moves to the plugins step", func(e *watchEnv) { e.s.colorErr = errBoom }, false},
 	}
-	if got := e.callsAfter("clear"); len(got) != 0 {
-		t.Fatalf("calls after clear = %v, want the color alone on this tick", got)
-	}
-	e.tick()
-	if got := e.callsAfter("clear"); !slices.Equal(got, []string{reloadPluginsCall}) {
-		t.Fatalf("calls after clear = %v, want the plugins reload on the next tick", got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			e := newWatchEnv(t)
+			e.reachClearing()
+			colors := e.colorInjects()
+			tt.arrange(e)
+			e.tick() // the clear typed: resuming
+			if st := e.state(); st.Phase != PhaseResuming {
+				t.Fatalf("state = %+v, want resuming", st)
+			}
+			if got := e.colorInjects() - colors; (got == 1) != tt.wantColor || got > 1 {
+				t.Fatalf("color injects = %d, want a color step: %v", got, tt.wantColor)
+			}
+			got := e.callsAfter("clear")
+			if tt.wantColor {
+				if len(got) != 0 {
+					t.Fatalf("calls after clear = %v, want the color alone on this tick", got)
+				}
+				e.tick()
+				got = e.callsAfter("clear")
+			}
+			if !slices.Equal(got, []string{reloadPluginsCall}) {
+				t.Fatalf("calls after clear = %v, want the plugins reload", got)
+			}
+			if st := e.state(); st.ReloadStep != ReloadStepPlugins {
+				t.Errorf("state = %+v, want the plugins step", st)
+			}
+		})
 	}
 }
 
@@ -2400,377 +2318,521 @@ func TestWatcher_RestartMidColorStepTypesItOnceWhenIdle(t *testing.T) {
 
 	e := newWatchEnv(t)
 	e.reachClearing()
-	e.tick() // color typed
-	e.setState(func(st *State) { st.ReloadStep, st.ReloadTypedAt, st.ColorStrand = ReloadStepColor, time.Time{}, "" })
+	e.tick() // the clear typed, the color queued
+	e.setState(func(st *State) {
+		st.ReloadStep, st.ReloadTypedAt, st.ColorStrand, st.Pending = ReloadStepColor, time.Time{}, "", nil
+	})
 	before := e.s.colors
 	e.w = e.newWatcher()
-	e.s.idle = false
-	e.tick()
-	if e.s.colors != before {
-		t.Fatalf("color typed behind a failing probe")
-	}
-	e.s.idle = true
 	e.tick()
 	if e.s.colors != before+1 {
-		t.Fatalf("colors typed = %d, want the color step typed once", e.s.colors-before)
+		t.Fatalf("colors queued = %d, want the color step queued once", e.s.colors-before)
 	}
+	e.tick()
 	if st := e.state(); st.ReloadStep != ReloadStepPlugins {
 		t.Errorf("state = %+v, want the move to the plugins step", st)
 	}
 
-	// The color step's typing counts as typed for the session, so a re-exec types no start color.
+	// The color step's typing counts as typed for the session, so a re-exec queues no start color.
 	e.w = e.newWatcher()
 	e.tick()
 	if e.s.colors != before+1 {
-		t.Errorf("colors typed = %d, want no start color after the color step", e.s.colors-before)
+		t.Errorf("colors queued = %d, want no start color after the color step", e.s.colors-before)
 	}
 }
 
-// TestWatcher_LogsDisagreementBetweenIdleProbeAndSessionState drives notice deliveries, whose idle probe is the one door every probe goes through.
-// Each row counts its Info lines, one per disagreement episode, and the same ticks with the state unreadable change neither the saved State, the session calls nor the queue.
-// The log is captured process-wide, so the test does not run in parallel.
-func TestWatcher_LogsDisagreementBetweenIdleProbeAndSessionState(t *testing.T) {
-	t0 := time.Date(2026, 10, 8, 8, 0, 0, 0, time.UTC)
-	tests := []struct {
-		name     string
-		idleSeq  []bool
-		tooShort bool
-		state    shuttleengine.SessionStateName
-		// cause is the scripted state's cause, turn when empty.
-		cause string
-		// sinces are consumed one per tick into the scripted state's Since, the last one sticking.
-		sinces   []time.Time
-		notices  int
-		wantWarn int
-	}{
-		{name: "an idle probe beside busy logs once across two ticks", idleSeq: []bool{true, true}, state: shuttleengine.SessionBusy, notices: 2, wantWarn: 1},
-		{name: "a not-idle probe beside asking agrees", idleSeq: []bool{false, false}, state: shuttleengine.SessionAsking, notices: 2},
-		{name: "a not-idle probe beside idle-done logs", idleSeq: []bool{false}, state: shuttleengine.SessionIdleDone, notices: 1, wantWarn: 1},
-		{name: "a not-idle probe beside idle-stalled logs", idleSeq: []bool{false}, state: shuttleengine.SessionIdleStalled, notices: 1, wantWarn: 1},
-		{name: "a not-idle probe beside idle-fresh logs", idleSeq: []bool{false}, state: shuttleengine.SessionIdleFresh, notices: 1, wantWarn: 1},
-		{name: "an idle probe beside idle-done agrees", idleSeq: []bool{true}, state: shuttleengine.SessionIdleDone, notices: 1},
-		{name: "an idle probe beside busy on background work agrees", idleSeq: []bool{true}, state: shuttleengine.SessionBusy, cause: shuttleengine.SessionCauseBackground, notices: 1},
-		{name: "a not-idle probe beside busy agrees", idleSeq: []bool{false}, state: shuttleengine.SessionBusy, notices: 1},
-		{name: "a too-short pane is not compared", idleSeq: []bool{false}, tooShort: true, state: shuttleengine.SessionIdleStalled, notices: 1},
-		{name: "a disagreement with the same since logs once across an agreement between", idleSeq: []bool{true, false, true}, state: shuttleengine.SessionBusy, notices: 3, wantWarn: 1},
-		{name: "a disagreement with a new since logs again", idleSeq: []bool{true, true, true}, state: shuttleengine.SessionBusy, sinces: []time.Time{t0, t0, t0.Add(time.Minute)}, notices: 3, wantWarn: 2},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			type outcome struct {
-				state  State
-				calls  []string
-				queue  []string
-				warned int
-			}
-			drive := func(stateErr error) outcome {
-				buf := logcapture.CaptureVerbose(t)
-				e := newWatchEnv(t)
-				// The start color takes the first idle probe, so it is typed before the probe sequence is scripted.
-				e.tick()
-				e.s.idleSeq, e.s.tooShort = slices.Clone(tt.idleSeq), tt.tooShort
-				e.s.sessionSinces = slices.Clone(tt.sinces)
-				e.s.sessionState, e.s.sessionStateErr = shuttleengine.SessionState{Name: tt.state, Cause: cmp.Or(tt.cause, "turn")}, stateErr
-				for i := range tt.notices {
-					e.queue("notice " + string(rune('a'+i)))
-				}
-				for range len(tt.idleSeq) {
-					e.tick()
-				}
-				var infoLines int
-				for _, line := range strings.Split(buf.String(), "\n") {
-					if strings.Contains(line, "orch: session state disagrees with the idle probe") {
-						if !strings.Contains(line, "level=INFO") {
-							t.Errorf("disagreement line %q is not at Info", line)
-						}
-						infoLines++
-					}
-				}
-				return outcome{e.state(), e.s.calls, e.noticeLines(), infoLines}
-			}
-
-			read := drive(nil)
-			unreadable := drive(errBoom)
-			if read.warned != tt.wantWarn {
-				t.Errorf("disagreement lines = %d, want %d", read.warned, tt.wantWarn)
-			}
-			if unreadable.warned != 0 {
-				t.Errorf("an unreadable state logged %d disagreement lines, want none", unreadable.warned)
-			}
-			if !reflect.DeepEqual(read.state, unreadable.state) || !slices.Equal(read.calls, unreadable.calls) || !slices.Equal(read.queue, unreadable.queue) {
-				t.Errorf("an unreadable state changed the outcome: state %+v vs %+v, calls %q vs %q, queue %q vs %q",
-					read.state, unreadable.state, read.calls, unreadable.calls, read.queue, unreadable.queue)
-			}
-		})
-	}
-}
-
-// TestWatcher_DraftHoldLogsOnceWithoutTheDraftText drives a notice over three ticks whose operator draft grows by one character each, by each route a draft reaches the watcher.
-// Each row asserts the hold logs once, no log line holds the draft, and State.Stuck is the constant draft reason.
-// The log is captured process-wide, so the test does not run in parallel.
-func TestWatcher_DraftHoldLogsOnceWithoutTheDraftText(t *testing.T) {
-	drafts := []string{"zqa", "zqab", "zqabc"}
-	// quoting returns a shuttle-style hold error for draft built by wrap.
-	heldBy := func(wrap func(draft string) error) []error {
-		var errs []error
-		for _, draft := range drafts {
-			errs = append(errs, wrap(draft))
-		}
-		return errs
-	}
-	tests := []struct {
-		name string
-		// arrange scripts the session for the three ticks.
-		arrange  func(s *fakeSession)
-		wantHeld string
-	}{
-		{
-			name: "the probe route",
-			arrange: func(s *fakeSession) {
-				s.idleSeq = []bool{false, false, false}
-				s.draft = true
-			},
-			wantHeld: "orch: injection held",
-		},
-		{
-			name: "the send route held by the idle wait",
-			arrange: func(s *fakeSession) {
-				s.sendErrs = heldBy(func(draft string) error {
-					return &shuttleengine.SessionBusyError{Reason: "the input box holds a draft: " + draft, Draft: true, Err: fmt.Errorf("%w: the input box holds a draft: %q", shuttleengine.ErrSessionBusy, draft)}
-				})
-			},
-			wantHeld: "orch: injection held by the session",
-		},
-		{
-			name: "the send route refused over foreign box text",
-			arrange: func(s *fakeSession) {
-				s.sendErrs = heldBy(func(draft string) error { return fmt.Errorf("%w: %q", shuttleengine.ErrForeignBoxText, draft) })
-			},
-			wantHeld: "orch: injection held by the session",
-		},
-		{
-			name: "the send route whose text merged with a draft",
-			arrange: func(s *fakeSession) {
-				s.sendErrs = heldBy(func(draft string) error {
-					return fmt.Errorf("%w: the input box holds %q", shuttleengine.ErrSentTextInDraft, draft)
-				})
-			},
-			wantHeld: "orch: injection held by the session",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			buf := logcapture.CaptureVerbose(t)
-			e := newWatchEnv(t)
-			// The start color takes the first idle probe, so it is typed before the draft is scripted.
-			e.tick()
-			e.queue("notice")
-			tt.arrange(e.s)
-			// The probe route's reason quotes the draft, as shuttle's does.
-			for _, draft := range drafts {
-				e.s.reason = "the input box holds a draft: " + draft
-				e.tick()
-			}
-
-			if got := strings.Count(buf.String(), `msg="`+tt.wantHeld+`"`); got != 1 {
-				t.Errorf("%q lines = %d, want 1; logs: %s", tt.wantHeld, got, buf.String())
-			}
-			if strings.Contains(buf.String(), drafts[0]) {
-				t.Errorf("a log line holds the draft text: %s", buf.String())
-			}
-			if st := e.state(); st.Stuck != draftHoldReason {
-				t.Errorf("State.Stuck = %q, want %q", st.Stuck, draftHoldReason)
-			}
-		})
-	}
-}
-
-// TestWatcher_HeldNoticeWaitsForTheOperatorAndRecordsWhy pins an idle-phase notice that shuttle held:
-// the notice file stays and the tick returns no error, and the reason is recorded in State.Stuck with StuckBySend.
-// A probe that is not idle leaves that reason alone, and the first send that passes clears it and removes the notice.
-func TestWatcher_HeldNoticeWaitsForTheOperatorAndRecordsWhy(t *testing.T) {
-	t.Parallel()
-
-	e := newWatchEnv(t)
-	e.queue("notice")
-	e.s.sendErrs = []error{errHeld}
-	e.tick()
-	if got := e.noticeLines(); !slices.Equal(got, []string{"notice"}) {
-		t.Fatalf("notices = %v, want the held notice kept", got)
-	}
-	if st := e.state(); st.Stuck != errHeld.Error() || !st.StuckBySend || st.StuckByHold {
-		t.Fatalf("state = %+v, want the held reason recorded by the send", st)
-	}
-
-	e.s.idle = false
-	e.tick()
-	if st := e.state(); st.Stuck != errHeld.Error() || !st.StuckBySend {
-		t.Errorf("state = %+v after a probe that is not idle, want the send's reason left alone", st)
-	}
-
-	e.s.idle = true
-	e.tick()
-	if got := e.noticeLines(); len(got) != 0 {
-		t.Errorf("notices = %v, want the notice removed once its send passed", got)
-	}
-	if st := e.state(); st.Stuck != "" || st.StuckBySend {
-		t.Errorf("state = %+v, want the send's reason cleared", st)
-	}
-}
-
-// TestWatcher_HeldTypedStepRetriesOnTheNextTickWithoutAdvancing pins every typed step of the cycle that shuttle held:
-// the tick returns no error, the phase and step stay unconfirmed, and the next tick types the same step.
-func TestWatcher_HeldTypedStepRetriesOnTheNextTickWithoutAdvancing(t *testing.T) {
+func TestWatcher_NoteReplyGate(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name string
-		// run drives the env to the step, holds it, ticks, checks the unconfirmed state, releases it and ticks again.
-		run func(t *testing.T, e *watchEnv)
+		// arrange leaves the reply, and the note, in the state the row gates.
+		arrange func(e *watchEnv, path string)
 	}{
-		{"handoff request", func(t *testing.T, e *watchEnv) {
-			e.s.usage["a"] = 2000
-			e.s.events = []shuttleengine.Event{stop("a")}
-			e.tick()
-			e.clock.advance(11 * time.Second)
-			e.s.sendErrs = []error{errHeld}
-			e.tick()
-			if st := e.state(); st.Phase != PhaseHandoffRequested || st.PhaseInjected || e.s.count("send:") != 1 {
-				t.Fatalf("state = %+v calls = %v, want the request unconfirmed after one held send", st, e.s.calls)
-			}
-			e.tick()
-			if st := e.state(); !st.PhaseInjected || e.s.count("send:") != 2 || e.s.calls[0] != e.s.calls[1] {
-				t.Errorf("state = %+v calls = %v, want the same request retyped and confirmed", st, e.s.calls)
-			}
-		}},
-		{"clear", func(t *testing.T, e *watchEnv) {
-			e.injectHandoff()
+		{"a note written with no reply posted", func(e *watchEnv, path string) { e.writeHandoff() }},
+		{"a reply naming another path", func(e *watchEnv, path string) {
 			e.writeHandoff()
-			e.s.events = append(e.s.events, stop("handoff"))
-			e.s.clearErr = errHeld
-			e.tick()
-			if st := e.state(); st.Phase != PhaseClearing || st.PhaseInjected || e.s.count("clear") != 1 {
-				t.Fatalf("state = %+v calls = %v, want the clear unconfirmed after one held clear", st, e.s.calls)
-			}
-			e.s.clearErr = nil
-			e.tick()
-			if st := e.state(); !st.PhaseInjected || e.s.count("clear") != 2 {
-				t.Errorf("state = %+v calls = %v, want the clear retyped and confirmed", st, e.s.calls)
-			}
+			e.reply("written /somewhere/else.md")
 		}},
-		{"color step", func(t *testing.T, e *watchEnv) {
-			e.reachClearing()
-			e.s.colorErr = errHeld
-			e.tick()
-			if st := e.state(); st.Phase != PhaseResuming || e.reloadStepOf(st) != ReloadStepColor {
-				t.Fatalf("state = %+v, want the reload held at its color step", st)
-			}
-			e.s.colorErr = nil
-			e.tick()
-			if st := e.state(); e.reloadStepOf(st) != ReloadStepPlugins {
-				t.Errorf("state = %+v, want the reload on its plugins step after the color passed", st)
-			}
+		{"a reply carrying other text", func(e *watchEnv, path string) {
+			e.writeHandoff()
+			e.reply("done with " + path)
 		}},
-		{"skills step", func(t *testing.T, e *watchEnv) {
-			e.withSkills()
-			e.reachClearing()
-			e.tick() // color
-			e.tick() // plugins
-			e.s.skillsErr = errHeld
-			e.tick()
-			if st := e.state(); e.reloadStepOf(st) != ReloadStepSkills || st.PhaseInjected || e.s.count("skills:") != 1 {
-				t.Fatalf("state = %+v calls = %v, want the skills step unconfirmed after one held load", st, e.s.calls)
+		{"a reply with no note file", func(e *watchEnv, path string) { e.reply("written " + path) }},
+		{"a reply with an empty note file", func(e *watchEnv, path string) {
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				e.t.Fatal(err)
 			}
-			e.s.skillsErr = nil
-			e.tick()
-			if st := e.state(); !st.PhaseInjected || e.s.count("skills:") != 2 {
-				t.Errorf("state = %+v calls = %v, want the skills load retyped and confirmed", st, e.s.calls)
+			if err := os.WriteFile(path, nil, 0o644); err != nil {
+				e.t.Fatal(err)
 			}
+			e.reply("written " + path)
 		}},
-		{"start color", func(t *testing.T, e *watchEnv) {
-			e.s.colorErr = errHeld
-			e.tick()
-			e.s.colorErr = nil
-			e.tick()
-			e.tick()
-			if e.s.colors != 2 {
-				t.Errorf("TypeColor calls = %d, want the held color retried once and then not again", e.s.colors)
-			}
+		{"a reply to an earlier request id", func(e *watchEnv, path string) {
+			e.writeHandoff()
+			e.c.mailbox = append(e.c.mailbox, CreelMessage{ID: 50, From: fakeOrchStrandName, ReplyTo: e.state().RequestID - 1, Body: "written " + path})
+		}},
+		{"a reply from another sender", func(e *watchEnv, path string) {
+			e.writeHandoff()
+			e.c.mailbox = append(e.c.mailbox, CreelMessage{ID: 51, From: "tst:task:driver", ReplyTo: e.state().RequestID, Body: "written " + path})
 		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			tt.run(t, newWatchEnv(t))
+			e := newWatchEnv(t)
+			e.injectHandoff()
+			tt.arrange(e, e.state().PendingHandoff)
+			e.tick()
+			if st := e.state(); st.Phase != PhaseHandoffRequested || e.s.count("clear") != 0 {
+				t.Fatalf("phase = %s calls = %v, want the gate closed", st.Phase, e.s.calls)
+			}
+			if len(e.c.mailbox) != 0 {
+				t.Errorf("mailbox = %+v, want every message read", e.c.mailbox)
+			}
 		})
 	}
+
+	t.Run("a reply that passes the gate moves on to clearing", func(t *testing.T) {
+		t.Parallel()
+		e := newWatchEnv(t)
+		e.injectHandoff()
+		e.finishNote()
+		if st := e.state(); st.Phase != PhaseClearing || e.s.count("clear") != 1 {
+			t.Fatalf("phase = %s calls = %v", st.Phase, e.s.calls)
+		}
+	})
+
+	t.Run("a save that fails after the reply is read leaves it unread, and a new watcher gates on it", func(t *testing.T) {
+		t.Parallel()
+		if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+			t.Skip("a read-only directory stops no write here, so a failing save cannot be arranged")
+		}
+		e := newWatchEnv(t)
+		e.injectHandoff()
+		path := e.writeHandoff()
+		e.reply("written " + path)
+		// The directory turns unwritable as the handler is handed the reply, so its save fails.
+		e.c.onReadMailbox = func() {
+			if err := os.Chmod(e.paths.Dir, 0o500); err != nil {
+				t.Error(err)
+			}
+		}
+		t.Cleanup(func() { _ = os.Chmod(e.paths.Dir, 0o755) })
+		e.tickErr()
+		if len(e.c.mailbox) != 1 {
+			t.Fatalf("mailbox = %+v, want the reply left unread", e.c.mailbox)
+		}
+		if err := os.Chmod(e.paths.Dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		e.c.onReadMailbox = nil
+		e.w = e.newWatcher()
+		e.tick()
+		if st := e.state(); st.Phase != PhaseClearing {
+			t.Fatalf("phase = %s, want the new watcher to gate on the unread reply", st.Phase)
+		}
+	})
 }
 
-// reloadStepOf returns the normalised reload step st is in.
-func (e *watchEnv) reloadStepOf(st State) int {
-	return e.w.reloadStep(st)
-}
-
-func TestWatcher_ConditionalNoticeDeliveredOnlyWhileItsStateReads(t *testing.T) {
+func TestWatcher_StepOutcomes(t *testing.T) {
 	t.Parallel()
 
-	stalled := shuttleengine.SessionState{Name: shuttleengine.SessionIdleStalled, Cause: shuttleengine.SessionCauseAPIError}
-	when := NoticeCondition{State: stalled.Name, Cause: stalled.Cause}
-	queueConditional := func(e *watchEnv, line string) {
-		e.t.Helper()
-		e.clock.advance(time.Millisecond)
-		if queued, err := QueueConditionalNotice(e.paths, line, when, e.clock.now); err != nil || !queued {
-			e.t.Fatalf("QueueConditionalNotice(%q) = %v, %v", line, queued, err)
-		}
-	}
-
-	t.Run("a state that reads the condition types the notice", func(t *testing.T) {
+	t.Run("an expired step inject is queued again and its stall shows until the step advances", func(t *testing.T) {
 		t.Parallel()
 		e := newWatchEnv(t)
-		e.s.sessionState = stalled
-		queueConditional(e, "carry on")
+		e.reachClearing()
+		e.setOutcome(e.lastInjectID(), CreelOutcome{State: CreelExpired, Stall: "the input box holds a draft"})
 		e.tick()
-		if got := strings.Join(e.s.calls, "|"); got != "send:carry on" {
-			t.Errorf("calls = %q, want send:carry on", got)
+		if st := e.state(); st.Phase != PhaseClearing || st.Stuck != "the input box holds a draft" || st.StuckByCreel || e.s.count("clear") != 2 {
+			t.Fatalf("state = %+v calls = %v, want the clear queued again with the stall shown", st, e.s.calls)
 		}
-		if got := e.noticeLines(); len(got) != 0 {
-			t.Errorf("queue = %v, want it empty", got)
+		e.tick()
+		if st := e.state(); st.Phase != PhaseResuming || st.Stuck != "" {
+			t.Fatalf("state = %+v, want the step advanced with the stall cleared", st)
 		}
 	})
 
-	for name, state := range map[string]shuttleengine.SessionState{
-		"busy":      {Name: shuttleengine.SessionBusy, Cause: shuttleengine.SessionCauseTurn},
-		"idle-done": {Name: shuttleengine.SessionIdleDone, Cause: shuttleengine.SessionCauseDone},
-	} {
-		t.Run("a "+name+" state drops the notice untyped, and the unconditioned one behind it goes out next tick", func(t *testing.T) {
+	t.Run("an unconfirmed color or plugins inject advances the reload", func(t *testing.T) {
+		t.Parallel()
+		e := newWatchEnv(t)
+		e.reachClearing()
+		e.tick() // the clear typed, the color queued
+		e.setOutcome(e.lastInjectID(), CreelOutcome{State: CreelUnconfirmed})
+		e.tick()
+		if st := e.state(); st.ReloadStep != ReloadStepPlugins {
+			t.Fatalf("state = %+v, want the plugins step after an unconfirmed color", st)
+		}
+		e.setOutcome(e.lastInjectID(), CreelOutcome{State: CreelUnconfirmed})
+		e.tick()
+		if st := e.state(); st.Phase != PhaseResuming || e.reloadStepOf(st) != ReloadStepPointer {
+			t.Fatalf("state = %+v, want the pointer step after an unconfirmed plugins reload", st)
+		}
+	})
+
+	t.Run("an unconfirmed clear moves to resuming", func(t *testing.T) {
+		t.Parallel()
+		e := newWatchEnv(t)
+		e.reachClearing()
+		e.setOutcome(e.lastInjectID(), CreelOutcome{State: CreelUnconfirmed})
+		e.tick()
+		if st := e.state(); st.Phase != PhaseResuming || st.CycleCount != 1 {
+			t.Fatalf("state = %+v", st)
+		}
+	})
+
+	t.Run("a plugins inject that keeps expiring is skipped at the timeout from its first queueing", func(t *testing.T) {
+		t.Parallel()
+		e := newWatchEnv(t)
+		e.reachClearing()
+		e.tick() // the clear typed, the color queued
+		e.tick() // the color typed, the plugins queued
+		if st := e.state(); st.ReloadStep != ReloadStepPlugins {
+			t.Fatalf("state = %+v, want the plugins step", st)
+		}
+		e.c.autoLand = false
+		for range 3 {
+			e.setOutcome(e.lastInjectID(), CreelOutcome{State: CreelExpired, Stall: "the orch is busy"})
+			e.clock.advance(30 * time.Second)
+			e.tick()
+			if st := e.state(); st.ReloadStep != ReloadStepPlugins || st.Stuck != "the orch is busy" {
+				t.Fatalf("state = %+v, want the plugins step still queued with the stall shown", st)
+			}
+		}
+		e.clock.advance(11 * time.Second)
+		e.tick()
+		if st := e.state(); st.Phase != PhaseResuming || e.reloadStepOf(st) != ReloadStepPointer || st.Stuck != "" {
+			t.Fatalf("state = %+v, want the plugins step skipped at its timeout with the stall cleared", st)
+		}
+	})
+
+	t.Run("a withdrawn inject returns to idle and releases the hold", func(t *testing.T) {
+		t.Parallel()
+		e := newWatchEnv(t)
+		e.reachClearing()
+		e.setOutcome(e.lastInjectID(), CreelOutcome{State: CreelWithdrawnState})
+		injects := len(e.c.injects)
+		e.tick()
+		if st := e.state(); st.Phase != PhaseIdle || e.c.count("release:") != 1 || len(e.c.injects) != injects {
+			t.Fatalf("state = %+v creel calls = %v, want idle, one release and nothing queued again", st, e.c.calls)
+		}
+	})
+
+	t.Run("a stale reason left in an idle state file is cleared by the first tick", func(t *testing.T) {
+		t.Parallel()
+		e := newWatchEnv(t)
+		raw, err := json.Marshal(State{Strand: "s1", Phase: PhaseIdle, Stuck: "a turn is running"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var fields map[string]any
+		if err := json.Unmarshal(raw, &fields); err != nil {
+			t.Fatal(err)
+		}
+		fields["stuck_by_hold"] = true
+		raw, err = json.Marshal(fields)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(e.paths.StatePath, raw, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		e.tick()
+		if st := e.state(); st.Stuck != "" || st.StuckByCreel {
+			t.Fatalf("state = %+v, want the stale reason cleared", st)
+		}
+	})
+}
+
+func TestWatcher_CycleHold(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a cycle spanning a hub pause keeps renewing its hold", func(t *testing.T) {
+		t.Parallel()
+		e := newWatchEnv(t)
+		e.injectHandoff()
+		e.pauseHub("EXTERNAL", pauseGrace)
+		holds, calls := e.c.count("hold:"), len(e.s.calls)
+		for range 3 {
+			e.tick()
+		}
+		if got := e.c.count("hold:"); got != holds+3 {
+			t.Fatalf("holds = %d, want the hold renewed on each of the three held ticks (%d)", got, holds+3)
+		}
+		if len(e.s.calls) != calls || e.c.count("release:") != 0 {
+			t.Errorf("calls = %v releases = %d, want the cycle held without a step or a release", e.s.calls, e.c.count("release:"))
+		}
+	})
+
+	t.Run("a refused hold starts no cycle and is tried again", func(t *testing.T) {
+		t.Parallel()
+		e := newWatchEnv(t)
+		e.c.failNext("hold", errBoom)
+		e.s.usage["a"] = 2000
+		e.s.events = []shuttleengine.Event{stop("a")}
+		e.tick()
+		e.clock.advance(11 * time.Second)
+		e.tick()
+		if st := e.state(); st.Phase != PhaseIdle || len(e.c.posts) != 0 || st.Stuck != errBoom.Error() {
+			t.Fatalf("state = %+v posts = %v, want no cycle started and the refusal shown", st, e.c.posts)
+		}
+		e.tick()
+		if st := e.state(); st.Phase != PhaseHandoffRequested || len(e.c.posts) != 1 || st.Stuck != "" {
+			t.Fatalf("state = %+v posts = %v, want the cycle started on the retry", st, e.c.posts)
+		}
+	})
+
+	t.Run("a state reset to idle on another strand before the step is queued queues nothing", func(t *testing.T) {
+		t.Parallel()
+		e := newWatchEnv(t)
+		e.reachClearing()
+		e.setState(func(st *State) { st.Pending = nil })
+		injects := len(e.c.injects)
+		e.s.onReadEvents = func() {
+			if err := SaveState(e.paths, State{Strand: "s2", Phase: PhaseIdle}); err != nil {
+				t.Error(err)
+			}
+		}
+		e.tick()
+		if len(e.c.injects) != injects || len(e.c.posts) != 1 {
+			t.Errorf("injects = %v posts = %v, want nothing queued", e.c.injects, e.c.posts)
+		}
+		if st := e.state(); st.Strand != "s2" || st.Phase != PhaseIdle || st.Pending != nil {
+			t.Errorf("state = %+v, want the reset kept as it was written", st)
+		}
+	})
+}
+
+// TestWatcher_CreelFailuresHoldTheCycle does not call t.Parallel: it asserts on the logger output,
+// which is process-global.
+func TestWatcher_CreelFailuresHoldTheCycle(t *testing.T) {
+	t.Run("a failing call holds the cycle, logs once per change and never counts toward the tick-error cap", func(t *testing.T) {
+		buf := logcapture.Capture(t)
+		e := newWatchEnv(t)
+		e.injectHandoff()
+		for range maxConsecutiveTickErrors + 5 {
+			e.c.failNext("hold", errBoom)
+			e.tick()
+		}
+		if st := e.state(); st.Phase != PhaseHandoffRequested || st.Stuck != errBoom.Error() || !st.StuckByCreel {
+			t.Fatalf("state = %+v, want the cycle held with the failure shown", st)
+		}
+		if got := strings.Count(buf.String(), "a creel call failed"); got != 1 {
+			t.Errorf("failure logged %d times for one error, want once; log:\n%s", got, buf.String())
+		}
+		e.c.failNext("hold", errors.New("creel: the daemon is gone"))
+		e.tick()
+		if got := strings.Count(buf.String(), "a creel call failed"); got != 2 {
+			t.Errorf("failure logged %d times after the error changed, want 2", got)
+		}
+	})
+
+	t.Run("a sender-resolution refusal of the hold shows in Stuck", func(t *testing.T) {
+		e := newWatchEnv(t)
+		e.injectHandoff()
+		refusal := errors.New("creel: the sender cannot be resolved; run it from the orch's strand")
+		e.c.failNext("hold", refusal)
+		e.tick()
+		if st := e.state(); st.Stuck != refusal.Error() || !st.StuckByCreel {
+			t.Fatalf("state = %+v, want the refusal shown", st)
+		}
+	})
+
+	t.Run("a release that fails at the return to idle still returns to idle, and the next good tick clears it", func(t *testing.T) {
+		e := newWatchEnv(t)
+		e.injectHandoff()
+		e.clock.advance(101 * time.Second)
+		e.c.failNext("release", errBoom)
+		e.tick()
+		if st := e.state(); st.Phase != PhaseIdle || st.Stuck != errBoom.Error() || !st.StuckByCreel {
+			t.Fatalf("state = %+v, want idle with the failed release recorded", st)
+		}
+		e.tick()
+		if st := e.state(); st.Stuck != "" || st.StuckByCreel {
+			t.Fatalf("state = %+v, want the failure cleared by a tick whose creel calls succeeded", st)
+		}
+	})
+
+	t.Run("a recorded fresh-launch failure is retried on every tick, holding back every post, inject and hold until both calls succeed", func(t *testing.T) {
+		e := newWatchEnv(t)
+		e.setState(func(s *State) { s.FreshLaunchFailure = "withdraw after the fresh launch: boom" })
+		releaseErr := errors.New("creel: release refused")
+
+		e.c.failNext("withdraw", errBoom)
+		e.tick()
+		st := e.state()
+		if st.FreshLaunchFailure == "" || st.Stuck != errBoom.Error() || st.StuckByCreel {
+			t.Fatalf("state = %+v, want the failure kept and shown in Stuck without StuckByCreel", st)
+		}
+		e.c.failNext("release", releaseErr)
+		e.tick()
+		st = e.state()
+		if st.FreshLaunchFailure == "" || st.Stuck != releaseErr.Error() || st.StuckByCreel {
+			t.Fatalf("state = %+v, want the failure kept and rewritten with the release error", st)
+		}
+		if len(e.c.injects) != 0 || len(e.c.posts) != 0 || e.c.count("hold:") != 0 {
+			t.Fatalf("injects = %+v posts = %+v calls = %v, want nothing posted, queued or held while the failure stands", e.c.injects, e.c.posts, e.c.calls)
+		}
+
+		e.tick()
+		st = e.state()
+		if st.FreshLaunchFailure != "" || st.Stuck != "" || st.StuckByCreel {
+			t.Fatalf("state = %+v, want the failure and Stuck cleared once both calls succeeded", st)
+		}
+		if e.c.count("withdraw:") != 3 || e.c.count("release:") != 3 {
+			t.Errorf("creel calls = %v, want a withdraw and a release on each of three ticks", e.c.calls)
+		}
+		if got := e.colorInjects(); got != 1 {
+			t.Errorf("color injects = %d, want the bind color queued once the retry succeeded", got)
+		}
+		lastWithdraw := -1
+		for i, call := range e.c.calls {
+			if call == "withdraw:"+fakeOrchStrandName {
+				lastWithdraw = i
+			}
+		}
+		firstInject := slices.IndexFunc(e.c.calls, func(call string) bool { return strings.HasPrefix(call, "inject:") })
+		if firstInject != -1 && firstInject < lastWithdraw {
+			t.Errorf("creel calls = %v, want no inject before the retry's withdraw succeeded", e.c.calls)
+		}
+	})
+
+	t.Run("a retry whose withdraw removes a resume line clears that entry's noticed mark", func(t *testing.T) {
+		e := newWatchEnv(t)
+		e.noticedResumedEntry()
+		e.setState(func(s *State) { s.FreshLaunchFailure = "release after the fresh launch: boom" })
+		e.c.withdrawn = []CreelWithdrawn{{ID: 5, Subject: pauserecord.ResumeLine}}
+		e.tick()
+		if st := e.state(); st.FreshLaunchFailure != "" {
+			t.Fatalf("state = %+v, want the failure cleared", st)
+		}
+		if bodies := e.c.postBodies(fakeOrchStrandName); !slices.Equal(bodies, []string{pauserecord.ResumeLine}) {
+			t.Errorf("posts to the orch = %v, want the withdrawn resume line posted again", bodies)
+		}
+	})
+
+	t.Run("a read acknowledgement that fails after the handler moved the phase keeps the phase and acts on the reply once", func(t *testing.T) {
+		e := newWatchEnv(t)
+		e.injectHandoff()
+		path := e.writeHandoff()
+		e.reply("written " + path)
+		e.c.failNext("acknowledge", errBoom)
+		e.tick()
+		st := e.state()
+		if st.Phase != PhaseClearing || st.Stuck != errBoom.Error() || !st.StuckByCreel {
+			t.Fatalf("state = %+v, want the phase the handler moved to kept with the failure shown", st)
+		}
+		e.tick()
+		e.tick()
+		clears := 0
+		for _, inject := range e.c.injects {
+			if inject.Step.Command == commandClear {
+				clears++
+			}
+		}
+		if clears != 1 {
+			t.Errorf("injects = %+v, want the clear injected once", e.c.injects)
+		}
+		if st := e.state(); st.Stuck != "" || st.StuckByCreel {
+			t.Errorf("state = %+v, want the failure cleared once the read was acknowledged", st)
+		}
+	})
+
+	t.Run("a withdraw that removes a resume line whose mark clear fails is retried until the mark clears", func(t *testing.T) {
+		e := newWatchEnv(t)
+		e.noticedResumedEntry()
+		e.setState(func(s *State) { s.FreshLaunchFailure = "release after the fresh launch: boom" })
+		e.c.withdrawn = []CreelWithdrawn{{ID: 5, Subject: pauserecord.ResumeLine}}
+		lock := e.pausePath + ".lock"
+		if err := os.Remove(lock); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Mkdir(lock, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		e.tick()
+		st := e.state()
+		if st.FreshLaunchFailure == "" || st.Stuck == "" || st.StuckByCreel || !st.ResumeLineWithdrawn {
+			t.Fatalf("state = %+v, want the failure kept, shown in Stuck and the withdrawn line recorded", st)
+		}
+		if err := os.Remove(lock); err != nil {
+			t.Fatal(err)
+		}
+		e.c.withdrawn = nil
+		e.tick()
+		if st := e.state(); st.FreshLaunchFailure != "" || st.ResumeLineWithdrawn {
+			t.Fatalf("state = %+v, want the failure cleared once the mark clear succeeded", st)
+		}
+		if bodies := e.c.postBodies(fakeOrchStrandName); !slices.Equal(bodies, []string{pauserecord.ResumeLine}) {
+			t.Errorf("posts to the orch = %v, want the withdrawn resume line posted again", bodies)
+		}
+	})
+
+	t.Run("an inject creel journaled but answered with an error is adopted on the next tick", func(t *testing.T) {
+		e := newWatchEnv(t)
+		e.injectHandoff()
+		path := e.writeHandoff()
+		e.reply("written " + path)
+		e.c.journalFails = []error{errBoom}
+		e.tick()
+		st := e.state()
+		if st.Phase != PhaseClearing || st.Pending == nil || st.Pending.ID != 0 || st.Stuck != errBoom.Error() {
+			t.Fatalf("state = %+v, want the clear pending with no id", st)
+		}
+		if len(e.c.sent) != 1 {
+			t.Fatalf("sent = %+v, want the journaled clear", e.c.sent)
+		}
+		e.tick()
+		st = e.state()
+		if st.Pending == nil || st.Pending.ID != e.c.sent[0].ID || st.Stuck != "" {
+			t.Fatalf("state = %+v, want the journaled clear adopted", st)
+		}
+		if len(e.c.injects) != 1 || e.s.count("clear") != 0 {
+			t.Errorf("injects = %+v calls = %v, want nothing injected beside the bind color", e.c.injects, e.s.calls)
+		}
+	})
+}
+
+func TestWatcher_TurnEndCountsOnlyAfterSending(t *testing.T) {
+	t.Parallel()
+
+	steps := []int{ReloadStepSkills, ReloadStepRetry, ReloadStepPointer}
+	for _, step := range steps {
+		t.Run(reloadStepName(step), func(t *testing.T) {
 			t.Parallel()
 			e := newWatchEnv(t)
-			e.s.sessionState = state
-			queueConditional(e, "carry on")
-			e.queue("plain")
+			e.withSkills()
+			e.reachReloadStep(step)
+			id := e.lastInjectID()
+			sending := e.clock.now.Add(10 * time.Second)
+			// Not yet sent: an operator turn ending between the queueing and the sending confirms nothing.
+			e.setOutcome(id, CreelOutcome{State: CreelQueued})
+			e.s.events = append(e.s.events, shuttleengine.Event{Kind: shuttleengine.EventStop, Message: "operator", At: e.clock.now.Add(5 * time.Second)})
 			e.tick()
-			e.assertNoCalls()
-			if got := e.noticeLines(); !slices.Equal(got, []string{"plain"}) {
-				t.Fatalf("queue after the dropping tick = %v, want [plain]", got)
+			e.setOutcome(id, CreelOutcome{State: CreelInjected, SendingAt: sending})
+			e.tick()
+			// A turn end stamped in the second of the sending record, and one with no time, confirm nothing.
+			e.s.events = append(e.s.events,
+				shuttleengine.Event{Kind: shuttleengine.EventStop, Message: "same second", At: sending.Add(500 * time.Millisecond)},
+				shuttleengine.Event{Kind: shuttleengine.EventStop, Message: "no time"})
+			e.tick()
+			st := e.state()
+			if st.Phase != PhaseResuming || e.reloadStepOf(st) != step {
+				t.Fatalf("state = %+v, want the %s step still waiting", st, reloadStepName(step))
 			}
+			// A turn end a second later confirms it.
+			e.s.events = append(e.s.events, shuttleengine.Event{Kind: shuttleengine.EventStop, Message: "answer", At: sending.Add(time.Second)})
 			e.tick()
-			if got := strings.Join(e.s.calls, "|"); got != "send:plain" {
-				t.Errorf("calls = %q, want send:plain", got)
+			st = e.state()
+			if step == ReloadStepPointer {
+				if st.Phase != PhaseIdle {
+					t.Fatalf("state = %+v, want idle after the pointer's turn end", st)
+				}
+				return
+			}
+			if e.reloadStepOf(st) == step && st.Pending != nil && st.Pending.ID == id {
+				t.Fatalf("state = %+v, want the %s step settled by the turn end after its sending", st, reloadStepName(step))
 			}
 		})
 	}
-
-	t.Run("an unreadable state keeps the notice and returns the error", func(t *testing.T) {
-		t.Parallel()
-		e := newWatchEnv(t)
-		e.s.sessionStateErr = errors.New("events unreadable")
-		queueConditional(e, "carry on")
-		if _, err := e.w.Tick(); err == nil {
-			t.Fatal("Tick error = nil, want the state read error")
-		}
-		e.assertNoCalls()
-		if got := e.noticeLines(); !slices.Equal(got, []string{"carry on"}) {
-			t.Errorf("queue = %v, want the notice kept", got)
-		}
-	})
 }

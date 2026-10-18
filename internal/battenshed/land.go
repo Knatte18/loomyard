@@ -31,8 +31,8 @@ const (
 	primeDirtyPollInterval = 5 * time.Second
 	// deployTimeout is how long the deploy command may run.
 	deployTimeout = 30 * time.Minute
-	// readyMarkerLine is the row-notice marker line recording that the landing notice was queued.
-	// It keeps the literal of the earlier ready-only notice, so a row resumed after one was queued sends no second.
+	// readyMarkerLine is the row-notice marker line recording that the landing notice was posted.
+	// It keeps the literal of the earlier ready-only notice, so a row resumed after one was posted sends no second.
 	readyMarkerLine = "ready"
 )
 
@@ -97,8 +97,8 @@ type landProducer struct {
 var _ shedengine.ShedProducer = (*landProducer)(nil)
 
 // NewLand returns a shedengine.ShedProducer that lands the task worktree identified by slug.
-// Under the land lock it pulls the prime, runs the deploy command, prunes the board and queues a notice naming the tasks the landing made ready.
-// A failed step is Stuck naming it and queues one notice per failure episode; a pause seen during a wait is Stuck with no notice.
+// Under the land lock it pulls the prime, runs the deploy command, prunes the board and posts a notice naming the tasks the landing made ready.
+// A failed step is Stuck naming it and posts one notice per failure episode; a pause seen during a wait is Stuck with no notice.
 func NewLand(name, slug string, deps LandDeps, primeLock PrimeLock, scratchDir string) shedengine.ShedProducer {
 	if deps.Sleep == nil {
 		deps.Sleep = waitOrCancel
@@ -120,18 +120,18 @@ func NewLand(name, slug string, deps LandDeps, primeLock PrimeLock, scratchDir s
 }
 
 // stop returns the Stuck verdict for a failed step, or the cancelled-during-run error when ctx ended first.
-// It records the reason and queues the failure notice.
+// It records the reason and posts the failure notice.
 func (p *landProducer) stop(ctx context.Context, step, reason string) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	return p.stuck(ctx, step, reason, true)
 }
 
 // pause returns the Stuck verdict for a pause request honoured while waiting, or the cancelled-during-run error when ctx ended first.
-// It records the reason and queues no notice, since the operator asked for the pause.
+// It records the reason and posts no notice, since the operator asked for the pause.
 func (p *landProducer) pause(ctx context.Context, reason string) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	return p.stuck(ctx, "", reason, false)
 }
 
-// stuck records reason and returns the Stuck verdict, queueing the failure notice for step only when notify is set.
+// stuck records reason and returns the Stuck verdict, posting the failure notice for step only when notify is set.
 func (p *landProducer) stuck(ctx context.Context, step, reason string, notify bool) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if cerr := cancelErr(ctx, p.name); cerr != nil {
 		return "", shedengine.OutputPointer{}, cerr
@@ -404,8 +404,8 @@ func (p *landProducer) newlyReady() (ready []string, stuckReason string) {
 	return slices.Compact(ready), ""
 }
 
-// ready queues the landing notice for landed, once per batten run: "landed", with "; newly ready: " and the tasks the landing made ready when there are any.
-// The marker line is written only once the notice was queued, and a notice that could not be queued is held back or dropped with a Warn, never retried.
+// ready posts the landing notice for landed, once per batten run: "landed", with "; newly ready: " and the tasks the landing made ready when there are any.
+// The marker line is written only once the notice was posted, and a notice that could not be posted is held back or dropped with a Warn, never retried.
 func (n rowNotifier) ready(ctx context.Context, landed string, slugs []string) {
 	if n.deps.Notify == nil || ctx.Err() != nil {
 		return

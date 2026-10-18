@@ -14,14 +14,15 @@ import (
 // orchDirName is the module's own subdirectory beneath the anchor's .lyx directory.
 const orchDirName = "orch"
 
-// PrimePaths returns the orch paths for the prime at location, so another module's CLI wiring reaches the notice queue and the orch state without re-deriving either.
+// PrimePaths returns the orch paths for the prime at location, so another module's CLI wiring reaches the orch state without re-deriving it.
 func PrimePaths(location *lyxcwd.Location) orchengine.Paths {
 	return orchPaths(location)
 }
 
 // orchPaths returns every path orch operates on, rooted at location's anchor.
 func orchPaths(location *lyxcwd.Location) orchengine.Paths {
-	dir := filepath.Join(location.AnchorPath(), lyxdirs.DotLyxDirName, orchDirName)
+	dotLyx := filepath.Join(location.AnchorPath(), lyxdirs.DotLyxDirName)
+	dir := filepath.Join(dotLyx, orchDirName)
 	return orchengine.Paths{
 		Dir:              dir,
 		StatePath:        filepath.Join(dir, "state.json"),
@@ -36,5 +37,7 @@ func orchPaths(location *lyxcwd.Location) orchengine.Paths {
 		RolePath:         filepath.Join(dir, "role.md"),
 		NoteTemplatePath: filepath.Join(dir, "note-template.md"),
 		RepoRulesPath:    filepath.Join(location.WorktreePath(), "ORCHESTRATOR.md"),
+
+		RetiredNoticeLogPath: filepath.Join(dotLyx, "notices.log"),
 	}
 }

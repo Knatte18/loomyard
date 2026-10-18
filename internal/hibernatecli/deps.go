@@ -31,6 +31,8 @@ const (
 	requestFileName = "request.json"
 	// watchLogFileName is the daemon's log in the hibernate directory.
 	watchLogFileName = "watch.log"
+	// hibernateProgram is the program name hibernate signs its notices to the orch with.
+	hibernateProgram = "HIBERNATE"
 )
 
 // hibernateDir is the hub's board-level directory holding the request, its lock and the daemon's log.
@@ -98,10 +100,13 @@ func hubDeps(location *lyxcwd.Location) (hibernateengine.Deps, error) {
 			return tenderengine.Lift(deps, ref)
 		},
 		Hibernate: runHibernate,
-		Notify:    func(line string) error { return orchcli.NotifyPrime(location, line) },
-		Now:       time.Now,
-		Sleep:     time.Sleep,
-		Awake:     pauserecord.MonotonicAwake(),
+		Notify: func(line string) error {
+			_, err := orchcli.NotifyPrime(location, hibernateProgram, line)
+			return err
+		},
+		Now:   time.Now,
+		Sleep: time.Sleep,
+		Awake: pauserecord.MonotonicAwake(),
 	}, nil
 }
 

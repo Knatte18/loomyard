@@ -27,7 +27,7 @@
 //
 //  1. Create the task worktree with `lyx fabric add <slug>`, then start its run from inside it with `lyx loom start`.
 //     The run's status file is `_lyx/shed/<slug>/status.json` under the worktree, and its `state` is one of running, awaiting, blocked, failed or done.
-//  2. Keep no watch loop of your own: batten notices arrive as typed turns from the orch watcher, and on one you check the run with `lyx batten status <slug>`.
+//  2. Keep no watch loop of your own: batten notices arrive as creel mail, announced by creel's reminder, and on one you read the mail and check the run with `lyx batten status <slug>`.
 //  3. At an awaiting Publish, review the PR: a small diff yourself, with build, vet and test over the touched packages; a large one through a read-only background subagent.
 //     Then `lyx loom approve` in the worktree; batten resumes the child itself, so no `lyx loom start` follows.
 //     Finalize squash-merges, closes the PR and marks the board task done.
@@ -51,6 +51,17 @@
 // `start` reconciles the hub's config after a binary change, once per build, before it loads any module config or launches anything; a failure stops it with the reconcile's own message and way forward.
 // No other orch verb reconciles.
 //
+// # Withdrawing around a fresh launch
+//
+// Wherever `start` resets the orch state onto a session, a relaunch, `--continue`, `--adopt` and an adopted live strand alike, it signs creel calls as the watcher's program and runs two rounds on the orch strand's name, the listed strand's name or else the fixed `<shortname>:orch`.
+// A hub with no shortname record fails `start` before any round when no orch strand is listed.
+// The first round runs before `start` starts or binds a session and before it removes the old strand: a withdraw of the old cycle's queued steps, and a release only when an orch strand is listed.
+// A failed withdraw, a refusal or an unreachable daemon alike, fails `start` with creel's error and a way forward, and nothing is started, bound or removed.
+// Creel's refusals for a program claim from a non-orch pane or for an unknown pane process carry no code, so that way forward is one fixed text naming both causes.
+// The second round runs after the reset state is saved, a withdraw and a release that catch a step an old watcher still running queued in between.
+// A failed first release or a failure in the second round does not fail `start`; the error text is recorded in the orch state's `fresh_launch_failure`, which the watcher retries on every tick.
+// A resume line a withdraw removed is handed to `orchengine.ClearResumeNoticed` with the orch GUID the state records at that call, so a continued or adopted session gets the line posted again.
+//
 // # The session-start hook
 //
 // The orch run's spec is the one that installs the provider's context-after-compaction hook.
@@ -61,7 +72,9 @@
 //
 // # Reaching the orch from another module
 //
-// `PrimePaths` is the one accessor other modules use for the orch's told paths, so the notice queue and the orch state are reached without re-deriving either.
-// A module queues a notice through `orchengine.QueueNotice` with those paths and never types into the orch session itself.
-// `NotifyPrime` is the way a task-worktree module reaches the prime's queue: it takes the task worktree's location and a line and resolves the prime itself.
+// `PrimePaths` is the one accessor other modules use for the orch's told paths, so the orch state is reached without re-deriving it.
+// A module sends the orch a notice as creel mail and never types into the orch session itself.
+// `NotifyPrime` is the way a task-worktree module does that: it takes the task worktree's location, the module's program name and a line, resolves the prime itself, and posts the line to the prime's orch strand through creel.
+// It reports whether the line was posted, and a prime with no orch strand recorded posts nothing and is no error.
+// `PrimeOrchStrand` answers the name of that strand: the name reed's state holds for the recorded GUID, or the fixed `<shortname>:orch` name for a GUID reed no longer holds, which creel then accepts or refuses.
 package orchcli

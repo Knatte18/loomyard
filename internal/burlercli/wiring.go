@@ -24,6 +24,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/standalonegeom"
 )
 
+// burlerProgram is the program name burler signs its notices to the orch with.
+const burlerProgram = "BURLER"
+
 // wireModule carries burler's own per-CLI variance for internal/cliwire's shared wiring prologue --
 // the message-bearing data cliwire needs but does not itself declare, since no production file in
 // that package may name webster or burler. cliwire carries the shared implementation; the data that
@@ -147,7 +150,10 @@ func (c *burlerCLI) wireHub(loc *lyxcwd.Location, stencilsDirOverride, targetDir
 		return err
 	}
 	runner.SetPause(pauseGeom)
-	runner.SetNotifier(func(line string) error { return orchcli.NotifyPrime(loc, line) })
+	runner.SetNotifier(func(line string) error {
+		_, err := orchcli.NotifyPrime(loc, burlerProgram, line)
+		return err
+	})
 
 	// A `lyx burler` run is not a loom run and has no friction directory in either mode.
 	burlerGeom, err := hubgeom.BurlerGeometry(loc)
