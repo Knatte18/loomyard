@@ -1251,8 +1251,10 @@ func TestConfigTemplate_ImplementerDefaultsToWebsterAndAcceptsALocalValue(t *tes
 	if got := template["implementer"]; got != "webster" {
 		t.Errorf("ConfigTemplate() implementer = %v; want webster", got)
 	}
-	if got := ConfigSpec().Categories["implementer"]; got != configengine.CategoryNone {
-		t.Errorf("ConfigSpec() category of implementer = %v; want %v", got, configengine.CategoryNone)
+	// CategoryNone is the zero Category, so a dropped entry reads the same as a declared one unless presence is checked.
+	got, declared := ConfigSpec().Categories["implementer"]
+	if !declared || got != configengine.CategoryNone {
+		t.Errorf("ConfigSpec() category of implementer = %v, declared %v; want %v, true", got, declared, configengine.CategoryNone)
 	}
 }
 
