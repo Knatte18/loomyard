@@ -196,8 +196,8 @@ func SpawnPairPush(l *lyxcwd.Location) error {
 // Gating matches pushWeftAt exactly.
 //
 // It has NO production caller.
-// The detached push child's bypass handler drives DetachedPush, not this function,
-// so nothing in shipped fabric ever runs gitrepo.PushCoalesced against a warp worktree.
+// The detached push child's bypass handler drives DetachedPush instead.
+// Nothing in shipped fabric ever runs gitrepo.PushCoalesced against a warp worktree.
 // That is worth stating rather than leaving to a reader to rediscover: PushCoalesced writes its
 // single-pusher lock file at the repo root, and while the weft repo excludes that artifact through
 // seedWeftArtifactExcludes, the warp repo has no such entry — so wiring this function into a live
