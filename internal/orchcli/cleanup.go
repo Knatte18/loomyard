@@ -1,4 +1,4 @@
-// cleanup.go implements the `cleanup` orch verb: the dry-run-by-default removal of old handoff files.
+// cleanup.go implements the `cleanup` orch verb: the dry-run-by-default removal of old handoff files and the retired notice queue and log.
 
 package orchcli
 
@@ -23,7 +23,10 @@ completed handoff, so a restart still resumes from it. It removes nothing, and
 says why in "reason", while a cycle is in progress, when no handoff is recorded
 or when the recorded one is gone.
 
-Output: {"applied", "kept", "removed", "reason"}.
+It also lists, and with --apply removes, the retired notice queue directory and
+notice log of the prime, under "retired".
+
+Output: {"applied", "kept", "removed", "reason", "retired"}.
 
 Example:
   lyx orch cleanup
@@ -39,11 +42,17 @@ Example:
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
+			retired, err := orchengine.CleanupRetiredNotices(c.paths, apply)
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
 			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
 				"applied": apply,
 				"kept":    result.Kept,
 				"removed": result.Removed,
 				"reason":  result.Reason,
+				"retired": retired,
 			}))
 			return nil
 		},

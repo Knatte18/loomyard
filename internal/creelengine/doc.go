@@ -6,7 +6,7 @@
 //
 // Creel decides what is delivered and when, shuttle knows the provider and its idle check and safe send, and reed knows the pane and does the keystrokes: creel → shuttle → reed → tmux.
 // The engine imports neither reed nor shuttle, and every keystroke goes through the Delivery seam; `PATTERN-creel-store` pins that with an import scan.
-// Delivery lists the hub's strands, asks whether a strand is idle, asks whether a pause covers it, types one line into its pane and sends the guarded interrupt.
+// Delivery lists the hub's strands, asks whether a strand is idle, asks whether a pause covers it, types one line into its pane, runs one command of a closed set in its session and sends the guarded interrupt.
 // Its idle answer carries a stall reason when a not-idle pane waits on something the operator can act on, a pane too short for the input box, a draft in it or a pane showing no input box, and the engine journals each change of that reason as a `stalled` record.
 // `internal/creelcli` implements it over the hub's worktrees, reed's persisted state and status, the pause record, and a shuttle runner built per worktree at each call.
 // Shuttle's idle check, verified send and guarded interrupt work on a strand with no run record, such as a session added by hand with `lyx reed add`.
@@ -74,8 +74,9 @@
 // post stores a message for a receiver and answers its id once the line is journaled.
 // A body is non-empty and at most 64 KiB; a longer message is a file the sender writes and the mail names.
 //
-// The receiver is reminded by one line, typed when it is idle: `[creel] N unread: #id from <sender> «subject», … — run lyx creel read`.
-// A reminder lists at most five messages, cuts a subject at 80 runes and counts the rest; the subject is the first line of the body, inside « » with control characters replaced, so it cannot pose as an instruction.
+// The receiver is reminded by one line, typed when it is idle: `[creel] N unread: #id from <sender>, … — run lyx creel read`.
+// A reminder lists at most five messages and counts the rest, and carries no text a sender wrote, so it cannot pose as an instruction; under a hold it reads `lyx creel read --from <owner>`.
+// An orch strand is reminded like any other strand.
 // A new unread set is reminded at once, and an unchanged set after a backoff that starts at five minutes and doubles to an hour.
 //
 // read returns the caller's unread messages oldest first: plain read the oldest one and every other unread message from its sender, --from every unread message from that sender, and --all every unread message.
@@ -103,13 +104,38 @@
 // An expired answer carries the stall that stood when the TTL ran out, and the `expired` record names it as its reason, only when a probe read that stall no more than twice the probe ceiling before; otherwise both carry none.
 // inject --interrupt first sends the guarded interrupt and queues the line at the head.
 //
+// A command inject carries a Command instead of a line: a neutral name from the closed set clear, compact, reload-plugins, color and load-skills, and the argument that name takes.
+// The engine knows no slash spelling or key name; the Delivery seam's Command operation maps the name onto the provider, with the same ErrBusy and ErrNotLanded contract as the typing of a line.
+// compact takes a one-line focus, color a segment color, load-skills a space-separated skill list, and clear and reload-plugins no argument.
+// Store.InjectCommand queues one under every rule of a text inject: TTL, hold, pause, queue order, dormant receivers, the sending event before the run and the outcome after, never run twice.
+// Only a program sender may queue one, and only for an orch strand; the CLI has no flag for it, and a request that sets Wait or Interrupt with a command is refused.
+// A journal record without the command fields folds as a text inject.
+//
+// withdraw is a Go-client verb: the CLI has no verb for it, and only a program sender may send it.
+// Store.Withdraw removes the caller's own queued injects to one receiver and its own unread, unreserved mail held by that receiver.
+// Each inject is journaled `expired` and each message `undelivered`, both with the reason `withdrawn`; a wait on an inject is answered expired and a wait on a message's reply is answered returned.
+// An inject already `sending` and a message already read or being read are left alone.
+// It acts on the receiver by name whether or not creel still lists that strand, and answers an empty result when nothing of the caller's is queued there.
+// The response carries the ids of the withdrawn injects and the id and subject of each withdrawn message.
+//
+// # Refusal code
+//
+// The refusal of a strand claim that names a strand creel lists, from a process in no strand pane, is the only refusal that carries a code: the response's `code` is `strand-claim-outside-pane`.
+// The Go client returns such a refusal as an error with the daemon's message as its text that `errors.Is` matches against `ErrStrandClaimOutsidePane`.
+// A claim from another strand's pane, a program claim from a non-orch pane and the refusal while a pane process is unknown carry no code.
+//
+// # Call timeout
+//
+// The Go client's timeout bounds every request, waiting or not, and zero means none; its expiry returns `ErrWaitTimeout`.
+// A non-waiting call to a daemon that accepts and never answers therefore returns at the timeout.
+//
 // interrupt sends the guarded interrupt at once, bypassing the queue, and reports whether it stopped a running turn.
 // The interrupt clears a prompt the provider restored, and a clear that fails after the key was sent still counts as sent.
 // No delivery reaches the receiver while the interrupt runs, its settles and its clear included, and the receiver's worker probes afresh once it ends.
 // A covering pause, an unreadable pause record and another sender's hold refuse it.
 //
-// EXTERNAL senders, programs and orch strands may inject, interrupt and hold on any strand; any other strand may do so on its own strand only.
-// Creel never types into an orch strand in stage 1.
+// EXTERNAL senders, programs and orch strands may inject, interrupt and hold on any strand, an orch strand included; any other strand may do so on its own strand only.
+// A hold on an orch strand is the exception: only a program may hold one, and any other sender is refused with the way forward, mail with `lyx creel post` or a cycle with `lyx orch distill` or `lyx orch refresh`.
 //
 // # Holds
 //
@@ -134,15 +160,16 @@
 // Each inject queued for the gone holder expires.
 // Creel learns only that the strand no longer exists, never why.
 //
-// # Orch strands in stage 1
+// # Orch strands
 //
-// Mail to an orch strand is stored and journaled with a withheld line naming creel-notices, and inbox says its reminders are withheld.
-// Nothing is typed into an orch strand, and a program's mailbox is never reminded; a program reads with `read --wait`.
+// Creel delivers into an orch strand as into any strand: its mail is reminded, and an inject or interrupt into it is typed.
+// A program's mailbox is never reminded; a program reads with `read --wait`.
+// A journal written by stage 1 may hold `withheld` records for orch mail; the fold keeps them in the log, acts on none, and the daemon reminds that mail from its first probe.
 //
 // # Log
 //
 // log lists the journal's events oldest first with their ids, parties, times and subjects, narrowed by --id, --from, --to and --since.
-// It carries no body field.
+// It carries no body field; a text inject's line is the `subject` of each of its events, and a command inject's events carry its `command` and `argument`.
 // --id also lists the `reminded` events whose unread ids hold that id.
 // A `carried` event shows the kind of the message or inject carried, and a message carried again at a later retention gets one `carried` event per carry that is still in a kept file.
 // A `stalled` record names the receiver and the stall reason a delivery probe read, and is written once per change of reason while something is pending for the receiver, and again for a stall read after it went stale.
@@ -157,13 +184,10 @@
 // Every idle answer feeds the stall journal: a new non-empty reason is journaled, a repeat only stamps when it was read, and a reading with no reason, a probe error or a typed line clears it with no record.
 // The inject TTL keeps running while a strand is stalled, live and unpaused.
 //
-// # Unbuilt: stages 2 and 3
+// # Unbuilt: the stage 3 remainder
 //
-// Stage 2, the task `creel-notices`: the orch watcher keeps only its cycle logic, and its notice queue and idle probe go.
-// The watcher posts the note request to the orch as mail, which the orch answers by post with `written <path>` once the note is written or with `defer`, and it advances a cycle phase only on that reply or once creel confirms a command inject was typed.
-// The watcher holds the orch's reminders during a context cycle through creel's hold, while its own note request and its `/clear`, `/compact` and reload injects still pass.
-// Batten's notices and `orchengine.QueueNotice` fold into creel, and the withheld reminders of an orch strand are typed.
-// `PATTERN-orch-pane-single-writer` becomes: only creel decides what is delivered into an agent's pane.
+// `PATTERN-orch-pane-single-writer` is scoped to the orch session: typing into it from Go is only creel's, through its `Delivery` seam; the orch watcher keeps only a hub pause's guarded interrupt, reed's `/rename` repair keeps its own guard, and other modules post or inject through creel.
+// Stage 3 widens it to every agent's pane.
 //
 // Stage 3, the task `creel-agents`: the parent-review gate posts to the parent itself, drivers' stop reports post instead of duplicating batten's notices, and `lyx shuttle send` and `lyx shuttle interrupt` move behind creel.
 //

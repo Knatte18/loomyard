@@ -437,6 +437,9 @@ func newParentReviewConfig(location *lyxcwd.Location, reedCfg reedengine.Config,
 // keepAliveMargin is how long before the writer's prompt cache would lapse a keep-alive ping lands.
 const keepAliveMargin = time.Minute
 
+// loomProgram is the program name loom signs its notices to the orch with.
+const loomProgram = "LOOM"
+
 // keepAliveInterval returns lifetime less keepAliveMargin, and zero, which turns pings off, when lifetime reaches waitBound or is no more than the margin.
 // A cache that outlasts the whole wait needs no ping.
 func keepAliveInterval(lifetime, waitBound time.Duration) time.Duration {
@@ -559,7 +562,10 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		return err
 	}
 	runner.SetPause(pauseGeom)
-	runner.SetNotifier(func(line string) error { return orchcli.NotifyPrime(location, line) })
+	runner.SetNotifier(func(line string) error {
+		_, err := orchcli.NotifyPrime(location, loomProgram, line)
+		return err
+	})
 
 	websterGeom := hubgeom.WebsterGeometry(location)
 	websterGeom.Index = planglyph.NewSlottedIndex(fabricengine.NewReferenceRule(), websterGeom.GateSlots, websterGeom.GateWaitDir)

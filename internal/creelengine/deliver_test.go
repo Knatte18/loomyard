@@ -5,6 +5,7 @@ package creelengine_test
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -75,6 +76,29 @@ func (e *env) driveProbeWaits(count int) []time.Duration {
 	return waits[:count]
 }
 
+// awaitTyped waits until the delivery has typed exactly want into the strand, for the mail whose delivery no clock wait of the test marks.
+// The real-time deadline only bounds a failing test.
+func awaitTyped(t *testing.T, e *env, strandName string, want ...string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for !slices.Equal(e.typed(strandName), want) {
+		if time.Now().After(deadline) {
+			t.Fatalf("typed %q into %s; want %q", e.typed(strandName), strandName, want)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+// injectCommand queues a command inject from a program to receiver and fails the test when it is refused.
+func injectCommand(t *testing.T, e *env, receiver string, command creelengine.Command) creelengine.InjectResult {
+	t.Helper()
+	result, err := e.store.InjectCommand(program(batten), receiver, command, 0)
+	if err != nil {
+		t.Fatalf("InjectCommand(%s): %v", command.Name, err)
+	}
+	return result
+}
+
 // typed returns the texts sent to the strand, in order.
 func (e *env) typed(strandName string) []string {
 	var texts []string
@@ -122,8 +146,31 @@ func (e *env) tickPastTheStallFreshness(t *testing.T) {
 	}
 }
 
-func reminderFor(count int, listed ...string) string {
-	return fmt.Sprintf("[creel] %d unread: %s — run lyx creel read", count, strings.Join(listed, ", "))
+// reminderFor builds the reminder line for count unread messages listed as given; holdOwner is the owner of a hold on the receiver, empty for none.
+func reminderFor(count int, holdOwner string, listed ...string) string {
+	command := "lyx creel read"
+	if holdOwner != "" {
+		command += " --from " + holdOwner
+	}
+	return fmt.Sprintf("[creel] %d unread: %s — run %s", count, strings.Join(listed, ", "), command)
+}
+
+// orchStrandIsRemindedAndTypedInto returns a row body that posts two messages and a text inject to the orch strand name, and expects the inject typed first and then one reminder of both messages.
+func orchStrandIsRemindedAndTypedInto(name string) func(t *testing.T, e *env) {
+	return func(t *testing.T, e *env) {
+		e.post(t, strand(alpha), name, "one")
+		e.post(t, strand(beta), name, "two")
+		if _, err := e.store.Inject(program(batten), name, "/one", 0, false); err != nil {
+			t.Fatalf("Inject: %v", err)
+		}
+		e.start(t)
+		e.probeWaits(1)
+		e.tick(time.Second)
+		want := []string{"/one", reminderFor(2, "", "#1 from "+alpha, "#2 from "+beta)}
+		if got := e.typed(name); !slices.Equal(got, want) {
+			t.Errorf("typed %q into %s; want %q", got, name, want)
+		}
+	}
 }
 
 func seconds(n ...int) []time.Duration {
@@ -145,7 +192,7 @@ func TestScheduler_Reminders(t *testing.T) {
 			e.post(t, strand(alpha), beta, "hello")
 			e.probeWaits(1)
 			e.tick(time.Second)
-			want := []string{reminderFor(1, "#1 from "+alpha+" «hello»")}
+			want := []string{reminderFor(1, "", "#1 from "+alpha)}
 			if got := e.typed(beta); !slices.Equal(got, want) {
 				t.Errorf("typed %q; want %q", got, want)
 			}
@@ -158,7 +205,7 @@ func TestScheduler_Reminders(t *testing.T) {
 				t.Fatalf("Reply: %v", err)
 			}
 			e.probeWaits(1)
-			want := []string{reminderFor(1, "#2 from "+alpha+" «answer»")}
+			want := []string{reminderFor(1, "", "#2 from "+alpha)}
 			if got := e.typed(beta); !slices.Equal(got, want) {
 				t.Errorf("typed %q; want %q", got, want)
 			}
@@ -167,7 +214,7 @@ func TestScheduler_Reminders(t *testing.T) {
 			e.post(t, strand(alpha), beta, "waiting")
 			e.start(t)
 			e.probeWaits(1)
-			want := []string{reminderFor(1, "#1 from "+alpha+" «waiting»")}
+			want := []string{reminderFor(1, "", "#1 from "+alpha)}
 			if got := e.typed(beta); !slices.Equal(got, want) {
 				t.Errorf("typed %q; want %q", got, want)
 			}
@@ -207,7 +254,7 @@ func TestScheduler_Reminders(t *testing.T) {
 			}
 			e.del.SetStrands(creelfake.LiveStrand(alpha), creelfake.LiveStrand(beta))
 			e.tick(8 * time.Second)
-			want := []string{reminderFor(1, "#1 from "+alpha+" «kept»")}
+			want := []string{reminderFor(1, "", "#1 from "+alpha)}
 			if got := e.typed(beta); !slices.Equal(got, want) {
 				t.Errorf("typed %q once the strand was live; want %q", got, want)
 			}
@@ -311,19 +358,19 @@ func TestScheduler_Reminders(t *testing.T) {
 			e.probeWaits(1)
 			var listed []string
 			for i := 1; i <= 5; i++ {
-				listed = append(listed, fmt.Sprintf("#%d from %s «m%d»", i, alpha, i))
+				listed = append(listed, fmt.Sprintf("#%d from %s", i, alpha))
 			}
-			want := []string{reminderFor(7, append(listed, "+2 more")...)}
+			want := []string{reminderFor(7, "", append(listed, "+2 more")...)}
 			if got := e.typed(beta); !slices.Equal(got, want) {
 				t.Errorf("typed %q; want %q", got, want)
 			}
 		}},
-		{"ReminderSubjectIsCutAndItsDelimitersReplaced", func(t *testing.T, e *env) {
+		{"ReminderCarriesNoSubject", func(t *testing.T, e *env) {
 			subject := "a\tb»c" + strings.Repeat("y", 100)
 			e.post(t, strand(alpha), beta, subject+"\nsecond line")
 			e.start(t)
 			e.probeWaits(1)
-			want := []string{reminderFor(1, "#1 from "+alpha+" «a b c"+strings.Repeat("y", 75)+"»")}
+			want := []string{reminderFor(1, "", "#1 from "+alpha)}
 			if got := e.typed(beta); !slices.Equal(got, want) {
 				t.Errorf("typed %q; want %q", got, want)
 			}
@@ -341,26 +388,8 @@ func TestScheduler_Reminders(t *testing.T) {
 				t.Errorf("Idle asked %d times about a program", calls)
 			}
 		}},
-		{"OrchStrandsAreNeverTypedIntoAndTheirMailIsWithheld", func(t *testing.T, e *env) {
-			e.start(t)
-			for _, name := range []string{orch, orch2} {
-				e.post(t, strand(alpha), name, "one")
-				e.post(t, strand(beta), name, "two")
-				e.clock.Advance(time.Hour)
-				withheld := 0
-				for _, entry := range e.store.Log(creelengine.LogFilter{To: name}) {
-					if entry.Event == "withheld" && entry.Notice == "creel-notices" {
-						withheld++
-					}
-				}
-				if withheld != 2 {
-					t.Errorf("%s: %d withheld lines; want one per new message", name, withheld)
-				}
-				if calls := e.del.IdleCalls(name); calls != 0 || len(e.typed(name)) != 0 {
-					t.Errorf("%s: %d Idle calls and %q typed; want none", name, calls, e.typed(name))
-				}
-			}
-		}},
+		{"OrchStrandIsRemindedAndTypedInto", orchStrandIsRemindedAndTypedInto(orch)},
+		{"NumberedOrchStrandIsRemindedAndTypedInto", orchStrandIsRemindedAndTypedInto(orch2)},
 		{"PauseTypesNothingUntilLifted", func(t *testing.T, e *env) {
 			e.del.SetPaused(beta, true)
 			e.start(t)
@@ -391,12 +420,12 @@ func TestScheduler_Reminders(t *testing.T) {
 			before := len(e.probeWaits(0))
 			e.post(t, program(batten), beta, "from the owner")
 			e.probeWaits(before + 1)
-			want := []string{reminderFor(1, "#2 from "+batten+" «from the owner»")}
+			want := []string{reminderFor(1, batten, "#2 from "+batten)}
 			if got := e.typed(beta); !slices.Equal(got, want) {
 				t.Fatalf("typed %q; want only the owner's mail reminded", got)
 			}
 			e.tick(31 * time.Minute)
-			want = append(want, reminderFor(2, "#1 from "+alpha+" «muted»", "#2 from "+batten+" «from the owner»"))
+			want = append(want, reminderFor(2, "", "#1 from "+alpha, "#2 from "+batten))
 			if got := e.typed(beta); !slices.Equal(got, want) {
 				t.Errorf("typed %q after the hold ended; want %q", got, want)
 			}
@@ -455,7 +484,7 @@ func TestScheduler_Injects(t *testing.T) {
 			e.probeWaits(1)
 			e.tick(time.Second)
 			e.tick(time.Second)
-			want := []string{"/one", "/two", reminderFor(1, "#1 from "+alpha+" «hi»")}
+			want := []string{"/one", "/two", reminderFor(1, "", "#1 from "+alpha)}
 			if got := e.typed(beta); !slices.Equal(got, want) {
 				t.Errorf("typed %q; want %q", got, want)
 			}
@@ -630,6 +659,163 @@ func TestScheduler_Injects(t *testing.T) {
 			want := fmt.Sprintf(`"id":%d,"consumed_s":5`, second)
 			if text := journalText(t, e.geom); !strings.Contains(text, want) {
 				t.Errorf("journal lacks %s; want the second inject's aged record counting 5 s since its posting:\n%s", want, text)
+			}
+		}},
+		{"WithdrawLeavesAnInjectAlreadySendingAndItSettlesInjected", func(t *testing.T, e *env) {
+			entered, release := make(chan struct{}), make(chan struct{})
+			var once sync.Once
+			e.del.SetSendFunc(func(string, string) error {
+				once.Do(func() { close(entered) })
+				<-release
+				return nil
+			})
+			scheduler := creelengine.NewScheduler(e.store, e.del, e.clock)
+			scheduler.Start()
+			t.Cleanup(func() {
+				once.Do(func() { close(entered) })
+				select {
+				case <-release:
+				default:
+					close(release)
+				}
+				scheduler.Stop()
+			})
+			sending, waiter, err := e.store.InjectWait(program(batten), alpha, "/first", time.Hour, false)
+			if err != nil {
+				t.Fatalf("InjectWait: %v", err)
+			}
+			<-entered
+			queued := inject(t, e, program(batten), alpha, "/second", time.Hour, false)
+			got, err := e.store.Withdraw(program(batten), alpha)
+			if err != nil || !slices.Equal(got.Injects, []int64{queued}) {
+				t.Fatalf("Withdraw = %+v, %v; want only the queued inject %d", got, err, queued)
+			}
+			close(release)
+			if outcome := awaitOutcome(t, waiter); outcome.Kind != creelengine.OutcomeInjected {
+				t.Errorf("wait answered %v; want the sending inject to settle injected", outcome.Kind)
+			}
+			if events := eventsOf(e.store.Log(creelengine.LogFilter{ID: sending.ID})); !slices.Equal(events, []string{"posted", "sending", "injected"}) {
+				t.Errorf("events of the sending inject = %v; want posted, sending, injected", events)
+			}
+		}},
+		{"CommandInjectIsRunThroughCommandAndJournaledSendingThenInjected", func(t *testing.T, e *env) {
+			command := creelengine.Command{Name: creelengine.CommandCompact, Argument: "keep the plan"}
+			result := injectCommand(t, e, orch, command)
+			e.start(t)
+			e.probeWaits(1)
+			want := []creelfake.CommandCall{{Strand: orch, Command: command}}
+			if got := e.del.Commands(); !reflect.DeepEqual(got, want) {
+				t.Errorf("Commands = %+v; want %+v", got, want)
+			}
+			if sends := e.del.Sends(); len(sends) != 0 {
+				t.Errorf("a command inject also typed %v through Send", sends)
+			}
+			entries := e.store.Log(creelengine.LogFilter{ID: result.ID})
+			if got := eventsOf(entries); !slices.Equal(got, []string{"posted", "sending", "injected"}) {
+				t.Errorf("events = %v; want posted, sending, injected", got)
+			}
+			for _, entry := range entries {
+				if entry.Command != creelengine.CommandCompact || entry.Argument != "keep the plan" {
+					t.Errorf("log entry %+v lacks the command and argument", entry)
+				}
+			}
+		}},
+		{"CommandInjectUnconfirmedIsJournaledAndNeverRerun", func(t *testing.T, e *env) {
+			e.del.SetCommandError(creelengine.ErrNotLanded)
+			result := injectCommand(t, e, orch, creelengine.Command{Name: creelengine.CommandClear})
+			e.start(t)
+			e.probeWaits(1)
+			e.clock.Advance(time.Hour)
+			if got := e.del.Commands(); len(got) != 1 {
+				t.Errorf("Commands = %+v; an unconfirmed command inject must never be rerun", got)
+			}
+			if got := eventsOf(e.store.Log(creelengine.LogFilter{ID: result.ID})); !slices.Equal(got, []string{"posted", "sending", "unconfirmed"}) {
+				t.Errorf("events = %v; want posted, sending, unconfirmed", got)
+			}
+		}},
+		{"BusyCommandIsRequeuedAndRunOnceAtTheNextProbe", func(t *testing.T, e *env) {
+			e.del.SetCommandError(creelengine.ErrBusy)
+			result := injectCommand(t, e, orch, creelengine.Command{Name: creelengine.CommandReloadPlugins})
+			e.start(t)
+			e.probeWaits(1)
+			e.del.SetCommandError(nil)
+			e.tick(time.Second)
+			if got := e.del.Commands(); len(got) != 2 {
+				t.Errorf("Commands = %+v; want the busy attempt and one retry", got)
+			}
+			if events := eventsOf(e.store.Log(creelengine.LogFilter{ID: result.ID})); events[len(events)-1] != "injected" {
+				t.Errorf("events = %v; want the inject to end injected", events)
+			}
+		}},
+		{"CommandInjectWaitsOutAPauseAndExpiresAfterItsTTL", func(t *testing.T, e *env) {
+			e.del.SetPaused(orch, true)
+			injectCommand(t, e, orch, creelengine.Command{Name: creelengine.CommandClear})
+			e.start(t)
+			e.driveProbeWaits(3)
+			if got := e.del.Commands(); len(got) != 0 {
+				t.Fatalf("Commands = %+v under a covering pause; want none", got)
+			}
+			e.del.SetPaused(orch, false)
+			e.tick(4 * time.Second)
+			if got := e.del.Commands(); len(got) != 1 {
+				t.Errorf("Commands = %+v after the pause lifted; want the command run once", got)
+			}
+
+			expiring := newEnv(t)
+			expiring.del.SetIdle(orch, false)
+			result, err := expiring.store.InjectCommand(program(batten), orch, creelengine.Command{Name: creelengine.CommandClear}, 10*time.Second)
+			if err != nil {
+				t.Fatalf("InjectCommand: %v", err)
+			}
+			expiring.start(t)
+			done := make(chan struct{})
+			go expiring.clock.AdvanceByWaitsWhere(isProbeWait, done)
+			defer close(done)
+			deadline := time.Now().Add(10 * time.Second)
+			for {
+				events := eventsOf(expiring.store.Log(creelengine.LogFilter{ID: result.ID}))
+				if slices.Contains(events, "expired") {
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatalf("events = %v; want the command inject expired", events)
+				}
+				time.Sleep(time.Millisecond)
+			}
+			if got := expiring.del.Commands(); len(got) != 0 {
+				t.Errorf("Commands = %+v; an expired command inject runs nothing", got)
+			}
+		}},
+		{"CommandInjectToADormantOrchStaysQueuedUntilItIsLive", func(t *testing.T, e *env) {
+			e.del.SetStrands(creelfake.LiveStrand(alpha), creelfake.LiveStrand(beta), creelfake.DormantStrand(orch), creelfake.LiveStrand(orch2))
+			injectCommand(t, e, orch, creelengine.Command{Name: creelengine.CommandClear})
+			e.start(t)
+			e.probeWaits(1)
+			if got := e.del.Commands(); len(got) != 0 {
+				t.Fatalf("Commands = %+v for a dormant orch; want none", got)
+			}
+			e.del.SetStrands(creelfake.LiveStrand(alpha), creelfake.LiveStrand(beta), creelfake.LiveStrand(orch), creelfake.LiveStrand(orch2))
+			e.tick(time.Second)
+			if got := e.del.Commands(); len(got) != 1 {
+				t.Errorf("Commands = %+v once the orch is live; want the command run once", got)
+			}
+		}},
+		{"TextAndCommandInjectsAreTypedInQueueOrder", func(t *testing.T, e *env) {
+			first := inject(t, e, program(batten), orch, "/one", 0, false)
+			second := injectCommand(t, e, orch, creelengine.Command{Name: creelengine.CommandClear}).ID
+			third := inject(t, e, program(batten), orch, "/three", 0, false)
+			e.start(t)
+			e.probeWaits(1)
+			e.tick(time.Second)
+			e.tick(time.Second)
+			var sending []int64
+			for _, entry := range e.store.Log(creelengine.LogFilter{To: orch}) {
+				if entry.Event == "sending" {
+					sending = append(sending, entry.ID)
+				}
+			}
+			if want := []int64{first, second, third}; !slices.Equal(sending, want) {
+				t.Errorf("sending events = %v; want the ids in queue order %v", sending, want)
 			}
 		}},
 		{"ChangingStallIsJournaledOncePerChangeAndStopsOnceTyped", func(t *testing.T, e *env) {
@@ -1004,16 +1190,15 @@ func TestSweep_RemovedHolders(t *testing.T) {
 			}
 		}},
 		{"PostWithLessThanTheBaseLeftDoesNotDelayTheSweep", func(t *testing.T, e *env) {
-			// Only orch-role mail exists, which has no delivery worker, so every wait on the clock is the sweep's.
 			e.start(t)
 			e.post(t, strand(alpha), orch, "one")
-			e.clock.AwaitWaits(1)
+			e.sweepWaits(1)
 			e.clock.Advance(30 * time.Second)
-			e.clock.AwaitWaits(2)
+			e.sweepWaits(2)
 			e.clock.Advance(45 * time.Second)
 			e.post(t, strand(beta), orch, "two")
 			e.clock.Advance(5 * time.Second)
-			if got := e.clock.AwaitWaits(3)[2]; got != 50*time.Second {
+			if got := e.sweepWaits(3)[2]; got != 50*time.Second {
 				t.Errorf("wait after the sweep that the post left at 5s = %v; want the 50s ceiling", got)
 			}
 		}},
@@ -1046,21 +1231,22 @@ func TestSweep_RemovedHolders(t *testing.T) {
 			}
 		}},
 		{"PostInsideTheConfirmIntervalKeepsTheConfirmDeadline", func(t *testing.T, e *env) {
-			// The removed holder is orch, whose mail has no worker, so the row reads every wait on the clock.
 			_, first, err := e.store.PostWait(external(), orch, "one")
 			if err != nil {
 				t.Fatalf("PostWait: %v", err)
 			}
 			without(e, orch)
 			e.start(t)
-			e.clock.AwaitWaits(1)
+			// The 5-second wait left to the confirm deadline is below the probe ceiling, so the row tells the sweep's waits from the workers' by the workers' own doubling steps.
+			sweepOnly := func(d time.Duration) bool { return !slices.Contains(seconds(1, 2, 4, 8), d) }
+			e.clock.AwaitWaitsWhere(1, sweepOnly)
 			e.clock.Advance(30 * time.Second)
-			if waits := e.clock.AwaitWaits(2); waits[1] != 10*time.Second {
+			if waits := e.clock.AwaitWaitsWhere(2, sweepOnly); waits[1] != 10*time.Second {
 				t.Fatalf("wait after the first miss = %v; want the 10s confirm", waits[1])
 			}
 			e.clock.Advance(5 * time.Second)
 			e.post(t, strand(alpha), orch2, "two")
-			if waits := e.clock.AwaitWaits(3); waits[2] != 5*time.Second {
+			if waits := e.clock.AwaitWaitsWhere(3, sweepOnly); waits[2] != 5*time.Second {
 				t.Fatalf("wait after a post inside the confirm = %v; want the 5s left to the confirm deadline", waits[2])
 			}
 			e.clock.Advance(5 * time.Second)
@@ -1084,13 +1270,11 @@ func TestSweep_RemovedHolders(t *testing.T) {
 			if len(held) != 1 || held[0].Holder != orch2 || held[0].EndedUnreadBy != alpha || len(held[0].Path) != 0 {
 				t.Fatalf("after two sweeps the message is %+v; want it back with %s, marked as ended unread by %s", held, orch2, alpha)
 			}
-			want := []string{"posted", "withheld", "forwarded", "returned", "withheld"}
+			want := []string{"posted", "forwarded", "returned"}
 			if got := eventsOf(e.store.Log(creelengine.LogFilter{ID: id})); !slices.Equal(got, want) {
 				t.Errorf("events = %v; want %v", got, want)
 			}
-			if calls, typed := e.del.IdleCalls(orch2), e.typed(orch2); calls != 0 || len(typed) != 0 {
-				t.Errorf("orch-2: %d Idle calls and %q typed; want none", calls, typed)
-			}
+			awaitTyped(t, e, orch2, reminderFor(1, "", "#1 from "+external().Name))
 			without(e, alpha, orch2)
 			e.sweepStep()
 			e.sweepLast()

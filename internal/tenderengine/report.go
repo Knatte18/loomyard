@@ -75,8 +75,10 @@ type Deps struct {
 	OrchWatcherLive func() bool
 	// OrchStrand is the orch strand recorded in the prime's orch state, empty when none.
 	OrchStrand func() (string, error)
-	// QueueOrchRevive queues the orch's conditioned notice carrying line, and returns false when one is already queued.
-	QueueOrchRevive func(line string) (queued bool, err error)
+	// OrchRevivePending reports whether a revive inject of tender's own to the orch strand stands with no outcome yet.
+	OrchRevivePending func() (bool, error)
+	// InjectOrchRevive injects line into the orch strand and returns the inject's id.
+	InjectOrchRevive func(line string) (int64, error)
 	// Caller is the caller's strand name, empty for an external caller.
 	Caller string
 	// Now is the clock.

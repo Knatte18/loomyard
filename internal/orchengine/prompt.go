@@ -1,7 +1,8 @@
 // prompt.go renders the orch stencils (orch-template-role, orch-template-note, orch-template-start, orch-template-handoff, orch-template-resume, orch-template-adopt, orch-template-handoff-soft, orch-template-compact, orch-template-reload).
 // Each is read from a told stencils directory at call time via stencilstore.Read, per the Stencil Ownership Invariant, and filled with stencil.Fill, which drops the leading comment.
-// The role and note stencils render to files the session reads; every other render is typed into the session or handed to shuttle as its launch pointer,
-// and shuttle's Send refuses multi-line text, so each of those must render to one line;
+// The role and note stencils render to files the session reads, and the two note requests render to the mail body creel posts.
+// Every other render is injected as one creel text line or handed to shuttle as its launch pointer, and a creel text inject is one line,
+// so each of those must render to one line;
 // an operator override that breaks that fails here, naming the stencil to fix.
 
 package orchengine
@@ -100,9 +101,10 @@ func RenderStartPrompt(stencilsDir, rolePath string) (string, error) {
 	return render(stencilsDir, startStencilName, map[string]string{"role_path": rolePath}, true)
 }
 
-// RenderHandoffInstruction renders the one-line note request, with handoffPath and noteTemplatePath filled in.
+// RenderHandoffInstruction renders the note request mail body, with handoffPath and noteTemplatePath filled in.
+// The body may span several lines and its first line stays the same for the same paths.
 func RenderHandoffInstruction(stencilsDir, handoffPath, noteTemplatePath string) (string, error) {
-	return render(stencilsDir, handoffStencilName, map[string]string{"handoff_path": handoffPath, "note_template_path": noteTemplatePath}, true)
+	return renderMailBody(stencilsDir, handoffStencilName, map[string]string{"handoff_path": handoffPath, "note_template_path": noteTemplatePath})
 }
 
 // RenderResumePrompt renders the one-line resume pointer, with rolePath and handoffPath filled in.
@@ -115,9 +117,18 @@ func RenderAdoptPrompt(stencilsDir, rolePath string) (string, error) {
 	return render(stencilsDir, adoptStencilName, map[string]string{"role_path": rolePath}, true)
 }
 
-// RenderSoftHandoffInstruction renders the one-line soft-trigger note request, with handoffPath and noteTemplatePath filled in.
+// RenderSoftHandoffInstruction renders the soft-trigger note request mail body, with handoffPath and noteTemplatePath filled in.
 func RenderSoftHandoffInstruction(stencilsDir, handoffPath, noteTemplatePath string) (string, error) {
-	return render(stencilsDir, softHandoffStencilName, map[string]string{"handoff_path": handoffPath, "note_template_path": noteTemplatePath}, true)
+	return renderMailBody(stencilsDir, softHandoffStencilName, map[string]string{"handoff_path": handoffPath, "note_template_path": noteTemplatePath})
+}
+
+// renderMailBody renders one stencil with values to a mail body: surrounding whitespace is trimmed and any number of lines is kept.
+func renderMailBody(stencilsDir, name string, values map[string]string) (string, error) {
+	out, err := render(stencilsDir, name, values, false)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
 }
 
 // RenderReloadPrompt renders the one-line reload pointer typed after an auto-compaction, with rolePath filled in.
@@ -162,7 +173,7 @@ func render(stencilsDir, name string, values map[string]string, singleLine bool)
 	}
 	out = strings.TrimSpace(out)
 	if strings.ContainsAny(out, "\r\n") {
-		return "", fmt.Errorf("orch: %s renders to more than one line; shuttle's Send refuses multi-line text, so fix the stencil", name)
+		return "", fmt.Errorf("orch: %s renders to more than one line; a creel text inject is one line, so fix the stencil", name)
 	}
 	return out, nil
 }

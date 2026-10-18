@@ -792,6 +792,8 @@ var _ ReedOps = (*skillReed)(nil)
 // ProcessLiveness answers liveness for any session id, and TurnStartInterrupt answers interrupted and interruptAt for any turn start.
 // TurnEndActivity marks a turn end as an API error when its line is apiErrorLine.
 // TurnStartProgress answers progress for any turn start.
+// With markEvents set, ParseSessionSignals also reads "@<RFC 3339 time>" as the stamp of the next line and sets Event, with that time, on the lines the engine's ParseEvents yields an event from ("STOP:", "WAIT:" and "ASK:<message>", the last read as an ask) and on "MARK", a turn end no ParseEvents yields an event from;
+// a read then stops before a trailing run of stamp lines with no payload after them.
 type sessionFakeEngine struct {
 	waitingEngine
 
@@ -800,15 +802,44 @@ type sessionFakeEngine struct {
 	interruptAt  time.Time
 	apiErrorLine string
 	progress     TurnProgress
+	markEvents   bool
 }
 
 func (e *sessionFakeEngine) ParseSessionSignals(data []byte) ([]SessionSignal, int) {
 	end := strings.LastIndexByte(string(data), '\n') + 1
 	var signals []SessionSignal
+	var stamp time.Time
+	// stampRunStart is the offset of the earliest line of the trailing run of stamp lines, or end when the data does not finish with one.
+	stampRunStart := end
+	offset := 0
 	for _, line := range strings.Split(string(data[:end]), "\n") {
+		lineStart := offset
+		offset += len(line) + 1
 		trimmed := strings.TrimSpace(line)
+		if e.markEvents {
+			if text, isStamp := strings.CutPrefix(trimmed, "@"); isStamp {
+				if stampRunStart == end {
+					stampRunStart = lineStart
+				}
+				stamp, _ = time.Parse(time.RFC3339, text)
+				continue
+			}
+			if trimmed != "" {
+				stampRunStart = end
+			}
+		}
 		signal := SessionSignal{SessionID: "session-1", Raw: []byte(trimmed)}
+		if e.markEvents {
+			signal.At = stamp
+			stamp = time.Time{}
+		}
 		switch {
+		case e.markEvents && trimmed == "MARK":
+			signal.Kind = SessionSignalTurnEnd
+			signal.Event = true
+		case e.markEvents && strings.HasPrefix(trimmed, "ASK:"):
+			signal.Kind = SessionSignalAsk
+			signal.Event = true
 		case trimmed == "START":
 			signal.Kind = SessionSignalTurnStart
 		case trimmed == "APIERR":
@@ -824,15 +855,17 @@ func (e *sessionFakeEngine) ParseSessionSignals(data []byte) ([]SessionSignal, i
 			signal.EndsProcess = signal.Reason != "clear"
 		case strings.HasPrefix(trimmed, "STOP:"):
 			signal.Kind = SessionSignalTurnEnd
+			signal.Event = e.markEvents
 		case strings.HasPrefix(trimmed, "WAIT:"):
 			signal.Kind = SessionSignalTurnEnd
 			signal.Outstanding = e.outstanding
+			signal.Event = e.markEvents
 		default:
 			continue
 		}
 		signals = append(signals, signal)
 	}
-	return signals, end
+	return signals, stampRunStart
 }
 
 func (e *sessionFakeEngine) ProcessLiveness(string) Liveness { return e.liveness }

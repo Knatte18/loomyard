@@ -4,11 +4,15 @@ package tendercli
 
 import (
 	"cmp"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/creelcli"
+	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -94,11 +98,24 @@ func HubDeps(location *lyxcwd.Location, strand string) (tenderengine.Deps, []str
 			orchState, err := orchengine.LoadState(orchcli.PrimePaths(prime))
 			return orchState.Strand, err
 		},
-		QueueOrchRevive: func(line string) (bool, error) {
-			if prime == nil {
-				return false, nil
+		OrchRevivePending: func() (bool, error) {
+			client, orch, err := orchReviveTarget(prime)
+			if err != nil {
+				return false, err
 			}
-			return orchengine.QueueConditionalNotice(orchcli.PrimePaths(prime), line, orchengine.NoticeCondition{State: shuttleengine.SessionIdleStalled, Cause: shuttleengine.SessionCauseAPIError}, time.Now())
+			from, err := agentname.FormatProgram(client.Shortname(), tenderProgram)
+			if err != nil {
+				return false, err
+			}
+			entries, err := client.Log(creelengine.LogFilter{From: from, To: orch})
+			return revivePending(entries), err
+		},
+		InjectOrchRevive: func(line string) (int64, error) {
+			client, orch, err := orchReviveTarget(prime)
+			if err != nil {
+				return 0, err
+			}
+			return client.Inject(orch, line, orchReviveTTL)
 		},
 		NetOps: func() ([]pauserecord.NetOp, error) {
 			return pauserecord.ListNetOps(geometry.RecordPath, parentlock.ProcessAlive)
@@ -119,6 +136,45 @@ func HubDeps(location *lyxcwd.Location, strand string) (tenderengine.Deps, []str
 		Sleep:  time.Sleep,
 	}
 	return deps, slugs, nil
+}
+
+// tenderProgram is the program name tender signs its creel calls with.
+const tenderProgram = "TENDER"
+
+// orchReviveTTL is how long a revive inject waits for the orch's next idle before it expires.
+const orchReviveTTL = time.Minute
+
+// postedEvent is the log event of a message or inject being left in creel.
+const postedEvent = "posted"
+
+// orchReviveTarget returns a creel client signing as tender and the name of the prime's orch strand the revive injects into.
+func orchReviveTarget(prime *lyxcwd.Location) (*creelcli.GoClient, string, error) {
+	orch, recorded, err := orchcli.PrimeOrchStrand(prime)
+	if err != nil {
+		return nil, "", err
+	}
+	if !recorded {
+		return nil, "", errors.New("the prime records no orch strand")
+	}
+	client, err := creelcli.NewProgramClient(prime, tenderProgram)
+	if err != nil {
+		return nil, "", err
+	}
+	return client, orch, nil
+}
+
+// revivePending reports whether entries, tender's log to the orch strand, hold an inject whose posted event has no injected, unconfirmed or expired event for its id after it.
+func revivePending(entries []creelengine.LogEntry) bool {
+	pending := map[int64]bool{}
+	for _, entry := range entries {
+		switch entry.Event {
+		case postedEvent:
+			pending[entry.ID] = true
+		case string(creelengine.OutcomeInjected), string(creelengine.OutcomeUnconfirmed), string(creelengine.OutcomeExpired):
+			delete(pending, entry.ID)
+		}
+	}
+	return len(pending) > 0
 }
 
 // shuttlePair is one task pair read and driven through its own shuttle runner and reed session.

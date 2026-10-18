@@ -123,8 +123,8 @@ type waitState struct {
 }
 
 // Call sends the request as the client's claim and returns the final response.
-// A refusal by the daemon comes back as an error carrying its message.
-// A waiting request (Wait set) takes a timeout measured on the client's clock, zero for none; its expiry returns ErrWaitTimeout.
+// A refusal by the daemon comes back as an error carrying its message; one that carries a code also matches that code's sentinel under errors.Is.
+// The timeout is measured on the client's clock over the whole request, waiting or not, and zero means none; its expiry returns ErrWaitTimeout.
 // A waiting call whose connection drops reconnects up to MaxReconnects times, starting the daemon if needed, and resumes the same wait.
 // A read's response is handed to handle, and acknowledged only when handle returns nil; a handle that fails leaves the messages unread.
 func (c *Client) Call(req Request, timeout time.Duration, handle func(Response) error) (Response, error) {
@@ -135,7 +135,7 @@ func (c *Client) Call(req Request, timeout time.Duration, handle func(Response) 
 func (c *Client) CallWatching(req Request, timeout time.Duration, handle func(Response) error, progress func(Response)) (Response, error) {
 	req.Claim = c.claim
 	var timer <-chan time.Time
-	if req.Wait && timeout > 0 {
+	if timeout > 0 {
 		timer = c.clock.After(timeout)
 	}
 	state := &waitState{}
@@ -234,6 +234,9 @@ func (c *Client) exchange(conn net.Conn, req Request, timer <-chan time.Time, st
 				return Response{}, fmt.Errorf("creel: the daemon on %s answers for the hub %s, not %s", c.geom.SocketPath, resp.HubPath, c.geom.HubPath)
 			}
 			if !resp.OK {
+				if resp.Code == CodeStrandClaimOutsidePane {
+					return Response{}, &codedRefusal{message: resp.Error, sentinel: ErrStrandClaimOutsidePane}
+				}
 				return Response{}, errors.New(resp.Error)
 			}
 			if resp.Pending {

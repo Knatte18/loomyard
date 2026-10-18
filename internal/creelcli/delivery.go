@@ -17,11 +17,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 )
 
-// worktreeOps is the four calls the adapter makes on one worktree: reed's status and a shuttle runner's idle probe, send and interrupt.
+// worktreeOps is the five calls the adapter makes on one worktree: reed's status and a shuttle runner's idle probe, send, command and interrupt.
 type worktreeOps interface {
 	// Status reports the worktree's strands and whether each is live.
 	Status() (reedengine.StatusResult, error)
@@ -29,6 +30,8 @@ type worktreeOps interface {
 	SessionIdle(guid string) (shuttleengine.IdleProbe, error)
 	// Send types text into the strand with the guid and confirms it landed.
 	Send(guid, text string) error
+	// RunCommand runs one command of creel's closed set in the session of the strand with the guid.
+	RunCommand(guid string, command creelengine.Command) error
 	// Interrupt sends the guarded interrupt to the strand with the guid.
 	Interrupt(guid string) error
 }
@@ -88,7 +91,39 @@ func (o shuttleOps) SessionIdle(guid string) (shuttleengine.IdleProbe, error) {
 
 func (o shuttleOps) Send(guid, text string) error { return o.runner.Send(guid, text) }
 
+func (o shuttleOps) RunCommand(guid string, command creelengine.Command) error {
+	return runSessionCommand(o.runner, guid, command)
+}
+
 func (o shuttleOps) Interrupt(guid string) error { return o.runner.InterruptRestoring(guid) }
+
+// sessionCommands is the session commands a shuttle runner offers, one per command of creel's closed set.
+type sessionCommands interface {
+	ClearSession(guid string) error
+	CompactSession(guid, focus string) error
+	ReloadPlugins(guid string) error
+	TypeColor(guid string, color segmentcolor.Color) error
+	LoadSkills(guid string, skills []string) error
+}
+
+// runSessionCommand runs command through ops: compact takes its argument as the focus, color as the segment color, load-skills as a space-separated skill list.
+// A command outside the closed set is refused.
+func runSessionCommand(ops sessionCommands, guid string, command creelengine.Command) error {
+	switch command.Name {
+	case creelengine.CommandClear:
+		return ops.ClearSession(guid)
+	case creelengine.CommandCompact:
+		return ops.CompactSession(guid, command.Argument)
+	case creelengine.CommandReloadPlugins:
+		return ops.ReloadPlugins(guid)
+	case creelengine.CommandColor:
+		return ops.TypeColor(guid, segmentcolor.Color(command.Argument))
+	case creelengine.CommandLoadSkills:
+		return ops.LoadSkills(guid, strings.Fields(command.Argument))
+	default:
+		return fmt.Errorf("creel: unknown command %q", command.Name)
+	}
+}
 
 // Strands lists every strand reed persists in any worktree of the hub.
 // A worktree that does not resolve, a reed state that cannot be read and a status that fails each fail the call naming the worktree,
@@ -226,6 +261,15 @@ func (d *hubDelivery) Send(strand creelengine.Strand, text string) error {
 		return err
 	}
 	return mapDeliveryError(ops.Send(strand.GUID, text))
+}
+
+// Command runs one command of creel's closed set in the strand's session and confirms it landed.
+func (d *hubDelivery) Command(strand creelengine.Strand, command creelengine.Command) error {
+	ops, err := d.opsFor(strand)
+	if err != nil {
+		return err
+	}
+	return mapDeliveryError(ops.RunCommand(strand.GUID, command))
 }
 
 // Interrupt sends the guarded interrupt to the strand's running turn.

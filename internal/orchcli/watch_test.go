@@ -19,7 +19,7 @@ func TestRunnerSession_StrandAlive(t *testing.T) {
 	t.Parallel()
 
 	fake := &fakeStrands{strands: []reedengine.StrandStatus{
-		{GUID: "live", Live: true},
+		{GUID: "live", Name: "ly:orch", Live: true},
 		{GUID: "dead", Live: false},
 	}}
 	s := runnerSession{strands: fake}
@@ -35,6 +35,13 @@ func TestRunnerSession_StrandAlive(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("StrandAlive(%q) = %v; want %v", tc.guid, got, tc.want)
 		}
+	}
+
+	if got, err := s.StrandName("live"); err != nil || got != "ly:orch" {
+		t.Errorf("StrandName(live) = %q, %v; want ly:orch", got, err)
+	}
+	if got, err := s.StrandName("absent"); err == nil || !strings.Contains(err.Error(), `"absent"`) {
+		t.Errorf("StrandName(absent) = %q, %v; want an error naming the guid", got, err)
 	}
 }
 

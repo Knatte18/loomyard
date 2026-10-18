@@ -22,7 +22,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/orchcli"
-	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -330,7 +329,7 @@ func (c *battenCLI) loadedTacklerDeps() (sheddriver.TacklerDeps, error) {
 	runner := shuttleengine.NewRunner(reedengine.New(reedConfig, reedGeometry, shuttleengines.EnvScrub()), engines, reedGeometry.AnchorPath, reedGeometry.WorktreeRoot, shuttleConfig)
 	runner.SetPause(pauseGeometry)
 	runner.SetNotifier(func(line string) error {
-		_, err := orchengine.QueueNotice(orchcli.PrimePaths(location), line, time.Now())
+		_, err := orchcli.NotifyPrime(location, battenProgram, line)
 		return err
 	})
 	return c.tacklerDepsFor(settings, sheddriver.RunnerShuttle{Runner: runner}), nil

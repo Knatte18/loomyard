@@ -24,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 )
@@ -39,6 +40,7 @@ type stubOps struct {
 	draft        bool
 	noInputBox   bool
 	sendErr      error
+	commandErr   error
 	interruptErr error
 }
 
@@ -50,7 +52,39 @@ func (s *stubOps) SessionIdle(string) (shuttleengine.IdleProbe, error) {
 
 func (s *stubOps) Send(string, string) error { return s.sendErr }
 
+func (s *stubOps) RunCommand(string, creelengine.Command) error { return s.commandErr }
+
 func (s *stubOps) Interrupt(string) error { return s.interruptErr }
+
+// recordingCommands is a sessionCommands that records the one call it received as "method(arguments)".
+type recordingCommands struct {
+	called string
+}
+
+func (r *recordingCommands) ClearSession(guid string) error {
+	r.called = "ClearSession(" + guid + ")"
+	return nil
+}
+
+func (r *recordingCommands) CompactSession(guid, focus string) error {
+	r.called = "CompactSession(" + guid + "," + focus + ")"
+	return nil
+}
+
+func (r *recordingCommands) ReloadPlugins(guid string) error {
+	r.called = "ReloadPlugins(" + guid + ")"
+	return nil
+}
+
+func (r *recordingCommands) TypeColor(guid string, color segmentcolor.Color) error {
+	r.called = "TypeColor(" + guid + "," + string(color) + ")"
+	return nil
+}
+
+func (r *recordingCommands) LoadSkills(guid string, skills []string) error {
+	r.called = "LoadSkills(" + guid + "," + strings.Join(skills, "+") + ")"
+	return nil
+}
 
 // restoringPane is a pane drawn like Claude's across an interrupt: a running turn over an empty box until the Escape, then the stopped turn's prompt restored into the box until a C-u deletes it.
 type restoringPane struct {
@@ -295,6 +329,44 @@ func TestHubDelivery(t *testing.T) {
 		got := newStubbedDelivery(hub, map[string]*stubOps{prime: stub}).Interrupt(strand)
 		if !errors.Is(got, creelengine.ErrClearFailed) || !strings.Contains(got.Error(), clearFailed.Error()) {
 			t.Errorf("Interrupt() with a failed clear = %v; want it wrapping ErrClearFailed and keeping shuttle's message", got)
+		}
+	})
+
+	t.Run("Each command reaches its session method, and Command maps shuttle's sentinels onto creel's", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			command creelengine.Command
+			want    string
+		}{
+			{creelengine.Command{Name: creelengine.CommandClear}, "ClearSession(guid-orch)"},
+			{creelengine.Command{Name: creelengine.CommandCompact, Argument: "keep the plan"}, "CompactSession(guid-orch,keep the plan)"},
+			{creelengine.Command{Name: creelengine.CommandReloadPlugins}, "ReloadPlugins(guid-orch)"},
+			{creelengine.Command{Name: creelengine.CommandColor, Argument: "blue"}, "TypeColor(guid-orch,blue)"},
+			{creelengine.Command{Name: creelengine.CommandLoadSkills, Argument: "scribe:prose scribe:testing"}, "LoadSkills(guid-orch,scribe:prose+scribe:testing)"},
+		}
+		for _, tt := range tests {
+			recorder := &recordingCommands{}
+			if err := runSessionCommand(recorder, "guid-orch", tt.command); err != nil || recorder.called != tt.want {
+				t.Errorf("runSessionCommand(%s) called %q, %v; want %q", tt.command.Name, recorder.called, err, tt.want)
+			}
+		}
+
+		hub, prime, _ := newHub(t)
+		strand := creelengine.Strand{Name: "ly:orch", GUID: "guid-orch", Worktree: prime}
+		other := errors.New("boom")
+		for _, sentinel := range []struct {
+			in   error
+			want error
+		}{
+			{fmt.Errorf("wrapped: %w", shuttleengine.ErrSessionBusy), creelengine.ErrBusy},
+			{fmt.Errorf("wrapped: %w", shuttleengine.ErrSubmissionNotLanded), creelengine.ErrNotLanded},
+			{other, other},
+			{nil, nil},
+		} {
+			delivery := newStubbedDelivery(hub, map[string]*stubOps{prime: {commandErr: sentinel.in}})
+			if got := delivery.Command(strand, creelengine.Command{Name: creelengine.CommandClear}); got != sentinel.want {
+				t.Errorf("Command() with %v = %v; want %v", sentinel.in, got, sentinel.want)
+			}
 		}
 	})
 

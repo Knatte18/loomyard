@@ -164,47 +164,6 @@ func TestWire_PointsTheNetworkGateAtItsSlug(t *testing.T) {
 	}
 }
 
-func TestWire_NotifyQueuesOnThePrimesOrch(t *testing.T) {
-	t.Parallel()
-
-	c, location := wiredPrime(t)
-	paths := orchcli.PrimePaths(location)
-	if err := orchengine.SaveState(paths, orchengine.State{Strand: "orch-strand", Phase: orchengine.PhaseIdle}); err != nil {
-		t.Fatalf("SaveState: %v", err)
-	}
-
-	if queued, err := c.env.InnerRun.Notify(context.Background(), "batten a-slug: child left running"); err != nil || !queued {
-		t.Fatalf("Notify() = %v, %v; want the notice queued", queued, err)
-	}
-
-	wantDir := filepath.Join(location.AnchorPath(), ".lyx", "orch", "notices")
-	if paths.NoticesDir != wantDir {
-		t.Fatalf("NoticesDir = %q; want %q", paths.NoticesDir, wantDir)
-	}
-	notices, err := orchengine.ListNotices(paths)
-	if err != nil {
-		t.Fatalf("ListNotices: %v", err)
-	}
-	if len(notices) != 1 || notices[0].Line != "batten a-slug: child left running" {
-		t.Errorf("queued notices = %+v; want exactly the one notice line", notices)
-	}
-}
-
-func TestWire_NotifyWritesNothingWithoutAnOrchStrand(t *testing.T) {
-	t.Parallel()
-
-	c, location := wiredPrime(t)
-	paths := orchcli.PrimePaths(location)
-
-	if queued, err := c.env.InnerRun.Notify(context.Background(), "batten a-slug: child left running"); err != nil || queued {
-		t.Fatalf("Notify() = %v, %v; want the notice reported not queued, without an error", queued, err)
-	}
-
-	if _, err := os.Stat(paths.NoticesDir); !os.IsNotExist(err) {
-		t.Errorf("stat %s error = %v; want the queue directory absent", paths.NoticesDir, err)
-	}
-}
-
 func TestWire_PairDirRefusesAnAbsentTaskWorktreeByName(t *testing.T) {
 	t.Parallel()
 

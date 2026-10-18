@@ -273,6 +273,14 @@ func messagesFields(messages []creelengine.Message) []map[string]any {
 	return rendered
 }
 
+// timeoutWhenWaiting is the --timeout a call passes the client: the flag when the call waits, and none otherwise, since the client bounds every request by its timeout.
+func timeoutWhenWaiting(waiting bool, timeout time.Duration) time.Duration {
+	if waiting {
+		return timeout
+	}
+	return 0
+}
+
 // postCmd returns the `creel post` verb.
 func postCmd() *cobra.Command {
 	var (
@@ -314,7 +322,7 @@ Example:
 					}
 					return result{fields: map[string]any{"id": resp.ID, "sender": resp.Sender}, done: fmt.Sprintf("message #%d was posted", resp.ID)}, nil
 				}
-				resp, err := client.Call(creelengine.Request{Verb: creelengine.VerbPost, Receiver: args[0], Text: args[1], Wait: waitReply}, timeout, nil)
+				resp, err := client.Call(creelengine.Request{Verb: creelengine.VerbPost, Receiver: args[0], Text: args[1], Wait: waitReply}, timeoutWhenWaiting(waitReply, timeout), nil)
 				if err != nil {
 					return result{}, err
 				}
@@ -374,7 +382,7 @@ Example:
 					Interrupt: interrupt, TTLSeconds: int64(ttl / time.Second), Wait: wait,
 				}
 				var last creelengine.Response
-				resp, err := client.CallWatching(req, timeout, nil, func(note creelengine.Response) {
+				resp, err := client.CallWatching(req, timeoutWhenWaiting(wait, timeout), nil, func(note creelengine.Response) {
 					last = note
 					fmt.Fprintf(cmd.ErrOrStderr(), "creel: %s is stalled: %s (at %s)\n", args[0], note.Stall.Reason(), note.StallAt.Format(time.RFC3339))
 				})
@@ -503,7 +511,7 @@ Example:
 					}
 					return nil
 				}
-				resp, err := client.Call(creelengine.Request{Verb: creelengine.VerbRead, From: from, All: all, Wait: wait}, timeout, printMessages)
+				resp, err := client.Call(creelengine.Request{Verb: creelengine.VerbRead, From: from, All: all, Wait: wait}, timeoutWhenWaiting(wait, timeout), printMessages)
 				if err != nil {
 					return result{}, err
 				}
@@ -545,12 +553,7 @@ Example:
 				for _, entry := range resp.Inbox.Senders {
 					senders = append(senders, map[string]any{"from": entry.From, "unread": entry.Unread})
 				}
-				inbox := map[string]any{"senders": senders}
-				if resp.Inbox.Withheld {
-					inbox["withheld"] = true
-					inbox["notice"] = resp.Inbox.Notice
-				}
-				return result{fields: map[string]any{"inbox": inbox}}, nil
+				return result{fields: map[string]any{"inbox": map[string]any{"senders": senders}}}, nil
 			})
 		},
 	}
@@ -569,7 +572,8 @@ func logCmd() *cobra.Command {
 		Short:       "show the events of the message journal, without bodies",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `log prints the journal's events, oldest first: who posted, read, forwarded,
-injected or held, and when. It never prints a message body.
+injected or held, and when. A text inject's line is its subject, and a command inject
+shows its command and argument. It never prints a message body.
 
 --id limits it to one message and the reminders that list it, --from and --to to a sender and a receiver,
 and --since to events after a time: an RFC 3339 timestamp, or a duration
@@ -627,6 +631,7 @@ func logEntryFields(entry creelengine.LogEntry) map[string]any {
 	}
 	for key, value := range map[string]string{
 		"from": entry.From, "to": entry.To, "by": entry.By, "receiver": entry.Receiver, "subject": entry.Subject, "notice": entry.Notice, "reason": entry.Reason, "kind": entry.Kind,
+		"command": string(entry.Command), "argument": entry.Argument,
 	} {
 		if value != "" {
 			fields[key] = value

@@ -21,8 +21,8 @@
 //
 // # Revive
 //
-// `revive` gives one fixed carry-on line to each session stalled on an API error, and the orch a conditional notice its own watcher delivers.
-// Every send runs under the pause record's write lock, one conditioned send at a time, so a `pause`, `resume` or orch watcher record write waits at most one send's hold.
+// `revive` gives one fixed carry-on line to each session stalled on an API error, and the orch a checked creel inject, reported with its id.
+// Every send runs under the pause record's write lock, one send at a time, so a `pause`, `resume` or orch watcher record write waits at most one send's hold, or one orch revive's creel lookup and inject.
 // It types only into a session that reads stalled on an API error at the send's own reading, sends no key and kills nothing; see the tenderengine documentation for the sequence and its bound.
 //
 // # Network gate

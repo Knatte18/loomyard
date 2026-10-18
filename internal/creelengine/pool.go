@@ -21,8 +21,6 @@ const (
 	maxInjectTTL = time.Hour
 	// maxHoldDuration is the longest a hold may last.
 	maxHoldDuration = time.Hour
-	// noticesName is the stage that lifts the withholding of an orch strand's reminders.
-	noticesName = "creel-notices"
 )
 
 // Store is the pool of one hub: the state folded from the journal, the journal writer and the clock behind one mutex.
@@ -211,14 +209,6 @@ func (s *Store) liveHoldLocked(receiver string) *holdEntry {
 		return nil
 	}
 	return hold
-}
-
-// appendWithheldLocked journals that the reminder of message id to an orch receiver waits for creel-notices; any other receiver gets nothing.
-func (s *Store) appendWithheldLocked(id int64, receiver string) error {
-	if !isOrchName(receiver) {
-		return nil
-	}
-	return s.writer.append(record{Event: eventWithheld, ID: id, To: receiver, Notice: noticesName})
 }
 
 // OutcomeKind names how a waited-on thing settled.

@@ -66,7 +66,7 @@ var _ shedengine.ShedProducer = (*worktreeTeardownProducer)(nil)
 // NewWorktreeTeardown returns a shedengine.ShedProducer that acquires primeLock, calls
 // deps.Shutdown, and -- only on Shutdown's success -- calls deps.Remove, for the task worktree
 // identified by slug.
-// Every failure it returns also queues one orch notice per failure episode through deps.Notices.
+// Every failure it returns also posts one orch notice per failure episode through deps.Notices.
 func NewWorktreeTeardown(name, slug string, deps TeardownDeps, primeLock PrimeLock, scratchDir string) shedengine.ShedProducer {
 	return &worktreeTeardownProducer{
 		name:       name,

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
@@ -80,8 +81,10 @@ type orchCLI struct {
 	paths       orchengine.Paths
 	stencilsDir string
 
-	reedUp       func() error
-	starter      sessionStarter
+	reedUp  func() error
+	starter sessionStarter
+	// newCreel builds the creel seam the watcher and `start` call creel through, signing as the ORCHWATCH program.
+	newCreel     func() (orchengine.Creel, error)
 	spawnWatcher func() error
 	sleep        func(time.Duration)
 	// indexRunner returns the output of `<bin> help index`.
@@ -177,6 +180,13 @@ Every verb runs from the hub's prime worktree only.`,
 			c.stencilsDir = fabricengine.StencilsDir(location.HubPath)
 			c.reedUp = func() error { _, err := reed.Up(); return err }
 			c.starter = runnerSessionStarter{runner: c.runner}
+			c.newCreel = func() (orchengine.Creel, error) {
+				client, err := creelcli.NewProgramClient(location, orchWatchProgram)
+				if err != nil {
+					return nil, err
+				}
+				return creelSeam{client: client}, nil
+			}
 			c.spawnWatcher = c.spawnWatcherProcess
 			c.sleep = time.Sleep
 			c.indexRunner = runHelpIndex

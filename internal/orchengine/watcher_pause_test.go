@@ -200,8 +200,8 @@ func TestWatcher_HubPauseInterruptsAtGraceEndHoldsAndQueuesTheResumeLine(t *test
 			if n := e.callCount(interruptCall); n != 1 {
 				t.Errorf("interrupts = %d; want 1", n)
 			}
-			if lines := e.noticeLines(); !reflect.DeepEqual(lines, []string{pauserecord.ResumeLine}) {
-				t.Errorf("notices = %v; want the orch's resume line", lines)
+			if bodies := e.c.postBodies(fakeOrchStrandName); !reflect.DeepEqual(bodies, []string{pauserecord.ResumeLine}) {
+				t.Errorf("posts to the orch = %v; want the orch's resume line", bodies)
 			}
 		}},
 		{"a guarded refusal reads as an idle orch and is logged once at Info", func(t *testing.T, e *watchEnv) {
@@ -284,8 +284,8 @@ func TestWatcher_HubPauseInterruptsAtGraceEndHoldsAndQueuesTheResumeLine(t *test
 			if got := e.orchSessions(); len(got) != 0 {
 				t.Errorf("orch sessions = %+v; want none", got)
 			}
-			if lines := e.noticeLines(); len(lines) != 0 || len(e.s.calls) != 0 {
-				t.Errorf("notices %v and calls %v; want none", lines, e.s.calls)
+			if len(e.c.posts) != 0 || len(e.s.calls) != 0 {
+				t.Errorf("posts %v and calls %v; want none", e.c.posts, e.s.calls)
 			}
 		}},
 		{"an idle orch with an open orch marker is left alone when it reads idle at the grace end", func(t *testing.T, e *watchEnv) {
@@ -361,21 +361,20 @@ func TestWatcher_HubPauseInterruptsAtGraceEndHoldsAndQueuesTheResumeLine(t *test
 				t.Errorf("interrupts = %d; want 0", n)
 			}
 		}},
-		{"a watcher created after the grace end interrupts nothing, still holds, and queues no resume line", func(t *testing.T, e *watchEnv) {
+		{"a watcher created after the grace end interrupts nothing, still holds, and posts no resume line", func(t *testing.T, e *watchEnv) {
 			e.s.idle = false
 			e.pauseHub("EXTERNAL", pauseGrace)
 			e.clock.advance(2 * pauseGrace)
 			e.w = e.newWatcher()
-			e.queue("hello")
 			e.tick()
-			if n := e.callCount(interruptCall); n != 0 || len(e.noticeLines()) != 1 {
-				t.Fatalf("interrupts = %d and notices = %v; want none interrupted and the notice held", n, e.noticeLines())
+			if n := e.callCount(interruptCall); n != 0 {
+				t.Fatalf("interrupts = %d; want none while the entry is live", n)
 			}
 			e.resumeHub()
 			e.s.idle = true
 			e.tick()
-			if want := []string{"send:hello"}; !reflect.DeepEqual(e.s.calls, want) {
-				t.Errorf("calls after the resume = %v; want %v, with no resume line", e.s.calls, want)
+			if len(e.s.calls) != 0 || len(e.c.posts) != 0 {
+				t.Errorf("calls %v and posts %v after the resume; want none, with no resume line", e.s.calls, e.c.posts)
 			}
 		}},
 		{"a watcher running before the entry interrupts a busy orch on the first tick after a zero grace", func(t *testing.T, e *watchEnv) {
@@ -402,37 +401,51 @@ func TestWatcher_HubPauseInterruptsAtGraceEndHoldsAndQueuesTheResumeLine(t *test
 			e.resumeHub()
 			e.s.idle = true
 			e.tick()
-			if n := e.callCount(interruptCall); n != 0 || len(e.s.calls) != 0 {
-				t.Errorf("interrupts = %d and calls = %v; want none", n, e.s.calls)
+			if n := e.callCount(interruptCall); n != 0 || len(e.s.calls) != 0 || len(e.c.posts) != 0 {
+				t.Errorf("interrupts = %d, calls = %v and posts = %v; want none", n, e.s.calls, e.c.posts)
 			}
 		}},
-		{"a notice and a cycle request wait while the entry is live, then the resume line follows once", func(t *testing.T, e *watchEnv) {
+		{"a cycle request waits while the entry is live, then the resume line is posted once", func(t *testing.T, e *watchEnv) {
 			e.s.idle = false
 			e.tick()
 			e.pauseHub("EXTERNAL", pauseGrace)
 			e.clock.advance(pauseGrace)
 			e.tick()
-			e.queue("n1")
 			if err := RequestCycle(e.paths, CycleClear, e.clock.now); err != nil {
 				t.Fatal(err)
 			}
 			e.s.idle = true
 			e.tick()
-			if st := e.state(); st.Phase != PhaseIdle || e.callCount("send:n1") != 0 {
-				t.Fatalf("phase = %s and calls = %v; want idle and nothing delivered while the entry is live", st.Phase, e.s.calls)
-			}
-			if err := ClearCycleRequest(e.paths); err != nil {
-				t.Fatal(err)
+			if st := e.state(); st.Phase != PhaseIdle || len(e.c.posts) != 0 {
+				t.Fatalf("phase = %s and posts = %v; want idle and nothing posted while the entry is live", st.Phase, e.c.posts)
 			}
 			e.resumeHub()
-			// Notices sort by queue time, so the resume line must be queued after n1's instant.
-			e.clock.advance(time.Millisecond)
-			for range 4 {
-				e.tick()
+			e.tick()
+			if bodies := e.c.postBodies(fakeOrchStrandName); !reflect.DeepEqual(bodies, []string{pauserecord.ResumeLine}) {
+				t.Errorf("posts to the orch = %v; want the resume line once", bodies)
 			}
-			want := []string{interruptCall, "send:n1", "send:" + pauserecord.ResumeLine}
-			if !reflect.DeepEqual(e.s.calls, want) {
-				t.Errorf("calls = %v; want %v", e.s.calls, want)
+			if sessions := e.orchSessions(); len(sessions) != 1 || !sessions[0].ResumeNoticed {
+				t.Errorf("orch sessions = %+v; want the one marked resume-noticed", sessions)
+			}
+		}},
+		{"a failed resume line post is posted again on the next tick and marked noticed only after it", func(t *testing.T, e *watchEnv) {
+			e.s.idle = false
+			e.tick()
+			e.pauseHub("EXTERNAL", pauseGrace)
+			e.clock.advance(pauseGrace)
+			e.tick()
+			e.resumeHub()
+			e.c.failNext("post", errBoom)
+			if err := e.tickErr(); !errors.Is(err, errBoom) {
+				t.Fatalf("Tick error = %v; want the failed post", err)
+			}
+			if sessions := e.orchSessions(); len(sessions) != 1 || sessions[0].ResumeNoticed {
+				t.Fatalf("orch sessions = %+v after the failed post; want the entry not yet marked noticed", sessions)
+			}
+			e.tick()
+			e.tick()
+			if bodies := e.c.postBodies(fakeOrchStrandName); !reflect.DeepEqual(bodies, []string{pauserecord.ResumeLine}) {
+				t.Errorf("posts to the orch = %v; want the resume line posted once, by the second attempt", bodies)
 			}
 			if sessions := e.orchSessions(); len(sessions) != 1 || !sessions[0].ResumeNoticed {
 				t.Errorf("orch sessions = %+v; want the one marked resume-noticed", sessions)

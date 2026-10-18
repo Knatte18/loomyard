@@ -124,7 +124,7 @@ type HandBackDeps struct {
 }
 
 // handBackRun sends the hand-back's notices, writes the stop report and parks the run.
-// Each notice goes through Notify when an orch strand is recorded; otherwise the line is logged and queued nowhere, and the report alone carries it.
+// Each notice goes through Notify when an orch strand is recorded; otherwise the line is logged and posted nowhere, and the report alone carries it.
 // Every send, declined send, failed send and unqueued line is one line of the report.
 // The report is written at ReportPath, creating its directory, and a write failure is returned.
 // A hand-back describing a friction-failed done stops there, so a finished run is never parked.
@@ -139,7 +139,7 @@ func handBackRun(d HandBackDeps, h driveHandBack, report driveReport, watched bo
 		}
 		for _, notice := range notices {
 			if err != nil || !orchRecorded {
-				logger.Info("sheddriver: drive: no orch strand recorded; notice queued nowhere", "run", h.RunID, "notice", notice)
+				logger.Info("sheddriver: drive: no orch strand recorded; notice posted nowhere", "run", h.RunID, "notice", notice)
 				report.Sends = append(report.Sends, "not queued, no orch strand recorded: "+notice)
 				continue
 			}

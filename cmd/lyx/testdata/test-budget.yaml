@@ -73,7 +73,7 @@ internal/lyxcwd: 23
 internal/lyxtemp: 7
 internal/mergeresolve: 17
 internal/modelspec: 11
-internal/orchcli: 29
+internal/orchcli: 32
 internal/orchengine: 145
 internal/output: 4
 internal/pairteardown: 8
@@ -126,7 +126,7 @@ internal/stencil: 4
 internal/stencilcli: 1
 internal/stencilstore: 18
 internal/summaryparser: 8
-internal/tendercli: 4
+internal/tendercli: 5
 internal/tenderengine: 5
 internal/termwindow: 3
 internal/testkit: 2
@@ -139,7 +139,7 @@ internal/testkit/lyxbin: 5
 internal/testkit/plankit: 4
 internal/testkit/scankit: 10
 internal/testkit/shedfake: 9
-internal/testkit/shuttlefake: 8
+internal/testkit/shuttlefake: 9
 internal/testkit/stencilkit: 3
 internal/testkit/tmuxkit: 16
 internal/treadleengine: 34

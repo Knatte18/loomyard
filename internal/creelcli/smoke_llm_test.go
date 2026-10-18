@@ -5,6 +5,7 @@
 package creelcli
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -63,20 +64,24 @@ func TestSmokeCreelClaudeStrand(t *testing.T) {
 		time.Sleep(time.Second)
 	}
 	// The booted session has no event to wait on, so the idle check is polled on a tick under a real-time deadline.
-	deadline = time.Now().Add(smokePaneWindow)
-	for {
-		answer, err := delivery.Idle(strand)
-		if err != nil {
-			t.Fatalf("Idle() = %v", err)
+	awaitIdle := func() {
+		t.Helper()
+		deadline := time.Now().Add(smokePaneWindow)
+		for {
+			answer, err := delivery.Idle(strand)
+			if err != nil {
+				t.Fatalf("Idle() = %v", err)
+			}
+			if answer.Idle {
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("the adapter never read the session idle; pane:\n%s", smoke.lastPane(t, guid))
+			}
+			time.Sleep(time.Second)
 		}
-		if answer.Idle {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("the adapter never read the booted session idle; pane:\n%s", smoke.lastPane(t, guid))
-		}
-		time.Sleep(time.Second)
 	}
+	awaitIdle()
 
 	if code, out := smoke.creel("post", name, "creel smoke message"); code != 0 {
 		t.Fatalf("lyx creel post = %d; output: %s", code, out)
@@ -90,5 +95,25 @@ func TestSmokeCreelClaudeStrand(t *testing.T) {
 	}
 	if capture, ok := smoke.awaitPane(t, guid, "creel smoke inject"); !ok {
 		t.Fatalf("the agent's pane does not show the injected line; pane:\n%s", capture)
+	}
+
+	// Each command either lands or is typed without a confirmed landing; neither busy nor any other error is a result the watcher can act on.
+	for _, command := range []creelengine.Command{
+		{Name: creelengine.CommandReloadPlugins},
+		{Name: creelengine.CommandColor, Argument: "blue"},
+		{Name: creelengine.CommandLoadSkills, Argument: "scribe:prose"},
+		{Name: creelengine.CommandCompact, Argument: "keep the smoke test"},
+		{Name: creelengine.CommandClear},
+	} {
+		awaitIdle()
+		err := delivery.Command(strand, command)
+		switch {
+		case err == nil:
+			t.Logf("command %s landed", command.Name)
+		case errors.Is(err, creelengine.ErrNotLanded):
+			t.Logf("command %s was typed and not confirmed", command.Name)
+		default:
+			t.Fatalf("Command(%s) = %v; want nil or ErrNotLanded", command.Name, err)
+		}
 	}
 }

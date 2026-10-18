@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -350,37 +352,95 @@ func TestRevive(t *testing.T) {
 				t.Errorf("report %+v, sent to %v; want a refused with the error and nothing sent", report, p.conditioned)
 			}
 		}},
-		{"the orch's notice is queued once and no other prime session is read or reported", func(t *testing.T) {
+		{"a stalled orch gets one inject, a revive while it has no outcome injects nothing, and no other prime session is read or reported", func(t *testing.T) {
 			prime := newPair("prime", "orch", "other")
 			prime.states["g-orch"], prime.states["g-other"] = stalled, stalled
 			e := newEnv(t, newPair("p1"))
 			e.prime, e.orchStrand = prime, "g-orch"
 
-			e.watcherLive = true
-			live := revive(t, e, "")
-			if live.Orch == nil || live.Orch.Result != "queued" || !live.Orch.Conditional || !live.Orch.WatcherLive || !reflect.DeepEqual(e.orchQueued, []string{ReviveLine}) {
-				t.Errorf("orch part %+v, queued %v; want a conditional queued notice with the watcher live", live.Orch, e.orchQueued)
+			first := revive(t, e, "")
+			if first.Orch == nil || first.Orch.Result != "injected" || first.Orch.InjectID != 1 || !reflect.DeepEqual(e.creel.injected(), []string{ReviveLine}) {
+				t.Errorf("orch part %+v, injected %v; want one injected line with id 1", first.Orch, e.creel.injected())
 			}
-			e.watcherLive = false
-			if idle := revive(t, e, ""); idle.Orch == nil || idle.Orch.Result != "queued" || idle.Orch.WatcherLive {
-				t.Errorf("orch part %+v; want queued with no watcher live", idle.Orch)
-			}
-			if len(prime.conditioned) != 0 || len(live.Sent)+len(live.Skipped)+len(live.Refused) != 0 {
-				t.Errorf("prime sent to %v, report %+v; want no prime session sent to or reported", prime.conditioned, live)
+			if len(prime.conditioned) != 0 || len(first.Sent)+len(first.Skipped)+len(first.Refused) != 0 {
+				t.Errorf("prime sent to %v, report %+v; want no prime session sent to or reported", prime.conditioned, first)
 			}
 
-			e.orchAlreadyQueued = true
-			if again := revive(t, e, ""); again.Orch == nil || again.Orch.Result != "already-queued" {
-				t.Errorf("orch part %+v; want already-queued", again.Orch)
+			if again := revive(t, e, ""); again.Orch == nil || again.Orch.Result != "pending" || len(e.creel.injected()) != 1 {
+				t.Errorf("orch part %+v, injected %v; want pending and no second inject", again.Orch, e.creel.injected())
 			}
 			if slugScope := revive(t, e, "p1"); slugScope.Orch != nil {
 				t.Errorf("orch part %+v for a slug revive; want none", slugScope.Orch)
 			}
 
-			e.orchAlreadyQueued, e.orchQueued = false, nil
+			e.creel.settle()
+			if settled := revive(t, e, ""); settled.Orch == nil || settled.Orch.Result != "injected" || settled.Orch.InjectID != 2 || len(e.creel.injected()) != 2 {
+				t.Errorf("orch part %+v, injected %v; want a second inject with id 2 once the first had an outcome", settled.Orch, e.creel.injected())
+			}
+
+			e.creel.settle()
 			e.seedLive(hubEntry(e.clock.Now()))
-			if covered := revive(t, e, ""); covered.Orch == nil || covered.Orch.Result != "paused" || len(e.orchQueued) != 0 {
-				t.Errorf("orch part %+v, queued %v; want paused and nothing queued under a hub entry", covered.Orch, e.orchQueued)
+			if covered := revive(t, e, ""); covered.Orch == nil || covered.Orch.Result != "paused" || len(e.creel.injected()) != 2 {
+				t.Errorf("orch part %+v, injected %v; want paused and nothing injected under a hub entry", covered.Orch, e.creel.injected())
+			}
+		}},
+		{"an orch that reads another state is skipped with the state and nothing is injected", func(t *testing.T) {
+			prime := newPair("prime", "orch")
+			prime.states["g-orch"] = shuttleengine.SessionState{Name: shuttleengine.SessionBusy, Cause: shuttleengine.SessionCauseTurn}
+			e := newEnv(t, newPair("p1"))
+			e.prime, e.orchStrand = prime, "g-orch"
+
+			report := revive(t, e, "")
+
+			if report.Orch == nil || report.Orch.Result != "skipped" || report.Orch.Reason != "busy (turn)" || len(e.creel.injected()) != 0 {
+				t.Errorf("orch part %+v, injected %v; want skipped with the state read and nothing injected", report.Orch, e.creel.injected())
+			}
+		}},
+		{"two concurrent revives over a stalled orch inject exactly once", func(t *testing.T) {
+			prime := newPair("prime", "orch")
+			prime.states["g-orch"] = stalled
+			e := newEnv(t, newPair("p1"))
+			e.prime, e.orchStrand = prime, "g-orch"
+
+			const revives = 2
+			results := make([]string, revives)
+			var wg sync.WaitGroup
+			for i := range revives {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					report, err := Revive(e.deps(), ReviveRequest{})
+					if err != nil || report.Orch == nil {
+						t.Errorf("Revive() = %+v, %v; want an orch part", report, err)
+						return
+					}
+					results[i] = report.Orch.Result
+				}()
+			}
+			wg.Wait()
+
+			if got := e.creel.injected(); len(got) != 1 {
+				t.Errorf("injected %v; want exactly one inject", got)
+			}
+			slices.Sort(results)
+			if !reflect.DeepEqual(results, []string{"injected", "pending"}) {
+				t.Errorf("results = %v; want one injected and one pending", results)
+			}
+		}},
+		{"a failed pending lookup or inject is returned naming the orch revive, and the lookup's failure injects nothing", func(t *testing.T) {
+			prime := newPair("prime", "orch")
+			prime.states["g-orch"] = stalled
+			e := newEnv(t, newPair("p1"))
+			e.prime, e.orchStrand = prime, "g-orch"
+
+			e.creel.pendingErr = errors.New("creel unreachable")
+			if _, err := Revive(e.deps(), ReviveRequest{}); err == nil || !strings.Contains(err.Error(), "revive: look up the orch's revive inject") || !strings.Contains(err.Error(), "creel unreachable") || len(e.creel.injected()) != 0 {
+				t.Errorf("Revive() error = %v, injected %v; want the lookup failure and nothing injected", err, e.creel.injected())
+			}
+
+			e.creel.pendingErr, e.creel.injectErr = nil, errors.New("creel refused")
+			if _, err := Revive(e.deps(), ReviveRequest{}); err == nil || !strings.Contains(err.Error(), "revive: inject the orch's carry-on line") || !strings.Contains(err.Error(), "creel refused") {
+				t.Errorf("Revive() error = %v; want the inject failure", err)
 			}
 		}},
 	}

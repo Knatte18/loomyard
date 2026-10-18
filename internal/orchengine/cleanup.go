@@ -1,4 +1,4 @@
-// cleanup.go removes the handoff files an orch's cycles leave behind, keeping the one a restart resumes from.
+// cleanup.go removes the handoff files an orch's cycles leave behind, keeping the one a restart resumes from, and the retired notice queue and log.
 
 package orchengine
 
@@ -104,4 +104,28 @@ func cleanupHandoffs(p Paths, apply bool, beforeRemove func()) (HandoffCleanup, 
 		result.Removed = append(result.Removed, name)
 	}
 	return result, nil
+}
+
+// CleanupRetiredNotices lists the file names of the retired notice queue directory and notice log of the prime when they are present.
+// With apply true it removes them; with apply false it removes nothing.
+// Neither is written any more, and an absent one is skipped.
+func CleanupRetiredNotices(p Paths, apply bool) ([]string, error) {
+	listed := []string{}
+	for _, path := range []string{p.NoticesDir, p.RetiredNoticeLogPath} {
+		if path == "" {
+			continue
+		}
+		if _, err := os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
+			continue
+		} else if err != nil {
+			return listed, fmt.Errorf("orch: stat retired notices %s: %w", path, err)
+		}
+		if apply {
+			if err := os.RemoveAll(path); err != nil {
+				return listed, fmt.Errorf("orch: remove retired notices %s: %w", path, err)
+			}
+		}
+		listed = append(listed, filepath.Base(path))
+	}
+	return listed, nil
 }

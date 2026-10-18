@@ -3,6 +3,7 @@
 // Engine is inert until a field or func override scripts it, and records what Prepare was handed.
 // Reed keeps a mutex-guarded strand table, so a test sees the liveness a real reed would report.
 // Neither fake asserts anything or takes a testing.TB; a test reads the recorded fields and asserts itself.
+// SignalEngine is the kit's opt-in signal-reading engine: Engine implements no session-signal reading, so a consumer keeps the readings of an engine without one.
 // The kit also holds a golden of a Claude reading in neutral types, TokencountRunReads.
 //
 // internal/shuttleengine's own tests keep their richer in-package fake, because the import cycle forbids this kit there.
@@ -66,6 +67,56 @@ var (
 	_ shuttleengine.InterruptGuard     = (*Engine)(nil)
 	_ shuttleengine.RewindPickerReader = (*Engine)(nil)
 )
+
+// SignalEngine is an Engine that also reads session signals, the opt-in beside the inert Engine, which implements no shuttleengine.SessionSignalParser.
+// ParseSessionSignals reads a line "@<RFC 3339 time>" as the stamp of the next line, and answers a turn-end signal with Event set and that stamp's time for each line on which the embedded ParseEvents, handed that line alone, yields an EventStop.
+// A Stop with no stamp or a malformed one gets the zero time.
+// A test that builds one sets the embedded ParseEventsFn to a per-line reading, since the default ParseEvents answers the fixed Events whatever its input.
+type SignalEngine struct {
+	*Engine
+}
+
+var _ shuttleengine.SessionSignalParser = (*SignalEngine)(nil)
+
+// ParseSessionSignals returns the turn-end signals of data's complete lines in file order.
+// consumed ends at the last complete line, except that it stops before a trailing run of stamp lines with no payload line after them,
+// so the next read sees each such stamp together with its payload.
+func (e *SignalEngine) ParseSessionSignals(data []byte) ([]shuttleengine.SessionSignal, int) {
+	end := strings.LastIndexByte(string(data), '\n') + 1
+	var signals []shuttleengine.SessionSignal
+	var stamp time.Time
+	// stampRunStart is the offset of the earliest line of the trailing run of stamp lines, or end when the data does not finish with one.
+	stampRunStart := end
+	offset := 0
+	for _, line := range strings.Split(string(data[:end]), "\n") {
+		lineStart := offset
+		offset += len(line) + 1
+		trimmed := strings.TrimSpace(line)
+		if text, isStamp := strings.CutPrefix(trimmed, "@"); isStamp {
+			if stampRunStart == end {
+				stampRunStart = lineStart
+			}
+			stamp, _ = time.Parse(time.RFC3339, text)
+			continue
+		}
+		if trimmed == "" {
+			continue
+		}
+		stampRunStart = end
+		at := stamp
+		stamp = time.Time{}
+		events, _ := e.ParseEvents([]byte(line))
+		for _, event := range events {
+			if event.Kind == shuttleengine.EventStop {
+				signals = append(signals, shuttleengine.SessionSignal{
+					Kind: shuttleengine.SessionSignalTurnEnd, At: at, Event: true, Raw: []byte(trimmed),
+				})
+				break
+			}
+		}
+	}
+	return signals, stampRunStart
+}
 
 //go:embed tokencount-run-reads.json
 var tokencountRunReadsJSON []byte

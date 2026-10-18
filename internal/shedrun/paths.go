@@ -104,9 +104,6 @@ const ResumeReportFileName = "driver-resume-report"
 // It is exported so an unattended caller tells it apart from the retryable StartNotParkedKind by this one declared value rather than by message text.
 const StartMergeInProgressKind = "merge_in_progress"
 
-// noticeLogFileName is the filename of the hub notice log, whose path NoticeLog returns.
-const noticeLogFileName = "notices.log"
-
 // RunDir returns the path to the durable, fabric-synced directory holding a single run's
 // seed.json and status.json: the given *lyxcwd.Location's AnchorPath() joined with
 // lyxdirs.LyxDirName, shedDirName, and the run's directory segment (runSegment: the worktree slug
@@ -355,17 +352,6 @@ func PrimeRunLock(l *lyxcwd.Location) string {
 // the given *lyxcwd.Location's AnchorPath() joined with lyxdirs.DotLyxDirName, shedDirName, and "land.lock".
 func LandLock(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, shedDirName, "land.lock")
-}
-
-// NoticeLog returns the path to the hub's ephemeral notice log, notices.log directly under the given *lyxcwd.Location's AnchorPath() joined with lyxdirs.DotLyxDirName.
-// It sits outside RunsRoot and ScratchRoot, so no run-directory sweep reads it as a run or removes it.
-func NoticeLog(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), NoticeLogRel())
-}
-
-// NoticeLogRel returns the anchor-relative form of NoticeLog's path.
-func NoticeLogRel() string {
-	return filepath.Join(lyxdirs.DotLyxDirName, noticeLogFileName)
 }
 
 // LoopLock returns the path to the loop's liveness lock, loop.lock under StepsDir(l, runID), which the detached loop holds for its whole life.

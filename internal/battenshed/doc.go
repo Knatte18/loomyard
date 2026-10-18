@@ -29,7 +29,7 @@
 // a child that halts still ends the wait with its state-changed notice, and batten's own pause is still honoured.
 // The paused intervals leave the idle clocks, so after the resume a run idle for its window is noticed as before.
 // Limits: a run whose pid is dead is not read, a run that keeps writing or hangs in a live wait is never quiet, and both notices are informational.
-// A marker under the row's scratch directory records the notices sent, and only those queued, so a batten restart sends the notices not yet sent and never one already sent.
+// A marker under the row's scratch directory records the notices sent, and only those posted, so a batten restart sends the notices not yet sent and never one already sent.
 // A state-changed notice names what happened, the child's state and the row it stopped at, for example `awaiting at PR-Gate`.
 // Every notice names the child's state and current row, and a quiet, an api-error and a driver-dead notice follow them with their own text, for example `running at Plan-Write; agents idle for 25m0s`.
 // The child's reason is labelled `error:` for a failed or blocked child and `waiting:` for any other state.
@@ -50,11 +50,8 @@
 // A done child sends no notice: a landing that succeeds needs nothing from the orch.
 // A resume the child refuses because its parked driver's pane holds a draft, an active operator or another busy reading (a spawn error wrapping ErrChildDriverBusy) is retried like a not-parked one, without a deadline, until the resume lands, the child leaves awaiting or batten is paused or stopped.
 // Its wait reason names the draft and the remedy, and one notice per stall tells the orch to clear the draft in the driver's pane and quotes the box text the refusal found, as one line; a landed resume re-arms it.
-// Delivery: the Notify seam reports whether the line was queued; with no orch strand recorded it is not called, one Warn is logged per episode and the strand is asked about again once per notice_probe_s;
-// a Notify error or an unqueued line is retried at most once per notice_probe_s and at most three times, then dropped with a Warn.
-// Notice log: every notice a batten process composes, the InnerRun row's and the later rows' alike, is appended once per composition, at the first delivery attempt in that process, to the hub's notice log through the NoticeLog seam (rownotice.go).
-// A line holds the UTC time, the notice text and the run's attach command, tab-separated, and is written in one write so concurrent batten processes never interleave inside a line.
-// A held-back or dropped notice is logged all the same, a restarted batten composing an episode's notice again logs it again, and a failed append is only a Warn.
+// Delivery: the Notify seam reports whether the line was posted; with no orch strand recorded it is not called, one Warn is logged per episode and the strand is asked about again once per notice_probe_s;
+// a Notify error or an unposted line is retried at most once per notice_probe_s and at most three times, then dropped with a Warn.
 // Control flow is unchanged: a notice is informational, a delivery failure is only warned about, and the outcomes, halts and waits are the same with or without it.
 // Bound: the report wait delays a notice by at most three minutes, the relay wait by at most ten minutes after the report, and an arbiter hold by at most the arbiter's deadline plus the report wait; none loses it, and there is one notice per episode.
 // A driver that is alive but parked -- a provider waiting on an interactive prompt its launcher never answered -- or that stops of its own accord with the run still non-terminal is told apart from a working one only by the quiet window, or by an API-error notice when the stall is one; an operator attaches to the child's session to tell the cases apart.
@@ -160,7 +157,7 @@
 // it checks the prime, where a child whose parent branch is not the prime's branch skips the pull and deploy and a prime with uncommitted tracked paths is waited on for ten minutes;
 // it pulls the prime under the prime lock and releases that lock at once, since batten never pushes the prime;
 // outside the prime lock it runs the landing config's hub-wide `deploy` command in the prime, for a parent branch in `require_pr_to_base` only, with a thirty-minute timeout and its output in the row's deploy log;
-// it writes the ready snapshot before pruning the board, so the tasks the prune made ready are named exactly once across a restart; and it queues one landing notice per batten run, naming the tasks the prune made ready when there are any.
+// it writes the ready snapshot before pruning the board, so the tasks the prune made ready are named exactly once across a restart; and it posts one landing notice per batten run, naming the tasks the prune made ready when there are any.
 // The two locks differ in what they hold: the land lock serialises whole landings, the prime lock only the pull.
 // A failed step is Stuck naming it, with one failure notice per episode.
 // A pause seen during the land-lock or dirty-prime wait halts the row blocked with no notice, rather than paused, since the row has no on_stuck route to yield through;
@@ -168,7 +165,7 @@
 //
 // The rows after Run-Shed send the orch a failure notice through a row notifier (rownotice.go): Worktree-Teardown on every failure it returns, and the Land row on the same terms; the Land row also sends its landing notice there, on success.
 // A notice goes once per failure episode, an episode being one entry of the row from its predecessor's Done or from a halt at that row, told apart by the length of batten's own status history;
-// the row's `<row>-row-notice` marker keeps the length of the last noticed failure, so a re-entry that appended nothing sends nothing, and a batten that died inside the row never repeats a queued notice.
+// the row's `<row>-row-notice` marker keeps the length of the last noticed failure, so a re-entry that appended nothing sends nothing, and a batten that died inside the row never repeats a posted notice.
 // A notice is tried at most three times, thirty seconds apart, and dropped with a Warn after that, leaving the failed row halted and visible in `lyx batten status`.
 // Every marker that must last one batten run is named by a suffix in runMarkerSuffixes, and batten clears them all through ClearRunMarkers where it seeds a fresh status.
 //

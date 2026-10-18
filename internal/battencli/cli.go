@@ -241,12 +241,6 @@ Example:
 	},
 }
 
-// noticeLogHelp is the paragraph of Command's Long naming the hub notice log and what one line of it holds.
-func noticeLogHelp() string {
-	return "Every notice a batten process composes is also appended, once, to " + shedrun.NoticeLogRel() +
-		" under the prime: one line holding the UTC time, the notice text and the\ncommand that attaches to the run, tab-separated."
-}
-
 // Command returns the cobra command tree for the batten module.
 func Command() *cobra.Command {
 	c := &battenCLI{spec: &shedverbs.Spec{}}
@@ -264,8 +258,6 @@ current state; "pause" requests a pause at the run's next producer boundary;
 
 "cleanup" takes no slug and, as a dry run unless given --apply, removes the
 records and scratch of every done run, and the scratch of aged orphans.
-
-` + noticeLogHelp() + `
 
 Every verb runs from the hub's prime worktree only: they refuse when invoked
 from a task worktree, from the pair's fabric sibling, or from _board.

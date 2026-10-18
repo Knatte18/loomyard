@@ -3,6 +3,7 @@
 package creelengine
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
@@ -10,6 +11,20 @@ import (
 
 // maxAncestryDepth bounds the walk up a peer's parents, so a cyclic or absurdly deep ancestry ends the walk.
 const maxAncestryDepth = 256
+
+// ErrStrandClaimOutsidePane is what a refusal of a strand claim from a process in no strand pane matches under errors.Is.
+// The Go client returns it for a refusal carrying CodeStrandClaimOutsidePane, with the daemon's message as its text.
+var ErrStrandClaimOutsidePane = errors.New("creel: the strand claim comes from a process in no strand pane")
+
+// codedRefusal is a refusal whose text is the daemon's message and that matches the sentinel its code stands for.
+type codedRefusal struct {
+	message  string
+	sentinel error
+}
+
+func (e *codedRefusal) Error() string { return e.message }
+
+func (e *codedRefusal) Unwrap() error { return e.sentinel }
 
 // Claim is what a client sends with each request.
 // It states who the client says it is; the daemon decides who it is from the peer's process ancestry where the platform allows.
@@ -28,6 +43,7 @@ type Claim struct {
 // peerPID is the connecting process, 0 when the platform cannot tell; strands and strandsErr are Delivery.Strands' answer; parentPID reads a process's parent.
 // On Linux a peer inside a live strand's pane process tree is that strand, whatever its environment says, and a claim never raises a pane's privilege.
 // Elsewhere identity is the environment alone.
+// The refusal of a strand claim naming a listed strand from a process in no pane wraps ErrStrandClaimOutsidePane; no other refusal does.
 func resolveSender(peerPID int, claim Claim, shortname string, strands []Strand, strandsErr error, parentPID func(int) (int, bool), goos string) (Sender, error) {
 	program, err := checkProgramClaim(claim, shortname)
 	if err != nil {
@@ -53,7 +69,10 @@ func resolveSender(peerPID int, claim Claim, shortname string, strands []Strand,
 		return Sender{}, fmt.Errorf("creel: the calling process is in no known strand pane and %s, so it cannot be told from a strand; nothing was done", unreadable)
 	}
 	if _, named := findStrand(strands, claim.StrandName); named && claim.StrandName != "" {
-		return Sender{}, fmt.Errorf("creel: LYX_STRAND_NAME names %s but the calling process runs in no strand pane", claim.StrandName)
+		return Sender{}, &codedRefusal{
+			message:  fmt.Sprintf("creel: LYX_STRAND_NAME names %s but the calling process runs in no strand pane", claim.StrandName),
+			sentinel: ErrStrandClaimOutsidePane,
+		}
 	}
 	if program != "" {
 		return ProgramSender(program), nil

@@ -1,4 +1,4 @@
-// fold.go folds the journal's records into the pool state: messages, queued injects, holds, withheld reminders and known program mailboxes.
+// fold.go folds the journal's records into the pool state: messages, queued injects, holds and known program mailboxes.
 
 package creelengine
 
@@ -65,13 +65,15 @@ const (
 	injectExpired     = "expired"
 )
 
-// injectEntry is one text queued to be typed into a receiver's pane.
+// injectEntry is one text or command queued to be typed into a receiver's pane.
 type injectEntry struct {
 	ID       int64
 	From     string
 	Receiver string
 	Text     string
-	TTL      time.Duration
+	// Command is the command a command inject carries, zero for a text inject.
+	Command Command
+	TTL     time.Duration
 	// Consumed is the part of TTL already used, from the last aged event.
 	Consumed time.Duration
 	// Head marks an inject queued at the head of its receiver's queue.
@@ -88,12 +90,6 @@ type holdEntry struct {
 	Expires time.Time
 
 	origin string
-}
-
-// withheldEntry is the last withheld event of an orch receiver.
-type withheldEntry struct {
-	At     time.Time
-	Notice string
 }
 
 // reminderEntry is the last reminder sent to a receiver.
@@ -114,8 +110,12 @@ type LogEntry struct {
 	To       string
 	By       string
 	Receiver string
-	Subject  string
-	// Kind is the kind of the message or inject a carried entry snapshots, empty on every other entry.
+	// Subject is a message's first line, or a text inject's text.
+	Subject string
+	// Command and Argument are a command inject's command, empty on every other entry.
+	Command  CommandName
+	Argument string
+	// Kind is the kind of the message or inject a posted or carried entry records, empty on every other entry.
 	Kind   string
 	Notice string
 	// Reason is the stall a stalled event names.
@@ -132,7 +132,6 @@ type pool struct {
 	messages  map[int64]*Message
 	injects   map[int64]*injectEntry
 	holds     map[string]*holdEntry
-	withheld  map[string]withheldEntry
 	reminders map[string]reminderEntry
 	// programs holds the program senders whose mailbox is known, from their first post or read.
 	programs map[string]bool
@@ -146,7 +145,6 @@ func newPool() *pool {
 		messages:  map[int64]*Message{},
 		injects:   map[int64]*injectEntry{},
 		holds:     map[string]*holdEntry{},
-		withheld:  map[string]withheldEntry{},
 		reminders: map[string]reminderEntry{},
 		programs:  map[string]bool{},
 	}
@@ -270,13 +268,11 @@ func (p *pool) apply(rec record, day string) {
 		if entry := p.injects[rec.ID]; entry != nil {
 			entry.Consumed = time.Duration(rec.ConsumedSeconds) * time.Second
 		}
-	case eventInterrupted, eventStalled:
+	case eventInterrupted, eventStalled, eventWithheld:
 	case eventHeld:
 		p.holds[rec.To] = &holdEntry{Owner: rec.By, Expires: rec.ExpiresAt, origin: day}
 	case eventReleased:
 		delete(p.holds, rec.To)
-	case eventWithheld:
-		p.withheld[rec.To] = withheldEntry{At: rec.At, Notice: rec.Notice}
 	case eventCarried:
 		if !p.applyCarried(rec, day) {
 			return
@@ -293,7 +289,8 @@ func (p *pool) applyPosted(rec record, day string) {
 		if p.injects[rec.ID] == nil {
 			p.injects[rec.ID] = &injectEntry{
 				ID: rec.ID, From: rec.From, Receiver: rec.To, Text: rec.Body,
-				TTL: time.Duration(rec.TTLSeconds) * time.Second, Head: rec.Head,
+				Command: Command{Name: rec.Command, Argument: rec.Argument},
+				TTL:     time.Duration(rec.TTLSeconds) * time.Second, Head: rec.Head,
 				Outcome: injectQueued, Posted: rec.At, origin: day,
 			}
 		}
@@ -336,6 +333,7 @@ func (p *pool) applyCarried(rec record, day string) bool {
 		if p.injects[rec.ID] == nil {
 			p.injects[rec.ID] = &injectEntry{
 				ID: rec.ID, From: rec.From, Receiver: rec.To, Text: rec.Body,
+				Command:  Command{Name: rec.Command, Argument: rec.Argument},
 				TTL:      time.Duration(rec.TTLSeconds) * time.Second,
 				Consumed: time.Duration(rec.ConsumedSeconds) * time.Second,
 				Head:     rec.Head, Outcome: injectQueued, Posted: rec.OrigAt, origin: day,
@@ -377,7 +375,7 @@ func (p *pool) setOutcome(id int64, outcome string) {
 }
 
 // logEntryFor builds the log line of rec: parties and subject from the message or inject it concerns, never a body.
-// A carried record's line carries the snapshot's kind, mail when the record names none.
+// A posted or carried record's line carries the kind of the message or inject, mail when the record names none.
 func (p *pool) logEntryFor(rec record, day string) LogEntry {
 	entry := LogEntry{
 		Day: day, Event: rec.Event, At: rec.At, ID: rec.ID,
@@ -391,6 +389,8 @@ func (p *pool) logEntryFor(rec record, day string) LogEntry {
 		}
 	} else if inject := p.injects[rec.ID]; inject != nil {
 		entry.From = inject.From
+		entry.Command, entry.Argument = inject.Command.Name, inject.Command.Argument
+		entry.Subject = inject.Text
 		if entry.To == "" {
 			entry.To = inject.Receiver
 		}
@@ -401,6 +401,9 @@ func (p *pool) logEntryFor(rec record, day string) LogEntry {
 		if rec.Of == eventPosted {
 			entry.Kind = cmp.Or(rec.Kind, kindMail)
 		}
+	}
+	if rec.Event == eventPosted {
+		entry.Kind = cmp.Or(rec.Kind, kindMail)
 	}
 	return entry
 }
@@ -421,7 +424,7 @@ func (p *pool) carryRecords(cutoffDay string, now time.Time) []record {
 		if entry.origin < cutoffDay && entry.Outcome == injectQueued {
 			carried = append(carried, record{
 				Event: eventCarried, At: now, Of: eventPosted, Kind: kindInject, ID: entry.ID, From: entry.From, To: entry.Receiver,
-				Body: entry.Text, TTLSeconds: int64(entry.TTL / time.Second), ConsumedSeconds: int64(entry.Consumed / time.Second),
+				Body: entry.Text, Command: entry.Command.Name, Argument: entry.Command.Argument, TTLSeconds: int64(entry.TTL / time.Second), ConsumedSeconds: int64(entry.Consumed / time.Second),
 				Head: entry.Head, OrigAt: entry.Posted,
 			})
 		}

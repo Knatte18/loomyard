@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"slices"
 	"strings"
@@ -447,6 +448,36 @@ func TestDaemon_Protocol(t *testing.T) {
 				t.Errorf("the expired line = %q; want it to carry reason too-short", expiredLine(t, r.geom))
 			}
 		}},
+		{"ProgramCommandInjectIsAnsweredWithItsIdAndLoggedWithItsCommand", false, func(t *testing.T, r *rig) {
+			r.start()
+			c := r.client(programClaim("ly:BATTEN"), nil, creelfake.NewClock(epoch))
+			queued := mustCall(t, c, creelengine.Request{Verb: creelengine.VerbInject, Receiver: orch, Command: creelengine.CommandCompact, Argument: "keep the plan"})
+			if queued.ID == 0 {
+				t.Fatalf("command inject answered %+v; want its id", queued)
+			}
+			logged := mustCall(t, c, creelengine.Request{Verb: creelengine.VerbLog, ID: queued.ID})
+			if len(logged.Log) == 0 {
+				t.Fatalf("log of inject %d is empty", queued.ID)
+			}
+			for _, entry := range logged.Log {
+				if entry.Command != creelengine.CommandCompact || entry.Argument != "keep the plan" {
+					t.Errorf("log entry %+v lacks the command and argument", entry)
+				}
+			}
+		}},
+		{"CommandInjectWithWaitOrInterruptIsRefused", false, func(t *testing.T, r *rig) {
+			r.start()
+			c := r.client(programClaim("ly:BATTEN"), nil, creelfake.NewClock(epoch))
+			for _, req := range []creelengine.Request{
+				{Verb: creelengine.VerbInject, Receiver: orch, Command: creelengine.CommandClear, Wait: true},
+				{Verb: creelengine.VerbInject, Receiver: orch, Command: creelengine.CommandClear, Interrupt: true},
+			} {
+				got := result(t, callAsync(c, req, 0))
+				if got.err == nil || !strings.Contains(got.err.Error(), "neither wait nor interrupt") {
+					t.Errorf("%+v answered %v; want the refusal naming wait and interrupt", req, got.err)
+				}
+			}
+		}},
 		{"ResumedInjectWaitHearsTheStandingStallAtOnce", false, func(t *testing.T, r *rig) {
 			r.start()
 			r.del.SetStall(alpha, creelengine.StallDraft)
@@ -521,6 +552,69 @@ func TestDaemon_Protocol(t *testing.T) {
 			liar := r.client(strandClaim(beta), nil, creelfake.NewClock(epoch))
 			if _, err := liar.Call(creelengine.Request{Verb: creelengine.VerbPost, Receiver: alpha, Text: "forged"}, 0, nil); err == nil || !strings.Contains(err.Error(), "runs in the pane of") {
 				t.Errorf("a claim naming another strand: %v; want it refused", err)
+			}
+		}},
+		{"WithdrawByAProgramClientIsAnsweredWithTheResult", false, func(t *testing.T, r *rig) {
+			r.del.SetIdle(alpha, false)
+			r.start()
+			c := r.client(programClaim(batten), nil, creelfake.NewClock(epoch))
+			inject := mustCall(t, c, creelengine.Request{Verb: creelengine.VerbInject, Receiver: alpha, Text: "/clear"})
+			mail := mustCall(t, c, creelengine.Request{Verb: creelengine.VerbPost, Receiver: alpha, Text: "note\nmore"})
+			resp := mustCall(t, c, creelengine.Request{Verb: creelengine.VerbWithdraw, Receiver: alpha})
+			want := &creelengine.WithdrawResult{Injects: []int64{inject.ID}, Messages: []creelengine.WithdrawnMessage{{ID: mail.ID, Subject: "note"}}}
+			if !reflect.DeepEqual(resp.Withdrawn, want) {
+				t.Errorf("withdraw answered %+v; want %+v", resp.Withdrawn, want)
+			}
+		}},
+		{"StrandClaimFromOutsideEveryPaneCarriesTheRefusalCode", false, func(t *testing.T, r *rig) {
+			if runtime.GOOS != "linux" {
+				t.Skip("the outside-pane refusal rests on D4's Linux-only ancestry check")
+			}
+			r.start()
+			c := r.client(strandClaim(alpha), nil, creelfake.NewClock(epoch))
+			_, err := c.Call(creelengine.Request{Verb: creelengine.VerbLog}, 0, nil)
+			if !errors.Is(err, creelengine.ErrStrandClaimOutsidePane) || !strings.Contains(err.Error(), "runs in no strand pane") {
+				t.Errorf("a strand claim from outside every pane: %v; want an error matching ErrStrandClaimOutsidePane with the daemon's message", err)
+			}
+			if resp := r.rawExchange(`{"verb":"log","claim":{"strand_name":"` + alpha + `"}}`); resp.OK || resp.Code != creelengine.CodeStrandClaimOutsidePane {
+				t.Errorf("raw refusal = %+v; want the code %q", resp, creelengine.CodeStrandClaimOutsidePane)
+			}
+			if resp := r.rawExchange(`{"verb":"frobnicate"}`); resp.OK || resp.Code != "" {
+				t.Errorf("an unrelated refusal = %+v; want no code", resp)
+			}
+		}},
+		{"NonWaitingCallToAListenerThatNeverAnswersTimesOut", false, func(t *testing.T, r *rig) {
+			listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: r.geom.SocketPath, Net: "unix"})
+			if err != nil {
+				t.Fatalf("listen: %v", err)
+			}
+			var held []net.Conn
+			var heldMu sync.Mutex
+			go func() {
+				for {
+					conn, err := listener.Accept()
+					if err != nil {
+						return
+					}
+					heldMu.Lock()
+					held = append(held, conn)
+					heldMu.Unlock()
+				}
+			}()
+			t.Cleanup(func() {
+				_ = listener.Close()
+				heldMu.Lock()
+				defer heldMu.Unlock()
+				for _, conn := range held {
+					_ = conn.Close()
+				}
+			})
+			clientClock := creelfake.NewClock(epoch)
+			calling := callAsync(r.client(externalClaim(), nil, clientClock), creelengine.Request{Verb: creelengine.VerbLog}, 5*time.Second)
+			clientClock.AwaitWaits(1)
+			clientClock.Advance(5 * time.Second)
+			if got := result(t, calling); !errors.Is(got.err, creelengine.ErrWaitTimeout) {
+				t.Errorf("non-waiting call = %+v, %v; want ErrWaitTimeout at the timeout", got.resp, got.err)
 			}
 		}},
 	}
@@ -837,6 +931,17 @@ func TestDaemon_Lifecycle(t *testing.T) {
 			r.clock.Advance(30 * time.Second)
 			if got := result(t, waiting); got.err != nil || got.resp.Outcome != creelengine.OutcomeExpired {
 				t.Errorf("wait-inject = %+v, %v; want expired once the consumed TTL ran out", got.resp, got.err)
+			}
+		}},
+		{"StageOneOrchMailAndItsWithheldRecordFoldAndTheStartedDaemonReminds", func(t *testing.T, r *rig) {
+			r.writeJournal("2026-10-01",
+				`{"event":"posted","at":"2026-10-01T11:00:00Z","id":1,"from":"`+alpha+`","to":"`+orch+`","kind":"mail","body":"hello"}`,
+				`{"event":"withheld","at":"2026-10-01T11:00:00Z","id":1,"to":"`+orch+`","notice":"creel-notices"}`)
+			r.start()
+			r.clock.AwaitWaitsWhere(1, isProbeWait)
+			want := []creelfake.Send{{Strand: orch, Text: "[creel] 1 unread: #1 from " + alpha + " — run lyx creel read"}}
+			if got := r.del.Sends(); !slices.Equal(got, want) {
+				t.Errorf("typed %v; want the reminder of the stage 1 mail %v", got, want)
 			}
 		}},
 		{"SendingWithoutAnOutcomeIsUnconfirmedAndNeverTypedAgain", func(t *testing.T, r *rig) {

@@ -72,7 +72,7 @@ func requestCmd() *cobra.Command {
 		Long: `request records the hub's one hibernate request and spawns a detached daemon,
 then returns. The daemon waits for the trigger, pauses the hub, confirms every
 session paused, hibernates the machine, and on wake lifts its own pause. It
-queues a notice for the orch when it is done or failed.
+posts creel mail to the orch when it is done or failed.
 
 With no flag the trigger holds at once. --after <slug> waits until that batten
 run has finished its Land row; --after-all waits until no batten run is in

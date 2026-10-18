@@ -36,7 +36,7 @@ const (
 	eventStalled  = "stalled"
 	eventHeld     = "held"
 	eventReleased = "released"
-	// eventWithheld marks an orch receiver's reminder held back until creel-notices.
+	// eventWithheld marks a stage 1 journal's held-back orch reminder; the fold reads it from old journals only and nothing writes it.
 	eventWithheld = "withheld"
 	// eventCarried is written by retention: a snapshot of an entry whose original lines are about to be deleted.
 	eventCarried = "carried"
@@ -77,9 +77,12 @@ type record struct {
 	By   string `json:"by,omitempty"`
 	Kind string `json:"kind,omitempty"`
 	// Body is a message body or an inject's text.
-	Body    string   `json:"body,omitempty"`
-	ReplyTo int64    `json:"reply_to,omitempty"`
-	Path    []string `json:"path,omitempty"`
+	Body string `json:"body,omitempty"`
+	// Command and Argument are a command inject's command; a record without them is a text inject.
+	Command  CommandName `json:"command,omitempty"`
+	Argument string      `json:"argument,omitempty"`
+	ReplyTo  int64       `json:"reply_to,omitempty"`
+	Path     []string    `json:"path,omitempty"`
 	// Receiver is the receiver that ended a returned message unread.
 	Receiver string `json:"receiver,omitempty"`
 	// TTLSeconds is an inject's time to live, and ConsumedSeconds the part of it already used.
@@ -89,7 +92,7 @@ type record struct {
 	Head bool `json:"head,omitempty"`
 	// ExpiresAt is a hold's expiry.
 	ExpiresAt time.Time `json:"expires_at,omitzero"`
-	// Notice names what a withheld reminder waits for.
+	// Notice names what a stage 1 withheld record waited for; it is read from old journals only.
 	Notice string `json:"notice,omitempty"`
 	// Reason is the stall a stalled record names.
 	Reason string `json:"reason,omitempty"`

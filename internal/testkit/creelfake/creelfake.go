@@ -1,6 +1,6 @@
 // Package creelfake fakes the two seams creelengine is told: Delivery, the hub's strands and their panes, and Clock.
 //
-// Delivery answers from scripted strands, idle and pause flags, stall reasons and errors, and records every send, interrupt and idle probe.
+// Delivery answers from scripted strands, idle and pause flags, stall reasons and errors, and records every send, command, interrupt and idle probe.
 // Its send and interrupt answers can also come from a function, which may block.
 // Clock advances only when a test says so and records every duration passed to After, in order.
 // Neither fake asserts anything or takes a testing.TB; a test reads the recorded values and asserts itself.
@@ -38,6 +38,12 @@ type Send struct {
 	Text   string
 }
 
+// CommandCall is one call to Delivery.Command.
+type CommandCall struct {
+	Strand  string
+	Command creelengine.Command
+}
+
 // Delivery is a creelengine.Delivery whose answers are scripted.
 // A strand is idle unless set otherwise and no pause covers it.
 type Delivery struct {
@@ -47,11 +53,12 @@ type Delivery struct {
 	paused  map[string]bool
 	stalls  map[string]creelengine.Stall
 
-	strandsErr, idleErr, pausedErr, sendErr, interruptErr error
-	sendFn                                                func(strand, text string) error
-	interruptFn                                           func(strand string) error
+	strandsErr, idleErr, pausedErr, sendErr, commandErr, interruptErr error
+	sendFn                                                            func(strand, text string) error
+	interruptFn                                                       func(strand string) error
 
 	sends      []Send
+	commands   []CommandCall
 	interrupts []string
 	idleCalls  map[string]int
 }
@@ -214,6 +221,29 @@ func (d *Delivery) Send(strand creelengine.Strand, text string) error {
 		return fn(strand.Name, text)
 	}
 	return err
+}
+
+// SetCommandError makes every Command call answer err; nil clears it.
+func (d *Delivery) SetCommandError(err error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.commandErr = err
+}
+
+// Commands returns every Command call so far, oldest first.
+func (d *Delivery) Commands() []CommandCall {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return append([]CommandCall(nil), d.commands...)
+}
+
+// Command implements creelengine.Delivery.
+// It records the call and answers the scripted command error.
+func (d *Delivery) Command(strand creelengine.Strand, command creelengine.Command) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.commands = append(d.commands, CommandCall{Strand: strand.Name, Command: command})
+	return d.commandErr
 }
 
 // Interrupt implements creelengine.Delivery.
