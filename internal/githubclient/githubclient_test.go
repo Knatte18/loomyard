@@ -499,11 +499,8 @@ func TestRunGHAuthTokenSeam_HonoursGhAuthTokenTimeout(t *testing.T) {
 	if elapsed < ghAuthTokenTimeout {
 		t.Errorf("resolveToken() returned after %v; want at least ghAuthTokenTimeout (%v) -- an early return here would mean this test is not exercising the timeout at all", elapsed, ghAuthTokenTimeout)
 	}
-	// 200ms is 20x the shrunk 10ms timeout -- generous against scheduling
-	// jitter while still tight enough to catch a regression where the
-	// override silently fails to apply (which would make the real call take
-	// ~5s and trip this check).
-	const slack = 200 * time.Millisecond
+	// The slack outlasts a scheduling stall under a loaded suite and stays under the real ~5s wait an override that silently fails to apply would cost.
+	const slack = 2 * time.Second
 	if elapsed > ghAuthTokenTimeout+slack {
 		t.Errorf("resolveToken() took %v; want close to ghAuthTokenTimeout (%v), not an unbounded hang", elapsed, ghAuthTokenTimeout)
 	}

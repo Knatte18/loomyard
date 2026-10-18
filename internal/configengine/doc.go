@@ -8,6 +8,8 @@
 // neither writes a file.
 // A key missing inside a list element is the one gap fill cannot close, and is an error.
 // The result is resolved through envsource's markers once, after the merge.
+// A default- or worktree-layer file holding units the template lacks, open-map entries and retired keys aside, still loads, and is logged at Warn naming the file, the keys and the `lyx config reconcile` that removes them;
+// the warning is logged once per file and key list in a process.
 //
 // A present file whose content fails to parse, lacks a key inside a list element or fails to resolve returns an error marked [ErrInvalid];
 // an absent base file or `_lyx/`, an unreadable file and a base directory failure stay unmarked.

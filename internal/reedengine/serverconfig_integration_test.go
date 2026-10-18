@@ -1,7 +1,7 @@
 //go:build tmux && !windows
 
 // serverconfig_integration_test.go proves against a real tmux server that reed's own server reads no operator config and that its strand panes start non-login shells.
-// It also pins the shell options reed's session pins share with the test kit's server config.
+// It also pins the shell options reed's session pins share with the test kit's server config, and that the capability probe's transient server stays off the hub's socket.
 
 package reedengine
 
@@ -138,4 +138,32 @@ func TestBoot_ReadsNoOperatorConfigAndStartsNonLoginPanes(t *testing.T) {
 			t.Errorf("kit config pins %v to the shell, reed pins %v per session, want the same options", kitShellOptions, reedShellOptions)
 		}
 	})
+}
+
+// TestProbeCapability_LeavesTheHubSocketAndNoProbeSocketBehind probes a hub with no server running.
+// The transient server `list-commands` starts must never stand on the hub's socket, where a sibling worktree's concurrent boot could reach it while it exits, and the probe's own socket file must be gone afterwards.
+//
+// Not parallel: it scans the socket directory every test in the binary shares, which a parallel probe would litter mid-scan.
+func TestProbeCapability_LeavesTheHubSocketAndNoProbeSocketBehind(t *testing.T) {
+	e := newHubEngine(t, t.TempDir(), "worktree", nil)
+	if err := e.probeCapabilityLocked(); err != nil {
+		t.Fatalf("probeCapabilityLocked() = %v, want nil", err)
+	}
+
+	if _, err := ListSessions(e.cfg.Tmux, e.Socket()); !IsNoServer(err) {
+		t.Errorf("ListSessions on the hub socket after the probe error = %v, want no server running", err)
+	}
+	socketDir := socketDirFromEnv()
+	if _, err := os.Lstat(filepath.Join(socketDir, e.Socket())); !os.IsNotExist(err) {
+		t.Errorf("hub socket file after the probe: Lstat error = %v, want it absent", err)
+	}
+	entries, err := os.ReadDir(socketDir)
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("read socket dir: %v", err)
+	}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), "lyx-p") {
+			t.Errorf("socket dir holds %q after the probe, want no probe socket left", entry.Name())
+		}
+	}
 }
