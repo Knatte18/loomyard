@@ -90,12 +90,34 @@ func unpushedOutcome(path string, err error) error {
 // than falling back to warpPath (which would put a lock at the pristine warp root) or defaulting to
 // the process cwd (which ensureWeftLockDirAt("") would do — mkdir .weft and git rev-parse relative
 // to cwd).
+// It blocks until the lock is free and marks the sides it pushes pending, so it also respawns a side another pusher left flagged.
 // This is a latent edge only: the detached push child always supplies the weft path, so production never hits this guard.
 // It supplies the warp path too, except in the prime (see SpawnDetachedPush and Fabric.Commit's spawnDetachedPushFn call).
 // warpPath may still be empty when weftPath is present — that pushes only the weft side;
 // a warp-only push (warpPath set, weftPath empty) is not a supported coalescing entry and is
 // rejected by the same guard.
 func CoalescePushBothAt(warpPath, weftPath string, opts SyncOptions) (res PushResult, err error) {
+	return coalescePushSides(PushSpawn{WarpPath: warpPath, WeftPath: weftPath}, opts, "CoalescePushBothAt", func(lockPath string) (*lock.FileLock, bool, error) {
+		held, err := lock.AcquireWriteLock(lockPath)
+		if err != nil {
+			return nil, false, fmt.Errorf("fabricengine: acquire push lock: %w", err)
+		}
+		return held, true, nil
+	})
+}
+
+// CoalescePushRequest is the detached push child's push: it pushes the sides req carries, warp as the code side and weft as the records side, under fabric.push.lock.
+// A child that finds the lock held returns nil at once with nothing pushed, leaving its commits to the holder through the pending flag it marked first;
+// the holder pushes them once it releases, and respawns a side it does not push itself with the flag's slugs.
+// req.WeftPath must be non-empty, since the lock lives under the records worktree; it honors SkipGit and SkipPush.
+func CoalescePushRequest(req PushSpawn, opts SyncOptions) (res PushResult, err error) {
+	return coalescePushSides(req, opts, "CoalescePushRequest", lock.TryAcquireWriteLock)
+}
+
+// coalescePushSides runs the two-sided rebase-free push of req under fabric.push.lock, acquired through acquire and flagged by the sides req carries.
+// caller names the public entry for the error of a missing weft path.
+func coalescePushSides(req PushSpawn, opts SyncOptions, caller string, acquire func(lockPath string) (*lock.FileLock, bool, error)) (res PushResult, err error) {
+	warpPath, weftPath := req.WarpPath, req.WeftPath
 	hubRoot := ""
 	if warpPath != "" {
 		hubRoot = filepath.Dir(warpPath)
@@ -107,14 +129,18 @@ func CoalescePushBothAt(warpPath, weftPath string, opts SyncOptions) (res PushRe
 		return PushResult{}, nil
 	}
 	if weftPath == "" {
-		return PushResult{}, fmt.Errorf("fabricengine: CoalescePushBothAt requires a weft path for the absorbing push lock")
+		return PushResult{}, fmt.Errorf("fabricengine: %s requires a weft path for the absorbing push lock", caller)
 	}
 
 	lockDir, err := ensureWeftLockDirAt(weftPath)
 	if err != nil {
 		return PushResult{}, err
 	}
-	lockPath := filepath.Join(lockDir, weftPushLockFile)
+
+	owed := map[string]PushSpawn{pushSideRecords: {WeftPath: weftPath, PauseSlug: req.PauseSlug, TeardownSlug: req.TeardownSlug}}
+	if warpPath != "" {
+		owed[pushSideCode] = PushSpawn{WarpPath: warpPath, PauseSlug: req.PauseSlug, TeardownSlug: req.TeardownSlug}
+	}
 
 	step := func() (progressed bool, err error) {
 		beforeWarp, err := headOrEmpty(warpPath)
@@ -169,5 +195,6 @@ func CoalescePushBothAt(warpPath, weftPath string, opts SyncOptions) (res PushRe
 		return afterWarp != beforeWarp || afterWeft != beforeWeft, nil
 	}
 
-	return PushResult{}, coalescePush(lockPath, step)
+	_, err = coalesceFlagged(lockDir, owed, acquire, step)
+	return PushResult{}, err
 }

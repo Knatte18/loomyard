@@ -491,6 +491,7 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 
 // TestPushLock_BoundedWaitGivesUpAndUnboundedWaitBlocks covers the push lock both entries take:
 // with the lock held by the test, a bounded wait returns ErrPushLockBusy naming neither side and moves no remote;
+// the detached child's push returns nil at once with nothing pushed and a pending.records flag left on disk;
 // SkipPush and SkipGit return at once;
 // and an unbounded wait returns only once the lock is released and then pushes.
 func TestPushLock_BoundedWaitGivesUpAndUnboundedWaitBlocks(t *testing.T) {
@@ -553,6 +554,21 @@ func TestPushLock_BoundedWaitGivesUpAndUnboundedWaitBlocks(t *testing.T) {
 			}
 			if got := fabricengine.BareBranchSHAForTest(t, p.hub.RecordsBare, p.weftBranch); got != weftBefore {
 				t.Errorf("weft bare = %q; want it unmoved at %q", got, weftBefore)
+			}
+
+			childErr := func() error {
+				_, err := fabricengine.CoalescePushRequest(fabricengine.PushSpawn{WarpPath: p.warpPath, WeftPath: p.weftPath}, fabricengine.SyncOptions{})
+				return err
+			}()
+			if childErr != nil {
+				t.Errorf("CoalescePushRequest under a held lock error = %v; want nil at once", childErr)
+			}
+			if got := fabricengine.BareBranchSHAForTest(t, p.hub.RecordsBare, p.weftBranch); got != weftBefore {
+				t.Errorf("records bare after the child = %q; want it unmoved at %q", got, weftBefore)
+			}
+			recordsFlag := filepath.Join(filepath.Dir(fabricengine.PushLockPathForTest(t, p.weftPath)), "pending.records")
+			if _, err := os.Stat(recordsFlag); err != nil {
+				t.Errorf("pending.records after the child found the lock held: %v; want it left on disk", err)
 			}
 
 			for _, opts := range []fabricengine.SyncOptions{{SkipPush: true}, {SkipGit: true}} {

@@ -202,7 +202,7 @@
 //
 // The detached child that spawn launches no longer runs one single push per side: its bypass
 // handler (`internal/fabriccli`'s `push` verb, re-entered with `--warp-path`/`--weft-path`) now
-// runs `CoalescePushBothAt`, a loop-until-clean coalescing push that holds a separate absorbing
+// runs `CoalescePushRequest`, a loop-until-clean coalescing push (`CoalescePushBothAt` is its blocking foreground form) that holds a separate absorbing
 // push lock — `fabric.push.lock`, under the weft worktree's `.weft/` directory, distinct from the
 // commit lock below — for the whole loop, repeatedly rebase-free-pushing whichever side has commits
 // and exiting once an iteration advances neither side's HEAD.
@@ -622,7 +622,19 @@
 // `lockWait` bounds only the wait for that lock:
 // `StatusPushLockWait` is the bound the per-transition status pushes pass;
 // an expiry returns an error wrapping `ErrPushLockBusy` with nothing pushed;
-// and `LockWaitUnbounded` blocks as the detached push child does.
+// and `LockWaitUnbounded` blocks.
+//
+// `fabric.push.lock` alone follows the pending-flag protocol; `board.push.lock` of `Bolt.Sync` does not.
+// A pusher writes one flag per side it owes, `pending.records` or `pending.code` beside the lock, before it tries the lock, so a commit always precedes its flag.
+// A flag holds that side's path and the pause and teardown slugs of the push it serves, so any holder can respawn it.
+// The detached push child (`CoalescePushRequest`) try-locks and exits at once when the lock is held, leaving its commits to the holder.
+// The holder takes its owed sides' flags before each push, and after releasing re-reads them.
+// A flag of an owed side set again sends it back to the lock.
+// A flag of a side it does not push is respawned as a detached push when its path is the worktree the lock directory belongs to and its slugs are plain names.
+// Any other such flag is dropped with a warning.
+// The last holder to release therefore always sees a flag set after its last push, and no committed transition is left unpushed.
+// A synchronous pusher returns `ErrPushLockBusy` only when its first acquire misses its wait; a missed re-acquire after its own push landed returns nil.
+// A holder that hangs delays every later push of that records worktree until it exits.
 // A rejected push is retried once, after a fetch, only when the fetched remote tip is already contained in local HEAD,
 // so a stale remote-tracking ref recovers by itself while a real divergence does not.
 // A caller treats the `gitrepo.ErrPushRejected` that remains as a human-decidable condition.

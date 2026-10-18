@@ -8,7 +8,7 @@
 // The PersistentPreRunE splits normal mode (resolve cwd → layout → config → pathspec → Fabric
 // handle) from bypass mode (either hidden path flag injected by the detached push child, push-only
 // gate), driving fabricengine.Fabric's Status/Commit/Pull/Diff/MergeIn/Merge/MergeContinue/
-// MergeAbort/MergeStageResolved in normal mode and fabricengine.CoalescePushBothAt's loop-until-clean coalescing push
+// MergeAbort/MergeStageResolved in normal mode and fabricengine.CoalescePushRequest's loop-until-clean coalescing push
 // directly in bypass mode. The merge verbs are registered in merge_verbs.go's addMergeVerbs, which
 // reaches the resolved Fabric handle through a getter closure over this file's fab local, since
 // PersistentPreRunE assigns it only at run time, after registration.
@@ -235,10 +235,17 @@ Related commands:
 				// The bypass branch has no *lyxcwd.Location in scope (it takes the injected
 				// --warp-path/--weft-path values and returns before resolveWarpLocation runs), so its
 				// recorder is built with an empty hub root: it appends no path-targeted entries of
-				// its own, only Extends CoalescePushBothAt's already-converted record, and Extend
+				// its own, only Extends CoalescePushRequest's already-converted record, and Extend
 				// performs no conversion — the hub root is never consulted on this path.
 				rec := fabricengine.NewMutations("")
-				res, err := fabricengine.CoalescePushBothAt(warpPath, weftPath, fabricengine.SyncOptions{})
+				pauseSlug, _ := cmd.Flags().GetString(fabricengine.PauseSlugFlag)
+				teardownSlug, _ := cmd.Flags().GetString(fabricengine.TeardownSlugFlag)
+				res, err := fabricengine.CoalescePushRequest(fabricengine.PushSpawn{
+					WarpPath:     warpPath,
+					WeftPath:     weftPath,
+					PauseSlug:    pauseSlug,
+					TeardownSlug: teardownSlug,
+				}, fabricengine.SyncOptions{})
 				rec.Extend(res.Mutated())
 				if err != nil {
 					// The detached child's stdout goes nowhere, so the trace log is the only place its failure surfaces.

@@ -32,32 +32,30 @@ func IsPushRejected(err error) bool {
 	return errors.Is(err, gitrepo.ErrPushRejected)
 }
 
-// acquirePushLock takes the absorbing push lock under weftPath's lock directory, the same file CoalescePushBothAt holds.
+// acquirePushLock returns the synchronous pushers' acquire of the absorbing push lock.
 // LockWaitUnbounded blocks until the lock is free.
-// A positive lockWait gives up once it expires, returning an error wrapping ErrPushLockBusy.
-func acquirePushLock(weftPath string, lockWait time.Duration) (*lock.FileLock, error) {
-	lockDir, err := ensureWeftLockDirAt(weftPath)
-	if err != nil {
-		return nil, err
-	}
-	lockPath := filepath.Join(lockDir, weftPushLockFile)
-
-	if lockWait == LockWaitUnbounded {
-		held, err := lock.AcquireWriteLock(lockPath)
-		if err != nil {
-			return nil, fmt.Errorf("fabricengine: acquire push lock: %w", err)
+// A positive lockWait gives up once it expires, reporting the lock as not acquired.
+func acquirePushLock(lockWait time.Duration) func(lockPath string) (*lock.FileLock, bool, error) {
+	return func(lockPath string) (*lock.FileLock, bool, error) {
+		if lockWait == LockWaitUnbounded {
+			held, err := lock.AcquireWriteLock(lockPath)
+			if err != nil {
+				return nil, false, fmt.Errorf("fabricengine: acquire push lock: %w", err)
+			}
+			return held, true, nil
 		}
-		return held, nil
-	}
 
-	held, acquired, err := lock.AcquireWriteLockWithin(lockPath, lockWait)
-	if err != nil {
-		return nil, fmt.Errorf("fabricengine: acquire push lock: %w", err)
+		held, acquired, err := lock.AcquireWriteLockWithin(lockPath, lockWait)
+		if err != nil {
+			return nil, false, fmt.Errorf("fabricengine: acquire push lock: %w", err)
+		}
+		return held, acquired, nil
 	}
-	if !acquired {
-		return nil, fmt.Errorf("%w: %s still held after %s; neither side was pushed", ErrPushLockBusy, lockPath, lockWait)
-	}
-	return held, nil
+}
+
+// pushLockBusyError is the error of a synchronous push whose first acquire of the push lock under lockDir missed its wait.
+func pushLockBusyError(lockDir string, lockWait time.Duration) error {
+	return fmt.Errorf("%w: %s still held after %s; neither side was pushed", ErrPushLockBusy, filepath.Join(lockDir, weftPushLockFile), lockWait)
 }
 
 // pushRebaseFreeRetryingOnce pushes repo rebase-free.
@@ -92,6 +90,8 @@ func pushRebaseFreeRetryingOnce(repo *gitrepo.Repo) error {
 // a positive value gives up with an error wrapping ErrPushLockBusy and pushes nothing;
 // LockWaitUnbounded blocks;
 // and a holder lasts as long as git does.
+// The push marks the records side pending before it takes the lock and re-reads the flag after releasing it,
+// so a push that landed returns nil even when a later holder took the lock first.
 // A rejection is retried once after a fetch when the remote tip is already contained in local HEAD;
 // a rejection that stays still surfaces gitrepo.ErrPushRejected UNWRAPPED,
 // so a caller can discriminate it from every other push failure with errors.Is.
@@ -107,23 +107,40 @@ func PushAnchored(l *lyxcwd.Location, opts SyncOptions, lockWait time.Duration) 
 		return PushResult{}, nil
 	}
 
-	held, err := acquirePushLock(target, lockWait)
+	request, _, err := statusPushRequest(l, "")
 	if err != nil {
 		return PushResult{}, err
 	}
-	defer func() { _ = held.Release() }()
-
-	repo := gitrepo.New(target)
-	hadUnpushed, hadUnpushedErr := repo.HasUnpushed()
-	if err := pushRebaseFreeRetryingOnce(repo); err != nil {
-		if errors.Is(err, gitrepo.ErrLocalBranch) {
-			return PushResult{LocalSkipped: localSkippedBranch(repo)}, nil
-		}
+	lockDir, err := ensureWeftLockDirAt(target)
+	if err != nil {
 		return PushResult{}, err
 	}
-	recordPushIfAdvanced(rec, repo, "records", target, hadUnpushed, hadUnpushedErr)
+	owed := map[string]PushSpawn{pushSideRecords: {WeftPath: target, PauseSlug: request.PauseSlug, TeardownSlug: request.TeardownSlug}}
 
-	return PushResult{}, nil
+	var localSkipped []string
+	step := func() (progressed bool, err error) {
+		localSkipped = nil
+		repo := gitrepo.New(target)
+		hadUnpushed, hadUnpushedErr := repo.HasUnpushed()
+		if err := pushRebaseFreeRetryingOnce(repo); err != nil {
+			if errors.Is(err, gitrepo.ErrLocalBranch) {
+				localSkipped = localSkippedBranch(repo)
+				return false, nil
+			}
+			return false, err
+		}
+		recordPushIfAdvanced(rec, repo, "records", target, hadUnpushed, hadUnpushedErr)
+		return false, nil
+	}
+
+	acquired, err := coalesceFlagged(lockDir, owed, acquirePushLock(lockWait), step)
+	if err != nil {
+		return PushResult{}, err
+	}
+	if !acquired {
+		return PushResult{}, pushLockBusyError(lockDir, lockWait)
+	}
+	return PushResult{LocalSkipped: localSkipped}, nil
 }
 
 // PushPairAnchored pushes the unpushed commits of l's code worktree and of its paired records sibling, rebase-free, under the weft-side absorbing push lock.
@@ -139,6 +156,8 @@ func PushAnchored(l *lyxcwd.Location, opts SyncOptions, lockWait time.Duration) 
 // lockWait bounds only the wait for the lock:
 // a positive value gives up with an error wrapping ErrPushLockBusy and neither side pushed;
 // LockWaitUnbounded blocks.
+// Each side it pushes is marked pending before the lock is taken and re-read after it is released,
+// so a code commit made while another holder pushes is pushed by whichever holder releases last.
 //
 // Every side that observably advanced is recorded in the returned PushResult.
 // Returns (PushResult{}, nil) immediately, with no lock taken, when opts.SkipGit or opts.SkipPush is true.
@@ -158,13 +177,21 @@ func PushPairAnchored(l *lyxcwd.Location, opts SyncOptions, lockWait time.Durati
 	warpPath := l.WorktreePath()
 	weftPath := RecordsWorktree(l)
 
-	held, err := acquirePushLock(weftPath, lockWait)
+	request, _, err := statusPushRequest(l, "")
 	if err != nil {
 		return PushResult{}, err
 	}
-	defer func() { _ = held.Release() }()
+	lockDir, err := ensureWeftLockDirAt(weftPath)
+	if err != nil {
+		return PushResult{}, err
+	}
+	owed := map[string]PushSpawn{pushSideRecords: {WeftPath: weftPath, PauseSlug: request.PauseSlug, TeardownSlug: request.TeardownSlug}}
+	if !isPrime {
+		owed[pushSideCode] = PushSpawn{WarpPath: warpPath, PauseSlug: request.PauseSlug, TeardownSlug: request.TeardownSlug}
+	}
 
 	var localSkipped []string
+	var codePushSkipped string
 	pushSide := func(side, path string) error {
 		head, err := headOrEmpty(path)
 		if err != nil {
@@ -186,15 +213,24 @@ func PushPairAnchored(l *lyxcwd.Location, opts SyncOptions, lockWait time.Durati
 		return nil
 	}
 
-	var warpErr error
-	var codePushSkipped string
-	if isPrime {
-		codePushSkipped = unpushedCodeBranchNote(warpPath)
-	} else {
-		warpErr = pushSide("code", warpPath)
+	step := func() (progressed bool, err error) {
+		localSkipped = nil
+		codePushSkipped = ""
+		var warpErr error
+		if isPrime {
+			codePushSkipped = unpushedCodeBranchNote(warpPath)
+		} else {
+			warpErr = pushSide(pushSideCode, warpPath)
+		}
+		weftErr := pushSide(pushSideRecords, weftPath)
+		return false, errors.Join(warpErr, weftErr)
 	}
-	weftErr := pushSide("records", weftPath)
-	return PushResult{CodePushSkipped: codePushSkipped, LocalSkipped: localSkipped}, errors.Join(warpErr, weftErr)
+
+	acquired, err := coalesceFlagged(lockDir, owed, acquirePushLock(lockWait), step)
+	if err == nil && !acquired {
+		return PushResult{}, pushLockBusyError(lockDir, lockWait)
+	}
+	return PushResult{CodePushSkipped: codePushSkipped, LocalSkipped: localSkipped}, err
 }
 
 // localSkippedBranch returns repo's current branch as the one-entry LocalSkipped list of a push the local-only mark refused.
