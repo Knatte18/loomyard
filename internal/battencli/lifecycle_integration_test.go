@@ -297,6 +297,8 @@ func gitShow(t *testing.T, dir, spec string) []byte {
 // TestBattenIntegration_Rows runs the end-to-end rows over one hubforge hub, each step on its own slug so its pair, branches and records stay apart from every other step's.
 // The steps share only the hub itself -- its prime worktree, records origin and board -- and a step that changes it for the next one restores it before returning, except the last, which dirties the prime worktree and so relies on running after every step that creates a pair.
 // The test calls t.Parallel and no step does: the steps serialise on that one shared hub.
+//
+//testtiming:keep the start-cost step pins the decision record's D2 acceptance criterion, that a Command row costs under 100 ms beyond its status commit and its process, a wall-clock bound no other test asserts
 func TestBattenIntegration_Rows(t *testing.T) {
 	t.Parallel()
 
@@ -339,6 +341,7 @@ func TestBattenIntegration_Rows(t *testing.T) {
 		{"CommandRows_FollowTheTasksLocalSwitch", stepCommandRows_FollowTheTasksLocalSwitch},
 		{"CommandRows_ResumeAtARowAnOlderBinaryLeftStanding", stepCommandRows_ResumeAtARowAnOlderBinaryLeftStanding},
 		{"RunRowCommand_ReportsATimeoutAndAnExitCode", stepRunRowCommand_ReportsATimeoutAndAnExitCode},
+		{"StartCost_CommandRowsCostUnderTheBoundBeyondTheCommitAndTheProcess", stepStartCost_CommandRowsCostUnderTheBoundBeyondTheCommitAndTheProcess},
 		// Last, since it leaves the prime dirty for every step after it.
 		{"DirtyPrime_CreateRowBlocksBeforeAnythingCreated", stepDirtyPrime_CreateRowBlocksBeforeAnythingCreated},
 	}
@@ -1309,6 +1312,67 @@ func stepCommandRows_ResumeAtARowAnOlderBinaryLeftStanding(t *testing.T, h *hubf
 				t.Errorf("%s marker after the resume = %q (found %v); want %q", tt.row, got, found, slug)
 			}
 		})
+	}
+}
+
+// startCostBound is the decision record's D2 acceptance criterion: a Command row costs less than this beyond the status commit and the command's own process.
+const startCostBound = 100 * time.Millisecond
+
+// stepStartCost_CommandRowsCostUnderTheBoundBeyondTheCommitAndTheProcess steps a Command row whose switch is off, and Open-Window whose command only starts a background process, and asserts each costs under startCostBound beyond the status commit and the process.
+// A history entry's timestamp has one-second resolution, so a row's cost is the wall time of its one step.
+// The status commit's time is measured by wrapping the wired CommitStatus seam in a timer, and the process's time by running the same command once through runRowCommand, whose marker the row's own run then overwrites.
+func stepStartCost_CommandRowsCostUnderTheBoundBeyondTheCommitAndTheProcess(t *testing.T, h *hubforge.Hub) {
+	const slug = "batten-start-cost"
+	c, _, pair := newCommandRowFixture(t, h, slug)
+	marker := filepath.Join(t.TempDir(), "open-window-start")
+	command := "date +%s%N > " + marker + "; sleep 0 &"
+	writeBoardBattenCommands(t, h, map[string]string{"open_window_command": command})
+	writeLocalBatten(t, pair, "seed_ide: false\n")
+
+	var commitTime time.Duration
+	commitStatus := c.shedPaths.CommitStatus
+	c.shedPaths.CommitStatus = func(producer, st string) error {
+		began := time.Now()
+		defer func() { commitTime += time.Since(began) }()
+		return commitStatus(producer, st)
+	}
+
+	processBegan := time.Now()
+	if result, err := runRowCommand(context.Background(), t.TempDir(), command, filepath.Join(t.TempDir(), "process.log"), time.Minute); err != nil || result.ExitCode != 0 {
+		t.Fatalf("runRowCommand(%q) = %+v, %v; want exit code 0 and nil", command, result, err)
+	}
+	processTime := time.Since(processBegan)
+	if err := os.Remove(marker); err != nil {
+		t.Fatalf("remove the marker the process run wrote: %v", err)
+	}
+
+	rows := []struct {
+		row     string
+		process time.Duration
+	}{
+		{battenrecipe.NameSeedIDE, 0},
+		{battenrecipe.NameOpenWindow, processTime},
+	}
+	for _, tt := range rows {
+		seedEntryStatus(t, c, tt.row, shedengine.StateRunning, nil)
+		shed, err := battenrecipe.New(c.env, c.shedPaths)
+		if err != nil {
+			t.Fatalf("battenrecipe.New: %v", err)
+		}
+		commitTime = 0
+		began := time.Now()
+		step, err := shed.Step(context.Background())
+		elapsed := time.Since(began)
+		if err != nil || step.Producer != tt.row || step.Outcome != shedengine.Done {
+			t.Fatalf("Step (%s) = producer %q outcome %q, %v; want %q Done", tt.row, step.Producer, step.Outcome, err, tt.row)
+		}
+		if cost := elapsed - commitTime - tt.process; cost >= startCostBound {
+			t.Errorf("%s cost %v beyond its commit (%v) and process (%v); want under %v", tt.row, cost, commitTime, tt.process, startCostBound)
+		}
+		t.Logf("%s: step %v, commit %v, process %v", tt.row, elapsed, commitTime, tt.process)
+	}
+	if _, found := readCommandMarker(t, marker); !found {
+		t.Errorf("the Open-Window command wrote no marker at %s", marker)
 	}
 }
 
