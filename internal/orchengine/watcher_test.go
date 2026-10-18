@@ -1720,6 +1720,32 @@ func TestWatcher_PhaseForDifferentStrandIsReset(t *testing.T) {
 			}
 			e.assertNoCalls()
 		}},
+		{"a reset whose mark clear fails after the withdraw removed the resume line still clears the mark on the next tick", func(t *testing.T, e *watchEnv) {
+			e.noticedResumedEntry()
+			e.c.withdrawn = []CreelWithdrawn{{ID: 5, Subject: pauserecord.ResumeLine}}
+			lock := e.pausePath + ".lock"
+			if err := os.Remove(lock); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Mkdir(lock, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			e.tickErr()
+			if st := e.state(); st.Phase != PhaseResuming || !st.ResumeLineWithdrawn {
+				t.Fatalf("state = %+v, want the phase kept and the withdrawn line recorded", st)
+			}
+			if err := os.Remove(lock); err != nil {
+				t.Fatal(err)
+			}
+			e.c.withdrawn = nil
+			e.tick()
+			if st := e.state(); st.Phase != PhaseIdle || st.ResumeLineWithdrawn {
+				t.Fatalf("state = %+v, want the reset done and the record cleared", st)
+			}
+			if bodies := e.c.postBodies(fakeOrchStrandName); !slices.Equal(bodies, []string{pauserecord.ResumeLine}) {
+				t.Errorf("posts to the orch = %v, want the resume line posted again", bodies)
+			}
+		}},
 		{"a reset whose withdraw fails saves no reset and runs again on the next tick", func(t *testing.T, e *watchEnv) {
 			e.c.failNext("withdraw", errBoom)
 			e.tick()

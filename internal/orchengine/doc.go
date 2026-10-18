@@ -365,6 +365,7 @@
 //     it withdraws the watcher's queued injects and unread mail to the orch strand, releases its hold and drops its pending ids,
 //     and `ClearResumeNoticed` clears, under the pause record's lock, the resume-noticed mark of each pause entry owning the strand whose resume line the withdraw removed, so a continued session gets the line posted again.
 //     A failed withdraw or release saves no reset and leaves the watcher unbound, so the next tick runs the reset again.
+//     A `ClearResumeNoticed` failure after the withdraw removed the resume line keeps the line in State.ResumeLineWithdrawn, so the next tick's reset still clears the mark.
 //   - `lyx orch start` withdraws around a fresh launch, as the orchcli package documentation describes, and records a failed release or second round in State.FreshLaunchFailure.
 //     While it is set, `retryFreshLaunch` runs first on every tick, after the events read and before the hold, the mailbox and the bind color:
 //     it withdraws and releases on the orch strand, signing as the watcher's own program, and posts and queues nothing, starts no cycle and renews no hold until both succeed.

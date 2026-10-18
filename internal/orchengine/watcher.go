@@ -849,7 +849,16 @@ func (w *Watcher) resetForOtherStrand(st State) (State, error) {
 		return held(err)
 	}
 	if w.pause != nil {
+		if st.ResumeLineWithdrawn {
+			withdrawn = append(withdrawn, CreelWithdrawn{Subject: pauserecord.ResumeLine})
+		}
 		if err := ClearResumeNoticed(w.pause.RecordPath, st.Strand, withdrawn, w.clock.Now()); err != nil {
+			// The withdraw removed the line for good; keep that fact so the next tick's reset still clears the mark.
+			st.ResumeLineWithdrawn = slices.ContainsFunc(withdrawn, func(message CreelWithdrawn) bool { return message.Subject == pauserecord.ResumeLine })
+			w.started = false
+			if saveErr := w.save(st); saveErr != nil {
+				return st, saveErr
+			}
 			return st, err
 		}
 	}
