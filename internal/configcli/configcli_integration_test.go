@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -340,6 +341,7 @@ func TestConfigOverRealHub(t *testing.T) {
 			{name: "apply from a task pair", cwd: codeWorktreePath, args: []string{"--layer", "default", "--apply"}, wantErr: "prime worktree"},
 			{name: "the board dir", cwd: boardDir, args: []string{"--apply"}, wantErr: "lyx config reconcile --layer default"},
 			{name: "a layer other than default", cwd: primeWorktreePath, args: []string{"--layer", "local", "--apply"}, wantErr: "--layer default alone"},
+			{name: "the board dir with a layer other than default", cwd: boardDir, args: []string{"--layer", "local"}, wantErr: "prime worktree"},
 		}
 		for _, refusal := range refusals {
 			var out bytes.Buffer
@@ -348,9 +350,36 @@ func TestConfigOverRealHub(t *testing.T) {
 			}
 			assertJSONErrContains(t, out.String(), refusal.wantErr)
 		}
+		if code, _ := runReconcileCLI(t, codeWorktreePath, "--layer", "default"); code != 0 {
+			t.Errorf("dry-run reconcile --layer default from a task pair = %d; want 0", code)
+		}
 		if after, err := os.ReadFile(loomFile); err != nil || !bytes.Equal(before, after) {
 			t.Fatalf("board loom.yaml = %q, %v after a dry run and refusals; want it unchanged", after, err)
 		}
+
+		t.Run("a failed apply leaves the board files as they were", func(t *testing.T) {
+			if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+				t.Skip("a read-only config dir does not stop writes here")
+			}
+			configDir := configengine.ConfigDir(boardDir)
+			if err := os.Chmod(configDir, 0o555); err != nil {
+				t.Fatalf("make the board config dir read-only: %v", err)
+			}
+			t.Cleanup(func() { _ = os.Chmod(configDir, 0o755) })
+			headBefore := boardHead(t, boardDir)
+
+			var out bytes.Buffer
+			if code := RunCLIIn(primeWorktreePath, &out, []string{"reconcile", "--layer", "default", "--apply"}); code != 1 {
+				t.Fatalf("reconcile --layer default --apply into a read-only dir = %d; want 1; output: %s", code, out.String())
+			}
+			assertJSONErrContains(t, out.String(), "reconcile:")
+			if after, err := os.ReadFile(loomFile); err != nil || !bytes.Equal(before, after) {
+				t.Errorf("board loom.yaml = %q, %v after a failed apply; want it unchanged", after, err)
+			}
+			if head := boardHead(t, boardDir); head != headBefore {
+				t.Errorf("_board HEAD = %s after a failed apply; want %s", head, headBefore)
+			}
+		})
 
 		if code, result = runReconcileCLI(t, primeWorktreePath, "--layer", "default", "--apply"); code != 0 {
 			t.Fatalf("reconcile --layer default --apply = %d; want 0; result: %v", code, result)
@@ -381,4 +410,16 @@ func TestConfigOverRealHub(t *testing.T) {
 			t.Errorf("HEAD in _board = %q; want %q", showOut, wantShow)
 		}
 	})
+}
+
+// boardHead returns the commit the board repo at boardDir is on.
+func boardHead(t *testing.T, boardDir string) string {
+	t.Helper()
+	revParse := exec.Command("git", "rev-parse", "HEAD")
+	revParse.Dir = boardDir
+	out, err := revParse.Output()
+	if err != nil {
+		t.Fatalf("git rev-parse HEAD in _board: %v", err)
+	}
+	return strings.TrimSpace(string(out))
 }
