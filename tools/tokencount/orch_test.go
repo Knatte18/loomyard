@@ -1,4 +1,4 @@
-// orch_test.go drives the orchestrator count and the cost estimate over fake reads: the charge by time, a fork naming one run, the window cut-off, the orch rows of the role tables, the section order, the fake engine's prices and an unpriced model.
+// orch_test.go drives the orchestrator count and the cost estimate over fake reads: the charge by time, a fork naming one run, the window cut-off, the Orch segment of the segment tables, the section order, the fake engine's prices and an unpriced model.
 // The prices are the fake pricer's, not any provider's.
 // Tier-1 (no git, no spawn).
 
@@ -98,27 +98,29 @@ func TestCountOrch(t *testing.T) {
 		t.Fatal(err)
 	}
 	tests := []struct {
-		name   string
-		charge OrchCharge
-		want   float64
+		name      string
+		charge    OrchCharge
+		want      float64
+		wantForks float64
 	}{
-		{"OneRunInFlight_PlusHalfOfTwo", *orch.Charges["run-a"], 2_000_000},
-		{"HalfOfTwo_PlusForkNamingIt", *orch.Charges["run-b"], 5_000_000},
-		{"ForkNamingTwoRuns_ChargedByTime", *orch.Charges["run-c"], 5_000_000},
-		{"NoRunInFlight_PlusCollapsedMessage", orch.Unattributed, 3_500_000},
+		{"OneRunInFlight_PlusHalfOfTwo", *orch.Charges["run-a"], 2_000_000, 0},
+		{"HalfOfTwo_PlusForkNamingIt", *orch.Charges["run-b"], 5_000_000, 4_000_000},
+		{"ForkNamingTwoRuns_ChargedByTime", *orch.Charges["run-c"], 5_000_000, 5_000_000},
+		{"NoRunInFlight_PlusCollapsedMessage", orch.Unattributed, 3_500_000, 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if tt.charge.Tokens != tt.want {
-				t.Errorf("charge tokens = %v; want %v", tt.charge.Tokens, tt.want)
+			total := tt.charge.Total()
+			if total.Tokens != tt.want || tt.charge.Forks.Tokens != tt.wantForks {
+				t.Errorf("charge tokens = %v, forks %v; want %v, forks %v", total.Tokens, tt.charge.Forks.Tokens, tt.want, tt.wantForks)
 			}
-			if tt.charge.Weight != 5*tt.want {
-				t.Errorf("charge weight = %v; want %v, five per output token", tt.charge.Weight, 5*tt.want)
+			if total.Weight != 5*tt.want {
+				t.Errorf("charge weight = %v; want %v, five per output token", total.Weight, 5*tt.want)
 			}
 			// The fake prices model-a at $20 per million tokens.
-			if wantUSD := 20 * tt.want / 1e6; math.Abs(tt.charge.Cost.USD-wantUSD) > 1e-9 {
-				t.Errorf("charge cost = %v; want $%.2f", tt.charge.Cost.USD, wantUSD)
+			if wantUSD := 20 * tt.want / 1e6; math.Abs(total.Cost.USD-wantUSD) > 1e-9 {
+				t.Errorf("charge cost = %v; want $%.2f", total.Cost.USD, wantUSD)
 			}
 		})
 	}
@@ -136,15 +138,20 @@ func TestCountOrch(t *testing.T) {
 	if all < 0 || orchSection < all || firstRun < orchSection {
 		t.Errorf("sections at All runs %d, Orchestrator %d, run-a %d; want them in that order:\n%s", all, orchSection, firstRun, report)
 	}
-	// Each output token weighs 5, so the runs' burler rows weigh 5M each and the orch rows five times their charged tokens;
-	// the shares divide by a total that holds the orch row.
+	// The runs' burler parts cost $20 each and the Orch segment splits each run's charge into its session and forks parts;
+	// the shares divide by a total that holds the Orch segment.
+	// In All runs the segment also holds the usage charged to no run, so it carries the whole orch cost, averaged over the three runs.
 	for _, want := range []string{
-		"| burler | 3 | 3000000 | 0 | 0 | 0 | 15.0M | 20.0% | 0s | 0.0% | $60.00 | model-a: 3 |\n| idle | | | | | | | | 4h0m0s | 100.0% | | |\n| orch | | | | | | 60.0M | 80.0% | | | $240.00 | |\n",
-		"Total weight 75.0M;",
-		"## run-a\n\n| role |",
-		"| burler | 1 | 1000000 | 0 | 0 | 0 | 5.0M | 33.3% | 0s | 0.0% | $20.00 | model-a: 1 |\n| idle | | | | | | | | 2h0m0s | 100.0% | | |\n| orch | | | | | | 10.0M | 66.7% | | | $40.00 | |\n",
-		"| orch | 2 | 4 | 6.5M | $130.00 |",
-		"| orch+sub | 2 | 2 | 9.0M | $180.00 |",
+		"| **Orch**, $103.33 per run | $310.00 | 83.8% |  |  |  |\n| └ forks | $180.00 | 48.6% |  |  |  |\n| └ unattributed | $70.00 | 18.9% |  |  |  |\n| └ session | $60.00 | 16.2% |  |  |  |\n" +
+			"| **Other** | $60.00 | 16.2% | 0s | 0.0% | model-a: 3 |\n| └ burler | $60.00 | 16.2% | 0s | 0.0% | model-a: 3 |\n| idle | | | 4h0m0s | 100.0% | |\n",
+		"| Orch unattributed | $70.00 | 18.9% | $23.33 |\n",
+		"Total cost $370.00;",
+		"## run-b\n\n| segment |",
+		"| **Orch** | $100.00 | 83.3% |  |  |  |\n| └ forks | $80.00 | 66.7% |  |  |  |\n| └ session | $20.00 | 16.7% |  |  |  |\n",
+		"| run-b | $0.00 | $0.00 | $0.00 | $0.00 | $0.00 | $100.00 | $20.00 | $120.00 |\n",
+		"| average | $0.00 | $0.00 | $0.00 | $0.00 | $0.00 | $80.00 | $20.00 | $100.00 |\n",
+		"| session | 2 | 4 | 6.5M | $130.00 |",
+		"| forks | 2 | 2 | 9.0M | $180.00 |",
 		"| total | 4 | 6 | 15.5M | $310.00 |",
 		"| run-a | 2.0M | $40.00 | $20.00 | 66.7% |",
 		"| run-b | 5.0M | $100.00 | $20.00 | 83.3% |",
@@ -197,7 +204,7 @@ func TestEstimatedCost(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"| $10.00 + unpriced | model-b: 1, model-x: 1 |",
+		"| └ burler | $10.00 + unpriced | 100.0% | 1m0s | 100.0% | model-b: 1, model-x: 1 |",
 		"Unpriced models (messages), in no cost figure: model-x: 1.",
 	} {
 		if !strings.Contains(buf.String(), want) {
@@ -215,7 +222,7 @@ func TestEstimatedCost(t *testing.T) {
 	if err := (Report{Runs: []RunTally{run}}).WriteMarkdown(&buf); err != nil {
 		t.Fatal(err)
 	}
-	if want := "| unpriced | model-b: 1, model-x: 1 |"; !strings.Contains(buf.String(), want) {
+	if want := "| └ burler | unpriced | 0.0% | 1m0s | 100.0% | model-b: 1, model-x: 1 |"; !strings.Contains(buf.String(), want) {
 		t.Errorf("report with no pricing lacks %q:\n%s", want, buf.String())
 	}
 }

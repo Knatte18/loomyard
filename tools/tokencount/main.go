@@ -1,9 +1,9 @@
 // Command tokencount reads the session transcripts of a set of task runs through the shuttle engines that recorded them.
-// It writes a markdown report of their token use and time per run and per role, each role summed over all runs first.
+// It writes a markdown report of their cost and time per run and per segment, each segment split into its parts and summed over all runs first.
 //
 //	go run ./tools/tokencount
 //	go run ./tools/tokencount -last 10
-//	go run ./tools/tokencount bugfix-sessions bugfix-webster
+//	go run ./tools/tokencount -detail bugfix-sessions bugfix-webster
 //	go run ./tools/tokencount -hub ~/Code/loomyard-LYXHUB -out .scratch/tokens.md test-suite-prune-core
 //
 // The two launchers beside this file, tokencount.sh and tokencount.cmd, are the intended
@@ -41,6 +41,20 @@
 // A fork counts under its parent's role with "+sub" appended, and a session without a name counts as "untitled".
 // A role ending in -chair, the role a seat table's lead carried before seats were named, counts under the role without that suffix, so burler-review-chair counts as burler-review and a report spanning the rename sums each role once.
 // A seat named chair after the rename counts under its table's lead role too.
+//
+// The report groups roles into segments by prefix: Discussion, Plan, Webster, Merge and Alignment hold the role equal to their key (discussion, plan, webster, merge, alignment) and every role leading with the key and "-".
+// The webster recovery strand's role is a Webster part, and every other role an Other part labelled by its own name.
+// Within a segment a role is a part: the key role is the writer, labelled "writer", Webster's "Master" and Alignment's "session";
+// the suffixes -burler-review, -burler-fix, -bouncer-judge and -bouncer-seed are labelled reviewer, fixer, judge and seed, and any other suffix by itself.
+// A fork role is its parent's part with " forks" appended, Webster's Master forks labelled "forks" alone, so "+sub" shows nowhere in the report.
+// When the orchestrator was counted, an Orch segment holds the orch usage charged to the table's runs, split into its session and forks parts;
+// in "All runs" it also holds the orch usage charged to no run as its unattributed part, so it carries the whole orch cost of the counted period, and its row names that cost averaged per run.
+//
+// The report opens with "Most expensive parts": the ten costliest parts of "All runs", each named by segment and label ("Webster forks", "Plan reviewer"), with its cost, its share of the total cost and its cost per run.
+// "Cost per run" follows, one row per run of its segment costs, the Orch segment's without the unattributed part, and its total, with an average row.
+// Each segment table, "All runs" and each run's, gives a total row per segment and its parts indented below, both sorted by cost, most expensive first, then an idle row.
+// Its columns are cost, share, time, time share and models;
+// -detail adds the sessions, output, cache write, cache read, input and weight columns after them, and the total weight to the "All runs" total line.
 //
 // A message can be recorded in several transcripts, so usage is counted once per engine and message key within a run;
 // the engine collapses a message it recorded over several records into one, and a repeat it collapsed counts as a duplicate.
@@ -100,25 +114,23 @@
 // Per-batch figures go to each batch's own profile, so a run whose batches name several profiles contributes to each.
 // A run contributes findings to a profile line only when its batches name one profile, it was not restarted with --fresh and its review files were read, and the line's findings per card is over the cards of those runs alone, with their number stated, or "n/a" when there are none.
 //
-// The weight column is input + 1.25 x cache writes + 0.1 x cache reads + 5 x output: a
-// relative figure for ranking roles, not a price, and blind to the per-model price
+// The -detail weight column is input + 1.25 x cache writes + 0.1 x cache reads + 5 x output: a
+// relative figure for ranking parts, not a price, and blind to the per-model price
 // difference shown in the models column.
-// The share column is a role's weight as a percentage of its table's total weight.
-// When the orchestrator was counted, the "All runs" table and each run's table end with an orch row: the orch weight and cost charged to the table's runs, the "Orchestrator" section's attributed part, never its unattributed rest;
-// its weight counts in the table's total, so its share is orch's percentage of all the weight spent on those runs.
+// The share column is a row's cost as a percentage of its table's total cost, the Orch segment's included.
 //
-// The est. cost column prices each message through the pricing capability of the engine that read it, the engine owning its provider's price table;
+// The cost column prices each message through the pricing capability of the engine that read it, the engine owning its provider's price table;
 // a message from an engine without one is unpriced.
 // A message with usage that no price was found for is unpriced, never free: its cell reads "unpriced" or "$x + unpriced", and the "All runs" section names the unpriced models.
 //
-// The time and time share columns give a role's working time and its percentage of the table's span.
+// The time and time share columns give a row's working time and its percentage of the table's span.
 // Time is turn time: a session works from a user or assistant entry until the entry that ends its turn.
 // Which entries end or start a turn is the engine's reading: an entry that ends a turn is a final assistant answer, an interrupt or a local command's output, and an entry that starts one is the user's own prompt.
 // The interval into a turn-start entry is idle, since a crash and --resume leave the gap before the resume's prompt, and so is an interval longer than the 30-minute stall cap, three times the harness's ten-minute cap on a foreground Bash call.
 // Either makes the whole interval idle, never a clipped part of it.
-// A role's time is the union of its transcripts' working intervals clipped to the span, a sub-agent's transcripts counting under <role>+sub.
+// A part's time is the union of its roles' transcripts' working intervals clipped to the span, a sub-agent's transcripts counting under its forks part, and a segment's time is the union over its parts.
 // The idle row is the span minus the union of every working interval of the run, orch sessions left out, so it holds parent review, gate-slot waits, a parked driver and Go-only work.
-// The orch row's time cells are blank, and the "All runs" table sums each run's figures per role, idle and span, with no union across runs.
+// The Orch rows' time and models cells are blank, and the "All runs" table sums each run's figures per segment and part, idle and span, with no union across runs.
 //
 // Every time figure leaves out machine sleep: a suspend or hibernate is no time at all, neither working nor idle.
 // The sleeps are read once from the systemd journal, `journalctl -t systemd-sleep`, and parsed by internal/sleepjournal, each running from systemd-sleep's "Performing sleep operation" entry to the next "System returned from sleep operation" entry of the same operation and boot.
@@ -141,12 +153,13 @@
 // "All runs" sums the table per producer over the runs that have one.
 //
 // Right after the "All runs" section, before the per-run sections, comes the "Orchestrator" section: the hub orchestrator's own session, which runs in the prime and spans many runs, charged to the counted runs.
-// An orch session is a session in the prime's project directory whose role is orch (ly:orch, lyxhub:orch), and its sub-agents, the orch's review, gate and stop forks, count as orch+sub;
+// An orch session is a session in the prime's project directory whose role is orch (ly:orch, lyxhub:orch), and its sub-agents, the orch's review, gate and stop forks, count as its forks;
 // usage is counted once per message id across them.
 // A run's active window runs from its earliest to its latest user or assistant line over all its transcripts, and only orch messages between the earliest window start and the latest window end are counted, so the orch's older history stays out.
 // An orch sub-agent whose first user prompt names exactly one counted run slug goes wholly to that run;
 // every other orch message is split equally among the runs whose window holds its timestamp, and one outside every window goes to the unattributed row.
-// The section gives the orch total split into main session and orch+sub, then per run the orch tokens and cost charged to it, the run's own cost and orch's percentage of the run's cost with orch included.
+// Each charge keeps its session and forks sides apart, which the Orch segment's parts show.
+// The section gives the orch total split into session and forks, then per run the orch tokens and cost charged to it, the run's own cost and orch's percentage of the run's cost with orch included.
 package main
 
 import (
@@ -202,6 +215,7 @@ func run(args []string, stdout io.Writer, reads ReadSet) error {
 	configDir := fs.String("config", "", "directory whose batcher.yaml holds the profile (default: the current directory)")
 	noCutoff := fs.Bool("no-cutoff", false, "turn off the archive-tag cutoff, so every located session of each slug counts")
 	noSleep := fs.Bool("no-sleep", false, "read no journal and count machine sleep as time")
+	detail := fs.Bool("detail", false, "add the sessions and token columns (output, cache write, cache read, input, weight) to every segment table")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -249,7 +263,7 @@ func run(args []string, stdout io.Writer, reads ReadSet) error {
 	if !*noSleep {
 		sleeps, sleepNote = journalSleeps()
 	}
-	report := Report{}
+	report := Report{Detail: *detail}
 	for _, slug := range slugs {
 		running, err := inFlight(*hub, slug)
 		if err != nil {
