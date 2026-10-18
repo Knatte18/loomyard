@@ -41,20 +41,24 @@ const (
 	commandIndexMarker = "command_index"
 	// decisionNoteTitleMarker is the role stencil's marker that the decision-note title form fills.
 	decisionNoteTitleMarker = "decision_note_title"
-	// repositoryRulesMarker is the role stencil's marker that the repository's ORCHESTRATOR.md fills.
-	repositoryRulesMarker = "repository_rules"
-	// noRepositoryRules fills repositoryRulesMarker when the repository has no ORCHESTRATOR.md.
-	noRepositoryRules = "This repository has no ORCHESTRATOR.md."
+	// hubRulesMarker is the role stencil's marker that the hub-wide rules file fills.
+	hubRulesMarker = "hub_rules"
+	// orchRulesMarker is the role stencil's marker that this orch's own rules file fills.
+	orchRulesMarker = "orch_rules"
+	// noHubRules fills hubRulesMarker when the hub-wide rules file is absent or blank; its verb is the path.
+	noHubRules = "This hub has no hub-wide orch rules; they go in %s."
+	// noOwnRules fills orchRulesMarker when this orch's own rules file is absent or blank; its verb is the path.
+	noOwnRules = "This orch has no rules of its own; they go in %s."
 )
 
 // RenderRoleFile renders the role stencil to path, creating its directory.
-// The command-index marker is filled with index and the repository-rules marker with the file at rulesPath.
+// The command-index marker is filled with index, the hub-rules marker with the file at hubRulesPath and the orch-rules marker with the file at ownRulesPath.
 // The decision-note title marker is filled with the title form for the placeholder slug "<slug>", since the role stencil is hub-wide.
-// A role stencil that lacks any of the three markers fails the render naming the stencil, so an operator-edited copy never silently renders without them.
+// A role stencil that lacks any of the four markers fails the render naming the stencil, so an operator-edited copy never silently renders without them.
 // A rules file that cannot be read returns its error and writes no file.
 // The write is a temporary file and a rename, so a reader never sees a partial file when two renders overlap.
 // The session reads the file through the one-line pointers, so a stencil edit applies from the next delivery.
-func RenderRoleFile(stencilsDir, path, index, rulesPath string) error {
+func RenderRoleFile(stencilsDir, path, index, hubRulesPath, ownRulesPath string) error {
 	template, err := stencilstore.Read(stencilsDir, roleStencilName)
 	if err != nil {
 		return fmt.Errorf("orch: read %s: %w", roleStencilName, err)
@@ -63,30 +67,34 @@ func RenderRoleFile(stencilsDir, path, index, rulesPath string) error {
 	if err != nil {
 		return fmt.Errorf("orch: read markers of %s: %w", roleStencilName, err)
 	}
-	for _, marker := range []string{commandIndexMarker, repositoryRulesMarker, decisionNoteTitleMarker} {
+	for _, marker := range []string{commandIndexMarker, hubRulesMarker, orchRulesMarker, decisionNoteTitleMarker} {
 		if !slices.Contains(markers, marker) {
 			return fmt.Errorf("orch: %s declares no {{.%s}} marker: restore the marker, or delete the override so the shipped stencil applies", roleStencilName, marker)
 		}
 	}
-	rules, err := readRepositoryRules(rulesPath)
+	hubRules, err := readRules(hubRulesPath, noHubRules)
 	if err != nil {
 		return err
 	}
-	return renderFile(stencilsDir, roleStencilName, path, map[string]string{commandIndexMarker: index, repositoryRulesMarker: rules, decisionNoteTitleMarker: alignment.DecisionNoteTitle("<slug>")})
+	ownRules, err := readRules(ownRulesPath, noOwnRules)
+	if err != nil {
+		return err
+	}
+	return renderFile(stencilsDir, roleStencilName, path, map[string]string{commandIndexMarker: index, hubRulesMarker: hubRules, orchRulesMarker: ownRules, decisionNoteTitleMarker: alignment.DecisionNoteTitle("<slug>")})
 }
 
-// readRepositoryRules returns the content of the repository's ORCHESTRATOR.md at path, as it stands.
-// A missing file, or one holding only whitespace, yields the placeholder line.
-func readRepositoryRules(path string) (string, error) {
+// readRules returns the content of the rules file at path, as it stands.
+// A missing file, or one holding only whitespace, yields placeholder with path filled in.
+func readRules(path, placeholder string) (string, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
-		return noRepositoryRules, nil
+		return fmt.Sprintf(placeholder, path), nil
 	}
 	if err != nil {
-		return "", fmt.Errorf("orch: read repository rules %s: %w; fix the file or remove it", path, err)
+		return "", fmt.Errorf("orch: read rules %s: %w; fix the file or remove it", path, err)
 	}
 	if strings.TrimSpace(string(data)) == "" {
-		return noRepositoryRules, nil
+		return fmt.Sprintf(placeholder, path), nil
 	}
 	return string(data), nil
 }

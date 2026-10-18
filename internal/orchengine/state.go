@@ -35,7 +35,9 @@ type Paths struct {
 
 	RolePath         string // Role file rendered from the role stencil before every delivery.
 	NoteTemplatePath string // Note template file rendered before every note request.
-	RepoRulesPath    string // The repository's ORCHESTRATOR.md, read at every role-file render.
+	HubRulesPath     string // The hub-wide orch rules file on Bolt, read at every role-file render.
+	OwnRulesPath     string // This orch thread's own rules file under its worktree's `_lyx/orch/`, read at every role-file render.
+	PrimeRoot        string // The prime's worktree root, which a relative note path resolves against.
 }
 
 // PendingStep is one post or inject the watcher persisted before sending it to creel.

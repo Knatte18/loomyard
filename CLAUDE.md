@@ -27,7 +27,9 @@ There is no versioning: plugins stay at `1.0.0`.
 Task worktrees are torn down on merge, and the file-based `memory/` store goes with them.
 Put durable notes in this file, `_lyx/raddle/` or code comments.
 `_lyx/raddle/` reaches the parent by being regenerated against the parent's HEAD at landing, never through a merge.
-A rule or workaround only the orch needs goes in `ORCHESTRATOR.md`, never in `CLAUDE.md`.
+A rule or workaround only the orch needs goes in the orch rules, never in `CLAUDE.md`:
+the hub-wide file on Bolt, `_board/_lyx/orch/rules.md`, written through `lyx orch rules`, when every orch of the hub needs it,
+and the orch thread's own `_lyx/orch/rules.md`, committed with `lyx fabric commit`, when only that thread does.
 
 ## Worktrees
 

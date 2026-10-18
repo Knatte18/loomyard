@@ -170,13 +170,13 @@ func NewWatcher(session Session, creel Creel, cfg Config, paths Paths, stencilsD
 }
 
 // renderRoleFile fetches the command index and renders the role file with it.
-// Its error is worded as an abort reason naming the failing source, the index, the role stencil or ORCHESTRATOR.md.
+// Its error is worded as an abort reason naming the failing source, the index, the role stencil or a rules file.
 func (w *Watcher) renderRoleFile() error {
 	index, err := w.index()
 	if err != nil {
 		return fmt.Errorf("command index unavailable: %w", err)
 	}
-	if err := RenderRoleFile(w.stencilsDir, w.paths.RolePath, index, w.paths.RepoRulesPath); err != nil {
+	if err := RenderRoleFile(w.stencilsDir, w.paths.RolePath, index, w.paths.HubRulesPath, w.paths.OwnRulesPath); err != nil {
 		return fmt.Errorf("role file failed to render: %w", err)
 	}
 	return nil
@@ -589,7 +589,7 @@ func (w *Watcher) isRequestedNote(path string, st State) bool {
 		return false
 	}
 	if !filepath.IsAbs(path) {
-		path = filepath.Join(filepath.Dir(w.paths.RepoRulesPath), path)
+		path = filepath.Join(w.paths.PrimeRoot, path)
 	}
 	return filepath.Clean(path) == filepath.Clean(st.PendingHandoff)
 }

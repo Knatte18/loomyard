@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -707,13 +708,18 @@ func TestStart_FreshLaunchResetsAbandonedPhase(t *testing.T) {
 
 const adoptTestSessionID = "11111111-2222-3333-4444-555555555555"
 
-func TestPrimePaths_RootsRepositoryRulesAtTheWorktree(t *testing.T) {
+func TestPrimePaths_JoinsRuleFilesAndPrimeRoot(t *testing.T) {
 	t.Parallel()
 
 	hub := t.TempDir()
-	got := PrimePaths(locationkit.Location(hub, "main", "sub/dir")).RepoRulesPath
-	if want := filepath.Join(hub, "main", "ORCHESTRATOR.md"); got != want {
-		t.Errorf("PrimePaths().RepoRulesPath = %q; want %q", got, want)
+	got := PrimePaths(locationkit.Location(hub, "main", "sub/dir"))
+	want := orchengine.Paths{
+		HubRulesPath: filepath.Join(fabricengine.BoardDir(hub), lyxdirs.LyxDirName, "orch", "rules.md"),
+		OwnRulesPath: filepath.Join(hub, "main", "sub", "dir", lyxdirs.LyxDirName, "orch", "rules.md"),
+		PrimeRoot:    filepath.Join(hub, "main"),
+	}
+	if got.HubRulesPath != want.HubRulesPath || got.OwnRulesPath != want.OwnRulesPath || got.PrimeRoot != want.PrimeRoot {
+		t.Errorf("PrimePaths() rules paths and prime root = %q, %q, %q; want %q, %q, %q", got.HubRulesPath, got.OwnRulesPath, got.PrimeRoot, want.HubRulesPath, want.OwnRulesPath, want.PrimeRoot)
 	}
 }
 
@@ -728,18 +734,28 @@ func TestStart_Refusals(t *testing.T) {
 		wantIn []string
 		// seed, when set, writes the state file before start runs.
 		seed func(t *testing.T, h *startHarness)
-		// wantRulesPath adds the repository rules path to the wanted substrings.
-		wantRulesPath bool
+		// rulesPath, when set, picks the rules path that seed makes unreadable and the refusal must name.
+		rulesPath func(p orchengine.Paths) string
 	}{
 		{
-			name: "unreadable repository rules",
+			name: "unreadable hub rules",
 			args: func(string) []string { return nil },
 			seed: func(t *testing.T, h *startHarness) {
-				if err := os.MkdirAll(h.cli.paths.RepoRulesPath, 0o755); err != nil {
+				if err := os.MkdirAll(h.cli.paths.HubRulesPath, 0o755); err != nil {
 					t.Fatal(err)
 				}
 			},
-			wantRulesPath: true,
+			rulesPath: func(p orchengine.Paths) string { return p.HubRulesPath },
+		},
+		{
+			name: "unreadable own rules",
+			args: func(string) []string { return nil },
+			seed: func(t *testing.T, h *startHarness) {
+				if err := os.MkdirAll(h.cli.paths.OwnRulesPath, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			},
+			rulesPath: func(p orchengine.Paths) string { return p.OwnRulesPath },
 		},
 		{
 			name:    "handoff with a live strand",
@@ -866,8 +882,8 @@ func TestStart_Refusals(t *testing.T) {
 					t.Errorf("refusal %q missing %q", msg, want)
 				}
 			}
-			if c.wantRulesPath && !strings.Contains(msg, h.cli.paths.RepoRulesPath) {
-				t.Errorf("refusal %q missing %q", msg, h.cli.paths.RepoRulesPath)
+			if c.rulesPath != nil && !strings.Contains(msg, c.rulesPath(h.cli.paths)) {
+				t.Errorf("refusal %q missing %q", msg, c.rulesPath(h.cli.paths))
 			}
 			if len(h.starter.specs) != 0 || h.spawns != 0 {
 				t.Errorf("starts = %d, spawns = %d; want none", len(h.starter.specs), h.spawns)

@@ -1601,15 +1601,16 @@ func TestWatcher_FailingRenderAbortsWithoutClear(t *testing.T) {
 		content string
 		// indexErr makes the index source fail instead of the stencil, which stays as shipped.
 		indexErr error
-		// rulesDir makes the repository rules unreadable by creating a directory at their path, and wants the reason to name that path.
-		rulesDir bool
+		// rulesDir makes a rules file unreadable by creating a directory at the path it returns, and wants the reason to name that path.
+		rulesDir func(Paths) string
 		// wantReason is the abort reason's prefix, which names the failing source.
 		wantReason string
 	}{
 		{name: "role", stencil: roleStencilName, content: "{{.nope}}", wantReason: "role file failed to render: orch: " + roleStencilName},
 		{name: "resume", stencil: resumeStencilName, content: "line one\nline two\n", wantReason: "resume stencil " + resumeStencilName},
 		{name: "index source", stencil: roleStencilName, indexErr: errBoom, wantReason: "command index unavailable: " + errBoom.Error()},
-		{name: "repository rules", rulesDir: true, wantReason: "role file failed to render: "},
+		{name: "hub rules", rulesDir: func(p Paths) string { return p.HubRulesPath }, wantReason: "role file failed to render: "},
+		{name: "own rules", rulesDir: func(p Paths) string { return p.OwnRulesPath }, wantReason: "role file failed to render: "},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -1618,8 +1619,8 @@ func TestWatcher_FailingRenderAbortsWithoutClear(t *testing.T) {
 			e.injectHandoff()
 			if c.indexErr != nil {
 				e.indexErr = c.indexErr
-			} else if c.rulesDir {
-				if err := os.MkdirAll(e.paths.RepoRulesPath, 0o755); err != nil {
+			} else if c.rulesDir != nil {
+				if err := os.MkdirAll(c.rulesDir(e.paths), 0o755); err != nil {
 					t.Fatal(err)
 				}
 			} else if err := os.WriteFile(stencilstore.Path(e.stDir, c.stencil), []byte(c.content), 0o644); err != nil {
@@ -1630,8 +1631,8 @@ func TestWatcher_FailingRenderAbortsWithoutClear(t *testing.T) {
 			if st.Phase != PhaseIdle || e.s.count("clear") != 0 || !strings.HasPrefix(st.LastAbortReason, c.wantReason) {
 				t.Fatalf("state = %+v calls = %v", st, e.s.calls)
 			}
-			if c.rulesDir && !strings.Contains(st.LastAbortReason, e.paths.RepoRulesPath) {
-				t.Errorf("abort reason %q does not name %s", st.LastAbortReason, e.paths.RepoRulesPath)
+			if c.rulesDir != nil && !strings.Contains(st.LastAbortReason, c.rulesDir(e.paths)) {
+				t.Errorf("abort reason %q does not name %s", st.LastAbortReason, c.rulesDir(e.paths))
 			}
 		})
 	}
@@ -2398,6 +2399,22 @@ func TestWatcher_NoteReplyGate(t *testing.T) {
 		e := newWatchEnv(t)
 		e.injectHandoff()
 		e.finishNote()
+		if st := e.state(); st.Phase != PhaseClearing || e.s.count("clear") != 1 {
+			t.Fatalf("phase = %s calls = %v", st.Phase, e.s.calls)
+		}
+	})
+
+	t.Run("a reply naming the note relative to the prime root moves on to clearing", func(t *testing.T) {
+		t.Parallel()
+		e := newWatchEnv(t)
+		e.injectHandoff()
+		path := e.writeHandoff()
+		rel, err := filepath.Rel(e.paths.PrimeRoot, path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		e.reply("written " + rel)
+		e.tick()
 		if st := e.state(); st.Phase != PhaseClearing || e.s.count("clear") != 1 {
 			t.Fatalf("phase = %s calls = %v", st.Phase, e.s.calls)
 		}

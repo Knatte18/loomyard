@@ -24,7 +24,9 @@ func testPaths(t *testing.T) Paths {
 		WatchLogPath:     filepath.Join(dir, "watch.log"),
 		RolePath:         filepath.Join(dir, "role.md"),
 		NoteTemplatePath: filepath.Join(dir, "note-template.md"),
-		RepoRulesPath:    filepath.Join(filepath.Dir(dir), "ORCHESTRATOR.md"),
+		PrimeRoot:        filepath.Dir(dir),
+		HubRulesPath:     filepath.Join(filepath.Dir(dir), "board", "rules", "hub.md"),
+		OwnRulesPath:     filepath.Join(filepath.Dir(dir), "own", "rules.md"),
 	}
 }
 
