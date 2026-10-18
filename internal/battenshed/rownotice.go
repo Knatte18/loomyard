@@ -62,7 +62,7 @@ func ClearRunMarkers(scratchDir string) error {
 
 // RowNoticeDeps carries the seams a row's notices go through.
 type RowNoticeDeps struct {
-	// Notify hands one notice line to whoever tells the orch, and reports whether the line was queued.
+	// Notify hands one notice line to whoever tells the orch, and reports whether the line was posted.
 	// A nil Notify switches the row's notices off.
 	Notify func(ctx context.Context, line string) (queued bool, err error)
 	// OrchStrandRecorded reports whether the orch the notices go to has a strand recorded to receive them.
@@ -127,7 +127,7 @@ func (n rowNotifier) setMarkerLine(prefix, line string) {
 	}
 }
 
-// failed queues one notice per failure episode of the row, naming the failed step and the way forward.
+// failed posts one notice per failure episode of the row, naming the failed step and the way forward.
 // An episode is told apart by batten's history length: a failure at the length the marker recorded is the same episode and sends nothing.
 // A history that cannot be read reads as a new episode, since a repeated notice costs less than a lost one.
 // A cancelled context sends nothing, and a notice never changes the row's outcome.
@@ -159,10 +159,10 @@ func (n rowNotifier) failed(ctx context.Context, step, reason string) {
 	}
 }
 
-// HandBackNotice sends line for the stop at the batten row producer, whose stop key's history length is historyLen, and reports whether it was queued.
+// HandBackNotice sends line for the stop at the batten row producer, whose stop key's history length is historyLen, and reports whether it was posted.
 // It sends nothing when the row's marker holds `failure <historyLen-1>`, the row's own notice of this stop, since a row records the length it read before its halting entry was appended.
 // It also sends nothing for `handback <historyLen>`, an earlier hand-back of the same stop by a driver that restarted.
-// Otherwise it sends through the row's own notifier, so the line is retried as a row notice is, and a queued line records `handback <historyLen>`.
+// Otherwise it sends through the row's own notifier, so the line is retried as a row notice is, and a posted line records `handback <historyLen>`.
 // A nil deps.Notify or a cancelled context sends nothing.
 func HandBackNotice(ctx context.Context, deps RowNoticeDeps, slug, scratchDir, producer string, historyLen int, line string) bool {
 	if deps.Notify == nil || ctx.Err() != nil {
@@ -183,9 +183,9 @@ func HandBackNotice(ctx context.Context, deps RowNoticeDeps, slug, scratchDir, p
 	return true
 }
 
-// send makes at most noticeMaxAttempts attempts, rowNoticeRetrySpacing apart, to queue line, and reports whether it was queued.
+// send makes at most noticeMaxAttempts attempts, rowNoticeRetrySpacing apart, to post line, and reports whether it was posted.
 // With no orch strand recorded it does not call Notify and warns once.
-// A line still unqueued after the attempts is dropped with a Warn.
+// A line still unposted after the attempts is dropped with a Warn.
 func (n rowNotifier) send(ctx context.Context, line string) bool {
 	if n.deps.OrchStrandRecorded != nil {
 		recorded, err := n.deps.OrchStrandRecorded()
