@@ -49,10 +49,6 @@ The task that builds a design writes it into the package's `doc.go` and never ch
 the landing marks the entry done and the board prune removes it, so no pointer is left behind.
 No decision, card or step of a run changes the running task's own board entry's body or scope, because the run's board lock refuses such a change.
 
-## Test budget
-
-A card whose new top-level tests push a package past its row in `cmd/lyx/testdata/test-budget.yaml` lists that file under `Edit:`.
-
 ## Markdown: semantic line breaks
 
 One sentence per line, never fixed-column wrapping, in every `.md` file; see `scribe:prose`.

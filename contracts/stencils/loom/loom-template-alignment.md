@@ -73,7 +73,7 @@ Also escalate on a question that needs a decision the board and the records do n
 Every escalation fills `question`:
 for a design conflict it names the peer and what conflicts, and for an open question it names the question and the record or entry that leaves it open.
 
-A shared bookkeeping file alone is not an overlap: `cmd/lyx/testdata/test-budget.yaml`, a module-table line in the overview doc and a new PATTERN index line are named in the report and do not escalate.
+A shared bookkeeping file alone is not an overlap: a module-table line in the overview doc and a new PATTERN index line are named in the report and do not escalate.
 
 ## Landing order
 
