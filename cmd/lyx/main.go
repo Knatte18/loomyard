@@ -27,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configcli"
 	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gatecli"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/helpcli"
@@ -84,6 +85,17 @@ func run(args []string, out io.Writer) int {
 	return code
 }
 
+// pauseSlugOverride returns a pointer to the pause slug the executing command was told by its hidden flag, empty included.
+// It returns nil when the command has no such flag or the flag was not set, so the gate takes its slug from the working directory.
+func pauseSlugOverride(cmd *cobra.Command) *string {
+	flag := cmd.Flags().Lookup(fabricengine.PauseSlugFlag)
+	if flag == nil || !flag.Changed {
+		return nil
+	}
+	slug := flag.Value.String()
+	return &slug
+}
+
 // newRoot builds the lyx cobra root with all module subcommands, --json flag, and JSON help.
 func newRoot() *cobra.Command {
 	var verbosity int
@@ -113,7 +125,7 @@ Shortcuts, declared in internal/shortcutcli's embedded file, are listed under th
 				logger.MintOrAdoptAndExport()
 				logger.Arm()
 				// The pause gate holds this process's network git and GitHub calls while a pause covers it.
-				tendercli.InstallNetworkGate(cmd.Context())
+				tendercli.InstallNetworkGate(cmd.Context(), pauseSlugOverride(cmd))
 			}
 			// Seeding must never block a command from running, regardless of its outcome.
 			seedStencils(cmd)

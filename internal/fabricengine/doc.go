@@ -174,9 +174,20 @@
 //
 // Once `Commit` has attempted the weft side (if any),
 // and the combined write lock (see below) has already been released, it fires an unconditional,
-// detached, fire-and-forget push of both repos via `SpawnDetachedPush` whenever anything landed on
+// detached, fire-and-forget push via `SpawnDetachedPush` whenever anything landed on
 // either side (`WarpCommitted || WeftCommitted`) — the async-push-both-sides-via-detached-child
-// Shared Decision, with the code side's path left empty in the hub's prime, so the child pushes the records side only — and `opts.SkipGit`/`opts.SkipPush` interact with this two-step call in ways
+// Shared Decision.
+// The request is the one `SpawnStatusPush` builds, built before any lock so a failure lands no commit:
+// the records side only in the hub's prime, both sides in a task pair, and a local-only side left out and named in `CommitResult.PushLocalSkipped`.
+//
+// `SpawnStatusPush(l, gateSlug)` is the one entry point for a status push, building its request from the location alone so no caller names a records path or pushes the prime's code branch.
+// In the prime the request holds the records side, `PauseSlug` the caller's gate slug and no `TeardownSlug`;
+// in a task pair it holds both sides with `PauseSlug` and `TeardownSlug` both the pair's own slug.
+// The child starts in the hub's `_board` worktree, outside both of the pair's worktrees, and resolves its hub from there through `lyxcwd.ResolveWorktree`.
+// It reads the local-only mark of each side's branch first: a marked side is left out and named in `SpawnResult.LocalSkipped`, and with no side left nothing is spawned.
+// `SpawnDetachedPush` returns `ErrSpawnUnderTest` in a test binary, so no test forks a real push child.
+//
+// `opts.SkipGit`/`opts.SkipPush` interact with this two-step call in ways
 // that narrow their general contract, worth stating plainly rather than leaving a caller to infer
 // them from behavior. `opts.SkipGit` is **weft-scoped** for `Fabric.Commit` specifically: it gates
 // only whether the weft-side commit is attempted at all;

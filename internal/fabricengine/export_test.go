@@ -290,8 +290,11 @@ func writeWarpFile(t *testing.T, warpPath, name, content string) {
 // obtained from an exported function, and holding such a value via `:=` type inference, without ever
 // needing to spell the unexported type name.
 type pushCall struct {
-	WarpPath string
-	WeftPath string
+	WarpPath     string
+	WeftPath     string
+	PauseSlug    string
+	TeardownSlug string
+	WorkDir      string
 }
 
 // pushRecorder collects spawnDetachedPushFn invocations under a mutex.
@@ -303,13 +306,28 @@ type pushCall struct {
 type pushRecorder struct {
 	mu    sync.Mutex
 	calls []pushCall
+	// Err is what the swapped seam returns, nil unless a test sets it.
+	Err error
 }
 
 // record appends one invocation.
-func (r *pushRecorder) record(warpPath, weftPath string) {
+func (r *pushRecorder) record(req PushSpawn) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.calls = append(r.calls, pushCall{WarpPath: warpPath, WeftPath: weftPath})
+	r.calls = append(r.calls, pushCall{
+		WarpPath:     req.WarpPath,
+		WeftPath:     req.WeftPath,
+		PauseSlug:    req.PauseSlug,
+		TeardownSlug: req.TeardownSlug,
+		WorkDir:      req.WorkDir,
+	})
+}
+
+// Reset forgets everything recorded so far.
+func (r *pushRecorder) Reset() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls = nil
 }
 
 // Calls returns a copy of everything recorded so far, safe to read while other goroutines are still
@@ -334,9 +352,11 @@ func swapPushRecorder(t *testing.T) *pushRecorder {
 
 	recorder := &pushRecorder{}
 	original := spawnDetachedPushFn
-	spawnDetachedPushFn = func(warpPath, weftPath string) error {
-		recorder.record(warpPath, weftPath)
-		return nil
+	spawnDetachedPushFn = func(req PushSpawn) error {
+		recorder.record(req)
+		recorder.mu.Lock()
+		defer recorder.mu.Unlock()
+		return recorder.Err
 	}
 	t.Cleanup(func() { spawnDetachedPushFn = original })
 	return recorder

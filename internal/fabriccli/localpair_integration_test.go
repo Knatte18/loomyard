@@ -6,6 +6,8 @@
 package fabriccli_test
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -44,20 +46,27 @@ func TestRunCLI_LocalPairScenario(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("push exit = %d; output: %s", code, output)
 		}
-		result := envelope.RequireOK(t, output)
-		skipped, _ := result.Raw["local_skipped"].([]any)
-		got := map[string]bool{}
-		for _, branch := range skipped {
-			name, _ := branch.(string)
-			got[name] = true
-		}
-		for _, want := range []string{localSlug, fabricengine.RecordsBranchName(localSlug)} {
-			if !got[want] {
-				t.Errorf("local_skipped = %v; want it to name %q\noutput: %s", skipped, want, output)
-			}
-		}
+		requireLocalSkipped(t, output, localSlug)
 		if gitkit.BranchExists(t, h.CodeBare, localSlug) {
 			t.Errorf("origin code bare carries %q; want a local pair never pushed", localSlug)
+		}
+	}) {
+		return
+	}
+
+	if !t.Run("SyncSpawnsNothingForALocalPair", func(t *testing.T) {
+		syncNote := filepath.Join(h.PairCodeWorktree(localSlug), "_lyx", "sync-note.txt")
+		if err := os.WriteFile(syncNote, []byte("a local record to sync\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+		code, output := runFabric(t, h.PairCodeWorktree(localSlug), "sync")
+		if code != 0 {
+			t.Fatalf("sync exit = %d; output: %s", code, output)
+		}
+		result := envelope.RequireOK(t, output)
+		requireLocalSkipped(t, output, localSlug)
+		if targets := pushSpawnedTargets(result); len(targets) != 0 {
+			t.Errorf("push_spawned targets = %v; want none for a local pair\noutput: %s", targets, output)
 		}
 	}) {
 		return
@@ -77,4 +86,22 @@ func TestRunCLI_LocalPairScenario(t *testing.T) {
 		envelope.RequireErr(t, output, "lyx fabric checkout")
 		envelope.RequireErr(t, output, "git branch -D")
 	})
+}
+
+// requireLocalSkipped asserts the envelope in output names both branches of slug's local pair under local_skipped.
+func requireLocalSkipped(t *testing.T, output, slug string) {
+	t.Helper()
+
+	result := envelope.RequireOK(t, output)
+	skipped, _ := result.Raw["local_skipped"].([]any)
+	got := map[string]bool{}
+	for _, branch := range skipped {
+		name, _ := branch.(string)
+		got[name] = true
+	}
+	for _, want := range []string{slug, fabricengine.RecordsBranchName(slug)} {
+		if !got[want] {
+			t.Errorf("local_skipped = %v; want it to name %q\noutput: %s", skipped, want, output)
+		}
+	}
 }

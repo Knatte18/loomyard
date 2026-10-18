@@ -62,6 +62,10 @@ func addWeftVerbs(cmd *cobra.Command) {
 	cmd.PersistentFlags().MarkHidden("weft-path") //nolint:errcheck
 	cmd.PersistentFlags().String("warp-path", "", "internal: injected absolute warp worktree path for the detached push child")
 	cmd.PersistentFlags().MarkHidden("warp-path") //nolint:errcheck
+	cmd.PersistentFlags().String(fabricengine.PauseSlugFlag, "", "internal: the slug the detached push child's network calls are held under, empty for the prime")
+	cmd.PersistentFlags().MarkHidden(fabricengine.PauseSlugFlag) //nolint:errcheck
+	cmd.PersistentFlags().String(fabricengine.TeardownSlugFlag, "", "internal: the pair whose teardown the detached push child yields to")
+	cmd.PersistentFlags().MarkHidden(fabricengine.TeardownSlugFlag) //nolint:errcheck
 
 	fabricCmd := cmd
 	cmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
@@ -328,6 +332,7 @@ return immediately — the push happens in the background, coalesced under
 fabric's push lock.
 In the hub's prime only the weft branch is handed over, because the prime's
 code branch is the operator's parent branch to push.
+A branch marked local-only is left out, and the envelope's local_skipped names it.
 
 Related commands:
   lyx fabric commit — commit only
@@ -337,11 +342,6 @@ Related commands:
 				return nil
 			}
 			out := cmd.OutOrStdout()
-			isPrime, err := fabricengine.IsPrimeWorktree(l)
-			if err != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
-				return nil
-			}
 			rec := fabricengine.NewMutations(l.HubPath)
 			commitRes, err := fab.Commit(pathspec, fabricengine.DefaultCommitMessage, nil, fabricengine.EnvSyncOptions())
 			rec.Extend(commitRes.Mutated())
@@ -349,23 +349,25 @@ Related commands:
 				clihelp.SetExit(cmd.Context(), errWithRecord(out, rec.Snapshot(), err))
 				return nil
 			}
-			warpWorktree := l.WorktreePath()
-			if isPrime {
-				warpWorktree = ""
-			}
-			weftWorktree := fabricengine.RecordsWorktree(l)
-			if err := spawnPush(warpWorktree, weftWorktree); err != nil {
+			spawn, err := spawnPush(l)
+			if err != nil {
 				clihelp.SetExit(cmd.Context(), errWithRecord(out, rec.Snapshot(), err))
 				return nil
 			}
 			// The push happens in a detached child process after this one returns,
 			// so its outcome is unobservable here:
 			// record one KindPushSpawned entry per side handed to the child, never branch_pushed, which would assert an outcome this process did not observe.
-			if warpWorktree != "" {
-				rec.Append(fabricengine.KindPushSpawned, warpWorktree, "detached")
+			if spawn.Request.WarpPath != "" {
+				rec.Append(fabricengine.KindPushSpawned, spawn.Request.WarpPath, "detached")
 			}
-			rec.Append(fabricengine.KindPushSpawned, weftWorktree, "detached")
-			clihelp.SetExit(cmd.Context(), okWithRecord(out, rec.Snapshot(), map[string]any{}))
+			if spawn.Request.WeftPath != "" {
+				rec.Append(fabricengine.KindPushSpawned, spawn.Request.WeftPath, "detached")
+			}
+			fields := map[string]any{}
+			if len(spawn.LocalSkipped) > 0 {
+				fields["local_skipped"] = spawn.LocalSkipped
+			}
+			clihelp.SetExit(cmd.Context(), okWithRecord(out, rec.Snapshot(), fields))
 			return nil
 		},
 	}
