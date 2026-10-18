@@ -378,10 +378,14 @@ func TestScheduler_Reminders(t *testing.T) {
 		{"ProgramNoticeIsTypedAsItsLineReadAndLeftOutOfTheReminder", func(t *testing.T, e *env) {
 			notice := e.post(t, program(batten), beta, "task-x: landed; newly ready: task-y")
 			e.post(t, strand(alpha), beta, "hello")
+			if _, err := e.store.Inject(program(batten), beta, "/one", 0, false); err != nil {
+				t.Fatalf("Inject: %v", err)
+			}
 			e.start(t)
 			e.probeWaits(1)
 			e.tick(time.Second)
-			want := []string{"[creel] #1 from " + batten + ": task-x: landed; newly ready: task-y", reminderFor(1, "", "#2 from "+alpha)}
+			e.tick(time.Second)
+			want := []string{"/one", "[creel] #1 from " + batten + ": task-x: landed; newly ready: task-y", reminderFor(1, "", "#2 from "+alpha)}
 			if got := e.typed(beta); !slices.Equal(got, want) {
 				t.Errorf("typed %q; want %q", got, want)
 			}
@@ -409,6 +413,25 @@ func TestScheduler_Reminders(t *testing.T) {
 			}
 			if got := e.typed(beta); !slices.Equal(got, want) {
 				t.Errorf("typed %q; want %q", got, want)
+			}
+		}},
+		{"NoticeAReadHoldsReservedIsRemindedNotTypedAndJournaledReadOnce", func(t *testing.T, e *env) {
+			notice := e.post(t, program(batten), beta, "reserved")
+			reading, err := e.store.Read(strand(beta), "")
+			if err != nil {
+				t.Fatalf("Read: %v", err)
+			}
+			e.start(t)
+			e.probeWaits(1)
+			want := []string{reminderFor(1, "", "#1 from "+batten)}
+			if got := e.typed(beta); !slices.Equal(got, want) {
+				t.Fatalf("typed %q while a read held the notice; want %q", got, want)
+			}
+			if err := reading.Ack(); err != nil {
+				t.Fatalf("Ack: %v", err)
+			}
+			if got := eventsOf(e.store.Log(creelengine.LogFilter{ID: notice})); !slices.Equal(got, []string{"posted", "reminded", "read"}) {
+				t.Errorf("Log(#%d) events = %v; want posted, reminded and one read", notice, got)
 			}
 		}},
 		{"BusyNoticeStaysUnreadAndANotLandedOneIsRead", func(t *testing.T, e *env) {
@@ -467,6 +490,7 @@ func TestScheduler_Reminders(t *testing.T) {
 			}
 			e.start(t)
 			e.post(t, strand(alpha), beta, "muted")
+			e.post(t, program(webster), beta, "muted notice")
 			e.probeWaits(1)
 			if got := e.typed(beta); len(got) != 0 {
 				t.Fatalf("typed %q under another sender's hold", got)
@@ -476,12 +500,13 @@ func TestScheduler_Reminders(t *testing.T) {
 			e.probeWaits(before + 1)
 			e.post(t, program(batten), beta, strings.Repeat("y", 4097))
 			e.probeWaits(before + 2)
-			want := []string{"[creel] #2 from " + batten + ": from the owner", reminderFor(1, batten, "#3 from "+batten)}
+			want := []string{"[creel] #3 from " + batten + ": from the owner", reminderFor(1, batten, "#4 from "+batten)}
 			if got := e.typed(beta); !slices.Equal(got, want) {
 				t.Fatalf("typed %q; want only the owner's notice and mail", got)
 			}
 			e.tick(31 * time.Minute)
-			want = append(want, reminderFor(2, "", "#1 from "+alpha, "#3 from "+batten))
+			e.tick(time.Second)
+			want = append(want, "[creel] #2 from "+webster+": muted notice", reminderFor(2, "", "#1 from "+alpha, "#4 from "+batten))
 			if got := e.typed(beta); !slices.Equal(got, want) {
 				t.Errorf("typed %q after the hold ended; want %q", got, want)
 			}

@@ -22,6 +22,8 @@ const (
 	orch   = "ly:orch"
 	orch2  = "ly:orch-2"
 	batten = "ly:BATTEN"
+	// webster is a second program, one that owns no hold.
+	webster = "ly:WEBSTER"
 )
 
 var epoch = time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
