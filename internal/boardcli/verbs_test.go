@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
@@ -487,7 +488,34 @@ func stepLabelsListShapedPrintsNamesWithEmptyDescriptions(t *testing.T, f *cliFi
 	}
 }
 
-// stepRunSettings pins run_settings on the upsert verbs: a valid setting is stored migrated, each refusal names the module or the key, a task session's change is refused while an identical re-write passes, and a change on an entry past Seed-Child returns the notice.
+// stepProfiles pins the profiles verb: with no profiles.yaml it prints the template's starting profiles with their settings in name order, and a hub file without profiles prints an empty list.
+func stepProfiles(t *testing.T, f *cliFixture) {
+	result := runJSON(t, 0, "profiles")
+	list, _ := result["profiles"].([]any)
+	var names []string
+	for _, entry := range list {
+		profile, _ := entry.(map[string]any)
+		name, _ := profile["name"].(string)
+		names = append(names, name)
+		if settings, _ := profile["settings"].(map[string]any); len(settings) == 0 {
+			t.Errorf("profile %q has no settings; got %v", name, profile)
+		}
+	}
+	if want := []string{"budget", "docs", "light"}; !slices.Equal(names, want) {
+		t.Errorf("profile names = %v, want %v", names, want)
+	}
+
+	boardDir := fabricengine.BoardDir(filepath.Dir(f.cwd))
+	if err := os.WriteFile(configengine.ConfigFile(boardDir, "profiles"), []byte("# none\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result = runJSON(t, 0, "profiles")
+	if list, isList := result["profiles"].([]any); !isList || len(list) != 0 {
+		t.Errorf("profiles = %v, want []", result["profiles"])
+	}
+}
+
+// stepRunSettings pins run_settings and profile on the upsert verbs: a valid setting or known profile is stored, each refusal names the module, the key or the profile, a task session's change is refused while an identical re-write passes, and a change on an entry past Seed-Child returns the notice.
 func stepRunSettings(t *testing.T, f *cliFixture) {
 	const loomBounces = `{"slug":"rs","title":"RS","kind":"task","labels":["bug"],"run_settings":{"loom":{"review_max_bounces":2}}}`
 
@@ -511,12 +539,34 @@ func stepRunSettings(t *testing.T, f *cliFixture) {
 		{name: "a key absent from the template", payload: `{"slug":"bad","run_settings":{"loom":{"no_such_key":1}}}`, wantErr: []string{"loom", "no_such_key"}},
 		{name: "a shape mismatch", payload: `{"slug":"bad","run_settings":{"loom":{"review_max_bounces":{"a":1}}}}`, wantErr: []string{"loom", "review_max_bounces"}},
 		{name: "a closed key", payload: `{"slug":"bad","run_settings":{"loom":{"discussion_advisors":[{"name":"critic","model":"sonnet[low]"}]}}}`, wantErr: []string{"loom", "discussion_advisors"}},
+		{name: "a profile that is not a string", payload: `{"slug":"bad","profile":3}`, wantErr: []string{"profile must be a string"}},
+		{name: "an unknown profile", payload: `{"slug":"bad","profile":"heavy"}`, wantErr: []string{`"heavy"`, "known: budget, docs, light", "lyx config profiles --set heavy="}},
 	}
 	for _, tt := range refusals {
 		t.Run("refuses "+tt.name, func(t *testing.T) {
 			result := runJSON(t, 1, "upsert", tt.payload)
 			message, _ := result["error"].(string)
 			for _, want := range tt.wantErr {
+				if !strings.Contains(message, want) {
+					t.Errorf("error %q lacks %q", message, want)
+				}
+			}
+		})
+	}
+
+	batchAndMerge := []struct {
+		name    string
+		verb    string
+		payload string
+	}{
+		{name: "upsert-batch", verb: "upsert-batch", payload: `{"tasks":[{"slug":"bad","profile":"heavy"}]}`},
+		{name: "merge", verb: "merge", payload: `{"upsert":{"slug":"bad","title":"B","labels":["bug"],"profile":"heavy"}}`},
+	}
+	for _, tt := range batchAndMerge {
+		t.Run(tt.name+" refuses an unknown profile", func(t *testing.T) {
+			result := runJSON(t, 1, tt.verb, tt.payload)
+			message, _ := result["error"].(string)
+			for _, want := range []string{`"heavy"`, "known: budget, docs, light"} {
 				if !strings.Contains(message, want) {
 					t.Errorf("error %q lacks %q", message, want)
 				}
@@ -531,6 +581,29 @@ func stepRunSettings(t *testing.T, f *cliFixture) {
 		result := runJSON(t, 1, "upsert", strings.Replace(loomBounces, `"review_max_bounces":2`, `"review_max_bounces":3`, 1))
 		if message, _ := result["error"].(string); !strings.Contains(message, "ly:task-a:loom") {
 			t.Errorf("error %q does not name the session", message)
+		}
+		result = runJSON(t, 1, "upsert", `{"slug":"rs","profile":"light"}`)
+		if message, _ := result["error"].(string); !strings.Contains(message, "ly:task-a:loom") {
+			t.Errorf("profile change error %q does not name the session", message)
+		}
+	})
+
+	t.Run("a task session re-sending the stored profile passes", func(t *testing.T) {
+		f.reset(t)
+		mustUpsert(t, `{"slug":"rs","title":"RS","kind":"task","labels":["bug"],"profile":"light"}`)
+		t.Setenv(agentname.StrandNameEnv, "ly:task-a:loom")
+		runJSON(t, 0, "upsert", `{"slug":"rs","profile":"light"}`)
+	})
+
+	t.Run("a known profile is stored and an empty one clears it", func(t *testing.T) {
+		f.reset(t)
+		result := runJSON(t, 0, "upsert", `{"slug":"rs","title":"RS","kind":"task","labels":["bug"],"profile":"light"}`)
+		if task, _ := result["task"].(map[string]any); task["profile"] != "light" {
+			t.Errorf("stored task = %v, want profile light", task)
+		}
+		result = runJSON(t, 0, "upsert", `{"slug":"rs","profile":""}`)
+		if task, _ := result["task"].(map[string]any); task["profile"] != nil {
+			t.Errorf("stored task = %v, want no profile", task)
 		}
 	})
 
@@ -554,4 +627,18 @@ func stepRunSettings(t *testing.T, f *cliFixture) {
 			}
 		})
 	}
+
+	t.Run("a profile change past Seed-Child returns the notice", func(t *testing.T) {
+		f.reset(t)
+		mustUpsert(t, `{"slug":"rs","title":"RS","kind":"task","labels":["bug"],"profile":"light"}`)
+		runJSON(t, 0, "set-status", `{"slug":"rs","status":"running · Discussion-Write"}`)
+		result := runJSON(t, 0, "upsert", `{"slug":"rs","profile":"budget"}`)
+		if notice, _ := result["notice"].(string); !strings.Contains(notice, "--layer local") {
+			t.Errorf("notice = %q, want it to name --layer local", notice)
+		}
+		result = runJSON(t, 0, "upsert", `{"slug":"rs","profile":"budget"}`)
+		if notice, has := result["notice"]; has {
+			t.Errorf("unchanged profile returned notice %v, want none", notice)
+		}
+	})
 }

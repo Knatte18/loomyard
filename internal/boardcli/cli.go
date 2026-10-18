@@ -2,7 +2,7 @@
 //
 // Command() returns the root "board" command over one store, board.json, whose entries carry a kind and labels.
 // The verbs upsert, upsert-batch, set-status, remove, get, list, list-full, merge and set-deps come from storeVerbs.
-// promote, prune, find, labels and retire-legacy, plus the rerender and sync maintenance verbs, are built in Command itself.
+// promote, prune, find, labels, profiles and retire-legacy, plus the rerender and sync maintenance verbs, are built in Command itself.
 // The intake group (list, import, close) comes from intakeCommand in intake.go.
 // list and find take --text to print the compact listing from text.go instead of JSON.
 // Configuration resolution happens once in a PersistentPreRunE.
@@ -24,9 +24,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/runprofile"
 	"github.com/spf13/cobra"
 )
 
@@ -38,6 +40,10 @@ func Command() *cobra.Command {
 	// config is the Config PersistentPreRunE loaded;
 	// the labels verb reads its Types and Labels.
 	var config boardengine.Config
+	// profiles loads the hub's run profiles from the board dir PersistentPreRunE resolved.
+	profiles := func() (runprofile.Profiles, error) {
+		return runprofile.Load(configengine.Dirs{Board: config.Path})
+	}
 
 	cmd := &cobra.Command{
 		Use:   "board",
@@ -272,9 +278,37 @@ Example:
 		}),
 	}
 
-	cmd.AddCommand(storeVerbs(board)...)
+	profilesCmd := &cobra.Command{
+		Use:         "profiles",
+		Short:       "print the hub's run profiles with their settings, to pick a task's profile",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `Print every run profile in the hub's profiles.yaml, in name order, with its settings:
+module name to config keys, the shape of a task's run_settings. An empty list prints as []. Takes no payload.
+Edit the profiles with "lyx config profiles".
+
+Output:
+  {"ok":true,"profiles":[{"name":"light","settings":{"loom":{"plan_max_bounces":1}}}]}
+
+Example:
+  lyx board profiles`,
+		Args: cobra.NoArgs,
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			loaded, err := profiles()
+			if err != nil {
+				return outputError(out, err.Error())
+			}
+			entries := []map[string]any{}
+			for _, name := range loaded.Names() {
+				entries = append(entries, map[string]any{"name": name, "settings": loaded[name]})
+			}
+			return output.Ok(out, map[string]any{"profiles": entries})
+		}),
+	}
+
+	cmd.AddCommand(storeVerbs(board, profiles)...)
 	cmd.AddCommand(
 		labelsCmd,
+		profilesCmd,
 		promoteCmd,
 		pruneCmd,
 		findCmd,
@@ -327,12 +361,12 @@ var mergePayload = payloadKeys{
 	nested:   map[string]payloadKeys{"upsert": upsertPayload, "set_status": setStatusPayload},
 }
 
-// storeVerbs builds the nine store verbs over the one store board returns.
-func storeVerbs(board func() *boardengine.Board) []*cobra.Command {
+// storeVerbs builds the nine store verbs over the one store board returns, the upsert paths checking a task's profile against the run profiles profiles returns.
+func storeVerbs(board func() *boardengine.Board, profiles func() (runprofile.Profiles, error)) []*cobra.Command {
 	// upsert subcommand: create or update a single task.
 	var bodyFile string
 	upsertCmd := &cobra.Command{
-		Use:         "upsert {slug, title?, brief?, body?, depends_on?, isolated?, status?, kind?, labels?, recipe?, priority?, short_name?, issues?, created?, revised?, run_settings?}",
+		Use:         "upsert {slug, title?, brief?, body?, depends_on?, isolated?, status?, kind?, labels?, recipe?, priority?, short_name?, issues?, created?, revised?, run_settings?, profile?}",
 		Short:       "create or update a single task",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Create or update a task identified by its slug.
@@ -344,7 +378,7 @@ Required field:
 Optional fields:
   "title"      string — human-readable title
   "brief"      string — one-line summary shown in board listings
-  "body"       string — full markdown body (proposal / background)
+  "body"       string — full markdown body
   "depends_on" array  — list of slug strings this task depends on
   "isolated"   bool   — true if the task has no dependencies by design
   "status"     string — lifecycle status (e.g. "active", "done")
@@ -354,14 +388,15 @@ Optional fields:
   "priority"   string — "high", "normal" or "low"; absent means normal, and "normal" clears it
   "short_name" string — short display label; falls back to the slug
   "issues"     array  — inbox issue numbers the entry records
-  "created"    string — RFC 3339 time the entry was added; a new entry without it gets the time of the write
-  "revised"    string — RFC 3339 time its scope last changed; a write that changes the scope without it gets the time of the write
-  "run_settings" object — module name to config keys, written into the pair's local config at Seed-Child; {} clears it
+  "created"    string — RFC 3339 time the entry was added; a new entry without it gets the write's time
+  "revised"    string — RFC 3339 time its scope last changed; a scope-changing write without it gets the write's time
+  "run_settings" object — module name to config keys for the pair's local config at Seed-Child; {} clears it
+  "profile"    string — a "lyx board profiles" name, laid under run_settings at Seed-Child; "" clears it
 
 Flag:
-  --body-file <path>  read "body" from the file, or from stdin when the path is "-"; every other field still comes from the payload.
-                      Refused when the payload also carries "body" (drop one of them),
-                      and when the payload argument is itself "-" (stdin can feed only one of them).
+  --body-file <path>  read "body" from the file, or from stdin when the path is "-".
+                      Refused when the payload also carries "body",
+                      and when the payload argument is itself "-", since stdin feeds only one.
 
 Example:
   lyx board upsert '{"slug":"my-task","title":"My Task","brief":"Short summary","kind":"task","labels":["enhancement"]}'` + slugLimitNote(),
@@ -386,7 +421,7 @@ Example:
 				if decodeErr != nil {
 					return outputError(out, fmt.Sprintf("invalid json: %v", decodeErr))
 				}
-				notice, err := prepareRunSettings(board(), fields, strandNameFromEnv())
+				notice, err := prepareRunSettings(board(), fields, strandNameFromEnv(), profiles)
 				if err != nil {
 					return outputError(out, err.Error())
 				}
@@ -452,7 +487,7 @@ Example:
 				if !ok {
 					return outputError(out, fmt.Sprintf("tasks[%d] must be an object", i))
 				}
-				notice, err := prepareRunSettings(board(), m, strandNameFromEnv())
+				notice, err := prepareRunSettings(board(), m, strandNameFromEnv(), profiles)
 				if err != nil {
 					return outputError(out, fmt.Sprintf("tasks[%d]: %v", i, err))
 				}
@@ -745,7 +780,7 @@ Example:
 					setStatusPtr = &boardengine.MergeStatusUpdate{Selector: selector, Status: status}
 				}
 
-				notice, err := prepareRunSettings(board(), upsertFields, strandNameFromEnv())
+				notice, err := prepareRunSettings(board(), upsertFields, strandNameFromEnv(), profiles)
 				if err != nil {
 					return outputError(out, err.Error())
 				}

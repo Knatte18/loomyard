@@ -27,9 +27,17 @@ var ErrUnknownRecipe = errors.New("battenshed: unknown recipe name")
 // named rather than failing inside the child after a wrong seed has already been pushed.
 var ErrUnsupportedChildRecipe = errors.New("battenshed: recipe cannot be a task worktree's own run")
 
-// ErrInvalidRunSettings is the sentinel a SeedChildDeps.PrepareRunSettings closure wraps when a key of the board task's run settings does not validate.
-// SeedChild routes it to Stuck, naming the module and the key, before any seed is written.
+// ErrInvalidRunSettings is the sentinel a SeedChildDeps.PrepareRunSettings closure wraps when the board task's run profile is unknown or a key of its run settings or profile does not validate.
+// SeedChild routes it to Stuck, naming the profile or the module and the key, before any seed is written.
 var ErrInvalidRunSettings = errors.New("battenshed: the board task's run settings do not validate")
+
+// RunSettings is a Board task's run settings as Seed-Child reads them.
+// Profile names the run profile whose settings lie under Settings, empty for none;
+// Settings maps a module name to that module's keys.
+type RunSettings struct {
+	Profile  string
+	Settings map[string]any
+}
 
 // ErrDisagreeingChildSeed is the sentinel a SeedChildDeps.WriteSeed closure wraps when the task
 // worktree's own seed already exists and disagrees with the one Seed-Child is about to write --
@@ -364,11 +372,11 @@ type SeedChildDeps struct {
 	// ChildDriver returns the child's driver for the recipe SeedChild resolved: the prime seed's typed child_driver, else the child recipe's driver_kind, else shed.yaml's.
 	// SeedChild calls it after the local overrides are written, so the recipe's driver_kind is read from the layer just written.
 	ChildDriver func(recipe string) (string, error)
-	// ReadRunSettings returns the Board task's run settings, module name to that module's keys, evaluated fresh on every Call.
-	ReadRunSettings func(ctx context.Context) (map[string]any, error)
-	// PrepareRunSettings returns each module the settings name as its migrated local-layer document.
-	// An error wrapping ErrInvalidRunSettings means a key does not validate and SeedChild routes it to Stuck; any other error is a hard error.
-	PrepareRunSettings func(settings map[string]any) (map[string][]byte, error)
+	// ReadRunSettings returns the Board task's run profile and run settings, evaluated fresh on every Call.
+	ReadRunSettings func(ctx context.Context) (RunSettings, error)
+	// PrepareRunSettings returns each module the settings and their profile name as its migrated local-layer document, the task's keys laid over the profile's.
+	// An error wrapping ErrInvalidRunSettings means the profile is unknown or a key does not validate, and SeedChild routes it to Stuck; any other error is a hard error.
+	PrepareRunSettings func(settings RunSettings) (map[string][]byte, error)
 	// WriteLocalOverride writes one module's local-layer file in the task worktree atomically.
 	WriteLocalOverride func(ctx context.Context, module string, document []byte) error
 	// RemoveLocalOverrides removes the local-layer file of every registered module not in keep and returns the paths it removed.

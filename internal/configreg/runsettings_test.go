@@ -4,10 +4,12 @@ package configreg
 
 import (
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/runprofile"
 )
 
 // TestPrepareRunSettings pins PrepareRunSettings over the real registry: the documents it returns and the refusals that name the module and key.
@@ -271,6 +273,122 @@ func TestPrepareRunSettings(t *testing.T) {
 			}
 			if _, present := got[tt.wantNoModule]; tt.wantNoModule != "" && present {
 				t.Errorf("document for %s present; want it dropped", tt.wantNoModule)
+			}
+		})
+	}
+}
+
+// TestLayerRunSettings pins how a task's run settings lie over its run profile's: per key, per module, and with each side's refusal naming its source.
+func TestLayerRunSettings(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name        string
+		profile     map[string]any
+		settings    map[string]any
+		wantDocs    map[string]string
+		wantRefusal []string
+	}{
+		{
+			name:     "a task key replaces the profile's and a profile key the task lacks stays",
+			profile:  map[string]any{"loom": map[string]any{"plan_max_bounces": float64(1), "merge_max_bounces": float64(1)}},
+			settings: map[string]any{"loom": map[string]any{"plan_max_bounces": float64(3)}},
+			wantDocs: map[string]string{"loom": "merge_max_bounces: 1\nplan_max_bounces: 3\n"},
+		},
+		{
+			name:     "a module only one side names is written as that side has it",
+			profile:  map[string]any{"darn": map[string]any{"review_max_bounces": float64(0)}},
+			settings: map[string]any{"loom": map[string]any{"plan_max_bounces": float64(2)}},
+			wantDocs: map[string]string{"darn": "review_max_bounces: 0\n", "loom": "plan_max_bounces: 2\n"},
+		},
+		{
+			name:     "no task settings writes the profile alone",
+			profile:  map[string]any{"darn": map[string]any{"writer": "sonnet[medium]"}},
+			wantDocs: map[string]string{"darn": "writer: sonnet[medium]\n"},
+		},
+		{
+			name:        "a refused profile key names the profile, the module and the key",
+			profile:     map[string]any{"loom": map[string]any{"no_such_key": float64(1)}},
+			wantRefusal: []string{`run profile "light"`, "loom", "no_such_key"},
+		},
+		{
+			name:        "a refused task key names the module and the key",
+			profile:     map[string]any{"loom": map[string]any{"plan_max_bounces": float64(1)}},
+			settings:    map[string]any{"loom": map[string]any{"discussion_lenses": []any{}}},
+			wantRefusal: []string{"loom", "discussion_lenses"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := LayerRunSettings("light", tt.profile, tt.settings)
+			if tt.wantRefusal != nil {
+				var refusal *RunSettingsError
+				if !errors.As(err, &refusal) {
+					t.Fatalf("LayerRunSettings error = %v; want a *RunSettingsError", err)
+				}
+				for _, want := range tt.wantRefusal {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("error = %q; want it to name %q", err, want)
+					}
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("LayerRunSettings error = %v; want none", err)
+			}
+			if len(got) != len(tt.wantDocs) {
+				t.Fatalf("LayerRunSettings returned %v; want %d modules", got, len(tt.wantDocs))
+			}
+			for module, want := range tt.wantDocs {
+				if string(got[module]) != want {
+					t.Errorf("document for %s = %q; want %q", module, got[module], want)
+				}
+			}
+		})
+	}
+}
+
+// TestProfilesCheckLoad pins the profiles module's load check: the template's starting profiles pass, and a hub file profile with a key no module takes is refused naming the profile.
+func TestProfilesCheckLoad(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name        string
+		hubFile     string
+		wantRefusal []string
+	}{
+		{name: "the template's starting profiles pass"},
+		{name: "a valid hub file passes", hubFile: "light:\n  loom: {plan_max_bounces: 1}\n"},
+		{name: "an unknown key is refused naming the profile", hubFile: "light:\n  loom: {plan_max_bounces: 1}\nodd:\n  loom: {no_such_key: 1}\n", wantRefusal: []string{`run profile "odd"`, "no_such_key"}},
+		{name: "an unknown module is refused naming the profile", hubFile: "odd:\n  bogus: {x: 1}\n", wantRefusal: []string{`run profile "odd"`, "bogus"}},
+	}
+	module, _ := Lookup(runprofile.ModuleName)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dirs := configengine.Dirs{}
+			if tt.hubFile != "" {
+				dirs.Board = t.TempDir()
+				if err := os.MkdirAll(configengine.ConfigDir(dirs.Board), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(configengine.ConfigFile(dirs.Board, runprofile.ModuleName), []byte(tt.hubFile), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			err := module.CheckLoad(dirs)
+			if tt.wantRefusal == nil {
+				if err != nil {
+					t.Fatalf("CheckLoad error = %v; want none", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("CheckLoad error = nil; want a refusal")
+			}
+			for _, want := range tt.wantRefusal {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error = %q; want it to name %q", err, want)
+				}
 			}
 		})
 	}

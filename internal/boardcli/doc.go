@@ -2,7 +2,7 @@
 //
 // The verb tree:
 //   - `upsert`, `upsert-batch`, `set-status`, `remove`, `get`, `list`, `list-full`, `merge` and `set-deps` come from `storeVerbs`.
-//   - `promote`, `prune`, `find`, `labels` and `retire-legacy`, plus the `rerender` and `sync` maintenance verbs, are built in `Command`.
+//   - `promote`, `prune`, `find`, `labels`, `profiles` and `retire-legacy`, plus the `rerender` and `sync` maintenance verbs, are built in `Command`.
 //   - `intake` (list, import, close) comes from `intakeCommand`.
 //
 // `prune` and `retire-legacy` are read-only dry runs without `--apply`.
@@ -39,7 +39,8 @@
 //
 // A payload's `run_settings` is checked before the store write by `upsert`, each task of `upsert-batch` and `merge`'s upsert.
 // It must be an object of module name to keys, and `configreg.PrepareRunSettings` migrates and validates it; a refusal names the module and the key, and the board stores the migrated result.
-// A change to the stored value is refused from a session whose `LYX_STRAND_NAME` carries a task slug (`agentname.TaskSlug`), the same guard as a hub-wide config write, and names the operator or the hub orch as the way forward.
+// A payload's `profile` is checked on the same paths: it must be a string, and a non-empty one must name a run profile in the hub's `profiles.yaml` (`runprofile.Load` over the board dir), else the refusal names the known profiles and the way forward; `""` clears it.
+// A change to either stored value is refused from a session whose `LYX_STRAND_NAME` carries a task slug (`agentname.TaskSlug`), the same guard as a hub-wide config write, and names the operator or the hub orch as the way forward.
 // The guard reads outside the write lock and stops a mistaken write, not a determined one.
 // A change on an entry held by a run past `Worktree-Create` and `Seed-Child` still succeeds and adds a `notice` field to the envelope:
 // it applies to the next run's Seed-Child, and the running pair takes it through `lyx config <module> --layer local --set` in the pair.
@@ -48,6 +49,8 @@
 // `set-deps`, `upsert`, `upsert-batch` and `merge` add the sibling warning to the success envelope's `notice`, joined after a run-settings notice, one line per pair, a batch pair once;
 // `set-deps` prints `notice` only then.
 // `promote` and `intake import` write no `depends_on` and stay unchanged.
+//
+// `profiles` prints `{"profiles":[{"name":…,"settings":{…}}]}`, every run profile in the hub's `profiles.yaml` in name order with its settings, and `[]` when there is none.
 //
 // `get` takes `--body` to write the entry's body alone, verbatim, with no envelope;
 // an empty body writes nothing,

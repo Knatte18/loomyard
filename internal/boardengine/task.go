@@ -38,6 +38,8 @@ type Task struct {
 
 	// RunSettings maps a module name to a mapping of that module's config keys, nested as in its YAML file; an empty value is stored as no field.
 	RunSettings map[string]any `json:"run_settings,omitempty"`
+	// Profile names the hub run profile whose settings lie under RunSettings at seeding; empty means none.
+	Profile string `json:"profile,omitempty"`
 
 	// Unknown holds the decoded entry's keys this binary does not know, each with its raw JSON value, nil when there are none.
 	// Encoding writes them back after the known fields in key order, and no step decodes a value into a Go type.

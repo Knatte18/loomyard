@@ -1,4 +1,4 @@
-// runsettings.go — the one migrate-then-validate step for a task's run settings.
+// runsettings.go — the one migrate-then-validate step for a task's run settings and its run profile's, and their layering.
 
 package configreg
 
@@ -10,6 +10,8 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/runprofile"
+	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
 // RunSettingsError is a refusal of a task's run settings.
@@ -65,17 +67,70 @@ func PrepareRunSettings(settings map[string]any) (map[string][]byte, error) {
 				return nil, &RunSettingsError{Module: name, Cause: err}
 			}
 		}
-		if err := configengine.ValidateLocal(module.Spec(), document); err != nil {
+		if err := checkLocalDocument(module, document); err != nil {
 			return nil, &RunSettingsError{Module: name, Cause: err}
-		}
-		if module.CheckValues != nil {
-			if err := module.CheckValues(document); err != nil {
-				return nil, &RunSettingsError{Module: name, Cause: err}
-			}
 		}
 		documents[name] = document
 	}
 	return documents, nil
+}
+
+// LayerRunSettings returns the local-layer documents of a task's run settings layered over the settings of its run profile, named profileName.
+// Both are prepared as PrepareRunSettings does, and each module's task document is laid over its profile document key by key through yamlengine.Merge with the module's open maps,
+// so a task key replaces the profile's and a profile key the task lacks stays; the merged document is checked again.
+// Every refusal is a [*RunSettingsError], one in the profile's settings wrapped with the profile's name.
+func LayerRunSettings(profileName string, profile, settings map[string]any) (map[string][]byte, error) {
+	documents, err := PrepareRunSettings(profile)
+	if err != nil {
+		return nil, fmt.Errorf("run profile %q: %w", profileName, err)
+	}
+	upper, err := PrepareRunSettings(settings)
+	if err != nil {
+		return nil, err
+	}
+	for name, document := range upper {
+		lower, found := documents[name]
+		if !found {
+			documents[name] = document
+			continue
+		}
+		module, _ := Lookup(name)
+		spec := module.Spec()
+		merged, err := yamlengine.Merge(lower, document, spec.OpenMaps, spec.WholeEntries)
+		if err != nil {
+			return nil, &RunSettingsError{Module: name, Cause: configengine.MarkInvalid(err)}
+		}
+		if err := checkLocalDocument(module, merged); err != nil {
+			return nil, &RunSettingsError{Module: name, Cause: fmt.Errorf("layered over run profile %q: %w", profileName, err)}
+		}
+		documents[name] = merged
+	}
+	return documents, nil
+}
+
+// checkLocalDocument checks a module's local-layer document against the local rule and then the module's value checks.
+func checkLocalDocument(module Module, document []byte) error {
+	if err := configengine.ValidateLocal(module.Spec(), document); err != nil {
+		return err
+	}
+	if module.CheckValues != nil {
+		return module.CheckValues(document)
+	}
+	return nil
+}
+
+// checkProfiles loads the run profiles under dirs and checks each profile's settings as a task's run settings are checked, naming the profile on a refusal.
+func checkProfiles(dirs configengine.Dirs) error {
+	profiles, err := runprofile.Load(dirs)
+	if err != nil {
+		return err
+	}
+	for _, name := range profiles.Names() {
+		if _, err := PrepareRunSettings(profiles[name]); err != nil {
+			return fmt.Errorf("run profile %q: %w", name, err)
+		}
+	}
+	return nil
 }
 
 // wholeNumbersAsIntegers rewrites every whole-valued float64 in a JSON-decoded value to an int64, so it marshals as a YAML integer.

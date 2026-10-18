@@ -86,8 +86,8 @@ func newFakeReceiver(t *testing.T, shutdown func(ctx context.Context) (string, e
 		SeedChild: battenshed.SeedChildDeps{
 			ReadBoardType:        func(ctx context.Context) (string, error) { return "", nil },
 			ChildDriver:          func(string) (string, error) { return "", nil },
-			ReadRunSettings:      func(ctx context.Context) (map[string]any, error) { return nil, nil },
-			PrepareRunSettings:   func(settings map[string]any) (map[string][]byte, error) { return nil, nil },
+			ReadRunSettings:      func(ctx context.Context) (battenshed.RunSettings, error) { return battenshed.RunSettings{}, nil },
+			PrepareRunSettings:   func(settings battenshed.RunSettings) (map[string][]byte, error) { return nil, nil },
 			WriteLocalOverride:   func(ctx context.Context, module string, document []byte) error { return nil },
 			RemoveLocalOverrides: func(ctx context.Context, keep []string) ([]string, error) { return nil, nil },
 			WriteSeed:            func(ctx context.Context, recipe, driver string) error { return nil },

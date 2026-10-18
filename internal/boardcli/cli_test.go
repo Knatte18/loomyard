@@ -122,6 +122,7 @@ func TestCLI(t *testing.T) {
 		{"LabelsMapShapedPrintsFileOrderWithDescriptions", stepLabelsMapShapedPrintsFileOrderWithDescriptions},
 		{"LabelsListShapedPrintsNamesWithEmptyDescriptions", stepLabelsListShapedPrintsNamesWithEmptyDescriptions},
 		{"RunSettings", stepRunSettings},
+		{"Profiles", stepProfiles},
 		{"SiblingWarning", stepSiblingWarning},
 	}
 	for _, step := range steps {

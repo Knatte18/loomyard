@@ -409,8 +409,8 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		SeedChild: battenshed.SeedChildDeps{
 			ReadBoardType:        func(context.Context) (string, error) { return "loom", nil },
 			ChildDriver:          func(string) (string, error) { return "claude", nil },
-			ReadRunSettings:      func(context.Context) (map[string]any, error) { return nil, nil },
-			PrepareRunSettings:   func(map[string]any) (map[string][]byte, error) { return nil, nil },
+			ReadRunSettings:      func(context.Context) (battenshed.RunSettings, error) { return battenshed.RunSettings{}, nil },
+			PrepareRunSettings:   func(battenshed.RunSettings) (map[string][]byte, error) { return nil, nil },
 			WriteLocalOverride:   func(context.Context, string, []byte) error { return nil },
 			RemoveLocalOverrides: func(context.Context, []string) ([]string, error) { return nil, nil },
 			WriteSeed:            func(context.Context, string, string) error { return nil },

@@ -79,8 +79,9 @@
 // a running child whose driver is dead and whose status file does not change returns nothing from the wait, the driver-dead notice being the only signal.
 //
 // Seed-Child writes the task worktree's local config layer from the board task's run settings, after reading the child driver and before the seed:
-// it reads the settings fresh on every Call, writes the local file of each module they name, then removes the local file of every other registered module with one Warn per removed file, so the layer is exactly the task's run settings.
-// A key that no longer validates (a key a later binary retired or closed to the local layer, or one written to `board.json` by hand) stands the row Stuck, naming the module, the key and the way forward, correcting the task's `run_settings` with `lyx board upsert` and then `lyx batten run <slug>`; an unreadable board is Stuck as for the type, and any other prepare, write or remove failure is a hard error.
+// it reads the task's profile and settings fresh on every Call, lays the settings over the named run profile's from the hub's `profiles.yaml` (see `internal/runprofile`) key by key, writes the local file of each module they name, then removes the local file of every other registered module with one Warn per removed file, so the layer is exactly the task's run settings over its profile.
+// The profile is read only here, so a later change of the profile does not reach a run already seeded.
+// An unknown profile, or a key that no longer validates (a key a later binary retired or closed to the local layer, or one written to `board.json` or `profiles.yaml` by hand), stands the row Stuck, naming the profile or the module and the key, and the way forward, correcting the task's `profile` or `run_settings` with `lyx board upsert` or the profile with `lyx config profiles`, and then `lyx batten run <slug>`; an unreadable board is Stuck as for the type, and any other prepare, write or remove failure is a hard error.
 // A resume redoes the whole write from the current board entry, and no other row writes these files.
 // Bound: a local file written while the row stood Stuck is discarded by the resume, so a hand edit to the pair's local layer before the resume is lost.
 // Batten writes no seed field for run settings.

@@ -1,0 +1,17 @@
+# profiles.yaml — the hub's named run profiles.
+# Each top-level key is a profile name, and its value has the shape of a board task's run_settings:
+# module name to that module's config keys.
+# A task names a profile in its board entry's profile field;
+# batten's Seed-Child writes the profile's settings into the pair's local config, with the task's own run_settings layered on top.
+#
+# Seeded once when this file is absent; after that it is operator-owned and no reconcile rewrites it.
+# Add or replace a profile with: lyx config profiles --set <name>='<json object>'
+# Remove one by deleting its block in the editor: lyx config profiles
+
+light:
+  loom: {discussion_max_bounces: 2, discussion_hard_max_bounces: 3, plan_max_bounces: 1, plan_hard_max_bounces: 2, webster_max_bounces: 1, merge_max_bounces: 1}
+budget:
+  loom: {discussion_max_bounces: 2, discussion_hard_max_bounces: 3, plan_max_bounces: 2, plan_hard_max_bounces: 3, webster_max_bounces: 2, merge_max_bounces: 2}
+  darn: {review_max_bounces: 1}
+docs:
+  darn: {writer: "sonnet[medium]", review_max_bounces: 0}

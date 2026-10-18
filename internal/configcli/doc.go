@@ -52,6 +52,9 @@
 // An entry holding `[` or `]` must be quoted, and a bracketed value that is not such a list is refused, never written as a string.
 // Any other key must exist in the template;
 // pre-existing keys the template lacks are preserved and reported in a `preserved` field.
+// A module whose spec sets `configengine.Spec.JSONEntries`, the run profiles of `profiles`, takes instead a top-level name and a JSON object, as in `lyx config profiles --set wide='{"darn":{"review_max_bounces":2}}'`:
+// the object replaces that entry whole or is appended as a new one, the other entries left as they are, and a value that is not a JSON object is refused.
+// An absent hub file starts from the template.
 //
 // Every `--set` write, on any layer, is then checked by loading the module through its own loader (`configreg.Module.CheckLoad`), and the written file is put back as it was when the load fails.
 // A board-dir write loads the board file alone, and any other write loads the worktree's stack.

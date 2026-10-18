@@ -30,6 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/runprofile"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
@@ -125,6 +126,7 @@ func Modules() []Module {
 		{Name: "loom", Template: loomengine.ConfigTemplate, OpenMaps: loomengine.ConfigOpenMaps(), Migrate: loomengine.MigrateConfig, CheckValues: loomengine.ValidateLocalValues, CheckLoad: checkLoadNamed(loomengine.LoadConfig, "loom"), Spec: loomengine.ConfigSpec},
 		{Name: "models", Template: modelspec.ConfigTemplate, SeedOnly: true, CheckLoad: checkLoad(modelspec.LoadRegistry), Spec: modelspec.ConfigSpec},
 		{Name: "orch", Template: orchengine.ConfigTemplate, Migrate: orchengine.MigrateConfig, CheckLoad: checkLoadNamed(orchengine.LoadConfig, "orch"), Spec: orchengine.ConfigSpec},
+		{Name: runprofile.ModuleName, Template: runprofile.ConfigTemplate, HubWide: true, SeedOnly: true, CheckLoad: checkProfiles, Spec: runprofile.ConfigSpec},
 		{Name: "reed", Template: reedengine.ConfigTemplate, CheckLoad: checkLoadNamed(reedengine.LoadConfig, "reed"), Spec: reedengine.ConfigSpec},
 		{Name: "shed", Template: sheddriver.ConfigTemplate, CheckValues: sheddriver.ValidateLocalValues, CheckLoad: checkLoad(sheddriver.LoadConfig), Spec: sheddriver.ConfigSpec},
 		{Name: "shuttle", Template: shuttleengine.ConfigTemplate, Migrate: shuttleengine.MigrateConfig, CheckLoad: checkLoadNamed(shuttleengine.LoadConfig, "shuttle"), Spec: shuttleengine.ConfigSpec},

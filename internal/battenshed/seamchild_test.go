@@ -33,8 +33,8 @@ type seedChildCalls struct {
 
 // withNoRunSettings fills the run-settings closures of deps with no-ops that report no settings.
 func withNoRunSettings(deps SeedChildDeps) SeedChildDeps {
-	deps.ReadRunSettings = func(context.Context) (map[string]any, error) { return nil, nil }
-	deps.PrepareRunSettings = func(map[string]any) (map[string][]byte, error) { return nil, nil }
+	deps.ReadRunSettings = func(context.Context) (RunSettings, error) { return RunSettings{}, nil }
+	deps.PrepareRunSettings = func(RunSettings) (map[string][]byte, error) { return nil, nil }
 	deps.WriteLocalOverride = func(context.Context, string, []byte) error { return nil }
 	deps.RemoveLocalOverrides = func(context.Context, []string) ([]string, error) { return nil, nil }
 	return deps
@@ -365,7 +365,7 @@ func TestSeedChild_RunSettings(t *testing.T) {
 			settings:     map[string]any{"darn": map[string]any{"verify": "x"}},
 			prepareErr:   invalid,
 			wantOutcome:  shedengine.Stuck,
-			wantReasonIn: []string{"darn", "verify", "lyx board upsert", "lyx batten run myslug"},
+			wantReasonIn: []string{"darn", "verify", "lyx board upsert", "lyx config profiles", "lyx batten run myslug"},
 		},
 		{
 			name:         "AnUnreadableBoardIsStuck",
@@ -394,13 +394,13 @@ func TestSeedChild_RunSettings(t *testing.T) {
 			scratchDir := t.TempDir()
 			calls, deps := newSeedChildDeps("loom", nil, "claude", nil, nil, nil, nil)
 			var keep []string
-			deps.ReadRunSettings = func(context.Context) (map[string]any, error) { return tt.settings, tt.readErr }
-			deps.PrepareRunSettings = func(settings map[string]any) (map[string][]byte, error) {
+			deps.ReadRunSettings = func(context.Context) (RunSettings, error) { return RunSettings{Settings: tt.settings}, tt.readErr }
+			deps.PrepareRunSettings = func(settings RunSettings) (map[string][]byte, error) {
 				if tt.prepareErr != nil {
 					return nil, tt.prepareErr
 				}
 				documents := map[string][]byte{}
-				for module := range settings {
+				for module := range settings.Settings {
 					documents[module] = []byte(module + ": doc\n")
 				}
 				return documents, nil
@@ -450,10 +450,10 @@ func TestSeedChild_RunSettings(t *testing.T) {
 		current := map[string]any{"loom": map[string]any{"a": 1}}
 		failRemoval := true
 		_, deps := newSeedChildDeps("loom", nil, "claude", nil, nil, nil, nil)
-		deps.ReadRunSettings = func(context.Context) (map[string]any, error) { return current, nil }
-		deps.PrepareRunSettings = func(settings map[string]any) (map[string][]byte, error) {
+		deps.ReadRunSettings = func(context.Context) (RunSettings, error) { return RunSettings{Settings: current}, nil }
+		deps.PrepareRunSettings = func(settings RunSettings) (map[string][]byte, error) {
 			documents := map[string][]byte{}
-			for module := range settings {
+			for module := range settings.Settings {
 				documents[module] = []byte(module + ": doc\n")
 			}
 			return documents, nil
