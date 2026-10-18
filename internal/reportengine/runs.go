@@ -1,4 +1,4 @@
-// runs.go selects the finished runs of a report: one run per archive tag, full when its loom records show a finished loom run and partial otherwise.
+// runs.go selects the finished runs of a report: one run per archive tag, full when its records show a finished run of a selected recipe, loom or darn, and partial otherwise.
 
 package reportengine
 
