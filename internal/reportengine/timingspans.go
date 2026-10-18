@@ -190,7 +190,7 @@ func mergeRows(row RunRow) ([]timedRow, []Finding) {
 	return merged, findings
 }
 
-// phaseOf returns the phase the row at index of a run of recipe counts under, and false when it is a loom row the recipe's phase table does not name, which counts under PhaseOther.
+// phaseOf returns the phase the row at index of a run of recipe counts under, and false when it is a child row the recipe's phase table does not name, which counts under PhaseOther.
 // A batten row counts by position: before batten's first Run-Shed entry under PhaseSetup, after it under PhaseLand.
 // A Run-Shed entry records the child's state changes: a change from paused closes the pause and counts under PhasePaused,
 // and any other counts under the phase of the producer its change names, else the phase of the latest loom row before it, else PhaseSetup.
