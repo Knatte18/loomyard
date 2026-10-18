@@ -1,11 +1,13 @@
 # PATTERN-config-strictness
 
-`internal/configengine` offers `Load` (strict) and `LoadOrTemplate` (degrades to the embedded template); a caller adopts exactly one.
+`internal/configengine` offers `Load` (strict) and `LoadOrTemplate` (degrades to the embedded template); a caller adopts exactly one, except `runprofile`.
 
 - Degrading callers: `{shuttleengine, claudeengine, reedengine, websterengine, batcher, orchengine, loggerconfig, battenshed, languageconfig}`.
 - Strict callers: `{fabricengine, boardengine, loomengine, landingshed, gateslot, configcli, configreg}`.
   `configcli` loads strictly only to validate a hub-wide module's file before committing it.
   `configreg` loads strictly only to answer a recipe row's setting.
+- `runprofile` is a third stance: it reads the stacked layers through `configengine.StackLayers` with no template fill, and reads the template only when no layer file exists.
+  A removed starting profile must stay removed, which a template fill would undo.
 - Strictness applies to the base layer: the repo default or hub file when a board dir is told, else the worktree file.
   The layers above it are sparse, and an absent upper file adds nothing under either policy.
 - A template list is a default, not a minimum length.
