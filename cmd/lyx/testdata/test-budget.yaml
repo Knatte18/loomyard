@@ -126,7 +126,7 @@ internal/stencil: 4
 internal/stencilcli: 1
 internal/stencilstore: 18
 internal/summaryparser: 8
-internal/tendercli: 4
+internal/tendercli: 5
 internal/tenderengine: 5
 internal/termwindow: 3
 internal/testkit: 2

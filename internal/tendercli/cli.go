@@ -222,8 +222,7 @@ behind. A session in any other state is skipped with the state read, and a
 session a live pause covers is left to "lyx resume".
 
 With no slug it covers the whole hub, the orchestrator included: the orch gets
-a conditional notice its own watcher delivers while it still reads stalled on
-the error. With a slug it covers that pair. Every send is refused at once when
+the line as a checked creel inject, reported with its id. With a slug it covers that pair. Every send is refused at once when
 the session no longer reads stalled, or when a draft, operator activity or an
 open rewind picker holds the pane; none is retried.
 

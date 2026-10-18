@@ -227,10 +227,10 @@ const ReviveLine = "[lyx] Your last turn stopped on an API error. Carry on where
 
 // Orch results a revive reports.
 const (
-	orchQueued        = "queued"
-	orchAlreadyQueued = "already-queued"
-	orchPaused        = "paused"
-	orchSkipped       = "skipped"
+	orchInjected = "injected"
+	orchPending  = "pending"
+	orchPaused   = "paused"
+	orchSkipped  = "skipped"
 )
 
 // ReviveRequest asks for a revive.
@@ -259,18 +259,16 @@ type ReviveReport struct {
 
 // OrchRevive says what became of the orch's carry-on line.
 type OrchRevive struct {
-	// Result is queued, already-queued, paused or skipped.
+	// Result is injected, pending, paused or skipped.
 	Result string `json:"result"`
-	// Conditional is true for a queued or already-queued notice, which the orch watcher delivers only while the orch still reads stalled on an API error.
-	Conditional bool `json:"conditional"`
-	// WatcherLive reports whether an orch watcher is running, which a queued notice needs to be delivered.
-	WatcherLive bool `json:"watcher_live"`
+	// InjectID is the id of the creel inject an injected result made.
+	InjectID int64 `json:"inject_id,omitempty"`
 	// Reason is the state read for a skipped orch.
 	Reason string `json:"reason,omitempty"`
 }
 
 // Revive gives ReviveLine to each live session stalled on an API error, in the hub for an empty slug and in one pair for a slug.
-// The hub scope also queues the orch's conditioned notice when the orch is stalled the same way and no hub entry is live; it never types into the orch.
+// The hub scope also injects the line into the orch through creel when the orch is stalled the same way, no hub entry is live and no earlier revive inject of tender's still waits for its outcome.
 // A session a live entry covers is left to resume, and no send is retried.
 func Revive(deps Deps, req ReviveRequest) (ReviveReport, error) {
 	report := ReviveReport{
@@ -292,11 +290,7 @@ func Revive(deps Deps, req ReviveRequest) (ReviveReport, error) {
 	if scope != pauserecord.ScopeHub {
 		return report, nil
 	}
-	record, err := pauserecord.Read(deps.RecordPath)
-	if err != nil {
-		return report, err
-	}
-	report.Orch, err = reviveOrch(deps, record)
+	report.Orch, err = reviveOrch(deps)
 	return report, err
 }
 
@@ -348,9 +342,10 @@ func reviveSession(deps Deps, s session, report *ReviveReport) error {
 	return nil
 }
 
-// reviveOrch reports what became of the orch's carry-on line and queues its conditioned notice when the orch reads stalled on an API error and no hub entry is live.
+// reviveOrch reports what became of the orch's carry-on line and injects it through creel when the orch reads stalled on an API error, no hub entry is live and no revive inject of tender's still waits for its outcome.
+// The pending check and the inject run inside one `pauserecord.Update` that changes no entry, the lock that serialises tender's revive sends, so two concurrent revives inject at most once.
 // It returns nil for a hub with no orch strand or no prime, and reads no other prime session.
-func reviveOrch(deps Deps, record pauserecord.Record) (*OrchRevive, error) {
+func reviveOrch(deps Deps) (*OrchRevive, error) {
 	if deps.Prime == nil || deps.OrchStrand == nil {
 		return nil, nil
 	}
@@ -368,18 +363,36 @@ func reviveOrch(deps Deps, record pauserecord.Record) (*OrchRevive, error) {
 	if !stalledOnAPIError(state) {
 		return &OrchRevive{Result: orchSkipped, Reason: describeState(state)}, nil
 	}
-	if slices.ContainsFunc(record.Live, func(entry pauserecord.Entry) bool { return entry.Scope == pauserecord.ScopeHub }) {
-		return &OrchRevive{Result: orchPaused}, nil
-	}
-	queued, err := deps.QueueOrchRevive(ReviveLine)
+	var (
+		revive    *OrchRevive
+		reviveErr error
+	)
+	_, err = pauserecord.Update(deps.RecordPath, deps.Now(), func(record *pauserecord.Record) error {
+		if slices.ContainsFunc(record.Live, func(entry pauserecord.Entry) bool { return entry.Scope == pauserecord.ScopeHub }) {
+			revive = &OrchRevive{Result: orchPaused}
+			return nil
+		}
+		pending, err := deps.OrchRevivePending()
+		if err != nil {
+			reviveErr = fmt.Errorf("revive: look up the orch's revive inject: %w", err)
+			return nil
+		}
+		if pending {
+			revive = &OrchRevive{Result: orchPending}
+			return nil
+		}
+		id, err := deps.InjectOrchRevive(ReviveLine)
+		if err != nil {
+			reviveErr = fmt.Errorf("revive: inject the orch's carry-on line: %w", err)
+			return nil
+		}
+		revive = &OrchRevive{Result: orchInjected, InjectID: id}
+		return nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("revive: queue the orch's notice: %w", err)
+		return nil, err
 	}
-	revive := &OrchRevive{Result: orchAlreadyQueued, Conditional: true, WatcherLive: deps.OrchWatcherLive != nil && deps.OrchWatcherLive()}
-	if queued {
-		revive.Result = orchQueued
-	}
-	return revive, nil
+	return revive, reviveErr
 }
 
 // stalledOnAPIError reports whether state is idle-stalled with cause api-error, the one state revive acts on.

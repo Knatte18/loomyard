@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -227,10 +228,37 @@ type env struct {
 	processErr error
 	hubPath    string
 	executable string
-	// orchStrand is the orch strand the prime's state records; orchQueued holds each notice the queue accepted, and orchAlreadyQueued makes it refuse as a duplicate.
-	orchStrand        string
-	orchQueued        []string
-	orchAlreadyQueued bool
+	// orchStrand is the orch strand the prime's state records.
+	orchStrand string
+	// creel is the fake creel journal of tender's orch revive injects.
+	creel fakeCreel
+}
+
+// fakeCreel is a mutex-guarded stand-in for the creel journal of tender's orch revive injects, safe for concurrent revives.
+type fakeCreel struct {
+	mu sync.Mutex
+	// lines holds each line injected, in order.
+	lines []string
+	// nextID is the id of the last inject made.
+	nextID int64
+	// pendingID is the id of the inject standing with no outcome, zero when none.
+	pendingID int64
+	// pendingErr and injectErr are what the matching seam answers when set.
+	pendingErr, injectErr error
+}
+
+// injected returns the lines injected so far.
+func (c *fakeCreel) injected() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return slices.Clone(c.lines)
+}
+
+// settle gives the standing inject an outcome.
+func (c *fakeCreel) settle() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.pendingID = 0
 }
 
 func newEnv(t *testing.T, pairs ...*fakePair) *env {
@@ -250,12 +278,21 @@ func (e *env) deps() Deps {
 		HubPath:    e.hubPath,
 		Executable: e.executable,
 		OrchStrand: func() (string, error) { return e.orchStrand, nil },
-		QueueOrchRevive: func(line string) (bool, error) {
-			if e.orchAlreadyQueued {
-				return false, nil
+		OrchRevivePending: func() (bool, error) {
+			e.creel.mu.Lock()
+			defer e.creel.mu.Unlock()
+			return e.creel.pendingID != 0, e.creel.pendingErr
+		},
+		InjectOrchRevive: func(line string) (int64, error) {
+			e.creel.mu.Lock()
+			defer e.creel.mu.Unlock()
+			if e.creel.injectErr != nil {
+				return 0, e.creel.injectErr
 			}
-			e.orchQueued = append(e.orchQueued, line)
-			return true, nil
+			e.creel.lines = append(e.creel.lines, line)
+			e.creel.nextID++
+			e.creel.pendingID = e.creel.nextID
+			return e.creel.nextID, nil
 		},
 		NetOps:          func() ([]pauserecord.NetOp, error) { return e.netOps, nil },
 		Locks:           func() ([]parentlock.Entry, error) { return e.locks, nil },
