@@ -127,11 +127,10 @@ type Reading struct {
 	ids      []int64
 }
 
-// Read returns the caller's unread mail, oldest first, that no other read has reserved.
-// With neither from nor all it is the oldest message and every other one from its sender; with from it is every message from that sender; with all it is every message, narrowed to from when that is set.
+// Read returns the caller's unread mail, oldest first, that no other read has reserved: every message, or with from only that sender's.
 // They are reserved so a concurrent read by the same holder skips them.
 // A program sender's first read makes its mailbox known.
-func (s *Store) Read(sender Sender, from string, all bool) (*Reading, error) {
+func (s *Store) Read(sender Sender, from string) (*Reading, error) {
 	if sender.Kind == KindExternal {
 		return nil, errExternalHoldsNothing
 	}
@@ -142,12 +141,7 @@ func (s *Store) Read(sender Sender, from string, all bool) (*Reading, error) {
 				return err
 			}
 		}
-		unread := s.unreadLocked(sender.Name, from)
-		if from == "" && !all && len(unread) > 0 {
-			oldestSender := unread[0].From
-			unread = slices.DeleteFunc(unread, func(msg *Message) bool { return msg.From != oldestSender })
-		}
-		for _, msg := range unread {
+		for _, msg := range s.unreadLocked(sender.Name, from) {
 			s.reserved[msg.ID] = sender.Name
 			reading.ids = append(reading.ids, msg.ID)
 			reading.Messages = append(reading.Messages, *msg)

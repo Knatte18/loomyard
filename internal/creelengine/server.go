@@ -421,7 +421,7 @@ func (d *daemon) read(conn *net.UnixConn, reader *bufio.Reader, sender Sender, r
 	var reading *Reading
 	for {
 		var err error
-		if reading, err = d.store.Read(sender, req.From, req.All); err != nil {
+		if reading, err = d.store.Read(sender, req.From); err != nil {
 			return err
 		}
 		if !req.Wait || len(reading.ids) > 0 {

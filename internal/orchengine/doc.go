@@ -164,7 +164,7 @@
 // The watcher saves State before every side effect, so a restarted watcher resumes from it.
 //
 //   - handoff-requested: the note request is posted as creel mail to the orch strand, naming a new timestamped file under handoffs/ and the template the note follows.
-//     Creel assigns the mail's id when it is journaled, so the body tells the orch to reply to the id `lyx creel read` prints beside it, and the watcher saves the id the post answers in State.RequestID.
+//     Creel assigns the mail's id when it is journaled, so the body tells the orch to reply to the id the `[creel]` line carrying it opens with, and the watcher saves the id the post answers in State.RequestID.
 //     The orch answers with `lyx creel post --reply <id> "written <path>"` once the note is written, or, to a soft request only, `lyx creel post --reply <id> defer`.
 //     Each tick reads the watcher's own mailbox without waiting, through readReplies, which runs before the client acknowledges the read, so a failed save leaves the reply unread for the next watcher.
 //     Only a reply from the orch strand whose reply_to is State.RequestID counts; every other message, a reply to an earlier request included, is logged and dropped.

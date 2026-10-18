@@ -52,8 +52,6 @@ type Request struct {
 	ID int64 `json:"id,omitempty"`
 	// From is the sender filter of read and log.
 	From string `json:"from,omitempty"`
-	// All makes read return every unread message instead of only the oldest sender's.
-	All bool `json:"all,omitempty"`
 	// Wait makes post wait for its reply, inject wait for its outcome, and read wait for unread mail.
 	Wait bool `json:"wait,omitempty"`
 	// Interrupt makes inject interrupt the receiver's running turn first.

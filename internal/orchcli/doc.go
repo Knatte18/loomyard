@@ -27,7 +27,7 @@
 //
 //  1. Create the task worktree with `lyx fabric add <slug>`, then start its run from inside it with `lyx loom start`.
 //     The run's status file is `_lyx/shed/<slug>/status.json` under the worktree, and its `state` is one of running, awaiting, blocked, failed or done.
-//  2. Keep no watch loop of your own: batten notices arrive as creel mail, announced by creel's reminder, and on one you read the mail and check the run with `lyx batten status <slug>`.
+//  2. Keep no watch loop of your own: a batten notice posted as batten's program arrives in full as its own `[creel] #<id> from <shortname>:BATTEN: …` line, one posted under a strand claim as mail announced by creel's reminder that you read, and on either you check the run with `lyx batten status <slug>`.
 //  3. At an awaiting Publish, review the PR: a small diff yourself, with build, vet and test over the touched packages; a large one through a read-only background subagent.
 //     Then `lyx loom approve` in the worktree; batten resumes the child itself, so no `lyx loom start` follows.
 //     Finalize squash-merges, closes the PR and marks the board task done.
