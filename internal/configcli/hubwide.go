@@ -12,10 +12,12 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
+	"github.com/Knatte18/loomyard/internal/configsync"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -141,6 +143,129 @@ func newHubCommit(boardDir string) hubCommitFunc {
 		}
 		return bolt.Push(opts)
 	}
+}
+
+// reconcileDefaultLayer reconciles every module's file under the hub's board dir against its template, seeded from the prime's anchor, and reports the reconcile envelope.
+// A dry run writes nothing and takes no guard.
+// apply is refused when guard refuses.
+// Otherwise it holds the board write lock and runs a dry run first, so a file that fails to parse or migrate leaves every file unwritten.
+// Then the reconcile writes, its files are committed in _board and the commit is pushed.
+// A write that fails part-way is undone, restoring every config file of the board dir.
+// A write that succeeded but was not committed, or committed but not pushed, is reported as an error naming the files left for the next board sync.
+func reconcileDefaultLayer(l *lyxcwd.Location, out io.Writer, apply bool, guard func() (string, error)) int {
+	board := fabricengine.ConfigDirs(l).Board
+	if board == "" {
+		return output.Err(out, "reconcile --layer default needs a hub's board dir, and this checkout is not a hub; way forward: run it with no --layer")
+	}
+	worktrees, err := fabricengine.CodeWorktrees(l.WorktreePath())
+	if err != nil {
+		return output.Err(out, fmt.Sprintf("list the hub's code worktrees: %v", err))
+	}
+	primeAnchor := ""
+	for _, w := range worktrees {
+		if w.Main {
+			primeAnchor = w.Anchor
+		}
+	}
+	opts := configsync.HubWideOptions{SeedDefaults: true}
+
+	if !apply {
+		results, err := configsync.ReconcileHubWideAt(board, primeAnchor, opts)
+		if err != nil {
+			return output.Err(out, fmt.Sprintf("reconcile: %v", err))
+		}
+		return output.Ok(out, reconcileEnvelope(false, results))
+	}
+
+	refusal, err := guard()
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+	if refusal != "" {
+		return output.Err(out, refusal)
+	}
+	bolt := fabricengine.NewBolt(board)
+	syncOpts := fabricengine.EnvSyncOptions()
+	var results []configsync.Result
+	var written []string
+	_, committed, commitErr := bolt.CommitWritten("config: reconcile the board dir's files", func() ([]string, error) {
+		if _, err := configsync.ReconcileHubWideAt(board, primeAnchor, opts); err != nil {
+			return nil, err
+		}
+		prior, err := snapshotBoardConfig(board)
+		if err != nil {
+			return nil, err
+		}
+		applyOpts := opts
+		applyOpts.Apply = true
+		results, err = configsync.ReconcileHubWideAt(board, primeAnchor, applyOpts)
+		if err != nil {
+			results = nil
+			return nil, restoreBoardConfig(prior, err)
+		}
+		for _, result := range results {
+			if !result.Applied {
+				continue
+			}
+			written = append(written, configengine.ConfigFileRel(result.Module))
+			for _, legacy := range result.MigratedFrom {
+				written = append(written, configengine.ConfigFileRel(legacy))
+			}
+		}
+		return written, nil
+	}, syncOpts)
+	switch {
+	case commitErr != nil && results == nil:
+		return output.Err(out, fmt.Sprintf("reconcile: %v", commitErr))
+	case commitErr != nil:
+		return output.Err(out, fmt.Sprintf("reconciled %s in %s but did not commit them: %v; the next board sync commits them", strings.Join(written, ", "), board, commitErr))
+	}
+	if committed {
+		if pushErr := bolt.Push(syncOpts); pushErr != nil {
+			return output.Err(out, fmt.Sprintf("reconciled %s in %s and committed them in _board but did not push: %v; the next board push carries them", strings.Join(written, ", "), board, pushErr))
+		}
+	}
+	return output.Ok(out, reconcileEnvelope(true, results))
+}
+
+// snapshotBoardConfig reads every file in the board dir's config dir and every registry module's config file there; an absent module file maps to a snapshot of absence.
+func snapshotBoardConfig(board string) (map[string]fileSnapshot, error) {
+	prior := make(map[string]fileSnapshot)
+	configDir := configengine.ConfigDir(board)
+	entries, err := os.ReadDir(configDir)
+	if err != nil && !os.IsNotExist(err) {
+		return nil, fmt.Errorf("snapshot config dir %s: %w", configDir, err)
+	}
+	paths := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			paths = append(paths, filepath.Join(configDir, entry.Name()))
+		}
+	}
+	for _, module := range configreg.Modules() {
+		paths = append(paths, configengine.ConfigFile(board, module.Name))
+	}
+	for _, path := range paths {
+		snap, err := snapshotFile(path)
+		if err != nil {
+			return nil, err
+		}
+		prior[path] = snap
+	}
+	return prior, nil
+}
+
+// restoreBoardConfig puts back every file of prior that differs from its snapshot and returns cause, joined with any restore failure.
+// A file already as snapshotted is left alone, so a failure before any write reports no restore failure.
+func restoreBoardConfig(prior map[string]fileSnapshot, cause error) error {
+	for path, snap := range prior {
+		current, err := snapshotFile(path)
+		if err == nil && current.existed == snap.existed && bytes.Equal(current.data, snap.data) {
+			continue
+		}
+		cause = rollBack(path, snap, cause)
+	}
+	return cause
 }
 
 // fileSnapshot is a file's bytes, or its absence, taken so a failed write can put the file back.
