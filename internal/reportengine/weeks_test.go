@@ -315,8 +315,8 @@ func TestRenderMarkdown(t *testing.T) {
 
 	for _, week := range report.Weeks {
 		wakes := sectionRows(markdown, HeadingWakes, week.Week)
-		wantWakes := []string{week.Week, fmt.Sprint(week.Runs), fmt.Sprint(week.WakeRuns), cellFloat(week.WakesPerRun)}
-		if len(wakes) != 1 || !slices.Equal(wakes[0][:4], wantWakes) {
+		wantWakes := []string{week.Week, fmt.Sprint(week.Runs), fmt.Sprintf("loom %d", week.Runs), fmt.Sprint(week.WakeRuns), cellFloat(week.WakesPerRun)}
+		if len(wakes) != 1 || !slices.Equal(wakes[0][:5], wantWakes) {
 			t.Errorf("%s wake rows = %v; want one starting %v", week.Week, wakes, wantWakes)
 		}
 

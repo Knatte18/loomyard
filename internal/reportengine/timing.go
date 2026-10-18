@@ -5,6 +5,7 @@ package reportengine
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -23,10 +24,13 @@ const (
 
 // The phases a run's time is counted under.
 const (
-	PhaseSetup           = "setup"
-	PhaseDiscussion      = "discussion"
-	PhasePlan            = "plan"
-	PhaseWebster         = "webster"
+	PhaseSetup      = "setup"
+	PhaseDiscussion = "discussion"
+	PhasePlan       = "plan"
+	PhaseWebster    = "webster"
+	// PhaseWrite is a darn run's writer and its rewrite of the change description, and PhaseReview the review of its committed diff.
+	PhaseWrite           = "write"
+	PhaseReview          = "review"
 	PhaseMerge           = "merge"
 	PhasePublishFinalize = "publish-finalize"
 	PhaseLand            = "land"
@@ -44,7 +48,7 @@ const (
 )
 
 // timingPhases lists every phase in report order.
-var timingPhases = []string{PhaseSetup, PhaseDiscussion, PhasePlan, PhaseWebster, PhaseMerge, PhasePublishFinalize, PhaseLand, PhasePaused, PhaseOther}
+var timingPhases = []string{PhaseSetup, PhaseDiscussion, PhasePlan, PhaseWebster, PhaseWrite, PhaseReview, PhaseMerge, PhasePublishFinalize, PhaseLand, PhasePaused, PhaseOther}
 
 // Interval is a span of time from From to To.
 type Interval struct {
@@ -77,11 +81,12 @@ type TimingSelection struct {
 	SnapshotAt    time.Time `json:"snapshot_at"`
 }
 
-// TimingRun is the time of one run: its span from first to last stamp, the machine sleep inside it, and the span split over the phases.
+// TimingRun is the time of one run of a recipe: its span from first to last stamp, the machine sleep inside it, and the span split over the phases.
 // Every duration is whole seconds, and a phase the run holds no row of is nil, never zero.
 type TimingRun struct {
 	Slug          string            `json:"slug"`
 	Tag           string            `json:"tag"`
+	Recipe        string            `json:"recipe"`
 	State         string            `json:"state"`
 	Start         time.Time         `json:"start"`
 	End           time.Time         `json:"end"`
@@ -111,7 +116,7 @@ type TimingRun struct {
 	inactive  []Interval
 }
 
-// PhaseMedian is the median seconds of one phase over the landed runs holding it.
+// PhaseMedian is the median seconds of one phase over the landed runs of one recipe holding it.
 type PhaseMedian struct {
 	Seconds *int64 `json:"seconds"`
 	Runs    int    `json:"runs"`
@@ -134,13 +139,14 @@ type TimingBucket struct {
 }
 
 // TimingReport is the result of ComputeTiming.
+// Phases maps every selected recipe to its phases, each to its median.
 type TimingReport struct {
-	Selection TimingSelection         `json:"selection"`
-	Runs      []TimingRun             `json:"runs"`
-	Phases    map[string]*PhaseMedian `json:"phases"`
-	Buckets   []TimingBucket          `json:"buckets"`
-	SleepNote string                  `json:"sleep_note"`
-	Findings  []Finding               `json:"findings"`
+	Selection TimingSelection                    `json:"selection"`
+	Runs      []TimingRun                        `json:"runs"`
+	Phases    map[string]map[string]*PhaseMedian `json:"phases"`
+	Buckets   []TimingBucket                     `json:"buckets"`
+	SleepNote string                             `json:"sleep_note"`
+	Findings  []Finding                          `json:"findings"`
 }
 
 // ComputeTiming times the runs of src: the landed runs convergence selects and the runs in flight on live pairs' records branches, from opts.Since to src.SnapshotAt.
@@ -212,7 +218,7 @@ func ComputeTiming(src Sources, opts TimingOptions) (TimingReport, error) {
 // selectInFlight returns the runs of live pairs, read from the records branches in src.Branches.
 // Only a pair records branch counts: a branch other than src.RecordsBranch whose name is the one fabricengine.RecordsBranchName forms from a slug.
 // A branch whose tip is the commit of one of its slug's archive tags is landed and skipped; a branch whose slug opts.Live names is in flight; any other is abandoned, left out with a finding.
-// A pair not seeded yet, or seeded to another recipe, is left out silently, and a record that does not decode is a finding.
+// A pair not seeded yet, or seeded to a recipe a report does not select, is left out silently, and a record that does not decode is a finding.
 func selectInFlight(src Sources, opts TimingOptions, findings *[]Finding) ([]RunRow, error) {
 	live := map[string]bool{}
 	for _, slug := range opts.Live {
@@ -266,7 +272,7 @@ func selectInFlight(src Sources, opts TimingOptions, findings *[]Finding) ([]Run
 			*findings = append(*findings, Finding{Tag: branch.Name, File: rels.Seed, Error: err.Error()})
 			continue
 		}
-		if seed.Recipe != shedrun.RecipeLoom {
+		if !slices.Contains(runRecipes, seed.Recipe) {
 			continue
 		}
 		statusBytes, err := src.Records.FileAtRevision(branch.Commit, rels.Status)
@@ -290,6 +296,7 @@ func selectInFlight(src Sources, opts TimingOptions, findings *[]Finding) ([]Run
 		row := RunRow{
 			Tag:             branch.Name,
 			Slug:            slug,
+			Recipe:          seed.Recipe,
 			Commit:          branch.Commit,
 			Committed:       branch.Committed.UTC(),
 			Week:            isoWeekLabel(branch.Committed),
@@ -423,21 +430,24 @@ func bucketRuns(runs []TimingRun, windows []bucketWindow) []TimingBucket {
 	return buckets
 }
 
-// phaseMedians returns every phase's median over the landed runs holding it whose archive tag is committed in window.
+// phaseMedians returns, per selected recipe, each of its phases' median over the landed runs of that recipe holding it whose archive tag is committed in window.
 // A run in flight never enters a median, and a phase no landed run holds has nil seconds.
-func phaseMedians(runs []TimingRun, window Interval) map[string]*PhaseMedian {
-	medians := map[string]*PhaseMedian{}
-	for _, phase := range timingPhases {
-		var values []int64
-		for _, run := range runs {
-			if run.State != RunStateLanded || run.committed.Before(window.From) || run.committed.After(window.To) {
-				continue
+func phaseMedians(runs []TimingRun, window Interval) map[string]map[string]*PhaseMedian {
+	medians := map[string]map[string]*PhaseMedian{}
+	for _, recipe := range runRecipes {
+		medians[recipe] = map[string]*PhaseMedian{}
+		for _, phase := range recipePhases(recipe) {
+			var values []int64
+			for _, run := range runs {
+				if run.Recipe != recipe || run.State != RunStateLanded || run.committed.Before(window.From) || run.committed.After(window.To) {
+					continue
+				}
+				if seconds := run.Phases[phase]; seconds != nil {
+					values = append(values, *seconds)
+				}
 			}
-			if seconds := run.Phases[phase]; seconds != nil {
-				values = append(values, *seconds)
-			}
+			medians[recipe][phase] = &PhaseMedian{Seconds: medianSeconds(values), Runs: len(values)}
 		}
-		medians[phase] = &PhaseMedian{Seconds: medianSeconds(values), Runs: len(values)}
 	}
 	return medians
 }

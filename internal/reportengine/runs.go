@@ -22,11 +22,16 @@ import (
 // SourceBatten is the name of the source holding a run's batten status snapshots.
 const SourceBatten = "batten"
 
+// runRecipes are the recipes whose seeded runs a report selects: each writes the loom run directory, status and Finalize row the selection reads.
+var runRecipes = []string{shedrun.RecipeLoom, shedrun.RecipeDarn}
+
 // RunRow is one full run.
+// Recipe is the recipe its seed names, one of the recipes a report selects.
 // Sources maps each source name to whether the run holds it; a source a run lacks is absent, never counted as zero.
 type RunRow struct {
 	Tag       string          `json:"tag"`
 	Slug      string          `json:"slug"`
+	Recipe    string          `json:"recipe"`
 	Commit    string          `json:"commit"`
 	Committed time.Time       `json:"committed"`
 	Week      string          `json:"week"`
@@ -100,7 +105,7 @@ type RunRow struct {
 	alignmentAttempts []alignment.Attempt
 }
 
-// PartialRun is a tag that names a run which did not finish as a full loom run, with the reason.
+// PartialRun is a tag that names a run which did not finish as a full run of a selected recipe, with the reason.
 // It enters no per-run figure.
 type PartialRun struct {
 	Tag    string `json:"tag"`
@@ -161,6 +166,7 @@ func selectRuns(src Sources, opts Options, report *Report) error {
 		row := RunRow{
 			Tag:          tag.Name,
 			Slug:         slug,
+			Recipe:       seed.Recipe,
 			Commit:       tag.Commit,
 			Committed:    committed,
 			Week:         week,
@@ -229,8 +235,8 @@ type landingInputs struct {
 	newestTag   map[string]time.Time
 }
 
-// readLoomRecords reads the loom seed and status at tag's commit through the shared record parsers, and returns both.
-// A non-empty reason means the tag is not a full run: its seed names another recipe, a record is absent or does not decode, or the history holds no Finalize entry.
+// readLoomRecords reads the loom run directory's seed and status at tag's commit through the shared record parsers, and returns both.
+// A non-empty reason means the tag is not a full run: its seed names a recipe a report does not select, a record is absent or does not decode, or the history holds no Finalize entry.
 // A record that exists but does not decode is also a finding.
 func readLoomRecords(records Reader, tag gitrepo.TagRef, slug string) (seed shedrun.Seed, status shedengine.Status, reason string, findings []Finding, err error) {
 	rels, relErr := shedrun.TreeRunRels(slug)
@@ -249,8 +255,8 @@ func readLoomRecords(records Reader, tag gitrepo.TagRef, slug string) (seed shed
 	if err != nil {
 		return shedrun.Seed{}, shedengine.Status{}, "the seed does not decode", []Finding{{Tag: tag.Name, File: rels.Seed, Error: err.Error()}}, nil
 	}
-	if seed.Recipe != shedrun.RecipeLoom {
-		return shedrun.Seed{}, shedengine.Status{}, fmt.Sprintf("the seed names the %q recipe, not loom", seed.Recipe), nil, nil
+	if !slices.Contains(runRecipes, seed.Recipe) {
+		return shedrun.Seed{}, shedengine.Status{}, fmt.Sprintf("the seed names the %q recipe, not one of %v", seed.Recipe, runRecipes), nil, nil
 	}
 
 	statusBytes, err := records.FileAtRevision(tag.Commit, rels.Status)

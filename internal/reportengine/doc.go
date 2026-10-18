@@ -20,8 +20,9 @@
 //
 // Every archive tag whose slug parses is one run, so a reused slug yields one run per tag.
 // A tag committed before Options.Since is left out entirely; a tag whose slug does not parse is a Finding.
-// At the tag's commit the engine reads the loom seed and status through their tolerant parses.
-// The run is full when the seed names the loom recipe and the status history holds a Finalize entry; any other tag is a PartialRun that enters no per-run figure.
+// At the tag's commit the engine reads the seed and status of the loom run directory through their tolerant parses.
+// The run is full when the seed names the loom or the darn recipe, both of which write that directory, and the status history holds a Finalize entry; any other tag is a PartialRun that enters no per-run figure.
+// RunRow.Recipe is the recipe the seed names, and every figure reads a darn run's records as it reads a loom run's.
 // A record that exists but does not decode is a Finding naming the tag and the file, and the tag is partial.
 // A run's time is its tag's committer date in UTC, and its week is the ISO week with Monday as the first day.
 //
@@ -91,6 +92,7 @@
 //
 // Report.Weeks holds one Week per ISO week that holds a run, a partial run or a landing, ascending.
 // A run buckets by its tag's week, a partial run counts in its week's Partial alone, and a landing buckets by its own commit's week.
+// A week's figures sum over its runs of every recipe, and Week.Recipes counts its runs per recipe.
 // A week sums a figure over the runs holding its source and states in Lacking how many of its runs do not; a figure no run holds, and a mean or share nothing carries, is nil and never 0.
 // The wake mean covers the runs holding every wake source but land-ready-tasks, which is absent for every run.
 // A class's Runs counts the week's runs it occurred in.
@@ -103,10 +105,11 @@
 // It is told its options and runs no process and reads no clock: its window runs from TimingOptions.Since to Sources.SnapshotAt, and a Since after the snapshot gives an empty report with no bucket.
 // A record that does not decode is a Finding, and a figure a run's records lack is nil, never zero.
 //
-// A landed run is exactly a full run as run selection picks it, read once with its seed, status and batten snapshots; a partial run enters neither the run table nor any bucket.
+// A landed run is exactly a full run as run selection picks it, of either recipe, read once with its seed, status and batten snapshots; a partial run enters neither the run table nor any bucket.
 // A run in flight is a pair records branch of Sources.Branches: a branch other than the records branch whose name is the one fabricengine.RecordsBranchName forms from a slug.
 // A branch whose tip is the commit of one of its slug's archive tags is landed and skipped; one whose slug TimingOptions.Live names is in flight; any other is abandoned and left out with a finding.
-// A pair not seeded yet, or seeded to another recipe, is left out silently.
+// A pair not seeded yet, or seeded to a recipe other than loom or darn, is left out silently.
+// TimingRun.Recipe is the recipe the run's seed names.
 // A run in flight takes the batten snapshots committed after its slug's newest archive tag, so a reused slug never reads an earlier run's.
 // A run enters the report when its span overlaps the window.
 //
@@ -117,11 +120,13 @@
 // The span closes at the last stamp of either history, or at Sources.SnapshotAt for a run in flight, whose trailing interval counts under the phase of its loom status's current producer.
 // That trailing interval counts under paused instead when the last row is the batten record's entry for the child's change into paused.
 //
-// Each interval counts under one phase of a closed table.
-// setup holds every batten row before batten's first Run-Shed entry and loom's Preflight and Loom-Preflight; discussion every Discussion row; plan every Plan row and Batchifier; webster every Webster row and Describe; merge every Merge row; publish-finalize Publish, PR-Align, PR-Gate, PR-Rework, every Darn row, Finalize and Friction-Reflect; land every batten row other than Run-Shed after batten's first Run-Shed entry;
+// Each interval counts under one phase, and the child's rows map to phases through a closed table per recipe.
+// Every run's setup holds every batten row before batten's first Run-Shed entry; land every batten row other than Run-Shed after batten's first Run-Shed entry;
 // paused every Run-Shed entry whose change is from paused, so the time the child stood paused at a producer boundary counts apart from the row it paused at.
-// Any other Run-Shed entry records a change of the child's state and counts under the phase of the producer its change names, else of the latest loom row before it, else under setup.
-// Any other row counts under other and adds a finding.
+// A loom run's setup also holds Preflight and Loom-Preflight; discussion every Discussion row; plan every Plan row and Batchifier; webster every Webster row and Describe; merge every Merge row; publish-finalize Publish, PR-Align, PR-Gate, PR-Rework, Finalize and Friction-Reflect.
+// A darn run's setup also holds Preflight; write Darn-Write, its retired name Darn, and Describe; review every Darn-Review row (Darn-Bouncer, Darn-Burler-Review, Darn-Burler-Fix); merge Merge-In; publish-finalize Publish, PR-Align, PR-Gate, Finalize and Friction-Reflect.
+// Any other Run-Shed entry records a change of the child's state and counts under the phase the run's recipe table gives the producer its change names, else the latest loom row before it, else under setup.
+// Any other row counts under other and adds a finding, so a row a recipe gains before its table does shows up rather than vanishing.
 // Without the batten source land is nil and setup holds the loom rows alone.
 //
 // TimingOptions.Sleeps, unioned and clipped to the span, is the run's sleep, and every row interval loses the part a sleep covers, so the phases plus the sleep sum to the span.
@@ -164,13 +169,14 @@
 // Each interval, wait and sleep is clipped to every bucket it overlaps, and a bucket's time sums over runs, so two parallel runs add two hours to an hour.
 // Each attempt spawn counts in the bucket its spawned_at falls in and its time is clipped to every bucket it overlaps.
 // Each stop counts in the bucket its time falls in under its kind and settler.
-// TimingReport.Phases holds each phase's median over the landed runs holding it whose archive tag is committed in the window; the median of an even count is the mean of the two middle values rounded down, and a run in flight never enters one.
+// TimingReport.Phases holds, per recipe, each phase a run of it can hold, which is the phases its table names plus setup, land, paused and other.
+// Each such phase's median is over the landed runs of that recipe holding it whose archive tag is committed in the window; the median of an even count is the mean of the two middle values rounded down, and a run in flight never enters one.
 //
 // # Outputs
 //
 // The JSON envelope is the Report itself: selection, runs, partial, landings, weeks, absent and findings.
-// RenderMarkdown renders the same fields as the selection and one table per board question: wakes per run, recurring stop and failure classes, the fresh-code fix share, and review rounds per segment.
+// RenderMarkdown renders the same fields as the selection and one table per board question: wakes per run, with the week's runs per recipe, recurring stop and failure classes, the fresh-code fix share, and review rounds per segment.
 // A nil figure renders as no data.
-// RenderTimingMarkdown renders a TimingReport as the selection and sleep note, then four tables: runs (span, active, each wait kind, sleep, each phase and the attempt counts with their time), phase medians, time per bucket, and stops per settler per bucket.
+// RenderTimingMarkdown renders a TimingReport as the selection and sleep note, then four tables: runs (recipe, state, span, active, each wait kind, sleep, each phase and the attempt counts with their time), phase medians per recipe, time per bucket, and stops per settler per bucket.
 // Every duration is spelled through durfmt.FormatSeconds, with seconds below a day and as 2d03h from a day on.
 package reportengine

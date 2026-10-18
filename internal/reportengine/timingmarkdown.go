@@ -46,7 +46,7 @@ func RenderTimingMarkdown(r TimingReport) string {
 	fmt.Fprintf(&b, "- sleep: %s\n", note)
 
 	b.WriteString("\n" + HeadingTimingRuns + "\n\n")
-	runHeader := []string{"Run", "State", "Start", "Span", "Active"}
+	runHeader := []string{"Run", "Recipe", "State", "Start", "Span", "Active"}
 	runHeader = append(runHeader, timingWaitKinds...)
 	runHeader = append(runHeader, "Sleep")
 	runHeader = append(runHeader, timingPhases...)
@@ -54,7 +54,7 @@ func RenderTimingMarkdown(r TimingReport) string {
 	table(&b, runHeader, timingRunRows(r.Runs))
 
 	b.WriteString("\n" + HeadingTimingPhases + "\n\n")
-	table(&b, []string{"Phase", "Median", "Runs"}, phaseMedianRows(r.Phases))
+	table(&b, []string{"Recipe", "Phase", "Median", "Runs"}, phaseMedianRows(r.Phases))
 
 	b.WriteString("\n" + HeadingTimingBuckets + "\n\n")
 	bucketHeader := []string{"Bucket", "Runs"}
@@ -93,7 +93,7 @@ func formatAttempts(figure AttemptFigure) string {
 func timingRunRows(runs []TimingRun) [][]string {
 	rows := make([][]string, len(runs))
 	for i, run := range runs {
-		row := []string{run.Slug, run.State, run.Start.UTC().Format(time.RFC3339), formatSeconds(&run.SpanSeconds), formatSeconds(&run.ActiveSeconds)}
+		row := []string{run.Slug, run.Recipe, run.State, run.Start.UTC().Format(time.RFC3339), formatSeconds(&run.SpanSeconds), formatSeconds(&run.ActiveSeconds)}
 		for _, kind := range timingWaitKinds {
 			row = append(row, secondsOf(run.Waits, kind))
 		}
@@ -107,11 +107,13 @@ func timingRunRows(runs []TimingRun) [][]string {
 	return rows
 }
 
-func phaseMedianRows(medians map[string]*PhaseMedian) [][]string {
+func phaseMedianRows(medians map[string]map[string]*PhaseMedian) [][]string {
 	var rows [][]string
-	for _, phase := range timingPhases {
-		if median := medians[phase]; median != nil {
-			rows = append(rows, []string{phase, formatSeconds(median.Seconds), fmt.Sprint(median.Runs)})
+	for _, recipe := range runRecipes {
+		for _, phase := range timingPhases {
+			if median := medians[recipe][phase]; median != nil {
+				rows = append(rows, []string{recipe, phase, formatSeconds(median.Seconds), fmt.Sprint(median.Runs)})
+			}
 		}
 	}
 	return rows
