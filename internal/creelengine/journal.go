@@ -33,8 +33,10 @@ const (
 	eventAged        = "aged"
 	eventInterrupted = "interrupted"
 	// eventStalled marks a receiver whose delivery waits on a stall reason that changed.
-	eventStalled  = "stalled"
-	eventHeld     = "held"
+	eventStalled = "stalled"
+	eventHeld    = "held"
+	// eventRenewed marks the same owner extending its live hold; it carries the new expiry and is no event for the log.
+	eventRenewed  = "renewed"
 	eventReleased = "released"
 	// eventWithheld marks a stage 1 journal's held-back orch reminder; the fold reads it from old journals only and nothing writes it.
 	eventWithheld = "withheld"

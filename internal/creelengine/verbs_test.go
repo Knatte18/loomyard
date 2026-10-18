@@ -557,12 +557,22 @@ func TestStore_InjectAndHold(t *testing.T) {
 			if err != nil || !renewed.Renewed || !renewed.Expires.After(first.Expires) {
 				t.Errorf("renewing Hold = %+v, %v; want a renewal ending after %v", renewed, err, first.Expires)
 			}
-			released, err := e.store.Release(program(batten), alpha)
+			if err := e.store.Close(); err != nil {
+				t.Fatalf("Close: %v", err)
+			}
+			reopened, err := creelengine.OpenStore(e.geom, e.del, e.clock)
+			if err != nil {
+				t.Fatalf("OpenStore: %v", err)
+			}
+			t.Cleanup(func() { _ = reopened.Close() })
+			_, err = reopened.Hold(program(webster), alpha, time.Minute)
+			wantErr(t, err, batten, renewed.Expires.UTC().Format(time.RFC3339))
+			released, err := reopened.Release(program(batten), alpha)
 			if err != nil || !released {
 				t.Errorf("owner's Release = %v, %v; want released", released, err)
 			}
-			if got := eventsOf(e.store.Log(creelengine.LogFilter{To: alpha})); !slices.Equal(got, []string{"held", "held", "released"}) {
-				t.Errorf("events = %v; want held, held, released", got)
+			if got := eventsOf(reopened.Log(creelengine.LogFilter{To: alpha})); !slices.Equal(got, []string{"held", "released"}) {
+				t.Errorf("events = %v; want held, released", got)
 			}
 		}},
 		{"Release_WithNoHoldChangesNothing", func(t *testing.T, e *env) {
