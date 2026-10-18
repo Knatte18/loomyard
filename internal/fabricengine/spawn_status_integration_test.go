@@ -17,7 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// TestSpawnStatusPush covers the request SpawnStatusPush builds from the prime, a task pair, a local pair and a pair whose code branch alone is marked.
+// TestSpawnStatusPush covers the request SpawnStatusPush builds from the prime, a task pair, a local pair and a pair whose code branch alone is marked and a pair whose records branch alone is marked.
 // Serial: SwapPushRecorderForTest sets the package-level spawnDetachedPushFn.
 func TestSpawnStatusPush(t *testing.T) {
 	const localSlug = "localpair"

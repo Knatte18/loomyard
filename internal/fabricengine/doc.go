@@ -184,7 +184,7 @@
 // In the prime the request holds the records side, `PauseSlug` the caller's gate slug and no `TeardownSlug`;
 // in a task pair it holds both sides with `PauseSlug` and `TeardownSlug` both the pair's own slug.
 // The child starts in the hub's `_board` worktree, outside both of the pair's worktrees, and resolves its hub from there through `lyxcwd.ResolveWorktree`.
-// It reads the local-only mark of each side's branch first: a marked side is left out and named in `SpawnResult.LocalSkipped`, and with no side left nothing is spawned.
+// It reads the local-only mark of each side's branch first: a marked side is left out and named in `SpawnResult.LocalSkipped`, and with no side left, or with the records side left out, nothing is spawned.
 // `SpawnDetachedPush` returns `ErrSpawnUnderTest` in a test binary, so no test forks a real push child.
 //
 // `opts.SkipGit`/`opts.SkipPush` interact with this two-step call in ways
@@ -536,7 +536,7 @@
 // `AddLocal` refuses with `*ErrLocalAddOverOrdinary` before its first mutation when either branch exists unmarked locally or as an `origin` remote-tracking ref, so it never adopts and silences an ordinary pair.
 // A marked branch is adopted, as a local pair's kept branch is when its worktrees were removed.
 // A plain `Add` adopts a marked warp branch too, instead of refusing `ErrBranchExists`, and as its last step clears the mark of each adopted branch, listing it in `AddResult.LocalMarkCleared`, so the adopted pair is ordinary.
-// A rollback never deletes an adopted warp branch, and clearing last leaves no failable step after it, so a rollback never has a mark to restore.
+// A rollback never deletes an adopted warp branch, and a clear that fails after an earlier one succeeded restores the earlier mark before the rollback.
 // Every plain fabric push retries a push the server refuses on the pushed ref with a bare `(failed)` or a remote `cannot lock ref`, through gitrepo's bounded retry with exponential backoff;
 // the archive tag push included, and every other push failure returns on the first attempt.
 // The coalesced push logs a Warn and leaves the commits unpushed once the attempts run out.
