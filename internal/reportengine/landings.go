@@ -56,7 +56,7 @@ const (
 
 // Landing is one first-parent commit of the parent branch.
 // Slug and Tag name the run that landed it, Join says how it was mapped and is empty for an unmapped commit.
-// Hand marks a commit landed without a finished loom run.
+// Hand marks a commit landed without a finished run.
 // LandIncomplete is nil unless a tagged full run's Finalize is done and its batten record is present, and then says the record never reaches Land.
 // Fresh is the fresh-code verdict of a fix or unmapped landing, and empty for any other kind.
 type Landing struct {

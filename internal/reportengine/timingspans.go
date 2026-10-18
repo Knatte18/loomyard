@@ -11,32 +11,82 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/battenshed"
+	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// exactLoomPhases maps the loom rows that no row family names to their phase.
-var exactLoomPhases = map[string]string{
-	loomshed.NamePreflight:       PhaseSetup,
-	loomshed.NameLoomPreflight:   PhaseSetup,
-	loomshed.NameBatchifier:      PhasePlan,
-	loomshed.NameDescribe:        PhaseWebster,
-	loomshed.NamePublish:         PhasePublishFinalize,
-	loomshed.NamePRAlign:         PhasePublishFinalize,
-	loomshed.NamePRGate:          PhasePublishFinalize,
-	loomshed.NamePRRework:        PhasePublishFinalize,
-	loomshed.NameFinalize:        PhasePublishFinalize,
-	loomshed.NameFrictionReflect: PhasePublishFinalize,
+// phaseTable maps the rows of one recipe's run to their phase: exact names a row by its whole name, and families names every row whose first dash-separated segment it holds.
+type phaseTable struct {
+	exact    map[string]string
+	families map[string]string
 }
 
-// loomPhaseFamilies maps the first dash-separated segment of a loom row name to the phase every row of that family counts under.
-var loomPhaseFamilies = map[string]string{
-	rowFamily(loomshed.NameDiscussionWrite): PhaseDiscussion,
-	rowFamily(loomshed.NamePlanWrite):       PhasePlan,
-	rowFamily(loomshed.NameWebster):         PhaseWebster,
-	rowFamily(loomshed.NameMergeIn):         PhaseMerge,
-	rowFamily(loomshed.NameDarnWrite):       PhasePublishFinalize,
+// recipePhaseTables holds the phase table of every recipe a report selects.
+var recipePhaseTables = map[string]phaseTable{
+	shedrun.RecipeLoom: {
+		exact: map[string]string{
+			loomshed.NamePreflight:       PhaseSetup,
+			loomshed.NameLoomPreflight:   PhaseSetup,
+			loomshed.NameBatchifier:      PhasePlan,
+			loomshed.NameDescribe:        PhaseWebster,
+			loomshed.NamePublish:         PhasePublishFinalize,
+			loomshed.NamePRAlign:         PhasePublishFinalize,
+			loomshed.NamePRGate:          PhasePublishFinalize,
+			loomshed.NamePRRework:        PhasePublishFinalize,
+			loomshed.NameFinalize:        PhasePublishFinalize,
+			loomshed.NameFrictionReflect: PhasePublishFinalize,
+		},
+		families: map[string]string{
+			rowFamily(loomshed.NameDiscussionWrite): PhaseDiscussion,
+			rowFamily(loomshed.NamePlanWrite):       PhasePlan,
+			rowFamily(loomshed.NameWebster):         PhaseWebster,
+			rowFamily(loomshed.NameMergeIn):         PhaseMerge,
+		},
+	},
+	shedrun.RecipeDarn: {exact: darnPhases()},
+}
+
+// darnPhases maps every row of a darn run, and each retired row name a darn status may still carry, to its phase.
+func darnPhases() map[string]string {
+	phases := map[string]string{
+		loomshed.NamePreflight:        PhaseSetup,
+		loomshed.NameDarnWrite:        PhaseWrite,
+		loomshed.NameDescribe:         PhaseWrite,
+		loomshed.NameDarnBouncer:      PhaseReview,
+		loomshed.NameDarnBurlerReview: PhaseReview,
+		loomshed.NameDarnBurlerFix:    PhaseReview,
+		loomshed.NameMergeIn:          PhaseMerge,
+		loomshed.NamePublish:          PhasePublishFinalize,
+		loomshed.NamePRAlign:          PhasePublishFinalize,
+		loomshed.NamePRGate:           PhasePublishFinalize,
+		loomshed.NameFinalize:         PhasePublishFinalize,
+		loomshed.NameFrictionReflect:  PhasePublishFinalize,
+	}
+	for retired, successor := range loomrecipe.DarnRetiredRows() {
+		phases[retired] = phases[successor]
+	}
+	return phases
+}
+
+// recipePhases returns, in report order, the phases a run of recipe can hold: those its phase table names, and setup, land, paused and other, which every run can.
+func recipePhases(recipe string) []string {
+	named := map[string]bool{PhaseSetup: true, PhaseLand: true, PhasePaused: true, PhaseOther: true}
+	table := recipePhaseTables[recipe]
+	for _, phase := range table.exact {
+		named[phase] = true
+	}
+	for _, phase := range table.families {
+		named[phase] = true
+	}
+	var phases []string
+	for _, phase := range timingPhases {
+		if named[phase] {
+			phases = append(phases, phase)
+		}
+	}
+	return phases
 }
 
 // rowFamily returns the text of a row name before its first dash, the whole name when it has none.
@@ -45,12 +95,13 @@ func rowFamily(name string) string {
 	return family
 }
 
-// loomRowPhase returns the phase of a loom row by name and whether the name is in the phase table.
-func loomRowPhase(producer string) (string, bool) {
-	if phase, ok := exactLoomPhases[producer]; ok {
+// childRowPhase returns the phase of a row of a recipe's run by name and whether the recipe's phase table names it.
+func childRowPhase(recipe, producer string) (string, bool) {
+	table := recipePhaseTables[recipe]
+	if phase, ok := table.exact[producer]; ok {
 		return phase, true
 	}
-	phase, ok := loomPhaseFamilies[rowFamily(producer)]
+	phase, ok := table.families[rowFamily(producer)]
 	return phase, ok
 }
 
@@ -139,14 +190,14 @@ func mergeRows(row RunRow) ([]timedRow, []Finding) {
 	return merged, findings
 }
 
-// phaseOf returns the phase the row at index counts under, and false when it is a loom row the phase table does not name, which counts under PhaseOther.
+// phaseOf returns the phase the row at index of a run of recipe counts under, and false when it is a child row the recipe's phase table does not name, which counts under PhaseOther.
 // A batten row counts by position: before batten's first Run-Shed entry under PhaseSetup, after it under PhaseLand.
 // A Run-Shed entry records the child's state changes: a change from paused closes the pause and counts under PhasePaused,
-// and any other counts under the phase of the producer its change names, else the phase of the latest loom row before it, else PhaseSetup.
-func phaseOf(rows []timedRow, index int) (string, bool) {
+// and any other counts under the phase of the producer its change names, else the phase of the latest child row before it, else PhaseSetup.
+func phaseOf(recipe string, rows []timedRow, index int) (string, bool) {
 	row := rows[index]
 	if !row.batten {
-		if phase, ok := loomRowPhase(row.producer); ok {
+		if phase, ok := childRowPhase(recipe, row.producer); ok {
 			return phase, true
 		}
 		return PhaseOther, false
@@ -158,7 +209,7 @@ func phaseOf(rows []timedRow, index int) (string, bool) {
 			return PhasePaused, true
 		}
 		if ok && change.Producer != "" {
-			if phase, known := loomRowPhase(change.Producer); known {
+			if phase, known := childRowPhase(recipe, change.Producer); known {
 				return phase, true
 			}
 		}
@@ -166,7 +217,7 @@ func phaseOf(rows []timedRow, index int) (string, bool) {
 			if rows[i].batten {
 				continue
 			}
-			if phase, known := loomRowPhase(rows[i].producer); known {
+			if phase, known := childRowPhase(recipe, rows[i].producer); known {
 				return phase, true
 			}
 		}
@@ -184,7 +235,7 @@ func phaseOf(rows []timedRow, index int) (string, bool) {
 	return PhaseSetup, true
 }
 
-// spanOpening returns where a run's span opens: the first entry of the batten record, else the seed's started_at, else the first stamped loom row.
+// spanOpening returns where a run's span opens: the first entry of the batten record, else the seed's started_at, else the first stamped child row.
 // The last case adds a finding saying so, and found is false when no row carries a stamp at all.
 func spanOpening(row RunRow, rows []timedRow) (opening time.Time, found bool, finding *Finding) {
 	if n := len(row.battenSnapshots); n > 0 {
@@ -199,7 +250,7 @@ func spanOpening(row RunRow, rows []timedRow) (opening time.Time, found bool, fi
 	}
 	for _, candidate := range rows {
 		if !candidate.batten && candidate.stamped {
-			return candidate.stamp, true, &Finding{Tag: row.Tag, File: statusFileOf(row.Slug), Error: "neither the batten record nor the seed carries a stamp: the span opens at the first stamped loom row"}
+			return candidate.stamp, true, &Finding{Tag: row.Tag, File: statusFileOf(row.Slug), Error: "neither the batten record nor the seed carries a stamp: the span opens at the first stamped child row"}
 		}
 	}
 	return time.Time{}, false, nil
@@ -226,7 +277,7 @@ func timeRun(row RunRow, opts TimingOptions, snapshot time.Time) (TimingRun, []F
 	var intervals []phasedInterval
 	latest := opening
 	for i, timed := range rows {
-		phase, known := phaseOf(rows, i)
+		phase, known := phaseOf(row.Recipe, rows, i)
 		held[phase] = true
 		if !known {
 			findings = append(findings, Finding{Tag: row.Tag, File: file, Error: fmt.Sprintf("row %s names no phase: counted under %s", timed.producer, PhaseOther)})
@@ -243,7 +294,7 @@ func timeRun(row RunRow, opts TimingOptions, snapshot time.Time) (TimingRun, []F
 	}
 
 	if row.inFlight && snapshot.After(latest) {
-		phase, known := loomRowPhase(row.currentProducer)
+		phase, known := childRowPhase(row.Recipe, row.currentProducer)
 		if standsPaused(rows) {
 			phase, known = PhasePaused, true
 		}
@@ -308,6 +359,7 @@ func timeRun(row RunRow, opts TimingOptions, snapshot time.Time) (TimingRun, []F
 	run := TimingRun{
 		Slug:         row.Slug,
 		Tag:          row.Tag,
+		Recipe:       row.Recipe,
 		State:        state,
 		Start:        span.From,
 		End:          span.To,

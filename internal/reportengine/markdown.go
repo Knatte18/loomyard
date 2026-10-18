@@ -33,7 +33,7 @@ func RenderMarkdown(r Report) string {
 	fmt.Fprintf(&b, "- runs: %d, partial runs: %d, landings: %d, findings: %d\n", len(r.Runs), len(r.Partial), len(r.Landings), len(r.Findings))
 
 	b.WriteString("\n" + HeadingWakes + "\n\n")
-	table(&b, []string{"Week", "Runs", "Runs counted", "Wakes per run", "Wakes by kind", "Automatic steps", "Paused"}, wakeRows(r.Weeks))
+	table(&b, []string{"Week", "Runs", "Runs by recipe", "Runs counted", "Wakes per run", "Wakes by kind", "Automatic steps", "Paused"}, wakeRows(r.Weeks))
 
 	b.WriteString("\n" + HeadingStops + "\n\n")
 	table(&b, []string{"Week", "Kind", "Class", "Stops", "Runs recurred in"}, stopRows(r.Weeks))
@@ -115,7 +115,7 @@ func formatWakes(wakes map[string]map[string]int) string {
 func wakeRows(weeks []Week) [][]string {
 	rows := make([][]string, len(weeks))
 	for i, w := range weeks {
-		rows[i] = []string{w.Week, fmt.Sprint(w.Runs), fmt.Sprint(w.WakeRuns), formatFloat(w.WakesPerRun), formatWakes(w.Wakes), formatCounts(w.Automatic), formatInt(w.Paused)}
+		rows[i] = []string{w.Week, fmt.Sprint(w.Runs), formatCounts(w.Recipes), fmt.Sprint(w.WakeRuns), formatFloat(w.WakesPerRun), formatWakes(w.Wakes), formatCounts(w.Automatic), formatInt(w.Paused)}
 	}
 	return rows
 }

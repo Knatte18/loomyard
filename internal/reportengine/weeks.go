@@ -42,10 +42,11 @@ type SegmentWeek struct {
 }
 
 // Week is the figures of one ISO week.
-// Lacking counts the week's runs lacking each source; WakeRuns is how many runs the wake mean covers.
+// Recipes counts the week's runs per recipe, Lacking its runs lacking each source, and WakeRuns how many runs the wake mean covers.
 type Week struct {
 	Week    string         `json:"week"`
 	Runs    int            `json:"runs"`
+	Recipes map[string]int `json:"recipes"`
 	Partial int            `json:"partial"`
 	Lacking map[string]int `json:"lacking"`
 
@@ -123,7 +124,10 @@ func computeWeeks(report Report) []Week {
 
 	weeks := make([]Week, 0, len(ordered))
 	for _, label := range ordered {
-		week := Week{Week: label, Runs: len(runs[label]), Partial: partial[label], Lacking: absentCounts(runs[label])}
+		week := Week{Week: label, Runs: len(runs[label]), Recipes: map[string]int{}, Partial: partial[label], Lacking: absentCounts(runs[label])}
+		for _, run := range runs[label] {
+			week.Recipes[run.Recipe]++
+		}
 		week.fillWakes(runs[label])
 		week.fillStops(runs[label])
 		week.fillLandings(landings[label])

@@ -13,9 +13,11 @@ import (
 )
 
 // wantRun is what a row expects of one full run: its tag and ISO week, whether it holds the batten source and the history length of each batten snapshot, oldest first.
+// An empty recipe expects loom.
 type wantRun struct {
 	tag       string
 	week      string
+	recipe    string
 	batten    bool
 	snapshots []int
 }
@@ -90,11 +92,22 @@ func TestCompute_SelectsRuns(t *testing.T) {
 			},
 		},
 		{
-			name: "a loom run that never finalized and a run of another recipe are partial and in no run",
+			name: "a loom run that never finalized and a run of an unselected recipe are partial and in no run",
 			setup: func(w *world) expectation {
 				w.tag("parked", "t1", at(1), seedText("loom"), statusText(w.t, "Plan-Write", "Discussion-Write"))
-				w.tag("darned", "t2", at(2), seedText("darn"), "")
-				return expectation{partial: []string{tagName("parked", "t1"), tagName("darned", "t2")}}
+				w.tag("battened", "t2", at(2), seedText("batten"), statusText(w.t, "Finalize"))
+				return expectation{partial: []string{tagName("parked", "t1"), tagName("battened", "t2")}}
+			},
+		},
+		{
+			name: "a finalized darn run is a full run carrying its recipe, and an unfinalized one is partial",
+			setup: func(w *world) expectation {
+				w.tag("darned", "t1", at(1), seedText("darn"), statusText(w.t, "Darn-Write", "Finalize"))
+				w.tag("darning", "t2", at(2), seedText("darn"), statusText(w.t, "Darn-Write"))
+				return expectation{
+					runs:    []wantRun{{tag: tagName("darned", "t1"), week: "2026-W02", recipe: "darn"}},
+					partial: []string{tagName("darning", "t2")},
+				}
 			},
 		},
 		{
@@ -167,9 +180,13 @@ func TestCompute_SelectsRuns(t *testing.T) {
 				for _, snapshot := range run.battenSnapshots {
 					snapshots = append(snapshots, len(snapshot.History))
 				}
-				if run.Tag != wantRun.tag || run.Week != wantRun.week || run.Sources[SourceBatten] != wantRun.batten || !slices.Equal(snapshots, wantRun.snapshots) {
-					t.Errorf("run %d = (%s, %s, batten %v, snapshots %v); want (%s, %s, batten %v, snapshots %v)",
-						i, run.Tag, run.Week, run.Sources[SourceBatten], snapshots, wantRun.tag, wantRun.week, wantRun.batten, wantRun.snapshots)
+				recipe := wantRun.recipe
+				if recipe == "" {
+					recipe = "loom"
+				}
+				if run.Tag != wantRun.tag || run.Week != wantRun.week || run.Recipe != recipe || run.Sources[SourceBatten] != wantRun.batten || !slices.Equal(snapshots, wantRun.snapshots) {
+					t.Errorf("run %d = (%s, %s, %s, batten %v, snapshots %v); want (%s, %s, %s, batten %v, snapshots %v)",
+						i, run.Tag, run.Week, run.Recipe, run.Sources[SourceBatten], snapshots, wantRun.tag, wantRun.week, recipe, wantRun.batten, wantRun.snapshots)
 				}
 			}
 
