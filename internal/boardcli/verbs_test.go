@@ -554,6 +554,26 @@ func stepRunSettings(t *testing.T, f *cliFixture) {
 		})
 	}
 
+	batchAndMerge := []struct {
+		name    string
+		verb    string
+		payload string
+	}{
+		{name: "upsert-batch", verb: "upsert-batch", payload: `{"tasks":[{"slug":"bad","profile":"heavy"}]}`},
+		{name: "merge", verb: "merge", payload: `{"upsert":{"slug":"bad","title":"B","labels":["bug"],"profile":"heavy"}}`},
+	}
+	for _, tt := range batchAndMerge {
+		t.Run(tt.name+" refuses an unknown profile", func(t *testing.T) {
+			result := runJSON(t, 1, tt.verb, tt.payload)
+			message, _ := result["error"].(string)
+			for _, want := range []string{`"heavy"`, "known: budget, docs, light"} {
+				if !strings.Contains(message, want) {
+					t.Errorf("error %q lacks %q", message, want)
+				}
+			}
+		})
+	}
+
 	t.Run("a task session's change is refused and an identical re-write passes", func(t *testing.T) {
 		mustUpsert(t, loomBounces)
 		t.Setenv(agentname.StrandNameEnv, "ly:task-a:loom")
@@ -566,6 +586,13 @@ func stepRunSettings(t *testing.T, f *cliFixture) {
 		if message, _ := result["error"].(string); !strings.Contains(message, "ly:task-a:loom") {
 			t.Errorf("profile change error %q does not name the session", message)
 		}
+	})
+
+	t.Run("a task session re-sending the stored profile passes", func(t *testing.T) {
+		f.reset(t)
+		mustUpsert(t, `{"slug":"rs","title":"RS","kind":"task","labels":["bug"],"profile":"light"}`)
+		t.Setenv(agentname.StrandNameEnv, "ly:task-a:loom")
+		runJSON(t, 0, "upsert", `{"slug":"rs","profile":"light"}`)
 	})
 
 	t.Run("a known profile is stored and an empty one clears it", func(t *testing.T) {
@@ -600,4 +627,18 @@ func stepRunSettings(t *testing.T, f *cliFixture) {
 			}
 		})
 	}
+
+	t.Run("a profile change past Seed-Child returns the notice", func(t *testing.T) {
+		f.reset(t)
+		mustUpsert(t, `{"slug":"rs","title":"RS","kind":"task","labels":["bug"],"profile":"light"}`)
+		runJSON(t, 0, "set-status", `{"slug":"rs","status":"running · Discussion-Write"}`)
+		result := runJSON(t, 0, "upsert", `{"slug":"rs","profile":"budget"}`)
+		if notice, _ := result["notice"].(string); !strings.Contains(notice, "--layer local") {
+			t.Errorf("notice = %q, want it to name --layer local", notice)
+		}
+		result = runJSON(t, 0, "upsert", `{"slug":"rs","profile":"budget"}`)
+		if notice, has := result["notice"]; has {
+			t.Errorf("unchanged profile returned notice %v, want none", notice)
+		}
+	})
 }
