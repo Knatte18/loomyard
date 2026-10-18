@@ -1,6 +1,6 @@
-// registry.go implements the registry's public surface:
-// the map[string]Constructor literal every recipe-row engine name is declared in,
-// plus Lookup and Names, the only two ways a caller reaches it.
+// registry.go implements the registry's public surface.
+// It holds the map[string]Constructor literal every recipe-row engine name is declared in.
+// Lookup and Names are the only two ways a caller reaches it.
 // The one table outside it is the closed implementer table behind the "Implementer" entry.
 
 package shedrecipe
