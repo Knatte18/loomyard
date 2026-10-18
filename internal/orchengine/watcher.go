@@ -19,10 +19,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -411,9 +413,11 @@ func (w *Watcher) creelFailed(st *State, err error) error {
 
 // retryFreshLaunch retries the withdraw and the release `start` made around a fresh launch and recorded as failed in State.FreshLaunchFailure, on the orch strand's name.
 // It answers true once both succeeded, having cleared the field and State.Stuck in one save and handed a withdrawn resume line to ClearResumeNoticed.
-// A failure rewrites State.Stuck with the failure and leaves State.StuckByCreel unset, so no successful creel call clears it while the field is set, and answers false with no error.
+// A failure, a failed ClearResumeNoticed included, rewrites State.Stuck with the failure and leaves State.StuckByCreel unset, so no successful creel call clears it while the field is set, and answers false with no error.
+// A resume line the withdraw removed whose clear failed is kept in State.ResumeLineWithdrawn, so a later retry clears the mark although its own withdraw finds nothing.
 func (w *Watcher) retryFreshLaunch(st *State) (bool, error) {
 	var failures []string
+	lineWithdrawnBefore := st.ResumeLineWithdrawn
 	name, err := w.orchName(*st)
 	if err != nil {
 		failures = append(failures, err.Error())
@@ -422,8 +426,13 @@ func (w *Watcher) retryFreshLaunch(st *State) (bool, error) {
 		if err != nil {
 			failures = append(failures, err.Error())
 		} else if w.pause != nil {
-			if err := ClearResumeNoticed(w.pause.RecordPath, st.Strand, withdrawn, w.clock.Now()); err != nil {
-				return false, err
+			if st.ResumeLineWithdrawn {
+				withdrawn = append(withdrawn, CreelWithdrawn{Subject: pauserecord.ResumeLine})
+			}
+			err := ClearResumeNoticed(w.pause.RecordPath, st.Strand, withdrawn, w.clock.Now())
+			st.ResumeLineWithdrawn = err != nil && slices.ContainsFunc(withdrawn, func(message CreelWithdrawn) bool { return message.Subject == pauserecord.ResumeLine })
+			if err != nil {
+				failures = append(failures, err.Error())
 			}
 		}
 		if err := w.creel.Release(name); err != nil {
@@ -437,7 +446,7 @@ func (w *Watcher) retryFreshLaunch(st *State) (bool, error) {
 			logger.Warn("orch: retrying the fresh launch's withdraw failed; nothing is posted or queued until it succeeds", "strandGUID", st.Strand, "cause", text)
 			w.lastCreelError = text
 		}
-		if st.Stuck == text && !st.StuckByCreel {
+		if st.Stuck == text && !st.StuckByCreel && st.ResumeLineWithdrawn == lineWithdrawnBefore {
 			return false, nil
 		}
 		st.Stuck, st.StuckByCreel = text, false
@@ -488,6 +497,14 @@ func (w *Watcher) readMailbox(st State) (State, error) {
 		return st, handlerErr
 	}
 	if err != nil {
+		if w.repliesRead {
+			// The handler already moved the persisted state; saving the pre-handler copy would move the phase back.
+			reloaded, loadErr := LoadState(w.paths)
+			if loadErr != nil {
+				return st, loadErr
+			}
+			st = reloaded
+		}
 		return st, w.creelFailed(&st, err)
 	}
 	if !w.repliesRead {

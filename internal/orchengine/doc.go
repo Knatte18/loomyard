@@ -370,6 +370,7 @@
 //     it withdraws and releases on the orch strand, signing as the watcher's own program, and posts and queues nothing, starts no cycle and renews no hold until both succeed.
 //     A failing retry rewrites State.Stuck with the failure and leaves State.StuckByCreel unset, so no successful creel call clears it and a restarted watcher keeps it while the field is set.
 //     The tick in which both succeed clears State.FreshLaunchFailure and State.Stuck in one save and hands a withdrawn resume line to `ClearResumeNoticed`.
+//     A `ClearResumeNoticed` failure counts as a retry failure; the removed resume line is kept in State.ResumeLineWithdrawn until the clear succeeds, because a later withdraw finds nothing.
 //     Bound: while the second withdraw has failed and no retry has succeeded, an old watcher's inject queued between the two rounds, a `/clear` or `/compact` included, is typed on the relaunched session's first idle probe within its ten-minute time to live, and old mail it posted is reminded;
 //     a release that failed leaves the old watcher's hold on the relaunched orch until a retry succeeds or the hold lapses.
 //

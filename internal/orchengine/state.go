@@ -114,7 +114,10 @@ type State struct {
 	// FreshLaunchFailure is the error text of a withdraw or release `start` made around a fresh launch that failed; empty when none did.
 	// While it is set the watcher retries both on every tick and posts and queues nothing.
 	FreshLaunchFailure string `json:"fresh_launch_failure"`
-	WatcherExit        string `json:"watcher_exit"` // Why the last watcher exited; empty while one runs.
+	// ResumeLineWithdrawn is true when a retry's withdraw removed the resume line but clearing the pause record's noticed mark failed.
+	// The next retry's withdraw answers an empty list, so this field stands in for the removed line until the clear succeeds.
+	ResumeLineWithdrawn bool   `json:"resume_line_withdrawn"`
+	WatcherExit         string `json:"watcher_exit"` // Why the last watcher exited; empty while one runs.
 	// WatcherStopping is set by a watcher that has received SIGINT or SIGTERM and not yet released watch.lock,
 	// so `start` waits for it instead of reading it as live.
 	WatcherStopping bool `json:"watcher_stopping"`
@@ -358,7 +361,7 @@ func ResetForFreshLaunch(s State, strand string, launchedAt time.Time) State {
 	s.PendingResume = ""
 	s.Pending, s.RequestID = nil, 0
 	s.Stuck, s.StuckByCreel = "", false
-	s.FreshLaunchFailure = ""
+	s.FreshLaunchFailure, s.ResumeLineWithdrawn = "", false
 	s.WatcherExit = ""
 	return s
 }

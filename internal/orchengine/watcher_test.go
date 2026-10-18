@@ -2685,6 +2685,63 @@ func TestWatcher_CreelFailuresHoldTheCycle(t *testing.T) {
 		}
 	})
 
+	t.Run("a read acknowledgement that fails after the handler moved the phase keeps the phase and acts on the reply once", func(t *testing.T) {
+		e := newWatchEnv(t)
+		e.injectHandoff()
+		path := e.writeHandoff()
+		e.reply("written " + path)
+		e.c.failNext("acknowledge", errBoom)
+		e.tick()
+		st := e.state()
+		if st.Phase != PhaseClearing || st.Stuck != errBoom.Error() || !st.StuckByCreel {
+			t.Fatalf("state = %+v, want the phase the handler moved to kept with the failure shown", st)
+		}
+		e.tick()
+		e.tick()
+		clears := 0
+		for _, inject := range e.c.injects {
+			if inject.Step.Command == commandClear {
+				clears++
+			}
+		}
+		if clears != 1 {
+			t.Errorf("injects = %+v, want the clear injected once", e.c.injects)
+		}
+		if st := e.state(); st.Stuck != "" || st.StuckByCreel {
+			t.Errorf("state = %+v, want the failure cleared once the read was acknowledged", st)
+		}
+	})
+
+	t.Run("a withdraw that removes a resume line whose mark clear fails is retried until the mark clears", func(t *testing.T) {
+		e := newWatchEnv(t)
+		e.noticedResumedEntry()
+		e.setState(func(s *State) { s.FreshLaunchFailure = "release after the fresh launch: boom" })
+		e.c.withdrawn = []CreelWithdrawn{{ID: 5, Subject: pauserecord.ResumeLine}}
+		lock := e.pausePath + ".lock"
+		if err := os.Remove(lock); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Mkdir(lock, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		e.tick()
+		st := e.state()
+		if st.FreshLaunchFailure == "" || st.Stuck == "" || st.StuckByCreel || !st.ResumeLineWithdrawn {
+			t.Fatalf("state = %+v, want the failure kept, shown in Stuck and the withdrawn line recorded", st)
+		}
+		if err := os.Remove(lock); err != nil {
+			t.Fatal(err)
+		}
+		e.c.withdrawn = nil
+		e.tick()
+		if st := e.state(); st.FreshLaunchFailure != "" || st.ResumeLineWithdrawn {
+			t.Fatalf("state = %+v, want the failure cleared once the mark clear succeeded", st)
+		}
+		if bodies := e.c.postBodies(fakeOrchStrandName); !slices.Equal(bodies, []string{pauserecord.ResumeLine}) {
+			t.Errorf("posts to the orch = %v, want the withdrawn resume line posted again", bodies)
+		}
+	})
+
 	t.Run("an inject creel journaled but answered with an error is adopted on the next tick", func(t *testing.T) {
 		e := newWatchEnv(t)
 		e.injectHandoff()

@@ -124,6 +124,10 @@ func (f *fakeCreel) ReadMailbox(handle func([]CreelMessage) error) error {
 	if err := handle(append([]CreelMessage(nil), f.mailbox...)); err != nil {
 		return err
 	}
+	// A scripted "acknowledge" failure leaves the messages unread after the handler ran.
+	if err := f.fail("acknowledge"); err != nil {
+		return err
+	}
 	f.mailbox = nil
 	return nil
 }
