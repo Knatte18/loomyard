@@ -46,7 +46,8 @@ Structural invariants, one line per entry: when it applies and what it requires.
 
 - `PATTERN-shed-producer-seam` — Importing into `internal/shedengine`: only stdlib, `state` and `lock`; its status and lock paths are caller-supplied.
 - `PATTERN-shed-recipe-registry` — Registering a shed producer: one `map[string]Constructor` in `internal/shedrecipe` behind `Lookup`/`Names`; no `init()`, `Register` or `lyxcwd`.
-- `PATTERN-recipe-setting-lookup` — Giving a recipe row a config value: a plain one is `module.key` via `Env.Setting`, a review segment's resolved one a `SegmentSettings` field; never its own `Env` field.
+- `PATTERN-recipe-setting-lookup` — Giving a recipe row a config value: a plain one is `module.key` via `Env.Setting`, an executable one `module.key` via the owner's executable-key lookup over the template and board default layer, a review segment's resolved one a `SegmentSettings` field; never its own `Env` field.
+- `PATTERN-command-row` — Adding a side-action row to a recipe: a `Command` row over its config keys, its command read from the template and board default layer only, never a new engine.
 - `PATTERN-shed-verb-set` — Adding a run, step, status, pause or goto verb: generic bodies only in `internal/shedverbs`. (test) — [background](pattern/PATTERN-shed-verb-set.md)
 - `PATTERN-shed-driver` — Driving a shed run in Go, deciding its stops or spawning a tackler: only `internal/sheddriver`. (test) — [background](pattern/PATTERN-shed-driver.md)
 - `PATTERN-shed-run-directory` — Touching run directories or `seed.json`: `internal/shedrun` alone declares their paths, ids and `Seed`. — [background](pattern/PATTERN-shed-run-directory.md)

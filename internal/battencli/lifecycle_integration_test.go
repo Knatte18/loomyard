@@ -28,7 +28,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -50,11 +51,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
-	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // shortPollBattenRecipe is contracts/recipes/batten-recipe.yaml, byte-for-byte the same rows
@@ -104,8 +105,9 @@ producers:
 // The wait's sleep is a counter and the pause seam reports a pause from the first check on, so a stubbed child that never changes makes the wait return after one check; a test that wants a longer wait replaces either.
 func wireForHub(t *testing.T, h *hubforge.Hub, slug string, readStatus func(statusPath, statusLockPath string) (shedengine.Status, bool, error)) *battenCLI {
 	t.Helper()
-	// The Open-Window row opens no desktop window from a test.
-	c := &battenCLI{location: h.Location, terminalOpener: func(dir, title string) error { return nil }}
+	// The board default layer holds every Command row's command empty, so a stepped row passes on and no test runs the test binary through {lyx}.
+	writeBoardBattenCommands(t, h, nil)
+	c := &battenCLI{location: h.Location}
 	if err := c.wire(h.Location, slug); err != nil {
 		t.Fatalf("wire(%s): %v", slug, err)
 	}
@@ -124,6 +126,29 @@ func wireForHub(t *testing.T, h *hubforge.Hub, slug string, readStatus func(stat
 	c.env.InnerRun.Sleep = func(ctx context.Context, d time.Duration) { sleeps++ }
 	c.env.InnerRun.PauseRequested = func() (bool, error) { return sleeps > 0, nil }
 	return c
+}
+
+// commandRowKeys are the command keys of batten.yaml's three Command rows, in row order.
+var commandRowKeys = []string{"open_window_command", "seed_ide_command", "open_ide_command"}
+
+// writeBoardBattenCommands writes the hub's board default batten.yaml: the template with each Command row's command key set to commands[key], empty for a key commands lacks.
+func writeBoardBattenCommands(t *testing.T, h *hubforge.Hub, commands map[string]string) {
+	t.Helper()
+	lines := strings.Split(battenshed.ConfigTemplate(), "\n")
+	for i, line := range lines {
+		for _, key := range commandRowKeys {
+			if strings.HasPrefix(line, key+": ") {
+				lines[i] = key + ": " + strconv.Quote(commands[key])
+			}
+		}
+	}
+	path := configengine.ConfigFile(h.BoardDir(), "batten")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644); err != nil {
+		t.Fatalf("write the board default batten.yaml: %v", err)
+	}
 }
 
 // ensureStatusFile creates the child's status file at path when it is absent, standing in for the file the real read decodes.
@@ -189,7 +214,6 @@ func pathExists(path string) bool {
 // TestBattenIntegration_RunReconcilesTheHubBeforeAndThePairAfterCreating pins both reconcile calls of `lyx batten run`.
 // With a fresh stamp the first call is a no-op, so the new pair losing the prime's retired key can only come from the unconditional pair call after the create row.
 // Against an absent stamp, `arm` for run reconciles ahead of armAt's non-prime refusal and its auto-seed.
-// The create row opens no terminal window; on the new pair the switched rows read batten.yaml's template flags, the Open-Window seam opens the window on the pair, and the Seed-IDE seam writes the pair's VS Code config and leaves the pair clean.
 func TestBattenIntegration_RunReconcilesTheHubBeforeAndThePairAfterCreating(t *testing.T) {
 	t.Parallel()
 
@@ -211,11 +235,7 @@ func TestBattenIntegration_RunReconcilesTheHubBeforeAndThePairAfterCreating(t *t
 	retired := strings.Replace(batcher.Template(), "orientation: 31400", "master_base: 52000", 1)
 	gitkit.CommitFile(t, h.PrimeRecords(), configengine.ConfigFileRel("batcher"), retired, "fixture: retired key")
 
-	var opened []string
-	c := &battenCLI{location: h.Location, terminalOpener: func(dir, title string) error {
-		opened = append(opened, dir+" "+title)
-		return nil
-	}}
+	c := &battenCLI{location: h.Location}
 	if err := c.wire(h.Location, slug); err != nil {
 		t.Fatalf("wire(%s): %v", slug, err)
 	}
@@ -226,32 +246,6 @@ func TestBattenIntegration_RunReconcilesTheHubBeforeAndThePairAfterCreating(t *t
 	pair := h.PairCodeWorktree(slug)
 	if err := c.env.CreateWorktree(context.Background()); err != nil {
 		t.Fatalf("CreateWorktree re-entered on the complete pair: %v", err)
-	}
-	if len(opened) != 0 {
-		t.Errorf("terminal windows opened by the create row = %q; want none", opened)
-	}
-	for name, want := range map[string]struct {
-		action shedadapters.SwitchedAction
-		on     bool
-	}{"OpenWindow": {c.env.OpenWindow, true}, "SeedIDE": {c.env.SeedIDE, true}, "OpenIDE": {c.env.OpenIDE, false}} {
-		if on, err := want.action.Enabled(); err != nil || on != want.on {
-			t.Errorf("%s.Enabled() = %v, %v; want %v, nil from batten.yaml's template", name, on, err, want.on)
-		}
-	}
-	if err := c.env.OpenWindow.Act(context.Background()); err != nil {
-		t.Fatalf("OpenWindow.Act: %v", err)
-	}
-	if want := []string{pair + " " + slug}; !slices.Equal(opened, want) {
-		t.Errorf("terminal windows opened = %q; want %q", opened, want)
-	}
-	if err := c.env.SeedIDE.Act(context.Background()); err != nil {
-		t.Fatalf("SeedIDE.Act: %v", err)
-	}
-	if !pathExists(filepath.Join(pair, ".vscode", "tasks.json")) {
-		t.Errorf("SeedIDE.Act wrote no .vscode/tasks.json in %s", pair)
-	}
-	if status := gitkit.GitStatusPorcelain(t, pair); status != "" {
-		t.Errorf("new pair's task worktree is dirty after the IDE seed:\n%s", status)
 	}
 	// The create row spawns the new pair's push once, and the re-entered row on the complete pair spawns none.
 	if got := pairPushCounts.count(pair); got != 1 {
@@ -340,6 +334,12 @@ func TestBattenIntegration_Rows(t *testing.T) {
 		{"StopReport_ReadsTheParkMarkersContentAndTime", stepStopReport_ReadsTheParkMarkersContentAndTime},
 		{"TaskWorktreeSeams_RunGitOnlyUntilTheFirstResolution", stepTaskWorktreeSeams_RunGitOnlyUntilTheFirstResolution},
 		{"Status_FlagsAHaltedBattenOverADoneChild", stepStatusFlagsAHaltedBattenOverADoneChild},
+		{"CommandRows_RunTheBoardDefaultCommandsWithEverySwitchOn", stepCommandRows_RunTheBoardDefaultCommandsWithEverySwitchOn},
+		{"CommandRows_IgnoreACommandSetInTheTasksTrackedLayer", stepCommandRows_IgnoreACommandSetInTheTasksTrackedLayer},
+		{"CommandRows_FollowTheTasksLocalSwitch", stepCommandRows_FollowTheTasksLocalSwitch},
+		{"CommandRows_ResumeAtARowAnOlderBinaryLeftStanding", stepCommandRows_ResumeAtARowAnOlderBinaryLeftStanding},
+		{"RunRowCommand_ReportsATimeoutAndAnExitCode", stepRunRowCommand_ReportsATimeoutAndAnExitCode},
+		// Last, since it leaves the prime dirty for every step after it.
 		{"DirtyPrime_CreateRowBlocksBeforeAnythingCreated", stepDirtyPrime_CreateRowBlocksBeforeAnythingCreated},
 	}
 	for _, step := range steps {
@@ -544,9 +544,6 @@ func fourRowRunForRecipe(t *testing.T, h *hubforge.Hub, recipe string) {
 		if err != nil || step.Producer != row || step.Outcome != shedengine.Done {
 			t.Fatalf("Step (%s) = producer %q outcome %q, %v; want %q Done", row, step.Producer, step.Outcome, err, row)
 		}
-	}
-	if !pathExists(filepath.Join(pairPath, ".vscode", "settings.json")) {
-		t.Errorf("Seed-IDE wrote no .vscode/settings.json in %s", pairPath)
 	}
 
 	if _, err := shed.Step(ctx); err != nil {
@@ -1141,6 +1138,199 @@ func stepDirtyPrime_CreateRowBlocksBeforeAnythingCreated(t *testing.T, h *hubfor
 	}
 	if pathExists(h.PairCodeWorktree(slug)) {
 		t.Errorf("pair exists even though the create row blocked before creating anything: %s", h.PairCodeWorktree(slug))
+	}
+}
+
+// newCommandRowFixture prepares a pair for slug and a wired battenCLI whose board default batten.yaml holds, for each of the three Command rows, a command writing the row's marker file with the slug.
+// It returns the CLI, the marker path of each command key and the pair's code worktree.
+// The board default is set after the wiring, since the executable lookup reads it when the first row runs, and is emptied again when the step ends.
+func newCommandRowFixture(t *testing.T, h *hubforge.Hub, slug string) (*battenCLI, map[string]string, string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("the commands below are written for sh")
+	}
+	seedBoardTask(t, h, slug, "loom")
+	hubforge.AddPair(t, h, slug)
+	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+		return shedengine.Status{State: shedengine.StateDone}, true, nil
+	})
+
+	markerDir := t.TempDir()
+	markers := map[string]string{}
+	commands := map[string]string{}
+	for _, key := range commandRowKeys {
+		markers[key] = filepath.Join(markerDir, key)
+		commands[key] = "printf %s {slug} > " + markers[key]
+	}
+	writeBoardBattenCommands(t, h, commands)
+	t.Cleanup(func() { writeBoardBattenCommands(t, h, nil) })
+	return c, markers, h.PairCodeWorktree(slug)
+}
+
+// writeLocalBatten writes the task worktree's local batten.yaml layer, as Seed-Child writes a task's run_settings.
+func writeLocalBatten(t *testing.T, pair, document string) {
+	t.Helper()
+	path := configengine.LocalFile(pair, "batten")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, []byte(document), 0o644); err != nil {
+		t.Fatalf("write the local batten.yaml: %v", err)
+	}
+}
+
+// readCommandMarker returns the content of the marker file at path and whether it exists.
+func readCommandMarker(t *testing.T, path string) (string, bool) {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", false
+	}
+	if err != nil {
+		t.Fatalf("read marker %s: %v", path, err)
+	}
+	return string(data), true
+}
+
+// stepCommandRow resumes a fresh shed at row and steps it once, fataling unless that row ends Done.
+func stepCommandRow(t *testing.T, c *battenCLI, row string) {
+	t.Helper()
+	seedEntryStatus(t, c, row, shedengine.StateRunning, nil)
+	shed, err := battenrecipe.New(c.env, c.shedPaths)
+	if err != nil {
+		t.Fatalf("battenrecipe.New: %v", err)
+	}
+	step, err := shed.Step(context.Background())
+	if err != nil || step.Producer != row || step.Outcome != shedengine.Done {
+		t.Fatalf("Step (%s) = producer %q outcome %q, %v; want %q Done", row, step.Producer, step.Outcome, err, row)
+	}
+}
+
+// stepCommandRows_RunTheBoardDefaultCommandsWithEverySwitchOn steps Open-Window, Seed-IDE and Open-IDE with their switches on, and asserts each wrote its own marker.
+func stepCommandRows_RunTheBoardDefaultCommandsWithEverySwitchOn(t *testing.T, h *hubforge.Hub) {
+	const slug = "batten-command-rows"
+	c, markers, pair := newCommandRowFixture(t, h, slug)
+	writeLocalBatten(t, pair, "open_ide: true\n")
+
+	seedEntryStatus(t, c, battenrecipe.NameOpenWindow, shedengine.StateRunning, nil)
+	shed, err := battenrecipe.New(c.env, c.shedPaths)
+	if err != nil {
+		t.Fatalf("battenrecipe.New: %v", err)
+	}
+	for _, row := range []string{battenrecipe.NameOpenWindow, battenrecipe.NameSeedIDE, battenrecipe.NameOpenIDE} {
+		step, err := shed.Step(context.Background())
+		if err != nil || step.Producer != row || step.Outcome != shedengine.Done {
+			t.Fatalf("Step (%s) = producer %q outcome %q, %v; want %q Done", row, step.Producer, step.Outcome, err, row)
+		}
+	}
+	for _, key := range commandRowKeys {
+		if got, found := readCommandMarker(t, markers[key]); !found || got != slug {
+			t.Errorf("marker of %s = %q (found %v); want %q", key, got, found, slug)
+		}
+	}
+}
+
+// stepCommandRows_IgnoreACommandSetInTheTasksTrackedLayer asserts a command in the task worktree's tracked batten.yaml is not run, the board default's is, and the ignored value is warned about.
+func stepCommandRows_IgnoreACommandSetInTheTasksTrackedLayer(t *testing.T, h *hubforge.Hub) {
+	const slug = "batten-command-tracked"
+	c, markers, pair := newCommandRowFixture(t, h, slug)
+	trackedMarker := filepath.Join(t.TempDir(), "tracked")
+	tracked := "open_window_command: " + strconv.Quote("printf %s tracked > "+trackedMarker) + "\n"
+	if err := os.WriteFile(configengine.ConfigFile(pair, "batten"), []byte(tracked), 0o644); err != nil {
+		t.Fatalf("write the tracked batten.yaml: %v", err)
+	}
+	logs := logcapture.Capture(t)
+
+	stepCommandRow(t, c, battenrecipe.NameOpenWindow)
+
+	if got, found := readCommandMarker(t, markers["open_window_command"]); !found || got != slug {
+		t.Errorf("board default marker = %q (found %v); want %q", got, found, slug)
+	}
+	if got, found := readCommandMarker(t, trackedMarker); found {
+		t.Errorf("the tracked layer's command ran and wrote %q; want it ignored", got)
+	}
+	if !strings.Contains(logs.String(), "ignores a command set in another layer") {
+		t.Errorf("trace = %q; want the ignored-value warning", logs.String())
+	}
+}
+
+// stepCommandRows_FollowTheTasksLocalSwitch asserts Open-IDE runs its command with open_ide on in the task worktree's local layer and not with it off, and that --open-terminal forces Open-Window on over open_window off.
+func stepCommandRows_FollowTheTasksLocalSwitch(t *testing.T, h *hubforge.Hub) {
+	const slug = "batten-command-switch"
+	c, markers, pair := newCommandRowFixture(t, h, slug)
+
+	writeLocalBatten(t, pair, "open_ide: true\n")
+	stepCommandRow(t, c, battenrecipe.NameOpenIDE)
+	if got, found := readCommandMarker(t, markers["open_ide_command"]); !found || got != slug {
+		t.Errorf("Open-IDE marker with open_ide on = %q (found %v); want %q", got, found, slug)
+	}
+	if err := os.Remove(markers["open_ide_command"]); err != nil {
+		t.Fatalf("remove the Open-IDE marker: %v", err)
+	}
+
+	writeLocalBatten(t, pair, "open_ide: false\nopen_window: false\n")
+	stepCommandRow(t, c, battenrecipe.NameOpenIDE)
+	if got, found := readCommandMarker(t, markers["open_ide_command"]); found {
+		t.Errorf("Open-IDE marker with open_ide off = %q; want none", got)
+	}
+
+	stepCommandRow(t, c, battenrecipe.NameOpenWindow)
+	if got, found := readCommandMarker(t, markers["open_window_command"]); found {
+		t.Errorf("Open-Window marker with open_window off = %q; want none", got)
+	}
+	c.env.Command.Forced = []string{battenrecipe.NameOpenWindow}
+	stepCommandRow(t, c, battenrecipe.NameOpenWindow)
+	if got, found := readCommandMarker(t, markers["open_window_command"]); !found || got != slug {
+		t.Errorf("Open-Window marker with open_window off and the row forced = %q (found %v); want %q", got, found, slug)
+	}
+}
+
+// stepCommandRows_ResumeAtARowAnOlderBinaryLeftStanding asserts a run whose status stands at Open-Window, or at Seed-IDE, with its commit marker naming that row resumes at that row by name and writes that row's marker first.
+func stepCommandRows_ResumeAtARowAnOlderBinaryLeftStanding(t *testing.T, h *hubforge.Hub) {
+	rows := []struct{ row, key string }{
+		{battenrecipe.NameOpenWindow, "open_window_command"},
+		{battenrecipe.NameSeedIDE, "seed_ide_command"},
+	}
+	for _, tt := range rows {
+		t.Run(tt.row, func(t *testing.T) {
+			slug := "batten-cmd-resume-" + strings.ToLower(tt.row)
+			c, markers, _ := newCommandRowFixture(t, h, slug)
+
+			markerPath := shedrun.LastCommitMarker(h.Location, slug)
+			if err := os.MkdirAll(filepath.Dir(markerPath), 0o755); err != nil {
+				t.Fatalf("mkdir %s: %v", filepath.Dir(markerPath), err)
+			}
+			if err := state.WriteJSON(markerPath, markerPath+".lock", commitStatusMarker{Producer: tt.row, State: string(shedengine.StateRunning)}); err != nil {
+				t.Fatalf("write the commit marker: %v", err)
+			}
+
+			stepCommandRow(t, c, tt.row)
+			if got, found := readCommandMarker(t, markers[tt.key]); !found || got != slug {
+				t.Errorf("%s marker after the resume = %q (found %v); want %q", tt.row, got, found, slug)
+			}
+		})
+	}
+}
+
+// stepRunRowCommand_ReportsATimeoutAndAnExitCode asserts runRowCommand ends a command that outlives its timeout well before the command would, and reports a non-zero exit code.
+func stepRunRowCommand_ReportsATimeoutAndAnExitCode(t *testing.T, h *hubforge.Hub) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the commands below are written for sh")
+	}
+	dir := t.TempDir()
+
+	start := time.Now()
+	result, err := runRowCommand(context.Background(), dir, "sleep 5", filepath.Join(dir, "sleep.log"), 200*time.Millisecond)
+	if err != nil || !result.TimedOut {
+		t.Fatalf("runRowCommand(sleep 5, 200ms) = %+v, %v; want TimedOut and nil", result, err)
+	}
+	if elapsed := time.Since(start); elapsed > 3*time.Second {
+		t.Errorf("runRowCommand(sleep 5, 200ms) took %v; want it ended well before the sleep", elapsed)
+	}
+
+	result, err = runRowCommand(context.Background(), dir, "exit 3", filepath.Join(dir, "exit.log"), time.Minute)
+	if err != nil || result.TimedOut || result.ExitCode != 3 {
+		t.Errorf("runRowCommand(exit 3) = %+v, %v; want exit code 3 and nil", result, err)
 	}
 }
 

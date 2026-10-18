@@ -34,7 +34,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
-	"github.com/Knatte18/loomyard/internal/ideengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -58,7 +57,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/state"
-	"github.com/Knatte18/loomyard/internal/termwindow"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -679,64 +677,32 @@ func dirtyPathsOutsideRunRecords(taskLocation *lyxcwd.Location) ([]string, error
 	return loomengine.PathsOutsideRunRecords(taskLocation, shedrun.SelfRunID, paths), nil
 }
 
-// switchedActions returns the seams of the Open-Window, Seed-IDE and Open-IDE rows.
-// Each row reads its flag from the task worktree's batten.yaml when it runs, so the task's run settings, which Seed-Child writes into that worktree's local layer, decide it;
-// --open-terminal turns Open-Window's flag on whatever the file says.
-// The window runs executable's `lyx reed attach` and is titled slug.
-func (c *battenCLI) switchedActions(location *lyxcwd.Location, slug, executable string, locateTask func() (*lyxcwd.Location, error)) (openWindow, seedIDE, openIDE shedadapters.SwitchedAction) {
-	readFlags := func() (battenshed.Config, error) {
-		taskLocation, err := locateTask()
-		if err != nil {
-			return battenshed.Config{}, err
-		}
-		cfg, err := battenshed.LoadConfig(fabricengine.ConfigDirs(taskLocation))
-		if err != nil {
-			return battenshed.Config{}, fmt.Errorf("battencli: read the task worktree's batten.yaml: %w; correct it, then `lyx batten run %s`", err, slug)
-		}
-		return cfg, nil
-	}
-	openTerminal := c.terminalOpener
-	if openTerminal == nil {
-		openTerminal = func(dir, title string) error {
-			launcher, err := termwindow.Resolve()
-			if err != nil {
-				return err
-			}
-			return launcher.OpenAttach(dir, title, executable)
-		}
-	}
-
-	openWindow = shedadapters.SwitchedAction{
-		Enabled: func() (bool, error) {
-			if c.openTerminalFlag {
-				return true, nil
-			}
-			cfg, err := readFlags()
-			return cfg.OpenWindow, err
-		},
-		Act: func(context.Context) error {
+// commandDeps returns the Env.Command facts and runner of the Open-Window, Seed-IDE and Open-IDE rows.
+// The commands run in the prime, and {task_dir} is the task worktree's anchor path, located when a command holds it.
+// Each command's output goes to a command-<row>.log under the run's scratch directory.
+// --open-terminal forces Open-Window's switch on whatever the task's batten.yaml says.
+func (c *battenCLI) commandDeps(location *lyxcwd.Location, slug, executable string, locateTask func() (*lyxcwd.Location, error)) shedadapters.CommandDeps {
+	deps := shedadapters.CommandDeps{
+		Lyx:  executable,
+		Slug: slug,
+		TaskDir: func() (string, error) {
 			taskLocation, err := locateTask()
 			if err != nil {
-				return err
+				return "", err
 			}
-			return openTerminal(taskLocation.AnchorPath(), slug)
+			return taskLocation.AnchorPath(), nil
 		},
-	}
-	seedIDE = shedadapters.SwitchedAction{
-		Enabled: func() (bool, error) {
-			cfg, err := readFlags()
-			return cfg.SeedIDE, err
+		Dir: location.WorktreePath(),
+		LogPath: func(row string) string {
+			return filepath.Join(shedrun.ScratchDir(location, slug), "command-"+row+".log")
 		},
-		Act: func(context.Context) error { return ideengine.SeedTask(location, slug) },
+		Run:   runRowCommand,
+		Rerun: fmt.Sprintf("lyx batten run %s", slug),
 	}
-	openIDE = shedadapters.SwitchedAction{
-		Enabled: func() (bool, error) {
-			cfg, err := readFlags()
-			return cfg.OpenIDE, err
-		},
-		Act: func(context.Context) error { return ideengine.OpenTask(location, slug) },
+	if c.openTerminalFlag {
+		deps.Forced = []string{battenrecipe.NameOpenWindow}
 	}
-	return openWindow, seedIDE, openIDE
+	return deps
 }
 
 // wire builds and stores the shedrecipe.Env and shedbuild.ShedPaths the run and status verbs
@@ -1348,7 +1314,17 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 		},
 	}
 
-	env.OpenWindow, env.SeedIDE, env.OpenIDE = c.switchedActions(location, slug, executable, locateTask)
+	// Each setting is read when its row is reached, over the task worktree located then, so a task's run_settings in that worktree's local layer switch a row per task.
+	env.Setting = func(module, key string) (any, error) {
+		taskLocation, err := locateTask()
+		if err != nil {
+			return nil, err
+		}
+		return configreg.SettingLookup(fabricengine.ConfigDirs(taskLocation))(module, key)
+	}
+	// A Command row's command is read from the template and the board default layer only, the layers deploy and darn's verify are read from.
+	env.ExecutableSetting = configreg.SettingLookup(configengine.Dirs{Board: fabricengine.ConfigDirs(location).Board})
+	env.Command = c.commandDeps(location, slug, executable, locateTask)
 
 	c.env = env
 	c.shedPaths = shedbuild.ShedPaths{

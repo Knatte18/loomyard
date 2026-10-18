@@ -21,9 +21,9 @@ import (
 var battenRowEngines = map[string]string{
 	NameWorktreeCreate:   "WorktreeCreate",
 	NameSeedChild:        "SeedChild",
-	NameOpenWindow:       "OpenWindow",
-	NameSeedIDE:          "SeedIDE",
-	NameOpenIDE:          "OpenIDE",
+	NameOpenWindow:       "Command",
+	NameSeedIDE:          "Command",
+	NameOpenIDE:          "Command",
 	NameRunShed:          "InnerRun",
 	NameLand:             "Land",
 	NameWorktreeTeardown: "WorktreeTeardown",

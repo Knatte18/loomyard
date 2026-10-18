@@ -23,7 +23,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
@@ -115,11 +114,8 @@ func newFakeReceiver(t *testing.T, shutdown func(ctx context.Context) (string, e
 			},
 		},
 	}
-	off := shedadapters.SwitchedAction{
-		Enabled: func() (bool, error) { return false, nil },
-		Act:     func(context.Context) error { return nil },
-	}
-	c.env.OpenWindow, c.env.SeedIDE, c.env.OpenIDE = off, off, off
+	c.env.Setting = func(module, key string) (any, error) { return false, nil }
+	c.env.ExecutableSetting = func(module, key string) (any, error) { return "", nil }
 	c.untilStop = inProcessUntilStop(t, c)
 	return c
 }
