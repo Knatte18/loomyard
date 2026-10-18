@@ -1,6 +1,7 @@
 package orchengine
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,41 +26,71 @@ func TestRenderFiles_WriteWithoutLeadingComment(t *testing.T) {
 	cases := []struct {
 		name   string
 		file   string
-		render func(dir, path, rulesPath string) error
+		render func(dir, path, hubRulesPath, ownRulesPath string) error
 		want   []string
-		// rules is the rules file content to seed, none when empty; secondRules rewrites it before a second render.
-		rules, secondRules string
-		// wantRules is the text the role file ends with after the last render.
-		wantRules string
+		// hubRules and ownRules are the rules file contents to seed, none when empty; secondOwnRules rewrites the own file before a second render.
+		hubRules, ownRules, secondOwnRules string
+		// wantOrder lists text the last render carries, each after the previous one.
+		wantOrder func(hubPath, ownPath string) []string
 		// wantGone is text the last render must not carry.
 		wantGone string
 	}{
-		{name: "role", file: "role.md", render: renderRole, want: []string{"## Commands\n", testIndex, "## This repository\n", "Decision for <slug>:"}, wantRules: noRepositoryRules},
-		{name: "role with rules", file: "role.md", render: renderRole, want: []string{"## This repository\n", "Only the orch deploys.\n"}, rules: "Only the orch deploys.\n", wantRules: "Only the orch deploys."},
-		{name: "role rules rewritten", file: "role.md", render: renderRole, rules: "Only the orch deploys.\n", secondRules: "Only the operator deploys.\n", want: []string{"Only the operator deploys.\n"}, wantRules: "Only the operator deploys.", wantGone: "Only the orch deploys."},
-		{name: "role whitespace-only rules", file: "role.md", render: renderRole, rules: "  \n\t\n", wantRules: noRepositoryRules},
-		{name: "note template", file: "note-template.md", render: func(dir, path, _ string) error { return RenderNoteTemplateFile(dir, path) }},
+		{name: "role with both rules", file: "role.md", render: renderRole,
+			want:     []string{"## Commands\n", testIndex, "Decision for <slug>:"},
+			hubRules: "Only the orch deploys.\n", ownRules: "This thread owns the board.\n",
+			wantOrder: func(string, string) []string {
+				return []string{"## Hub-wide rules\n", "Only the orch deploys.\n", "## This orch's rules\n", "This thread owns the board.\n"}
+			}},
+		{name: "role with only hub rules", file: "role.md", render: renderRole,
+			hubRules: "Only the orch deploys.\n",
+			wantOrder: func(_, ownPath string) []string {
+				return []string{"Only the orch deploys.\n", fmt.Sprintf(noOwnRules, ownPath)}
+			}},
+		{name: "role with only own rules", file: "role.md", render: renderRole,
+			ownRules: "This thread owns the board.\n",
+			wantOrder: func(hubPath, _ string) []string {
+				return []string{fmt.Sprintf(noHubRules, hubPath), "This thread owns the board.\n"}
+			}},
+		{name: "role whitespace-only hub rules", file: "role.md", render: renderRole,
+			hubRules: "  \n\t\n", ownRules: "This thread owns the board.\n",
+			wantOrder: func(hubPath, _ string) []string {
+				return []string{fmt.Sprintf(noHubRules, hubPath), "This thread owns the board.\n"}
+			}},
+		{name: "role own rules rewritten", file: "role.md", render: renderRole,
+			ownRules: "Only the orch deploys.\n", secondOwnRules: "Only the operator deploys.\n",
+			wantOrder: func(string, string) []string {
+				return []string{"## This orch's rules\n", "Only the operator deploys.\n"}
+			},
+			wantGone: "Only the orch deploys."},
+		{name: "note template", file: "note-template.md", render: func(dir, path, _, _ string) error { return RenderNoteTemplateFile(dir, path) }},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			root := t.TempDir()
 			path := filepath.Join(root, "orch", c.file)
-			rulesPath := filepath.Join(root, "ORCHESTRATOR.md")
-			if c.rules != "" {
-				if err := os.WriteFile(rulesPath, []byte(c.rules), 0o644); err != nil {
+			hubPath, ownPath := filepath.Join(root, "board", "hub-rules.md"), filepath.Join(root, "own", "rules.md")
+			seedRules := func(rulesPath, content string) {
+				t.Helper()
+				if content == "" {
+					return
+				}
+				if err := os.MkdirAll(filepath.Dir(rulesPath), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(rulesPath, []byte(content), 0o644); err != nil {
 					t.Fatal(err)
 				}
 			}
+			seedRules(hubPath, c.hubRules)
+			seedRules(ownPath, c.ownRules)
 			dir := seedStencils(t)
-			if err := c.render(dir, path, rulesPath); err != nil {
+			if err := c.render(dir, path, hubPath, ownPath); err != nil {
 				t.Fatal(err)
 			}
-			if c.secondRules != "" {
-				if err := os.WriteFile(rulesPath, []byte(c.secondRules), 0o644); err != nil {
-					t.Fatal(err)
-				}
-				if err := c.render(dir, path, rulesPath); err != nil {
+			if c.secondOwnRules != "" {
+				seedRules(ownPath, c.secondOwnRules)
+				if err := c.render(dir, path, hubPath, ownPath); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -67,8 +98,16 @@ func TestRenderFiles_WriteWithoutLeadingComment(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if c.wantRules != "" && !strings.HasSuffix(strings.TrimRight(string(data), " \t\r\n"), c.wantRules) {
-				t.Errorf("%s file does not end with %q", c.name, c.wantRules)
+			if c.wantOrder != nil {
+				rest := string(data)
+				for _, want := range c.wantOrder(hubPath, ownPath) {
+					i := strings.Index(rest, want)
+					if i < 0 {
+						t.Errorf("%s file lacks %q after the previous wanted text", c.name, want)
+						break
+					}
+					rest = rest[i+len(want):]
+				}
 			}
 			if c.wantGone != "" && strings.Contains(string(data), c.wantGone) {
 				t.Errorf("%s file keeps %q after the rules were rewritten", c.name, c.wantGone)
@@ -88,8 +127,8 @@ func TestRenderFiles_WriteWithoutLeadingComment(t *testing.T) {
 	}
 }
 
-func renderRole(dir, path, rulesPath string) error {
-	return RenderRoleFile(dir, path, testIndex, rulesPath)
+func renderRole(dir, path, hubRulesPath, ownRulesPath string) error {
+	return RenderRoleFile(dir, path, testIndex, hubRulesPath, ownRulesPath)
 }
 
 func TestRenderRoleFile_RefusalsWriteNoFile(t *testing.T) {
@@ -98,15 +137,17 @@ func TestRenderRoleFile_RefusalsWriteNoFile(t *testing.T) {
 		name string
 		// override replaces the shipped role stencil when non-empty.
 		override string
-		// rulesDir creates a directory at the rules path.
-		rulesDir bool
+		// dirAt picks which rules path gets a directory in place of a file: "hub", "own" or none.
+		dirAt string
 		// wantNamed lists substrings the error carries.
-		wantNamed func(rulesPath string) []string
+		wantNamed func(hubPath, ownPath string) []string
 	}{
-		{"no marker", "# Hub orchestrator\n\nNo marker here.\n", false, func(string) []string { return []string{roleStencilName, commandIndexMarker} }},
-		{"no rules marker", "# Hub orchestrator\n\n{{.command_index}}\n", false, func(string) []string { return []string{roleStencilName, repositoryRulesMarker} }},
-		{"no decision note title marker", "# Hub orchestrator\n\n{{.command_index}}\n\n{{.repository_rules}}\n", false, func(string) []string { return []string{roleStencilName, decisionNoteTitleMarker} }},
-		{"unreadable rules", "", true, func(rulesPath string) []string { return []string{rulesPath} }},
+		{"no marker", "# Hub orchestrator\n\nNo marker here.\n", "", func(string, string) []string { return []string{roleStencilName, commandIndexMarker} }},
+		{"no hub rules marker", "# Hub orchestrator\n\n{{.command_index}}\n", "", func(string, string) []string { return []string{roleStencilName, hubRulesMarker} }},
+		{"no orch rules marker", "# Hub orchestrator\n\n{{.command_index}}\n\n{{.hub_rules}}\n", "", func(string, string) []string { return []string{roleStencilName, orchRulesMarker} }},
+		{"no decision note title marker", "# Hub orchestrator\n\n{{.command_index}}\n\n{{.hub_rules}}\n\n{{.orch_rules}}\n", "", func(string, string) []string { return []string{roleStencilName, decisionNoteTitleMarker} }},
+		{"unreadable hub rules", "", "hub", func(hubPath, _ string) []string { return []string{hubPath} }},
+		{"unreadable own rules", "", "own", func(_, ownPath string) []string { return []string{ownPath} }},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -118,17 +159,20 @@ func TestRenderRoleFile_RefusalsWriteNoFile(t *testing.T) {
 				}
 			}
 			root := t.TempDir()
-			path, rulesPath := filepath.Join(root, "role.md"), filepath.Join(root, "ORCHESTRATOR.md")
-			if c.rulesDir {
-				if err := os.MkdirAll(rulesPath, 0o755); err != nil {
-					t.Fatal(err)
+			path := filepath.Join(root, "role.md")
+			hubPath, ownPath := filepath.Join(root, "board", "hub-rules.md"), filepath.Join(root, "own", "rules.md")
+			for dirAt, rulesPath := range map[string]string{"hub": hubPath, "own": ownPath} {
+				if c.dirAt == dirAt {
+					if err := os.MkdirAll(rulesPath, 0o755); err != nil {
+						t.Fatal(err)
+					}
 				}
 			}
-			err := RenderRoleFile(dir, path, testIndex, rulesPath)
+			err := RenderRoleFile(dir, path, testIndex, hubPath, ownPath)
 			if err == nil {
 				t.Fatal("RenderRoleFile = nil; want a refusal")
 			}
-			for _, want := range c.wantNamed(rulesPath) {
+			for _, want := range c.wantNamed(hubPath, ownPath) {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("RenderRoleFile error = %v; want it to name %q", err, want)
 				}

@@ -53,9 +53,10 @@
 //
 // The role file's `## Commands` section carries the operator command index, which every role-file render is handed as a string;
 // a role stencil without the `command_index` marker fails the render naming the stencil.
-// The role file's last section, `## This repository`, carries the `ORCHESTRATOR.md` at `Paths.RepoRulesPath`, read at every role-file render;
-// an absent or whitespace-only file renders a placeholder line, any other read failure fails the render naming the file,
-// and a stencil without the `repository_rules` marker fails naming the stencil.
+// The role file's last two sections, `## Hub-wide rules` and `## This orch's rules`, carry the files at `Paths.HubRulesPath` and `Paths.OwnRulesPath`, read at every role-file render;
+// each absent or whitespace-only file renders a placeholder line naming its path, any other read failure fails the render naming the file,
+// and a stencil without the `hub_rules` or `orch_rules` marker fails naming the stencil.
+// The file at `Paths.HubRulesPath` is written only through `lyx orch rules`, and the one at `Paths.OwnRulesPath` is committed through `lyx fabric commit`.
 // A role stencil without the `decision_note_title` marker fails the render naming the stencil, as for the other two.
 // The watcher is told an index source through NewWatcher, calls it before each of its three role-file renders, and returns to idle with the reason when the source or the render fails.
 //

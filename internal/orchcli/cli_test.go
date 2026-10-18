@@ -101,7 +101,9 @@ func newTestCLI(t *testing.T, fake *fakeStrands) *orchCLI {
 			StateLockPath:    filepath.Join(dir, "state.json.lock"),
 			WatchLockPath:    filepath.Join(dir, "watch.lock"),
 			CycleRequestPath: filepath.Join(dir, "cycle-request"),
-			RepoRulesPath:    filepath.Join(filepath.Dir(dir), "ORCHESTRATOR.md"),
+			PrimeRoot:        filepath.Dir(dir),
+			HubRulesPath:     filepath.Join(filepath.Dir(dir), "board", "rules", "hub.md"),
+			OwnRulesPath:     filepath.Join(filepath.Dir(dir), "own", "rules.md"),
 		},
 	}
 }

@@ -381,6 +381,17 @@ func TestConfigOverRealHub(t *testing.T) {
 			}
 		})
 
+		// A hub-wide orch rules file left uncommitted in Bolt must stay out of the config commit.
+		const rulesContent = "an uncommitted rule\n"
+		rulesRel := filepath.Join("_lyx", "orch", "rules.md")
+		rulesFile := filepath.Join(boardDir, rulesRel)
+		if err := os.MkdirAll(filepath.Dir(rulesFile), 0o755); err != nil {
+			t.Fatalf("create the board orch dir: %v", err)
+		}
+		if err := os.WriteFile(rulesFile, []byte(rulesContent), 0o644); err != nil {
+			t.Fatalf("write the uncommitted rules file: %v", err)
+		}
+
 		if code, result = runReconcileCLI(t, primeWorktreePath, "--layer", "default", "--apply"); code != 0 {
 			t.Fatalf("reconcile --layer default --apply = %d; want 0; result: %v", code, result)
 		}
@@ -408,6 +419,20 @@ func TestConfigOverRealHub(t *testing.T) {
 		wantShow := "config: reconcile the board dir's files\n" + strings.ReplaceAll(configengine.ConfigFileRel("loom"), "\\", "/")
 		if strings.TrimSpace(string(showOut)) != wantShow {
 			t.Errorf("HEAD in _board = %q; want %q", showOut, wantShow)
+		}
+
+		status := exec.Command("git", "status", "--porcelain", "--untracked-files=all")
+		status.Dir = boardDir
+		statusOut, err := status.Output()
+		if err != nil {
+			t.Fatalf("git status in _board: %v", err)
+		}
+		wantStatus := "?? " + strings.ReplaceAll(rulesRel, "\\", "/")
+		if strings.TrimSpace(string(statusOut)) != wantStatus {
+			t.Errorf("_board status = %q after the apply; want only %q untracked", statusOut, wantStatus)
+		}
+		if kept, err := os.ReadFile(rulesFile); err != nil || string(kept) != rulesContent {
+			t.Errorf("rules file = %q, %v after the apply; want it unchanged", kept, err)
 		}
 	})
 }
