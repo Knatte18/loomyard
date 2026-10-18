@@ -450,9 +450,10 @@ func (t *Topology) add(l *lyxcwd.Location, slug string, opts AddOptions, local b
 		}
 	}
 
-	// The last step: no failable step follows, so a rollback never has a mark to restore.
-	// A local pair keeps its marks; an ordinary add clears the mark of each branch it adopted.
+	// The last step: an ordinary add clears the mark of each branch it adopted, and a local pair keeps its marks.
+	// A clear that fails after an earlier one succeeded restores the earlier mark, so the rollback leaves no adopted branch unmarked.
 	var cleared []string
+	var clearedRepos []*gitrepo.Repo
 	if !local {
 		adoptions := []struct {
 			repo    *gitrepo.Repo
@@ -468,11 +469,15 @@ func (t *Topology) add(l *lyxcwd.Location, slug string, opts AddOptions, local b
 			}
 			wasMarked, clearErr := adoption.repo.ClearBranchLocalMark(adoption.branch)
 			if clearErr != nil {
+				for i, branch := range cleared {
+					_ = clearedRepos[i].MarkBranchLocal(branch)
+				}
 				_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
 				return AddResult{}, clearErr
 			}
 			if wasMarked {
 				cleared = append(cleared, adoption.branch)
+				clearedRepos = append(clearedRepos, adoption.repo)
 			}
 		}
 	}
