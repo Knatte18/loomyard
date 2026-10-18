@@ -574,6 +574,17 @@ func TestStore_InjectAndHold(t *testing.T) {
 			if got := eventsOf(reopened.Log(creelengine.LogFilter{To: alpha})); !slices.Equal(got, []string{"held", "released"}) {
 				t.Errorf("events = %v; want held, released", got)
 			}
+			if _, err := reopened.Hold(program(batten), alpha, time.Minute); err != nil {
+				t.Fatalf("Hold after release: %v", err)
+			}
+			e.clock.Advance(2 * time.Minute)
+			again, err := reopened.Hold(program(batten), alpha, time.Minute)
+			if err != nil || again.Renewed {
+				t.Errorf("Hold after the earlier one expired = %+v, %v; want a fresh hold, not a renewal", again, err)
+			}
+			if got := eventsOf(reopened.Log(creelengine.LogFilter{To: alpha})); !slices.Equal(got, []string{"held", "released", "held", "held"}) {
+				t.Errorf("events = %v; want held, released, held, held", got)
+			}
 		}},
 		{"Release_WithNoHoldChangesNothing", func(t *testing.T, e *env) {
 			released, err := e.store.Release(program(batten), alpha)
