@@ -315,6 +315,13 @@ func (w *Watcher) tick() (done bool, err error) {
 		}
 	}
 
+	if st.FreshLaunchFailure != "" {
+		retried, err := w.retryFreshLaunch(&st)
+		if err != nil || !retried {
+			return false, err
+		}
+	}
+
 	if st.Phase != PhaseIdle {
 		held, err := w.renewHold(&st)
 		if err != nil || !held {
@@ -400,6 +407,45 @@ func (w *Watcher) creelFailed(st *State, err error) error {
 	}
 	st.Stuck, st.StuckByCreel = text, true
 	return w.save(*st)
+}
+
+// retryFreshLaunch retries the withdraw and the release `start` made around a fresh launch and recorded as failed in State.FreshLaunchFailure, on the orch strand's name.
+// It answers true once both succeeded, having cleared the field and State.Stuck in one save and handed a withdrawn resume line to ClearResumeNoticed.
+// A failure rewrites State.Stuck with the failure and leaves State.StuckByCreel unset, so no successful creel call clears it while the field is set, and answers false with no error.
+func (w *Watcher) retryFreshLaunch(st *State) (bool, error) {
+	var failures []string
+	name, err := w.orchName(*st)
+	if err != nil {
+		failures = append(failures, err.Error())
+	} else {
+		withdrawn, err := w.creel.Withdraw(name)
+		if err != nil {
+			failures = append(failures, err.Error())
+		} else if w.pause != nil {
+			if err := ClearResumeNoticed(w.pause.RecordPath, st.Strand, withdrawn, w.clock.Now()); err != nil {
+				return false, err
+			}
+		}
+		if err := w.creel.Release(name); err != nil {
+			failures = append(failures, err.Error())
+		}
+	}
+	if len(failures) > 0 {
+		w.creelFailedTick = true
+		text := strings.Join(failures, "; ")
+		if text != w.lastCreelError {
+			logger.Warn("orch: retrying the fresh launch's withdraw failed; nothing is posted or queued until it succeeds", "strandGUID", st.Strand, "cause", text)
+			w.lastCreelError = text
+		}
+		if st.Stuck == text && !st.StuckByCreel {
+			return false, nil
+		}
+		st.Stuck, st.StuckByCreel = text, false
+		return false, w.save(*st)
+	}
+	logger.Info("orch: the fresh launch's withdraw and release succeeded on retry", "strandGUID", st.Strand)
+	st.FreshLaunchFailure, st.Stuck, st.StuckByCreel = "", "", false
+	return true, w.save(*st)
 }
 
 // renewHold takes or renews the watcher's creel hold on the orch strand for cycleHoldDuration.
@@ -739,14 +785,14 @@ func (w *Watcher) recordColorTyped(st *State) error {
 
 // initCursor sets the read cursor from st on the watcher's first tick for a strand.
 // A phase belonging to another strand is reset to idle through resetForOtherStrand.
-// A Stuck that neither a pending step nor a creel failure owns is cleared, since only the old watcher's hold bookkeeping could have left it.
+// A Stuck that neither a pending step, a creel failure nor a recorded fresh-launch failure owns is cleared, since only the old watcher's hold bookkeeping could have left it.
 func (w *Watcher) initCursor(st State) (State, error) {
 	w.started, w.strand = true, st.Strand
 	w.newest, w.seen = nil, phaseEvents{}
 	w.compactedAt = time.Time{}
 	w.sessionStartLogged = time.Time{}
 	w.colorInjectID = 0
-	staleStuck := st.Stuck != "" && st.Pending == nil && !st.StuckByCreel
+	staleStuck := st.Stuck != "" && st.Pending == nil && !st.StuckByCreel && st.FreshLaunchFailure == ""
 	if staleStuck {
 		st.Stuck = ""
 	}

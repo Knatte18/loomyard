@@ -110,8 +110,11 @@ type State struct {
 	// Stuck is the stall reason creel last reported for the pending inject, or the creel failure holding the cycle; empty while neither stands.
 	Stuck string `json:"stuck"`
 	// StuckByCreel is true when Stuck is a creel failure rather than a stall reason; a tick whose creel calls all succeed clears both.
-	StuckByCreel bool   `json:"stuck_by_creel"`
-	WatcherExit  string `json:"watcher_exit"` // Why the last watcher exited; empty while one runs.
+	StuckByCreel bool `json:"stuck_by_creel"`
+	// FreshLaunchFailure is the error text of a withdraw or release `start` made around a fresh launch that failed; empty when none did.
+	// While it is set the watcher retries both on every tick and posts and queues nothing.
+	FreshLaunchFailure string `json:"fresh_launch_failure"`
+	WatcherExit        string `json:"watcher_exit"` // Why the last watcher exited; empty while one runs.
 	// WatcherStopping is set by a watcher that has received SIGINT or SIGTERM and not yet released watch.lock,
 	// so `start` waits for it instead of reading it as live.
 	WatcherStopping bool `json:"watcher_stopping"`
@@ -331,7 +334,7 @@ func NewHandoffPath(p Paths, now time.Time) string {
 // ResetForFreshLaunch returns s prepared for a newly launched session on strand.
 // A non-idle phase is recorded in LastAbortReason as abandoned;
 // the offsets are zeroed because a new run has a new events file.
-// The pending step, the note request's id and the stuck reason are cleared too, since they belong to the abandoned phase.
+// The pending step, the note request's id, the stuck reason and the recorded fresh-launch failure are cleared too, since they belong to the abandoned phase or the earlier launch.
 // The context reading and the turn end it was taken through are cleared, since they describe the previous session;
 // the new session's first turn end sets them again.
 // CompactionBaseline becomes launchedAt, so a compaction boundary the session already carried never triggers a reload, and LaunchedAt records it.
@@ -355,6 +358,7 @@ func ResetForFreshLaunch(s State, strand string, launchedAt time.Time) State {
 	s.PendingResume = ""
 	s.Pending, s.RequestID = nil, 0
 	s.Stuck, s.StuckByCreel = "", false
+	s.FreshLaunchFailure = ""
 	s.WatcherExit = ""
 	return s
 }

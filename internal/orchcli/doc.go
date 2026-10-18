@@ -51,6 +51,17 @@
 // `start` reconciles the hub's config after a binary change, once per build, before it loads any module config or launches anything; a failure stops it with the reconcile's own message and way forward.
 // No other orch verb reconciles.
 //
+// # Withdrawing around a fresh launch
+//
+// Wherever `start` resets the orch state onto a session, a relaunch, `--continue`, `--adopt` and an adopted live strand alike, it signs creel calls as the watcher's program and runs two rounds on the orch strand's name, the listed strand's name or else the fixed `<shortname>:orch`.
+// A hub with no shortname record fails `start` before any round when no orch strand is listed.
+// The first round runs before `start` starts or binds a session and before it removes the old strand: a withdraw of the old cycle's queued steps, and a release only when an orch strand is listed.
+// A failed withdraw, a refusal or an unreachable daemon alike, fails `start` with creel's error and a way forward, and nothing is started, bound or removed.
+// Creel's refusals for a program claim from a non-orch pane or for an unknown pane process carry no code, so that way forward is one fixed text naming both causes.
+// The second round runs after the reset state is saved, a withdraw and a release that catch a step an old watcher still running queued in between.
+// A failed first release or a failure in the second round does not fail `start`; the error text is recorded in the orch state's `fresh_launch_failure`, which the watcher retries on every tick.
+// A resume line a withdraw removed is handed to `orchengine.ClearResumeNoticed` with the orch GUID the state records at that call, so a continued or adopted session gets the line posted again.
+//
 // # The session-start hook
 //
 // The orch run's spec is the one that installs the provider's context-after-compaction hook.

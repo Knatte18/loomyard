@@ -2627,6 +2627,64 @@ func TestWatcher_CreelFailuresHoldTheCycle(t *testing.T) {
 		}
 	})
 
+	t.Run("a recorded fresh-launch failure is retried on every tick, holding back every post, inject and hold until both calls succeed", func(t *testing.T) {
+		e := newWatchEnv(t)
+		e.setState(func(s *State) { s.FreshLaunchFailure = "withdraw after the fresh launch: boom" })
+		releaseErr := errors.New("creel: release refused")
+
+		e.c.failNext("withdraw", errBoom)
+		e.tick()
+		st := e.state()
+		if st.FreshLaunchFailure == "" || st.Stuck != errBoom.Error() || st.StuckByCreel {
+			t.Fatalf("state = %+v, want the failure kept and shown in Stuck without StuckByCreel", st)
+		}
+		e.c.failNext("release", releaseErr)
+		e.tick()
+		st = e.state()
+		if st.FreshLaunchFailure == "" || st.Stuck != releaseErr.Error() || st.StuckByCreel {
+			t.Fatalf("state = %+v, want the failure kept and rewritten with the release error", st)
+		}
+		if len(e.c.injects) != 0 || len(e.c.posts) != 0 || e.c.count("hold:") != 0 {
+			t.Fatalf("injects = %+v posts = %+v calls = %v, want nothing posted, queued or held while the failure stands", e.c.injects, e.c.posts, e.c.calls)
+		}
+
+		e.tick()
+		st = e.state()
+		if st.FreshLaunchFailure != "" || st.Stuck != "" || st.StuckByCreel {
+			t.Fatalf("state = %+v, want the failure and Stuck cleared once both calls succeeded", st)
+		}
+		if e.c.count("withdraw:") != 3 || e.c.count("release:") != 3 {
+			t.Errorf("creel calls = %v, want a withdraw and a release on each of three ticks", e.c.calls)
+		}
+		if got := e.colorInjects(); got != 1 {
+			t.Errorf("color injects = %d, want the bind color queued once the retry succeeded", got)
+		}
+		lastWithdraw := -1
+		for i, call := range e.c.calls {
+			if call == "withdraw:"+fakeOrchStrandName {
+				lastWithdraw = i
+			}
+		}
+		firstInject := slices.IndexFunc(e.c.calls, func(call string) bool { return strings.HasPrefix(call, "inject:") })
+		if firstInject != -1 && firstInject < lastWithdraw {
+			t.Errorf("creel calls = %v, want no inject before the retry's withdraw succeeded", e.c.calls)
+		}
+	})
+
+	t.Run("a retry whose withdraw removes a resume line clears that entry's noticed mark", func(t *testing.T) {
+		e := newWatchEnv(t)
+		e.noticedResumedEntry()
+		e.setState(func(s *State) { s.FreshLaunchFailure = "release after the fresh launch: boom" })
+		e.c.withdrawn = []CreelWithdrawn{{ID: 5, Subject: pauserecord.ResumeLine}}
+		e.tick()
+		if st := e.state(); st.FreshLaunchFailure != "" {
+			t.Fatalf("state = %+v, want the failure cleared", st)
+		}
+		if bodies := e.c.postBodies(fakeOrchStrandName); !slices.Equal(bodies, []string{pauserecord.ResumeLine}) {
+			t.Errorf("posts to the orch = %v, want the withdrawn resume line posted again", bodies)
+		}
+	})
+
 	t.Run("an inject creel journaled but answered with an error is adopted on the next tick", func(t *testing.T) {
 		e := newWatchEnv(t)
 		e.injectHandoff()

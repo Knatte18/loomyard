@@ -47,13 +47,16 @@ type fakeStrands struct {
 	replaced []fakeReplace
 	// addErr, when set, is what AddStrand returns instead of adding.
 	addErr error
-	// calls, when set, receives "add" and "replace" as they happen.
+	// calls, when set, receives "add", "replace" and "remove" as they happen.
 	calls *[]string
 }
 
 func (f *fakeStrands) Strands() ([]reedengine.StrandStatus, error) { return f.strands, nil }
 
 func (f *fakeStrands) RemoveStrand(guid string) error {
+	if f.calls != nil {
+		*f.calls = append(*f.calls, "remove")
+	}
 	f.removed = append(f.removed, guid)
 	return nil
 }

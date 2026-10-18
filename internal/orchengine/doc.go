@@ -360,11 +360,18 @@
 //     it is logged once per change of error and recorded in State.Stuck with State.StuckByCreel set, and the tick returns no error, so a creel outage holds the cycle and never ends the watcher.
 //     A failed release at a return to idle does not keep the phase: the watcher returns to idle, and the hold it could not release lapses.
 //     A tick in which every creel call succeeded clears State.Stuck and State.StuckByCreel when the flag is set, in idle as in any other phase.
-//     A stall reason `stepOutcome` wrote sets no StuckByCreel and clears when the step advances; a restarted watcher's first tick clears a Stuck that neither a pending step nor the flag owns.
+//     A stall reason `stepOutcome` wrote sets no StuckByCreel and clears when the step advances; a restarted watcher's first tick clears a Stuck that neither a pending step, the flag nor State.FreshLaunchFailure owns.
 //   - A phase belonging to another strand is reset by `resetForOtherStrand`:
 //     it withdraws the watcher's queued injects and unread mail to the orch strand, releases its hold and drops its pending ids,
 //     and `ClearResumeNoticed` clears, under the pause record's lock, the resume-noticed mark of each pause entry owning the strand whose resume line the withdraw removed, so a continued session gets the line posted again.
 //     A failed withdraw or release saves no reset and leaves the watcher unbound, so the next tick runs the reset again.
+//   - `lyx orch start` withdraws around a fresh launch, as the orchcli package documentation describes, and records a failed release or second round in State.FreshLaunchFailure.
+//     While it is set, `retryFreshLaunch` runs first on every tick, after the events read and before the hold, the mailbox and the bind color:
+//     it withdraws and releases on the orch strand, signing as the watcher's own program, and posts and queues nothing, starts no cycle and renews no hold until both succeed.
+//     A failing retry rewrites State.Stuck with the failure and leaves State.StuckByCreel unset, so no successful creel call clears it and a restarted watcher keeps it while the field is set.
+//     The tick in which both succeed clears State.FreshLaunchFailure and State.Stuck in one save and hands a withdrawn resume line to `ClearResumeNoticed`.
+//     Bound: while the second withdraw has failed and no retry has succeeded, an old watcher's inject queued between the two rounds, a `/clear` or `/compact` included, is typed on the relaunched session's first idle probe within its ten-minute time to live, and old mail it posted is reminded;
+//     a release that failed leaves the old watcher's hold on the relaunched orch until a retry succeeds or the hold lapses.
 //
 // # Hub pause
 //

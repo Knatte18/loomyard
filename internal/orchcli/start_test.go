@@ -15,8 +15,11 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/orchengine"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -51,6 +54,58 @@ func (f *fakeStarter) StartSession(spec shuttleengine.Spec) (startedSession, err
 	return startedSession{GUID: f.guid, SessionID: sessionID, Warning: f.warning}, f.err
 }
 
+// scriptedCreel is a recording fake of creel whose withdraws and releases answer the errors and withdrawn messages a test scripts, one per call in call order.
+// Every call is recorded as "<method>:<receiver>" in the fake's own list and in order, the harness's order of start's calls.
+type scriptedCreel struct {
+	*fakeCreel
+	order        *[]string
+	withdrawErrs []error
+	releaseErrs  []error
+	withdrawn    [][]orchengine.CreelWithdrawn
+	// onCall, when set, runs before each withdraw and release is answered.
+	onCall func()
+}
+
+func (s *scriptedCreel) Withdraw(receiver string) ([]orchengine.CreelWithdrawn, error) {
+	*s.order = append(*s.order, "withdraw:"+receiver)
+	if s.onCall != nil {
+		s.onCall()
+	}
+	if _, err := s.fakeCreel.Withdraw(receiver); err != nil {
+		return nil, err
+	}
+	if err := popError(&s.withdrawErrs); err != nil {
+		return nil, err
+	}
+	if len(s.withdrawn) == 0 {
+		return nil, nil
+	}
+	withdrawn := s.withdrawn[0]
+	s.withdrawn = s.withdrawn[1:]
+	return withdrawn, nil
+}
+
+func (s *scriptedCreel) Release(receiver string) error {
+	*s.order = append(*s.order, "release:"+receiver)
+	if s.onCall != nil {
+		s.onCall()
+	}
+	if err := s.fakeCreel.Release(receiver); err != nil {
+		return err
+	}
+	return popError(&s.releaseErrs)
+}
+
+// popError removes and returns the first scripted error, nil when none is left.
+func popError(errs *[]error) error {
+	if len(*errs) == 0 {
+		return nil
+	}
+	err := (*errs)[0]
+	*errs = (*errs)[1:]
+	return err
+}
+
 // startHarness bundles a receiver with its fakes.
 type startHarness struct {
 	// root is the command tree the last run executed.
@@ -58,12 +113,13 @@ type startHarness struct {
 	cli     *orchCLI
 	strands *fakeStrands
 	starter *fakeStarter
+	creel   *scriptedCreel
 	spawns  int
 	// sleeps counts the waits start asked for;
 	// onSleep, when set, runs on each.
 	sleeps  int
 	onSleep func()
-	// calls is the order of start's adds, replaces and session starts.
+	// calls is the order of start's adds, replaces, removes, session starts and creel withdraws and releases.
 	calls []string
 	// exe and build are what the receiver's executable and currentBuild answer; a test changes them before it runs start.
 	exe   string
@@ -81,12 +137,21 @@ func newStartHarness(t *testing.T, strands ...reedengine.StrandStatus) *startHar
 	c.cfg.Model, c.cfg.Effort = "opus", "high"
 	c.stencilsDir = stencilkit.Seed(t)
 	c.location = locationkit.Location(t.TempDir(), "main", "")
+	boardDir := fabricengine.BoardDir(c.location.HubPath)
+	if err := os.MkdirAll(boardDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(boardDir, fabricengine.ShortnameFileName), []byte("tst"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	h := &startHarness{
 		cli: c, strands: fake, starter: &fakeStarter{guid: "new-guid", sessionID: "minted-id"},
 		exe:   "/fixed/lyx",
 		build: statuspane.BuildIdentity{Path: "/fixed/lyx", Size: 1, ModTime: 2},
 	}
 	fake.calls, h.starter.calls = &h.calls, &h.calls
+	h.creel = &scriptedCreel{fakeCreel: &fakeCreel{}, order: &h.calls}
+	c.newCreel = func() (orchengine.Creel, error) { return h.creel, nil }
 	c.executable = func() (string, error) { return h.exe, nil }
 	c.currentBuild = func() (statuspane.BuildIdentity, error) { return h.build, nil }
 	c.starter = h.starter
@@ -125,6 +190,12 @@ func (h *startHarness) state(t *testing.T) orchengine.State {
 	return st
 }
 
+// The creel calls start makes on the hub's fixed orch strand name, as the harness records them.
+const (
+	withdrawOrch = "withdraw:tst:orch"
+	releaseOrch  = "release:tst:orch"
+)
+
 func TestStart_EnsuresTheRunsStrandBeforeTheOrch(t *testing.T) {
 	t.Parallel()
 
@@ -143,14 +214,14 @@ func TestStart_EnsuresTheRunsStrandBeforeTheOrch(t *testing.T) {
 	}{
 		{
 			name:            "no runs strand adds one before the orch starts",
-			wantCalls:       []string{"add", "start"},
+			wantCalls:       []string{"add", withdrawOrch, "start", withdrawOrch, releaseOrch},
 			wantSidecarGUID: "added-runs",
 		},
 		{
 			name:            "a live runs strand of this build is kept",
 			strands:         []reedengine.StrandStatus{{GUID: "r1", Name: "runs", Live: true}},
 			sidecarGUID:     "r1",
-			wantCalls:       []string{"start"},
+			wantCalls:       []string{withdrawOrch, "start", withdrawOrch, releaseOrch},
 			wantSidecarGUID: "r1",
 		},
 		{
@@ -158,20 +229,20 @@ func TestStart_EnsuresTheRunsStrandBeforeTheOrch(t *testing.T) {
 			strands:         []reedengine.StrandStatus{{GUID: "r1", Name: "runs", Live: true}},
 			sidecarGUID:     "r1",
 			sidecarBuild:    &otherBuild,
-			wantCalls:       []string{"replace", "start"},
+			wantCalls:       []string{"replace", withdrawOrch, "start", withdrawOrch, releaseOrch},
 			wantSidecarGUID: "replaced-runs",
 		},
 		{
 			name:            "a dead runs strand is replaced",
 			strands:         []reedengine.StrandStatus{{GUID: "r1", Name: "runs"}},
 			sidecarGUID:     "r1",
-			wantCalls:       []string{"replace", "start"},
+			wantCalls:       []string{"replace", withdrawOrch, "start", withdrawOrch, releaseOrch},
 			wantSidecarGUID: "replaced-runs",
 		},
 		{
 			name:      "a failing add leaves start a success with the orch launched",
 			addErr:    errors.New("reed refused"),
-			wantCalls: []string{"add", "start"},
+			wantCalls: []string{"add", withdrawOrch, "start", withdrawOrch, releaseOrch},
 		},
 	}
 	for _, tt := range tests {
@@ -292,6 +363,118 @@ func TestStart_NoStrandLaunchesAndSpawnsWatcher(t *testing.T) {
 	if len(spec.OutputFiles) != 1 || filepath.Dir(spec.OutputFiles[0]) != h.cli.paths.Dir || !strings.HasSuffix(spec.OutputFiles[0], ".never") {
 		t.Errorf("output files = %v; want one session-*.never sentinel under %s", spec.OutputFiles, h.cli.paths.Dir)
 	}
+
+	// An existing strand is not listed in these rows unless strands says so, and the fixed name addresses creel either way.
+	boom := errors.New("creel: cannot reach the daemon")
+	corpse := []reedengine.StrandStatus{{GUID: "corpse", Name: "tst:orch"}}
+	rounds := []struct {
+		name         string
+		strands      []reedengine.StrandStatus
+		args         []string
+		withdrawErrs []error
+		releaseErrs  []error
+		wantCalls    []string
+		// wantFailureIn is the text the recorded fresh_launch_failure holds, empty for none.
+		wantFailureIn string
+	}{
+		{
+			name:      "a relaunch withdraws and releases before removing the old strand and starting, then again after saving",
+			strands:   corpse,
+			wantCalls: []string{"add", withdrawOrch, releaseOrch, "remove", "start", withdrawOrch, releaseOrch},
+		},
+		{
+			name:      "a continue after stop with no strand listed sends no first release, starts and records no failure",
+			args:      []string{"--continue"},
+			wantCalls: []string{"add", withdrawOrch, "start", withdrawOrch, releaseOrch},
+		},
+		{
+			name:          "a first release that fails records the failure and start succeeds",
+			strands:       corpse,
+			releaseErrs:   []error{boom},
+			wantCalls:     []string{"add", withdrawOrch, releaseOrch, "remove", "start", withdrawOrch, releaseOrch},
+			wantFailureIn: "release before the fresh launch: " + boom.Error(),
+		},
+		{
+			name:          "a second withdraw that fails records the failure and start succeeds",
+			strands:       corpse,
+			withdrawErrs:  []error{nil, boom},
+			wantCalls:     []string{"add", withdrawOrch, releaseOrch, "remove", "start", withdrawOrch, releaseOrch},
+			wantFailureIn: "withdraw after the fresh launch: " + boom.Error(),
+		},
+		{
+			name:          "a second release that fails records the failure and start succeeds",
+			releaseErrs:   []error{boom},
+			wantCalls:     []string{"add", withdrawOrch, "start", withdrawOrch, releaseOrch},
+			wantFailureIn: "release after the fresh launch: " + boom.Error(),
+		},
+	}
+	for _, tt := range rounds {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := newStartHarness(t, tt.strands...)
+			h.creel.withdrawErrs, h.creel.releaseErrs = tt.withdrawErrs, tt.releaseErrs
+			args := tt.args
+			if slices.Contains(args, "--continue") {
+				saveSeedState(t, h, orchengine.State{Phase: orchengine.PhaseIdle, Strand: "g1", SessionID: adoptTestSessionID})
+			}
+
+			if code, env := h.run(t, args...); code != 0 || env["ok"] != true {
+				t.Fatalf("start = exit %d, %v; want a success", code, env)
+			}
+			if !slices.Equal(h.calls, tt.wantCalls) {
+				t.Errorf("calls = %v; want %v", h.calls, tt.wantCalls)
+			}
+			failure := h.state(t).FreshLaunchFailure
+			if tt.wantFailureIn == "" && failure != "" || !strings.Contains(failure, tt.wantFailureIn) {
+				t.Errorf("fresh_launch_failure = %q; want one holding %q", failure, tt.wantFailureIn)
+			}
+		})
+	}
+
+	t.Run("a withdrawn resume line clears the noticed mark of the entry owning the old recorded GUID only", func(t *testing.T) {
+		t.Parallel()
+
+		h := newStartHarness(t, corpse...)
+		// PauseGeometry tells the prime from a task worktree by its .git entry.
+		if err := os.MkdirAll(filepath.Join(h.cli.location.WorktreePath(), ".git"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		geometry, err := hubgeom.PauseGeometry(h.cli.location)
+		if err != nil {
+			t.Fatal(err)
+		}
+		now := time.Now()
+		entryOf := func(guid string, pausedAt time.Time) pauserecord.Entry {
+			return pauserecord.Entry{
+				Scope: pauserecord.ScopeHub, PausedAt: pausedAt, ResumedAt: now,
+				Sessions: []pauserecord.Session{{GUID: guid, Orch: true, ResumeNoticed: true}},
+			}
+		}
+		if _, err := pauserecord.Update(geometry.RecordPath, now, func(r *pauserecord.Record) error {
+			r.Resumed = append(r.Resumed, entryOf("old-guid", now.Add(-2*time.Minute)), entryOf("other-guid", now.Add(-time.Minute)))
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		saveSeedState(t, h, orchengine.State{Phase: orchengine.PhaseIdle, Strand: "old-guid"})
+		h.creel.withdrawn = [][]orchengine.CreelWithdrawn{{{ID: 5, Subject: pauserecord.ResumeLine}}}
+
+		if code, env := h.run(t); code != 0 {
+			t.Fatalf("start = exit %d, %v; want a success", code, env)
+		}
+		record, err := pauserecord.Read(geometry.RecordPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		noticed := map[string]bool{}
+		for _, entry := range record.Resumed {
+			noticed[entry.Sessions[0].GUID] = entry.Sessions[0].ResumeNoticed
+		}
+		if noticed["old-guid"] || !noticed["other-guid"] {
+			t.Errorf("noticed marks = %v; want the old GUID's cleared and the other kept", noticed)
+		}
+	})
 }
 
 func TestStart_LiveStrand(t *testing.T) {
@@ -311,16 +494,37 @@ func TestStart_LiveStrand(t *testing.T) {
 		seed *orchengine.State
 		// wantSessionID is the session id the saved state holds after start.
 		wantSessionID string
+		// wantCreelCalls are the creel calls start made, none for a strand the state already names.
+		wantCreelCalls []string
+		// wantStrandAtCalls is the strand the persisted state names at each of those calls, which shows the rounds run around the reset.
+		wantStrandAtCalls []string
+		// withdrawErr fails the first withdraw: start then binds nothing and reports creel's error.
+		withdrawErr error
 	}{
-		{name: "with a watcher does nothing", watcher: true, wantAction: actionAlreadyRunning},
-		{name: "without a watcher spawns the watcher only", wantAction: actionSpawnedWatcher, wantSpawns: 1},
+		{
+			name: "with a watcher does nothing", watcher: true, wantAction: actionAlreadyRunning,
+			wantCreelCalls:    []string{"withdraw:orch", "release:orch", "withdraw:orch", "release:orch"},
+			wantStrandAtCalls: []string{"", "", "g1", "g1"},
+		},
+		{
+			name: "without a watcher spawns the watcher only", wantAction: actionSpawnedWatcher, wantSpawns: 1,
+			wantCreelCalls:    []string{"withdraw:orch", "release:orch", "withdraw:orch", "release:orch"},
+			wantStrandAtCalls: []string{"", "", "g1", "g1"},
+		},
 		{name: "a stopping watcher that exits is replaced", watcher: true, stopping: true, releases: true, wantAction: actionSpawnedWatcher, wantSpawns: 1, wantSleeps: 1, wantSessionID: "g1-id"},
 		{name: "a stopping watcher that never exits is reported live", watcher: true, stopping: true, wantAction: actionAlreadyRunning, wantSleeps: 3, wantStopping: true, wantSessionID: "g1-id"},
 		{
-			name:       "a live strand other than the recorded one clears the session id",
-			seed:       &orchengine.State{Phase: orchengine.PhaseIdle, Strand: "old", SessionID: "old-id"},
-			wantAction: actionSpawnedWatcher,
-			wantSpawns: 1,
+			name:              "a live strand other than the recorded one clears the session id, with a round of creel calls on each side of the reset",
+			seed:              &orchengine.State{Phase: orchengine.PhaseIdle, Strand: "old", SessionID: "old-id"},
+			wantAction:        actionSpawnedWatcher,
+			wantSpawns:        1,
+			wantCreelCalls:    []string{"withdraw:orch", "release:orch", "withdraw:orch", "release:orch"},
+			wantStrandAtCalls: []string{"old", "old", "g1", "g1"},
+		},
+		{
+			name:        "a live strand other than the recorded one binds nothing when the first withdraw fails",
+			seed:        &orchengine.State{Phase: orchengine.PhaseIdle, Strand: "old", SessionID: "old-id"},
+			withdrawErr: errors.New("creel: the daemon did not start"),
 		},
 	}
 	for _, c := range cases {
@@ -358,9 +562,28 @@ func TestStart_LiveStrand(t *testing.T) {
 				}
 			}
 
+			var strandAtCalls []string
+			h.creel.onCall = func() { strandAtCalls = append(strandAtCalls, h.state(t).Strand) }
+			if c.withdrawErr != nil {
+				h.creel.withdrawErrs = []error{c.withdrawErr}
+				before := h.state(t)
+
+				code, env := h.run(t)
+				if msg, _ := env["error"].(string); code == 0 || !strings.Contains(msg, c.withdrawErr.Error()) {
+					t.Fatalf("exit = %d; env = %v; want creel's error", code, env)
+				}
+				if st := h.state(t); !reflect.DeepEqual(st, before) || h.spawns != 0 {
+					t.Errorf("state = %+v, spawns = %d; want the state %+v unchanged and no watcher", st, h.spawns, before)
+				}
+				return
+			}
+
 			code, env := h.run(t)
 			if code != 0 || env["action"] != c.wantAction {
 				t.Fatalf("exit = %d; env = %v", code, env)
+			}
+			if !slices.Equal(h.creel.fakeCreel.calls, c.wantCreelCalls) || !slices.Equal(strandAtCalls, c.wantStrandAtCalls) {
+				t.Errorf("creel calls = %v on strands %v; want %v on strands %v", h.creel.fakeCreel.calls, strandAtCalls, c.wantCreelCalls, c.wantStrandAtCalls)
 			}
 			if len(h.starter.specs) != 0 || h.spawns != c.wantSpawns {
 				t.Errorf("starts = %d, spawns = %d; want 0 and %d", len(h.starter.specs), h.spawns, c.wantSpawns)
@@ -582,6 +805,40 @@ func TestStart_Refusals(t *testing.T) {
 			name:   "continue with no state file",
 			args:   func(string) []string { return []string{"--continue"} },
 			wantIn: []string{"lyx orch start", "--adopt <id>"},
+		},
+		{
+			name: "a first withdraw refused reports creel's error with the way forward",
+			args: func(string) []string { return nil },
+			seed: func(t *testing.T, h *startHarness) {
+				h.creel.withdrawErrs = []error{errors.New("creel: the worktree's reed state is unreadable")}
+			},
+			wantIn: []string{"creel: the worktree's reed state is unreadable", "way forward", "lyx orch start"},
+		},
+		{
+			name: "a first withdraw that cannot reach creel reports its error with the way forward",
+			args: func(string) []string { return nil },
+			seed: func(t *testing.T, h *startHarness) {
+				h.creel.withdrawErrs = []error{errors.New("creel: the daemon did not start; log: listen failed")}
+			},
+			wantIn: []string{"creel: the daemon did not start; log: listen failed", "way forward", "lyx orch start"},
+		},
+		{
+			name: "a first withdraw refused for a program claim from a non-orch pane names the orch's pane and a terminal outside every strand pane",
+			args: func(string) []string { return nil },
+			seed: func(t *testing.T, h *startHarness) {
+				h.creel.withdrawErrs = []error{errors.New("creel: a program claim comes from a pane that is not the orch's")}
+			},
+			wantIn: []string{"a program claim comes from a pane that is not the orch's", "the orch's pane", "a terminal outside every strand pane"},
+		},
+		{
+			name: "a hub with no shortname record fails before any round",
+			args: func(string) []string { return nil },
+			seed: func(t *testing.T, h *startHarness) {
+				if err := os.Remove(filepath.Join(fabricengine.BoardDir(h.cli.location.HubPath), fabricengine.ShortnameFileName)); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantIn: []string{"shortname record", "lyx fabric shortname"},
 		},
 	}
 	for _, c := range cases {

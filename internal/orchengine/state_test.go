@@ -275,7 +275,7 @@ func TestResetForFreshLaunch(t *testing.T) {
 		}
 	})
 	t.Run("non-idle", func(t *testing.T) {
-		in := State{CycleTrigger: TriggerSoft, LastDeferral: deferred, Phase: PhaseClearing, PhaseInjected: true, PendingHandoff: "p", PendingResume: "r", WatcherExit: "x", LastHandoff: "h", PhaseEventsOffset: 5, LastInjectionOffset: 6, Pending: &PendingStep{Command: "clear", ID: 3}, RequestID: 2, Stuck: "creel is down", StuckByCreel: true}
+		in := State{CycleTrigger: TriggerSoft, LastDeferral: deferred, Phase: PhaseClearing, PhaseInjected: true, PendingHandoff: "p", PendingResume: "r", WatcherExit: "x", LastHandoff: "h", PhaseEventsOffset: 5, LastInjectionOffset: 6, Pending: &PendingStep{Command: "clear", ID: 3}, RequestID: 2, Stuck: "creel is down", StuckByCreel: true, FreshLaunchFailure: "withdraw after the fresh launch: boom"}
 		got := ResetForFreshLaunch(in, "g2", launched)
 		if !strings.Contains(got.LastAbortReason, string(PhaseClearing)) {
 			t.Errorf("LastAbortReason = %q, want it to name clearing", got.LastAbortReason)
@@ -283,8 +283,8 @@ func TestResetForFreshLaunch(t *testing.T) {
 		if got.Phase != PhaseIdle || got.PhaseInjected || got.PendingHandoff != "" || got.PendingResume != "" || got.WatcherExit != "" {
 			t.Errorf("not cleared: %+v", got)
 		}
-		if got.Pending != nil || got.RequestID != 0 || got.Stuck != "" || got.StuckByCreel {
-			t.Errorf("pending step, request id or stuck not cleared: %+v", got)
+		if got.Pending != nil || got.RequestID != 0 || got.Stuck != "" || got.StuckByCreel || got.FreshLaunchFailure != "" {
+			t.Errorf("pending step, request id, stuck or fresh-launch failure not cleared: %+v", got)
 		}
 		if got.PhaseEventsOffset != 0 || got.LastInjectionOffset != 0 {
 			t.Errorf("offsets not zeroed: %+v", got)
