@@ -211,6 +211,8 @@ func foreignFlagRequest(lockDir, side string, flag PushSpawn) (req PushSpawn, re
 			return PushSpawn{}, fmt.Sprintf("code path %q is not the paired worktree of lock directory %s", flag.WarpPath, lockDir)
 		}
 		req.WarpPath = flag.WarpPath
+		// The child's coalescing push requires the records path even for a code-only flag.
+		req.WeftPath = recordsWorktree
 	}
 	return req, ""
 }

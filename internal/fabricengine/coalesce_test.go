@@ -366,6 +366,8 @@ func TestCoalesceFlagged_PendingFlags(t *testing.T) {
 						if tt.wantSpawn {
 							req := PushSpawn{PauseSlug: "pause", TeardownSlug: "teardown", WorkDir: BoardDir(f.hub)}
 							setSidePath(side, validSidePath(side, f), &req)
+							// The child's coalescing push requires the records path, so a code-side respawn carries it too.
+							req.WeftPath = f.records
 							want = []PushSpawn{req}
 						}
 						if !reflect.DeepEqual(spawned, want) {
