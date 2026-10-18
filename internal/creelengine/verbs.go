@@ -555,7 +555,11 @@ func (s *Store) Hold(sender Sender, receiver string, duration time.Duration) (Ho
 			return holdRefusal(target.Name, current)
 		}
 		result = HoldResult{Owner: sender.Name, Expires: s.clock.Now().UTC().Add(duration), Renewed: current != nil}
-		return s.writer.append(record{Event: eventHeld, By: sender.Name, To: target.Name, ExpiresAt: result.Expires})
+		event := eventHeld
+		if result.Renewed {
+			event = eventRenewed
+		}
+		return s.writer.append(record{Event: event, By: sender.Name, To: target.Name, ExpiresAt: result.Expires})
 	})
 	return result, err
 }
