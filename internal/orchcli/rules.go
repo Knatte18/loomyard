@@ -75,6 +75,7 @@ and unpushed; unpushed true means the commit is made and the next run pushes it.
 		},
 	}
 	cmd.Flags().String("from", "", "file whose content replaces the hub-wide rules file")
+	_ = cmd.MarkFlagRequired("from")
 	return cmd
 }
 
