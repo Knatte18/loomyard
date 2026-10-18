@@ -491,8 +491,7 @@ func TestScheduler_Reminders(t *testing.T) {
 			e.start(t)
 			e.post(t, strand(alpha), beta, "muted")
 			e.post(t, program(webster), beta, "muted notice")
-			// The first post starts the worker and the second leaves a wake in its buffer, so it probes twice before it settles.
-			e.probeWaits(2)
+			e.probeWaits(1)
 			if got := e.typed(beta); len(got) != 0 {
 				t.Fatalf("typed %q under another sender's hold", got)
 			}
