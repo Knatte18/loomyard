@@ -36,6 +36,40 @@ func TestImplementerEntry_WebsterBuildsTheWebsterProducer(t *testing.T) {
 	}
 }
 
+func TestImplementerEntry_ForwardsTheRestOfTheRowConfig(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		extra   Config
+		wantErr string
+	}{
+		{"GatesKeyBuilds", gatesCfg("plan", 4), ""},
+		{"UnknownKeyIsRefusedByTheConstructor", Config{"bogus": true}, `"bogus"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			env := reworkTestEnv(t)
+			env.Setting = fakeSetting(map[string]any{"loom.implementer": "webster"})
+			cfg := Config{implementerSettingKey: "loom.implementer"}
+			for key, value := range tt.extra {
+				cfg[key] = value
+			}
+			producer, err := implementerEntry(RowIdentity{Name: "Webster"}, cfg, env)
+			if tt.wantErr != "" {
+				assertErrContains(t, err, tt.wantErr)
+				return
+			}
+			if err != nil {
+				t.Fatalf("implementerEntry() error = %v; want nil", err)
+			}
+			if producer == nil {
+				t.Error("implementerEntry() producer = nil; want the webster producer")
+			}
+		})
+	}
+}
+
 func TestImplementerEntry_RefusesAnUnusableSetting(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -45,6 +79,8 @@ func TestImplementerEntry_RefusesAnUnusableSetting(t *testing.T) {
 		want    string
 	}{
 		{"AbsentKey", Config{}, fakeSetting(nil), `way forward: set implementer_setting to the module.key setting naming the implementer, such as "loom.implementer"`},
+		{"EmptyKey", Config{implementerSettingKey: ""}, fakeSetting(nil), `config key "implementer_setting" is empty; way forward: set implementer_setting to the module.key setting`},
+		{"NonStringKey", Config{implementerSettingKey: 3}, fakeSetting(nil), `holds 3, want a module.key string; way forward: set implementer_setting to a module.key string such as "loom.implementer"`},
 		{"UnknownImplementer", Config{implementerSettingKey: "loom.implementer"}, fakeSetting(map[string]any{"loom.implementer": "weaver"}), `holds "weaver", want one of webster; way forward: run "lyx config loom --set implementer=<implementer>" with one of webster`},
 		{"EmptyImplementer", Config{implementerSettingKey: "loom.implementer"}, fakeSetting(map[string]any{"loom.implementer": ""}), `holds "", want one of webster; way forward`},
 		{"NonStringImplementer", Config{implementerSettingKey: "loom.implementer"}, fakeSetting(map[string]any{"loom.implementer": 3}), `holds 3, want one of webster; way forward`},
