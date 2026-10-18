@@ -237,7 +237,11 @@ var warnedUnknownKeys sync.Map
 // No loader reads such a unit, so a key the template renamed silently loses its value until the file is reconciled.
 // A file and key list already warned in this process is not warned again, so a loader in a poll loop warns once.
 // The local layer is skipped, since it refuses a unit the template lacks.
+// A spec with WholeEntries is skipped, since each of its top-level keys is a unit of its own.
 func warnUnknownKeys(layers []LayerDoc, spec Spec) error {
+	if spec.WholeEntries {
+		return nil
+	}
 	for _, layer := range layers {
 		var wayForward string
 		switch layer.Layer {
@@ -284,7 +288,7 @@ func expansionDir(dirs Dirs, spec Spec) string {
 
 // missingBaseError names the absent base-layer file and the way forward for its kind:
 // a worktree base is written by lyx config reconcile, a hub file by lyx fabric reconcile,
-// and a per-worktree repo default only by the hub reconcile a run start performs.
+// and a per-worktree repo default by the hub reconcile a run start performs or by "lyx config reconcile --layer default --apply" from the prime.
 func missingBaseError(dirs Dirs, spec Spec) error {
 	path, _ := LayerFile(dirs, spec, BaseLayer(dirs, spec))
 	switch {
@@ -293,7 +297,7 @@ func missingBaseError(dirs Dirs, spec Spec) error {
 	case spec.HubWide:
 		return fmt.Errorf("config file %s not found; run \"lyx fabric reconcile\"%s", path, boardDirWayForwardClause)
 	default:
-		return fmt.Errorf("config file %s not found; re-run the verb that starts the run, as \"lyx loom resume\"; its hub reconcile seeds the default from the prime%s", path, boardDirWayForwardClause)
+		return fmt.Errorf("config file %s not found; re-run the verb that starts the run, as \"lyx loom resume\"; its hub reconcile seeds the default from the prime, as does \"lyx config reconcile --layer default --apply\" from the prime%s", path, boardDirWayForwardClause)
 	}
 }
 
