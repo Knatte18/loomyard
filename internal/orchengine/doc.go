@@ -47,8 +47,8 @@
 // The resume pointer also names the orch note to resume from.
 // A note request names the note path and Paths.NoteTemplatePath, the file RenderNoteTemplateFile renders from the note stencil: what the orch is doing, the agreed next step and the questions waiting on the operator.
 // Every delivery re-renders its file first, so a stencil edit applies from the next delivery:
-// `start` renders the role file before it launches, the watcher renders the note template before it types a note request,
-// and renders the role file before it types the resume pointer after `/clear`.
+// `start` renders the role file before it launches, the watcher renders the note template before it posts a note request,
+// and renders the role file before it injects `/clear`.
 // A render failure is handled where a stencil render failure is: `start` refuses, a note request changes nothing, and a clear that cannot render aborts the cycle.
 //
 // The role file's `## Commands` section carries the operator command index, which every role-file render is handed as a string;
@@ -93,16 +93,20 @@
 // so `start` never waits for it.
 // The consecutive tick-error count is capped, and the watcher exits with its reason recorded in State.WatcherExit once the cap is reached.
 //
-// The orch is colored like every other strand, and the watcher stays the single writer into its pane:
+// The orch is colored like every other strand, and the watcher queues the color through creel, never into the pane itself:
 // the launch spec names the coordinator segment and leaves the color to the caller,
-// and the watcher types the strand's palette color, read from reed's strand status, on the first tick after binding whose idle probe passes, before anything else that tick types.
-// Each color typing that lands, at start or in a reload, records in State the strand and State.LaunchedAt it was typed for.
-// Binding sets the color pending only when those differ from the bound session's, so a watcher that re-execs onto a new binary types no color into a session already showing it.
-// A failed color typing is logged and dropped, records nothing, and is typed again by the next watcher that binds, since the color is display only.
+// and the watcher injects the color command with the strand's palette color, read from reed's strand status through Session.StrandColor, on the first tick after binding, before anything else that tick queues.
+// A strand with no color queues nothing and counts as done.
+// The bind color's inject id is watcher memory only, and each later tick reads its outcome:
+// an injected or unconfirmed color records in State the strand and State.LaunchedAt it was queued for, as does a reload's color step.
+// Binding sets the color pending only when those differ from the bound session's, so a watcher that re-execs onto a new binary queues no color for a session already showing it.
+// A color creel refused, expired or withdrew is logged and dropped, records nothing, and is queued again by the next watcher that binds, since the color is display only.
 //
 // Each tick reads the strand's session id from shuttle's files-only reading and records it in State.SessionID when it changes, through the strand-checked save.
+// The same reading's session-start time is logged as `orch: session start signal read` at Info once per new time.
 // An unreadable reading, or one naming no id, leaves the recorded id.
-// Every provider and reed interaction goes through the Session seam, so the state machine runs against a fake in unit tests.
+// Every provider and reed interaction goes through the Session seam and every delivery into the orch through the Creel seam, so the state machine runs against fakes in unit tests.
+// Nothing the watcher does types into the orch pane any more except the hub pause's guarded interrupt, which keeps Session.SessionIdle and Session.Interrupt.
 //
 // # Idle rules
 //
@@ -114,12 +118,12 @@
 //     A soft threshold at or above the hard cap never fires.
 //
 // The trigger is recorded in State.CycleTrigger before the cycle's first phase is entered.
-// In both modes the soft trigger sends its own handoff stencil, which offers the session a `DEFER` reply.
+// In both modes the soft trigger posts its own handoff stencil, which offers the session a `defer` reply.
 //
 // The request marker is JSON holding the mode and the request time.
 // A pending request whose age is at least the handoff timeout is removed with a log entry naming its mode and age, and nothing is acted on;
 // a marker that does not parse counts as that old.
-// The time is on disk, so this covers a request whose idle probe never passes and a marker a dead watcher left, across watcher restarts.
+// The time is on disk, so this covers a request whose cycle could not start, such as one creel kept refusing the hold for, and a marker a dead watcher left, across watcher restarts.
 // State records the cycle's mode as CycleMode and the request time as CycleRequestedAt, zero for an automatic trigger.
 //
 // A cycle start clears the request pending at that moment, so a request found later was made after the cycle started.
@@ -135,34 +139,11 @@
 //   - The newest event it has read is a turn end, EventStop or EventWaiting.
 //   - That event was first read at least the idle grace ago.
 //     The arrival time is held in memory, so a watcher restart restarts the grace.
-//     A requested cycle waits no grace: the operator chose the moment, and the idle probe below still guards the pane.
-//   - Session.SessionIdle reports an empty input box with no turn running.
+//     A requested cycle waits no grace: the operator chose the moment, and creel's own idle check still guards the pane.
+//   - Creel grants the watcher's hold on the orch strand, taken through renewHold just before the phase is entered.
+//     A refusal, or a failed call, starts no cycle on that tick: it is recorded in State.Stuck and logged once per change, and the next tick tries again.
 //
-// The probe is the shuttle engine's readiness reading: the session state the hooks derived decides, and the pane decides only while that reading is unknown.
-// Every idle probe goes through one watcher helper.
-// A probe that is not idle holds cycles and records why in State.Stuck:
-// its own reason when the reading decided, `orch pane too short for the idle probe; resize or use the larger client` for a pane too short to draw an input box, else a fixed pane text.
-// A hold by text in the input box, on the probe or on a typed step's refusal, carries the constant reason `the input box holds a draft` in place of shuttle's text, which quotes the draft, so neither the log nor `State.Stuck` holds the operator's typing and the reason does not change with each keystroke.
-// The reason is saved and logged as `orch: injection held` at Info with the phase, the reload step, the reason and the time since the phase began, once per change of reason within a hold, a run of probes that are not idle which the next passing probe ends; the last reason is watcher memory and not State.
-// A passing probe clears a State.Stuck that a hold wrote and only that, so `lyx orch status` shows the hold in the idle phase too, and a Stuck written by anything else is never overwritten by a hold.
-// State.StuckByHold records that a hold wrote it, so a restarted watcher clears it too.
-//
-// A typed step can still be held after its idle probe passed: shuttle's pre-write guard reads the box, the operator's activity and readiness again at the write, and refuses with an error wrapping `shuttleengine.ErrSessionBusy`.
-// That refusal means nothing was typed.
-// Every typed step routes its error through one watcher helper, which logs `orch: injection held by the session` at Info once per change of reason and answers held;
-// a held step returns no error, so the tick counts nothing toward the consecutive-error limit, and it leaves its phase and `PhaseInjected` as they are, so the next tick types the same text again.
-// In the idle phase the reason is also recorded in State.Stuck with State.StuckBySend, unless a Stuck that no hold and no send wrote is already there.
-// A hold's passing probe leaves a send's reason alone; only a later send that passes clears it.
-// A color that was held stays pending, and a held reload color step does not advance to the plugins step.
-// A cycle phase held for good is still marked stuck by the handoff timeout.
-//
-// Session.SessionState reads the orch session's state from its shuttle run record, which is interactive with a never-written sentinel output, so its turn ends read `asking`.
-// The watcher logs it: after a successful probe that is not too short, a probe that reads idle beside the state `busy`, or not idle beside `idle-done`, `idle-stalled` or `idle-fresh`, logs `orch: session state disagrees with the idle probe` at Info.
-// An idle probe beside `busy` on background work agrees, and so does a probe that is not idle beside `asking`.
-// A disagreement is logged once per episode, the key being the idle answer, the state, its cause and when the state began; a probe that agrees forgets nothing, so only a changed key logs again, the last pair being watcher memory and not State.
-// A state that cannot be read is logged at Debug.
-// No probe result, cycle or State write depends on the state.
-// The same read logs the hook's session-start event as `orch: session start signal read` at Info, once per new time.
+// There is no idle probe before typing, because the watcher types nothing: creel types each step at the orch's next idle, and its own idle check, the readiness reading of the session's hooks and pane, gates every delivery.
 //
 // A soft cycle holds the same gates with `soft_idle_s` in place of the idle grace, and adds one:
 // State.LastDeferral is zero or at least `soft_idle_s` before now.
@@ -182,46 +163,44 @@
 // The persisted phases are idle, handoff-requested, clearing and resuming.
 // The watcher saves State before every side effect, so a restarted watcher resumes from it.
 //
-//   - handoff-requested: the handoff instruction is sent, naming a new timestamped file under handoffs/.
-//     The phase ends once the file exists and is non-empty, a turn end has been read after the file was first seen written,
-//     and the idle probe passes.
-//     In a soft cycle a turn end whose message, trimmed of whitespace, is exactly `DEFER` declines the cycle:
-//     the watcher re-stats the handoff file, and when it is still not written records the read time in State.LastDeferral and returns to idle with the abort reason `deferred`.
-//     A written file wins over `DEFER`, and the cycle proceeds through the clear gate above.
-//     In a hard or requested cycle `DEFER` is never recorded, and the phase waits for the file until the handoff timeout.
-//     A restarted watcher re-sends the stencil matching State.CycleTrigger.
-//     A requested cycle's phase times out at the earlier of the phase entry and the request time plus the handoff timeout.
-//     Compact mode runs this same phase and, once the gate passes, starts compacting instead of clearing.
+//   - handoff-requested: the note request is posted as creel mail to the orch strand, naming a new timestamped file under handoffs/ and the template the note follows.
+//     Creel assigns the mail's id when it is journaled, so the body tells the orch to reply to the id `lyx creel read` prints beside it, and the watcher saves the id the post answers in State.RequestID.
+//     The orch answers with `lyx creel post --reply <id> "written <path>"` once the note is written, or, to a soft request only, `lyx creel post --reply <id> defer`.
+//     Each tick reads the watcher's own mailbox without waiting, through readReplies, which runs before the client acknowledges the read, so a failed save leaves the reply unread for the next watcher.
+//     Only a reply from the orch strand whose reply_to is State.RequestID counts; every other message, a reply to an earlier request included, is logged and dropped.
+//     A `written` body naming the requested note, resolved against the prime, with the file existing and non-empty, ends the phase, and the move to clearing, or to compacting in compact mode, is persisted inside the handler.
+//     A reply naming another path, carrying other text, or arriving with a missing or empty file is logged and leaves the phase waiting until the handoff timeout.
+//     A `defer` body declines a soft cycle whose note is still unwritten: the watcher records the read time in State.LastDeferral and returns to idle with the abort reason `deferred`.
+//     In a hard or requested cycle, or once the note is written, `defer` is logged and ignored.
+//     A restarted watcher whose post was persisted with no id looks it up in creel's journal, and posts the stencil matching State.CycleTrigger again only when creel journaled none.
+//     A requested cycle's phase times out at the earlier of the phase entry and the request time plus the handoff timeout, and a session that asks a question during the note aborts it.
 //   - clearing: the resume prompt is rendered first, so a stencil failure aborts before anything is cleared.
-//     Then `/clear` is typed, and the phase waits for the pane to show an idle input box.
+//     Then `/clear` is injected as a command, and the phase waits for creel to type it, however long the orch stays busy, with the stall creel reports shown in State.Stuck.
+//     An injected or unconfirmed `/clear` moves on to resuming, a withdrawn one returns to idle.
 //   - resuming: the reload sequence, described under "The reload sequence" below; its pointer is the resume prompt, and the phase ends at the resumed session's first turn end, whose context reading becomes the new one.
-//   - idle: every return, completed or aborted, persists the events position read through.
+//   - idle: every return, completed or aborted, persists the events position read through and releases the creel hold.
 //
-// Nothing is ever typed into the pane, an instruction, a prompt or `/clear`, unless the idle probe passed on the same tick,
-// so a running turn, a permission prompt or an operator's draft is never typed over.
-// When in doubt the watcher waits.
+// Compact mode runs the same note phase and, once the gate passes, starts compacting instead of clearing.
+// The guarantee holds through every restart: nothing before the note is written and named in a reply to the pending request can reach `/clear`, and LastHandoff moves only when a cycle passes that gate.
 //
-// Restart rules: a non-idle phase's injection is unconfirmed until a turn end proves it landed or a passing idle probe shows it did not, and it is then sent again.
-// The turn ends a restarted watcher re-reads from a handoff-requested phase's start never open the clear gate, since their order against the file write is unknown.
-// A phase belonging to another strand is reset to idle.
-// A handoff-requested or resuming phase that exceeds the handoff timeout, or a session that asks a question during the handoff, aborts back to idle with LastAbortReason set.
-// A clearing phase that exceeds it keeps waiting for the idle probe and records the wait in State.Stuck, which `status` reports.
-// Once the session is idle it moves on to resuming, and an unconfirmed `/clear` is not retried then, since the handoff is already written and the resume prompt lands in an idle, uncleared session.
-// The guarantee holds through every restart: nothing before the handoff file is written and seen can reach `/clear`, and LastHandoff moves only when a cycle passes that gate.
+// Restart rules: a non-idle phase's pending step is read from State.Pending.
+// A step with an id has its outcome read from creel, and a restarted watcher posts or injects nothing again.
+// A step with no id is looked up in creel's journal and adopted when found, and sent once more only when creel journaled none.
+// A phase belonging to another strand is reset to idle (see "Delivery through creel").
+// A handoff-requested or resuming phase that exceeds the handoff timeout aborts back to idle with LastAbortReason set.
 //
 // # The compact cycle (compact mode)
 //
 // The persisted phases are idle, handoff-requested and compacting.
 // A trigger first enters handoff-requested exactly as in clear mode: the session writes a note under handoffs/, and the same gate applies.
-// When the gate passes, the watcher renders the focus stencil first, so a stencil failure changes nothing,
-// then moves LastHandoff to the note, persists compacting, types `/compact` followed by the focus, and records the injection as confirmed.
+// When the gate passes, the watcher renders the focus stencil first, so a stencil failure changes nothing and leaves the reply unread.
+// It then moves LastHandoff to the note, persists compacting, and injects `/compact` with the focus as its argument.
 // A later fresh `start` therefore resumes from the newest note in either mode.
 // The focus tells the summary to keep runs in flight, open parent-review forks, operator requests and decisions pending, and work half done.
-// Nothing is typed unless the idle probe passed on the same tick.
 //
 // A compaction ends without a turn end, so the compacting phase searches the transcript of State.ReadingTurnEnd, the turn end the current reading was taken through, which every stored reading records, for a compaction boundary every tick.
 // The boundary is searched for rather than read off the newest entry, because a message answered right after the boundary hides it there.
-// The phase completes when a boundary after the phase was entered is found, whatever turn ends follow it, and the idle probe passes on that tick:
+// The phase completes when a boundary after the phase was entered is found, whatever turn ends follow it:
 // the transcript's newest reading becomes the reading, `cycle_count` increments, State.CompactionBaseline moves to the boundary,
 // and the watcher renders the role file and the resume pointer naming the cycle's note and enters the reload sequence.
 // A stencil failure there returns to idle with the reason.
@@ -230,10 +209,12 @@
 // which holds the next hard or soft trigger for `soft_idle_s`; a requested cycle is not held.
 // That hold delays a hard trigger by at most `soft_idle_s` per failed compaction.
 //
-// Restart: an unconfirmed `/compact` is typed again only when the idle probe passes and no qualifying boundary has been found.
-// A qualifying boundary found after a restart completes the phase without typing anything.
+// The `/compact` is injected once.
+// An expired inject is queued again, and an unconfirmed one keeps the search going for the boundary until the timeout.
+// Restart: a saved `/compact` has its outcome read and is never sent again, and one with no saved id is looked up in creel's journal first.
+// A qualifying boundary found after a restart completes the phase without sending anything.
 //
-// A soft compact cycle keeps the `DEFER` handshake, so a session with a background task in flight can decline before `/compact`.
+// A soft compact cycle keeps the `defer` handshake, so a session with a background task in flight can decline before `/compact`.
 //
 // A tick saves State only while the record still names the strand it loaded, checked under the state lock,
 // so a watcher never overwrites the binding a concurrent `start` just recorded.
@@ -251,41 +232,50 @@
 // and the one-line pointer follows;
 // after a compaction the pointer follows the plugins step directly.
 // `start` and `--adopt` load the same skills through the launch spec.
-// The step, the skills the retry step loads, whether the sequence skips the skills, the step's first typing time and its events offset are persisted in State (`reload_step`, `reload_retry`, `reload_skips_skills`, `reload_typed_at`, `phase_events_offset`), the offset and time at the first typing, before the text is typed.
+// The step, the skills the retry step loads, whether the sequence skips the skills, the step's first queueing time and its events offset are persisted in State (`reload_step`, `reload_retry`, `reload_skips_skills`, `reload_typed_at`, `phase_events_offset`), the offset and time at the first queueing, before the step is sent.
 // `reload_step` is -3 for the color step, -2 for the plugins step, 0 for the skills step and -1 for the retry step.
 // Every other value, including a per-skill index persisted before the one-turn load, is read as the pointer step, as is a retry step with an empty `reload_retry` and a skills step when `reload_skips_skills` is set.
 // A state persisted mid-reload by a watcher that had no color step resumes where it was.
 //
-//   - The color step types the strand's color command, only when the idle probe passed on the same tick, and ends no turn.
-//     It persists the move to the plugins step with a zero `reload_typed_at` and types nothing else on that tick.
-//     It has no confirmation and no timeout, and a failed typing is logged and moves on, so the color never wedges a reload.
-//   - The plugins step types `/reload-plugins`, only when the idle probe passed on the same tick, and ends no turn.
-//     It persists the move to the next step, the skills step or, when `reload_skips_skills` is set, the pointer, with a zero `reload_typed_at`, and types nothing else on that tick;
-//     the next step is typed on a later tick whose idle probe passed.
-//     It has no confirmation and no timeout: a restart before the move finds it persisted and types `/reload-plugins` again, which is idempotent.
-//   - The skills step, only after `/clear`, types one provider-built message asking the model to load every skill, only when the idle probe passed on the same tick.
-//     Its first turn end after the typing is classified against the transcript.
+// Every step is one creel inject, queued with the pending step persisted first.
+// The color, plugins and skills steps are command injects (`color` with the strand's palette color, `reload-plugins`, `load-skills` with the space-joined skill list), and the pointer is a text inject.
+// Every step times out from its first queueing, `reload_typed_at`, which is kept across every requeue and restart:
+// past the handoff timeout the color and plugins steps are logged as skipped and the sequence moves on, as a skills step does.
+//
+//   - The color step injects the strand's color, and ends no turn.
+//     A strand with no color, or a color reed cannot read, queues nothing: the step moves on to the plugins step at once and the bind color counts as done.
+//     An injected or unconfirmed color moves the sequence to the plugins step, recording the strand's color as typed for the session.
+//   - The plugins step injects `/reload-plugins`, and ends no turn.
+//     An injected or unconfirmed one moves the sequence to the next step, the skills step or, when `reload_skips_skills` is set, the pointer.
+//   - The skills step, only after `/clear`, injects one provider-built message asking the model to load every skill.
+//     Its first turn end after the inject's newest sending record is classified against the transcript.
 //     A skill the provider does not know is skipped, with a log entry naming the skill and the cause `unknown`.
 //     A turn whose transcript cannot be read is confirmed unverified, with one `skill load unverified` entry listing the skills,
 //     and the pointer follows.
 //     A skill the provider knows but the model did not load moves the sequence to the retry step.
-//     When the handoff timeout, measured from the first typing, passes with no turn end, every skill is skipped with the cause `timeout` and no retry follows.
+//     When the handoff timeout, measured from the first queueing, passes with no such turn end, every skill is skipped with the cause `timeout` and no retry follows.
 //     An empty skill list starts the sequence at the pointer step.
-//   - The retry step types the same message for the missing skills only, and classifies its turn end the same way:
+//   - The retry step injects the same message for the missing skills only, and classifies its turn end the same way:
 //     a skill still missing is skipped with the cause `not loaded`,
 //     and there is no second retry.
 //     The move into it persists the step and `reload_retry` in one save,
-//     so a restart before the move reads the same turn end again and a restart after it never retries twice.
-//   - The pointer step types State.PendingResume under the same rule and ends the phase at its first turn end.
-//     Its timeout runs from its first typing and returns to idle with `resume timed out`.
-//   - A step typed before a restart and not confirmed is typed again once the idle probe passes, without a fresh timeout.
+//     so a restart after it never retries twice.
+//   - The pointer step injects State.PendingResume and ends the phase at its first turn end after the inject's newest sending record.
+//     Its timeout runs from its first queueing and returns to idle with `resume timed out`; an unconfirmed pointer keeps waiting for its turn end until then.
+//   - A restart in any step reads the step's own pending inject, adopting it from creel's journal when its id was never saved, and never an earlier step's.
+//     A step creel expired is queued again without a fresh timeout.
 //     Loading a skill twice costs one turn and changes nothing.
 //
-// Each successful typing of a step logs `orch: injection typed` at Info with the phase, the step name, the length of the hold the passing probe before it ended and the time since the phase began.
+// A turn end counts for a skills, retry or pointer step only when its hook-side time, whole seconds, is after the second of the step's inject's newest sending record, and a turn end with no time never counts.
+// The watcher keeps the turn ends it read since the step began, so a turn end read in an earlier tick than the outcome still counts.
+// Bound: the stamp has whole-second precision, so a step whose own turn ends within the second it was typed is missed and times out,
+// and another turn ending in the second after the inject's newest sending record still counts, a window creel's idle check before sending keeps narrow.
+//
+// Each step creel typed logs `orch: injection typed` at Info with the phase, the step name and the time since the phase began.
 // A boundary found is logged as `orch: compaction boundary found` with its time, when a fresh one is read at a turn end and again when a qualifying one completes a requested compaction,
 // so the delay from boundary to reload is readable from `watch.log` alone.
 //
-// The sequence has three entry points, each entered only on a tick whose idle probe passed:
+// The sequence has three entry points:
 //
 //   - After `/clear`: the pointer names the note, as before.
 //   - After a compaction the watcher ran: the pointer names the cycle's note.
@@ -293,11 +283,11 @@
 //     Exactly one turn end after the boundary, and that turn end the newest one read on the tick, enters the sequence, with the `orch-template-reload` pointer: read the role file and continue the work, no note.
 //     More than one turn end after the boundary means turns ran without a reload,
 //     or a restarted watcher on an old cursor found an old boundary:
-//     the baseline moves to the boundary, the watcher logs it at Info and types nothing.
-//     One turn end after the boundary that the watcher has not read yet, or none, types nothing and leaves the baseline,
+//     the baseline moves to the boundary, the watcher logs it at Info and queues nothing.
+//     One turn end after the boundary that the watcher has not read yet, or none, queues nothing and leaves the baseline,
 //     so a later turn end evaluates the boundary again.
-//     A confirmed boundary is held in memory only until the idle probe passes,
-//     and a restarted watcher finds it again at its next turn end, since the baseline has not moved.
+//     A confirmed boundary is acted on at once by queueing the reload's first inject once the creel hold is granted, and is held in memory only until then;
+//     a restarted watcher finds it again at its next turn end, since the baseline has not moved.
 //     A tick that read a turn end replaces the held boundary from its own evaluation alone,
 //     so a boundary found stale never outlives that tick;
 //     a tick that read none keeps it,
@@ -308,9 +298,9 @@
 // The provider's session-start hook can deliver the pointer itself after a compaction:
 // the hidden `lyx orch resume-context` verb renders it from the persisted state through ResumeContext, which renders the role file first in every phase but a resuming one with a pending pointer, and then writes the delivery mark, `resume-mark`.
 // The pointer step reads the mark first.
-// A mark dated at or after State.CompactionBaseline whose text equals the pending pointer means the hook delivered it, so the step types nothing, logs `orch: pointer delivered by the session-start hook` at Info, and ends the phase at once with no abort reason.
+// A mark dated at or after State.CompactionBaseline whose text equals the pending pointer means the hook delivered it, so the step injects nothing, logs `orch: pointer delivered by the session-start hook` at Info, and ends the phase at once with no abort reason.
 // It does not wait for a turn end, since the one that revealed the boundary was read before the step, and a skip waiting for another could end in `resume timed out`.
-// No mark, an older one or one with other text types the pointer as before, so a hook that never fired costs nothing; a pointer delivered by both ways costs the session one redundant read.
+// No mark, an older one or one with other text injects the pointer as before, so a hook that never fired costs nothing; a pointer delivered by both ways costs the session one redundant read.
 // Every return to idle clears the mark, so it never carries into the next compaction.
 //
 // Bound: only the two compaction entries skip the skills step and `/clear` keeps it;
@@ -344,16 +334,45 @@
 //
 //   - Another module tells the orchestrator about a change by posting creel mail to its strand, never by typing into its pane (PATTERN-orch-pane-single-writer); there is no notice queue.
 //   - `Watcher.Run` reads the watcher's mailbox once before its first tick, so creel knows the program as a receiver before a reply can arrive.
-//     No request is pending yet, so each message is logged and dropped; a failed read is logged and is not a tick error.
+//     It uses the handler every tick's read uses, which declines until the watcher has set its events cursor for the recorded strand, so every message stays unread for the first tick; a failed read is logged and is not a tick error.
 //   - The retired notice queue is only cleaned up: `CleanupRetiredNotices` lists and removes `Paths.NoticesDir` and `Paths.RetiredNoticeLogPath`.
+//
+// # Delivery through creel
+//
+// Every step of a cycle reaches the orch as a creel post or inject, and the watcher holds the orch strand in creel while a cycle runs.
+//
+//   - Before each post or inject, `sendStep` persists the step in State.Pending (whether it is mail, its command and argument or text, and the time it was persisted) with no id, then saves the id creel answers.
+//     A step is queued only after the tick re-read the state file and found its phase still non-idle on its strand; a re-read that finds the phase idle or bound to another strand queues nothing on that tick.
+//     Every step inject carries `stepInjectTTL`, ten minutes, creel's default inject time to live.
+//   - `stepOutcome` reads the pending inject's outcome from creel without blocking the tick.
+//     `injected` advances the step.
+//     `expired` queues the same step again and records the stall reason creel reported in State.Stuck.
+//     `unconfirmed` advances `/clear`, the color and plugins steps and the bind color, and leaves a step that waits on its own signal, a turn end or a compaction boundary, waiting until its timeout.
+//     `withdrawn` queues nothing again and returns to idle, releasing the hold.
+//   - A pending step with no id, left by a restart or by a failed post or inject call of a live watcher, is looked up by `adoptPending` before anything is sent:
+//     creel may have journaled a request whose call then failed, so the lookup adopts only a post or inject sent since the step was persisted whose command and argument, or text, match the step, and the step is sent only when none exists.
+//   - The hold is taken on entering any non-idle phase, a cycle start and the auto-compaction reload's resuming phase alike, for `cycleHoldDuration`, and renewed on every tick outside idle before the pause check, so a tick held by a hub pause renews it too.
+//     It is released at every return to idle.
+//     A restarted watcher in a non-idle phase takes the hold again before anything else.
+//     Bound: a watcher that dies mid-cycle leaves a hold that lapses within `cycleHoldDuration`;
+//     a live cycle keeps the orch's other mail unreminded until it returns to idle, which the phase timeouts bound everywhere but the clearing phase, where `lyx orch status` shows the stall.
+//   - A failed creel call, an unreachable daemon, a refusal or the sender-resolution refusal, goes through `creelFailed`:
+//     it is logged once per change of error and recorded in State.Stuck with State.StuckByCreel set, and the tick returns no error, so a creel outage holds the cycle and never ends the watcher.
+//     A failed release at a return to idle does not keep the phase: the watcher returns to idle, and the hold it could not release lapses.
+//     A tick in which every creel call succeeded clears State.Stuck and State.StuckByCreel when the flag is set, in idle as in any other phase.
+//     A stall reason `stepOutcome` wrote sets no StuckByCreel and clears when the step advances; a restarted watcher's first tick clears a Stuck that neither a pending step nor the flag owns.
+//   - A phase belonging to another strand is reset by `resetForOtherStrand`:
+//     it withdraws the watcher's queued injects and unread mail to the orch strand, releases its hold and drops its pending ids,
+//     and `ClearResumeNoticed` clears, under the pause record's lock, the resume-noticed mark of each pause entry owning the strand whose resume line the withdraw removed, so a continued session gets the line posted again.
+//     A failed withdraw or release saves no reset and leaves the watcher unbound, so the next tick runs the reset again.
 //
 // # Hub pause
 //
 // The watcher alone covers the orch under a hub pause entry, and its guarded interrupt is the one keystroke it still sends here.
-// A watcher told a PauseWatch (the pause record path and a process liveness check) reads the record after each tick's events read and before the phase switch.
+// A watcher told a PauseWatch (the pause record path and a process liveness check) reads the record after each tick's events read and the renewal of its creel hold, and before the phase switch.
 // A slug entry never covers the orch.
 //
-//   - While a live hub entry stands the tick returns there: no context cycle starts or advances, however long the pause lasts.
+//   - While a live hub entry stands the tick returns there: no context cycle starts or advances, however long the pause lasts, and a cycle already running keeps renewing its hold.
 //   - Each live hub entry is acted on once, remembered in memory by its PausedAt.
 //     Nothing is interrupted or recorded for an entry the orch itself ran, one that already owns the orch's session, one that began at or before State.LaunchedAt (a zero LaunchedAt reads as launched before every entry), or one whose grace end lay before the watcher's first tick.
 //   - Before the grace end, an orch the idle probe reads idle with no network operation marker naming the orch is left alone; any other waits.
@@ -406,7 +425,7 @@
 //
 // # Residuals
 //
-//   - Shuttle switches Claude's prompt suggestion off in every settings file it writes, and the idle probe still fails closed on any non-empty box other than the provider's placeholder, so a session with a draft is never cycled until it is cleared.
+//   - Shuttle switches Claude's prompt suggestion off in every settings file it writes, and the idle check creel delivers behind still fails closed on any non-empty box other than the provider's placeholder, so no cycle step is typed over a draft until it is cleared.
 //   - A SendMessage landing between the handoff turn's end and `/clear` is lost from context.
 //   - The transcript and Stop-payload shapes are Claude Code internals, so usage degrades to unknown rather than failing.
 //   - A threshold above the auto-compaction point lets Claude Code compact first, and the boundary it writes is a reading, so the watcher reads the shrunken context correctly.
@@ -430,7 +449,7 @@
 //   - Adopting a large session starts within `startup_timeout_s` and leaves no dialog on the pane.
 //     `TestSmokeOrch_AdoptLargeSession` (opt-in through `LYX_SMOKE_ADOPT_SESSION`) adopted a copy of a hub session's transcript of 12827281 bytes on 2026-10-05, Claude Code 2.1.289.
 //     Startup took 43.8s against a `startup_timeout_s` of 90, so a transcript of this size uses about half the budget.
-//   - A visible plain run in the prime shares the orch pane's window and can squeeze it too short to draw an input box, which makes the idle probe fail and holds every cycle until the pane is tall again.
+//   - A visible plain run in the prime shares the orch pane's window and can squeeze it too short to draw an input box, which makes the idle check fail and holds every cycle step until the pane is tall again.
 //   - The recorded session id is right only while the provider names the parent session id in a subagent's or fork's hook lines.
 //     The orch strand runs with `ForkSubagents` and the claude engine takes each hook line's `session_id` as given,
 //     so a provider that names the subagent's own id there records the subagent's session.

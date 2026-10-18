@@ -110,9 +110,12 @@ func TestRun_ReturnsWhenStrandGone(t *testing.T) {
 		name string
 		// mailboxErr, when set, fails the start read.
 		mailboxErr error
+		// unread is how many messages wait in the mailbox, which the start read leaves for the first tick since the watcher is not bound yet.
+		unread int
 	}{
 		{name: "a mailbox that reads"},
 		{name: "a mailbox read that fails", mailboxErr: errBoom},
+		{name: "a message waiting for the first tick stays unread", unread: 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -121,6 +124,9 @@ func TestRun_ReturnsWhenStrandGone(t *testing.T) {
 			e.s.alive = false
 			if tt.mailboxErr != nil {
 				e.c.failNext("readmailbox", tt.mailboxErr)
+			}
+			for range tt.unread {
+				e.c.mailbox = append(e.c.mailbox, CreelMessage{ID: 7, From: fakeOrchStrandName, ReplyTo: 3, Body: "written /n.md"})
 			}
 			st, _ := LoadState(e.paths)
 			st.WatcherExit = "stale"
@@ -133,6 +139,9 @@ func TestRun_ReturnsWhenStrandGone(t *testing.T) {
 			}
 			if e.c.mailboxReads != 1 {
 				t.Errorf("mailbox reads = %d, want one before the first tick", e.c.mailboxReads)
+			}
+			if len(e.c.mailbox) != tt.unread {
+				t.Errorf("unread messages = %d, want %d left for the first tick", len(e.c.mailbox), tt.unread)
 			}
 			got, _ := LoadState(e.paths)
 			if got.WatcherExit != "strand gone" {

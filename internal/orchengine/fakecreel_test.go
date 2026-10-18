@@ -2,7 +2,10 @@
 
 package orchengine
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // fakePost is one post the fake recorded.
 type fakePost struct {
@@ -37,6 +40,17 @@ type fakeCreel struct {
 	// withdrawn is what Withdraw answers.
 	withdrawn []CreelWithdrawn
 
+	// clock stamps the sent entries a journaled-but-failed call leaves, and the time an auto-landed inject was sent.
+	clock func() time.Time
+	// autoLand settles every inject as injected, sent at the clock's time, so a test that does not script outcomes sees every step typed at once.
+	autoLand bool
+	// journalFails scripts the next calls to fail after journaling their request: the entry reaches the sent list and the call answers the error.
+	journalFails []error
+	// onSend runs on every post and inject the fake accepts, with the post's body or the inject's step.
+	onSend func(mail bool, step CreelStep, body string)
+	// onReadMailbox runs before ReadMailbox hands its messages to the handler.
+	onReadMailbox func()
+
 	errs   map[string][]error
 	nextID int64
 }
@@ -66,13 +80,32 @@ func (f *fakeCreel) newID() int64 {
 	return f.nextID
 }
 
+// journalFail consumes the next scripted journaled failure and, when there is one, records the request in the sent list and returns its error.
+func (f *fakeCreel) journalFail(entry CreelSent) error {
+	if len(f.journalFails) == 0 {
+		return nil
+	}
+	err := f.journalFails[0]
+	f.journalFails = f.journalFails[1:]
+	entry.ID, entry.At = f.newID(), f.clock()
+	f.sent = append(f.sent, entry)
+	return err
+}
+
 func (f *fakeCreel) Post(receiver, body string) (int64, error) {
 	f.calls = append(f.calls, "post:"+receiver)
 	if err := f.fail("post"); err != nil {
 		return 0, err
 	}
+	firstLine, _, _ := strings.Cut(body, "\n")
+	if err := f.journalFail(CreelSent{Mail: true, Subject: firstLine}); err != nil {
+		return 0, err
+	}
 	id := f.newID()
 	f.posts = append(f.posts, fakePost{ID: id, Receiver: receiver, Body: body})
+	if f.onSend != nil {
+		f.onSend(true, CreelStep{}, body)
+	}
 	return id, nil
 }
 
@@ -84,6 +117,9 @@ func (f *fakeCreel) ReadMailbox(handle func([]CreelMessage) error) error {
 	}
 	if len(f.mailbox) == 0 {
 		return nil
+	}
+	if f.onReadMailbox != nil {
+		f.onReadMailbox()
 	}
 	if err := handle(append([]CreelMessage(nil), f.mailbox...)); err != nil {
 		return err
@@ -97,8 +133,20 @@ func (f *fakeCreel) Inject(receiver string, step CreelStep, ttl time.Duration) (
 	if err := f.fail("inject"); err != nil {
 		return 0, err
 	}
+	if err := f.journalFail(CreelSent{Step: step, Subject: step.Text}); err != nil {
+		return 0, err
+	}
 	id := f.newID()
 	f.injects = append(f.injects, fakeInject{ID: id, Receiver: receiver, Step: step, TTL: ttl})
+	if f.autoLand {
+		if f.outcomes == nil {
+			f.outcomes = map[int64]CreelOutcome{}
+		}
+		f.outcomes[id] = CreelOutcome{State: CreelInjected, SendingAt: f.clock()}
+	}
+	if f.onSend != nil {
+		f.onSend(false, step, "")
+	}
 	return id, nil
 }
 
@@ -135,6 +183,17 @@ func (f *fakeCreel) Withdraw(receiver string) ([]CreelWithdrawn, error) {
 		return nil, err
 	}
 	return append([]CreelWithdrawn(nil), f.withdrawn...), nil
+}
+
+// count returns how many recorded calls start with prefix.
+func (f *fakeCreel) count(prefix string) int {
+	n := 0
+	for _, call := range f.calls {
+		if strings.HasPrefix(call, prefix) {
+			n++
+		}
+	}
+	return n
 }
 
 // postBodies lists the bodies of the recorded posts to receiver in order.

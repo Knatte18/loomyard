@@ -64,10 +64,17 @@ func (s runnerSession) StrandName(guid string) (string, error) {
 	return strand.Name, nil
 }
 
-// Send delegates to Runner.Send, which types into the pane through tmux.
-func (s runnerSession) Send(guid, text string) error {
-	logger.Debug("orch: send to session", "strandGUID", guid)
-	return s.runner.Send(guid, text)
+// StrandColor returns the palette color reed resolved for the tracked strand guid, empty for a strand with none.
+func (s runnerSession) StrandColor(guid string) (string, error) {
+	strands, err := s.strands.Strands()
+	if err != nil {
+		return "", err
+	}
+	strand, tracked := trackedStrand(strands, guid)
+	if !tracked {
+		return "", fmt.Errorf("orch: reed tracks no strand with guid %q", guid)
+	}
+	return string(strand.Color), nil
 }
 
 // Interrupt delegates to Runner.Interrupt, which refuses a pane that is not a ready agent pane, sends the provider's interrupt key only into a pane showing a running turn, and closes an open rewind picker once.
@@ -81,40 +88,6 @@ func (s runnerSession) InterruptSettle(guid string) (time.Duration, error) {
 	return s.runner.InterruptSettle(guid)
 }
 
-// ClearSession delegates to Runner.ClearSession, which types into the pane through tmux.
-func (s runnerSession) ClearSession(guid string) error {
-	logger.Debug("orch: clear session", "strandGUID", guid)
-	return s.runner.ClearSession(guid)
-}
-
-// ReloadPlugins delegates to Runner.ReloadPlugins, which types into the pane through tmux.
-func (s runnerSession) ReloadPlugins(guid string) error {
-	logger.Debug("orch: reload plugins", "strandGUID", guid)
-	return s.runner.ReloadPlugins(guid)
-}
-
-// TypeColor types the palette color reed resolved for the orch strand through Runner.TypeColor;
-// a strand with no color types nothing.
-func (s runnerSession) TypeColor(guid string) error {
-	strands, err := s.strands.Strands()
-	if err != nil {
-		return err
-	}
-	strand, tracked := trackedStrand(strands, guid)
-	if !tracked || strand.Color == "" {
-		return nil
-	}
-	logger.Debug("orch: type strand color", "strandGUID", guid, "color", string(strand.Color))
-	return s.runner.TypeColor(guid, strand.Color)
-}
-
-// LoadSkills delegates to Runner.LoadSkills,
-// which types the one-turn load message into the pane through tmux.
-func (s runnerSession) LoadSkills(guid string, skills []string) error {
-	logger.Debug("orch: load skills", "strandGUID", guid, "skills", skills)
-	return s.runner.LoadSkills(guid, skills)
-}
-
 // ClassifySkillLoad delegates to Runner.ClassifySkillLoad.
 func (s runnerSession) ClassifySkillLoad(guid string, turnEnd shuttleengine.Event, skills []string) (shuttleengine.SkillLoadReport, error) {
 	return s.runner.ClassifySkillLoad(guid, turnEnd, skills)
@@ -123,10 +96,4 @@ func (s runnerSession) ClassifySkillLoad(guid string, turnEnd shuttleengine.Even
 // CompactedSince delegates to Runner.CompactedSince.
 func (s runnerSession) CompactedSince(guid string, turnEnd shuttleengine.Event, since time.Time) (shuttleengine.CompactionBoundary, bool, error) {
 	return s.runner.CompactedSince(guid, turnEnd, since)
-}
-
-// CompactSession delegates to Runner.CompactSession, which types into the pane through tmux.
-func (s runnerSession) CompactSession(guid, focus string) error {
-	logger.Debug("orch: compact session", "strandGUID", guid)
-	return s.runner.CompactSession(guid, focus)
 }

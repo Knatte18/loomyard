@@ -114,17 +114,15 @@ func (w *Watcher) recordStoppingOnCancel(ctx context.Context, runReturned <-chan
 	}
 }
 
-// readMailboxAtStart reads the watcher's creel mailbox once, so creel knows the program as a receiver before any reply can arrive.
-// No request is pending yet, so each message is logged and dropped.
+// readMailboxAtStart reads the watcher's creel mailbox once through the handler every tick's read uses, so creel knows the program as a receiver before any reply can arrive.
+// The handler declines while the watcher has not bound to the recorded strand, which leaves every message unread for the first tick to handle once the events cursor is set.
 // A failed read is logged and changes nothing else.
 func (w *Watcher) readMailboxAtStart() {
-	err := w.creel.ReadMailbox(func(messages []CreelMessage) error {
-		for _, message := range messages {
-			logger.Info("orch: creel message dropped, no request is pending", "messageID", message.ID, "from", message.From, "replyTo", message.ReplyTo)
-		}
-		return nil
-	})
-	if err != nil {
+	err := w.creel.ReadMailbox(w.readReplies)
+	switch {
+	case errors.Is(err, errNotBound):
+		logger.Debug("orch: creel mailbox left unread until the first tick binds the watcher")
+	case err != nil:
 		logger.Warn("orch: reading the creel mailbox at start failed", "error", err)
 	}
 }

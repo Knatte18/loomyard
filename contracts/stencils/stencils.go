@@ -363,7 +363,7 @@ var WebsterFragmentGuardFix []byte
 //go:embed orch/orch-template-start.md
 var OrchTemplateStart []byte
 
-// OrchTemplateHandoff is orch's shipped-default one-line handoff instruction.
+// OrchTemplateHandoff is orch's shipped-default handoff instruction.
 //
 //go:embed orch/orch-template-handoff.md
 var OrchTemplateHandoff []byte
@@ -378,7 +378,7 @@ var OrchTemplateResume []byte
 //go:embed orch/orch-template-adopt.md
 var OrchTemplateAdopt []byte
 
-// OrchTemplateHandoffSoft is orch's shipped-default one-line soft-trigger handoff request.
+// OrchTemplateHandoffSoft is orch's shipped-default soft-trigger handoff request.
 //
 //go:embed orch/orch-template-handoff-soft.md
 var OrchTemplateHandoffSoft []byte

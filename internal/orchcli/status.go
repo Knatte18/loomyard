@@ -64,8 +64,9 @@ func (c *orchCLI) statusCmd() *cobra.Command {
 whether a watcher holds its lock, the latest context reading against the soft
 threshold (soft_threshold_tokens) and the hard cap (threshold_tokens), and the
 persisted cycle phase (idle, handoff-requested, clearing, resuming or compacting), count, trigger (cycle_trigger), last handoff, abort reason
-and last DEFER deferral (last_deferral, RFC 3339 UTC, null when none).
-stuck names why an overdue phase is still waiting for the session to go idle.
+and last deferral (last_deferral, RFC 3339 UTC, null when none).
+stuck names the stall reason creel last reported for the watcher's pending inject,
+or the creel failure holding the cycle.
 session_id is the orch session's recorded provider id, which "lyx orch start
 --continue" resumes; it is empty when none is recorded.`,
 		Args: cobra.NoArgs,

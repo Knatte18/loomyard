@@ -254,6 +254,34 @@ func (w *Watcher) queueResumeLine(record pauserecord.Record, st State, now time.
 	return err
 }
 
+// ClearResumeNoticed clears, under the pause record's lock, the resume-noticed mark of each resumed entry's orch session on strand.
+// It acts only when withdrawn holds the resume line itself: a withdraw removed the line before the orch read it, so a later queueResumeLine must post it again.
+// A withdraw that removed no resume line changes nothing.
+func ClearResumeNoticed(recordPath, strand string, withdrawn []CreelWithdrawn, now time.Time) error {
+	removed := false
+	for _, message := range withdrawn {
+		if message.Subject == pauserecord.ResumeLine {
+			removed = true
+			break
+		}
+	}
+	if !removed {
+		return nil
+	}
+	_, err := pauserecord.Update(recordPath, now, func(record *pauserecord.Record) error {
+		for i := range record.Resumed {
+			for j := range record.Resumed[i].Sessions {
+				session := &record.Resumed[i].Sessions[j]
+				if session.Orch && session.GUID == strand {
+					session.ResumeNoticed = false
+				}
+			}
+		}
+		return nil
+	})
+	return err
+}
+
 // ownsUnnoticedOrch reports whether entry owns the orch session guid with its resume line not yet queued.
 func ownsUnnoticedOrch(entry pauserecord.Entry, guid string) bool {
 	for _, session := range entry.Sessions {
