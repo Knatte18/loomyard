@@ -91,7 +91,7 @@ func unpushedOutcome(path string, err error) error {
 // the process cwd (which ensureWeftLockDirAt("") would do — mkdir .weft and git rev-parse relative
 // to cwd).
 // It blocks until the lock is free and marks the sides it pushes pending, so it also respawns a side another pusher left flagged.
-// Its callers are foreground ones; the detached push child runs CoalescePushRequest instead.
+// It is a foreground push, for callers that supply both paths and wait for the result.
 // warpPath may still be empty when weftPath is present — that pushes only the weft side;
 // a warp-only push (warpPath set, weftPath empty) is not a supported coalescing entry and is
 // rejected by the same guard.
