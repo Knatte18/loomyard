@@ -11,6 +11,81 @@ import (
 	"github.com/Knatte18/loomyard/internal/orchengine"
 )
 
+// TestCreelSeam_MapsEachCallOntoTheClient drives Post, Inject, ReadMailbox, Hold, Release and Withdraw and checks the request the client received and the values converted back.
+func TestCreelSeam_MapsEachCallOntoTheClient(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		run  func(t *testing.T, seam creelSeam)
+		want []string
+	}{
+		{"Post leaves the body as mail for the receiver", func(t *testing.T, seam creelSeam) {
+			if id, err := seam.Post("tst:orch", "hello"); err != nil || id != 11 {
+				t.Errorf("Post = %d, %v; want 11, nil", id, err)
+			}
+		}, []string{"post:tst:orch:hello"}},
+		{"a step with a command injects the command with its ttl", func(t *testing.T, seam creelSeam) {
+			step := orchengine.CreelStep{Command: "compact", Argument: "keep the plan"}
+			if id, err := seam.Inject("tst:orch", step, 90*time.Second); err != nil || id != 13 {
+				t.Errorf("Inject = %d, %v; want 13, nil", id, err)
+			}
+		}, []string{"inject-command:tst:orch:compact keep the plan:1m30s"}},
+		{"a step with only text injects the text with its ttl", func(t *testing.T, seam creelSeam) {
+			if id, err := seam.Inject("tst:orch", orchengine.CreelStep{Text: "carry on"}, 10*time.Minute); err != nil || id != 12 {
+				t.Errorf("Inject = %d, %v; want 12, nil", id, err)
+			}
+		}, []string{"inject:tst:orch:carry on:10m0s"}},
+		{"Hold holds the receiver for the duration", func(t *testing.T, seam creelSeam) {
+			if err := seam.Hold("tst:orch", 2*time.Minute); err != nil {
+				t.Errorf("Hold error = %v; want nil", err)
+			}
+		}, []string{"hold:tst:orch:2m0s"}},
+		{"Release ends the hold on the receiver", func(t *testing.T, seam creelSeam) {
+			if err := seam.Release("tst:orch"); err != nil {
+				t.Errorf("Release error = %v; want nil", err)
+			}
+		}, []string{"release:tst:orch"}},
+		{"Withdraw answers the id and subject of each message it removed", func(t *testing.T, seam creelSeam) {
+			got, err := seam.Withdraw("tst:orch")
+			if err != nil {
+				t.Fatalf("Withdraw error = %v; want nil", err)
+			}
+			want := []orchengine.CreelWithdrawn{{ID: 5, Subject: "resume"}, {ID: 6, Subject: "note"}}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("Withdraw = %+v; want %+v", got, want)
+			}
+		}, []string{"withdraw:tst:orch"}},
+		{"ReadMailbox hands the handler each message's id, sender, reply target and body", func(t *testing.T, seam creelSeam) {
+			var got []orchengine.CreelMessage
+			err := seam.ReadMailbox(func(messages []orchengine.CreelMessage) error {
+				got = messages
+				return nil
+			})
+			if err != nil {
+				t.Fatalf("ReadMailbox error = %v; want nil", err)
+			}
+			want := []orchengine.CreelMessage{{ID: 3, From: "tst:orch", ReplyTo: 2, Body: "written x.md"}}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("ReadMailbox handed %+v; want %+v", got, want)
+			}
+		}, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			client := &fakeCreelClient{
+				messages:  []creelengine.Message{{ID: 3, From: "tst:orch", ReplyTo: 2, Body: "written x.md"}},
+				withdrawn: creelengine.WithdrawResult{Messages: []creelengine.WithdrawnMessage{{ID: 5, Subject: "resume"}, {ID: 6, Subject: "note"}}},
+			}
+			tt.run(t, creelSeam{client: client})
+			if !reflect.DeepEqual(client.calls, tt.want) {
+				t.Errorf("client calls = %v; want %v", client.calls, tt.want)
+			}
+		})
+	}
+}
+
 // TestCreelSeam_FoldsTheJournal drives InjectOutcome and Sent over scripted journal entries.
 func TestCreelSeam_FoldsTheJournal(t *testing.T) {
 	t.Parallel()
