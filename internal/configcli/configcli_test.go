@@ -927,11 +927,20 @@ func TestDispatchSetProfiles(t *testing.T) {
 		// absent leaves the hub file unwritten instead of seeded.
 		absent      bool
 		setFlag     string
+		layer       string
 		wantCode    int
 		wantFile    string
 		wantContain []string
 		wantErr     string
 	}{
+		{
+			name:     "a local write is refused because no profile key is open to the local layer",
+			setFlag:  `wide={"darn":{"review_max_bounces":2}}`,
+			layer:    "local",
+			wantCode: 1,
+			wantFile: seeded,
+			wantErr:  "local override",
+		},
 		{
 			name:     "a new profile is added beside the existing one",
 			setFlag:  `wide={"darn":{"review_max_bounces":2}}`,
@@ -975,7 +984,7 @@ func TestDispatchSetProfiles(t *testing.T) {
 			sync := &fakeSyncTracker{}
 			var out bytes.Buffer
 
-			code := dispatch(fx.layout, &out, []string{"profiles"}, makeNeverCalledEditor(t), sync.syncFunc(), commit.commitFunc(), false, []string{row.setFlag}, "", nil, true)
+			code := dispatch(fx.layout, &out, []string{"profiles"}, makeNeverCalledEditor(t), sync.syncFunc(), commit.commitFunc(), false, []string{row.setFlag}, row.layer, nil, true)
 
 			if code != row.wantCode {
 				t.Errorf("dispatch = %d; want %d; output: %q", code, row.wantCode, out.String())
