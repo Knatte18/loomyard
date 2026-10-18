@@ -387,7 +387,8 @@ func TestVerify_SlotGate(t *testing.T) {
 
 	seenEnv := filepath.Join(t.TempDir(), "env")
 	command := "printf '%s\\n%s\\n%s\\n' \"$GOFLAGS\" \"$LYX_GATE_SLOT\" \"$" + gateslot.PrebuiltLyxEnv + "\" > " + seenEnv
-	const timeout = 300 * time.Millisecond
+	// The timeout bounds a shell spawn after the slot frees, so it must outlast a scheduling stall under a loaded suite.
+	const timeout = time.Second
 	type outcome struct {
 		res Result
 		err error

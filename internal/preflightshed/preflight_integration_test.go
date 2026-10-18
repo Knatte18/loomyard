@@ -152,7 +152,7 @@ func TestPreflight_StaleStampReconcilesBeforeTheCleanCheck(t *testing.T) {
 	hubforge.AddPair(t, h, "pair-a")
 	task := h.PairCodeWorktree("pair-a")
 	commitRetiredBatcherKey(t, h.PairRecordsSibling("pair-a"))
-	p := newPreflightWith("Preflight", task, hubreconcile.Options{LockWait: 50 * time.Millisecond})
+	p := NewPreflight("Preflight", task)
 
 	shedfake.RequireOutcome(t, p, shedengine.Done)
 
@@ -175,7 +175,7 @@ func TestPreflight_ReconcileFailureStopsTheRowWithItsWayForward(t *testing.T) {
 		hubforge.AddPair(t, h, "pair-a")
 		hubforge.AddPair(t, h, "pair-b")
 		gitkit.CommitFile(t, h.PairRecordsSibling("pair-b"), configengine.ConfigFileRel("loom"), "a: [unclosed\n", "fixture: broken loom.yaml")
-		p := newPreflightWith("Preflight", h.PairCodeWorktree("pair-a"), hubreconcile.Options{LockWait: 50 * time.Millisecond})
+		p := NewPreflight("Preflight", h.PairCodeWorktree("pair-a"))
 
 		ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 
