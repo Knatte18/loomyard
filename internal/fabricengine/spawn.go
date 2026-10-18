@@ -7,8 +7,8 @@
 // PushWarpAt is the warp-side sibling of recordsgit.go's pushWeftAt — the synchronous, no-Fabric-
 // instance push primitive for the warp side.
 // It has no production caller today: the detached child's bypass handler (internal/fabriccli's
-// `push` RunE) drives DetachedPush instead, which runs CoalescePushRequest to push both sides through
-// PushRebaseFree under one absorbing lock rather than calling either per-side primitive.
+// `push` RunE) drives DetachedPush instead.
+// DetachedPush runs CoalescePushRequest to push both sides through PushRebaseFree under one absorbing lock rather than calling either per-side primitive.
 // It is retained as pushWeftAt's symmetric counterpart, and the distinction matters — see PushWarpAt's
 // own doc comment for the operational consequence.
 // PushWarpRebaseFreeAt is a second warp-side push primitive, routing to gitrepo.PushRebaseFree
@@ -195,9 +195,9 @@ func SpawnPairPush(l *lyxcwd.Location) error {
 // involved — the warp-side analog of recordsgit.go's pushWeftAt.
 // Gating matches pushWeftAt exactly.
 //
-// It has NO production caller. The detached push child's bypass handler drives DetachedPush,
-// not this function, so nothing in shipped fabric ever runs gitrepo.PushCoalesced against a warp
-// worktree.
+// It has NO production caller.
+// The detached push child's bypass handler drives DetachedPush, not this function,
+// so nothing in shipped fabric ever runs gitrepo.PushCoalesced against a warp worktree.
 // That is worth stating rather than leaving to a reader to rediscover: PushCoalesced writes its
 // single-pusher lock file at the repo root, and while the weft repo excludes that artifact through
 // seedWeftArtifactExcludes, the warp repo has no such entry — so wiring this function into a live
