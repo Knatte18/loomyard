@@ -504,6 +504,8 @@ func TestDaemon_Protocol(t *testing.T) {
 			}
 		}},
 		{"PostWaitReplyIsAnsweredWhenTheMessageReturnsUndelivered", false, func(t *testing.T, r *rig) {
+			// Busy, so the EXTERNAL mail is not carried into the pane and marked read before alpha goes.
+			r.del.SetIdle(alpha, false)
 			r.start()
 			c := r.client(externalClaim(), nil, creelfake.NewClock(epoch))
 			waiting := callAsync(c, creelengine.Request{Verb: creelengine.VerbPost, Receiver: alpha, Text: "anyone?", Wait: true}, 0)
