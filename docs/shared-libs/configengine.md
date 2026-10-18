@@ -71,6 +71,7 @@ only its *absence* degrades.
   Under `LoadOrTemplate`, the shape-mismatch, list-element and unset-required-env-var halves still hold;
   only the absent-file half is replaced by a resolved template default.
 - **Extra/stale keys are tolerated** by both entry points and cleaned up by `lyx config reconcile` (reconciliation).
+  A default- or worktree-layer file holding them is logged at Warn, once per file and key list in a process, naming the reconcile that removes them: `lyx config reconcile --layer default --apply` from the hub's prime for a file under the board dir, `lyx config reconcile --apply` for a worktree file.
 - **A key present with an empty value counts as present** and is not flagged missing.
 
 ## Environment variable grammar

@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/Knatte18/loomyard/internal/envsource"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -189,6 +190,10 @@ func load(dirs Dirs, spec Spec, fallbackOnAbsent bool) ([]byte, error) {
 		logger.Info("configengine: degrading to embedded template", "module", spec.Name, "reason", degradeReason)
 	}
 
+	if err := warnUnknownKeys(stack.Layers, spec); err != nil {
+		return nil, err
+	}
+
 	label := stack.Layers[len(stack.Layers)-1].Path
 	stackDoc, err := dropRetired(stack.Doc, spec)
 	if err != nil {
@@ -223,6 +228,46 @@ func load(dirs Dirs, spec Spec, fallbackOnAbsent bool) ([]byte, error) {
 	}
 
 	return resolved, nil
+}
+
+// warnedUnknownKeys holds, as file and key list, every unknown-keys warning this process has logged.
+var warnedUnknownKeys sync.Map
+
+// warnUnknownKeys logs one warning for each default- or worktree-layer file holding units the template lacks, retired keys aside, naming the reconcile that removes them.
+// No loader reads such a unit, so a key the template renamed silently loses its value until the file is reconciled.
+// A file and key list already warned in this process is not warned again, so a loader in a poll loop warns once.
+// The local layer is skipped, since it refuses a unit the template lacks.
+func warnUnknownKeys(layers []LayerDoc, spec Spec) error {
+	for _, layer := range layers {
+		var wayForward string
+		switch layer.Layer {
+		case LayerDefault:
+			wayForward = `run "lyx config reconcile --layer default --apply" from the hub's prime worktree`
+		case LayerWorktree:
+			wayForward = `run "lyx config reconcile --apply" in this worktree`
+		default:
+			continue
+		}
+		_, pruned, err := yamlengine.Prune(spec.Template, layer.Bytes, spec.OpenMaps...)
+		if err != nil {
+			return MarkInvalid(fmt.Errorf("config file %s: %w", layer.Path, err))
+		}
+		var unknown []string
+		for _, key := range pruned {
+			if _, _, retired := retiredCovering(spec, key); !retired {
+				unknown = append(unknown, key)
+			}
+		}
+		if len(unknown) == 0 {
+			continue
+		}
+		keys := strings.Join(unknown, ",")
+		if _, warned := warnedUnknownKeys.LoadOrStore(layer.Path+"\x00"+keys, true); warned {
+			continue
+		}
+		logger.Warn("configengine: config file holds keys the template lacks, and no loader reads them", "module", spec.Name, "layer", string(layer.Layer), "file", layer.Path, "keys", keys, "way_forward", wayForward)
+	}
+	return nil
 }
 
 // expansionDir returns the directory whose .env and process environment expand the merged document:
