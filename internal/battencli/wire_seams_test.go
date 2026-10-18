@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -247,22 +248,20 @@ func TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree(t *testing.T) {
 		t.Errorf("ArbiterStop() eligible=%v, error=%v; want the absent-worktree refusal naming the slug", reading.Eligible, err)
 	}
 
-	// Every switched row reads its flag from the task worktree, and the window opens on it, so each refuses before any launcher runs.
-	for name, enabled := range map[string]func() (bool, error){"OpenWindow": c.env.OpenWindow.Enabled, "SeedIDE": c.env.SeedIDE.Enabled, "OpenIDE": c.env.OpenIDE.Enabled} {
-		if on, err := enabled(); err == nil || on || !strings.Contains(err.Error(), "a-slug") {
-			t.Errorf("%s.Enabled() = %v, %v; want the absent-worktree refusal naming the slug", name, on, err)
-		}
+	// Every Command row reads its switch from the task worktree when it is reached, so the lookup refuses before any command runs.
+	if value, err := c.env.Setting("batten", "open_window"); err == nil || value != nil || !strings.Contains(err.Error(), "a-slug") {
+		t.Errorf("Setting(batten, open_window) = %v, %v; want the absent-worktree refusal naming the slug", value, err)
 	}
-	if err := c.env.OpenWindow.Act(context.Background()); err == nil || !strings.Contains(err.Error(), "a-slug") {
-		t.Errorf("OpenWindow.Act() error = %v; want the absent-worktree refusal naming the slug", err)
+	// --open-terminal forces Open-Window's switch on, and the other runs force nothing.
+	if len(c.env.Command.Forced) != 0 {
+		t.Errorf("Command.Forced = %v; want none without --open-terminal", c.env.Command.Forced)
 	}
-	// --open-terminal turns the window on without reading the task worktree's flag.
 	asked := &battenCLI{openTerminalFlag: true}
 	if err := asked.wire(location, "a-slug"); err != nil {
 		t.Fatalf("wire() error = %v; want nil", err)
 	}
-	if on, err := asked.env.OpenWindow.Enabled(); err != nil || !on {
-		t.Errorf("OpenWindow.Enabled() under --open-terminal = %v, %v; want true, nil", on, err)
+	if want := []string{battenrecipe.NameOpenWindow}; !slices.Equal(asked.env.Command.Forced, want) {
+		t.Errorf("Command.Forced under --open-terminal = %v; want %v", asked.env.Command.Forced, want)
 	}
 }
 

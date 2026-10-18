@@ -86,6 +86,22 @@ func TestCoalescePushBothAt_AdvancesBothSidesAndLeavesNoWarpRootLock(t *testing.
 	if _, err := os.Stat(filepath.Join(warpPath, gitrepo.PushLockFileName)); !os.IsNotExist(err) {
 		t.Errorf("%s exists at warp worktree root after fabricengine.CoalescePushBothAt(); want it absent (rebase-free, lock-free-per-side push)", gitrepo.PushLockFileName)
 	}
+
+	// A warp branch carrying the local-only mark is never pushed, and the weft side still is.
+	if err := gitrepo.New(warpPath).MarkBranchLocal("main"); err != nil {
+		t.Fatalf("MarkBranchLocal(main) error = %v; want nil", err)
+	}
+	gitkit.CommitFile(t, warpPath, "warp-file-2.txt", "warp change never pushed", "warp change never pushed")
+	weftSHA = gitkit.CommitFile(t, weftFixture.PrimeRecords(), "weft-file-2.txt", "weft change 2", "weft change 2")
+	if _, err := fabricengine.CoalescePushBothAt(warpPath, weftFixture.PrimeRecords(), fabricengine.SyncOptions{}); err != nil {
+		t.Fatalf("fabricengine.CoalescePushBothAt() with a local-marked warp branch error = %v; want nil", err)
+	}
+	if got := fabricengine.BareBranchSHAForTest(t, warpBare, "main"); got != warpSHA {
+		t.Errorf("warp bare main = %q; want it unchanged at %q (local-marked branch)", got, warpSHA)
+	}
+	if got := fabricengine.BareBranchSHAForTest(t, weftFixture.RecordsBare, fabricengine.RecordsBranchName("main")); got != weftSHA {
+		t.Errorf("weft bare main = %q; want it advanced to local HEAD %q", got, weftSHA)
+	}
 }
 
 // TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning covers the rejection path: a

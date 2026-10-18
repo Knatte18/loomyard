@@ -103,16 +103,14 @@ type battenCLI struct {
 	windowOpener func(name string, lyxArgs []string) (reedengine.WindowResult, error)
 	// terminalLauncher, when non-nil, replaces termwindow.Resolve as what --window asks for this machine's terminal launcher name, so the envelope is testable on any machine.
 	terminalLauncher func() (string, error)
-	// openTerminalFlag carries "run"'s hidden --open-terminal value, which --window passes to the run it starts.
+	// openTerminalFlag carries "run"'s hidden --open-terminal value, which --window passes to the run it starts and which forces the Open-Window row's switch on.
 	openTerminalFlag bool
-	// terminalOpener, when non-nil, replaces this machine's terminal launcher as what the Open-Window row opens its window on dir through, so the open is testable without a desktop.
-	terminalOpener func(dir, title string) error
 }
 
 // windowNamePrefix starts the name of the window "lyx batten run <slug> --window" opens, ahead of the slug.
 const windowNamePrefix = "batten:"
 
-// openTerminalFlagName names the hidden run flag that turns the Open-Window row on for the run, whatever batten.yaml's open_window says.
+// openTerminalFlagName names the hidden run flag that forces the Open-Window row's switch on for the run, whatever batten.yaml's open_window says.
 const openTerminalFlagName = "open-terminal"
 
 // battenVerbTexts carries batten's four shedverbs-driven verbs' Use/Short/Long text.
@@ -151,14 +149,14 @@ session and the verb returns at once with the window's id and name; the tmux
 window lives as long as the reed session. A window of that name with a live run
 is reported and nothing is started.
 
-The run's Open-Window row opens one desktop terminal window, titled with the
-slug, running "lyx reed attach" in the task worktree once the task's own run is
-seeded there and before it is spawned: Konsole on Linux, Windows Terminal into
-WSL on WSL. batten.yaml's open_window switches it, and --window turns it on for
-that run. The envelope's terminal_window field names the launcher, or says no
-window is opened when this machine has none. A run resumed past that row opens
-no window. The Seed-IDE and Open-IDE rows after it write the worktree's VS Code
-config and open VS Code, switched by seed_ide and open_ide.
+The Open-Window, Seed-IDE and Open-IDE rows are Command rows: each runs its
+batten.yaml command (open_window_command, seed_ide_command, open_ide_command)
+only when its switch (open_window, seed_ide, open_ide) is on. Open-Window's
+default command opens one desktop terminal window attached to the task
+worktree's reed session; Seed-IDE's writes the worktree's VS Code config, and
+Open-IDE's opens VS Code. --window turns Open-Window's switch on for that run.
+The envelope's terminal_window field names the launcher, or says no window is
+opened when this machine has none. A run resumed past that row opens no window.
 
 Example:
   lyx batten run some-slug
@@ -296,8 +294,8 @@ Example:
 	// here.
 	runVerb.Flags().StringVar(&c.driverFlag, "driver", shedrun.DriverGo, "the run's own driver (batten has no bootstrap verb, so \"llm\" is refused)")
 	runVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", "", "the driver the task worktree's own inner run uses; unset, the child recipe's driver_kind, then shed.yaml's")
-	runVerb.Flags().BoolVar(&c.windowFlag, "window", false, "start the same run in its own tmux window of the prime's reed session and return at once, and have its Open-Window row open a terminal window attached to the task worktree whatever batten.yaml's open_window says")
-	runVerb.Flags().BoolVar(&c.openTerminalFlag, openTerminalFlagName, false, "turn the Open-Window row on for this run whatever batten.yaml's open_window says; --window passes it")
+	runVerb.Flags().BoolVar(&c.windowFlag, "window", false, "start the same run in its own tmux window of the prime's reed session and return at once, and have its Open-Window row run its command whatever batten.yaml's open_window says")
+	runVerb.Flags().BoolVar(&c.openTerminalFlag, openTerminalFlagName, false, "force the Open-Window row's switch on for this run whatever batten.yaml's open_window says; --window passes it")
 	_ = runVerb.Flags().MarkHidden(openTerminalFlagName)
 	runVerb.RunE = func(cmd *cobra.Command, args []string) error {
 		if !c.windowFlag {
@@ -393,7 +391,7 @@ func (c *battenCLI) runInWindow(cmd *cobra.Command) error {
 		}
 	}
 	launcherName, launcherErr := resolveLauncher()
-	terminalWindow := fmt.Sprintf("opens through %s at the Open-Window row", launcherName)
+	terminalWindow := fmt.Sprintf("the Open-Window row runs open_window_command, whose default opens through %s", launcherName)
 	if launcherErr != nil {
 		terminalWindow = fmt.Sprintf("none opened: %v", launcherErr)
 	} else {

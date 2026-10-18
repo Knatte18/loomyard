@@ -36,7 +36,7 @@ func commitRecordsVerb(out io.Writer, d commitStatusDeps) int {
 			"skipped":   "the task's run records sibling is mid-merge; conclude the merge and run commit-records again",
 		})
 	}
-	if err := d.Commit(commitRecordsMessage); err != nil {
+	if _, err := d.Commit(commitRecordsMessage); err != nil {
 		return output.Err(out, "loom: commit-records: commit failed: "+err.Error()+"; way forward: transient, re-run lyx loom commit-records")
 	}
 	if err := d.Push(); err != nil {

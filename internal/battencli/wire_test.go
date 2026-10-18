@@ -705,7 +705,7 @@ func TestCreateRefusal_LeftoverBranchRemedyNeverNamesCheckout(t *testing.T) {
 	}
 }
 
-// TestTeardownRefusal_RecordsRemedyNamesCommitRecordsNeverForce asserts a sibling-dirt refusal is reworded to batten's own recovery -- inspect the sibling's out-of-pathspec content, commit or remove it by hand, then resume -- and never names --force, that a failed archive names the resume, and that every other teardown error passes through unchanged.
+// TestTeardownRefusal_RecordsRemedyNamesCommitRecordsNeverForce asserts a sibling-dirt refusal is reworded to batten's own recovery -- inspect the sibling's out-of-pathspec content, commit or remove it by hand, then resume -- and never names --force, that a failed archive and a still-running push of the pair each name the resume, and that every other teardown error passes through unchanged.
 func TestTeardownRefusal_RecordsRemedyNamesCommitRecordsNeverForce(t *testing.T) {
 	dirty := fmt.Errorf("remove: %w", fabricengine.ErrPairSiblingDirty)
 
@@ -737,6 +737,20 @@ func TestTeardownRefusal_RecordsRemedyNamesCommitRecordsNeverForce(t *testing.T)
 	}
 	if strings.Contains(got.Error(), "--force") {
 		t.Errorf("teardownRefusal(archive failed) = %q; want it to never name --force", got.Error())
+	}
+
+	pushRunning := fmt.Errorf("remove: %w", fabricengine.ErrPairPushRunning)
+	got = teardownRefusal(pushRunning, "some-slug")
+	if !errors.Is(got, fabricengine.ErrPairPushRunning) {
+		t.Errorf("teardownRefusal(push running) = %v; want it to still wrap ErrPairPushRunning", got)
+	}
+	for _, want := range []string{"left in place", "a push of it is still running", "lyx batten run some-slug"} {
+		if !strings.Contains(got.Error(), want) {
+			t.Errorf("teardownRefusal(push running) = %q; want it to contain %q", got.Error(), want)
+		}
+	}
+	if strings.Contains(got.Error(), "--force") {
+		t.Errorf("teardownRefusal(push running) = %q; want it to never name --force", got.Error())
 	}
 
 	other := errors.New("the task worktree has uncommitted changes")

@@ -1,4 +1,4 @@
-// Package statuscommit is the shared core of a shed module's per-transition status commit seam: the `shedengine.Shed.CommitStatus` closure that commits a run's status file onto the fabric sibling and pushes it.
+// Package statuscommit is the shared core of a shed module's per-transition status commit seam: the `shedengine.Shed.CommitStatus` closure that commits a run's status file onto the fabric sibling and spawns its push.
 //
 // `loomcli` and `battencli` each wrap it with what is theirs alone: loom's board-status write ahead of the core, batten's on-disk no-op-transition marker ahead of it and its marker write after a successful commit.
 // The per-module texts stay theirs by parameter: each caller tells the core its commit-message prefix and its log prefix.
@@ -16,10 +16,11 @@ import (
 type Deps struct {
 	// MergeActive reports whether the fabric sibling worktree that carries the status file is mid-merge at the git level.
 	MergeActive func() (bool, error)
-	// Commit commits the module's own status file with msg.
-	Commit func(msg string) error
-	// Push pushes the module's run records, and whatever else its caller's push publishes with them.
-	Push func() error
+	// Commit commits the module's own status file with msg and reports whether it made a commit.
+	Commit func(msg string) (committed bool, err error)
+	// Spawn starts the detached push of the module's run records, and whatever else its caller's push publishes with them.
+	// It starts the push and does not wait for it.
+	Spawn func() error
 }
 
 // Message renders the commit message for a per-transition status commit as "<prefix>: <producer> -> <state>".
@@ -30,20 +31,17 @@ func Message(prefix, producer, state string) string {
 
 // New builds the status commit closure from deps.
 // commitPrefix heads every commit message (see Message) and logPrefix heads every log line, so each caller's texts read as they did before the core was shared.
-// afterCommit, when non-nil, runs after a successful commit and before the push.
+// afterCommit, when non-nil, runs after a successful commit and before the spawn.
 //
-// It implements three dispositions, evaluated in the order they appear in the closure body -- skip first, then commit, then push:
+// It implements three dispositions, evaluated in the order they appear in the closure body -- skip first, then commit, then spawn:
 //
-//  1. skip-while-mid-merge: MergeActive reporting true skips both Commit and Push, logged at warn.
+//  1. skip-while-mid-merge: MergeActive reporting true skips both Commit and Spawn, logged at warn.
 //     A non-nil error from MergeActive is treated exactly like true -- an unreadable probe is the same "git state cannot be trusted right now" category the skip exists for, and probe I/O failures cluster precisely when foreign merge machinery is touching the repo.
 //     The probe is unlocked, so this disposition also has a second half at the other end of the window: see failureDisposition.
 //  2. commit-hard-errors: a Commit failure returns an error from the seam and therefore halts the run -- a git fault on the run's own bookkeeping is infrastructure breakage.
 //     The one exception is a failure the re-probe explains as a merge that went live after the first probe, which takes the skip disposition instead.
-//  3. push-warns: a Push failure logs a warning and returns nil -- an offline laptop must not kill an autonomous run, and the next transition's push catches the branch up.
-//     EVERY push error warns here, gitrepo.ErrPushRejected, a push lock that stayed busy and otherwise alike;
-//     the sentinel is not discriminated.
-//     The warning carries the push's own error.
-//     A rejection means another machine advanced the branch, which is a human decision rather than something a background persist may rewrite history over, and an unreachable remote is the offline case the disposition exists for, so the two land in the same place.
+//  3. spawn-warns: Spawn runs only after a Commit that made a commit, and a Spawn failure logs a warning and returns nil -- a push that cannot start must not kill an autonomous run, and the next transition's spawn carries the commits.
+//     The seam never sees the push itself: the detached child logs a rejection or an unreachable remote at warn, and a rejection means another machine advanced the branch, which is a human decision rather than something a background persist may rewrite history over.
 func New(deps Deps, commitPrefix, logPrefix string, afterCommit func(producer, state string)) func(producer, state string) error {
 	return func(producer, state string) error {
 		active, err := deps.MergeActive()
@@ -56,7 +54,8 @@ func New(deps Deps, commitPrefix, logPrefix string, afterCommit func(producer, s
 			return nil
 		}
 
-		if err := deps.Commit(Message(commitPrefix, producer, state)); err != nil {
+		committed, err := deps.Commit(Message(commitPrefix, producer, state))
+		if err != nil {
 			return failureDisposition(deps, logPrefix, producer, state, err)
 		}
 
@@ -64,9 +63,11 @@ func New(deps Deps, commitPrefix, logPrefix string, afterCommit func(producer, s
 			afterCommit(producer, state)
 		}
 
-		if err := deps.Push(); err != nil {
-			logger.Warn(logPrefix+": status push failed, next transition will catch up", "producer", producer, "state", state, "error", err)
+		if !committed {
 			return nil
+		}
+		if err := deps.Spawn(); err != nil {
+			logger.Warn(logPrefix+": status push spawn failed; the next transition's spawn carries the commits", "producer", producer, "state", state, "error", err)
 		}
 		return nil
 	}

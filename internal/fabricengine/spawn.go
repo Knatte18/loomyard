@@ -1,14 +1,14 @@
-// spawn.go — the engine-level detached both-sides push spawn helper and its synchronous warp-push
-// counterparts.
-// SpawnDetachedPush mirrors boardengine.spawnSync and the pre-consolidation
-// internal/fabriccli.spawnPush: it launches a detached `lyx fabric --warp-path <abs> --weft-path
-// <abs> push` child (either flag omitted when its path is empty) that re-enters the fabric CLI's
-// bypass mode and pushes whichever side(s) were supplied.
+// spawn.go — the engine-level detached push spawn and its synchronous warp-push counterparts.
+// A PushSpawn is one detached push request: the side paths to push, the two slug flags the child is told, and the directory it starts in.
+// PauseSlugFlag names the pause entry the child's network calls are held under;
+// TeardownSlugFlag names the pair whose teardown the child must not outlive.
+// SpawnStatusPush is the one entry point for a status push: from a location alone it applies the prime rule, the slug roles and the local-branch check.
+// SpawnDetachedPush starts the child a request describes, which re-enters the fabric CLI's bypass mode and pushes whichever side(s) the request carries.
 // PushWarpAt is the warp-side sibling of recordsgit.go's pushWeftAt — the synchronous, no-Fabric-
 // instance push primitive for the warp side.
 // It has no production caller today: the detached child's bypass handler (internal/fabriccli's
-// `push` RunE) drives CoalescePushBothAt instead, which pushes both sides through PushRebaseFree
-// under one absorbing lock rather than calling either per-side primitive.
+// `push` RunE) drives DetachedPush instead.
+// DetachedPush runs CoalescePushRequest to push both sides through PushRebaseFree under one absorbing lock rather than calling either per-side primitive.
 // It is retained as pushWeftAt's symmetric counterpart, and the distinction matters — see PushWarpAt's
 // own doc comment for the operational consequence.
 // PushWarpRebaseFreeAt is a second warp-side push primitive, routing to gitrepo.PushRebaseFree
@@ -18,9 +18,11 @@
 package fabricengine
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -28,22 +30,52 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
-// SpawnDetachedPush launches a detached, windowless `lyx fabric --warp-path <abs> --weft-path <abs>
-// push` child that pushes both repos supplied to it — the async-push-both-sides-via-detached-child
-// Shared Decision's spawn point.
-// Either flag is omitted from the child's args when its corresponding path is empty;
-// the caller may pass one or both paths.
-// Returns nil immediately, forking no child, when FABRIC_SKIP_GIT or FABRIC_SKIP_PUSH is set (skip-env
-// gating is helper-internal, matching the pre-consolidation fabriccli.spawnPush) or when both paths
-// are empty — there is nothing to push.
+const (
+	// PauseSlugFlag is the hidden fabric flag that tells a detached push child the slug its network calls are held under, empty for the hub's prime.
+	PauseSlugFlag = "pause-slug"
+	// TeardownSlugFlag is the hidden fabric flag that tells a detached push child the pair whose teardown it yields to.
+	TeardownSlugFlag = "teardown-slug"
+)
+
+// ErrSpawnUnderTest is returned by SpawnDetachedPush in a test binary, where forking the running binary would re-run the test suite.
+var ErrSpawnUnderTest = errors.New("fabricengine: detached push not spawned under test")
+
+// PushSpawn is one detached push request.
+// WarpPath and WeftPath name the worktrees to push, either empty to leave that side out.
+// PauseSlug is the slug the child's network calls are held under, empty for the hub's prime.
+// TeardownSlug is the pair whose teardown the child yields to, empty when no teardown can remove what the child pushes.
+// WorkDir is the directory the child starts in.
+type PushSpawn struct {
+	WarpPath     string
+	WeftPath     string
+	PauseSlug    string
+	TeardownSlug string
+	WorkDir      string
+}
+
+// SpawnResult reports what SpawnStatusPush did.
+// Spawned reports whether a child was requested, and Request is what it was asked to push.
+// LocalSkipped names each branch left out of the request because it is local-only.
+type SpawnResult struct {
+	Spawned      bool
+	Request      PushSpawn
+	LocalSkipped []string
+}
+
+// SpawnDetachedPush launches a detached, windowless child that pushes the sides req carries.
+// Returns nil immediately, forking no child, when FABRIC_SKIP_GIT or FABRIC_SKIP_PUSH is set or when both paths are empty — there is nothing to push.
+// Returns ErrSpawnUnderTest, forking no child, in a test binary.
 // The child is started but never Waited,
 // and its stdin/stdout/stderr are left nil so no handle is inherited from the parent.
-func SpawnDetachedPush(warpPath, weftPath string) error {
+func SpawnDetachedPush(req PushSpawn) error {
 	if os.Getenv("FABRIC_SKIP_GIT") == "1" || os.Getenv("FABRIC_SKIP_PUSH") == "1" {
 		return nil
 	}
-	if warpPath == "" && weftPath == "" {
+	if req.WarpPath == "" && req.WeftPath == "" {
 		return nil
+	}
+	if testing.Testing() {
+		return ErrSpawnUnderTest
 	}
 
 	exe, err := os.Executable()
@@ -51,49 +83,121 @@ func SpawnDetachedPush(warpPath, weftPath string) error {
 		return err
 	}
 
-	args := []string{"fabric"}
-	if warpPath != "" {
-		abs, err := filepath.Abs(warpPath)
-		if err != nil {
-			return err
-		}
-		args = append(args, "--warp-path", abs)
-	}
-	if weftPath != "" {
-		abs, err := filepath.Abs(weftPath)
-		if err != nil {
-			return err
-		}
-		args = append(args, "--weft-path", abs)
-	}
-	args = append(args, "push")
-
+	args, dir := pushSpawnCommand(req)
 	cmd := exec.Command(exe, args...)
+	cmd.Dir = dir
 	proc.Detach(cmd)
 	// Leave stdin/stdout/stderr nil so no handles are inherited from the parent.
 	if err := cmd.Start(); err != nil {
-		logger.Warn("fabricengine: spawn detached push failed", "exe", exe, "args", args, "error", err)
+		logger.Warn("fabricengine: spawn detached push failed", "exe", exe, "args", args, "dir", dir, "error", err)
 		return err
 	}
-	logger.Info("fabricengine: spawned detached push", "exe", exe, "args", args, "pid", cmd.Process.Pid)
+	logger.Info("fabricengine: spawned detached push", "exe", exe, "args", args, "dir", dir, "pid", cmd.Process.Pid)
 	return nil // intentionally not Wait()ed
 }
 
-// SpawnPairPush launches the detached push of the task pair at l: its code worktree and its paired records worktree, with the gating of SpawnDetachedPush.
-// It resolves both sides from l alone, so a caller outside the Fabric Vocabulary Invariant's owner set never names the records side.
+// pushSpawnCommand returns the arguments and working directory of the child req describes.
+// The path flags and the teardown flag are present only when set, and the pause flag always, written `--pause-slug=` when empty so the prime's empty slug reaches the child.
+func pushSpawnCommand(req PushSpawn) (args []string, dir string) {
+	args = []string{"fabric"}
+	if req.WarpPath != "" {
+		args = append(args, "--warp-path", absoluteOrAsGiven(req.WarpPath))
+	}
+	if req.WeftPath != "" {
+		args = append(args, "--weft-path", absoluteOrAsGiven(req.WeftPath))
+	}
+	if req.TeardownSlug != "" {
+		args = append(args, "--"+TeardownSlugFlag, req.TeardownSlug)
+	}
+	args = append(args, "--"+PauseSlugFlag+"="+req.PauseSlug, "push")
+	return args, req.WorkDir
+}
+
+// absoluteOrAsGiven returns path made absolute, or path itself when the working directory it would be joined to cannot be read.
+func absoluteOrAsGiven(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return path
+	}
+	return abs
+}
+
+// SpawnStatusPush launches the detached push of the status records at l and reports what it requested.
+// It resolves every path from l alone, so no caller names a records path or pushes the prime's code branch.
+// In the hub's prime only the records side is pushed, held under gateSlug and with no teardown slug;
+// in a task pair both sides are pushed, held and teardown-guarded under the pair's own slug.
+// The child starts in the hub's board worktree, outside both of the pair's worktrees.
+// A side whose current branch is local-only is left out of the request and named in LocalSkipped, and with no side left no child is spawned.
+// A local-only records branch spawns nothing either, since the child's push cannot run without the records side.
+// A failed or never-run push leaves the commits local; the next detached push carries them, and creates a never-pushed branch's upstream.
+func SpawnStatusPush(l *lyxcwd.Location, gateSlug string) (SpawnResult, error) {
+	req, localSkipped, err := statusPushRequest(l, gateSlug)
+	if err != nil {
+		return SpawnResult{}, err
+	}
+	res := SpawnResult{Request: req, LocalSkipped: localSkipped}
+	if req.WeftPath == "" {
+		return res, nil
+	}
+	res.Spawned = true
+	return res, spawnDetachedPushFn(req)
+}
+
+// statusPushRequest builds the detached push request for l's status records and names the local-only branches it left out.
+func statusPushRequest(l *lyxcwd.Location, gateSlug string) (req PushSpawn, localSkipped []string, err error) {
+	isPrime, err := IsPrimeWorktree(l)
+	if err != nil {
+		return PushSpawn{}, nil, err
+	}
+	req = PushSpawn{WeftPath: RecordsWorktree(l), PauseSlug: gateSlug, WorkDir: BoardDir(l.HubPath)}
+	if !isPrime {
+		req.WarpPath = l.WorktreePath()
+		req.PauseSlug = l.WorktreeName
+		req.TeardownSlug = l.WorktreeName
+	}
+
+	for _, side := range []*string{&req.WarpPath, &req.WeftPath} {
+		if *side == "" {
+			continue
+		}
+		branch, marked, err := localMarkOfCurrentBranch(*side)
+		if err != nil {
+			return PushSpawn{}, nil, err
+		}
+		if marked {
+			localSkipped = append(localSkipped, branch)
+			*side = ""
+		}
+	}
+	return req, localSkipped, nil
+}
+
+// localMarkOfCurrentBranch returns the branch checked out at worktree and whether it carries the local-only mark.
+// A detached HEAD has no branch to mark, so it reads unmarked.
+func localMarkOfCurrentBranch(worktree string) (branch string, marked bool, err error) {
+	repo := gitrepo.New(worktree)
+	branch, err = repo.CurrentBranch()
+	if err != nil {
+		return "", false, nil
+	}
+	marked, err = repo.BranchMarkedLocal(branch)
+	return branch, marked, err
+}
+
+// SpawnPairPush launches the detached push of the task pair at l: its code worktree and its paired records worktree.
 // A failed or never-run push leaves the pair's commits local; the pair's next detached push carries them, and creates a never-pushed branch's upstream.
-// l must not be the hub's prime, whose code branch is the operator's to push.
 func SpawnPairPush(l *lyxcwd.Location) error {
-	return spawnDetachedPushFn(l.WorktreePath(), RecordsWorktree(l))
+	_, err := SpawnStatusPush(l, "")
+	return err
 }
 
 // PushWarpAt pushes unpushed commits at warpPath directly, with no Fabric instance and no weft path
 // involved — the warp-side analog of recordsgit.go's pushWeftAt.
 // Gating matches pushWeftAt exactly.
 //
-// It has NO production caller. The detached push child's bypass handler drives CoalescePushBothAt,
-// not this function, so nothing in shipped fabric ever runs gitrepo.PushCoalesced against a warp
-// worktree.
+// It has NO production caller.
+// The detached push child's bypass handler drives DetachedPush instead.
+// Nothing in shipped fabric ever runs gitrepo.PushCoalesced against a warp worktree.
 // That is worth stating rather than leaving to a reader to rediscover: PushCoalesced writes its
 // single-pusher lock file at the repo root, and while the weft repo excludes that artifact through
 // seedWeftArtifactExcludes, the warp repo has no such entry — so wiring this function into a live

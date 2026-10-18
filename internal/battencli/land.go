@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/verifyrun"
@@ -174,4 +175,30 @@ func runDeploy(ctx context.Context, primeDir, command, logPath string, timeout t
 		return battenshed.DeployResult{}, err
 	}
 	return battenshed.DeployResult{ExitCode: exitCode}, nil
+}
+
+// runRowCommand runs command through the platform shell in dir with its output in the file logPath, ending it after timeout.
+// A command that outlives the timeout reports TimedOut; a shell that could not start, or a cancelled ctx, is the returned error.
+func runRowCommand(ctx context.Context, dir, command, logPath string, timeout time.Duration) (shedadapters.CommandResult, error) {
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
+		return shedadapters.CommandResult{}, err
+	}
+	logFile, err := os.Create(logPath)
+	if err != nil {
+		return shedadapters.CommandResult{}, err
+	}
+	defer logFile.Close()
+
+	runCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	logger.Info("battencli: row command starting", "dir", dir, "command", command, "log", logPath, "timeout", timeout)
+	exitCode, err := verifyrun.Run(runCtx, command, dir, nil, logFile)
+	logger.Info("battencli: row command ended", "dir", dir, "exitCode", exitCode, "error", err)
+	if err != nil {
+		if ctx.Err() == nil && errors.Is(runCtx.Err(), context.DeadlineExceeded) {
+			return shedadapters.CommandResult{TimedOut: true}, nil
+		}
+		return shedadapters.CommandResult{}, err
+	}
+	return shedadapters.CommandResult{ExitCode: exitCode}, nil
 }

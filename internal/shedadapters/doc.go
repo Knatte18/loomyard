@@ -329,12 +329,28 @@
 // A review that changed after acceptance archives the same three and ends with the same way forward.
 // Any other failure archives the fixer report alone, keeping the accepted review and its record so a resume re-spawns the fixer without re-running the reviewer.
 //
-// # The switched producer
+// # The Command producer
 //
-// SwitchedProducer wraps no engine: it is one told action behind one told flag, built under the OpenWindow, SeedIDE and OpenIDE registry engines, for operator conveniences a run must never halt over.
-// A flag that is off is Done without acting, a flag that is on acts once and is Done even when the action fails, with a warning, and a flag that cannot be read is an error.
-// The recipe's owner supplies both seams, so the flag lives in that owner's config and the producer knows no key name.
-// Bound: a failed action is skipped silently but for its warning, and the next row runs as if it had succeeded.
+// CommandProducer wraps no engine: it runs one shell command, once, behind one config switch, for side actions a run must never halt over.
+// The recipe's owner tells every seam through CommandDeps, so the producer derives no path.
+// Call follows this order:
+//
+//  1. A nil ExecutableSetting is an error naming its way forward, before anything is read or run.
+//  2. A row named in Forced is on; otherwise the switch is read through Setting, and an unreadable or non-bool switch is an error naming the key and the rerun command.
+//     A switch that is off is Done with no process.
+//  3. The command is read through ExecutableSetting, which the owner builds over the template and the board default layer only; an unreadable or non-string command is an error naming the key and the `lyx config <module> --layer default --set <key>=<value>` correction.
+//     When Setting answers a different non-empty command for the key, the row warns that value is ignored.
+//  4. An empty command is Done with no process, warned about only on a forced row.
+//  5. The placeholders {lyx}, {slug} and {task_dir} are replaced, each value quoted by verifyrun.QuoteArg for the shell the command runs under;
+//     any other brace text, ${HOME} included, passes through literally, and TaskDir is called only when {task_dir} appears.
+//     A value cmd cannot quote, one holding a percent sign, makes the row Done with no process and a warning naming the placeholder and its way forward.
+//  6. The command runs once through Run, in Dir with the row's log path and timeout.
+//     An exit of 0 is Done; a non-zero exit, a timeout and a runner error are each Done with a warning naming the log path.
+//     A cancelled context returns the cancellation error.
+//
+// Bound: whatever command the template or the board default layer holds runs with the operator's rights.
+// The command is read only through ExecutableSetting, never through a layer a pair can write, it runs once, and the row's timeout ends a hang.
+// No command outcome halts the run; only an unreadable setting or a missing executable-key lookup stops it.
 //
 // # Limitations
 //

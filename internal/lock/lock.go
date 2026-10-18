@@ -72,6 +72,20 @@ func AcquireReadLock(lockPath string) (*FileLock, error) {
 	return &FileLock{fl}, nil
 }
 
+// TryAcquireReadLock attempts to acquire a shared lock without blocking.
+// It reports (lock, true, nil) on success, and (nil, false, nil) when an exclusive holder has it (not an error).
+func TryAcquireReadLock(lockPath string) (*FileLock, bool, error) {
+	fl := flock.New(lockPath)
+	locked, err := fl.TryRLock()
+	if err != nil {
+		return nil, false, fmt.Errorf("try acquire read lock: %w", err)
+	}
+	if !locked {
+		return nil, false, nil
+	}
+	return &FileLock{fl}, true, nil
+}
+
 // Release releases the lock.
 func (l *FileLock) Release() error {
 	if err := l.fl.Unlock(); err != nil {

@@ -18,7 +18,7 @@ func stubRecordsDeps(active bool, probeErr, commitErr, pushErr error) (commitSta
 	commits, pushes := 0, 0
 	return commitStatusDeps{
 		MergeActive: func() (bool, error) { return active, probeErr },
-		Commit:      func(string) error { commits++; return commitErr },
+		Commit:      func(string) (bool, error) { commits++; return commitErr == nil, commitErr },
 		Push:        func() error { pushes++; return pushErr },
 	}, &commits, &pushes
 }

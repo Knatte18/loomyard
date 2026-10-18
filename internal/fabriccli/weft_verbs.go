@@ -8,7 +8,7 @@
 // The PersistentPreRunE splits normal mode (resolve cwd → layout → config → pathspec → Fabric
 // handle) from bypass mode (either hidden path flag injected by the detached push child, push-only
 // gate), driving fabricengine.Fabric's Status/Commit/Pull/Diff/MergeIn/Merge/MergeContinue/
-// MergeAbort/MergeStageResolved in normal mode and fabricengine.CoalescePushBothAt's loop-until-clean coalescing push
+// MergeAbort/MergeStageResolved in normal mode and fabricengine.CoalescePushRequest's loop-until-clean coalescing push
 // directly in bypass mode. The merge verbs are registered in merge_verbs.go's addMergeVerbs, which
 // reaches the resolved Fabric handle through a getter closure over this file's fab local, since
 // PersistentPreRunE assigns it only at run time, after registration.
@@ -62,6 +62,10 @@ func addWeftVerbs(cmd *cobra.Command) {
 	cmd.PersistentFlags().MarkHidden("weft-path") //nolint:errcheck
 	cmd.PersistentFlags().String("warp-path", "", "internal: injected absolute warp worktree path for the detached push child")
 	cmd.PersistentFlags().MarkHidden("warp-path") //nolint:errcheck
+	cmd.PersistentFlags().String(fabricengine.PauseSlugFlag, "", "internal: the slug the detached push child's network calls are held under, empty for the prime")
+	cmd.PersistentFlags().MarkHidden(fabricengine.PauseSlugFlag) //nolint:errcheck
+	cmd.PersistentFlags().String(fabricengine.TeardownSlugFlag, "", "internal: the pair whose teardown the detached push child yields to")
+	cmd.PersistentFlags().MarkHidden(fabricengine.TeardownSlugFlag) //nolint:errcheck
 
 	fabricCmd := cmd
 	cmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
@@ -231,10 +235,29 @@ Related commands:
 				// The bypass branch has no *lyxcwd.Location in scope (it takes the injected
 				// --warp-path/--weft-path values and returns before resolveWarpLocation runs), so its
 				// recorder is built with an empty hub root: it appends no path-targeted entries of
-				// its own, only Extends CoalescePushBothAt's already-converted record, and Extend
+				// its own, only Extends CoalescePushRequest's already-converted record, and Extend
 				// performs no conversion — the hub root is never consulted on this path.
 				rec := fabricengine.NewMutations("")
-				res, err := fabricengine.CoalescePushBothAt(warpPath, weftPath, fabricengine.SyncOptions{})
+				pauseSlug, _ := cmd.Flags().GetString(fabricengine.PauseSlugFlag)
+				teardownSlug, _ := cmd.Flags().GetString(fabricengine.TeardownSlugFlag)
+				// The child starts in the hub's board worktree, so the hub is the parent of the worktree root the ungated resolution finds there.
+				cwd, err := lyxcwd.CwdFrom(cmd.Context())
+				if err != nil {
+					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+					return nil
+				}
+				hubLocation, err := lyxcwd.ResolveWorktree(cwd)
+				if err != nil {
+					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+					return nil
+				}
+				logger.SetDurableSinkDir(fabricengine.HubLogsDir(hubLocation.HubPath))
+				res, err := fabricengine.DetachedPush(hubLocation.HubPath, fabricengine.PushSpawn{
+					WarpPath:     warpPath,
+					WeftPath:     weftPath,
+					PauseSlug:    pauseSlug,
+					TeardownSlug: teardownSlug,
+				})
 				rec.Extend(res.Mutated())
 				if err != nil {
 					// The detached child's stdout goes nowhere, so the trace log is the only place its failure surfaces.
@@ -266,6 +289,9 @@ Related commands:
 			fields := map[string]any{}
 			if pushRes.CodePushSkipped != "" {
 				fields["code_push_skipped"] = pushRes.CodePushSkipped
+			}
+			if len(pushRes.LocalSkipped) > 0 {
+				fields["local_skipped"] = pushRes.LocalSkipped
 			}
 			clihelp.SetExit(cmd.Context(), okWithRecord(out, rec.Snapshot(), fields))
 			return nil
@@ -325,6 +351,7 @@ return immediately — the push happens in the background, coalesced under
 fabric's push lock.
 In the hub's prime only the weft branch is handed over, because the prime's
 code branch is the operator's parent branch to push.
+A branch marked local-only is left out, and the envelope's local_skipped names it.
 
 Related commands:
   lyx fabric commit — commit only
@@ -334,11 +361,6 @@ Related commands:
 				return nil
 			}
 			out := cmd.OutOrStdout()
-			isPrime, err := fabricengine.IsPrimeWorktree(l)
-			if err != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
-				return nil
-			}
 			rec := fabricengine.NewMutations(l.HubPath)
 			commitRes, err := fab.Commit(pathspec, fabricengine.DefaultCommitMessage, nil, fabricengine.EnvSyncOptions())
 			rec.Extend(commitRes.Mutated())
@@ -346,23 +368,25 @@ Related commands:
 				clihelp.SetExit(cmd.Context(), errWithRecord(out, rec.Snapshot(), err))
 				return nil
 			}
-			warpWorktree := l.WorktreePath()
-			if isPrime {
-				warpWorktree = ""
-			}
-			weftWorktree := fabricengine.RecordsWorktree(l)
-			if err := spawnPush(warpWorktree, weftWorktree); err != nil {
+			spawn, err := spawnPush(l)
+			if err != nil {
 				clihelp.SetExit(cmd.Context(), errWithRecord(out, rec.Snapshot(), err))
 				return nil
 			}
 			// The push happens in a detached child process after this one returns,
 			// so its outcome is unobservable here:
 			// record one KindPushSpawned entry per side handed to the child, never branch_pushed, which would assert an outcome this process did not observe.
-			if warpWorktree != "" {
-				rec.Append(fabricengine.KindPushSpawned, warpWorktree, "detached")
+			if spawn.Request.WarpPath != "" {
+				rec.Append(fabricengine.KindPushSpawned, spawn.Request.WarpPath, "detached")
 			}
-			rec.Append(fabricengine.KindPushSpawned, weftWorktree, "detached")
-			clihelp.SetExit(cmd.Context(), okWithRecord(out, rec.Snapshot(), map[string]any{}))
+			if spawn.Request.WeftPath != "" {
+				rec.Append(fabricengine.KindPushSpawned, spawn.Request.WeftPath, "detached")
+			}
+			fields := map[string]any{}
+			if len(spawn.LocalSkipped) > 0 {
+				fields["local_skipped"] = spawn.LocalSkipped
+			}
+			clihelp.SetExit(cmd.Context(), okWithRecord(out, rec.Snapshot(), fields))
 			return nil
 		},
 	}

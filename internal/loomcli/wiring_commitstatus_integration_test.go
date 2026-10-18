@@ -1,7 +1,7 @@
 //go:build integration
 
 // wiring_commitstatus_integration_test.go drives the per-transition status seam, and commitRecordsVerb over the same deps, against a REAL
-// fabric pair — real MergeStateActive, real CommitAnchoredPaths, real PushAnchored, real git — which
+// fabric pair — real MergeStateActive, real CommitAnchoredPaths, real PushPairAnchored, real git — which
 // wiring_commitstatus_test.go's Tier 1 stub closures by construction cannot.
 // The distinction earned its keep: every stub test passes over a seam that stages the status file
 // into a foreign merge's index and then kills the run, because a stub Commit has no index to stage
@@ -12,12 +12,15 @@ package loomcli
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -97,12 +100,27 @@ func mergeHeadPresent(t *testing.T, dir string) bool {
 
 // TestCommitStatusSeam_Real drives the status seam and the commit-records verb through every disposition over one real pair.
 // The steps run in this order and build on each other's state, so a step that relies on an earlier one says so:
-// the ordinary dispositions come first while the remote is healthy, then the mid-merge skips share one live foreign merge, and the remote-failure steps come last because they leave the branch diverged or pointing nowhere.
+// the ordinary dispositions come first while the remote is healthy, then the mid-merge skips share one live foreign merge, and the remote-failure steps come last because they leave the branch diverged.
+// The seam spawns its push instead of running it, so the test swaps the package's spawnStatusPush for a recorder and only commit-records pushes to the remote.
 // Each step changes the status file first, so every seam call has something of its own to commit.
+//
+// It is serial because it swaps a package variable.
 func TestCommitStatusSeam_Real(t *testing.T) {
-	t.Parallel()
-
 	seam, location, recordsSibling := realSeamFixture(t)
+
+	type spawnRequest struct {
+		location *lyxcwd.Location
+		gateSlug string
+	}
+	var spawns []spawnRequest
+	var spawnErr error
+	originalSpawn := spawnStatusPush
+	spawnStatusPush = func(l *lyxcwd.Location, gateSlug string) (fabricengine.SpawnResult, error) {
+		spawns = append(spawns, spawnRequest{l, gateSlug})
+		return fabricengine.SpawnResult{}, spawnErr
+	}
+	t.Cleanup(func() { spawnStatusPush = originalSpawn })
+
 	statusRel := realSeamStatusRel(location)
 	statusChanges := 0
 	changeStatus := func() {
@@ -122,7 +140,7 @@ func TestCommitStatusSeam_Real(t *testing.T) {
 	}
 
 	// The seed written by realSeamFixture is this step's own change.
-	t.Run("ordinary path commits and pushes", func(t *testing.T) {
+	t.Run("ordinary path commits and requests one push spawn", func(t *testing.T) {
 		before := gitkit.RevParse(t, recordsSibling, "HEAD")
 
 		if err := seam("Discussion-Write", "running"); err != nil {
@@ -139,28 +157,12 @@ func TestCommitStatusSeam_Real(t *testing.T) {
 		if got := headChangedFiles(); !strings.Contains(got, statusRel) {
 			t.Errorf("records HEAD touched %q; want it to include %q", got, statusRel)
 		}
-		if got := gitkit.Git(t, recordsSibling, "log", "--oneline", "@{u}..HEAD"); got != "" {
-			t.Errorf("unpushed records commits after the seam = %q; want none — the seam pushes synchronously", got)
+		if got := gitkit.Git(t, recordsSibling, "log", "--oneline", "@{u}..HEAD"); got == "" {
+			t.Error("unpushed records commits after the seam = none; want the commit still local — the seam spawns its push and runs none")
 		}
-	})
-
-	// An agent's raw `git commit` in the task worktree reaches the remote at the next transition, along with the records.
-	t.Run("raw task-worktree commit is pushed with the records", func(t *testing.T) {
-		commitInTaskWorktree(t, location, "agent.txt")
-		changeStatus()
-
-		if err := seam("Discussion-Write", "running"); err != nil {
-			t.Fatalf("seam error = %v; want nil", err)
+		if want := []spawnRequest{{location, ""}}; !reflect.DeepEqual(spawns, want) {
+			t.Errorf("push spawns = %v; want one for the pair's location", spawns)
 		}
-
-		taskWorktree := location.WorktreePath()
-		if got, want := remoteBranchTip(t, taskWorktree), gitkit.RevParse(t, taskWorktree, "HEAD"); got != want {
-			t.Errorf("remote task branch = %q; want it at the local HEAD %q", got, want)
-		}
-		if got, want := remoteBranchTip(t, recordsSibling), gitkit.RevParse(t, recordsSibling, "HEAD"); got != want {
-			t.Errorf("remote records branch = %q; want it at the records HEAD %q", got, want)
-		}
-		statusOnly(t)
 	})
 
 	t.Run("no reviews directory touches only the status", func(t *testing.T) {
@@ -461,46 +463,18 @@ func TestCommitStatusSeam_Real(t *testing.T) {
 		}
 	})
 
-	// The push-warns disposition against a genuinely diverged records remote: the seam returns nil, the local commit stays, and the branch is left behind its origin for the next transition to catch up.
-	t.Run("rejected push warns and the commit stays", func(t *testing.T) {
-		// Advance the records remote out from under the local sibling, so the seam's push is rejected for the ordinary reason: another machine got there first.
-		clone := t.TempDir()
-		branch := gitkit.CurrentBranch(t, recordsSibling)
-		origin := gitkit.Git(t, recordsSibling, "remote", "get-url", "origin")
-		gitkit.Git(t, clone, "clone", "-q", "-b", branch, origin, ".")
-		gitkit.Git(t, clone, "config", "user.email", "rogue@example.test")
-		gitkit.Git(t, clone, "config", "user.name", "rogue")
-		if err := os.WriteFile(filepath.Join(clone, "rogue.txt"), []byte("rogue\n"), 0o644); err != nil {
-			t.Fatalf("WriteFile(rogue.txt) error = %v; want nil", err)
-		}
-		gitkit.Git(t, clone, "add", "rogue.txt")
-		gitkit.Git(t, clone, "commit", "-q", "-m", "rogue advance")
-		gitkit.Git(t, clone, "push", "-q", "origin", branch)
+	// The spawn-warns disposition: a push that cannot be spawned returns nil from the seam, and the local commit stays for the next transition's spawn to carry.
+	t.Run("failing spawn warns and the commit stays", func(t *testing.T) {
+		spawnErr = errors.New("spawn failed")
+		t.Cleanup(func() { spawnErr = nil })
 
 		before := gitkit.RevParse(t, recordsSibling, "HEAD")
 		changeStatus()
 		if err := seam("Discussion-Write", "running"); err != nil {
-			t.Fatalf("seam(...) error = %v; want nil — a rejected push warns and continues", err)
+			t.Fatalf("seam(...) error = %v; want nil — a spawn that fails to start warns and continues", err)
 		}
 		if got := gitkit.RevParse(t, recordsSibling, "HEAD"); got == before {
-			t.Errorf("records HEAD = %q; want it moved off %q — the commit lands even though the push is rejected", got, before)
-		}
-		if got := gitkit.Git(t, recordsSibling, "log", "--oneline", "@{u}..HEAD"); got == "" {
-			t.Error("unpushed records commits after a rejected push = none; want the local commit still unpushed, waiting for the next transition")
-		}
-	})
-
-	// The push-warns disposition covers push failures that are NOT gitrepo.ErrPushRejected: an unreachable remote is the offline case the disposition exists for, and it must not halt the run either.
-	t.Run("unreachable remote warns too", func(t *testing.T) {
-		gitkit.Git(t, recordsSibling, "remote", "set-url", "origin", filepath.Join(t.TempDir(), "does-not-exist.git"))
-
-		before := gitkit.RevParse(t, recordsSibling, "HEAD")
-		changeStatus()
-		if err := seam("Discussion-Write", "running"); err != nil {
-			t.Fatalf("seam(...) error = %v; want nil — an unreachable remote warns and continues, exactly as a rejection does", err)
-		}
-		if got := gitkit.RevParse(t, recordsSibling, "HEAD"); got == before {
-			t.Errorf("records HEAD = %q; want it moved off %q — the commit lands even though the push failed", got, before)
+			t.Errorf("records HEAD = %q; want it moved off %q — the commit lands even though the spawn failed", got, before)
 		}
 	})
 }

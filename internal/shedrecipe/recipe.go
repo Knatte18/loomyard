@@ -148,6 +148,9 @@ type Env struct {
 	// Setting is the told setting lookup a row reaches by naming module and key, returning the module's resolved value from the pair's config stack.
 	// Nil is legal for a caller whose recipe names no setting.
 	Setting func(module, key string) (any, error)
+	// ExecutableSetting is the owner's told executable-key lookup over the template and the board default layer only, read by the Command entry for its command.
+	// Nil is legal for a caller whose recipe holds no Command row.
+	ExecutableSetting func(module, key string) (any, error)
 
 	// ReviewCirclingCheckpoint is the run-wide first round a Bouncer's judge may rule CIRCLING in.
 	// The Bouncer entry requires it positive and passes it to shedadapters.BouncerConfig.CirclingCheckpoint.
@@ -292,10 +295,7 @@ type Env struct {
 	// acquire, read by those two bookend entries only.
 	PrimeLock battenshed.PrimeLock
 
-	// OpenWindow is the switched seam pair the OpenWindow entry reads: the run's flag and the opening of its terminal window.
-	OpenWindow shedadapters.SwitchedAction
-	// SeedIDE is the switched seam pair the SeedIDE entry reads: the run's flag and the writing of the pair's IDE config.
-	SeedIDE shedadapters.SwitchedAction
-	// OpenIDE is the switched seam pair the OpenIDE entry reads: the run's flag and the opening of the IDE on the pair.
-	OpenIDE shedadapters.SwitchedAction
+	// Command is a whole-struct passthrough to shedadapters.NewCommandProducer, following Env.Landing's precedent, read by the Command entry.
+	// The entry fills its Setting and ExecutableSetting from Env.Setting and Env.ExecutableSetting, so a caller leaves those two nil.
+	Command shedadapters.CommandDeps
 }

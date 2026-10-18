@@ -52,10 +52,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// commitStatusDeps carries the three fabric calls newCommitStatusSeam drives, injected as plain
-// function values rather than reached directly, so the seam's branching -- commit hard-errors, push
-// warns, mid-merge skips -- is drivable in a Tier 1 test from stub closures, with no hub fixture and
-// no git spawn.
+// spawnStatusPush starts the detached push of the status records at a location, held under a gate slug; a test swaps it for a recorder.
+var spawnStatusPush = fabricengine.SpawnStatusPush
+
+// commitStatusDeps carries the fabric calls newCommitStatusSeam and commit-records drive, injected as plain function values rather than reached directly.
+// The seam's branching -- commit hard-errors, spawn warns, mid-merge skips -- is then drivable in a Tier 1 test from stub closures, with no hub fixture and no git spawn.
 type commitStatusDeps struct {
 	// MergeActive reports whether the fabric sibling worktree that carries the status file is
 	// mid-merge at the git level.
@@ -63,10 +64,15 @@ type commitStatusDeps struct {
 	// Commit commits loom's own status file with msg.
 	// When the reviews directory holds a file, the same commit also carries the review round record.
 	// While a rejection is pending the reviews root and the loom durable directory are left out until PR-Rework's round commit has landed and cleared it, so a status commit never lands half of a rework round; the next status commit sweeps them.
-	Commit func(msg string) error
-	// Push pushes the run records and, in a task pair, the task branch.
+	// It reports whether it made a commit.
+	Commit func(msg string) (committed bool, err error)
+	// Spawn starts the detached push of the run records and, in a task pair, the task branch.
+	// The status seam calls it after a commit that landed something.
+	Spawn func() error
+	// Push pushes the run records and, in a task pair, the task branch, and waits for the result.
 	// An error from one side's push names that side.
 	// A push lock that stayed busy names no side.
+	// Only commit-records calls it.
 	Push func() error
 	// SetBoardStatus writes status onto the run's board entry, leaving an entry that is absent or already done untouched.
 	// Nil writes nothing.
@@ -180,17 +186,23 @@ func holdsFile(dir string) bool {
 	return found
 }
 
-// loomCommitStatusDeps builds a commitStatusDeps over location and runID, filling each field from fabric: MergeActive from fabricengine.MergeStateActive, Commit from fabricengine.CommitAnchoredPaths scoped to statusCommitPathspec (the status file, plus the review round record, the loom durable directory and the drive reports when each holds a file), and Push from fabricengine.PushPairAnchored, which pushes the run records and, in a task pair, the task branch.
+// loomCommitStatusDeps builds a commitStatusDeps over location and runID, filling each field from fabric: MergeActive from fabricengine.MergeStateActive, Commit from fabricengine.CommitAnchoredPaths scoped to statusCommitPathspec (the status file, plus the review round record, the loom durable directory and the drive reports when each holds a file), Spawn from spawnStatusPush, which pushes the run records and, in a task pair, the task branch, and Push from fabricengine.PushPairAnchored, the same push run synchronously.
 func loomCommitStatusDeps(location *lyxcwd.Location, runID string) commitStatusDeps {
 	return commitStatusDeps{
 		MergeActive: func() (bool, error) {
 			return fabricengine.MergeStateActive(location)
 		},
-		// Commit discards the (sha, committed) pair in favour of the error alone, exactly as
-		// landingdeps.go's own CommitStatus closure does -- which is what makes a second call over
-		// an already-clean tracked path a no-op rather than a failure.
-		Commit: func(msg string) error {
-			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, statusCommitPathspec(location, runID), msg, fabricengine.EnvSyncOptions())
+		// A second Commit over an already-clean tracked path is a no-op that reports committed false, not a failure.
+		// The status seam spawns nothing for it.
+		Commit: func(msg string) (bool, error) {
+			_, committed, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, statusCommitPathspec(location, runID), msg, fabricengine.EnvSyncOptions())
+			return committed, err
+		},
+		Spawn: func() error {
+			res, err := spawnStatusPush(location, "")
+			if len(res.LocalSkipped) > 0 {
+				logger.Info("loomcli: status push left out local-only branches", "branches", res.LocalSkipped)
+			}
 			return err
 		},
 		Push: func() error {
@@ -219,12 +231,12 @@ func boardStatus(producer, state string) (string, bool) {
 // newCommitStatusSeam builds the shedengine.Shed.CommitStatus closure from deps.
 // It first writes the run's board status when that status changed, and a failed board write only warns:
 // the board is the hub's overview, never the run's own bookkeeping.
-// It then calls the shared statuscommit core, which owns the skip-while-mid-merge, commit-hard-errors and push-warns dispositions, with loom's own commit and log prefixes and no after-commit callback.
+// It then calls the shared statuscommit core, which owns the skip-while-mid-merge, commit-hard-errors and spawn-warns dispositions, with loom's own commit and log prefixes and no after-commit callback.
 func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) error {
 	core := statuscommit.New(statuscommit.Deps{
 		MergeActive: deps.MergeActive,
 		Commit:      deps.Commit,
-		Push:        deps.Push,
+		Spawn:       deps.Spawn,
 	}, "loom", "loomcli", nil)
 	lastBoardStatus := ""
 	return func(producer, state string) error {

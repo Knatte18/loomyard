@@ -25,6 +25,8 @@ type CommitResult struct {
 	WarpCommitted bool
 	WeftSHA       string
 	WeftCommitted bool
+	// PushLocalSkipped names each local-only branch the commit's push left out, so a commit in a local pair spawns no child.
+	PushLocalSkipped []string `json:"push_local_skipped,omitempty"`
 }
 
 // Committed reports whether Fabric.Commit landed a commit on either side.
@@ -107,6 +109,7 @@ var spawnDetachedPushFn = SpawnDetachedPush
 // skip-env gating (FABRIC_SKIP_GIT/FABRIC_SKIP_PUSH) is handled inside SpawnDetachedPush itself, per
 // the async-push-both-sides-via-detached-child Shared Decision — the WarpCommitted || WeftCommitted
 // guard here is a separate "did anything land" gate, not an opts gate.
+// A side whose branch is local-only is left out of the push and named in the result's PushLocalSkipped, so a commit in a local pair spawns no child.
 func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts SyncOptions) (res CommitResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
 	defer func() { res.Mutations = rec.Snapshot() }()
@@ -146,8 +149,8 @@ func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts 
 	}
 	routingNames := pathspecNames(cfg)
 
-	// Resolved before any lock, like the refusals above: a failure here lands no commit and spawns no push.
-	isPrime, err := IsPrimeWorktree(l)
+	// Built before any lock, like the refusals above: a failure here lands no commit and spawns no push.
+	pushRequest, localSkipped, err := statusPushRequest(l, "")
 	if err != nil {
 		return CommitResult{}, err
 	}
@@ -174,11 +177,11 @@ func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts 
 	}
 
 	if result.WarpCommitted || result.WeftCommitted {
-		codePath := f.warpPath
-		if isPrime {
-			codePath = ""
+		// The push is fire-and-forget: a child that cannot start leaves the commits local for the next push.
+		result.PushLocalSkipped = localSkipped
+		if pushRequest.WarpPath != "" || pushRequest.WeftPath != "" {
+			_ = spawnDetachedPushFn(pushRequest)
 		}
-		_ = spawnDetachedPushFn(codePath, f.weftPath)
 	}
 
 	if partialErr != nil {

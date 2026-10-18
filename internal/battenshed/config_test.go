@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 )
@@ -37,6 +39,30 @@ func TestLoadConfig(t *testing.T) {
 		}
 		if got := cfg.ShedOverride(); !reflect.DeepEqual(got, sheddriver.Override{}) {
 			t.Errorf("ShedOverride() = %+v; want every key inheriting", got)
+		}
+	})
+
+	t.Run("the template holds the three row commands, and a layer setting only a switch key still loads", func(t *testing.T) {
+		t.Parallel()
+		var keys map[string]any
+		if err := yaml.Unmarshal([]byte(ConfigTemplate()), &keys); err != nil {
+			t.Fatalf("yaml.Unmarshal(template) = %v; want nil", err)
+		}
+		wantCommands := map[string]string{
+			"open_window_command": "{lyx} reed window {task_dir} --title {slug}",
+			"seed_ide_command":    "{lyx} ide seed {slug}",
+			"open_ide_command":    "{lyx} ide open {slug}",
+		}
+		for key, want := range wantCommands {
+			if got := keys[key]; got != want {
+				t.Errorf("template %s = %v; want %q", key, got, want)
+			}
+		}
+
+		board := t.TempDir()
+		writeBattenLayer(t, configengine.ConfigFile(board, "batten"), strings.Replace(ConfigTemplate(), "open_window: true", "open_window: false", 1))
+		if _, err := LoadConfig(configengine.Dirs{Board: board}); err != nil {
+			t.Errorf("LoadConfig() = _, %v; want nil error", err)
 		}
 	})
 

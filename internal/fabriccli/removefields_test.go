@@ -78,10 +78,25 @@ func TestRemoveFields(t *testing.T) {
 			},
 		},
 		{
+			name: "LocalPairKeys",
+			result: fabricengine.RemoveResult{
+				Slug:              "s",
+				Local:             true,
+				LocalMarkBranch:   "task/s",
+				DroppedRecordsTip: "abc123",
+			},
+			wantFields: map[string]any{
+				"local":               true,
+				"local_mark_branch":   "task/s",
+				"dropped_records_tip": "abc123",
+			},
+		},
+		{
 			name:   "ConditionalKeysAbsentWhenEmpty",
 			result: fabricengine.RemoveResult{Slug: "s"},
 			wantAbsent: []string{
 				"stray_path", "abandoned_session", "remote_code_branch_kept_reason", "code_branch_kept_reason",
+				"local", "local_mark_branch", "dropped_records_tip",
 			},
 			// The always-present key set: the existing keys plus steps, finished, remote_code_branch_deleted and session_ended.
 			wantKeyCount: 7 + 4,

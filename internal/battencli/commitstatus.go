@@ -2,13 +2,12 @@
 // prime's own batten status.json onto prime's own fabric pair after each transition.
 //
 // Modelled on internal/loomcli/wiring.go's newCommitStatusSeam/loomCommitStatusDeps pair, whose
-// three-case disposition -- skip-while-mid-merge, commit-hard-errors, push-warns -- applies here
+// three-case disposition -- skip-while-mid-merge, commit-hard-errors, spawn-warns -- applies here
 // verbatim rather than being reinvented. This is not fabricengine.Bolt: Bolt.Commit stages every
 // change in its repo, which the Fabric Git Invariant forbids a fabric-commit caller, and Bolt is the
-// Board's own carve-out scoped to the Board directory. Batten does not take the Board's push lock
-// either; a push rejected because a Board write advanced the branch takes the same disposition the
-// loom seam already applies to every push error, including gitrepo.ErrPushRejected: warn and let
-// the next transition catch the branch up.
+// Board's own carve-out scoped to the Board directory.
+// The push is spawned, not run: the seam starts fabric's detached push and returns.
+// The child logs a push rejected because a Board write advanced the branch at warn, and the next transition's spawn catches the branch up.
 //
 // On top of loomcli's own dispositions, this seam adds one more, evaluated first: an on-disk
 // no-op-transition skip. Each `lyx batten step` is a fresh process, so the skip's memory cannot live
@@ -44,11 +43,14 @@ type commitStatusDeps struct {
 	// MergeActive reports whether the fabric sibling worktree that carries the status file is
 	// mid-merge at the git level.
 	MergeActive func() (bool, error)
-	// Commit commits batten's own status file with msg.
-	Commit func(msg string) error
-	// Push pushes the fabric sibling worktree's unpushed commits.
-	Push func() error
+	// Commit commits batten's own status file with msg and reports whether it made a commit.
+	Commit func(msg string) (committed bool, err error)
+	// Spawn starts the detached push of the fabric sibling worktree's unpushed commits.
+	Spawn func() error
 }
+
+// spawnStatusPush starts the detached push of the status records at a location, held under a gate slug; a test swaps it for a recorder.
+var spawnStatusPush = fabricengine.SpawnStatusPush
 
 // battenRunCommitPaths returns the anchor-relative paths a status transition commits: the run's
 // status file, and its seed whenever one is on disk.
@@ -71,23 +73,23 @@ func battenRunCommitPaths(location *lyxcwd.Location, runID string) []string {
 	return paths
 }
 
-// battenCommitStatusDeps builds a commitStatusDeps over location and runID, filling each field from
-// fabric: MergeActive from fabricengine.MergeStateActive, Commit from
-// fabricengine.CommitAnchoredPaths scoped to battenRunCommitPaths(location, runID), and Push from
-// fabricengine.PushAnchored.
+// battenCommitStatusDeps builds a commitStatusDeps over location and runID, filling each field from fabric:
+// MergeActive from fabricengine.MergeStateActive, Commit from fabricengine.CommitAnchoredPaths scoped to battenRunCommitPaths(location, runID), and Spawn from spawnStatusPush.
+// The spawned push runs from the prime, so it is the prime's records side only, and it waits under the pair's pause entry with runID as its gate slug.
 func battenCommitStatusDeps(location *lyxcwd.Location, runID string) commitStatusDeps {
 	return commitStatusDeps{
 		MergeActive: func() (bool, error) {
 			return fabricengine.MergeStateActive(location)
 		},
-		// Commit discards the (sha, committed) pair in favour of the error alone, exactly as
-		// loomCommitStatusDeps' own Commit closure does.
-		Commit: func(msg string) error {
-			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, battenRunCommitPaths(location, runID), msg, fabricengine.EnvSyncOptions())
-			return err
+		Commit: func(msg string) (bool, error) {
+			_, committed, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, battenRunCommitPaths(location, runID), msg, fabricengine.EnvSyncOptions())
+			return committed, err
 		},
-		Push: func() error {
-			_, err := fabricengine.PushAnchored(location, fabricengine.EnvSyncOptions(), fabricengine.StatusPushLockWait)
+		Spawn: func() error {
+			res, err := spawnStatusPush(location, runID)
+			if len(res.LocalSkipped) > 0 {
+				logger.Info("battencli: status push left out local-only branches", "branches", res.LocalSkipped)
+			}
 			return err
 		},
 	}
@@ -107,12 +109,12 @@ type commitStatusMarker struct {
 // on-disk no-op-transition skip read from and written to markerPath (locked via markerLockPath).
 //
 // Evaluation order: the no-op-transition skip first -- when the incoming (producer, state) pair equals the marker's last-committed pair, return nil without committing or pushing --
-// then the shared statuscommit core's three dispositions: skip-while-mid-merge, commit-hard-errors, push-warns.
+// then the shared statuscommit core's three dispositions: skip-while-mid-merge, commit-hard-errors, spawn-warns.
 //
 // A missing or corrupt marker falls back to committing once rather than erroring:
 // the marker is a cache, and losing it costs one redundant commit, never correctness.
-// The marker is rewritten by the core's after-commit callback, right after a successful Commit and ahead of the Push attempt,
-// so a subsequent call skips re-committing the same pair even if the push that followed is still only warned about, not retried.
+// The marker is rewritten by the core's after-commit callback, right after a successful Commit and ahead of the Spawn attempt,
+// so a subsequent call skips re-committing the same pair even if the spawn that followed is still only warned about, not retried.
 func newCommitStatusSeam(deps commitStatusDeps, markerPath, markerLockPath string) func(producer, st string) error {
 	// Rewritten unconditionally on a successful commit.
 	// A failed marker write only costs one redundant commit on the next call -- the same cost a missing marker costs on read --
@@ -120,7 +122,7 @@ func newCommitStatusSeam(deps commitStatusDeps, markerPath, markerLockPath strin
 	core := statuscommit.New(statuscommit.Deps{
 		MergeActive: deps.MergeActive,
 		Commit:      deps.Commit,
-		Push:        deps.Push,
+		Spawn:       deps.Spawn,
 	}, "batten", "battencli", func(producer, st string) {
 		if err := state.WriteJSON(markerPath, markerLockPath, commitStatusMarker{Producer: producer, State: st}); err != nil {
 			logger.Warn("battencli: status commit succeeded but the marker write failed; a future call may recommit", "producer", producer, "state", st, "error", err)
