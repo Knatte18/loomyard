@@ -1,7 +1,7 @@
 //go:build integration
 
 // landingdeps_integration_test.go drives landingDeps' config-change seams over a real hub: ConfigChanges reads a pair's committed config files through real branches,
-// and Notify queues into the prime's orch notice directory.
+// and Notify posts creel mail to the prime's orch.
 // This package's own testmain_test.go arms the hermetic git test environment for the whole binary,
 // so this file adds no TestMain.
 
@@ -10,6 +10,7 @@ package loomcli
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -26,7 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// TestLandingDeps_ConfigNoticeSeamsOverRealHub asserts ConfigChanges reports a per-worktree module's changed config file and never a hub-wide module's, that Notify queues one notice in the prime's notice directory only once an orch strand is recorded, and that CommitParentRecords commits the parent's run records alone, and nothing while it holds none.
+// TestLandingDeps_ConfigNoticeSeamsOverRealHub asserts ConfigChanges reports a per-worktree module's changed config file and never a hub-wide module's, that Notify posts nothing without a recorded orch strand and fails with the notice line once one is recorded, and that CommitParentRecords commits the parent's run records alone, and nothing while it holds none.
 // The steps share one hub and one prime orch state,
 // and the queueing step relies on the no-strand step having queued nothing,
 // so none runs in parallel.
@@ -66,7 +67,7 @@ func TestLandingDeps_ConfigNoticeSeamsOverRealHub(t *testing.T) {
 		return len(entries)
 	}
 
-	if !t.Run("Notify with no orch strand recorded returns nil and queues nothing", func(t *testing.T) {
+	if !t.Run("Notify with no orch strand recorded returns nil and writes no notice file", func(t *testing.T) {
 		if err := deps.Notify("loom: a notice"); err != nil {
 			t.Fatalf("Notify() error = %v; want nil", err)
 		}
@@ -77,15 +78,17 @@ func TestLandingDeps_ConfigNoticeSeamsOverRealHub(t *testing.T) {
 		return
 	}
 
-	t.Run("Notify with an orch strand recorded queues one notice in the prime's directory", func(t *testing.T) {
+	t.Run("Notify with an orch strand recorded returns an error holding the notice line", func(t *testing.T) {
 		if err := orchengine.SaveState(paths, orchengine.State{Strand: "orch-strand-guid"}); err != nil {
 			t.Fatalf("SaveState() error = %v; want nil", err)
 		}
-		if err := deps.Notify("loom: a notice"); err != nil {
-			t.Fatalf("Notify() error = %v; want nil", err)
+		// No creel daemon answers under go test, so the post fails and the error carries the line.
+		err := deps.Notify("loom: a notice")
+		if err == nil || !strings.Contains(err.Error(), "loom: a notice") {
+			t.Fatalf("Notify() error = %v; want an error holding the notice line", err)
 		}
-		if got := noticeCount(); got != 1 {
-			t.Errorf("notice files = %d; want 1", got)
+		if got := noticeCount(); got != 0 {
+			t.Errorf("notice files = %d; want 0", got)
 		}
 	})
 

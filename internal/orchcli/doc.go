@@ -27,7 +27,7 @@
 //
 //  1. Create the task worktree with `lyx fabric add <slug>`, then start its run from inside it with `lyx loom start`.
 //     The run's status file is `_lyx/shed/<slug>/status.json` under the worktree, and its `state` is one of running, awaiting, blocked, failed or done.
-//  2. Keep no watch loop of your own: batten notices arrive as typed turns from the orch watcher, and on one you check the run with `lyx batten status <slug>`.
+//  2. Keep no watch loop of your own: batten notices arrive as creel mail, announced by creel's reminder, and on one you read the mail and check the run with `lyx batten status <slug>`.
 //  3. At an awaiting Publish, review the PR: a small diff yourself, with build, vet and test over the touched packages; a large one through a read-only background subagent.
 //     Then `lyx loom approve` in the worktree; batten resumes the child itself, so no `lyx loom start` follows.
 //     Finalize squash-merges, closes the PR and marks the board task done.
@@ -61,7 +61,9 @@
 //
 // # Reaching the orch from another module
 //
-// `PrimePaths` is the one accessor other modules use for the orch's told paths, so the notice queue and the orch state are reached without re-deriving either.
-// A module queues a notice through `orchengine.QueueNotice` with those paths and never types into the orch session itself.
-// `NotifyPrime` is the way a task-worktree module reaches the prime's queue: it takes the task worktree's location and a line and resolves the prime itself.
+// `PrimePaths` is the one accessor other modules use for the orch's told paths, so the orch state is reached without re-deriving it.
+// A module sends the orch a notice as creel mail and never types into the orch session itself.
+// `NotifyPrime` is the way a task-worktree module does that: it takes the task worktree's location, the module's program name and a line, resolves the prime itself, and posts the line to the prime's orch strand through creel.
+// It reports whether the line was posted, and a prime with no orch strand recorded posts nothing and is no error.
+// `PrimeOrchStrand` answers the name of that strand: the name reed's state holds for the recorded GUID, or the fixed `<shortname>:orch` name for a GUID reed no longer holds, which creel then accepts or refuses.
 package orchcli

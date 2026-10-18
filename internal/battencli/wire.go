@@ -395,6 +395,9 @@ func (r siblingDirtyRefusal) Unwrap() error { return r.err }
 // cannot push an unbounded string into a status file committed onto prime's own pair.
 const maxChildOutputInError = 2000
 
+// battenProgram is the program name batten signs its notices to the orch with.
+const battenProgram = "BATTEN"
+
 // childSpawnError folds a failed child bootstrap's own output into runErr, so the returned error
 // carries the child's diagnosis rather than only its exit status.
 // It returns nil for a nil runErr, runErr unchanged when the child said nothing, and truncates
@@ -529,7 +532,7 @@ func rowNotices(location *lyxcwd.Location, slug string) battenshed.RowNoticeDeps
 	return battenshed.RowNoticeDeps{
 		NoticeLog: noticeLog(location, slug),
 		Notify: func(ctx context.Context, line string) (bool, error) {
-			return orchengine.QueueNotice(orchcli.PrimePaths(location), line, time.Now())
+			return orchcli.NotifyPrime(location, battenProgram, line)
 		},
 		OrchStrandRecorded: func() (bool, error) { return orchStrandRecorded(location) },
 		BattenHistoryLen:   func() (int, error) { return battenHistoryLen(location, slug) },
@@ -897,9 +900,9 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 		Land: landDeps(location, slug, locateTask),
 		InnerRun: battenshed.InnerRunDeps{
 			NoticeLog: noticeLog(location, slug),
-			// Notify queues the notice on the prime's orch, the parent of a batten run started from the prime, and reports QueueNotice's own answer: whether the notice was queued.
+			// Notify posts the notice as creel mail to the prime's orch, the parent of a batten run started from the prime, and reports whether it was posted.
 			Notify: func(ctx context.Context, line string) (bool, error) {
-				return orchengine.QueueNotice(orchcli.PrimePaths(location), line, time.Now())
+				return orchcli.NotifyPrime(location, battenProgram, line)
 			},
 			// OrchStrandRecorded reads the prime orch's state, the same fact the watched marker is kept on.
 			OrchStrandRecorded: func() (bool, error) { return orchStrandRecorded(location) },

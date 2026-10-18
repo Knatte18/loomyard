@@ -147,10 +147,11 @@ func landingDeps(
 		ConfigChanges: func() (fabricengine.ConfigChanges, error) {
 			return fabricengine.ReadConfigChanges(l, taskBranch, parentBranch, perWorktreeConfigRels())
 		},
-		// Notify queues one orch notice for the hub's prime, resolved at call time.
-		// A prime with no orch strand recorded is not an error: QueueNotice logs the notice instead.
+		// Notify posts one orch notice as creel mail for the hub's prime, resolved at call time.
+		// A prime with no orch strand recorded is not an error: the notice is logged instead.
 		Notify: func(line string) error {
-			return orchcli.NotifyPrime(l, line)
+			_, err := orchcli.NotifyPrime(l, loomProgram, line)
+			return err
 		},
 		VerifyCommand:          verify.command,
 		VerifyFailedWayForward: verify.failedWayForward,

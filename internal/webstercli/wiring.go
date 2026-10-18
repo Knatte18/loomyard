@@ -32,6 +32,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
+// websterProgram is the program name webster signs its notices to the orch with.
+const websterProgram = "WEBSTER"
+
 // wireModule carries webster's own per-CLI variance for internal/cliwire's shared wiring
 // prologue -- the message-bearing data cliwire needs but does not itself declare, since no
 // production file in that package may name webster or burler. cliwire carries the shared
@@ -205,7 +208,10 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 		return err
 	}
 	runner.SetPause(pauseGeom)
-	runner.SetNotifier(func(line string) error { return orchcli.NotifyPrime(loc, line) })
+	runner.SetNotifier(func(line string) error {
+		_, err := orchcli.NotifyPrime(loc, websterProgram, line)
+		return err
+	})
 
 	c.setRunner(runner, engines, reedEngine)
 	c.shuttleCfg = shuttleCfg

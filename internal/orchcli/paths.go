@@ -14,7 +14,7 @@ import (
 // orchDirName is the module's own subdirectory beneath the anchor's .lyx directory.
 const orchDirName = "orch"
 
-// PrimePaths returns the orch paths for the prime at location, so another module's CLI wiring reaches the notice queue and the orch state without re-deriving either.
+// PrimePaths returns the orch paths for the prime at location, so another module's CLI wiring reaches the orch state without re-deriving it.
 func PrimePaths(location *lyxcwd.Location) orchengine.Paths {
 	return orchPaths(location)
 }

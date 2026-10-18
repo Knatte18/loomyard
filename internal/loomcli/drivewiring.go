@@ -221,7 +221,7 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error)
 		NewReportPath: func() string { return driverReportPath(location, c.runID, time.Now, reportRand) },
 		HandBack: sheddriver.HandBackDeps{
 			Notify: func(_ sheddriver.Stop, line string) (bool, error) {
-				return true, orchcli.NotifyPrime(location, line)
+				return orchcli.NotifyPrime(location, loomProgram, line)
 			},
 			OrchRecorded: func() (bool, error) { return primeOrchRecorded(location) },
 			Park:         loomPark(loomCommitStatusDeps(location, c.runID), shedrun.ParkMarker(location, runID)),
