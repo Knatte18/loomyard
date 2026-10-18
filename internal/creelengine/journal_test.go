@@ -424,6 +424,7 @@ func TestJournal_Retention(t *testing.T) {
 		}
 	}
 	livePast := journalEpoch.AddDate(0, 0, 30)
+	renewedPast := livePast.AddDate(0, 0, 1)
 
 	// Day one: two messages (one read), two injects (one finished), and three holds (one live, one expiring before the carry, one released).
 	appendRecord(record{Event: eventPosted, ID: 1, From: alpha, To: beta, Body: "unread"})
@@ -436,6 +437,7 @@ func TestJournal_Retention(t *testing.T) {
 	appendRecord(record{Event: eventSending, ID: 4})
 	appendRecord(record{Event: eventInjected, ID: 4})
 	appendRecord(record{Event: eventHeld, To: beta, By: alpha, ExpiresAt: livePast})
+	appendRecord(record{Event: eventRenewed, To: beta, By: alpha, ExpiresAt: renewedPast})
 	appendRecord(record{Event: eventHeld, To: gamma, By: alpha, ExpiresAt: journalEpoch.AddDate(0, 0, 1)})
 	appendRecord(record{Event: eventHeld, To: delta, By: alpha, ExpiresAt: livePast})
 	appendRecord(record{Event: eventReleased, To: delta, By: alpha})
@@ -495,6 +497,9 @@ func TestJournal_Retention(t *testing.T) {
 		wantInject := []LogEntry{{Day: "2026-10-11", Event: eventCarried, At: dayEleven, ID: 3, From: alpha, To: beta, Kind: kindInject, Subject: "/clear"}}
 		if got := carriedEntries(p, 3); !reflect.DeepEqual(got, wantInject) {
 			t.Errorf("%s: carried entries of inject 3 = %+v, want %+v", label, got, wantInject)
+		}
+		if hold := p.holds[beta]; hold == nil || hold.Owner != alpha || !hold.Expires.Equal(renewedPast) {
+			t.Errorf("%s: hold on %s = %+v, want owner %s with the renewed expiry %v", label, beta, hold, alpha, renewedPast)
 		}
 		wantHold := []LogEntry{{Day: "2026-10-11", Event: eventCarried, At: dayEleven, To: beta, By: alpha}}
 		if got := carriedEntries(p, 0); !reflect.DeepEqual(got, wantHold) {
