@@ -148,9 +148,6 @@ func TestJournal_Fold(t *testing.T) {
 				if !reflect.DeepEqual(p.programs, map[string]bool{"ly:BATTEN": true}) {
 					t.Errorf("program mailboxes = %v, want only ly:BATTEN (EXTERNAL has none)", p.programs)
 				}
-				if got := p.withheld[orch].Notice; got != "creel-notices" {
-					t.Errorf("withheld notice for the orch = %q, want creel-notices", got)
-				}
 			},
 		},
 		{

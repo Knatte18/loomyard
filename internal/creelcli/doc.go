@@ -13,5 +13,6 @@
 // A success envelope that cannot be written exits 1 with one `creel: ` answer line on stderr, after any stall notes.
 // For post and inject the line names what they already stored, and for a forward, hold, release or interrupt it says the verb took effect.
 // The refusal fallback line opens with that statement too for a post or inject that stored before it refused.
+// `inbox` prints the caller's unread counts as `inbox.senders`, a list of `{from, unread}`, and no other key.
 // The hub delivery in this package implements the engine's delivery seam over the hub's worktrees, reed's persisted state and shuttle.
 package creelcli

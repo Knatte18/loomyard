@@ -22,7 +22,7 @@ const (
 )
 
 // Scheduler delivers what the pool holds into panes: one worker per receiver with pending deliveries, at most one delivery in flight per receiver.
-// Nothing is ever typed into an orch strand, and a program's mailbox is never reminded.
+// A program's mailbox is never reminded.
 type Scheduler struct {
 	store    *Store
 	delivery Delivery
@@ -298,7 +298,7 @@ func (w *worker) remind(strand Strand, snap deliverySnapshot, now time.Time) boo
 	if !due || !w.idle(strand) {
 		return false
 	}
-	err := w.scheduler.delivery.Send(strand, composeReminder(snap.unread))
+	err := w.scheduler.delivery.Send(strand, composeReminder(snap.unread, snap.holdOwner))
 	switch {
 	case err == nil, errors.Is(err, ErrNotLanded):
 		w.report("send", nil)
@@ -313,10 +313,10 @@ func (w *worker) remind(strand Strand, snap deliverySnapshot, now time.Time) boo
 	}
 }
 
-// deliverableReceiver reports whether creel may type into the named receiver: a strand that is not an orch.
+// deliverableReceiver reports whether creel may type into the named receiver: any strand, an orch strand included, and no program.
 func deliverableReceiver(name string) bool {
-	parsed, err := agentname.Parse(name)
-	return err == nil && !agentname.MatchesRole(parsed.Role, agentname.RoleOrch)
+	_, err := agentname.Parse(name)
+	return err == nil
 }
 
 // hasPending reports whether receiver has a queued inject or unread mail to deliver.

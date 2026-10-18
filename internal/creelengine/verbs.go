@@ -37,11 +37,8 @@ func (s *Store) appendPostedLocked(sender Sender, receiver, kind, body string, r
 	return id, err
 }
 
-// deliverMailLocked finishes a post, reply or forward to receiver: the withheld line for an orch, the holder's waiters and the wake.
+// deliverMailLocked finishes a post, reply or forward to receiver: the holder's waiters and the wake.
 func (s *Store) deliverMailLocked(id int64, receiver string) error {
-	if err := s.appendWithheldLocked(id, receiver); err != nil {
-		return err
-	}
 	s.answerLocked(waitKey{kind: waitHolder, holder: receiver}, Outcome{Kind: OutcomeMail})
 	s.mailSeq++
 	s.wakeLocked(receiver)
@@ -248,12 +245,9 @@ type InboxEntry struct {
 	Unread int
 }
 
-// InboxResult is what Inbox answers: the unread counts per sender, and for an orch caller that its reminders are withheld.
+// InboxResult is what Inbox answers: the unread counts per sender.
 type InboxResult struct {
 	Senders []InboxEntry
-	// Withheld is set for an orch caller, whose reminders creel does not type until Notice.
-	Withheld bool
-	Notice   string
 }
 
 // Inbox returns the senders of the caller's unread mail with their counts, in name order.
@@ -273,9 +267,6 @@ func (s *Store) Inbox(sender Sender) (InboxResult, error) {
 			result.Senders = append(result.Senders, InboxEntry{From: from, Unread: unread})
 		}
 		sort.Slice(result.Senders, func(i, j int) bool { return result.Senders[i].From < result.Senders[j].From })
-		if isOrchName(sender.Name) {
-			result.Withheld, result.Notice = true, noticesName
-		}
 		return nil
 	})
 	return result, err
@@ -450,14 +441,11 @@ func (s *Store) strandTarget(receiver string) (Strand, error) {
 	return Strand{}, fmt.Errorf("creel: unknown strand %q; the strands that exist: %s", receiver, listing)
 }
 
-// checkMayAct applies the privilege and orch rules to a sender acting on a strand's pane.
-// A privileged sender (EXTERNAL, a program, an orch strand) may act on any strand and any other sender on its own, and nothing types into an orch strand.
+// checkMayAct applies the privilege rule to a sender acting on a strand's pane.
+// A privileged sender (EXTERNAL, a program, an orch strand) may act on any strand, an orch strand included, and any other sender on its own.
 func (s *Store) checkMayAct(sender Sender, receiver, action string) error {
 	if !sender.privileged() && sender.Name != receiver {
 		return fmt.Errorf("creel: %s may not %s another strand's pane; send it mail with `lyx creel post`", sender.Name, action)
-	}
-	if isOrchName(receiver) {
-		return fmt.Errorf("creel: %s is an orch strand and creel never types into one in this stage; use `lyx orch distill` or `lyx orch refresh`, or type into the orch's own pane", receiver)
 	}
 	return nil
 }
@@ -532,6 +520,7 @@ type HoldResult struct {
 
 // Hold holds receiver's deliveries for the given duration: only the owner's injects pass and only its mail is reminded.
 // The same owner holding again renews the hold; another sender's hold on a held receiver is refused.
+// An orch strand is held by a program only.
 func (s *Store) Hold(sender Sender, receiver string, duration time.Duration) (HoldResult, error) {
 	if duration <= 0 || duration > maxHoldDuration {
 		return HoldResult{}, fmt.Errorf("creel: a hold lasts at most %s", maxHoldDuration)
@@ -542,6 +531,9 @@ func (s *Store) Hold(sender Sender, receiver string, duration time.Duration) (Ho
 	}
 	if !sender.privileged() && sender.Name != target.Name {
 		return HoldResult{}, fmt.Errorf("creel: %s may not hold another strand; send it mail with `lyx creel post`", sender.Name)
+	}
+	if isOrchName(target.Name) && sender.Kind != KindProgram {
+		return HoldResult{}, fmt.Errorf("creel: only a program may hold an orch strand, and %s is not one; send %s mail with `lyx creel post`, or cycle the orch with `lyx orch distill` or `lyx orch refresh`", sender.Name, target.Name)
 	}
 	var result HoldResult
 	err = s.do(func() error {

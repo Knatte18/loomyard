@@ -74,8 +74,9 @@
 // post stores a message for a receiver and answers its id once the line is journaled.
 // A body is non-empty and at most 64 KiB; a longer message is a file the sender writes and the mail names.
 //
-// The receiver is reminded by one line, typed when it is idle: `[creel] N unread: #id from <sender> «subject», … — run lyx creel read`.
-// A reminder lists at most five messages, cuts a subject at 80 runes and counts the rest; the subject is the first line of the body, inside « » with control characters replaced, so it cannot pose as an instruction.
+// The receiver is reminded by one line, typed when it is idle: `[creel] N unread: #id from <sender>, … — run lyx creel read`.
+// A reminder lists at most five messages and counts the rest, and carries no text a sender wrote, so it cannot pose as an instruction; under a hold it reads `lyx creel read --from <owner>`.
+// An orch strand is reminded like any other strand.
 // A new unread set is reminded at once, and an unchanged set after a backoff that starts at five minutes and doubles to an hour.
 //
 // read returns the caller's unread messages oldest first: plain read the oldest one and every other unread message from its sender, --from every unread message from that sender, and --all every unread message.
@@ -108,8 +109,8 @@
 // No delivery reaches the receiver while the interrupt runs, its settles and its clear included, and the receiver's worker probes afresh once it ends.
 // A covering pause, an unreadable pause record and another sender's hold refuse it.
 //
-// EXTERNAL senders, programs and orch strands may inject, interrupt and hold on any strand; any other strand may do so on its own strand only.
-// Creel never types into an orch strand in stage 1.
+// EXTERNAL senders, programs and orch strands may inject, interrupt and hold on any strand, an orch strand included; any other strand may do so on its own strand only.
+// A hold on an orch strand is the exception: only a program may hold one, and any other sender is refused with the way forward, mail with `lyx creel post` or a cycle with `lyx orch distill` or `lyx orch refresh`.
 //
 // # Holds
 //
@@ -134,10 +135,11 @@
 // Each inject queued for the gone holder expires.
 // Creel learns only that the strand no longer exists, never why.
 //
-// # Orch strands in stage 1
+// # Orch strands
 //
-// Mail to an orch strand is stored and journaled with a withheld line naming creel-notices, and inbox says its reminders are withheld.
-// Nothing is typed into an orch strand, and a program's mailbox is never reminded; a program reads with `read --wait`.
+// Creel delivers into an orch strand as into any strand: its mail is reminded, and an inject or interrupt into it is typed.
+// A program's mailbox is never reminded; a program reads with `read --wait`.
+// A journal written by stage 1 may hold `withheld` records for orch mail; the fold keeps them in the log, acts on none, and the daemon reminds that mail from its first probe.
 //
 // # Log
 //
@@ -157,13 +159,10 @@
 // Every idle answer feeds the stall journal: a new non-empty reason is journaled, a repeat only stamps when it was read, and a reading with no reason, a probe error or a typed line clears it with no record.
 // The inject TTL keeps running while a strand is stalled, live and unpaused.
 //
-// # Unbuilt: stages 2 and 3
+// # Unbuilt: the stage 3 remainder
 //
-// Stage 2, the task `creel-notices`: the orch watcher keeps only its cycle logic, and its notice queue and idle probe go.
-// The watcher posts the note request to the orch as mail, which the orch answers by post with `written <path>` once the note is written or with `defer`, and it advances a cycle phase only on that reply or once creel confirms a command inject was typed.
-// The watcher holds the orch's reminders during a context cycle through creel's hold, while its own note request and its `/clear`, `/compact` and reload injects still pass.
-// Batten's notices and `orchengine.QueueNotice` fold into creel, and the withheld reminders of an orch strand are typed.
-// `PATTERN-orch-pane-single-writer` becomes: only creel decides what is delivered into an agent's pane.
+// `PATTERN-orch-pane-single-writer` is scoped to the orch session: typing into it from Go is only creel's, through its `Delivery` seam; the orch watcher keeps only a hub pause's guarded interrupt, reed's `/rename` repair keeps its own guard, and other modules post or inject through creel.
+// Stage 3 widens it to every agent's pane.
 //
 // Stage 3, the task `creel-agents`: the parent-review gate posts to the parent itself, drivers' stop reports post instead of duplicating batten's notices, and `lyx shuttle send` and `lyx shuttle interrupt` move behind creel.
 //

@@ -1,4 +1,4 @@
-// fold.go folds the journal's records into the pool state: messages, queued injects, holds, withheld reminders and known program mailboxes.
+// fold.go folds the journal's records into the pool state: messages, queued injects, holds and known program mailboxes.
 
 package creelengine
 
@@ -90,12 +90,6 @@ type holdEntry struct {
 	origin string
 }
 
-// withheldEntry is the last withheld event of an orch receiver.
-type withheldEntry struct {
-	At     time.Time
-	Notice string
-}
-
 // reminderEntry is the last reminder sent to a receiver.
 type reminderEntry struct {
 	At   time.Time
@@ -132,7 +126,6 @@ type pool struct {
 	messages  map[int64]*Message
 	injects   map[int64]*injectEntry
 	holds     map[string]*holdEntry
-	withheld  map[string]withheldEntry
 	reminders map[string]reminderEntry
 	// programs holds the program senders whose mailbox is known, from their first post or read.
 	programs map[string]bool
@@ -146,7 +139,6 @@ func newPool() *pool {
 		messages:  map[int64]*Message{},
 		injects:   map[int64]*injectEntry{},
 		holds:     map[string]*holdEntry{},
-		withheld:  map[string]withheldEntry{},
 		reminders: map[string]reminderEntry{},
 		programs:  map[string]bool{},
 	}
@@ -270,13 +262,11 @@ func (p *pool) apply(rec record, day string) {
 		if entry := p.injects[rec.ID]; entry != nil {
 			entry.Consumed = time.Duration(rec.ConsumedSeconds) * time.Second
 		}
-	case eventInterrupted, eventStalled:
+	case eventInterrupted, eventStalled, eventWithheld:
 	case eventHeld:
 		p.holds[rec.To] = &holdEntry{Owner: rec.By, Expires: rec.ExpiresAt, origin: day}
 	case eventReleased:
 		delete(p.holds, rec.To)
-	case eventWithheld:
-		p.withheld[rec.To] = withheldEntry{At: rec.At, Notice: rec.Notice}
 	case eventCarried:
 		if !p.applyCarried(rec, day) {
 			return

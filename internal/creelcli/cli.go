@@ -545,12 +545,7 @@ Example:
 				for _, entry := range resp.Inbox.Senders {
 					senders = append(senders, map[string]any{"from": entry.From, "unread": entry.Unread})
 				}
-				inbox := map[string]any{"senders": senders}
-				if resp.Inbox.Withheld {
-					inbox["withheld"] = true
-					inbox["notice"] = resp.Inbox.Notice
-				}
-				return result{fields: map[string]any{"inbox": inbox}}, nil
+				return result{fields: map[string]any{"inbox": map[string]any{"senders": senders}}}, nil
 			})
 		},
 	}
