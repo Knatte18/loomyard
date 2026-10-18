@@ -579,6 +579,16 @@ func SetAddBeforeWeftReplaceHookForTest(t testing.TB, fn func()) {
 	t.Cleanup(func() { addBeforeWeftReplaceHook = original })
 }
 
+// SetAddFailAfterWarpHookForTest sets addFailAfterWarpHook to hook and restores the previous value in t.Cleanup.
+// It mutates a package var, so it is usable only from a non-parallel test.
+func SetAddFailAfterWarpHookForTest(t testing.TB, hook func() error) {
+	t.Helper()
+
+	original := addFailAfterWarpHook
+	addFailAfterWarpHook = hook
+	t.Cleanup(func() { addFailAfterWarpHook = original })
+}
+
 // DeleteTaskBranchAtTipForTest re-exports deleteTaskBranchAtTip for package fabricengine_test integration tests that need to hand the gated deletion a tip other than the one currently on origin, to prove the lease holds.
 // It passes a throwaway NewMutations("") recorder, since its callers assert nothing about the record.
 func DeleteTaskBranchAtTipForTest(l *lyxcwd.Location, warpBranch, parentBranch, tip string) (deleted bool, keptReason string) {

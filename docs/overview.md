@@ -4,7 +4,7 @@ Loomyard is a Go toolkit of one-shot CLI modules.
 Each invocation starts a process, runs one command, writes JSON to stdout, and exits — there is no daemon and no shared memory.
 State lives on disk per module and is coordinated with file locks, so concurrent `lyx` processes on a machine cooperate through the filesystem.
 The first module, **board** (a task tracker), is implemented;
-**fabric** (the git-coordination module over the code and its records) is implemented;
+**fabric** (the git-coordination module over the code and its records, with `lyx fabric add --local` for pairs that never reach origin) is implemented;
 and **reed**, the clean tmux overlay built on what its now-deleted proof-of-concept (`muxpoc`) proved, is implemented.
 
 In the long term, Loomyard is intended to **replace mill/millhouse (Python)** entirely.

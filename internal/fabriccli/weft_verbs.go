@@ -267,6 +267,9 @@ Related commands:
 			if pushRes.CodePushSkipped != "" {
 				fields["code_push_skipped"] = pushRes.CodePushSkipped
 			}
+			if len(pushRes.LocalSkipped) > 0 {
+				fields["local_skipped"] = pushRes.LocalSkipped
+			}
 			clihelp.SetExit(cmd.Context(), okWithRecord(out, rec.Snapshot(), fields))
 			return nil
 		},

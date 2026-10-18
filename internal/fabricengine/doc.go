@@ -513,6 +513,13 @@
 // A failed or never-run push leaves both branches committed locally, and the pair's next detached push, which every fabric commit and sync spawns, carries them and creates a never-pushed branch's upstream.
 // A rollback deletes the local branches this `Add` created, a weft branch taken from origin included, never touches an origin branch, and never restores the deleted remote weft branch: its content is reachable from the archive tag.
 // A fast-forward `Add` made to a pre-existing local weft branch is not rewound.
+//
+// `AddLocal` creates a local-only pair: it takes the path `SkipPush` takes (no origin probe, no replacement, the warp branch forks from `HEAD`), creates no portal or launcher, and marks both branches local with gitrepo's per-branch mark before the origin record's commit.
+// A marked branch is refused by every push primitive and reported by fabric's pushes in `PushResult.LocalSkipped`, so nothing publishes it.
+// `AddLocal` refuses with `*ErrLocalAddOverOrdinary` before its first mutation when either branch exists unmarked locally or as an `origin` remote-tracking ref, so it never adopts and silences an ordinary pair.
+// A marked branch is adopted, as a local pair's kept branch is when its worktrees were removed.
+// A plain `Add` adopts a marked warp branch too, instead of refusing `ErrBranchExists`, and as its last step clears the mark of each adopted branch, listing it in `AddResult.LocalMarkCleared`, so the adopted pair is ordinary.
+// A rollback never deletes an adopted warp branch, and clearing last leaves no failable step after it, so a rollback never has a mark to restore.
 // Every plain fabric push retries a push the server refuses on the pushed ref with a bare `(failed)` or a remote `cannot lock ref`, through gitrepo's bounded retry with exponential backoff;
 // the archive tag push included, and every other push failure returns on the first attempt.
 // The coalesced push logs a Warn and leaves the commits unpushed once the attempts run out.

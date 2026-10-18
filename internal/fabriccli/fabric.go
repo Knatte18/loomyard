@@ -105,7 +105,8 @@ Example:
 	cmd.AddCommand(cloneCmd)
 
 	// add <slug>
-	cmd.AddCommand(&cobra.Command{
+	var addCmd *cobra.Command
+	addCmd = &cobra.Command{
 		Use:         "add <slug>",
 		Args:        cobra.MaximumNArgs(1),
 		Short:       "create a dual warp+weft worktree pair",
@@ -130,10 +131,22 @@ pair's next push.
 The command errors if the worktree is on a detached HEAD or an unborn branch,
 because a fork point cannot be determined in either case.
 
+With --local the pair is local-only: no origin is read or written, no portal or
+launcher is created, no push is spawned, and both branches are marked local so
+no fabric push publishes them. A plain "lyx fabric add" over a local pair's kept
+branches adopts them and clears the marks. --local refuses a slug whose branch
+already belongs to an ordinary pair.
+
 Example:
-  lyx fabric add my-task`,
-		RunE: clihelp.WrapRunCtx(runAdd),
-	})
+  lyx fabric add my-task
+  lyx fabric add --local my-task`,
+		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int {
+			local, _ := addCmd.Flags().GetBool("local")
+			return runAdd(ctx, out, args, local)
+		}),
+	}
+	addCmd.Flags().Bool("local", false, "create a local-only pair: no origin is read or written, no portal or launcher is created, and both branches are marked local so no fabric push publishes them")
+	cmd.AddCommand(addCmd)
 
 	// list
 	cmd.AddCommand(&cobra.Command{
@@ -469,7 +482,8 @@ func resolveWarpLocation(ctx context.Context) (cwd string, l *lyxcwd.Location, e
 }
 
 // runAdd executes the fabric add subcommand. Under cobra, args[0] is the slug.
-func runAdd(ctx context.Context, out io.Writer, args []string) int {
+// With local it creates a local-only pair, spawns no detached push and reports local: true.
+func runAdd(ctx context.Context, out io.Writer, args []string, local bool) int {
 	// Nothing has been mutated yet at cwd/location resolution: a bare output.Err carries no record.
 	_, l, err := resolveWarpLocation(ctx)
 	if err != nil {
@@ -489,14 +503,30 @@ func runAdd(ctx context.Context, out io.Writer, args []string) int {
 
 	// args[0] is the slug; cobra has already consumed "add" from the argument list.
 	slug := args[0]
-	r, err := top.Add(l, slug, addOptionsFromEnv())
+	var r fabricengine.AddResult
+	if local {
+		r, err = top.AddLocal(l, slug)
+	} else {
+		r, err = top.Add(l, slug, addOptionsFromEnv())
+	}
 	if err != nil {
-		// A leftover refusal fires before Add's first mutation, so it is a pre-flight failure: a bare output.Err.
+		// A leftover or local-over-ordinary refusal fires before Add's first mutation, so it is a pre-flight failure: a bare output.Err.
 		var leftover *fabricengine.ErrRemoteLeftover
-		if errors.As(err, &leftover) {
+		var overOrdinary *fabricengine.ErrLocalAddOverOrdinary
+		if errors.As(err, &leftover) || errors.As(err, &overOrdinary) {
 			return output.Err(out, err.Error())
 		}
 		return errWithRecord(out, r.Mutated(), err)
+	}
+	if local {
+		rec := fabricengine.NewMutations(l.HubPath)
+		rec.Extend(r.Mutated())
+		return okWithRecord(out, rec.Snapshot(), map[string]any{
+			"slug":   r.Slug,
+			"branch": r.Branch,
+			"path":   r.Path,
+			"local":  true,
+		})
 	}
 	// Add pushes nothing: the new pair's branches go out through a detached push, as sync's do, so the verb returns without waiting on the remote.
 	// A failed spawn leaves the pair whole with its branches local, and the pair's next detached push carries them, so it is reported but never fails the verb.
@@ -507,6 +537,9 @@ func runAdd(ctx context.Context, out io.Writer, args []string) int {
 		"slug":   r.Slug,
 		"branch": r.Branch,
 		"path":   r.Path,
+	}
+	if len(r.LocalMarkCleared) > 0 {
+		fields["local_mark_cleared"] = r.LocalMarkCleared
 	}
 	pairLocation, err := lyxcwd.ResolveWorktree(codeWorktree)
 	if err == nil {
