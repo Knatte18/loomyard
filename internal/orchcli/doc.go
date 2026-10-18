@@ -1,5 +1,5 @@
 // Package orchcli is the CLI for the hub orchestrator: the long-lived session in the hub's prime worktree that runs the task loop for the operator.
-// Its verbs (`start`, `status`, `refresh`, `distill`, `stop`, `cleanup` and the watcher behind them) host that session as an interactive agent in a reed strand and cycle its context before it fills; this comment records the loop the session runs, which the verbs exist to serve.
+// Its verbs (`start`, `status`, `refresh`, `distill`, `stop`, `cleanup`, `rules` and the watcher behind them) host that session as an interactive agent in a reed strand and cycle its context before it fills; this comment records the loop the session runs, which the verbs exist to serve.
 //
 // # The role file and the note
 //
@@ -12,6 +12,12 @@
 // Its `## Hub-wide rules` and `## This orch's rules` sections hold the hub-wide rules file on Bolt and this orch thread's own rules file under its worktree's `_lyx/orch/`, re-read at every delivery.
 // `start` and `resume-context` render it in-process from the binary they run as, which the pane names;
 // the watcher outlives a deploy, so it runs `help index` from the `lyx` path the orch strand recorded and goes idle with a reason naming `lyx orch stop` when that path is missing or gone.
+//
+// # The orch rules
+//
+// `lyx orch rules --from <file>` replaces the hub-wide rules file on Bolt with the file's content, pulling Bolt first and pushing before and after the commit.
+// The verb commits only that one path, and an empty file clears the rules.
+// The orch thread's own rules file is committed through `lyx fabric commit`.
 //
 // # The orchestrator acts and fixes
 //
