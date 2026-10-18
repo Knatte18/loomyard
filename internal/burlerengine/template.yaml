@@ -181,11 +181,9 @@ lenses:
     Focus on test economy: for every new top-level test and every new row,
     open the test file it lands in and the existing tests of the same
     function, and report a new top-level test that should be a row of an
-    existing test, a row that repeats a behavior an existing test already
-    reaches, and a new top-level test that its package's row in
-    `cmd/lyx/testdata/test-budget.yaml` does not budget. Apply the Plan-Review
-    rubric's "Test economy". Report anything else you notice too — emphasis,
-    never exclusion.
+    existing test and a row that repeats a behavior an existing test already
+    reaches. Apply the Plan-Review rubric's "Test economy". Report anything
+    else you notice too — emphasis, never exclusion.
   interactions: |
     Own the interactions between the record's own decisions. List every pair
     of decisions that act on the same state, file, key, command, ordering or
