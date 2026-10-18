@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1088,6 +1089,70 @@ func TestCreelCLI(t *testing.T) {
 		}
 		if run := runCreel(r.cwd, "log", "--id", strconv.FormatInt(id, 10)); !strings.Contains(run.raw, `"reason":"withdrawn"`) {
 			t.Errorf("creel log --id %d = %q; want the withdrawn reason", id, run.raw)
+		}
+	})
+
+	t.Run("every Go client call against a daemon that never answers times out at goCallTimeout", func(t *testing.T) {
+		calls := map[string]func(*GoClient) error{
+			"Post":    func(c *GoClient) error { _, err := c.Post("tst:orch", "hello"); return err },
+			"ReadAll": func(c *GoClient) error { return c.ReadAll(func([]creelengine.Message) error { return nil }) },
+			"Inject":  func(c *GoClient) error { _, err := c.Inject("tst:orch", "text", 0); return err },
+			"InjectCommand": func(c *GoClient) error {
+				_, err := c.InjectCommand("tst:orch", creelengine.Command{Name: creelengine.CommandClear}, 0)
+				return err
+			},
+			"Log":      func(c *GoClient) error { _, err := c.Log(creelengine.LogFilter{}); return err },
+			"Hold":     func(c *GoClient) error { return c.Hold("tst:orch", time.Minute) },
+			"Release":  func(c *GoClient) error { _, err := c.Release("tst:orch"); return err },
+			"Withdraw": func(c *GoClient) error { _, err := c.Withdraw("tst:orch"); return err },
+		}
+		for name, call := range calls {
+			r := newRig(t)
+			listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: r.geometry.SocketPath, Net: "unix"})
+			if err != nil {
+				t.Fatalf("%s: listen: %v", name, err)
+			}
+			var held []net.Conn
+			var heldMu sync.Mutex
+			go func() {
+				for {
+					conn, err := listener.Accept()
+					if err != nil {
+						return
+					}
+					heldMu.Lock()
+					held = append(held, conn)
+					heldMu.Unlock()
+				}
+			}()
+			t.Cleanup(func() {
+				_ = listener.Close()
+				heldMu.Lock()
+				defer heldMu.Unlock()
+				for _, conn := range held {
+					_ = conn.Close()
+				}
+			})
+			location, err := lyxcwd.Resolve(r.cwd)
+			if err != nil {
+				t.Fatalf("Resolve(%q) = %v", r.cwd, err)
+			}
+			program, err := NewProgramClient(location, "BATTEN")
+			if err != nil {
+				t.Fatalf("NewProgramClient() = %v", err)
+			}
+			done := make(chan error, 1)
+			go func() { done <- call(program) }()
+			r.clientClock.AwaitWaits(1)
+			r.clientClock.Advance(goCallTimeout)
+			select {
+			case got := <-done:
+				if !errors.Is(got, creelengine.ErrWaitTimeout) {
+					t.Errorf("%s = %v; want ErrWaitTimeout once goCallTimeout elapsed", name, got)
+				}
+			case <-time.After(10 * time.Second):
+				t.Errorf("%s still waiting after goCallTimeout elapsed on the client's clock", name)
+			}
 		}
 	})
 
