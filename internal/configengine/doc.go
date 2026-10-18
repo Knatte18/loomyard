@@ -16,6 +16,7 @@
 // A caller marks its own unmarshal and validation failures with [MarkInvalid], which leaves the error text unchanged.
 //
 // [Set] writes dotted key=value pairs into a module's file, scaffolding it from the template when absent, with no editor and no validation loop.
+// For a spec with `JSONEntries` it writes each pair as one whole top-level entry from a JSON object instead, with no template key check.
 // [Edit] is the interactive counterpart.
 // An editor that leaves the file empty or whitespace-only aborts the edit with [ErrAborted] before the YAML parse:
 // a scaffolded file is removed and a pre-existing one is written back to the bytes it held on entry, so a layer cannot be emptied through the editor.

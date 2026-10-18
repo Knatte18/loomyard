@@ -11,6 +11,7 @@
 package yamlengine
 
 import (
+	"encoding/json"
 	"fmt"
 	"slices"
 	"sort"
@@ -353,4 +354,46 @@ func rootMappingNode(node *yaml.Node) *yaml.Node {
 		return nil
 	}
 	return node
+}
+
+// SetEntries sets each pair's key, a top-level key, to the JSON object its value spells, replacing the key's value whole or appending the key, and returns the new document.
+// The other keys keep their order and comments, and the set entry keeps its key's comments.
+// A value that is not a JSON object, or an empty key, is an error naming the pair, and nothing is returned.
+func SetEntries(existing []byte, pairs []KV) ([]byte, error) {
+	doc, root, err := parseMappingRoot(existing, "existing")
+	if err != nil {
+		return nil, err
+	}
+	if root == nil {
+		root = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+		doc = &yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{root}}
+	}
+	for _, pair := range pairs {
+		if pair.Key == "" {
+			return nil, fmt.Errorf("an entry name must not be empty, got %q", pair.Key+"="+pair.Value)
+		}
+		var object map[string]any
+		if err := json.Unmarshal([]byte(pair.Value), &object); err != nil || object == nil {
+			return nil, fmt.Errorf("value for %s must be a JSON object such as {\"module\": {\"key\": 1}}, got %q", pair.Key, pair.Value)
+		}
+		var parsed yaml.Node
+		if err := yaml.Unmarshal([]byte(pair.Value), &parsed); err != nil {
+			return nil, fmt.Errorf("value for %s: %w", pair.Key, err)
+		}
+		value := parsed.Content[0]
+		plainScalars(value)
+		value.Style = 0
+		setEntry(root, pair.Key, value)
+	}
+	return yaml.Marshal(doc)
+}
+
+// plainScalars clears the quoting style of every scalar under node, so a JSON-spelled value is written in plain YAML and quoted only where its text needs it.
+func plainScalars(node *yaml.Node) {
+	if node.Kind == yaml.ScalarNode {
+		node.Style = 0
+	}
+	for _, child := range node.Content {
+		plainScalars(child)
+	}
 }

@@ -92,6 +92,7 @@ func TestRunLock(t *testing.T) {
 		{name: "identical upsert", act: upsertLocked(map[string]any{"body": "body", "labels": []string{"bug"}, "issues": []int{}, "depends_on": []string{}})},
 		{name: "status-only upsert", act: upsertLocked(map[string]any{"status": "done"})},
 		{name: "run settings change", act: upsertLocked(map[string]any{"run_settings": map[string]any{"loom": map[string]any{"review_max_bounces": 2}}})},
+		{name: "profile change", act: upsertLocked(map[string]any{"profile": "light"})},
 		{name: "normal priority on an entry without one", act: upsertLocked(map[string]any{"priority": "normal"})},
 		{name: "batch whose only item on it is status-only", extra: []map[string]any{other}, act: func(b *boardengine.Board) error {
 			_, err := b.UpsertTasksBatch([]map[string]any{{"slug": "other", "body": "batched"}, {"slug": "locked", "status": "done"}})

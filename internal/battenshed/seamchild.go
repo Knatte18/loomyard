@@ -136,9 +136,9 @@ func (p *seedChildProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 	return shedengine.Done, shedengine.OutputPointer{}, nil
 }
 
-// writeRunSettings makes the task worktree's local config layer equal the Board task's run settings:
+// writeRunSettings makes the task worktree's local config layer equal the Board task's run settings laid over its run profile's:
 // it writes the local file of each module the settings name, then removes every other module's, logging one Warn per removed file.
-// A non-empty reason means the row stands Stuck: the board is unreadable, or a key no longer validates.
+// A non-empty reason means the row stands Stuck: the board is unreadable, the profile is unknown, or a key no longer validates.
 // Any other failure is returned as an error.
 // The whole write is redone on every Call, so a Call interrupted between its writes and its removals leaves nothing the next one does not settle.
 func (p *seedChildProducer) writeRunSettings(ctx context.Context) (reason string, err error) {
@@ -149,7 +149,7 @@ func (p *seedChildProducer) writeRunSettings(ctx context.Context) (reason string
 	documents, err := p.deps.PrepareRunSettings(settings)
 	if err != nil {
 		if errors.Is(err, ErrInvalidRunSettings) {
-			return fmt.Sprintf("%s; way forward: correct the task's run_settings with `lyx board upsert`, then `lyx batten run %s`", err.Error(), p.slug), nil
+			return fmt.Sprintf("%s; way forward: correct the task's profile or run_settings with `lyx board upsert`, or the profile itself with `lyx config profiles` from the hub's prime worktree, then `lyx batten run %s`", err.Error(), p.slug), nil
 		}
 		return "", fmt.Errorf("battenshed: %s: prepare run settings: %w", p.name, err)
 	}

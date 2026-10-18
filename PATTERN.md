@@ -17,7 +17,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 
 - `PATTERN-cli-cobra` — Adding a CLI module: a cobra subtree under one root in `cmd/lyx/main.go`. (test) — [background](pattern/PATTERN-cli-cobra.md)
 - `PATTERN-cliwire-sole-wiring` — Wiring a standalone-capable CLI: `internal/cliwire` alone resolves target dir, repo root and state. (test) — [background](pattern/PATTERN-cliwire-sole-wiring.md)
-- `PATTERN-config-strictness` — Loading config: a caller adopts exactly one of strict `configengine.Load` or `LoadOrTemplate`. — [background](pattern/PATTERN-config-strictness.md)
+- `PATTERN-config-strictness` — Loading config: a caller adopts exactly one of strict `Load` or `LoadOrTemplate`, bar `runprofile`. — [background](pattern/PATTERN-config-strictness.md)
 - `PATTERN-config-layers` — Resolving a module's config: only `configengine` reads, stacks and locates layer files. — [background](pattern/PATTERN-config-layers.md)
 - `PATTERN-binary-change-reconcile` — Reconciling a hub's config after a binary change: only through `hubreconcile.Ensure`, which owns the build stamp and the hub lock.
 - `PATTERN-refusal-way-forward` — Adding a webster, shed or loom refusal: its message names the way forward, and a test reaches it. — [background](pattern/PATTERN-refusal-way-forward.md)

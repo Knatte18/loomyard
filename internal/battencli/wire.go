@@ -1231,26 +1231,22 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					return childDriverKind(fabricengine.ConfigDirs(taskLocation), recipe)
 				})
 			},
-			// ReadRunSettings opens the Board fresh on every Call, as ReadBoardType does, and returns the task's run_settings.
-			ReadRunSettings: func(ctx context.Context) (map[string]any, error) {
+			// ReadRunSettings opens the Board fresh on every Call, as ReadBoardType does, and returns the task's profile and run_settings.
+			ReadRunSettings: func(ctx context.Context) (battenshed.RunSettings, error) {
 				b := boardengine.New(boardengine.Config{Path: fabricengine.BoardDir(location.HubPath)})
 				task, found, err := b.GetTask(slug)
 				if err != nil {
-					return nil, err
+					return battenshed.RunSettings{}, err
 				}
 				if !found {
-					return nil, fmt.Errorf("battencli: board task %q not found", slug)
+					return battenshed.RunSettings{}, fmt.Errorf("battencli: board task %q not found", slug)
 				}
-				return task.RunSettings, nil
+				return battenshed.RunSettings{Profile: task.Profile, Settings: task.RunSettings}, nil
 			},
-			// PrepareRunSettings is configreg's one migrate-then-validate step; a refusal of the settings is wrapped in battenshed.ErrInvalidRunSettings so Seed-Child routes it to Stuck.
-			PrepareRunSettings: func(settings map[string]any) (map[string][]byte, error) {
-				documents, err := configreg.PrepareRunSettings(settings)
-				var refusal *configreg.RunSettingsError
-				if errors.As(err, &refusal) {
-					return nil, fmt.Errorf("%w: %s", battenshed.ErrInvalidRunSettings, err.Error())
-				}
-				return documents, err
+			// PrepareRunSettings reads the named profile from the hub's profiles.yaml and lays the task's settings over it through configreg;
+			// an unknown profile or a refusal of the settings is wrapped in battenshed.ErrInvalidRunSettings so Seed-Child routes it to Stuck.
+			PrepareRunSettings: func(settings battenshed.RunSettings) (map[string][]byte, error) {
+				return prepareRunSettings(configengine.Dirs{Board: fabricengine.BoardDir(location.HubPath)}, settings)
 			},
 			// WriteLocalOverride writes one module's local file in the task worktree, creating its directory.
 			WriteLocalOverride: func(ctx context.Context, module string, document []byte) error {
