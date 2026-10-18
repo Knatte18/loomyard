@@ -44,6 +44,10 @@ func engineMinimalConfig(advisorStencilName, leadStencilName, rubricStencilName 
 			"review_row": "Row-Burler-Review",
 			"profile":    map[string]any{"fix-scope": "source"},
 		},
+		"Command": {
+			"switch":  "batten.open_window",
+			"command": "batten.open_window_command",
+		},
 		"MultiLLM": {
 			"role":    "coverage",
 			"segment": "plan",
