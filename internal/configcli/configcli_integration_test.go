@@ -8,10 +8,12 @@ package configcli
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -294,4 +296,130 @@ func TestConfigOverRealHub(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("reconcile --layer default migrates renamed keys in _board and commits them", func(t *testing.T) {
+		t.Setenv(agentname.StrandNameEnv, "")
+		loomFile := configengine.ConfigFile(boardDir, "loom")
+		current, err := os.ReadFile(loomFile)
+		if err != nil {
+			t.Fatalf("read the board loom.yaml: %v", err)
+		}
+		// webster_fan holds a value under the old name alone, and merge_fan sits beside the new name it was renamed to.
+		var planted []string
+		for _, line := range strings.Split(strings.TrimRight(string(current), "\n"), "\n") {
+			if !strings.HasPrefix(line, "webster_reviewer_fan:") {
+				planted = append(planted, line)
+			}
+		}
+		planted = append(planted, "webster_fan: review-code", "merge_fan: stale-fan")
+		before := []byte(strings.Join(planted, "\n") + "\n")
+		if err := os.WriteFile(loomFile, before, 0o644); err != nil {
+			t.Fatalf("plant old keys in the board loom.yaml: %v", err)
+		}
+
+		code, result := runReconcileCLI(t, primeWorktreePath, "--layer", "default")
+		if code != 0 {
+			t.Fatalf("reconcile --layer default = %d; want 0; result: %v", code, result)
+		}
+		loom := reconcileModule(t, result, "loom")
+		if loom["layer"] != string(configengine.LayerDefault) || loom["seed"] != "hub" || loom["applied"] != false {
+			t.Errorf("dry-run loom entry = %v; want layer default, seed hub, applied false", loom)
+		}
+		migrated := fmt.Sprint(loom["migrated"])
+		for _, want := range []string{"webster_fan", "merge_fan"} {
+			if !strings.Contains(migrated, want) {
+				t.Errorf("dry-run loom migrated = %s; want it to name %s", migrated, want)
+			}
+		}
+
+		refusals := []struct {
+			name    string
+			cwd     string
+			args    []string
+			wantErr string
+		}{
+			{name: "apply from a task pair", cwd: codeWorktreePath, args: []string{"--layer", "default", "--apply"}, wantErr: "prime worktree"},
+			{name: "the board dir", cwd: boardDir, args: []string{"--apply"}, wantErr: "lyx config reconcile --layer default"},
+			{name: "a layer other than default", cwd: primeWorktreePath, args: []string{"--layer", "local", "--apply"}, wantErr: "--layer default alone"},
+			{name: "the board dir with a layer other than default", cwd: boardDir, args: []string{"--layer", "local"}, wantErr: "prime worktree"},
+		}
+		for _, refusal := range refusals {
+			var out bytes.Buffer
+			if code := RunCLIIn(refusal.cwd, &out, append([]string{"reconcile"}, refusal.args...)); code != 1 {
+				t.Errorf("reconcile from %s = %d; want 1; output: %s", refusal.name, code, out.String())
+			}
+			assertJSONErrContains(t, out.String(), refusal.wantErr)
+		}
+		if code, _ := runReconcileCLI(t, codeWorktreePath, "--layer", "default"); code != 0 {
+			t.Errorf("dry-run reconcile --layer default from a task pair = %d; want 0", code)
+		}
+		if after, err := os.ReadFile(loomFile); err != nil || !bytes.Equal(before, after) {
+			t.Fatalf("board loom.yaml = %q, %v after a dry run and refusals; want it unchanged", after, err)
+		}
+
+		t.Run("a failed apply leaves the board files as they were", func(t *testing.T) {
+			if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+				t.Skip("a read-only config dir does not stop writes here")
+			}
+			configDir := configengine.ConfigDir(boardDir)
+			if err := os.Chmod(configDir, 0o555); err != nil {
+				t.Fatalf("make the board config dir read-only: %v", err)
+			}
+			t.Cleanup(func() { _ = os.Chmod(configDir, 0o755) })
+			headBefore := boardHead(t, boardDir)
+
+			var out bytes.Buffer
+			if code := RunCLIIn(primeWorktreePath, &out, []string{"reconcile", "--layer", "default", "--apply"}); code != 1 {
+				t.Fatalf("reconcile --layer default --apply into a read-only dir = %d; want 1; output: %s", code, out.String())
+			}
+			assertJSONErrContains(t, out.String(), "reconcile:")
+			if after, err := os.ReadFile(loomFile); err != nil || !bytes.Equal(before, after) {
+				t.Errorf("board loom.yaml = %q, %v after a failed apply; want it unchanged", after, err)
+			}
+			if head := boardHead(t, boardDir); head != headBefore {
+				t.Errorf("_board HEAD = %s after a failed apply; want %s", head, headBefore)
+			}
+		})
+
+		if code, result = runReconcileCLI(t, primeWorktreePath, "--layer", "default", "--apply"); code != 0 {
+			t.Fatalf("reconcile --layer default --apply = %d; want 0; result: %v", code, result)
+		}
+		after, err := os.ReadFile(loomFile)
+		if err != nil {
+			t.Fatalf("read the board loom.yaml: %v", err)
+		}
+		for _, want := range []string{"\nwebster_reviewer_fan: review-code", "\nmerge_reviewer_fan:"} {
+			if !strings.Contains(string(after), want) {
+				t.Errorf("applied board loom.yaml lacks %q; got %q", want, after)
+			}
+		}
+		for _, gone := range []string{"\nwebster_fan:", "\nmerge_fan:", "stale-fan"} {
+			if strings.Contains(string(after), gone) {
+				t.Errorf("applied board loom.yaml still holds %q; got %q", gone, after)
+			}
+		}
+
+		show := exec.Command("git", "show", "--name-only", "--pretty=format:%s", "HEAD")
+		show.Dir = boardDir
+		showOut, err := show.Output()
+		if err != nil {
+			t.Fatalf("git show in _board: %v", err)
+		}
+		wantShow := "config: reconcile the board dir's files\n" + strings.ReplaceAll(configengine.ConfigFileRel("loom"), "\\", "/")
+		if strings.TrimSpace(string(showOut)) != wantShow {
+			t.Errorf("HEAD in _board = %q; want %q", showOut, wantShow)
+		}
+	})
+}
+
+// boardHead returns the commit the board repo at boardDir is on.
+func boardHead(t *testing.T, boardDir string) string {
+	t.Helper()
+	revParse := exec.Command("git", "rev-parse", "HEAD")
+	revParse.Dir = boardDir
+	out, err := revParse.Output()
+	if err != nil {
+		t.Fatalf("git rev-parse HEAD in _board: %v", err)
+	}
+	return strings.TrimSpace(string(out))
 }

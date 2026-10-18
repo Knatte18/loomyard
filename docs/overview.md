@@ -350,6 +350,7 @@ User-facing modules each get one `lyx <module>` namespace:
   ✅ Implemented.
 - **config** — bare `lyx config` lists modules and verbs, `lyx config menu` picks a module to edit interactively, and `lyx config <module>` edits that module's config;
   `lyx config reconcile` reconciles all module config files against their live templates (dry-run by default, `--apply` writes atomically) except seed-only modules (today: `models`), which are materialized once when absent and never rewritten again since the file is operator-owned;
+  `lyx config reconcile --layer default` does the same for the files under the hub's board dir, and with `--apply`, run from the prime, commits them in `_board`;
   `lyx config <module> --set key=value` (repeatable) writes one or more config values directly with no editor invocation, for scripts/agents that need a non-interactive path.
   A key under a module's declared open map adds or rewrites one entry, e.g. `lyx config board --set labels.quarry="glyphs and the quarry index"`.
   A key that takes one value or a per-round list, such as loom's `reviewer_model` and `plan_reviewer_model`, is written as a list when its value starts with `[`, e.g. `lyx config loom --set 'plan_reviewer_model=["opus[medium]", "sonnet[high]"]'`, and a bracketed value that is not a list of scalars is refused.

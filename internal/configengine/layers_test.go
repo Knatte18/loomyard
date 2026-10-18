@@ -138,8 +138,22 @@ func TestLoad_LayerStack(t *testing.T) {
 		// retired is the spec's retired keys, and wantAbsent the top-level keys the resolved document must lack.
 		retired    map[string]configengine.Category
 		wantAbsent []string
-		want       map[string]string
+		// wantUnknown maps each layer whose file holds keys the template lacks to the keys of its one warning, over both loaders; empty means no warning.
+		wantUnknown map[configengine.Layer]string
+		want        map[string]string
 	}{
+		{
+			name: "keys the template lacks warn once per file over both loaders, naming the reconcile that removes them",
+			files: map[configengine.Layer]string{
+				configengine.LayerDefault:  fullDefault + "old_name: d\nold_map:\n  a: 1\n",
+				configengine.LayerWorktree: "port: 5\nold_port: 6\n",
+			},
+			wantUnknown: map[configengine.Layer]string{
+				configengine.LayerDefault:  "old_map.a,old_name",
+				configengine.LayerWorktree: "old_port",
+			},
+			want: map[string]string{"name": "d", "port": "5"},
+		},
 		{
 			name: "retired keys of the worktree and local layers resolve as absent",
 			files: map[configengine.Layer]string{
@@ -309,6 +323,22 @@ func TestLoad_LayerStack(t *testing.T) {
 				}
 				if string(resolved) != string(strict) {
 					t.Errorf("LoadOrTemplate = %q; want Load's %q", resolved, strict)
+				}
+			}
+
+			log := buf.String()
+			if n := strings.Count(log, "keys the template lacks"); n != len(tc.wantUnknown) {
+				t.Errorf("unknown-keys warnings = %d; want %d\nlog:\n%s", n, len(tc.wantUnknown), log)
+			}
+			wayForward := map[configengine.Layer]string{
+				configengine.LayerDefault:  `lyx config reconcile --layer default --apply\" from the hub's prime worktree`,
+				configengine.LayerWorktree: `lyx config reconcile --apply\" in this worktree`,
+			}
+			for layer, keys := range tc.wantUnknown {
+				for _, want := range []string{"layer=" + string(layer) + " ", "keys=" + keys + " ", wayForward[layer]} {
+					if !strings.Contains(log, want) {
+						t.Errorf("unknown-keys warning for layer %s lacks %q\nlog:\n%s", layer, want, log)
+					}
 				}
 			}
 

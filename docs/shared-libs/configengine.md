@@ -71,6 +71,7 @@ only its *absence* degrades.
   Under `LoadOrTemplate`, the shape-mismatch, list-element and unset-required-env-var halves still hold;
   only the absent-file half is replaced by a resolved template default.
 - **Extra/stale keys are tolerated** by both entry points and cleaned up by `lyx config reconcile` (reconciliation).
+  A default- or worktree-layer file holding them is logged at Warn, once per file and key list in a process, naming the reconcile that removes them: `lyx config reconcile --layer default --apply` from the hub's prime for a file under the board dir, `lyx config reconcile --apply` for a worktree file.
 - **A key present with an empty value counts as present** and is not flagged missing.
 
 ## Environment variable grammar
@@ -117,8 +118,9 @@ Callers never see raw YAML or unexpanded tokens.
 
 Existing config files in the old commented format (all lines commented out) are treated as empty by `Reconcile`.
 Running `lyx config reconcile --apply` from the code worktree reconciles all module configs against their templates, rewriting old-format files to live templates with all keys present.
-Because the code worktree's `_lyx` is a directory junction into its records sibling's `_lyx`, a single `lyx config reconcile` there reaches all config files (board, worktree, and fabric).
+Because the code worktree's `_lyx` is a directory junction into its records sibling's `_lyx`, a single `lyx config reconcile` there reaches the worktree's own and local config files.
 No separate command in the records sibling is needed.
+The files under the hub's board dir, the hub-wide modules' files and the per-worktree repo defaults, are reconciled by `lyx config reconcile --layer default`, applied from the hub's prime, and by the hub reconcile the first start verb after a binary change runs.
 
 ## Exported functions
 

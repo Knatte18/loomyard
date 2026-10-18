@@ -1273,3 +1273,50 @@ func TestPrintResolved(t *testing.T) {
 		})
 	}
 }
+
+// TestRestoreBoardConfig covers the undo of a part-way board-dir apply:
+// a file changed, a file removed and a file created since the snapshot all return to their snapshotted state.
+func TestRestoreBoardConfig(t *testing.T) {
+	t.Parallel()
+	board := t.TempDir()
+	changed := configengine.ConfigFile(board, "changed")
+	untouched := configengine.ConfigFile(board, "untouched")
+	removed := configengine.ConfigFile(board, "removed")
+	// A registry module's file, which the snapshot records as absent.
+	created := configengine.ConfigFile(board, "loom")
+	for path, content := range map[string]string{changed: "a: 1\n", untouched: "b: 1\n", removed: "c: 1\n"} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("create the config dir: %v", err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatalf("seed %s: %v", path, err)
+		}
+	}
+
+	prior, err := snapshotBoardConfig(board)
+	if err != nil {
+		t.Fatalf("snapshotBoardConfig() = %v; want nil", err)
+	}
+	if err := os.WriteFile(changed, []byte("a: 2\n"), 0o644); err != nil {
+		t.Fatalf("change %s: %v", changed, err)
+	}
+	if err := os.Remove(removed); err != nil {
+		t.Fatalf("remove %s: %v", removed, err)
+	}
+	if err := os.WriteFile(created, []byte("d: 1\n"), 0o644); err != nil {
+		t.Fatalf("create %s: %v", created, err)
+	}
+
+	cause := errors.New("apply failed")
+	if got := restoreBoardConfig(prior, cause); got != cause {
+		t.Errorf("restoreBoardConfig() = %v; want the cause alone", got)
+	}
+	for path, want := range map[string]string{changed: "a: 1\n", untouched: "b: 1\n", removed: "c: 1\n"} {
+		if got, err := os.ReadFile(path); err != nil || string(got) != want {
+			t.Errorf("%s = %q, %v after the restore; want %q", path, got, err, want)
+		}
+	}
+	if _, err := os.Stat(created); !os.IsNotExist(err) {
+		t.Errorf("%s exists after the restore; stat err = %v; want it removed", created, err)
+	}
+}
