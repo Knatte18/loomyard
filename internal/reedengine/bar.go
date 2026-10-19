@@ -4,7 +4,8 @@
 // They read own windows, the overview window among them, through the window user options @lyx_own, @strand_color and @lyx_unseen.
 // Line 1 follows window index order: the overview, the agents in start order, then the shell button.
 // A window carrying the window user option @lyx_hidden still gets no button.
-// Every option read here is display only but one: no Go decision reads @strand_color or @lyx_unseen, while @lyx_follow, which the follow button shows, is the follow state that followingLocked reads.
+// Line 2 lists the session carrying the session user option @lyx_prime_session first, then every other session in the #{S:} loop's own order.
+// Every option read here is display only but one: no Go decision reads @strand_color, @lyx_unseen or @lyx_prime_session, while @lyx_follow, which the follow button shows, is the follow state that followingLocked reads.
 
 package reedengine
 
@@ -51,15 +52,23 @@ const (
 	// unseenClearHookCommand clears @lyx_unseen on the window the client moved to, which is the hook's context window.
 	unseenClearHookCommand = "set-option -w -u @lyx_unseen"
 
-	// sessionButtonFormat and currentSessionButtonFormat are one session button each, a session range.
-	// The current session shows its full name lit, every other session its name cut to 12 characters.
-	sessionButtonFormat        = "#[range=session|#{session_id} " + unlitButtonStyle + "] #{=12:session_name} #[norange list=on default] "
-	currentSessionButtonFormat = "#[range=session|#{session_id} list=focus bg=yellow fg=black bold] #{session_name} #[norange list=on default] "
+	// primeSessionOption is the session user option that marks the prime's session, which line 2 lists first.
+	// Like the bar's other options it is display only, and no Go decision reads it.
+	primeSessionOption = "@lyx_prime_session"
+
+	// sessionButtonFormat is one session button, a session range.
+	// The client's session shows its full name lit, every other session its name cut to 12 characters.
+	sessionButtonFormat = "#{?#{==:#{session_name},#{client_session}},#[range=session|#{session_id} list=focus bg=yellow fg=black bold] #{session_name} #[norange list=on default] ,#[range=session|#{session_id} " + unlitButtonStyle + "] #{=12:session_name} #[norange list=on default] }"
 
 	// followButtonFormat is the follow button, a user range labelled follow, lit green while the current session's @lyx_follow is not off and unlit while it is.
 	followButtonFormat = "#[range=user|follow #{?#{!=:#{@lyx_follow},off},bg=green fg=black bold," + unlitButtonStyle + "}] follow #[norange list=on default] "
 
-	// statusFormatSessions is status-format[1]: one button per session in the #{S:} loop's own session-id order, then the follow button, then the time right-aligned.
-	// Each loop body is wrapped in reedSessionFilter, so a session that does not count as reed's gets no button.
-	statusFormatSessions = listPrologueFormat + "#{S:#{?" + reedSessionFilter + "," + sessionButtonFormat + ",}," + "#{?" + reedSessionFilter + "," + currentSessionButtonFormat + ",}}" + followButtonFormat + "#[nolist align=right]%H:%M "
+	// statusFormatSessions is status-format[1]: the prime's session button, then one button per other session, then the follow button, then the time right-aligned.
+	// The first loop draws only a session matching both reedSessionFilter and the prime mark, and draws nothing when no session is marked.
+	// The second draws every other session matching reedSessionFilter, in the #{S:} loop's own order: session name on tmux 3.4 and session id on newer tmux.
+	// Each loop takes one format, the only shape tmux 3.4 accepts.
+	statusFormatSessions = listPrologueFormat +
+		"#{S:#{?#{&&:" + reedSessionFilter + ",#{==:#{" + primeSessionOption + "},1}}," + sessionButtonFormat + ",}}" +
+		"#{S:#{?#{&&:" + reedSessionFilter + ",#{!=:#{" + primeSessionOption + "},1}}," + sessionButtonFormat + ",}}" +
+		followButtonFormat + "#[nolist align=right]%H:%M " + "#[nolist align=right]%H:%M "
 )

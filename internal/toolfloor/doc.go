@@ -25,10 +25,10 @@
 // The tmux features found are pane options and pane user options through `set-option -p` and `show-options -p`, the status-format list and range markup (`list=`, `range=window|`, `range=session|`, `norange`, `nolist`), `window-size latest`, the `-f` filter of `list-sessions`, `break-pane -b`, the `#{T:}`, `#{E:}`, `#{e|…}`, `#{>:}`, `#{&&:}` and `#{||:}` format modifiers and user ranges (`range=user|`).
 // All are at or below the floor, tmux 3.4 being the release that added user ranges.
 //
-// Three forms are found above the floor.
-// `cherry-pick --empty=drop` (git 2.45) was found and is replaced by a plain pick that skips a change HEAD already carries and refuses a commit empty from the start.
-// The two-format `#{S:}` loop, which tmux 3.4 does not run, is found and to be replaced.
-// The `allow-set-title` pane option (tmux 3.5) is an optional above-floor feature lyx keeps:
+// No feature lyx requires is newer than the floor.
+// `cherry-pick --empty=drop` (git 2.45) was replaced by a plain pick that skips a change HEAD already carries and refuses a commit empty from the start.
+// The two-format `#{S:}` loop, which tmux 3.4 does not run, was replaced by two single-format loops, the prime's session first.
+// The one above-floor feature lyx uses is the `allow-set-title` pane option (tmux 3.5), which stays optional:
 // the launch of a strand pane sets it to stop the agent overwriting the pane title, and on tmux 3.4 the `set-option` fails, reed Warns and continues, so the title stays one the agent can overwrite.
 // It is never met by raising TmuxFloor.
 //
