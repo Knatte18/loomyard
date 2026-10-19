@@ -95,7 +95,7 @@ func menuLauncherRel(l *lyxcwd.Location, primeName string) (string, error) {
 //
 // rec is the calling verb's own recorder. Every entry here is conditional on an observation, never
 // on plain success, because writeLaunchers doubles as the repair path (reconcile.go's
-// restorePortalAndLaunchers calls it against an already-wired pair): an unconditional record would
+// restoreLaunchers calls it against an already-wired pair): an unconditional record would
 // claim writes that did not happen on that path.
 //   - The launcher directory: root.MkdirAll succeeds on an already-existing directory, so the path is
 //     stat'd BEFORE the MkdirAll and KindDirCreated is recorded only when it was absent.

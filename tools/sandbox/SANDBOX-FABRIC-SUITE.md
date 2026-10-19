@@ -386,7 +386,7 @@ Then three variations, each on its own hub.
 **Goal:** "Break the hub-level `_portals`/`_launchers` artefacts and confirm the repair verb repairs them and the teardown verb owns only what it created."
 
 **Watch:** After `lyx fabric add <slug>`, confirm `<hub>/_portals/<slug>` is a link resolving through to `<hub>/<slug>-weft/_lyx` and `<hub>/_launchers/<slug>/` holds `ide` and `fabric-checkout` scripts.
-Delete both, then run `lyx fabric reconcile`: it must report `portal_restored` for that pair -- not `already_healthy` -- and both artefacts must be back. A second `reconcile` must report `already_healthy`. (Historical: reconcile reported `already_healthy` and `pairs` reported `junction_healthy: true` for a pair whose portal and launchers were gone, and restored neither, leaving remove-and-re-add as the only recovery.)
+Delete the launcher directory, then run `lyx fabric reconcile`: it must report `launchers_restored` for that pair -- not `already_healthy` -- and the directory must be back, with no portal restored. A second `reconcile` must report `already_healthy`. (Historical: reconcile reported `already_healthy` and `pairs` reported `junction_healthy: true` for a pair whose portal and launchers were gone, and restored neither, leaving remove-and-re-add as the only recovery.)
 Then ownership: put a file of your own inside `<hub>/_launchers/<slug>/` and run `lyx fabric remove <slug>`. Fabric's two scripts must go, your file must survive, and the pair must still be torn down. Do the same with `<hub>/_portals/<slug>` replaced by a real directory holding a file -- it too must survive.
 Finally confirm the hub's prime worktree is left alone throughout: it never had a portal or a launcher directory, and `reconcile` must not start creating them.
 

@@ -263,10 +263,10 @@ missing, not a link, or points elsewhere, this re-wires every junction for
 that pair in one call — a pair with only one junction broken is repaired,
 not reported already-healthy.
 
-It also restores a pair's hub-level portal junction (_portals/<slug>) and
-launcher directory (_launchers/<slug>) when either has gone missing, reporting
-portal_restored rather than already_healthy. The hub's prime worktree is
-skipped: it never had either, so there is nothing there to repair.
+It also restores a pair's launcher directory (_launchers/<slug>) when it has
+gone missing, reporting launchers_restored rather than already_healthy. The
+hub's prime worktree and a local-only pair are skipped: neither has a launcher
+directory, so there is nothing there to repair.
 
 It also heals every hub-wide config file, such as fabric.yaml or gate.yaml, at
 the hub's board dir: an absent board.yaml is seeded from the prime worktree's copy
