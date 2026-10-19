@@ -20,6 +20,8 @@ type Root struct {
 	remove   func(string) error
 	retryNow func() time.Time
 	sleep    func(time.Duration)
+	// runName draws a candidate run directory name, replaceable so a test forces a taken one.
+	runName func() string
 }
 
 // Path returns the root's absolute path.
@@ -43,7 +45,7 @@ func openRoot(path string, uid int, now func() time.Time) (*Root, error) {
 	if err := checkRoot(path, uid); err != nil {
 		return nil, err
 	}
-	return &Root{path: path, now: now, remove: os.RemoveAll, retryNow: time.Now, sleep: time.Sleep}, nil
+	return &Root{path: path, now: now, remove: os.RemoveAll, retryNow: time.Now, sleep: time.Sleep, runName: randomRunName}, nil
 }
 
 // resolveRootPath returns the root path under tempDir.
