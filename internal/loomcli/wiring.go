@@ -12,7 +12,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"slices"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/alignment"
@@ -148,13 +147,24 @@ func reworkCommitPathspec(location *lyxcwd.Location) []string {
 	return paths
 }
 
-// planCommitPathspec returns the pathspec the plan commit stages: the plan directory, and webster's durable directory too when it holds a file or Plan-Write's rotation archived a run record under the plan.
-// Webster's directory is tracked, so a record moved out of it leaves deletions that only that pathspec stages, together with the archive, in the same commit.
-// It is left out otherwise, since git refuses a pathspec that matches nothing in the index or the working tree.
+// planCommitPathspec returns the pathspec the plan commit stages: the plan directory, and webster's durable directory too when it holds a file or git still tracks a path under it.
+// Webster's directory is tracked, so a record Plan-Write's rotation moved out of it leaves pending deletions that only that pathspec stages, together with the archive under the plan, in the same commit.
+// It is left out otherwise, since git refuses a pathspec that matches nothing in the index or the working tree;
+// an archived run record alone does not match, because once its deletions are committed nothing under webster's directory is left.
+// A failed tracked check keeps the path, since dropping it could leave the deletions unstaged.
 func planCommitPathspec(location *lyxcwd.Location) []string {
+	return planCommitPathspecWith(location, func(rel string) (bool, error) {
+		return fabricengine.PathTracked(location.AnchorPath(), rel)
+	})
+}
+
+// planCommitPathspecWith is planCommitPathspec with the index lookup injected as tracked.
+func planCommitPathspecWith(location *lyxcwd.Location, tracked func(rel string) (bool, error)) []string {
 	paths := []string{planparser.PlanDirRel()}
-	archived := loomshed.ArchivedPlanWebsterDirs(planparser.PlanDir(location.AnchorPath()))
-	if holdsFile(websterengine.Dir(location.AnchorPath())) || slices.ContainsFunc(archived, holdsFile) {
+	if holdsFile(websterengine.Dir(location.AnchorPath())) {
+		return append(paths, websterengine.DirRel())
+	}
+	if isTracked, err := tracked(websterengine.DirRel()); err != nil || isTracked {
 		paths = append(paths, websterengine.DirRel())
 	}
 	return paths
