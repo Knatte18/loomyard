@@ -3,6 +3,16 @@
 // RunStdin is the second checked form, Run with a stdin text fed to git, for a command such as `cat-file --batch-check` that reads its operands there.
 // RunGit is the raw form, for the sites where a non-zero exit is an answer rather than a failure.
 // Both wrap one unexported exec core, and an exec-level failure, git not being runnable at all, is returned unwrapped so errors.As on *GitError means "git ran and rejected this".
+// The floor error of a git below lyx's minimum is the other non-*GitError result, since no git command ran to produce it.
+//
+// # Floor
+//
+// The exec core checks git's version once per process before its first command, by running `git --version` directly and handing the line to toolfloor.
+// A parsed version below the floor makes every entry point return the *toolfloor.FloorError, and nothing bypasses a parsed refusal.
+// A probe that could not run returns its exec error and is not cached, so the next command probes again.
+// An unparseable line is admitted with one Warn naming it, and that answer is cached.
+// CheckFloor exposes the same check to a git spawn outside the exec core.
+// Bound: a long-lived daemon keeps its cached answer after a git upgrade during its life.
 //
 // # Remote bounds
 //

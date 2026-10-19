@@ -63,7 +63,7 @@ func main() {
 	os.Exit(code)
 }
 
-// logGitKill logs the outcome of killing a timed-out remote git command, which gitexec cannot log itself.
+// logGitKill logs the outcome of killing a timed-out remote git command, as the process owner's reporter.
 // A non-nil groupErr means git was killed alone, so a descendant such as git-remote-https may outlive it.
 func logGitKill(args []string, pid int, groupErr error) {
 	if groupErr != nil {
