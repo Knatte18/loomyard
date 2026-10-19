@@ -50,7 +50,7 @@ The list is data, not code — [`contracts/recipes/loom-recipe.yaml`](contracts/
 Preflight → Loom-Preflight
   → Discussion-Write → [Discussion review]
   → Plan-Write       → [Plan review]
-  → Batchifier → Webster → [Webster review]
+  → Webster → [Webster review]
   → Describe → Merge-In → [Merge review] → Publish → PR-Gate ⇄ PR-Rework
   → Finalize → Friction-Reflect
 ```

@@ -3,6 +3,7 @@
 // Defines the Config type mirroring loom.yaml's keys and LoadConfig, which uses internal/configengine.Load with ConfigTemplate() to strictly validate and resolve loom's config file,
 // then validates the discussion, plan, judge, friction, and driver role model-specs and every entry of the shared reviewer_model and fixer_model lists' grammar via modelspec.Parse, plus every entry of each review segment's own <segment>_reviewer_model and <segment>_fixer_model list that is set, an empty value meaning the shared list, rejects a negative value on each of the four timeout knobs, and rejects a parent_review_wait_min, review_circling_checkpoint or review_hard_max_bounces below 1, rejects a review_max_bounces, discussion_max_bounces, plan_max_bounces, webster_max_bounces or merge_max_bounces below 0 (0 giving zero rounds, null taking review_max_bounces) or any per-perch hard cap below 0, rejects a perch whose resolved hard cap is below its resolved budget, and resolves each non-empty entry of every perch's fan and fix fan key through burlerengine.ValidateFanKeys,
 // so a mistake in any of those validated keys fails loud at load time rather than hours into a run when the discussion, plan, review, judge, friction, or driver producer first spawns.
+// implementer names the engine of the Webster row, the implementer; it is read and validated where the recipe builds that row, never here.
 // step_idle_timeout_min is the minutes a --until-stop step may show no activity before the loop kills it; a value below 1 is raised to 1 with one Warn and never refused.
 // discussion_reviewer_fan, plan_reviewer_fan, webster_reviewer_fan and merge_reviewer_fan each name a fan from burler.yaml, or list one per round, and turn the lens fan on for Discussion-Review, Plan-Review, Webster-Review and Merge-Review; an empty entry, the default, runs that round solo.
 // discussion_fixer_fan, plan_fixer_fan, webster_fixer_fan and merge_fixer_fan do the same for the fixer: an empty entry runs the single fixer, and a fan name runs the twill fixer with that fan's lenses.
@@ -572,6 +573,7 @@ func ConfigSpec() configengine.Spec {
 			"plan":                       none,
 			"plan_timeout_min":           none,
 			"plan_lenses":                guard,
+			"implementer":                none,
 			"reviewer_model":             none,
 			"fixer_model":                none,
 			"discussion_reviewer_model":  none,

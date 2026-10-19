@@ -1,6 +1,6 @@
 // entries_simple.go implements the registry entries that take an empty Config and validate only the
 // Env fields they read: preflightEntry, mergeInEntry, publishEntry, prAlignEntry, finalizeEntry, frictionReflectEntry,
-// loomPreflightEntry, batchifierEntry, stubEntry, and websterEntry.
+// loomPreflightEntry, stubEntry, and websterEntry, the webster implementer.
 
 package shedrecipe
 
@@ -153,18 +153,6 @@ func loomPreflightEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedPr
 	return loomshed.NewLoomPreflight(row.Name, env.StatusPath, env.StatusLockPath, env.ConfigDirs), nil
 }
 
-// batchifierEntry is the Constructor for the "Batchifier" registry row.
-// It validates Env.ConfigDirs.Anchor and returns loomshed.NewBatchifier(name, env.ConfigDirs).
-func batchifierEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
-	if err := configRejectUnknown(cfg); err != nil {
-		return nil, err
-	}
-	if err := requireAbsRoot("Batchifier", "ConfigDirs.Anchor", env.ConfigDirs.Anchor); err != nil {
-		return nil, err
-	}
-	return loomshed.NewBatchifier(row.Name, env.ConfigDirs), nil
-}
-
 // stubEntry is the Constructor for the "Stub" registry row: it validates no Env field and returns
 // loomshed.NewStub(name).
 func stubEntry(row RowIdentity, cfg Config, _ Env) (shedengine.ShedProducer, error) {
@@ -174,7 +162,7 @@ func stubEntry(row RowIdentity, cfg Config, _ Env) (shedengine.ShedProducer, err
 	return loomshed.NewStub(row.Name), nil
 }
 
-// websterEntry is the Constructor for the "Webster" registry row: it resolves the row's "gates" Config key through resolveGateSpec onto RunDeps.Gate, validates Env.ConfigDirs.Anchor, Env.WebsterRun, Env.CommitWebster, and exactly four inner fields of Env.WebsterDeps -- Starter, Stopper, Engine, and RefMatcher -- and returns loomshed.NewWebsterProducer(name, env.ConfigDirs, env.WebsterRun, deps, env.CommitWebster).
+// websterEntry is the Constructor of the webster implementer, which the "Implementer" registry row builds when its setting names webster: it resolves the row's "gates" Config key through resolveGateSpec onto RunDeps.Gate, validates Env.ConfigDirs.Anchor, Env.WebsterRun, Env.CommitWebster, and exactly four inner fields of Env.WebsterDeps -- Starter, Stopper, Engine, and RefMatcher -- and returns loomshed.NewWebsterProducer(name, env.ConfigDirs, env.WebsterRun, deps, env.CommitWebster).
 //
 // The gate is resolved here for the same reason the three already-gated rows resolve theirs here:
 // one key means one thing at every gated site, and a reader of the recipe can see which validator

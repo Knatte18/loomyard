@@ -150,7 +150,7 @@ func TestNoGatedRowAuthorizesForkSubagents(t *testing.T) {
 		{
 			name: "gated row of an engine that is neither a writer nor BurlerFix",
 			recipe: shedbuild.Recipe{Producers: []shedbuild.Row{{
-				Name: "Other", Engine: "Webster", Config: map[string]any{"gates": []any{map[string]any{"name": "verify"}}},
+				Name: "Other", Engine: "Implementer", Config: map[string]any{"gates": []any{map[string]any{"name": "verify"}}},
 			}}},
 			wantViolations: 1,
 		},
@@ -176,7 +176,7 @@ func TestWebsterRoundCarriesNoGateKey(t *testing.T) {
 
 	found := false
 	for _, row := range r.Producers {
-		if row.Engine != "Webster" {
+		if row.Engine != "Implementer" {
 			continue
 		}
 		found = true
@@ -185,6 +185,6 @@ func TestWebsterRoundCarriesNoGateKey(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatalf("no row in the embedded recipe has engine %q; this test has nothing to assert", "Webster")
+		t.Fatalf("no row in the embedded recipe has engine %q; this test has nothing to assert", "Implementer")
 	}
 }
