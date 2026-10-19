@@ -48,7 +48,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
@@ -1041,7 +1040,7 @@ func stepCreateRow_IncompletePairRefusesRatherThanSkippingAdd(t *testing.T, h *h
 
 // TestBattenIntegration_CreateRow_IncompletePairRemedyWorksVerbatimOnAPrefixedHub follows the
 // incomplete-pair remedy exactly as worded, from prime, for a SIGKILL landing after Add created the
-// pair's other side and its portal: the remedy must name the prefixed branch Add created, and doing
+// pair's other side: the remedy must name the prefixed branch Add created, and doing
 // what it says must leave nothing that makes the resumed create refuse.
 func TestBattenIntegration_CreateRow_IncompletePairRemedyWorksVerbatimOnAPrefixedHub(t *testing.T) {
 	// Not a step of TestBattenIntegration_Rows: seeding a branch prefix into the fabric config changes the hub for every pair created after it.
@@ -1054,20 +1053,13 @@ func TestBattenIntegration_CreateRow_IncompletePairRemedyWorksVerbatimOnAPrefixe
 	target := h.PairCodeWorktree(slug)
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "worktree", "add", "-b", branch, target)
 
-	// Stands in for Add's own later steps -- the other side's worktree and the portal -- run
+	// Stands in for Add's own later step -- the other side's worktree -- run
 	// directly rather than through Add so the junctions this test needs missing stay missing.
 	recordsRepoRoot, err := fabricengine.RecordsRepoRoot(h.Location)
 	if err != nil {
 		t.Fatalf("resolve records repo root: %v", err)
 	}
 	gitkit.MustRun(t, recordsRepoRoot, "git", "worktree", "add", "-b", fabricengine.RecordsBranchName(branch), h.PairRecordsSibling(slug))
-	portal := fabricengine.PortalLink(h.Location, slug)
-	if err := os.MkdirAll(filepath.Dir(portal), 0o755); err != nil {
-		t.Fatalf("mkdir portals: %v", err)
-	}
-	if err := os.Symlink(filepath.Join(target, h.Location.AnchorRel, lyxdirs.LyxDirName), portal); err != nil {
-		t.Fatalf("plant portal: %v", err)
-	}
 
 	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
 		t.Fatal("ReadStatus must not be called by the create row")

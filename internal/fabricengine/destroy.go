@@ -613,15 +613,15 @@ func resolvePathOwnership(own pathOwnership, target string) (ok bool, reason str
 		return true, ""
 
 	case pathOwnershipUnderGeometryRoot:
-		// The geometry-root set has exactly one member today, the value launchersDir returns: a
-		// directory whose base name is launchersDirName. A root outside that set is itself a
-		// refusal, so a call site cannot satisfy this check by naming a convenient parent.
+		// The geometry-root set has two members, the value launchersDir returns and the retired portals container:
+		// a directory whose base name is launchersDirName or portalsDirName.
+		// A root outside that set is itself a refusal, so a call site cannot satisfy this check by naming a convenient parent.
 		//
 		// The base-name test runs against the RESOLVED root, not the nominal one, for the same
 		// reason pathAtOrBelow now resolves: a link standing where the geometry root belongs is
 		// not the geometry root, and testing the nominal spelling would let one masquerade as it.
 		resolvedRoot := resolveAncestorSymlinks(own.root)
-		if filepath.Base(resolvedRoot) != launchersDirName {
+		if base := filepath.Base(resolvedRoot); base != launchersDirName && base != portalsDirName {
 			return false, fmt.Sprintf("%s is not a fabric geometry root", own.root)
 		}
 		if !pathAtOrBelow(own.root, target) {
@@ -653,7 +653,7 @@ func resolvePathOwnership(own pathOwnership, target string) (ok bool, reason str
 		// recorded, not a fully-resolved chain. PointsTo fully resolves — which fails outright when
 		// a later segment is gone (a stale-pair prune, where the warp side a wired junction chains
 		// through no longer exists) and silently walks past a target that is itself a further
-		// symlink (a portal wired at a warp `_lyx` that itself points at weft), comparing an
+		// symlink (a junction wired at a warp `_lyx` that itself points at weft), comparing an
 		// end state a one-hop expectedTarget was never meant to match.
 		rawTarget, err := fslink.RawTarget(target)
 		if err != nil {
@@ -879,7 +879,7 @@ func resolveManagedBranch(l *lyxcwd.Location, branchPrefix, branch string) (bool
 // there, which is precisely the case a new call site's first test is least likely to cover.
 //
 // An absent target is then a no-op success before the four checks run — most ownership predicates
-// fail on a path that is not there, and removePortal, removeJunctionRecords, removeLaunchers and
+// fail on a path that is not there, and removeJunctionRecords, removeLaunchers and
 // Remove's tolerance of an already-absent weft worktree are all documented as idempotent today, so
 // refusing here would turn those into hard failures. os.Lstat, not os.Stat, is what decides
 // "absent": a dangling link is present as a link even though its target is not, and

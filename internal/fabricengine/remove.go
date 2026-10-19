@@ -1,6 +1,6 @@
 // remove.go implements Remove: every refusal — slug, prime, target-exists, merge-in-progress and the no-force dirtiness checks with their status probes — runs first, through the read-only probe RemoveRefusal, and leaves the hub and the weft origin untouched.
 // Then the sibling's pending records are committed (commitPendingRecords) and the weft tip is archived,
-// and only then are the portal and launchers torn down, so a refused call never loses a launcher or pushes a tag that misses uncommitted records.
+// and only then are the launchers torn down, so a refused call never loses a launcher or pushes a tag that misses uncommitted records.
 // The weft branch it removes is RecordsBranchName(warpBranch).
 // After both worktrees are gone it also deletes the pair's local warp branch, but only when the
 // destructive gate proves no work is lost: every commit is on another ref or already landed on the
@@ -36,7 +36,7 @@ func (e siblingDirtyRefusal) Error() string { return e.msg }
 
 func (e siblingDirtyRefusal) Unwrap() error { return ErrPairSiblingDirty }
 
-// ErrPairNotFound is the sentinel Remove's error wraps when nothing of the pair remains: no worktree on either side, no branch locally or on origin, no portal and no launcher entry.
+// ErrPairNotFound is the sentinel Remove's error wraps when nothing of the pair remains: no worktree on either side, no branch locally or on origin, and no launcher entry.
 // It is worded without naming either side of the pair so callers outside the fabric vocabulary owner set can match it with errors.Is.
 var ErrPairNotFound = errors.New("pair not found")
 
@@ -46,8 +46,6 @@ const (
 	RemoveStepRecordCommit = "record_commit"
 	// RemoveStepArchive is the archive tag pushed to origin.
 	RemoveStepArchive = "archive"
-	// RemoveStepPortal is the removal of the pair's portal link.
-	RemoveStepPortal = "portal"
 	// RemoveStepLaunchers is the removal of the pair's launcher directory.
 	RemoveStepLaunchers = "launchers"
 	// RemoveStepTaskWorktree is the removal of the task worktree.
@@ -130,7 +128,7 @@ type RemoveResult struct {
 // A failure after the archive leaves the tag in place for the re-run to reuse.
 // The archive runs whatever remote says, since it protects the local branch's commits as much as the remote copy, and force does not skip it: force answers dirtiness only.
 // A weft repo with no origin proceeds, with ArchiveSkippedReason set on the result.
-// Portal and launcher cleanup run after the archive but before the git removal.
+// Launcher cleanup runs after the archive but before the git removal.
 // remote gates whether the pair's weft branch, once deleted locally, is also deleted on the weft
 // repo's origin remote; a remote deletion failure never makes Remove return a non-nil error.
 // Once both worktrees are removed, Remove deletes the local warp branch (BranchPrefix + slug) through
@@ -170,6 +168,9 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (
 		return RemoveResult{}, err
 	}
 	steps := []string{}
+
+	// Registered before the teardown lock, so it runs after the lock's release on every exit past the refusals.
+	defer regenerateAfterVerb(rec, l, "remove")
 
 	// The pair's detached pushes hold this lock shared, so no push runs against a worktree this call deletes.
 	// A failure after this point that leaves a worktree behind respawns the pair's push once the lock is released, since a child may have exited on the held lock.
@@ -217,7 +218,7 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (
 			steps = append(steps, RemoveStepRecordCommit)
 		}
 
-		// Archive the weft tip after every refusal and before the first teardown mutation: a failed archive leaves the worktrees, portal, launchers and both branches untouched, so a plain re-run retries it.
+		// Archive the weft tip after every refusal and before the first teardown mutation: a failed archive leaves the worktrees, launchers and both branches untouched, so a plain re-run retries it.
 		// force answers dirtiness only, so it never skips this step.
 		archiveTag, archiveSkippedReason, err = archiveWeftTip(rec, l, slug, weftBranch)
 		if err != nil {
@@ -228,15 +229,9 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (
 		}
 	}
 
-	// removePortal and removeLaunchers are best-effort: an operational failure is discarded exactly as
+	// removeLaunchers is best-effort: an operational failure is discarded exactly as
 	// before, but a gate refusal must surface rather than vanish at the verb the slice's worst defect
 	// came from.
-	if err := surfaceRefusal(removePortal(rec, l, slug)); err != nil {
-		return RemoveResult{}, err
-	}
-	if pair.portal && !pathPresent(PortalLink(l, slug)) {
-		steps = append(steps, RemoveStepPortal)
-	}
 	if err := surfaceRefusal(removeLaunchers(rec, l, slug)); err != nil {
 		return RemoveResult{}, err
 	}
@@ -460,8 +455,8 @@ type pairState struct {
 	siblingWorktree bool
 	// taskBranch and siblingBranch report the pair's local branches.
 	taskBranch, siblingBranch bool
-	// portal and launchers report the hub-level entries Remove tears down.
-	portal, launchers bool
+	// launchers reports the hub-level launcher directory Remove tears down.
+	launchers bool
 	// localMark names the surviving branch carrying the local-only mark: the task branch when it is marked, else the sibling branch; empty when neither is.
 	localMark string
 }
@@ -478,7 +473,6 @@ func (t *Topology) inspectPair(l *lyxcwd.Location, slug string) (pairState, erro
 		}
 	}
 	s.siblingWorktree = pathPresent(RecordsWorktreePath(l, slug))
-	s.portal = pathPresent(PortalLink(l, slug))
 	s.launchers = pathPresent(LauncherDir(l, slug))
 
 	taskBranch, err := localBranchExists(l.WorktreePath(), t.cfg.BranchPrefix+slug)
@@ -519,7 +513,7 @@ func (t *Topology) inspectPair(l *lyxcwd.Location, slug string) (pairState, erro
 // Origin is asked only after every local part is found gone, and only for a repository that has an origin, so a pair with any local remnant never costs a network call.
 // A stray path at the pair's location is named in the error and left alone.
 func (t *Topology) refuseWhenNothingRemains(l *lyxcwd.Location, slug string, s pairState) error {
-	if s.taskWorktree || s.siblingWorktree || s.taskBranch || s.siblingBranch || s.portal || s.launchers {
+	if s.taskWorktree || s.siblingWorktree || s.taskBranch || s.siblingBranch || s.launchers {
 		return nil
 	}
 

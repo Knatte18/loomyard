@@ -5,42 +5,26 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// WriteHubWorkspace writes content to the prime's hub workspace file and reports whether it wrote.
-// It first creates _portals/<AnchorRel>, because clone never creates it,
-// so the workspace file's _portals folder resolves.
-// Removing the last pair leaves that directory in place.
-// An unchanged file is not rewritten at all, unlike writeLauncherScriptIfChanged, which rewrites unconditionally.
+// writeHubWorkspace writes content to the hub workspace file in place and reports whether it wrote.
+// An unchanged file is not rewritten at all.
 // A read error other than not-exist is returned rather than overwriting bytes it could not compare.
-// Every write goes through an os.Root at the hub, so a symlink planted at any component that escapes the hub is refused.
-// It records no Mutations: it is not a fabric verb.
-func WriteHubWorkspace(l *lyxcwd.Location, primeName string, content []byte) (bool, error) {
+// Every read and write goes through an os.Root at the hub, so a symlink planted at the workspace path that escapes the hub is refused.
+// It creates no directory and records no Mutations: the caller records the write.
+func writeHubWorkspace(l *lyxcwd.Location, content []byte) (bool, error) {
 	root, err := os.OpenRoot(l.HubPath)
 	if err != nil {
 		return false, fmt.Errorf("open hub root %s: %w", l.HubPath, err)
 	}
 	defer root.Close()
 
-	portalsRel, err := hubRel(l.HubPath, portalAnchorDir(l))
+	fileRel, err := hubRel(l.HubPath, HubWorkspacePath(l))
 	if err != nil {
 		return false, err
 	}
-	if err := root.MkdirAll(portalsRel, 0o755); err != nil {
-		return false, fmt.Errorf("create portals dir %s: %w", portalsRel, err)
-	}
-
-	fileRel, err := hubRel(l.HubPath, HubWorkspacePath(l, primeName))
-	if err != nil {
-		return false, err
-	}
-	if err := root.MkdirAll(filepath.Dir(fileRel), 0o755); err != nil {
-		return false, fmt.Errorf("create workspace dir %s: %w", filepath.Dir(fileRel), err)
-	}
-
 	existing, err := root.ReadFile(fileRel)
 	switch {
 	case err == nil && string(existing) == string(content):

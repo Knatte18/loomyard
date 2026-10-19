@@ -444,6 +444,8 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 
 	weftBase := filepath.Join(RecordsWorktree(l), l.AnchorRel)
 
+	regenerateAfterVerb(rec, l, "clone")
+
 	return CloneResult{
 		HubPath:             hubPath,
 		Anchor:              anchor,

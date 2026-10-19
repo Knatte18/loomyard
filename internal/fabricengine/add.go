@@ -1,4 +1,4 @@
-// add.go implements the transactional Add: it creates the warp worktree, portal, and launchers, wires junctions, and records and commits the pair's parent-branch and parent-worktree provenance, pushing nothing.
+// add.go implements the transactional Add: it creates the warp worktree and launchers, wires junctions, and records and commits the pair's parent-branch and parent-worktree provenance, pushing nothing.
 // It performs a best-effort full rollback on any post-creation failure, so a partial worktree PAIR is never left behind.
 // The rollback also deletes the warp branch this Add created, under any branch_prefix, and never touches origin — see rollbackAdd.
 // Whether the pair is live, which branches origin lends it and whether a leftover remote branch from a removed pair is replaceable are all decided at pre-flight, before the first mutation (see remoteleftover.go).
@@ -137,7 +137,7 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (AddRes
 }
 
 // AddLocal creates a local-only pair: the same worktrees and provenance record as Add.
-// No origin is read or written, no portal or launcher is created, and both branches are marked local so no push publishes them.
+// No origin is read or written, no launcher is created, and both branches are marked local so no push publishes them.
 // It refuses with *ErrLocalAddOverOrdinary when either branch already exists as an ordinary pair's branch, locally unmarked or as an origin remote-tracking ref;
 // a branch that carries the mark is adopted.
 func (t *Topology) AddLocal(l *lyxcwd.Location, slug string) (AddResult, error) {
@@ -258,7 +258,10 @@ func (t *Topology) add(l *lyxcwd.Location, slug string, opts AddOptions, local b
 		}
 	}
 
-	// The pre-flight refusals have passed: switch both stores' auto gc off before the first mutation.
+	// The pre-flight refusals have passed: every exit from here, a rollback included, regenerates the hub workspace file.
+	defer regenerateAfterVerb(rec, l, "add")
+
+	// Switch both stores' auto gc off before the first mutation.
 	if gcErr := disableStoreAutoGC(l); gcErr != nil {
 		logger.Warn("fabricengine: disabling store auto gc failed (non-fatal)", "verb", "add", "slug", slug, "error", gcErr)
 	}
@@ -374,13 +377,8 @@ func (t *Topology) add(l *lyxcwd.Location, slug string, opts AddOptions, local b
 		}
 	}
 
-	// A local pair is listed by no hub workspace, so it gets no portal and no launchers.
+	// A local pair gets no launchers.
 	if !local {
-		if err := createPortal(rec, l, slug); err != nil {
-			_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
-			return AddResult{}, err
-		}
-
 		if err := writeLaunchers(rec, l, slug); err != nil {
 			_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
 			return AddResult{}, err
@@ -550,10 +548,9 @@ type addWarpBranch struct {
 // A refused or failed branch deletion is logged, not swallowed (this function's return is discarded by every caller), so a branch left behind is visible in the trace.
 // Rollback never restores a remote weft branch Add's step 11 replaced:
 // its content stays reachable from the archive tag, and recreating it would re-block the next retry.
-// rec is Add's own recorder, threaded through to all six gate-bound calls this function reaches
-// (its own removeGitWorktree and deleteBranch, plus removeWeftWorktree, removeWarpJunction,
-// removePortal and removeLaunchers), so a rollback's own destructions land in the same record as
-// Add's creations, in execution order.
+// rec is Add's own recorder, threaded through to all five gate-bound calls this function reaches
+// (its own removeGitWorktree and deleteBranch, plus removeWeftWorktree, removeWarpJunction and removeLaunchers),
+// so a rollback's own destructions land in the same record as Add's creations, in execution order.
 // The origin record needs no removal step of its own: on the created-branch path the existing
 // weft-worktree and weft-branch removal (step 1) takes the record with it, and on the
 // adopted-weft-branch path the record's commit is deliberately left in place — reverting or
@@ -586,21 +583,14 @@ func (t *Topology) rollbackAdd(rec *Mutations, l *lyxcwd.Location, slug, warpBra
 		}
 	}
 
-	// (2) Remove warp portal
-	if err := removePortal(rec, l, slug); err != nil {
-		if firstErr == nil {
-			firstErr = err
-		}
-	}
-
-	// (3) Remove warp launchers
+	// (2) Remove warp launchers
 	if err := removeLaunchers(rec, l, slug); err != nil {
 		if firstErr == nil {
 			firstErr = err
 		}
 	}
 
-	// (4) Remove warp worktree
+	// (3) Remove warp worktree
 	removeReq := pathRequest{
 		what:      "remove warp worktree",
 		container: l.HubPath,
@@ -618,7 +608,7 @@ func (t *Topology) rollbackAdd(rec *Mutations, l *lyxcwd.Location, slug, warpBra
 		firstErr = err
 	}
 
-	// (5) Delete the warp branch this Add created, locally; an adopted branch predates this Add and stays.
+	// (4) Delete the warp branch this Add created, locally; an adopted branch predates this Add and stays.
 	if !warp.adopted {
 		branchReq := branchRequest{
 			what:      "delete warp branch",
@@ -646,7 +636,7 @@ func (t *Topology) rollbackAdd(rec *Mutations, l *lyxcwd.Location, slug, warpBra
 		}
 	}
 
-	// (6) Prune warp worktrees
+	// (5) Prune warp worktrees
 	if _, err := gitexec.Run([]string{"worktree", "prune"}, l.WorktreePath()); err != nil {
 		if firstErr == nil {
 			firstErr = err

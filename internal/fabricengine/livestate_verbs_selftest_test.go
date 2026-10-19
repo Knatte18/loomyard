@@ -57,8 +57,8 @@ func TestVerbCases_CleanState(t *testing.T) {
 					// passing.
 					switch vc.Name {
 					case "Add":
-						if info, err := os.Lstat(fixture.PortalBlocker); err != nil || !info.Mode().IsRegular() {
-							t.Errorf("Add's Arrange: portal blocker %s is not a regular file (err %v)", fixture.PortalBlocker, err)
+						if info, err := os.Lstat(fixture.LauncherBlocker); err != nil || !info.IsDir() {
+							t.Errorf("Add's Arrange: launcher blocker %s is not a directory (err %v)", fixture.LauncherBlocker, err)
 						}
 					case "Checkout":
 						if fixture.CheckoutBranch == fixture.OriginalBranch {

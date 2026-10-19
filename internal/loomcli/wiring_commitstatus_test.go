@@ -343,6 +343,8 @@ func TestPlanCommitPathspec(t *testing.T) {
 	tests := []struct {
 		name        string
 		setup       func(t *testing.T, anchorPath string)
+		tracked     bool
+		trackedErr  error
 		wantWebster bool
 	}{
 		{name: "no webster directory", setup: func(t *testing.T, anchorPath string) {}},
@@ -364,13 +366,23 @@ func TestPlanCommitPathspec(t *testing.T) {
 			wantWebster: true,
 		},
 		{
-			name: "record moved into the archive with the webster directory empty",
+			name: "record moved into the archive with the deletions still pending",
 			setup: func(t *testing.T, anchorPath string) {
-				if err := os.MkdirAll(websterengine.Dir(anchorPath), 0o755); err != nil {
-					t.Fatal(err)
-				}
 				writeFile(t, filepath.Join(planparser.PlanDir(anchorPath), planparser.ArchiveDirName("20260101T000000Z", ""), "webster", "state.json"))
 			},
+			tracked:     true,
+			wantWebster: true,
+		},
+		{
+			name: "archived record with the deletions already committed and nothing tracked",
+			setup: func(t *testing.T, anchorPath string) {
+				writeFile(t, filepath.Join(planparser.PlanDir(anchorPath), planparser.ArchiveDirName("20260101T000000Z", ""), "webster", "state.json"))
+			},
+		},
+		{
+			name:        "tracked check failing keeps the path",
+			setup:       func(t *testing.T, anchorPath string) {},
+			trackedErr:  errors.New("git failed"),
 			wantWebster: true,
 		},
 	}
@@ -383,8 +395,9 @@ func TestPlanCommitPathspec(t *testing.T) {
 			if tt.wantWebster {
 				want = append(want, websterengine.DirRel())
 			}
-			if got := planCommitPathspec(location); !reflect.DeepEqual(got, want) {
-				t.Errorf("planCommitPathspec() = %v; want %v", got, want)
+			got := planCommitPathspecWith(location, func(string) (bool, error) { return tt.tracked, tt.trackedErr })
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("planCommitPathspecWith() = %v; want %v", got, want)
 			}
 		})
 	}

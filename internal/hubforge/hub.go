@@ -239,11 +239,6 @@ func (h *Hub) PairRecordsSibling(slug string) string {
 	return fabricengine.RecordsWorktreePath(h.Location, slug)
 }
 
-// PairPortalLink returns the path to slug's mirrored portal junction link.
-func (h *Hub) PairPortalLink(slug string) string {
-	return fabricengine.PortalLink(h.Location, slug)
-}
-
 // PairLauncherDir returns the path to slug's mirrored launcher directory.
 func (h *Hub) PairLauncherDir(slug string) string {
 	return fabricengine.LauncherDir(h.Location, slug)
@@ -392,7 +387,7 @@ func registerTeardown(tb testing.TB, hubPath string) {
 			// callback — would instead skip the containing directory's remaining entries, since
 			// SkipDir from a non-directory callback means "stop visiting siblings in this
 			// directory", not "don't descend into this entry". That would leave every sibling
-			// junction wired: abandoning <hub>/_portals/<slug2> onward after removing
+			// junction wired: abandoning <hub>/<slug2> onward after removing
 			// <slug1>, and leaving _lyx and _board behind after removing <worktree>/.lyx.
 			// This is the single most reversible mistake in this file, so it is spelled out
 			// here rather than left to be rediscovered.
