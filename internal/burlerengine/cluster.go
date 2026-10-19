@@ -55,7 +55,9 @@ func commandRunsMutatingGit(cmd string) bool {
 
 // splitShellSegments splits cmd into segments at unquoted ;, &, | and newlines, each segment a list of words.
 // A single or double quoted run is part of one word with its quotes removed,
-// and a backslash-newline pair is whitespace, so a continued line stays in its segment.
+// a backslash-newline pair is removed, so a continued line stays in its segment,
+// a # at the start of a word comments out the rest of its line,
+// and any other backslash outside single quotes escapes the next character, so an escaped quote opens no quoted run.
 func splitShellSegments(cmd string) [][]string {
 	var segments [][]string
 	var words []string
@@ -79,6 +81,9 @@ func splitShellSegments(cmd string) [][]string {
 	for i := 0; i < len(runes); i++ {
 		r := runes[i]
 		switch {
+		case quote == '"' && r == '\\' && i+1 < len(runes):
+			i++
+			word.WriteRune(runes[i])
 		case quote != 0:
 			if r == quote {
 				quote = 0
@@ -87,7 +92,14 @@ func splitShellSegments(cmd string) [][]string {
 			}
 		case r == '\\' && i+1 < len(runes) && runes[i+1] == '\n':
 			i++
-			endWord()
+		case r == '#' && !inWord:
+			for i+1 < len(runes) && runes[i+1] != '\n' {
+				i++
+			}
+		case r == '\\' && i+1 < len(runes):
+			i++
+			word.WriteRune(runes[i])
+			inWord = true
 		case r == '\'' || r == '"':
 			quote = r
 			inWord = true
