@@ -123,7 +123,7 @@
 // Each interval counts under one phase, and the child's rows map to phases through a closed table per recipe.
 // Every run's setup holds every batten row before batten's first Run-Shed entry; land every batten row other than Run-Shed after batten's first Run-Shed entry;
 // paused every Run-Shed entry whose change is from paused, so the time the child stood paused at a producer boundary counts apart from the row it paused at.
-// A loom run's setup also holds Preflight and Loom-Preflight; discussion every Discussion row; plan every Plan row and Batchifier; webster every Webster row and Describe; merge every Merge row; publish-finalize Publish, PR-Align, PR-Gate, PR-Rework, Finalize and Friction-Reflect.
+// A loom run's setup also holds Preflight and Loom-Preflight; discussion every Discussion row; plan every Plan row; webster every Webster row, Describe and the retired Batchifier row, whose batching the implementer now does; merge every Merge row; publish-finalize Publish, PR-Align, PR-Gate, PR-Rework, Finalize and Friction-Reflect.
 // A darn run's setup also holds Preflight; write Darn-Write, its retired name Darn, and Describe; review every Darn-Review row (Darn-Bouncer, Darn-Burler-Review, Darn-Burler-Fix); merge Merge-In; publish-finalize Publish, PR-Align, PR-Gate, Finalize and Friction-Reflect.
 // Any other Run-Shed entry records a change of the child's state and counts under the phase the run's recipe table gives the producer its change names, else the latest child row before it, else under setup.
 // Any other row counts under other and adds a finding, so a row a recipe gains before its table does shows up rather than vanishing.
