@@ -54,10 +54,10 @@ func commandRunsMutatingGit(cmd string) bool {
 }
 
 // splitShellSegments splits cmd into segments at unquoted ;, &, | and newlines, each segment a list of words.
-// A single or double quoted run is part of one word with its quotes removed,
-// a backslash-newline pair is removed, so a continued line stays in its segment,
-// a # at the start of a word comments out the rest of its line,
-// and any other backslash outside single quotes escapes the next character, so an escaped quote opens no quoted run.
+// A single or double quoted run is part of one word with its quotes removed.
+// A backslash-newline pair is removed, so a continued line stays in its segment.
+// A # at the start of a word comments out the rest of its line.
+// Any other backslash outside single quotes escapes the next character, so an escaped quote opens no quoted run.
 func splitShellSegments(cmd string) [][]string {
 	var segments [][]string
 	var words []string
@@ -126,8 +126,8 @@ func isGitExecutable(word string) bool {
 	return word == "git" || strings.HasSuffix(word, "/git") || strings.HasSuffix(word, `\git`)
 }
 
-// gitSubcommand returns the first non-option word of args, the words after git, skipping each valued global option's value,
-// and the words after that subcommand; the subcommand is "" when there is none.
+// gitSubcommand returns the first non-option word of args, the words after git, skipping each valued global option's value.
+// It also returns the words after that subcommand; the subcommand is "" when there is none.
 // helpRequested reports whether a -h or --help stood among the global options.
 func gitSubcommand(args []string) (subcommand string, rest []string, helpRequested bool) {
 	for i := 0; i < len(args); i++ {
