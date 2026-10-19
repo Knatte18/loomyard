@@ -659,3 +659,17 @@ var DropSeedCommitsForTest = dropSeedCommits
 
 // BoardDropRequestForTest re-exports boardDropRequest, so a package fabricengine_test file builds the drop's gate request without naming the unexported request type.
 var BoardDropRequestForTest = boardDropRequest
+
+// RegenerateHubWorkspaceWithinForTest re-exports regenerateHubWorkspace with a caller-chosen lock wait, so a test shortens the production wait instead of waiting it out.
+func RegenerateHubWorkspaceWithinForTest(rec *Mutations, l *lyxcwd.Location, wait time.Duration) (string, error) {
+	return regenerateHubWorkspace(rec, l, wait)
+}
+
+// SetHubWorkspaceBeforeLockHookForTest sets the hook that runs just before the hub workspace lock is taken, and restores nil when the test ends.
+// It changes process-global state, so the calling test must not be parallel.
+func SetHubWorkspaceBeforeLockHookForTest(t *testing.T, hook func()) {
+	t.Helper()
+
+	hubWorkspaceBeforeLockHook = hook
+	t.Cleanup(func() { hubWorkspaceBeforeLockHook = nil })
+}

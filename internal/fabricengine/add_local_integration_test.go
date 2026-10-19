@@ -10,6 +10,7 @@ package fabricengine_test
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -81,7 +82,7 @@ func TestAddLocal(t *testing.T) {
 		}
 		requireMarked(t, h.PrimeWorktree(), slug, true)
 		requireMarked(t, h.PrimeRecords(), weftBranch, true)
-		for _, p := range []string{h.PairPortalLink(slug), h.PairLauncherDir(slug)} {
+		for _, p := range []string{filepath.Join(h.Location.HubPath, "_portals"), h.PairLauncherDir(slug)} {
 			if _, err := os.Lstat(p); !os.IsNotExist(err) {
 				t.Errorf("%s exists; want none for a local pair (stat err = %v)", p, err)
 			}

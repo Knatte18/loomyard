@@ -7,7 +7,7 @@
 //
 // It is the full-stack companion to destroy_toctou_test.go's hermetic unit guard: the unit test pins
 // removeContainedPath's act-time escape refusal directly, while this test proves the whole Remove
-// call — slug validation, portal/launcher teardown, the gate pipeline, the rooted removal — never
+// call — slug validation, launcher teardown, the gate pipeline, the rooted removal — never
 // deletes a file outside the hub through the planted symlink, and preserves the outside content.
 //
 // Package fabricengine_test to reuse the shared TestMain, matching the

@@ -292,7 +292,7 @@ func taskWorktreeComplete(prime *lyxcwd.Location, slug string) (present, complet
 }
 
 // incompletePairRemedy names the manual cleanup for a pair taskWorktreeComplete found incomplete.
-// "lyx fabric remove --force" run from prime removes whatever part of the pair Add got to -- the task worktree, its sibling, their junctions, portal and launcher entries, and the sibling's branch -- in one command, which no pair of plain git commands can do from here: the sibling is a worktree of another repository.
+// "lyx fabric remove --force" run from prime removes whatever part of the pair Add got to -- the task worktree, its sibling, their junctions, launcher entries, and the sibling's branch -- in one command, which no pair of plain git commands can do from here: the sibling is a worktree of another repository.
 // Remove also deletes the task branch when its work is already on another ref -- always so for a create interrupted before any work -- and keeps it otherwise, so the branch deletion is named as conditional on the branch surviving the removal: an unconditional "git branch -D" fails on the branch Remove already deleted.
 // The task branch is named with fabric's branch prefix, since Add refuses a leftover one.
 func incompletePairRemedy(slug, branch string) string {
@@ -829,7 +829,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 		// Both teardown halves go through the pair-teardown composite and are idempotent against their shared post-condition, "the pair is gone".
 		// shedengine persists the row's transition only after the producer returns, so a process killed right after Remove succeeded re-enters this row with no pair on disk.
 		// EndSession's refusal probe then reports ErrPairNotFound, which Shutdown takes as nothing left to shut down, and RemovePair reports it again as done.
-		// The composite finishes a half-removed pair itself -- sibling worktree, portal and launcher entries, both branches -- so no such state is refused by name here.
+		// The composite finishes a half-removed pair itself -- sibling worktree, launcher entries, both branches -- so no such state is refused by name here.
 		// EndSession ends the session by name when the task worktree is gone, and runs the refusal probe, so a refusal reaches the row before Remove and leaves the pair in place.
 		Teardown: battenshed.TeardownDeps{
 			Shutdown: func(ctx context.Context) (abandonedSession string, err error) {

@@ -2,7 +2,7 @@
 // It assigns a title-bar color, generates the worktree's .vscode/ config, and launches VS Code;
 // it regenerates tasks.json on every call and keeps .vscode/ out of git through info/exclude.
 // A task slug opens its bare folder.
-// The prime instead opens a lyx-generated hub workspace (prime, _board, _portals) under <hub>/_launchers/<AnchorRel>, regenerated on every prime spawn.
+// The prime instead opens the lyx-generated hub workspace <hub>/<RepoName>.code-workspace (prime, Bolt, every task pair), regenerated on every prime spawn.
 
 package ideengine
 
@@ -32,8 +32,8 @@ var KeybindingsPath = vscode.UserKeybindingsPath
 // It keeps .vscode/ out of git through info/exclude and never writes a .gitignore;
 // a tracked .vscode/tasks.json is left alone with a warning, and the launch still happens.
 // A task slug launches its bare folder <hub>/<slug>/<AnchorRel> and writes no workspace file.
-// When slug names the prime, Spawn writes the hub workspace file, whose settings carry the prime's .vscode/settings.json, and launches that file instead;
-// every error on that path is returned wrapped with its step, never degraded to the bare folder.
+// When slug names the prime, Spawn regenerates the hub workspace file <hub>/<RepoName>.code-workspace, whose settings carry the prime's .vscode/settings.json, and launches that file instead;
+// every error on that path is returned, never degraded to the bare folder.
 // A failure to resolve the prime's name is logged and degrades to the bare-folder path.
 // Before launching it seeds the lyx block of terminal key bindings into the user's VS Code keybindings.json and returns the outcome beside the error;
 // a skipped seed never fails the spawn.
@@ -48,7 +48,7 @@ func Spawn(l *lyxcwd.Location, slug string) (vscode.KeybindingsResult, error) {
 
 	openDir := filepath.Join(worktreeDir, l.AnchorRel)
 	if primeResolved && slug == primeName {
-		workspacePath, err := writePrimeWorkspace(l, primeName, openDir)
+		workspacePath, err := fabricengine.RegenerateHubWorkspace(fabricengine.NewMutations(l.HubPath), l)
 		if err != nil {
 			return keybindings, err
 		}
@@ -154,44 +154,4 @@ func resolveSpawnTarget(l *lyxcwd.Location, slug string, target spawnTarget) (wo
 	}
 	color = vscode.PickColor(l, primeName)
 	return worktreeDir, color, primeName, primeErr == nil
-}
-
-// writePrimeWorkspace builds and writes the prime's hub workspace file and returns its path.
-// primeDir is the prime's anchor directory, whose .vscode/settings.json the file's settings splice.
-func writePrimeWorkspace(l *lyxcwd.Location, primeName, primeDir string) (string, error) {
-	settings, err := vscode.ReadSettings(primeDir)
-	if err != nil {
-		return "", fmt.Errorf("read prime settings: %w", err)
-	}
-	if keys := vscode.RelativeSettingKeys(settings); len(keys) > 0 {
-		logger.Warn("prime settings hold relative paths that now resolve against the _launchers workspace file's directory", "keys", keys)
-	}
-	// WriteHubWorkspace creates the _portals/<AnchorRel> folder, which HubWorkspaceFolders lists only once it exists,
-	// so the first spawn on a hub writes twice; the second write is a no-op when the file is unchanged.
-	for range 2 {
-		if err := writeWorkspaceFile(l, primeName, settings); err != nil {
-			return "", err
-		}
-	}
-	return fabricengine.HubWorkspacePath(l, primeName), nil
-}
-
-// writeWorkspaceFile builds the hub workspace file from the folders that exist now and writes it.
-func writeWorkspaceFile(l *lyxcwd.Location, primeName string, settings []byte) error {
-	hubFolders, err := fabricengine.HubWorkspaceFolders(l, primeName)
-	if err != nil {
-		return fmt.Errorf("compute workspace folders: %w", err)
-	}
-	folders := make([]vscode.WorkspaceFolder, len(hubFolders))
-	for i, f := range hubFolders {
-		folders[i] = vscode.WorkspaceFolder{Name: f.Name, Path: f.Path}
-	}
-	content, err := vscode.BuildWorkspace(folders, settings)
-	if err != nil {
-		return fmt.Errorf("build workspace: %w", err)
-	}
-	if _, err := fabricengine.WriteHubWorkspace(l, primeName, content); err != nil {
-		return fmt.Errorf("write workspace: %w", err)
-	}
-	return nil
 }

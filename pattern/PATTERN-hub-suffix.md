@@ -14,6 +14,6 @@
 
 ## Retired-suffix hubs
 
-- A hub carrying the retired suffix is never renamed in place: `PortalLink` and `LauncherDir` materialise links against the hub's absolute path at creation time, and `ServerName` hashes that absolute path into the tmux socket key.
+- A hub carrying the retired suffix is never renamed in place: `LauncherDir` materialises launcher scripts against the hub's absolute path at creation time, and `ServerName` hashes that absolute path into the tmux socket key.
 - The operator removes the old container by hand and re-clones.
 - `clone --reset` resolves the new suffix only and never reaches the old container.

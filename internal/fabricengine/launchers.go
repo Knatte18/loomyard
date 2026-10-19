@@ -95,7 +95,7 @@ func menuLauncherRel(l *lyxcwd.Location, primeName string) (string, error) {
 //
 // rec is the calling verb's own recorder. Every entry here is conditional on an observation, never
 // on plain success, because writeLaunchers doubles as the repair path (reconcile.go's
-// restorePortalAndLaunchers calls it against an already-wired pair): an unconditional record would
+// restoreLaunchers calls it against an already-wired pair): an unconditional record would
 // claim writes that did not happen on that path.
 //   - The launcher directory: root.MkdirAll succeeds on an already-existing directory, so the path is
 //     stat'd BEFORE the MkdirAll and KindDirCreated is recorded only when it was absent.
@@ -207,7 +207,7 @@ func writeLaunchers(rec *Mutations, l *lyxcwd.Location, slug string) error {
 }
 
 // hubRel returns path expressed relative to hubPath, the form every os.Root call under the hub takes.
-// It errors rather than degrading, because a launcher/portal path that cannot be related to the hub
+// It errors rather than degrading, because a hub path that cannot be related to the hub
 // is a bug in the geometry derivation, not a case to write blindly.
 func hubRel(hubPath, path string) (string, error) {
 	rel, err := filepath.Rel(hubPath, path)
@@ -246,7 +246,7 @@ func writeLauncherScriptIfChanged(rec *Mutations, root *os.Root, hubPath, path s
 //
 // It deletes the named scripts rather than the whole tree so anything else under the directory
 // survives: an os.RemoveAll there destroyed whatever the operator had put beside the launchers,
-// while the portal half of the same teardown (fslink.Remove) correctly declines to delete a
+// while the directory removal below correctly declines to delete a
 // non-empty real directory. A leftover file is reported by the directory removal below, never
 // silently swept.
 // rec is the calling verb's own recorder: the script removals route through removePath, which
@@ -285,8 +285,7 @@ func removeLaunchers(rec *Mutations, l *lyxcwd.Location, slug string) error {
 	// checkPathRequest, and then removes through removeContainedPath with recursive=false rather than
 	// through removePath: removePath's directory branch is RemoveAll, which would silently destroy
 	// anything the operator had put beside the launchers — exactly the defect
-	// TestRemoveLaunchers_PreservesForeignContent exists to police, and the portal half of the same
-	// teardown already declines to delete a non-empty real directory for the same reason.
+	// TestRemoveLaunchers_PreservesForeignContent exists to police.
 	// removeContainedPath's non-recursive branch is os.Root.Remove, which the OS refuses on a non-empty
 	// directory exactly as a bare os.Remove does, so that preservation property is unchanged — what the
 	// routing adds is binding containment to the ACT. This used to be a raw, unrooted single-entry

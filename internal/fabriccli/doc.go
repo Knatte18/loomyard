@@ -26,7 +26,7 @@
 //
 // # Add
 //
-// `lyx fabric add --local` creates a local-only pair: no origin is read or written, no portal or launcher is created, no push is spawned, and both branches carry gitrepo's local mark, so no fabric push publishes them.
+// `lyx fabric add --local` creates a local-only pair: no origin is read or written, no launcher is created, no push is spawned, and both branches carry gitrepo's local mark, so no fabric push publishes them.
 // Its envelope carries `local: true`, and `lyx fabric push` from the pair adds `local_skipped`, naming the branches it left unpublished.
 // A `--local` add over a slug whose branch belongs to an ordinary pair is a pre-mutation refusal naming the way forward.
 // A plain `add` over a local pair's kept branches adopts them and clears the marks, listing the cleared branches in `local_mark_cleared`, so the pair becomes ordinary.

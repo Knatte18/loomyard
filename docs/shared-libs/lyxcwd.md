@@ -12,7 +12,7 @@ The cap is an allowlist enforced by `internal/lyxcwd/leaf_enforcement_test.go` (
 
 The cwd-≠-worktree-root bug recurs because path math is scattered: each module re-derives the worktree root and cwd relationship ad hoc.
 A single, minimal resolver makes correctness structural, not a matter of discipline — but it stops there.
-Every per-module path (records siblings, junctions, `_lyx/plan`, portals, launchers, and so on) is constructed by the module that owns it, joined onto the coordinates `lyxcwd` hands back.
+Every per-module path (records siblings, junctions, `_lyx/plan`, launchers, and so on) is constructed by the module that owns it, joined onto the coordinates `lyxcwd` hands back.
 
 ## Exported API
 
@@ -81,7 +81,7 @@ No other accessor, records path, junction path, or per-module subdirectory const
 
 Every per-module durable-storage subdirectory (`_lyx/plan`, `_lyx/webster`,
 and the rest) is now that module's own private relative-path constant, joined onto `AnchorPath()` directly by the module that owns it — never a `lyxcwd` function call.
-Records-sibling paths and junction construction (`RecordsWorktree`, `CodeLyxLink`, the junction-set helpers, portal and launcher paths,
+Records-sibling paths and junction construction (`RecordsWorktree`, `CodeLyxLink`, the junction-set helpers, launcher paths,
 and the `Prime`/sibling-worktree-list lookup they are built from) belong to `internal/fabricengine`.
 The records-backed junction name-set is injected from fabric config (`fabric.yaml`'s `pathspec`) — also `fabricengine`'s concern, never `lyxcwd`'s. See [PATTERN-cwd-resolution](../../pattern/PATTERN-cwd-resolution.md) for the full, current per-token ownership map.
 

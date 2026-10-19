@@ -79,7 +79,7 @@ type PruneResult struct {
 }
 
 // Prune identifies stale or orphaned warp↔weft pairs and removes their stale weft worktrees and
-// associated portal/launcher directories when apply is true.
+// associated launcher directories when apply is true.
 // A weft worktree carrying uncommitted tracked changes is protected unless force is true, since the
 // removal is a forced one that would discard them without a trace.
 // Per-entry removal errors and protection reasons are recorded in PruneEntry.Error.
@@ -90,6 +90,11 @@ func (t *Topology) Prune(l *lyxcwd.Location, apply, force bool) (res PruneResult
 	entries, err := List(l.WorktreePath())
 	if err != nil {
 		return PruneResult{}, fmt.Errorf("list worktrees: %w", err)
+	}
+
+	// A dry run changes nothing, so only an applying Prune rewrites the hub workspace file.
+	if apply {
+		defer regenerateAfterVerb(rec, l, "prune")
 	}
 
 	liveWarpSlugs := make(map[string]bool)
@@ -184,9 +189,7 @@ func (t *Topology) Prune(l *lyxcwd.Location, apply, force bool) (res PruneResult
 // a separate git clone parked at `<hub>/proj-weft/`, both arrive here indistinguishable from a real
 // stale pair until this check tells them apart.
 //
-// An absent path is NOT unowned: there is nothing to delete, and removeStalePair still has portal,
-// launcher, and worktree-registration debris to clear for a pair whose weft worktree is already
-// gone.
+// An absent path is NOT unowned: there is nothing to delete, and removeStalePair still has launcher and worktree-registration debris to clear for a pair whose weft worktree is already gone.
 func applyStalePairOwnership(l *lyxcwd.Location, weftPath string, pe *PruneEntry) {
 	if _, statErr := os.Stat(weftPath); os.IsNotExist(statErr) {
 		return
@@ -239,7 +242,7 @@ func applyStalePairProtection(weftPath string, force bool, pe *PruneEntry) {
 }
 
 // removeStalePair removes the stale weft worktree at weftPath (when it exists),
-// tears down the dead slug's portal junction and launcher directory, and prunes
+// tears down the dead slug's launcher directory, and prunes
 // administrative state on both repos. Errors are recorded in pe.Error; it returns
 // true only when a weft worktree existed and was removed without error.
 //
@@ -250,10 +253,7 @@ func applyStalePairProtection(weftPath string, force bool, pe *PruneEntry) {
 // than data loss — the identical rule, and the identical justification, as
 // removeWarpWorktreeDir's.
 //
-// Portal and launcher teardown runs AFTER the ownership gate rather than before it, because the
-// slug they are keyed on is derived from a directory name the orphan pass chose: tearing them down
-// first meant a stray `<hub>/my-task-weft/` directory removed the LIVE `my-task` pair's portal
-// junction and launcher directory before anything had established the entry was fabric's at all.
+// Launcher teardown runs AFTER the ownership gate rather than before it, because the slug it is keyed on is derived from a directory name the orphan pass chose: tearing it down first meant a stray `<hub>/my-task-weft/` directory removed the LIVE `my-task` pair's launcher directory before anything had established the entry was fabric's at all.
 // rec is the calling verb's own recorder, threaded through every gate call this helper makes.
 func removeStalePair(rec *Mutations, l *lyxcwd.Location, slug, weftPath string, pe *PruneEntry) bool {
 	weftRepoRoot, weftRepoRootErr := RecordsRepoRoot(l)
@@ -262,13 +262,9 @@ func removeStalePair(rec *Mutations, l *lyxcwd.Location, slug, weftPath string, 
 		return false
 	}
 
-	// The portal and launcher teardown here is keyed on a slug the orphan pass derived from a
+	// The launcher teardown here is keyed on a slug the orphan pass derived from a
 	// directory name — precisely the input a refusal is most likely to be about — so a refusal must
 	// be recorded rather than swallowed alongside an ordinary operational failure.
-	if err := surfaceRefusal(removePortal(rec, l, slug)); err != nil {
-		pe.Error = err.Error()
-		return false
-	}
 	if err := surfaceRefusal(removeLaunchers(rec, l, slug)); err != nil {
 		pe.Error = err.Error()
 		return false

@@ -38,7 +38,7 @@ Discovery is structural, so it resolves normally;
 the only degradation is the display name derived from its basename.
 
 It is never renamed in place.
-The portal links and launcher scripts inside it were materialised against its absolute path, and the tmux socket key is derived from that same absolute path, so moving the directory breaks a working container rather than migrating it.
+The launcher scripts inside it were materialised against its absolute path, and the tmux socket key is derived from that same absolute path, so moving the directory breaks a working container rather than migrating it.
 
 The `-reset` flag does not reach it.
 Both the collision guard and the reset teardown key on the container path the code derives, which now carries the new suffix, so a re-clone neither refuses nor removes the old directory — it silently creates a second, parallel container for the same code repo, with its own board, its own links, and its own tmux socket, while the old one keeps running.
