@@ -8,6 +8,7 @@ package planglyph
 import (
 	"fmt"
 
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/quarry/quarry"
 )
@@ -23,13 +24,19 @@ import (
 // teardown to log separately: DeltaGit waits internally and returns an answer, so the spawn's own
 // log line is the whole of this function's observability obligation.
 //
-// A non-nil error is wrapped with ErrQuarryUnavailable, exactly as openRepo and resolveTargets
+// That spawn never reaches the git exec core, so Delta checks git's floor itself after opening the repo.
+// A quarry failure is wrapped with ErrQuarryUnavailable, exactly as openRepo and resolveTargets
 // wrap theirs, so a DeltaGit failure reads as the same infrastructure category as an Open or
 // Resolve failure and can never be mistaken for an empty delta.
+// A git below the floor is no quarry outage, so its error is returned as itself and not folded into ErrQuarryUnavailable.
 func Delta(worktreeRoot, fromSHA, toSHA string) (quarry.GitDeltaAnswer, error) {
 	repo, err := openRepo(worktreeRoot)
 	if err != nil {
 		return quarry.GitDeltaAnswer{}, err
+	}
+
+	if err := gitexec.CheckFloor(); err != nil {
+		return quarry.GitDeltaAnswer{}, fmt.Errorf("planglyph: delta %s..%s: %w", fromSHA, toSHA, err)
 	}
 
 	logger.Info("planglyph: spawning git for DeltaGit", "worktree_root", worktreeRoot, "from_sha", fromSHA, "to_sha", toSHA)
