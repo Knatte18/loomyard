@@ -1,5 +1,7 @@
-// registry.go implements the registry's public surface: the single map[string]Constructor literal
-// every engine name is declared in, plus Lookup and Names, the only two ways a caller reaches it.
+// registry.go implements the registry's public surface.
+// It holds the map[string]Constructor literal every recipe-row engine name is declared in.
+// Lookup and Names are the only two ways a caller reaches it.
+// The one table outside it is the closed implementer table behind the "Implementer" entry.
 
 package shedrecipe
 
@@ -8,8 +10,9 @@ import (
 	"sort"
 )
 
-// registry is the single place every engine name is declared, mapping each recipe row's engine
-// name to the Constructor that builds it.
+// registry is the single place every recipe row's engine name is declared.
+// It maps each name to the Constructor that builds it.
+// The "Implementer" entry delegates to a closed table of implementer engines that no recipe row names.
 //
 // Any new entry's coverage is checked in exactly one place: the cross-consumer coverage guard in this package's own external test package.
 //
@@ -28,12 +31,11 @@ var registry = map[string]Constructor{
 	"Finalize":         finalizeEntry,
 	"FrictionReflect":  frictionReflectEntry,
 	"LoomPreflight":    loomPreflightEntry,
-	"Batchifier":       batchifierEntry,
+	"Implementer":      implementerEntry,
 	"DiscussionWrite":  discussionWriteEntry,
 	"Describe":         describeEntry,
 	"PlanWrite":        planWriteEntry,
 	"Stub":             stubEntry,
-	"Webster":          websterEntry,
 	"MultiLLM":         multiLLMEntry,
 	"Bouncer":          bouncerEntry,
 	"BurlerReview":     burlerReviewEntry,

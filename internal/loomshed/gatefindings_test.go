@@ -151,8 +151,8 @@ func TestLoomPreflight_StuckSurfacesItsFailures(t *testing.T) {
 	}
 }
 
-// TestBatcherRows_StuckSurfacesTheBatcherError closes the last two rows in this package that mapped a fault onto Stuck while discarding the reason.
-// Both carry no OnStuck, so their Stuck halts the run for a human, and batcher.Active conflates unknown-name, malformed YAML, and I/O failure into one bare error with no sentinel -- so the error text is the only thing that can tell an operator which of the three happened.
+// TestBatcherRows_StuckSurfacesTheBatcherError pins that a batcher-backed row logs the batcher error it maps onto Stuck.
+// The row carries no OnStuck, so its Stuck halts the run for a human, and batcher.Active conflates unknown-name, malformed YAML, and I/O failure into one bare error with no sentinel -- so the error text is the only thing that can tell an operator which of the three happened.
 // It does not call t.Parallel, because logcapture.Capture redirects the process-global logger output.
 //
 //testtiming:keep pins that each batcher-backed row logs its name and the batcher error text on a stuck verdict, which its covering tests never read
@@ -161,9 +161,6 @@ func TestBatcherRows_StuckSurfacesTheBatcherError(t *testing.T) {
 		name string
 		new  func(anchorPath string) shedengine.ShedProducer
 	}{
-		{"Batchifier", func(anchorPath string) shedengine.ShedProducer {
-			return NewBatchifier("Batchifier", configengine.Dirs{Anchor: anchorPath})
-		}},
 		{"Webster", func(anchorPath string) shedengine.ShedProducer {
 			return NewWebsterProducer("Webster", configengine.Dirs{Anchor: anchorPath}, nil, websterengine.RunDeps{}, func() error { return nil })
 		}},

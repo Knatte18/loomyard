@@ -16,20 +16,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
+// batchifierReasonPrefix leads the Stuck reason of every row that loads batcher.yaml with batcher.Active, so each words the fault identically; the error text follows.
+const batchifierReasonPrefix = "active batchifier did not resolve: "
+
+// batchifierWayForward closes that reason;
+// the fault sits in batcher.yaml, so the operator fixes it there.
+const batchifierWayForward = "; way forward: fix batcher.yaml (its active: key or the profile it names), then re-step"
+
 // websterProducer is the Webster producer: a lazy wrapper delegating to
 // shedadapters.WebsterProducer once the active batchifier is resolved.
 //
-// Resolution is lazy, not injected at construction, because shedadapters.NewWebsterProducer takes
-// websterengine.RunDeps by value, so injecting a resolved Batcher would require batcher.Active to
-// have already succeeded before Shed.Run ever starts, which makes the Batchifier gate's stated
-// value -- catching a broken config before Webster spawns LLM sessions -- unreachable; and after a
-// crash-restart with current_producer naming Webster, the gate never re-runs in the new process, so
-// an injected value would have to be re-resolved anyway.
-//
-// The consequence is correct behaviour, not staleness: if the batch config changes between the
-// Batchifier and Webster rows, Webster uses the newer config, because there is no cached value to
-// go stale -- the gate's guarantee is precisely "the config was resolvable at the Batchifier row",
-// never "the config Webster will use is the one the Batchifier row saw".
+// Batching is the implementer's own concern, so the producer resolves the batchifier itself at the start of every Call rather than taking one at construction:
+// a resumed run re-resolves it in the new process, and a config changed since Loom-Preflight loaded it is the config Webster partitions the plan with.
 type websterProducer struct {
 	name   string
 	dirs   configengine.Dirs
@@ -54,11 +52,10 @@ func NewWebsterProducer(name string, dirs configengine.Dirs, run shedadapters.We
 // the resolved value into a copy of w.deps, constructs a shedadapters.WebsterProducer over the
 // result, and delegates to that producer's own Call.
 //
-// A batcher.Active error here maps to shedengine.Stuck, never to a returned error -- identically to
-// the Batchifier gate. The two outcomes differ materially in shedengine.Run: Stuck under
-// OnStuck: "" persists blocked and returns RunBlocked, which a human resumes after fixing the
-// config, whereas returning the error persists failed and aborts the run. The same fault must not
-// end the run one way before Webster and another way at Webster.
+// A batcher.Active error here maps to shedengine.Stuck, never to a returned error -- identically to Loom-Preflight's batcher.yaml check.
+// The two outcomes differ materially in shedengine.Run:
+// Stuck under OnStuck: "" persists blocked and returns RunBlocked, which a human resumes after fixing the config, whereas returning the error persists failed and aborts the run.
+// The same fault must not end the run one way before Webster and another way at Webster.
 func (w *websterProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, w.name); err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -69,10 +66,10 @@ func (w *websterProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 		if cerr := cancelErr(ctx, w.name); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
 		}
-		// Surfaced rather than discarded, exactly as the Batchifier gate surfaces the identical
-		// failure. This row carries no OnStuck either, so its Stuck halts the run for a human, and
+		// Surfaced rather than discarded, exactly as Loom-Preflight surfaces the identical
+		// failure. This row carries no OnStuck, so its Stuck halts the run for a human, and
 		// the resolved-batchifier fault is the sort that reaches this row only when the config
-		// changed after the gate already passed -- which is precisely the case an operator will not
+		// changed after Loom-Preflight already passed -- which is precisely the case an operator will not
 		// guess without being told. The cause is returned as the row's reason, which reaches the
 		// persisted error and activity.wait, and also logged.
 		logger.Warn("loomshed: active batchifier did not resolve", "producer", w.name, "anchorPath", w.dirs.Anchor, "cause", err)

@@ -46,12 +46,12 @@ func resetCurrentProducer(t *testing.T, statusPath, statusLockPath, currentProdu
 	}
 }
 
-// TestResume_DoesNotRestartAtRowOne drives a run to shedengine.RunBlocked at Batchifier (whose
-// OnStuck is empty, per the real Batchifier gate genuinely failing on a malformed config -- never a
+// TestResume_DoesNotRestartAtRowOne drives a run to shedengine.RunBlocked at Webster (whose
+// OnStuck is empty, per the real Webster producer genuinely failing on a malformed batcher config -- never a
 // substituted fake row), fixes the on-disk cause, and asserts that a freshly constructed Shed over
-// the same status file re-calls Batchifier directly rather than restarting the whole list at
+// the same status file re-calls Webster directly rather than restarting the whole list at
 // Preflight. The fixed second run blocks again, at Merge-In (see sequence_test.go's
-// wantSequenceOrder doc comment for why) -- resuming past Batchifier, not reaching Done, is this
+// wantSequenceOrder doc comment for why) -- resuming past Webster, not reaching Done, is this
 // test's own point.
 func TestResume_DoesNotRestartAtRowOne(t *testing.T) {
 	_, env, paths := buildSequenceFixture(t)
@@ -62,7 +62,7 @@ func TestResume_DoesNotRestartAtRowOne(t *testing.T) {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
 	shed1.Producers[0].Producer = fakeAlwaysDoneProducer{}
-	// Loom-Preflight loads batcher.yaml too, so it is substituted to let the malformed config reach Batchifier.
+	// Loom-Preflight loads batcher.yaml too, so it is substituted to let the malformed config reach Webster.
 	shed1.Producers[1].Producer = fakeAlwaysDoneProducer{}
 	result1, err := shed1.Run(context.Background())
 	if err != nil {
@@ -71,8 +71,8 @@ func TestResume_DoesNotRestartAtRowOne(t *testing.T) {
 	if result1.Outcome != shedengine.RunBlocked {
 		t.Fatalf("first Run() outcome = %q; want %q (reason: %s)", result1.Outcome, shedengine.RunBlocked, result1.Reason)
 	}
-	if result1.HaltedProducer != loomshed.NameBatchifier {
-		t.Fatalf("first Run() HaltedProducer = %q; want %q", result1.HaltedProducer, loomshed.NameBatchifier)
+	if result1.HaltedProducer != loomshed.NameWebster {
+		t.Fatalf("first Run() HaltedProducer = %q; want %q", result1.HaltedProducer, loomshed.NameWebster)
 	}
 
 	writeBatcherConfig(t, env.AnchorPath, `active: "identity"`+"\n")
@@ -95,7 +95,7 @@ func TestResume_DoesNotRestartAtRowOne(t *testing.T) {
 
 	// result2.History is the full persisted history, including the first run's own appended
 	// entries (Result.History docs this explicitly) -- so "did not restart at row 1" is proven by
-	// Preflight appearing exactly once across both runs, not by History[0] naming Batchifier.
+	// Preflight appearing exactly once across both runs, not by History[0] naming Webster.
 	preflightCount := 0
 	for _, e := range result2.History {
 		if e.Producer == loomshed.NamePreflight {
@@ -166,7 +166,7 @@ func TestResume_CrashRecoveryRecallsUnconditionally(t *testing.T) {
 // rather than re-pausing on the flag it is resuming from.
 func TestResume_PauseStopsAtBoundaryAndClearsFlag(t *testing.T) {
 	_, env, paths := buildSequenceFixture(t)
-	resetCurrentProducer(t, paths.StatusPath, paths.StatusLockPath, loomshed.NameBatchifier, true)
+	resetCurrentProducer(t, paths.StatusPath, paths.StatusLockPath, loomshed.NameWebster, true)
 
 	shed1, err := New(env, paths)
 	if err != nil {
@@ -180,8 +180,8 @@ func TestResume_PauseStopsAtBoundaryAndClearsFlag(t *testing.T) {
 	if result1.Outcome != shedengine.RunPaused {
 		t.Fatalf("first Run() outcome = %q; want %q", result1.Outcome, shedengine.RunPaused)
 	}
-	if result1.HaltedProducer != loomshed.NameBatchifier {
-		t.Fatalf("first Run() HaltedProducer = %q; want %q", result1.HaltedProducer, loomshed.NameBatchifier)
+	if result1.HaltedProducer != loomshed.NameWebster {
+		t.Fatalf("first Run() HaltedProducer = %q; want %q", result1.HaltedProducer, loomshed.NameWebster)
 	}
 	if len(result1.History) != 0 {
 		t.Errorf("first Run() History = %+v; want empty -- pause is checked before the halted producer is ever called", result1.History)
@@ -200,8 +200,8 @@ func TestResume_PauseStopsAtBoundaryAndClearsFlag(t *testing.T) {
 	if got.PauseRequested {
 		t.Errorf("persisted PauseRequested = true; want false -- the flag must clear in the same persist that records the paused state")
 	}
-	if got.CurrentProducer != loomshed.NameBatchifier {
-		t.Errorf("persisted CurrentProducer = %q; want %q", got.CurrentProducer, loomshed.NameBatchifier)
+	if got.CurrentProducer != loomshed.NameWebster {
+		t.Errorf("persisted CurrentProducer = %q; want %q", got.CurrentProducer, loomshed.NameWebster)
 	}
 
 	shed2, err := New(env, paths)
@@ -266,8 +266,8 @@ func TestBounceRouting_StuckContinuesAtDeclaredTarget(t *testing.T) {
 	}
 }
 
-// TestBounceRouting_EmptyTargetBlocksInstead drives Batchifier (a real producer, OnStuck: "")
-// genuinely Stuck via a malformed on-disk config, and asserts the run ends shedengine.RunBlocked
+// TestBounceRouting_EmptyTargetBlocksInstead drives Webster (a real producer, OnStuck: "")
+// genuinely Stuck via a malformed on-disk batcher config, and asserts the run ends shedengine.RunBlocked
 // rather than bouncing anywhere.
 func TestBounceRouting_EmptyTargetBlocksInstead(t *testing.T) {
 	_, env, paths := buildSequenceFixture(t)
@@ -278,7 +278,7 @@ func TestBounceRouting_EmptyTargetBlocksInstead(t *testing.T) {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
 	shed.Producers[0].Producer = fakeAlwaysDoneProducer{}
-	// Loom-Preflight loads batcher.yaml too, so it is substituted to let the malformed config reach Batchifier.
+	// Loom-Preflight loads batcher.yaml too, so it is substituted to let the malformed config reach Webster.
 	shed.Producers[1].Producer = fakeAlwaysDoneProducer{}
 	result, err := shed.Run(context.Background())
 	if err != nil {
@@ -287,10 +287,10 @@ func TestBounceRouting_EmptyTargetBlocksInstead(t *testing.T) {
 	if result.Outcome != shedengine.RunBlocked {
 		t.Fatalf("Run() outcome = %q; want %q", result.Outcome, shedengine.RunBlocked)
 	}
-	if result.HaltedProducer != loomshed.NameBatchifier {
-		t.Errorf("Run() HaltedProducer = %q; want %q", result.HaltedProducer, loomshed.NameBatchifier)
+	if result.HaltedProducer != loomshed.NameWebster {
+		t.Errorf("Run() HaltedProducer = %q; want %q", result.HaltedProducer, loomshed.NameWebster)
 	}
-	// The block carries the Batchifier's own cause, not the generic no-OnStuck reason.
+	// The block carries the batcher fault's own cause, not the generic no-OnStuck reason.
 	const wantPrefix = "active batchifier did not resolve: "
 	if !strings.HasPrefix(result.Reason, wantPrefix) {
 		t.Errorf("Run() Reason = %q; want prefix %q", result.Reason, wantPrefix)

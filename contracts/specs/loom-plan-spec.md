@@ -9,7 +9,7 @@ It is validated by `Plan-Write`'s and `Plan-Burler-Fix`'s own gates over `intern
 It is reviewed by `Plan-Review`.
 
 - **Output** — the shape below, per [Card fields and order](#card-fields-and-order).
-  Consumed as Input by `Batchifier` and `Webster` (via `internal/planparser`, webster's sole parser).
+  Consumed as Input by `Webster`, the implementer row (via `internal/planparser`, webster's sole parser).
 
 ## What a card is
 

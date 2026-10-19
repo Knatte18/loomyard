@@ -29,6 +29,15 @@
 // The row's "gates" key is stamped onto each table the closure returns, so the gate guards the lead whatever table the closure builds.
 // When the gates hold an enabled "parent-review" entry, the producer's fresh-spawn preparation opens the next review round before any stale output is archived and before any seat starts; a resumed live lead continues the latest round.
 //
+// # The Implementer row
+//
+// The Implementer entry builds a recipe's implementer row with the engine a setting chooses, the one place a setting picks a row's engine.
+// Its "implementer_setting" key names that setting as `module.key`, read through Env.Setting, and its value names one implementer from a closed table in this package.
+// Every other key of the row's Config passes to that implementer's constructor unchanged.
+// Every implementer builds the same row with the same edges, so the choice never skips a row or enters one conditionally;
+// a row without the key, and a setting holding anything but one implementer name, refuse when the recipe builds.
+// contracts/specs/implementer-spec.md pins what every implementer takes in and delivers.
+//
 // # The review segment rows
 //
 // The Bouncer, BurlerReview and BurlerFix rows each take the optional keys "color_segment" and "role_prefix".

@@ -77,9 +77,9 @@ type SegmentSettings struct {
 type Env struct {
 	// Cwd is the caller's told working directory, read by Preflight.
 	Cwd string
-	// AnchorPath is the told anchor path, read by Batchifier, Webster, Bouncer and the gate resolver's "plan" gate.
+	// AnchorPath is the told anchor path, read by Webster, Bouncer and the gate resolver's "plan" gate.
 	AnchorPath string
-	// ConfigDirs is the told geometry of a layered config load, read by Batchifier, LoomPreflight and Webster, which load batcher through it.
+	// ConfigDirs is the told geometry of a layered config load, read by LoomPreflight and Webster, which load batcher through it.
 	ConfigDirs configengine.Dirs
 	// WorktreeRoot is the told worktree root, read by the gate resolver's "plan" and "verify" gates.
 	WorktreeRoot string

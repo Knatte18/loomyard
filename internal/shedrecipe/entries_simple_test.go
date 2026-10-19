@@ -232,13 +232,6 @@ func simpleEntryCases() []simpleEntryCase {
 			unreadField:     "Cwd",
 		},
 		{
-			registryKey:     "Batchifier",
-			entry:           batchifierEntry,
-			buildEnv:        newTestEnv,
-			validatedFields: []string{"ConfigDirs.Anchor"},
-			unreadField:     "Cwd",
-		},
-		{
 			registryKey:     "Stub",
 			entry:           stubEntry,
 			buildEnv:        newTestEnv,
@@ -412,17 +405,17 @@ func TestFinalizeEntry_LandingRejected(t *testing.T) {
 	}
 }
 
-// TestBatchifierEntry_RelativeAnchorPath asserts a relative Env.ConfigDirs.Anchor fails, as the
+// TestLoomPreflightEntry_RelativeAnchorPath asserts a relative Env.ConfigDirs.Anchor fails, as the
 // representative case for every entry's requireAbsRoot validation.
-func TestBatchifierEntry_RelativeAnchorPath(t *testing.T) {
+func TestLoomPreflightEntry_RelativeAnchorPath(t *testing.T) {
 	env := newTestEnv(t)
 	env.ConfigDirs.Anchor = "relative/path"
-	_, err := batchifierEntry(RowIdentity{Name: "row-name"}, Config{}, env)
+	_, err := loomPreflightEntry(RowIdentity{Name: "row-name"}, Config{}, env)
 	if err == nil {
-		t.Fatalf("batchifierEntry() error = nil; want non-nil for a relative Env.ConfigDirs.Anchor")
+		t.Fatalf("loomPreflightEntry() error = nil; want non-nil for a relative Env.ConfigDirs.Anchor")
 	}
 	if !strings.Contains(err.Error(), "ConfigDirs.Anchor") {
-		t.Errorf("batchifierEntry() error = %v; want it to name field %q", err, "ConfigDirs.Anchor")
+		t.Errorf("loomPreflightEntry() error = %v; want it to name field %q", err, "ConfigDirs.Anchor")
 	}
 }
 

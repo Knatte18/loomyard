@@ -3,15 +3,30 @@ package loomshed
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
+
+// writeBatcherConfig writes content as <anchorPath>/_lyx/config/batcher.yaml.
+func writeBatcherConfig(t *testing.T, anchorPath, content string) {
+	t.Helper()
+	configDir := filepath.Join(anchorPath, lyxdirs.LyxDirName, "config")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("mkdir config dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "batcher.yaml"), []byte(content), 0o644); err != nil {
+		t.Fatalf("write batcher.yaml: %v", err)
+	}
+}
 
 // fakeWebsterRun is a shedadapters.WebsterRunner fake recording the RunDeps it was called with and
 // returning outcome, or "done" when outcome is empty.

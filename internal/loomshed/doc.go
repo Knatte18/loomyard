@@ -7,7 +7,7 @@
 // The stops its gate rows halt on each name a way forward, as contracts/specs/refusal-spec.md defines one.
 // Loom-Preflight's half-finished-run stop names `lyx loom goto` as that way forward.
 //
-// Loom-Preflight also loads `batcher.yaml` through the layer stack under the told `configengine.Dirs` after a passing seed check, as the Batchifier row does, so a stale file in any layer stops the run before any LLM row.
+// Loom-Preflight also loads `batcher.yaml` through the layer stack under the told `configengine.Dirs` after a passing seed check, as the Webster row does when it partitions the plan, so a stale file in any layer stops the run before any LLM row.
 // A retired key names the way forward its layer file calls for, `lyx config reconcile --apply` for a worktree or local file and `lyx fabric reconcile` for the repo default, which a session lyx refuses the verb from reports status: FAILED and the orch runs;
 // any other load fault names the fix-and-re-step one.
 // The check reads and never writes, and validates no other module's config.

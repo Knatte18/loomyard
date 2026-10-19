@@ -18,13 +18,14 @@ The entry runs the lead and its advisors, when the table has any, on `MultiLLMPr
 It carries the row's gates on the lead and, for an enabled `parent-review` entry, the fresh-spawn preparation that opens the next review round.
 The recipe file names `DiscussionWrite`, and the built row carries that engine whatever `discussion_advisors` and `discussion_lenses` hold.
 `Plan-Write` is the second such row: its seat table is resolved from the `plan` role's own model-spec and timeout rather than from recipe strings, and building it needs a `*lyxcwd.Location` to build the plan paths, so it ships as its own `PlanWrite` entry for the same reason.
-The question the discussion worked through was whether the *other* rows (the loom-specific ones — `Loom-Preflight`, `Batchifier`) resist this shape, and the answer was no: they don't need to be reusable to fit the pattern, they just need a name in the same registry as everything else — a bespoke, single-consumer `Engine` is exactly as valid a registry entry as a widely-shared one.
+The question the discussion worked through was whether the *other* rows (the loom-specific ones, such as `Loom-Preflight`) resist this shape, and the answer was no: they don't need to be reusable to fit the pattern, they just need a name in the same registry as everything else — a bespoke, single-consumer `Engine` is exactly as valid a registry entry as a widely-shared one.
 
 ## What's in a recipe row
 
 - **`Name`** — the row's identifier, same as today (`shedengine.ProducerDef.Name`).
 - **`Engine`** — a name looked up in a registry mapping engine-name strings to `ShedProducer`-constructing functions. **Restricted to names already implementing `shedengine.ShedProducer`** — deliberately not "any Go module": every row today, shared adapter or loom-specific type alike, already satisfies the interface (the Shed Producer-Seam Invariant requires it to sit in a `ProducerDef` at all), so this restriction costs nothing and keeps the recipe-builder simple (registry lookup + fixed-signature constructor call, no reflection, no handling of arbitrary shapes).
 - **`Config`** — the row's static, portable configuration (e.g. which rubric stencil, which prompt template). **Never contains absolute paths.** This is what lets one `Engine` (e.g. `MultiLLMProducer`) serve many rows — the row-to-row difference lives entirely in `Config`.
+  No row field picks a row's engine from a setting: the `Implementer` engine does it inside the registry, building the row with the implementer its `implementer_setting` key's `module.key` setting names from a closed table, so every choice builds the same row with the same edges.
 - **`OnDone` / `OnStuck`** — same routing semantics as today's `ProducerDef` fields, unchanged.
 - **`OnReroute`** — the one row a Stuck verdict that asks for a reroute goes to; empty means the row cannot reroute.
   Its target may sit in another segment, and `shedengine`'s validation refuses one naming no row in the list or the row itself.

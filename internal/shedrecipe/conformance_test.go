@@ -47,7 +47,7 @@ func minimalEntries() map[string]minimalEntry {
 		"Finalize":        {withLanding, emptyConfig},
 		"FrictionReflect": {newTestEnv, emptyConfig},
 		"LoomPreflight":   {newTestEnv, emptyConfig},
-		"Batchifier":      {newTestEnv, emptyConfig},
+		"Implementer":     {newImplementerTestEnv, implementerTestConfig},
 		"DiscussionWrite": {newTestEnv, emptyConfig},
 		"Describe": {
 			env: newDescribeTestEnv,
@@ -55,7 +55,6 @@ func minimalEntries() map[string]minimalEntry {
 		},
 		"PlanWrite": {newTestEnv, emptyConfig},
 		"Stub":      {newTestEnv, emptyConfig},
-		"Webster":   {newTestEnv, emptyConfig},
 		"Bouncer": {
 			env: newTestEnv,
 			cfg: minimalBouncerConfig,

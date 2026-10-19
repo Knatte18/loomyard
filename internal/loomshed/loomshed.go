@@ -24,7 +24,6 @@ const (
 	NameDiscussionBouncer = "Discussion-Bouncer"
 	NamePlanWrite         = "Plan-Write"
 	NamePlanBouncer       = "Plan-Bouncer"
-	NameBatchifier        = "Batchifier"
 	NameWebster           = "Webster"
 	NameWebsterBouncer    = "Webster-Bouncer"
 	NameDescribe          = "Describe"

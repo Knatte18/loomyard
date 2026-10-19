@@ -36,7 +36,6 @@ var InterruptPolicies = map[string]string{
 	NameDiscussionBouncer: shedverbs.InterruptPolicyReinvoke,
 	NamePlanWrite:         shedverbs.InterruptPolicyReinvoke,
 	NamePlanBouncer:       shedverbs.InterruptPolicyReinvoke,
-	NameBatchifier:        shedverbs.InterruptPolicyReinvoke,
 	NameWebster:           shedverbs.InterruptPolicyHandback,
 	NameWebsterBouncer:    shedverbs.InterruptPolicyReinvoke,
 	NameDescribe:          shedverbs.InterruptPolicyReinvoke,

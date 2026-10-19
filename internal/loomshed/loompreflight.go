@@ -74,7 +74,7 @@ func NewLoomPreflight(name, statusPath, statusLockPath string, dirs configengine
 // producers a resumable blocked run may legitimately have left behind.
 //
 // A passing seed check, or a waived half-finished one, is followed by batcher.Active on the told dirs.
-// That is the load the Batchifier row makes, so a stale batcher.yaml stops the run here instead of rows later.
+// That is the load the Webster row makes, so a stale batcher.yaml stops the run here instead of rows later.
 // A seed failure is reported first and unchanged.
 func (p *loomPreflightProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {
@@ -117,9 +117,9 @@ func (p *loomPreflightProducer) Call(ctx context.Context) (shedengine.Outcome, s
 // retiredKeyWayForward completes the way forward a retired-key error already ends with, running either lyx config reconcile --apply, which migrates a worktree or local file, or lyx fabric reconcile for the repo default.
 const retiredKeyWayForward = ", then re-step"
 
-// checkBatcher loads batcher.yaml through the layer stack under p.dirs with batcher.Active, as the Batchifier row does.
+// checkBatcher loads batcher.yaml through the layer stack under p.dirs with batcher.Active, as the Webster row does.
 // A load error maps to Stuck with batchifierReasonPrefix leading the reason.
-// A retired-key error closes with the reconcile way forward, any other with the Batchifier row's own.
+// A retired-key error closes with the reconcile way forward, any other with the Webster row's own.
 // It reads and never writes, and validates no other module's config.
 func (p *loomPreflightProducer) checkBatcher(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if _, err := batcher.Active(p.dirs); err != nil {

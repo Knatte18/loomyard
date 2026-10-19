@@ -316,7 +316,7 @@ func TestEntryNumbers(t *testing.T) {
 			"Discussion-Bouncer": 4, "Discussion-Burler-Review": 4, "Discussion-Burler-Fix": 4,
 			"Plan-Write":   5,
 			"Plan-Bouncer": 6, "Plan-Burler-Review": 6, "Plan-Burler-Fix": 6,
-			"PR-Gate": 15, "PR-Rework": 16,
+			"PR-Gate": 14, "PR-Rework": 15,
 		}},
 		{"batten", shedrun.RecipeBatten, map[string]int{"Run-Shed": 6, "Land": 7}},
 		{"darn", shedrun.RecipeDarn, map[string]int{"Darn-Bouncer": 3, "Darn-Burler-Review": 3, "Darn-Burler-Fix": 3}},
