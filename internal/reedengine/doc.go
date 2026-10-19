@@ -246,6 +246,14 @@
 // tmux swap, since the same test runs unmodified against whichever binary
 // LoadConfig resolves.
 //
+// Tmux floor: every tmux command reed runs, and the lifecycle server spawn, first checks that the tmux binary is at or above lyx's floor (`toolfloor.TmuxFloor`), off Windows only.
+// The check runs `<tmux> -V` once per resolved tmux path per process and caches the parsed answer, so a below-floor tmux makes every command return the `*toolfloor.FloorError` naming the tool, the version found and the floor.
+// A probe that could not run is returned wrapped and not cached, so the next command probes again; an unparseable version line is logged once with Warn and admitted.
+// `CheckTmuxFloor` exposes the same check to a tmux spawn outside the runner, such as `lyx reed attach`'s handover.
+// A command carrying a test hook never reads or fills the process cache.
+// Bound: a long-lived process, the watchdog daemon included, keeps its cached answer after a tmux upgrade during its life.
+// The capability probe's own native floor stays beneath this one, and on Windows psmux keeps that floor alone.
+//
 // Operator config: a server reed starts reads no `~/.tmux.conf`.
 // The server spawn (serverSpawnArgv) and the capability probe's two invocations carry `-f /dev/null` on every platform but Windows;
 // the probe needs it because `list-commands` starts a transient server on the probe's private socket, and a config that creates a session would keep that server alive.
