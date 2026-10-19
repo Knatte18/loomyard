@@ -498,8 +498,8 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 
 	t.Run("WellFormedRequestOnAnAbsentTargetIsStillANoOpSuccess", func(t *testing.T) {
 		// The counter-assertion, as load-bearing as the three above: moving the shape check ahead of
-		// the absent-target rule must not turn the idempotent teardown sites (removePortal,
-		// removeLaunchers, Remove's already-absent weft worktree) into hard failures.
+		// the absent-target rule must not turn the idempotent teardown sites (removeLaunchers,
+		// Remove's already-absent weft worktree) into hard failures.
 		container := t.TempDir()
 		req := pathRequest{
 			what:      "test",
