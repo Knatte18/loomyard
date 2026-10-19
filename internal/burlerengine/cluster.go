@@ -11,7 +11,8 @@ package burlerengine
 import (
 	"errors"
 	"fmt"
-	"regexp"
+	"slices"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -20,11 +21,57 @@ import (
 // exactly the requested number of fork reviewers.
 var ErrClusterForksMissing = errors.New("the cluster round did not produce exactly the requested number of fork reviewers")
 
-// mutatingGitPattern matches a Bash command string that invokes git with a
-// state-mutating subcommand. The subcommand must be a whole token.
-var mutatingGitPattern = regexp.MustCompile(
-	`(?:^|[;&|]\s*)(?:\S*[\\/])?git(?:\s+[^\s;&|]+)*?\s+(?:add|commit|push|pull|fetch|merge|rebase|reset|restore|rm|mv|checkout|switch|stash|apply|cherry-pick|tag|branch)(?:\s|$)`,
-)
+// mutatingGitSubcommands holds the git subcommands that change repository or working-tree state.
+var mutatingGitSubcommands = map[string]bool{
+	"add": true, "commit": true, "push": true, "pull": true, "fetch": true, "merge": true,
+	"rebase": true, "reset": true, "restore": true, "rm": true, "mv": true, "checkout": true,
+	"switch": true, "stash": true, "apply": true, "cherry-pick": true, "tag": true, "branch": true,
+}
+
+// gitValuedGlobalOptions holds git's global options whose value is the following word, so that word is never read as the subcommand.
+var gitValuedGlobalOptions = map[string]bool{
+	"-C": true, "-c": true, "--git-dir": true, "--work-tree": true, "--namespace": true, "--config-env": true,
+}
+
+// commandRunsMutatingGit reports whether a Bash command string invokes git with a state-mutating subcommand.
+// The command is split into segments at ;, &, | and newlines, and a segment counts when its first word is git, bare or path-prefixed.
+// Only the subcommand word decides, so a mutating verb named as an argument, as in git help cherry-pick, never counts,
+// and a segment carrying -h or --help only prints usage and never counts either.
+func commandRunsMutatingGit(cmd string) bool {
+	segments := strings.FieldsFunc(cmd, func(r rune) bool { return strings.ContainsRune(";&|\n", r) })
+	for _, segment := range segments {
+		words := strings.Fields(segment)
+		if len(words) == 0 || !isGitExecutable(words[0]) {
+			continue
+		}
+		if slices.Contains(words, "-h") || slices.Contains(words, "--help") {
+			continue
+		}
+		if mutatingGitSubcommands[gitSubcommand(words[1:])] {
+			return true
+		}
+	}
+	return false
+}
+
+// isGitExecutable reports whether word names the git binary, bare or behind a directory path.
+func isGitExecutable(word string) bool {
+	return word == "git" || strings.HasSuffix(word, "/git") || strings.HasSuffix(word, `\git`)
+}
+
+// gitSubcommand returns the first non-option word of args, the words after git, skipping each valued global option's value; it returns "" when there is none.
+func gitSubcommand(args []string) string {
+	for i := 0; i < len(args); i++ {
+		switch {
+		case gitValuedGlobalOptions[args[i]]:
+			i++
+		case strings.HasPrefix(args[i], "-"):
+		default:
+			return args[i]
+		}
+	}
+	return ""
+}
 
 // auditClusterRound enforces the cluster-round fail-loud policy. Checks run in
 // a fixed order; the first violation is returned as a hard error.
@@ -58,7 +105,7 @@ func forkViolation(audit *shuttleengine.ForkAudit) error {
 	}
 	for _, fork := range audit.Forks {
 		for _, cmd := range fork.BashCommands {
-			if mutatingGitPattern.MatchString(cmd) {
+			if commandRunsMutatingGit(cmd) {
 				return fmt.Errorf("fork %q ran a git-mutating command (%q) — a fork must never run a state-mutating git command", fork.TranscriptPath, cmd)
 			}
 		}
