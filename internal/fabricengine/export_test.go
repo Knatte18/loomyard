@@ -659,3 +659,28 @@ var DropSeedCommitsForTest = dropSeedCommits
 
 // BoardDropRequestForTest re-exports boardDropRequest, so a package fabricengine_test file builds the drop's gate request without naming the unexported request type.
 var BoardDropRequestForTest = boardDropRequest
+
+// lockWaitWaiters maps a weft write lock path to the channel its test waits on.
+var lockWaitWaiters sync.Map
+
+// installLockWaitDispatch installs the lock-wait hook once for the process.
+var installLockWaitDispatch sync.Once
+
+// AwaitWeftLockWaitForTest registers for lockPath and returns a channel that closes when a merge verb is about to wait for the weft write lock at that path.
+// Only the path registered here is signalled, so parallel tests each wait for their own verb.
+func AwaitWeftLockWaitForTest(t *testing.T, lockPath string) <-chan struct{} {
+	t.Helper()
+
+	installLockWaitDispatch.Do(func() {
+		hook := func(path string) {
+			if waiter, ok := lockWaitWaiters.LoadAndDelete(path); ok {
+				close(waiter.(chan struct{}))
+			}
+		}
+		lockWaitHook.Store(&hook)
+	})
+	signal := make(chan struct{})
+	lockWaitWaiters.Store(lockPath, signal)
+	t.Cleanup(func() { lockWaitWaiters.Delete(lockPath) })
+	return signal
+}
