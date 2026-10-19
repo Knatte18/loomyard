@@ -77,6 +77,11 @@ Imports only the standard library.
 It is the sole `.git` parser: git dir, common dir, the repository test and the walk-up to a worktree root, in-process and spawning nothing.
 It is its own package because `gitrepo`'s in-package test imports `gitkit`, which reaches `lyxcwd`, so `lyxcwd` importing `gitrepo` would close a cycle.
 
+## `internal/toolfloor`
+
+Imports only the standard library.
+It holds the git and tmux version floor and the version-line parser, and spawns, caches and logs nothing.
+
 ## `internal/pauserecord`
 
 Imports only the standard library and `internal/state`, and `gofrs/flock` through it.

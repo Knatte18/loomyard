@@ -204,6 +204,7 @@
 // The name is mirrored outward, never read back as truth.
 // launchStrandLocked exports it to the strand's process as LYX_STRAND_NAME, with LYX_PARENT when a parent is told, ahead of the launch command.
 // It also sets the pane title to the full name after `set-option -p allow-set-title off`, so the program in the pane cannot overwrite it.
+// On tmux below 3.5 the option is missing, reed Warns and the launch goes on, and the program can then overwrite the title.
 // A provider session name is the other mirror, passed by the launch line as `--name`.
 // The daemon's file-event waits (watchloop.go) go through a FileWatchOpener, whose production value OpenFileWatch wraps internal/fswatch.
 // PasteSubmit is the pane-write transport op: one tmux invocation fills a fresh named buffer (`lyx-inject-` plus 8 hex characters) with the text, pastes it as a bracketed paste, deletes the buffer, and, when asked, sends Enter behind it.

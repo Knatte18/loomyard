@@ -289,6 +289,7 @@ github.com/Knatte18/loomyard/
 ├── internal/fswatch/             the one file-change event source over fsnotify, a leaf
 ├── internal/configengine/        shared config resolution
 ├── internal/gitexec/             shared git operations
+├── internal/toolfloor/           the git and tmux version floor and its version-line parser, a stdlib-only leaf
 ├── internal/gitrepo/             typed Repo over one local git checkout: go-git for local reads, gitexec for remote-auth/mutation
 ├── internal/githubclient/        GitHub token resolution, caching, and authenticated *github.Client construction — auth only, no per-operation wrappers
 ├── internal/lock/                shared file locking
