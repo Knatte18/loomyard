@@ -220,6 +220,9 @@ func TestBar_LineTwoListsSessionsPrimeFirst(t *testing.T) {
 		if strings.Count(line, current) != 1 || strings.Count(line, other) != 1 || strings.Count(line, "range=session|") != 2 {
 			t.Fatalf("line 2 = %q, want the lit client session %q and the unlit %q once each and no other session range", line, current, other)
 		}
+		if strings.Count(line, "nolist align=right]") != 1 {
+			t.Errorf("line 2 = %q, want the right-aligned time segment once", line)
+		}
 		firstFollow := strings.Index(line, "range=user|follow")
 		if firstFollow < 0 || strings.Contains(line[strings.LastIndex(line[:firstFollow], "range=session|"):firstFollow], ",") {
 			t.Errorf("line 2 = %q, want no comma between the last session button and the follow button", line)

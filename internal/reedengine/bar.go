@@ -70,5 +70,5 @@ const (
 	statusFormatSessions = listPrologueFormat +
 		"#{S:#{?#{&&:" + reedSessionFilter + ",#{==:#{" + primeSessionOption + "},1}}," + sessionButtonFormat + ",}}" +
 		"#{S:#{?#{&&:" + reedSessionFilter + ",#{!=:#{" + primeSessionOption + "},1}}," + sessionButtonFormat + ",}}" +
-		followButtonFormat + "#[nolist align=right]%H:%M " + "#[nolist align=right]%H:%M "
+		followButtonFormat + "#[nolist align=right]%H:%M "
 )
