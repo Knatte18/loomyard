@@ -6,9 +6,7 @@
 // down only the worktree Add created — the branch, and any unpushed history
 // it carries, survives. A live review round reproduced the pre-fix behavior
 // (branch and its unique commit destroyed after a warp-push failure), so this
-// test injects a deterministic post-adopt failure (a portal blocker file, the
-// same injection TestAddRollback_DifferentialEquivalence uses) instead of a
-// network failure.
+// test injects a deterministic post-adopt failure (a launcher blocker directory) instead of a network failure.
 //
 // Package fabricengine_test to reuse the external-test-package fixture idiom
 // of lifecycle_differential_test.go; shares the single TestMain in
@@ -19,6 +17,7 @@ package fabricengine_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -54,6 +53,23 @@ func refuseRecordsCommits(t *testing.T, l *lyxcwd.Location) {
 	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "config", "core.hooksPath", hooks)
 }
 
+// plantLauncherBlocker plants a directory at the pair's ide launcher script path, so Add fails writing the launcher scripts after the pair's worktrees and weft branch exist.
+// The rollback's launcher teardown removes the planted directory and the launcher directory.
+// It returns the planted path.
+func plantLauncherBlocker(tb testing.TB, l *lyxcwd.Location, slug string) string {
+	tb.Helper()
+
+	scriptName := "ide.sh"
+	if runtime.GOOS == "windows" {
+		scriptName = "ide.cmd"
+	}
+	blocker := filepath.Join(fabricengine.LauncherDir(l, slug), scriptName)
+	if err := os.MkdirAll(blocker, 0o755); err != nil {
+		tb.Fatalf("plant launcher blocker %s: %v", blocker, err)
+	}
+	return blocker
+}
+
 // TestAddRollback_AdoptedWeftBranchSurvives pre-creates a weft branch carrying a unique commit,
 // forces Add to fail after adopting it, and asserts the rollback removed the weft worktree but left
 // the branch — still pointing at the unique commit — untouched, alongside the usual zero warp-side
@@ -79,21 +95,15 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 	preciousSHA := gitkit.CommitFile(t, seedDir, "precious.txt", "pre-existing weft work\n", "precious pre-existing weft work")
 	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "worktree", "remove", seedDir)
 
-	// Inject a deterministic failure AFTER the adopt: a blocker file at the
-	// portal location makes step 9 (createPortal) fail, triggering rollback.
-	portalLink := filepath.Join(fabricengine.PortalsDir(l), slug)
-	if err := os.MkdirAll(filepath.Dir(portalLink), 0o755); err != nil {
-		t.Fatalf("mkdir portal parent: %v", err)
-	}
-	if err := os.WriteFile(portalLink, []byte("blocker"), 0o644); err != nil {
-		t.Fatalf("create blocker: %v", err)
-	}
+	// Inject a deterministic failure AFTER the adopt:
+	// a directory at the ide launcher script path makes writeLaunchers fail, triggering rollback.
+	plantLauncherBlocker(t, l, slug)
 
 	const branchPrefix = "task/"
 	warpBranch := branchPrefix + slug
 	topology := fabricengine.NewTopology(fabricengine.Config{BranchPrefix: branchPrefix})
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err == nil {
-		t.Fatalf("Add should have failed (portal blocker)")
+		t.Fatalf("Add should have failed (launcher blocker)")
 	}
 
 	// The adopted branch survives the rollback, still at its unique commit.
@@ -157,17 +167,11 @@ func TestAddRollback_LiveWeftFromOrigin(t *testing.T) {
 			}
 			originTip := gitkit.RevParse(t, h.RecordsBare, weftBranch)
 
-			// A blocker at the portal location fails Add at createPortal, after the weft branch is taken from origin.
-			portalLink := filepath.Join(fabricengine.PortalsDir(l), slug)
-			if err := os.MkdirAll(filepath.Dir(portalLink), 0o755); err != nil {
-				t.Fatalf("mkdir portal parent: %v", err)
-			}
-			if err := os.WriteFile(portalLink, []byte("blocker"), 0o644); err != nil {
-				t.Fatalf("create blocker: %v", err)
-			}
+			// A blocker at the ide launcher script path fails Add at writeLaunchers, after the weft branch is taken from origin.
+			plantLauncherBlocker(t, l, slug)
 
 			if _, err := h.Topology.Add(l, slug, fabricengine.AddOptions{}); err == nil {
-				t.Fatalf("Add should have failed (portal blocker)")
+				t.Fatalf("Add should have failed (launcher blocker)")
 			}
 
 			if got := gitkit.RevParse(t, h.RecordsBare, weftBranch); got != originTip {
@@ -197,21 +201,14 @@ func TestAddRollback_WarpBranchDeletedUnderEmptyPrefix(t *testing.T) {
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 
-	// Inject a deterministic post-creation failure: a blocker file at the portal location makes
-	// createPortal (step 9) fail after the warp worktree and its branch already exist, triggering
-	// rollbackAdd.
-	portalLink := filepath.Join(fabricengine.PortalsDir(l), slug)
-	if err := os.MkdirAll(filepath.Dir(portalLink), 0o755); err != nil {
-		t.Fatalf("mkdir portal parent: %v", err)
-	}
-	if err := os.WriteFile(portalLink, []byte("blocker"), 0o644); err != nil {
-		t.Fatalf("create blocker: %v", err)
-	}
+	// Inject a deterministic post-creation failure:
+	// a directory at the ide launcher script path makes writeLaunchers fail after the warp worktree and its branch already exist, triggering rollbackAdd.
+	plantLauncherBlocker(t, l, slug)
 
 	// Default empty branch_prefix: the warp branch is exactly the bare slug.
 	topology := fabricengine.NewTopology(fabricengine.Config{})
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err == nil {
-		t.Fatalf("Add should have failed (portal blocker)")
+		t.Fatalf("Add should have failed (launcher blocker)")
 	}
 
 	// The worktree pair is fully rolled back.
@@ -238,16 +235,10 @@ func TestAddRollback_AdoptedWarpBranchLocalCopyDeleted(t *testing.T) {
 	pushCommitToOrigin(t, h.RecordsBare, fabricengine.RecordsBranchName(slug))
 	originTip := gitkit.RevParse(t, h.CodeBare, slug)
 
-	portalLink := filepath.Join(fabricengine.PortalsDir(l), slug)
-	if err := os.MkdirAll(filepath.Dir(portalLink), 0o755); err != nil {
-		t.Fatalf("mkdir portal parent: %v", err)
-	}
-	if err := os.WriteFile(portalLink, []byte("blocker"), 0o644); err != nil {
-		t.Fatalf("create blocker: %v", err)
-	}
+	plantLauncherBlocker(t, l, slug)
 
 	if _, err := h.Topology.Add(l, slug, fabricengine.AddOptions{}); err == nil {
-		t.Fatalf("Add should have failed (portal blocker)")
+		t.Fatalf("Add should have failed (launcher blocker)")
 	}
 
 	if gitkit.BranchExists(t, l.WorktreePath(), slug) {
@@ -358,8 +349,7 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 		}
 	}
 
-	// The adopted branch still survives the rollback, exactly as the portal-
-	// blocker variant of this scenario asserts.
+	// The adopted branch still survives the rollback, exactly as the launcher-blocker variant of this scenario asserts.
 	if !gitkit.BranchExists(t, mustRecordsRepoRoot(t, l), weftBranch) {
 		t.Fatalf("adopted weft branch %q was deleted by Add's rollback; want it preserved", weftBranch)
 	}

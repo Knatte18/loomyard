@@ -88,7 +88,6 @@ func TestRemove_WarpStatusProbeFailurePushesNoTag(t *testing.T) {
 	}
 	assertNoArchiveTag(t, h.RecordsBare, weftRoot)
 	for _, p := range []string{
-		fabricengine.PortalLink(l, slug),
 		fabricengine.LauncherDir(l, slug),
 		fabricengine.RecordsWorktreePath(l, slug),
 	} {
@@ -98,12 +97,11 @@ func TestRemove_WarpStatusProbeFailurePushesNoTag(t *testing.T) {
 	}
 }
 
-// assertPairIntact fails unless the pair's portal, launchers, both worktrees and both branches exist.
+// assertPairIntact fails unless the pair's launchers, both worktrees and both branches exist.
 func assertPairIntact(t *testing.T, l *lyxcwd.Location, slug string) {
 	t.Helper()
 
 	for _, p := range []string{
-		fabricengine.PortalLink(l, slug),
 		fabricengine.LauncherDir(l, slug),
 		fabricengine.WorktreePath(l, slug),
 		fabricengine.RecordsWorktreePath(l, slug),

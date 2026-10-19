@@ -1,19 +1,22 @@
 //go:build integration
 
 // spawn_hub_integration_test.go holds the Spawn checks that run against the prime and against a task pair of one hubforge hub:
-// the prime opens a lyx-generated hub workspace, a task slug still opens its bare folder.
+// the prime opens the lyx-generated hub workspace, a task slug still opens its bare folder.
 // Each check is a step of a scenario in spawn_scenario_integration_test.go, which names why they run serially.
 
 package ideengine
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
@@ -52,12 +55,13 @@ func resetPrimeEditorState(t *testing.T, h *hubforge.Hub) {
 	if err := os.RemoveAll(filepath.Dir(primeSettingsPath(h, prime))); err != nil {
 		t.Fatalf("remove prime .vscode: %v", err)
 	}
-	if err := os.RemoveAll(fabricengine.HubWorkspacePath(h.Location, prime)); err != nil {
+	if err := os.RemoveAll(fabricengine.HubWorkspacePath(h.Location)); err != nil {
 		t.Fatalf("remove hub workspace: %v", err)
 	}
 }
 
-// checkPrimeWritesHubWorkspace covers the workspace file's location, folders and launch argument at the hub's anchor.
+// checkPrimeWritesHubWorkspace covers the workspace file's location, folders and launch argument at the hub's anchor:
+// the prime's branch, Bolt and every task pair the scenario added so far, and no _portals folder.
 func checkPrimeWritesHubWorkspace(t *testing.T, h *hubforge.Hub) {
 	resetPrimeEditorState(t, h)
 	l := h.Location
@@ -68,7 +72,7 @@ func checkPrimeWritesHubWorkspace(t *testing.T, h *hubforge.Hub) {
 		t.Fatalf("Spawn: %v", err)
 	}
 
-	wsPath := fabricengine.HubWorkspacePath(l, prime)
+	wsPath := fabricengine.HubWorkspacePath(l)
 	if len(*launched) != 1 || (*launched)[0] != wsPath {
 		t.Fatalf("CodeLauncher calls = %v, want exactly [%s]", *launched, wsPath)
 	}
@@ -85,14 +89,29 @@ func checkPrimeWritesHubWorkspace(t *testing.T, h *hubforge.Hub) {
 	if err := json.Unmarshal(data, &ws); err != nil {
 		t.Fatalf("workspace file is not valid JSON: %v\n%s", err, data)
 	}
-	wantNames := []string{prime, "_board", "_portals"}
+	primeBranch := gitkit.Git(t, filepath.Join(h.Path, prime), "branch", "--show-current")
+	wantNames := []string{primeBranch, "Bolt"}
 	wantDirs := []string{
 		filepath.Join(h.Path, prime, l.AnchorRel),
 		fabricengine.BoardDir(h.Path),
-		filepath.Join(h.Path, "_portals", l.AnchorRel),
 	}
-	if len(ws.Folders) != 3 {
-		t.Fatalf("folders = %+v, want 3", ws.Folders)
+	entries, err := fabricengine.List(l.AnchorPath())
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	var pairNames []string
+	for _, entry := range entries {
+		if !entry.Main && !entry.Prunable {
+			pairNames = append(pairNames, filepath.Base(filepath.FromSlash(entry.Path)))
+		}
+	}
+	sort.Strings(pairNames)
+	for _, name := range pairNames {
+		wantNames = append(wantNames, name)
+		wantDirs = append(wantDirs, filepath.Join(h.Path, name, l.AnchorRel))
+	}
+	if len(ws.Folders) != len(wantNames) {
+		t.Fatalf("folders = %+v, want names %v", ws.Folders, wantNames)
 	}
 	for i, f := range ws.Folders {
 		if f.Name != wantNames[i] {
@@ -102,13 +121,26 @@ func checkPrimeWritesHubWorkspace(t *testing.T, h *hubforge.Hub) {
 		if got != wantDirs[i] {
 			t.Errorf("folder %d resolves to %s, want %s", i, got, wantDirs[i])
 		}
-	}
-	if info, err := os.Stat(wantDirs[2]); err != nil || !info.IsDir() {
-		t.Errorf("_portals/<AnchorRel> missing: %v", err)
+		if strings.Contains(f.Path, "_portals") {
+			t.Errorf("folder %d path %q names _portals", i, f.Path)
+		}
 	}
 }
 
-// checkTaskSlugOpensBareFolder asserts a task spawn launches its bare folder and writes no workspace file.
+// readOptionalFile returns the bytes of path and whether it exists.
+func readOptionalFile(t *testing.T, path string) (data []byte, exists bool) {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil, false
+	}
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return data, true
+}
+
+// checkTaskSlugOpensBareFolder asserts a task spawn launches its bare folder and leaves the workspace file's bytes, or its absence, unchanged.
 // It also asserts SeedTask writes the same on-demand attach task Spawn does, and leaves the keybindings.json alone where Spawn seeds it.
 func checkTaskSlugOpensBareFolder(t *testing.T, h *hubforge.Hub, slug string) {
 	resetPrimeEditorState(t, h)
@@ -122,6 +154,7 @@ func checkTaskSlugOpensBareFolder(t *testing.T, h *hubforge.Hub, slug string) {
 	if err := os.RemoveAll(keybindingsPath); err != nil {
 		t.Fatalf("remove keybindings: %v", err)
 	}
+	workspaceBefore, workspaceExisted := readOptionalFile(t, fabricengine.HubWorkspacePath(l))
 
 	if err := SeedTask(l, slug); err != nil {
 		t.Fatalf("SeedTask: %v", err)
@@ -142,8 +175,9 @@ func checkTaskSlugOpensBareFolder(t *testing.T, h *hubforge.Hub, slug string) {
 	if len(*launched) != 1 || (*launched)[0] != want {
 		t.Fatalf("CodeLauncher calls = %v, want [%s]", *launched, want)
 	}
-	if _, err := os.Stat(fabricengine.HubWorkspacePath(l, primeOf(t, h))); !os.IsNotExist(err) {
-		t.Errorf("workspace file exists after a task spawn (stat err = %v)", err)
+	workspaceAfter, workspaceExists := readOptionalFile(t, fabricengine.HubWorkspacePath(l))
+	if workspaceExists != workspaceExisted || !bytes.Equal(workspaceAfter, workspaceBefore) {
+		t.Errorf("workspace file changed by a task spawn: existed %v then, %v now; bytes before %q, after %q", workspaceExisted, workspaceExists, workspaceBefore, workspaceAfter)
 	}
 }
 
@@ -153,7 +187,7 @@ func checkPrimeSplicesSettingsAndRegenerates(t *testing.T, h *hubforge.Hub) {
 	l := h.Location
 	prime := primeOf(t, h)
 	recordLauncher(t)
-	wsPath := fabricengine.HubWorkspacePath(l, prime)
+	wsPath := fabricengine.HubWorkspacePath(l)
 	settingsPath := primeSettingsPath(h, prime)
 
 	if _, err := Spawn(l, prime); err != nil {
@@ -223,41 +257,36 @@ func checkPrimeSettingsReadFailure(t *testing.T, h *hubforge.Hub) {
 	if len(*launched) != 0 {
 		t.Errorf("CodeLauncher called: %v", *launched)
 	}
-	if _, err := os.Stat(fabricengine.HubWorkspacePath(l, prime)); !os.IsNotExist(err) {
+	if _, err := os.Stat(fabricengine.HubWorkspacePath(l)); !os.IsNotExist(err) {
 		t.Errorf("workspace file written despite the failure (stat err = %v)", err)
 	}
 }
 
-// checkPrimeWorkspaceSurvivesTopologyVerbs asserts Remove and a Prune dry run leave the workspace file alone.
-func checkPrimeWorkspaceSurvivesTopologyVerbs(t *testing.T, h *hubforge.Hub, slug string) {
+// checkPrimeWriteFailure plants a read-only workspace file of different bytes and asserts the prime spawn returns the write error, launches nothing and leaves the file's bytes.
+// It skips as root, where mode bits refuse nothing.
+func checkPrimeWriteFailure(t *testing.T, h *hubforge.Hub) {
+	if os.Geteuid() == 0 {
+		t.Skip("mode bits refuse nothing as root")
+	}
 	resetPrimeEditorState(t, h)
 	l := h.Location
-	prime := primeOf(t, h)
-	recordLauncher(t)
-	hubforge.AddPair(t, h, slug)
+	launched := recordLauncher(t)
+	wsPath := fabricengine.HubWorkspacePath(l)
+	planted := []byte("planted workspace bytes\n")
+	if err := os.WriteFile(wsPath, planted, 0o444); err != nil {
+		t.Fatalf("plant workspace file: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Remove(wsPath) })
 
-	if _, err := Spawn(l, prime); err != nil {
-		t.Fatalf("Spawn: %v", err)
+	_, err := Spawn(l, primeOf(t, h))
+	if err == nil || !strings.Contains(err.Error(), "write workspace file") {
+		t.Fatalf("Spawn error = %v, want the write cause", err)
 	}
-	wsPath := fabricengine.HubWorkspacePath(l, prime)
-
-	if _, err := h.Topology.Remove(l, slug, true, false); err != nil {
-		t.Fatalf("Remove: %v", err)
+	if len(*launched) != 0 {
+		t.Errorf("CodeLauncher called: %v", *launched)
 	}
-	if _, err := os.Stat(wsPath); err != nil {
-		t.Fatalf("workspace file gone after Remove: %v", err)
-	}
-
-	res, err := h.Topology.Prune(l, false, false)
-	if err != nil {
-		t.Fatalf("Prune: %v", err)
-	}
-	for _, e := range res.Entries {
-		if strings.Contains(e.CodeWorktree, ".code-workspace") || strings.Contains(e.RecordsWorktree, ".code-workspace") {
-			t.Errorf("Prune entry names the workspace file: %+v", e)
-		}
-	}
-	if _, err := os.Stat(wsPath); err != nil {
-		t.Fatalf("workspace file gone after Prune: %v", err)
+	got, readErr := os.ReadFile(wsPath)
+	if readErr != nil || !bytes.Equal(got, planted) {
+		t.Errorf("workspace file = %q (read err %v), want the planted bytes", got, readErr)
 	}
 }

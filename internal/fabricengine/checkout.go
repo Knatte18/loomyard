@@ -74,6 +74,9 @@ func (t *Topology) Checkout(l *lyxcwd.Location, branch string) (res CheckoutResu
 		originalWeftBranch = b
 	}
 
+	// The pre-flight refusals have passed: every exit from here, a rollback included, regenerates the hub workspace file.
+	defer regenerateAfterVerb(rec, l, "checkout")
+
 	// Switch the warp worktree to the target branch.
 	// git's own stderr is carried into the error: the actionable half of a failure here is
 	// invariably in it ("'main' is already used by worktree at ..."), and a bare exit code leaves

@@ -72,7 +72,7 @@ those are each owned by the module that constructs them.
 - `ResolveWithAnchor(cwd, anchor)` / `ResolveWorktree(root)` — the two ungated variants, for callers that hold something other than an acting cwd (see `docs/shared-libs/lyxcwd.md`).
 
 `Location` carries exactly four fields — `RepoName`, `HubPath`, `WorktreeName`, `AnchorRel` — plus two derived accessors, `WorktreePath()` and `AnchorPath()`.
-Every other geometry token (records paths, junctions, `_lyx/<module>`, portals, launchers, the hub-reserved name set) is a per-module constructor, joined onto `Location`'s coordinates by the module that owns that token — see [PATTERN-cwd-resolution](../pattern/PATTERN-cwd-resolution.md) for the full per-token ownership map.
+Every other geometry token (records paths, junctions, `_lyx/<module>`, launchers, the hub-reserved name set) is a per-module constructor, joined onto `Location`'s coordinates by the module that owns that token — see [PATTERN-cwd-resolution](../pattern/PATTERN-cwd-resolution.md) for the full per-token ownership map.
 
 `lyxcwd.Resolve` proves that cwd is the root of a git worktree and nothing more.
 It succeeds in any ordinary git repository run from its root, and the `HubPath` and `RepoName` it returns are fiction in that case.
@@ -117,13 +117,12 @@ The two-sided design is documented in `internal/fabricengine`'s package doc.
   ├── <slug>-<records>/             (records worktree for <slug>; git repo root)
   ├── _board/                       (records main-branch worktree; holds board.json)
   │     └── .lyx/                   (hub-wide machine-local scratch; a real dir, never a junction)
-  ├── _portals/<anchor>/<slug>      (junction into <slug>'s _lyx; anchor-mirrored)
+  ├── <RepoName>.code-workspace     (the hub's VS Code workspace; lyx-owned)
   └── _launchers/<anchor>/          (anchor-mirrored)
-        ├── <slug>                  (per-worktree launcher scripts)
-        └── <prime>.code-workspace  (the prime's hub workspace; lyx-owned)
+        └── <slug>                  (per-worktree launcher scripts)
 ```
 
-`_board`, `_portals`, and `_launchers` are hub geometry, so none of them can be claimed as a worktree slug
+`_board`, `_launchers` and the retired `_portals` are hub geometry, so none of them can be claimed as a worktree slug
 (`fabricengine.IsReservedHubName`); `.lyx` stays slug-reserved too, but via `structuralNeverCommittedDirs`
 rather than as hub geometry, since it no longer has a hub-level presence of its own.
 
@@ -216,8 +215,6 @@ Records paths are computed on demand from geometry and do not require a registry
 - **Go implementation** (paths geometry, paired spawn, `lyx fabric` command): ✅ Implemented. `fabric` (paths geometry, paired `lyx fabric add` spawn, and `lyx fabric status|commit|push|pull|sync|diff|merge-in|merge|merge-stage`) is the sole git-coordination module now. `status` is the unified both-sides uncommitted-change view, also reporting `merge_in_progress`, whether THIS pair has a fabric merge parked. Paired `lyx fabric add` hard-requires a records repo, which `lyx fabric clone` builds — there is no separate hub-creator tool.
 - **`lyx config` command**: ✅ task 008 complete.
   Bare `lyx config` lists modules and verbs, `lyx config menu` is the interactive picker, `lyx config <module>` edits, and `lyx config reconcile` shipped. (A raddle config schema is **raddle** nav-doc work, not part of this task — it was only historically mis-bundled here; there is no `_raddle` junction to activate.)
-- **Portals**: unimplemented;
-  the records junction model is the live mechanism. (Symlink-based overlay sharing is not on the critical path.)
 
 ```
 github.com/Knatte18/loomyard/
@@ -375,7 +372,7 @@ User-facing modules each get one `lyx <module>` namespace:
   `--force` never overrides that check.
   ✅ Implemented; see the `internal/fabricengine` package documentation for rationale.
 - **ide** — one-shot VS Code launcher with interactive menu.
-  `lyx ide spawn <prime>` opens a hub workspace (prime, `_board`, `_portals`) whose `settings` carry the prime's `.vscode/settings.json`.
+  `lyx ide spawn <prime>` opens the hub workspace `<hub>/<RepoName>.code-workspace` (the prime, `Bolt` and every task pair) whose `settings` carry the prime's `.vscode/settings.json`.
   The file is lyx-owned and regenerated on each prime spawn, overwriting any edit made in it;
   a task slug still opens its bare folder.
   The generated `tasks.json` holds one on-demand `reed attach` task, with the `lyx` path stamped absolute at generation time, reached through "Tasks: Run Task";
@@ -643,7 +640,7 @@ User-facing modules each get one `lyx <module>` namespace:
   so a second driver is never stacked,
   and the bootstrap itself is idempotent against a driver already alive.
   `Worktree-Teardown` is idempotent against its own post-condition just as `Worktree-Create` is: re-entered after its own removal already succeeded (a process killed before the transition persisted), it finds the pair gone and reports done.
-  That post-condition is the pair's, not the task worktree's alone: fabric removes the task worktree before its sibling, so a removal interrupted between the two halves leaves the sibling, its portal and launcher entries, and both branches behind — re-entered there, the row halts `blocked` naming the leftover and `lyx fabric prune --apply` as the remedy rather than reporting done over the debris.
+  That post-condition is the pair's, not the task worktree's alone: fabric removes the task worktree before its sibling, so a removal interrupted between the two halves leaves the sibling, its launcher entries, and both branches behind — re-entered there, the row halts `blocked` naming the leftover and `lyx fabric prune --apply` as the remedy rather than reporting done over the debris.
   Teardown first pushes an `archive/<slug>/<tip>` tag of the pair's other-side branch's tip to its remote, so the run's committed records stay reachable after the branch is gone, then deletes that branch locally and on the remote (the task branch stays on the remote, and locally unless `remove` proved its work pushed or landed), and a re-entered row whose worktrees are already gone finishes that deletion rather than reporting done over a surviving copy, which would make a later create of the slug refuse its push; a failed remote deletion halts the row `blocked`, and resuming once the remote is reachable retries it.
   A failed archive push halts the row the same way before anything is removed, and its reason names the resume.
   Teardown is one row sequencing session shutdown before worktree removal, and never forces: anything an agent left uncommitted or untracked in the child (a build artefact, a note) blocks the row after the session is already down, with fabric's own refusal as the `stuck_reason` — the operator cleans the child and re-steps, never `--force`;

@@ -184,16 +184,13 @@ func TestNewHub(t *testing.T) {
 						t.Errorf("%s content = %q; want the seeded override %q", configPath, got, override)
 					}
 				}},
-				{"AddPairWiresPortalAndLauncher", func(t *testing.T) {
+				{"AddPairWiresLauncherAndNoPortals", func(t *testing.T) {
 					const slug = "px"
 					AddPair(t, h, slug)
 
-					portal := fabricengine.PortalLink(h.Location, slug)
-					if _, err := os.Stat(portal); err != nil {
-						t.Errorf("pair portal link missing at %s: %v", portal, err)
-					}
-					if got := h.PairPortalLink(slug); got != portal {
-						t.Errorf("h.PairPortalLink(%s) = %s; want %s", slug, got, portal)
+					portalsDir := filepath.Join(h.Location.HubPath, "_portals")
+					if _, err := os.Lstat(portalsDir); !os.IsNotExist(err) {
+						t.Errorf("%s exists after AddPair (err = %v); want no _portals directory", portalsDir, err)
 					}
 
 					launcherDir := fabricengine.LauncherDir(h.Location, slug)
@@ -505,7 +502,7 @@ func TestNewHub_TeardownSurvivesCorruptHub(t *testing.T) {
 }
 
 // TestCopyHub copies the "." shape with its one pair and asserts the copy is a working hub of its own:
-// fabric status is clean on its prime, every worktree git lists resolves, the pair's portal link and launcher directory resolve, and no file or link names the template root.
+// fabric status is clean on its prime, every worktree git lists resolves, the pair's launcher directory resolves, no `_portals` directory exists, and no file or link names the template root.
 func TestCopyHub(t *testing.T) {
 	t.Parallel()
 
@@ -551,12 +548,13 @@ func TestCopyHub(t *testing.T) {
 	}
 
 	for _, slug := range shape.Pairs {
-		if _, err := os.Stat(h.PairPortalLink(slug)); err != nil {
-			t.Errorf("portal link of pair %s does not resolve: %v", slug, err)
-		}
 		if _, err := os.Stat(h.PairLauncherDir(slug)); err != nil {
 			t.Errorf("launcher dir of pair %s does not resolve: %v", slug, err)
 		}
+	}
+	portalsDir := filepath.Join(h.Location.HubPath, "_portals")
+	if _, err := os.Lstat(portalsDir); !os.IsNotExist(err) {
+		t.Errorf("%s exists on the copy (err = %v); want no _portals directory", portalsDir, err)
 	}
 
 	templateRoot := templateFor(t, shape).root

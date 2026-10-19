@@ -57,12 +57,10 @@ const (
 	// ReconcileActionAlreadyHealthy means the pair required no corrective action.
 	ReconcileActionAlreadyHealthy ReconcileAction = "already_healthy"
 
-	// ReconcileActionPortalRestored means the pair's junctions were healthy but its hub-level portal
-	// junction or launcher directory was missing and has been recreated.
-	// It is reported instead of ReconcileActionAlreadyHealthy for the same reason
-	// ReconcileActionStaleRemoved is: a consumer keying off Action must see that convergence altered
-	// the pair.
-	ReconcileActionPortalRestored ReconcileAction = "portal_restored"
+	// ReconcileActionLaunchersRestored means the pair's junctions were healthy but its launcher directory was missing and has been recreated.
+	// It is reported instead of ReconcileActionAlreadyHealthy for the same reason ReconcileActionStaleRemoved is:
+	// a consumer keying off Action must see that convergence altered the pair.
+	ReconcileActionLaunchersRestored ReconcileAction = "launchers_restored"
 
 	// ReconcileActionStaleRemoved means the pair's junction/repoint check found nothing to add or
 	// re-point,
@@ -151,6 +149,10 @@ type ReconcileResult struct {
 	// Like WarpBinding, it is a once-per-Reconcile, repo-wide field, never a per-pair one, and its
 	// json tag documents intent only — runReconcile never serializes this struct directly.
 	WarpBindingDetail string `json:"warp_binding_detail,omitempty"`
+
+	// HubDetails names each retired hub artifact the sweep kept or could not remove, one entry per path.
+	// Like WarpBinding it is a once-per-Reconcile, hub-level field, never a per-pair one.
+	HubDetails []string `json:"hub_details,omitempty"`
 }
 
 // Reconcile walks all warp worktrees reachable from layout l and applies corrective actions to
@@ -158,6 +160,7 @@ type ReconcileResult struct {
 // For each warp worktree it applies a sequence of rules: recreate missing weft worktrees, re-point
 // broken junctions, adopt raw (non-lyx) worktrees, or report unmanaged pairs.
 // Per-worktree errors are recorded in ReconcilePairResult.Error.
+// After the pair loop it sweeps the retired portal links and the old hub workspace file, reporting what it kept in HubDetails.
 func (t *Topology) Reconcile(l *lyxcwd.Location) (res ReconcileResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
@@ -235,7 +238,7 @@ func (t *Topology) Reconcile(l *lyxcwd.Location) (res ReconcileResult, err error
 			restoreWeftLockDir(rec, weftPath, &pr)
 		}
 		if repairWiring {
-			t.repairPairWiring(rec, warpLayout, slug, &pr, weftWorktreeExists)
+			t.repairPairWiring(rec, warpLayout, slug, warpBranch, &pr, weftWorktreeExists)
 		}
 
 		// The pre-check above closes only the window between enumeration and the start of this
@@ -252,6 +255,11 @@ func (t *Topology) Reconcile(l *lyxcwd.Location) (res ReconcileResult, err error
 	}
 
 	result.WarpBinding, result.WarpBindingDetail = t.reconcileWarpBinding(rec, l)
+
+	// The sweep runs before the regeneration so the regeneration's own retired-artifact warning stays silent for what the sweep removed.
+	result.HubDetails = sweepRetiredHubArtifacts(rec, l)
+
+	regenerateAfterVerb(rec, l, "reconcile")
 
 	return result, nil
 }
@@ -380,7 +388,7 @@ func restoreWeftLockDir(rec *Mutations, weftPath string, pr *ReconcilePairResult
 // worktree this same pass recreated already carries weft_recreated, which names what actually
 // happened and must survive the repair, so that caller passes false and gets Detail notes only.
 // rec is Reconcile's own recorder, threaded through to every gate-reaching call this helper makes.
-func (t *Topology) repairPairWiring(rec *Mutations, warpLayout *lyxcwd.Location, slug string, pr *ReconcilePairResult, setAction bool) {
+func (t *Topology) repairPairWiring(rec *Mutations, warpLayout *lyxcwd.Location, slug, warpBranch string, pr *ReconcilePairResult, setAction bool) {
 	junctionHealthy, unhealthyReason := checkJunctionHealth(warpLayout)
 
 	if !junctionHealthy {
@@ -402,52 +410,47 @@ func (t *Topology) repairPairWiring(rec *Mutations, warpLayout *lyxcwd.Location,
 		pr.Action = ReconcileActionAlreadyHealthy
 	}
 
-	if restorePortalAndLaunchers(rec, warpLayout, slug, pr) && setAction && pr.Action == ReconcileActionAlreadyHealthy {
-		pr.Action = ReconcileActionPortalRestored
+	if restoreLaunchers(rec, warpLayout, slug, warpBranch, pr) && setAction && pr.Action == ReconcileActionAlreadyHealthy {
+		pr.Action = ReconcileActionLaunchersRestored
 	}
 
 	applyStaleRemoval(rec, warpLayout, slug, pr)
 }
 
-// restorePortalAndLaunchers recreates the pair's hub-level portal junction and launcher directory
-// when either is missing, and reports whether it restored anything.
+// restoreLaunchers recreates the pair's launcher directory when it is missing, and reports whether it restored it.
 //
-// Both are part of the managed topology — Add creates them, Remove and Prune tear them down — but
-// nothing repaired them, so a pair whose portal had been deleted was reported already_healthy
-// forever and could only be recovered by removing and re-adding the pair.
-// The hub's prime worktree is skipped: it never had a portal or a launcher directory in the first
-// place, and Reconcile is a repair verb, not the place to start creating artefacts Clone does not.
-// A restore failure is a Detail note, never an Error or a changed Action: the portal is convenience
-// plumbing, and failing to rebuild it must not downgrade a verdict about the pair's git topology.
-// rec is Reconcile's own recorder, threaded through to createPortal (and, from batch 5's card 21
-// onward, writeLaunchers).
-func restorePortalAndLaunchers(rec *Mutations, warpLayout *lyxcwd.Location, slug string, pr *ReconcilePairResult) bool {
+// The launcher directory is part of the managed topology, since Add creates it and Remove and Prune tear it down.
+// A pair whose directory was deleted would otherwise read already_healthy until it was removed and re-added.
+// The hub's prime worktree is skipped, since Clone never gave it one, and so is a pair whose warp branch carries the local-only mark, since AddLocal creates none.
+// A failed mark read appends its raw read error to the Detail and restores nothing.
+// A restore failure is a Detail note, never an Error or a changed Action:
+// the launchers are convenience plumbing, and failing to rebuild them must not downgrade a verdict about the pair's git topology.
+// rec is Reconcile's own recorder, threaded through to writeLaunchers.
+func restoreLaunchers(rec *Mutations, warpLayout *lyxcwd.Location, slug, warpBranch string, pr *ReconcilePairResult) bool {
 	primeName, primeErr := PrimeName(warpLayout)
 	if primeErr != nil || slug == primeName {
 		return false
 	}
 
-	restored := false
-
-	if _, err := os.Lstat(PortalLink(warpLayout, slug)); os.IsNotExist(err) {
-		if portalErr := createPortal(rec, warpLayout, slug); portalErr != nil {
-			appendPrDetail(pr, fmt.Sprintf("portal restore failed: %v", portalErr))
-		} else {
-			appendPrDetail(pr, "portal junction restored")
-			restored = true
-		}
+	if _, err := os.Stat(LauncherDir(warpLayout, slug)); !os.IsNotExist(err) {
+		return false
 	}
 
-	if _, err := os.Stat(LauncherDir(warpLayout, slug)); os.IsNotExist(err) {
-		if launcherErr := writeLaunchers(rec, warpLayout, slug); launcherErr != nil {
-			appendPrDetail(pr, fmt.Sprintf("launcher restore failed: %v", launcherErr))
-		} else {
-			appendPrDetail(pr, "launcher scripts restored")
-			restored = true
-		}
+	marked, markErr := gitrepo.New(warpLayout.WorktreePath()).BranchMarkedLocal(warpBranch)
+	if markErr != nil {
+		appendPrDetail(pr, fmt.Sprintf("local-only mark read failed: %v", markErr))
+		return false
+	}
+	if marked {
+		return false
 	}
 
-	return restored
+	if launcherErr := writeLaunchers(rec, warpLayout, slug); launcherErr != nil {
+		appendPrDetail(pr, fmt.Sprintf("launcher restore failed: %v", launcherErr))
+		return false
+	}
+	appendPrDetail(pr, "launcher scripts restored")
+	return true
 }
 
 // reconcileMissingWeft determines and applies the corrective action when a weft worktree

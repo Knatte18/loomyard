@@ -137,7 +137,7 @@ func TestRemove_PendingRecordsAreCommittedAndArchivedOnce(t *testing.T) {
 	}
 }
 
-// TestRemove_UnreachableOriginFailsClosed covers an unreachable origin: Remove errors and leaves both worktrees, the portal, the launchers and both branches in place.
+// TestRemove_UnreachableOriginFailsClosed covers an unreachable origin: Remove errors and leaves both worktrees, the launchers and both branches in place.
 func TestRemove_UnreachableOriginFailsClosed(t *testing.T) {
 	t.Parallel()
 
@@ -156,7 +156,6 @@ func TestRemove_UnreachableOriginFailsClosed(t *testing.T) {
 	for _, p := range []string{
 		fabricengine.WorktreePath(l, slug),
 		fabricengine.RecordsWorktreePath(l, slug),
-		fabricengine.PortalLink(l, slug),
 		fabricengine.LauncherDir(l, slug),
 	} {
 		if _, err := os.Lstat(p); err != nil {
@@ -252,18 +251,12 @@ func TestAddRollback_LeavesNoArchiveTag(t *testing.T) {
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
 
-	// A blocker file at the portal fails Add after its weft branch exists, triggering rollbackAdd.
-	portalLink := fabricengine.PortalLink(l, slug)
-	if err := os.MkdirAll(filepath.Dir(portalLink), 0o755); err != nil {
-		t.Fatalf("mkdir portal parent: %v", err)
-	}
-	if err := os.WriteFile(portalLink, []byte("blocker"), 0o644); err != nil {
-		t.Fatalf("create blocker: %v", err)
-	}
+	// A blocker directory at the ide launcher script path fails Add after its weft branch exists, triggering rollbackAdd.
+	plantLauncherBlocker(t, l, slug)
 
 	topology := h.Topology
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err == nil {
-		t.Fatalf("Add should have failed (portal blocker)")
+		t.Fatalf("Add should have failed (launcher blocker)")
 	}
 
 	if tags := archiveTagsAt(t, weftRoot); len(tags) != 0 {

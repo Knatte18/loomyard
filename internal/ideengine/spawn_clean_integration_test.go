@@ -182,7 +182,7 @@ func checkSkipsTrackedVSCode(t *testing.T, h *hubforge.Hub, slug string, onPrime
 	}
 	want := anchorDir
 	if onPrime {
-		want = fabricengine.HubWorkspacePath(l, prime)
+		want = fabricengine.HubWorkspacePath(l)
 		if _, err := os.Stat(want); err != nil {
 			t.Errorf("hub workspace file not written: %v", err)
 		}

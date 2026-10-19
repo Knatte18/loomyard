@@ -59,7 +59,7 @@ func PointsTo(link string) (string, error) {
 // it fails outright when a later segment is gone (the legitimate case of a stale-pair prune, where
 // one side of a wired junction's chain no longer exists), and it silently walks past a
 // target that is itself a further symlink (a Fabric junction wired at a path whose own immediate
-// target is another Fabric junction, e.g. a portal pointing at a further Fabric junction that
+// target is another Fabric junction, e.g. a wired junction pointing at a further Fabric junction that
 // itself points at the paired repository) — comparing that fully-resolved end state against the
 // ONE HOP a wiring call actually recorded is a mismatch by construction, not a drift.
 // Returns an error if link is not a symlink.

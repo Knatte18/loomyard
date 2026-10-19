@@ -107,8 +107,8 @@ type VerbFixture struct {
 	// Target is the StateTarget a hostile or dirty state plants against, resolved per verb per the
 	// verified dirtiness-scope table above.
 	Target StateTarget
-	// PortalBlocker is the file Add's Arrange plants at the pair's portal link path, so Add's portal step fails after the branch and both worktrees already exist.
-	PortalBlocker string
+	// LauncherBlocker is the directory Add's Arrange plants at the pair's ide launcher script path, so Add's launcher step fails after the branch and both worktrees already exist.
+	LauncherBlocker string
 	// AdvancedFromSHA is the prime warp worktree's HEAD before Pull's Arrange pushes a new commit to
 	// the hub's own warp bare.
 	AdvancedFromSHA string
@@ -310,20 +310,19 @@ func firstWiredJunctionLink(tb testing.TB, h *hubforge.Hub, slug string) string 
 	return fabricengine.WarpJunctions(h.Location, slug, names)[0].Link
 }
 
-// pairPermittedRoots returns the four hub-relative roots a pair's full teardown or creation may touch:
-// its warp worktree, its weft sibling, its portal junction, and its launcher directory.
+// pairPermittedRoots returns the hub-relative roots a pair's full teardown or creation may touch:
+// its warp worktree, its weft sibling, and its launcher directory.
 func pairPermittedRoots(tb testing.TB, h *hubforge.Hub, slug string) []string {
 	tb.Helper()
 
 	return []string{
 		hubRelative(tb, h, h.PairCodeWorktree(slug)),
 		hubRelative(tb, h, h.PairRecordsSibling(slug)),
-		hubRelative(tb, h, h.PairPortalLink(slug)),
 		hubRelative(tb, h, h.PairLauncherDir(slug)),
 	}
 }
 
-// slugPermittedRoots returns the four hub-relative roots a pair named slug may occupy, unioned across
+// slugPermittedRoots returns the hub-relative roots a pair named slug may occupy, unioned across
 // both anchors ("." and "backend"), for use inside a VerbCase's Expect closure — which, unlike an
 // Effect closure, has no *hubforge.Hub in scope to resolve an accessor against, only the state name.
 // A permitted root that never matches anything in a given hub's own anchor is harmless: DiffManifest's
@@ -333,21 +332,19 @@ func pairPermittedRoots(tb testing.TB, h *hubforge.Hub, slug string) []string {
 // function calls composes paths via filepath.Join, which drops an empty leading HubPath cleanly,
 // leaving exactly the hub-relative suffix an accessor would otherwise require a real hub to produce.
 func slugPermittedRoots(slug string) []string {
-	var roots []string
+	// A Remove or Prune cell rewrites the hub workspace file, which is named after the warp repo.
+	roots := []string{filepath.ToSlash(fabricengine.HubWorkspacePath(&lyxcwd.Location{RepoName: "warp-bare"}))}
 	for _, anchor := range []string{".", "backend"} {
 		loc := &lyxcwd.Location{WorktreeName: slug, AnchorRel: anchor}
-		portal := fabricengine.PortalLink(loc, slug)
 		launcher := fabricengine.LauncherDir(loc, slug)
 		roots = append(roots,
 			filepath.ToSlash(slug),
 			filepath.ToSlash(weftname.SiblingPath("", slug)),
-			filepath.ToSlash(portal),
 			filepath.ToSlash(launcher),
 			// pruneEmptyAncestors removes an anchor-level parent left empty by the leaf's own
-			// removal (e.g. "_portals/backend" once "_portals/backend/<slug>" is gone); the parent
+			// removal (e.g. "_launchers/backend" once "_launchers/backend/<slug>" is gone); the parent
 			// itself is therefore also a legitimate part of a full pair teardown, not an
 			// unpermitted change.
-			filepath.ToSlash(filepath.Dir(portal)),
 			filepath.ToSlash(filepath.Dir(launcher)),
 			primeWorktreeAdminPermittedRoot(slug),
 			primeWeftAdminPermittedRoot(slug),
@@ -406,12 +403,12 @@ func assertExists(tb testing.TB, path string) {
 
 // addCase builds Topology.Add's VerbCase.
 //
-// Arrange plants a file at the pair's portal link path, so Add's portal step fails after the branch and both worktrees already exist, triggering rollbackAdd.
+// Arrange plants a directory at the pair's ide launcher script path, so Add's launcher step fails after the branch and both worktrees already exist, triggering rollbackAdd.
 // Without it, Add never reaches the gate at all: rollbackAdd fires only at post-creation sites, and none of the ten states induces one on its own.
 //
 // Because the arrangement forces every non-preflight-refused path through rollbackAdd, and rollback's
 // own removal calls (dirtinessNA, correct ownership on a clean hub) succeed unconditionally, Add's
-// clean-state Run genuinely returns an error (the portal failure) and the hub is left as it was
+// clean-state Run genuinely returns an error (the launcher failure) and the hub is left as it was
 // before Run but for the blocker — this is the verified behaviour of add.go's own documented rollback contract, not an
 // assumption, and it is why this cell's Expectation is RefusedBefore rather than Proceeds.
 func addCase() VerbCase {
@@ -421,17 +418,11 @@ func addCase() VerbCase {
 			tb.Helper()
 
 			slug := "verb-add-owner"
-			blocker := h.PairPortalLink(slug)
-			if err := os.MkdirAll(filepath.Dir(blocker), 0o755); err != nil {
-				tb.Fatalf("mkdir portal parent: %v", err)
-			}
-			if err := os.WriteFile(blocker, []byte("blocker"), 0o644); err != nil {
-				tb.Fatalf("plant portal blocker: %v", err)
-			}
+			blocker := plantLauncherBlocker(tb, h.Location, slug)
 
 			return VerbFixture{
-				Slug:          slug,
-				PortalBlocker: blocker,
+				Slug:            slug,
+				LauncherBlocker: blocker,
 				Target: StateTarget{
 					WarpCheckout: h.PrimeWorktree(),
 					WeftCheckout: h.PrimeRecords(),
@@ -480,11 +471,13 @@ func addCase() VerbCase {
 				}
 			default:
 				// Every other state's own pre-flight (or absence of one) lets Add proceed through both worktrees;
-				// the portal blocker then fails the portal step unconditionally, its error naming the link path and so the slug, and rollbackAdd reverts every step it can.
+				// the launcher blocker then fails the launcher step unconditionally, its error naming the script path and so the slug, and rollbackAdd reverts every step it can.
 				// The warp branch is reverted too, whatever the BranchPrefix.
+				// The rollback removes the planted blocker and its launcher directory, which the pair's roots permit.
 				return Expectation{
-					Kind:      KindRefusedBefore,
-					Substring: "verb-add-owner",
+					Kind:           KindRefusedBefore,
+					PermittedRoots: slugPermittedRoots("verb-add-owner"),
+					Substring:      "verb-add-owner",
 					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
 						assertGone(tb, h.PairCodeWorktree(f.Slug))
@@ -533,12 +526,11 @@ func removeCase() VerbCase {
 			switch state {
 			case "dirtyWarpTracked", "dirtyWarpUntracked", "dirtyWeftTracked", "dirtyWeftUntracked", "bothDirty":
 				// Remove runs both no-force dirtiness checks before its archive and every teardown,
-				// so a refused cell leaves the portal, launchers and warp worktree in place.
+				// so a refused cell leaves the launchers and warp worktree in place.
 				return Expectation{
 					Kind:      KindRefusedBefore,
 					Substring: "uncommitted changes",
 					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
-						assertExists(tb, h.PairPortalLink(f.Slug))
 						assertExists(tb, h.PairLauncherDir(f.Slug))
 						assertExists(tb, h.PairCodeWorktree(f.Slug))
 					},
@@ -551,7 +543,6 @@ func removeCase() VerbCase {
 						tb.Helper()
 						assertGone(tb, h.PairCodeWorktree(f.Slug))
 						assertGone(tb, h.PairRecordsSibling(f.Slug))
-						assertGone(tb, h.PairPortalLink(f.Slug))
 						assertGone(tb, h.PairLauncherDir(f.Slug))
 					},
 				}
@@ -610,7 +601,6 @@ func pruneCase() VerbCase {
 					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
 						assertExists(tb, h.PairRecordsSibling(f.Slug))
-						assertExists(tb, h.PairPortalLink(f.Slug))
 						assertExists(tb, h.PairLauncherDir(f.Slug))
 					},
 				}
@@ -621,7 +611,6 @@ func pruneCase() VerbCase {
 					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
 						assertGone(tb, h.PairRecordsSibling(f.Slug))
-						assertGone(tb, h.PairPortalLink(f.Slug))
 						assertGone(tb, h.PairLauncherDir(f.Slug))
 					},
 				}
@@ -710,6 +699,11 @@ func cleanupCase() VerbCase {
 	}
 }
 
+// checkoutPermittedRoots returns the one root a proceeding Checkout cell may touch: the hub workspace file, whose first folder takes the prime's new branch name.
+func checkoutPermittedRoots() []string {
+	return []string{filepath.ToSlash(fabricengine.HubWorkspacePath(&lyxcwd.Location{RepoName: "warp-bare"}))}
+}
+
 // checkoutCase builds Topology.Checkout's VerbCase.
 // Arrange adds a pair, and Run passes that pair's own warp branch — without this the cells are
 // vacuous: a factory-built hub carries only the clone's own branch, so Checkout handed that branch
@@ -773,6 +767,8 @@ func checkoutCase() VerbCase {
 				return Expectation{
 					Kind:      KindEitherProceedsOrRefusedBefore,
 					Substring: "warp switch",
+					// A switch in the prime renames the workspace file's first folder.
+					PermittedRoots: checkoutPermittedRoots(),
 					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
 						warpBranch := gitkit.CurrentBranch(tb, h.PrimeWorktree())
@@ -794,7 +790,8 @@ func checkoutCase() VerbCase {
 				}
 			default:
 				return Expectation{
-					Kind: KindProceeds,
+					Kind:           KindProceeds,
+					PermittedRoots: checkoutPermittedRoots(),
 					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
 						if got := gitkit.CurrentBranch(tb, h.PrimeWorktree()); got != f.CheckoutBranch {
