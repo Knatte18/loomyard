@@ -9,9 +9,8 @@
 // confirmed this); Reconcile now prunes stale registrations before adopting.
 //
 // This file also carries the fabric-only standalone regression guards
-// backfilled from the now-deleted reconcile_differential_test.go: Prune's
-// portal/launcher teardown on apply (R6) and its once-only stale-registration
-// reporting (F2/F3), Cleanup's primary-weft-branch protection when the
+// backfilled from the now-deleted reconcile_differential_test.go:
+// Prune's launcher teardown on apply (R6) and its once-only stale-registration reporting (F2/F3), Cleanup's primary-weft-branch protection when the
 // primary is parked off its branch (F1), its refusal to ever delete a
 // non-suffixed (not fabric-managed) weft branch, and its checked-out protection for
 // a pair whose warp sits on a detached HEAD (R5); and Healthy's "real
@@ -185,28 +184,23 @@ func findCleanupEntry(t *testing.T, entries []fabricengine.CleanupBranchEntry, b
 	return nil
 }
 
-// TestPrune_ApplyRemovesPortalAndLaunchers is the R6 fix regression guard: when the warp worktree
+// TestPrune_ApplyRemovesLaunchers is the R6 fix regression guard: when the warp worktree
 // is deleted by hand, apply Prune removes the orphaned weft — but before the fix it left the dead
-// slug's portal junction dangling and its launcher directory behind forever, since no other verb
+// slug's launcher directory behind forever, since no other verb
 // ever revisits a pruned slug (Remove would have, but the pair is already gone).
-func TestPrune_ApplyRemovesPortalAndLaunchers(t *testing.T) {
+func TestPrune_ApplyRemovesLaunchers(t *testing.T) {
 	t.Parallel()
 
-	const slug = "prune-portal-r6"
+	const slug = "prune-launchers-r6"
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	warpPath := fabricengine.WorktreePath(l, slug)
-	portalLink := fabricengine.PortalLink(l, slug)
 	launcherDir := fabricengine.LauncherDir(l, slug)
 
-	// Sanity: Add wired both; Lstat for the portal since it dangles once the
-	// warp directory is gone.
-	if _, err := os.Lstat(portalLink); err != nil {
-		t.Fatalf("setup: portal link missing after Add: %v", err)
-	}
+	// Sanity: Add wrote the launcher directory.
 	if _, err := os.Stat(launcherDir); err != nil {
 		t.Fatalf("setup: launcher dir missing after Add: %v", err)
 	}
@@ -226,9 +220,6 @@ func TestPrune_ApplyRemovesPortalAndLaunchers(t *testing.T) {
 	entry := findPruneEntryByWeftPath(t, res.Entries, weftPath)
 	if !entry.Removed {
 		t.Errorf("Removed = false after apply; want true (error=%q)", entry.Error)
-	}
-	if _, err := os.Lstat(portalLink); !os.IsNotExist(err) {
-		t.Errorf("portal link %s still present after apply Prune; want removed", portalLink)
 	}
 	if _, err := os.Stat(launcherDir); !os.IsNotExist(err) {
 		t.Errorf("launcher dir %s still present after apply Prune; want removed", launcherDir)

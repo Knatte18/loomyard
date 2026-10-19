@@ -337,7 +337,7 @@ Repeat the whole scenario with `--subpath backend`, since the anchor and the bra
 **Goal:** "Hand every teardown verb a slug that is a relative path element rather than a name, and confirm nothing outside the named pair is touched."
 
 **Watch:** On a hub with one added pair, run `lyx fabric remove ..`, then `lyx fabric remove .`, then `lyx fabric remove ../evil`, `lyx fabric remove a/b`, and `lyx fabric remove ""`.
-Every one must be refused BEFORE any teardown runs, and after all five the hub must still list `_board _launchers _portals <prime> <prime>-weft <slug> <slug>-weft` exactly as before, with `_launchers` still holding `ide-menu.sh` and the pair's directory.
+Every one must be refused BEFORE any teardown runs, and after all five the hub must still list `_board _launchers <RepoName>.code-workspace <prime> <prime>-weft <slug> <slug>-weft` exactly as before, with `_launchers` still holding `ide-menu.sh` and the pair's directory.
 Then confirm an ordinary `lyx fabric remove <slug>` still works.
 (Historical: `.` and `..` passed every rule in the shared slug validator -- not empty, no separator, no weft suffix, no reserved hub name -- and `<hub>/_launchers/<anchor>/<slug>` then resolved to `<hub>` itself, whose `os.RemoveAll` deleted the warp clone, the weft clone, `_board`, every pair and all uncommitted work, after which the verb returned `"failed to check worktree status"` -- an error claiming nothing had happened.)
 Repeat on a `--subpath backend` hub, where the anchor segment absorbs one `..` and the damage lands one level lower.
@@ -379,16 +379,16 @@ Then three variations, each on its own hub.
 
 ---
 
-### F17 -- The portal and launcher surface is repairable (`add`, `reconcile`, `remove`)
+### F17 -- The launcher surface is repairable (`add`, `reconcile`, `remove`)
 
 **Covers:** fabric
 
-**Goal:** "Break the hub-level `_portals`/`_launchers` artefacts and confirm the repair verb repairs them and the teardown verb owns only what it created."
+**Goal:** "Break the hub-level `_launchers` artefacts and confirm the repair verb repairs them and the teardown verb owns only what it created."
 
-**Watch:** After `lyx fabric add <slug>`, confirm `<hub>/_portals/<slug>` is a link resolving through to `<hub>/<slug>-weft/_lyx` and `<hub>/_launchers/<slug>/` holds `ide` and `fabric-checkout` scripts.
-Delete the launcher directory, then run `lyx fabric reconcile`: it must report `launchers_restored` for that pair -- not `already_healthy` -- and the directory must be back, with no portal restored. A second `reconcile` must report `already_healthy`. (Historical: reconcile reported `already_healthy` and `pairs` reported `junction_healthy: true` for a pair whose portal and launchers were gone, and restored neither, leaving remove-and-re-add as the only recovery.)
-Then ownership: put a file of your own inside `<hub>/_launchers/<slug>/` and run `lyx fabric remove <slug>`. Fabric's two scripts must go, your file must survive, and the pair must still be torn down. Do the same with `<hub>/_portals/<slug>` replaced by a real directory holding a file -- it too must survive.
-Finally confirm the hub's prime worktree is left alone throughout: it never had a portal or a launcher directory, and `reconcile` must not start creating them.
+**Watch:** After `lyx fabric add <slug>`, confirm `<hub>/_launchers/<slug>/` holds `ide` and `fabric-checkout` scripts.
+Delete the launcher directory, then run `lyx fabric reconcile`: it must report `launchers_restored` for that pair -- not `already_healthy` -- and the directory must be back. A second `reconcile` must report `already_healthy`. (Historical: reconcile reported `already_healthy` and `pairs` reported `junction_healthy: true` for a pair whose launchers were gone, and restored nothing, leaving remove-and-re-add as the only recovery.)
+Then ownership: put a file of your own inside `<hub>/_launchers/<slug>/` and run `lyx fabric remove <slug>`. Fabric's two scripts must go, your file must survive, and the pair must still be torn down.
+Finally confirm the hub's prime worktree is left alone throughout: it never had a launcher directory, and `reconcile` must not start creating one.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -573,7 +573,7 @@ Two `integration`-tagged tests do drive the unstubbed seams either side of the c
 
 **Goal:** "Add a local-only pair and confirm it pushes nothing, then confirm `--local` never takes over an ordinary pair."
 
-**Watch:** Run `lyx fabric add --local <slug>` from the prime and confirm the envelope carries `local: true` and no `push_spawned` entry, that no `_portals/<slug>` or `_launchers/<slug>` exists, and that `git config branch.<slug>.lyxlocal` reads `true` in the warp repo and `git config branch.<slug>-weft.lyxlocal` in the weft repo.
+**Watch:** Run `lyx fabric add --local <slug>` from the prime and confirm the envelope carries `local: true` and no `push_spawned` entry, that no `_launchers/<slug>` exists, and that `git config branch.<slug>.lyxlocal` reads `true` in the warp repo and `git config branch.<slug>-weft.lyxlocal` in the weft repo.
 Run `lyx fabric push` from the new pair and confirm it exits 0 with `local_skipped` naming both branches, and that neither branch exists on either origin (`git ls-remote origin <branch>` in each repo).
 Add an ordinary pair with another slug, remove both of its worktrees with `git worktree remove`, and run `lyx fabric add --local <that-slug>`: confirm it refuses before creating anything, naming `lyx fabric checkout` and `git branch -D`.
 Remove the local pair's two worktrees and its weft branch by hand, then run a plain `lyx fabric add <slug>` over the kept warp branch and confirm it succeeds with `local_mark_cleared` naming the cleared branches and the mark gone from `git config`.

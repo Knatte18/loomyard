@@ -653,7 +653,7 @@ func resolvePathOwnership(own pathOwnership, target string) (ok bool, reason str
 		// recorded, not a fully-resolved chain. PointsTo fully resolves — which fails outright when
 		// a later segment is gone (a stale-pair prune, where the warp side a wired junction chains
 		// through no longer exists) and silently walks past a target that is itself a further
-		// symlink (a portal wired at a warp `_lyx` that itself points at weft), comparing an
+		// symlink (a junction wired at a warp `_lyx` that itself points at weft), comparing an
 		// end state a one-hop expectedTarget was never meant to match.
 		rawTarget, err := fslink.RawTarget(target)
 		if err != nil {
@@ -879,7 +879,7 @@ func resolveManagedBranch(l *lyxcwd.Location, branchPrefix, branch string) (bool
 // there, which is precisely the case a new call site's first test is least likely to cover.
 //
 // An absent target is then a no-op success before the four checks run — most ownership predicates
-// fail on a path that is not there, and removePortal, removeJunctionRecords, removeLaunchers and
+// fail on a path that is not there, and removeJunctionRecords, removeLaunchers and
 // Remove's tolerance of an already-absent weft worktree are all documented as idempotent today, so
 // refusing here would turn those into hard failures. os.Lstat, not os.Stat, is what decides
 // "absent": a dangling link is present as a link even though its target is not, and

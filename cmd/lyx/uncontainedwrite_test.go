@@ -3,10 +3,8 @@
 // (os.MkdirAll/os.Mkdir/os.WriteFile/os.Create/os.OpenFile/os.Symlink/os.Link) outside an explicit
 // per-file allowlist, each allowlist entry naming why that site is safe to write raw.
 //
-// It exists because five review rounds hardened one delete-side chain and the create-side worktree add
-// while two OTHER create-side writers on the same `add` code path — writeLaunchers and createPortal,
-// both writing to a hub-level structural container (_launchers, _portals) an attacker can pre-plant a
-// static symlink at — sat undiscovered with zero containment protection. Nothing mechanically inventoried
+// It exists because five review rounds hardened one delete-side chain and the create-side worktree add while OTHER create-side writers on the same `add` code path — writeLaunchers, writing to the hub-level structural container _launchers an attacker can pre-plant a static symlink at — sat undiscovered with zero containment protection.
+// Nothing mechanically inventoried
 // the package's raw WRITE primitives the way TestNoDestructiveBypass_FabricengineProductionSource
 // inventories its removals, so a new uncontained write could always slip in unremarked. This guard makes
 // every raw write a deliberate, reasoned allowlist entry, so the eighth link in that chain fails a test
@@ -58,8 +56,8 @@ var uncontainedWriteBannedTokens = []string{
 // from an operator slug), or into a worktree/board directory fabric just minted through a CONTAINED
 // minter (createExclusiveDir/containedWorktreeAdd) in the same call, where only a post-creation same-UID
 // race — the documented residual class, same as the gate's dirtiness window — could redirect it, never a
-// static pre-plant. The two hub-level structural-container writers (launchers.go, portals.go) are
-// deliberately ABSENT: they now route through an os.Root at the hub, so they carry no banned token at all.
+// static pre-plant. The rooted hub-level writers (launchers.go's writeLaunchers, hubworkspace_write.go's writeHubWorkspace) are
+// deliberately ABSENT: they route through an os.Root at the hub, so they carry no banned token at all.
 var uncontainedWriteAllowlist = []scankit.Entry{
 	{Key: "internal/fabricengine/hook.go", Why: "InstallPostCheckoutHook/chainUserHook/writeHookFile write into the git-resolved hooks " +
 		"directory (git rev-parse --git-path hooks), a git-owned path never derived from an operator slug; redirecting it " +
@@ -112,7 +110,7 @@ func TestNoUncontainedWrite_FabricengineProductionSource(t *testing.T) {
 			for _, tok := range uncontainedWriteBannedTokens {
 				if strings.Contains(content, tok) {
 					failures = append(failures, fmt.Sprintf(
-						"%s: contains raw filesystem-write primitive %q — a write to a hub-relative or caller-derived path must route through an os.Root rooted at the hub (see internal/fabricengine/launchers.go's writeLaunchers and portals.go's ensureContainedLinkParent), or add a uncontainedWriteAllowlist entry in cmd/lyx/uncontainedwrite_test.go with a reason if this is a new audited safe site",
+						"%s: contains raw filesystem-write primitive %q — a write to a hub-relative or caller-derived path must route through an os.Root rooted at the hub (see internal/fabricengine/launchers.go's writeLaunchers and hubworkspace_write.go's writeHubWorkspace), or add a uncontainedWriteAllowlist entry in cmd/lyx/uncontainedwrite_test.go with a reason if this is a new audited safe site",
 						f.Rel, tok,
 					))
 				}

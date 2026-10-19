@@ -19,6 +19,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
+// assertFoldersAndNoPortals asserts the workspace file's folders as assertFolders does, and that the verb that preceded it left no `_portals` entry in the hub.
+func assertFoldersAndNoPortals(t *testing.T, h *hubforge.Hub, path string, names ...string) {
+	t.Helper()
+	assertFolders(t, h, path, names...)
+	portals := filepath.Join(h.Path, "_portals")
+	if _, err := os.Lstat(portals); !os.IsNotExist(err) {
+		t.Errorf("%s exists after a verb (stat err = %v); want no _portals entry", portals, err)
+	}
+}
+
 // TestVerbsRegenerateHubWorkspace reads the hub workspace file's folder names after each verb.
 // The top level is not parallel: some rows set a process-global hook or environment variable, or capture the logger,
 // so they run before the parallel rows are released and no verb runs beside them.
@@ -33,7 +43,7 @@ func TestVerbsRegenerateHubWorkspace(t *testing.T) {
 			t.Fatal("Add error = nil; want the injected failure")
 		}
 
-		assertFolders(t, h, fabricengine.HubWorkspacePath(h.Location), primeBranch(t, h), "Bolt")
+		assertFoldersAndNoPortals(t, h, fabricengine.HubWorkspacePath(h.Location), primeBranch(t, h), "Bolt")
 	})
 
 	t.Run("RemoveFailedAfterTakingTheTaskWorktreeDropsThePair", func(t *testing.T) {
@@ -47,7 +57,7 @@ func TestVerbsRegenerateHubWorkspace(t *testing.T) {
 			t.Fatal("Remove error = nil; want the failed weft teardown")
 		}
 
-		assertFolders(t, h, fabricengine.HubWorkspacePath(h.Location), primeBranch(t, h), "Bolt")
+		assertFoldersAndNoPortals(t, h, fabricengine.HubWorkspacePath(h.Location), primeBranch(t, h), "Bolt")
 	})
 
 	t.Run("FailedRegenerationWarnsAndLeavesTheVerbResultAlone", func(t *testing.T) {
@@ -76,14 +86,14 @@ func TestVerbsRegenerateHubWorkspace(t *testing.T) {
 		if _, err := h.Topology.Reconcile(h.Location); err != nil {
 			t.Fatalf("Reconcile: %v", err)
 		}
-		assertFolders(t, h, path, primeBranch(t, h), "Bolt", "a-task")
+		assertFoldersAndNoPortals(t, h, path, primeBranch(t, h), "Bolt", "a-task")
 	})
 
 	t.Run("CloneHoldsTheFile", func(t *testing.T) {
 		t.Parallel()
 		h := hubforge.NewHub(t, ".")
 
-		assertFolders(t, h, fabricengine.HubWorkspacePath(h.Location), primeBranch(t, h), "Bolt")
+		assertFoldersAndNoPortals(t, h, fabricengine.HubWorkspacePath(h.Location), primeBranch(t, h), "Bolt")
 	})
 
 	t.Run("AddAddLocalAndRemoveTrackThePairsAndRecordTheWrite", func(t *testing.T) {
@@ -97,7 +107,7 @@ func TestVerbsRegenerateHubWorkspace(t *testing.T) {
 		if !recordedFileWrite(&addedRecord, h.Path, path) {
 			t.Errorf("Add recorded no file_written for the workspace file: %+v", addedRecord.Entries())
 		}
-		assertFolders(t, h, path, prime, "Bolt", "a-task")
+		assertFoldersAndNoPortals(t, h, path, prime, "Bolt", "a-task")
 
 		local, err := h.Topology.AddLocal(h.Location, "local-task")
 		if err != nil {
@@ -107,7 +117,7 @@ func TestVerbsRegenerateHubWorkspace(t *testing.T) {
 		if !recordedFileWrite(&localRecord, h.Path, path) {
 			t.Errorf("AddLocal recorded no file_written for the workspace file: %+v", localRecord.Entries())
 		}
-		assertFolders(t, h, path, prime, "Bolt", "a-task", "local-task")
+		assertFoldersAndNoPortals(t, h, path, prime, "Bolt", "a-task", "local-task")
 
 		removed, err := h.Topology.Remove(h.Location, "a-task", true, false)
 		if err != nil {
@@ -117,7 +127,7 @@ func TestVerbsRegenerateHubWorkspace(t *testing.T) {
 		if !recordedFileWrite(&removedRecord, h.Path, path) {
 			t.Errorf("Remove recorded no file_written for the workspace file: %+v", removedRecord.Entries())
 		}
-		assertFolders(t, h, path, prime, "Bolt", "local-task")
+		assertFoldersAndNoPortals(t, h, path, prime, "Bolt", "local-task")
 	})
 
 	t.Run("PruneRegeneratesOnlyWhenApplying", func(t *testing.T) {
@@ -144,7 +154,7 @@ func TestVerbsRegenerateHubWorkspace(t *testing.T) {
 		if _, err := h.Topology.Prune(h.Location, true, false); err != nil {
 			t.Fatalf("Prune apply: %v", err)
 		}
-		assertFolders(t, h, path, primeBranch(t, h), "Bolt", "a-task")
+		assertFoldersAndNoPortals(t, h, path, primeBranch(t, h), "Bolt", "a-task")
 	})
 
 	t.Run("CheckoutRenamesTheFirstFolderAndRegeneratesOnRollback", func(t *testing.T) {
@@ -163,7 +173,7 @@ func TestVerbsRegenerateHubWorkspace(t *testing.T) {
 		if _, err := h.Topology.Checkout(l, target); err != nil {
 			t.Fatalf("Checkout: %v", err)
 		}
-		assertFolders(t, h, path, target, "Bolt")
+		assertFoldersAndNoPortals(t, h, path, target, "Bolt")
 
 		// A junction-wiring failure after both sides switched rolls back, and the file still lists the original branch.
 		removeWorkspaceFile(t, h)
@@ -182,7 +192,7 @@ func TestVerbsRegenerateHubWorkspace(t *testing.T) {
 		if _, err := h.Topology.Checkout(l, original+"-rollback"); err == nil {
 			t.Fatal("Checkout error = nil; want a junction-wiring failure")
 		}
-		assertFolders(t, h, path, target, "Bolt")
+		assertFoldersAndNoPortals(t, h, path, target, "Bolt")
 	})
 
 	t.Run("CheckoutRefusedByADirtyWeftRegeneratesNothing", func(t *testing.T) {

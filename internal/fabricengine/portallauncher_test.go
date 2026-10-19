@@ -1,8 +1,5 @@
-// portallauncher_test.go covers the portal and launcher path accessors relocated from
-// internal/lyxcwd in this batch — PortalsDir, PortalLink, portalTarget, launchersDir, LauncherDir,
-// menuLauncherPath, launcherSpawnRel and menuLauncherRel — pinning the _portals/_launchers layout
-// and the launcher relative-path math across root and subpath AnchorRel cases, the reason a wrong
-// HubPath base or a broken filepath.Rel would be caught here rather than in a live hub.
+// portallauncher_test.go covers the launcher path accessors — launchersDir, LauncherDir, menuLauncherPath, launcherSpawnRel and menuLauncherRel — and the launcher teardown.
+// It pins the _launchers layout and the launcher relative-path math across root and subpath AnchorRel cases, the reason a wrong HubPath base or a broken filepath.Rel would be caught here rather than in a live hub.
 
 package fabricengine
 
@@ -26,25 +23,15 @@ func wantMenuLauncherName() string {
 	return "ide-menu.sh"
 }
 
-// TestPortalsDirAndLaunchersDir verifies that PortalsDir and launchersDir join the hub with their
-// respective directory names,
-// and that portalTarget joins the hub, slug, AnchorRel and _lyx.
+// TestLaunchersDir verifies that launchersDir and LauncherDir join the hub with the launchers directory name and the slug.
 //
-//testtiming:keep PortalsDir, launchersDir and portalTarget joining the hub, slug, anchor and _lyx; coverage of its blocks by other tests does not show an assertion of this
-func TestPortalsDirAndLaunchersDir(t *testing.T) {
+//testtiming:keep launchersDir and LauncherDir joining the hub, the _launchers name and the slug; coverage of its blocks by other tests does not show an assertion of this
+func TestLaunchersDir(t *testing.T) {
 	t.Parallel()
 
 	hub := filepath.Join("repos", "loomyard-LYXHUB")
 	l := &lyxcwd.Location{HubPath: hub, WorktreeName: "loomyard", AnchorRel: "."}
 	slug := "test-wt"
-
-	if got, want := PortalsDir(l), filepath.Join(hub, "_portals"); got != want {
-		t.Errorf("PortalsDir() = %q; want %q", got, want)
-	}
-
-	if got, want := portalTarget(l, slug), filepath.Join(hub, slug, ".", "_lyx"); got != want {
-		t.Errorf("portalTarget(%q) = %q; want %q", slug, got, want)
-	}
 
 	if got, want := launchersDir(l), filepath.Join(hub, "_launchers"); got != want {
 		t.Errorf("launchersDir() = %q; want %q", got, want)
@@ -55,57 +42,16 @@ func TestPortalsDirAndLaunchersDir(t *testing.T) {
 	}
 }
 
-// TestMirroredPortalLauncherMethods tests the AnchorRel-mirrored geometry accessors: PortalLink,
+// TestMirroredLauncherMethods tests the AnchorRel-mirrored geometry accessors:
 // LauncherDir, menuLauncherPath, launcherSpawnRel and menuLauncherRel, both at the anchor root and
 // at a nested subpath, plus a no-collision check between two distinct subpaths.
 //
-//testtiming:keep the AnchorRel-mirrored portal and launcher accessors at the root and a nested subpath, with distinct subpaths never colliding; coverage of its blocks by other tests does not show an assertion of this
-func TestMirroredPortalLauncherMethods(t *testing.T) {
+//testtiming:keep the AnchorRel-mirrored launcher accessors at the root and a nested subpath, with distinct subpaths never colliding; coverage of its blocks by other tests does not show an assertion of this
+func TestMirroredLauncherMethods(t *testing.T) {
 	t.Parallel()
 
 	hub := filepath.Join("repos", "loomyard-LYXHUB")
 	const worktreeName = "loomyard"
-
-	t.Run("PortalLink", func(t *testing.T) {
-		t.Parallel()
-
-		t.Run("at root", func(t *testing.T) {
-			t.Parallel()
-
-			l := locationkit.Location(hub, worktreeName, ".")
-			slug := "test-slug"
-			got := PortalLink(l, slug)
-			want := filepath.Join(l.HubPath, "_portals", slug)
-			if got != want {
-				t.Errorf("PortalLink(%q) = %q; want %q", slug, got, want)
-			}
-		})
-
-		t.Run("at subpath", func(t *testing.T) {
-			t.Parallel()
-
-			l := locationkit.Location(hub, worktreeName, filepath.Join("services", "api"))
-			slug := "test-slug"
-			got := PortalLink(l, slug)
-			want := filepath.Join(l.HubPath, "_portals", "services", "api", slug)
-			if got != want {
-				t.Errorf("PortalLink(%q) = %q; want %q", slug, got, want)
-			}
-		})
-
-		t.Run("no collision between different subpaths", func(t *testing.T) {
-			t.Parallel()
-
-			l1 := locationkit.Location(hub, worktreeName, filepath.Join("services", "api"))
-			l2 := locationkit.Location(hub, worktreeName, filepath.Join("services", "web"))
-			slug := "test-slug"
-			link1 := PortalLink(l1, slug)
-			link2 := PortalLink(l2, slug)
-			if link1 == link2 {
-				t.Errorf("PortalLink produced collision: %q == %q", link1, link2)
-			}
-		})
-	})
 
 	t.Run("LauncherDir", func(t *testing.T) {
 		t.Parallel()
@@ -263,8 +209,7 @@ func TestMirroredPortalLauncherMethods(t *testing.T) {
 // TestRemoveLaunchers_PreservesForeignContent proves the launcher teardown deletes only the scripts
 // fabric wrote.
 // It used to os.RemoveAll the whole directory, destroying anything the operator had placed beside
-// the launchers, while the portal half of the same teardown (fslink.Remove) correctly declines to
-// delete a non-empty real directory.
+// the launchers.
 func TestRemoveLaunchers_PreservesForeignContent(t *testing.T) {
 	t.Parallel()
 
@@ -396,49 +341,12 @@ func TestRemoveLaunchers_EmptyDirRemovedAndRecorded(t *testing.T) {
 	}
 }
 
-// TestRemovePortal_LeavesAnchorDirectory pins that removing the last pair's portal keeps _portals/<AnchorRel>
-// in place and empty, and that a pair added afterwards lands under it.
-//
-//testtiming:keep removing the last pair's portal keeping _portals/<AnchorRel> in place and empty so a later pair lands under it; coverage of its blocks by other tests does not show an assertion of this
-func TestRemovePortal_LeavesAnchorDirectory(t *testing.T) {
-	t.Parallel()
-
-	hub := t.TempDir()
-	l := locationkit.Location(hub, "prime", filepath.Join("services", "api"))
-	anchorDir := filepath.Join(PortalsDir(l), l.AnchorRel)
-
-	addPortal := func(slug string) {
-		t.Helper()
-		mkdirAll(t, portalTarget(l, slug))
-		if err := createPortal(NewMutations(hub), l, slug); err != nil {
-			t.Fatalf("createPortal(%q) error = %v", slug, err)
-		}
-	}
-
-	addPortal("first")
-	if err := removePortal(NewMutations(hub), l, "first"); err != nil {
-		t.Fatalf("removePortal() error = %v; want nil", err)
-	}
-	entries, err := os.ReadDir(anchorDir)
-	if err != nil {
-		t.Fatalf("read %s after removing the last pair: %v; want it left in place", anchorDir, err)
-	}
-	if len(entries) != 0 {
-		t.Errorf("%s holds %d entries after removal; want it empty", anchorDir, len(entries))
-	}
-
-	addPortal("second")
-	if _, err := os.Lstat(PortalLink(l, "second")); err != nil {
-		t.Errorf("later pair's portal not under the anchor directory: %v", err)
-	}
-}
-
-// TestRemoveLaunchersAndPortal_ContainmentRefusalSurvivesSurfaceRefusal proves the pre-gate
+// TestRemoveLaunchers_ContainmentRefusalSurvivesSurfaceRefusal proves the pre-gate
 // containment guard's refusal reaches a best-effort call site rather than being silently discarded.
 //
-// This is fabric's R8 finding L2. removeLaunchers and removePortal both open with
+// This is fabric's R8 finding L2. removeLaunchers opens with
 // refuseUncontainedPath, which returned a bare fmt.Errorf. Every best-effort call site in Remove and
-// Prune wraps them in surfaceRefusal, which by design returns nil for anything that is not a
+// Prune wraps it in surfaceRefusal, which by design returns nil for anything that is not a
 // *destructiveRefusal — so a containment refusal evaporated and `lyx fabric remove` reported
 // "ok":true with an exit 0 while the launcher scripts were still on disk. Reproduced live against
 // the deployed binary with a static symlink at the _launchers container, no race required.
@@ -446,7 +354,7 @@ func TestRemovePortal_LeavesAnchorDirectory(t *testing.T) {
 // The assertion is on surfaceRefusal specifically, not merely on a non-nil error, because a non-nil
 // error was never the missing half: reverting refuseUncontainedPath to a bare fmt.Errorf still
 // returns an error here, and only the surfaceRefusal round-trip below fails.
-func TestRemoveLaunchersAndPortal_ContainmentRefusalSurvivesSurfaceRefusal(t *testing.T) {
+func TestRemoveLaunchers_ContainmentRefusalSurvivesSurfaceRefusal(t *testing.T) {
 	t.Parallel()
 
 	hub := t.TempDir()
@@ -454,13 +362,11 @@ func TestRemoveLaunchersAndPortal_ContainmentRefusalSurvivesSurfaceRefusal(t *te
 	l := locationkit.Location(hub, "prime", "escapes")
 	const slug = "my-task"
 
-	for _, dir := range []string{launchersDir(l), PortalsDir(l)} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatalf("mkdir %s: %v", dir, err)
-		}
-		if err := os.Symlink(outside, filepath.Join(dir, "escapes")); err != nil {
-			t.Skipf("symlink unsupported on this platform: %v", err)
-		}
+	if err := os.MkdirAll(launchersDir(l), 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", launchersDir(l), err)
+	}
+	if err := os.Symlink(outside, filepath.Join(launchersDir(l), "escapes")); err != nil {
+		t.Skipf("symlink unsupported on this platform: %v", err)
 	}
 	// The teardown targets must exist out there, so the guard refuses on containment rather than
 	// short-circuiting on an absent target.
@@ -468,30 +374,19 @@ func TestRemoveLaunchersAndPortal_ContainmentRefusalSurvivesSurfaceRefusal(t *te
 		t.Fatalf("mkdir escaped target: %v", err)
 	}
 
-	tests := []struct {
-		name string
-		run  func(rec *Mutations) error
-	}{
-		{"launchers", func(rec *Mutations) error { return removeLaunchers(rec, l, slug) }},
-		{"portal", func(rec *Mutations) error { return removePortal(rec, l, slug) }},
+	err := removeLaunchers(NewMutations(hub), l, slug)
+	if err == nil {
+		t.Fatal("launchers teardown error = nil; want a containment refusal")
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := tt.run(NewMutations(hub))
-			if err == nil {
-				t.Fatalf("%s teardown error = nil; want a containment refusal", tt.name)
-			}
-			if surfaceRefusal(err) == nil {
-				t.Errorf("surfaceRefusal(%s teardown error) = nil; want the refusal propagated so "+
-					"Remove/Prune report it instead of exiting ok:true with artifacts left on disk", tt.name)
-			}
-			refusal, ok := RefusalOf(err)
-			if !ok {
-				t.Fatalf("RefusalOf(%s teardown error) ok = false; want a typed gate refusal", tt.name)
-			}
-			if refusal.Check != CheckContainment {
-				t.Errorf("RefusalOf(...).Check = %q; want %q", refusal.Check, CheckContainment)
-			}
-		})
+	if surfaceRefusal(err) == nil {
+		t.Error("surfaceRefusal(launchers teardown error) = nil; want the refusal propagated so " +
+			"Remove/Prune report it instead of exiting ok:true with artifacts left on disk")
+	}
+	refusal, ok := RefusalOf(err)
+	if !ok {
+		t.Fatal("RefusalOf(launchers teardown error) ok = false; want a typed gate refusal")
+	}
+	if refusal.Check != CheckContainment {
+		t.Errorf("RefusalOf(...).Check = %q; want %q", refusal.Check, CheckContainment)
 	}
 }

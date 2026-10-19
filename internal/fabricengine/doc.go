@@ -93,7 +93,7 @@
 // operate over whatever name-set their caller passes them (see junctionnames.go's
 // `junctionNames`/`WiredNames`), and every one of those callers builds that name-set as
 // `structuralCommittedDirs` ∪ `structuralNeverCommittedDirs` ∪ the pair's `pathspec` filtered against
-// `HubReservedNames()` — the three hub-structural tokens (`_board`, `_portals`, `_launchers`) that
+// `HubReservedNames()` — the three hub-structural tokens (`_board`, the retired `_portals` and `_launchers`) that
 // can never be a per-worktree junction.
 // The two structural sets (`_lyx`, `.lyx`) are injected in code and never read from `pathspec` at
 // all; only the third piece — empty today — comes from config.
@@ -493,7 +493,7 @@
 // repository rather than a pair.
 // After its refusals — the no-force dirtiness checks and their status probes among them — and before its first mutation, `Remove` archives the pair's weft tip:
 // `archiveWeftTip` pushes an `archive/<slug>/<tip>` tag to the weft origin, so the run records on the weft branch stay reachable once the branch is deleted.
-// A failed archive returns its error with the worktrees, portal, launchers and both branches still in place, so a plain re-run retries it; `force` and `remote` never skip it, and a weft repo with no origin proceeds with `ArchiveSkippedReason` set.
+// A failed archive returns its error with the worktrees, launchers and both branches still in place, so a plain re-run retries it; `force` and `remote` never skip it, and a weft repo with no origin proceeds with `ArchiveSkippedReason` set.
 // Just before the archive, `Remove` commits the sibling worktree's uncommitted changes under the scoped record pathspec, so the tag holds them; only changes outside that pathspec refuse without `force`.
 // `Topology.RemoveRefusal` is the read-only probe of every refusal `Remove` raises before its first mutation.
 // A pair already half removed is finished rather than refused: `Remove` does whatever teardown remains, reports its `Steps` and any `StrayPath`, and returns `ErrPairNotFound` when nothing is left.
@@ -531,7 +531,7 @@
 // A rollback deletes the local branches this `Add` created, a weft branch taken from origin included, never touches an origin branch, and never restores the deleted remote weft branch: its content is reachable from the archive tag.
 // A fast-forward `Add` made to a pre-existing local weft branch is not rewound.
 //
-// `AddLocal` creates a local-only pair: it takes the path `SkipPush` takes (no origin probe, no replacement, the warp branch forks from `HEAD`), creates no portal or launcher, and marks both branches local with gitrepo's per-branch mark before the origin record's commit.
+// `AddLocal` creates a local-only pair: it takes the path `SkipPush` takes (no origin probe, no replacement, the warp branch forks from `HEAD`), creates no launcher, and marks both branches local with gitrepo's per-branch mark before the origin record's commit.
 // A marked branch is refused by every push primitive and reported by fabric's pushes in `PushResult.LocalSkipped`, so nothing publishes it.
 // `AddLocal` refuses with `*ErrLocalAddOverOrdinary` before its first mutation when either branch exists unmarked locally or as an `origin` remote-tracking ref, so it never adopts and silences an ordinary pair.
 // A marked branch is adopted, as a local pair's kept branch is when its worktrees were removed.
@@ -942,23 +942,13 @@
 // substitute any path fabric writes to — but the operation is never REPORTED as success and never leaves
 // the target a dangling out-of-hub symlink, which is the create-side twin of the delete-side guarantee.
 //
-// **The two hub-level container WRITERS bind their writes to a rooted act the same way, because R7's
-// review proved five rounds of create-side pressure had never looked at them.** `writeLaunchers`
-// (launchers.go) and `createPortal` (portals.go) write into `<hub>/_launchers/<AnchorRel>/<slug>` and
-// `<hub>/_portals/<AnchorRel>/<slug>` — hub-level structural containers, not the freshly-created worktree —
-// and both once wrote through a raw primitive that resolved and followed the container path itself:
-// `writeLaunchers` via `os.MkdirAll`+`os.WriteFile`, `createPortal` via `fslink.CreateDirLink`, whose own
-// parent-mkdir follows a planted symlink. A STATIC symlink planted at the `<slug>` leaf OR the
-// `_launchers`/`_portals` container (no race, no observation) carried the write OUTSIDE the hub — executable
-// launcher content to an attacker-chosen path, a portal junction into an out-of-hub directory — while `add`
-// reported `ok:true` with a mutation record naming the hub-relative path the bytes never reached, the exact
-// delete-side M3 false-success shape and strictly easier to exploit (no timing). This is the same asymmetry
-// the delete side already closed for `removeLaunchers`/`removePortal`, live on the create side of the same
-// two verbs. Both now write through an `os.Root` rooted at `l.HubPath` (the true containment boundary;
-// `_launchers`/`_portals` are never legitimately symlinks): `writeLaunchers` roots every mkdir/write there,
-// and `createPortal` materialises the link's parent chain through `ensureContainedLinkParent` before handing
-// the leaf to `fslink`, so any component escaping the hub is refused at write time. The remaining raw writes
-// in the package are NOT this class — they target a git-owned `.git/…` path (hook.go, gitexclude.go) or a
+// **The hub-level container WRITER binds its writes to a rooted act the same way, because R7's review proved five rounds of create-side pressure had never looked at it**.
+// `writeLaunchers` (launchers.go) writes into `<hub>/_launchers/<AnchorRel>/<slug>` — a hub-level structural container, not the freshly-created worktree — and once wrote through a raw primitive that resolved and followed the container path itself, `os.MkdirAll`+`os.WriteFile`.
+// A STATIC symlink planted at the `<slug>` leaf OR the `_launchers` container (no race, no observation) carried the write OUTSIDE the hub — executable launcher content to an attacker-chosen path — while `add` reported `ok:true` with a mutation record naming the hub-relative path the bytes never reached, the exact delete-side M3 false-success shape and strictly easier to exploit (no timing).
+// This is the same asymmetry the delete side already closed for `removeLaunchers`, live on the create side of the same two verbs.
+// It now writes through an `os.Root` rooted at `l.HubPath` (the true containment boundary; `_launchers` is never legitimately a symlink), so any component escaping the hub is refused at write time.
+// `writeHubWorkspace` (hubworkspace_write.go) writes the hub workspace file the same way.
+// The remaining raw writes in the package are NOT this class — they target a git-owned `.git/…` path (hook.go, gitexclude.go) or a
 // worktree/board directory a contained minter (`createExclusiveDir`/`containedWorktreeAdd`) brought into
 // being in the same call (clone.go, codebinding.go, recordsgit.go, junction.go's weft-target materialisation),
 // where only a post-creation same-UID race, never a static pre-plant, could redirect them — the same accepted
@@ -966,9 +956,9 @@
 // guard rather than a routed write. See PATTERN-fabric-write-containment and
 // `cmd/lyx/uncontainedwrite_test.go`'s `TestNoUncontainedWrite_FabricengineProductionSource` for the guard.
 //
-// **The launcher/portal teardown path was the last corner still holding the old shape, because every prior
+// **The launcher teardown path was the last corner still holding the old shape, because every prior
 // round fixed it from the outside and none audited it on its own terms.** R3 rerouted the gate's two
-// arbitrary-path executors and R7 rerouted the two hub-level container writers, but three things in that one
+// arbitrary-path executors and R7 rerouted the hub-level container writer, but three things in that one
 // teardown path were left standing, and R8's review found all three. First, `removeLaunchers`' launcher-DIRECTORY
 // removal ran the gate's `checkPathRequest` and then acted with a raw, unrooted single-entry removal of the
 // nominal path — a THIRD arbitrary-path removal, carrying exactly the check-then-act window R3 closed for the
@@ -985,14 +975,13 @@
 // consequently OFF the destructive guard's allowlist, so a raw removal reintroduced in either now fails the
 // guard rather than inheriting a reason written for a call site that no longer exists.
 //
-// Third, and separate from containment: `refuseUncontainedPath`, the pre-gate guard both teardown helpers open
-// with, returned a bare `fmt.Errorf`. Every one of its four best-effort call sites (`Remove` twice, `Prune`
-// twice) wraps the call in `surfaceRefusal`, which by design discards anything that is not a
-// `*destructiveRefusal` — so the one refusal class that must never be dropped was dropped. A STATIC symlink at
+// Third, and separate from containment: `refuseUncontainedPath`, the pre-gate guard the teardown helper opens with, returned a bare `fmt.Errorf`.
+// Every one of its best-effort call sites (`Remove`, `Prune`) wraps the call in `surfaceRefusal`, which by design discards anything that is not a `*destructiveRefusal` — so the one refusal class that must never be dropped was dropped.
+// A STATIC symlink at
 // the `_launchers` container (no race) made the whole teardown refuse correctly, nothing escaping, while
 // `lyx fabric remove` reported `ok:true`, `partial:false` and exit 0 with the pair's launcher scripts still on
 // disk and no reason for the operator to reach for `reconcile` — R2's M2 dishonest-success shape, relocated onto
-// the teardown path. The guard now returns the gate's own refusal type, so all four sites propagate it with no
+// the teardown path. The guard now returns the gate's own refusal type, so every site propagates it with no
 // call-site change and `RefusalOf` answers for it like any other. The lesson worth keeping is that a refusal's
 // TYPE is part of its contract here: a containment check that refuses correctly but is not the type the
 // best-effort wrapper propagates is, from the operator's side, indistinguishable from no check at all.

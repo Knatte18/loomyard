@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -235,7 +236,7 @@ func TestRemove_ReportsStrayPathAndFinishesBranchTeardown(t *testing.T) {
 	}
 }
 
-// TestRemove_ReturnsPairNotFoundWhenNothingRemains finishes a pair and asserts a second Remove wraps ErrPairNotFound, and that a bare stray directory is named in the error.
+// TestRemove_ReturnsPairNotFoundWhenNothingRemains finishes a pair and asserts a second Remove wraps ErrPairNotFound, also when only a retired portal link remains, and that a bare stray directory is named in the error.
 func TestRemove_ReturnsPairNotFoundWhenNothingRemains(t *testing.T) {
 	t.Parallel()
 
@@ -254,6 +255,16 @@ func TestRemove_ReturnsPairNotFoundWhenNothingRemains(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "not found") {
 		t.Errorf("error = %q; want it to contain %q", err.Error(), "not found")
+	}
+
+	// A retired portal link is no part of a pair any more: planted by hand, it is all that remains.
+	retiredPortal := filepath.Join(l.HubPath, "_portals", l.AnchorRel, slug)
+	if err := fslink.CreateDirLink(retiredPortal, t.TempDir()); err != nil {
+		t.Fatalf("plant retired portal link: %v", err)
+	}
+	_, err = h.Topology.Remove(l, slug, false, true)
+	if !errors.Is(err, fabricengine.ErrPairNotFound) {
+		t.Fatalf("Remove with only a retired portal link left: error = %v; want it to wrap ErrPairNotFound", err)
 	}
 
 	stray := fabricengine.WorktreePath(l, slug)

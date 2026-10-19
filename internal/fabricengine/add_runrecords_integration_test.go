@@ -183,16 +183,10 @@ func TestAdd_RunRecords(t *testing.T) {
 		const slug = "drop-rollback"
 		tipBefore := gitkit.RevParse(t, weftRoot, parentWeft)
 
-		portalLink := filepath.Join(fabricengine.PortalsDir(l), slug)
-		if err := os.MkdirAll(filepath.Dir(portalLink), 0o755); err != nil {
-			t.Fatalf("mkdir portal parent: %v", err)
-		}
-		if err := os.WriteFile(portalLink, []byte("blocker"), 0o644); err != nil {
-			t.Fatalf("create blocker: %v", err)
-		}
+		plantLauncherBlocker(t, l, slug)
 
 		if _, err := h.Topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err == nil {
-			t.Fatalf("Add should have failed (portal blocker)")
+			t.Fatalf("Add should have failed (launcher blocker)")
 		}
 
 		if _, err := os.Stat(fabricengine.RecordsWorktreePath(l, slug)); !os.IsNotExist(err) {

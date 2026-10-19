@@ -1,5 +1,5 @@
 // ancestors.go implements the empty-directory sweeper that prunes empty ancestors of removed
-// worktrees and portals, and the containment assertion its destructive callers share.
+// worktrees and launchers, and the containment assertion its destructive callers share.
 
 package fabricengine
 
@@ -29,10 +29,10 @@ import (
 // points at rather than the warp worktree it lives in, refusing every legitimate unwire.
 //
 // The refusal is a *destructiveRefusal, not a bare fmt.Errorf, and that is load-bearing rather than
-// cosmetic. Both callers (removeLaunchers, removePortal) are reached from best-effort call sites in
-// Remove and Prune that wrap them in surfaceRefusal, which by design discards anything that is NOT a
+// cosmetic. Its caller removeLaunchers is reached from best-effort call sites in
+// Remove and Prune that wrap it in surfaceRefusal, which by design discards anything that is NOT a
 // *destructiveRefusal. While this guard returned a plain error it was therefore silently swallowed:
-// a static symlink planted at the _launchers/_portals container made the whole teardown refuse —
+// a static symlink planted at the _launchers container made the whole teardown refuse —
 // correctly, nothing escaped — while `lyx fabric remove` reported "ok":true, "partial":false and an
 // exit 0, with the launcher scripts still on disk and no signal to the operator that a containment
 // guard had fired at all (fabric's R8 crucible round, finding L2; R2's M2 dishonest-success shape on
@@ -57,8 +57,8 @@ func refuseUncontainedPath(container, target, what string) error {
 // It exists so the destructive gate can attribute its own refusal without inheriting a second
 // "refusing to remove …" prefix: checkPathRequest already renders one through *destructiveRefusal,
 // and wrapping refuseUncontainedPath's whole message produced "refusing to remove remove launcher
-// script" in a real refusal. The two callers that are NOT the gate (launchers.go, portals.go) keep
-// the prefixed wrapper, where it reads correctly.
+// script" in a real refusal.
+// The caller that is NOT the gate (launchers.go) keeps the prefixed wrapper, where it reads correctly.
 func containmentFailure(container, target string) error {
 	resolvedContainer := resolveAncestorSymlinks(container)
 	resolvedTarget := containmentPath(target)
@@ -122,13 +122,9 @@ func resolveAncestorSymlinks(dir string) string {
 // bind-containment-to-the-act rule the gate's own arbitrary-path executors follow rather than a
 // redundant precaution. The sweep used to relate cur to stop with a purely lexical filepath.Rel over
 // the NOMINAL strings — the comparison R2 proved answers a question nobody is asking — and then act
-// with an equally nominal single-entry removal. Its two callers walk the two hub-level structural
-// containers an attacker can plant at (<hub>/_launchers, <hub>/_portals), so with a multi-segment
-// AnchorRel (say `services/api`) a symlink planted at `services` made the first removal resolve that
-// component and destroy an out-of-hub `/victim/api` before the loop unlinked the link itself and
-// halted (fabric's R8 crucible round, finding L1). Rooting the sweep makes every component resolve
-// through stop's own directory handle, so an escaping component is refused by the kernel instead of
-// followed.
+// with an equally nominal single-entry removal.
+// Its callers walk the hub-level structural container an attacker can plant at (<hub>/_launchers), so with a multi-segment AnchorRel (say `services/api`) a symlink planted at `services` made the first removal resolve that component and destroy an out-of-hub `/victim/api` before the loop unlinked the link itself and halted (fabric's R8 crucible round, finding L1).
+// Rooting the sweep makes every component resolve through stop's own directory handle, so an escaping component is refused by the kernel instead of followed.
 //
 // The exposure this closed was genuinely narrow — a single-entry removal is refused by the OS the
 // moment the directory is non-empty, so only an EMPTY out-of-hub directory could be destroyed, and

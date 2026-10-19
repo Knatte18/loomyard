@@ -192,6 +192,7 @@ func HubPath(parent, name string) string {
 
 // HubReservedNames returns the junction-wiring block set: the hub-structural names that must never
 // wire a per-worktree junction, _board, _portals, _launchers.
+// `_portals` is retired but stays reserved.
 // It is consumed by filterHubReserved and by scanOnDiskJunctionNames, and its exact current value
 // and role are unchanged by this batch's structural-directory work — neither call site's behaviour
 // changes.

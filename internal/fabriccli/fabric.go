@@ -131,8 +131,8 @@ pair's next push.
 The command errors if the worktree is on a detached HEAD or an unborn branch,
 because a fork point cannot be determined in either case.
 
-With --local the pair is local-only: no origin is read or written, no portal or
-launcher is created, no push is spawned, and both branches are marked local so
+With --local the pair is local-only: no origin is read or written, no launcher
+is created, no push is spawned, and both branches are marked local so
 no fabric push publishes them. A plain "lyx fabric add" over a local pair's kept
 branches adopts them and clears the marks. --local refuses a slug whose branch
 already belongs to an ordinary pair.
@@ -145,7 +145,7 @@ Example:
 			return runAdd(ctx, out, args, local)
 		}),
 	}
-	addCmd.Flags().Bool("local", false, "create a local-only pair: no origin is read or written, no portal or launcher is created, and both branches are marked local so no fabric push publishes them")
+	addCmd.Flags().Bool("local", false, "create a local-only pair: no origin is read or written, no launcher is created, and both branches are marked local so no fabric push publishes them")
 	cmd.AddCommand(addCmd)
 
 	// list
@@ -170,7 +170,7 @@ use "lyx fabric pairs".`,
 		Short:       "destroy a dual warp+weft worktree pair",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `remove tears down a warp+weft worktree pair: both worktrees, the warp
-junctions (_lyx, .lyx), the pair's portal junction and launchers, its reed
+junctions (_lyx, .lyx), the pair's launchers, its reed
 session and its weft branch. The local task branch is deleted too once its
 work is pushed or landed on the parent branch recorded at "lyx fabric add";
 otherwise it is kept, with the reason in code_branch_kept_reason, and the
@@ -294,7 +294,7 @@ sibling at all (orphaned).
 
 By default this is a dry run: every stale or orphaned pair is reported and
 nothing is removed. With --apply, each entry's weft worktree is removed, the
-dead slug's portal junction and launcher directory are torn down, and stale
+dead slug's launcher directory is torn down, and stale
 worktree registrations are pruned on both repos. Branches are never deleted
 here — orphaned weft branches are "lyx fabric cleanup"'s job.
 

@@ -279,29 +279,29 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 				t.Errorf("no pair reported %q\noutput: %s", fabricengine.ReconcileActionVanishedMidWalk, output)
 			}
 		}},
-		{"Remove_RefusesDriftedPortalJunctionWithRefusalObject", func(t *testing.T) {
-			// A real gate refusal through "fabric remove --force", reached via fabricengine.RefusalOf's own contract rather than a hand-rolled stub: the pair's portal link is hand-wired pointing at a directory OTHER than its real portal target, so removePortal's ownership check refuses, and its error propagates through Remove's %w-wrapped chain to runRemove's errWithRecord call.
+		{"Remove_RefusesDriftedLauncherDirLinkWithRefusalObject", func(t *testing.T) {
+			// A real gate refusal through "fabric remove --force", reached via fabricengine.RefusalOf's own contract rather than a hand-rolled stub: the pair's launcher directory is moved outside the hub and a link to it left in its place, so removeLaunchers' first script removal resolves the script's parent through that link to outside _launchers and the containment check refuses, and its error propagates through Remove's %w-wrapped chain to runRemove's errWithRecord call.
 			// The "refusal" object carries all four keys (check, what, target, reason), the flattened "error" string is still present alongside it, and this is the repo's only positive assertion that the "refusal" object reaches an envelope.
 			hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: \"\"\n")
 
-			const slug = "remove-refusal-portal"
+			const slug = "remove-refusal-launcher"
 			if code, output := runFabric(t, h.PrimeWorktree(), "add", slug); code != 0 {
 				t.Fatalf("RunCLI(add) = %d; want 0\noutput: %s", code, output)
 			}
 
-			// The correct portal link is already wired by "fabric add" above; drift it onto a WRONG target — anywhere other than its real portal target — so removePortal's ownership check refuses.
-			wrongTarget := t.TempDir()
-			portalLink := h.PairPortalLink(slug)
-			if err := fslink.Remove(portalLink); err != nil {
-				t.Fatalf("remove correctly-wired portal link: %v", err)
+			// "fabric add" above wrote the launcher directory; move it, scripts included, outside the hub and leave a link to it where it stood.
+			launcherDir := h.PairLauncherDir(slug)
+			movedDir := filepath.Join(t.TempDir(), "moved-launchers")
+			if err := os.Rename(launcherDir, movedDir); err != nil {
+				t.Fatalf("move launcher dir outside the hub: %v", err)
 			}
-			if err := fslink.CreateDirLink(portalLink, wrongTarget); err != nil {
-				t.Fatalf("create drifted portal link: %v", err)
+			if err := fslink.CreateDirLink(launcherDir, movedDir); err != nil {
+				t.Fatalf("create drifted launcher dir link: %v", err)
 			}
 
 			code, output := runFabric(t, h.PrimeWorktree(), "remove", "--force", slug)
 			if code != 1 {
-				t.Fatalf("RunCLI(remove) = %d; want 1 (a drifted portal junction must be refused)\noutput: %s", code, output)
+				t.Fatalf("RunCLI(remove) = %d; want 1 (a launcher directory linked outside the hub must be refused)\noutput: %s", code, output)
 			}
 
 			result := envelope.Decode(t, output)
@@ -325,8 +325,8 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 					t.Errorf("refusal[%q] = %q; want a non-empty string", key, s)
 				}
 			}
-			if check, _ := refusal["check"].(string); check != string(fabricengine.CheckOwnership) {
-				t.Errorf("refusal[\"check\"] = %q; want %q", check, fabricengine.CheckOwnership)
+			if check, _ := refusal["check"].(string); check != string(fabricengine.CheckContainment) {
+				t.Errorf("refusal[\"check\"] = %q; want %q", check, fabricengine.CheckContainment)
 			}
 			if _, present := result.Raw["mutations"]; !present {
 				t.Errorf("RunCLI(remove) output missing 'mutations' key on the failure path")
