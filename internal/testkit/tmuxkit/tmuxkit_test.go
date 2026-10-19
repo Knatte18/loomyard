@@ -25,6 +25,7 @@ func TestCheckSocketPath(t *testing.T) {
 		{"short directory", "/tmp/lyx123", 1000, false},
 		{"directory at the limit", "/tmp/" + strings.Repeat("d", 107-len("/tmp/")-len("/tmux-1000/")-maxKeyBytes), 1000, false},
 		{"directory one byte over", "/tmp/" + strings.Repeat("d", 107-len("/tmp/")-len("/tmux-1000/")-maxKeyBytes+1), 1000, true},
+		{"run directory of the widest uid", "/tmp/lyx-4294967295/r0a1b2c", 4294967295, false},
 		{"longer uid widens the path", "/tmp/" + strings.Repeat("d", 107-len("/tmp/")-len("/tmux-1000/")-maxKeyBytes), 1000000, true},
 	}
 	for _, tt := range tests {

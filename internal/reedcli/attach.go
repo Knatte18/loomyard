@@ -7,11 +7,10 @@
 // The handover itself is handOver, declared once per platform.
 // It execs tmux over this process on Unix and runs it as a child process on Windows.
 // The handover argv itself comes from reedengine.Engine.AttachArgv, not a package-level builder here:
-// this file's only remaining pre-flight addition is reading the operator's own terminal size via
-// golang.org/x/term and handing it to the engine's builder. That size read and the builder call are
-// both pre-flight steps that nonetheless never write to the envelope — each degrades to today's bare
-// argv and logs a warning instead, so c.eng.EnsureSession() and c.eng.Status() remain the only two
-// pre-flight steps that can abort with an envelope error.
+// this file's only remaining pre-flight addition that cannot abort is reading the operator's own terminal size via golang.org/x/term and handing it to the engine's builder.
+// That size read and the builder call are both pre-flight steps that nonetheless never write to the envelope.
+// Each degrades to today's bare argv and logs a warning instead.
+// So the tmux floor check, c.eng.EnsureSession() and c.eng.Status() remain the only pre-flight steps that can abort with an envelope error, the floor check first.
 
 package reedcli
 
@@ -23,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -38,8 +38,9 @@ place — no new window is spawned (never wt.exe). On Unix attach replaces
 itself with tmux, so no lyx process outlives the handover; on Windows it runs
 tmux as a child with the terminal inherited. attach boots
 this worktree's session when none is up, rather than refusing. Every
-fallible step (booting the session if it is cold, then checking that the
-server/session is up) runs pre-flight and reports through the normal JSON
+fallible step (checking that tmux is at or above lyx's minimum version, then
+booting the session if it is cold, then checking that the server/session is
+up) runs pre-flight and reports through the normal JSON
 envelope; once the terminal handover begins, stdio belongs to tmux and
 nothing further is written to it, even on success.
 The handover also asks tmux to apply a layout computed for this terminal's
@@ -55,7 +56,14 @@ Example:
 			}
 			out := cmd.OutOrStdout()
 
-			// Pre-flight, in a load-bearing order: EnsureSession first, Status
+			// The floor check comes first.
+			// A below-floor tmux is refused with the floor error itself before EnsureSession or Status run tmux and before stdio is handed to tmux.
+			if err := reedengine.CheckTmuxFloor(c.eng.TmuxPath()); err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
+
+			// Pre-flight, in a load-bearing order after the floor check: EnsureSession first, Status
 			// second. EnsureSession self-heals a cold worktree by booting the
 			// session; Status calls requireSessionLocked, which refuses when no
 			// session is up, so running Status first would refuse on a cold

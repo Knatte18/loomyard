@@ -77,7 +77,7 @@ func (b *Bolt) Push(opts SyncOptions) error {
 
 // PushRecorded pushes any unpushed commits in the Bolt's repo and records a seed-commit drop in rec.
 // A push whose recovery rebase conflicted is retried once after the board's seed commits ahead of its upstream are dropped and its other commits replayed, under the board write lock and then the push lock.
-// With no seed commits ahead, or when the drop refuses or its replay conflicts, the original push error is returned.
+// With no seed commits ahead, or when the drop refuses or its replay fails, the original push error is returned.
 // A second failure is returned and never retried.
 func (b *Bolt) PushRecorded(opts SyncOptions, rec *Mutations) error {
 	err := pushWeftAt(b.path, opts)
@@ -92,7 +92,7 @@ func (b *Bolt) PushRecorded(opts SyncOptions, rec *Mutations) error {
 
 // dropSeedCommitsAfterConflict drops the seed commits the board holds over its upstream and reports whether it did.
 // The locks are taken in pullFirst's order, so the two cannot deadlock, and are released before the caller retries the push.
-// A refused drop, a conflicting replay or a failed read leaves the board as it was and reports false.
+// A refused drop, a failed replay or a failed read leaves the board as it was and reports false.
 func (b *Bolt) dropSeedCommitsAfterConflict(rec *Mutations) bool {
 	writeLock, err := lock.AcquireWriteLock(filepath.Join(b.path, BoardWriteLockFile))
 	if err != nil {

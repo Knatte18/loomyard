@@ -204,6 +204,7 @@
 // The name is mirrored outward, never read back as truth.
 // launchStrandLocked exports it to the strand's process as LYX_STRAND_NAME, with LYX_PARENT when a parent is told, ahead of the launch command.
 // It also sets the pane title to the full name after `set-option -p allow-set-title off`, so the program in the pane cannot overwrite it.
+// On tmux below 3.5 the option is missing, reed Warns and the launch goes on, and the program can then overwrite the title.
 // A provider session name is the other mirror, passed by the launch line as `--name`.
 // The daemon's file-event waits (watchloop.go) go through a FileWatchOpener, whose production value OpenFileWatch wraps internal/fswatch.
 // PasteSubmit is the pane-write transport op: one tmux invocation fills a fresh named buffer (`lyx-inject-` plus 8 hex characters) with the text, pastes it as a bracketed paste, deletes the buffer, and, when asked, sends Enter behind it.
@@ -244,6 +245,14 @@
 // the canary for both version drift in the on-box binary and the eventual
 // tmux swap, since the same test runs unmodified against whichever binary
 // LoadConfig resolves.
+//
+// Tmux floor: every tmux command reed runs, and the lifecycle server spawn, first checks that the tmux binary is at or above lyx's floor (`toolfloor.TmuxFloor`), off Windows only.
+// The check runs `<tmux> -V` once per resolved tmux path per process and caches the parsed answer, so a below-floor tmux makes every command return the `*toolfloor.FloorError` naming the tool, the version found and the floor.
+// A probe that could not run is returned wrapped and not cached, so the next command probes again; an unparseable version line is logged once with Warn and admitted.
+// `CheckTmuxFloor` exposes the same check to a tmux spawn outside the runner, such as `lyx reed attach`'s handover.
+// A command carrying a test hook never reads or fills the process cache.
+// Bound: a long-lived process, the watchdog daemon included, keeps its cached answer after a tmux upgrade during its life.
+// The capability probe's own native floor stays beneath this one, and on Windows psmux keeps that floor alone.
 //
 // Operator config: a server reed starts reads no `~/.tmux.conf`.
 // The server spawn (serverSpawnArgv) and the capability probe's two invocations carry `-f /dev/null` on every platform but Windows;
@@ -636,6 +645,9 @@
 //   - The geometry option pins (windowsize.go): pinGeometryOptionsLocked pins the two-line status bar, whose format strings bar.go declares: "status-format[0]" (the window and shell buttons) and "status-format[1]" (the session buttons and the time), both with -g since tmux's status formats are one array; "status-style" (-g) with the dark grey statusBarStyle, so the gaps between the buttons are not tmux's default green; "status" "2" and "status-position" "bottom" on the session; and "window-size" "latest" (-w) on the strand window.
 //     The window-targeted pin is targeted at the strand window (-t <strand window>, per the Strand window and Session targeting grammar above), both at boot and again in AttachArgv's pre-flight.
 //     The bar reads strands only through the @strand and @strand_color pane options and the @lyx_strands window option, never through the current window.
+//     Line 2 is two single-format `#{S:}` loops, since tmux 3.4's loop takes one format: the first draws the session carrying the session user option @lyx_prime_session, and the second every other reed session, in the loop's own order, which is session name on tmux 3.4 and session id on newer tmux.
+//     The prime's session is the hub geometry with an empty name slug, marked with `set-option -t <strand window> @lyx_prime_session 1` after the status pins, at boot and in the attach pre-flight, non-fatal like them; a pair's session and a standalone session are never marked, and no Go decision reads the mark.
+//     Bound: a prime session already up when this binary arrived draws in the second loop until a `lyx reed attach` to it reaches the geometry pins, and an attach whose pre-flight degrades to the bare argv leaves it unmarked.
 //     The same function clears the `window-resized` hook an older binary pinned on the shell window, with `set-hook -u` in the window scope and the session scope, everywhere but Windows, so boot and attach both clear it.
 //     Unlike the remain-on-exit/mouse pins beside
 //     them, every pin here is NON-FATAL: those two are correctness dependencies,

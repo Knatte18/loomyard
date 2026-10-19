@@ -4,7 +4,8 @@
 // It is created with mode 0700 and refused unless it is a real directory, which off Windows also means mode exactly 0700 and an owner equal to the user.
 // Nothing falls back to the bare system temp directory: a refused root is an error, and an error path creates nothing.
 //
-// A run directory is `os.MkdirTemp(root, "r")` holding a lock file `run.lock`, which its process holds until it removes the directory.
+// A run directory is `r` plus six random hex digits, created 0700 with `os.Mkdir`; a taken name is retried up to a bound and then refused naming the root.
+// It holds a lock file `run.lock`, which its process holds until it removes the directory.
 // The names stay short so a tmux socket path below a run directory stays under the `sun_path` limit.
 // A process whose system temp directory is itself a run directory under a lyx root takes that root as its own, so a child works beside its parent and never inside it.
 //

@@ -69,12 +69,6 @@ var spawnObservabilityScanRoots = []string{"internal", "cmd"}
 // tools/ sites need no entry at all: the walk never visits tools/.
 var spawnObservabilityAllowedSpawners = []scankit.Entry{
 	{
-		Key: "internal/gitexec/gitexec.go",
-		Why: "structurally barred: internal/logger imports internal/lyxcwd, which imports " +
-			"internal/gitexec, so importing logger here would close an import cycle; gitexec.Run already returns a " +
-			"*GitError carrying args, dir, exit code, and stderr, so the diagnostic is not actually lost",
-	},
-	{
 		Key: "internal/gitkit/gitkit.go",
 		Why: "structurally barred by the gitkit Leaf Invariant's pinned import list " +
 			"(stdlib, lyxcwd, the fabric name package, configengine, lyxdirs only)",

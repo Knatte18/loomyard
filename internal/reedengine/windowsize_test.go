@@ -46,7 +46,7 @@ func wantResizedUnpins(target string) [][]string {
 // It asserts that no call's failure stops the calls after it,
 // and that the window-resized hook is unpinned in both scopes, whatever the watchdog value, and never installed.
 //
-//testtiming:keep pins the set-option calls issued to pin the geometry: the two global status formats, status 2 and the position on the session, window-size and no pane-border pin, no failure stopping the calls after it, and the window-resized unpin in both scopes on every watchdog value; its covering tests run this code without asserting it
+//testtiming:keep pins the set-option calls issued to pin the geometry: the two global status formats, status 2 and the position on the session, the prime mark on the prime's session alone, window-size and no pane-border pin, no failure stopping the calls after it, and the window-resized unpin in both scopes on every watchdog value; its covering tests run this code without asserting it
 func TestPinGeometryOptionsLocked(t *testing.T) {
 	t.Run("AllOptionsIssued", func(t *testing.T) {
 		e := newTestEngine(t)
@@ -180,22 +180,101 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 		}
 	})
 
-	t.Run("OneOptionFailureDoesNotStopTheRest", func(t *testing.T) {
-		e := newTestEngine(t)
-		fake := installFakeTmux(t, e)
-		fake.answerFunc("set-option", func([]string) (string, error) {
-			if fake.Count("set-option") == 1 {
-				return "", errors.New("boom")
+	t.Run("PrimeSessionIsMarked", func(t *testing.T) {
+		tests := []struct {
+			name         string
+			discoverPath string
+			nameSlug     string
+			wantMark     bool
+		}{
+			{"Prime", "discover-signal", "", true},
+			{"Pair", "discover-signal", "tslug", false},
+			{"Standalone", "", "", false},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				e := newTestEngine(t)
+				e.geom.DiscoverSignalPath = tt.discoverPath
+				e.geom.NameSlug = tt.nameSlug
+				fake := installFakeTmux(t, e)
+				target := exactSessionWindowTarget(e.SessionName())
+
+				e.pinGeometryOptionsLocked(target, "")
+
+				wantMark := []string{"set-option", "-t", target, primeSessionOption, "1"}
+				got := 0
+				for _, call := range fake.ArgvFor("set-option") {
+					if slices.Contains(call, primeSessionOption) {
+						got++
+						if !slices.Equal(call, wantMark) {
+							t.Errorf("prime mark call = %v, want %v", call, wantMark)
+						}
+					}
+				}
+				want := 0
+				if tt.wantMark {
+					want = 1
+				}
+				if got != want {
+					t.Errorf("prime mark set-option calls = %d, want %d", got, want)
+				}
+			})
+		}
+
+		t.Run("ABootMarksThePrime", func(t *testing.T) {
+			e := newTestEngine(t)
+			e.geom.DiscoverSignalPath = "discover-signal"
+			e.geom.NameSlug = ""
+			fake := installFakeTmux(t, e)
+
+			if err := e.pinBootOptionsLocked("off", ""); err != nil {
+				t.Fatalf("pinBootOptionsLocked() = %v, want nil", err)
 			}
-			return "", nil
+
+			wantMark := []string{"set-option", "-t", exactSessionWindowTarget(e.SessionName()), primeSessionOption, "1"}
+			if !slices.ContainsFunc(fake.ArgvFor("set-option"), func(call []string) bool { return slices.Equal(call, wantMark) }) {
+				t.Errorf("boot set-option calls = %v, want the prime mark %v", fake.ArgvFor("set-option"), wantMark)
+			}
 		})
+	})
 
-		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()), "")
-		calls := fake.ArgvFor("set-option")
+	t.Run("OneOptionFailureDoesNotStopTheRest", func(t *testing.T) {
+		tests := []struct {
+			name      string
+			prime     bool
+			fails     func(call int, args []string) bool
+			wantCalls int
+			wantWarn  string
+		}{
+			{"Pair", false, func(call int, _ []string) bool { return call == 1 }, 8, ""},
+			{"PrimeMark", true, func(_ int, args []string) bool { return slices.Contains(args, primeSessionOption) }, 9, primeSessionOption},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				e := newTestEngine(t)
+				if tt.prime {
+					e.geom.DiscoverSignalPath = "discover-signal"
+					e.geom.NameSlug = ""
+				}
+				fake := installFakeTmux(t, e)
+				fake.answerFunc("set-option", func(args []string) (string, error) {
+					if tt.fails(fake.Count("set-option"), args) {
+						return "", errors.New("boom")
+					}
+					return "", nil
+				})
+				logs := logcapture.CaptureVerbose(t)
 
-		const wantCalls = 8
-		if len(calls) != wantCalls {
-			t.Fatalf("pinGeometryOptionsLocked issued %d set-option calls despite one erroring, want all %d still attempted: %v", len(calls), wantCalls, calls)
+				e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()), "")
+				calls := fake.ArgvFor("set-option")
+
+				if len(calls) != tt.wantCalls {
+					t.Fatalf("pinGeometryOptionsLocked issued %d set-option calls despite one erroring, want all %d still attempted: %v", len(calls), tt.wantCalls, calls)
+				}
+				if tt.wantWarn != "" && !strings.Contains(logs.String(), tt.wantWarn) {
+					t.Errorf("log = %q, want a Warn naming %s", logs.String(), tt.wantWarn)
+				}
+			})
 		}
 	})
 

@@ -44,6 +44,9 @@ type TmuxCmd struct {
 	// stdin is the bytes a runStdin call writes to the command's standard input.
 	// It is nil for run and output, and passed beside the subcommand argv rather than inside it.
 	execHook func(capture bool, stdin []byte, args ...string) (string, error)
+	// floorLine is the `tmux -V` line a hook-driven command's floor check reads, and is read only when execHook is set.
+	// Empty admits.
+	floorLine string
 }
 
 // NewTmuxCmd builds a TmuxCmd bound to the given binary and -L socket.
@@ -71,6 +74,9 @@ func (p TmuxCmd) serverArgs() []string {
 // run builds and runs a command with the server flags prepended,
 // folding stderr into the returned error.
 func (p TmuxCmd) run(args ...string) error {
+	if err := p.checkFloor(); err != nil {
+		return err
+	}
 	if p.execHook != nil {
 		_, err := p.execHook(false, nil, args...)
 		return err
@@ -88,6 +94,9 @@ func (p TmuxCmd) run(args ...string) error {
 // runStdin is run with stdin written to the command's standard input.
 // The bytes are never logged.
 func (p TmuxCmd) runStdin(stdin []byte, args ...string) error {
+	if err := p.checkFloor(); err != nil {
+		return err
+	}
 	if p.execHook != nil {
 		_, err := p.execHook(false, stdin, args...)
 		return err
@@ -106,6 +115,9 @@ func (p TmuxCmd) runStdin(stdin []byte, args ...string) error {
 // output builds and runs a command with the server flags prepended,
 // capturing stdout and folding stderr into the error.
 func (p TmuxCmd) output(args ...string) (string, error) {
+	if err := p.checkFloor(); err != nil {
+		return "", err
+	}
 	if p.execHook != nil {
 		return p.execHook(true, nil, args...)
 	}

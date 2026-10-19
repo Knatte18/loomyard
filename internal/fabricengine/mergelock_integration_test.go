@@ -48,13 +48,14 @@ func setupResolvedConflictedMergeIn(t *testing.T) (*hubforge.Hub, *fabricengine.
 	return h, f
 }
 
-// launchBlockedOnLock acquires the pair's weft write lock, launches verb on a goroutine, and
-// asserts the verb is still blocked shortly after — proving its guards did not run to completion
-// ahead of the lock. It returns the held lock and the verb's result channel.
+// launchBlockedOnLock acquires the pair's weft write lock, launches verb on a goroutine, and waits for the verb's own signal that it is about to wait for that lock.
+// It then asserts the verb has not finished, proving its guards ran ahead of the lock and it is parked on it.
+// It returns the held lock and the verb's result channel.
 func launchBlockedOnLock(t *testing.T, f *fabricengine.Fabric, verb func() error) (*lock.FileLock, <-chan error) {
 	t.Helper()
 
 	lockPath := fabricengine.WeftWriteLockPathForTest(t, f)
+	waiting := fabricengine.AwaitWeftLockWaitForTest(t, lockPath)
 	held, err := lock.AcquireWriteLock(lockPath)
 	if err != nil {
 		t.Fatalf("AcquireWriteLock(%q) error = %v", lockPath, err)
@@ -63,12 +64,21 @@ func launchBlockedOnLock(t *testing.T, f *fabricengine.Fabric, verb func() error
 	done := make(chan error, 1)
 	go func() { done <- verb() }()
 
+	// The deadline only bounds a failing test.
+	select {
+	case <-waiting:
+	case verbErr := <-done:
+		_ = held.Release()
+		t.Fatalf("verb completed (error = %v) before waiting for the externally held weft write lock; want it to block", verbErr)
+	case <-time.After(30 * time.Second):
+		_ = held.Release()
+		t.Fatal("verb never reached the weft write lock")
+	}
 	select {
 	case verbErr := <-done:
 		_ = held.Release()
 		t.Fatalf("verb completed (error = %v) while the weft write lock was externally held; want it to block", verbErr)
-	case <-time.After(150 * time.Millisecond):
-		// Still blocked, as required.
+	default:
 	}
 	return held, done
 }
