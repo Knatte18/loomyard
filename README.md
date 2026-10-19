@@ -138,9 +138,10 @@ pick the task up on another machine and it resumes where it stopped, and two tas
   ├── <prime>-<records>/  its records side              ┘
   ├── <slug>/             a task worktree               ┐ likewise, on
   ├── <slug>-<records>/   its records side              ┘ the task branch
+  ├── <RepoName>.code-workspace  the VS Code workspace of the hub
   ├── _board/             the task store
   ├── _portals/           entry points into each worktree's state
-  └── _launchers/         per-worktree launcher scripts and workspaces
+  └── _launchers/         per-worktree launcher scripts
 ```
 
 ## The records of this repository

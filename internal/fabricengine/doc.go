@@ -1012,6 +1012,16 @@
 // `createdBranchToken`, which `createGitWorktree` also mints for the branch its `-b` created and `ownedCreatedBranch` takes, is backed the same way, by the `createdBranchToken{` ban.
 // That kind lets `rollbackAdd` delete the warp branch this `Add` created whatever the branch prefix, locally and, under a lease, on origin.
 //
+// # The hub workspace file
+//
+// `RegenerateHubWorkspace` writes `<hub>/<RepoName>.code-workspace`, the one VS Code workspace file of a hub: the prime first, `Bolt` second, then every task pair at its anchor dir, sorted by slug.
+// The file lists every task pair of the hub, and no per-umbrella partition exists.
+// The file is lyx-owned and rewritten from the hub's current worktrees whenever its bytes would change, so a hand edit is overwritten;
+// settings belong in the prime's `.vscode/settings.json`, which the file splices verbatim.
+// A regeneration runs under `HubWorkspaceLockPath(hub)`, a leaf lock under the hub scratch directory, and lists the folders only after taking it,
+// so a pair created while the regeneration waits is listed.
+// The write goes through an `os.Root` at the hub, so a symlink planted at the file's path that escapes the hub is refused.
+//
 // # The correspondence index's write path
 //
 // This section, together with "The destruction chokepoint" above, closes out the fabric crucible

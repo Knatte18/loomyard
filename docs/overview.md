@@ -117,10 +117,10 @@ The two-sided design is documented in `internal/fabricengine`'s package doc.
   ├── <slug>-<records>/             (records worktree for <slug>; git repo root)
   ├── _board/                       (records main-branch worktree; holds board.json)
   │     └── .lyx/                   (hub-wide machine-local scratch; a real dir, never a junction)
+  ├── <RepoName>.code-workspace     (the hub's VS Code workspace; lyx-owned)
   ├── _portals/<anchor>/<slug>      (junction into <slug>'s _lyx; anchor-mirrored)
   └── _launchers/<anchor>/          (anchor-mirrored)
-        ├── <slug>                  (per-worktree launcher scripts)
-        └── <prime>.code-workspace  (the prime's hub workspace; lyx-owned)
+        └── <slug>                  (per-worktree launcher scripts)
 ```
 
 `_board`, `_portals`, and `_launchers` are hub geometry, so none of them can be claimed as a worktree slug
@@ -375,7 +375,7 @@ User-facing modules each get one `lyx <module>` namespace:
   `--force` never overrides that check.
   ✅ Implemented; see the `internal/fabricengine` package documentation for rationale.
 - **ide** — one-shot VS Code launcher with interactive menu.
-  `lyx ide spawn <prime>` opens a hub workspace (prime, `_board`, `_portals`) whose `settings` carry the prime's `.vscode/settings.json`.
+  `lyx ide spawn <prime>` opens the hub workspace `<hub>/<RepoName>.code-workspace` (the prime, `Bolt` and every task pair) whose `settings` carry the prime's `.vscode/settings.json`.
   The file is lyx-owned and regenerated on each prime spawn, overwriting any edit made in it;
   a task slug still opens its bare folder.
   The generated `tasks.json` holds one on-demand `reed attach` task, with the `lyx` path stamped absolute at generation time, reached through "Tasks: Run Task";

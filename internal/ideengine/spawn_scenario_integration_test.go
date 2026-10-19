@@ -80,6 +80,11 @@ func TestSpawnScenario(t *testing.T) {
 	}) {
 		return
 	}
+	if !step("prime workspace write failure", func(t *testing.T) {
+		checkPrimeWriteFailure(t, h)
+	}) {
+		return
+	}
 	if !step("prime workspace survives topology verbs", func(t *testing.T) {
 		checkPrimeWorkspaceSurvivesTopologyVerbs(t, h, "topology")
 	}) {
