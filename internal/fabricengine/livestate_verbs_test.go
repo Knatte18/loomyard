@@ -333,7 +333,8 @@ func pairPermittedRoots(tb testing.TB, h *hubforge.Hub, slug string) []string {
 // function calls composes paths via filepath.Join, which drops an empty leading HubPath cleanly,
 // leaving exactly the hub-relative suffix an accessor would otherwise require a real hub to produce.
 func slugPermittedRoots(slug string) []string {
-	var roots []string
+	// A Remove or Prune cell rewrites the hub workspace file, which is named after the warp repo.
+	roots := []string{filepath.ToSlash(fabricengine.HubWorkspacePath(&lyxcwd.Location{RepoName: "warp-bare"}))}
 	for _, anchor := range []string{".", "backend"} {
 		loc := &lyxcwd.Location{WorktreeName: slug, AnchorRel: anchor}
 		portal := fabricengine.PortalLink(loc, slug)
@@ -710,6 +711,11 @@ func cleanupCase() VerbCase {
 	}
 }
 
+// checkoutPermittedRoots returns the one root a proceeding Checkout cell may touch: the hub workspace file, whose first folder takes the prime's new branch name.
+func checkoutPermittedRoots() []string {
+	return []string{filepath.ToSlash(fabricengine.HubWorkspacePath(&lyxcwd.Location{RepoName: "warp-bare"}))}
+}
+
 // checkoutCase builds Topology.Checkout's VerbCase.
 // Arrange adds a pair, and Run passes that pair's own warp branch — without this the cells are
 // vacuous: a factory-built hub carries only the clone's own branch, so Checkout handed that branch
@@ -773,6 +779,8 @@ func checkoutCase() VerbCase {
 				return Expectation{
 					Kind:      KindEitherProceedsOrRefusedBefore,
 					Substring: "warp switch",
+					// A switch in the prime renames the workspace file's first folder.
+					PermittedRoots: checkoutPermittedRoots(),
 					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
 						warpBranch := gitkit.CurrentBranch(tb, h.PrimeWorktree())
@@ -794,7 +802,8 @@ func checkoutCase() VerbCase {
 				}
 			default:
 				return Expectation{
-					Kind: KindProceeds,
+					Kind:           KindProceeds,
+					PermittedRoots: checkoutPermittedRoots(),
 					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
 						if got := gitkit.CurrentBranch(tb, h.PrimeWorktree()); got != f.CheckoutBranch {

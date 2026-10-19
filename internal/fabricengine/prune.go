@@ -92,6 +92,11 @@ func (t *Topology) Prune(l *lyxcwd.Location, apply, force bool) (res PruneResult
 		return PruneResult{}, fmt.Errorf("list worktrees: %w", err)
 	}
 
+	// A dry run changes nothing, so only an applying Prune rewrites the hub workspace file.
+	if apply {
+		defer regenerateAfterVerb(rec, l, "prune")
+	}
+
 	liveWarpSlugs := make(map[string]bool)
 
 	// Track slugs emitted by Pass 1 to avoid re-reporting the same orphaned weft in Pass 2.

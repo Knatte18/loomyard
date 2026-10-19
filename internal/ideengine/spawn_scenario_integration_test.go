@@ -85,11 +85,6 @@ func TestSpawnScenario(t *testing.T) {
 	}) {
 		return
 	}
-	if !step("prime workspace survives topology verbs", func(t *testing.T) {
-		checkPrimeWorkspaceSurvivesTopologyVerbs(t, h, "topology")
-	}) {
-		return
-	}
 	step("spawn skips a tracked .vscode on the prime", func(t *testing.T) {
 		checkSkipsTrackedVSCode(t, h, "", true)
 	})

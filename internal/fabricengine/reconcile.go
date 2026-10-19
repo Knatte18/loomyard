@@ -253,6 +253,8 @@ func (t *Topology) Reconcile(l *lyxcwd.Location) (res ReconcileResult, err error
 
 	result.WarpBinding, result.WarpBindingDetail = t.reconcileWarpBinding(rec, l)
 
+	regenerateAfterVerb(rec, l, "reconcile")
+
 	return result, nil
 }
 

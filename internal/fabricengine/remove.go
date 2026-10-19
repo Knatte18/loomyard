@@ -171,6 +171,9 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (
 	}
 	steps := []string{}
 
+	// Registered before the teardown lock, so it runs after the lock's release on every exit past the refusals.
+	defer regenerateAfterVerb(rec, l, "remove")
+
 	// The pair's detached pushes hold this lock shared, so no push runs against a worktree this call deletes.
 	// A failure after this point that leaves a worktree behind respawns the pair's push once the lock is released, since a child may have exited on the held lock.
 	releaseTeardown, err := t.lockPairTeardown(rec, l, slug)

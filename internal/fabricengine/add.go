@@ -258,7 +258,10 @@ func (t *Topology) add(l *lyxcwd.Location, slug string, opts AddOptions, local b
 		}
 	}
 
-	// The pre-flight refusals have passed: switch both stores' auto gc off before the first mutation.
+	// The pre-flight refusals have passed: every exit from here, a rollback included, regenerates the hub workspace file.
+	defer regenerateAfterVerb(rec, l, "add")
+
+	// Switch both stores' auto gc off before the first mutation.
 	if gcErr := disableStoreAutoGC(l); gcErr != nil {
 		logger.Warn("fabricengine: disabling store auto gc failed (non-fatal)", "verb", "add", "slug", slug, "error", gcErr)
 	}

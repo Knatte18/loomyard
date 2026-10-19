@@ -46,6 +46,15 @@ func RegenerateHubWorkspace(rec *Mutations, l *lyxcwd.Location) (string, error) 
 	return regenerateHubWorkspace(rec, l, hubWorkspaceLockWait)
 }
 
+// regenerateAfterVerb regenerates the hub workspace file at the end of a fabric verb that changed the hub's worktrees.
+// A failure is logged at Warn, naming the verb and the repair, and is never returned:
+// a stale file is rewritten by the next regenerating verb or prime spawn, so it never fails or rolls back the verb.
+func regenerateAfterVerb(rec *Mutations, l *lyxcwd.Location, verb string) {
+	if _, err := RegenerateHubWorkspace(rec, l); err != nil {
+		logger.Warn(`fabricengine: hub workspace regeneration failed; run "lyx fabric reconcile" once the cause is fixed`, "verb", verb, "error", err)
+	}
+}
+
 // regenerateHubWorkspace is RegenerateHubWorkspace with the lock wait as a parameter.
 // A hub without a board takes no lock and lists no Bolt folder.
 func regenerateHubWorkspace(rec *Mutations, l *lyxcwd.Location, lockWait time.Duration) (string, error) {

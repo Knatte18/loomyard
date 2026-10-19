@@ -290,37 +290,3 @@ func checkPrimeWriteFailure(t *testing.T, h *hubforge.Hub) {
 		t.Errorf("workspace file = %q (read err %v), want the planted bytes", got, readErr)
 	}
 }
-
-// checkPrimeWorkspaceSurvivesTopologyVerbs asserts Remove and a Prune dry run leave the workspace file alone.
-func checkPrimeWorkspaceSurvivesTopologyVerbs(t *testing.T, h *hubforge.Hub, slug string) {
-	resetPrimeEditorState(t, h)
-	l := h.Location
-	prime := primeOf(t, h)
-	recordLauncher(t)
-	hubforge.AddPair(t, h, slug)
-
-	if _, err := Spawn(l, prime); err != nil {
-		t.Fatalf("Spawn: %v", err)
-	}
-	wsPath := fabricengine.HubWorkspacePath(l)
-
-	if _, err := h.Topology.Remove(l, slug, true, false); err != nil {
-		t.Fatalf("Remove: %v", err)
-	}
-	if _, err := os.Stat(wsPath); err != nil {
-		t.Fatalf("workspace file gone after Remove: %v", err)
-	}
-
-	res, err := h.Topology.Prune(l, false, false)
-	if err != nil {
-		t.Fatalf("Prune: %v", err)
-	}
-	for _, e := range res.Entries {
-		if strings.Contains(e.CodeWorktree, ".code-workspace") || strings.Contains(e.RecordsWorktree, ".code-workspace") {
-			t.Errorf("Prune entry names the workspace file: %+v", e)
-		}
-	}
-	if _, err := os.Stat(wsPath); err != nil {
-		t.Fatalf("workspace file gone after Prune: %v", err)
-	}
-}

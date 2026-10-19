@@ -295,6 +295,8 @@ func TestRegenerateHubWorkspace(t *testing.T) {
 	t.Run("RecordsAWriteOnlyWhenTheBytesChange", func(t *testing.T) {
 		t.Parallel()
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		// The clone already wrote the file, so it goes first for the first call to have a write to record.
+		removeWorkspaceFile(t, h)
 		path, first := regenerateHub(t, h)
 		if !recordedFileWrite(first, h.Path, path) {
 			t.Fatalf("first call recorded no file_written for %s: %+v", path, first.Entries())
