@@ -793,25 +793,25 @@
 // `opts.SkipPush` skips the remote half; `opts.SkipGit` does not, so the remote update is the one push-shaped step that ignores `SkipGit`.
 // The bound is that it rewrites only the pair's own task branch, only to `sha`, only when every commit it drops is reachable from HEAD, and under a lease on the tip the ancestry read saw.
 //
-// **The board seed-commit drop.** `dropSeedCommits(rec, req, repo, upstream, ahead)` resets the hub's own `_board` checkout to its upstream with `reset --keep` and replays the commits of `ahead` that are not seed commits, oldest first, through `cherry-pick --empty=drop`, so Bolt can be brought up to date when seed commits sit ahead of a moved upstream.
+// **The board seed-commit drop.** `dropSeedCommits(rec, req, repo, upstream, ahead)` resets the hub's own `_board` checkout to its upstream with `reset --keep` and replays the commits of `ahead` that are not seed commits, oldest first, through a plain `cherry-pick` that skips a change upstream already carries and refuses a commit empty from the start, so Bolt can be brought up to date when seed commits sit ahead of a moved upstream.
 // Its request, built by `boardDropRequest`, declares the board dir's parent as container and the board dir as target;
 // ownership `ownedBoardWorktree`, which holds only when the target is named `_board` and a weft repo of the same hub, a sibling whose name `WeftWarpSlug` admits, registers it as a linked worktree, so no other directory named `_board` can be reset;
 // dirtiness `dirtyTrackedOn(touched)`, which refuses only on a tracked change on a path the ahead commits changed, so a pending board write elsewhere is carried across;
 // and force always false.
-// A replay that conflicts aborts the cherry-pick and restores the tip the drop started from.
-// The bound is that only commits `IsSeedCommit` admits are dropped, only in a hub's own `_board`; a non-seed commit is replayed or, on conflict, kept at its original tip.
+// A replay that fails aborts the cherry-pick and restores the tip the drop started from.
+// The bound is that only commits `IsSeedCommit` admits are dropped, only in a hub's own `_board`; a non-seed commit is replayed or, when its replay fails, kept at its original tip.
 // It appends `commits_dropped` once HEAD observably moved.
 //
 // **Pull-first.** `Bolt.PullThenCommitWritten(writes, rec)` brings Bolt up to date with its upstream before running an ordered list of writes, and commits each write's paths as its own commit.
 // It sits beside `CommitWritten`, which stays offline-capable for `configcli`'s hub-wide edit.
 // A Bolt with no upstream writes as before; one only behind is fast-forwarded (`repo_advanced`); one with seed commits ahead of a moved upstream has them dropped by the executor above.
-// When Bolt cannot be brought up to date, no write runs and the result's `Skipped` names why: `fetch_failed`, `diverged` (a non-seed commit ahead of a moved upstream, a drop refused on containment or ownership, or a replay conflict) or `dirty` (a tracked change blocking the reset or the fast-forward).
+// When Bolt cannot be brought up to date, no write runs and the result's `Skipped` names why: `fetch_failed`, `diverged` (a non-seed commit ahead of a moved upstream, a drop refused on containment or ownership, or a failed replay) or `dirty` (a tracked change blocking the reset or the fast-forward).
 // Each skip is logged at Warn once, inside `Bolt.pullFirst`, with a detail naming the way forward; callers only read the result.
 // The lock order is the board write lock, then the push lock (`gitrepo.PushLockFileName`) in the board dir, across every reset, replay and fast-forward of Bolt;
 // a coalesced push holds the push lock across its own rebase and never takes the board write lock, so the order cannot deadlock.
 //
 // **Push retry.** `Bolt.PushRecorded(opts, rec)` retries a push once when its recovery rebase conflicted (`gitrepo.ErrPullRebaseFailed`).
-// Under the same lock order it drops the seed commits ahead of the upstream by the executor above, then pushes again; with no seed commits ahead, or when the drop refuses or its replay conflicts, the original error is returned, and a second failure is never retried.
+// Under the same lock order it drops the seed commits ahead of the upstream by the executor above, then pushes again; with no seed commits ahead, or when the drop refuses or its replay fails, the original error is returned, and a second failure is never retried.
 // A push whose caller holds a mutation record passes it to `PushRecorded`, which records the drop there as `commits_dropped`; `Bolt.Push` takes no record, so it only logs the drop at Info.
 //
 // **Why a chokepoint at all.**

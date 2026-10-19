@@ -26,7 +26,7 @@
 // All are at or below the floor, tmux 3.4 being the release that added user ranges.
 //
 // Three forms are found above the floor.
-// `cherry-pick --empty=drop` (git 2.45) is found and to be replaced.
+// `cherry-pick --empty=drop` (git 2.45) was found and is replaced by a plain pick that skips a change HEAD already carries and refuses a commit empty from the start.
 // The two-format `#{S:}` loop, which tmux 3.4 does not run, is found and to be replaced.
 // The `allow-set-title` pane option (tmux 3.5) is an optional above-floor feature lyx keeps:
 // the launch of a strand pane sets it to stop the agent overwriting the pane title, and on tmux 3.4 the `set-option` fails, reed Warns and continues, so the title stays one the agent can overwrite.

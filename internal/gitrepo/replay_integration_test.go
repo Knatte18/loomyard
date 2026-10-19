@@ -112,7 +112,7 @@ func TestCommitDetail(t *testing.T) {
 	}
 }
 
-// TestCherryPick drives CherryPick and CherryPickAbort over one repository: a clean pick lands the commit, a pick whose change the branch already carries succeeds with HEAD unmoved, a conflicting pick returns git's error and the abort restores HEAD, an abort with nothing in progress succeeds, and an option-shaped SHA is refused.
+// TestCherryPick drives CherryPick and CherryPickAbort over one repository: a clean pick lands the commit, a pick whose change the branch already carries succeeds with HEAD unmoved and the working tree untouched, a conflicting pick returns git's error and the abort restores HEAD, a commit empty from the start is refused with the pick in progress, a pick that never started and a pick whose commit step fails return git's error, an already-carried root commit is dropped, an abort with nothing in progress succeeds, and an option-shaped SHA is refused.
 // The steps run serially, each building on the history the one before left.
 func TestCherryPick(t *testing.T) {
 	t.Parallel()
@@ -127,7 +127,21 @@ func TestCherryPick(t *testing.T) {
 	writeFile(t, dir, "c.txt", "side version")
 	commitAll(t, dir, "side adds c")
 	conflicting := requireCurrentSHA(t, repo)
+	gitkit.Git(t, dir, "commit", "--allow-empty", "-m", "side empty")
+	emptyFromStart := requireCurrentSHA(t, repo)
+	writeFile(t, dir, "d.txt", "side d")
+	commitAll(t, dir, "side adds d")
+	hookPick := requireCurrentSHA(t, repo)
 	gitkit.Git(t, dir, "checkout", "main")
+
+	cherryPickHead := filepath.Join(dir, ".git", "CHERRY_PICK_HEAD")
+	requirePickInProgress := func(t *testing.T, want bool) {
+		t.Helper()
+		_, err := os.Stat(cherryPickHead)
+		if got := err == nil; got != want {
+			t.Errorf("CHERRY_PICK_HEAD present = %v; want %v", got, want)
+		}
+	}
 
 	steps := []struct {
 		name string
@@ -149,6 +163,7 @@ func TestCherryPick(t *testing.T) {
 			}
 		}},
 		{"a pick whose change is already carried leaves HEAD unmoved", func(t *testing.T) {
+			writeFile(t, dir, "a.txt", "dirty")
 			before := requireCurrentSHA(t, repo)
 			if err := repo.CherryPick(pickable); err != nil {
 				t.Fatalf("CherryPick(%q) of an already-carried change error = %v; want nil", pickable, err)
@@ -156,6 +171,12 @@ func TestCherryPick(t *testing.T) {
 			if after := requireCurrentSHA(t, repo); after != before {
 				t.Errorf("HEAD after an already-carried pick = %q; want unmoved %q", after, before)
 			}
+			gitkit.Git(t, dir, "diff", "--cached", "--quiet")
+			requirePickInProgress(t, false)
+			if got, err := os.ReadFile(filepath.Join(dir, "a.txt")); err != nil || string(got) != "dirty" {
+				t.Errorf("a.txt after the already-carried pick = %q, %v; want the uncommitted change kept", got, err)
+			}
+			gitkit.Git(t, dir, "checkout", "--", "a.txt")
 		}},
 		{"a conflicting pick fails and the abort restores HEAD", func(t *testing.T) {
 			writeFile(t, dir, "c.txt", "main version")
@@ -167,6 +188,7 @@ func TestCherryPick(t *testing.T) {
 			if !errors.As(err, &gitErr) {
 				t.Fatalf("CherryPick(%q) with a conflict error = %v; want a wrapped *gitexec.GitError", conflicting, err)
 			}
+			requirePickInProgress(t, true)
 			if err := repo.CherryPickAbort(); err != nil {
 				t.Fatalf("CherryPickAbort() error = %v; want nil", err)
 			}
@@ -175,6 +197,70 @@ func TestCherryPick(t *testing.T) {
 			}
 			if status := statusOf(t, dir); strings.TrimSpace(status) != "" {
 				t.Errorf("git status --porcelain after the abort = %q; want a clean tree", status)
+			}
+		}},
+		{"a commit empty from the start is refused with the pick in progress", func(t *testing.T) {
+			before := requireCurrentSHA(t, repo)
+			err := repo.CherryPick(emptyFromStart)
+			if err == nil || errors.Is(err, gitrepo.ErrInvalidSHA) || !strings.Contains(err.Error(), emptyFromStart) {
+				t.Fatalf("CherryPick(%q) of an empty commit error = %v; want an error naming the commit", emptyFromStart, err)
+			}
+			requirePickInProgress(t, true)
+			if err := repo.CherryPickAbort(); err != nil {
+				t.Fatalf("CherryPickAbort() error = %v; want nil", err)
+			}
+			if after := requireCurrentSHA(t, repo); after != before {
+				t.Errorf("HEAD after the abort = %q; want restored %q", after, before)
+			}
+		}},
+		{"a pick that never started returns git's error", func(t *testing.T) {
+			before := requireCurrentSHA(t, repo)
+			err := repo.CherryPick("0123456789abcdef0123456789abcdef01234567")
+			var gitErr *gitexec.GitError
+			if !errors.As(err, &gitErr) {
+				t.Fatalf("CherryPick of a missing object error = %v; want a wrapped *gitexec.GitError", err)
+			}
+			if after := requireCurrentSHA(t, repo); after != before {
+				t.Errorf("HEAD after the failed pick = %q; want unmoved %q", after, before)
+			}
+			requirePickInProgress(t, false)
+		}},
+		{"an already-carried root commit is dropped", func(t *testing.T) {
+			before := requireCurrentSHA(t, repo)
+			root := strings.TrimSpace(gitkit.Git(t, dir, "commit-tree", "HEAD^{tree}", "-m", "root"))
+			if err := repo.CherryPick(root); err != nil {
+				t.Fatalf("CherryPick(%q) of an already-carried root commit error = %v; want nil", root, err)
+			}
+			if after := requireCurrentSHA(t, repo); after != before {
+				t.Errorf("HEAD after the root pick = %q; want unmoved %q", after, before)
+			}
+			requirePickInProgress(t, false)
+		}},
+		{"a pick whose commit step fails returns git's error with the pick in progress", func(t *testing.T) {
+			hook := filepath.Join(dir, ".git", "hooks", "prepare-commit-msg")
+			if err := os.MkdirAll(filepath.Dir(hook), 0o755); err != nil {
+				t.Fatalf("mkdir hooks: %v", err)
+			}
+			if err := os.WriteFile(hook, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+				t.Fatalf("write hook: %v", err)
+			}
+			t.Cleanup(func() { _ = os.Remove(hook) })
+			before := requireCurrentSHA(t, repo)
+
+			err := repo.CherryPick(hookPick)
+			var gitErr *gitexec.GitError
+			if !errors.As(err, &gitErr) {
+				t.Fatalf("CherryPick(%q) with a failing hook error = %v; want a wrapped *gitexec.GitError", hookPick, err)
+			}
+			requirePickInProgress(t, true)
+			if err := repo.CherryPickAbort(); err != nil {
+				t.Fatalf("CherryPickAbort() error = %v; want nil", err)
+			}
+			if after := requireCurrentSHA(t, repo); after != before {
+				t.Errorf("HEAD after the abort = %q; want restored %q", after, before)
+			}
+			if err := os.Remove(hook); err != nil {
+				t.Fatalf("remove hook: %v", err)
 			}
 		}},
 		{"an abort with nothing in progress succeeds", func(t *testing.T) {

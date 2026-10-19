@@ -1726,8 +1726,8 @@ func resetHardTo(rec *Mutations, req pathRequest, repo *gitrepo.Repo, sha string
 var (
 	// errDropResetRefused marks a `reset --keep` that git refused over a local change, with nothing changed.
 	errDropResetRefused = errors.New("reset to upstream refused over a local change")
-	// errDropReplayFailed marks a replay that conflicted; the repo is back at the tip the drop started from.
-	errDropReplayFailed = errors.New("replaying the commits that are not seed commits conflicted")
+	// errDropReplayFailed marks a replay that failed; the repo is back at the tip the drop started from.
+	errDropReplayFailed = errors.New("replaying the commits that are not seed commits failed")
 )
 
 // boardDropRequest builds the gate request both seed-commit drop callers share:
