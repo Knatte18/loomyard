@@ -29,7 +29,7 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-fabric-git` — Running git on warp or weft: only `internal/fabricengine`, in-process, never raw git. — [background](pattern/PATTERN-fabric-git.md)
 - `PATTERN-fabric-destruction-chokepoint` — Destroying anything in fabric: only `internal/fabricengine/destroy.go`. — [background](pattern/PATTERN-fabric-destruction-chokepoint.md)
 - `PATTERN-fabric-write-containment` — Writing under `_launchers`, or the hub workspace file, from `fabricengine`: via an `os.Root` at the hub, never raw `os.MkdirAll`, `os.WriteFile` or `fslink`.
-- `PATTERN-push-both-sides` — Pushing run records from Go: the pair's code branch goes along, a per-transition status push via fabric's detached push. — [background](pattern/PATTERN-push-both-sides.md)
+- `PATTERN-push-both-sides` — Pushing run records from Go: the pair's code branch goes along, and a per-transition status push goes through fabric's detached push. — [background](pattern/PATTERN-push-both-sides.md)
 - `PATTERN-mutation-record` — Adding a mutating fabric verb: it fills a `*Mutations` record; its result embeds `MutationRecord`. — [background](pattern/PATTERN-mutation-record.md)
 - `PATTERN-pair-teardown` — Tearing down a pair: only via `internal/pairteardown`. (test) — [background](pattern/PATTERN-pair-teardown.md)
 - `PATTERN-batten-bookend` — Creating or destroying a task worktree: its producer never runs inside it. — [background](pattern/PATTERN-batten-bookend.md)
@@ -46,7 +46,7 @@ Structural invariants, one line per entry: when it applies and what it requires.
 
 - `PATTERN-shed-producer-seam` — Importing into `internal/shedengine`: only stdlib, `state` and `lock`; its status and lock paths are caller-supplied.
 - `PATTERN-shed-recipe-registry` — Registering a shed producer: one `map[string]Constructor` in `internal/shedrecipe` behind `Lookup`/`Names`; no `init()`, `Register` or `lyxcwd`.
-- `PATTERN-recipe-setting-lookup` — A recipe row's value: a plain one is `module.key` via `Env.Setting`, an executable one `module.key` via the owner's told executable-key lookup over the template and board default layer, a review segment's one a `SegmentSettings` field; never an `Env` field.
+- `PATTERN-recipe-setting-lookup` — Giving a recipe row a value: a plain one is `module.key` via `Env.Setting`, an executable one `module.key` via the owner's told executable-key lookup over the template and board default layer, a review segment's resolved one a `SegmentSettings` field; never its own `Env` field.
 - `PATTERN-command-row` — Adding a side-action row to a recipe: a `Command` row over its config keys, its command read from the template and board default layer only, never a new engine.
 - `PATTERN-shed-verb-set` — Adding a run, step, status, pause or goto verb: generic bodies only in `internal/shedverbs`. (test) — [background](pattern/PATTERN-shed-verb-set.md)
 - `PATTERN-shed-driver` — Driving a shed run in Go, deciding its stops or spawning a tackler: only `internal/sheddriver`. (test) — [background](pattern/PATTERN-shed-driver.md)
@@ -62,7 +62,7 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-gate-self-check-parity` — Adding a mechanical gate: its closure and CLI self-check call one package function. — [background](pattern/PATTERN-gate-self-check-parity.md)
 - `PATTERN-verified-tree` — Running a verify command: only via `verifytree.Verify`. (test) — [background](pattern/PATTERN-verified-tree.md)
 - `PATTERN-gate-slot` — Running a gate build or test: only in a `-p`-capped hub slot of `internal/gateslot`.
-- `PATTERN-batcher-registry` — Choosing webster's execution unit: the batch `internal/batcher` derives from the active profile. — [background](pattern/PATTERN-batcher-registry.md)
+- `PATTERN-batcher-registry` — Choosing webster's execution unit: the batch the active `batcher.yaml` profile derives via `internal/batcher`. — [background](pattern/PATTERN-batcher-registry.md)
 - `PATTERN-review-round` — Review and fix round: review accepted on disk before any edit, each finding fixed or disputed, end on a verdict. — [background](pattern/PATTERN-review-round.md)
 - `PATTERN-sole-parsers` — Parsing plan, discussion, summary, recipe or halt note: only its sole parser. (test) — [background](pattern/PATTERN-sole-parsers.md)
 
