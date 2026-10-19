@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
@@ -21,6 +22,19 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
+
+// lockWaitHook is a test seam: nil in production, it is called with the weft write lock's path just before a merge verb waits to acquire it.
+// An atomic pointer lets parallel tests read it without a race.
+var lockWaitHook atomic.Pointer[func(lockPath string)]
+
+// acquireWeftWriteLock takes the weft write lock in lockDir for a merge verb, announcing the wait to lockWaitHook first when one is installed.
+func acquireWeftWriteLock(lockDir string) (*lock.FileLock, error) {
+	lockPath := filepath.Join(lockDir, weftWriteLockFile)
+	if hook := lockWaitHook.Load(); hook != nil {
+		(*hook)(lockPath)
+	}
+	return lock.AcquireWriteLock(lockPath)
+}
 
 // mergeNoConflicts is the empty-never-nil Conflicts value every MergeResult that carries no
 // conflicts returns, so a caller's JSON never sees a "null" conflicts field.
@@ -192,7 +206,7 @@ func (f *Fabric) MergeIn(source string) (res MergeResult, err error) {
 	if err != nil {
 		return MergeResult{}, err
 	}
-	fileLock, err := lock.AcquireWriteLock(filepath.Join(lockDir, weftWriteLockFile))
+	fileLock, err := acquireWeftWriteLock(lockDir)
 	if err != nil {
 		return MergeResult{}, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
 	}
@@ -396,7 +410,7 @@ func (f *Fabric) Merge(source string, opts MergeOptions) (res MergeResult, err e
 	if err != nil {
 		return MergeResult{}, err
 	}
-	fileLock, err := lock.AcquireWriteLock(filepath.Join(lockDir, weftWriteLockFile))
+	fileLock, err := acquireWeftWriteLock(lockDir)
 	if err != nil {
 		return MergeResult{}, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
 	}

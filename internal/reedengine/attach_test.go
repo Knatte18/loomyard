@@ -242,6 +242,26 @@ func TestAttachArgv_PreflightOnAKnownGoodSession(t *testing.T) {
 	if len(fake.ArgvFor("set-hook")) == hooksBefore {
 		t.Error("no set-hook call recorded despite the failing hook, want the unpin statements still attempted")
 	}
+
+	// A prime session created by an older binary is marked after an attach; the pair run above carries no mark.
+	if slices.ContainsFunc(fake.ArgvFor("set-option"), func(call []string) bool { return slices.Contains(call, primeSessionOption) }) {
+		t.Errorf("pair AttachArgv() marked the prime: %v", fake.ArgvFor("set-option"))
+	}
+	prime, primeFake := newAttachTestEngine(t, goodAttachStrands())
+	prime.geom.DiscoverSignalPath = "discover-signal"
+	prime.geom.NameSlug = ""
+	if runtime.GOOS != "windows" {
+		prime.cfg.Shell = "sh"
+	}
+	prime.AttachArgv(80, 24)
+	primeOptions := primeFake.ArgvFor("set-option")
+	if len(primeOptions) != wantSetOptionCalls+1 {
+		t.Fatalf("prime AttachArgv() issued %d set-option calls, want %d: %v", len(primeOptions), wantSetOptionCalls+1, primeOptions)
+	}
+	wantMark := []string{"set-option", "-t", fakeStrandWindow, primeSessionOption, "1"}
+	if !slices.ContainsFunc(primeOptions, func(call []string) bool { return slices.Equal(call, wantMark) }) {
+		t.Errorf("prime AttachArgv() set-option calls = %v, want the prime mark %v", primeOptions, wantMark)
+	}
 }
 
 // assertStrandOptionsReasserted asserts the pre-flight marked the strand window and set the pane options on the live bound pane %2, and none on the console pane %1.

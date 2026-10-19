@@ -89,6 +89,30 @@ func awaitTyped(t *testing.T, e *env, strandName string, want ...string) {
 	}
 }
 
+// awaitMarkedProbe waits until the receiver's worker has begun the probe after the first one that read the pause once the caller took mark, and returns the clock time it advanced and the passes that took.
+// A caller takes seen, the probe-wait count, before the post that wakes the worker, and mark, the receiver's pause-read count, after that post returned.
+// Each pass waits for one more probe wait than the pass before, then advances the clock by the probe ceiling,
+// so a probe that comes only after a clock advance is reached without the caller advancing first.
+// The real-time deadline only bounds a failing test.
+func (e *env) awaitMarkedProbe(t *testing.T, receiver string, mark, seen int) (advanced time.Duration, passes int) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		for e.del.PausedCalls(receiver) < mark+2 && len(e.probeWaits(0)) < seen+passes+1 {
+			if time.Now().After(deadline) {
+				t.Fatalf("no probe of %s read its pause after mark %d: %d pause reads, %d probe waits, %d passes", receiver, mark, e.del.PausedCalls(receiver), len(e.probeWaits(0)), passes)
+			}
+			time.Sleep(time.Millisecond)
+		}
+		if e.del.PausedCalls(receiver) >= mark+2 {
+			return advanced, passes
+		}
+		e.clock.Advance(8 * time.Second)
+		advanced += 8 * time.Second
+		passes++
+	}
+}
+
 // injectCommand queues a command inject from a program to receiver and fails the test when it is refused.
 func injectCommand(t *testing.T, e *env, receiver string, command creelengine.Command) creelengine.InjectResult {
 	t.Helper()
@@ -183,6 +207,26 @@ func seconds(n ...int) []time.Duration {
 
 func TestScheduler_Reminders(t *testing.T) {
 	t.Parallel()
+	// awaitReminded waits until the journal holds count reminded records to receiver; the real-time deadline only bounds a failing test.
+	awaitReminded := func(t *testing.T, e *env, receiver string, count int) {
+		t.Helper()
+		deadline := time.Now().Add(10 * time.Second)
+		for {
+			reminded := 0
+			for _, entry := range e.store.Log(creelengine.LogFilter{To: receiver}) {
+				if entry.Event == "reminded" {
+					reminded++
+				}
+			}
+			if reminded >= count {
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("%d reminded records to %s; want %d", reminded, receiver, count)
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}
 	tests := []struct {
 		name string
 		run  func(t *testing.T, e *env)
@@ -312,9 +356,8 @@ func TestScheduler_Reminders(t *testing.T) {
 					t.Fatalf("no reminder after the %v backoff: %d sent; want %d", backoff, got, sent)
 				}
 			}
-			before := len(e.probeWaits(0))
 			e.post(t, strand(alpha), beta, "fresh")
-			e.probeWaits(before + 1)
+			awaitReminded(t, e, beta, sent+1)
 			if got := len(e.typed(beta)); got != sent+1 {
 				t.Errorf("a new message was not reminded at once: %d sent; want %d", got, sent+1)
 			}
@@ -489,36 +532,36 @@ func TestScheduler_Reminders(t *testing.T) {
 				t.Fatalf("Hold: %v", err)
 			}
 			e.start(t)
+			seen := len(e.probeWaits(0))
 			e.post(t, strand(alpha), beta, "muted")
 			e.post(t, program(webster), beta, "muted notice")
-			e.probeWaits(1)
+			mark := e.del.PausedCalls(beta)
+			if advanced, _ := e.awaitMarkedProbe(t, beta, mark, seen); advanced >= 30*time.Minute {
+				t.Fatalf("the marked probe took %v of clock; want less than the 30-minute hold", advanced)
+			}
 			if got := e.typed(beta); len(got) != 0 {
 				t.Fatalf("typed %q under another sender's hold", got)
 			}
-			before := len(e.probeWaits(0))
+			notice := "[creel] #3 from " + batten + ": from the owner"
 			e.post(t, program(batten), beta, "from the owner")
-			e.probeWaits(before + 1)
+			awaitTyped(t, e, beta, notice)
 			e.post(t, program(batten), beta, strings.Repeat("y", 4097))
-			e.probeWaits(before + 2)
-			want := []string{"[creel] #3 from " + batten + ": from the owner", reminderFor(1, batten, "#4 from "+batten)}
-			if got := e.typed(beta); !slices.Equal(got, want) {
-				t.Fatalf("typed %q; want only the owner's notice and mail", got)
-			}
-			e.tick(31 * time.Minute)
-			e.tick(time.Second)
+			want := []string{notice, reminderFor(1, batten, "#4 from "+batten)}
+			awaitTyped(t, e, beta, want...)
+			seen = len(e.probeWaits(0))
+			e.clock.Advance(31 * time.Minute)
+			mark = e.del.PausedCalls(beta)
+			e.awaitMarkedProbe(t, beta, mark, seen)
 			want = append(want, "[creel] #2 from "+webster+": muted notice", reminderFor(2, "", "#1 from "+alpha, "#4 from "+batten))
-			if got := e.typed(beta); !slices.Equal(got, want) {
-				t.Errorf("typed %q after the hold ended; want %q", got, want)
-			}
+			awaitTyped(t, e, beta, want...)
 		}},
 		{"LogByIDListsTheRemindedEventsThatHoldTheID", func(t *testing.T, e *env) {
 			e.start(t)
 			first := e.post(t, strand(alpha), beta, "one")
 			e.probeWaits(1)
 			e.readBodies(t, strand(beta), "")
-			before := len(e.probeWaits(0))
 			second := e.post(t, strand(alpha), beta, "two")
-			e.probeWaits(before + 1)
+			awaitReminded(t, e, beta, 2)
 			logs := []struct {
 				filter creelengine.LogFilter
 				want   []string
@@ -690,10 +733,12 @@ func TestScheduler_Injects(t *testing.T) {
 			e.start(t)
 			e.driveProbeWaits(4)
 			e.clock.Advance(7 * time.Second)
+			before := len(e.probeWaits(0))
 			_, waiter, err := e.store.InjectWait(program(batten), alpha, "/short", time.Minute, false)
 			if err != nil {
 				t.Fatalf("InjectWait: %v", err)
 			}
+			e.probeWaits(before + 1)
 			e.tick(time.Second)
 			e.tick(58 * time.Second)
 			if queued := e.store.Queued(alpha); len(queued) != 2 {
@@ -1059,10 +1104,12 @@ func TestScheduler_Injects(t *testing.T) {
 		}},
 		{"ExpiryNamesNoStallLastReadBeforeTheBound", func(t *testing.T, e *env) {
 			holdAfterAReminderProbeReadTheDraft(t, e)
+			before := len(e.probeWaits(0))
 			muted, waiter, err := e.store.InjectWait(external(), alpha, "/muted", time.Minute, false)
 			if err != nil {
 				t.Fatalf("InjectWait: %v", err)
 			}
+			e.probeWaits(before + 1)
 			e.tickPastTheStallFreshness(t)
 			e.clock.Advance(time.Minute)
 			outcome := awaitOutcome(t, waiter)

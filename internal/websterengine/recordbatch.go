@@ -855,6 +855,7 @@ func postBatchChecks(in postBatchInputs) (deviations, warnings []string, err err
 	// Resolve and are unaffected. delta itself is the zero value on error, so BindHandles correctly
 	// cannot confirm any handle bound and reports bind-count-mismatch for every card that declared
 	// one — an unconfirmed Create is exactly a not-done card.
+	// The floor error of a git below lyx's minimum is no quarry degrade: it stops the batch here as any other non-quarry error does.
 	delta, deltaErr := index.Delta(in.Geom.WorktreeRoot, in.StartSHA, in.HeadSHA)
 	if deltaErr != nil && !errors.Is(deltaErr, planindex.ErrQuarryUnavailable) {
 		return nil, nil, deltaErr

@@ -20,6 +20,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/toolfloor"
 )
 
 // TestRunGit pins RunGit's contract: a successful command returns its stdout with exit 0, a non-zero exit is reported through the exit code and stderr with a nil error, and an exec-level failure (a cwd that does not exist) returns exit -1 with blanked stdout and stderr.
@@ -395,6 +397,102 @@ func TestRun_RemoteBounds(t *testing.T) {
 		}
 		if strings.Contains(stdout, "GIT_HTTP_LOW_SPEED") {
 			t.Errorf("local command environment holds a low-speed variable; stdout: %s", stdout)
+		}
+	})
+}
+
+// TestCheckFloor pins the once-per-process git floor check through every entry point.
+// It is serial: it replaces the process-global version probe and floor cache, which no parallel test may see.
+func TestCheckFloor(t *testing.T) {
+	// countingProbe scripts one answer per call, repeating the last, and counts the calls.
+	type answer struct {
+		line string
+		err  error
+	}
+	countingProbe := func(answers ...answer) (func() (string, error), *int) {
+		calls := 0
+		return func() (string, error) {
+			a := answers[min(calls, len(answers)-1)]
+			calls++
+			return a.line, a.err
+		}, &calls
+	}
+
+	t.Run("a below-floor git refuses every entry point", func(t *testing.T) {
+		probe, calls := countingProbe(answer{line: "git version 2.42.0"})
+		gitexec.SetVersionProbeForTest(t, probe)
+		dir := t.TempDir()
+
+		_, runErr := gitexec.Run([]string{"--version"}, dir)
+		_, stdinErr := gitexec.RunStdin([]string{"--version"}, dir, "")
+		_, _, exitCode, rawErr := gitexec.RunGit([]string{"--version"}, dir)
+		checkErr := gitexec.CheckFloor()
+
+		for name, err := range map[string]error{"Run": runErr, "RunStdin": stdinErr, "RunGit": rawErr, "CheckFloor": checkErr} {
+			var floorErr *toolfloor.FloorError
+			if !errors.As(err, &floorErr) {
+				t.Errorf("%s error = %v; want a *toolfloor.FloorError", name, err)
+			}
+			var gitErr *gitexec.GitError
+			if errors.As(err, &gitErr) {
+				t.Errorf("%s error = %v; want no *GitError", name, err)
+			}
+		}
+		if exitCode != -1 {
+			t.Errorf("RunGit exit code = %d; want -1", exitCode)
+		}
+		if *calls != 1 {
+			t.Errorf("probe ran %d times; want 1", *calls)
+		}
+	})
+
+	t.Run("an at-floor git is probed once", func(t *testing.T) {
+		probe, calls := countingProbe(answer{line: "git version 2.43.0"})
+		gitexec.SetVersionProbeForTest(t, probe)
+		dir := t.TempDir()
+
+		for range 2 {
+			if _, err := gitexec.Run([]string{"--version"}, dir); err != nil {
+				t.Fatalf("Run(--version) error = %v; want nil", err)
+			}
+		}
+		if *calls != 1 {
+			t.Errorf("probe ran %d times; want 1", *calls)
+		}
+	})
+
+	t.Run("a probe that could not run is retried", func(t *testing.T) {
+		execErr := errors.New("git not found")
+		probe, calls := countingProbe(answer{err: execErr}, answer{line: "git version 2.43.0"})
+		gitexec.SetVersionProbeForTest(t, probe)
+
+		if err := gitexec.CheckFloor(); !errors.Is(err, execErr) {
+			t.Errorf("first CheckFloor() = %v; want %v", err, execErr)
+		}
+		if err := gitexec.CheckFloor(); err != nil {
+			t.Errorf("second CheckFloor() = %v; want nil", err)
+		}
+		if *calls != 2 {
+			t.Errorf("probe ran %d times; want 2", *calls)
+		}
+	})
+
+	t.Run("an unparseable line is admitted with a warning", func(t *testing.T) {
+		probe, calls := countingProbe(answer{line: "git version unknown"})
+		gitexec.SetVersionProbeForTest(t, probe)
+		logs := logcapture.Capture(t)
+		dir := t.TempDir()
+
+		for range 2 {
+			if _, err := gitexec.Run([]string{"--version"}, dir); err != nil {
+				t.Fatalf("Run(--version) error = %v; want nil", err)
+			}
+		}
+		if *calls != 1 {
+			t.Errorf("probe ran %d times; want 1", *calls)
+		}
+		if got := strings.Count(logs.String(), "git version unknown"); got != 1 {
+			t.Errorf("log names the line %d times; want 1; log:\n%s", got, logs.String())
 		}
 	})
 }

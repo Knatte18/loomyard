@@ -9,6 +9,7 @@
 // An exec-level failure — git could not be run at all — is returned
 // unwrapped from Run, never as a *GitError, so errors.As(err, &gitErr)
 // means precisely "git ran and rejected this", not "something went wrong".
+// The floor error of a git below lyx's minimum is the other such result, since no git command ran to produce it.
 // Run's stdout is returned in every case where git actually ran, including
 // alongside a *GitError; it is empty on an exec-level failure only because
 // git never ran.
@@ -30,11 +31,14 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/toolfloor"
 )
 
 // remoteDeadline bounds one remote git command; a command still running when it expires is killed.
@@ -52,7 +56,7 @@ var killReporter atomic.Pointer[func(args []string, pid int, groupErr error)]
 
 // SetKillReporter installs the function that receives the outcome of each kill of a timed-out remote git command:
 // the command's args, its pid, and the group kill's error, which is nil when the whole process group was killed.
-// gitexec cannot log, so the process owner installs a reporter that does; a nil report restores the default, which drops the outcome.
+// The process owner decides how a kill is reported by installing a reporter; a nil report restores the default, which drops the outcome.
 // The reporter only observes a kill after it happened and cannot change the command's result.
 func SetKillReporter(report func(args []string, pid int, groupErr error)) {
 	if report == nil {
@@ -115,8 +119,66 @@ func renderArg(arg string) string {
 	return arg
 }
 
+// floorCache holds the process's answer to the git floor check, so the version probe runs once.
+type floorCache struct {
+	mu   sync.Mutex
+	done bool
+	err  error
+}
+
+// check returns the cached answer once one exists; otherwise it runs probe.
+// A probe error is returned and not cached, so the next call probes again.
+// A line toolfloor parses is cached with its answer, nil or the *toolfloor.FloorError.
+// An unparseable line is logged once with Warn and cached as admitted.
+func (c *floorCache) check(probe func() (string, error)) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.done {
+		return c.err
+	}
+	line, err := probe()
+	if err != nil {
+		return err
+	}
+	parsed, floorErr := toolfloor.CheckGit(line)
+	if !parsed {
+		logger.Warn("gitexec: git version line not recognised, admitting it", "line", line)
+	}
+	c.done = true
+	c.err = floorErr
+	return c.err
+}
+
+// gitFloor is the process's git floor answer.
+var gitFloor floorCache
+
+// versionProbe reports git's version line; it is a variable so a test injects one.
+var versionProbe = probeGitVersion
+
+// probeGitVersion runs `git --version` and returns its trimmed stdout, or the exec error when git could not run.
+// It spawns directly rather than through runCore, whose first step is the floor check this probe serves.
+func probeGitVersion() (string, error) {
+	logger.Debug("gitexec: spawn", "subcommand", "--version")
+	cmd := exec.Command("git", "--version")
+	cmd.Env = childEnv(nil)
+	proc.HideWindow(cmd)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// CheckFloor reports whether the git on PATH is at or above lyx's floor, probing once per process.
+// It returns a *toolfloor.FloorError for a git below the floor, and the exec error, uncached, when git could not be run.
+// It is exported so a git spawn outside the exec core checks too.
+func CheckFloor() error {
+	return gitFloor.check(versionProbe)
+}
+
 // runCore spawns git with args in cwd and captures its output.
-// A non-nil err means git could not be run at all (not found, permission denied, cwd invalid, …), or that a remote subcommand outlived remoteDeadline, which is a *GitError with exit code -1.
+// It first checks git's floor and returns that error unwrapped with exit code -1, before any spawn.
+// A non-nil err means git could not be run at all (not found, permission denied, cwd invalid, …), that git is below the floor, or that a remote subcommand outlived remoteDeadline, which is a *GitError with exit code -1.
 // A non-zero git exit is reported as exitCode with a nil err.
 // RunGit and RunStdin are thin wrappers over this shared core, and Run is RunStdin with an empty stdin.
 // A non-empty stdin is fed to git's standard input; an empty one leaves it unset.
@@ -126,6 +188,11 @@ func renderArg(arg string) string {
 // A remote subcommand first waits while a pause covers the process, through the installed network gate, if any.
 // Every child gets the process environment less GIT_DIR and GIT_WORK_TREE.
 func runCore(args []string, cwd, stdin string) (stdout, stderr string, exitCode int, err error) {
+	if floorErr := CheckFloor(); floorErr != nil {
+		return "", "", -1, floorErr
+	}
+	logger.Debug("gitexec: spawn", "subcommand", subcommand(args), "dir", cwd)
+
 	var cmd *exec.Cmd
 	var ctx context.Context
 	deadline := remoteDeadline
@@ -189,6 +256,7 @@ func childEnv(extra []string) []string {
 }
 
 // RunGit runs a git command and returns stdout, stderr, and exit code.
+// A git below lyx's floor returns the *toolfloor.FloorError with exit code -1, which is no *GitError.
 // A remote command that outlives its deadline is returned as a *GitError with a non-zero Timeout, though git did not exit on its own.
 func RunGit(args []string, cwd string) (stdout, stderr string, exitCode int, err error) {
 	stdout, stderr, exitCode, err = runCore(args, cwd, "")
@@ -206,13 +274,14 @@ func RunGit(args []string, cwd string) (stdout, stderr string, exitCode int, err
 // this". stdout is returned in every case where git actually ran, including
 // alongside a *GitError; it is empty on an exec-level failure only because
 // git never ran.
+// A git below lyx's floor returns the *toolfloor.FloorError, which is no *GitError, since no git command ran.
 // A remote command that outlives its deadline is returned as a *GitError with a non-zero Timeout, though git did not exit on its own.
 func Run(args []string, cwd string) (string, error) {
 	return RunStdin(args, cwd, "")
 }
 
 // RunStdin is Run with stdin fed to git's standard input, for a command such as `cat-file --batch-check` that reads its operands there.
-// It reports a non-zero exit, an exec-level failure and a remote deadline exactly as Run does, and an empty stdin behaves as Run.
+// It reports a non-zero exit, an exec-level failure, the floor error and a remote deadline exactly as Run does, and an empty stdin behaves as Run.
 func RunStdin(args []string, cwd, stdin string) (string, error) {
 	stdout, stderr, exitCode, err := runCore(args, cwd, stdin)
 	if err != nil {

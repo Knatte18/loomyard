@@ -46,19 +46,63 @@ func (r *Repo) ResetKeep(sha string) error {
 	return nil
 }
 
-// CherryPick applies sha's change onto HEAD via `git cherry-pick --empty=drop`, so a commit whose change the branch already carries is dropped with HEAD unmoved, as `pull --rebase` drops it.
+// CherryPick applies sha's change onto HEAD via `git cherry-pick`.
+// A commit whose change the branch already carries is skipped with HEAD unmoved, as `pull --rebase` drops it.
+// A commit that is empty from the start is refused with an error naming it, and the cherry-pick is left in progress for CherryPickAbort.
 // sha must be a valid hex object name, or ErrInvalidSHA is returned.
-// A conflict returns the wrapped *gitexec.GitError and leaves the cherry-pick in progress for CherryPickAbort.
+// A conflict or any other failed pick returns the wrapped *gitexec.GitError and leaves the cherry-pick in progress, when one started, for CherryPickAbort.
 func (r *Repo) CherryPick(sha string) error {
 	if !validSHA(sha) {
 		return ErrInvalidSHA
 	}
 
-	_, err := r.runChecked("cherry-pick", "--empty=drop", sha)
-	if err != nil {
-		return fmt.Errorf("gitrepo: cherry-pick %s in %s: %w", sha, r.path, err)
+	_, pickErr := r.runChecked("cherry-pick", sha)
+	if pickErr == nil {
+		return nil
 	}
-	return nil
+	wrapped := fmt.Errorf("gitrepo: cherry-pick %s in %s: %w", sha, r.path, pickErr)
+
+	// A pick stops empty when a cherry-pick is in progress, nothing is unmerged and the index equals HEAD.
+	var gitErr *gitexec.GitError
+	_, err := r.runChecked("rev-parse", "--verify", "--quiet", "CHERRY_PICK_HEAD")
+	switch {
+	case err == nil:
+	case errors.As(err, &gitErr) && gitErr.ExitCode == 1:
+		return wrapped
+	default:
+		return fmt.Errorf("gitrepo: rev-parse --verify --quiet CHERRY_PICK_HEAD in %s: %w", r.path, err)
+	}
+
+	unmerged, err := r.runChecked("ls-files", "--unmerged")
+	if err != nil {
+		return fmt.Errorf("gitrepo: ls-files --unmerged in %s: %w", r.path, err)
+	}
+	if strings.TrimSpace(unmerged) != "" {
+		return wrapped
+	}
+
+	_, err = r.runChecked("diff", "--cached", "--quiet", "HEAD")
+	switch {
+	case err == nil:
+	case errors.As(err, &gitErr) && gitErr.ExitCode == 1:
+		return wrapped
+	default:
+		return fmt.Errorf("gitrepo: diff --cached --quiet HEAD in %s: %w", r.path, err)
+	}
+
+	_, err = r.runChecked("diff-tree", "--quiet", "--root", sha)
+	switch {
+	case err == nil:
+		return fmt.Errorf("gitrepo: cherry-pick %s in %s: the commit is empty from the start", sha, r.path)
+	case errors.As(err, &gitErr) && gitErr.ExitCode == 1:
+		// The commit has a change HEAD already carries.
+		if _, err := r.runChecked("cherry-pick", "--skip"); err != nil {
+			return fmt.Errorf("gitrepo: cherry-pick --skip %s in %s: %w", sha, r.path, err)
+		}
+		return nil
+	default:
+		return fmt.Errorf("gitrepo: diff-tree --quiet --root %s in %s: %w", sha, r.path, err)
+	}
 }
 
 // CherryPickAbort abandons a cherry-pick in progress via `git cherry-pick --abort`, restoring HEAD and the working tree.

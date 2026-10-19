@@ -36,12 +36,19 @@ func shellOptionArgvs(target, shellPath string) [][]string {
 	}
 }
 
+// primeGeometry reports whether this engine's geometry is a hub's prime: a hub geometry (DiscoverSignalPath non-empty, since a standalone geometry leaves it empty) with an empty NameSlug.
+// A pair's session and a standalone session are never the prime.
+func (e *Engine) primeGeometry() bool {
+	return e.geom.DiscoverSignalPath != "" && e.geom.NameSlug == ""
+}
+
 // pinGeometryOptionsLocked pins the two-line status bar (bar.go) and this session's window to "window-size latest".
 // It also clears the `window-resized` hook an older binary pinned on the shell window.
 //
 // It issues, in order: "status-format[0]" and "status-format[1]" with -g, because tmux's status formats are one array and a per-session index would drop the global lines for that session;
 // "status-style" with -g, like them, so the gaps between the buttons are dark grey instead of tmux's default green;
 // and "status" "2" and "status-position" "bottom" on the session.
+// When primeGeometry holds it then marks the session with the user option "@lyx_prime_session" "1", which line 2 of the bar lists first.
 // After the option pins it issues the navigation bindings (bindings.go), so a server booted by an older lyx gets them at the next attach.
 // Then, everywhere but Windows, it pins the session hook `session-window-changed` with `set-option -w -u @lyx_unseen`, which unsets the unseen mark on the window the client moved to and nothing else.
 // Last, everywhere but Windows, it unpins `window-resized` twice: `set-hook -u -w -t <target> window-resized`, the window-scoped clear, and `set-hook -u -t <target> window-resized`, the session-scoped form, so an entry an older binary pinned in either scope goes.
@@ -68,6 +75,12 @@ func (e *Engine) pinGeometryOptionsLocked(target, shellPath string) {
 		{"status-style", []string{"set-option", "-g", "status-style", statusBarStyle}},
 		{"status", []string{"set-option", "-t", target, "status", "2"}},
 		{"status-position", []string{"set-option", "-t", target, "status-position", "bottom"}},
+	}
+	if e.primeGeometry() {
+		pins = append(pins, struct {
+			option string
+			argv   []string
+		}{primeSessionOption, []string{"set-option", "-t", target, primeSessionOption, "1"}})
 	}
 	for _, pin := range pins {
 		if err := e.tmux.run(pin.argv...); err != nil {

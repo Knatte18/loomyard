@@ -205,19 +205,59 @@ func TestBar_LineOneButtonsFollowTheWindowZoomAndWaitMarks(t *testing.T) {
 	}
 }
 
-func TestBar_LineTwoListsSessionsInIDOrder(t *testing.T) {
+// TestBar_LineTwoListsSessionsPrimeFirst pins line 2's session buttons.
+// Each session appears once, the client's session lit with its full name and the others cut to 12 characters, with no stray comma from a second loop format.
+// The session carrying @lyx_prime_session comes ahead of the rest.
+// With no session marked the first loop draws nothing, and the second loop's order is session name on tmux 3.4 and session id on newer tmux, so no order is asserted.
+func TestBar_LineTwoListsSessionsPrimeFirst(t *testing.T) {
 	f := newBarFixture(t)
 
-	// The current session is lit with its full name and the other is cut to 12 characters, in session-id order.
-	line := f.expand(t, "#{T:status-format[1]}")
 	current := "list=focus bg=yellow fg=black bold] " + f.e.SessionName() + " "
 	other := "bg=colour236 fg=white] a-very-long- "
-	if !strings.Contains(line, current) || !strings.Contains(line, other) {
-		t.Fatalf("line 2 = %q, want it to contain %q and %q", line, current, other)
+	const otherSession = "a-very-long-session-name"
+	assertSessionButtonsOnce := func(t *testing.T, line string) {
+		t.Helper()
+		if strings.Count(line, current) != 1 || strings.Count(line, other) != 1 || strings.Count(line, "range=session|") != 2 {
+			t.Fatalf("line 2 = %q, want the lit client session %q and the unlit %q once each and no other session range", line, current, other)
+		}
+		if strings.Count(line, "nolist align=right]") != 1 {
+			t.Errorf("line 2 = %q, want the right-aligned time segment once", line)
+		}
+		firstFollow := strings.Index(line, "range=user|follow")
+		if firstFollow < 0 || strings.Contains(line[strings.LastIndex(line[:firstFollow], "range=session|"):firstFollow], ",") {
+			t.Errorf("line 2 = %q, want no comma between the last session button and the follow button", line)
+		}
 	}
+	markPrime := func(t *testing.T, session string) {
+		t.Helper()
+		for _, name := range []string{f.e.SessionName(), otherSession} {
+			argv := []string{"set-option", "-u", "-t", exactSessionWindowTarget(name), primeSessionOption}
+			if name == session {
+				argv = []string{"set-option", "-t", exactSessionWindowTarget(name), primeSessionOption, "1"}
+			}
+			if err := f.e.tmux.run(argv...); err != nil {
+				t.Fatalf("set %s on %s: %v", primeSessionOption, name, err)
+			}
+		}
+	}
+
+	line := f.expand(t, "#{T:status-format[1]}")
+	assertSessionButtonsOnce(t, line)
+
+	markPrime(t, otherSession)
+	line = f.expand(t, "#{T:status-format[1]}")
+	assertSessionButtonsOnce(t, line)
+	if strings.Index(line, other) > strings.Index(line, current) {
+		t.Errorf("line 2 = %q, want the marked session's unlit button before the client's lit one", line)
+	}
+
+	markPrime(t, f.e.SessionName())
+	line = f.expand(t, "#{T:status-format[1]}")
+	assertSessionButtonsOnce(t, line)
 	if strings.Index(line, current) > strings.Index(line, other) {
-		t.Errorf("line 2 = %q, want the earlier session before the later one (session-id order)", line)
+		t.Errorf("line 2 = %q, want the marked client session's lit button before the other's unlit one", line)
 	}
+	markPrime(t, "")
 
 	// The follow button sits after the last session button and before the time: lit while @lyx_follow is unset, unlit while it is off.
 	for _, tt := range []struct {

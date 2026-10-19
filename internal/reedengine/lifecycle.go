@@ -455,6 +455,9 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	clean = stripTraceID(clean)
 	clean = stripAgentNameEnv(clean)
 	spawnSession := func() error {
+		if err := CheckTmuxFloor(e.cfg.Tmux); err != nil {
+			return fmt.Errorf("start tmux: %w", err)
+		}
 		cmd := exec.Command(e.cfg.Tmux, e.serverSpawnArgv(runtime.GOOS, debugArgs)...)
 		cmd.Dir = logsDir
 		cmd.Env = clean

@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
@@ -283,7 +282,7 @@ func (f *Fabric) MergeContinue(msg string) (res MergeResult, err error) {
 	if err != nil {
 		return MergeResult{}, err
 	}
-	fl, err := lock.AcquireWriteLock(filepath.Join(lockDir, weftWriteLockFile))
+	fl, err := acquireWeftWriteLock(lockDir)
 	if err != nil {
 		return MergeResult{}, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
 	}
@@ -379,7 +378,7 @@ func (f *Fabric) MergeAbort() (res MergeResult, err error) {
 	if err != nil {
 		return MergeResult{}, err
 	}
-	fl, err := lock.AcquireWriteLock(filepath.Join(lockDir, weftWriteLockFile))
+	fl, err := acquireWeftWriteLock(lockDir)
 	if err != nil {
 		return MergeResult{}, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
 	}

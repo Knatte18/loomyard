@@ -57,15 +57,16 @@ type Delivery struct {
 	sendFn                                                            func(strand, text string) error
 	interruptFn                                                       func(strand string) error
 
-	sends      []Send
-	commands   []CommandCall
-	interrupts []string
-	idleCalls  map[string]int
+	sends       []Send
+	commands    []CommandCall
+	interrupts  []string
+	idleCalls   map[string]int
+	pausedCalls map[string]int
 }
 
 // NewDelivery returns a Delivery with no strands.
 func NewDelivery() *Delivery {
-	return &Delivery{idle: map[string]bool{}, paused: map[string]bool{}, stalls: map[string]creelengine.Stall{}, idleCalls: map[string]int{}}
+	return &Delivery{idle: map[string]bool{}, paused: map[string]bool{}, stalls: map[string]creelengine.Stall{}, idleCalls: map[string]int{}, pausedCalls: map[string]int{}}
 }
 
 // SetStrands replaces the strand list; a strand with pane pid zero gets DefaultPanePID.
@@ -201,10 +202,18 @@ func (d *Delivery) SetStall(name string, stall creelengine.Stall) {
 	d.stalls[name] = stall
 }
 
+// PausedCalls returns how many times Paused was asked about the named strand since the fake was created.
+func (d *Delivery) PausedCalls(name string) int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.pausedCalls[name]
+}
+
 // Paused implements creelengine.Delivery.
 func (d *Delivery) Paused(strand creelengine.Strand) (bool, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	d.pausedCalls[strand.Name]++
 	if d.pausedErr != nil {
 		return false, d.pausedErr
 	}

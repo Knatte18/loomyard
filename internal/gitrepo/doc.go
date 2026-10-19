@@ -24,7 +24,7 @@
 // The worktree root is not among them: that query belongs to internal/lyxcwd alone.
 // Every other CLI-bound method — StageAndCommit, StageAllAndCommit, Push, PushCoalesced, ResetHard, ResetKeep, CherryPick, CherryPickAbort, IsAncestor, CommitsNotIn, BlameLines (go-git's blame walks the whole history of the file per call and has no first-parent mode), UpdateRemoteBranchLeased, HasUnpulled, and HasUnpushed (measured and reverted from a go-git ancestry walk; see HasUnpushed's own godoc in push.go for the reversal criterion) — sits on runChecked.
 // See PATTERN-gitrepo-client-boundary for the enforced, exhaustive version of this split and the review obligation any new CLI call inside this package carries.
-// gitexec itself stays a zero-dependency leaf regardless of which side of the boundary a gitrepo method is on — it has roughly seventy non-test call sites across gitrepo, fabricengine, fabriccli, lyxcwd, and websterengine,
+// gitexec itself stays a low-level package gitrepo builds on, importing no gitrepo or feature package, regardless of which side of the boundary a gitrepo method is on — it has roughly seventy non-test call sites across gitrepo, fabricengine, fabriccli, lyxcwd, and websterengine,
 // and gitrepo remains one of its many consumers, not merged into it.
 //
 // Some outcome classification still matches git's own untranslated
@@ -74,7 +74,7 @@
 //     All three are go-git local reads.
 //     PreImageLines lists the lines of a commit's first parent that the commit removes or replaces, per path, also read through go-git.
 //     BlameLines names the first-parent commit that brought each requested line of a file, via `git blame`.
-//   - CherryPick replays one commit onto HEAD via `git cherry-pick --empty=drop`, so a commit whose change the branch already carries is dropped; CherryPickAbort abandons one in progress, and succeeds when none is.
+//   - CherryPick replays one commit onto HEAD via a plain `git cherry-pick`, skipping a commit whose change the branch already carries and refusing a commit that is empty from the start; CherryPickAbort abandons one in progress, and succeeds when none is.
 //   - A push whose recovery rebase failed and was aborted returns an error satisfying errors.Is(err, ErrPullRebaseFailed), which tells a replayable conflict from every other push failure.
 //
 // Caller-supplied SHA arguments (SHAExists, ChangedFilesSince, ResetHard, ResetKeep) are

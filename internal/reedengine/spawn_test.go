@@ -638,7 +638,16 @@ func TestLaunchStrandLocked_SplitWindowAndPaneTitleCalls(t *testing.T) {
 		wantLabel string
 		// wantColorCall is the @strand_color call after @strand: a set to the tmux color, or the unset.
 		wantColorCall string
+		// failAllowSetTitle scripts the allow-set-title set-option to fail, as tmux 3.4 answers it.
+		failAllowSetTitle bool
 	}{
+		{
+			name:              "AllowSetTitleMissingWarnsAndContinues",
+			strand:            Strand{GUID: "new", Name: "tst:slug:worker", Segment: "review"},
+			wantLabel:         "worker",
+			wantColorCall:     "set-option -p -t %new @strand_color colour208",
+			failAllowSetTitle: true,
+		},
 		{
 			name:          "ColoredTaskStrand",
 			strand:        Strand{GUID: "new", Name: "tst:slug:worker", Segment: "review"},
@@ -669,12 +678,24 @@ func TestLaunchStrandLocked_SplitWindowAndPaneTitleCalls(t *testing.T) {
 			e := newTestEngine(t)
 			withInjectedExecutablePath(t, func() (string, error) { return "/opt/lyx/bin/lyx", nil })
 			fake := launchFake(t, e, nil)
+			if tt.failAllowSetTitle {
+				fake.answerFunc("set-option", func(args []string) (string, error) {
+					if slices.Contains(args, "allow-set-title") {
+						return "", errors.New("invalid option: allow-set-title")
+					}
+					return "", nil
+				})
+			}
+			logs := logcapture.Capture(t)
 			st := &ReedState{SelvagePaneID: "%selvage"}
 			st.Strands = append(st.Strands, tt.strand)
 			s := &st.Strands[0]
 
 			if err := e.launchStrandLocked(st, s, "claude --continue"); err != nil {
 				t.Fatalf("launchStrandLocked: %v", err)
+			}
+			if got := strings.Contains(logs.String(), "allow-set-title"); got != tt.failAllowSetTitle {
+				t.Errorf("log names allow-set-title = %v, want %v; log = %q", got, tt.failAllowSetTitle, logs.String())
 			}
 
 			newWindowArgs := fake.LastArgv("new-window")
