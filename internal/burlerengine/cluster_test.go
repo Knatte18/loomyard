@@ -1,6 +1,6 @@
 // cluster_test.go table-drives auditClusterRound over the full violation taxonomy (fork-count
 // mismatch, Agent-call-in-fork, write-in-fork, git-mutation-in-fork, named spawns) plus the
-// warning-only ReportReturned==false case, and separately matrixes mutatingGitPattern against a set
+// warning-only ReportReturned==false case, and separately matrixes commandRunsMutatingGit against a set
 // of mutating and non-mutating Bash command strings.
 
 package burlerengine
@@ -244,12 +244,11 @@ func TestAuditClusterRound(t *testing.T) {
 	}
 }
 
-// TestMutatingGitPattern matrixes mutatingGitPattern against every Bash command shape the audit
-// must classify correctly: every listed mutating subcommand, tolerant of a leading path/&&/;
-// chain prefix,
-// and — the false-positive guards — a subcommand word merely appearing inside a longer argument
-// token, plus non-mutating git commands (log, diff, status) that must never match.
-func TestMutatingGitPattern(t *testing.T) {
+// TestCommandRunsMutatingGit matrixes commandRunsMutatingGit against every Bash command shape the audit must classify correctly.
+// Every listed mutating subcommand matches, tolerant of a leading path, a chain prefix, a later line and global options.
+// Read-only subcommands whose arguments name a mutating verb, and help requests, never match.
+func TestCommandRunsMutatingGit(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		cmd  string
@@ -277,6 +276,32 @@ func TestMutatingGitPattern(t *testing.T) {
 		{"chained with &&", "cd internal/burler && git commit -am fix", true},
 		{"chained with ;", "cd internal/burler; git push", true},
 		{"flag before subcommand", "git -C /worktree commit -m x", true},
+		{"config option before subcommand", "git -c user.name=x commit -m x", true},
+		{"mutating command on a later line", "git status\ngit commit -m x", true},
+		{"-h as a commit message is not a help request", "git commit -m -h", true},
+		{"--help as a tag message is not a help request", "git tag -m --help v1", true},
+		{"-h after a double dash is not a help request", "git checkout -- -h", true},
+		{"quoted -c value with a space", `git -c "user.name=A B" commit`, true},
+		{"quoted -C value with a space", `git -C "/path with space" commit`, true},
+		{"single-quoted -C value with a space", "git -C '/path with space' commit", true},
+		{"backslash line continuation before the subcommand", "git \\\ncommit -m x", true},
+		{"escaped quote inside a double-quoted value", `git -c "a\"b" commit`, true},
+		{"escaped apostrophe before a later mutating call", `echo it\'s; git commit -m x`, true},
+		{"apostrophe in a comment line opens no quote", "# don't do this\ngit commit -m x", true},
+		{"backslash-newline inside a word joins it", "git com\\\nmit -m x", true},
+		{"--attr-source value is skipped", "git --attr-source HEAD commit", true},
+		{"--git-dir in the = form", "git --git-dir=x commit -m x", true},
+		{"--work-tree as a separate word", "git --work-tree x commit -m x", true},
+		{"--git-dir as a separate word", "git --git-dir x commit -m x", true},
+		{"--namespace value is skipped", "git --namespace ns commit -m x", true},
+		{"--config-env value is skipped", "git --config-env name=VAR commit -m x", true},
+		{"git help on a mutating verb is not mutating", `git help -m cherry-pick 2>/dev/null | col -b | grep -n -A14 "^ *--empty" | head -30`, false},
+		{"git --help on a mutating verb is not mutating", "git --help commit", false},
+		{"mutating verb with --help is not mutating", "git commit --help", false},
+		{"mutating verb with -h is not mutating", "git rebase -h", false},
+		{"mutating verb as a log argument is not mutating", "git log --grep merge", false},
+		{"mutating verb as a show argument is not mutating", "git show tag", false},
+		{"flag before a read-only subcommand is not mutating", "git -C commit log", false},
 		{"git log is not mutating", "git log --oneline", false},
 		{"git diff is not mutating", "git diff HEAD~1", false},
 		{"git status is not mutating", "git status", false},
@@ -287,8 +312,9 @@ func TestMutatingGitPattern(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := mutatingGitPattern.MatchString(tt.cmd); got != tt.want {
-				t.Errorf("mutatingGitPattern.MatchString(%q) = %v; want %v", tt.cmd, got, tt.want)
+			t.Parallel()
+			if got := commandRunsMutatingGit(tt.cmd); got != tt.want {
+				t.Errorf("commandRunsMutatingGit(%q) = %v; want %v", tt.cmd, got, tt.want)
 			}
 		})
 	}
