@@ -613,15 +613,15 @@ func resolvePathOwnership(own pathOwnership, target string) (ok bool, reason str
 		return true, ""
 
 	case pathOwnershipUnderGeometryRoot:
-		// The geometry-root set has exactly one member today, the value launchersDir returns: a
-		// directory whose base name is launchersDirName. A root outside that set is itself a
-		// refusal, so a call site cannot satisfy this check by naming a convenient parent.
+		// The geometry-root set has two members, the value launchersDir returns and the retired portals container:
+		// a directory whose base name is launchersDirName or portalsDirName.
+		// A root outside that set is itself a refusal, so a call site cannot satisfy this check by naming a convenient parent.
 		//
 		// The base-name test runs against the RESOLVED root, not the nominal one, for the same
 		// reason pathAtOrBelow now resolves: a link standing where the geometry root belongs is
 		// not the geometry root, and testing the nominal spelling would let one masquerade as it.
 		resolvedRoot := resolveAncestorSymlinks(own.root)
-		if filepath.Base(resolvedRoot) != launchersDirName {
+		if base := filepath.Base(resolvedRoot); base != launchersDirName && base != portalsDirName {
 			return false, fmt.Sprintf("%s is not a fabric geometry root", own.root)
 		}
 		if !pathAtOrBelow(own.root, target) {

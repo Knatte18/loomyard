@@ -279,6 +279,35 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 				t.Errorf("no pair reported %q\noutput: %s", fabricengine.ReconcileActionVanishedMidWalk, output)
 			}
 		}},
+		{"ReconcileReportsAForeignPortalsEntryUnderHubDetails", func(t *testing.T) {
+			// A foreign file under _portals/<AnchorRel>/ is kept, and the envelope's hub_details names it without failing the verb.
+			// The _portals directory is removed again so the later steps see the hub they expect.
+			portalsDir := filepath.Join(h.Path, "_portals", h.Location.AnchorRel)
+			if err := os.MkdirAll(portalsDir, 0o755); err != nil {
+				t.Fatalf("create the _portals anchor dir: %v", err)
+			}
+			foreign := filepath.Join(portalsDir, "foreign.txt")
+			if err := os.WriteFile(foreign, []byte("not a portal link"), 0o644); err != nil {
+				t.Fatalf("plant the foreign file: %v", err)
+			}
+
+			code, output := runFabric(t, h.PrimeWorktree(), "reconcile")
+			if code != 0 {
+				t.Fatalf("RunCLI(reconcile) = %d; want 0\noutput: %s", code, output)
+			}
+			env := envelope.RequireOK(t, output)
+			details, _ := env.Raw["hub_details"].([]any)
+			if len(details) != 1 || !strings.Contains(details[0].(string), "foreign.txt") {
+				t.Errorf("hub_details = %v; want one entry naming foreign.txt\noutput: %s", details, output)
+			}
+			if _, err := os.Stat(foreign); err != nil {
+				t.Errorf("the foreign file was not kept: %v", err)
+			}
+
+			if err := os.RemoveAll(filepath.Join(h.Path, "_portals")); err != nil {
+				t.Fatalf("remove the planted _portals directory: %v", err)
+			}
+		}},
 		{"Remove_RefusesDriftedLauncherDirLinkWithRefusalObject", func(t *testing.T) {
 			// A real gate refusal through "fabric remove --force", reached via fabricengine.RefusalOf's own contract rather than a hand-rolled stub: the pair's launcher directory is moved outside the hub and a link to it left in its place, so removeLaunchers' first script removal resolves the script's parent through that link to outside _launchers and the containment check refuses, and its error propagates through Remove's %w-wrapped chain to runRemove's errWithRecord call.
 			// The "refusal" object carries all four keys (check, what, target, reason), the flattened "error" string is still present alongside it, and this is the repo's only positive assertion that the "refusal" object reaches an envelope.

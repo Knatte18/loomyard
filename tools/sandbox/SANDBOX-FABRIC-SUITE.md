@@ -389,6 +389,9 @@ Then three variations, each on its own hub.
 Delete the launcher directory, then run `lyx fabric reconcile`: it must report `launchers_restored` for that pair -- not `already_healthy` -- and the directory must be back. A second `reconcile` must report `already_healthy`. (Historical: reconcile reported `already_healthy` and `pairs` reported `junction_healthy: true` for a pair whose launchers were gone, and restored nothing, leaving remove-and-re-add as the only recovery.)
 Then ownership: put a file of your own inside `<hub>/_launchers/<slug>/` and run `lyx fabric remove <slug>`. Fabric's two scripts must go, your file must survive, and the pair must still be torn down.
 Finally confirm the hub's prime worktree is left alone throughout: it never had a launcher directory, and `reconcile` must not start creating one.
+Then the retired-artifact sweep: plant a link `<hub>/_portals/<anchor>/<slug>` pointing at `<hub>/<slug>/<anchor>/_lyx`, a file at `<hub>/_launchers/<anchor>/<prime>.code-workspace`, and a foreign file of your own under `<hub>/_portals/<anchor>/`.
+Run a verb that regenerates the hub workspace file, such as `lyx fabric add`, and confirm its log warns about the retired artifacts and names `lyx fabric reconcile`.
+Then run `lyx fabric reconcile`: the planted link and the old workspace file must be gone, your foreign file and `_portals` must survive, and `hub_details` must name the foreign file.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 

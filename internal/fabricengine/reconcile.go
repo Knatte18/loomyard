@@ -149,6 +149,10 @@ type ReconcileResult struct {
 	// Like WarpBinding, it is a once-per-Reconcile, repo-wide field, never a per-pair one, and its
 	// json tag documents intent only — runReconcile never serializes this struct directly.
 	WarpBindingDetail string `json:"warp_binding_detail,omitempty"`
+
+	// HubDetails names each retired hub artifact the sweep kept or could not remove, one entry per path.
+	// Like WarpBinding it is a once-per-Reconcile, hub-level field, never a per-pair one.
+	HubDetails []string `json:"hub_details,omitempty"`
 }
 
 // Reconcile walks all warp worktrees reachable from layout l and applies corrective actions to
@@ -156,6 +160,7 @@ type ReconcileResult struct {
 // For each warp worktree it applies a sequence of rules: recreate missing weft worktrees, re-point
 // broken junctions, adopt raw (non-lyx) worktrees, or report unmanaged pairs.
 // Per-worktree errors are recorded in ReconcilePairResult.Error.
+// After the pair loop it sweeps the retired portal links and the old hub workspace file, reporting what it kept in HubDetails.
 func (t *Topology) Reconcile(l *lyxcwd.Location) (res ReconcileResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
@@ -250,6 +255,9 @@ func (t *Topology) Reconcile(l *lyxcwd.Location) (res ReconcileResult, err error
 	}
 
 	result.WarpBinding, result.WarpBindingDetail = t.reconcileWarpBinding(rec, l)
+
+	// The sweep runs before the regeneration so the regeneration's own retired-artifact warning stays silent for what the sweep removed.
+	result.HubDetails = sweepRetiredHubArtifacts(rec, l)
 
 	regenerateAfterVerb(rec, l, "reconcile")
 

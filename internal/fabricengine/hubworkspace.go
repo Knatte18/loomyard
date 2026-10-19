@@ -62,6 +62,9 @@ func regenerateHubWorkspace(rec *Mutations, l *lyxcwd.Location, lockWait time.Du
 	if err != nil {
 		return "", err
 	}
+	if retiredHubArtifactsPresent(l) {
+		logger.Warn(`fabricengine: the hub still holds retired portal links or the old _launchers workspace file; run "lyx fabric reconcile" to remove them`)
+	}
 	settings, err := vscode.ReadSettings(filepath.Join(WorktreePath(l, prime), l.AnchorRel))
 	if err != nil {
 		return "", fmt.Errorf("read prime settings: %w", err)

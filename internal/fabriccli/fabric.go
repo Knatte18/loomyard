@@ -268,6 +268,11 @@ gone missing, reporting launchers_restored rather than already_healthy. The
 hub's prime worktree and a local-only pair are skipped: neither has a launcher
 directory, so there is nothing there to repair.
 
+It also removes fabric's retired portal links (under _portals) and the old
+workspace file under _launchers, and keeps anything else found there, naming it
+under hub_details. Every regeneration of the hub workspace file warns until this
+has run.
+
 It also heals every hub-wide config file, such as fabric.yaml or gate.yaml, at
 the hub's board dir: an absent board.yaml is seeded from the prime worktree's copy
 when it has one, and the written files are committed in _board and pushed. The
@@ -838,6 +843,9 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 	}
 	if len(warnings) > 0 {
 		envelope["warnings"] = warnings
+	}
+	if len(r.HubDetails) > 0 {
+		envelope["hub_details"] = r.HubDetails
 	}
 
 	// A pair carrying an Error is a repair this verb was asked to perform and did not, so it must
