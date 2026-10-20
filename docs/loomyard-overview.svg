@@ -1,0 +1,283 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="1080" viewBox="0 0 1500 1080" font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#4a5568"/>
+    </marker>
+    <style>
+      .t  { font-size: 15px; font-weight: 700; fill: #1a202c; }
+      .s  { font-size: 12.5px; fill: #4a5568; }
+      .h  { font-size: 17px; font-weight: 700; fill: #1a202c; }
+      .hs { font-size: 12.5px; fill: #718096; font-style: italic; }
+      .m  { font-family: 'JetBrains Mono', Consolas, monospace; font-size: 12px; fill: #2d3748; }
+      .gt { font-size: 13.5px; font-weight: 700; fill: #1a202c; }
+      .gw { font-size: 12.5px; font-style: italic; fill: #9c4221; }
+      .gd { font-size: 12.5px; fill: #4a5568; }
+      .ln { stroke: #4a5568; stroke-width: 1.6; fill: none; marker-end: url(#a); }
+      .lb { font-size: 11.5px; fill: #4a5568; font-style: italic; }
+    </style>
+  </defs>
+
+  <rect width="1500" height="1080" fill="#fbfaf7"/>
+
+  <!-- Title -->
+  <text x="40" y="44" font-size="26" font-weight="800" fill="#1a202c">Loomyard (lyx) — conceptual overview</text>
+  <text x="40" y="68" class="hs">A board task is woven into a landed commit: batten drives its lifecycle, loom drives its phases, and each phase is inspected on its perch until clean.</text>
+
+  <!-- ===== Row A: operator, orch, board ===== -->
+  <rect x="40" y="92" width="230" height="70" rx="10" fill="#edf2f7" stroke="#a0aec0"/>
+  <text x="155" y="121" text-anchor="middle" class="t">Operator</text>
+  <text x="155" y="142" text-anchor="middle" class="s">in an ordinary terminal</text>
+
+  <rect x="330" y="92" width="330" height="70" rx="10" fill="#e9d8fd" stroke="#805ad5"/>
+  <text x="495" y="121" text-anchor="middle" class="t">orch</text>
+  <text x="495" y="142" text-anchor="middle" class="s">hub orchestrator: a Claude session in prime</text>
+
+  <rect x="720" y="92" width="380" height="70" rx="10" fill="#fefcbf" stroke="#d69e2e"/>
+  <text x="910" y="121" text-anchor="middle" class="t">board  ·  on Bolt</text>
+  <text x="910" y="142" text-anchor="middle" class="s">tasks and notes on the records repo's main</text>
+
+  <path class="ln" d="M270,127 L326,127"/>
+  <text x="298" y="119" text-anchor="middle" class="lb">lyx prime</text>
+  <path class="ln" d="M660,127 L716,127"/>
+  <text x="688" y="119" text-anchor="middle" class="lb">picks</text>
+  <path class="ln" d="M495,162 L495,206"/>
+  <text x="505" y="190" class="lb">starts one batten per task</text>
+
+  <!-- ===== Row B: batten ===== -->
+  <rect x="40" y="210" width="1060" height="110" rx="12" fill="#fff" stroke="#c05621" stroke-width="1.5"/>
+  <text x="58" y="234" class="h">batten</text>
+  <text x="128" y="234" class="hs">one task's lifecycle, run as a Shed from prime</text>
+
+  <g>
+    <rect x="58"  y="252" width="186" height="52" rx="8" fill="#feebc8" stroke="#dd6b20"/>
+    <text x="151" y="274" text-anchor="middle" class="t">Worktree-Create</text>
+    <text x="151" y="293" text-anchor="middle" class="s">code + records worktree</text>
+
+    <rect x="266" y="252" width="186" height="52" rx="8" fill="#feebc8" stroke="#dd6b20"/>
+    <text x="359" y="274" text-anchor="middle" class="t">Seed-Child</text>
+    <text x="359" y="293" text-anchor="middle" class="s">pick recipe: loom | darn</text>
+
+    <rect x="474" y="252" width="186" height="52" rx="8" fill="#fbd38d" stroke="#c05621" stroke-width="2"/>
+    <text x="567" y="274" text-anchor="middle" class="t">Run-Shed</text>
+    <text x="567" y="293" text-anchor="middle" class="s">run the child's own run</text>
+
+    <rect x="682" y="252" width="186" height="52" rx="8" fill="#feebc8" stroke="#dd6b20"/>
+    <text x="775" y="274" text-anchor="middle" class="t">Land</text>
+    <text x="775" y="293" text-anchor="middle" class="s">into the parent + deploy</text>
+
+    <rect x="890" y="252" width="192" height="52" rx="8" fill="#feebc8" stroke="#dd6b20"/>
+    <text x="986" y="274" text-anchor="middle" class="t">Worktree-Teardown</text>
+    <text x="986" y="293" text-anchor="middle" class="s">tear down, prune board</text>
+
+    <path class="ln" d="M244,278 L262,278"/>
+    <path class="ln" d="M452,278 L470,278"/>
+    <path class="ln" d="M660,278 L678,278"/>
+    <path class="ln" d="M868,278 L886,278"/>
+  </g>
+  <path class="ln" d="M567,304 L567,356"/>
+
+  <!-- ===== Row C: loom ===== -->
+  <rect x="40" y="360" width="1060" height="250" rx="12" fill="#fff" stroke="#2b6cb0" stroke-width="1.5"/>
+  <text x="58" y="384" class="h">loom</text>
+  <text x="112" y="384" class="hs">phase machine over a flat producer list</text>
+  <text x="1082" y="384" text-anchor="end" class="hs">darn: a lighter recipe without Plan and Webster, same perch</text>
+
+  <g>
+    <rect x="52"  y="400" width="137" height="58" rx="8" fill="#bee3f8" stroke="#3182ce"/>
+    <text x="120" y="423" text-anchor="middle" class="t">Discussion</text>
+    <text x="120" y="443" text-anchor="middle" class="s">decision record</text>
+
+    <rect x="203" y="400" width="137" height="58" rx="8" fill="#bee3f8" stroke="#3182ce"/>
+    <text x="271" y="423" text-anchor="middle" class="t">Plan</text>
+    <text x="271" y="443" text-anchor="middle" class="s">flat card list</text>
+
+    <rect x="354" y="400" width="137" height="58" rx="8" fill="#bee3f8" stroke="#3182ce"/>
+    <text x="422" y="423" text-anchor="middle" class="t">Webster</text>
+    <text x="422" y="443" text-anchor="middle" class="s">implementation</text>
+
+    <rect x="505" y="400" width="137" height="58" rx="8" fill="#bee3f8" stroke="#3182ce"/>
+    <text x="573" y="423" text-anchor="middle" class="t">Merge-In</text>
+    <text x="573" y="443" text-anchor="middle" class="s">take in the parent</text>
+
+    <rect x="656" y="400" width="137" height="58" rx="8" fill="#e2e8f0" stroke="#718096"/>
+    <text x="724" y="423" text-anchor="middle" class="t">Publish · PR</text>
+    <text x="724" y="443" text-anchor="middle" class="s">PR-Align, PR-Gate</text>
+
+    <rect x="807" y="400" width="137" height="58" rx="8" fill="#e2e8f0" stroke="#718096"/>
+    <text x="875" y="423" text-anchor="middle" class="t">Finalize</text>
+    <text x="875" y="443" text-anchor="middle" class="s">final summary</text>
+
+    <rect x="958" y="400" width="130" height="58" rx="8" fill="#e2e8f0" stroke="#718096"/>
+    <text x="1023" y="423" text-anchor="middle" class="t">Friction-</text>
+    <text x="1023" y="443" text-anchor="middle" class="t">Reflect</text>
+
+    <path class="ln" d="M189,429 L200,429"/>
+    <path class="ln" d="M340,429 L351,429"/>
+    <path class="ln" d="M491,429 L502,429"/>
+    <path class="ln" d="M642,429 L653,429"/>
+    <path class="ln" d="M793,429 L804,429"/>
+    <path class="ln" d="M944,429 L955,429"/>
+  </g>
+
+  <!-- perch bracket under the review segments -->
+  <path d="M60,468 L634,468" stroke="#2f855a" stroke-width="2.5" fill="none"/>
+  <path d="M60,462 L60,468 M634,462 L634,468" stroke="#2f855a" stroke-width="2.5"/>
+  <text x="347" y="486" text-anchor="middle" font-size="12.5" font-weight="700" fill="#2f855a">each of these is a review segment with its own perch</text>
+
+  <!-- perch inset -->
+  <rect x="60" y="498" width="1028" height="100" rx="10" fill="#f0fff4" stroke="#68d391" stroke-dasharray="5 4"/>
+  <text x="76" y="520" font-size="14" font-weight="700" fill="#22543d">perch</text>
+
+  <rect x="140" y="510" width="200" height="54" rx="8" fill="#c6f6d5" stroke="#38a169"/>
+  <text x="240" y="532" text-anchor="middle" class="t">Bouncer</text>
+  <text x="240" y="551" text-anchor="middle" class="s">the gate: clean yet?</text>
+
+  <rect x="420" y="510" width="200" height="54" rx="8" fill="#c6f6d5" stroke="#38a169"/>
+  <text x="520" y="532" text-anchor="middle" class="t">Burler · review</text>
+  <text x="520" y="551" text-anchor="middle" class="s">fresh reviewer session</text>
+
+  <rect x="700" y="510" width="200" height="54" rx="8" fill="#c6f6d5" stroke="#38a169"/>
+  <text x="800" y="532" text-anchor="middle" class="t">Burler · fix</text>
+  <text x="800" y="551" text-anchor="middle" class="s">fresh fixer session</text>
+
+  <path class="ln" d="M340,537 L416,537"/>
+  <text x="378" y="530" text-anchor="middle" class="lb">not clean</text>
+  <path class="ln" d="M620,537 L696,537"/>
+  <path class="ln" d="M800,564 C800,604 240,604 240,568"/>
+  <text x="520" y="580" text-anchor="middle" class="lb">another round until it converges</text>
+
+  <path class="ln" d="M240,510 C240,500 960,500 1000,508"/>
+  <text x="1010" y="532" class="lb" text-anchor="middle">CONVERGED</text>
+  <text x="1010" y="548" class="lb" text-anchor="middle">→ next phase</text>
+
+  <!-- ===== Row D left: execution stack ===== -->
+  <rect x="40" y="636" width="520" height="292" rx="12" fill="#fff" stroke="#4a5568" stroke-width="1.5"/>
+  <text x="58" y="660" class="h">Execution stack</text>
+  <text x="58" y="679" class="hs">each layer knows only the one below it</text>
+
+  <g>
+    <rect x="58" y="692" width="484" height="32" rx="6" fill="#bee3f8"/>
+    <text x="70" y="713" class="t">loom</text><text x="160" y="713" class="s">what to run next</text>
+    <rect x="58" y="728" width="484" height="32" rx="6" fill="#c3dafe"/>
+    <text x="70" y="749" class="t">shed</text><text x="160" y="749" class="s">generic phase FSM: resume, crash recovery, pause</text>
+    <rect x="58" y="764" width="484" height="32" rx="6" fill="#c6f6d5"/>
+    <text x="70" y="785" class="t">burler</text><text x="160" y="785" class="s">one review + fix round, no self-grading</text>
+    <rect x="58" y="800" width="484" height="32" rx="6" fill="#d9f2e6"/>
+    <text x="70" y="821" class="t">seats</text><text x="160" y="821" class="s">one step as a lead + named advisors</text>
+    <rect x="58" y="836" width="484" height="32" rx="6" fill="#fed7e2"/>
+    <text x="70" y="857" class="t">shuttle</text><text x="160" y="857" class="s">run ONE agent; Stop hook = done</text>
+    <rect x="58" y="872" width="484" height="32" rx="6" fill="#fbd38d"/>
+    <text x="70" y="893" class="t">reed</text><text x="160" y="893" class="s">tmux overlay; every process is a strand</text>
+  </g>
+  <text x="70" y="920" class="m">proc — OS processes beneath it all</text>
+
+  <!-- ===== Row D right: hub and fabric ===== -->
+  <rect x="580" y="636" width="520" height="292" rx="12" fill="#fff" stroke="#4a5568" stroke-width="1.5"/>
+  <text x="598" y="660" class="h">Hub and fabric</text>
+  <text x="598" y="679" class="hs">code and records side by side; fabric keeps them in step</text>
+
+  <text x="700" y="706" text-anchor="middle" font-size="13" font-weight="700" fill="#2d3748">code repo (warp)</text>
+  <text x="960" y="706" text-anchor="middle" font-size="13" font-weight="700" fill="#2d3748">records repo (weft)</text>
+
+  <rect x="610" y="716" width="180" height="34" rx="6" fill="#edf2f7" stroke="#a0aec0"/>
+  <text x="700" y="738" text-anchor="middle" class="m">&lt;prime&gt;/  · main</text>
+  <rect x="870" y="716" width="180" height="34" rx="6" fill="#fefcbf" stroke="#d69e2e"/>
+  <text x="960" y="738" text-anchor="middle" class="m">&lt;prime&gt;-&lt;records&gt;/</text>
+
+  <rect x="610" y="760" width="180" height="34" rx="6" fill="#edf2f7" stroke="#a0aec0"/>
+  <text x="700" y="782" text-anchor="middle" class="m">&lt;slug&gt;/  · task</text>
+  <rect x="870" y="760" width="180" height="34" rx="6" fill="#fefcbf" stroke="#d69e2e"/>
+  <text x="960" y="782" text-anchor="middle" class="m">&lt;slug&gt;-&lt;records&gt;/</text>
+
+  <rect x="870" y="804" width="180" height="34" rx="6" fill="#fefcbf" stroke="#d69e2e"/>
+  <text x="960" y="826" text-anchor="middle" class="m">_board/  = Bolt</text>
+
+  <path d="M790,733 L866,733 M790,777 L866,777" stroke="#4a5568" stroke-width="1.4" stroke-dasharray="4 3"/>
+  <text x="828" y="756" text-anchor="middle" class="lb">_lyx</text>
+
+  <text x="598" y="866" class="m">_lyx/</text>
+  <text x="650" y="866" class="s">durable and synced: config, run status, plan</text>
+  <text x="598" y="888" class="m">.lyx/</text>
+  <text x="650" y="888" class="s">ephemeral and machine-local: reed.json, scratch</text>
+  <text x="598" y="914" class="s">Each task is one worktree; batten creates and tears it down.</text>
+
+  <!-- ===== Bottom: cross-cutting ===== -->
+  <rect x="40" y="948" width="1060" height="84" rx="12" fill="#fff" stroke="#4a5568" stroke-width="1.5"/>
+  <text x="58" y="972" class="h">Cross-cutting</text>
+  <g font-size="12.5">
+    <rect x="58"  y="984" width="196" height="36" rx="18" fill="#e9d8fd"/>
+    <text x="156" y="1007" text-anchor="middle" fill="#1a202c"><tspan font-weight="700">creel</tspan>  messages to agents</text>
+    <rect x="266" y="984" width="196" height="36" rx="18" fill="#e9d8fd"/>
+    <text x="364" y="1007" text-anchor="middle" fill="#1a202c"><tspan font-weight="700">gate</tspan>  shared test slots</text>
+    <rect x="474" y="984" width="196" height="36" rx="18" fill="#e9d8fd"/>
+    <text x="572" y="1007" text-anchor="middle" fill="#1a202c"><tspan font-weight="700">tender</tspan>  pause the whole hub</text>
+    <rect x="682" y="984" width="196" height="36" rx="18" fill="#e9d8fd"/>
+    <text x="780" y="1007" text-anchor="middle" fill="#1a202c"><tspan font-weight="700">quarry</tspan>  glyphs for the plan</text>
+    <rect x="890" y="984" width="196" height="36" rx="18" fill="#e9d8fd"/>
+    <text x="988" y="1007" text-anchor="middle" fill="#1a202c"><tspan font-weight="700">config</tspan>  layered settings</text>
+  </g>
+
+  <!-- ===== Glossary ===== -->
+  <rect x="1130" y="92" width="335" height="960" rx="12" fill="#fffaf0" stroke="#dd6b20" stroke-width="1.5"/>
+  <text x="1148" y="120" class="h">The weaving vocabulary</text>
+  <text x="1148" y="139" class="hs">term — in weaving — in lyx</text>
+
+  <g>
+    <text x="1148" y="170" class="gt">loom <tspan class="gw">the weaving frame</tspan></text>
+    <text x="1148" y="187" class="gd">the phase machine driving one task</text>
+
+    <text x="1148" y="217" class="gt">shed <tspan class="gw">the opening in the warp</tspan></text>
+    <text x="1148" y="234" class="gd">generic FSM over a producer list</text>
+
+    <text x="1148" y="264" class="gt">batten <tspan class="gw">beats each pick into place</tspan></text>
+    <text x="1148" y="281" class="gd">a task's lifecycle: create → land → tear down</text>
+
+    <text x="1148" y="311" class="gt">shuttle <tspan class="gw">carries the weft across</tspan></text>
+    <text x="1148" y="328" class="gd">carries one agent through a run</text>
+
+    <text x="1148" y="358" class="gt">reed <tspan class="gw">keeps the warp threads spaced</tspan></text>
+    <text x="1148" y="375" class="gd">the tmux layer holding strands in place</text>
+
+    <text x="1148" y="405" class="gt">strand <tspan class="gw">a thread</tspan></text>
+    <text x="1148" y="422" class="gd">one tracked process in reed</text>
+
+    <text x="1148" y="452" class="gt">burler <tspan class="gw">removes flaws from cloth</tspan></text>
+    <text x="1148" y="469" class="gd">one review + fix round</text>
+
+    <text x="1148" y="499" class="gt">perch <tspan class="gw">a cloth-inspection frame</tspan></text>
+    <text x="1148" y="516" class="gd">a segment's Bouncer ⇄ Burler pair</text>
+
+    <text x="1148" y="546" class="gt">webster <tspan class="gw">a weaver (Old English)</tspan></text>
+    <text x="1148" y="563" class="gd">the implementer; forks per batch</text>
+
+    <text x="1148" y="593" class="gt">darn <tspan class="gw">to mend</tspan></text>
+    <text x="1148" y="610" class="gd">a lightweight recipe for small changes</text>
+
+    <text x="1148" y="640" class="gt">fabric <tspan class="gw">cloth</tspan></text>
+    <text x="1148" y="657" class="gd">git coordination of code + records</text>
+
+    <text x="1148" y="687" class="gt">warp <tspan class="gw">the lengthwise threads</tspan></text>
+    <text x="1148" y="704" class="gd">fabric's code side</text>
+
+    <text x="1148" y="734" class="gt">weft <tspan class="gw">the crosswise thread</tspan></text>
+    <text x="1148" y="751" class="gd">fabric's records side</text>
+
+    <text x="1148" y="781" class="gt">Bolt <tspan class="gw">a roll of cloth</tspan></text>
+    <text x="1148" y="798" class="gd">the records repo's main; the board's home</text>
+
+    <text x="1148" y="828" class="gt">selvage <tspan class="gw">the self-finished edge</tspan></text>
+    <text x="1148" y="845" class="gd">permanent shell pane in reed's session</text>
+
+    <text x="1148" y="875" class="gt">creel <tspan class="gw">the bobbin rack</tspan></text>
+    <text x="1148" y="892" class="gd">the message daemon between agents</text>
+
+    <text x="1148" y="922" class="gt">tender <tspan class="gw">the loom attendant</tspan></text>
+    <text x="1148" y="939" class="gd">pauses the hub safely</text>
+
+    <text x="1148" y="969" class="gt">Merriam</text>
+    <text x="1148" y="986" class="gd">webster's orchestrating Master session</text>
+
+    <text x="1148" y="1016" class="gt">lyx · loom · ly</text>
+    <text x="1148" y="1033" class="gd">binary · orchestrator module · skills</text>
+  </g>
+</svg>
