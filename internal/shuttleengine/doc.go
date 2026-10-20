@@ -227,7 +227,8 @@
 // so another producer's strand, a same-role strand with other outputs and a run the probe would attach to are never touched,
 // and a probe that attaches or refuses removes nothing.
 // A strand that cannot be removed comes back as an error naming `lyx reed remove <guid>`, never as a not-found answer.
-// Runner.AttachIfLive is the same probe with the removal off, for a caller that waits on a live run and starts nothing after a not-found answer.
+// Runner.AttachIfLive is the same probe with the removal off, for a caller that waits on a live run and starts nothing after a not-found answer;
+// Runner.AttachIfLiveGated is its gated form.
 // Runner.ProbeGated is AttachGated's probe returning the reconstructed *Run unwaited, so a caller can hold two probed runs and wait on both concurrently.
 //
 // Session usage: the optional UsageReader capability reads a finished session's tokens, its forks included, as a provider-neutral SessionUsage.

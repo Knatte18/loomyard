@@ -177,7 +177,7 @@ func (c *TacklerCall) attachAndConclude(attempt TacklerAttempt, guid string, rem
 func (c *TacklerCall) attach(attempt TacklerAttempt, remaining time.Duration) (shuttleengine.Result, bool, error) {
 	spec := tacklerSpec("", TacklerVerdictPath(attempt.Dir), TacklerCaseBriefPath(attempt.Dir), c.deps.Settings)
 	spec.Timeout = remaining
-	return c.deps.Shuttle.AttachIfLive(spec)
+	return c.deps.Shuttle.AttachIfLive(spec, nil)
 }
 
 // settleFresh spawns a new tackler for the stop, after the budget checks.
@@ -239,7 +239,7 @@ func (c *TacklerCall) settleFresh(attempts []TacklerAttempt) (TacklerEnvelope, e
 	}
 
 	logger.Info("sheddriver: tackler spawn", "run", c.in.RunID, "attempt", number, "producer", c.status.CurrentProducer, "deadline", attempt.Deadline)
-	run, err := c.deps.Shuttle.Start(tacklerSpec(prompt, promptInput.VerdictPath, promptInput.CaseBriefPath, settings))
+	run, err := c.deps.Shuttle.Start(tacklerSpec(prompt, promptInput.VerdictPath, promptInput.CaseBriefPath, settings), nil)
 	if err != nil {
 		return c.handBack(attempt, CauseDied, fmt.Sprintf("starting the tackler failed: %v", err))
 	}

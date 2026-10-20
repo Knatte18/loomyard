@@ -80,4 +80,16 @@ Write `{{.verdict_path}}` last, as YAML with these keys:
 - `goto`: only on a `resume` that moves the run back.
 - `question`: required on a `hand-on`; the question for the driver's stop report, addressed to the run's parent, never to an operator.
 
+Write `reason`, `question` and each `verbs` item as a literal block scalar, so a `: ` or ` #` inside a sentence or command keeps its meaning:
+
+```yaml
+verdict: resume
+reason: |-
+  The open finding is wrong: the fix in place answers it.
+verbs:
+  - |-
+    lyx loom circling accept {{.slug}}
+```
+
 Then end your turn.
+A verdict file that does not read comes back to you with the reader's error; rewrite it and end your turn again.

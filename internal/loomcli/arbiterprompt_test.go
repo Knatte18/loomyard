@@ -1,6 +1,8 @@
 package loomcli
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -12,7 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// TestArbiterPrompt asserts the shipped stencil renders every marker value, the no-parent and edit directives, the literal none for an absent report, brief and case brief, and no unfilled marker.
+// TestArbiterPrompt asserts the shipped stencil renders every marker value, the no-parent and edit directives, the literal none for an absent report, brief and case brief, no unfilled marker and a verdict example the verdict reader accepts.
 func TestArbiterPrompt(t *testing.T) {
 	t.Parallel()
 
@@ -78,6 +80,18 @@ func TestArbiterPrompt(t *testing.T) {
 			}
 			if strings.Contains(got, "{{") {
 				t.Error("arbiterPrompt() left a marker unfilled")
+			}
+			_, example, found := strings.Cut(got, "```yaml\n")
+			example, _, closed := strings.Cut(example, "```")
+			if !found || !closed {
+				t.Fatal("arbiterPrompt() carries no fenced yaml verdict example")
+			}
+			verdictPath := filepath.Join(t.TempDir(), "verdict.yaml")
+			if err := os.WriteFile(verdictPath, []byte(example), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := loomengine.ReadArbiterVerdict(verdictPath); err != nil {
+				t.Errorf("ReadArbiterVerdict(the prompt's verdict example) error = %v; want nil", err)
 			}
 		})
 	}
