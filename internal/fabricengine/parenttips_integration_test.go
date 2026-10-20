@@ -167,6 +167,41 @@ func TestChangedPaths_NamesExactlyTheCommittedFiles(t *testing.T) {
 	}
 }
 
+// TestChangedPathsBothSides_NamesRenamesAndRawPaths asserts a rename is named by both paths, a non-ASCII path arrives raw, an empty range names nothing and an unknown ref is an error naming it.
+func TestChangedPathsBothSides_NamesRenamesAndRawPaths(t *testing.T) {
+	t.Parallel()
+
+	f, warpPath, _, _, _, _, _ := buildReconcileFixture(t, t.TempDir(), 1)
+	first := gitkit.CommitFile(t, warpPath, "internal/x/x.go", "package x", "x")
+	gitkit.CommitFile(t, warpPath, "docs/ä.md", "a", "a")
+	if err := os.MkdirAll(filepath.Join(warpPath, "tools"), 0o755); err != nil {
+		t.Fatalf("mkdir tools: %v", err)
+	}
+	gitkit.Git(t, warpPath, "mv", "internal/x/x.go", "tools/x.go")
+	gitkit.Git(t, warpPath, "commit", "-m", "move")
+	head := fabricengine.CurrentSHAForTest(t, warpPath)
+
+	got, err := f.ChangedPathsBothSides(first, head)
+	if err != nil {
+		t.Fatalf("ChangedPathsBothSides() error = %v", err)
+	}
+	if want := []string{"docs/ä.md", "internal/x/x.go", "tools/x.go"}; !slices.Equal(got, want) {
+		t.Errorf("ChangedPathsBothSides() = %q; want %q", got, want)
+	}
+
+	none, err := f.ChangedPathsBothSides(head, head)
+	if err != nil {
+		t.Fatalf("ChangedPathsBothSides(same) error = %v", err)
+	}
+	if len(none) != 0 {
+		t.Errorf("ChangedPathsBothSides(same) = %q; want none", none)
+	}
+
+	if _, err := f.ChangedPathsBothSides("no-such-ref", head); err == nil || !strings.Contains(err.Error(), "no-such-ref") {
+		t.Errorf("ChangedPathsBothSides(no-such-ref) error = %v; want one naming the ref", err)
+	}
+}
+
 // TestCommitLog_ListsTheRangeNewestFirst asserts the range's commits as a seven-character SHA prefix and subject, newest first, an empty result for an empty range and an error naming an unknown ref.
 func TestCommitLog_ListsTheRangeNewestFirst(t *testing.T) {
 	t.Parallel()
