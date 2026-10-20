@@ -230,7 +230,7 @@ func TestVerifyGate_RoundScenario(t *testing.T) {
 		return
 	}
 
-	if !t.Run("appends the failing tests and the impacted-set tmux pass while a publish failure record is present", func(t *testing.T) {
+	if !t.Run("runs the failing tests first and the impacted-set tmux pass last while a publish failure record is present", func(t *testing.T) {
 		head := f.commitFiles(t, map[string]string{"b/b.go": "package b\n\nconst Changed = 2\n"})
 		derivation, err := impactset.Derive(f.worktree, planPass.Commit)
 		if err != nil || derivation.Command == "" || len(derivation.Packages) == 0 {
@@ -249,12 +249,39 @@ func TestVerifyGate_RoundScenario(t *testing.T) {
 		if passed, findings := f.runGate(t, nil); !passed {
 			t.Fatalf("gate() findings = %q; want a pass", findings)
 		}
-		want := derivation.Command + " && go test -tags tmux -run '^TestB$' example.com/m/b && go test -tags tmux " + strings.Join(derivation.Packages, " ")
+		want := "go test -tags tmux -run '^TestB$' example.com/m/b && " + derivation.Command + " && go test -tags tmux " + strings.Join(derivation.Packages, " ")
 		if pass, ok := verifytree.LatestPass(paths, want); !ok || pass.Commit != head {
 			t.Errorf("LatestPass(extended command) = %+v, %v; want a pass at %s of %q", pass, ok, head, want)
 		}
 		if _, ok := verifytree.LatestPass(paths, derivation.Command); ok {
 			t.Errorf("a pass of the plain derived command is recorded; want the extended command to have run instead")
+		}
+	}) {
+		return
+	}
+
+	if !t.Run("runs the failing tests first and nothing after the impacted-set command while a plan verify failure record is present", func(t *testing.T) {
+		head := f.commitFiles(t, map[string]string{"b/b.go": "package b\n\nconst Changed = 4\n"})
+		derivation, err := impactset.Derive(f.worktree, planPass.Commit)
+		if err != nil || derivation.Command == "" {
+			t.Fatalf("Derive() = %+v, %v; want a derived command", derivation, err)
+		}
+		failure := verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify, Head: head, Tests: []verifytree.FailedTest{{Package: "example.com/m/b", Test: "TestB"}}}
+		if err := verifytree.WritePublishFailure(paths, failure); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := verifytree.RemovePublishFailure(paths); err != nil {
+				t.Error(err)
+			}
+		})
+
+		if passed, findings := f.runGate(t, nil); !passed {
+			t.Fatalf("gate() findings = %q; want a pass", findings)
+		}
+		want := "go test -tags integration -run '^TestB$' example.com/m/b && " + derivation.Command
+		if pass, ok := verifytree.LatestPass(paths, want); !ok || pass.Commit != head {
+			t.Errorf("LatestPass(extended command) = %+v, %v; want a pass at %s of %q", pass, ok, head, want)
 		}
 	}) {
 		return
@@ -280,7 +307,7 @@ func TestVerifyGate_RoundScenario(t *testing.T) {
 		return
 	}
 
-	if !t.Run("whole-diff form appends the failing tests and the tmux pass over all packages while a publish failure record is present", func(t *testing.T) {
+	if !t.Run("whole-diff form runs the failing tests first and the tmux pass over all packages last while a publish failure record is present", func(t *testing.T) {
 		head := f.commitFiles(t, map[string]string{"b/b.go": "package b\n\nconst Changed = 3\n"})
 		failure := verifytree.PublishFailure{Kind: verifytree.FailureKindPublishVerify, Head: head, Tests: []verifytree.FailedTest{{Package: "example.com/m/b", Test: "TestB"}}}
 		if err := verifytree.WritePublishFailure(paths, failure); err != nil {
@@ -296,7 +323,7 @@ func TestVerifyGate_RoundScenario(t *testing.T) {
 		if err != nil || !got.Passed {
 			t.Fatalf("gate() = %+v, %v; want a pass", got, err)
 		}
-		want := f.planCommand + " && go test -tags tmux -run '^TestB$' example.com/m/b && go test -tags tmux ./..."
+		want := "go test -tags tmux -run '^TestB$' example.com/m/b && " + f.planCommand + " && go test -tags tmux ./..."
 		if pass, ok := verifytree.LatestPass(paths, want); !ok || pass.Commit != head {
 			t.Errorf("LatestPass(extended command) = %+v, %v; want a pass at %s of %q", pass, ok, head, want)
 		}

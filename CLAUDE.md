@@ -34,7 +34,9 @@ and the orch thread's own `_lyx/orch/rules.md`, committed with `lyx fabric commi
 ## Worktrees
 
 - Push to `main` only from the worktree checked out on `main`; never from a task pair (`<hub>/<slug>`).
-- Push to `main` only after `lyx gate test ./...` and `lyx gate test --tags integration ./...` are green, each run as its own Bash call as the gate rule in the session's system prompt says, the same tiers the verify gates run; code under `tools/` follows PATTERN and its scans like everything else.
+- Push to `main` only after `lyx gate test --tags integration ./...` is green, run as its own Bash call as the gate rule in the session's system prompt says, the same run the verify gates make;
+  the `integration` tag compiles every untagged test too, so it covers the unit tier;
+  code under `tools/` follows PATTERN and its scans like everything else.
   A commit that changes only text no build or test reads, such as `docs/` and this file, is pushed without the test run.
 - Work only in your own worktree: never edit, commit or push in another, and never create one, unless the user says so for that case.
   If work belongs elsewhere, say so and ask.

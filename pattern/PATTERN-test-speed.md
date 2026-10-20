@@ -24,8 +24,8 @@ Tests stay fast: Tier 1 is offline and spawns nothing, no test waits out a produ
 | Card gate | tier 1 of the card's own packages through `lyx gate test`, then the comment lint and the headroom lint |
 | Batch gate | `lyx gate test --tags integration` once per batch over the batch's packages, each failing on a tmux server socket its end-of-package check finds |
 | Webster-Burler-Fix round gate | the headroom lint when told a merge base, then the comment lint, then the impacted-set command, or the plan's verify wherever the impacted set cannot narrow; the `tmux` and `llm` tiers are compiled by its `go vet` steps and run only as below |
-| Webster-Burler-Fix round gate, while a Publish failure record is present | the failing tests the record names, and for a `publish_verify` failure an impacted-set `tmux` pass, to confirm the fix |
-| Webster's gate, Publish, Finalize | the plan's `## verify:` in full: build, vet under each tag, the untagged tier, then the `integration` tier |
+| Webster-Burler-Fix round gate, while a Publish failure record is present | the failing tests the record names before the round command, and for a `publish_verify` failure an impacted-set `tmux` pass after it, to confirm the fix |
+| Webster's gate, Publish, Finalize | the plan's `## verify:` in full: build, vet under each tag, then the `integration` tier alone, which runs every untagged test too |
 | Publish, after the plan verify | landing config's `publish_verify`, where the repo sets it: the `tmux` tier |
 | By hand | the `llm` tier |
 
@@ -39,6 +39,7 @@ Running it is the operator's call, because an `llm` run is billed, nondeterminis
 Every gate build or test run takes a slot of the hub's gate-slot pool, so the hub never runs more at once than its configured count.
 An agent runs a module-wide or `tmux`-tier test only through `lyx gate test`, which takes the slot, and never as a raw `go` run.
 A tagged gate run builds `lyx` once and hands it to every package through the `LYX_PREBUILT_LYX` variable, which `lyxbin` returns instead of building.
+A tagged hub run exports a path named by the binary's content, and `lyx gate test` strips the trace id from `go test`'s environment, since Go keys a cached test result on every variable a test reads.
 Bound: a forged value misleads only an ungated raw run, since `lyx gate test` sets or strips the variable itself.
 
 ## Only `llm` files reach an LLM

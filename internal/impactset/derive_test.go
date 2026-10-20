@@ -25,14 +25,13 @@ func testGraph() moduleGraph {
 	})
 }
 
-// gateCommand renders the expected command: build, vet per tag, untagged, integration, then the trailing steps.
+// gateCommand renders the expected command: build, vet per tag, integration, then the trailing steps.
 func gateCommand(packages string, trailing ...string) string {
 	steps := []string{
 		"go build ./...",
 		"go vet -tags integration " + packages,
 		"go vet -tags tmux " + packages,
 		"go vet -tags llm " + packages,
-		"go test " + packages,
 		"go test -tags integration " + packages,
 	}
 	return strings.Join(append(steps, trailing...), " && ")

@@ -1,6 +1,6 @@
 // Package gateslot owns the hub-wide pool of gate slots that bounds how many gate builds and test runs the hub executes at once.
 //
-// The package is told every directory it works on and derives none beyond the Dir and WaitDir joins, which spell the ephemeral directory name only through internal/lyxdirs.
+// The package is told every directory it works on and derives none beyond the Dir, WaitDir and Pool.PrebuiltDir joins, which spell the ephemeral directory name only through internal/lyxdirs.
 //
 // # Slots
 //
@@ -21,6 +21,11 @@
 // so a fresh worktree hits the build and test cache and a host scanner that holds each unseen executable sees known hashes.
 // It also makes `runtime.Caller` report module-relative file paths, so no code a gate run builds locates the repo root from them alone.
 // A nested gate run checks Pool.Inherited on that variable and runs inside its parent's slot without acquiring.
+//
+// # Prebuilt store
+//
+// Pool.PrebuiltDir is `<Dir>/prebuilt`, where a tagged gate run keeps the `lyx` it built under a name derived from the binary's content, so PrebuiltLyxEnv holds the same value for every run on an unchanged tree.
+// The gate run that writes the store also prunes it.
 //
 // # Config
 //

@@ -39,8 +39,9 @@ const verifyLogTailBytes = 4096
 // The headroom lint and then the comment lint run from the merge base mergeBase reads to HEAD, and the told command runs in full with the command as the site's base command, so Publish skips on the same tree and command.
 // The form has no skip path: an empty told command is an error naming the source, never a pass, and so is a nil mergeBase.
 //
-// While a Publish failure record is present, the command also runs the `tmux` tier to confirm the fix:
-// each failing test the checked record names, by name in its package, and for a `publish_verify` failure the impacted set under `tmux`, or `./...` where the round fell back to the told command or the form is whole-diff.
+// While a Publish failure record is present, the command also confirms the fix.
+// It first runs each failing test the checked record names, by name in its package under the failing verify's tier, so a failure that still holds ends the run in seconds.
+// It runs last, for a `publish_verify` failure, the impacted set under `tmux`, or `./...` where the round fell back to the told command or the form is whole-diff.
 // The record's fields are shape-checked first, and a field that fails is dropped and logged, so no record text reaches the command as shell.
 //
 // `StatusPassed` and `StatusSkipped` pass.
@@ -127,8 +128,14 @@ func NewVerifyGate(worktreeRoot, verifyDir, siteLabel string, command, mergeBase
 			}
 		}
 		if failure, ok := checkedPublishFailure(paths, worktreeRoot); ok {
-			if extra := publishFailureCommand(failure, tmuxPackages); extra != "" {
-				runCommand += " && " + extra
+			failedTests, packagePass := publishFailureSteps(failure, tmuxPackages)
+			if failedTests != "" {
+				runCommand = failedTests + " && " + runCommand
+			}
+			if packagePass != "" {
+				runCommand += " && " + packagePass
+			}
+			if failedTests != "" || packagePass != "" {
 				logger.Info("loomshed: verify gate confirms a publish failure", "gate", siteLabel, "attempt", attempt, "kind", failure.Kind)
 			}
 		}
