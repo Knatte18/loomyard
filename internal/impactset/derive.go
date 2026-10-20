@@ -189,7 +189,8 @@ func packageOfPath(graph moduleGraph, changedPath string) (importPath string, ma
 	return "", false, false
 }
 
-// buildCommand assembles the command for an impacted set: build, vet per tag, untagged tests, integration tests, then the guard tests of the packages outside the set.
+// buildCommand assembles the command for an impacted set: build, vet per tag, integration tests, then the guard tests of the packages outside the set.
+// The integration run compiles and runs every untagged test too, so no separate untagged run precedes it.
 func buildCommand(graph moduleGraph, set map[string]bool, guards map[string][]string) string {
 	steps := []string{"go build ./..."}
 	if len(set) > 0 {
@@ -197,7 +198,7 @@ func buildCommand(graph moduleGraph, set map[string]bool, guards map[string][]st
 		for _, tag := range vetTags {
 			steps = append(steps, "go vet -tags "+tag+" "+args)
 		}
-		steps = append(steps, "go test "+args, "go test -tags integration "+args)
+		steps = append(steps, "go test -tags integration "+args)
 	}
 
 	var outsideDirs []string

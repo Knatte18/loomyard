@@ -25,7 +25,7 @@
 // A marker not directly above a top-level `func Test…` line, or in a file the `integration` tier never compiles, is an error naming the file and line.
 // A `//testtiming:keep` line between the marker and the func line does not displace the marker, since a test carrying both stacks them as contiguous directive lines.
 //
-// The command is `go build ./...`, then `go vet` over the set under each of the three tags, then `go test` over the set, then `go test -tags integration` over the set.
+// The command is `go build ./...`, then `go vet` over the set under each of the three tags, then `go test -tags integration` over the set, which covers every untagged test too.
 // The guard tests of each package outside the set follow, all joined by `&&`.
 // An empty set runs only the build and the guard tests.
 //
