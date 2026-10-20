@@ -148,3 +148,36 @@ Part of those misses came from the measurement itself: its new output files in `
 The final rows wrote into files that already existed, which changes no directory listing.
 
 A fresh worktree still misses for every test that opens a file of the tree, since Go keys such a result on the file's absolute path and modification time.
+
+## `go_parallel` sweep
+
+```yaml
+commit: 905bc88d, the installed lyx
+date: 2026-10-20
+new_binaries: a fresh, empty GOCACHE directory under .scratch/gp-sweep/ per run, plus -ldflags=-B=0x<random 8 bytes> per run
+includes: compile time of the whole module and the standard library, since every run started with an empty build cache
+```
+
+Each run was `/usr/bin/time -v lyx gate test --tags integration ./... -- -count=1 -ldflags=-B=0x<id>` from the prime, with `GOCACHE` set to the run's own empty directory, which `lyx gate test` passes through to go test.
+`go_parallel` changed between runs through `lyx config gate --layer default --set go_parallel=<n>`, and was set back to 4 afterwards.
+The local layer refuses the key, since every gate key is cross-pair, and gate has no worktree layer, so the hub default, committed and pushed in `_board`, is the only layer a gate run reads, and the change reached Neve's hub too for the length of the sweep.
+No batten run was live before any run, and each run started once the 1-minute load average had fallen below 4.
+
+A first run at 4 with the empty `GOCACHE` alone ran every package uncached but held almost nothing: with `-trimpath` the build is reproducible, so a fresh cache links byte-identical binaries whose hashes XDR has seen.
+The `-B` linker flag writes a GNU build ID note into every linked binary, so each run's test binaries have hashes no earlier run produced.
+A probe binary built that way waited 9.95 s on its first exec.
+In the tier runs XDR still held few test binaries: small packages such as `tools/wordswap` finished in under 0.5 s at 4, and most packages at 7 s or more are the suite's slow ones, such as `internal/fabricengine` at 117-175 s.
+The rise in packages at 7 s or more at 8 and 12 follows contention between packages running at once, not holds.
+
+| `go_parallel` | Load before | Wall | User | Sys | CPU (user+sys) | Max RSS | Packages run | Cached | Failed | Packages at 7 s or more |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 4, `GOCACHE` only (pilot) | 3.25 | 184.2 s | 568.3 s | 333.1 s | 901.4 s | 451 MiB | 162 | 0 | 0 | 14 |
+| 4 | 3.32 | 219.8 s | 550.5 s | 356.1 s | 906.5 s | 453 MiB | 162 | 0 | 0 | 17 |
+| 8 | 3.73 | 206.5 s | 647.3 s | 391.9 s | 1039.2 s | 456 MiB | 162 | 0 | 0 | 32 |
+| 12 | 3.87 | 215.1 s | 561.6 s | 391.7 s | 953.3 s | 455 MiB | 162 | 0 | 0 | 79 |
+
+No run failed a test, so no test was re-run.
+
+The wall time is bound by `internal/fabricengine`, the longest package, which rose from 140 s at 4 to 175 s at 8 and 12 as more packages shared the cores.
+
+8 was the fastest value with no new failures, 6 percent under 4, but the two runs at 4 differ by 36 s, so the sweep shows no gain from a higher `go_parallel` beyond run-to-run noise when XDR holds few binaries.
