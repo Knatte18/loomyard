@@ -192,9 +192,10 @@ func (c *arbiterCall) settleExisting(attempt loomengine.ArbiterAttempt) (loomeng
 // guid is the strand a failed wait stops; when it is empty the attached run's own strand is stopped.
 // absentCause is the cause of the hand-on when no arbiter is live and none left a verdict.
 func (c *arbiterCall) attachAndConclude(attempt loomengine.ArbiterAttempt, guid string, remaining time.Duration, absentCause string) (loomengine.ArbiterEnvelope, error) {
-	spec := arbiterSpec("", loomengine.ArbiterVerdictPath(attempt.Dir), c.deps.Settings)
+	verdictPath := loomengine.ArbiterVerdictPath(attempt.Dir)
+	spec := arbiterSpec("", verdictPath, c.deps.Settings)
 	spec.Timeout = remaining
-	result, found, err := c.deps.Shuttle.AttachIfLive(spec)
+	result, found, err := c.deps.Shuttle.AttachIfLive(spec, arbiterVerdictGate(verdictPath))
 	if err == nil && !found {
 		return c.handOn(attempt, absentCause, "no arbiter is live for the attempt and it left no verdict")
 	}
@@ -256,7 +257,7 @@ func (c *arbiterCall) settleFresh(attempts []loomengine.ArbiterAttempt) (loomeng
 	}
 
 	logger.Info("loom: arbiter spawn", "run", c.in.RunID, "attempt", number, "producer", c.status.CurrentProducer, "state", string(c.status.State), "deadline", attempt.Deadline)
-	run, err := c.deps.Shuttle.Start(arbiterSpec(prompt, promptInput.VerdictPath, settings))
+	run, err := c.deps.Shuttle.Start(arbiterSpec(prompt, promptInput.VerdictPath, settings), arbiterVerdictGate(promptInput.VerdictPath))
 	if err != nil {
 		return loomengine.ArbiterEnvelope{}, fmt.Errorf("arbiter: start the arbiter agent: %w; %s", err, arbiterHandBackWayForward)
 	}

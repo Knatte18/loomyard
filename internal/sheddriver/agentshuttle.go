@@ -31,10 +31,10 @@ type AgentRun interface {
 
 // AgentShuttle is the part of shuttle a judge call drives.
 type AgentShuttle interface {
-	// Start launches spec and returns its handle.
-	Start(spec shuttleengine.Spec) (AgentRun, error)
-	// AttachIfLive waits on a live run matching spec's output files, and reports false when none is live.
-	AttachIfLive(spec shuttleengine.Spec) (shuttleengine.Result, bool, error)
+	// Start launches spec gated by gate and returns its handle; an empty gate runs ungated.
+	Start(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (AgentRun, error)
+	// AttachIfLive waits, gated by gate, on a live run matching spec's output files, and reports false when none is live.
+	AttachIfLive(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, bool, error)
 	// StopStrand ends the strand guid names and records the stop.
 	StopStrand(guid string) error
 }
@@ -44,18 +44,18 @@ type RunnerShuttle struct {
 	Runner *shuttleengine.Runner
 }
 
-// Start launches spec through the runner and returns the started run.
-func (s RunnerShuttle) Start(spec shuttleengine.Spec) (AgentRun, error) {
-	run, err := s.Runner.Start(spec)
+// Start launches spec gated by gate through the runner and returns the started run.
+func (s RunnerShuttle) Start(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (AgentRun, error) {
+	run, err := s.Runner.StartGated(spec, gate)
 	if err != nil {
 		return nil, err
 	}
 	return run, nil
 }
 
-// AttachIfLive waits on a live run matching spec's output files.
-func (s RunnerShuttle) AttachIfLive(spec shuttleengine.Spec) (shuttleengine.Result, bool, error) {
-	return s.Runner.AttachIfLive(spec)
+// AttachIfLive waits, gated by gate, on a live run matching spec's output files.
+func (s RunnerShuttle) AttachIfLive(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, bool, error) {
+	return s.Runner.AttachIfLiveGated(spec, gate)
 }
 
 // StopStrand ends the strand guid names through shuttle's stop verb.

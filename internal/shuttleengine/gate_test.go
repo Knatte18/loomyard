@@ -580,20 +580,23 @@ func TestGate_DeadlineExpiresBetweenAttempts(t *testing.T) {
 	}
 }
 
-// TestAttach_GateThreading covers a resumed run's gate: AttachGated gates it exactly as a fresh
+// TestAttach_GateThreading covers a resumed run's gate: AttachGated and AttachIfLiveGated gate it exactly as a fresh
 // RunGated run is gated, and the plain Attach entry point never carries a gate.
 //
-//testtiming:keep pins that AttachGated gates a resumed run exactly as a fresh one is gated and starts its gate spans afresh, that plain Attach leaves Result.Gate nil, and that the recorded fork authorization, not the attaching spec, chooses the gate closure and the fork audit
+//testtiming:keep pins that AttachGated and AttachIfLiveGated gate a resumed run exactly as a fresh one is gated and starts its gate spans afresh, that plain Attach leaves Result.Gate nil, and that the recorded fork authorization, not the attaching spec, chooses the gate closure and the fork audit
 func TestAttach_GateThreading(t *testing.T) {
 	tests := []struct {
 		name  string
 		gated bool
+		// ifLive attaches through AttachIfLiveGated instead of AttachGated.
+		ifLive bool
 		// recordedFork seeds the run record's fork authorization; specFork sets the attaching Spec's.
 		recordedFork, specFork bool
 		// wantForked is whether the Forked closure, not Gate, is the one called.
 		wantForked bool
 	}{
 		{name: "AttachGated threads the gate through reconstruct and wait", gated: true},
+		{name: "AttachIfLiveGated threads the gate through reconstruct and wait", gated: true, ifLive: true},
 		{name: "Attach leaves Result.Gate nil", gated: false},
 		{name: "AttachGated of a fork-authorized record runs Forked and the fork audit, though the attaching spec does not authorize forks", gated: true, recordedFork: true, specFork: false, wantForked: true},
 		{name: "AttachGated of a record without fork authorization runs Gate and no fork audit, though the attaching spec authorizes forks", gated: true, recordedFork: false, specFork: true},
@@ -633,7 +636,9 @@ func TestAttach_GateThreading(t *testing.T) {
 				found  bool
 				err    error
 			)
-			if tt.gated {
+			if tt.ifLive {
+				result, found, err = runner.AttachIfLiveGated(spec, GateSpec{{Gate: gate, Forked: forked, Attempts: 3}})
+			} else if tt.gated {
 				result, found, err = runner.AttachGated(spec, GateSpec{{Gate: gate, Forked: forked, Attempts: 3}})
 			} else {
 				result, found, err = runner.Attach(spec)

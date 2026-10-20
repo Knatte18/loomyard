@@ -76,7 +76,14 @@ func (r *Runner) AttachIfLive(spec Spec) (Result, bool, error) {
 	return r.attachAndWait(spec, GateSpec{}, false)
 }
 
-// attachAndWait is the probe followed by Wait on a found run, the shared tail of Attach, AttachGated and AttachIfLive.
+// AttachIfLiveGated waits on a live run matching spec's output files and reports false when none is live.
+// A run it reconstructs and waits on carries gate exactly as a fresh StartGated run would.
+// It removes nothing on any path.
+func (r *Runner) AttachIfLiveGated(spec Spec, gate GateSpec) (Result, bool, error) {
+	return r.attachAndWait(spec, gate, false)
+}
+
+// attachAndWait is the probe followed by Wait on a found run, the shared tail of Attach, AttachGated, AttachIfLive and AttachIfLiveGated.
 func (r *Runner) attachAndWait(spec Spec, gate GateSpec, removeSuperseded bool) (Result, bool, error) {
 	run, found, err := r.attach(spec, gate, removeSuperseded)
 	if err != nil || !found {
@@ -86,8 +93,8 @@ func (r *Runner) attachAndWait(spec Spec, gate GateSpec, removeSuperseded bool) 
 	return result, true, err
 }
 
-// attach is the one probe body behind Attach, AttachGated, AttachIfLive and ProbeGated;
-// removeSuperseded is false only for AttachIfLive.
+// attach is the one probe body behind Attach, AttachGated, AttachIfLive, AttachIfLiveGated and ProbeGated;
+// removeSuperseded is false only for AttachIfLive and AttachIfLiveGated.
 // It returns the reconstructed run without waiting on it.
 func (r *Runner) attach(spec Spec, gate GateSpec, removeSuperseded bool) (*Run, bool, error) {
 	if r.toldErr != nil {
