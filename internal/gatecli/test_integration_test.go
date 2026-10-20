@@ -37,17 +37,18 @@ const (
 	// helperRoleGate runs `lyx gate test` over helperCwdEnv and the process arguments, with the stand-in as its go binary unless helperGoEnv is empty.
 	helperRoleGate = "gate"
 	// helperRoleStandIn records how it was invoked, then exits with helperExitEnv or, under helperHoldEnv, sleeps until killed with a sleeper child.
-	// A build invocation exits with helperBuildExitEnv instead.
+	// A build invocation instead writes helperBuildContentEnv to its `-o` file when it succeeds and exits with helperBuildExitEnv.
 	helperRoleStandIn = "standin"
 	// helperRoleSleeper sleeps until killed.
 	helperRoleSleeper = "sleeper"
 
-	helperCwdEnv       = "GATECLI_TEST_CWD"
-	helperGoEnv        = "GATECLI_TEST_GO"
-	helperRecordEnv    = "GATECLI_TEST_RECORD"
-	helperExitEnv      = "GATECLI_TEST_EXIT"
-	helperBuildExitEnv = "GATECLI_TEST_BUILD_EXIT"
-	helperHoldEnv      = "GATECLI_TEST_HOLD"
+	helperCwdEnv          = "GATECLI_TEST_CWD"
+	helperGoEnv           = "GATECLI_TEST_GO"
+	helperRecordEnv       = "GATECLI_TEST_RECORD"
+	helperExitEnv         = "GATECLI_TEST_EXIT"
+	helperBuildExitEnv    = "GATECLI_TEST_BUILD_EXIT"
+	helperBuildContentEnv = "GATECLI_TEST_BUILD_CONTENT"
+	helperHoldEnv         = "GATECLI_TEST_HOLD"
 )
 
 func init() {
@@ -67,7 +68,9 @@ type standInRecord struct {
 	// Prebuilt is the prebuilt-lyx variable the stand-in saw.
 	Prebuilt string `json:"prebuilt"`
 	// Enclosing is the enclosing-gate pid variable the stand-in saw.
-	Enclosing  string `json:"enclosing"`
+	Enclosing string `json:"enclosing"`
+	// Trace is the trace-id variable the stand-in saw; empty when the gate dropped it.
+	Trace      string `json:"trace"`
 	PID        int    `json:"pid"`
 	Grandchild int    `json:"grandchild"`
 }
@@ -89,7 +92,7 @@ func runGateHelper() int {
 }
 
 func runStandIn() int {
-	record := standInRecord{Args: os.Args[1:], GoFlags: os.Getenv("GOFLAGS"), Slot: os.Getenv(gateslot.InheritEnv), Strand: os.Getenv(agentname.StrandNameEnv), Prebuilt: os.Getenv(gateslot.PrebuiltLyxEnv), Enclosing: os.Getenv(enclosingGateEnv), PID: os.Getpid()}
+	record := standInRecord{Args: os.Args[1:], GoFlags: os.Getenv("GOFLAGS"), Slot: os.Getenv(gateslot.InheritEnv), Strand: os.Getenv(agentname.StrandNameEnv), Prebuilt: os.Getenv(gateslot.PrebuiltLyxEnv), Enclosing: os.Getenv(enclosingGateEnv), Trace: os.Getenv(logger.TraceIDEnv), PID: os.Getpid()}
 	// A build invocation only records itself and exits with its own code; the hold belongs to the test invocation.
 	isBuild := len(os.Args) > 1 && os.Args[1] == "build"
 	hold := !isBuild && os.Getenv(helperHoldEnv) != ""
@@ -116,6 +119,11 @@ func runStandIn() int {
 	}
 	if isBuild {
 		code, _ := strconv.Atoi(os.Getenv(helperBuildExitEnv))
+		if output := slices.Index(os.Args, "-o"); code == 0 && output >= 0 && output+1 < len(os.Args) {
+			if err := os.WriteFile(os.Args[output+1], []byte(os.Getenv(helperBuildContentEnv)), 0o755); err != nil {
+				return 1
+			}
+		}
 		return code
 	}
 	if hold {
@@ -295,13 +303,16 @@ func TestGateTest_Scenario(t *testing.T) {
 	}
 
 	t.Run("a free slot runs go test under the cap and exits with its code", func(t *testing.T) {
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tags", "integration", "./pkg", "--", "-run", "X"}, env: []string{helperExitEnv + "=7", strandEnvEntry}})
+		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tags", "integration", "./pkg", "--", "-run", "X"}, env: []string{helperExitEnv + "=7", strandEnvEntry, logger.TraceIDEnv + "=0123456789abcdef"}})
 		if code := g.wait(t); code != 7 {
 			t.Errorf("exit code = %d; want the stand-in's 7", code)
 		}
 		record := g.standIn(t)
 		if record.Strand != "" {
 			t.Errorf("go environment %s = %q; want it dropped", agentname.StrandNameEnv, record.Strand)
+		}
+		if record.Trace != "" {
+			t.Errorf("go environment %s = %q; want it dropped", logger.TraceIDEnv, record.Trace)
 		}
 		if want := strconv.Itoa(g.cmd.Process.Pid); record.Enclosing != want {
 			t.Errorf("go environment %s = %q; want the gate's pid %s", enclosingGateEnv, record.Enclosing, want)
@@ -524,24 +535,40 @@ func TestGateTest_Scenario(t *testing.T) {
 		requireFree(t)
 	})
 
-	t.Run("a tagged run builds lyx once, exports it to go test and removes it afterwards", func(t *testing.T) {
+	t.Run("a tagged run builds lyx once, exports it to go test from the store under its content's name and removes the build", func(t *testing.T) {
 		if err := os.MkdirAll(filepath.Join(prime, "cmd", "lyx"), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tags", "integration", "./pkg"}})
-		if code := g.wait(t); code != 0 {
-			t.Fatalf("exit code = %d, stdout %q; want 0", code, g.stdout.String())
+		// buildAndExport runs one tagged gate whose stand-in build writes content, and returns the build path and the path go test saw.
+		buildAndExport := func(t *testing.T, content string) (bin, exported string) {
+			t.Helper()
+			g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tags", "integration", "./pkg"}, env: []string{helperBuildContentEnv + "=" + content}})
+			if code := g.wait(t); code != 0 {
+				t.Fatalf("exit code = %d, stdout %q; want 0", code, g.stdout.String())
+			}
+			records := g.records(t)
+			if len(records) != 2 || len(records[0].Args) != 9 || records[0].Args[0] != "build" || records[1].Args[0] != "test" {
+				t.Fatalf("records = %+v; want one build invocation, then the test invocation", records)
+			}
+			bin = records[0].Args[7]
+			if want := []string{"build", "-C", prime, "-p", "3", "-trimpath", "-o", bin, "./cmd/lyx"}; !slices.Equal(records[0].Args, want) {
+				t.Errorf("build args = %q; want %q", records[0].Args, want)
+			}
+			return bin, records[1].Prebuilt
 		}
-		records := g.records(t)
-		if len(records) != 2 || len(records[0].Args) != 9 || records[0].Args[0] != "build" || records[1].Args[0] != "test" {
-			t.Fatalf("records = %+v; want one build invocation, then the test invocation", records)
+
+		bin, exported := buildAndExport(t, "lyx build one")
+		if filepath.Dir(exported) != pool.PrebuiltDir() || !strings.HasPrefix(filepath.Base(exported), "lyx-") {
+			t.Errorf("go test saw %s = %q; want a lyx- entry of the store %s", gateslot.PrebuiltLyxEnv, exported, pool.PrebuiltDir())
 		}
-		bin := records[0].Args[7]
-		if want := []string{"build", "-C", prime, "-p", "3", "-trimpath", "-o", bin, "./cmd/lyx"}; !slices.Equal(records[0].Args, want) {
-			t.Errorf("build args = %q; want %q", records[0].Args, want)
+		if got, err := os.ReadFile(exported); err != nil || string(got) != "lyx build one" {
+			t.Errorf("the stored binary %s = (%q, %v); want the build's content", exported, got, err)
 		}
-		if records[1].Prebuilt != bin {
-			t.Errorf("go test saw %s = %q; want the built %q", gateslot.PrebuiltLyxEnv, records[1].Prebuilt, bin)
+		if _, again := buildAndExport(t, "lyx build one"); again != exported {
+			t.Errorf("a second run of the same build exported %q; want the same %q", again, exported)
+		}
+		if _, changed := buildAndExport(t, "lyx build two"); changed == exported || filepath.Dir(changed) != pool.PrebuiltDir() {
+			t.Errorf("a changed build exported %q; want a store entry other than %q", changed, exported)
 		}
 		if _, err := os.Stat(filepath.Dir(bin)); !os.IsNotExist(err) {
 			t.Errorf("the build directory %s survived the gate (stat err=%v); want it removed", filepath.Dir(bin), err)
