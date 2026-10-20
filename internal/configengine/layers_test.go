@@ -24,6 +24,8 @@ const (
 	layerTemplate = "name: tpl\nport: 80\nnested:\n  deep: 1\nlist: [a, b]\nlabels:\n  bug: a bug\nrun: echo\n"
 	// fullDefault holds every template key, so a load over it fills nothing.
 	fullDefault = "name: d\nport: 1\nnested:\n  deep: 2\nlist: [x, y]\nlabels:\n  a: A\n  b: B\nrun: sh\n"
+	// perNameTail is the per-name map a row with perNameMaps appends to the template.
+	perNameTail = "lenses:\n  a: A\n"
 )
 
 // layerSpec is a per-worktree spec with one open map and a classification of some keys.
@@ -140,8 +142,19 @@ func TestLoad_LayerStack(t *testing.T) {
 		wantAbsent []string
 		// wantUnknown maps each layer whose file holds keys the template lacks to the keys of its one warning, over both loaders; empty means no warning.
 		wantUnknown map[configengine.Layer]string
+		// perNameMaps is the spec's per-name maps; a row that sets it loads over the template with perNameTail appended.
+		perNameMaps []string
 		want        map[string]string
 	}{
+		{
+			name: "a name the template lacks under a per-name map never warns while a key outside it still does",
+			files: map[configengine.Layer]string{
+				configengine.LayerDefault: fullDefault + perNameTail + "  extra: E\nold_name: d\n",
+			},
+			perNameMaps: []string{"lenses"},
+			wantUnknown: map[configengine.Layer]string{configengine.LayerDefault: "old_name"},
+			want:        map[string]string{"name": "d", "lenses": "map[a:A extra:E]"},
+		},
 		{
 			name: "keys the template lacks warn once per file over both loaders, naming the reconcile that removes them",
 			files: map[configengine.Layer]string{
@@ -292,6 +305,10 @@ func TestLoad_LayerStack(t *testing.T) {
 			spec := layerSpec()
 			spec.HubWide = tc.hubWide
 			spec.RetiredKeys = tc.retired
+			spec.PerNameMaps = tc.perNameMaps
+			if len(tc.perNameMaps) > 0 {
+				spec.Template = append(spec.Template, perNameTail...)
+			}
 
 			var resolved []byte
 			if tc.strictErr != "" {

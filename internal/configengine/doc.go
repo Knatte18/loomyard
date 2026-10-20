@@ -75,4 +75,11 @@
 // [Set] takes a trailing variadic openMaps, and a [Spec] carries `OpenMaps`: the dotted paths of the module's open maps, mappings whose keys the user owns.
 // They are passed unchanged to yamlengine, which defines what a declared path changes;
 // with none declared, every caller behaves as before.
+//
+// # Per-name maps
+//
+// A [Spec] also carries `PerNameMaps`: the dotted paths of the module's per-name maps, mappings of names each carried whole as one unit.
+// The unknown-keys warning and [Set], on the base and the sparse layers, pass them unchanged to yamlengine, which defines what a declared path changes;
+// so a name under a per-name map that the template lacks is never warned as a key no loader reads, and `--set` knows `P.<name>` for any name.
+// The load's template fill needs no declaration, and the local layer is unchanged.
 package configengine
