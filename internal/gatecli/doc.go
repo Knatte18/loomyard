@@ -4,7 +4,7 @@
 //
 // # Verb
 //
-// `lyx gate test [-C <dir>] [--tags <tags>] <packages...> [-- <go test flags>]` runs `go test -C <dir> -p <cap>`, then `-tags <tags>` when given, then the packages, then the flags after `--`.
+// `lyx gate test [-C <dir>] [--tags <tags>] [--guards] <packages...> [-- <go test flags>]` runs `go test -C <dir> -p <cap>`, then `-tags <tags>` when given, then the packages, then the flags after `--`.
 // The -C directory is made absolute against the seam cwd, never the process cwd when -C is given, and must exist.
 // At least one package is required; a module-wide pattern is accepted and slotted.
 // A package argument spelled relative (`.`, `..`, `./…` or `../…`), not ending in `.go` and with a trailing `/...` removed must name a directory under the -C directory, or the verb refuses before hub resolution, any slot and the prebuild; for an external test package it names the package directory to pass instead.
@@ -18,6 +18,18 @@
 // Bound: a run whose binary is pruned while it runs fails its later lyxbin tests with the stale-prebuilt error; the retention is far past any gate run.
 // A root without `cmd/lyx` builds nothing, and a nested module inside a hub still builds the worktree's `lyx`, which that module's tests may leave unused.
 // A build failure is a JSON error with the build's output and exit code 1, before go test runs.
+//
+// With `--guards` the verb also runs every top-level test marked `//lyx:guard` in the module at the -C directory, by name in its own package, inside the same slot.
+// The package list may then be empty.
+// A tag list without `integration` is refused first, before the package-directory check and hub resolution, since every guard compiles under that tag; the way forward is to add it to `--tags`.
+// After the package-directory check and before hub resolution and any slot, `impactset.ModuleGuardTests` scans the -C directory, and a scan error refuses the verb with its file and line and a way forward for its kind:
+// move a misplaced marker directly above its `func Test…` line, compile the marked test's file under `integration`, or make an unparsable or unreadable file readable and parseable.
+// Any other scan error, such as an unreadable package directory, names the module directory and the way forward to make `go list ./...` succeed there.
+// Inside the held slot, after the prebuild, the verb runs `go test` over the named packages when there are any, then one `go test` per guard package in directory order, its arguments the package's own, the flags after `--` and then `-run '^(<names>)$'`, so the guard's own pattern is the last `-run` and wins over one among those flags.
+// Each run is a tied child under the CPU watchdog, and the verb stops at the first non-zero exit and returns that code, or 0 when every run passes.
+// With no package named and no marked test in the module, it spawns no `go test`, logs that no guard test was found and exits 0.
+// The flag widens what one call runs and never what it skips; it adds runs of tests the repository already holds and runs only inside the slot the verb holds or inherits.
+// Bound: an unmarked scanning test is not run, as for the round gate.
 //
 // # Hub resolution
 //
