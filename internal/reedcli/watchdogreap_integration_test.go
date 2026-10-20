@@ -65,7 +65,7 @@ func compressedReapTiming() watchdogTiming {
 	}
 }
 
-// reapSuccessWait bounds every wait for a reap or a discovery that a step expects to succeed.
+// reapSuccessWait bounds the waits for a session to go or a fresh session to appear that a step expects to succeed.
 // Each discovery cycle spawns tmux and git, so a host whose security agent holds new process images stretches every cycle far past the compressed cadence, and a window derived from that cadence fails there.
 // The waits poll, so a fast host returns as soon as the condition holds and never pays the bound.
 const reapSuccessWait = 30 * time.Second
