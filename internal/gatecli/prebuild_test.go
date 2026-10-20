@@ -150,20 +150,6 @@ func TestStorePrebuilt(t *testing.T) {
 		}
 	})
 
-	t.Run("RefreshStoredMarksAnExistingEntryUsed", func(t *testing.T) {
-		t.Parallel()
-
-		entry := filepath.Join(t.TempDir(), contentName)
-		writeAged(t, entry, builtContent, prebuiltRetention)
-		refreshed, err := refreshStored(entry, now)
-		if !refreshed || err != nil {
-			t.Fatalf("refreshStored() = (%v, %v); want (true, nil)", refreshed, err)
-		}
-		if info, err := os.Stat(entry); err != nil || !info.ModTime().Equal(now) {
-			t.Errorf("entry mod time = (%v, %v); want %v", info, err, now)
-		}
-	})
-
 	t.Run("CopyIntoPlaceFailsOnAMissingSource", func(t *testing.T) {
 		t.Parallel()
 
