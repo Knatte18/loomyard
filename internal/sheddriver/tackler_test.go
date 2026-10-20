@@ -23,8 +23,9 @@ type agentFake struct {
 	attaches     []shuttleengine.Spec
 	stoppedGUIDs []string
 	runStops     int
+	gates        []shuttleengine.GateSpec
 
-	startErr   error
+	startErr  error
 	runGUID    string
 	onWait     func(spec shuttleengine.Spec)
 	waitResult shuttleengine.Result
@@ -36,16 +37,18 @@ type agentFake struct {
 	onAttach     func(spec shuttleengine.Spec)
 }
 
-func (f *agentFake) Start(spec shuttleengine.Spec, _ shuttleengine.GateSpec) (AgentRun, error) {
+func (f *agentFake) Start(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (AgentRun, error) {
 	if f.startErr != nil {
 		return nil, f.startErr
 	}
 	f.starts = append(f.starts, spec)
+	f.gates = append(f.gates, gate)
 	return &agentFakeRun{fake: f, spec: spec}, nil
 }
 
-func (f *agentFake) AttachIfLive(spec shuttleengine.Spec, _ shuttleengine.GateSpec) (shuttleengine.Result, bool, error) {
+func (f *agentFake) AttachIfLive(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, bool, error) {
 	f.attaches = append(f.attaches, spec)
+	f.gates = append(f.gates, gate)
 	if f.onAttach != nil {
 		f.onAttach(spec)
 	}
@@ -334,6 +337,11 @@ func TestTacklerCall_SpawnPath(t *testing.T) {
 			}
 			if len(f.fake.starts) != tt.wantStarts || f.fake.runStops != tt.wantStops || len(f.fake.attaches) != tt.wantAttach {
 				t.Errorf("starts, run stops, attaches = %d, %d, %d; want %d, %d, %d", len(f.fake.starts), f.fake.runStops, len(f.fake.attaches), tt.wantStarts, tt.wantStops, tt.wantAttach)
+			}
+			for i, gate := range f.fake.gates {
+				if len(gate) != 0 {
+					t.Errorf("gate of start or attach %d = %d entries; want an ungated tackler", i, len(gate))
+				}
 			}
 			if _, found, _ := ReadTacklerMarker(f.markerPath()); found {
 				t.Error("marker still present after the call finished; want it removed")
