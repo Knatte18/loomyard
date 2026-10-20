@@ -124,7 +124,7 @@ func ModuleGuardTests(moduleDir string) (map[string][]string, error) {
 		}
 		relative, err := filepath.Rel(absolute, dir)
 		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-			continue
+			return nil, fmt.Errorf("impactset: list the packages of %s: package directory %s lies outside the module directory", absolute, dir)
 		}
 		dirs = append(dirs, filepath.ToSlash(relative))
 	}
