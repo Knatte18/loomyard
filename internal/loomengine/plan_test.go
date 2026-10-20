@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/friction"
+	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -40,7 +40,7 @@ func planTableConfig(lenses string) Config {
 	return Config{Plan: "opus[effort=high]", PlanTimeoutMin: 120, PlanLenses: lenses}
 }
 
-// templatePlanFan is the fan the embedded burler template defines for the Plan-Write lead's lens forks.
+// templatePlanFan is the fan the embedded lenses template defines for the Plan-Write lead's lens forks.
 const templatePlanFan = "twill-plan"
 
 // TestPlanTable verifies PlanTable builds the lead the Plan-Write row needs, at an unanchored location and at a subpath-anchored one, with and without the plan_lenses key.
@@ -287,24 +287,28 @@ func TestPlanTable(t *testing.T) {
 
 	t.Run("lens review", func(t *testing.T) {
 		t.Parallel()
-		templateFan, err := burlerengine.ResolveFan(burlerengine.Config{}, templatePlanFan)
+		lensesConfig, err := lenses.Load(configengine.Dirs{Anchor: t.TempDir()})
 		if err != nil {
-			t.Fatalf("ResolveFan(zero Config, %q) = _, %v; want nil error", templatePlanFan, err)
+			t.Fatalf("lenses.Load(dir without _lyx) = _, %v; want nil error", err)
+		}
+		templateFan, err := lenses.ResolveFan(lensesConfig, templatePlanFan)
+		if err != nil {
+			t.Fatalf("ResolveFan(template config, %q) = _, %v; want nil error", templatePlanFan, err)
 		}
 		tests := []struct {
 			name       string
-			burlerYAML string
+			lensesYAML string
 			wantLenses []string
 		}{
-			{name: "template fan without burler.yaml", wantLenses: lensNames(templateFan)},
-			{name: "burler.yaml redefines the fan", burlerYAML: "fans:\n  twill-plan: [test-economy]\n", wantLenses: []string{"test-economy"}},
+			{name: "template fan without lenses.yaml", wantLenses: lensNames(templateFan)},
+			{name: "lenses.yaml redefines the fan", lensesYAML: "fans:\n  twill-plan: [test-economy]\n", wantLenses: []string{"test-economy"}},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
 				layout := planTableLayout(t, "")
-				if tt.burlerYAML != "" {
-					writeBurlerYAML(t, layout, tt.burlerYAML)
+				if tt.lensesYAML != "" {
+					writeLensesYAML(t, layout, tt.lensesYAML)
 				}
 				stencilsDir := newTestStencilsDir(t)
 
@@ -329,10 +333,10 @@ func TestPlanTable(t *testing.T) {
 					}
 					at += next
 				}
-				if tt.burlerYAML != "" {
+				if tt.lensesYAML != "" {
 					for _, dropped := range templateFan {
 						if dropped.Name != "test-economy" && strings.Contains(prompt, "- "+dropped.Name+": ") {
-							t.Errorf("twill lead prompt carries lens %q; want only the burler.yaml fan %v", dropped.Name, tt.wantLenses)
+							t.Errorf("twill lead prompt carries lens %q; want only the lenses.yaml fan %v", dropped.Name, tt.wantLenses)
 						}
 					}
 				}
@@ -426,23 +430,23 @@ func TestPlanTable(t *testing.T) {
 			// lenses is the plan_lenses value.
 			lenses        string
 			removeStencil bool
-			// burlerYAML, when non-empty, is planted as the anchor's burler.yaml.
-			burlerYAML   string
+			// lensesYAML, when non-empty, is planted as the anchor's lenses.yaml.
+			lensesYAML   string
 			wantErrNames []string
 		}{
 			{name: "unparsable plan model-spec", plan: "opus[effort", wantErrNames: []string{"plan role model-spec"}},
 			{name: "missing stencil", plan: "opus[effort=high]", removeStencil: true, wantErrNames: []string{"loom-template-plan"}},
-			{name: "lens fan with a burler.yaml that does not parse", plan: "opus[effort=high]", lenses: templatePlanFan, burlerYAML: "fans: [unterminated\n", wantErrNames: []string{"plan_lenses", "twill-plan", "burler.yaml", `set the key to ""`}},
-			{name: "lens fan naming an undefined lens", plan: "opus[effort=high]", lenses: templatePlanFan, burlerYAML: "fans:\n  twill-plan:\n    - no-such-lens\n", wantErrNames: []string{"plan_lenses", "twill-plan", "no-such-lens", "burler.yaml", `set the key to ""`}},
-			{name: "lens fan missing from burler.yaml and the template", plan: "opus[effort=high]", lenses: "no-such-fan", wantErrNames: []string{"plan_lenses", "no-such-fan", "burler.yaml", "define the fan and its lenses in burler.yaml", `set the key to ""`}},
-			{name: "lens fan with no lenses", plan: "opus[effort=high]", lenses: templatePlanFan, burlerYAML: "fans:\n  twill-plan: []\n", wantErrNames: []string{"plan_lenses", "twill-plan", "burler.yaml", `set the key to ""`}},
+			{name: "lens fan with a lenses.yaml that does not parse", plan: "opus[effort=high]", lenses: templatePlanFan, lensesYAML: "fans: [unterminated\n", wantErrNames: []string{"plan_lenses", "twill-plan", "lenses.yaml", `set the key to ""`}},
+			{name: "lens fan naming an undefined lens", plan: "opus[effort=high]", lenses: templatePlanFan, lensesYAML: "fans:\n  twill-plan:\n    - no-such-lens\n", wantErrNames: []string{"plan_lenses", "twill-plan", "no-such-lens", "lenses.yaml", `set the key to ""`}},
+			{name: "lens fan missing from lenses.yaml and the template", plan: "opus[effort=high]", lenses: "no-such-fan", wantErrNames: []string{"plan_lenses", "no-such-fan", "lenses.yaml", "define the fan and its lenses in lenses.yaml", `set the key to ""`}},
+			{name: "lens fan with no lenses", plan: "opus[effort=high]", lenses: templatePlanFan, lensesYAML: "fans:\n  twill-plan: []\n", wantErrNames: []string{"plan_lenses", "twill-plan", "lenses.yaml", `set the key to ""`}},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
 				layout := planTableLayout(t, "")
-				if tt.burlerYAML != "" {
-					writeBurlerYAML(t, layout, tt.burlerYAML)
+				if tt.lensesYAML != "" {
+					writeLensesYAML(t, layout, tt.lensesYAML)
 				}
 				stencilsDir := newTestStencilsDir(t)
 				if tt.removeStencil {
