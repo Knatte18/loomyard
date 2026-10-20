@@ -40,6 +40,10 @@ var temporaryWindowCounter atomic.Uint64
 // windowListFormat is the session-wide listing format OpenWindow finds a named window with: window id, pane id, pane dead flag, the own-window flag, then the window name.
 const windowListFormat = "#{window_id} #{pane_id} #{pane_dead} #{?#{@lyx_own},1,0} #{window_name}"
 
+// windowReadBackFormat is the format OpenWindow reads a new window's remain-on-exit back with: the answering window's id, then the value.
+// The id is needed because tmux answers a target window that has already closed from another scope, exiting 0 with an empty id and the global value.
+const windowReadBackFormat = "#{window_id} #{remain-on-exit}"
+
 // OpenWindow opens a detached window named name in this worktree's reed session and runs `lyx` with lyxArgs in it.
 // The window is never selected, so it takes no focus, it carries @lyx_hidden, so the status bar gives it no button, and it closes when its command exits.
 // It opens after the highest-index window, so every hidden window sits behind the shell window, which is first renamed and moved into place when the session predates the window order.
@@ -100,15 +104,20 @@ func (e *Engine) OpenWindow(name string, lyxArgs []string) (WindowResult, error)
 		windowID := strings.TrimSpace(out)
 		logger.Info("reed: opened window", "socket", e.Socket(), "session", session, "window", windowID, "name", name, "command", command)
 
-		// A command that exited at once has already closed its window, so a failed read is not a read-back mismatch.
-		value, err := e.tmux.output("display-message", "-p", "-t", windowID, "#{remain-on-exit}")
-		if err != nil {
+		// A command that exited at once has already closed its window,
+		// so a failed read or a reply from another window is not a read-back mismatch.
+		reply, err := e.tmux.output("display-message", "-p", "-t", windowID, windowReadBackFormat)
+		answeringWindowID, value, _ := strings.Cut(strings.TrimRight(reply, "\r\n"), " ")
+		switch {
+		case err != nil:
 			logger.Debug("reed: opened window is gone before its read-back", "socket", e.Socket(), "session", session, "window", windowID, "err", err)
-		} else if strings.TrimSpace(value) != "off" {
+		case answeringWindowID != windowID:
+			logger.Debug("reed: opened window is gone before its read-back", "socket", e.Socket(), "session", session, "window", windowID, "answered_by", answeringWindowID)
+		case value != "off":
 			if killErr := e.tmux.run("kill-pane", "-t", windowID); killErr != nil {
 				logger.Warn("reed: could not kill the window that failed its read-back", "socket", e.Socket(), "session", session, "window", windowID, "err", killErr)
 			}
-			return fmt.Errorf("%w: window %s read %q", ErrWindowReadBack, windowID, strings.TrimSpace(value))
+			return fmt.Errorf("%w: window %s read %q", ErrWindowReadBack, windowID, value)
 		}
 		result = WindowResult{WindowID: windowID, Name: name}
 		return nil
