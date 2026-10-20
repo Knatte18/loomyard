@@ -49,7 +49,7 @@ func TestWire_DarnRecipe(t *testing.T) {
 	t.Run("a darn seed fills the darn seams, the verify source and the attempts", func(t *testing.T) {
 		t.Parallel()
 		loc := hubLocation(t, "pair", ".")
-		seedDarnHubConfig(t, loc.HubPath, `"go test ./..."`, "5", "tree_scope: {}", `tree_scope: {"tools": "./tools/..."}`, `tree_scope_verify: ""`, `tree_scope_verify: "lyx gate test {targets}"`)
+		seedDarnHubConfig(t, loc.HubPath, `"go test ./..."`, "5")
 		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeDarn}
 		if err := c.wire(loc, loc.AnchorPath()); err != nil {
 			t.Fatalf("wire() = %v; want nil", err)

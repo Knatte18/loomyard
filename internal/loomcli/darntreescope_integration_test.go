@@ -9,11 +9,17 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // TestDarnTreeScope_ClassifiesAtEachCall steps one pair through the diffs a task branch can hold and pins the seam's answer after each, reading the hub-wide darn.yaml afresh at every call.
@@ -31,13 +37,53 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 	seed(t, trees, scopedVerify)
 
 	prime := hub.PrimeWorktree()
-	locate := func(t *testing.T, slug string) func() (string, bool, error) {
+	resolve := func(t *testing.T, slug string) *lyxcwd.Location {
 		t.Helper()
 		location, err := lyxcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
 		if err != nil {
 			t.Fatalf("ResolveWorktree(%s) = %v; want nil", hub.PairCodeWorktree(slug), err)
 		}
-		return darnTreeScope(location)
+		return location
+	}
+	locate := func(t *testing.T, slug string) func() (string, bool, error) {
+		t.Helper()
+		return darnTreeScope(resolve(t, slug))
+	}
+	// landing builds the pair's landing seams over the darn verify source, with the values the seams under test do not read left minimal.
+	landing := func(t *testing.T, slug string) landingshed.Deps {
+		t.Helper()
+		location := resolve(t, slug)
+		return landingDeps(
+			location,
+			shedrun.RecipeDarn,
+			websterengine.Geometry{WebsterDir: "/webster", StencilsDir: "/stencils"},
+			"task/"+slug,
+			"https://example.com/origin.git",
+			"main",
+			true,
+			func() error { return nil },
+			modelspec.Registry{"claude/sonnet-5": {}},
+			&shuttleengine.Runner{},
+			landingshed.Config{},
+			"parent-session",
+			nil,
+			func(string, time.Time) error { return nil },
+			func() (string, error) { return "", nil },
+			darnVerifySource(location),
+			parentLockDeps(location, shedrun.SelfRunID, "", ""),
+			time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+		)
+	}
+	assertLanding := func(t *testing.T, deps landingshed.Deps, wantCommand string, wantSkip bool) {
+		t.Helper()
+		command, err := deps.VerifyCommand()
+		if err != nil || command != wantCommand {
+			t.Errorf("VerifyCommand() = %q, %v; want %q, nil", command, err, wantCommand)
+		}
+		skip, err := deps.PublishVerifySkip()
+		if err != nil || skip != wantSkip {
+			t.Errorf("PublishVerifySkip() = %v, %v; want %v, nil", skip, err, wantSkip)
+		}
 	}
 	assertAnswer := func(t *testing.T, seam func() (string, bool, error), wantCommand string, wantScoped bool) {
 		t.Helper()
@@ -63,9 +109,11 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 	hubforge.AddPair(t, hub, slug)
 	worktree := hub.PairCodeWorktree(slug)
 	seam := locate(t, slug)
+	deps := landing(t, slug)
 
 	if !t.Run("a pair with no commit of its own is tree-scoped over no targets", func(t *testing.T) {
 		assertAnswer(t, seam, "run ", true)
+		assertLanding(t, deps, "run ", true)
 	}) {
 		return
 	}
@@ -74,6 +122,7 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 		gitkit.CommitFile(t, worktree, "docs/ä.md", "docs\n", "docs change")
 		gitkit.CommitFile(t, worktree, "tools/a.go", "package tools\n", "tools change")
 		assertAnswer(t, seam, "run ./tools/...", true)
+		assertLanding(t, deps, "run ./tools/...", true)
 	}) {
 		return
 	}
@@ -82,6 +131,7 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 		gitkit.CommitFile(t, prime, "internal/p.go", "package internal\n", "parent production change")
 		gitkit.Git(t, worktree, "merge", "--no-edit", gitkit.CurrentBranch(t, prime))
 		assertAnswer(t, seam, "run ./tools/...", true)
+		assertLanding(t, deps, "run ./tools/...", true)
 	}) {
 		return
 	}
@@ -95,6 +145,7 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 		gitkit.Git(t, worktree, "add", "--", "internal/r.go")
 		gitkit.Git(t, worktree, "commit", "--no-edit")
 		assertAnswer(t, seam, "", false)
+		assertLanding(t, deps, "run all", false)
 	}) {
 		return
 	}
@@ -110,6 +161,7 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 		gitkit.Git(t, freshWorktree, "mv", "internal/x.go", "tools/x.go")
 		gitkit.Git(t, freshWorktree, "commit", "-m", "move the file into tools")
 		assertAnswer(t, locate(t, freshSlug), "", false)
+		assertLanding(t, landing(t, freshSlug), "run all", false)
 	}) {
 		return
 	}
@@ -117,6 +169,20 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 	if !t.Run("a tree key with a leading dot is refused with the editor way forward", func(t *testing.T) {
 		seed(t, `tree_scope: {"./tools": ""}`, scopedVerify)
 		assertRefusal(t, seam, "./tools", "lyx config darn's editor")
+		wantRefusal := []string{"./tools", "lyx config darn's editor", "then re-run the lyx command that refused"}
+		_, commandErr := deps.VerifyCommand()
+		_, skipErr := deps.PublishVerifySkip()
+		for name, err := range map[string]error{"VerifyCommand()": commandErr, "PublishVerifySkip()": skipErr} {
+			if err == nil {
+				t.Errorf("%s error = nil; want a refusal", name)
+				continue
+			}
+			for _, want := range wantRefusal {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("%s error = %q; want it to contain %q", name, err, want)
+				}
+			}
+		}
 	}) {
 		return
 	}
@@ -135,5 +201,6 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 	t.Run("an emptied tree_scope_verify turns tree scope off", func(t *testing.T) {
 		seed(t, trees, `tree_scope_verify: ""`)
 		assertAnswer(t, seam, "", false)
+		assertLanding(t, deps, "run all", false)
 	})
 }

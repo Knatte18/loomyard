@@ -44,13 +44,27 @@ func reworkRowFor(recipe string) string {
 	return loomshed.NamePRRework
 }
 
-// darnVerifySource returns the darn recipe's verify source: darn.yaml's verify command, and the Darn-Write route back to a fix.
-// command reads the hub-wide file each time it is called, never at construction, so an edit between steps is seen;
-// a missing file and an empty value are errors naming the way forward.
+// darnVerifySource returns the darn recipe's verify source: the verify command, and the Darn-Write route back to a fix.
+// command resolves at each call, never at construction, so an edit between steps is seen:
+// the tree-scoped command when the task diff is wholly under the hub's configured trees, else darn.yaml's verify;
+// a missing file, an empty value and a malformed tree key are errors naming the way forward.
+// publishSkip answers at each call whether the diff is tree-scoped, so Publish skips `publish_verify` for it.
 func darnVerifySource(l *lyxcwd.Location) verifySource {
+	treeScope := darnTreeScope(l)
 	return verifySource{
 		command: func() (string, error) {
+			command, scoped, err := treeScope()
+			if err != nil {
+				return "", err
+			}
+			if scoped {
+				return command, nil
+			}
 			return darnengine.VerifyCommand(fabricengine.ConfigDirs(l))
+		},
+		publishSkip: func() (bool, error) {
+			_, scoped, err := treeScope()
+			return scoped, err
 		},
 		failedWayForward: `run "lyx loom goto --to Darn-Write", then "lyx loom resume", in the task worktree; the Darn-Write spawn renders the Publish failure record and its gate runs the failing tests`,
 		failureTarget:    loomshed.NameDarnWrite,

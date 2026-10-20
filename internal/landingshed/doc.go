@@ -72,6 +72,10 @@
 // An empty or absent value runs nothing and logs nothing, and Finalize never runs it.
 // The key is the same trust class as the plan's `## verify:`: it runs any shell command in the task worktree.
 // It runs only where Publish does, so a landing into a parent outside require_pr_to_base runs no such tier and only Finalize's plan verify gates it.
+// A recipe may tell Publish a skip seam, Deps.PublishVerifySkip, read at each Publish after the parent lock is held and only when `publish_verify` is set.
+// A seam answering true takes the path of an unset `publish_verify`: nothing runs and the Publish failure record is removed before the push.
+// A seam error is Publish's returned error, with nothing verified or pushed, and false runs `publish_verify` as usual.
+// A darn run tells the seam so a diff wholly under its configured non-production trees lands with no `tmux`-tier run and with only the tree-scoped command at Merge-In, the hub's whole statement of what such a diff needs; a loom run tells none, so its `publish_verify` runs whenever it is set.
 //
 // Landing.yaml's `deploy` is read only by batten's Land row, from the board dir like the rest of landing config and never from a pair.
 // It runs in the prime only for a parent branch in `require_pr_to_base` when the row runs, so it executes code PR-Gate reviewed.
@@ -88,7 +92,7 @@
 // When the failed verify's log holds the CPU watchdog's line that `lyx gate test` prints after it quits a busy test binary, the reason names the window and says the goroutine stacks are in the log, before that clause.
 // A watchdog quit of a healthy package has no code fix: the way forward is raising `busy_quit_sec` through `lyx config gate` from the prime, then resuming.
 // An unreadable log or one without the line leaves the reason unchanged, and the checks run no flake rerun.
-// Merge-In removes the record once its plan verify passes, and Publish removes it once its `publish_verify` passes, or at once when none is set.
+// Merge-In removes the record once its plan verify passes, and Publish removes it once its `publish_verify` passes, or at once when none is set or the skip seam answers true.
 //
 // The push that follows is never retried when the remote rejects it, because the remote task branch moved and a repeat would be rejected again.
 // Publish reads the remote task branch's tip and the commits on it that the local branch lacks through Deps.RemoteOnlyCommits, and stops Stuck with a reason stating that the merge-in already ran, the tip, the commit count, and the way forward:
