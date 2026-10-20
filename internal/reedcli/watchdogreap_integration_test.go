@@ -65,6 +65,11 @@ func compressedReapTiming() watchdogTiming {
 	}
 }
 
+// reapSuccessWait bounds every wait for a reap or a discovery that a step expects to succeed.
+// Each discovery cycle spawns tmux and git, so a host whose security agent holds new process images stretches every cycle far past the compressed cadence, and a window derived from that cadence fails there.
+// The waits poll, so a fast host returns as soon as the condition holds and never pays the bound.
+const reapSuccessWait = 30 * time.Second
+
 // reapForceKillGrace mirrors reedengine's unexported forceKillExitGrace, the wait after a force-kill before the reap gives up on a straggler.
 const reapForceKillGrace = 5 * time.Second
 
@@ -157,7 +162,7 @@ func TestWatchdogReap(t *testing.T) {
 			t.Errorf("orphan session %s was reaped before %d affirmative cycles elapsed; want it still live", orphanSession, timing.OrphanGoneCycles)
 		}
 
-		waitForCondition(t, timing.DiscoveryCycle*time.Duration(timing.OrphanGoneCycles)*20, func() bool {
+		waitForCondition(t, reapSuccessWait, func() bool {
 			return !sessionListed(fx.tmuxPath, socket, orphanSession)
 		})
 
@@ -191,7 +196,7 @@ func TestWatchdogReap(t *testing.T) {
 		cancel, loopDone := startReapLoop(fx, orphanEng.ShellPath(), timing)
 		defer cancel()
 
-		waitForCondition(t, timing.DiscoveryCycle*time.Duration(timing.OrphanGoneCycles)*20, func() bool {
+		waitForCondition(t, reapSuccessWait, func() bool {
 			return !sessionListed(fx.tmuxPath, socket, orphanSession)
 		})
 
@@ -221,7 +226,7 @@ func TestWatchdogReap(t *testing.T) {
 		cancel, loopDone := startReapLoop(fx, "", timing)
 		defer cancel()
 
-		waitForCondition(t, timing.DiscoveryCycle*time.Duration(timing.OrphanGoneCycles)*20, func() bool {
+		waitForCondition(t, reapSuccessWait, func() bool {
 			return !sessionListed(fx.tmuxPath, socket, orphanSession)
 		})
 
@@ -268,7 +273,7 @@ func TestWatchdogReap(t *testing.T) {
 		cancel, loopDone := startReapLoop(fx, orphanEng.ShellPath(), timing)
 		defer cancel()
 
-		waitForCondition(t, timing.DiscoveryCycle*time.Duration(timing.OrphanGoneCycles)*20, func() bool {
+		waitForCondition(t, reapSuccessWait, func() bool {
 			return !sessionListed(fx.tmuxPath, socket, orphanSession)
 		})
 
@@ -303,7 +308,7 @@ func TestWatchdogReap(t *testing.T) {
 		defer cancel()
 
 		dispatchStart := time.Now()
-		waitForCondition(t, timing.DiscoveryCycle*time.Duration(timing.OrphanGoneCycles)*20, func() bool {
+		waitForCondition(t, reapSuccessWait, func() bool {
 			return !sessionListed(fx.tmuxPath, socket, orphanSession)
 		})
 
@@ -312,7 +317,7 @@ func TestWatchdogReap(t *testing.T) {
 		hubforge.AddPair(t, fx.hub, "reap-inflight-b")
 		freshWorktree := fx.hub.PairCodeWorktree("reap-inflight-b")
 		freshEng := watchdogIntegrationEngine(t, freshWorktree)
-		waitForCondition(t, timing.DiscoveryCycle*10, func() bool {
+		waitForCondition(t, reapSuccessWait, func() bool {
 			return sessionListed(fx.tmuxPath, socket, freshEng.SessionName())
 		})
 
@@ -333,7 +338,7 @@ func TestWatchdogReap(t *testing.T) {
 		}
 		orphanWorktree(t, orphanWorktreeRoot)
 
-		waitForCondition(t, timing.DiscoveryCycle*time.Duration(timing.OrphanGoneCycles)*20, func() bool {
+		waitForCondition(t, reapSuccessWait, func() bool {
 			return !sessionListed(fx.tmuxPath, socket, orphanSession)
 		})
 
