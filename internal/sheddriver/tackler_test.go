@@ -25,7 +25,7 @@ type agentFake struct {
 	runStops     int
 	gates        []shuttleengine.GateSpec
 
-	startErr  error
+	startErr   error
 	runGUID    string
 	onWait     func(spec shuttleengine.Spec)
 	waitResult shuttleengine.Result
