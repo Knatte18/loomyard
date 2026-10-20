@@ -136,6 +136,10 @@
 // While an arbiter may be live an ephemeral marker names the attempt, its strand and its deadline.
 // The status commit stages the arbiter directory with the run records.
 //
+// The arbiter's run, started or attached, carries a shuttle gate that reads `verdict.yaml` as the verb does and re-prompts the arbiter with the reader's error while the file does not read, since the verbs it records have already run by then.
+// An absent file passes the gate, and once its re-prompt budget is spent the gate lets the run through, so a verdict that still does not read hands on with cause `unparseable`.
+// The arbiter stencil asks for every free-text value as a literal block scalar, so a `: ` or ` #` in a command or sentence keeps its meaning.
+//
 // The stop key is the status file's current producer, history length and state.
 // A re-run for a stop key an attempt already arbitrated spawns nothing:
 // it returns that attempt's verdict, waits on its live arbiter for the time left to its deadline, or stops an arbiter past its deadline through shuttle's stop verb and reads `hand-on` with cause `timeout`.

@@ -36,7 +36,7 @@ type agentFake struct {
 	onAttach     func(spec shuttleengine.Spec)
 }
 
-func (f *agentFake) Start(spec shuttleengine.Spec) (AgentRun, error) {
+func (f *agentFake) Start(spec shuttleengine.Spec, _ shuttleengine.GateSpec) (AgentRun, error) {
 	if f.startErr != nil {
 		return nil, f.startErr
 	}
@@ -44,7 +44,7 @@ func (f *agentFake) Start(spec shuttleengine.Spec) (AgentRun, error) {
 	return &agentFakeRun{fake: f, spec: spec}, nil
 }
 
-func (f *agentFake) AttachIfLive(spec shuttleengine.Spec) (shuttleengine.Result, bool, error) {
+func (f *agentFake) AttachIfLive(spec shuttleengine.Spec, _ shuttleengine.GateSpec) (shuttleengine.Result, bool, error) {
 	f.attaches = append(f.attaches, spec)
 	if f.onAttach != nil {
 		f.onAttach(spec)

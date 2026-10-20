@@ -1,5 +1,5 @@
-// arbiterprompt.go implements the arbiter session's launch prompt and shuttle spec.
-// Both are pure composers: the loom arbiter stencil filled over one stop's paths, and the spec the arbiter launches from.
+// arbiterprompt.go implements the arbiter session's launch prompt, shuttle spec and verdict gate.
+// The prompt and spec are pure composers: the loom arbiter stencil filled over one stop's paths, and the spec the arbiter launches from.
 
 package loomcli
 
@@ -20,6 +20,9 @@ const arbiterStencilName = "loom-template-arbiter"
 
 // arbiterAbsentPath fills the report and brief markers when the stop has no such file.
 const arbiterAbsentPath = "none"
+
+// arbiterVerdictGateAttempts is how many times the verdict gate re-prompts an arbiter whose verdict file does not read.
+const arbiterVerdictGateAttempts = 2
 
 // arbiterSkills is the skill list the arbiter loads before its launch prompt: none, since the prompt is its whole procedure.
 var arbiterSkills = []string{}
@@ -109,4 +112,20 @@ func arbiterSpec(prompt, verdictPath string, settings loomengine.ArbiterSettings
 		ForkSubagents: false,
 		Parent:        "",
 	}
+}
+
+// arbiterVerdictGate returns the gate the arbiter's run carries, which re-prompts the arbiter while the verdict file at verdictPath does not read as a valid verdict.
+// An absent file passes, so a run that ends without a verdict still reads as missing.
+// A file that fails the reader is a failed result whose findings carry the reader's error and the path to rewrite.
+// The entry lets the run through once its budget is spent, so the verb's own read after the run still hands on with cause unparseable.
+func arbiterVerdictGate(verdictPath string) shuttleengine.GateSpec {
+	gate := func() (shuttleengine.GateResult, error) {
+		if _, _, err := loomengine.ReadArbiterVerdict(verdictPath); err != nil {
+			return shuttleengine.GateResult{
+				Findings: fmt.Sprintf("%s\n\nRewrite the verdict file (%s) so it reads: write reason, question and each verbs item as a literal block scalar (|-).", err.Error(), verdictPath),
+			}, nil
+		}
+		return shuttleengine.GateResult{Passed: true}, nil
+	}
+	return shuttleengine.GateSpec{{Name: "verdict", Gate: gate, Attempts: arbiterVerdictGateAttempts, PassOnCap: true}}
 }

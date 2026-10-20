@@ -27,6 +27,7 @@ import (
 type arbiterFake struct {
 	starts       []shuttleengine.Spec
 	attaches     []shuttleengine.Spec
+	gates        []shuttleengine.GateSpec
 	stoppedGUIDs []string
 	runStops     int
 
@@ -42,16 +43,18 @@ type arbiterFake struct {
 	onAttach     func(spec shuttleengine.Spec)
 }
 
-func (f *arbiterFake) Start(spec shuttleengine.Spec) (sheddriver.AgentRun, error) {
+func (f *arbiterFake) Start(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (sheddriver.AgentRun, error) {
 	if f.startErr != nil {
 		return nil, f.startErr
 	}
 	f.starts = append(f.starts, spec)
+	f.gates = append(f.gates, gate)
 	return &arbiterFakeRun{fake: f, spec: spec}, nil
 }
 
-func (f *arbiterFake) AttachIfLive(spec shuttleengine.Spec) (shuttleengine.Result, bool, error) {
+func (f *arbiterFake) AttachIfLive(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, bool, error) {
 	f.attaches = append(f.attaches, spec)
+	f.gates = append(f.gates, gate)
 	if f.onAttach != nil {
 		f.onAttach(spec)
 	}
@@ -610,6 +613,74 @@ func TestArbiterVerb_Rerun(t *testing.T) {
 			}
 			if !reflect.DeepEqual(f.fake.stoppedGUIDs, tt.wantStopped) {
 				t.Errorf("stopped strands = %v; want %v", f.fake.stoppedGUIDs, tt.wantStopped)
+			}
+		})
+	}
+}
+
+// TestArbiterVerb_VerdictGate covers the gate the arbiter's started and attached runs carry: it fails a verdict file that does not read, such as a verbs item whose ": " makes it a map, and passes an absent file and one written in block scalars.
+func TestArbiterVerb_VerdictGate(t *testing.T) {
+	t.Parallel()
+
+	const title = `--title "D6 refined: card 9's scope"`
+	unquotedVerbs := "verdict: resume\nreason: the accept is recorded\nverbs:\n  - lyx loom decision add operator-surface-task " + title + "\n"
+	blockVerbs := "verdict: resume\nreason: |-\n  the accept is recorded: card 9 stands\nverbs:\n  - |-\n    lyx loom decision add operator-surface-task " + title + "\n"
+
+	paths := []struct {
+		name  string
+		setup func(f *arbiterFixture)
+	}{
+		{name: "Start", setup: func(f *arbiterFixture) {}},
+		{name: "Attach", setup: func(f *arbiterFixture) {
+			f.priorAttempt(1, 20*time.Minute)
+			f.fake.attachFound = true
+		}},
+	}
+	files := []struct {
+		name         string
+		verdict      string
+		wantPassed   bool
+		wantFindings []string
+	}{
+		{name: "absent verdict passes", wantPassed: true},
+		{name: "unquoted verbs item with a colon fails", verdict: unquotedVerbs, wantFindings: []string{"cannot unmarshal !!map into string", "block scalar"}},
+		{name: "block scalar verdict passes", verdict: blockVerbs, wantPassed: true},
+	}
+	for _, path := range paths {
+		t.Run(path.name, func(t *testing.T) {
+			t.Parallel()
+			f := newArbiterFixture(t, "Plan-Write", shedengine.StateBlocked)
+			path.setup(f)
+
+			f.run()
+
+			if len(f.fake.gates) != 1 || len(f.fake.gates[0]) != 1 {
+				t.Fatalf("gates = %v; want one run carrying one entry", f.fake.gates)
+			}
+			entry := f.fake.gates[0][0]
+			if entry.Attempts == 0 || !entry.PassOnCap {
+				t.Errorf("gate entry attempts, pass-on-cap = %d, %v; want a re-prompt budget that lets the run through once spent", entry.Attempts, entry.PassOnCap)
+			}
+			verdictPath := loomengine.ArbiterVerdictPath(f.attemptDir(1))
+			for _, file := range files {
+				if err := os.Remove(verdictPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+					t.Fatal(err)
+				}
+				if file.verdict != "" {
+					writeArbiterVerdictFile(t, f.attemptDir(1), file.verdict)
+				}
+				result, err := entry.Gate()
+				if err != nil {
+					t.Fatalf("%s: gate error = %v; want nil", file.name, err)
+				}
+				if result.Passed != file.wantPassed {
+					t.Errorf("%s: gate passed = %v, findings %q; want %v", file.name, result.Passed, result.Findings, file.wantPassed)
+				}
+				for _, want := range append(file.wantFindings, verdictPath) {
+					if !file.wantPassed && !strings.Contains(result.Findings, want) {
+						t.Errorf("%s: findings = %q; want them to contain %q", file.name, result.Findings, want)
+					}
+				}
 			}
 		})
 	}
