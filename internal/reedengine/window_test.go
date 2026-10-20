@@ -58,18 +58,18 @@ func TestOpenWindow(t *testing.T) {
 			name: "ALiveOwnWindowOfThatNameIsNeitherReturnedNorKilledAndANewWindowOpens",
 			script: func(f *fakeTmux) {
 				f.answer(sessionListVerb, "@4 %9 0 1 "+name+"\n", nil)
-				f.answer("new-window", "@8\n", nil)
+				f.answer("new-window", "@7\n", nil)
 			},
-			want:         WindowResult{WindowID: "@8", Name: name},
+			want:         WindowResult{WindowID: "@7", Name: name},
 			wantNewCalls: 1,
 		},
 		{
 			name: "ADeadWindowOfThatNameIsKilledAndReplaced",
 			script: func(f *fakeTmux) {
 				f.answer(sessionListVerb, "@4 %9 1 0 "+name+"\n", nil)
-				f.answer("new-window", "@8\n", nil)
+				f.answer("new-window", "@7\n", nil)
 			},
-			want:         WindowResult{WindowID: "@8", Name: name},
+			want:         WindowResult{WindowID: "@7", Name: name},
 			wantNewCalls: 1,
 			wantKilled:   []string{"%9"},
 		},
@@ -95,7 +95,7 @@ func TestOpenWindow(t *testing.T) {
 			name: "AReadBackOtherThanOffKillsTheWindowByIdAndReturnsItsSentinel",
 			script: func(f *fakeTmux) {
 				f.answer("new-window", "@7\n", nil)
-				f.answerFormat("#{remain-on-exit}", "on\n", nil)
+				f.answerFormat(windowReadBackFormat, "@7 on\n", nil)
 			},
 			wantErr:      ErrWindowReadBack,
 			wantNewCalls: 1,
@@ -105,7 +105,16 @@ func TestOpenWindow(t *testing.T) {
 			name: "AWindowGoneBeforeItsReadBackIsStillOpened",
 			script: func(f *fakeTmux) {
 				f.answer("new-window", "@7\n", nil)
-				f.answerFormat("#{remain-on-exit}", "", errors.New("can't find window @7"))
+				f.answerFormat(windowReadBackFormat, "", errors.New("can't find window @7"))
+			},
+			want:         WindowResult{WindowID: "@7", Name: name},
+			wantNewCalls: 1,
+		},
+		{
+			name: "AWindowGoneBeforeItsReadBackIsStillOpenedWhenTheReadFallsBackToAnotherWindow",
+			script: func(f *fakeTmux) {
+				f.answer("new-window", "@7\n", nil)
+				f.answerFormat(windowReadBackFormat, "@1 on\n", nil)
 			},
 			want:         WindowResult{WindowID: "@7", Name: name},
 			wantNewCalls: 1,
@@ -117,7 +126,7 @@ func TestOpenWindow(t *testing.T) {
 			fake := installFakeTmux(t, e)
 			fake.answer("-V", fakeVersionOutput, nil)
 			fake.answer("list-commands", fakeFullCommandsOutput(), nil)
-			fake.answerFormat("#{remain-on-exit}", "off\n", nil)
+			fake.answerFormat(windowReadBackFormat, "@7 off\n", nil)
 			tt.script(fake)
 
 			got, err := e.OpenWindow(name, args)
