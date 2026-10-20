@@ -90,6 +90,13 @@ func TestCommandFor(t *testing.T) {
 			wantCommand: "go build ./... && lyx gate test --tags integration ./internal/a ./internal/d -- -run '^(TestGuardA|TestGuardD|TestGuardD2)$'",
 		},
 		{
+			name:        "a guard name held by two outside packages is listed once",
+			graph:       testGraph(),
+			changed:     []string{"docs/overview.md"},
+			guards:      map[string][]string{"internal/a": {"TestGuardX"}, "internal/d": {"TestGuardX"}},
+			wantCommand: "go build ./... && lyx gate test --tags integration ./internal/a ./internal/d -- -run '^(TestGuardX)$'",
+		},
+		{
 			name:         "a non-Go file maps to its nearest enclosing package",
 			graph:        testGraph(),
 			changed:      []string{"internal/d/testdata/x.yaml"},
