@@ -25,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -1143,6 +1144,7 @@ func TestDispatchLayers(t *testing.T) {
 
 	loomTemplate, _ := configreg.Template("loom")
 	websterTemplate, _ := configreg.Template("webster")
+	lensesTemplate := lenses.ConfigTemplate
 	taskSession, err := agentname.Format("ly", "task-a", "loom")
 	if err != nil {
 		t.Fatalf("agentname.Format: %v", err)
@@ -1393,6 +1395,30 @@ func TestDispatchLayers(t *testing.T) {
 				assertJSONErrContains(t, out, "way forward: --set the key to a value it takes")
 				if data, _ := os.ReadFile(configengine.ConfigFile(fx.board, "darn")); string(data) != darnWithTreeScope("\n  tools: ./tools/...", "") {
 					t.Errorf("board darn.yaml = %q; want it unchanged", data)
+				}
+			},
+		},
+		{
+			name: "default layer writes a lens and a fan the board's stack resolves and commits once", module: "lenses", layer: "default",
+			setFlags: []string{"lenses.mine=my prose", "fans.mine=[mine]"}, seedBoard: lensesTemplate(), wantCommits: 1,
+			check: func(t *testing.T, fx hubFixture, out string) {
+				cfg, err := lenses.Load(configengine.Dirs{Board: fx.board})
+				if err != nil {
+					t.Fatalf("lenses.Load() error = %v; want nil", err)
+				}
+				resolved, err := lenses.ResolveFan(cfg, "mine")
+				if err != nil || len(resolved) != 1 || resolved[0].Text != "my prose" {
+					t.Errorf("ResolveFan(mine) = %+v, %v; want the one lens with the prose set", resolved, err)
+				}
+			},
+		},
+		{
+			name: "default layer refuses an emptied fan through the load check and leaves the board file as it was", module: "lenses", layer: "default",
+			setFlags: []string{"fans.standard=[]"}, seedBoard: lensesTemplate(), wantCode: 1, wantErr: `fan "standard" is empty`, wantCommits: 1,
+			check: func(t *testing.T, fx hubFixture, out string) {
+				data, _ := os.ReadFile(configengine.ConfigFile(fx.board, "lenses"))
+				if string(data) != lensesTemplate() {
+					t.Errorf("board lenses.yaml changed by a refused value")
 				}
 			},
 		},

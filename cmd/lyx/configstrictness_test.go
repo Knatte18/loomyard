@@ -57,6 +57,7 @@ var configStrictnessDegradingSet = map[string]bool{
 	"internal/battenshed":                 true,
 	"internal/sheddriver":                 true,
 	"internal/languageconfig":             true,
+	"internal/lenses":                     true,
 }
 
 // configStrictnessStrictSet is the pinned set of module-relative, slash-separated

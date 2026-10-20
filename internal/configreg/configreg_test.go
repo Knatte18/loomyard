@@ -60,8 +60,8 @@ func TestModules_SeedOnlyAndHubWideFlags(t *testing.T) {
 			t.Errorf("Modules(): module %q SeedsFromPrime = %v; want %v", m.Name, m.SeedsFromPrime, wantSeedsFromPrime)
 		}
 		spec := m.Spec()
-		if spec.Name != m.Name || string(spec.Template) != m.Template() || !slices.Equal(spec.OpenMaps, m.OpenMaps) || spec.HubWide != m.HubWide {
-			t.Errorf("Modules(): module %q Spec() = {Name: %q, OpenMaps: %v, HubWide: %v}; want it to carry the entry's own name, template text, open maps and hub-wide flag", m.Name, spec.Name, spec.OpenMaps, spec.HubWide)
+		if spec.Name != m.Name || string(spec.Template) != m.Template() || !slices.Equal(spec.OpenMaps, m.OpenMaps) || !slices.Equal(spec.PerNameMaps, m.PerNameMaps) || spec.HubWide != m.HubWide {
+			t.Errorf("Modules(): module %q Spec() = {Name: %q, OpenMaps: %v, PerNameMaps: %v, HubWide: %v}; want it to carry the entry's own name, template text, open maps, per-name maps and hub-wide flag", m.Name, spec.Name, spec.OpenMaps, spec.PerNameMaps, spec.HubWide)
 		}
 	}
 }
@@ -81,6 +81,7 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 		"shuttle": {"deny_python", "run_dir"},
 		"loom":    {"alignment", "alignment_pr_approve", "discussion_advisors", "discussion_auto_accept", "discussion_fixer_fan", "discussion_lenses", "discussion_reviewer_fan", "merge_auto_accept", "merge_fixer_fan", "merge_reviewer_fan", "parent_review_wait_min", "plan_auto_accept", "plan_fixer_fan", "plan_lenses", "plan_reviewer_fan", "skip_alignment", "webster_auto_accept", "webster_fixer_fan", "webster_reviewer_fan"},
 		"burler":  {"fans", "lenses"},
+		"lenses":  {"fans", "lenses"},
 	}
 	for _, m := range Modules() {
 		t.Run(m.Name, func(t *testing.T) {
@@ -254,7 +255,7 @@ func TestLookup(t *testing.T) {
 	}
 }
 
-// TestFingerprint pins what the registry fingerprint is sensitive to: a module's template, flags, open maps and name, and not its Migrate hook.
+// TestFingerprint pins what the registry fingerprint is sensitive to: a module's template, flags, open maps, per-name maps and name, and not its Migrate hook.
 func TestFingerprint(t *testing.T) {
 	t.Parallel()
 	base := func() []Module {
@@ -274,6 +275,7 @@ func TestFingerprint(t *testing.T) {
 		{"flipped SeedOnly", func(m []Module) { m[0].SeedOnly = true }, false},
 		{"flipped SeedsFromPrime", func(m []Module) { m[0].SeedsFromPrime = true }, false},
 		{"added OpenMaps entry", func(m []Module) { m[1].OpenMaps = []string{"b"} }, false},
+		{"added PerNameMaps entry", func(m []Module) { m[1].PerNameMaps = []string{"b"} }, false},
 		{"renamed module", func(m []Module) { m[0].Name = "gamma" }, false},
 		{"swapped Migrate hook", func(m []Module) {
 			m[0].Migrate = func(existing []byte) ([]byte, []string, error) { return existing, nil, nil }
