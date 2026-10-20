@@ -16,7 +16,10 @@
 //
 // # Inheritance
 //
-// Lease.Env returns the environment for a child that runs inside the slot: GOFLAGS gets `-p=<GoParallel>` appended and InheritEnv names the held slot's lock path.
+// Lease.Env returns the environment for a child that runs inside the slot: GOFLAGS gets `-p=<GoParallel> -trimpath` appended and InheritEnv names the held slot's lock path.
+// `-trimpath` makes builds from two checkouts byte-identical and their cache keys independent of the checkout's directory,
+// so a fresh worktree hits the build and test cache and a host scanner that holds each unseen executable sees known hashes.
+// It also makes `runtime.Caller` report module-relative file paths, so no code a gate run builds locates the repo root from them alone.
 // A nested gate run checks Pool.Inherited on that variable and runs inside its parent's slot without acquiring.
 //
 // # Config

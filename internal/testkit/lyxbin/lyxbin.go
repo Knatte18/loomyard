@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/lyxtemp"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // ErrStalePrebuilt is returned, wrapped with the path, when `gateslot.PrebuiltLyxEnv` names a file that is missing or not executable.
@@ -54,14 +55,13 @@ func prebuilt() (string, bool, error) {
 	return path, true, nil
 }
 
-// compile builds `./cmd/lyx` from the module root into dir and returns the binary path.
+// compile builds `./cmd/lyx` from the module root, which scankit.ModuleRoot finds from the test binary's starting directory, into dir and returns the binary path.
 // An empty ldflags omits the `-ldflags` argument.
 func compile(dir, ldflags string) (string, error) {
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		return "", fmt.Errorf("lyxbin: could not determine kit source location")
+	root, err := scankit.ModuleRoot()
+	if err != nil {
+		return "", fmt.Errorf("lyxbin: locate the module root: %w", err)
 	}
-	root := filepath.Dir(filepath.Dir(filepath.Dir(filepath.Dir(file))))
 
 	bin := filepath.Join(dir, "lyx")
 	if runtime.GOOS == "windows" {

@@ -368,7 +368,7 @@ func TestVerify_Scenario(t *testing.T) {
 	})
 }
 
-// TestVerify_SlotGate covers a slotted Verify over a one-slot pool the test holds: the marker reads as waiting while the slot is held, a timeout shorter than the wait does not fire during it, the command runs once the slot is released, and it sees the slot's `-p` cap appended to an existing GOFLAGS plus the inheritance variable.
+// TestVerify_SlotGate covers a slotted Verify over a one-slot pool the test holds: the marker reads as waiting while the slot is held, a timeout shorter than the wait does not fire during it, the command runs once the slot is released, and it sees the slot's `-p` cap and `-trimpath` appended to an existing GOFLAGS plus the inheritance variable.
 // A pool over an unusable gate.yaml then fails the acquire: Verify returns an error naming the way forward, runs nothing and leaves no marker.
 // It sets GOFLAGS in the process environment, so it is not parallel.
 func TestVerify_SlotGate(t *testing.T) {
@@ -449,7 +449,7 @@ func TestVerify_SlotGate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "-count=1 -p=7\n" + filepath.Join(pool.Dir, "slot-1.lock") + "\n\n"
+	want := "-count=1 -p=7 -trimpath\n" + filepath.Join(pool.Dir, "slot-1.lock") + "\n\n"
 	if string(data) != want {
 		t.Errorf("command saw GOFLAGS, slot variable and prebuilt-lyx variable %q; want %q, the last empty", data, want)
 	}

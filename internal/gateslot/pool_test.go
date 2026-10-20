@@ -259,9 +259,9 @@ func TestLeaseEnv(t *testing.T) {
 		base []string
 		want []string
 	}{
-		{"no GOFLAGS", []string{"A=1"}, []string{"A=1", "GOFLAGS=-p=3", "LYX_GATE_SLOT=" + slotPath}},
-		{"existing GOFLAGS gets the cap appended", []string{"GOFLAGS=-count=1", "A=1"}, []string{"A=1", "GOFLAGS=-count=1 -p=3", "LYX_GATE_SLOT=" + slotPath}},
-		{"an older slot variable is replaced", []string{"LYX_GATE_SLOT=old", "A=1"}, []string{"A=1", "GOFLAGS=-p=3", "LYX_GATE_SLOT=" + slotPath}},
+		{"no GOFLAGS", []string{"A=1"}, []string{"A=1", "GOFLAGS=-p=3 -trimpath", "LYX_GATE_SLOT=" + slotPath}},
+		{"existing GOFLAGS gets the cap and trimpath appended", []string{"GOFLAGS=-count=1", "A=1"}, []string{"A=1", "GOFLAGS=-count=1 -p=3 -trimpath", "LYX_GATE_SLOT=" + slotPath}},
+		{"an older slot variable is replaced", []string{"LYX_GATE_SLOT=old", "A=1"}, []string{"A=1", "GOFLAGS=-p=3 -trimpath", "LYX_GATE_SLOT=" + slotPath}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

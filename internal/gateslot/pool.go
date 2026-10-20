@@ -251,7 +251,7 @@ func (l *Lease) Release() error {
 }
 
 // Env returns a copy of base for a child that runs inside this slot.
-// GOFLAGS carries the base's value with the slot's `-p` cap appended, and InheritEnv names the held slot's lock path.
+// GOFLAGS carries the base's value with GoFlags' flags appended, and InheritEnv names the held slot's lock path.
 func (l *Lease) Env(base []string) []string {
 	existingFlags := ""
 	env := make([]string, 0, len(base)+2)
@@ -268,11 +268,13 @@ func (l *Lease) Env(base []string) []string {
 	return append(env, goFlagsEnvName+"="+GoFlags(existingFlags, l.goParallel), InheritEnv+"="+l.lockPath)
 }
 
-// GoFlags appends `-p=<goParallel>` to an existing GOFLAGS value, space-separated, or returns it alone when existing is empty.
+// GoFlags appends `-p=<goParallel> -trimpath` to an existing GOFLAGS value, space-separated, or returns the two alone when existing is empty.
+// `-trimpath` keeps the checkout's directory out of the build and test cache keys and out of the binaries,
+// so a fresh worktree reuses the cache and links test binaries byte-identical to another checkout's.
 func GoFlags(existing string, goParallel int) string {
-	parallelFlag := "-p=" + strconv.Itoa(goParallel)
+	slotFlags := "-p=" + strconv.Itoa(goParallel) + " -trimpath"
 	if existing == "" {
-		return parallelFlag
+		return slotFlags
 	}
-	return existing + " " + parallelFlag
+	return existing + " " + slotFlags
 }

@@ -10,7 +10,7 @@
 // A package argument spelled relative (`.`, `..`, `./…` or `../…`), not ending in `.go` and with a trailing `/...` removed must name a directory under the -C directory, or the verb refuses before hub resolution, any slot and the prebuild; for an external test package it names the package directory to pass instead.
 // Import paths, absolute paths, module-wide patterns whose stem exists and `.go` file arguments are not read and reach go test unchanged.
 // The output streams through and the exit code is go test's own.
-// With `--tags` non-empty the verb first builds `lyx` once, inside the held slot: `go build -C <root> -p <cap> -o <tmp>/lyx ./cmd/lyx`, where <root> is the worktree root inside a hub and the -C directory outside one, and <tmp> is a per-invocation directory in the process run directory of `internal/lyxtemp`, removed after go test ends.
+// With `--tags` non-empty the verb first builds `lyx` once, inside the held slot: `go build -C <root> -p <cap> -trimpath -o <tmp>/lyx ./cmd/lyx`, where <root> is the worktree root inside a hub and the -C directory outside one, and <tmp> is a per-invocation directory in the process run directory of `internal/lyxtemp`, removed after go test ends.
 // go test's environment then carries `gateslot.PrebuiltLyxEnv` naming that binary, so every package of the run shares it instead of building its own.
 // A root without `cmd/lyx` builds nothing, and a nested module inside a hub still builds the worktree's `lyx`, which that module's tests may leave unused.
 // A build failure is a JSON error with the build's output and exit code 1, before go test runs.
@@ -24,7 +24,7 @@
 // # Slot
 //
 // Inside a hub the pool comes from hubgeom.GateSlots and its limits are read from the board's gate.yaml.
-// The run writes a wait record under the worktree's wait directory, acquires a slot under a context bounded by `shuttleengine.DefaultAwaitCap`, the keep-cache-warm cap of the wait verbs, removes the record once the acquire returns, and runs go test with the lease's environment.
+// The run writes a wait record under the worktree's wait directory, acquires a slot under a context bounded by `shuttleengine.DefaultAwaitCap`, the keep-cache-warm cap of the wait verbs, removes the record once the acquire returns, and runs go test with the lease's environment, whose GOFLAGS carries `gateslot.GoFlags`: the `-p` cap and `-trimpath`.
 // Every branch, slotted, inherited and unslotted, runs go test without the strand-name variable (agentname.StrandNameEnv), so a test that drives `lyx fabric` never meets the sandboxed-role guard.
 // Bound: a test is code the fork writes, which could clear the variable itself.
 // The cap keeps one blocked Bash call under the prompt-cache lifetime, so an agent that re-runs the verb keeps its cache warm.

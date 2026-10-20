@@ -309,8 +309,8 @@ func TestGateTest_Scenario(t *testing.T) {
 		if want := []string{"test", "-C", prime, "-p", "3", "-tags", "integration", "./pkg", "-run", "X"}; !slices.Equal(record.Args, want) {
 			t.Errorf("go args = %q; want %q", record.Args, want)
 		}
-		if !strings.Contains(record.GoFlags, "-p=3") || filepath.Dir(record.Slot) != pool.Dir {
-			t.Errorf("go environment GOFLAGS = %q, %s = %q; want the -p cap and a slot of %s", record.GoFlags, gateslot.InheritEnv, record.Slot, pool.Dir)
+		if !strings.Contains(record.GoFlags, "-p=3 -trimpath") || filepath.Dir(record.Slot) != pool.Dir {
+			t.Errorf("go environment GOFLAGS = %q, %s = %q; want the -p cap, -trimpath and a slot of %s", record.GoFlags, gateslot.InheritEnv, record.Slot, pool.Dir)
 		}
 		requireFree(t)
 	})
@@ -533,11 +533,11 @@ func TestGateTest_Scenario(t *testing.T) {
 			t.Fatalf("exit code = %d, stdout %q; want 0", code, g.stdout.String())
 		}
 		records := g.records(t)
-		if len(records) != 2 || len(records[0].Args) != 8 || records[0].Args[0] != "build" || records[1].Args[0] != "test" {
+		if len(records) != 2 || len(records[0].Args) != 9 || records[0].Args[0] != "build" || records[1].Args[0] != "test" {
 			t.Fatalf("records = %+v; want one build invocation, then the test invocation", records)
 		}
-		bin := records[0].Args[6]
-		if want := []string{"build", "-C", prime, "-p", "3", "-o", bin, "./cmd/lyx"}; !slices.Equal(records[0].Args, want) {
+		bin := records[0].Args[7]
+		if want := []string{"build", "-C", prime, "-p", "3", "-trimpath", "-o", bin, "./cmd/lyx"}; !slices.Equal(records[0].Args, want) {
 			t.Errorf("build args = %q; want %q", records[0].Args, want)
 		}
 		if records[1].Prebuilt != bin {
