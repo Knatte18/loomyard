@@ -228,7 +228,7 @@ func TestAttach_OutcomeDisposition(t *testing.T) {
 // TestAttach_RemovesSupersededStrands covers the removal on Attach's not-found answer:
 // only the live or dead own-window strand of a respawn-eligible candidate of the same output-file set is removed,
 // an attach or a failed removal never answers not found,
-// and AttachIfLive removes nothing.
+// and AttachIfLive and AttachIfLiveGated remove nothing.
 func TestAttach_RemovesSupersededStrands(t *testing.T) {
 	t.Parallel()
 
