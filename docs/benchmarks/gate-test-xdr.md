@@ -7,6 +7,7 @@ Cortex XDR holds every executable whose hash it has not seen for 8-10 s before i
 Without `-trimpath` the checkout's directory is part of Go's build and test cache keys and is written into the binaries,
 so every new task worktree starts with an empty test cache and links test binaries XDR has never seen.
 The change measured here puts `-trimpath` into the GOFLAGS of every slotted gate run (`gateslot.GoFlags`) and into the tagged run's prebuild of `lyx`.
+A second change, measured in [Re-run on an unchanged tree](#re-run-on-an-unchanged-tree), runs verify as the `integration` tier alone and keeps the test cache keys stable from one run to the next.
 
 ## Machine
 
@@ -106,3 +107,44 @@ A fresh worktree before ran every package, as the uncached before row does, and 
 
 The cached runs hit the cache for about as many packages before and after, 97 against 97 in tier 1 and 77 against 76 in tier 2.
 What fell with the wall time is the packages at 7 s or more, from 11 to 0 in tier 1 and from 24 to 3 in tier 2.
+
+## Re-run on an unchanged tree
+
+```yaml
+before: 1552ceb4, the installed lyx, verify "lyx gate test ./... && lyx gate test --tags integration ./..."
+after: c2fad0ad, a .dev-bin build of the branch, verify "lyx gate test --tags integration ./..."
+date: 2026-10-20
+```
+
+The `integration` tag compiles every untagged test too, and no test file is excluded by it except TestMain shims whose tagged TestMain does the same setup, so verify now runs that tier alone.
+
+`GODEBUG=gocachetest=1` showed why a re-run on an unchanged tree ran so many packages again: the input ID Go computes from what a test read changed on every run.
+Three inputs changed:
+
+- `LYX_TRACE_ID`, which every `lyx` process mints and exports, so each gate run gave go test a new value, read by every package that logs.
+  `lyx gate test` now drops it from go test's environment.
+- The prebuilt `lyx` path of a tagged run, a fresh directory per run, read by every package that runs `lyx` through `internal/testkit/lyxbin`.
+  Inside a hub the binary now goes to a store in the gate-slot directory under a name derived from its content.
+- The directory `internal/shedbuild`, where one test wrote and removed a fixture, so every source scan that lists `internal/` saw a changed directory.
+  The test now names one of the package's own files.
+
+The before rows ran one after the other from this task's worktree with the installed `lyx`, each tier once, over a test cache other worktrees' `-trimpath` runs had filled.
+The after rows ran from the same worktree with the branch's `lyx`: a first run that refilled the cache after the change, and the re-run that a verify after a failure or a second gate makes.
+Times are `/usr/bin/time -v` of the whole `lyx` tree, as in the rows above.
+
+| Run | Wall | User | Sys | CPU (user+sys) | Packages run | Packages cached | Packages at 7 s or more |
+|---|---|---|---|---|---|---|---|
+| before, tier 1 (untagged) | 22.6 s | 64.2 s | 37.3 s | 101.6 s | 102 | 60 | 0 |
+| before, tier 2 (`integration`) | 163.4 s | 250.4 s | 332.3 s | 582.7 s | 123 | 39 | 4 |
+| before, verify (both tiers) | 186.0 s | 314.6 s | 369.6 s | 684.3 s | 225 | 99 | 4 |
+| after, `integration` refill | 347.8 s | 344.9 s | 359.2 s | 704.1 s | 120 | 42 | 50 |
+| after, `integration` re-run | 26.6 s | 21.9 s | 27.6 s | 49.5 s | 0 | 162 | 0 |
+
+The refill rebuilt every package that imports `internal/logger`, which the change touched, on a busy machine: the 1-minute load average was 10.88 when the next run started.
+Its 50 packages at 7 s or more are new test binaries XDR held.
+
+A first re-run, before the `internal/shedbuild` fix, still ran 9 packages, the source scans among them, and took 65.1 s.
+Part of those misses came from the measurement itself: its new output files in `.scratch` changed the worktree's root directory listing, which the scans of the whole tree read.
+The final rows wrote into files that already existed, which changes no directory listing.
+
+A fresh worktree still misses for every test that opens a file of the tree, since Go keys such a result on the file's absolute path and modification time.
