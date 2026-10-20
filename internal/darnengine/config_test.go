@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -35,22 +36,57 @@ func templateConfig(mutate func(*Config)) Config {
 		Writer: "opus[medium]", WriterTimeoutMin: 180, Verify: "", VerifyAttempts: 3, ReviewMaxBounces: 1, ReviewHardMaxBounces: 4,
 		ReviewerModel: burlerengine.ModelSpecList{"sonnet[high]"}, FixerModel: burlerengine.ModelSpecList{""},
 		ReviewerFan: burlerengine.FanList{""}, FixerFan: burlerengine.FanList{""},
+		TreeScope: map[string]string{},
 	}
 	mutate(&cfg)
 	return cfg
 }
 
-// TestLoadConfig covers the template's defaults, a review budget of 0, the model and fan keys' grammar and refusals, a writer that fails the model-spec grammar, and a base directory with no darn.yaml.
+// withTreeScope returns the template with its tree_scope replaced by the given text after the key and its tree_scope_verify by verify.
+func withTreeScope(trees, verify string) string {
+	return strings.NewReplacer("tree_scope: {}", "tree_scope:"+trees, `tree_scope_verify: ""`, "tree_scope_verify: "+strconv.Quote(verify)).Replace(ConfigTemplate())
+}
+
+// TestLoadConfig covers the template's defaults, a review budget of 0, the model and fan keys' grammar and refusals, the tree-scope keys' loading and refusals, a writer that fails the model-spec grammar, and a base directory with no darn.yaml.
 func TestLoadConfig(t *testing.T) {
 	t.Parallel()
 
+	noTreeCommands := []string{"lyx config darn --set tree_scope.<tree>=<target>", "lyx config darn --set tree_scope_verify=", "is written in lyx config darn's editor"}
 	tests := []struct {
 		name     string
 		contents string
 		seed     bool
 		want     Config
 		wantErr  []string
+		wantIs   error
 	}{
+		{
+			name: "trees with an empty tree_scope_verify load", seed: true,
+			contents: withTreeScope("\n  tools: ./tools/...\n  docs: \"\"", ""),
+			want:     templateConfig(func(c *Config) { c.TreeScope = map[string]string{"tools": "./tools/...", "docs": ""} }),
+		},
+		{
+			name: "a trailing slash on a tree key is trimmed", seed: true,
+			contents: withTreeScope("\n  tools/: ./tools/...", "lyx gate test {targets}"),
+			want: templateConfig(func(c *Config) {
+				c.TreeScope, c.TreeScopeVerify = map[string]string{"tools": "./tools/..."}, "lyx gate test {targets}"
+			}),
+		},
+		{
+			name: "tree_scope_verify with no tree", seed: true,
+			contents: withTreeScope(" {}", "lyx gate test {targets}"),
+			wantErr:  noTreeCommands, wantIs: ErrTreeScopeWithoutTrees,
+		},
+		{
+			name: "tree_scope_verify without targets", seed: true,
+			contents: withTreeScope("\n  tools: ./tools/...", "lyx gate test"),
+			wantErr:  []string{"lyx config darn --set tree_scope_verify=<command holding {targets}>"},
+		},
+		{
+			name: "tree keys written twice", seed: true,
+			contents: withTreeScope("\n  tools: ./tools/...\n  tools/: ./tools/...", ""),
+			wantErr:  []string{`"tools" and "tools/"`}, wantIs: ErrTreeScopeKey,
+		},
 		{
 			name: "template defaults", contents: ConfigTemplate(), seed: true,
 			want: templateConfig(func(*Config) {}),
@@ -144,6 +180,9 @@ func TestLoadConfig(t *testing.T) {
 						t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
 					}
 				}
+				if tt.wantIs != nil && !errors.Is(err, tt.wantIs) {
+					t.Errorf("LoadConfig() error = %v; want it to wrap %v", err, tt.wantIs)
+				}
 				return
 			}
 			if err != nil {
@@ -170,7 +209,19 @@ func TestLoadConfig(t *testing.T) {
 		}
 	})
 
-	for key, local := range map[string]string{"verify": "verify: rm -rf .\n", "darn_reviewer_fan": "darn_reviewer_fan: review-code\n", "darn_fixer_fan": "darn_fixer_fan: \"\"\n"} {
+	t.Run("a malformed tree key is refused naming the key as written", func(t *testing.T) {
+		t.Parallel()
+		for _, key := range []string{"", "/abs", "tools//x", "tools//", "./tools", "a/../b", `tools\x`} {
+			board := t.TempDir()
+			seedDarnConfig(t, board, withTreeScope("\n  "+strconv.Quote(key)+": x", ""))
+			_, err := LoadConfig(configengine.Dirs{Board: board}, "darn")
+			if !errors.Is(err, ErrTreeScopeKey) || !strings.Contains(err.Error(), strconv.Quote(key)) {
+				t.Errorf("LoadConfig() with tree key %q = _, %v; want an error wrapping ErrTreeScopeKey and naming the key", key, err)
+			}
+		}
+	})
+
+	for key, local := range map[string]string{"verify": "verify: rm -rf .\n", "tree_scope": "tree_scope: {docs: \"\"}\n", "tree_scope_verify": "tree_scope_verify: rm\n", "darn_reviewer_fan": "darn_reviewer_fan: review-code\n", "darn_fixer_fan": "darn_fixer_fan: \"\"\n"} {
 		t.Run("a local "+key+" is refused naming the local file and the key", func(t *testing.T) {
 			t.Parallel()
 			board, anchor := t.TempDir(), t.TempDir()
@@ -363,8 +414,11 @@ func TestVerifyCommand(t *testing.T) {
 		seed     bool
 		want     string
 		wantErr  bool
+		// wantEditor pins that the error names the editor way forward in place of the --set verify= one.
+		wantEditor bool
 	}{
 		{name: "value as written", seed: true, contents: strings.Replace(ConfigTemplate(), `verify: ""`, "verify: go test ./...", 1), want: "go test ./..."},
+		{name: "malformed tree key", seed: true, contents: withTreeScope("\n  ./tools: x", ""), wantErr: true, wantEditor: true},
 		{name: "empty value", seed: true, contents: ConfigTemplate(), wantErr: true},
 		{name: "missing file", wantErr: true},
 	}
@@ -377,6 +431,12 @@ func TestVerifyCommand(t *testing.T) {
 				seedDarnConfig(t, baseDir, tt.contents)
 			}
 			got, err := VerifyCommand(configengine.Dirs{Board: baseDir})
+			if tt.wantEditor {
+				if err == nil || !strings.Contains(err.Error(), "lyx config darn's editor") || !strings.Contains(err.Error(), "then re-run the lyx command that refused") || strings.Contains(err.Error(), "--set verify=") {
+					t.Fatalf("VerifyCommand() = %q, %v; want the editor way forward and no --set verify=", got, err)
+				}
+				return
+			}
 			if tt.wantErr {
 				if err == nil || !strings.Contains(err.Error(), verifyWayForward) {
 					t.Fatalf("VerifyCommand() = %q, %v; want an error naming %q", got, err, verifyWayForward)
@@ -388,6 +448,40 @@ func TestVerifyCommand(t *testing.T) {
 			}
 			if err != nil || got != tt.want {
 				t.Errorf("VerifyCommand() = %q, %v; want %q, nil", got, err, tt.want)
+			}
+		})
+	}
+}
+
+// TestTreeScopedCommand covers tree scope being off, a path lying in a tree by equality or prefix and never by a shared name prefix, the touched trees' targets deduplicated in tree-path order, and a diff with a production path.
+func TestTreeScopedCommand(t *testing.T) {
+	t.Parallel()
+
+	const command = "lyx gate test --tags integration --guards {targets}"
+	trees := map[string]string{"docs": "", "tools": "./tools/...", "scripts": "./tools/...", "cmd/x": "./cmd/x"}
+	tests := []struct {
+		name       string
+		verify     string
+		paths      []string
+		want       string
+		wantScoped bool
+	}{
+		{name: "tree scope off with an empty tree_scope_verify", verify: "", paths: []string{"docs/a.md"}},
+		{name: "a docs and a tools path", verify: command, paths: []string{"docs/a.md", "tools/x/y.go"}, want: "lyx gate test --tags integration --guards ./tools/...", wantScoped: true},
+		{name: "two trees sharing one target yield it once", verify: command, paths: []string{"scripts/a.sh", "tools/b.go"}, want: "lyx gate test --tags integration --guards ./tools/...", wantScoped: true},
+		{name: "targets come in tree-path order", verify: command, paths: []string{"tools/b.go", "cmd/x/main.go"}, want: "lyx gate test --tags integration --guards ./cmd/x ./tools/...", wantScoped: true},
+		{name: "a tree does not claim a path sharing only its name prefix", verify: command, paths: []string{"toolsx/a.go"}},
+		{name: "a path equal to a tree path lies in it", verify: command, paths: []string{"tools"}, want: "lyx gate test --tags integration --guards ./tools/...", wantScoped: true},
+		{name: "a non-ASCII path lies in its tree", verify: command, paths: []string{"docs/ä.md"}, want: "lyx gate test --tags integration --guards ", wantScoped: true},
+		{name: "one production path makes the diff not tree-scoped", verify: command, paths: []string{"docs/a.md", "internal/x/x.go"}},
+		{name: "an empty path list yields the command with an empty targets", verify: command, want: "lyx gate test --tags integration --guards ", wantScoped: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, scoped := TreeScopedCommand(Config{TreeScope: trees, TreeScopeVerify: tt.verify}, tt.paths)
+			if got != tt.want || scoped != tt.wantScoped {
+				t.Errorf("TreeScopedCommand(%q) = %q, %v; want %q, %v", tt.paths, got, scoped, tt.want, tt.wantScoped)
 			}
 		})
 	}
