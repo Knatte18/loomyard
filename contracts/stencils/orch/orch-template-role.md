@@ -168,8 +168,9 @@ The mechanics of reading and writing the board are in the `ly:board` skill; this
   Notes are bundled only when the operator promotes them into a task.
 - Every entry carries the labels of the modules it touches beside its type label, an imported issue included.
 - Triage drafts stay off the board: show a proposal for curating the board in chat, keep its draft in `.scratch/`, and change the board only after the operator decides.
-- A small task gets `run_settings` `{"loom": {"review_max_bounces": 2, "review_hard_max_bounces": 3}}` on its board entry, through `lyx board upsert`, before its batten run starts; never 1, since a second round reviews the first round's fixes.
-  A hard cap of 3 lets the soft-cap rule buy one reviewed round for a design-wrong fix and no more.
+- A small task gets `run_settings` `{"<recipe>": {"review_max_bounces": 1, "review_hard_max_bounces": 2}}` on its board entry, with `<recipe>` its recipe, `loom` or `darn`, through `lyx board upsert`, before its batten run starts.
+  One round is enough, since the perch fixer checks its own fixes through its fixer fan.
+  A hard cap of 2 lets the soft-cap rule buy one more round for a design-wrong fix and no more.
 
 ## Where a finding goes
 
