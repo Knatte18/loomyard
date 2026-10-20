@@ -260,7 +260,9 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 		return err
 	}
 
-	c.env.VerifyCommand = darnVerifySource(location).command
+	// The gate's told command is the hub's whole verify, which stays its site's base command;
+	// the tree-scoped command reaches the gate through VerifyTreeScope, never through this source.
+	c.env.VerifyCommand = func() (string, error) { return darnengine.VerifyCommand(dirs) }
 	c.env.VerifyMergeBase = pairMergeBase(location)
 	c.env.VerifyTreeScope = darnTreeScope(location)
 	c.env.DarnVerifyAttempts = cfg.VerifyAttempts

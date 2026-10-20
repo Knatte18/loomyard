@@ -89,6 +89,19 @@ func TestWire_DarnRecipe(t *testing.T) {
 		}
 	})
 
+	t.Run("with tree scope on the verify gate's told command stays the hub's whole verify", func(t *testing.T) {
+		t.Parallel()
+		loc := hubLocation(t, "pair", ".")
+		seedDarnHubConfig(t, loc.HubPath, `"go test ./..."`, "3", "tree_scope: {}", `tree_scope: {"docs": ""}`, `tree_scope_verify: ""`, `tree_scope_verify: "run {targets}"`)
+		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeDarn}
+		if err := c.wire(loc, loc.AnchorPath()); err != nil {
+			t.Fatalf("wire() = %v; want nil", err)
+		}
+		if command, err := c.env.VerifyCommand(); err != nil || command != "go test ./..." {
+			t.Errorf("c.env.VerifyCommand() = %q, %v; want %q, nil", command, err, "go test ./...")
+		}
+	})
+
 	t.Run("a local darn override sets the run's budget and hard cap", func(t *testing.T) {
 		t.Parallel()
 		loc := hubLocation(t, "pair", ".")
