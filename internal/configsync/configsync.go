@@ -383,7 +383,7 @@ func reconcileBaseWorktreeFile(m configreg.Module, baseDir string, apply bool) (
 		}
 	}
 
-	merged, added, removed, err := yamlengine.Reconcile([]byte(m.Template()), existing, m.OpenMaps...)
+	merged, added, removed, _, err := yamlengine.Reconcile([]byte(m.Template()), existing, nil, m.OpenMaps...)
 	if err != nil {
 		return Result{}, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("reconcile %s: %w", m.Name, err)}
 	}
@@ -431,7 +431,7 @@ func reconcileSparseFile(m configreg.Module, path string, layer configengine.Lay
 				return fail("migrate", err)
 			}
 		}
-		current, result.Removed, err = yamlengine.Prune([]byte(m.Template()), current, m.OpenMaps...)
+		current, result.Removed, _, err = yamlengine.Prune([]byte(m.Template()), current, nil, m.OpenMaps...)
 		if err != nil {
 			return fail("reconcile", err)
 		}
@@ -607,7 +607,7 @@ func ReconcileHubWideAt(boardDir, primeBaseDir string, opts HubWideOptions) ([]R
 					return nil, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("migrate %s: %w", m.Name, err)}
 				}
 			}
-			mergedBytes, added, removed, reconcileErr = yamlengine.Reconcile([]byte(m.Template()), existing, m.OpenMaps...)
+			mergedBytes, added, removed, _, reconcileErr = yamlengine.Reconcile([]byte(m.Template()), existing, nil, m.OpenMaps...)
 		}
 		if reconcileErr != nil {
 			return nil, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("reconcile %s: %w", m.Name, reconcileErr)}

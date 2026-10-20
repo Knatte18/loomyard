@@ -252,7 +252,7 @@ func warnUnknownKeys(layers []LayerDoc, spec Spec) error {
 		default:
 			continue
 		}
-		_, pruned, err := yamlengine.Prune(spec.Template, layer.Bytes, spec.OpenMaps...)
+		_, pruned, _, err := yamlengine.Prune(spec.Template, layer.Bytes, nil, spec.OpenMaps...)
 		if err != nil {
 			return MarkInvalid(fmt.Errorf("config file %s: %w", layer.Path, err))
 		}
