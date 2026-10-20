@@ -76,12 +76,12 @@ func isMergeCommit(worktreeRoot, sha string) bool {
 	return err == nil && len(parents) >= 2
 }
 
-// publishFailureCommand builds the round gate's extra steps from a checked record, joined by ` && `, or "" when there are none.
-// Each failing top-level test runs by name in its package under the failing verify's tier: `integration` for the plan verify, `tmux` for `publish_verify`.
+// publishFailureSteps builds the gate's extra steps from a checked record: failedTests, run before the gate's own command, and packagePass, run after it, each joined by ` && ` or "" when there are none.
+// failedTests runs each failing top-level test by name in its package under the failing verify's tier: `integration` for the plan verify, `tmux` for `publish_verify`.
 // The subtests of one top-level test collapse into one step, since a whole test re-runs and a subtest filter can miss a failure the test's setup caused; steps keep the record's order of first appearance.
-// For `publish_verify` the `tmux` tier also runs over packages, the impacted set; with no packages that pass is skipped.
+// For `publish_verify`, packagePass runs the `tmux` tier over packages, the impacted set; with no packages it is "".
 // Nothing from the record is run as shell text: every argument is a checked identifier, and the `-run` name is quoted.
-func publishFailureCommand(failure verifytree.PublishFailure, packages []string) string {
+func publishFailureSteps(failure verifytree.PublishFailure, packages []string) (failedTests, packagePass string) {
 	tag := "integration"
 	if failure.Kind == verifytree.FailureKindPublishVerify {
 		tag = "tmux"
@@ -98,9 +98,9 @@ func publishFailureCommand(failure verifytree.PublishFailure, packages []string)
 		steps = append(steps, fmt.Sprintf("go test -tags %s -run '%s' %s", tag, pattern, test.Package))
 	}
 	if failure.Kind == verifytree.FailureKindPublishVerify && len(packages) > 0 {
-		steps = append(steps, "go test -tags tmux "+strings.Join(packages, " "))
+		packagePass = "go test -tags tmux " + strings.Join(packages, " ")
 	}
-	return strings.Join(steps, " && ")
+	return strings.Join(steps, " && "), packagePass
 }
 
 // PublishFailureNote renders the checked Publish failure record of the verify directory as markdown for the Webster-Review rubric, or `none` when there is no record.
