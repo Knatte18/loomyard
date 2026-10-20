@@ -25,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/languageconfig"
+	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
@@ -537,9 +538,8 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		return err
 	}
 	languageSkills := language.Skills
-	// burlerengine.LoadConfig is an optional-file loader: an absent burler.yaml yields a zero
-	// Config and a nil error rather than a load failure.
-	burlerCfg, err := burlerengine.LoadConfig(fabricengine.ConfigDirs(location))
+	// lenses.Load degrades to the template on an absent lenses.yaml rather than failing the load.
+	lensesCfg, err := lenses.Load(fabricengine.ConfigDirs(location))
 	if err != nil {
 		return err
 	}
@@ -616,7 +616,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		patternRecordPath = loomengine.DiscussionDecisionRecord(location)
 	}
 	burlerGeom.PatternRecordPath = patternRecordPath
-	burlerEngine := burlerengine.New(seatengine.RunnerShuttle(runner), burlerGeom, burlerCfg, websterGeom.StencilsDir, frictionDir, languageSkills)
+	burlerEngine := burlerengine.New(seatengine.RunnerShuttle(runner), burlerGeom, lensesCfg, websterGeom.StencilsDir, frictionDir, languageSkills)
 
 	runDeps := websterengine.RunDeps{
 		Starter:    runnerMasterStarter{runner: runner},

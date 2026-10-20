@@ -592,10 +592,10 @@ User-facing modules each get one `lyx <module>` namespace:
   See the `internal/shedengine`, `internal/shedadapters`, `internal/shedcheck`, `internal/shedrecipe`, `internal/shedbuild`, `internal/shedverbs`, `internal/shedcli`, `internal/shedrun`, and `internal/loomrecipe` package documentation, and [the recipe format](../contracts/specs/shed-recipe-spec.md).
 - **burler** — one review+fix round: two fresh sessions, a reviewer and then a fixer, each the unnamed lead of its own one-seat table on the seats engine (strands `burler-review` and `burler-fix`), no self-grading, over the shuttle file contract (`internal/burlerengine` + `internal/burlercli`).
   Each review perch's fan key turns the lens fan on for it and its fix fan key the twill fixer, each per round and off by default: `loom.yaml`'s `discussion_reviewer_fan`, `plan_reviewer_fan`, `webster_reviewer_fan` and `merge_reviewer_fan` with their `*_fixer_fan` partners, and `darn.yaml`'s `darn_reviewer_fan` and `darn_fixer_fan` for Darn-Review.
-  The forks of a code perch reach the diff through read-only git, and `burler.yaml`'s `review-code` and `fix-code` fans carry lenses for a committed diff.
+  The forks of a code perch reach the diff through read-only git, and `lenses.yaml`'s `review-code` and `fix-code` fans carry lenses for a committed diff.
   The reviewer writes the review, Go accepts it and records its digest, and only then does a fixer start; it validates and fixes the findings, disputing one only with evidence that its premise is false or that every fix makes the target worse, and fixing a real finding with its own change when the proposed one is wrong.
   Profile-driven: `{overlay, source}` fix-scope, tool-use, `language-skills` (a code round's seats load the hub's `language.yaml` skills after their own); each review segment's `<segment>_reviewer_model` and `<segment>_fixer_model` keys, falling back to `loom.yaml`'s `reviewer_model` and `fixer_model`, pick each seat's model per round.
-  Cluster review fans the reviewer out into N fork-subagent reviewers by naming a fan (`cluster-fan`) from the seed-only `burler.yaml` lens/fan library — never on by default.
+  Cluster review fans the reviewer out into N fork-subagent reviewers by naming a fan (`cluster-fan`) from the `lenses.yaml` lens/fan library — never on by default.
   Strict frontmatter verdict parse;
   debug CLI `lyx burler run`, and the read-only review-gate self-check `lyx burler validate-review <review-file>`. ✅ Implemented.
   See the `internal/burlerengine` package documentation.

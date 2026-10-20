@@ -74,7 +74,7 @@
 //
 // # The fixer fan (twill fixer)
 //
-// Profile.FixFan names a fan from the burler.yaml lens/fan library, and validateFix resolves it into the fixer's lenses before any spawn, so an unknown fixer fan fails the half.
+// Profile.FixFan names a fan from the lenses.yaml lens/fan library, and validateFix resolves it into the fixer's lenses before any spawn, so an unknown fixer fan fails the half.
 // A profile with no FixFan is the single fixer, whose files render the same bytes as before the fan existed.
 // With a fan, the fixer is spawned with fork subagents authorized and its fix step renders the burler-fix-self-check part before the fixer-report rule:
 // before it writes the fixer-report, the fixer reads the deployed burler-fix-check-rubric stencil and spawns one read-only fork per lens over the change set it just made, then judges each fork finding by the fix step's own three dispositions and records them in a `## Self-check` section of the fixer-report.
@@ -85,7 +85,7 @@
 // A fork that wrote, ran a mutating git command, called the Agent tool or was spawned with a name is a hard error with a way forward, whether or not the gate passed, since the fork may have corrupted the fix.
 // A fork count other than the lens count, and a fork that never returned a report, are warnings only, since the fix is on disk and failing the half would redo a finished fix.
 // FixResult carries the fixer fan's Lenses, the audited Forks count and the Warnings.
-// A start refusal of an engine without fork support is worded by twillEngineRefusal with the model key and the fan key RunOpts.FixKey and RunOpts.FixFanKey carry, and a fan recorded for the round that no longer resolves carries the way forward to define it in burler.yaml.
+// A start refusal of an engine without fork support is worded by twillEngineRefusal with the model key and the fan key RunOpts.FixKey and RunOpts.FixFanKey carry, and a fan recorded for the round that no longer resolves carries the way forward to define it in lenses.yaml.
 //
 // # Review before fix
 //
@@ -233,17 +233,13 @@
 //
 // # Cluster fan-out (fork subagents)
 //
-// ClusterFan names a fan from the burler.yaml lens/fan library (see
-// Config/ResolveFan in config.go — a seed-only, operator-owned config
-// module registered in internal/configreg). Naming a fan IS what activates
-// clustering: the fan's entry count becomes the fork count, one fork per
-// listed lens, in fan order (repeats allowed). An empty ClusterFan is a
-// single-reviewer round — the default, since forking is never on unless a
-// profile explicitly names a fan — and a fan longer than maxClusterN (16)
-// entries fails validation. There is deliberately no fan named "default":
-// every seeded fan is dormant until a profile names it.
-// Fan and lens names resolve against burler.yaml first and, per name, against the embedded template,
-// so an operator-defined name wins and an absent burler.yaml resolves wholly from the template.
+// ClusterFan names a fan from the lenses.yaml lens/fan library, which the lenses package owns and registers in internal/configreg.
+// Naming a fan IS what activates clustering: the fan's entry count becomes the fork count, one fork per listed lens, in fan order (repeats allowed).
+// An empty ClusterFan is a single-reviewer round, the default, since forking is never on unless a profile explicitly names a fan.
+// A fan longer than lenses.MaxFanLenses entries fails validation.
+// There is deliberately no fan named "default": every templated fan is dormant until a profile names it.
+// A fan resolves against the loaded lenses.yaml, whose load fills a missing template lens or fan,
+// so an operator-defined name wins and an absent lenses.yaml resolves wholly from the template.
 // The embedded template's production fans are the `review-*` and `fix-*` fans, one pair for design records, one for plans and one, `review-code` and `fix-code`, for a committed diff.
 //
 // FanList is the value of a module's per-round fan key, one fan name or a list of them whose last entry serves every later round, an empty entry running its round solo or with the single fixer.
@@ -256,7 +252,7 @@
 // the fork stencils forbid every git command that changes state, and the round audits refuse a fork that ran one.
 //
 // ClusterExclude names lenses to drop from the fan ClusterFan resolves to,
-// applied inside validateReview after ResolveFan, with the survivors stored in
+// applied inside validateReview after lenses.ResolveFan, with the survivors stored in
 // clusterLenses — the single value both prompt composition and
 // auditClusterRound's exact-N fork check read, so a trimmed round demands
 // exactly the forks it named and ErrClusterForksMissing's fail-loud posture
