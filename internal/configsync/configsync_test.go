@@ -14,8 +14,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
+	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/loggerconfig"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"gopkg.in/yaml.v3"
 )
 
 // writeModuleFile writes content as module's config file under dir, creating the config directory.
@@ -33,14 +35,33 @@ func writeModuleFile(t *testing.T, dir, module, content string) {
 	}
 }
 
+// lensesFixture returns a lenses.yaml document: the template decoded, changed by edit and marshalled back.
+func lensesFixture(t *testing.T, edit func(cfg *lenses.Config)) string {
+	t.Helper()
+	var cfg lenses.Config
+	if err := yaml.Unmarshal([]byte(lenses.ConfigTemplate()), &cfg); err != nil {
+		t.Fatalf("decode the lenses template: %v", err)
+	}
+	edit(&cfg)
+	out, err := yaml.Marshal(cfg)
+	if err != nil {
+		t.Fatalf("marshal the lenses fixture: %v", err)
+	}
+	return string(out)
+}
+
 // moduleWant is what one ReconcileAll row expects of one module's Result and config file.
 type moduleWant struct {
 	applied bool
 	// addedAny and removedNone pin that the Result reports some added keys and no removed ones.
 	addedAny    bool
 	removedNone bool
-	addedAll    []string
-	removedAll  []string
+	// addedNone pins that the Result reports no added keys.
+	addedNone  bool
+	addedAll   []string
+	removedAll []string
+	// wantKeptExtra is the exact Result.KeptExtra; nil skips the check.
+	wantKeptExtra []string
 	// wantFile is the file's exact content after the run; nil skips the check.
 	wantFile        *string
 	fileContains    []string
@@ -63,6 +84,13 @@ func TestReconcileAll(t *testing.T) {
 	batcherTemplate := batcher.ConfigTemplate()
 	retiredBatcher := strings.Replace(batcherTemplate, "orientation: 31400", "master_base: 52000", 1)
 	masterBaseRewrites := []string{"profiles.cautious.weights.master_base: removed", "profiles.cautious.weights.orientation: added 31400"}
+	lensesLacksSecurity := lensesFixture(t, func(cfg *lenses.Config) {
+		delete(cfg.Lenses, "security")
+		cfg.Lenses["hub-lens"] = "Hub emphasis.\n"
+	})
+	lensesWithHubLens := lensesFixture(t, func(cfg *lenses.Config) {
+		cfg.Lenses["hub-lens"] = "Hub emphasis.\n"
+	})
 
 	tests := []struct {
 		name  string
@@ -169,6 +197,28 @@ func TestReconcileAll(t *testing.T) {
 			apply: true,
 			want:  map[string]moduleWant{"models": {applied: false, wantFile: ptr(modelsTrimmed)}},
 		},
+		{
+			name:  "dry run adds a missing template lens, reports a hub-only lens kept and writes nothing",
+			seed:  map[string]string{"lenses": lensesLacksSecurity},
+			apply: false,
+			want: map[string]moduleWant{"lenses": {
+				addedAll:      []string{"lenses.security"},
+				removedNone:   true,
+				wantKeptExtra: []string{"lenses.hub-lens"},
+				wantFile:      &lensesLacksSecurity,
+			}},
+		},
+		{
+			name:  "apply over the template plus a hub-only lens reports it kept and rewrites nothing",
+			seed:  map[string]string{"lenses": lensesWithHubLens},
+			apply: true,
+			want: map[string]moduleWant{"lenses": {
+				addedNone:     true,
+				removedNone:   true,
+				wantKeptExtra: []string{"lenses.hub-lens"},
+				wantFile:      &lensesWithHubLens,
+			}},
+		},
 	}
 
 	// Each floored module's below-floor key: a dry run reports the raise and writes nothing, an apply writes the key at its floor.
@@ -237,6 +287,12 @@ func TestReconcileAll(t *testing.T) {
 				}
 				if want.removedNone && len(result.Removed) != 0 {
 					t.Errorf("%s.Removed = %v; want empty", module, result.Removed)
+				}
+				if want.addedNone && len(result.Added) != 0 {
+					t.Errorf("%s.Added = %v; want empty", module, result.Added)
+				}
+				if want.wantKeptExtra != nil && !slices.Equal(result.KeptExtra, want.wantKeptExtra) {
+					t.Errorf("%s.KeptExtra = %v; want %v", module, result.KeptExtra, want.wantKeptExtra)
 				}
 				for _, key := range want.addedAll {
 					if !slices.Contains(result.Added, key) {
@@ -342,6 +398,14 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 	const primeBoard = "types:\n  spike: A time-boxed investigation\nlabels:\n  area-x: Area X\n"
 	const hubBoard = "readme: README.md\ndesign_prefix: design-\ntypes:\n  bug: Hub bug\nlabels: {}\n"
 	t.Parallel()
+	lensesTunedHubFile := lensesFixture(t, func(cfg *lenses.Config) {
+		delete(cfg.Lenses, "security")
+		delete(cfg.Fans, "twill-discussion")
+		cfg.Lenses["generic"] = "Tuned generic prose.\n"
+		cfg.Lenses["hub-lens"] = "Hub emphasis.\n"
+		cfg.Fans["standard"] = []string{"hub-lens"}
+		cfg.Fans["hub-fan"] = []string{"generic"}
+	})
 
 	tests := []struct {
 		name         string
@@ -355,7 +419,21 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 		wantSeed     string
 		wantContains []string
 		wantAbsent   []string
+		// wantAdded and wantKeptExtra are the applied result's Added and KeptExtra, compared sorted; nil skips the check.
+		wantAdded     []string
+		wantKeptExtra []string
 	}{
+		{
+			name:     "lenses default present gains each missing template entry and keeps tuned and hub-only ones",
+			module:   "lenses",
+			hubFile:  lensesTunedHubFile,
+			wantSeed: SeedHub,
+			wantContains: []string{
+				"security:", "twill-discussion:", "Tuned generic prose.", "standard:\n        - hub-lens\n    full:", "hub-lens:", "hub-fan:",
+			},
+			wantAdded:     []string{"fans.twill-discussion", "lenses.security"},
+			wantKeptExtra: []string{"fans.hub-fan", "lenses.hub-lens"},
+		},
 		{
 			name:         "loom default absent with a prime copy is seeded from the prime",
 			module:       "loom",
@@ -523,6 +601,12 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 			appliedResult := findResult(applied, tt.module)
 			if appliedResult == nil || appliedResult.Seed != tt.wantSeed {
 				t.Fatalf("applied result = %+v; want Seed %q", appliedResult, tt.wantSeed)
+			}
+			if tt.wantAdded != nil && !slices.Equal(sortedCopy(appliedResult.Added), tt.wantAdded) {
+				t.Errorf("applied Added = %v; want %v", appliedResult.Added, tt.wantAdded)
+			}
+			if tt.wantKeptExtra != nil && !slices.Equal(sortedCopy(appliedResult.KeptExtra), tt.wantKeptExtra) {
+				t.Errorf("applied KeptExtra = %v; want %v", appliedResult.KeptExtra, tt.wantKeptExtra)
 			}
 			if tt.wantNoFile {
 				if _, err := os.Stat(hubPath); !os.IsNotExist(err) {
@@ -785,8 +869,14 @@ func TestReconcileAll_SparseLayers(t *testing.T) {
 		wantRemoved []string
 		wantMigrate []string
 		// wantResult is false when the layer is absent and no result is reported.
-		wantResult bool
+		wantResult    bool
+		wantKeptExtra []string
 	}{
+		{
+			name: "worktree file keeps a hub-only lens and stays byte-identical", module: "lenses", layer: configengine.LayerWorktree,
+			content: "lenses:\n  hub-lens: |\n    Hub emphasis.\n", wantFile: ptr("lenses:\n  hub-lens: |\n    Hub emphasis.\n"),
+			wantKeptExtra: []string{"lenses.hub-lens"}, wantResult: true,
+		},
 		{
 			name: "worktree file loses a retired key and gains no template key", module: "loom", layer: configengine.LayerWorktree,
 			content: "discussion_timeout_min: 480\nstale_key: old\n", wantFile: ptr("discussion_timeout_min: 480\n"),
@@ -863,6 +953,9 @@ func TestReconcileAll_SparseLayers(t *testing.T) {
 			if result != nil {
 				if result.Applied != tt.wantApplied || !slices.Equal(result.Removed, tt.wantRemoved) || !slices.Equal(result.Migrated, tt.wantMigrate) || len(result.Added) != 0 {
 					t.Errorf("result = %+v; want Applied %v, Removed %v, Migrated %v and nothing Added", result, tt.wantApplied, tt.wantRemoved, tt.wantMigrate)
+				}
+				if !slices.Equal(result.KeptExtra, tt.wantKeptExtra) {
+					t.Errorf("KeptExtra = %v; want %v", result.KeptExtra, tt.wantKeptExtra)
 				}
 			}
 			got, readErr := os.ReadFile(path)

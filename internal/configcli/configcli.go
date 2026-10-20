@@ -540,6 +540,10 @@ func reconcileEnvelope(apply bool, results []configsync.Result) map[string]any {
 		if len(result.Overwritten) > 0 {
 			m["overwritten"] = result.Overwritten
 		}
+		// keptExtra is exceptional too: only a module with per-name maps whose file holds a name the template lacks sets it.
+		if len(result.KeptExtra) > 0 {
+			m["keptExtra"] = result.KeptExtra
+		}
 		// seed is set only by a reconcile of the board dir's files.
 		if result.Seed != "" {
 			m["seed"] = result.Seed
