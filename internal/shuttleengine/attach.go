@@ -76,7 +76,8 @@ func (r *Runner) AttachIfLive(spec Spec) (Result, bool, error) {
 	return r.attachAndWait(spec, GateSpec{}, false)
 }
 
-// AttachIfLiveGated is AttachIfLive, gated: a run it reconstructs and waits on carries gate exactly as a fresh StartGated run would.
+// AttachIfLiveGated waits on a live run matching spec's output files and reports false when none is live.
+// A run it reconstructs and waits on carries gate exactly as a fresh StartGated run would.
 // It removes nothing on any path.
 func (r *Runner) AttachIfLiveGated(spec Spec, gate GateSpec) (Result, bool, error) {
 	return r.attachAndWait(spec, gate, false)
