@@ -51,7 +51,7 @@ type FanKey struct {
 	Fans FanList
 }
 
-// ValidateFanKeys refuses an empty list on each of keys and resolves each non-empty entry through lenses.yaml under dirs, which falls back per name to the embedded template.
+// ValidateFanKeys refuses an empty list on each of keys and resolves each non-empty entry through lenses.yaml under dirs, whose load fills a lens or fan the stack lacks from the template.
 // module names the config module the keys belong to in every refusal.
 // A fan that does not resolve is refused naming the key, the 1-based entry, the unknown name and the fans that exist,
 // and an unreadable lenses.yaml is refused naming the first key with a non-empty entry.
