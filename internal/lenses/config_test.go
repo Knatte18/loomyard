@@ -1,5 +1,5 @@
 // config_test.go table-drives Load, ResolveFan and CheckLoad, and pins the embedded template.yaml's self-consistency:
-// every fan entry names a defined lens, the seeded fan lengths and orders, and the emphasis-never-exclusion posture (no lens text carries "ignore " phrasing).
+// every fan entry names a defined lens, the seeded fan lengths and orders, each writer fan holding its reviewer fan's lenses, and the emphasis-never-exclusion posture (no lens text carries "ignore " phrasing).
 // Untagged unit tier: no process spawns, fixtures written directly via os.WriteFile under t.TempDir.
 
 package lenses
@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -168,7 +169,7 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 			}
 		}
 	}
-	for fanName, wantEntries := range map[string]int{"standard": 5, "full": 8, "discussion": 5, "plan": 5, "twill-discussion": 7, "twill-plan": 5, "review-discussion": 4, "review-plan": 3, "fix-discussion": 4, "fix-plan": 4, "review-code": 4, "fix-code": 4} {
+	for fanName, wantEntries := range map[string]int{"standard": 5, "full": 8, "discussion": 5, "plan": 5, "twill-discussion": 7, "twill-plan": 8, "review-discussion": 4, "review-plan": 3, "fix-discussion": 4, "fix-plan": 4, "review-code": 4, "fix-code": 4} {
 		entries, ok := cfg.Fans[fanName]
 		if !ok {
 			t.Errorf("seeded template is missing fan %q", fanName)
@@ -181,7 +182,7 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 		"discussion":        {"generic", "goal-scope", "pattern-fit", "scenarios", "leanness"},
 		"plan":              {"generic", "decision-coverage", "card-structure", "verify-tests", "pattern-fit"},
 		"twill-discussion":  {"interactions", "existing-paths", "bound-breaker", "walkthrough", "goal-scope", "board-fit", "leanness"},
-		"twill-plan":        {"criteria-coverage", "branch-coverage", "row-reachability", "forced-edits", "test-economy"},
+		"twill-plan":        {"affected-set", "guard-reach", "way-forward", "criteria-coverage", "branch-coverage", "row-reachability", "forced-edits", "test-economy"},
 		"review-discussion": {"interactions", "existing-paths", "bound-breaker", "walkthrough"},
 		"review-plan":       {"affected-set", "guard-reach", "way-forward"},
 		"fix-discussion":    {"fix-consistency", "fix-claims", "fix-proposal", "fix-way-forward"},
@@ -207,6 +208,15 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 		for i, wantName := range wantOrder {
 			if lenses[i].Name != wantName {
 				t.Errorf("ResolveFan(%s)[%d].Name = %q; want %q", fanName, i, lenses[i].Name, wantName)
+			}
+		}
+	}
+
+	// A perch's writer runs every procedure its reviewer judges it by.
+	for reviewerFan, writerFan := range map[string]string{"review-discussion": "twill-discussion", "review-plan": "twill-plan"} {
+		for _, lensName := range wantOrders[reviewerFan] {
+			if !slices.Contains(wantOrders[writerFan], lensName) {
+				t.Errorf("fan %q lacks lens %q of reviewer fan %q", writerFan, lensName, reviewerFan)
 			}
 		}
 	}
