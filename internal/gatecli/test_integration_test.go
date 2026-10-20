@@ -587,6 +587,28 @@ func TestGateTest_Scenario(t *testing.T) {
 		}
 	})
 
+	t.Run("a tagged run outside every hub exports its own build path and removes it afterwards", func(t *testing.T) {
+		cwd := cwdWithPkg(t)
+		if err := os.MkdirAll(filepath.Join(cwd, "cmd", "lyx"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		g := startGate(t, gateRun{cwd: cwd, args: []string{"test", "--tags", "integration", "./pkg"}, env: []string{helperBuildContentEnv + "=lyx build"}})
+		if code := g.wait(t); code != 0 {
+			t.Fatalf("exit code = %d, stdout %q; want 0", code, g.stdout.String())
+		}
+		records := g.records(t)
+		if len(records) != 2 || len(records[0].Args) != 9 || records[0].Args[0] != "build" || records[1].Args[0] != "test" {
+			t.Fatalf("records = %+v; want one build invocation, then the test invocation", records)
+		}
+		bin := records[0].Args[7]
+		if records[1].Prebuilt != bin {
+			t.Errorf("go test saw %s = %q; want the build's own -o path %q", gateslot.PrebuiltLyxEnv, records[1].Prebuilt, bin)
+		}
+		if _, err := os.Stat(filepath.Dir(bin)); !os.IsNotExist(err) {
+			t.Errorf("the build directory %s survived the gate (stat err=%v); want it removed", filepath.Dir(bin), err)
+		}
+	})
+
 	stale := gateslot.PrebuiltLyxEnv + "=/stale/lyx"
 	t.Run("an untagged run builds nothing and strips an inherited prebuilt variable", func(t *testing.T) {
 		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "./pkg"}, env: []string{stale}})
