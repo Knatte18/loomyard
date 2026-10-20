@@ -22,7 +22,11 @@
 // A repository-scanning test can fail on a change far from its package.
 // A marker is found by a static parse of every `_test.go` file under every tag.
 // The marker scan is exported as FindGuardTests, and webster's card gate runs it over its own walk of the root module.
+// ModuleGuardTests runs the same scan over every package directory a `go list -e ./...` of a module names, under the three tags.
+// A package whose test file cannot be read stays listed, so the scan reports that file; an unreadable package directory or a failed `go list` is a plain error naming the module and the enumeration's error.
 // A marker not directly above a top-level `func Test…` line, or in a file the `integration` tier never compiles, is an error naming the file and line.
+// That error is a *GuardScanError whose Kind is GuardMisplaced, GuardNotIntegration or GuardParse, and whose Line is the marker's line, or the parser's for GuardParse when it reports one.
+// A file that cannot be parsed or read is a GuardParse error.
 // A `//testtiming:keep` line between the marker and the func line does not displace the marker, since a test carrying both stacks them as contiguous directive lines.
 //
 // The command is `go build ./...`, then `go vet` over the set under each of the three tags, then `go test -tags integration` over the set, which covers every untagged test too.
