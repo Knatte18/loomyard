@@ -25,7 +25,7 @@ Tests stay fast: Tier 1 is offline and spawns nothing, no test waits out a produ
 | Batch gate | `lyx gate test --tags integration` once per batch over the batch's packages, each failing on a tmux server socket its end-of-package check finds |
 | Webster-Burler-Fix round gate | the headroom lint when told a merge base, then the comment lint, then the impacted-set command, or the plan's verify wherever the impacted set cannot narrow; the `tmux` and `llm` tiers are compiled by its `go vet` steps and run only as below |
 | Webster-Burler-Fix round gate, while a Publish failure record is present | the failing tests the record names before the round command, and for a `publish_verify` failure an impacted-set `tmux` pass after it, to confirm the fix |
-| Webster's gate, Publish, Finalize | the plan's `## verify:` in full: build, vet under each tag, the untagged tier, then the `integration` tier |
+| Webster's gate, Publish, Finalize | the plan's `## verify:` in full: build, vet under each tag, then the `integration` tier alone, which runs every untagged test too |
 | Publish, after the plan verify | landing config's `publish_verify`, where the repo sets it: the `tmux` tier |
 | By hand | the `llm` tier |
 
