@@ -43,7 +43,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
-	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxtemp"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
@@ -386,7 +385,7 @@ func ServerEnviron(environ []string) []string {
 		key, _, _ := strings.Cut(entry, "=")
 		switch {
 		case key == "CLAUDECODE", strings.HasPrefix(key, "CLAUDE_CODE_"):
-		case key == logger.TraceIDEnv, key == agentname.StrandNameEnv, key == agentname.ParentEnv:
+		case key == "LYX_TRACE_ID", key == agentname.StrandNameEnv, key == agentname.ParentEnv:
 		default:
 			clean = append(clean, entry)
 		}
