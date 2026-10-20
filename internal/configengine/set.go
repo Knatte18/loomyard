@@ -71,7 +71,7 @@ func Set(dirs Dirs, spec Spec, layer Layer, pairs []yamlengine.KV) ([]string, er
 		return nil, err
 	}
 
-	result, err := yamlengine.SetValues(spec.Template, existingBytes, pairs, spec.OpenMaps...)
+	result, err := yamlengine.SetValues(spec.Template, existingBytes, pairs, spec.PerNameMaps, spec.OpenMaps...)
 	if err != nil {
 		removeIfScaffolded()
 		return nil, err
@@ -124,7 +124,7 @@ func setSparse(spec Spec, layer Layer, path string, pairs []yamlengine.KV) ([]st
 		return nil, err
 	}
 
-	result, err := yamlengine.SetSparse(spec.Template, existing, pairs, spec.OpenMaps...)
+	result, err := yamlengine.SetSparse(spec.Template, existing, pairs, spec.PerNameMaps, spec.OpenMaps...)
 	if err != nil {
 		return nil, err
 	}

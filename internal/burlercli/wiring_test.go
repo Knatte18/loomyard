@@ -2,11 +2,9 @@
 // told preflight.Mode -- never through the real pre-run -- so no case spawns a process or resolves
 // cwd.
 //
-// The hub-mode cases below hand wire a fictional, on-disk-absent *lyxcwd.Location: every module
-// config load wire performs (shuttleengine.LoadConfig, burlerengine.LoadConfig,
-// reedengine.LoadConfig) degrades to its embedded template (or, for burler.yaml, the zero Config) on
-// a proven-absent _lyx/ directory, so a fictional anchor path drives the whole hub branch without
-// touching disk.
+// The hub-mode cases below hand wire a fictional, on-disk-absent *lyxcwd.Location:
+// every module config load wire performs (shuttleengine.LoadConfig, lenses.Load, reedengine.LoadConfig) degrades to its embedded template on a proven-absent _lyx/ directory,
+// so a fictional anchor path drives the whole hub branch without touching disk.
 // The one entry each hub case creates is the worktree's .git directory, which hubgeom.ReedGeometry stats to tell the prime from a task worktree.
 //
 // The standalone-mode cases reach standalonestate.Derive through internal/cliwire's own
@@ -59,6 +57,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/cliwire"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/preflight"
@@ -650,7 +649,7 @@ fixer-report-path: reviews/fixer-report.md
 	)
 
 	// newRoundWith builds a CLI over an engine on a halfShuttle whose reviewer writes review, rooted at a fresh directory holding profile and told cfg.
-	newRoundWith := func(t *testing.T, review, profile string, cfg burlerengine.Config) (c *burlerCLI, shuttle *halfShuttle, profilePath, root string) {
+	newRoundWith := func(t *testing.T, review, profile string, cfg lenses.Config) (c *burlerCLI, shuttle *halfShuttle, profilePath, root string) {
 		t.Helper()
 		root = t.TempDir()
 		for _, name := range []string{"target.txt", "fasit.txt"} {
@@ -668,10 +667,10 @@ fixer-report-path: reviews/fixer-report.md
 		return c, shuttle, profilePath, root
 	}
 
-	// newRound is newRoundWith over the plain profile and an empty burler.yaml.
+	// newRound is newRoundWith over the plain profile and an empty lenses.Config.
 	newRound := func(t *testing.T, review string) (c *burlerCLI, shuttle *halfShuttle, profilePath, root string) {
 		t.Helper()
-		return newRoundWith(t, review, profileYAML, burlerengine.Config{})
+		return newRoundWith(t, review, profileYAML, lenses.Config{})
 	}
 
 	// runEnvelope runs the verb over args and returns its decoded envelope.
@@ -756,7 +755,7 @@ fixer-report-path: reviews/fixer-report.md
 	t.Run("a profile naming a fix-fan runs the twill fixer with forks", func(t *testing.T) {
 		t.Parallel()
 
-		cfg := burlerengine.Config{
+		cfg := lenses.Config{
 			Lenses: map[string]string{"correctness": "check the fix is correct"},
 			Fans:   map[string][]string{"fix-plan": {"correctness"}},
 		}
@@ -836,7 +835,10 @@ fixer-report-path: reviews/fixer-report.md
 		}
 		reed := &shuttlefake.Reed{}
 		runner := shuttleengine.NewRunner(reed, shuttlefake.EngineSet(&shuttlefake.Engine{}), root, root, shuttleengine.Config{RunDir: t.TempDir(), RunTimeoutMin: 60, StartupTimeoutS: 30})
-		engine := burlerengine.New(seatengine.RunnerShuttle(runner), burlerengine.Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug"}, burlerengine.Config{}, stencilkit.Seed(t), "", nil)
+		engine := burlerengine.New(seatengine.RunnerShuttle(runner), burlerengine.Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug"}, lenses.Config{
+			Lenses: map[string]string{"style": "style prose"},
+			Fans:   map[string][]string{"standard": {"style"}},
+		}, stencilkit.Seed(t), "", nil)
 		c := &burlerCLI{cwd: root, engine: engine, mode: "standalone"}
 
 		var out bytes.Buffer

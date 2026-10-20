@@ -4,6 +4,7 @@ package yamlengine
 
 import (
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -87,12 +88,13 @@ func TestStrip(t *testing.T) {
 	}
 }
 
-const sparseTemplate = "name: tmpl\nport: 80\nnested:\n    deep: 1\nlabels: {}\nlist: [a]\nplan_max_bounces: ~\nrounds: \"\"\n"
+const sparseTemplate = "name: tmpl\nport: 80\nnested:\n    deep: 1\nlabels: {}\nlist: [a]\nplan_max_bounces: ~\nrounds: \"\"\nnames:\n    a: default a\nlists:\n    l: [x]\n"
 
-// TestSetSparse pins that SetSparse writes only the set keys: into empty bytes, beside an existing key, through intermediate mappings, as an open-map entry and as a flow list, with a template tag kept and an unknown or misshapen request refused.
+// TestSetSparse pins that SetSparse writes only the set keys: into empty bytes, beside an existing key, through intermediate mappings, as an open-map entry, as a per-name entry and as a flow list, with a template tag kept and an unknown or misshapen request refused.
 func TestSetSparse(t *testing.T) {
 	t.Parallel()
 	openMaps := []string{"labels", "rounds"}
+	perNameMaps := []string{"lists", "names"}
 	tests := []struct {
 		name        string
 		existing    string
@@ -100,6 +102,7 @@ func TestSetSparse(t *testing.T) {
 		want        string
 		wantUnknown []string
 		wantErr     bool
+		wantErrText []string
 		wantInts    map[string]*int
 	}{
 		{name: "an integer set on a null template leaf takes the int tag", pairs: []KV{{Key: "plan_max_bounces", Value: "2"}}, want: "plan_max_bounces: 2\n", wantInts: map[string]*int{"plan_max_bounces": intPointer(2)}},
@@ -126,15 +129,26 @@ func TestSetSparse(t *testing.T) {
 		{name: "scalar-or-list key refuses a nested list", pairs: []KV{{Key: "rounds", Value: "[[a], b]"}}, wantErr: true},
 		{name: "scalar-or-list key refuses text after the closing bracket", pairs: []KV{{Key: "rounds", Value: `["a"] trailing`}}, wantErr: true},
 		{name: "mapping open map holding a list refuses a scalar", existing: "labels: [a]\n", pairs: []KV{{Key: "labels", Value: "x"}}, wantErr: true},
+		{name: "new per-name scalar name is written alone", pairs: []KV{{Key: "names.x", Value: "[prose]"}}, want: "names:\n    x: '[prose]'\n"},
+		{name: "new per-name list name is written alone", existing: "name: x\n", pairs: []KV{{Key: "lists.m", Value: "[a, b]"}}, want: "name: x\nlists:\n    m: [a, b]\n"},
+		{name: "per-name entry beside another", existing: "names:\n    a: mine\n", pairs: []KV{{Key: "names.x", Value: "prose"}}, want: "names:\n    a: mine\n    x: prose\n"},
+		{name: "per-name list entry refuses a plain value", pairs: []KV{{Key: "lists.m", Value: "plain"}}, wantErr: true},
+		{name: "per-name map holding a list is refused", existing: "names: [a]\n", pairs: []KV{{Key: "names.x", Value: "prose"}}, wantErr: true, wantErrText: []string{"names", "sequence", "rewrite names as a map of name to value"}},
+		{name: "per-name deeper key is unknown", pairs: []KV{{Key: "names.x.y", Value: "v"}}, wantUnknown: []string{"names.x.y"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := SetSparse([]byte(sparseTemplate), []byte(tc.existing), tc.pairs, openMaps...)
+			got, err := SetSparse([]byte(sparseTemplate), []byte(tc.existing), tc.pairs, perNameMaps, openMaps...)
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("SetSparse error = %v, wantErr %v", err, tc.wantErr)
 			}
 			if tc.wantErr {
+				for _, want := range tc.wantErrText {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("SetSparse error = %q, want it to contain %q", err, want)
+					}
+				}
 				return
 			}
 			if !slices.Equal(got.Unknown, tc.wantUnknown) {
@@ -165,12 +179,13 @@ func TestSetSparse(t *testing.T) {
 // TestPrune pins that Prune removes only units the template does not know: a retired key, an unknown nested key, a retired mapping unit by unit, an emptied parent with its key; a key under an open map stays, no template key is added, and an untouched file comes back byte for byte.
 func TestPrune(t *testing.T) {
 	t.Parallel()
-	const template = "name: tmpl\nnested:\n    deep: 1\nlabels: {}\nlist: [a]\n"
+	const template = "name: tmpl\nnested:\n    deep: 1\nlabels: {}\nlist: [a]\nnames:\n    a: default a\n"
 	tests := []struct {
 		name        string
 		existing    string
 		want        string
 		wantRemoved []string
+		wantKept    []string
 	}{
 		{name: "retired key removed", existing: "name: x\nold: 1\n", want: "name: x\n", wantRemoved: []string{"old"}},
 		{name: "open-map entry kept", existing: "labels:\n    anything: q\n", want: "labels:\n    anything: q\n", wantRemoved: []string{}},
@@ -180,11 +195,13 @@ func TestPrune(t *testing.T) {
 		{name: "emptied parent removed with its key", existing: "nested:\n    gone: 1\n", want: "", wantRemoved: []string{"nested.gone"}},
 		{name: "list kept", existing: "list: [x, y, z]\n", want: "list: [x, y, z]\n", wantRemoved: []string{}},
 		{name: "empty existing stays empty", existing: "", want: "", wantRemoved: []string{}},
+		{name: "per-name name the template lacks stays and is reported kept", existing: "names:\n    z: mine\n    a: tuned\n", want: "names:\n    z: mine\n    a: tuned\n", wantRemoved: []string{}, wantKept: []string{"names.z"}},
+		{name: "per-name name kept beside a removed key", existing: "old: 1\nnames:\n    z: mine\n", want: "names:\n    z: mine\n", wantRemoved: []string{"old"}, wantKept: []string{"names.z"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got, removed, err := Prune([]byte(template), []byte(tc.existing), "labels")
+			got, removed, kept, err := Prune([]byte(template), []byte(tc.existing), []string{"names"}, "labels")
 			if err != nil {
 				t.Fatalf("Prune: %v", err)
 			}
@@ -193,6 +210,9 @@ func TestPrune(t *testing.T) {
 			}
 			if !slices.Equal(removed, tc.wantRemoved) {
 				t.Errorf("removed = %v, want %v", removed, tc.wantRemoved)
+			}
+			if !slices.Equal(kept, tc.wantKept) {
+				t.Errorf("kept = %v, want %v", kept, tc.wantKept)
 			}
 		})
 	}

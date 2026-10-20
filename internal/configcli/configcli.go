@@ -417,8 +417,8 @@ func buildConfigLong() string {
 		"board dir's files, and \"lyx config reconcile --apply\" to remove them from a worktree file.\n\n" +
 		"--layer default|worktree|local picks the file to print or write: default is the board's\n" +
 		"repo default, committed from the prime; local is an untracked override.\n\n" +
-		"--resolved <module> prints the merged result, each unit's line comment naming the\n" +
-		"layer it came from: template, default, worktree or local.\n\n" +
+		"--resolved <module> prints the merged result, each unit annotated with its\n" +
+		"layer: template, default, worktree or local.\n\n" +
 		"Known modules: " + strings.Join(configreg.Names(), ", ") + "."
 }
 
@@ -539,6 +539,10 @@ func reconcileEnvelope(apply bool, results []configsync.Result) map[string]any {
 		}
 		if len(result.Overwritten) > 0 {
 			m["overwritten"] = result.Overwritten
+		}
+		// keptExtra is exceptional too: only a module with per-name maps whose file holds a name the template lacks sets it.
+		if len(result.KeptExtra) > 0 {
+			m["keptExtra"] = result.KeptExtra
 		}
 		// seed is set only by a reconcile of the board dir's files.
 		if result.Seed != "" {

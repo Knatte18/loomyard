@@ -1,15 +1,18 @@
-# burler.yaml — the lens/fan library for burler cluster review. Materialized
-# once (lyx init / lyx config reconcile) when this file is absent; after that,
-# this file is OPERATOR-OWNED: reconcile is seed-only for burler.yaml and
-# never rewrites or prunes it again, so any lens or fan you add, edit, or
-# remove here survives every future reconcile untouched. Deleting a standard
-# lens or fan you don't want is a supported, permanent choice — it will not
-# come back on the next reconcile.
+# lenses.yaml — the lens/fan library that burler's reviewers and fixers, loom's
+# twill writers and fan keys and darn's fan keys read. Reconcile adds each
+# template lens or fan this file lacks and keeps every lens and fan this file
+# holds, prose and fan lists unchanged, so a later template edit reaches this
+# file only once its entry is deleted from the file or edited in. A lens or fan
+# the template lacks is kept and reported, never pruned.
+#
+# A template lens or fan cannot be removed: a deleted one resolves to the
+# template's value at the next load and is written back at the next reconcile.
+# A fan is turned off at the loom or darn fan key entry that names it, by
+# pointing the entry at another fan or setting it to "".
 #
 # Resolution falls back per name to this embedded template: a fan or lens
 # name this file defines is used verbatim and wins, and a name it lacks
-# resolves from the template. A fan or lens you deleted here therefore still
-# resolves when a profile or loom.yaml names it.
+# resolves from the template.
 #
 # lenses: maps a lens name to emphasis-steering review prose for one fork of a
 # cluster round. Add a repo-local lens by adding a block like this:
@@ -340,11 +343,12 @@ fans:
     - verify-tests
     - pattern-fit
   twill-discussion:
-    - premises
+    - interactions
+    - existing-paths
+    - bound-breaker
+    - walkthrough
     - goal-scope
     - board-fit
-    - pattern-fit
-    - scenarios
     - leanness
   twill-plan:
     - criteria-coverage

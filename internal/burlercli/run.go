@@ -131,8 +131,8 @@ Example profile YAML:
     NIT: minor formatting.
   fix-scope: source
   tool-use: false
-  cluster-fan: ""  # naming a fan from burler.yaml activates cluster review, one fork per fan entry
-  fix-fan: ""  # naming a fan from burler.yaml runs the twill fixer, whose forks check its fix
+  cluster-fan: ""  # naming a fan from lenses.yaml activates cluster review, one fork per fan entry
+  fix-fan: ""  # naming a fan from lenses.yaml runs the twill fixer, whose forks check its fix
   language-skills: false  # true loads the hub's language skills after burler's own on both seats
   review-path: _lyx/burler/review.md
   fixer-report-path: _lyx/burler/fixer-report.md

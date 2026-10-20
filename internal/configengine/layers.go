@@ -57,6 +57,7 @@ const (
 
 // Spec describes one module to the layered loaders.
 // OpenMaps are the dotted paths of the module's open maps;
+// PerNameMaps are the dotted paths of the module's per-name maps, mappings of names each carried whole as one unit, such as a lens's prose or a fan's list;
 // HubWide marks a module whose file lives at the hub only;
 // WholeEntries makes each top-level key one unit, open to the local layer.
 // JSONEntries makes a set write each pair as one whole top-level entry from a JSON object, with no template key check.
@@ -67,6 +68,7 @@ type Spec struct {
 	Name         string
 	Template     []byte
 	OpenMaps     []string
+	PerNameMaps  []string
 	HubWide      bool
 	WholeEntries bool
 	JSONEntries  bool

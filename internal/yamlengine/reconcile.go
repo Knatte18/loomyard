@@ -23,11 +23,19 @@ import (
 // When existing holds the key, its value replaces the template's whole, whatever its kind,
 // and nothing at or under the path is reported added or removed.
 // When existing lacks the key, the template's value stays and added reports the path itself.
-func Reconcile(template, existing []byte, openMaps ...string) (merged []byte, added, removed []string, err error) {
+//
+// Each perNameMaps entry is a dotted key path whose template value is a mapping of names, each name one unit carried whole.
+// The merged mapping holds the template's names in template order, each with the file's value when the file holds that name.
+// Every name only the file holds follows, in file order.
+// added reports P.<name> for each template name the file lacks, and every template name when the file lacks P or holds null or an empty mapping there;
+// kept reports, sorted, P.<name> for each name only the file holds.
+// Nothing at or under P is reported removed.
+// A file value at P that is neither a mapping nor null is an error naming P and its shape.
+func Reconcile(template, existing []byte, perNameMaps []string, openMaps ...string) (merged []byte, added, removed, kept []string, err error) {
 	// Parse template into node tree
 	var templateNode yaml.Node
 	if parseErr := yaml.Unmarshal(template, &templateNode); parseErr != nil {
-		return nil, nil, nil, fmt.Errorf("parse template YAML: %w", parseErr)
+		return nil, nil, nil, nil, fmt.Errorf("parse template YAML: %w", parseErr)
 	}
 
 	// Parse existing into node tree (empty/nil existing yields empty document)
@@ -37,7 +45,7 @@ func Reconcile(template, existing []byte, openMaps ...string) (merged []byte, ad
 		existingNode.Content = []*yaml.Node{}
 	} else {
 		if parseErr := yaml.Unmarshal(existing, &existingNode); parseErr != nil {
-			return nil, nil, nil, fmt.Errorf("parse existing YAML: %w", parseErr)
+			return nil, nil, nil, nil, fmt.Errorf("parse existing YAML: %w", parseErr)
 		}
 	}
 
@@ -45,6 +53,14 @@ func Reconcile(template, existing []byte, openMaps ...string) (merged []byte, ad
 	// so both trees agree under it.
 	// One existing lacks is reported as the path itself, below.
 	absentOpenMaps := carryOpenMaps(&templateNode, &existingNode, openMaps)
+
+	// A declared per-name map is merged into one mapping both trees then share,
+	// so no leaf under it differs between them.
+	// One existing lacks keeps the template's mapping, and its names are reported added below.
+	absentPerNameMaps, perNameAdded, kept, err := mergePerNameMaps(&templateNode, &existingNode, perNameMaps)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
 
 	// Collect all leaf key-paths from the template
 	templateLeaves := make(map[string]*yaml.Node)
@@ -69,12 +85,13 @@ func Reconcile(template, existing []byte, openMaps ...string) (merged []byte, ad
 		if base, isElement := sequenceBasePath(path); isElement && existingSequences[base] != nil {
 			continue
 		}
-		if underAny(path, absentOpenMaps) {
+		if underAny(path, absentOpenMaps) || underAny(path, absentPerNameMaps) {
 			continue
 		}
 		added = append(added, path)
 	}
 	added = append(added, absentOpenMaps...)
+	added = append(added, perNameAdded...)
 	sort.Strings(added)
 
 	removed = []string{}
@@ -97,10 +114,10 @@ func Reconcile(template, existing []byte, openMaps ...string) (merged []byte, ad
 	// Marshal the mutated template back to bytes
 	merged, err = yaml.Marshal(&templateNode)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("marshal merged YAML: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("marshal merged YAML: %w", err)
 	}
 
-	return merged, added, removed, nil
+	return merged, added, removed, kept, nil
 }
 
 // MissingKeys returns the leaf key-paths present in template but absent from existing.
@@ -236,6 +253,65 @@ func carryOpenMaps(templateNode, existingNode *yaml.Node, openMaps []string) []s
 	}
 	sort.Strings(absent)
 	return absent
+}
+
+// mergePerNameMaps replaces both trees' value at each declared per-name map path with one merged mapping:
+// the template's names in template order, each with existing's value whole when existing holds it, then the names only existing holds in existing's order.
+// It returns the sorted paths the template holds as a mapping and existing lacks, which keep the template's value.
+// It also returns the sorted P.<name> paths of every template name existing lacks, and of every name only existing holds.
+// A null at a path counts as an empty mapping; any other non-mapping value in existing is an error naming the path and its shape.
+func mergePerNameMaps(templateNode, existingNode *yaml.Node, perNameMaps []string) (absent, added, kept []string, err error) {
+	kept = []string{}
+	for _, p := range perNameMaps {
+		templateValue := findValueNode(templateNode, p)
+		if templateValue == nil || templateValue.Kind != yaml.MappingNode {
+			continue
+		}
+		existingValue := findValueNode(existingNode, p)
+		if existingValue == nil {
+			absent = append(absent, p)
+			for i := 0; i+1 < len(templateValue.Content); i += 2 {
+				added = append(added, joinKeyPath(p, templateValue.Content[i].Value))
+			}
+			continue
+		}
+		if existingValue.Kind == yaml.ScalarNode && existingValue.Tag == "!!null" {
+			*existingValue = yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+		}
+		if existingValue.Kind != yaml.MappingNode {
+			return nil, nil, nil, fmt.Errorf("%s holds a %s, not a map: rewrite %s as a map of name to value", p, nodeShape(existingValue), p)
+		}
+
+		merged := &yaml.Node{
+			Kind:        yaml.MappingNode,
+			Tag:         "!!map",
+			HeadComment: templateValue.HeadComment,
+			LineComment: templateValue.LineComment,
+			FootComment: templateValue.FootComment,
+		}
+		for i := 0; i+1 < len(templateValue.Content); i += 2 {
+			key, value := templateValue.Content[i], templateValue.Content[i+1]
+			if at := mappingIndex(existingValue, key.Value); at >= 0 {
+				value = existingValue.Content[at+1]
+			} else {
+				added = append(added, joinKeyPath(p, key.Value))
+			}
+			merged.Content = append(merged.Content, key, value)
+		}
+		for i := 0; i+1 < len(existingValue.Content); i += 2 {
+			key := existingValue.Content[i]
+			if mappingIndex(templateValue, key.Value) < 0 {
+				merged.Content = append(merged.Content, key, existingValue.Content[i+1])
+				kept = append(kept, joinKeyPath(p, key.Value))
+			}
+		}
+		*templateValue = *merged
+		*existingValue = *merged
+	}
+	sort.Strings(absent)
+	sort.Strings(added)
+	sort.Strings(kept)
+	return absent, added, kept, nil
 }
 
 // sequenceBasePath splits a sequence-element leaf path into its owning key path, reporting whether

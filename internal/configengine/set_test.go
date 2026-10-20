@@ -27,6 +27,8 @@ func TestSet(t *testing.T) {
 		template string
 		pairs    []yamlengine.KV
 		openMaps []string
+		// perNameMaps is the spec's per-name maps.
+		perNameMaps []string
 		// wantErr is a substring of the refusal; empty means Set must succeed.
 		wantErr       string
 		wantPreserved []string
@@ -74,6 +76,24 @@ func TestSet(t *testing.T) {
 			pairs:    []yamlengine.KV{{Key: "labels.x", Value: "an x"}},
 			openMaps: []string{"labels"},
 			contains: []string{"x: an x", "bug: a bug"},
+		},
+		{
+			name:        "per-name map gains a name the template lacks on the base layer",
+			state:       baseWithFile,
+			existing:    "name: x\nlenses:\n  a: A\n",
+			template:    "name: x\nlenses:\n  a: A\n",
+			pairs:       []yamlengine.KV{{Key: "lenses.new", Value: "a new lens"}},
+			perNameMaps: []string{"lenses"},
+			contains:    []string{"a: A", "new: a new lens"},
+		},
+		{
+			name:        "per-name map gains a name the template lacks on a sparse layer",
+			state:       baseLyx,
+			template:    "name: x\nlenses:\n  a: A\n",
+			pairs:       []yamlengine.KV{{Key: "lenses.new", Value: "a new lens"}},
+			perNameMaps: []string{"lenses"},
+			board:       true,
+			wantExact:   "lenses:\n    new: a new lens\n",
 		},
 		{
 			name:     "unknown key removes the scaffolded file",
@@ -180,7 +200,7 @@ func TestSet(t *testing.T) {
 					}
 				}
 			}
-			spec := configengine.Spec{Name: "testmod", Template: []byte(tt.template), OpenMaps: tt.openMaps, Categories: tt.categories}
+			spec := configengine.Spec{Name: "testmod", Template: []byte(tt.template), OpenMaps: tt.openMaps, PerNameMaps: tt.perNameMaps, Categories: tt.categories}
 
 			preserved, err := configengine.Set(dirs, spec, layer, tt.pairs)
 

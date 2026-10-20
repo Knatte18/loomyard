@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -366,11 +367,11 @@ func newEngineTestProfile(t *testing.T) (root string, p Profile) {
 // newEngineForTest wires an Engine to shuttle over a Geometry rooted at root.
 func newEngineForTest(t *testing.T, root string, shuttle *fakeShuttle) *Engine {
 	t.Helper()
-	return newEngineWith(t, Geometry{WorktreeRoot: root, AnchorPath: root}, Config{}, shuttle)
+	return newEngineWith(t, Geometry{WorktreeRoot: root, AnchorPath: root}, lenses.Config{}, shuttle)
 }
 
 // newEngineWith is newEngineForTest over a told geometry and config; a geometry without a shortname is given the fake strand prefix's.
-func newEngineWith(t *testing.T, geom Geometry, cfg Config, shuttle *fakeShuttle) *Engine {
+func newEngineWith(t *testing.T, geom Geometry, cfg lenses.Config, shuttle *fakeShuttle) *Engine {
 	t.Helper()
 	if geom.Shortname == "" {
 		geom.Shortname, geom.Slug = "tst", "slug"
@@ -390,7 +391,7 @@ const (
 )
 
 // clusterTestConfig is a one-lens, one-fan config, so a cluster profile resolves to exactly one fork.
-var clusterTestConfig = Config{
+var clusterTestConfig = lenses.Config{
 	Lenses: map[string]string{"style": "style prose"},
 	Fans:   map[string][]string{"standard": {"style"}},
 }

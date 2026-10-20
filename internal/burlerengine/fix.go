@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/friction"
+	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -291,10 +292,10 @@ func (e *Engine) concludeFix(p *Profile, opts RunOpts, digest string, seats seat
 	return base, nil
 }
 
-// lensNames returns the names of lenses in order.
-func lensNames(lenses []Lens) []string {
-	names := make([]string, len(lenses))
-	for i, lens := range lenses {
+// lensNames returns the names of resolved in order.
+func lensNames(resolved []lenses.Lens) []string {
+	names := make([]string, len(resolved))
+	for i, lens := range resolved {
 		names[i] = lens.Name
 	}
 	return names

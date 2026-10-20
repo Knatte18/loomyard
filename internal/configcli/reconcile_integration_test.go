@@ -66,6 +66,7 @@ func TestConfigReconcileInGitRepo(t *testing.T) {
 		seedModuleConfig(t, tmpDir, "batcher", retiredBatcher)
 		const movableShuttle = "claude: /x\n"
 		seedModuleConfig(t, tmpDir, "shuttle", movableShuttle)
+		seedModuleConfig(t, tmpDir, "lenses", "lenses:\n  hub-lens: |\n    Hub emphasis.\n")
 
 		code, result := runReconcileCLI(t, tmpDir)
 
@@ -110,6 +111,13 @@ func TestConfigReconcileInGitRepo(t *testing.T) {
 		}
 		if _, has := reconcileModule(t, result, "reed")["migrated"]; has {
 			t.Error("reed module entry carries migrated; want it omitted without a migration")
+		}
+		keptExtra, _ := reconcileModule(t, result, "lenses")["keptExtra"].([]any)
+		if !slices.Equal(keptExtra, []any{"lenses.hub-lens"}) {
+			t.Errorf("lenses module's keptExtra = %v; want [lenses.hub-lens]", keptExtra)
+		}
+		if _, has := reconcileModule(t, result, "loom")["keptExtra"]; has {
+			t.Error("loom module entry carries keptExtra; want it omitted when nothing is kept")
 		}
 		modules, _ := result["modules"].([]any)
 		if len(modules) == 0 {

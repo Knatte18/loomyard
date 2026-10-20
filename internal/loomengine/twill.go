@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
@@ -25,30 +25,30 @@ const (
 	planTwillSeverityRule = "a severity (`BLOCKING` when the plan as written fails its verify or ships a wrong behavior, `MEDIUM` when a decision, criterion or branch goes unreached or untested, `LOW` otherwise)"
 )
 
-// twillLenses returns the lenses of the named fan, resolved against burler.yaml's layer stack under dirs and the embedded template.
+// twillLenses returns the lenses of the named fan, resolved against lenses.yaml's layer stack under dirs.
 // key is the loom.yaml key that names the fan, which the errors carry:
-// an unreadable burler.yaml, a fan that is undefined or holds no lenses, and a fan naming an undefined lens are each refused naming the key and the way forward.
+// an unreadable lenses.yaml, a fan that is undefined or holds no lenses, and a fan naming an undefined lens are each refused naming the key and the way forward.
 func twillLenses(dirs configengine.Dirs, fan, key string) ([]twilldirective.Lens, error) {
-	burlerConfig, err := burlerengine.LoadConfig(dirs)
+	lensesConfig, err := lenses.Load(dirs)
 	if err != nil {
-		return nil, fmt.Errorf("loom config key %q: burler.yaml unreadable for the %q fan: %w; fix burler.yaml, or set the key to \"\" to turn the lens forks off", key, fan, err)
+		return nil, fmt.Errorf("loom config key %q: lenses.yaml unreadable for the %q fan: %w; fix lenses.yaml, or set the key to \"\" to turn the lens forks off", key, fan, err)
 	}
-	resolved, err := burlerengine.ResolveFan(burlerConfig, fan)
+	resolved, err := lenses.ResolveFan(lensesConfig, fan)
 	if err != nil {
-		return nil, fmt.Errorf("loom config key %q: fan %q unresolvable through burler.yaml: %w; define the fan and its lenses in burler.yaml, or set the key to \"\" to turn the lens forks off", key, fan, err)
+		return nil, fmt.Errorf("loom config key %q: fan %q unresolvable through lenses.yaml: %w; define the fan and its lenses in lenses.yaml, or set the key to \"\" to turn the lens forks off", key, fan, err)
 	}
-	lenses := make([]twilldirective.Lens, len(resolved))
+	fanLenses := make([]twilldirective.Lens, len(resolved))
 	for i, lens := range resolved {
-		lenses[i] = twilldirective.Lens{Name: lens.Name, Text: lens.Text}
+		fanLenses[i] = twilldirective.Lens{Name: lens.Name, Text: lens.Text}
 	}
-	return lenses, nil
+	return fanLenses, nil
 }
 
-// planLensDirective returns the twill directive for the Plan-Write lead's prompt, filled with the plan host's values and the lenses of the named fan, resolved through burler.yaml's layer stack under dirs.
+// planLensDirective returns the twill directive for the Plan-Write lead's prompt, filled with the plan host's values and the lenses of the named fan, resolved through lenses.yaml's layer stack under dirs.
 // The forks review the overview and every card file its Card Index names, and the writer records the lens review in the plan directory's lens review file.
 // A fan that does not resolve is refused naming the plan_lenses key.
 func planLensDirective(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir, fan string) (string, error) {
-	lenses, err := twillLenses(dirs, fan, planLensesKey)
+	fanLenses, err := twillLenses(dirs, fan, planLensesKey)
 	if err != nil {
 		return "", err
 	}
@@ -58,7 +58,7 @@ func planLensDirective(layout *lyxcwd.Location, dirs configengine.Dirs, stencils
 		SpawnPoint:            planTwillSpawnPoint,
 		SeverityRule:          planTwillSeverityRule,
 		RubricPath:            stencilstore.Path(stencilsDir, "loom-rubric-plan-review"),
-		Lenses:                lenses,
+		Lenses:                fanLenses,
 		FormatStep:            "Step 3 and Step 4",
 		SelfCheckStep:         "Step 5",
 		SelfCheckCommand:      "lyx loom validate-plan",
@@ -78,10 +78,10 @@ func planLensDirective(layout *lyxcwd.Location, dirs configengine.Dirs, stencils
 }
 
 // discussionLensDirective returns the twill directive for the Discussion-Write prompt.
-// The lenses come from the named fan, resolved against burler.yaml's layer stack under dirs and the embedded template.
-// An unreadable burler.yaml, or a fan that does not resolve, is refused naming the discussion_lenses key and the way forward.
+// The lenses come from the named fan, resolved against lenses.yaml's layer stack under dirs.
+// An unreadable lenses.yaml, or a fan that does not resolve, is refused naming the discussion_lenses key and the way forward.
 func discussionLensDirective(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir, fan string) (string, error) {
-	lenses, err := twillLenses(dirs, fan, discussionLensesKey)
+	fanLenses, err := twillLenses(dirs, fan, discussionLensesKey)
 	if err != nil {
 		return "", err
 	}
@@ -92,7 +92,7 @@ func discussionLensDirective(layout *lyxcwd.Location, dirs configengine.Dirs, st
 		RejectionRule:         "Fix the record, or reject the finding with a one-line reason.",
 		SeverityRule:          "a severity (`BLOCKING`, `MEDIUM` or `LOW`)",
 		RubricPath:            stencilstore.Path(stencilsDir, "loom-rubric-discussion-review"),
-		Lenses:                lenses,
+		Lenses:                fanLenses,
 		FormatStep:            "Step 5",
 		SelfCheckStep:         "Step 6",
 		SelfCheckCommand:      "lyx loom validate-discussion",

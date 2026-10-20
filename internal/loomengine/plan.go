@@ -12,7 +12,7 @@
 // settle is what flips `approved` to `true`, immediately before its commit seam fires.
 //
 // With plan_lenses set the lead carries the twill directive rendered into the plan template between Step 2 and Step 3, and fork subagents are authorized.
-// The directive's lenses come from the burler.yaml fan plan_lenses names.
+// The directive's lenses come from the lenses.yaml fan plan_lenses names.
 // The lead explores, spawns one fork, fork0, to write the plan, reads the finished plan in full and self-checks it, then spawns the lens forks and judges their findings as a critical fixer.
 // The forks hold the exploration and the plan but not fork0's reasoning, and the lead records the lens review in the plan directory's lens-review.md.
 // The writer runs `lyx loom validate-plan --lens-review` as its final self-check, and the row's gate requires a recorded lens-review.md for a run whose lead was authorized to fork.
@@ -58,7 +58,7 @@ var planSkills = []string{"scribe:prose", "scribe:testing"}
 const planStencil = "loom-template-plan"
 
 // PlanTable builds the seatengine.Table of one Plan-Write run: a lead that writes the plan directory's cards and, last, its overview.
-// When cfg.PlanLenses is set the lead alone is authorized to spawn fork subagents and carries the twill lens review directive, whose fan is resolved through burler.yaml under dirs; otherwise the prompt keeps its bytes.
+// When cfg.PlanLenses is set the lead alone is authorized to spawn fork subagents and carries the twill lens review directive, whose fan is resolved through lenses.yaml under dirs; otherwise the prompt keeps its bytes.
 // specsDir is told, never derived: this package is bound by the Told-Geometry Invariant.
 // The seat's opening stencil is read at call time from stencilsDir, and the seat engine renders the parent and edit directives from its geometry.
 // verifyTiers is the hub's verify tier list; the prompt's verify_tiers value is its entries as bullets, or "none" for an empty list.

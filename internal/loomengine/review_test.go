@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/darnengine"
+	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -104,11 +105,11 @@ func TestResolveReview(t *testing.T) {
 	}
 
 	// A set fan key changes no model: a fanned segment's reviewer list is still its own review list, else the run-wide one.
-	cfg.DiscussionReviewerFan = burlerengine.FanList{"standard"}
-	cfg.PlanReviewerFan = burlerengine.FanList{"", "full"}
-	cfg.DiscussionFixerFan = burlerengine.FanList{"fix-discussion"}
-	cfg.WebsterReviewerFan = burlerengine.FanList{"review-code"}
-	cfg.MergeFixerFan = burlerengine.FanList{"fix-code"}
+	cfg.DiscussionReviewerFan = lenses.FanList{"standard"}
+	cfg.PlanReviewerFan = lenses.FanList{"", "full"}
+	cfg.DiscussionFixerFan = lenses.FanList{"fix-discussion"}
+	cfg.WebsterReviewerFan = lenses.FanList{"review-code"}
+	cfg.MergeFixerFan = lenses.FanList{"fix-code"}
 	fanned, err := ResolveReview(cfg, reg)
 	if err != nil {
 		t.Fatalf("ResolveReview(fanned cfg) = _, %v; want nil error", err)

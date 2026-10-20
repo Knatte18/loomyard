@@ -11,19 +11,19 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/lenses"
 )
 
-// testClusterFanConfig returns a Config fixture exercising every ResolveFan
-// outcome profile_test.go's table needs: a resolvable "standard" fan, a fan
-// naming an undefined lens ("badlens"), and a fan longer than maxClusterN
-// ("huge") — deliberately distinct from any fixture config_test.go itself
-// owns, so this file's cases never depend on that file's fixtures.
-func testClusterFanConfig() Config {
-	huge := make([]string, maxClusterN+1)
+// testClusterFanConfig returns a lenses.Config fixture exercising every lenses.ResolveFan outcome profile_test.go's table needs:
+// a resolvable "standard" fan, a fan naming an undefined lens ("badlens"), and a fan longer than lenses.MaxFanLenses ("huge").
+// It is deliberately distinct from any fixture config_test.go itself owns, so this file's cases never depend on that file's fixtures.
+func testClusterFanConfig() lenses.Config {
+	huge := make([]string, lenses.MaxFanLenses+1)
 	for i := range huge {
 		huge[i] = "style"
 	}
-	return Config{
+	return lenses.Config{
 		Lenses: map[string]string{
 			"style":    "style prose",
 			"security": "security prose",
@@ -440,18 +440,22 @@ func TestProfile_Validate(t *testing.T) {
 				if tt.errSubstr != "" && !strings.Contains(err.Error(), tt.errSubstr) {
 					t.Errorf("validate() error = %q; want substring %q", err.Error(), tt.errSubstr)
 				}
-				if !strings.HasPrefix(err.Error(), "burler: ") {
-					t.Errorf("validate() error = %q; want burler: -prefixed message", err.Error())
+				// A fan-resolution error carries the lenses package's prefix, every other validate error burler's.
+				prefix := "burler: "
+				if strings.HasPrefix(err.Error(), "lenses: ") {
+					prefix = "lenses: "
 				}
-				if wayForward := "; way forward: define the fan in burler.yaml"; tt.wantWayForward && !strings.Contains(err.Error(), wayForward) {
+				if !strings.HasPrefix(err.Error(), prefix) {
+					t.Errorf("validate() error = %q; want a burler: - or lenses: -prefixed message", err.Error())
+				}
+				if wayForward := "; way forward: define the fan in lenses.yaml"; tt.wantWayForward && !strings.Contains(err.Error(), wayForward) {
 					t.Errorf("validate() error = %q; want it to contain %q", err.Error(), wayForward)
 				}
-				// Every validate error carries exactly one "burler: " prefix.
-				// A wrapped ResolveFan error that also spells its own
-				// "burler: " would double it in the final message — this
+				// Every validate error carries exactly one prefix.
+				// A wrapped lenses.ResolveFan error that also spelled a "burler: " would double it in the final message — this
 				// caught exactly that bug once (N1).
-				if n := strings.Count(err.Error(), "burler: "); n != 1 {
-					t.Errorf("validate() error = %q; want exactly one %q prefix, found %d", err.Error(), "burler: ", n)
+				if n := strings.Count(err.Error(), "burler: ") + strings.Count(err.Error(), "lenses: "); n != 1 {
+					t.Errorf("validate() error = %q; want exactly one burler: or lenses: prefix, found %d", err.Error(), n)
 				}
 				return
 			}

@@ -1,10 +1,8 @@
 //go:build llm
 
-// smoke_cluster_test.go is burlerengine's opt-in live-integration smoke test for
-// fork-based cluster review: TestSmokeBurlerClusterCleanFan and
-// TestSmokeBurlerClusterRogueFork each drive one full cluster round — a REAL
-// claude handler spawning REAL fork subagents in a REAL tmux pane — over a
-// burlerengine.Config built directly in Go (no burler.yaml seeding needed).
+// smoke_cluster_test.go is burlerengine's opt-in live-integration smoke test for fork-based cluster review:
+// TestSmokeBurlerClusterCleanFan and TestSmokeBurlerClusterRogueFork each drive one full cluster round with a REAL claude handler spawning REAL fork subagents in a REAL tmux pane.
+// The round runs over a lenses.Config built directly in Go (no lenses.yaml seeding needed).
 // Mirrors smoke_round_test.go's build tag, opt-in env gating, fixture/hub setup, and engine wiring;
 // the shared helpers (deferHubRelease, hubHolders, smokePwshPath) are defined once in smoke_round_test.go and reused here rather than redefined, since both files compile into the same burlerengine_test package under the same build tag.
 
@@ -24,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/reedcli"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/seatengine"
@@ -98,13 +97,10 @@ func writeClusterSmokeFixture(t *testing.T, hub string) string {
 	return path
 }
 
-// newClusterSmokeEngine wires the real stack (reed + shuttle + claudeengine)
-// for one cluster smoke test, exactly as TestSmokeBurlerRoundToyFixture does
-// in smoke_round_test.go, except the burlerengine.Config it hands to
-// burlerengine.New carries clusterSmokeLenses/clusterSmokeFans directly —
-// no burler.yaml seeding needed, since these tests exercise the fork
-// mechanism itself, not config loading (config.go's LoadConfig/ResolveFan
-// already has its own unit coverage).
+// newClusterSmokeEngine wires the real stack (reed + shuttle + claudeengine) for one cluster smoke test, exactly as TestSmokeBurlerRoundToyFixture does in smoke_round_test.go.
+// The one difference is the lenses.Config it hands to burlerengine.New, which carries clusterSmokeLenses/clusterSmokeFans directly.
+// No lenses.yaml seeding is needed, since these tests exercise the fork mechanism itself, not config loading;
+// lenses.Load and lenses.ResolveFan already have their own unit coverage.
 func newClusterSmokeEngine(t *testing.T) (*burlerengine.Engine, *hubforge.Hub) {
 	t.Helper()
 	llmkit.Claude(t, "LYX_REED_CLAUDE")
@@ -141,7 +137,7 @@ func newClusterSmokeEngine(t *testing.T) (*burlerengine.Engine, *hubforge.Hub) {
 	}
 	reedEngine := reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub())
 	runner := shuttleengine.NewRunner(reedEngine, shuttlefake.EngineSet(claudeengine.NewFromConfig(shuttleCfg, fabricengine.ConfigDirs(h.Location))), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
-	cfg := burlerengine.Config{Lenses: clusterSmokeLenses, Fans: clusterSmokeFans}
+	cfg := lenses.Config{Lenses: clusterSmokeLenses, Fans: clusterSmokeFans}
 	burlerGeom, err := hubgeom.BurlerGeometry(h.Location)
 	if err != nil {
 		t.Fatalf("burler geometry: %v", err)

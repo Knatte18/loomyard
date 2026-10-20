@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/languageconfig"
+	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -20,7 +21,7 @@ var burlerSkills = []string{"scribe:prose", "scribe:code-quality", "scribe:testi
 type Engine struct {
 	seats       *seatengine.Engine
 	geom        Geometry
-	cfg         Config
+	cfg         lenses.Config
 	stencilsDir string
 	frictionDir string
 	// languageSkills are the hub's language skills a code round's seats load after burlerSkills; empty for none.
@@ -37,8 +38,8 @@ func (e *Engine) seatSkills(p *Profile) []string {
 }
 
 // New returns an Engine ready to run halves, resolving relative Profile paths
-// against geom.WorktreeRoot and any Profile.ClusterFan against cfg (the burler.yaml lens/fan
-// library, loaded via LoadConfig).
+// against geom.WorktreeRoot and any Profile.ClusterFan against cfg (the lenses.yaml lens/fan
+// library, loaded via lenses.Load).
 // It builds its own seat engine over shuttle, told geom's paths and names and stencilsDir.
 // geom is the told geometry the caller supplies (hubgeom.BurlerGeometry in hub mode).
 // stencilsDir is the absolute stencils directory (see fabricengine.StencilsDir) the halves' seat stencils and instruction stencils are read from at call time via stencilstore.Read.
@@ -47,7 +48,7 @@ func (e *Engine) seatSkills(p *Profile) []string {
 // Told-Geometry Invariant, so an explicit constructor parameter is the remaining told seam. An empty
 // value means Tier 2 is off for this engine.
 // languageSkills are the hub's language skills a code round's seats load after burlerSkills, empty for none.
-func New(shuttle seatengine.Shuttle, geom Geometry, cfg Config, stencilsDir, frictionDir string, languageSkills []string) *Engine {
+func New(shuttle seatengine.Shuttle, geom Geometry, cfg lenses.Config, stencilsDir, frictionDir string, languageSkills []string) *Engine {
 	seats := seatengine.New(shuttle, seatengine.Geometry{
 		WorktreeRoot: geom.WorktreeRoot,
 		AnchorPath:   geom.AnchorPath,

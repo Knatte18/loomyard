@@ -121,6 +121,20 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantInvalid: true,
 		},
 		{
+			name:        "a burler object holding lenses is refused with the way forward",
+			settings:    map[string]any{"burler": map[string]any{"lenses": map[string]any{"generic": map[string]any{"prose": "x"}}}},
+			wantRefusal: "not registered: its keys moved to another module; way forward: remove the burler object from run_settings",
+			wantModule:  "burler",
+			wantInvalid: true,
+		},
+		{
+			name:        "an empty burler object is refused with the way forward",
+			settings:    map[string]any{"burler": map[string]any{}},
+			wantRefusal: "not registered: its keys moved to another module; way forward: remove the burler object from run_settings",
+			wantModule:  "burler",
+			wantInvalid: true,
+		},
+		{
 			name:        "non-object module value",
 			settings:    map[string]any{"loom": "fast"},
 			wantRefusal: "loom",

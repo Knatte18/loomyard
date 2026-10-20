@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/languageconfig"
+	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/preflight"
@@ -104,10 +105,8 @@ func (c *burlerCLI) wireHub(loc *lyxcwd.Location, stencilsDirOverride, targetDir
 		return err
 	}
 
-	// burlerengine.LoadConfig's only error today is a read/decode failure -- an absent burler.yaml is
-	// not an error, it decodes to the zero Config (clustering then fails later, at fan resolution,
-	// with a message naming `lyx config reconcile`).
-	burlerCfg, err := burlerengine.LoadConfig(fabricengine.ConfigDirs(loc))
+	// lenses.Load degrades to the template on an absent lenses.yaml, so its only errors are a read or decode failure.
+	lensesCfg, err := lenses.Load(fabricengine.ConfigDirs(loc))
 	if err != nil {
 		return err
 	}
@@ -160,7 +159,7 @@ func (c *burlerCLI) wireHub(loc *lyxcwd.Location, stencilsDirOverride, targetDir
 	if err != nil {
 		return err
 	}
-	c.engine = burlerengine.New(seatengine.RunnerShuttle(runner), burlerGeom, burlerCfg, stencilsDir, "", languageSkills)
+	c.engine = burlerengine.New(seatengine.RunnerShuttle(runner), burlerGeom, lensesCfg, stencilsDir, "", languageSkills)
 	c.languageSkills = languageSkills
 	c.mode = "hub"
 	c.stateDir = ""
@@ -195,7 +194,8 @@ func (c *burlerCLI) wireStandalone(cwd, stencilsDirOverride, targetDirFlag strin
 	if err != nil {
 		return err
 	}
-	burlerCfg, err := burlerengine.LoadConfig(configengine.Dirs{Anchor: res.StateDir})
+	// lenses.Load degrades to the template on an absent lenses.yaml.
+	lensesCfg, err := lenses.Load(configengine.Dirs{Anchor: res.StateDir})
 	if err != nil {
 		return err
 	}
@@ -231,7 +231,7 @@ func (c *burlerCLI) wireStandalone(cwd, stencilsDirOverride, targetDirFlag strin
 	}
 
 	// A `lyx burler` run is not a loom run and has no friction directory in either mode.
-	c.engine = burlerengine.New(seatengine.RunnerShuttle(runner), standalonegeom.BurlerGeometry(res.Target, res.StateDir, res.Hash8), burlerCfg, res.StencilsDir, "", c.languageSkills)
+	c.engine = burlerengine.New(seatengine.RunnerShuttle(runner), standalonegeom.BurlerGeometry(res.Target, res.StateDir, res.Hash8), lensesCfg, res.StencilsDir, "", c.languageSkills)
 	c.mode = "standalone"
 	c.stateDir = res.StateDir
 	c.stencilsDir = res.StencilsDir
