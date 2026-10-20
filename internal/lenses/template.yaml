@@ -351,6 +351,9 @@ fans:
     - board-fit
     - leanness
   twill-plan:
+    - affected-set
+    - guard-reach
+    - way-forward
     - criteria-coverage
     - branch-coverage
     - row-reachability
