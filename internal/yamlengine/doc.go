@@ -55,8 +55,12 @@
 // An empty argument keeps every other behaviour byte for byte.
 // For a declared path P:
 //
-//   - Reconcile merges the template's names in template order, each with the file's value whole when the file holds that name, then every name only the file holds in file order.
-//     It reports P.<name> added for each template name the file lacks, and every template name when the file lacks P or holds null or an empty mapping there,
+//   - Reconcile writes at P only what the file changed, since the load's fill resolves every other template name from the template:
+//     each template name the file holds with a value other than the template's, whole and in template order, then every name only the file holds in file order.
+//     It leaves out a template name the file holds with the template's value and reports it P.<name> dropped, equal meaning the two values decode to the same data;
+//     the loaded value is unchanged, so a later template edit to that name reaches the file.
+//     A template name the file lacks stays out and is not reported.
+//     It writes an absent or null P as an empty mapping and reports P added,
 //     and reports P.<name> kept for each name only the file holds.
 //     Nothing at or under P is reported removed, and a list under a name is never merged element by element.
 //     A file value at P that is neither a mapping nor null is refused with the way forward `rewrite P as a map of name to value`.
@@ -64,6 +68,7 @@
 //   - SetValues and SetSparse know P.<name> for any one dot-free name and refuse a deeper key under P and P itself.
 //     The pair sets the name to the shape the template's entries at P decide:
 //     a string scalar under a mapping of scalars, whatever its first character, and a YAML flow list under a mapping of lists.
-//     SetValues also carries every name the file holds under P and the template lacks.
+//     SetValues also carries every name the file holds under P and the template lacks,
+//     and leaves out every name holding the template's value once the pairs apply, as Reconcile does.
 //     A pair under a P that holds neither a mapping nor null is refused with the same way forward.
 package yamlengine

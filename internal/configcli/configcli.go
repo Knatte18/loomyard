@@ -544,6 +544,10 @@ func reconcileEnvelope(apply bool, results []configsync.Result) map[string]any {
 		if len(result.KeptExtra) > 0 {
 			m["keptExtra"] = result.KeptExtra
 		}
+		// dropped is exceptional too: only a module with per-name maps whose base file holds a name with the template's value sets it.
+		if len(result.Dropped) > 0 {
+			m["dropped"] = result.Dropped
+		}
 		// seed is set only by a reconcile of the board dir's files.
 		if result.Seed != "" {
 			m["seed"] = result.Seed
