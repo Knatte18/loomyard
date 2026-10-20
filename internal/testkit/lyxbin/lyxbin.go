@@ -133,15 +133,21 @@ var ErrTimeout = errors.New("lyxbin: the command outlived its timeout")
 // Any exit of the command answers a nil error; the error is otherwise the start failure.
 // It calls no testing.TB method, so a concurrent caller can use it.
 func Run(bin, dir string, timeout time.Duration, args ...string) (output string, exitCode int, err error) {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeoutCause(context.Background(), timeout, fmt.Errorf("%w after %s", ErrTimeout, timeout))
 	defer cancel()
+	return runUntilDone(ctx, bin, dir, args...)
+}
 
+// runUntilDone runs bin with args in dir, in its own process group, until it exits or ctx ends, and returns its combined output and exit code.
+// A ctx whose cause wraps ErrTimeout kills the whole group and answers exit code -1 with that cause, so the caller decides when the timeout starts.
+// Any exit of the command answers a nil error; the error is otherwise the start failure.
+func runUntilDone(ctx context.Context, bin, dir string, args ...string) (output string, exitCode int, err error) {
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = dir
 	proc.ConfigureGroupKill(cmd, func(int, error) {})
 	out, runErr := cmd.CombinedOutput()
-	if ctx.Err() == context.DeadlineExceeded {
-		return string(out), -1, fmt.Errorf("%w: %v after %s in %s; output so far:\n%s", ErrTimeout, args, timeout, dir, out)
+	if cause := context.Cause(ctx); errors.Is(cause, ErrTimeout) {
+		return string(out), -1, fmt.Errorf("%w: %v in %s; output so far:\n%s", cause, args, dir, out)
 	}
 	if runErr == nil {
 		return string(out), 0, nil

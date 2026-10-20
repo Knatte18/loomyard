@@ -5,6 +5,7 @@
 package lyxbin
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -39,16 +40,40 @@ func init() {
 }
 
 // runSleeper starts a `sleep` child, records its own pid and the child's in the pid file, and sleeps until killed.
+// The pid file appears by rename, so a reader that sees it sees both pids.
 func runSleeper() int {
 	child := exec.Command("sleep", "600")
 	if err := child.Start(); err != nil {
 		return 2
 	}
+	pidFile := os.Getenv(helperPidFileEnv)
 	pids := fmt.Sprintf("%d\n%d\n", os.Getpid(), child.Process.Pid)
-	if err := os.WriteFile(os.Getenv(helperPidFileEnv), []byte(pids), 0o600); err != nil {
+	if err := os.WriteFile(pidFile+".tmp", []byte(pids), 0o600); err != nil {
+		return 2
+	}
+	if err := os.Rename(pidFile+".tmp", pidFile); err != nil {
 		return 2
 	}
 	select {}
+}
+
+// cancelOnceFileExists cancels ctx with ErrTimeout once path exists, or once limit passes, polling on a short tick.
+// It returns early when ctx ends first.
+func cancelOnceFileExists(ctx context.Context, cancel context.CancelCauseFunc, path string, limit time.Duration) {
+	deadline := time.Now().Add(limit)
+	tick := time.NewTicker(20 * time.Millisecond)
+	defer tick.Stop()
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(path); err == nil {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+	}
+	cancel(ErrTimeout)
 }
 
 func requireExecutable(t *testing.T, bin string) {
@@ -151,6 +176,27 @@ func TestBuildInto_UnwritableDirReturnsError(t *testing.T) {
 	}
 }
 
+// TestRun_TimesOutNamingTheTimeout passes whether or not the sleeper starts within the timeout, since either way it outlives it.
+func TestRun_TimesOutNamingTheTimeout(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the sleeper's child is the Unix `sleep` command")
+	}
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(helperEnv, helperRoleSleeper)
+	t.Setenv(helperPidFileEnv, filepath.Join(t.TempDir(), "pids"))
+
+	out, code, err := Run(self, t.TempDir(), 200*time.Millisecond)
+
+	if !errors.Is(err, ErrTimeout) || code != -1 || !strings.Contains(err.Error(), "after 200ms") {
+		t.Errorf("Run = (%q, %d, %v); want ErrTimeout naming 200ms and exit code -1", out, code, err)
+	}
+}
+
+// TestRun_KillsTheGroupOnTimeout ends the run only once the sleeper has recorded its pids,
+// so the time a scanner holds the freshly built helper before it runs never counts against the timeout.
 func TestRun_KillsTheGroupOnTimeout(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("the group kill is asserted through /proc-backed liveness")
@@ -162,11 +208,14 @@ func TestRun_KillsTheGroupOnTimeout(t *testing.T) {
 	pidFile := filepath.Join(t.TempDir(), "pids")
 	t.Setenv(helperEnv, helperRoleSleeper)
 	t.Setenv(helperPidFileEnv, pidFile)
+	ctx, cancel := context.WithCancelCause(context.Background())
+	t.Cleanup(func() { cancel(nil) })
+	go cancelOnceFileExists(ctx, cancel, pidFile, 2*time.Minute)
 
-	out, code, err := Run(self, t.TempDir(), 3*time.Second)
+	out, code, err := runUntilDone(ctx, self, t.TempDir())
 
 	if !errors.Is(err, ErrTimeout) || code != -1 {
-		t.Fatalf("Run = (%q, %d, %v); want ErrTimeout and exit code -1", out, code, err)
+		t.Fatalf("runUntilDone = (%q, %d, %v); want ErrTimeout and exit code -1", out, code, err)
 	}
 	raw, err := os.ReadFile(pidFile)
 	if err != nil {
