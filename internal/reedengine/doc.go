@@ -318,6 +318,8 @@
 // The name is a per-call temporary one no other window holds and the rename comes last, because an own window may share the requested name and the options would otherwise land on it.
 // The status bar skips a window carrying @lyx_hidden, and window placement and the shell check read the flag to find the last non-hidden window; no focus rule reads it.
 // The op reads remain-on-exit back from the new window by the printed id, and a window that does not read off is killed by that id with ErrWindowReadBack.
+// The read-back also asks for the answering window's id, because tmux answers a window that has already closed, as one whose command exited at once has, with exit 0, an empty id and the global value;
+// a failed read or a reply from any other window counts as the window being gone, never as a mismatch.
 // A window of the same name whose pane is live is returned as existing and nothing is started; one whose pane is dead is killed and replaced.
 // A window carrying @lyx_own is skipped by that lookup, so OpenWindow never adopts, kills or replaces an own window of the same name.
 // The command line is composed in panebin.go from the pane-binary prelude, so `lyx` resolves to the spawning binary.

@@ -155,7 +155,7 @@ func TestEnsureShellWindow(t *testing.T) {
 				fake.answer("-V", fakeVersionOutput, nil)
 				fake.answer("list-commands", fakeFullCommandsOutput(), nil)
 				fake.answer("display-message", "$0|4321|1700000000", nil)
-				fake.answerFormat("#{remain-on-exit}", "off\n", nil)
+				fake.answerFormat(windowReadBackFormat, "@9 off\n", nil)
 				fake.answer("new-window", "@9\n", nil)
 
 				if via == "OpenWindow" {
