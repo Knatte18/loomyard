@@ -850,6 +850,22 @@ func TestGateTest_Scenario(t *testing.T) {
 		requireFree(t)
 	})
 
+	t.Run("--guards: a guard in the module's root package runs as the . package", func(t *testing.T) {
+		rooted := writeModule(t, "rooted", map[string]string{
+			"root.go":      "package rooted\n",
+			"root_test.go": "package rooted\n\nimport \"testing\"\n\n//lyx:guard\nfunc TestGuardRoot(t *testing.T) {}\n",
+		})
+		g := startGate(t, gateRun{cwd: t.TempDir(), args: []string{"test", "-C", rooted, "--tags", "integration", "--guards"}})
+		if code := g.wait(t); code != 0 {
+			t.Errorf("exit code = %d, stdout %q; want 0", code, g.stdout.String())
+		}
+		want := [][]string{{"test", "-C", rooted, "-p", "3", "-tags", "integration", ".", "-run", "^(TestGuardRoot)$"}}
+		if got := testInvocations(t, g); !reflect.DeepEqual(got, want) {
+			t.Errorf("test invocations = %q; want %q", got, want)
+		}
+		requireFree(t)
+	})
+
 	// Each row writes its own module, so a broken one never disturbs another; makeUnreadable removes a path's permissions until the row ends.
 	makeUnreadable := func(t *testing.T, path string) {
 		t.Helper()
