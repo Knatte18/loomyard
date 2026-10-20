@@ -242,6 +242,7 @@ func TestAttach_RemovesSupersededStrands(t *testing.T) {
 		otherOutputs bool
 		removeErr    error
 		ifLiveOnly   bool
+		gatedIfLive  bool
 		wantRemoved  []string
 		// outputMissing leaves the candidate's output file unwritten, so a stop is recorded over it.
 		outputMissing bool
@@ -258,6 +259,7 @@ func TestAttach_RemovesSupersededStrands(t *testing.T) {
 		{name: "attachable_candidate_is_attached_not_removed", outcome: runOutcomeRunning, strands: []reedengine.StrandStatus{live("strand-1")}, wantFound: true},
 		{name: "removal_failure_is_an_error_not_a_not_found", outcome: "done", strands: []reedengine.StrandStatus{live("strand-1")}, removeErr: errors.New("reed down"), wantRemoved: []string{"strand-1"}, wantErrSubstr: `could not remove the superseded strand strand-1`},
 		{name: "attach_if_live_removes_nothing", outcome: "done", strands: []reedengine.StrandStatus{live("strand-1")}, ifLiveOnly: true},
+		{name: "attach_if_live_gated_removes_nothing", outcome: "done", strands: []reedengine.StrandStatus{live("strand-1")}, gatedIfLive: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -292,6 +294,9 @@ func TestAttach_RemovesSupersededStrands(t *testing.T) {
 			attach := runner.Attach
 			if tt.ifLiveOnly {
 				attach = runner.AttachIfLive
+			}
+			if tt.gatedIfLive {
+				attach = func(spec Spec) (Result, bool, error) { return runner.AttachIfLiveGated(spec, GateSpec{}) }
 			}
 			_, found, err := attach(spec)
 
