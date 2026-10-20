@@ -106,6 +106,10 @@ var enforcementAllowlist = []scankit.Entry{
 		Key: "internal/fabricengine/refscanner.go",
 		Why: "the read-only classifier lists the flag a session's own git read may pass; it resolves no root",
 	},
+	{
+		Key: "internal/testkit/scankit/scankit.go",
+		Why: "the test-only scan kit imports the standard library only and finds the module root from the test binary's starting directory, since -trimpath hides its source path",
+	},
 }
 
 // TestEnforcement walks the repo source tree and verifies that no source file outside

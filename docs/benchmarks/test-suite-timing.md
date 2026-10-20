@@ -38,6 +38,8 @@ Method throughout: median of 3 warm runs per tier, `go build ./...` first.
 | Ryzen AI 7 445, Linux (bare metal) | none | 1.03 s | 4.97 s | 2026-07-13 |
 | Ryzen AI 7 445, Linux (bare metal, after test-seam fixes) | none | 3.86 s | 6.48 s | 2026-08-01 |
 
+The work laptop OSL-1046, an Intel Core Ultra 7 366H on bare-metal Ubuntu 24.04 with Cortex XDR, is measured through `lyx gate test` instead, before and after the gate's `-trimpath`, in [gate-test-xdr.md](gate-test-xdr.md).
+
 ## What the spread shows
 
 - **Tier 2 traces the AV and OS-boundary tax:** Cortex XDR (131.7 s) → Defender (18.67 s) → clean Windows (16.09 s) → WSL2 (6.02 s) → bare-metal Linux (4.97–6.48 s).

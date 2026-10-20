@@ -151,16 +151,14 @@ func TestOtherBinaries_ReportsEveryCopyOutsideTheDestDir(t *testing.T) {
 	}
 }
 
-// repoRoot locates the module root relative to this test file's own source location: tools/deploy
-// is two levels below the root, so three filepath.Dir calls from runtime.Caller(0)'s file (which
-// removes the filename itself, then "deploy", then "tools") land on the root.
+// repoRoot locates the module root the way run() does, through devbin.RepoRoot.
 func repoRoot(t *testing.T) string {
 	t.Helper()
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("runtime.Caller(0) failed")
+	root, err := devbin.RepoRoot()
+	if err != nil {
+		t.Fatalf("devbin.RepoRoot() error: %v", err)
 	}
-	return filepath.Dir(filepath.Dir(filepath.Dir(file)))
+	return root
 }
 
 // TestLdflagsPath_MatchesBuildinfoChannel guards the -X argument tools/deploy/main.go's run() passes

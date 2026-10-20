@@ -10,18 +10,36 @@ package devbin
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"runtime"
+
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// RepoRoot returns the repository root directory, derived from this source file's location via
-// runtime.Caller.
+// RepoRoot returns the repository root directory, derived from this source file's location via runtime.Caller.
+// A `-trimpath` build, which every gate run makes, records that location module-relative.
+// RepoRoot then answers the nearest directory holding go.mod at or above the working directory, since `go run` from the repository root and a test binary in its package directory both start inside the module.
 func RepoRoot() (string, error) {
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
 		return "", fmt.Errorf("cannot locate devbin source file")
 	}
-	return filepath.Clean(filepath.Join(filepath.Dir(thisFile), "..", "..", "..")), nil
+	if filepath.IsAbs(thisFile) {
+		return filepath.Clean(filepath.Join(filepath.Dir(thisFile), "..", "..", "..")), nil
+	}
+	cwd, err := lyxcwd.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("devbin: read the working directory: %w", err)
+	}
+	for dir := cwd; ; dir = filepath.Dir(dir) {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir, nil
+		}
+		if filepath.Dir(dir) == dir {
+			return "", fmt.Errorf("devbin: a -trimpath build and no go.mod at or above %s", cwd)
+		}
+	}
 }
 
 // Dir returns the `.dev-bin` directory where dev/test builds are installed.

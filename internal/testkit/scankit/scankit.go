@@ -11,7 +11,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -91,28 +90,39 @@ func (f *File) AST(t testing.TB, mode parser.Mode) *ast.File {
 // FileSet returns the file set the last AST call parsed into.
 func (f *File) FileSet() *token.FileSet { return f.fset }
 
-// Root returns the module root, found from the kit's own source location and the enclosing go.mod.
+// startDir is the test binary's working directory at package init, before any test changes it.
+// go test starts every test binary in its package's directory, which lies inside the module,
+// and the kit cannot read its own source location instead: under `-trimpath`, which gate runs set, `runtime.Caller` reports a module-relative path.
+// The kit imports the standard library only, so it reads the directory with os.Getwd rather than through internal/lyxcwd.
+var startDir, startDirErr = os.Getwd()
+
+// Root returns the module root, found from the test binary's starting directory and the enclosing go.mod.
 func Root(t testing.TB) string {
 	t.Helper()
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("scankit: could not determine its own source location")
-	}
-	root, err := findModuleRoot(filepath.Dir(file))
+	root, err := ModuleRoot()
 	if err != nil {
 		t.Fatalf("scankit: %v", err)
 	}
 	return root
 }
 
-func findModuleRoot(dir string) (string, error) {
+// ModuleRoot returns the module root, the nearest directory holding go.mod at or above the test binary's starting directory.
+func ModuleRoot() (string, error) {
+	if startDirErr != nil {
+		return "", fmt.Errorf("read the test binary's starting directory: %w", startDirErr)
+	}
+	return findModuleRoot(startDir)
+}
+
+func findModuleRoot(start string) (string, error) {
+	dir := start
 	for {
 		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
 			return dir, nil
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return "", fmt.Errorf("no go.mod above the kit's source directory")
+			return "", fmt.Errorf("no go.mod at or above %s", start)
 		}
 		dir = parent
 	}

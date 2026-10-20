@@ -12,7 +12,7 @@
 //
 // Given a gate-slot pool, Verify takes a slot after the dirty and skip checks and before it spawns.
 // The marker is written in the waiting state with its wait start, then rewritten as running with a fresh start time once the slot is held, and the timeout counts only from that moment.
-// The command runs with the lease's environment, so GOFLAGS carries the slot's `-p` cap and a nested gate run inherits the held slot, and the slot is released whatever the outcome.
+// The command runs with the lease's environment, so GOFLAGS carries the slot's `-p` cap and `-trimpath` and a nested gate run inherits the held slot, and the slot is released whatever the outcome.
 // A cancelled wait is a returned error with no record.
 // A nil pool runs unslotted with the parent's environment, the form of a standalone run and of a unit test.
 // Either way the command's environment drops the strand-name variable (agentname.StrandNameEnv), so a test that drives `lyx fabric` never meets the sandboxed-role guard.
