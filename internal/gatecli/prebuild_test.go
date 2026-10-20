@@ -24,14 +24,25 @@ func TestStorePrebuilt(t *testing.T) {
 		}
 	}
 
+	// builtContent is the build's content, and contentName the store entry name its SHA-256 gives: `lyx-` and the first 16 hex digits.
+	const builtContent, contentName = "built lyx", "lyx-1d3aedeaa33d679f"
+
 	tests := []struct {
 		name string
 		// stored is the store's content before the call, entry name to age.
 		stored map[string]time.Duration
+		// storeIsFile makes the store path a regular file, so the store cannot be created and the call must fail.
+		storeIsFile bool
 		// wantKept and wantPruned name entries of stored that must survive and must be gone.
 		wantKept, wantPruned []string
 	}{
 		{name: "EmptyStore"},
+		{
+			name:     "EntryPublishedBeforeTheCallIsKept",
+			stored:   map[string]time.Duration{contentName: 10 * time.Minute},
+			wantKept: []string{contentName},
+		},
+		{name: "StoreDirIsARegularFile", storeIsFile: true},
 		{
 			name:       "OtherEntriesPrunedPastRetention",
 			stored:     map[string]time.Duration{"lyx-0000000000000000": prebuiltRetention + time.Minute, "lyx-1111111111111111": prebuiltRetention - time.Minute, "lyx-2222222222222222.partial-1": 3 * prebuiltRetention},
@@ -45,24 +56,38 @@ func TestStorePrebuilt(t *testing.T) {
 
 			buildDir, storeDir := t.TempDir(), filepath.Join(t.TempDir(), "prebuilt")
 			bin := filepath.Join(buildDir, "lyx")
-			writeAged(t, bin, "built lyx", 0)
+			writeAged(t, bin, builtContent, 0)
+			if tt.storeIsFile {
+				writeAged(t, storeDir, "not a directory", 0)
+				if stored, err := storePrebuilt(bin, storeDir, now); err == nil {
+					t.Errorf("storePrebuilt() = %q, nil; want an error for a store path that is a regular file", stored)
+				}
+				return
+			}
 			if err := os.MkdirAll(storeDir, 0o755); err != nil {
 				t.Fatal(err)
 			}
 			for name, age := range tt.stored {
-				writeAged(t, filepath.Join(storeDir, name), name, age)
+				content := name
+				if name == contentName {
+					// An entry another run published under the content name holds the same build.
+					content = builtContent
+				}
+				writeAged(t, filepath.Join(storeDir, name), content, age)
 			}
 
 			stored, err := storePrebuilt(bin, storeDir, now)
 			if err != nil {
 				t.Fatalf("storePrebuilt() error = %v", err)
 			}
-			// The first 16 hex digits of the SHA-256 of "built lyx".
-			if want := filepath.Join(storeDir, "lyx-1d3aedeaa33d679f"); stored != want {
+			if want := filepath.Join(storeDir, contentName); stored != want {
 				t.Errorf("storePrebuilt() = %q; want %q", stored, want)
 			}
-			if got, err := os.ReadFile(stored); err != nil || string(got) != "built lyx" {
+			if got, err := os.ReadFile(stored); err != nil || string(got) != builtContent {
 				t.Errorf("stored binary = (%q, %v); want the build's content", got, err)
+			}
+			if staging, err := filepath.Glob(filepath.Join(storeDir, "*.partial-*")); err != nil || len(staging) != 0 {
+				t.Errorf("staging files after the call = (%q, %v); want none", staging, err)
 			}
 			for _, name := range tt.wantKept {
 				if _, err := os.Stat(filepath.Join(storeDir, name)); err != nil {
