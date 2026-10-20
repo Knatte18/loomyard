@@ -42,6 +42,8 @@ type moveFile struct {
 // A value moves unexpanded, with its line comment replaced by the target template's.
 // At a base layer a target value other than its template default is kept and the source key dropped, and a default is overwritten;
 // at a sparse layer any target value is kept.
+// A move marked KeepTarget keeps any target value at either layer, the template default included, unless the target was started from the template in this pass,
+// and its kept-target line names the dropped and kept keys without their mappings.
 // A source file the move empties is deleted.
 // A file that cannot be read or parsed fails the move with a *FileError before anything is written.
 func moveKeys(dir, seedDir string, layer configengine.Layer, base, apply bool) ([]Result, error) {
@@ -188,6 +190,7 @@ func (file *moveFile) parse(data []byte) error {
 
 // takeKey moves the source mapping's entry at index at into this target file under the move's target key, and records the report lines.
 // The source entry is removed from its mapping in every case.
+// A target started from the template, or one lacking the key, takes the source's mapping whole; a move never merges per name.
 func (target *moveFile) takeKey(source *moveFile, at int, move configreg.KeyMove, base bool) error {
 	value := source.root.Content[at+1]
 	sourceName := move.FromModule + "." + move.FromKey
@@ -204,6 +207,10 @@ func (target *moveFile) takeKey(source *moveFile, at int, move configreg.KeyMove
 	held := mappingIndex(target.root, move.ToKey)
 	if held >= 0 && !target.fromTemplate {
 		current := target.root.Content[held+1]
+		if move.KeepTarget {
+			reportOn.keptTarget = append(reportOn.keptTarget, fmt.Sprintf("%s dropped, %s kept", sourceName, targetName))
+			return nil
+		}
 		if !base {
 			reportOn.keptTarget = append(reportOn.keptTarget, fmt.Sprintf("%s: %s dropped, %s: %s kept", sourceName, nodeText(value), targetName, nodeText(current)))
 			return nil

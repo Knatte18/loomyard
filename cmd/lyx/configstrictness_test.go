@@ -13,10 +13,10 @@
 // package never qualifies a call to its own function with its own package name, but
 // the exclusion is applied explicitly rather than relied upon structurally.
 //
-// The two own-loader modules -- internal/burlerengine and internal/modelspec -- call neither entry point at all:
-// they read their layers through configengine.StackLayers and decode them themselves with their own absent-file fallback.
-// They are structurally invisible to this substring scan, so this guard makes no assertion about them one way or the other.
-// They are outside its subject by construction, not by exclusion.
+// The own-loader module, internal/modelspec, calls neither entry point at all:
+// it reads its layers through configengine.StackLayers and decodes them itself with its own absent-file fallback.
+// It is structurally invisible to this substring scan, so this guard makes no assertion about it one way or the other.
+// It is outside its subject by construction, not by exclusion.
 //
 // This guard's own file is skipped as a _test.go file, so the literal
 // "configengine.Load(" and "configengine.LoadOrTemplate(" tokens it carries as scan

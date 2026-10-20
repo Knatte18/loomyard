@@ -18,7 +18,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -51,7 +50,7 @@ type Module struct {
 	// configsync adds the template's entries per name and keeps every entry the template lacks.
 	PerNameMaps []string
 	// SeedOnly marks a module whose key set is open-ended and owned by the
-	// operator (e.g. models.yaml aliases, burler.yaml lenses/fans).
+	// operator (e.g. models.yaml aliases).
 	// configsync materializes a seed-only module's template when its file
 	// is absent, and never rewrites a present file — it neither adds nor
 	// prunes keys, unlike the default reconcile behavior applied to every
@@ -120,7 +119,6 @@ func Modules() []Module {
 		{Name: "batcher", Template: batcher.ConfigTemplate, OpenMaps: batcher.ConfigOpenMaps(), Migrate: batcher.MigrateConfig, CheckLoad: checkLoad(batcher.Active), Spec: batcher.ConfigSpec},
 		{Name: "batten", Template: battenshed.ConfigTemplate, CheckValues: battenshed.ValidateLocalValues, CheckLoad: checkLoad(battenshed.LoadConfig), Spec: battenshed.ConfigSpec},
 		{Name: "board", Template: boardengine.ConfigTemplate, OpenMaps: boardengine.ConfigOpenMaps(), HubWide: true, CheckLoad: checkLoadNamed(boardengine.LoadConfig, "board"), Spec: boardengine.ConfigSpec},
-		{Name: "burler", Template: burlerengine.ConfigTemplate, SeedOnly: true, CheckLoad: checkLoad(burlerengine.LoadConfig), Spec: burlerengine.ConfigSpec},
 		{Name: "darn", Template: darnengine.ConfigTemplate, OpenMaps: darnengine.ConfigOpenMaps(), HubWide: true, Migrate: darnengine.MigrateConfig, CheckValues: darnengine.ValidateLocalValues, CheckLoad: checkLoadNamed(darnengine.LoadConfig, "darn"), Spec: darnengine.ConfigSpec},
 		{Name: "fabric", Template: fabricengine.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(fabricengine.LoadConfig), Spec: fabricengine.ConfigSpec},
 		{Name: "gate", Template: gateslot.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(gateslot.LoadConfig), Spec: gateslot.ConfigSpec},

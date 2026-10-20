@@ -1238,12 +1238,29 @@ func TestReconcile_FailureNamesItsFile(t *testing.T) {
 	}
 }
 
-// TestReconcile_MovesKeysAcrossModules pins the declared shuttle-to-claude key move at every reconcile entry point: where the value lands at each layer, what a collision keeps or overwrites, and that a dry run writes nothing and a second pass moves nothing.
+// TestReconcile_MovesKeysAcrossModules pins the declared shuttle-to-claude and burler-to-lenses key moves at every reconcile entry point: where the value lands at each layer, what a collision keeps or overwrites, and that a dry run writes nothing and a second pass moves nothing.
 func TestReconcile_MovesKeysAcrossModules(t *testing.T) {
 	t.Parallel()
 	claudeTemplate, _ := configreg.Template("claude")
 	claudeModule, _ := configreg.Lookup("claude")
 	const templateBinary = "${env:LYX_SHUTTLE_CLAUDE:-}"
+	const tunedGeneric = "Tuned for the hub."
+	burlerToday := lensesFixture(t, func(cfg *lenses.Config) {
+		delete(cfg.Lenses, "security")
+		delete(cfg.Fans, "full")
+		cfg.Lenses["generic"] = tunedGeneric + "\n"
+	})
+	burlerOldTemplate := lensesFixture(t, func(cfg *lenses.Config) {
+		cfg.Fans["twill-discussion"] = cfg.Fans["twill-discussion"][:6]
+	})
+	lensesEqualTemplate := lensesFixture(t, func(cfg *lenses.Config) {})
+	lensesWithHubLens := lensesFixture(t, func(cfg *lenses.Config) {
+		cfg.Lenses["hub-lens"] = "Hub emphasis.\n"
+	})
+	const sparseFans = "fans:\n  mine:\n    - generic\n"
+	const burlerFans = "fans:\n  theirs:\n    - generic\n"
+	keptLenses := []string{"burler.fans dropped, lenses.fans kept", "burler.lenses dropped, lenses.lenses kept"}
+	movedLenses := []string{"burler.fans -> lenses.fans", "burler.lenses -> lenses.lenses"}
 	tests := []struct {
 		name string
 		// files maps "<base|board|prime|local>:<module>" to the file's content.
@@ -1256,8 +1273,14 @@ func TestReconcile_MovesKeysAcrossModules(t *testing.T) {
 		contains map[string][]string
 		excludes map[string][]string
 		absent   []string
+		// unchanged lists file keys whose content after the run equals the content before.
+		unchanged []string
 		// moved, kept and overwritten are the exact report lines the run must produce across all its results.
 		moved, kept, overwritten []string
+		// added lists lines each of which must appear in some result's Added.
+		added []string
+		// noAdded lists modules none of whose results carries an Added line.
+		noAdded []string
 		// loadContains is what claude's resolved base+worktree stack must hold after the run.
 		loadContains string
 		// checkLoadRefuses is the file name claude's loader must refuse naming after the run.
@@ -1346,6 +1369,58 @@ func TestReconcile_MovesKeysAcrossModules(t *testing.T) {
 			absent:           []string{"local:shuttle"},
 			moved:            []string{"shuttle.claude_prompt_cache_ttl -> claude.prompt_cache_ttl"},
 			checkLoadRefuses: "claude.local.yaml",
+		},
+		{
+			name:     "a board burler.yaml of today's shape moves into a created lenses.yaml that reconcile completes per name",
+			files:    map[string]string{"board:burler": burlerToday},
+			call:     "board",
+			contains: map[string][]string{"board:lenses": {tunedGeneric, "twill-discussion:", "security:", "full:"}},
+			absent:   []string{"board:burler"},
+			moved:    movedLenses,
+			added:    []string{"lenses.security", "fans.full"},
+		},
+		{
+			name:     "a board dry run writes nothing and reports no seed additions for the lenses.yaml the moves would write",
+			files:    map[string]string{"board:burler": burlerToday},
+			call:     "board",
+			dryRun:   true,
+			contains: map[string][]string{"board:burler": {tunedGeneric}},
+			absent:   []string{"board:lenses"},
+			moved:    movedLenses,
+			noAdded:  []string{"lenses"},
+		},
+		{
+			name:      "a lenses.yaml equal to the template is kept beside an old-template burler.yaml",
+			files:     map[string]string{"board:lenses": lensesEqualTemplate, "board:burler": burlerOldTemplate},
+			call:      "board",
+			absent:    []string{"board:burler"},
+			unchanged: []string{"board:lenses"},
+			kept:      keptLenses,
+		},
+		{
+			name:      "a non-default board lenses.yaml is kept beside a burler.yaml",
+			files:     map[string]string{"board:lenses": lensesWithHubLens, "board:burler": burlerToday},
+			call:      "board",
+			absent:    []string{"board:burler"},
+			unchanged: []string{"board:lenses"},
+			kept:      keptLenses,
+		},
+		{
+			name:      "a sparse lenses.yaml on a hub's worktree layer is kept beside a burler.yaml",
+			files:     map[string]string{"base:lenses": sparseFans, "base:burler": burlerFans},
+			call:      "hub",
+			absent:    []string{"base:burler"},
+			unchanged: []string{"base:lenses"},
+			kept:      []string{"burler.fans dropped, lenses.fans kept"},
+		},
+		{
+			name:     "a board burler.yaml seeded from a prime lenses.yaml keeps the prime's fans and moves burler's lenses",
+			files:    map[string]string{"board:burler": burlerToday, "prime:lenses": sparseFans},
+			call:     "board",
+			contains: map[string][]string{"board:lenses": {tunedGeneric, "mine:"}},
+			absent:   []string{"board:burler"},
+			moved:    []string{"burler.lenses -> lenses.lenses"},
+			kept:     []string{"burler.fans dropped, lenses.fans kept"},
 		},
 	}
 	for _, tt := range tests {
@@ -1438,6 +1513,28 @@ func TestReconcile_MovesKeysAcrossModules(t *testing.T) {
 			for _, key := range tt.absent {
 				if _, err := os.Stat(pathOf(key)); !os.IsNotExist(err) {
 					t.Errorf("%s exists (stat err = %v); want it absent", key, err)
+				}
+			}
+			addedLines := lines(results, func(r Result) []string { return r.Added })
+			for _, want := range tt.added {
+				if !slices.Contains(addedLines, want) {
+					t.Errorf("Added lines = %q; want one to be %q", addedLines, want)
+				}
+			}
+			for _, module := range tt.noAdded {
+				for _, result := range results {
+					if result.Module == module && len(result.Added) > 0 {
+						t.Errorf("module %s Added = %q; want none", module, result.Added)
+					}
+				}
+			}
+			for _, key := range tt.unchanged {
+				content, err := os.ReadFile(pathOf(key))
+				if err != nil {
+					t.Fatalf("read %s: %v", key, err)
+				}
+				if string(content) != tt.files[key] {
+					t.Errorf("%s = %q after the run; want it unchanged from %q", key, content, tt.files[key])
 				}
 			}
 			if tt.loadContains != "" {

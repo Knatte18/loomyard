@@ -41,13 +41,13 @@ func TestNames(t *testing.T) {
 	}
 }
 
-// TestModules_SeedOnlyAndHubWideFlags pins the two flags: "models", "burler" and "profiles" carry an open-ended, operator-owned key set (model aliases, lenses/fans and run profiles respectively), so they are the only entries with SeedOnly == true, "fabric", "board", "gate", "landing", "darn", "language" and "profiles" describe hub-level facts, so they are the only entries with HubWide == true, and "landing", whose per-worktree copy was in effect before it moved hub-wide, is the only entry with SeedsFromPrime == true.
+// TestModules_SeedOnlyAndHubWideFlags pins the two flags: "models" and "profiles" carry an open-ended, operator-owned key set (model aliases and run profiles respectively), so they are the only entries with SeedOnly == true, "fabric", "board", "gate", "landing", "darn", "language" and "profiles" describe hub-level facts, so they are the only entries with HubWide == true, and "landing", whose per-worktree copy was in effect before it moved hub-wide, is the only entry with SeedsFromPrime == true.
 //
 //testtiming:keep pins which modules carry the SeedOnly and HubWide flags, which the covering TestFill never asserts
 func TestModules_SeedOnlyAndHubWideFlags(t *testing.T) {
 	t.Parallel()
 	for _, m := range Modules() {
-		wantSeedOnly := m.Name == "models" || m.Name == "burler" || m.Name == "profiles"
+		wantSeedOnly := m.Name == "models" || m.Name == "profiles"
 		if m.SeedOnly != wantSeedOnly {
 			t.Errorf("Modules(): module %q SeedOnly = %v; want %v", m.Name, m.SeedOnly, wantSeedOnly)
 		}
@@ -80,7 +80,6 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 		"reed":    {"debug_log", "mouse", "shell", "tmux", "tmux_conf"},
 		"shuttle": {"deny_python", "run_dir"},
 		"loom":    {"alignment", "alignment_pr_approve", "discussion_advisors", "discussion_auto_accept", "discussion_fixer_fan", "discussion_lenses", "discussion_reviewer_fan", "merge_auto_accept", "merge_fixer_fan", "merge_reviewer_fan", "parent_review_wait_min", "plan_auto_accept", "plan_fixer_fan", "plan_lenses", "plan_reviewer_fan", "skip_alignment", "webster_auto_accept", "webster_fixer_fan", "webster_reviewer_fan"},
-		"burler":  {"fans", "lenses"},
 		"lenses":  {"fans", "lenses"},
 	}
 	for _, m := range Modules() {
@@ -233,6 +232,7 @@ func TestLookup(t *testing.T) {
 		}},
 		{"darn", true, []string{"darn_reviewer_model", "darn_fixer_model", "darn_reviewer_fan", "darn_fixer_fan", "tree_scope"}},
 		{"shuttle", true, nil},
+		{"burler", false, nil},
 		{"bogus", false, nil},
 	}
 	for _, tt := range tests {

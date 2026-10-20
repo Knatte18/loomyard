@@ -92,6 +92,7 @@ type Result struct {
 	// Set only by a key move, on a dry run too.
 	Moved []string
 	// KeptTarget lists, sorted, each move whose source value was dropped because the target already held its own, as "<source>: <value> dropped, <target>: <value> kept".
+	// A move that keeps whatever the target holds renders "<source> dropped, <target> kept", without the values.
 	// Set only by a key move, on a dry run too.
 	KeptTarget []string
 	// Overwritten lists, sorted, each move whose source value replaced the target's template default, as "<source>: <value> replaced <target>'s template default <value>".
@@ -543,7 +544,8 @@ func primeConfig(primeBaseDir, module string) []byte {
 // Legacy files are pruned only when opts.Apply succeeds.
 // The declared key moves run first at the board dir as a base layer, and their results lead the returned slice;
 // under opts.SeedDefaults an absent board source is the prime's copy, so a default seeded in the same pass carries the moved values.
-// When opts.Apply is false, nothing is written or removed.
+// When opts.Apply is false, nothing is written or removed,
+// and a module whose absent file those moves would write reports no seed additions, since the moved values fill the file and the names it lacks are known only once it exists.
 func ReconcileHubWideAt(boardDir, primeBaseDir string, opts HubWideOptions) ([]Result, error) {
 	seedDir := ""
 	if opts.SeedDefaults {
@@ -552,6 +554,12 @@ func ReconcileHubWideAt(boardDir, primeBaseDir string, opts HubWideOptions) ([]R
 	results, err := moveKeys(boardDir, seedDir, configengine.LayerDefault, true, opts.Apply)
 	if err != nil {
 		return nil, err
+	}
+	movedInto := map[string]bool{}
+	for _, move := range results {
+		if len(move.Moved) > 0 {
+			movedInto[move.Module] = true
+		}
 	}
 
 	for _, m := range configreg.Modules() {
@@ -616,6 +624,11 @@ func ReconcileHubWideAt(boardDir, primeBaseDir string, opts HubWideOptions) ([]R
 		}
 		if reconcileErr != nil {
 			return nil, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("reconcile %s: %w", m.Name, reconcileErr)}
+		}
+
+		if !opts.Apply && fileAbsent && movedInto[m.Name] {
+			// The moves' values fill this file, so the names it lacks are known only once it exists.
+			added = nil
 		}
 
 		result := Result{

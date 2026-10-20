@@ -8,6 +8,8 @@ type KeyMove struct {
 	FromModule, FromKey string
 	// ToModule and ToKey name the key in its new module.
 	ToModule, ToKey string
+	// KeepTarget makes a target file that holds the key, and was not started from the template in the same pass, keep its value whatever it is, the template default included.
+	KeepTarget bool
 }
 
 // KeyMoves returns every declared key move, in the order reconcile applies them.
@@ -19,6 +21,8 @@ func KeyMoves() []KeyMove {
 		{FromModule: "shuttle", FromKey: "claude_deny_ask_user_question", ToModule: "claude", ToKey: "deny_ask_user_question"},
 		{FromModule: "shuttle", FromKey: "claude_prompt_cache_ttl", ToModule: "claude", ToKey: "prompt_cache_ttl"},
 		{FromModule: "shuttle", FromKey: "claude_prompt_cache_ttl_roles", ToModule: "claude", ToKey: "prompt_cache_ttl_roles"},
+		{FromModule: "burler", FromKey: "lenses", ToModule: "lenses", ToKey: "lenses", KeepTarget: true},
+		{FromModule: "burler", FromKey: "fans", ToModule: "lenses", ToKey: "fans", KeepTarget: true},
 	}
 }
 
