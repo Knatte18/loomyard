@@ -305,6 +305,7 @@ func WithEditorWayForward(err error) error {
 // cfg is one LoadConfig returned, so its tree keys carry no trailing slash and a non-empty TreeScopeVerify comes with at least one tree.
 // Tree scope is off, and the answer ("", false), when TreeScopeVerify is empty.
 // A diff is tree-scoped when every path lies in some tree, an empty path list included.
+// A path touches every tree it lies in, nested trees included.
 // The command is TreeScopeVerify with {targets} replaced by the touched trees' non-empty targets, deduplicated, in tree-path order, so no path text reaches it.
 func TreeScopedCommand(cfg Config, paths []string) (string, bool) {
 	if strings.TrimSpace(cfg.TreeScopeVerify) == "" {

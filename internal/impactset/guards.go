@@ -92,7 +92,7 @@ const moduleDirsFormat = `{{.Dir}}{{"\t"}}{{with .Error}}{{.Err}}{{end}}{{"\x00"
 
 // ModuleGuardTests returns, per package directory of the module at moduleDir, the sorted names of the tests marked `//lyx:guard`, keyed by the module-relative, slash-separated directory.
 // It lists the packages under the `integration`, `tmux` and `llm` tags with `go list -e`, so a package whose test file cannot be read stays listed and the scan reports that file as a GuardParse error.
-// A failed `go list` run, or an entry with no directory such as an unreadable package directory, is a plain error naming moduleDir and the enumeration's own error.
+// A failed `go list` run, or an entry with no directory such as an unreadable package directory, is a plain error naming moduleDir and the enumeration's own error, and so is a listed package directory outside moduleDir.
 // A marker the scan rejects is a *GuardScanError.
 func ModuleGuardTests(moduleDir string) (map[string][]string, error) {
 	absolute, err := filepath.Abs(moduleDir)

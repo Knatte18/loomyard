@@ -1,4 +1,4 @@
-// darnwiring.go holds the wiring only a darn run needs: the verify source and tree scope reader the darn recipe tells its verify gate and landing producers, the Darn-Write row's seams, the writer's and Describe's Spec sources, and the rename of retired darn rows in a run's status file.
+// darnwiring.go holds the wiring only a darn run needs: the whole verify command and tree scope reader the darn recipe tells its verify gate, the verify source its landing producers read, the Darn-Write row's seams, the writer's and Describe's Spec sources, and the rename of retired darn rows in a run's status file.
 // A loom run leaves all of it unwired, but shares the merge base reader `pairMergeBase` builds.
 
 package loomcli
