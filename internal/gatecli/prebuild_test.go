@@ -1,4 +1,4 @@
-// prebuild_test.go covers the prebuilt lyx store over plain files: the content-derived name, reuse of a stored binary, and pruning by last use.
+// prebuild_test.go covers the prebuilt lyx store over plain files: the content-derived name, reuse of a stored binary, pruning by last use, a destination another run published first and a store that cannot be created.
 
 package gatecli
 
@@ -115,4 +115,41 @@ func TestStorePrebuilt(t *testing.T) {
 			}
 		})
 	}
+
+	// A destination that cannot be replaced stands for one another run published first: rename fails and the destination exists.
+	t.Run("CopyIntoPlaceKeepsADestinationPublishedFirst", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		src := filepath.Join(dir, "lyx")
+		writeAged(t, src, builtContent, 0)
+		dst := filepath.Join(dir, contentName)
+		if err := os.Mkdir(dst, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		writeAged(t, filepath.Join(dst, "occupant"), "published first", 0)
+
+		if err := copyIntoPlace(src, dst, now); err != nil {
+			t.Fatalf("copyIntoPlace() error = %v; want nil for a destination that exists", err)
+		}
+		if got, err := os.ReadFile(filepath.Join(dst, "occupant")); err != nil || string(got) != "published first" {
+			t.Errorf("destination occupant = (%q, %v); want it untouched", got, err)
+		}
+		if staging, err := filepath.Glob(filepath.Join(dir, "*.partial-*")); err != nil || len(staging) != 0 {
+			t.Errorf("staging files after the call = (%q, %v); want none", staging, err)
+		}
+	})
+
+	t.Run("CopyIntoPlaceFailsOnAMissingSource", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		dst := filepath.Join(dir, contentName)
+		if err := copyIntoPlace(filepath.Join(dir, "absent"), dst, now); err == nil {
+			t.Error("copyIntoPlace() error = nil; want one for a source that does not exist")
+		}
+		if entries, err := os.ReadDir(dir); err != nil || len(entries) != 0 {
+			t.Errorf("directory after the failed copy = (%v, %v); want it empty", entries, err)
+		}
+	})
 }

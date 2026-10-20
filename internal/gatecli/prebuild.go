@@ -74,7 +74,7 @@ func prebuildLyx(ctx context.Context, goBinary, root string, parallel int, store
 
 // storePrebuilt publishes the binary at bin into storeDir under `lyx-` and the first 16 hex digits of its SHA-256, and returns the stored path.
 // A binary already stored under that name is kept and its modification time set to now, which marks its last use.
-// A new one is copied in under a name unique to this process and renamed into place, so a concurrent run never sees half a binary.
+// A new one, or an existing one a concurrent prune removes before that refresh, is copied in under a name unique to this process and renamed into place, so a concurrent run never sees half a binary.
 // It then prunes every other entry of storeDir last modified more than prebuiltRetention before now; a failed removal is logged, never returned.
 func storePrebuilt(bin, storeDir string, now time.Time) (string, error) {
 	sum, err := fileSHA256(bin)
