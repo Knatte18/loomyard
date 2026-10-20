@@ -5,7 +5,6 @@
 package lyxbin
 
 import (
-	"debug/buildinfo"
 	"errors"
 	"fmt"
 	"os"
@@ -107,8 +106,14 @@ func TestBuild_ProducesExecutableBinary(t *testing.T) {
 	}
 }
 
+// TestBuildWithLDFlags_ReachTheBuild checks the ldflags through their effect: `-s -w` strips the symbol table and DWARF, so the binary is smaller than the unstripped Build one.
+// The build info cannot show them, since a `-trimpath` build, which a gate run's GOFLAGS makes, omits its `-ldflags` setting.
 func TestBuildWithLDFlags_ReachTheBuild(t *testing.T) {
 	prebuiltPath := Build(t)
+	unstripped, err := os.Stat(prebuiltPath)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	tests := []struct {
 		name     string
@@ -122,19 +127,13 @@ func TestBuildWithLDFlags_ReachTheBuild(t *testing.T) {
 			t.Setenv(gateslot.PrebuiltLyxEnv, tt.prebuilt)
 			bin := BuildWithLDFlags(t, "-s -w")
 
-			info, err := buildinfo.ReadFile(bin)
+			stripped, err := os.Stat(bin)
 			if err != nil {
-				t.Fatalf("read build info of %s: %v", bin, err)
+				t.Fatal(err)
 			}
-			for _, s := range info.Settings {
-				if s.Key == "-ldflags" {
-					if s.Value != "-s -w" {
-						t.Errorf("-ldflags = %q, want %q", s.Value, "-s -w")
-					}
-					return
-				}
+			if stripped.Size() >= unstripped.Size() {
+				t.Errorf("the -s -w build is %d bytes, the unstripped build %d; want the -s -w build smaller", stripped.Size(), unstripped.Size())
 			}
-			t.Errorf("build info carries no -ldflags setting: %v", info.Settings)
 		})
 	}
 }
