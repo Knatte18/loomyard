@@ -18,11 +18,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/configsync"
+	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
+	"gopkg.in/yaml.v3"
 )
 
 // configDirs holds what a config verb addresses:
@@ -125,6 +127,9 @@ type hubCommitFunc func(module string, write func() error) error
 
 // errHubFileChanged marks an editor edit refused because the hub file changed while the editor was open.
 var errHubFileChanged = errors.New("hub config file changed while the editor was open")
+
+// errHubFileLoad marks an editor edit refused because the module's loader rejects the hub file with the edit.
+var errHubFileLoad = errors.New("hub config file would not load with the edit")
 
 // newHubCommit returns the hub-commit seam over the board repo at boardDir:
 // a scoped commit of the module file under the board write lock, then a push.
@@ -397,12 +402,16 @@ func editHubWide(dirs configDirs, out io.Writer, module configreg.Module, edit c
 	if errors.Is(writeErr, errHubFileChanged) {
 		return output.Err(out, fmt.Sprintf("%s changed while the editor was open; your edit is kept at %s, re-apply it", path, staging))
 	}
+	if errors.Is(writeErr, errHubFileLoad) {
+		return output.Err(out, hubFileLoadRefusal(writeErr, module, path, staging, base))
+	}
 	_ = os.Remove(staging)
 	return reportHubWrite(out, module.Name, path, commitErr, writeErr, nil)
 }
 
 // copyStagedToHub writes the staged bytes to the hub file when it still holds the bytes the staging copy was taken from,
 // validates it strictly and restores the previous file on failure.
+// It then loads the board file alone through the module's own loader and restores the previous file when that load fails with an error other than the one the file already loaded with, returning an error wrapping errHubFileLoad and the loader's.
 func copyStagedToHub(path, staging string, base []byte, template, boardDir string, module configreg.Module) error {
 	snap, err := snapshotFile(path)
 	if err != nil {
@@ -419,11 +428,33 @@ func copyStagedToHub(path, staging string, base []byte, template, boardDir strin
 	if err != nil {
 		return fmt.Errorf("read staging copy: %w", err)
 	}
+	before := module.CheckLoad(configengine.Dirs{Board: boardDir})
 	if err := fsx.AtomicWriteBytes(path, staged); err != nil {
 		return rollBack(path, snap, err)
 	}
 	if err := validateHubFile(boardDir, module); err != nil {
 		return rollBack(path, snap, err)
 	}
+	if after := module.CheckLoad(configengine.Dirs{Board: boardDir}); after != nil && (before == nil || before.Error() != after.Error()) {
+		return rollBack(path, snap, fmt.Errorf("%w: %w", errHubFileLoad, after))
+	}
 	return nil
+}
+
+// hubFileLoadRefusal returns the editor's refusal of a save the module's loader newly rejects, which keeps the staging copy.
+// A save that empties tree_scope while tree_scope_verify stays non-empty is told to clear tree_scope_verify first;
+// every other refusal is told to copy the staging copy out, since every open of the editor overwrites it with the hub file's bytes.
+func hubFileLoadRefusal(loadErr error, module configreg.Module, path, staging string, hubBefore []byte) string {
+	if errors.Is(loadErr, darnengine.ErrTreeScopeWithoutTrees) && holdsTree(hubBefore) {
+		return fmt.Sprintf("%v; %s unchanged; your edit is kept at %s; way forward: run \"lyx config darn --set tree_scope_verify=\" first, then remove the trees in \"lyx config darn\" again", loadErr, path, staging)
+	}
+	return fmt.Sprintf("%v; %s unchanged; your edit is kept at %s; way forward: copy it out of that path, re-open \"lyx config %s\" and re-apply the edit from the copy with the named key fixed, since every open of the editor overwrites that path with the hub file's bytes", loadErr, path, staging, module.Name)
+}
+
+// holdsTree reports whether the darn.yaml bytes hold at least one tree_scope entry.
+func holdsTree(hubFile []byte) bool {
+	var document struct {
+		TreeScope map[string]any `yaml:"tree_scope"`
+	}
+	return yaml.Unmarshal(hubFile, &document) == nil && len(document.TreeScope) > 0
 }
