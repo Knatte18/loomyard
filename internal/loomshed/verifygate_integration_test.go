@@ -260,6 +260,33 @@ func TestVerifyGate_RoundScenario(t *testing.T) {
 		return
 	}
 
+	if !t.Run("runs the failing tests first and nothing after the impacted-set command while a plan verify failure record is present", func(t *testing.T) {
+		head := f.commitFiles(t, map[string]string{"b/b.go": "package b\n\nconst Changed = 4\n"})
+		derivation, err := impactset.Derive(f.worktree, planPass.Commit)
+		if err != nil || derivation.Command == "" {
+			t.Fatalf("Derive() = %+v, %v; want a derived command", derivation, err)
+		}
+		failure := verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify, Head: head, Tests: []verifytree.FailedTest{{Package: "example.com/m/b", Test: "TestB"}}}
+		if err := verifytree.WritePublishFailure(paths, failure); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := verifytree.RemovePublishFailure(paths); err != nil {
+				t.Error(err)
+			}
+		})
+
+		if passed, findings := f.runGate(t, nil); !passed {
+			t.Fatalf("gate() findings = %q; want a pass", findings)
+		}
+		want := "go test -tags integration -run '^TestB$' example.com/m/b && " + derivation.Command
+		if pass, ok := verifytree.LatestPass(paths, want); !ok || pass.Commit != head {
+			t.Errorf("LatestPass(extended command) = %+v, %v; want a pass at %s of %q", pass, ok, head, want)
+		}
+	}) {
+		return
+	}
+
 	baseOf := func(sha string) func() (string, error) { return func() (string, error) { return sha, nil } }
 	toldCommand := func() (string, error) { return f.planCommand, nil }
 
