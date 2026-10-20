@@ -62,7 +62,47 @@ Compare the two on order of magnitude only.
 
 ## After (`-p` cap and `-trimpath`)
 
-> **To be measured** once the change is deployed: the same six runs from the prime worktree, and the uncached and first cacheable runs from a second checkout, which without `-trimpath` would start with an empty cache and unseen binaries.
+```yaml
+commit: 2d384150, the installed lyx
+date: 2026-10-20
+```
+
+The installed `lyx` was built from the commit that added `-trimpath`, and the same method ran without the `-count=1` rows.
+Each tier ran twice from the prime: the first run refills the cache under the new keys, the second shows the cached cost.
+The 1-minute load average was 2.89 before the first run.
 
 | Tier | Run | Checkout | Wall | User | Sys | CPU (user+sys) | Packages run | Packages cached | Packages at 7 s or more |
 |---|---|---|---|---|---|---|---|---|---|
+| 1 (untagged) | `lyx gate test ./...`, first | prime | 20.6 s | 59.5 s | 34.9 s | 94.4 s | 72 | 90 | 0 |
+| 1 (untagged) | `lyx gate test ./...`, cached | prime | 20.3 s | 56.8 s | 34.0 s | 90.8 s | 65 | 97 | 0 |
+| 1 (untagged) | `lyx gate test -C .scratch/xcopy ./...` | copy | 24.2 s | 67.6 s | 41.1 s | 108.7 s | 99 | 63 | 0 |
+| 2 (`integration`) | `lyx gate test --tags integration ./...`, first | prime | 113.2 s | 218.5 s | 249.4 s | 467.9 s | 93, one failed | 69 | 3 |
+| 2 (`integration`) | `lyx gate test --tags integration ./...`, cached | prime | 112.0 s | 205.7 s | 245.6 s | 451.3 s | 86 | 76 | 3 |
+
+The first unit run found 90 packages cached already: the verification runs before the commit had passed `-trimpath` on the go test command line, which gives the same cache keys.
+
+The first integration run failed `TestBuildWithLDFlags_ReachTheBuild` in `internal/testkit/lyxbin`, a fault of the change rather than of the machine.
+GOFLAGS now carries `-trimpath` into the kit's nested `go build`, and a `-trimpath` build omits its `-ldflags` setting from the build info the test read.
+The test now checks the effect of `-s -w` instead, a binary smaller than the unstripped build, and the second integration run ran with that fix and passed.
+
+The copy row is the cross-checkout check.
+`git archive HEAD` unpacked the tree into `.scratch/xcopy` inside the prime, where `./...` does not reach, and the gate resolved it to the prime's worktree, so it ran slotted with `-trimpath`.
+Without `-trimpath` the new directory would change every cache key, and no package would hit the cache.
+63 packages hit the cache built in the prime, and no package reached 7 s, so the copy linked no binary XDR held.
+The 34 packages cached in the prime but not in the copy include the source scans (`internal/testkit`, `internal/pattern`, `contracts/stencils`) and others that read files of the tree;
+go test keys a cached result on the files a test opened, and every file in the copy was new, as it is in a fresh task worktree.
+
+## Comparison
+
+Cached rows against cached rows.
+A fresh worktree before ran every package, as the uncached before row does, and now behaves like the copy row; neither before row ran in a fresh worktree, so that pair is indicative only.
+
+| Tier | Cached before | Cached after | Uncached before | Copy after |
+|---|---|---|---|---|
+| 1 (untagged) wall | 98.6 s | 20.3 s | 304.6 s | 24.2 s |
+| 1 (untagged) CPU | 118.8 s | 90.8 s | 204.2 s | 108.7 s |
+| 2 (`integration`) wall | 179.5 s | 112.0 s | 401.9 s | not measured |
+| 2 (`integration`) CPU | 486.6 s | 451.3 s | 687.6 s | not measured |
+
+The cached runs hit the cache for about as many packages before and after, 97 against 97 in tier 1 and 77 against 76 in tier 2.
+What fell with the wall time is the packages at 7 s or more, from 11 to 0 in tier 1 and from 24 to 3 in tier 2.
