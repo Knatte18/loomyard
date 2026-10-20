@@ -1,4 +1,4 @@
-// prebuild_test.go covers the prebuilt lyx store over plain files: the content-derived name, reuse of a stored binary, pruning by last use, a destination another run published first and a store that cannot be created.
+// prebuild_test.go covers the prebuilt lyx store over plain files: the content-derived name, reuse of a stored binary, refreshing a missing entry, pruning by last use, a destination another run published first and a store that cannot be created.
 
 package gatecli
 
@@ -137,6 +137,30 @@ func TestStorePrebuilt(t *testing.T) {
 		}
 		if staging, err := filepath.Glob(filepath.Join(dir, "*.partial-*")); err != nil || len(staging) != 0 {
 			t.Errorf("staging files after the call = (%q, %v); want none", staging, err)
+		}
+	})
+
+	// An entry a concurrent prune removed reports as not refreshed with no error, so the caller publishes it again.
+	t.Run("RefreshStoredReportsAMissingEntryAsNotRefreshed", func(t *testing.T) {
+		t.Parallel()
+
+		refreshed, err := refreshStored(filepath.Join(t.TempDir(), contentName), now)
+		if refreshed || err != nil {
+			t.Errorf("refreshStored() = (%v, %v); want (false, nil) for a missing entry", refreshed, err)
+		}
+	})
+
+	t.Run("RefreshStoredMarksAnExistingEntryUsed", func(t *testing.T) {
+		t.Parallel()
+
+		entry := filepath.Join(t.TempDir(), contentName)
+		writeAged(t, entry, builtContent, prebuiltRetention)
+		refreshed, err := refreshStored(entry, now)
+		if !refreshed || err != nil {
+			t.Fatalf("refreshStored() = (%v, %v); want (true, nil)", refreshed, err)
+		}
+		if info, err := os.Stat(entry); err != nil || !info.ModTime().Equal(now) {
+			t.Errorf("entry mod time = (%v, %v); want %v", info, err, now)
 		}
 	})
 

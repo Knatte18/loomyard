@@ -74,7 +74,7 @@ func prebuildLyx(ctx context.Context, goBinary, root string, parallel int, store
 
 // storePrebuilt publishes the binary at bin into storeDir under `lyx-` and the first 16 hex digits of its SHA-256, and returns the stored path.
 // A binary already stored under that name is kept and its modification time set to now, which marks its last use.
-// A new one, or an existing one a concurrent prune removes before that refresh, is copied in under a name unique to this process and renamed into place, so a concurrent run never sees half a binary.
+// A new one, or an existing one a concurrent prune removes around that refresh, is copied in under a name unique to this process and renamed into place, so a concurrent run never sees half a binary.
 // It then prunes every other entry of storeDir last modified more than prebuiltRetention before now; a failed removal is logged, never returned.
 func storePrebuilt(bin, storeDir string, now time.Time) (string, error) {
 	sum, err := fileSHA256(bin)
@@ -86,14 +86,9 @@ func storePrebuilt(bin, storeDir string, now time.Time) (string, error) {
 	}
 	name := prebuiltNamePrefix + sum[:16]
 	stored := filepath.Join(storeDir, name)
-	refreshed := false
-	if _, statErr := os.Stat(stored); statErr == nil {
-		// An entry a concurrent prune removed since the Stat is published again below.
-		chtimesErr := os.Chtimes(stored, now, now)
-		if chtimesErr != nil && !errors.Is(chtimesErr, os.ErrNotExist) {
-			return "", chtimesErr
-		}
-		refreshed = chtimesErr == nil
+	refreshed, err := refreshStored(stored, now)
+	if err != nil {
+		return "", err
 	}
 	if !refreshed {
 		if err := copyIntoPlace(bin, stored, now); err != nil {
@@ -102,6 +97,24 @@ func storePrebuilt(bin, storeDir string, now time.Time) (string, error) {
 	}
 	pruneStore(storeDir, name, now)
 	return stored, nil
+}
+
+// refreshStored sets the modification time of the entry at stored to now, which marks its last use, and reports whether the entry is there to use.
+// An entry that is missing, or that a concurrent prune removes right after the refresh, reports false with no error, so the caller publishes it again.
+func refreshStored(stored string, now time.Time) (bool, error) {
+	if err := os.Chtimes(stored, now, now); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		return false, err
+	}
+	if _, err := os.Stat(stored); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 // copyIntoPlace copies the executable at src to dst through a sibling staging file named for this process, with its modification time set to now.
