@@ -230,7 +230,7 @@ func TestLookup(t *testing.T) {
 			"discussion_fixer_fan", "plan_fixer_fan", "webster_fixer_fan", "merge_fixer_fan",
 			"discussion_advisors",
 		}},
-		{"darn", true, []string{"darn_reviewer_model", "darn_fixer_model", "darn_reviewer_fan", "darn_fixer_fan"}},
+		{"darn", true, []string{"darn_reviewer_model", "darn_fixer_model", "darn_reviewer_fan", "darn_fixer_fan", "tree_scope"}},
 		{"shuttle", true, nil},
 		{"bogus", false, nil},
 	}

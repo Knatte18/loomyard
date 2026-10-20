@@ -63,23 +63,51 @@ func failOnGitHubClient(t *testing.T) {
 }
 
 // TestPublishVerify_Proceeds pins that an unset `publish_verify` runs no verify, and that a passing one and one the verified-tree record skips each let the push run.
+// A skip seam answering true takes the path of an unset `publish_verify` and removes a present Publish failure record, one answering false or absent runs it, and the seam is asked afresh at each Call.
 // The verify is asked once at site Publish with the plan's command as the base command, and the clean-tree check after it is made.
 func TestPublishVerify_Proceeds(t *testing.T) {
 	const planCommand, publishCommand = "go test ./...", "go test -tags tmux ./..."
+	answer := func(skip bool) func(*testing.T) func() (bool, error) {
+		return func(*testing.T) func() (bool, error) { return func() (bool, error) { return skip, nil } }
+	}
 	tests := []struct {
 		name        string
 		publishVerb string
 		result      verifytree.Result
-		wantVerify  int
+		// seam builds the told skip seam; nil leaves it unwired.
+		seam func(t *testing.T) func() (bool, error)
+		// withRecord writes a Publish failure record before the call and expects none after it.
+		withRecord bool
+		wantVerify int
 	}{
-		{"no publish_verify runs no verify", "", verifytree.Result{Status: verifytree.StatusPassed}, 0},
-		{"pass", publishCommand, verifytree.Result{Status: verifytree.StatusPassed}, 1},
-		{"verified tree skips", publishCommand, verifytree.Result{Status: verifytree.StatusSkipped}, 1},
+		{"no publish_verify runs no verify", "", verifytree.Result{Status: verifytree.StatusPassed}, nil, false, 0},
+		{"pass", publishCommand, verifytree.Result{Status: verifytree.StatusPassed}, nil, false, 1},
+		{"verified tree skips", publishCommand, verifytree.Result{Status: verifytree.StatusSkipped}, nil, false, 1},
+		{"a seam answering true runs no verify and clears the record", publishCommand, verifytree.Result{Status: verifytree.StatusPassed}, answer(true), true, 0},
+		{"a seam answering false runs publish_verify", publishCommand, verifytree.Result{Status: verifytree.StatusPassed}, answer(false), false, 1},
+		{"an unset publish_verify never asks the seam", "", verifytree.Result{Status: verifytree.StatusPassed}, func(t *testing.T) func() (bool, error) {
+			return func() (bool, error) {
+				t.Error("skip seam was called; want no call with publish_verify unset")
+				return false, nil
+			}
+		}, false, 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fx := newPublishVerifyFixture(t, planCommand, tt.publishVerb)
 			fx.gate.fake.result = tt.result
+			if tt.seam != nil {
+				fx.p.deps.PublishVerifySkip = tt.seam(t)
+			}
+			if tt.withRecord {
+				fx.p.gate.recorder = &failureRecorder{}
+				if err := os.MkdirAll(fx.gate.paths.Dir, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := verifytree.WritePublishFailure(fx.gate.paths, verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify}); err != nil {
+					t.Fatal(err)
+				}
+			}
 			outcome, _, err := fx.call(t)
 			if err != nil || outcome != shedengine.Done {
 				t.Fatalf("Call() = %q, %v; want Done, nil", outcome, err)
@@ -101,8 +129,32 @@ func TestPublishVerify_Proceeds(t *testing.T) {
 			if fx.gate.fake.dirtyCalls != 1 {
 				t.Errorf("clean-tree checks = %d; want 1", fx.gate.fake.dirtyCalls)
 			}
+			if tt.withRecord {
+				if got, ok, _ := verifytree.ReadPublishFailure(fx.gate.paths); ok {
+					t.Errorf("record = %+v; want none after a skipped publish_verify", got)
+				}
+			}
 		})
 	}
+
+	t.Run("a seam is asked afresh at each Call", func(t *testing.T) {
+		fx := newPublishVerifyFixture(t, planCommand, publishCommand)
+		fx.gate.fake.result = verifytree.Result{Status: verifytree.StatusPassed}
+		answers := []bool{true, false}
+		fx.p.deps.PublishVerifySkip = func() (bool, error) {
+			skip := answers[0]
+			answers = answers[1:]
+			return skip, nil
+		}
+		for call, wantVerify := range []int{0, 1} {
+			if outcome, _, err := fx.call(t); err != nil || outcome != shedengine.Done {
+				t.Fatalf("Call() #%d = %q, %v; want Done, nil", call+1, outcome, err)
+			}
+			if fx.gate.fake.verifyCalls != wantVerify {
+				t.Errorf("verify calls after Call #%d = %d; want %d", call+1, fx.gate.fake.verifyCalls, wantVerify)
+			}
+		}
+	})
 }
 
 // TestPublishVerify_HaltsOnVerifyResult pins that a failed `publish_verify`, one that could not start and one that reports a dirty tree each end Stuck with a reason naming the cause, before anything is pushed and before GitHub is reached.
@@ -186,6 +238,14 @@ func TestPublishVerify_HardErrorsAreReturned(t *testing.T) {
 				fx.p.gate.command = func() (string, error) { return "", errors.New("plan unreadable") }
 				return context.Background()
 			},
+		},
+		{
+			name: "skip seam error",
+			setup: func(fx *publishVerifyFixture) context.Context {
+				fx.p.deps.PublishVerifySkip = func() (bool, error) { return false, errors.New("tree scope unreadable") }
+				return context.Background()
+			},
+			wantErrHas: "tree scope unreadable",
 		},
 		{
 			name: "cancellation",

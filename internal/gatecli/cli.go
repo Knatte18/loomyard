@@ -3,6 +3,7 @@
 package gatecli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/impactset"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -41,6 +43,7 @@ func newCommand(goBinary string, samplePeriod, slotWait time.Duration) *cobra.Co
 	}
 
 	var dir, tags string
+	var guards bool
 	testCmd := &cobra.Command{
 		Use:         "test <packages>...",
 		Short:       "run go test over packages once a hub gate slot is free",
@@ -54,18 +57,21 @@ Inside a slot already held by an enclosing gate run it runs without acquiring an
 Outside every hub it runs unslotted under the template's -p cap.
 The output and exit code are go test's own.
 Arguments after "--" are passed to go test unchanged, after the packages.
+With --guards it then also runs, in the same slot, every top-level test marked //lyx:guard in the module at the -C directory, by name in its own package;
+the packages may then be omitted, and --tags must include integration.
 
 Examples:
 
   lyx gate test ./internal/foo
   lyx gate test -C backend --tags integration ./internal/foo ./internal/bar
+  lyx gate test --tags integration --guards ./internal/foo
   lyx gate test ./... -- -run TestSomething -count=1`, slotWait, SlotBusyExit),
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
 			}
-			request := testRequest{goBinary: goBinary, samplePeriod: samplePeriod, slotWait: slotWait, stderr: cmd.ErrOrStderr(), dir: dir, tags: tags, packages: args}
+			request := testRequest{goBinary: goBinary, samplePeriod: samplePeriod, slotWait: slotWait, stderr: cmd.ErrOrStderr(), dir: dir, tags: tags, guards: guards, packages: args}
 			if dash := cmd.ArgsLenAtDash(); dash >= 0 {
 				request.packages, request.flags = args[:dash], args[dash:]
 			}
@@ -75,6 +81,7 @@ Examples:
 	}
 	testCmd.Flags().StringVarP(&dir, "dir", "C", "", "directory to run go test in; defaults to the current directory")
 	testCmd.Flags().StringVar(&tags, "tags", "", "comma-separated build tags passed to go test")
+	testCmd.Flags().BoolVar(&guards, "guards", false, "also run every //lyx:guard test of the module at the -C directory, by name in its own package; needs integration in --tags")
 	cmd.AddCommand(testCmd)
 
 	return cmd
@@ -106,6 +113,8 @@ type testRequest struct {
 	// dir is the -C value as typed; empty means the seam cwd.
 	dir  string
 	tags string
+	// guards is the --guards flag: also run every `//lyx:guard` test of the module at dir.
+	guards bool
 	// packages are the arguments before `--`.
 	packages []string
 	// flags are the arguments after `--`, passed to go test unchanged.
@@ -173,6 +182,27 @@ func isRelativePackageArg(arg string) bool {
 func isDirectory(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.IsDir()
+}
+
+// guardScanRefusal is the refusal text for a failed module guard scan of moduleDir.
+// A guard-scan error names its file, and its line when it has one, with the way forward its kind gives; any other error names the module directory.
+func guardScanRefusal(moduleDir string, err error) string {
+	var scanErr *impactset.GuardScanError
+	if !errors.As(err, &scanErr) {
+		return fmt.Sprintf("gate test: --guards cannot list the packages of %s: %v; way forward: make the directory readable or fix the module until \"go list ./...\" succeeds there, then re-run the same command", moduleDir, err)
+	}
+	location := scanErr.File
+	if scanErr.Line != 0 {
+		location += ":" + strconv.Itoa(scanErr.Line)
+	}
+	switch scanErr.Kind {
+	case impactset.GuardMisplaced:
+		return fmt.Sprintf("gate test: --guards found a //lyx:guard marker at %s that is not directly above a top-level func Test line; way forward: move the marker directly above its func Test line, then re-run the same command", location)
+	case impactset.GuardNotIntegration:
+		return fmt.Sprintf("gate test: --guards found a //lyx:guard marker at %s in a file no integration-tier run compiles; way forward: compile the marked test's file under the integration tag, then re-run the same command", location)
+	default:
+		return fmt.Sprintf("gate test: --guards cannot parse %s: %v; way forward: make the file readable or fix it until it parses, then re-run the same command", location, err)
+	}
 }
 
 // refusePackages is the refusal for a request that names no package.

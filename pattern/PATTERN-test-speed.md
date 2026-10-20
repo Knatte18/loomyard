@@ -73,7 +73,8 @@ Bound: a forged value misleads only an ungated raw run, since `lyx gate test` se
 - A test that reads only its own package directory is left unmarked, since the impacted set selects it whenever that package changes.
 - No marked test sits in a `tmux` or `llm` file.
 - Whether a scanning test carries the marker is review discipline, not a test.
-- Bound: an unmarked scanning test is not run by the round gate, so a violation passes that round and is caught by the full plan verify at Publish or Finalize, never on `main`.
+- Bound: an unmarked scanning test is not run by the round gate or darn's writer gates, so a violation passes those and is caught by the whole verify at the sites that keep it for a diff touching production code, never on `main`.
+  For a tree-scoped darn diff such a violation can reach the parent, bounded by what the hub lists as non-production in `darn.yaml`'s `tree_scope`.
 
 ## Time is injectable
 

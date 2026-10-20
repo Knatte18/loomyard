@@ -5,8 +5,10 @@ package fabricengine
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
@@ -90,6 +92,24 @@ func (f *Fabric) ChangedPaths(from, to string) ([]string, error) {
 		return nil, fmt.Errorf("fabricengine: changed paths from %s to %s: %w", from, to, err)
 	}
 	return paths, nil
+}
+
+// ChangedPathsBothSides returns every repository-relative path that differs between from and to in the pair's code repository, sorted and deduplicated.
+// A rename is reported by both its old and its new path, so a move out of a tree is seen by the tree it left.
+// Each path is read from NUL-separated output and arrives verbatim, never in core.quotePath's C-quoted form.
+func (f *Fabric) ChangedPathsBothSides(from, to string) ([]string, error) {
+	out, err := gitexec.Run([]string{"diff", "--name-only", "-z", "--no-renames", from, to}, f.warpPath)
+	if err != nil {
+		return nil, fmt.Errorf("fabricengine: changed paths from %s to %s: %w", from, to, err)
+	}
+	var paths []string
+	for _, path := range strings.Split(out, "\x00") {
+		if path != "" {
+			paths = append(paths, path)
+		}
+	}
+	slices.Sort(paths)
+	return slices.Compact(paths), nil
 }
 
 // CommitLog lists the commits reachable from to and not from from in the pair's code repository, newest first, each as a seven-character SHA prefix and the commit's subject.

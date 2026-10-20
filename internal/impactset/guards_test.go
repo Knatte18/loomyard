@@ -27,10 +27,12 @@ func TestFindGuardTests(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		file    string
-		want    []string
-		wantErr string
+		name     string
+		file     string
+		want     []string
+		wantErr  string
+		wantKind GuardScanKind
+		wantLine int
 	}{
 		{
 			name: "a marked top-level test is found",
@@ -48,39 +50,53 @@ func TestFindGuardTests(t *testing.T) {
 			want: []string{"TestA"},
 		},
 		{
-			name:    "a file that does not parse fails naming the file",
-			file:    "package p\n\nfunc TestA(t *testing.T) {\n",
-			wantErr: "impactset: parse dir/p/p_test.go",
+			name:     "a file that does not parse fails naming the file",
+			file:     "package p\n\nfunc TestA(t *testing.T) {\n",
+			wantErr:  "impactset: parse dir/p/p_test.go",
+			wantKind: GuardParse,
+			wantLine: 3,
 		},
 		{
-			name:    "a marker with another comment line between it and the func fails with its line",
-			file:    "package p\n\n//lyx:guard\n// a stray line\nfunc TestA(t *testing.T) {}\n",
-			wantErr: "p_test.go:3",
+			name:     "a marker with another comment line between it and the func fails with its line",
+			file:     "package p\n\n//lyx:guard\n// a stray line\nfunc TestA(t *testing.T) {}\n",
+			wantErr:  "p_test.go:3",
+			wantKind: GuardMisplaced,
+			wantLine: 3,
 		},
 		{
-			name:    "a marker above a func that is not a test fails with its line",
-			file:    "package p\n\n//lyx:guard\nfunc helper() {}\n",
-			wantErr: "p_test.go:3",
+			name:     "a marker above a func that is not a test fails with its line",
+			file:     "package p\n\n//lyx:guard\nfunc helper() {}\n",
+			wantErr:  "p_test.go:3",
+			wantKind: GuardMisplaced,
+			wantLine: 3,
 		},
 		{
-			name:    "a marker above a method fails with its line",
-			file:    "package p\n\n//lyx:guard\nfunc (s S) TestA() {}\n",
-			wantErr: "p_test.go:3",
+			name:     "a marker above a method fails with its line",
+			file:     "package p\n\n//lyx:guard\nfunc (s S) TestA() {}\n",
+			wantErr:  "p_test.go:3",
+			wantKind: GuardMisplaced,
+			wantLine: 3,
 		},
 		{
-			name:    "a marker floating in a function body fails with its line",
-			file:    "package p\n\nfunc TestA(t *testing.T) {\n\t//lyx:guard\n}\n",
-			wantErr: "p_test.go:4",
+			name:     "a marker floating in a function body fails with its line",
+			file:     "package p\n\nfunc TestA(t *testing.T) {\n\t//lyx:guard\n}\n",
+			wantErr:  "p_test.go:4",
+			wantKind: GuardMisplaced,
+			wantLine: 4,
 		},
 		{
-			name:    "a marker in a tmux file fails with its line",
-			file:    "//go:build tmux\n\npackage p\n\n//lyx:guard\nfunc TestA(t *testing.T) {}\n",
-			wantErr: "p_test.go:5",
+			name:     "a marker in a tmux file fails with its line",
+			file:     "//go:build tmux\n\npackage p\n\n//lyx:guard\nfunc TestA(t *testing.T) {}\n",
+			wantErr:  "p_test.go:5",
+			wantKind: GuardNotIntegration,
+			wantLine: 5,
 		},
 		{
-			name:    "a marker in an llm file fails with its line",
-			file:    "//go:build llm && linux\n\npackage p\n\n//lyx:guard\nfunc TestA(t *testing.T) {}\n",
-			wantErr: "p_test.go:5",
+			name:     "a marker in an llm file fails with its line",
+			file:     "//go:build llm && linux\n\npackage p\n\n//lyx:guard\nfunc TestA(t *testing.T) {}\n",
+			wantErr:  "p_test.go:5",
+			wantKind: GuardNotIntegration,
+			wantLine: 5,
 		},
 	}
 	for _, tt := range tests {
@@ -97,7 +113,10 @@ func TestFindGuardTests(t *testing.T) {
 				}
 				var scanErr *GuardScanError
 				if !errors.As(err, &scanErr) || scanErr.File != "dir/p/p_test.go" {
-					t.Errorf("FindGuardTests() error = %#v; want a *GuardScanError with File %q", err, "dir/p/p_test.go")
+					t.Fatalf("FindGuardTests() error = %#v; want a *GuardScanError with File %q", err, "dir/p/p_test.go")
+				}
+				if scanErr.Kind != tt.wantKind || scanErr.Line != tt.wantLine {
+					t.Errorf("FindGuardTests() error kind, line = %q, %d; want %q, %d", scanErr.Kind, scanErr.Line, tt.wantKind, tt.wantLine)
 				}
 				return
 			}

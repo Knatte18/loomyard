@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"slices"
 	"strconv"
@@ -751,6 +752,199 @@ func TestGateTest_Scenario(t *testing.T) {
 			}
 			if _, err := os.Stat(g.record); err == nil {
 				t.Error("the stand-in ran although the gate refused")
+			}
+			requireFree(t)
+		})
+	}
+
+	// writeModule writes a nested module named name under the prime holding files, and returns its directory.
+	writeModule := func(t *testing.T, name string, files map[string]string) string {
+		t.Helper()
+		root := filepath.Join(prime, name)
+		files["go.mod"] = "module example.com/" + name + "\n\ngo 1.21\n"
+		for rel, content := range files {
+			full := filepath.Join(root, filepath.FromSlash(rel))
+			if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return root
+	}
+	// testInvocations returns the arguments of the stand-in's test invocations, in order, leaving out a build.
+	testInvocations := func(t *testing.T, g *runningGate) [][]string {
+		t.Helper()
+		var invocations [][]string
+		for _, record := range g.records(t) {
+			if len(record.Args) > 0 && record.Args[0] == "test" {
+				invocations = append(invocations, record.Args)
+			}
+		}
+		return invocations
+	}
+
+	guarded := writeModule(t, "guarded", map[string]string{
+		"pkg/pkg.go":  "package pkg\n",
+		"g/g.go":      "package g\n",
+		"g/g_test.go": "package g\n\nimport \"testing\"\n\n//lyx:guard\nfunc TestGuard(t *testing.T) {}\n",
+		"h/h.go":      "package h\n",
+		"h/h_test.go": "package h\n\nimport \"testing\"\n\n//lyx:guard\nfunc TestGuardH(t *testing.T) {}\n",
+	})
+	guardedInvocation := func(pkg string, flags ...string) []string {
+		return append([]string{"test", "-C", guarded, "-p", "3", "-tags", "integration", pkg}, flags...)
+	}
+	guardTests := []struct {
+		name     string
+		args     []string
+		env      []string
+		wantExit int
+		want     [][]string
+	}{
+		{
+			name: "guards alone run each guard package by name in directory order",
+			args: []string{"--guards"},
+			want: [][]string{guardedInvocation("./g", "-run", "^(TestGuard)$"), guardedInvocation("./h", "-run", "^(TestGuardH)$")},
+		},
+		{
+			name: "a named package runs before the guards",
+			args: []string{"--guards", "./pkg"},
+			want: [][]string{guardedInvocation("./pkg"), guardedInvocation("./g", "-run", "^(TestGuard)$"), guardedInvocation("./h", "-run", "^(TestGuardH)$")},
+		},
+		{
+			name: "go test flags precede each guard's own -run, which wins",
+			args: []string{"--guards", "./pkg", "--", "-run", "X"},
+			want: [][]string{guardedInvocation("./pkg", "-run", "X"), guardedInvocation("./g", "-run", "X", "-run", "^(TestGuard)$"), guardedInvocation("./h", "-run", "X", "-run", "^(TestGuardH)$")},
+		},
+		{
+			name:     "a failing package run stops before the guards and returns its code",
+			args:     []string{"--guards", "./pkg"},
+			env:      []string{helperExitEnv + "=3"},
+			wantExit: 3,
+			want:     [][]string{guardedInvocation("./pkg")},
+		},
+	}
+	for _, tc := range guardTests {
+		t.Run("--guards: "+tc.name, func(t *testing.T) {
+			g := startGate(t, gateRun{cwd: t.TempDir(), args: append([]string{"test", "-C", guarded, "--tags", "integration"}, tc.args...), env: tc.env})
+			if code := g.wait(t); code != tc.wantExit {
+				t.Errorf("exit code = %d, stdout %q; want %d", code, g.stdout.String(), tc.wantExit)
+			}
+			if got := testInvocations(t, g); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("test invocations = %q; want %q", got, tc.want)
+			}
+			requireFree(t)
+		})
+	}
+
+	t.Run("--guards: a module with no marked test and no package runs nothing and exits 0", func(t *testing.T) {
+		bare := writeModule(t, "bare", map[string]string{"pkg/pkg.go": "package pkg\n"})
+		g := startGate(t, gateRun{cwd: t.TempDir(), args: []string{"test", "-C", bare, "--tags", "integration", "--guards"}})
+		if code := g.wait(t); code != 0 {
+			t.Errorf("exit code = %d, stdout %q; want 0", code, g.stdout.String())
+		}
+		if _, err := os.Stat(g.record); err == nil {
+			t.Error("the stand-in ran although the module holds no guard test")
+		}
+		requireFree(t)
+	})
+
+	t.Run("--guards: a guard in the module's root package runs as the . package", func(t *testing.T) {
+		rooted := writeModule(t, "rooted", map[string]string{
+			"root.go":      "package rooted\n",
+			"root_test.go": "package rooted\n\nimport \"testing\"\n\n//lyx:guard\nfunc TestGuardRoot(t *testing.T) {}\n",
+		})
+		g := startGate(t, gateRun{cwd: t.TempDir(), args: []string{"test", "-C", rooted, "--tags", "integration", "--guards"}})
+		if code := g.wait(t); code != 0 {
+			t.Errorf("exit code = %d, stdout %q; want 0", code, g.stdout.String())
+		}
+		want := [][]string{{"test", "-C", rooted, "-p", "3", "-tags", "integration", ".", "-run", "^(TestGuardRoot)$"}}
+		if got := testInvocations(t, g); !reflect.DeepEqual(got, want) {
+			t.Errorf("test invocations = %q; want %q", got, want)
+		}
+		requireFree(t)
+	})
+
+	// Each row writes its own module, so a broken one never disturbs another; makeUnreadable removes a path's permissions until the row ends.
+	makeUnreadable := func(t *testing.T, path string) {
+		t.Helper()
+		if os.Geteuid() == 0 || runtime.GOOS == "windows" {
+			t.Skip("the platform or user reads any file")
+		}
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(path, 0o000); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(path, info.Mode().Perm()) })
+	}
+	scanRefusals := []struct {
+		name  string
+		files map[string]string
+		// unreadable is a module-relative path made unreadable before the run.
+		unreadable string
+		// wantError lists text the refusal must hold.
+		wantError []string
+		// wantModule is whether the refusal must also name the module directory.
+		wantModule bool
+	}{
+		{
+			name:      "a misplaced marker names its file and line and says to move it",
+			files:     map[string]string{"p/p.go": "package p\n", "p/p_test.go": "package p\n\n//lyx:guard\nfunc helper() {}\n"},
+			wantError: []string{"p/p_test.go:3", "move the marker directly above its func Test line"},
+		},
+		{
+			name:      "a marker in a tmux file names its file and line and says to compile it under integration",
+			files:     map[string]string{"p/p.go": "package p\n", "p/p_test.go": "//go:build tmux\n\npackage p\n\nimport \"testing\"\n\n//lyx:guard\nfunc TestA(t *testing.T) {}\n"},
+			wantError: []string{"p/p_test.go:7", "compile the marked test's file under the integration tag"},
+		},
+		{
+			name:       "an unreadable test file names it and says to make it readable or fix it",
+			files:      map[string]string{"p/p.go": "package p\n", "p/p_test.go": "package p\n"},
+			unreadable: "p/p_test.go",
+			wantError:  []string{"p/p_test.go", "make the file readable or fix it until it parses"},
+		},
+		{
+			name:       "an unreadable package directory names the module and says to make go list succeed",
+			files:      map[string]string{"p/p.go": "package p\n", "c/c.go": "package c\n"},
+			unreadable: "c",
+			wantError:  []string{`"go list ./..." succeeds there`},
+			wantModule: true,
+		},
+	}
+	for i, tc := range scanRefusals {
+		t.Run("--guards: "+tc.name, func(t *testing.T) {
+			module := writeModule(t, "scan"+strconv.Itoa(i), tc.files)
+			if tc.unreadable != "" {
+				makeUnreadable(t, filepath.Join(module, filepath.FromSlash(tc.unreadable)))
+			}
+			g := startGate(t, gateRun{cwd: t.TempDir(), args: []string{"test", "-C", module, "--tags", "integration", "--guards"}})
+			code := g.wait(t)
+
+			var envelope struct {
+				OK    bool   `json:"ok"`
+				Error string `json:"error"`
+			}
+			if err := json.Unmarshal(g.stdout.Bytes(), &envelope); err != nil {
+				t.Fatalf("stdout %q is not a JSON envelope: %v", g.stdout.String(), err)
+			}
+			if code != 1 || envelope.OK {
+				t.Errorf("gate = exit %d, %+v; want exit 1 and ok false", code, envelope)
+			}
+			wants := append(slices.Clone(tc.wantError), "way forward")
+			if tc.wantModule {
+				wants = append(wants, module)
+			}
+			for _, want := range wants {
+				if !strings.Contains(envelope.Error, want) {
+					t.Errorf("error %q lacks %q", envelope.Error, want)
+				}
+			}
+			if _, err := os.Stat(g.record); err == nil {
+				t.Error("the stand-in ran although the scan refused")
 			}
 			requireFree(t)
 		})

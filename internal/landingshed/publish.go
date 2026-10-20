@@ -115,8 +115,19 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 	// Step 4: run the repo's publish_verify, when set, before anything leaves the worktree.
 	// The merge-in and the plan's verify ran at Merge-In, so a failure record written here names the merge commit from the merge record.
 	// A verify that dirties the tree is a non-hermetic test and halts rather than ships.
+	// A told skip seam answering true takes the path of an unset publish_verify.
+	publishVerify := p.deps.Config.PublishVerify
+	if publishVerify != "" && p.deps.PublishVerifySkip != nil {
+		skip, err := p.deps.PublishVerifySkip()
+		if err != nil {
+			return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: publish_verify skip: %w", publishName, err)
+		}
+		if skip {
+			publishVerify = ""
+		}
+	}
 	p.takeMergeCommitFromRecord()
-	reason, err := p.gate.checkPublishVerify(ctx, publishName, p.deps.ParentBranch, p.deps.Config.PublishVerify)
+	reason, err := p.gate.checkPublishVerify(ctx, publishName, p.deps.ParentBranch, publishVerify)
 	if outcome, out, err, stop := p.gateStop(ctx, reason, err); stop {
 		return outcome, out, err
 	}

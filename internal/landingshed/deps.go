@@ -196,6 +196,13 @@ type Deps struct {
 	// VerifyFailureTarget is the row the recipe routes a failed Publish verify back to, written into the failure record's target.
 	// Empty writes no target.
 	VerifyFailureTarget string
+	// PublishVerifySkip reports whether Publish skips `publish_verify` for this call, so a diff the recipe verifies by its own narrower command lands without the extra tier.
+	// Publish calls it after taking the parent lock when `publish_verify` is set: true takes the path of an unset `publish_verify`, which removes the Publish failure record before the push;
+	// an error is Publish's returned error, with nothing verified or pushed; false runs `publish_verify`.
+	// It is read at each Publish, so a diff that gains a path between two Publish calls is classified anew.
+	//
+	// Nil means "never skip", loom's value: `publish_verify` runs whenever it is set.
+	PublishVerifySkip func() (bool, error)
 	// VerifyWaitMark sets or clears the pane mark of the run's driver strand around the post-merge verify,
 	// so the wait shows on screen.
 	// The gate clears the mark before each verify, sets it with the label `verify <producer>` and the verify's start time immediately before the verify runs,

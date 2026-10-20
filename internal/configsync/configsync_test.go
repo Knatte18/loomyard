@@ -472,6 +472,13 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 			wantAbsent:   []string{"light:", "budget:", "docs:"},
 		},
 		{
+			name:         "darn present keeps its tree_scope trees and their targets",
+			module:       "darn",
+			hubFile:      "tree_scope:\n  tools: ./tools/...\n  docs: \"\"\n",
+			wantSeed:     SeedHub,
+			wantContains: []string{"tools: ./tools/...", "docs: \"\"", "review_max_bounces:"},
+		},
+		{
 			name:         "fabric absent with a legacy warp.yaml folds it in",
 			module:       "fabric",
 			legacyFirst:  "branch_prefix: legacy/\n",

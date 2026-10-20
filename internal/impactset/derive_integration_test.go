@@ -87,7 +87,7 @@ func TestDerive_OverARepository(t *testing.T) {
 	commitAll(t, dir, "change a")
 	t.Run("a one-package change derives that package's command", func(t *testing.T) {
 		got := derive(t, dir, base)
-		want := gateCommand("./a ./b", "go test -tags integration -run '^(TestGuard)$' ./g")
+		want := gateCommand("./a ./b", "lyx gate test --tags integration ./g -- -run '^(TestGuard)$'")
 		if got.Command != want || got.Fallback != "" || got.Base != base || strings.Join(got.Packages, " ") != "./a ./b" {
 			t.Errorf("Derive() = %+v; want command %q over packages ./a ./b on base %s", got, want, base)
 		}

@@ -1,4 +1,4 @@
-// verifygate.go implements NewVerifyGate, the must-pass gate that holds a handoff until the headroom lint, the comment lint and the told verify command pass on the committed tree, narrowed to the round's impacted set or run over the whole diff from a told merge base.
+// verifygate.go implements NewVerifyGate, the must-pass gate that holds a handoff until the headroom lint, the comment lint and the told verify command pass on the committed tree, narrowed to the round's impacted set, or in the darn form to the diff's tree-scoped or impacted-set command from a told merge base.
 
 package loomshed
 
@@ -27,7 +27,7 @@ const verifyLogTailBytes = 4096
 // command is the told verify-command source, read at each arrival.
 // slots is the hub pool the command waits on before it runs; nil runs it unslotted.
 //
-// With wholeDiff false the gate takes the round form.
+// With treeScope nil the gate takes the round form.
 // The base of the round is the commit of the told command's latest recorded pass.
 // With a usable base the comment lint runs from it to HEAD before any test, and the round command is the impacted-set command impactset derives.
 // With no usable base the lint passes and the round command is the told command itself, as it is wherever impactset names a fallback.
@@ -35,22 +35,26 @@ const verifyLogTailBytes = 4096
 // An empty told command passes with a logged warning.
 // When mergeBase is non-nil, the headroom lint also runs from the merge base it reads to HEAD, after the guard scan and before the comment lint and any test; nil skips it.
 //
-// With wholeDiff true the gate takes the whole-diff form, and mergeBase must be non-nil.
-// The headroom lint and then the comment lint run from the merge base mergeBase reads to HEAD, and the told command runs in full with the command as the site's base command, so Publish skips on the same tree and command.
+// With treeScope non-nil the gate takes the darn form, and mergeBase must be non-nil.
+// The headroom lint and then the comment lint run from the merge base mergeBase reads to HEAD, so every attempt diffs from the merge base.
+// Then treeScope is read: a tree-scoped diff runs the tree-scoped command it answers, with no `tmux` pass,
+// and any other diff runs the command impactset derives from the merge base, or the told command in full where impactset falls back.
+// The told command is the site's base command, so Publish skips on the same tree and command.
 // The form has no skip path: an empty told command is an error naming the source, never a pass, and so is a nil mergeBase.
 //
 // While a Publish failure record is present, the command also confirms the fix.
 // It first runs each failing test the checked record names, by name in its package under the failing verify's tier, so a failure that still holds ends the run in seconds.
-// It runs last, for a `publish_verify` failure, the impacted set under `tmux`, or `./...` where the round fell back to the told command or the form is whole-diff.
+// It runs last, for a `publish_verify` failure, the impacted set under `tmux`, or `./...` where the command fell back to the told command; a tree-scoped diff has no such pass.
 // The record's fields are shape-checked first, and a field that fails is dropped and logged, so no record text reaches the command as shell.
 //
 // `StatusPassed` and `StatusSkipped` pass.
 // `StatusDirty` fails with the dirty paths.
 // `StatusFailed` fails with the exit code, the log path and the log's tail, and, after a CPU watchdog quit, the window and the `busy_quit_sec` way forward.
-// A headroom finding, a comment lint finding, or in the round form a test file the guard scan rejects such as a misplaced `//lyx:guard` marker, fails with its file and line or its bytes and the way forward.
-// A command or merge base read error, a failure to read git or a package directory, a lint run error or a cancelled verify is a returned error, since none is a defect the writer can fix.
-func NewVerifyGate(worktreeRoot, verifyDir, siteLabel string, command, mergeBase func() (string, error), wholeDiff bool, slots *gateslot.Pool) shuttleengine.Gate {
+// A headroom finding, a comment lint finding, or a test file the guard scan rejects such as a misplaced `//lyx:guard` marker, fails with its file and line or its bytes and the way forward.
+// A command, merge base or tree scope read error, a failure to read git or a package directory, a lint run error or a cancelled verify is a returned error, since none is a defect the writer can fix.
+func NewVerifyGate(worktreeRoot, verifyDir, siteLabel string, command, mergeBase func() (string, error), treeScope func() (string, bool, error), slots *gateslot.Pool) shuttleengine.Gate {
 	attempt := 0
+	darnForm := treeScope != nil
 	paths := verifytree.NewPaths(worktreeRoot, verifyDir)
 	return func() (shuttleengine.GateResult, error) {
 		attempt++
@@ -58,25 +62,26 @@ func NewVerifyGate(worktreeRoot, verifyDir, siteLabel string, command, mergeBase
 		if err != nil {
 			return shuttleengine.GateResult{}, fmt.Errorf("loomshed: verify gate: read the verify command: %w", err)
 		}
-		if told == "" && wholeDiff {
+		if told == "" && darnForm {
 			return shuttleengine.GateResult{}, fmt.Errorf("loomshed: verify gate: the told verify command source returned an empty command")
 		}
 		if told == "" {
 			logger.Warn("loomshed: verify gate was told no verify command", "gate", siteLabel)
 			return shuttleengine.GateResult{Passed: true}, nil
 		}
-		if wholeDiff && mergeBase == nil {
-			return shuttleengine.GateResult{}, fmt.Errorf("loomshed: verify gate: the whole-diff form was told no merge base reader")
+		if darnForm && mergeBase == nil {
+			return shuttleengine.GateResult{}, fmt.Errorf("loomshed: verify gate: the darn form was told no merge base reader")
 		}
 
-		var lintBase string
+		var lintBase, headroomBase string
 		runCommand := told
 		tmuxPackages := []string{"./..."}
-		if wholeDiff {
+		if darnForm {
 			lintBase, err = mergeBase()
 			if err != nil {
 				return shuttleengine.GateResult{}, fmt.Errorf("loomshed: verify gate: read the merge base: %w", err)
 			}
+			headroomBase = lintBase
 		} else {
 			base := ""
 			if pass, ok := verifytree.LatestPass(paths, told); ok {
@@ -99,15 +104,14 @@ func NewVerifyGate(worktreeRoot, verifyDir, siteLabel string, command, mergeBase
 			if derivation.Fallback == "" {
 				tmuxPackages = derivation.Packages
 			}
-		}
-		if mergeBase != nil {
-			headroomBase := lintBase
-			if !wholeDiff {
+			if mergeBase != nil {
 				headroomBase, err = mergeBase()
 				if err != nil {
 					return shuttleengine.GateResult{}, fmt.Errorf("loomshed: verify gate: read the merge base: %w", err)
 				}
 			}
+		}
+		if mergeBase != nil {
 			finding, found, err := patternlint.Lint(worktreeRoot, headroomBase)
 			if err != nil {
 				return shuttleengine.GateResult{}, fmt.Errorf("loomshed: verify gate: lint the overview headroom: %w", err)
@@ -125,6 +129,33 @@ func NewVerifyGate(worktreeRoot, verifyDir, siteLabel string, command, mergeBase
 			if len(commentFindings) > 0 {
 				logger.Warn("loomshed: verify gate found fixed-column comment wraps", "gate", siteLabel, "attempt", attempt, "count", len(commentFindings))
 				return shuttleengine.GateResult{Passed: false, Findings: commentLintFindings(commentFindings)}, nil
+			}
+		}
+		if darnForm {
+			scoped, isScoped, err := treeScope()
+			if err != nil {
+				return shuttleengine.GateResult{}, fmt.Errorf("loomshed: verify gate: read the tree scope: %w", err)
+			}
+			if isScoped {
+				runCommand = scoped
+				tmuxPackages = nil
+			} else {
+				derivation, err := impactset.Derive(worktreeRoot, lintBase)
+				if impactset.IsGuardScanError(err) {
+					logger.Warn("loomshed: verify gate found a test file the guard scan rejects", "gate", siteLabel, "attempt", attempt, "err", err)
+					return shuttleengine.GateResult{Passed: false, Findings: guardScanFindings(err)}, nil
+				}
+				if err != nil {
+					return shuttleengine.GateResult{}, fmt.Errorf("loomshed: verify gate: derive the command: %w", err)
+				}
+				if derivation.Command != "" {
+					runCommand = derivation.Command
+				} else {
+					logger.Info("loomshed: verify gate runs the told verify command", "gate", siteLabel, "attempt", attempt, "reason", derivation.Fallback)
+				}
+				if derivation.Fallback == "" {
+					tmuxPackages = derivation.Packages
+				}
 			}
 		}
 		if failure, ok := checkedPublishFailure(paths, worktreeRoot); ok {

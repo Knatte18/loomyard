@@ -156,6 +156,7 @@ func landingDeps(
 		VerifyCommand:          verify.command,
 		VerifyFailedWayForward: verify.failedWayForward,
 		VerifyFailureTarget:    verify.failureTarget,
+		PublishVerifySkip:      verify.publishSkip,
 		FailingTests:           failingTestsOf,
 		VerifyDir:              verifytree.Dir(l.AnchorPath()),
 		GateSlots:              hubgeom.GateSlots(l),
@@ -318,6 +319,9 @@ type verifySource struct {
 	failedWayForward string
 	// failureTarget is the row the recipe routes a failed Publish verify back to.
 	failureTarget string
+	// publishSkip answers whether Publish skips landing config's `publish_verify` for this call, read at each Publish.
+	// Nil for loom's source, which never skips.
+	publishSkip func() (bool, error)
 }
 
 // planVerifySource returns loom's verify source: the plan's `## verify:` command, and the Webster-Burler-Review route back to a fix.

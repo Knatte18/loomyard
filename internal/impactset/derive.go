@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -24,7 +25,8 @@ var vetTags = []string{"integration", "tmux", "llm"}
 
 // Derivation is the outcome of Derive.
 type Derivation struct {
-	// Command is the round gate's derived command; empty when Fallback is set.
+	// Command is the derived command, empty when Fallback is set.
+	// It is `go build ./...`, a `go vet` per tag over the set, `lyx gate test --tags integration` over the set, and one `lyx gate test --tags integration` step for the guard tests of the packages outside the set.
 	Command string
 	// Packages are the impacted set's `go` package arguments, in the order the command lists them; empty with a fallback, and empty when only non-Go files changed.
 	Packages []string
@@ -191,6 +193,7 @@ func packageOfPath(graph moduleGraph, changedPath string) (importPath string, ma
 
 // buildCommand assembles the command for an impacted set: build, vet per tag, integration tests, then the guard tests of the packages outside the set.
 // The integration run compiles and runs every untagged test too, so no separate untagged run precedes it.
+// The test and guard steps run through `lyx gate test`, which inside a verify inherits the held gate slot, and the guard tests are one step so `lyx` is built once.
 func buildCommand(graph moduleGraph, set map[string]bool, guards map[string][]string) string {
 	steps := []string{"go build ./..."}
 	if len(set) > 0 {
@@ -198,18 +201,20 @@ func buildCommand(graph moduleGraph, set map[string]bool, guards map[string][]st
 		for _, tag := range vetTags {
 			steps = append(steps, "go vet -tags "+tag+" "+args)
 		}
-		steps = append(steps, "go test -tags integration "+args)
+		steps = append(steps, "lyx gate test --tags integration "+args)
 	}
 
-	var outsideDirs []string
-	for dir, names := range guards {
-		if len(names) > 0 && !set[graph.byDir[dir].ImportPath] {
+	var outsideDirs, names []string
+	for dir, dirNames := range guards {
+		if len(dirNames) > 0 && !set[graph.byDir[dir].ImportPath] {
 			outsideDirs = append(outsideDirs, dir)
+			names = append(names, dirNames...)
 		}
 	}
-	sort.Strings(outsideDirs)
-	for _, dir := range outsideDirs {
-		steps = append(steps, fmt.Sprintf("go test -tags integration -run '^(%s)$' %s", strings.Join(guards[dir], "|"), packageArgs([]string{dir})[0]))
+	if len(outsideDirs) > 0 {
+		sort.Strings(outsideDirs)
+		sort.Strings(names)
+		steps = append(steps, fmt.Sprintf("lyx gate test --tags integration %s -- -run '^(%s)$'", strings.Join(packageArgs(outsideDirs), " "), strings.Join(slices.Compact(names), "|")))
 	}
 	return strings.Join(steps, " && ")
 }
