@@ -1,4 +1,4 @@
-// Package impactset derives the command a Webster-Burler-Fix round gate runs from the diff between a base commit and HEAD.
+// Package impactset derives the command that loom's round gate and darn's two writer gates run from the diff between a base commit and HEAD.
 //
 // Derive is told the worktree and the base and resolves no cwd.
 // Git runs through `gitexec.Run`, and `go list` is a logged spawn.
@@ -29,9 +29,10 @@
 // A file that cannot be parsed or read is a GuardParse error.
 // A `//testtiming:keep` line between the marker and the func line does not displace the marker, since a test carrying both stacks them as contiguous directive lines.
 //
-// The command is `go build ./...`, then `go vet` over the set under each of the three tags, then `go test -tags integration` over the set, which covers every untagged test too.
-// The guard tests of each package outside the set follow, all joined by `&&`.
-// An empty set runs only the build and the guard tests.
+// The command is `go build ./...`, then `go vet` over the set under each of the three tags, then `lyx gate test --tags integration` over the set, which covers every untagged test too.
+// The guard tests of the packages outside the set follow as one step, `lyx gate test --tags integration <packages> -- -run '^(<names>)$'`, the packages in sorted directory order and the names sorted and deduplicated, all joined by `&&`.
+// The test steps go through `lyx gate test` so that inside a verify they inherit the held gate slot and share one prebuilt `lyx`; the guard step is a single call so `lyx` is built once.
+// An empty set runs only the build and the guard step.
 //
 // Bound: the narrower command skips only packages the import graph shows unreachable.
 // What the graph cannot see, such as a test reading another package's files, is caught by the full plan verify at the sites that keep it.

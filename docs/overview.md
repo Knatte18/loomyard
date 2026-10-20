@@ -308,7 +308,7 @@ github.com/Knatte18/loomyard/
 ├── internal/shellguard/          the one neutral table of the guards lyx installs against shell commands, rendered by each engine
 ├── internal/commentlint/        the comment line-break lint: fixed-column wraps in the `//` comment blocks a diff creates, over a told worktree and base
 ├── internal/patternlint/        the PATTERN headroom lint: growth of the overview past its headroom line, over a told worktree and base
-├── internal/impactset/          the round gate's impacted-set command: the packages a diff reaches over the import graph, plus the `//lyx:guard` tests, or a fallback reason to run the full verify
+├── internal/impactset/          the impacted-set command loom's round gate and darn's two writer gates run: the packages a diff reaches over the import graph, plus the `//lyx:guard` tests, or a fallback reason to run the full verify
 ├── internal/verifytree/         the one plan-verify function: clean-tree check, verified-tree record and running marker, used by landing, both webster gates and `lyx webster verify`
 └── internal/verifyrun/          in-process shell-command runner behind `internal/verifytree` and webster's card-verify rerun
 ```

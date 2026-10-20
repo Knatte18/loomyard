@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/patternlint"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -160,10 +162,31 @@ func (f roundGateFixture) planRanCount(t *testing.T) int {
 	return strings.Count(string(data), "plan\n")
 }
 
+// putLyxFirstOnPath copies the built `lyx` binary into a temp directory under the name `lyx` and puts that directory first on `PATH` for the test.
+// The built binary may carry a content-derived name, which a shell looking up `lyx` would not find.
+func putLyxFirstOnPath(t *testing.T) {
+	t.Helper()
+	built := lyxbin.Build(t)
+	data, err := os.ReadFile(built)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	name := "lyx"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), data, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
 // TestVerifyGate_RoundScenario drives NewVerifyGate over a repo holding a small Go module, through the narrowed command, the lint and the refusals.
 // The steps run in order against the commits the steps before left, and the last one dirties the worktree.
+// The derived command calls `lyx`, so the test puts a copy of the built binary first on `PATH`; it is not parallel because `t.Setenv` sets that process-global state.
 func TestVerifyGate_RoundScenario(t *testing.T) {
-	t.Parallel()
+	putLyxFirstOnPath(t)
 
 	f := roundGateFixture{worktree: t.TempDir(), verifyDir: t.TempDir()}
 	f.planRanLog = filepath.ToSlash(filepath.Join(t.TempDir(), "plan-ran.log"))
