@@ -17,6 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/reviewbudget"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
@@ -89,10 +90,10 @@ type Config struct {
 	// an empty key takes loom.yaml's shared reviewer_model or fixer_model.
 	ReviewerModel burlerengine.ModelSpecList `yaml:"darn_reviewer_model"`
 	FixerModel    burlerengine.ModelSpecList `yaml:"darn_fixer_model"`
-	// ReviewerFan and FixerFan are the Darn-Review perch's per-round reviewer and fixer fan lists, each entry a burler.yaml fan name;
+	// ReviewerFan and FixerFan are the Darn-Review perch's per-round reviewer and fixer fan lists, each entry a lenses.yaml fan name;
 	// an empty entry runs that round solo or with the single fixer.
-	ReviewerFan burlerengine.FanList `yaml:"darn_reviewer_fan"`
-	FixerFan    burlerengine.FanList `yaml:"darn_fixer_fan"`
+	ReviewerFan lenses.FanList `yaml:"darn_reviewer_fan"`
+	FixerFan    lenses.FanList `yaml:"darn_fixer_fan"`
 	// DriverKind, Tackler, TacklerTimeoutMin and TacklerMaxSpawns override shed.yaml's keys of the same names for a darn run;
 	// an empty string, a zero and a null inherit shed.yaml, and a set TacklerMaxSpawns of 0 turns the tackler off.
 	DriverKind        string `yaml:"driver_kind"`
@@ -186,7 +187,7 @@ func ValidateLocalValues(document []byte) error {
 // LoadConfig loads and unmarshals the darn module's configuration strictly through the hub-wide layer stack under dirs.
 // It validates the writer key's model-spec grammar at load time and leaves verify, verify_attempts and review_max_bounces to their readers.
 // darn_reviewer_model and darn_fixer_model, when set, are refused as an empty list, a value that is neither a model-spec nor a list of them, or an entry that is no model-spec.
-// darn_reviewer_fan and darn_fixer_fan are refused as an empty list, a value that is neither a fan name nor a list of them, or an entry naming a fan burler.yaml does not resolve.
+// darn_reviewer_fan and darn_fixer_fan are refused as an empty list, a value that is neither a fan name nor a list of them, or an entry naming a fan lenses.yaml does not resolve.
 // review_max_bounces is refused below 0, and review_hard_max_bounces, default 4, below 1 and below review_max_bounces;
 // each refusal names the command that fixes it for the layer the value comes from.
 // It returns tree_scope keyed by trimmed tree path and refuses a malformed or repeated tree key wrapping ErrTreeScopeKey, a tree_scope_verify with no tree wrapping ErrTreeScopeWithoutTrees, and a tree_scope_verify without {targets}.
@@ -203,7 +204,7 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 
 	var cfg Config
 	if err := yaml.Unmarshal(resolved, &cfg); err != nil {
-		var fanShape *burlerengine.FanShapeError
+		var fanShape *lenses.FanShapeError
 		if errors.As(err, &fanShape) {
 			return Config{}, fmt.Errorf("darn config key %q: %w", configengine.KeyAtLine(resolved, fanShape.Line), err)
 		}
@@ -238,8 +239,8 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		}
 	}
 
-	fanKeys := []burlerengine.FanKey{{Key: ReviewerFanKey, Fans: cfg.ReviewerFan}, {Key: FixerFanKey, Fans: cfg.FixerFan}}
-	if err := burlerengine.ValidateFanKeys(dirs, configModule, fanKeys); err != nil {
+	fanKeys := []lenses.FanKey{{Key: ReviewerFanKey, Fans: cfg.ReviewerFan}, {Key: FixerFanKey, Fans: cfg.FixerFan}}
+	if err := lenses.ValidateFanKeys(dirs, configModule, fanKeys); err != nil {
 		return Config{}, err
 	}
 
