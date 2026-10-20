@@ -27,7 +27,7 @@ const verifyLogTailBytes = 4096
 // command is the told verify-command source, read at each arrival.
 // slots is the hub pool the command waits on before it runs; nil runs it unslotted.
 //
-// With wholeDiff false the gate takes the round form.
+// With treeScope nil the gate takes the round form.
 // The base of the round is the commit of the told command's latest recorded pass.
 // With a usable base the comment lint runs from it to HEAD before any test, and the round command is the impacted-set command impactset derives.
 // With no usable base the lint passes and the round command is the told command itself, as it is wherever impactset names a fallback.
