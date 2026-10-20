@@ -15,8 +15,10 @@ import (
 // unitRule decides which values the layer operations carry and compare whole.
 // A mapping key is descended into unless its path is a declared open map or, with wholeEntries, it is a top-level key.
 // A scalar or a sequence is always one unit.
+// Under a declared per-name map every name is kept whole, and Prune reports a name the template lacks as kept.
 type unitRule struct {
 	openMaps     []string
+	perNameMaps  []string
 	wholeEntries bool
 }
 
@@ -152,12 +154,19 @@ func (rule unitRule) stripMapping(lower, upper *yaml.Node, path string, topLevel
 // Unknown lists the requested keys that are not known, Known the sorted known set, and Merged is nil when Unknown is non-empty.
 // A scalar leaf outside a scalar-or-list open-map path takes its template leaf's tag, except that a value spelling a null (`~`, `null`, `Null`, `NULL`), or a template leaf holding a null, gives it the tag its own text resolves to.
 // Preserved stays empty.
-func SetSparse(template, existing []byte, pairs []KV, openMaps ...string) (SetResult, error) {
+//
+// Each perNameMaps entry is a dotted key path whose template value is a mapping of names:
+// P.<name> is known for any dot-free name, and the pair writes the name into the mapping at P, appending it when absent.
+// Under a mapping of scalars the value is a string whatever its first character;
+// under a mapping of lists it is a YAML flow list.
+// A value at P that is neither a mapping nor null is an error naming P and its shape, and nothing is written.
+func SetSparse(template, existing []byte, pairs []KV, perNameMaps []string, openMaps ...string) (SetResult, error) {
 	var templateNode yaml.Node
 	if err := yaml.Unmarshal(template, &templateNode); err != nil {
 		return SetResult{}, err
 	}
 	scalarOrListPaths := scalarOrListOpenMapPaths(&templateNode, openMaps)
+	listPerNamePaths := listPerNameMapPaths(&templateNode, perNameMaps)
 	existingDoc, existingRoot, err := parseMappingRoot(existing, "existing")
 	if err != nil {
 		return SetResult{}, err
@@ -171,8 +180,8 @@ func SetSparse(template, existing []byte, pairs []KV, openMaps ...string) (SetRe
 	templateSequences := make(map[string]*yaml.Node)
 	collectSequencePaths(&templateNode, "", templateSequences)
 
-	known := knownKeys(templateLeaves, templateSequences, openMaps)
-	if unknown := unknownKeys(pairs, templateLeaves, templateSequences, openMaps); len(unknown) > 0 {
+	known := knownKeys(templateLeaves, templateSequences, openMaps, perNameMaps)
+	if unknown := unknownKeys(pairs, templateLeaves, templateSequences, openMaps, perNameMaps); len(unknown) > 0 {
 		return SetResult{Unknown: unknown, Known: known}, nil
 	}
 
@@ -187,6 +196,18 @@ func SetSparse(template, existing []byte, pairs []KV, openMaps ...string) (SetRe
 				return SetResult{}, fmt.Errorf("%w: rewrite %s as a map of name to description", err, open)
 			}
 			setEntry(mapping, name, stringNode(pair.Value))
+			continue
+		}
+		if perName, name, ok := splitPerNameKey(pair.Key, perNameMaps); ok {
+			mapping, err := mappingAt(existingRoot, perName)
+			if err != nil {
+				return SetResult{}, fmt.Errorf("%w: rewrite %s as a map of name to value", err, perName)
+			}
+			value, err := perNameEntryNode(pair, slices.Contains(listPerNamePaths, perName))
+			if err != nil {
+				return SetResult{}, err
+			}
+			setEntry(mapping, name, value)
 			continue
 		}
 		parentPath, name := splitLastSegment(pair.Key)
@@ -222,9 +243,9 @@ func SetSparse(template, existing []byte, pairs []KV, openMaps ...string) (SetRe
 	return SetResult{Merged: merged, Known: known}, nil
 }
 
-// knownKeys returns the sorted key set a template makes settable: its leaf paths, its list-valued key paths and one P.<name> per open map P.
-func knownKeys(templateLeaves, templateSequences map[string]*yaml.Node, openMaps []string) []string {
-	known := make([]string, 0, len(templateLeaves)+len(templateSequences)+len(openMaps))
+// knownKeys returns the sorted key set a template makes settable: its leaf paths, its list-valued key paths and one P.<name> per open map and per per-name map P.
+func knownKeys(templateLeaves, templateSequences map[string]*yaml.Node, openMaps, perNameMaps []string) []string {
+	known := make([]string, 0, len(templateLeaves)+len(templateSequences)+len(openMaps)+len(perNameMaps))
 	for path := range templateLeaves {
 		known = append(known, path)
 	}
@@ -234,18 +255,23 @@ func knownKeys(templateLeaves, templateSequences map[string]*yaml.Node, openMaps
 	for _, p := range openMaps {
 		known = append(known, p+".<name>")
 	}
+	for _, p := range perNameMaps {
+		known = append(known, p+".<name>")
+	}
 	sort.Strings(known)
 	return known
 }
 
 // unknownKeys returns the sorted, deduplicated pair keys the template neither holds nor opens.
-func unknownKeys(pairs []KV, templateLeaves, templateSequences map[string]*yaml.Node, openMaps []string) []string {
+// A key under a per-name map is open for one dot-free name only, so a deeper key under it is unknown.
+func unknownKeys(pairs []KV, templateLeaves, templateSequences map[string]*yaml.Node, openMaps, perNameMaps []string) []string {
 	var unknown []string
 	for _, pair := range pairs {
 		_, isLeaf := templateLeaves[pair.Key]
 		_, isSequence := templateSequences[pair.Key]
 		_, _, isOpen := splitOpenMapKey(pair.Key, openMaps)
-		if !isLeaf && !isSequence && !isOpen {
+		_, _, isPerName := splitPerNameKey(pair.Key, perNameMaps)
+		if !isLeaf && !isSequence && !isOpen && !isPerName {
 			unknown = append(unknown, pair.Key)
 		}
 	}
@@ -302,43 +328,48 @@ func setEntry(mapping *yaml.Node, name string, value *yaml.Node) {
 
 // Prune removes from a sparse existing every unit the template does not know, and returns the pruned bytes and the sorted removed paths.
 // A key at a declared openMaps path is known whole, so everything under it stays.
+// A name under a declared perNameMaps path is never removed:
+// one the template lacks stays whole and is reported in kept as P.<name>, sorted.
 // It never adds a key, so it keeps a sparse layer sparse where a full reconcile would scaffold from the template.
 // A mapping left empty is removed with its key, and an existing left with nothing returns empty bytes.
 // When nothing is removed, existing is returned byte for byte.
-func Prune(template, existing []byte, openMaps ...string) ([]byte, []string, error) {
+func Prune(template, existing []byte, perNameMaps []string, openMaps ...string) (pruned []byte, removed, kept []string, err error) {
 	_, templateRoot, err := parseMappingRoot(template, "template")
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	existingDoc, existingRoot, err := parseMappingRoot(existing, "existing")
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	removed := []string{}
+	removed = []string{}
+	kept = []string{}
 	if existingRoot == nil {
-		return existing, removed, nil
+		return existing, removed, kept, nil
 	}
 
-	unitRule{openMaps: openMaps}.pruneMapping(templateRoot, existingRoot, "", &removed)
+	unitRule{openMaps: openMaps, perNameMaps: perNameMaps}.pruneMapping(templateRoot, existingRoot, "", &removed, &kept)
+	sort.Strings(kept)
 	if len(removed) == 0 {
-		return existing, removed, nil
+		return existing, removed, kept, nil
 	}
 	sort.Strings(removed)
 	if len(existingRoot.Content) == 0 {
-		return []byte{}, removed, nil
+		return []byte{}, removed, kept, nil
 	}
 
-	pruned, err := yaml.Marshal(existingDoc)
+	pruned, err = yaml.Marshal(existingDoc)
 	if err != nil {
-		return nil, nil, fmt.Errorf("marshal pruned YAML: %w", err)
+		return nil, nil, nil, fmt.Errorf("marshal pruned YAML: %w", err)
 	}
-	return pruned, removed, nil
+	return pruned, removed, kept, nil
 }
 
 // pruneMapping removes from the existing mapping, in place, every unit the template mapping does not know, recording each removed unit's path.
+// A name under a per-name map stays whole, and one the template lacks is recorded in kept.
 // template is nil where the template holds no mapping.
-func (rule unitRule) pruneMapping(template, existing *yaml.Node, path string, removed *[]string) {
-	kept := make([]*yaml.Node, 0, len(existing.Content))
+func (rule unitRule) pruneMapping(template, existing *yaml.Node, path string, removed, kept *[]string) {
+	retained := make([]*yaml.Node, 0, len(existing.Content))
 	for i := 0; i+1 < len(existing.Content); i += 2 {
 		key, value := existing.Content[i], existing.Content[i+1]
 		keyPath := joinKeyPath(path, key.Value)
@@ -354,15 +385,28 @@ func (rule unitRule) pruneMapping(template, existing *yaml.Node, path string, re
 				continue
 			}
 			if value.Kind == yaml.MappingNode && templateValue.Kind == yaml.MappingNode {
-				rule.pruneMapping(templateValue, value, keyPath, removed)
+				if slices.Contains(rule.perNameMaps, keyPath) {
+					recordKeptNames(templateValue, value, keyPath, kept)
+				} else {
+					rule.pruneMapping(templateValue, value, keyPath, removed, kept)
+				}
 				if len(value.Content) == 0 {
 					continue
 				}
 			}
 		}
-		kept = append(kept, key, value)
+		retained = append(retained, key, value)
 	}
-	existing.Content = kept
+	existing.Content = retained
+}
+
+// recordKeptNames appends P.<name> to kept for each name of the existing mapping at P that the template mapping lacks.
+func recordKeptNames(template, existing *yaml.Node, path string, kept *[]string) {
+	for i := 0; i+1 < len(existing.Content); i += 2 {
+		if mappingIndex(template, existing.Content[i].Value) < 0 {
+			*kept = append(*kept, joinKeyPath(path, existing.Content[i].Value))
+		}
+	}
 }
 
 // LeafPaths returns the sorted dotted paths of every unit in doc.

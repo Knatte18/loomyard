@@ -11,17 +11,17 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 )
 
-// writeBurlerYAML plants content as the burler.yaml of layout's anchor, creating its _lyx/config/ directory.
-func writeBurlerYAML(t *testing.T, layout *lyxcwd.Location, content string) {
+// writeLensesYAML plants content as the lenses.yaml of layout's anchor, creating its _lyx/config/ directory.
+func writeLensesYAML(t *testing.T, layout *lyxcwd.Location, content string) {
 	t.Helper()
-	path := configengine.ConfigFile(layout.AnchorPath(), "burler")
+	path := configengine.ConfigFile(layout.AnchorPath(), "lenses")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(path), err)
 	}
@@ -31,9 +31,9 @@ func writeBurlerYAML(t *testing.T, layout *lyxcwd.Location, content string) {
 }
 
 // lensNames returns the names of lenses, in order.
-func lensNames(lenses []burlerengine.Lens) []string {
-	names := make([]string, len(lenses))
-	for i, lens := range lenses {
+func lensNames(resolved []lenses.Lens) []string {
+	names := make([]string, len(resolved))
+	for i, lens := range resolved {
 		names[i] = lens.Name
 	}
 	return names

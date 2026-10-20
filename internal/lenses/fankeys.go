@@ -1,6 +1,6 @@
-// fankeys.go holds the per-round fan grammar a module's review fan keys share: the FanList value, its shape error and the validation that resolves every named fan through burler.yaml.
+// fankeys.go holds the per-round fan grammar a module's review fan keys share: the FanList value, its shape error and the validation that resolves every named fan through lenses.yaml.
 
-package burlerengine
+package lenses
 
 import (
 	"fmt"
@@ -51,13 +51,13 @@ type FanKey struct {
 	Fans FanList
 }
 
-// ValidateFanKeys refuses an empty list on each of keys and resolves each non-empty entry through burler.yaml under dirs, which falls back per name to the embedded template.
+// ValidateFanKeys refuses an empty list on each of keys and resolves each non-empty entry through lenses.yaml under dirs, whose load fills a lens or fan the stack lacks from the template.
 // module names the config module the keys belong to in every refusal.
 // A fan that does not resolve is refused naming the key, the 1-based entry, the unknown name and the fans that exist,
-// and an unreadable burler.yaml is refused naming the first key with a non-empty entry.
-// With every entry empty, burler.yaml is never read.
+// and an unreadable lenses.yaml is refused naming the first key with a non-empty entry.
+// With every entry empty, lenses.yaml is never read.
 func ValidateFanKeys(dirs configengine.Dirs, module string, keys []FanKey) error {
-	var burlerCfg *Config
+	var loadedConfig *Config
 	for _, fan := range keys {
 		if len(fan.Fans) == 0 {
 			return fmt.Errorf(`%s config key %q: the list is empty; write "" to run the round solo or with the single fixer`, module, fan.Key)
@@ -66,15 +66,15 @@ func ValidateFanKeys(dirs configengine.Dirs, module string, keys []FanKey) error
 			if name == "" {
 				continue
 			}
-			if burlerCfg == nil {
-				loaded, err := LoadConfig(dirs)
+			if loadedConfig == nil {
+				loaded, err := Load(dirs)
 				if err != nil {
-					return fmt.Errorf("%s config key %q: %w; fix burler.yaml, or set the key to empty to run the segment solo", module, fan.Key, err)
+					return fmt.Errorf("%s config key %q: %w; fix lenses.yaml, or set the key to empty to run the segment solo", module, fan.Key, err)
 				}
-				burlerCfg = &loaded
+				loadedConfig = &loaded
 			}
-			if _, err := ResolveFan(*burlerCfg, name); err != nil {
-				return fmt.Errorf(`%s config key %q entry %d: %w; define the fan in burler.yaml, or set the entry to ""`, module, fan.Key, i+1, err)
+			if _, err := ResolveFan(*loadedConfig, name); err != nil {
+				return fmt.Errorf(`%s config key %q entry %d: %w; define the fan in lenses.yaml, or set the entry to ""`, module, fan.Key, i+1, err)
 			}
 		}
 	}

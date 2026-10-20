@@ -8,7 +8,10 @@ import (
 	"testing"
 )
 
-const openMapTemplate = "name: tmpl\nlabels:\n  a: default a\n  b: default b\n"
+const (
+	openMapTemplate = "name: tmpl\nlabels:\n  a: default a\n  b: default b\n"
+	perNameTemplate = "name: tmpl\nlenses:\n  a: default a\n  b: default b\nfans:\n  f: [a, b]\n"
+)
 
 // sortedCopy returns a sorted copy of keys, so a comparison ignores report order.
 func sortedCopy(keys []string) []string {
@@ -17,7 +20,7 @@ func sortedCopy(keys []string) []string {
 	return out
 }
 
-// TestReconcile pins the merge: added and removed report template-only and file-only key paths, user values, template comments and template key order survive in merged, lists and open maps are carried whole, and reconciling the merged output again changes nothing.
+// TestReconcile pins the merge: added and removed report template-only and file-only key paths, user values, template comments and template key order survive in merged, lists, open maps and per-name map entries are carried whole, a name only the file holds under a per-name map is kept and reported in kept, and reconciling the merged output again changes nothing.
 func TestReconcile(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -25,8 +28,11 @@ func TestReconcile(t *testing.T) {
 		template    string
 		existing    string
 		openMaps    []string
+		perNameMaps []string
 		wantAdded   []string
 		wantRemoved []string
+		wantKept    []string
+		wantErr     []string
 		contains    []string
 		notContains []string
 		inOrder     []string
@@ -155,12 +161,73 @@ func TestReconcile(t *testing.T) {
 			wantAdded:   []string{"labels.b"},
 			wantRemoved: []string{"labels.x"},
 		},
+		{
+			name:        "per-name map adds a template name the file lacks",
+			template:    perNameTemplate,
+			existing:    "name: mine\nlenses:\n  a: my a\nfans:\n  f: [a, b]\n",
+			perNameMaps: []string{"fans", "lenses"},
+			wantAdded:   []string{"lenses.b"},
+			contains:    []string{"a: my a", "b: default b"},
+			inOrder:     []string{"a: my a", "b: default b"},
+		},
+		{
+			name:        "per-name map keeps a file-only name with its value and reports it kept",
+			template:    perNameTemplate,
+			existing:    "name: mine\nlenses:\n  z: my z\n  a: default a\n  b: default b\nfans:\n  f: [a, b]\n  g: [x]\n",
+			perNameMaps: []string{"fans", "lenses"},
+			wantKept:    []string{"fans.g", "lenses.z"},
+			contains:    []string{"z: my z", "g: [x]"},
+			inOrder:     []string{"a: default a", "b: default b", "z: my z"},
+		},
+		{
+			name:        "per-name map keeps a tuned value and a shorter list",
+			template:    perNameTemplate,
+			existing:    "lenses:\n  a: tuned a\n  b: default b\nfans:\n  f: [a]\n",
+			perNameMaps: []string{"fans", "lenses"},
+			wantAdded:   []string{"name"},
+			contains:    []string{"a: tuned a", "f: [a]"},
+			notContains: []string{"default a", "[a, b]"},
+		},
+		{
+			name:        "per-name map the file lacks reports every template name added",
+			template:    perNameTemplate,
+			existing:    "name: mine\n",
+			perNameMaps: []string{"fans", "lenses"},
+			wantAdded:   []string{"fans.f", "lenses.a", "lenses.b"},
+			contains:    []string{"a: default a", "f: [a, b]"},
+		},
+		{
+			name:        "per-name map holding null reports every template name added and keeps none",
+			template:    perNameTemplate,
+			existing:    "name: mine\nlenses:\nfans: {}\n",
+			perNameMaps: []string{"fans", "lenses"},
+			wantAdded:   []string{"fans.f", "lenses.a", "lenses.b"},
+			contains:    []string{"a: default a", "f: [a, b]"},
+		},
+		{
+			name:        "per-name map holding a list is refused with the way forward",
+			template:    perNameTemplate,
+			existing:    "name: mine\nlenses: [a]\n",
+			perNameMaps: []string{"lenses"},
+			wantErr:     []string{"lenses", "sequence", "rewrite lenses as a map of name to value"},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			merged, added, removed, err := Reconcile([]byte(tt.template), []byte(tt.existing), tt.openMaps...)
+			merged, added, removed, kept, err := Reconcile([]byte(tt.template), []byte(tt.existing), tt.perNameMaps, tt.openMaps...)
+			if tt.wantErr != nil {
+				if err == nil {
+					t.Fatalf("Reconcile() = %q; want an error", merged)
+				}
+				for _, want := range tt.wantErr {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("Reconcile() error = %q; want it to contain %q", err, want)
+					}
+				}
+				return
+			}
 			if err != nil {
 				t.Fatalf("Reconcile() unexpected error: %v", err)
 			}
@@ -169,6 +236,9 @@ func TestReconcile(t *testing.T) {
 			}
 			if !slices.Equal(sortedCopy(removed), tt.wantRemoved) {
 				t.Errorf("Reconcile() removed = %v; want %v", removed, tt.wantRemoved)
+			}
+			if !slices.Equal(kept, tt.wantKept) {
+				t.Errorf("Reconcile() kept = %v; want %v", kept, tt.wantKept)
 			}
 			for _, want := range tt.contains {
 				if !strings.Contains(string(merged), want) {
@@ -189,9 +259,12 @@ func TestReconcile(t *testing.T) {
 				previous = at
 			}
 
-			again, addedAgain, removedAgain, err := Reconcile([]byte(tt.template), merged, tt.openMaps...)
+			again, addedAgain, removedAgain, keptAgain, err := Reconcile([]byte(tt.template), merged, tt.perNameMaps, tt.openMaps...)
 			if err != nil {
 				t.Fatalf("Reconcile() second call unexpected error: %v", err)
+			}
+			if !slices.Equal(keptAgain, tt.wantKept) {
+				t.Errorf("Reconcile() second call kept = %v; want %v", keptAgain, tt.wantKept)
 			}
 			if strings.TrimSpace(string(again)) != strings.TrimSpace(string(merged)) {
 				t.Errorf("Reconcile() is not idempotent: second merged = %q; want %q", again, merged)

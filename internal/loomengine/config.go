@@ -1,11 +1,11 @@
 // config.go — configuration for the loom module.
 //
 // Defines the Config type mirroring loom.yaml's keys and LoadConfig, which uses internal/configengine.Load with ConfigTemplate() to strictly validate and resolve loom's config file,
-// then validates the discussion, plan, judge, friction, and driver role model-specs and every entry of the shared reviewer_model and fixer_model lists' grammar via modelspec.Parse, plus every entry of each review segment's own <segment>_reviewer_model and <segment>_fixer_model list that is set, an empty value meaning the shared list, rejects a negative value on each of the four timeout knobs, and rejects a parent_review_wait_min, review_circling_checkpoint or review_hard_max_bounces below 1, rejects a review_max_bounces, discussion_max_bounces, plan_max_bounces, webster_max_bounces or merge_max_bounces below 0 (0 giving zero rounds, null taking review_max_bounces) or any per-perch hard cap below 0, rejects a perch whose resolved hard cap is below its resolved budget, and resolves each non-empty entry of every perch's fan and fix fan key through burlerengine.ValidateFanKeys,
+// then validates the discussion, plan, judge, friction, and driver role model-specs and every entry of the shared reviewer_model and fixer_model lists' grammar via modelspec.Parse, plus every entry of each review segment's own <segment>_reviewer_model and <segment>_fixer_model list that is set, an empty value meaning the shared list, rejects a negative value on each of the four timeout knobs, and rejects a parent_review_wait_min, review_circling_checkpoint or review_hard_max_bounces below 1, rejects a review_max_bounces, discussion_max_bounces, plan_max_bounces, webster_max_bounces or merge_max_bounces below 0 (0 giving zero rounds, null taking review_max_bounces) or any per-perch hard cap below 0, rejects a perch whose resolved hard cap is below its resolved budget, and resolves each non-empty entry of every perch's fan and fix fan key through lenses.ValidateFanKeys,
 // so a mistake in any of those validated keys fails loud at load time rather than hours into a run when the discussion, plan, review, judge, friction, or driver producer first spawns.
 // implementer names the engine of the Webster row, the implementer; it is read and validated where the recipe builds that row, never here.
 // step_idle_timeout_min is the minutes a --until-stop step may show no activity before the loop kills it; a value below 1 is raised to 1 with one Warn and never refused.
-// discussion_reviewer_fan, plan_reviewer_fan, webster_reviewer_fan and merge_reviewer_fan each name a fan from burler.yaml, or list one per round, and turn the lens fan on for Discussion-Review, Plan-Review, Webster-Review and Merge-Review; an empty entry, the default, runs that round solo.
+// discussion_reviewer_fan, plan_reviewer_fan, webster_reviewer_fan and merge_reviewer_fan each name a fan from lenses.yaml, or list one per round, and turn the lens fan on for Discussion-Review, Plan-Review, Webster-Review and Merge-Review; an empty entry, the default, runs that round solo.
 // discussion_fixer_fan, plan_fixer_fan, webster_fixer_fan and merge_fixer_fan do the same for the fixer: an empty entry runs the single fixer, and a fan name runs the twill fixer with that fan's lenses.
 // A list's last entry serves every later round, and a reviewer fanned or not runs on its segment's own reviewer list, whose model the forks inherit.
 // fan_review is retired: MigrateConfig removes it.
@@ -19,7 +19,7 @@
 // skip_merge_review is retired: MigrateConfig rewrites it onto merge_max_bounces.
 // discussion_advisors lists the Discussion-Write advisors, each entry a {name, model} pair: name is the advisor's seat name and model its model-spec, resolved through the model registry at load, and an unset list loads as no advisors.
 // With no advisors the Discussion-Write lead decides each question itself.
-// discussion_lenses and plan_lenses each name the burler.yaml fan whose lenses the Discussion-Write or Plan-Write lead forks itself for once its output is written and self-checked; empty, the default, turns the forks off.
+// discussion_lenses and plan_lenses each name the lenses.yaml fan whose lenses the Discussion-Write or Plan-Write lead forks itself for once its output is written and self-checked; empty, the default, turns the forks off.
 // Neither is the discussion_reviewer_fan or plan_reviewer_fan of a review perch, and all three of these keys are closed to the local layer.
 // The retired discussion_producer and plan_producer keys are rewritten into these by MigrateConfig.
 // seed, discussion_judge, plan_judge, webster_judge, discussion_seed, plan_seed, webster_seed and rework are role model-specs validated only when non-empty, an empty value meaning the fallback:
@@ -47,6 +47,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/darnengine"
+	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
@@ -416,14 +417,14 @@ type Config struct {
 	MergeFixerModel         burlerengine.ModelSpecList `yaml:"merge_fixer_model"`
 
 	// Each review segment's per-round reviewer and fixer fan lists.
-	DiscussionReviewerFan burlerengine.FanList `yaml:"discussion_reviewer_fan"`
-	PlanReviewerFan       burlerengine.FanList `yaml:"plan_reviewer_fan"`
-	WebsterReviewerFan    burlerengine.FanList `yaml:"webster_reviewer_fan"`
-	MergeReviewerFan      burlerengine.FanList `yaml:"merge_reviewer_fan"`
-	DiscussionFixerFan    burlerengine.FanList `yaml:"discussion_fixer_fan"`
-	PlanFixerFan          burlerengine.FanList `yaml:"plan_fixer_fan"`
-	WebsterFixerFan       burlerengine.FanList `yaml:"webster_fixer_fan"`
-	MergeFixerFan         burlerengine.FanList `yaml:"merge_fixer_fan"`
+	DiscussionReviewerFan lenses.FanList `yaml:"discussion_reviewer_fan"`
+	PlanReviewerFan       lenses.FanList `yaml:"plan_reviewer_fan"`
+	WebsterReviewerFan    lenses.FanList `yaml:"webster_reviewer_fan"`
+	MergeReviewerFan      lenses.FanList `yaml:"merge_reviewer_fan"`
+	DiscussionFixerFan    lenses.FanList `yaml:"discussion_fixer_fan"`
+	PlanFixerFan          lenses.FanList `yaml:"plan_fixer_fan"`
+	WebsterFixerFan       lenses.FanList `yaml:"webster_fixer_fan"`
+	MergeFixerFan         lenses.FanList `yaml:"merge_fixer_fan"`
 
 	Judge               string `yaml:"judge"`
 	Seed                string `yaml:"seed"`
@@ -444,11 +445,11 @@ type Config struct {
 	// DiscussionAdvisors are the Discussion-Write advisors, one seat each; an empty list runs the lead alone.
 	DiscussionAdvisors DiscussionAdvisorList `yaml:"discussion_advisors"`
 
-	// DiscussionLenses names the burler.yaml fan whose lenses the Discussion-Write lead forks itself for once its record is written and self-checked; empty turns the forks off.
+	// DiscussionLenses names the lenses.yaml fan whose lenses the Discussion-Write lead forks itself for once its record is written and self-checked; empty turns the forks off.
 	// It names the writer's lens fan, not the Discussion-Review perch's DiscussionReviewerFan.
 	DiscussionLenses string `yaml:"discussion_lenses"`
 
-	// PlanLenses names the burler.yaml fan whose lenses the Plan-Write lead forks itself for once its plan is written and self-checked; empty turns the forks off.
+	// PlanLenses names the lenses.yaml fan whose lenses the Plan-Write lead forks itself for once its plan is written and self-checked; empty turns the forks off.
 	// It names the writer's lens fan, not the Plan-Review perch's PlanReviewerFan.
 	PlanLenses string `yaml:"plan_lenses"`
 
@@ -691,8 +692,8 @@ func validateDiscussionAdvisors(advisors DiscussionAdvisorList, reg modelspec.Re
 }
 
 // fanKeys returns the review perches' reviewer and fixer fan keys of cfg.
-func fanKeys(cfg Config) []burlerengine.FanKey {
-	return []burlerengine.FanKey{
+func fanKeys(cfg Config) []lenses.FanKey {
+	return []lenses.FanKey{
 		{Key: "discussion_reviewer_fan", Fans: cfg.DiscussionReviewerFan},
 		{Key: "plan_reviewer_fan", Fans: cfg.PlanReviewerFan},
 		{Key: "webster_reviewer_fan", Fans: cfg.WebsterReviewerFan},
@@ -1190,7 +1191,7 @@ func ValidateLocalValues(document []byte) error {
 }
 
 // LoadConfig loads and unmarshals configuration for the loom module strictly through the layer stack under dirs.
-// It validates model-spec grammar at load time, and reads burler.yaml and models.yaml through the same dirs.
+// It validates model-spec grammar at load time, and reads lenses.yaml and models.yaml through the same dirs.
 // review_max_bounces and the per-perch budgets are refused below 0, null taking review_max_bounces and 0 giving zero rounds, and each refusal names the command for the layer its value comes from.
 func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	spec := ConfigSpec()
@@ -1209,7 +1210,7 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		if errors.As(err, &shape) {
 			return Config{}, fmt.Errorf("loom config key %q: %w", configengine.KeyAtLine(resolved, shape.Line), err)
 		}
-		var fanShape *burlerengine.FanShapeError
+		var fanShape *lenses.FanShapeError
 		if errors.As(err, &fanShape) {
 			return Config{}, fmt.Errorf("loom config key %q: %w", configengine.KeyAtLine(resolved, fanShape.Line), err)
 		}
@@ -1245,7 +1246,7 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		}
 	}
 
-	if err := burlerengine.ValidateFanKeys(dirs, "loom", fanKeys(cfg)); err != nil {
+	if err := lenses.ValidateFanKeys(dirs, "loom", fanKeys(cfg)); err != nil {
 		return Config{}, err
 	}
 

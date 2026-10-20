@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -47,11 +48,11 @@ type Profile struct {
 	// ClusterExcludeHeld names the exclusions carried from earlier rounds of the generation, a subset of ClusterExclude the caller fills.
 	// It applies in place of ClusterExclude when ClusterExclude would empty the fan.
 	ClusterExcludeHeld []string
-	clusterLenses      []Lens
+	clusterLenses      []lenses.Lens
 	// FixFan names the fan whose lenses a forking fixer's self-check runs; empty is the single fixer.
 	// Naming a fan is what makes the fix half a twill round.
 	FixFan            string
-	fixLenses         []Lens
+	fixLenses         []lenses.Lens
 	ReviewPath        string
 	FixerReportPath   string
 	PriorReviews      []string
@@ -117,7 +118,7 @@ type RunOpts struct {
 
 // validateReview normalizes p in place and reports a fail-loud error if the review half is not runnable.
 // Checks run in fixed order; the first failure is returned.
-func (p *Profile) validateReview(worktreeRoot string, cfg Config) error {
+func (p *Profile) validateReview(worktreeRoot string, cfg lenses.Config) error {
 	// Resolve all path fields to absolute first.
 	p.Target.Paths = resolvePaths(worktreeRoot, p.Target.Paths)
 	p.Fasit.Paths = resolvePaths(worktreeRoot, p.Fasit.Paths)
@@ -171,11 +172,11 @@ func (p *Profile) validateReview(worktreeRoot string, cfg Config) error {
 	}
 	if p.ClusterFan != "" {
 		// Resolve fan now so bad names fail upfront.
-		lenses, err := resolveRecordedFan(cfg, p.ClusterFan)
+		resolved, err := resolveRecordedFan(cfg, p.ClusterFan)
 		if err != nil {
 			return err
 		}
-		p.clusterLenses = applyClusterExclude(p.ClusterFan, lenses, p.ClusterExclude, p.ClusterExcludeHeld)
+		p.clusterLenses = applyClusterExclude(p.ClusterFan, resolved, p.ClusterExclude, p.ClusterExcludeHeld)
 	}
 
 	if p.ReviewPath == "" {
@@ -193,19 +194,19 @@ func (p *Profile) validateReview(worktreeRoot string, cfg Config) error {
 }
 
 // resolveRecordedFan resolves fan against cfg and adds the way forward for a fan that no longer resolves.
-// A fan reaches a half from a name recorded at spawn time, which an edit of burler.yaml before a later half or a resume can leave undefined.
-func resolveRecordedFan(cfg Config, fan string) ([]Lens, error) {
-	lenses, err := ResolveFan(cfg, fan)
+// A fan reaches a half from a name recorded at spawn time, which an edit of lenses.yaml before a later half or a resume can leave undefined.
+func resolveRecordedFan(cfg lenses.Config, fan string) ([]lenses.Lens, error) {
+	resolved, err := lenses.ResolveFan(cfg, fan)
 	if err != nil {
-		return nil, fmt.Errorf("%w; way forward: define the fan in burler.yaml, then resume the run or re-run the verb", err)
+		return nil, fmt.Errorf("%w; way forward: define the fan in lenses.yaml, then resume the run or re-run the verb", err)
 	}
-	return lenses, nil
+	return resolved, nil
 }
 
 // validateFix normalizes the fix half's path fields in place and reports a fail-loud error if the fix half is not runnable:
 // the resolved Target.Paths exist, FixScope is legal, the review and fixer-report paths are non-empty and distinct, and a non-empty FixFan resolves against cfg into fixLenses.
 // The fixer holds no fasit or rubric, so neither is required.
-func (p *Profile) validateFix(worktreeRoot string, cfg Config) error {
+func (p *Profile) validateFix(worktreeRoot string, cfg lenses.Config) error {
 	p.Target.Paths = resolvePaths(worktreeRoot, p.Target.Paths)
 	p.ReviewPath = resolvePath(worktreeRoot, p.ReviewPath)
 	p.FixerReportPath = resolvePath(worktreeRoot, p.FixerReportPath)
@@ -226,33 +227,33 @@ func (p *Profile) validateFix(worktreeRoot string, cfg Config) error {
 		return fmt.Errorf("burler: profile.ReviewPath and profile.FixerReportPath must not be the same path (got %q for both)", p.ReviewPath)
 	}
 	if p.FixFan != "" {
-		lenses, err := resolveRecordedFan(cfg, p.FixFan)
+		resolved, err := resolveRecordedFan(cfg, p.FixFan)
 		if err != nil {
 			return err
 		}
-		p.fixLenses = lenses
+		p.fixLenses = resolved
 	}
 	return nil
 }
 
-// applyClusterExclude drops every lens in lenses whose Name appears in
+// applyClusterExclude drops every lens in resolved whose Name appears in
 // exclude, preserving fan order among the survivors.
-// A nil or empty exclude returns lenses unchanged.
+// A nil or empty exclude returns resolved unchanged.
 // A duplicate name in exclude is harmless — the set collapses it.
-// A name in exclude that matches no lens in lenses is a no-op for that name,
+// A name in exclude that matches no lens in resolved is a no-op for that name,
 // logged as a warning naming fan and the unmatched name — exclude is an
 // advisory, per-call directive over a config-owned fan, so a stale name is
 // stale rather than wrong.
 // If excluding would empty the survivors, held (the exclusions carried from earlier rounds) is applied instead,
 // and the dropped names of exclude are logged as a warning naming fan.
-// If held would empty the fan too, lenses is returned unchanged, logged as a warning naming fan:
+// If held would empty the fan too, resolved is returned unchanged, logged as a warning naming fan:
 // a round demanding zero forks is never what an exclusion meant, and running more lenses costs tokens, never correctness.
-func applyClusterExclude(fan string, lenses []Lens, exclude, held []string) []Lens {
+func applyClusterExclude(fan string, resolved []lenses.Lens, exclude, held []string) []lenses.Lens {
 	if len(exclude) == 0 {
-		return lenses
+		return resolved
 	}
 
-	survivors, matched := dropLenses(lenses, exclude)
+	survivors, matched := dropLenses(resolved, exclude)
 	for _, name := range exclude {
 		if _, ok := matched[name]; !ok {
 			logger.Warn("burler: cluster exclude named a lens absent from the resolved fan", "fan", fan, "lens", name)
@@ -263,25 +264,25 @@ func applyClusterExclude(fan string, lenses []Lens, exclude, held []string) []Le
 	}
 
 	logger.Warn("burler: cluster exclude would empty the fan — falling back to the held exclusions", "fan", fan, "dropped", exclude)
-	survivors, _ = dropLenses(lenses, held)
+	survivors, _ = dropLenses(resolved, held)
 	if len(survivors) > 0 {
 		return survivors
 	}
 
 	logger.Warn("burler: held exclusions would empty the fan too — keeping the fan intact", "fan", fan)
-	return lenses
+	return resolved
 }
 
 // dropLenses returns the lenses whose Name is not in names, in order, and the set of names that matched a lens.
-func dropLenses(lenses []Lens, names []string) ([]Lens, map[string]struct{}) {
+func dropLenses(resolved []lenses.Lens, names []string) ([]lenses.Lens, map[string]struct{}) {
 	nameSet := make(map[string]struct{}, len(names))
 	for _, name := range names {
 		nameSet[name] = struct{}{}
 	}
 
 	matched := make(map[string]struct{}, len(names))
-	survivors := make([]Lens, 0, len(lenses))
-	for _, lens := range lenses {
+	survivors := make([]lenses.Lens, 0, len(resolved))
+	for _, lens := range resolved {
 		if _, dropped := nameSet[lens.Name]; dropped {
 			matched[lens.Name] = struct{}{}
 			continue

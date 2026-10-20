@@ -18,13 +18,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/languageconfig"
+	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/loggerconfig"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -46,8 +46,11 @@ type Module struct {
 	// OpenMaps names the template's keys whose entries belong to the repository, as dotted paths.
 	// configsync carries them whole through reconcile.
 	OpenMaps []string
+	// PerNameMaps names the template's keys whose entries are named by the operator, as dotted paths.
+	// configsync adds the template's entries per name and keeps every entry the template lacks.
+	PerNameMaps []string
 	// SeedOnly marks a module whose key set is open-ended and owned by the
-	// operator (e.g. models.yaml aliases, burler.yaml lenses/fans).
+	// operator (e.g. models.yaml aliases).
 	// configsync materializes a seed-only module's template when its file
 	// is absent, and never rewrites a present file — it neither adds nor
 	// prunes keys, unlike the default reconcile behavior applied to every
@@ -116,12 +119,12 @@ func Modules() []Module {
 		{Name: "batcher", Template: batcher.ConfigTemplate, OpenMaps: batcher.ConfigOpenMaps(), Migrate: batcher.MigrateConfig, CheckLoad: checkLoad(batcher.Active), Spec: batcher.ConfigSpec},
 		{Name: "batten", Template: battenshed.ConfigTemplate, CheckValues: battenshed.ValidateLocalValues, CheckLoad: checkLoad(battenshed.LoadConfig), Spec: battenshed.ConfigSpec},
 		{Name: "board", Template: boardengine.ConfigTemplate, OpenMaps: boardengine.ConfigOpenMaps(), HubWide: true, CheckLoad: checkLoadNamed(boardengine.LoadConfig, "board"), Spec: boardengine.ConfigSpec},
-		{Name: "burler", Template: burlerengine.ConfigTemplate, SeedOnly: true, CheckLoad: checkLoad(burlerengine.LoadConfig), Spec: burlerengine.ConfigSpec},
 		{Name: "darn", Template: darnengine.ConfigTemplate, OpenMaps: darnengine.ConfigOpenMaps(), HubWide: true, Migrate: darnengine.MigrateConfig, CheckValues: darnengine.ValidateLocalValues, CheckLoad: checkLoadNamed(darnengine.LoadConfig, "darn"), Spec: darnengine.ConfigSpec},
 		{Name: "fabric", Template: fabricengine.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(fabricengine.LoadConfig), Spec: fabricengine.ConfigSpec},
 		{Name: "gate", Template: gateslot.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(gateslot.LoadConfig), Spec: gateslot.ConfigSpec},
 		{Name: "landing", Template: landingshed.ConfigTemplate, OpenMaps: landingshed.ConfigOpenMaps(), HubWide: true, SeedsFromPrime: true, Migrate: landingshed.MigrateConfig, CheckLoad: checkLoadNamed(landingshed.LoadConfig, "landing"), Spec: landingshed.ConfigSpec},
 		{Name: "language", Template: languageconfig.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(languageconfig.Load), Spec: languageconfig.ConfigSpec},
+		{Name: "lenses", Template: lenses.ConfigTemplate, PerNameMaps: lenses.ConfigPerNameMaps(), CheckLoad: lenses.CheckLoad, Spec: lenses.ConfigSpec},
 		{Name: "logger", Template: loggerconfig.ConfigTemplate, CheckLoad: checkLoad(loggerconfig.Load), Spec: loggerconfig.ConfigSpec},
 		{Name: "loom", Template: loomengine.ConfigTemplate, OpenMaps: loomengine.ConfigOpenMaps(), Migrate: loomengine.MigrateConfig, CheckValues: loomengine.ValidateLocalValues, CheckLoad: checkLoadNamed(loomengine.LoadConfig, "loom"), Spec: loomengine.ConfigSpec},
 		{Name: "models", Template: modelspec.ConfigTemplate, SeedOnly: true, CheckLoad: checkLoad(modelspec.LoadRegistry), Spec: modelspec.ConfigSpec},
@@ -174,7 +177,7 @@ func Names() []string {
 	return names
 }
 
-// Fingerprint returns a hex digest of the registry that changes whenever a registered module's name, flags, open maps or template text changes.
+// Fingerprint returns a hex digest of the registry that changes whenever a registered module's name, flags, open maps, per-name maps or template text changes.
 // A change that only swaps a module's Migrate hook leaves it unchanged, since a function value has no stable bytes.
 func Fingerprint() string {
 	return fingerprintOf(Modules())
@@ -204,6 +207,10 @@ func fingerprintOf(modules []Module) string {
 		writeField(strconv.Itoa(len(m.OpenMaps)))
 		for _, openMap := range m.OpenMaps {
 			writeField(openMap)
+		}
+		writeField(strconv.Itoa(len(m.PerNameMaps)))
+		for _, perNameMap := range m.PerNameMaps {
+			writeField(perNameMap)
 		}
 		writeField(m.Template())
 	}

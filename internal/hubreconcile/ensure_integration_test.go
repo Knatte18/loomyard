@@ -256,6 +256,17 @@ func TestEnsure_StaleBuildReconcilesAndCommitsEveryWorktree(t *testing.T) {
 	}
 }
 
+// tunedGenericMarker is the text of the tuned generic lens in todaysBurlerYAML.
+const tunedGenericMarker = "tuned generic prose"
+
+// todaysBurlerYAML is a board burler.yaml of today's hub shape: a tuned generic lens and the seven-lens twill-discussion fan.
+const todaysBurlerYAML = `lenses:
+  generic: |
+    ` + tunedGenericMarker + `
+fans:
+  twill-discussion: [generic, correctness, error-handling, test-gaps, security, performance, api-design]
+`
+
 // runStaleBuildReconcile walks a stale hub and asserts every worktree and the board got one reconcile commit, with the board's pulled from upstream when boardBehind.
 // With loomDefaultGone the stamp names the running build but loom's committed repo default is deleted, and the walk reseeds and commits it on the board; batcher's default stays intact so retiredKeyPresent keeps reading it.
 func runStaleBuildReconcile(t *testing.T, boardBehind, loomDefaultGone bool) {
@@ -266,6 +277,16 @@ func runStaleBuildReconcile(t *testing.T, boardBehind, loomDefaultGone bool) {
 	pair := h.PairCodeWorktree("pair-a")
 	hubforge.SeedFabricConfig(t, h, staleHubWideConfig)
 	loomDefault := configengine.ConfigFileRel("loom")
+	lensesDefault := configengine.ConfigFileRel("lenses")
+	burlerDefault := configengine.ConfigFileRel("burler")
+	gitkit.Git(t, h.BoardDir(), "rm", "-q", lensesDefault)
+	gitkit.Git(t, h.BoardDir(), "commit", "-q", "-m", "fixture: delete lenses default")
+	gitkit.CommitFile(t, h.BoardDir(), burlerDefault, todaysBurlerYAML, "fixture: today's burler.yaml")
+	// A hub of today's shape has no lenses.yaml anywhere, so the board's moved values are not shadowed by a seeded prime copy.
+	for _, records := range []string{h.PrimeRecords(), h.PairRecordsSibling("pair-a")} {
+		gitkit.Git(t, records, "rm", "-q", lensesDefault)
+		gitkit.Git(t, records, "commit", "-q", "-m", "fixture: delete lenses file")
+	}
 	if loomDefaultGone {
 		gitkit.Git(t, h.BoardDir(), "rm", "-q", loomDefault)
 		gitkit.Git(t, h.BoardDir(), "commit", "-q", "-m", "fixture: delete loom default")
@@ -297,6 +318,19 @@ func runStaleBuildReconcile(t *testing.T, boardBehind, loomDefaultGone bool) {
 
 	if loomDefaultGone && !slices.Contains(gitkit.LsFiles(t, h.BoardDir()), loomDefault) {
 		t.Errorf("the board does not track the reseeded %s", loomDefault)
+	}
+	tracked := gitkit.LsFiles(t, h.BoardDir())
+	if !slices.Contains(tracked, lensesDefault) || slices.Contains(tracked, burlerDefault) {
+		t.Errorf("board tracks %v; want %s tracked and %s no longer tracked", tracked, lensesDefault, burlerDefault)
+	}
+	lensesData, err := os.ReadFile(filepath.Join(h.BoardDir(), lensesDefault))
+	if err != nil {
+		t.Fatalf("read the board's lenses.yaml: %v", err)
+	}
+	for _, want := range []string{tunedGenericMarker, "correctness:"} {
+		if !strings.Contains(string(lensesData), want) {
+			t.Errorf("board lenses.yaml lacks %q after the move and reconcile:\n%s", want, lensesData)
+		}
 	}
 	for name, root := range map[string]string{"prime": h.PrimeWorktree(), "pair": pair} {
 		if retiredKeyPresent(t, root) {
