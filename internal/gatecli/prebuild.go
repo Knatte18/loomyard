@@ -86,12 +86,19 @@ func storePrebuilt(bin, storeDir string, now time.Time) (string, error) {
 	}
 	name := prebuiltNamePrefix + sum[:16]
 	stored := filepath.Join(storeDir, name)
+	refreshed := false
 	if _, statErr := os.Stat(stored); statErr == nil {
-		if err := os.Chtimes(stored, now, now); err != nil {
+		// An entry a concurrent prune removed since the Stat is published again below.
+		chtimesErr := os.Chtimes(stored, now, now)
+		if chtimesErr != nil && !errors.Is(chtimesErr, os.ErrNotExist) {
+			return "", chtimesErr
+		}
+		refreshed = chtimesErr == nil
+	}
+	if !refreshed {
+		if err := copyIntoPlace(bin, stored, now); err != nil {
 			return "", err
 		}
-	} else if err := copyIntoPlace(bin, stored, now); err != nil {
-		return "", err
 	}
 	pruneStore(storeDir, name, now)
 	return stored, nil
