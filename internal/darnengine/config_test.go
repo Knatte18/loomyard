@@ -453,7 +453,7 @@ func TestVerifyCommand(t *testing.T) {
 	}
 }
 
-// TestTreeScopedCommand covers tree scope being off, a path lying in a tree by equality or prefix and never by a shared name prefix, the touched trees' targets deduplicated in tree-path order, and a diff with a production path.
+// TestTreeScopedCommand covers tree scope being off, a path lying in a tree by equality or prefix and never by a shared name prefix, a path under nested trees touching each, the touched trees' targets deduplicated in tree-path order, and a diff with a production path.
 func TestTreeScopedCommand(t *testing.T) {
 	t.Parallel()
 
@@ -462,6 +462,7 @@ func TestTreeScopedCommand(t *testing.T) {
 	tests := []struct {
 		name       string
 		verify     string
+		trees      map[string]string
 		paths      []string
 		want       string
 		wantScoped bool
@@ -470,6 +471,7 @@ func TestTreeScopedCommand(t *testing.T) {
 		{name: "a docs and a tools path", verify: command, paths: []string{"docs/a.md", "tools/x/y.go"}, want: "lyx gate test --tags integration --guards ./tools/...", wantScoped: true},
 		{name: "two trees sharing one target yield it once", verify: command, paths: []string{"scripts/a.sh", "tools/b.go"}, want: "lyx gate test --tags integration --guards ./tools/...", wantScoped: true},
 		{name: "targets come in tree-path order", verify: command, paths: []string{"tools/b.go", "cmd/x/main.go"}, want: "lyx gate test --tags integration --guards ./cmd/x ./tools/...", wantScoped: true},
+		{name: "a path under nested trees touches both", verify: command, trees: map[string]string{"docs": "./docs-tests", "docs/api": "./api"}, paths: []string{"docs/api/a.md"}, want: "lyx gate test --tags integration --guards ./docs-tests ./api", wantScoped: true},
 		{name: "a tree does not claim a path sharing only its name prefix", verify: command, paths: []string{"toolsx/a.go"}},
 		{name: "a path equal to a tree path lies in it", verify: command, paths: []string{"tools"}, want: "lyx gate test --tags integration --guards ./tools/...", wantScoped: true},
 		{name: "a non-ASCII path lies in its tree", verify: command, paths: []string{"docs/ä.md"}, want: "lyx gate test --tags integration --guards ", wantScoped: true},
@@ -479,7 +481,11 @@ func TestTreeScopedCommand(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, scoped := TreeScopedCommand(Config{TreeScope: trees, TreeScopeVerify: tt.verify}, tt.paths)
+			configured := trees
+			if tt.trees != nil {
+				configured = tt.trees
+			}
+			got, scoped := TreeScopedCommand(Config{TreeScope: configured, TreeScopeVerify: tt.verify}, tt.paths)
 			if got != tt.want || scoped != tt.wantScoped {
 				t.Errorf("TreeScopedCommand(%q) = %q, %v; want %q, %v", tt.paths, got, scoped, tt.want, tt.wantScoped)
 			}

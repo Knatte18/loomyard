@@ -318,13 +318,16 @@ func TreeScopedCommand(cfg Config, paths []string) (string, bool) {
 
 	touched := make(map[string]bool, len(trees))
 	for _, path := range paths {
-		index := slices.IndexFunc(trees, func(tree string) bool {
-			return path == tree || strings.HasPrefix(path, tree+"/")
-		})
-		if index < 0 {
+		inAnyTree := false
+		for _, tree := range trees {
+			if path == tree || strings.HasPrefix(path, tree+"/") {
+				touched[tree] = true
+				inAnyTree = true
+			}
+		}
+		if !inAnyTree {
 			return "", false
 		}
-		touched[trees[index]] = true
 	}
 
 	var targets []string
