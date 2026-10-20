@@ -44,6 +44,7 @@ var nilLegal = map[string]bool{
 	"Now":                               true,
 	"GateSlots":                         true,
 	"VerifyMergeBase":                   true,
+	"VerifyTreeScope":                   true,
 	"DiscussionHistory":                 true,
 	"PublishFailure":                    true,
 	"WebsterRecord":                     true,

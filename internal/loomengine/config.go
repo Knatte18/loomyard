@@ -1160,11 +1160,12 @@ func (c Config) ShedOverride() sheddriver.Override {
 
 // RecipeOverride loads the shed override of a run's recipe from the config layers under dirs:
 // darn.yaml for shedrun.RecipeDarn, and loom.yaml for shedrun.RecipeLoom and the empty recipe.
+// A darn.yaml holding a malformed tree_scope key is refused with the editor way forward, since --set cannot remove a key the hub file holds.
 func RecipeOverride(dirs configengine.Dirs, recipe string) (sheddriver.Override, error) {
 	if recipe == shedrun.RecipeDarn {
 		cfg, err := darnengine.LoadConfig(dirs, "darn")
 		if err != nil {
-			return sheddriver.Override{}, err
+			return sheddriver.Override{}, darnengine.WithEditorWayForward(err)
 		}
 		return cfg.ShedOverride(), nil
 	}
