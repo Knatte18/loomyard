@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/impactset"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -31,10 +32,13 @@ import (
 // siteLabelPrefix starts every holder and wait record this verb writes, so `lyx loom status` names the command that holds or waits for a slot.
 const siteLabelPrefix = "lyx gate test"
 
-// runTest runs request and returns the verb's exit code: go test's own, SlotBusyExit for a hub whose slots stay held past request.slotWait, 128 plus the signal number after a terminating signal, and 1 for a refusal.
+// runTest runs request and returns the verb's exit code: go test's own, the first non-zero one when several runs follow, SlotBusyExit for a hub whose slots stay held past request.slotWait, 128 plus the signal number after a terminating signal, and 1 for a refusal.
 func runTest(ctx context.Context, out io.Writer, request testRequest) int {
-	if len(request.packages) == 0 {
+	if len(request.packages) == 0 && !request.guards {
 		return refusePackages(out)
+	}
+	if request.guards && !slices.ContainsFunc(strings.Split(request.tags, ","), func(tag string) bool { return strings.TrimSpace(tag) == "integration" }) {
+		return output.Err(out, fmt.Sprintf("gate test: --guards compiles every guard test under the integration tag, but --tags is %q; way forward: add integration to --tags, for example --tags integration, then re-run the same command", request.tags))
 	}
 	cwd, err := lyxcwd.CwdFrom(ctx)
 	if err != nil {
@@ -46,6 +50,25 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	}
 	if refusal := missingPackageDirs(dir, request.packages); refusal != "" {
 		return output.Err(out, refusal)
+	}
+
+	var guardDirs []string
+	var guards map[string][]string
+	if request.guards {
+		guards, err = impactset.ModuleGuardTests(dir)
+		if err != nil {
+			return output.Err(out, guardScanRefusal(dir, err))
+		}
+		for guardDir, names := range guards {
+			if len(names) > 0 {
+				guardDirs = append(guardDirs, guardDir)
+			}
+		}
+		slices.Sort(guardDirs)
+		if len(request.packages) == 0 && len(guardDirs) == 0 {
+			logger.Info("gate test: no guard test found in the module; nothing to run", "dir", dir)
+			return 0
+		}
 	}
 
 	runCtx, caught, stop := catchTerminatingSignals(ctx)
@@ -116,29 +139,49 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	// A nested `lyx gate test` reads the variable to learn this run's watchdog already sees its test binaries.
 	env = append(slices.DeleteFunc(env, func(entry string) bool { return strings.HasPrefix(entry, enclosingGateEnv+"=") }), enclosingGateEnv+"="+strconv.Itoa(os.Getpid()))
 
-	cmd := exec.CommandContext(runCtx, request.goBinary, goTestArgs(dir, parallel, request.tags, request.packages, request.flags)...)
-	cmd.Env = env
-	cmd.Stdout = out
-	cmd.Stderr = out
-	logger.Info("gate test: spawning go test", "binary", request.goBinary, "args", strings.Join(cmd.Args[1:], " "))
-	watchCtx, stopWatching := context.WithCancel(runCtx)
-	var watchdogDone sync.WaitGroup
-	runErr := runTiedChild(cmd, func(pid int) {
-		if !watching {
-			return
+	// The named packages run first, then each guard package by name, so the guard's own pattern is the last `-run` and wins over one among the flags.
+	var invocations [][]string
+	if len(request.packages) > 0 {
+		invocations = append(invocations, goTestArgs(dir, parallel, request.tags, request.packages, request.flags))
+	}
+	for _, guardDir := range guardDirs {
+		packageArg := "./" + guardDir
+		if guardDir == "." {
+			packageArg = "."
 		}
-		watchdogDone.Add(1)
-		go func() {
-			defer watchdogDone.Done()
-			newWatchdog(busyQuit, request.samplePeriod, request.stderr).run(watchCtx, pid)
-		}()
-	})
-	stopWatching()
-	watchdogDone.Wait()
-	code := exitCodeOf(runErr)
-	logger.Info("gate test: go test ended", "exit", code, "error", runErr)
-	if cmd.Process == nil && caught.Load() == 0 {
-		return output.Err(out, fmt.Sprintf("gate test: could not start %s: %v; way forward: put go on PATH, then re-run the same command", request.goBinary, runErr))
+		guardFlags := append(slices.Clone(request.flags), "-run", "^("+strings.Join(guards[guardDir], "|")+")$")
+		invocations = append(invocations, goTestArgs(dir, parallel, request.tags, []string{packageArg}, guardFlags))
+	}
+
+	code := 0
+	for _, args := range invocations {
+		cmd := exec.CommandContext(runCtx, request.goBinary, args...)
+		cmd.Env = env
+		cmd.Stdout = out
+		cmd.Stderr = out
+		logger.Info("gate test: spawning go test", "binary", request.goBinary, "args", strings.Join(cmd.Args[1:], " "))
+		watchCtx, stopWatching := context.WithCancel(runCtx)
+		var watchdogDone sync.WaitGroup
+		runErr := runTiedChild(cmd, func(pid int) {
+			if !watching {
+				return
+			}
+			watchdogDone.Add(1)
+			go func() {
+				defer watchdogDone.Done()
+				newWatchdog(busyQuit, request.samplePeriod, request.stderr).run(watchCtx, pid)
+			}()
+		})
+		stopWatching()
+		watchdogDone.Wait()
+		code = exitCodeOf(runErr)
+		logger.Info("gate test: go test ended", "exit", code, "error", runErr)
+		if cmd.Process == nil && caught.Load() == 0 {
+			return output.Err(out, fmt.Sprintf("gate test: could not start %s: %v; way forward: put go on PATH, then re-run the same command", request.goBinary, runErr))
+		}
+		if code != 0 || caught.Load() != 0 {
+			break
+		}
 	}
 	return exitAfterSignal(caught, code)
 }

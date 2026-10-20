@@ -16,7 +16,7 @@ import (
 // verifyGateName is the gate entry whose attempts the verify budget sets.
 const verifyGateName = "verify"
 
-// darnVerifyGatedRows are the darn recipe's rows whose verify gate runs darn.yaml's verify command.
+// darnVerifyGatedRows are the darn recipe's rows whose verify gate runs the tree-scoped command, or the command impactset derives from the merge base, and runs darn.yaml's verify where impactset falls back.
 var darnVerifyGatedRows = []string{loomshed.NameDarnWrite, loomshed.NameDarnBurlerFix}
 
 // DarnRetiredRows maps each row name a darn run's status file may still carry from an earlier recipe onto the row that replaced it.

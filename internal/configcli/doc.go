@@ -56,10 +56,13 @@
 // the object replaces that entry whole or is appended as a new one, the other entries left as they are, and a value that is not a JSON object is refused.
 // An absent hub file starts from the template.
 //
-// Every `--set` write, on any layer, is then checked by loading the module through its own loader (`configreg.Module.CheckLoad`), and the written file is put back as it was when the load fails.
+// Every `--set` write, on any layer, and every hub-wide editor save is then checked by loading the module through its own loader (`configreg.Module.CheckLoad`), and the written file is put back as it was when the load fails.
 // A board-dir write loads the board file alone, and any other write loads the worktree's stack.
 // The refusal names the module and carries the loader's error, which names the key, so `--set 'plan=["opus[medium]", "sonnet[high]"]'` on loom's single-model `plan` key is refused rather than stored as a string.
 // The bound: the load also runs before the write, and a write is refused only when the load then fails with a different error, so a stack already failing to load, such as one with no base layer, still takes a write that leaves that failure as it was.
+// A refused hub-wide editor save keeps the staging copy and answers with its own way forward in place of the `--set` one: it names the loader's error, says the hub file is unchanged and names the staging copy's path.
+// The way forward is to copy the staging copy out of that path, re-open the editor and re-apply the edit from the copy with the named key fixed, since every open of the editor overwrites the staging copy with the hub file's bytes.
+// A darn save that empties `tree_scope` while `tree_scope_verify` stays non-empty, over a hub file that held a tree, is told to run `lyx config darn --set tree_scope_verify=` first and then remove the trees in the editor again.
 //
 // `lyx config reconcile` drops or fills keys across every module against its template, carrying each module's open maps whole;
 // it is a dry run unless applied.

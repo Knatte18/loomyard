@@ -69,8 +69,8 @@ func TestWire_DarnRecipe(t *testing.T) {
 		if c.env.DiscussionHistory == nil {
 			t.Error("c.env.DiscussionHistory is nil after wire() of a darn seed; want the history seam")
 		}
-		if !c.env.VerifyWholeDiff {
-			t.Error("c.env.VerifyWholeDiff = false after wire() of a darn seed; want true")
+		if c.env.VerifyTreeScope == nil {
+			t.Error("c.env.VerifyTreeScope is nil after wire() of a darn seed; want the tree scope reader")
 		}
 		if c.env.DarnVerifyAttempts != 5 {
 			t.Errorf("c.env.DarnVerifyAttempts = %d; want 5", c.env.DarnVerifyAttempts)
@@ -86,6 +86,19 @@ func TestWire_DarnRecipe(t *testing.T) {
 		}
 		if got := c.verifySource().failureTarget; got != "Darn-Write" {
 			t.Errorf("verifySource().failureTarget = %q; want Darn-Write", got)
+		}
+	})
+
+	t.Run("with tree scope on the verify gate's told command stays the hub's whole verify", func(t *testing.T) {
+		t.Parallel()
+		loc := hubLocation(t, "pair", ".")
+		seedDarnHubConfig(t, loc.HubPath, `"go test ./..."`, "3", "tree_scope: {}", `tree_scope: {"docs": ""}`, `tree_scope_verify: ""`, `tree_scope_verify: "run {targets}"`)
+		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeDarn}
+		if err := c.wire(loc, loc.AnchorPath()); err != nil {
+			t.Fatalf("wire() = %v; want nil", err)
+		}
+		if command, err := c.env.VerifyCommand(); err != nil || command != "go test ./..." {
+			t.Errorf("c.env.VerifyCommand() = %q, %v; want %q, nil", command, err, "go test ./...")
 		}
 	})
 
@@ -213,8 +226,8 @@ func TestWire_DarnRecipe(t *testing.T) {
 		if c.env.DiscussionHistory != nil {
 			t.Error("a loom seed filled c.env.DiscussionHistory; want nil")
 		}
-		if c.env.DarnTable != nil || c.env.Darn.Commit != nil || c.env.VerifyMergeBase != nil || c.env.VerifyWholeDiff || c.env.DarnVerifyAttempts != 0 {
-			t.Errorf("a loom seed filled a darn seam: DarnTable nil = %v, Darn.Commit nil = %v, VerifyMergeBase nil = %v, VerifyWholeDiff = %v, DarnVerifyAttempts = %d", c.env.DarnTable == nil, c.env.Darn.Commit == nil, c.env.VerifyMergeBase == nil, c.env.VerifyWholeDiff, c.env.DarnVerifyAttempts)
+		if c.env.DarnTable != nil || c.env.Darn.Commit != nil || c.env.VerifyMergeBase != nil || c.env.VerifyTreeScope != nil || c.env.DarnVerifyAttempts != 0 {
+			t.Errorf("a loom seed filled a darn seam: DarnTable nil = %v, Darn.Commit nil = %v, VerifyMergeBase nil = %v, VerifyTreeScope nil = %v, DarnVerifyAttempts = %d", c.env.DarnTable == nil, c.env.Darn.Commit == nil, c.env.VerifyMergeBase == nil, c.env.VerifyTreeScope == nil, c.env.DarnVerifyAttempts)
 		}
 		if got := c.verifySource().failedWayForward; !strings.Contains(got, `"lyx loom goto --to Webster-Burler-Review"`) {
 			t.Errorf("verifySource().failedWayForward = %q; want it to route back to the Webster-Burler-Review row", got)
@@ -235,8 +248,8 @@ func TestWire_DarnRecipe(t *testing.T) {
 		if err := c.wire(loc, loc.AnchorPath()); err != nil {
 			t.Fatalf("wire() = %v; want nil", err)
 		}
-		if c.env.VerifyMergeBase == nil || c.env.VerifyWholeDiff {
-			t.Errorf("a loom seed over an origin record: VerifyMergeBase nil = %v, VerifyWholeDiff = %v; want the reader set and the round form", c.env.VerifyMergeBase == nil, c.env.VerifyWholeDiff)
+		if c.env.VerifyMergeBase == nil || c.env.VerifyTreeScope != nil {
+			t.Errorf("a loom seed over an origin record: VerifyMergeBase nil = %v, VerifyTreeScope nil = %v; want the reader set and the round form", c.env.VerifyMergeBase == nil, c.env.VerifyTreeScope == nil)
 		}
 	})
 
@@ -253,6 +266,25 @@ func TestWire_DarnRecipe(t *testing.T) {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("wire() error = %q; want it to contain %q", err.Error(), want)
 			}
+		}
+	})
+
+	t.Run("a malformed tree key names the editor way forward in place of the hub config one", func(t *testing.T) {
+		t.Parallel()
+		loc := hubLocation(t, "pair", ".")
+		seedDarnHubConfig(t, loc.HubPath, `"go test ./..."`, "3", "tree_scope: {}", `tree_scope: {"./tools": ""}`)
+		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeDarn}
+		err := c.wire(loc, loc.AnchorPath())
+		if err == nil {
+			t.Fatal("wire() of a darn seed with a malformed tree key = nil; want a refusal")
+		}
+		for _, want := range []string{"./tools", "lyx config darn's editor", "then re-run the lyx command that refused"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("wire() error = %q; want it to contain %q", err.Error(), want)
+			}
+		}
+		if strings.Contains(err.Error(), hubConfigWayForward) {
+			t.Errorf("wire() error = %q; want no hub config way forward, which cannot clear the key", err.Error())
 		}
 	})
 

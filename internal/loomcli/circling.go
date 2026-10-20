@@ -193,13 +193,13 @@ func (s *circlingState) preRun(cmd *cobra.Command, args []string) error {
 }
 
 // perchHardCap returns the resolved hard cap of the Bouncer row's perch and the way forward that raises it, by the layer its value comes from.
-// A load failure of the file that holds the cap is returned as is.
+// A load failure of the file that holds the cap is returned as is, bar a malformed tree_scope key in darn.yaml, which gains the editor way forward since --set cannot remove it.
 func perchHardCap(location *lyxcwd.Location, row string) (int, string, error) {
 	dirs := fabricengine.ConfigDirs(location)
 	if row == loomshed.NameDarnBouncer {
 		cfg, err := darnengine.LoadConfig(dirs, "darn")
 		if err != nil {
-			return 0, "", err
+			return 0, "", darnengine.WithEditorWayForward(err)
 		}
 		raise, err := reviewbudget.Route(dirs, darnengine.ConfigSpec(), reviewbudget.RunHardKey)
 		if err != nil {

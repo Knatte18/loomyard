@@ -91,7 +91,7 @@ The route admits a drop of an own-entry step only: no other step is left out thr
 ## What happens after you hand off
 
 The handoff also checks the decision record and the support log, and re-prompts you in this same session with the findings.
-It then runs the repository's full verify command on the committed tree.
+It then runs a verify scoped to your diff on the committed tree.
 When it fails, you are re-prompted in this same session with its findings: fix them with new commits, then hand off again.
 A re-prompt never starts a new session or a new branch.
 

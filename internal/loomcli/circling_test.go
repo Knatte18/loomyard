@@ -190,6 +190,8 @@ func TestPerchHardCap(t *testing.T) {
 		seed      func(t *testing.T, loc *lyxcwd.Location)
 		wantHard  int
 		wantRaise []string
+		// wantErr, when set, lists what the refusal of the cap's read names.
+		wantErr []string
 	}{
 		{
 			name: "a worktree plan cap",
@@ -240,6 +242,14 @@ func TestPerchHardCap(t *testing.T) {
 			wantHard:  5,
 			wantRaise: []string{"lyx config darn --layer local --set review_hard_max_bounces=<n>", "lyx board upsert"},
 		},
+		{
+			name: "a darn.yaml holding a malformed tree key",
+			row:  loomshed.NameDarnBouncer,
+			seed: func(t *testing.T, loc *lyxcwd.Location) {
+				seedDarnHubConfig(t, loc.HubPath, `"go test ./..."`, "3", "tree_scope: {}", `tree_scope: {"./tools": ""}`)
+			},
+			wantErr: []string{"./tools", "lyx config darn's editor"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -248,6 +258,17 @@ func TestPerchHardCap(t *testing.T) {
 			tt.seed(t, loc)
 
 			hard, raise, err := perchHardCap(loc, tt.row)
+			if tt.wantErr != nil {
+				if err == nil {
+					t.Fatalf("perchHardCap(%q) = (%d, _, nil); want a refusal", tt.row, hard)
+				}
+				for _, want := range tt.wantErr {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("perchHardCap(%q) error = %q; want it to contain %q", tt.row, err, want)
+					}
+				}
+				return
+			}
 			if err != nil || hard != tt.wantHard {
 				t.Fatalf("perchHardCap(%q) = (%d, _, %v); want (%d, _, nil)", tt.row, hard, err, tt.wantHard)
 			}

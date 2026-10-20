@@ -31,6 +31,8 @@ func TestGateTest_RefusesBeforeResolvingTheHub(t *testing.T) {
 		{name: "-C directory does not exist", args: []string{"test", "-C", missingDir, "./pkg"}, wantError: "does not exist"},
 		{name: "external test package names its package directory", dirs: []string{"internal/x"}, args: []string{"test", "./internal/x_test"}, wantError: "./internal/x;"},
 		{name: "only the missing argument is named", dirs: []string{"internal/x"}, args: []string{"test", "./nope", "./internal/x"}, wantError: "./nope", wantAbsent: "package argument ./internal/x "},
+		{name: "--guards without --tags refuses before the package directories are read", dirs: []string{"pkg"}, args: []string{"test", "--guards", "./pkg"}, wantError: "add integration to --tags"},
+		{name: "--guards under a tag list without integration refuses with no package named", args: []string{"test", "--tags", "tmux", "--guards"}, wantError: "add integration to --tags"},
 		{name: "-C arguments resolve against that directory", dirs: []string{"sub/x"}, args: []string{"test", "-C", "sub", "./x_test"}, wantError: "pass ./x"},
 	}
 	for _, tc := range tests {

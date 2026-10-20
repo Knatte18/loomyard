@@ -32,7 +32,7 @@ func gateCommand(packages string, trailing ...string) string {
 		"go vet -tags integration " + packages,
 		"go vet -tags tmux " + packages,
 		"go vet -tags llm " + packages,
-		"go test -tags integration " + packages,
+		"lyx gate test --tags integration " + packages,
 	}
 	return strings.Join(append(steps, trailing...), " && ")
 }
@@ -58,7 +58,7 @@ func TestCommandFor(t *testing.T) {
 			changed: []string{"internal/a/a.go"},
 			guards:  guards,
 			wantCommand: gateCommand("./cmd/lyx ./internal/a ./internal/b ./internal/c ./internal/e ./internal/tmuxonly",
-				"go test -tags integration -run '^(TestGuardD|TestGuardD2)$' ./internal/d"),
+				"lyx gate test --tags integration ./internal/d -- -run '^(TestGuardD|TestGuardD2)$'"),
 			wantPackages: "./cmd/lyx ./internal/a ./internal/b ./internal/c ./internal/e ./internal/tmuxonly",
 		},
 		{
@@ -87,7 +87,14 @@ func TestCommandFor(t *testing.T) {
 			graph:       testGraph(),
 			changed:     []string{"docs/overview.md"},
 			guards:      guards,
-			wantCommand: "go build ./... && go test -tags integration -run '^(TestGuardA)$' ./internal/a && go test -tags integration -run '^(TestGuardD|TestGuardD2)$' ./internal/d",
+			wantCommand: "go build ./... && lyx gate test --tags integration ./internal/a ./internal/d -- -run '^(TestGuardA|TestGuardD|TestGuardD2)$'",
+		},
+		{
+			name:        "a guard name held by two outside packages is listed once",
+			graph:       testGraph(),
+			changed:     []string{"docs/overview.md"},
+			guards:      map[string][]string{"internal/a": {"TestGuardX"}, "internal/d": {"TestGuardX"}},
+			wantCommand: "go build ./... && lyx gate test --tags integration ./internal/a ./internal/d -- -run '^(TestGuardX)$'",
 		},
 		{
 			name:         "a non-Go file maps to its nearest enclosing package",

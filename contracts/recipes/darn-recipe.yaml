@@ -152,8 +152,9 @@ producers:
       role_prefix: darn
       fixer_fan_setting: darn.darn_fixer_fan
       review_row: Darn-Burler-Review
-      # The verify gate runs darn.yaml's verify command on the committed tree after each round and
-      # re-prompts the fix session with the findings until it passes. Its attempts here is a
+      # The verify gate runs the tree-scoped command, or the command impactset derives from the merge
+      # base, on the committed tree after each round, and darn.yaml's verify where impactset falls back,
+      # and re-prompts the fix session with the findings until it passes. Its attempts here is a
       # placeholder: the builder stamps darn.yaml's verify_attempts at every build.
       gates:
         - name: verify
