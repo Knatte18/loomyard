@@ -13,6 +13,7 @@
 2. Spawn every lens below in one message through the Agent tool with `subagent_type: "fork"`, one fork per lens, and never pass a `name`.
    Each fork's prompt is the fork boilerplate below plus its lens text and nothing else: no design hint, no direction to read code.
 3. Wait for every fork to return; ending your turn while forks are outstanding is allowed.
+   Edit nothing while any fork is outstanding, whatever an early report says: start judging only once the last fork has returned, judge all findings together, and only then edit.
 {{.judge_steps}}
 6. Run `{{.final_self_check_command}}` again until it passes, then end your turn.
 
