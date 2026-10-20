@@ -40,12 +40,14 @@
 // A watchdog quit of a healthy package has no code fix: the way forward is raising `busy_quit_sec` through `lyx config gate` from the prime, then re-stepping the row.
 // The gate runs no flake rerun.
 // The round compiles the `tmux` and `llm` tiers and never runs `llm`.
-// It runs the `tmux` tier only while a checked Publish failure record is present, as the failing top-level tests the record names, one step per package and test with the subtests collapsed into it, and, for a `publish_verify` failure, the impacted-set pass, to confirm the fix.
+// It runs the `tmux` tier only while a checked Publish failure record is present, to confirm the fix.
+// The failing top-level tests the record names, one step per package and test with the subtests collapsed into it, run before the round command, so a failure that still holds is known in seconds;
+// for a `publish_verify` failure the impacted-set pass runs after it.
 // Publish reruns both verifies in full regardless, and stays the guard.
 // Told the whole-diff flag, it takes the whole-diff form the `Darn-Write` and `Darn-Burler-Fix` rows run, and requires the merge base reader:
 // the headroom lint and then the comment lint run from the task branch's merge base with the parent to HEAD, and the told command runs in full as the site's base command, so Publish skips on the same tree and command.
 // That form has no skip path: an empty told command, a command read error and a merge base read error are each the gate's returned error.
-// With a checked Publish failure record present it appends the failing tests and, for a `publish_verify` failure, `./...` under `tmux`.
+// With a checked Publish failure record present it runs the failing tests before the told command and, for a `publish_verify` failure, `./...` under `tmux` after it.
 //
 // The Plan-Write rotation archives the prior plan and appends a prior-plan block naming that archive to the respawned session's prompt.
 // It first archives webster's run record into the archive's `webster` subdirectory through a told seam, so the next Webster run starts a new run over the new plan instead of refusing the old record's plan drift.

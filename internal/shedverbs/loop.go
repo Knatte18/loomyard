@@ -450,11 +450,11 @@ func runChild(ctx context.Context, spec *Spec, argv []string, traceID string, id
 func childEnvironment(traceID string) []string {
 	env := make([]string, 0, len(os.Environ())+1)
 	for _, entry := range os.Environ() {
-		if !strings.HasPrefix(entry, "LYX_TRACE_ID=") {
+		if !strings.HasPrefix(entry, logger.TraceIDEnv+"=") {
 			env = append(env, entry)
 		}
 	}
-	return append(env, "LYX_TRACE_ID="+traceID)
+	return append(env, logger.TraceIDEnv+"="+traceID)
 }
 
 // readStatusFile reads the status file, reporting false when it is missing or unreadable.

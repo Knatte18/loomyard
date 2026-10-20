@@ -57,11 +57,16 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	}
 
 	// The tests run without the strand name, so a test driving `lyx fabric` never meets a role guard that reads it.
-	env := slices.DeleteFunc(os.Environ(), func(entry string) bool { return strings.HasPrefix(entry, agentname.StrandNameEnv+"=") })
+	// They also run without this process's trace id, which is new at every run and would change the test cache key of every package that reads it.
+	env := slices.DeleteFunc(os.Environ(), func(entry string) bool {
+		return strings.HasPrefix(entry, agentname.StrandNameEnv+"=") || strings.HasPrefix(entry, logger.TraceIDEnv+"=")
+	})
 	var parallel int
 	var busyQuit time.Duration
+	var prebuiltStore string
 	if inHub {
 		pool := hubgeom.GateSlots(location)
+		prebuiltStore = pool.PrebuiltDir()
 		limits, err := pool.Limits()
 		if errors.Is(err, gateslot.ErrConfigAbsent) {
 			return output.Err(out, fmt.Sprintf("gate test: the hub has no gate limits: %v; way forward: run \"lyx fabric reconcile\", then re-run the same command; a session lyx refuses the verb from reports status: FAILED and the orch runs it", err))
@@ -93,7 +98,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 
 	env = gateslot.StripPrebuilt(env)
 	if request.tags != "" {
-		bin, cleanup, err := prebuildLyx(runCtx, request.goBinary, buildRoot(location, dir), parallel)
+		bin, cleanup, err := prebuildLyx(runCtx, request.goBinary, buildRoot(location, dir), parallel, prebuiltStore)
 		if err != nil {
 			if caught.Load() != 0 {
 				return exitAfterSignal(caught, 1)

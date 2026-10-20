@@ -114,14 +114,15 @@ func TestPublishFailure(t *testing.T) {
 		}
 	})
 
-	t.Run("command runs each failing test under the tier of its verify", func(t *testing.T) {
+	t.Run("steps run each failing test under the tier of its verify before the command and the package pass after it", func(t *testing.T) {
 		t.Parallel()
 
 		tests := []struct {
-			name     string
-			failure  verifytree.PublishFailure
-			packages []string
-			want     string
+			name            string
+			failure         verifytree.PublishFailure
+			packages        []string
+			wantFailedTests string
+			wantPackagePass string
 		}{
 			{
 				name: "plan verify runs its tests under integration and no package pass",
@@ -129,8 +130,8 @@ func TestPublishFailure(t *testing.T) {
 					{Package: "example.com/m/a", Test: "TestA/sub.case"},
 					{Package: "example.com/m/b", Test: "TestB"},
 				}},
-				packages: []string{"./a"},
-				want:     `go test -tags integration -run '^TestA$' example.com/m/a && go test -tags integration -run '^TestB$' example.com/m/b`,
+				packages:        []string{"./a"},
+				wantFailedTests: `go test -tags integration -run '^TestA$' example.com/m/a && go test -tags integration -run '^TestB$' example.com/m/b`,
 			},
 			{
 				name: "subtests of one top-level test emit one step",
@@ -138,7 +139,7 @@ func TestPublishFailure(t *testing.T) {
 					{Package: "example.com/m/a", Test: "TestA/sub_1"},
 					{Package: "example.com/m/a", Test: "TestA/sub_2"},
 				}},
-				want: `go test -tags integration -run '^TestA$' example.com/m/a`,
+				wantFailedTests: `go test -tags integration -run '^TestA$' example.com/m/a`,
 			},
 			{
 				name: "steps keep the record's order of first appearance",
@@ -148,36 +149,37 @@ func TestPublishFailure(t *testing.T) {
 					{Package: "example.com/m/a", Test: "TestA/s2"},
 					{Package: "example.com/m/b", Test: "TestA/s1"},
 				}},
-				want: `go test -tags integration -run '^TestA$' example.com/m/a && go test -tags integration -run '^TestB$' example.com/m/a && go test -tags integration -run '^TestA$' example.com/m/b`,
+				wantFailedTests: `go test -tags integration -run '^TestA$' example.com/m/a && go test -tags integration -run '^TestB$' example.com/m/a && go test -tags integration -run '^TestA$' example.com/m/b`,
 			},
 			{
-				name: "publish_verify runs its tests then the impacted set under tmux",
+				name: "publish_verify runs its tests under tmux and the impacted set as the package pass",
 				failure: verifytree.PublishFailure{Kind: verifytree.FailureKindPublishVerify, Tests: []verifytree.FailedTest{
 					{Package: "example.com/m/a", Test: "TestA"},
 				}},
-				packages: []string{"./a", "./b"},
-				want:     `go test -tags tmux -run '^TestA$' example.com/m/a && go test -tags tmux ./a ./b`,
+				packages:        []string{"./a", "./b"},
+				wantFailedTests: `go test -tags tmux -run '^TestA$' example.com/m/a`,
+				wantPackagePass: "go test -tags tmux ./a ./b",
 			},
 			{
-				name:     "publish_verify with no surviving test runs the impacted set alone",
-				failure:  verifytree.PublishFailure{Kind: verifytree.FailureKindPublishVerify},
-				packages: []string{"./..."},
-				want:     "go test -tags tmux ./...",
+				name:            "publish_verify with no surviving test runs the impacted set alone",
+				failure:         verifytree.PublishFailure{Kind: verifytree.FailureKindPublishVerify},
+				packages:        []string{"./..."},
+				wantPackagePass: "go test -tags tmux ./...",
 			},
 			{
-				name:    "publish_verify with an empty package list skips the impacted-set pass",
-				failure: verifytree.PublishFailure{Kind: verifytree.FailureKindPublishVerify, Tests: []verifytree.FailedTest{{Package: "example.com/m/a", Test: "TestA"}}},
-				want:    `go test -tags tmux -run '^TestA$' example.com/m/a`,
+				name:            "publish_verify with an empty package list skips the impacted-set pass",
+				failure:         verifytree.PublishFailure{Kind: verifytree.FailureKindPublishVerify, Tests: []verifytree.FailedTest{{Package: "example.com/m/a", Test: "TestA"}}},
+				wantFailedTests: `go test -tags tmux -run '^TestA$' example.com/m/a`,
 			},
 			{
 				name:    "plan verify with no surviving test adds nothing",
 				failure: verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify},
-				want:    "",
 			},
 		}
 		for _, tt := range tests {
-			if got := publishFailureCommand(tt.failure, tt.packages); got != tt.want {
-				t.Errorf("%s: command = %q; want %q", tt.name, got, tt.want)
+			failedTests, packagePass := publishFailureSteps(tt.failure, tt.packages)
+			if failedTests != tt.wantFailedTests || packagePass != tt.wantPackagePass {
+				t.Errorf("%s: publishFailureSteps() = (%q, %q); want (%q, %q)", tt.name, failedTests, packagePass, tt.wantFailedTests, tt.wantPackagePass)
 			}
 		}
 	})

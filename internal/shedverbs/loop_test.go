@@ -106,7 +106,7 @@ func (fx *loopFixture) run(_ context.Context, req ChildRequest) (Child, error) {
 // traceIDOf is the LYX_TRACE_ID the request's environment carries.
 func traceIDOf(req ChildRequest) string {
 	for _, entry := range req.Env {
-		if id, found := strings.CutPrefix(entry, "LYX_TRACE_ID="); found {
+		if id, found := strings.CutPrefix(entry, logger.TraceIDEnv+"="); found {
 			return id
 		}
 	}

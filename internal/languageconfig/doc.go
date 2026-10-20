@@ -20,7 +20,7 @@
 //
 // A Go hub sets verify_tiers, with "lyx config language" from the prime in the editor, to rules such as these:
 //
-//   - `go build ./...` first, then `go vet` under each of `-tags integration`, `-tags tmux` and `-tags llm`, then the untagged `go test`, then `go test -tags integration`.
+//   - `go build ./...` first, then `go vet` under each of `-tags integration`, `-tags tmux` and `-tags llm`, then `go test -tags integration` alone, which runs every untagged test too.
 //   - The `llm` and `tmux` tiers are compiled, never run: `llm` tests spawn a real LLM, and Publish runs the `tmux` tier through landing config's `publish_verify`; outside the plan's section a test of either is compiled through `lyx gate test --tags <tag> <packages> -- -run '^$'`.
 //   - A nested module's packages are tested with `go -C <module>` and module-relative package paths.
 //   - A raw `go test` runs only on named packages; a module-wide, `tmux`-tier or `llm`-tier run goes through `lyx gate test`.

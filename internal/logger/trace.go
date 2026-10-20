@@ -16,6 +16,9 @@ import (
 	"sync"
 )
 
+// TraceIDEnv names the environment variable a process adopts its trace-identity from and exports it in.
+const TraceIDEnv = "LYX_TRACE_ID"
+
 var traceOnce sync.Once
 var traceID string
 
@@ -57,7 +60,7 @@ func NewTraceID() string {
 // identity", which a fresh mint satisfies. Losing the parent's correlation is strictly better than
 // spending an attacker-shaped, or merely malformed, value as a filename component.
 func adoptOrMintTraceID() string {
-	if adopted := strings.TrimSpace(os.Getenv("LYX_TRACE_ID")); traceIDPattern.MatchString(adopted) {
+	if adopted := strings.TrimSpace(os.Getenv(TraceIDEnv)); traceIDPattern.MatchString(adopted) {
 		return adopted
 	}
 	return mintTraceID()
@@ -89,6 +92,6 @@ func MintOrAdoptAndExport() string {
 	traceOnce.Do(func() {
 		traceID = adoptOrMintTraceID()
 	})
-	os.Setenv("LYX_TRACE_ID", traceID)
+	os.Setenv(TraceIDEnv, traceID)
 	return traceID
 }

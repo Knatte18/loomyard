@@ -647,7 +647,7 @@ func (e *Engine) writeDiscoverStop() {
 func stripTraceID(env []string) []string {
 	out := make([]string, 0, len(env))
 	for _, entry := range env {
-		if strings.SplitN(entry, "=", 2)[0] == "LYX_TRACE_ID" {
+		if strings.SplitN(entry, "=", 2)[0] == logger.TraceIDEnv {
 			continue
 		}
 		out = append(out, entry)

@@ -48,6 +48,7 @@ const (
 	holderSuffix      = ".yaml"
 	goFlagsEnvName    = "GOFLAGS"
 	gateDirName       = "gate"
+	prebuiltDirName   = "prebuilt"
 	slotLockPattern   = slotPrefix + "*" + lockSuffix
 	holderGlobPattern = slotPrefix + "*" + holderSuffix
 )
@@ -95,6 +96,12 @@ type Lease struct {
 // Dir returns the hub-wide slot directory under boardDir.
 func Dir(boardDir string) string {
 	return filepath.Join(boardDir, lyxdirs.DotLyxDirName, gateDirName)
+}
+
+// PrebuiltDir returns the hub's store of prebuilt `lyx` binaries, a directory inside the pool's slot directory.
+// A tagged gate run keeps its build there under a name derived from the binary's content, so an unchanged tree hands every run the same path.
+func (p *Pool) PrebuiltDir() string {
+	return filepath.Join(p.Dir, prebuiltDirName)
 }
 
 // Acquire holds one slot for h until the lease is released.

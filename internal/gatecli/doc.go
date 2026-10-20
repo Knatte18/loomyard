@@ -10,8 +10,12 @@
 // A package argument spelled relative (`.`, `..`, `./…` or `../…`), not ending in `.go` and with a trailing `/...` removed must name a directory under the -C directory, or the verb refuses before hub resolution, any slot and the prebuild; for an external test package it names the package directory to pass instead.
 // Import paths, absolute paths, module-wide patterns whose stem exists and `.go` file arguments are not read and reach go test unchanged.
 // The output streams through and the exit code is go test's own.
-// With `--tags` non-empty the verb first builds `lyx` once, inside the held slot: `go build -C <root> -p <cap> -trimpath -o <tmp>/lyx ./cmd/lyx`, where <root> is the worktree root inside a hub and the -C directory outside one, and <tmp> is a per-invocation directory in the process run directory of `internal/lyxtemp`, removed after go test ends.
+// With `--tags` non-empty the verb first builds `lyx` once, inside the held slot: `go build -C <root> -p <cap> -trimpath -o <tmp>/lyx ./cmd/lyx`, where <root> is the worktree root inside a hub and the -C directory outside one, and <tmp> is a per-invocation directory in the process run directory of `internal/lyxtemp`, removed after go test ends outside a hub.
 // go test's environment then carries `gateslot.PrebuiltLyxEnv` naming that binary, so every package of the run shares it instead of building its own.
+// Inside a hub the binary is first copied into the pool's store (`gateslot.Pool.PrebuiltDir`) as `lyx-` and the first 16 hex digits of its SHA-256, the build directory is removed, and the variable names the stored copy.
+// Go keys a cached test result on the variable's value, so a path named by the binary's content keeps a re-run on an unchanged tree cached, the `-trimpath` build being reproducible, and changes whenever `lyx` does, so no cached result outlives a changed `lyx`.
+// A stored binary already present is reused and its modification time set, marking its last use, and each store prunes the other entries unused for two hours.
+// Bound: a run whose binary is pruned while it runs fails its later lyxbin tests with the stale-prebuilt error; the retention is far past any gate run.
 // A root without `cmd/lyx` builds nothing, and a nested module inside a hub still builds the worktree's `lyx`, which that module's tests may leave unused.
 // A build failure is a JSON error with the build's output and exit code 1, before go test runs.
 //
@@ -27,6 +31,8 @@
 // The run writes a wait record under the worktree's wait directory, acquires a slot under a context bounded by `shuttleengine.DefaultAwaitCap`, the keep-cache-warm cap of the wait verbs, removes the record once the acquire returns, and runs go test with the lease's environment, whose GOFLAGS carries `gateslot.GoFlags`: the `-p` cap and `-trimpath`.
 // Every branch, slotted, inherited and unslotted, runs go test without the strand-name variable (agentname.StrandNameEnv), so a test that drives `lyx fabric` never meets the sandboxed-role guard.
 // Bound: a test is code the fork writes, which could clear the variable itself.
+// Every branch also drops `logger.TraceIDEnv`: `lyx` exports a new trace id at every run, and Go keys a cached test result on every variable a test reads, so a package that logs would otherwise miss the test cache on every run.
+// A test process mints its own trace id instead.
 // The cap keeps one blocked Bash call under the prompt-cache lifetime, so an agent that re-runs the verb keeps its cache warm.
 // A cap that passes with every slot held is no failure: the verb prints an ok envelope with `slot_free: false`, each holder's worktree and site and a message to run the same command again in a turn that does nothing else, and exits with SlotBusyExit.
 // An absent gate.yaml is refused with a way forward naming `lyx fabric reconcile`, which writes it from the template.

@@ -71,22 +71,15 @@ func TestLoad_UnreadableAbsolutePathErrors(t *testing.T) {
 // TestLoad_RelativePathErrorsBeforeAnyRead asserts a relative path errors with the must-be-absolute
 // message, using a relative path that does resolve to a real file from the test's working
 // directory -- the only way to make the reject-before-read assertion meaningful.
+// The file is one of the package's own sources, so the test writes nothing into the source tree.
+// Other packages' tests read its directory listings, and Go's test cache keys on them.
 func TestLoad_RelativePathErrorsBeforeAnyRead(t *testing.T) {
 	t.Parallel()
 
-	cwd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("os.Getwd() = _, %v; want no error", err)
+	relName := "doc.go"
+	if _, err := os.Stat(relName); err != nil {
+		t.Fatalf("os.Stat(%q) = _, %v; want the package's own file", relName, err)
 	}
-
-	relName := "shedbuild_load_test_relative_fixture.yaml"
-	absPath := filepath.Join(cwd, relName)
-	if err := os.WriteFile(absPath, []byte("version: 1\nentry: start\nterminals: [done]\nproducers:\n  - name: row1\n    engine: bouncer\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile(%q) = %v; want no error", absPath, err)
-	}
-	t.Cleanup(func() {
-		os.Remove(absPath)
-	})
 
 	got, err := Load(relName)
 	if err == nil {
