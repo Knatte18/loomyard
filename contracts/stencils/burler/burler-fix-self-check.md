@@ -10,6 +10,7 @@ It checks the change set you just made, which no later step of this round review
 2. Spawn the lenses below in one message through the Agent tool with `subagent_type: "fork"`, one fork per lens, and never pass a `name`.
    Each fork's prompt is the fork boilerplate below plus its lens text and nothing else: no hint at what you think is wrong, no direction to read code.
 3. Wait for every fork to return; ending your turn while forks are outstanding is allowed.
+   Edit nothing while any fork is outstanding, whatever an early report says: start judging only once the last fork has returned, judge all findings together, and only then edit.
 4. Judge every fork finding: merge duplicates across lenses, then weigh each finding twice, its premise and the change it proposes, and give it one of the three dispositions of the Fix-everything rule above, decided in that order.
    Severity decides how a finding is reported, not whether it is weighed.
    A change you make here obeys the same write surface and git discipline as every other fix of this round.
