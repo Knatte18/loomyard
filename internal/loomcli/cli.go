@@ -380,7 +380,7 @@ Example:
 
 Without --watch, it reads the status file once and emits a single JSON
 envelope carrying the current producer, state, error text, pause flag,
-composed activity, history length, the task's slug/parent, and the
+"pause_reason" (why a paused run is paused), composed activity, history length, the task's slug/parent, and the
 interrupt policy for the current producer. While a pause covers the run,
 the envelope also carries "paused_since" (when the pause began, RFC 3339)
 and "paused_by" (the pause's scope); a run no pause covers carries neither.
@@ -414,6 +414,11 @@ producer boundary. It does not kill anything.
 <producer> pauses after that producer returns a routed running outcome, at
 the row it routed to. Either replaces a recorded one. --clear removes both
 conditions, and refuses beside --before or --after.
+
+--by <label> records a free-text caller label, such as operator or the orch's
+strand name, beside the condition it accompanies. The label is recorded in
+the paused run's pause_reason; shed is reserved for lyx's own automatic steps
+and refused.
 
 A bare pause, with no flag, refuses for a loom run: it no longer stops
 anything. The refusal names the two ways forward: "lyx pause <slug>" stops

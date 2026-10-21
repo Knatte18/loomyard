@@ -167,7 +167,7 @@ Example:
 		Audience: clihelp.AudienceOperator,
 		Short:    "report a task worktree's persisted lifecycle status",
 		Long: `status reports a slug's persisted lifecycle status: the current producer, the
-state, the error field, the activity, and the history, plus the resolved
+state, the error field, "pause_reason" (why a paused run is paused), the activity, and the history, plus the resolved
 status path so an operator can find the file. A slug with no seed at all
 refuses, listing the seeded run-ids; a seeded slug whose status file is
 absent -- hand-seeded, or never stepped yet -- is reported as a determined
@@ -194,6 +194,10 @@ Example:
 		Long: `pause sets a request the running lifecycle consumes at its next producer
 boundary. It does not kill anything -- the machine itself clears the flag
 in the persist that records the paused state.
+
+--by <label> records a free-text caller label, such as operator or the orch's
+strand name, beside the request. The label is recorded in the paused run's
+pause_reason; shed is reserved for lyx's own automatic steps and refused.
 
 The run-id positional is required in practice, even though cobra accepts
 its absence: prime hosts many slug-addressed batten runs, so an omitted

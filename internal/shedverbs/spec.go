@@ -80,8 +80,8 @@ type Hooks struct {
 	// signal and never a third policy word -- a recipe with no policy table therefore yields an
 	// empty next_interrupt_policy.
 	InterruptPolicyFor func(row string) string
-	// StatusExtras lets a module add its own keys onto status's ten-key generic core
-	// (current_producer, state, error, activity, history_length, interrupt_policy, trace_dir,
+	// StatusExtras lets a module add its own keys onto status's eleven-key generic core
+	// (current_producer, state, error, pause_reason, activity, history_length, interrupt_policy, trace_dir,
 	// run_id, progress, last_step),
 	// keyed by the decoded shedengine.Status. A non-nil error it returns is reported verbatim on
 	// the error envelope with no re-prefixing -- the hook owns its whole string. StatusExtras
@@ -216,4 +216,7 @@ type Spec struct {
 	// Caller is the caller label of the process the verbs run in, recorded on the goto entry and on the entry a resume appends.
 	// It is for reports only; the empty string records none.
 	Caller string
+	// GotoGuard is the recipe's told check of a goto target, passed to every goto the verbs run.
+	// Nil admits every target, as a recipe that tells none always did.
+	GotoGuard shedengine.GotoGuard
 }
