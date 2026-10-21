@@ -609,6 +609,54 @@ func TestValidatePlanCmd(t *testing.T) {
 		envelope.RequireErr(t, out.String(), "lyx config language")
 	})
 
+	t.Run("UnparsableGateConfigIsRefusedNamingTheWayForward", func(t *testing.T) {
+		anchorPath := t.TempDir()
+		c := planFixture(t, anchorPath, t.TempDir(), true)
+		gatePath := configengine.ConfigFile(fabricengine.BoardDir(c.location.HubPath), "gate")
+		if err := os.MkdirAll(filepath.Dir(gatePath), 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(gatePath), err)
+		}
+		if err := os.WriteFile(gatePath, []byte("tiers: [unterminated\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile(%q) = %v; want nil", gatePath, err)
+		}
+
+		var out bytes.Buffer
+		if exitCode := clihelp.Execute(c.validatePlanCmd(), &out, nil); exitCode != 1 {
+			t.Fatalf("exit code = %d; want 1 (output: %q)", exitCode, out.String())
+		}
+		envelope.RequireErr(t, out.String(), "lyx config gate")
+	})
+
+	t.Run("NoGateConfigRunsTheVerbAndReportsNoRawCommand", func(t *testing.T) {
+		anchorPath := t.TempDir()
+		plankit.Write(t, filepath.Join(anchorPath, "_lyx", "plan"), plankit.Plan{
+			Approved: true,
+			Language: "none",
+			Cards: []plankit.Card{{
+				Number:  1,
+				Slug:    "validate-fixture",
+				Summary: "a minimal fixture card",
+				Groups:  []plankit.Group{{Label: "Create", Targets: []string{"fixture-output.txt"}}},
+				Intent:  "minimal fixture card for validate-plan tests.",
+				Commit:  "1: validate-fixture",
+				Verify:  "go test",
+			}},
+		})
+		c := &loomCLI{location: hubLocationAt(t, anchorPath, ""), env: shedrecipe.Env{
+			PlanIndex:    planglyph.NewIndex(fabricengine.NewReferenceRule()),
+			AnchorPath:   anchorPath,
+			WorktreeRoot: t.TempDir(),
+		}}
+
+		var out bytes.Buffer
+		if exitCode := clihelp.Execute(c.validatePlanCmd(), &out, nil); exitCode != 0 {
+			t.Fatalf("exit code = %d; want 0 (output: %q)", exitCode, out.String())
+		}
+		if strings.Contains(out.String(), "verify-raw-command") {
+			t.Errorf("output = %q; want no verify-raw-command finding without a gate.yaml", out.String())
+		}
+	})
+
 	t.Run("LensReviewReportsASymbolRenameWithNoRenameTool", func(t *testing.T) {
 		anchorPath := t.TempDir()
 		c := symbolRenamePlanFixture(t, anchorPath, t.TempDir())

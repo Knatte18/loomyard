@@ -20,6 +20,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/friction"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -139,11 +140,14 @@ type BeginDeps struct {
 	// this value needs no geometry derivation.
 	FrictionDir string
 
-	// VerifyTiers are the hub's verify tiers the fork prompt renders; empty for none.
-	VerifyTiers []string
+	// GateTiers are the hub's rendered tier and gate-list lines the fork prompt's gate_tiers marker takes; "none" when no tier is declared.
+	GateTiers string
 
 	// RenameTools are the hub's structure-aware rename tools the fork prompt renders; empty for none.
 	RenameTools []string
+
+	// Gate is the hub's gate config, from which the fork prompt renders its card and batch gate calls.
+	Gate gateslot.Config
 }
 
 // BeginResult is what one successful BeginBatch call returns to its caller.
@@ -572,10 +576,14 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		return nil, fmt.Errorf("%w; way forward: transient, re-run `lyx webster begin-batch %d`", err, batchNumber)
 	}
 
-	// The guard scan reads the worktree before the first mutation, so a path it cannot read refuses with nothing changed.
-	guards, err := scanGuardTests(deps.Geom.WorktreeRoot)
+	// The gate calls render before the first mutation, so a gate list the config lacks refuses with no prompt written and no state recorded.
+	cardGates, err := renderCardGates(batch.Cards, masterPlanDirDisplay(deps.Geom.WorktreeRoot, deps.Geom.PlanDir), deps.Gate)
 	if err != nil {
-		return nil, fmt.Errorf("%w; way forward: transient, re-run `lyx webster begin-batch %d` once the path reads", err, batchNumber)
+		return nil, err
+	}
+	batchGate, err := renderBatchGate(batch.Cards, deps.Gate)
+	if err != nil {
+		return nil, err
 	}
 
 	// The fork writes its report here with whatever tool it likes — a plain
@@ -636,11 +644,6 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// mode's WorktreeRoot is the anchor path, the exact value this call
 	// rendered before this Geometry split.
 	notePath := friction.NotePath(deps.FrictionDir, batchName)
-	cardGates, err := renderCardGates(deps.Plan, batch.Cards, masterPlanDirDisplay(deps.Geom.WorktreeRoot, deps.Geom.PlanDir), deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, guards)
-	if err != nil {
-		return nil, err
-	}
-	batchGate := renderBatchGate(deps.Plan, batch.Cards, deps.Geom.WorktreeRoot)
 	promptPath, err := filepath.Abs(filepath.Join(deps.Geom.PromptsDir, batchName+".md"))
 	if err != nil {
 		return nil, fmt.Errorf("webster: resolve prompt path: %w", err)
@@ -650,7 +653,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		return nil, fmt.Errorf("webster: resolve pack path: %w", err)
 	}
 	pack := buildKickstartPack(deps, index, batch, number)
-	prompt, packFile, err := RenderForkPrompt(batch, cardGates, batchGate, prevDigest, reportPath, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.VerifyTiers, deps.RenameTools, deps.Plan.Verify, OutcomePath(deps.Geom.WebsterDir), summaryparser.Path(deps.Geom.WebsterDir), deps.Config.SelfFixCap, notePath, packPath, packLayoutOf(deps.Config, deps.Geom), pack)
+	prompt, packFile, err := RenderForkPrompt(batch, cardGates, batchGate, prevDigest, reportPath, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.GateTiers, deps.RenameTools, OutcomePath(deps.Geom.WebsterDir), summaryparser.Path(deps.Geom.WebsterDir), deps.Config.SelfFixCap, notePath, packPath, packLayoutOf(deps.Config, deps.Geom), pack)
 	if err != nil {
 		return nil, err
 	}

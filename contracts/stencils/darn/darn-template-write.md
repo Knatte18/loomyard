@@ -59,7 +59,7 @@ A later spawn that finds both present and passing leaves them as they are.
 
 1. Edit the repository to make the change.
    Follow the existing patterns, and the PATTERN entries in this prompt.
-2. Test as you work with package-scoped runs, `lyx gate test <pkg>`, never a module-wide run.
+2. Test as you work with `lyx gate test --wait`, which computes its scope from your changes, never a raw test command or a module-wide run.
 3. Update the docs the repository's `CLAUDE.md` names for your kind of change in the same commits as the code.
 4. Commit on the task branch in small, coherent commits, each leaving the tree green.
    Never push: the landing steps that follow push the branch.

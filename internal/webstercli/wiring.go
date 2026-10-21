@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/cliwire"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -164,6 +165,10 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 
 	geom := hubgeom.WebsterGeometry(loc)
 	geom.Index = planglyph.NewSlottedIndex(fabricengine.NewReferenceRule(), geom.GateSlots, geom.GateWaitDir)
+	gateTiers, err := gateTiersValue(geom.GateConfig)
+	if err != nil {
+		return err
+	}
 	if stencilsDir != "" {
 		// The same boundary stat standalone's prologue applies, through the same descriptor method,
 		// so the two modes can never drift on what a told stencils directory must be: a typo'd
@@ -238,9 +243,22 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 	}
 	c.batcher = activeBatcher
 	c.languageSkills = languageSkills
-	c.verifyTiers = language.VerifyTiers
+	c.gateTiers = gateTiers
 	c.renameTools = language.RenameTools
 	return nil
+}
+
+// gateTiersValue reads the gate config through read once and returns its rendered tier and gate-list lines.
+// An absent gate.yaml renders `none`; any other load error is returned as is, since it already names `lyx config gate`.
+func gateTiersValue(read func() (gateslot.Config, error)) (string, error) {
+	cfg, err := read()
+	if errors.Is(err, gateslot.ErrConfigAbsent) {
+		return "none", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return cfg.TiersValue(), nil
 }
 
 // wireStandalone builds the engine stack for standalone mode by calling wireModule.ResolveStandalone
@@ -273,6 +291,10 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	reedGeom := standalonegeom.ReedGeometry(res.Target, res.StateDir, res.Hash8)
 	geom.StencilsDir = res.StencilsDir
 	geom.PlanDir = res.PlanDir
+	gateTiers, err := gateTiersValue(geom.GateConfig)
+	if err != nil {
+		return err
+	}
 	if res.PlanDirOverridden {
 		c.planDirOverridden = true
 		c.planDirDefault = res.DefaultPlanDir
@@ -341,6 +363,7 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	c.openFabric = nil
 	c.parentBranch = nil
 	c.batcher = activeBatcher
+	c.gateTiers = gateTiers
 	return nil
 }
 

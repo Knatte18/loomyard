@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/stencil"
@@ -34,10 +35,22 @@ func newTestStencilsDir(t *testing.T) string {
 }
 
 // testCardGates is the placeholder per-card gate list passed as RenderForkPrompt's and RenderRecoveryPrompt's cardGates parameter.
-const testCardGates = "- `_lyx/plan/01-gate.md`:\n  - `lyx gate test ./internal/alpha`"
+const testCardGates = "- `_lyx/plan/01-gate.md`:\n  - `lyx gate test --wait --tier 0 --card 1-gate`"
 
 // testBatchGate is the placeholder batch gate passed as RenderForkPrompt's and RenderRecoveryPrompt's batchGate parameter.
-const testBatchGate = "The batch gate:\n- `lyx gate test --tags integration ./internal/alpha`"
+const testBatchGate = "- `lyx gate test --wait --tier 0 --tier 1 --card 1-gate`"
+
+// testGateConfig declares tier0 and tier1 and lists them in the `card` and `batch` gates, tier0 alone in `round`.
+// Each call returns a fresh config, so a test may edit its lists.
+func testGateConfig() gateslot.Config {
+	return gateslot.Config{
+		Tiers: map[string]gateslot.Tier{"tier0": {About: "unit"}, "tier1": {About: "integration"}},
+		Gates: map[string][]int{"card": {0}, "batch": {0, 1}, "round": {0}},
+	}
+}
+
+// testFixGate is the placeholder gate call passed as RenderVerifyFixPrompt's fixGate parameter.
+const testFixGate = "lyx gate test --wait --tier 0"
 
 // testOutcomePath and testSummaryPath are the placeholder contract-file paths passed as RenderForkPrompt's and RenderVerifyFixPrompt's outcomePath and summaryPath parameters.
 const (
@@ -271,9 +284,8 @@ func forkTemplateMarkerValues() map[string]string {
 		"worktree_root":      "/worktree",
 		"prev_digest":        "01-json-flag: done head_sha=abc123",
 		"specs_dir":          "/hub/repo/_board/_lyx/specs",
-		"verify_tiers":       "- run `x` on the listed packages",
+		"gate_tiers":         "- tier1: unit tests of `x`",
 		"rename_tools":       "- rename `y` through the language server",
-		"plan_verify":        "go test ./...",
 		"outcome_path":       testOutcomePath,
 		"summary_path":       testSummaryPath,
 		"locate":             "   Locate them with one `lyx quarry resolve <glyph>...` call.",
@@ -332,15 +344,12 @@ func assertCardPointerIsRelative(t *testing.T, got, sourcePath string) {
 // renderFork renders the fork prompt for batch with the shared placeholder paths; root is both the
 // anchor root and the prompt worktree root, and the plan directory is derived under it.
 func renderFork(batch batcher.Batch, root, stencilsDir, specsDir, prevDigest string, selfFixCap int, notePath string, pack []planindex.CardPack) (string, error) {
-	prompt, _, err := renderForkWithPack(batch, root, stencilsDir, specsDir, prevDigest, selfFixCap, notePath, websterengine.PackLayoutFile, pack, nil, nil, "")
+	prompt, _, err := renderForkWithPack(batch, root, stencilsDir, specsDir, prevDigest, selfFixCap, notePath, websterengine.PackLayoutFile, pack, "none", nil)
 	return prompt, err
 }
 
-// testVerifyTiers are two verify tiers, the first holding a template marker that must reach the prompt verbatim.
-var testVerifyTiers = []string{"run `{{.x}}` on the listed packages", "compile the `tmux` tier"}
-
-// testVerifyTiersBullets is testVerifyTiers rendered as the consecutive bullets a prompt carries.
-const testVerifyTiersBullets = "- run `{{.x}}` on the listed packages\n- compile the `tmux` tier\n"
+// testGateTiers is the rendered tier and gate-list lines a prompt takes, the first holding a template marker that must reach the prompt verbatim.
+const testGateTiers = "- tier1: unit tests of `{{.x}}`\n- gate card: [1]"
 
 // testRenameTools are two rename tools, the first holding a template marker that must reach the prompt verbatim.
 var testRenameTools = []string{"rename Go symbols with `{{.x}}`", "rename files with `git mv`"}
@@ -348,15 +357,12 @@ var testRenameTools = []string{"rename Go symbols with `{{.x}}`", "rename files 
 // testRenameToolsBullets is testRenameTools rendered as the consecutive bullets a prompt carries.
 const testRenameToolsBullets = "- rename Go symbols with `{{.x}}`\n- rename files with `git mv`\n"
 
-// testPlanVerify is a plan verify command the prompts under test are rendered with.
-const testPlanVerify = "go test ./..."
-
 // testPackPath is the pack file path the fork prompts under test are rendered with.
 const testPackPath = "/prompts/01-alpha-pack.md"
 
 // renderForkWithPack is renderFork returning the pack file content too, rendered for testPackPath in layout.
-func renderForkWithPack(batch batcher.Batch, root, stencilsDir, specsDir, prevDigest string, selfFixCap int, notePath string, layout websterengine.PackLayout, pack []planindex.CardPack, verifyTiers, renameTools []string, planVerify string) (prompt, packFile string, err error) {
-	gotPrompt, gotPack, err := websterengine.RenderForkPrompt(batch, testCardGates, testBatchGate, prevDigest, "/reports/01-alpha.yaml", filepath.Join(root, "_lyx", "plan"), root, stencilsDir, specsDir, verifyTiers, renameTools, planVerify, testOutcomePath, testSummaryPath, selfFixCap, notePath, testPackPath, layout, pack)
+func renderForkWithPack(batch batcher.Batch, root, stencilsDir, specsDir, prevDigest string, selfFixCap int, notePath string, layout websterengine.PackLayout, pack []planindex.CardPack, gateTiers string, renameTools []string) (prompt, packFile string, err error) {
+	gotPrompt, gotPack, err := websterengine.RenderForkPrompt(batch, testCardGates, testBatchGate, prevDigest, "/reports/01-alpha.yaml", filepath.Join(root, "_lyx", "plan"), root, stencilsDir, specsDir, gateTiers, renameTools, testOutcomePath, testSummaryPath, selfFixCap, notePath, testPackPath, layout, pack)
 	return string(gotPrompt), string(gotPack), err
 }
 
@@ -364,7 +370,7 @@ func renderForkWithPack(batch batcher.Batch, root, stencilsDir, specsDir, prevDi
 // It fails t when the prompt does not end with the line sending the fork to the pack file.
 func renderForkPromptAndPack(t *testing.T, batch batcher.Batch, root, stencilsDir, specsDir string, pack []planindex.CardPack) (string, error) {
 	t.Helper()
-	prompt, packFile, err := renderForkWithPack(batch, root, stencilsDir, specsDir, "", 2, "", websterengine.PackLayoutFile, pack, nil, nil, "")
+	prompt, packFile, err := renderForkWithPack(batch, root, stencilsDir, specsDir, "", 2, "", websterengine.PackLayoutFile, pack, "none", nil)
 	if err == nil && !strings.HasSuffix(prompt, "\n\n## Start here\n\nNow read `"+testPackPath+"` and do what it says.\n") {
 		t.Errorf("fork prompt with a pack does not end with the pack read line; its end is %q", prompt[max(0, len(prompt)-200):])
 	}
@@ -374,12 +380,12 @@ func renderForkPromptAndPack(t *testing.T, batch batcher.Batch, root, stencilsDi
 // renderRecovery renders the recovery prompt for batch with the shared placeholder paths; the plan
 // directory and prompt worktree root derive from anchorRoot, and PATTERN.md is read from repoRoot.
 func renderRecovery(batch batcher.Batch, repoRoot, anchorRoot, stencilsDir, specsDir, failureDigest, notePath, parent string) (string, error) {
-	return renderRecoveryWithUncommitted(batch, repoRoot, anchorRoot, stencilsDir, specsDir, failureDigest, "", notePath, parent, nil, nil, nil, "")
+	return renderRecoveryWithUncommitted(batch, repoRoot, anchorRoot, stencilsDir, specsDir, failureDigest, "", notePath, parent, "none", nil, nil)
 }
 
 // renderRecoveryWithUncommitted is renderRecovery with the caller-rendered uncommitted-paths block, the hub's verify tiers and the declared PATTERN changes.
-func renderRecoveryWithUncommitted(batch batcher.Batch, repoRoot, anchorRoot, stencilsDir, specsDir, failureDigest, uncommittedPaths, notePath, parent string, verifyTiers, renameTools, patternChanges []string, planVerify string) (string, error) {
-	got, err := websterengine.RenderRecoveryPrompt(batch, testCardGates, testBatchGate, "", failureDigest, uncommittedPaths, "/reports/01-alpha.yaml", repoRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, specsDir, verifyTiers, renameTools, patternChanges, planVerify, 2, notePath, parent)
+func renderRecoveryWithUncommitted(batch batcher.Batch, repoRoot, anchorRoot, stencilsDir, specsDir, failureDigest, uncommittedPaths, notePath, parent, gateTiers string, renameTools, patternChanges []string) (string, error) {
+	got, err := websterengine.RenderRecoveryPrompt(batch, testCardGates, testBatchGate, "", failureDigest, uncommittedPaths, "/reports/01-alpha.yaml", repoRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, specsDir, gateTiers, renameTools, patternChanges, 2, notePath, parent)
 	return string(got), err
 }
 
@@ -389,9 +395,9 @@ func renderMaster(batches []batcher.Batch, anchorRoot, repoRoot, stencilsDir, no
 	return string(got), err
 }
 
-// renderVerifyFix renders the fixer prompt for reportPath with the shared placeholder paths.
+// renderVerifyFix renders the fixer prompt for reportPath with the shared placeholder paths and testFixGate.
 func renderVerifyFix(reportPath, anchorRoot, stencilsDir, notePath string) (string, error) {
-	got, err := websterengine.RenderVerifyFixPrompt(reportPath, anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), stencilsDir, testOutcomePath, testSummaryPath, notePath)
+	got, err := websterengine.RenderVerifyFixPrompt(reportPath, anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), stencilsDir, testOutcomePath, testSummaryPath, notePath, testFixGate)
 	return string(got), err
 }
 
@@ -497,14 +503,14 @@ func TestTemplates_FillRequiresEveryRequiredMarker(t *testing.T) {
 			template: mustForkTemplate,
 			values:   forkTemplateMarkerValues,
 			optional: []string{"kickstart_pack", "card_pack_allowed", "friction_directive"},
-			required: []string{"card_pointers", "card_gates", "batch_gate", "report_path", "self_fix_cap", "worktree_root", "prev_digest", "specs_dir", "verify_tiers", "rename_tools", "plan_verify", "outcome_path", "summary_path", "locate", "card_read", "fresh_read"},
+			required: []string{"card_pointers", "card_gates", "batch_gate", "report_path", "self_fix_cap", "worktree_root", "prev_digest", "specs_dir", "gate_tiers", "rename_tools", "outcome_path", "summary_path", "locate", "card_read", "fresh_read"},
 		},
 		{
 			name:     "recovery",
 			template: mustRecoveryTemplate,
 			values:   recoveryTemplateMarkerValues,
 			optional: []string{"pattern_directive", "failure_digest", "uncommitted_paths", "kickstart_pack", "card_pack_allowed", "friction_directive", "parent_directive"},
-			required: []string{"card_pointers", "card_gates", "batch_gate", "report_path", "self_fix_cap", "worktree_root", "prev_digest", "specs_dir", "verify_tiers", "rename_tools", "plan_verify", "edit_directive", "locate", "card_read", "fresh_read"},
+			required: []string{"card_pointers", "card_gates", "batch_gate", "report_path", "self_fix_cap", "worktree_root", "prev_digest", "specs_dir", "gate_tiers", "rename_tools", "edit_directive", "locate", "card_read", "fresh_read"},
 		},
 	}
 	for _, tc := range cases {
@@ -774,7 +780,7 @@ func TestRenderPrompts(t *testing.T) {
 		}},
 		{"recovery carries a declared PATTERN change under the declared-changes heading", func(t *testing.T) promptCheck {
 			root, stencilsDir := patternActiveLayout(t)
-			text, err := renderRecoveryWithUncommitted(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", "", "", "", nil, nil, []string{"- `PATTERN-x` adds: a rule"}, "")
+			text, err := renderRecoveryWithUncommitted(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", "", "", "", "none", nil, []string{"- `PATTERN-x` adds: a rule"})
 			return promptCheck{text: text, err: err, inOrder: []string{"### Declared PATTERN changes", "- `PATTERN-x` adds: a rule"}}
 		}},
 		{"recovery reads PATTERN.md from the told repo root", func(t *testing.T) promptCheck {
@@ -801,48 +807,38 @@ func TestRenderPrompts(t *testing.T) {
 		{"recovery renders the uncommitted-paths block verbatim", func(t *testing.T) promptCheck {
 			const block = "Written by this run:\n- internal/x/y.go\n\nNot written by this run:\n- notes.txt"
 			root, stencilsDir := testLayout(t)
-			text, err := renderRecoveryWithUncommitted(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", block, "", "", nil, nil, nil, "")
+			text, err := renderRecoveryWithUncommitted(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", block, "", "", "none", nil, nil)
 			return promptCheck{text: text, err: err, contains: []string{"What the worktree holds\n\n" + block + "\n"}, notContains: []string{"{{.uncommitted_paths}}"}}
 		}},
 		{"fork renders each rename tool as a bullet and the plan verify command", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)
-			text, _, err := renderForkWithPack(alpha, root, stencilsDir, newTestSpecsDir(t), "", 2, "", websterengine.PackLayoutFile, nil, nil, testRenameTools, testPlanVerify)
-			return promptCheck{text: text, err: err, contains: []string{testRenameToolsBullets, "verify command follows:\n\n" + testPlanVerify + "\n"}, notContains: []string{"{{.rename_tools}}", "{{.plan_verify}}"}}
+			text, _, err := renderForkWithPack(alpha, root, stencilsDir, newTestSpecsDir(t), "", 2, "", websterengine.PackLayoutFile, nil, "none", testRenameTools)
+			return promptCheck{text: text, err: err, contains: []string{testRenameToolsBullets}, notContains: []string{"{{.rename_tools}}"}}
 		}},
 		{"recovery renders each rename tool as a bullet and the plan verify command", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)
-			text, err := renderRecoveryWithUncommitted(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", "", "", "", nil, testRenameTools, nil, testPlanVerify)
-			return promptCheck{text: text, err: err, contains: []string{testRenameToolsBullets, "verify command follows:\n\n" + testPlanVerify + "\n"}, notContains: []string{"{{.rename_tools}}", "{{.plan_verify}}"}}
+			text, err := renderRecoveryWithUncommitted(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", "", "", "", "none", testRenameTools, nil)
+			return promptCheck{text: text, err: err, contains: []string{testRenameToolsBullets}, notContains: []string{"{{.rename_tools}}"}}
 		}},
-		{"fork renders none for no rename tools and no plan verify command", func(t *testing.T) promptCheck {
+		{"fork renders none for no rename tools and names no plan verify command", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)
-			text, _, err := renderForkWithPack(alpha, root, stencilsDir, newTestSpecsDir(t), "", 2, "", websterengine.PackLayoutFile, nil, nil, nil, "")
-			return promptCheck{text: text, err: err, contains: []string{"surgical Edits.\n\nnone\n", "verify command follows:\n\nnone\n"}, notContains: []string{"\n- \n"}}
+			text, _, err := renderForkWithPack(alpha, root, stencilsDir, newTestSpecsDir(t), "", 2, "", websterengine.PackLayoutFile, nil, "none", nil)
+			return promptCheck{text: text, err: err, contains: []string{"surgical Edits.\n\nnone\n"}, notContains: []string{"\n- \n", "verify command follows"}}
 		}},
-		{"recovery renders none for no rename tools and no plan verify command", func(t *testing.T) promptCheck {
+		{"recovery renders none for no rename tools and names no plan verify command", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)
-			text, err := renderRecoveryWithUncommitted(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", "", "", "", nil, nil, nil, "")
-			return promptCheck{text: text, err: err, contains: []string{"surgical Edits.\n\nnone\n", "verify command follows:\n\nnone\n"}, notContains: []string{"\n- \n"}}
+			text, err := renderRecoveryWithUncommitted(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", "", "", "", "none", nil, nil)
+			return promptCheck{text: text, err: err, contains: []string{"surgical Edits.\n\nnone\n"}, notContains: []string{"\n- \n", "verify command follows"}}
 		}},
-		{"fork renders each verify tier as a bullet, verbatim and in order", func(t *testing.T) promptCheck {
+		{"fork renders the gate tier lines verbatim", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)
-			text, _, err := renderForkWithPack(alpha, root, stencilsDir, newTestSpecsDir(t), "", 2, "", websterengine.PackLayoutFile, nil, testVerifyTiers, nil, "")
-			return promptCheck{text: text, err: err, contains: []string{testVerifyTiersBullets}, notContains: []string{"{{.verify_tiers}}"}}
+			text, _, err := renderForkWithPack(alpha, root, stencilsDir, newTestSpecsDir(t), "", 2, "", websterengine.PackLayoutFile, nil, testGateTiers, nil)
+			return promptCheck{text: text, err: err, contains: []string{"follow:\n\n" + testGateTiers + "\n\n"}, notContains: []string{"{{.gate_tiers}}"}}
 		}},
-		{"recovery renders each verify tier as a bullet, verbatim and in order", func(t *testing.T) promptCheck {
+		{"recovery renders the gate tier lines verbatim", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)
-			text, err := renderRecoveryWithUncommitted(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", "", "", "", testVerifyTiers, nil, nil, "")
-			return promptCheck{text: text, err: err, contains: []string{testVerifyTiersBullets}, notContains: []string{"{{.verify_tiers}}"}}
-		}},
-		{"fork renders none for no verify tiers", func(t *testing.T) promptCheck {
-			root, stencilsDir := testLayout(t)
-			text, _, err := renderForkWithPack(alpha, root, stencilsDir, newTestSpecsDir(t), "", 2, "", websterengine.PackLayoutFile, nil, nil, nil, "")
-			return promptCheck{text: text, err: err, contains: []string{"follow:\n\nnone\n\n"}, notContains: []string{"\n- \n", "{{.verify_tiers}}"}}
-		}},
-		{"recovery renders none for no verify tiers", func(t *testing.T) promptCheck {
-			root, stencilsDir := testLayout(t)
-			text, err := renderRecoveryWithUncommitted(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", "", "", "", nil, nil, nil, "")
-			return promptCheck{text: text, err: err, contains: []string{"follow:\n\nnone\n\n"}, notContains: []string{"\n- \n", "{{.verify_tiers}}"}}
+			text, err := renderRecoveryWithUncommitted(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", "", "", "", testGateTiers, nil, nil)
+			return promptCheck{text: text, err: err, contains: []string{"follow:\n\n" + testGateTiers + "\n\n"}, notContains: []string{"{{.gate_tiers}}"}}
 		}},
 		{"recovery renders none for a clean worktree", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)
@@ -852,11 +848,11 @@ func TestRenderPrompts(t *testing.T) {
 		{"fork with a nil pack locates by quarry and renders the pack-off bytes", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)
 			specsDir := newTestSpecsDir(t)
-			text, packFile, err := renderForkWithPack(alpha, root, stencilsDir, specsDir, "", 2, "", websterengine.PackLayoutFile, nil, nil, nil, "")
+			text, packFile, err := renderForkWithPack(alpha, root, stencilsDir, specsDir, "", 2, "", websterengine.PackLayoutFile, nil, "none", nil)
 			if packFile != "" {
 				t.Errorf("nil-pack fork rendered a pack file %q; want none", packFile)
 			}
-			cardText, cardPackFile, cardErr := renderForkWithPack(alpha, root, stencilsDir, specsDir, "", 2, "", websterengine.PackLayoutCard, nil, nil, nil, "")
+			cardText, cardPackFile, cardErr := renderForkWithPack(alpha, root, stencilsDir, specsDir, "", 2, "", websterengine.PackLayoutCard, nil, "none", nil)
 			if cardPackFile != "" {
 				t.Errorf("nil-pack fork in the per-card layout rendered a pack file %q; want none", cardPackFile)
 			}
@@ -893,7 +889,7 @@ func TestRenderPrompts(t *testing.T) {
 			twoCards := batcher.Batch{Cards: []planparser.Card{alpha.Cards[0], beta}}
 			text, err := renderForkPromptAndPack(t, twoCards, root, stencilsDir, specsDir, pack)
 
-			prompt, _, fileErr := renderForkWithPack(twoCards, root, stencilsDir, specsDir, "", 2, "", websterengine.PackLayoutFile, pack, nil, nil, "")
+			prompt, _, fileErr := renderForkWithPack(twoCards, root, stencilsDir, specsDir, "", 2, "", websterengine.PackLayoutFile, pack, "none", nil)
 			if fileErr == nil && strings.Contains(prompt, "lyx loom card-pack") {
 				t.Errorf("file-layout prompt holds the per-card verb %q", "lyx loom card-pack")
 			}
@@ -971,7 +967,7 @@ func TestRenderPrompts(t *testing.T) {
 			}}}}
 			root, stencilsDir := testLayout(t)
 			specsDir := newTestSpecsDir(t)
-			text, packFile, err := renderForkWithPack(alpha, root, stencilsDir, specsDir, "", 2, "", websterengine.PackLayoutCard, pack, nil, nil, "")
+			text, packFile, err := renderForkWithPack(alpha, root, stencilsDir, specsDir, "", 2, "", websterengine.PackLayoutCard, pack, "none", nil)
 			if packFile != "" {
 				t.Errorf("per-card fork rendered a pack file %q; want none", packFile)
 			}
@@ -990,7 +986,7 @@ func TestRenderPrompts(t *testing.T) {
 			if err := os.Remove(stencilstore.Path(stencilsDir, "webster-fragment-pack-start-card")); err != nil {
 				t.Fatalf("Remove(per-card start stencil) = %v; want nil", err)
 			}
-			_, _, err := renderForkWithPack(alpha, root, stencilsDir, newTestSpecsDir(t), "", 2, "", websterengine.PackLayoutCard, pack, nil, nil, "")
+			_, _, err := renderForkWithPack(alpha, root, stencilsDir, newTestSpecsDir(t), "", 2, "", websterengine.PackLayoutCard, pack, "none", nil)
 			return promptCheck{err: err, wantErr: true}
 		}},
 		{"recovery locates by quarry and carries no pack section", func(t *testing.T) promptCheck {
@@ -1063,7 +1059,7 @@ func TestRenderPrompts(t *testing.T) {
 			root, stencilsDir := testLayout(t)
 			text, err := renderVerifyFix(reportPath, root, stencilsDir, "")
 			return promptCheck{text: text, err: err,
-				contains:    []string{reportPath, testOutcomePath, testSummaryPath, "_lyx/plan"},
+				contains:    []string{reportPath, testOutcomePath, testSummaryPath, "_lyx/plan", "run `" + testFixGate + "` as a foreground Bash call"},
 				notContains: []string{"{{"}}
 		}},
 		{"fixer prompt refuses an empty report path", func(t *testing.T) promptCheck {

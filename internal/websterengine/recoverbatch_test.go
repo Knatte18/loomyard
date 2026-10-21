@@ -124,6 +124,7 @@ func newRecoverFixtureOver(t *testing.T, worktree string, git websterengine.Git)
 		State:      state,
 		Roles:      roles,
 		Config:     websterengine.Config{SelfFixCap: 2, RecoveryTimeoutMin: 30},
+		Gate:       testGateConfig(),
 		Engines:    shuttlefake.EngineSet(engine),
 		Reed:       reed,
 		Stopper:    runner,
@@ -1024,9 +1025,7 @@ type recoverSpawnCase struct {
 	batch int
 	// setup seeds the state the decision is made over; nil leaves the batch unrecorded.
 	setup func(fx *recoverFixture)
-	// unreadable is a worktree-relative directory chmodded 0o000 after setup and restored at cleanup, skipping the row where permissions do not bind.
-	unreadable string
-	check      func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error)
+	check func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error)
 }
 
 // TestRecoverSpawnOrAttach asserts RecoverSpawnOrAttach's spawn-or-attach decision for the state a batch is in:
@@ -1666,14 +1665,17 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 			},
 		},
 		{
-			name: "the prompt carries the hub's rename tools and the plan's verify command",
+			name: "the prompt carries the hub's rename tools and the rendered gate calls",
 			setup: func(fx *recoverFixture) {
 				fx.Deps.RenameTools = []string{"rename Go symbols with `gopls rename`"}
-				fx.Deps.Plan.Verify = "go test ./..."
 			},
 			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
 				requireSpawned(t, spawned, err)
-				for _, want := range []string{"- rename Go symbols with `gopls rename`\n", "verify command follows:\n\ngo test ./...\n"} {
+				for _, want := range []string{
+					"- rename Go symbols with `gopls rename`\n",
+					"  - `lyx gate test --wait --tier 0 --card 1-json-flag`\n  - `lyx loom lint-comments`",
+					"- `lyx gate test --wait --tier 0 --tier 1 --card 1-json-flag`",
+				} {
 					if !strings.Contains(fx.Engine.LastPrompt, want) {
 						t.Errorf("recovery prompt does not contain %q; got:\n%s", want, fx.Engine.LastPrompt)
 					}
@@ -1681,35 +1683,17 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 			},
 		},
 		{
-			name: "a marked guard test renders the same guard step the begin prompt carries",
+			name: "a dangling card list refuses before archiving the stale report or starting a strand",
 			setup: func(fx *recoverFixture) {
-				writeWorktreeFile(t, fx.Worktree, "go.mod", "module m\n")
-				writeWorktreeFile(t, fx.Worktree, "internal/g/g_test.go", guardSourceMarked)
-			},
-			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
-				requireSpawned(t, spawned, err)
-				want := "  - `lyx gate test --tags integration ./internal/g -- -run '^(TestG)$'`\n  - `lyx loom lint-comments`"
-				if !strings.Contains(fx.Engine.LastPrompt, want) {
-					t.Errorf("recovery prompt does not contain %q; got:\n%s", want, fx.Engine.LastPrompt)
-				}
-			},
-		},
-		{
-			name: "an unreadable worktree directory refuses before archiving the stale report or starting a strand",
-			setup: func(fx *recoverFixture) {
-				writeWorktreeFile(t, fx.Worktree, "go.mod", "module m\n")
-				writeWorktreeFile(t, fx.Worktree, "internal/locked/l.go", "package l\n")
+				fx.Deps.Gate.Gates["card"] = []int{7}
 				writeWorktreeFile(t, fx.ReportsDir, websterengine.ReportFileName(1, "json-flag"), "status: FAILED\nhead_sha: deadbeef\n")
 			},
-			unreadable: "internal/locked",
 			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
 				if err == nil || spawned {
 					t.Fatalf("RecoverSpawnOrAttach() = spawned %v, error %v; want a refusal", spawned, err)
 				}
-				for _, want := range []string{"internal/locked", "way forward: transient, re-run `lyx webster recover-batch 1`"} {
-					if !strings.Contains(err.Error(), want) {
-						t.Errorf("error %q lacks %q", err, want)
-					}
+				if !strings.Contains(err.Error(), "lyx config gate") {
+					t.Errorf("error %q does not name lyx config gate", err)
 				}
 				if fx.Engine.PrepareCalls != 0 {
 					t.Errorf("prepareCalls = %d; want no strand started", fx.Engine.PrepareCalls)
@@ -1727,11 +1711,6 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 			fx := newRecoverFixture(t)
 			if tc.setup != nil {
 				tc.setup(fx)
-			}
-			if tc.unreadable != "" {
-				locked := filepath.Join(fx.Worktree, filepath.FromSlash(tc.unreadable))
-				makeUnreadable(t, locked)
-				t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
 			}
 			batch := tc.batch
 			if batch == 0 {

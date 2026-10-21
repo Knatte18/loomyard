@@ -269,7 +269,7 @@ func TestRecoverBatch_UncommittedPathsPrompt(t *testing.T) {
 		writeWorktreeFile(t, fx.Worktree, path, content)
 	}
 	fx.Deps.State.MasterSessionID = "s1"
-	fx.Deps.VerifyTiers = []string{"run `go test` on the listed packages"}
+	fx.Deps.GateTiers = "- tier1: unit tests"
 	fx.Deps.State.Batches[1] = &websterengine.BatchState{Slug: "json-flag", Kind: "fork", Terminal: true, Status: websterengine.DigestStatusFailed, StartSHA: s.base, RecoverySessions: []string{"earlier-recovery"}}
 	fx.Engine.AuditForksFn = func(session, _ string) (shuttleengine.ForkAudit, error) {
 		if session == "earlier-recovery" {
@@ -292,7 +292,7 @@ func TestRecoverBatch_UncommittedPathsPrompt(t *testing.T) {
 	if !strings.Contains(fx.Engine.LastPrompt, "What the worktree holds\n\n"+want+"\n") {
 		t.Errorf("recovery prompt does not hold the grouped uncommitted paths %q; got:\n%s", want, fx.Engine.LastPrompt)
 	}
-	if !strings.Contains(fx.Engine.LastPrompt, "- run `go test` on the listed packages\n") {
+	if !strings.Contains(fx.Engine.LastPrompt, "- tier1: unit tests\n") {
 		t.Errorf("recovery prompt does not hold the verify tier bullet; got:\n%s", fx.Engine.LastPrompt)
 	}
 }

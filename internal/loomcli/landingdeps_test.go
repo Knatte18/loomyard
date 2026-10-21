@@ -84,12 +84,12 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 	v := reflect.ValueOf(deps)
 	typ := v.Type()
 	// The loom source leaves the Publish skip seam nil, so the walk skips it.
-	if deps.PublishVerifySkip != nil {
-		t.Error("landingDeps(...).PublishVerifySkip is set for loom's verify source; want nil")
+	if deps.PublishSkip != nil {
+		t.Error("landingDeps(...).PublishSkip is set for loom's verify source; want nil")
 	}
 	for i := 0; i < v.NumField(); i++ {
 		field := v.Field(i)
-		if typ.Field(i).Name == "PublishVerifySkip" {
+		if typ.Field(i).Name == "PublishSkip" {
 			continue
 		}
 		if field.IsZero() {

@@ -12,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -258,7 +259,17 @@ Example:
 					clihelp.SetExit(cmd.Context(), output.Err(out, "loom: validate-plan: "+loadErr.Error()))
 					return nil
 				}
-				pc = loomshed.PlanContext{RenameTools: language.RenameTools, DecisionRecordPath: c.env.PatternRecordPath}
+				// An absent gate.yaml refuses no raw command, so the verb stays usable in a repo without one.
+				var refuseRaw []string
+				gateCfg, gateErr := gateslot.LoadConfig(fabricengine.ConfigDirs(c.location))
+				switch {
+				case gateErr == nil:
+					refuseRaw = gateCfg.RefuseRaw
+				case !errors.Is(gateErr, gateslot.ErrConfigAbsent):
+					clihelp.SetExit(cmd.Context(), output.Err(out, "loom: validate-plan: "+gateErr.Error()))
+					return nil
+				}
+				pc = loomshed.PlanContext{RenameTools: language.RenameTools, RefuseRaw: refuseRaw, DecisionRecordPath: c.env.PatternRecordPath}
 			}
 
 			var findings []planglyph.Finding

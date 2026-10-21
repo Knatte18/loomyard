@@ -44,6 +44,10 @@ type Config struct {
 
 	// DenyPython switches the python guard of the shell-guard table for every engine; off in a Python target repo.
 	DenyPython bool `yaml:"deny_python"`
+
+	// RefuseRaw lists the command prefixes the shell guard refuses to run raw, from the hub's gate config.
+	// No config file sets it: an engine's Prepare fills it on its copy of the config, so it has no yaml key.
+	RefuseRaw []string `yaml:"-"`
 }
 
 // ConfigSpec returns shuttle's layered-load spec.

@@ -25,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/runprofile"
@@ -164,7 +165,10 @@ func TestEditOne(t *testing.T) {
 				fmt.Fprint(w, tt.syncOutput)
 				return tt.syncExit
 			}
-			code := editOne(worktreeDirs(baseDir), &out, tt.module, tt.editor, sync, nil)
+			// An existing board dir makes the worktree a hub's, the case that keeps its fabric sync.
+			dirs := worktreeDirs(baseDir)
+			dirs.board = t.TempDir()
+			code := editOne(dirs, &out, tt.module, tt.editor, sync, nil)
 
 			if code != tt.wantCode {
 				t.Errorf("editOne() = %d; want %d; output: %q", code, tt.wantCode, out.String())
@@ -608,13 +612,21 @@ func TestDispatchSet(t *testing.T) {
 				seedModuleConfig(t, baseDir, "loom", tt.seed)
 			}
 
+			// A hub's board dir makes the worktree a hub's, the case that keeps its fabric sync.
+			layout := makeLayoutAt(baseDir)
+			if tt.wantSyncs > 0 {
+				if err := os.MkdirAll(fabricengine.BoardDir(layout.HubPath), 0o755); err != nil {
+					t.Fatalf("create the hub's board dir: %v", err)
+				}
+			}
+
 			var out bytes.Buffer
 			editorCalls, syncCalls := 0, 0
 			sync := func(w io.Writer) int {
 				syncCalls++
 				return 0
 			}
-			code := dispatch(makeLayoutAt(baseDir), &out, tt.args, countingEditor(&editorCalls), sync, nil, tt.printOnly, tt.setFlags, "", nil, true)
+			code := dispatch(layout, &out, tt.args, countingEditor(&editorCalls), sync, nil, tt.printOnly, tt.setFlags, "", nil, true)
 
 			if code != tt.wantCode {
 				t.Fatalf("dispatch(--set) = %d; want %d; output: %q", code, tt.wantCode, out.String())
@@ -678,8 +690,8 @@ func TestDispatchHubWideBoard(t *testing.T) {
 	const listShaped = "types:\n  bug: a defect\nlabels:\n  - old\n"
 	loomRival := configengine.SparseBaseHeader + "review_max_bounces: 3\n"
 
-	// darnTreeVerify is the tree-scoped command the darn rows seed and save; it holds the {targets} marker the loader requires.
-	const darnTreeVerify = "lyx gate test --tags integration --guards {targets}"
+	// darnTreeVerify is the tree-scoped command the darn rows seed and save; it is one waiting gate call holding the {targets} marker the loader requires.
+	const darnTreeVerify = "lyx gate test --wait --tier 1 {targets}"
 	darnSeeded := darnWithTreeScope("\n  tools: ./tools/...", darnTreeVerify)
 
 	rows := []struct {
@@ -1269,7 +1281,9 @@ func TestDispatchLayers(t *testing.T) {
 		// seedMachine is the module's machine file before the call; empty seeds nothing.
 		seedMachine string
 		// editor is the editor the call opens; nil fails the test if one opens.
-		editor   configengine.EditorFunc
+		editor configengine.EditorFunc
+		// noBoard removes the hub's board dir, so the worktree is a standalone one.
+		noBoard  bool
 		guard    func(fx hubFixture) func() (string, error)
 		wantCode int
 		// wantErr is a substring of the error envelope; empty means a success.
@@ -1532,21 +1546,21 @@ func TestDispatchLayers(t *testing.T) {
 		},
 		{
 			name: "machine layer writes a machine key uncommitted from the prime", module: "gate", layer: "machine",
-			setFlags: []string{"go_parallel=8"}, seedBoard: gateTemplate(),
+			setFlags: []string{"tier_parallel.tier0=8"}, seedBoard: gateTemplate(),
 			check: func(t *testing.T, fx hubFixture, out string) {
-				assertFile(t, configengine.MachineFile(fx.board, "gate"), "go_parallel: 8\n", false)
+				assertFile(t, configengine.MachineFile(fx.board, "gate"), "tier_parallel:\n    tier0: \"8\"\n", false)
 			},
 		},
 		{
 			name: "machine layer set is refused by a refusing guard and leaves no file", module: "gate", layer: "machine",
-			setFlags: []string{"go_parallel=8"}, seedBoard: gateTemplate(), wantCode: 1, wantErr: refused, guard: refusingGuard,
+			setFlags: []string{"tier_parallel.tier0=8"}, seedBoard: gateTemplate(), wantCode: 1, wantErr: refused, guard: refusingGuard,
 			check: func(t *testing.T, fx hubFixture, out string) {
 				assertFile(t, configengine.MachineFile(fx.board, "gate"), "", true)
 			},
 		},
 		{
 			name: "machine layer set is refused from a slug-named session and leaves no file", module: "gate", layer: "machine",
-			setFlags: []string{"go_parallel=8"}, seedBoard: gateTemplate(), wantCode: 1, wantErr: taskSession,
+			setFlags: []string{"tier_parallel.tier0=8"}, seedBoard: gateTemplate(), wantCode: 1, wantErr: taskSession,
 			guard: func(fx hubFixture) func() (string, error) {
 				return func() (string, error) { return hubWriteRefusal(fx.layout, taskSession) }
 			},
@@ -1563,10 +1577,10 @@ func TestDispatchLayers(t *testing.T) {
 		},
 		{
 			name: "machine layer refuses a value the loader rejects naming the key and leaves the file", module: "gate", layer: "machine",
-			setFlags: []string{"go_parallel=0"}, seedBoard: gateTemplate(), seedMachine: "go_parallel: 8\n", wantCode: 1, wantErr: "go_parallel",
+			setFlags: []string{"tier_parallel.tier0=0"}, seedBoard: gateTemplate(), seedMachine: "tier_parallel:\n  tier0: 8\n", wantCode: 1, wantErr: "tier_parallel.tier0",
 			check: func(t *testing.T, fx hubFixture, out string) {
 				assertJSONErrContains(t, out, loadWayForward)
-				assertFile(t, configengine.MachineFile(fx.board, "gate"), "go_parallel: 8\n", false)
+				assertFile(t, configengine.MachineFile(fx.board, "gate"), "tier_parallel:\n  tier0: 8\n", false)
 			},
 		},
 		{
@@ -1578,33 +1592,33 @@ func TestDispatchLayers(t *testing.T) {
 		},
 		{
 			name: "machine layer editor save the loader rejects keeps the seeded bytes", module: "gate", layer: "machine",
-			seedBoard: gateTemplate(), seedMachine: "go_parallel: 8\n", editor: fakeEditor("go_parallel: 0\n", nil), wantCode: 1, wantErr: "go_parallel",
+			seedBoard: gateTemplate(), seedMachine: "tier_parallel:\n  tier0: 8\n", editor: fakeEditor("tier_parallel:\n  tier0: 0\n", nil), wantCode: 1, wantErr: "tier_parallel.tier0",
 			check: func(t *testing.T, fx hubFixture, out string) {
 				assertJSONErrContains(t, out, loadWayForward)
-				assertFile(t, configengine.MachineFile(fx.board, "gate"), "go_parallel: 8\n", false)
+				assertFile(t, configengine.MachineFile(fx.board, "gate"), "tier_parallel:\n  tier0: 8\n", false)
 			},
 		},
 		{
 			name: "machine layer editor save the loader rejects leaves no file when there was none", module: "gate", layer: "machine",
-			seedBoard: gateTemplate(), editor: fakeEditor("go_parallel: 0\n", nil), wantCode: 1, wantErr: loadWayForward,
+			seedBoard: gateTemplate(), editor: fakeEditor("tier_parallel:\n  tier0: 0\n", nil), wantCode: 1, wantErr: loadWayForward,
 			check: func(t *testing.T, fx hubFixture, out string) {
 				assertFile(t, configengine.MachineFile(fx.board, "gate"), "", true)
 			},
 		},
 		{
 			name: "machine layer editor save of a closed key is refused naming it and keeps the seeded bytes", module: "gate", layer: "machine",
-			seedBoard: gateTemplate(), seedMachine: "go_parallel: 8\n", editor: fakeEditor("busy_quit_sec: 9\n", nil), wantCode: 1, wantErr: "busy_quit_sec",
+			seedBoard: gateTemplate(), seedMachine: "tier_parallel:\n  tier0: 8\n", editor: fakeEditor("busy_quit_sec: 9\n", nil), wantCode: 1, wantErr: "busy_quit_sec",
 			check: func(t *testing.T, fx hubFixture, out string) {
-				assertFile(t, configengine.MachineFile(fx.board, "gate"), "go_parallel: 8\n", false)
+				assertFile(t, configengine.MachineFile(fx.board, "gate"), "tier_parallel:\n  tier0: 8\n", false)
 			},
 		},
 		{
 			name: "machine layer editor failure aborts and keeps the seeded bytes", module: "gate", layer: "machine",
-			seedBoard: gateTemplate(), seedMachine: "go_parallel: 8\n", editor: fakeEditor("", errors.New("editor failed")), wantCode: 1,
+			seedBoard: gateTemplate(), seedMachine: "tier_parallel:\n  tier0: 8\n", editor: fakeEditor("", errors.New("editor failed")), wantCode: 1,
 			check: func(t *testing.T, fx hubFixture, out string) {
 				path := configengine.MachineFile(fx.board, "gate")
 				assertJSONErrContains(t, out, "aborted: "+path+" unchanged")
-				assertFile(t, path, "go_parallel: 8\n", false)
+				assertFile(t, path, "tier_parallel:\n  tier0: 8\n", false)
 			},
 		},
 		{
@@ -1616,9 +1630,9 @@ func TestDispatchLayers(t *testing.T) {
 		},
 		{
 			name: "print of the machine layer reads the seeded file", module: "gate", layer: "machine", printOnly: true,
-			seedBoard: gateTemplate(), seedMachine: "go_parallel: 8\n",
+			seedBoard: gateTemplate(), seedMachine: "tier_parallel:\n  tier0: 8\n",
 			check: func(t *testing.T, fx hubFixture, out string) {
-				if out != "go_parallel: 8\n" {
+				if out != "tier_parallel:\n  tier0: 8\n" {
 					t.Errorf("print output = %q; want the machine file", out)
 				}
 			},
@@ -1654,7 +1668,7 @@ func TestDispatchLayers(t *testing.T) {
 		},
 		{
 			name: "default layer set the loader rejects ignores a machine file and names neither it nor its layer", module: "gate",
-			setFlags: []string{"go_parallel=0"}, seedBoard: gateTemplate(), seedMachine: "go_parallel: 8\n", wantCode: 1, wantErr: "go_parallel", wantCommits: 1,
+			setFlags: []string{"tier_parallel.tier0=0"}, seedBoard: gateTemplate(), seedMachine: "tier_parallel:\n  tier0: 8\n", wantCode: 1, wantErr: "tier_parallel.tier0", wantCommits: 1,
 			check: func(t *testing.T, fx hubFixture, out string) {
 				assertFile(t, configengine.ConfigFile(fx.board, "gate"), gateTemplate(), false)
 				for _, unwanted := range []string{configengine.MachineFile(fx.board, "gate"), "--layer machine"} {
@@ -1666,9 +1680,47 @@ func TestDispatchLayers(t *testing.T) {
 		},
 		{
 			name: "default layer editor save the loader rejects ignores a machine file and leaves the hub file", module: "gate",
-			seedBoard: gateTemplate(), seedMachine: "go_parallel: 8\n", editor: fakeEditor("go_parallel: 0\n", nil), wantCode: 1, wantErr: "go_parallel", wantCommits: 1,
+			seedBoard: gateTemplate(), seedMachine: "tier_parallel:\n  tier0: 8\n", editor: fakeEditor("tier_parallel:\n  tier0: 0\n", nil), wantCode: 1, wantErr: "tier_parallel.tier0", wantCommits: 1,
 			check: func(t *testing.T, fx hubFixture, out string) {
 				assertFile(t, configengine.ConfigFile(fx.board, "gate"), gateTemplate(), false)
+			},
+		},
+		{
+			name: "default layer sets one gate and every other gate keeps the template list", module: "gate", layer: "default",
+			setFlags: []string{"gates.landing=[0,1]"}, seedBoard: gateTemplate(), wantCommits: 1,
+			check: func(t *testing.T, fx hubFixture, out string) {
+				cfg, err := gateslot.LoadConfig(configengine.Dirs{Anchor: fx.worktree, Board: fx.board})
+				if err != nil {
+					t.Fatalf("gateslot.LoadConfig() error = %v; want the hub file read", err)
+				}
+				if got, want := cfg.Gates["landing"], []int{0, 1}; !slices.Equal(got, want) {
+					t.Errorf("Gates[landing] = %v; want %v", got, want)
+				}
+				if got, want := cfg.Gates["card"], []int{0}; !slices.Equal(got, want) {
+					t.Errorf("Gates[card] = %v; want the template list %v", got, want)
+				}
+			},
+		},
+		{
+			name: "a standalone worktree's gate set writes its own gate.yaml and runs no sync", module: "gate", noBoard: true,
+			setFlags: []string{"slots=6"},
+			check: func(t *testing.T, fx hubFixture, out string) {
+				assertJSONOkContains(t, out, map[string]any{"module": "gate", "message": "edited _lyx/config/gate.yaml"})
+				cfg, err := gateslot.LoadConfig(configengine.Dirs{Anchor: fx.worktree})
+				if err != nil || cfg.Slots != 6 {
+					t.Errorf("gateslot.LoadConfig() = (%+v, %v); want the worktree's own file read with slots 6", cfg, err)
+				}
+			},
+		},
+		{
+			name: "a standalone worktree's gate edit through the editor writes its own gate.yaml and runs no sync", module: "gate", noBoard: true,
+			editor: fakeEditor("slots: 3\nbusy_quit_sec: 120\n", nil),
+			check: func(t *testing.T, fx hubFixture, out string) {
+				assertJSONOkContains(t, out, map[string]any{"module": "gate", "message": "edited _lyx/config/gate.yaml"})
+				cfg, err := gateslot.LoadConfig(configengine.Dirs{Anchor: fx.worktree})
+				if err != nil || cfg.Slots != 3 {
+					t.Errorf("gateslot.LoadConfig() = (%+v, %v); want the worktree's own file read with slots 3", cfg, err)
+				}
 			},
 		},
 		{
@@ -1687,6 +1739,11 @@ func TestDispatchLayers(t *testing.T) {
 		t.Run(row.name, func(t *testing.T) {
 			t.Parallel()
 			fx := newHubFixture(t)
+			if row.noBoard {
+				if err := os.RemoveAll(fx.board); err != nil {
+					t.Fatalf("remove the board dir: %v", err)
+				}
+			}
 			if row.seedBoard != "" {
 				seedModuleConfig(t, fx.board, row.module, row.seedBoard)
 			}

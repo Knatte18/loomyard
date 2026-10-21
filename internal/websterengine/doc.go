@@ -11,9 +11,7 @@
 // webster consumes the pinned flat card-list plan format (see
 // contracts/specs/loom-plan-spec.md) through internal/planparser, the SOLE
 // parser of the on-disk `_lyx/plan/` tree — no code in this package or
-// anywhere else re-derives that grammar; the one remaining plan-level-section
-// consumer here, the verify gate's command read (NewVerifyGate), reads plan.Verify
-// only off the planparser.Plan that planparser.ParsePlan returns. Neither RenderForkPrompt nor
+// anywhere else re-derives that grammar. Neither RenderForkPrompt nor
 // RenderRecoveryPrompt takes a *planparser.Plan at all any more — per the
 // fork-context-hygiene Shared Decision, both render a card's content from its
 // SourcePath pointer, never from an inlined plan-level field.
@@ -69,18 +67,15 @@
 // It is informational like `deviations`, and the prior-batch line and the resume trail carry it to the next fork and a resumed Master.
 // A fork returns FAILED on a failed card gate, card `**Verify:**` or batch gate, never on deviation alone and never on a slot-busy exit.
 // Plan-predicted file impact is frequently incomplete, so treating deviation as failure would make the system impractically brittle.
-// Within one fork's batch, each card lands as its own commit (BatchState.CardSHAs records the ordered per-card SHA trail — one element under the identity batcher, more once a grouping batchifier ships), and each card's own optional `verify:` runs and must pass before that card's commit.
-// After the last card the fork runs the batch gate once, over the batch's packages with `-tags integration`;
-// Go never runs it, and Webster's plan-level verify gate catches a fork that skips it.
-// The fork runs every card gate step, card `verify:` line and the batch gate in the foreground under the gate rule in its system prompt and never backgrounds a call, so its only turn end is its final report.
-// A card's own gate, which begin-batch and recover-batch render into the fork's prompt, is `lyx gate test` over the card's own package directories, one step per module (a directory inside a nested module is tested inside it with `lyx gate test -C <module>` and module-relative paths), one step per line, then one guard step over the root module's `//lyx:guard` tests, and ends with `lyx loom lint-comments`, the comment line-break lint, then `lyx loom lint-pattern`, the PATTERN headroom lint.
-// The guard step is `lyx gate test --tags integration <guard packages> -- -run '^(<guard test names>)$'`.
-// It comes from a walk of the worktree that spawns no process: every directory directly holding a `_test.go` file is scanned through `impactset.FindGuardTests`, skipping, below the root, a directory named `testdata` or `vendor`, one whose name begins with `_` or `.`, and one holding a `go.mod`, each with its whole subtree.
-// A guard package drops out of a card's step once the cards up to and including it have emptied it, so a step never names a directory gone by that card's gate:
-// a card's Rename old sides and Delete targets remove the files they cover (`planparser.RefCovers`), and its Create targets and Rename new sides add `.go` files back.
-// A scan error sitting in a test file's content, and a step longer than `impactset.MaxCommandLength`, never refuse: the card gates render without the step, and a prompt line after the gate list says so, with the plan-level verify still running the guard tests.
-// When the failing file lies in a package a card targets, a second line points that card at fixing it under its commit.
-// A path the walk cannot read, or a test file it cannot open, refuses begin-batch and recover-batch as a transient before they mutate anything.
+// Within one fork's batch, each card lands as its own commit (BatchState.CardSHAs records the ordered per-card SHA trail — one element under the identity batcher, more once a grouping batchifier ships), and a card that declares a `**Verify:**` line has `lyx gate card-verify` run for it, which must pass before the next card.
+// After the last card the fork runs the batch gate once;
+// Go never runs it, and Webster's plan-level `final` gate catches a fork that skips it.
+// The fork runs every card gate step, `lyx gate card-verify` call and the batch gate in the foreground under the gate rule in its system prompt and never backgrounds a call, so its only turn end is its final report.
+// A card's own gate, which begin-batch and recover-batch render into the fork's prompt, is the hub's `card` gate call, `lyx gate test --wait --tier <n>... --card <card id>` from `gateslot.Config.GateCall`, then `lyx loom lint-comments`, the comment line-break lint, then `lyx loom lint-pattern`, the PATTERN headroom lint, one step per line.
+// The gate call computes the card's packages and runs the guard step itself, so Go renders no package list and scans for no guard test.
+// The batch gate is the hub's `batch` gate call over every card of the batch, `--card <card id>` once per card.
+// Both calls are rendered from `BeginDeps.Gate` and `RecoverDeps.Gate`, which `webstercli` loads from the hub's `gate.yaml`;
+// a hub whose `card` or `batch` list the config cannot give refuses begin-batch and recover-batch with the config's way forward before they mutate anything.
 // The implementer body tells a fork to fix a guard step failure on a file outside the card's list under the card's commit, moving a pin only when the pin itself must move.
 //
 // record-batch and recover-batch apply one merge-only rule when they cross-check the consumed report's `head_sha` against the worktree's HEAD,
@@ -442,8 +437,9 @@
 // inherits no session context (see the fork-context-hygiene Shared
 // Decision).
 // The master and the recovery strand both load `scribe:prose`, `scribe:code-quality` and `scribe:testing` through their spawn spec's skills (`roleSkills`), followed by the hub's language skills from the `RunDeps.LanguageSkills` and `RecoverDeps.LanguageSkills` their wiring loads.
-// The fork and recovery prompts render the hub's verify tiers from `BeginDeps.VerifyTiers` and `RecoverDeps.VerifyTiers`, `none` for an empty list.
-// They also fill the implementer body's required `rename_tools` marker from `BeginDeps.RenameTools` and `RecoverDeps.RenameTools`, which the hub's `language.yaml` supplies and a standalone run leaves empty, and its required `plan_verify` marker from the plan's `## verify:` command; both render `none` when empty.
+// The fork and recovery prompts render the hub's tiers and gate lists from `BeginDeps.GateTiers` and `RecoverDeps.GateTiers`, the rendered `gate.yaml` lines their wiring loads, `none` when the hub declares no tier.
+// They also fill the implementer body's required `rename_tools` marker from `BeginDeps.RenameTools` and `RecoverDeps.RenameTools`, which the hub's `language.yaml` supplies and a standalone run leaves empty; both render `none` when empty.
+// The prompts render no plan `## verify:` command, an in-flight plan's included.
 // Their opening prompts render the parent directive (internal/parentdirective) from Geometry.ParentName, which hubgeom.WebsterGeometry fills from the worktree's origin record.
 // The master and recovery prompts also render the task's declared PATTERN changes, read from Geometry.DecisionRecordPath; standalone mode leaves it empty and renders none.
 // Forks get no skills and no directive: they inherit the master's context.
@@ -580,7 +576,7 @@
 // Merriam spawns one fixer fork in the background with the prompt Run rendered at entry (RenderVerifyFixPrompt, into the prompts dir as verify-fix.md), ends its turn, and on the fork's notification rewrites its outcome and summary files, which re-arrives at the gate.
 // The gate's re-prompt line and its findings both open with the way forward, naming the fixer-fork step and the prompt file's path, so the rule stands where Merriam reads the failure.
 // The waiting turn end in between is no arrival.
-// The fixer fixes the cause in source, never deletes, skips or weakens a test, never touches the plan directory or `_lyx`, commits each fix as `fix: <summary>` and does not run the plan-level verify.
+// The fixer fixes the cause in source, never deletes, skips or weakens a test, never touches the plan directory or `_lyx`, commits each fix as `fix: <summary>` and does not run the plan-level verify; before it reports it runs the hub's `round` gate call over the computed scope, which Run renders from the told Geometry.GateConfig into the prompt's `fix_gate` marker.
 // Its commits skip record-batch's done-checks, drift detection and glyph scope guard.
 // They are bounded by the gate's commit check, the run-exit fork audit, the gate's own verify and Webster-Review, which reviews the committed range.
 // The plan directory and `_lyx` sit outside every code commit, so the run-exit fork audit is what catches a fixer write there:
@@ -588,7 +584,7 @@
 //
 // # The verify gate
 //
-// Run hands Merriam's spawn the plan-level verify as one must-pass gate entry named `verify` (NewVerifyGate), beside any entry the caller's RunDeps.Gate carries;
+// Run hands Merriam's spawn the hub's `final` gate as one must-pass gate entry named `verify` (NewVerifyGate), beside any entry the caller's RunDeps.Gate carries;
 // a RunDeps.Gate that already names `verify` is refused, so a recipe row cannot add a second entry.
 // Its attempt budget is Config.VerifyGateAttempts, and the count and the pre-fix head live in the closure's memory for one shuttle run, so an attach restarts them from zero.
 // The shipped Webster row supplies no gates of its own, and StartMaster is Merriam's only start, so every Merriam carries the spec.
@@ -598,8 +594,8 @@
 // Once a pre-fix head is recorded, every commit from it to HEAD on the first-parent chain must be a non-merge commit or a clean parent merge (fixCommitRejection, in gitwrap.go);
 // any other fails the gate `Terminal`, which ends the run at once with the commit and the reason.
 // The non-merge commits in that range, with the `Pattern-Departure:` trailers their messages declare, are recorded in the gate's notes at each evaluation, and Run appends them after the wait as a `## Verify gate fix commits` section of summary.md (AppendVerifyGateFixCommits): one bullet per `fix:` commit, then one per departure.
-// A plan with no `## verify:` section passes with a warning.
-// Otherwise verifytree.Verify runs the command under the site label `webster gate`, and a pass records the tree.
+// Otherwise the closure renders `lyx gate test --wait --tier <n> ... --all` for the `final` gate's list from the told Geometry.GateConfig, read at each arrival, and verifytree.Verify runs that call under the site label `webster gate`; a pass records the tree, keyed by the rendered call.
+// A config that cannot be loaded, or a `final` list the config refuses, is the gate's returned error naming `lyx config gate`, never a pass.
 // A failure is parsed from the log and rerun once: a rerun pass passes the gate, and the identities that failed once are flaky, which Run reports after the wait as a warning, a summary.md section and a friction note (VerifyGateNotes.Apply).
 // A failure that survives the rerun returns findings.
 // A run that outlives the verify timeout is never rerun, since a hang is not flakiness: it fails the gate at once,

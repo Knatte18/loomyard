@@ -1,7 +1,7 @@
 <!-- This is the verify-gate fixer fork prompt for webster.
      It is filled by RenderVerifyFixPrompt (render.go) via internal/stencil and written to a prompt file under the webster prompts directory at run entry;
      Merriam's Agent-tool fork call is the same "Read this file and do exactly and only what it says: <this file's own path>" idiom used for a batch's own fork prompt.
-     Five markers below are required top-level {{.X}} substitutions ({{.report_path}}, {{.plan_dir}}, {{.worktree_root}}, {{.outcome_path}}, {{.summary_path}});
+     Six markers below are required top-level {{.X}} substitutions ({{.report_path}}, {{.plan_dir}}, {{.worktree_root}}, {{.outcome_path}}, {{.summary_path}}, {{.fix_gate}});
      stencil.FillOptional requires all of them non-empty.
      {{.friction_directive}} is the one optional marker (filled via stencil.FillOptional), rendering as nothing when Tier 2 is off.
      There are no {{if}}/{{range}} conditionals anywhere in this file. -->
@@ -46,8 +46,7 @@ You never run a Bash call in the background, and you end your turn only after yo
 - A fix that departs from a PATTERN entry because the entry forbids the way the findings call for records the departure as a `Pattern-Departure:` trailer in that `fix:` commit, in the shape `loom-plan-spec.md`'s `## Pattern-Departure trailer` section defines.
 - Never write, create or delete Merriam's contract files `{{.outcome_path}}` and `{{.summary_path}}`, even though you inherit Merriam's instruction to write them as a final action.
   A fixer writing either forges the run's terminal judgment and halts the run at its exit audit.
-- Before you report, run `lyx gate test --tags integration <the findings' packages>` as a foreground Bash call under the gate rule in your system prompt, and fix what it still reports.
-  A slot-busy exit (`lyx gate test` answering `slot_free: false` and naming the slot holders) is re-run, never counted as a failure.
+- Before you report, run `{{.fix_gate}}` as a foreground Bash call under the gate rule in your system prompt, and fix what it still reports.
 - Leave the worktree clean: no uncommitted change may remain when you end your turn.
 
 ## Your final action

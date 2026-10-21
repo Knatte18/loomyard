@@ -296,7 +296,7 @@ func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 		PublishFailure:    env.PublishFailure,
 		WebsterRecord:     env.WebsterRecord,
 		MergeReview:       env.MergeReview,
-		VerifyTiers:       env.VerifyTiers,
+		GateTiers:         env.GateTiers,
 		RubricStencil:     rubricStencil,
 		Models:            segment.Bouncer,
 		ClusterExcludes:   clusterExcludes,

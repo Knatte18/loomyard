@@ -13,7 +13,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
-	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -92,6 +91,9 @@ type Env struct {
 	VerifyDir string
 	// VerifyCommand is the told verify-command source, read at each arrival by the gate resolver's "verify" gate, which requires it.
 	VerifyCommand func() (string, error)
+	// Round is the told source of the hub's `round` gate, read at each arrival by the gate resolver's "verify" gate, which requires it.
+	// Its error is the gate's returned error.
+	Round func() (loomshed.RoundGate, error)
 	// VerifyMergeBase is the told reader of the task branch's merge base with the parent branch, read by the gate resolver's "verify" gate.
 	// It is the base of the headroom lint, or of both lints when VerifyTreeScope is set; nil skips the headroom lint.
 	VerifyMergeBase func() (string, error)
@@ -99,18 +101,15 @@ type Env struct {
 	// It answers the tree-scoped command and true for a diff wholly under the configured trees, and false otherwise.
 	// Set, it alone selects the gate's darn form and requires VerifyMergeBase; nil, which a loom run leaves, keeps the round form.
 	VerifyTreeScope func() (string, bool, error)
-	// GateSlots is the hub gate-slot pool every Go-side verify a row runs acquires from, read by the gate resolver's "verify" gate.
-	// Nil where no hub is wired, which runs the verify unslotted.
-	GateSlots *gateslot.Pool
 	// PublishFailure returns the Publish failure note the Webster-Review rubric renders, read by the BurlerReview and Bouncer entries each time a segment builds its producers.
 	// Nil renders `none`.
 	PublishFailure func() string
 	// WebsterRecord returns the webster run-record note the Plan-Review rubric renders, read by the BurlerReview and Bouncer entries each time a segment builds its producers.
 	// Nil renders `none`.
 	WebsterRecord func() string
-	// VerifyTiers is the hub's verify tier list the Plan-Review rubric's verify_tiers marker renders, read by the BurlerReview and Bouncer entries each time a segment builds its producers.
-	// Nil renders `none`.
-	VerifyTiers []string
+	// GateTiers is the hub's rendered tier and gate-list lines the Plan-Review rubric's gate_tiers marker renders, read by the BurlerReview and Bouncer entries each time a segment builds its producers.
+	// The empty string renders `none`.
+	GateTiers string
 	// StatusPath is the told status file path, read by LoomPreflight.
 	StatusPath string
 	// StatusLockPath is the told status lock file path, read by LoomPreflight.
@@ -132,6 +131,8 @@ type Env struct {
 	PatternRecordPath string
 	// RenameTools is the hub's language.yaml rename_tools list, read by the plan gates' rename-tool-missing check.
 	RenameTools []string
+	// RefuseRaw is the hub's gate.yaml refuse_raw list, read by the plan gates' verify-raw-command check; empty refuses nothing.
+	RefuseRaw []string
 	// SupportLogPath is the told support log path, read by the gate resolver's "discussion" gate.
 	SupportLogPath string
 	// RelevantPath is the told relevant list path.

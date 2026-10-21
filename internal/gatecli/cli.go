@@ -1,4 +1,4 @@
-// cli.go assembles the cobra command tree for the gate module and the argument assembly of `lyx gate test`.
+// cli.go assembles the cobra command tree for the gate module, the flags of `lyx gate test` and the refusal for a failed guard scan.
 
 package gatecli
 
@@ -9,14 +9,12 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/impactset"
-	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -24,65 +22,86 @@ import (
 // It is EX_TEMPFAIL and no failure: the caller runs the same command again, and can tell a busy hub from a failing test run.
 const SlotBusyExit = 75
 
-// defaultGoBinary is the go command `lyx gate test` runs.
+// defaultGoBinary is the go command `lyx gate test` builds `lyx` with.
 const defaultGoBinary = "go"
+
+// defaultPreTierCeiling bounds the work before a call's first tier.
+const defaultPreTierCeiling = 10 * time.Minute
 
 // Command builds the cobra command tree for the gate module.
 func Command() *cobra.Command {
-	return newCommand(defaultGoBinary, defaultSamplePeriod, shuttleengine.DefaultAwaitCap)
+	return newCommand(defaultGoBinary, defaultSamplePeriod, shuttleengine.DefaultAwaitCap, defaultPreTierCeiling, time.Minute)
 }
 
-// newCommand builds the gate command tree over goBinary, the go command the test verb spawns, samplePeriod, how often the CPU watchdog samples go test's process tree, and slotWait, the longest the test verb waits for a free slot.
-func newCommand(goBinary string, samplePeriod, slotWait time.Duration) *cobra.Command {
+// newCommand builds the gate command tree over goBinary, the go command a prebuilding tier builds `lyx` with, samplePeriod, how often the CPU watchdog samples a tier's process tree, slotWait, the longest the test verb waits for a free slot without --wait, preTierCeiling, the bound on the work before the first tier, and timeoutUnit, the length of one `timeout_min` minute.
+func newCommand(goBinary string, samplePeriod, slotWait, preTierCeiling, timeoutUnit time.Duration) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "gate",
-		Short: "run go tests inside the hub's gate-slot pool",
+		Short: "run the hub's test tiers inside the hub's gate-slot pool",
 		// ArbitraryArgs lets a standalone RunCLI, where this group is the cobra root, reach GroupRunE instead of cobra's own unknown-command error.
 		Args: cobra.ArbitraryArgs,
 		RunE: clihelp.GroupRunE,
 	}
 
-	var dir, tags string
-	var guards bool
+	var dir, tags, base string
+	var tiers []int
+	var cards []string
+	var all, guards, wait bool
 	testCmd := &cobra.Command{
-		Use:         "test <packages>...",
-		Short:       "run go test over packages once a hub gate slot is free",
+		Use:         "test [<targets>...]",
+		Short:       "run the hub's test tiers once their gate slots are free",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: fmt.Sprintf(`test runs "go test" over the named packages inside one of the hub's gate slots,
-so the hub never runs more gate builds and tests at once than its configured slot count allows.
-It waits for a free slot for up to %s, under the prompt-cache lifetime.
-When none frees, it prints ok with slot_free false naming the holders and exits %d, which is no failure:
+		Long: fmt.Sprintf(`test runs the tiers the hub declares in gate.yaml, in ascending tier number, stopping at the first tier that fails.
+--tier N names a tier and may repeat; the default is tier0.
+A listed tier that another listed tier covers is dropped.
+Each tier takes the gate slots it asks for, so the hub never runs more gate builds and tests at once than its configured slot count allows, and runs its command through the platform shell as one process tree, bounded by the tier's timeout_min once its slots are held.
+Without --wait it waits for the slots for up to %s, under the prompt-cache lifetime.
+When they do not free, it prints ok with slot_free false naming the holders and exits %d, which is no failure:
 run the same command again in a turn that does nothing else, so the prompt cache stays warm between calls.
+With --wait it blocks until the slots free, which costs only the caller's prompt cache.
 Inside a slot already held by an enclosing gate run it runs without acquiring another.
-Outside every hub it runs unslotted under the template's -p cap.
-The output and exit code are go test's own.
-Arguments after "--" are passed to go test unchanged, after the packages.
-With --guards it then also runs, in the same slot, every top-level test marked //lyx:guard in the module at the -C directory, by name in its own package;
-the packages may then be omitted, and --tags must include integration.
+After each tier the verb prints a summary line to stderr and writes the run's record and log under the gate directory.
+The exit code is the failing tier's own, or 0.
+The scope is the explicit <targets>, --all, --card <id>, --base <rev>, or, with none of them, the diff from the merge base with the pair's parent branch.
+Arguments after "--" fill each tier's {args}.
+--guards, and a narrower scope under the go scoper, also run the guard tier over the //lyx:guard tests outside the scope.
+-C names the run directory, with explicit targets only.
 
 Examples:
 
-  lyx gate test ./internal/foo
-  lyx gate test -C backend --tags integration ./internal/foo ./internal/bar
-  lyx gate test --tags integration --guards ./internal/foo
+  lyx gate test --wait ./internal/foo
+  lyx gate test --tier 0 --tier 1 --all
+  lyx gate test --wait --card 3 --card 4
+  lyx gate test --base main
+  lyx gate test -C backend ./internal/foo ./internal/bar
+  lyx gate test --guards ./internal/foo
   lyx gate test ./... -- -run TestSomething -count=1`, slotWait, SlotBusyExit),
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
 			}
-			request := testRequest{goBinary: goBinary, samplePeriod: samplePeriod, slotWait: slotWait, stderr: cmd.ErrOrStderr(), dir: dir, tags: tags, guards: guards, packages: args}
+			request := testRequest{
+				goBinary: goBinary, samplePeriod: samplePeriod, slotWait: slotWait, preTierCeiling: preTierCeiling, timeoutUnit: timeoutUnit,
+				stderr: cmd.ErrOrStderr(), dir: dir, tags: tags, tiers: tiers, cards: cards, base: base, all: all, guards: guards, wait: wait, targets: args,
+			}
 			if dash := cmd.ArgsLenAtDash(); dash >= 0 {
-				request.packages, request.flags = args[:dash], args[dash:]
+				request.targets, request.args = args[:dash], args[dash:]
 			}
 			clihelp.SetExit(cmd.Context(), runTest(cmd.Context(), cmd.OutOrStdout(), request))
 			return nil
 		},
 	}
-	testCmd.Flags().StringVarP(&dir, "dir", "C", "", "directory to run go test in; defaults to the current directory")
-	testCmd.Flags().StringVar(&tags, "tags", "", "comma-separated build tags passed to go test")
-	testCmd.Flags().BoolVar(&guards, "guards", false, "also run every //lyx:guard test of the module at the -C directory, by name in its own package; needs integration in --tags")
+	testCmd.Flags().StringVarP(&dir, "dir", "C", "", "directory the tiers run in, with explicit targets only; defaults to each tier's own dir")
+	testCmd.Flags().StringVar(&tags, "tags", "", "refused: name the tier that compiles the tags with --tier")
+	testCmd.Flags().IntSliceVar(&tiers, "tier", nil, "tier number to run; repeatable, default 0")
+	testCmd.Flags().StringArrayVar(&cards, "card", nil, "plan card id whose packages are the scope; repeatable")
+	testCmd.Flags().StringVar(&base, "base", "", "revision whose diff to the working tree is the scope")
+	testCmd.Flags().BoolVar(&all, "all", false, "run every tier over its all_targets")
+	testCmd.Flags().BoolVar(&guards, "guards", false, "after the listed tiers pass, run the guard tier over every //lyx:guard test of the module")
+	testCmd.Flags().BoolVar(&wait, "wait", false, "block until the tiers' slots free instead of answering slot_free false after the keep-cache-warm cap")
 	cmd.AddCommand(testCmd)
+	cmd.AddCommand(cardVerifyCmd())
 
 	return cmd
 }
@@ -103,32 +122,48 @@ func RunCLIIn(cwd string, out io.Writer, args []string) int {
 
 // testRequest is one `lyx gate test` invocation after flag parsing.
 type testRequest struct {
+	// goBinary is the go command a prebuilding tier builds `lyx` with.
 	goBinary string
-	// samplePeriod is how often the CPU watchdog samples go test's process tree.
+	// samplePeriod is how often the CPU watchdog samples a tier's process tree.
 	samplePeriod time.Duration
-	// slotWait is the longest the run waits for a free slot.
+	// slotWait is the longest a run without wait waits for free slots.
 	slotWait time.Duration
-	// stderr receives the line the CPU watchdog prints after a quit.
+	// preTierCeiling bounds the work before the first tier.
+	preTierCeiling time.Duration
+	// timeoutUnit is the length of one `timeout_min` minute.
+	timeoutUnit time.Duration
+	// stderr receives the lines the verb prints beside its output: the CPU watchdog's quit, a tier's timeout and each tier's summary.
 	stderr io.Writer
-	// dir is the -C value as typed; empty means the seam cwd.
+	// dir is the -C value as typed; empty means the tier's own dir.
 	dir  string
 	tags string
-	// guards is the --guards flag: also run every `//lyx:guard` test of the module at dir.
+	// tiers are the --tier values as typed; empty means tier0.
+	tiers []int
+	// cards are the --card values.
+	cards []string
+	// base is the --base revision.
+	base string
+	// all is the --all flag: every listed tier runs over its all_targets.
+	all bool
+	// guards is the --guards flag: run the guard step after the listed tiers.
 	guards bool
-	// packages are the arguments before `--`.
-	packages []string
-	// flags are the arguments after `--`, passed to go test unchanged.
-	flags []string
-}
+	// wait is the --wait flag: block until the slots free.
+	wait bool
+	// targets are the arguments before `--`.
+	targets []string
+	// args are the arguments after `--`, which fill each tier's {args}.
+	args []string
 
-// goTestArgs returns the go arguments that run packages in dir under the -p cap parallel.
-func goTestArgs(dir string, parallel int, tags string, packages, flags []string) []string {
-	args := []string{"test", "-C", dir, "-p", strconv.Itoa(parallel)}
-	if tags != "" {
-		args = append(args, "-tags", tags)
-	}
-	args = append(args, packages...)
-	return append(args, flags...)
+	// The fields below are filled by runTest once the hub is resolved and the config loaded, and read by the tier runs.
+
+	// root is the worktree root the tiers' dirs and a prebuild are relative to.
+	root string
+	// prebuiltStore is the hub's store of prebuilt `lyx` binaries; empty outside a hub.
+	prebuiltStore string
+	// busyQuit is the CPU watchdog's busy window; 0 turns it off.
+	busyQuit time.Duration
+	// watching is whether the CPU watchdog applies to this run.
+	watching bool
 }
 
 // absoluteDir returns the directory a request runs in: dir made absolute against the seam cwd, or the seam cwd itself when dir is empty.
@@ -147,49 +182,12 @@ func absoluteDir(cwd, dir string) (string, error) {
 	return dir, nil
 }
 
-// missingPackageDirs returns the refusal text for relative package arguments that name no directory under dir, or "" when every one does.
-// An argument spelled `.`, `..`, `./…` or `../…` and not ending in `.go` is read with a trailing `/...` removed.
-// Import paths, absolute paths and `.go` file arguments are not read.
-// The text names every missing argument in order, and for an external test package whose `_test`-less directory exists it names that directory as the replacement.
-func missingPackageDirs(dir string, packages []string) string {
-	var clauses []string
-	for _, pkg := range packages {
-		if !isRelativePackageArg(pkg) || strings.HasSuffix(pkg, ".go") {
-			continue
-		}
-		trimmed := strings.TrimSuffix(pkg, "/...")
-		if isDirectory(filepath.Join(dir, filepath.FromSlash(trimmed))) {
-			continue
-		}
-		if stem, isTest := strings.CutSuffix(trimmed, "_test"); isTest && isDirectory(filepath.Join(dir, filepath.FromSlash(stem))) {
-			clauses = append(clauses, fmt.Sprintf("gate test: package argument %s is an external test package whose tests live in %s; pass %s", pkg, stem, stem))
-			continue
-		}
-		clauses = append(clauses, fmt.Sprintf("gate test: package argument %s names no directory under %s", pkg, dir))
-	}
-	if len(clauses) == 0 {
-		return ""
-	}
-	return strings.Join(clauses, "; ") + "; way forward: re-run the same command with each named package argument corrected"
-}
-
-// isRelativePackageArg reports whether arg is spelled `.`, `..`, `./…` or `../…`.
-func isRelativePackageArg(arg string) bool {
-	return arg == "." || arg == ".." || strings.HasPrefix(arg, "./") || strings.HasPrefix(arg, "../")
-}
-
-// isDirectory reports whether path is an existing directory.
-func isDirectory(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && info.IsDir()
-}
-
 // guardScanRefusal is the refusal text for a failed module guard scan of moduleDir.
 // A guard-scan error names its file, and its line when it has one, with the way forward its kind gives; any other error names the module directory.
 func guardScanRefusal(moduleDir string, err error) string {
 	var scanErr *impactset.GuardScanError
 	if !errors.As(err, &scanErr) {
-		return fmt.Sprintf("gate test: --guards cannot list the packages of %s: %v; way forward: make the directory readable or fix the module until \"go list ./...\" succeeds there, then re-run the same command", moduleDir, err)
+		return fmt.Sprintf("gate test: the guard step cannot list the packages of %s: %v; way forward: make the directory readable or fix the module until \"go list ./...\" succeeds there, then re-run the same command", moduleDir, err)
 	}
 	location := scanErr.File
 	if scanErr.Line != 0 {
@@ -197,15 +195,10 @@ func guardScanRefusal(moduleDir string, err error) string {
 	}
 	switch scanErr.Kind {
 	case impactset.GuardMisplaced:
-		return fmt.Sprintf("gate test: --guards found a //lyx:guard marker at %s that is not directly above a top-level func Test line; way forward: move the marker directly above its func Test line, then re-run the same command", location)
+		return fmt.Sprintf("gate test: the guard step found a //lyx:guard marker at %s that is not directly above a top-level func Test line; way forward: move the marker directly above its func Test line, then re-run the same command", location)
 	case impactset.GuardNotIntegration:
-		return fmt.Sprintf("gate test: --guards found a //lyx:guard marker at %s in a file no integration-tier run compiles; way forward: compile the marked test's file under the integration tag, then re-run the same command", location)
+		return fmt.Sprintf("gate test: the guard step found a //lyx:guard marker at %s in a file no integration-tier run compiles; way forward: compile the marked test's file under the integration tag, then re-run the same command", location)
 	default:
-		return fmt.Sprintf("gate test: --guards cannot parse %s: %v; way forward: make the file readable or fix it until it parses, then re-run the same command", location, err)
+		return fmt.Sprintf("gate test: the guard step cannot parse %s: %v; way forward: make the file readable or fix it until it parses, then re-run the same command", location, err)
 	}
-}
-
-// refusePackages is the refusal for a request that names no package.
-func refusePackages(out io.Writer) int {
-	return output.Err(out, `gate test: name at least one package; way forward: run "lyx gate test <packages...>", for example "lyx gate test ./internal/foo"`)
 }

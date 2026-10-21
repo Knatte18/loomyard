@@ -2,7 +2,6 @@
 //
 // It defines the Config type mirroring darn.yaml's keys and the ConfigTemplate accessor.
 // LoadConfig loads the file strictly.
-// VerifyCommand reads the hub's whole verify command, the one a darn gate runs where the impacted set falls back and Merge-In and Finalize run for a diff that is not tree-scoped.
 // TreeScopedCommand classifies a diff against the configured trees and returns the tree-scoped command.
 // The module is hub-wide, so every path here is told by the caller.
 
@@ -44,9 +43,6 @@ const (
 	FixerFanKey      = "darn_fixer_fan"
 )
 
-// verifyWayForward is the way forward a missing or empty verify command names.
-const verifyWayForward = "run \"lyx config darn --set verify=<command>\" from the prime, then \"lyx loom resume\""
-
 // treeScopeTargetsMarker is the placeholder in tree_scope_verify that the touched trees' targets replace.
 const treeScopeTargetsMarker = "{targets}"
 
@@ -54,8 +50,11 @@ const treeScopeTargetsMarker = "{targets}"
 const (
 	treeScopeAddTreeCommand = "lyx config darn --set tree_scope.<tree>=<target>"
 	treeScopeOffCommand     = "lyx config darn --set tree_scope_verify="
-	treeScopeVerifyCommand  = "lyx config darn --set tree_scope_verify=<command holding {targets}>"
+	treeScopeVerifyCommand  = "lyx config darn --set tree_scope_verify=<one lyx gate test --wait call holding {targets}>"
 )
+
+// treeScopeControlOperators are the shell control operators a tree_scope_verify call may not hold; a newline and a carriage return end a command too.
+var treeScopeControlOperators = []string{";", "&", "|", "\n", "\r", "`", "$(", "<", ">"}
 
 // ErrTreeScopeWithoutTrees marks a tree_scope_verify that is set while tree_scope holds no tree.
 var ErrTreeScopeWithoutTrees = errors.New("darn config key \"tree_scope_verify\" is set while \"tree_scope\" holds no tree")
@@ -69,16 +68,13 @@ type Config struct {
 	Writer string `yaml:"writer"`
 	// WriterTimeoutMin is the writer session's wall-clock budget in minutes.
 	WriterTimeoutMin int `yaml:"writer_timeout_min"`
-	// Verify is the hub's whole verify command, run in the task worktree.
-	// A darn gate runs it where the impacted set falls back, Merge-In and Finalize run it for a diff that is not tree-scoped, and it stays the gates' base command.
-	// It runs any shell command in the task worktree, which is why the module is hub-wide.
-	Verify string `yaml:"verify"`
 	// VerifyAttempts is how many times a verify gate, the writer's or a Darn-Review fix round's, re-prompts its session before it halts the run.
 	VerifyAttempts int `yaml:"verify_attempts"`
 	// TreeScope maps each worktree-relative tree path, without a trailing slash, to the test target the tree contributes to TreeScopeVerify's {targets}.
 	// An empty target means the tree has no tests of its own.
 	TreeScope map[string]string `yaml:"tree_scope"`
-	// TreeScopeVerify is the command a tree-scoped diff runs at every darn verify site, holding {targets}.
+	// TreeScopeVerify is the command a tree-scoped diff runs at every darn verify site in place of the landing call, holding {targets}.
+	// It is one `lyx gate test` call holding `--wait` and no shell control operator, so the whole tree-scoped command is slotted and waits out a busy hub.
 	// Tree scope is on only when it and TreeScope are both non-empty.
 	TreeScopeVerify string `yaml:"tree_scope_verify"`
 	// ReviewMaxBounces is the bounce budget of the Darn-Review perch that reviews the writer's diff before Publish; 0 runs neither the review nor Describe.
@@ -140,15 +136,15 @@ func MigrateConfig(existing []byte) ([]byte, []string, error) {
 }
 
 // ConfigSpec returns darn's layered-load spec.
-// verify and tree_scope_verify run a shell command, so neither may be set in the local layer.
-// tree_scope picks which diffs skip the whole-module verify, so it is a guard key and closed to the local layer too; no task run_settings sets it or tree_scope_verify.
+// tree_scope_verify runs a shell command, so it may not be set in the local layer.
+// tree_scope picks which diffs skip the landing gate, so it is a guard key and closed to the local layer too; no task run_settings sets it or tree_scope_verify.
+// verify is retired, so a hub file that still sets it loads and reconcile prunes it.
 // The two fan keys are closed to the local layer too, so no local override or task run_settings changes the perch's fans.
 // The two budget keys come from reviewbudget and are ordinary keys, so a task's local layer, and its run_settings, set them.
 func ConfigSpec() configengine.Spec {
 	categories := map[string]configengine.Category{
 		"writer":             configengine.CategoryNone,
 		"writer_timeout_min": configengine.CategoryNone,
-		"verify":             configengine.CategoryExecutable,
 		"verify_attempts":    configengine.CategoryNone,
 		"tree_scope":         configengine.CategoryGuard,
 		"tree_scope_verify":  configengine.CategoryExecutable,
@@ -171,6 +167,9 @@ func ConfigSpec() configengine.Spec {
 		HubWide:    true,
 		OpenMaps:   ConfigOpenMaps(),
 		Categories: categories,
+		RetiredKeys: map[string]configengine.Category{
+			"verify": configengine.CategoryExecutable,
+		},
 	}
 }
 
@@ -188,12 +187,13 @@ func ValidateLocalValues(document []byte) error {
 }
 
 // LoadConfig loads and unmarshals the darn module's configuration strictly through the hub-wide layer stack under dirs.
-// It validates the writer key's model-spec grammar at load time and leaves verify, verify_attempts and review_max_bounces to their readers.
+// It validates the writer key's model-spec grammar at load time and leaves verify_attempts and review_max_bounces to their readers.
 // darn_reviewer_model and darn_fixer_model, when set, are refused as an empty list, a value that is neither a model-spec nor a list of them, or an entry that is no model-spec.
 // darn_reviewer_fan and darn_fixer_fan are refused as an empty list, a value that is neither a fan name nor a list of them, or an entry naming a fan lenses.yaml does not resolve.
 // review_max_bounces and review_amend_max_bounces are refused below 0, and review_hard_max_bounces, default 4, below 1 and below review_max_bounces;
 // each refusal names the command that fixes it for the layer the value comes from.
-// It returns tree_scope keyed by trimmed tree path and refuses a malformed or repeated tree key wrapping ErrTreeScopeKey, a tree_scope_verify with no tree wrapping ErrTreeScopeWithoutTrees, and a tree_scope_verify without {targets}.
+// It returns tree_scope keyed by trimmed tree path and refuses a malformed or repeated tree key wrapping ErrTreeScopeKey, a tree_scope_verify with no tree wrapping ErrTreeScopeWithoutTrees, a tree_scope_verify without {targets},
+// and a tree_scope_verify that is not exactly one `lyx gate test` call holding `--wait` and no shell control operator.
 func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	spec := ConfigSpec()
 	spec.Name = module
@@ -260,7 +260,7 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	return cfg, nil
 }
 
-// normalizeTreeScope returns cfg's tree_scope keyed by trimmed tree path, or the refusal of a malformed key, a repeated tree, a tree_scope_verify without a tree, or one without {targets}.
+// normalizeTreeScope returns cfg's tree_scope keyed by trimmed tree path, or the refusal of a malformed key, a repeated tree, a tree_scope_verify without a tree, one without {targets}, or one that is not a single waiting gate call.
 func normalizeTreeScope(cfg Config) (map[string]string, error) {
 	keys := make([]string, 0, len(cfg.TreeScope))
 	for key := range cfg.TreeScope {
@@ -293,7 +293,22 @@ func normalizeTreeScope(cfg Config) (map[string]string, error) {
 	if !strings.Contains(cfg.TreeScopeVerify, treeScopeTargetsMarker) {
 		return nil, fmt.Errorf("darn config key %q holds no %s; run %q", "tree_scope_verify", treeScopeTargetsMarker, treeScopeVerifyCommand)
 	}
+	if !isSingleWaitingGateCall(cfg.TreeScopeVerify) {
+		return nil, fmt.Errorf("darn config key %q is not exactly one lyx gate test call holding --wait and no shell control operator, so the call would not be slotted and would not wait out a busy hub; run %q", "tree_scope_verify", treeScopeVerifyCommand)
+	}
 	return trees, nil
+}
+
+// isSingleWaitingGateCall reports whether command is one `lyx gate test` call that holds `--wait` and no shell control operator.
+// It reads static text only, so a script the call runs is outside it.
+func isSingleWaitingGateCall(command string) bool {
+	for _, operator := range treeScopeControlOperators {
+		if strings.Contains(command, operator) {
+			return false
+		}
+	}
+	words := strings.Fields(command)
+	return len(words) >= 3 && words[0] == "lyx" && words[1] == "gate" && words[2] == "test" && slices.Contains(words, "--wait")
 }
 
 // WithEditorWayForward appends the editor way forward to an error wrapping ErrTreeScopeKey, since --set cannot remove a key the hub file holds, and returns every other error, nil included, unchanged.
@@ -311,6 +326,7 @@ func WithEditorWayForward(err error) error {
 // A diff is tree-scoped when every path lies in some tree, an empty path list included.
 // A path touches every tree it lies in, nested trees included.
 // The command is TreeScopeVerify with {targets} replaced by the touched trees' non-empty targets, deduplicated, in tree-path order, so no path text reaches it.
+// When no touched tree contributes a target, as for a docs-only or empty diff, the answer is scoped with an empty command, which every darn site runs as nothing.
 func TreeScopedCommand(cfg Config, paths []string) (string, bool) {
 	if strings.TrimSpace(cfg.TreeScopeVerify) == "" {
 		return "", false
@@ -342,23 +358,8 @@ func TreeScopedCommand(cfg Config, paths []string) (string, bool) {
 			targets = append(targets, target)
 		}
 	}
+	if len(targets) == 0 {
+		return "", true
+	}
 	return strings.ReplaceAll(cfg.TreeScopeVerify, treeScopeTargetsMarker, strings.Join(targets, " ")), true
-}
-
-// VerifyCommand returns darn.yaml's whole verify command, loaded through the layer stack under dirs at each call.
-// A missing file and an empty value are errors naming the way forward, never "", so the darn gate, Publish and Finalize stop at call time instead of skipping their verify.
-// A malformed tree_scope key names the editor way forward instead, since --set verify= does not clear it.
-func VerifyCommand(dirs configengine.Dirs) (string, error) {
-	cfg, err := LoadConfig(dirs, configModule)
-	if err != nil {
-		wrapped := fmt.Errorf("darn verify command: %w", err)
-		if errors.Is(err, ErrTreeScopeKey) {
-			return "", WithEditorWayForward(wrapped)
-		}
-		return "", fmt.Errorf("%w; %s", wrapped, verifyWayForward)
-	}
-	if strings.TrimSpace(cfg.Verify) == "" {
-		return "", fmt.Errorf("darn config key %q is empty; %s", "verify", verifyWayForward)
-	}
-	return cfg.Verify, nil
 }

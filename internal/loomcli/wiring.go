@@ -539,6 +539,16 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		return err
 	}
 	languageSkills := language.Skills
+	// An absent gate.yaml renders the gate_tiers marker as none and refuses no raw command; any other load error already names the way forward.
+	gateTiers := "none"
+	var refuseRaw []string
+	gateCfg, err := gateslot.LoadConfig(fabricengine.ConfigDirs(location))
+	if err == nil {
+		gateTiers = gateCfg.TiersValue()
+		refuseRaw = gateCfg.RefuseRaw
+	} else if !errors.Is(err, gateslot.ErrConfigAbsent) {
+		return err
+	}
 	// lenses.Load degrades to the template on an absent lenses.yaml rather than failing the load.
 	lensesCfg, err := lenses.Load(fabricengine.ConfigDirs(location))
 	if err != nil {
@@ -702,18 +712,19 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// RunScratchDir is the directory the step envelope reports as scratch_dir.
 		RunScratchDir: shedrun.ScratchDir(location, c.runID),
 		VerifyDir:     verifytree.Dir(anchorPath),
-		VerifyCommand: planVerifySource(location).command,
-		GateSlots:     hubgeom.GateSlots(location),
+		VerifyCommand: planVerifySource(location).baseCommand,
+		Round:         roundGateSource(fabricengine.ConfigDirs(location)),
 		// VerifyMergeBase is nil for a standalone run, which records no parent branch.
 		VerifyMergeBase: verifyMergeBase,
 		PublishFailure: func() string {
-			return loomshed.PublishFailureNote(location.WorktreePath(), verifytree.Dir(anchorPath))
+			return loomshed.PublishFailureNote(location.WorktreePath(), verifytree.Dir(anchorPath), gateTiersLookup(fabricengine.ConfigDirs(location)))
 		},
 		WebsterRecord: func() string {
 			return loomshed.WebsterRecordNote(anchorPath)
 		},
-		VerifyTiers:        language.VerifyTiers,
+		GateTiers:          gateTiers,
 		RenameTools:        language.RenameTools,
+		RefuseRaw:          refuseRaw,
 		StatusPath:         statusPath,
 		StatusLockPath:     statusLockPath,
 		DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),
@@ -821,7 +832,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// PlanTable is evaluated per Call, not resolved here, so the stencil is read at call time -- what the Stencil Ownership Invariant requires.
 		// It takes no autonomous argument: the Plan producer is autonomous by design and its table is never interactive.
 		PlanTable: func() (seatengine.Table, error) {
-			return loomengine.PlanTable(location, fabricengine.ConfigDirs(location), websterGeom.StencilsDir, websterGeom.SpecsDir, loomCfg, registry, language.VerifyTiers)
+			return loomengine.PlanTable(location, fabricengine.ConfigDirs(location), websterGeom.StencilsDir, websterGeom.SpecsDir, loomCfg, registry, gateTiers)
 		},
 		// CommitPlan mirrors CommitDiscussion above: it keeps the working tree clean for the rows
 		// that follow, makes the artifact durable across a crash or a resume, and sweeps the

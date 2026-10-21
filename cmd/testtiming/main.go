@@ -20,7 +20,9 @@
 //
 //	go run ./cmd/testtiming -resources [-pkg ./internal/x,./internal/y] [-tags t | -full]
 //
-// It runs the selected packages one at a time, each as its own `go test -json -count=1` child over one package, inside one gate slot when the working directory is in a hub, and under the template's -p cap otherwise.
+// It runs the selected packages one at a time, each as its own `go test -json -count=1` child over one package, inside the one gate slot the run holds when the working directory is in a hub, and under the CPU count otherwise.
+// Every mode, the timing table and -redundancy included, holds one slot for its whole run in a hub, its `lyx` prebuild inheriting it, and sets its go commands' GOFLAGS through gateslot.HolderEnv.
+// It measures outside `lyx gate test`, since its modes measure what a tier run hides.
 // -pkg takes comma-separated package patterns and defaults to every package; -tags and -full pick the tier as in the timing mode.
 // The columns are PACKAGE, WALL (child start to exit), CPU, PEAK_MEM, PROCS and LEFTOVER, plus a FAIL mark.
 // CPU and PEAK_MEM come from the child's cgroup when `systemd-run --user --scope` works, read from cpu.stat's usage_usec and memory.peak while the scope lives, and from the child's rusage otherwise, where PEAK_MEM is the largest single process's max RSS and the row carries a rusage mark.
@@ -175,61 +177,63 @@ func run(tags string, top int) error {
 	if err != nil {
 		return fmt.Errorf("read the working directory: %w", err)
 	}
-	env, cleanup, err := prebuildLyx("go", tags, root, os.Environ())
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-
-	cmd := exec.Command("go", args...)
-	cmd.Env = env
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("pipe stdout: %w", err)
-	}
-	cmd.Stderr = os.Stderr
-
-	fmt.Printf("Running %s  —  %s\n", tier, cmdline)
-	if tags != "" {
-		fmt.Println("(real local git; this can take ~a minute)")
-	}
-	fmt.Println()
-
-	start := time.Now()
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("start go test: %w", err)
-	}
-
-	pkgs := map[string]*pkgResult{}
-	var tests []testResult
-
-	reader := bufio.NewReader(stdout)
-	for {
-		line, readErr := reader.ReadBytes('\n')
-		if len(line) > 0 {
-			parseLine(line, pkgs, &tests)
+	return withGateSlot(root, "testtiming", func(slotEnv []string, parallel int) error {
+		env, cleanup, err := prebuildLyx("go", tags, root, slotEnv, parallel)
+		if err != nil {
+			return err
 		}
-		if readErr != nil {
-			if !errors.Is(readErr, io.EOF) {
-				return fmt.Errorf("read go test output: %w", readErr)
+		defer cleanup()
+
+		cmd := exec.Command("go", args...)
+		cmd.Env = env
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			return fmt.Errorf("pipe stdout: %w", err)
+		}
+		cmd.Stderr = os.Stderr
+
+		fmt.Printf("Running %s  —  %s\n", tier, cmdline)
+		if tags != "" {
+			fmt.Println("(real local git; this can take ~a minute)")
+		}
+		fmt.Println()
+
+		start := time.Now()
+		if err := cmd.Start(); err != nil {
+			return fmt.Errorf("start go test: %w", err)
+		}
+
+		pkgs := map[string]*pkgResult{}
+		var tests []testResult
+
+		reader := bufio.NewReader(stdout)
+		for {
+			line, readErr := reader.ReadBytes('\n')
+			if len(line) > 0 {
+				parseLine(line, pkgs, &tests)
 			}
-			break
+			if readErr != nil {
+				if !errors.Is(readErr, io.EOF) {
+					return fmt.Errorf("read go test output: %w", readErr)
+				}
+				break
+			}
 		}
-	}
 
-	wallErr := cmd.Wait()
-	wall := time.Since(start)
+		wallErr := cmd.Wait()
+		wall := time.Since(start)
 
-	printReport(tier, cmdline, wall, pkgs, tests, top)
+		printReport(tier, cmdline, wall, pkgs, tests, top)
 
-	if wallErr != nil {
-		var exitErr *exec.ExitError
-		if errors.As(wallErr, &exitErr) {
-			return fmt.Errorf("go test reported failures (exit %d) — see FAIL rows above", exitErr.ExitCode())
+		if wallErr != nil {
+			var exitErr *exec.ExitError
+			if errors.As(wallErr, &exitErr) {
+				return fmt.Errorf("go test reported failures (exit %d) — see FAIL rows above", exitErr.ExitCode())
+			}
+			return fmt.Errorf("go test: %w", wallErr)
 		}
-		return fmt.Errorf("go test: %w", wallErr)
-	}
-	return nil
+		return nil
+	})
 }
 
 // parseLine decodes one JSON event and folds it into the package/test maps.

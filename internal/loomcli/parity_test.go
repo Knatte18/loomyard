@@ -420,11 +420,11 @@ func TestGateParity_PlanGate(t *testing.T) {
 			wantFinding: "card-fabric-reference",
 		},
 		{
-			// VerifyNestedModule puts a command that tests a nested module's packages from the root in the verify: section: the gate and the verb both report verify-nested-module.
+			// VerifyNestedModule gives the card a Verify: that tests a nested module's packages from the root: the gate and the verb both report verify-nested-module.
 			name: "VerifyNestedModule",
 			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
 				plankit.WriteTree(t, worktreeRoot, map[string]string{"nested/go.mod": "module nested\n"})
-				return verifySectionPlanFixture(t, anchorPath, worktreeRoot, "go test ./nested/...")
+				return verifyPlanFixture(t, anchorPath, worktreeRoot, "", "go test ./nested/...")
 			},
 			wantGate:    verdictStuck,
 			wantCLI:     verdictStuck,

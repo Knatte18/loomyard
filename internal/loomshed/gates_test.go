@@ -642,7 +642,24 @@ func TestNewPlanGate(t *testing.T) {
 		tools                      []string
 		doneCard                   bool
 		wantRename, wantMismatch   int
+		// verify is the card's Verify line and overview the overview's retired verify section; both are set on the parsed plan.
+		verify, overview string
+		refuseRaw        []string
+		wantRaw          int
+		wantNoWait       int
+		wantRetired      int
 	}{
+		{name: "RawTestVerifyIsRefused", recordSection: "absent", verify: "go test ./internal/x", refuseRaw: []string{"go test"}, wantRaw: 1},
+		{name: "RawTestAfterAChainIsRefused", recordSection: "absent", verify: "cd x && go test ./...", refuseRaw: []string{"go test"}, wantRaw: 1},
+		{name: "RawTestPastALauncherIsRefused", recordSection: "absent", verify: "env go test ./x", refuseRaw: []string{"go test"}, wantRaw: 1},
+		{name: "RawTestPastAnEnvironmentAssignmentIsRefused", recordSection: "absent", verify: "GOFLAGS=-count=1 go test ./x", refuseRaw: []string{"go test"}, wantRaw: 1},
+		{name: "RawTestWithNoRefuseListPasses", recordSection: "absent", verify: "go test ./internal/x"},
+		{name: "RawTestInAnArgumentPasses", recordSection: "absent", verify: "echo go test", refuseRaw: []string{"go test"}},
+		{name: "RawTestOfADoneCardIsNotReported", recordSection: "absent", doneCard: true, verify: "go test ./internal/x", refuseRaw: []string{"go test"}},
+		{name: "GateCallWithNoWaitIsRefused", recordSection: "absent", verify: "lyx gate test ./internal/x", refuseRaw: []string{"go test"}, wantNoWait: 1},
+		{name: "GateCallWithWaitPasses", recordSection: "absent", verify: "lyx gate test --wait --tier 0 --card 3", refuseRaw: []string{"go test"}},
+		{name: "GateCallWithNoWaitOfADoneCardIsNotReported", recordSection: "absent", doneCard: true, verify: "lyx gate test ./internal/x"},
+		{name: "OverviewVerifySectionIsInformational", recordSection: "absent", overview: "go build ./...", refuseRaw: []string{"go test"}, wantRetired: 1},
 		{name: "SymbolPairWithNoRenameToolIsFlagged", renamePair: symbolPair, recordSection: "absent", wantRename: 1},
 		{name: "SymbolPairWithARenameToolPasses", renamePair: symbolPair, recordSection: "absent", tools: []string{"gopls rename"}},
 		{name: "FilePairWithNoRenameToolPasses", renamePair: filePair, recordSection: "absent"},
@@ -661,6 +678,7 @@ func TestNewPlanGate(t *testing.T) {
 			anchorPath := t.TempDir()
 			pc := seedPlanContextFixture(t, anchorPath, tt.renamePair, tt.planSection, tt.recordSection)
 			pc.RenameTools = tt.tools
+			pc.RefuseRaw = tt.refuseRaw
 			if tt.doneCard {
 				saveState(t, anchorPath, doneBatchOne)
 			}
@@ -668,6 +686,8 @@ func TestNewPlanGate(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ParsePlan: %v", err)
 			}
+			plan.Cards[0].Verify = tt.verify
+			plan.Verify = tt.overview
 
 			findings, err := ValidatePlan(plan, anchorPath, t.TempDir(), planglyph.NewIndex(fabricengine.NewReferenceRule()), pc)
 			if err != nil {
@@ -678,6 +698,19 @@ func TestNewPlanGate(t *testing.T) {
 			}
 			if got := countCheck(findings, patternChangesMismatchCheck); got != tt.wantMismatch {
 				t.Errorf("ValidatePlan() %s findings = %d; want %d (%v)", patternChangesMismatchCheck, got, tt.wantMismatch, findings)
+			}
+			for check, want := range map[string]int{verifyRawCommandCheck: tt.wantRaw, verifyGateNoWaitCheck: tt.wantNoWait, planVerifyRetiredCheck: tt.wantRetired} {
+				if got := countCheck(findings, check); got != want {
+					t.Errorf("ValidatePlan() %s findings = %d; want %d (%v)", check, got, want, findings)
+				}
+			}
+			for _, f := range findings {
+				if f.Check == planVerifyRetiredCheck && f.Severity != planindex.SeverityInformational {
+					t.Errorf("ValidatePlan() %s severity = %v; want informational", f.Check, f.Severity)
+				}
+				if (f.Check == verifyRawCommandCheck || f.Check == verifyGateNoWaitCheck) && f.Severity != planindex.SeverityBlocking {
+					t.Errorf("ValidatePlan() %s severity = %v; want blocking", f.Check, f.Severity)
+				}
 			}
 		})
 	}

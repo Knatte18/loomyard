@@ -33,7 +33,7 @@ const typesLoadTimeout = 3 * time.Minute
 const typesLoadSite = "plan gate caller-uncovered"
 
 // goListLoader is the typesLoader that runs go list through go/packages, offline and bounded by timeout.
-// With a slot pool it waits for a slot before the load, noting the wait in waitDir, and runs the load under the slot's `-p` cap; without one it loads at once.
+// With a slot pool it waits for a slot before the load, noting the wait in waitDir, and runs the load under the flags of gateslot.HolderEnv; without one it loads at once.
 type goListLoader struct {
 	timeout time.Duration
 	slots   *gateslot.Pool
@@ -52,9 +52,10 @@ func (l goListLoader) load(root string, dirs []string) ([]*packages.Package, err
 		patterns[i] = "./" + dir
 	}
 
-	env := append(os.Environ(), "GOPROXY=off", "GOFLAGS=-mod=readonly")
+	var lease *gateslot.Lease
 	if l.slots != nil {
-		lease, err := l.acquireSlot(root)
+		var err error
+		lease, err = l.acquireSlot(root)
 		if err != nil {
 			logger.Warn("planglyph: gate slot for caller-uncovered not acquired", "worktree_root", root, "error", err)
 			return nil, err
@@ -64,7 +65,11 @@ func (l goListLoader) load(root string, dirs []string) ([]*packages.Package, err
 				logger.Warn("planglyph: release gate slot", "worktree_root", root, "error", err)
 			}
 		}()
-		env = lease.Env(env)
+	}
+	env, err := l.loadEnv(lease)
+	if err != nil {
+		logger.Warn("planglyph: gate limits for caller-uncovered not read", "worktree_root", root, "error", err)
+		return nil, err
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), l.timeout)
@@ -91,6 +96,20 @@ func (l goListLoader) load(root string, dirs []string) ([]*packages.Package, err
 	}
 	logger.Info("planglyph: go list for caller-uncovered finished", "worktree_root", root, "packages", len(loaded), "elapsed", time.Since(started))
 	return loaded, nil
+}
+
+// loadEnv returns the environment of one go list load: the process environment with the proxy off and `-mod=readonly` in GOFLAGS.
+// With a slot pool it appends the flags gateslot.HolderEnv sets for a non-tier holder, `-trimpath` and `-p` from the pool's tier0 parallel, after `-mod=readonly`, and names lease as the slot the load inherits.
+func (l goListLoader) loadEnv(lease *gateslot.Lease) ([]string, error) {
+	env := append(os.Environ(), "GOPROXY=off", "GOFLAGS=-mod=readonly")
+	if l.slots == nil {
+		return env, nil
+	}
+	limits, err := l.slots.Limits()
+	if err != nil {
+		return nil, err
+	}
+	return gateslot.HolderEnv(env, lease, limits.Tier0Parallel), nil
 }
 
 // acquireSlot waits for a slot for a load over root and keeps a wait record in the loader's waitDir until the acquire returns, held or failed.

@@ -36,7 +36,7 @@ func buildRoot(location *lyxcwd.Location, dir string) string {
 	return dir
 }
 
-// prebuildLyx builds `<root>/cmd/lyx` into a fresh directory in the process run directory with goBinary under the run's `-p` cap and `-trimpath`, as gateslot.GoFlags gives a slotted go test, and returns the binary path and a cleanup that removes what the run does not keep.
+// prebuildLyx builds `<root>/cmd/lyx` into a fresh directory in the process run directory with goBinary under the run's `-p` cap and `-trimpath`, and returns the binary path and a cleanup that removes what the run does not keep.
 // With storeDir non-empty the binary is published into storeDir under a name derived from its content and that path is returned, so two runs on an unchanged tree export the same path and go test's cache keys stay stable;
 // the build directory is then removed at once, and the store keeps the binary for later runs.
 // With storeDir empty the returned path is the build directory's, which the cleanup removes.

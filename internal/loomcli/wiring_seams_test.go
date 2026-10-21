@@ -11,6 +11,9 @@ import (
 // intentionallyNil maps each shedrecipe.Env field path wire leaves nil to the reason.
 // envkit.NilSeams already skips the seams whose nil is a documented default, so only wire's own gaps are listed.
 var intentionallyNil = map[string]string{
+	"Landing.PublishCommand":              "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
+	"Landing.BaseCommand":                 "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
+	"Landing.GateTiers":                   "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.PushBranch":                  "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.RemoteOnlyCommits":           "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.OpenFabric":                  "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",

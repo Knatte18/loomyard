@@ -1,5 +1,5 @@
-// plancontext.go holds the plan gate's two context checks, rename-tool-missing and pattern-changes-mismatch.
-// Both compare the plan with something outside the plan directory, so they live here rather than in planparser.
+// plancontext.go holds the plan gate's context checks: rename-tool-missing, pattern-changes-mismatch, verify-raw-command, verify-gate-no-wait and plan-verify-retired.
+// Each compares the plan with something outside the plan directory, such as the hub's config or the decision record, so they live here rather than in planparser.
 
 package loomshed
 
@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"slices"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/planindex"
@@ -20,19 +22,31 @@ const renameToolMissingCheck = "rename-tool-missing"
 // patternChangesMismatchCheck names the finding planContextFindings appends for a PATTERN change the plan and the decision record do not both declare.
 const patternChangesMismatchCheck = "pattern-changes-mismatch"
 
+// verifyRawCommandCheck names the finding planContextFindings appends for a card Verify command the hub's refuse_raw list names.
+const verifyRawCommandCheck = "verify-raw-command"
+
+// verifyGateNoWaitCheck names the finding planContextFindings appends for a `lyx gate test` call in a card Verify line without `--wait`.
+const verifyGateNoWaitCheck = "verify-gate-no-wait"
+
+// planVerifyRetiredCheck names the informational finding planContextFindings appends for an overview carrying a `## verify:` section.
+const planVerifyRetiredCheck = "plan-verify-retired"
+
 // PlanContext is what the plan gate checks the plan against besides the code tree.
-// The zero value checks nothing: no rename tool is required to be missing, and no record is compared.
+// The zero value checks nothing: no rename tool is required to be missing, no record is compared and no Verify command is refused.
 type PlanContext struct {
 	// RenameTools is the hub's language.yaml rename_tools list.
 	// A symbol Rename pair needs it non-empty.
 	RenameTools []string
+	// RefuseRaw is the hub's gate.yaml refuse_raw list.
+	// A card Verify command opening with an entry is refused.
+	RefuseRaw []string
 	// DecisionRecordPath is the decision record whose `## PATTERN changes` section the plan must carry.
 	// Empty skips the comparison.
 	DecisionRecordPath string
 }
 
-// planContextFindings returns the context checks' blocking findings over cards, in this order: one rename-tool-missing per symbol Rename pair when pc.RenameTools is empty, then one pattern-changes-mismatch per bullet the plan and the decision record do not both declare.
-// The comparison is over plan, not cards.
+// planContextFindings returns the context checks' findings over cards, in this order: one rename-tool-missing per symbol Rename pair when pc.RenameTools is empty, one pattern-changes-mismatch per bullet the plan and the decision record do not both declare, then per card the verify-raw-command and verify-gate-no-wait findings of its Verify line, then an informational plan-verify-retired when the overview carries a `## verify:` section.
+// The record comparison and the retired-section check are over plan, not cards.
 // An absent record adds nothing; a read error is returned, and so is a record whose section is malformed, since the plan writer cannot fix the record.
 func planContextFindings(plan *planparser.Plan, cards []planparser.Card, pc PlanContext) ([]planindex.Finding, error) {
 	var findings []planindex.Finding
@@ -53,7 +67,76 @@ func planContextFindings(plan *planparser.Plan, cards []planparser.Card, pc Plan
 	if err != nil {
 		return nil, err
 	}
-	return append(findings, mismatches...), nil
+	findings = append(findings, mismatches...)
+	findings = append(findings, verifyLineFindings(cards, pc.RefuseRaw)...)
+	if plan.Verify != "" {
+		findings = append(findings, planindex.Finding{
+			Check:    planVerifyRetiredCheck,
+			Detail:   "the overview's `## verify:` section is no longer run by any gate; the parser still accepts it, and the hub's gates carry the verification",
+			Severity: planindex.SeverityInformational,
+		})
+	}
+	return findings, nil
+}
+
+// verifyLauncherWords are the command prefixes the verify checks read past to find the command they launch.
+var verifyLauncherWords = []string{"env", "exec", "xargs", "sudo", "time"}
+
+// verifyLineFindings returns, per card, a verify-raw-command finding for each command of its Verify line that opens with an entry of refuseRaw, then a verify-gate-no-wait finding for each `lyx gate test` call without `--wait`.
+// A command is read in command position: past a leading environment assignment and launcher word.
+func verifyLineFindings(cards []planparser.Card, refuseRaw []string) []planindex.Finding {
+	var findings []planindex.Finding
+	for _, card := range cards {
+		commands := planparser.VerifyCommands(card.Verify)
+		for _, command := range commands {
+			fields := commandFields(command)
+			for _, raw := range refuseRaw {
+				if hasFieldPrefix(fields, strings.Fields(raw)) {
+					findings = append(findings, planindex.Finding{
+						Check:    verifyRawCommandCheck,
+						Card:     card.ID(),
+						Detail:   fmt.Sprintf("card %d Verify: `%s` runs a command the hub's gate.yaml refuse_raw lists, and Go re-runs this line outside any agent hook; way forward: replace it with a `lyx gate test --wait` call naming a tier list and a scope form, such as `lyx gate test --wait --tier 1 --card <card id>`", card.Number, command),
+						Severity: planindex.SeverityBlocking,
+					})
+					break
+				}
+			}
+		}
+		for _, command := range commands {
+			fields := commandFields(command)
+			if hasFieldPrefix(fields, []string{"lyx", "gate", "test"}) && !slices.Contains(fields, "--wait") {
+				findings = append(findings, planindex.Finding{
+					Check:    verifyGateNoWaitCheck,
+					Card:     card.ID(),
+					Detail:   fmt.Sprintf("card %d Verify: `%s` lacks `--wait`, so a busy gate slot fails the line instead of waiting; way forward: add `--wait`", card.Number, command),
+					Severity: planindex.SeverityBlocking,
+				})
+			}
+		}
+	}
+	return findings
+}
+
+// commandFields splits command into fields and drops the leading launcher words and environment assignments, so the first field is the launched command.
+func commandFields(command string) []string {
+	fields := strings.Fields(command)
+	for len(fields) > 0 && (slices.Contains(verifyLauncherWords, fields[0]) || isEnvironmentAssignment(fields[0])) {
+		fields = fields[1:]
+	}
+	return fields
+}
+
+// isEnvironmentAssignment reports whether field is a NAME=value environment assignment.
+func isEnvironmentAssignment(field string) bool {
+	name, _, found := strings.Cut(field, "=")
+	return found && name != "" && !strings.ContainsFunc(name, func(r rune) bool {
+		return r != '_' && (r < 'A' || r > 'Z') && (r < 'a' || r > 'z') && (r < '0' || r > '9')
+	})
+}
+
+// hasFieldPrefix reports whether fields opens with every field of prefix, and prefix is non-empty.
+func hasFieldPrefix(fields, prefix []string) bool {
+	return len(prefix) > 0 && len(fields) >= len(prefix) && slices.Equal(fields[:len(prefix)], prefix)
 }
 
 // patternChangeMismatches compares the plan's PATTERN changes with those of the decision record at recordPath.

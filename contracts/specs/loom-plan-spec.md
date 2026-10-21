@@ -64,7 +64,7 @@ first_card: 1                            # optional positive integer, default 1;
 ```
 
 The body carries a short task-framing paragraph, an ordered **Card Index** whose entries read `N — <card-slug> — <one-line intent>`,
-and the optional plan-level body sections `## Shared Decisions`, `## Rename mechanic`, `## verify:` and `## PATTERN changes`.
+and the optional plan-level body sections `## Shared Decisions`, `## Rename mechanic` and `## PATTERN changes`; a `## verify:` section is accepted and ignored.
 
 `## PATTERN changes` carries the decision record's `## PATTERN changes` entries, one bullet each, in the bullet shape `loom-discussion-spec.md` defines, without the record's added-after-Discussion suffix.
 
@@ -282,41 +282,36 @@ A departure from an entry the task declares changed in the overview's `## PATTER
 
 ## verify model
 
-Tiers 1 and 2 below are implemented;
-tier 3 stays explicit-only.
-The per-card **`**Verify:**`** field stays the optional, verbatim, rare escape hatch it already was under format 3 — a cheap, targeted check where it is useful.
-The plan-level `## verify:` body section in `00-overview.md` (unchanged in shape from format 3) is the integration suite run once per attempt as a must-pass gate on Merriam's strand, and again by `lyx webster verify`.
-The section holds one shell command per line;
-the parser skips code-fence lines and full-line `#` comments, then chains every remaining non-blank line with ` && ` into the one command line webster runs, so the first failing command fails the whole check.
+The hub's tests run through `lyx gate test`, which runs the numbered tiers `gate.yaml` declares over a scope lyx computes.
+A gate is a named list of tiers: the `card` gate runs per card, the `batch` gate per batch, the `round` gate between review rounds, the `final` gate once for the whole plan, and the `landing` and `publish` gates at landing.
+The hub's tiers and gate lists reach the plan writer and the plan reviewer in their prompts, rendered from `gate.yaml`.
+A plan author names no gate, tier list or target list, because the Go-rendered prompts and the gates carry them.
 
-Landing is the verify line's second consumer.
-The `Publish` and `Finalize` landing producers run the same chained command in the task worktree whenever the tree differs from the last verified tree, which `internal/verifytree` records,
-and halt Stuck on failure before anything is pushed or landed.
+The per-card **`**Verify:**`** field stays the optional, rare escape hatch for what no gate expresses — a cheap, targeted check where it is useful.
+A `**Verify:**` line that tests is one `lyx gate test --wait` call with a tier list and a scope form, such as `lyx gate test --wait --tier 1 --card <card id>`, and never a raw test command or a target list.
+The plan-level `## verify:` body section in `00-overview.md` is accepted and ignored: the parser still reads it, and the plan gate reports an informational finding, because the `final` gate has replaced it.
+
+Landing runs the `landing` and `publish` gates in the task worktree whenever the tree differs from the last verified tree, which `internal/verifytree` records,
+and halts Stuck on failure before anything is pushed or landed.
 Both also halt Stuck on a dirty tree, so only committed content is ever verified, pushed or landed.
-The section must cover what a parent merge can break.
 
-The section runs the hub's verify tiers in the order and form `language.yaml`'s `verify_tiers` gives, and with none set it builds the code and then runs the tests of every package a card targets.
-A tier run at Publish is run by landing config's `publish_verify` where the repo sets it, and a tier `verify_tiers` says is compiled rather than run is never run by the plan.
-Webster's gate, Publish and Finalize run the section itself, and Publish then runs `publish_verify` after it.
-The Webster-Burler-Fix round gate instead runs a derived impacted-set command between rounds.
-
-The three tiers match this repo's own test-tier discipline — `internal/planparser`'s existing `Verify` fields are the V1 precedent this generalizes, not three tiers invented for this format:
+The tiers below match this repo's own test-tier discipline:
 
 - **Tier 1 (per card, automatic, no author action).**
-  Implemented as the Go-derived per-card gate: `lyx gate test` over the card's own package directories, one step per module, then one guard step over the root module's `//lyx:guard` tests, then the comment line-break lint and the PATTERN headroom lint.
-  A package directory inside a nested module is tested inside that module with `lyx gate test -C <module>` and module-relative paths.
-  The card gate does not build or test the rest of the module; a card that breaks a package outside its targets passes it unless the break is in a `//lyx:guard` test, and the batch gate or the plan-level verify catches that.
+  Implemented as the Go-rendered per-card gate: the hub's `card` gate call, `lyx gate test --wait --tier <n>... --card <card id>`, then the comment line-break lint and the PATTERN headroom lint.
+  The gate call computes the card's packages per module from the plan and runs the guard step over the `//lyx:guard` tests itself, so the prompt names no package.
+  The card gate does not build or test the rest of the module; a card that breaks a package outside its targets passes it unless the break is in a `//lyx:guard` test, and the batch gate or the `final` gate catches that.
   Untagged tests are fast by construction, per the Test Tier Purity Invariant's own discipline — no cwd resolution, no process spawn.
   Fully mechanical — no author enumerates a file list, which is what made V1-style `verify:` lists grow long in practice.
 - **Tier 2 (per batch for its own packages, plan-level for the whole suite).**
   Real git-against-remote tests, built via `internal/hubforge` with real repository creation and a real clone, are genuinely slower.
-  The batch gate runs `lyx gate test --tags integration` over the union of the batch's package directories, once per batch, by the fork after its last card; Go never runs it, and the plan-level verify catches a fork that skips it;
-  the plan-level `## verify:` stays the once-per-plan run, now a must-pass gate on Merriam that sends a failure back to Merriam to fix.
+  The batch gate is the hub's `batch` gate call, `lyx gate test --wait --tier <n>...` with one `--card <card id>` per card of the batch, run once per batch by the fork after its last card; Go never runs it, and the `final` gate catches a fork that skips it;
+  the `final` gate stays the once-per-plan run, a must-pass gate on Merriam that sends a failure back to Merriam to fix.
   The Concurrency section's post-merge backstop assumes the same gate.
 - **Tier 3 (rare, explicit only, never automatic).**
   Tests that drive a real LLM, gated by the `llm` build tag — expensive in both wall-clock and tokens.
-  Never swept into an automatic per-card or per-plan gate under any circumstance; a plan's `## verify:` compiles them (`go vet -tags llm`) and never runs them.
-  The `tmux` tag is a separate, token-free tier that a plan's `## verify:` compiles (`go vet -tags tmux`) and never runs; Publish runs it through landing config's `publish_verify`.
+  Never swept into an automatic per-card or per-plan gate under any circumstance; a tier that compiles them (`go vet -tags llm`) never runs them.
+  The `tmux` tag is a separate, token-free tier that the `final` gate compiles (`go vet -tags tmux`) and never runs; Publish runs it through the `publish` gate.
   A card that genuinely needs one is exactly what the optional `Verify:` field is for: an explicit, author-named exception, never something inferred.
 
 The optional per-card `Verify:` field exists for what tier 1's automatic gate cannot catch on its own — a specific CLI smoke test, a targeted tier 2 scenario, or, rarely, a tier 3 case.
@@ -359,7 +354,7 @@ Sequencing for cards that DO share a symbol is settled by plan order.
 If card 8 has `Uses: X`, card 5's target list includes `X`, and card 5 precedes card 8, then card 8 depends on X's state after card 5 lands — no further bookkeeping, since a sequentially-ordered plan has exactly one current state of any touched symbol at any point in its sequence.
 
 Dependency-list completeness cannot be proven mechanically at plan time — the same class of gap as `assert-no-callers`, catching what it can see rather than what requires understanding intent.
-The real gate is post-merge: once a concurrently-executed batch's worktrees merge back, `go build ./... && go test ./...` against the merged result is what actually catches a missed dependency, surfacing an incomplete plan-time `Uses:` list as a build or test failure.
+The real gate is post-merge: once a concurrently-executed batch's worktrees merge back, the `final` gate's whole run against the merged result is what actually catches a missed dependency, surfacing an incomplete plan-time `Uses:` list as a build or test failure.
 
 ## Deferred / forward-compat
 
@@ -444,11 +439,11 @@ The rows below stay in one fixed order regardless of which entry point runs them
     A `Rename` group's own `Pairs.Old` entries are checked instead of its `Refs`, and its `Pairs.New` side is never checked.
     `Custom` stays exempt on its own targets — and from the `prosa-symbol-target` rule above, restated in group terms: a `Custom` group's own targets are exempt from both rules — and from nothing else, since every other group and every card-generic check still binds it.
 29. `commit-subject-mismatch` — a present `Commit:` value that does not start with the card's own `N: ` prefix. Card-generic.
-30. `verify-nested-module` — a `go` command in a card's `**Verify:**` value or the overview's `## verify:` section whose relative package argument lies in a nested module other than the one the command runs in, so the go tool cannot resolve it from there.
+30. `verify-nested-module` — a `go` command in a card's `**Verify:**` value whose relative package argument lies in a nested module other than the one the command runs in, so the go tool cannot resolve it from there.
     It joins a backslash-newline continuation into one line, then splits a chain at `&&`, `||`, `;`, `|` and a newline, reading `||` as one separator and a separator inside a quoted span as text.
     It follows a literal `cd <dir>` and a `go -C <dir>`, and ends the scan of a chain at a `cd` or `-C` to an absolute path or out of the worktree root, or at a `cd` in a pipeline stage or after `||`, which may not have run.
     A field after the subcommand that opens with `-` is a flag, taking the next field when the flag takes a value; a package argument is `.`, `..` or a field opening with `./` or `../`, with a trailing `/...` dropped.
-    A nested module is a directory below the root holding a `go.mod`, on disk or created by a card's `Create` (or the New side of a `Rename`) at or below the card, minus those a `Delete` or a `Rename` Old side removes; the overview's line is judged against the whole plan.
+    A nested module is a directory below the root holding a `go.mod`, on disk or created by a card's `Create` (or the New side of a `Rename`) at or below the card, minus those a `Delete` or a `Rename` Old side removes; the overview's `## verify:` section is never read, since no gate runs it.
     So `./...` from the root, which the go tool limits to the root module, is silent.
     One finding per command, attributed to the card, or empty for the overview; its way forward is to run the command as `go -C <module>` with module-relative package paths.
     Runs under any `language:`, since it reads `go` commands rather than glyphs; reported by both plan gates, `lyx loom validate-plan` and dispatch through `ValidateFormat`.
@@ -499,11 +494,11 @@ The rows below stay in one fixed order regardless of which entry point runs them
     Its way forward is to take the data from committed test data an earlier card creates, or to drop the command.
     The plan index runs it in its format validation, so both plan gates and `lyx loom validate-plan`'s default and `--rework` modes report it; `--require-approved`, webster's own `validate` verb and dispatch validation do not run it.
     It only refuses and removes no guard: it misses a spelling in `bash -c "…"` or built from a variable, the rest of a span after an unterminated quote, a spelling in an inline span or prose, and a fabric-repo path not spelled as a name ending in the suffix, and the implementer audit stays the guard for those.
-38. `verify-module-wide` — a `go test`, `go build` or `go vet` in a card's `**Verify:**` value whose package argument holds `...` or equals `all`, or a `go test` whose `-tags` value names `tmux` or `llm`.
+38. `verify-module-wide` — a raw Go test, build or vet command in a card's `**Verify:**` value whose package argument holds `...` or equals `all`, or a raw Go test command whose `-tags` value names `tmux` or `llm`.
     An agent's settings deny such a command, so it can never run under a fork.
     It splits a chain as `verify-nested-module` does, at `&&`, `||`, `;`, `|` and a newline after joining line continuations, skips a `go -C <dir>` and a leading environment assignment, and stops reading a command at `--` or `-args`; a flag that takes a value takes the next field.
-    One finding per command, attributed to the card; the overview's `## verify:` section is never read, since Go runs it itself.
-    Its way forward is `lyx gate test [-C <module>] [--tags <tags>] <packages>` over the card's own packages, run in the foreground under the gate rule in the agent's system prompt.
+    One finding per command, attributed to the card; the overview's `## verify:` section is never read.
+    Its way forward is `lyx gate test --wait --tier <n> --card <id>` over the card's own scope, run in the foreground under the gate rule in the agent's system prompt.
     Runs under any `language:` and is reported by both plan gates, `lyx loom validate-plan` and dispatch through `ValidateFormat`.
     It only refuses: it misses a command built from a variable or behind `bash -c`.
 39. `pattern-entry-line-cap` — a card that prescribes a verbatim `PATTERN.md` entry line over the cap: a line inside a fenced code block of the card file that opens with ``- `PATTERN-`` and exceeds `pattern.MaxEntryLineChars` runes.
@@ -525,10 +520,11 @@ The rows below stay in one fixed order regardless of which entry point runs them
     One blocking finding per name, attributed to the card naming the member, naming `PATTERN-fabric-vocabulary` and the rule broken; its way forward is to rename the member.
     Runs under any `language:`, and the plan index appends it to its format, rework and dispatch validation, so both plan gates, `lyx loom validate-plan`'s default and `--rework` modes and webster dispatch report it; dispatch drops a finding against a completed card, and `--require-approved` and webster's own `validate` verb do not run it.
     It only refuses: it misses a name spelled only in prose, such as a test row or subtest name, or built at implementation time, which the verify gate still catches, and it may refuse a host-geometry helper declared in a `_test.go` file under `internal/`, which the scan admits.
-42. `verify-package-missing` — a relative package argument (`.`, `..`, `./…` or `../…`, a trailing `/...` removed, not a `.go` file) of a `go test`, `go build`, `go vet` or `lyx gate test` command in a card's `**Verify:**` value or the overview's `## verify:` section that names no directory.
-    A directory counts when it is on disk under the worktree root, or equals or is an ancestor of a directory a card creates: a card's value reads the targets of non-`Delete` groups of that card and the earlier ones, a `Rename` pair's `New` side included, and the overview's reads the whole plan's; an external `_test` unit counts as its package's directory.
+42. `verify-package-missing` — a relative package argument (`.`, `..`, `./…` or `../…`, a trailing `/...` removed, not a `.go` file) of a raw Go test, build or vet command or a `lyx gate test` command in a card's `**Verify:**` value that names no directory.
+    A directory counts when it is on disk under the worktree root, or equals or is an ancestor of a directory a card creates: a card's value reads the targets of non-`Delete` groups of that card and the earlier ones, a `Rename` pair's `New` side included; an external `_test` unit counts as its package's directory.
     It splits a chain as `verify-nested-module` does and follows a literal `cd <dir>` and a `go -C <dir>`, `lyx gate test -C <dir>` or `--dir <dir>` the same way; `--tags` skips its value for `lyx gate test`, and reading stops at `--`.
-    A card's value is skipped when that card or an earlier one holds a `Move` group, and the overview's when any card does, since a `Move`'s destination lives in `Intent` prose.
+    A card's value is skipped when that card or an earlier one holds a `Move` group, since a `Move`'s destination lives in `Intent` prose.
+    The overview's `## verify:` section is never read.
     One finding per argument, with the argument as its ref.
     When the argument ends in `_test` and its `_test`-less spelling is a directory, the detail names that spelling as the replacement.
     Its way forward is to correct the Verify line.
@@ -542,6 +538,18 @@ The rows below stay in one fixed order regardless of which entry point runs them
     Skipped under `language: none`, whose plan forgoes every glyph check and has neither a self glyph to read nor a member glyph or handle to name.
     It reads plan text only, so it fires whether or not the file exists, and only refuses.
     The plan index appends it to its format and rework validation, so both plan gates and `lyx loom validate-plan`'s default and `--rework` modes report it; format validation skips a done card, rework skips none because a rework generation is a fresh plan whose prior cards are archived, and dispatch, `--require-approved` and webster's own `validate` verb do not run it.
+44. `verify-raw-command` — a card's `**Verify:**` line holding a command the hub's `refuse_raw` list names, read in command position over each command of the line, past a leading `env`, `exec`, `xargs`, `sudo` or `time` launcher.
+    Go re-runs a `**Verify:**` line outside any agent hook, so the shell guard cannot refuse it there.
+    One blocking finding per command, attributed to the card; its way forward is a `lyx gate test --wait` call with a tier list and a scope form.
+    `loomshed.ValidatePlan` and `loomshed.ValidateReworkPlan` append it from the hub's `gate.yaml` list outside both planparser entry points; an absent `gate.yaml` or an empty list reports nothing.
+    A done card is not read, since its file is frozen, and the rework gate reads the fresh generation's cards.
+    It reads static text only: a test hidden behind a script in the line passes.
+45. `verify-gate-no-wait` — a `lyx gate test` call in a card's `**Verify:**` line without `--wait`.
+    A call without it exits 75 on a busy slot instead of waiting for one, which fails a verify line no agent can re-run.
+    It is appended and scoped as `verify-raw-command` is; one blocking finding per call, and its way forward is to add `--wait`.
+46. `plan-verify-retired` (informational) — an overview carrying a `## verify:` section.
+    No gate runs it; the parser keeps accepting the section, so an in-flight plan still parses.
+    It is appended as `verify-raw-command` is and never blocks.
 
 One further check, `rework-first-card`, is outside both entry points and has no row above.
 Only the rework gate runs it: `planglyph.ValidateRework` runs it after the format-only set, and it reports a `first_card:` that differs from the card number Go told the rework session to start at.
@@ -601,7 +609,7 @@ of a later extraction.
 
 ## verify:
 
-go test ./internal/boardcli/... ./internal/boardengine/... ./cmd/lyx/...
+lyx gate test ./internal/boardcli ./internal/boardengine ./cmd/lyx
 ```
 
 `_lyx/plan/01-json-row-type.md`:
@@ -615,7 +623,7 @@ go test ./internal/boardcli/... ./internal/boardengine/... ./cmd/lyx/...
 **Intent:** Define the `RowJSON` struct carrying the list command's existing table columns as JSON-taggable fields.
 
 **Commit:** `1: json-row-type`
-**Verify:** go test ./internal/boardcli
+**Verify:** lyx gate test --wait ./internal/boardcli
 ```
 
 `_lyx/plan/02-json-flag.md`:
