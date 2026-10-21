@@ -85,7 +85,7 @@ func seedRetiredKey(t *testing.T, recordsRoot string) {
 
 	module, _ := configreg.Lookup("batcher")
 	content := strings.Replace(module.Template(), "orientation: 31400", retiredKey+": 52000", 1)
-	content = strings.Replace(content, "budget: 450000", differingBatcherBudget, 1)
+	content = strings.Replace(content, "budget: 200000", differingBatcherBudget, 1)
 	if !strings.Contains(content, retiredKey) || !strings.Contains(content, differingBatcherBudget) {
 		t.Fatalf("batcher template no longer carries the orientation and budget lines the fixture rewrites")
 	}

@@ -569,7 +569,7 @@ func TestLoadOverviewThresholds(t *testing.T) {
 		want     overviewThresholds
 		wantWarn bool
 	}{
-		{name: "no orch.yaml resolves the template thresholds", want: overviewThresholds{Soft: 300000, Hard: 400000, Known: true}},
+		{name: "no orch.yaml resolves the template thresholds", want: overviewThresholds{Soft: 150000, Hard: 200000, Known: true}},
 		{name: "an invalid orch.yaml returns the unknown thresholds and warns", config: "cycle_mode: bogus\n", want: overviewThresholds{}, wantWarn: true},
 	}
 	for _, tt := range tests {
