@@ -7,6 +7,7 @@ package shedadapters
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -184,6 +185,19 @@ type BouncerConfig struct {
 	// VerifyTiers is the hub's verify tier list, which fills the rubric's verify_tiers marker in the seed and judge prompts.
 	// The zero value renders `none`.
 	VerifyTiers []string
+	// Subject reads the identity of what this segment judges now, with ok false when it has none, as a standalone run's code segment has none.
+	// While it is set and answers ok, every approved settle writes the segment's settle record and every seed and judge spawn writes its generation record,
+	// and a re-entry over a settled verdict compares the live subject with the recorded one.
+	// An error is returned as the Call's own error.
+	// Nil is the absent value: no record is written, and a re-entry over a settled verdict clears and re-seeds.
+	Subject func() (Subject, bool, error)
+	// MergeInOnly reports whether the history since the commit since holds only merge-ins, the test Subject.Unchanged applies to a code segment whose merge base moved.
+	// Nil reads a moved merge base as a changed subject.
+	MergeInOnly func(since string) (bool, error)
+	// SettledBase reads a document segment's amendment base, the record head the settled artifacts stand at, once Commit has returned.
+	// It replaces the base written with the settle record; an error is returned as the Call's own error.
+	// Nil keeps the base the settle record was written with.
+	SettledBase func() (string, error)
 }
 
 // Bouncer is the shedadapters adapter implementing the generic review-gate producer: it composes
@@ -304,17 +318,25 @@ var _ shedengine.ShedProducer = (*Bouncer)(nil)
 // judgment as this call's own (settle, never clear); finding nothing live leaves both branches
 // below acting on exactly the state they always did.
 //
-// Clear-and-re-seed: when the resolved round is judged and its verdict is CONVERGED (a legacy APPROVED reads as CONVERGED here),
-// this producer has already settled the segment on some earlier call -- its own past Done.
-// Re-entering means the gated artifact was written again, so that old verdict must not gate the new one:
-// the run directory is archived aside via archiveRunDir and recreated empty, the round is re-resolved to 0,
+// Re-entry over a settled verdict: when the resolved round is judged and its verdict is CONVERGED (a legacy APPROVED reads as CONVERGED here),
+// or the round's recorded decision is a settled accept whatever its verdict, this producer settled the segment on some earlier call.
+// A Bouncer told a Subject seam keeps a settle record and a generation record in the run directory, and tells four cases apart:
+// 1. A live settle record whose subject is unchanged against the live one, checked at entry at any round including 0:
+// the settle is re-run without a seed, judge or review and so spends no budget, as resettle describes.
+// 2. A live settle record whose subject changed: the clear below.
+// 3. No settle record, a generation record, and a live subject equal to the generation record's judge subject:
+// the verdict is settled as a harvest, which writes the settle record first, and nothing is cleared or spawned.
+// 4. No settle record and no generation record, which is every Bouncer told no Subject seam:
+// the clear below.
+// A settle record that is not live takes the round-by-round path, where a settled verdict is settled and never cleared.
+//
+// Clear-and-re-seed: the old verdict must not gate a gated artifact that was written again,
+// so the run directory is archived aside via archiveRunDir and recreated empty, the round is re-resolved to 0,
 // and the same call falls through into the seed branch below, since round1FocusSeeded() reads false over the freshly recreated, empty directory.
-// The clear also fires when the round's recorded decision is a settled accept, whatever its verdict,
-// so a re-entry, including a resume after a failed Commit seam, archives and re-seeds instead of settling again;
-// the entry-time probe still runs before both.
-// It does not fire on an undecided escalated round,
+// The clear does not fire on an undecided escalated round,
 // so a segment re-entered after a `lyx loom goto` to an earlier row halts Awaiting again on that round,
 // and a `continue` then sends the rewritten artifact to a fresh review round.
+// The entry-time probe runs before both the clear and the harvest.
 //
 // Escalation decision: an accept lets exactly one escalated round pass without a converged judgment.
 // It skips no seam, its record stays in the committed run directory,
@@ -339,6 +361,10 @@ func (b *Bouncer) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 			logger.Info("shedadapters: bouncer skip seam approved the artifact without a review", "producer", b.cfg.Name, "engine", bouncerEngineLabel)
 			return b.approveWithoutReview()
 		}
+	}
+
+	if outcome, ptr, handled, err := b.reenterUnchanged(); handled {
+		return outcome, ptr, err
 	}
 
 	n, err := ResolveRound(b.cfg.RunDir, b.cfg.ReportName)
@@ -391,21 +417,32 @@ func (b *Bouncer) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 
 	if n > 0 {
 		if b.settledGeneration(n) {
-			// The trigger is state this producer already wrote:
-			// a CONVERGED verdict sitting on disk at Call entry is the durable record that some earlier Call settled this segment.
-			// Continuing instead of clearing would replay that stale verdict, which is the defect this step removes.
-			//
-			// Logged before the archive, and at Warn rather than Info, because the clear is not
-			// cheap: it discards a settled generation and re-seeds from round 1, which costs a
-			// fresh judge spawn plus a fresh round -- real sessions, real minutes.
-			// An operator whose run suddenly costs a second generation would
-			// otherwise find nothing about it in the driver log, the status file, or the run
-			// directory. A commit-seam failure followed by a resume takes this exact path.
-			logger.Warn("shedadapters: bouncer clearing an already-approved run directory and re-seeding from round 1", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "approvedRound", n, "runDir", b.cfg.RunDir)
-			if err := archiveRunDir(b.cfg.RunDir, b.cfg.Now); err != nil {
-				return b.degrade(ctx, "shedadapters: bouncer failed to clear an already-approved run directory", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
+			action, err := b.settledEntry()
+			if err != nil {
+				return "", shedengine.OutputPointer{}, err
 			}
-			n = 0
+			switch action {
+			case entryHarvest:
+				// Case 3: the judge that wrote this verdict judged the subject that is live now, and the driver died before settling it.
+				verdict, ledger, _ := recordedVerdict(b.cfg.RunDir, n)
+				return b.settleUnlessRefused(ctx, n, verdict, ledger, true)
+			case entryClear:
+				// The trigger is state this producer already wrote:
+				// a CONVERGED verdict sitting on disk at Call entry is the durable record that some earlier Call settled this segment.
+				// Continuing instead of clearing would replay that stale verdict, which is the defect this step removes.
+				//
+				// Logged before the archive, and at Warn rather than Info, because the clear is not
+				// cheap: it discards a settled generation and re-seeds from round 1, which costs a
+				// fresh judge spawn plus a fresh round -- real sessions, real minutes.
+				// An operator whose run suddenly costs a second generation would
+				// otherwise find nothing about it in the driver log, the status file, or the run
+				// directory. A commit-seam failure followed by a resume takes this exact path.
+				logger.Warn("shedadapters: bouncer clearing an already-approved run directory and re-seeding from round 1", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "approvedRound", n, "runDir", b.cfg.RunDir)
+				if err := archiveRunDir(b.cfg.RunDir, b.cfg.Now); err != nil {
+					return b.degrade(ctx, "shedadapters: bouncer failed to clear an already-approved run directory", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
+				}
+				n = 0
+			}
 		}
 	}
 
@@ -450,18 +487,280 @@ func (b *Bouncer) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 }
 
 // approveWithoutReview settles a skipped segment as approved: Approve then Commit, each when non-nil, failing exactly as settle's approved branch does, then Done with an empty pointer because no ledger exists to point at.
+// A Bouncer told a Subject seam that answers writes, first, a generation record when the run directory holds none, then the round-0 settle record, and marks it settled once Commit returns.
 func (b *Bouncer) approveWithoutReview() (shedengine.Outcome, shedengine.OutputPointer, error) {
+	subject, recorded, err := b.liveSubject()
+	if err != nil {
+		return "", shedengine.OutputPointer{}, err
+	}
+	if recorded {
+		if err := b.startGeneration(); err != nil {
+			return "", shedengine.OutputPointer{}, err
+		}
+		if err := b.recordSettle(0, subject); err != nil {
+			return "", shedengine.OutputPointer{}, err
+		}
+	}
+	if err := b.approveAndCommit(); err != nil {
+		return "", shedengine.OutputPointer{}, err
+	}
+	if err := b.finishSettle(recorded); err != nil {
+		return "", shedengine.OutputPointer{}, err
+	}
+	return shedengine.Done, shedengine.OutputPointer{}, nil
+}
+
+// approveAndCommit calls the Approve seam and then the Commit seam, each when non-nil, and returns the first failure, so a failing Approve skips Commit.
+func (b *Bouncer) approveAndCommit() error {
 	if b.cfg.Approve != nil {
 		if err := b.cfg.Approve(); err != nil {
-			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): approve reviewed artifacts: %w", b.cfg.Name, bouncerEngineLabel, err)
+			return fmt.Errorf("shedadapters: %s (%s): approve reviewed artifacts: %w", b.cfg.Name, bouncerEngineLabel, err)
 		}
 	}
 	if b.cfg.Commit != nil {
 		if err := b.cfg.Commit(); err != nil {
-			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): commit approved artifacts: %w", b.cfg.Name, bouncerEngineLabel, err)
+			return fmt.Errorf("shedadapters: %s (%s): commit approved artifacts: %w", b.cfg.Name, bouncerEngineLabel, err)
 		}
 	}
-	return shedengine.Done, shedengine.OutputPointer{}, nil
+	return nil
+}
+
+// liveSubject reads the live subject through the Subject seam.
+// It reports false when the seam is nil or answers that the segment has no subject, and a seam error comes back wrapped as the Call's own.
+func (b *Bouncer) liveSubject() (Subject, bool, error) {
+	if b.cfg.Subject == nil {
+		return Subject{}, false, nil
+	}
+	subject, ok, err := b.cfg.Subject()
+	if err != nil {
+		return Subject{}, false, fmt.Errorf("shedadapters: %s (%s): read the live subject: %w", b.cfg.Name, bouncerEngineLabel, err)
+	}
+	return subject, ok, nil
+}
+
+// recordFailure wraps a failed record write, naming the way forward.
+func (b *Bouncer) recordFailure(what string, err error) error {
+	return fmt.Errorf("shedadapters: %s (%s): write the %s: %w; way forward: make the named path writable, then run `lyx loom start` to re-run the row", b.cfg.Name, bouncerEngineLabel, what, err)
+}
+
+// startGeneration writes generation 1's record when the run directory holds none.
+func (b *Bouncer) startGeneration() error {
+	_, found, err := readGenerationRecord(b.cfg.RunDir)
+	if err != nil {
+		return b.recordFailure("generation record", err)
+	}
+	if found {
+		return nil
+	}
+	if err := writeGenerationRecord(b.cfg.RunDir, generationRecord{Number: 1}); err != nil {
+		return b.recordFailure("generation record", err)
+	}
+	return nil
+}
+
+// recordSettle writes the settle record for round over subject: the run directory's current generation, now as the settle time, Settled false, and for a code subject its full diff beside it.
+// The record stays unsettled until markSettled runs, so a settle that dies before Commit returns is told apart from a finished one.
+func (b *Bouncer) recordSettle(round int, subject Subject) error {
+	generation, found, err := readGenerationRecord(b.cfg.RunDir)
+	if err != nil {
+		return b.recordFailure("settle record", err)
+	}
+	number := 1
+	if found && generation.Number > 1 {
+		number = generation.Number
+	}
+	record := settleRecord{
+		Subject:    subject,
+		Base:       subject.Base,
+		Generation: number,
+		Round:      round,
+		SettledAt:  b.cfg.Now().UTC().Format(time.RFC3339),
+	}
+	if err := writeSettleRecord(b.cfg.RunDir, record, subject.Patch); err != nil {
+		return b.recordFailure("settle record", err)
+	}
+	return nil
+}
+
+// markSettled sets Settled on the run directory's settle record, keeping its settle time.
+// When the SettledBase seam is told, the base it reads replaces the one the record was written with.
+func (b *Bouncer) markSettled() error {
+	record, found, err := readSettleRecord(b.cfg.RunDir)
+	if err != nil {
+		return b.recordFailure("settle record", err)
+	}
+	if !found {
+		return b.recordFailure("settle record", errors.New("the record to mark settled is absent"))
+	}
+	record.Settled = true
+	if b.cfg.SettledBase != nil {
+		base, err := b.cfg.SettledBase()
+		if err != nil {
+			return fmt.Errorf("shedadapters: %s (%s): read the settled base: %w", b.cfg.Name, bouncerEngineLabel, err)
+		}
+		record.Base = base
+	}
+	if err := writeSettleRecord(b.cfg.RunDir, record, nil); err != nil {
+		return b.recordFailure("settle record", err)
+	}
+	return nil
+}
+
+// beginSettle writes the settle record for round when the Subject seam answers, and reports whether it did.
+func (b *Bouncer) beginSettle(round int) (bool, error) {
+	subject, ok, err := b.liveSubject()
+	if err != nil || !ok {
+		return false, err
+	}
+	return true, b.recordSettle(round, subject)
+}
+
+// finishSettle marks the settle record settled when beginSettle wrote one.
+func (b *Bouncer) finishSettle(recorded bool) error {
+	if !recorded {
+		return nil
+	}
+	return b.markSettled()
+}
+
+// recordJudgeSubject writes the live subject, its base and the spawn time into the generation record, as the judge's subject, before a judge spawn.
+// It writes nothing when the Subject seam is nil or answers no subject.
+func (b *Bouncer) recordJudgeSubject() error {
+	subject, ok, err := b.liveSubject()
+	if err != nil || !ok {
+		return err
+	}
+	generation, found, err := readGenerationRecord(b.cfg.RunDir)
+	if err != nil {
+		return b.recordFailure("generation record", err)
+	}
+	if !found || generation.Number < 1 {
+		generation.Number = 1
+	}
+	generation.JudgeSubject = subject
+	generation.JudgeBase = subject.Base
+	generation.JudgeAt = b.cfg.Now().UTC().Format(time.RFC3339)
+	if err := writeGenerationRecord(b.cfg.RunDir, generation); err != nil {
+		return b.recordFailure("generation record", err)
+	}
+	return nil
+}
+
+// What a Call does over a settled verdict that the entry check did not re-settle.
+const (
+	entryClear = iota
+	entryHarvest
+	entryReplay
+)
+
+// reenterUnchanged is the re-entry's case 1: a live settle record whose subject is unchanged against the live one is settled again through resettle.
+// It reports handled false, with nothing read from disk when the Subject seam is nil, when there is no live record, the seam answers no subject or the subject changed.
+func (b *Bouncer) reenterUnchanged() (outcome shedengine.Outcome, ptr shedengine.OutputPointer, handled bool, err error) {
+	if b.cfg.Subject == nil {
+		return "", shedengine.OutputPointer{}, false, nil
+	}
+	record, live, err := liveSettleRecord(b.cfg.RunDir)
+	if err != nil {
+		return "", shedengine.OutputPointer{}, true, fmt.Errorf("shedadapters: %s (%s): read the settle record: %w", b.cfg.Name, bouncerEngineLabel, err)
+	}
+	if !live {
+		return "", shedengine.OutputPointer{}, false, nil
+	}
+	subject, ok, err := b.liveSubject()
+	if err != nil {
+		return "", shedengine.OutputPointer{}, true, err
+	}
+	if !ok {
+		return "", shedengine.OutputPointer{}, false, nil
+	}
+	unchanged, err := subject.Unchanged(record.Subject, b.cfg.MergeInOnly)
+	if err != nil {
+		return "", shedengine.OutputPointer{}, true, fmt.Errorf("shedadapters: %s (%s): compare the live subject with the settled one: %w", b.cfg.Name, bouncerEngineLabel, err)
+	}
+	if !unchanged {
+		return "", shedengine.OutputPointer{}, false, nil
+	}
+	outcome, ptr, err = b.resettle(record)
+	return outcome, ptr, true, err
+}
+
+// resettle settles record's round again without a review: it re-runs the carry-over for the settled round, then Approve and Commit, and marks the record settled, keeping its settle time.
+// The closing is accepted when the round's decision is an accept, which is first settled when still pending, and converged otherwise;
+// a round-0 record, which the skip seam writes and whose settle never carried over, skips the carry-over.
+// It returns Done with the settled round's ledger as the pointer when the ledger exists, and spawns nothing, so it spends no budget.
+func (b *Bouncer) resettle(record settleRecord) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	var ptr shedengine.OutputPointer
+	if record.Round >= 1 {
+		closing := discussionparser.CarryOverConverged
+		decision, _, settled, exists, err := readCirclingDecision(b.cfg.RunDir, record.Round)
+		if err == nil && exists && decision == CirclingAccept {
+			closing = discussionparser.CarryOverAccepted
+			if !settled {
+				if err := settleCirclingAccept(b.cfg.RunDir, record.Round); err != nil {
+					return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): settle circling accept: %w", b.cfg.Name, bouncerEngineLabel, err)
+				}
+			}
+		}
+		if err := b.writeCarryOver(record.Round, closing); err != nil {
+			return "", shedengine.OutputPointer{}, err
+		}
+		if _, err := os.Stat(ledgerPath(b.cfg.RunDir, record.Round)); err == nil {
+			ptr.Path = ledgerPath(b.cfg.RunDir, record.Round)
+		}
+	}
+	if err := b.approveAndCommit(); err != nil {
+		return "", shedengine.OutputPointer{}, err
+	}
+	if err := b.markSettled(); err != nil {
+		return "", shedengine.OutputPointer{}, err
+	}
+	return shedengine.Done, ptr, nil
+}
+
+// settledEntry decides what a Call does over a settled verdict the entry check did not re-settle: entryClear, entryHarvest or entryReplay.
+// A Bouncer told no Subject seam, and one whose seam answers no subject, always clears.
+// A settle record that is live, so its subject changed, clears; one that is not live replays through the round-by-round path.
+// With no settle record, a generation record whose judge subject equals the live subject harvests, and anything else clears.
+func (b *Bouncer) settledEntry() (int, error) {
+	if b.cfg.Subject == nil {
+		return entryClear, nil
+	}
+	_, found, err := readSettleRecord(b.cfg.RunDir)
+	if err != nil {
+		return 0, fmt.Errorf("shedadapters: %s (%s): read the settle record: %w", b.cfg.Name, bouncerEngineLabel, err)
+	}
+	if found {
+		_, live, err := liveSettleRecord(b.cfg.RunDir)
+		if err != nil {
+			return 0, fmt.Errorf("shedadapters: %s (%s): read the settle record: %w", b.cfg.Name, bouncerEngineLabel, err)
+		}
+		if live {
+			return entryClear, nil
+		}
+		return entryReplay, nil
+	}
+	generation, found, err := readGenerationRecord(b.cfg.RunDir)
+	if err != nil {
+		return 0, fmt.Errorf("shedadapters: %s (%s): read the generation record: %w", b.cfg.Name, bouncerEngineLabel, err)
+	}
+	if !found || generation.JudgeSubject.Kind == "" {
+		return entryClear, nil
+	}
+	subject, ok, err := b.liveSubject()
+	if err != nil {
+		return 0, err
+	}
+	if !ok {
+		return entryClear, nil
+	}
+	unchanged, err := subject.Unchanged(generation.JudgeSubject, b.cfg.MergeInOnly)
+	if err != nil {
+		return 0, fmt.Errorf("shedadapters: %s (%s): compare the live subject with the judged one: %w", b.cfg.Name, bouncerEngineLabel, err)
+	}
+	if unchanged {
+		return entryHarvest, nil
+	}
+	return entryClear, nil
 }
 
 // round1FocusSeeded reports whether round 1's focus file exists and parses -- the seed-versus-
@@ -487,6 +786,13 @@ func (b *Bouncer) judged(round int) bool {
 // settledGeneration reports whether round's verdict on disk is the durable record of an earlier Call settling the segment:
 // CONVERGED, or any verdict whose decision is a settled accept.
 // A malformed decision file is not a settled one, so settle reports it.
+//
+// What a Call does over such a verdict depends on the records a Bouncer told a Subject seam keeps beside it:
+// 1. A live settle record over an unchanged subject re-settles with no spawn, checked at Call entry before any round is resolved.
+// 2. A live settle record over a changed subject clears the run directory and re-seeds.
+// 3. A generation record and no settle record, over a live subject equal to the generation record's judge subject, settles the verdict as a harvest.
+// 4. No settle record and no generation record clears the run directory and re-seeds, which is the only case a Bouncer told no seam meets.
+// A settle record that is not live settles the verdict on the round-by-round path and never clears.
 func (b *Bouncer) settledGeneration(round int) bool {
 	verdict, _, ok := recordedVerdict(b.cfg.RunDir, round)
 	if !ok {
@@ -783,18 +1089,18 @@ func (b *Bouncer) settle(ctx context.Context, round int, spawned bool) (shedengi
 
 	switch verdict {
 	case verdictConverged:
+		recorded, err := b.beginSettle(round)
+		if err != nil {
+			return "", shedengine.OutputPointer{}, err
+		}
 		if err := b.writeCarryOver(round, discussionparser.CarryOverConverged); err != nil {
 			return "", shedengine.OutputPointer{}, err
 		}
-		if b.cfg.Approve != nil {
-			if err := b.cfg.Approve(); err != nil {
-				return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): approve reviewed artifacts: %w", b.cfg.Name, bouncerEngineLabel, err)
-			}
+		if err := b.approveAndCommit(); err != nil {
+			return "", shedengine.OutputPointer{}, err
 		}
-		if b.cfg.Commit != nil {
-			if err := b.cfg.Commit(); err != nil {
-				return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): commit approved artifacts: %w", b.cfg.Name, bouncerEngineLabel, err)
-			}
+		if err := b.finishSettle(recorded); err != nil {
+			return "", shedengine.OutputPointer{}, err
 		}
 		return shedengine.Done, ptr, nil
 	case verdictContinue, verdictCircling:
@@ -884,21 +1190,21 @@ func (b *Bouncer) atHardCap(round int) bool {
 // A failed carry-over leaves the accept pending, so its re-call retries the write;
 // a failed settle write is returned before Approve runs.
 func (b *Bouncer) acceptRound(round int, ptr shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	recorded, err := b.beginSettle(round)
+	if err != nil {
+		return "", shedengine.OutputPointer{}, err
+	}
 	if err := b.writeCarryOver(round, discussionparser.CarryOverAccepted); err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
 	if err := settleCirclingAccept(b.cfg.RunDir, round); err != nil {
 		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): settle circling accept: %w", b.cfg.Name, bouncerEngineLabel, err)
 	}
-	if b.cfg.Approve != nil {
-		if err := b.cfg.Approve(); err != nil {
-			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): approve reviewed artifacts: %w", b.cfg.Name, bouncerEngineLabel, err)
-		}
+	if err := b.approveAndCommit(); err != nil {
+		return "", shedengine.OutputPointer{}, err
 	}
-	if b.cfg.Commit != nil {
-		if err := b.cfg.Commit(); err != nil {
-			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): commit approved artifacts: %w", b.cfg.Name, bouncerEngineLabel, err)
-		}
+	if err := b.finishSettle(recorded); err != nil {
+		return "", shedengine.OutputPointer{}, err
 	}
 	return shedengine.Done, ptr, nil
 }
@@ -1157,6 +1463,15 @@ func (b *Bouncer) escalationReason(round int, cause EscalationCause, briefPath s
 func (b *Bouncer) seedCall(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	path := focusPath(b.cfg.RunDir, 1)
 
+	// A Bouncer told a Subject seam that answers keeps a generation record from its first seed on, generation 1 included.
+	if _, ok, err := b.liveSubject(); err != nil {
+		return "", shedengine.OutputPointer{}, err
+	} else if ok {
+		if err := b.startGeneration(); err != nil {
+			return "", shedengine.OutputPointer{}, err
+		}
+	}
+
 	if err := b.runSeedSpawn(path); err != nil {
 		return b.degrade(ctx, "shedadapters: bouncer failed to archive a stale round-1 focus file", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", 1, "cause", err)
 	}
@@ -1401,6 +1716,10 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 		Segment:     b.colorSegment(),
 		Round:       strconv.Itoa(n),
 		Skills:      bouncerJudgeSkills,
+	}
+
+	if err := b.recordJudgeSubject(); err != nil {
+		return "", shedengine.OutputPointer{}, err
 	}
 
 	// Probe for a still-live judge run before archiving anything, as every spawning adapter does.

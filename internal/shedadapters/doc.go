@@ -116,6 +116,17 @@
 //     The seam only writes the segment's `## Open risks` entry: it approves nothing and skips no seam,
 //     and a failure is returned as the settle's own error with a way forward, so neither Approve nor Commit runs.
 //     A nil seam leaves every path as before.
+//     Settle records: a Bouncer told a BouncerConfig.Subject seam keeps two records in its run directory, written through internal/state and carried across an archive of the directory.
+//     The generation record is written at every seed, generation 1 included, when the directory holds none, and a judge spawn writes the live subject, its base and the spawn time into it.
+//     The settle record is written on every approved settle before the carry-over, Approve and Commit, with Settled false, and marked settled once Commit returned;
+//     the skip seam's approval writes a generation record when none exists and then a round-0 record.
+//     A Subject seam that is nil or answers no subject writes no record.
+//     Re-entry over a settled verdict then has four cases:
+//     a live settle record over an unchanged subject re-settles with no spawn, re-running the carry-over (except for a round-0 record), Approve and Commit and keeping the settle time;
+//     a live record over a changed subject, and a generation record whose judge subject differs from the live one, clear and re-seed;
+//     a generation record whose judge subject equals the live one settles the verdict as a harvest;
+//     and no record at all clears and re-seeds.
+//     A record that is not live settles on the round-by-round path and never clears.
 //     The exemption covers only the Bouncer's Stuck; each further round past the budget needs its own decision, and `lyx loom goto` grants a fresh budget.
 //     Every other path -- the seed call, the re-bounce, the clear itself, every degraded path -- reports an empty Path,
 //     with the re-bounce and degraded paths carrying their cause on Reason.
