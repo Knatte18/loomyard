@@ -29,6 +29,9 @@
 // PR-Gate does the same before it queries the pull request, so the orch never decides on a pull request whose base moved, and its matching-rejection Stuck releases the lock before returning:
 // the edge to PR-Rework (darn: Darn-Write) leaves the Merge-In-to-Finalize window, and the reworked run takes the lock again at Merge-In.
 // Finalize takes the lock and tests the parent after parsing the change description and committing the status file, before its catch-up merge-in.
+// Under that lock it runs the same run-scope origin reconcile and maps its verdict as Merge-In does.
+// A run whose Finalize merged into the local parent here is never read as ended, so a Finalize re-entered after its done mark proceeds;
+// a Finalize entering with no such merge, its entry done on origin, stops with Halt, since another machine landed the run.
 // A parent that already holds the task's work, after a GitHub merge or an earlier landing, reads as not moved and lands through the already-landed path.
 // The catch-up merge-in stays: the local tip is checked equal to the merged tip under the lock, so it brings no parent code the merge review has not covered while still syncing the records side.
 // After a merge-in-required error from the parent-side merge Finalize tests the parent again, and retries once only when it has not moved, which covers a parent moved by run records alone;
@@ -44,7 +47,11 @@
 // The seams are nil-is-absent: a nil Deps.MergeState skips the step.
 //
 // Merge-In is built here and listed by a recipe's producer list like the others.
-// It commits the status file, takes the parent lock through the shared guard, and only then brings the local parent branch level with its upstream.
+// It commits the status file, runs the run-scope origin reconcile through the told Deps.Reconcile, takes the parent lock through the shared guard, and only then brings the local parent branch level with its upstream.
+// The reconcile judges and never moves the parent.
+// A run origin ended is a Stuck with Halt naming the landing or the board removal, with `lyx cleanup --apply` from the prime as the way forward;
+// a run its branches stop is a Stuck naming the branch, its state and its way forward, then `lyx loom resume` in the task worktree;
+// an unreachable origin logs a Warn and proceeds, so the row fails on its own remote steps, and a reconcile error is an error.
 // Under the told push skip it neither fetches nor fast-forwards, and merges the local tip.
 // A parent branch behind its upstream is fast-forwarded in its own pair under the lock, which moves it to the upstream tip and touches no local commit;
 // one that is ahead of or diverged from its upstream, and a parent pair that is missing, dirty, mid-merge or no longer a fast-forward of its upstream, are Stuck with a way forward, since Merge-In never pushes or rewrites the parent.

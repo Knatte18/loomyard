@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/orchcli"
+	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -110,6 +111,7 @@ func landingDeps(
 			return err
 		},
 		CommitParentRecords: parentRecordsCommitter(l, seedSlug(l.WorktreeName)),
+		Reconcile:           runReconciler(l, seedSlug(l.WorktreeName)),
 		// The pre-merge step probes the pair's merge state, aborts the row's own parked merge-in and stops the run's conflict sessions first.
 		MergeState: func() (fabricengine.MidMergeState, error) {
 			return fabricengine.MidMerge(l)
@@ -367,6 +369,26 @@ func parentRecordsCommitter(l *lyxcwd.Location, slug string) func() error {
 		}
 		_, _, err = fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), parentLocation, []string{runsRoot}, loomengine.LandingCheckpointSubject(slug), fabricengine.EnvSyncOptions())
 		return err
+	}
+}
+
+// runReconciler returns the seam the landing rows judge the run against origin through, the run-scope origin reconcile of slug.
+// The prime is resolved at call time, and the seams come from pairteardown over it with the hub's options.
+func runReconciler(l *lyxcwd.Location, slug string) func() (fabricengine.OriginReport, error) {
+	return func() (fabricengine.OriginReport, error) {
+		primeName, err := fabricengine.PrimeName(l)
+		if err != nil {
+			return fabricengine.OriginReport{}, fmt.Errorf("resolve the hub's prime: %w", err)
+		}
+		prime, err := lyxcwd.ResolveWorktree(filepath.Join(l.HubPath, primeName))
+		if err != nil {
+			return fabricengine.OriginReport{}, fmt.Errorf("locate the hub's prime %q: %w", primeName, err)
+		}
+		teardown, err := pairteardown.New(prime)
+		if err != nil {
+			return fabricengine.OriginReport{}, err
+		}
+		return fabricengine.ReconcileOrigin(prime, fabricengine.ReconcileScope{Run: slug}, teardown.OriginSeams(pairteardown.HubSeamOptions(prime)), fabricengine.ReconcileOptions{})
 	}
 }
 

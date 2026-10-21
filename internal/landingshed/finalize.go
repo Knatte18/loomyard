@@ -146,6 +146,7 @@ func NewFinalize(deps Deps) (*Finalize, error) {
 //
 // Before its catch-up merge-in, Finalize takes the parent lock and tests that the parent did not move since Merge-In merged it:
 // a moved parent is a reroute Stuck, a paused lock wait or an unreadable lock record is a halting Stuck, and a landing that reaches Done releases the lock.
+// Under that lock it runs the run-scope origin reconcile: a run origin ended or stopped is Stuck, and an unreachable origin proceeds.
 //
 // Finalize is idempotent over an already-landed parent: when the parent already contains the task's
 // changes -- an operator squash-merged the pull request on GitHub, or an earlier Finalize landed and
@@ -195,6 +196,12 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 	// The catch-up merge-in below stays: the local tip is checked equal to the merged tip under the lock,
 	// so it brings no parent code the merge review has not covered, and it still syncs the records side.
 	if outcome, out, err, stop := holdParent(ctx, fz.guard, finalizeName); stop {
+		return outcome, out, err
+	}
+
+	// Step 1b3: judge the run against origin under the lock.
+	// A run whose Finalize already merged into the local parent here is never read as ended, so a Finalize re-entered after its done mark proceeds.
+	if outcome, out, err, stop := reconcileVerdict(ctx, finalizeName, fz.deps.Reconcile); stop {
 		return outcome, out, err
 	}
 
