@@ -59,8 +59,8 @@ func (f *recordsFixture) originCommit(branch, rel, content, message string) stri
 }
 
 // requireClean fails the test when dir has an uncommitted change.
-// scribbleThenFailReplay is the real board replay for every board but one,
-// and for that one writes an uncommitted `board.json` and then fails, as an apply that dies halfway leaves it.
+// scribbleThenFailReplay is the real board replay for every board but one.
+// For that one it writes an uncommitted `board.json` and then fails, as an apply that dies halfway leaves it.
 type scribbleThenFailReplay struct {
 	boardengine.FabricReplay
 	boardDir string
