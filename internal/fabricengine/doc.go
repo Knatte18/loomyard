@@ -496,6 +496,13 @@
 // It never fails wiring and removes nothing; a leave or a failure reaches the log as a warning.
 // `lyx fabric unwire` keeps the link and its exclude.
 //
+// `lyx fabric reconcile` runs the step on every managed pair after the junction repair, on a healthy and a re-wired pair alike and whether or not the repair failed.
+// It reports what the step changed or left in the pair's Detail and changes neither the pair's Action nor its Error, since scratch is agent convenience and never downgrades a verdict about the pair.
+// A pair that never reaches the repair, such as a raw-adopted one, an unmanaged one or one whose weft worktree is still missing, gets no link and no target.
+// A weft worktree torn down mid-repair gets nothing created either, because the step checks the weft root itself first.
+// The stale-junction sweep never claims the root link and never strips its exclude line.
+// After this lands, the operator runs `lyx fabric reconcile` once to convert the prime and every pair an older binary wired.
+//
 // `Remove` (remove.go) is the paired teardown, and it never deletes a directory git itself declined
 // to remove unless that directory is a registered LINKED worktree of the warp repo.
 // The rule is load-bearing rather than defensive: `git worktree remove` refuses a main working

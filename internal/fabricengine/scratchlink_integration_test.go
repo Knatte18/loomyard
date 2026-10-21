@@ -554,6 +554,254 @@ func TestWireJunctions_ScratchLinkRefusedAfterClassify(t *testing.T) {
 			t.Errorf("root .scratch = %q; want no link", got)
 		}
 	})
+
+	t.Run("ReconcileRealDirectoryRecreatedBeforeTheLink", func(t *testing.T) {
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		l := h.Location
+		slug := l.WorktreeName
+		root, target := scratchPaths(l, slug)
+		replaceLinkWithRealDirectory(t, root)
+		removeTarget(t, target)
+		fabricengine.SetScratchBeforeLinkHookForTest(t, func() {
+			if err := os.Mkdir(root, 0o755); err != nil {
+				t.Errorf("recreate %s: %v", root, err)
+			}
+		})
+
+		_, pair := reconcilePrimePair(t, h)
+
+		if !strings.Contains(pair.Detail, target) || !strings.Contains(pair.Detail, "lyx fabric reconcile") {
+			t.Errorf("Detail = %q; want it to name %s and `lyx fabric reconcile`", pair.Detail, target)
+		}
+	})
+
+	t.Run("ReconcileRegularFileWrittenBeforeTheLink", func(t *testing.T) {
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		l := h.Location
+		slug := l.WorktreeName
+		root, _ := scratchPaths(l, slug)
+		removeRootLink(t, root)
+		fabricengine.SetScratchBeforeLinkHookForTest(t, func() {
+			if err := os.WriteFile(root, []byte("in the way"), 0o644); err != nil {
+				t.Errorf("write %s: %v", root, err)
+			}
+		})
+
+		_, pair := reconcilePrimePair(t, h)
+
+		if !strings.Contains(pair.Detail, root) || !strings.Contains(pair.Detail, "lyx fabric reconcile") {
+			t.Errorf("Detail = %q; want it to name %s and `lyx fabric reconcile`", pair.Detail, root)
+		}
+
+		fabricengine.SetScratchBeforeLinkHookForTest(t, nil)
+		_, pair = reconcilePrimePair(t, h)
+
+		if !strings.Contains(pair.Detail, "a regular file") {
+			t.Errorf("second Detail = %q; want the regular file reported as left as found", pair.Detail)
+		}
+	})
+
+	t.Run("ReconcileTrackedCheckFails", func(t *testing.T) {
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		l := h.Location
+		slug := l.WorktreeName
+		root, target := scratchPaths(l, slug)
+		replaceLinkWithRealDirectory(t, root)
+		removeTarget(t, target)
+		fabricengine.SetScratchPathTrackedForTest(t, func(string, string) (bool, error) {
+			return false, os.ErrPermission
+		})
+
+		_, pair := reconcilePrimePair(t, h)
+
+		if !strings.Contains(pair.Detail, root) || !strings.Contains(pair.Detail, "lyx fabric reconcile") {
+			t.Errorf("Detail = %q; want it to name %s and `lyx fabric reconcile`", pair.Detail, root)
+		}
+	})
+}
+
+// reconcilePrimePair runs Reconcile over h's hub and returns the result with the prime pair's entry.
+func reconcilePrimePair(t *testing.T, h *hubforge.Hub) (fabricengine.ReconcileResult, *fabricengine.ReconcilePairResult) {
+	t.Helper()
+	l := h.Location
+	result, err := h.Topology.Reconcile(l)
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	return result, findReconcilePair(t, result.Pairs, fabricengine.RecordsWorktreePath(l, l.WorktreeName))
+}
+
+// addRawWarpWorktree adds a warp worktree named slug straight through git, with no weft branch, and returns its path.
+// With realLyxDir it also puts a real `_lyx` directory at the worktree's anchor.
+func addRawWarpWorktree(t *testing.T, h *hubforge.Hub, slug string, realLyxDir bool) string {
+	t.Helper()
+	l := h.Location
+	path := fabricengine.WorktreePath(l, slug)
+	gitkit.Git(t, h.PrimeWorktree(), "worktree", "add", "-b", slug, path)
+	if realLyxDir {
+		if err := os.MkdirAll(filepath.Join(path, l.AnchorRel, lyxdirs.LyxDirName), 0o755); err != nil {
+			t.Fatalf("create real _lyx directory: %v", err)
+		}
+	}
+	return path
+}
+
+// TestReconcile_ScratchLink pins the scratch step under Reconcile: it converges every managed pair, reports in the pair's Detail without changing Action or Error, and creates nothing for a pair that never reaches the repair.
+func TestReconcile_ScratchLink(t *testing.T) {
+	t.Parallel()
+
+	t.Run("RealDirectoryAdoptedOnAHealthyPair", func(t *testing.T) {
+		t.Parallel()
+
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		l := h.Location
+		slug := l.WorktreeName
+		root, target := scratchPaths(l, slug)
+		replaceLinkWithRealDirectory(t, root)
+		removeTarget(t, target)
+		writeLegacyScratchExclude(t, l, slug)
+
+		result, pair := reconcilePrimePair(t, h)
+
+		if pair.Action != fabricengine.ReconcileActionAlreadyHealthy || pair.Error != "" {
+			t.Errorf("pair = {Action %q, Error %q}; want already_healthy with no error", pair.Action, pair.Error)
+		}
+		if !strings.Contains(pair.Detail, target) {
+			t.Errorf("Detail = %q; want it to name the target %s", pair.Detail, target)
+		}
+		if !hasMutation(result.Mutations, fabricengine.KindPathRenamed, scratchHubRelative(t, l, target), scratchHubRelative(t, l, root)) {
+			t.Errorf("record %+v lacks path_renamed from the root to the target", result.Mutations.Entries())
+		}
+		lines := gitkit.ExcludeLines(t, fabricengine.WorktreePath(l, slug))
+		if !containsLine(lines, "/.scratch") || containsLine(lines, "/.scratch/") {
+			t.Errorf("exclude lines = %v; want /.scratch and no /.scratch/", lines)
+		}
+	})
+
+	t.Run("StepRunsWhenTheJunctionRepairFails", func(t *testing.T) {
+		t.Parallel()
+
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		l := h.Location
+		slug := l.WorktreeName
+		root, target := scratchPaths(l, slug)
+		replaceLinkWithRealDirectory(t, root)
+		removeTarget(t, target)
+		lyxLink := fabricengine.WarpLyxLinkHere(l)
+		if err := fslink.Remove(lyxLink); err != nil {
+			t.Fatalf("remove %s: %v", lyxLink, err)
+		}
+		if err := os.MkdirAll(lyxLink, 0o755); err != nil {
+			t.Fatalf("create real %s: %v", lyxLink, err)
+		}
+		if err := os.WriteFile(filepath.Join(lyxLink, "held.txt"), []byte("held"), 0o644); err != nil {
+			t.Fatalf("write into real %s: %v", lyxLink, err)
+		}
+
+		_, pair := reconcilePrimePair(t, h)
+
+		if !strings.Contains(pair.Error, "re-point junction") {
+			t.Errorf("Error = %q; want the re-point failure", pair.Error)
+		}
+		if got, want := describeEntry(t, root), "link:"+target; got != want {
+			t.Errorf("root .scratch = %q; want %q", got, want)
+		}
+		content, err := os.ReadFile(filepath.Join(root, scratchNoteName))
+		if err != nil || string(content) != "hello" {
+			t.Errorf("note read through .scratch = %q, %v; want %q", content, err, "hello")
+		}
+	})
+
+	t.Run("FailedTargetParentIsReportedInTheDetail", func(t *testing.T) {
+		t.Parallel()
+
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		l := h.Location
+		slug := l.WorktreeName
+		root, _ := scratchPaths(l, slug)
+		replaceLinkWithRealDirectory(t, root)
+		weftLyx := filepath.Join(fabricengine.RecordsWorktreePath(l, slug), l.AnchorRel, lyxdirs.DotLyxDirName)
+		if err := os.RemoveAll(weftLyx); err != nil {
+			t.Fatalf("remove %s: %v", weftLyx, err)
+		}
+		if err := os.WriteFile(weftLyx, []byte("not a directory"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", weftLyx, err)
+		}
+
+		_, pair := reconcilePrimePair(t, h)
+
+		if !strings.Contains(pair.Detail, root) || !strings.Contains(pair.Detail, "lyx fabric reconcile") {
+			t.Errorf("Detail = %q; want it to name %s and `lyx fabric reconcile`", pair.Detail, root)
+		}
+		if got := describeEntry(t, root); got != "dir" {
+			t.Errorf("root .scratch = %q; want the real directory left", got)
+		}
+		if _, err := os.Stat(filepath.Join(root, scratchNoteName)); err != nil {
+			t.Errorf("note missing from the left directory: %v", err)
+		}
+	})
+
+	for _, tt := range []struct {
+		name       string
+		realLyxDir bool
+		action     fabricengine.ReconcileAction
+	}{
+		{"RawAdoptedPairGetsNothing", false, fabricengine.ReconcileActionRawAdopted},
+		{"UnmanagedPairGetsNothing", true, fabricengine.ReconcileActionUnmanagedReported},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+			l := h.Location
+			const slug = "scratch-raw"
+			addRawWarpWorktree(t, h, slug, tt.realLyxDir)
+
+			result, err := h.Topology.Reconcile(l)
+			if err != nil {
+				t.Fatalf("Reconcile: %v", err)
+			}
+
+			pair := findReconcilePair(t, result.Pairs, fabricengine.RecordsWorktreePath(l, slug))
+			if pair.Action != tt.action {
+				t.Errorf("Action = %q; want %q", pair.Action, tt.action)
+			}
+			root, target := scratchPaths(l, slug)
+			if got := describeEntry(t, root); got != "absent" {
+				t.Errorf("root .scratch = %q; want absent", got)
+			}
+			if got := describeEntry(t, target); got != "absent" {
+				t.Errorf("target = %q; want absent", got)
+			}
+		})
+	}
+
+	for _, tt := range scratchShapeCases {
+		t.Run("Leaves_"+tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+			l := h.Location
+			slug := l.WorktreeName
+			root, _ := scratchPaths(l, slug)
+			tt.arrange(t, l, slug)
+			named := root
+			if tt.name == "FailedExcludeWrite" {
+				named = excludeFilePath(t, l, slug)
+			}
+
+			_, pair := reconcilePrimePair(t, h)
+
+			if pair.Error != "" {
+				t.Errorf("Error = %q; want none", pair.Error)
+			}
+			for _, want := range []string{tt.phrase, named, "lyx fabric reconcile"} {
+				if !strings.Contains(pair.Detail, want) {
+					t.Errorf("Detail = %q; want it to contain %q", pair.Detail, want)
+				}
+			}
+		})
+	}
 }
 
 // assertWarnNames checks that the captured log names path and the reconcile way forward.
