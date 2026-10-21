@@ -48,4 +48,27 @@
 //
 // Only declared paths change behaviour.
 // The shape check on P belongs to the module that declares it, in its own decode.
+//
+// # Per-name maps
+//
+// Reconcile, Prune, SetValues and SetSparse each take a perNameMaps argument before the open maps: dotted key paths whose template value is a mapping of names, each name one unit carried whole, such as a lens's prose or a fan's list.
+// An empty argument keeps every other behaviour byte for byte.
+// For a declared path P:
+//
+//   - Reconcile writes at P only what the file changed, since the load's fill resolves every other template name from the template:
+//     each template name the file holds with a value other than the template's, whole and in template order, then every name only the file holds in file order.
+//     It leaves out a template name the file holds with the template's value and reports it P.<name> dropped, equal meaning the two values decode to the same data;
+//     the loaded value is unchanged, so a later template edit to that name reaches the file.
+//     A template name the file lacks stays out and is not reported.
+//     It writes an absent or null P as an empty mapping and reports P added,
+//     and reports P.<name> kept for each name only the file holds.
+//     Nothing at or under P is reported removed, and a list under a name is never merged element by element.
+//     A file value at P that is neither a mapping nor null is refused with the way forward `rewrite P as a map of name to value`.
+//   - Prune keeps every name under P whole and reports a name the template lacks as kept, never removed.
+//   - SetValues and SetSparse know P.<name> for any one dot-free name and refuse a deeper key under P and P itself.
+//     The pair sets the name to the shape the template's entries at P decide:
+//     a string scalar under a mapping of scalars, whatever its first character, and a YAML flow list under a mapping of lists.
+//     SetValues also carries every name the file holds under P and the template lacks,
+//     and leaves out every name holding the template's value once the pairs apply, as Reconcile does.
+//     A pair under a P that holds neither a mapping nor null is refused with the same way forward.
 package yamlengine

@@ -37,6 +37,11 @@ func TestStatus_JSONRoundTrip(t *testing.T) {
 		PauseBefore:     "Plan-Write",
 		PauseAfter:      "Preflight",
 		PendingBy:       "orch",
+
+		PauseReason:      "pause requested by orch",
+		PauseRequestedBy: "orch",
+		PauseBeforeBy:    "driver",
+		PauseAfterBy:     "shed",
 		Activity: Activity{
 			Now:  "Plan-Write",
 			Last: "Preflight → done",
@@ -86,6 +91,22 @@ func TestStatus_JSONRoundTrip(t *testing.T) {
 	}
 	if got.PendingBy != want.PendingBy {
 		t.Errorf("PendingBy = %q; want %q", got.PendingBy, want.PendingBy)
+	}
+	if got.PauseReason != want.PauseReason || got.PauseRequestedBy != want.PauseRequestedBy || got.PauseBeforeBy != want.PauseBeforeBy || got.PauseAfterBy != want.PauseAfterBy {
+		t.Errorf("PauseReason, PauseRequestedBy, PauseBeforeBy, PauseAfterBy = %q, %q, %q, %q; want %q, %q, %q, %q",
+			got.PauseReason, got.PauseRequestedBy, got.PauseBeforeBy, got.PauseAfterBy, want.PauseReason, want.PauseRequestedBy, want.PauseBeforeBy, want.PauseAfterBy)
+	}
+	// A file without the pause-reason keys decodes with empty values and re-encodes without them.
+	noReason, err := ParseStatusTolerant([]byte(`{"state":"paused"}`))
+	if err != nil {
+		t.Fatalf("ParseStatusTolerant(record without pause reason keys) = %v", err)
+	}
+	noReasonJSON, err := json.Marshal(noReason)
+	if err != nil {
+		t.Fatalf("json.Marshal(noReason) = %v", err)
+	}
+	if noReason.PauseReason != "" || strings.Contains(string(noReasonJSON), "pause_reason") || strings.Contains(string(noReasonJSON), "_by") {
+		t.Errorf("record without pause reason keys = %+v re-encoded as %s; want empty values and no pause_reason or label key", noReason, noReasonJSON)
 	}
 	// A record without the caller-label keys decodes with empty values and re-encodes without them.
 	legacy, err := ParseStatusTolerant([]byte(`{"history":[{"producer":"A","outcome":"done","output":"","at":"t"}]}`))

@@ -356,7 +356,7 @@ func logResult(worktree string, result configsync.Result) {
 	logger.Info("hubreconcile: config changed", "worktree", worktree, "module", result.Module,
 		"added", result.Added, "removed", result.Removed, "migrated", result.Migrated,
 		"stripped", result.Stripped, "inherited", result.Inherited,
-		"moved", result.Moved, "keptTarget", result.KeptTarget, "overwritten", result.Overwritten)
+		"moved", result.Moved, "keptTarget", result.KeptTarget, "keptExtra", result.KeptExtra, "dropped", result.Dropped, "overwritten", result.Overwritten)
 }
 
 // fileExists reports whether path names an existing file.

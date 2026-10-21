@@ -19,6 +19,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -39,13 +40,13 @@ func seedLoomConfig(t *testing.T, baseDir, contents string) {
 	}
 }
 
-// malformedBurlerYAML is a burler.yaml that fails to parse, for the fan-key rows that pin when LoadConfig reads it.
-const malformedBurlerYAML = "fans: [unclosed\n"
+// malformedLensesYAML is a lenses.yaml that fails to parse, for the fan-key rows that pin when LoadConfig reads it.
+const malformedLensesYAML = "fans: [unclosed\n"
 
-// seedBurlerConfig creates <baseDir>/_lyx/config/burler.yaml with the given contents.
-func seedBurlerConfig(t *testing.T, baseDir, contents string) {
+// seedLensesConfig creates <baseDir>/_lyx/config/lenses.yaml with the given contents.
+func seedLensesConfig(t *testing.T, baseDir, contents string) {
 	t.Helper()
-	cfgPath := filepath.Join(baseDir, "_lyx", "config", "burler.yaml")
+	cfgPath := filepath.Join(baseDir, "_lyx", "config", "lenses.yaml")
 	if err := os.WriteFile(cfgPath, []byte(contents), 0o644); err != nil {
 		t.Fatalf("WriteFile(%q) = %v; want nil", cfgPath, err)
 	}
@@ -106,14 +107,14 @@ func templateConfig() Config {
 		WebsterFixerModel:        burlerengine.ModelSpecList{""},
 		MergeReviewerModel:       burlerengine.ModelSpecList{"sonnet[high]"},
 		MergeFixerModel:          burlerengine.ModelSpecList{""},
-		DiscussionReviewerFan:    burlerengine.FanList{""},
-		PlanReviewerFan:          burlerengine.FanList{""},
-		WebsterReviewerFan:       burlerengine.FanList{""},
-		MergeReviewerFan:         burlerengine.FanList{""},
-		DiscussionFixerFan:       burlerengine.FanList{""},
-		PlanFixerFan:             burlerengine.FanList{""},
-		WebsterFixerFan:          burlerengine.FanList{""},
-		MergeFixerFan:            burlerengine.FanList{""},
+		DiscussionReviewerFan:    lenses.FanList{""},
+		PlanReviewerFan:          lenses.FanList{""},
+		WebsterReviewerFan:       lenses.FanList{""},
+		MergeReviewerFan:         lenses.FanList{""},
+		DiscussionFixerFan:       lenses.FanList{""},
+		PlanFixerFan:             lenses.FanList{""},
+		WebsterFixerFan:          lenses.FanList{""},
+		MergeFixerFan:            lenses.FanList{""},
 		Judge:                    "sonnet[medium]",
 		ReviewTimeoutMin:         240,
 		Friction:                 "sonnet[medium]",
@@ -135,6 +136,7 @@ func templateConfig() Config {
 		ReviewCirclingCheckpoint: 3,
 		ReviewMaxBounces:         3,
 		ReviewHardMaxBounces:     4,
+		ReviewAmendMaxBounces:    1,
 		DiscussionMaxBounces:     nil,
 		PlanMaxBounces:           nil,
 		WebsterMaxBounces:        nil,
@@ -148,7 +150,7 @@ func templateConfig() Config {
 }
 
 // TestLoadConfig_Loads verifies each loom.yaml shape that must load, against the whole Config it yields:
-// the template's own values, an unparseable burler.yaml beside empty fan keys (never read), a retired key ignored, explicit overrides, present-but-empty and null friction and driver values (Tier 2 off, "defer to the provider default"), keys absent from an already-seeded file at their template defaults, zero timeouts (shuttleengine.Spec treats zero as "defer to shuttle's run_timeout_min", so the negative guard must not sweep them up), and a checkpoint above the budget (a run that never rules CIRCLING and reaches the soft-cap rule instead).
+// the template's own values, an unparseable lenses.yaml beside empty fan keys (never read), a retired key ignored, explicit overrides, present-but-empty and null friction and driver values (Tier 2 off, "defer to the provider default"), keys absent from an already-seeded file at their template defaults, zero timeouts (shuttleengine.Spec treats zero as "defer to shuttle's run_timeout_min", so the negative guard must not sweep them up), and a checkpoint above the budget (a run that never rules CIRCLING and reaches the soft-cap rule instead).
 func TestLoadConfig_Loads(t *testing.T) {
 	t.Parallel()
 	// legacyContents is a file seeded before the friction, driver, judge, parent-review and review-budget keys existed.
@@ -161,18 +163,18 @@ reviewer_model: opus[effort=high]
 review_timeout_min: 240
 `
 	tests := []struct {
-		name     string
-		contents string
-		values   map[string]string
-		burler   string
-		mutate   func(*Config)
-		wantSoft map[Perch]int
+		name       string
+		contents   string
+		values     map[string]string
+		lensesYAML string
+		mutate     func(*Config)
+		wantSoft   map[Perch]int
 	}{
 		{name: "template defaults", mutate: func(*Config) {}},
 		{
-			name:   "empty fan keys never read a malformed burler.yaml",
-			burler: malformedBurlerYAML,
-			mutate: func(*Config) {},
+			name:       "empty fan keys never read a malformed lenses.yaml",
+			lensesYAML: malformedLensesYAML,
+			mutate:     func(*Config) {},
 		},
 		{
 			name:     "retired selfreport key ignored",
@@ -215,10 +217,10 @@ review_timeout_min: 240
 			name:   "each fan key as one fan name",
 			values: map[string]string{"discussion_reviewer_fan": "standard", "plan_reviewer_fan": "full", "webster_reviewer_fan": "review-code", "merge_reviewer_fan": "standard", "discussion_fixer_fan": "fix-discussion", "plan_fixer_fan": "fix-plan", "webster_fixer_fan": "fix-code", "merge_fixer_fan": "fix-code"},
 			mutate: func(c *Config) {
-				c.DiscussionReviewerFan, c.PlanReviewerFan = burlerengine.FanList{"standard"}, burlerengine.FanList{"full"}
-				c.WebsterReviewerFan, c.MergeReviewerFan = burlerengine.FanList{"review-code"}, burlerengine.FanList{"standard"}
-				c.DiscussionFixerFan, c.PlanFixerFan = burlerengine.FanList{"fix-discussion"}, burlerengine.FanList{"fix-plan"}
-				c.WebsterFixerFan, c.MergeFixerFan = burlerengine.FanList{"fix-code"}, burlerengine.FanList{"fix-code"}
+				c.DiscussionReviewerFan, c.PlanReviewerFan = lenses.FanList{"standard"}, lenses.FanList{"full"}
+				c.WebsterReviewerFan, c.MergeReviewerFan = lenses.FanList{"review-code"}, lenses.FanList{"standard"}
+				c.DiscussionFixerFan, c.PlanFixerFan = lenses.FanList{"fix-discussion"}, lenses.FanList{"fix-plan"}
+				c.WebsterFixerFan, c.MergeFixerFan = lenses.FanList{"fix-code"}, lenses.FanList{"fix-code"}
 			},
 		},
 		{
@@ -234,10 +236,10 @@ review_timeout_min: 240
 				"merge_fixer_fan":         "\n  - \"\"\n  - fix-code",
 			},
 			mutate: func(c *Config) {
-				c.DiscussionReviewerFan, c.PlanReviewerFan = burlerengine.FanList{"", "review-discussion"}, burlerengine.FanList{"review-plan", ""}
-				c.WebsterReviewerFan, c.MergeReviewerFan = burlerengine.FanList{"review-code", ""}, burlerengine.FanList{"", "review-code"}
-				c.DiscussionFixerFan, c.PlanFixerFan = burlerengine.FanList{"", "fix-discussion"}, burlerengine.FanList{"fix-plan", ""}
-				c.WebsterFixerFan, c.MergeFixerFan = burlerengine.FanList{"fix-code", ""}, burlerengine.FanList{"", "fix-code"}
+				c.DiscussionReviewerFan, c.PlanReviewerFan = lenses.FanList{"", "review-discussion"}, lenses.FanList{"review-plan", ""}
+				c.WebsterReviewerFan, c.MergeReviewerFan = lenses.FanList{"review-code", ""}, lenses.FanList{"", "review-code"}
+				c.DiscussionFixerFan, c.PlanFixerFan = lenses.FanList{"", "fix-discussion"}, lenses.FanList{"fix-plan", ""}
+				c.WebsterFixerFan, c.MergeFixerFan = lenses.FanList{"fix-code", ""}, lenses.FanList{"", "fix-code"}
 			},
 		},
 		{
@@ -437,8 +439,8 @@ review_timeout_min: 240
 			default:
 				seedLoomConfig(t, baseDir, ConfigTemplate())
 			}
-			if tt.burler != "" {
-				seedBurlerConfig(t, baseDir, tt.burler)
+			if tt.lensesYAML != "" {
+				seedLensesConfig(t, baseDir, tt.lensesYAML)
 			}
 
 			want := templateConfig()
@@ -607,16 +609,16 @@ func TestSetDiscussionAdvisors_LoadsBack(t *testing.T) {
 }
 
 // TestLoadConfig_Refuses verifies each invalid loom.yaml is refused at load time, naming the offending key:
-// an ungrammatical model-spec (rather than being silently carried into a producer's spawn site), a parent_review_wait_min or review key below one (the sibling timeouts' "0 defers to shuttle" carve-out does not apply to them) with the way forward, a negative timeout (which would otherwise surface only when the producer it governs first spawns), and a set fan key beside an unparseable burler.yaml.
+// an ungrammatical model-spec (rather than being silently carried into a producer's spawn site), a parent_review_wait_min or review key below one (the sibling timeouts' "0 defers to shuttle" carve-out does not apply to them) with the way forward, a negative timeout (which would otherwise surface only when the producer it governs first spawns), and a set fan key beside an unparseable lenses.yaml.
 func TestLoadConfig_Refuses(t *testing.T) {
 	t.Parallel()
 	const positiveIntegerForward = "set it to a positive integer in loom.yaml"
 	tests := []struct {
-		name   string
-		key    string
-		value  string
-		wantIn []string
-		burler string
+		name       string
+		key        string
+		value      string
+		wantIn     []string
+		lensesYAML string
 	}{
 		{"malformed discussion spec", "discussion", `"opus[effort"`, nil, ""},
 		{"malformed plan spec", "plan", `"opus[effort"`, nil, ""},
@@ -635,18 +637,18 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"malformed later merge_fixer_model entry", "merge_fixer_model", "\n  - sonnet[low]\n  - \"opus[effort\"", []string{`loom config key "merge_fixer_model" entry 2`, "a non-empty list of model-specs"}, ""},
 		{"unknown discussion_reviewer_fan", "discussion_reviewer_fan", "nosuchfan", []string{`"nosuchfan"`, "known fans: ", "standard", "entry 1", `set the entry to ""`}, ""},
 		{"unknown plan_reviewer_fan", "plan_reviewer_fan", "nosuchfan", []string{`"nosuchfan"`, "known fans: ", "full", "entry 1", `set the entry to ""`}, ""},
-		{"unknown second discussion_fixer_fan entry", "discussion_fixer_fan", "\n  - \"\"\n  - nosuchfan", []string{"entry 2", `"nosuchfan"`, "known fans: ", "define the fan in burler.yaml", `set the entry to ""`}, ""},
+		{"unknown second discussion_fixer_fan entry", "discussion_fixer_fan", "\n  - \"\"\n  - nosuchfan", []string{"entry 2", `"nosuchfan"`, "known fans: ", "define the fan in lenses.yaml", `set the entry to ""`}, ""},
 		{"empty discussion_reviewer_fan list", "discussion_reviewer_fan", "[]", []string{"the list is empty", `write ""`}, ""},
 		{"empty plan_reviewer_fan list", "plan_reviewer_fan", "[]", []string{"the list is empty", `write ""`}, ""},
 		{"empty discussion_fixer_fan list", "discussion_fixer_fan", "[]", []string{"the list is empty", `write ""`}, ""},
 		{"empty plan_fixer_fan list", "plan_fixer_fan", "[]", []string{"the list is empty", `write ""`}, ""},
 		{"unknown webster_reviewer_fan", "webster_reviewer_fan", "nosuchfan", []string{`loom config key "webster_reviewer_fan" entry 1`, `"nosuchfan"`, "known fans: ", `set the entry to ""`}, ""},
-		{"unknown second merge_fixer_fan entry", "merge_fixer_fan", "\n  - \"\"\n  - nosuchfan", []string{`loom config key "merge_fixer_fan" entry 2`, `"nosuchfan"`, "define the fan in burler.yaml"}, ""},
+		{"unknown second merge_fixer_fan entry", "merge_fixer_fan", "\n  - \"\"\n  - nosuchfan", []string{`loom config key "merge_fixer_fan" entry 2`, `"nosuchfan"`, "define the fan in lenses.yaml"}, ""},
 		{"empty merge_reviewer_fan list", "merge_reviewer_fan", "[]", []string{`loom config key "merge_reviewer_fan"`, "the list is empty", `write ""`}, ""},
 		{"mapping webster_fixer_fan value", "webster_fixer_fan", "\n  model: opus", []string{`loom config key "webster_fixer_fan"`, "neither a fan name nor a list of fan names"}, ""},
 		{"mapping discussion_fixer_fan value", "discussion_fixer_fan", "\n  model: opus", []string{"line ", "neither a fan name nor a list of fan names", "a list of fan names"}, ""},
 		{"mapping inside a plan_reviewer_fan list", "plan_reviewer_fan", "\n  - full\n  - model: opus", []string{"line ", "neither a fan name nor a list of fan names", "a list of fan names"}, ""},
-		{"set discussion_reviewer_fan with a malformed burler.yaml", "discussion_reviewer_fan", "standard", []string{"burler: config file ", "parse doc YAML", "fix burler.yaml, or set the key to empty"}, malformedBurlerYAML},
+		{"set discussion_reviewer_fan with a malformed lenses.yaml", "discussion_reviewer_fan", "standard", []string{"lenses: config file ", "parse doc YAML", "fix lenses.yaml, or set the key to empty"}, malformedLensesYAML},
 		{"string discussion_advisors entry", "discussion_advisors", `["sonnet[high]"]`, []string{"entry 1", advisorEntryWayForward}, ""},
 		{"string discussion_advisors entry after a mapping", "discussion_advisors", `[{name: critic, model: "sonnet[high]"}, "sonnet[low]"]`, []string{"entry 2", advisorEntryWayForward}, ""},
 		{"blank discussion_advisors name", "discussion_advisors", `[{name: "", model: "sonnet[high]"}]`, []string{"entry 1", "missing or blank", advisorWayForward}, ""},
@@ -690,6 +692,7 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"negative plan_max_bounces", "plan_max_bounces", "-1", []string{"must not be negative", "or to null to take review_max_bounces"}, ""},
 		{"negative webster_max_bounces", "webster_max_bounces", "-1", []string{"must not be negative", "or to null to take review_max_bounces"}, ""},
 		{"negative merge_max_bounces", "merge_max_bounces", "-1", []string{"must not be negative", "or to null to take review_max_bounces"}, ""},
+		{"negative review_amend_max_bounces", "review_amend_max_bounces", "-1", []string{"must not be negative", "set it to 0 to settle every amendment with no review round", "lyx config loom --set review_amend_max_bounces=<n>", `lyx loom resume`}, ""},
 		{"zero review_hard_max_bounces", "review_hard_max_bounces", "0", []string{"must be at least 1", "lyx config loom --set review_hard_max_bounces=<n>", `lyx loom resume`}, ""},
 		{"negative discussion_hard_max_bounces", "discussion_hard_max_bounces", "-1", []string{"set it to 0 to take review_hard_max_bounces", "lyx config loom --set discussion_hard_max_bounces=<n>", `lyx loom resume`}, ""},
 		{"negative plan_hard_max_bounces", "plan_hard_max_bounces", "-1", []string{"set it to 0 to take review_hard_max_bounces", "lyx config loom --set plan_hard_max_bounces=<n>", `lyx loom resume`}, ""},
@@ -708,8 +711,8 @@ func TestLoadConfig_Refuses(t *testing.T) {
 			t.Parallel()
 			dir := t.TempDir()
 			writeLoomConfigWithKey(t, dir, tt.key, tt.value)
-			if tt.burler != "" {
-				seedBurlerConfig(t, dir, tt.burler)
+			if tt.lensesYAML != "" {
+				seedLensesConfig(t, dir, tt.lensesYAML)
 			}
 
 			_, err := LoadConfig(configengine.Dirs{Anchor: dir}, "loom")

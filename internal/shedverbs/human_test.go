@@ -93,6 +93,33 @@ func TestRenderStatusHuman(t *testing.T) {
 				"last Ship → done\n",
 		},
 		{
+			name: "paused with a reason",
+			st: shedengine.Status{
+				CurrentProducer: "Plan",
+				State:           shedengine.StatePaused,
+				PauseReason:     "pause requested by operator",
+				Activity:        shedengine.Activity{Now: "Plan paused", Last: "Intro → done"},
+			},
+			want: "loom self | paused\n" +
+				"step 2/3 Plan | bounce 0/3\n" +
+				"now  Plan paused\n" +
+				"last Intro → done\n" +
+				"why  pause requested by operator\n" +
+				"next Ship\n",
+		},
+		{
+			name: "paused without a reason",
+			st: shedengine.Status{
+				CurrentProducer: "Plan",
+				State:           shedengine.StatePaused,
+				Activity:        shedengine.Activity{Now: "Plan paused"},
+			},
+			want: "loom self | paused\n" +
+				"step 2/3 Plan | bounce 0/3\n" +
+				"now  Plan paused\n" +
+				"next Ship\n",
+		},
+		{
 			name: "no routing omits progress",
 			st:   shedengine.Status{State: shedengine.StateRunning, Activity: shedengine.Activity{Now: "working"}},
 			args: &renderArgs{label: "batten"},

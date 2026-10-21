@@ -14,7 +14,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/frictionengine"
-	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -287,6 +286,9 @@ func TestSpecFor_ScratchAndFrictionDir(t *testing.T) {
 		if spec.Caller != "orch" {
 			t.Errorf("specFor(step).Caller = %q; want orch", spec.Caller)
 		}
+		if spec.GotoGuard == nil {
+			t.Error("specFor(step).GotoGuard = nil; want the settled-review guard for a known location")
+		}
 	})
 
 	tests := []struct {
@@ -343,26 +345,6 @@ func TestSpecFor_ScratchAndFrictionDir(t *testing.T) {
 		spec := (&loomCLI{runID: "self"}).specFor("step")
 		if spec.Loop.EnvelopePath != "" || spec.Loop.Activity != nil || spec.Loop.OnExit != nil || spec.Loop.OnWake != nil || spec.Hooks.AfterInterrupt != nil {
 			t.Errorf("loop envelope %q, activity set %v, lock hooks set %v, interrupt hook set %v; want all zero for a nil location", spec.Loop.EnvelopePath, spec.Loop.Activity != nil, spec.Loop.OnExit != nil || spec.Loop.OnWake != nil, spec.Hooks.AfterInterrupt != nil)
-		}
-	})
-
-	t.Run("InterruptHookWritesAFailedHaltNote", func(t *testing.T) {
-		f := newHaltFixture(t)
-		f.c.runID = "self"
-		f.seedStatus(t, "Plan-Write", shedengine.StateRunning, "")
-
-		got := f.c.specFor("step").Hooks.AfterInterrupt(t.Context(), "Plan-Write", "watchdog", "/logs/child.log")
-
-		// The reflection covers the note and archives it beside the friction directory.
-		archived, err := filepath.Glob(loomengine.LoomFrictionArchivePrefix(f.c.location) + "*/loom-halt.md")
-		if got != frictionengine.StatusReflected || err != nil || len(archived) != 1 {
-			t.Fatalf("hook = %q with archived notes %v (glob error %v); want the halt note written and reflected", got, archived, err)
-		}
-		note := readNote(t, archived[0])
-		for _, want := range []string{"loom halted failed at Plan-Write", "state: failed", "watchdog", "trace_file: /logs/child.log"} {
-			if !strings.Contains(note, want) {
-				t.Errorf("halt note %q does not contain %q", note, want)
-			}
 		}
 	})
 

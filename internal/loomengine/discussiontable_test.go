@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/friction"
+	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/seatengine"
@@ -54,7 +54,7 @@ func discussionTableGeometry(layout *lyxcwd.Location, stencilsDir string) seaten
 	}
 }
 
-// discussionTableDirs returns the config geometry the twill fan's burler.yaml is read through for layout.
+// discussionTableDirs returns the config geometry the twill fan's lenses.yaml is read through for layout.
 func discussionTableDirs(layout *lyxcwd.Location) configengine.Dirs {
 	return configengine.Dirs{Anchor: layout.AnchorPath()}
 }
@@ -389,35 +389,39 @@ func TestDiscussionTable(t *testing.T) {
 	t.Run("lens review", func(t *testing.T) {
 		t.Parallel()
 		const templateFanName = "twill-discussion"
-		templateFan, err := burlerengine.ResolveFan(burlerengine.Config{}, templateFanName)
+		lensesConfig, err := lenses.Load(configengine.Dirs{Anchor: t.TempDir()})
 		if err != nil {
-			t.Fatalf("ResolveFan(zero Config, %q) = _, %v; want nil error", templateFanName, err)
+			t.Fatalf("lenses.Load(dir without _lyx) = _, %v; want nil error", err)
+		}
+		templateFan, err := lenses.ResolveFan(lensesConfig, templateFanName)
+		if err != nil {
+			t.Fatalf("ResolveFan(template config, %q) = _, %v; want nil error", templateFanName, err)
 		}
 		tests := []struct {
 			name string
 			// fan is the discussion_lenses value; empty takes the template's fan.
 			fan        string
-			burlerYAML string
-			// defaultYAML, when non-empty, is the burler.yaml of a temp board dir the load is told, so the fan lives only in the repo default.
+			lensesYAML string
+			// defaultYAML, when non-empty, is the lenses.yaml of a temp board dir the load is told, so the fan lives only in the repo default.
 			defaultYAML string
 			wantLenses  []string
 		}{
-			{name: "template fan without burler.yaml", wantLenses: lensNames(templateFan)},
-			{name: "burler.yaml redefines the fan", burlerYAML: "fans:\n  twill-discussion: [goal-scope]\n", wantLenses: []string{"goal-scope"}},
+			{name: "template fan without lenses.yaml", wantLenses: lensNames(templateFan)},
+			{name: "lenses.yaml redefines the fan", lensesYAML: "fans:\n  twill-discussion: [goal-scope]\n", wantLenses: []string{"goal-scope"}},
 			{name: "the fan lives only in the repo default", defaultYAML: "fans:\n  twill-discussion: [goal-scope]\n", wantLenses: []string{"goal-scope"}},
-			{name: "the key names a fan of burler.yaml's own", fan: "writer-lenses", burlerYAML: "fans:\n  writer-lenses: [goal-scope]\n", wantLenses: []string{"goal-scope"}},
+			{name: "the key names a fan of lenses.yaml's own", fan: "writer-lenses", lensesYAML: "fans:\n  writer-lenses: [goal-scope]\n", wantLenses: []string{"goal-scope"}},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
 				layout := discussionTableLayout(t)
-				if tt.burlerYAML != "" {
-					writeBurlerYAML(t, layout, tt.burlerYAML)
+				if tt.lensesYAML != "" {
+					writeLensesYAML(t, layout, tt.lensesYAML)
 				}
 				dirs := discussionTableDirs(layout)
 				if tt.defaultYAML != "" {
 					dirs.Board = t.TempDir()
-					defaultPath := configengine.ConfigFile(dirs.Board, "burler")
+					defaultPath := configengine.ConfigFile(dirs.Board, "lenses")
 					if err := os.MkdirAll(filepath.Dir(defaultPath), 0o755); err != nil {
 						t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(defaultPath), err)
 					}
@@ -447,10 +451,10 @@ func TestDiscussionTable(t *testing.T) {
 					}
 					at += next
 				}
-				if tt.burlerYAML != "" || tt.defaultYAML != "" {
+				if tt.lensesYAML != "" || tt.defaultYAML != "" {
 					for _, dropped := range templateFan {
 						if dropped.Name != "goal-scope" && strings.Contains(prompt, "- "+dropped.Name+": ") {
-							t.Errorf("twill lead prompt carries lens %q; want only the burler.yaml fan %v", dropped.Name, tt.wantLenses)
+							t.Errorf("twill lead prompt carries lens %q; want only the lenses.yaml fan %v", dropped.Name, tt.wantLenses)
 						}
 					}
 				}
@@ -487,7 +491,7 @@ func TestDiscussionTable(t *testing.T) {
 	})
 }
 
-// TestDiscussionTable_Refuses verifies DiscussionTable rejects an empty slug, an unreadable designer directive stencil (the first stencil it reads, when PATTERN.md is active), an unparsable chair model, an advisor entry the registry does not define, and, with discussion_lenses set, a burler.yaml that does not parse or a fan that is missing, empty or names an undefined lens, naming the key, the index or the fan and the way forward.
+// TestDiscussionTable_Refuses verifies DiscussionTable rejects an empty slug, an unreadable designer directive stencil (the first stencil it reads, when PATTERN.md is active), an unparsable chair model, an advisor entry the registry does not define, and, with discussion_lenses set, a lenses.yaml that does not parse or a fan that is missing, empty or names an undefined lens, naming the key, the index or the fan and the way forward.
 func TestDiscussionTable_Refuses(t *testing.T) {
 	t.Parallel()
 	reg := discussionTableRegistry(t)
@@ -498,8 +502,8 @@ func TestDiscussionTable_Refuses(t *testing.T) {
 		// malformedRecord plants a decision record whose PATTERN changes section is malformed.
 		malformedRecord bool
 		mutate          func(*Config)
-		// burlerYAML, when non-empty, is planted as the anchor's burler.yaml.
-		burlerYAML  string
+		// lensesYAML, when non-empty, is planted as the anchor's lenses.yaml.
+		lensesYAML  string
 		wantErrHold []string
 	}{
 		{name: "empty slug", slug: "", wantErrHold: []string{"slug must not be empty"}},
@@ -509,10 +513,10 @@ func TestDiscussionTable_Refuses(t *testing.T) {
 		{name: "advisor the registry does not define", slug: discussionTableSlug, mutate: func(c *Config) {
 			c.DiscussionAdvisors = DiscussionAdvisorList{{Name: "critic", Model: "sonnet[low]"}, {Name: "skeptic", Model: "ghost"}}
 		}, wantErrHold: []string{"discussion_advisors", "entry 2", "ghost", "set the entry's model to a model-spec the registry defines"}},
-		{name: "lens fan with a burler.yaml that does not parse", slug: discussionTableSlug, mutate: func(c *Config) { c.DiscussionLenses = "twill-discussion" }, burlerYAML: "fans: [unterminated\n", wantErrHold: []string{"discussion_lenses", "twill-discussion", "burler.yaml", `set the key to ""`}},
-		{name: "lens fan naming an undefined lens", slug: discussionTableSlug, mutate: func(c *Config) { c.DiscussionLenses = "twill-discussion" }, burlerYAML: "fans:\n  twill-discussion:\n    - no-such-lens\n", wantErrHold: []string{"discussion_lenses", "twill-discussion", "no-such-lens", "burler.yaml", `set the key to ""`}},
-		{name: "lens fan missing from burler.yaml and the template", slug: discussionTableSlug, mutate: func(c *Config) { c.DiscussionLenses = "no-such-fan" }, wantErrHold: []string{"discussion_lenses", "no-such-fan", "burler.yaml", "define the fan and its lenses in burler.yaml", `set the key to ""`}},
-		{name: "lens fan with no lenses", slug: discussionTableSlug, mutate: func(c *Config) { c.DiscussionLenses = "twill-discussion" }, burlerYAML: "fans:\n  twill-discussion: []\n", wantErrHold: []string{"discussion_lenses", "twill-discussion", "burler.yaml", `set the key to ""`}},
+		{name: "lens fan with a lenses.yaml that does not parse", slug: discussionTableSlug, mutate: func(c *Config) { c.DiscussionLenses = "twill-discussion" }, lensesYAML: "fans: [unterminated\n", wantErrHold: []string{"discussion_lenses", "twill-discussion", "lenses.yaml", `set the key to ""`}},
+		{name: "lens fan naming an undefined lens", slug: discussionTableSlug, mutate: func(c *Config) { c.DiscussionLenses = "twill-discussion" }, lensesYAML: "fans:\n  twill-discussion:\n    - no-such-lens\n", wantErrHold: []string{"discussion_lenses", "twill-discussion", "no-such-lens", "lenses.yaml", `set the key to ""`}},
+		{name: "lens fan missing from lenses.yaml and the template", slug: discussionTableSlug, mutate: func(c *Config) { c.DiscussionLenses = "no-such-fan" }, wantErrHold: []string{"discussion_lenses", "no-such-fan", "lenses.yaml", "define the fan and its lenses in lenses.yaml", `set the key to ""`}},
+		{name: "lens fan with no lenses", slug: discussionTableSlug, mutate: func(c *Config) { c.DiscussionLenses = "twill-discussion" }, lensesYAML: "fans:\n  twill-discussion: []\n", wantErrHold: []string{"discussion_lenses", "twill-discussion", "lenses.yaml", `set the key to ""`}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -528,8 +532,8 @@ func TestDiscussionTable_Refuses(t *testing.T) {
 			if tt.malformedRecord {
 				writeDeclaredPatternRecord(t, layout, malformedDeclaredBullet)
 			}
-			if tt.burlerYAML != "" {
-				writeBurlerYAML(t, layout, tt.burlerYAML)
+			if tt.lensesYAML != "" {
+				writeLensesYAML(t, layout, tt.lensesYAML)
 			}
 			cfg := discussionTableConfig(1, false)
 			if tt.mutate != nil {

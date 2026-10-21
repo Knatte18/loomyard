@@ -3,7 +3,7 @@
 // validation loop.
 // The base layer scaffolds from the template like Edit does, so a fresh default-valued file is created and rolled back identically;
 // every layer above it is sparse and holds only the keys set.
-// A local write is checked against the local rule before anything is written.
+// A local write is checked against the local rule, and a machine write against the machine rule, before anything is written.
 
 package configengine
 
@@ -24,7 +24,7 @@ func layerPath(dirs Dirs, spec Spec, layer Layer) (path, owner string, err error
 		return "", "", fmt.Errorf("the %s layer of the %s config does not apply here", layer, spec.Name)
 	}
 	owner = dirs.Anchor
-	if layer == LayerDefault {
+	if layer == LayerDefault || layer == LayerMachine {
 		owner = dirs.Board
 	}
 	return path, owner, nil
@@ -34,7 +34,7 @@ func layerPath(dirs Dirs, spec Spec, layer Layer) (path, owner string, err error
 // It never opens an editor and never loops on validation failure.
 // The base layer is scaffolded from the template when absent and written with yamlengine.SetValues, and a freshly-scaffolded file is removed on error, mirroring Edit's contract;
 // a layer above the base is sparse, so only the keys set are written through yamlengine.SetSparse and nothing is scaffolded.
-// A write to the local layer is checked with [ValidateLocal] first, and a refused one writes nothing.
+// A write to the local layer is checked with [ValidateLocal] first, and one to the machine layer with [ValidateMachine]; a refused one writes nothing.
 // A spec with JSONEntries writes each pair as one whole top-level entry through yamlengine.SetEntries on every layer, scaffolding an absent base layer from the template.
 // Returns the sorted list of pre-existing keys not in the template that were preserved verbatim;
 // nil on any error.
@@ -71,7 +71,7 @@ func Set(dirs Dirs, spec Spec, layer Layer, pairs []yamlengine.KV) ([]string, er
 		return nil, err
 	}
 
-	result, err := yamlengine.SetValues(spec.Template, existingBytes, pairs, spec.OpenMaps...)
+	result, err := yamlengine.SetValues(spec.Template, existingBytes, pairs, spec.PerNameMaps, spec.OpenMaps...)
 	if err != nil {
 		removeIfScaffolded()
 		return nil, err
@@ -92,7 +92,7 @@ func Set(dirs Dirs, spec Spec, layer Layer, pairs []yamlengine.KV) ([]string, er
 
 // setEntries writes each pair as a whole top-level entry into the layer file at path.
 // An absent base file starts from the template and any other absent file from nothing;
-// a local write is checked against the local rule first, and a refused write leaves the file as it was.
+// a local or machine write is checked against its layer's rule first, and a refused write leaves the file as it was.
 func setEntries(spec Spec, layer Layer, path string, base bool, pairs []yamlengine.KV) error {
 	existing, err := os.ReadFile(path)
 	switch {
@@ -105,10 +105,8 @@ func setEntries(spec Spec, layer Layer, path string, base bool, pairs []yamlengi
 	if err != nil {
 		return err
 	}
-	if layer == LayerLocal {
-		if err := ValidateLocal(spec, merged); err != nil {
-			return err
-		}
+	if err := validateOverride(spec, layer, merged); err != nil {
+		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("create config directory: %w", err)
@@ -116,25 +114,34 @@ func setEntries(spec Spec, layer Layer, path string, base bool, pairs []yamlengi
 	return os.WriteFile(path, merged, 0o644)
 }
 
+// validateOverride checks doc against the rule of layer: [ValidateMachine] for the machine layer, [ValidateLocal] for the local one, and nothing for any other.
+func validateOverride(spec Spec, layer Layer, doc []byte) error {
+	switch layer {
+	case LayerMachine:
+		return ValidateMachine(spec, doc)
+	case LayerLocal:
+		return ValidateLocal(spec, doc)
+	}
+	return nil
+}
+
 // setSparse writes pairs into the sparse layer file at path, creating it when absent.
-// The merged document is checked against the local rule before it is written, so a refused write leaves the file as it was.
+// The merged document is checked against the layer's rule before it is written, so a refused write leaves the file as it was.
 func setSparse(spec Spec, layer Layer, path string, pairs []yamlengine.KV) ([]string, error) {
 	existing, err := os.ReadFile(path)
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
 
-	result, err := yamlengine.SetSparse(spec.Template, existing, pairs, spec.OpenMaps...)
+	result, err := yamlengine.SetSparse(spec.Template, existing, pairs, spec.PerNameMaps, spec.OpenMaps...)
 	if err != nil {
 		return nil, err
 	}
 	if len(result.Unknown) > 0 {
 		return nil, fmt.Errorf("unknown config key(s): %s (known: %s)", strings.Join(result.Unknown, ", "), strings.Join(result.Known, ", "))
 	}
-	if layer == LayerLocal {
-		if err := ValidateLocal(spec, result.Merged); err != nil {
-			return nil, err
-		}
+	if err := validateOverride(spec, layer, result.Merged); err != nil {
+		return nil, err
 	}
 
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

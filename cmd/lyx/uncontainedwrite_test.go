@@ -81,6 +81,9 @@ var uncontainedWriteAllowlist = []scankit.Entry{
 	{Key: "internal/fabricengine/junction.go", Why: "seedLyxJunction's os.MkdirAll(target) materialises a junction's records-side target inside the " +
 		"records worktree fabric created via containedWorktreeAdd, and the code-side junction LINKS route through fslink; race-only " +
 		"(add.go refuses a pre-existing worktree path), not statically pre-plantable"},
+	{Key: "internal/fabricengine/scratchlink.go", Why: "the scratch step's os.MkdirAll creates the scratch target and its parent inside the pair's records " +
+		"worktree, built from RecordsWorktreePath, and the root link itself goes through fslink, as junction.go's seedLyxJunction does; " +
+		"race-only, not statically pre-plantable"},
 	{Key: "internal/fabricengine/doc.go", Why: "the package doc's prose names the raw write primitives when explaining the containment rationale; " +
 		"its only non-comment line is the package clause, so it can never carry a real call"},
 }

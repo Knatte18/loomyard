@@ -43,6 +43,9 @@ func TestGoto_MovesBlockedRunToTarget(t *testing.T) {
 	seed.PauseBefore = "B"
 	seed.PauseAfter = "A"
 	seed.PendingBy = "driver"
+	seed.PauseRequestedBy = "orch"
+	seed.PauseBeforeBy = "orch"
+	seed.PauseAfterBy = "orch"
 	seedStatus(t, shed.StatusPath, shed.StatusLockPath, seed)
 
 	req := gotoRequest(shed, "A")
@@ -72,6 +75,12 @@ func TestGoto_MovesBlockedRunToTarget(t *testing.T) {
 	if got.History[0].By != "orch" || got.PendingBy != "" {
 		t.Errorf("History[0].By, PendingBy = %q, %q; want orch, empty", got.History[0].By, got.PendingBy)
 	}
+	if got.PauseReason != "goto to A by orch" {
+		t.Errorf("PauseReason = %q; want %q", got.PauseReason, "goto to A by orch")
+	}
+	if got.PauseRequestedBy != "" || got.PauseBeforeBy != "" || got.PauseAfterBy != "" {
+		t.Errorf("PauseRequestedBy, PauseBeforeBy, PauseAfterBy = %q, %q, %q; want all cleared", got.PauseRequestedBy, got.PauseBeforeBy, got.PauseAfterBy)
+	}
 
 	t.Run("EmptyByWritesNoKey", func(t *testing.T) {
 		shed, _, _ := gotoShed(t)
@@ -79,6 +88,9 @@ func TestGoto_MovesBlockedRunToTarget(t *testing.T) {
 		written, err := Goto(gotoRequest(shed, "A"))
 		if err != nil {
 			t.Fatalf("Goto(...) = _, %v; want nil error", err)
+		}
+		if written.PauseReason != "goto to A" {
+			t.Errorf("PauseReason = %q; want %q", written.PauseReason, "goto to A")
 		}
 		data, err := json.Marshal(written.History[0])
 		if err != nil {
@@ -269,9 +281,11 @@ func TestStep_UnknownCurrentProducerNamesGoto(t *testing.T) {
 	}
 }
 
-func TestStep_BudgetExhaustionNamesGotoAndGotoRestoresBudget(t *testing.T) {
-	shed, statusPath, statusLockPath := scriptedStuckShed(t, 1, []bool{false})
-
+// haltOnBudget steps a one-bounce shed until its budget halts, and returns the shed with its status paths.
+func haltOnBudget(t *testing.T, configure func(*Shed)) (shed *Shed, statusPath, statusLockPath string) {
+	t.Helper()
+	shed, statusPath, statusLockPath = scriptedStuckShed(t, 1, []bool{false})
+	configure(shed)
 	if res, err := shed.Step(context.Background()); err != nil || res.State != StateRunning {
 		t.Fatalf("first Step = %q, %v; want running bounce", res.State, err)
 	}
@@ -282,20 +296,69 @@ func TestStep_BudgetExhaustionNamesGotoAndGotoRestoresBudget(t *testing.T) {
 	if res.State != StateBlocked {
 		t.Fatalf("second Step State = %q; want blocked", res.State)
 	}
-	if got := readStatus(t, statusPath, statusLockPath); !strings.Contains(got.Error, "lyx shed goto") || !strings.HasPrefix(got.Error, ReasonBounceBudgetExhausted) {
-		t.Errorf("persisted Error = %q; want the budget prefix and a lyx shed goto way forward", got.Error)
+	return shed, statusPath, statusLockPath
+}
+
+// TestStep_BudgetHaltResumeGrantsOneBudget pins the budget halt's reason and way forward, that a resume bounces once more before halting again,
+// and that a goto onto the halted run grants no budget.
+func TestStep_BudgetHaltResumeGrantsOneBudget(t *testing.T) {
+	t.Parallel()
+
+	reasonTests := []struct {
+		name         string
+		configure    func(*Shed)
+		wantContains string
+	}{
+		{"fallback names the run verb", func(*Shed) {}, `"lyx shed run" resumes the row`},
+		{"told run-id is addressed", func(s *Shed) { s.RunID = "some-slug" }, `"lyx shed run some-slug" resumes the row`},
+		{"told clause replaces the fallback", func(s *Shed) { s.BudgetWayForward = "told resume clause" }, "way forward: told resume clause"},
+	}
+	for _, tt := range reasonTests {
+		t.Run("Reason_"+tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, statusPath, statusLockPath := haltOnBudget(t, tt.configure)
+			got := readStatus(t, statusPath, statusLockPath)
+			if !strings.HasPrefix(got.Error, ReasonBounceBudgetExhausted) || !strings.Contains(got.Error, tt.wantContains) {
+				t.Errorf("persisted Error = %q; want the budget prefix and %q", got.Error, tt.wantContains)
+			}
+			if strings.Contains(got.Error, "goto") {
+				t.Errorf("persisted Error = %q; want no goto named", got.Error)
+			}
+			if len(got.History) == 0 || !got.History[len(got.History)-1].BudgetCapped {
+				t.Errorf("History = %+v; want the halting entry marked budget_capped", got.History)
+			}
+		})
 	}
 
-	if _, err := Goto(gotoRequest(shed, "Wait")); err != nil {
-		t.Fatalf("Goto(...) = _, %v; want nil error", err)
-	}
-	res, err = shed.Step(context.Background())
-	if err != nil {
-		t.Fatalf("Step after goto = _, %v; want nil", err)
-	}
-	if res.State != StateRunning || res.Next != "Wait" {
-		t.Errorf("Step after goto State/Next = %q/%q; want a bounce, running/Wait", res.State, res.Next)
-	}
+	t.Run("ResumeBouncesOnceThenHaltsAgain", func(t *testing.T) {
+		t.Parallel()
+		shed, _, _ := haltOnBudget(t, func(*Shed) {})
+		res, err := shed.Step(context.Background())
+		if err != nil {
+			t.Fatalf("Step after halt = _, %v; want nil", err)
+		}
+		if res.State != StateRunning || res.Next != "Wait" {
+			t.Fatalf("Step after halt State/Next = %q/%q; want a bounce, running/Wait", res.State, res.Next)
+		}
+		if res, err = shed.Step(context.Background()); err != nil || res.State != StateBlocked {
+			t.Errorf("next Step = %q, %v; want blocked again", res.State, err)
+		}
+	})
+
+	t.Run("GotoGrantsNoBudget", func(t *testing.T) {
+		t.Parallel()
+		shed, _, _ := haltOnBudget(t, func(*Shed) {})
+		if _, err := Goto(gotoRequest(shed, "Wait")); err != nil {
+			t.Fatalf("Goto(...) = _, %v; want nil error", err)
+		}
+		res, err := shed.Step(context.Background())
+		if err != nil {
+			t.Fatalf("Step after goto = _, %v; want nil", err)
+		}
+		if res.State != StateBlocked {
+			t.Errorf("Step after goto State = %q; want blocked at once", res.State)
+		}
+	})
 }
 
 // tailProducers is shaped like the loom recipe's tail: a segment with an offshoot, then the approval rows.
@@ -334,6 +397,66 @@ func assertGotoRefused(t *testing.T, shed *Shed, target string) error {
 		t.Errorf("status file changed on a refusal of --to %s", target)
 	}
 	return err
+}
+
+// TestGoto_Guard pins that a told guard refuses or, when it cannot decide, refuses too, each leaving the file unchanged.
+// An admitting guard lets the goto move the run, and the guard is never asked about a target Shed's own checks refused.
+func TestGoto_Guard(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		current   string
+		target    string
+		refusal   string
+		guardErr  error
+		wantErr   string
+		wantCalls int
+	}{
+		{name: "refusal", current: "B", target: "A", refusal: "the review is settled", wantErr: `goto target "A" refused: the review is settled`, wantCalls: 1},
+		{name: "guard error", current: "B", target: "A", guardErr: errors.New("seam unreadable"), wantErr: "could not be checked: seam unreadable; way forward: re-run goto", wantCalls: 1},
+		{name: "admitting guard moves the run", current: "B", target: "A", wantCalls: 1},
+		{name: "target past the current row never reaches the guard", current: "A", target: "B", refusal: "never asked", wantErr: "lies past the run's current row"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			shed, _, _ := gotoShed(t)
+			seed := commonSeed(tt.current)
+			seed.State = StateBlocked
+			seedStatus(t, shed.StatusPath, shed.StatusLockPath, seed)
+			before := readStatus(t, shed.StatusPath, shed.StatusLockPath)
+
+			calls := 0
+			req := gotoRequest(shed, tt.target)
+			req.Guard = func(target string) (string, error) {
+				calls++
+				if target != tt.target {
+					t.Errorf("guard target = %q; want %q", target, tt.target)
+				}
+				return tt.refusal, tt.guardErr
+			}
+			got, err := Goto(req)
+			if calls != tt.wantCalls {
+				t.Errorf("guard called %d times; want %d", calls, tt.wantCalls)
+			}
+			after := readStatus(t, shed.StatusPath, shed.StatusLockPath)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Goto error = %v; want it to contain %q", err, tt.wantErr)
+				}
+				if !reflect.DeepEqual(before, after) {
+					t.Errorf("status file changed on a refusal: %+v -> %+v", before, after)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Goto = _, %v; want nil error", err)
+			}
+			if got.CurrentProducer != tt.target || after.CurrentProducer != tt.target || after.State != StatePaused {
+				t.Errorf("CurrentProducer, persisted State = %q, %q; want %q, paused", got.CurrentProducer, after.State, tt.target)
+			}
+		})
+	}
 }
 
 func TestGoto_AwaitingRefusesFinalizeAndAdmitsEarlierRow(t *testing.T) {
@@ -439,6 +562,7 @@ func TestRelaunch(t *testing.T) {
 		target        string
 		admitErr      error
 		admitInEffect bool
+		guard         GotoGuard
 		wantErr       string
 		wantBusy      bool
 		wantAdmits    int
@@ -451,6 +575,16 @@ func TestRelaunch(t *testing.T) {
 		{name: "target past the current row", seed: seedWith(StateBlocked, "A"), target: "B", wantErr: "lies past the run's current row"},
 		{name: "admit error returned verbatim", seed: seedWith(StateBlocked, "B"), target: "A", admitErr: errAdmit, wantErr: errAdmit.Error(), wantAdmits: 1},
 		{
+			name: "guard refusal returned before Admit", seed: seedWith(StateBlocked, "B"), target: "A",
+			guard:   func(string) (string, error) { return "the review is settled", nil },
+			wantErr: `goto target "A" refused: the review is settled`,
+		},
+		{
+			name: "guard error refuses before Admit", seed: seedWith(StateBlocked, "B"), target: "A",
+			guard:   func(string) (string, error) { return "", errors.New("seam unreadable") },
+			wantErr: "could not be checked: seam unreadable; way forward: re-run goto",
+		},
+		{
 			name: "backward target keeps the pause conditions", seed: seedWith(StateBlocked, "B"), target: "A", wantAdmits: 1,
 			check: func(t *testing.T, got Status) {
 				if got.CurrentProducer != "A" || got.State != StatePaused || got.Error != "" || got.Transient != "" {
@@ -461,6 +595,12 @@ func TestRelaunch(t *testing.T) {
 				}
 				if !got.PauseRequested || got.PauseBefore != "B" || got.PauseAfter != "A" {
 					t.Errorf("PauseRequested, PauseBefore, PauseAfter = %v, %q, %q; want true, B, A kept", got.PauseRequested, got.PauseBefore, got.PauseAfter)
+				}
+				if got.PauseReason != "re-launched onto A" {
+					t.Errorf("PauseReason = %q; want %q", got.PauseReason, "re-launched onto A")
+				}
+				if got.PauseBeforeBy != "orch" || got.PauseAfterBy != "shed" {
+					t.Errorf("PauseBeforeBy, PauseAfterBy = %q, %q; want orch, shed kept", got.PauseBeforeBy, got.PauseAfterBy)
 				}
 			},
 		},
@@ -506,6 +646,7 @@ func TestRelaunch(t *testing.T) {
 				Producers:               shed.Producers,
 				MissingStatusWayForward: "way forward: told clause",
 				Target:                  tt.target,
+				Guard:                   tt.guard,
 				Admit:                   func(Status) (bool, error) { admits++; return tt.admitInEffect, tt.admitErr },
 			})
 			if admits != tt.wantAdmits {
@@ -560,5 +701,9 @@ func seedWith(s State, currentProducer string) *Status {
 	seed.PauseRequested = true
 	seed.PauseBefore = "B"
 	seed.PauseAfter = "A"
+	seed.PauseReason = "pause requested by orch"
+	seed.PauseRequestedBy = "orch"
+	seed.PauseBeforeBy = "orch"
+	seed.PauseAfterBy = "shed"
 	return &seed
 }

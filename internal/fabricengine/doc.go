@@ -508,12 +508,38 @@
 //
 // `Unwire` (unwire.go) is the per-worktree full deactivation that replaced the deleted `lyx init
 // --undo`:
-// with its `apply` parameter set it removes every fabric junction actually present on disk (not just the ones the current wired name-set names) and their warp `.git/info/exclude` entries;
+// with its `apply` parameter set it removes every fabric junction actually present on disk (not just the ones the current wired name-set names), the root scratch link excepted, and their warp `.git/info/exclude` entries;
 // without it nothing is removed and the result reports what an applied run would remove.
 // Either way it never deletes weft-side
 // content — `_lyx` and `.lyx` are both preserved — and never touches the repo-wide
 // `weft:main` records, which survive so a later `lyx fabric reconcile` re-wires the worktree from the
 // same anchor and pathspec.
+//
+// # The scratch link
+//
+// Wiring ends with the scratch step (scratchlink.go): the warp worktree's root `.scratch` becomes a directory link to `<weft worktree>/<anchor>/.lyx/scratch`.
+// A real directory would change its own modification time with every file an agent creates or removes beneath it, and every source-scan test that opens the module root hashes that time into its `go test` cache key; a link's own `Lstat` stays fixed while files change under its target.
+// The warp `.git/info/exclude` carries `/.scratch` with no trailing slash, since git matches a link as a file and a directory-only pattern would not exclude it; a legacy `/.scratch/` line is replaced.
+//
+// The step runs in order: seed the exclude, refuse to link over paths git tracks, then classify the root entry.
+// An absent root is linked, creating the target when absent.
+// A correct link has an absent target recreated, and is otherwise untouched.
+// A real directory with an absent target is moved into the target and linked, recorded as `path_renamed`.
+// A link to another target, a real directory while the target exists, a regular file and a tracked `.scratch` are left as found, each reported with its way forward.
+// The step creates nothing when the pair's weft worktree is absent, so a weft torn down mid-repair does not get its `.lyx/scratch` recreated as a plain directory.
+// It never fails wiring and removes nothing; a leave or a failure reaches the log as a warning.
+// `lyx fabric unwire` keeps the link and its exclude.
+//
+// `lyx fabric reconcile` runs the step on every managed pair after the junction repair, on a healthy and a re-wired pair alike and whether or not the repair failed.
+// It reports what the step changed or left in the pair's Detail and changes neither the pair's Action nor its Error, since scratch is agent convenience and never downgrades a verdict about the pair.
+// A pair that never reaches the repair, such as a raw-adopted one, an unmanaged one or one whose weft worktree is still missing, gets no link and no target.
+// A weft worktree torn down mid-repair gets nothing created either, because the step checks the weft root itself first.
+// The stale-junction sweep never claims the root link and never strips its exclude line.
+// After this lands, the operator runs `lyx fabric reconcile` once to convert the prime and every pair an older binary wired.
+//
+// `lyx fabric remove` unlinks the root link through the destructive gate before it removes the warp worktree directory, at a root and at a subpath anchor alike, and records one `link_removed` at the root.
+// It claims only a link that resolves into the pair's weft worktree; any other entry at the root is left to the worktree removal.
+// The link's target lives in the pair's weft `.lyx` and goes with the weft worktree teardown.
 //
 // `Remove` (remove.go) is the paired teardown, and it never deletes a directory git itself declined
 // to remove unless that directory is a registered LINKED worktree of the warp repo.
@@ -594,6 +620,12 @@
 // `ReadConfigChanges` (configchanges.go) intersects the diff of a task's weft branch against its fork point from the parent's weft branch with its diff against the parent's current tip, and reports which of the config files its caller names are in both, as `ConfigChanges`.
 // It is read-only and writes nothing;
 // the caller supplies the anchor-relative file set, because the config registry imports this package.
+//
+// **Code identity reads.** Three read-only methods (taskpatch.go) give a code segment's identity what `Diff`'s changed paths cannot, and mutate nothing.
+// `ReadTaskPatch(base, skip)` returns a `TaskPatch`: the warp working tree's change against the told merge base, tracked files and uncommitted edits included, plus every untracked non-ignored file as a new-file diff, minus the untracked paths `skip` names and those under a `skip` entry ending in `/`.
+// It carries the HEAD it read, the full diff bytes, their SHA-256 and git's stable patch-id of the zero-context form, which a rebase that only moves context leaves unchanged.
+// `MergeInOnly(since, parentTip)` reports whether every first-parent commit from HEAD back to `since` is a Merge-In: a merge commit whose second parent is an ancestor of `parentTip`, or a commit that is itself such an ancestor, as a fast-forward Merge-In leaves it.
+// `RecordsHeadSHA` returns the commit the weft checkout's HEAD stands at.
 //
 // `Add` also drops the parent's shed run records from a pair it forks (forkrecords.go).
 // A weft branch forked from its parent would otherwise carry every committed run directory, including one for the child's own slug, and the child's `Seed-Child` would refuse a disagreeing seed.
@@ -698,7 +730,7 @@
 // returned"; it has never meant "nothing happened", and mixing the two up is what `mutations` and
 // `partial` exist to stop a consumer from doing by accident.
 //
-// The vocabulary is `Kind` (mutation.go's closed, string-backed enum — `path_removed`, `worktree_removed`, `link_removed`, `branch_deleted`, `remote_branch_deleted`, `remote_branch_updated`, `worktree_reset`, `dir_created`, `worktree_created`, `branch_created`, `branch_pushed`, `commit_created`, `link_created`, `file_written`, `push_spawned`, `worktree_switched`, `repo_advanced`, `merge_staged`, `merge_resolved_staged`, `merge_committed`), a flat `Mutation` entry (kind, target, optional detail), and `Mutations`, the ordered accumulator a verb call threads through everything it performs.
+// The vocabulary is `Kind` (mutation.go's closed, string-backed enum — `path_removed`, `worktree_removed`, `link_removed`, `branch_deleted`, `remote_branch_deleted`, `remote_branch_updated`, `worktree_reset`, `dir_created`, `path_renamed`, `worktree_created`, `branch_created`, `branch_pushed`, `commit_created`, `link_created`, `file_written`, `push_spawned`, `worktree_switched`, `repo_advanced`, `merge_staged`, `merge_resolved_staged`, `merge_committed`), a flat `Mutation` entry (kind, target, optional detail), and `Mutations`, the ordered accumulator a verb call threads through everything it performs.
 // A `branch_created` or `branch_pushed` entry's detail starts `side=code` or `side=records`.
 //
 // The accumulate-as-you-mutate rule is simple and has no exception: append an entry immediately

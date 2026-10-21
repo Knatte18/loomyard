@@ -18,7 +18,7 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-cli-cobra` — Adding a CLI module: a cobra subtree under one root in `cmd/lyx/main.go`. (test) — [background](pattern/PATTERN-cli-cobra.md)
 - `PATTERN-cliwire-sole-wiring` — Wiring a standalone-capable CLI: `internal/cliwire` alone resolves target dir, repo root and state. (test) — [background](pattern/PATTERN-cliwire-sole-wiring.md)
 - `PATTERN-config-strictness` — Loading config: a caller adopts exactly one of strict `Load` or `LoadOrTemplate`, bar `runprofile`. — [background](pattern/PATTERN-config-strictness.md)
-- `PATTERN-config-layers` — Resolving a module's config: only `configengine` reads, stacks and locates layer files. — [background](pattern/PATTERN-config-layers.md)
+- `PATTERN-config-layers` — Resolving a module's config: only `configengine` reads, stacks and locates layer files, machine layer included. — [background](pattern/PATTERN-config-layers.md)
 - `PATTERN-binary-change-reconcile` — Reconciling a hub's config after a binary change: only via `hubreconcile.Ensure`, owner of the build stamp and hub lock.
 - `PATTERN-refusal-way-forward` — Adding a webster, shed or loom refusal: its message names the way forward; a test reaches it. — [background](pattern/PATTERN-refusal-way-forward.md)
 - `PATTERN-no-denied-recovery` — Naming a step in a refusal, stencil or spec: never a command the agents' settings deny. (test) — [background](pattern/PATTERN-no-denied-recovery.md)
@@ -41,7 +41,7 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-gitrepo-client-boundary` — Git in `internal/gitrepo`: local reads via go-git and `dotgit`, the rest via `gitexec`. (test) — [background](pattern/PATTERN-gitrepo-client-boundary.md)
 - `PATTERN-gitexec-checked-call` — Running git: `gitexec.Run`/`runChecked`; raw `RunGit`/`r.run` only at pinned `//gitexec:raw` sites.
 - `PATTERN-never-force-add` — Keeping transients unindexed: each repo's own `.git/info/exclude`; fabric and gitrepo never run `git add -f`.
-- `PATTERN-origin-reconcile` — Acting on a run or the hub after this machine may have been away (orch start, wake, batten resume, Merge-In, Finalize, cleanup): first `fabricengine`'s origin reconcile, the sole judge of local branches against origin.
+- `PATTERN-origin-reconcile` — Acting on a run or the hub after this machine may have been away (orch start, wake, batten resume, Merge-In, Finalize, cleanup): first `fabricengine`'s origin reconcile, sole judge of local branches.
 - `PATTERN-parent-lock` — Merging a parent into a task branch, or landing on it: only under that parent's `internal/parentlock` lock; a moved parent reroutes to Merge-In.
 
 ## Shed and loom

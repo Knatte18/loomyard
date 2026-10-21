@@ -16,7 +16,10 @@ const (
 	listKeyTemplate    = "require_pr_to_base: [\"main\"] # bases\nsquash: true\n"
 	nullBudgetTemplate = "plan_max_bounces: ~\nreview_max_bounces: 1\n"
 	roundListTemplate  = "plan_review: \"\" # rounds\n"
+	perNameSetTemplate = "names:\n  a: default a\nlists:\n  l: [x]\n"
 )
+
+var perNameSetMaps = []string{"lists", "names"}
 
 func intPointer(v int) *int { return &v }
 
@@ -41,7 +44,7 @@ func assertDecodesAsInts(t *testing.T, merged []byte, want map[string]*int) {
 	}
 }
 
-// TestSetValues pins what a successful SetValues merges: the requested values land byte-for-byte, every other key keeps its existing value or its template default, template comments and key order survive, an orphan top-level key is preserved whole and reported, list keys and open maps are set whole, and a second call on the merged output reproduces it.
+// TestSetValues pins what a successful SetValues merges: the requested values land byte-for-byte, every other key keeps its existing value or its template default, template comments and key order survive, an orphan top-level key is preserved whole and reported, list keys and open maps are set whole, a per-name map keeps only the names that differ from the template, and a second call on the merged output reproduces it.
 func TestSetValues(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -50,6 +53,7 @@ func TestSetValues(t *testing.T) {
 		existing      string
 		pairs         []KV
 		openMaps      []string
+		perNameMaps   []string
 		wantValues    map[string]string
 		wantPreserved []string
 		contains      []string
@@ -209,12 +213,62 @@ func TestSetValues(t *testing.T) {
 			notContains: []string{"!!int"},
 			wantInts:    map[string]*int{"plan_max_bounces": nil},
 		},
+		{
+			name:        "per-name maps append a string name and a list name",
+			template:    perNameSetTemplate,
+			pairs:       []KV{{Key: "names.x", Value: "new x"}, {Key: "lists.m", Value: "[a, b]"}},
+			perNameMaps: perNameSetMaps,
+			contains:    []string{"x: new x", "m: [a, b]"},
+			notContains: []string{"default a", "l: [x]"},
+		},
+		{
+			name:        "per-name scalar entry starting with a bracket is written as a string",
+			template:    perNameSetTemplate,
+			pairs:       []KV{{Key: "names.x", Value: "[not a list] prose"}},
+			perNameMaps: perNameSetMaps,
+			contains:    []string{`x: '[not a list] prose'`},
+		},
+		{
+			name:        "per-name entry the template holds is rewritten",
+			template:    perNameSetTemplate,
+			existing:    "names:\n  a: tuned a\nlists:\n  l: [x]\n",
+			pairs:       []KV{{Key: "lists.l", Value: "[]"}},
+			perNameMaps: perNameSetMaps,
+			contains:    []string{"a: tuned a", "l: []"},
+		},
+		{
+			name:        "per-name name only the file holds survives an unrelated set",
+			template:    perNameSetTemplate,
+			existing:    "names:\n  a: default a\n  hub: hub only\nlists:\n  l: [x]\n  hubl: [q]\n",
+			pairs:       []KV{{Key: "names.a", Value: "set a"}},
+			perNameMaps: perNameSetMaps,
+			contains:    []string{"a: set a", "hub: hub only", "hubl: [q]"},
+			notContains: []string{"l: [x]"},
+		},
+		{
+			name:        "per-name entry set to its template value is left out",
+			template:    perNameSetTemplate,
+			existing:    "names:\n  a: tuned a\nlists:\n  l: [y]\n",
+			pairs:       []KV{{Key: "names.a", Value: "default a"}},
+			perNameMaps: perNameSetMaps,
+			contains:    []string{"names: {}", "l: [y]"},
+			notContains: []string{"default a", "tuned a"},
+		},
+		{
+			name:        "per-name map holding null becomes a mapping holding the new name",
+			template:    perNameSetTemplate,
+			existing:    "names:\nlists:\n  l: [x]\n",
+			pairs:       []KV{{Key: "names.x", Value: "prose"}},
+			perNameMaps: perNameSetMaps,
+			contains:    []string{"names:\n    x: prose"},
+			notContains: []string{"default a"},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result, err := SetValues([]byte(tt.template), []byte(tt.existing), tt.pairs, tt.openMaps...)
+			result, err := SetValues([]byte(tt.template), []byte(tt.existing), tt.pairs, tt.perNameMaps, tt.openMaps...)
 			if err != nil {
 				t.Fatalf("SetValues() unexpected error: %v", err)
 			}
@@ -251,7 +305,7 @@ func TestSetValues(t *testing.T) {
 				previous = at
 			}
 
-			again, err := SetValues([]byte(tt.template), result.Merged, tt.pairs, tt.openMaps...)
+			again, err := SetValues([]byte(tt.template), result.Merged, tt.pairs, tt.perNameMaps, tt.openMaps...)
 			if err != nil {
 				t.Fatalf("SetValues() second call unexpected error: %v", err)
 			}
@@ -269,11 +323,13 @@ func TestSetValues(t *testing.T) {
 func TestSetValues_UnknownKeys(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name      string
-		template  string
-		pairs     []KV
-		openMaps  []string
-		wantKnown string
+		name        string
+		template    string
+		pairs       []KV
+		openMaps    []string
+		perNameMaps []string
+		wantUnknown []string
+		wantKnown   string
 	}{
 		{
 			name:     "valid pair next to an unknown one",
@@ -287,17 +343,35 @@ func TestSetValues_UnknownKeys(t *testing.T) {
 			openMaps:  []string{"labels"},
 			wantKnown: "labels.<name>",
 		},
+		{
+			name:        "per-name map lists its name placeholder as known",
+			template:    perNameSetTemplate,
+			pairs:       []KV{{Key: "bogus", Value: "v"}},
+			perNameMaps: perNameSetMaps,
+			wantKnown:   "names.<name>",
+		},
+		{
+			name:        "per-name map refuses a deeper key and itself but knows one name",
+			template:    perNameSetTemplate,
+			pairs:       []KV{{Key: "names.x", Value: "v"}, {Key: "names.x.y", Value: "v"}, {Key: "lists", Value: "[a]"}, {Key: "lists.m.n", Value: "v"}},
+			perNameMaps: perNameSetMaps,
+			wantUnknown: []string{"lists", "lists.m.n", "names.x.y"},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result, err := SetValues([]byte(tt.template), nil, tt.pairs, tt.openMaps...)
+			result, err := SetValues([]byte(tt.template), nil, tt.pairs, tt.perNameMaps, tt.openMaps...)
 			if err != nil {
 				t.Fatalf("SetValues() unexpected error: %v", err)
 			}
-			if !slices.Equal(result.Unknown, []string{"bogus"}) {
-				t.Errorf("SetValues() Unknown = %v; want [bogus]", result.Unknown)
+			wantUnknown := tt.wantUnknown
+			if wantUnknown == nil {
+				wantUnknown = []string{"bogus"}
+			}
+			if !slices.Equal(result.Unknown, wantUnknown) {
+				t.Errorf("SetValues() Unknown = %v; want %v", result.Unknown, wantUnknown)
 			}
 			if result.Merged != nil {
 				t.Errorf("SetValues() Merged = %q; want nil (no partial mutation)", result.Merged)
@@ -313,12 +387,13 @@ func TestSetValues_UnknownKeys(t *testing.T) {
 func TestSetValues_Refusals(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name     string
-		template string
-		existing string
-		pair     KV
-		openMaps []string
-		want     []string
+		name        string
+		template    string
+		existing    string
+		pair        KV
+		openMaps    []string
+		perNameMaps []string
+		want        []string
 	}{
 		{
 			name:     "scalar for a list key",
@@ -370,12 +445,34 @@ func TestSetValues_Refusals(t *testing.T) {
 			openMaps: []string{"labels"},
 			want:     []string{"labels"},
 		},
+		{
+			name:        "unterminated flow list for a per-name list entry",
+			template:    perNameSetTemplate,
+			pair:        KV{Key: "lists.m", Value: "[unterminated"},
+			perNameMaps: perNameSetMaps,
+			want:        []string{"lists.m"},
+		},
+		{
+			name:        "plain value for a per-name list entry",
+			template:    perNameSetTemplate,
+			pair:        KV{Key: "lists.m", Value: "plain"},
+			perNameMaps: perNameSetMaps,
+			want:        []string{"lists.m"},
+		},
+		{
+			name:        "entry into a per-name map that holds a list",
+			template:    perNameSetTemplate,
+			existing:    "names:\n  - a\n",
+			pair:        KV{Key: "names.x", Value: "prose"},
+			perNameMaps: perNameSetMaps,
+			want:        []string{"names", "sequence", "rewrite names as a map of name to value"},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := SetValues([]byte(tt.template), []byte(tt.existing), []KV{tt.pair}, tt.openMaps...)
+			_, err := SetValues([]byte(tt.template), []byte(tt.existing), []KV{tt.pair}, tt.perNameMaps, tt.openMaps...)
 			if err == nil {
 				t.Fatal("SetValues() = nil error; want a refusal")
 			}

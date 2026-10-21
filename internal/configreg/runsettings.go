@@ -34,6 +34,7 @@ func (e *RunSettingsError) Unwrap() error {
 // PrepareRunSettings migrates and validates a task's run settings, decoded from JSON as module name to an object of that module's keys.
 // It returns each named module's local-layer YAML document, and drops a module whose object is empty.
 // A key a declared move relocated (see KeyMoves) is first rewritten into its target module's object.
+// A module that is not registered is refused, and one a declared move retired is refused with the way forward of removing its object from the run settings.
 // Every refusal is a [*RunSettingsError]; value semantics are left to the module's load.
 // A nil or empty settings returns an empty map.
 func PrepareRunSettings(settings map[string]any) (map[string][]byte, error) {
@@ -48,6 +49,9 @@ func PrepareRunSettings(settings map[string]any) (map[string][]byte, error) {
 	for _, name := range names {
 		module, ok := Lookup(name)
 		if !ok {
+			if retiredByKeyMove(name) {
+				return nil, &RunSettingsError{Module: name, Cause: configengine.MarkInvalid(fmt.Errorf("module %q is not registered: its keys moved to another module; way forward: remove the %s object from run_settings", name, name))}
+			}
 			return nil, &RunSettingsError{Module: name, Cause: configengine.MarkInvalid(fmt.Errorf("module %q is not registered", name))}
 		}
 		keys, ok := settings[name].(map[string]any)
@@ -73,6 +77,16 @@ func PrepareRunSettings(settings map[string]any) (map[string][]byte, error) {
 		documents[name] = document
 	}
 	return documents, nil
+}
+
+// retiredByKeyMove reports whether a declared key move names the module as its source.
+func retiredByKeyMove(name string) bool {
+	for _, move := range KeyMoves() {
+		if move.FromModule == name {
+			return true
+		}
+	}
+	return false
 }
 
 // LayerRunSettings returns the local-layer documents of a task's run settings layered over the settings of its run profile, named profileName.

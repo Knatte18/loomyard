@@ -24,6 +24,8 @@ const (
 	layerTemplate = "name: tpl\nport: 80\nnested:\n  deep: 1\nlist: [a, b]\nlabels:\n  bug: a bug\nrun: echo\n"
 	// fullDefault holds every template key, so a load over it fills nothing.
 	fullDefault = "name: d\nport: 1\nnested:\n  deep: 2\nlist: [x, y]\nlabels:\n  a: A\n  b: B\nrun: sh\n"
+	// perNameTail is the per-name map a row with perNameMaps appends to the template.
+	perNameTail = "lenses:\n  a: A\n"
 )
 
 // layerSpec is a per-worktree spec with one open map and a classification of some keys.
@@ -41,6 +43,18 @@ func layerSpec() configengine.Spec {
 	}
 }
 
+// machineSpec is a hub-wide spec classifying port as the machine key, name as free and run as executable.
+func machineSpec() configengine.Spec {
+	spec := layerSpec()
+	spec.HubWide = true
+	spec.Categories = map[string]configengine.Category{
+		"port": configengine.CategoryMachine,
+		"name": configengine.CategoryNone,
+		"run":  configengine.CategoryExecutable,
+	}
+	return spec
+}
+
 // geometry is how a case lays out its anchor and board dir.
 type geometry int
 
@@ -51,6 +65,8 @@ const (
 	geometryStandalone
 	// geometryAnchorWithoutLyx tells an initialised board dir and an anchor with no _lyx/.
 	geometryAnchorWithoutLyx
+	// geometryBoardOnly tells an initialised board dir and no anchor.
+	geometryBoardOnly
 )
 
 // layerFixture is a temp anchor and board dir laid out by a geometry, with the files each layer holds.
@@ -86,10 +102,14 @@ func newLayerFixture(t *testing.T, geo geometry, files map[configengine.Layer]st
 	case geometryAnchorWithoutLyx:
 		fx.dirs = configengine.Dirs{Anchor: fx.anchor, Board: fx.board}
 		mustMkdirAll(t, configengine.ConfigDir(fx.board))
+	case geometryBoardOnly:
+		fx.dirs = configengine.Dirs{Board: fx.board}
+		mustMkdirAll(t, configengine.ConfigDir(fx.board))
 	}
 	paths := map[configengine.Layer]string{
 		configengine.LayerDefault:  configengine.ConfigFile(fx.board, layerModule),
 		configengine.LayerWorktree: configengine.ConfigFile(fx.anchor, layerModule),
+		configengine.LayerMachine:  configengine.MachineFile(fx.board, layerModule),
 		configengine.LayerLocal:    configengine.LocalFile(fx.anchor, layerModule),
 	}
 	for layer, content := range files {
@@ -125,8 +145,9 @@ func TestLoad_LayerStack(t *testing.T) {
 	tests := []struct {
 		name string
 		geo  geometry
-		// hubWide marks the spec hub-wide.
+		// hubWide marks the spec hub-wide; machine also gives it a machine key, port.
 		hubWide bool
+		machine bool
 		files   map[configengine.Layer]string
 		staging string
 		// anchorEnv and boardEnv are the .env files of the anchor and the board dir.
@@ -140,8 +161,66 @@ func TestLoad_LayerStack(t *testing.T) {
 		wantAbsent []string
 		// wantUnknown maps each layer whose file holds keys the template lacks to the keys of its one warning, over both loaders; empty means no warning.
 		wantUnknown map[configengine.Layer]string
+		// perNameMaps is the spec's per-name maps; a row that sets it loads over the template with perNameTail appended.
+		perNameMaps []string
 		want        map[string]string
 	}{
+		{
+			name:    "a machine value wins over the hub file",
+			machine: true,
+			files:   map[configengine.Layer]string{configengine.LayerDefault: fullDefault, configengine.LayerMachine: "port: 8\n"},
+			want:    map[string]string{"name": "d", "port": "8"},
+		},
+		{
+			name:    "a machine value survives an anchor holding no _lyx",
+			geo:     geometryAnchorWithoutLyx,
+			machine: true,
+			files:   map[configengine.Layer]string{configengine.LayerDefault: fullDefault, configengine.LayerMachine: "port: 8\n"},
+			want:    map[string]string{"name": "d", "port": "8"},
+		},
+		{
+			name:    "a hub-file check telling the board dir alone stacks no machine layer",
+			geo:     geometryBoardOnly,
+			machine: true,
+			files:   map[configengine.Layer]string{configengine.LayerDefault: fullDefault, configengine.LayerMachine: "port: 8\n"},
+			want:    map[string]string{"name": "d", "port": "1"},
+		},
+		{
+			name:    "a standalone load never reads a machine layer",
+			geo:     geometryStandalone,
+			machine: true,
+			files:   map[configengine.Layer]string{configengine.LayerWorktree: fullDefault, configengine.LayerMachine: "port: 8\n"},
+			want:    map[string]string{"name": "d", "port": "1"},
+		},
+		{
+			name:    "a hub-wide spec with no machine key ignores a machine file",
+			hubWide: true,
+			files:   map[configengine.Layer]string{configengine.LayerDefault: fullDefault, configengine.LayerMachine: "name: m\nport: 8\n"},
+			want:    map[string]string{"name": "d", "port": "1"},
+		},
+		{
+			name:    "a comment-only machine file adds nothing",
+			machine: true,
+			files:   map[configengine.Layer]string{configengine.LayerDefault: fullDefault, configengine.LayerMachine: "# nothing\n"},
+			want:    map[string]string{"name": "d", "port": "1"},
+		},
+		{
+			name:       "a retired machine key in the machine file resolves as absent",
+			machine:    true,
+			files:      map[configengine.Layer]string{configengine.LayerDefault: fullDefault, configengine.LayerMachine: "gone_machine: 1\n"},
+			retired:    map[string]configengine.Category{"gone_machine": configengine.CategoryMachine},
+			wantAbsent: []string{"gone_machine"},
+			want:       map[string]string{"name": "d", "port": "1"},
+		},
+		{
+			name: "a name the template lacks under a per-name map never warns while a key outside it still does",
+			files: map[configengine.Layer]string{
+				configengine.LayerDefault: fullDefault + perNameTail + "  extra: E\nold_name: d\n",
+			},
+			perNameMaps: []string{"lenses"},
+			wantUnknown: map[configengine.Layer]string{configengine.LayerDefault: "old_name"},
+			want:        map[string]string{"name": "d", "lenses": "map[a:A extra:E]"},
+		},
 		{
 			name: "keys the template lacks warn once per file over both loaders, naming the reconcile that removes them",
 			files: map[configengine.Layer]string{
@@ -290,8 +369,15 @@ func TestLoad_LayerStack(t *testing.T) {
 				writeLayerFile(t, filepath.Join(fx.board, ".env"), tc.boardEnv)
 			}
 			spec := layerSpec()
-			spec.HubWide = tc.hubWide
+			if tc.machine {
+				spec = machineSpec()
+			}
+			spec.HubWide = tc.hubWide || tc.machine
 			spec.RetiredKeys = tc.retired
+			spec.PerNameMaps = tc.perNameMaps
+			if len(tc.perNameMaps) > 0 {
+				spec.Template = append(spec.Template, perNameTail...)
+			}
 
 			var resolved []byte
 			if tc.strictErr != "" {
@@ -357,7 +443,7 @@ func TestLoad_LayerStack(t *testing.T) {
 	}
 }
 
-// TestValidateLocal pins the local-layer rule: a key the template lacks, a shape mismatch, a category other than none and, for a hub-wide module, an unclassified key are refused naming the key; an open-map entry, a whole-entry alias, the longest covering entry and an empty document pass.
+// TestValidateLocal pins the machine-layer rule, and that the local layer refuses a machine key, besides the local-layer rule: a key the template lacks, a shape mismatch, a category other than none and, for a hub-wide module, an unclassified key are refused naming the key; an open-map entry, a whole-entry alias, the longest covering entry and an empty document pass.
 func TestValidateLocal(t *testing.T) {
 	t.Parallel()
 	hubWide := layerSpec()
@@ -380,12 +466,34 @@ func TestValidateLocal(t *testing.T) {
 		"old.open":    configengine.CategoryNone,
 	}
 
+	machine := machineSpec()
+	machine.RetiredKeys = map[string]configengine.Category{
+		"gone_machine": configengine.CategoryMachine,
+		"gone_guard":   configengine.CategoryGuard,
+	}
+	const removal = "remove it from the machine override"
+
 	tests := []struct {
-		name    string
-		spec    configengine.Spec
-		doc     string
-		wantErr string
+		name string
+		spec configengine.Spec
+		// validator is the rule the row runs, local when empty.
+		validator string
+		doc       string
+		wantErr   string
+		// wantMore are further substrings the error must hold.
+		wantMore []string
 	}{
+		{name: "machine key", spec: machine, validator: "machine", doc: "port: 8\n"},
+		{name: "machine empty document", spec: machine, validator: "machine", doc: ""},
+		{name: "machine refuses a none key and points at the hub file and the local layer", spec: machine, validator: "machine", doc: "name: x\n", wantErr: "name", wantMore: []string{"not a machine key", removal, `"lyx config mod"`, "--layer local"}},
+		{name: "machine refuses an executable key and points at the hub file", spec: machine, validator: "machine", doc: "run: evil\n", wantErr: "run", wantMore: []string{`"lyx config mod"`}},
+		{name: "machine refuses a key the template lacks", spec: machine, validator: "machine", doc: "nope: 1\n", wantErr: "nope", wantMore: []string{removal}},
+		{name: "machine refuses an unclassified key", spec: machine, validator: "machine", doc: "list: [x]\n", wantErr: "list", wantMore: []string{"not classified", removal}},
+		{name: "machine refuses a mapping where the template holds a scalar", spec: machine, validator: "machine", doc: "port:\n  a: 1\n", wantErr: "port", wantMore: []string{removal}},
+		{name: "machine refuses an unparseable document", spec: machine, validator: "machine", doc: "port: [unclosed\n", wantErr: "parse", wantMore: []string{removal}},
+		{name: "machine admits a retired machine key", spec: machine, validator: "machine", doc: "gone_machine: 1\n"},
+		{name: "machine refuses a retired guard key", spec: machine, validator: "machine", doc: "gone_guard: 1\n", wantErr: "retired", wantMore: []string{removal}},
+		{name: "local still refuses a machine key", spec: machine, doc: "port: 8\n", wantErr: "port"},
 		{name: "retired none scalar", spec: retired, doc: "gone_scalar: 1\n"},
 		{name: "units under a retired none map", spec: retired, doc: "gone_map:\n  a: 1\n  b: 2\n"},
 		{name: "retired none key holding a mapping the template never held", spec: retired, doc: "gone_scalar:\n  a: 1\n"},
@@ -413,15 +521,24 @@ func TestValidateLocal(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			err := configengine.ValidateLocal(tc.spec, []byte(tc.doc))
+			validate := configengine.ValidateLocal
+			if tc.validator == "machine" {
+				validate = configengine.ValidateMachine
+			}
+			err := validate(tc.spec, []byte(tc.doc))
 			if tc.wantErr == "" {
 				if err != nil {
-					t.Fatalf("ValidateLocal: %v", err)
+					t.Fatalf("validate: %v", err)
 				}
 				return
 			}
 			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
-				t.Fatalf("ValidateLocal error = %v; want one containing %q", err, tc.wantErr)
+				t.Fatalf("validate error = %v; want one containing %q", err, tc.wantErr)
+			}
+			for _, more := range tc.wantMore {
+				if !strings.Contains(err.Error(), more) {
+					t.Errorf("validate error = %v; want it to contain %q", err, more)
+				}
 			}
 			if !errors.Is(err, configengine.ErrInvalid) {
 				t.Errorf("error is not marked ErrInvalid: %v", err)
@@ -430,7 +547,7 @@ func TestValidateLocal(t *testing.T) {
 	}
 }
 
-// TestLayers pins the layer reader and the stack merge: the present files in stack order per geometry, absent files skipped, a comment-only local file dropped, a refused local file naming itself, and a Doc merged unexpanded with no template key filled and an Origins entry per top-level key.
+// TestLayers pins the layer reader and the stack merge: the present files in stack order per geometry, absent files skipped, a comment-only machine or local file dropped, a refused machine or local file naming itself, and a Doc merged unexpanded with no template key filled and an Origins entry per top-level key.
 func TestLayers(t *testing.T) {
 	t.Parallel()
 	all := map[configengine.Layer]string{
@@ -446,13 +563,23 @@ func TestLayers(t *testing.T) {
 		return names
 	}
 
+	allFour := map[configengine.Layer]string{
+		configengine.LayerDefault:  "name: d\nport: 1\n",
+		configengine.LayerWorktree: "name: w\n",
+		configengine.LayerMachine:  "port: 8\n",
+		configengine.LayerLocal:    "name: l\n",
+	}
 	orderTests := []struct {
 		name    string
 		geo     geometry
 		hubWide bool
+		// machine gives the hub-wide spec the machine key port.
+		machine bool
 		files   map[configengine.Layer]string
 		want    []configengine.Layer
 	}{
+		{name: "hub-wide machine spec stacks default, machine and local", geo: geometryHub, machine: true, files: allFour, want: []configengine.Layer{configengine.LayerDefault, configengine.LayerMachine, configengine.LayerLocal}},
+		{name: "comment-only machine file is dropped", geo: geometryHub, machine: true, files: map[configengine.Layer]string{configengine.LayerDefault: "name: d\n", configengine.LayerMachine: "# nothing\n", configengine.LayerLocal: "name: l\n"}, want: []configengine.Layer{configengine.LayerDefault, configengine.LayerLocal}},
 		{name: "hub per-worktree", geo: geometryHub, files: all, want: []configengine.Layer{configengine.LayerDefault, configengine.LayerWorktree, configengine.LayerLocal}},
 		{name: "hub hub-wide skips the worktree file", geo: geometryHub, hubWide: true, files: all, want: []configengine.Layer{configengine.LayerDefault, configengine.LayerLocal}},
 		{name: "standalone", geo: geometryStandalone, files: map[configengine.Layer]string{configengine.LayerWorktree: "name: w\n", configengine.LayerLocal: "name: l\n"}, want: []configengine.Layer{configengine.LayerWorktree, configengine.LayerLocal}},
@@ -467,6 +594,9 @@ func TestLayers(t *testing.T) {
 			spec.HubWide = tc.hubWide
 			if tc.hubWide {
 				spec.Categories = map[string]configengine.Category{"name": configengine.CategoryNone}
+			}
+			if tc.machine {
+				spec = machineSpec()
 			}
 			layers, err := configengine.Layers(fx.dirs, spec)
 			if err != nil {
@@ -485,6 +615,19 @@ func TestLayers(t *testing.T) {
 		localPath := configengine.LocalFile(fx.anchor, layerModule)
 		if err == nil || !strings.Contains(err.Error(), localPath) || !strings.Contains(err.Error(), "run") {
 			t.Fatalf("Layers error = %v; want one naming %s and run", err, localPath)
+		}
+		if !errors.Is(err, configengine.ErrInvalid) {
+			t.Errorf("error is not marked ErrInvalid: %v", err)
+		}
+	})
+
+	t.Run("refused machine file names the file and the key", func(t *testing.T) {
+		t.Parallel()
+		fx := newLayerFixture(t, geometryHub, map[configengine.Layer]string{configengine.LayerDefault: "name: d\n", configengine.LayerMachine: "name: m\n"})
+		_, err := configengine.Layers(fx.dirs, machineSpec())
+		machinePath := configengine.MachineFile(fx.board, layerModule)
+		if err == nil || !strings.Contains(err.Error(), machinePath) || !strings.Contains(err.Error(), "name") {
+			t.Fatalf("Layers error = %v; want one naming %s and name", err, machinePath)
 		}
 		if !errors.Is(err, configengine.ErrInvalid) {
 			t.Errorf("error is not marked ErrInvalid: %v", err)
@@ -510,6 +653,23 @@ func TestLayers(t *testing.T) {
 			}
 			if got := decodeTopLevel(t, below); !mapsEqual(got, tt.want) {
 				t.Errorf("BelowLayer(%s) = %v; want %v", tt.layer, got, tt.want)
+			}
+		}
+
+		machineFx := newLayerFixture(t, geometryHub, allFour)
+		for _, tt := range []struct {
+			layer    configengine.Layer
+			wantPort string
+		}{
+			{configengine.LayerLocal, "8"},
+			{configengine.LayerMachine, "1"},
+		} {
+			below, err := configengine.BelowLayer(machineFx.dirs, machineSpec(), tt.layer)
+			if err != nil {
+				t.Fatalf("BelowLayer(%s) over the machine spec: %v", tt.layer, err)
+			}
+			if got := decodeTopLevel(t, below)["port"]; got != tt.wantPort {
+				t.Errorf("BelowLayer(%s) over the machine spec holds port %q; want %q", tt.layer, got, tt.wantPort)
 			}
 		}
 	})
@@ -612,6 +772,7 @@ func TestLayerFile(t *testing.T) {
 	spec := layerSpec()
 	hubWide := layerSpec()
 	hubWide.HubWide = true
+	machine := machineSpec()
 	hub := configengine.Dirs{Anchor: "/a", Board: "/b"}
 
 	tests := []struct {
@@ -631,6 +792,11 @@ func TestLayerFile(t *testing.T) {
 		{"hub-wide standalone keeps the worktree file", configengine.Dirs{Anchor: "/a"}, hubWide, configengine.LayerWorktree, configengine.ConfigFile("/a", layerModule), true, configengine.LayerWorktree},
 		{"no anchor means no local layer", configengine.Dirs{Board: "/b"}, spec, configengine.LayerLocal, "", false, configengine.LayerDefault},
 		{"template has no file", hub, spec, configengine.LayerTemplate, "", false, configengine.LayerDefault},
+		{"machine under the board dir's .lyx", hub, machine, configengine.LayerMachine, filepath.Join("/b", lyxdirs.DotLyxDirName, "config", layerModule+".machine.yaml"), true, configengine.LayerDefault},
+		{"machine does not apply to a per-worktree module", hub, spec, configengine.LayerMachine, "", false, configengine.LayerDefault},
+		{"machine does not apply to a hub-wide module with no machine key", hub, hubWide, configengine.LayerMachine, "", false, configengine.LayerDefault},
+		{"machine does not apply with the board dir alone", configengine.Dirs{Board: "/b"}, machine, configengine.LayerMachine, "", false, configengine.LayerDefault},
+		{"machine does not apply with the anchor alone", configengine.Dirs{Anchor: "/a"}, machine, configengine.LayerMachine, "", false, configengine.LayerWorktree},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -654,6 +820,12 @@ func TestLayerFile(t *testing.T) {
 	if got, want := configengine.LocalDenied(layerSpec()), []string{"list", "nested", "run"}; !slices.Equal(got, want) {
 		t.Errorf("LocalDenied = %v; want %v", got, want)
 	}
+	if got, want := configengine.MachineKeys(machine), []string{"port"}; !slices.Equal(got, want) {
+		t.Errorf("MachineKeys = %v; want %v", got, want)
+	}
+	if got := configengine.MachineKeys(layerSpec()); len(got) != 0 {
+		t.Errorf("MachineKeys of a spec with no machine key = %v; want none", got)
+	}
 }
 
 // annotationsOf returns the line comment of every annotated line of a provenance document, keyed by the line's key.
@@ -674,11 +846,27 @@ func annotationsOf(provenance []byte) map[string]string {
 func TestProvenance(t *testing.T) {
 	const base = "name: d\nnested:\n  deep: 2\nlist: [x, y]\nlabels:\n  a: A\nrun: sh\n"
 	tests := []struct {
-		name      string
+		name string
+		geo  geometry
+		// machine swaps in the hub-wide spec with the machine key port.
+		machine   bool
 		files     map[configengine.Layer]string
 		want      map[string]string
 		wantError string
 	}{
+		{
+			name:    "a machine-held unit names the machine layer",
+			machine: true,
+			files:   map[configengine.Layer]string{configengine.LayerDefault: base, configengine.LayerMachine: "port: 8\n"},
+			want:    map[string]string{"name": "default", "port": "machine", "deep": "default", "list": "default", "labels": "default", "run": "default"},
+		},
+		{
+			name:    "a machine-held unit names the machine layer with an anchor holding no _lyx",
+			geo:     geometryAnchorWithoutLyx,
+			machine: true,
+			files:   map[configengine.Layer]string{configengine.LayerDefault: base, configengine.LayerMachine: "port: 8\n"},
+			want:    map[string]string{"name": "default", "port": "machine", "deep": "default", "list": "default", "labels": "default", "run": "default"},
+		},
 		{
 			name:  "each unit names the highest layer holding it",
 			files: map[configengine.Layer]string{configengine.LayerDefault: base, configengine.LayerWorktree: "name: w\nlabels:\n  b: B\n", configengine.LayerLocal: "nested:\n  deep: 5\n"},
@@ -697,8 +885,12 @@ func TestProvenance(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fixture := newLayerFixture(t, geometryHub, tt.files)
-			provenance, err := configengine.Provenance(fixture.dirs, layerSpec())
+			fixture := newLayerFixture(t, tt.geo, tt.files)
+			spec := layerSpec()
+			if tt.machine {
+				spec = machineSpec()
+			}
+			provenance, err := configengine.Provenance(fixture.dirs, spec)
 			if tt.wantError != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantError) {
 					t.Fatalf("Provenance error = %v, want one containing %q", err, tt.wantError)

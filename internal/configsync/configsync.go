@@ -92,11 +92,19 @@ type Result struct {
 	// Set only by a key move, on a dry run too.
 	Moved []string
 	// KeptTarget lists, sorted, each move whose source value was dropped because the target already held its own, as "<source>: <value> dropped, <target>: <value> kept".
+	// A move that keeps whatever the target holds renders "<source> dropped, <target> kept", without the values.
 	// Set only by a key move, on a dry run too.
 	KeptTarget []string
 	// Overwritten lists, sorted, each move whose source value replaced the target's template default, as "<source>: <value> replaced <target>'s template default <value>".
 	// Set only by a key move, on a dry run too.
 	Overwritten []string
+	// KeptExtra lists, sorted, each "<path>.<name>" a per-name map of the file holds and the template lacks.
+	// Such a name is kept in place and never pruned.
+	// Set on a dry run too.
+	KeptExtra []string
+	// Dropped lists, sorted, each "<path>.<name>" a per-name map of a base-layer file held with the template's value, left out of the file because the load resolves it from the template.
+	// Set on a dry run too.
+	Dropped []string
 }
 
 // Options configures ReconcileAll.
@@ -383,19 +391,21 @@ func reconcileBaseWorktreeFile(m configreg.Module, baseDir string, apply bool) (
 		}
 	}
 
-	merged, added, removed, err := yamlengine.Reconcile([]byte(m.Template()), existing, m.OpenMaps...)
+	merged, added, removed, kept, dropped, err := yamlengine.Reconcile([]byte(m.Template()), existing, m.PerNameMaps, m.OpenMaps...)
 	if err != nil {
 		return Result{}, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("reconcile %s: %w", m.Name, err)}
 	}
 
 	result := Result{
-		Module:   m.Name,
-		Added:    added,
-		Removed:  removed,
-		Migrated: migrated,
-		Layer:    configengine.LayerWorktree,
+		Module:    m.Name,
+		Added:     added,
+		Removed:   removed,
+		KeptExtra: kept,
+		Dropped:   dropped,
+		Migrated:  migrated,
+		Layer:     configengine.LayerWorktree,
 	}
-	if apply && (fileAbsent || len(added)+len(removed)+len(migrated) > 0) {
+	if apply && (fileAbsent || len(added)+len(removed)+len(dropped)+len(migrated) > 0) {
 		if err := fsx.AtomicWriteBytes(cfgPath, merged); err != nil {
 			return Result{}, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("write config for %s: %w", m.Name, err)}
 		}
@@ -431,7 +441,7 @@ func reconcileSparseFile(m configreg.Module, path string, layer configengine.Lay
 				return fail("migrate", err)
 			}
 		}
-		current, result.Removed, err = yamlengine.Prune([]byte(m.Template()), current, m.OpenMaps...)
+		current, result.Removed, result.KeptExtra, err = yamlengine.Prune([]byte(m.Template()), current, m.PerNameMaps, m.OpenMaps...)
 		if err != nil {
 			return fail("reconcile", err)
 		}
@@ -538,7 +548,8 @@ func primeConfig(primeBaseDir, module string) []byte {
 // Legacy files are pruned only when opts.Apply succeeds.
 // The declared key moves run first at the board dir as a base layer, and their results lead the returned slice;
 // under opts.SeedDefaults an absent board source is the prime's copy, so a default seeded in the same pass carries the moved values.
-// When opts.Apply is false, nothing is written or removed.
+// When opts.Apply is false, nothing is written or removed,
+// and a module whose absent file those moves would write reports no seed additions, since the moved values fill the file and the names it lacks are known only once it exists.
 func ReconcileHubWideAt(boardDir, primeBaseDir string, opts HubWideOptions) ([]Result, error) {
 	seedDir := ""
 	if opts.SeedDefaults {
@@ -547,6 +558,12 @@ func ReconcileHubWideAt(boardDir, primeBaseDir string, opts HubWideOptions) ([]R
 	results, err := moveKeys(boardDir, seedDir, configengine.LayerDefault, true, opts.Apply)
 	if err != nil {
 		return nil, err
+	}
+	movedInto := map[string]bool{}
+	for _, move := range results {
+		if len(move.Moved) > 0 {
+			movedInto[move.Module] = true
+		}
 	}
 
 	for _, m := range configreg.Modules() {
@@ -590,7 +607,7 @@ func ReconcileHubWideAt(boardDir, primeBaseDir string, opts HubWideOptions) ([]R
 			}
 		}
 
-		var added, removed []string
+		var added, removed, keptExtra, dropped []string
 		var mergedBytes []byte
 		var reconcileErr error
 		if m.SeedOnly {
@@ -607,23 +624,30 @@ func ReconcileHubWideAt(boardDir, primeBaseDir string, opts HubWideOptions) ([]R
 					return nil, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("migrate %s: %w", m.Name, err)}
 				}
 			}
-			mergedBytes, added, removed, reconcileErr = yamlengine.Reconcile([]byte(m.Template()), existing, m.OpenMaps...)
+			mergedBytes, added, removed, keptExtra, dropped, reconcileErr = yamlengine.Reconcile([]byte(m.Template()), existing, m.PerNameMaps, m.OpenMaps...)
 		}
 		if reconcileErr != nil {
 			return nil, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("reconcile %s: %w", m.Name, reconcileErr)}
+		}
+
+		if !opts.Apply && fileAbsent && movedInto[m.Name] {
+			// The moves' values fill this file, so the names it lacks are known only once it exists.
+			added = nil
 		}
 
 		result := Result{
 			Module:       m.Name,
 			Added:        added,
 			Removed:      removed,
+			KeptExtra:    keptExtra,
+			Dropped:      dropped,
 			MigratedFrom: migratedFrom,
 			Migrated:     migrated,
 			Seed:         seed,
 			Layer:        configengine.LayerDefault,
 		}
 
-		if opts.Apply && (fileAbsent || len(added)+len(removed)+len(migrated) > 0) {
+		if opts.Apply && (fileAbsent || len(added)+len(removed)+len(dropped)+len(migrated) > 0) {
 			if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 				return nil, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("mkdir config dir for %s: %w", m.Name, err)}
 			}

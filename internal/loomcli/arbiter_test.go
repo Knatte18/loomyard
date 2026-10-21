@@ -114,6 +114,7 @@ type arbiterFixture struct {
 	caseBriefPath    string
 	interruptPolicy  map[string]string
 	producerRowNames []string
+	gotoGuard        shedengine.GotoGuard
 }
 
 const arbiterTestRun = "operator-surface"
@@ -175,6 +176,7 @@ func (f *arbiterFixture) deps() arbiterDeps {
 		AttemptDir: f.attemptDir,
 		MarkerPath: f.markerPath(),
 		Producers:  producers,
+		GotoGuard:  f.gotoGuard,
 		Stop: arbiterstop.Readers{
 			PendingEscalation: func(string) (shedadapters.EscalationCause, string, bool, error) {
 				if f.escalationErr != nil {
@@ -702,6 +704,8 @@ func TestArbiterVerb_VerdictOutcomes(t *testing.T) {
 		wantGoto     string
 		wantRelaunch string
 		wantRunStops int
+		// wantReason is a substring of the printed reason, asserted when non-empty.
+		wantReason string
 		// wantError is set for a run the verb refuses after the arbiter started.
 		wantError bool
 	}{
@@ -763,6 +767,15 @@ func TestArbiterVerb_VerdictOutcomes(t *testing.T) {
 			wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CausePrecondition,
 		},
 		{
+			name: "a resume naming a goto target the guard refuses", producer: loomshed.NamePublish, state: shedengine.StateBlocked,
+			verdict: "verdict: resume\nreason: go back\ngoto: Plan-Write\n",
+			setup: func(f *arbiterFixture) {
+				f.gotoGuard = func(string) (string, error) { return "the Plan-Review verdict is settled", nil }
+			},
+			wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CausePrecondition,
+			wantReason: "the Plan-Review verdict is settled",
+		},
+		{
 			name: "a timeout stops the run and reads hand-on", producer: "Plan-Write", state: shedengine.StateBlocked,
 			waitResult:  shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout},
 			wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CauseTimeout, wantRunStops: 1,
@@ -803,6 +816,9 @@ func TestArbiterVerb_VerdictOutcomes(t *testing.T) {
 			}
 			if fields["verdict"] != tt.wantVerdict || fields["cause"] != tt.wantCause || fields["goto"] != tt.wantGoto {
 				t.Errorf("verdict, cause, goto = %v, %v, %v; want %q, %q, %q", fields["verdict"], fields["cause"], fields["goto"], tt.wantVerdict, tt.wantCause, tt.wantGoto)
+			}
+			if reason, _ := fields["reason"].(string); !strings.Contains(reason, tt.wantReason) {
+				t.Errorf("reason = %q; want it to contain %q", reason, tt.wantReason)
 			}
 			relaunch, hasRelaunch := fields["relaunch"]
 			if tt.wantRelaunch == "" && hasRelaunch {

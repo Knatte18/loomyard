@@ -25,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/languageconfig"
+	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
@@ -311,6 +312,7 @@ func (c *loomCLI) wireLightweight(location *lyxcwd.Location, cwd string) {
 		RunID:                   c.runID,
 		MissingStatusWayForward: loomMissingStatusWayForward,
 		RerouteCapWayForward:    loomRerouteCapWayForward,
+		BudgetWayForward:        loomBudgetWayForward,
 	}
 	// c.env is otherwise left at its zero value deliberately: status/pause/approve read nothing from
 	// it, and filling only the fields the validate verbs actually read (rather than the whole of
@@ -537,9 +539,8 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		return err
 	}
 	languageSkills := language.Skills
-	// burlerengine.LoadConfig is an optional-file loader: an absent burler.yaml yields a zero
-	// Config and a nil error rather than a load failure.
-	burlerCfg, err := burlerengine.LoadConfig(fabricengine.ConfigDirs(location))
+	// lenses.Load degrades to the template on an absent lenses.yaml rather than failing the load.
+	lensesCfg, err := lenses.Load(fabricengine.ConfigDirs(location))
 	if err != nil {
 		return err
 	}
@@ -616,7 +617,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		patternRecordPath = loomengine.DiscussionDecisionRecord(location)
 	}
 	burlerGeom.PatternRecordPath = patternRecordPath
-	burlerEngine := burlerengine.New(seatengine.RunnerShuttle(runner), burlerGeom, burlerCfg, websterGeom.StencilsDir, frictionDir, languageSkills)
+	burlerEngine := burlerengine.New(seatengine.RunnerShuttle(runner), burlerGeom, lensesCfg, websterGeom.StencilsDir, frictionDir, languageSkills)
 
 	runDeps := websterengine.RunDeps{
 		Starter:    runnerMasterStarter{runner: runner},
@@ -664,8 +665,9 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		ArchiveWebster: func(dest string) error {
 			return websterengine.ArchiveRunRecord(websterGeom, dest)
 		},
-		ReadRejection:  pendingRejectionReader(location),
-		ClearRejection: rejectionClearer(location),
+		ReadRejection:     pendingRejectionReader(location),
+		ClearRejection:    rejectionClearer(location),
+		KeepReviewRecords: shedadapters.CarryRecords,
 		Commit: func() error {
 			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, reworkCommitPathspec(location), fmt.Sprintf("loom: rework round for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
@@ -854,6 +856,17 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		},
 		// CarryOver files each review segment's still-open findings in the decision record and commits that record alone, so no other dirty file rides along.
 		CarryOver: func(entry discussionparser.CarryOver) error { return writeCarryOver(location, entry) },
+		// The subject seams tell each Bouncer row what its segment judges, so a re-entry over an unchanged subject settles without a review.
+		// Each reads on demand and opens nothing at wire time.
+		DocumentSubject: documentSubjectWithHead(location, recordHead(location)),
+		CodeSubject:     func() (shedadapters.Subject, bool, error) { return codeSubject(location, c.runID) },
+		MergeSubject:    func() (shedadapters.Subject, bool, error) { return mergeSubject(location) },
+		MergeInOnly:     parentMergeInOnly(location),
+		RecordHead:      recordHead(location),
+		// RejectReview is the findings file of the latest PR-Gate reject that PR-Rework kept in its rework directory.
+		RejectReview: func() (string, time.Time, bool, error) {
+			return loomshed.LatestRejectReview(loomengine.LoomReworkDir(location))
+		},
 		// SkipPlanReview lets Plan-Bouncer approve an exempt rework generation without a judge; it reads committed state on demand and opens nothing at wire time.
 		SkipPlanReview: func() (bool, error) { return loomshed.PlanReviewSkippable(reworkDeps) },
 		// SkipMergeReview answers from the merge record alone, so an absent or unreadable record reviews the whole merge-in diff.
@@ -931,6 +944,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		RunID:                   c.runID,
 		MissingStatusWayForward: loomMissingStatusWayForward,
 		RerouteCapWayForward:    loomRerouteCapWayForward,
+		BudgetWayForward:        loomBudgetWayForward,
 	}
 
 	// wireDarn and wireLanding tell the list to the writer and the conflict session.
@@ -1028,6 +1042,7 @@ func loomSegmentSettings(cfg loomengine.Config, review loomengine.ReviewSettings
 			MaxBouncesKey:     caps.SoftKey,
 			HardMaxBounces:    caps.Hard,
 			HardMaxBouncesKey: caps.HardKey,
+			AmendMaxBounces:   cfg.ReviewAmendMaxBounces,
 			ConfigFile:        "loom.yaml",
 		}
 	}
@@ -1062,6 +1077,10 @@ const loomMissingStatusWayForward = "way forward: run \"lyx loom start\" first t
 // loomRerouteCapWayForward is the told clause a reroute-cap halt ends with, whichever row's reroute hit the cap.
 // The halt is resumed once the cause its reason quotes is cleared.
 const loomRerouteCapWayForward = "run \"lyx loom resume\" in the task worktree once the cause the halt's reason quotes is cleared: for a parent-branch reroute, once the parent branch has settled; for a Webster plan conflict, once the named pending cards are edited by hand to match the tree"
+
+// loomBudgetWayForward is the told clause a bounce-budget-exhausted halt ends with, whichever row's budget ran out.
+// Only the resume grants a budget; a goto keeps the spent one.
+const loomBudgetWayForward = "run \"lyx loom resume\" in the task worktree: the resume grants the row one more budget; a goto keeps the spent budget and grants none"
 
 // hubConfigWayForward is the trailing clause for a failed load of the hub-wide landing config: reconciling the hub's config is what restores it.
 const hubConfigWayForward = "way forward: run lyx config reconcile --apply in the hub, then step again"

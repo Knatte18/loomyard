@@ -37,8 +37,13 @@
 //   - the untracked local override, `<Anchor>/.lyx/config/<module>.local.yaml`, [LayerLocal].
 //
 // A hub-wide module stacks the template, the hub file `<Board>/_lyx/config/<module>.yaml` and the local file.
+// A hub-wide module with a [CategoryMachine] key also stacks, between the hub file and the local file, the untracked machine override `<Board>/.lyx/config/<module>.machine.yaml`, [LayerMachine]:
+// the stack is then template, hub file, machine, local, so a local value wins over a machine one.
+// The machine layer applies only when `Dirs` carries both `Anchor` and `Board`, so a load that tells `Board` alone, as a hub-file check does, stacks none, and a standalone load never reads one.
+// It applies whether or not the anchor has a `_lyx/`.
+// No reconcile reads, rewrites or removes the machine file.
 // With `Board` empty every module stacks the template, the worktree file and the local file; with `Anchor` empty there is no worktree or local layer.
-// [LayerFile] returns a layer's file and whether it applies, and [LocalFile] the local one, which is never the editor staging copy's path.
+// [LayerFile] returns a layer's file and whether it applies, [LocalFile] the local one and [MachineFile] the machine one, neither ever the editor staging copy's path.
 //
 // The base layer ([BaseLayer]) is the lowest file layer, the repo default or hub file when `Board` is set, else the worktree file, and stays full.
 // Every layer above it is sparse.
@@ -46,7 +51,7 @@
 // An absent upper file adds nothing, and so does an empty or comment-only local file.
 // A worktree with no `_lyx/` beside a told `Board` has no worktree or local layer; the board dir's base is not uninitialised for it.
 //
-// [Layers] is the one reader of layer files, and [StackLayers] the one place layers are merged:
+// [Layers] is the one reader of layer files, checking a machine file with [ValidateMachine] and a local one with [ValidateLocal], and [StackLayers] the one place layers are merged:
 // the present files merge unexpanded in stack order under the spec's open maps, a list, scalar or open map from a higher layer replacing the lower one whole.
 // A [Stack] also names, in `Origins`, the highest layer holding each top-level key.
 // The merged document is expanded once, against `Board` for a hub-wide module and `Anchor` otherwise.
@@ -70,9 +75,27 @@
 // Reconcile removes a local file whose retired keys it pruned to nothing.
 // Those are the only removals.
 //
+// # The machine rule
+//
+// The machine layer holds only keys classified [CategoryMachine], a key whose value is a property of the machine, bounding a resource every worktree of the hub on that machine shares.
+// [MachineKeys] lists them, and the local layer keeps refusing them, since [CategoryMachine] is not [CategoryNone].
+// [ValidateMachine] checks a machine document with the units, template-existence and shape checks of [ValidateLocal], and admits a unit only when the longest covering `Categories` entry, or the covering retired key, is [CategoryMachine].
+// Every refusal is an [ErrInvalid] error naming the key and a way forward, and [Layers] wraps it with the machine file's path.
+// An empty or comment-only machine file is dropped as an empty local file is.
+// [Set] and [Edit] check a machine write with [ValidateMachine] as they check a local one, so a refused key writes nothing.
+// A retired key recorded [CategoryMachine] is admitted and dropped from the stacked document without a warning.
+//
 // # Open maps
 //
 // [Set] takes a trailing variadic openMaps, and a [Spec] carries `OpenMaps`: the dotted paths of the module's open maps, mappings whose keys the user owns.
 // They are passed unchanged to yamlengine, which defines what a declared path changes;
 // with none declared, every caller behaves as before.
+//
+// # Per-name maps
+//
+// A [Spec] also carries `PerNameMaps`: the dotted paths of the module's per-name maps, mappings of names each carried whole as one unit.
+// The unknown-keys warning and [Set], on the base and the sparse layers, pass them unchanged to yamlengine, which defines what a declared path changes;
+// so a name under a per-name map that the template lacks is never warned as a key no loader reads, and `--set` knows `P.<name>` for any name.
+// The load's template fill needs no declaration, and its log of filled keys leaves out a name under a per-name map, since a base file holds only the names it tuned.
+// The local layer is unchanged.
 package configengine

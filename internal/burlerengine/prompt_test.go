@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/contracts/stencils"
+	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
@@ -400,7 +401,7 @@ func TestComposePrompt_PriorRounds(t *testing.T) {
 // A fanned round's explore step differs from the solo render by the fork-reading part, and its review step carries the filled lens bullets in fan order.
 // A fanned round whose cluster-fan stencil is missing fails with the read error.
 // composeReviewPrompt reads p.clusterLenses directly (as (*Profile).validateReview would have left it) rather
-// than calling ResolveFan itself.
+// than calling lenses.ResolveFan itself.
 func TestComposePrompt_ClusterRules(t *testing.T) {
 	t.Run("non-cluster", func(t *testing.T) {
 		p := newComposableProfile(t)
@@ -438,7 +439,7 @@ func TestComposePrompt_ClusterRules(t *testing.T) {
 		p := newComposableProfile(t)
 		stencilsDir := newTestStencilsDir(t)
 		p.ClusterFan = "standard"
-		p.clusterLenses = []Lens{{Name: "style", Text: "pay extra attention to style"}}
+		p.clusterLenses = []lenses.Lens{{Name: "style", Text: "pay extra attention to style"}}
 		if err := os.Remove(stencilstore.Path(stencilsDir, "burler-cluster-fan")); err != nil {
 			t.Fatalf("Remove(burler-cluster-fan) = %v; want nil", err)
 		}
@@ -452,7 +453,7 @@ func TestComposePrompt_ClusterRules(t *testing.T) {
 		p := newComposableProfile(t)
 		stencilsDir := newTestStencilsDir(t)
 		p.ClusterFan = "standard"
-		p.clusterLenses = []Lens{
+		p.clusterLenses = []lenses.Lens{
 			{Name: "style", Text: "pay extra attention to style"},
 			{Name: "security", Text: "pay extra attention to security"},
 		}

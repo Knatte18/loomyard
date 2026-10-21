@@ -15,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 )
 
@@ -33,9 +34,9 @@ func seedDarnConfig(t *testing.T, baseDir, contents string) {
 // templateConfig returns the Config the embedded template loads as, changed by mutate.
 func templateConfig(mutate func(*Config)) Config {
 	cfg := Config{
-		Writer: "opus[medium]", WriterTimeoutMin: 180, Verify: "", VerifyAttempts: 3, ReviewMaxBounces: 1, ReviewHardMaxBounces: 4,
+		Writer: "opus[medium]", WriterTimeoutMin: 180, Verify: "", VerifyAttempts: 3, ReviewMaxBounces: 1, ReviewHardMaxBounces: 4, ReviewAmendMaxBounces: 1,
 		ReviewerModel: burlerengine.ModelSpecList{"sonnet[high]"}, FixerModel: burlerengine.ModelSpecList{""},
-		ReviewerFan: burlerengine.FanList{""}, FixerFan: burlerengine.FanList{""},
+		ReviewerFan: lenses.FanList{""}, FixerFan: lenses.FanList{""},
 		TreeScope: map[string]string{},
 	}
 	mutate(&cfg)
@@ -55,10 +56,12 @@ func TestLoadConfig(t *testing.T) {
 	tests := []struct {
 		name     string
 		contents string
-		seed     bool
-		want     Config
-		wantErr  []string
-		wantIs   error
+		// lensesYAML, when set, is written as the board's lenses.yaml beside darn.yaml.
+		lensesYAML string
+		seed       bool
+		want       Config
+		wantErr    []string
+		wantIs     error
 	}{
 		{
 			name: "trees with an empty tree_scope_verify load", seed: true,
@@ -122,13 +125,19 @@ func TestLoadConfig(t *testing.T) {
 			name: "per-round fan lists", seed: true,
 			contents: strings.NewReplacer("darn_reviewer_fan: \"\"", "darn_reviewer_fan:\n  - review-code\n  - \"\"", "darn_fixer_fan: \"\"", "darn_fixer_fan: fix-code").Replace(ConfigTemplate()),
 			want: templateConfig(func(c *Config) {
-				c.ReviewerFan, c.FixerFan = burlerengine.FanList{"review-code", ""}, burlerengine.FanList{"fix-code"}
+				c.ReviewerFan, c.FixerFan = lenses.FanList{"review-code", ""}, lenses.FanList{"fix-code"}
 			}),
+		},
+		{
+			name: "a fan only the board's lenses.yaml defines", seed: true,
+			contents:   strings.Replace(ConfigTemplate(), "darn_reviewer_fan: \"\"", "darn_reviewer_fan: board-fan", 1),
+			lensesYAML: "fans:\n  board-fan: [goal-scope]\n",
+			want:       templateConfig(func(c *Config) { c.ReviewerFan = lenses.FanList{"board-fan"} }),
 		},
 		{
 			name: "undefined fan", seed: true,
 			contents: strings.Replace(ConfigTemplate(), "darn_fixer_fan: \"\"", "darn_fixer_fan:\n  - \"\"\n  - nosuchfan", 1),
-			wantErr:  []string{`darn config key "darn_fixer_fan" entry 2`, `"nosuchfan"`, "define the fan in burler.yaml", `set the entry to ""`},
+			wantErr:  []string{`darn config key "darn_fixer_fan" entry 2`, `"nosuchfan"`, "define the fan in lenses.yaml", `set the entry to ""`},
 		},
 		{
 			name: "empty fan list", seed: true,
@@ -169,6 +178,12 @@ func TestLoadConfig(t *testing.T) {
 			baseDir := t.TempDir()
 			if tt.seed {
 				seedDarnConfig(t, baseDir, tt.contents)
+			}
+			if tt.lensesYAML != "" {
+				lensesPath := filepath.Join(baseDir, "_lyx", "config", "lenses.yaml")
+				if err := os.WriteFile(lensesPath, []byte(tt.lensesYAML), 0o644); err != nil {
+					t.Fatalf("WriteFile(%q) = %v; want nil", lensesPath, err)
+				}
 			}
 			got, err := LoadConfig(configengine.Dirs{Board: baseDir}, "darn")
 			if tt.wantErr != nil {

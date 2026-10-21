@@ -45,11 +45,35 @@ func TestEdit(t *testing.T) {
 		layer configengine.Layer
 		// board tells the call a board dir, which makes the worktree layer sparse.
 		board bool
-		// categories classify the template for a local edit.
+		// categories classify the template for a local or machine edit.
 		categories map[string]configengine.Category
-		// localExisting is the local file before the call; empty means it is absent.
+		// localExisting is the local or machine file before the call; empty means it is absent.
 		localExisting string
+		// hubWide marks the spec hub-wide and gives the board dir its _lyx/config/, as a machine edit needs; it needs board.
+		hubWide bool
 	}{
+		{
+			name:       "refused machine save removes a file the call created",
+			state:      baseLyx,
+			layer:      configengine.LayerMachine,
+			board:      true,
+			hubWide:    true,
+			categories: map[string]configengine.Category{"key1": configengine.CategoryMachine, "key2": configengine.CategoryNone},
+			steps:      []editStep{{write: "key2: bad\n"}},
+			wantErr:    "key2",
+		},
+		{
+			name:          "refused machine save restores the previous bytes",
+			state:         baseLyx,
+			layer:         configengine.LayerMachine,
+			board:         true,
+			hubWide:       true,
+			categories:    map[string]configengine.Category{"key1": configengine.CategoryMachine, "key2": configengine.CategoryNone},
+			localExisting: "key1: mine\n",
+			steps:         []editStep{{write: "key2: bad\n"}},
+			wantErr:       "key2",
+			wantFile:      ptr("key1: mine\n"),
+		},
 		{
 			name:        "missing worktree file under a board is scaffolded empty and an editor that leaves it empty aborts and removes it",
 			state:       baseLyx,
@@ -163,12 +187,20 @@ func TestEdit(t *testing.T) {
 			if tt.board {
 				dirs.Board = t.TempDir()
 			}
+			if tt.hubWide {
+				if err := os.MkdirAll(configengine.ConfigDir(dirs.Board), 0o755); err != nil {
+					t.Fatalf("mkdir: %v", err)
+				}
+			}
 			layer := tt.layer
 			if layer == "" {
 				layer = configengine.LayerWorktree
 			}
-			if layer == configengine.LayerLocal {
+			if layer == configengine.LayerLocal || layer == configengine.LayerMachine {
 				path = configengine.LocalFile(baseDir, "testmod")
+				if layer == configengine.LayerMachine {
+					path = configengine.MachineFile(dirs.Board, "testmod")
+				}
 				if tt.localExisting != "" {
 					if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 						t.Fatalf("mkdir: %v", err)
@@ -178,7 +210,7 @@ func TestEdit(t *testing.T) {
 					}
 				}
 			}
-			spec := configengine.Spec{Name: "testmod", Template: []byte(template), Categories: tt.categories}
+			spec := configengine.Spec{Name: "testmod", Template: []byte(template), Categories: tt.categories, HubWide: tt.hubWide}
 
 			var calls int
 			var saw string

@@ -40,6 +40,8 @@ type ReviewResult struct {
 	NotStarted bool
 	// Gate is a 1:1 passthrough of the reviewer's shuttleengine.Result.Gate, the review-parse entry's report; nil when the reviewer never ran gated.
 	Gate *shuttleengine.GateOutcome
+	// SessionStates is a 1:1 passthrough of the reviewer's shuttleengine.Result.SessionStates, set on every ending, the audit error included, so a failure can say how the chair ended.
+	SessionStates []shuttleengine.SessionState
 }
 
 // ErrReviewChanged reports that the review file no longer holds the bytes the review half accepted, so the fix half refuses to act on it.
@@ -171,10 +173,11 @@ func (e *Engine) ResumeReview(p Profile, opts RunOpts, live LiveHalf) (ReviewRes
 // reviewResultOf returns the part of the review half's result every ending shares: the review path, the reviewer's identity and the lenses it ran.
 func reviewResultOf(p *Profile, reviewer shuttleengine.Result) ReviewResult {
 	result := ReviewResult{
-		Outcome:    reviewer.Outcome,
-		ReviewPath: p.ReviewPath,
-		Review:     halfOf(reviewer, "", ""),
-		Gate:       reviewer.Gate,
+		Outcome:       reviewer.Outcome,
+		ReviewPath:    p.ReviewPath,
+		Review:        halfOf(reviewer, "", ""),
+		Gate:          reviewer.Gate,
+		SessionStates: reviewer.SessionStates,
 	}
 	for _, lens := range p.clusterLenses {
 		result.Lenses = append(result.Lenses, lens.Name)

@@ -1,15 +1,15 @@
-# burler.yaml — the lens/fan library for burler cluster review. Materialized
-# once (lyx init / lyx config reconcile) when this file is absent; after that,
-# this file is OPERATOR-OWNED: reconcile is seed-only for burler.yaml and
-# never rewrites or prunes it again, so any lens or fan you add, edit, or
-# remove here survives every future reconcile untouched. Deleting a standard
-# lens or fan you don't want is a supported, permanent choice — it will not
-# come back on the next reconcile.
+# lenses.yaml — the lens/fan library that burler's reviewers and fixers, loom's
+# twill writers and fan keys and darn's fan keys read.
 #
-# Resolution falls back per name to this embedded template: a fan or lens
-# name this file defines is used verbatim and wins, and a name it lacks
-# resolves from the template. A fan or lens you deleted here therefore still
-# resolves when a profile or loom.yaml names it.
+# This file holds only the lenses and fans the repo tuned or added.
+# Resolution falls back per name to the embedded template: a lens or fan name this file defines is used verbatim and wins,
+# and a name it lacks resolves from the template, so a later template edit to that name reaches this repo.
+# Reconcile never copies a template lens or fan into this file,
+# and it drops an entry whose prose or ordered fan list equals the template's current value, reporting each drop, which leaves the loaded value unchanged.
+# Any other entry is kept as written; a lens or fan the template lacks is kept and reported, never pruned.
+#
+# A template lens or fan cannot be removed: a deleted one resolves to the template's value at the next load.
+# A fan is turned off at the loom or darn fan key entry that names it, by pointing the entry at another fan or setting it to "".
 #
 # lenses: maps a lens name to emphasis-steering review prose for one fork of a
 # cluster round. Add a repo-local lens by adding a block like this:
@@ -340,13 +340,17 @@ fans:
     - verify-tests
     - pattern-fit
   twill-discussion:
-    - premises
+    - interactions
+    - existing-paths
+    - bound-breaker
+    - walkthrough
     - goal-scope
     - board-fit
-    - pattern-fit
-    - scenarios
     - leanness
   twill-plan:
+    - affected-set
+    - guard-reach
+    - way-forward
     - criteria-coverage
     - branch-coverage
     - row-reachability

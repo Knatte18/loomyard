@@ -105,6 +105,9 @@ func TestRun_ResumeAfterPause(t *testing.T) {
 	if got.PauseRequested {
 		t.Errorf("persisted PauseRequested = true after the pause; want false")
 	}
+	if got.PauseReason != "pause requested" {
+		t.Errorf("persisted PauseReason = %q after the pause; want %q", got.PauseReason, "pause requested")
+	}
 
 	// Without this second Run, the permanently-unresumable bug is invisible: every
 	// single-Run pause test passes while the task can never restart, because the next
@@ -120,6 +123,9 @@ func TestRun_ResumeAfterPause(t *testing.T) {
 	}
 	if resumed.calls != 1 {
 		t.Errorf("resumed producer B calls = %d; want 1", resumed.calls)
+	}
+	if got := readStatus(t, statusPath, statusLockPath); got.PauseReason != "" {
+		t.Errorf("persisted PauseReason = %q after the resume; want it cleared", got.PauseReason)
 	}
 }
 
@@ -155,6 +161,9 @@ func TestRun_CancelledBetweenProducers(t *testing.T) {
 	if got.State != StatePaused {
 		t.Errorf("persisted State = %q; want %q", got.State, StatePaused)
 	}
+	if got.PauseReason != "cancelled" {
+		t.Errorf("persisted PauseReason = %q; want %q", got.PauseReason, "cancelled")
+	}
 }
 
 func TestRun_CancelledDuringProducerCall(t *testing.T) {
@@ -185,6 +194,9 @@ func TestRun_CancelledDuringProducerCall(t *testing.T) {
 	got := readStatus(t, statusPath, statusLockPath)
 	if got.State != StatePaused {
 		t.Errorf("persisted State = %q; want %q", got.State, StatePaused)
+	}
+	if got.PauseReason != "cancelled" {
+		t.Errorf("persisted PauseReason = %q; want %q", got.PauseReason, "cancelled")
 	}
 	if len(got.History) != 0 {
 		t.Errorf("persisted History = %+v; want no entry appended -- the producer never reached a verdict", got.History)

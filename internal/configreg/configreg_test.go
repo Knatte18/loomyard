@@ -4,6 +4,7 @@ package configreg
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -41,13 +42,13 @@ func TestNames(t *testing.T) {
 	}
 }
 
-// TestModules_SeedOnlyAndHubWideFlags pins the two flags: "models", "burler" and "profiles" carry an open-ended, operator-owned key set (model aliases, lenses/fans and run profiles respectively), so they are the only entries with SeedOnly == true, "fabric", "board", "gate", "landing", "darn", "language" and "profiles" describe hub-level facts, so they are the only entries with HubWide == true, and "landing", whose per-worktree copy was in effect before it moved hub-wide, is the only entry with SeedsFromPrime == true.
+// TestModules_SeedOnlyAndHubWideFlags pins the two flags: "models" and "profiles" carry an open-ended, operator-owned key set (model aliases and run profiles respectively), so they are the only entries with SeedOnly == true, "fabric", "board", "gate", "landing", "darn", "language" and "profiles" describe hub-level facts, so they are the only entries with HubWide == true, and "landing", whose per-worktree copy was in effect before it moved hub-wide, is the only entry with SeedsFromPrime == true.
 //
 //testtiming:keep pins which modules carry the SeedOnly and HubWide flags, which the covering TestFill never asserts
 func TestModules_SeedOnlyAndHubWideFlags(t *testing.T) {
 	t.Parallel()
 	for _, m := range Modules() {
-		wantSeedOnly := m.Name == "models" || m.Name == "burler" || m.Name == "profiles"
+		wantSeedOnly := m.Name == "models" || m.Name == "profiles"
 		if m.SeedOnly != wantSeedOnly {
 			t.Errorf("Modules(): module %q SeedOnly = %v; want %v", m.Name, m.SeedOnly, wantSeedOnly)
 		}
@@ -60,8 +61,8 @@ func TestModules_SeedOnlyAndHubWideFlags(t *testing.T) {
 			t.Errorf("Modules(): module %q SeedsFromPrime = %v; want %v", m.Name, m.SeedsFromPrime, wantSeedsFromPrime)
 		}
 		spec := m.Spec()
-		if spec.Name != m.Name || string(spec.Template) != m.Template() || !slices.Equal(spec.OpenMaps, m.OpenMaps) || spec.HubWide != m.HubWide {
-			t.Errorf("Modules(): module %q Spec() = {Name: %q, OpenMaps: %v, HubWide: %v}; want it to carry the entry's own name, template text, open maps and hub-wide flag", m.Name, spec.Name, spec.OpenMaps, spec.HubWide)
+		if spec.Name != m.Name || string(spec.Template) != m.Template() || !slices.Equal(spec.OpenMaps, m.OpenMaps) || !slices.Equal(spec.PerNameMaps, m.PerNameMaps) || spec.HubWide != m.HubWide {
+			t.Errorf("Modules(): module %q Spec() = {Name: %q, OpenMaps: %v, PerNameMaps: %v, HubWide: %v}; want it to carry the entry's own name, template text, open maps, per-name maps and hub-wide flag", m.Name, spec.Name, spec.OpenMaps, spec.PerNameMaps, spec.HubWide)
 		}
 	}
 }
@@ -71,7 +72,7 @@ func TestModules_SeedOnlyAndHubWideFlags(t *testing.T) {
 func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 	t.Parallel()
 	wantLocalKeys := map[string][]string{
-		"darn":    {"darn_fixer_model", "darn_reviewer_model", "driver_kind", "review_hard_max_bounces", "review_max_bounces", "tackler", "tackler_max_spawns", "tackler_timeout_min", "verify_attempts", "writer", "writer_timeout_min"},
+		"darn":    {"darn_fixer_model", "darn_reviewer_model", "driver_kind", "review_amend_max_bounces", "review_hard_max_bounces", "review_max_bounces", "tackler", "tackler_max_spawns", "tackler_timeout_min", "verify_attempts", "writer", "writer_timeout_min"},
 		"landing": {"conflict", "conflict_timeout_min", "describe", "describe_timeout_min"},
 	}
 	wantLocalDenied := map[string][]string{
@@ -80,7 +81,7 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 		"reed":    {"debug_log", "mouse", "shell", "tmux", "tmux_conf"},
 		"shuttle": {"deny_python", "run_dir"},
 		"loom":    {"alignment", "alignment_pr_approve", "discussion_advisors", "discussion_auto_accept", "discussion_fixer_fan", "discussion_lenses", "discussion_reviewer_fan", "merge_auto_accept", "merge_fixer_fan", "merge_reviewer_fan", "parent_review_wait_min", "plan_auto_accept", "plan_fixer_fan", "plan_lenses", "plan_reviewer_fan", "skip_alignment", "webster_auto_accept", "webster_fixer_fan", "webster_reviewer_fan"},
-		"burler":  {"fans", "lenses"},
+		"lenses":  {"fans", "lenses"},
 	}
 	for _, m := range Modules() {
 		t.Run(m.Name, func(t *testing.T) {
@@ -109,8 +110,48 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 			if m.HubWide && len(m.LocalDenied) != 0 || !m.HubWide && len(m.LocalKeys) != 0 {
 				t.Errorf("%s LocalKeys = %v, LocalDenied = %v; want only the list of its own kind", m.Name, m.LocalKeys, m.LocalDenied)
 			}
+			if refusal := machineKeyRefusal(m); refusal != "" {
+				t.Error(refusal)
+			}
+			wantMachineKeys := []string{}
+			if m.Name == "gate" {
+				wantMachineKeys = []string{"go_parallel", "slots"}
+			}
+			if got := configengine.MachineKeys(spec); !slices.Equal(got, wantMachineKeys) {
+				t.Errorf("%s MachineKeys = %v; want %v, so no stray machine file is read by a registered loader", m.Name, got, wantMachineKeys)
+			}
 		})
 	}
+
+	t.Run("a per-worktree module with a machine key is refused", func(t *testing.T) {
+		t.Parallel()
+		synthetic := Module{
+			Name: "synthetic",
+			Spec: func() configengine.Spec {
+				return configengine.Spec{
+					Name:       "synthetic",
+					Categories: map[string]configengine.Category{"limit": configengine.CategoryMachine},
+				}
+			},
+		}
+		if machineKeyRefusal(synthetic) == "" {
+			t.Error("machineKeyRefusal(per-worktree module with a machine key) = \"\"; want a refusal")
+		}
+		synthetic.HubWide = true
+		if refusal := machineKeyRefusal(synthetic); refusal != "" {
+			t.Errorf("machineKeyRefusal(hub-wide module with a machine key) = %q; want none", refusal)
+		}
+	})
+}
+
+// machineKeyRefusal returns the message refusing a per-worktree module that classifies a key CategoryMachine, and "" for any other module.
+// Only a hub-wide module reads a machine file, so such a key would be a value no loader reads.
+func machineKeyRefusal(m Module) string {
+	machineKeys := configengine.MachineKeys(m.Spec())
+	if m.HubWide || len(machineKeys) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("module %q is per-worktree but classifies %v as machine keys; only a hub-wide module reads a machine file", m.Name, machineKeys)
 }
 
 // coveredByEntry reports whether a Categories entry equals path or is an ancestor of it.
@@ -232,6 +273,7 @@ func TestLookup(t *testing.T) {
 		}},
 		{"darn", true, []string{"darn_reviewer_model", "darn_fixer_model", "darn_reviewer_fan", "darn_fixer_fan", "tree_scope"}},
 		{"shuttle", true, nil},
+		{"burler", false, nil},
 		{"bogus", false, nil},
 	}
 	for _, tt := range tests {
@@ -254,7 +296,7 @@ func TestLookup(t *testing.T) {
 	}
 }
 
-// TestFingerprint pins what the registry fingerprint is sensitive to: a module's template, flags, open maps and name, and not its Migrate hook.
+// TestFingerprint pins what the registry fingerprint is sensitive to: a module's template, flags, open maps, per-name maps and name, and not its Migrate hook.
 func TestFingerprint(t *testing.T) {
 	t.Parallel()
 	base := func() []Module {
@@ -274,6 +316,7 @@ func TestFingerprint(t *testing.T) {
 		{"flipped SeedOnly", func(m []Module) { m[0].SeedOnly = true }, false},
 		{"flipped SeedsFromPrime", func(m []Module) { m[0].SeedsFromPrime = true }, false},
 		{"added OpenMaps entry", func(m []Module) { m[1].OpenMaps = []string{"b"} }, false},
+		{"added PerNameMaps entry", func(m []Module) { m[1].PerNameMaps = []string{"b"} }, false},
 		{"renamed module", func(m []Module) { m[0].Name = "gamma" }, false},
 		{"swapped Migrate hook", func(m []Module) {
 			m[0].Migrate = func(existing []byte) ([]byte, []string, error) { return existing, nil, nil }

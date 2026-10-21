@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -171,6 +172,7 @@ func TestOpenParent_ResolveFailureNamesBranchAndPath(t *testing.T) {
 // TestCodeWorktrees_ListOpenAndPairComplete pins the path-based reads a told-geometry caller walks a hub with, on a root-anchored and a subpath-anchored hub:
 // the listing from either pair names the prime first and both pairs with their anchors, a pair whose directory is deleted by hand drops out and reads as missing,
 // and a pair whose warp `_lyx` junction is removed is listed but not complete.
+// It also pins that pair completeness, `Healthy` and `Status` stay blind to the root `.scratch` entry, whether a real directory or absent.
 func TestCodeWorktrees_ListOpenAndPairComplete(t *testing.T) {
 	t.Parallel()
 
@@ -223,6 +225,44 @@ func TestCodeWorktrees_ListOpenAndPairComplete(t *testing.T) {
 			if ok, reason, err := fabricengine.PairCompleteAt(kept.Path); err != nil || !ok {
 				t.Errorf("PairCompleteAt(kept) = %v, %q, %v; want complete", ok, reason, err)
 			}
+
+			// Pair completeness, Healthy and Status read only the wired junction set.
+			// The root .scratch entry, a link, a real directory or absent, never changes their verdict.
+			keptLayout, err := lyxcwd.Resolve(anchorOf(kept.Path))
+			if err != nil {
+				t.Fatalf("lyxcwd.Resolve(kept) error = %v", err)
+			}
+			assertScratchBlind := func(shape string) {
+				t.Helper()
+				if ok, reason, err := fabricengine.PairCompleteAt(kept.Path); err != nil || !ok {
+					t.Errorf("PairCompleteAt(kept) with %s = %v, %q, %v; want complete", shape, ok, reason, err)
+				}
+				if ok, reason, err := fabricengine.Healthy(keptLayout); err != nil || !ok {
+					t.Errorf("Healthy(kept) with %s = %v, %+v, %v; want ok", shape, ok, reason, err)
+				}
+				status, err := h.Topology.Status(h.Location)
+				if err != nil {
+					t.Fatalf("Status with %s error = %v", shape, err)
+				}
+				for _, pair := range status.Pairs {
+					if filepath.Base(filepath.FromSlash(pair.CodeWorktree)) == "kept" && !pair.JunctionHealthy {
+						t.Errorf("Status(kept) with %s: JunctionHealthy = false (%s); want true", shape, pair.JunctionReason)
+					}
+				}
+			}
+			scratchRoot := filepath.Join(kept.Path, ".scratch")
+			if err := fslink.Remove(scratchRoot); err != nil {
+				t.Fatalf("remove kept's root .scratch link: %v", err)
+			}
+			if err := os.Mkdir(scratchRoot, 0o755); err != nil {
+				t.Fatalf("create a real root .scratch: %v", err)
+			}
+			assertScratchBlind("a real root .scratch")
+			if err := os.Remove(scratchRoot); err != nil {
+				t.Fatalf("remove the real root .scratch: %v", err)
+			}
+			assertScratchBlind("no root .scratch")
+
 			if err := os.Remove(fabricengine.CodeLyxLink(h.Location, "kept")); err != nil {
 				t.Fatalf("remove warp _lyx junction: %v", err)
 			}

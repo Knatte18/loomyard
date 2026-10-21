@@ -21,12 +21,12 @@ const (
 
 // OutcomeGoto is a history-only Outcome, written by `lyx shed goto` and never returned by a producer.
 // A producer returning it is unrecognised, as any value outside the three verdicts is.
-// A goto entry ends the bounce-budget episode of every row sharing its target's Segment.
+// A goto entry leaves every row's bounce-budget count as it was.
 // It is not named Goto because the Goto function owns that name.
 const OutcomeGoto Outcome = "goto"
 
 // OutcomeReroute is a history-only Outcome, written by the reroute arm of a Stuck verdict whose OutputPointer.Reroute is set and never returned by a producer.
-// A reroute entry ends the bounce-budget episode of every row sharing its routed target's Segment, as a goto entry does.
+// A reroute entry ends the bounce-budget episode of every row sharing its routed target's Segment.
 const OutcomeReroute Outcome = "reroute"
 
 // OutputPointer names a producer's artifact for a human to read.
@@ -59,6 +59,10 @@ type OutputPointer struct {
 	// Halt marks a Stuck verdict as blocking the run at its own row with Reason, whatever the row's OnStuck, and as not counted against the bounce budget.
 	// Shed reads it only on a Stuck verdict and it can only stop a run, never advance or route it.
 	Halt bool
+	// GenerationStart marks a Stuck verdict as the one that starts a new review generation.
+	// Shed reads it only on a Stuck verdict: the verdict is recorded as counted but never halts on the budget, and the episode count restarts at it.
+	// Only a producer that starts a generation sets it, once per generation.
+	GenerationStart bool
 }
 
 // ShedProducer is the seam Shed drives once per iteration: Call runs one producer to a verdict

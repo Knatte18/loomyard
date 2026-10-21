@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/friction"
+	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
@@ -353,7 +354,7 @@ func priorRoundsBlock(p *Profile) string {
 // clusterRulesBlock renders the review step's cluster-rules value from the cluster stencils:
 // the solo part's body when p carries no ClusterFan, or the fanned part filled with p's lens list when it does.
 // The value carries no trailing newline, since the review step's marker sits on a line of its own.
-// p.clusterLenses is assumed already resolved by (*Profile).validateReview — composeReviewPrompt never calls ResolveFan itself.
+// p.clusterLenses is assumed already resolved by (*Profile).validateReview — composeReviewPrompt never calls lenses.ResolveFan itself.
 func clusterRulesBlock(stencilsDir string, p *Profile) (string, error) {
 	name, values := "burler-cluster-solo", map[string]string(nil)
 	if p.ClusterFan != "" {
@@ -411,10 +412,10 @@ func selfCheckBlock(stencilsDir string, p *Profile) (string, error) {
 	return string(block), nil
 }
 
-// lensList renders lenses as one "- <name>: <text>" bullet per lens in fan order, each bullet ending in a newline.
-func lensList(lenses []Lens) string {
+// lensList renders resolved as one "- <name>: <text>" bullet per lens in fan order, each bullet ending in a newline.
+func lensList(resolved []lenses.Lens) string {
 	var list strings.Builder
-	for _, lens := range lenses {
+	for _, lens := range resolved {
 		list.WriteString("- ")
 		list.WriteString(lens.Name)
 		list.WriteString(": ")
