@@ -3,7 +3,7 @@
 // Command() returns the root "board" command over one store, board.json, whose entries carry a kind and labels.
 // The verbs upsert, upsert-batch, set-status, remove, get, list, list-full, merge and set-deps come from storeVerbs.
 // promote, rename, prune, find, labels, profiles and retire-legacy, plus the rerender and sync maintenance verbs, are built in Command itself.
-// The intake group (list, import, close) comes from intakeCommand in intake.go.
+// The intake group (list, import, close) comes from intakeCommand in intake.go, over the hub repository the hubRepo closure opens from the resolved location.
 // list and find take --text to print the compact listing from text.go instead of JSON.
 // Configuration resolution happens once in a PersistentPreRunE.
 // The config file (readme, design_prefix) is loaded from the hub's <hub>/_board/_lyx/config/board.yaml, whatever worktree the verb runs in,
@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hubissues"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/runprofile"
@@ -43,6 +44,19 @@ func Command() *cobra.Command {
 	// profiles loads the hub's run profiles from the board dir PersistentPreRunE resolved.
 	profiles := func() (runprofile.Profiles, error) {
 		return runprofile.Load(configengine.Dirs{Board: config.Path})
+	}
+	// location is the worktree PersistentPreRunE resolved, nil under --board-path.
+	var location *lyxcwd.Location
+	// hubRepo opens the hub's own repository's issues, resolved only when an intake verb asks.
+	hubRepo := func() (*hubissues.Repo, error) {
+		if location == nil {
+			return nil, fmt.Errorf("intake needs the hub's repository, which only a run from a hub worktree resolves: run it from a worktree of the hub")
+		}
+		url, err := fabricengine.HubRepoURL(location)
+		if err != nil {
+			return nil, err
+		}
+		return hubissues.Open(url)
 	}
 
 	cmd := &cobra.Command{
@@ -106,6 +120,7 @@ available subcommands without requiring a git repo.
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
+			location = layout
 			boardDir := fabricengine.BoardDir(layout.HubPath)
 
 			cfg, err = boardengine.LoadConfig(fabricengine.ConfigDirs(layout), "board")
@@ -358,7 +373,7 @@ Example:
 		retireLegacyCmd,
 		rerenderCmd,
 		syncCmd,
-		intakeCommand(board),
+		intakeCommand(board, hubRepo),
 	)
 
 	return cmd
@@ -433,7 +448,7 @@ Optional fields:
   "recipe"    string — recipe the task's child worktree runs, "loom" or "darn"; empty means "loom"
   "priority"   string — "high", "normal" or "low"; absent means normal, and "normal" clears it
   "short_name" string — short display label; falls back to the slug
-  "issues"     array  — inbox issue numbers the entry records
+  "issues"     array  — the hub repository's issue numbers it records
   "created"    string — RFC 3339 time the entry was added; a new entry without it gets the write's time
   "revised"    string — RFC 3339 time its scope last changed; a scope-changing write without it gets the write's time
   "run_settings" object — module name to config keys for the pair's local config at Seed-Child; {} clears it

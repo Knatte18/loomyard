@@ -1,4 +1,4 @@
-// intake.go — the board side of GitHub intake: importing an inbox issue as a note or folding it into an entry.
+// intake.go — the board side of GitHub intake: importing a GitHub issue as a note or folding it into an entry.
 //
 // boardengine imports nothing GitHub-specific;
 // the caller converts a fetched issue into InboxIssue and makes every network call outside the board lock.
@@ -26,7 +26,7 @@ type InboxIssue struct {
 	Comments []IssueComment
 }
 
-// IssueComment is one comment on an inbox issue, its author not recorded.
+// IssueComment is one comment on a GitHub issue, its author not recorded.
 type IssueComment struct {
 	Body      string
 	CreatedAt time.Time
