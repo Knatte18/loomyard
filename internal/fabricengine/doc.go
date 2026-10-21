@@ -43,6 +43,26 @@
 // A failed fetch returns the error, so each caller decides whether it refuses or degrades.
 // It mutates no ref other than the remote-tracking refs the fetch refreshes.
 //
+// # Origin reconcile
+//
+// `ReconcileOrigin` (originreconcile.go) is the one judge of this machine's local branches against origin, run before anything acts on a run or the hub after the machine may have been away.
+// It takes the hub location, a `ReconcileScope` and the `OriginSeams` a call site injects, and returns an `OriginReport` embedding `MutationRecord`, with one `BranchOutcome` per judged branch and one `EntryOutcome` per pair that has a batten run record.
+// An empty `ReconcileScope.Run` judges the hub: Bolt, the prime's code and records branches, and those of every local pair.
+// A slug judges the run: Bolt, the run's parent branch on both sides as its origin record names it, and the run's own pair.
+// A branch with no origin tracking ref was never pushed and is not judged.
+//
+// The network work is two `git ls-remote origin` calls, one per repository, run in parallel under `ReconcileOptions`' per-attempt deadline and retried together after a transport failure until the bound is spent.
+// Only the heads origin moved past the local tracking ref are then fetched, one fetch per repository.
+// A judge-only reconcile fetches their objects by SHA into no ref and writes no FETCH_HEAD, so it moves nothing.
+// A transport failure through the bound is `OriginReport.Unreachable`, with nothing judged and nothing moved, and a nil error.
+// Any other failure of the ls-remote pair, or a failed fetch after both answered, is the returned error.
+//
+// `judgeBranch` reads a branch as level, fast_forward, ahead, rewound, rewritten, diverged, needs_replay or gone.
+// A code branch is read through the reflog of its tracking ref, as `Fabric.Pull` reads it: rewound takes precedence over ahead, and rewritten is a history origin replaced with commits this machine never held.
+// A records branch neither side contains is needs_replay, which a moving reconcile replaces with the result of its replay.
+// The states a move adds, dirty, busy and live, and the stops themselves, carry a `WayForward` line, the repair step alone; each caller appends its own re-entry.
+// `classifyEntry` turns the verdicts on an entry's branches into active, ended or stopped.
+//
 // fabric enforces one uniform branch-naming scheme, with no exceptions: a warp branch `<branch>` is
 // always paired with weft branch `<branch>-weft`, including the primary worktree (warp `main` ↔
 // weft `main-weft`).

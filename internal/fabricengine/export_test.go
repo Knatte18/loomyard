@@ -747,3 +747,20 @@ var PushStepForTest = pushStep
 
 // RewoundWayForwardForTest re-exports rewoundWayForward, so a test asserts the exact line a rewound task branch names.
 var RewoundWayForwardForTest = rewoundWayForward
+
+// CodeDivergedWayForwardForTest re-exports codeDivergedWayForward, so a test asserts the exact line a diverged code branch names.
+var CodeDivergedWayForwardForTest = codeDivergedWayForward
+
+// EntryFactsForTest is entryFacts, the facts classifyEntry judges an entry from.
+type EntryFactsForTest = entryFacts
+
+// ClassifyEntryForTest re-exports classifyEntry, so a test drives its precedence as table rows.
+var ClassifyEntryForTest = classifyEntry
+
+// SetOriginCallHookForTest installs hook as the observer of every remote call an origin reconcile makes and returns the function that removes it.
+// It changes process-global state, so the calling test must not be parallel.
+func SetOriginCallHookForTest(hook func(args []string)) (restore func()) {
+	previous := originCallHook
+	originCallHook = hook
+	return func() { originCallHook = previous }
+}
