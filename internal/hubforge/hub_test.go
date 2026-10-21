@@ -125,6 +125,11 @@ func TestNewHub(t *testing.T) {
 						}
 					}
 
+					markerRel := filepath.ToSlash(configengine.BaseSparseMarkerRel())
+					if tracked := gitkit.LsFiles(t, h.BoardDir(), "--", markerRel); len(tracked) != 1 || tracked[0] != markerRel {
+						t.Errorf("git ls-files of the base-sparse marker in the board = %v; want [%s]", tracked, markerRel)
+					}
+
 					cfg, err := loomengine.LoadConfig(configengine.Dirs{Anchor: h.WeftBase, Board: h.BoardDir()}, "loom")
 					if err != nil {
 						t.Fatalf("loomengine.LoadConfig over the prime: %v", err)
