@@ -748,6 +748,8 @@ func TestWatchdogCmd_ExitsZeroBeforeOrInsteadOfLooping(t *testing.T) {
 		lister func(env listerEnv) []string
 		// failWatch makes the discover signal watch fail to open, as a full inotify table does.
 		failWatch bool
+		// closedWatch makes the discover signal watch open on a channel that is already closed.
+		closedWatch bool
 		// wantRunning has the test wait for the stop-woken cycle and two more lister calls, assert the command is still running, then cancel it.
 		wantRunning  bool
 		wantRespawns int
@@ -799,6 +801,17 @@ func TestWatchdogCmd_ExitsZeroBeforeOrInsteadOfLooping(t *testing.T) {
 				return idle
 			},
 			wantTrace:   []string{"could not watch the discover signal file, reading it on its backed-off cadence instead", "exiting on a stop request"},
+			wantNoTrace: []string{"successor was spawned", "exiting after consecutive idle"},
+		},
+		{
+			name: "stop with an idle listing and a closed watch", idleCycles: manyCycles, closedWatch: true,
+			lister: func(env listerEnv) []string {
+				if env.call == 1 {
+					env.writeStop()
+				}
+				return idle
+			},
+			wantTrace:   []string{"watch closed, reading the file on its backed-off cadence instead", "exiting on a stop request"},
 			wantNoTrace: []string{"successor was spawned", "exiting after consecutive idle"},
 		},
 		{
@@ -925,6 +938,13 @@ func TestWatchdogCmd_ExitsZeroBeforeOrInsteadOfLooping(t *testing.T) {
 			if tt.failWatch {
 				c.watchdogOpenWatch = func(string, ...string) (<-chan fswatch.Event, func() error, error) {
 					return nil, nil, errors.New("inotify instance limit reached")
+				}
+			}
+			if tt.closedWatch {
+				c.watchdogOpenWatch = func(string, ...string) (<-chan fswatch.Event, func() error, error) {
+					closed := make(chan fswatch.Event)
+					close(closed)
+					return closed, func() error { return nil }, nil
 				}
 			}
 			cmd := c.watchdogCmd()
