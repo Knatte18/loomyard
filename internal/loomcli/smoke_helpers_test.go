@@ -48,6 +48,11 @@ func runLoomCLINoFatal(exe, dir string, timeout time.Duration, args ...string) (
 // which would otherwise outlive the test and race TempDir's removal of the bare remote.
 var skipBoardPush = []string{"BOARD_SKIP_PUSH=1"}
 
+// skipWalkPush is skipBoardPush plus the fabric push skip, for a verb that reconciles an unstamped hub.
+// The reconcile commit fires a detached push that would outlive the test and race TempDir's removal of the bare remote;
+// a test asserts the commit, never the push.
+var skipWalkPush = append([]string{"FABRIC_SKIP_PUSH=1"}, skipBoardPush...)
+
 // runLoomCLIWithEnvNoFatal is runLoomCLINoFatal with extraEnv appended to the inherited environment of the subprocess alone,
 // so a parallel test can set a variable such as FABRIC_SKIP_PUSH for one invocation without t.Setenv.
 func runLoomCLIWithEnvNoFatal(exe, dir string, extraEnv []string, timeout time.Duration, args ...string) (stdout string, exitCode int, err error) {
