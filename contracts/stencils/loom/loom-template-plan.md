@@ -80,7 +80,7 @@ Each card is the smallest change that:
 1. **Builds on its own** — the project builds with the repo's build immediately after the card's commit;
    never reference a symbol that no earlier card creates.
 2. **Is independently committable** — a meaningful, revertible git commit on its own.
-3. **Carries the coverage for the behavior it introduces** — the card's own targets include the test that covers it (`PATTERN-test-economy`).
+3. **Carries the coverage for the behavior it introduces** — the card's own targets include the test that covers it.
    `verify:` commands are no substitute for test coverage;
    only pure refactors/renames may rely on existing tests instead.
    A stencil's static prose is not behavior a test covers.

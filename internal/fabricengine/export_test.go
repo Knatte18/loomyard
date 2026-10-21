@@ -636,7 +636,7 @@ func DeleteTaskBranchAtTipForTest(l *lyxcwd.Location, warpBranch, parentBranch, 
 // CommitPendingRecordsForTest re-exports commitPendingRecords for package fabricengine_test integration tests that drive a sibling location Remove would refuse or tear down before the commit is observable on its own.
 // It passes a throwaway NewMutations("") recorder, since its callers assert nothing about the record.
 func CommitPendingRecordsForTest(l *lyxcwd.Location, slug, warpBranch string) (committed bool, err error) {
-	return commitPendingRecords(NewMutations(""), l, slug, warpBranch)
+	return commitPendingRecords(NewMutations(""), l, slug, warpBranch, false)
 }
 
 // CleanupRemoteWarpWithHookForTest runs CleanupRemoteWarp with afterEnumerate called between enumeration and the first deletion,
@@ -670,6 +670,22 @@ func SetTeardownHooksForTest(t *testing.T, heldByPush, afterRemoveTeardown func(
 		detachedPushHeldHook = nil
 		removeAfterTeardownHook = nil
 	})
+}
+
+// SetHousekeepHookForTest sets the hook that runs just before a Remove's store housekeeping and returns the function that restores the previous one.
+// It changes process-global state, so the calling test must not be parallel.
+func SetHousekeepHookForTest(hook func(slug string)) (restore func()) {
+	previous := housekeepHook
+	housekeepHook = hook
+	return func() { housekeepHook = previous }
+}
+
+// SetRemoveAfterLockHookForTest sets the hook that runs inside a removal right after it takes the teardown lock, whose error fails the removal, and returns the function that restores the previous one.
+// It changes process-global state, so the calling test must not be parallel.
+func SetRemoveAfterLockHookForTest(hook func() error) (restore func()) {
+	previous := removeAfterLockHook
+	removeAfterLockHook = hook
+	return func() { removeAfterLockHook = previous }
 }
 
 // DropSeedCommitsForTest re-exports dropSeedCommits for package fabricengine_test integration tests that drive the board seed-commit drop's gate directly.
@@ -715,4 +731,54 @@ func SetHubWorkspaceBeforeLockHookForTest(t *testing.T, hook func()) {
 
 	hubWorkspaceBeforeLockHook = hook
 	t.Cleanup(func() { hubWorkspaceBeforeLockHook = nil })
+}
+
+// ReplayWeftForTest re-exports replayWeft over worktree's configured upstream as last fetched, with a throwaway recorder.
+func ReplayWeftForTest(l *lyxcwd.Location, worktree string, ended map[string]string) (ReplayOutcome, error) {
+	upstream, err := gitrepo.New(worktree).UpstreamSHA()
+	if err != nil {
+		return ReplayOutcome{}, err
+	}
+	return replayWeft(NewMutations(l.HubPath), l, worktree, upstream, EndedSet(ended))
+}
+
+// ReplayBoltForTest re-exports replayBolt over boardDir's configured upstream as last fetched, with a throwaway recorder.
+func ReplayBoltForTest(l *lyxcwd.Location, boardDir string, ended map[string]string) (ReplayOutcome, error) {
+	upstream, err := gitrepo.New(boardDir).UpstreamSHA()
+	if err != nil {
+		return ReplayOutcome{}, err
+	}
+	return replayBolt(NewMutations(l.HubPath), l, boardDir, upstream, EndedSet(ended))
+}
+
+// ReadEndedSetForTest re-exports readEndedSet with its result as a plain map.
+func ReadEndedSetForTest(recordsRoot, boltRef string, slugs []string, localCreated map[string]string) (map[string]string, error) {
+	ended, err := readEndedSet(recordsRoot, boltRef, slugs, localCreated)
+	return map[string]string(ended), err
+}
+
+// RecordsConflictWayForwardForTest re-exports recordsConflictWayForward, so a test asserts the exact line a records conflict names.
+var RecordsConflictWayForwardForTest = recordsConflictWayForward
+
+// PushStepForTest re-exports pushStep, the push step a way-forward line ends with.
+var PushStepForTest = pushStep
+
+// RewoundWayForwardForTest re-exports rewoundWayForward, so a test asserts the exact line a rewound task branch names.
+var RewoundWayForwardForTest = rewoundWayForward
+
+// CodeDivergedWayForwardForTest re-exports codeDivergedWayForward, so a test asserts the exact line a diverged code branch names.
+var CodeDivergedWayForwardForTest = codeDivergedWayForward
+
+// EntryFactsForTest is entryFacts, the facts classifyEntry judges an entry from.
+type EntryFactsForTest = entryFacts
+
+// ClassifyEntryForTest re-exports classifyEntry, so a test drives its precedence as table rows.
+var ClassifyEntryForTest = classifyEntry
+
+// SetOriginCallHookForTest installs hook as the observer of every remote call an origin reconcile makes and returns the function that removes it.
+// It changes process-global state, so the calling test must not be parallel.
+func SetOriginCallHookForTest(hook func(args []string)) (restore func()) {
+	previous := originCallHook
+	originCallHook = hook
+	return func() { originCallHook = previous }
 }

@@ -12,7 +12,6 @@ package reedcli
 import (
 	"bytes"
 	"context"
-	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -337,12 +336,17 @@ func TestWatchdogDaemon(t *testing.T) {
 		scenario.Cleanup(func() { _, _ = eng1.Down() })
 		eng2 = bootWatchdogEngine(t, pair)
 		scenario.Cleanup(func() { _, _ = eng2.Down() })
-		// The watch never opens, so this loop sees no stop and keeps the idle-cycle rule that covers a down followed by an up.
+		// The watch opens but never delivers, so this loop neither wakes on nor reads the signal file, sees no stop and keeps the idle-cycle rule that covers a down followed by an up.
 		noWatch := func(string, ...string) (<-chan fswatch.Event, func() error, error) {
-			return nil, nil, errors.New("watch disabled for the shared discovery loop")
+			return make(chan fswatch.Event), func() error { return nil }, nil
 		}
+		// This loop's idle window is twice the tests' own wait budget, so it spans the Up call plus that wait:
+		// DownThenUpDoesNotKillDaemon's down-then-up gap can pass the production window under a loaded package run,
+		// and no subtest of this loop depends on its idle exit.
+		timing := compressedWatchdogTiming()
+		timing.IdleCycles = int(2 * watchdogTestWait / watchdogTestCycle)
 		go func() {
-			loopDone <- runWatchdogLoop(loopCtx, h.Path, tmuxPath, eng1.ShellPath(), compressedWatchdogTiming(), noWatch, reedengine.ListSessions, nil)
+			loopDone <- runWatchdogLoop(loopCtx, h.Path, tmuxPath, eng1.ShellPath(), timing, noWatch, reedengine.ListSessions, nil)
 		}()
 
 		// Both sessions must be discovered within a couple of discovery cycles.
@@ -369,7 +373,7 @@ func TestWatchdogDaemon(t *testing.T) {
 		return
 	}
 
-	// DownThenUpDoesNotKillDaemon drives a down immediately followed by an up against the daemon's one live worktree and asserts the daemon itself never exits and rediscovers the re-upped session — watchdogHubIdleCycles exists precisely to cover this gap.
+	// DownThenUpDoesNotKillDaemon drives a down immediately followed by an up against the daemon's one live worktree and asserts the daemon itself never exits and rediscovers the re-upped session — the loop's idle-cycle window exists precisely to cover this gap.
 	if !t.Run("DownThenUpDoesNotKillDaemon", func(t *testing.T) {
 		if _, err := eng2.Down(); err != nil {
 			t.Fatalf("eng2.Down(): %v", err)

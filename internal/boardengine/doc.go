@@ -93,8 +93,8 @@
 //
 // # Intake
 //
-// The board is the one list, and GitHub is the inbox that selfreport files issues to.
-// An issue reaches the board in three steps: list the open inbox issues no entry records, import one as a note or fold it into an existing entry, then close it.
+// The board is the one list, and intake reads the hub's own GitHub repository.
+// An issue reaches the board in three steps: list the open issues of that repository no entry records, import one as a note or fold it into an existing entry, then close it.
 // An entry records the issues it came from in its issues field, and an issue already recorded is never imported twice.
 // A merge carries the removed entries' issues: the upserted entry's issues are its own followed by each removed entry's, in remove order, without duplicates.
 // Import writes the board first and then comments with a pointer to the entry and closes the issue, and close alone ends a noise issue with a stated reason and touches no entry.
@@ -113,6 +113,16 @@
 // Prune passes, since a held entry's dependency on a done entry that the same write removes is not a change; every other depends_on change is refused.
 // The refusal is a *RunLockedError that matches ErrRunLocked through errors.Is.
 // Its message names the entry, its status and both ways forward: a finding goes to a note of its own, and an abandoned run's entry is unlocked by clearing its status once `lyx batten status` shows no run holds it.
+//
+// # Rename
+//
+// Rename changes one entry's slug in one write: the entry keeps its id, its position in board.json and every other field, kept keys included, and every other entry's depends_on names the new slug in place of the old one.
+// A dependency on the same entry under a new name is no scope change, so the write critical section judges the dates and the run lock against the loaded entries with the rename applied:
+// the rename revises no entry, and a held task that depends on the renamed entry takes the rewrite.
+// The renamed entry itself must not be held by a run, and the refusal is the run lock's *RunLockedError.
+// A target that is empty, longer than MaxSlugLength or already an entry's slug is refused too.
+// Body and brief text is never rewritten; the result names every entry whose body or brief still holds the old slug with no letter, digit, '-' or '_' beside it.
+// The render after the write drops the old slug's design doc and writes the new one.
 //
 // # Siblings
 //
@@ -160,6 +170,15 @@
 // correspondence-index machinery (fabricengine.RecordCorrespondence / WeftSHAForWarpSHA) does not
 // apply to it — board's reads/writes to weft:main are a standalone concern, not routed through
 // fabric.Commit.
+//
+// # Replay
+//
+// FabricReplay implements the board seam fabricengine declares for a records replay, installed process-wide by the lyx root pre-run.
+// Apply re-applies a local board commit onto the board checked out at origin's tip, one change at a time: each added or removed entry, each changed entry's fields as one change, and each design file the commit touches.
+// A change passes the board's own checks, the run lock included, against the board as the kept changes before it left it, and an added entry takes the next id of origin's board.json.
+// Where both sides changed the same field or design file since the merge base, or origin removed the entry, origin's side is kept and the local value is reported lost;
+// a change a check refuses is reported refused, and so is a later change depending on an entry a refused change added.
+// It takes neither the board lock nor the push lock, spawns no sync, and writes nothing when no change survives.
 //
 // # loomyard's own area labels
 //

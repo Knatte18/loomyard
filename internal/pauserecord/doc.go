@@ -27,6 +27,7 @@
 // It also returns the time it held the call, zero unless the wait slept, so a caller can move its own deadline later by that time; Network keeps its context-free signature and takes only the operation name.
 // With no gate installed, as in every test binary, Network does nothing and reports zero.
 // The gate only waits and marks; it fails no call.
+// SetGateExempt names one live entry by scope and pause time that the installed gate lets pass, for the process that owns that entry; any other entry still holds the call, and the returned function restores the previous exemption.
 //
 // The package imports the standard library and `internal/state` only.
 // Update goes through `internal/state`, so a key of the file that the record types do not declare survives a rewrite by an older binary.

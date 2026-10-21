@@ -93,6 +93,8 @@ type orchCLI struct {
 	executable func() (string, error)
 	// currentBuild identifies the running lyx build, which tells a runs strand of this build from an older one.
 	currentBuild func() (statuspane.BuildIdentity, error)
+	// reconcile judges and moves the hub's branches against origin, which `start` runs before it decides anything about the strand.
+	reconcile func() (fabricengine.OriginReport, error)
 }
 
 // Command returns the cobra command tree for the orch module.
@@ -190,6 +192,7 @@ Every verb runs from the hub's prime worktree only.`,
 			c.indexRunner = runHelpIndex
 			c.executable = os.Executable
 			c.currentBuild = statuspane.CurrentBuild
+			c.reconcile = func() (fabricengine.OriginReport, error) { return reconcileHub(location) }
 			return nil
 		},
 	}

@@ -201,7 +201,7 @@ func TestLoomResumeReconcilesTheHubConfigBeforeArming(t *testing.T) {
 
 	// The reconcile commit fires a detached push that would outlive the test and race TempDir's removal of the bare remote;
 	// the test asserts the commit, never the push.
-	skipPush := []string{"FABRIC_SKIP_PUSH=1"}
+	skipPush := append([]string{"FABRIC_SKIP_PUSH=1"}, skipBoardPush...)
 
 	loom, _ := configreg.Lookup("loom")
 	gitkit.CommitFile(t, recordsDir, configengine.ConfigFileRel("loom"), "a: [unclosed\n", "fixture: broken loom.yaml")
@@ -254,7 +254,7 @@ func TestLoomFailedReedUpRefuses(t *testing.T) {
 
 	requireStartRefusal := func(t *testing.T, loc *lyxcwd.Location, worktree string) {
 		t.Helper()
-		out, exit, err := runLoomCLINoFatal(exe, worktree, verbTimeout, "loom", "start", "--no-attach")
+		out, exit, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipBoardPush, verbTimeout, "loom", "start", "--no-attach")
 		if err != nil {
 			t.Fatalf("lyx loom start --no-attach: %v; output: %s", err, out)
 		}
@@ -280,7 +280,7 @@ func TestLoomFailedReedUpRefuses(t *testing.T) {
 		loc, worktree := newBadReedUpFixture(t, seedGoDriverRun)
 
 		t.Run("step refuses with the bootstrap kind", func(t *testing.T) {
-			out, exit, err := runLoomCLINoFatal(exe, worktree, verbTimeout, "loom", "step")
+			out, exit, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipBoardPush, verbTimeout, "loom", "step")
 			if err != nil {
 				t.Fatalf("lyx loom step: %v; output: %s", err, out)
 			}
@@ -326,7 +326,7 @@ func TestLoomFailedReedUpRefuses(t *testing.T) {
 			t.Fatalf("ReadOrigin: found=%v err=%v", found, err)
 		}
 
-		out, exit, err := runLoomCLINoFatal(exe, worktree, verbTimeout, "loom", "step")
+		out, exit, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipBoardPush, verbTimeout, "loom", "step")
 		if err != nil {
 			t.Fatalf("lyx loom step: %v; output: %s", err, out)
 		}

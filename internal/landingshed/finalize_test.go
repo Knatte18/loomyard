@@ -20,6 +20,7 @@ import (
 	"github.com/google/go-github/v75/github"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedtransient"
@@ -120,17 +121,28 @@ func TestNewFinalize_Refusals(t *testing.T) {
 
 // TestFinalize_MergeMarkPushOrderAndVerdict pins that a landed merge is marked done on the board and then pushed to the parent's upstream before Done, honouring Deps.PushSkipped, that a failed push is Stuck rather than Done, and that neither a failing push nor a failing board seam changes what the other is called for.
 func TestFinalize_MergeMarkPushOrderAndVerdict(t *testing.T) {
+	failedPush := func(record fabricengine.FailedPush, cause error) *fabricengine.PushFailedError {
+		return &fabricengine.PushFailedError{Record: record, Err: cause}
+	}
+	rewound := failedPush(fabricengine.FailedPush{Repo: "code", RepoPath: "/hub/parent", Branch: "parent", Class: fabricengine.PushFailureRewound, OriginHead: "abc123", Commits: []string{"def456"}}, errors.New("push held back"))
+	primeDiverged := failedPush(fabricengine.FailedPush{Repo: "code", RepoPath: "/hub/main", Branch: "main", Prime: true, Class: fabricengine.PushFailureNotFastForward}, gitrepo.ErrPushRejected)
+	authRefused := failedPush(fabricengine.FailedPush{Repo: "code", RepoPath: "/hub/parent", Branch: "parent", Class: fabricengine.PushFailureAuth}, gitrepo.ErrPushAuthRefused)
 	tests := []struct {
 		name        string
 		pushSkipped bool
 		pushErr     error
 		markErr     error
 		wantOutcome shedengine.Outcome
+		// wantWayForward is the exact way-forward line the Stuck reason ends in, with no hand-push advice after it.
+		wantWayForward string
 	}{
-		{"pushed", false, nil, nil, shedengine.Done},
-		{"push skipped", true, nil, nil, shedengine.Done},
-		{"failing push still marks", false, errors.New("remote rejected"), nil, shedengine.Stuck},
-		{"erroring board seam still Done", false, nil, errors.New("board unavailable"), shedengine.Done},
+		{"pushed", false, nil, nil, shedengine.Done, ""},
+		{"push skipped", true, nil, nil, shedengine.Done, ""},
+		{"failing push still marks", false, errors.New("remote rejected"), nil, shedengine.Stuck, ""},
+		{"erroring board seam still Done", false, nil, errors.New("board unavailable"), shedengine.Done, ""},
+		{"rewound hold-back", false, rewound, nil, shedengine.Stuck, fabricengine.FailedPushWayForward(rewound.Record)},
+		{"prime not fast-forward", false, primeDiverged, nil, shedengine.Stuck, fabricengine.FailedPushWayForward(primeDiverged.Record)},
+		{"auth refusal", false, authRefused, nil, shedengine.Stuck, fabricengine.FailedPushWayForward(authRefused.Record)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -159,7 +171,12 @@ func TestFinalize_MergeMarkPushOrderAndVerdict(t *testing.T) {
 			if got := merger.pushCalls[0].SkipPush; got != tt.pushSkipped {
 				t.Errorf("PushBranch SkipPush = %v; want %v", got, tt.pushSkipped)
 			}
-			if tt.pushErr != nil {
+			switch {
+			case tt.wantWayForward != "":
+				if got := requireFinalizeReason(t, ptr); !strings.HasSuffix(got, tt.wantWayForward) || strings.Contains(got, "push it by hand") {
+					t.Errorf("reason = %q; want it to end in %q with no `push it by hand`", got, tt.wantWayForward)
+				}
+			case tt.pushErr != nil:
 				if got := requireFinalizeReason(t, ptr); !strings.Contains(got, "push it by hand") {
 					t.Errorf("reason = %q; want it to tell the operator to push by hand", got)
 				}
@@ -361,7 +378,31 @@ func TestFinalize_StuckReasons(t *testing.T) {
 		wantMerges int
 		// wantInReason names what the stuck reason must carry, given the deps the case ran under.
 		wantInReason func(d Deps) string
+		// report is what the run-scope reconcile returns; nil wires none.
+		report *fabricengine.OriginReport
+		// wantHalt is whether the Stuck must carry Halt, and wantNotInReason names text the reason must not carry.
+		wantHalt        bool
+		wantNotInReason string
 	}{
+		{
+			name:     "run origin ended after its landing halts naming the landing and the cleanup from the prime",
+			report:   &fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryEnded, How: "done"}}},
+			wantHalt: true,
+			wantInReason: func(Deps) string {
+				return `its landing is done and its board entry is done; way forward: pause the run, then run "lyx cleanup --apply" from the prime`
+			},
+		},
+		{
+			name: "run stopped by a branch names it and its way forward verbatim, then the resume",
+			report: &fabricengine.OriginReport{
+				Branches: []fabricengine.BranchOutcome{{Branch: "parent", State: fabricengine.BranchDiverged, WayForward: "reconcile parent in the prime"}},
+				Entries:  []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryStopped, WayForward: "reconcile parent in the prime"}},
+			},
+			wantInReason: func(Deps) string {
+				return `branch parent is diverged against origin; way forward: reconcile parent in the prime; then run "lyx loom resume"`
+			},
+			wantNotInReason: "lyx cleanup --apply",
+		},
 		{
 			name:         "parent opener error names the parent branch",
 			resolved:     mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved},
@@ -404,6 +445,9 @@ func TestFinalize_StuckReasons(t *testing.T) {
 			if tt.recordsErr != nil {
 				deps.CommitParentRecords = func() error { return tt.recordsErr }
 			}
+			if tt.report != nil {
+				deps.Reconcile = func() (fabricengine.OriginReport, error) { return *tt.report, nil }
+			}
 			res := &recordingResolver{result: tt.resolved}
 			merger := &recordingParentMerger{}
 			if tt.mergeErr != nil {
@@ -421,6 +465,12 @@ func TestFinalize_StuckReasons(t *testing.T) {
 			if want := tt.wantInReason(deps); !strings.Contains(got, want) {
 				t.Errorf("stuck reason %q does not carry %q", got, want)
 			}
+			if tt.wantNotInReason != "" && strings.Contains(got, tt.wantNotInReason) {
+				t.Errorf("stuck reason %q carries %q; want it free of it", got, tt.wantNotInReason)
+			}
+			if ptr.Halt != tt.wantHalt {
+				t.Errorf("stuck Halt = %v; want %v", ptr.Halt, tt.wantHalt)
+			}
 			if len(merger.calls) != tt.wantMerges {
 				t.Errorf("parent-side merge calls = %d; want %d", len(merger.calls), tt.wantMerges)
 			}
@@ -433,6 +483,41 @@ func TestFinalize_StuckReasons(t *testing.T) {
 			}
 			if len(matches) != 0 {
 				t.Errorf("stuck-reason files = %v; want none", matches)
+			}
+		})
+	}
+}
+
+// TestFinalize_ReconcileProceedsOrErrors pins the two ways the run-scope reconcile leaves Finalize going:
+// an active run, or an unreachable origin, lands as usual, and a reconcile error is returned from Call with nothing merged.
+func TestFinalize_ReconcileProceedsOrErrors(t *testing.T) {
+	tests := []struct {
+		name         string
+		report       fabricengine.OriginReport
+		reconcileErr error
+		wantMerges   int
+	}{
+		{"active run proceeds", fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryActive}}}, nil, 1},
+		{"unreachable origin proceeds", fabricengine.OriginReport{Unreachable: true}, nil, 1},
+		{"reconcile error is returned", fabricengine.OriginReport{}, errors.New("ls-remote failed"), 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			deps := newTestDeps(t)
+			deps.Reconcile = func() (fabricengine.OriginReport, error) { return tt.report, tt.reconcileErr }
+			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}}
+			fz := &Finalize{deps: deps, resolver: &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}, parentOpener: func() (parentMerger, error) { return merger, nil }}
+
+			if tt.reconcileErr != nil {
+				_, _, err := fz.Call(context.Background())
+				if err == nil || !strings.Contains(err.Error(), "ls-remote failed") {
+					t.Errorf("Call() error = %v; want the reconcile's cause", err)
+				}
+			} else {
+				shedfake.RequireOutcome(t, fz, shedengine.Done)
+			}
+			if len(merger.calls) != tt.wantMerges {
+				t.Errorf("parent-side merge calls = %d; want %d", len(merger.calls), tt.wantMerges)
 			}
 		})
 	}

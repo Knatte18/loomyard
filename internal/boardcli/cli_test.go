@@ -108,6 +108,7 @@ func TestCLI(t *testing.T) {
 		{"BoardPathResolution", stepBoardPathResolution},
 		{"Promote", stepPromote},
 		{"Promote_Refusals", stepPromote_Refusals},
+		{"Rename", stepRename},
 		{"Prune", stepPrune},
 		{"Find", stepFind},
 		{"ListAndFindLabelFilter", stepListAndFindLabelFilter},
@@ -1162,6 +1163,24 @@ func stepBoardPathResolution(t *testing.T, f *cliFixture) {
 		if len(defaultTasks) == 0 {
 			t.Errorf("default board path %q: got 0 tasks; want >= 1 (path-test task from first subtest)",
 				expectedBoardDir)
+		}
+	})
+
+	t.Run("intake_under_board_path_is_refused_naming_a_hub_worktree", func(t *testing.T) {
+		// --board-path leaves no resolved worktree, so the hub repository cannot be found;
+		// list under the same flag succeeding in the subtest above shows the other verbs never ask for it.
+		exitCode, stdout := runCLI(t, "--board-path", t.TempDir(), "intake", "list")
+		if exitCode != 1 || !strings.Contains(stdout, "worktree of the hub") {
+			t.Errorf("intake list --board-path exit %d, stdout %s; want exit 1 naming a worktree of the hub", exitCode, stdout)
+		}
+	})
+
+	t.Run("intake_resolves_the_hub_repository_through_its_binding_then_origin", func(t *testing.T) {
+		// The fixture hub records no binding and its repository has no origin remote,
+		// so the refusal comes from HubRepoURL and names the missing origin remote.
+		exitCode, stdout := runCLI(t, "intake", "list")
+		if exitCode != 1 || !strings.Contains(stdout, "no usable origin remote") {
+			t.Errorf("intake list exit %d, stdout %s; want exit 1 naming the missing origin remote", exitCode, stdout)
 		}
 	})
 }

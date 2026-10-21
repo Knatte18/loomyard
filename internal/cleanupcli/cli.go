@@ -3,11 +3,13 @@
 package cleanupcli
 
 import (
+	"fmt"
 	"io"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/battencli"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/spf13/cobra"
@@ -24,8 +26,18 @@ func Command() *cobra.Command {
 remove, prints "applied": false and changes nothing. With --apply it removes it.
 It runs from the hub's prime worktree only and refuses elsewhere.
 
+Before its segments it reconciles the hub's branches against origin and prints the
+report as "reconcile", beside "mutations" and "partial". The dry run only judges:
+it moves, replays and tears down nothing, no tracking ref included, and the report
+names each move and teardown that --apply's segments account for. --apply moves the
+branches and tears down the pairs of runs origin has ended, then runs the segments
+over the reconciled state. A stop on Bolt or the prime's records branch, or a
+reconcile error, refuses --apply with the report and runs no segment; a stop on a
+pair is only reported, and an unreachable origin is a warning.
+
 Segments, in order, each calling its owner's own cleanup in-process:
-  batten   done runs' records and scratch, and aged orphan scratch (lyx batten cleanup)
+  batten   done runs' records and scratch, and aged orphan scratch (lyx batten cleanup);
+           push_spawned says its records push was started, not that origin took it
   board    done board entries (lyx board prune)
   orch     every handoff but the last one the orchestrator cycled from (lyx orch cleanup)
   scratch  old children of the prime's .scratch/ that no open board entry cites
@@ -34,6 +46,9 @@ Segments, in order, each calling its owner's own cleanup in-process:
 
 Every segment runs even when an earlier one fails; the failing ones are named in
 the error. Nothing is removed that the segment's own verb would refuse to remove.
+
+failed_pushes lists every push origin refused that this machine still holds a
+record of, each with the way forward for its class; it prints with and without --apply.
 
 Example:
   lyx cleanup
@@ -61,8 +76,35 @@ Example:
 				return nil
 			}
 
+			report, reconcileErr := reconcileHub(location, apply)
+			fields := map[string]any{"applied": apply, "reconcile": report, "mutations": report.Mutations.Entries(), "partial": false}
+			// An error envelope reports what the reconcile changed, so a partial record is never lost.
+			fail := func(message string) error {
+				fields["partial"] = report.Mutations.Len() > 0
+				clihelp.SetExit(ctx, output.ErrFields(out, message, fields))
+				return nil
+			}
+			if report.Unreachable {
+				fields["warning"] = "origin was unreachable, so the hub's branches were neither judged against it nor moved"
+			}
+			failedPushes, err := fabricengine.FailedPushFields(location.HubPath)
+			if err != nil {
+				return fail(err.Error())
+			}
+			fields["failed_pushes"] = failedPushes
+			if apply {
+				if reconcileErr != nil {
+					return fail(fmt.Sprintf("cleanup --apply: the origin reconcile failed, so no segment ran: %v; repair what the error names, then re-run lyx cleanup --apply from the prime", reconcileErr))
+				}
+				if stops := sharedStopText(report); stops != "" {
+					return fail("cleanup --apply: the origin reconcile stopped, so no segment ran: " + stops)
+				}
+			} else if reconcileErr != nil {
+				fields["reconcile_error"] = reconcileErr.Error()
+			}
+
 			results, allSucceeded := runSegments(primeSegments(location), apply)
-			fields := map[string]any{"applied": apply, "segments": results}
+			fields["segments"] = results
 			if allSucceeded {
 				clihelp.SetExit(ctx, output.Ok(out, fields))
 				return nil
@@ -73,8 +115,7 @@ Example:
 					failed = append(failed, result.Name)
 				}
 			}
-			clihelp.SetExit(ctx, output.ErrFields(out, "cleanup: segments failed: "+strings.Join(failed, ", "), fields))
-			return nil
+			return fail("cleanup: segments failed: " + strings.Join(failed, ", "))
 		},
 	}
 	cmd.Flags().BoolVar(&apply, "apply", false, "remove what the dry run lists (default is dry-run/report)")

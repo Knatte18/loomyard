@@ -146,7 +146,12 @@ status also reports merge_in_progress: whether THIS pair has a fabric merge
 parked awaiting "lyx fabric merge --continue" or "lyx fabric merge --abort".
 It does NOT report whether some other pair in the hub is mid-merge on this
 pair's branch, so "lyx fabric remove" refusing on that hub-wide condition can
-coexist with merge_in_progress being false here.`,
+coexist with merge_in_progress being false here.
+
+status also reports failed_pushes: every push origin refused that this machine
+still holds a record of, hub-wide, each with its repository side, branch, class,
+last error, first and last seen, count and the way forward for its class.
+An empty list means no push is outstanding.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
@@ -162,9 +167,15 @@ coexist with merge_in_progress being false here.`,
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
+			failedPushes, err := fabricengine.FailedPushFields(l.HubPath)
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
 			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
 				"changes":           changeEntriesMap(entries),
 				"merge_in_progress": inProgress,
+				"failed_pushes":     failedPushes,
 			}))
 			return nil
 		},
@@ -303,10 +314,14 @@ Related commands:
 		Args:        cobra.NoArgs,
 		Short:       "pull warp and weft, reconciling a rebased warp",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `Pulls both sides of the pair. Weft is fast-forwarded first via a plain
-git pull — skipped as a no-op on a freshly bootstrapped hub whose weft branch
-has no upstream yet. Warp is then fetched and inspected against its upstream
-tracking ref:
+		Long: `Pulls both sides of the pair. Weft is brought level with origin first:
+fast-forwarded when it can be, and otherwise its local commits are replayed
+onto origin's, the commits of a run origin has ended being kept under a local
+tag instead. A weft with no upstream yet, as on a freshly bootstrapped hub, is
+skipped as a no-op. A replay that conflicts, or an uncommitted change that
+blocks the move, still lets warp run, and the pull then fails naming the weft
+branch, the paths and the way forward, with the warp result kept. Warp is then
+fetched and inspected against its upstream tracking ref:
 
   - A clean fast-forward (local warp HEAD is still an ancestor of the fetched
     upstream tip) simply advances warp — no reconcile needed.
@@ -317,11 +332,12 @@ tracking ref:
     anchor commit records the fresh correspondence. The result reports the
     re-anchor baseline (anchor_warp_sha, anchor_weft_sha) and the new anchor
     commit (reanchor_weft_sha).
-  - Two cases abort loudly and make no change to either repo: local warp
-    already carries unpushed commits of its own AND the remote diverged (the
-    double-conflict case pull refuses to resolve unattended), or the warp
+  - Three cases abort loudly and make no change to warp: local warp already
+    carries a commit no push of this machine reached AND the remote diverged
+    (the double-conflict case pull refuses to resolve unattended), the warp
     rewrite is so thorough that no recorded correspondence survives (no safe
-    baseline to re-anchor against).
+    baseline to re-anchor against), or origin rewound a task branch past
+    commits this checkout holds (the refusal names the two ways to settle it).
   - A warp worktree with uncommitted tracked changes is refused before warp
     is moved at all — commit or stash, then re-run. Advancing warp goes
     through a hard reset that would silently discard those changes.`,
@@ -441,9 +457,9 @@ func changeEntriesMap(entries []fabricengine.ChangeEntry) []map[string]any {
 
 // pullResultMap converts a fabricengine.PullResult into the map shape output.Ok
 // expects.
-// weft_pulled can now be false inside a SUCCESS envelope — the weft arm is non-fatal, so a false
-// value here means the warp side pulled while the weft did not; the operator's remedy is to
-// reconcile the weft by hand (`git -C <weft> reset --hard origin/<branch>`).
+// weft_pulled is false inside a SUCCESS envelope only when the weft's origin could not be reached, so the warp side pulled while the weft did not.
+// Re-running the pull once origin is reachable settles it.
+// A weft that a conflict or an uncommitted change keeps from being brought level is an error envelope naming the way forward, never a false field.
 func pullResultMap(result fabricengine.PullResult) map[string]any {
 	return map[string]any{
 		"weft_pulled":       result.WeftPulled,

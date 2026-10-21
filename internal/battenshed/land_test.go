@@ -32,6 +32,7 @@ type landFixture struct {
 	dirty               [][]string
 	dirtyErr            error
 	pullErr             error
+	recordsStop         string
 	landing             LandingSettings
 	landingErr          error
 	deployResult        DeployResult
@@ -92,9 +93,9 @@ func (f *landFixture) deps() LandDeps {
 			}
 			return f.dirty[i], f.dirtyErr
 		},
-		Pull: func(context.Context) error {
+		Pull: func(context.Context) (string, error) {
 			f.calls = append(f.calls, "pull")
-			return f.pullErr
+			return f.recordsStop, f.pullErr
 		},
 		Landing: func() (LandingSettings, error) { return f.landing, f.landingErr },
 		RunDeploy: func(_ context.Context, command, logPath string, timeout time.Duration) (DeployResult, error) {
@@ -355,7 +356,7 @@ func TestLand_LandLockWait(t *testing.T) {
 		var primeHeldDuringPull bool
 		deps := f.deps()
 		pull := deps.Pull
-		deps.Pull = func(ctx context.Context) error {
+		deps.Pull = func(ctx context.Context) (string, error) {
 			primeHeldDuringPull = f.primeHeld
 			return pull(ctx)
 		}
@@ -428,9 +429,11 @@ func TestLand_ReadyNotice(t *testing.T) {
 		snapshot       string
 		ready          []readyAnswer
 		orchUnrecorded bool
+		recordsStop    string
 		wantNotice     string
 		wantHeldWarns  int
 	}{
+		{name: "NamesARecordsStopAndStillDeploys", recordsStop: "records diverged", ready: []readyAnswer{{slugs: []string{"a"}}, {slugs: []string{"a"}}}, wantNotice: "[batten notice] myslug: landed; the prime's records did not pull: records diverged"},
 		{name: "ReadiesADependant", ready: []readyAnswer{{slugs: []string{"a"}}, {slugs: []string{"a", "b"}}}, wantNotice: "[batten notice] myslug: landed; newly ready: b"},
 		{name: "ReadiesNothing", ready: []readyAnswer{{slugs: []string{"a"}}, {slugs: []string{"a"}}}, wantNotice: "[batten notice] myslug: landed"},
 		{name: "RestartAfterPruneWithSnapshot", snapshot: "a\n", ready: []readyAnswer{{slugs: []string{"a", "c"}}}, wantNotice: "[batten notice] myslug: landed; newly ready: c"},
@@ -444,6 +447,7 @@ func TestLand_ReadyNotice(t *testing.T) {
 			f := newLandFixture(t)
 			f.ready = tt.ready
 			f.orchUnrecorded = tt.orchUnrecorded
+			f.recordsStop = tt.recordsStop
 			if tt.snapshot != "" {
 				if err := os.WriteFile(f.scratchDir+"/Land"+readySnapshotFileSuffix, []byte(tt.snapshot), 0o644); err != nil {
 					t.Fatal(err)
@@ -460,6 +464,9 @@ func TestLand_ReadyNotice(t *testing.T) {
 			}
 			if !slices.Equal(f.notices, want) {
 				t.Fatalf("notices = %q; want %q", f.notices, want)
+			}
+			if tt.recordsStop != "" && !slices.Contains(f.calls, "deploy") {
+				t.Errorf("calls = %v; want the deploy to run after a records stop", f.calls)
 			}
 			const held = "row notice held back; no orch strand is recorded"
 			if got := countLogLines(buf.String(), "WARN", held); got != tt.wantHeldWarns {

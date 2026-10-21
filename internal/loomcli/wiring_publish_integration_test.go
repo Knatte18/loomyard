@@ -90,6 +90,8 @@ func TestWire_Real_PublishRejectedPushNamesRemoteTip(t *testing.T) {
 	// The pair has no run status file to commit and no plan to read a verify command from.
 	deps.CommitStatus = nil
 	deps.VerifyCommand = nil
+	// The remote task branch holds a commit the local one lacks on purpose, which the reconcile would fast-forward away.
+	deps.Reconcile = nil
 	c.env.Landing = deps
 
 	// The parent moved locally and was never pushed, so Merge-In runs with the push told skipped and reads the local tip alone.

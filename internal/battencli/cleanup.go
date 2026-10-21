@@ -50,6 +50,9 @@ type CleanupReport struct {
 	Emptied []string
 	// Skipped lists every slug left alone, with its reason.
 	Skipped []CleanupSkip
+	// PushSpawned reports whether the detached push of the records side was started.
+	// A spawned push has not landed: an origin refusal of it is read from the hub's failed-push records.
+	PushSpawned bool
 	// PushError is the records push spawn failure, empty when the push was spawned or none was due.
 	// The commits stay for the next records sync.
 	PushError string
@@ -118,6 +121,8 @@ func cleanup(location *lyxcwd.Location, apply bool, deps cleanupDeps) (CleanupRe
 	if committedAny {
 		if err := deps.Spawn(); err != nil {
 			report.PushError = err.Error()
+		} else {
+			report.PushSpawned = true
 		}
 	}
 	return report, nil
@@ -374,7 +379,8 @@ spawns the push of the records. A run that is running, paused, blocked, awaiting
 lock is held, is skipped and reported with its reason. It never touches a pair, a branch, a
 lock file or another run.
 
-Output: {"applied", "removed", "emptied", "skipped", "push_error"}.
+Output: {"applied", "removed", "emptied", "skipped", "push_spawned", "push_error"}.
+push_spawned says the push was started, not that origin took it; "lyx fabric status" lists a push origin refused under failed_pushes.
 
 Example:
   lyx batten cleanup
@@ -403,11 +409,12 @@ Example:
 				return nil
 			}
 			clihelp.SetExit(ctx, output.Ok(out, map[string]any{
-				"applied":    report.Applied,
-				"removed":    report.Removed,
-				"emptied":    report.Emptied,
-				"skipped":    report.Skipped,
-				"push_error": report.PushError,
+				"applied":      report.Applied,
+				"removed":      report.Removed,
+				"emptied":      report.Emptied,
+				"skipped":      report.Skipped,
+				"push_spawned": report.PushSpawned,
+				"push_error":   report.PushError,
 			}))
 			return nil
 		},

@@ -71,6 +71,9 @@ type reedCLI struct {
 	// watchdogListSessions is the test seam for the daemon's session listing, in its loop and in its exit re-check; nil means reedengine.ListSessions.
 	watchdogListSessions func(tmuxPath, socketKey string) ([]string, error)
 
+	// watchdogOpenWatch is the test seam for the daemon's discover signal watch; nil means reedengine.OpenFileWatch.
+	watchdogOpenWatch reedengine.FileWatchOpener
+
 	// downLockWait, downLockPoll, downLockProbe and downLockSleep are test seams for the wait `down` makes for the watchdog lock;
 	// zero or nil means watchdogDownWait, watchdogDownPoll, probeWatchdogLock and time.Sleep.
 	downLockWait  time.Duration
