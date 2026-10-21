@@ -1,12 +1,14 @@
 //go:build integration
 
-// derive_integration_test.go drives Derive over a real repository holding a small Go module.
+// derive_integration_test.go drives Derive and DeriveTargets over a real repository holding a small Go module.
 
 package impactset
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -110,6 +112,90 @@ func TestDerive_OverARepository(t *testing.T) {
 		got := derive(t, dir, afterGoMod)
 		if got.Command != "" || got.Fallback != "c/c.go is neither a Markdown file nor under a Go package directory" {
 			t.Errorf("Derive() = %+v; want the deleted-package fallback", got)
+		}
+	})
+
+	writeRepoFile(t, dir, ".gitignore", "*.txt\n")
+	head := commitAll(t, dir, "ignore text files")
+	targetsOf := func(t *testing.T) Targets {
+		t.Helper()
+		targets, err := DeriveTargets(context.Background(), dir, head)
+		if err != nil {
+			t.Fatalf("DeriveTargets(%q) error = %v; want nil", head, err)
+		}
+		return targets
+	}
+	packagesOf := func(targets Targets) string {
+		var packages []string
+		for _, module := range targets.Modules {
+			packages = append(packages, module.Packages...)
+		}
+		return strings.Join(packages, " ")
+	}
+	remove := func(t *testing.T, names ...string) {
+		t.Helper()
+		for _, name := range names {
+			if err := os.RemoveAll(filepath.Join(dir, filepath.FromSlash(name))); err != nil {
+				t.Fatalf("RemoveAll(%s): %v", name, err)
+			}
+		}
+	}
+
+	t.Run("an uncommitted edit selects its package", func(t *testing.T) {
+		writeRepoFile(t, dir, "a/a.go", "package a\n\nfunc G() {}\n")
+		defer gitkit.Git(t, dir, "checkout", "--", "a/a.go")
+		if got := targetsOf(t); got.Whole || packagesOf(got) != "./a ./b" || got.Base != head {
+			t.Errorf("DeriveTargets() = %+v; want packages ./a ./b on base %s", got, head)
+		}
+	})
+
+	t.Run("an untracked new file selects its package", func(t *testing.T) {
+		writeRepoFile(t, dir, "n/n.go", "package n\n")
+		defer remove(t, "n")
+		if got := targetsOf(t); got.Whole || packagesOf(got) != "./n" {
+			t.Errorf("DeriveTargets() = %+v; want package ./n", got)
+		}
+	})
+
+	t.Run("an ignored file selects nothing", func(t *testing.T) {
+		writeRepoFile(t, dir, "notes.txt", "x\n")
+		defer remove(t, "notes.txt")
+		got := targetsOf(t)
+		if got.Whole || len(got.Modules) != 0 || !reflect.DeepEqual(got.Guards, map[string][]string{"g": {"TestGuard"}}) {
+			t.Errorf("DeriveTargets() = %+v; want no module and the guard of g", got)
+		}
+	})
+
+	t.Run("a Markdown-only working-tree change yields the empty set", func(t *testing.T) {
+		writeRepoFile(t, dir, "notes.md", "x\n")
+		defer remove(t, "notes.md")
+		if got := targetsOf(t); got.Whole || len(got.Modules) != 0 {
+			t.Errorf("DeriveTargets() = %+v; want no module", got)
+		}
+	})
+
+	t.Run("a file of a nested module falls back to whole", func(t *testing.T) {
+		writeRepoFile(t, dir, "tools/go.mod", "module example.com/tools\n\ngo 1.26\n")
+		writeRepoFile(t, dir, "tools/x/x.go", "package x\n")
+		defer remove(t, "tools")
+		if got := targetsOf(t); !got.Whole || got.Fallback == "" {
+			t.Errorf("DeriveTargets() = %+v; want a whole fallback", got)
+		}
+	})
+
+	t.Run("a go.sum edit falls back to whole", func(t *testing.T) {
+		writeRepoFile(t, dir, "go.sum", "\n")
+		defer remove(t, "go.sum")
+		if got := targetsOf(t); !got.Whole || got.Fallback != "go.sum changed" {
+			t.Errorf("DeriveTargets() = %+v; want the go.sum fallback", got)
+		}
+	})
+
+	t.Run("a misplaced guard marker returns the scan error", func(t *testing.T) {
+		writeRepoFile(t, dir, "g/h_test.go", "package g\n\n//lyx:guard\nvar misplaced = 1\n")
+		defer remove(t, "g/h_test.go")
+		if _, err := DeriveTargets(context.Background(), dir, head); !IsGuardScanError(err) {
+			t.Errorf("DeriveTargets() error = %v; want a *GuardScanError", err)
 		}
 	})
 }

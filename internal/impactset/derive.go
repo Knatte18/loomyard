@@ -3,6 +3,7 @@
 package impactset
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -56,7 +57,7 @@ func Derive(worktree, base string) (Derivation, error) {
 		return Derivation{}, err
 	}
 
-	pkgs, err := listPackages(worktree)
+	pkgs, err := listPackages(context.Background(), worktree)
 	if err != nil {
 		derivation.Fallback = "go list failed: " + err.Error()
 		return derivation, nil
@@ -119,12 +120,13 @@ func parseChangedPaths(output string) []string {
 }
 
 // listPackages runs `go list` over the module under every tag and returns its packages.
-func listPackages(worktree string) ([]pkg, error) {
+// ctx bounds the spawn: a cancelled ctx kills a stalled `go list`.
+func listPackages(ctx context.Context, worktree string) ([]pkg, error) {
 	absolute, err := filepath.Abs(worktree)
 	if err != nil {
 		return nil, err
 	}
-	cmd := exec.Command("go", "list", "-tags", "integration,tmux,llm", "-f", goListFormat, "./...")
+	cmd := exec.CommandContext(ctx, "go", "list", "-tags", "integration,tmux,llm", "-f", goListFormat, "./...")
 	cmd.Dir = worktree
 	logger.Info("impactset: spawning go list", "dir", worktree)
 	output, err := cmd.Output()
@@ -142,21 +144,10 @@ func listPackages(worktree string) ([]pkg, error) {
 // commandFor is the pure core of Derive: the command for the changed paths over the graph and the impacted set's package arguments, or the reason it falls back.
 // guards maps a package directory to the names of its guard tests.
 func commandFor(graph moduleGraph, changedPaths []string, guards map[string][]string) (command string, packages []string, fallback string) {
-	changed := map[string]bool{}
-	for _, changedPath := range changedPaths {
-		if changedPath == "go.mod" || changedPath == "go.sum" {
-			return "", nil, changedPath + " changed"
-		}
-		importPath, mapped, ok := packageOfPath(graph, changedPath)
-		if !ok {
-			return "", nil, fmt.Sprintf("%s is neither a Markdown file nor under a Go package directory", changedPath)
-		}
-		if mapped {
-			changed[importPath] = true
-		}
+	set, fallback := impactedFor(graph, changedPaths)
+	if fallback != "" {
+		return "", nil, fallback
 	}
-
-	set := graph.impactedSet(changed)
 	command = buildCommand(graph, set, guards)
 	if len(command) > MaxCommandLength {
 		return "", nil, fmt.Sprintf("the derived command is %d characters, over the %d limit", len(command), MaxCommandLength)
@@ -165,6 +156,24 @@ func commandFor(graph moduleGraph, changedPaths []string, guards map[string][]st
 		packages = packageArgs(graph.packageDirs(set))
 	}
 	return command, packages, ""
+}
+
+// impactedFor returns the impacted set of the changed paths over the graph, or the reason the diff cannot be narrowed to one.
+func impactedFor(graph moduleGraph, changedPaths []string) (set map[string]bool, fallback string) {
+	changed := map[string]bool{}
+	for _, changedPath := range changedPaths {
+		if changedPath == "go.mod" || changedPath == "go.sum" {
+			return nil, changedPath + " changed"
+		}
+		importPath, mapped, ok := packageOfPath(graph, changedPath)
+		if !ok {
+			return nil, fmt.Sprintf("%s is neither a Markdown file nor under a Go package directory", changedPath)
+		}
+		if mapped {
+			changed[importPath] = true
+		}
+	}
+	return graph.impactedSet(changed), ""
 }
 
 // packageOfPath maps one changed path to the import path of the package it belongs to.

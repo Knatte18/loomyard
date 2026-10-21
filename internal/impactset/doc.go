@@ -34,6 +34,17 @@
 // The test steps go through `lyx gate test` so that inside a verify they inherit the held gate slot and share one prebuilt `lyx`; the guard step is a single call so `lyx` is built once.
 // An empty set runs only the build and the guard step.
 //
+// DeriveTargets is the `go` scoper of `lyx gate test`: it derives the same impacted set as a target set over the working tree rather than a command.
+// It is told a context, the worktree and the base, and diffs the base to the working tree, not to HEAD:
+// tracked changes, staged or not, a rename counted at both paths, and the untracked files git does not ignore.
+// It returns Targets{Whole, Fallback, Base, Modules, Guards}: each ModuleTargets names a module directory, `.` for the root, and its module-relative package arguments in the order the graph lists them, every impacted package kept, test-less ones included.
+// It falls back to Whole with the reason wherever Derive does, except the command-length fallback, since no command is spelled;
+// a changed file of a nested module falls back too, because the root `go list` does not list it.
+// A diff touching only Markdown files yields no module and no package.
+// Guards holds, per directory, the sorted `//lyx:guard` test names of the packages outside the set, so the gate's guard step runs them by name;
+// a guard scan failure is returned as the *GuardScanError.
+// The context bounds the derivation: it is checked before each git read, and a cancelled context kills a stalled `go list`, while a local git read already in flight runs to its end.
+//
 // Bound: the narrower command skips only packages the import graph shows unreachable.
 // What the graph cannot see, such as a test reading another package's files, is caught by the full plan verify at the sites that keep it.
 package impactset
