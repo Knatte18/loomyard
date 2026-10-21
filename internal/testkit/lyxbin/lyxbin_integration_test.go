@@ -253,4 +253,10 @@ func TestRun_PassesTheEnvironment(t *testing.T) {
 	if err != nil || code != 0 || out != "from-the-test" {
 		t.Errorf("Run = (%q, %d, %v); want the variable's value, exit code 0 and no error", out, code, err)
 	}
+
+	out, code, err = RunWithEnv(self, t.TempDir(), []string{helperEchoEnv + "=from-extra-env"}, 30*time.Second)
+
+	if err != nil || code != 0 || out != "from-extra-env" {
+		t.Errorf("RunWithEnv = (%q, %d, %v); want the extraEnv value, exit code 0 and no error", out, code, err)
+	}
 }
