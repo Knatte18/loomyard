@@ -694,7 +694,7 @@ func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
 		wantRefused bool
 		wantErr     bool
 	}{
-		{"SeededRefuseRawReachesSettingsAndNotice", "slots: 2\ngo_parallel: 4\nrefuse_raw: [\"go test\"]\n", 6, true, false},
+		{"SeededRefuseRawReachesSettingsAndNotice", "slots: 2\nrefuse_raw: [\"go test\"]\n", 6, true, false},
 		{"AbsentGateConfigRendersNoRefuseRawRow", "", 5, false, false},
 		{"UnparsableGateConfigRefusesBeforeArtifacts", "slots: [\n", 0, false, true},
 	}

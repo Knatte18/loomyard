@@ -370,10 +370,9 @@ func scenarioConfig(t *testing.T, mutate func(cfg map[string]any)) []byte {
 		return tier
 	}
 	cfg := map[string]any{
-		"slots":       2,
-		"go_parallel": 3,
-		"scoper":      "go",
-		"guard_tier":  6,
+		"slots":      2,
+		"scoper":     "go",
+		"guard_tier": 6,
 		"tiers": map[string]any{
 			"tier0": tier(standIn+" {targets} {args}", map[string]any{"parallel": 3, "env": map[string]string{"GOFLAGS": "-trimpath -p={parallel}"}}),
 			"tier1": tier(standIn+" {targets} {args}", map[string]any{"slots": "all"}),
@@ -920,7 +919,7 @@ func TestGateTest_Scenario(t *testing.T) {
 		{
 			name: "a gate.yaml value below 1 names lyx config gate",
 			setup: func(t *testing.T) func() {
-				writeConfig(t, []byte("slots: 0\ngo_parallel: 3\n"))
+				writeConfig(t, []byte("slots: 0\n"))
 				return func() { writeConfig(t, gateConfig) }
 			},
 			wantError: []string{`fix it with "lyx config gate" from the prime`},
@@ -953,7 +952,7 @@ func TestGateTest_Scenario(t *testing.T) {
 		{
 			name: "a hub with no tier names lyx config gate",
 			setup: func(t *testing.T) func() {
-				writeConfig(t, []byte("slots: 2\ngo_parallel: 3\n"))
+				writeConfig(t, []byte("slots: 2\n"))
 				return func() { writeConfig(t, gateConfig) }
 			},
 			wantError: []string{"declares no tier0", `"lyx config gate"`, "reports status: FAILED"},

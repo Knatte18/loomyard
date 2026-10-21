@@ -298,7 +298,7 @@ func runStaleBuildReconcile(t *testing.T, boardBehind, loomDefaultGone bool) {
 		movedUpstream = "moved-upstream.txt"
 	}
 	// The machine file sits under the board dir's never-tracked .lyx, which no reconcile reads or writes.
-	const machineBytes = "slots: 1\ngo_parallel: 8\n"
+	const machineBytes = "slots: 1\ntier_parallel:\n  tier0: 8\n"
 	machineFile := configengine.MachineFile(h.BoardDir(), "gate")
 	if err := os.MkdirAll(filepath.Dir(machineFile), 0o755); err != nil {
 		t.Fatalf("create the board's .lyx config dir: %v", err)
