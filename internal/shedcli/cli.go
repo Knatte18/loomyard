@@ -112,10 +112,15 @@ Example:
 	Goto: shedverbs.VerbText{
 		Use:      "goto [<run-id>]",
 		Audience: clihelp.AudienceOperator,
-		Short:    "move a halted run onto a named row, paused, with a fresh segment budget",
+		Short:    "move a halted run onto a named row, paused, keeping its settled reviews and spent budget",
 		Long: `goto arms the recipe named by the addressed run's own seed and moves a halted
-run onto the row named by --to, leaving it paused. It records a "goto" history
-entry that resets that row's segment bounce budget. It refuses while a driver
+run onto the row named by --to, leaving it paused. It keeps the segment's
+settled verdicts and spent bounce budget, and resets only what the target row
+needs to run: the error, the transient mark, a pending resume label and the
+pause conditions. It records a "goto" history entry and itself as the run's
+pause reason, and is refused onto a review or fix row of a settled review
+segment where the recipe tells that guard. A bounce-budget-exhausted halt is
+lifted only by the recipe's resume, never by goto. It refuses while a driver
 holds the run lock and on a done run, and never re-opens a finished run. The
 run-id positional defaults to "self" when omitted. goto moves a halted run only back, to a row at or before its current row (strictly before when the run is awaiting), and refuses a running run.
 

@@ -162,10 +162,10 @@ A refusal's message ends in a `way forward:` clause naming the next step.
 When a stop report quotes a refusal, name that clause's way forward beside it, so the operator reads a next step rather than a diagnosis alone.
 A refusal whose message carries no such clause is reported verbatim with no way forward added.
 
-Two stops name `lyx shed goto {{.run_id}} --to <producer>` as their way forward:
+One stop names `lyx shed goto {{.run_id}} --to <producer>` as its way forward: a `current_producer` that is no longer in the recipe.
 
-- a `current_producer` that is no longer in the recipe;
-- an exhausted bounce budget.
+An exhausted bounce budget names the `way forward:` clause its halt reason carries, the recipe's resume, which grants the row one more budget.
+A goto keeps the spent budget and grants none, so never report a goto as the way forward for an exhausted budget.
 
 `goto` only moves a halted run back, to a row at or before its current row, so never report a forward goto as a way forward.
 Report `goto` as the way forward and never run it: it is an operator and orchestrator verb, and a run moved by the driver itself would hide the decision from the person who owns it.

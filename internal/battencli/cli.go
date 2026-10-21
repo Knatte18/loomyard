@@ -227,10 +227,13 @@ Example:
 	Goto: shedverbs.VerbText{
 		Use:      "goto [<run-id>]",
 		Audience: clihelp.AudienceOperator,
-		Short:    "move a halted lifecycle onto a named row, paused, with a fresh segment budget",
+		Short:    "move a halted lifecycle onto a named row, paused, keeping its spent budget",
 		Long: `goto moves a halted lifecycle onto the row named by --to and leaves it
-paused. It records a "goto" history entry that resets that row's segment
-bounce budget. It refuses while a driver holds the run lock and on a done run,
+paused. It keeps the segment's spent bounce budget, and resets only what the
+target row needs to run: the error, the transient mark, a pending resume label
+and the pause conditions. It records a "goto" history entry and itself as the
+run's pause reason. A bounce-budget-exhausted halt is lifted only by
+"lyx batten run", never by goto. It refuses while a driver holds the run lock and on a done run,
 and never re-opens a finished run. goto moves a halted run only back, to a row at or before its current row (strictly before when the run is awaiting), and refuses a running run.
 Worktree-Teardown is reachable only once the child run is done.
 
@@ -255,7 +258,7 @@ worktree's own run, run it to a terminal state, and tear down -- as a single
 Shed run over a per-slug status.json. "run" starts or resumes that run for a
 slug; "step" drives it exactly one producer forward; "status" reports its
 current state; "pause" requests a pause at the run's next producer boundary;
-"goto" moves a halted run onto a named row, paused, with a fresh segment budget;
+"goto" moves a halted run onto a named row, paused, keeping its spent budget;
 "lock list" and "lock release" show and free the hub's parent locks.
 
 "cleanup" takes no slug and, as a dry run unless given --apply, removes the
