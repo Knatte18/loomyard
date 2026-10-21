@@ -158,7 +158,7 @@ func TestConfigOverRealHub(t *testing.T) {
 		{name: "task pair is refused setting landing's deploy", module: "landing", set: "deploy=./update-plugins.sh", cwd: codeWorktreePath, wantCode: 1, wantErr: "prime worktree"},
 		{name: "prime under a slug-bearing strand name is refused", module: "board", set: "labels.guard=desc", cwd: primeWorktreePath, strand: "ly:" + slug + ":webster", wantCode: 1, wantErr: "task session"},
 		{name: "prime under the hub orch's slug-free name is allowed", module: "board", set: "labels.guard=desc", cwd: primeWorktreePath, strand: "ly:orch", wantWritten: "guard: desc"},
-		{name: "task pair is refused writing a machine file naming the prime", module: "gate", layer: "machine", set: "go_parallel=8", cwd: codeWorktreePath, wantCode: 1, wantErr: "prime worktree"},
+		{name: "task pair is refused writing a machine file naming the prime", module: "gate", layer: "machine", set: "tier_parallel.tier0=8", cwd: codeWorktreePath, wantCode: 1, wantErr: "prime worktree"},
 	}
 	for _, row := range guardRows {
 		t.Run("hub-wide write guard: "+row.name, func(t *testing.T) {
@@ -204,11 +204,11 @@ func TestConfigOverRealHub(t *testing.T) {
 		headBefore := boardHead(t, boardDir)
 
 		var out bytes.Buffer
-		if code := RunCLIIn(primeWorktreePath, &out, []string{"gate", "--layer", "machine", "--set", "go_parallel=8"}); code != 0 {
-			t.Fatalf("lyx config gate --layer machine --set go_parallel=8 = %d; want 0; output: %s", code, out.String())
+		if code := RunCLIIn(primeWorktreePath, &out, []string{"gate", "--layer", "machine", "--set", "tier_parallel.tier0=8"}); code != 0 {
+			t.Fatalf("lyx config gate --layer machine --set tier_parallel.tier0=8 = %d; want 0; output: %s", code, out.String())
 		}
-		if data, err := os.ReadFile(configengine.MachineFile(boardDir, "gate")); err != nil || string(data) != "go_parallel: 8\n" {
-			t.Errorf("machine gate file = %q, %v; want go_parallel: 8", data, err)
+		if data, err := os.ReadFile(configengine.MachineFile(boardDir, "gate")); err != nil || string(data) != "tier_parallel:\n    tier0: \"8\"\n" {
+			t.Errorf("machine gate file = %q, %v; want tier_parallel.tier0: 8", data, err)
 		}
 		if head := boardHead(t, boardDir); head != headBefore {
 			t.Errorf("_board HEAD = %s after a machine write; want %s", head, headBefore)

@@ -18,7 +18,7 @@ import (
 )
 
 var templateDefaults = Config{
-	Slots: 2, GoParallel: 4, BusyQuitSec: 120,
+	Slots: 2, BusyQuitSec: 120,
 	Gates:  map[string][]int{"card": {0}, "batch": {0}, "round": {0}, "final": {0}, "landing": {0}, "publish": {}},
 	Scoper: "none",
 }
@@ -39,7 +39,16 @@ func hubWith(mutate func(*Config)) Config {
 const fixIt = `; fix it with "lyx config gate" from the prime` + roleClause
 
 // baseKeys is a hub file holding the slot keys alone, so a row states only the keys it tests.
-const baseKeys = "slots: 2\ngo_parallel: 4\n"
+const baseKeys = "slots: 2\n"
+
+// hubTier0 is a hub file declaring tier0, so a machine tier_parallel entry for it takes part in the load.
+const hubTier0 = baseKeys + `tiers: {tier0: {command: x, timeout_min: 5, counter: vstest}}`
+
+// machineBadParallel is a machine file whose tier_parallel entry the load refuses.
+const machineBadParallel = "tier_parallel:\n  tier0: 0\n"
+
+// badParallelKey is the key a refusal of machineBadParallel names.
+const badParallelKey = `gate config key "tier_parallel.tier0": "0"`
 
 // tier0Flow is a tier written whole in flow form with parallel and slots absent.
 const tier0Flow = `tiers:
@@ -71,10 +80,10 @@ func TestLoadConfig(t *testing.T) {
 		wantErr  string
 	}{
 		{"template loads to its defaults", ConfigTemplate(), hubWith(func(*Config) {}), ""},
-		{"zero slots", "slots: 0\ngo_parallel: 4\n", Config{}, `gate config key "slots": 0; want at least 1; fix it with "lyx config gate" from the prime` + roleClause},
-		{"zero go_parallel", "slots: 2\ngo_parallel: 0\n", Config{}, `gate config key "go_parallel": 0; want at least 1; fix it with "lyx config gate" from the prime` + roleClause},
-		{"a retired cli_wait_sec still loads", "slots: 3\ngo_parallel: 4\ncli_wait_sec: 180\n", hubWith(func(c *Config) { c.Slots = 3 }), ""},
-		{"busy_quit_sec zero turns the watchdog off", "slots: 2\ngo_parallel: 4\nbusy_quit_sec: 0\n", hubWith(func(c *Config) { c.BusyQuitSec = 0 }), ""},
+		{"zero slots", "slots: 0\n", Config{}, `gate config key "slots": 0; want at least 1; fix it with "lyx config gate" from the prime` + roleClause},
+		{"a retired go_parallel still loads, whatever its value", "slots: 2\ngo_parallel: 0\n", hubWith(func(*Config) {}), ""},
+		{"a retired cli_wait_sec still loads", "slots: 3\ncli_wait_sec: 180\n", hubWith(func(c *Config) { c.Slots = 3 }), ""},
+		{"busy_quit_sec zero turns the watchdog off", "slots: 2\nbusy_quit_sec: 0\n", hubWith(func(c *Config) { c.BusyQuitSec = 0 }), ""},
 		{
 			"a tier in flow form reads parallel and slots as 1", baseKeys + tier0Flow,
 			hubWith(func(c *Config) {
@@ -109,8 +118,8 @@ func TestLoadConfig(t *testing.T) {
 		{"unknown scoper", baseKeys + "scoper: rust\n", Config{}, `gate config key "scoper": "rust"; want go or none` + fixIt},
 		{"refuse_raw entry with a double space", baseKeys + `refuse_raw: ["go  test"]`, Config{}, `gate config key "refuse_raw": "go  test"; want one or more words of letters, digits, '.', '_' and '-' separated by single spaces` + fixIt},
 		{"refuse_raw entry with a shell character", baseKeys + `refuse_raw: ["go;test"]`, Config{}, `gate config key "refuse_raw": "go;test"; want one or more words of letters, digits, '.', '_' and '-' separated by single spaces` + fixIt},
-		{"absent busy_quit_sec takes the template value", "slots: 2\ngo_parallel: 4\n", hubWith(func(*Config) {}), ""},
-		{"negative busy_quit_sec", "slots: 2\ngo_parallel: 4\nbusy_quit_sec: -1\n", Config{}, `gate config key "busy_quit_sec": -1; want at least 0; fix it with "lyx config gate" from the prime` + roleClause},
+		{"absent busy_quit_sec takes the template value", "slots: 2\n", hubWith(func(*Config) {}), ""},
+		{"negative busy_quit_sec", "slots: 2\nbusy_quit_sec: -1\n", Config{}, `gate config key "busy_quit_sec": -1; want at least 0; fix it with "lyx config gate" from the prime` + roleClause},
 		{"absent file names the one way forward", "", Config{}, `gate config absent; run "lyx fabric reconcile"; a session lyx refuses the verb from reports status: FAILED and the orch runs it`},
 	}
 	for _, tc := range tests {
@@ -132,7 +141,7 @@ func TestLoadConfig(t *testing.T) {
 		})
 	}
 
-	for _, key := range []string{"slots", "go_parallel"} {
+	for _, key := range []string{"slots", "busy_quit_sec"} {
 		t.Run("a local "+key+" is refused naming the local file and the key", func(t *testing.T) {
 			t.Parallel()
 			board, anchor := seedGateConfig(t, ConfigTemplate()), seedGateConfig(t, "")
@@ -181,22 +190,22 @@ func TestLoadConfig(t *testing.T) {
 		wantLocalClause bool
 	}{
 		{
-			name: "a local file the load refuses is named for removal ahead of the role clause", hub: "slots: 2\ngo_parallel: 4\n", machine: "go_parallel: 0\n", local: "slots: 9\n",
+			name: "a local file the load refuses is named for removal ahead of the role clause", hub: hubTier0, machine: machineBadParallel, local: "slots: 9\n",
 			wantInvalid: true, wantLocalClause: true,
 		},
 		{
-			name: "a local file under an anchor with no _lyx is left out of the way forward", hub: "slots: 2\ngo_parallel: 4\n", machine: "go_parallel: 0\n", local: "slots: 9\n", anchorWithoutLyx: true,
-			wantContains: func(hub, machine string) []string { return []string{`gate config key "go_parallel": 0`} },
+			name: "a local file under an anchor with no _lyx is left out of the way forward", hub: hubTier0, machine: machineBadParallel, local: "slots: 9\n", anchorWithoutLyx: true,
+			wantContains: func(hub, machine string) []string { return []string{badParallelKey} },
 			wantMissing:  func(hub, machine string) []string { return []string{"remove", "takes no gate key"} },
 		},
 		{
-			name: "a comment-only local file is left out of the way forward", hub: "slots: 2\ngo_parallel: 4\n", machine: "go_parallel: 0\n", local: "# nothing set\n",
-			wantContains: func(hub, machine string) []string { return []string{`gate config key "go_parallel": 0`} },
+			name: "a comment-only local file is left out of the way forward", hub: hubTier0, machine: machineBadParallel, local: "# nothing set\n",
+			wantContains: func(hub, machine string) []string { return []string{badParallelKey} },
 			wantMissing:  func(hub, machine string) []string { return []string{"takes no gate key"} },
 		},
 		{
-			name: "a machine go_parallel beats the hub's", hub: "slots: 2\ngo_parallel: 4\n", machine: "go_parallel: 8\n",
-			want: hubWith(func(c *Config) { c.GoParallel = 8 }),
+			name: "a machine go_parallel is dropped as retired", hub: baseKeys, machine: "go_parallel: 8\n",
+			want: hubWith(func(*Config) {}),
 		},
 		{
 			name: "a machine tier_parallel entry beats the tier's own parallel", hub: baseKeys + `tiers: {tier0: {command: x, timeout_min: 5, counter: vstest, parallel: 4}}`, machine: "tier_parallel:\n  tier0: 2\n",
@@ -229,29 +238,25 @@ func TestLoadConfig(t *testing.T) {
 			},
 		},
 		{
-			name: "a machine go_parallel below 1 names both files and both ways forward", hub: "slots: 2\ngo_parallel: 4\n", machine: "go_parallel: 0\n",
-			wantErr: func(hub, machine string) string {
-				return `gate config key "go_parallel": 0; want at least 1` + twoFileWayForward(hub, machine)
-			},
-		},
-		{
-			name: "a machine busy_quit_sec is refused as a cross-pair key", hub: "slots: 2\ngo_parallel: 4\n", machine: "busy_quit_sec: 9\n",
+			name: "a machine busy_quit_sec is refused as a cross-pair key", hub: "slots: 2\n", machine: "busy_quit_sec: 9\n",
 			wantInvalid: true,
 			wantErr: func(hub, machine string) string {
 				return "machine config file " + machine + `: key "busy_quit_sec" is cross-pair and cannot be set in a machine override; way forward: remove it from the machine override and set it in the hub file through "lyx config gate" from the prime` + twoFileWayForward(hub, machine)
 			},
 		},
 		{
-			name: "a machine cli_wait_sec is refused as retired", hub: "slots: 2\ngo_parallel: 4\n", machine: "cli_wait_sec: 180\n",
+			name: "a machine cli_wait_sec is refused as retired", hub: "slots: 2\n", machine: "cli_wait_sec: 180\n",
 			wantInvalid:  true,
 			wantContains: func(hub, machine string) []string { return []string{machine, `"cli_wait_sec"`, "retired"} },
 		},
 		{
-			name: "a board-only load never stacks the machine file", hub: "slots: 2\ngo_parallel: 4\n", machine: "go_parallel: 0\n", boardOnly: true,
-			want: hubWith(func(*Config) {}),
+			name: "a board-only load never stacks the machine file", hub: hubTier0, machine: machineBadParallel, boardOnly: true,
+			want: hubWith(func(c *Config) {
+				c.Tiers["tier0"] = Tier{Command: "x", Dir: ".", Parallel: 1, TimeoutMin: 5, Counter: "vstest", Slots: 1}
+			}),
 		},
 		{
-			name: "a machine file beside an absent hub file is still absent", machine: "go_parallel: 8\n",
+			name: "a machine file beside an absent hub file is still absent", machine: "tier_parallel:\n  tier0: 2\n",
 			wantAbsent: true,
 		},
 	}
@@ -347,7 +352,7 @@ func TestTemplateConfigAndLimits(t *testing.T) {
 	if diff := cmp.Diff(templateDefaults, cfg, equateEmpty); diff != "" {
 		t.Fatalf("TemplateConfig() mismatch (-want +got):\n%s", diff)
 	}
-	want := Limits{Slots: 2, GoParallel: 4, BusyQuit: 120 * time.Second}
+	want := Limits{Slots: 2, BusyQuit: 120 * time.Second}
 	if got := cfg.Limits(); got != want {
 		t.Errorf("Limits() = %+v; want %+v", got, want)
 	}

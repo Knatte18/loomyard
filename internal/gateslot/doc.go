@@ -23,7 +23,7 @@
 //
 // # Inheritance
 //
-// Lease.Env returns the environment for a child that runs inside the slot: GOFLAGS gets `-p=<GoParallel> -trimpath` appended and InheritEnv names the held slot's lock path.
+// A slot's environment is Lease.InheritEnv for a tier run and HolderEnv for a non-tier holder.
 // `-trimpath` makes builds from two checkouts byte-identical and their cache keys independent of the checkout's directory,
 // so a fresh worktree hits the build and test cache and a host scanner that holds each unseen executable sees known hashes.
 // It also makes `runtime.Caller` report module-relative file paths, so no code a gate run builds locates the repo root from them alone.
@@ -32,6 +32,10 @@
 // Limits.Tier0Parallel carries `tier0`'s effective parallel, this machine's override included, and is 0 when the hub declares no `tier0`, so a holder reads it from the pool's Limits at its acquire.
 // A nested gate run checks Pool.Inherited on that variable and runs inside its parent's slot without acquiring, whatever slots its own tier asks for.
 //
+// The non-tier holders hold one slot and set their own Go flags through HolderEnv:
+// the card `**Verify:**` runner, the plan gate's type load and `cmd/testtiming`, which holds one slot for its whole run in every mode.
+// Each passes the `-p` value it reads from the pool's Limits at its acquire, so a hub that declares `tier0` bounds them by its parallel and a hub that declares none adds no `-p`.
+//
 // # Prebuilt store
 //
 // Pool.PrebuiltDir is `<Dir>/prebuilt`, where a tagged gate run keeps the `lyx` it built under a name derived from the binary's content, so PrebuiltLyxEnv holds the same value for every run on an unchanged tree.
@@ -39,9 +43,10 @@
 //
 // # Config
 //
-// The hub-wide `gate` config module keeps `slots`, `go_parallel`, `busy_quit_sec` and the tier keys below at `<BoardDir>/_lyx/config/gate.yaml`, seeded from template.yaml by the hub-wide reconcile.
-// `slots`, `go_parallel` and `tier_parallel` take a machine-local override at `<BoardDir>/.lyx/config/gate.machine.yaml`, never reconciled and read at every acquire; every other key stays hub-file only.
+// The hub-wide `gate` config module keeps `slots`, `busy_quit_sec` and the tier keys below at `<BoardDir>/_lyx/config/gate.yaml`, seeded from template.yaml by the hub-wide reconcile.
+// `slots` and `tier_parallel` take a machine-local override at `<BoardDir>/.lyx/config/gate.machine.yaml`, never reconciled and read at every acquire; every other key stays hub-file only.
 // `cli_wait_sec` is a retired key: every load drops it and reconcile prunes it, since the slot wait is bounded by the keep-cache-warm cap with no knob.
+// `go_parallel` is retired in the hub and machine layers alike, in favor of `tier_parallel`, with the same load and prune behavior.
 // LoadConfig reads it strictly and refuses any value below 1 naming its key, except `busy_quit_sec`, which accepts 0 and is refused below it; Config.Limits converts it to the Limits a Pool reads.
 // An absent hub file is ErrConfigAbsent with the way forward `lyx fabric reconcile`; outside every hub, where the dirs tell no board, the file is the worktree's own and the way forward is `lyx config gate`, after creating the worktree's `_lyx` directory.
 // TemplateConfig decodes the template alone, for a run outside every hub.

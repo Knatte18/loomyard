@@ -3,7 +3,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -16,11 +15,11 @@ import (
 )
 
 // prebuildLyx returns the environment every `go test` child of a run takes, base less an inherited gateslot.PrebuiltLyxEnv, and the cleanup that removes what the build left.
-// A tagged run builds `<root>/cmd/lyx` with goBinary in a gate slot it holds for the build alone, capped at the slot's `-p`, and exports the binary through gateslot.PrebuiltLyxEnv;
-// the returned environment carries none of the slot's variables.
-// An untagged run, or a tagged one whose root has no `cmd/lyx`, builds nothing and takes no slot.
+// A tagged run builds `<root>/cmd/lyx` with goBinary under base and the `-p` cap parallel, and exports the binary through gateslot.PrebuiltLyxEnv.
+// The build inherits the slot base names, if any, and acquires none of its own.
+// An untagged run, or a tagged one whose root has no `cmd/lyx`, builds nothing.
 // A build failure returns an error carrying the build's output.
-func prebuildLyx(goBinary, tags, root string, base []string) (env []string, cleanup func(), err error) {
+func prebuildLyx(goBinary, tags, root string, base []string, parallel int) (env []string, cleanup func(), err error) {
 	env = gateslot.StripPrebuilt(base)
 	if tags == "" {
 		return env, func() {}, nil
@@ -28,11 +27,6 @@ func prebuildLyx(goBinary, tags, root string, base []string) (env []string, clea
 	if info, statErr := os.Stat(filepath.Join(root, "cmd", "lyx")); statErr != nil || !info.IsDir() {
 		return env, func() {}, nil
 	}
-	slotEnv, parallel, release, err := takeGateSlot(context.Background(), root, env)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer release()
 
 	dir, err := lyxtemp.MkdirTemp("lyx-prebuilt-")
 	if err != nil {
@@ -40,7 +34,7 @@ func prebuildLyx(goBinary, tags, root string, base []string) (env []string, clea
 	}
 	bin := filepath.Join(dir, "lyx")
 	cmd := exec.Command(goBinary, "build", "-C", root, "-p", strconv.Itoa(parallel), "-o", bin, "./cmd/lyx")
-	cmd.Env = slotEnv
+	cmd.Env = env
 	logger.Info("testtiming: spawning go build of lyx", "binary", goBinary, "root", root, "bin", bin, "parallel", parallel)
 	out, buildErr := cmd.CombinedOutput()
 	logger.Info("testtiming: go build of lyx ended", "error", buildErr)

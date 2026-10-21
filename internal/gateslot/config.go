@@ -22,8 +22,6 @@ const roleClause = "; a session that is not the prime takes none of these steps;
 type Config struct {
 	// Slots is how many gate runs the hub executes at once.
 	Slots int `yaml:"slots"`
-	// GoParallel is the `-p` cap every slotted run gets.
-	GoParallel int `yaml:"go_parallel"`
 	// BusyQuitSec is the continuous seconds a Go test binary may keep a core busy before the watchdog quits it; 0 turns the watchdog off.
 	BusyQuitSec int `yaml:"busy_quit_sec"`
 	// Tiers are the declared test tiers keyed tier0, tier1, and so on.
@@ -44,7 +42,6 @@ type Config struct {
 // A tier_parallel entry is a node because a scalar --set writes it as a string.
 type configFile struct {
 	Slots        int                  `yaml:"slots"`
-	GoParallel   int                  `yaml:"go_parallel"`
 	BusyQuitSec  int                  `yaml:"busy_quit_sec"`
 	Tiers        map[string]tierFile  `yaml:"tiers"`
 	Gates        map[string][]int     `yaml:"gates"`
@@ -64,9 +61,9 @@ func ConfigOpenMaps() []string {
 }
 
 // ConfigSpec returns gate's layered-load spec.
-// `slots`, `go_parallel` and `tier_parallel` take a machine override, and every key stays closed to the local layer.
+// `slots` and `tier_parallel` take a machine override, and every key stays closed to the local layer.
 // `tiers` runs any shell command in a task worktree, so it is executable; the gate lists, the scoper, the guard tier and the refused commands switch off or hollow a guard.
-// `cli_wait_sec` is retired, so a hub file that still sets it loads and reconcile prunes it.
+// `cli_wait_sec` and `go_parallel` are retired, so a hub or machine file that still sets one loads and reconcile prunes it.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:     "gate",
@@ -75,7 +72,6 @@ func ConfigSpec() configengine.Spec {
 		HubWide:  true,
 		Categories: map[string]configengine.Category{
 			"slots":         configengine.CategoryMachine,
-			"go_parallel":   configengine.CategoryMachine,
 			"tier_parallel": configengine.CategoryMachine,
 			"busy_quit_sec": configengine.CategoryCrossPair,
 			"tiers":         configengine.CategoryExecutable,
@@ -86,6 +82,7 @@ func ConfigSpec() configengine.Spec {
 		},
 		RetiredKeys: map[string]configengine.Category{
 			"cli_wait_sec": configengine.CategoryCrossPair,
+			"go_parallel":  configengine.CategoryMachine,
 		},
 	}
 }
@@ -182,13 +179,8 @@ func decodeConfig(data []byte, machineLayerApplies bool) (Config, error) {
 	if err := yaml.Unmarshal(data, &file); err != nil {
 		return Config{}, fmt.Errorf("unmarshal gate config: %w", err)
 	}
-	for _, key := range []struct {
-		name  string
-		value int
-	}{{"slots", file.Slots}, {"go_parallel", file.GoParallel}} {
-		if key.value < 1 {
-			return Config{}, fmt.Errorf("gate config key %q: %d; want at least 1", key.name, key.value)
-		}
+	if file.Slots < 1 {
+		return Config{}, fmt.Errorf("gate config key %q: %d; want at least 1", "slots", file.Slots)
 	}
 	if file.BusyQuitSec < 0 {
 		return Config{}, fmt.Errorf("gate config key %q: %d; want at least 0", "busy_quit_sec", file.BusyQuitSec)
@@ -209,7 +201,6 @@ func decodeConfig(data []byte, machineLayerApplies bool) (Config, error) {
 	}
 	return Config{
 		Slots:        file.Slots,
-		GoParallel:   file.GoParallel,
 		BusyQuitSec:  file.BusyQuitSec,
 		Tiers:        tiers,
 		Gates:        file.Gates,
@@ -225,7 +216,6 @@ func decodeConfig(data []byte, machineLayerApplies bool) (Config, error) {
 func (c Config) Limits() Limits {
 	return Limits{
 		Slots:         c.Slots,
-		GoParallel:    c.GoParallel,
 		Tier0Parallel: c.Tiers[tierKey(0)].Parallel,
 		BusyQuit:      time.Duration(c.BusyQuitSec) * time.Second,
 	}

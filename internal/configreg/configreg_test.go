@@ -115,7 +115,7 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 			}
 			wantMachineKeys := []string{}
 			if m.Name == "gate" {
-				wantMachineKeys = []string{"go_parallel", "slots", "tier_parallel"}
+				wantMachineKeys = []string{"slots", "tier_parallel"}
 			}
 			if got := configengine.MachineKeys(spec); !slices.Equal(got, wantMachineKeys) {
 				t.Errorf("%s MachineKeys = %v; want %v, so no stray machine file is read by a registered loader", m.Name, got, wantMachineKeys)

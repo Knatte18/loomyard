@@ -40,5 +40,5 @@ func holdSlotUntilKilled(dir string) int {
 
 // singleSlotLimits is the fixed one-slot limit the tests share.
 func singleSlotLimits() (Limits, error) {
-	return Limits{Slots: 1, GoParallel: 4}, nil
+	return Limits{Slots: 1}, nil
 }

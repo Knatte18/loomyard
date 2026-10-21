@@ -58,8 +58,6 @@ const (
 type Limits struct {
 	// Slots is the number of gate runs that may hold a slot at once.
 	Slots int
-	// GoParallel is the `-p` cap each slot holder's go commands run under.
-	GoParallel int
 	// Tier0Parallel is `tier0`'s effective parallel, this machine's override included, that a non-tier slot holder's go commands run under; 0 when the hub declares no `tier0`.
 	Tier0Parallel int
 	// BusyQuit is the continuous CPU-busy window after which `lyx gate test` quits a Go test binary; 0 means the watchdog is off.
@@ -92,8 +90,7 @@ type Pool struct {
 
 // Lease is the slots one holder holds, in ascending slot order.
 type Lease struct {
-	slots      []heldSlot
-	goParallel int
+	slots []heldSlot
 }
 
 // heldSlot is one slot a Lease holds: its lock and its holder record.
@@ -263,7 +260,6 @@ func (p *Pool) takeSlotsInOrder(ctx context.Context, h Holder, count int, poll t
 		if err != nil {
 			return nil, errors.Join(err, lease.Release())
 		}
-		lease.goParallel = limits.GoParallel
 		target := count
 		if target < 1 || target > limits.Slots {
 			target = limits.Slots
@@ -292,7 +288,7 @@ func (p *Pool) tryAcquireAny(limits Limits, h Holder) (*Lease, error) {
 			return nil, err
 		}
 		if acquired {
-			return &Lease{slots: []heldSlot{slot}, goParallel: limits.GoParallel}, nil
+			return &Lease{slots: []heldSlot{slot}}, nil
 		}
 	}
 	return nil, nil
@@ -404,24 +400,6 @@ func (l *Lease) Release() error {
 	return errors.Join(errs...)
 }
 
-// Env returns a copy of base for a child that runs inside this lease.
-// GOFLAGS carries the base's value with GoFlags' flags appended, and InheritEnv names the first held slot's lock path.
-func (l *Lease) Env(base []string) []string {
-	existingFlags := ""
-	env := make([]string, 0, len(base)+2)
-	for _, entry := range base {
-		key, value, _ := strings.Cut(entry, "=")
-		switch {
-		case strings.EqualFold(key, goFlagsEnvName):
-			existingFlags = value
-		case key == InheritEnv:
-		default:
-			env = append(env, entry)
-		}
-	}
-	return append(env, goFlagsEnvName+"="+GoFlags(existingFlags, l.goParallel), InheritEnv+"="+l.slots[0].lockPath)
-}
-
 // HolderEnv returns a copy of base for a non-tier slot holder's child.
 // GOFLAGS carries the base's value with `-trimpath` appended, and `-p=<tier0Parallel>` before it when tier0Parallel is above 0; a tier0Parallel of 0 adds no `-p`.
 // A non-nil lease also sets InheritEnv to its first slot's lock path, so a gate run inside the child runs without acquiring.
@@ -462,15 +440,4 @@ func (l *Lease) InheritEnv(base []string) []string {
 		}
 	}
 	return append(env, InheritEnv+"="+l.slots[0].lockPath)
-}
-
-// GoFlags appends `-p=<goParallel> -trimpath` to an existing GOFLAGS value, space-separated, or returns the two alone when existing is empty.
-// `-trimpath` keeps the checkout's directory out of the build and test cache keys and out of the binaries,
-// so a fresh worktree reuses the cache and links test binaries byte-identical to another checkout's.
-func GoFlags(existing string, goParallel int) string {
-	slotFlags := "-p=" + strconv.Itoa(goParallel) + " -trimpath"
-	if existing == "" {
-		return slotFlags
-	}
-	return existing + " " + slotFlags
 }

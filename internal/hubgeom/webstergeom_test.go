@@ -115,16 +115,16 @@ func TestWebsterGeometry(t *testing.T) {
 			if err := os.MkdirAll(filepath.Dir(gateConfig), 0o755); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(gateConfig, []byte("slots: 0\ngo_parallel: 5\n"), 0o644); err != nil {
+			if err := os.WriteFile(gateConfig, []byte("slots: 0\n"), 0o644); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := got.GateSlots.Limits(); err == nil || !strings.Contains(err.Error(), gateConfig) || !strings.Contains(err.Error(), `fix it with "lyx config gate" from the prime`) {
 				t.Errorf("GateSlots.Limits() over slots: 0 = %v; want an error naming %q and lyx config gate", err, gateConfig)
 			}
-			if err := os.WriteFile(gateConfig, []byte("slots: 3\ngo_parallel: 5\nbusy_quit_sec: 9\n"), 0o644); err != nil {
+			if err := os.WriteFile(gateConfig, []byte("slots: 3\nbusy_quit_sec: 9\ntiers: {tier0: {command: x, timeout_min: 5, counter: vstest, parallel: 5}}\n"), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			wantLimits := gateslot.Limits{Slots: 3, GoParallel: 5, BusyQuit: 9 * time.Second}
+			wantLimits := gateslot.Limits{Slots: 3, Tier0Parallel: 5, BusyQuit: 9 * time.Second}
 			if limits, err := got.GateSlots.Limits(); err != nil || limits != wantLimits {
 				t.Errorf("GateSlots.Limits() = (%+v, %v); want the board dir's gate.yaml as %+v", limits, err, wantLimits)
 			}
@@ -134,34 +134,31 @@ func TestWebsterGeometry(t *testing.T) {
 			if err := os.MkdirAll(filepath.Dir(machineConfig), 0o755); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(machineConfig, []byte("go_parallel: 0\n"), 0o644); err != nil {
+			if err := os.WriteFile(machineConfig, []byte("tier_parallel: {tier0: 0}\n"), 0o644); err != nil {
 				t.Fatal(err)
 			}
 			wantNamed := "load " + gateConfig + " and " + machineConfig
 			if _, err := got.GateSlots.Limits(); err == nil || !strings.Contains(err.Error(), wantNamed) {
-				t.Errorf("GateSlots.Limits() over a machine go_parallel: 0 = %v; want an error holding %q", err, wantNamed)
+				t.Errorf("GateSlots.Limits() over a machine tier_parallel.tier0: 0 = %v; want an error holding %q", err, wantNamed)
 			}
-			if err := os.WriteFile(machineConfig, []byte("slots: 1\ngo_parallel: 8\n"), 0o644); err != nil {
+			if err := os.WriteFile(machineConfig, []byte("slots: 1\ntier_parallel: {tier0: 8}\n"), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			wantLimits = gateslot.Limits{Slots: 1, GoParallel: 8, BusyQuit: 9 * time.Second}
+			wantLimits = gateslot.Limits{Slots: 1, Tier0Parallel: 8, BusyQuit: 9 * time.Second}
 			if limits, err := got.GateSlots.Limits(); err != nil || limits != wantLimits {
 				t.Errorf("GateSlots.Limits() with a machine override = (%+v, %v); want %+v", limits, err, wantLimits)
 			}
 			if got.GateConfig == nil {
 				t.Fatal("WebsterGeometry(l).GateConfig = nil; want the hub's gate config reader")
 			}
-			if cfg, err := got.GateConfig(); err != nil || cfg.Slots != 1 || cfg.GoParallel != 8 {
-				t.Errorf("GateConfig() = (slots %d, go_parallel %d, %v); want the hub file under this machine's override, slots 1 and go_parallel 8", cfg.Slots, cfg.GoParallel, err)
+			if cfg, err := got.GateConfig(); err != nil || cfg.Slots != 1 || cfg.TierParallel["tier0"] != 8 {
+				t.Errorf("GateConfig() = (slots %d, tier_parallel %v, %v); want the hub file under this machine's override, slots 1 and tier0 parallel 8", cfg.Slots, cfg.TierParallel, err)
 			}
 			lease, err := got.GateSlots.Acquire(context.Background(), gateslot.Holder{Worktree: worktreeName, Site: "webstergeom_test"})
 			if err != nil {
 				t.Fatalf("GateSlots.Acquire() = %v; want a lease", err)
 			}
 			t.Cleanup(func() { _ = lease.Release() })
-			if env := strings.Join(lease.Env(nil), "\n"); !strings.Contains(env, "-p=8") {
-				t.Errorf("lease.Env(nil) = %q; want GOFLAGS carrying -p=8", env)
-			}
 		})
 	}
 }

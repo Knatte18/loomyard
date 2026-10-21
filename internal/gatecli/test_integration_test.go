@@ -926,13 +926,13 @@ func TestGateTest_Scenario(t *testing.T) {
 			wantError: []string{`fix it with "lyx config gate" from the prime`},
 		},
 		{
-			name: "a machine go_parallel below 1 names both files and both ways forward",
+			name: "a machine tier_parallel below 1 names both files and both ways forward",
 			setup: func(t *testing.T) func() {
 				machinePath := configengine.MachineFile(h.BoardDir(), "gate")
 				if err := os.MkdirAll(filepath.Dir(machinePath), 0o755); err != nil {
 					t.Fatal(err)
 				}
-				if err := os.WriteFile(machinePath, []byte("go_parallel: 0\n"), 0o644); err != nil {
+				if err := os.WriteFile(machinePath, []byte("tier_parallel:\n  tier0: 0\n"), 0o644); err != nil {
 					t.Fatal(err)
 				}
 				return func() {

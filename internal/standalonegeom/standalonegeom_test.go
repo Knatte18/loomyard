@@ -266,10 +266,10 @@ func TestWebsterGeometry(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(configFile), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(configFile, []byte("slots: 4\ngo_parallel: 2\n"), 0o644); err != nil {
+	if err := os.WriteFile(configFile, []byte("slots: 4\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if cfg, err := withConfig.GateConfig(); err != nil || cfg.Slots != 4 || cfg.GoParallel != 2 {
-		t.Errorf("GateConfig() = (slots %d, go_parallel %d, %v); want the worktree's file, slots 4 and go_parallel 2", cfg.Slots, cfg.GoParallel, err)
+	if cfg, err := withConfig.GateConfig(); err != nil || cfg.Slots != 4 {
+		t.Errorf("GateConfig() = (slots %d, %v); want the worktree's file, slots 4", cfg.Slots, err)
 	}
 }

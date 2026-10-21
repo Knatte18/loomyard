@@ -24,7 +24,7 @@ func newPool(t *testing.T, limits func() (Limits, error)) *Pool {
 }
 
 func fixedLimits(slots int) func() (Limits, error) {
-	return func() (Limits, error) { return Limits{Slots: slots, GoParallel: 3}, nil }
+	return func() (Limits, error) { return Limits{Slots: slots}, nil }
 }
 
 func shortContext(t *testing.T) context.Context {
@@ -137,7 +137,7 @@ func TestAcquire_ReadsLimitsAtEveryAcquire(t *testing.T) {
 	t.Parallel()
 
 	slots := 2
-	pool := newPool(t, func() (Limits, error) { return Limits{Slots: slots, GoParallel: 1}, nil })
+	pool := newPool(t, func() (Limits, error) { return Limits{Slots: slots}, nil })
 	first, err := pool.Acquire(shortContext(t), Holder{Site: "first"})
 	if err != nil {
 		t.Fatal(err)
@@ -484,27 +484,6 @@ func TestLeaseEnv(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = lease.Release() })
 	slotPath := filepath.Join(pool.Dir, "slot-1.lock")
-
-	tests := []struct {
-		name string
-		base []string
-		want []string
-	}{
-		{"no GOFLAGS", []string{"A=1"}, []string{"A=1", "GOFLAGS=-p=3 -trimpath", "LYX_GATE_SLOT=" + slotPath}},
-		{"existing GOFLAGS gets the cap and trimpath appended", []string{"GOFLAGS=-count=1", "A=1"}, []string{"A=1", "GOFLAGS=-count=1 -p=3 -trimpath", "LYX_GATE_SLOT=" + slotPath}},
-		{"an older slot variable is replaced", []string{"LYX_GATE_SLOT=old", "A=1"}, []string{"A=1", "GOFLAGS=-p=3 -trimpath", "LYX_GATE_SLOT=" + slotPath}},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			base := slices.Clone(tc.base)
-			if got := lease.Env(base); !slices.Equal(got, tc.want) {
-				t.Errorf("Env(%v) = %v; want %v", tc.base, got, tc.want)
-			}
-			if !slices.Equal(base, tc.base) {
-				t.Errorf("Env changed its base to %v; want it left as %v", base, tc.base)
-			}
-		})
-	}
 
 	holderTests := []struct {
 		name          string
