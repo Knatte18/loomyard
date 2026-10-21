@@ -9,7 +9,7 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-lyxdirs-single-declarer` — Naming `_lyx` or `.lyx` in a path: only `internal/lyxdirs` declares them, bar one variable block atop a `tools/` script.
 - `PATTERN-lyx-temp-root` — Creating a temp file or dir: under `internal/lyxtemp`'s run dir, never `os.TempDir()`. (test) — [background](pattern/PATTERN-lyx-temp-root.md)
 - `PATTERN-durable-vs-ephemeral-state` — Adding a file: tracked under `_lyx`, never-tracked under `.lyx`, same subpath; nothing a run needs lives only under `.lyx`. — [background](pattern/PATTERN-durable-vs-ephemeral-state.md)
-- `PATTERN-hub-containment` — Linking hub-level containers or writing the hub workspace file: from the hub only, never into a worktree. — [background](pattern/PATTERN-hub-containment.md)
+- `PATTERN-hub-containment` — Linking hub-level containers or writing the hub workspace file: from the hub only. — [background](pattern/PATTERN-hub-containment.md)
 - `PATTERN-hub-wide-config` — A hub-level config module: `HubWide` in `configreg`, its file on the board only, its machine override beside it. — [background](pattern/PATTERN-hub-wide-config.md)
 - `PATTERN-hub-suffix` — Touching hub naming: `-LYXHUB` is the sole hub container suffix; no code recognises retired `-HUB`. (test) — [background](pattern/PATTERN-hub-suffix.md)
 
@@ -35,7 +35,7 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-batten-bookend` — Creating or destroying a task worktree: its producer never runs inside it. — [background](pattern/PATTERN-batten-bookend.md)
 - `PATTERN-github-auth` — Calling GitHub: auth only via `internal/githubclient`; no other production package runs `gh`.
 - `PATTERN-agent-filed-issues` — Filing a GitHub issue: only `lyx selfreport create` calls `selfreportengine.CreateIssue` in production. (test)
-- `PATTERN-hub-store-gc` — Hub stores carry `gc.auto=0` and `maintenance.auto=false`: only `fabricengine/housekeeping.go` sets them or runs `gc`. — [background](pattern/PATTERN-hub-store-gc.md)
+- `PATTERN-hub-store-gc` — Hub stores run no automatic gc or maintenance: only `fabricengine/housekeeping.go` sets that or runs `gc`. — [background](pattern/PATTERN-hub-store-gc.md)
 - `PATTERN-gogit-read-helper` — Reading via go-git in `internal/gitrepo`: only via `readGoGit`, sole caller of `goGit()`. (test) — [background](pattern/PATTERN-gogit-read-helper.md)
 - `PATTERN-gitrepo-client-boundary` — Git in `internal/gitrepo`: local reads via go-git and `dotgit`, the rest via `gitexec`. (test) — [background](pattern/PATTERN-gitrepo-client-boundary.md)
 - `PATTERN-gitexec-checked-call` — Running git: `gitexec.Run`/`runChecked`; raw `RunGit`/`r.run` only at pinned `//gitexec:raw` sites.
