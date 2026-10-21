@@ -97,7 +97,9 @@ func TestArchiveRunDir(t *testing.T) {
 	tests := []struct {
 		name string
 		// files are created in the run dir before the first archive.
-		files        []string
+		files []string
+		// records are the Bouncer's record files created in the run dir before the first archive, by name and content.
+		records      map[string]string
 		runDirAbsent bool
 		archives     int
 		wantErr      bool
@@ -114,6 +116,23 @@ func TestArchiveRunDir(t *testing.T) {
 			name:         "a collision takes a numeric suffix",
 			archives:     2,
 			wantSiblings: map[string]int{"run-20260816T151326Z": 0, "run-20260816T151326Z-1": 0},
+		},
+		{
+			name:  "the three record files are carried into the recreated run dir",
+			files: []string{"round-1-review.md"},
+			records: map[string]string{
+				settleRecordFile:     "settle",
+				settlePatchFile:      "patch",
+				generationRecordFile: "generation",
+			},
+			archives:     1,
+			wantSiblings: map[string]int{"run-20260816T151326Z": 4},
+		},
+		{
+			name:         "a run dir holding only the settle record carries that one file",
+			records:      map[string]string{settleRecordFile: "settle"},
+			archives:     1,
+			wantSiblings: map[string]int{"run-20260816T151326Z": 1},
 		},
 		{
 			name:         "an absent run dir is an error",
@@ -134,6 +153,11 @@ func TestArchiveRunDir(t *testing.T) {
 			}
 			for _, name := range tt.files {
 				if err := os.WriteFile(filepath.Join(runDir, name), []byte("content"), 0o644); err != nil {
+					t.Fatalf("WriteFile: %v", err)
+				}
+			}
+			for name, content := range tt.records {
+				if err := os.WriteFile(filepath.Join(runDir, name), []byte(content), 0o644); err != nil {
 					t.Fatalf("WriteFile: %v", err)
 				}
 			}
@@ -167,8 +191,20 @@ func TestArchiveRunDir(t *testing.T) {
 			if err != nil {
 				t.Fatalf("expected recreated run dir %s to exist: %v", runDir, err)
 			}
-			if len(freshEntries) != 0 {
-				t.Errorf("recreated run dir %s has %d entries; want 0", runDir, len(freshEntries))
+			var freshNames []string
+			for _, entry := range freshEntries {
+				if filepath.Ext(entry.Name()) != ".lock" {
+					freshNames = append(freshNames, entry.Name())
+				}
+			}
+			if len(freshNames) != len(tt.records) {
+				t.Errorf("recreated run dir %s holds %v; want only the %d carried records", runDir, freshNames, len(tt.records))
+			}
+			for name, content := range tt.records {
+				got, err := os.ReadFile(filepath.Join(runDir, name))
+				if err != nil || string(got) != content {
+					t.Errorf("carried record %s = %q, %v; want %q", name, got, err, content)
+				}
 			}
 		})
 	}
