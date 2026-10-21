@@ -126,6 +126,8 @@ Shortcuts, declared in internal/shortcutcli's embedded file, are listed under th
 				logger.Arm()
 				// The pause gate holds this process's network git and GitHub calls while a pause covers it.
 				tendercli.InstallNetworkGate(cmd.Context(), pauseSlugOverride(cmd))
+				// A push origin refuses reaches the prime orch as creel mail from FABRIC, whichever process pushed.
+				orchcli.InstallPushNotifier(cmd.Context())
 			}
 			// Seeding must never block a command from running, regardless of its outcome.
 			seedStencils(cmd)
