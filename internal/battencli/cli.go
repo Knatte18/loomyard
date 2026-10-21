@@ -105,6 +105,8 @@ type battenCLI struct {
 	terminalLauncher func() (string, error)
 	// openTerminalFlag carries "run"'s hidden --open-terminal value, which --window passes to the run it starts and which forces the Open-Window row's switch on.
 	openTerminalFlag bool
+	// reconcile runs the run-scope origin reconcile of a slug the pre-run resumes; Command wires it to reconcileRun, and nil reads as no reconcile, which only a hand-populated receiver has.
+	reconcile func(slug string) (fabricengine.OriginReport, error)
 }
 
 // windowNamePrefix starts the name of the window "lyx batten run <slug> --window" opens, ahead of the slug.
@@ -242,6 +244,7 @@ Example:
 // Command returns the cobra command tree for the batten module.
 func Command() *cobra.Command {
 	c := &battenCLI{spec: &shedverbs.Spec{}}
+	c.reconcile = func(slug string) (fabricengine.OriginReport, error) { return reconcileRun(c.location, slug) }
 
 	parent := &cobra.Command{
 		Use:   "batten",
