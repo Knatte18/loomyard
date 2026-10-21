@@ -3,8 +3,9 @@
 // It holds everything from the selfreport module that does not belong to the cobra command layer:
 // the NewGitHubClient seam, CreateIssue and the helpers every call shares.
 
-// Package selfreportengine provides the domain kernel for filing GitHub issues, and for listing, fetching, commenting on and closing them for board intake, via githubclient's authenticated go-github client.
-// It exposes CreateIssue for filing, the calls in inbox.go for intake, and NewGitHubClient as a swappable factory seam for testing, keeping targetRepo unexported.
+// Package selfreportengine provides the domain kernel for filing LoomYard bugs and enhancements as GitHub issues on LoomYard's own repository, via githubclient's authenticated go-github client.
+// It files to that repository whatever hub lyx runs in, and only there: an issue about another repository is filed to that repository's own issues, never through selfreport.
+// It exposes CreateIssue and NewGitHubClient as a swappable factory seam for testing, keeping targetRepo unexported.
 package selfreportengine
 
 import (
@@ -20,7 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// targetRepo is the hardcoded "owner/repo" GitHub repository that all issues are filed against and that the intake calls in inbox.go read from, so it serves both directions, filing and intake.
+// targetRepo is the hardcoded "owner/repo" GitHub repository, LoomYard's own, that all issues are filed against.
 // It is a constant so that tests can verify the exact owner and repo arguments passed to the Issues calls without any config-file or environment-variable indirection.
 // githubclient resolves neither owner nor repo itself -- repoClient splits this constant and every call passes both as parameters.
 const targetRepo = "Knatte18/loomyard"
@@ -30,7 +31,6 @@ const targetRepo = "Knatte18/loomyard"
 const defaultLabel = "bug"
 
 // callTimeout bounds each request this package makes to GitHub, including a 401-triggered credential re-resolution and replay performed internally by githubclient's transport.
-// A call that spans several requests derives a fresh deadline per request, so a pause hold on one request moves only that request's deadline.
 // It matches the 30s budget githubclient's own transport applies from the end of a pause hold, so no call relies solely on a caller-supplied context.Background() to keep an autonomous run from hanging.
 const callTimeout = 30 * time.Second
 

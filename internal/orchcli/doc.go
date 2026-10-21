@@ -44,7 +44,7 @@
 //     Never merge the parent into a task while webster is mid-batch, because record-batch then refuses the batch; a merge-in is safe only once every batch is recorded, for example at a blocked integration verify.
 //  5. Batten's Land row lands the run: it pulls the prime, runs the hub's landing `deploy` command and prunes the board, and Worktree-Teardown then removes the pair.
 //     The orchestrator acts on a Land or teardown failure notice and on a ready-task notice, starting the tasks it names, and deploys by hand with `update-plugins.sh` on a ready notice or at its next wake after an approval while the hub's landing `deploy` key is empty.
-//     It reads the drive report only when the run had trouble (friction findings arrive as issues through intake) and records findings.
+//     It reads the drive report only when the run had trouble (friction findings are filed as LoomYard issues, which reach the board through intake when the operator asks for it) and records findings.
 //
 // # Priorities
 //

@@ -1,4 +1,4 @@
-// intake_test.go — unit tests for importing and folding inbox issues (intake.go).
+// intake_test.go — unit tests for importing and folding GitHub issues (intake.go).
 //
 // Every test runs a Board over a temp dir with a configured vocabulary and SkipGit;
 // a refused or no-op import must leave board.json byte-identical.

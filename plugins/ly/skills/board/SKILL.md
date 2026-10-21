@@ -1,6 +1,6 @@
 ---
 name: board
-description: Read or write the board — create or promote an entry, find or list entries, prune done ones, take in GitHub inbox issues — always through `lyx board`, never by touching `_board/*.json`.
+description: Read or write the board — create or promote an entry, find or list entries, prune done ones, take in the hub repository's GitHub issues — always through `lyx board`, never by touching `_board/*.json`.
 ---
 
 # board
@@ -117,8 +117,10 @@ The refusal names the way to unlock an abandoned run's entry.
 
 ## Intake
 
-GitHub is the inbox that `selfreport` files issues to, and the board is the one list.
-Take each open inbox issue onto the board, then close it:
+Intake takes the GitHub issues of the hub's own repository onto the board, the one list: the repository the hub's recorded binding names, else its origin remote.
+It never reads the repository `selfreport` files LoomYard bugs to, unless that is the hub's own.
+Run intake only when the operator asks for it.
+Take each open issue onto the board, then close it:
 
 ```
 lyx board intake list
