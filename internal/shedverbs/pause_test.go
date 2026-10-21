@@ -67,6 +67,18 @@ func TestPauseCmd_SetsPauseRequested(t *testing.T) {
 		t.Errorf("PauseRequested, PauseRequestedBy = %v, %q; want true, operator", st.PauseRequested, st.PauseRequestedBy)
 	}
 
+	_, code = execEnvelope(t, pauseCmd(pauseTexts(), spec), nil)
+	if code != 0 {
+		t.Fatalf("exit code with a repeat bare pause = %d; want 0", code)
+	}
+	st, _, err = state.ReadJSONNoMkdir[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
+	if err != nil {
+		t.Fatalf("re-read status after a repeat bare pause: %v", err)
+	}
+	if st.PauseRequestedBy != "operator" {
+		t.Errorf("PauseRequestedBy = %q after a repeat bare pause; want the earlier request's operator", st.PauseRequestedBy)
+	}
+
 	// A bare --by under a refusing BarePause hook writes nothing: the hook still refuses first.
 	refusing := newTestPaths(t)
 	seedStatus(t, refusing, "Only")

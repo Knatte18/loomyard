@@ -122,8 +122,11 @@ func pauseCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 					if spec.Hooks.BarePause != nil {
 						return cur, spec.Hooks.BarePause(cur)
 					}
+					// A repeat request without --by keeps the label the earlier request recorded.
+					if flags.by != "" || !cur.PauseRequested {
+						cur.PauseRequestedBy = flags.by
+					}
 					cur.PauseRequested = true
-					cur.PauseRequestedBy = flags.by
 					return cur, nil
 				}
 				applied, added, err := applyPauseConditions(cur, flags, spec.Routing.Producers)
