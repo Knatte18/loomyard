@@ -20,7 +20,7 @@ This prompt is deliberately full, not thin, because it is your whole starting po
 
 Before implementing your card(s), do the following, in order:
 
-1. Read `_lyx/plan/00-overview.md` in full: the task framing, the Card Index, `## Shared Decisions`, `## Rename mechanic`, and `## verify:`.
+1. Read `_lyx/plan/00-overview.md` in full: the task framing, the Card Index, `## Shared Decisions`, and `## Rename mechanic`.
 2. Read the `pattern/` background files the constraints section above points at, when that section is present, choosing those that touch what your card(s) will change.
 
 The code your card(s) need you read per card, as the card steps below say, not as an up-front orientation step.

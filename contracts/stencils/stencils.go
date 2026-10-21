@@ -343,21 +343,6 @@ var WebsterFragmentPackUnresolved []byte
 //go:embed webster/webster-fragment-pack-empty.md
 var WebsterFragmentPackEmpty []byte
 
-// WebsterFragmentGuardScanError is webster's shipped-default line for a card gate list whose `//lyx:guard` scan failed, saying no card gate runs the guard tests.
-//
-//go:embed webster/webster-fragment-guard-scan-error.md
-var WebsterFragmentGuardScanError []byte
-
-// WebsterFragmentGuardTooLong is webster's shipped-default line for a card gate list whose guard step was over the command limit, saying the affected card gates run without it.
-//
-//go:embed webster/webster-fragment-guard-too-long.md
-var WebsterFragmentGuardTooLong []byte
-
-// WebsterFragmentGuardFix is webster's shipped-default line pointing a failed guard scan at the card whose package holds the failing file.
-//
-//go:embed webster/webster-fragment-guard-fix.md
-var WebsterFragmentGuardFix []byte
-
 // OrchTemplateStart is orch's shipped-default fresh-launch prompt.
 //
 //go:embed orch/orch-template-start.md
@@ -611,9 +596,6 @@ var entries = []registryEntry{
 	{"webster-fragment-locate-pack-card", &WebsterFragmentLocatePackCard},
 	{"webster-fragment-pack-start-card", &WebsterFragmentPackStartCard},
 	{"webster-fragment-card-pack-allowed", &WebsterFragmentCardPackAllowed},
-	{"webster-fragment-guard-scan-error", &WebsterFragmentGuardScanError},
-	{"webster-fragment-guard-too-long", &WebsterFragmentGuardTooLong},
-	{"webster-fragment-guard-fix", &WebsterFragmentGuardFix},
 	{"orch-template-start", &OrchTemplateStart},
 	{"orch-template-handoff", &OrchTemplateHandoff},
 	{"orch-template-resume", &OrchTemplateResume},

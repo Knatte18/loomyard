@@ -303,14 +303,14 @@ The Webster-Burler-Fix round gate instead runs a derived impacted-set command be
 The three tiers match this repo's own test-tier discipline — `internal/planparser`'s existing `Verify` fields are the V1 precedent this generalizes, not three tiers invented for this format:
 
 - **Tier 1 (per card, automatic, no author action).**
-  Implemented as the Go-derived per-card gate: `lyx gate test` over the card's own package directories, one step per module, then one guard step over the root module's `//lyx:guard` tests, then the comment line-break lint and the PATTERN headroom lint.
-  A package directory inside a nested module is tested inside that module with `lyx gate test -C <module>` and module-relative paths.
+  Implemented as the Go-rendered per-card gate: the hub's `card` gate call, `lyx gate test --wait --tier <n>... --card <card id>`, then the comment line-break lint and the PATTERN headroom lint.
+  The gate call computes the card's packages per module from the plan and runs the guard step over the `//lyx:guard` tests itself, so the prompt names no package.
   The card gate does not build or test the rest of the module; a card that breaks a package outside its targets passes it unless the break is in a `//lyx:guard` test, and the batch gate or the plan-level verify catches that.
   Untagged tests are fast by construction, per the Test Tier Purity Invariant's own discipline — no cwd resolution, no process spawn.
   Fully mechanical — no author enumerates a file list, which is what made V1-style `verify:` lists grow long in practice.
 - **Tier 2 (per batch for its own packages, plan-level for the whole suite).**
   Real git-against-remote tests, built via `internal/hubforge` with real repository creation and a real clone, are genuinely slower.
-  The batch gate runs `lyx gate test --tags integration` over the union of the batch's package directories, once per batch, by the fork after its last card; Go never runs it, and the plan-level verify catches a fork that skips it;
+  The batch gate is the hub's `batch` gate call, `lyx gate test --wait --tier <n>...` with one `--card <card id>` per card of the batch, run once per batch by the fork after its last card; Go never runs it, and the plan-level verify catches a fork that skips it;
   the plan-level `## verify:` stays the once-per-plan run, now a must-pass gate on Merriam that sends a failure back to Merriam to fix.
   The Concurrency section's post-merge backstop assumes the same gate.
 - **Tier 3 (rare, explicit only, never automatic).**

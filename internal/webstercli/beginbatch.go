@@ -15,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -30,7 +31,12 @@ const fabricSyncWayForward = "way forward: the state is saved locally; `lyx fabr
 const rebaselineWayForward = "way forward: re-run the same verb; the re-baseline is recomputed from the plan on disk"
 
 // beginDeps builds the websterengine.BeginDeps for this CLI's current wiring over the loaded plan, execution batches and run state.
-func (c *websterCLI) beginDeps(plan *planparser.Plan, batches []batcher.Batch, st *websterengine.State) websterengine.BeginDeps {
+// It loads the gate config through the told geometry and refuses, before the caller mutates anything, a config whose `card` or `batch` gate the config cannot list.
+func (c *websterCLI) beginDeps(plan *planparser.Plan, batches []batcher.Batch, st *websterengine.State) (websterengine.BeginDeps, error) {
+	gate, err := c.loadGateConfig()
+	if err != nil {
+		return websterengine.BeginDeps{}, err
+	}
 	return websterengine.BeginDeps{
 		Plan:        plan,
 		Batches:     batches,
@@ -41,7 +47,23 @@ func (c *websterCLI) beginDeps(plan *planparser.Plan, batches []batcher.Batch, s
 		FrictionDir: c.frictionDir,
 		VerifyTiers: c.verifyTiers,
 		RenameTools: c.renameTools,
+		Gate:        gate,
+	}, nil
+}
+
+// loadGateConfig reads the gate config through the told geometry and refuses one whose `card` or `batch` list the prompts cannot render.
+// The refusal carries the config's way forward and role clause.
+func (c *websterCLI) loadGateConfig() (gateslot.Config, error) {
+	gate, err := c.geom.GateConfig()
+	if err != nil {
+		return gateslot.Config{}, err
 	}
+	for _, name := range []string{"card", "batch"} {
+		if _, err := gate.TierList(name); err != nil {
+			return gateslot.Config{}, err
+		}
+	}
+	return gate, nil
 }
 
 // beginBatchCmd builds the `begin-batch <nn>` subcommand.
@@ -122,7 +144,11 @@ Example:
 				return nil
 			}
 
-			deps := c.beginDeps(plan, batches, st)
+			deps, err := c.beginDeps(plan, batches, st)
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
 
 			fingerprintBefore := st.PlanFingerprint
 

@@ -25,7 +25,7 @@ You never edit code yourself, you never run git, and you never use a `/model` sw
 {{.friction_directive}}
 ## Orientation — read this ONCE, up front
 
-Before forking anything, read `{{.plan_dir}}/00-overview.md` once — the task framing, the Card Index, `## Shared Decisions`, `## Rename mechanic`, and `## verify:`.
+Before forking anything, read `{{.plan_dir}}/00-overview.md` once — the task framing, the Card Index, `## Shared Decisions`, and `## Rename mechanic`.
 When a constraints section stands above this one, also read the `pattern/` background files the constraints section above points at, when that section is present, choosing by what the forks will do as `00-overview.md`'s Card Index and `## Shared Decisions` describe it.
 You do NOT pre-read every card's own `NN-<slug>.md` file: each in-session fork reads its own card file directly via the pointer it is handed, so there is nothing for you to re-derive from it up front.
 These reads are what every fork you spawn inherits.
@@ -163,7 +163,7 @@ You never read raw fork output beyond its own turn, and you never open a file to
 ## After every batch: the verify gate
 
 Once every batch in your card list above has reached a terminal `done` (never reach this point over a `stuck`/`dead` batch — the failure ladder above already stopped your run before then), proceed to your final action below.
-You never run the plan-level `## verify:` command yourself: when your turn ends with both contract files written, a gate runs it at the current HEAD and either accepts the run or sends you its findings.
+You never run the plan-level gate yourself: when your turn ends with both contract files written, the `final` gate runs at the current HEAD and either accepts the run or sends you its findings.
 
 ## A gate failure: spawn one fixer fork
 

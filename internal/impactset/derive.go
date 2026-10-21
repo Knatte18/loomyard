@@ -15,9 +15,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// MaxCommandLength is the longest guard-step command a card gate renders; a longer one is left out.
-const MaxCommandLength = 8000
-
 // resolveAncestorBase returns the commit hash base names, and whether it is an ancestor of HEAD.
 // Any git refusal, such as an unknown commit, reads as not an ancestor.
 func resolveAncestorBase(worktree, base string) (string, bool) {

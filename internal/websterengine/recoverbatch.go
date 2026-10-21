@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/friction"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -103,6 +104,9 @@ type RecoverDeps struct {
 
 	// RenameTools are the hub's structure-aware rename tools the recovery prompt renders; empty for none.
 	RenameTools []string
+
+	// Gate is the hub's gate config, from which the recovery prompt renders its card and batch gate calls.
+	Gate gateslot.Config
 }
 
 // RecoverResult is what one RecoverAwait call hands back: Digest (nil while Running), Running (true if wait elapsed non-terminal), ElapsedS (since spawn), and Warnings (non-fatal substrate-cleanup failures, plus the moved-HEAD notice when only merge commits sit between the report's head_sha and the worktree's HEAD).
@@ -270,10 +274,14 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		return nil, err
 	}
 
-	// The guard scan reads the worktree before the first mutation, so a path it cannot read refuses with nothing changed.
-	guards, err := scanGuardTests(deps.Geom.WorktreeRoot)
+	// The gate calls render before the first mutation, so a gate list the config lacks refuses with nothing changed.
+	cardGates, err := renderCardGates(batch.Cards, masterPlanDirDisplay(deps.Geom.WorktreeRoot, deps.Geom.PlanDir), deps.Gate)
 	if err != nil {
-		return nil, fmt.Errorf("%w; way forward: transient, re-run `lyx webster recover-batch %d` once the path reads", err, number)
+		return nil, err
+	}
+	batchGate, err := renderBatchGate(batch.Cards, deps.Gate)
+	if err != nil {
+		return nil, err
 	}
 
 	// Ensure reports dir exists so the recovery strand's report write succeeds.
@@ -299,16 +307,11 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 	}
 
 	notePath := friction.NotePath(deps.FrictionDir, batchName+"-recovery")
-	cardGates, err := renderCardGates(deps.Plan, batch.Cards, masterPlanDirDisplay(deps.Geom.WorktreeRoot, deps.Geom.PlanDir), deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, guards)
-	if err != nil {
-		return nil, err
-	}
 	uncommittedPaths, err := uncommittedPathsBlock(deps)
 	if err != nil {
 		return nil, fmt.Errorf("webster: list the worktree's uncommitted paths for batch %s: %w; way forward: transient, re-run `lyx webster recover-batch %d`", batchName, err, number)
 	}
-	batchGate := renderBatchGate(deps.Plan, batch.Cards, deps.Geom.WorktreeRoot)
-	prompt, err := RenderRecoveryPrompt(batch, cardGates, batchGate, prevDigest, failureDigestBlock(prior), uncommittedPaths, reportPath, deps.Geom.RepoRoot, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.VerifyTiers, deps.RenameTools, patternChanges, deps.Plan.Verify, deps.Config.SelfFixCap, notePath, deps.Geom.ParentName)
+	prompt, err := RenderRecoveryPrompt(batch, cardGates, batchGate, prevDigest, failureDigestBlock(prior), uncommittedPaths, reportPath, deps.Geom.RepoRoot, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.VerifyTiers, deps.RenameTools, patternChanges, deps.Config.SelfFixCap, notePath, deps.Geom.ParentName)
 	if err != nil {
 		return nil, err
 	}
