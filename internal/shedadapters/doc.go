@@ -289,7 +289,7 @@
 // A Burler row's probe is one-stranded, because a row drives one half, a reviewer or a fixer, each declaring its own single output file.
 // BurlerHalfRunner.ProbeReview and ProbeFix report the half as live, done or gone, and Call acts on it.
 // A live half is resumed through ResumeReview or ResumeFix, and the result is mapped through the outcome switch a spawned attempt uses.
-// A died or timeout result there falls through to a fresh attempt 1, since the resumed half is not counted as an attempt.
+// A died or timeout result there, and a resumed review that fails with the fork-count sentinel, fall through to a fresh attempt 1, since the resumed half is not counted as an attempt.
 // A half that is done or gone is nothing live, so nothing is removed and it falls through to attempt 1.
 // A fall-through spawn archives the half's outputs first, so a half is never spawned a second time beside a live one.
 // A probe error and a resume error wrapping burlerengine.ErrHalfNotStopped are returned without archiving and without spawning, since a half that may still be live may be writing the round's files.
@@ -325,7 +325,8 @@
 //
 // The review row resolves the round from the highest complete round, and hands on BudgetExempt without spawning in two cases:
 // the highest complete round has no recorded verdict, and the next round's review already carries an acceptance record, so a restart with the fixer pending resumes at the fix row.
-// Otherwise it probes for a live reviewer before archiving anything, resumes one it finds, and spawns at most two attempts, the second only after a died or timed-out first.
+// Otherwise it probes for a live reviewer before archiving anything, resumes one it finds, and spawns at most two attempts, the second only after a died or timed-out first, or after a first whose chair spawned a fork count other than the one requested (burlerengine.ErrClusterForksMissing).
+// A fork-count mismatch on the second attempt is a hard failure naming both attempts' errors, the chair's strand and its session states, so the halt note says how the chair ended; any other fork violation is a hard failure at once.
 // A row told BurlerHalfDeps.Fans picks the round's reviewer and fixer fans from the per-round lists, entry N for round N and the last entry for every later round;
 // a nil Fans runs the profile's own cluster fan and records no names.
 // After the probe finds no live reviewer, and before the first attempt, `recordRoundFans` writes `fan`, `fix_fan` and `fans_recorded: true` to the round's usage record, an empty name for a solo or single round included.

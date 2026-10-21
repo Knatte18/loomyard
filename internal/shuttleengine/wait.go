@@ -1634,6 +1634,8 @@ func (run *Run) finalize(outcome Outcome) (Result, error) {
 		Engine:      run.engineName,
 		EndedShells: run.endedShells(run.clock.Now()),
 		EndedAt:     run.clock.Now(),
+
+		SessionStates: slices.Clone(run.shadow.states),
 	}
 	if createdAt, err := time.Parse(time.RFC3339, run.state.CreatedAt); err == nil {
 		result.StartedAt = createdAt

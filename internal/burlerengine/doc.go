@@ -342,7 +342,7 @@
 // It carries a Verdict (VerdictApproved or VerdictBlocking), the parsed Findings and the Digest.
 // ParseReview enforces unique, non-empty ids fail-loud, so cross-round hydration and audit can cite a finding unambiguously;
 // the caller judges progress across rounds holistically via its own verdict judge, not by tracking finding-key identity.
-// It also carries the resolved ReviewPath, the reviewer's SessionID/StrandGUID/LastAssistantMessage/RunDir (ReviewResult.Review, with StartError set only on a half that never started), ForkAudit, ClusterWarnings and its Gate, the reviewer's review-parse gate outcome passed through and nil when the reviewer never ran gated.
+// It also carries the resolved ReviewPath, the reviewer's SessionID/StrandGUID/LastAssistantMessage/RunDir (ReviewResult.Review, with StartError set only on a half that never started), ForkAudit, ClusterWarnings and its Gate, the reviewer's review-parse gate outcome passed through and nil when the reviewer never ran gated, and SessionStates, the chair's session states passed through on every ending, the audit error included, so a caller can say how the chair ended.
 // FixResult carries the fixer's Outcome, the resolved FixerReportPath, the fixer's Half, its Gate passed through, Skipped, NotStarted and, for a twill fixer, Lenses, Forks and Warnings.
 // Each Half also carries its run's StartedAt, EndedAt and session Usage (forks included) from its terminal shuttle Result, and ReviewResult.Lenses names the lenses the reviewer ran, nil for a solo round; no decision reads them.
 // Review and Fix return a nil error for every shuttleengine outcome except a hard failure:
