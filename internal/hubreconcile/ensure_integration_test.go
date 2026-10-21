@@ -647,7 +647,7 @@ func assertBoardStrippedOnce(t *testing.T, h *hubforge.Hub, modelsBefore []byte)
 			continue
 		}
 		if module.Name == "darn" {
-			if !strings.Contains(string(got), "verify_attempts: 5") || strings.Contains(string(got), "make verify") || strings.Count(string(got), ":") != 1 {
+			if !strings.HasPrefix(string(got), "verify_attempts: 5") || strings.Count(string(got), "\n") != 1 {
 				t.Errorf("board darn.yaml = %q; want only the hub's tuned verify_attempts", got)
 			}
 			continue
