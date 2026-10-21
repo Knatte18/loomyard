@@ -82,14 +82,14 @@ func landDeps(location *lyxcwd.Location, slug string, locateTask func() (*lyxcwd
 			}
 			return dirty, nil
 		},
-		Pull: func(ctx context.Context) error {
+		Pull: func(ctx context.Context) (string, error) {
 			fab, err := fabricengine.Open(location)
 			if err != nil {
-				return err
+				return "", err
 			}
 			res, err := fab.Pull(fabricengine.EnvSyncOptions())
 			logger.Info("battencli: land pull", "slug", slug, "mutations", res.Mutated())
-			return err
+			return pullStopOutcome(err)
 		},
 		Landing: func() (battenshed.LandingSettings, error) {
 			cfg, err := landingshed.LoadConfig(fabricengine.ConfigDirs(location), "landing")
@@ -140,6 +140,16 @@ func landDeps(location *lyxcwd.Location, slug string, locateTask func() (*lyxcwd
 		PauseRequested: pauseRequested(location, slug),
 		Notices:        rowNotices(location, slug),
 	}
+}
+
+// pullStopOutcome splits a pull's error into the Land row's two outcomes.
+// An err that is exactly a records-side stop is a records side that did not pull: its message comes back as recordsStop with a nil pullErr, so the landing goes on.
+// Any other error, one joining a code-side failure to a records-side stop included, comes back as pullErr, so an unpulled prime is never deployed.
+func pullStopOutcome(err error) (recordsStop string, pullErr error) {
+	if message, ok := fabricengine.RecordsStopMessage(err); ok {
+		return message, nil
+	}
+	return "", err
 }
 
 // readySlugs returns, sorted, the slugs of the tasks that can start now: kind task, unclaimed and with no dependency.

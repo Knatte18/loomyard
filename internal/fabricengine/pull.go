@@ -153,6 +153,23 @@ func (e *WeftStopError) Unwrap() error {
 	return e.Err
 }
 
+// RecordsStopMessage returns the message of err and true when err is exactly a *WeftStopError, by a direct type assertion.
+// An error that joins a stop to another failure is not a stop here, so a caller never drops the other failure.
+// It gives a caller outside this package a side-neutral way to tell a records-side stop from any other pull error.
+func RecordsStopMessage(err error) (message string, ok bool) {
+	stop, ok := err.(*WeftStopError)
+	if !ok {
+		return "", false
+	}
+	return stop.Error(), true
+}
+
+// NewRecordsStopError returns a *WeftStopError for branch stopped by cause, settled by wayForward.
+// It lets a test outside this package build the stop Fabric.Pull returns without spelling the side-named type.
+func NewRecordsStopError(branch string, cause error, wayForward string) error {
+	return &WeftStopError{Branch: branch, Err: cause, WayForward: wayForward}
+}
+
 // weftHasUpstream reports whether the weft worktree's current branch has a configured upstream
 // tracking ref.
 // No upstream (or a detached HEAD) is, for Pull's weft step, the nothing-to-pull-from case, never an error.

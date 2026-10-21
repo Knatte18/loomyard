@@ -98,7 +98,7 @@ func newFakeReceiver(t *testing.T, shutdown func(ctx context.Context) (string, e
 			ParentBranch: func() (string, error) { return "feature", nil },
 			PrimeBranch:  func() (string, error) { return "main", nil },
 			PrimeDirty:   func() ([]string, error) { return nil, nil },
-			Pull:         func(ctx context.Context) error { return nil },
+			Pull:         func(ctx context.Context) (string, error) { return "", nil },
 			Landing:      func() (battenshed.LandingSettings, error) { return battenshed.LandingSettings{}, nil },
 			RunDeploy: func(context.Context, string, string, time.Duration) (battenshed.DeployResult, error) {
 				return battenshed.DeployResult{}, nil
