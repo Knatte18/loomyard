@@ -1,7 +1,7 @@
-// intake.go holds the `lyx board intake` verb group: list, import and close against the inbox repository.
+// intake.go holds the `lyx board intake` verb group: list, import and close against the hub's own repository.
 //
 // It does the mechanics of intake and never triages: the caller decides what each issue becomes.
-// boardengine owns the store side and selfreportengine the GitHub side; this file only wires the two.
+// boardengine owns the store side and hubissues the GitHub side; this file only wires the two.
 // The board is written before GitHub is touched, and GitHub is touched after the board lock is released.
 
 package boardcli
@@ -16,8 +16,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/hubissues"
 	"github.com/Knatte18/loomyard/internal/output"
-	"github.com/Knatte18/loomyard/internal/selfreportengine"
 	"github.com/spf13/cobra"
 )
 
@@ -31,12 +31,13 @@ var intakeImportPayload = payloadKeys{
 // intakeClosePayload is the payload of `intake close`.
 var intakeClosePayload = payloadKeys{required: []string{"issue", "reason"}, optional: []string{"completed"}}
 
-// intakeCommand builds the `intake` group over the board that board returns.
-func intakeCommand(board func() *boardengine.Board) *cobra.Command {
+// intakeCommand builds the `intake` group over the board that board returns and the hub repository that hubRepo opens.
+func intakeCommand(board func() *boardengine.Board, hubRepo func() (*hubissues.Repo, error)) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "intake",
-		Short: "bring GitHub inbox issues onto the board",
-		Long: `intake moves issues from the inbox repository onto the board. It does the mechanics and never
+		Short: "bring the hub repository's GitHub issues onto the board",
+		Long: `intake moves issues from the hub's own GitHub repository onto the board: the repository its
+warp binding records, else its warp worktree's origin. It does the mechanics and never
 triages: list shows the open issues no entry records yet, import records one as a note or folds it
 into an entry and closes it with a pointer, and close closes noise with a stated reason.`,
 		RunE: clihelp.GroupRunE,
@@ -45,9 +46,9 @@ into an entry and closes it with a pointer, and close closes noise with a stated
 	var listFull bool
 	listCmd := &cobra.Command{
 		Use:         "list",
-		Short:       "list open inbox issues no board entry records, to triage them",
+		Short:       "list the hub repository's open issues no board entry records, to triage them",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `List the open issues of the inbox repository that no board entry records, pull requests excluded.
+		Long: `List the open issues of the hub's repository that no board entry records, pull requests excluded.
 Takes no payload.
 
 Prints {"issues":[...]} with the number and title of each issue.
@@ -59,16 +60,20 @@ Examples:
   lyx board intake list --full`,
 		Args: cobra.NoArgs,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
-			return intakeList(out, board(), listFull)
+			repo, err := hubRepo()
+			if err != nil {
+				return outputError(out, err.Error())
+			}
+			return intakeList(out, board(), repo, listFull)
 		}),
 	}
 	listCmd.Flags().BoolVar(&listFull, "full", false, "print body, labels, url, comments and created_at too")
 
 	importCmd := &cobra.Command{
 		Use:         "import {issue, slug|into, title?, brief?, labels?}",
-		Short:       "import an inbox issue as a note or fold it into an entry, then close it",
+		Short:       "import a hub repository issue as a note or fold it into an entry, then close it",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `Record an open inbox issue on the board, then comment on it and close it as completed.
+		Long: `Record an open issue of the hub's repository on the board, then comment on it and close it as completed.
 
 Fields:
   "issue"  integer — issue number (required)
@@ -92,15 +97,19 @@ Examples:
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
 			}
-			return intakeImport(out, board(), args[0])
+			repo, err := hubRepo()
+			if err != nil {
+				return outputError(out, err.Error())
+			}
+			return intakeImport(out, board(), repo, args[0])
 		}),
 	}
 
 	closeCmd := &cobra.Command{
 		Use:         "close {issue, reason, completed?}",
-		Short:       "close an inbox issue that is noise, with a stated reason",
+		Short:       "close a hub repository issue that is noise, with a stated reason",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `Comment on an open inbox issue with the reason and close it.
+		Long: `Comment on an open issue of the hub's repository with the reason and close it.
 It writes nothing to the board and never edits the issue's content. A pull request and an
 already closed issue are refused. It also closes an issue left open by a failed import close.
 
@@ -115,7 +124,11 @@ Example:
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
 			}
-			return intakeClose(out, args[0])
+			repo, err := hubRepo()
+			if err != nil {
+				return outputError(out, err.Error())
+			}
+			return intakeClose(out, repo, args[0])
 		}),
 	}
 
@@ -140,13 +153,13 @@ func isImportPointer(body string) bool {
 	return importPointerPattern.MatchString(strings.TrimSpace(body))
 }
 
-// intakeIssueSummary is the view of an inbox issue that list prints by default.
+// intakeIssueSummary is the view of an issue that list prints by default.
 type intakeIssueSummary struct {
 	Number int    `json:"number"`
 	Title  string `json:"title"`
 }
 
-// intakeIssueView is the view of an inbox issue that list --full prints.
+// intakeIssueView is the view of an issue that list --full prints.
 type intakeIssueView struct {
 	Number    int       `json:"number"`
 	Title     string    `json:"title"`
@@ -157,9 +170,9 @@ type intakeIssueView struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// intakeList prints the open inbox issues that no board entry records, as number and title unless full is set.
-func intakeList(out io.Writer, b *boardengine.Board, full bool) int {
-	issues, err := selfreportengine.ListOpenIssues()
+// intakeList prints the open issues of repo that no board entry records, as number and title unless full is set.
+func intakeList(out io.Writer, b *boardengine.Board, repo *hubissues.Repo, full bool) int {
+	issues, err := repo.ListOpenIssues()
 	if err != nil {
 		return outputError(out, err.Error())
 	}
@@ -224,14 +237,14 @@ func decodeIssueNumber(fields map[string]json.RawMessage) (int, error) {
 		return 0, err
 	}
 	if number <= 0 {
-		return 0, fmt.Errorf(`missing required field: issue, the number of an inbox issue (a positive integer)`)
+		return 0, fmt.Errorf(`missing required field: issue, the number of an issue of the hub's repository (a positive integer)`)
 	}
 	return number, nil
 }
 
 // inboxIssue converts a fetched issue and its comments, oldest first, to the boardengine view of it.
 // A comment that is an import pointer is dropped, since lyx posted it and it carries nothing.
-func inboxIssue(issue selfreportengine.Issue, comments []selfreportengine.IssueComment) boardengine.InboxIssue {
+func inboxIssue(issue hubissues.Issue, comments []hubissues.IssueComment) boardengine.InboxIssue {
 	var carried []boardengine.IssueComment
 	for _, comment := range comments {
 		if isImportPointer(comment.Body) {
@@ -251,8 +264,8 @@ func inboxIssue(issue selfreportengine.Issue, comments []selfreportengine.IssueC
 	}
 }
 
-// intakeImport records the issue named by payload on the board, then comments on it and closes it as completed.
-func intakeImport(out io.Writer, b *boardengine.Board, payload string) int {
+// intakeImport records the issue of repo named by payload on the board, then comments on it and closes it as completed.
+func intakeImport(out io.Writer, b *boardengine.Board, repo *hubissues.Repo, payload string) int {
 	fields, err := decodeIntakePayload(payload, intakeImportPayload)
 	if err != nil {
 		return outputError(out, err.Error())
@@ -270,11 +283,11 @@ func intakeImport(out io.Writer, b *boardengine.Board, payload string) int {
 		}
 	}
 
-	issue, err := selfreportengine.GetIssue(number)
+	issue, err := repo.GetIssue(number)
 	if err != nil {
 		return outputError(out, err.Error())
 	}
-	comments, err := selfreportengine.ListIssueComments(number)
+	comments, err := repo.ListIssueComments(number)
 	if err != nil {
 		return outputError(out, err.Error())
 	}
@@ -299,15 +312,15 @@ func intakeImport(out io.Writer, b *boardengine.Board, payload string) int {
 		"dropped": dropped,
 	}
 	comment := importPointer(result.Entry.Slug)
-	if err := selfreportengine.CommentAndClose(number, comment, true); err != nil {
+	if err := repo.CommentAndClose(number, comment, true); err != nil {
 		short["close"] = map[string]any{"issue": number, "reason": comment, "completed": true}
 		return output.ErrFields(out, err.Error(), short)
 	}
 	return output.Ok(out, short)
 }
 
-// intakeClose comments on the open issue named by payload with the reason and closes it.
-func intakeClose(out io.Writer, payload string) int {
+// intakeClose comments on the open issue of repo named by payload with the reason and closes it.
+func intakeClose(out io.Writer, repo *hubissues.Repo, payload string) int {
 	fields, err := decodeIntakePayload(payload, intakeClosePayload)
 	if err != nil {
 		return outputError(out, err.Error())
@@ -328,7 +341,7 @@ func intakeClose(out io.Writer, payload string) int {
 		return outputError(out, "missing required field: reason, the comment to post before closing: say why the issue is closed")
 	}
 
-	issue, err := selfreportengine.GetIssue(number)
+	issue, err := repo.GetIssue(number)
 	if err != nil {
 		return outputError(out, err.Error())
 	}
@@ -338,7 +351,7 @@ func intakeClose(out io.Writer, payload string) int {
 	if issue.State != "open" {
 		return outputError(out, fmt.Sprintf("issue #%d is already closed (state %q, reason %q): nothing to close", number, issue.State, issue.StateReason))
 	}
-	if err := selfreportengine.CommentAndClose(number, reason, completed); err != nil {
+	if err := repo.CommentAndClose(number, reason, completed); err != nil {
 		return outputError(out, err.Error())
 	}
 	return output.Ok(out, map[string]any{"issue": number, "completed": completed})

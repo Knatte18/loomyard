@@ -225,6 +225,7 @@ github.com/Knatte18/loomyard/
 ├── internal/agentname/           the sole former, parser and validator of agent names (`<shortname>:<slug>:<role>`), a stdlib-only leaf
 ├── internal/boardcli/            the board CLI command
 ├── internal/boardengine/         the board domain kernel
+├── internal/hubissues/           the GitHub issues of the hub's own repository that `lyx board intake` lists, reads, comments on and closes
 ├── internal/cleanupcli/          the cleanup CLI command (`lyx cleanup`, the routine cleanups of the hub prime's leftover state, a dry run by default)
 ├── internal/fabriccli/           the fabric CLI command (git coordination of code and records)
 ├── internal/fabricengine/        the fabric domain kernel
@@ -244,7 +245,7 @@ github.com/Knatte18/loomyard/
 ├── internal/ghissuescli/         the ghissues CLI command
 ├── internal/ghissuesengine/      the ghissues domain kernel
 ├── internal/selfreportcli/       the selfreport CLI command
-├── internal/selfreportengine/    the selfreport domain kernel
+├── internal/selfreportengine/    the selfreport domain kernel, filing LoomYard bugs to LoomYard's own repository only
 ├── internal/shuttleengines/      the engine registry: the named engines a shuttle config builds into a set, and the only production importer of a concrete engine
 ├── internal/treadleengine/       generalized round-loop engine (judge/gate/round-spawn/cap/pause/lock)
 ├── internal/shedengine/          generic outer phase-FSM: walks one flat producer list, honoring resume, crash-recovery, and pause at producer granularity
@@ -345,7 +346,8 @@ User-facing modules each get one `lyx <module>` namespace:
 - **board** — the task-tracker board, which is also the roadmap (`internal/boardcli` + `internal/boardengine`).
   One `board.json` store holds every entry, and each entry is a task or a note with labels; only a task runs.
   `types` and `labels` in `board.yaml` are maps from label to description, and `lyx board labels` prints both in file order.
-  `lyx board intake` lists open inbox issues not yet on the board, imports one as a note or folds it into an entry, and closes noise with a stated reason.
+  `lyx board intake` lists the open issues of the hub's own GitHub repository not yet on the board, imports one as a note or folds it into an entry, and closes noise with a stated reason.
+  The hub's repository is the one its warp binding records, else its warp origin, so only the loomyard hub's intake reads LoomYard's issues; intake never goes through selfreport.
   The README renders Tasks split into Running, Ready (waiting on nothing open) and dependency layers whose entries can run in parallel, then Notes grouped by type label, each subsection one numbered table that links each slug to its design doc.
   An entry may carry a priority, `high` or `low`, absent meaning normal, which orders it first or last within its subsection.
   A task may name a run profile in its `profile` field, and `lyx board profiles` prints the hub's profiles with their settings.
@@ -389,6 +391,7 @@ User-facing modules each get one `lyx <module>` namespace:
   It writes only between its own markers, and a file it cannot merge safely is skipped with a reason and never fails the spawn.
   Batten does not open it: VS Code opens only when the operator runs `lyx ide`. ✅ Implemented.
 - **selfreport** — file bugs and enhancements against `Knatte18/loomyard` via go-github through `internal/githubclient`, filed by `lyx selfreport create <title>`, run by the operator or by an agent; the friction reflection is its only automatic caller, and no Go code files an issue itself.
+  It files LoomYard bugs only, from whatever hub lyx runs in; an issue about another repository is filed to that repository's own issues.
   Credentials resolve from `GH_TOKEN`/`GITHUB_TOKEN` first, with the `gh` CLI (`gh auth token`) as a bounded, non-blocking fallback token source — not a hard prerequisite.
   Target repo is hardcoded;
   supports `--body` (or `-` for stdin) and `--label`;

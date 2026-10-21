@@ -1,6 +1,5 @@
-// intake_test.go covers the intake handlers against an httptest server through the selfreportengine.NewGitHubClient seam and a Board over a temp dir with SkipGit.
+// intake_test.go covers the intake handlers against an httptest server standing in for the hub's repository, reached through a hubissues.Repo, and a Board over a temp dir with SkipGit.
 // No test reaches real token resolution or the network, and every refusal asserts that board.json is unchanged.
-// No test calls t.Parallel: each swaps the package-level selfreportengine.NewGitHubClient.
 
 package boardcli
 
@@ -8,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -22,10 +22,10 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/selfreportengine"
+	"github.com/Knatte18/loomyard/internal/hubissues"
 )
 
-const fakeIssuesPath = "/repos/Knatte18/loomyard/issues"
+const fakeIssuesPath = "/repos/owner/hub-repo/issues"
 
 // fakeIssue is one issue the fake inbox serves.
 type fakeIssue struct {
@@ -40,8 +40,10 @@ type fakeIssue struct {
 	failThread bool
 }
 
-// fakeInbox is a fake GitHub inbox repository that records every mutation it receives.
+// fakeInbox is a fake GitHub hub repository that records every mutation it receives.
 type fakeInbox struct {
+	// repo reaches the fake through a fixed-token client.
+	repo      *hubissues.Repo
 	issues    []fakeIssue
 	failClose bool
 	// failList makes the list endpoint answer with a server error.
@@ -182,7 +184,7 @@ func (f *fakeInbox) list(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(views)
 }
 
-// newFakeInbox starts the fake inbox and installs it behind the NewGitHubClient seam.
+// newFakeInbox starts the fake hub repository and opens a hubissues.Repo on it.
 func newFakeInbox(t *testing.T, issues ...fakeIssue) *fakeInbox {
 	t.Helper()
 	inbox := &fakeInbox{issues: issues}
@@ -195,9 +197,7 @@ func newFakeInbox(t *testing.T, issues ...fakeIssue) *fakeInbox {
 		t.Fatalf("url.Parse: %v", err)
 	}
 	client.BaseURL = parsed
-	orig := selfreportengine.NewGitHubClient
-	selfreportengine.NewGitHubClient = func() (*github.Client, error) { return client, nil }
-	t.Cleanup(func() { selfreportengine.NewGitHubClient = orig })
+	inbox.repo = hubissues.New(client, "owner", "hub-repo")
 	return inbox
 }
 
@@ -244,6 +244,7 @@ func runHandler(t *testing.T, fn func(out *bytes.Buffer) int) (int, map[string]a
 }
 
 func TestIntakeList_ExcludesPullRequestsRecordedAndClosedAcrossPages(t *testing.T) {
+	t.Parallel()
 	fullInbox := []fakeIssue{
 		{number: 1, state: "open", thread: []string{"one", "two"}},
 		{number: 2, state: "open", pullRequest: true},
@@ -262,22 +263,26 @@ func TestIntakeList_ExcludesPullRequestsRecordedAndClosedAcrossPages(t *testing.
 		issues       []fakeIssue
 		failList     bool
 		corruptBoard bool
-		args         []string
-		wantCode     int
+		// repoErr is the error opening the hub repository returns, nil when it opens.
+		repoErr  error
+		args     []string
+		wantCode int
 		// wantNumbers is the expected issue numbers when the run succeeds.
 		wantNumbers string
 		// wantFull is whether the issue objects carry the full view.
 		wantFull bool
 	}{
-		{"Compact", fullInbox, false, false, []string{"list"}, 0, "[1 5 6]", false},
-		{"Full", fullInbox, false, false, []string{"list", "--full"}, 0, "[1 5 6]", true},
-		{"EmptyCompact", emptyInbox, false, false, []string{"list"}, 0, "[]", false},
-		{"EmptyFull", emptyInbox, false, false, []string{"list", "--full"}, 0, "[]", true},
-		{"ListFailure", fullInbox, true, false, []string{"list"}, 1, "", false},
-		{"BoardLoadFailure", fullInbox, false, true, []string{"list"}, 1, "", false},
+		{"Compact", fullInbox, false, false, nil, []string{"list"}, 0, "[1 5 6]", false},
+		{"Full", fullInbox, false, false, nil, []string{"list", "--full"}, 0, "[1 5 6]", true},
+		{"EmptyCompact", emptyInbox, false, false, nil, []string{"list"}, 0, "[]", false},
+		{"EmptyFull", emptyInbox, false, false, nil, []string{"list", "--full"}, 0, "[]", true},
+		{"ListFailure", fullInbox, true, false, nil, []string{"list"}, 1, "", false},
+		{"BoardLoadFailure", fullInbox, false, true, nil, []string{"list"}, 1, "", false},
+		{"RepositoryUnresolved", fullInbox, false, false, errors.New("no hub repository"), []string{"list"}, 1, "", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			inbox := newFakeInbox(t, tt.issues...)
 			inbox.failList = tt.failList
 			b, path := newIntakeBoard(t)
@@ -290,7 +295,12 @@ func TestIntakeList_ExcludesPullRequestsRecordedAndClosedAcrossPages(t *testing.
 				}
 			}
 
-			cmd := intakeCommand(func() *boardengine.Board { return b })
+			cmd := intakeCommand(func() *boardengine.Board { return b }, func() (*hubissues.Repo, error) {
+				if tt.repoErr != nil {
+					return nil, tt.repoErr
+				}
+				return inbox.repo, nil
+			})
 			var out bytes.Buffer
 			cmd.SetArgs(tt.args)
 			cmd.SetOut(&out)
@@ -356,11 +366,12 @@ const quotedPointerComment = "Earlier it said: Imported into the board as `old`.
 var threadWithPointer = []string{"First comment.", " Imported into the board as `old-slug`.\n", quotedPointerComment}
 
 func TestIntakeImport_NewNoteCommentsAndCloses(t *testing.T) {
+	t.Parallel()
 	inbox := newFakeInbox(t, fakeIssue{number: 7, state: "open", labels: []string{"bug", "stray"}, thread: threadWithPointer})
 	b, path := newIntakeBoard(t)
 
 	code, envelope := runHandler(t, func(out *bytes.Buffer) int {
-		return intakeImport(out, b, `{"issue":7,"slug":"from-inbox"}`)
+		return intakeImport(out, b, inbox.repo, `{"issue":7,"slug":"from-inbox"}`)
 	})
 	if code != 0 {
 		t.Fatalf("exit %d: %v", code, envelope)
@@ -398,6 +409,7 @@ func TestIntakeImport_NewNoteCommentsAndCloses(t *testing.T) {
 }
 
 func TestIntakeImport_FoldIntoEntry(t *testing.T) {
+	t.Parallel()
 	inbox := newFakeInbox(t, fakeIssue{number: 8, state: "open", labels: []string{"undecided"}, thread: threadWithPointer})
 	b, _ := newIntakeBoard(t)
 	if _, err := b.UpsertTask(map[string]any{"slug": "target", "labels": []string{"bug"}}); err != nil {
@@ -405,7 +417,7 @@ func TestIntakeImport_FoldIntoEntry(t *testing.T) {
 	}
 
 	code, envelope := runHandler(t, func(out *bytes.Buffer) int {
-		return intakeImport(out, b, `{"issue":8,"into":"target"}`)
+		return intakeImport(out, b, inbox.repo, `{"issue":8,"into":"target"}`)
 	})
 	if code != 0 {
 		t.Fatalf("exit %d: %v", code, envelope)
@@ -437,6 +449,7 @@ func TestIntakeImport_FoldIntoEntry(t *testing.T) {
 }
 
 func TestIntakeImport_RecordedIssueIsNoOp(t *testing.T) {
+	t.Parallel()
 	inbox := newFakeInbox(t, fakeIssue{number: 9, state: "open"})
 	b, path := newIntakeBoard(t)
 	if _, err := b.UpsertTask(map[string]any{"slug": "has-it", "labels": []string{"bug"}, "issues": []int{9}}); err != nil {
@@ -445,7 +458,7 @@ func TestIntakeImport_RecordedIssueIsNoOp(t *testing.T) {
 	before := readBoard(t, path)
 
 	code, envelope := runHandler(t, func(out *bytes.Buffer) int {
-		return intakeImport(out, b, `{"issue":9,"slug":"again"}`)
+		return intakeImport(out, b, inbox.repo, `{"issue":9,"slug":"again"}`)
 	})
 	if code != 0 {
 		t.Fatalf("exit %d: %v", code, envelope)
@@ -462,6 +475,7 @@ func TestIntakeImport_RecordedIssueIsNoOp(t *testing.T) {
 }
 
 func TestIntakeImport_RefusedBeforeAnyWrite(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name    string
 		issue   fakeIssue
@@ -479,6 +493,7 @@ func TestIntakeImport_RefusedBeforeAnyWrite(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			inbox := newFakeInbox(t, tc.issue)
 			b, path := newIntakeBoard(t)
 			if _, err := b.UpsertTask(map[string]any{"slug": "taken", "labels": []string{"bug"}}); err != nil {
@@ -489,7 +504,7 @@ func TestIntakeImport_RefusedBeforeAnyWrite(t *testing.T) {
 			}
 			before := readBoard(t, path)
 
-			code, envelope := runHandler(t, func(out *bytes.Buffer) int { return intakeImport(out, b, tc.payload) })
+			code, envelope := runHandler(t, func(out *bytes.Buffer) int { return intakeImport(out, b, inbox.repo, tc.payload) })
 			if code != 1 || !strings.Contains(fmt.Sprint(envelope["error"]), tc.want) {
 				t.Fatalf("exit %d, envelope %v, want an error containing %q", code, envelope, tc.want)
 			}
@@ -504,12 +519,13 @@ func TestIntakeImport_RefusedBeforeAnyWrite(t *testing.T) {
 }
 
 func TestIntakeImport_CloseFailureReportsShortResultAndClosePayload(t *testing.T) {
+	t.Parallel()
 	inbox := newFakeInbox(t, fakeIssue{number: 16, state: "open", labels: []string{"bug"}})
 	inbox.failClose = true
 	b, path := newIntakeBoard(t)
 
 	code, envelope := runHandler(t, func(out *bytes.Buffer) int {
-		return intakeImport(out, b, `{"issue":16,"slug":"half-done"}`)
+		return intakeImport(out, b, inbox.repo, `{"issue":16,"slug":"half-done"}`)
 	})
 	if code != 1 || envelope["ok"] != false {
 		t.Fatalf("exit %d, envelope %v, want a failure", code, envelope)
@@ -530,6 +546,7 @@ func TestIntakeImport_CloseFailureReportsShortResultAndClosePayload(t *testing.T
 }
 
 func TestIntakeClose(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name       string
 		issue      fakeIssue
@@ -547,11 +564,12 @@ func TestIntakeClose(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			inbox := newFakeInbox(t, tc.issue)
 			_, path := newIntakeBoard(t)
 			before := readBoard(t, path)
 
-			code, envelope := runHandler(t, func(out *bytes.Buffer) int { return intakeClose(out, tc.payload) })
+			code, envelope := runHandler(t, func(out *bytes.Buffer) int { return intakeClose(out, inbox.repo, tc.payload) })
 			if tc.want == "" {
 				if code != 0 {
 					t.Fatalf("exit %d: %v", code, envelope)
@@ -570,6 +588,7 @@ func TestIntakeClose(t *testing.T) {
 }
 
 func TestIntakeClose_RecordedOpenIssue(t *testing.T) {
+	t.Parallel()
 	inbox := newFakeInbox(t, fakeIssue{number: 30, state: "open"})
 	b, path := newIntakeBoard(t)
 	if _, err := b.UpsertTask(map[string]any{"slug": "has-it", "labels": []string{"bug"}, "issues": []int{30}}); err != nil {
@@ -578,7 +597,7 @@ func TestIntakeClose_RecordedOpenIssue(t *testing.T) {
 	before := readBoard(t, path)
 
 	code, envelope := runHandler(t, func(out *bytes.Buffer) int {
-		return intakeClose(out, `{"issue":30,"reason":"Imported into the board as `+"`has-it`"+`.","completed":true}`)
+		return intakeClose(out, inbox.repo, `{"issue":30,"reason":"Imported into the board as `+"`has-it`"+`.","completed":true}`)
 	})
 	if code != 0 {
 		t.Fatalf("exit %d: %v", code, envelope)
