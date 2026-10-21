@@ -15,17 +15,21 @@ import (
 	"time"
 )
 
-// payloadDenied encodes the PreToolUse payload carrying the Bash command and reports whether every pattern of the row matches it under a real grep -Eq run through sh.
-func payloadDenied(t *testing.T, row Row, command string) bool {
+// payloadDenied encodes the PreToolUse payload carrying the Bash command, and the description field when it is non-empty, and reports whether every pattern of the row matches it under a real grep -Eq run through sh.
+func payloadDenied(t *testing.T, row Row, command, description string) bool {
 	t.Helper()
 
+	toolInput := map[string]any{"command": command}
+	if description != "" {
+		toolInput["description"] = description
+	}
 	var payload bytes.Buffer
 	encoder := json.NewEncoder(&payload)
 	encoder.SetEscapeHTML(false)
 	if err := encoder.Encode(map[string]any{
 		"hook_event_name": "PreToolUse",
 		"tool_name":       "Bash",
-		"tool_input":      map[string]any{"command": command},
+		"tool_input":      toolInput,
 	}); err != nil {
 		t.Fatalf("encode payload: %v", err)
 	}
@@ -109,6 +113,9 @@ func TestRows_PatternsDenyAndAllow(t *testing.T) {
 		{"python", "behind_bash_dash_c", "bash -c 'python3 x'", false},
 		{"python", "through_launcher", "uv run x", false},
 		{"python", "separator_inside_a_double_quoted_argument", `grep -n "x; python3" f`, false},
+		{"python", "after_a_backtick", "echo `python3 x`", true},
+		{"python", "after_a_command_substitution", "echo $(python3 x)", true},
+		{"python", "after_a_subshell_paren", "(python3 x)", true},
 
 		{"in-place-edit", "sed_dash_i", "sed -i 's/a/b/' f", true},
 		{"in-place-edit", "sed_dash_i_suffix", "sed -i.bak s/a/b/ f", true},
@@ -144,6 +151,8 @@ func TestRows_PatternsDenyAndAllow(t *testing.T) {
 		{"redirect-write", "scratch_lookalike", "echo x > .scratchpad/f", true},
 		{"redirect-write", "tmp_lookalike", "echo x > /tmpfile", true},
 		{"redirect-write", "double_quoted_target", `echo x > "docs/a b.md"`, true},
+		{"redirect-write", "single_quoted_target", "echo x > 'docs/f'", true},
+		{"redirect-write", "dev_lookalike", "echo x > /devx", true},
 		{"redirect-write", "after_and_separator", "cd x && echo y > f", true},
 		{"redirect-write", "after_a_quoted_greater_than", `echo "a>b" > f`, true},
 		{"redirect-write", "scratch_relative", "echo x > .scratch/a", false},
@@ -186,6 +195,18 @@ func TestRows_PatternsDenyAndAllow(t *testing.T) {
 		{"machine-sleep", "restart_of_another_unit", "systemctl restart sshd", false},
 		{"machine-sleep", "inside_a_heredoc_body", "cat > .scratch/a <<EOF\nsystemctl hibernate\nEOF", false},
 	}
+	// Each description names a command the row would deny as a command, in the payload's description field, beside a command that is harmless.
+	descriptionTests := []struct {
+		row         string
+		description string
+	}{
+		{"raw-go", "go test ./... and LYX_GATE_SLOT"},
+		{"python", "x; python3 x.py"},
+		{"in-place-edit", "x; sed -i s/a/b/ f"},
+		{"redirect-write", "x; echo y > f"},
+		{"computed-rm", "x; rm $d"},
+		{"machine-sleep", "x; systemctl hibernate"},
+	}
 	for _, tt := range tests {
 		t.Run(tt.row+"_"+tt.name, func(t *testing.T) {
 			t.Parallel()
@@ -194,8 +215,21 @@ func TestRows_PatternsDenyAndAllow(t *testing.T) {
 			if !ok {
 				t.Fatalf("Rows() has no row named %q", tt.row)
 			}
-			if got := payloadDenied(t, row, tt.command); got != tt.denied {
+			if got := payloadDenied(t, row, tt.command, ""); got != tt.denied {
 				t.Errorf("row %q denies %q = %v; want %v", tt.row, strings.TrimSpace(tt.command), got, tt.denied)
+			}
+		})
+	}
+	for _, tt := range descriptionTests {
+		t.Run(tt.row+"_command_word_in_the_description_field", func(t *testing.T) {
+			t.Parallel()
+
+			row, ok := rows[tt.row]
+			if !ok {
+				t.Fatalf("Rows() has no row named %q", tt.row)
+			}
+			if payloadDenied(t, row, "ls", tt.description) {
+				t.Errorf("row %q denies description %q beside command ls; want allowed", tt.row, tt.description)
 			}
 		})
 	}
