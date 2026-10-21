@@ -196,6 +196,31 @@ func TestBurlerReviewEntry_RubricStencil(t *testing.T) {
 		}
 	})
 
+	t.Run("FillsTheAmendmentNote", func(t *testing.T) {
+		env := newTestEnv(t)
+		writeStencil(t, env.StencilsDir, "round-rubric", "Amendment: {{.amendment}}\n")
+
+		profile, _ := captureReview(t, "review-row", stencilCfg, env)
+		if profile.Rubric != "Amendment: none\n" {
+			t.Errorf("profile.Rubric = %q; want `none` outside an amendment", profile.Rubric)
+		}
+
+		env = newTestEnv(t)
+		writeStencil(t, env.StencilsDir, "round-rubric", "Amendment: {{.amendment}}\n")
+		runDir := filepath.Join(env.RunRoot, "review-segment")
+		if err := os.MkdirAll(runDir, 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q) = %v; want nil", runDir, err)
+		}
+		record := `{"number":2,"amendment":true,"base":"abc123"}`
+		if err := os.WriteFile(filepath.Join(runDir, "generation-record.json"), []byte(record), 0o644); err != nil {
+			t.Fatalf("write generation-record.json: %v", err)
+		}
+		profile, _ = captureReview(t, "review-row", stencilCfg, env)
+		if !strings.Contains(profile.Rubric, "since commit abc123") {
+			t.Errorf("profile.Rubric = %q; want the amendment note naming commit abc123", profile.Rubric)
+		}
+	})
+
 	t.Run("StripsLeadingStampBanner", func(t *testing.T) {
 		env := newTestEnv(t)
 		writeStencil(t, env.StencilsDir, "round-rubric", "<!-- lyx-stencil: sha256=aaaa -->\nBLOCKING: a round bug.\n")

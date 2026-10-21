@@ -102,6 +102,12 @@ var nilLegal = map[string]bool{
 	"Setting":                           true,
 	"Command.Setting":                   true,
 	"Command.ExecutableSetting":         true,
+	"DocumentSubject":                   true,
+	"CodeSubject":                       true,
+	"MergeSubject":                      true,
+	"MergeInOnly":                       true,
+	"RecordHead":                        true,
+	"RejectReview":                      true,
 }
 
 // noFindingsIndex is a planindex.Index that answers no findings, so the packages built on the kit do not link the resolve-backed index.
@@ -300,7 +306,19 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		ApproveMergeReview: func() error { return nil },
 		MergeReview:        func() string { return "none" },
 		CarryOver:          func(discussionparser.CarryOver) error { return nil },
-		ReflectFriction:    func() string { return "skipped" },
+		DocumentSubject: func([]string) (shedadapters.Subject, bool, error) {
+			return shedadapters.Subject{Kind: shedadapters.SubjectDocument, Hash: "document-hash"}, true, nil
+		},
+		CodeSubject: func() (shedadapters.Subject, bool, error) {
+			return shedadapters.Subject{Kind: shedadapters.SubjectCode, MergeBase: "merge-base", Head: "head", FullHash: "full-hash", PatchID: "patch-id"}, true, nil
+		},
+		MergeSubject: func() (shedadapters.Subject, bool, error) {
+			return shedadapters.Subject{Kind: shedadapters.SubjectMerge, Hash: "merge-hash"}, true, nil
+		},
+		MergeInOnly:     func(string) (bool, error) { return false, nil },
+		RecordHead:      func() (string, error) { return "record-head", nil },
+		RejectReview:    func() (string, time.Time, bool, error) { return "", time.Time{}, false, nil },
+		ReflectFriction: func() string { return "skipped" },
 		ReworkTable: func(loomshed.ReworkTold) (seatengine.Table, error) {
 			return seatengine.Table{
 				RolePrefix: "rework",
@@ -440,9 +458,10 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 // fullEnvSegment returns a review segment's settings with empty models and the given bounce budget, resolved from review_max_bounces in configFile.
 func fullEnvSegment(maxBounces int, configFile string) shedrecipe.SegmentSettings {
 	return shedrecipe.SegmentSettings{
-		MaxBounces:    maxBounces,
-		MaxBouncesKey: "review_max_bounces",
-		ConfigFile:    configFile,
+		MaxBounces:      maxBounces,
+		MaxBouncesKey:   "review_max_bounces",
+		ConfigFile:      configFile,
+		AmendMaxBounces: 1,
 	}
 }
 
