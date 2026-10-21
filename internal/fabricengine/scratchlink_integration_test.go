@@ -120,6 +120,18 @@ func removeTarget(t *testing.T, target string) {
 	}
 }
 
+// removeWeftWorktreeDuringTrackedCheck makes the scratch step's tracked-path check delete slug's weft worktree and answer false,
+// so the worktree is gone between the step's first check and its classification of the root.
+func removeWeftWorktreeDuringTrackedCheck(t *testing.T, l *lyxcwd.Location, slug string) {
+	t.Helper()
+	fabricengine.SetScratchPathTrackedForTest(t, func(string, string) (bool, error) {
+		if err := os.RemoveAll(fabricengine.RecordsWorktreePath(l, slug)); err != nil {
+			t.Errorf("remove the weft worktree: %v", err)
+		}
+		return false, nil
+	})
+}
+
 // trackScratchFile force-adds and commits a file under `.scratch/` in the warp worktree at dir.
 func trackScratchFile(t *testing.T, dir, root string) {
 	t.Helper()
@@ -538,12 +550,7 @@ func TestWireJunctions_ScratchLinkRefusedAfterClassify(t *testing.T) {
 		root, target := scratchPaths(l, slug)
 		removeRootLink(t, root)
 		removeTarget(t, target)
-		fabricengine.SetScratchPathTrackedForTest(t, func(string, string) (bool, error) {
-			if err := os.RemoveAll(fabricengine.RecordsWorktreePath(l, slug)); err != nil {
-				t.Errorf("remove the weft worktree: %v", err)
-			}
-			return false, nil
-		})
+		removeWeftWorktreeDuringTrackedCheck(t, l, slug)
 
 		wireWithRecord(t, l, slug)
 
@@ -552,6 +559,46 @@ func TestWireJunctions_ScratchLinkRefusedAfterClassify(t *testing.T) {
 		}
 		if got := describeEntry(t, root); got != "absent" {
 			t.Errorf("root .scratch = %q; want no link", got)
+		}
+	})
+
+	t.Run("WeftWorktreeGoneBeforeAdoption", func(t *testing.T) {
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		l := h.Location
+		slug := l.WorktreeName
+		root, target := scratchPaths(l, slug)
+		replaceLinkWithRealDirectory(t, root)
+		removeTarget(t, target)
+		removeWeftWorktreeDuringTrackedCheck(t, l, slug)
+
+		wireWithRecord(t, l, slug)
+
+		if got := describeEntry(t, root); got != "dir" {
+			t.Errorf("root .scratch = %q; want the real directory unrenamed", got)
+		}
+		if _, err := os.Stat(filepath.Join(root, scratchNoteName)); err != nil {
+			t.Errorf("note missing from the real directory: %v", err)
+		}
+		if got := describeEntry(t, target); got != "absent" {
+			t.Errorf("target = %q; want nothing created once the weft worktree is gone", got)
+		}
+	})
+
+	t.Run("WeftWorktreeGoneBeforeRestore", func(t *testing.T) {
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		l := h.Location
+		slug := l.WorktreeName
+		root, target := scratchPaths(l, slug)
+		removeTarget(t, target)
+		removeWeftWorktreeDuringTrackedCheck(t, l, slug)
+
+		wireWithRecord(t, l, slug)
+
+		if got := describeEntry(t, target); got != "absent" {
+			t.Errorf("target = %q; want it not recreated once the weft worktree is gone", got)
+		}
+		if got, want := describeEntry(t, root), "link:"+target; got != want {
+			t.Errorf("root .scratch = %q; want the link left as %q", got, want)
 		}
 	})
 
@@ -721,6 +768,73 @@ func TestRemove_UnlinksScratchLinkBeforeWorktreeRemoval(t *testing.T) {
 		}
 		if content, err := os.ReadFile(filepath.Join(other, scratchNoteName)); err != nil || string(content) != "outside" {
 			t.Errorf("outside note = %q, %v; want it to survive Remove", content, err)
+		}
+	})
+}
+
+// linkAnchoredScratch creates a link named `.scratch` inside the anchor directory of slug's warp worktree, pointing at the same name under the weft anchor as every wired junction does.
+func linkAnchoredScratch(t *testing.T, l *lyxcwd.Location, slug string) string {
+	t.Helper()
+	target := filepath.Join(fabricengine.RecordsWorktreePath(l, slug), l.AnchorRel, ".scratch")
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatalf("create %s: %v", target, err)
+	}
+	link := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, ".scratch")
+	if err := fslink.CreateDirLink(link, target); err != nil {
+		t.Fatalf("link %s: %v", link, err)
+	}
+	return link
+}
+
+// TestScratchNameAtSubpathAnchor pins that a link named `.scratch` inside a subpath anchor is an ordinary anchored junction.
+// Only the root `.scratch` link is the scratch step's; Unwire and Remove must still remove the anchored one.
+func TestScratchNameAtSubpathAnchor(t *testing.T) {
+	t.Parallel()
+
+	t.Run("UnwireRemovesItAndKeepsTheRootLink", func(t *testing.T) {
+		t.Parallel()
+
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "backend"})
+		l := h.Location
+		slug := l.WorktreeName
+		root, target := scratchPaths(l, slug)
+		link := linkAnchoredScratch(t, l, slug)
+
+		result, err := fabricengine.Unwire(filepath.Join(l.WorktreePath(), l.AnchorRel), true)
+		if err != nil {
+			t.Fatalf("Unwire: %v", err)
+		}
+
+		if got := describeEntry(t, link); got != "absent" {
+			t.Errorf("anchored .scratch = %q; want it removed as an ordinary junction", got)
+		}
+		if !containsLine(result.JunctionsRemoved, ".scratch") {
+			t.Errorf("JunctionsRemoved = %v; want it to name .scratch", result.JunctionsRemoved)
+		}
+		if got, want := describeEntry(t, root), "link:"+target; got != want {
+			t.Errorf("root .scratch = %q; want it left as %q", got, want)
+		}
+	})
+
+	t.Run("RemoveCountsIt", func(t *testing.T) {
+		t.Parallel()
+
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "backend"})
+		l := h.Location
+		const slug = "anchored-scratch-remove"
+		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
+		link := linkAnchoredScratch(t, l, slug)
+
+		result, err := h.Topology.Remove(l, slug, true, false)
+		if err != nil {
+			t.Fatalf("Remove = %v; want nil", err)
+		}
+
+		if !hasMutation(result.Mutations, fabricengine.KindLinkRemoved, scratchHubRelative(t, l, link), "") {
+			t.Errorf("record %+v lacks link_removed at the anchored .scratch", result.Mutations.Entries())
+		}
+		if result.LinksRemoved != 3 {
+			t.Errorf("LinksRemoved = %d; want 3 (_lyx, .lyx and the anchored .scratch)", result.LinksRemoved)
 		}
 	})
 }
