@@ -47,7 +47,8 @@ type Module struct {
 	// configsync carries them whole through reconcile.
 	OpenMaps []string
 	// PerNameMaps names the template's keys whose entries are named by the operator, as dotted paths.
-	// configsync adds the template's entries per name and keeps every entry the template lacks.
+	// configsync keeps only the names the file changed, leaves out a name holding the template's value,
+	// never copies a template name in, and keeps every entry the template lacks.
 	PerNameMaps []string
 	// SeedOnly marks a module whose key set is open-ended and owned by the
 	// operator (e.g. models.yaml aliases).
