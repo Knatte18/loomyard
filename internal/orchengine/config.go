@@ -17,8 +17,8 @@ import (
 
 // Template defaults; the accessors floor a non-positive value back to them, except the poll interval, which pollFloor floors.
 const (
-	defaultThresholdTokens     = 400000
-	defaultSoftThresholdTokens = 300000
+	defaultThresholdTokens     = 200000
+	defaultSoftThresholdTokens = 150000
 	defaultSoftIdleS           = 300
 	defaultIdleGraceS          = 30
 	defaultHandoffTimeoutS     = 600

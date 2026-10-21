@@ -143,9 +143,7 @@ Every verb runs from the hub's prime worktree only.`,
 			// Only start reconciles, and before any module config loads, so a retired key cannot refuse the verb ahead of the reconcile that removes it.
 			if cmd.Name() == "start" {
 				if geometry, inHub := hubgeom.ReconcileGeometry(location); inHub {
-					if err := hubreconcile.Ensure(geometry, hubreconcile.Options{}); err != nil {
-						return fail(err)
-					}
+					hubreconcile.EnsureOrWarn(geometry, hubreconcile.Options{})
 				}
 			}
 

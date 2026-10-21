@@ -2,7 +2,7 @@
 //
 // Provides the Edit function, and EditPath for a file at a told path, to load a config file, open it in an injected editor, validate the
 // YAML syntax, and loop on validation failure.
-// Scaffolds missing files from a template and removes them on abort to leave the filesystem in its
+// Scaffolds a missing hub base with the sparse header, and any other missing base from the template, and removes a scaffolded file on abort to leave the filesystem in its
 // pre-call state.
 // Injected EditorFunc allows tests to drive the editor without a real process.
 
@@ -102,9 +102,18 @@ func scaffoldIfMissing(path, configDir, template string) (scaffolded bool, err e
 	return true, nil
 }
 
+// BaseScaffold returns the bytes an absent base layer is scaffolded with:
+// [SparseBaseHeader] when the base is sparse over the template, else the spec's template.
+func BaseScaffold(dirs Dirs, spec Spec) string {
+	if sparseBase(dirs, spec) {
+		return SparseBaseHeader
+	}
+	return string(spec.Template)
+}
+
 // Edit opens the layer's file of spec under dirs in an editor, validates the YAML syntax, and loops on validation
 // failure.
-// The base layer is scaffolded from the template when absent; a layer above it is sparse, so an absent file is scaffolded empty.
+// An absent base layer is scaffolded through [BaseScaffold], the header for a hub's sparse base and the template for a standalone or seed-only one; a layer above it is sparse, so an absent file is scaffolded empty.
 // On abort, removes any scaffolded file and returns ErrAborted.
 // Validation is syntactic only;
 // known keys are not enforced, except that a saved local override must pass [ValidateLocal] and a saved machine override [ValidateMachine], and a refused one is put back to its previous bytes, or removed when the call created it.
@@ -118,7 +127,7 @@ func Edit(dirs Dirs, spec Spec, layer Layer, edit EditorFunc) error {
 	}
 
 	if layer == BaseLayer(dirs, spec) {
-		return EditPath(path, string(spec.Template), edit)
+		return EditPath(path, BaseScaffold(dirs, spec), edit)
 	}
 	if layer != LayerLocal && layer != LayerMachine {
 		return EditPath(path, "", edit)

@@ -156,6 +156,8 @@ func newHubCommit(boardDir string) hubCommitFunc {
 }
 
 // reconcileDefaultLayer reconciles every module's file under the hub's board dir against its template, seeded from the prime's anchor, and reports the reconcile envelope.
+// It seeds absent bases sparse and never fills a present one.
+// The one-time base strip of an unmigrated board is reported as pending and never performed, so the board marker is not written.
 // A dry run writes nothing and takes no guard.
 // apply is refused when guard refuses.
 // Otherwise it holds the board write lock and runs a dry run first, so a file that fails to parse or migrate leaves every file unwritten.
@@ -371,8 +373,9 @@ func setHubWide(dirs configDirs, out io.Writer, module configreg.Module, pairs [
 // editHubWide edits a hub-wide module's file through a staging copy under the worktree's .lyx,
 // so the editor never holds the board write lock.
 // Only the copy into the board dir, its validation and its commit run under the lock.
+// An absent file is staged as the sparse header, or as the template for a seed-only module.
 func editHubWide(dirs configDirs, out io.Writer, module configreg.Module, edit configengine.EditorFunc, commit hubCommitFunc) int {
-	template := module.Template()
+	template := configengine.BaseScaffold(configengine.Dirs{Board: dirs.board}, module.Spec())
 	path := configengine.ConfigFile(dirs.board, module.Name)
 	staging := configengine.StagingFile(dirs.worktree, module.Name)
 

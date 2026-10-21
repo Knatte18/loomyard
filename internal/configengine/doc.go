@@ -4,7 +4,7 @@
 // [LoadOrTemplate] degrades to the caller's embedded template on proven absence of the base layer's `_lyx/` or file, and is otherwise identical.
 // `PATTERN-config-strictness` decides which of the two a caller adopts.
 //
-// Both resolve a layer stack, fill, in memory, the template keys the merged stack lacks and log each fill with the layer `template`;
+// Both resolve a layer stack, fill, in memory, the template keys the merged stack lacks and log each fill with the layer `template`, except under a hub's sparse base, whose fill is not logged;
 // neither writes a file.
 // A key missing inside a list element is the one gap fill cannot close, and is an error.
 // The result is resolved through envsource's markers once, after the merge.
@@ -15,7 +15,7 @@
 // an absent base file or `_lyx/`, an unreadable file and a base directory failure stay unmarked.
 // A caller marks its own unmarshal and validation failures with [MarkInvalid], which leaves the error text unchanged.
 //
-// [Set] writes dotted key=value pairs into a module's file, scaffolding it from the template when absent, with no editor and no validation loop.
+// [Set] writes dotted key=value pairs into a module's file with no editor and no validation loop, scaffolding a standalone or seed-only base from the template when absent and writing a hub's base sparse.
 // For a spec with `JSONEntries` it writes each pair as one whole top-level entry from a JSON object instead, with no template key check.
 // [Edit] is the interactive counterpart.
 // An editor that leaves the file empty or whitespace-only aborts the edit with [ErrAborted] before the YAML parse:
@@ -45,8 +45,10 @@
 // With `Board` empty every module stacks the template, the worktree file and the local file; with `Anchor` empty there is no worktree or local layer.
 // [LayerFile] returns a layer's file and whether it applies, [LocalFile] the local one and [MachineFile] the machine one, neither ever the editor staging copy's path.
 //
-// The base layer ([BaseLayer]) is the lowest file layer, the repo default or hub file when `Board` is set, else the worktree file, and stays full.
-// Every layer above it is sparse.
+// The base layer ([BaseLayer]) is the lowest file layer, the repo default or hub file when `Board` is set, else the worktree file.
+// In a hub it is sparse over the template: a key-less base holds [SparseBaseHeader] and loads as a present base, its fill is not logged, and [Set] and [Edit] write it sparse, scaffolding an absent one through [BaseScaffold].
+// Only a [Spec] with `SeedOnly`, the operator's registry seeded whole and never rewritten, and a standalone worktree base stay full.
+// Every layer above the base is sparse.
 // Strictness applies to the base layer: [Load] errors on an absent base file with the way forward for its kind, [LoadOrTemplate] takes the template as the base and still stacks the upper layers present.
 // An absent upper file adds nothing, and so does an empty or comment-only local file.
 // A worktree with no `_lyx/` beside a told `Board` has no worktree or local layer; the board dir's base is not uninitialised for it.

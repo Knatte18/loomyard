@@ -352,7 +352,7 @@ func TestSmokeRunStandalone(t *testing.T) {
 	// bootstrap once and then killing the driver, advances the machine and records that advance in the
 	// status file.
 	t.Run("advances the machine from an existing seed", func(t *testing.T) {
-		stdout, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "start")
+		stdout, _, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, 30*time.Second, "loom", "start")
 		if err != nil {
 			t.Fatalf("bootstrap: %v; output: %s", err, stdout)
 		}
@@ -394,7 +394,7 @@ func TestSmokeRunStandalone(t *testing.T) {
 		// test's own timeout in CI; once Wait's started-gating fix let the dead pane classify fast
 		// (~startup_timeout_s), the same "no history entry" outcome surfaced immediately and revealed
 		// the stale assertion.
-		driveOut, driveCode, err := runLoomCLINoFatal(exe, worktree, 3*time.Minute, "loom", "run")
+		driveOut, driveCode, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, 3*time.Minute, "loom", "run")
 		if err != nil {
 			t.Fatalf("loom run: %v; output: %s", err, driveOut)
 		}
@@ -511,7 +511,7 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 		if !os.IsNotExist(err) {
 			t.Fatalf("stat status file: %v", err)
 		}
-		if stdout, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "start"); err != nil {
+		if stdout, _, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, 30*time.Second, "loom", "start"); err != nil {
 			t.Fatalf("seeding loom start: %v; output: %s", err, stdout)
 		}
 	}
@@ -554,7 +554,7 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 			wg.Add(1)
 			go func(i int) {
 				defer wg.Done()
-				outputs[i], _, runErrs[i] = runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "start")
+				outputs[i], _, runErrs[i] = runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, 30*time.Second, "loom", "start")
 			}(i)
 		}
 		wg.Wait()
@@ -617,7 +617,7 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 	t.Run("second invocation does not spawn a second driver", func(t *testing.T) {
 		firstPIDs := findDriverPIDs(worktree)
 
-		stdout, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "start")
+		stdout, _, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, 30*time.Second, "loom", "start")
 		if err != nil {
 			t.Fatalf("second loom start: %v; output: %s", err, stdout)
 		}
@@ -677,7 +677,7 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 		// The next "loom start" needs no --parent: ReadOrigin finds the just-written record on disk with a
 		// matching value, so resolveParentBranch reports write == false -- the exact row the finding says
 		// used to strand the record forever.
-		stdout, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "start")
+		stdout, _, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, 30*time.Second, "loom", "start")
 		if err != nil {
 			t.Fatalf("healing loom start: %v; output: %s", err, stdout)
 		}
@@ -710,7 +710,7 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 		killDriversAndClearLog(t)
 		poisonStatusFile(t, loc)
 
-		stdout, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "start")
+		stdout, _, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, 30*time.Second, "loom", "start")
 		if err != nil {
 			t.Fatalf("rigged bootstrap: %v; output: %s", err, stdout)
 		}
@@ -757,7 +757,7 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 		killDriversAndClearLog(t)
 		poisonStatusFileMalformed(t, loc)
 
-		stdout, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "start")
+		stdout, _, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, 30*time.Second, "loom", "start")
 		if err != nil {
 			t.Fatalf("malformed-status bootstrap: %v; output: %s", err, stdout)
 		}

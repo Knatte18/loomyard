@@ -11,6 +11,7 @@ package configengine_test
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -653,6 +654,10 @@ func TestConfigPaths(t *testing.T) {
 		{"SparseMarker", configengine.SparseMarker(base), filepath.Join(base, lyxdirs.LyxDirName, "config", "sparse")},
 		{"SparseMarkerRel", configengine.SparseMarkerRel(), filepath.Join(lyxdirs.LyxDirName, "config", "sparse")},
 		{"SparseMarker is SparseMarkerRel under the base", configengine.SparseMarker(base), filepath.Join(base, configengine.SparseMarkerRel())},
+		{"BaseSparseMarker", configengine.BaseSparseMarker(base), filepath.Join(base, lyxdirs.LyxDirName, "config", "base-sparse")},
+		{"BaseSparseMarkerRel", configengine.BaseSparseMarkerRel(), filepath.Join(lyxdirs.LyxDirName, "config", "base-sparse")},
+		{"BaseSparseMarker is BaseSparseMarkerRel under the base", configengine.BaseSparseMarker(base), filepath.Join(base, configengine.BaseSparseMarkerRel())},
+		{"BaseSparseMarker differs from SparseMarker", fmt.Sprint(configengine.BaseSparseMarker(base) != configengine.SparseMarker(base)), "true"},
 		{"ConfigFile is ConfigFileRel under the base", configengine.ConfigFile(base, "myapp"), filepath.Join(base, configengine.ConfigFileRel("myapp"))},
 	}
 	for _, tt := range tests {
