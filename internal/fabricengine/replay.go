@@ -768,7 +768,7 @@ func replayBolt(rec *Mutations, l *lyxcwd.Location, boardDir, upstream string, e
 	}
 	// Past the pick the branch sits on upstream, so every failure from here puts the starting tip back.
 	restoreOnFailure := func(cause error) (ReplayOutcome, error) {
-		if err := restoreReplayTip(repo, start); err != nil {
+		if err := restoreReplayTip(rec, repo, start); err != nil {
 			return outcome, errors.Join(cause, err)
 		}
 		outcome.Replayed, outcome.Dropped = nil, nil

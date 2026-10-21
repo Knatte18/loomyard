@@ -59,6 +59,23 @@ func (f *recordsFixture) originCommit(branch, rel, content, message string) stri
 }
 
 // requireClean fails the test when dir has an uncommitted change.
+// scribbleThenFailReplay is the real board replay for every board but one,
+// and for that one writes an uncommitted `board.json` and then fails, as an apply that dies halfway leaves it.
+type scribbleThenFailReplay struct {
+	boardengine.FabricReplay
+	boardDir string
+}
+
+func (r scribbleThenFailReplay) Apply(req fabricengine.BoardReplayRequest) (fabricengine.BoardReplayResult, error) {
+	if req.BoardDir != r.boardDir {
+		return r.FabricReplay.Apply(req)
+	}
+	if err := os.WriteFile(filepath.Join(req.BoardDir, "board.json"), []byte("{}\n"), 0o644); err != nil {
+		return fabricengine.BoardReplayResult{}, err
+	}
+	return fabricengine.BoardReplayResult{}, errors.New("apply died after writing board.json")
+}
+
 func requireClean(t *testing.T, dir string) {
 	t.Helper()
 	if status := gitkit.GitStatusPorcelain(t, dir); strings.TrimSpace(status) != "" {
@@ -626,6 +643,30 @@ func TestRecordsReplay(t *testing.T) {
 			}
 			if got := gitkit.RevParse(t, board, "set-aside/neve/"+neve[:12]+"^{commit}"); got != neve {
 				t.Errorf("set-aside tag names %s, want %s", got, neve)
+			}
+		})
+
+		t.Run("A refused restore after a failed by-entry apply tags the starting tip and names the way back", func(t *testing.T) {
+			t.Parallel()
+			f := newRecordsFixture(t)
+			board := f.hub.BoardDir()
+			branch := gitkit.CurrentBranch(t, board)
+			pushBase(t, board, branch, boardEntry("neve"), boardEntry("other"))
+			tip := gitkit.CommitFile(t, board, "board.json", boardFileOf(t, boardEntry("neve"), boardEntry("other", withBoardTitle("O2"))), "retitle other")
+			upstream := f.originCommit(branch, "notes/up.md", "up\n", "upstream work")
+			gitkit.Git(t, board, "fetch")
+			t.Cleanup(fabricengine.InstallBoardReplay(scribbleThenFailReplay{boardDir: board}))
+
+			_, err := fabricengine.ReplayBoltForTest(f.hub.Location, board, nil)
+			wantTag := "set-aside/restore-failed/" + tip[:12]
+			if err == nil || !strings.Contains(err.Error(), "tagged "+wantTag) || !strings.Contains(err.Error(), "git reset --keep "+wantTag) {
+				t.Fatalf("ReplayBoltForTest error = %v, want the refused restore naming tag %s and its reset --keep", err, wantTag)
+			}
+			if got := gitkit.RevParse(t, board, wantTag+"^{commit}"); got != tip {
+				t.Errorf("tag %s names %s, want the starting tip %s", wantTag, got, tip)
+			}
+			if got := gitkit.RevParse(t, board, "HEAD"); got != upstream {
+				t.Errorf("HEAD = %s, want upstream %s the refused restore left it on", got, upstream)
 			}
 		})
 

@@ -1789,12 +1789,27 @@ func dropSeedCommits(rec *Mutations, req pathRequest, repo *gitrepo.Repo, upstre
 }
 
 // restoreReplayTip puts repo's branch back on tip with `reset --keep` after a replay failed past its pick, so a failure never leaves the branch on upstream.
-// A reset git refuses, as over a file the failed replay already wrote, is returned.
-func restoreReplayTip(repo *gitrepo.Repo, tip string) error {
-	if err := repo.ResetKeep(tip); err != nil {
+// A reset git refuses, as over a file the failed replay already wrote, is returned with the tag that holds tip.
+func restoreReplayTip(rec *Mutations, repo *gitrepo.Repo, tip string) error {
+	if err := resetKeepOrTag(rec, repo, tip); err != nil {
 		return fmt.Errorf("restore %s after a failed board replay: %w", tip, err)
 	}
 	return nil
+}
+
+// resetKeepOrTag resets repo to tip with `reset --keep`.
+// When git refuses the reset, tip is tagged so the commits a replay moved the branch off stay reachable,
+// and the returned error names the tag and the `git reset --keep` that restores it.
+func resetKeepOrTag(rec *Mutations, repo *gitrepo.Repo, tip string) error {
+	resetErr := repo.ResetKeep(tip)
+	if resetErr == nil {
+		return nil
+	}
+	tag, tagErr := setAsideTag(rec, repo, "restore-failed", tip)
+	if tagErr != nil {
+		return errors.Join(resetErr, tagErr)
+	}
+	return fmt.Errorf("%w; the starting tip is tagged %s, restore it with `git reset --keep %s`", resetErr, tag, tag)
 }
 
 // cherryPickOnto is the executor for replaying local commits onto a records branch's moved upstream:
@@ -1830,7 +1845,7 @@ func cherryPickOnto(rec *Mutations, req pathRequest, repo *gitrepo.Repo, onto st
 		if abortPick {
 			abortErr = repo.CherryPickAbort()
 		}
-		if err := errors.Join(abortErr, repo.ResetKeep(startTip)); err != nil {
+		if err := errors.Join(abortErr, resetKeepOrTag(rec, repo, startTip)); err != nil {
 			return fmt.Errorf("restore %s after a failed replay: %w", startTip, err)
 		}
 		return nil
@@ -1868,7 +1883,7 @@ func cherryPickOnto(rec *Mutations, req pathRequest, repo *gitrepo.Repo, onto st
 	}
 	endTip, err := repo.CurrentSHA()
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(err, resetBack(false))
 	}
 	if endTip != startTip {
 		rec.Append(KindRepoAdvanced, req.target, endTip)
