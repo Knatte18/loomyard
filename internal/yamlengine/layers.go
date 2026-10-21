@@ -195,7 +195,11 @@ func SetSparse(template, existing []byte, pairs []KV, perNameMaps []string, open
 			if err != nil {
 				return SetResult{}, fmt.Errorf("%w: rewrite %s as a map of name to description", err, open)
 			}
-			setEntry(mapping, name, stringNode(pair.Value))
+			entry, err := openMapEntryNode(pair)
+			if err != nil {
+				return SetResult{}, err
+			}
+			setEntry(mapping, name, entry)
 			continue
 		}
 		if perName, name, ok := splitPerNameKey(pair.Key, perNameMaps); ok {

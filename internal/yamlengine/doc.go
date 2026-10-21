@@ -37,7 +37,9 @@
 //     When the file lacks P, the template's value stays and added reports P itself.
 //   - FillMissing skips a key at P that the file holds before any shape check, and appends a missing P whole.
 //   - MissingKeys counts a template leaf at or under P as satisfied by the presence of key P.
-//   - SetValues knows P.<name> for any name, sets it to the scalar value in the mapping at P, and appends the key when absent.
+//   - SetValues and SetSparse know P.<name> for any name, set it in the mapping at P, and append the key when absent.
+//     The entry is a string scalar, except that a value whose first non-blank character is { is a YAML flow mapping and one whose first non-blank character is [ is a YAML flow list, each replacing the entry whole and keeping its own scalar tags.
+//     A braced or bracketed value that is not one node of its kind, or carries text after its closing bracket, is refused naming the key, and a string holding a brace, comma or bracket is double-quoted inside it.
 //     A list at P is an error naming P;
 //     the list is never converted.
 //     Known lists each open map as P.<name>.
