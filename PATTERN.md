@@ -8,10 +8,10 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-told-geometry` — Writing an engine: handed its absolute paths, it derives none and never imports `internal/lyxcwd`. — [background](pattern/PATTERN-told-geometry.md)
 - `PATTERN-lyxdirs-single-declarer` — Naming `_lyx` or `.lyx` in a path: only `internal/lyxdirs` declares them, bar one variable block atop a `tools/` script.
 - `PATTERN-lyx-temp-root` — Creating a temp file or dir: under `internal/lyxtemp`'s run dir, never `os.TempDir()`. (test) — [background](pattern/PATTERN-lyx-temp-root.md)
-- `PATTERN-durable-vs-ephemeral-state` — Adding a file: tracked under `_lyx`, never-tracked under `.lyx`, same subpath; nothing a run needs lives only under `.lyx`. — [background](pattern/PATTERN-durable-vs-ephemeral-state.md)
+- `PATTERN-durable-vs-ephemeral-state` — Adding a file: tracked under `_lyx`, never-tracked under `.lyx`, same subpath. — [background](pattern/PATTERN-durable-vs-ephemeral-state.md)
 - `PATTERN-hub-containment` — Linking hub-level containers or writing the hub workspace file: from the hub only. — [background](pattern/PATTERN-hub-containment.md)
 - `PATTERN-hub-wide-config` — A hub-level config module: `HubWide` in `configreg`, its file on the board only, its machine override beside it. — [background](pattern/PATTERN-hub-wide-config.md)
-- `PATTERN-hub-suffix` — Touching hub naming: `-LYXHUB` is the sole hub container suffix; no code recognises retired `-HUB`. (test) — [background](pattern/PATTERN-hub-suffix.md)
+- `PATTERN-hub-suffix` — Touching hub naming: `-LYXHUB` is the sole hub container suffix. (test) — [background](pattern/PATTERN-hub-suffix.md)
 
 ## CLI
 
@@ -29,8 +29,8 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-fabric-git` — Running git on warp or weft: only `internal/fabricengine`, in-process, never raw git. — [background](pattern/PATTERN-fabric-git.md)
 - `PATTERN-fabric-destruction-chokepoint` — Destroying anything in fabric: only `internal/fabricengine/destroy.go`. — [background](pattern/PATTERN-fabric-destruction-chokepoint.md)
 - `PATTERN-fabric-write-containment` — Writing `_launchers` or the workspace file in `fabricengine`: via a hub `os.Root`, never raw `os` or `fslink`.
-- `PATTERN-push-both-sides` — Pushing run records from Go: the pair's code branch goes along, and a per-transition status push goes through fabric's detached push. — [background](pattern/PATTERN-push-both-sides.md)
-- `PATTERN-push-failure-visible` — A push origin still refuses after its retry: a failed-push record and one creel notice to the orch, never only a log line. (test)
+- `PATTERN-push-both-sides` — Pushing run records from Go: the pair's code branch goes along, and a status push is detached. — [background](pattern/PATTERN-push-both-sides.md)
+- `PATTERN-push-failure-visible` — A push refused after its retry: a failed-push record and a creel notice. (test)
 - `PATTERN-mutation-record` — Adding a mutating fabric verb: it fills a `*Mutations` record; its result embeds `MutationRecord`. — [background](pattern/PATTERN-mutation-record.md)
 - `PATTERN-pair-teardown` — Tearing down a pair: only via `internal/pairteardown`. (test) — [background](pattern/PATTERN-pair-teardown.md)
 - `PATTERN-batten-bookend` — Creating or destroying a task worktree: its producer never runs inside it. — [background](pattern/PATTERN-batten-bookend.md)
@@ -41,14 +41,14 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-gitrepo-client-boundary` — Git in `internal/gitrepo`: local reads via go-git and `dotgit`, the rest via `gitexec`. (test) — [background](pattern/PATTERN-gitrepo-client-boundary.md)
 - `PATTERN-gitexec-checked-call` — Running git: `gitexec.Run`/`runChecked`; raw `RunGit`/`r.run` only at pinned `//gitexec:raw` sites.
 - `PATTERN-never-force-add` — Keeping transients unindexed: each repo's own `.git/info/exclude`; fabric and gitrepo never run `git add -f`.
-- `PATTERN-origin-reconcile` — Acting on a run or the hub after this machine may have been away (orch start, wake, batten resume, Merge-In, Finalize, cleanup): first `fabricengine`'s origin reconcile, the sole judge of local branches against origin.
+- `PATTERN-origin-reconcile` — Acting on a run or the hub after an absence: first `fabricengine`'s origin reconcile, sole judge of branches.
 - `PATTERN-parent-lock` — Merging a parent into a task branch, or landing on it: only under that parent's `internal/parentlock` lock; a moved parent reroutes to Merge-In.
 
 ## Shed and loom
 
 - `PATTERN-shed-producer-seam` — Importing into `internal/shedengine`: only stdlib, `state` and `lock`; its status and lock paths are caller-supplied.
 - `PATTERN-shed-recipe-registry` — Adding a producer: one `map[string]Constructor` in `internal/shedrecipe` behind `Lookup`, bar `Implementer`'s; no `init()`/`Register`/`lyxcwd`.
-- `PATTERN-recipe-setting-lookup` — Giving a recipe row a value: a plain one is `module.key` via `Env.Setting`, an executable one `module.key` via the owner's told lookup over the template and board default layer, a review segment's one a `SegmentSettings` field; never its own `Env` field.
+- `PATTERN-recipe-setting-lookup` — Giving a recipe row a value: looked up by key, never its own `Env` field. — [background](pattern/PATTERN-recipe-setting-lookup.md)
 - `PATTERN-command-row` — Adding a side-action row to a recipe: a `Command` row over its config keys, its command read from the template and board default layer only, never a new engine.
 - `PATTERN-shed-verb-set` — Adding a run, step, status, pause or goto verb: generic bodies only in `internal/shedverbs`. (test) — [background](pattern/PATTERN-shed-verb-set.md)
 - `PATTERN-shed-driver` — Driving a shed run in Go, deciding its stops or spawning a tackler: only `internal/sheddriver`. (test) — [background](pattern/PATTERN-shed-driver.md)
@@ -88,7 +88,7 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-pane-binary-resolution` — Creating a strand pane or detached `lyx` window in reed: resolve `lyx` via `panebin.go` only. (test) — [background](pattern/PATTERN-pane-binary-resolution.md)
 - `PATTERN-role-skills-typed` — Loading a spawned session's skill: its spawner names it on the launch spec, lyx delivers it on the launch line or typed; no stencil asks for one. (test)
 - `PATTERN-parent-directive` — Writing a spawned role's top-level stencil: it renders the parent directive. (test) — [background](pattern/PATTERN-parent-directive.md)
-- `PATTERN-edit-directive` — Writing a spawned role's opening stencil: it renders `internal/editdirective`'s directive; orch stencils are exempt. (test) — [background](pattern/PATTERN-edit-directive.md)
+- `PATTERN-edit-directive` — Writing a spawned role's opening stencil: it renders `internal/editdirective`'s directive. (test) — [background](pattern/PATTERN-edit-directive.md)
 - `PATTERN-spawn-color` — Coloring a spawned session: its spawner names a segment on the launch spec. — [background](pattern/PATTERN-spawn-color.md)
 - `PATTERN-wait-mark-display-only` — Marking a wait on screen: only reed's `SetWaitMark`; no Go decision reads the marks. — [background](pattern/PATTERN-wait-mark-display-only.md)
 - `PATTERN-spawn-observability` — Starting an OS process from `lyx`: log the spawn, and a teardown it waits for, via `internal/logger`. — [background](pattern/PATTERN-spawn-observability.md)

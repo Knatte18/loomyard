@@ -20,8 +20,8 @@ const (
 	// MaxOverviewBytes caps the overview's size.
 	MaxOverviewBytes = 16 * 1024
 
-	// HeadroomBytes is the line a branch's own growth of the overview must not cross, 1% below the cap.
-	HeadroomBytes = MaxOverviewBytes * 99 / 100
+	// HeadroomBytes is the line a branch's own growth of the overview must not cross, 5% below the cap.
+	HeadroomBytes = MaxOverviewBytes * 95 / 100
 
 	// MaxEntryLineChars caps one entry line's length in characters.
 	MaxEntryLineChars = 320
