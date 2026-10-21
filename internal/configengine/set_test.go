@@ -15,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
-// TestSet pins what Set writes: a missing file is scaffolded from the template and the pairs applied in one call, other keys keep their values, an orphaned top-level key survives and is reported, and a refused pair removes a file Set scaffolded or leaves a pre-existing one byte for byte unchanged.
+// TestSet pins what Set writes: a missing file is scaffolded from the template and the pairs applied in one call, other keys keep their values, an orphaned top-level key survives and is reported, and a refused pair removes a file Set scaffolded or leaves a pre-existing one byte for byte unchanged, a machine write included.
 func TestSet(t *testing.T) {
 	t.Parallel()
 	const labelsTemplate = "name: x\nlabels:\n  bug: a bug\n"
@@ -37,10 +37,16 @@ func TestSet(t *testing.T) {
 		layer configengine.Layer
 		// board tells the call a board dir, which makes the worktree layer sparse.
 		board bool
-		// categories classify the template for a local write.
+		// categories classify the template for a local or machine write.
 		categories map[string]configengine.Category
-		// localExisting is the local file before the call; empty means it is absent.
+		// localExisting is the local or machine file before the call; empty means it is absent.
 		localExisting string
+		// hubWide marks the spec hub-wide and gives the board dir its _lyx/config/, as a machine write needs; it needs board.
+		hubWide bool
+		// boardOnly tells the call the board dir alone, with no anchor.
+		boardOnly bool
+		// jsonEntries marks the spec JSONEntries.
+		jsonEntries bool
 		// wantExact is the written file's whole content; empty skips the check.
 		wantExact string
 	}{
@@ -173,6 +179,52 @@ func TestSet(t *testing.T) {
 			localExisting: "name: mine\n",
 			wantErr:       "run",
 		},
+		{
+			name:       "machine write of the machine key creates the file holding only that key",
+			state:      baseLyx,
+			template:   "name: x\nport: 1\n",
+			pairs:      []yamlengine.KV{{Key: "port", Value: "8"}},
+			layer:      configengine.LayerMachine,
+			board:      true,
+			hubWide:    true,
+			categories: map[string]configengine.Category{"port": configengine.CategoryMachine, "name": configengine.CategoryNone},
+			wantExact:  "port: 8\n",
+		},
+		{
+			name:       "machine write of a non-machine key is refused and leaves no file",
+			state:      baseLyx,
+			template:   "name: x\nport: 1\n",
+			pairs:      []yamlengine.KV{{Key: "name", Value: "z"}},
+			layer:      configengine.LayerMachine,
+			board:      true,
+			hubWide:    true,
+			categories: map[string]configengine.Category{"port": configengine.CategoryMachine, "name": configengine.CategoryNone},
+			wantErr:    "name",
+		},
+		{
+			name:       "machine write under the board dir alone does not apply and leaves no file",
+			state:      baseLyx,
+			template:   "name: x\nport: 1\n",
+			pairs:      []yamlengine.KV{{Key: "port", Value: "8"}},
+			layer:      configengine.LayerMachine,
+			board:      true,
+			boardOnly:  true,
+			hubWide:    true,
+			categories: map[string]configengine.Category{"port": configengine.CategoryMachine},
+			wantErr:    "does not apply here",
+		},
+		{
+			name:        "machine entry of a non-machine key in a JSON-entries spec is refused and leaves no file",
+			state:       baseLyx,
+			template:    "name: x\nport: 1\n",
+			pairs:       []yamlengine.KV{{Key: "name", Value: `{"a": 1}`}},
+			layer:       configengine.LayerMachine,
+			board:       true,
+			hubWide:     true,
+			jsonEntries: true,
+			categories:  map[string]configengine.Category{"port": configengine.CategoryMachine, "name": configengine.CategoryNone},
+			wantErr:     "name",
+		},
 	}
 
 	for _, tt := range tests {
@@ -183,13 +235,22 @@ func TestSet(t *testing.T) {
 			if tt.board {
 				dirs.Board = t.TempDir()
 			}
+			if tt.hubWide {
+				mustMkdirAll(t, configengine.ConfigDir(dirs.Board))
+			}
+			if tt.boardOnly {
+				dirs.Anchor = ""
+			}
 			layer := tt.layer
 			if layer == "" {
 				layer = configengine.LayerWorktree
 			}
 			previous, scaffolded := tt.existing, tt.state == baseLyx
-			if layer == configengine.LayerLocal {
+			if layer == configengine.LayerLocal || layer == configengine.LayerMachine {
 				path = configengine.LocalFile(baseDir, "testmod")
+				if layer == configengine.LayerMachine {
+					path = configengine.MachineFile(dirs.Board, "testmod")
+				}
 				previous, scaffolded = tt.localExisting, tt.localExisting == ""
 				if tt.localExisting != "" {
 					if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -200,7 +261,7 @@ func TestSet(t *testing.T) {
 					}
 				}
 			}
-			spec := configengine.Spec{Name: "testmod", Template: []byte(tt.template), OpenMaps: tt.openMaps, PerNameMaps: tt.perNameMaps, Categories: tt.categories}
+			spec := configengine.Spec{Name: "testmod", Template: []byte(tt.template), OpenMaps: tt.openMaps, PerNameMaps: tt.perNameMaps, Categories: tt.categories, HubWide: tt.hubWide, JSONEntries: tt.jsonEntries}
 
 			preserved, err := configengine.Set(dirs, spec, layer, tt.pairs)
 
