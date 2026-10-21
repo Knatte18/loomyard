@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fswatch"
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -726,6 +727,7 @@ type listerEnv struct {
 // Losing the lock race returns nil, respawns nothing and writes no trace file at the default verbosity.
 // A replaced binary with a live hub releases the lock before it respawns and passes the hub, tmux and shell values and suppress true under go test.
 // A replaced binary, an idle-cycle exit or a stop respawns only when the re-check after the loop still finds a session, and a cancelled context respawns nothing.
+// A stop is seen with or without a discover signal watch, the rows with neither failWatch nor closedWatch using the real one where it opens.
 // Each row asserts its own trace lines.
 // It points the process-global durable log sink at the hub's logs directory, so it is not parallel.
 func TestWatchdogCmd_ExitsZeroBeforeOrInsteadOfLooping(t *testing.T) {
@@ -744,6 +746,10 @@ func TestWatchdogCmd_ExitsZeroBeforeOrInsteadOfLooping(t *testing.T) {
 		idleCycles  int
 		// lister answers each session listing; nil answers idle.
 		lister func(env listerEnv) []string
+		// failWatch makes the discover signal watch fail to open, as a full inotify table does.
+		failWatch bool
+		// closedWatch makes the discover signal watch open on a channel that is already closed.
+		closedWatch bool
 		// wantRunning has the test wait for the stop-woken cycle and two more lister calls, assert the command is still running, then cancel it.
 		wantRunning  bool
 		wantRespawns int
@@ -784,6 +790,28 @@ func TestWatchdogCmd_ExitsZeroBeforeOrInsteadOfLooping(t *testing.T) {
 				return idle
 			},
 			wantTrace:   []string{"exiting on a stop request"},
+			wantNoTrace: []string{"successor was spawned", "exiting after consecutive idle"},
+		},
+		{
+			name: "stop with an idle listing and no watch", idleCycles: manyCycles, failWatch: true,
+			lister: func(env listerEnv) []string {
+				if env.call == 1 {
+					env.writeStop()
+				}
+				return idle
+			},
+			wantTrace:   []string{"could not watch the discover signal file, reading it on its backed-off cadence instead", "exiting on a stop request"},
+			wantNoTrace: []string{"successor was spawned", "exiting after consecutive idle"},
+		},
+		{
+			name: "stop with an idle listing and a closed watch", idleCycles: manyCycles, closedWatch: true,
+			lister: func(env listerEnv) []string {
+				if env.call == 1 {
+					env.writeStop()
+				}
+				return idle
+			},
+			wantTrace:   []string{"watch closed, reading the file on its backed-off cadence instead", "exiting on a stop request"},
 			wantNoTrace: []string{"successor was spawned", "exiting after consecutive idle"},
 		},
 		{
@@ -906,6 +934,18 @@ func TestWatchdogCmd_ExitsZeroBeforeOrInsteadOfLooping(t *testing.T) {
 					}
 					return tt.lister(call), nil
 				},
+			}
+			if tt.failWatch {
+				c.watchdogOpenWatch = func(string, ...string) (<-chan fswatch.Event, func() error, error) {
+					return nil, nil, errors.New("inotify instance limit reached")
+				}
+			}
+			if tt.closedWatch {
+				c.watchdogOpenWatch = func(string, ...string) (<-chan fswatch.Event, func() error, error) {
+					closed := make(chan fswatch.Event)
+					close(closed)
+					return closed, func() error { return nil }, nil
+				}
 			}
 			cmd := c.watchdogCmd()
 			cmd.SetOut(&bytes.Buffer{})

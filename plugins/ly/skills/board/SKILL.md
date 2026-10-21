@@ -77,6 +77,15 @@ Promote a note to a task:
 lyx board promote '{"slug":"my-note"}'
 ```
 
+Rename an entry, keeping every other field and rewriting the old slug in every other entry's `depends_on`:
+
+```
+lyx board rename '{"slug":"old-name","to":"new-name"}'
+```
+
+Prose is never rewritten: `mentions` lists the entries whose body or brief still name the old slug, so fix those by hand.
+A claimed entry cannot be renamed.
+
 Find entries whose slug, title, brief or body contains the text, done entries included; `--label` narrows to entries carrying every named label and repeats:
 
 ```
