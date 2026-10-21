@@ -1,6 +1,6 @@
 //go:build integration
 
-// verbs_test.go — tests for the board verbs beyond the store verbs: promote, prune, find, retire-legacy, the --text listing on list and find, and list's --sort.
+// verbs_test.go — tests for the board verbs beyond the store verbs: promote, rename, prune, find, retire-legacy, the --text listing on list and find, and list's --sort.
 // The steps run from TestCLI in cli_test.go, which also defines cliFixture; runCLI is in cli_unit_test.go, same package.
 
 package boardcli_test
@@ -103,6 +103,44 @@ func stepPromote_Refusals(t *testing.T, f *cliFixture) {
 
 	if exitCode, _ := runCLI(t, "promote"); exitCode != 1 {
 		t.Fatalf("promote with no payload: exit %d, want 1", exitCode)
+	}
+}
+
+// stepRename pins the rename envelope, the rewritten depends_on and the payload refusals.
+func stepRename(t *testing.T, f *cliFixture) {
+	mustUpsert(t, `{"slug":"before","title":"Before","kind":"task","labels":["bug"]}`)
+	mustUpsert(t, `{"slug":"after","title":"After","kind":"task","labels":["bug"],"depends_on":["before"],"body":"Waits on before."}`)
+
+	result := runJSON(t, 0, "rename", `{"slug":"before","to":"renamed"}`)
+	task := result["task"].(map[string]any)
+	if task["slug"] != "renamed" || task["title"] != "Before" {
+		t.Errorf("rename: task = %v, want slug renamed with title Before", task)
+	}
+	if mentions, _ := json.Marshal(result["mentions"]); string(mentions) != `["after"]` {
+		t.Errorf("rename: mentions = %s, want [\"after\"]", mentions)
+	}
+	after := runJSON(t, 0, "get", `{"slug":"after"}`)["task"].(map[string]any)
+	if deps, _ := json.Marshal(after["depends_on"]); string(deps) != `["renamed"]` {
+		t.Errorf("rename: after.depends_on = %s, want [\"renamed\"]", deps)
+	}
+
+	result = runJSON(t, 0, "rename", `{"slug":"renamed","to":"again"}`)
+	if mentions, _ := json.Marshal(result["mentions"]); string(mentions) != `[]` {
+		t.Errorf("rename with no mention: mentions = %s, want []", mentions)
+	}
+
+	for name, payload := range map[string]string{
+		"missing to":     `{"slug":"again"}`,
+		"to not string":  `{"slug":"again","to":1}`,
+		"unknown key":    `{"slug":"again","to":"x","title":"X"}`,
+		"target exists":  `{"slug":"again","to":"after"}`,
+		"unknown source": `{"slug":"missing","to":"x"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if ok, _ := runJSON(t, 1, "rename", payload)["ok"].(bool); ok {
+				t.Fatalf("rename %s: expected ok=false", payload)
+			}
+		})
 	}
 }
 
