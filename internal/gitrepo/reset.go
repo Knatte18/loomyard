@@ -46,6 +46,18 @@ func (r *Repo) ResetKeep(sha string) error {
 	return nil
 }
 
+// IsLocalChangeRefusal reports whether err is the refusal git raises when `reset --keep` would overwrite an uncommitted change:
+// a checked *gitexec.GitError whose stderr says an entry is not up to date or a local change would be overwritten.
+// Any other failure of the reset, such as a held index lock, is not a refusal.
+func IsLocalChangeRefusal(err error) bool {
+	var gitErr *gitexec.GitError
+	if !errors.As(err, &gitErr) {
+		return false
+	}
+	stderr := strings.ToLower(gitErr.Stderr)
+	return strings.Contains(stderr, "not uptodate") || strings.Contains(stderr, "would be overwritten")
+}
+
 // CherryPick applies sha's change onto HEAD via `git cherry-pick`.
 // A commit whose change the branch already carries is skipped with HEAD unmoved, as `pull --rebase` drops it.
 // A commit that is empty from the start is refused with an error naming it, and the cherry-pick is left in progress for CherryPickAbort.
