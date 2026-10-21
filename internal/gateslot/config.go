@@ -90,7 +90,7 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 }
 
 // holdsUnits reports whether the layer file at path is readable and holds at least one config unit.
-// An empty or comment-only file is one the load drops, so removing it fixes nothing.
+// An empty or comment-only file is one the load drops, so removing it fixes nothing; an unparsable file counts as holding units, since the load fails naming it.
 func holdsUnits(path string, spec configengine.Spec) bool {
 	data, err := os.ReadFile(path)
 	if err != nil {
