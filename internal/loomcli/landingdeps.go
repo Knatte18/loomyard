@@ -388,8 +388,22 @@ func runReconciler(l *lyxcwd.Location, slug string) func() (fabricengine.OriginR
 		if err != nil {
 			return fabricengine.OriginReport{}, err
 		}
-		return fabricengine.ReconcileOrigin(prime, fabricengine.ReconcileScope{Run: slug}, teardown.OriginSeams(pairteardown.HubSeamOptions(prime)), fabricengine.ReconcileOptions{})
+		report, err := fabricengine.ReconcileOrigin(prime, fabricengine.ReconcileScope{Run: slug}, teardown.OriginSeams(pairteardown.HubSeamOptions(prime)), fabricengine.ReconcileOptions{})
+		return reportOfRun(report, slug), err
 	}
+}
+
+// reportOfRun returns report with its entries narrowed to the one of slug.
+// A run-scope report also classifies the run's parent pair, whose stop or end is not the run's own.
+func reportOfRun(report fabricengine.OriginReport, slug string) fabricengine.OriginReport {
+	own := report.Entries[:0:0]
+	for _, entry := range report.Entries {
+		if entry.Slug == slug {
+			own = append(own, entry)
+		}
+	}
+	report.Entries = own
+	return report
 }
 
 // failingTestsOf returns the test identities of a failed verify's log as import path and test path, in first-seen order.
