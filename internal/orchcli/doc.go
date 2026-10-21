@@ -57,6 +57,16 @@
 // `start` reconciles the hub's config after a binary change, once per build, before it loads any module config or launches anything; a failure stops it with the reconcile's own message and way forward.
 // No other orch verb reconciles.
 //
+// # The origin reconcile at start
+//
+// Once `start` holds the start lock, and before it decides anything about the strand, it runs the hub-scope origin reconcile from the prime, so the orch never acts on a stale view of origin.
+// The reconcile never refuses the start: a stop, an unreachable origin and a reconcile error are reported for the orch to act on, and a run already driving is reported live or stopped when origin moved its branch.
+// The envelope gains `reconcile` (the report), `failed_pushes` (the hub's outstanding failed pushes), and the `mutations` and `partial` pair of a mutating verb, since the reconcile can remove pairs, write snapshot tags and move branches.
+// An unreachable origin or a reconcile error is a `warning`.
+// A failure after the reconcile ran carries the report's `mutations`, with `partial` true when the record is non-empty.
+// A fresh launch's prompt gains a line summarising the report and the outstanding failed pushes.
+// Under an operator's live hub pause the reconcile's network calls wait at the network gate until the lift.
+//
 // # Withdrawing around a fresh launch
 //
 // Wherever `start` resets the orch state onto a session, a relaunch, `--continue`, `--adopt` and an adopted live strand alike, it signs creel calls as the watcher's program and runs two rounds on the orch strand's name, the listed strand's name or else the fixed `<shortname>:orch`.
