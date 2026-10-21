@@ -57,7 +57,13 @@ var ErrConfigAbsent = errors.New("gate config absent")
 
 // ConfigOpenMaps returns the gate.yaml keys whose entries belong to the operator, which configengine carries whole through reconcile and the layer stack.
 func ConfigOpenMaps() []string {
-	return []string{"tiers", "gates", "tier_parallel"}
+	return []string{"tiers", "tier_parallel"}
+}
+
+// ConfigPerNameMaps returns the gate.yaml keys whose entries are named by the operator and merged name by name:
+// a hub file that tunes one gate keeps the template's list for every other gate.
+func ConfigPerNameMaps() []string {
+	return []string{"gates"}
 }
 
 // ConfigSpec returns gate's layered-load spec.
@@ -68,8 +74,9 @@ func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:     "gate",
 		Template: []byte(ConfigTemplate()),
-		OpenMaps: ConfigOpenMaps(),
-		HubWide:  true,
+		OpenMaps:    ConfigOpenMaps(),
+		PerNameMaps: ConfigPerNameMaps(),
+		HubWide:     true,
 		Categories: map[string]configengine.Category{
 			"slots":         configengine.CategoryMachine,
 			"tier_parallel": configengine.CategoryMachine,

@@ -53,7 +53,7 @@
 //
 // The tier keys are `tiers`, `gates`, `scoper`, `guard_tier`, `refuse_raw` and `tier_parallel`.
 // `tiers` is an open map keyed `tier0`, `tier1`, and so on, each a Tier written whole with one `lyx config gate --set 'tiers.tierN={...}'` flow mapping;
-// `gates` is an open map from a gate name to its list of tier numbers, and `tier_parallel` an open map from a tier name to this machine's parallel for it.
+// `gates` is a per-name map from a gate name to its list of tier numbers, so a hub file that sets one gate keeps the template's list for every other, and `tier_parallel` an open map from a tier name to this machine's parallel for it.
 // `tiers` is an executable key, since a tier command runs any shell command in a task worktree, and `gates`, `scoper`, `guard_tier` and `refuse_raw` are guard keys, so all of them are hub-file only.
 // The machine override is a sibling map rather than a path under `tiers`, because an open map is one unit in the layer merge, so a machine layer holding part of `tiers` would replace the hub's tiers whole.
 // A declared tier's effective Parallel is its `tier_parallel` entry when one is set, from whichever layer sets it, and 1 when neither sets one; a standalone worktree has no machine layer and sets the key in its own file.

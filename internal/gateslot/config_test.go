@@ -4,6 +4,7 @@ package gateslot
 
 import (
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -102,7 +103,11 @@ func TestLoadConfig(t *testing.T) {
 		},
 		{
 			"gate lists naming an undeclared tier still load", baseKeys + "gates:\n  card: [3]\n  push: [0, 1]\n",
-			hubWith(func(c *Config) { c.Gates = map[string][]int{"card": {3}, "push": {0, 1}} }), "",
+			hubWith(func(c *Config) {
+				c.Gates = maps.Clone(templateDefaults.Gates)
+				c.Gates["card"] = []int{3}
+				c.Gates["push"] = []int{0, 1}
+			}), "",
 		},
 		{"tier without command", baseKeys + `tiers: {tier0: {timeout_min: 5, counter: vstest}}`, Config{}, `gate config key "tiers.tier0.command": missing; want the shell command a run executes` + fixIt},
 		{"tier without timeout_min", baseKeys + `tiers: {tier0: {command: x, counter: vstest}}`, Config{}, `gate config key "tiers.tier0.timeout_min": missing; want at least 1` + fixIt},

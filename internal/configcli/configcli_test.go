@@ -1686,6 +1686,22 @@ func TestDispatchLayers(t *testing.T) {
 			},
 		},
 		{
+			name: "default layer sets one gate and every other gate keeps the template list", module: "gate", layer: "default",
+			setFlags: []string{"gates.landing=[0,1]"}, seedBoard: gateTemplate(), wantCommits: 1,
+			check: func(t *testing.T, fx hubFixture, out string) {
+				cfg, err := gateslot.LoadConfig(configengine.Dirs{Anchor: fx.worktree, Board: fx.board})
+				if err != nil {
+					t.Fatalf("gateslot.LoadConfig() error = %v; want the hub file read", err)
+				}
+				if got, want := cfg.Gates["landing"], []int{0, 1}; !slices.Equal(got, want) {
+					t.Errorf("Gates[landing] = %v; want %v", got, want)
+				}
+				if got, want := cfg.Gates["card"], []int{0}; !slices.Equal(got, want) {
+					t.Errorf("Gates[card] = %v; want the template list %v", got, want)
+				}
+			},
+		},
+		{
 			name: "a standalone worktree's gate set writes its own gate.yaml and runs no sync", module: "gate", noBoard: true,
 			setFlags: []string{"slots=6"},
 			check: func(t *testing.T, fx hubFixture, out string) {
