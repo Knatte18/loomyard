@@ -338,8 +338,11 @@ func (f *Fabric) settleUnmovedWeft(rec *Mutations, result *PullResult, pullErr e
 	if err == nil && hasUpstream {
 		ahead, err = f.records.CommitsNotIn(head, upstream)
 	}
-	if err != nil || !hasUpstream || len(behind) == 0 {
-		logger.Warn("fabricengine: weft pull failed, continuing to warp", "weft", f.weftPath, "err", errors.Join(pullErr, err))
+	if err != nil {
+		return nil, fmt.Errorf("fabricengine: read the weft's state against its upstream in %s: %w", f.weftPath, errors.Join(err, pullErr))
+	}
+	if !hasUpstream || len(behind) == 0 {
+		logger.Warn("fabricengine: weft pull failed, continuing to warp", "weft", f.weftPath, "err", pullErr)
 		return nil, nil
 	}
 

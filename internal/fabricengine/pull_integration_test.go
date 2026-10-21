@@ -690,6 +690,29 @@ func TestPull_WeftDivergedWarpAdvancesCleanly(t *testing.T) {
 	})
 }
 
+// TestPull_WeftUpstreamUnreadableIsAnError covers a weft whose pull fails because origin is unreachable and whose tracking ref names an object the repository lacks, so its commits against head cannot be listed.
+// A failed local read is an infrastructure error: Pull returns it rather than a nil error with WeftPulled false.
+func TestPull_WeftUpstreamUnreadableIsAnError(t *testing.T) {
+	t.Parallel()
+	fx := newDivergedWeftFixture(t, "from-clone-b.txt", "b", "local-only.txt", "local weft change")
+	gitkit.Git(t, fx.weftPath, "remote", "set-url", "origin", filepath.Join(t.TempDir(), "no-such-origin"))
+	trackingRef := strings.TrimSpace(gitkit.Git(t, fx.weftPath, "rev-parse", "--path-format=absolute", "--git-path", "refs/remotes/origin/"+fx.weftBranch))
+	if err := os.MkdirAll(filepath.Dir(trackingRef), 0o755); err != nil {
+		t.Fatalf("make the tracking ref's directory: %v", err)
+	}
+	if err := os.WriteFile(trackingRef, []byte(strings.Repeat("a", 40)+"\n"), 0o644); err != nil {
+		t.Fatalf("write %s: %v", trackingRef, err)
+	}
+
+	result, err := fx.f.Pull(fabricengine.SyncOptions{})
+	if err == nil || !strings.Contains(err.Error(), "against its upstream") {
+		t.Fatalf("Pull() = %+v, %v; want an error that the weft's state against its upstream could not be read", result, err)
+	}
+	if result.WeftPulled {
+		t.Errorf("Pull() WeftPulled = true; want false beside the error")
+	}
+}
+
 // TestPull_ReflogJudgesUnpushedAndRewinds covers what the reflog tests decide that no other pull test reaches.
 // A branch fetched but never pushed from this clone is not unpushed and takes the anchor walk.
 // A task branch origin rewound is refused with ErrWarpRewound before and after its tracking ref was fetched.
