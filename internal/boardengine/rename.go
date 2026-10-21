@@ -33,7 +33,8 @@ func (b *Board) Rename(selector any, to string) (RenameResult, error) {
 	return result.(RenameResult), nil
 }
 
-// Rename changes the slug of the entry selector names to to and rewrites every other entry's depends_on to match, with Board.Rename's refusals.
+// Rename changes the slug of the entry selector names to to and rewrites every other entry's depends_on to match.
+// It refuses an absent entry, an entry a run holds, and a target that is empty, longer than MaxSlugLength or already an entry's slug.
 // The run-held refusal is a *RunLockedError.
 func (s *Store) Rename(selector any, to string) (RenameResult, error) {
 	current, found := s.GetTask(selector)
