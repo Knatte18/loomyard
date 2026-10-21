@@ -296,7 +296,7 @@ func otherLyxBinaries(pathDirs []string, destDir, name, mainPackage string) []st
 	seenDirs := map[string]bool{normDir(destDir): true}
 	seenFiles := map[string]bool{}
 	if resolved, err := filepath.EvalSymlinks(filepath.Join(destDir, name)); err == nil {
-		seenFiles[normDir(resolved)] = true
+		seenFiles[resolved] = true
 	}
 	for _, d := range pathDirs {
 		key := normDir(d)
@@ -310,10 +310,10 @@ func otherLyxBinaries(pathDirs []string, destDir, name, mainPackage string) []st
 			continue
 		}
 		resolved, err := filepath.EvalSymlinks(p)
-		if err != nil || seenFiles[normDir(resolved)] {
+		if err != nil || seenFiles[resolved] {
 			continue
 		}
-		seenFiles[normDir(resolved)] = true
+		seenFiles[resolved] = true
 		if bi, err := buildinfo.ReadFile(p); err == nil && bi.Path == mainPackage {
 			found = append(found, p)
 		}
@@ -345,7 +345,7 @@ func gitOut(root string, args ...string) (string, error) {
 	return strings.TrimSpace(string(out)), err
 }
 
-// normDir folds case and trailing separators so PATH entries, and the files in them, compare the way the OS resolves them.
+// normDir folds case and trailing separators so PATH entries compare the way the OS resolves them.
 func normDir(dir string) string {
 	return strings.ToLower(strings.TrimRight(dir, `\/`))
 }
