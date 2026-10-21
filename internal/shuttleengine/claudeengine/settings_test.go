@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/shellguard"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -328,10 +329,13 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 	}
 }
 
-// shellRow returns the shellguard.Rows(bashForegroundPhrase) row named name, failing the test when none has it.
+// sampleRefuseRaw is the non-empty refuse list the deny tests render the shell guard rows with.
+var sampleRefuseRaw = []string{"go test", "dotnet test"}
+
+// shellRow returns the shellguard.Rows(bashForegroundPhrase, sampleRefuseRaw) row named name, failing the test when none has it.
 func shellRow(t *testing.T, name string) shellguard.Row {
 	t.Helper()
-	for _, row := range shellguard.Rows(bashForegroundPhrase) {
+	for _, row := range shellguard.Rows(bashForegroundPhrase, sampleRefuseRaw) {
 		if row.Name == name {
 			return row
 		}
@@ -340,19 +344,20 @@ func shellRow(t *testing.T, name string) shellguard.Row {
 	return shellguard.Row{}
 }
 
-// TestStandingDenies_RenderEveryShellGuardRow pins that every shell guard row has exactly one standingDenies entry with matcher Bash, its steer and notice and the command shape of its pattern count, in table order after the Claude rows.
+// TestStandingDenies_RenderEveryShellGuardRow pins that every shell guard row, the refuse-raw row of a non-empty list included, has exactly one standingDeniesFor entry with matcher Bash, its steer and notice and the command shape of its pattern count, in table order after the Claude rows.
 func TestStandingDenies_RenderEveryShellGuardRow(t *testing.T) {
 	t.Parallel()
 
-	rows := shellguard.Rows(bashForegroundPhrase)
+	rows := shellguard.Rows(bashForegroundPhrase, sampleRefuseRaw)
+	denies := standingDeniesFor(sampleRefuseRaw)
 	claudeCount := len(claudeDenies())
-	if len(standingDenies) != claudeCount+len(rows) {
-		t.Fatalf("standingDenies has %d entries; want %d Claude entries plus %d shell guard rows", len(standingDenies), claudeCount, len(rows))
+	if len(denies) != claudeCount+len(rows) {
+		t.Fatalf("standingDeniesFor has %d entries; want %d Claude entries plus %d shell guard rows", len(denies), claudeCount, len(rows))
 	}
 	for i, row := range rows {
-		deny := standingDenies[claudeCount+i]
+		deny := denies[claudeCount+i]
 		if deny.matcher != "Bash" || deny.steer != row.Steer || deny.notice != row.Notice {
-			t.Errorf("standingDenies[%d] = {%q, steer %q, notice %q}; want the %q row's Bash entry with its steer and notice", claudeCount+i, deny.matcher, deny.steer, deny.notice, row.Name)
+			t.Errorf("standingDeniesFor[%d] = {%q, steer %q, notice %q}; want the %q row's Bash entry with its steer and notice", claudeCount+i, deny.matcher, deny.steer, deny.notice, row.Name)
 		}
 		multiPattern := strings.HasPrefix(deny.command, "in=$(cat); ")
 		if multiPattern != (len(row.Patterns) > 1) {
@@ -375,7 +380,7 @@ func TestBuildSettings_NoForbiddenCharsInSteerText(t *testing.T) {
 	// `"` or `\` would corrupt the payload) nested inside a single-quoted
 	// echo argument under git-bash (so a literal `'` would corrupt the
 	// hook command) — all three characters must stay absent.
-	for _, deny := range standingDenies {
+	for _, deny := range standingDeniesFor(sampleRefuseRaw) {
 		if strings.ContainsAny(deny.steer, steerTextForbiddenChars) {
 			t.Errorf("steer text contains a forbidden character (one of %q): %q", steerTextForbiddenChars, deny.steer)
 		}
@@ -674,6 +679,67 @@ func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
 	if !strings.HasPrefix(launch.ResumeCmd, wantLead) {
 		t.Errorf("Launch.ResumeCmd = %q; want it to lead with %q", launch.ResumeCmd, wantLead)
 	}
+
+	// The refuse list comes from the gate config under the engine's dirs: a seeded list reaches settings.json and the notice, an absent file adds no row, and an unparsable file refuses the spawn before any artifact.
+	var refuseRow shellguard.Row
+	for _, row := range shellguard.Rows(bashForegroundPhrase, []string{"go test"}) {
+		if row.Name == "refuse-raw" {
+			refuseRow = row
+		}
+	}
+	gateTests := []struct {
+		name        string
+		gate        string
+		wantBash    int
+		wantRefused bool
+		wantErr     bool
+	}{
+		{"SeededRefuseRawReachesSettingsAndNotice", "slots: 2\ngo_parallel: 4\nrefuse_raw: [\"go test\"]\n", 6, true, false},
+		{"AbsentGateConfigRendersNoRefuseRawRow", "", 5, false, false},
+		{"UnparsableGateConfigRefusesBeforeArtifacts", "slots: [\n", 0, false, true},
+	}
+	for _, tt := range gateTests {
+		t.Run(tt.name, func(t *testing.T) {
+			engine, anchor := engineWithAnchor(t)
+			if tt.gate != "" {
+				writeClaudeLayer(t, configengine.ConfigFile(anchor, "gate"), tt.gate)
+			}
+			gateRunDir := t.TempDir()
+			gateLaunch, err := engine.Prepare(gateRunDir, spec, shuttleengine.Config{})
+			if tt.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "gate") {
+					t.Errorf("Prepare() error = %v; want a refusal naming the gate config", err)
+				}
+				if entries, readErr := os.ReadDir(gateRunDir); readErr != nil || len(entries) != 0 {
+					t.Errorf("ReadDir(%s) = %d entries, err=%v; want no artifacts after a refused Prepare", gateRunDir, len(entries), readErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Prepare() error: %v", err)
+			}
+			gateSettings, err := os.ReadFile(filepath.Join(gateRunDir, "settings.json"))
+			if err != nil {
+				t.Fatalf("read settings.json: %v", err)
+			}
+			commands := matcherCommands(parseSettings(t, gateSettings), "Bash")
+			if len(commands) != tt.wantBash {
+				t.Errorf("settings.json carries %d Bash denies; want %d", len(commands), tt.wantBash)
+			}
+			gotRefuse := false
+			for _, command := range commands {
+				if strings.Contains(command, refuseRow.Steer) {
+					gotRefuse = true
+				}
+			}
+			if gotRefuse != tt.wantRefused {
+				t.Errorf("settings.json carries the refuse-raw deny = %v; want %v", gotRefuse, tt.wantRefused)
+			}
+			if got := strings.Contains(gateLaunch.Cmd, refuseRow.Notice); got != tt.wantRefused {
+				t.Errorf("Launch.Cmd names the refuse-raw notice = %v; want %v", got, tt.wantRefused)
+			}
+		})
+	}
 }
 
 // TestBuildDenyNotice_MatchesInstalledDenies pins that the notice names exactly the denies buildSettings installs, over every deny combination.
@@ -685,7 +751,7 @@ func TestBuildDenyNotice_MatchesInstalledDenies(t *testing.T) {
 			for _, pythonDeny := range []bool{false, true} {
 				for _, interactive := range []bool{false, true} {
 					for _, fork := range []bool{false, true} {
-						cfg := shuttleengine.Config{DenyPython: pythonDeny}
+						cfg := shuttleengine.Config{DenyPython: pythonDeny, RefuseRaw: sampleRefuseRaw}
 						claude := Config{DenyAgentTool: agentDeny, DenyAskUserQuestion: askUserDeny}
 						data, err := buildSettings("/c/run/events.jsonl", interactive, cfg, claude, fork, false, "")
 						if err != nil {
@@ -697,7 +763,7 @@ func TestBuildDenyNotice_MatchesInstalledDenies(t *testing.T) {
 							hooks, _ := entry["hooks"].([]any)
 							cmd, _ := hooks[0].(map[string]any)
 							command, _ := cmd["command"].(string)
-							for _, deny := range standingDenies {
+							for _, deny := range standingDeniesFor(cfg.RefuseRaw) {
 								if deny.command == command && deny.notice != "" {
 									wantSentences = append(wantSentences, deny.notice)
 								}

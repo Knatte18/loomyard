@@ -187,7 +187,7 @@
 // A missing transcript_path, an unreadable file, a transcript with no matching message or one with no skill listing degrades to an unverified report.
 //
 // The engine also announces each standing tool deny to the session through --append-system-prompt, on both the launch and the resume line.
-// Both the hooks and the notice are built from one deny table in settings.go, so the two cannot drift:
+// Both the hooks and the notice are built from one deny list in settings.go, so the two cannot drift:
 // each row names its tool matcher, hook command, notice sentence and the run inputs that install it.
 // The webster fork guard has no notice sentence and is not announced.
 // The Bash denies below are not declared here: they render the rows of `internal/shellguard`'s table as PreToolUse(Bash) hooks, every row in table order after the Claude rows.
@@ -205,6 +205,13 @@
 // The steer is the gate rule: it names `lyx gate test` run in the foreground with the Bash tool's `timeout` at the ceiling, every other check in the foreground, and no `cd` into the session's own working directory.
 // It is a guardrail, not a barrier: its hook sees static text only, so a run hidden behind a script, `bash -c`, a `cd` plus a relative pattern it does not cover, a shell variable or a command substitution inside a double-quoted string passes, as does any raw package-scoped `go test`,
 // and a pattern word inside a quoted argument of the go command itself, such as a `-run` filter, is falsely denied; a spelling in a commit message, a `grep` or a heredoc body is not.
+//
+// The refuse-raw row denies a Bash command starting with a prefix the hub lists in `gate.yaml`'s `refuse_raw`, so every test run in an agent session goes through `lyx gate test`.
+// `Prepare` loads `gate.yaml` over the engine's dirs, the hub file inside a hub and the worktree's own file outside one, and fills `shuttleengine.Config.RefuseRaw` on its copy of the config before it builds anything;
+// the settings and the notice then render `standingDeniesFor(cfg.RefuseRaw)`, the Claude denies followed by every shell guard row.
+// An absent file leaves the list empty and renders no row; any other load failure refuses the spawn with the loader's way forward before an artifact is written.
+// Settings render at spawn, so a running session keeps the list it started with.
+// It is a guardrail, not a barrier: its hook sees static text only, so a run behind a script or `bash -c`, a flag between the prefix's words such as `go -C dir test`, and an assignment prefix such as `GOFLAGS=x go test` pass.
 //
 // The in-place edit row denies a Bash `sed` or `perl` whose words include an in-place flag, and every run installs it, the orch included, with no config key.
 // For `sed` that is `-i`, `-i<suffix>`, a short-flag cluster holding `i`, or any prefix of `--in-place` from `--i` up;

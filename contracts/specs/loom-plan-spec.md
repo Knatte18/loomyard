@@ -354,7 +354,7 @@ Sequencing for cards that DO share a symbol is settled by plan order.
 If card 8 has `Uses: X`, card 5's target list includes `X`, and card 5 precedes card 8, then card 8 depends on X's state after card 5 lands — no further bookkeeping, since a sequentially-ordered plan has exactly one current state of any touched symbol at any point in its sequence.
 
 Dependency-list completeness cannot be proven mechanically at plan time — the same class of gap as `assert-no-callers`, catching what it can see rather than what requires understanding intent.
-The real gate is post-merge: once a concurrently-executed batch's worktrees merge back, `go build ./... && go test ./...` against the merged result is what actually catches a missed dependency, surfacing an incomplete plan-time `Uses:` list as a build or test failure.
+The real gate is post-merge: once a concurrently-executed batch's worktrees merge back, the `final` gate's whole run against the merged result is what actually catches a missed dependency, surfacing an incomplete plan-time `Uses:` list as a build or test failure.
 
 ## Deferred / forward-compat
 
@@ -494,7 +494,7 @@ The rows below stay in one fixed order regardless of which entry point runs them
     Its way forward is to take the data from committed test data an earlier card creates, or to drop the command.
     The plan index runs it in its format validation, so both plan gates and `lyx loom validate-plan`'s default and `--rework` modes report it; `--require-approved`, webster's own `validate` verb and dispatch validation do not run it.
     It only refuses and removes no guard: it misses a spelling in `bash -c "…"` or built from a variable, the rest of a span after an unterminated quote, a spelling in an inline span or prose, and a fabric-repo path not spelled as a name ending in the suffix, and the implementer audit stays the guard for those.
-38. `verify-module-wide` — a `go test`, `go build` or `go vet` in a card's `**Verify:**` value whose package argument holds `...` or equals `all`, or a `go test` whose `-tags` value names `tmux` or `llm`.
+38. `verify-module-wide` — a raw Go test, build or vet command in a card's `**Verify:**` value whose package argument holds `...` or equals `all`, or a raw Go test command whose `-tags` value names `tmux` or `llm`.
     An agent's settings deny such a command, so it can never run under a fork.
     It splits a chain as `verify-nested-module` does, at `&&`, `||`, `;`, `|` and a newline after joining line continuations, skips a `go -C <dir>` and a leading environment assignment, and stops reading a command at `--` or `-args`; a flag that takes a value takes the next field.
     One finding per command, attributed to the card; the overview's `## verify:` section is never read, since Go runs it itself.
@@ -520,7 +520,7 @@ The rows below stay in one fixed order regardless of which entry point runs them
     One blocking finding per name, attributed to the card naming the member, naming `PATTERN-fabric-vocabulary` and the rule broken; its way forward is to rename the member.
     Runs under any `language:`, and the plan index appends it to its format, rework and dispatch validation, so both plan gates, `lyx loom validate-plan`'s default and `--rework` modes and webster dispatch report it; dispatch drops a finding against a completed card, and `--require-approved` and webster's own `validate` verb do not run it.
     It only refuses: it misses a name spelled only in prose, such as a test row or subtest name, or built at implementation time, which the verify gate still catches, and it may refuse a host-geometry helper declared in a `_test.go` file under `internal/`, which the scan admits.
-42. `verify-package-missing` — a relative package argument (`.`, `..`, `./…` or `../…`, a trailing `/...` removed, not a `.go` file) of a `go test`, `go build`, `go vet` or `lyx gate test` command in a card's `**Verify:**` value or the overview's `## verify:` section that names no directory.
+42. `verify-package-missing` — a relative package argument (`.`, `..`, `./…` or `../…`, a trailing `/...` removed, not a `.go` file) of a raw Go test, build or vet command or a `lyx gate test` command in a card's `**Verify:**` value or the overview's `## verify:` section that names no directory.
     A directory counts when it is on disk under the worktree root, or equals or is an ancestor of a directory a card creates: a card's value reads the targets of non-`Delete` groups of that card and the earlier ones, a `Rename` pair's `New` side included, and the overview's reads the whole plan's; an external `_test` unit counts as its package's directory.
     It splits a chain as `verify-nested-module` does and follows a literal `cd <dir>` and a `go -C <dir>`, `lyx gate test -C <dir>` or `--dir <dir>` the same way; `--tags` skips its value for `lyx gate test`, and reading stops at `--`.
     A card's value is skipped when that card or an earlier one holds a `Move` group, and the overview's when any card does, since a `Move`'s destination lives in `Intent` prose.
@@ -596,7 +596,7 @@ of a later extraction.
 
 ## verify:
 
-go test ./internal/boardcli/... ./internal/boardengine/... ./cmd/lyx/...
+lyx gate test ./internal/boardcli ./internal/boardengine ./cmd/lyx
 ```
 
 `_lyx/plan/01-json-row-type.md`:
@@ -610,7 +610,7 @@ go test ./internal/boardcli/... ./internal/boardengine/... ./cmd/lyx/...
 **Intent:** Define the `RowJSON` struct carrying the list command's existing table columns as JSON-taggable fields.
 
 **Commit:** `1: json-row-type`
-**Verify:** go test ./internal/boardcli
+**Verify:** lyx gate test --wait ./internal/boardcli
 ```
 
 `_lyx/plan/02-json-flag.md`:
