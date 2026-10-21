@@ -43,6 +43,8 @@ func TestSet(t *testing.T) {
 		localExisting string
 		// hubWide marks the spec hub-wide and gives the board dir its _lyx/config/, as a machine write needs; it needs board.
 		hubWide bool
+		// boardWithoutLyx leaves the board dir with no _lyx/ beside the anchor's, which hubWide would otherwise create.
+		boardWithoutLyx bool
 		// boardOnly tells the call the board dir alone, with no anchor.
 		boardOnly bool
 		// jsonEntries marks the spec JSONEntries.
@@ -214,6 +216,18 @@ func TestSet(t *testing.T) {
 			wantErr:    "does not apply here",
 		},
 		{
+			name:            "machine write beside a board dir with no _lyx is refused and leaves no file, though the anchor has one",
+			state:           baseLyx,
+			template:        "name: x\nport: 1\n",
+			pairs:           []yamlengine.KV{{Key: "port", Value: "8"}},
+			layer:           configengine.LayerMachine,
+			board:           true,
+			hubWide:         true,
+			boardWithoutLyx: true,
+			categories:      map[string]configengine.Category{"port": configengine.CategoryMachine},
+			wantErr:         "directory not found",
+		},
+		{
 			name:        "machine entry of a non-machine key in a JSON-entries spec is refused and leaves no file",
 			state:       baseLyx,
 			template:    "name: x\nport: 1\n",
@@ -235,7 +249,7 @@ func TestSet(t *testing.T) {
 			if tt.board {
 				dirs.Board = t.TempDir()
 			}
-			if tt.hubWide {
+			if tt.hubWide && !tt.boardWithoutLyx {
 				mustMkdirAll(t, configengine.ConfigDir(dirs.Board))
 			}
 			if tt.boardOnly {
