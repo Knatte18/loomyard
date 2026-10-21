@@ -442,6 +442,8 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 		primeFile    string
 		legacyFirst  string
 		seedDefaults bool
+		// primeMarked writes the prime worktree's sparse marker.
+		primeMarked bool
 		// wantNoFile pins that the file is still absent after an apply.
 		wantNoFile   bool
 		wantSeed     string
@@ -469,36 +471,66 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 			wantNotDropped: []string{"fans.standard", "fans.twill-discussion", "lenses.generic", "lenses.security"},
 		},
 		{
-			name:         "loom default absent with a prime copy is seeded from the prime",
+			name:         "loom default absent with a prime copy is seeded with the prime's non-template units",
 			module:       "loom",
-			primeFile:    "discussion_timeout_min: 480\n",
+			primeFile:    "discussion_timeout_min: 500\n",
 			seedDefaults: true,
 			wantSeed:     SeedPrime,
-			wantContains: []string{"discussion_timeout_min: 480", "review_max_bounces:"},
+			wantContains: []string{"discussion_timeout_min: 500"},
+			wantAbsent:   []string{"review_max_bounces:"},
+			wantAdded:    []string{},
 		},
 		{
-			name:         "loom default absent and no prime copy starts from the template",
+			name:         "loom default seeded from an unmarked prime drops a former template value",
+			module:       "loom",
+			primeFile:    "discussion_lenses: \"\"\nreview_max_bounces: 99\n",
+			seedDefaults: true,
+			wantSeed:     SeedPrime,
+			wantContains: []string{"review_max_bounces: 99"},
+			wantAbsent:   []string{"discussion_lenses"},
+		},
+		{
+			name:         "loom default seeded from a marked prime keeps a former template value as tuned",
+			module:       "loom",
+			primeFile:    "discussion_lenses: \"\"\nreview_max_bounces: 99\n",
+			primeMarked:  true,
+			seedDefaults: true,
+			wantSeed:     SeedPrime,
+			wantContains: []string{"discussion_lenses: \"\"", "review_max_bounces: 99"},
+		},
+		{
+			name:         "loom default absent and no prime copy starts as the header-only base",
 			module:       "loom",
 			seedDefaults: true,
 			wantSeed:     SeedTemplate,
-			wantContains: []string{"review_max_bounces:"},
+			wantContains: []string{configengine.SparseBaseHeader},
+			wantAbsent:   []string{"review_max_bounces:"},
 		},
 		{
-			name:         "loom default present is reconciled in place",
+			name:         "loom default present is pruned in place and gains no template key",
 			module:       "loom",
 			hubFile:      "discussion_timeout_min: 7\nstale_key: old\n",
 			primeFile:    "discussion_timeout_min: 480\n",
 			seedDefaults: true,
 			wantSeed:     SeedHub,
-			wantContains: []string{"discussion_timeout_min: 7", "review_max_bounces:"},
-			wantAbsent:   []string{"stale_key", "480"},
+			wantContains: []string{"discussion_timeout_min: 7"},
+			wantAbsent:   []string{"stale_key", "480", "review_max_bounces:"},
+			wantAdded:    []string{},
 		},
 		{
-			name:         "loom default present is reconciled without SeedDefaults",
+			name:         "loom default present is pruned without SeedDefaults",
 			module:       "loom",
 			hubFile:      "discussion_timeout_min: 7\nstale_key: old\n",
 			wantSeed:     SeedHub,
-			wantContains: []string{"discussion_timeout_min: 7", "review_max_bounces:"},
+			wantContains: []string{"discussion_timeout_min: 7"},
+			wantAbsent:   []string{"stale_key", "review_max_bounces:"},
+		},
+		{
+			name:         "loom default left with no unit is written as the header-only base",
+			module:       "loom",
+			hubFile:      "stale_key: old\n",
+			wantSeed:     SeedHub,
+			wantContains: []string{configengine.SparseBaseHeader},
 			wantAbsent:   []string{"stale_key"},
 		},
 		{
@@ -530,14 +562,15 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 			module:       "board",
 			primeFile:    primeBoard,
 			wantSeed:     SeedPrime,
-			wantContains: []string{"spike: A time-boxed investigation", "area-x: Area X", "design_prefix:"},
-			wantAbsent:   []string{"enhancement:"},
+			wantContains: []string{"spike: A time-boxed investigation", "area-x: Area X"},
+			wantAbsent:   []string{"enhancement:", "design_prefix:"},
 		},
 		{
-			name:         "board absent and no prime copy starts from the template",
+			name:         "board absent and no prime copy starts as the header-only base",
 			module:       "board",
 			wantSeed:     SeedTemplate,
-			wantContains: []string{"enhancement:"},
+			wantContains: []string{configengine.SparseBaseHeader},
+			wantAbsent:   []string{"enhancement:"},
 		},
 		{
 			name:         "board present is never replaced by a differing prime copy",
@@ -553,21 +586,23 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 			module:       "landing",
 			primeFile:    "publish_verify: go test -tags tmux ./...\n",
 			wantSeed:     SeedPrime,
-			wantContains: []string{"go test -tags tmux ./...", "require_pr_to_base:"},
+			wantContains: []string{"go test -tags tmux ./..."},
+			wantAbsent:   []string{"require_pr_to_base:"},
 		},
 		{
-			name:         "landing absent and no prime copy starts from the template",
+			name:         "landing absent and no prime copy starts as the header-only base",
 			module:       "landing",
 			wantSeed:     SeedTemplate,
-			wantContains: []string{"require_pr_to_base:"},
+			wantContains: []string{configengine.SparseBaseHeader},
+			wantAbsent:   []string{"require_pr_to_base:"},
 		},
 		{
 			name:         "fabric absent ignores the prime copy",
 			module:       "fabric",
 			primeFile:    "branch_prefix: prime/\npathspec: \"\"\n",
 			wantSeed:     SeedTemplate,
-			wantContains: []string{"branch_prefix:"},
-			wantAbsent:   []string{"prime/"},
+			wantContains: []string{configengine.SparseBaseHeader},
+			wantAbsent:   []string{"prime/", "branch_prefix:"},
 		},
 		{
 			name:         "profiles absent starts from the template's starting profiles",
@@ -588,7 +623,8 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 			module:       "darn",
 			hubFile:      "tree_scope:\n  tools: ./tools/...\n  docs: \"\"\n",
 			wantSeed:     SeedHub,
-			wantContains: []string{"tools: ./tools/...", "docs: \"\"", "review_max_bounces:"},
+			wantContains: []string{"tools: ./tools/...", "docs: \"\""},
+			wantAbsent:   []string{"review_max_bounces:"},
 		},
 		{
 			name:         "fabric absent with a legacy warp.yaml folds it in",
@@ -606,6 +642,11 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 			primeDir := t.TempDir()
 			writeModuleFile(t, boardDir, tt.module, tt.hubFile)
 			writeModuleFile(t, primeDir, tt.module, tt.primeFile)
+			if tt.primeMarked {
+				if err := os.WriteFile(configengine.SparseMarker(primeDir), []byte("# sparse\n"), 0o644); err != nil {
+					t.Fatalf("write the prime's sparse marker: %v", err)
+				}
+			}
 			writeModuleFile(t, boardDir, "warp", tt.legacyFirst)
 			hubPath := configengine.ConfigFile(boardDir, tt.module)
 
@@ -694,8 +735,10 @@ func TestReconcileHubWideAt_MigratesLegacyFabricConfig(t *testing.T) {
 		wantApplied  *bool
 		wantMigrated []string
 		// wantFabric is a substring list of the written fabric.yaml; wantNoFabric means the file must not exist.
-		wantFabric   []string
-		wantNoFabric bool
+		wantFabric []string
+		// wantFabricAbsent are substrings the written fabric.yaml must not contain.
+		wantFabricAbsent []string
+		wantNoFabric     bool
 		// wantPruned and wantKept name the legacy modules whose file must be gone or still on disk.
 		wantPruned []string
 		wantKept   []string
@@ -711,13 +754,14 @@ func TestReconcileHubWideAt_MigratesLegacyFabricConfig(t *testing.T) {
 			wantPruned:   []string{"warp", "weft"},
 		},
 		{
-			// _lyx is structural, injected in code and never read from the pathspec key, so the template-default empty pathspec is the expected value.
-			name:         "only warp.yaml present, pathspec falls back to template default",
-			legacyFirst:  "branch_prefix: hanf/\n",
-			apply:        true,
-			wantMigrated: []string{"warp"},
-			wantFabric:   []string{"branch_prefix: hanf/", `pathspec: "" #`},
-			wantPruned:   []string{"warp"},
+			// _lyx is structural, injected in code and never read from the pathspec key, so the sparse fabric.yaml holds no pathspec and the load resolves the template's empty one.
+			name:             "only warp.yaml present, the seeded file holds only the legacy unit",
+			legacyFirst:      "branch_prefix: hanf/\n",
+			apply:            true,
+			wantMigrated:     []string{"warp"},
+			wantFabric:       []string{"branch_prefix: hanf/"},
+			wantFabricAbsent: []string{"pathspec"},
+			wantPruned:       []string{"warp"},
 		},
 		{
 			name:         "dry run reports the pending migration but writes and deletes nothing",
@@ -779,6 +823,11 @@ func TestReconcileHubWideAt_MigratesLegacyFabricConfig(t *testing.T) {
 						t.Errorf("fabric.yaml = %q; want it to contain %q", got, want)
 					}
 				}
+				for _, absent := range tt.wantFabricAbsent {
+					if strings.Contains(string(got), absent) {
+						t.Errorf("fabric.yaml = %q; want it not to contain %q", got, absent)
+					}
+				}
 			}
 			for _, module := range tt.wantPruned {
 				if _, err := os.Stat(configengine.ConfigFile(boardDir, module)); !os.IsNotExist(err) {
@@ -792,6 +841,182 @@ func TestReconcileHubWideAt_MigratesLegacyFabricConfig(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestReconcileHubWideAt_StripsAnUnmigratedBaseOnce pins the one-time strip of a hub's base files: while the board's base-sparse marker is absent, a walk's pass (StripBase and Apply) reduces every non-seed-only base to the units that differ from the template and from a former template value, and writes the marker only when every module's file exists;
+// without StripBase or on a dry run the strip is only reported, a marked board keeps a unit equal to a former value as a pin, and a seed-only file is never rewritten.
+func TestReconcileHubWideAt_StripsAnUnmigratedBaseOnce(t *testing.T) {
+	t.Parallel()
+	loomTemplate := moduleTemplate(t, "loom")
+	darnTemplate := moduleTemplate(t, "darn")
+	const modelsTuned = "zephyr:\n  engine: claude\n  model: claude-zephyr-1\n"
+	const formerRoles = "prompt_cache_ttl_roles:\n  driver: 1h\n  webster: 1h\n"
+	loomFormer := strings.Replace(loomTemplate, "discussion_lenses: twill-discussion", `discussion_lenses: ""`, 1)
+	darnTuned := strings.Replace(darnTemplate, `verify: ""`, "verify: make check", 1)
+	if loomFormer == loomTemplate || darnTuned == darnTemplate {
+		t.Fatal("the loom or darn template no longer holds the line this test rewrites")
+	}
+
+	tests := []struct {
+		name string
+		// overrides replaces a module's written file; every other module is written as its template.
+		overrides map[string]string
+		// withheld names modules whose file is not written.
+		withheld    []string
+		boardMarked bool
+		options     HubWideOptions
+		// wantUnchangedAll pins every file as written; otherwise a non-seed-only file ends header-only unless wantKept names it.
+		wantUnchangedAll bool
+		wantKept         map[string][]string
+		// wantStripped lists keys a module's Result.Stripped must hold; wantNoStripped names modules whose Stripped must be empty.
+		wantStripped   map[string][]string
+		wantNoStripped []string
+		wantMarker     bool
+	}{
+		{
+			name:         "unmigrated board is stripped to header-only bases, keeps a tuned unit and gets the marker",
+			overrides:    map[string]string{"loom": loomFormer, "darn": darnTuned, "models": modelsTuned},
+			options:      HubWideOptions{Apply: true, StripBase: true, SeedDefaults: true},
+			wantKept:     map[string][]string{"darn": {"verify: make check"}},
+			wantStripped: map[string][]string{"loom": {"discussion_lenses", "review_max_bounces"}, "darn": {"verify_attempts"}},
+			wantMarker:   true,
+		},
+		{
+			name:             "without StripBase nothing is stripped or marked and the keys are pending",
+			overrides:        map[string]string{"loom": loomFormer},
+			options:          HubWideOptions{Apply: true, SeedDefaults: true},
+			wantUnchangedAll: true,
+			wantStripped:     map[string][]string{"loom": {"discussion_lenses", "review_max_bounces"}},
+		},
+		{
+			name:             "a dry run with StripBase writes nothing",
+			overrides:        map[string]string{"loom": loomFormer},
+			options:          HubWideOptions{StripBase: true, SeedDefaults: true},
+			wantUnchangedAll: true,
+			wantStripped:     map[string][]string{"loom": {"discussion_lenses", "review_max_bounces"}},
+		},
+		{
+			name:         "a claude base holding the former roles map whole is stripped to the header",
+			overrides:    map[string]string{"claude": formerRoles},
+			options:      HubWideOptions{Apply: true, StripBase: true, SeedDefaults: true},
+			wantStripped: map[string][]string{"claude": {"prompt_cache_ttl_roles"}},
+			wantMarker:   true,
+		},
+		{
+			name:           "a roles map with one role changed is kept whole",
+			overrides:      map[string]string{"claude": "prompt_cache_ttl_roles:\n  driver: 1h\n  webster: 5m\n"},
+			options:        HubWideOptions{Apply: true, StripBase: true, SeedDefaults: true},
+			wantKept:       map[string][]string{"claude": {"webster: 5m"}},
+			wantNoStripped: []string{"claude"},
+			wantMarker:     true,
+		},
+		{
+			name:             "a marked board keeps a unit equal to a former value as a pin",
+			overrides:        map[string]string{"loom": "discussion_lenses: \"\"\n"},
+			boardMarked:      true,
+			options:          HubWideOptions{Apply: true, StripBase: true, SeedDefaults: true},
+			wantUnchangedAll: true,
+			wantNoStripped:   []string{"loom"},
+			wantMarker:       true,
+		},
+		{
+			name:       "an absent per-worktree base strips the others and withholds the marker",
+			withheld:   []string{"loom"},
+			options:    HubWideOptions{Apply: true, StripBase: true},
+			wantMarker: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			boardDir := t.TempDir()
+			written := map[string]string{}
+			for _, m := range configreg.Modules() {
+				if slices.Contains(tt.withheld, m.Name) {
+					continue
+				}
+				content := m.Template()
+				if override, ok := tt.overrides[m.Name]; ok {
+					content = override
+				}
+				written[m.Name] = content
+				writeModuleFile(t, boardDir, m.Name, content)
+			}
+			if tt.boardMarked {
+				if err := WriteBaseSparseMarker(boardDir); err != nil {
+					t.Fatalf("WriteBaseSparseMarker: %v", err)
+				}
+			}
+
+			results, err := ReconcileHubWideAt(boardDir, "", tt.options)
+			if err != nil {
+				t.Fatalf("ReconcileHubWideAt: %v", err)
+			}
+
+			for module, content := range written {
+				registered, _ := configreg.Lookup(module)
+				gotBytes, err := os.ReadFile(configengine.ConfigFile(boardDir, module))
+				if err != nil {
+					t.Fatalf("read %s.yaml: %v", module, err)
+				}
+				got := string(gotBytes)
+				switch kept, isKept := tt.wantKept[module]; {
+				case tt.wantUnchangedAll || registered.SeedOnly:
+					// A per-name map drops its template-equal names on every applied reconcile, marked board or not.
+					if len(registered.PerNameMaps) > 0 && tt.options.Apply && !registered.SeedOnly {
+						continue
+					}
+					if got != content {
+						t.Errorf("%s.yaml changed; want it byte for byte as written", module)
+					}
+				case isKept:
+					for _, want := range kept {
+						if !strings.Contains(got, want) {
+							t.Errorf("%s.yaml = %q; want it to contain %q", module, got, want)
+						}
+					}
+				case got != configengine.SparseBaseHeader:
+					t.Errorf("%s.yaml = %q; want only the sparse header", module, got)
+				}
+			}
+			for _, module := range tt.withheld {
+				if _, err := os.Stat(configengine.ConfigFile(boardDir, module)); !os.IsNotExist(err) {
+					t.Errorf("%s.yaml written although the pass leaves an absent per-worktree base absent (stat err = %v)", module, err)
+				}
+			}
+			for module, keys := range tt.wantStripped {
+				result := findResult(results, module)
+				if result == nil {
+					t.Fatalf("no result for %s", module)
+				}
+				for _, key := range keys {
+					if !slices.Contains(result.Stripped, key) {
+						t.Errorf("%s Stripped = %v; want it to hold %q", module, result.Stripped, key)
+					}
+				}
+			}
+			for _, module := range tt.wantNoStripped {
+				if result := findResult(results, module); result == nil || len(result.Stripped) > 0 {
+					t.Errorf("%s result = %+v; want a result with no Stripped key", module, result)
+				}
+			}
+			_, markerErr := os.Stat(configengine.BaseSparseMarker(boardDir))
+			if marker := markerErr == nil; marker != tt.wantMarker {
+				t.Errorf("base-sparse marker present = %v; want %v", marker, tt.wantMarker)
+			}
+		})
+	}
+}
+
+// moduleTemplate returns the registered module's template text.
+func moduleTemplate(t *testing.T, module string) string {
+	t.Helper()
+	template, ok := configreg.Template(module)
+	if !ok {
+		t.Fatalf("configreg.Template(%q): module not registered", module)
+	}
+	return template()
 }
 
 // findResult returns the Result for the named module, or nil if absent.
@@ -845,6 +1070,14 @@ func TestReconcileAll_HubWideCopy(t *testing.T) {
 			copyFile:      "types:\n  bug: Local bug\n",
 			hubFile:       hubBoard,
 			wantDivergent: []string{"types.bug: Local bug"},
+			wantKept:      true,
+		},
+		{name: "copy holding a template default over a hub file lacking that key is retired", copyFile: "readme: ${env:LYX_README:-README.md}\n", hubFile: hubBoard, wantRetired: true},
+		{
+			name:          "copy value differing from both the template and the hub file is divergent",
+			copyFile:      "readme: custom.md\n",
+			hubFile:       hubBoard,
+			wantDivergent: []string{"readme: custom.md"},
 			wantKept:      true,
 		},
 	}
