@@ -53,7 +53,7 @@ const (
 // ErrReplayConflict is returned, wrapped with the conflicting paths, by a replay that stopped on a commit it could not apply, with the starting tip restored.
 var ErrReplayConflict error = errors.New("records replay stopped on a conflict")
 
-// ErrReplayDirty is returned, wrapped with the paths, by a replay that refused over an uncommitted tracked change on a path it would touch, with nothing changed.
+// ErrReplayDirty is returned, wrapped with the paths, by a replay that refused over an uncommitted tracked change on a path it would touch, with the branch unmoved.
 var ErrReplayDirty error = errors.New("records replay refused over an uncommitted change")
 
 // replayConflict is the error cherryPickOnto returns for a conflicting pick: it is ErrReplayConflict and carries the conflicting paths.
@@ -390,8 +390,9 @@ func replayStop(outcome ReplayOutcome, err error) (ReplayOutcome, error) {
 }
 
 // replayWeft brings a weft worktree's branch level with upstream when both moved, under its caller's locks.
-// It refuses with ErrReplayDirty, naming the paths, a tracked change on a path the local commits touch, changing nothing.
+// It refuses with ErrReplayDirty, naming the paths, a tracked change on a path the local commits touch, leaving the branch unmoved.
 // A local commit origin lacks whose every path lies under an ended run's record directory is kept under a local set-aside tag instead of replayed.
+// The tags are made before the branch moves, so a stop leaves a tag on a commit still on the branch.
 // The other commits are replayed onto upstream oldest first, a commit that becomes empty being dropped, and a conflict returns ErrReplayConflict with the starting tip restored.
 // The ended set is first narrowed to the runs this machine's own landing has not reached.
 func replayWeft(rec *Mutations, l *lyxcwd.Location, worktree, upstream string, ended EndedSet) (ReplayOutcome, error) {
@@ -699,6 +700,8 @@ type boardStep struct {
 // so the overview and an entry only one side changed never conflict, and no entry change stops the replay.
 // A commit that lost a value or met a refusal is committed for what was kept, and its original kept under a set-aside tag.
 // Any other commit is replayed by cherry-pick, and its conflict returns ErrReplayConflict with the starting tip restored.
+// Every set-aside commit is tagged before the branch moves or as its replay reports it, and a later failure restores the starting tip;
+// a restore git refuses, as over a file the failed replay had already written, is joined into the returned error.
 // The ended set is first narrowed to the runs this machine's own landing has not reached.
 func replayBolt(rec *Mutations, l *lyxcwd.Location, boardDir, upstream string, ended EndedSet) (ReplayOutcome, error) {
 	repo := gitrepo.New(boardDir)
@@ -768,6 +771,7 @@ func replayBolt(rec *Mutations, l *lyxcwd.Location, boardDir, upstream string, e
 		if err := repo.ResetKeep(start); err != nil {
 			return outcome, errors.Join(cause, fmt.Errorf("restore %s after a failed board replay: %w", start, err))
 		}
+		outcome.Replayed, outcome.Dropped = nil, nil
 		return outcome, cause
 	}
 	outcome.Dropped = append(outcome.Dropped, dropped...)

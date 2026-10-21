@@ -1161,7 +1161,9 @@
 // **Weft.** Local commits are cherry-picked onto upstream oldest first through `cherryPickOnto`, which lives in `destroy.go` beside the seed-commit drop.
 // A commit that becomes empty is dropped.
 // A conflict returns `ErrReplayConflict` naming the paths, with the starting tip restored.
-// A tracked change on a path the commits touch returns `ErrReplayDirty`, with nothing changed.
+// A tracked change on a path the commits touch returns `ErrReplayDirty`, with the branch unmoved.
+// The set-aside commits are tagged before the branch moves, so a stop leaves a tag on a commit still on the branch.
+// A Bolt failure after the pick restores the starting tip, and a restore git refuses is joined into the error.
 //
 // **Bolt.** A commit touching only `board.json`, `README.md` and design files is re-applied by entry through the installed `BoardReplay`, so an entry only one side changed never conflicts and no entry change stops the replay.
 // A change that lost a value to origin or met a board refusal is committed for what was kept, and its original is set aside.

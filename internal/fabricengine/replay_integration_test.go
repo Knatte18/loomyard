@@ -241,10 +241,15 @@ func TestRecordsReplay(t *testing.T) {
 			gitkit.Git(t, weft, "fetch")
 			tag := "set-aside/neve/" + status[:12]
 			gitkit.Git(t, weft, "tag", tag, tip)
+			reflogBefore := gitkit.Git(t, weft, "reflog", "show", "HEAD")
 
 			_, err := fabricengine.ReplayWeftForTest(f.hub.Location, weft, map[string]string{"neve": "done"})
 			if err == nil || !strings.Contains(err.Error(), tag) {
 				t.Fatalf("ReplayWeftForTest error = %v, want the conflicting tag %s named", err, tag)
+			}
+			// A branch that moved and was put back would show in the reflog; here it never moved.
+			if got := gitkit.Git(t, weft, "reflog", "show", "HEAD"); got != reflogBefore {
+				t.Errorf("HEAD reflog changed to %q from %q, want the branch never moved", got, reflogBefore)
 			}
 			if got := gitkit.RevParse(t, weft, "HEAD"); got != tip {
 				t.Errorf("HEAD = %s, want the starting tip %s", got, tip)
@@ -613,8 +618,8 @@ func TestRecordsReplay(t *testing.T) {
 			gitkit.Git(t, board, "fetch")
 
 			outcome, err := fabricengine.ReplayBoltForTest(f.hub.Location, board, map[string]string{"neve": "done"})
-			if err == nil {
-				t.Fatalf("ReplayBoltForTest = %+v, nil; want the by-entry apply error", outcome)
+			if err == nil || !strings.Contains(err.Error(), "by entry") {
+				t.Fatalf("ReplayBoltForTest = %+v, %v; want the by-entry apply error", outcome, err)
 			}
 			if got := gitkit.RevParse(t, board, "HEAD"); got != tip {
 				t.Errorf("HEAD = %s, want the starting tip %s", got, tip)
