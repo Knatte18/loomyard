@@ -108,7 +108,7 @@ The refusal names the way to unlock an abandoned run's entry.
 
 ## Intake
 
-Intake takes the GitHub issues of the hub's own repository onto the board, the one list: the repository the hub's warp binding records, else its warp origin.
+Intake takes the GitHub issues of the hub's own repository onto the board, the one list: the repository the hub's recorded binding names, else its origin remote.
 It never reads the repository `selfreport` files LoomYard bugs to, unless that is the hub's own.
 Run intake only when the operator asks for it.
 Take each open issue onto the board, then close it:

@@ -37,7 +37,7 @@ func intakeCommand(board func() *boardengine.Board, hubRepo func() (*hubissues.R
 		Use:   "intake",
 		Short: "bring the hub repository's GitHub issues onto the board",
 		Long: `intake moves issues from the hub's own GitHub repository onto the board: the repository its
-warp binding records, else its warp worktree's origin. It does the mechanics and never
+recorded binding names, else its origin remote. It does the mechanics and never
 triages: list shows the open issues no entry records yet, import records one as a note or folds it
 into an entry and closes it with a pointer, and close closes noise with a stated reason.`,
 		RunE: clihelp.GroupRunE,

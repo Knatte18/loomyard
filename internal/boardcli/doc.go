@@ -58,7 +58,7 @@
 // Editing a body is a file round trip: `get --body > body.md`, edit the file, then `upsert --body-file body.md`.
 // `get`, `list-full` and the task envelope of `upsert`, `promote` and `merge` print an entry's kept keys, the board.json keys this binary does not know, while `list` and the README use known fields only.
 //
-// The intake verbs work on the hub's own GitHub repository, read through `internal/hubissues`: the repository `fabricengine.HubRepoURL` returns, the hub's warp binding or else its warp origin, never selfreport's repository.
+// The intake verbs work on the hub's own GitHub repository, read through `internal/hubissues`: the repository `fabricengine.HubRepoURL` returns, the hub's recorded binding or else its origin remote, never selfreport's repository.
 // Only an intake verb resolves that repository, so every other verb works offline.
 // `intake list` prints `{"issues":[{"number":…,"title":…}]}` for each open issue no entry records, pull requests excluded, and no open issue as `{"issues":[]}`.
 // `--full` prints number, title, body, labels, url, comments and created_at for the same set.

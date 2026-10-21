@@ -181,7 +181,7 @@ An issue of this hub's own repository reaches the board through intake, so no is
 
 ## Intake
 
-`lyx board intake` takes in the issues of this hub's own repository, the one its warp binding records or else its warp origin, never selfreport's unless that is this hub's own.
+`lyx board intake` takes in the issues of this hub's own repository, the one its recorded binding names or else its origin remote, never selfreport's unless that is this hub's own.
 Intake runs only when the operator asks for it: never run `lyx board intake` at a wake, a landing or any other time on your own, and never start an intake fork on your own.
 When the operator asks:
 - Run `lyx board intake list` and read only its numbers and titles; never run it with `--full`, and never run `lyx board intake import` yourself.
