@@ -140,8 +140,8 @@ type BeginDeps struct {
 	// this value needs no geometry derivation.
 	FrictionDir string
 
-	// VerifyTiers are the hub's verify tiers the fork prompt renders; empty for none.
-	VerifyTiers []string
+	// GateTiers are the hub's rendered tier and gate-list lines the fork prompt's gate_tiers marker takes; "none" when no tier is declared.
+	GateTiers string
 
 	// RenameTools are the hub's structure-aware rename tools the fork prompt renders; empty for none.
 	RenameTools []string
@@ -653,7 +653,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		return nil, fmt.Errorf("webster: resolve pack path: %w", err)
 	}
 	pack := buildKickstartPack(deps, index, batch, number)
-	prompt, packFile, err := RenderForkPrompt(batch, cardGates, batchGate, prevDigest, reportPath, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.VerifyTiers, deps.RenameTools, OutcomePath(deps.Geom.WebsterDir), summaryparser.Path(deps.Geom.WebsterDir), deps.Config.SelfFixCap, notePath, packPath, packLayoutOf(deps.Config, deps.Geom), pack)
+	prompt, packFile, err := RenderForkPrompt(batch, cardGates, batchGate, prevDigest, reportPath, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.GateTiers, deps.RenameTools, OutcomePath(deps.Geom.WebsterDir), summaryparser.Path(deps.Geom.WebsterDir), deps.Config.SelfFixCap, notePath, packPath, packLayoutOf(deps.Config, deps.Geom), pack)
 	if err != nil {
 		return nil, err
 	}

@@ -64,7 +64,7 @@ first_card: 1                            # optional positive integer, default 1;
 ```
 
 The body carries a short task-framing paragraph, an ordered **Card Index** whose entries read `N — <card-slug> — <one-line intent>`,
-and the optional plan-level body sections `## Shared Decisions`, `## Rename mechanic`, `## verify:` and `## PATTERN changes`.
+and the optional plan-level body sections `## Shared Decisions`, `## Rename mechanic` and `## PATTERN changes`; a `## verify:` section is accepted and ignored.
 
 `## PATTERN changes` carries the decision record's `## PATTERN changes` entries, one bullet each, in the bullet shape `loom-discussion-spec.md` defines, without the record's added-after-Discussion suffix.
 
@@ -282,41 +282,36 @@ A departure from an entry the task declares changed in the overview's `## PATTER
 
 ## verify model
 
-Tiers 1 and 2 below are implemented;
-tier 3 stays explicit-only.
-The per-card **`**Verify:**`** field stays the optional, verbatim, rare escape hatch it already was under format 3 — a cheap, targeted check where it is useful.
-The plan-level `## verify:` body section in `00-overview.md` (unchanged in shape from format 3) is the integration suite run once per attempt as a must-pass gate on Merriam's strand, and again by `lyx webster verify`.
-The section holds one shell command per line;
-the parser skips code-fence lines and full-line `#` comments, then chains every remaining non-blank line with ` && ` into the one command line webster runs, so the first failing command fails the whole check.
+The hub's tests run through `lyx gate test`, which runs the numbered tiers `gate.yaml` declares over a scope lyx computes.
+A gate is a named list of tiers: the `card` gate runs per card, the `batch` gate per batch, the `round` gate between review rounds, the `final` gate once for the whole plan, and the `landing` and `publish` gates at landing.
+The hub's tiers and gate lists reach the plan writer and the plan reviewer in their prompts, rendered from `gate.yaml`.
+A plan author names no gate, tier list or target list, because the Go-rendered prompts and the gates carry them.
 
-Landing is the verify line's second consumer.
-The `Publish` and `Finalize` landing producers run the same chained command in the task worktree whenever the tree differs from the last verified tree, which `internal/verifytree` records,
-and halt Stuck on failure before anything is pushed or landed.
+The per-card **`**Verify:**`** field stays the optional, rare escape hatch for what no gate expresses — a cheap, targeted check where it is useful.
+A `**Verify:**` line that tests is one `lyx gate test --wait` call with a tier list and a scope form, such as `lyx gate test --wait --tier 1 --card <card id>`, and never a raw test command or a target list.
+The plan-level `## verify:` body section in `00-overview.md` is accepted and ignored: the parser still reads it, and the plan gate reports an informational finding, because the `final` gate has replaced it.
+
+Landing runs the `landing` and `publish` gates in the task worktree whenever the tree differs from the last verified tree, which `internal/verifytree` records,
+and halts Stuck on failure before anything is pushed or landed.
 Both also halt Stuck on a dirty tree, so only committed content is ever verified, pushed or landed.
-The section must cover what a parent merge can break.
 
-The section runs the hub's verify tiers in the order and form `language.yaml`'s `verify_tiers` gives, and with none set it builds the code and then runs the tests of every package a card targets.
-A tier run at Publish is run by landing config's `publish_verify` where the repo sets it, and a tier `verify_tiers` says is compiled rather than run is never run by the plan.
-Webster's gate, Publish and Finalize run the section itself, and Publish then runs `publish_verify` after it.
-The Webster-Burler-Fix round gate instead runs a derived impacted-set command between rounds.
-
-The three tiers match this repo's own test-tier discipline — `internal/planparser`'s existing `Verify` fields are the V1 precedent this generalizes, not three tiers invented for this format:
+The tiers below match this repo's own test-tier discipline:
 
 - **Tier 1 (per card, automatic, no author action).**
   Implemented as the Go-rendered per-card gate: the hub's `card` gate call, `lyx gate test --wait --tier <n>... --card <card id>`, then the comment line-break lint and the PATTERN headroom lint.
   The gate call computes the card's packages per module from the plan and runs the guard step over the `//lyx:guard` tests itself, so the prompt names no package.
-  The card gate does not build or test the rest of the module; a card that breaks a package outside its targets passes it unless the break is in a `//lyx:guard` test, and the batch gate or the plan-level verify catches that.
+  The card gate does not build or test the rest of the module; a card that breaks a package outside its targets passes it unless the break is in a `//lyx:guard` test, and the batch gate or the `final` gate catches that.
   Untagged tests are fast by construction, per the Test Tier Purity Invariant's own discipline — no cwd resolution, no process spawn.
   Fully mechanical — no author enumerates a file list, which is what made V1-style `verify:` lists grow long in practice.
 - **Tier 2 (per batch for its own packages, plan-level for the whole suite).**
   Real git-against-remote tests, built via `internal/hubforge` with real repository creation and a real clone, are genuinely slower.
-  The batch gate is the hub's `batch` gate call, `lyx gate test --wait --tier <n>...` with one `--card <card id>` per card of the batch, run once per batch by the fork after its last card; Go never runs it, and the plan-level verify catches a fork that skips it;
-  the plan-level `## verify:` stays the once-per-plan run, now a must-pass gate on Merriam that sends a failure back to Merriam to fix.
+  The batch gate is the hub's `batch` gate call, `lyx gate test --wait --tier <n>...` with one `--card <card id>` per card of the batch, run once per batch by the fork after its last card; Go never runs it, and the `final` gate catches a fork that skips it;
+  the `final` gate stays the once-per-plan run, a must-pass gate on Merriam that sends a failure back to Merriam to fix.
   The Concurrency section's post-merge backstop assumes the same gate.
 - **Tier 3 (rare, explicit only, never automatic).**
   Tests that drive a real LLM, gated by the `llm` build tag — expensive in both wall-clock and tokens.
-  Never swept into an automatic per-card or per-plan gate under any circumstance; a plan's `## verify:` compiles them (`go vet -tags llm`) and never runs them.
-  The `tmux` tag is a separate, token-free tier that a plan's `## verify:` compiles (`go vet -tags tmux`) and never runs; Publish runs it through landing config's `publish_verify`.
+  Never swept into an automatic per-card or per-plan gate under any circumstance; a tier that compiles them (`go vet -tags llm`) never runs them.
+  The `tmux` tag is a separate, token-free tier that the `final` gate compiles (`go vet -tags tmux`) and never runs; Publish runs it through the `publish` gate.
   A card that genuinely needs one is exactly what the optional `Verify:` field is for: an explicit, author-named exception, never something inferred.
 
 The optional per-card `Verify:` field exists for what tier 1's automatic gate cannot catch on its own — a specific CLI smoke test, a targeted tier 2 scenario, or, rarely, a tier 3 case.

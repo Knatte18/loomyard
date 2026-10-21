@@ -501,12 +501,12 @@ func TestBeginBatch_PromptFile(t *testing.T) {
 			want:    []string{"none (first batch)"},
 		},
 		{
-			name: "the hub's verify tiers render as bullets",
+			name: "the hub's gate tier lines render verbatim",
 			prepare: func(t *testing.T, fx *beginFixture) {
-				fx.Deps.VerifyTiers = []string{"run `go test` on the listed packages"}
+				fx.Deps.GateTiers = "- tier1: unit tests\n- gate card: [1]"
 			},
 			number: 1,
-			want:   []string{"- run `go test` on the listed packages\n"},
+			want:   []string{"- tier1: unit tests\n- gate card: [1]\n"},
 		},
 		{
 			name: "the hub's rename tools render",

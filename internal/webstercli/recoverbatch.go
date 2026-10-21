@@ -77,7 +77,7 @@ func (c *websterCLI) recoverDeps(plan *planparser.Plan, batches []batcher.Batch,
 		FrictionDir:    c.frictionDir,
 		ParentBranch:   c.parentBranch,
 		LanguageSkills: c.languageSkills,
-		VerifyTiers:    c.verifyTiers,
+		GateTiers:      c.gateTiers,
 		RenameTools:    c.renameTools,
 		Gate:           gate,
 	}, nil

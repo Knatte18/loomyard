@@ -99,8 +99,8 @@ type RecoverDeps struct {
 	// LanguageSkills are the hub's language skills the recovery strand loads after roleSkills; empty for none.
 	LanguageSkills []string
 
-	// VerifyTiers are the hub's verify tiers the recovery prompt renders; empty for none.
-	VerifyTiers []string
+	// GateTiers are the hub's rendered tier and gate-list lines the recovery prompt's gate_tiers marker takes; "none" when no tier is declared.
+	GateTiers string
 
 	// RenameTools are the hub's structure-aware rename tools the recovery prompt renders; empty for none.
 	RenameTools []string
@@ -311,7 +311,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 	if err != nil {
 		return nil, fmt.Errorf("webster: list the worktree's uncommitted paths for batch %s: %w; way forward: transient, re-run `lyx webster recover-batch %d`", batchName, err, number)
 	}
-	prompt, err := RenderRecoveryPrompt(batch, cardGates, batchGate, prevDigest, failureDigestBlock(prior), uncommittedPaths, reportPath, deps.Geom.RepoRoot, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.VerifyTiers, deps.RenameTools, patternChanges, deps.Config.SelfFixCap, notePath, deps.Geom.ParentName)
+	prompt, err := RenderRecoveryPrompt(batch, cardGates, batchGate, prevDigest, failureDigestBlock(prior), uncommittedPaths, reportPath, deps.Geom.RepoRoot, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.GateTiers, deps.RenameTools, patternChanges, deps.Config.SelfFixCap, notePath, deps.Geom.ParentName)
 	if err != nil {
 		return nil, err
 	}

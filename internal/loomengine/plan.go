@@ -36,7 +36,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/friction"
-	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -61,10 +60,10 @@ const planStencil = "loom-template-plan"
 // When cfg.PlanLenses is set the lead alone is authorized to spawn fork subagents and carries the twill lens review directive, whose fan is resolved through lenses.yaml under dirs; otherwise the prompt keeps its bytes.
 // specsDir is told, never derived: this package is bound by the Told-Geometry Invariant.
 // The seat's opening stencil is read at call time from stencilsDir, and the seat engine renders the parent and edit directives from its geometry.
-// verifyTiers is the hub's verify tier list; the prompt's verify_tiers value is its entries as bullets, or "none" for an empty list.
+// gateTiers is the hub's rendered tier and gate-list lines, or "none" when no tier is declared; it fills the prompt's gate_tiers marker verbatim.
 // The table carries no gate; the producer entry sets it.
 // A PATTERN directive that cannot be rendered fails the table; a friction directive that cannot be rendered is left empty, the failure logged.
-func PlanTable(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir, specsDir string, cfg Config, reg modelspec.Registry, verifyTiers []string) (seatengine.Table, error) {
+func PlanTable(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir, specsDir string, cfg Config, reg modelspec.Registry, gateTiers string) (seatengine.Table, error) {
 	choice, err := resolveModelChoice(cfg.Plan, reg)
 	if err != nil {
 		return seatengine.Table{}, fmt.Errorf("loom: PlanTable: plan role model-spec: %w", err)
@@ -125,7 +124,7 @@ func PlanTable(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir, spe
 			"plan_dir":             planparser.PlanDir(layout.AnchorPath()),
 			"overview_path":        overviewPath,
 			"specs_dir":            specsDir,
-			"verify_tiers":         languageconfig.VerifyTiersValue(verifyTiers),
+			"gate_tiers":           gateTiers,
 			"pattern_directive":    patternDirective,
 			friction.MarkerName:    frictionDirective,
 		},

@@ -437,7 +437,7 @@
 // inherits no session context (see the fork-context-hygiene Shared
 // Decision).
 // The master and the recovery strand both load `scribe:prose`, `scribe:code-quality` and `scribe:testing` through their spawn spec's skills (`roleSkills`), followed by the hub's language skills from the `RunDeps.LanguageSkills` and `RecoverDeps.LanguageSkills` their wiring loads.
-// The fork and recovery prompts render the hub's verify tiers from `BeginDeps.VerifyTiers` and `RecoverDeps.VerifyTiers`, `none` for an empty list.
+// The fork and recovery prompts render the hub's tiers and gate lists from `BeginDeps.GateTiers` and `RecoverDeps.GateTiers`, the rendered `gate.yaml` lines their wiring loads, `none` when the hub declares no tier.
 // They also fill the implementer body's required `rename_tools` marker from `BeginDeps.RenameTools` and `RecoverDeps.RenameTools`, which the hub's `language.yaml` supplies and a standalone run leaves empty; both render `none` when empty.
 // The prompts render no plan `## verify:` command, an in-flight plan's included.
 // Their opening prompts render the parent directive (internal/parentdirective) from Geometry.ParentName, which hubgeom.WebsterGeometry fills from the worktree's origin record.

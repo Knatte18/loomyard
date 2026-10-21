@@ -38,7 +38,7 @@
 // their stencilsDir parameter, filled into the shared implementer-job body's required specs_dir
 // marker. It is required, not optional: a blank render would silently reproduce a dead
 // cross-repository reference in the agent's own instructions.
-// Both also take a verifyTiers parameter, immediately after specsDir, filled into the same body's required verify_tiers marker.
+// Both also take a gateTiers parameter, immediately after specsDir, filled into the same body's required gate_tiers marker.
 // RenderMasterPrompt and
 // RenderVerifyFixPrompt gain no such parameter — neither the Master template nor the verify-fix
 // body cites a normative spec.
@@ -338,8 +338,8 @@ func cardPointerPath(c planparser.Card, planDirDisplay string) string {
 // friction.Directive error swallowed as a Warn rather than propagated.
 // specsDir is the told deployed-specs directory, filled into the shared implementer-job body's
 // required specs_dir marker.
-// verifyTiers is the hub's verify tiers, filled into the body's required verify_tiers marker as bullets, or as "none" when empty.
-// renameTools is the hub's structure-aware rename tools, filled into the body's required rename_tools marker the same way.
+// gateTiers is the hub's rendered tier and gate-list lines, filled verbatim into the body's required gate_tiers marker; "none" when no tier is declared.
+// renameTools is the hub's structure-aware rename tools, filled into the body's required rename_tools marker as bullets, or as "none" when empty.
 // cardGates is the caller-rendered per-card gate step list (renderCardGates), filled into the body's required card_gates marker.
 // batchGate is the caller-rendered batch gate call (renderBatchGate), filled into the body's required batch_gate marker.
 // outcomePath and summaryPath are Merriam's two contract files, filled into the fork prefix's outcome_path and summary_path markers so the fork is told never to write them.
@@ -349,7 +349,7 @@ func cardPointerPath(c planparser.Card, planDirDisplay string) string {
 // With PackLayoutCard the prompt carries none of the pack's entries and packFile is nil: the fork reads the card files first and fetches each card's pack with `lyx loom card-pack` at that card's start, and the prompt ends with a section sending it to the card files.
 // A nil pack renders the pack-off fragments, leaves the pack markers empty and returns a nil packFile, whichever layout is.
 // The plan is not a parameter, per the fork-context-hygiene rule.
-func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, reportPath, planDir, promptWorktreeRoot, stencilsDir, specsDir string, verifyTiers, renameTools []string, outcomePath, summaryPath string, selfFixCap int, notePath, packPath string, layout PackLayout, pack []planindex.CardPack) (prompt, packFile []byte, err error) {
+func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, reportPath, planDir, promptWorktreeRoot, stencilsDir, specsDir, gateTiers string, renameTools []string, outcomePath, summaryPath string, selfFixCap int, notePath, packPath string, layout PackLayout, pack []planindex.CardPack) (prompt, packFile []byte, err error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
 		digestLine = noPrecedingBatchDigest
@@ -407,8 +407,8 @@ func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, rep
 		"worktree_root":     promptWorktreeRoot,
 		"prev_digest":       digestLine,
 		"specs_dir":         specsDir,
-		"verify_tiers":      languageconfig.VerifyTiersValue(verifyTiers),
-		"rename_tools":      languageconfig.VerifyTiersValue(renameTools),
+		"gate_tiers":        gateTiersOrNone(gateTiers),
+		"rename_tools":      languageconfig.BulletListValue(renameTools),
 		"outcome_path":      outcomePath,
 		"summary_path":      summaryPath,
 		"locate":            locate,
@@ -444,8 +444,8 @@ func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, rep
 // pattern.Directive call immediately above, which does propagate.
 // specsDir is the told deployed-specs directory, filled into the shared implementer-job body's
 // required specs_dir marker.
-// verifyTiers is the hub's verify tiers, filled into the body's required verify_tiers marker as bullets, or as "none" when empty.
-// renameTools is the hub's structure-aware rename tools, filled into the body's required rename_tools marker the same way.
+// gateTiers is the hub's rendered tier and gate-list lines, filled verbatim into the body's required gate_tiers marker; "none" when no tier is declared.
+// renameTools is the hub's structure-aware rename tools, filled into the body's required rename_tools marker as bullets, or as "none" when empty.
 // patternChanges is the task's declared PATTERN changes as rendered bullet lines, passed to the pattern directive; nil renders none.
 // cardGates is the caller-rendered per-card gate step list, and batchGate the caller-rendered batch gate call.
 // parentName is the told parent agent name; an empty one renders parentdirective's no-parent variant.
@@ -453,7 +453,7 @@ func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, rep
 // it fills the optional failure_digest marker, rendered as "none" when empty, and being optional it leaves an older deployed stencil rendering.
 // uncommittedPaths is the caller-rendered block of the worktree's uncommitted paths grouped by who wrote them, or "" for a clean tree;
 // it fills the optional uncommitted_paths marker the same way.
-func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, failureDigest, uncommittedPaths, reportPath, repoRoot, planDir, promptWorktreeRoot, stencilsDir, specsDir string, verifyTiers, renameTools, patternChanges []string, selfFixCap int, notePath, parentName string) ([]byte, error) {
+func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, failureDigest, uncommittedPaths, reportPath, repoRoot, planDir, promptWorktreeRoot, stencilsDir, specsDir, gateTiers string, renameTools, patternChanges []string, selfFixCap int, notePath, parentName string) ([]byte, error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
 		digestLine = noPrecedingBatchDigest
@@ -509,8 +509,8 @@ func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest,
 		"uncommitted_paths": uncommittedLine,
 		"pattern_directive": directive,
 		"specs_dir":         specsDir,
-		"verify_tiers":      languageconfig.VerifyTiersValue(verifyTiers),
-		"rename_tools":      languageconfig.VerifyTiersValue(renameTools),
+		"gate_tiers":        gateTiersOrNone(gateTiers),
+		"rename_tools":      languageconfig.BulletListValue(renameTools),
 		"locate":            locate,
 		"card_read":         cardRead,
 		"fresh_read":        freshRead,
@@ -747,4 +747,12 @@ func RenderRemaining(batches []batcher.Batch, st *State) string {
 		return "none"
 	}
 	return strings.Join(names, ", ")
+}
+
+// gateTiersOrNone returns gateTiers, or "none" when it is empty, since the required gate_tiers marker refuses an empty value.
+func gateTiersOrNone(gateTiers string) string {
+	if gateTiers == "" {
+		return "none"
+	}
+	return gateTiers
 }

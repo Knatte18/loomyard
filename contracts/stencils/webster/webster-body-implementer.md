@@ -86,9 +86,9 @@ It costs no self-fix attempt, never makes the report `FAILED`, and you re-run th
 A call made with `--wait` queues for its slot and never exits `75`.
 
 The one route to a test run is `lyx gate test` with a gate's tier list and a scope form, such as `--tier <n>` with `--card <card id>` or explicit packages, never a raw test command.
-The hub's verify tiers follow:
+The hub's tiers and gate lists follow:
 
-{{.verify_tiers}}
+{{.gate_tiers}}
 
 ## Bounded self-fix, then stop
 

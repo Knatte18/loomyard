@@ -182,9 +182,9 @@ type BouncerConfig struct {
 	// RolePrefix leads the seed and judge sessions' roles, as `<RolePrefix>-bouncer-seed` and `<RolePrefix>-bouncer-judge`.
 	// The zero value keeps the roles unprefixed.
 	RolePrefix string
-	// VerifyTiers is the hub's verify tier list, which fills the rubric's verify_tiers marker in the seed and judge prompts.
+	// GateTiers is the hub's rendered tier and gate-list lines, which fill the rubric's gate_tiers marker in the seed and judge prompts.
 	// The zero value renders `none`.
-	VerifyTiers []string
+	GateTiers string
 	// Subject reads the identity of what this segment judges now, with ok false when it has none, as a standalone run's code segment has none.
 	// While it is set and answers ok, every approved settle writes the segment's settle record and every seed and judge spawn writes its generation record,
 	// and a re-entry over a settled verdict compares the live subject with the recorded one.
@@ -1536,7 +1536,7 @@ func (b *Bouncer) seedCall(ctx context.Context) (shedengine.Outcome, shedengine.
 
 // rubricNotes gathers the notes the rubric's markers are filled from, each blank when no function is configured for it.
 func (b *Bouncer) rubricNotes() RubricNotes {
-	notes := RubricNotes{VerifyTiers: b.cfg.VerifyTiers, Amendment: AmendmentNote(b.cfg.RunDir)}
+	notes := RubricNotes{GateTiers: b.cfg.GateTiers, Amendment: AmendmentNote(b.cfg.RunDir)}
 	if b.cfg.PublishFailure != nil {
 		notes.PublishFailure = b.cfg.PublishFailure()
 	}

@@ -539,6 +539,14 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		return err
 	}
 	languageSkills := language.Skills
+	// An absent gate.yaml renders the gate_tiers marker as none; any other load error already names the way forward.
+	gateTiers := "none"
+	gateCfg, err := gateslot.LoadConfig(fabricengine.ConfigDirs(location))
+	if err == nil {
+		gateTiers = gateCfg.TiersValue()
+	} else if !errors.Is(err, gateslot.ErrConfigAbsent) {
+		return err
+	}
 	// lenses.Load degrades to the template on an absent lenses.yaml rather than failing the load.
 	lensesCfg, err := lenses.Load(fabricengine.ConfigDirs(location))
 	if err != nil {
@@ -712,7 +720,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		WebsterRecord: func() string {
 			return loomshed.WebsterRecordNote(anchorPath)
 		},
-		VerifyTiers:        language.VerifyTiers,
+		GateTiers:          gateTiers,
 		RenameTools:        language.RenameTools,
 		StatusPath:         statusPath,
 		StatusLockPath:     statusLockPath,
@@ -821,7 +829,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// PlanTable is evaluated per Call, not resolved here, so the stencil is read at call time -- what the Stencil Ownership Invariant requires.
 		// It takes no autonomous argument: the Plan producer is autonomous by design and its table is never interactive.
 		PlanTable: func() (seatengine.Table, error) {
-			return loomengine.PlanTable(location, fabricengine.ConfigDirs(location), websterGeom.StencilsDir, websterGeom.SpecsDir, loomCfg, registry, language.VerifyTiers)
+			return loomengine.PlanTable(location, fabricengine.ConfigDirs(location), websterGeom.StencilsDir, websterGeom.SpecsDir, loomCfg, registry, gateTiers)
 		},
 		// CommitPlan mirrors CommitDiscussion above: it keeps the working tree clean for the rows
 		// that follow, makes the artifact durable across a crash or a resume, and sweeps the

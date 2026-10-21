@@ -227,6 +227,9 @@ func TestWire_StandaloneMode(t *testing.T) {
 	if c.geom.WorktreeRoot != target {
 		t.Errorf("geom.WorktreeRoot = %q; want the target %q", c.geom.WorktreeRoot, target)
 	}
+	if c.gateTiers != "none" {
+		t.Errorf("c.gateTiers = %q; want none for a target with no gate.yaml", c.gateTiers)
+	}
 	if c.geom.AnchorRoot != stateDir {
 		t.Errorf("geom.AnchorRoot = %q; want the derived state directory %q", c.geom.AnchorRoot, stateDir)
 	}
@@ -710,21 +713,32 @@ func TestWireHub_LanguageSkills(t *testing.T) {
 		name         string
 		fileContents string
 		wantSkills   []string
-		wantTiers    []string
 		wantRename   []string
 		wantRefusal  bool
+		// noGate leaves the hub without a gate.yaml; wantGateRefusal writes one wire cannot load.
+		noGate          bool
+		wantGateRefusal bool
 	}{
 		{
-			name:         "ListedSkillsTiersAndRenameToolsReachRunBeginAndRecoverDeps",
-			fileContents: "skills:\n  - scribe:golang-comments\n  - scribe:golang-testing\nverify_tiers:\n  - run the unit tier\n  - compile the tmux tier\nrename_tools:\n  - rename Go symbols with gopls rename\n",
+			name:         "ListedSkillsAndRenameToolsReachRunBeginAndRecoverDepsAndGateTiersRenderFromGateYaml",
+			fileContents: "skills:\n  - scribe:golang-comments\n  - scribe:golang-testing\nverify_tiers:\n  - a retired key still set\nrename_tools:\n  - rename Go symbols with gopls rename\n",
 			wantSkills:   []string{"scribe:golang-comments", "scribe:golang-testing"},
-			wantTiers:    []string{"run the unit tier", "compile the tmux tier"},
 			wantRename:   []string{"rename Go symbols with gopls rename"},
 		},
 		{
 			name:         "EntryWithLeadingSpaceIsRefused",
 			fileContents: "skills:\n  - \" scribe:golang-comments\"\n",
 			wantRefusal:  true,
+		},
+		{
+			name:            "UnloadableGateYamlRefusesNamingLyxConfigGate",
+			fileContents:    "skills: []\n",
+			wantGateRefusal: true,
+		},
+		{
+			name:         "NoGateYamlWiresAndRendersNone",
+			fileContents: "skills: []\n",
+			noGate:       true,
 		},
 	}
 
@@ -739,11 +753,33 @@ func TestWireHub_LanguageSkills(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(configDir, "language.yaml"), []byte(tt.fileContents), 0o644); err != nil {
 				t.Fatalf("WriteFile(language.yaml) = %v; want nil", err)
 			}
-			seedHubGateConfig(t, hub)
+			switch {
+			case tt.wantGateRefusal:
+				if err := os.WriteFile(filepath.Join(configDir, "gate.yaml"), []byte("tiers: [\n"), 0o644); err != nil {
+					t.Fatalf("WriteFile(gate.yaml) = %v; want nil", err)
+				}
+			case !tt.noGate:
+				seedHubGateConfig(t, hub)
+			}
 
 			c := &websterCLI{}
 			err := c.wire(loc, preflight.ModeHub, "", "", "", "")
 
+			if tt.wantGateRefusal {
+				if err == nil || !strings.Contains(err.Error(), "lyx config gate") {
+					t.Fatalf("wire() = %v; want a refusal naming lyx config gate", err)
+				}
+				return
+			}
+			if tt.noGate {
+				if err != nil {
+					t.Fatalf("wire() = %v; want nil when the hub has no gate.yaml", err)
+				}
+				if c.gateTiers != "none" {
+					t.Errorf("c.gateTiers = %q; want none", c.gateTiers)
+				}
+				return
+			}
 			if tt.wantRefusal {
 				var refusal configLoadRefusal
 				if !errors.As(err, &refusal) {
@@ -783,14 +819,14 @@ func TestWireHub_LanguageSkills(t *testing.T) {
 			if !slices.Equal(recovered.LanguageSkills, tt.wantSkills) {
 				t.Errorf("recoverDeps().LanguageSkills = %v; want %v", recovered.LanguageSkills, tt.wantSkills)
 			}
-			if !slices.Equal(c.verifyTiers, tt.wantTiers) {
-				t.Errorf("c.verifyTiers = %v; want %v", c.verifyTiers, tt.wantTiers)
+			if !strings.HasPrefix(c.gateTiers, "- tier0:") {
+				t.Errorf("c.gateTiers = %q; want the seeded gate.yaml's tier lines", c.gateTiers)
 			}
-			if !slices.Equal(begin.VerifyTiers, tt.wantTiers) {
-				t.Errorf("beginDeps().VerifyTiers = %v; want %v", begin.VerifyTiers, tt.wantTiers)
+			if begin.GateTiers != c.gateTiers {
+				t.Errorf("beginDeps().GateTiers = %q; want %q", begin.GateTiers, c.gateTiers)
 			}
-			if !slices.Equal(recovered.VerifyTiers, tt.wantTiers) {
-				t.Errorf("recoverDeps().VerifyTiers = %v; want %v", recovered.VerifyTiers, tt.wantTiers)
+			if recovered.GateTiers != c.gateTiers {
+				t.Errorf("recoverDeps().GateTiers = %q; want %q", recovered.GateTiers, c.gateTiers)
 			}
 			if !slices.Equal(c.renameTools, tt.wantRename) {
 				t.Errorf("c.renameTools = %v; want %v", c.renameTools, tt.wantRename)

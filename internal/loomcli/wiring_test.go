@@ -22,7 +22,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
-	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -1060,19 +1059,35 @@ func TestWire_LanguageSkills(t *testing.T) {
 	tests := []struct {
 		name    string
 		content string
-		// wantErr is the text the wire error must contain beside wantKey; empty means wire succeeds with wantSkills and wantTiers.
+		// gate is the hub's gate.yaml: empty for none, "two" for two declared tiers, "unloadable" for a file wire cannot load.
+		gate string
+		// wantErr is the text the wire error must contain beside wantKey; empty means wire succeeds with wantSkills and wantGateTiers.
 		wantErr    string
 		wantKey    string
 		wantSkills []string
-		wantTiers  []string
-		wantTools  []string
+		// wantGateTiers is the text the gate_tiers value must start with, and the whole value when it is none.
+		wantGateTiers string
+		wantTools     []string
 	}{
 		{
-			name:       "a listed language reaches the Webster deps and the darn writer after its own",
-			content:    "skills:\n  - scribe:golang-comments\n  - scribe:golang-testing\nverify_tiers:\n  - build first\n  - vet second\nrename_tools:\n  - gopls rename\n",
-			wantSkills: []string{"scribe:golang-comments", "scribe:golang-testing"},
-			wantTiers:  []string{"build first", "vet second"},
-			wantTools:  []string{"gopls rename"},
+			name:          "a listed language reaches the Webster deps and the darn writer after its own, and a retired verify_tiers still loads",
+			content:       "skills:\n  - scribe:golang-comments\n  - scribe:golang-testing\nverify_tiers:\n  - build first\n  - vet second\nrename_tools:\n  - gopls rename\n",
+			gate:          "two",
+			wantSkills:    []string{"scribe:golang-comments", "scribe:golang-testing"},
+			wantGateTiers: "- tier0:",
+			wantTools:     []string{"gopls rename"},
+		},
+		{
+			name:          "no gate.yaml wires and renders the gate tiers as none",
+			content:       "skills: []\n",
+			wantSkills:    []string{},
+			wantGateTiers: "none",
+		},
+		{
+			name:    "an unloadable gate.yaml halts wire naming lyx config gate",
+			content: "skills: []\n",
+			gate:    "unloadable",
+			wantErr: "lyx config gate",
 		},
 		{
 			name:    "an empty skills entry halts wire naming skills and the way forward",
@@ -1081,10 +1096,10 @@ func TestWire_LanguageSkills(t *testing.T) {
 			wantKey: "skills",
 		},
 		{
-			name:    "an empty verify_tiers entry halts wire naming verify_tiers and the way forward",
-			content: "skills:\n  - scribe:golang-comments\nverify_tiers: [\"\"]\n",
+			name:    "an empty rename_tools entry halts wire naming rename_tools and the way forward",
+			content: "skills:\n  - scribe:golang-comments\nrename_tools: [\"\"]\n",
 			wantErr: "lyx config language",
-			wantKey: "verify_tiers",
+			wantKey: "rename_tools",
 		},
 	}
 	for _, tt := range tests {
@@ -1095,6 +1110,12 @@ func TestWire_LanguageSkills(t *testing.T) {
 			languagePath := configengine.ConfigFile(fabricengine.BoardDir(loc.HubPath), "language")
 			if err := os.WriteFile(languagePath, []byte(tt.content), 0o644); err != nil {
 				t.Fatalf("WriteFile(%q) = %v; want nil", languagePath, err)
+			}
+			switch tt.gate {
+			case "two":
+				writeHubGateConfig(t, loc.HubPath, gateConfigWithTwoTiers())
+			case "unloadable":
+				writeHubGateConfig(t, loc.HubPath, "tiers: [\n")
 			}
 			c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeDarn}
 
@@ -1109,11 +1130,8 @@ func TestWire_LanguageSkills(t *testing.T) {
 			if err != nil {
 				t.Fatalf("wire() = %v; want nil", err)
 			}
-			if !slices.Equal(c.language.VerifyTiers, tt.wantTiers) {
-				t.Errorf("language.VerifyTiers = %q; want %q", c.language.VerifyTiers, tt.wantTiers)
-			}
-			if !slices.Equal(c.env.VerifyTiers, tt.wantTiers) {
-				t.Errorf("env.VerifyTiers = %q; want %q", c.env.VerifyTiers, tt.wantTiers)
+			if !strings.HasPrefix(c.env.GateTiers, tt.wantGateTiers) || (tt.wantGateTiers == "none" && c.env.GateTiers != "none") {
+				t.Errorf("env.GateTiers = %q; want it to start with %q", c.env.GateTiers, tt.wantGateTiers)
 			}
 			if !slices.Equal(c.env.RenameTools, tt.wantTools) {
 				t.Errorf("env.RenameTools = %q; want %q", c.env.RenameTools, tt.wantTools)
@@ -1133,8 +1151,8 @@ func TestWire_LanguageSkills(t *testing.T) {
 			if err != nil {
 				t.Fatalf("PlanTable() = %v; want nil", err)
 			}
-			if got, want := planTable.Values["verify_tiers"], languageconfig.VerifyTiersValue(tt.wantTiers); got != want {
-				t.Errorf("plan table verify_tiers = %q; want %q", got, want)
+			if got := planTable.Values["gate_tiers"]; got != c.env.GateTiers {
+				t.Errorf("plan table gate_tiers = %q; want %q", got, c.env.GateTiers)
 			}
 		})
 	}

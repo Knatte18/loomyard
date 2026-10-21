@@ -80,7 +80,7 @@ func TestPlanTable(t *testing.T) {
 			cfg := planTableConfig(tt.lenses)
 			dirs := configengine.Dirs{Anchor: layout.AnchorPath()}
 
-			table, err := PlanTable(layout, dirs, stencilsDir, specsDir, cfg, reg, nil)
+			table, err := PlanTable(layout, dirs, stencilsDir, specsDir, cfg, reg, "none")
 			if err != nil {
 				t.Fatalf("PlanTable(...) = _, %v; want nil error", err)
 			}
@@ -182,7 +182,7 @@ func TestPlanTable(t *testing.T) {
 				}
 				stencilsDir := newTestStencilsDir(t)
 
-				table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), planTableConfig(""), reg, nil)
+				table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), planTableConfig(""), reg, "none")
 				if err != nil {
 					t.Fatalf("PlanTable(...) = _, %v; want nil error", err)
 				}
@@ -223,7 +223,7 @@ func TestPlanTable(t *testing.T) {
 			}
 			writeDeclaredPatternRecord(t, layout, body)
 
-			table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, newTestStencilsDir(t), newTestSpecsDir(t), planTableConfig(""), reg, nil)
+			table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, newTestStencilsDir(t), newTestSpecsDir(t), planTableConfig(""), reg, "none")
 			if malformed {
 				if err == nil || !strings.Contains(err.Error(), "lyx loom validate-discussion") {
 					t.Errorf("PlanTable(malformed section) = _, %v; want an error naming lyx loom validate-discussion", err)
@@ -252,7 +252,7 @@ func TestPlanTable(t *testing.T) {
 			if enabled {
 				cfg.Friction = "sonnet[medium]"
 			}
-			table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), cfg, reg, nil)
+			table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), cfg, reg, "none")
 			if err != nil {
 				t.Fatalf("PlanTable(friction=%v) = _, %v; want nil error", enabled, err)
 			}
@@ -276,7 +276,7 @@ func TestPlanTable(t *testing.T) {
 		cfg := planTableConfig("")
 		cfg.Friction = "sonnet[medium]"
 
-		table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), cfg, reg, nil)
+		table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), cfg, reg, "none")
 		if err != nil {
 			t.Fatalf("PlanTable(...) = _, %v; want nil error", err)
 		}
@@ -312,7 +312,7 @@ func TestPlanTable(t *testing.T) {
 				}
 				stencilsDir := newTestStencilsDir(t)
 
-				table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), planTableConfig(templatePlanFan), reg, nil)
+				table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), planTableConfig(templatePlanFan), reg, "none")
 				if err != nil {
 					t.Fatalf("PlanTable(twill) = _, %v; want nil error", err)
 				}
@@ -378,17 +378,17 @@ func TestPlanTable(t *testing.T) {
 		}
 	})
 
-	t.Run("the verify tiers reach the lead prompt", func(t *testing.T) {
+	t.Run("the gate tiers reach the lead prompt", func(t *testing.T) {
 		t.Parallel()
 		tests := []struct {
 			name  string
-			tiers []string
-			// want is the text the prompt must hold; wantNone says the list sentence is followed directly by none.
+			tiers string
+			// want is the text the prompt must hold; wantNone says the tier sentence is followed directly by none.
 			want     string
 			wantNone bool
 		}{
-			{name: "two tiers render as consecutive bullets, verbatim and in order", tiers: []string{"`go build ./...` first", "then {{.x}}"}, want: "- `go build ./...` first\n- then {{.x}}"},
-			{name: "no tiers render none", wantNone: true},
+			{name: "tier lines render verbatim", tiers: "- tier1: unit tests of {{.x}}\n- gate card: [1]", want: "- tier1: unit tests of {{.x}}\n- gate card: [1]"},
+			{name: "no tiers render none", tiers: "none", wantNone: true},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -407,8 +407,8 @@ func TestPlanTable(t *testing.T) {
 				prompt := prompts[""]
 
 				if tt.wantNone {
-					if !strings.Contains(prompt, "this list gives:\nnone\n") {
-						t.Error("lead prompt lacks none directly after the list sentence; want the empty list rendered as none")
+					if !strings.Contains(prompt, "gate lists follow:\nnone\n") {
+						t.Error("lead prompt lacks none directly after the tier sentence; want a hub without tiers rendered as none")
 					}
 					if strings.Contains(prompt, "\n- \n") {
 						t.Error("lead prompt holds a \"- \" line with empty content; want none instead")
@@ -416,7 +416,7 @@ func TestPlanTable(t *testing.T) {
 					return
 				}
 				if !strings.Contains(prompt, tt.want) {
-					t.Errorf("lead prompt lacks %q; want the tiers as consecutive bullets", tt.want)
+					t.Errorf("lead prompt lacks %q; want the tier lines verbatim", tt.want)
 				}
 			})
 		}
@@ -456,7 +456,7 @@ func TestPlanTable(t *testing.T) {
 				cfg.Plan = tt.plan
 
 				// A missing stencil is the seat engine's refusal: the table builder reads none, and Validate reads every seat's.
-				table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), cfg, reg, nil)
+				table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), cfg, reg, "none")
 				if err == nil {
 					err = table.Validate(stencilsDir)
 				}
