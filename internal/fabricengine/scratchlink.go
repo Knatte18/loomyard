@@ -160,6 +160,45 @@ func wireScratchLink(rec *Mutations, l *lyxcwd.Location, slug string) scratchOut
 	return adoptScratchDirectory(rec, l, slug, root, target)
 }
 
+// unlinkScratchLink removes the root `.scratch` link of slug's warp worktree through the destructive gate, leaving its target untouched.
+// It reads the root entry by its own path, so it sees the link at a subpath anchor too, where the anchored junction scan does not.
+// It does nothing when the entry is absent, is not a link, or is a link that does not resolve into the pair's weft worktree;
+// git's own worktree removal unlinks such a link without following it.
+// A gate refusal comes back naming the root and the manual removal that lets a rerun proceed.
+func unlinkScratchLink(rec *Mutations, l *lyxcwd.Location, slug string) error {
+	warp := WorktreePath(l, slug)
+	root := filepath.Join(warp, scratchDirName)
+
+	if _, err := os.Lstat(root); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("inspect scratch link %s: %w", root, err)
+	}
+	isLink, err := fslink.IsLink(root)
+	if err != nil || !isLink {
+		return err
+	}
+	owned, err := linkIsFabricOwned(l, slug, root)
+	if err != nil || !owned {
+		return err
+	}
+
+	req := pathRequest{
+		what:      "remove scratch link",
+		container: warp,
+		target:    root,
+		slug:      nil,
+		ownership: ownedDriftedWiredJunction([]string{root}),
+		dirtiness: dirtinessNA("a link holds no content; the weft target it points at is untouched"),
+		force:     false,
+	}
+	if err := removeLink(rec, req); err != nil {
+		return fmt.Errorf("remove scratch link %s: %w; remove the root %s link by hand and rerun `lyx fabric remove`", root, err, scratchDirName)
+	}
+	return nil
+}
+
 // linkAbsentScratchRoot creates the target and the link for a root `.scratch` that does not exist.
 func linkAbsentScratchRoot(rec *Mutations, l *lyxcwd.Location, slug, root, target string) scratchOutcome {
 	if !weftWorktreePresent(l, slug) {

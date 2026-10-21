@@ -620,6 +620,111 @@ func TestWireJunctions_ScratchLinkRefusedAfterClassify(t *testing.T) {
 	})
 }
 
+// mutationIndexes returns the positions in record of every entry of kind at target.
+func mutationIndexes(record fabricengine.Mutations, kind fabricengine.Kind, target string) []int {
+	var indexes []int
+	for i, entry := range record.Entries() {
+		if entry.Kind == kind && entry.Target == target {
+			indexes = append(indexes, i)
+		}
+	}
+	return indexes
+}
+
+// TestRemove_UnlinksScratchLinkBeforeWorktreeRemoval pins Remove unlinking the root `.scratch` link through the gate ahead of the warp worktree removal.
+// It claims only a link into the pair's weft worktree and leaves every other root entry to the worktree removal.
+func TestRemove_UnlinksScratchLinkBeforeWorktreeRemoval(t *testing.T) {
+	t.Parallel()
+
+	t.Run("WiredLink", func(t *testing.T) {
+		t.Parallel()
+
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		l := h.Location
+		const slug = "unlink-scratch-wired"
+		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
+		root, target := scratchPaths(l, slug)
+		if err := os.WriteFile(filepath.Join(root, scratchNoteName), []byte("written through the link"), 0o644); err != nil {
+			t.Fatalf("write through the link: %v", err)
+		}
+
+		result, err := h.Topology.Remove(l, slug, true, false)
+		if err != nil {
+			t.Fatalf("Remove = %v; want nil", err)
+		}
+
+		record := result.Mutations
+		unlinked := mutationIndexes(record, fabricengine.KindLinkRemoved, scratchHubRelative(t, l, root))
+		warpRemoved := mutationIndexes(record, fabricengine.KindWorktreeRemoved, scratchHubRelative(t, l, fabricengine.WorktreePath(l, slug)))
+		weftRemoved := mutationIndexes(record, fabricengine.KindWorktreeRemoved, scratchHubRelative(t, l, fabricengine.RecordsWorktreePath(l, slug)))
+		if len(unlinked) != 1 || len(warpRemoved) != 1 || len(weftRemoved) != 1 {
+			t.Fatalf("record %+v; want one link_removed at the root and one worktree_removed per worktree", record.Entries())
+		}
+		if unlinked[0] > warpRemoved[0] {
+			t.Errorf("link_removed at index %d follows the warp worktree_removed at %d; want it ahead", unlinked[0], warpRemoved[0])
+		}
+		targetRel := scratchHubRelative(t, l, target)
+		for i, entry := range record.Entries() {
+			if i < weftRemoved[0] && (entry.Target == targetRel || strings.HasPrefix(entry.Target, targetRel+"/")) {
+				t.Errorf("entry %+v at index %d touches the scratch target ahead of the weft worktree_removed", entry, i)
+			}
+		}
+	})
+
+	t.Run("RealDirectoryIsNotClaimed", func(t *testing.T) {
+		t.Parallel()
+
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		l := h.Location
+		const slug = "unlink-scratch-real"
+		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
+		root, _ := scratchPaths(l, slug)
+		replaceLinkWithRealDirectory(t, root)
+
+		result, err := h.Topology.Remove(l, slug, true, false)
+		if err != nil {
+			t.Fatalf("Remove = %v; want nil", err)
+		}
+
+		if hasMutation(result.Mutations, fabricengine.KindLinkRemoved, scratchHubRelative(t, l, root), "") {
+			t.Errorf("record %+v holds link_removed at a real root .scratch", result.Mutations.Entries())
+		}
+	})
+
+	t.Run("LinkOutsideTheWeftWorktreeIsNotClaimed", func(t *testing.T) {
+		t.Parallel()
+
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		l := h.Location
+		const slug = "unlink-scratch-outside"
+		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
+		root, _ := scratchPaths(l, slug)
+		other := filepath.Join(t.TempDir(), "elsewhere")
+		if err := os.MkdirAll(other, 0o755); err != nil {
+			t.Fatalf("create %s: %v", other, err)
+		}
+		if err := os.WriteFile(filepath.Join(other, scratchNoteName), []byte("outside"), 0o644); err != nil {
+			t.Fatalf("write outside note: %v", err)
+		}
+		removeRootLink(t, root)
+		if err := fslink.CreateDirLink(root, other); err != nil {
+			t.Fatalf("link %s: %v", root, err)
+		}
+
+		result, err := h.Topology.Remove(l, slug, true, false)
+		if err != nil {
+			t.Fatalf("Remove = %v; want nil", err)
+		}
+
+		if hasMutation(result.Mutations, fabricengine.KindLinkRemoved, scratchHubRelative(t, l, root), "") {
+			t.Errorf("record %+v holds link_removed at a link outside the weft worktree", result.Mutations.Entries())
+		}
+		if content, err := os.ReadFile(filepath.Join(other, scratchNoteName)); err != nil || string(content) != "outside" {
+			t.Errorf("outside note = %q, %v; want it to survive Remove", content, err)
+		}
+	})
+}
+
 // reconcilePrimePair runs Reconcile over h's hub and returns the result with the prime pair's entry.
 func reconcilePrimePair(t *testing.T, h *hubforge.Hub) (fabricengine.ReconcileResult, *fabricengine.ReconcilePairResult) {
 	t.Helper()

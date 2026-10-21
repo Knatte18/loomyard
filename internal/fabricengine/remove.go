@@ -244,7 +244,7 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (
 	// subpath-anchored hub that saw none of the pair's junctions (they live at
 	// <worktree>/<anchorRel>) and reported LinksRemoved: 0, and at a root anchor it deleted the
 	// user's own checked-in symlinks alongside fabric's.
-	// The root scratch link is excepted from the sweep: it is not an anchored junction, and the worktree directory removal takes it.
+	// The root scratch link is excepted from the sweep: it is not an anchored junction, so unlinkScratchLink removes it before the worktree directory removal.
 	// A task worktree that is gone, or a path there that is not a registered linked worktree, has no junctions of fabric's to sweep and nothing for the directory removal to take.
 	linksRemoved := 0
 	if pair.taskWorktree {
@@ -257,6 +257,9 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (
 			if removeErr == nil {
 				linksRemoved = len(ownedNames)
 			}
+		}
+		if err := surfaceRefusal(unlinkScratchLink(rec, l, slug)); err != nil {
+			return RemoveResult{}, err
 		}
 		if err := removeWarpWorktreeDir(rec, l, target, force, t.leftover); err != nil {
 			return RemoveResult{}, err

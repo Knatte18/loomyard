@@ -503,6 +503,10 @@
 // The stale-junction sweep never claims the root link and never strips its exclude line.
 // After this lands, the operator runs `lyx fabric reconcile` once to convert the prime and every pair an older binary wired.
 //
+// `lyx fabric remove` unlinks the root link through the destructive gate before it removes the warp worktree directory, at a root and at a subpath anchor alike, and records one `link_removed` at the root.
+// It claims only a link that resolves into the pair's weft worktree; any other entry at the root is left to the worktree removal.
+// The link's target lives in the pair's weft `.lyx` and goes with the weft worktree teardown.
+//
 // `Remove` (remove.go) is the paired teardown, and it never deletes a directory git itself declined
 // to remove unless that directory is a registered LINKED worktree of the warp repo.
 // The rule is load-bearing rather than defensive: `git worktree remove` refuses a main working
