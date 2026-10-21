@@ -303,6 +303,11 @@ func cloneHub(tb testing.TB, anchor, warpBare, weftBare, container string) (*Hub
 		tb.Fatalf("NewHub: remove the clone's build stamp %s: %v", stamp, err)
 	}
 
+	// The clone's walk hands the board's push to a detached sync, which a test binary never spawns, so the hub-wide commit is pushed here and the board starts clean against its upstream.
+	if err := fabricengine.NewBolt(res.BoardDir).Push(fabricengine.SyncOptions{}); err != nil {
+		tb.Fatalf("NewHub: push the clone's board commit: %v", err)
+	}
+
 	loc, err := lyxcwd.Resolve(res.PrimeCwd)
 	if err != nil {
 		tb.Fatalf("NewHub: lyxcwd.Resolve(%s): %v", res.PrimeCwd, err)
