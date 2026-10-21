@@ -727,7 +727,7 @@ type listerEnv struct {
 // Losing the lock race returns nil, respawns nothing and writes no trace file at the default verbosity.
 // A replaced binary with a live hub releases the lock before it respawns and passes the hub, tmux and shell values and suppress true under go test.
 // A replaced binary, an idle-cycle exit or a stop respawns only when the re-check after the loop still finds a session, and a cancelled context respawns nothing.
-// A stop is seen with or without a discover signal watch, the rows without failWatch using the real one where it opens.
+// A stop is seen with or without a discover signal watch, the rows with neither failWatch nor closedWatch using the real one where it opens.
 // Each row asserts its own trace lines.
 // It points the process-global durable log sink at the hub's logs directory, so it is not parallel.
 func TestWatchdogCmd_ExitsZeroBeforeOrInsteadOfLooping(t *testing.T) {
