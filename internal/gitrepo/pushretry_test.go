@@ -70,7 +70,7 @@ func TestPushWithRetry_RetriesOnlyRetryableRefusalsUpToTheBound(t *testing.T) {
 		{"success first try", []error{nil}, nil, false, 1, nil},
 		{"refusal then success", []error{failed, nil}, nil, false, 2, []time.Duration{time.Second}},
 		{"cannot lock ref then success", []error{cannotLock, nil}, nil, false, 2, []time.Duration{time.Second}},
-		{"persistent refusal stops at the bound", []error{failed, failed, failed, failed, failed}, failed, true, pushMaxAttempts, []time.Duration{time.Second, 2 * time.Second, 4 * time.Second}},
+		{"persistent refusal stops at the bound", []error{failed, failed, failed, failed, failed}, failed, true, pushMaxAttempts, PushBackoffDelays()},
 		{"non-retryable error is attempted once and returned unchanged", []error{notFastForward, nil}, notFastForward, false, 1, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

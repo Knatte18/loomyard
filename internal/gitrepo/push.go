@@ -33,6 +33,15 @@ const PushLockFileName = ".gitrepo-push.lock"
 // remote has commits this checkout lacks.
 var rebaseRetryTriggers = []string{"non-fast-forward", "rejected", "fetch first"}
 
+// ErrPushAuthRefused is matched with errors.Is against the error PushRebaseFree returns when the remote refused the push for want of authentication or permission.
+// Retrying cannot clear it, and it is neither a rejection nor a transport failure.
+// The error also carries git's refusal line.
+var ErrPushAuthRefused = errors.New("gitrepo: push refused for authentication or permission")
+
+// authRefusalTriggers are the git-push stderr substrings meaning the remote refused the push for want of authentication or permission, in GitHub's wording.
+// The package doc's locale caveat applies.
+var authRefusalTriggers = []string{"Permission to", "denied to", "returned error: 403", "Authentication failed", "could not read Username"}
+
 // remoteRefAbsentTrigger is the git-push-delete stderr substring meaning the
 // remote ref was already gone before the delete ran. Git's fuller wording is
 // `error: unable to delete '<branch>': remote ref does not exist`, which
@@ -134,6 +143,7 @@ func (r *Repo) pushPlainWithRetry() error {
 // push.autoSetupRemote=true.
 // Returns ErrPushRejected on divergence, and an error satisfying errors.Is(err, ErrLocalBranch) for a branch carrying the local-only mark.
 // A remote "(failed)" or "cannot lock ref" refusal is retried a bounded number of times, and an exhausted retry wraps ErrPushRetriesExhausted rather than mapping to ErrPushRejected.
+// A refusal for want of authentication or permission wraps ErrPushAuthRefused with git's refusal line, is never retried, and never maps to ErrPushRejected.
 // Lock-free.
 func (r *Repo) PushRebaseFree() error {
 	err := r.pushPlainWithRetry()
@@ -143,14 +153,31 @@ func (r *Repo) PushRebaseFree() error {
 	if errors.Is(err, ErrPushRetriesExhausted) {
 		return fmt.Errorf("gitrepo: git push: %w", err)
 	}
-	// ErrPushRejected is a sentinel consumers match with errors.Is, so it is
-	// returned bare rather than wrapped with %w — a wrapper here would break
-	// internal/fabricengine/coalesce.go's identity check.
 	var gitErr *gitexec.GitError
-	if errors.As(err, &gitErr) && containsAny(gitErr.Stderr, rebaseRetryTriggers) {
-		return ErrPushRejected
+	if errors.As(err, &gitErr) {
+		// A declined push prints a "rejected" line too, so the auth class is checked before the rejection class.
+		if line, found := authRefusalLine(gitErr.Stderr); found {
+			return fmt.Errorf("%w: %s", ErrPushAuthRefused, line)
+		}
+		// ErrPushRejected is a sentinel consumers match with errors.Is, so it is
+		// returned bare rather than wrapped with %w — a wrapper here would break
+		// internal/fabricengine/coalesce.go's identity check.
+		if containsAny(gitErr.Stderr, rebaseRetryTriggers) {
+			return ErrPushRejected
+		}
 	}
 	return fmt.Errorf("gitrepo: git push: %w", err)
+}
+
+// authRefusalLine returns the last line of stderr that holds an authRefusalTriggers substring, trimmed.
+func authRefusalLine(stderr string) (line string, found bool) {
+	lines := strings.Split(stderr, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if candidate := strings.TrimSpace(lines[i]); containsAny(candidate, authRefusalTriggers) {
+			return candidate, true
+		}
+	}
+	return "", false
 }
 
 // DeleteRemoteBranch deletes branch on the named remote via `git push --delete`.
