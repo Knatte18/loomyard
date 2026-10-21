@@ -34,12 +34,16 @@ const (
 	LayerDefault Layer = "default"
 	// LayerWorktree is the worktree's own tracked file under its anchor.
 	LayerWorktree Layer = "worktree"
+	// LayerMachine is the untracked machine override file under the board dir's .lyx, between the worktree and local layers.
+	// It applies only to a hub-wide module with a machine key, and only when both Anchor and Board are told.
+	LayerMachine Layer = "machine"
 	// LayerLocal is the untracked local override file under the anchor's .lyx.
 	LayerLocal Layer = "local"
 )
 
 // Category is why a config key may not be set in the local layer.
 // CategoryNone means the key meets no category and the local layer may hold it.
+// CategoryMachine is the one category that opens a key to another layer, the machine layer.
 type Category string
 
 const (
@@ -53,6 +57,9 @@ const (
 	CategoryCrossPair Category = "cross-pair"
 	// CategoryGuard is a key that switches off or hollows a guard, a review or an approval gate.
 	CategoryGuard Category = "guard"
+	// CategoryMachine is a key whose value is a property of the machine, bounding a resource every worktree of the hub on that machine shares.
+	// The machine layer holds it and the local layer refuses it.
+	CategoryMachine Category = "machine"
 )
 
 // Spec describes one module to the layered loaders.
@@ -63,7 +70,7 @@ const (
 // JSONEntries makes a set write each pair as one whole top-level entry from a JSON object, with no template key check.
 // Categories classifies the template by dotted path: an entry covers its own path and every path under it.
 // RetiredKeys are the dotted keys the module no longer reads, each mapped to the category it held as a template key;
-// they stay out of Categories and OpenMaps, the local layer admits them by that category, and a load drops them from the stacked document.
+// they stay out of Categories and OpenMaps, the local and machine layers admit them by that category, and a load drops them from the stacked document.
 type Spec struct {
 	Name         string
 	Template     []byte
@@ -82,9 +89,17 @@ func LocalFile(anchor, module string) string {
 	return filepath.Join(ScratchDir(anchor), module+".local.yaml")
 }
 
+// MachineFile returns the path of a module's machine override file under board:
+// the never-tracked .lyx counterpart of the hub file, never the editor staging copy's path.
+func MachineFile(board, module string) string {
+	return filepath.Join(ScratchDir(board), module+".machine.yaml")
+}
+
 // LayerFile returns the file of a layer and whether that layer applies under dirs.
 // The default layer applies when Board is set;
 // the worktree layer when Anchor is set and the module is not hub-wide or Board is empty;
+// the machine layer when the module is hub-wide with a [MachineKeys] entry and both Anchor and Board are set,
+// so a load that tells Board alone, as a hub-file check does, stacks none;
 // the local layer when Anchor is set.
 // The template layer never has a file.
 func LayerFile(dirs Dirs, spec Spec, layer Layer) (string, bool) {
@@ -96,6 +111,10 @@ func LayerFile(dirs Dirs, spec Spec, layer Layer) (string, bool) {
 	case LayerWorktree:
 		if dirs.Anchor != "" && (!spec.HubWide || dirs.Board == "") {
 			return ConfigFile(dirs.Anchor, spec.Name), true
+		}
+	case LayerMachine:
+		if spec.HubWide && dirs.Anchor != "" && dirs.Board != "" && len(MachineKeys(spec)) > 0 {
+			return MachineFile(dirs.Board, spec.Name), true
 		}
 	case LayerLocal:
 		if dirs.Anchor != "" {
@@ -121,6 +140,11 @@ func LocalKeys(spec Spec) []string {
 // LocalDenied returns the sorted paths the spec classifies in any category but CategoryNone, the keys the local layer refuses.
 func LocalDenied(spec Spec) []string {
 	return categoryPaths(spec, func(category Category) bool { return category != CategoryNone })
+}
+
+// MachineKeys returns the sorted paths the spec classifies as CategoryMachine, the keys the machine layer may hold.
+func MachineKeys(spec Spec) []string {
+	return categoryPaths(spec, func(category Category) bool { return category == CategoryMachine })
 }
 
 // categoryPaths returns the sorted Categories paths whose category satisfies keep.
@@ -269,6 +293,57 @@ func ValidateLocal(spec Spec, doc []byte) error {
 	return nil
 }
 
+// machineRemoval is the way forward of a refusal whose key belongs in no machine override.
+const machineRemoval = "; way forward: remove it from the machine override"
+
+// ValidateMachine checks a machine override document against the spec.
+// A unit a retired key covers is admitted only when that key's category is CategoryMachine, and its value shape is never checked.
+// Every other unit path must exist in the template and match its shape, and the longest category entry covering it must be CategoryMachine.
+// A failure is marked [ErrInvalid], names the key and a way forward; an empty or comment-only document passes.
+func ValidateMachine(spec Spec, doc []byte) error {
+	paths, err := yamlengine.LeafPaths(doc, spec.OpenMaps, spec.WholeEntries)
+	if err != nil {
+		return MarkInvalid(fmt.Errorf("%w%s", err, machineRemoval))
+	}
+	if len(paths) == 0 {
+		return nil
+	}
+	var docNode, templateNode yaml.Node
+	if err := yaml.Unmarshal(doc, &docNode); err != nil {
+		return MarkInvalid(fmt.Errorf("%w%s", err, machineRemoval))
+	}
+	if err := yaml.Unmarshal(spec.Template, &templateNode); err != nil {
+		return fmt.Errorf("%s config template: %w", spec.Name, err)
+	}
+
+	for _, path := range paths {
+		if _, retiredCategory, retired := retiredCovering(spec, path); retired {
+			if retiredCategory != CategoryMachine {
+				return MarkInvalid(fmt.Errorf("key %q is retired and cannot be set in a machine override%s", path, machineRemoval))
+			}
+			continue
+		}
+		templateValue := nodeAt(&templateNode, path)
+		if templateValue == nil {
+			return MarkInvalid(fmt.Errorf("key %q is not in the %s template%s", path, spec.Name, machineRemoval))
+		}
+		docIsMapping := nodeAt(&docNode, path).Kind == yaml.MappingNode
+		if docIsMapping != (templateValue.Kind == yaml.MappingNode) {
+			return MarkInvalid(fmt.Errorf("key %q: the %s template holds a different shape%s", path, spec.Name, machineRemoval))
+		}
+		category, covered := coveringCategory(spec, path)
+		switch {
+		case !covered:
+			return MarkInvalid(fmt.Errorf("key %q is not classified for a machine override%s", path, machineRemoval))
+		case category == CategoryNone:
+			return MarkInvalid(fmt.Errorf("key %q is not a machine key; way forward: remove it from the machine override and set it in the hub file through \"lyx config %s\" from the prime, or in the local override through \"lyx config %s --layer local\"", path, spec.Name, spec.Name))
+		case category != CategoryMachine:
+			return MarkInvalid(fmt.Errorf("key %q is %s and cannot be set in a machine override; way forward: remove it from the machine override and set it in the hub file through \"lyx config %s\" from the prime", path, category, spec.Name))
+		}
+	}
+	return nil
+}
+
 // nodeAt returns the value node of the mapping key at the dotted path in a parsed document, or nil when a step is absent or not a mapping.
 func nodeAt(doc *yaml.Node, path string) *yaml.Node {
 	node := doc
@@ -304,14 +379,26 @@ type LayerDoc struct {
 	Bytes []byte
 }
 
-// Layers returns the present file layers in stack order, base first.
-// Each file is parsed, and the local one is checked by [ValidateLocal];
+// Layers returns the present file layers in stack order, base first:
+// default, worktree, machine, local.
+// Each file is parsed, the machine one is checked by [ValidateMachine] and the local one by [ValidateLocal];
 // a failure is marked [ErrInvalid] and names the file.
-// An absent file is skipped, and an empty or comment-only local file is dropped.
+// An absent file is skipped, and an empty or comment-only machine or local file is dropped.
+// No reconcile reads or writes the machine file.
 // It is the one reader of layer files.
 func Layers(dirs Dirs, spec Spec) ([]LayerDoc, error) {
+	return readLayers(dirs, spec, true)
+}
+
+// readLayers is Layers' body.
+// With anchorLayers false the worktree and local layers are skipped, as for an anchor with no _lyx/ beside a told board dir;
+// the machine layer is judged on dirs alone.
+func readLayers(dirs Dirs, spec Spec, anchorLayers bool) ([]LayerDoc, error) {
 	var docs []LayerDoc
-	for _, layer := range []Layer{LayerDefault, LayerWorktree, LayerLocal} {
+	for _, layer := range []Layer{LayerDefault, LayerWorktree, LayerMachine, LayerLocal} {
+		if !anchorLayers && (layer == LayerWorktree || layer == LayerLocal) {
+			continue
+		}
 		path, applies := LayerFile(dirs, spec, layer)
 		if !applies {
 			continue
@@ -327,7 +414,15 @@ func Layers(dirs Dirs, spec Spec) ([]LayerDoc, error) {
 		if err != nil {
 			return nil, MarkInvalid(fmt.Errorf("config file %s: %w", path, err))
 		}
-		if layer == LayerLocal {
+		switch layer {
+		case LayerMachine:
+			if len(units) == 0 {
+				continue
+			}
+			if err := ValidateMachine(spec, data); err != nil {
+				return nil, MarkInvalid(fmt.Errorf("machine config file %s: %w", path, err))
+			}
+		case LayerLocal:
 			if len(units) == 0 {
 				continue
 			}
@@ -369,8 +464,10 @@ func layerRank(layer Layer) int {
 		return 1
 	case LayerWorktree:
 		return 2
-	default:
+	case LayerMachine:
 		return 3
+	default:
+		return 4
 	}
 }
 
@@ -388,7 +485,12 @@ type Stack struct {
 // No present layer yields an empty Doc.
 // It is the one place layers are merged.
 func StackLayers(dirs Dirs, spec Spec) (Stack, error) {
-	layers, err := Layers(dirs, spec)
+	return stackLayers(dirs, spec, true)
+}
+
+// stackLayers is StackLayers' body, reading its layers through readLayers with the same anchorLayers.
+func stackLayers(dirs Dirs, spec Spec, anchorLayers bool) (Stack, error) {
+	layers, err := readLayers(dirs, spec, anchorLayers)
 	if err != nil {
 		return Stack{}, err
 	}
@@ -417,13 +519,13 @@ func Provenance(dirs Dirs, spec Spec) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	layerDirs := dirs
+	anchorLayers := true
 	if dirs.Board != "" && dirs.Anchor != "" {
 		if _, err := FindBaseDir(dirs.Anchor); err != nil {
-			layerDirs.Anchor = ""
+			anchorLayers = false
 		}
 	}
-	layers, err := Layers(layerDirs, spec)
+	layers, err := readLayers(dirs, spec, anchorLayers)
 	if err != nil {
 		return nil, err
 	}

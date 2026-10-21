@@ -139,6 +139,11 @@ func editOne(dirs configDirs, out io.Writer, module string, edit configengine.Ed
 			return exitCode
 		}
 		return editHubWide(dirs, out, mod, edit, commit)
+	case configengine.LayerMachine:
+		if exitCode, refused := dirs.refuseHubWrite(out); refused {
+			return exitCode
+		}
+		return editMachine(dirs, out, mod, path, edit)
 	case configengine.LayerLocal:
 		return editLocal(dirs, out, mod, path, edit)
 	}
@@ -210,6 +215,11 @@ func setModule(dirs configDirs, out io.Writer, module string, pairs []yamlengine
 			return exitCode
 		}
 		return setHubWide(dirs, out, mod, pairs, commit)
+	case configengine.LayerMachine:
+		if exitCode, refused := dirs.refuseHubWrite(out); refused {
+			return exitCode
+		}
+		return setMachine(dirs, out, mod, path, pairs)
 	case configengine.LayerLocal:
 		return setLocal(dirs, out, mod, path, pairs)
 	}
@@ -287,6 +297,47 @@ func setLocal(dirs configDirs, out io.Writer, mod configreg.Module, path string,
 	return output.Ok(out, fields)
 }
 
+// setMachine writes pairs into a hub-wide module's machine override file at path.
+// A machine override is never committed and runs no fabric sync, and a key the machine layer refuses, or a value the module's loader refuses over the prime's worktree stack, leaves the file as it was.
+func setMachine(dirs configDirs, out io.Writer, mod configreg.Module, path string, pairs []yamlengine.KV) int {
+	preserved, err := setChecked(dirs.engineDirs(), mod, configengine.LayerMachine, path, pairs)
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+	fields := map[string]any{
+		"module":  mod.Name,
+		"message": fmt.Sprintf("edited machine override %s; it is not committed", path),
+	}
+	if len(preserved) > 0 {
+		fields["preserved"] = preserved
+	}
+	return output.Ok(out, fields)
+}
+
+// editMachine edits a hub-wide module's machine override file at path in the editor.
+// A machine override is never committed and runs no fabric sync.
+// A saved key the machine layer refuses, or a save after which the stack newly fails to load, puts the file back to its previous bytes, or removes it when the edit created it.
+func editMachine(dirs configDirs, out io.Writer, mod configreg.Module, path string, edit configengine.EditorFunc) int {
+	snap, err := snapshotFile(path)
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+	before := mod.CheckLoad(dirs.engineDirs())
+	if err := configengine.Edit(dirs.engineDirs(), mod.Spec(), configengine.LayerMachine, edit); err != nil {
+		if errors.Is(err, configengine.ErrAborted) {
+			return output.Err(out, fmt.Sprintf("aborted: %s unchanged", path))
+		}
+		return output.Err(out, err.Error())
+	}
+	if failure := newLoadFailure(mod, dirs.engineDirs(), before); failure != nil {
+		return output.Err(out, rollBack(path, snap, fmt.Errorf("%w; %s unchanged", failure, path)).Error())
+	}
+	return output.Ok(out, map[string]any{
+		"module":  mod.Name,
+		"message": fmt.Sprintf("edited machine override %s; it is not committed", path),
+	})
+}
+
 // editLocal edits a module's local override file at path in the editor.
 // A local override is never committed and runs no fabric sync, and a saved key the local layer refuses leaves the file as it was.
 func editLocal(dirs configDirs, out io.Writer, mod configreg.Module, path string, edit configengine.EditorFunc) int {
@@ -311,13 +362,13 @@ func editLocal(dirs configDirs, out io.Writer, mod configreg.Module, path string
 // The print path is evaluated before any edit logic.
 // The --set path is a fully non-interactive write: it never calls edit and is mutually exclusive with --print.
 // The worktree base dir is computed from the layout as filepath.Join(WorktreeRoot, RelPath), and the board dir is the hub's.
-// layer is the --layer value, empty or one of the three layer names; any other value is refused before anything is read or written.
+// layer is the --layer value, empty or one of the four layer names; any other value is refused before anything is read or written.
 // hubWriteGuard is called before a default-layer write and refuses it with its message; a nil guard allows every write.
 // terminal tells whether the command's input is an interactive terminal:
 // without one, an editor path is refused before the layer is dispatched, the hub-write guard is consulted, a file is scaffolded or the editor runs.
 func dispatch(l *lyxcwd.Location, out io.Writer, args []string, edit configengine.EditorFunc, sync syncFunc, commit hubCommitFunc, printOnly bool, setFlags []string, layer string, hubWriteGuard func() (string, error), terminal bool) int {
 	if !validLayer(layer) {
-		return output.Err(out, fmt.Sprintf("unknown --layer %q; use default, worktree or local", layer))
+		return output.Err(out, fmt.Sprintf("unknown --layer %q; use default, worktree, machine or local", layer))
 	}
 	dirs := dirsOf(l)
 	dirs.layer = layer
@@ -358,7 +409,7 @@ func dispatch(l *lyxcwd.Location, out io.Writer, args []string, edit configengin
 	}
 	// The editor paths need a terminal; --set and --print above need none.
 	if !terminal {
-		return output.Err(out, noTerminalRefusal(args[0]))
+		return output.Err(out, noTerminalRefusal(args[0], layer))
 	}
 	return editOne(dirs, out, args[0], edit, sync, commit)
 }
@@ -370,11 +421,16 @@ func stdinIsTerminal(in io.Reader) bool {
 }
 
 // noTerminalRefusal words the refusal of an editor path run without a terminal, naming module in its way forward, or a placeholder when module is empty.
-func noTerminalRefusal(module string) string {
+// A non-empty layer is carried into both ways forward, so the call a refused --layer run is sent to addresses the same layer.
+func noTerminalRefusal(module, layer string) string {
 	if module == "" {
 		module = "<module>"
 	}
-	return fmt.Sprintf(`lyx config opens an editor only from an interactive terminal, and stdin is not one; way forward: "lyx config %s --print" to read, "lyx config %s --set key=value" to write`, module, module)
+	target := "lyx config " + module
+	if layer != "" {
+		target += " --layer " + layer
+	}
+	return fmt.Sprintf(`lyx config opens an editor only from an interactive terminal, and stdin is not one; way forward: "%s --print" to read, "%s --set key=value" to write`, target, target)
 }
 
 // baseDirOf returns the enclosing _lyx parent: the worktree root joined with the relative path.
@@ -415,10 +471,10 @@ func buildConfigLong() string {
 		"preserved and reported via a \"preserved\" field in the JSON success output;\n" +
 		"run \"lyx config reconcile --layer default --apply\" from the prime to remove them from the\n" +
 		"board dir's files, and \"lyx config reconcile --apply\" to remove them from a worktree file.\n\n" +
-		"--layer default|worktree|local picks the file to print or write: default is the board's\n" +
+		"--layer default|worktree|machine|local picks the file to print or write: default is the board's\n" +
 		"repo default, committed from the prime; local is an untracked override.\n\n" +
 		"--resolved <module> prints the merged result, each unit annotated with its\n" +
-		"layer: template, default, worktree or local.\n\n" +
+		"layer: template, default, worktree, machine or local.\n\n" +
 		"Known modules: " + strings.Join(configreg.Names(), ", ") + "."
 }
 
@@ -544,6 +600,10 @@ func reconcileEnvelope(apply bool, results []configsync.Result) map[string]any {
 		if len(result.KeptExtra) > 0 {
 			m["keptExtra"] = result.KeptExtra
 		}
+		// dropped is exceptional too: only a module with per-name maps whose base file holds a name with the template's value sets it.
+		if len(result.Dropped) > 0 {
+			m["dropped"] = result.Dropped
+		}
 		// seed is set only by a reconcile of the board dir's files.
 		if result.Seed != "" {
 			m["seed"] = result.Seed
@@ -580,7 +640,7 @@ func Command() *cobra.Command {
 	configCmd.Flags().Bool("print", false, "print on-disk config as YAML without launching the editor")
 	configCmd.Flags().StringArray("set", nil, "set config key=value directly, bypassing the editor (repeatable)")
 	configCmd.Flags().Bool("resolved", false, "print the module's resolved config, each unit annotated with the layer it came from")
-	configCmd.Flags().String("layer", "", "the layer to print or write: default, worktree or local (default: the module's own file)")
+	configCmd.Flags().String("layer", "", "the layer to print or write: default, worktree, machine or local (default: the module's own file); machine is a hub-wide module's never-tracked override of its machine keys under the board dir's .lyx, written from the prime")
 	// The RunE closure captures configCmd so the --print/--set flags are
 	// readable without consulting os.Args directly.
 	configCmd.RunE = func(cmd *cobra.Command, args []string) error {
@@ -623,10 +683,13 @@ func Command() *cobra.Command {
 		Long: `reconcile compares all module configuration files in _lyx/config/ against
 their live templates, reporting added keys (new in template) and removed keys
 (deleted from template). By default it is a dry-run: no files are written.
-Pass --apply to write the reconciled files to disk atomically.
+A per-name map entry holding the template's value is reported under "dropped"
+and left out of the written file.
+Pass --apply to write the reconciled files to disk atomically;
+a file is rewritten when the reconcile adds, removes or drops anything.
 A module that retires keys or floors a value first migrates its present file: the dry-run lists
 each rewrite under the module's "migrated" key, and --apply writes the migrated
-file even when the reconcile adds and removes nothing.
+file even when the reconcile adds, removes and drops nothing.
 Hub-wide modules (fabric, board) are reported, not reconciled here: a leftover
 per-worktree copy is "retired" when the hub file holds everything it holds
 (--apply deletes it), or "divergent" when it holds an entry the hub file lacks

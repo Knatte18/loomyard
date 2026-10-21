@@ -5,6 +5,7 @@
 // # What it says
 //
 // Directive renders the lens review procedure, which the writer runs once its files are written and its self-check passes: it reads its rubric, spawns one fork per lens in one message and judges the findings the forks return.
+// The writer edits nothing while any fork is outstanding and judges all findings together once the last has returned, so duplicates across lenses merge and no finding cites text an earlier fix has changed.
 // A host may ask for a writer-fork part through Values.WriterFork: one fork, fork0, then writes the reviewed files while the writer explores before it and reviews what it wrote after.
 // The part replaces the relaunch paragraphs, which a host without a writer fork keeps; exactly one of the two is rendered, each from its own stencil.
 // Exactly one judge part is rendered, each from its own stencil: the critical fixer for a host that asks for it through Values.CriticalJudge, where the writer disputes a finding on a cited ground, fixes it with its own change, or fixes it as proposed, and otherwise the judge that fixes or rejects each finding by the host's rejection rule.
