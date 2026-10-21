@@ -209,7 +209,7 @@ lyx fabric add <slug>                                           # a task worktre
 cd <hub>/<slug> && lyx start                                    # bootstrap the task; "lyx reed attach" shows its session
 ```
 
-`./update-plugins.sh` (`update-plugins.cmd` on Windows) is the only route to production: from a clean tree pushed to `origin/main`, it installs the plugins, builds `lyx` into the Go bin dir, and moves the `prod` branch to that commit.
+`./update-plugins.sh` (`update-plugins.cmd` on Windows) is the only route to production: from a clean tree pushed to `origin/main`, it installs the plugins and builds `lyx` into the Go bin dir.
 `./deploy-dev` builds the working tree into `.dev-bin` for testing without touching production.
 
 The [sandbox Hub](docs/sandbox-howto.md) is a bench for running the real binary end to end against a throwaway hub, with per-module suites an agent drives and reports findings from.
