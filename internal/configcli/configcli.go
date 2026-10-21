@@ -627,7 +627,10 @@ func Command() *cobra.Command {
 		Long: `reconcile compares all module configuration files in _lyx/config/ against
 their live templates, reporting added keys (new in template) and removed keys
 (deleted from template). By default it is a dry-run: no files are written.
-Pass --apply to write the reconciled files to disk atomically.
+A per-name map entry holding the template's value is reported under "dropped"
+and left out of the written file.
+Pass --apply to write the reconciled files to disk atomically;
+a file is rewritten when the reconcile adds, removes or drops anything.
 A module that retires keys or floors a value first migrates its present file: the dry-run lists
 each rewrite under the module's "migrated" key, and --apply writes the migrated
 file even when the reconcile adds and removes nothing.
