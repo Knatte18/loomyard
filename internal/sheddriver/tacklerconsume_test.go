@@ -3,6 +3,7 @@
 package sheddriver
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,7 +37,9 @@ func TestConsumeTacklerAttempt(t *testing.T) {
 		envelope *TacklerEnvelope
 		applied  bool
 		// mutate changes the status file after the attempt recorded its stop key and pause conditions.
-		mutate      func(st *shedengine.Status)
+		mutate func(st *shedengine.Status)
+		// guard is the told goto guard on the base request, nil for none; a refusal carries the guard's own text, not the consume's.
+		guard       shedengine.GotoGuard
 		wantErr     string
 		wantProduce string
 		// wantHistory is the history length asserted on a success row when non-zero.
@@ -84,6 +87,11 @@ func TestConsumeTacklerAttempt(t *testing.T) {
 			},
 			wantErr: "the run moved since the tackler spawned",
 		},
+		{
+			name: "a refusing guard refuses the goto and writes no applied mark", envelope: &gotoPlanWriteEnvelope,
+			guard:   func(string) (string, error) { return "a settled review would re-run", nil },
+			wantErr: "a settled review would re-run",
+		},
 		{name: "resume without a goto leaves the status as it was", envelope: &resumeEnvelope, wantProduce: "Plan-Bouncer"},
 		{
 			name:     "resume with a goto moves the run",
@@ -127,11 +135,22 @@ func TestConsumeTacklerAttempt(t *testing.T) {
 			}
 			producers := []shedengine.ProducerDef{{Name: "Plan-Write"}, {Name: "Plan-Bouncer"}, {Name: "Publish"}}
 
-			err := ConsumeTacklerAttempt(attemptDir, shedengine.RelaunchRequest{StatusPath: statusPath, LockPath: runLock, StatusLockPath: statusLock, Producers: producers, RunID: "self"})
+			statusBefore, err := os.ReadFile(statusPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			err = ConsumeTacklerAttempt(attemptDir, shedengine.RelaunchRequest{StatusPath: statusPath, LockPath: runLock, StatusLockPath: statusLock, Producers: producers, RunID: "self", Guard: tt.guard})
 
 			if tt.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tt.wantErr) || !strings.Contains(err.Error(), attemptDir) || !strings.Contains(err.Error(), "way forward:") {
-					t.Fatalf("consume error = %v; want it to contain %q, the attempt directory and a way forward", err, tt.wantErr)
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("consume error = %v; want it to contain %q", err, tt.wantErr)
+				}
+				if tt.guard == nil && (!strings.Contains(err.Error(), attemptDir) || !strings.Contains(err.Error(), "way forward:")) {
+					t.Fatalf("consume error = %v; want it to name the attempt directory and a way forward", err)
+				}
+				if statusAfter, readErr := os.ReadFile(statusPath); readErr != nil || !bytes.Equal(statusBefore, statusAfter) {
+					t.Errorf("status file changed on a refusal: %s -> %s (read error %v)", statusBefore, statusAfter, readErr)
 				}
 				if applied, _ := TacklerApplied(attemptDir); applied != tt.applied {
 					t.Errorf("applied mark = %v after a refusal; want %v, as before the call", applied, tt.applied)
