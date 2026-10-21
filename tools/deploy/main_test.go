@@ -1,7 +1,7 @@
 // main_test.go covers the production deploy's pieces — the dirty-tree refusal, the marketplace
 // parse, the plugin mirror, and the stray-binary report — plus -dev's destination and a
 // source-level guard that the -ldflags -X path in run() still names a variable that actually exists
-// at internal/buildinfo.
+// at internal/buildinfo, and a go.mod guard that lyxMainPackage still names lyx's main package.
 // Tests spawn no git, go build, or go env;
 // the mirror and stray-binary tests work in t.TempDir, so goBinDir(), the pushed-to-main gate and the git-driven listing in syncPlugins are intentionally left uncovered here.
 
