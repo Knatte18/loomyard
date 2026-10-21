@@ -506,6 +506,31 @@ func TestLeaseEnv(t *testing.T) {
 		})
 	}
 
+	holderTests := []struct {
+		name          string
+		base          []string
+		lease         *Lease
+		tier0Parallel int
+		want          []string
+	}{
+		{"tier0 parallel above 0 adds -p and -trimpath", []string{"A=1"}, nil, 3, []string{"A=1", "GOFLAGS=-p=3 -trimpath"}},
+		{"tier0 parallel 0 adds -trimpath alone", []string{"A=1"}, nil, 0, []string{"A=1", "GOFLAGS=-trimpath"}},
+		{"existing GOFLAGS is kept ahead of the added flags", []string{"GOFLAGS=-count=1", "A=1"}, nil, 2, []string{"A=1", "GOFLAGS=-count=1 -p=2 -trimpath"}},
+		{"a lease sets the inheritance variable over an older one", []string{"LYX_GATE_SLOT=old", "A=1"}, lease, 0, []string{"A=1", "GOFLAGS=-trimpath", "LYX_GATE_SLOT=" + slotPath}},
+		{"no lease leaves an inherited slot variable alone", []string{"LYX_GATE_SLOT=old", "A=1"}, nil, 0, []string{"LYX_GATE_SLOT=old", "A=1", "GOFLAGS=-trimpath"}},
+	}
+	for _, tc := range holderTests {
+		t.Run("HolderEnv "+tc.name, func(t *testing.T) {
+			base := slices.Clone(tc.base)
+			if got := HolderEnv(base, tc.lease, tc.tier0Parallel); !slices.Equal(got, tc.want) {
+				t.Errorf("HolderEnv(%v, %d) = %v; want %v", tc.base, tc.tier0Parallel, got, tc.want)
+			}
+			if !slices.Equal(base, tc.base) {
+				t.Errorf("HolderEnv changed its base to %v; want it left as %v", base, tc.base)
+			}
+		})
+	}
+
 	t.Run("InheritEnv sets only the inheritance variable", func(t *testing.T) {
 		base := []string{"GOFLAGS=-count=1", "LYX_GATE_SLOT=old", "A=1"}
 		want := []string{"GOFLAGS=-count=1", "A=1", "LYX_GATE_SLOT=" + slotPath}

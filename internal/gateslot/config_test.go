@@ -351,6 +351,22 @@ func TestTemplateConfigAndLimits(t *testing.T) {
 	if got := cfg.Limits(); got != want {
 		t.Errorf("Limits() = %+v; want %+v", got, want)
 	}
+
+	board, anchor := seedGateConfig(t, baseKeys+`tiers: {tier0: {command: x, timeout_min: 5, counter: vstest, parallel: 4}}`), seedGateConfig(t, "")
+	machinePath := configengine.MachineFile(board, "gate")
+	if err := os.MkdirAll(filepath.Dir(machinePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(machinePath, []byte("tier_parallel:\n  tier0: 2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	machineCfg, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board})
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v; want none", err)
+	}
+	if got := machineCfg.Limits().Tier0Parallel; got != 2 {
+		t.Errorf("Limits().Tier0Parallel = %d; want the machine override 2", got)
+	}
 }
 
 // TestLoadConfig_StandaloneAbsentNamesTheWorktreeWrite pins the way forward of a standalone load with no worktree gate.yaml.

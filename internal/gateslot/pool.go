@@ -60,6 +60,8 @@ type Limits struct {
 	Slots int
 	// GoParallel is the `-p` cap each slot holder's go commands run under.
 	GoParallel int
+	// Tier0Parallel is `tier0`'s effective parallel, this machine's override included, that a non-tier slot holder's go commands run under; 0 when the hub declares no `tier0`.
+	Tier0Parallel int
 	// BusyQuit is the continuous CPU-busy window after which `lyx gate test` quits a Go test binary; 0 means the watchdog is off.
 	BusyQuit time.Duration
 }
@@ -418,6 +420,36 @@ func (l *Lease) Env(base []string) []string {
 		}
 	}
 	return append(env, goFlagsEnvName+"="+GoFlags(existingFlags, l.goParallel), InheritEnv+"="+l.slots[0].lockPath)
+}
+
+// HolderEnv returns a copy of base for a non-tier slot holder's child.
+// GOFLAGS carries the base's value with `-trimpath` appended, and `-p=<tier0Parallel>` before it when tier0Parallel is above 0; a tier0Parallel of 0 adds no `-p`.
+// A non-nil lease also sets InheritEnv to its first slot's lock path, so a gate run inside the child runs without acquiring.
+func HolderEnv(base []string, lease *Lease, tier0Parallel int) []string {
+	existingFlags := ""
+	env := make([]string, 0, len(base)+2)
+	for _, entry := range base {
+		key, value, _ := strings.Cut(entry, "=")
+		switch {
+		case strings.EqualFold(key, goFlagsEnvName):
+			existingFlags = value
+		case key == InheritEnv && lease != nil:
+		default:
+			env = append(env, entry)
+		}
+	}
+	flags := []string{"-trimpath"}
+	if tier0Parallel > 0 {
+		flags = []string{"-p=" + strconv.Itoa(tier0Parallel), "-trimpath"}
+	}
+	if existingFlags != "" {
+		flags = append([]string{existingFlags}, flags...)
+	}
+	env = append(env, goFlagsEnvName+"="+strings.Join(flags, " "))
+	if lease != nil {
+		env = append(env, InheritEnv+"="+lease.slots[0].lockPath)
+	}
+	return env
 }
 
 // InheritEnv returns a copy of base with only InheritEnv set, naming the first held slot's lock path, so a nested gate run inside the lease runs without acquiring.

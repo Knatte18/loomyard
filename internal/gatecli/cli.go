@@ -60,16 +60,12 @@ When they do not free, it prints ok with slot_free false naming the holders and 
 run the same command again in a turn that does nothing else, so the prompt cache stays warm between calls.
 With --wait it blocks until the slots free, which costs only the caller's prompt cache.
 Inside a slot already held by an enclosing gate run it runs without acquiring another.
-The tier's output passes through its counter, and after each tier the verb prints a summary line to stderr and writes the run's record and log under the gate directory's runs directory.
+After each tier the verb prints a summary line to stderr and writes the run's record and log under the gate directory.
 The exit code is the failing tier's own, or 0.
-The scope is one of: the explicit <targets>, which replace each tier's {targets}; --all, every tier's all_targets;
---card <id>, the packages of the named plan cards, repeatable; --base <rev>, the packages the diff from that revision to the working tree reaches;
-or, with none of them, the same diff from the merge base with the parent branch of the pair's fabric origin record.
-Under the go scoper the last three narrow a tier to the impacted packages per module, falling back to whole where the set cannot be narrowed, and an empty set runs no tier command;
-under the none scoper they take each tier's all_targets.
+The scope is the explicit <targets>, --all, --card <id>, --base <rev>, or, with none of them, the diff from the merge base with the pair's parent branch.
 Arguments after "--" fill each tier's {args}.
-After the listed tiers pass, a narrower or computed scope under the go scoper, and --guards, run the guard tier over the top-level tests marked //lyx:guard outside the scope.
--C names the directory the tiers run in, and only explicit targets may go with it.
+--guards, and a narrower scope under the go scoper, also run the guard tier over the //lyx:guard tests outside the scope.
+-C names the run directory, with explicit targets only.
 
 Examples:
 
@@ -105,6 +101,7 @@ Examples:
 	testCmd.Flags().BoolVar(&guards, "guards", false, "after the listed tiers pass, run the guard tier over every //lyx:guard test of the module")
 	testCmd.Flags().BoolVar(&wait, "wait", false, "block until the tiers' slots free instead of answering slot_free false after the keep-cache-warm cap")
 	cmd.AddCommand(testCmd)
+	cmd.AddCommand(cardVerifyCmd())
 
 	return cmd
 }

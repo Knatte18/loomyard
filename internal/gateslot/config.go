@@ -221,10 +221,12 @@ func decodeConfig(data []byte, machineLayerApplies bool) (Config, error) {
 }
 
 // Limits converts the config to the pool limits, busy_quit_sec as a duration.
+// Tier0Parallel is tier0's effective parallel, or 0 when the config declares no tier0.
 func (c Config) Limits() Limits {
 	return Limits{
-		Slots:      c.Slots,
-		GoParallel: c.GoParallel,
-		BusyQuit:   time.Duration(c.BusyQuitSec) * time.Second,
+		Slots:         c.Slots,
+		GoParallel:    c.GoParallel,
+		Tier0Parallel: c.Tiers[tierKey(0)].Parallel,
+		BusyQuit:      time.Duration(c.BusyQuitSec) * time.Second,
 	}
 }

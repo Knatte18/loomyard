@@ -1,4 +1,4 @@
-// Package gatecli provides the cobra command tree for `lyx gate`, whose one verb, `test`, is the sanctioned route for running the hub's test tiers.
+// Package gatecli provides the cobra command tree for `lyx gate`, whose verb `test` is the sanctioned route for running the hub's test tiers and whose verb `card-verify` runs a plan card's `**Verify:**` line.
 //
 // The module is not standalone-capable and does not go through internal/cliwire: it has no target directory, state, plan or stencils to wire, and it resolves hub membership itself.
 //
@@ -165,6 +165,15 @@
 //	  publish: [2]
 //
 // A tier is written whole with one flow mapping, for example `lyx config gate --set 'tiers.tier0={command: "go test -json {targets} {args}", all_targets: ./..., counter: go-json, timeout_min: 10}'`.
+//
+// # Card verify
+//
+// `lyx gate card-verify <card id>` runs one plan card's `**Verify:**` line through `internal/cardverify`'s `Runner`, the runner webster's record-batch re-run shares.
+// It sits under `lyx gate` rather than `lyx webster`, since the fork-mode hook refuses every `lyx webster` command from a fork, and it carries the role audience annotation because the implementer fork's prompt names it.
+// An id is a card's number or its `N-slug`, read from the plan at the anchor's plan directory; an unknown id is refused naming the plan's ids, and a worktree with no plan is refused naming the way forward to run it from the task worktree whose `_lyx/plan` holds the card.
+// A card with no `**Verify:**` line passes with a message saying so.
+// The line's output passes through to the terminal and the verb exits with the line's own code; a line that timed out or did not start exits 1.
+// Inside a hub a line that is not a `--wait` gate call takes one slot of the hub's pool; outside every hub it runs unslotted.
 //
 // # Exit codes
 //
