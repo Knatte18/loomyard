@@ -42,10 +42,31 @@ const steerPythonDeny = "lyx agents never run Python; edit files with Edit or Wr
 // noticePythonDeny announces the python deny in the same wording as its steer.
 const noticePythonDeny = steerPythonDeny + "."
 
+// commandFieldPattern is the grep -E pattern matching the opening of the "command" key's string value in the raw PreToolUse payload JSON.
+const commandFieldPattern = `"command"[[:space:]]*:[[:space:]]*"`
+
+// doubleQuotedOpenPattern matches the opening JSON-escaped double quote of a shell double-quoted string and the characters inside it: anything but a JSON escape of a double quote, which closes it.
+const doubleQuotedOpenPattern = `\\"([^"\\]|\\[^"])*`
+
+// shellUnitPattern matches one unit of a shell command as JSON encodes it, outside any quoting:
+// an unquoted character, a JSON escape pair other than an escaped double quote, a single-quoted string, a double-quoted string, or a < that opens no heredoc and no process substitution.
+// A heredoc operator, a lone backslash and the JSON string's closing quote match no unit, so a run of units stops before them.
+const shellUnitPattern = `([^"\\'<]|\\[^"]|'[^']*'|` + doubleQuotedOpenPattern + `\\"|<[^<"\\'(])`
+
+// shellLineUnitPattern matches what shellUnitPattern matches except a JSON-escaped newline, so a run of it stays on one line.
+const shellLineUnitPattern = `([^"\\'<]|\\[^"n]|'[^']*'|` + doubleQuotedOpenPattern + `\\"|<[^<"\\'(])`
+
+// unquotedPrefixPattern matches the command from its first character up to a point outside quotes and outside heredoc bodies:
+// a run of shell units, optionally followed by one heredoc operator and the rest of that operator's line, after which the body starts.
+// What a pattern built on it matches next is therefore command text the shell reads, never text inside quotes, a heredoc body or another payload field.
+const unquotedPrefixPattern = commandFieldPattern + shellUnitPattern + `*(<<-?` + shellLineUnitPattern + `*)?`
+
 // commandPositionPattern is the grep -E prefix that puts the pattern after it in command position of the raw PreToolUse payload JSON, with an optional path prefix.
-// Command position is right after the "command" key's opening quote, after a JSON-escaped newline, after ; & | ( or a backtick (which also covers $( ), or after one of env, exec, xargs, sudo, time.
-// The shell single quotes around the patterns built on it forbid a single quote in them.
-const commandPositionPattern = `("command"[[:space:]]*:[[:space:]]*"|\\n|[;&|(` + "`" + `]|(^|[^A-Za-z0-9_-])(env|exec|xargs|sudo|time)[[:space:]]+)[[:space:]]*([^[:space:]"\\;&|()` + "`" + `]*/)?`
+// Command position is the start of the command, or right after a ; & | ( <( >( or backtick, which also covers $( and ( subshells, or a JSON-escaped newline, then any of env, exec, xargs, sudo, time.
+// The separator is reached through a run of shell units as unquotedPrefixPattern reads them, and one after a heredoc operator counts only on that operator's line.
+// It sees static text only: it misreads a JSON-escaped double quote inside a double-quoted string and a quote inside a comment, and it sees nothing after a heredoc operator's line.
+const commandPositionPattern = commandFieldPattern + `(` + shellUnitPattern + `*([;&|` + "`" + `]|[<>]?\(|\\n|<<-?` + shellLineUnitPattern + `*([;&|` + "`" + `]|[<>]?\()))?` +
+	`[[:space:]]*((env|exec|xargs|sudo|time)[[:space:]]+)*([^[:space:]"\\;&|()` + "`" + `]*/)?`
 
 // pythonCommandPattern is the grep -E pattern the python deny matches against the raw PreToolUse payload JSON.
 // It matches python, python3 or python3.<minor>, optionally path-prefixed, as a whole word in command position.
@@ -65,8 +86,8 @@ const noticeInPlaceEditDeny = steerInPlaceEditDeny + "."
 // A short-flag word opens after whitespace with a single dash and letters, so --quiet and --expression= never match as a cluster.
 // GNU sed accepts any unambiguous abbreviation of a long option and no other sed long option starts with --i.
 // It sees static text only, so it is a guardrail and not a barrier:
-// it lets through sed writing by redirection, a w command inside a script, awk, find -exec sed -i, anything behind bash -c, eval or a variable, and anything after a prefix commandPositionPattern does not list.
-// It falsely denies a matching spelling inside a quoted argument, a grep alternation or another payload field, and a perl read whose cluster holds an i, such as perl -Mstrict -ne.
+// it lets through a w command inside a sed script, awk, find -exec sed -i, anything behind bash -c, eval or a variable, and anything after a prefix commandPositionPattern does not list.
+// It falsely denies an in-place flag spelling inside a quoted argument of the sed or perl command itself, and a perl read whose cluster holds an i, such as perl -Mstrict -ne.
 const inPlaceEditCommandPattern = commandPositionPattern + `(` +
 	`sed[[:space:]]` + inPlaceCommandWordsPattern + `(-[A-Za-z]*i|--i(n(-(p(l(a(c(e)?)?)?)?)?)?)?(=[^[:space:]"\\;&|)` + "`" + `]*)?([[:space:]"\\;&|)` + "`" + `]|$))` +
 	`|perl[[:space:]]` + inPlaceCommandWordsPattern + `-[A-Za-z]*i` +
@@ -74,6 +95,40 @@ const inPlaceEditCommandPattern = commandPositionPattern + `(` +
 
 // inPlaceCommandWordsPattern matches the words of a command between its name and an in-place flag: optionally anything up to the next separator or JSON-escaped newline, ending on whitespace.
 const inPlaceCommandWordsPattern = `(([^;&|)\\` + "`" + `]|\\[^n])*[[:space:]])?`
+
+// steerRedirectWriteDeny refuses a Bash redirect write to a project file; it must contain no single/double quote or backslash (checked at init).
+// It points at the edit directive's rule and does not restate it.
+const steerRedirectWriteDeny = "shell redirect writes to project files are refused here under the edit directive in your prompt; write a project file with Edit or Write, and redirect only into .scratch/ by its relative path"
+
+// noticeRedirectWriteDeny announces the redirect write deny in the same wording as its steer.
+const noticeRedirectWriteDeny = steerRedirectWriteDeny + "."
+
+// redirectTargetEndChars are the bracket-expression characters that end a redirect target word or open a quote or a substitution in it.
+const redirectTargetEndChars = `[:space:]"\\'&;|()<>` + "`"
+
+// notPrefixPattern returns the grep -E pattern matching the start of a redirect target word that departs from prefix at some character before prefix ends.
+// A word that ends inside prefix is not matched.
+// prefix must be non-empty and hold no grep -E metacharacter.
+func notPrefixPattern(prefix string) string {
+	mismatch := `[^` + prefix[:1] + redirectTargetEndChars + `]`
+	if len(prefix) == 1 {
+		return mismatch
+	}
+	return `(` + mismatch + `|` + prefix[:1] + notPrefixPattern(prefix[1:]) + `)`
+}
+
+// projectTargetPattern matches the start of a redirect target word naming a project file: any path but one under .scratch/ by its relative path, /dev/ or /tmp/, and one starting with a variable.
+var projectTargetPattern = `([^$./` + redirectTargetEndChars + `]` +
+	`|/([^dt` + redirectTargetEndChars + `]|d` + notPrefixPattern("ev/") + `|t` + notPrefixPattern("mp/") + `)` +
+	`|\.([^s/` + redirectTargetEndChars + `]|s` + notPrefixPattern("cratch/") + `|/([^.` + redirectTargetEndChars + `]|\.` + notPrefixPattern("scratch/") + `)))`
+
+// redirectWriteCommandPattern is the grep -E pattern the redirect write deny matches against the raw PreToolUse payload JSON.
+// It matches a >, >>, >| or &> redirect reached through unquotedPrefixPattern, so one on a heredoc operator line counts, whose target, optionally quoted, matches projectTargetPattern.
+// A file-descriptor duplication such as 2>&1 has no target word and passes.
+// It sees static text only, so it is a guardrail and not a barrier:
+// it lets through tee, cp, dd, a write behind bash -c or a script, a redirect after a heredoc operator line, a target behind a variable, an absolute path into .scratch/, and a quote unquotedPrefixPattern misreads.
+// It falsely denies an untracked file outside the scratch places and a > comparison inside [[ ]] or $(( )).
+var redirectWriteCommandPattern = unquotedPrefixPattern + `>\|?[[:space:]]*(\\"|')?` + projectTargetPattern
 
 // steerComputedRmDeny refuses a Bash rm on a computed path; it must contain no single/double quote or backslash (checked at init).
 // It names the literal-path way forward and no scratch place.
@@ -109,17 +164,21 @@ const goArgumentsPattern = `(([^;&|\\]|\\[^n])*[[:space:]])?`
 // goWordPattern matches the characters of one command-line word.
 const goWordPattern = `[^[:space:]"\\;&|()` + "`" + `]*`
 
+// lyxEnvNamesPattern matches the name of the slot-inheritance variable, the strand-name variable or the prebuilt-binary variable.
+const lyxEnvNamesPattern = `(` + gateslot.InheritEnv + `|` + agentname.StrandNameEnv + `|` + gateslot.PrebuiltLyxEnv + `)`
+
 // rawGoCommandPattern is the grep -E pattern the raw go deny matches against the raw PreToolUse payload JSON.
 // It matches three shapes.
 // A go test, build or vet whose arguments include a word holding ... or the word all.
 // A go test whose -tags value names tmux or llm.
-// Any command naming the slot-inheritance variable, the strand-name variable or the prebuilt-binary variable.
+// A command setting or reading the slot-inheritance variable, the strand-name variable or the prebuilt-binary variable: one named outside quotes, or expanded inside a double-quoted string.
 // It sees static text only, so it is a guardrail and not a barrier:
-// a run hidden behind a script, bash -c, a cd plus a relative pattern it does not cover, or a shell variable passes, as does any raw package-scoped go test.
-// It falsely denies a matching spelling inside a quoted argument, a commit message or a grep.
+// a run hidden behind a script, bash -c, a cd plus a relative pattern it does not cover, a shell variable or a quote commandPositionPattern misreads passes, as does any raw package-scoped go test and a variable read by printenv with its name quoted.
+// It falsely denies a word holding ... or the word all inside a quoted argument of the go command itself, such as a -run filter.
 const rawGoCommandPattern = `(` + goSubcommandPattern + `(test|build|vet)[[:space:]]` + goArgumentsPattern + `(` + goWordPattern + `\.\.\.` + goWordPattern + `|all)([[:space:]"\\;&|()` + "`" + `]|$))` +
 	`|(` + goSubcommandPattern + `test[[:space:]]` + goArgumentsPattern + `-{1,2}tags[[:space:]=]+[^[:space:];&|]*(tmux|llm))` +
-	`|` + gateslot.InheritEnv + `|` + agentname.StrandNameEnv + `|` + gateslot.PrebuiltLyxEnv
+	`|(` + commandFieldPattern + `(` + shellUnitPattern + `*([^A-Za-z0-9_"\\'<]|\\[^"]))?` + lyxEnvNamesPattern + `)` +
+	`|(` + commandFieldPattern + shellUnitPattern + `*` + doubleQuotedOpenPattern + `[$]\{?` + lyxEnvNamesPattern + `)`
 
 // forbiddenSteerChars are characters that would corrupt steer text in JSON or shell quoting layers (checked at init).
 const forbiddenSteerChars = `'"\`
@@ -130,12 +189,12 @@ const forbiddenNoticeChars = forbiddenSteerChars + "\n\r"
 // Rows returns a fresh slice of the shell guard rows in table order.
 // foreground is the engine's phrase for running a long command in the foreground, which the raw go row's steer and notice carry.
 func Rows(foreground string) []Row {
-	rawGoSteer := "raw module-wide, tmux-tier and llm-tier go runs are refused here. Gate rule: run lyx gate test in the foreground " + foreground + ", never in the background, for example lyx gate test ./internal/x, and use its --tags flag for a tag. When it answers that no gate slot is free yet, run the same command again in a turn that does nothing else, so the prompt cache stays warm between calls. Run every other check in the foreground too, and never cd into the directory you already work in. The slot, strand and prebuilt-binary environment variables belong to lyx, and a command naming any of them is refused"
+	rawGoSteer := "raw module-wide, tmux-tier and llm-tier go runs are refused here. Gate rule: run lyx gate test in the foreground " + foreground + ", never in the background, for example lyx gate test ./internal/x, and use its --tags flag for a tag. When it answers that no gate slot is free yet, run the same command again in a turn that does nothing else, so the prompt cache stays warm between calls. Run every other check in the foreground too, and never cd into the directory you already work in. The slot, strand and prebuilt-binary environment variables belong to lyx, and a command setting or reading any of them is refused"
 	return []Row{
 		{
 			// A guardrail, not a barrier.
 			// The pattern lets through python as an argument, behind bash -c, sh -c or eval, after a prefix it does not list (env FOO=1, nohup, command, timeout), and through a launcher such as py or uv run.
-			// It falsely denies python after a listed separator inside a quoted argument, a heredoc body or another payload field such as description.
+			// It falsely denies python after a separator inside a quote commandPositionPattern misreads.
 			Name:     "python",
 			Patterns: []string{pythonCommandPattern},
 			Steer:    steerPythonDeny,
@@ -163,10 +222,19 @@ func Rows(foreground string) []Row {
 			Forms:    [][]string{{"sed", "-i"}, {"perl", "-i"}},
 		},
 		{
+			// Installed for every run, the orch included, with no config key.
+			// A guardrail, not a barrier: redirectWriteCommandPattern states what it lets through and what it falsely denies.
+			Name:     "redirect-write",
+			Patterns: []string{redirectWriteCommandPattern},
+			Steer:    steerRedirectWriteDeny,
+			Notice:   noticeRedirectWriteDeny,
+			Switch:   SwitchNone,
+		},
+		{
 			// Refuses before Claude Code raises its statically-unresolvable-target dialog, which shows even in bypass mode and stalls an unwatched run.
 			// Installed for every run, the orch included, with no config key.
 			// Requires rm in command position and an expansion anywhere in the payload.
-			// A guardrail, not a barrier: it falsely denies an rm of a literal path in a command that uses $ elsewhere, a grep alternation naming rm, and a matching spelling in another payload field such as the description.
+			// A guardrail, not a barrier: it falsely denies an rm of a literal path in a command that uses $ elsewhere in the payload, the description field included.
 			// It lets through a removal behind find -delete, xargs rm with no $, bash -c or a script, and one through the special parameters it does not list ($$, $?, $#, $!).
 			Name:     "computed-rm",
 			Patterns: []string{rmCommandPattern, shellExpansionPattern},
@@ -176,7 +244,7 @@ func Rows(foreground string) []Row {
 		},
 		{
 			// Installed for every run, the orch included, with no config key.
-			// A guardrail, not a barrier: bash -c, eval, a shell variable, systemctl start or isolate of a sleep target and other sleep routes such as busctl, dbus-send and rtcwake pass, and a matching spelling inside a quoted argument or another payload field is falsely denied.
+			// A guardrail, not a barrier: bash -c, eval, a shell variable, systemctl start or isolate of a sleep target and other sleep routes such as busctl, dbus-send and rtcwake pass, and a matching spelling after a separator inside a quote commandPositionPattern misreads is falsely denied.
 			Name:     "machine-sleep",
 			Patterns: []string{sleepCommandPattern},
 			Steer:    steerSleepDeny,

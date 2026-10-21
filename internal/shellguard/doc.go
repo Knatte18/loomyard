@@ -5,6 +5,12 @@
 // The payload contract is part of the table's interface:
 // every pattern is a grep -E pattern matched against a JSON payload whose shell command is a JSON string value under a "command" key, as Claude's PreToolUse payload is.
 // An engine renders the rows against a payload of that shape, or the task that adds the engine changes the table and this contract.
+// A pattern may hold a single quote, so an engine quotes each pattern for its shell rather than wrapping it in bare single quotes.
+//
+// A command-shaped row reads the command from the start of the "command" value as the shell would, one unit at a time:
+// unquoted text, a single-quoted string, a double-quoted string, and at most one heredoc operator with the rest of its line.
+// It matches its command word only in command position reached that way, so text inside quotes, a heredoc body or another payload field does not trip it, bar the quotes the scan misreads.
+// Every row is a guardrail over static text and not a barrier; each pattern's comment states what it lets through and what it falsely denies.
 //
 // Its imports are the standard library and the two packages that own the environment-variable names the raw go row's pattern names.
 package shellguard

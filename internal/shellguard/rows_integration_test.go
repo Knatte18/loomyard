@@ -32,7 +32,7 @@ func payloadDenied(t *testing.T, row Row, command string) bool {
 
 	for _, pattern := range row.Patterns {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		cmd := exec.CommandContext(ctx, "sh", "-c", "grep -Eq '"+pattern+"'")
+		cmd := exec.CommandContext(ctx, "sh", "-c", "grep -Eq '"+strings.ReplaceAll(pattern, "'", `'\''`)+"'")
 		cmd.Stdin = bytes.NewReader(payload.Bytes())
 		err := cmd.Run()
 		cancel()
@@ -85,6 +85,19 @@ func TestRows_PatternsDenyAndAllow(t *testing.T) {
 		{"raw-go", "go_as_an_argument", "grep -r go ./...", false},
 		{"raw-go", "pattern_after_a_separator", "go test ./internal/x && ls ./...", false},
 		{"raw-go", "pattern_on_the_next_line", "go test ./internal/x\nls ./...", false},
+		{"raw-go", "subshell", "(cd x && go test ./...)", true},
+		{"raw-go", "after_a_closed_single_quote", "echo 'a' && go test ./...", true},
+		{"raw-go", "after_a_closed_double_quote", `echo "a"; go vet ./...`, true},
+		{"raw-go", "after_a_heredoc_operator_on_its_line", "cat <<EOF | go test ./...\nx\nEOF", true},
+		{"raw-go", "double_quoted_expansion_of_the_strand_variable", `echo "$LYX_STRAND_NAME"`, true},
+		{"raw-go", "braced_expansion_of_the_slot_variable", `echo "a ${LYX_GATE_SLOT}"`, true},
+		{"raw-go", "grep_for_the_tmux_tier_in_single_quotes", "grep -rn 'go test -tags tmux' internal", false},
+		{"raw-go", "grep_alternation_in_double_quotes", `grep -rnE "(go test ./...|go vet all)" internal`, false},
+		{"raw-go", "commit_message_naming_a_module_wide_run", `git commit -m "fix; go test ./... passes"`, false},
+		{"raw-go", "heredoc_body_drafting_test_runs", "cat > .scratch/t.go <<EOF\n  go test -tags tmux ./x\n(go test ./...)\nEOF", false},
+		{"raw-go", "grep_for_the_slot_variable_in_double_quotes", `grep -rn "LYX_GATE_SLOT" internal`, false},
+		{"raw-go", "single_quoted_strand_variable", "echo '$LYX_STRAND_NAME'", false},
+		{"raw-go", "heredoc_body_naming_the_prebuilt_binary_variable", "cat <<EOF\nLYX_PREBUILT_LYX=/x\nEOF", false},
 
 		{"python", "python3_with_flag", "python3 -c 'print(1)'", true},
 		{"python", "after_and_separator", "cd x && python script.py", true},
@@ -95,6 +108,7 @@ func TestRows_PatternsDenyAndAllow(t *testing.T) {
 		{"python", "python_in_directory_name", "ls python-tools/", false},
 		{"python", "behind_bash_dash_c", "bash -c 'python3 x'", false},
 		{"python", "through_launcher", "uv run x", false},
+		{"python", "separator_inside_a_double_quoted_argument", `grep -n "x; python3" f`, false},
 
 		{"in-place-edit", "sed_dash_i", "sed -i 's/a/b/' f", true},
 		{"in-place-edit", "sed_dash_i_suffix", "sed -i.bak s/a/b/ f", true},
@@ -116,6 +130,34 @@ func TestRows_PatternsDenyAndAllow(t *testing.T) {
 		{"in-place-edit", "sed_read_then_grep_dash_i_on_next_line", "sed -n 3p f\ngrep -i x f", false},
 		{"in-place-edit", "grep_dash_i", "grep -i x f", false},
 		{"in-place-edit", "git_diff", "git diff", false},
+		{"in-place-edit", "grep_alternation_in_single_quotes", "grep -rnE '(sed -i|perl -pi)' .", false},
+
+		{"redirect-write", "heredoc_appended_to_a_doc", "cat >> docs/x.md <<EOF\n## New\nEOF", true},
+		{"redirect-write", "redirect_after_the_heredoc_operator", "cat <<EOF > docs/x.md\nbody\nEOF", true},
+		{"redirect-write", "echo_to_a_file", "echo x > file", true},
+		{"redirect-write", "append_to_an_absolute_path", "printf x >> /home/u/repo/file", true},
+		{"redirect-write", "both_streams", "make &> out.log", true},
+		{"redirect-write", "clobber", "echo x >| f", true},
+		{"redirect-write", "dot_slash_path", "echo x > ./f", true},
+		{"redirect-write", "dotfile", "echo x > .gitignore", true},
+		{"redirect-write", "parent_directory", "echo x > ../f", true},
+		{"redirect-write", "scratch_lookalike", "echo x > .scratchpad/f", true},
+		{"redirect-write", "tmp_lookalike", "echo x > /tmpfile", true},
+		{"redirect-write", "double_quoted_target", `echo x > "docs/a b.md"`, true},
+		{"redirect-write", "after_and_separator", "cd x && echo y > f", true},
+		{"redirect-write", "after_a_quoted_greater_than", `echo "a>b" > f`, true},
+		{"redirect-write", "scratch_relative", "echo x > .scratch/a", false},
+		{"redirect-write", "scratch_dot_slash", "echo x >> ./.scratch/a", false},
+		{"redirect-write", "dev_null_and_duplication", "go build ./cmd/x > /dev/null 2>&1", false},
+		{"redirect-write", "tmp", "ls > /tmp/x", false},
+		{"redirect-write", "duplication_to_stderr", "echo x >&2", false},
+		{"redirect-write", "greater_than_in_double_quotes", `grep "a > b" f`, false},
+		{"redirect-write", "greater_than_in_single_quotes", "git log --format='%h -> %s'", false},
+		{"redirect-write", "greater_than_in_a_heredoc_body", "cat <<EOF | lyx x\na > b\nEOF", false},
+		{"redirect-write", "heredoc_into_scratch", "cat > .scratch/a.md <<EOF\n# x > y\nEOF", false},
+		{"redirect-write", "variable_target", `echo x > "$f"`, false},
+		{"redirect-write", "input_redirect", "wc -l < file", false},
+		{"redirect-write", "process_substitution", "diff <(ls a) <(ls b)", false},
 
 		{"computed-rm", "command_substitution", `rm -rf "$(cat x)"`, true},
 		{"computed-rm", "variable_path", "rm $DIR/f", true},
@@ -128,6 +170,7 @@ func TestRows_PatternsDenyAndAllow(t *testing.T) {
 		{"computed-rm", "two_literal_paths", "rm a b", false},
 		{"computed-rm", "process_id_parameter", "rm -f .scratch/a-$$", false},
 		{"computed-rm", "exit_status_parameter", "rm -f .scratch/a && echo $?", false},
+		{"computed-rm", "rm_inside_a_double_quoted_argument", `grep -n "x; rm $d" f`, false},
 
 		{"machine-sleep", "sleep", "systemctl sleep", true},
 		{"machine-sleep", "hibernate", "systemctl hibernate", true},
@@ -141,6 +184,7 @@ func TestRows_PatternsDenyAndAllow(t *testing.T) {
 		{"machine-sleep", "status", "systemctl status", false},
 		{"machine-sleep", "status_of_the_hibernate_target", "systemctl status hibernate.target", false},
 		{"machine-sleep", "restart_of_another_unit", "systemctl restart sshd", false},
+		{"machine-sleep", "inside_a_heredoc_body", "cat > .scratch/a <<EOF\nsystemctl hibernate\nEOF", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.row+"_"+tt.name, func(t *testing.T) {
