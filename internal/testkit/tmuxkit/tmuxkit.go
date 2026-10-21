@@ -14,6 +14,7 @@
 // After the run it sweeps the servers, killing every process their panes' sessions still hold, scans `/proc` on Linux for any process whose cwd, executable or argv references the directory, kills it and fails the package, then removes the directory on every platform, Windows included.
 // A removal that fails is reported without changing the exit code, and a binary killed before it removes its directory leaves it for the next start's sweep.
 // A test binary re-executed as a helper inherits that environment, and its own run directory is made beside the inherited one, never inside it, so its socket paths do not grow past the limit.
+// A socket on a reed capability-probe key is no finding in a package with either tag.
 // A reed watchdog daemon is killed without failing the package, because it idles out on its own schedule after the test that spawned it.
 // Before the sweep it also fails the package for a socket it finds: any socket in a test binary built without the `tmux` and `llm` tags, and in one built with either only a socket whose key no test registered.
 // Pids, ProcArgv, ProcCwd, ProcExe, ProcPPID, ProcState, ProcComm and IsWatchdog are the read-only `/proc` probes behind that scan, exported for tests that look for processes themselves.
@@ -143,11 +144,23 @@ func checkSockets(dir string, allowed bool) []string {
 		switch {
 		case !allowed:
 			findings = append(findings, fmt.Sprintf("tmuxkit: a tmux server on key %q outlived the run in a package without a tmux or llm test tag; tag the test file that starts it `tmux`", key))
+		case isReedProbeKey(key):
 		case !registeredKeys[key]:
 			findings = append(findings, fmt.Sprintf("tmuxkit: a tmux server on unregistered key %q outlived the run; register the key through Socket, KillOnCleanup or PackageServer, or tag the file `tmux`", key))
 		}
 	}
 	return findings
+}
+
+// isReedProbeKey reports whether key has the form reed gives its capability probe's private socket: `lyx-p` and seven hex digits.
+// A test that kills a reed process mid-probe leaves that server for the sweep, so such a key is no test's leak.
+func isReedProbeKey(key string) bool {
+	digits, ok := strings.CutPrefix(key, "lyx-p")
+	if !ok || len(digits) != 7 {
+		return false
+	}
+	_, err := strconv.ParseUint(digits, 16, 32)
+	return err == nil
 }
 
 // leftover is a process that references a package's private directory.

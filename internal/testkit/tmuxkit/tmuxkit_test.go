@@ -218,6 +218,9 @@ func TestCheckSockets(t *testing.T) {
 			registerKey("checkreg2")
 			listen(t, dir, "checkreg2")
 		}, allowed: false, wantNamed: "checkreg2"},
+		{name: "reed probe socket with tmux allowed", setup: func(t *testing.T, dir string) { listen(t, dir, "lyx-p1a2b3c4") }, allowed: true, wantQuiet: true},
+		{name: "reed probe socket with tmux disallowed", setup: func(t *testing.T, dir string) { listen(t, dir, "lyx-p1a2b3c5") }, allowed: false, wantNamed: "lyx-p1a2b3c5"},
+		{name: "lyx-p key that is no probe key with tmux allowed", setup: func(t *testing.T, dir string) { listen(t, dir, "lyx-pnothex") }, allowed: true, wantNamed: "lyx-pnothex"},
 		{name: "no per-user directory", setup: func(t *testing.T, dir string) {}, allowed: false, wantQuiet: true},
 		{name: "per-user directory without a socket, as a client probe leaves it", setup: func(t *testing.T, dir string) {
 			if err := os.MkdirAll(socketDir(dir, os.Getuid()), 0o700); err != nil {
