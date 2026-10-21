@@ -251,7 +251,7 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 				return `landing gate timed out after merging parent branch "main": gate tier2 exceeded timeout_min 30m0s and was killed; output: ` + logPath +
 					`; fix the hanging test on the task branch, or, for a tier that is slow but healthy, rewrite the tier whole from the prime with ` +
 					"`lyx config gate --set 'tiers.tier<N>={...}'`" +
-					`, carrying every key of the tier and the raised timeout_min, since a dotted key under the tier writes an entry the loader refuses; then resume`
+					`, carrying every key of the tier and the raised timeout_min, since a dotted key under the tier writes an entry the loader refuses; a session that is not the prime reports status: FAILED and the orch runs it; then resume`
 			},
 		},
 		{
