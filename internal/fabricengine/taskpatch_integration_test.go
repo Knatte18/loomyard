@@ -114,12 +114,12 @@ func readPatchAroundScratchWrite(t *testing.T, fx taskPatchFixture, linked bool)
 	}
 
 	before = readTaskPatch(t, fx, fx.baseSHA, nil)
-	writeTaskPatchFile(t, root, "note.txt", "scratch content\n")
+	writeTaskPatchFile(t, root, scratchNoteName, "scratch content\n")
 	after = readTaskPatch(t, fx, fx.baseSHA, nil)
 	return before, after
 }
 
-// TestFabric_ReadTaskPatch covers which changes the patch holds, how skip exempts untracked paths, and what its hashes follow.
+// TestFabric_ReadTaskPatch covers which changes the patch holds, how skip exempts untracked paths, what its hashes follow, and that a root `.scratch` never enters it.
 func TestFabric_ReadTaskPatch(t *testing.T) {
 	t.Parallel()
 
@@ -240,6 +240,10 @@ func TestFabric_ReadTaskPatch(t *testing.T) {
 		linkedBefore, linkedAfter := readPatchAroundScratchWrite(t, newTaskPatchFixture(t), true)
 		if !bytes.Equal(linkedAfter.Full, linkedBefore.Full) || linkedAfter.FullHash != linkedBefore.FullHash || linkedAfter.PatchID != linkedBefore.PatchID {
 			t.Errorf("a file under the linked .scratch changed the patch:\nbefore (%s) %s\nafter (%s) %s", linkedBefore.FullHash, linkedBefore.Full, linkedAfter.FullHash, linkedAfter.Full)
+		}
+
+		if bytes.Contains(linkedAfter.Full, []byte(".scratch")) {
+			t.Errorf("linked .scratch appears in the patch:\n%s", linkedAfter.Full)
 		}
 
 		_, realAfter := readPatchAroundScratchWrite(t, newTaskPatchFixture(t), false)
