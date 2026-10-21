@@ -198,6 +198,18 @@ type BouncerConfig struct {
 	// It replaces the base written with the settle record; an error is returned as the Call's own error.
 	// Nil keeps the base the settle record was written with.
 	SettledBase func() (string, error)
+	// AmendAllowance is the run-wide review_amend_max_bounces: the bounces an amendment generation may spend before the soft-cap rule's window opens.
+	// An amendment with an allowance of 0 settles without a review.
+	// It never applies to a FullGeneration.
+	AmendAllowance int
+	// FullGeneration makes a changed subject start a full generation with the perch's own budget and hard cap, instead of an amendment.
+	// It is true for a segment whose changed subject is a new subject, such as a changed merge-in.
+	FullGeneration bool
+	// RejectReview reports the review file of the PR-Gate reject a re-entry is told, and when the reject happened.
+	// A found reject later than the settle it follows is recorded in the new generation's record, and the amendment note names it.
+	// An error is returned as the Call's own error, before the run directory is archived.
+	// Nil is the absent value: no reject is recorded.
+	RejectReview func() (path string, rejectedAt time.Time, found bool, err error)
 }
 
 // Bouncer is the shedadapters adapter implementing the generic review-gate producer: it composes
@@ -214,10 +226,11 @@ type Bouncer struct {
 // Budget rule: a Bouncer configured with a segment MaxBounces of N gets N judged rounds,
 // and the Nth blocks the run if it comes back CONTINUE.
 // The seed call's unconditional Stuck permanently consumes one unit of that budget,
-// and within one generation -- from seed through the Done that settles it -- the episode never resets.
-// It does reset at that Done, though: a segment re-entered after settling clears and re-seeds rather than replaying (see Call),
-// so the Bouncer's own budget is fresh again in the next generation.
-// This row's count is the segment's whole budget on judged rounds, fresh in every generation:
+// and the count restarts only when a seed Stuck marked GenerationStart opens a new generation:
+// a segment re-entered after settling over a changed subject starts one (see Call), and a goto or a resume restarts nothing.
+// A generation that is an amendment spends cfg.AmendAllowance instead of the perch's budget, clamped to it, and its hard cap is the allowance plus one;
+// a full generation keeps the perch's budget and hard cap.
+// This row's count is the segment's whole budget on judged rounds in the current generation:
 // the round producer hands back every completed or unjudged round as BudgetExempt, so only this row's Stuck returns are counted.
 // Every degrade exit, the seed and re-bounce Stuck, a CONTINUE with no decision and a circling-cause continue are counted here;
 // a continue past the soft cap is exempt whoever recorded it, meaning one of cause budget or one recorded with the budget reached, and an escalation returns Awaiting, which is never counted.
@@ -323,9 +336,10 @@ var _ shedengine.ShedProducer = (*Bouncer)(nil)
 // A Bouncer told a Subject seam keeps a settle record and a generation record in the run directory, and tells four cases apart:
 // 1. A live settle record whose subject is unchanged against the live one, checked at entry at any round including 0:
 // the settle is re-run without a seed, judge or review and so spends no budget, as resettle describes.
-// 2. A live settle record whose subject changed: the clear below.
+// 2. A live settle record whose subject changed: a new generation starts, as startNextGeneration describes.
 // 3. No settle record, a generation record, and a live subject equal to the generation record's judge subject:
 // the verdict is settled as a harvest, which writes the settle record first, and nothing is cleared or spawned.
+// With a live subject that differs from the judge subject, a new generation starts as in case 2.
 // 4. No settle record and no generation record, which is every Bouncer told no Subject seam:
 // the clear below.
 // A settle record that is not live takes the round-by-round path, where a settled verdict is settled and never cleared.
@@ -417,11 +431,13 @@ func (b *Bouncer) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 
 	if n > 0 {
 		if b.settledGeneration(n) {
-			action, err := b.settledEntry()
+			action, settled, base, err := b.settledEntry()
 			if err != nil {
 				return "", shedengine.OutputPointer{}, err
 			}
 			switch action {
+			case entryNewGeneration:
+				return b.startNextGeneration(ctx, settled, base)
 			case entryHarvest:
 				// Case 3: the judge that wrote this verdict judged the subject that is live now, and the driver died before settling it.
 				verdict, ledger, _ := recordedVerdict(b.cfg.RunDir, n)
@@ -651,6 +667,7 @@ const (
 	entryClear = iota
 	entryHarvest
 	entryReplay
+	entryNewGeneration
 )
 
 // reenterUnchanged is the re-entry's case 1: a live settle record whose subject is unchanged against the live one is settled again through resettle.
@@ -717,50 +734,56 @@ func (b *Bouncer) resettle(record settleRecord) (shedengine.Outcome, shedengine.
 	return shedengine.Done, ptr, nil
 }
 
-// settledEntry decides what a Call does over a settled verdict the entry check did not re-settle: entryClear, entryHarvest or entryReplay.
-// A Bouncer told no Subject seam, and one whose seam answers no subject, always clears.
-// A settle record that is live, so its subject changed, clears; one that is not live replays through the round-by-round path.
-// With no settle record, a generation record whose judge subject equals the live subject harvests, and anything else clears.
-func (b *Bouncer) settledEntry() (int, error) {
+// settledEntry decides what a Call does over a settled verdict the entry check did not re-settle:
+// entryClear, entryHarvest, entryReplay or entryNewGeneration.
+// A Bouncer told no Subject seam always clears.
+// A settle record that is live, so its subject changed, starts a new generation from that record;
+// one that is not live replays through the round-by-round path.
+// With no settle record, a generation record whose judge subject equals the live subject harvests.
+// One whose judge subject differs starts a new generation from the record's judge base and judge time.
+// Anything else clears, including a seam that answers no subject.
+// settled and base are what startNextGeneration reads, and are zero for the other actions.
+func (b *Bouncer) settledEntry() (action int, settled settleRecord, base string, err error) {
 	if b.cfg.Subject == nil {
-		return entryClear, nil
+		return entryClear, settleRecord{}, "", nil
 	}
-	_, found, err := readSettleRecord(b.cfg.RunDir)
+	record, found, err := readSettleRecord(b.cfg.RunDir)
 	if err != nil {
-		return 0, fmt.Errorf("shedadapters: %s (%s): read the settle record: %w", b.cfg.Name, bouncerEngineLabel, err)
+		return 0, settleRecord{}, "", fmt.Errorf("shedadapters: %s (%s): read the settle record: %w", b.cfg.Name, bouncerEngineLabel, err)
 	}
 	if found {
 		_, live, err := liveSettleRecord(b.cfg.RunDir)
 		if err != nil {
-			return 0, fmt.Errorf("shedadapters: %s (%s): read the settle record: %w", b.cfg.Name, bouncerEngineLabel, err)
+			return 0, settleRecord{}, "", fmt.Errorf("shedadapters: %s (%s): read the settle record: %w", b.cfg.Name, bouncerEngineLabel, err)
 		}
 		if live {
-			return entryClear, nil
+			return entryNewGeneration, record, record.Base, nil
 		}
-		return entryReplay, nil
+		return entryReplay, settleRecord{}, "", nil
 	}
 	generation, found, err := readGenerationRecord(b.cfg.RunDir)
 	if err != nil {
-		return 0, fmt.Errorf("shedadapters: %s (%s): read the generation record: %w", b.cfg.Name, bouncerEngineLabel, err)
+		return 0, settleRecord{}, "", fmt.Errorf("shedadapters: %s (%s): read the generation record: %w", b.cfg.Name, bouncerEngineLabel, err)
 	}
 	if !found || generation.JudgeSubject.Kind == "" {
-		return entryClear, nil
+		return entryClear, settleRecord{}, "", nil
 	}
 	subject, ok, err := b.liveSubject()
 	if err != nil {
-		return 0, err
+		return 0, settleRecord{}, "", err
 	}
 	if !ok {
-		return entryClear, nil
+		return entryClear, settleRecord{}, "", nil
 	}
 	unchanged, err := subject.Unchanged(generation.JudgeSubject, b.cfg.MergeInOnly)
 	if err != nil {
-		return 0, fmt.Errorf("shedadapters: %s (%s): compare the live subject with the judged one: %w", b.cfg.Name, bouncerEngineLabel, err)
+		return 0, settleRecord{}, "", fmt.Errorf("shedadapters: %s (%s): compare the live subject with the judged one: %w", b.cfg.Name, bouncerEngineLabel, err)
 	}
 	if unchanged {
-		return entryHarvest, nil
+		return entryHarvest, settleRecord{}, "", nil
 	}
-	return entryClear, nil
+	number := max(generation.Number, 1)
+	return entryNewGeneration, settleRecord{Generation: number, SettledAt: generation.JudgeAt}, generation.JudgeBase, nil
 }
 
 // round1FocusSeeded reports whether round 1's focus file exists and parses -- the seed-versus-
@@ -789,8 +812,9 @@ func (b *Bouncer) judged(round int) bool {
 //
 // What a Call does over such a verdict depends on the records a Bouncer told a Subject seam keeps beside it:
 // 1. A live settle record over an unchanged subject re-settles with no spawn, checked at Call entry before any round is resolved.
-// 2. A live settle record over a changed subject clears the run directory and re-seeds.
-// 3. A generation record and no settle record, over a live subject equal to the generation record's judge subject, settles the verdict as a harvest.
+// 2. A live settle record over a changed subject starts a new generation.
+// 3. A generation record and no settle record, over a live subject equal to the generation record's judge subject, settles the verdict as a harvest,
+// and over a live subject that differs from it starts a new generation.
 // 4. No settle record and no generation record clears the run directory and re-seeds, which is the only case a Bouncer told no seam meets.
 // A settle record that is not live settles the verdict on the round-by-round path and never clears.
 func (b *Bouncer) settledGeneration(round int) bool {
@@ -1180,9 +1204,17 @@ func (b *Bouncer) retireContinue(round int) error {
 }
 
 // atHardCap reports whether round is at or past the hard cap.
-// It reads the round number alone, never Shed's count, since a goto resets that count while round numbers carry on.
+// It reads the round number alone, never Shed's count, since a new generation resets that count while round numbers carry on.
+// In an amendment the cap is AmendAllowance + 1, clamped to HardCap when HardCap is set, so the soft-cap rule runs at the allowance's last round and a CONTINUE one round later escalates.
 func (b *Bouncer) atHardCap(round int) bool {
-	return b.cfg.HardCap > 0 && round >= b.cfg.HardCap
+	hardCap := b.cfg.HardCap
+	if _, amendment := b.amendment(); amendment {
+		hardCap = b.cfg.AmendAllowance + 1
+		if b.cfg.HardCap > 0 {
+			hardCap = min(hardCap, b.cfg.HardCap)
+		}
+	}
+	return hardCap > 0 && round >= hardCap
 }
 
 // acceptRound passes round on a recorded accept decision, a parent's or an automatic one.
@@ -1211,7 +1243,7 @@ func (b *Bouncer) acceptRound(round int, ptr shedengine.OutputPointer) (shedengi
 
 // settleUndecided maps a CONTINUE or CIRCLING round that has no decision file onto an accept, an escalation, a rule-made continue or a plain Stuck.
 // The soft-cap rule's window is open when the budget is reached by Shed's count or the round is at or past the hard cap by its number, whichever comes first,
-// so a round past a goto that reset Shed's count is still settled by the rule.
+// so a round past a new generation that reset Shed's count is still settled by the rule.
 // In order:
 // first, with the soft cap reached, AutoAccept set, a harvest (spawned) and no escalation record, a round that BlockingEscalates does not send to the rule records an automatic accept and passes through acceptRound;
 // BlockingEscalates sends a round whose ledger holds an open BLOCKING entry, or cannot be read, to the rule instead.
@@ -1340,7 +1372,8 @@ func (b *Bouncer) openBlocking(round int) (bool, error) {
 }
 
 // budgetReached reports whether the segment's bounce budget is spent, by the same count >= budget comparison Shed applies to the history it read before appending.
-// An unwired seam, an unknown count and an errored read each report false, so a CONTINUE then takes Shed's generic budget block.
+// In an amendment the budget is AmendAllowance, clamped to the seam's own budget.
+// An unwired seam, an unknown count and an errored read each report false, so a CONTINUE then takes Shed's generic budget block, which applies the perch's budget.
 func (b *Bouncer) budgetReached(round int) bool {
 	if b.cfg.Bounces == nil {
 		return false
@@ -1349,6 +1382,9 @@ func (b *Bouncer) budgetReached(round int) bool {
 	if err != nil {
 		logger.Warn("shedadapters: bouncer bounce-budget seam failed; treating the budget as not reached", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", err)
 		return false
+	}
+	if _, amendment := b.amendment(); amendment {
+		budget = min(budget, b.cfg.AmendAllowance)
 	}
 	return ok && count >= budget
 }
@@ -1458,18 +1494,26 @@ func (b *Bouncer) escalationReason(round int, cause EscalationCause, briefPath s
 // seedCall runs the Bouncer's seed pass for round 1: archive round 1's stale focus file, attempt
 // the seed spawn (each of its own steps degrades no further than logging on failure), and call
 // ensureFocus(1) regardless of what the spawn attempt reported. It always returns
-// shedengine.Stuck with an empty pointer, consulting cancelErr first since a seed Stuck is not a
+// shedengine.Stuck with an empty path, consulting cancelErr first since a seed Stuck is not a
 // verdict.
+// The Stuck is marked GenerationStart, which restarts the row's bounce count, when the generation record names a generation past 1.
+// A degraded seed returns before reaching it and never carries the mark.
 func (b *Bouncer) seedCall(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	path := focusPath(b.cfg.RunDir, 1)
 
 	// A Bouncer told a Subject seam that answers keeps a generation record from its first seed on, generation 1 included.
+	generationStart := false
 	if _, ok, err := b.liveSubject(); err != nil {
 		return "", shedengine.OutputPointer{}, err
 	} else if ok {
 		if err := b.startGeneration(); err != nil {
 			return "", shedengine.OutputPointer{}, err
 		}
+		generation, _, err := readGenerationRecord(b.cfg.RunDir)
+		if err != nil {
+			return "", shedengine.OutputPointer{}, b.recordFailure("generation record", err)
+		}
+		generationStart = generation.Number > 1
 	}
 
 	if err := b.runSeedSpawn(path); err != nil {
@@ -1484,12 +1528,12 @@ func (b *Bouncer) seedCall(ctx context.Context) (shedengine.Outcome, shedengine.
 	if cerr := cancelErr(ctx, b.cfg.Name, bouncerEngineLabel); cerr != nil {
 		return "", shedengine.OutputPointer{}, cerr
 	}
-	return shedengine.Stuck, shedengine.OutputPointer{}, nil
+	return shedengine.Stuck, shedengine.OutputPointer{GenerationStart: generationStart}, nil
 }
 
 // rubricNotes gathers the notes the rubric's markers are filled from, each blank when no function is configured for it.
 func (b *Bouncer) rubricNotes() RubricNotes {
-	notes := RubricNotes{VerifyTiers: b.cfg.VerifyTiers}
+	notes := RubricNotes{VerifyTiers: b.cfg.VerifyTiers, Amendment: AmendmentNote(b.cfg.RunDir)}
 	if b.cfg.PublishFailure != nil {
 		notes.PublishFailure = b.cfg.PublishFailure()
 	}

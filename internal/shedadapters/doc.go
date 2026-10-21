@@ -75,7 +75,7 @@
 //     The escalation brief and the parent notice are read by the parent, not by a spawned role, and carry no directive.
 //     Escalation: a CONTINUE or CIRCLING round escalates to the run's parent instead of halting for a human, for one of three causes.
 //     Soft-cap rule: the soft cap is reached when the BouncerConfig.Bounces seam reports count >= budget, the comparison Shed applies.
-//     The rule's window opens on the soft cap by that count or on the hard cap by the round number, whichever comes first, so a round past a goto that reset the count is still settled by the rule.
+//     The rule's window opens on the soft cap by that count or on the hard cap by the round number, whichever comes first, so a round past a new generation that reset the count is still settled by the rule.
 //     A round in the window with no decision file is settled in five steps:
 //     a review that does not parse, or a ledger that cannot be read, escalates with cause budget;
 //     a ledger with no design-wrong entry (open, BLOCKING or MEDIUM, and not tagged `mechanical` by the judge, so a missing or unknown tag counts) records an automatic accept;
@@ -123,11 +123,20 @@
 //     A Subject seam that is nil or answers no subject writes no record.
 //     Re-entry over a settled verdict then has four cases:
 //     a live settle record over an unchanged subject re-settles with no spawn, re-running the carry-over (except for a round-0 record), Approve and Commit and keeping the settle time;
-//     a live record over a changed subject, and a generation record whose judge subject differs from the live one, clear and re-seed;
+//     a live record over a changed subject, and a generation record whose judge subject differs from the live one, start a new generation;
 //     a generation record whose judge subject equals the live one settles the verdict as a harvest;
 //     and no record at all clears and re-seeds.
 //     A record that is not live settles on the round-by-round path and never clears.
-//     The exemption covers only the Bouncer's Stuck; each further round past the budget needs its own decision, and `lyx loom goto` grants a fresh budget.
+//     A new generation archives the run directory, the records travelling along, and writes the generation record with the next number, then seeds.
+//     For every segment but one with BouncerConfig.FullGeneration it is an amendment under the BouncerConfig.AmendAllowance:
+//     the record carries the Amendment mark, the base (the settle record's, or the judge base after the third case) and the path of the PR-Gate reject's review file when BouncerConfig.RejectReview reports a reject later than the settle or judge time,
+//     and AmendmentNote renders from it the note the rubric's optional `amendment` marker is filled with, which scopes the seed, the reviewers and the judge to the change:
+//     for a document the artifacts' change since the base commit, for code the stored settle-record.patch against the working-tree diff at the current merge base.
+//     An amendment spends the allowance clamped to the Bounces seam's budget, and its hard cap is the allowance plus one clamped to HardCap;
+//     an allowance of 0 settles it without a review.
+//     A full generation carries the number alone and keeps the perch's own budget and hard cap.
+//     The generation's seed Stuck is marked GenerationStart, which restarts the row's bounce count, and a seed that failed after the archive is repeated by the next Call's seed.
+//     The exemption covers only the Bouncer's Stuck; each further round past the budget needs its own decision, and the count restarts only with a new generation.
 //     Every other path -- the seed call, the re-bounce, the clear itself, every degraded path -- reports an empty Path,
 //     with the re-bounce and degraded paths carrying their cause on Reason.
 //     The legacy words APPROVED and BLOCKING are read as CONVERGED and CONTINUE only for a verdict already on disk at Call entry (the clear, the replay and the review row's may-advance check).

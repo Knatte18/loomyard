@@ -551,7 +551,7 @@ type softCapRuleRow struct {
 	wantCarried  []string
 }
 
-// TestBouncer_SoftCapRule covers the soft-cap rule's five steps over a spent budget, the hard cap and a goto-reset count, on every path that reaches it.
+// TestBouncer_SoftCapRule covers the soft-cap rule's five steps over a spent budget, the hard cap and a new generation's count, on every path that reaches it.
 // Every row Calls a second time, the replay of a rule-settled round, and requires the same result with no further judge run.
 func TestBouncer_SoftCapRule(t *testing.T) {
 	design := taggedEntry{"alpha", "open", "design", "MEDIUM", "design-wrong"}
@@ -585,9 +585,9 @@ func TestBouncer_SoftCapRule(t *testing.T) {
 			wantOutcome: shedengine.Done, wantDecision: CirclingAccept, wantCarried: []string{"mech"}},
 		{name: "a recorded circling escalation at the hard cap keeps its record", hardCap: 2, ledger: []taggedEntry{design}, preRecord: EscalationCircling,
 			wantOutcome: shedengine.Awaiting, wantCause: EscalationCircling},
-		{name: "a goto-reset count at the hard cap escalates hard-cap over a design-wrong entry", bounces: belowBounces, hardCap: 2, ledger: []taggedEntry{design},
+		{name: "a new generation's count at the hard cap escalates hard-cap over a design-wrong entry", bounces: belowBounces, hardCap: 2, ledger: []taggedEntry{design},
 			wantOutcome: shedengine.Awaiting, wantCause: EscalationHardCap},
-		{name: "a goto-reset count at the hard cap accepts without one", bounces: belowBounces, hardCap: 2, ledger: []taggedEntry{mechanical},
+		{name: "a new generation's count at the hard cap accepts without one", bounces: belowBounces, hardCap: 2, ledger: []taggedEntry{mechanical},
 			wantOutcome: shedengine.Done, wantDecision: CirclingAccept, wantCarried: []string{"mech"}},
 		{name: "an unparseable review escalates budget", ledger: []taggedEntry{design}, badReport: true,
 			wantOutcome: shedengine.Awaiting, wantCause: EscalationBudget},

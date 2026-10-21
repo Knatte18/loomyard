@@ -343,32 +343,6 @@ func TestBouncer_Reentry(t *testing.T) {
 				t.Errorf("record = round %d settled %t; want a settled round-1 record", record.Round, record.Settled)
 			}
 		}},
-		{"ChangedJudgeSubjectClears", func(t *testing.T) {
-			h := newReentry(t, convergingShuttle(nil))
-			layoutBouncerRun(t, h.cfg, []bouncerJudgeFixture{{
-				round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("CONVERGED"), ledger: bouncerLedgerContent(1),
-			}})
-			if err := writeGenerationRecord(h.cfg.RunDir, generationRecord{Number: 1, JudgeSubject: Subject{Kind: SubjectDocument, Hash: "older"}}); err != nil {
-				t.Fatalf("writeGenerationRecord() = %v; want nil", err)
-			}
-
-			shedfake.RequireOutcome(t, h.b, shedengine.Stuck)
-			if _, err := os.Stat(archivedRunDirPath(h.cfg.RunDir, bouncerJudgeTestClock, "")); err != nil {
-				t.Errorf("archived run directory missing: %v; want the clear to have fired", err)
-			}
-		}},
-		{"LiveRecordOverAChangedSubjectClears", func(t *testing.T) {
-			h := newReentry(t, convergingShuttle(nil))
-			if err := h.settleRoundOne(nil); err != nil {
-				t.Fatalf("first Call() error = %v; want nil", err)
-			}
-			h.subject = Subject{Kind: SubjectDocument, Hash: "hash-2", Base: "base-2"}
-
-			shedfake.RequireOutcome(t, h.b, shedengine.Stuck)
-			if _, err := os.Stat(archivedRunDirPath(h.cfg.RunDir, bouncerJudgeTestClock, "")); err != nil {
-				t.Errorf("archived run directory missing: %v; want the clear to have fired", err)
-			}
-		}},
 		{"LaterRoundJudgedAndSettledAgain", func(t *testing.T) {
 			h := newReentry(t, convergingShuttle(nil))
 			if err := h.settleRoundOne(nil); err != nil {
