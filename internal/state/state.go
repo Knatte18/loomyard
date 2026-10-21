@@ -41,6 +41,22 @@ func WriteJSON[T any](path, lockPath string, v T) error {
 	return writeJSONUnlocked(path, v)
 }
 
+// WriteFile writes data verbatim to path atomically under the write lock at lockPath, creating the parent directory.
+// It does no marshalling and keeps nothing of the file it replaces, so it fits a record that is not JSON, such as a patch.
+func WriteFile(path, lockPath string, data []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("mkdir: %w", err)
+	}
+
+	l, err := lock.AcquireWriteLock(lockPath)
+	if err != nil {
+		return fmt.Errorf("acquire write lock: %w", err)
+	}
+	defer l.Release()
+
+	return fsx.AtomicWriteBytes(path, data)
+}
+
 // writeJSONUnlocked marshals v as indented JSON and writes it to path atomically, assuming the
 // caller already holds whatever lock guards path.
 // It keeps every key of the file it replaces that T does not declare.
