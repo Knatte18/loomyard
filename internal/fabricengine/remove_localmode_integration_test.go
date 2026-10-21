@@ -92,11 +92,19 @@ func TestRemoveLocal(t *testing.T) {
 			t.Fatalf("commit the local-only record: committed = %v, err = %v", committed, err)
 		}
 		writeFile(t, filepath.Join(weft, filepath.FromSlash(reportRel)), "stopped\n")
+		scratchRoot, _ := scratchPaths(h.Location, slug)
+		writeFile(t, filepath.Join(scratchRoot, "note.txt"), "scratch\n")
 		recordsBefore, codeBefore := bareRefs(t, h.RecordsBare), bareRefs(t, h.CodeBare)
 
+		// Not forced: a dirty gate that counted the linked scratch content would refuse here.
 		res, err := h.Topology.RemoveLocal(h.Location, slug, false)
 		if err != nil {
 			t.Fatalf("RemoveLocal: %v", err)
+		}
+		unlinked := mutationIndexes(res.Mutations, fabricengine.KindLinkRemoved, scratchHubRelative(t, h.Location, scratchRoot))
+		warpRemoved := mutationIndexes(res.Mutations, fabricengine.KindWorktreeRemoved, scratchHubRelative(t, h.Location, fabricengine.WorktreePath(h.Location, slug)))
+		if len(unlinked) != 1 || len(warpRemoved) != 1 || unlinked[0] > warpRemoved[0] {
+			t.Errorf("record %+v; want one link_removed at the root .scratch ahead of the warp worktree_removed", res.Mutations.Entries())
 		}
 		if !strings.HasPrefix(res.SetAsideTag, "set-aside/"+slug+"/") {
 			t.Fatalf("SetAsideTag = %q; want a set-aside/%s/ tag", res.SetAsideTag, slug)
@@ -262,6 +270,8 @@ func TestSnapshotUncommitted(t *testing.T) {
 		writeFile(t, filepath.Join(code, "dirty.txt"), "task\n")
 		writeFile(t, filepath.Join(weft, "outside.txt"), "records\n")
 		writeFile(t, filepath.Join(weft, "_lyx", "shed", slug, "drive-reports", "stop.md"), "inside the pathspec\n")
+		scratchRoot, _ := scratchPaths(h.Location, slug)
+		writeFile(t, filepath.Join(scratchRoot, "note.txt"), "scratch\n")
 		codeStatus, weftStatus := gitkit.GitStatusPorcelain(t, code), gitkit.GitStatusPorcelain(t, weft)
 		codeTip, weftTip := gitkit.RevParse(t, code, "HEAD"), gitkit.RevParse(t, weft, "HEAD")
 		rec := fabricengine.NewMutations("")
