@@ -61,6 +61,16 @@
 //
 // Every refusal and both EndSession waits stay in local mode: the loop lock's seizure and the run lock's release are each bounded by runLockWait.
 //
+// # Origin seams
+//
+// `Teardown.OriginSeams` builds the seams the origin reconcile takes by injection, so every call site's CLI package reads a live pair and removes an ended entry's pair the same way.
+// `LivePair` is the negation of the quiet rule's probe, except that a slug a live hub pause entry covers reads not live, its driver being interrupted.
+// `SeamOptions.HubPaused` is asked at each `LivePair` call, so a pause lifted while the reconcile waited at the network gate reads lifted and the resumed driver reads live.
+// `Teardown` runs the local mode with a zero quiet wait and RefuseWhenBusy, and a busy driver or a held lock comes back as the report's busy flag, never as an error, with nothing removed.
+// The force case, a live wake-written pair pause entry (`SeamOptions.WakeHeld`) or an earlier snapshot tag, passes Force and Snapshot and no RefuseWhenBusy, so a busy driver is ended;
+// `SeamOptions.LiftWakeHold` runs as AfterSnapshot, lifting the hold only once the snapshot is kept.
+// `HubSeamOptions` fills `HubPaused` from a read of the pause record at each call and `PrimeParentLockFree` from one listing of the parent lock store for the prime's branch, and leaves the two wake-hold fields nil, which read as no wake hold.
+//
 // # Quiet rule
 //
 // A pair is quiet when its run lock and its loop lock are free and its driver strand is absent, dead, retiring or parked.
