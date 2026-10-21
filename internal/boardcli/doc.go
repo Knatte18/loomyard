@@ -2,7 +2,7 @@
 //
 // The verb tree:
 //   - `upsert`, `upsert-batch`, `set-status`, `remove`, `get`, `list`, `list-full`, `merge` and `set-deps` come from `storeVerbs`.
-//   - `promote`, `prune`, `find`, `labels`, `profiles` and `retire-legacy`, plus the `rerender` and `sync` maintenance verbs, are built in `Command`.
+//   - `promote`, `rename`, `prune`, `find`, `labels`, `profiles` and `retire-legacy`, plus the `rerender` and `sync` maintenance verbs, are built in `Command`.
 //   - `intake` (list, import, close) comes from `intakeCommand`.
 //
 // `prune` and `retire-legacy` are read-only dry runs without `--apply`.
@@ -30,10 +30,13 @@
 // It is refused when the payload also carries `body`, and when the payload argument is itself `-`.
 // `merge` takes the same flag and sets the `upsert` object's `body` under the same refusals.
 //
-// Every verb that takes a slug (`get`, `upsert`, `upsert-batch`, `set-status`, `remove`, `merge`, `promote`, `set-deps` and `intake import`) states the slug length limit in its `--help`, formatted from `boardengine.MaxSlugLength`.
+// Every verb that takes a slug (`get`, `upsert`, `upsert-batch`, `set-status`, `remove`, `merge`, `promote`, `rename`, `set-deps` and `intake import`) states the slug length limit in its `--help`, formatted from `boardengine.MaxSlugLength`.
 //
 // An entry whose status has the run-status form is held by a run, and `upsert`, `upsert-batch`, `remove`, `merge`, `set-deps`, `promote` and `intake import` with `into` refuse a write that changes its scope.
 // `set-status` and `prune` never refuse on it.
+// `rename` refuses to rename a held entry, and renames an entry a held task depends on.
+//
+// `rename {slug|id, to}` changes one entry's slug in one write and prints `{"task":{…},"mentions":[…]}`: the renamed entry, and the slugs of the entries whose body or brief still name the old slug as a whole word, `[]` when none does.
 //
 // `merge` carries the removed entries' issues onto the upserted entry, whether or not the payload names `issues`.
 //

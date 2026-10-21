@@ -114,6 +114,16 @@
 // The refusal is a *RunLockedError that matches ErrRunLocked through errors.Is.
 // Its message names the entry, its status and both ways forward: a finding goes to a note of its own, and an abandoned run's entry is unlocked by clearing its status once `lyx batten status` shows no run holds it.
 //
+// # Rename
+//
+// Rename changes one entry's slug in one write: the entry keeps its id, its position in board.json and every other field, kept keys included, and every other entry's depends_on names the new slug in place of the old one.
+// A dependency on the same entry under a new name is no scope change, so the write critical section judges the dates and the run lock against the loaded entries with the rename applied:
+// the rename revises no entry, and a held task that depends on the renamed entry takes the rewrite.
+// The renamed entry itself must not be held by a run, and the refusal is the run lock's *RunLockedError.
+// A target that is empty, longer than MaxSlugLength or already an entry's slug is refused too.
+// Body and brief text is never rewritten; the result names every entry whose body or brief still holds the old slug with no letter, digit, '-' or '_' beside it.
+// The render after the write drops the old slug's design doc and writes the new one.
+//
 // # Siblings
 //
 // A write that gives an open task a depends_on entry it did not have reports its siblings: the other open tasks that wait on that same entry while sharing a module label with the written task.
