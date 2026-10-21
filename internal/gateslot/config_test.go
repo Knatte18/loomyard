@@ -113,6 +113,7 @@ func TestLoadConfig(t *testing.T) {
 		{"tier with parallel 0", baseKeys + `tiers: {tier0: {command: x, timeout_min: 5, counter: vstest, parallel: 0}}`, Config{}, `gate config key "tiers.tier0.parallel": 0; want at least 1` + fixIt},
 		{"tier with slots 0", baseKeys + `tiers: {tier0: {command: x, timeout_min: 5, counter: vstest, slots: 0}}`, Config{}, `gate config key "tiers.tier0.slots": "0"; want all or a count of at least 1` + fixIt},
 		{"tier with slots everything", baseKeys + `tiers: {tier0: {command: x, timeout_min: 5, counter: vstest, slots: everything}}`, Config{}, `gate config key "tiers.tier0.slots": "everything"; want all or a count of at least 1` + fixIt},
+		{"tier key whose number overflows int", baseKeys + `tiers: {tier99999999999999999999: {command: x, timeout_min: 5, counter: vstest}}`, Config{}, `gate config key "tier99999999999999999999" under "tiers": want a tier number that fits an int, such as tier0` + fixIt},
 		{"covers a tier that is not lower", baseKeys + `tiers: {tier1: {command: x, timeout_min: 5, counter: vstest, covers: [1]}}`, Config{}, `gate config key "tiers.tier1.covers": 1; want tier numbers lower than 1` + fixIt},
 		{"tier key not spelled tier<N>", baseKeys + `tiers: {fast: {command: x, timeout_min: 5, counter: vstest}}`, Config{}, `gate config key "fast" under "tiers": want a name spelled tier<N>, such as tier0` + fixIt},
 		{"unknown scoper", baseKeys + "scoper: rust\n", Config{}, `gate config key "scoper": "rust"; want go or none` + fixIt},

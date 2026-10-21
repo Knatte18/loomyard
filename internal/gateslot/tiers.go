@@ -77,7 +77,10 @@ func decodeTiers(files map[string]tierFile) (map[string]Tier, error) {
 		if !tierKeyPattern.MatchString(key) {
 			return nil, fmt.Errorf("gate config key %q under \"tiers\": want a name spelled tier<N>, such as tier0", key)
 		}
-		number, _ := strconv.Atoi(strings.TrimPrefix(key, "tier"))
+		number, err := strconv.Atoi(strings.TrimPrefix(key, "tier"))
+		if err != nil {
+			return nil, fmt.Errorf("gate config key %q under \"tiers\": want a tier number that fits an int, such as tier0", key)
+		}
 		tier, err := decodeTier(key, number, file)
 		if err != nil {
 			return nil, err
