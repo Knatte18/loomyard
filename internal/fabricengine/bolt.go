@@ -63,8 +63,8 @@ func (b *Bolt) CommitWritten(message string, write func() ([]string, error), opt
 	return gitrepo.New(b.path).StageAndCommit(message, ScopedPathspec(".", writtenPaths))
 }
 
-// Push pushes any unpushed commits in the Bolt's repo, dropping seed commits that conflict at the push as PushRecorded does.
-// A drop is logged at Info, since a caller without a mutation record has nowhere else to show it.
+// Push pushes any unpushed commits in the Bolt's repo, replaying them onto a moved origin as PushRecorded does.
+// A seed-commit drop of that replay is logged at Info, since a caller without a mutation record has nowhere else to show it.
 func (b *Bolt) Push(opts SyncOptions) error {
 	rec := NewMutations(filepath.Dir(b.path))
 	err := b.PushRecorded(opts, rec)
@@ -76,54 +76,18 @@ func (b *Bolt) Push(opts SyncOptions) error {
 	return err
 }
 
-// PushRecorded pushes any unpushed commits in the Bolt's repo and records a seed-commit drop in rec.
-// A push whose recovery rebase conflicted is retried once after the board's seed commits ahead of its upstream are dropped and its other commits replayed, under the board write lock and then the push lock.
-// With no seed commits ahead, or when the drop refuses or its replay fails, the original push error is returned.
-// A second failure is returned and never retried.
+// PushRecorded pushes any unpushed commits in the Bolt's repo rebase-free and records what a replay of them does in rec.
+// A push origin rejects is retried once after the board's local commits are replayed onto origin's, under the board write lock and then the push lock;
+// the replay drops the seed commits, and an entry only one side changed never conflicts.
+// A held board write lock or an uncommitted change on a path the replay touches defers the push to the next one and returns nil.
+// A failed push is recorded as a failed push and returned as a *PushFailedError.
+// A push honoring SkipGit or SkipPush does nothing.
 func (b *Bolt) PushRecorded(opts SyncOptions, rec *Mutations) error {
-	err := pushWeftAt(b.path, opts)
-	if !errors.Is(err, gitrepo.ErrPullRebaseFailed) {
-		return err
+	if opts.SkipGit || opts.SkipPush {
+		return nil
 	}
-	if !b.dropSeedCommitsAfterConflict(rec) {
-		return err
-	}
-	return pushWeftAt(b.path, opts)
-}
-
-// dropSeedCommitsAfterConflict drops the seed commits the board holds over its upstream and reports whether it did.
-// The locks are taken in pullFirst's order, so the two cannot deadlock, and are released before the caller retries the push.
-// A refused drop, a failed replay or a failed read leaves the board as it was and reports false.
-func (b *Bolt) dropSeedCommitsAfterConflict(rec *Mutations) bool {
-	writeLock, err := lock.AcquireWriteLock(filepath.Join(b.path, BoardWriteLockFile))
-	if err != nil {
-		return false
-	}
-	defer func() { _ = writeLock.Release() }()
-	pushLock, err := lock.AcquireWriteLock(filepath.Join(b.path, gitrepo.PushLockFileName))
-	if err != nil {
-		return false
-	}
-	defer func() { _ = pushLock.Release() }()
-
-	repo := gitrepo.New(b.path)
-	upstream, err := repo.UpstreamSHA()
-	if err != nil {
-		return false
-	}
-	head, err := repo.CurrentSHA()
-	if err != nil {
-		return false
-	}
-	ahead, err := repo.CommitsNotIn(head, upstream)
-	if err != nil {
-		return false
-	}
-	seed, _, touched, err := seedCommitsAhead(repo, ahead)
-	if err != nil || len(seed) == 0 {
-		return false
-	}
-	return dropSeedCommits(rec, boardDropRequest(b.path, touched), repo, upstream, ahead) == nil
+	retry := func() (bool, error) { return retryBoltPush(rec, b.path) }
+	return pushClassified(rec, filepath.Dir(b.path), failedPushSideBolt, b.path, opts, retry)
 }
 
 // Sync drives step to completion under an absorbing push lock, looping while step reports progress.

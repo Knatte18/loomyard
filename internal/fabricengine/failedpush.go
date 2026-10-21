@@ -192,6 +192,8 @@ func FailedPushWayForward(f FailedPush) string {
 			return codeDivergedWayForward(f.RepoPath, f.Branch, f.Prime)
 		}
 		return recordsConflictWayForward(f.RepoPath, f.Branch, f.Paths, f.Commits, pushStep(f))
+	case PushFailureRewound:
+		return rewoundWayForward(f.RepoPath, f.Branch, f.OriginHead, f.Commits)
 	case PushFailureGone:
 		pairWorktree := f.RepoPath
 		if f.Repo == failedPushSideRecords {

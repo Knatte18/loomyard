@@ -4,16 +4,10 @@
 // TeardownSlugFlag names the pair whose teardown the child must not outlive.
 // SpawnStatusPush is the one entry point for a status push: from a location alone it applies the prime rule, the slug roles and the local-branch check.
 // SpawnDetachedPush starts the child a request describes, which re-enters the fabric CLI's bypass mode and pushes whichever side(s) the request carries.
-// PushWarpAt is the warp-side sibling of recordsgit.go's pushWeftAt — the synchronous, no-Fabric-
-// instance push primitive for the warp side.
-// It has no production caller today: the detached child's bypass handler (internal/fabriccli's
-// `push` RunE) drives DetachedPush instead.
-// DetachedPush runs CoalescePushRequest to push both sides through PushRebaseFree under one absorbing lock rather than calling either per-side primitive.
-// It is retained as pushWeftAt's symmetric counterpart, and the distinction matters — see PushWarpAt's
-// own doc comment for the operational consequence.
-// PushWarpRebaseFreeAt is a second warp-side push primitive, routing to gitrepo.PushRebaseFree
-// instead of PushCoalesced — see its own doc comment for why it exists beside PushWarpAt rather than
-// replacing it.
+// PushWarpAt is the synchronous, no-Fabric-instance push of the warp side through gitrepo.PushCoalesced.
+// It has no production caller: the detached child's bypass handler (internal/fabriccli's
+// `push` RunE) drives CoalescePushRequest instead, which pushes both sides under one absorbing lock.
+// PushWarpRebaseFreeAt is the warp-side push a production caller reaches, classifying and recording a failure.
 
 package fabricengine
 
@@ -191,12 +185,11 @@ func SpawnPairPush(l *lyxcwd.Location) error {
 	return err
 }
 
-// PushWarpAt pushes unpushed commits at warpPath directly, with no Fabric instance and no weft path
-// involved — the warp-side analog of recordsgit.go's pushWeftAt.
-// Gating matches pushWeftAt exactly.
+// PushWarpAt pushes unpushed commits at warpPath directly through gitrepo.PushCoalesced, with no Fabric instance and no weft path involved.
+// It honors SkipGit and SkipPush.
 //
 // It has NO production caller.
-// The detached push child's bypass handler drives DetachedPush instead.
+// The detached push child's bypass handler drives CoalescePushRequest instead.
 // Nothing in shipped fabric ever runs gitrepo.PushCoalesced against a warp worktree.
 // That is worth stating rather than leaving to a reader to rediscover: PushCoalesced writes its
 // single-pusher lock file at the repo root, and while the weft repo excludes that artifact through
@@ -221,20 +214,18 @@ func PushWarpAt(warpPath string, opts SyncOptions) (res PushResult, err error) {
 	return PushResult{}, nil
 }
 
-// PushWarpRebaseFreeAt pushes unpushed commits at warpPath directly via gitrepo.PushRebaseFree, with
-// no Fabric instance and no weft path involved — a second warp-side push primitive beside PushWarpAt,
-// not a replacement for it.
+// PushWarpRebaseFreeAt pushes unpushed commits at warpPath directly, rebase-free, with
+// no Fabric instance and no weft path involved.
 //
-// It exists to discharge two hazards PushWarpAt's own doc comment names rather than merely mitigate:
-// PushRebaseFree never runs `git pull --rebase`, so it never rewrites this side's SHAs while the
-// paired side is not rebased and never invalidates the correspondence index the way PushWarpAt's
-// route through gitrepo.PushCoalesced → pushWithRebaseRetry can on a rejected push; and it never
+// The push never runs `git pull --rebase`, so it never rewrites this side's SHAs while the
+// paired side is not rebased and never invalidates the correspondence index; and it never
 // takes the push lock, so it leaves no untracked .gitrepo-push.lock residue in the operator's own
-// warp repo — the undischarged precondition PushWarpAt's own doc comment names (the warp repo has no
-// exclude entry for that file, unlike weft).
+// warp repo, which has no exclude entry for that file.
 //
-// A rejected push surfaces as gitrepo.ErrPushRejected, which the caller is expected to treat as a
-// human-decidable condition rather than retrying.
+// A failed push is classified, recorded as a failed push and returned as a *PushFailedError.
+// The error wraps gitrepo.ErrPushRejected for a rejection and gitrepo.ErrPushAuthRefused for a refused credential.
+// A rejection is a human-decidable condition, never retried here.
+// A task branch origin no longer has, or rewound past commits this machine holds, is not pushed.
 func PushWarpRebaseFreeAt(warpPath string, opts SyncOptions) (res PushResult, err error) {
 	rec := NewMutations(filepath.Dir(warpPath))
 	defer func() { res.Mutations = rec.Snapshot() }()
@@ -243,12 +234,8 @@ func PushWarpRebaseFreeAt(warpPath string, opts SyncOptions) (res PushResult, er
 		return PushResult{}, nil
 	}
 
-	repo := gitrepo.New(warpPath)
-	hadUnpushed, hadUnpushedErr := repo.HasUnpushed()
-	if err := repo.PushRebaseFree(); err != nil {
+	if err := pushClassified(rec, filepath.Dir(warpPath), failedPushSideCode, warpPath, opts, nil); err != nil {
 		return PushResult{}, err
 	}
-	recordPushIfAdvanced(rec, repo, "code", warpPath, hadUnpushed, hadUnpushedErr)
-
 	return PushResult{}, nil
 }

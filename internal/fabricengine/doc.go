@@ -204,10 +204,8 @@
 // commit lock below — for the whole loop, repeatedly rebase-free-pushing whichever side has commits
 // and exiting once an iteration advances neither side's HEAD.
 // This push is deliberately rebase-free: `gitrepo.PushRebaseFree` is a plain `git push`, never `git
-// pull --rebase`, so a remote that has diverged simply leaves that side's commits unpushed and logs
-// a warning (`gitrepo.ErrPushRejected`), rather than mutating the calling process's working tree
-// out from under it.
-// Reconciling a diverged remote is out of scope here (slice 6).
+// pull --rebase`, so a rejected push never mutates the calling process's working tree out from under it.
+// A refused push is classified, retried by replay where that is safe, and otherwise recorded and reported, as **Push classification** below says.
 //
 // Every weft worktree fabric creates gets its `.weft/` lock directory at birth, whichever way it is created or adopted.
 // `Reconcile` restores a missing one on a pair whose weft worktree exists, without changing the pair's action,
@@ -645,9 +643,9 @@
 // through `SpawnStatusPush` over the pair's location while the task worktree stands, else a records-side-only request when only the records worktree stands and the pair is not local.
 // A push of the prime's records side carries no teardown slug, so it never delays a `Remove`.
 // A child run by hand with a wrong or empty teardown slug takes no lock of the pair and can race a removal.
-// A rejected push is retried once, after a fetch, only when the fetched remote tip is already contained in local HEAD,
+// A code-side rejected push is retried once, after a fetch, only when the fetched remote tip is already contained in local HEAD,
 // so a stale remote-tracking ref recovers by itself while a real divergence does not.
-// A caller treats the `gitrepo.ErrPushRejected` that remains as a human-decidable condition.
+// A caller treats the `gitrepo.ErrPushRejected` that remains, carried by a `*PushFailedError`, as a human-decidable condition.
 // `IsPushRejected(err)` is the side-neutral predicate that reads it without importing `gitrepo`.
 // `MergeStateActive` is the weft-only, git-level mid-merge probe a path-scoped commit must consult before landing, distinct from both `Fabric.MergeInProgress` and the two-sided `foreignMergeStatePresent`.
 // `PairComplete(l)` is the same shape over `Add`'s own post-condition: a caller that must tell a genuinely finished pair creation from one a SIGKILL interrupted partway through cannot name the weft worktree path or the junction machinery itself to check it by hand.
@@ -807,9 +805,34 @@
 // The lock order is the board write lock, then the push lock (`gitrepo.PushLockFileName`) in the board dir, across every reset, replay and fast-forward of Bolt;
 // a coalesced push holds the push lock across its own rebase and never takes the board write lock, so the order cannot deadlock.
 //
-// **Push retry.** `Bolt.PushRecorded(opts, rec)` retries a push once when its recovery rebase conflicted (`gitrepo.ErrPullRebaseFailed`).
-// Under the same lock order it drops the seed commits ahead of the upstream by the executor above, then pushes again; with no seed commits ahead, or when the drop refuses or its replay fails, the original error is returned, and a second failure is never retried.
-// A push whose caller holds a mutation record passes it to `PushRecorded`, which records the drop there as `commits_dropped`; `Bolt.Push` takes no record, so it only logs the drop at Info.
+// **Push classification.** Every push fabric runs per side goes through `pushClassified`:
+// the detached coalesced push (`coalescePushSides`), `PushAnchored`, `PushPairAnchored`, `PushWarpRebaseFreeAt` (reached through `Fabric.PushBranch`) and Bolt's pushes (`Bolt.PushRecorded`, reached by `Bolt.Push` and Bolt's syncs).
+// The side is `code`, `records` (a weft) or `bolt`, and the push is always the rebase-free `gitrepo.PushRebaseFree`.
+// `Fabric.PushWeft` and `PushWarpAt` stay on `gitrepo.PushCoalesced`, which no production path reaches.
+//
+// Before a weft or a task branch with an upstream is pushed, one `git ls-remote` asks origin for the branch.
+// A branch origin no longer has is not pushed, so a parked push never recreates a branch landed or deleted elsewhere.
+// `goneEntryEnded` fetches origin's Bolt branch and reads the ended set, so an entry origin ended writes no record and is left to the teardown of its pair.
+// A gone branch whose entry is not ended, and an unreachable origin, are retried by one backoff, the delays `gitrepo.PushBackoffDelays` returns slept through `SyncOptions.BackoffSleep`, before a `gone` or `transport` record is written.
+// A task branch (a code side outside the hub's prime) whose origin head `classifyRewrite` reads as a rewind of what this machine pushed is not pushed either, and writes a `rewound` record naming origin's head and the dropped commits:
+// a plain push would fast-forward origin and restore the commits the rewind dropped.
+// The prime's code branch, a weft and Bolt are never held back as rewound.
+//
+// A records rejection (`gitrepo.ErrPushRejected`) runs the side's retry once:
+// `retryWeftPush` fetches the weft branch and origin's Bolt branch, try-acquires the weft write lock while the caller holds the push lock, reads the ended set from the fetched Bolt tip and replays the local commits with `replayWeft`;
+// `retryBoltPush` try-acquires the board write lock, takes the push lock in the board dir, fetches, reads the ended set and replays with `replayBolt`, which drops the seed commits.
+// Each then pushes again.
+// A held write lock or an uncommitted change on a path the replay touches is a deferral:
+// the push returns nil, writes a `deferred` record that mails nothing, and leaves the commits to the next push of the branch, whose landing removes the record.
+// A replay that stops on a conflict, or a second rejection, is a `not_fast_forward` failure carrying the conflicting paths and the local commits.
+// A code-side rejection is retried only through the stale-tracking-ref retry of `pushRebaseFreeRetryingOnce`, and otherwise fails as `not_fast_forward` at once.
+// An auth refusal (`gitrepo.ErrPushAuthRefused`) is class `auth` at once, and a transport failure of the push call, or an exhausted push retry, is class `transport`.
+//
+// A failure `pushClassified` records returns a `*PushFailedError` holding the `FailedPush` record and the push's own error, which `Unwrap` returns, so `errors.Is` against `gitrepo.ErrPushRejected` or `gitrepo.ErrPushAuthRefused` still holds.
+// Its text is the push's error followed by `; way forward: ` and `FailedPushWayForward` of the record, so a caller that appends a way forward of its own does so only when `HasUnclassifiedFailure` reports a failure without one.
+// The detached push returns nil for a recorded failure, as it always has; the synchronous pushes return the error.
+// A push that lands removes the record of its side and branch.
+// `Bolt.PushRecorded` records the seed-commit drop of its replay in the mutation record passed to it as `commits_dropped`; `Bolt.Push` takes no record, so it only logs the drop at Info.
 //
 // **Why a chokepoint at all.**
 // Eight data-loss defects across five review rounds were one shape, not eight mistakes: a

@@ -86,7 +86,12 @@ func TestWriteHubRules(t *testing.T) {
 	t.Parallel()
 
 	str := func(s string) *string { return &s }
-	rebaseFailed := fmt.Errorf("push: %w", gitrepo.ErrPullRebaseFailed)
+	conflictRecord := fabricengine.FailedPush{
+		Repo: "bolt", RepoPath: "/hub/_board", Branch: "main",
+		Class: fabricengine.PushFailureNotFastForward, Paths: []string{"board.json"}, Commits: []string{"abc1234"},
+	}
+	rebaseFailed := &fabricengine.PushFailedError{Record: conflictRecord, Err: fmt.Errorf("push: %w", gitrepo.ErrPushRejected)}
+	conflictWayForward := fabricengine.FailedPushWayForward(conflictRecord)
 	tests := []struct {
 		name string
 		// prior is the rules file before the call; nil means absent.
@@ -136,7 +141,7 @@ func TestWriteHubRules(t *testing.T) {
 		{
 			name: "FirstPushRebaseConflict", draft: str("new"), from: "draft.md", prior: str("old"),
 			fake:     fakeRulesBolt{pushErrs: []error{rebaseFailed}},
-			wantExit: 1, wantFields: true, wantUnpushed: true, wantErr: []string{"git pull --rebase", "lyx board sync"},
+			wantExit: 1, wantFields: true, wantUnpushed: true, wantErr: []string{conflictWayForward, "then re-run lyx orch rules --from draft.md"},
 			wantFile: str("old"), wantCalls: []string{"push"},
 		},
 		{
@@ -171,7 +176,7 @@ func TestWriteHubRules(t *testing.T) {
 		{
 			name: "LastPushRebaseConflict", draft: str("new"), from: "draft.md", prior: str("old"),
 			fake:     fakeRulesBolt{pushErrs: []error{nil, rebaseFailed}},
-			wantExit: 1, wantFields: true, wantCommitted: true, wantUnpushed: true, wantErr: []string{"git pull --rebase", "lyx board sync"},
+			wantExit: 1, wantFields: true, wantCommitted: true, wantUnpushed: true, wantErr: []string{conflictWayForward, "then re-run lyx orch rules --from draft.md"},
 			wantFile: str("new"), wantCalls: []string{"push", "pull", "push"}, wantFakePending: 1,
 		},
 		{
@@ -230,6 +235,9 @@ func TestWriteHubRules(t *testing.T) {
 				if got, _ := envelope["error"].(string); !strings.Contains(got, want) {
 					t.Errorf("envelope error = %q; want it to contain %q", got, want)
 				}
+			}
+			if got, _ := envelope["error"].(string); strings.Contains(got, "git pull --rebase") {
+				t.Errorf("envelope error = %q; want no `git pull --rebase`, which no push path runs", got)
 			}
 			if tt.wantFields {
 				if envelope["path"] != rulesPath || envelope["committed"] != tt.wantCommitted || envelope["unpushed"] != tt.wantUnpushed {

@@ -304,7 +304,8 @@ func (fz *Finalize) markTaskDone() {
 // reaches the remote rather than only this hub's parent worktree, and reports Done.
 // A transient push failure (shedtransient.Class non-empty) is returned as an error, so the driver re-steps once;
 // the re-step's parent-side Merge reports AlreadyUpToDate and goes straight to the push.
-// Any other failed push is Stuck: the merge has already landed locally, so a human pushes (or reconciles a diverged remote) by hand.
+// Any other failed push is Stuck: the merge has already landed locally, so a human pushes (or reconciles a diverged remote) by hand,
+// and a failure recorded as a failed push carries the way forward of its class in the reason instead.
 // Deps.PushSkipped suppresses the push, exactly as it does for the task branch.
 //
 // On its Done return only, a non-empty notice is queued through Deps.Notify, and a failure there is a logged warning that never changes the verdict.
@@ -317,7 +318,12 @@ func (fz *Finalize) pushParent(ctx context.Context, parentHandle parentMerger, n
 		if terr := transientFailure(ctx, finalizeName, "push parent branch", err); terr != nil {
 			return "", shedengine.OutputPointer{}, terr
 		}
-		reason := fmt.Sprintf("parent branch %q was merged locally but its push failed: %v; push it by hand", fz.deps.ParentBranch, err)
+		reason := fmt.Sprintf("parent branch %q was merged locally but its push failed: %v", fz.deps.ParentBranch, err)
+		// A classified failure's text already ends in the way forward of its class, and a plain push is what a hold-back refuses.
+		var failed *fabricengine.PushFailedError
+		if !errors.As(err, &failed) {
+			reason += "; push it by hand"
+		}
 		return fz.stuckOrCancelled(ctx, reason, "error", err)
 	}
 	if !fz.deps.PushSkipped && contains(fz.deps.Config.RequirePRToBase, fz.deps.ParentBranch) {

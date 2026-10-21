@@ -258,7 +258,7 @@ func TestMergeIn_SyncParent(t *testing.T) {
 			if got := fx.readRecord(t).MergedTip; got != tt.wantTip {
 				t.Errorf("merged_tip = %q; want %q", got, tt.wantTip)
 			}
-			if tt.wantPulled && fx.puller.opts != (fabricengine.SyncOptions{}) {
+			if tt.wantPulled && (fx.puller.opts.SkipGit || fx.puller.opts.SkipPush) {
 				t.Errorf("FastForwardPair options = %+v; want the told push skip, false", fx.puller.opts)
 			}
 		})

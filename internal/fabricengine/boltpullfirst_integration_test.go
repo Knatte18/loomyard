@@ -104,6 +104,17 @@ func kindsOf(rec *fabricengine.Mutations) []fabricengine.Kind {
 	return kinds
 }
 
+// entriesOfKind returns the entries of rec's snapshot of the given kind, in order.
+func entriesOfKind(rec *fabricengine.Mutations, kind fabricengine.Kind) []fabricengine.Mutation {
+	var entries []fabricengine.Mutation
+	for _, m := range rec.Snapshot().Entries() {
+		if m.Kind == kind {
+			entries = append(entries, m)
+		}
+	}
+	return entries
+}
+
 func TestBolt_PullThenCommitWritten(t *testing.T) {
 	t.Parallel()
 	boardkit.InstallReplay(t)
@@ -483,6 +494,7 @@ func TestBolt_PullThenCommitWritten(t *testing.T) {
 
 func TestBolt_PushRecorded_DropsSeedCommitsOnRebaseConflict(t *testing.T) {
 	t.Parallel()
+	boardkit.InstallReplay(t)
 
 	stencilPath := fabricengine.StencilsSubtreeRel() + "/loom/s.md"
 
@@ -504,9 +516,9 @@ func TestBolt_PushRecorded_DropsSeedCommitsOnRebaseConflict(t *testing.T) {
 		if got, want := gitkit.RevParse(t, f.hub.RecordsBare, "refs/heads/"+f.branch), f.head(); got != want {
 			t.Errorf("origin tip = %s, want the pushed board tip %s", got, want)
 		}
-		entries := rec.Snapshot().Entries()
-		if len(entries) != 1 || entries[0].Kind != fabricengine.KindCommitsDropped || !strings.Contains(entries[0].Detail, seed) {
-			t.Errorf("record = %+v, want one commits_dropped entry naming %s", entries, seed)
+		entries := entriesOfKind(rec, fabricengine.KindCommitsDropped)
+		if len(entries) != 1 || !strings.Contains(entries[0].Detail, seed) {
+			t.Errorf("record = %+v, want one commits_dropped entry naming %s", rec.Snapshot().Entries(), seed)
 		}
 	})
 
@@ -525,8 +537,9 @@ func TestBolt_PushRecorded_DropsSeedCommitsOnRebaseConflict(t *testing.T) {
 
 		err := f.bolt.PushRecorded(fabricengine.SyncOptions{}, rec)
 
-		if !errors.Is(err, gitrepo.ErrPullRebaseFailed) {
-			t.Errorf("PushRecorded error = %v, want one satisfying ErrPullRebaseFailed", err)
+		var failed *fabricengine.PushFailedError
+		if !errors.As(err, &failed) || failed.Record.Class != fabricengine.PushFailureNotFastForward || !errors.Is(err, gitrepo.ErrPushRejected) {
+			t.Errorf("PushRecorded error = %v, want a not-fast-forward *PushFailedError satisfying ErrPushRejected", err)
 		}
 		if f.head() != tip {
 			t.Errorf("head = %s, want the original tip %s", f.head(), tip)
@@ -547,8 +560,9 @@ func TestBolt_PushRecorded_DropsSeedCommitsOnRebaseConflict(t *testing.T) {
 
 		err := f.bolt.PushRecorded(fabricengine.SyncOptions{}, rec)
 
-		if !errors.Is(err, gitrepo.ErrPullRebaseFailed) {
-			t.Errorf("PushRecorded error = %v, want one satisfying ErrPullRebaseFailed", err)
+		var failed *fabricengine.PushFailedError
+		if !errors.As(err, &failed) || failed.Record.Class != fabricengine.PushFailureNotFastForward || !errors.Is(err, gitrepo.ErrPushRejected) {
+			t.Errorf("PushRecorded error = %v, want a not-fast-forward *PushFailedError satisfying ErrPushRejected", err)
 		}
 		if f.head() != tip {
 			t.Errorf("head = %s, want the original tip %s", f.head(), tip)
@@ -573,16 +587,16 @@ func TestBolt_PushRecorded_DropsSeedCommitsOnRebaseConflict(t *testing.T) {
 
 		err := f.bolt.PushRecorded(fabricengine.SyncOptions{}, rec)
 
-		if err == nil || errors.Is(err, gitrepo.ErrPullRebaseFailed) {
-			t.Errorf("PushRecorded error = %v, want the retry's own push failure", err)
+		if !errors.Is(err, gitrepo.ErrPushRejected) {
+			t.Errorf("PushRecorded error = %v, want the retry's own push rejection", err)
 		}
 		if gitkit.IsAncestor(t, f.board, seed, "HEAD") || !gitkit.IsAncestor(t, f.board, upstream, "HEAD") {
 			t.Errorf("seed %s under HEAD or upstream %s missing from it; want the drop kept", seed, upstream)
 		}
 		f.requireCleanBoard()
-		entries := rec.Snapshot().Entries()
-		if len(entries) != 1 || entries[0].Kind != fabricengine.KindCommitsDropped || !strings.Contains(entries[0].Detail, seed) {
-			t.Errorf("record = %+v, want one commits_dropped entry naming %s", entries, seed)
+		entries := entriesOfKind(rec, fabricengine.KindCommitsDropped)
+		if len(entries) != 1 || !strings.Contains(entries[0].Detail, seed) {
+			t.Errorf("record = %+v, want one commits_dropped entry naming %s", rec.Snapshot().Entries(), seed)
 		}
 	})
 }
