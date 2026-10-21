@@ -46,6 +46,21 @@
 // A board or status read failure warns and writes nothing, and a failed removal settles nothing.
 // A run whose Finalize merged but failed its done mark and stopped on its push holds no Finalize Done, so its entry ends cleared, for the operator to mark done with `lyx board set-status`.
 //
+// # Local mode
+//
+// Request.Local removes the pair through Topology.RemoveLocal: no origin step, and no board read or write, so the claim settlement is skipped whole.
+// A busy teardown lock or records write lock surfaces from RemovePair as fabricengine.ErrPairBusy.
+// A local-mode caller passes RefuseWhenBusy with a zero QuietWait, so a busy driver is ErrDriverBusy at once with nothing ended.
+//
+// Request.Snapshot, the force case, keeps the pair's task and records worktrees' uncommitted paths under a local snapshot tag before the removal.
+// RemovePair takes it first, after EndSession ended the driver and before the teardown lock is tried, logs its tag and paths, sets them on the result's SnapshotTag and SnapshotPaths, and puts its record ahead of the removal's.
+// Request.AfterSnapshot then runs, and the removal follows.
+// A snapshot refused busy returns that error with nothing removed and AfterSnapshot not run, so a re-run still qualifies;
+// an AfterSnapshot error returns with nothing removed and the snapshot tag kept, so a re-run takes the earlier-snapshot path.
+// The force case passes Force and no RefuseWhenBusy, as batten's own teardown does.
+//
+// Every refusal and both EndSession waits stay in local mode: the loop lock's seizure and the run lock's release are each bounded by runLockWait.
+//
 // # Quiet rule
 //
 // A pair is quiet when its run lock and its loop lock are free and its driver strand is absent, dead, retiring or parked.
