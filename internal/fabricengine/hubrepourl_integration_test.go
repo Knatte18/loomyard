@@ -8,6 +8,7 @@ package fabricengine_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -44,5 +45,10 @@ func TestHubRepoURL_BindingThenOriginThenError(t *testing.T) {
 	got, err = fabricengine.HubRepoURL(h.Location)
 	if err == nil {
 		t.Fatalf("HubRepoURL() with neither source = %q, nil; want an error", got)
+	}
+	for _, source := range []string{fabricengine.WarpBindingFileName, "origin"} {
+		if !strings.Contains(err.Error(), source) {
+			t.Errorf("HubRepoURL() with neither source error = %q; want it to name %q", err, source)
+		}
 	}
 }
