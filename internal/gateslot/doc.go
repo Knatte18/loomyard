@@ -11,6 +11,13 @@
 // Acquire imposes no deadline: a caller wanting a bound passes a deadline context.
 // Polling gives no FIFO order among waiters.
 //
+// AcquireSlots takes a tier's slots: a count of 1 is Acquire, and a count of 0 (`slots: all`) or above the current Limits.Slots is clamped to every slot.
+// A multi-slot acquire first takes the drain lock at `<Dir>/drain.lock`, an OS file lock, then takes slots one at a time in ascending slot order, holding each it has while it waits for the next, and releases the drain lock once it holds them all.
+// While another process holds the drain lock Acquire waits, polling as it does for a held slot, so new single-slot acquires queue behind a waiting multi-slot tier and cannot starve it.
+// Ascending acquisition means two multi-slot waiters never deadlock: the drain admits one at a time, and every single-slot holder finishes.
+// A cancelled context releases every slot and the drain lock already taken.
+// The Holder record names the tier run that holds a slot, so a status reader can show it.
+//
 // An OS lock is released by process death, so a crashed holder never leaks a slot; its holder record stays on disk but Holders trusts a record only while its lock is held.
 // Holders reads every slot record in the directory, so a holder of a slot above a lowered count still shows.
 //
@@ -20,7 +27,8 @@
 // `-trimpath` makes builds from two checkouts byte-identical and their cache keys independent of the checkout's directory,
 // so a fresh worktree hits the build and test cache and a host scanner that holds each unseen executable sees known hashes.
 // It also makes `runtime.Caller` report module-relative file paths, so no code a gate run builds locates the repo root from them alone.
-// A nested gate run checks Pool.Inherited on that variable and runs inside its parent's slot without acquiring.
+// Lease.InheritEnv returns the environment of a tier run: only InheritEnv is set, naming the lease's first slot's lock path, and no GOFLAGS is appended, since a tier's command and env set its own parallelism.
+// A nested gate run checks Pool.Inherited on that variable and runs inside its parent's slot without acquiring, whatever slots its own tier asks for.
 //
 // # Prebuilt store
 //
