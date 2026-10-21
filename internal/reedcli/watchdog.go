@@ -495,6 +495,7 @@ func runWatchdogLoop(ctx context.Context, hub, tmuxPath, shellPath string, timin
 	// unwatched is whether no watch delivers the signal's events, so each timer wake reads the file itself.
 	events, closeWatch, err := open(signalDir, reedengine.DiscoverSignalFileName)
 	unwatched := err != nil
+	var consumeFailure logger.Episode
 	if err != nil {
 		logger.Warn("reed: watchdog could not watch the discover signal file, reading it on its backed-off cadence instead", "hub", hub, "err", err)
 	} else {
@@ -516,9 +517,12 @@ func runWatchdogLoop(ctx context.Context, hub, tmuxPath, shellPath string, timin
 			if unwatched {
 				consumed, stop, err := consumeDiscoverSignal(signalPath)
 				if err != nil {
-					logger.Warn("reed: watchdog could not consume the discover signal", "hub", hub, "err", err)
-				} else if consumed {
-					wake.onSignal(time.Now(), stop)
+					consumeFailure.Fail("reed: watchdog could not consume the discover signal", "hub", hub, "err", err)
+				} else {
+					consumeFailure.Recover("reed: watchdog consumes the discover signal again", "hub", hub)
+					if consumed {
+						wake.onSignal(time.Now(), stop)
+					}
 				}
 			}
 		case _, ok := <-events:
