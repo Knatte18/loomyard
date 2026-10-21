@@ -728,3 +728,6 @@ var RecordsConflictWayForwardForTest = recordsConflictWayForward
 
 // PushStepForTest re-exports pushStep, the push step a way-forward line ends with.
 var PushStepForTest = pushStep
+
+// RewoundWayForwardForTest re-exports rewoundWayForward, so a test asserts the exact line a rewound task branch names.
+var RewoundWayForwardForTest = rewoundWayForward

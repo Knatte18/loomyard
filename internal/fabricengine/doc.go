@@ -3,38 +3,35 @@
 // paired weft repo.
 // fabric is the only module that knows both repos exist: the `Fabric` handle holds unexported `code *gitrepo.Repo` and `records *gitrepo.Repo` fields for anything repo-specific and uncoordinated, reachable only from inside this package, and adds a small set of genuinely cross-repo operations (`Commit`, `Pull`, `Diff`, `Status`) on top of what gitrepo deliberately doesn't know about.
 //
-// `Fabric.Pull` (pull.go) is the unified read path: weft is fast-forwarded first via a plain
-// `PullWeft` — skipped as a vacuous success when the weft branch has no upstream yet, the freshly
-// bootstrapped hub's ordinary state until its first push lands — then warp is fetched and inspected
-// against its upstream tracking ref.
-// A clean fast-forward (local warp HEAD still an ancestor of the fetched upstream tip) simply
-// advances warp.
-// A detected warp history rewrite (rebase or force-push upstream — local warp HEAD is no longer an
-// ancestor of the fetched tip) is auto-reconciled whenever it is safe to do so: when local warp
-// carries no unpushed commits of its own, the correspondence index is first rebuilt from the weft
-// trailer history (the sole source of truth — a re-cloned hub's per-pair index cache starts empty
-// while its adopted weft history carries every recorded anchor, and a verdict as final as
-// `ErrNoSurvivingAnchor` must never rest on a stale cache), then weft's correspondence is
-// re-anchored to the nearest surviving `Warp-SHA` — via the same empty-commit-with-trailer
-// mechanism `commitWeftLocked`'s snapshot rule already uses (see below) — warp is reset to the new
-// tip, and the fresh correspondence is recorded.
+// `Fabric.Pull` (pull.go) is the unified read path: weft is brought level with origin first, then warp is fetched and inspected against its upstream tracking ref.
+// The weft is fast-forwarded via a plain `PullWeft`, or, where both sides moved, its local commits are replayed onto origin's by `replayWeft` under the weft write lock and push lock.
+// A weft branch with no upstream yet is skipped as a vacuous success, the freshly bootstrapped hub's ordinary state until its first push lands.
+// A clean fast-forward (local warp HEAD still an ancestor of the fetched upstream tip) simply advances warp.
+// A detected warp history rewrite (rebase or force-push upstream — local warp HEAD is no longer an ancestor of the fetched tip) is auto-reconciled whenever it is safe to do so.
+// A local commit is unpushed only when no value of the remote-tracking ref's reflog, from this machine's last push onward, reaches it.
+// When local warp carries no unpushed commits of its own, the correspondence index is first rebuilt from the weft trailer history, the sole source of truth: a re-cloned hub's per-pair index cache starts empty while its adopted weft history carries every recorded anchor, and a verdict as final as `ErrNoSurvivingAnchor` must never rest on a stale cache.
+// Then weft's correspondence is re-anchored to the nearest surviving `Warp-SHA`, via the same empty-commit-with-trailer mechanism `commitWeftLocked`'s snapshot rule already uses (see below), warp is reset to the new tip, and the fresh correspondence is recorded.
 // Two cases abort loudly and make no change to either repo: local warp already has unpushed commits
 // AND the remote diverged (the double-conflict case `Pull` refuses to resolve unattended,
 // `ErrWarpDivergedUnpushed`), or the rewrite is so thorough that no recorded correspondence
 // survives it at all (`ErrNoSurvivingAnchor`).
-// A third refusal guards the working tree rather than history: whenever warp would have to move at
-// all — fast-forward or reconcile — a warp worktree carrying uncommitted tracked changes aborts
-// with `ErrWarpDirty` before anything mutates warp, because every warp advance goes through a
-// `reset --hard` that would silently destroy those changes (weft has already been fast-forwarded
-// when this fires; warp is untouched).
+// A third refusal guards a task pair's branch that origin rewound.
+// `classifyRewrite` reads the branch as rewound when origin's head is an ancestor of a value the tracking ref's reflog held and the local tip holds commits of that value origin dropped.
+// `Pull` then returns `ErrWarpRewound`, naming the dropped commits and the two ways to settle it, before any reset.
+// The prime's code branch is the operator's, so a rewind of it resets as a rewrite does.
+// A fourth refusal guards the working tree rather than history: whenever warp would have to move at all, by fast-forward or reconcile, a warp worktree carrying uncommitted tracked changes aborts with `ErrWarpDirty` before anything mutates warp.
+// Every warp advance goes through a `reset --hard` that would silently destroy those changes, and the weft has already been brought level when this fires, while warp is untouched.
 // Every rewrite/anchor determination is ancestry-based — `f.code.IsAncestor`, via `git merge-base
 // --is-ancestor` — never `f.code.SHAExists`: `git fetch` never prunes objects, so a rebased-away
 // commit's object survives fetch and `SHAExists` would report true post-fetch, meaning detection
 // would never fire (see the reachability-never-object-existence Shared Decision).
-// The weft ff-pull is non-fatal: a failed upstream probe or a failed weft pull is warned and leaves
-// `PullResult.WeftPulled` false, but the warp fetch/reconcile below runs regardless — reconciling a
-// weft that failed to pull is a named manual operator step, never something `Pull` resolves for the
-// caller.
+// The weft arm never stalls the warp side.
+// A failed upstream probe or an unreachable origin is warned and leaves `PullResult.WeftPulled` false.
+// A replay that stops on a conflict or an uncommitted change is returned as a `*WeftStopError` after the warp arm has run, beside the warp result.
+// The stop names the weft branch, the paths and the way forward.
+// For a conflict that is the two ways to settle it, each followed by `lyx fabric push`, so a re-run `lyx fabric pull` replays nothing.
+// For an uncommitted change it is committing the named paths with `lyx fabric commit` and re-running the pull.
+// `Pull` never returns success with `WeftPulled` false for a moved origin.
 // The call's result is `PullResult`, which reports what each side did and, after a reconcile, the re-anchor baseline —
 // see pull.go's own doc comment for
 // the full flow and the `*PartialPullError` warp-side-failure contract, whose `WeftPulled` field now
