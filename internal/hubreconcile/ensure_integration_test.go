@@ -372,6 +372,7 @@ func TestEnsure_StaleBuildReconcilesAndCommitsEveryWorktree(t *testing.T) {
 		{name: "board behind its upstream", run: staleRun{boardBehind: true}},
 		{name: "loom default deleted beside a current stamp", run: staleRun{loomDefaultGone: true}},
 		{name: "unmigrated board is stripped once and marked", run: staleRun{unmigratedBoard: true}},
+		{name: "unmigrated board behind its upstream is stripped and marked over the pulled commit", run: staleRun{boardBehind: true, unmigratedBoard: true}},
 		{name: "marker removed beside a current stamp strips the board again", run: staleRun{markerRemoved: true}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
