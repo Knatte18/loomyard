@@ -134,7 +134,7 @@ func decodeTier(key string, number int, file tierFile) (Tier, error) {
 		return Tier{}, refuse("counter", fmt.Sprintf("%q; want go-json or vstest", tier.Counter))
 	}
 	for _, covered := range tier.Covers {
-		if covered >= number {
+		if covered < 0 || covered >= number {
 			return Tier{}, refuse("covers", fmt.Sprintf("%d; want tier numbers lower than %d", covered, number))
 		}
 	}
