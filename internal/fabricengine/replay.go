@@ -310,6 +310,9 @@ func parentHoldsTaskWork(l, pairLocation *lyxcwd.Location, slug string) (bool, e
 // withoutFinalizeEntered returns the part of ended whose slugs this machine's own landing has not reached,
 // so a replay never sets aside the commits of a run this machine landed.
 func withoutFinalizeEntered(l *lyxcwd.Location, ended EndedSet) EndedSet {
+	if len(ended) == 0 {
+		return ended
+	}
 	live := EndedSet{}
 	for slug, how := range ended {
 		if finalizeEntered(l, slug) {
@@ -600,6 +603,84 @@ func boardCommitSlugs(repo *gitrepo.Repo, sha, parent string, paths []string) ([
 	return result, nil
 }
 
+// localBoardEntries returns the slugs of the entries the local commits ahead change, sorted, and the created stamp each carries at head.
+// A commit's overview file is not an entry, and a slug absent at head carries no stamp.
+func localBoardEntries(repo *gitrepo.Repo, head string, ahead []string) (slugs []string, created map[string]string, err error) {
+	seen := map[string]bool{}
+	for _, sha := range ahead {
+		detail, err := repo.CommitDetail(sha)
+		if err != nil {
+			return nil, nil, err
+		}
+		entryPaths := slices.DeleteFunc(slices.Clone(detail.Paths), func(path string) bool { return !isBoardPath(path) || path == boardOverviewFile })
+		if len(entryPaths) == 0 {
+			continue
+		}
+		parents, err := repo.CommitParents(sha)
+		if err != nil {
+			return nil, nil, err
+		}
+		parent := ""
+		if len(parents) > 0 {
+			parent = parents[0]
+		}
+		changed, err := boardCommitSlugs(repo, sha, parent, entryPaths)
+		if err != nil {
+			return nil, nil, err
+		}
+		for _, slug := range changed {
+			seen[slug] = true
+		}
+	}
+	for slug := range seen {
+		slugs = append(slugs, slug)
+	}
+	sort.Strings(slugs)
+	if len(slugs) == 0 {
+		return nil, nil, nil
+	}
+
+	replay, err := InstalledBoardReplay()
+	if err != nil {
+		return nil, nil, err
+	}
+	data, err := blobAt(repo, head, boardFileName)
+	if err != nil {
+		return nil, nil, err
+	}
+	entries, err := replay.Entries(data)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%s at %s: %w", boardFileName, head, err)
+	}
+	created = map[string]string{}
+	for _, entry := range entries {
+		if seen[entry.Slug] && !entry.Created.IsZero() {
+			created[entry.Slug] = entry.Created.UTC().Format(time.RFC3339)
+		}
+	}
+	return slugs, created, nil
+}
+
+// hubLocationOfBoard resolves the location of the hub prime worktree whose board checkout is boardDir.
+// The prime is the warp slug of the records repository's main worktree.
+func hubLocationOfBoard(boardDir string) (*lyxcwd.Location, error) {
+	entries, err := List(boardDir)
+	if err != nil {
+		return nil, err
+	}
+	for _, entry := range entries {
+		if !entry.Main {
+			continue
+		}
+		slug, ok := WeftWarpSlug(filepath.Base(filepath.Clean(filepath.FromSlash(entry.Path))))
+		if !ok {
+			return nil, fmt.Errorf("the main worktree %s of the records repository is no weft sibling", entry.Path)
+		}
+		return lyxcwd.ResolveWorktree(filepath.Join(filepath.Dir(boardDir), slug))
+	}
+	return nil, fmt.Errorf("the records repository of %s lists no main worktree", boardDir)
+}
+
 // boardStep is one local board commit a replay re-applies, by entry or by cherry-pick.
 type boardStep struct {
 	sha     string
@@ -618,10 +699,6 @@ type boardStep struct {
 // Any other commit is replayed by cherry-pick, and its conflict returns ErrReplayConflict with the starting tip restored.
 // The ended set is first narrowed to the runs this machine's own landing has not reached.
 func replayBolt(rec *Mutations, l *lyxcwd.Location, boardDir, upstream string, ended EndedSet) (ReplayOutcome, error) {
-	replay, err := InstalledBoardReplay()
-	if err != nil {
-		return ReplayOutcome{}, err
-	}
 	repo := gitrepo.New(boardDir)
 	upstreamSHA, err := repo.ResolveSHA(upstream)
 	if err != nil {
@@ -696,6 +773,10 @@ func replayBolt(rec *Mutations, l *lyxcwd.Location, boardDir, upstream string, e
 				outcome.Replayed = append(outcome.Replayed, step.sha)
 			}
 			continue
+		}
+		replay, err := InstalledBoardReplay()
+		if err != nil {
+			return outcome, err
 		}
 		if err := replayBoardCommit(replay, repo, boardDir, mergeBase, baseline, step, &outcome); err != nil {
 			return outcome, err

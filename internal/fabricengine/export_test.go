@@ -722,3 +722,9 @@ func ReadEndedSetForTest(recordsRoot, boltRef string, slugs []string, localCreat
 	ended, err := readEndedSet(recordsRoot, boltRef, slugs, localCreated)
 	return map[string]string(ended), err
 }
+
+// RecordsConflictWayForwardForTest re-exports recordsConflictWayForward, so a test asserts the exact line a records conflict names.
+var RecordsConflictWayForwardForTest = recordsConflictWayForward
+
+// PushStepForTest re-exports pushStep, the push step a way-forward line ends with.
+var PushStepForTest = pushStep

@@ -1073,6 +1073,7 @@
 // **Bolt.** A commit touching only `board.json`, `README.md` and design files is re-applied by entry through the installed `BoardReplay`, so an entry only one side changed never conflicts and no entry change stops the replay.
 // A change that lost a value to origin or met a board refusal is committed for what was kept, and its original is set aside.
 // Seed commits are dropped, and any other commit is cherry-picked as on a weft.
+// `Bolt.pullFirst` replays through it: a conflict skips as diverged, naming the conflicting paths and the two ways to settle them, and an uncommitted change on a touched path skips as dirty.
 //
 // **The ended set.** `readEndedSet` reads which runs origin has ended: an entry `done` on origin's Bolt tip, or one that tip's history held and the tip pruned.
 // A created stamp keeps a reused slug from matching a pruned entry.

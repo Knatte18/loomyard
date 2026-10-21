@@ -24,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
@@ -803,9 +804,22 @@ func TestEnsure_BoardWithNoRemoteCommitsHubWideConfigAndWritesStamp(t *testing.T
 	}
 }
 
-// The logger's output is process-global, so this test does not call t.Parallel.
-func TestEnsure_UnpushedHubWideCommitOverMovedUpstreamLeavesStampAbsent(t *testing.T) {
-	logs := logcapture.Capture(t)
+// unpushedHubWide is a hub whose board holds a hub-wide config commit origin has not taken, since origin rejected its push.
+// origin is the records remote, rejectPushes the hook that rejected it, hubWidePath the config file the commit changed and before the board's commit count ahead of that commit.
+type unpushedHubWide struct {
+	hub          *hubforge.Hub
+	geom         hubreconcile.Geometry
+	board        string
+	branch       string
+	origin       string
+	rejectPushes string
+	hubWidePath  string
+	before       int
+}
+
+// arrangeUnpushedHubWide builds an unpushedHubWide, after two Ensure runs that leave the stamp absent while origin rejects every push.
+func arrangeUnpushedHubWide(t *testing.T) *unpushedHubWide {
+	t.Helper()
 
 	h := hubforge.NewHub(t, ".")
 	geom := geometryOf(h)
@@ -829,6 +843,10 @@ func TestEnsure_UnpushedHubWideCommitOverMovedUpstreamLeavesStampAbsent(t *testi
 	if _, found := stampKey(t, geom); found {
 		t.Fatalf("stamp written although the hub-wide commit was not pushed")
 	}
+	changed := strings.Fields(gitkit.Git(t, board, "show", "--name-only", "--format=", "HEAD"))
+	if len(changed) != 1 {
+		t.Fatalf("the hub-wide commit changed %v; want one config file", changed)
+	}
 
 	// A rerun with nothing new to commit still pushes the earlier commit, so a push still rejected keeps the stamp absent.
 	if err := hubreconcile.Ensure(geom, hubreconcile.Options{}); err != nil {
@@ -844,24 +862,63 @@ func TestEnsure_UnpushedHubWideCommitOverMovedUpstreamLeavesStampAbsent(t *testi
 	if err := os.Remove(rejectPushes); err != nil {
 		t.Fatalf("remove pre-receive hook: %v", err)
 	}
+	return &unpushedHubWide{hub: h, geom: geom, board: board, branch: branch, origin: origin, rejectPushes: rejectPushes, hubWidePath: changed[0], before: before}
+}
+
+// moveUpstream commits rel on origin's board branch from a second clone.
+func (u *unpushedHubWide) moveUpstream(t *testing.T, rel, content string) {
+	t.Helper()
+
 	clone := filepath.Join(t.TempDir(), "second")
-	gitkit.Git(t, filepath.Dir(clone), "clone", "--branch", branch, origin, clone)
-	gitkit.CommitFile(t, clone, "moved-upstream.txt", "moved\n", "fixture: upstream moves")
-	gitkit.Git(t, clone, "push", "origin", branch)
+	gitkit.Git(t, filepath.Dir(clone), "clone", "--branch", u.branch, u.origin, clone)
+	gitkit.CommitFile(t, clone, rel, content, "fixture: upstream moves")
+	gitkit.Git(t, clone, "push", "origin", u.branch)
+}
 
-	if err := hubreconcile.Ensure(geom, hubreconcile.Options{}); err != nil {
-		t.Fatalf("second Ensure: %v", err)
-	}
+// The logger's output is process-global, so this test does not call t.Parallel.
+func TestEnsure_UnpushedHubWideCommitOverMovedUpstreamLeavesStampAbsent(t *testing.T) {
+	boardkit.InstallReplay(t)
 
-	if got := commitCount(t, board); got != before+1 {
-		t.Errorf("second Ensure changed the board commits: %d -> %d; want no new commit", before+1, got)
-	}
-	if !strings.Contains(logs.String(), "git pull --rebase") {
-		t.Errorf("log lacks the divergence Warn naming git pull --rebase:\n%s", logs.String())
-	}
-	if _, found := stampKey(t, geom); found {
-		t.Errorf("stamp written although the hub-wide commit is still unpushed")
-	}
+	t.Run("an upstream moved on other paths is replayed under the commit and the stamp is written", func(t *testing.T) {
+		u := arrangeUnpushedHubWide(t)
+		u.moveUpstream(t, "moved-upstream.txt", "moved\n")
+
+		if err := hubreconcile.Ensure(u.geom, hubreconcile.Options{}); err != nil {
+			t.Fatalf("second Ensure: %v", err)
+		}
+
+		if got := commitCount(t, u.board); got != u.before+2 {
+			t.Errorf("second Ensure left %d board commits, want the replayed hub-wide commit over the moved upstream (%d)", got, u.before+2)
+		}
+		if got, want := gitkit.RevParse(t, u.origin, "refs/heads/"+u.branch), gitkit.RevParse(t, u.board, "HEAD"); got != want {
+			t.Errorf("origin tip = %s, want the replayed board tip %s pushed", got, want)
+		}
+		if key, found := stampKey(t, u.geom); !found || key != runningKey() {
+			t.Errorf("stamp = %q (found %v); want the running key once the hub-wide commit is pushed", key, found)
+		}
+	})
+
+	t.Run("an upstream that changed the same config file skips with the stamp absent", func(t *testing.T) {
+		logs := logcapture.Capture(t)
+		u := arrangeUnpushedHubWide(t)
+		u.moveUpstream(t, u.hubWidePath, "branch_prefix: \"upstream\"\n")
+
+		if err := hubreconcile.Ensure(u.geom, hubreconcile.Options{}); err != nil {
+			t.Fatalf("second Ensure: %v", err)
+		}
+
+		if got := commitCount(t, u.board); got != u.before+1 {
+			t.Errorf("second Ensure changed the board commits: %d -> %d; want no new commit", u.before+1, got)
+		}
+		for _, want := range []string{u.hubWidePath, "lyx board sync"} {
+			if !strings.Contains(logs.String(), want) {
+				t.Errorf("log lacks the divergence Warn naming %q:\n%s", want, logs.String())
+			}
+		}
+		if _, found := stampKey(t, u.geom); found {
+			t.Errorf("stamp written although the hub-wide commit is still unpushed")
+		}
+	})
 }
 
 func TestEnsure_PairCallReconcilesDespiteAFreshStamp(t *testing.T) {
