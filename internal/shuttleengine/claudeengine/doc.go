@@ -193,29 +193,37 @@
 // The Bash denies below are not declared here: they render the rows of `internal/shellguard`'s table as PreToolUse(Bash) hooks, every row in table order after the Claude rows.
 // The python row denies a Bash command that runs `python`, `python3` or `python3.<minor>` in command position, in every run mode;
 // `shuttle.yaml`'s `deny_python` switches it off for a Python target repo.
-// It is a guardrail, not a barrier: its hook greps the payload, so a quoted argument or heredoc body can trip it falsely, and python behind `bash -c`, `eval` or a launcher passes.
+// The command-shaped rows read the command as the shell would, so a command word in quoted text, a heredoc body or another payload field such as the description does not trip a row.
+// For every such row, a command substitution inside a double-quoted string, a command after a `<` before a quote or a backslash, and any line after a heredoc operator's line are not read and pass.
+// It is a guardrail, not a barrier: its hook greps the payload, so python behind `bash -c`, `eval`, a launcher or a command substitution inside a double-quoted string passes, and a separator inside a quote the scan misreads is falsely denied.
 //
 // The raw go row keeps a session from reaching the hub's gate slots around `lyx gate test`, and every run installs it, the orch included.
 // It denies a Bash `go test`, `go build` or `go vet`, with or without `-C <dir>` before the subcommand, whose arguments include a pattern holding `...` or the word `all`;
 // a `go test` whose `-tags` value names `tmux` or `llm`;
-// and any command naming the slot-inheritance variable or the strand-name variable, each spelled into the pattern from its constant.
+// and any command setting or reading the slot-inheritance variable, the strand-name variable or the prebuilt-binary variable, each spelled into the pattern from its constant, when it is named outside quotes or expanded inside a double-quoted string.
 // `go` must stand in command position directly before the subcommand, so `go test ./internal/x` and `lyx gate test ./...` pass.
 // The steer is the gate rule: it names `lyx gate test` run in the foreground with the Bash tool's `timeout` at the ceiling, every other check in the foreground, and no `cd` into the session's own working directory.
-// It is a guardrail, not a barrier: its hook sees static text only, so a run hidden behind a script, `bash -c`, a `cd` plus a relative pattern it does not cover, or a shell variable passes, as does any raw package-scoped `go test`,
-// and a matching spelling inside a quoted argument, a commit message or a `grep` is falsely denied.
+// It is a guardrail, not a barrier: its hook sees static text only, so a run hidden behind a script, `bash -c`, a `cd` plus a relative pattern it does not cover, a shell variable or a command substitution inside a double-quoted string passes, as does any raw package-scoped `go test`,
+// and a pattern word inside a quoted argument of the go command itself, such as a `-run` filter, is falsely denied; a spelling in a commit message, a `grep` or a heredoc body is not.
 //
 // The in-place edit row denies a Bash `sed` or `perl` whose words include an in-place flag, and every run installs it, the orch included, with no config key.
 // For `sed` that is `-i`, `-i<suffix>`, a short-flag cluster holding `i`, or any prefix of `--in-place` from `--i` up;
 // for `perl`, a short-flag cluster holding `i`.
 // Reading with `sed -n` passes, and the steer points at the edit directive's rule.
 // It is a guardrail, not a barrier: its hook sees static text only, so `sed` writing by redirection, a `w` command inside a script, `awk`, `find -exec sed -i`, anything behind `bash -c`, `eval` or a variable, and anything after a prefix the pattern does not list pass,
-// and a matching spelling inside a quoted argument, a `grep` alternation or another payload field, or a `perl` read whose cluster holds an `i`, is falsely denied.
+// and an in-place flag spelling inside a quoted argument of the `sed` or `perl` command itself, or a `perl` read whose cluster holds an `i`, is falsely denied; a spelling in a `grep` alternation, a heredoc body or another payload field is not.
+//
+// The redirect-write row denies a Bash `>`, `>>`, `>|` or `&>` redirect whose target, optionally quoted, names a project file, and every run installs it, the orch included, with no config key.
+// It allows a target under `.scratch/` by its relative path, under `/tmp/` or `/dev/`, one starting with a variable, and a file-descriptor duplication such as `2>&1`.
+// The steer points at the edit directive's rule and names `.scratch/` as the place to redirect into.
+// It is a guardrail, not a barrier: its hook sees static text only, so `tee`, `cp`, `dd`, a write behind `bash -c` or a script, a redirect after a heredoc operator's line, a target behind a variable and an absolute path into `.scratch/` pass,
+// and an untracked file outside the scratch places, or a `>` comparison inside `[[ ]]` or `$(( ))`, is falsely denied.
 //
 // The computed-rm row denies a Bash `rm` in command position when the same payload also holds a command substitution (`$(` or a backtick) or a shell variable expansion (`$` followed by a letter, a digit, `_`, `{`, `@` or `*`), and every run installs it, the orch included.
 // It is a deny and not a prompt because Claude Code raises a statically-unresolvable-target dialog for an `rm` on a computed path, which shows even in bypass mode and stalls an unwatched run.
 // The steer names the literal path as the way forward.
 // It is a guardrail, not a barrier: its hook sees static text only, so a removal behind `find -delete`, `xargs rm` with no `$`, `bash -c` or a script passes, as does one through `$$`, `$?`, `$#` or `$!`,
-// and an `rm` of a literal path in a command that uses `$` elsewhere, a `grep` alternation naming `rm`, or a matching spelling in another payload field such as the description is falsely denied.
+// and an `rm` of a literal path in a command that uses `$` elsewhere, or a `$` in another payload field such as the description beside an `rm` in command position, is falsely denied; an `rm` spelled inside quotes, a `grep` alternation or a heredoc body is not.
 //
 // The open launch (Claude.OpenLaunch) starts a named interactive session with no prompt.
 // Its line carries the session id and the strand-name reference, adds `--model` and `--effort` only when set, and passes no `--settings`, so the session takes the worktree's own settings.

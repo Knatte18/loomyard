@@ -216,15 +216,16 @@ func shellGuardDenies() []standingDeny {
 
 // renderShellGuard wraps a shell guard row as a PreToolUse(Bash) hook entry.
 // A one-pattern row greps the payload once; a row of several patterns greps the payload once per pattern and denies only when all match.
+// Each pattern is shell-quoted, since a pattern may hold a single quote.
 // Ending with `; true` guarantees exit 0 so a non-match allows the call.
 func renderShellGuard(row shellguard.Row) standingDeny {
 	var command string
 	if len(row.Patterns) == 1 {
-		command = "grep -Eq '" + row.Patterns[0] + "' && echo '" + denyJSON(row.Steer) + "'; true"
+		command = "grep -Eq " + shQuote(row.Patterns[0]) + " && echo '" + denyJSON(row.Steer) + "'; true"
 	} else {
 		greps := make([]string, len(row.Patterns))
 		for i, pattern := range row.Patterns {
-			greps[i] = "{ printf '%s' \"$in\" | grep -Eq '" + pattern + "'; }"
+			greps[i] = "{ printf '%s' \"$in\" | grep -Eq " + shQuote(pattern) + "; }"
 		}
 		command = "in=$(cat); " + strings.Join(greps, " && ") + " && echo '" + denyJSON(row.Steer) + "'; true"
 	}
