@@ -26,7 +26,7 @@
 // value bounces back to the Name it names, forward or backward, budget permitting.
 // The OnStuck "" escalation persists the producer's own OutputPointer.Reason as the blocked halt's
 // error (one line, falling back to ReasonNoOnStuckTarget when empty);
-// budget exhaustion persists a reason that starts with ReasonBounceBudgetExhausted, regardless of the producer's Reason.
+// budget exhaustion persists a reason that starts with ReasonBounceBudgetExhausted, regardless of the producer's Reason, and whose trailing way forward is the told Shed.BudgetWayForward.
 // An Awaiting outcome is the planned human hand-off and routes nowhere: the run halts in state
 // "awaiting" with the producer's Reason as the error, no bounce budget is consulted or spent, and a
 // resume re-calls the same producer, exactly as it does after a blocked halt.
@@ -41,8 +41,14 @@
 // The bounce budget backing OnStuck is per-producer and episode-scoped: it is counted from the
 // persisted history[] rather than held in memory, as the number of Stuck entries a producer has
 // authored since its own most recent Done entry, a Done by any producer sharing its non-empty
-// Segment, or a goto into its segment (all of them, if none exists), so the count spans
+// Segment, or a reroute into its segment (all of them, if none exists), so the count spans
 // invocations, crashes, and human resumes rather than resetting on every new Run call.
+// A goto does not end an episode: it keeps the spent budget.
+// The halt that exhausts the budget marks its Stuck entry budget_capped, and the scan stops at a capped entry without counting it,
+// so a resume of the halt (which writes no entry) grants exactly one more budget.
+// A capped entry directly followed by a goto entry is counted and the scan goes on, so a goto onto the halted run grants none, and nor does a resume after that goto.
+// A Stuck verdict whose OutputPointer.GenerationStart is set is recorded as counted with generation_start, never halts on the budget, and ends the scan right after itself,
+// so the count reads 1 once the producer's generation has started, whatever the previous generation spent.
 // A history entry records its call's gate count in gate_attempts and its gate spans in gate_spans, both taken from the OutputPointer and omitted when the call recorded none.
 // A GateSpan is a plain struct of the gate entry's name, a kind (gate, held or rework) and RFC 3339 start and end times with fractional seconds, so this package imports nothing for it.
 // A fold of consecutive identical exempt Stucks appends the folded call's spans to the surviving entry's own, and the spans take no part in deciding whether two entries fold.
@@ -54,10 +60,8 @@
 // Goto moves a halted run onto a named row and appends an entry whose outcome is OutcomeGoto.
 // That outcome is history-only: no producer returns it, and it is never a Call verdict.
 // The entry leaves the run paused, never running, so the next Run reads as an ordinary resume.
-// It also sets an episode boundary for the target's segment:
-// episodeStuckCount stops counting Stuck entries at a goto whose target shares the producer's Segment (or is the producer itself when it has no Segment),
-// so the moved-onto segment starts with a fresh bounce budget.
-// A goto whose target is missing from the producer list ends no episode.
+// It sets no episode boundary: the bounce count of every row reads as it did before the goto,
+// so a goto never gives a budget back, and a budget halt is lifted by a resume alone.
 //
 // Goto only moves a halted run back.
 // It refuses a running run, because the run lock is free between a step-driven driver's steps and nothing else tells a live driver from a crashed one.
@@ -73,8 +77,7 @@
 //
 // A busy refusal, and goto's refusal of a running run, name the command that halts the live driver at its next producer boundary: the told Shed.PauseWayForward, or `lyx shed pause <run-id> --after <current_producer>` when none is told.
 //
-// Two stops name goto as their way forward in a trailing `way forward:` clause:
-// the missing-producer refusal, which lists every valid producer name, and the budget-exhausted reason, whose ReasonBounceBudgetExhausted stays its exact prefix.
+// The missing-producer refusal names goto as its way forward in a trailing `way forward:` clause, listing every valid producer name.
 // Every refusal names its way forward, as contracts/specs/refusal-spec.md defines one.
 //
 // # The reroute edge and the halting Stuck
@@ -82,7 +85,7 @@
 // A row may name one OnReroute row, forward or backward and across segments.
 // A Stuck verdict whose OutputPointer.Reroute is set takes that edge instead of OnStuck: the run moves to the target and a history entry with outcome OutcomeReroute and the target in routed_to records it.
 // A Stuck verdict that takes its row's OnStuck edge records the target in routed_to on its own Stuck entry, so a reader can tell a bounce from a halt; the outcome stays stuck and the bounce count ignores the field.
-// A reroute spends no bounce budget, and like a goto it ends the episode of every row sharing its target's Segment.
+// A reroute spends no bounce budget, and it ends the episode of every row sharing its target's Segment.
 // A row reroutes at most rerouteCap (three) times since its latest Done or its latest reroute-cap halt; the next reroute halts blocked at the row with a budget-exempt Stuck entry marked reroute_capped and a reason starting "reroute cap reached", whose trailing way forward is the told Shed.RerouteCapWayForward.
 // Resuming that halt grants three more reroutes, because the capped entry resets the count.
 // A Reroute verdict from a row with no OnReroute is a wiring fault: the run is written failed naming the row.

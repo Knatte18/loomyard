@@ -105,6 +105,13 @@ type HistoryEntry struct {
 	// RerouteCapped is true on the Stuck entry of a reroute-cap halt, which resets the row's reroute count.
 	// A status file written before the field existed decodes as false.
 	RerouteCapped bool `json:"reroute_capped,omitempty"`
+	// BudgetCapped is true on the Stuck entry of a bounce-budget-exhausted halt.
+	// A resume of that halt grants one more budget, and a goto onto it grants none.
+	// A status file written before the field existed decodes as false.
+	BudgetCapped bool `json:"budget_capped,omitempty"`
+	// GenerationStart is true on a Stuck entry that started a new review generation, which restarts the row's bounce count at that entry.
+	// A status file written before the field existed decodes as false.
+	GenerationStart bool `json:"generation_start,omitempty"`
 	// By is the caller label of the goto or resume that wrote this entry, empty on every other entry.
 	// A status file written before the field existed decodes as empty.
 	By string `json:"by,omitempty"`

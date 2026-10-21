@@ -27,7 +27,7 @@ const ReasonNoOnStuckTarget = "stuck with no OnStuck target"
 
 // ReasonBounceBudgetExhausted is the exact prefix of the error the budget-exhausted blocked arm persists, regardless
 // of any OutputPointer.Reason the producer supplied.
-// The persisted error continues with the exhausted row and the goto way forward,
+// The persisted error continues with the exhausted row and the told resume clause as its way forward,
 // so a reader matches it with strings.HasPrefix, never equality.
 const ReasonBounceBudgetExhausted = "bounce budget exhausted"
 
@@ -173,6 +173,14 @@ func gotoCommand(runID, target string) string {
 	return fmt.Sprintf("\"lyx shed goto %s --to %s\"", runID, target)
 }
 
+// budgetWayForward returns the trailing clause of a bounce-budget-exhausted halt, falling back to the run verb that resumes the row.
+func (s *Shed) budgetWayForward() string {
+	if s.BudgetWayForward != "" {
+		return s.BudgetWayForward
+	}
+	return fmt.Sprintf("%s resumes the row and grants it one more budget", runVerb("run", s.RunID))
+}
+
 // stepLocked runs exactly one iteration of the six-step loop and reports it as a StepResult.
 // It assumes the run lock is already held by the caller and never acquires or releases it itself
 // -- Run holds it for the whole loop, and Step holds it for this one call alone.
@@ -296,14 +304,15 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 			return append(make([]HistoryEntry, 0, len(st.History)), st.History...)
 		}
 		return appendOrFold(st.History, HistoryEntry{
-			Producer:     def.Name,
-			Outcome:      outcome,
-			Output:       output.Path,
-			At:           nowRFC3339(),
-			GateAttempts: output.GateAttempts,
-			GateSpans:    output.GateSpans,
-			BudgetExempt: outcome == Stuck && (output.BudgetExempt || output.Halt),
-			RoutedTo:     routedTo,
+			Producer:        def.Name,
+			Outcome:         outcome,
+			Output:          output.Path,
+			At:              nowRFC3339(),
+			GateAttempts:    output.GateAttempts,
+			GateSpans:       output.GateSpans,
+			BudgetExempt:    outcome == Stuck && (output.BudgetExempt || output.Halt),
+			RoutedTo:        routedTo,
+			GenerationStart: outcome == Stuck && output.GenerationStart,
 		})
 	}
 
@@ -364,15 +373,14 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		// The count argument is st.History, the slice read at step 1, and never
 		// nextHistory: a post-append read shifts the boundary by one and would look
 		// like an off-by-one bug rather than the semantic change it would actually be.
-		case !output.BudgetExempt && episodeStuckCount(st.History, def, s.Producers) >= effectiveMaxBounces(def, s.MaxBounces):
+		// A generation-start Stuck is counted but never halts: it opens a new episode whose count reads 1.
+		case !output.BudgetExempt && !output.GenerationStart && episodeStuckCount(st.History, def, s.Producers) >= effectiveMaxBounces(def, s.MaxBounces):
 			// The boundary is pinned exactly, restated per-producer: a budget of three
 			// performs three bounce-backs and blocks on the fourth Stuck.
+			// The halting entry is marked budget_capped, so a resume grants one more budget and a goto onto it grants none.
 			nextHistory := appendHistory("")
-			scope := fmt.Sprintf("row %q", def.Name)
-			if def.Segment != "" {
-				scope = fmt.Sprintf("segment %q", def.Segment)
-			}
-			reason := fmt.Sprintf("%s for %s; way forward: %s gives %s a fresh budget", ReasonBounceBudgetExhausted, def.Name, gotoCommand(s.RunID, def.Name), scope)
+			nextHistory[len(nextHistory)-1].BudgetCapped = true
+			reason := fmt.Sprintf("%s for %s; way forward: %s", ReasonBounceBudgetExhausted, def.Name, s.budgetWayForward())
 			if err := s.persist(st.CurrentProducer, StateBlocked, reason, nextHistory, false, ""); err != nil {
 				return StepResult{}, err
 			}
@@ -537,11 +545,13 @@ func nowRFC3339() string {
 // rather than special-cased: the engine records the verdict a producer actually returned, and
 // state: "failed" halts the run, so every continuation past it is a fresh human-initiated act.
 // A Stuck entry whose BudgetExempt is true is skipped and never counted.
-// An OutcomeGoto entry also ends the episode when its target (the entry's Producer) shares def.Segment, or is def itself when def.Segment is empty,
-// so a goto into a segment gives every row of that segment a fresh budget.
-// An OutcomeReroute entry does the same with its RoutedTo target.
-// producers resolves a target's segment;
-// a target no longer in the list ends no episode.
+// An OutcomeGoto entry is skipped like any other non-Done entry, so a goto keeps the spent budget.
+// An OutcomeReroute entry ends the episode when its RoutedTo target shares def.Segment, or is def itself when def.Segment is empty;
+// producers resolves a target's segment, and a target no longer in the list ends no episode.
+// A BudgetCapped Stuck entry of def is the one a budget-exhausted halt wrote.
+// It ends the scan without being counted, unless the entry right after it is an OutcomeGoto entry, in which case it is counted and the scan goes on.
+// A resume (which writes no entry) therefore grants one more budget, and a goto onto the halted run grants none.
+// A GenerationStart Stuck entry of def is counted and ends the scan, so the count reads 1 right after a generation starts.
 func episodeStuckCount(history []HistoryEntry, def ProducerDef, producers []ProducerDef) int {
 	name := def.Name
 	enders := segmentEnders(producers, def)
@@ -549,9 +559,6 @@ func episodeStuckCount(history []HistoryEntry, def ProducerDef, producers []Prod
 	for i := len(history) - 1; i >= 0; i-- {
 		entry := history[i]
 		if entry.Outcome == OutcomeGoto {
-			if gotoEndsEpisode(entry.Producer, def, producers) {
-				return count
-			}
 			continue
 		}
 		if entry.Outcome == OutcomeReroute {
@@ -566,14 +573,21 @@ func episodeStuckCount(history []HistoryEntry, def ProducerDef, producers []Prod
 		if entry.Producer != name {
 			continue
 		}
-		if entry.Outcome == Stuck && !entry.BudgetExempt {
-			count++
+		if entry.Outcome != Stuck || entry.BudgetExempt {
+			continue
+		}
+		if entry.BudgetCapped && !(i+1 < len(history) && history[i+1].Outcome == OutcomeGoto) {
+			return count
+		}
+		count++
+		if entry.GenerationStart {
+			return count
 		}
 	}
 	return count
 }
 
-// gotoEndsEpisode reports whether a goto naming target ends def's bounce-budget episode.
+// gotoEndsEpisode reports whether a reroute naming target ends def's bounce-budget episode.
 func gotoEndsEpisode(target string, def ProducerDef, producers []ProducerDef) bool {
 	if def.Segment == "" {
 		return target == def.Name

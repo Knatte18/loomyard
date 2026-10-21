@@ -269,9 +269,11 @@ func TestStep_UnknownCurrentProducerNamesGoto(t *testing.T) {
 	}
 }
 
-func TestStep_BudgetExhaustionNamesGotoAndGotoRestoresBudget(t *testing.T) {
-	shed, statusPath, statusLockPath := scriptedStuckShed(t, 1, []bool{false})
-
+// haltOnBudget steps a one-bounce shed until its budget halts, and returns the shed with its status paths.
+func haltOnBudget(t *testing.T, configure func(*Shed)) (shed *Shed, statusPath, statusLockPath string) {
+	t.Helper()
+	shed, statusPath, statusLockPath = scriptedStuckShed(t, 1, []bool{false})
+	configure(shed)
 	if res, err := shed.Step(context.Background()); err != nil || res.State != StateRunning {
 		t.Fatalf("first Step = %q, %v; want running bounce", res.State, err)
 	}
@@ -282,20 +284,69 @@ func TestStep_BudgetExhaustionNamesGotoAndGotoRestoresBudget(t *testing.T) {
 	if res.State != StateBlocked {
 		t.Fatalf("second Step State = %q; want blocked", res.State)
 	}
-	if got := readStatus(t, statusPath, statusLockPath); !strings.Contains(got.Error, "lyx shed goto") || !strings.HasPrefix(got.Error, ReasonBounceBudgetExhausted) {
-		t.Errorf("persisted Error = %q; want the budget prefix and a lyx shed goto way forward", got.Error)
+	return shed, statusPath, statusLockPath
+}
+
+// TestStep_BudgetHaltResumeGrantsOneBudget pins the budget halt's reason and way forward, that a resume bounces once more before halting again,
+// and that a goto onto the halted run grants no budget.
+func TestStep_BudgetHaltResumeGrantsOneBudget(t *testing.T) {
+	t.Parallel()
+
+	reasonTests := []struct {
+		name         string
+		configure    func(*Shed)
+		wantContains string
+	}{
+		{"fallback names the run verb", func(*Shed) {}, `"lyx shed run" resumes the row`},
+		{"told run-id is addressed", func(s *Shed) { s.RunID = "some-slug" }, `"lyx shed run some-slug" resumes the row`},
+		{"told clause replaces the fallback", func(s *Shed) { s.BudgetWayForward = "told resume clause" }, "way forward: told resume clause"},
+	}
+	for _, tt := range reasonTests {
+		t.Run("Reason_"+tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, statusPath, statusLockPath := haltOnBudget(t, tt.configure)
+			got := readStatus(t, statusPath, statusLockPath)
+			if !strings.HasPrefix(got.Error, ReasonBounceBudgetExhausted) || !strings.Contains(got.Error, tt.wantContains) {
+				t.Errorf("persisted Error = %q; want the budget prefix and %q", got.Error, tt.wantContains)
+			}
+			if strings.Contains(got.Error, "goto") {
+				t.Errorf("persisted Error = %q; want no goto named", got.Error)
+			}
+			if len(got.History) == 0 || !got.History[len(got.History)-1].BudgetCapped {
+				t.Errorf("History = %+v; want the halting entry marked budget_capped", got.History)
+			}
+		})
 	}
 
-	if _, err := Goto(gotoRequest(shed, "Wait")); err != nil {
-		t.Fatalf("Goto(...) = _, %v; want nil error", err)
-	}
-	res, err = shed.Step(context.Background())
-	if err != nil {
-		t.Fatalf("Step after goto = _, %v; want nil", err)
-	}
-	if res.State != StateRunning || res.Next != "Wait" {
-		t.Errorf("Step after goto State/Next = %q/%q; want a bounce, running/Wait", res.State, res.Next)
-	}
+	t.Run("ResumeBouncesOnceThenHaltsAgain", func(t *testing.T) {
+		t.Parallel()
+		shed, _, _ := haltOnBudget(t, func(*Shed) {})
+		res, err := shed.Step(context.Background())
+		if err != nil {
+			t.Fatalf("Step after halt = _, %v; want nil", err)
+		}
+		if res.State != StateRunning || res.Next != "Wait" {
+			t.Fatalf("Step after halt State/Next = %q/%q; want a bounce, running/Wait", res.State, res.Next)
+		}
+		if res, err = shed.Step(context.Background()); err != nil || res.State != StateBlocked {
+			t.Errorf("next Step = %q, %v; want blocked again", res.State, err)
+		}
+	})
+
+	t.Run("GotoGrantsNoBudget", func(t *testing.T) {
+		t.Parallel()
+		shed, _, _ := haltOnBudget(t, func(*Shed) {})
+		if _, err := Goto(gotoRequest(shed, "Wait")); err != nil {
+			t.Fatalf("Goto(...) = _, %v; want nil error", err)
+		}
+		res, err := shed.Step(context.Background())
+		if err != nil {
+			t.Fatalf("Step after goto = _, %v; want nil", err)
+		}
+		if res.State != StateBlocked {
+			t.Errorf("Step after goto State = %q; want blocked at once", res.State)
+		}
+	})
 }
 
 // tailProducers is shaped like the loom recipe's tail: a segment with an offshoot, then the approval rows.

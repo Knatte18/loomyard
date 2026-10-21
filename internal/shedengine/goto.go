@@ -35,7 +35,7 @@ type GotoRequest struct {
 
 // Goto moves a halted run onto the Target row and leaves it paused.
 // It writes paused, never running: the next step resumes through the ordinary resume write, whereas running with the lock free would read as a crashed driver.
-// The appended history entry carries the OutcomeGoto outcome, which ends the target segment's bounce episode.
+// The appended history entry carries the OutcomeGoto outcome, which leaves every row's spent bounce budget as it was.
 // It calls no CommitStatus and sets no transient mark;
 // the next step's persist commits the file, as pause's write is.
 func Goto(req GotoRequest) (Status, error) {

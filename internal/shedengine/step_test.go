@@ -587,23 +587,11 @@ func TestStep_BudgetArmIgnoresProducerReason(t *testing.T) {
 	}
 }
 
-// TestStep_ToldRunIDNamesGotoWithRunID pins that an exhausted budget and a missing producer address the told run-id in their goto way forward.
+// TestStep_ToldRunIDNamesGotoWithRunID pins that the missing-producer refusal addresses the told run-id in its goto way forward.
 func TestStep_ToldRunIDNamesGotoWithRunID(t *testing.T) {
 	const want = "lyx shed goto some-slug --to"
 
-	shed, statusPath, statusLockPath := scriptedStuckShed(t, 1, []bool{false})
-	shed.RunID = "some-slug"
-	if _, err := shed.Step(context.Background()); err != nil {
-		t.Fatalf("first Step = _, %v; want nil", err)
-	}
-	if _, err := shed.Step(context.Background()); err != nil {
-		t.Fatalf("second Step = _, %v; want nil", err)
-	}
-	if got := readStatus(t, statusPath, statusLockPath); !strings.Contains(got.Error, want) {
-		t.Errorf("exhausted-budget reason = %q; want it to contain %q", got.Error, want)
-	}
-
-	shed, _, _ = gotoShed(t)
+	shed, _, _ := gotoShed(t)
 	shed.RunID = "some-slug"
 	seed := commonSeed("Renamed")
 	seed.State = StateBlocked
