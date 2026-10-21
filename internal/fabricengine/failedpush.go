@@ -166,6 +166,31 @@ func ListFailedPushes(hubPath string) ([]FailedPush, error) {
 	return records, nil
 }
 
+// FailedPushFields renders the hub's failed-push records as the envelope rows a verb prints:
+// repo side, branch, class, last error line, first and last seen, count, notified and the way forward for the record's class.
+// A hub with no records returns an empty list, never nil, so the field prints as [].
+func FailedPushFields(hubPath string) ([]map[string]any, error) {
+	records, err := ListFailedPushes(hubPath)
+	if err != nil {
+		return nil, err
+	}
+	rows := make([]map[string]any, 0, len(records))
+	for _, record := range records {
+		rows = append(rows, map[string]any{
+			"repo":        record.Repo,
+			"branch":      record.Branch,
+			"class":       string(record.Class),
+			"error":       record.Error,
+			"first_seen":  record.FirstSeen.Format(time.RFC3339),
+			"last_seen":   record.LastSeen.Format(time.RFC3339),
+			"count":       record.Count,
+			"notified":    record.Notified,
+			"way_forward": FailedPushWayForward(record),
+		})
+	}
+	return rows, nil
+}
+
 // pushStep names the push that retries f, with the directory it runs in.
 // A bolt record is pushed by the board sync, since the pair push never reaches Bolt.
 // A prime's code branch is pushed by a plain git push, since the prime's pair push is records-only.

@@ -8,6 +8,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battencli"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/spf13/cobra"
@@ -25,7 +26,8 @@ remove, prints "applied": false and changes nothing. With --apply it removes it.
 It runs from the hub's prime worktree only and refuses elsewhere.
 
 Segments, in order, each calling its owner's own cleanup in-process:
-  batten   done runs' records and scratch, and aged orphan scratch (lyx batten cleanup)
+  batten   done runs' records and scratch, and aged orphan scratch (lyx batten cleanup);
+           push_spawned says its records push was started, not that origin took it
   board    done board entries (lyx board prune)
   orch     every handoff but the last one the orchestrator cycled from (lyx orch cleanup)
   scratch  old children of the prime's .scratch/ that no open board entry cites
@@ -34,6 +36,9 @@ Segments, in order, each calling its owner's own cleanup in-process:
 
 Every segment runs even when an earlier one fails; the failing ones are named in
 the error. Nothing is removed that the segment's own verb would refuse to remove.
+
+failed_pushes lists every push origin refused that this machine still holds a
+record of, each with the way forward for its class; it prints with and without --apply.
 
 Example:
   lyx cleanup
@@ -62,7 +67,12 @@ Example:
 			}
 
 			results, allSucceeded := runSegments(primeSegments(location), apply)
-			fields := map[string]any{"applied": apply, "segments": results}
+			failedPushes, err := fabricengine.FailedPushFields(location.HubPath)
+			if err != nil {
+				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				return nil
+			}
+			fields := map[string]any{"applied": apply, "segments": results, "failed_pushes": failedPushes}
 			if allSucceeded {
 				clihelp.SetExit(ctx, output.Ok(out, fields))
 				return nil

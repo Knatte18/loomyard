@@ -146,7 +146,12 @@ status also reports merge_in_progress: whether THIS pair has a fabric merge
 parked awaiting "lyx fabric merge --continue" or "lyx fabric merge --abort".
 It does NOT report whether some other pair in the hub is mid-merge on this
 pair's branch, so "lyx fabric remove" refusing on that hub-wide condition can
-coexist with merge_in_progress being false here.`,
+coexist with merge_in_progress being false here.
+
+status also reports failed_pushes: every push origin refused that this machine
+still holds a record of, hub-wide, each with its repository side, branch, class,
+last error, first and last seen, count and the way forward for its class.
+An empty list means no push is outstanding.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
@@ -162,9 +167,15 @@ coexist with merge_in_progress being false here.`,
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
+			failedPushes, err := fabricengine.FailedPushFields(l.HubPath)
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
 			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
 				"changes":           changeEntriesMap(entries),
 				"merge_in_progress": inProgress,
+				"failed_pushes":     failedPushes,
 			}))
 			return nil
 		},
