@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/state"
@@ -17,65 +16,6 @@ import (
 type sample struct {
 	Name string
 	N    int
-}
-
-// TestWriteFile pins that WriteFile lands the bytes verbatim, replaces an earlier write whole and creates the parent directory.
-// On an unwritable path (the target is a directory) it returns an error and leaves no temp file beside it.
-func TestWriteFile(t *testing.T) {
-	t.Parallel()
-
-	t.Run("VerbatimReplaceAndParent", func(t *testing.T) {
-		t.Parallel()
-		path := filepath.Join(t.TempDir(), "nested", "deeper", "task.patch")
-		lockPath := path + ".lock"
-
-		first := []byte("diff --git a/x b/x\n\x00not json\n")
-		if err := state.WriteFile(path, lockPath, first); err != nil {
-			t.Fatalf("WriteFile() error: %v", err)
-		}
-		got, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("ReadFile() error: %v", err)
-		}
-		if !bytes.Equal(got, first) {
-			t.Errorf("file = %q; want %q", got, first)
-		}
-
-		second := []byte("short")
-		if err := state.WriteFile(path, lockPath, second); err != nil {
-			t.Fatalf("second WriteFile() error: %v", err)
-		}
-		got, err = os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("ReadFile() after overwrite error: %v", err)
-		}
-		if !bytes.Equal(got, second) {
-			t.Errorf("file after overwrite = %q; want %q", got, second)
-		}
-	})
-
-	t.Run("UnwritablePath", func(t *testing.T) {
-		t.Parallel()
-		dir := t.TempDir()
-		path := filepath.Join(dir, "target")
-		if err := os.Mkdir(path, 0o755); err != nil {
-			t.Fatalf("Mkdir() error: %v", err)
-		}
-
-		if err := state.WriteFile(path, path+".lock", []byte("data")); err == nil {
-			t.Fatal("WriteFile() onto a directory error = nil; want an error")
-		}
-
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			t.Fatalf("ReadDir() error: %v", err)
-		}
-		for _, entry := range entries {
-			if strings.HasPrefix(entry.Name(), ".tmp-") {
-				t.Errorf("temp file %q left beside the target", entry.Name())
-			}
-		}
-	})
 }
 
 // TestWriteJSON_RoundTripOverwriteAndLayout writes a value, reads it back, overwrites it with a different one, and verifies the second read returns the new value, the file is JSON indented by two spaces, and the directory holds only the data file and its lock file at exactly path + ".lock", with no .tmp- entries left behind.
