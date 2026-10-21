@@ -27,7 +27,7 @@ func TestChildDriverKind(t *testing.T) {
 	}{
 		{name: "a darn recipe takes darn.yaml's go over loom.yaml's llm", recipe: shedrun.RecipeDarn, loomKind: "llm", darnKind: "go", wantDriver: "go"},
 		{name: "a loom recipe takes loom.yaml's llm over darn.yaml's go", recipe: shedrun.RecipeLoom, loomKind: "llm", darnKind: "go", wantDriver: "llm"},
-		{name: "empty overrides take shed.yaml's go", recipe: shedrun.RecipeLoom, shedKind: "go", wantDriver: "go"},
+		{name: "empty overrides take shed.yaml's llm", recipe: shedrun.RecipeLoom, shedKind: "llm", wantDriver: "llm"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -51,7 +51,7 @@ func TestChildDriverKind(t *testing.T) {
 				documents["darn"] = withKind(documents["darn"], tt.darnKind)
 			}
 			if tt.shedKind != "" {
-				documents["shed"] = strings.Replace(documents["shed"], "driver_kind: llm", "driver_kind: "+tt.shedKind, 1)
+				documents["shed"] = strings.Replace(documents["shed"], "driver_kind: go", "driver_kind: "+tt.shedKind, 1)
 			}
 			for module, document := range documents {
 				if err := os.WriteFile(configengine.ConfigFile(dir, module), []byte(document), 0o644); err != nil {

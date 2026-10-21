@@ -7,9 +7,6 @@
 package loomcli
 
 import (
-	"context"
-	"errors"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -48,29 +45,15 @@ func runLoomCLINoFatal(exe, dir string, timeout time.Duration, args ...string) (
 // which would otherwise outlive the test and race TempDir's removal of the bare remote.
 var skipBoardPush = []string{"BOARD_SKIP_PUSH=1"}
 
+// skipWalkPush is skipBoardPush plus the fabric push skip, for a verb that reconciles an unstamped hub.
+// The reconcile commit fires a detached push that would outlive the test and race TempDir's removal of the bare remote;
+// a test asserts the commit, never the push.
+var skipWalkPush = append([]string{"FABRIC_SKIP_PUSH=1"}, skipBoardPush...)
+
 // runLoomCLIWithEnvNoFatal is runLoomCLINoFatal with extraEnv appended to the inherited environment of the subprocess alone,
 // so a parallel test can set a variable such as FABRIC_SKIP_PUSH for one invocation without t.Setenv.
 func runLoomCLIWithEnvNoFatal(exe, dir string, extraEnv []string, timeout time.Duration, args ...string) (stdout string, exitCode int, err error) {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, exe, args...)
-	cmd.Dir = dir
-	if extraEnv != nil {
-		cmd.Env = append(os.Environ(), extraEnv...)
-	}
-	out, runErr := cmd.CombinedOutput()
-	if ctx.Err() == context.DeadlineExceeded {
-		return string(out), -1, fmt.Errorf("lyx %v timed out after %s in %s; output so far:\n%s", args, timeout, dir, out)
-	}
-	if runErr == nil {
-		return string(out), 0, nil
-	}
-	var exitErr *exec.ExitError
-	if errors.As(runErr, &exitErr) {
-		return string(out), exitErr.ExitCode(), nil
-	}
-	return string(out), -1, fmt.Errorf("lyx %v: %w; output:\n%s", args, runErr, out)
+	return lyxbin.RunWithEnv(exe, dir, extraEnv, timeout, args...)
 }
 
 // newWiredPairFixture builds a real fabric hub, seeds every module's config template into it, and

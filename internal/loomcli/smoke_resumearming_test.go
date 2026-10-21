@@ -29,7 +29,7 @@ func TestLoomResumeReconcilesThenRefusesWithoutLiveDriver(t *testing.T) {
 	seedAndCommitStatus(t, loc, slug)
 	commitRetiredBatcherKey(t, loc)
 
-	out, exit, err := runLoomCLINoFatal(exe, worktree, 60*time.Second, "loom", "resume")
+	out, exit, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, 60*time.Second, "loom", "resume")
 	if err != nil {
 		t.Fatalf("loom resume: %v; output: %s", err, out)
 	}

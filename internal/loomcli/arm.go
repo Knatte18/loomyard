@@ -152,9 +152,7 @@ func (c *loomCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec, e
 	// A strict load of a file still carrying a retired key would otherwise refuse the verb before the reconcile that removes the key.
 	if verb == "start" || verb == "resume" {
 		if geometry, inHub := hubgeom.ReconcileGeometry(location); inHub {
-			if err := hubreconcile.Ensure(geometry, hubreconcile.Options{}); err != nil {
-				return shedverbs.Spec{}, err
-			}
+			hubreconcile.EnsureOrWarn(geometry, hubreconcile.Options{})
 		}
 	}
 

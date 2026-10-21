@@ -51,7 +51,38 @@ func TestSet(t *testing.T) {
 		jsonEntries bool
 		// wantExact is the written file's whole content; empty skips the check.
 		wantExact string
+		// seedOnly marks the spec seed-only, so a hub's default layer keeps its full scaffold.
+		seedOnly bool
 	}{
+		{
+			name:      "hub default layer write into an absent file writes exactly the key set",
+			state:     baseLyx,
+			template:  "key1: value1\nkey2: value2\n",
+			pairs:     []yamlengine.KV{{Key: "key1", Value: "set1"}},
+			layer:     configengine.LayerDefault,
+			board:     true,
+			wantExact: "key1: set1\n",
+		},
+		{
+			name:          "hub default layer write into a present sparse file keeps its own units and adds no template key",
+			state:         baseLyx,
+			template:      "key1: value1\nkey2: value2\nkey3: value3\n",
+			pairs:         []yamlengine.KV{{Key: "key1", Value: "set1"}},
+			layer:         configengine.LayerDefault,
+			board:         true,
+			localExisting: "key2: mine\n",
+			wantExact:     "key2: mine\nkey1: set1\n",
+		},
+		{
+			name:      "seed-only hub default write into an absent file still scaffolds the template",
+			state:     baseLyx,
+			template:  "key1: value1\nkey2: value2\n",
+			pairs:     []yamlengine.KV{{Key: "key1", Value: "set1"}},
+			layer:     configengine.LayerDefault,
+			board:     true,
+			seedOnly:  true,
+			wantExact: "key1: set1\nkey2: value2\n",
+		},
 		{
 			name:     "missing file is scaffolded then set",
 			state:    baseLyx,
@@ -249,7 +280,7 @@ func TestSet(t *testing.T) {
 			if tt.board {
 				dirs.Board = t.TempDir()
 			}
-			if tt.hubWide && !tt.boardWithoutLyx {
+			if (tt.hubWide || tt.layer == configengine.LayerDefault) && !tt.boardWithoutLyx {
 				mustMkdirAll(t, configengine.ConfigDir(dirs.Board))
 			}
 			if tt.boardOnly {
@@ -260,10 +291,13 @@ func TestSet(t *testing.T) {
 				layer = configengine.LayerWorktree
 			}
 			previous, scaffolded := tt.existing, tt.state == baseLyx
-			if layer == configengine.LayerLocal || layer == configengine.LayerMachine {
+			if layer == configengine.LayerLocal || layer == configengine.LayerMachine || layer == configengine.LayerDefault {
 				path = configengine.LocalFile(baseDir, "testmod")
 				if layer == configengine.LayerMachine {
 					path = configengine.MachineFile(dirs.Board, "testmod")
+				}
+				if layer == configengine.LayerDefault {
+					path = configengine.ConfigFile(dirs.Board, "testmod")
 				}
 				previous, scaffolded = tt.localExisting, tt.localExisting == ""
 				if tt.localExisting != "" {
@@ -275,7 +309,7 @@ func TestSet(t *testing.T) {
 					}
 				}
 			}
-			spec := configengine.Spec{Name: "testmod", Template: []byte(tt.template), OpenMaps: tt.openMaps, PerNameMaps: tt.perNameMaps, Categories: tt.categories, HubWide: tt.hubWide, JSONEntries: tt.jsonEntries}
+			spec := configengine.Spec{Name: "testmod", Template: []byte(tt.template), OpenMaps: tt.openMaps, PerNameMaps: tt.perNameMaps, Categories: tt.categories, HubWide: tt.hubWide, JSONEntries: tt.jsonEntries, SeedOnly: tt.seedOnly}
 
 			preserved, err := configengine.Set(dirs, spec, layer, tt.pairs)
 

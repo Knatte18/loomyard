@@ -1,8 +1,8 @@
 // set.go implements the non-interactive `lyx config <module> --set key=value` write path:
 // one layer's file is written with a single yamlengine mutation, with no editor invocation and no
 // validation loop.
-// The base layer scaffolds from the template like Edit does, so a fresh default-valued file is created and rolled back identically;
-// every layer above it is sparse and holds only the keys set.
+// A standalone or seed-only base scaffolds from the template like Edit does, so a fresh default-valued file is created and rolled back identically;
+// a hub's base and every layer above it are sparse and hold only the keys set.
 // A local write is checked against the local rule, and a machine write against the machine rule, before anything is written.
 
 package configengine
@@ -32,8 +32,8 @@ func layerPath(dirs Dirs, spec Spec, layer Layer) (path, owner string, err error
 
 // Set writes pairs into the layer's file of spec under dirs.
 // It never opens an editor and never loops on validation failure.
-// The base layer is scaffolded from the template when absent and written with yamlengine.SetValues, and a freshly-scaffolded file is removed on error, mirroring Edit's contract;
-// a layer above the base is sparse, so only the keys set are written through yamlengine.SetSparse and nothing is scaffolded.
+// A standalone or seed-only base layer is scaffolded from the template when absent and written with yamlengine.SetValues, and a freshly-scaffolded file is removed on error, mirroring Edit's contract;
+// a hub's base layer and every layer above the base are sparse, so only the keys set are written through yamlengine.SetSparse and nothing is scaffolded.
 // A write to the local layer is checked with [ValidateLocal] first, and one to the machine layer with [ValidateMachine]; a refused one writes nothing.
 // A spec with JSONEntries writes each pair as one whole top-level entry through yamlengine.SetEntries on every layer, scaffolding an absent base layer from the template.
 // Returns the sorted list of pre-existing keys not in the template that were preserved verbatim;
@@ -51,7 +51,7 @@ func Set(dirs Dirs, spec Spec, layer Layer, pairs []yamlengine.KV) ([]string, er
 	if spec.JSONEntries {
 		return nil, setEntries(spec, layer, path, layer == BaseLayer(dirs, spec), pairs)
 	}
-	if layer != BaseLayer(dirs, spec) {
+	if layer != BaseLayer(dirs, spec) || sparseBase(dirs, spec) {
 		return setSparse(spec, layer, path, pairs)
 	}
 

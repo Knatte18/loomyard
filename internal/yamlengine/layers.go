@@ -409,6 +409,57 @@ func recordKeptNames(template, existing *yaml.Node, path string, kept *[]string)
 	}
 }
 
+// DropTemplateEqualNames removes from a sparse existing every name under a declared perNameMaps path whose value equals the template's, and returns the changed bytes and the removed P.<name> paths, sorted.
+// Equal means the two values decode to the same data, whatever their style or quoting, as in Reconcile.
+// A name the template lacks stays, and a mapping the removal leaves empty stays as an empty mapping.
+// When nothing is removed, existing is returned byte for byte.
+func DropTemplateEqualNames(template, existing []byte, perNameMaps []string) (out []byte, dropped []string, err error) {
+	_, templateRoot, err := parseMappingRoot(template, "template")
+	if err != nil {
+		return nil, nil, err
+	}
+	existingDoc, existingRoot, err := parseMappingRoot(existing, "existing")
+	if err != nil {
+		return nil, nil, err
+	}
+	dropped = []string{}
+	if templateRoot == nil || existingRoot == nil {
+		return existing, dropped, nil
+	}
+
+	for _, p := range perNameMaps {
+		templateValue := findValueNode(templateRoot, p)
+		existingValue := findValueNode(existingRoot, p)
+		if templateValue == nil || templateValue.Kind != yaml.MappingNode || existingValue == nil || existingValue.Kind != yaml.MappingNode {
+			continue
+		}
+		before := len(dropped)
+		retained := make([]*yaml.Node, 0, len(existingValue.Content))
+		for i := 0; i+1 < len(existingValue.Content); i += 2 {
+			key, value := existingValue.Content[i], existingValue.Content[i+1]
+			if at := mappingIndex(templateValue, key.Value); at >= 0 && sameValue(value, templateValue.Content[at+1]) {
+				dropped = append(dropped, joinKeyPath(p, key.Value))
+				continue
+			}
+			retained = append(retained, key, value)
+		}
+		existingValue.Content = retained
+		if len(retained) == 0 && len(dropped) > before {
+			existingValue.Style = 0
+		}
+	}
+	if len(dropped) == 0 {
+		return existing, dropped, nil
+	}
+	sort.Strings(dropped)
+
+	out, err = yaml.Marshal(existingDoc)
+	if err != nil {
+		return nil, nil, fmt.Errorf("marshal YAML after dropping template-equal names: %w", err)
+	}
+	return out, dropped, nil
+}
+
 // LeafPaths returns the sorted dotted paths of every unit in doc.
 // A key at a declared openMaps path and, when wholeEntries is true, every top-level key is one unit; an empty mapping counts as one unit too.
 func LeafPaths(doc []byte, openMaps []string, wholeEntries bool) ([]string, error) {

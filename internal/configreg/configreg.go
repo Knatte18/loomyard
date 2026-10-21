@@ -54,14 +54,14 @@ type Module struct {
 	// configsync materializes a seed-only module's template when its file
 	// is absent, and never rewrites a present file — it neither adds nor
 	// prunes keys, unlike the default reconcile behavior applied to every
-	// other module.
+	// other module, whose seed in a hub is sparse.
 	SeedOnly bool
 	// HubWide marks a module that describes a hub-level fact.
 	// Its one file lives at configengine.ConfigFile(<BoardDir>, name)
 	// and is never read or written in a worktree's _lyx/config/.
 	HubWide bool
 	// SeedsFromPrime marks a hub-wide module whose per-worktree copy was in effect before it moved hub-wide.
-	// A hub's first reconcile seeds an absent hub file from the prime's copy, like a module with open maps.
+	// A hub's first reconcile seeds an absent hub file from the prime's copy, like a module with open maps; the seed is sparse.
 	SeedsFromPrime bool
 	// Migrate, when non-nil, rewrites a present config file's bytes before reconcile compares them to the template.
 	// It returns the rewritten bytes and one human-readable line per rewrite, and changes only the keys its module declares retired, rewrites a key's retired meaning into its replacement, or raises a key to its module's floor.

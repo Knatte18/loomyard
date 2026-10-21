@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
@@ -180,6 +181,134 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 	}
 	if _, err := os.Stat(configengine.ConfigFile(weftBase, "board")); !os.IsNotExist(err) {
 		t.Errorf("per-worktree board config materialized under %s; want it only at the board dir (stat err = %v)", weftBase, err)
+	}
+
+	// The board is seeded from nothing, so the clone marks it sparse in its own board commit, and the sparse hub files hold no template unit.
+	markerRel := filepath.ToSlash(configengine.BaseSparseMarkerRel())
+	if tracked := strings.TrimSpace(gitOutputCLI(t, boardDir, "ls-files", "--", markerRel)); tracked != markerRel {
+		t.Errorf("board tracks %q for the base-sparse marker; want %q", tracked, markerRel)
+	}
+	const cloneCommit = "fabric clone: record anchor + repo-wide config"
+	if added := strings.TrimSpace(gitOutputCLI(t, boardDir, "log", "--diff-filter=A", "--format=%s", "--", markerRel)); added != cloneCommit {
+		t.Errorf("commit adding the base-sparse marker = %q; want %q", added, cloneCommit)
+	}
+	boardRel, err := filepath.Rel(hubPath, boardDir)
+	if err != nil {
+		t.Fatalf("Rel(%s, %s): %v", hubPath, boardDir, err)
+	}
+	wantTarget := filepath.ToSlash(boardRel) + "/" + markerRel
+	markerRecorded := false
+	mutations, _ := result.Raw["mutations"].([]any)
+	for _, entry := range mutations {
+		fields, _ := entry.(map[string]any)
+		if fields["kind"] == string(fabricengine.KindFileWritten) && fields["target"] == wantTarget {
+			markerRecorded = true
+		}
+	}
+	if !markerRecorded {
+		t.Errorf("mutation record holds no file_written entry for %q\nentries: %v", wantTarget, mutations)
+	}
+	if fabricYAML, err := os.ReadFile(configengine.ConfigFile(boardDir, "fabric")); err != nil || string(fabricYAML) != configengine.SparseBaseHeader {
+		t.Errorf("board fabric.yaml = %q, %v; want the header alone %q", fabricYAML, err, configengine.SparseBaseHeader)
+	}
+
+	// A pre-commit hook rejecting the marker fails the board commit, and the clone then leaves no untracked marker for a later walk to mistake for a stripped board.
+	// The test sets the process environment to point git's hook path at the hook, so it does not run in parallel.
+	hooks := t.TempDir()
+	rejectMarker := "#!/bin/sh\nif git diff --cached --name-only | grep -qx '" + markerRel + "'; then\n  echo 'pre-commit hook rejected the base-sparse marker' >&2\n  exit 1\nfi\n"
+	if err := os.WriteFile(filepath.Join(hooks, "pre-commit"), []byte(rejectMarker), 0o755); err != nil {
+		t.Fatalf("write the pre-commit hook: %v", err)
+	}
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "core.hooksPath")
+	t.Setenv("GIT_CONFIG_VALUE_0", filepath.ToSlash(hooks))
+
+	rejectedFixtures := t.TempDir()
+	rejectedParent := t.TempDir()
+	var rejectedOut bytes.Buffer
+	rejectedCode := fabriccli.RunCLI(&rejectedOut, []string{
+		"clone", "--shortname", "tst", "--into", rejectedParent,
+		filepath.ToSlash(makeCLICloneWeftBare(t, rejectedFixtures, "rejected-weft")), filepath.ToSlash(makeCLICloneWarpBare(t, rejectedFixtures, "rejected-warp")),
+	})
+	if rejectedCode == 0 {
+		t.Fatalf("RunCLI(clone) with a hook rejecting the marker = 0; want non-zero\noutput: %s", rejectedOut.String())
+	}
+	envelope.RequireErr(t, rejectedOut.String(), "pre-commit")
+	rejectedHubs, err := filepath.Glob(filepath.Join(rejectedParent, "*"+fabricengine.HubSuffix))
+	if err != nil || len(rejectedHubs) != 1 {
+		t.Fatalf("hubs under %s = %v, %v; want exactly one", rejectedParent, rejectedHubs, err)
+	}
+	rejectedMarker := configengine.BaseSparseMarker(fabricengine.BoardDir(rejectedHubs[0]))
+	if _, err := os.Stat(rejectedMarker); !os.IsNotExist(err) {
+		t.Errorf("base-sparse marker stat err = %v after the rejected board commit; want the file absent", err)
+	}
+}
+
+// TestRunCLI_CloneOfAnUnmigratedWeftLeavesTheMarkerToTheWalk clones a weft whose board already holds a full base file and whose prime holds a full loom.yaml at a former template value, with no marker anywhere.
+// The clone writes no marker of its own, so the walk it runs strips both once and commits the board marker in its own board commit.
+func TestRunCLI_CloneOfAnUnmigratedWeftLeavesTheMarkerToTheWalk(t *testing.T) {
+	t.Parallel()
+
+	fixtures := t.TempDir()
+	warpBare := makeCLICloneWarpBare(t, fixtures, "unmigrated-warp")
+	weftBare := makeCLICloneWeftBare(t, fixtures, "unmigrated-weft")
+
+	seed := t.TempDir()
+	gitkit.MustRun(t, seed, "git", "init", "-b", "main")
+	gitkit.MustRun(t, seed, "git", "config", "user.email", "test@test.com")
+	gitkit.MustRun(t, seed, "git", "config", "user.name", "Test")
+	gitkit.MustRun(t, seed, "git", "remote", "add", "origin", filepath.ToSlash(weftBare))
+	formerLoom := strings.Replace(loomengine.ConfigTemplate(), "discussion_lenses: twill-discussion", `discussion_lenses: ""`, 1)
+	if formerLoom == loomengine.ConfigTemplate() {
+		t.Fatal("the loom template holds no discussion_lenses: twill-discussion line to take its former value")
+	}
+	gitkit.CommitFile(t, seed, lyxcwd.AnchorFileName, "backend\n", "record the anchor")
+	gitkit.CommitFile(t, seed, filepath.Join(lyxdirs.LyxDirName, "config", "fabric.yaml"), fabricengine.ConfigTemplate(), "full board fabric.yaml")
+	gitkit.CommitFile(t, seed, filepath.Join("backend", lyxdirs.LyxDirName, "config", "loom.yaml"), formerLoom, "full prime loom.yaml")
+	gitkit.MustRun(t, seed, "git", "push", "-u", "origin", "main")
+
+	var out bytes.Buffer
+	exitCode := fabriccli.RunCLI(&out, []string{
+		"clone", "--shortname", "tst", "--into", t.TempDir(),
+		filepath.ToSlash(weftBare), filepath.ToSlash(warpBare),
+	})
+	if exitCode != 0 {
+		t.Fatalf("RunCLI(clone) = %d; want 0\noutput: %s", exitCode, out.String())
+	}
+	hubPath, _ := envelope.RequireOK(t, out.String()).Raw["hub"].(string)
+
+	boardDir := fabricengine.BoardDir(hubPath)
+	markerRel := filepath.ToSlash(configengine.BaseSparseMarkerRel())
+	if tracked := strings.TrimSpace(gitOutputCLI(t, boardDir, "ls-files", "--", markerRel)); tracked != markerRel {
+		t.Errorf("board tracks %q for the base-sparse marker; want %q", tracked, markerRel)
+	}
+	const walkCommit = "lyx: reconcile hub-wide config for build"
+	if added := strings.TrimSpace(gitOutputCLI(t, boardDir, "log", "--diff-filter=A", "--format=%s", "--", markerRel)); !strings.HasPrefix(added, walkCommit) {
+		t.Errorf("commit adding the base-sparse marker = %q; want one starting %q", added, walkCommit)
+	}
+	if fabricYAML, err := os.ReadFile(configengine.ConfigFile(boardDir, "fabric")); err != nil || string(fabricYAML) != configengine.SparseBaseHeader {
+		t.Errorf("board fabric.yaml = %q, %v; want it stripped to the header %q", fabricYAML, err, configengine.SparseBaseHeader)
+	}
+
+	primeCwd := filepath.Join(hubPath, "unmigrated-warp", "backend")
+	// The strip leaves a full file that differs from the template in nothing else as an absent sparse file.
+	primeLoom, err := os.ReadFile(configengine.ConfigFile(primeCwd, "loom"))
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("read the prime's loom.yaml: %v", err)
+	}
+	if strings.Contains(string(primeLoom), "discussion_lenses") {
+		t.Errorf("prime loom.yaml still holds discussion_lenses after the walk; got %q", primeLoom)
+	}
+	primeLocation, err := lyxcwd.Resolve(primeCwd)
+	if err != nil {
+		t.Fatalf("lyxcwd.Resolve(%s): %v", primeCwd, err)
+	}
+	config, err := loomengine.LoadConfig(fabricengine.ConfigDirs(primeLocation), "loom")
+	if err != nil {
+		t.Fatalf("loomengine.LoadConfig over the prime: %v", err)
+	}
+	if config.DiscussionLenses != "twill-discussion" {
+		t.Errorf("DiscussionLenses = %q; want %q", config.DiscussionLenses, "twill-discussion")
 	}
 }
 

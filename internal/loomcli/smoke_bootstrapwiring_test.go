@@ -75,7 +75,7 @@ func TestSmokeStepBootstrapWiring(t *testing.T) {
 	// The first `step` is a genuine first seed.
 	// It dispatches Preflight, a pure-Go row, and nothing else.
 	t.Run("first seed clears friction notes", func(t *testing.T) {
-		stdout, _, err := runLoomCLINoFatal(exe, worktree, 60*time.Second, "loom", "step")
+		stdout, _, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, 60*time.Second, "loom", "step")
 		if err != nil {
 			t.Fatalf("first loom step: %v; output: %s", err, stdout)
 		}
@@ -123,7 +123,7 @@ func TestSmokeStepBootstrapWiring(t *testing.T) {
 	// A resume's notes are the ones most worth reading, so this branch must leave them exactly where they are.
 	t.Run("re-entry keeps friction notes", func(t *testing.T) {
 		resumePath := plantFrictionNote(t, loc, "written-during-this-task.md")
-		stdout, _, err := runLoomCLINoFatal(exe, worktree, 60*time.Second, "loom", "step")
+		stdout, _, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, 60*time.Second, "loom", "step")
 		if err != nil {
 			t.Fatalf("second loom step: %v; output: %s", err, stdout)
 		}
@@ -147,7 +147,7 @@ func TestSmokeStepBootstrapWiring(t *testing.T) {
 			t.Fatalf("WriteSeed(wrong-parent seed): %v", err)
 		}
 
-		stdout, exit, err := runLoomCLINoFatal(exe, worktree, 60*time.Second, "loom", "step")
+		stdout, exit, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, 60*time.Second, "loom", "step")
 		if err != nil || exit != 1 {
 			t.Fatalf("loom step over a wrong-parent seed = exit %d, err %v; want exit 1; output: %s", exit, err, stdout)
 		}
@@ -159,7 +159,7 @@ func TestSmokeStepBootstrapWiring(t *testing.T) {
 		if err != nil || exit != 0 {
 			t.Fatalf("lyx shed seed after the rm = exit %d, err %v; output: %s", exit, err, stdout)
 		}
-		stdout, exit, err = runLoomCLINoFatal(exe, worktree, 60*time.Second, "loom", "step")
+		stdout, exit, err = runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, 60*time.Second, "loom", "step")
 		if err != nil || exit != 0 {
 			t.Fatalf("loom step after the re-seed = exit %d, err %v; want it to dispatch Preflight; output: %s", exit, err, stdout)
 		}

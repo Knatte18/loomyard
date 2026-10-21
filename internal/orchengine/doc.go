@@ -157,7 +157,7 @@
 //
 // A context reading that cannot be taken is unknown and never triggers a cycle by itself.
 // A fresh launch or adopt resets the reading to unknown until the new session's first turn end.
-// The template hard cap is 400000 tokens, sized for a session with a context window of about one million tokens, and the template soft threshold is 300000.
+// The template hard cap is 200000 tokens, and the template soft threshold is 150000.
 //
 // # The four-phase cycle (clear mode)
 //

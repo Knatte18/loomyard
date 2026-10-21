@@ -54,6 +54,7 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 
 	// No warning is raised for a template-seeded module: no vocabulary can predate a fresh clone.
 	// The whole-repo commit below carries every file this call wrote.
+	boardSeededFromNothing := !anyBaseFilePresent(res.BoardDir)
 	hubWideResults, err := configsync.ReconcileHubWideAt(res.BoardDir, res.WeftBase, configsync.HubWideOptions{Apply: true})
 	if err != nil {
 		return fabricengine.CloneResult{}, err
@@ -63,10 +64,23 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 			rec.Append(fabricengine.KindFileWritten, configengine.ConfigFile(res.BoardDir, hubWideResult.Module), "")
 		}
 	}
+	// A board seeded from nothing holds only sparse files, so it is marked here and the board commit below carries the marker.
+	// A board that already held a base file is left unmarked: the walk at the end strips it once and commits the marker itself.
+	markerPath := configengine.BaseSparseMarker(res.BoardDir)
+	if boardSeededFromNothing {
+		if err := configsync.WriteBaseSparseMarker(res.BoardDir); err != nil {
+			return fabricengine.CloneResult{}, err
+		}
+		rec.Append(fabricengine.KindFileWritten, markerPath, "")
+	}
 
 	b := fabricengine.NewBolt(res.BoardDir)
 	sha, committed, err := b.Commit("fabric clone: record anchor + repo-wide config", fabricengine.SyncOptions{})
 	if err != nil {
+		// An untracked marker would make the next start verb's walk see a marked board and skip its one-time strip.
+		if boardSeededFromNothing {
+			_ = os.Remove(markerPath)
+		}
 		return fabricengine.CloneResult{}, err
 	}
 	if committed {
@@ -122,7 +136,7 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 		return fabricengine.CloneResult{}, err
 	}
 
-	// A new hub has no build stamp, so the walk seeds every absent per-worktree repo default from the prime or the template, commits them on the board and pushes it.
+	// A new hub has no build stamp, so the walk seeds every absent per-worktree repo default sparse, the header-only base from the template and the prime's non-template units from the prime, commits them on the board and pushes it.
 	// A walk failure leaves the clone intact, and the next start verb's walk seeds the defaults.
 	// The same walk migrates the prime, so it arrives with the sparse marker committed.
 	absentDefaults := absentRepoDefaults(res.BoardDir)
@@ -146,6 +160,16 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// anyBaseFilePresent reports whether any registered module's base file exists under boardDir.
+func anyBaseFilePresent(boardDir string) bool {
+	for _, module := range configreg.Modules() {
+		if fileExists(configengine.ConfigFile(boardDir, module.Name)) {
+			return true
+		}
+	}
+	return false
 }
 
 // absentRepoDefaults returns the per-worktree modules whose repo default is absent under boardDir.

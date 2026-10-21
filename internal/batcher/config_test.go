@@ -137,7 +137,7 @@ func TestActive(t *testing.T) {
 		{
 			name: "nonPositiveBudgetErrors",
 			seed: func(t *testing.T, baseDir string) {
-				seedConfig(t, baseDir, "batcher", strings.Replace(template, "budget: 450000", "budget: 0", 1))
+				seedConfig(t, baseDir, "batcher", strings.Replace(template, "budget: 200000", "budget: 0", 1))
 			},
 			wantErrWith: []string{"batcher.yaml", "cautious", "budget"},
 		},

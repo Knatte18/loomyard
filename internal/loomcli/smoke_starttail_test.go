@@ -68,7 +68,7 @@ func TestSmokeStart_NeverAttachesAndAddsNoOperatorStrand(t *testing.T) {
 
 	startOK := func(label string, args ...string) {
 		t.Helper()
-		stdout, exit, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, append([]string{"loom", "start"}, args...)...)
+		stdout, exit, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, 30*time.Second, append([]string{"loom", "start"}, args...)...)
 		if err != nil {
 			t.Fatalf("%s: %v; output: %s", label, err, stdout)
 		}
@@ -110,7 +110,7 @@ func TestSmokeWatchdog_NoAttachStillSpawnsTheDaemon(t *testing.T) {
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
 
-	stdout, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "start", "--no-attach")
+	stdout, _, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, 30*time.Second, "loom", "start", "--no-attach")
 	if err != nil {
 		t.Fatalf("loom start --no-attach: %v; output: %s", err, stdout)
 	}

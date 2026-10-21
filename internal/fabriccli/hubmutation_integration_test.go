@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
@@ -237,6 +238,43 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 				}) {
 					return
 				}
+			}
+
+			// Only the walk of a start verb strips a base file, so a reconcile over a board holding the template whole and no marker keeps its units and writes no marker.
+			boardPath := configengine.ConfigFile(h.BoardDir(), "board")
+			markerPath := configengine.BaseSparseMarker(h.BoardDir())
+			sparseBoard, err := os.ReadFile(boardPath)
+			if err != nil {
+				t.Fatalf("read %s: %v", boardPath, err)
+			}
+			sparseMarker, err := os.ReadFile(markerPath)
+			if err != nil {
+				t.Fatalf("read %s: %v", markerPath, err)
+			}
+			boardTemplate, ok := configreg.Template("board")
+			if !ok {
+				t.Fatal("configreg has no board template")
+			}
+			if err := os.WriteFile(boardPath, []byte(boardTemplate()), 0o644); err != nil {
+				t.Fatalf("write the full board.yaml: %v", err)
+			}
+			if err := os.Remove(markerPath); err != nil {
+				t.Fatalf("remove the base-sparse marker: %v", err)
+			}
+			if code, output := runFabric(t, h.PrimeWorktree(), "reconcile"); code != 0 {
+				t.Fatalf("RunCLI(reconcile) over a full board.yaml = %d; want 0\noutput: %s", code, output)
+			}
+			if kept, err := os.ReadFile(boardPath); err != nil || string(kept) != boardTemplate() {
+				t.Errorf("board.yaml = %q, %v after reconcile; want the template whole, unstripped", kept, err)
+			}
+			if _, err := os.Stat(markerPath); !os.IsNotExist(err) {
+				t.Errorf("base-sparse marker stat err = %v after reconcile; want it absent", err)
+			}
+			if err := os.WriteFile(boardPath, sparseBoard, 0o644); err != nil {
+				t.Fatalf("restore the sparse board.yaml: %v", err)
+			}
+			if err := os.WriteFile(markerPath, sparseMarker, 0o644); err != nil {
+				t.Fatalf("restore the base-sparse marker: %v", err)
 			}
 		}},
 		{"ReconcileDoesNotFailOnAPairThatVanishedMidWalk", func(t *testing.T) {

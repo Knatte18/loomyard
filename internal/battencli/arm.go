@@ -302,9 +302,7 @@ func (c *battenCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec,
 	// run reconciles the hub's config after a binary change before the run is seeded and before the Worktree-Create row forks the pair from the prime.
 	if verb == "run" {
 		if geometry, inHub := hubgeom.ReconcileGeometry(location); inHub {
-			if err := hubreconcile.Ensure(geometry, hubreconcile.Options{}); err != nil {
-				return shedverbs.Spec{}, err
-			}
+			hubreconcile.EnsureOrWarn(geometry, hubreconcile.Options{})
 		}
 	}
 

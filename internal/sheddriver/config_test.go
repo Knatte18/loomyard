@@ -34,7 +34,7 @@ func intPointer(value int) *int {
 // TestLoadConfig verifies LoadConfig reads the template defaults when no layer holds shed.yaml, reads a base value and a local override, and refuses an invalid value naming the module.
 func TestLoadConfig(t *testing.T) {
 	t.Parallel()
-	templateDefaults := Config{DriverKind: "llm", Tackler: "haiku", TacklerTimeoutMin: 10, TacklerMaxSpawns: 4}
+	templateDefaults := Config{DriverKind: "go", Tackler: "haiku", TacklerTimeoutMin: 10, TacklerMaxSpawns: 4}
 
 	tests := []struct {
 		name    string
@@ -46,13 +46,13 @@ func TestLoadConfig(t *testing.T) {
 		{name: "no layer reads the template defaults", want: templateDefaults},
 		{
 			name: "a base value is read",
-			base: "driver_kind: go\ntackler: sonnet[low]\ntackler_timeout_min: 7\ntackler_max_spawns: 0\n",
-			want: Config{DriverKind: "go", Tackler: "sonnet[low]", TacklerTimeoutMin: 7, TacklerMaxSpawns: 0},
+			base: "driver_kind: llm\ntackler: sonnet[low]\ntackler_timeout_min: 7\ntackler_max_spawns: 0\n",
+			want: Config{DriverKind: "llm", Tackler: "sonnet[low]", TacklerTimeoutMin: 7, TacklerMaxSpawns: 0},
 		},
 		{
 			name:  "a local override wins over the template",
 			local: "tackler_max_spawns: 1\n",
-			want:  Config{DriverKind: "llm", Tackler: "haiku", TacklerTimeoutMin: 10, TacklerMaxSpawns: 1},
+			want:  Config{DriverKind: "go", Tackler: "haiku", TacklerTimeoutMin: 10, TacklerMaxSpawns: 1},
 		},
 		{name: "an invalid value is refused", base: "driver_kind: fast\n", wantErr: "shed config key"},
 	}

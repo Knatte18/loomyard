@@ -133,17 +133,27 @@ var ErrTimeout = errors.New("lyxbin: the command outlived its timeout")
 // Any exit of the command answers a nil error; the error is otherwise the start failure.
 // It calls no testing.TB method, so a concurrent caller can use it.
 func Run(bin, dir string, timeout time.Duration, args ...string) (output string, exitCode int, err error) {
+	return RunWithEnv(bin, dir, nil, timeout, args...)
+}
+
+// RunWithEnv is Run with extraEnv appended to the inherited environment of the child alone,
+// so a parallel test can set a variable for one invocation without t.Setenv.
+func RunWithEnv(bin, dir string, extraEnv []string, timeout time.Duration, args ...string) (output string, exitCode int, err error) {
 	ctx, cancel := context.WithTimeoutCause(context.Background(), timeout, fmt.Errorf("%w after %s", ErrTimeout, timeout))
 	defer cancel()
-	return runUntilDone(ctx, bin, dir, args...)
+	return runUntilDone(ctx, bin, dir, extraEnv, args...)
 }
 
 // runUntilDone runs bin with args in dir, in its own process group, until it exits or ctx ends, and returns its combined output and exit code.
+// extraEnv, when non-nil, is appended to the inherited environment.
 // A ctx whose cause wraps ErrTimeout kills the whole group and answers exit code -1 with that cause, so the caller decides when the timeout starts.
 // Any exit of the command answers a nil error; the error is otherwise the start failure.
-func runUntilDone(ctx context.Context, bin, dir string, args ...string) (output string, exitCode int, err error) {
+func runUntilDone(ctx context.Context, bin, dir string, extraEnv []string, args ...string) (output string, exitCode int, err error) {
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = dir
+	if extraEnv != nil {
+		cmd.Env = append(os.Environ(), extraEnv...)
+	}
 	proc.ConfigureGroupKill(cmd, func(int, error) {})
 	out, runErr := cmd.CombinedOutput()
 	if cause := context.Cause(ctx); errors.Is(cause, ErrTimeout) {

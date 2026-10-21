@@ -685,7 +685,7 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 
 	// Reconcile is the repair verb, so a missing hub-wide config is healed here rather than reported:
 	// without this, the "run \"lyx fabric reconcile\"" remedy of a strict config loader was circular when reconcile itself emitted it.
-	// ReconcileHubWideAt only adds absent keys and never rewrites a recorded pathspec.
+	// ReconcileHubWideAt seeds absent hub files sparse, prunes keys the template lacks and never rewrites a recorded pathspec; it strips no present base file.
 	// A PrimeName failure means no prime is resolvable, not an error: the seed falls back to the template.
 	boardDir := fabricengine.BoardDir(l.HubPath)
 	primeBaseDir := ""

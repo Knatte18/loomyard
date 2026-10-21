@@ -26,9 +26,12 @@ type moveFile struct {
 	exists bool
 	// virtual marks a source read from the prime's copy: the move never writes it.
 	virtual bool
-	// fromTemplate marks a created base file started from the module template, whose values carry no operator intent.
+	// fromTemplate marks a created standalone base file started from the module template, whose values carry no operator intent.
 	fromTemplate bool
-	changed      bool
+	// keepHeader marks a registered module's file of a hub's base layer: a move that leaves it with no unit saves it as the header-only base.
+	// A retired module's file is deleted instead.
+	keepHeader bool
+	changed    bool
 	// gained marks a target that received a value, so the move writes it before the sources.
 	gained bool
 	// moved, keptTarget and overwritten are the report lines the file's Result carries.
@@ -36,17 +39,29 @@ type moveFile struct {
 }
 
 // moveKeys applies configreg.KeyMoves to the layer's files under dir and returns one Result per file it changes or would change.
-// dir is the board dir or the anchor, and base marks the full base layer of its stack.
-// seedDir is set only at a board pass that seeds from the prime: an absent source is then the prime's copy, never written,
-// and an absent target starts from the prime's copy of the target when that parses.
+// dir is the board dir or the anchor, and base marks a base layer of its stack.
+// seedDir is set only at a board pass that seeds from the prime: an absent source is then the prime's copy, never written.
 // A value moves unexpanded, with its line comment replaced by the target template's.
 // At a base layer a target value other than its template default is kept and the source key dropped, and a default is overwritten;
 // at a sparse layer any target value is kept.
 // A move marked KeepTarget keeps any target value at either layer, the template default included, unless the target was started from the template in this pass,
 // and its kept-target line names the dropped and kept keys without their mappings.
 // A source file the move empties is deleted.
+//
+// The default layer is a hub's sparse base, so a move into or out of it writes it sparse:
+// an absent target starts as the sparse seed of the prime's copy of the target when seedDir is set and that copy parses, else empty, and never from the template;
+// a target value equal to the template default is overwritten only while the board's base-sparse marker is absent, and is a pin once it exists;
+// a registered module's file the move leaves with no unit, target or source, is saved as the header-only base.
+// Only a standalone worktree base, which stays full, starts an absent target from the template.
 // A file that cannot be read or parsed fails the move with a *FileError before anything is written.
 func moveKeys(dir, seedDir string, layer configengine.Layer, base, apply bool) ([]Result, error) {
+	sparseBase := layer == configengine.LayerDefault
+	overwriteDefaults := base
+	if sparseBase {
+		if _, err := os.Stat(configengine.BaseSparseMarker(dir)); err == nil {
+			overwriteDefaults = false
+		}
+	}
 	pathOf := func(module string) string {
 		if layer == configengine.LayerLocal {
 			return configengine.LocalFile(dir, module)
@@ -60,13 +75,14 @@ func moveKeys(dir, seedDir string, layer configengine.Layer, base, apply bool) (
 		if file, loaded := files[module]; loaded {
 			return file, nil
 		}
-		file := &moveFile{module: module, path: pathOf(module)}
+		_, registered := configreg.Lookup(module)
+		file := &moveFile{module: module, path: pathOf(module), keepHeader: sparseBase && registered}
 		files[module] = file
 		data, err := os.ReadFile(file.path)
 		switch {
 		case err == nil:
 			file.exists = true
-		case os.IsNotExist(err) && seedDir != "" && layer == configengine.LayerDefault:
+		case os.IsNotExist(err) && seedDir != "" && sparseBase:
 			if data = primeConfig(seedDir, module); data != nil {
 				file.virtual = true
 			}
@@ -85,7 +101,7 @@ func moveKeys(dir, seedDir string, layer configengine.Layer, base, apply bool) (
 		if file, loaded := files[module]; loaded {
 			return file, nil
 		}
-		file := &moveFile{module: module, path: pathOf(module)}
+		file := &moveFile{module: module, path: pathOf(module), keepHeader: sparseBase}
 		files[module] = file
 		data, err := os.ReadFile(file.path)
 		switch {
@@ -93,14 +109,19 @@ func moveKeys(dir, seedDir string, layer configengine.Layer, base, apply bool) (
 			file.exists = true
 		case os.IsNotExist(err):
 			data = nil
-			if seedDir != "" && layer == configengine.LayerDefault {
-				data = primeConfig(seedDir, module)
+			registered, ok := configreg.Lookup(module)
+			if !ok {
+				return nil, &FileError{Module: module, Path: file.path, Err: fmt.Errorf("key move target module %q is not registered", module)}
 			}
-			if data == nil && base {
-				registered, ok := configreg.Lookup(module)
-				if !ok {
-					return nil, &FileError{Module: module, Path: file.path, Err: fmt.Errorf("key move target module %q is not registered", module)}
+			switch {
+			case sparseBase:
+				if prime := primeConfig(seedDir, module); prime != nil {
+					_, markerErr := os.Stat(configengine.SparseMarker(seedDir))
+					if data, err = sparseSeed(registered, prime, os.IsNotExist(markerErr)); err != nil {
+						return nil, &FileError{Module: module, Path: file.path, Err: fmt.Errorf("seed %s from the prime: %w", module, err)}
+					}
 				}
+			case base:
 				data = []byte(registered.Template())
 				file.fromTemplate = true
 			}
@@ -126,7 +147,7 @@ func moveKeys(dir, seedDir string, layer configengine.Layer, base, apply bool) (
 		if err != nil {
 			return nil, err
 		}
-		if err := target.takeKey(source, at, move, base); err != nil {
+		if err := target.takeKey(source, at, move, overwriteDefaults); err != nil {
 			return nil, err
 		}
 	}
@@ -181,7 +202,14 @@ func (file *moveFile) parse(data []byte) error {
 	if err := yaml.Unmarshal(data, file.doc); err != nil {
 		return &FileError{Module: file.module, Path: file.path, Err: fmt.Errorf("parse: %w", err)}
 	}
-	if len(file.doc.Content) == 0 || file.doc.Content[0].Kind != yaml.MappingNode {
+	if len(file.doc.Content) == 0 {
+		// A comment-only file, such as the header-only base, holds no unit.
+		file.root = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+		file.doc.Kind = yaml.DocumentNode
+		file.doc.Content = []*yaml.Node{file.root}
+		return nil
+	}
+	if file.doc.Content[0].Kind != yaml.MappingNode {
 		return &FileError{Module: file.module, Path: file.path, Err: fmt.Errorf("parse: the top level is not a mapping")}
 	}
 	file.root = file.doc.Content[0]
@@ -191,7 +219,8 @@ func (file *moveFile) parse(data []byte) error {
 // takeKey moves the source mapping's entry at index at into this target file under the move's target key, and records the report lines.
 // The source entry is removed from its mapping in every case.
 // A target started from the template, or one lacking the key, takes the source's mapping whole; a move never merges per name.
-func (target *moveFile) takeKey(source *moveFile, at int, move configreg.KeyMove, base bool) error {
+// With overwriteDefaults a target value equal to the template default is replaced by the moved value; without it that value is a pin and is kept.
+func (target *moveFile) takeKey(source *moveFile, at int, move configreg.KeyMove, overwriteDefaults bool) error {
 	value := source.root.Content[at+1]
 	sourceName := move.FromModule + "." + move.FromKey
 	targetName := move.ToModule + "." + move.ToKey
@@ -211,7 +240,7 @@ func (target *moveFile) takeKey(source *moveFile, at int, move configreg.KeyMove
 			reportOn.keptTarget = append(reportOn.keptTarget, fmt.Sprintf("%s dropped, %s kept", sourceName, targetName))
 			return nil
 		}
-		if !base {
+		if !overwriteDefaults {
 			reportOn.keptTarget = append(reportOn.keptTarget, fmt.Sprintf("%s: %s dropped, %s: %s kept", sourceName, nodeText(value), targetName, nodeText(current)))
 			return nil
 		}
@@ -244,17 +273,23 @@ func (target *moveFile) takeKey(source *moveFile, at int, move configreg.KeyMove
 	return nil
 }
 
-// write saves the file, or deletes it when the move left it with no keys.
+// write saves the file, or deletes it when the move left it with no keys;
+// a hub base file with no keys is saved as the header-only base instead.
 func (file *moveFile) write() error {
-	if len(file.root.Content) == 0 {
+	var data []byte
+	switch {
+	case len(file.root.Content) > 0:
+		var err error
+		if data, err = yaml.Marshal(file.doc); err != nil {
+			return &FileError{Module: file.module, Path: file.path, Err: fmt.Errorf("encode config for %s: %w", file.module, err)}
+		}
+	case file.keepHeader:
+		data = []byte(configengine.SparseBaseHeader)
+	default:
 		if err := os.Remove(file.path); err != nil && !os.IsNotExist(err) {
 			return &FileError{Module: file.module, Path: file.path, Err: fmt.Errorf("remove emptied config for %s: %w", file.module, err)}
 		}
 		return nil
-	}
-	data, err := yaml.Marshal(file.doc)
-	if err != nil {
-		return &FileError{Module: file.module, Path: file.path, Err: fmt.Errorf("encode config for %s: %w", file.module, err)}
 	}
 	if err := os.MkdirAll(filepath.Dir(file.path), 0o755); err != nil {
 		return &FileError{Module: file.module, Path: file.path, Err: fmt.Errorf("mkdir config dir for %s: %w", file.module, err)}

@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"runtime"
 	"strings"
 	"sync"
@@ -22,11 +21,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/lyxtemp"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
-	"gopkg.in/yaml.v3"
 )
 
 func TestBuildBareTemplate(t *testing.T) {
@@ -110,32 +109,33 @@ func TestNewHub(t *testing.T) {
 					}
 				}},
 				{"ConfigMaterializedWithoutSeeding", func(t *testing.T) {
-					// A freshly built hub already carries a committed repo default on its board for at least one per-worktree module without any seeding call.
+					// A freshly built hub already carries a committed base file on its board for every non-seed-only module without any seeding call, and a fresh hub's base holds no tuned unit.
 					// This is what licenses deleting a SeedConfig call rather than retargeting it, so it is not optional colour.
-					const module = "loom"
-					template, ok := configreg.Template(module)
-					if !ok {
-						t.Fatalf("configreg.Template(%q): module not registered", module)
+					for _, m := range configreg.Modules() {
+						if m.SeedOnly {
+							continue
+						}
+						configPath := configengine.ConfigFile(h.BoardDir(), m.Name)
+						got, err := os.ReadFile(configPath)
+						if err != nil {
+							t.Fatalf("read %s: %v", configPath, err)
+						}
+						if string(got) != configengine.SparseBaseHeader {
+							t.Errorf("%s = %q; want only the sparse base header", configPath, got)
+						}
 					}
 
-					configPath := configengine.ConfigFile(h.BoardDir(), module)
-					got, err := os.ReadFile(configPath)
+					markerRel := filepath.ToSlash(configengine.BaseSparseMarkerRel())
+					if tracked := gitkit.LsFiles(t, h.BoardDir(), "--", markerRel); len(tracked) != 1 || tracked[0] != markerRel {
+						t.Errorf("git ls-files of the base-sparse marker in the board = %v; want [%s]", tracked, markerRel)
+					}
+
+					cfg, err := loomengine.LoadConfig(configengine.Dirs{Anchor: h.WeftBase, Board: h.BoardDir()}, "loom")
 					if err != nil {
-						t.Fatalf("read %s: %v", configPath, err)
+						t.Fatalf("loomengine.LoadConfig over the prime: %v", err)
 					}
-					if len(got) == 0 {
-						t.Fatalf("%s: want non-empty content, got none", configPath)
-					}
-
-					var gotDoc, wantDoc any
-					if err := yaml.Unmarshal(got, &gotDoc); err != nil {
-						t.Fatalf("parse %s: %v", configPath, err)
-					}
-					if err := yaml.Unmarshal([]byte(template()), &wantDoc); err != nil {
-						t.Fatalf("parse %s's registered template: %v", module, err)
-					}
-					if !reflect.DeepEqual(wantDoc, gotDoc) {
-						t.Errorf("%s content = %#v; want it to match the registered %s template %#v", configPath, gotDoc, module, wantDoc)
+					if cfg.DiscussionLenses != "twill-discussion" {
+						t.Errorf("DiscussionLenses = %q; want the template's twill-discussion", cfg.DiscussionLenses)
 					}
 				}},
 				{"SeedConfigRedundantSeedDoesNotFatal", func(t *testing.T) {

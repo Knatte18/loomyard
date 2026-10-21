@@ -190,7 +190,7 @@ func TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps(t *testing.T) {
 	eng := probeReedEngine(t, loc)
 
 	// (1) a first bootstrap leaves exactly one strand under the driver name, live.
-	firstOut, firstExit, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "start", "--no-attach")
+	firstOut, firstExit, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, 30*time.Second, "loom", "start", "--no-attach")
 	if err != nil {
 		t.Fatalf("first loom start: %v; output: %s", err, firstOut)
 	}
@@ -212,7 +212,7 @@ func TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps(t *testing.T) {
 	// strand and must not touch the live pane the first bootstrap already spawned.
 	// Follow is off first: a start entering a run whose driver is live is the path a parked run's resume through start takes, and it re-arms follow.
 	setFollow(t, eng, "off")
-	secondOut, secondExit, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "start", "--no-attach")
+	secondOut, secondExit, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, 30*time.Second, "loom", "start", "--no-attach")
 	if err != nil {
 		t.Fatalf("second loom start: %v; output: %s", err, secondOut)
 	}
@@ -252,7 +252,7 @@ func TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps(t *testing.T) {
 	// driverReportPath's own random suffix exists for, since two attempts composing a report path in
 	// the same clock second would otherwise collide and Spec.validate would refuse the second one
 	// outright.
-	thirdOut, thirdExit, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "start", "--no-attach")
+	thirdOut, thirdExit, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, 30*time.Second, "loom", "start", "--no-attach")
 	if err != nil {
 		t.Fatalf("third loom start: %v; output: %s", err, thirdOut)
 	}

@@ -248,9 +248,10 @@ func TestPrepare_ThreadsSpecIntoLaunchCmds(t *testing.T) {
 		{name: "permission_autonomous_empty", spec: shuttleengine.Spec{PermissionMode: "", Interactive: false}, claude: templateConfig(t), onBothLines: flagExpectation{present: []string{skipPermissions}}},
 		{name: "permission_autonomous_bypass", spec: shuttleengine.Spec{PermissionMode: "bypass", Interactive: false}, claude: templateConfig(t), onBothLines: flagExpectation{present: []string{skipPermissions}}},
 		{name: "permission_interactive_prompt", spec: shuttleengine.Spec{PermissionMode: "prompt", Interactive: true}, claude: templateConfig(t), onBothLines: flagExpectation{absent: []string{skipPermissions}}},
-		{name: "ttl_driver_gets_one_hour", spec: shuttleengine.Spec{Role: "driver"}, claude: templateConfig(t), onBothLines: flagExpectation{present: []string{promptCacheTTLAssignment("1h")}}},
+		{name: "ttl_driver_gets_five_minutes", spec: shuttleengine.Spec{Role: "driver"}, claude: templateConfig(t), onBothLines: flagExpectation{present: []string{promptCacheTTLAssignment("5m")}}},
+		{name: "ttl_orch_gets_one_hour", spec: shuttleengine.Spec{Role: "orch"}, claude: templateConfig(t), onBothLines: flagExpectation{present: []string{promptCacheTTLAssignment("1h")}}},
 		{name: "ttl_webster_gets_one_hour", spec: shuttleengine.Spec{Role: "webster"}, claude: templateConfig(t), onBothLines: flagExpectation{present: []string{promptCacheTTLAssignment("1h")}}},
-		{name: "ttl_unmapped_role_gets_default", spec: shuttleengine.Spec{Role: "orch"}, claude: templateConfig(t), onBothLines: flagExpectation{present: []string{promptCacheTTLAssignment("5m")}}},
+		{name: "ttl_unmapped_role_gets_default", spec: shuttleengine.Spec{Role: "implementer"}, claude: templateConfig(t), onBothLines: flagExpectation{present: []string{promptCacheTTLAssignment("5m")}}},
 		{name: "ttl_empty_role_gets_default", spec: shuttleengine.Spec{}, claude: templateConfig(t), onBothLines: flagExpectation{present: []string{promptCacheTTLAssignment("5m")}}},
 		{name: "ttl_empty_role_ignores_empty_map_key", spec: shuttleengine.Spec{}, claude: ttlConfig(t, "", map[string]string{"": "1h"}), onBothLines: flagExpectation{present: []string{promptCacheTTLAssignment("5m")}}},
 		{name: "ttl_map_entry_overrides_default", spec: shuttleengine.Spec{Role: "orch"}, claude: ttlConfig(t, "", map[string]string{"orch": "1h"}), onBothLines: flagExpectation{present: []string{promptCacheTTLAssignment("1h")}}},
@@ -416,7 +417,7 @@ func TestPrepare_LogsResolvedPromptCacheTTL(t *testing.T) {
 	}
 
 	got := logs.String()
-	for _, want := range []string{"role=driver", "ttl=1h"} {
+	for _, want := range []string{"role=driver", "ttl=5m"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("captured log = %q; want it to contain %q", got, want)
 		}

@@ -148,8 +148,10 @@ func TestLoad_LayerStack(t *testing.T) {
 		// hubWide marks the spec hub-wide; machine also gives it a machine key, port.
 		hubWide bool
 		machine bool
-		files   map[configengine.Layer]string
-		staging string
+		// seedOnly marks the spec seed-only, so a hub base stays full and logs its fill.
+		seedOnly bool
+		files    map[configengine.Layer]string
+		staging  string
 		// anchorEnv and boardEnv are the .env files of the anchor and the board dir.
 		anchorEnv, boardEnv string
 		// strictErr is the text the strict loader's error holds, when it refuses; the degrading loader still resolves.
@@ -254,10 +256,28 @@ func TestLoad_LayerStack(t *testing.T) {
 			want:    map[string]string{"nested": "map[deep:3]"},
 		},
 		{
-			name:     "template fills every depth the layers lack",
+			name:  "template fills every depth the layers lack and a hub's sparse base logs nothing",
+			files: map[configengine.Layer]string{configengine.LayerDefault: "name: d\n"},
+			want:  map[string]string{"name": "d", "port": "80", "nested": "map[deep:1]", "list": "[a b]", "labels": "map[bug:a bug]", "run": "echo"},
+		},
+		{
+			name:     "a seed-only hub base keeps its fill line",
+			seedOnly: true,
 			files:    map[configengine.Layer]string{configengine.LayerDefault: "name: d\n"},
 			wantFill: "labels,list,nested,port,run",
 			want:     map[string]string{"name": "d", "port": "80", "nested": "map[deep:1]", "list": "[a b]", "labels": "map[bug:a bug]", "run": "echo"},
+		},
+		{
+			name:     "a standalone worktree base keeps its fill line",
+			geo:      geometryStandalone,
+			files:    map[configengine.Layer]string{configengine.LayerWorktree: "name: d\n"},
+			wantFill: "labels,list,nested,port,run",
+			want:     map[string]string{"name": "d", "port": "80", "nested": "map[deep:1]", "list": "[a b]", "labels": "map[bug:a bug]", "run": "echo"},
+		},
+		{
+			name:  "a header-only hub base is a present base under both loaders and every value comes from the template",
+			files: map[configengine.Layer]string{configengine.LayerDefault: configengine.SparseBaseHeader},
+			want:  map[string]string{"name": "tpl", "port": "80", "nested": "map[deep:1]", "list": "[a b]", "labels": "map[bug:a bug]", "run": "echo"},
 		},
 		{
 			name: "highest layer wins key by key and an inherited key logs nothing",
@@ -333,6 +353,7 @@ func TestLoad_LayerStack(t *testing.T) {
 		},
 		{
 			name:     "template fill is logged with the layer template",
+			seedOnly: true,
 			files:    map[configengine.Layer]string{configengine.LayerDefault: "name: d\nport: 1\n"},
 			wantFill: "labels,list,nested,run",
 			want:     map[string]string{"name": "d", "port": "1", "run": "echo"},
@@ -373,6 +394,7 @@ func TestLoad_LayerStack(t *testing.T) {
 				spec = machineSpec()
 			}
 			spec.HubWide = tc.hubWide || tc.machine
+			spec.SeedOnly = tc.seedOnly
 			spec.RetiredKeys = tc.retired
 			spec.PerNameMaps = tc.perNameMaps
 			if len(tc.perNameMaps) > 0 {

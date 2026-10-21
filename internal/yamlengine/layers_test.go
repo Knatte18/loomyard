@@ -1,4 +1,4 @@
-// layers_test.go contains table-driven tests for the layer operations: Merge, Strip, SetSparse, Prune, LeafPaths and AnnotateLeaves.
+// layers_test.go contains table-driven tests for the layer operations: Merge, Strip, SetSparse, Prune, DropTemplateEqualNames, LeafPaths and AnnotateLeaves.
 
 package yamlengine
 
@@ -213,6 +213,40 @@ func TestPrune(t *testing.T) {
 			}
 			if !slices.Equal(kept, tc.wantKept) {
 				t.Errorf("kept = %v, want %v", kept, tc.wantKept)
+			}
+		})
+	}
+}
+
+// TestDropTemplateEqualNames pins that only a per-name entry equal to the template's is removed and reported: the same value in another quoting style counts as equal, a differing name and a name only the file holds stay, an emptied map stays as an empty mapping, and a file with nothing to drop comes back byte for byte.
+func TestDropTemplateEqualNames(t *testing.T) {
+	t.Parallel()
+	const template = "name: tmpl\nnames:\n    a: default a\n    b: default b\n"
+	tests := []struct {
+		name        string
+		existing    string
+		want        string
+		wantDropped []string
+	}{
+		{name: "template-equal name dropped and reported", existing: "names:\n    a: default a\n    z: mine\n", want: "names:\n    z: mine\n", wantDropped: []string{"names.a"}},
+		{name: "same value in another quoting style dropped", existing: "names:\n    a: \"default a\"\n    z: mine\n", want: "names:\n    z: mine\n", wantDropped: []string{"names.a"}},
+		{name: "differing name kept", existing: "names:\n    a: tuned a\n    b: default b\n", want: "names:\n    a: tuned a\n", wantDropped: []string{"names.b"}},
+		{name: "name only the file holds kept", existing: "other: 1\nnames:\n    z: mine\n", want: "other: 1\nnames:\n    z: mine\n", wantDropped: []string{}},
+		{name: "emptied map stays as an empty mapping", existing: "other: 1\nnames:\n    b: default b\n    a: default a\n", want: "other: 1\nnames: {}\n", wantDropped: []string{"names.a", "names.b"}},
+		{name: "nothing to drop returns the file byte for byte", existing: "# head\nother:   1\nnames:\n    a: tuned   # note\n", want: "# head\nother:   1\nnames:\n    a: tuned   # note\n", wantDropped: []string{}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, dropped, err := DropTemplateEqualNames([]byte(template), []byte(tc.existing), []string{"names"})
+			if err != nil {
+				t.Fatalf("DropTemplateEqualNames: %v", err)
+			}
+			if string(got) != tc.want {
+				t.Errorf("DropTemplateEqualNames = %q, want %q", got, tc.want)
+			}
+			if !slices.Equal(dropped, tc.wantDropped) {
+				t.Errorf("dropped = %v, want %v", dropped, tc.wantDropped)
 			}
 		})
 	}

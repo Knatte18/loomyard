@@ -15,3 +15,8 @@ func SetSpawnBoardSyncForTest(spawn func(boardPath string) error) (restore func(
 func EnsureWithHooks(geom Geometry, opts Options, afterEnumerate func(), beforeCommit func(worktreePath string)) error {
 	return ensure(geom, opts, walkHooks{afterEnumerate: afterEnumerate, beforeCommit: beforeCommit})
 }
+
+// EnsureFailingAfterHubWideWrite runs Ensure's walk with the board write failing with failure once the hub-wide files and the board marker are written.
+func EnsureFailingAfterHubWideWrite(geom Geometry, opts Options, failure error) error {
+	return ensure(geom, opts, walkHooks{afterHubWideWrite: func() error { return failure }})
+}

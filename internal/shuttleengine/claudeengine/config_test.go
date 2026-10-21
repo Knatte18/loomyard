@@ -43,7 +43,7 @@ func TestLoadConfig(t *testing.T) {
 			DenyAgentTool:       true,
 			DenyAskUserQuestion: true,
 			PromptCacheTTL:      "5m",
-			PromptCacheTTLRoles: map[string]string{"driver": "1h", "webster": "1h"},
+			PromptCacheTTLRoles: map[string]string{"driver": "5m", "webster": "1h", "orch": "1h"},
 		}
 		if !reflect.DeepEqual(cfg, want) {
 			t.Errorf("LoadConfig() = %+v; want %+v", cfg, want)

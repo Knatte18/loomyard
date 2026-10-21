@@ -46,6 +46,7 @@ func ConfigSpec() configengine.Spec {
 		HubWide:      true,
 		WholeEntries: true,
 		JSONEntries:  true,
+		SeedOnly:     true,
 		Categories:   categories,
 	}
 }

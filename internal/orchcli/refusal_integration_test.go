@@ -72,6 +72,7 @@ func TestOrchIntegration_Refusals(t *testing.T) {
 		}
 	})
 
+	// A failed reconcile warns and start goes on: it then meets the permission_mode the "permission mode" step left in the prime's orch.yaml, so this step relies on that step.
 	t.Run("hub config reconcile", func(t *testing.T) {
 		pairLoomYAML := configengine.ConfigFile(h.PairCodeWorktree("orch-task"), "loom")
 		defer func() {
@@ -102,13 +103,11 @@ func TestOrchIntegration_Refusals(t *testing.T) {
 		if code != 1 {
 			t.Fatalf("exit code = %d; want 1; output: %s", code, out.String())
 		}
-		for _, want := range []string{pairLoomYAML, "lyx config loom"} {
-			if !strings.Contains(out.String(), want) {
-				t.Errorf("envelope %q does not name %q", out.String(), want)
-			}
+		if want := "set permission_mode: bypass or remove the key"; !strings.Contains(out.String(), want) {
+			t.Errorf("envelope %q does not name %q; the failed reconcile should not have stopped the verb", out.String(), want)
 		}
 		if _, err := os.Stat(filepath.Join(anchor, lyxdirs.DotLyxDirName, orchDirName)); err == nil {
-			t.Error(".lyx/orch was created under the prime; the reconcile refusal must land first")
+			t.Error(".lyx/orch was created under the prime; the refusal must land first")
 		}
 		if _, err := os.Stat(stampPath); err == nil {
 			t.Error("a build stamp exists after a failed reconcile")

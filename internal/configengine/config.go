@@ -116,6 +116,29 @@ func SparseMarkerRel() string {
 	return filepath.Join(lyxdirs.LyxDirName, configDirName, sparseMarkerName)
 }
 
+// SparseBaseHeader is the whole content of a hub's base file holding no tuned unit:
+// one comment line saying the file holds the hub's tuned values over lyx's template.
+const SparseBaseHeader = "# This file holds the hub's tuned values over lyx's template.\n"
+
+// baseSparseMarkerName is the board marker file's name; it has no .yaml suffix, so no module reader takes it for a module file.
+const baseSparseMarkerName = "base-sparse"
+
+// BaseSparseMarker returns the tracked marker file under boardDir that records the hub's base files were stripped to sparse.
+func BaseSparseMarker(boardDir string) string {
+	return filepath.Join(ConfigDir(boardDir), baseSparseMarkerName)
+}
+
+// BaseSparseMarkerRel returns the base-sparse marker's path relative to the board dir, the shape ConfigFileRel returns.
+func BaseSparseMarkerRel() string {
+	return filepath.Join(lyxdirs.LyxDirName, configDirName, baseSparseMarkerName)
+}
+
+// sparseBase reports whether the base layer under dirs is sparse over the template:
+// a board dir is told and the spec is not seed-only.
+func sparseBase(dirs Dirs, spec Spec) bool {
+	return dirs.Board != "" && !spec.SeedOnly
+}
+
 // Load loads and resolves a module's configuration from its layer stack under dirs.
 // The base layer is required: a template key the stack lacks resolves to its template default and is logged,
 // and no file is ever written.
@@ -137,7 +160,7 @@ func LoadOrTemplate(dirs Dirs, spec Spec) ([]byte, error) {
 // It consults fallbackOnAbsent at exactly two points, and at each one only on proven absence:
 // an absent base-layer _lyx/ directory (errors.Is(err, ErrNotInitialized)) or an absent base-layer file.
 // A permission or IO failure at either point always propagates unchanged regardless of fallbackOnAbsent.
-// The layers merge unexpanded, the template keys the merge lacks are filled in memory and logged under both policies, and the merged document is expanded once.
+// The layers merge unexpanded, the template keys the merge lacks are filled in memory and logged under both policies unless the base is sparse, and the merged document is expanded once.
 // lyx config reconcile stays the only writer of config files.
 func load(dirs Dirs, spec Spec, fallbackOnAbsent bool) ([]byte, error) {
 	baseDir := dirs.Board
@@ -209,7 +232,8 @@ func load(dirs Dirs, spec Spec, fallbackOnAbsent bool) ([]byte, error) {
 	filledKeys = slices.DeleteFunc(filledKeys, func(key string) bool {
 		return slices.ContainsFunc(spec.PerNameMaps, func(p string) bool { return strings.HasPrefix(key, p+".") })
 	})
-	if hasBase && len(filledKeys) > 0 {
+	// A sparse base leaves most keys to the template, so its fill is the normal case and not logged.
+	if hasBase && len(filledKeys) > 0 && !sparseBase(dirs, spec) {
 		logger.Info("configengine: filled missing keys from template", "module", spec.Name, "layer", string(LayerTemplate), "file", label, "keys", strings.Join(filledKeys, ","))
 	}
 
