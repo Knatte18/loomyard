@@ -77,8 +77,9 @@ func (d configDirs) refuseHubWrite(out io.Writer) (exitCode int, refused bool) {
 }
 
 // dirsOf returns the config base dirs for the worktree l resolves to.
+// The board is empty when the hub's board dir does not exist, as for a worktree that is no hub's.
 func dirsOf(l *lyxcwd.Location) configDirs {
-	return configDirs{worktree: baseDirOf(l), board: fabricengine.BoardDir(l.HubPath)}
+	return configDirs{worktree: baseDirOf(l), board: fabricengine.ConfigDirs(l).Board}
 }
 
 // layerNames are the values --layer takes.
@@ -96,9 +97,12 @@ func (d configDirs) engineDirs() configengine.Dirs {
 
 // selectedLayer returns the layer a verb addresses for module.
 // An empty --layer selects the module's own default, and --layer worktree on a hub-wide module is refused with the ways forward.
+// A hub-wide module's default with no board is the worktree layer, the one file a standalone worktree has.
 // --layer machine is refused on a per-worktree module and on a hub-wide module that classifies no machine key.
 func (d configDirs) selectedLayer(module configreg.Module) (configengine.Layer, error) {
 	switch {
+	case d.layer == "" && module.HubWide && d.board == "":
+		return configengine.LayerWorktree, nil
 	case d.layer == "" && module.HubWide:
 		return configengine.LayerDefault, nil
 	case d.layer == "":

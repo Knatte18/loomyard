@@ -29,11 +29,30 @@
 //
 // # Config
 //
-// The hub-wide `gate` config module keeps `slots`, `go_parallel` and `busy_quit_sec` at `<BoardDir>/_lyx/config/gate.yaml`, seeded from template.yaml by the hub-wide reconcile.
-// `slots` and `go_parallel` take a machine-local override at `<BoardDir>/.lyx/config/gate.machine.yaml`, never reconciled and read at every acquire; `busy_quit_sec` stays hub-file only.
+// The hub-wide `gate` config module keeps `slots`, `go_parallel`, `busy_quit_sec` and the tier keys below at `<BoardDir>/_lyx/config/gate.yaml`, seeded from template.yaml by the hub-wide reconcile.
+// `slots`, `go_parallel` and `tier_parallel` take a machine-local override at `<BoardDir>/.lyx/config/gate.machine.yaml`, never reconciled and read at every acquire; every other key stays hub-file only.
 // `cli_wait_sec` is a retired key: every load drops it and reconcile prunes it, since the slot wait is bounded by the keep-cache-warm cap with no knob.
 // LoadConfig reads it strictly and refuses any value below 1 naming its key, except `busy_quit_sec`, which accepts 0 and is refused below it; Config.Limits converts it to the Limits a Pool reads.
+// An absent hub file is ErrConfigAbsent with the way forward `lyx fabric reconcile`; outside every hub, where the dirs tell no board, the file is the worktree's own and the way forward is `lyx config gate`, after creating the worktree's `_lyx` directory.
 // TemplateConfig decodes the template alone, for a run outside every hub.
+//
+// The tier keys are `tiers`, `gates`, `scoper`, `guard_tier`, `refuse_raw` and `tier_parallel`.
+// `tiers` is an open map keyed `tier0`, `tier1`, and so on, each a Tier written whole with one `lyx config gate --set 'tiers.tierN={...}'` flow mapping;
+// `gates` is an open map from a gate name to its list of tier numbers, and `tier_parallel` an open map from a tier name to this machine's parallel for it.
+// `tiers` is an executable key, since a tier command runs any shell command in a task worktree, and `gates`, `scoper`, `guard_tier` and `refuse_raw` are guard keys, so all of them are hub-file only.
+// The machine override is a sibling map rather than a path under `tiers`, because an open map is one unit in the layer merge, so a machine layer holding part of `tiers` would replace the hub's tiers whole.
+// A declared tier's effective Parallel is its `tier_parallel` entry when one is set, from whichever layer sets it, and 1 when neither sets one; a standalone worktree has no machine layer and sets the key in its own file.
+//
+// LoadConfig refuses at load, naming the key and `lyx config gate`: a tier lacking `command`, `timeout_min` or `counter`, or `all_targets` when its command holds `{targets}`;
+// `parallel` or `timeout_min` below 1, `slots` neither `all` nor at least 1, a counter other than `go-json` or `vstest`, a scoper other than `go` or `none`;
+// a `covers` entry not lower than its tier's number, a tier key not spelled `tier<N>`, a `refuse_raw` entry that is not words of letters, digits, `.`, `_` and `-` separated by single spaces, and a `tier_parallel` entry that is no integer of at least 1.
+// A `tier_parallel` entry for a tier the config does not declare is dropped with a logged warning, so a tier the hub removes leaves no entry that fails the load.
+// Cross-references are checked at use, never at load, so the template and a hub whose gate lists name an undeclared tier both load.
+//
+// At use, Config.TierList refuses a hub with no `tier0`, a gate name the config holds no list for, an empty list for any gate but `publish`, and a listed tier the hub does not declare; Config.Tier refuses an undeclared number.
+// Each refusal names `lyx config gate` and closes with the clause that a session that is not the prime reports status: FAILED and the orch takes the steps.
+// Config.GateCall renders the one `lyx gate test --wait --tier <n>...` call a site runs, in the list's order and followed by the scope words, and "" for an empty `publish` list.
+// Config.TiersValue renders the tier lines and the Go-read gate lists a prompt takes, or `none` when no tier is declared.
 //
 // # Watchdog line
 //

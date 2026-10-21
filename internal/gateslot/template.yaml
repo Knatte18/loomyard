@@ -1,3 +1,33 @@
 slots: 2  # how many gate builds and test runs the hub executes at once; a lowered count takes effect on the next acquire while a running holder finishes
 go_parallel: 4  # the -p cap every slotted run gets in its GOFLAGS, bounding the packages one go command builds and tests in parallel
 busy_quit_sec: 120  # seconds a Go test binary under lyx gate test may keep a CPU core at least 90 percent busy before it gets one SIGQUIT and dumps its goroutine stacks; 0 turns the watchdog off; raise it for a package that is CPU-bound but healthy
+
+# The hub's test tiers, keyed tier0, tier1, and so on; the template declares none.
+# A tier is written whole with one flow mapping: lyx config gate --set 'tiers.tier0={command: "go test -json {targets} {args}", all_targets: ./..., timeout_min: 60, counter: go-json}'
+# It holds command (with {targets}, {parallel} and {args} placeholders), timeout_min (at least 1) and counter (go-json or vstest), and all_targets when the command holds {targets}.
+# It may also hold about, dir (default .), env, parallel (at least 1, default 1), covers (lower tier numbers its command runs anyway), slots (a count of at least 1, or all; default 1) and prebuilt_lyx.
+# Inside the mapping a value holding a brace, comma or bracket is a double-quoted string.
+tiers: {}
+
+# Gate name to the list of tier numbers that site runs; card, batch, round, final, landing and publish are read by lyx.
+# Only publish may be empty; a tier a list names must be declared above when the gate runs.
+gates:
+  card: [0]
+  batch: [0]
+  round: [0]
+  final: [0]
+  landing: [0]
+  publish: []
+
+# How a computed, base or card scope maps to {targets}: go derives the impacted Go packages per module, none runs every tier whole.
+scoper: none
+
+# The tier whose command runs the //lyx:guard tests outside a narrowed scope; read only under the go scoper.
+guard_tier: 0
+
+# Command prefixes the shell guard refuses, each one or more words of letters, digits, dot, underscore and dash separated by single spaces, such as "go test".
+refuse_raw: []
+
+# This machine's parallel for a tier, tier name to a count of at least 1; it beats the tier's own parallel.
+# Set it inside a hub with lyx config gate --layer machine --set tier_parallel.tier0=2, and in a standalone worktree, which has no machine layer, with plain lyx config gate.
+tier_parallel: {}

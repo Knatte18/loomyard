@@ -25,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -163,7 +164,10 @@ func TestEditOne(t *testing.T) {
 				fmt.Fprint(w, tt.syncOutput)
 				return tt.syncExit
 			}
-			code := editOne(worktreeDirs(baseDir), &out, tt.module, tt.editor, sync, nil)
+			// An existing board dir makes the worktree a hub's, the case that keeps its fabric sync.
+			dirs := worktreeDirs(baseDir)
+			dirs.board = t.TempDir()
+			code := editOne(dirs, &out, tt.module, tt.editor, sync, nil)
 
 			if code != tt.wantCode {
 				t.Errorf("editOne() = %d; want %d; output: %q", code, tt.wantCode, out.String())
@@ -607,13 +611,21 @@ func TestDispatchSet(t *testing.T) {
 				seedModuleConfig(t, baseDir, "loom", tt.seed)
 			}
 
+			// A hub's board dir makes the worktree a hub's, the case that keeps its fabric sync.
+			layout := makeLayoutAt(baseDir)
+			if tt.wantSyncs > 0 {
+				if err := os.MkdirAll(fabricengine.BoardDir(layout.HubPath), 0o755); err != nil {
+					t.Fatalf("create the hub's board dir: %v", err)
+				}
+			}
+
 			var out bytes.Buffer
 			editorCalls, syncCalls := 0, 0
 			sync := func(w io.Writer) int {
 				syncCalls++
 				return 0
 			}
-			code := dispatch(makeLayoutAt(baseDir), &out, tt.args, countingEditor(&editorCalls), sync, nil, tt.printOnly, tt.setFlags, "", nil, true)
+			code := dispatch(layout, &out, tt.args, countingEditor(&editorCalls), sync, nil, tt.printOnly, tt.setFlags, "", nil, true)
 
 			if code != tt.wantCode {
 				t.Fatalf("dispatch(--set) = %d; want %d; output: %q", code, tt.wantCode, out.String())
@@ -1183,7 +1195,9 @@ func TestDispatchLayers(t *testing.T) {
 		// seedMachine is the module's machine file before the call; empty seeds nothing.
 		seedMachine string
 		// editor is the editor the call opens; nil fails the test if one opens.
-		editor   configengine.EditorFunc
+		editor configengine.EditorFunc
+		// noBoard removes the hub's board dir, so the worktree is a standalone one.
+		noBoard  bool
 		guard    func(fx hubFixture) func() (string, error)
 		wantCode int
 		// wantErr is a substring of the error envelope; empty means a success.
@@ -1586,6 +1600,28 @@ func TestDispatchLayers(t *testing.T) {
 			},
 		},
 		{
+			name: "a standalone worktree's gate set writes its own gate.yaml and runs no sync", module: "gate", noBoard: true,
+			setFlags: []string{"go_parallel=6"},
+			check: func(t *testing.T, fx hubFixture, out string) {
+				assertJSONOkContains(t, out, map[string]any{"module": "gate", "message": "edited _lyx/config/gate.yaml"})
+				cfg, err := gateslot.LoadConfig(configengine.Dirs{Anchor: fx.worktree})
+				if err != nil || cfg.GoParallel != 6 {
+					t.Errorf("gateslot.LoadConfig() = (%+v, %v); want the worktree's own file read with go_parallel 6", cfg, err)
+				}
+			},
+		},
+		{
+			name: "a standalone worktree's gate edit through the editor writes its own gate.yaml and runs no sync", module: "gate", noBoard: true,
+			editor: fakeEditor("slots: 3\ngo_parallel: 4\nbusy_quit_sec: 120\n", nil),
+			check: func(t *testing.T, fx hubFixture, out string) {
+				assertJSONOkContains(t, out, map[string]any{"module": "gate", "message": "edited _lyx/config/gate.yaml"})
+				cfg, err := gateslot.LoadConfig(configengine.Dirs{Anchor: fx.worktree})
+				if err != nil || cfg.Slots != 3 {
+					t.Errorf("gateslot.LoadConfig() = (%+v, %v); want the worktree's own file read with slots 3", cfg, err)
+				}
+			},
+		},
+		{
 			name: "no terminal still sets", module: "loom", noTerminal: true,
 			setFlags: []string{"discussion_timeout_min=60"}, wantSyncs: 1,
 			check: func(t *testing.T, fx hubFixture, out string) {
@@ -1601,6 +1637,11 @@ func TestDispatchLayers(t *testing.T) {
 		t.Run(row.name, func(t *testing.T) {
 			t.Parallel()
 			fx := newHubFixture(t)
+			if row.noBoard {
+				if err := os.RemoveAll(fx.board); err != nil {
+					t.Fatalf("remove the board dir: %v", err)
+				}
+			}
 			if row.seedBoard != "" {
 				seedModuleConfig(t, fx.board, row.module, row.seedBoard)
 			}
