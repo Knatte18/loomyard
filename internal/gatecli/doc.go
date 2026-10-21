@@ -39,7 +39,7 @@
 //
 // # Slot
 //
-// Inside a hub the pool comes from hubgeom.GateSlots and its limits are read from the board's gate.yaml.
+// Inside a hub the pool comes from hubgeom.GateSlots and its limits are read from the board's gate.yaml and this machine's override.
 // The run writes a wait record under the worktree's wait directory, acquires a slot under a context bounded by `shuttleengine.DefaultAwaitCap`, the keep-cache-warm cap of the wait verbs, removes the record once the acquire returns, and runs go test with the lease's environment, whose GOFLAGS carries `gateslot.GoFlags`: the `-p` cap and `-trimpath`.
 // Every branch, slotted, inherited and unslotted, runs go test without the strand-name variable (agentname.StrandNameEnv), so a test that drives `lyx fabric` never meets the sandboxed-role guard.
 // Bound: a test is code the fork writes, which could clear the variable itself.
@@ -48,7 +48,7 @@
 // The cap keeps one blocked Bash call under the prompt-cache lifetime, so an agent that re-runs the verb keeps its cache warm.
 // A cap that passes with every slot held is no failure: the verb prints an ok envelope with `slot_free: false`, each holder's worktree and site and a message to run the same command again in a turn that does nothing else, and exits with SlotBusyExit.
 // An absent gate.yaml is refused with a way forward naming `lyx fabric reconcile`, which writes it from the template.
-// An unreadable or invalid gate.yaml is refused with a way forward naming `lyx config gate` from the prime.
+// An unreadable or invalid gate config is refused with an error that names each file in the stack and its way forward.
 //
 // # Inheritance
 //

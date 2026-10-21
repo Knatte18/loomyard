@@ -66,6 +66,8 @@ type SegmentSettings struct {
 	HardMaxBouncesKey string
 	// ConfigFile is the file both keys live in, loom.yaml or darn.yaml.
 	ConfigFile string
+	// AmendMaxBounces is the resolved review_amend_max_bounces, the bounces an amendment generation of the segment may spend; 0 settles an amendment without a review.
+	AmendMaxBounces int
 }
 
 // Env carries roots, run-wide values and the per-segment settings of Segments -- never a value that differs between two rows.
@@ -233,6 +235,24 @@ type Env struct {
 	// CarryOver is the injected closure that writes and commits one review segment's carry-over entry into the decision record, read by the Bouncer entry's carry_over key.
 	// It is run-wide, and the entry the Bouncer passes names its own segment.
 	CarryOver func(discussionparser.CarryOver) error
+	// DocumentSubject is the injected closure reading a document segment's subject over the row's resolved artifact paths, read by the Bouncer entry's subject key when it is "document".
+	// Nil is legal for a caller whose Bouncer rows name no document subject.
+	DocumentSubject func(paths []string) (shedadapters.Subject, bool, error)
+	// CodeSubject is the injected closure reading a code segment's subject, read by the Bouncer entry's subject key when it is "code".
+	// Nil is legal for a caller whose Bouncer rows name no code subject.
+	CodeSubject func() (shedadapters.Subject, bool, error)
+	// MergeSubject is the injected closure reading a merge-in's subject, read by the Bouncer entry's subject key when it is "merge".
+	// Nil is legal for a caller whose Bouncer rows name no merge subject.
+	MergeSubject func() (shedadapters.Subject, bool, error)
+	// MergeInOnly reports whether the history since the commit since holds only merge-ins, told to a Bouncer whose subject is "code".
+	// Nil is legal for a caller whose Bouncer rows name no code subject.
+	MergeInOnly func(since string) (bool, error)
+	// RecordHead reads the record head a document segment's settled artifacts stand at, told to a Bouncer whose subject is "document" as its settled base.
+	// Nil is legal for a caller whose Bouncer rows name no document subject.
+	RecordHead func() (string, error)
+	// RejectReview reports the review file of the PR-Gate reject a re-entry is told, and when the reject happened, told to every Bouncer whose subject key is set.
+	// Nil is legal and means a reject with no review file.
+	RejectReview func() (path string, rejectedAt time.Time, found bool, err error)
 	// ReflectFriction is the injected closure the FrictionReflect entry's producer calls once per
 	// Call, returning the reflection's status string. It arrives as a closure, following
 	// CommitWebster/CommitDiscussion/ApprovePlan, because the reflection's dependencies are already

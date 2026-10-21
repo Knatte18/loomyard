@@ -73,7 +73,7 @@
 //     An index built by NewSlottedIndex with a pool slots the load: it writes a wait record into the told wait directory, acquires a hub gate slot, drops the record once the acquire returns, starts the timeout only once the slot is held, runs go list under the slot's `-p` cap and releases the slot when the load returns.
 //     NewIndex, standalone runs and a nil pool load unslotted.
 //     The load is skipped when the worktree root holds no go.mod, and a failed or timed-out load is logged and leaves every file to the scan, never an error.
-//     A slot that cannot be acquired, as over an absent or invalid gate.yaml, is a failed load: the plan gate degrades to the scan rather than refusing, and the run's next slotted gate refuses on the same file with its way forward.
+//     A slot that cannot be acquired, as over an absent or invalid gate.yaml or an invalid machine override of it, is a failed load: the plan gate degrades to the scan rather than refusing, and the run's next slotted gate refuses on the same file with its way forward.
 //     The scan walks every Go file under the worktree root by token, nested modules included, over each file the load did not check and each line of a checked file that has an identifier without type information.
 //     In the scan a package-level member is resolved by import path: a reference is its bare identifier inside the declaring package, and elsewhere an import of the member's import path (aliased or dotted included) followed by the identifier.
 //     A method is matched by name alone, except after an imported package's name, and a subject's name-only matches collapse into one informational finding naming every file.
@@ -103,6 +103,8 @@
 //     a Create target that still does not resolve, a Delete target that still does, or a Rename
 //     pair whose old side still resolves or whose new side still does not, after the batch that was
 //     supposed to build, remove, or rename it.
+//     A Create target under the worktree root's git-ignored `.scratch/` is a transient draft its card may remove once read, so it gets no done-check;
+//     a `.scratch/` below the root, a Rename new side and every Delete target keep theirs.
 //     Each detail carries the lookup: the resolve key looked up beside the card's own spelling, quarry's status, for not_found whether the unit exists, and for ambiguous each candidate's file and build constraint.
 //     An ambiguous answer whose candidates sit in files no single build environment selects together counts as resolved, so a Create or a Rename new side over such a member lands;
 //     the Delete direction and a Rename old side keep blocking on any surviving declaration.

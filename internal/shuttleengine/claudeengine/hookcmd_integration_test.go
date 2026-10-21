@@ -1,6 +1,7 @@
 //go:build integration
 
 // hookcmd_integration_test.go runs the recording hook commands settings.go builds under `sh` against payloads on standard input, pinning what they append to the events file.
+// It runs rendered shell guard commands the same way, pinning that the rendering greps each pattern as written.
 // The deny pattern tables live with the shell guard rows in shellguard.
 
 package claudeengine
@@ -219,4 +220,43 @@ func TestRecordingHooks_AppendStampThenPayload(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestShellGuardDenies_RenderedCommandsGrepThePayload runs the rendered shell guard commands under sh against a Bash PreToolUse payload.
+// A row whose pattern holds a single quote and a row of several patterns each echo their deny JSON on a matching command and print nothing otherwise, and every command exits 0.
+func TestShellGuardDenies_RenderedCommandsGrepThePayload(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		row     string
+		command string
+		denied  bool
+	}{
+		{"redirect-write", "echo x > docs/a.md", true},
+		{"redirect-write", "echo x > .scratch/a", false},
+		{"redirect-write", "grep 'a > b' f", false},
+		{"computed-rm", "rm $DIR/f", true},
+		{"computed-rm", "rm .scratch/a", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.row+"_"+tt.command, func(t *testing.T) {
+			t.Parallel()
+
+			var payload bytes.Buffer
+			encoder := json.NewEncoder(&payload)
+			encoder.SetEscapeHTML(false)
+			if err := encoder.Encode(map[string]any{"tool_name": "Bash", "tool_input": map[string]any{"command": tt.command}}); err != nil {
+				t.Fatal(err)
+			}
+			row := shellRow(t, tt.row)
+			stdout, exitCode := runHookCommand(t, renderShellGuard(row).command, payload.String(), os.Environ())
+			want := ""
+			if tt.denied {
+				want = denyJSON(row.Steer) + "\n"
+			}
+			if stdout != want || exitCode != 0 {
+				t.Errorf("%q hook on %q: stdout = %q, exit = %d; want %q and exit 0", tt.row, tt.command, stdout, exitCode, want)
+			}
+		})
+	}
 }

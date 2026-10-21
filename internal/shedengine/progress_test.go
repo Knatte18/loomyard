@@ -73,6 +73,28 @@ func TestBounces_CountAndBudgetInheritance(t *testing.T) {
 	if _, _, in := r.Bounces("write", hist); in {
 		t.Errorf("standalone row reported inSegment")
 	}
+
+	stuck := HistoryEntry{Producer: "bouncer", Outcome: Stuck}
+	capped := HistoryEntry{Producer: "bouncer", Outcome: Stuck, BudgetCapped: true}
+	generationStart := HistoryEntry{Producer: "bouncer", Outcome: Stuck, GenerationStart: true}
+	gotoBouncer := HistoryEntry{Producer: "bouncer", Outcome: OutcomeGoto}
+	countTests := []struct {
+		name    string
+		history []HistoryEntry
+		want    int
+	}{
+		{"a goto into the segment keeps the spent count", []HistoryEntry{stuck, stuck, gotoBouncer}, 2},
+		{"a capped entry with nothing after it reads zero", []HistoryEntry{stuck, capped}, 0},
+		{"a capped entry directly followed by a goto reads the spent count", []HistoryEntry{stuck, capped, gotoBouncer}, 2},
+		{"a generation start reads one", []HistoryEntry{stuck, stuck, generationStart}, 1},
+	}
+	for _, tt := range countTests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got, _, _ := r.Bounces("bouncer", tt.history); got != tt.want {
+				t.Errorf("Bounces(bouncer) count = %d; want %d", got, tt.want)
+			}
+		})
+	}
 }
 
 func TestBounces_BurlerReportsMainLineRow(t *testing.T) {

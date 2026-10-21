@@ -12,10 +12,15 @@ package planglyph
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/quarry/quarry"
 )
+
+// scratchDirPrefix marks a Create target under the worktree root's git-ignored scratch directory.
+// Such a target is a transient draft that never lands, which its card may remove once read, so no done-check judges it.
+const scratchDirPrefix = ".scratch/"
 
 // doneCheckEntry pairs one Create/Delete group ref with the card it belongs to, the check ID its
 // group type calls for, and the resolve key actually looked up: a plan: handle's own resolve key
@@ -46,6 +51,7 @@ func resolveKeyFor(ref string) string {
 // ambiguous, whose candidates are still-present declarations of that name — is check ID
 // delete-not-done; and a Rename pair whose old side is still anything but not_found, or whose new
 // side still does not resolve found or multipart, is check ID rename-not-done in either direction.
+// A Create target under the worktree root's .scratch/ is a transient draft and is neither resolved nor judged.
 // An answer outside quarry's four-value status vocabulary — a pre-resolution rejection, or a status
 // this policy has not been taught — is the blocking finding glyph-rejected for that entry, failing
 // closed exactly as statusFindings and createFindings do (see doneCheckVerdicts).
@@ -81,6 +87,9 @@ func DoneChecks(plan *planparser.Plan, cards []planparser.Card, worktreeRoot str
 			case planparser.CardTypeCreate:
 				for _, ref := range g.Refs {
 					key := resolveKeyFor(ref)
+					if strings.HasPrefix(key, scratchDirPrefix) {
+						continue
+					}
 					entries = append(entries, doneCheckEntry{card: c, checkID: "create-not-done", key: key, display: ref})
 					addTarget(key)
 				}

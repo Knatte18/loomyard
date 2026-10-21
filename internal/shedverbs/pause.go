@@ -15,23 +15,26 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// pauseFlags are the values of the pause verb's three flags.
+// pauseFlags are the values of the pause verb's four flags.
 type pauseFlags struct {
 	// before and after name the producer a condition is recorded for, empty when the flag is absent.
 	before string
 	after  string
 	// clear removes both recorded conditions.
 	clear bool
+	// by is the caller label stored beside the request the pause records, empty when the flag is absent.
+	by string
 }
 
-// conditional reports whether any flag is present.
+// conditional reports whether a condition flag is present; --by alone is a label, not a condition.
 func (f pauseFlags) conditional() bool {
 	return f.before != "" || f.after != "" || f.clear
 }
 
 // applyPauseConditions returns cur with the flags applied, and the envelope keys the answer adds.
 // --before and --after record the condition in their slot, replacing a recorded one, and leave pause_requested alone.
-// --clear removes both conditions and leaves pause_requested alone.
+// Each also stores the --by label in its own slot, replacing the recorded label with its condition.
+// --clear removes both conditions and their labels and leaves pause_requested alone.
 // A contradictory flag set, or a target naming no producer, is an error and nothing is applied.
 func applyPauseConditions(cur shedengine.Status, flags pauseFlags, producers []shedengine.ProducerDef) (shedengine.Status, map[string]any, error) {
 	if flags.clear && (flags.before != "" || flags.after != "") {
@@ -60,18 +63,22 @@ func applyPauseConditions(cur shedengine.Status, flags pauseFlags, producers []s
 		}
 		cur.PauseBefore = ""
 		cur.PauseAfter = ""
+		cur.PauseBeforeBy = ""
+		cur.PauseAfterBy = ""
 	}
 	if flags.before != "" {
 		if cur.PauseBefore != "" {
 			extras["replaced_before"] = cur.PauseBefore
 		}
 		cur.PauseBefore = flags.before
+		cur.PauseBeforeBy = flags.by
 	}
 	if flags.after != "" {
 		if cur.PauseAfter != "" {
 			extras["replaced_after"] = cur.PauseAfter
 		}
 		cur.PauseAfter = flags.after
+		cur.PauseAfterBy = flags.by
 	}
 	extras["before"] = cur.PauseBefore
 	extras["after"] = cur.PauseAfter
@@ -94,6 +101,11 @@ func pauseCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
 
+			if flags.by == shedengine.CallerShed {
+				clihelp.SetExit(ctx, output.Err(out, "pause --by does not take "+shedengine.CallerShed+", the label of lyx's own automatic steps; way forward: re-run pause with your own label, such as --by operator"))
+				return nil
+			}
+
 			if spec.EnsureStatusLockDir {
 				if err := ensureStatusLockDir(spec.DecodeErrPrefix, spec.StatusLockPath); err != nil {
 					clihelp.SetExit(ctx, output.Err(out, err.Error()))
@@ -109,6 +121,10 @@ func pauseCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 				if !flags.conditional() {
 					if spec.Hooks.BarePause != nil {
 						return cur, spec.Hooks.BarePause(cur)
+					}
+					// A repeat request without --by keeps the label the earlier request recorded.
+					if flags.by != "" || !cur.PauseRequested {
+						cur.PauseRequestedBy = flags.by
 					}
 					cur.PauseRequested = true
 					return cur, nil
@@ -132,6 +148,7 @@ func pauseCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&flags.before, "before", "", "pause before this producer runs")
 	cmd.Flags().StringVar(&flags.after, "after", "", "pause after this producer returns a routed running outcome")
-	cmd.Flags().BoolVar(&flags.clear, "clear", false, "remove both recorded pause conditions")
+	cmd.Flags().BoolVar(&flags.clear, "clear", false, "remove both recorded pause conditions and their labels")
+	cmd.Flags().StringVar(&flags.by, "by", "", "free-text label of the caller, such as operator, recorded beside the pause and shown in the paused run's pause_reason; "+shedengine.CallerShed+" is reserved")
 	return cmd
 }

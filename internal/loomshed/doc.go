@@ -62,9 +62,13 @@
 // The Darn-Write row's producer (NewDarnWrite) wraps the gated darn writer session and tells it two texts, each empty when absent:
 // the pending rejection's findings, and a prior-work note, written in Go, that the change is already under way on the task branch, naming the latest Darn-Write history entry's halt reason and the Publish failure record's path.
 // On a non-empty output pointer, Done or a gate-failed Stuck, it commits the landing directory;
-// on Done of a spawn that was told a rejection it then removes the pending rejection.
+// on Done of a spawn that was told a rejection it then records the rejection through the optional RecordRejection seam, so the darn amendment can name its findings, and removes the pending rejection.
 // A gate-failed Stuck keeps its record and gains the resume way forward.
-// A failed commit or removal is a returned error, since re-running the session cannot fix a git or filesystem fault.
+// A failed commit, record or removal is a returned error, since re-running the session cannot fix a git or filesystem fault.
+//
+// The PR-Rework producer (NewPRRework) archives the plan and review run directories into the round, then recreates the review run directories and hands each archived one to the required KeepReviewRecords seam.
+// The settle record, its patch and the generation record therefore stay where the next review re-entry compares against them, on every Call that reaches the recreation, so a re-step after a failed carry carries again.
+// LatestRejectReview returns the newest round's findings file and rejection time, the reject file a review amendment is told.
 //
 // It declares its own unexported cancellation helpers (entryErr/cancelErr in ctx.go) rather than
 // reusing internal/shedadapters' identically-shaped, unexported ones: shedadapters' versions are

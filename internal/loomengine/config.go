@@ -12,6 +12,7 @@
 // The retired review, fix, <segment>_review, <segment>_fix, <segment>_fan and <segment>_fix_fan keys are renamed by MigrateConfig.
 // discussion_max_bounces, plan_max_bounces and webster_max_bounces set one perch's bounce budget, null takes review_max_bounces and 0 gives the perch zero rounds, its Bouncer settling approved at once;
 // review_hard_max_bounces is the round number at or past which no perch continues a round, refused below 1, and discussion_hard_max_bounces, plan_hard_max_bounces, webster_hard_max_bounces and merge_hard_max_bounces set one perch's own, where 0 takes review_hard_max_bounces and a negative value is refused;
+// review_amend_max_bounces is the review rounds an amendment generation gets after a settled segment's subject changed, clamped to the perch's own budget, refused below 0, where 0 settles every amendment approved with no review round;
 // a perch whose resolved hard cap is below its resolved budget is refused too, and every one of these refusals names the command that changes the key in the layer its value comes from.
 // discussion_auto_accept, plan_auto_accept and webster_auto_accept make that perch accept a harvested round at a spent budget instead of running the soft-cap rule.
 // merge_max_bounces, merge_hard_max_bounces and merge_auto_accept do the same for the Merge-Review perch, which sends a round whose ledger holds an open BLOCKING finding to the soft-cap rule instead of accepting it;
@@ -381,14 +382,10 @@ func LandingCheckpointSlug(subject string) (string, bool) {
 // LoomFrictionLock returns the path to the advisory lock guarding the Tier 2 reflection step against
 // a second concurrent reflection over the same friction directory.
 //
-// On a finished run the reflection runs inside the terminal Friction-Reflect row with the run lock
-// held; on a blocked halt it runs after shedengine.Run returns, with the run lock free. It is a lock
-// of its own rather than a reuse of the run lock because the blocked-halt reflection is not covered
-// by the run lock at all: shedengine.Run releases it on return, so for the whole of that reflection
-// agent's life the run lock reads as free and a second `lyx loom start` spawns a second driver.
-// That second driver is legitimate -- it is an operator resuming a halted run -- but its own
-// reflection (the row's) would then archive covered files out from under the first one's
-// agent, and both would have declared the same reflection-report.md as an output.
+// The reflection runs only inside the terminal Friction-Reflect row, so the lock orders the rows' reflections of two drivers over one friction directory.
+// An operator can resume a halted task and reach a new driver's row while an earlier driver's row still reflects,
+// and the second reflection would archive covered files out from under the first one's agent.
+// Both would also have declared the same reflection-report.md as an output.
 // The lock file is not inside the friction directory, which holds only reflection inputs and outputs.
 // It sits at the mirrored ephemeral subpath of the durable friction directory, under LoomScratchDir.
 func LoomFrictionLock(l *lyxcwd.Location) string {
@@ -478,6 +475,8 @@ type Config struct {
 	ReviewCirclingCheckpoint int `yaml:"review_circling_checkpoint"`
 	ReviewMaxBounces         int `yaml:"review_max_bounces"`
 	ReviewHardMaxBounces     int `yaml:"review_hard_max_bounces"`
+	// ReviewAmendMaxBounces is the review rounds an amendment generation gets after a settled segment's subject changed, clamped to the perch's own budget; 0 settles every amendment approved with no review round.
+	ReviewAmendMaxBounces int `yaml:"review_amend_max_bounces"`
 
 	// Each perch's bounce budget, hard cap and auto-accept flag.
 	// A nil budget takes ReviewMaxBounces and a budget of 0 runs no review round for the perch; a hard cap of 0 takes ReviewHardMaxBounces;
@@ -1393,9 +1392,10 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	}
 
 	if err := reviewbudget.CheckResolved(dirs, spec, reviewbudget.Values{
-		RunSoft: cfg.ReviewMaxBounces,
-		RunHard: cfg.ReviewHardMaxBounces,
-		Perches: reviewPerchNames(),
+		RunSoft:  cfg.ReviewMaxBounces,
+		RunHard:  cfg.ReviewHardMaxBounces,
+		RunAmend: cfg.ReviewAmendMaxBounces,
+		Perches:  reviewPerchNames(),
 		PerchSoft: map[string]*int{
 			string(PerchDiscussion): cfg.DiscussionMaxBounces,
 			string(PerchPlan):       cfg.PlanMaxBounces,

@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/darnengine"
@@ -155,6 +156,8 @@ func darnDeps(l *lyxcwd.Location, runID, verifyDir string) loomshed.DarnDeps {
 	return loomshed.DarnDeps{
 		ReadRejection:  pendingRejectionReader(l),
 		ClearRejection: rejectionClearer(l),
+		// RecordRejection keeps the reject's findings in the landing directory before the pending record is cleared, so the amendment reads them and Commit commits them.
+		RecordRejection: func(rejection loomshed.PendingRejection) error { return recordDarnRejection(l, rejection) },
 		// Commit mirrors CommitDescription, including its discard of (sha, committed), which makes a repeat commit over an unchanged directory a no-op.
 		Commit: func() error {
 			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), l, []string{loomengine.LandingDirRel()}, fmt.Sprintf("loom: change description for %s", seedSlug(l.WorktreeName)), fabricengine.EnvSyncOptions())
@@ -239,6 +242,7 @@ func wireDarnReview(env *shedrecipe.Env, cfg darnengine.Config, shared burlereng
 		MaxBouncesKey:     reviewbudget.RunSoftKey,
 		HardMaxBounces:    cfg.ReviewHardMaxBounces,
 		HardMaxBouncesKey: reviewbudget.RunHardKey,
+		AmendMaxBounces:   cfg.ReviewAmendMaxBounces,
 		ConfigFile:        "darn.yaml",
 	}
 	return nil
@@ -275,6 +279,8 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 		return loomrecipe.DarnRouting(map[string]int{darnReviewSegment: cfg.ReviewMaxBounces})
 	})
 	c.env.Darn = darnDeps(location, c.runID, c.env.VerifyDir)
+	// The darn amendment reads the reject file darnDeps' RecordRejection wrote, not a rework round's findings.
+	c.env.RejectReview = func() (string, time.Time, bool, error) { return darnRejectReview(location) }
 	// The history seam turns the Darn-Write row's "discussion" gate into the darn gate.
 	c.env.DiscussionHistory = discussionHistory(location)
 	c.env.DarnTable = func(told loomshed.DarnTold) (seatengine.Table, error) {

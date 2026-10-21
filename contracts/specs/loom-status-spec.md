@@ -40,11 +40,15 @@ A fresh seed carries `current_producer: "Preflight"`, `state: "running"`, empty 
 {
   "current_producer": "Preflight",             // Shed-owned: which producer this run is at
   "state": "running",                          // Shed-owned: running | paused | done | blocked | awaiting | failed
-  "error": "",                                 // Shed-owned: human-readable detail for a failed/blocked/awaiting halt (awaiting is the planned PR-review hand-off at PR-Gate, or a review segment's escalation to the parent at its Bouncer row); a blocked halt carries the producer's own stuck reason (the generic "stuck with no OnStuck target" when it supplied none) or, for an exhausted bounce budget, a reason that starts with "bounce budget exhausted" and carries its `goto` way forward after it
+  "error": "",                                 // Shed-owned: human-readable detail for a failed/blocked/awaiting halt (awaiting is the planned PR-review hand-off at PR-Gate, or a review segment's escalation to the parent at its Bouncer row); a blocked halt carries the producer's own stuck reason (the generic "stuck with no OnStuck target" when it supplied none) or, for an exhausted bounce budget, a reason that starts with "bounce budget exhausted" and carries the told resume clause after it, which names the parent's resume, never a goto
   "parent_notice": "",                         // optional, Shed-owned: the one-line notice an awaiting escalation hands the run's parent; set only on an awaiting halt and absent on every other write
+  "pause_reason": "",                          // optional, Shed-owned: why the run is paused; set by every write that records paused and cleared by every other write
   "pause_requested": false,                    // shared write-to-clear: set true by an outside actor, cleared by Shed
+  "pause_requested_by": "",                    // optional, outside-set: the caller label of the actor that set pause_requested; cleared in the write that clears the request
   "pause_before": "",                          // optional, outside-set: a producer name the run pauses before running; Shed clears it with pause_after when a condition fires, and `goto` clears both
+  "pause_before_by": "",                       // optional, outside-set: the caller label of the actor that recorded pause_before; cleared with it
   "pause_after": "",                           // optional, outside-set: a producer name the run pauses after it returns a routed running outcome; cleared with pause_before
+  "pause_after_by": "",                        // optional, outside-set: the caller label of the actor that recorded pause_after; cleared with it
   "activity": {"now": "...", "last": "...", "wait": "..."}, // Shed-owned, mechanically composed
   "history": [                                 // Shed-owned: one entry per producer call
     {"producer": "Preflight", "outcome": "done", "output": "", "at": "2026-07-17T10:01:30Z"}
@@ -67,8 +71,16 @@ Per-field notes — `product`'s three fields are the whole of loom's own half of
   `pause_before` fires when `current_producer` equals it, before that producer is called.
   `pause_after` fires when the named producer returns a routed running outcome, pausing at the routed row, and stays recorded across a halting outcome or a producer error.
   A fired condition pauses the run with the reason `paused before <target>, as requested` or `paused after <target>, as requested` and clears both keys.
+- **`pause_reason` and the `*_by` labels** — `pause_reason` is written by `Shed` on every write that records `paused` and cleared by every other write.
+  A pause request reads `pause requested` (or `pause requested by <label>`), a cancelled context `cancelled`, a fired condition its condition reason, a goto `goto to <row>` and a relaunch onto a row `re-launched onto <row>`.
+  `pause_requested_by`, `pause_before_by` and `pause_after_by` are the caller labels of the outside actor that set the request or condition they accompany, written by the pause verb beside it.
+  Each is cleared in the write that clears its request: the persist that records `paused` clears `pause_requested_by`, and a fired condition or a goto clears both condition labels.
 - **`history[]` is budget-bearing, not only a log.**
-  Its one-entry-per-producer-call rule (see the schema block above) is no longer merely an audit trail: it is the sole storage of every producer's per-producer, episode-scoped bounce budget, derived by counting a producer's own `stuck` entries since its own most recent `done` entry, the most recent `done` by a producer of the same segment (a Burler review or fix row never returns `done`, so its review segment's Bouncer passing ends its episode), or the most recent `goto` or `reroute` entry into its segment (into the producer itself when it has no segment); a `reroute` entry names its target in `routed_to`, spends no budget, and a row's reroutes since its last `done` or `reroute_capped` entry are capped at three.
+  Its one-entry-per-producer-call rule (see the schema block above) is no longer merely an audit trail: it is the sole storage of every producer's per-producer, episode-scoped bounce budget, derived by counting a producer's own `stuck` entries since its own most recent `done` entry, the most recent `done` by a producer of the same segment (a Burler review or fix row never returns `done`, so its review segment's Bouncer passing ends its episode), or the most recent `reroute` entry into its segment (into the producer itself when it has no segment).
+  A `goto` entry no longer ends an episode: it keeps the spent budget.
+  A `budget_capped` `stuck` entry, the one that exhausts the budget, ends the scan without being counted, so a resume of that halt grants one more budget, unless a `goto` entry directly follows it, which counts the entry and grants none.
+  A `generation_start` `stuck` entry is counted and ends the scan right after itself, so a new generation starts its count at one.
+  A `reroute` entry names its target in `routed_to`, spends no budget, and a row's reroutes since its last `done` or `reroute_capped` entry are capped at three.
   It must never be truncated or compacted — doing so would silently hand every producer a fresh budget with nothing here to warn a future retention task that it just did.
   The unconditional append this depends on is the same one the fresh-start check below already relies on;
   see that check for why a `stuck` entry is appended on every `stuck` route, including a budget-exhausted block.

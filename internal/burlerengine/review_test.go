@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -170,6 +171,8 @@ func TestEngine_Review_Outcomes(t *testing.T) {
 	notStarted := fmt.Errorf("shuttle: start run: %w", shuttleengine.ErrNotStarted)
 	violatingAudit := &shuttleengine.ForkAudit{Forks: []shuttleengine.ForkReport{{TranscriptPath: "fork-1", WriteCalls: 1}}}
 	cleanAudit := &shuttleengine.ForkAudit{Forks: []shuttleengine.ForkReport{{TranscriptPath: "fork-1"}}}
+	tooFewAudit := &shuttleengine.ForkAudit{}
+	chairStates := []shuttleengine.SessionState{{Name: shuttleengine.SessionBusy, Cause: "turn"}, {Name: shuttleengine.SessionIdleStalled, Cause: "interrupt"}}
 	noFixReview := "---\nverdict: BLOCKING\nfindings:\n" +
 		"  - id: F1\n    severity: BLOCKING\n    class: design\n    location: target.txt:1\n    summary: colors do not match\n" +
 		"---\n### [BLOCKING] colors do not match\n"
@@ -194,6 +197,9 @@ func TestEngine_Review_Outcomes(t *testing.T) {
 		wantEngine string
 		// malformedRecord tells the geometry a decision record whose PATTERN changes section is malformed; no seat may start.
 		malformedRecord bool
+		// wantStrand and wantStates are the chair's strand and session states the result must carry.
+		wantStrand string
+		wantStates []shuttleengine.SessionState
 	}{
 		{name: "a malformed PATTERN changes section refuses before any seat", malformedRecord: true, wantErrText: "lyx loom validate-discussion", wantNilGate: true},
 		{name: "an accepted blocking review", script: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Engine: "claude"}, writes: blockingReview}, wantOutcome: shuttleengine.OutcomeDone, wantVerdict: VerdictBlocking, wantFindings: 1, wantEngine: "claude"},
@@ -202,6 +208,7 @@ func TestEngine_Review_Outcomes(t *testing.T) {
 		{name: "an unparseable review is refused", script: halfScript{result: done, writes: malformedReview}, wantOutcome: shuttleengine.OutcomeDone, wantErrText: "round reached done but its review file is invalid"},
 		{name: "a failed review gate is an error", script: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Reason: "spent"}}, writes: blockingReview}, wantOutcome: shuttleengine.OutcomeDone, wantErrText: "review gate failed", wantGateReason: "spent"},
 		{name: "a violating cluster audit is refused with the audit kept", script: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, ForkAudit: violatingAudit}, writes: approvedReview}, clusterFan: "standard", wantOutcome: shuttleengine.OutcomeDone, wantErrText: "write/edit tool call", wantAudit: violatingAudit},
+		{name: "a cluster audit with too few forks wraps the sentinel and keeps the chair's strand and states", script: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, StrandGUID: "strand-chair", ForkAudit: tooFewAudit, SessionStates: chairStates}, writes: approvedReview}, clusterFan: "standard", wantOutcome: shuttleengine.OutcomeDone, wantErrIs: ErrClusterForksMissing, wantAudit: tooFewAudit, wantStrand: "strand-chair", wantStates: chairStates},
 		{name: "a clean cluster audit passes its warnings through", script: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, ForkAudit: cleanAudit}, writes: approvedReview}, clusterFan: "standard", wantOutcome: shuttleengine.OutcomeDone, wantVerdict: VerdictApproved, wantAudit: cleanAudit, wantWarnings: 1},
 		{name: "a reviewer that died", script: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}}, wantOutcome: shuttleengine.OutcomeDied, wantNilGate: true},
 		{name: "a reviewer that timed out", script: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}}, wantOutcome: shuttleengine.OutcomeTimeout, wantNilGate: true},
@@ -245,6 +252,12 @@ func TestEngine_Review_Outcomes(t *testing.T) {
 			}
 			if (got.Gate == nil) != tt.wantNilGate || (got.Gate != nil && got.Gate.Reason != tt.wantGateReason) {
 				t.Errorf("Gate = %+v; want the reviewer's gate with reason %q, nil %v", got.Gate, tt.wantGateReason, tt.wantNilGate)
+			}
+			if tt.wantStrand != "" && got.Review.StrandGUID != tt.wantStrand {
+				t.Errorf("Review.StrandGUID = %q; want %q", got.Review.StrandGUID, tt.wantStrand)
+			}
+			if !reflect.DeepEqual(got.SessionStates, tt.wantStates) {
+				t.Errorf("SessionStates = %v; want %v", got.SessionStates, tt.wantStates)
 			}
 			if got.Review.Engine != tt.wantEngine {
 				t.Errorf("Review.Engine = %q; want %q", got.Review.Engine, tt.wantEngine)

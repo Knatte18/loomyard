@@ -235,6 +235,21 @@ func TestWait_LogsSessionStateBesideItsClassification(t *testing.T) {
 			if got := stateChanges(plain.log); len(got) != 0 || strings.Contains(plain.log, "disagrees") {
 				t.Errorf("an engine without the parser logged session state: %q", plain.log)
 			}
+			var wantStates, gotStates []string
+			for _, change := range tt.wantChanges {
+				wantStates = append(wantStates, strings.SplitN(change, " ", 2)[0])
+			}
+			for _, state := range shadowed.result.SessionStates {
+				gotStates = append(gotStates, string(state.Name)+"/"+state.Cause)
+			}
+			if !reflect.DeepEqual(gotStates, wantStates) {
+				t.Errorf("Result.SessionStates = %q, want %q", gotStates, wantStates)
+			}
+			if len(plain.result.SessionStates) != 0 {
+				t.Errorf("an engine without the parser reported session states: %v", plain.result.SessionStates)
+			}
+			// The fold's states are a report only, so the equality below compares everything else.
+			shadowed.result.SessionStates, plain.result.SessionStates = nil, nil
 			// The two drives read the real clock at different instants.
 			shadowed.result.EndedAt, plain.result.EndedAt = time.Time{}, time.Time{}
 			for _, result := range []*Result{&shadowed.result, &plain.result} {

@@ -902,10 +902,14 @@ func (d *goDriver) handBack(stop Stop, h driveHandBack) error {
 }
 
 // reportFor builds the stop report of a hand-back at stop that is to be written at reportPath.
+// Its reason is the stop's reason, else its error, else `paused with no recorded reason` for a paused stop, else the state.
 func (d *goDriver) reportFor(stop Stop, h driveHandBack, reportPath string) driveReport {
 	reason := stop.Reason
 	if reason == "" {
 		reason = stop.Error
+	}
+	if reason == "" && stop.Key().State == string(shedengine.StatePaused) {
+		reason = "paused with no recorded reason"
 	}
 	if reason == "" {
 		reason = stop.Key().State
