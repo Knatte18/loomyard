@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -210,14 +211,14 @@ func TestEnvScrub_MatchesTmuxkitServerEnviron(t *testing.T) {
 
 	environ := []string{
 		"HOME=/home/x", "CLAUDECODE=1", "CLAUDE_CODE_ENTRYPOINT=cli", "CLAUDE_CODEX=keep",
-		"LYX_TRACE_ID=abc", "LYX_STRAND_NAME=ab:orch", "LYX_PARENT=ab:driver", "LYX_OTHER=keep", "PATH=/bin",
+		logger.TraceIDEnv + "=abc", "LYX_STRAND_NAME=ab:orch", "LYX_PARENT=ab:driver", "LYX_OTHER=keep", "PATH=/bin",
 	}
 
 	clean, _ := EnvScrub().Apply(environ)
 	var want []string
 	for _, entry := range clean {
 		switch strings.SplitN(entry, "=", 2)[0] {
-		case "LYX_TRACE_ID", "LYX_STRAND_NAME", "LYX_PARENT":
+		case logger.TraceIDEnv, "LYX_STRAND_NAME", "LYX_PARENT":
 		default:
 			want = append(want, entry)
 		}

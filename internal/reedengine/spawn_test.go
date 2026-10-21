@@ -628,7 +628,8 @@ func TestLaunchScriptDoesNotSurviveAFailedLaunch(t *testing.T) {
 // The new-window argv ends with the -c flag and the told cwd, so that appending ANY trailing argument fails it, not merely a specific known-bad value:
 // a trailing shell-command makes tmux hand the pane to /bin/sh -c, which execs a non-login shell that skips ~/.profile / ~/.bash_profile
 // and therefore changes the pane's inherited PATH — and that pane resolves claude by bare name, so the change would stop the agent binary resolving at all.
-// The two title commands then run in order between the window creation and the send-keys, and carry the strand's full name.
+// The two title commands then run in order between the window creation and the send-keys, and carry the strand's full name;
+// a tmux whose version predates allow-set-title runs only the select-pane, with no log naming the option.
 //
 //testtiming:keep pins the new-window argv ending with -c and the told cwd with no trailing shell command, which would make tmux exec a non-login shell, and the two title commands running in order between the window creation and the send-keys; its covering tests run this code without asserting it
 func TestLaunchStrandLocked_SplitWindowAndPaneTitleCalls(t *testing.T) {
@@ -640,7 +641,26 @@ func TestLaunchStrandLocked_SplitWindowAndPaneTitleCalls(t *testing.T) {
 		wantColorCall string
 		// failAllowSetTitle scripts the allow-set-title set-option to fail, as tmux 3.4 answers it.
 		failAllowSetTitle bool
+		// floorLine is the `tmux -V` line the fake reports; empty is an unknown version.
+		floorLine string
+		// skipsAllowSetTitle is whether the launch runs no allow-set-title set-option.
+		skipsAllowSetTitle bool
 	}{
+		{
+			name:               "TmuxWithoutAllowSetTitleSkipsItSilently",
+			strand:             Strand{GUID: "new", Name: "tst:slug:worker", Segment: "review"},
+			wantLabel:          "worker",
+			wantColorCall:      "set-option -p -t %new @strand_color colour208",
+			floorLine:          "tmux 3.4",
+			skipsAllowSetTitle: true,
+		},
+		{
+			name:          "TmuxWithAllowSetTitleSetsIt",
+			strand:        Strand{GUID: "new", Name: "tst:slug:worker", Segment: "review"},
+			wantLabel:     "worker",
+			wantColorCall: "set-option -p -t %new @strand_color colour208",
+			floorLine:     "tmux 3.5a",
+		},
 		{
 			name:              "AllowSetTitleMissingWarnsAndContinues",
 			strand:            Strand{GUID: "new", Name: "tst:slug:worker", Segment: "review"},
@@ -678,6 +698,7 @@ func TestLaunchStrandLocked_SplitWindowAndPaneTitleCalls(t *testing.T) {
 			e := newTestEngine(t)
 			withInjectedExecutablePath(t, func() (string, error) { return "/opt/lyx/bin/lyx", nil })
 			fake := launchFake(t, e, nil)
+			e.tmux.floorLine = tt.floorLine
 			if tt.failAllowSetTitle {
 				fake.answerFunc("set-option", func(args []string) (string, error) {
 					if slices.Contains(args, "allow-set-title") {
@@ -721,26 +742,21 @@ func TestLaunchStrandLocked_SplitWindowAndPaneTitleCalls(t *testing.T) {
 					order = append(order, strings.Join(call, " "))
 				}
 			}
-			if len(order) < 6 {
-				t.Fatalf("recorded calls = %v, want new-window, set-option, select-pane, the two strand options, send-keys", order)
+			want := []string{"new-window"}
+			if !tt.skipsAllowSetTitle {
+				want = append(want, "set-option -p -t %new allow-set-title off")
 			}
-			if order[0] != "new-window" {
-				t.Errorf("first call = %q, want new-window", order[0])
+			want = append(want, "select-pane -t %new -T "+tt.strand.Name, "set-option -p -t %new @strand "+tt.wantLabel, tt.wantColorCall)
+			if len(order) <= len(want) {
+				t.Fatalf("recorded calls = %v, want %v then send-keys", order, want)
 			}
-			if want := "set-option -p -t %new allow-set-title off"; order[1] != want {
-				t.Errorf("second call = %q, want %q", order[1], want)
+			for i, call := range want {
+				if order[i] != call {
+					t.Errorf("call %d = %q, want %q", i+1, order[i], call)
+				}
 			}
-			if want := "select-pane -t %new -T " + tt.strand.Name; order[2] != want {
-				t.Errorf("third call = %q, want %q", order[2], want)
-			}
-			if want := "set-option -p -t %new @strand " + tt.wantLabel; order[3] != want {
-				t.Errorf("fourth call = %q, want %q", order[3], want)
-			}
-			if order[4] != tt.wantColorCall {
-				t.Errorf("fifth call = %q, want %q", order[4], tt.wantColorCall)
-			}
-			if !strings.HasPrefix(order[5], "send-keys") {
-				t.Errorf("sixth call = %q, want send-keys after the title and strand option commands", order[5])
+			if next := order[len(want)]; !strings.HasPrefix(next, "send-keys") {
+				t.Errorf("call %d = %q, want send-keys after the title and strand option commands", len(want)+1, next)
 			}
 		})
 	}

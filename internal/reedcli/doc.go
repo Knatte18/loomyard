@@ -3,7 +3,7 @@
 // The per-hub watchdog daemon (`lyx reed watchdog`) runs a discovery loop over the hub's tmux socket.
 // Its cadence starts at five seconds, doubles up to sixty across cycles that find the session set unchanged, and returns to five seconds when the set changes.
 // The loop also wakes on the hub-level discover signal, a file that a cold session boot touches: a consumed signal runs a cycle at once, but never sooner than five seconds after the previous cycle, so a process touching the file in a loop costs one cycle per five seconds.
-// When the signal file cannot be watched the loop logs that once and keeps its backed-off cadence.
+// When the signal file cannot be watched, as when the inotify instance table is full, the loop logs that once, keeps its backed-off cadence and reads the file itself on each timer wake, so a stop request still lands, at that cadence.
 // Idle exit and orphan reap each count three consecutive cycles, so at the backed-off cadence they take up to three minutes.
 // A signal file holding the stop marker is a stop request, written by the `down` that ends the hub's server: a stop-woken cycle that lists no session exits at once, never sooner than one second after the previous cycle.
 // After any clean exit the daemon releases its lock and lists the hub's sessions once more, and spawns a successor only when that listing finds a session, so a session that appeared during the exit is not left without a watchdog.

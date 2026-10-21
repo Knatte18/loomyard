@@ -1,5 +1,6 @@
 // Package toolfloor declares the oldest git and tmux lyx runs on, parses a tool's version line and returns the floor error.
 // CheckGit reads `git --version` output and CheckTmux reads `tmux -V` output; each returns whether the line parsed and a *FloorError when the parsed version is below the floor.
+// TmuxHasAllowSetTitle reads `tmux -V` output for the one optional above-floor tmux feature.
 // It spawns no process, keeps no cache and logs nothing: gitexec and reedengine run the probes, keep their own process caches and own the Warn.
 // It imports the standard library only.
 //
@@ -28,8 +29,10 @@
 // No feature lyx requires is newer than the floor.
 // `cherry-pick --empty=drop` (git 2.45) was replaced by a plain pick that skips a change HEAD already carries and refuses a commit empty from the start.
 // The two-format `#{S:}` loop, which tmux 3.4 does not run, was replaced by two single-format loops, the prime's session first.
-// The one above-floor feature lyx uses is the `allow-set-title` pane option (tmux 3.5), which stays optional:
-// the launch of a strand pane sets it to stop the agent overwriting the pane title, and on tmux 3.4 the `set-option` fails, reed Warns and continues, so the title stays one the agent can overwrite.
+// The one above-floor feature lyx uses is the `allow-set-title` pane option (tmux 3.5, TmuxAllowSetTitle), which stays optional:
+// the launch of a strand pane sets it to stop the agent overwriting the pane title.
+// TmuxHasAllowSetTitle reads the same `tmux -V` line as CheckTmux, so reed skips the `set-option` on a tmux it knows is older, logs that once at Info, and the title stays one the agent can overwrite;
+// on a version line that does not parse reed still tries the `set-option`, and a failure Warns and continues.
 // It is never met by raising TmuxFloor.
 //
 // # The rule for a new feature

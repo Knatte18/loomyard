@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxtemp"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
@@ -180,7 +181,7 @@ func TestSocket_StartsHermeticNonLoginServer(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)
-	leaked := []string{"CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "LYX_TRACE_ID", agentname.StrandNameEnv, agentname.ParentEnv}
+	leaked := []string{"CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", logger.TraceIDEnv, agentname.StrandNameEnv, agentname.ParentEnv}
 	for _, name := range leaked {
 		t.Setenv(name, "leaked")
 	}

@@ -1,4 +1,4 @@
-// toolfloor_test.go covers the version-line parsing and floor comparison of CheckGit and CheckTmux.
+// toolfloor_test.go covers the version-line parsing and floor comparison of CheckGit and CheckTmux, and the allow-set-title release check.
 
 package toolfloor
 
@@ -7,6 +7,32 @@ import (
 	"strings"
 	"testing"
 )
+
+func TestTmuxHasAllowSetTitle(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		line      string
+		wantParse bool
+		wantHas   bool
+	}{
+		{name: "AtRelease", line: "tmux 3.5", wantParse: true, wantHas: true},
+		{name: "AboveReleaseWithLetter", line: "tmux 3.5a", wantParse: true, wantHas: true},
+		{name: "MultiDigitMinor", line: "tmux 3.10", wantParse: true, wantHas: true},
+		{name: "Floor", line: "tmux 3.4", wantParse: true},
+		{name: "FloorWithLetter", line: "tmux 3.4a", wantParse: true},
+		{name: "Unparseable", line: "tmux next-3.6"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			parsed, has := TmuxHasAllowSetTitle(tt.line)
+			if parsed != tt.wantParse || has != tt.wantHas {
+				t.Errorf("TmuxHasAllowSetTitle(%q) = (%v, %v); want (%v, %v)", tt.line, parsed, has, tt.wantParse, tt.wantHas)
+			}
+		})
+	}
+}
 
 func TestCheck(t *testing.T) {
 	t.Parallel()

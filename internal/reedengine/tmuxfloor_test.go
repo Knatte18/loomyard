@@ -1,6 +1,6 @@
 //go:build !windows
 
-// tmuxfloor_test.go pins the tmux floor check: the runner's refusal, the per-path cache, the retry of a probe that could not run and the server spawn's refusal.
+// tmuxfloor_test.go pins the tmux floor check: the runner's refusal, the per-path cache, the retry of a probe that could not run, the allow-set-title answer and the server spawn's refusal.
 
 package reedengine
 
@@ -155,6 +155,38 @@ func TestTmuxFloor(t *testing.T) {
 		}
 		if got := strings.Count(logs.String(), "tmux next-3.6"); got != 1 {
 			t.Errorf("warnings naming the line = %d; want 1\n%s", got, logs.String())
+		}
+	})
+
+	t.Run("AllowSetTitleAnswerComesFromTheOneProbe", func(t *testing.T) {
+		tests := []struct {
+			line        string
+			wantLacks   bool
+			wantInfoLog int
+		}{
+			{line: "tmux 3.4", wantLacks: true, wantInfoLog: 1},
+			{line: "tmux 3.5", wantLacks: false, wantInfoLog: 0},
+			{line: "tmux next-3.6", wantLacks: false, wantInfoLog: 0},
+		}
+		for _, tt := range tests {
+			logs := logcapture.CaptureVerbose(t)
+			probe := &countingProbe{line: tt.line}
+			setTmuxVersionProbeForTest(t, probe.probe)
+			cmd := NewTmuxCmd("sh", "sock")
+			if err := CheckTmuxFloor("sh"); err != nil {
+				t.Fatalf("CheckTmuxFloor on %q = %v; want nil", tt.line, err)
+			}
+			for i := 0; i < 2; i++ {
+				if got := cmd.lacksAllowSetTitle(); got != tt.wantLacks {
+					t.Errorf("lacksAllowSetTitle() on %q call %d = %v; want %v", tt.line, i+1, got, tt.wantLacks)
+				}
+			}
+			if len(probe.paths) != 1 {
+				t.Errorf("probes on %q = %d; want 1", tt.line, len(probe.paths))
+			}
+			if got := strings.Count(logs.String(), "no allow-set-title"); got != tt.wantInfoLog {
+				t.Errorf("fallback notes on %q = %d; want %d\n%s", tt.line, got, tt.wantInfoLog, logs.String())
+			}
 		}
 	})
 

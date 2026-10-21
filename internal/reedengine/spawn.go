@@ -97,8 +97,11 @@ func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) 
 	e.killReplacedOwnWindowPaneLocked(previousPaneID, paneID)
 	// Both title commands are display mirrors: allow-set-title off stops the agent inside from overwriting the name,
 	// and no lookup or delivery ever resolves through a title, so a failure of either costs display only and never fails the launch.
-	if err := e.tmux.run("set-option", "-p", "-t", paneID, "allow-set-title", "off"); err != nil {
-		logger.Warn("reed: could not turn off allow-set-title, the pane title may drift", "strand", s.GUID, "pane", paneID, "err", err)
+	// A tmux known to predate allow-set-title skips the option, whose fallback the version probe has already logged once.
+	if !e.tmux.lacksAllowSetTitle() {
+		if err := e.tmux.run("set-option", "-p", "-t", paneID, "allow-set-title", "off"); err != nil {
+			logger.Warn("reed: could not turn off allow-set-title, the pane title may drift", "strand", s.GUID, "pane", paneID, "err", err)
+		}
 	}
 	if err := e.tmux.run("select-pane", "-t", paneID, "-T", s.Name); err != nil {
 		logger.Warn("reed: could not set the pane title", "strand", s.GUID, "pane", paneID, "name", s.Name, "err", err)

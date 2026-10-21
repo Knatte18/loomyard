@@ -66,7 +66,7 @@ func TestNaming(t *testing.T) {
 			t.Errorf("pane title = %q, want %q", got, want)
 		}
 
-		// Older tmux (3.4 included) has no allow-set-title option; spawn only warns then, so the check applies only where the option exists.
+		// Spawn skips the allow-set-title option on a tmux older than 3.5, so the check applies only where the option exists.
 		out, err := e.tmux.output("show-options", "-p", "-v", "-t", strand.PaneID, "allow-set-title")
 		switch {
 		case err != nil && strings.Contains(err.Error(), "invalid option"):

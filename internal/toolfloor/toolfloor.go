@@ -14,6 +14,8 @@ const (
 	GitFloor = "2.43.0"
 	// TmuxFloor is the oldest tmux lyx runs on.
 	TmuxFloor = "3.4"
+	// TmuxAllowSetTitle is the tmux release that added the `allow-set-title` pane option, which lyx uses where it exists.
+	TmuxAllowSetTitle = "3.5"
 )
 
 var (
@@ -48,6 +50,16 @@ func CheckGit(versionLine string) (parsed bool, err error) {
 // A trailing release letter, as in `tmux 3.4a`, is ignored.
 func CheckTmux(versionLine string) (parsed bool, err error) {
 	return check("tmux", tmuxVersionLine, TmuxFloor, versionLine)
+}
+
+// TmuxHasAllowSetTitle reports whether the output of `tmux -V` names a release at or above TmuxAllowSetTitle.
+// parsed is false for a line that does not parse, and then has is false too, so the caller decides how to treat an unknown version.
+func TmuxHasAllowSetTitle(versionLine string) (parsed, has bool) {
+	match := tmuxVersionLine.FindStringSubmatch(strings.TrimSpace(versionLine))
+	if match == nil {
+		return false, false
+	}
+	return true, compareVersions(match[1], TmuxAllowSetTitle) >= 0
 }
 
 func check(tool string, pattern *regexp.Regexp, floor, versionLine string) (bool, error) {
