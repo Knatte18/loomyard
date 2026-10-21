@@ -1,11 +1,9 @@
 // gatecall_test.go covers IsGateCall, the check that picks a line the runner leaves unslotted and unbounded.
 
-package cardverify_test
+package cardverify
 
 import (
 	"testing"
-
-	"github.com/Knatte18/loomyard/internal/cardverify"
 )
 
 func TestIsGateCall(t *testing.T) {
@@ -29,7 +27,7 @@ func TestIsGateCall(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := cardverify.IsGateCall(tt.line); got != tt.want {
+			if got := IsGateCall(tt.line); got != tt.want {
 				t.Errorf("IsGateCall(%q) = %t; want %t", tt.line, got, tt.want)
 			}
 		})

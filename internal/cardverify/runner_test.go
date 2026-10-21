@@ -2,7 +2,7 @@
 
 // runner_test.go exercises Runner against real shell lines and a temp gate-slot pool.
 
-package cardverify_test
+package cardverify
 
 import (
 	"errors"
@@ -14,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/cardverify"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
@@ -33,7 +32,7 @@ func newPool(t *testing.T, limits func() (gateslot.Limits, error)) *gateslot.Poo
 func TestRunner(t *testing.T) {
 	t.Run("a stale prebuilt-lyx variable never reaches a line", func(t *testing.T) {
 		t.Setenv(gateslot.PrebuiltLyxEnv, "/stale/lyx")
-		runner := cardverify.Runner{Worktree: t.TempDir()}
+		runner := Runner{Worktree: t.TempDir()}
 		cards := []planparser.Card{verifyCard(1, "a", "true"), verifyCard(2, "b", ""), verifyCard(3, "c", `test -z "$`+gateslot.PrebuiltLyxEnv+`"`)}
 		if got := runner.RunCards(cards, io.Discard, false); len(got) != 0 {
 			t.Fatalf("RunCards() = %v; want no failures", got)
@@ -48,7 +47,7 @@ func TestRunner(t *testing.T) {
 		}
 		t.Setenv("PATH", stubDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 		pool := newPool(t, func() (gateslot.Limits, error) { return gateslot.Limits{}, errors.New("a gate call reads no limits") })
-		runner := cardverify.Runner{Worktree: t.TempDir(), Slots: pool, Timeout: 200 * time.Millisecond}
+		runner := Runner{Worktree: t.TempDir(), Slots: pool, Timeout: 200 * time.Millisecond}
 
 		if got := runner.RunLine("lyx gate test --wait ./x", io.Discard); got != "" {
 			t.Errorf("RunLine(gate call) = %q; want a pass", got)
@@ -115,7 +114,7 @@ func TestRunner(t *testing.T) {
 				if worktree == "" {
 					worktree = t.TempDir()
 				}
-				runner := cardverify.Runner{Worktree: worktree, Timeout: tt.timeout}
+				runner := Runner{Worktree: worktree, Timeout: tt.timeout}
 				if got := runner.RunCards(tt.cards, io.Discard, tt.stop); !tt.want(got) {
 					t.Errorf("RunCards() = %v; want %s", got, tt.wantDesc)
 				}
@@ -158,7 +157,7 @@ func TestRunner(t *testing.T) {
 				t.Parallel()
 				pool := newPool(t, tt.limits)
 				waitDir := filepath.Join(t.TempDir(), "wait")
-				runner := cardverify.Runner{Worktree: t.TempDir(), Slots: pool, WaitDir: waitDir, Timeout: tt.timeout}
+				runner := Runner{Worktree: t.TempDir(), Slots: pool, WaitDir: waitDir, Timeout: tt.timeout}
 
 				got := runner.RunCards([]planparser.Card{verifyCard(7, "slotted", tt.command)}, io.Discard, false)
 
