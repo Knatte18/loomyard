@@ -18,8 +18,8 @@ import (
 // newRenameBoard returns a board whose clock reads *now, holding other, old, waiter, prose, exact, starts, ends and near in that store order.
 // old carries every field a rename must keep, a kept unknown key included, and mentions its own slug;
 // waiter is a run-held task depending on other and old;
-// prose, exact, starts and ends mention old as a whole slug mid-text, as the whole text, at its start and at its end,
-// and near holds it only beside a hyphen, underscore, letter or digit.
+// prose, exact, starts and ends mention old as a whole slug mid-text, as the whole text, at its start and at its end.
+// near holds it only beside a hyphen, underscore, letter or digit.
 func newRenameBoard(t *testing.T, now *time.Time) (*boardengine.Board, string) {
 	t.Helper()
 	boardPath := t.TempDir()
