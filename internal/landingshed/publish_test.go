@@ -257,6 +257,15 @@ func TestPublish_NoPullRequestRequired_DoneWithoutPush(t *testing.T) {
 // TestPublish_StuckBeforePullRequest pins each way Publish stops Stuck before it reaches a pull request:
 // the reason it surfaces, whether it pushed, and that no stuck-reason file is written.
 func TestPublish_StuckBeforePullRequest(t *testing.T) {
+	codeFailure := func(class fabricengine.PushFailureClass, cause error) *fabricengine.PushFailedError {
+		record := fabricengine.FailedPush{Repo: "code", RepoPath: "/hub/task", Branch: "task-branch", Class: class, OriginHead: "abc123", Commits: []string{"def456"}}
+		return &fabricengine.PushFailedError{Record: record, Err: cause}
+	}
+	failedPushGone := codeFailure(fabricengine.PushFailureGone, fabricengine.ErrBranchGone)
+	failedPushRewound := codeFailure(fabricengine.PushFailureRewound, errors.New("push held back"))
+	failedPushAuth := codeFailure(fabricengine.PushFailureAuth, gitrepo.ErrPushAuthRefused)
+	failedPushTransport := codeFailure(fabricengine.PushFailureTransport, errors.New("origin unreachable"))
+	failedPushDiverged := codeFailure(fabricengine.PushFailureNotFastForward, gitrepo.ErrPushRejected)
 	tests := []struct {
 		name         string
 		mutate       func(*Deps)
@@ -317,6 +326,39 @@ func TestPublish_StuckBeforePullRequest(t *testing.T) {
 				d.RemoteOnlyCommits = func() (string, []string, error) { return "", nil, errors.New("fetch failed") }
 			},
 			wantReason:     "push rejected by the remote after the merge-in against parent branch \"main\"; the remote tip could not be read: fetch failed; way forward: run `git merge origin/task-branch` in the task worktree, then resume the run with `lyx loom start`",
+			wantPushCalled: true,
+		},
+		{
+			name:           "gone push failure ends in the class's way forward",
+			pushErr:        failedPushGone,
+			wantReason:     "push failed: " + failedPushGone.Error(),
+			wantPushCalled: true,
+		},
+		{
+			name:           "rewound push failure ends in the class's way forward",
+			pushErr:        failedPushRewound,
+			wantReason:     "push failed: " + failedPushRewound.Error(),
+			wantPushCalled: true,
+		},
+		{
+			name:           "auth push failure ends in the class's way forward",
+			pushErr:        failedPushAuth,
+			wantReason:     "push failed: " + failedPushAuth.Error(),
+			wantPushCalled: true,
+		},
+		{
+			name:           "transport push failure ends in the class's way forward",
+			pushErr:        failedPushTransport,
+			wantReason:     "push failed: " + failedPushTransport.Error(),
+			wantPushCalled: true,
+		},
+		{
+			name:    "not-fast-forward push failure keeps the rejected-push reason with no second way forward",
+			pushErr: failedPushDiverged,
+			mutate: func(d *Deps) {
+				d.RemoteOnlyCommits = func() (string, []string, error) { return "abc123", []string{"c2", "c1"}, nil }
+			},
+			wantReason:     "push rejected by the remote after the merge-in against parent branch \"main\"; the remote task branch is at abc123 and holds 2 commit(s) the local branch lacks; way forward: run `git merge origin/task-branch` in the task worktree, then resume the run with `lyx loom start`",
 			wantPushCalled: true,
 		},
 		{

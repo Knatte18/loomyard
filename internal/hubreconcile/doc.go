@@ -18,7 +18,8 @@
 // The walk pulls the board first, reconciles the board's config and commits it on the board under a subject carrying the binary label, seeding every absent per-worktree repo default from the prime or the template, then reconciles the prime's sparse layers, then lists the hub's code worktrees again and reconciles each pair not yet walked.
 // It repeats until a listing finds no new pair, so a pair registered while the walk ran is walked before the stamp is written.
 // The board commit carries the per-worktree repo defaults beside the hub-wide files.
-// Each worktree's applied files are committed in that worktree, and the board is pushed, carrying the board commit and any an earlier run left unpushed.
+// Each worktree's applied files are committed in that worktree, and the board's push goes to the detached `lyx board sync` every board write spawns, which carries the board commit and any an earlier run left unpushed.
+// The walk spawns it and returns at once, so no start verb waits on a push to GitHub, and the build stamp never waits on one either.
 //
 // # The sparse migration
 //
@@ -44,10 +45,12 @@
 // A mid-merge skip leaves the stamp absent, so the next start verb retries.
 //
 // The hub-wide write is skipped, with nothing written, when the board cannot be brought up to date: the fetch failed, an uncommitted change blocks it, or the board's own commits cannot be replayed onto a moved upstream.
-// That skip leaves the stamp absent as well, and so does a failed board push, on every rerun until a push lands the hub-wide commit.
-// A rerun whose unpushed hub-wide commit sits over a moved upstream meets the divergence skip and repeats its Warn;
-// only a resolved `git pull --rebase` in the board dir, or a board push that lands the commit, clears it.
-// A board with no upstream is never skipped: it is written and committed with no pull, and a failed push of it is logged while the stamp is written, so a board with no reachable remote is not re-walked on every start verb.
+// That skip leaves the stamp absent as well, on every rerun until the board is brought up to date.
+// A hub-wide commit that landed locally writes the stamp whether or not its push has landed: a push origin refuses reaches the orch as a failed-push record, not as an absent stamp.
+// A rerun whose unpushed hub-wide commit sits over a moved upstream is cleared by the board's pull-first replay, which replays the commit onto the moved upstream, so the hub-wide write and the stamp follow.
+// Only a conflict the replay cannot settle, an upstream that changed the same config file, meets the divergence skip and repeats its Warn on every rerun;
+// the Warn names the conflicting paths and the two ways to settle them, and a board push that lands the commit clears it too.
+// A board with no upstream is never skipped: it is written and committed with no pull, and its detached sync fails on its own, so a board with no reachable remote is not re-walked on every start verb.
 //
 // # The pair call
 //

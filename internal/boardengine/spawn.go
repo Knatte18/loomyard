@@ -10,10 +10,20 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"testing"
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
+
+// SpawnSync starts the detached `lyx board sync` of the board at boardPath, the same sync every board write spawns.
+// In a test binary it returns nil without spawning, since forking the running binary would re-run the suite.
+func SpawnSync(boardPath string) error {
+	if testing.Testing() {
+		return nil
+	}
+	return spawnSync(boardPath)
+}
 
 // spawnSync launches `lyx board sync` as a detached, windowless process.
 func spawnSync(boardPath string) error {

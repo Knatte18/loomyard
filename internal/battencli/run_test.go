@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
@@ -98,7 +99,7 @@ func newFakeReceiver(t *testing.T, shutdown func(ctx context.Context) (string, e
 			ParentBranch: func() (string, error) { return "feature", nil },
 			PrimeBranch:  func() (string, error) { return "main", nil },
 			PrimeDirty:   func() ([]string, error) { return nil, nil },
-			Pull:         func(ctx context.Context) error { return nil },
+			Pull:         func(ctx context.Context) (string, error) { return "", nil },
 			Landing:      func() (battenshed.LandingSettings, error) { return battenshed.LandingSettings{}, nil },
 			RunDeploy: func(context.Context, string, string, time.Duration) (battenshed.DeployResult, error) {
 				return battenshed.DeployResult{}, nil
@@ -174,31 +175,77 @@ func writeStatus(t *testing.T, c *battenCLI, st shedengine.Status) {
 
 // TestRunCmd_ResumeDispositions covers StateRunning, StateBlocked, StateFailed and StatePaused, each resuming silently from the persisted current producer, and an absent status file, which is a fresh start and not a refusal: every fake succeeds trivially, so the whole run completes and the verb reports success, with a history_length key matching the persisted history.
 // A run whose status carries a pause_after naming the first row stops paused, and the driver hands it back with no tackler; a run whose row fails again ends in an error envelope carrying the status error.
+// A resume runs the origin reconcile once: an active or unreachable verdict resumes, an ended verdict refuses naming the landing and "lyx cleanup --apply", a stopped verdict refuses with the branch's way forward verbatim followed by the re-run, and a reconcile error refuses with the error and the re-run; an absent status file never runs it.
 func TestRunCmd_ResumeDispositions(t *testing.T) {
 	t.Parallel()
 
+	const slug = "some-slug"
+	const stopWayForward = "`lyx fabric pull` in /hub/example"
+	stoppedReport := fabricengine.OriginReport{
+		Branches: []fabricengine.BranchOutcome{{Branch: "some-slug", Repo: "code", Slug: slug, State: fabricengine.BranchRewritten, WayForward: stopWayForward}},
+		Entries:  []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryStopped, WayForward: stopWayForward}},
+	}
 	tests := []struct {
-		name        string
-		state       shedengine.State
-		producer    string
-		pauseAfter  string
-		lockErr     error
-		wantOutcome string
-		wantError   string
+		name          string
+		state         shedengine.State
+		producer      string
+		pauseAfter    string
+		lockErr       error
+		report        fabricengine.OriginReport
+		reconcileErr  error
+		wantOutcome   string
+		wantErrors    []string
+		wantReconcile int
 	}{
-		{name: "running", state: shedengine.StateRunning, wantOutcome: "done"},
-		{name: "blocked", state: shedengine.StateBlocked, wantOutcome: "done"},
-		{name: "failed", state: shedengine.StateFailed, wantOutcome: "done"},
-		{name: "paused", state: shedengine.StatePaused, wantOutcome: "done"},
+		{name: "running", state: shedengine.StateRunning, wantOutcome: "done", wantReconcile: 1},
+		{name: "blocked", state: shedengine.StateBlocked, wantOutcome: "done", wantReconcile: 1},
+		{name: "failed", state: shedengine.StateFailed, wantOutcome: "done", wantReconcile: 1},
+		{name: "paused", state: shedengine.StatePaused, wantOutcome: "done", wantReconcile: 1},
 		{name: "absent_status_file", wantOutcome: "done"},
-		{name: "pause_after_the_first_row", state: shedengine.StateRunning, pauseAfter: battenrecipe.NameWorktreeCreate, wantOutcome: "paused"},
-		{name: "failed_again", state: shedengine.StateFailed, producer: battenrecipe.NameWorktreeTeardown, lockErr: errors.New("prime lock unavailable"), wantError: "prime lock unavailable"},
+		{name: "pause_after_the_first_row", state: shedengine.StateRunning, pauseAfter: battenrecipe.NameWorktreeCreate, wantOutcome: "paused", wantReconcile: 1},
+		{name: "failed_again", state: shedengine.StateFailed, producer: battenrecipe.NameWorktreeTeardown, lockErr: errors.New("prime lock unavailable"), wantErrors: []string{"prime lock unavailable"}, wantReconcile: 1},
+		{
+			name: "reconcile_active", state: shedengine.StateRunning, wantOutcome: "done", wantReconcile: 1,
+			report: fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryActive}}},
+		},
+		{
+			name: "reconcile_ended", state: shedengine.StateRunning, wantReconcile: 1,
+			report:     fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryEnded, How: "done"}}},
+			wantErrors: []string{"landed", "lyx cleanup --apply", "from the prime"},
+		},
+		{
+			name: "reconcile_stopped", state: shedengine.StateRunning, wantReconcile: 1,
+			report:     stoppedReport,
+			wantErrors: []string{"branch some-slug", "rewritten", stopWayForward + "; then re-run lyx batten run " + slug},
+		},
+		{
+			name: "reconcile_unreachable", state: shedengine.StateRunning, wantOutcome: "done", wantReconcile: 1,
+			report: fabricengine.OriginReport{Unreachable: true},
+		},
+		{
+			name: "reconcile_error", state: shedengine.StateRunning, wantReconcile: 1,
+			reconcileErr: errors.New("origin refused the credentials"),
+			wantErrors:   []string{"origin refused the credentials", "fix the cause it names, then re-run lyx batten run " + slug},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
 			c := newFakeReceiver(t, nil)
+			reconciled := 0
+			c.reconcile = func(got string) (fabricengine.OriginReport, error) {
+				reconciled++
+				if got != slug {
+					t.Errorf("reconcile(%q); want the run's slug %q", got, slug)
+				}
+				return tt.report, tt.reconcileErr
+			}
+			defer func() {
+				if reconciled != tt.wantReconcile {
+					t.Errorf("run(%s) ran the reconcile %d times; want %d", tt.name, reconciled, tt.wantReconcile)
+				}
+			}()
 			if tt.lockErr != nil {
 				c.env.PrimeLock.Acquire = func() (func() error, bool, error) { return nil, false, tt.lockErr }
 			}
@@ -217,12 +264,17 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 			var out bytes.Buffer
 			exitCode := clihelp.Execute(runCommand(c), &out, []string{c.slug})
 
-			if tt.wantError != "" {
+			if len(tt.wantErrors) > 0 {
 				if exitCode != 1 {
 					t.Fatalf("run(%s) exit code = %d; want 1; output: %s", tt.name, exitCode, out.String())
 				}
-				if !strings.Contains(out.String(), `"ok":false`) || !strings.Contains(out.String(), tt.wantError) {
-					t.Errorf("run(%s) output = %q; want an error envelope carrying %q", tt.name, out.String(), tt.wantError)
+				if !strings.Contains(out.String(), `"ok":false`) {
+					t.Errorf("run(%s) output = %q; want an error envelope", tt.name, out.String())
+				}
+				for _, want := range tt.wantErrors {
+					if !strings.Contains(out.String(), want) {
+						t.Errorf("run(%s) output = %q; want it to carry %q", tt.name, out.String(), want)
+					}
 				}
 				return
 			}

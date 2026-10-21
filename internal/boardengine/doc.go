@@ -171,6 +171,15 @@
 // apply to it — board's reads/writes to weft:main are a standalone concern, not routed through
 // fabric.Commit.
 //
+// # Replay
+//
+// FabricReplay implements the board seam fabricengine declares for a records replay, installed process-wide by the lyx root pre-run.
+// Apply re-applies a local board commit onto the board checked out at origin's tip, one change at a time: each added or removed entry, each changed entry's fields as one change, and each design file the commit touches.
+// A change passes the board's own checks, the run lock included, against the board as the kept changes before it left it, and an added entry takes the next id of origin's board.json.
+// Where both sides changed the same field or design file since the merge base, or origin removed the entry, origin's side is kept and the local value is reported lost;
+// a change a check refuses is reported refused, and so is a later change depending on an entry a refused change added.
+// It takes neither the board lock nor the push lock, spawns no sync, and writes nothing when no change survives.
+//
 // # loomyard's own area labels
 //
 // Before deploying the landed binary, write this list into the hub's live <hub>/_board/_lyx/config/board.yaml, then delete this paragraph.

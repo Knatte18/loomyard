@@ -40,12 +40,17 @@ func commitRecordsVerb(out io.Writer, d commitStatusDeps) int {
 		return output.Err(out, "loom: commit-records: commit failed: "+err.Error()+"; way forward: transient, re-run lyx loom commit-records")
 	}
 	if err := d.Push(); err != nil {
-		return output.Err(out, "loom: commit-records: the commit landed locally but the push failed: "+err.Error()+"; way forward: "+pushFailureWayForward(err))
+		message := "loom: commit-records: the commit landed locally but the push failed: " + err.Error()
+		// A classified push failure's text already ends in its class's way forward.
+		if fabricengine.HasUnclassifiedFailure(err) {
+			message += "; way forward: " + pushFailureWayForward(err)
+		}
+		return output.Err(out, message)
 	}
 	return output.Ok(out, map[string]any{"committed": true})
 }
 
-// pushFailureWayForward returns the way forward for a failed push:
+// pushFailureWayForward returns the way forward for a push failure no failed-push record explains:
 // a rejection, alone or beside another failure, needs a merge or a remote-rule fix;
 // any other failure, a lock expiry included, is transient.
 func pushFailureWayForward(err error) string {

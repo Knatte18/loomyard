@@ -25,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
@@ -263,25 +264,52 @@ func TestStencilSeeding_HubScenario(t *testing.T) {
 	}
 
 	// Relies on the drop: the board is level with its upstream again.
-	if !t.Run("a board commit ahead of a moved upstream skips the write", func(t *testing.T) {
+	if !t.Run("a board commit ahead of a moved upstream is replayed and the write runs", func(t *testing.T) {
+		boardkit.InstallReplay(t)
 		gitkit.CommitFile(t, board, "notes/card.md", "card\n", "board: add a card")
-		tip := gitkit.RevParse(t, board, "HEAD")
-		moveUpstream(t, "notes/up3.md")
+		upstream := moveUpstream(t, "notes/up3.md")
 		if err := os.Remove(discussionPath); err != nil {
 			t.Fatalf("delete the seeded stencil: %v", err)
+		}
+
+		seed()
+
+		if _, err := os.Stat(discussionPath); err != nil {
+			t.Errorf("stat %s: %v; want the stencil written back after the replay", discussionPath, err)
+		}
+		if got, want := gitkit.Git(t, board, "log", "--format=%s", upstream+"..HEAD"), seedSubject("stencils")+"\nboard: add a card"; got != want {
+			t.Errorf("commits over the moved upstream = %q, want the written stencil's seed commit over the replayed board commit %q", got, want)
+		}
+		if got := gitkit.RevParse(t, board, "HEAD~2"); got != upstream {
+			t.Errorf("the replayed commit sits on %s, want the moved upstream %s", got, upstream)
+		}
+	}) {
+		return
+	}
+
+	// Relies on the replay: the board commit is still ahead of origin.
+	// The deleted file is a spec, a path no commit ahead touches, so the skip is the conflict and not a dirty path.
+	if !t.Run("a board commit conflicting with a moved upstream skips the write", func(t *testing.T) {
+		specPath := stencilstore.Path(specsDir, specNames[0])
+		tip := gitkit.RevParse(t, board, "HEAD")
+		moveUpstream(t, "notes/card.md")
+		if err := os.Remove(specPath); err != nil {
+			t.Fatalf("delete the seeded spec: %v", err)
 		}
 		logs := logcapture.Capture(t)
 
 		seed()
 
-		if _, err := os.Stat(discussionPath); !os.IsNotExist(err) {
-			t.Errorf("stat %s = %v; want it still deleted, since the write is skipped", discussionPath, err)
+		if _, err := os.Stat(specPath); !os.IsNotExist(err) {
+			t.Errorf("stat %s = %v; want it still deleted, since the write is skipped", specPath, err)
 		}
 		if gitkit.RevParse(t, board, "HEAD") != tip {
 			t.Errorf("head moved off the board commit %s", tip)
 		}
-		if !strings.Contains(logs.String(), "git pull --rebase") {
-			t.Errorf("log %q does not carry the divergence Warn naming git pull --rebase", logs.String())
+		for _, want := range []string{"notes/card.md", "lyx board sync"} {
+			if !strings.Contains(logs.String(), want) {
+				t.Errorf("log %q does not carry the divergence Warn naming %s", logs.String(), want)
+			}
 		}
 	}) {
 		return

@@ -144,20 +144,105 @@ func (fx *mergeInFixture) readRecord(t *testing.T) MergeRecord {
 func TestMergeIn_RunsStatusCommitThenLockThenSyncThenMergeAndVerify(t *testing.T) {
 	t.Parallel()
 
-	fx := newMergeInFixture(t)
+	const stoppedWayForward = `fetch "main" in the prime and reconcile it by hand`
+	proceeds := "commit-status,reconcile,tips,merge main,verify"
+	tests := []struct {
+		name         string
+		report       fabricengine.OriginReport
+		reconcileErr error
+		wantErr      bool
+		wantOutcome  shedengine.Outcome
+		wantEvents   string
+		wantHalt     bool
+		wantInReason []string
+		wantNotIn    []string
+		wantLock     bool
+	}{
+		{
+			name:        "an active run proceeds to the lock and the merge",
+			report:      fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryActive}}},
+			wantOutcome: shedengine.Done, wantEvents: proceeds, wantLock: true,
+		},
+		{
+			name:        "an unreachable origin proceeds to the lock and the merge",
+			report:      fabricengine.OriginReport{Unreachable: true},
+			wantOutcome: shedengine.Done, wantEvents: proceeds, wantLock: true,
+		},
+		{
+			name:        "an ended run that landed halts naming the landing",
+			report:      fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryEnded, How: "done"}}},
+			wantOutcome: shedengine.Stuck, wantEvents: "commit-status,reconcile", wantHalt: true,
+			wantInReason: []string{"its landing is done", `"lyx cleanup --apply" from the prime`},
+		},
+		{
+			name:        "an ended run removed from the board halts naming the removal",
+			report:      fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryEnded, How: "removed"}}},
+			wantOutcome: shedengine.Stuck, wantEvents: "commit-status,reconcile", wantHalt: true,
+			wantInReason: []string{"removed from the board", `"lyx cleanup --apply" from the prime`},
+		},
+		{
+			name: "a stopped run names the branch and its way forward, then the resume",
+			report: fabricengine.OriginReport{
+				Branches: []fabricengine.BranchOutcome{{Branch: "main", State: fabricengine.BranchDiverged, WayForward: stoppedWayForward}},
+				Entries:  []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryStopped, WayForward: stoppedWayForward}},
+			},
+			wantOutcome: shedengine.Stuck, wantEvents: "commit-status,reconcile",
+			wantInReason: []string{"branch main is diverged against origin", stoppedWayForward + `; then run "lyx loom resume"`},
+			wantNotIn:    []string{"lyx cleanup --apply"},
+		},
+		{
+			name:         "a reconcile error is returned as an error",
+			reconcileErr: errors.New("ls-remote failed"),
+			wantErr:      true, wantEvents: "commit-status,reconcile",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			fx := newMergeInFixture(t)
+			fx.m.deps.Reconcile = func() (fabricengine.OriginReport, error) {
+				fx.events = append(fx.events, "reconcile")
+				return tt.report, tt.reconcileErr
+			}
 
-	outcome, _ := fx.call(t)
-	if outcome != shedengine.Done {
-		t.Fatalf("Call() = %q; want Done", outcome)
-	}
-	if got, want := strings.Join(fx.events, ","), "commit-status,tips,merge main,verify"; got != want {
-		t.Errorf("events = %q; want %q", got, want)
-	}
-	if !fx.lockHeld {
-		t.Error("the parent lock was not held when the tips were read")
-	}
-	if rec, found, _ := fx.store.Read("main"); !found || rec.Owner.Slug != "me" {
-		t.Errorf("lock record after Done = %+v, %v; want it kept by the run", rec, found)
+			outcome, ptr, err := fx.m.Call(context.Background())
+
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Call() error = %v; want an error = %v", err, tt.wantErr)
+			}
+			if got := strings.Join(fx.events, ","); got != tt.wantEvents {
+				t.Errorf("events = %q; want %q", got, tt.wantEvents)
+			}
+			if tt.wantErr {
+				if !strings.Contains(err.Error(), "ls-remote failed") {
+					t.Errorf("Call() error = %v; want the reconcile's cause", err)
+				}
+			} else if outcome != tt.wantOutcome || ptr.Halt != tt.wantHalt {
+				t.Fatalf("Call() = %q, %+v; want %q with halt %v", outcome, ptr, tt.wantOutcome, tt.wantHalt)
+			}
+			for _, want := range tt.wantInReason {
+				if !strings.Contains(ptr.Reason, want) {
+					t.Errorf("reason = %q; want it to contain %q", ptr.Reason, want)
+				}
+			}
+			for _, unwanted := range tt.wantNotIn {
+				if strings.Contains(ptr.Reason, unwanted) {
+					t.Errorf("reason = %q; want it free of %q", ptr.Reason, unwanted)
+				}
+			}
+			rec, found, _ := fx.store.Read("main")
+			if found != tt.wantLock {
+				t.Fatalf("parent lock held = %v; want %v", found, tt.wantLock)
+			}
+			if tt.wantLock {
+				if !fx.lockHeld {
+					t.Error("the parent lock was not held when the tips were read")
+				}
+				if rec.Owner.Slug != "me" {
+					t.Errorf("lock record after Done = %+v; want it kept by the run", rec)
+				}
+			}
+		})
 	}
 }
 
@@ -258,7 +343,7 @@ func TestMergeIn_SyncParent(t *testing.T) {
 			if got := fx.readRecord(t).MergedTip; got != tt.wantTip {
 				t.Errorf("merged_tip = %q; want %q", got, tt.wantTip)
 			}
-			if tt.wantPulled && fx.puller.opts != (fabricengine.SyncOptions{}) {
+			if tt.wantPulled && (fx.puller.opts.SkipGit || fx.puller.opts.SkipPush) {
 				t.Errorf("FastForwardPair options = %+v; want the told push skip, false", fx.puller.opts)
 			}
 		})

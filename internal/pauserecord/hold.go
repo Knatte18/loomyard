@@ -32,6 +32,9 @@ type Waiter struct {
 	// SlugEntryExempt, while it reports true, lets a slug entry pass so that only a hub entry holds the wait.
 	// It serves a caller whose run holds a parent lock.
 	SlugEntryExempt func() bool
+	// ExemptEntry, when it accepts a live entry, lets that entry pass whatever it covers; any entry it rejects holds the wait as usual.
+	// It serves a caller that owns one pause entry and must still reach origin while it stands.
+	ExemptEntry func(Entry) bool
 }
 
 // WaitUncovered returns once no live entry in the record at path covers slug, and at once when none does.
@@ -59,6 +62,15 @@ func WaitUncovered(ctx context.Context, path, slug string, w Waiter) error {
 		coveredSlug := slug
 		if w.SlugEntryExempt != nil && w.SlugEntryExempt() {
 			coveredSlug = ""
+		}
+		if w.ExemptEntry != nil {
+			var holding []Entry
+			for _, live := range record.Live {
+				if !w.ExemptEntry(live) {
+					holding = append(holding, live)
+				}
+			}
+			record.Live = holding
 		}
 		entry, covered := record.Covering(coveredSlug)
 		if !covered {
@@ -169,6 +181,9 @@ type Gate struct {
 	Sleep  func(ctx context.Context, d time.Duration) error
 	// Now is the clock Network measures the time it held a call on; nil means time.Now.
 	Now func() time.Time
+	// ExemptScope and ExemptPausedAt name the one live entry the gate lets pass; both zero means no entry passes.
+	ExemptScope    string
+	ExemptPausedAt time.Time
 }
 
 var (
@@ -194,6 +209,35 @@ func SetGateSlug(slug string) {
 		updated.Geometry.Slug = slug
 		if installedGate.CompareAndSwap(current, &updated) {
 			return
+		}
+	}
+}
+
+// SetGateExempt replaces the installed gate's exempt entry with the one of scope paused at pausedAt, for a process that owns that entry and must still reach origin while it stands.
+// It does nothing when no gate is installed, and returns the function that restores the previous exempt entry.
+func SetGateExempt(scope string, pausedAt time.Time) (restore func()) {
+	previous := replaceGateExempt(scope, pausedAt)
+	return func() { replaceGateExempt(previous.scope, previous.pausedAt) }
+}
+
+// gateExempt is the exempt entry a gate carries.
+type gateExempt struct {
+	scope    string
+	pausedAt time.Time
+}
+
+// replaceGateExempt installs the exempt entry on the current gate and returns the one it replaced; it replaces nothing when no gate is installed.
+func replaceGateExempt(scope string, pausedAt time.Time) gateExempt {
+	for {
+		current := installedGate.Load()
+		if current == nil {
+			return gateExempt{}
+		}
+		updated := *current
+		updated.ExemptScope = scope
+		updated.ExemptPausedAt = pausedAt
+		if installedGate.CompareAndSwap(current, &updated) {
+			return gateExempt{scope: current.ExemptScope, pausedAt: current.ExemptPausedAt}
 		}
 	}
 }
@@ -225,6 +269,12 @@ func Network(op string) (held time.Duration, done func()) {
 			return sleep(ctx, d)
 		},
 		SlugEntryExempt: holdsParentLock,
+	}
+	if gate.ExemptScope != "" {
+		exemptScope, exemptPausedAt := gate.ExemptScope, gate.ExemptPausedAt
+		waiter.ExemptEntry = func(entry Entry) bool {
+			return entry.Scope == exemptScope && entry.PausedAt.Equal(exemptPausedAt)
+		}
 	}
 	entered := now()
 	// The background context never ends, so the wait returns nil.

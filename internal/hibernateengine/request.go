@@ -102,6 +102,10 @@ type Deps struct {
 	Pause        func(tenderengine.PauseRequest) (tenderengine.PauseReport, error)
 	TenderStatus func() (tenderengine.StatusReport, error)
 	Lift         func(tenderengine.EntryRef) (tenderengine.ResumeReport, error)
+	// Reconcile runs the hub's origin reconcile at the wake and returns the engine's view of its report.
+	Reconcile func() (WakeReconcile, error)
+	// ExemptNetwork lets the pause entry ref pass the network gate for this process until the returned function is called.
+	ExemptNetwork func(ref tenderengine.EntryRef) (restore func())
 	// Hibernate hibernates the machine and returns once the job is queued.
 	Hibernate func() error
 	// Notify queues one line for the orch.

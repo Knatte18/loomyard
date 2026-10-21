@@ -99,6 +99,10 @@ func hubDeps(location *lyxcwd.Location) (hibernateengine.Deps, error) {
 			}
 			return tenderengine.Lift(deps, ref)
 		},
+		Reconcile: func() (hibernateengine.WakeReconcile, error) { return wakeReconcile(prime) },
+		ExemptNetwork: func(ref tenderengine.EntryRef) func() {
+			return pauserecord.SetGateExempt(ref.Scope, ref.PausedAt)
+		},
 		Hibernate: runHibernate,
 		Notify: func(line string) error {
 			_, err := orchcli.NotifyPrime(location, hibernateProgram, line)
