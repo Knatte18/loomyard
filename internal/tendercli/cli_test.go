@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -61,6 +62,49 @@ func report(t *testing.T, env envelope.Envelope, key string) map[string]any {
 		t.Fatalf("envelope %v has no %q object", env.Raw, key)
 	}
 	return body
+}
+
+func TestStatus_PrintsOutstandingFailedPushes(t *testing.T) {
+	t.Setenv(agentname.StrandNameEnv, "")
+	h := newHub(t)
+	pair := h.PairCodeWorktree(pairSlug)
+
+	none, code := verb(t, Command(), pair, "status")
+	if !none.OK || code != 0 {
+		t.Fatalf("status: ok=%v code=%d error=%q", none.OK, code, none.Error)
+	}
+	if rows, isArray := none.Raw["failed_pushes"].([]any); !isArray || len(rows) != 0 {
+		t.Errorf("failed_pushes with no record = %v; want an empty array", none.Raw["failed_pushes"])
+	}
+
+	record := fabricengine.FailedPush{
+		Repo:     "code",
+		RepoPath: pair,
+		Branch:   "feature/x",
+		Class:    fabricengine.PushFailureTransport,
+		Error:    "connection refused",
+	}
+	if err := fabricengine.RecordPushFailure(h.Location.HubPath, record, time.Now()); err != nil {
+		t.Fatalf("RecordPushFailure: %v", err)
+	}
+
+	withRecord, code := verb(t, Command(), pair, "status")
+	if !withRecord.OK || code != 0 {
+		t.Fatalf("status: ok=%v code=%d error=%q", withRecord.OK, code, withRecord.Error)
+	}
+	rows, _ := withRecord.Raw["failed_pushes"].([]any)
+	if len(rows) != 1 {
+		t.Fatalf("failed_pushes = %v; want the one record", withRecord.Raw["failed_pushes"])
+	}
+	row, _ := rows[0].(map[string]any)
+	for key, want := range map[string]any{"repo": "code", "branch": "feature/x", "class": "transport", "error": "connection refused", "count": float64(1)} {
+		if row[key] != want {
+			t.Errorf("failed_pushes row %s = %v; want %v", key, row[key], want)
+		}
+	}
+	if wayForward, _ := row["way_forward"].(string); !strings.Contains(wayForward, "lyx fabric push") || !strings.Contains(wayForward, pair) {
+		t.Errorf("failed_pushes way_forward = %q; want the push step run in %s", wayForward, pair)
+	}
 }
 
 func TestPauseAndResume_WriteLiftAndRefuseOverTheHub(t *testing.T) {

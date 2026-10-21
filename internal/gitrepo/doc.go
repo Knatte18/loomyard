@@ -314,8 +314,10 @@
 //     per-lookup wrapper sees. Comparing against that snapshot, not only the
 //     last stored fingerprint, lets a caller that lost a race to a
 //     concurrent reindex still rerun. The read holds the shared lock, and
-//     only the fingerprint check and reindex take the exclusive one, so
-//     readers do not serialize. A genuinely absent object reindexes at most
+//     only the fingerprint check, the reindex and the index rebuild that
+//     follows it take the exclusive one, so readers do not serialize; the
+//     rebuild is forced there because go-git rebuilds its index
+//     unsynchronized on the next read. A genuinely absent object reindexes at most
 //     once while the pack set is unchanged. The policy is reactive because
 //     the trigger set for a proactive one cannot be enumerated reliably: the
 //     probe observed `gc --auto` firing after ordinary commits and fetches

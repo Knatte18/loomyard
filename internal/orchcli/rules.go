@@ -8,12 +8,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fsx"
-	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/spf13/cobra"
@@ -99,13 +97,13 @@ func writeHubRules(out io.Writer, cwd, from, rulesPath string, bolt rulesBolt) i
 		return output.ErrFields(out, msg, map[string]any{"path": rulesPath, "committed": committed, "unpushed": unpushed})
 	}
 	rerun := fmt.Sprintf("lyx orch rules --from %s", from)
-	boardDir := filepath.Clean(strings.TrimSuffix(rulesPath, rulesRel()))
-	diverged := fmt.Sprintf("the recovery rebase conflicted with an upstream change; run `git pull --rebase` in %s and resolve the conflict, then `lyx board sync`, then re-run %s", boardDir, rerun)
+	// A *PushFailedError's text already ends in its class's way forward, so only the re-run follows it.
+	var failedPush *fabricengine.PushFailedError
 
 	if err := bolt.Push(); err != nil {
 		wayForward := fmt.Sprintf("re-run %s once Bolt pushes", rerun)
-		if errors.Is(err, gitrepo.ErrPullRebaseFailed) {
-			wayForward = diverged
+		if errors.As(err, &failedPush) {
+			wayForward = fmt.Sprintf("then re-run %s", rerun)
 		}
 		return refuse(fmt.Sprintf("pushing Bolt failed (%v); nothing was written, %s", err, wayForward), false, true)
 	}
@@ -136,8 +134,8 @@ func writeHubRules(out io.Writer, cwd, from, rulesPath string, bolt rulesBolt) i
 
 	if err := bolt.Push(); err != nil {
 		wayForward := fmt.Sprintf("the next run of %s pushes it", rerun)
-		if errors.Is(err, gitrepo.ErrPullRebaseFailed) {
-			wayForward = diverged
+		if errors.As(err, &failedPush) {
+			wayForward = fmt.Sprintf("then re-run %s", rerun)
 		}
 		return refuse(fmt.Sprintf("%s is committed on Bolt but pushing failed (%v); %s", rulesPath, err, wayForward), res.Committed, true)
 	}

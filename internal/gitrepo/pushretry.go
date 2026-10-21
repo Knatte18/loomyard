@@ -24,6 +24,18 @@ const pushMaxAttempts = 4
 // pushBaseBackoff is the delay before the second attempt; each later delay doubles it.
 const pushBaseBackoff = time.Second
 
+// PushBackoffDelays returns the delays PushWithRetry sleeps between its attempts, in order: pushBaseBackoff, then each doubled, one fewer than pushMaxAttempts.
+// A caller that retries a push on its own sleeps the same delays.
+func PushBackoffDelays() []time.Duration {
+	delays := make([]time.Duration, 0, pushMaxAttempts-1)
+	delay := pushBaseBackoff
+	for range pushMaxAttempts - 1 {
+		delays = append(delays, delay)
+		delay *= 2
+	}
+	return delays
+}
+
 const remoteRejectedPrefix = "! [remote rejected]"
 
 // retryablePushRefusal reports whether err is a push whose stderr holds a "! [remote rejected] <src> -> <dst> (<reason>)" line for ref, and returns that line.

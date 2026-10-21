@@ -13,6 +13,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -23,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 )
 
 // cloneBareForTest clones bareRepo into a fresh subdirectory of t.TempDir(), configuring a commit
@@ -148,14 +150,15 @@ func TestPushAnchored_PushesAndRecordsBranchPush(t *testing.T) {
 }
 
 // TestPushAnchored_DivergedWeftRemote_ReturnsErrPushRejectedUnwrapped covers the rejection path a
-// diverged weft remote produces: a second clone of the weft bare pushes a commit this weft sibling
-// lacks, so this weft's next PushAnchored push is a genuine non-fast-forward rejection. The returned
-// error must satisfy errors.Is(err, gitrepo.ErrPushRejected) — the unwrapped-sentinel property
-// batch 7's closure depends on to warn-and-continue on exactly this condition.
+// diverged weft remote produces: a second clone of the weft bare changes `status.json`, as this weft sibling does,
+// so this weft's next PushAnchored push is rejected and its replay stops on a conflict.
+// The returned error must satisfy errors.Is(err, gitrepo.ErrPushRejected) through the failed-push error that wraps it.
+// Every caller that discriminates a rejection depends on that, and the failed-push record names the conflicting path.
 //
-//testtiming:keep a diverged weft remote returning gitrepo.ErrPushRejected unwrapped; coverage of its blocks by other tests does not show an assertion of this
+//testtiming:keep a diverged weft remote returning gitrepo.ErrPushRejected through its failed-push error; coverage of its blocks by other tests does not show an assertion of this
 func TestPushAnchored_DivergedWeftRemote_ReturnsErrPushRejectedUnwrapped(t *testing.T) {
 	t.Parallel()
+	boardkit.InstallReplay(t)
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
@@ -167,17 +170,28 @@ func TestPushAnchored_DivergedWeftRemote_ReturnsErrPushRejectedUnwrapped(t *test
 	}
 
 	weftClone2 := cloneBareForTest(t, h.RecordsBare, fabricengine.RecordsBranchName("main"))
-	gitkit.CommitFile(t, weftClone2, "other.txt", "from second weft clone", "from second weft clone")
+	gitkit.CommitFile(t, weftClone2, "status.json", "from second weft clone", "from second weft clone")
 	gitkit.MustRun(t, weftClone2, "git", "push")
 
-	gitkit.CommitFile(t, h.PrimeRecords(), "weft-file.txt", "weft change that will be rejected", "weft change that will be rejected")
+	gitkit.CommitFile(t, h.PrimeRecords(), "status.json", "weft change that will be rejected", "weft change that will be rejected")
 
 	_, err := fabricengine.PushAnchored(h.Location, fabricengine.SyncOptions{}, fabricengine.LockWaitUnbounded)
 	if err == nil {
 		t.Fatal("PushAnchored() against a diverged weft remote error = nil; want gitrepo.ErrPushRejected")
 	}
-	if !errors.Is(err, gitrepo.ErrPushRejected) {
+	if !errors.Is(err, gitrepo.ErrPushRejected) || !fabricengine.IsPushRejected(err) {
 		t.Errorf("PushAnchored() error = %v; want it to satisfy errors.Is(err, gitrepo.ErrPushRejected)", err)
+	}
+	var failed *fabricengine.PushFailedError
+	if !errors.As(err, &failed) {
+		t.Fatalf("PushAnchored() error = %v; want a *PushFailedError", err)
+	}
+	if failed.Record.Class != fabricengine.PushFailureNotFastForward || failed.Record.Repo != "records" || !slices.Contains(failed.Record.Paths, "status.json") {
+		t.Errorf("PushAnchored() record = %+v; want a not-fast-forward records record naming status.json", failed.Record)
+	}
+	records, err := fabricengine.ListFailedPushes(h.Location.HubPath)
+	if err != nil || len(records) != 1 || records[0].Branch != failed.Record.Branch || records[0].Class != fabricengine.PushFailureNotFastForward {
+		t.Errorf("ListFailedPushes() = %+v, %v; want the one not-fast-forward record of the push", records, err)
 	}
 }
 

@@ -287,4 +287,75 @@ func TestNetwork(t *testing.T) {
 			t.Fatalf("sleeps = %d after SetGateSlug, want the gate held once", sleeps)
 		}
 	})
+
+	t.Run("an exempt entry passes alone, holds beside another, and holds again once restored", func(t *testing.T) {
+		recordPath := filepath.Join(t.TempDir(), RecordFileName)
+		owned := Entry{Scope: ScopeHub, PausedAt: epoch}
+		other := Entry{Scope: "a", PausedAt: epoch.Add(time.Minute)}
+		setLive(t, recordPath, owned)
+		sleeps := 0
+		defer InstallGate(Gate{
+			Geometry: Geometry{RecordPath: recordPath, Slug: "a"},
+			Notify:   func(string) {},
+			Sleep: func(ctx context.Context, d time.Duration) error {
+				sleeps++
+				resumeLive(t, recordPath)
+				return nil
+			},
+		})()
+
+		restore := SetGateExempt(ScopeHub, epoch)
+		_, done := Network("fetch")
+		done()
+		if sleeps != 0 {
+			t.Fatalf("sleeps = %d with the exempt entry alone, want the call to pass at once", sleeps)
+		}
+
+		setLive(t, recordPath, owned, other)
+		_, done = Network("fetch")
+		done()
+		if sleeps != 1 {
+			t.Fatalf("sleeps = %d beside a second covering entry, want the call held until it is lifted", sleeps)
+		}
+
+		restore()
+		setLive(t, recordPath, owned)
+		_, done = Network("fetch")
+		done()
+		if sleeps != 2 {
+			t.Fatalf("sleeps = %d after the restore, want the entry to hold again", sleeps)
+		}
+	})
+
+	t.Run("an exemption of another pause time does not pass the entry", func(t *testing.T) {
+		recordPath := filepath.Join(t.TempDir(), RecordFileName)
+		setLive(t, recordPath, Entry{Scope: ScopeHub, PausedAt: epoch.Add(time.Hour)})
+		sleeps := 0
+		defer InstallGate(Gate{
+			Geometry: Geometry{RecordPath: recordPath, Slug: "a"},
+			Notify:   func(string) {},
+			Sleep: func(ctx context.Context, d time.Duration) error {
+				sleeps++
+				resumeLive(t, recordPath)
+				return nil
+			},
+		})()
+
+		defer SetGateExempt(ScopeHub, epoch)()
+		_, done := Network("fetch")
+		done()
+		if sleeps != 1 {
+			t.Fatalf("sleeps = %d for a newer hub entry, want the call held", sleeps)
+		}
+	})
+
+	t.Run("SetGateExempt with no gate installed is a no-op", func(t *testing.T) {
+		restore := SetGateExempt(ScopeHub, epoch)
+		restore()
+		if held, done := Network("fetch"); held != 0 {
+			t.Fatalf("held = %v with no gate, want zero", held)
+		} else {
+			done()
+		}
+	})
 }

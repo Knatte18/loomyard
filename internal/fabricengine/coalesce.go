@@ -55,27 +55,20 @@ func headOrEmpty(path string) (string, error) {
 	return "", err
 }
 
-// pushRebaseFreeLogged runs a rebase-free push, mapping rejection or an exhausted retry to a warning
-// and nil return (commits left unpushed per fabric's contract); other errors propagate.
-func pushRebaseFreeLogged(path string) error {
-	return unpushedOutcome(path, gitrepo.New(path).PushRebaseFree())
-}
-
-// unpushedOutcome maps the result of a rebase-free push of path to fabric's contract.
-// A diverged remote and a remote that kept refusing the push both log a Warn and return nil, leaving the commits unpushed for a later push;
-// a branch carrying the local-only mark logs an Info and returns nil, since it is never pushed; any other error is returned.
-func unpushedOutcome(path string, err error) error {
+// pushSideDetached pushes one side of the detached push through pushClassified.
+// A failure it recorded and a branch carrying the local-only mark leave the commits unpushed for a later push and return nil, as the detached child always has;
+// any other error is returned.
+func pushSideDetached(rec *Mutations, hubPath, side, path string, opts SyncOptions, retryRecords func() (bool, error)) error {
+	err := pushClassified(rec, hubPath, side, path, opts, retryRecords)
+	var failed *PushFailedError
 	switch {
 	case err == nil:
 		return nil
 	case errors.Is(err, gitrepo.ErrLocalBranch):
 		logger.Info("fabricengine: local-only branch, not pushed", "path", path)
 		return nil
-	case errors.Is(err, gitrepo.ErrPushRejected):
-		logger.Warn("fabricengine: push rejected, remote diverged; commits left unpushed", "path", path)
-		return nil
-	case errors.Is(err, gitrepo.ErrPushRetriesExhausted):
-		logger.Warn("fabricengine: remote kept refusing the push; commits left unpushed for a later push", "path", path, "error", err)
+	case errors.As(err, &failed):
+		logger.Warn("fabricengine: push failed and was recorded; commits left unpushed", "path", path, "class", string(failed.Record.Class), "error", err)
 		return nil
 	default:
 		return err
@@ -135,6 +128,7 @@ func coalescePushSides(req PushSpawn, opts SyncOptions, caller string, acquire f
 	if err != nil {
 		return PushResult{}, err
 	}
+	hubPath := filepath.Dir(weftPath)
 
 	owed := map[string]PushSpawn{pushSideRecords: {WeftPath: weftPath, PauseSlug: req.PauseSlug, TeardownSlug: req.TeardownSlug}}
 	if warpPath != "" {
@@ -154,23 +148,14 @@ func coalescePushSides(req PushSpawn, opts SyncOptions, caller string, acquire f
 		// A side with an empty path or an unborn HEAD has nothing to push;
 		// skip it, but it still participates in the before/after HEAD
 		// comparison below (its empty-string HEAD is trivially stable).
-		// warpRepo/weftRepo and their HasUnpushed samples are only taken for a side that is actually
-		// attempted this iteration, beside the beforeWarp/beforeWeft HEAD sampling already here — the
-		// same before/after shape card 19 uses for PushWeft and PushWarpAt, applied per side.
-		var warpRepo, weftRepo *gitrepo.Repo
-		var warpHadUnpushed, weftHadUnpushed bool
-		var warpUnpushedErr, weftUnpushedErr error
 		if warpPath != "" && beforeWarp != "" {
-			warpRepo = gitrepo.New(warpPath)
-			warpHadUnpushed, warpUnpushedErr = warpRepo.HasUnpushed()
-			if err := pushRebaseFreeLogged(warpPath); err != nil {
+			if err := pushSideDetached(rec, hubPath, failedPushSideCode, warpPath, opts, nil); err != nil {
 				return false, err
 			}
 		}
-		if weftPath != "" && beforeWeft != "" {
-			weftRepo = gitrepo.New(weftPath)
-			weftHadUnpushed, weftUnpushedErr = weftRepo.HasUnpushed()
-			if err := pushRebaseFreeLogged(weftPath); err != nil {
+		if beforeWeft != "" {
+			retryWeft := func() (bool, error) { return retryWeftPush(rec, hubPath, weftPath) }
+			if err := pushSideDetached(rec, hubPath, failedPushSideRecords, weftPath, opts, retryWeft); err != nil {
 				return false, err
 			}
 		}
@@ -182,13 +167,6 @@ func coalescePushSides(req PushSpawn, opts SyncOptions, caller string, acquire f
 		afterWeft, err := headOrEmpty(weftPath)
 		if err != nil {
 			return false, err
-		}
-
-		if warpRepo != nil {
-			recordPushIfAdvanced(rec, warpRepo, "code", warpPath, warpHadUnpushed, warpUnpushedErr)
-		}
-		if weftRepo != nil {
-			recordPushIfAdvanced(rec, weftRepo, "records", weftPath, weftHadUnpushed, weftUnpushedErr)
 		}
 
 		return afterWarp != beforeWarp || afterWeft != beforeWeft, nil

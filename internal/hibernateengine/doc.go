@@ -3,7 +3,7 @@
 // A hibernate request asks lyx's own Go code to hibernate the machine once every session in the hub is safely paused, so no LLM session runs the hibernate and none is cut mid-call.
 // A detached daemon carries the request out; the verbs here record the request, end it and read it.
 //
-// Every path and every probe is told through Deps; the engine resolves no working directory, spawns nothing itself and reaches tender only through the Pause, TenderStatus and Lift seams.
+// Every path and every probe is told through Deps; the engine resolves no working directory, spawns nothing itself and reaches tender only through the Pause, TenderStatus and Lift seams and origin only through the Reconcile and ExemptNetwork seams.
 //
 // # The request file
 //
@@ -72,5 +72,16 @@
 //
 // Right before the hibernate the daemon reads the hub once more, needs a live hub entry, and moves the request to hibernating only if it is still this daemon's.
 // The wake is a sleep the clock gap watch records ending after the hibernate call, seen within five minutes of awake time; a hibernate error or no wake fails the request with the owned entry lifted and one notice.
-// On the wake the owned entry is lifted by identity, so an entry already resumed, with another hub entry added meanwhile, lifts nothing, and the request ends done with one notice saying what became of the pause.
+// After the wake and the move to resuming the daemon reconciles the hub with origin, through the `Reconcile` seam, before it lifts anything.
+// The engine imports no fabric package: `WakeReconcile` is its own view of the report, with whether origin was unreachable, the stop on a branch every pair shares, one `WakeRun` per stopped or ended entry and one rendered line per mutation.
+// A hub entry the request does not own that is live skips the reconcile and the exemption, only an owned entry is lifted, and the notice names the standing entry, `lyx resume`, and that `lyx orch start` or `lyx cleanup --apply` runs the reconcile after that lift.
+// Otherwise the owned entry, when live, is exempted from the network gate through `ExemptNetwork` until the reconcile returns, so only the reconcile's own network calls pass and every other process and entry stays held; with no hub entry live the reconcile runs with nothing to exempt.
+// The daemon has no envelope, so each mutation line is logged at Info and never enters the notice.
+// Unreachable through the retry bound, or a reconcile error, moves nothing further: the owned entry is lifted and the notice names the cause and `lyx cleanup --apply`.
+// A stop on a shared branch keeps the hub entry live, and the notice names the stop and `lyx resume` as the way forward once it is settled.
+// Otherwise each stopped run, and each ended run still busy, gets a plain pair pause entry through `Pause`, not recorded as owned so it outlives the request; the owned entry is then lifted.
+// A pair whose pause fails is left unheld and named with `lyx tender pause <slug>`.
+// The notice names per stopped run its way forward then `lyx resume <slug>`, only `lyx resume <slug>` for a pair busy on a parked push, and `lyx cleanup --apply` in place of the resume for a pair stopped as gone; a busy ended run is named with its landing or removal and `lyx cleanup --apply`, and the other ended runs are listed.
+// A `TenderStatus` error before the reconcile fails the request with the owned entry lifted.
+// Otherwise the owned entry is lifted by identity, so an entry already resumed, with another hub entry added meanwhile, lifts nothing, and the request ends done with one notice saying what became of the pause.
 package hibernateengine

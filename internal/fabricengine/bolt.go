@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // Bolt is a handle over a single weft:main-backed repo path with no paired warp side — the
@@ -62,8 +63,8 @@ func (b *Bolt) CommitWritten(message string, write func() ([]string, error), opt
 	return gitrepo.New(b.path).StageAndCommit(message, ScopedPathspec(".", writtenPaths))
 }
 
-// Push pushes any unpushed commits in the Bolt's repo, dropping seed commits that conflict at the push as PushRecorded does.
-// A drop is logged at Info, since a caller without a mutation record has nowhere else to show it.
+// Push pushes any unpushed commits in the Bolt's repo, replaying them onto a moved origin as PushRecorded does.
+// A seed-commit drop of that replay is logged at Info, since a caller without a mutation record has nowhere else to show it.
 func (b *Bolt) Push(opts SyncOptions) error {
 	rec := NewMutations(filepath.Dir(b.path))
 	err := b.PushRecorded(opts, rec)
@@ -75,54 +76,18 @@ func (b *Bolt) Push(opts SyncOptions) error {
 	return err
 }
 
-// PushRecorded pushes any unpushed commits in the Bolt's repo and records a seed-commit drop in rec.
-// A push whose recovery rebase conflicted is retried once after the board's seed commits ahead of its upstream are dropped and its other commits replayed, under the board write lock and then the push lock.
-// With no seed commits ahead, or when the drop refuses or its replay fails, the original push error is returned.
-// A second failure is returned and never retried.
+// PushRecorded pushes any unpushed commits in the Bolt's repo rebase-free and records what a replay of them does in rec.
+// A push origin rejects is retried once after the board's local commits are replayed onto origin's, under the board write lock and then the push lock;
+// the replay drops the seed commits, and an entry only one side changed never conflicts.
+// A held board write lock or an uncommitted change on a path the replay touches defers the push to the next one and returns nil.
+// A failed push is recorded as a failed push and returned as a *PushFailedError.
+// A push honoring SkipGit or SkipPush does nothing.
 func (b *Bolt) PushRecorded(opts SyncOptions, rec *Mutations) error {
-	err := pushWeftAt(b.path, opts)
-	if !errors.Is(err, gitrepo.ErrPullRebaseFailed) {
-		return err
+	if opts.SkipGit || opts.SkipPush {
+		return nil
 	}
-	if !b.dropSeedCommitsAfterConflict(rec) {
-		return err
-	}
-	return pushWeftAt(b.path, opts)
-}
-
-// dropSeedCommitsAfterConflict drops the seed commits the board holds over its upstream and reports whether it did.
-// The locks are taken in pullFirst's order, so the two cannot deadlock, and are released before the caller retries the push.
-// A refused drop, a failed replay or a failed read leaves the board as it was and reports false.
-func (b *Bolt) dropSeedCommitsAfterConflict(rec *Mutations) bool {
-	writeLock, err := lock.AcquireWriteLock(filepath.Join(b.path, BoardWriteLockFile))
-	if err != nil {
-		return false
-	}
-	defer func() { _ = writeLock.Release() }()
-	pushLock, err := lock.AcquireWriteLock(filepath.Join(b.path, gitrepo.PushLockFileName))
-	if err != nil {
-		return false
-	}
-	defer func() { _ = pushLock.Release() }()
-
-	repo := gitrepo.New(b.path)
-	upstream, err := repo.UpstreamSHA()
-	if err != nil {
-		return false
-	}
-	head, err := repo.CurrentSHA()
-	if err != nil {
-		return false
-	}
-	ahead, err := repo.CommitsNotIn(head, upstream)
-	if err != nil {
-		return false
-	}
-	seed, _, touched, err := seedCommitsAhead(repo, ahead)
-	if err != nil || len(seed) == 0 {
-		return false
-	}
-	return dropSeedCommits(rec, boardDropRequest(b.path, touched), repo, upstream, ahead) == nil
+	retry := func() (bool, error) { return retryBoltPush(rec, b.path) }
+	return pushClassified(rec, filepath.Dir(b.path), failedPushSideBolt, b.path, opts, retry)
 }
 
 // Sync drives step to completion under an absorbing push lock, looping while step reports progress.
@@ -229,8 +194,9 @@ func (b *Bolt) PullThenCommitWritten(writes []BoltWrite, rec *Mutations) (res Bo
 // A coalesced push rebases the board under that lock and never takes the write lock, so without it a push could rebase the board mid-drop.
 //
 // A Bolt with no upstream is left alone.
-// Seed commits ahead of a moved upstream are dropped and the remaining commits replayed;
+// Commits ahead of a moved upstream are replayed onto it by entry, the commits of an entry origin has ended set aside and seed commits dropped;
 // a Bolt only behind is fast-forwarded.
+// A replay that stops on a conflict skips as diverged, and one an uncommitted change blocks skips as dirty.
 // Each skip is logged at Warn here, once, so no caller repeats the text.
 func (b *Bolt) pullFirst(rec *Mutations) (BoltSkip, string, error) {
 	pushLock, err := lock.AcquireWriteLock(filepath.Join(b.path, gitrepo.PushLockFileName))
@@ -277,25 +243,57 @@ func (b *Bolt) pullFirst(rec *Mutations) (BoltSkip, string, error) {
 		return "", "", nil
 	}
 
-	seed, _, touched, err := seedCommitsAhead(repo, ahead)
+	location, ended, err := b.endedByOrigin(repo, head, upstream, ahead)
 	if err != nil {
 		return "", "", err
 	}
-	if len(seed) == 0 {
-		return b.skip(BoltSkipDiverged, b.divergedDetail())
-	}
-	err = dropSeedCommits(rec, boardDropRequest(b.path, touched), repo, upstream, ahead)
+	outcome, err := replayBolt(rec, location, b.path, upstream, ended)
 	var refusal *destructiveRefusal
 	switch {
 	case err == nil:
-		logger.Info("fabricengine: dropped seed commits from the board", "path", b.path, "commits", strings.Join(seed, " "))
+		b.logReplay(outcome)
 		return "", "", nil
-	case errors.As(err, &refusal) && refusal.Check == CheckDirtiness, errors.Is(err, errDropResetRefused):
+	case errors.Is(err, ErrReplayDirty):
 		return b.skip(BoltSkipDirty, b.dirtyDetail(err))
-	case errors.As(err, &refusal), errors.Is(err, errDropReplayFailed):
-		return b.skip(BoltSkipDiverged, b.divergedDetail())
+	case errors.Is(err, ErrReplayConflict), errors.As(err, &refusal):
+		return b.skip(BoltSkipDiverged, b.divergedDetail(repo, outcome.Conflicts, ahead))
 	default:
 		return "", "", err
+	}
+}
+
+// endedByOrigin reads which of the entries the local commits ahead of upstream change origin has ended, and the hub location the replay reads this machine's landing state through.
+// It returns no location and an empty set when none is ended, and when the hub's location cannot be resolved, since a doubt never sets aside this machine's own commits.
+func (b *Bolt) endedByOrigin(repo *gitrepo.Repo, head, upstream string, ahead []string) (*lyxcwd.Location, EndedSet, error) {
+	slugs, created, err := localBoardEntries(repo, head, ahead)
+	if err != nil || len(slugs) == 0 {
+		return nil, nil, err
+	}
+	ended, err := readEndedSet(b.path, upstream, slugs, created)
+	if err != nil || len(ended) == 0 {
+		return nil, nil, err
+	}
+	location, err := hubLocationOfBoard(b.path)
+	if err != nil {
+		logger.Warn("fabricengine: the hub of the board could not be resolved, so no entry origin ended is set aside", "path", b.path, "error", err)
+		return nil, nil, nil
+	}
+	return location, ended, nil
+}
+
+// logReplay logs what a replay dropped, set aside or lost, naming each set-aside tag, so no caller repeats the text.
+func (b *Bolt) logReplay(outcome ReplayOutcome) {
+	if len(outcome.Dropped) > 0 {
+		logger.Info("fabricengine: dropped commits from the board", "path", b.path, "commits", strings.Join(outcome.Dropped, " "))
+	}
+	for _, aside := range outcome.SetAside {
+		logger.Warn("fabricengine: a local board commit was set aside under a tag", "path", b.path, "commit", aside.Commit, "tag", aside.Tag)
+	}
+	for _, lost := range outcome.Lost {
+		logger.Warn("fabricengine: a local board value lost to origin's", "path", b.path, "entry", lost.Entry, "field", lost.Field, "value", lost.Local, "reason", lost.Reason)
+	}
+	for _, refused := range outcome.Refused {
+		logger.Warn("fabricengine: a local board change was refused", "path", b.path, "entry", refused.Entry, "field", refused.Field, "reason", refused.Reason)
 	}
 }
 
@@ -310,9 +308,15 @@ func (b *Bolt) dirtyDetail(cause error) string {
 	return fmt.Sprintf("an uncommitted change in the board at %s blocks bringing it up to date (%v); run `lyx board sync` to commit it, then re-run the command", b.path, cause)
 }
 
-// divergedDetail words the way forward for a board whose own commits cannot be replayed onto its moved upstream.
-func (b *Bolt) divergedDetail() string {
-	return fmt.Sprintf("the board at %s holds commits its upstream lacks and the upstream has moved; run `git pull --rebase` in %s and `lyx board sync`, then re-run the command", b.path, b.path)
+// divergedDetail words the way forward for a board whose own commits cannot be replayed onto its moved upstream:
+// the conflicting paths, and the two ways to settle them, each followed by `lyx board sync`.
+func (b *Bolt) divergedDetail(repo *gitrepo.Repo, conflicts, localCommits []string) string {
+	branch, err := repo.CurrentBranch()
+	if err != nil {
+		branch = "<branch>"
+	}
+	return fmt.Sprintf("the board at %s holds commits its upstream lacks and could not replay them onto the moved upstream: %s; re-run the command afterwards",
+		b.path, recordsConflictWayForward(b.path, branch, conflicts, localCommits, pushStep(FailedPush{Repo: failedPushSideBolt})))
 }
 
 // seedCommitsAhead splits ahead, a list of commits, into the ones IsSeedCommit admits and the rest, each in ahead's order, and returns the sorted union of the paths every commit in ahead changes.

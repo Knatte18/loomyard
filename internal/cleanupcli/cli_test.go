@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/battencli"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
@@ -61,6 +62,24 @@ func TestPrimeSegments(t *testing.T) {
 	}
 	if want := []string{"batten", "board", "orch", "scratch", "logs", "temp"}; !slices.Equal(names, want) {
 		t.Fatalf("segment names = %v, want %v", names, want)
+	}
+
+	// The batten segment prints push_spawned beside push_error: true for a pass that spawned its push, false for one that committed nothing.
+	for _, tt := range []struct {
+		name   string
+		report battencli.CleanupReport
+		want   bool
+	}{
+		{"CommittedAndSpawned", battencli.CleanupReport{Removed: []string{"alpha"}, PushSpawned: true}, true},
+		{"CommittedNothing", battencli.CleanupReport{}, false},
+	} {
+		fields := battenListed(tt.report)
+		if spawned, present := fields["push_spawned"]; !present || spawned != tt.want {
+			t.Errorf("%s: push_spawned = %v (present %v), want %v", tt.name, spawned, present, tt.want)
+		}
+		if pushError, present := fields["push_error"]; !present || pushError != "" {
+			t.Errorf("%s: push_error = %v (present %v), want empty", tt.name, pushError, present)
+		}
 	}
 
 	// A cycle in flight keeps every handoff, as `lyx orch cleanup` does.

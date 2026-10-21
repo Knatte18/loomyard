@@ -2,7 +2,7 @@
 // flows (Fabric.Pull's rebase-reconciliation among them) build on: point HEAD (and the working
 // tree) at a caller-supplied commit exactly, discarding any local commits or uncommitted changes
 // the checkout previously had past that SHA.
-// It also implements ResetKeep, the SHA-validated reset that moves HEAD and keeps uncommitted changes, and CherryPick with its CherryPickAbort, the tree-mutating replay of one commit onto HEAD.
+// It also implements ResetKeep, the SHA-validated reset that moves HEAD and keeps uncommitted changes, IsLocalChangeRefusal, which tells that reset's refusal over a local change from its other failures, and CherryPick with its CherryPickAbort, the tree-mutating replay of one commit onto HEAD.
 
 package gitrepo
 
@@ -44,6 +44,18 @@ func (r *Repo) ResetKeep(sha string) error {
 		return fmt.Errorf("gitrepo: reset --keep %s in %s: %w", sha, r.path, err)
 	}
 	return nil
+}
+
+// IsLocalChangeRefusal reports whether err is the refusal git raises when `reset --keep` would overwrite an uncommitted change:
+// a checked *gitexec.GitError whose stderr says an entry is not up to date or a local change would be overwritten.
+// Any other failure of the reset, such as a held index lock, is not a refusal.
+func IsLocalChangeRefusal(err error) bool {
+	var gitErr *gitexec.GitError
+	if !errors.As(err, &gitErr) {
+		return false
+	}
+	stderr := strings.ToLower(gitErr.Stderr)
+	return strings.Contains(stderr, "not uptodate") || strings.Contains(stderr, "would be overwritten")
 }
 
 // CherryPick applies sha's change onto HEAD via `git cherry-pick`.

@@ -29,6 +29,13 @@ var detachedPushHeldHook func()
 // removeAfterTeardownHook, nil in production, runs inside Remove right after the worktree teardown, before it releases the teardown lock.
 var removeAfterTeardownHook func()
 
+// removeAfterLockHook, nil in production, runs inside a removal right after it takes the teardown lock; its error is returned as that step's failure, with both worktrees still in place.
+var removeAfterLockHook func() error
+
+// ErrPairBusy is the sentinel a local removal's error wraps when another writer holds a lock the removal would otherwise wait on.
+// Nothing has been changed when it is returned, so the caller retries once the writer lets go.
+var ErrPairBusy = errors.New("the pair is busy: another writer holds its lock")
+
 // TeardownLockPath returns the lock file that excludes a removal of slug's pair against the pair's detached pushes: <HubScratchDir(hubPath)>/teardown/<slug>.lock.
 func TeardownLockPath(hubPath, slug string) string {
 	return filepath.Join(HubScratchDir(hubPath), teardownLockDirName, slug+".lock")
@@ -91,20 +98,30 @@ func DetachedPush(hubPath string, req PushSpawn) (PushResult, error) {
 }
 
 // lockPairTeardown takes slug's teardown lock exclusive, waiting at most t.teardownWait for a push of the pair to let go of it.
+// With try set it makes one attempt instead and returns an error wrapping ErrPairBusy when the lock is held.
 // It returns the release function, or an error wrapping ErrPairPushRunning when the wait runs out.
 // A lock file this call brings into being is recorded in rec, whether or not the lock was won, since the file outlives the call.
-func (t *Topology) lockPairTeardown(rec *Mutations, l *lyxcwd.Location, slug string) (release func(), err error) {
+func (t *Topology) lockPairTeardown(rec *Mutations, l *lyxcwd.Location, slug string, try bool) (release func(), err error) {
 	lockPath := TeardownLockPath(l.HubPath, slug)
 	existed := pathPresent(lockPath)
 	if err := ensureTeardownLockDir(l.HubPath, slug); err != nil {
 		return nil, err
 	}
-	held, acquired, err := lock.AcquireWriteLockWithin(lockPath, t.teardownWait)
+	var held *lock.FileLock
+	var acquired bool
+	if try {
+		held, acquired, err = lock.TryAcquireWriteLock(lockPath)
+	} else {
+		held, acquired, err = lock.AcquireWriteLockWithin(lockPath, t.teardownWait)
+	}
 	if !existed && pathPresent(lockPath) {
 		rec.Append(KindFileWritten, lockPath, "")
 	}
 	if err != nil {
 		return nil, fmt.Errorf("take the teardown lock of the pair %q: %w", slug, err)
+	}
+	if !acquired && try {
+		return nil, fmt.Errorf("the teardown lock of the pair %q is held by a push or another removal: %w", slug, ErrPairBusy)
 	}
 	if !acquired {
 		return nil, fmt.Errorf("a push of the pair %q is still running or waiting under a pause; re-run `lyx fabric remove %s` once the push finishes or the pause is resumed, or end the stuck push child, whose pid its spawn logged: %w", slug, slug, ErrPairPushRunning)

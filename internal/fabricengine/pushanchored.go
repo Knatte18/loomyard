@@ -58,7 +58,7 @@ func pushLockBusyError(lockDir string, lockWait time.Duration) error {
 	return fmt.Errorf("%w: %s still held after %s; neither side was pushed", ErrPushLockBusy, filepath.Join(lockDir, weftPushLockFile), lockWait)
 }
 
-// pushRebaseFreeRetryingOnce pushes repo rebase-free.
+// pushRebaseFreeRetryingOnce pushes a code-side repo rebase-free.
 // On a rejection it fetches, and pushes once more only when the fetched remote tip is already contained in local HEAD, which makes the rejection a stale remote-tracking ref rather than a divergence.
 // Any other outcome returns the push's own error, a rejection as the bare gitrepo.ErrPushRejected.
 // It never rebases, merges or forces.
@@ -120,16 +120,14 @@ func PushAnchored(l *lyxcwd.Location, opts SyncOptions, lockWait time.Duration) 
 	var localSkipped []string
 	step := func() (progressed bool, err error) {
 		localSkipped = nil
-		repo := gitrepo.New(target)
-		hadUnpushed, hadUnpushedErr := repo.HasUnpushed()
-		if err := pushRebaseFreeRetryingOnce(repo); err != nil {
+		retryWeft := func() (bool, error) { return retryWeftPush(rec, l.HubPath, target) }
+		if err := pushClassified(rec, l.HubPath, failedPushSideRecords, target, opts, retryWeft); err != nil {
 			if errors.Is(err, gitrepo.ErrLocalBranch) {
-				localSkipped = localSkippedBranch(repo)
+				localSkipped = localSkippedBranch(gitrepo.New(target))
 				return false, nil
 			}
 			return false, err
 		}
-		recordPushIfAdvanced(rec, repo, "records", target, hadUnpushed, hadUnpushedErr)
 		return false, nil
 	}
 
@@ -200,16 +198,17 @@ func PushPairAnchored(l *lyxcwd.Location, opts SyncOptions, lockWait time.Durati
 		if head == "" {
 			return nil
 		}
-		repo := gitrepo.New(path)
-		hadUnpushed, hadUnpushedErr := repo.HasUnpushed()
-		if err := pushRebaseFreeRetryingOnce(repo); err != nil {
+		var retryRecords func() (bool, error)
+		if side == pushSideRecords {
+			retryRecords = func() (bool, error) { return retryWeftPush(rec, l.HubPath, path) }
+		}
+		if err := pushClassified(rec, l.HubPath, side, path, opts, retryRecords); err != nil {
 			if errors.Is(err, gitrepo.ErrLocalBranch) {
-				localSkipped = append(localSkipped, localSkippedBranch(repo)...)
+				localSkipped = append(localSkipped, localSkippedBranch(gitrepo.New(path))...)
 				return nil
 			}
 			return fmt.Errorf("fabricengine: push %s side at %s: %w", side, path, err)
 		}
-		recordPushIfAdvanced(rec, repo, side, path, hadUnpushed, hadUnpushedErr)
 		return nil
 	}
 

@@ -9,7 +9,9 @@ package landingshed
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
@@ -29,6 +31,69 @@ func stuckVerdict(ctx context.Context, producer, reason string, halt bool, field
 	}
 	reportStuck(producer, reason, fields...)
 	return shedengine.Stuck, shedengine.OutputPointer{Reason: reason, Halt: halt}, nil
+}
+
+// reconcileVerdict runs the run-scope origin reconcile and maps the verdict on the run's own entry onto a producer's Call return.
+// stop is false when the run is active, when origin was unreachable, which logs one Warn so the row fails on its own remote steps as before, and when no reconcile is wired.
+// Otherwise the other values are what Call returns at once:
+// an ended entry as a halting Stuck naming the landing or the board removal, with the end of the run from the prime as the way forward;
+// a stopped entry as a Stuck naming the branch, its state and its way forward, then the row's re-entry;
+// a cancellation or a reconcile error as an error.
+// Each entry of the report's mutation record is logged at Info, since a row has no envelope to carry it.
+func reconcileVerdict(ctx context.Context, producer string, reconcile func() (fabricengine.OriginReport, error)) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
+	if reconcile == nil {
+		return "", shedengine.OutputPointer{}, nil, false
+	}
+	report, err := reconcile()
+	for _, mutation := range report.Mutations.Entries() {
+		logger.Info("landingshed: origin reconcile mutation", "producer", producer, "kind", string(mutation.Kind), "target", mutation.Target, "detail", mutation.Detail)
+	}
+	if err != nil {
+		if cerr := cancelErr(ctx, producer); cerr != nil {
+			return "", shedengine.OutputPointer{}, cerr, true
+		}
+		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: origin reconcile: %w", producer, err), true
+	}
+	if report.Unreachable {
+		logger.Warn("landingshed: origin was unreachable, proceeding without judging the run against it", "producer", producer)
+		return "", shedengine.OutputPointer{}, nil, false
+	}
+	for _, entry := range report.Entries {
+		var reason string
+		var halt bool
+		switch entry.State {
+		case fabricengine.EntryEnded:
+			reason, halt = endedReason(entry.How), true
+		case fabricengine.EntryStopped:
+			reason = stoppedReason(entry, report.Branches)
+		default:
+			continue
+		}
+		outcome, out, err := stuckVerdict(ctx, producer, reason, halt)
+		return outcome, out, err, true
+	}
+	return "", shedengine.OutputPointer{}, nil, false
+}
+
+// endedReason words the Stuck reason of a run origin ended: how it ended, and ending the run here from the prime as the way forward.
+func endedReason(how string) string {
+	ended := "its board entry was removed from the board"
+	if how == "done" {
+		ended = "its landing is done and its board entry is done"
+	}
+	return fmt.Sprintf(`origin ended this run: %s; way forward: pause the run, then run "lyx cleanup --apply" from the prime, whose hub reconcile tears this pair down`, ended)
+}
+
+// stoppedReason words the Stuck reason of a run origin's judgment stopped: the branch that stopped it, its state and its way forward, then the row's re-entry.
+// The branch is the one whose way forward the entry carries; an entry with no such branch names none.
+func stoppedReason(entry fabricengine.EntryOutcome, branches []fabricengine.BranchOutcome) string {
+	const reentry = `then run "lyx loom resume" in the task worktree`
+	for _, branch := range branches {
+		if branch.WayForward != "" && branch.WayForward == entry.WayForward {
+			return fmt.Sprintf("origin reconcile stopped this run: branch %s is %s against origin; way forward: %s; %s", branch.Branch, branch.State, branch.WayForward, reentry)
+		}
+	}
+	return fmt.Sprintf("origin reconcile stopped this run; way forward: %s; %s", entry.WayForward, reentry)
 }
 
 // holdParent takes the parent lock for producer's row and then tests whether the parent moved since Merge-In merged it.

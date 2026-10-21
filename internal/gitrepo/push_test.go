@@ -113,7 +113,7 @@ func resetToUpstream(t *testing.T, dir string) {
 // Clone A's very first Push() has no upstream configured yet and must both succeed and establish tracking.
 // Clone B then pushes ahead, putting clone A's next push into a non-fast-forward that Push() must recover from via one pull --rebase retry, landing every commit on the remote.
 // The rebase-retry's refusals follow: a dirty tracked file aborts the pull --rebase so Push() surfaces an error instead of silently recovering (a caller-precondition failure, not a gitrepo bug — the caller owns a clean tree of tracked files), and a genuine content conflict stops the rebase mid-way, where Push must surface an error AND leave the repository fully restored — clean worktree, no rebase in progress, HEAD back on the local commit — because the rebase-retry's contract is to never leave a rebase half-done.
-// PushRebaseFree never recovers a non-fast-forward rejection: it returns an error satisfying errors.Is(err, gitrepo.ErrPushRejected) and leaves the working tree completely untouched, and on a fresh clone it establishes tracking by applying push.autoSetupRemote=true exactly as Push's own first-push path does.
+// PushRebaseFree never recovers a non-fast-forward rejection: it returns an error satisfying errors.Is(err, gitrepo.ErrPushRejected) and leaves the working tree completely untouched, a remote refusing for want of permission returns gitrepo.ErrPushAuthRefused after one attempt, and on a fresh clone it establishes tracking by applying push.autoSetupRemote=true exactly as Push's own first-push path does.
 // The steps run serially in that order and share the remote and clones A and B: the dirty and diverged steps each start by returning clone A to the remote's tip, and the steps after the first rely on clone A's upstream and on clone B, which the rebase-retry step clones.
 // The top-level test calls t.Parallel; no step does, because the steps share the fixture.
 func TestPush(t *testing.T) {
@@ -287,6 +287,41 @@ func TestPush(t *testing.T) {
 			}
 			if got := remoteBranchSHA(t, bareRemote, branch); got != localHead {
 				t.Errorf("bare remote %s = %q; want it to match local HEAD %q", branch, got, localHead)
+			}
+		}},
+		// A remote whose pre-receive hook prints GitHub's 403 wording and declines: its "rejected" line must not read as a divergence, and the refusal is attempted once, never retried.
+		{"PushRebaseFree classifies an auth refusal as ErrPushAuthRefused and never retries it", func(t *testing.T) {
+			authContainer := t.TempDir()
+			authRemote := newBareRemote(t, authContainer)
+			hookRuns := filepath.Join(authContainer, "hook-runs")
+			hook := "#!/bin/sh\n" +
+				"echo ran >> '" + filepath.ToSlash(hookRuns) + "'\n" +
+				"echo 'remote: Permission to acme/records.git denied to someone.' >&2\n" +
+				"echo \"fatal: unable to access 'https://github.com/acme/records.git/': The requested URL returned error: 403\" >&2\n" +
+				"exit 1\n"
+			if err := os.WriteFile(filepath.Join(authRemote, "hooks", "pre-receive"), []byte(hook), 0o755); err != nil {
+				t.Fatalf("write pre-receive hook: %v", err)
+			}
+			repoPath, repo := newRepoWithRemote(t, authContainer, "cloneAuth", authRemote)
+			writeFile(t, repoPath, "a.txt", "refused")
+			commitAll(t, repoPath, "refused commit")
+
+			err := repo.PushRebaseFree()
+			if !errors.Is(err, gitrepo.ErrPushAuthRefused) {
+				t.Fatalf("PushRebaseFree() error = %v; want errors.Is(err, gitrepo.ErrPushAuthRefused)", err)
+			}
+			if errors.Is(err, gitrepo.ErrPushRejected) || errors.Is(err, gitrepo.ErrPushRetriesExhausted) {
+				t.Errorf("PushRebaseFree() error = %v; want neither ErrPushRejected nor ErrPushRetriesExhausted", err)
+			}
+			if !strings.Contains(err.Error(), "The requested URL returned error: 403") {
+				t.Errorf("PushRebaseFree() error = %q; want it to carry git's refusal line", err)
+			}
+			runs, readErr := os.ReadFile(hookRuns)
+			if readErr != nil {
+				t.Fatalf("read hook run log: %v", readErr)
+			}
+			if got := strings.Count(string(runs), "ran"); got != 1 {
+				t.Errorf("pre-receive hook ran %d times; want exactly 1 (an auth refusal is never retried)", got)
 			}
 		}},
 		// The local-only mark: every push primitive refuses a marked branch and leaves the remote alone, clearing the mark lets the same commit through, and an unreadable config publishes nothing.

@@ -145,6 +145,10 @@ func TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning(t *test
 	if callErr != nil {
 		t.Fatalf("fabricengine.CoalescePushBothAt() error = %v; want nil (a rejected push is not a genuine failure)", callErr)
 	}
+	records, err := fabricengine.ListFailedPushes(weftFixture.Location.HubPath)
+	if err != nil || len(records) != 1 || records[0].Repo != "code" || records[0].Branch != "main" || records[0].Class != fabricengine.PushFailureNotFastForward {
+		t.Errorf("ListFailedPushes() = %+v, %v; want the one not-fast-forward code record of branch main", records, err)
+	}
 
 	if got := fabricengine.BareBranchSHAForTest(t, warpBare, "main"); got != bareHeadBefore {
 		t.Errorf("warp bare main = %q; want it unadvanced at %q (rejected push must not partially land)", got, bareHeadBefore)

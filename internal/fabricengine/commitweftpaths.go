@@ -72,6 +72,13 @@ func CommitRecordsPaths(rec *Mutations, weftPath, anchorRel string, relPaths []s
 	}
 	defer func() { _ = l.Release() }()
 
+	return commitRecordsPathsHeld(rec, weftPath, anchorRel, relPaths, msg, opts)
+}
+
+// commitRecordsPathsHeld is CommitRecordsPaths's stage-and-commit step for a caller that already holds the weft write lock of weftPath.
+// It takes no lock, so a caller that try-acquired the lock itself never blocks on a second acquisition of the same lock file.
+// It expects a non-empty relPaths and a caller that already honoured opts.SkipGit; opts is kept so both commit shapes share one signature.
+func commitRecordsPathsHeld(rec *Mutations, weftPath, anchorRel string, relPaths []string, msg string, opts SyncOptions) (sha string, committed bool, err error) {
 	sha, committed, err = gitrepo.New(weftPath).StageAndCommit(msg, weftCommitPathspec(anchorRel, relPaths))
 	if err != nil {
 		return "", false, err

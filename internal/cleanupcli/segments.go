@@ -52,6 +52,12 @@ func runSegments(segments []segment, apply bool) ([]segmentResult, bool) {
 	return results, allSucceeded
 }
 
+// battenListed renders a batten cleanup pass as the batten segment prints it.
+// push_spawned says the records push was started and push_error that starting it failed, so an empty push_error alone never means the push landed.
+func battenListed(report battencli.CleanupReport) map[string]any {
+	return map[string]any{"removed": report.Removed, "emptied": report.Emptied, "skipped": report.Skipped, "push_spawned": report.PushSpawned, "push_error": report.PushError}
+}
+
 // primeSegments returns the cleanup of the hub prime at location, in the order the verb runs them: batten, board, orch, scratch, logs and temp.
 func primeSegments(location *lyxcwd.Location) []segment {
 	openBoard := func() (*boardengine.Board, error) {
@@ -64,7 +70,7 @@ func primeSegments(location *lyxcwd.Location) []segment {
 			if err != nil {
 				return nil, err
 			}
-			return map[string]any{"removed": report.Removed, "emptied": report.Emptied, "skipped": report.Skipped, "push_error": report.PushError}, nil
+			return battenListed(report), nil
 		}},
 		{name: "board", run: func(apply bool) (any, error) {
 			board, err := openBoard()

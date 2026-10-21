@@ -157,6 +157,12 @@ func TestResetKeep(t *testing.T) {
 		if !errors.As(err, &gitErr) {
 			t.Fatalf("ResetKeep(%q) over a dirty a.txt error = %v; want a wrapped *gitexec.GitError", earlier, err)
 		}
+		if !gitrepo.IsLocalChangeRefusal(err) {
+			t.Errorf("IsLocalChangeRefusal(%v) = false; want true for git's refusal over a local change", err)
+		}
+		if gitrepo.IsLocalChangeRefusal(errors.New("unrelated failure")) {
+			t.Errorf("IsLocalChangeRefusal(non-git error) = true; want false")
+		}
 		if got := requireCurrentSHA(t, repo); got != later {
 			t.Errorf("CurrentSHA() after a refused ResetKeep() = %q; want it unmoved at %q", got, later)
 		}

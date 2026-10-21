@@ -56,6 +56,7 @@ var nilLegal = map[string]bool{
 	"Landing.MarkTaskDone":              true,
 	"Landing.ConfigChanges":             true,
 	"Landing.Notify":                    true,
+	"Landing.Reconcile":                 true,
 	"Landing.VerifyCommand":             true,
 	"Landing.PublishVerifySkip":         true,
 	"Landing.VerifyWaitMark":            true,
@@ -406,7 +407,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			ParentBranch: func() (string, error) { return "main", nil },
 			PrimeBranch:  func() (string, error) { return "main", nil },
 			PrimeDirty:   func() ([]string, error) { return nil, nil },
-			Pull:         func(context.Context) error { return nil },
+			Pull:         func(context.Context) (string, error) { return "", nil },
 			Landing:      func() (battenshed.LandingSettings, error) { return battenshed.LandingSettings{}, nil },
 			RunDeploy: func(context.Context, string, string, time.Duration) (battenshed.DeployResult, error) {
 				return battenshed.DeployResult{}, nil

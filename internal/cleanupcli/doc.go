@@ -7,6 +7,24 @@
 // Every segment computes its candidates with the same function in both modes.
 // It runs from the hub's prime worktree only: after resolving the cwd it applies the batten prime refusal, before any segment runs.
 //
+// # The origin reconcile
+//
+// After the prime check and before any segment, the verb runs `fabricengine.ReconcileOrigin` over the hub scope and prints the report as `reconcile`, beside the `mutations` and `partial` pair of a mutating verb.
+// `mutations` carries the reconcile's record only, empty in the dry run; the segments keep reporting their own removals under their own keys.
+// `partial` is true exactly when the envelope is an error and the record is non-empty.
+//
+// Without `--apply` the reconcile only judges: it asks origin for the heads and fetches the moved heads' objects into no ref, so it moves, replays and tears down nothing, tracking refs included.
+// A diverged Bolt or prime records branch is reported as needing a replay and nothing is refused; the report names each move and teardown that accounts for `--apply`'s segments listing fewer.
+// A reconcile error is printed as `reconcile_error` and the segments run.
+//
+// With `--apply` the moving reconcile runs first, and the segments compute their candidates from the reconciled state.
+// A stop on Bolt or on the prime's records branch refuses the verb with the report and runs no segment; the refusal names the stopped branch's way forward, followed for a dirty, gone or busy-on-a-write-lock stop by `then re-run lyx cleanup --apply from the prime`.
+// A reconcile error refuses `--apply` the same way, naming the error.
+// A stop on a pair is only reported, and an unreachable origin is a `warning` with the segments run.
+// Under an operator's live hub pause the reconcile's network calls wait at the network gate until the lift.
+//
+// The teardown seam of an ended run extends the hub's seams with the hibernate wake hold: a live pause entry of the slug whose caller is the hibernate daemon is lifted by identity through tender once the pair's uncommitted paths are snapshotted.
+//
 // # The segments
 //
 // They run in this order, and a failing segment never stops the later ones: its error goes into its own result, and the verb exits non-zero naming the failed segments.

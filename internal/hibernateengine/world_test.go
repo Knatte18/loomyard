@@ -68,6 +68,18 @@ type fakeWorld struct {
 	// onPause runs after the entry is added and before Added is called.
 	onPause func()
 	pauses  []tenderengine.PauseRequest
+	// pairPauseErr fails the pair pause of its slug.
+	pairPauseErr map[string]error
+
+	// reconcileResult and reconcileErr are what the fake reconcile answers; onReconcile runs inside it, where the exemption stands.
+	reconcileResult WakeReconcile
+	reconcileErr    error
+	onReconcile     func()
+	reconcileCalls  int
+	// exempted holds every entry exempted from the network gate, and exemptions the number of exemptions standing now.
+	exempted   []tenderengine.EntryRef
+	exemptions int
+	restores   int
 
 	// readings holds the status readings by call index, the last repeating; none reads an idle hub.
 	readings    []statusReading
@@ -207,13 +219,25 @@ func (w *fakeWorld) landLockHeld() (bool, error) {
 	return held, nil
 }
 
-// pause adds a hub entry with the PauseCaller label unless one is live, runs onPause, then calls Added.
+// pause adds an entry with the PauseCaller label unless one of the scope is live, runs onPause, then calls Added.
+// The scope is the request's slug, or the hub when it names none; a pair pause fails with its own entry of pairPauseErr, adding nothing.
 func (w *fakeWorld) pause(req tenderengine.PauseRequest) (tenderengine.PauseReport, error) {
+	scope := pauserecord.ScopeHub
+	if req.Slug != "" {
+		scope = req.Slug
+	}
 	w.mu.Lock()
 	w.pauses = append(w.pauses, req)
 	pauseErr, hook := w.pauseErr, w.onPause
+	if req.Slug != "" {
+		pauseErr, hook = w.pairPauseErr[req.Slug], nil
+		if pauseErr != nil {
+			w.mu.Unlock()
+			return tenderengine.PauseReport{Scope: scope}, pauseErr
+		}
+	}
 	report := tenderengine.PauseReport{
-		Scope:              pauserecord.ScopeHub,
+		Scope:              scope,
 		StillBusy:          append([]string{}, w.stillBusy...),
 		Refused:            append([]tenderengine.SessionNote{}, w.refused...),
 		ResumedDuringGrace: w.resumedDuringGrace,
@@ -224,12 +248,12 @@ func (w *fakeWorld) pause(req tenderengine.PauseRequest) (tenderengine.PauseRepo
 	var entry pauserecord.Entry
 	_, err := pauserecord.Update(w.recordPath, now, func(record *pauserecord.Record) error {
 		for _, live := range record.Live {
-			if live.Scope == pauserecord.ScopeHub {
+			if live.Scope == scope {
 				report.AlreadyPaused = true
 				return nil
 			}
 		}
-		entry = pauserecord.Entry{Scope: pauserecord.ScopeHub, PausedAt: now, GraceEnd: now.Add(req.Grace), Caller: PauseCaller, Sessions: []pauserecord.Session{}}
+		entry = pauserecord.Entry{Scope: scope, PausedAt: now, GraceEnd: now.Add(req.Grace), Caller: PauseCaller, Sessions: []pauserecord.Session{}}
 		record.Live = append(record.Live, entry)
 		return nil
 	})
@@ -283,6 +307,32 @@ func (w *fakeWorld) lift(ref tenderengine.EntryRef) (tenderengine.ResumeReport, 
 		return tenderengine.ResumeReport{}, liftErr
 	}
 	return tenderengine.Lift(tenderengine.Deps{RecordPath: w.recordPath, Now: w.now, Sleep: w.sleep}, ref)
+}
+
+// reconcile answers the world's scripted reconcile, running onReconcile first.
+func (w *fakeWorld) reconcile() (WakeReconcile, error) {
+	w.mu.Lock()
+	w.reconcileCalls++
+	hook, result, err := w.onReconcile, w.reconcileResult, w.reconcileErr
+	w.mu.Unlock()
+	if hook != nil {
+		hook()
+	}
+	return result, err
+}
+
+// exemptNetwork records the exemption and returns the function that ends it.
+func (w *fakeWorld) exemptNetwork(ref tenderengine.EntryRef) func() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.exempted = append(w.exempted, ref)
+	w.exemptions++
+	return func() {
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		w.exemptions--
+		w.restores++
+	}
 }
 
 func (w *fakeWorld) hibernate() error {
@@ -355,22 +405,24 @@ func (w *fakeWorld) deps() Deps {
 			}
 			return "/usr/bin/" + file, nil
 		},
-		Spawn:        w.spawn,
-		SelfPID:      w.selfPID,
-		SelfStart:    w.selfStart,
-		Alive:        w.isAlive,
-		Kill:         w.kill,
-		RunStatus:    w.runStatus,
-		RunSlugs:     w.listRunSlugs,
-		LandLockHeld: w.landLockHeld,
-		Pause:        w.pause,
-		TenderStatus: w.tenderStatus,
-		Lift:         w.lift,
-		Hibernate:    w.hibernate,
-		Notify:       w.notify,
-		Now:          w.now,
-		Sleep:        w.sleep,
-		Awake:        w.awakeClock,
+		Spawn:         w.spawn,
+		SelfPID:       w.selfPID,
+		SelfStart:     w.selfStart,
+		Alive:         w.isAlive,
+		Kill:          w.kill,
+		RunStatus:     w.runStatus,
+		RunSlugs:      w.listRunSlugs,
+		LandLockHeld:  w.landLockHeld,
+		Pause:         w.pause,
+		TenderStatus:  w.tenderStatus,
+		Lift:          w.lift,
+		Reconcile:     w.reconcile,
+		ExemptNetwork: w.exemptNetwork,
+		Hibernate:     w.hibernate,
+		Notify:        w.notify,
+		Now:           w.now,
+		Sleep:         w.sleep,
+		Awake:         w.awakeClock,
 	}
 }
 

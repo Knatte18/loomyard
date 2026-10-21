@@ -100,7 +100,11 @@ func regenerateHubWorkspace(rec *Mutations, l *lyxcwd.Location, lockWait time.Du
 	return path, nil
 }
 
+// errHubWorkspaceLockHeld is the sentinel lockHubWorkspace's error wraps when another regeneration holds the lock past the wait.
+var errHubWorkspaceLockHeld = errors.New("the hub workspace lock is held")
+
 // lockHubWorkspace takes the hub workspace lock exclusive, waiting at most wait, and returns its release function.
+// A zero wait makes one attempt.
 // The scratch directory is created through an os.Root at the hub when absent.
 // A lock file this call brings into being is recorded in rec, whether or not the lock was won, since the file outlives the call.
 // The lock is a leaf lock: nothing else is locked while it is held.
@@ -124,7 +128,13 @@ func lockHubWorkspace(rec *Mutations, hubPath string, wait time.Duration) (func(
 	if hubWorkspaceBeforeLockHook != nil {
 		hubWorkspaceBeforeLockHook()
 	}
-	held, acquired, err := lock.AcquireWriteLockWithin(lockPath, wait)
+	var held *lock.FileLock
+	var acquired bool
+	if wait <= 0 {
+		held, acquired, err = lock.TryAcquireWriteLock(lockPath)
+	} else {
+		held, acquired, err = lock.AcquireWriteLockWithin(lockPath, wait)
+	}
 	if !existed && pathPresent(lockPath) {
 		rec.Append(KindFileWritten, lockPath, "")
 	}
@@ -132,7 +142,7 @@ func lockHubWorkspace(rec *Mutations, hubPath string, wait time.Duration) (func(
 		return nil, fmt.Errorf("take the hub workspace lock %s: %w", lockPath, err)
 	}
 	if !acquired {
-		return nil, fmt.Errorf("the hub workspace lock %s is still held after %s; re-run once the other regeneration finishes", lockPath, wait)
+		return nil, fmt.Errorf("the hub workspace lock %s is still held after %s; re-run once the other regeneration finishes: %w", lockPath, wait, errHubWorkspaceLockHeld)
 	}
 	return func() { _ = held.Release() }, nil
 }

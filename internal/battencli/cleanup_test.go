@@ -334,6 +334,9 @@ func TestCleanup(t *testing.T) {
 			if (report.PushError != "") != tt.wantSpawnErr {
 				t.Errorf("PushError = %q, want error: %v", report.PushError, tt.wantSpawnErr)
 			}
+			if wantSpawned := wantSpawns == 1 && !tt.wantSpawnErr; report.PushSpawned != wantSpawned {
+				t.Errorf("PushSpawned = %v, want %v", report.PushSpawned, wantSpawned)
+			}
 
 			for _, fixture := range tt.fixtures {
 				if fixture.scratchAge <= 0 {

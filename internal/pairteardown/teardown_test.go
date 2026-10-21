@@ -32,6 +32,8 @@ type fakeSubstrates struct {
 
 	// removeErr is returned by the removal.
 	removeErr error
+	// snapshotErr fails the snapshot step.
+	snapshotErr error
 	// childLanded is what the landed read answers.
 	childLanded bool
 	// battenSeeded and battenState are what batten's run reads answer.
@@ -65,9 +67,20 @@ func (f *fakeSubstrates) teardown() *Teardown {
 			return f.endErr == nil, "", f.endErr
 		},
 		archive: func(string) { f.calls = append(f.calls, "archive") },
-		remove: func(Request) (fabricengine.RemoveResult, error) {
-			f.calls = append(f.calls, "remove")
+		remove: func(req Request) (fabricengine.RemoveResult, error) {
+			if req.Local {
+				f.calls = append(f.calls, "remove-local")
+			} else {
+				f.calls = append(f.calls, "remove")
+			}
 			return fabricengine.RemoveResult{}, f.removeErr
+		},
+		snapshot: func(*fabricengine.Mutations, string) (string, []string, error) {
+			f.calls = append(f.calls, "snapshot")
+			if f.snapshotErr != nil {
+				return "", nil, f.snapshotErr
+			}
+			return "set-aside/slug/abc", []string{"task/a.txt"}, nil
 		},
 		landed: func(string) (bool, error) {
 			f.calls = append(f.calls, "landed")
@@ -139,6 +152,12 @@ func TestTeardown_CallSequence(t *testing.T) {
 		awaitErr   error
 		// removeErr fails the removal.
 		removeErr error
+		// snapshotErr fails the snapshot step; afterSnapshotErr fails the request's AfterSnapshot, which is set whenever either is wanted.
+		snapshotErr       error
+		afterSnapshotErr  error
+		withAfterSnapshot bool
+		// wantSnapshotTag is the SnapshotTag the removal result must carry.
+		wantSnapshotTag string
 		// childLanded, battenSeeded, battenState, claim, claimFound and claimReadErr script the board-claim reads.
 		childLanded  bool
 		battenSeeded bool
@@ -384,6 +403,73 @@ func TestTeardown_CallSequence(t *testing.T) {
 			wantCalls:   "refusal",
 			wantSawGone: true,
 		},
+		{
+			name:       "LocalModeRemovesLocallyAndNeverTouchesTheBoard",
+			run:        true,
+			quiets:     []quietState{{quiet: true}},
+			request:    Request{Slug: "slug", Local: true, RefuseWhenBusy: true},
+			claim:      runClaim,
+			claimFound: true,
+			wantCalls:  sessionEnd + ",archive,remove-local",
+		},
+		{
+			name:              "LocalSnapshotRunsSnapshotThenAfterSnapshotThenRemove",
+			run:               true,
+			quiets:            []quietState{{quiet: true}},
+			request:           Request{Slug: "slug", Local: true, Snapshot: true},
+			withAfterSnapshot: true,
+			wantCalls:         sessionEnd + ",snapshot,after,archive,remove-local",
+			wantSnapshotTag:   "set-aside/slug/abc",
+		},
+		{
+			name:              "SnapshotRefusedBusyStopsBeforeAfterSnapshotAndRemove",
+			run:               true,
+			quiets:            []quietState{{quiet: true}},
+			request:           Request{Slug: "slug", Local: true, Snapshot: true},
+			withAfterSnapshot: true,
+			snapshotErr:       fabricengine.ErrPairBusy,
+			wantErrIs:         fabricengine.ErrPairBusy,
+			wantCalls:         sessionEnd + ",snapshot",
+		},
+		{
+			name:              "AfterSnapshotErrorStopsBeforeRemoveAndKeepsTheTag",
+			run:               true,
+			quiets:            []quietState{{quiet: true}},
+			request:           Request{Slug: "slug", Local: true, Snapshot: true},
+			withAfterSnapshot: true,
+			afterSnapshotErr:  errors.New("lift refused"),
+			wantAnyError:      true,
+			wantCalls:         sessionEnd + ",snapshot,after",
+			wantSnapshotTag:   "set-aside/slug/abc",
+		},
+		{
+			name:      "LocalModeBusyDriverWithRefuseWhenBusyEndsNothing",
+			run:       true,
+			quiets:    []quietState{busy},
+			request:   Request{Slug: "slug", Local: true, RefuseWhenBusy: true},
+			wantErrIs: ErrDriverBusy,
+			wantCalls: "quiet",
+		},
+		{
+			name:       "LocalRemoveBusySurfacesWithTheBoardUntouched",
+			run:        true,
+			quiets:     []quietState{{quiet: true}},
+			request:    Request{Slug: "slug", Local: true},
+			removeErr:  fabricengine.ErrPairBusy,
+			claim:      runClaim,
+			claimFound: true,
+			wantErrIs:  fabricengine.ErrPairBusy,
+			wantCalls:  sessionEnd + ",archive,remove-local",
+		},
+		{
+			name:       "ForceCaseOverAMergeInProgressRefusalEndsNothingAndSnapshotsNothing",
+			run:        true,
+			quiets:     []quietState{{quiet: true}},
+			refusalErr: refusal,
+			request:    Request{Slug: "slug", Local: true, Snapshot: true, Force: true},
+			wantErrIs:  refusal,
+			wantCalls:  "quiet,refusal",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -392,9 +478,15 @@ func TestTeardown_CallSequence(t *testing.T) {
 			f := &fakeSubstrates{
 				quiets: tt.quiets, refusalErr: tt.refusalErr, endErr: tt.endErr, seizeErr: tt.seizeErr, awaitErr: tt.awaitErr,
 				removeErr: tt.removeErr, childLanded: tt.childLanded, battenSeeded: tt.battenSeeded, battenState: tt.battenState,
-				claim: tt.claim, claimFound: tt.claimFound, claimReadErr: tt.claimReadErr,
+				claim: tt.claim, claimFound: tt.claimFound, claimReadErr: tt.claimReadErr, snapshotErr: tt.snapshotErr,
 			}
 			td := f.teardown()
+			if tt.withAfterSnapshot {
+				tt.request.AfterSnapshot = func() error {
+					f.calls = append(f.calls, "after")
+					return tt.afterSnapshotErr
+				}
+			}
 			var sawGone bool
 			if tt.gone {
 				td.gone = func(string) (bool, error) { return true, nil }
@@ -406,8 +498,11 @@ func TestTeardown_CallSequence(t *testing.T) {
 
 			var session SessionResult
 			var err error
+			var removal fabricengine.RemoveResult
 			if tt.run {
-				_, err = td.Run(context.Background(), tt.request)
+				var result Result
+				result, err = td.Run(context.Background(), tt.request)
+				removal = result.Removal
 			} else {
 				session, err = td.EndSession(context.Background(), tt.request)
 			}
@@ -431,6 +526,9 @@ func TestTeardown_CallSequence(t *testing.T) {
 			}
 			if got := strings.Join(f.calls, ","); got != tt.wantCalls {
 				t.Errorf("calls = %s, want %s", got, tt.wantCalls)
+			}
+			if removal.SnapshotTag != tt.wantSnapshotTag {
+				t.Errorf("SnapshotTag = %q, want %q", removal.SnapshotTag, tt.wantSnapshotTag)
 			}
 			if f.sleeps != tt.wantSleeps {
 				t.Errorf("sleeps = %d, want %d", f.sleeps, tt.wantSleeps)

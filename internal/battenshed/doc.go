@@ -60,6 +60,12 @@
 // The tmux window lives as long as the reed session, and a second batten for the slug is refused by the run's own driver lock inside the window, in batten's own log.
 // "lyx batten run" steps the lifecycle through the Go driver, so an unexpected stop meets the driver's rule table and a cold tackler before the orch, and the driver lock refuses a second run for the slug.
 //
+// A resume, "lyx batten run" over an existing status file, first runs the origin reconcile of the slug's run scope.
+// An entry origin ended refuses, naming the landing or the removal and "lyx cleanup --apply" from the prime; a stopped entry refuses, naming the branch, its state and the way forward for it, then the re-run;
+// an active entry resumes, and so does an unreachable origin, with a Warn.
+// A reconcile error refuses, with fixing its cause and then the re-run as the way forward.
+// A fresh start runs no reconcile: creating the pair probes origin for it, and a parent behind origin costs only Merge-In's merge.
+//
 // Between Seed-Child and Run-Shed, three Command rows run one shell command each: Open-Window opens the operator's terminal window attached to the pair's reed session, Seed-IDE writes the pair's VS Code colour and .vscode/ config, and Open-IDE opens VS Code on the pair.
 // Each runs its command only when its batten.yaml switch is on, open_window, seed_ide and open_ide in turn, of which only open_ide is off by default, and is Done either way, a failed command only warning.
 // The switches are read from the pair's own config stack when the row runs, after Seed-Child has written the task's run settings into the pair's local layer, so a task's run_settings sets them per task.

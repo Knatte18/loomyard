@@ -62,17 +62,39 @@ func TestCommitRecordsVerb_ErrorEnvelopes(t *testing.T) {
 		transientWayForward = "way forward: transient, run lyx fabric push or re-run lyx loom commit-records; " + refusedVerbClause
 		pushFailedPrefix    = "the commit landed locally but the push failed: "
 	)
+	gone := &fabricengine.PushFailedError{
+		Record: fabricengine.FailedPush{Repo: "records", RepoPath: "/hub/t-records", CodeWorktree: "/hub/t", Branch: "t-records", Class: fabricengine.PushFailureGone},
+		Err:    fabricengine.ErrBranchGone,
+	}
+	rewound := &fabricengine.PushFailedError{
+		Record: fabricengine.FailedPush{Repo: "code", RepoPath: "/hub/t", Branch: "t", Class: fabricengine.PushFailureRewound, OriginHead: "abc123", Commits: []string{"def456"}},
+		Err:    errors.New("push held back"),
+	}
+	auth := &fabricengine.PushFailedError{
+		Record: fabricengine.FailedPush{Repo: "records", RepoPath: "/hub/t-records", CodeWorktree: "/hub/t", Branch: "t-records", Class: fabricengine.PushFailureAuth},
+		Err:    gitrepo.ErrPushAuthRefused,
+	}
+	goneLine := "way forward: " + fabricengine.FailedPushWayForward(gone.Record)
+	rewoundLine := "way forward: " + fabricengine.FailedPushWayForward(rewound.Record)
+	authLine := "way forward: " + fabricengine.FailedPushWayForward(auth.Record)
 	tests := []struct {
 		name                       string
 		probeErr, commitErr, pushE error
 		want                       []string
+		// once lists texts the output holds exactly once.
+		once []string
 	}{
-		{"probe", boom, nil, nil, []string{"probe merge state"}},
-		{"commit", nil, boom, nil, []string{"commit failed"}},
-		{"push rejected", nil, nil, rejected, []string{pushFailedPrefix, rejectionWayForward, refusedVerbClause}},
-		{"push failed", nil, nil, boom, []string{pushFailedPrefix, transientWayForward}},
-		{"push lock busy", nil, nil, fmt.Errorf("push: %w", fabricengine.ErrPushLockBusy), []string{pushFailedPrefix, transientWayForward}},
-		{"rejected beside another failure", nil, nil, errors.Join(rejected, boom), []string{pushFailedPrefix, rejectionWayForward, "boom", "remote diverged"}},
+		{"probe", boom, nil, nil, []string{"probe merge state"}, nil},
+		{"commit", nil, boom, nil, []string{"commit failed"}, nil},
+		{"push rejected", nil, nil, rejected, []string{pushFailedPrefix, rejectionWayForward, refusedVerbClause}, nil},
+		{"push failed", nil, nil, boom, []string{pushFailedPrefix, transientWayForward}, nil},
+		{"push lock busy", nil, nil, fmt.Errorf("push: %w", fabricengine.ErrPushLockBusy), []string{pushFailedPrefix, transientWayForward}, nil},
+		{"rejected beside another failure", nil, nil, errors.Join(rejected, boom), []string{pushFailedPrefix, rejectionWayForward, "boom", "remote diverged"}, nil},
+		{"push gone", nil, nil, gone, []string{pushFailedPrefix}, []string{goneLine}},
+		{"push rewound", nil, nil, rewound, []string{pushFailedPrefix}, []string{rewoundLine}},
+		{"push auth", nil, nil, auth, []string{pushFailedPrefix}, []string{authLine}},
+		{"both sides classified", nil, nil, errors.Join(gone, auth), []string{pushFailedPrefix}, []string{goneLine, authLine}},
+		{"classified beside an unclassified failure", nil, nil, errors.Join(gone, boom), []string{pushFailedPrefix, "boom"}, []string{goneLine, "way forward: transient, run lyx fabric push or re-run lyx loom commit-records"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -84,6 +106,11 @@ func TestCommitRecordsVerb_ErrorEnvelopes(t *testing.T) {
 			for _, want := range tt.want {
 				if !strings.Contains(out.String(), want) {
 					t.Errorf("output = %s; want it to contain %q", out.String(), want)
+				}
+			}
+			for _, want := range tt.once {
+				if got := strings.Count(out.String(), want); got != 1 {
+					t.Errorf("output = %s; want %q exactly once, got %d", out.String(), want, got)
 				}
 			}
 			if strings.Contains(out.String(), "not pushed") {

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/configsync"
@@ -179,12 +180,14 @@ func findPrime(worktrees []fabricengine.CodeWorktree) (fabricengine.CodeWorktree
 	return fabricengine.CodeWorktree{}, false
 }
 
+// spawnBoardSync starts the detached board sync after a hub-wide commit; it is a variable so a test records the call.
+var spawnBoardSync = boardengine.SpawnSync
+
 // reconcileHubWide reconciles the hub-wide config at boardDir, seeded from the prime's anchor, and commits what it wrote on the board.
 // The board is pulled first: when it cannot be brought up to date nothing is written and skipped is true.
 // A reconcile or commit failure restores the board's config files to their prior bytes.
-// The board is pushed whether or not this run committed, so a hub-wide commit an earlier run left unpushed is pushed too.
-// A push failure is logged and also reports skipped, so the stamp stays absent until the board is pushed;
-// a board with no upstream, which no pull can bring up to date and no rerun can push, is logged without being reported skipped.
+// The board is synced by the detached board sync whether or not this run committed, so a hub-wide commit an earlier run left unpushed is pushed too.
+// The walk never waits on that push: a refusal of it reaches the orch as a failed-push record, and a spawn failure is only logged.
 func reconcileHubWide(boardDir, primeAnchor, label string) (skipped bool, err error) {
 	bolt := fabricengine.NewBolt(boardDir)
 	var prior map[string][]byte
@@ -221,20 +224,10 @@ func reconcileHubWide(boardDir, primeAnchor, label string) (skipped bool, err er
 	if res.Skipped != "" {
 		return true, nil
 	}
-	pushErr := bolt.Push(fabricengine.SyncOptions{})
-	if pushErr == nil {
-		return false, nil
+	if err := spawnBoardSync(boardDir); err != nil {
+		logger.Warn("hubreconcile: the detached board sync did not start, so the board's commits wait for the board's next push", "board", boardDir, "committed", res.Committed, "error", err)
 	}
-	tracked, err := bolt.HasUpstream()
-	if err != nil {
-		return false, worktreeErrorFor(boardDir, err)
-	}
-	if !tracked {
-		logger.Warn("hubreconcile: board push failed for a board with no upstream, so its commits wait for the board's next push", "board", boardDir, "committed", res.Committed, "error", pushErr)
-		return false, nil
-	}
-	logger.Warn("hubreconcile: board push failed, so the build stamp stays absent until the board is pushed", "board", boardDir, "committed", res.Committed, "error", pushErr)
-	return true, nil
+	return false, nil
 }
 
 // reconcileWorktree reconciles and commits one code worktree's config.

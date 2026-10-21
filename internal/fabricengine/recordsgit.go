@@ -1,6 +1,5 @@
 // recordsgit.go — the weft-git content-sync verbs on Fabric: commitWeft, PushWeft, PullWeft, plus the
-// package-level pushWeftAt and commitWeftAt for the detached-push child and board's warp-untethered
-// weft:main commit (via Bolt).
+// package-level commitWeftAt for board's warp-untethered weft:main commit (via Bolt).
 // commitWeft's commit carries a Warp-SHA trailer and records the correspondence immediately —
 // except on an unborn warp HEAD (see warpHeadSHA), where both are skipped for that one commit.
 
@@ -291,10 +290,9 @@ type PushResult struct {
 // hasUnpushedErr together prove a real true -> false transition across the push call already made:
 // hasUnpushedErr must be nil, hasUnpushedBefore must be true (there was something to push), and
 // repo.HasUnpushed() sampled now must report false (nothing is unpushed any more).
-// Bare "the push call returned nil" is not sufficient evidence: PushCoalesced also returns nil when
-// there was nothing to push, and pushRebaseFreeLogged maps a remote rejection to a warning and a nil
-// return, so either would otherwise be recorded as a push that never actually happened — the
-// commission-direction lie this slice exists to kill.
+// Bare "the push call returned nil" is not sufficient evidence: PushCoalesced also returns nil when there was nothing to push,
+// and a detached push leaves a rejected push unreported by its caller, so either would otherwise be recorded as a push that never actually happened.
+// That is the commission-direction lie this slice exists to kill.
 // The entry's detail names side, repoPath and the branch's configured remote (see refDetail).
 // If either HasUnpushed sample or CurrentBranch errors, nothing is recorded and the error is not
 // propagated: a failure to observe is not a failure to push.
@@ -343,15 +341,6 @@ func (f *Fabric) PullWeft(opts SyncOptions) error {
 		return nil
 	}
 	return f.records.Pull()
-}
-
-// pushWeftAt pushes unpushed commits at weftPath with no Fabric instance,
-// used by the detached-push child.
-func pushWeftAt(weftPath string, opts SyncOptions) error {
-	if opts.SkipGit || opts.SkipPush {
-		return nil
-	}
-	return gitrepo.New(weftPath).PushCoalesced()
 }
 
 // commitWeftAt commits wildcard-staged content at weftPath for _board's

@@ -3,6 +3,7 @@
 package hibernateengine
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"reflect"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/tenderengine"
@@ -462,6 +464,170 @@ func TestWatch(t *testing.T) {
 				t.Errorf("pauses %d, hibernate calls %d; want none", w.pauseCount(), w.hibernates())
 			}
 		}},
+		{"a wake with the hub pause live reconciles under the exemption, restores it and lifts the hub entry", func(t *testing.T) {
+			w := newFakeWorld(t)
+			exemptedDuring := -1
+			w.onReconcile = func() {
+				w.mu.Lock()
+				defer w.mu.Unlock()
+				exemptedDuring = w.exemptions
+			}
+
+			got, err := watchNow(t, w)
+
+			if err != nil || got.Phase != PhaseDone || w.reconcileCalls != 1 || exemptedDuring != 1 || w.exemptions != 0 || w.restores != 1 {
+				t.Errorf("got %+v, %v, reconciles %d, exempted during %d, standing %d, restores %d; want done after one reconcile under one exemption, restored", got, err, w.reconcileCalls, exemptedDuring, w.exemptions, w.restores)
+			}
+			if len(w.exempted) != 1 || w.exempted[0].Scope != pauserecord.ScopeHub || w.exempted[0].Caller != PauseCaller || len(w.liveEntries()) != 0 {
+				t.Errorf("exempted %+v, live %+v; want the owned hub entry exempted and then lifted", w.exempted, w.liveEntries())
+			}
+			requireNotice(t, w, "its pause was lifted.")
+		}},
+		{"a wake under an operator's hub pause skips the reconcile, exempts nothing, leaves that entry live and names it and the resume", func(t *testing.T) {
+			w := newFakeWorld(t)
+			w.addHubEntry("EXTERNAL")
+
+			got, err := watchNow(t, w)
+
+			live := w.liveEntries()
+			if err != nil || got.Phase != PhaseDone || w.reconcileCalls != 0 || len(w.exempted) != 0 || len(live) != 1 || live[0].Caller != "EXTERNAL" {
+				t.Errorf("got %+v, %v, reconciles %d, exempted %+v, live %+v; want done with nothing reconciled and the entry live", got, err, w.reconcileCalls, w.exempted, live)
+			}
+			requireNotice(t, w, "EXTERNAL", "`lyx resume`", "`lyx orch start` or `lyx cleanup --apply`")
+		}},
+		{"a parked push holding a paused pair's push lock gives that pair a pause entry naming the resume and lifts the hub entry", func(t *testing.T) {
+			w := newFakeWorld(t)
+			w.reconcileResult = WakeReconcile{Runs: []WakeRun{{Slug: "p1", WayForward: "`lyx resume p1`", Busy: true, ParkedPush: true}}}
+
+			got, err := watchNow(t, w)
+
+			live := w.liveEntries()
+			if err != nil || got.Phase != PhaseDone || len(live) != 1 || live[0].Scope != "p1" || live[0].Caller != PauseCaller {
+				t.Errorf("got %+v, %v, live %+v; want done with only the pair entry live", got, err, live)
+			}
+			requireNotice(t, w, "its pause was lifted.", "p1 is busy on a parked push: `lyx resume p1`")
+		}},
+		{"a paused run whose records could not move gets a pair pause entry that outlives the request and names its way forward then the resume", func(t *testing.T) {
+			w := newFakeWorld(t)
+			w.reconcileResult = WakeReconcile{Runs: []WakeRun{{Slug: "p1", WayForward: "resolve notes.md in the records worktree"}}}
+
+			got, err := watchNow(t, w)
+
+			live := w.liveEntries()
+			if err != nil || got.Phase != PhaseDone || len(live) != 1 || live[0].Scope != "p1" || w.request().Owned == nil || w.request().Owned.Scope != pauserecord.ScopeHub {
+				t.Errorf("got %+v, %v, live %+v; want done with the pair entry live and the hub entry the owned one", got, err, live)
+			}
+			requireNotice(t, w, "resolve notes.md in the records worktree; then `lyx resume p1`")
+		}},
+		{"a pair stopped as gone gets a pair pause entry naming its way forward then the cleanup, never the resume", func(t *testing.T) {
+			w := newFakeWorld(t)
+			w.reconcileResult = WakeReconcile{Runs: []WakeRun{{Slug: "p1", WayForward: "origin no longer has p1", Gone: true}}}
+
+			got, err := watchNow(t, w)
+
+			live := w.liveEntries()
+			if err != nil || got.Phase != PhaseDone || len(live) != 1 || live[0].Scope != "p1" {
+				t.Errorf("got %+v, %v, live %+v; want done with the pair entry live", got, err, live)
+			}
+			requireNotice(t, w, "origin no longer has p1; then `lyx cleanup --apply`")
+			if strings.Contains(w.noticeList()[0], "`lyx resume p1`") {
+				t.Errorf("notice = %q; want no resume for a pair stopped as gone", w.noticeList()[0])
+			}
+		}},
+		{"a stop on a branch every pair shares keeps the hub entry live and names the stop then the resume", func(t *testing.T) {
+			w := newFakeWorld(t)
+			w.reconcileResult = WakeReconcile{Stop: "resolve board.json in the board worktree", Runs: []WakeRun{{Slug: "p1", WayForward: "resolve board.json in the board worktree"}}}
+
+			got, err := watchNow(t, w)
+
+			live := w.liveEntries()
+			if err != nil || got.Phase != PhaseDone || len(live) != 1 || live[0].Scope != pauserecord.ScopeHub || w.pauseCount() != 1 {
+				t.Errorf("got %+v, %v, live %+v, pauses %d; want done with the hub entry live and no pair paused", got, err, live, w.pauseCount())
+			}
+			requireNotice(t, w, "its pause stays live.", "resolve board.json in the board worktree; settle it, and then `lyx resume`")
+		}},
+		{"a busy ended run gets a pair pause entry naming its landing or removal and the cleanup, and the other ended runs are listed", func(t *testing.T) {
+			w := newFakeWorld(t)
+			w.reconcileResult = WakeReconcile{Runs: []WakeRun{
+				{Slug: "p1", Ended: true, Busy: true, WayForward: "wait for the driver to end"},
+				{Slug: "p2", Ended: true},
+			}}
+
+			got, err := watchNow(t, w)
+
+			live := w.liveEntries()
+			if err != nil || got.Phase != PhaseDone || len(live) != 1 || live[0].Scope != "p1" {
+				t.Errorf("got %+v, %v, live %+v; want done with only the busy ended pair held", got, err, live)
+			}
+			requireNotice(t, w, "p1 ended on origin by its landing or removal but is still busy: wait for the driver to end; then `lyx cleanup --apply`", "ended on origin: p2")
+			if strings.Contains(w.noticeList()[0], "`lyx resume p1`") {
+				t.Errorf("notice = %q; want no resume for an ended run", w.noticeList()[0])
+			}
+		}},
+		{"an origin unreachable through the bound lifts the entry and names it and the cleanup", func(t *testing.T) {
+			w := newFakeWorld(t)
+			w.reconcileResult = WakeReconcile{Unreachable: true}
+
+			got, err := watchNow(t, w)
+
+			if err != nil || got.Phase != PhaseDone || len(w.liveEntries()) != 0 {
+				t.Errorf("got %+v, %v, live %+v; want done with the entry lifted", got, err, w.liveEntries())
+			}
+			requireNotice(t, w, "its pause was lifted.", "unreachable", "`lyx cleanup --apply`")
+		}},
+		{"a wake with no hub entry live reconciles with nothing to exempt", func(t *testing.T) {
+			w := newFakeWorld(t)
+			acted := false
+			w.onSleep = func() {
+				if !acted && w.hibernates() > 0 {
+					acted = true
+					resumeLive(t, w, PauseCaller)
+				}
+			}
+
+			got, err := watchNow(t, w)
+
+			if err != nil || got.Phase != PhaseDone || w.reconcileCalls != 1 || len(w.exempted) != 0 {
+				t.Errorf("got %+v, %v, reconciles %d, exempted %+v; want done after one reconcile with no exemption", got, err, w.reconcileCalls, w.exempted)
+			}
+			requireNotice(t, w, "its pause had already been lifted.")
+		}},
+		{"a reconcile error lifts the owned entry and names the error and the cleanup", func(t *testing.T) {
+			w := newFakeWorld(t)
+			w.reconcileErr = errors.New("origin refused")
+
+			got, err := watchNow(t, w)
+
+			if err != nil || got.Phase != PhaseDone || len(w.liveEntries()) != 0 {
+				t.Errorf("got %+v, %v, live %+v; want done with the entry lifted", got, err, w.liveEntries())
+			}
+			requireNotice(t, w, "its pause was lifted.", "origin refused", "`lyx cleanup --apply`")
+		}},
+		{"a status error at the wake fails the request with the owned entry lifted and no reconcile", func(t *testing.T) {
+			w := newFakeWorld(t)
+			// Calls 0 and 1 are the confirmation and the check before the hibernate, call 2 the wake's read.
+			w.readings = []statusReading{{}, {}, {err: errors.New("status broke")}}
+
+			got, err := watchNow(t, w)
+
+			if err != nil || got.Phase != PhaseFailed || !strings.Contains(got.Reason, "status broke") || w.reconcileCalls != 0 || len(w.liveEntries()) != 0 {
+				t.Errorf("got %+v, %v, reconciles %d, live %+v; want failed with the error, the entry lifted and no reconcile", got, err, w.reconcileCalls, w.liveEntries())
+			}
+			requireNotice(t, w, "The hibernate request failed", "status broke", "its pause was lifted.")
+		}},
+		{"a pair pause that fails leaves that pair unheld, holds the other, lifts the owned entry and names the unheld pair", func(t *testing.T) {
+			w := newFakeWorld(t)
+			w.pairPauseErr = map[string]error{"p1": errors.New("tender down")}
+			w.reconcileResult = WakeReconcile{Runs: []WakeRun{{Slug: "p1", WayForward: "fix p1"}, {Slug: "p2", WayForward: "fix p2"}}}
+
+			got, err := watchNow(t, w)
+
+			live := w.liveEntries()
+			if err != nil || got.Phase != PhaseDone || len(live) != 1 || live[0].Scope != "p2" {
+				t.Errorf("got %+v, %v, live %+v; want done with only p2 held", got, err, live)
+			}
+			requireNotice(t, w, "its pause was lifted.", "fix p2; then `lyx resume p2`", "p1 could not be paused (tender down); hold it with `lyx tender pause p1`")
+		}},
 		{"an agent caller and a non-Linux platform are refused with no pause", func(t *testing.T) {
 			w := newFakeWorld(t)
 			w.caller = agentStrand(t)
@@ -477,6 +643,34 @@ func TestWatch(t *testing.T) {
 			}
 		}},
 	}
+	// This subtest is serial and runs before the parallel table: it captures the process-global logger output and raises the process-global level, both restored by its cleanup.
+	t.Run("a reconcile's mutation lines are logged at Info and left out of the notice", func(t *testing.T) {
+		var captured bytes.Buffer
+		previous := logger.DefaultOutput()
+		logger.SetOutput(&captured)
+		logger.SetVerbosity(1)
+		t.Cleanup(func() {
+			logger.SetVerbosity(0)
+			logger.SetOutput(previous)
+		})
+		w := newFakeWorld(t)
+		w.reconcileResult = WakeReconcile{Mutations: []string{"tag_created set-aside/p1/1", "branch_deleted p1"}}
+
+		got, err := watchNow(t, w)
+
+		if err != nil || got.Phase != PhaseDone {
+			t.Fatalf("got %+v, %v; want done", got, err)
+		}
+		for _, line := range w.reconcileResult.Mutations {
+			if !strings.Contains(captured.String(), line) {
+				t.Errorf("log = %q; want it to contain %q", captured.String(), line)
+			}
+			if strings.Contains(w.noticeList()[0], line) {
+				t.Errorf("notice = %q; want %q left out", w.noticeList()[0], line)
+			}
+		}
+	})
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()

@@ -7,12 +7,25 @@ package boardkit
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
+
+var installReplayOnce sync.Once
+
+// InstallReplay installs boardengine.FabricReplay as fabricengine's board replay, once per process.
+// A test binary never runs the lyx root pre-run that installs it, so a test that reaches a Bolt replay or the ended-set rule calls this first.
+// The install is never restored, so parallel tests share the one install of the same value.
+func InstallReplay(tb testing.TB) {
+	tb.Helper()
+	installReplayOnce.Do(func() {
+		fabricengine.InstallBoardReplay(boardengine.FabricReplay{})
+	})
+}
 
 // HubWithBoardConfig makes a temp hub whose board directory holds the default board config and nothing else, and returns the hub path.
 // It fails the test on a setup error.

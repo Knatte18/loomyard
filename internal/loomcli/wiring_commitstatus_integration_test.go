@@ -450,10 +450,13 @@ func TestCommitStatusSeam_Real(t *testing.T) {
 		if code := commitRecordsVerb(&out, loomCommitStatusDeps(location, shedrun.SelfRunID)); code == 0 {
 			t.Fatalf("exit = 0; want non-zero; output %s", out.String())
 		}
-		for _, want := range []string{"the commit landed locally but the push failed", "way forward: merge the remote branch", taskWorktree} {
+		for _, want := range []string{"the commit landed locally but the push failed", "way forward: origin/" + branch + " holds commits this branch lacks", "git merge origin/" + branch, taskWorktree} {
 			if !strings.Contains(out.String(), want) {
 				t.Errorf("output = %s; want it to contain %q", out.String(), want)
 			}
+		}
+		if got := strings.Count(out.String(), "way forward: "); got != 1 {
+			t.Errorf("output = %s; want the way forward exactly once, got %d", out.String(), got)
 		}
 		if got := gitkit.RevParse(t, taskWorktree, "HEAD"); got != taskHead {
 			t.Errorf("task branch HEAD = %q; want unchanged %q", got, taskHead)

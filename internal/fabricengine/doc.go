@@ -3,38 +3,35 @@
 // paired weft repo.
 // fabric is the only module that knows both repos exist: the `Fabric` handle holds unexported `code *gitrepo.Repo` and `records *gitrepo.Repo` fields for anything repo-specific and uncoordinated, reachable only from inside this package, and adds a small set of genuinely cross-repo operations (`Commit`, `Pull`, `Diff`, `Status`) on top of what gitrepo deliberately doesn't know about.
 //
-// `Fabric.Pull` (pull.go) is the unified read path: weft is fast-forwarded first via a plain
-// `PullWeft` — skipped as a vacuous success when the weft branch has no upstream yet, the freshly
-// bootstrapped hub's ordinary state until its first push lands — then warp is fetched and inspected
-// against its upstream tracking ref.
-// A clean fast-forward (local warp HEAD still an ancestor of the fetched upstream tip) simply
-// advances warp.
-// A detected warp history rewrite (rebase or force-push upstream — local warp HEAD is no longer an
-// ancestor of the fetched tip) is auto-reconciled whenever it is safe to do so: when local warp
-// carries no unpushed commits of its own, the correspondence index is first rebuilt from the weft
-// trailer history (the sole source of truth — a re-cloned hub's per-pair index cache starts empty
-// while its adopted weft history carries every recorded anchor, and a verdict as final as
-// `ErrNoSurvivingAnchor` must never rest on a stale cache), then weft's correspondence is
-// re-anchored to the nearest surviving `Warp-SHA` — via the same empty-commit-with-trailer
-// mechanism `commitWeftLocked`'s snapshot rule already uses (see below) — warp is reset to the new
-// tip, and the fresh correspondence is recorded.
+// `Fabric.Pull` (pull.go) is the unified read path: weft is brought level with origin first, then warp is fetched and inspected against its upstream tracking ref.
+// The weft is fast-forwarded via a plain `PullWeft`, or, where both sides moved, its local commits are replayed onto origin's by `replayWeft` under the weft write lock and push lock.
+// A weft branch with no upstream yet is skipped as a vacuous success, the freshly bootstrapped hub's ordinary state until its first push lands.
+// A clean fast-forward (local warp HEAD still an ancestor of the fetched upstream tip) simply advances warp.
+// A detected warp history rewrite (rebase or force-push upstream — local warp HEAD is no longer an ancestor of the fetched tip) is auto-reconciled whenever it is safe to do so.
+// A local commit is unpushed only when no value of the remote-tracking ref's reflog, from this machine's last push onward, reaches it.
+// When local warp carries no unpushed commits of its own, the correspondence index is first rebuilt from the weft trailer history, the sole source of truth: a re-cloned hub's per-pair index cache starts empty while its adopted weft history carries every recorded anchor, and a verdict as final as `ErrNoSurvivingAnchor` must never rest on a stale cache.
+// Then weft's correspondence is re-anchored to the nearest surviving `Warp-SHA`, via the same empty-commit-with-trailer mechanism `commitWeftLocked`'s snapshot rule already uses (see below), warp is reset to the new tip, and the fresh correspondence is recorded.
 // Two cases abort loudly and make no change to either repo: local warp already has unpushed commits
 // AND the remote diverged (the double-conflict case `Pull` refuses to resolve unattended,
 // `ErrWarpDivergedUnpushed`), or the rewrite is so thorough that no recorded correspondence
 // survives it at all (`ErrNoSurvivingAnchor`).
-// A third refusal guards the working tree rather than history: whenever warp would have to move at
-// all — fast-forward or reconcile — a warp worktree carrying uncommitted tracked changes aborts
-// with `ErrWarpDirty` before anything mutates warp, because every warp advance goes through a
-// `reset --hard` that would silently destroy those changes (weft has already been fast-forwarded
-// when this fires; warp is untouched).
+// A third refusal guards a task pair's branch that origin rewound.
+// `classifyRewrite` reads the branch as rewound when origin's head is an ancestor of a value the tracking ref's reflog held and the local tip holds commits of that value origin dropped.
+// `Pull` then returns `ErrWarpRewound`, naming the dropped commits and the two ways to settle it, before any reset.
+// The prime's code branch is the operator's, so a rewind of it resets as a rewrite does.
+// A fourth refusal guards the working tree rather than history: whenever warp would have to move at all, by fast-forward or reconcile, a warp worktree carrying uncommitted tracked changes aborts with `ErrWarpDirty` before anything mutates warp.
+// Every warp advance goes through a `reset --hard` that would silently destroy those changes, and the weft has already been brought level when this fires, while warp is untouched.
 // Every rewrite/anchor determination is ancestry-based — `f.code.IsAncestor`, via `git merge-base
 // --is-ancestor` — never `f.code.SHAExists`: `git fetch` never prunes objects, so a rebased-away
 // commit's object survives fetch and `SHAExists` would report true post-fetch, meaning detection
 // would never fire (see the reachability-never-object-existence Shared Decision).
-// The weft ff-pull is non-fatal: a failed upstream probe or a failed weft pull is warned and leaves
-// `PullResult.WeftPulled` false, but the warp fetch/reconcile below runs regardless — reconciling a
-// weft that failed to pull is a named manual operator step, never something `Pull` resolves for the
-// caller.
+// The weft arm never stalls the warp side.
+// A failed upstream probe or an unreachable origin is warned and leaves `PullResult.WeftPulled` false.
+// A replay that stops on a conflict or an uncommitted change is returned as a `*WeftStopError` after the warp arm has run, beside the warp result.
+// The stop names the weft branch, the paths and the way forward.
+// For a conflict that is the two ways to settle it, each followed by `lyx fabric push`, so a re-run `lyx fabric pull` replays nothing.
+// For an uncommitted change it is committing the named paths with `lyx fabric commit` and re-running the pull.
+// `Pull` never returns success with `WeftPulled` false for a moved origin.
 // The call's result is `PullResult`, which reports what each side did and, after a reconcile, the re-anchor baseline —
 // see pull.go's own doc comment for
 // the full flow and the `*PartialPullError` warp-side-failure contract, whose `WeftPulled` field now
@@ -45,6 +42,45 @@
 // An empty tip means the remote has no such branch or the repository has no origin remote, and a tip with no commits means the remote is at or behind HEAD.
 // A failed fetch returns the error, so each caller decides whether it refuses or degrades.
 // It mutates no ref other than the remote-tracking refs the fetch refreshes.
+//
+// # Origin reconcile
+//
+// `ReconcileOrigin` (originreconcile.go) is the one judge of this machine's local branches against origin, run before anything acts on a run or the hub after the machine may have been away.
+// It takes the hub location, a `ReconcileScope` and the `OriginSeams` a call site injects, and returns an `OriginReport` embedding `MutationRecord`, with one `BranchOutcome` per judged branch and one `EntryOutcome` per pair that has a batten run record.
+// An empty `ReconcileScope.Run` judges the hub: Bolt, the prime's code and records branches, and those of every local pair.
+// A slug judges the run: Bolt, the run's parent branch on both sides as its origin record names it, and the run's own pair.
+// A branch with no origin tracking ref was never pushed and is not judged.
+//
+// The network work is two `git ls-remote origin` calls, one per repository, run in parallel under `ReconcileOptions`' per-attempt deadline and retried together after a transport failure until the bound is spent.
+// Only the heads origin moved past the local tracking ref are then fetched, one fetch per repository.
+// A judge-only reconcile fetches their objects by SHA into no ref and writes no FETCH_HEAD, so it moves nothing.
+// A transport failure through the bound is `OriginReport.Unreachable`, with nothing judged and nothing moved, and a nil error.
+// Any other failure of the ls-remote pair, or a failed fetch after both answered, is the returned error.
+//
+// `judgeBranch` reads a branch as level, fast_forward, ahead, rewound, rewritten, diverged, needs_replay or gone.
+// A code branch is read through the reflog of its tracking ref, as `Fabric.Pull` reads it: rewound takes precedence over ahead, and rewritten is a history origin replaced with commits this machine never held.
+// A records branch neither side contains is needs_replay, which a moving reconcile replaces with the result of its replay.
+// The states a move adds, dirty, busy and live, and the stops themselves, carry a `WayForward` line, the repair step alone; each caller appends its own re-entry.
+// `classifyEntry` turns the verdicts on an entry's branches into active, ended or stopped.
+//
+// Every scope reads the ended set from origin's fetched Bolt tip and its history before any replay, and drops each run this machine's own landing has reached.
+// `reconcileEnded` then applies the removal to each of those runs that has a batten run record here: an entry with a local part of its pair, its worktree paths, launchers or branches, goes to `OriginSeams.Teardown` as an `EndedTeardown` naming the slug and whether `SnapshotTagged` finds the snapshot tag an earlier force-case run left.
+// An ended entry with no local part is reported with no teardown and no network call, and the report's `Summary` leaves it out.
+// A teardown reporting busy leaves the pair, and its entry is ended with the busy flag and a way forward naming the wait, `BusyOnDriver` or `BusyOnLock`, then a re-run of `lyx cleanup --apply`; any other teardown error is on the entry and stops no other.
+// The teardowns' mutations join the report's record, a removed pair's branches leave the report, and no move touches the branches of a pair the step judged.
+// The run scope reports its own run ended like any other and calls no teardown, since its driver is the caller; a judge-only scope reports the teardowns it would run and runs none.
+//
+// Any scope but judge-only then moves, in this order: it passes the rest of the ended set to every replay.
+// Bolt moves first, then the prime's records branch, the prime's code branch and each pair's, a pair's records before its code.
+// A checked-out branch moves only by `ffWorktree`, a fast-forward that stops as dirty, naming the paths, when a tracked change sits on a path it touches.
+// A records branch moves under its write lock and then its push lock, each by one try-acquire through `reconcileRecordsBranch`, which fast-forwards or replays and reads a held lock as busy.
+// A code branch is never rebased, so one both sides moved stays diverged.
+// The prime's branches move only under the prime lock, taken by `tryPrimeLock` with no wait, and only while `OriginSeams.PrimeParentLockFree` finds no live owner; otherwise they are busy.
+// A pair `OriginSeams.LivePair` reports live is judged and left where it was, reading live once origin moved past it; the run scope never asks about its own pair.
+// The run scope judges its parent branch and never moves it.
+// A stop on Bolt or on the prime's records branch stops every entry; a busy branch of either stops none, nor does a busy records branch of the run scope's own pair.
+// A seam left nil reads as no live pair, a free parent lock and no teardown.
+// A moving scope ends by removing every failed-push record whose branch is no longer local.
 //
 // fabric enforces one uniform branch-naming scheme, with no exceptions: a warp branch `<branch>` is
 // always paired with weft branch `<branch>-weft`, including the primary worktree (warp `main` ↔
@@ -207,10 +243,8 @@
 // commit lock below — for the whole loop, repeatedly rebase-free-pushing whichever side has commits
 // and exiting once an iteration advances neither side's HEAD.
 // This push is deliberately rebase-free: `gitrepo.PushRebaseFree` is a plain `git push`, never `git
-// pull --rebase`, so a remote that has diverged simply leaves that side's commits unpushed and logs
-// a warning (`gitrepo.ErrPushRejected`), rather than mutating the calling process's working tree
-// out from under it.
-// Reconciling a diverged remote is out of scope here (slice 6).
+// pull --rebase`, so a rejected push never mutates the calling process's working tree out from under it.
+// A refused push is classified, retried by replay where that is safe, and otherwise recorded and reported, as **Push classification** below says.
 //
 // Every weft worktree fabric creates gets its `.weft/` lock directory at birth, whichever way it is created or adopted.
 // `Reconcile` restores a missing one on a pair whose weft worktree exists, without changing the pair's action,
@@ -680,9 +714,9 @@
 // through `SpawnStatusPush` over the pair's location while the task worktree stands, else a records-side-only request when only the records worktree stands and the pair is not local.
 // A push of the prime's records side carries no teardown slug, so it never delays a `Remove`.
 // A child run by hand with a wrong or empty teardown slug takes no lock of the pair and can race a removal.
-// A rejected push is retried once, after a fetch, only when the fetched remote tip is already contained in local HEAD,
+// A code-side rejected push is retried once, after a fetch, only when the fetched remote tip is already contained in local HEAD,
 // so a stale remote-tracking ref recovers by itself while a real divergence does not.
-// A caller treats the `gitrepo.ErrPushRejected` that remains as a human-decidable condition.
+// A caller treats the `gitrepo.ErrPushRejected` that remains, carried by a `*PushFailedError`, as a human-decidable condition.
 // `IsPushRejected(err)` is the side-neutral predicate that reads it without importing `gitrepo`.
 // `MergeStateActive` is the weft-only, git-level mid-merge probe a path-scoped commit must consult before landing, distinct from both `Fabric.MergeInProgress` and the two-sided `foreignMergeStatePresent`.
 // `PairComplete(l)` is the same shape over `Add`'s own post-condition: a caller that must tell a genuinely finished pair creation from one a SIGKILL interrupted partway through cannot name the weft worktree path or the junction machinery itself to check it by hand.
@@ -842,9 +876,36 @@
 // The lock order is the board write lock, then the push lock (`gitrepo.PushLockFileName`) in the board dir, across every reset, replay and fast-forward of Bolt;
 // a coalesced push holds the push lock across its own rebase and never takes the board write lock, so the order cannot deadlock.
 //
-// **Push retry.** `Bolt.PushRecorded(opts, rec)` retries a push once when its recovery rebase conflicted (`gitrepo.ErrPullRebaseFailed`).
-// Under the same lock order it drops the seed commits ahead of the upstream by the executor above, then pushes again; with no seed commits ahead, or when the drop refuses or its replay fails, the original error is returned, and a second failure is never retried.
-// A push whose caller holds a mutation record passes it to `PushRecorded`, which records the drop there as `commits_dropped`; `Bolt.Push` takes no record, so it only logs the drop at Info.
+// **Push classification.** Every push fabric runs per side goes through `pushClassified`:
+// the detached coalesced push (`coalescePushSides`), `PushAnchored`, `PushPairAnchored`, `PushWarpRebaseFreeAt` (reached through `Fabric.PushBranch`) and Bolt's pushes (`Bolt.PushRecorded`, reached by `Bolt.Push` and Bolt's syncs).
+// The side is `code`, `records` (a weft) or `bolt`, and the push is always the rebase-free `gitrepo.PushRebaseFree`.
+// `Fabric.PushWeft` and `PushWarpAt` stay on `gitrepo.PushCoalesced`, which no production path reaches.
+//
+// Before a weft or a task branch with an upstream is pushed, one `git ls-remote` asks origin for the branch.
+// A branch origin no longer has is not pushed, so a parked push never recreates a branch landed or deleted elsewhere.
+// `goneEntryEnded` fetches origin's Bolt branch and reads the ended set, so an entry origin ended writes no record and is left to the teardown of its pair.
+// A gone branch whose entry is not ended, and an unreachable origin, are retried by one backoff, the delays `gitrepo.PushBackoffDelays` returns slept through `SyncOptions.BackoffSleep`, before a `gone` or `transport` record is written.
+// A task branch (a code side outside the hub's prime) whose origin head `classifyRewrite` reads as a rewind of what this machine pushed is not pushed either, and writes a `rewound` record naming origin's head and the dropped commits:
+// a plain push would fast-forward origin and restore the commits the rewind dropped.
+// The prime's code branch, a weft and Bolt are never held back as rewound.
+//
+// A records rejection (`gitrepo.ErrPushRejected`) runs the side's retry once:
+// `retryWeftPush` fetches the weft branch and origin's Bolt branch, try-acquires the weft write lock while the caller holds the push lock, reads the ended set from the fetched Bolt tip and replays the local commits with `replayWeft`;
+// `retryBoltPush` try-acquires the board write lock, takes the push lock in the board dir, fetches, reads the ended set and replays with `replayBolt`, which drops the seed commits.
+// Each then pushes again.
+// A held write lock or an uncommitted change on a path the replay touches is a deferral:
+// the push returns nil, writes a `deferred` record that mails nothing, and leaves the commits to the next push of the branch, whose landing removes the record.
+// A replay that stops on a conflict, or a second rejection, is a `not_fast_forward` failure carrying the conflicting paths and the local commits.
+// A code-side rejection is retried only through the stale-tracking-ref retry of `pushRebaseFreeRetryingOnce`, and otherwise fails as `not_fast_forward` at once.
+// An auth refusal (`gitrepo.ErrPushAuthRefused`) is class `auth` at once, and a transport failure of the push call, or an exhausted push retry, is class `transport`.
+// Any other failure of the push call is class `other`, so no refused push is left to a log line.
+// A records retry that stops before it pushes keeps the rejection as the class and joins the retry's error into the record.
+//
+// A failure `pushClassified` records returns a `*PushFailedError` holding the `FailedPush` record and the push's own error, which `Unwrap` returns, so `errors.Is` against `gitrepo.ErrPushRejected` or `gitrepo.ErrPushAuthRefused` still holds.
+// Its text is the push's error followed by `; way forward: ` and `FailedPushWayForward` of the record, so a caller that appends a way forward of its own does so only when `HasUnclassifiedFailure` reports a failure without one.
+// The detached push returns nil for a recorded failure, as it always has; the synchronous pushes return the error.
+// A push that lands removes the record of its side and branch.
+// `Bolt.PushRecorded` records the seed-commit drop of its replay in the mutation record passed to it as `commits_dropped`; `Bolt.Push` takes no record, so it only logs the drop at Info.
 //
 // **Why a chokepoint at all.**
 // Eight data-loss defects across five review rounds were one shape, not eight mistakes: a
@@ -1091,6 +1152,41 @@
 //   - `InstallPostCheckoutHook` asks `--git-path hooks`, which honours `core.hooksPath`.
 //   - `resolveArchiveTip` resolves `FETCH_HEAD^{commit}`, revision syntax over git's fetch output.
 //   - websterengine's `--disambiguate` and `<commit>:<path>` probes are git's own disambiguation.
+//
+// # The records replay
+//
+// A records branch that both this machine and origin moved is brought level by replaying the local commits origin lacks onto origin's tip, never by a merge or a rebase.
+// `replayWeft` does it for a weft worktree and `replayBolt` for the board, both under their caller's locks, and both report a `ReplayOutcome`.
+//
+// **Weft.** Local commits are cherry-picked onto upstream oldest first through `cherryPickOnto`, which lives in `destroy.go` beside the seed-commit drop.
+// A commit that becomes empty is dropped.
+// A conflict returns `ErrReplayConflict` naming the paths, with the starting tip restored.
+// A tracked change on a path the commits touch returns `ErrReplayDirty`, with the branch unmoved.
+// The set-aside commits are tagged before the branch moves, so a stop leaves a tag on a commit still on the branch.
+// A Bolt failure after the pick restores the starting tip, and a restore git refuses is joined into the error.
+//
+// **Bolt.** A commit touching only `board.json`, `README.md` and design files is re-applied by entry through the installed `BoardReplay`, so an entry only one side changed never conflicts and no entry change stops the replay.
+// A change that lost a value to origin or met a board refusal is committed for what was kept, and its original is set aside.
+// Seed commits are dropped, and any other commit is cherry-picked as on a weft.
+// `Bolt.pullFirst` replays through it: a conflict skips as diverged, naming the conflicting paths and the two ways to settle them, and an uncommitted change on a touched path skips as dirty.
+//
+// **The ended set.** `readEndedSet` reads which runs origin has ended: an entry `done` on origin's Bolt tip, or one that tip's history held and the tip pruned.
+// A created stamp keeps a reused slug from matching a pruned entry.
+// A replay sets aside, under a local `set-aside/<slug>/<sha>` tag, each local commit whose every path belongs to an ended run, since replaying it would resurrect the run.
+// The prefix is one no archive reader matches, so a set-aside commit shows as no run.
+// `finalizeEntered` exempts a run this machine's own landing has reached past the parent-side merge of Finalize, read from the pair's loom status, the local parent branch and the prime's batten status, and treats an unreadable state as reached.
+//
+// # The local removal mode
+//
+// `RemoveLocal` removes a pair the way `Remove` does, after the same refusals, without an origin step and without waiting on another writer.
+// It try-acquires the pair's teardown lock and the weft write lock, and a held one returns an error wrapping `ErrPairBusy` with nothing changed.
+// It commits the sibling's pending records, then puts a local `set-aside/<slug>/<sha>` tag on the weft tip, reported as `SetAsideTag`, where `Remove` pushes an archive tag.
+// It asks origin for nothing, respawns no push after a failure so the surviving worktree's commits stay local, skips the store housekeeping, and regenerates the hub workspace file by one attempt at its lock, reporting `WorkspaceSkipped` when the lock is held.
+// Both modes clear the failed-push records of the pair's code and records branches once the pair is removed.
+//
+// `SnapshotUncommitted` serves the force case: under one try-acquire of the weft write lock it keeps the task worktree's uncommitted paths, under `warp/`, and the weft worktree's uncommitted paths outside the record pathspec, under `weft/`, untracked ones included, in one parentless commit under an annotated `set-aside/<slug>/<sha>` tag.
+// The commit is built from loose blobs and `git mktree`, so no branch moves and neither worktree's index is touched; with nothing uncommitted it writes nothing.
+// `SnapshotTagged` reports whether such an annotated tag of a slug exists, which tells a later run that an earlier one took the snapshot.
 //
 // # The merge surface
 //

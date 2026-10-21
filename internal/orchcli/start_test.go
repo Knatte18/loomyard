@@ -125,6 +125,12 @@ type startHarness struct {
 	// exe and build are what the receiver's executable and currentBuild answer; a test changes them before it runs start.
 	exe   string
 	build statuspane.BuildIdentity
+	// reconciles counts the reconcile calls and callsAtReconcile is how many of calls had run when the last one came;
+	// report and reconcileErr are what the fake reconcile answers.
+	reconciles       int
+	callsAtReconcile int
+	report           fabricengine.OriginReport
+	reconcileErr     error
 }
 
 func newStartHarness(t *testing.T, strands ...reedengine.StrandStatus) *startHarness {
@@ -157,6 +163,11 @@ func newStartHarness(t *testing.T, strands ...reedengine.StrandStatus) *startHar
 	c.currentBuild = func() (statuspane.BuildIdentity, error) { return h.build, nil }
 	c.starter = h.starter
 	c.reedUp = func() error { return nil }
+	c.reconcile = func() (fabricengine.OriginReport, error) {
+		h.reconciles++
+		h.callsAtReconcile = len(h.calls)
+		return h.report, h.reconcileErr
+	}
 	c.spawnWatcher = func() error { h.spawns++; return nil }
 	c.sleep = func(time.Duration) {
 		h.sleeps++
@@ -914,6 +925,153 @@ func readStateFile(t *testing.T, h *startHarness) []byte {
 		t.Fatal(err)
 	}
 	return data
+}
+
+// envList returns the JSON array under key, failing the test when the key is absent or not an array.
+func envList(t *testing.T, env map[string]any, key string) []any {
+	t.Helper()
+	list, ok := env[key].([]any)
+	if !ok {
+		t.Fatalf("envelope %s = %#v; want an array; env = %v", key, env[key], env)
+	}
+	return list
+}
+
+func TestStart_ReconcilesTheHubFirst(t *testing.T) {
+	t.Parallel()
+
+	const stopSentinel = "SENTINEL-way-forward-of-the-stopped-branch"
+	addRemovedPair := func(h *startHarness) {
+		h.report.Mutations.Append(fabricengine.KindWorktreeRemoved, "/hub/ended-slug", "ended pair removed")
+	}
+	liveOrch := reedengine.StrandStatus{GUID: "g1", Name: "orch", Live: true}
+	tests := []struct {
+		name    string
+		strands []reedengine.StrandStatus
+		prepare func(t *testing.T, h *startHarness)
+		wantOK  bool
+		check   func(t *testing.T, h *startHarness, env map[string]any)
+	}{
+		{
+			name: "the reconcile runs before the launch and its report and the failed pushes are on the envelope",
+			prepare: func(t *testing.T, h *startHarness) {
+				h.report.Branches = []fabricengine.BranchOutcome{{Branch: "main", Repo: "code", State: fabricengine.BranchFastForward, Moved: true}}
+				failed := fabricengine.FailedPush{Repo: "code", Branch: "feature", Class: fabricengine.PushFailureAuth, Error: "403"}
+				if err := fabricengine.RecordPushFailure(h.cli.location.HubPath, failed, time.Now()); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantOK: true,
+			check: func(t *testing.T, h *startHarness, env map[string]any) {
+				if h.reconciles != 1 || h.callsAtReconcile != 0 || len(h.starter.specs) != 1 {
+					t.Errorf("reconciles = %d at call %d, starts = %d; want one reconcile before the one launch", h.reconciles, h.callsAtReconcile, len(h.starter.specs))
+				}
+				if report, ok := env["reconcile"].(map[string]any); !ok || len(envList(t, report, "Branches")) != 1 {
+					t.Errorf("envelope reconcile = %#v; want the report with its one branch", env["reconcile"])
+				}
+				pushes := envList(t, env, "failed_pushes")
+				if row, _ := pushes[0].(map[string]any); len(pushes) != 1 || row["branch"] != "feature" {
+					t.Errorf("failed_pushes = %v; want the one recorded push", pushes)
+				}
+				if got := envList(t, env, "mutations"); len(got) != 0 || env["partial"] != false {
+					t.Errorf("mutations = %v, partial = %v; want an empty array and false", got, env["partial"])
+				}
+			},
+		},
+		{
+			name:    "a teardown mutation is on the envelope",
+			prepare: func(t *testing.T, h *startHarness) { addRemovedPair(h) },
+			wantOK:  true,
+			check: func(t *testing.T, h *startHarness, env map[string]any) {
+				if got := envList(t, env, "mutations"); len(got) != 1 || env["partial"] != false {
+					t.Errorf("mutations = %v, partial = %v; want the one mutation and false", got, env["partial"])
+				}
+			},
+		},
+		{
+			name: "a stop launches and its summary is a line of the start prompt",
+			prepare: func(t *testing.T, h *startHarness) {
+				h.report.Branches = []fabricengine.BranchOutcome{{Branch: "main", Repo: "code", State: fabricengine.BranchDirty, WayForward: stopSentinel}}
+			},
+			wantOK: true,
+			check: func(t *testing.T, h *startHarness, env map[string]any) {
+				summary := h.report.Summary()
+				if !strings.Contains(summary, stopSentinel) {
+					t.Fatalf("summary = %q; want the stop's way forward", summary)
+				}
+				if len(h.starter.specs) != 1 || !strings.Contains(h.starter.specs[0].Prompt, summary) {
+					t.Errorf("starts = %d; want one whose prompt carries %q", len(h.starter.specs), summary)
+				}
+			},
+		},
+		{
+			name: "a launch failing after a teardown mutation reports it as partial",
+			prepare: func(t *testing.T, h *startHarness) {
+				addRemovedPair(h)
+				h.starter.err = errors.New("provider never came up")
+			},
+			check: func(t *testing.T, h *startHarness, env map[string]any) {
+				if got := envList(t, env, "mutations"); len(got) != 1 || env["partial"] != true {
+					t.Errorf("mutations = %v, partial = %v; want the one mutation and true", got, env["partial"])
+				}
+			},
+		},
+		{
+			name:    "a launch failing after an empty reconcile record is not partial",
+			prepare: func(t *testing.T, h *startHarness) { h.starter.err = errors.New("provider never came up") },
+			check: func(t *testing.T, h *startHarness, env map[string]any) {
+				if got := envList(t, env, "mutations"); len(got) != 0 || env["partial"] != false {
+					t.Errorf("mutations = %v, partial = %v; want an empty array and false", got, env["partial"])
+				}
+			},
+		},
+		{
+			name:    "an unreachable origin launches with the warning",
+			prepare: func(t *testing.T, h *startHarness) { h.report.Unreachable = true },
+			wantOK:  true,
+			check: func(t *testing.T, h *startHarness, env map[string]any) {
+				if warning, _ := env["warning"].(string); !strings.Contains(warning, "unreachable") || len(h.starter.specs) != 1 {
+					t.Errorf("warning = %q, starts = %d; want the unreachable warning and one launch", warning, len(h.starter.specs))
+				}
+			},
+		},
+		{
+			name: "a reconcile error launches with the error reported",
+			prepare: func(t *testing.T, h *startHarness) {
+				h.reconcileErr = errors.New("ls-remote failed for the records repository")
+			},
+			wantOK: true,
+			check: func(t *testing.T, h *startHarness, env map[string]any) {
+				if warning, _ := env["warning"].(string); !strings.Contains(warning, "ls-remote failed for the records repository") || len(h.starter.specs) != 1 {
+					t.Errorf("warning = %q, starts = %d; want the reconcile error and one launch", warning, len(h.starter.specs))
+				}
+			},
+		},
+		{
+			name:    "an already-live strand still runs the reconcile and reports it",
+			strands: []reedengine.StrandStatus{liveOrch},
+			prepare: func(t *testing.T, h *startHarness) { addRemovedPair(h) },
+			wantOK:  true,
+			check: func(t *testing.T, h *startHarness, env map[string]any) {
+				if h.reconciles != 1 || env["action"] != actionSpawnedWatcher || len(envList(t, env, "mutations")) != 1 {
+					t.Errorf("reconciles = %d, env = %v; want one reconcile and its mutation reported", h.reconciles, env)
+				}
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := newStartHarness(t, tt.strands...)
+			tt.prepare(t, h)
+			code, env := h.run(t)
+			if (code == 0) != tt.wantOK {
+				t.Fatalf("exit = %d; env = %v; want success = %v", code, env, tt.wantOK)
+			}
+			tt.check(t, h, env)
+		})
+	}
 }
 
 func TestStart_StarterErrorFailsAndSavesNoState(t *testing.T) {

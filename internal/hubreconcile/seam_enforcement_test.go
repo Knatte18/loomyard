@@ -10,6 +10,7 @@ import (
 
 // hubreconcileAllowedImports are the only non-stdlib import paths production code in this package may use.
 var hubreconcileAllowedImports = []string{
+	"github.com/Knatte18/loomyard/internal/boardengine",
 	"github.com/Knatte18/loomyard/internal/buildvcs",
 	"github.com/Knatte18/loomyard/internal/configengine",
 	"github.com/Knatte18/loomyard/internal/configreg",
