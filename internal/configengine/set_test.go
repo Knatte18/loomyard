@@ -78,13 +78,13 @@ func TestSet(t *testing.T) {
 			contains: []string{"x: an x", "bug: a bug"},
 		},
 		{
-			name:        "per-name map gains a name the template lacks on the base layer",
+			name:        "per-name map gains a name the template lacks on the base layer and sheds a template-equal one",
 			state:       baseWithFile,
 			existing:    "name: x\nlenses:\n  a: A\n",
 			template:    "name: x\nlenses:\n  a: A\n",
 			pairs:       []yamlengine.KV{{Key: "lenses.new", Value: "a new lens"}},
 			perNameMaps: []string{"lenses"},
-			contains:    []string{"a: A", "new: a new lens"},
+			wantExact:   "name: x\nlenses:\n    new: a new lens\n",
 		},
 		{
 			name:        "per-name map gains a name the template lacks on a sparse layer",

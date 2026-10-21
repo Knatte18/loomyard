@@ -544,6 +544,10 @@ func reconcileEnvelope(apply bool, results []configsync.Result) map[string]any {
 		if len(result.KeptExtra) > 0 {
 			m["keptExtra"] = result.KeptExtra
 		}
+		// dropped is exceptional too: only a module with per-name maps whose base file holds a name with the template's value sets it.
+		if len(result.Dropped) > 0 {
+			m["dropped"] = result.Dropped
+		}
 		// seed is set only by a reconcile of the board dir's files.
 		if result.Seed != "" {
 			m["seed"] = result.Seed
@@ -623,10 +627,13 @@ func Command() *cobra.Command {
 		Long: `reconcile compares all module configuration files in _lyx/config/ against
 their live templates, reporting added keys (new in template) and removed keys
 (deleted from template). By default it is a dry-run: no files are written.
-Pass --apply to write the reconciled files to disk atomically.
+A per-name map entry holding the template's value is reported under "dropped"
+and left out of the written file.
+Pass --apply to write the reconciled files to disk atomically;
+a file is rewritten when the reconcile adds, removes or drops anything.
 A module that retires keys or floors a value first migrates its present file: the dry-run lists
 each rewrite under the module's "migrated" key, and --apply writes the migrated
-file even when the reconcile adds and removes nothing.
+file even when the reconcile adds, removes and drops nothing.
 Hub-wide modules (fabric, board) are reported, not reconciled here: a leftover
 per-worktree copy is "retired" when the hub file holds everything it holds
 (--apply deletes it), or "divergent" when it holds an entry the hub file lacks

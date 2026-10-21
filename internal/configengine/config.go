@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -203,6 +204,10 @@ func load(dirs Dirs, spec Spec, fallbackOnAbsent bool) ([]byte, error) {
 	if err != nil {
 		return nil, MarkInvalid(fmt.Errorf("config file %s: %w", label, err))
 	}
+	// A base file holds only the per-name map names it tuned, so a name filled under a per-name map is the normal case and not logged.
+	filledKeys = slices.DeleteFunc(filledKeys, func(key string) bool {
+		return slices.ContainsFunc(spec.PerNameMaps, func(p string) bool { return strings.HasPrefix(key, p+".") })
+	})
 	if hasBase && len(filledKeys) > 0 {
 		logger.Info("configengine: filled missing keys from template", "module", spec.Name, "layer", string(LayerTemplate), "file", label, "keys", strings.Join(filledKeys, ","))
 	}
