@@ -341,8 +341,12 @@ func TestWatchdogDaemon(t *testing.T) {
 		noWatch := func(string, ...string) (<-chan fswatch.Event, func() error, error) {
 			return nil, nil, errors.New("watch disabled for the shared discovery loop")
 		}
+		// This loop's idle window is widened to fifteen cycles, three seconds:
+		// DownThenUpDoesNotKillDaemon's down-then-up gap can pass the production three-cycle window under a loaded package run.
+		timing := compressedWatchdogTiming()
+		timing.IdleCycles = 15
 		go func() {
-			loopDone <- runWatchdogLoop(loopCtx, h.Path, tmuxPath, eng1.ShellPath(), compressedWatchdogTiming(), noWatch, reedengine.ListSessions, nil)
+			loopDone <- runWatchdogLoop(loopCtx, h.Path, tmuxPath, eng1.ShellPath(), timing, noWatch, reedengine.ListSessions, nil)
 		}()
 
 		// Both sessions must be discovered within a couple of discovery cycles.
