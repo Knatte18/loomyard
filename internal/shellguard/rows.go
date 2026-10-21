@@ -65,6 +65,8 @@ const unquotedPrefixPattern = commandFieldPattern + shellUnitPattern + `*(<<-?` 
 // Command position is the start of the command, or right after a ; & | ( <( >( or backtick, which also covers $( and ( subshells, or a JSON-escaped newline, then any of env, exec, xargs, sudo, time.
 // The separator is reached through a run of shell units as unquotedPrefixPattern reads them, and one after a heredoc operator counts only on that operator's line.
 // It sees static text only: it misreads a JSON-escaped double quote inside a double-quoted string and a quote inside a comment, and it sees nothing after a heredoc operator's line.
+// A double-quoted string is one unit, so a command substitution inside it, as in out="$(python3 x.py)", is never in command position and passes.
+// A < before a quote or a backslash, and <<<, which reads as a heredoc operator, end the run of units, so a command after either passes.
 const commandPositionPattern = commandFieldPattern + `(` + shellUnitPattern + `*([;&|` + "`" + `]|[<>]?\(|\\n|<<-?` + shellLineUnitPattern + `*([;&|` + "`" + `]|[<>]?\()))?` +
 	`[[:space:]]*((env|exec|xargs|sudo|time)[[:space:]]+)*([^[:space:]"\\;&|()` + "`" + `]*/)?`
 
@@ -126,7 +128,7 @@ var projectTargetPattern = `([^$./` + redirectTargetEndChars + `]` +
 // It matches a >, >>, >| or &> redirect reached through unquotedPrefixPattern, so one on a heredoc operator line counts, whose target, optionally quoted, matches projectTargetPattern.
 // A file-descriptor duplication such as 2>&1 has no target word and passes.
 // It sees static text only, so it is a guardrail and not a barrier:
-// it lets through tee, cp, dd, a write behind bash -c or a script, a redirect after a heredoc operator line, a target behind a variable, an absolute path into .scratch/, and a quote unquotedPrefixPattern misreads.
+// it lets through tee, cp, dd, a write behind bash -c or a script, a redirect after a heredoc operator line, a redirect after a < before a quote or after <<<, a redirect inside a command substitution in a double-quoted string, a target behind a variable, an absolute path into .scratch/, and a quote unquotedPrefixPattern misreads.
 // It falsely denies an untracked file outside the scratch places and a > comparison inside [[ ]] or $(( )).
 var redirectWriteCommandPattern = unquotedPrefixPattern + `>\|?[[:space:]]*(\\"|')?` + projectTargetPattern
 
@@ -173,7 +175,7 @@ const lyxEnvNamesPattern = `(` + gateslot.InheritEnv + `|` + agentname.StrandNam
 // A go test whose -tags value names tmux or llm.
 // A command setting or reading the slot-inheritance variable, the strand-name variable or the prebuilt-binary variable: one named outside quotes, or expanded inside a double-quoted string.
 // It sees static text only, so it is a guardrail and not a barrier:
-// a run hidden behind a script, bash -c, a cd plus a relative pattern it does not cover, a shell variable or a quote commandPositionPattern misreads passes, as does any raw package-scoped go test and a variable read by printenv with its name quoted.
+// a run hidden behind a script, bash -c, a cd plus a relative pattern it does not cover, a shell variable, a command substitution inside a double-quoted string, a command after a < before a quote or after <<<, or a quote commandPositionPattern misreads passes, as does any raw package-scoped go test and a variable read by printenv with its name quoted.
 // It falsely denies a word holding ... or the word all inside a quoted argument of the go command itself, such as a -run filter.
 const rawGoCommandPattern = `(` + goSubcommandPattern + `(test|build|vet)[[:space:]]` + goArgumentsPattern + `(` + goWordPattern + `\.\.\.` + goWordPattern + `|all)([[:space:]"\\;&|()` + "`" + `]|$))` +
 	`|(` + goSubcommandPattern + `test[[:space:]]` + goArgumentsPattern + `-{1,2}tags[[:space:]=]+[^[:space:];&|]*(tmux|llm))` +
