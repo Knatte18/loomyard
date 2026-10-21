@@ -227,6 +227,29 @@ func TestLdflagsPath_MatchesBuildinfoChannel(t *testing.T) {
 	}
 }
 
+// TestLyxMainPackage_MatchesModulePath guards lyxMainPackage against drift from go.mod's module path:
+// a stale constant matches no installed lyx, so the foreign-lyx warning would never fire with every other test green.
+func TestLyxMainPackage_MatchesModulePath(t *testing.T) {
+	t.Parallel()
+	goMod, err := os.ReadFile(filepath.Join(repoRoot(t), "go.mod"))
+	if err != nil {
+		t.Fatalf("read go.mod: %v", err)
+	}
+	var modulePath string
+	for _, line := range strings.Split(string(goMod), "\n") {
+		if rest, ok := strings.CutPrefix(strings.TrimSpace(line), "module "); ok {
+			modulePath = strings.TrimSpace(rest)
+			break
+		}
+	}
+	if modulePath == "" {
+		t.Fatal("go.mod declares no module path")
+	}
+	if want := modulePath + "/cmd/lyx"; lyxMainPackage != want {
+		t.Errorf("lyxMainPackage = %q; want %q", lyxMainPackage, want)
+	}
+}
+
 // declaresExportedVar reports whether file declares a package-level exported var named name.
 func declaresExportedVar(file *ast.File, name string) bool {
 	for _, decl := range file.Decls {
