@@ -400,7 +400,7 @@ func replayWeft(rec *Mutations, l *lyxcwd.Location, worktree, upstream string, e
 	if err != nil {
 		return ReplayOutcome{}, err
 	}
-	_, ahead, err := replayAhead(repo, upstreamSHA)
+	startTip, ahead, err := replayAhead(repo, upstreamSHA)
 	if err != nil || len(ahead) == 0 {
 		return ReplayOutcome{}, err
 	}
@@ -413,11 +413,11 @@ func replayWeft(rec *Mutations, l *lyxcwd.Location, worktree, upstream string, e
 		if err != nil {
 			return ReplayOutcome{}, err
 		}
-		touched = append(touched, detail.Paths...)
 		if slug, aside := endedRunSlug(l, live, detail.Paths); aside {
 			outcome.SetAside = append(outcome.SetAside, SetAsideCommit{Commit: sha, Slug: slug})
 			continue
 		}
+		touched = append(touched, detail.Paths...)
 		kept = append(kept, sha)
 	}
 
@@ -432,7 +432,7 @@ func replayWeft(rec *Mutations, l *lyxcwd.Location, worktree, upstream string, e
 			outcome.Replayed = append(outcome.Replayed, sha)
 		}
 	}
-	if err := tagSetAside(rec, repo, outcome.SetAside); err != nil {
+	if err := tagSetAsideOrRestore(rec, repo, outcome.SetAside, startTip); err != nil {
 		return outcome, err
 	}
 	return outcome, nil
@@ -783,6 +783,9 @@ func replayBolt(rec *Mutations, l *lyxcwd.Location, boardDir, upstream string, e
 		}
 	}
 
+	if err := tagSetAsideOrRestore(rec, repo, outcome.SetAside, start); err != nil {
+		return outcome, err
+	}
 	if len(seed) > 0 {
 		rec.Append(KindCommitsDropped, boardDir, strings.Join(seed, " "))
 	}
@@ -792,9 +795,6 @@ func replayBolt(rec *Mutations, l *lyxcwd.Location, boardDir, upstream string, e
 	}
 	if endTip != afterPicks {
 		rec.Append(KindRepoAdvanced, boardDir, endTip)
-	}
-	if err := tagSetAside(rec, repo, outcome.SetAside); err != nil {
-		return outcome, err
 	}
 	return outcome, nil
 }
