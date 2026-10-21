@@ -336,6 +336,7 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 		})
 		spec.Hooks.AfterInterrupt = c.loomAfterInterrupt
 		spec.Hooks.ConsumeAttempt = c.loomConsumeAttempt
+		spec.GotoGuard = c.settledGuard()
 	}
 	spec.Routing = c.routing
 

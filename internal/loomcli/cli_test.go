@@ -287,6 +287,9 @@ func TestSpecFor_ScratchAndFrictionDir(t *testing.T) {
 		if spec.Caller != "orch" {
 			t.Errorf("specFor(step).Caller = %q; want orch", spec.Caller)
 		}
+		if spec.GotoGuard == nil {
+			t.Error("specFor(step).GotoGuard = nil; want the settled-review guard for a known location")
+		}
 	})
 
 	tests := []struct {
