@@ -10,7 +10,7 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-lyx-temp-root` — Creating a temp file or dir: under `internal/lyxtemp`'s run dir, never `os.TempDir()`. (test) — [background](pattern/PATTERN-lyx-temp-root.md)
 - `PATTERN-durable-vs-ephemeral-state` — Adding a file: tracked under `_lyx`, never-tracked under `.lyx`, same subpath. — [background](pattern/PATTERN-durable-vs-ephemeral-state.md)
 - `PATTERN-hub-containment` — Linking hub-level containers or writing the hub workspace file: from the hub only. — [background](pattern/PATTERN-hub-containment.md)
-- `PATTERN-hub-wide-config` — A hub-level config module: `HubWide` in `configreg`, its file on the board only. — [background](pattern/PATTERN-hub-wide-config.md)
+- `PATTERN-hub-wide-config` — A hub-level config module: `HubWide` in `configreg`, its file on the board only, its machine override beside it. — [background](pattern/PATTERN-hub-wide-config.md)
 - `PATTERN-hub-suffix` — Touching hub naming: `-LYXHUB` is the sole hub container suffix. (test) — [background](pattern/PATTERN-hub-suffix.md)
 
 ## CLI
@@ -36,7 +36,7 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-batten-bookend` — Creating or destroying a task worktree: its producer never runs inside it. — [background](pattern/PATTERN-batten-bookend.md)
 - `PATTERN-github-auth` — Calling GitHub: auth only via `internal/githubclient`; no other production package runs `gh`.
 - `PATTERN-agent-filed-issues` — Filing a GitHub issue: only `lyx selfreport create` calls `selfreportengine.CreateIssue` in production. (test)
-- `PATTERN-hub-store-gc` — Hub stores never auto-gc: only `fabricengine/housekeeping.go` sets the keys or runs `gc`. — [background](pattern/PATTERN-hub-store-gc.md)
+- `PATTERN-hub-store-gc` — Hub stores run no automatic gc or maintenance: only `fabricengine/housekeeping.go` sets that or runs `gc`. — [background](pattern/PATTERN-hub-store-gc.md)
 - `PATTERN-gogit-read-helper` — Reading via go-git in `internal/gitrepo`: only via `readGoGit`, sole caller of `goGit()`. (test) — [background](pattern/PATTERN-gogit-read-helper.md)
 - `PATTERN-gitrepo-client-boundary` — Git in `internal/gitrepo`: local reads via go-git and `dotgit`, the rest via `gitexec`. (test) — [background](pattern/PATTERN-gitrepo-client-boundary.md)
 - `PATTERN-gitexec-checked-call` — Running git: `gitexec.Run`/`runChecked`; raw `RunGit`/`r.run` only at pinned `//gitexec:raw` sites.
@@ -54,9 +54,9 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-shed-driver` — Driving a shed run in Go, deciding its stops or spawning a tackler: only `internal/sheddriver`. (test) — [background](pattern/PATTERN-shed-driver.md)
 - `PATTERN-shed-run-directory` — Touching run directories or `seed.json`: `internal/shedrun` alone declares their paths, ids and `Seed`. — [background](pattern/PATTERN-shed-run-directory.md)
 - `PATTERN-tolerant-records` — Go-written JSON records: never refuse an unknown key; rewrite via `internal/state`. (test) — [background](pattern/PATTERN-tolerant-records.md)
-- `PATTERN-transient-stop` — Marking a failure transient: the `internal/shedengine` mark, set only at a producer or step-bootstrap boundary. — [background](pattern/PATTERN-transient-stop.md)
+- `PATTERN-transient-stop` — Marking a failure transient: the `internal/shedengine` mark. — [background](pattern/PATTERN-transient-stop.md)
 - `PATTERN-failure-stop-visible` — An `--until-stop` failure as sole lock holder: status is non-running before the waiter returns. (test) — [background](pattern/PATTERN-failure-stop-visible.md)
-- `PATTERN-driver-choice-single-site` — Reading a seed driver: once per recipe, in its bootstrap verbs, for the surface only. (test) — [background](pattern/PATTERN-driver-choice-single-site.md)
+- `PATTERN-driver-choice-single-site` — Reading a seed driver: once per recipe. (test) — [background](pattern/PATTERN-driver-choice-single-site.md)
 - `PATTERN-treadle-runner-seam` — Importing into `internal/treadleengine`: only its allowlist, never `burlerengine`, `lyxcwd` or an `internal/*cli` package.
 - `PATTERN-plan-generation` — Archiving a plan: `_lyx/plan/`'s top-level files hold one generation. — [background](pattern/PATTERN-plan-generation.md)
 - `PATTERN-ref-shape-registry` — Classifying a plan ref or `plan:` handle: `internal/planparser` alone declares and decides. (test) — [background](pattern/PATTERN-ref-shape-registry.md)
@@ -75,7 +75,7 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-creel-store` — Writing the creel journal or reaching a pane: only `internal/creelengine`, a pane via its `Delivery` seam. (test) — [background](pattern/PATTERN-creel-store.md)
 - `PATTERN-stencil-ownership` — Reading a prompt or spec: at call time via `internal/stencilstore` from a told directory. — [background](pattern/PATTERN-stencil-ownership.md)
 - `PATTERN-producer-pointer-rule` — Writing an instruction file: it points at another producer's format contract, never restating it.
-- `PATTERN-friction-capture` — Halting a loom run or refusing in webster: Go writes a friction note. (test) — [background](pattern/PATTERN-friction-capture.md)
+- `PATTERN-friction-capture` — Halting a loom run or refusing in webster: Go writes a note, reflected at the run's end, archived once covered. (test) — [background](pattern/PATTERN-friction-capture.md)
 - `PATTERN-completion-signal` — Finding a run unfinished in `internal/shuttleengine`: consult `allOutputFilesExist` first. (test) — [background](pattern/PATTERN-completion-signal.md)
 - `PATTERN-shuttle-provider-seam` — Referencing a provider: its specifics live only under `internal/shuttleengine/<engine>`. (test) — [background](pattern/PATTERN-shuttle-provider-seam.md)
 - `PATTERN-model-choice-mapping` — Mapping a model-spec onto a spawn: only `shuttleengine.NewModelChoice` reads its fields. (test) — [background](pattern/PATTERN-model-choice-mapping.md)
