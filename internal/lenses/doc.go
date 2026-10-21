@@ -5,11 +5,12 @@
 //
 // # Reconcile
 //
-// Both keys are per-name maps.
-// Reconcile adds each template lens or fan the file lacks and keeps every lens and fan the file holds, prose and fan lists unchanged,
-// so a later template edit reaches the file only once its entry is deleted from the file or edited in.
-// A lens or fan the template lacks is kept and reported, never pruned.
-// A template lens or fan cannot be removed: a deleted one resolves to the template's value at the next load and is written back at the next reconcile.
+// Both keys are per-name maps, so lenses.yaml holds only the lenses and fans the repo tuned or added, and a later template edit to any other name reaches the repo.
+// Reconcile never copies a template lens or fan into the file,
+// and it drops, reporting each, an entry whose prose or ordered fan list equals the template's current value, which leaves the loaded value unchanged.
+// Every other entry is kept as written, and a lens or fan the template lacks is kept and reported, never pruned.
+// A base-layer `--set` leaves template-equal entries out the same way.
+// A template lens or fan cannot be removed: a deleted one resolves to the template's value at the next load.
 // A fan is turned off at the loom or darn fan key entry that names it, by pointing the entry at another fan or setting it to "".
 //
 // # Guard keys

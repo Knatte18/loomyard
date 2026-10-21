@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -62,6 +63,8 @@ type moduleWant struct {
 	removedAll []string
 	// wantKeptExtra is the exact Result.KeptExtra; nil skips the check.
 	wantKeptExtra []string
+	// droppedAll lists names Result.Dropped must hold.
+	droppedAll []string
 	// wantFile is the file's exact content after the run; nil skips the check.
 	wantFile        *string
 	fileContains    []string
@@ -71,6 +74,8 @@ type moduleWant struct {
 	migratedNone bool
 	// loadsAsBatcher pins that batcher.Active loads the file after the run.
 	loadsAsBatcher bool
+	// wantLoadedLenses is what lenses.Load resolves after the run; nil skips the check.
+	wantLoadedLenses *lenses.Config
 }
 
 // TestReconcileAll pins what a run does to each module's file and Result: a dry run reports and writes nothing, an apply adds the template's missing keys and prunes stale ones, an absent file is seeded from the template, and a seed-only module ("models" today) is materialized verbatim exactly once and never rewritten after -- not even to resurrect a key the operator removed -- while a non-seed-only module in the same run is still pruned.
@@ -91,6 +96,10 @@ func TestReconcileAll(t *testing.T) {
 	lensesWithHubLens := lensesFixture(t, func(cfg *lenses.Config) {
 		cfg.Lenses["hub-lens"] = "Hub emphasis.\n"
 	})
+	var hubLensConfig lenses.Config
+	if err := yaml.Unmarshal([]byte(lensesWithHubLens), &hubLensConfig); err != nil {
+		t.Fatalf("decode the hub-lens fixture: %v", err)
+	}
 
 	tests := []struct {
 		name  string
@@ -198,25 +207,30 @@ func TestReconcileAll(t *testing.T) {
 			want:  map[string]moduleWant{"models": {applied: false, wantFile: ptr(modelsTrimmed)}},
 		},
 		{
-			name:  "dry run adds a missing template lens, reports a hub-only lens kept and writes nothing",
+			name:  "dry run reports template-equal entries dropped and a hub-only lens kept, adds no missing lens and writes nothing",
 			seed:  map[string]string{"lenses": lensesLacksSecurity},
 			apply: false,
-			want: map[string]moduleWant{"lenses": {
-				addedAll:      []string{"lenses.security"},
-				removedNone:   true,
-				wantKeptExtra: []string{"lenses.hub-lens"},
-				wantFile:      &lensesLacksSecurity,
-			}},
-		},
-		{
-			name:  "apply over the template plus a hub-only lens reports it kept and rewrites nothing",
-			seed:  map[string]string{"lenses": lensesWithHubLens},
-			apply: true,
 			want: map[string]moduleWant{"lenses": {
 				addedNone:     true,
 				removedNone:   true,
 				wantKeptExtra: []string{"lenses.hub-lens"},
-				wantFile:      &lensesWithHubLens,
+				droppedAll:    []string{"fans.standard", "lenses.generic"},
+				wantFile:      &lensesLacksSecurity,
+			}},
+		},
+		{
+			name:  "apply over the template plus a hub-only lens keeps only the hub-only lens",
+			seed:  map[string]string{"lenses": lensesWithHubLens},
+			apply: true,
+			want: map[string]moduleWant{"lenses": {
+				applied:          true,
+				addedNone:        true,
+				removedNone:      true,
+				wantKeptExtra:    []string{"lenses.hub-lens"},
+				droppedAll:       []string{"fans.standard", "lenses.generic", "lenses.security"},
+				fileContains:     []string{"lenses:\n    hub-lens: |\n        Hub emphasis.\n", "fans: {}"},
+				fileNotContains:  []string{"Review broadly with no single area of emphasis"},
+				wantLoadedLenses: &hubLensConfig,
 			}},
 		},
 	}
@@ -294,6 +308,11 @@ func TestReconcileAll(t *testing.T) {
 				if want.wantKeptExtra != nil && !slices.Equal(result.KeptExtra, want.wantKeptExtra) {
 					t.Errorf("%s.KeptExtra = %v; want %v", module, result.KeptExtra, want.wantKeptExtra)
 				}
+				for _, name := range want.droppedAll {
+					if !slices.Contains(result.Dropped, name) {
+						t.Errorf("%s.Dropped = %v; want it to contain %q", module, result.Dropped, name)
+					}
+				}
 				for _, key := range want.addedAll {
 					if !slices.Contains(result.Added, key) {
 						t.Errorf("%s.Added = %v; want it to contain %q", module, result.Added, key)
@@ -315,6 +334,14 @@ func TestReconcileAll(t *testing.T) {
 				if want.loadsAsBatcher {
 					if _, err := batcher.Active(configengine.Dirs{Anchor: baseDir}); err != nil {
 						t.Errorf("batcher.Active after the run = %v; want nil error", err)
+					}
+				}
+				if want.wantLoadedLenses != nil {
+					loaded, err := lenses.Load(configengine.Dirs{Anchor: baseDir})
+					if err != nil {
+						t.Errorf("lenses.Load after the run = %v; want nil error", err)
+					} else if !reflect.DeepEqual(loaded, *want.wantLoadedLenses) {
+						t.Errorf("lenses.Load after the run = %+v; want %+v", loaded, *want.wantLoadedLenses)
 					}
 				}
 
@@ -422,17 +449,23 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 		// wantAdded and wantKeptExtra are the applied result's Added and KeptExtra, compared sorted; nil skips the check.
 		wantAdded     []string
 		wantKeptExtra []string
+		// wantDropped and wantNotDropped are names the applied result's Dropped must and must not hold.
+		wantDropped    []string
+		wantNotDropped []string
 	}{
 		{
-			name:     "lenses default present gains each missing template entry and keeps tuned and hub-only ones",
+			name:     "lenses default present keeps tuned and hub-only entries and drops template-equal ones",
 			module:   "lenses",
 			hubFile:  lensesTunedHubFile,
 			wantSeed: SeedHub,
 			wantContains: []string{
-				"security:", "twill-discussion:", "Tuned generic prose.", "standard:\n        - hub-lens\n    full:", "hub-lens:", "hub-fan:",
+				"Tuned generic prose.", "standard:\n        - hub-lens\n", "hub-lens:", "hub-fan:",
 			},
-			wantAdded:     []string{"fans.twill-discussion", "lenses.security"},
-			wantKeptExtra: []string{"fans.hub-fan", "lenses.hub-lens"},
+			wantAbsent:     []string{"security:", "twill-discussion:", "correctness:", "full:"},
+			wantAdded:      []string{},
+			wantKeptExtra:  []string{"fans.hub-fan", "lenses.hub-lens"},
+			wantDropped:    []string{"fans.full", "lenses.correctness"},
+			wantNotDropped: []string{"fans.standard", "fans.twill-discussion", "lenses.generic", "lenses.security"},
 		},
 		{
 			name:         "loom default absent with a prime copy is seeded from the prime",
@@ -607,6 +640,16 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 			}
 			if tt.wantKeptExtra != nil && !slices.Equal(sortedCopy(appliedResult.KeptExtra), tt.wantKeptExtra) {
 				t.Errorf("applied KeptExtra = %v; want %v", appliedResult.KeptExtra, tt.wantKeptExtra)
+			}
+			for _, name := range tt.wantDropped {
+				if !slices.Contains(appliedResult.Dropped, name) {
+					t.Errorf("applied Dropped = %v; want it to contain %q", appliedResult.Dropped, name)
+				}
+			}
+			for _, name := range tt.wantNotDropped {
+				if slices.Contains(appliedResult.Dropped, name) {
+					t.Errorf("applied Dropped = %v; want it not to contain %q", appliedResult.Dropped, name)
+				}
 			}
 			if tt.wantNoFile {
 				if _, err := os.Stat(hubPath); !os.IsNotExist(err) {
@@ -1371,13 +1414,14 @@ func TestReconcile_MovesKeysAcrossModules(t *testing.T) {
 			checkLoadRefuses: "claude.local.yaml",
 		},
 		{
-			name:     "a board burler.yaml of today's shape moves into a created lenses.yaml that reconcile completes per name",
+			name:     "a board burler.yaml of today's shape moves into a created lenses.yaml that reconcile cuts to its tuned entries",
 			files:    map[string]string{"board:burler": burlerToday},
 			call:     "board",
-			contains: map[string][]string{"board:lenses": {tunedGeneric, "twill-discussion:", "security:", "full:"}},
+			contains: map[string][]string{"board:lenses": {tunedGeneric, "fans: {}"}},
+			excludes: map[string][]string{"board:lenses": {"twill-discussion:", "security:", "full:", "correctness:"}},
 			absent:   []string{"board:burler"},
 			moved:    movedLenses,
-			added:    []string{"lenses.security", "fans.full"},
+			noAdded:  []string{"lenses"},
 		},
 		{
 			name:     "a board dry run writes nothing and reports no seed additions for the lenses.yaml the moves would write",
@@ -1390,20 +1434,21 @@ func TestReconcile_MovesKeysAcrossModules(t *testing.T) {
 			noAdded:  []string{"lenses"},
 		},
 		{
-			name:      "a lenses.yaml equal to the template is kept beside an old-template burler.yaml",
-			files:     map[string]string{"board:lenses": lensesEqualTemplate, "board:burler": burlerOldTemplate},
-			call:      "board",
-			absent:    []string{"board:burler"},
-			unchanged: []string{"board:lenses"},
-			kept:      keptLenses,
+			name:     "a lenses.yaml equal to the template is kept over an old-template burler.yaml and cut to empty maps",
+			files:    map[string]string{"board:lenses": lensesEqualTemplate, "board:burler": burlerOldTemplate},
+			call:     "board",
+			contains: map[string][]string{"board:lenses": {"lenses: {}", "fans: {}"}},
+			absent:   []string{"board:burler"},
+			kept:     keptLenses,
 		},
 		{
-			name:      "a non-default board lenses.yaml is kept beside a burler.yaml",
-			files:     map[string]string{"board:lenses": lensesWithHubLens, "board:burler": burlerToday},
-			call:      "board",
-			absent:    []string{"board:burler"},
-			unchanged: []string{"board:lenses"},
-			kept:      keptLenses,
+			name:     "a non-default board lenses.yaml is kept over a burler.yaml and cut to its hub-only lens",
+			files:    map[string]string{"board:lenses": lensesWithHubLens, "board:burler": burlerToday},
+			call:     "board",
+			contains: map[string][]string{"board:lenses": {"hub-lens:", "fans: {}"}},
+			excludes: map[string][]string{"board:lenses": {tunedGeneric, "Review broadly with no single area of emphasis"}},
+			absent:   []string{"board:burler"},
+			kept:     keptLenses,
 		},
 		{
 			name:      "a sparse lenses.yaml on a hub's worktree layer is kept beside a burler.yaml",

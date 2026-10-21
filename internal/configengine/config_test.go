@@ -110,6 +110,8 @@ type loadCase struct {
 	template string
 	content  string
 	openMaps []string
+	// perNameMaps are the spec's per-name map paths.
+	perNameMaps []string
 	// env is set for the row with t.Setenv.
 	env map[string]string
 	// wantFill is the one key-path the fill line names; empty means no fill line.
@@ -211,6 +213,21 @@ func TestLoad(t *testing.T) {
 			openMaps: []string{"labels"},
 			contains: []string{"- bug", "- docs"},
 		},
+		{
+			name:        "a name missing under a declared per-name map is filled and not logged",
+			template:    "name: x\nlenses:\n  a: one\n  b: two\n",
+			content:     "name: x\nlenses:\n  a: tuned\n",
+			perNameMaps: []string{"lenses"},
+			contains:    []string{"a: tuned", "b: two"},
+		},
+		{
+			name:        "a missing per-name map path is still logged",
+			template:    "name: x\nlenses:\n  a: one\n",
+			content:     "name: x\n",
+			perNameMaps: []string{"lenses"},
+			wantFill:    "lenses",
+			contains:    []string{"a: one"},
+		},
 	}
 
 	for _, tc := range tests {
@@ -221,7 +238,9 @@ func TestLoad(t *testing.T) {
 			}
 			baseDir, path := newBase(t, baseWithFile, "board", tc.content)
 
-			resolved, err := configengine.Load(configengine.Dirs{Anchor: baseDir}, boardSpec(tc.template, tc.openMaps))
+			spec := boardSpec(tc.template, tc.openMaps)
+			spec.PerNameMaps = tc.perNameMaps
+			resolved, err := configengine.Load(configengine.Dirs{Anchor: baseDir}, spec)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}

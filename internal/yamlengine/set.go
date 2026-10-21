@@ -67,6 +67,7 @@ type SetResult struct {
 //
 // Each perNameMaps entry is a dotted key path whose template value is a mapping of names:
 // P.<name> is known for any dot-free name, every name existing holds under P and the template lacks is carried onto the mapping, and the pair sets the name, appending it when absent.
+// Once the pairs apply, every name under P holding the template's value for it is left out of Merged, a name a pair set included.
 // Under a mapping of scalars the value is a string whatever its first character;
 // under a mapping of lists it is a YAML flow list, and a value that is no list is an error.
 // A pair under P whose existing value at P is neither a mapping nor null is an error naming P and its shape.
@@ -172,6 +173,12 @@ func SetValues(template, existing []byte, pairs []KV, perNameMaps []string, open
 		}
 		leaf.Value = pair.Value
 	}
+
+	var pristine yaml.Node
+	if err := yaml.Unmarshal(template, &pristine); err != nil {
+		return SetResult{}, err
+	}
+	dropTemplateNames(&templateNode, &pristine, perNameMaps)
 
 	merged, err := yaml.Marshal(&templateNode)
 	if err != nil {
@@ -319,6 +326,28 @@ func carryPerNameEntries(templateNode, existingNode *yaml.Node, perNameMaps []st
 				templateValue.Content = append(templateValue.Content, existingValue.Content[i], existingValue.Content[i+1])
 			}
 		}
+	}
+}
+
+// dropTemplateNames removes from tree's mapping at each declared per-name map path every name holding the value template holds for it,
+// so the written file keeps only the names that differ and the load resolves the rest from the template.
+// A path where either tree holds no mapping is skipped.
+func dropTemplateNames(tree, template *yaml.Node, perNameMaps []string) {
+	for _, p := range perNameMaps {
+		mapping := findValueNode(tree, p)
+		templateValue := findValueNode(template, p)
+		if mapping == nil || templateValue == nil || mapping.Kind != yaml.MappingNode || templateValue.Kind != yaml.MappingNode {
+			continue
+		}
+		var content []*yaml.Node
+		for i := 0; i+1 < len(mapping.Content); i += 2 {
+			at := mappingIndex(templateValue, mapping.Content[i].Value)
+			if at >= 0 && sameValue(mapping.Content[i+1], templateValue.Content[at+1]) {
+				continue
+			}
+			content = append(content, mapping.Content[i], mapping.Content[i+1])
+		}
+		mapping.Content = content
 	}
 }
 

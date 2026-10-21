@@ -66,8 +66,9 @@
 //
 // `lyx config reconcile` drops or fills keys across every module against its template, carrying each module's open maps whole;
 // it is a dry run unless applied.
+// A per-name map entry holding the template's value is reported under `dropped` and left out of the written file, and applying rewrites a file whenever the reconcile adds, removes or drops anything.
 // A module that retires keys or floors a value declares a migration, which reconcile runs over its present file first;
-// the dry run lists each rewrite under the module's `migrated` key, and applying writes the migrated file, even when the reconcile itself adds and removes nothing.
+// the dry run lists each rewrite under the module's `migrated` key, and applying writes the migrated file, even when the reconcile itself adds, removes and drops nothing.
 // With no `--layer` it reconciles the worktree's own and local files.
 // `lyx config reconcile --layer default` reconciles every file under `<BoardDir>/_lyx/config/` instead, the hub-wide modules' files and each per-worktree module's repo default, through the call the hub reconcile after a binary change makes:
 // renamed keys are migrated, keys the template lacks are pruned, an absent repo default is seeded from the prime, and each entry carries the `seed` it started from.

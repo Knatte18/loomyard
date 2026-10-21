@@ -316,6 +316,10 @@ func TestConfigOverRealHub(t *testing.T) {
 		if err := os.WriteFile(loomFile, before, 0o644); err != nil {
 			t.Fatalf("plant old keys in the board loom.yaml: %v", err)
 		}
+		const templateEqualLenses = "lenses: {}\nfans:\n  standard: [generic, generic, correctness, error-handling, test-gaps]\n"
+		if err := os.WriteFile(configengine.ConfigFile(boardDir, "lenses"), []byte(templateEqualLenses), 0o644); err != nil {
+			t.Fatalf("plant a template-equal fan in the board lenses.yaml: %v", err)
+		}
 
 		code, result := runReconcileCLI(t, primeWorktreePath, "--layer", "default")
 		if code != 0 {
@@ -330,6 +334,9 @@ func TestConfigOverRealHub(t *testing.T) {
 			if !strings.Contains(migrated, want) {
 				t.Errorf("dry-run loom migrated = %s; want it to name %s", migrated, want)
 			}
+		}
+		if dropped := fmt.Sprint(reconcileModule(t, result, "lenses")["dropped"]); dropped != "[fans.standard]" {
+			t.Errorf("dry-run lenses dropped = %s; want [fans.standard]", dropped)
 		}
 
 		refusals := []struct {

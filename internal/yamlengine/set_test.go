@@ -44,7 +44,7 @@ func assertDecodesAsInts(t *testing.T, merged []byte, want map[string]*int) {
 	}
 }
 
-// TestSetValues pins what a successful SetValues merges: the requested values land byte-for-byte, every other key keeps its existing value or its template default, template comments and key order survive, an orphan top-level key is preserved whole and reported, list keys and open maps are set whole, and a second call on the merged output reproduces it.
+// TestSetValues pins what a successful SetValues merges: the requested values land byte-for-byte, every other key keeps its existing value or its template default, template comments and key order survive, an orphan top-level key is preserved whole and reported, list keys and open maps are set whole, a per-name map keeps only the names that differ from the template, and a second call on the merged output reproduces it.
 func TestSetValues(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -218,7 +218,8 @@ func TestSetValues(t *testing.T) {
 			template:    perNameSetTemplate,
 			pairs:       []KV{{Key: "names.x", Value: "new x"}, {Key: "lists.m", Value: "[a, b]"}},
 			perNameMaps: perNameSetMaps,
-			contains:    []string{"a: default a", "x: new x", "m: [a, b]", "l: [x]"},
+			contains:    []string{"x: new x", "m: [a, b]"},
+			notContains: []string{"default a", "l: [x]"},
 		},
 		{
 			name:        "per-name scalar entry starting with a bracket is written as a string",
@@ -242,6 +243,16 @@ func TestSetValues(t *testing.T) {
 			pairs:       []KV{{Key: "names.a", Value: "set a"}},
 			perNameMaps: perNameSetMaps,
 			contains:    []string{"a: set a", "hub: hub only", "hubl: [q]"},
+			notContains: []string{"l: [x]"},
+		},
+		{
+			name:        "per-name entry set to its template value is left out",
+			template:    perNameSetTemplate,
+			existing:    "names:\n  a: tuned a\nlists:\n  l: [y]\n",
+			pairs:       []KV{{Key: "names.a", Value: "default a"}},
+			perNameMaps: perNameSetMaps,
+			contains:    []string{"names: {}", "l: [y]"},
+			notContains: []string{"default a", "tuned a"},
 		},
 		{
 			name:        "per-name map holding null becomes a mapping holding the new name",
@@ -249,7 +260,8 @@ func TestSetValues(t *testing.T) {
 			existing:    "names:\nlists:\n  l: [x]\n",
 			pairs:       []KV{{Key: "names.x", Value: "prose"}},
 			perNameMaps: perNameSetMaps,
-			contains:    []string{"names:\n    a: default a\n    x: prose"},
+			contains:    []string{"names:\n    x: prose"},
+			notContains: []string{"default a"},
 		},
 	}
 
