@@ -103,6 +103,8 @@
 //     a Create target that still does not resolve, a Delete target that still does, or a Rename
 //     pair whose old side still resolves or whose new side still does not, after the batch that was
 //     supposed to build, remove, or rename it.
+//     A Create target under the worktree root's git-ignored `.scratch/` is a transient draft its card may remove once read, so it gets no done-check;
+//     a `.scratch/` below the root, a Rename new side and every Delete target keep theirs.
 //     Each detail carries the lookup: the resolve key looked up beside the card's own spelling, quarry's status, for not_found whether the unit exists, and for ambiguous each candidate's file and build constraint.
 //     An ambiguous answer whose candidates sit in files no single build environment selects together counts as resolved, so a Create or a Rename new side over such a member lands;
 //     the Delete direction and a Rename old side keep blocking on any surviving declaration.
