@@ -108,6 +108,7 @@ var nilLegal = map[string]bool{
 	"MergeInOnly":                       true,
 	"RecordHead":                        true,
 	"RejectReview":                      true,
+	"Darn.RecordRejection":              true,
 }
 
 // noFindingsIndex is a planindex.Index that answers no findings, so the packages built on the kit do not link the resolve-backed index.
@@ -200,9 +201,10 @@ func ReworkDeps(t testing.TB, dir string) loomshed.PRReworkDeps {
 		ReadRejection: func() (loomshed.PendingRejection, bool, error) {
 			return loomshed.PendingRejection{}, false, nil
 		},
-		ClearRejection: func() error { return nil },
-		ArchiveWebster: func(string) error { return nil },
-		Commit:         func() error { return nil },
+		ClearRejection:    func() error { return nil },
+		ArchiveWebster:    func(string) error { return nil },
+		KeepReviewRecords: func(string, string) error { return nil },
+		Commit:            func() error { return nil },
 	}
 }
 

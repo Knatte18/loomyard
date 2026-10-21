@@ -36,6 +36,8 @@ type DarnDeps struct {
 	ReadRejection func() (PendingRejection, bool, error)
 	// ClearRejection removes the pending rejection record.
 	ClearRejection func() error
+	// RecordRejection keeps the pending rejection's findings where the darn amendment reads them; it is called before ClearRejection, and nil records nothing.
+	RecordRejection func(PendingRejection) error
 	// Commit commits the landing directory.
 	Commit func() error
 	// LatestOutcome returns the latest Darn-Write history entry of the run; found is false when the row has no entry yet.
@@ -104,6 +106,11 @@ func (p *darnWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 	switch outcome {
 	case shedengine.Done:
 		if rejected {
+			if p.deps.RecordRejection != nil {
+				if err := p.deps.RecordRejection(pending); err != nil {
+					return "", shedengine.OutputPointer{}, fmt.Errorf("loomshed: %s: record rejection: %w", p.name, err)
+				}
+			}
 			if err := p.deps.ClearRejection(); err != nil {
 				return "", shedengine.OutputPointer{}, fmt.Errorf("loomshed: %s: clear rejection: %w", p.name, err)
 			}

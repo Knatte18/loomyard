@@ -664,8 +664,9 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		ArchiveWebster: func(dest string) error {
 			return websterengine.ArchiveRunRecord(websterGeom, dest)
 		},
-		ReadRejection:  pendingRejectionReader(location),
-		ClearRejection: rejectionClearer(location),
+		ReadRejection:     pendingRejectionReader(location),
+		ClearRejection:    rejectionClearer(location),
+		KeepReviewRecords: shedadapters.CarryRecords,
 		Commit: func() error {
 			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, reworkCommitPathspec(location), fmt.Sprintf("loom: rework round for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err

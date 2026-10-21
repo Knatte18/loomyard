@@ -30,16 +30,17 @@ func reworkTestEnv(t *testing.T) Env {
 		}, nil
 	}
 	env.Rework = loomshed.PRReworkDeps{
-		PlanDir:          filepath.Join(dir, "plan"),
-		ReworkDir:        filepath.Join(dir, "rework"),
-		ReworkDirRel:     "_lyx/loom/rework",
-		ReviewsDir:       filepath.Join(dir, "reviews"),
-		ReviewRunSubdirs: []string{"plan", "webster"},
-		ReadCommitted:    func(string) ([]byte, bool, error) { return nil, false, nil },
-		ReadRejection:    func() (loomshed.PendingRejection, bool, error) { return loomshed.PendingRejection{}, false, nil },
-		ClearRejection:   func() error { return nil },
-		ArchiveWebster:   func(string) error { return nil },
-		Commit:           func() error { return nil },
+		PlanDir:           filepath.Join(dir, "plan"),
+		ReworkDir:         filepath.Join(dir, "rework"),
+		ReworkDirRel:      "_lyx/loom/rework",
+		ReviewsDir:        filepath.Join(dir, "reviews"),
+		ReviewRunSubdirs:  []string{"plan", "webster"},
+		ReadCommitted:     func(string) ([]byte, bool, error) { return nil, false, nil },
+		ReadRejection:     func() (loomshed.PendingRejection, bool, error) { return loomshed.PendingRejection{}, false, nil },
+		ClearRejection:    func() error { return nil },
+		ArchiveWebster:    func(string) error { return nil },
+		KeepReviewRecords: func(string, string) error { return nil },
+		Commit:            func() error { return nil },
 	}
 	return env
 }
