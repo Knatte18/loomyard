@@ -118,8 +118,8 @@ func passedResult() verifytree.Result {
 }
 
 // TestVerifyGate_PassesWithoutVerifying proves the gate passes without running the verify when the
-// outcome is stuck (even over a dirty tree), when the plan has no verify section, and when
-// outcome.yaml is unreadable, leaving that file to the run's own mapping.
+// outcome is stuck (even over a dirty tree) and when outcome.yaml is unreadable, leaving that file to the run's own mapping,
+// and that a gate-config refusal on a done outcome is returned as the gate's error, never a pass, with no verify run.
 func TestVerifyGate_PassesWithoutVerifying(t *testing.T) {
 	t.Parallel()
 
@@ -128,10 +128,12 @@ func TestVerifyGate_PassesWithoutVerifying(t *testing.T) {
 		fake gateFake
 		// outcomeErr makes the outcome seam fail.
 		outcomeErr error
+		// commandErr makes the verifyCommand seam fail with a gate-config refusal, which the gate returns as its error.
+		commandErr error
 	}{
-		{name: "a stuck outcome", fake: gateFake{outcome: outcomeStuck, command: "go test ./...", dirty: []string{"x.go"}}},
-		{name: "no verify section", fake: gateFake{outcome: outcomeDone}},
-		{name: "an unreadable outcome", fake: gateFake{command: "go test ./...", results: []verifytree.Result{failedResult()}}, outcomeErr: errors.New("no outcome.yaml")},
+		{name: "a stuck outcome", fake: gateFake{outcome: outcomeStuck, command: "lyx gate test --wait --tier 0 --all", dirty: []string{"x.go"}}},
+		{name: "a gate-config refusal", fake: gateFake{outcome: outcomeDone}, commandErr: errors.New("gate config: gates holds no list for \"final\"; fix it with \"lyx config gate\" from the prime")},
+		{name: "an unreadable outcome", fake: gateFake{command: "lyx gate test --wait --tier 0 --all", results: []verifytree.Result{failedResult()}}, outcomeErr: errors.New("no outcome.yaml")},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -142,10 +144,17 @@ func TestVerifyGate_PassesWithoutVerifying(t *testing.T) {
 			if tt.outcomeErr != nil {
 				s.outcome = func() (string, error) { return "", tt.outcomeErr }
 			}
+			if tt.commandErr != nil {
+				s.verifyCommand = func() (string, error) { return "", tt.commandErr }
+			}
 			gate := newVerifyGate(t.TempDir(), 3, &VerifyGateNotes{}, testFixPromptPath, s)
 
 			res, err := gate()
-			if err != nil || !res.Passed {
+			if tt.commandErr != nil {
+				if err == nil || !errors.Is(err, tt.commandErr) || !strings.Contains(err.Error(), "lyx config gate") || res.Passed {
+					t.Fatalf("gate() = %+v, %v; want the gate-config refusal as the error", res, err)
+				}
+			} else if err != nil || !res.Passed {
 				t.Fatalf("gate() = %+v, %v; want a pass", res, err)
 			}
 			if f.verifyCalls != 0 {

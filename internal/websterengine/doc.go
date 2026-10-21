@@ -11,9 +11,7 @@
 // webster consumes the pinned flat card-list plan format (see
 // contracts/specs/loom-plan-spec.md) through internal/planparser, the SOLE
 // parser of the on-disk `_lyx/plan/` tree — no code in this package or
-// anywhere else re-derives that grammar; the one remaining plan-level-section
-// consumer here, the verify gate's command read (NewVerifyGate), reads plan.Verify
-// only off the planparser.Plan that planparser.ParsePlan returns. Neither RenderForkPrompt nor
+// anywhere else re-derives that grammar. Neither RenderForkPrompt nor
 // RenderRecoveryPrompt takes a *planparser.Plan at all any more — per the
 // fork-context-hygiene Shared Decision, both render a card's content from its
 // SourcePath pointer, never from an inlined plan-level field.
@@ -588,7 +586,7 @@
 //
 // # The verify gate
 //
-// Run hands Merriam's spawn the plan-level verify as one must-pass gate entry named `verify` (NewVerifyGate), beside any entry the caller's RunDeps.Gate carries;
+// Run hands Merriam's spawn the hub's `final` gate as one must-pass gate entry named `verify` (NewVerifyGate), beside any entry the caller's RunDeps.Gate carries;
 // a RunDeps.Gate that already names `verify` is refused, so a recipe row cannot add a second entry.
 // Its attempt budget is Config.VerifyGateAttempts, and the count and the pre-fix head live in the closure's memory for one shuttle run, so an attach restarts them from zero.
 // The shipped Webster row supplies no gates of its own, and StartMaster is Merriam's only start, so every Merriam carries the spec.
@@ -598,8 +596,8 @@
 // Once a pre-fix head is recorded, every commit from it to HEAD on the first-parent chain must be a non-merge commit or a clean parent merge (fixCommitRejection, in gitwrap.go);
 // any other fails the gate `Terminal`, which ends the run at once with the commit and the reason.
 // The non-merge commits in that range, with the `Pattern-Departure:` trailers their messages declare, are recorded in the gate's notes at each evaluation, and Run appends them after the wait as a `## Verify gate fix commits` section of summary.md (AppendVerifyGateFixCommits): one bullet per `fix:` commit, then one per departure.
-// A plan with no `## verify:` section passes with a warning.
-// Otherwise verifytree.Verify runs the command under the site label `webster gate`, and a pass records the tree.
+// Otherwise the closure renders `lyx gate test --wait --tier <n> ... --all` for the `final` gate's list from the told Geometry.GateConfig, read at each arrival, and verifytree.Verify runs that call under the site label `webster gate`; a pass records the tree, keyed by the rendered call.
+// A config that cannot be loaded, or a `final` list the config refuses, is the gate's returned error naming `lyx config gate`, never a pass.
 // A failure is parsed from the log and rerun once: a rerun pass passes the gate, and the identities that failed once are flaky, which Run reports after the wait as a warning, a summary.md section and a friction note (VerifyGateNotes.Apply).
 // A failure that survives the rerun returns findings.
 // A run that outlives the verify timeout is never rerun, since a hang is not flakiness: it fails the gate at once,

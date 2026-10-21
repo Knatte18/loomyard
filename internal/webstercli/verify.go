@@ -1,5 +1,5 @@
 // verify.go implements the `verify` webster verb: the self-check of the webster verify gate and of Webster-Burler-Fix's verify gate.
-// It parses the plan, then calls verifytree.Verify over the worktree with the plan's `## verify:` command, the same call both gates make.
+// It renders the hub's `final` gate call from the told gate config, then calls verifytree.Verify over the worktree with it, the same call the webster verify gate makes.
 // A pass or skip is ok.
 // A dirty tree or a failing command is an error envelope carrying a `findings` key, the shape the gate-parity test maps onto a stuck verdict.
 
@@ -10,9 +10,7 @@ import (
 	"os"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/output"
-	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/spf13/cobra"
@@ -25,17 +23,19 @@ const verifyVerbSite = "webster verify"
 func (c *websterCLI) verifyCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:         "verify",
-		Short:       "run the plan's verify command over the worktree, the way the webster verify gate does",
+		Short:       "run the hub's final gate over the worktree, the way the webster verify gate does",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `verify parses the plan at _lyx/plan and runs its "## verify:" command over
-the worktree through the same function the webster verify gate, Webster-Burler-Fix's
-verify gate and Publish and Finalize call. It is the self-check of those gates.
+		Long: `verify renders the hub's "final" gate from gate.yaml as one "lyx gate test"
+call over the whole tree and runs it through the same function the webster
+verify gate, Webster-Burler-Fix's verify gate and Publish and Finalize call.
+It is the self-check of the webster verify gate.
 
 A passing run records the verified tree. A second call on a tree whose record
 names the same command exits 0 without running. A dirty tree is refused with
 its paths under "findings", and a failing command with its exit code, log path
-and failing identities under "findings"; both exit non-zero. A plan with no
-"## verify:" section exits 0 with a warning, as the gates pass it.
+and failing identities under "findings"; both exit non-zero. A gate.yaml that
+cannot be loaded, or a "final" list naming an undeclared tier, is refused
+naming "lyx config gate".
 
 Example:
   lyx webster verify`,
@@ -53,17 +53,17 @@ Example:
 func (c *websterCLI) runVerify(cmd *cobra.Command) int {
 	out := cmd.OutOrStdout()
 
-	plan, err := planparser.ParsePlan(c.geom.PlanDir)
+	cfg, err := c.geom.GateConfig()
 	if err != nil {
-		return output.Err(out, fmt.Sprintf("webster: verify: read the plan: %v", err))
+		return output.Err(out, fmt.Sprintf("webster: verify: %v", err))
 	}
-	if plan.Verify == "" {
-		logger.Warn("webstercli: verify found no verify section in the plan", "planDir", c.geom.PlanDir)
-		return output.Ok(out, map[string]any{"verified": false, "warning": "the plan has no ## verify: section, so nothing ran"})
+	command, err := cfg.GateCall("final", "--all")
+	if err != nil {
+		return output.Err(out, fmt.Sprintf("webster: verify: %v", err))
 	}
 
 	paths := verifytree.NewPaths(c.geom.WorktreeRoot, c.geom.VerifyDir)
-	res, err := verifytree.Verify(cmd.Context(), paths, verifytree.Site{Label: verifyVerbSite}, plan.Verify, verifytree.Timeout, c.geom.GateSlots)
+	res, err := verifytree.Verify(cmd.Context(), paths, verifytree.Site{Label: verifyVerbSite}, command, verifytree.Timeout, c.geom.GateSlots)
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("webster: verify: %v", err))
 	}

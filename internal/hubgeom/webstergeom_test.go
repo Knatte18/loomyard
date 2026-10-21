@@ -148,6 +148,12 @@ func TestWebsterGeometry(t *testing.T) {
 			if limits, err := got.GateSlots.Limits(); err != nil || limits != wantLimits {
 				t.Errorf("GateSlots.Limits() with a machine override = (%+v, %v); want %+v", limits, err, wantLimits)
 			}
+			if got.GateConfig == nil {
+				t.Fatal("WebsterGeometry(l).GateConfig = nil; want the hub's gate config reader")
+			}
+			if cfg, err := got.GateConfig(); err != nil || cfg.Slots != 1 || cfg.GoParallel != 8 {
+				t.Errorf("GateConfig() = (slots %d, go_parallel %d, %v); want the hub file under this machine's override, slots 1 and go_parallel 8", cfg.Slots, cfg.GoParallel, err)
+			}
 			lease, err := got.GateSlots.Acquire(context.Background(), gateslot.Holder{Worktree: worktreeName, Site: "webstergeom_test"})
 			if err != nil {
 				t.Fatalf("GateSlots.Acquire() = %v; want a lease", err)

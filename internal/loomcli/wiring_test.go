@@ -277,7 +277,13 @@ func TestWire_DefaultConfig(t *testing.T) {
 		}
 
 		// The same value must also be embedded verbatim in c.env.WebsterDeps.
-		if c.env.WebsterDeps.Geom != deps.Geom {
+		// A func field cannot be compared, so the gate config readers are checked for presence and cleared from the copies compared.
+		envGeom, runGeom := c.env.WebsterDeps.Geom, deps.Geom
+		if envGeom.GateConfig == nil || runGeom.GateConfig == nil {
+			t.Error("a webster geometry carries no GateConfig reader; want hubgeom.WebsterGeometry's")
+		}
+		envGeom.GateConfig, runGeom.GateConfig = nil, nil
+		if !reflect.DeepEqual(envGeom, runGeom) {
 			t.Error("c.env.WebsterDeps is not the same value stored in c.runDeps")
 		}
 	})

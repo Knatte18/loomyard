@@ -5,10 +5,13 @@
 package standalonegeom
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -248,5 +251,25 @@ func TestWebsterGeometry(t *testing.T) {
 	}
 	if want := verifytree.Dir(stateDir); got.VerifyDir != want {
 		t.Errorf("WebsterGeometry().VerifyDir = %q; want %q (verifytree.Dir(stateDir))", got.VerifyDir, want)
+	}
+
+	// GateConfig reads the target's own gate.yaml at each call, so it needs a real directory.
+	realTarget := t.TempDir()
+	withConfig := WebsterGeometry(realTarget, stateDir)
+	if withConfig.GateConfig == nil {
+		t.Fatal("WebsterGeometry().GateConfig = nil; want the worktree's gate config reader")
+	}
+	if _, err := withConfig.GateConfig(); err == nil || !strings.Contains(err.Error(), "lyx config gate") {
+		t.Errorf("GateConfig() over a worktree with no gate.yaml = %v; want an error naming lyx config gate", err)
+	}
+	configFile := configengine.ConfigFile(realTarget, "gate")
+	if err := os.MkdirAll(filepath.Dir(configFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configFile, []byte("slots: 4\ngo_parallel: 2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if cfg, err := withConfig.GateConfig(); err != nil || cfg.Slots != 4 || cfg.GoParallel != 2 {
+		t.Errorf("GateConfig() = (slots %d, go_parallel %d, %v); want the worktree's file, slots 4 and go_parallel 2", cfg.Slots, cfg.GoParallel, err)
 	}
 }

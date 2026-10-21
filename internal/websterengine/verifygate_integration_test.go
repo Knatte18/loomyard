@@ -3,6 +3,7 @@
 // verifygate_integration_test.go drives the verify gate's closure over a real scratch repository:
 // the clean-tree check at a done arrival, and the fixer commit check through the real fixCommitRejection.
 // It reuses the package's hermetic TestMain (testmain_test.go) and gitwrap_test.go's merge helpers.
+// The gate runs the built `lyx` over a committed gate.yaml, so every test here puts that binary first on `PATH` and is not parallel.
 
 package websterengine
 
@@ -12,34 +13,62 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
 )
 
-// verifyGateRepo is a scratch repository with a plan whose verify command leaves a sentinel file outside the worktree when it runs.
+// verifyGateRepo is a scratch repository whose gate.yaml `final` tier leaves a sentinel file outside the worktree when it runs.
 type verifyGateRepo struct {
 	geom     Geometry
 	sentinel string
 }
 
-// newVerifyGateRepo builds the repo, a done outcome.yaml and a plan carrying a verify command that writes the sentinel.
+// verifyGateConfig returns the gate.yaml a scratch worktree holds: a `final` list over tier0, which runs a shell stand-in that writes sentinel.
+func verifyGateConfig(sentinel string) string {
+	return `slots: 1
+go_parallel: 1
+scoper: none
+tiers:
+  tier0:
+    about: shell stand-in
+    command: ": > '` + filepath.ToSlash(sentinel) + `'"
+    timeout_min: 1
+    counter: go-json
+gates:
+  card: [0]
+  batch: [0]
+  round: [0]
+  final: [0]
+  landing: [0]
+  publish: [0]
+`
+}
+
+// newVerifyGateRepo builds the repo, a done outcome.yaml and a committed gate.yaml whose `final` tier writes the sentinel.
+// A `lyx gate test` run records under the worktree's .lyx directory, which the repo excludes so the tree the gate verifies stays clean.
+// It puts the `lyx` built from the tree first on `PATH`, so the calling test is not parallel.
 func newVerifyGateRepo(t *testing.T) verifyGateRepo {
 	t.Helper()
+	lyxbin.PutFirstOnPath(t)
 	dir := gitwrapNewScratchRepo(t)
-	gitkit.CommitFile(t, dir, "base.txt", "base", "base")
-
+	exclude := filepath.Join(dir, ".git", "info", "exclude")
+	if err := os.MkdirAll(filepath.Dir(exclude), 0o755); err != nil {
+		t.Fatalf("create the exclude directory: %v", err)
+	}
+	if err := os.WriteFile(exclude, []byte(lyxdirs.DotLyxDirName+"/\n"), 0o644); err != nil {
+		t.Fatalf("write the exclude file: %v", err)
+	}
 	sentinel := filepath.Join(t.TempDir(), "verify-ran")
-	planDir := t.TempDir()
-	plankit.Write(t, planDir, plankit.Plan{
-		Approved: true,
-		Framing:  "Framing.",
-		Sections: []plankit.Section{{Heading: "verify:", Body: "```\n: > " + sentinel + "\n```"}},
-		Cards: []plankit.Card{{
-			Number: 1, Slug: "one", Summary: "one", Intent: "placeholder card.",
-			Groups: []plankit.Group{{Label: "Prosa", Targets: []string{"base.txt"}}},
-		}},
-	})
+	configRel, err := filepath.Rel(dir, configengine.ConfigFile(dir, "gate"))
+	if err != nil {
+		t.Fatalf("locate gate.yaml: %v", err)
+	}
+	gitkit.CommitFile(t, dir, filepath.ToSlash(configRel), verifyGateConfig(sentinel), "gate config")
+	gitkit.CommitFile(t, dir, "base.txt", "base", "base")
 
 	websterDir := t.TempDir()
 	if err := os.WriteFile(OutcomePath(websterDir), []byte("outcome: done\nstuck_reason: null\nbatches_done: 1\n"), 0o644); err != nil {
@@ -51,8 +80,10 @@ func newVerifyGateRepo(t *testing.T) verifyGateRepo {
 			WebsterDir:   websterDir,
 			ScratchDir:   t.TempDir(),
 			ReportsDir:   t.TempDir(),
-			PlanDir:      planDir,
 			VerifyDir:    t.TempDir(),
+			GateConfig: func() (gateslot.Config, error) {
+				return gateslot.LoadConfig(configengine.Dirs{Anchor: dir})
+			},
 		},
 		sentinel: sentinel,
 	}

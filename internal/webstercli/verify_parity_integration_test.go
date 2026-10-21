@@ -2,7 +2,8 @@
 
 // verify_parity_integration_test.go asserts the Gate Self-Check Parity Invariant for the verify gates:
 // `lyx webster verify`, loomshed.NewVerifyGate and websterengine.NewVerifyGate must reach the same three-way verdict over one fixture.
-// It is integration-tagged because every side spawns git and a shell.
+// It is integration-tagged because every side spawns git and a shell, and not parallel because each fixture puts the built `lyx` first on `PATH`.
+// Every side runs the `final` gate call over the same seeded gate.yaml.
 // The shape follows loomcli's TestGateParity_*.
 
 package webstercli
@@ -59,7 +60,6 @@ func TestGateParity_VerifyGate(t *testing.T) {
 		{name: "passing command", command: "exit 0", want: verifyVerdictDone},
 		{name: "failing command", command: "exit 1", want: verifyVerdictStuck},
 		{name: "dirty tree", command: "exit 0", dirty: true, want: verifyVerdictStuck},
-		{name: "no verify section", command: "", want: verifyVerdictDone},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -80,9 +80,16 @@ func TestGateParity_VerifyGate(t *testing.T) {
 
 			burlerFx := prepare()
 			geom := burlerFx.CLI.geom
-			// The fixture records no pass, so the gate runs the told command and the round seam renders and looks up nothing.
+			// The fixture records no pass, so the gate runs the told command, the `final` call over the same seeded config, and the round seam renders and looks up nothing.
 			round := func() (loomshed.RoundGate, error) { return loomshed.RoundGate{}, nil }
-			burler := gateVerdict(loomshed.NewVerifyGate(geom.WorktreeRoot, geom.VerifyDir, "Webster-Burler gate", func() (string, error) { return tc.command, nil }, nil, nil, nil, round)())
+			finalCall := func() (string, error) {
+				cfg, err := geom.GateConfig()
+				if err != nil {
+					return "", err
+				}
+				return cfg.GateCall("final", "--all")
+			}
+			burler := gateVerdict(loomshed.NewVerifyGate(geom.WorktreeRoot, geom.VerifyDir, "Webster-Burler gate", finalCall, nil, nil, nil, round)())
 
 			websterFx := prepare()
 			wgeom := websterFx.CLI.geom
