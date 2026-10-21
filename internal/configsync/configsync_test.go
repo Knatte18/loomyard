@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/loggerconfig"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/yamlengine"
 	"gopkg.in/yaml.v3"
 )
 
@@ -1048,7 +1049,24 @@ func TestReconcileAll_MigratesToSparse(t *testing.T) {
 		wantStripped    []string
 		wantInherited   []string
 		wantMarker      bool
+		// resolutionChanges marks a row whose strip drops a former value, so the worktree resolves to the layer below's value.
+		resolutionChanges bool
 	}{
+		{
+			name: "a former value is stripped even where the default tuned another, and the worktree resolves to the default's", module: "loom", opts: migrate,
+			defaultFile: loomTemplateWith(loomTemplate(), "discussion_lenses", "discussion_lenses: tuned-fan"), worktreeFile: "discussion_lenses: \"\"\nreview_max_bounces: 99\n",
+			wantContains: []string{"review_max_bounces: 99"}, wantNotContains: []string{"discussion_lenses"},
+			wantStripped: []string{"discussion_lenses"}, wantMarker: true, resolutionChanges: true,
+		},
+		{
+			name: "a whole open map equal to the former map is stripped", module: "claude", opts: migrate,
+			worktreeFile: "prompt_cache_ttl_roles:\n  driver: 1h\n  webster: 1h\n",
+			wantStripped: []string{"prompt_cache_ttl_roles"}, wantDeleted: true, wantMarker: true, resolutionChanges: true,
+		},
+		{
+			name: "a marked worktree keeps a former value byte for byte", module: "loom", opts: migrate, marked: true,
+			worktreeFile: "discussion_lenses: \"\"\n", wantFile: ptr("discussion_lenses: \"\"\n"),
+		},
 		{
 			name: "keys equal to the default are stripped and reported", module: "loom", opts: migrate,
 			worktreeFile: stripFile, wantContains: []string{"review_max_bounces: 99"}, wantNotContains: []string{"discussion_timeout_min"},
@@ -1171,10 +1189,42 @@ func TestReconcileAll_MigratesToSparse(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Load after: %v", err)
 			}
-			if string(after) != string(before) {
+			if !tt.resolutionChanges && string(after) != string(before) {
 				t.Errorf("resolution changed by the migration:\nbefore:\n%s\nafter:\n%s", before, after)
 			}
+			if tt.resolutionChanges && string(after) == string(before) {
+				t.Errorf("resolution unchanged by a strip of a former value:\n%s", after)
+			}
 		})
+	}
+}
+
+// TestFormerTemplateValues_DifferFromTheTemplate pins that every former value names a registered module and a unit its template holds, and differs from the template's current value, compared as YAML nodes with the module's open maps.
+func TestFormerTemplateValues_DifferFromTheTemplate(t *testing.T) {
+	t.Parallel()
+	for module, units := range formerTemplateValues {
+		m, ok := configreg.Lookup(module)
+		if !ok {
+			t.Errorf("formerTemplateValues names module %q, which is not registered", module)
+			continue
+		}
+		spec := m.Spec()
+		held, err := yamlengine.LeafPaths(spec.Template, spec.OpenMaps, spec.WholeEntries)
+		if err != nil {
+			t.Fatalf("LeafPaths(%s template): %v", module, err)
+		}
+		_, equal, err := yamlengine.Strip(spec.Template, formerValuesDoc(module), spec.OpenMaps, spec.WholeEntries)
+		if err != nil {
+			t.Fatalf("Strip(%s template, former values): %v", module, err)
+		}
+		for unit := range units {
+			if !slices.Contains(held, unit) {
+				t.Errorf("former value %s.%s: the template holds no such unit", module, unit)
+			}
+			if slices.Contains(equal, unit) {
+				t.Errorf("former value %s.%s equals the template's current value", module, unit)
+			}
+		}
 	}
 }
 

@@ -33,6 +33,97 @@ var legacyConfigModules = map[string][]string{
 	"fabric": {"warp", "weft"},
 }
 
+// formerTemplateValues maps a module name to its dotted unit to that unit's template value immediately before the tuned defaults replaced it, as YAML text.
+// An open map is one unit, so a whole map is compared whole.
+// Only the replaced units are listed; an older template generation's value is kept as tuned.
+var formerTemplateValues = map[string]map[string]string{
+	"loom": formerLoomValues(),
+	"shed": {"driver_kind": "llm"},
+	"darn": {
+		"darn_reviewer_model": "sonnet[high]",
+		"darn_fixer_model":    `""`,
+		"darn_reviewer_fan":   `""`,
+		"darn_fixer_fan":      `""`,
+	},
+	"claude": {"prompt_cache_ttl_roles": "{driver: 1h, webster: 1h}"},
+	"orch": {
+		"soft_threshold_tokens": "300000",
+		"threshold_tokens":      "400000",
+	},
+	"webster": {"kickstart_pack": "true"},
+	"batcher": {"profiles": formerBatcherProfiles},
+}
+
+// formerBatcherProfiles is the batcher template's profiles map before the cautious profile's budget was tuned.
+const formerBatcherProfiles = `identity:
+  batchifier: identity
+cautious:
+  batchifier: cost
+  max_cards: 6
+  budget: 450000
+  weights:
+    orientation: 31400
+    batch_growth: 7000
+    fork_messages: 4
+    message_context: 300
+    target_messages: 6
+    test_file_messages: 0.5
+    uses_messages: 2
+    context_per_line: 12
+    package_context: 2000
+    write_per_card_line: 12
+`
+
+// formerLoomValues returns loom's former template values.
+func formerLoomValues() map[string]string {
+	former := map[string]string{
+		"webster_reviewer_model": "sonnet[high]",
+		"merge_reviewer_model":   "sonnet[high]",
+		"driver":                 "sonnet[medium]",
+		"discussion_max_bounces": "~",
+		"webster_max_bounces":    "~",
+		"webster_auto_accept":    "false",
+	}
+	for _, unit := range []string{
+		"discussion_lenses", "plan_lenses",
+		"discussion_reviewer_model", "plan_reviewer_model", "webster_fixer_model", "merge_fixer_model",
+	} {
+		former[unit] = `""`
+	}
+	for _, segment := range []string{"discussion", "plan", "webster", "merge"} {
+		former[segment+"_reviewer_fan"] = `""`
+		former[segment+"_fixer_fan"] = `""`
+	}
+	return former
+}
+
+// formerValuesDoc renders a module's former template values as one YAML document over its top-level keys, empty for a module with none.
+func formerValuesDoc(module string) []byte {
+	units := formerTemplateValues[module]
+	if len(units) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(units))
+	for name := range units {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	root := &yaml.Node{Kind: yaml.MappingNode}
+	for _, name := range names {
+		var value yaml.Node
+		if err := yaml.Unmarshal([]byte(units[name]), &value); err != nil {
+			panic(fmt.Sprintf("configsync: former value of %s.%s is not YAML: %v", module, name, err))
+		}
+		root.Content = append(root.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: name}, value.Content[0])
+	}
+	doc, err := yaml.Marshal(root)
+	if err != nil {
+		panic(fmt.Sprintf("configsync: render the former values of %s: %v", module, err))
+	}
+	return doc
+}
+
 // Seed values name which input a reconcile started from.
 const (
 	// SeedHub is a hub file already present at the board dir.
@@ -80,7 +171,7 @@ type Result struct {
 	Divergent []string
 	// Layer names the layer the result reports: the repo default or hub file, the worktree file, or the local override.
 	Layer configengine.Layer
-	// Stripped lists, sorted, the dotted keys of a worktree file that equal what the layers below resolve to, and are therefore redundant in a sparse layer.
+	// Stripped lists, sorted, the dotted keys of a worktree file that equal what the layers below resolve to, and are therefore redundant in a sparse layer, and the keys equal to a former template value.
 	// Reported as pending unless the run migrates.
 	// Set only by ReconcileAll, on a worktree that carries no sparse marker.
 	Stripped []string
@@ -474,7 +565,7 @@ func reconcileSparseFile(m configreg.Module, path string, layer configengine.Lay
 	return result, true, nil
 }
 
-// stripToSparse strips current, a worktree file of m, of every key that equals what the layers below the worktree layer resolve to, and returns the stripped bytes with the removed keys.
+// stripToSparse strips current, a worktree file of m, of every key that equals what the layers below the worktree layer resolve to or equals a former template value of m, and returns the stripped bytes with the removed keys.
 // inherited lists the keys the repo default holds that original, the file as read, lacked and whose value differs from the template's or that the template lacks.
 func stripToSparse(m configreg.Module, dirs configengine.Dirs, original, current []byte) (stripped []byte, strippedKeys, inherited []string, err error) {
 	spec := m.Spec()
@@ -485,6 +576,15 @@ func stripToSparse(m configreg.Module, dirs configengine.Dirs, original, current
 	stripped, strippedKeys, err = yamlengine.Strip(below, current, spec.OpenMaps, spec.WholeEntries)
 	if err != nil {
 		return nil, nil, nil, err
+	}
+	if former := formerValuesDoc(m.Name); former != nil && len(bytes.TrimSpace(stripped)) > 0 {
+		var formerKeys []string
+		stripped, formerKeys, err = yamlengine.Strip(former, stripped, spec.OpenMaps, spec.WholeEntries)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		strippedKeys = append(strippedKeys, formerKeys...)
+		sort.Strings(strippedKeys)
 	}
 
 	layers, err := configengine.Layers(dirs, spec)
