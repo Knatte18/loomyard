@@ -382,14 +382,10 @@ func LandingCheckpointSlug(subject string) (string, bool) {
 // LoomFrictionLock returns the path to the advisory lock guarding the Tier 2 reflection step against
 // a second concurrent reflection over the same friction directory.
 //
-// On a finished run the reflection runs inside the terminal Friction-Reflect row with the run lock
-// held; on a blocked halt it runs after shedengine.Run returns, with the run lock free. It is a lock
-// of its own rather than a reuse of the run lock because the blocked-halt reflection is not covered
-// by the run lock at all: shedengine.Run releases it on return, so for the whole of that reflection
-// agent's life the run lock reads as free and a second `lyx loom start` spawns a second driver.
-// That second driver is legitimate -- it is an operator resuming a halted run -- but its own
-// reflection (the row's) would then archive covered files out from under the first one's
-// agent, and both would have declared the same reflection-report.md as an output.
+// The reflection runs only inside the terminal Friction-Reflect row, so the lock orders the rows' reflections of two drivers over one friction directory.
+// An operator can resume a halted task and reach a new driver's row while an earlier driver's row still reflects,
+// and the second reflection would archive covered files out from under the first one's agent.
+// Both would also have declared the same reflection-report.md as an output.
 // The lock file is not inside the friction directory, which holds only reflection inputs and outputs.
 // It sits at the mirrored ephemeral subpath of the durable friction directory, under LoomScratchDir.
 func LoomFrictionLock(l *lyxcwd.Location) string {
