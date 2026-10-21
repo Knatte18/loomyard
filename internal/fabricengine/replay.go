@@ -413,11 +413,12 @@ func replayWeft(rec *Mutations, l *lyxcwd.Location, worktree, upstream string, e
 		if err != nil {
 			return ReplayOutcome{}, err
 		}
+		// A set-aside commit's paths count too: the reset onto upstream drops that commit, so git refuses over a dirty file under it as well.
+		touched = append(touched, detail.Paths...)
 		if slug, aside := endedRunSlug(l, live, detail.Paths); aside {
 			outcome.SetAside = append(outcome.SetAside, SetAsideCommit{Commit: sha, Slug: slug})
 			continue
 		}
-		touched = append(touched, detail.Paths...)
 		kept = append(kept, sha)
 	}
 

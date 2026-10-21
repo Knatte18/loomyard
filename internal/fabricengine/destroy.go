@@ -1790,7 +1790,7 @@ func dropSeedCommits(rec *Mutations, req pathRequest, repo *gitrepo.Repo, upstre
 
 // tagSetAsideOrRestore tags the commits of asides, and when a tag fails puts the branch back on startTip,
 // so a replay never leaves set-aside commits both off the branch and untagged.
-// It is the restoring half of a replay that already moved the branch, run under the replay's own gate check.
+// The restoring reset runs after the replay's gate check, as the replay's own restore does.
 func tagSetAsideOrRestore(rec *Mutations, repo *gitrepo.Repo, asides []SetAsideCommit, startTip string) error {
 	tagErr := tagSetAside(rec, repo, asides)
 	if tagErr == nil {
@@ -1800,21 +1800,6 @@ func tagSetAsideOrRestore(rec *Mutations, repo *gitrepo.Repo, asides []SetAsideC
 		return errors.Join(tagErr, fmt.Errorf("restore %s after a failed set-aside tagging: %w", startTip, err))
 	}
 	return tagErr
-}
-
-// resetRefusedOverLocalChange reports whether err is git's refusal of a `reset --keep` over an uncommitted change,
-// as opposed to a failure such as an object the repository lacks.
-func resetRefusedOverLocalChange(err error) bool {
-	var gitErr *gitexec.GitError
-	if !errors.As(err, &gitErr) {
-		return false
-	}
-	for _, marker := range []string{"not uptodate", "Cannot merge", "would be overwritten"} {
-		if strings.Contains(gitErr.Stderr, marker) {
-			return true
-		}
-	}
-	return false
 }
 
 // cherryPickOnto is the executor for replaying local commits onto a records branch's moved upstream:
@@ -1835,11 +1820,12 @@ func cherryPickOnto(rec *Mutations, req pathRequest, repo *gitrepo.Repo, onto st
 	if err != nil {
 		return nil, err
 	}
+	// An onto the repository lacks is no dirty stop, so it is told apart before the reset, whose refusal is then the dirty one.
+	if _, err := repo.ResolveSHA(onto + "^{commit}"); err != nil {
+		return nil, fmt.Errorf("resolve %s to replay onto: %w", onto, err)
+	}
 	if err := repo.ResetKeep(onto); err != nil {
-		if resetRefusedOverLocalChange(err) {
-			return nil, fmt.Errorf("%w: %w", ErrReplayDirty, err)
-		}
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", ErrReplayDirty, err)
 	}
 	resetBack := func(abortPick bool) error {
 		var abortErr error
