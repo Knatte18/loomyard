@@ -48,7 +48,7 @@ Code branches only; a stranded records branch goes through `lyx fabric cleanup`.
 - A `branch_pushed` entry alone never qualifies: it is recorded whenever an existing branch is pushed forward.
 - Never delete a branch carrying commits the trace does not attribute to the failed step.
 
-`PATTERN-fabric-git` binds `lyx`'s own code; you make no commits.
+This raw `git` call is an allowed repair; you make no commits.
 Each deletion is a repair record like any other.
 
 ## Repair cap
