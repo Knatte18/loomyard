@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
@@ -286,12 +287,12 @@ func TestStatus_ReportsOwnWindowStrandsFromTheSessionListing(t *testing.T) {
 // TestServerBootEnv_ExcludesTraceID pins that LYX_TRACE_ID is stripped before the tmux server
 // inherits the boot env (long-lived singleton).
 func TestServerBootEnv_ExcludesTraceID(t *testing.T) {
-	t.Setenv("LYX_TRACE_ID", "somevalue")
+	t.Setenv(logger.TraceIDEnv, "somevalue")
 
 	clean, _ := testScrub.Apply(os.Environ())
 	sawBeforeStrip := false
 	for _, entry := range clean {
-		if strings.HasPrefix(entry, "LYX_TRACE_ID=") {
+		if strings.HasPrefix(entry, logger.TraceIDEnv+"=") {
 			sawBeforeStrip = true
 			break
 		}
@@ -304,7 +305,7 @@ func TestServerBootEnv_ExcludesTraceID(t *testing.T) {
 
 	got := stripTraceID(clean)
 	for _, entry := range got {
-		if strings.HasPrefix(entry, "LYX_TRACE_ID=") {
+		if strings.HasPrefix(entry, logger.TraceIDEnv+"=") {
 			t.Errorf("stripTraceID(clean) = %v, want no LYX_TRACE_ID entry", got)
 		}
 	}
