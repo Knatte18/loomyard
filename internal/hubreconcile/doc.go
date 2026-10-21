@@ -7,8 +7,9 @@
 //
 // The build stamp is <BoardDir>/.lyx/config/build-stamp.json and the hub lock <BoardDir>/.lyx/config/reconcile.lock, both in the never-tracked mirror of the hub-wide config dir.
 // The stamp holds a build key, the hex SHA-256 of the binary's VCS revision, its modified flag and the config registry's fingerprint, with the revision and the flag in readable form for the log.
-// A stamp naming the running key makes Ensure return after one file read and one stat per per-worktree module, with no lock and no git; an absent or unreadable stamp counts as stale.
+// A stamp naming the running key makes Ensure return after one file read, one stat per per-worktree module and one for the board marker, with no lock and no git; an absent or unreadable stamp counts as stale.
 // A stamp naming the running key also counts as stale when any per-worktree module's repo default is absent under the board dir, so a default deleted after a walk is reseeded by the next start verb.
+// It counts as stale as well while the board marker `<BoardDir>/_lyx/config/base-sparse` is absent, so a board not yet stripped to sparse base files is walked, and a marker removed by hand with a board commit makes the next start verb's walk strip the base files again.
 // The lock wait defaults to DefaultLockWait and is an Options field; a lock still held when it runs out returns *LockTimeoutError and touches nothing.
 // The holder's own per-worktree commits wait on each pair's write lock as a plain commit does, unbounded.
 //
@@ -20,10 +21,18 @@
 // The board commit carries the per-worktree repo defaults beside the hub-wide files.
 // Each worktree's applied files are committed in that worktree, and the board is pushed, carrying the board commit and any an earlier run left unpushed.
 //
+// # The base strip
+//
+// Every non-seed-only base file on the board is sparse over the template.
+// While the board marker is absent, the walk strips each present base file once, of the units equal to the template or to a former template value, and writes a base left with no unit as the header-only file.
+// It writes the marker only when every registered module's base file exists, after the files, and commits files and marker in the one board commit; a pass that leaves a base absent withholds the marker and the next walk strips again.
+// A failed hub-wide step restores the board's files to their prior bytes and removes a marker the pass wrote, while steps that committed before it keep their commits.
+// With the marker present the walk strips no base, so a unit later set equal to the template stays as a pin.
+//
 // # The sparse migration
 //
 // A worktree without the sparse marker `_lyx/config/sparse` still holds today's full config files.
-// Once every per-worktree module's repo default exists, the walk strips each such file of the keys that equal what the layers below it resolve to, so every key the file held resolves unchanged.
+// Once every per-worktree module's repo default exists, the walk strips each such file of the keys that equal what the layers below it resolve to, and of the keys that equal a former template value, so every key the file held resolves unchanged bar a former value, which resolves to the new template.
 // A file left empty is deleted, and the marker is written after the files; the files, deletions and marker go into the worktree's one reconcile commit.
 // The log line of a changed module lists the keys it stripped and the keys it inherited, the repo default's keys the file lacked and whose value differs from the template's, which the operator can pin with `lyx config <module> --set`.
 // A worktree carrying the marker is never stripped, and a pair forked from a migrated worktree inherits the marker.
@@ -56,7 +65,8 @@
 //
 // # Errors
 //
-// *WorktreeError names the worktree, the file and the cause of a reconcile or commit failure, and ends with the way forward.
+// *WorktreeError names the worktree, the file and the cause of a reconcile or commit failure, and ends with the way forward:
+// `lyx config <module> --layer default` from the prime worktree for a board file, `lyx config <module>` for a worktree file, and only the file and the re-run for the board marker.
 // *LockTimeoutError names the lock.
 //
 // # Accepted gaps
