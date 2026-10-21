@@ -2,8 +2,8 @@
 //
 // Command() returns the root "board" command over one store, board.json, whose entries carry a kind and labels.
 // The verbs upsert, upsert-batch, set-status, remove, get, list, list-full, merge and set-deps come from storeVerbs.
-// promote, prune, find, labels, profiles and retire-legacy, plus the rerender and sync maintenance verbs, are built in Command itself.
-// The intake group (list, import, close) comes from intakeCommand in intake.go.
+// promote, rename, prune, find, labels, profiles and retire-legacy, plus the rerender and sync maintenance verbs, are built in Command itself.
+// The intake group (list, import, close) comes from intakeCommand in intake.go, over the hub repository the hubRepo closure opens from the resolved location.
 // list and find take --text to print the compact listing from text.go instead of JSON.
 // Configuration resolution happens once in a PersistentPreRunE.
 // The config file (readme, design_prefix) is loaded from the hub's <hub>/_board/_lyx/config/board.yaml, whatever worktree the verb runs in,
@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hubissues"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/runprofile"
@@ -43,6 +44,19 @@ func Command() *cobra.Command {
 	// profiles loads the hub's run profiles from the board dir PersistentPreRunE resolved.
 	profiles := func() (runprofile.Profiles, error) {
 		return runprofile.Load(configengine.Dirs{Board: config.Path})
+	}
+	// location is the worktree PersistentPreRunE resolved, nil under --board-path.
+	var location *lyxcwd.Location
+	// hubRepo opens the hub's own repository's issues, resolved only when an intake verb asks.
+	hubRepo := func() (*hubissues.Repo, error) {
+		if location == nil {
+			return nil, fmt.Errorf("intake needs the hub's repository, which only a run from a hub worktree resolves: run it from a worktree of the hub")
+		}
+		url, err := fabricengine.HubRepoURL(location)
+		if err != nil {
+			return nil, err
+		}
+		return hubissues.Open(url)
 	}
 
 	cmd := &cobra.Command{
@@ -106,6 +120,7 @@ available subcommands without requiring a git repo.
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
+			location = layout
 			boardDir := fabricengine.BoardDir(layout.HubPath)
 
 			cfg, err = boardengine.LoadConfig(fabricengine.ConfigDirs(layout), "board")
@@ -149,6 +164,48 @@ Example:
 				return outputError(out, err.Error())
 			}
 			return outputSuccessWithTask(out, task, "")
+		}),
+	}
+
+	renameCmd := &cobra.Command{
+		Use:         "rename {slug|id, to}",
+		Short:       "change an entry's slug in one write, keeping every other field and rewriting depends_on",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `Change an entry's slug in one atomic write. The entry keeps its id, position, body, kind, labels,
+priority, issues, dates, status and every other field, and every other entry's depends_on names the
+new slug in place of the old one. No entry's revised date changes.
+Refused, with nothing written, for an absent entry, an entry held by a run, and a target that is
+empty, too long or already an entry's slug.
+Body and brief text is never rewritten: "mentions" lists the entries whose body or brief still name
+the old slug as a whole word, the renamed entry included, and is [] when none does.
+
+Fields:
+  "slug" string  — current slug (mutually exclusive with "id")
+  "id"   integer — numeric entry ID (mutually exclusive with "slug")
+  "to"   string  — the new slug (required)
+
+Output:
+  {"ok":true,"task":{...},"mentions":["other-entry"]}
+
+Example:
+  lyx board rename '{"slug":"old-name","to":"new-name"}'` + slugLimitNote(),
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			if len(args) == 0 {
+				return outputError(out, "json payload required")
+			}
+			selector, m, err := resolveLookup([]byte(args[0]), renamePayload)
+			if err != nil {
+				return outputError(out, err.Error())
+			}
+			to, ok := m["to"].(string)
+			if !ok {
+				return outputError(out, "to must be a string")
+			}
+			result, err := b.Rename(selector, to)
+			if err != nil {
+				return outputError(out, err.Error())
+			}
+			return output.Ok(out, map[string]any{"task": result.Task, "mentions": result.Mentions})
 		}),
 	}
 
@@ -310,12 +367,13 @@ Example:
 		labelsCmd,
 		profilesCmd,
 		promoteCmd,
+		renameCmd,
 		pruneCmd,
 		findCmd,
 		retireLegacyCmd,
 		rerenderCmd,
 		syncCmd,
-		intakeCommand(board),
+		intakeCommand(board, hubRepo),
 	)
 
 	return cmd
@@ -338,6 +396,9 @@ func slugLimitNote() string {
 
 // lookupPayload is the payload of get, remove and promote.
 var lookupPayload = payloadKeys{exclusive: [][2]string{{"slug", "id"}}}
+
+// renamePayload is the payload of rename.
+var renamePayload = payloadKeys{required: []string{"to"}, exclusive: [][2]string{{"slug", "id"}}}
 
 // setStatusPayload is the payload of set-status, and merge's set_status object.
 var setStatusPayload = payloadKeys{required: []string{"status"}, exclusive: [][2]string{{"slug", "id"}}}
@@ -387,7 +448,7 @@ Optional fields:
   "recipe"    string — recipe the task's child worktree runs, "loom" or "darn"; empty means "loom"
   "priority"   string — "high", "normal" or "low"; absent means normal, and "normal" clears it
   "short_name" string — short display label; falls back to the slug
-  "issues"     array  — inbox issue numbers the entry records
+  "issues"     array  — the hub repository's issue numbers it records
   "created"    string — RFC 3339 time the entry was added; a new entry without it gets the write's time
   "revised"    string — RFC 3339 time its scope last changed; a scope-changing write without it gets the write's time
   "run_settings" object — module name to config keys for the pair's local config at Seed-Child; {} clears it
