@@ -71,6 +71,7 @@ const (
 // Categories classifies the template by dotted path: an entry covers its own path and every path under it.
 // RetiredKeys are the dotted keys the module no longer reads, each mapped to the category it held as a template key;
 // they stay out of Categories and OpenMaps, the local and machine layers admit them by that category, and a load drops them from the stacked document.
+// SeedOnly marks the module whose file is the operator's registry, seeded whole and never rewritten, so its base stays full in a hub too.
 type Spec struct {
 	Name         string
 	Template     []byte
@@ -81,6 +82,7 @@ type Spec struct {
 	JSONEntries  bool
 	Categories   map[string]Category
 	RetiredKeys  map[string]Category
+	SeedOnly     bool
 }
 
 // LocalFile returns the path of a module's local override file under anchor:
@@ -124,7 +126,9 @@ func LayerFile(dirs Dirs, spec Spec, layer Layer) (string, bool) {
 	return "", false
 }
 
-// BaseLayer returns the lowest file layer, the one that stays full: the default layer when Board is set, else the worktree layer.
+// BaseLayer returns the lowest file layer: the default layer when Board is set, else the worktree layer.
+// In a hub the base is sparse over the template, a key-less one holding [SparseBaseHeader];
+// only a seed-only module's base and a standalone worktree base stay full.
 func BaseLayer(dirs Dirs, spec Spec) Layer {
 	if dirs.Board != "" {
 		return LayerDefault

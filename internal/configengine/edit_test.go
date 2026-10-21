@@ -51,7 +51,28 @@ func TestEdit(t *testing.T) {
 		localExisting string
 		// hubWide marks the spec hub-wide and gives the board dir its _lyx/config/, as a machine edit needs; it needs board.
 		hubWide bool
+		// seedOnly marks the spec seed-only, so a hub's default layer scaffolds from the template.
+		seedOnly bool
 	}{
+		{
+			name:     "absent hub base shows the sparse header and a save leaving it keeps the header-only file",
+			state:    baseLyx,
+			layer:    configengine.LayerDefault,
+			board:    true,
+			steps:    []editStep{{leave: true}},
+			wantSaw:  configengine.SparseBaseHeader,
+			wantFile: ptr(configengine.SparseBaseHeader),
+		},
+		{
+			name:     "absent seed-only hub base still shows the template",
+			state:    baseLyx,
+			layer:    configengine.LayerDefault,
+			board:    true,
+			seedOnly: true,
+			steps:    []editStep{{leave: true}},
+			wantSaw:  template,
+			wantFile: ptr(template),
+		},
 		{
 			name:       "refused machine save removes a file the call created",
 			state:      baseLyx,
@@ -187,7 +208,7 @@ func TestEdit(t *testing.T) {
 			if tt.board {
 				dirs.Board = t.TempDir()
 			}
-			if tt.hubWide {
+			if tt.hubWide || tt.layer == configengine.LayerDefault {
 				if err := os.MkdirAll(configengine.ConfigDir(dirs.Board), 0o755); err != nil {
 					t.Fatalf("mkdir: %v", err)
 				}
@@ -196,10 +217,13 @@ func TestEdit(t *testing.T) {
 			if layer == "" {
 				layer = configengine.LayerWorktree
 			}
-			if layer == configengine.LayerLocal || layer == configengine.LayerMachine {
+			if layer == configengine.LayerLocal || layer == configengine.LayerMachine || layer == configengine.LayerDefault {
 				path = configengine.LocalFile(baseDir, "testmod")
 				if layer == configengine.LayerMachine {
 					path = configengine.MachineFile(dirs.Board, "testmod")
+				}
+				if layer == configengine.LayerDefault {
+					path = configengine.ConfigFile(dirs.Board, "testmod")
 				}
 				if tt.localExisting != "" {
 					if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -210,7 +234,7 @@ func TestEdit(t *testing.T) {
 					}
 				}
 			}
-			spec := configengine.Spec{Name: "testmod", Template: []byte(template), Categories: tt.categories, HubWide: tt.hubWide}
+			spec := configengine.Spec{Name: "testmod", Template: []byte(template), Categories: tt.categories, HubWide: tt.hubWide, SeedOnly: tt.seedOnly}
 
 			var calls int
 			var saw string

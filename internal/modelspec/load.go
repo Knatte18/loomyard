@@ -22,6 +22,7 @@ func ConfigSpec() configengine.Spec {
 		Name:         "models",
 		Template:     []byte(ConfigTemplate()),
 		WholeEntries: true,
+		SeedOnly:     true,
 		Categories: map[string]configengine.Category{
 			"sonnet": configengine.CategoryNone,
 			"opus":   configengine.CategoryNone,
