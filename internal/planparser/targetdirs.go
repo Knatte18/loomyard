@@ -1,10 +1,13 @@
-// targetdirs.go holds CardTargetDirs, RefFile, RefScope, RefCovers, RefMember and CardCovers, the read-only mappings from a card's refs to the worktree directories and files they name.
+// targetdirs.go holds CardTargetDirs, CardPackages, RefFile, RefScope, RefCovers, RefMember and CardCovers, the read-only mappings from a card's refs to the worktree directories and files they name.
 // It lives here so every ref-shape and glyph-to-path decision stays inside this package, per the Planparser Sole-Parser and Glyph Conversion Chokepoint invariants.
 
 package planparser
 
 import (
+	"os"
 	"path"
+	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -69,6 +72,79 @@ func CardTargetDirs(plan *Plan, card Card) []TargetDir {
 		dirs = append(dirs, *byDir[dir])
 	}
 	return dirs
+}
+
+// ModulePackages is the Go package arguments one module holds among a set of cards' targets.
+type ModulePackages struct {
+	// Dir is the module directory relative to the worktree, "." for the root module.
+	Dir string
+
+	// Packages are the module-relative package arguments, each once, in first-seen order.
+	Packages []string
+}
+
+// CardPackages returns the Go package arguments cards' targets live in, grouped per module, the root module first when it has any and each nested module in first-seen order.
+// A directory drops out when every target in it is a Delete, or when it neither names Go source nor directly holds a .go file in worktree, so a stencil or doc folder never reaches `go test`.
+// A directory belongs to a nested module as the plan stands once the last of cards has run.
+func CardPackages(plan *Plan, cards []Card, worktree string) []ModulePackages {
+	if len(cards) == 0 {
+		return nil
+	}
+	modules := NestedModules(plan, cards[len(cards)-1].Number, worktree)
+	root := ModulePackages{Dir: "."}
+	var nested []ModulePackages
+	for _, card := range cards {
+		for _, td := range CardTargetDirs(plan, card) {
+			if td.DeleteOnly || !(td.NamesGo || holdsGoFile(filepath.Join(worktree, filepath.FromSlash(td.Dir)))) {
+				continue
+			}
+			module := ModuleOf(modules, td.Dir)
+			if module == "." {
+				root.Packages = appendPackage(root.Packages, td.Dir)
+				continue
+			}
+			index := slices.IndexFunc(nested, func(m ModulePackages) bool { return m.Dir == module })
+			if index < 0 {
+				nested = append(nested, ModulePackages{Dir: module})
+				index = len(nested) - 1
+			}
+			relative := "."
+			if td.Dir != module {
+				relative = strings.TrimPrefix(td.Dir, module+"/")
+			}
+			nested[index].Packages = appendPackage(nested[index].Packages, relative)
+		}
+	}
+	if len(root.Packages) == 0 {
+		return nested
+	}
+	return append([]ModulePackages{root}, nested...)
+}
+
+// appendPackage appends dir, spelled as a `go` package argument, to packages unless it is already there.
+func appendPackage(packages []string, dir string) []string {
+	arg := "."
+	if dir != "." {
+		arg = "./" + dir
+	}
+	if slices.Contains(packages, arg) {
+		return packages
+	}
+	return append(packages, arg)
+}
+
+// holdsGoFile reports whether dir directly holds a .go file.
+func holdsGoFile(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".go") {
+			return true
+		}
+	}
+	return false
 }
 
 // RefFile returns the worktree-relative file a card ref names, and false when the ref names no file.

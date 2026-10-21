@@ -6,9 +6,6 @@ package websterengine
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/impactset"
@@ -35,37 +32,14 @@ type moduleScope struct {
 // A directory belongs to a nested module as the plan stands once the last of cards has run.
 func gateScopeOf(plan *planparser.Plan, cards []planparser.Card, worktree string) gateScope {
 	var scope gateScope
-	if len(cards) == 0 {
-		return scope
-	}
-	modules := planparser.NestedModules(plan, cards[len(cards)-1].Number, worktree)
-	for _, card := range cards {
-		for _, td := range planparser.CardTargetDirs(plan, card) {
-			if td.DeleteOnly || !(td.NamesGo || holdsGoFile(filepath.Join(worktree, filepath.FromSlash(td.Dir)))) {
-				continue
-			}
-			module := planparser.ModuleOf(modules, td.Dir)
-			if module == "." {
-				scope.rootDirs = appendUnique(scope.rootDirs, packageArg(td.Dir))
-				continue
-			}
-			index := slices.IndexFunc(scope.modules, func(m moduleScope) bool { return m.module == module })
-			if index < 0 {
-				scope.modules = append(scope.modules, moduleScope{module: module})
-				index = len(scope.modules) - 1
-			}
-			scope.modules[index].dirs = appendUnique(scope.modules[index].dirs, packageArg(moduleRelative(module, td.Dir)))
+	for _, module := range planparser.CardPackages(plan, cards, worktree) {
+		if module.Dir == "." {
+			scope.rootDirs = module.Packages
+			continue
 		}
+		scope.modules = append(scope.modules, moduleScope{module: module.Dir, dirs: module.Packages})
 	}
 	return scope
-}
-
-// appendUnique appends value to values unless it is already there.
-func appendUnique(values []string, value string) []string {
-	if slices.Contains(values, value) {
-		return values
-	}
-	return append(values, value)
 }
 
 // steps renders one `lyx gate test` step per module, the root module's first, each carrying `--tags tags` when tags is not empty.
@@ -100,34 +74,12 @@ func cardGateCommand(plan *planparser.Plan, cards []planparser.Card, index int, 
 	return append(steps, "lyx loom lint-comments", "lyx loom lint-pattern"), guardTooLong
 }
 
-// moduleRelative returns dir relative to module, "." for the module directory itself.
-func moduleRelative(module, dir string) string {
-	if dir == module {
-		return "."
-	}
-	return strings.TrimPrefix(dir, module+"/")
-}
-
 // packageArg spells a directory as a `go test` package argument.
 func packageArg(dir string) string {
 	if dir == "." {
 		return "."
 	}
 	return "./" + dir
-}
-
-// holdsGoFile reports whether dir directly holds a .go file.
-func holdsGoFile(dir string) bool {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return false
-	}
-	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".go") {
-			return true
-		}
-	}
-	return false
 }
 
 // renderCardGates renders each card in declared order as its pointer bullet with one indented sub-bullet per gate step.
