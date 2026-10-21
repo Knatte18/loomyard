@@ -101,9 +101,14 @@
 //
 // # Field ownership and the stop conditions
 //
-// current_producer, state, error, activity and history are Shed-owned and rewritten on every persist.
+// current_producer, state, pause_reason, error, activity and history are Shed-owned and rewritten on every persist.
+// pause_reason is the why of a paused run: every write that records paused sets it, and every other write clears it.
+// A pause request reads "pause requested", a cancelled context "cancelled", a fired condition its condition reason, Goto "goto to <row>" and a Relaunch onto a row "re-launched onto <row>";
+// a Relaunch that moves nothing leaves the reason as it stands.
 // pause_requested is shared write-to-clear: an outside actor sets it and Shed clears it, exactly once, in the persist that records paused.
 // pause_before and pause_after are outside-set, both-cleared: an outside actor records a producer name in either, and Shed clears both together only in the persist that records paused for a fired condition and in Goto's persist; every other write carries them through.
+// pause_requested_by, pause_before_by and pause_after_by are outside-set beside the request they accompany, and Shed clears each in the write that clears its request.
+// A reason names the label when its request or condition carries one, as "pause requested by <label>", and Goto's names its GotoRequest.By.
 // pause_before fires when current_producer equals its name, before that producer is called.
 // pause_after fires when the named producer returns a routed running outcome (done to OnDone, a bounced stuck to OnStuck), pausing at the routed row.
 // A halting outcome wins and leaves pause_after recorded, and so does a producer error.

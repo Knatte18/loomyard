@@ -96,6 +96,8 @@ type StepResult struct {
 	State State
 	// Reason is populated alongside StateBlocked and StateAwaiting, and alongside every StatePaused:
 	// the condition reason when a pause_before or pause_after condition fired, "pause requested" for a pause request, and "cancelled" for a cancelled context.
+	// A pause request or condition that carries a caller label has " by <label>" appended.
+	// On a paused step it is the same text the status file records as pause_reason.
 	Reason string
 	// ParentNotice is the producer's one-line notice for the run's parent, populated only alongside StateAwaiting.
 	ParentNotice string
@@ -230,8 +232,8 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 	// A pause_before condition naming the row about to run fires first.
 	// It pauses here with its own reason and clears both conditions, consuming pause_requested only when it was set.
 	if st.PauseBefore != "" && st.PauseBefore == st.CurrentProducer && ctx.Err() == nil {
-		reason := conditionReason("before", st.PauseBefore)
-		if pauseErr := s.persistTransient(st.CurrentProducer, StatePaused, "", st.History, st.PauseRequested, true, "", "", ""); pauseErr != nil {
+		reason := labelled(conditionReason("before", st.PauseBefore), st.PauseBeforeBy)
+		if pauseErr := s.persistTransient(st.CurrentProducer, StatePaused, "", st.History, st.PauseRequested, true, "", "", "", reason); pauseErr != nil {
 			return StepResult{}, pauseErr
 		}
 		return StepResult{Next: st.CurrentProducer, State: StatePaused, Reason: reason, History: st.History}, nil
@@ -241,12 +243,12 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		// forever on the flag it is resuming from; the durable record of "this run is
 		// paused" is state, not the flag.
 		// A recorded condition is carried through: a bare pause never drops one.
-		if pauseErr := s.persistTransient(st.CurrentProducer, StatePaused, "", st.History, true, false, "", "", ""); pauseErr != nil {
-			return StepResult{}, pauseErr
-		}
-		reason := reasonPauseRequested
+		reason := labelled(reasonPauseRequested, st.PauseRequestedBy)
 		if ctx.Err() != nil {
 			reason = reasonCancelled
+		}
+		if pauseErr := s.persistTransient(st.CurrentProducer, StatePaused, "", st.History, true, false, "", "", "", reason); pauseErr != nil {
+			return StepResult{}, pauseErr
 		}
 		return StepResult{Next: st.CurrentProducer, State: StatePaused, Reason: reason, History: st.History}, nil
 	}
@@ -262,7 +264,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 	// is deliberately conditional: on the ordinary running-to-running path it never fires, so
 	// the loop's one-persist-per-iteration shape is unchanged for every step after the first.
 	if st.State != StateRunning {
-		if err := s.persistMarked(true, st.CurrentProducer, StateRunning, "", st.History, false, false, "", "", ""); err != nil {
+		if err := s.persistMarked(true, st.CurrentProducer, StateRunning, "", st.History, false, false, "", "", "", ""); err != nil {
 			return StepResult{}, err
 		}
 	}
@@ -332,7 +334,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		// trade: a producer returning a genuine, unrelated error in the same instant an
 		// operator cancels is reported as a pause, which is harmless because the producer
 		// is re-called on resume and the real error surfaces again then.
-		if err := s.persistTransient(st.CurrentProducer, StatePaused, "", st.History, true, false, "", "", ""); err != nil {
+		if err := s.persistTransient(st.CurrentProducer, StatePaused, "", st.History, true, false, "", "", "", reasonCancelled); err != nil {
 			return StepResult{}, err
 		}
 		return StepResult{Producer: def.Name, Next: st.CurrentProducer, State: StatePaused, Reason: reasonCancelled, History: st.History}, nil
@@ -351,7 +353,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 			callErr = MarkTransient(s.Transient(callErr), callErr)
 		}
 		nextHistory := appendHistory("")
-		if persistErr := s.persistTransient(st.CurrentProducer, StateFailed, callErr.Error(), nextHistory, false, false, "", TransientOf(callErr), ""); persistErr != nil {
+		if persistErr := s.persistTransient(st.CurrentProducer, StateFailed, callErr.Error(), nextHistory, false, false, "", TransientOf(callErr), "", ""); persistErr != nil {
 			return StepResult{}, errors.Join(callErr, persistErr)
 		}
 		return StepResult{}, callErr
@@ -391,7 +393,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 			if err != nil {
 				return StepResult{}, err
 			}
-			if err := s.persistTransient(def.OnStuck, next, "", nextHistory, false, next == StatePaused, def.OnStuck, "", ""); err != nil {
+			if err := s.persistTransient(def.OnStuck, next, "", nextHistory, false, next == StatePaused, def.OnStuck, "", "", reason); err != nil {
 				return StepResult{}, err
 			}
 			return StepResult{Producer: def.Name, Outcome: outcome, Output: output.Path, Next: def.OnStuck, State: next, Reason: reason, History: nextHistory}, nil
@@ -404,7 +406,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		nextHistory := appendHistory("")
 		reason := stuckReason(output.Reason)
 		notice := oneLine(output.ParentNotice)
-		if err := s.persistTransient(st.CurrentProducer, StateAwaiting, reason, nextHistory, false, false, "", "", notice); err != nil {
+		if err := s.persistTransient(st.CurrentProducer, StateAwaiting, reason, nextHistory, false, false, "", "", notice, ""); err != nil {
 			return StepResult{}, err
 		}
 		return StepResult{Producer: def.Name, Outcome: outcome, Output: output.Path, Next: st.CurrentProducer, State: StateAwaiting, Reason: reason, ParentNotice: notice, History: nextHistory}, nil
@@ -430,7 +432,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		if err != nil {
 			return StepResult{}, err
 		}
-		if err := s.persistTransient(def.OnDone, next, "", nextHistory, false, next == StatePaused, "", "", ""); err != nil {
+		if err := s.persistTransient(def.OnDone, next, "", nextHistory, false, next == StatePaused, "", "", "", reason); err != nil {
 			return StepResult{}, err
 		}
 		return StepResult{Producer: def.Name, Outcome: outcome, Output: output.Path, Next: def.OnDone, State: next, Reason: reason, History: nextHistory}, nil
@@ -720,7 +722,7 @@ func effectiveMaxBounces(def ProducerDef, shedMax int) int {
 // persist writes an empty transient class and an empty parent notice and leaves pause_before and pause_after as they are;
 // the producer-error arm, the awaiting arm, the pause writes and the routed writes call persistTransient.
 func (s *Shed) persist(nextCurrentProducer string, nextState State, nextError string, nextHistory []HistoryEntry, consumePause bool, routedTo string) error {
-	return s.persistTransient(nextCurrentProducer, nextState, nextError, nextHistory, consumePause, false, routedTo, "", "")
+	return s.persistTransient(nextCurrentProducer, nextState, nextError, nextHistory, consumePause, false, routedTo, "", "", "")
 }
 
 // The two reasons of a paused stop no pause condition fired: an operator's pause request, and a cancelled context.
@@ -735,15 +737,24 @@ func conditionReason(when, target string) string {
 	return fmt.Sprintf("paused %s %s, as requested", when, target)
 }
 
+// labelled returns text followed by " by <by>" when by is set, and text alone otherwise.
+func labelled(text, by string) string {
+	if by == "" {
+		return text
+	}
+	return text + " by " + by
+}
+
 // routedState returns the state a routed running outcome of def persists.
-// It is StatePaused with the pause_after reason when the status file's pause_after names def, read fresh because an outside actor may have recorded it while def ran, and StateRunning otherwise.
+// It is StatePaused when the status file's pause_after names def, read fresh because an outside actor may have recorded it while def ran, and StateRunning otherwise.
+// The paused reason is the pause_after reason followed by the condition's own label when one is set; the running reason is empty.
 func (s *Shed) routedState(def ProducerDef) (State, string, error) {
 	cur, found, err := state.ReadJSONNoMkdir[Status](s.StatusPath, s.StatusLockPath)
 	if err != nil {
 		return "", "", fmt.Errorf("shedengine: read status file %q: %w", s.StatusPath, err)
 	}
 	if found && cur.PauseAfter != "" && cur.PauseAfter == def.Name {
-		return StatePaused, conditionReason("after", cur.PauseAfter), nil
+		return StatePaused, labelled(conditionReason("after", cur.PauseAfter), cur.PauseAfterBy), nil
 	}
 	return StateRunning, "", nil
 }
@@ -765,13 +776,16 @@ func recordedVerdict(cur, next []HistoryEntry) bool {
 // Every write sets Transient and ParentNotice, so a later step never carries a stale class or notice.
 // clearConditions is true only in the persist that records paused for a fired condition; every other write carries a recorded condition through unchanged.
 // A write that appends a history entry hands the pending caller label to the appended entry and clears it; a write that appends none carries the label through.
-func (s *Shed) persistTransient(nextCurrentProducer string, nextState State, nextError string, nextHistory []HistoryEntry, consumePause, clearConditions bool, routedTo string, transient TransientClass, parentNotice string) error {
-	return s.persistMarked(false, nextCurrentProducer, nextState, nextError, nextHistory, consumePause, clearConditions, routedTo, transient, parentNotice)
+// pauseReason is recorded as pause_reason when nextState is StatePaused; see persistMarked.
+func (s *Shed) persistTransient(nextCurrentProducer string, nextState State, nextError string, nextHistory []HistoryEntry, consumePause, clearConditions bool, routedTo string, transient TransientClass, parentNotice, pauseReason string) error {
+	return s.persistMarked(false, nextCurrentProducer, nextState, nextError, nextHistory, consumePause, clearConditions, routedTo, transient, parentNotice, pauseReason)
 }
 
 // persistMarked is persistTransient that, when markResume is true, also records ResumedBy as the pending caller label.
 // It records it only over a blocked, failed or awaiting status with no label pending, so the first label of a resumed run stands and a resume from paused records nothing.
-func (s *Shed) persistMarked(markResume bool, nextCurrentProducer string, nextState State, nextError string, nextHistory []HistoryEntry, consumePause, clearConditions bool, routedTo string, transient TransientClass, parentNotice string) error {
+// A write recording StatePaused sets pause_reason to pauseReason, and every other write clears it.
+// Consuming pause_requested also clears its pause_requested_by label, and clearing the conditions clears both condition labels.
+func (s *Shed) persistMarked(markResume bool, nextCurrentProducer string, nextState State, nextError string, nextHistory []HistoryEntry, consumePause, clearConditions bool, routedTo string, transient TransientClass, parentNotice, pauseReason string) error {
 	err := state.UpdateJSON(s.StatusPath, s.StatusLockPath, func(cur Status, found bool) (Status, error) {
 		if !found {
 			return Status{}, fmt.Errorf("shedengine: status file %q vanished mid-run; Shed refuses to create one", s.StatusPath)
@@ -791,6 +805,10 @@ func (s *Shed) persistMarked(markResume bool, nextCurrentProducer string, nextSt
 		cur.Error = nextError
 		cur.Transient = string(transient)
 		cur.ParentNotice = parentNotice
+		cur.PauseReason = ""
+		if nextState == StatePaused {
+			cur.PauseReason = pauseReason
+		}
 		cur.History = nextHistory
 		cur.Activity = composeActivity(nextCurrentProducer, nextHistory, nextState, nextError, routedTo)
 		if !recorded {
@@ -798,10 +816,13 @@ func (s *Shed) persistMarked(markResume bool, nextCurrentProducer string, nextSt
 		}
 		if consumePause {
 			cur.PauseRequested = false
+			cur.PauseRequestedBy = ""
 		}
 		if clearConditions {
 			cur.PauseBefore = ""
 			cur.PauseAfter = ""
+			cur.PauseBeforeBy = ""
+			cur.PauseAfterBy = ""
 		}
 		return cur, nil
 	})

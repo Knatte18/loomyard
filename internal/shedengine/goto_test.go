@@ -43,6 +43,9 @@ func TestGoto_MovesBlockedRunToTarget(t *testing.T) {
 	seed.PauseBefore = "B"
 	seed.PauseAfter = "A"
 	seed.PendingBy = "driver"
+	seed.PauseRequestedBy = "orch"
+	seed.PauseBeforeBy = "orch"
+	seed.PauseAfterBy = "orch"
 	seedStatus(t, shed.StatusPath, shed.StatusLockPath, seed)
 
 	req := gotoRequest(shed, "A")
@@ -72,6 +75,12 @@ func TestGoto_MovesBlockedRunToTarget(t *testing.T) {
 	if got.History[0].By != "orch" || got.PendingBy != "" {
 		t.Errorf("History[0].By, PendingBy = %q, %q; want orch, empty", got.History[0].By, got.PendingBy)
 	}
+	if got.PauseReason != "goto to A by orch" {
+		t.Errorf("PauseReason = %q; want %q", got.PauseReason, "goto to A by orch")
+	}
+	if got.PauseRequestedBy != "" || got.PauseBeforeBy != "" || got.PauseAfterBy != "" {
+		t.Errorf("PauseRequestedBy, PauseBeforeBy, PauseAfterBy = %q, %q, %q; want all cleared", got.PauseRequestedBy, got.PauseBeforeBy, got.PauseAfterBy)
+	}
 
 	t.Run("EmptyByWritesNoKey", func(t *testing.T) {
 		shed, _, _ := gotoShed(t)
@@ -79,6 +88,9 @@ func TestGoto_MovesBlockedRunToTarget(t *testing.T) {
 		written, err := Goto(gotoRequest(shed, "A"))
 		if err != nil {
 			t.Fatalf("Goto(...) = _, %v; want nil error", err)
+		}
+		if written.PauseReason != "goto to A" {
+			t.Errorf("PauseReason = %q; want %q", written.PauseReason, "goto to A")
 		}
 		data, err := json.Marshal(written.History[0])
 		if err != nil {
@@ -513,6 +525,12 @@ func TestRelaunch(t *testing.T) {
 				if !got.PauseRequested || got.PauseBefore != "B" || got.PauseAfter != "A" {
 					t.Errorf("PauseRequested, PauseBefore, PauseAfter = %v, %q, %q; want true, B, A kept", got.PauseRequested, got.PauseBefore, got.PauseAfter)
 				}
+				if got.PauseReason != "re-launched onto A" {
+					t.Errorf("PauseReason = %q; want %q", got.PauseReason, "re-launched onto A")
+				}
+				if got.PauseBeforeBy != "orch" || got.PauseAfterBy != "shed" {
+					t.Errorf("PauseBeforeBy, PauseAfterBy = %q, %q; want orch, shed kept", got.PauseBeforeBy, got.PauseAfterBy)
+				}
 			},
 		},
 		{
@@ -611,5 +629,9 @@ func seedWith(s State, currentProducer string) *Status {
 	seed.PauseRequested = true
 	seed.PauseBefore = "B"
 	seed.PauseAfter = "A"
+	seed.PauseReason = "pause requested by orch"
+	seed.PauseRequestedBy = "orch"
+	seed.PauseBeforeBy = "orch"
+	seed.PauseAfterBy = "shed"
 	return &seed
 }

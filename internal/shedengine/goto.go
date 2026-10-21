@@ -93,8 +93,12 @@ func Goto(req GotoRequest) (Status, error) {
 		cur.Error = ""
 		cur.Transient = ""
 		cur.PauseRequested = false
+		cur.PauseRequestedBy = ""
 		cur.PauseBefore = ""
 		cur.PauseAfter = ""
+		cur.PauseBeforeBy = ""
+		cur.PauseAfterBy = ""
+		cur.PauseReason = labelled("goto to "+req.Target, req.By)
 		cur.PendingBy = ""
 		cur.History = append(cur.History, HistoryEntry{Producer: req.Target, Outcome: OutcomeGoto, At: nowRFC3339(), By: req.By})
 		cur.Activity = composeActivity(req.Target, cur.History, StatePaused, "", "")
@@ -200,6 +204,7 @@ func Relaunch(req RelaunchRequest) (Status, error) {
 			cur.State = StatePaused
 			cur.Error = ""
 			cur.Transient = ""
+			cur.PauseReason = "re-launched onto " + req.Target
 			cur.PendingBy = ""
 			cur.History = append(cur.History, HistoryEntry{Producer: req.Target, Outcome: OutcomeGoto, At: nowRFC3339()})
 			cur.Activity = composeActivity(req.Target, cur.History, StatePaused, "", "")

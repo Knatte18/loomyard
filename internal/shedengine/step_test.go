@@ -166,34 +166,46 @@ func TestStep_StuckAtBudgetBoundary(t *testing.T) {
 }
 
 func TestStep_PauseRequested(t *testing.T) {
-	shed, statusPath, _, statusLockPath := newTestShed(t)
+	for _, tt := range []struct {
+		name       string
+		by         string
+		wantReason string
+	}{
+		{"without a label", "", "pause requested"},
+		{"with a label", "orch", "pause requested by orch"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			shed, statusPath, _, statusLockPath := newTestShed(t)
 
-	producer := fixedOutcomeProducer(Done, "")
-	shed.Producers = []ProducerDef{{Name: "A", Producer: producer}}
-	seed := commonSeed("A")
-	seed.PauseRequested = true
-	seedStatus(t, statusPath, statusLockPath, seed)
+			producer := fixedOutcomeProducer(Done, "")
+			shed.Producers = []ProducerDef{{Name: "A", Producer: producer}}
+			seed := commonSeed("A")
+			seed.PauseRequested = true
+			seed.PauseRequestedBy = tt.by
+			seedStatus(t, statusPath, statusLockPath, seed)
 
-	res, err := shed.Step(context.Background())
-	if err != nil {
-		t.Fatalf("Step(...) = _, %v; want nil error", err)
-	}
-	if res.Producer != "" {
-		t.Errorf("Producer = %q; want empty", res.Producer)
-	}
-	if res.State != StatePaused {
-		t.Errorf("State = %q; want %q", res.State, StatePaused)
-	}
+			res, err := shed.Step(context.Background())
+			if err != nil {
+				t.Fatalf("Step(...) = _, %v; want nil error", err)
+			}
+			if res.Producer != "" {
+				t.Errorf("Producer = %q; want empty", res.Producer)
+			}
+			if res.State != StatePaused {
+				t.Errorf("State = %q; want %q", res.State, StatePaused)
+			}
 
-	got := readStatus(t, statusPath, statusLockPath)
-	if got.PauseRequested {
-		t.Errorf("persisted PauseRequested = true; want false")
-	}
-	if producer.calls != 0 {
-		t.Errorf("producer.calls = %d; want 0", producer.calls)
-	}
-	if res.Reason != "pause requested" {
-		t.Errorf("Reason = %q; want %q", res.Reason, "pause requested")
+			got := readStatus(t, statusPath, statusLockPath)
+			if got.PauseRequested || got.PauseRequestedBy != "" {
+				t.Errorf("persisted PauseRequested, PauseRequestedBy = %v, %q; want false, empty", got.PauseRequested, got.PauseRequestedBy)
+			}
+			if producer.calls != 0 {
+				t.Errorf("producer.calls = %d; want 0", producer.calls)
+			}
+			if res.Reason != tt.wantReason || got.PauseReason != tt.wantReason {
+				t.Errorf("Reason, persisted PauseReason = %q, %q; want %q for both", res.Reason, got.PauseReason, tt.wantReason)
+			}
+		})
 	}
 
 	// A context cancelled before Step, with no pause request, takes the same branch with its own reason.
@@ -204,7 +216,7 @@ func TestStep_PauseRequested(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	res, err = cancelledShed.Step(ctx)
+	res, err := cancelledShed.Step(ctx)
 	if err != nil {
 		t.Fatalf("Step(cancelled) = _, %v; want nil error", err)
 	}
@@ -213,6 +225,9 @@ func TestStep_PauseRequested(t *testing.T) {
 	}
 	if res.Reason != "cancelled" {
 		t.Errorf("cancelled Reason = %q; want %q", res.Reason, "cancelled")
+	}
+	if got := readStatus(t, cancelledStatusPath, cancelledStatusLockPath); got.PauseReason != "cancelled" {
+		t.Errorf("cancelled persisted PauseReason = %q; want %q", got.PauseReason, "cancelled")
 	}
 	if cancelledProducer.calls != 0 {
 		t.Errorf("cancelled producer.calls = %d; want 0", cancelledProducer.calls)
@@ -623,10 +638,12 @@ func TestStep_PauseBeforeCondition(t *testing.T) {
 		current        string
 		pauseRequested bool
 		wantPaused     bool
+		by             string
 	}{
-		{"fires at the target and clears the condition", "B", false, true},
-		{"fires at the target and consumes a set pause_requested", "B", true, true},
-		{"does not fire at another row", "A", false, false},
+		{"fires at the target and clears the condition", "B", false, true, ""},
+		{"fires at the target and consumes a set pause_requested", "B", true, true, ""},
+		{"fires with the condition's label and clears both labels", "B", false, true, "orch"},
+		{"does not fire at another row", "A", false, false, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -638,6 +655,8 @@ func TestStep_PauseBeforeCondition(t *testing.T) {
 			}
 			seed := commonSeed(tt.current)
 			seed.PauseBefore = "B"
+			seed.PauseBeforeBy = tt.by
+			seed.PauseAfterBy = tt.by
 			seed.PauseRequested = tt.pauseRequested
 			seedStatus(t, statusPath, statusLockPath, seed)
 
@@ -652,11 +671,18 @@ func TestStep_PauseBeforeCondition(t *testing.T) {
 				}
 				return
 			}
-			if res.State != StatePaused || res.Next != "B" || res.Reason != "paused before B, as requested" {
-				t.Errorf("State, Next, Reason = %q, %q, %q; want paused, B, %q", res.State, res.Next, res.Reason, "paused before B, as requested")
+			wantReason := "paused before B, as requested"
+			if tt.by != "" {
+				wantReason += " by " + tt.by
+			}
+			if res.State != StatePaused || res.Next != "B" || res.Reason != wantReason {
+				t.Errorf("State, Next, Reason = %q, %q, %q; want paused, B, %q", res.State, res.Next, res.Reason, wantReason)
 			}
 			if got.State != StatePaused || got.PauseBefore != "" || got.PauseAfter != "" || got.PauseRequested {
 				t.Errorf("persisted State, PauseBefore, PauseAfter, PauseRequested = %q, %q, %q, %v; want paused with both conditions and the flag cleared", got.State, got.PauseBefore, got.PauseAfter, got.PauseRequested)
+			}
+			if got.PauseReason != wantReason || got.PauseBeforeBy != "" || got.PauseAfterBy != "" {
+				t.Errorf("persisted PauseReason, PauseBeforeBy, PauseAfterBy = %q, %q, %q; want %q with both labels cleared", got.PauseReason, got.PauseBeforeBy, got.PauseAfterBy, wantReason)
 			}
 			if b.calls != 0 {
 				t.Errorf("producer B calls = %d; want 0", b.calls)
@@ -673,11 +699,13 @@ func TestStep_PauseAfterCondition(t *testing.T) {
 		wantState     State
 		wantNext      string
 		wantCondition string
+		by            string
 	}{
-		{"a Done routed on fires", Done, "A", StatePaused, "B", ""},
-		{"a bounced Stuck fires at its OnStuck row", Stuck, "A", StatePaused, "C", ""},
-		{"a halting outcome leaves the condition recorded", Awaiting, "A", StateAwaiting, "A", "A"},
-		{"a target the run has not reached fires on the pass that reaches it", Done, "B", StateRunning, "B", "B"},
+		{"a Done routed on fires", Done, "A", StatePaused, "B", "", ""},
+		{"a Done routed on fires with the condition's label", Done, "A", StatePaused, "B", "", "orch"},
+		{"a bounced Stuck fires at its OnStuck row", Stuck, "A", StatePaused, "C", "", ""},
+		{"a halting outcome leaves the condition recorded", Awaiting, "A", StateAwaiting, "A", "A", ""},
+		{"a target the run has not reached fires on the pass that reaches it", Done, "B", StateRunning, "B", "B", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -689,6 +717,8 @@ func TestStep_PauseAfterCondition(t *testing.T) {
 			}
 			seed := commonSeed("A")
 			seed.PauseAfter = tt.pauseAfter
+			seed.PauseAfterBy = tt.by
+			seed.PauseBeforeBy = tt.by
 			seedStatus(t, statusPath, statusLockPath, seed)
 
 			res, err := shed.Step(context.Background())
@@ -701,8 +731,18 @@ func TestStep_PauseAfterCondition(t *testing.T) {
 			if got := readStatus(t, statusPath, statusLockPath); got.PauseAfter != tt.wantCondition || got.PauseBefore != "" {
 				t.Errorf("persisted PauseAfter = %q; want %q", got.PauseAfter, tt.wantCondition)
 			}
-			if tt.wantState == StatePaused && res.Reason != "paused after A, as requested" {
-				t.Errorf("Reason = %q; want %q", res.Reason, "paused after A, as requested")
+			if tt.wantState == StatePaused {
+				wantReason := "paused after A, as requested"
+				if tt.by != "" {
+					wantReason += " by " + tt.by
+				}
+				got := readStatus(t, statusPath, statusLockPath)
+				if res.Reason != wantReason || got.PauseReason != wantReason {
+					t.Errorf("Reason, persisted PauseReason = %q, %q; want %q for both", res.Reason, got.PauseReason, wantReason)
+				}
+				if got.PauseAfterBy != "" || got.PauseBeforeBy != "" {
+					t.Errorf("persisted PauseAfterBy, PauseBeforeBy = %q, %q; want both cleared", got.PauseAfterBy, got.PauseBeforeBy)
+				}
 			}
 			if tt.wantCondition == "B" {
 				// The target B has not run yet: the next pass runs it and fires the condition.
