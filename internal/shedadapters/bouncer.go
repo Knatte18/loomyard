@@ -710,7 +710,10 @@ func (b *Bouncer) resettle(record settleRecord) (shedengine.Outcome, shedengine.
 	if record.Round >= 1 {
 		closing := discussionparser.CarryOverConverged
 		decision, _, settled, exists, err := readCirclingDecision(b.cfg.RunDir, record.Round)
-		if err == nil && exists && decision == CirclingAccept {
+		if err != nil {
+			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): read circling decision of round %d: %w", b.cfg.Name, bouncerEngineLabel, record.Round, err)
+		}
+		if exists && decision == CirclingAccept {
 			closing = discussionparser.CarryOverAccepted
 			if !settled {
 				if err := settleCirclingAccept(b.cfg.RunDir, record.Round); err != nil {

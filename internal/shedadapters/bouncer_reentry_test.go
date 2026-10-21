@@ -236,6 +236,26 @@ func TestBouncer_Reentry(t *testing.T) {
 			h.requireNoSpawn()
 			assertNoArchivedRunDirSibling(t, h.cfg.RunDir)
 		}},
+		{"MalformedCirclingDecisionOnASettledRoundFailsTheReSettle", func(t *testing.T) {
+			var recorder carryOverRecorder
+			h := newReentry(t, convergingShuttle(nil), func(h *reentry, cfg *BouncerConfig) { recorder.install(cfg) })
+			if err := h.settleRoundOne(errReentryCommit); !errors.Is(err, errReentryCommit) {
+				t.Fatalf("first Call() error = %v; want the commit failure", err)
+			}
+			decisionPath := circlingDecisionPath(h.cfg.RunDir, 1)
+			if err := os.WriteFile(decisionPath, []byte("not a decision file"), 0o644); err != nil {
+				t.Fatalf("write malformed decision: %v", err)
+			}
+
+			h.resume()
+			if _, _, err := h.call(); err == nil {
+				t.Fatal("Call() error = nil; want the malformed decision reported")
+			}
+			if len(recorder.entries) != 1 {
+				t.Errorf("carry-over entries = %d; want 1, the first settle's alone", len(recorder.entries))
+			}
+			h.requireNoSpawn()
+		}},
 		{"SkipSeamApprovalReentersWithNoCarryOver", func(t *testing.T) {
 			var recorder carryOverRecorder
 			h := newReentry(t, convergingShuttle(nil), func(h *reentry, cfg *BouncerConfig) {
