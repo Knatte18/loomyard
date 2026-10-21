@@ -175,6 +175,8 @@ type runningGate struct {
 	stdout bytes.Buffer
 	stderr bytes.Buffer
 	record string
+	// exit is the exit code of a gate a helper has waited for.
+	exit int
 }
 
 // startGate starts the test binary in the gate role and returns it running.
@@ -1074,12 +1076,7 @@ func TestGateTest_Scenario(t *testing.T) {
 		want     [][]string
 	}{
 		{
-			name: "guards alone run the listed tier, then the guard tier over each guard package by name",
-			args: []string{"--guards"},
-			want: [][]string{{"./pkg"}, guardRun},
-		},
-		{
-			name: "named targets run before the guards",
+			name: "named targets run before the guard tier runs over the guard packages by name",
 			args: []string{"--guards", "./pkg"},
 			want: [][]string{{"./pkg"}, guardRun},
 		},
@@ -1094,11 +1091,6 @@ func TestGateTest_Scenario(t *testing.T) {
 			env:      []string{helperExitEnv + "=3"},
 			wantExit: 3,
 			want:     [][]string{{"./pkg"}},
-		},
-		{
-			name: "a call that ran guard_tier whole runs no separate guard step",
-			args: []string{"--tier", "6", "--guards"},
-			want: [][]string{{"./pkg"}},
 		},
 	}
 	for _, tc := range guardTests {
@@ -1116,7 +1108,7 @@ func TestGateTest_Scenario(t *testing.T) {
 
 	t.Run("--guards: a module with no marked test runs the listed tier and no guard step", func(t *testing.T) {
 		bare := writeModule(t, "bare", map[string]string{"pkg/pkg.go": "package pkg\n"})
-		g := startGate(t, gateRun{cwd: t.TempDir(), args: []string{"test", "-C", bare, "--guards"}})
+		g := startGate(t, gateRun{cwd: t.TempDir(), args: []string{"test", "-C", bare, "--guards", "./pkg"}})
 		if code := g.wait(t); code != 0 {
 			t.Errorf("exit code = %d, stdout %q; want 0", code, g.stdout.String())
 		}
@@ -1131,11 +1123,11 @@ func TestGateTest_Scenario(t *testing.T) {
 			"root.go":      "package rooted\n",
 			"root_test.go": "package rooted\n\nimport \"testing\"\n\n//lyx:guard\nfunc TestGuardRoot(t *testing.T) {}\n",
 		})
-		g := startGate(t, gateRun{cwd: t.TempDir(), args: []string{"test", "-C", rooted, "--guards"}})
+		g := startGate(t, gateRun{cwd: t.TempDir(), args: []string{"test", "-C", rooted, "--guards", "."}})
 		if code := g.wait(t); code != 0 {
 			t.Errorf("exit code = %d, stdout %q; want 0", code, g.stdout.String())
 		}
-		want := [][]string{{"./pkg"}, {".", "-run", "^(TestGuardRoot)$"}}
+		want := [][]string{{"."}, {".", "-run", "^(TestGuardRoot)$"}}
 		if got := g.tierArgs(t); !reflect.DeepEqual(got, want) {
 			t.Errorf("tier invocations = %q; want %q", got, want)
 		}
@@ -1197,7 +1189,7 @@ func TestGateTest_Scenario(t *testing.T) {
 			if tc.unreadable != "" {
 				makeUnreadable(t, filepath.Join(module, filepath.FromSlash(tc.unreadable)))
 			}
-			g := startGate(t, gateRun{cwd: t.TempDir(), args: []string{"test", "-C", module, "--guards"}})
+			g := startGate(t, gateRun{cwd: t.TempDir(), args: []string{"test", "-C", module, "--guards", "./p"}})
 			code := g.wait(t)
 
 			var envelope struct {

@@ -62,15 +62,21 @@ With --wait it blocks until the slots free, which costs only the caller's prompt
 Inside a slot already held by an enclosing gate run it runs without acquiring another.
 The tier's output passes through its counter, and after each tier the verb prints a summary line to stderr and writes the run's record and log under the gate directory's runs directory.
 The exit code is the failing tier's own, or 0.
-The scope is the explicit <targets>, which replace each tier's {targets}, or each tier's all_targets with --all or with no scope at all.
+The scope is one of: the explicit <targets>, which replace each tier's {targets}; --all, every tier's all_targets;
+--card <id>, the packages of the named plan cards, repeatable; --base <rev>, the packages the diff from that revision to the working tree reaches;
+or, with none of them, the same diff from the merge base with the parent branch of the pair's fabric origin record.
+Under the go scoper the last three narrow a tier to the impacted packages per module, falling back to whole where the set cannot be narrowed, and an empty set runs no tier command;
+under the none scoper they take each tier's all_targets.
 Arguments after "--" fill each tier's {args}.
-With --guards the verb also runs, after the listed tiers pass, the guard tier over every top-level test marked //lyx:guard in the module at the run directory.
+After the listed tiers pass, a narrower or computed scope under the go scoper, and --guards, run the guard tier over the top-level tests marked //lyx:guard outside the scope.
 -C names the directory the tiers run in, and only explicit targets may go with it.
 
 Examples:
 
   lyx gate test --wait ./internal/foo
   lyx gate test --tier 0 --tier 1 --all
+  lyx gate test --wait --card 3 --card 4
+  lyx gate test --base main
   lyx gate test -C backend ./internal/foo ./internal/bar
   lyx gate test --guards ./internal/foo
   lyx gate test ./... -- -run TestSomething -count=1`, slotWait, SlotBusyExit),

@@ -25,23 +25,50 @@ func planConfig() gateslot.Config {
 	}
 }
 
-// describe renders a run as `tier<N> <scope> dir=<dir> <targets>`, with ` guard` for the guard step.
+// describe renders a run as `tier<N> <scope> dir=<dir> <targets>`, one `dir=… …` per invocation joined by ` | ` and `none` for no invocation, with ` ignores` for a command that ignores the scope and ` guard` for the guard step.
 func describe(run tierRun) string {
-	line := strings.TrimSpace(fmt.Sprintf("%s %s dir=%s %s", tierName(run.number), run.scopeForm, run.invocations[0].dir, strings.Join(run.invocations[0].targets, " ")))
+	parts := make([]string, len(run.invocations))
+	for i, invocation := range run.invocations {
+		parts[i] = strings.TrimSpace(fmt.Sprintf("dir=%s %s", invocation.dir, strings.Join(invocation.targets, " ")))
+	}
+	if len(parts) == 0 {
+		parts = []string{"none"}
+	}
+	line := fmt.Sprintf("%s %s %s", tierName(run.number), run.scopeForm, strings.Join(parts, " | "))
+	if run.ignoresTargets {
+		line += " ignores"
+	}
 	if run.guardStep {
 		line += " guard"
 	}
 	return line
 }
 
+// requestScope returns the scope of a request that names explicit targets or none, the two forms no computation changes.
+func requestScope(request testRequest) scope {
+	if len(request.targets) > 0 {
+		return scope{form: scopeTargets}
+	}
+	return scope{form: scopeAll, whole: true}
+}
+
 func TestPlanTierRuns(t *testing.T) {
 	t.Parallel()
 
+	narrower := scope{
+		form:      scopeComputed,
+		modules:   []moduleTargets{{dir: ".", targets: []string{"./a", "./b"}}, {dir: "nested", targets: []string{"."}}},
+		guardStep: true,
+		guardDir:  ".",
+		guards:    map[string][]string{},
+	}
 	tests := []struct {
 		name    string
 		mutate  func(*gateslot.Config)
 		request testRequest
-		want    []string
+		// scope defaults to the scope of the request's explicit targets, or --all.
+		scope scope
+		want  []string
 		// wantStderr is text the plan must print to stderr.
 		wantStderr string
 	}{
@@ -94,6 +121,43 @@ func TestPlanTierRuns(t *testing.T) {
 			request: testRequest{tiers: []int{1}, guards: true, targets: []string{"./a"}},
 			want:    []string{"tier1 targets dir=sub ./a", "tier1 guard dir=sub guard"},
 		},
+		{
+			name:  "a per-module scope runs the tier once per module, then the guard step in the scope's guard dir",
+			scope: narrower,
+			want:  []string{"tier0 computed dir=. ./a ./b | dir=nested .", "tier1 guard dir=. guard"},
+		},
+		{
+			name: "a command without {targets} runs once, whole, under a narrower scope",
+			mutate: func(cfg *gateslot.Config) {
+				t0 := cfg.Tiers["tier0"]
+				t0.Command = "make test {args}"
+				cfg.Tiers["tier0"] = t0
+			},
+			scope: narrower,
+			want:  []string{"tier0 computed dir=. ./... ignores", "tier1 guard dir=. guard"},
+		},
+		{
+			name:  "an empty scope runs no listed tier's command, and the guard step is still planned",
+			scope: scope{form: scopeComputed, guardStep: true, guardDir: ".", guards: map[string][]string{}},
+			want:  []string{"tier0 computed none", "tier1 guard dir=. guard"},
+		},
+		{
+			name:  "a whole fallback runs the tier whole and still plans the guard step",
+			scope: scope{form: scopeComputed, whole: true, guardStep: true, guardDir: "."},
+			want:  []string{"tier0 computed dir=. ./...", "tier1 guard dir=. guard"},
+		},
+		{
+			name:    "a whole scope that ran guard_tier whole plans no guard step",
+			request: testRequest{tiers: []int{1}},
+			scope:   scope{form: scopeComputed, whole: true, guardStep: true, guardDir: "."},
+			want:    []string{"tier1 computed dir=sub ./... ./x/..."},
+		},
+		{
+			name:    "a narrower scope plans the guard step although the listed tier is guard_tier",
+			request: testRequest{tiers: []int{1}},
+			scope:   narrower,
+			want:    []string{"tier1 computed dir=. ./a ./b | dir=nested .", "tier1 guard dir=. guard"},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -104,7 +168,11 @@ func TestPlanTierRuns(t *testing.T) {
 			}
 			var stderr bytes.Buffer
 			tc.request.stderr = &stderr
-			runs, err := planTierRuns(cfg, tc.request)
+			sc := tc.scope
+			if sc.form == "" {
+				sc = requestScope(tc.request)
+			}
+			runs, err := planTierRuns(cfg, tc.request, sc)
 			if err != nil {
 				t.Fatalf("planTierRuns() error = %v", err)
 			}
@@ -189,7 +257,7 @@ func TestPlanTierRuns(t *testing.T) {
 			if tc.mutate != nil {
 				tc.mutate(&cfg)
 			}
-			_, err := planTierRuns(cfg, tc.request)
+			_, err := planTierRuns(cfg, tc.request, requestScope(tc.request))
 			if err == nil {
 				t.Fatal("planTierRuns() error = nil; want a refusal")
 			}

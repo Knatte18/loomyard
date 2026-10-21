@@ -52,11 +52,11 @@ func tierName(number int) string {
 	return "tier" + strconv.Itoa(number)
 }
 
-// planTierRuns builds the run list of request over cfg without touching the disk:
-// the listed tiers ascending with the tiers another listed tier covers dropped, each over the explicit targets or its all_targets, then the guard step when --guards asks for one the listed tiers did not already run whole.
+// planTierRuns builds the run list of request over cfg and the scope sc without touching the disk:
+// the listed tiers ascending with the tiers another listed tier covers dropped, each over its share of the scope, then the guard step when --guards or the scope's form asks for one the listed tiers did not already run whole.
 // A covered tier is named on request.stderr when it has one.
 // It refuses, naming `lyx config gate`, a hub with no tier0, an undeclared tier, a dangling covers entry or guard_tier, words after `--` for a tier whose command lacks {args}, a guard tier whose command lacks {targets} or {args}, and --guards under the none scoper.
-func planTierRuns(cfg gateslot.Config, request testRequest) ([]tierRun, error) {
+func planTierRuns(cfg gateslot.Config, request testRequest, sc scope) ([]tierRun, error) {
 	if _, err := cfg.Tier(0); err != nil {
 		return nil, fmt.Errorf("gate test: %w", err)
 	}
@@ -77,35 +77,24 @@ func planTierRuns(cfg gateslot.Config, request testRequest) ([]tierRun, error) {
 
 	kept := dropCovered(numbers, tiers, request)
 
-	scopeForm := scopeAll
-	if len(request.targets) > 0 {
-		scopeForm = scopeTargets
-	}
 	runs := make([]tierRun, 0, len(kept)+1)
 	for _, number := range kept {
 		tier := tiers[number]
 		if len(request.args) > 0 && !strings.Contains(tier.Command, "{args}") {
 			return nil, configRefusal("words after \"--\" were given, but the command of %s holds no {args}", tierName(number))
 		}
-		dir := tier.Dir
-		if request.dir != "" {
-			dir = request.dir
-		}
-		targets := request.targets
-		if len(targets) == 0 {
-			targets = strings.Fields(tier.AllTargets)
-		}
+		invocations, ignoresTargets := scopeInvocations(tier, request, sc)
 		runs = append(runs, tierRun{
 			number:         number,
 			tier:           tier,
-			scopeForm:      scopeForm,
-			invocations:    []invocation{{dir: dir, targets: targets}},
+			scopeForm:      sc.form,
+			invocations:    invocations,
 			args:           request.args,
-			ignoresTargets: scopeForm == scopeTargets && !strings.Contains(tier.Command, "{targets}"),
+			ignoresTargets: ignoresTargets,
 		})
 	}
 
-	if !request.guards {
+	if !request.guards && !sc.guardStep {
 		return runs, nil
 	}
 	if cfg.Scoper != "go" {
@@ -115,14 +104,17 @@ func planTierRuns(cfg gateslot.Config, request testRequest) ([]tierRun, error) {
 	if err != nil {
 		return nil, fmt.Errorf("gate test: guard_tier: %w", err)
 	}
-	if scopeForm == scopeAll && ranWhole(runs, cfg.GuardTier) {
+	if sc.whole && ranWhole(runs, cfg.GuardTier) {
 		return runs, nil
 	}
 	if !strings.Contains(guardTier.Command, "{targets}") || !strings.Contains(guardTier.Command, "{args}") {
 		return nil, configRefusal("the guard step runs the command of %s, which must hold {targets} and {args}", tierName(cfg.GuardTier))
 	}
 	dir := guardTier.Dir
-	if request.dir != "" {
+	switch {
+	case sc.guardDir != "":
+		dir = sc.guardDir
+	case request.dir != "":
 		dir = request.dir
 	}
 	return append(runs, tierRun{
@@ -132,6 +124,32 @@ func planTierRuns(cfg gateslot.Config, request testRequest) ([]tierRun, error) {
 		invocations: []invocation{{dir: dir}},
 		guardStep:   true,
 	}), nil
+}
+
+// scopeInvocations returns the invocations one tier makes over sc, and whether its command ignores the scope's narrowing.
+// Explicit targets run in the -C directory, else the tier's dir; a whole scope runs the tier's all_targets, split at spaces, in the tier's dir.
+// A narrower scope runs the tier once per module in that module's directory, and the empty scope makes none.
+// A command without {targets} runs once, whole, under explicit targets and under a non-empty narrower scope.
+func scopeInvocations(tier gateslot.Tier, request testRequest, sc scope) (invocations []invocation, ignoresTargets bool) {
+	runsWhole := []invocation{{dir: tier.Dir, targets: strings.Fields(tier.AllTargets)}}
+	switch {
+	case sc.form == scopeTargets:
+		dir := tier.Dir
+		if request.dir != "" {
+			dir = request.dir
+		}
+		return []invocation{{dir: dir, targets: request.targets}}, !strings.Contains(tier.Command, "{targets}")
+	case sc.whole:
+		return runsWhole, false
+	case len(sc.modules) == 0:
+		return nil, false
+	case !strings.Contains(tier.Command, "{targets}"):
+		return runsWhole, true
+	}
+	for _, module := range sc.modules {
+		invocations = append(invocations, invocation{dir: module.dir, targets: module.targets})
+	}
+	return invocations, false
 }
 
 // configRefusal returns a refusal that sends the caller to `lyx config gate` and closes with the role clause.

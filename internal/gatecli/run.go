@@ -22,7 +22,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/impactset"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -65,16 +64,22 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	request.root = buildRoot(location, dir)
 	request.busyQuit = cfg.Limits().BusyQuit
 
-	plan, err := planTierRuns(cfg, request)
+	sc, err := computeScope(preCtx, cfg, location, request.root, request)
+	if refusal := preTierExpiry(preCtx, runCtx, request, "computing the scope"); refusal != "" {
+		return output.Err(out, refusal)
+	}
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+	plan, err := planTierRuns(cfg, request, sc)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	var guards map[string][]string
-	if guard := guardRunOf(plan); guard != nil {
-		moduleDir := resolveRunDir(request.root, guard.invocations[0].dir)
-		if guards, err = impactset.ModuleGuardTests(moduleDir); err != nil {
-			return output.Err(out, guardScanRefusal(moduleDir, err))
+	if guard := guardRunOf(plan); guard != nil && sc.guards == nil {
+		sc.guardDir = guard.invocations[0].dir
+		if sc, err = scanGuards(sc, request.root); err != nil {
+			return output.Err(out, err.Error())
 		}
 		if refusal := preTierExpiry(preCtx, runCtx, request, "scanning the guard tests"); refusal != "" {
 			return output.Err(out, refusal)
@@ -89,7 +94,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 		location:  location,
 		runLogDir: gateslot.RunLogDir(gateslot.WaitDir(location.WorktreePath())),
 		tierList:  tierNumbers(plan),
-		guards:    guards,
+		guards:    sc.guards,
 	}
 	if inHub {
 		exe.pool = hubgeom.GateSlots(location)
@@ -140,14 +145,11 @@ func flagShapeRefusal(request testRequest) string {
 			forms++
 		}
 	}
-	if request.dir != "" && len(request.targets) == 0 && forms > 0 {
+	if request.dir != "" && len(request.targets) == 0 {
 		return "gate test: -C goes with explicit targets only; way forward: name the packages to run after -C, or drop -C and let the tier's own dir apply, then re-run the same command"
 	}
 	if forms > 1 {
 		return "gate test: explicit targets, --all, --base and --card are each one scope form, and a call takes one; way forward: keep one scope form, then re-run the same command"
-	}
-	if request.base != "" || len(request.cards) > 0 {
-		return "gate test: --base and --card are not supported yet; way forward: use explicit targets or --all, then re-run the same command"
 	}
 	return ""
 }
@@ -250,6 +252,9 @@ type execution struct {
 func (e *execution) runListed(run tierRun) int {
 	if run.ignoresTargets {
 		printLine(e.request.stderr, fmt.Sprintf("gate test: the command of %s holds no {targets}, so it runs whole", tierName(run.number)))
+	}
+	if len(run.invocations) == 0 {
+		printLine(e.request.stderr, fmt.Sprintf("gate test: the scope is empty, so %s runs no command", tierName(run.number)))
 	}
 	return e.runWithSlots(run, len(run.invocations) == 0, func(env []string) tierResult {
 		return runTier(e.ctx, e.out, run, env, e.request)

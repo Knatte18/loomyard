@@ -7,7 +7,6 @@
 // `lyx gate test [-C <dir>] [--tier N]... [--card <id>]... [--base <rev>] [--all] [--guards] [--wait] [<targets>...] [-- <args>]` runs the tiers the hub declares in gate.yaml, in ascending tier number, and stops at the first tier that fails.
 // `--tier` names a tier and may repeat; the default is tier0, and a tier another listed tier covers is dropped and named as covered on stderr.
 // `--tags` stays a registered flag only to be refused before any slot, naming `--tier`: a tier's own command sets its build tags.
-// `--card` and `--base` are registered and refused as not yet supported.
 // The words after `--` fill each tier's `{args}`.
 //
 // A tier is one shell command with the placeholders `{targets}`, `{parallel}` and `{args}`, which `renderTierCommand` fills with each target and each arg quoted for the platform shell by `verifyrun.QuoteArg`.
@@ -21,18 +20,35 @@
 //
 // # Scope
 //
-// The scope forms in this verb are explicit `<targets>` and `--all`.
+// There are five scope forms, and a call takes one: explicit `<targets>`, `--all`, `--card <id>`, `--base <rev>` and, with none of them, the computed form.
 // Explicit targets replace each run's `{targets}` verbatim and run in the `-C` directory, else in the tier's `dir`.
-// `--all`, and a call with no scope form, set `{targets}` to the tier's `all_targets`, split at spaces, and run in the tier's `dir`.
-// A command without `{targets}` runs whole whatever the scope and says so on stderr.
-// Flag-shape refusals need no config and run first, before hub resolution: `--tags`, naming `--tier`; `-C` with `--all`, `--base` or `--card`, naming explicit targets; and more than one scope form.
+// `--all` sets `{targets}` to the tier's `all_targets`, split at spaces, and runs in the tier's `dir`.
+// A command without `{targets}` runs once, whole, under explicit targets and under a non-empty narrower scope, and says so on stderr.
+// Flag-shape refusals need no config and run first, before hub resolution: `--tags`, naming `--tier`; `-C` without explicit targets, naming them; and more than one scope form.
+//
+// # Scoper
+//
+// `computeScope` resolves the computed, `--base` and `--card` forms inside the pre-tier ceiling, and `gate.yaml`'s `scoper` decides what they mean.
+// The computed form's base is the merge base of HEAD with the parent branch the pair's fabric origin record names, read through `parentMergeBase`; a worktree with no origin record or no parent, such as the prime on `main` or a standalone run, runs whole.
+// `--base` names that base itself.
+// `--card`, repeatable, reads the plan at the anchor's plan directory through `planparser.ParsePlan` and takes `planparser.CardPackages` of the named cards; an id is a card's number or its `N-slug`, an unknown id is refused before any slot naming the plan's ids, and a worktree with no plan is refused naming `--all` and explicit targets.
+// The plan read and its two refusals run first under either scoper.
+//
+// Under the `none` scoper each of the three forms is whole, so a tier takes its `all_targets`, and no guard step is planned.
+// Under the `go` scoper a computed or `--base` scope is `impactset.DeriveTargets` of the diff from its base to the working tree, and falls back to whole wherever it does, naming the reason on stderr;
+// a `--card` scope is the cards' packages.
+// A narrower scope runs each listed tier once per module, in that module's directory with its module-relative targets, under one slot hold and one `timeout_min` covering every invocation.
+// An empty scope, such as a diff of Markdown files only, runs no listed tier's command: each listed tier passes with zero discovered, is logged so, takes no slot, and only the guard step runs.
+// The import graph cannot see everything a narrower run skips, such as `go build ./...`, so that is left to the whole runs at `final` and `landing`.
 // Once the config is loaded, `planTierRuns` refuses, before any slot and naming `lyx config gate`: words after `--` for a tier whose command lacks `{args}`, an undeclared tier, a hub with no `tier0`, and a `covers` entry or a `guard_tier` naming a tier the hub does not declare.
 // Every such refusal closes with the clause that a session that is not the prime takes none of the steps, reports status: FAILED and leaves them to the orch.
 //
 // # Guard step
 //
-// With `--guards` the verb runs, after the listed tiers pass, `runGuardStep` over `impactset.ModuleGuardTests` of the module at the run directory.
-// It is one run of `guard_tier`'s command with the guard packages as `{targets}` and `-run '^(<names>)$'` after any words from `--` as `{args}`, so the guard's own pattern is the last `-run` and wins over one among those words.
+// With `--guards`, and under the `go` scoper after any computed, `--base` or `--card` scope, the verb runs, after the listed tiers pass, `runGuardStep` over the module's `//lyx:guard` tests outside the scope.
+// `impactset.DeriveTargets` names those packages for a narrower computed or `--base` scope, and an `impactset.ModuleGuardTests` scan of the module at the run directory names them for a `--card` scope, a scope fallen back to whole, and `--guards` over explicit targets.
+// So the round and darn writer gates, which run `--base`, keep the guard coverage they have had, where every guard package counts as outside a tier that does not compile it.
+// The step is one run of `guard_tier`'s command with the guard packages as `{targets}` and `-run '^(<names>)$'` after any words from `--` as `{args}`, so the guard's own pattern is the last `-run` and wins over one among those words.
 // It acquires `guard_tier`'s slots after the last listed tier released its own, runs under `guard_tier`'s `timeout_min` and `prebuilt_lyx`, and is logged as the guard step.
 // It is skipped when the call ran `guard_tier`, or a tier covering it, whole.
 // A step that is not skipped refuses a `guard_tier` command lacking `{targets}` or `{args}`, naming `lyx config gate`.
