@@ -41,7 +41,7 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-gitrepo-client-boundary` — Git in `internal/gitrepo`: local reads via go-git and `dotgit`, the rest via `gitexec`. (test) — [background](pattern/PATTERN-gitrepo-client-boundary.md)
 - `PATTERN-gitexec-checked-call` — Running git: `gitexec.Run`/`runChecked`; raw `RunGit`/`r.run` only at pinned `//gitexec:raw` sites.
 - `PATTERN-never-force-add` — Keeping transients unindexed: each repo's own `.git/info/exclude`; fabric and gitrepo never run `git add -f`.
-- `PATTERN-origin-reconcile` — Acting on a run or the hub after this machine may have been away (orch start, wake, batten resume, Merge-In, Finalize, cleanup): first `fabricengine`'s origin reconcile, sole judge of local branches.
+- `PATTERN-origin-reconcile` — Acting on a run or the hub after this machine may have been away (orch start, wake, batten resume, Merge-In, Finalize, cleanup): first `fabricengine`'s origin reconcile, the sole judge of local branches against origin.
 - `PATTERN-parent-lock` — Merging a parent into a task branch, or landing on it: only under that parent's `internal/parentlock` lock; a moved parent reroutes to Merge-In.
 
 ## Shed and loom
@@ -85,7 +85,7 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-shell-mechanics-seam` — Building a pane-shell command string: only via `internal/shell`, which imports only stdlib.
 - `PATTERN-pane-text-injection` — Typing text into an agent pane: only reed's guarded paste-submit. — [background](pattern/PATTERN-pane-text-injection.md)
 - `PATTERN-guarded-interrupt` — Sending an agent pane the interrupt key: only shuttle's two pane guards. — [background](pattern/PATTERN-guarded-interrupt.md)
-- `PATTERN-pane-binary-resolution` — Creating a strand pane or detached `lyx` window in reed: resolve `lyx` via `panebin.go` only. (test) — [background](pattern/PATTERN-pane-binary-resolution.md)
+- `PATTERN-pane-binary-resolution` — Creating a pane in reed: resolve `lyx` via `panebin.go` only. (test) — [background](pattern/PATTERN-pane-binary-resolution.md)
 - `PATTERN-role-skills-typed` — Loading a spawned session's skill: its spawner names it on the launch spec, lyx delivers it on the launch line or typed; no stencil asks for one. (test)
 - `PATTERN-parent-directive` — Writing a spawned role's top-level stencil: it renders the parent directive. (test) — [background](pattern/PATTERN-parent-directive.md)
 - `PATTERN-edit-directive` — Writing a spawned role's opening stencil: it renders `internal/editdirective`'s directive. (test) — [background](pattern/PATTERN-edit-directive.md)
