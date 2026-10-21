@@ -1,4 +1,4 @@
-// derive.go declares Derive and the pure core that turns a package graph, the changed paths and the guard tests into the round gate's command or a fallback reason.
+// derive.go declares the pure core that turns a package graph and the changed paths into an impacted set, and the git and `go list` reads that feed it.
 
 package impactset
 
@@ -6,75 +6,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
-	"slices"
-	"sort"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// MaxCommandLength is the longest command Derive returns; a longer one falls back to the full plan verify.
+// MaxCommandLength is the longest guard-step command a card gate renders; a longer one is left out.
 const MaxCommandLength = 8000
-
-// vetTags are the tags the vet step runs under, one `go vet` per tag over the set.
-var vetTags = []string{"integration", "tmux", "llm"}
-
-// Derivation is the outcome of Derive.
-type Derivation struct {
-	// Command is the derived command, empty when Fallback is set.
-	// It is `go build ./...`, a `go vet` per tag over the set, `lyx gate test --tags integration` over the set, and one `lyx gate test --tags integration` step for the guard tests of the packages outside the set.
-	Command string
-	// Packages are the impacted set's `go` package arguments, in the order the command lists them; empty with a fallback, and empty when only non-Go files changed.
-	Packages []string
-	// Fallback is why the caller runs the full plan verify instead; empty when Command is set.
-	Fallback string
-	// Base is the commit the diff started from, set whenever the base was usable.
-	Base string
-}
-
-// Derive derives the round gate's command for the diff between base and HEAD in worktree.
-// A fallback reason is not an error; an error is a failure to read git or a package directory, or a *GuardScanError for a test file the guard scan cannot accept.
-func Derive(worktree, base string) (Derivation, error) {
-	if _, err := os.Stat(filepath.Join(worktree, "go.mod")); err != nil {
-		return Derivation{Fallback: "no go.mod at the worktree root"}, nil
-	}
-	if base == "" {
-		return Derivation{Fallback: "no base commit to diff from"}, nil
-	}
-	resolvedBase, ancestor := resolveAncestorBase(worktree, base)
-	if !ancestor {
-		return Derivation{Fallback: fmt.Sprintf("base %s is not an ancestor of HEAD", base)}, nil
-	}
-	derivation := Derivation{Base: resolvedBase}
-
-	changedPaths, err := changedPathsSince(worktree, resolvedBase)
-	if err != nil {
-		return Derivation{}, err
-	}
-
-	pkgs, err := listPackages(context.Background(), worktree)
-	if err != nil {
-		derivation.Fallback = "go list failed: " + err.Error()
-		return derivation, nil
-	}
-	graph := newModuleGraph(pkgs)
-	dirs := make([]string, 0, len(pkgs))
-	for _, p := range pkgs {
-		dirs = append(dirs, p.Dir)
-	}
-	guards, err := FindGuardTests(worktree, dirs)
-	if err != nil {
-		return Derivation{}, err
-	}
-
-	derivation.Command, derivation.Packages, derivation.Fallback = commandFor(graph, changedPaths, guards)
-	return derivation, nil
-}
 
 // resolveAncestorBase returns the commit hash base names, and whether it is an ancestor of HEAD.
 // Any git refusal, such as an unknown commit, reads as not an ancestor.
@@ -89,15 +31,6 @@ func resolveAncestorBase(worktree, base string) (string, bool) {
 		return "", false
 	}
 	return resolved, true
-}
-
-// changedPathsSince returns every path the diff from base to HEAD touches, a renamed file by both its old and new path.
-func changedPathsSince(worktree, base string) ([]string, error) {
-	output, err := gitexec.Run([]string{"diff", "--name-status", "-z", "--find-renames", base, "HEAD"}, worktree)
-	if err != nil {
-		return nil, fmt.Errorf("impactset: list the files changed since %s: %w", base, err)
-	}
-	return parseChangedPaths(output), nil
 }
 
 // parseChangedPaths reads `git diff --name-status -z` output: a status, then one path, or two for a rename or copy.
@@ -141,23 +74,6 @@ func listPackages(ctx context.Context, worktree string) ([]pkg, error) {
 	return parseGoList(string(output), absolute), nil
 }
 
-// commandFor is the pure core of Derive: the command for the changed paths over the graph and the impacted set's package arguments, or the reason it falls back.
-// guards maps a package directory to the names of its guard tests.
-func commandFor(graph moduleGraph, changedPaths []string, guards map[string][]string) (command string, packages []string, fallback string) {
-	set, fallback := impactedFor(graph, changedPaths)
-	if fallback != "" {
-		return "", nil, fallback
-	}
-	command = buildCommand(graph, set, guards)
-	if len(command) > MaxCommandLength {
-		return "", nil, fmt.Sprintf("the derived command is %d characters, over the %d limit", len(command), MaxCommandLength)
-	}
-	if len(set) > 0 {
-		packages = packageArgs(graph.packageDirs(set))
-	}
-	return command, packages, ""
-}
-
 // impactedFor returns the impacted set of the changed paths over the graph, or the reason the diff cannot be narrowed to one.
 func impactedFor(graph moduleGraph, changedPaths []string) (set map[string]bool, fallback string) {
 	changed := map[string]bool{}
@@ -198,34 +114,6 @@ func packageOfPath(graph moduleGraph, changedPath string) (importPath string, ma
 		return "", false, true
 	}
 	return "", false, false
-}
-
-// buildCommand assembles the command for an impacted set: build, vet per tag, integration tests, then the guard tests of the packages outside the set.
-// The integration run compiles and runs every untagged test too, so no separate untagged run precedes it.
-// The test and guard steps run through `lyx gate test`, which inside a verify inherits the held gate slot, and the guard tests are one step so `lyx` is built once.
-func buildCommand(graph moduleGraph, set map[string]bool, guards map[string][]string) string {
-	steps := []string{"go build ./..."}
-	if len(set) > 0 {
-		args := strings.Join(packageArgs(graph.packageDirs(set)), " ")
-		for _, tag := range vetTags {
-			steps = append(steps, "go vet -tags "+tag+" "+args)
-		}
-		steps = append(steps, "lyx gate test --tags integration "+args)
-	}
-
-	var outsideDirs, names []string
-	for dir, dirNames := range guards {
-		if len(dirNames) > 0 && !set[graph.byDir[dir].ImportPath] {
-			outsideDirs = append(outsideDirs, dir)
-			names = append(names, dirNames...)
-		}
-	}
-	if len(outsideDirs) > 0 {
-		sort.Strings(outsideDirs)
-		sort.Strings(names)
-		steps = append(steps, fmt.Sprintf("lyx gate test --tags integration %s -- -run '^(%s)$'", strings.Join(packageArgs(outsideDirs), " "), strings.Join(slices.Compact(names), "|")))
-	}
-	return strings.Join(steps, " && ")
 }
 
 // packageArgs spells worktree-relative directories as `go` package arguments.

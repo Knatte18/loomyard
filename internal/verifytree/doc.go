@@ -23,8 +23,9 @@
 // Each run that spawns its command writes its own log, `verify-<n>.log` in the verify directory with n one above the highest existing number, and names it on Result.Log, so a later verify never overwrites an earlier run's evidence.
 // After each such run the directory keeps the newest verifyLogKeep logs plus the one the Publish failure record names, and removes the rest.
 //
-// The Publish failure record is the one never-tracked file Publish leaves when its plan verify or `publish_verify` fails.
-// It names the failing verify as a FailureKind, the failing tests, the failing run's own log, HEAD and the merge-in commit Publish made.
+// The Publish failure record is the one never-tracked file Publish leaves when a verify of its `landing` or `publish` gate fails.
+// It names the failing gate as a FailureKind (`landing` or `publish`) and the failing tier of that gate, the failing tests, the failing run's own log, HEAD and the merge-in commit Publish made.
+// A record written before the gates carries the retired kinds `plan_verify` and `publish_verify` and no tier, and a reader maps them onto the two gates.
 // Publish writes it through WritePublishFailure, the round gate reads it through ReadPublishFailure and checks its log path with IsLogPath, and a later passing Publish removes it through RemovePublishFailure, which leaves the log to pruning.
 // The record sits in the verify directory beside the logs.
 //

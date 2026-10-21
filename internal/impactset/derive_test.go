@@ -1,9 +1,8 @@
-// derive_test.go drives the pure core of Derive over a hand-built package graph and changed-path list.
+// derive_test.go holds the hand-built package graph the pure core's tests share and covers the changed-path parser.
 
 package impactset
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 )
@@ -23,139 +22,6 @@ func testGraph() moduleGraph {
 		{ImportPath: m + "internal/testkit/lyxbin", Dir: "internal/testkit/lyxbin"},
 		{ImportPath: m + "internal/e", Dir: "internal/e", TestImports: []string{m + "internal/testkit/lyxbin"}},
 	})
-}
-
-// gateCommand renders the expected command: build, vet per tag, integration, then the trailing steps.
-func gateCommand(packages string, trailing ...string) string {
-	steps := []string{
-		"go build ./...",
-		"go vet -tags integration " + packages,
-		"go vet -tags tmux " + packages,
-		"go vet -tags llm " + packages,
-		"lyx gate test --tags integration " + packages,
-	}
-	return strings.Join(append(steps, trailing...), " && ")
-}
-
-func TestCommandFor(t *testing.T) {
-	t.Parallel()
-
-	guards := map[string][]string{"internal/d": {"TestGuardD", "TestGuardD2"}, "internal/a": {"TestGuardA"}}
-
-	tests := []struct {
-		name        string
-		graph       moduleGraph
-		changed     []string
-		guards      map[string][]string
-		wantCommand string
-		// wantPackages is the impacted set's package arguments joined by spaces.
-		wantPackages string
-		wantFallback string
-	}{
-		{
-			name:    "one changed package yields it and its reverse dependencies, tmux and llm test imports included",
-			graph:   testGraph(),
-			changed: []string{"internal/a/a.go"},
-			guards:  guards,
-			wantCommand: gateCommand("./cmd/lyx ./internal/a ./internal/b ./internal/c ./internal/e ./internal/tmuxonly",
-				"lyx gate test --tags integration ./internal/d -- -run '^(TestGuardD|TestGuardD2)$'"),
-			wantPackages: "./cmd/lyx ./internal/a ./internal/b ./internal/c ./internal/e ./internal/tmuxonly",
-		},
-		{
-			name:         "a change to a dependency of cmd/lyx pulls in every package that builds the binary",
-			graph:        testGraph(),
-			changed:      []string{"internal/b/b.go"},
-			wantCommand:  gateCommand("./cmd/lyx ./internal/b ./internal/c ./internal/e"),
-			wantPackages: "./cmd/lyx ./internal/b ./internal/c ./internal/e",
-		},
-		{
-			name:         "a change outside cmd/lyx's dependencies leaves the binary-building packages out",
-			graph:        testGraph(),
-			changed:      []string{"internal/d/d.go"},
-			wantCommand:  gateCommand("./internal/d"),
-			wantPackages: "./internal/d",
-		},
-		{
-			name:         "a rename between package directories puts both in the set",
-			graph:        testGraph(),
-			changed:      []string{"internal/c/x.go", "internal/d/x.go"},
-			wantCommand:  gateCommand("./internal/c ./internal/d"),
-			wantPackages: "./internal/c ./internal/d",
-		},
-		{
-			name:        "a Markdown-only diff outside any package yields the build and the guards",
-			graph:       testGraph(),
-			changed:     []string{"docs/overview.md"},
-			guards:      guards,
-			wantCommand: "go build ./... && lyx gate test --tags integration ./internal/a ./internal/d -- -run '^(TestGuardA|TestGuardD|TestGuardD2)$'",
-		},
-		{
-			name:        "a guard name held by two outside packages is listed once",
-			graph:       testGraph(),
-			changed:     []string{"docs/overview.md"},
-			guards:      map[string][]string{"internal/a": {"TestGuardX"}, "internal/d": {"TestGuardX"}},
-			wantCommand: "go build ./... && lyx gate test --tags integration ./internal/a ./internal/d -- -run '^(TestGuardX)$'",
-		},
-		{
-			name:         "a non-Go file maps to its nearest enclosing package",
-			graph:        testGraph(),
-			changed:      []string{"internal/d/testdata/x.yaml"},
-			wantCommand:  gateCommand("./internal/d"),
-			wantPackages: "./internal/d",
-		},
-		{
-			name:         "a file outside any package that is not Markdown falls back",
-			graph:        testGraph(),
-			changed:      []string{"contracts/recipe.yaml"},
-			wantFallback: "contracts/recipe.yaml is neither a Markdown file nor under a Go package directory",
-		},
-		{
-			name:         "a deleted Go file whose directory is no longer a package falls back",
-			graph:        testGraph(),
-			changed:      []string{"internal/gone/gone.go"},
-			wantFallback: "internal/gone/gone.go is neither a Markdown file nor under a Go package directory",
-		},
-		{
-			name:         "a go.mod change falls back",
-			graph:        testGraph(),
-			changed:      []string{"internal/a/a.go", "go.mod"},
-			wantFallback: "go.mod changed",
-		},
-		{
-			name:         "a go.sum change falls back",
-			graph:        testGraph(),
-			changed:      []string{"go.sum"},
-			wantFallback: "go.sum changed",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			command, packages, fallback := commandFor(tt.graph, tt.changed, tt.guards)
-			if command != tt.wantCommand || fallback != tt.wantFallback {
-				t.Errorf("commandFor() = (%q, _, %q); want (%q, _, %q)", command, fallback, tt.wantCommand, tt.wantFallback)
-			}
-			if got := strings.Join(packages, " "); got != tt.wantPackages {
-				t.Errorf("commandFor() packages = %q; want %q", got, tt.wantPackages)
-			}
-		})
-	}
-}
-
-func TestCommandFor_OverLongCommandFallsBack(t *testing.T) {
-	t.Parallel()
-
-	pkgs := []pkg{{ImportPath: "m/internal/root", Dir: "internal/root"}}
-	for i := 0; i < 400; i++ {
-		dir := fmt.Sprintf("internal/dependent%03d", i)
-		pkgs = append(pkgs, pkg{ImportPath: "m/" + dir, Dir: dir, Imports: []string{"m/internal/root"}})
-	}
-
-	command, packages, fallback := commandFor(newModuleGraph(pkgs), []string{"internal/root/root.go"}, nil)
-	if command != "" || packages != nil || !strings.Contains(fallback, "over the 8000 limit") {
-		t.Errorf("commandFor() = (%q, %v, %q); want a fallback naming the 8000 limit and no packages", command, packages, fallback)
-	}
 }
 
 func TestParseChangedPaths(t *testing.T) {

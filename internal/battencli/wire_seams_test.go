@@ -34,6 +34,7 @@ import (
 // batten wires only its own producers, so every loom seam of shedrecipe.Env stays nil here.
 var intentionallyNil = map[string]string{
 	"VerifyCommand":               "loom-only seam, batten runs no verify gate",
+	"Round":                       "loom-only seam, batten runs no verify gate",
 	"Shuttle":                     "loom-only seam, batten drives no agent itself",
 	"Burler":                      "loom-only seam, batten runs no review round",
 	"Seats":                       "loom-only seam, batten runs no seat table",

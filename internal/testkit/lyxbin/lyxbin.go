@@ -166,6 +166,27 @@ func Build(tb testing.TB) string {
 	return BuildWithLDFlags(tb, "")
 }
 
+// PutFirstOnPath copies the built `lyx` binary into a temp directory under the name `lyx` and puts that directory first on `PATH` for the test.
+// The built binary may carry a content-derived name, which a shell looking up `lyx` would not find.
+// It sets process-global state through t.Setenv, so the calling test is not parallel.
+func PutFirstOnPath(t *testing.T) {
+	t.Helper()
+	built := Build(t)
+	data, err := os.ReadFile(built)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	name := "lyx"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), data, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
 // BuildWithLDFlags is Build with the given linker flags.
 func BuildWithLDFlags(tb testing.TB, ldflags string) string {
 	tb.Helper()

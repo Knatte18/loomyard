@@ -51,15 +51,14 @@ var loomshedAllowedImports = []string{
 	// internal/verifytree is the shared plan-verify function.
 	// It is told its worktree and verify directory and resolves no geometry.
 	"github.com/Knatte18/loomyard/internal/verifytree",
-	// internal/commentlint and internal/impactset are the round gate's lint and impacted-set derivation.
-	// Both are told the worktree and resolve no geometry.
+	// internal/commentlint is the round gate's comment lint.
+	// It is told the worktree and resolves no geometry.
 	"github.com/Knatte18/loomyard/internal/commentlint",
-	"github.com/Knatte18/loomyard/internal/impactset",
 	// internal/patternlint and internal/pattern are the round gate's headroom lint and the finding type it returns.
 	// Both are told the worktree and resolve no geometry.
 	"github.com/Knatte18/loomyard/internal/patternlint",
 	"github.com/Knatte18/loomyard/internal/pattern",
-	// internal/gitrepo is the go-git read that checks a Publish failure record's merge commit.
+	// internal/gitrepo is the go-git read that checks a Publish failure record's merge commit and a recorded pass's commit.
 	// It is told the worktree and resolves no geometry.
 	"github.com/Knatte18/loomyard/internal/gitrepo",
 	// internal/shedverbs is imported for the two interrupt-policy words and no behaviour.

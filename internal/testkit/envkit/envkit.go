@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -227,6 +228,24 @@ func TemplateSetting(module, key string) (any, error) {
 	return value, nil
 }
 
+// fixedRoundGate is a loomshed.RoundGate over fixed gate lists, so a resolved verify gate builds without a hub's gate.yaml.
+func fixedRoundGate() loomshed.RoundGate {
+	gates := map[string][]int{"round": {0, 1}, "landing": {0, 1}, "publish": {2}}
+	return loomshed.RoundGate{
+		Tiers: gates["round"],
+		Render: func(scope ...string) string {
+			return strings.Join(append([]string{"lyx", "gate", "test", "--wait", "--tier", "0", "--tier", "1"}, scope...), " ")
+		},
+		GateTiers: func(gate string) ([]int, error) {
+			list, ok := gates[gate]
+			if !ok {
+				return nil, fmt.Errorf("envkit: no fixed list for gate %q", gate)
+			}
+			return list, nil
+		},
+	}
+}
+
 // FullEnv returns a `shedrecipe.Env` with every path field an absolute path under one `t.TempDir()` and every seam any registered engine requires filled.
 // A seam added to the registry's requirements must be filled here, which NilSeams(FullEnv(t)) catches.
 func FullEnv(t testing.TB) shedrecipe.Env {
@@ -239,6 +258,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		WorktreeRoot:       mustMkdir(t, filepath.Join(dir, "worktree")),
 		VerifyDir:          mustMkdir(t, filepath.Join(dir, "verify")),
 		VerifyCommand:      func() (string, error) { return "go test ./...", nil },
+		Round:              func() (loomshed.RoundGate, error) { return fixedRoundGate(), nil },
 		StatusPath:         filepath.Join(dir, "status.json"),
 		StatusLockPath:     filepath.Join(dir, "status.json.lock"),
 		StencilsDir:        mustMkdir(t, filepath.Join(dir, "stencils")),

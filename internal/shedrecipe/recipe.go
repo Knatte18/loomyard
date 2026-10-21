@@ -92,6 +92,9 @@ type Env struct {
 	VerifyDir string
 	// VerifyCommand is the told verify-command source, read at each arrival by the gate resolver's "verify" gate, which requires it.
 	VerifyCommand func() (string, error)
+	// Round is the told source of the hub's `round` gate, read at each arrival by the gate resolver's "verify" gate, which requires it.
+	// Its error is the gate's returned error.
+	Round func() (loomshed.RoundGate, error)
 	// VerifyMergeBase is the told reader of the task branch's merge base with the parent branch, read by the gate resolver's "verify" gate.
 	// It is the base of the headroom lint, or of both lints when VerifyTreeScope is set; nil skips the headroom lint.
 	VerifyMergeBase func() (string, error)

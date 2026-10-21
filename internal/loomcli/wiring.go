@@ -703,11 +703,12 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		RunScratchDir: shedrun.ScratchDir(location, c.runID),
 		VerifyDir:     verifytree.Dir(anchorPath),
 		VerifyCommand: planVerifySource(location).command,
+		Round:         roundGateSource(fabricengine.ConfigDirs(location)),
 		GateSlots:     hubgeom.GateSlots(location),
 		// VerifyMergeBase is nil for a standalone run, which records no parent branch.
 		VerifyMergeBase: verifyMergeBase,
 		PublishFailure: func() string {
-			return loomshed.PublishFailureNote(location.WorktreePath(), verifytree.Dir(anchorPath))
+			return loomshed.PublishFailureNote(location.WorktreePath(), verifytree.Dir(anchorPath), gateTiersLookup(fabricengine.ConfigDirs(location)))
 		},
 		WebsterRecord: func() string {
 			return loomshed.WebsterRecordNote(anchorPath)

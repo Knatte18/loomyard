@@ -3,9 +3,11 @@
 package verifytree
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -26,33 +28,43 @@ func TestPublishFailureRecord(t *testing.T) {
 		}
 	})
 
-	t.Run("round trip keeps the caller's log path", func(t *testing.T) {
-		t.Parallel()
-		p := newPaths(t)
-		want := PublishFailure{
-			Kind:        FailureKindPublishVerify,
-			Row:         "Merge-In",
-			Tests:       []FailedTest{{Package: "example.com/m/a", Test: "TestA/sub"}},
-			LogPath:     filepath.Join(p.Dir, "verify-3.log"),
-			Head:        "abc123",
-			MergeCommit: "def456",
-			Target:      "Webster-Burler",
-			WrittenAt:   "2026-01-02T03:04:05Z",
-		}
-		if err := WritePublishFailure(p, want); err != nil {
-			t.Fatalf("WritePublishFailure: %v", err)
-		}
+	for _, tier := range []int{0, 2} {
+		t.Run(fmt.Sprintf("round trip keeps the caller's log path and tier%d", tier), func(t *testing.T) {
+			t.Parallel()
+			p := newPaths(t)
+			want := PublishFailure{
+				Kind:        FailureKindPublish,
+				Tier:        tier,
+				Row:         "Merge-In",
+				Tests:       []FailedTest{{Package: "example.com/m/a", Test: "TestA/sub"}},
+				LogPath:     filepath.Join(p.Dir, "verify-3.log"),
+				Head:        "abc123",
+				MergeCommit: "def456",
+				Target:      "Webster-Burler",
+				WrittenAt:   "2026-01-02T03:04:05Z",
+			}
+			if err := WritePublishFailure(p, want); err != nil {
+				t.Fatalf("WritePublishFailure: %v", err)
+			}
+			written, err := os.ReadFile(p.PublishFailure)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(written), fmt.Sprintf("tier: %d\n", tier)) {
+				t.Fatalf("record file = %q; want a tier: %d line even for tier 0", written, tier)
+			}
 
-		got, ok, err := ReadPublishFailure(p)
-		if !ok || err != nil {
-			t.Fatalf("ReadPublishFailure = (_, %v, %v); want (_, true, nil)", ok, err)
-		}
-		if !reflect.DeepEqual(got, want) {
-			t.Fatalf("record = %+v; want %+v", got, want)
-		}
-	})
+			got, ok, err := ReadPublishFailure(p)
+			if !ok || err != nil {
+				t.Fatalf("ReadPublishFailure = (_, %v, %v); want (_, true, nil)", ok, err)
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("record = %+v; want %+v", got, want)
+			}
+		})
+	}
 
-	t.Run("a record written before the row field decodes with an empty row", func(t *testing.T) {
+	t.Run("a record written before the row and tier fields decodes with an empty row and tier 0", func(t *testing.T) {
 		t.Parallel()
 		p := newPaths(t)
 		if err := os.WriteFile(p.PublishFailure, []byte("kind: plan_verify\nlog_path: verify-1.log\nhead: abc123\n"), 0o644); err != nil {
@@ -62,8 +74,8 @@ func TestPublishFailureRecord(t *testing.T) {
 		if !ok || err != nil {
 			t.Fatalf("ReadPublishFailure = (_, %v, %v); want (_, true, nil)", ok, err)
 		}
-		if got.Row != "" || got.Kind != FailureKindPlanVerify {
-			t.Fatalf("record = %+v; want an empty Row and kind %q", got, FailureKindPlanVerify)
+		if got.Row != "" || got.Tier != 0 || got.Kind != FailureKindPlanVerify {
+			t.Fatalf("record = %+v; want an empty Row, tier 0 and kind %q", got, FailureKindPlanVerify)
 		}
 	})
 

@@ -1,4 +1,4 @@
-// verifygate.go implements NewVerifyGate, the must-pass gate that holds a handoff until the headroom lint, the comment lint and the told verify command pass on the committed tree, narrowed to the round's impacted set, or in the darn form to the diff's tree-scoped or impacted-set command from a told merge base.
+// verifygate.go implements NewVerifyGate, the must-pass gate that holds a handoff until the headroom lint, the comment lint and the told verify command pass on the committed tree, narrowed to the hub's `round` gate over the diff, or in the darn form to the diff's tree-scoped command or the `round` gate from a told merge base.
 
 package loomshed
 
@@ -11,7 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/commentlint"
 	"github.com/Knatte18/loomyard/internal/gateslot"
-	"github.com/Knatte18/loomyard/internal/impactset"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/patternlint"
@@ -22,37 +22,45 @@ import (
 // verifyLogTailBytes bounds how much of the verify log a failing verdict quotes.
 const verifyLogTailBytes = 4096
 
+// RoundGate is the hub's `round` gate as the verify gate reads it at each arrival.
+type RoundGate struct {
+	// Tiers are the tier numbers the `round` gate lists, in order.
+	Tiers []int
+	// Render spells the one `lyx gate test --wait --tier <round list>` call over the given scope words.
+	Render func(scope ...string) string
+	// GateTiers returns the tier numbers a named gate lists, or the config refusal with its way forward.
+	GateTiers func(gate string) ([]int, error)
+}
+
 // NewVerifyGate returns a must-pass shuttleengine.Gate that, at each arrival, reads the told verify command, lints the comments the work added, and runs the gate's command through verifytree.Verify over worktreeRoot, keeping its record, marker and log in verifyDir.
 // siteLabel names the call site in the running marker, and the closure's own count of its calls is the attempt.
-// command is the told verify-command source, read at each arrival.
+// command is the told verify-command source, read at each arrival; it is the site's base command, so a pass keeps its record entry and Publish skips on the same tree and command.
+// round is the told `round` gate source, read at each arrival after the told command; its error is the gate's returned error, carrying the config refusal's own way forward.
 // slots is the hub pool the command waits on before it runs; nil runs it unslotted.
 //
 // With treeScope nil the gate takes the round form.
-// The base of the round is the commit of the told command's latest recorded pass.
-// With a usable base the comment lint runs from it to HEAD before any test, and the round command is the impacted-set command impactset derives.
-// With no usable base the lint passes and the round command is the told command itself, as it is wherever impactset names a fallback.
-// The pass of the round command keeps the told command's record entry, so the next round still diffs from it.
+// The base of the round is the commit of the told command's latest recorded pass, when that commit is an ancestor of HEAD.
+// With a usable base the comment lint runs from it to HEAD before any test, and the command is the round call over `--base` that commit, whose scope narrows, falls back to whole and runs the guard step.
+// With no usable base the lint passes and the command is the told command itself.
 // An empty told command passes with a logged warning.
-// When mergeBase is non-nil, the headroom lint also runs from the merge base it reads to HEAD, after the guard scan and before the comment lint and any test; nil skips it.
+// When mergeBase is non-nil, the headroom lint also runs from the merge base it reads to HEAD, before the comment lint and any test; nil skips it.
 //
 // With treeScope non-nil the gate takes the darn form, and mergeBase must be non-nil.
 // The headroom lint and then the comment lint run from the merge base mergeBase reads to HEAD, so every attempt diffs from the merge base.
-// Then treeScope is read: a tree-scoped diff runs the tree-scoped command it answers, with no `tmux` pass,
-// and any other diff runs the command impactset derives from the merge base, or the told command in full where impactset falls back.
-// The told command is the site's base command, so Publish skips on the same tree and command.
+// Then treeScope is read: a tree-scoped diff runs the tree-scoped command it answers, and passes with a logged note, running nothing, when that command is empty;
+// any other diff runs the round call over `--base` the merge base.
 // The form has no skip path: an empty told command is an error naming the source, never a pass, and so is a nil mergeBase.
 //
 // While a Publish failure record is present, the command also confirms the fix.
-// It first runs each failing test the checked record names, by name in its package under the failing verify's tier, so a failure that still holds ends the run in seconds.
-// It runs last, for a `publish_verify` failure, the impacted set under `tmux`, or `./...` where the command fell back to the told command; a tree-scoped diff has no such pass.
+// It first runs each failing test the checked record names, by name in its package under the record's failing tier, so a failure that still holds ends the run in seconds, and last one package pass of that tier over the failing tests' packages.
 // The record's fields are shape-checked first, and a field that fails is dropped and logged, so no record text reaches the command as shell.
 //
 // `StatusPassed` and `StatusSkipped` pass.
 // `StatusDirty` fails with the dirty paths.
-// `StatusFailed` fails with the exit code, the log path and the log's tail, and, after a CPU watchdog quit, the window and the `busy_quit_sec` way forward.
-// A headroom finding, a comment lint finding, or a test file the guard scan rejects such as a misplaced `//lyx:guard` marker, fails with its file and line or its bytes and the way forward.
-// A command, merge base or tree scope read error, a failure to read git or a package directory, a lint run error or a cancelled verify is a returned error, since none is a defect the writer can fix.
-func NewVerifyGate(worktreeRoot, verifyDir, siteLabel string, command, mergeBase func() (string, error), treeScope func() (string, bool, error), slots *gateslot.Pool) shuttleengine.Gate {
+// `StatusFailed` fails with the exit code, the log path and the log's tail, and, after a CPU watchdog quit, the window and the `busy_quit_sec` way forward; a test file the round call's guard scan rejects, such as a misplaced `//lyx:guard` marker, reaches the findings through that tail with its file and line.
+// A headroom finding or a comment lint finding fails with its file and line or its bytes and the way forward.
+// A command, round, merge base or tree scope read error, a failure to read git, a lint run error or a cancelled verify is a returned error, since none is a defect the writer can fix.
+func NewVerifyGate(worktreeRoot, verifyDir, siteLabel string, command, mergeBase func() (string, error), treeScope func() (string, bool, error), slots *gateslot.Pool, round func() (RoundGate, error)) shuttleengine.Gate {
 	attempt := 0
 	darnForm := treeScope != nil
 	paths := verifytree.NewPaths(worktreeRoot, verifyDir)
@@ -72,10 +80,13 @@ func NewVerifyGate(worktreeRoot, verifyDir, siteLabel string, command, mergeBase
 		if darnForm && mergeBase == nil {
 			return shuttleengine.GateResult{}, fmt.Errorf("loomshed: verify gate: the darn form was told no merge base reader")
 		}
+		roundGate, err := round()
+		if err != nil {
+			return shuttleengine.GateResult{}, fmt.Errorf("loomshed: verify gate: read the round gate: %w", err)
+		}
 
 		var lintBase, headroomBase string
 		runCommand := told
-		tmuxPackages := []string{"./..."}
 		if darnForm {
 			lintBase, err = mergeBase()
 			if err != nil {
@@ -83,26 +94,11 @@ func NewVerifyGate(worktreeRoot, verifyDir, siteLabel string, command, mergeBase
 			}
 			headroomBase = lintBase
 		} else {
-			base := ""
-			if pass, ok := verifytree.LatestPass(paths, told); ok {
-				base = pass.Commit
-			}
-			derivation, err := impactset.Derive(worktreeRoot, base)
-			if impactset.IsGuardScanError(err) {
-				logger.Warn("loomshed: verify gate found a test file the guard scan rejects", "gate", siteLabel, "attempt", attempt, "err", err)
-				return shuttleengine.GateResult{Passed: false, Findings: guardScanFindings(err)}, nil
-			}
-			if err != nil {
-				return shuttleengine.GateResult{}, fmt.Errorf("loomshed: verify gate: derive the round command: %w", err)
-			}
-			lintBase = derivation.Base
-			if derivation.Command != "" {
-				runCommand = derivation.Command
+			if pass, ok := verifytree.LatestPass(paths, told); ok && isAncestorOfHead(worktreeRoot, pass.Commit) {
+				lintBase = pass.Commit
+				runCommand = roundGate.Render("--base", lintBase)
 			} else {
-				logger.Info("loomshed: verify gate runs the told verify command", "gate", siteLabel, "attempt", attempt, "reason", derivation.Fallback)
-			}
-			if derivation.Fallback == "" {
-				tmuxPackages = derivation.Packages
+				logger.Info("loomshed: verify gate runs the told verify command", "gate", siteLabel, "attempt", attempt, "reason", "no recorded pass of the told command to diff from")
 			}
 			if mergeBase != nil {
 				headroomBase, err = mergeBase()
@@ -136,30 +132,21 @@ func NewVerifyGate(worktreeRoot, verifyDir, siteLabel string, command, mergeBase
 			if err != nil {
 				return shuttleengine.GateResult{}, fmt.Errorf("loomshed: verify gate: read the tree scope: %w", err)
 			}
-			if isScoped {
+			switch {
+			case isScoped && scoped == "":
+				logger.Info("loomshed: verify gate ran nothing, the tree-scoped command is empty", "gate", siteLabel, "attempt", attempt)
+				return shuttleengine.GateResult{Passed: true}, nil
+			case isScoped:
 				runCommand = scoped
-				tmuxPackages = nil
-			} else {
-				derivation, err := impactset.Derive(worktreeRoot, lintBase)
-				if impactset.IsGuardScanError(err) {
-					logger.Warn("loomshed: verify gate found a test file the guard scan rejects", "gate", siteLabel, "attempt", attempt, "err", err)
-					return shuttleengine.GateResult{Passed: false, Findings: guardScanFindings(err)}, nil
-				}
-				if err != nil {
-					return shuttleengine.GateResult{}, fmt.Errorf("loomshed: verify gate: derive the command: %w", err)
-				}
-				if derivation.Command != "" {
-					runCommand = derivation.Command
-				} else {
-					logger.Info("loomshed: verify gate runs the told verify command", "gate", siteLabel, "attempt", attempt, "reason", derivation.Fallback)
-				}
-				if derivation.Fallback == "" {
-					tmuxPackages = derivation.Packages
-				}
+			default:
+				runCommand = roundGate.Render("--base", lintBase)
 			}
 		}
-		if failure, ok := checkedPublishFailure(paths, worktreeRoot); ok {
-			failedTests, packagePass := publishFailureSteps(failure, tmuxPackages)
+		if failure, ok := checkedPublishFailure(paths, worktreeRoot, roundGate.GateTiers); ok {
+			failedTests, packagePass, err := publishFailureSteps(failure, roundGate.GateTiers)
+			if err != nil {
+				return shuttleengine.GateResult{}, fmt.Errorf("loomshed: verify gate: confirm the publish failure: %w", err)
+			}
 			if failedTests != "" {
 				runCommand = failedTests + " && " + runCommand
 			}
@@ -191,9 +178,10 @@ func NewVerifyGate(worktreeRoot, verifyDir, siteLabel string, command, mergeBase
 	}
 }
 
-// guardScanFindings renders a guard scan rejection with the file and line it names and the way to fix it.
-func guardScanFindings(err error) string {
-	return fmt.Sprintf("A test file blocks the guard scan, so no test ran: %v.\n\nPut `//lyx:guard` on the line directly above its top-level `func Test…` line (only `//testtiming:keep` lines may sit between), keep it out of `tmux` and `llm` test files, and make every test file parse.\n", err)
+// isAncestorOfHead reports whether commit is an ancestor of HEAD in worktreeRoot; any git refusal reads as not an ancestor.
+func isAncestorOfHead(worktreeRoot, commit string) bool {
+	ancestor, err := gitrepo.New(worktreeRoot).IsAncestor(commit, "HEAD")
+	return err == nil && ancestor
 }
 
 // headroomFindings renders a headroom finding with its message, the way forward and the instruction to re-step the row.

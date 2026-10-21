@@ -34,24 +34,27 @@
 // Told a tree scope reader, it takes the darn form; otherwise it takes the round form the Webster-Burler-Fix row runs, which runs less than the full command.
 // Told a merge base, the round form first runs the headroom lint from it to HEAD, before the comment lint and any test; told none, it skips that lint.
 // The form is a told reader, never inferred from the merge base reader's presence.
-// It lints the comments added since the told command's last recorded pass, then runs the command impactset derives from that diff through verifytree.Verify, falling back to the told command wherever impactset cannot narrow.
-// The narrowing is impactset's; Webster's gate, Publish and Finalize keep the full plan verify on the tree that lands.
+// It is also told the hub's `round` gate through a RoundGate source, read at each arrival, whose error is the gate's returned error.
+// It lints the comments added since the told command's last recorded pass, then runs the round call, `lyx gate test --wait --tier <round list> --base <that pass's commit>`, through verifytree.Verify, running the told command itself where there is no pass to diff from.
+// The narrowing, the fallback to whole and the guard step are the round call's own; Webster's gate, Publish and Finalize keep the full verify on the tree that lands.
 // A failed run's findings carry the exit code, the log path and the log's tail, and when the whole log holds the CPU watchdog's line that `lyx gate test` prints after it quits a busy test binary, a paragraph naming the window.
 // A watchdog quit of a healthy package has no code fix: the way forward is raising `busy_quit_sec` through `lyx config gate` from the prime, then re-stepping the row.
 // The gate runs no flake rerun.
-// The round compiles the `tmux` and `llm` tiers and never runs `llm`.
-// It runs the `tmux` tier only while a checked Publish failure record is present, to confirm the fix.
-// The failing top-level tests the record names, one step per package and test with the subtests collapsed into it, run before the round command, so a failure that still holds is known in seconds;
-// for a `publish_verify` failure the impacted-set pass runs after it.
+// The round runs the tiers the `round` gate lists and nothing else, so `tmux` and `llm` tiers run only if the hub lists them there.
+// While a checked Publish failure record is present, the round also confirms the fix under the record's failing tier.
+// The failing top-level tests the record names, one `lyx gate test --wait --tier <failing tier> <package> -- -run '^<Test>$'` step per package and test with the subtests collapsed into it, run before the round command, so a failure that still holds is known in seconds;
+// one package pass of that tier over the failing tests' packages runs after it.
+// A record of the retired kinds `plan_verify` and `publish_verify`, and a record whose tier its gate no longer lists, reads as the highest tier of its `landing` or `publish` gate.
+// A record the gate's tier list cannot place is ignored with a logged warning.
 // Publish reruns both verifies in full regardless, and stays the guard.
 // Told a tree scope reader, it takes the darn form the `Darn-Write` and `Darn-Burler-Fix` rows run, and requires the merge base reader:
 // the headroom lint and then the comment lint run from the task branch's merge base with the parent to HEAD, so every attempt diffs from the merge base and a PR-Gate rework is never narrowed to a stale pass.
 // The tree scope reader is then read at each arrival.
-// A tree-scoped diff, wholly under the hub's configured non-production trees, runs only the tree-scoped command the reader answers, with no `tmux` pass.
-// Any other diff runs the command impactset derives from the merge base, or the told command in full where impactset falls back, after the same guard scan the round form runs.
+// A tree-scoped diff, wholly under the hub's configured non-production trees, runs only the tree-scoped command the reader answers; an empty command, as for a docs-only diff whose trees name no target, runs nothing, logs so and passes, so an empty tree scope never falls back to the computed scope.
+// Any other diff runs the round call over `--base` the merge base, with the same guard step the round form gets from it.
 // The told command is the site's base command in every case, so a pass keeps its record entry and Publish skips on the same tree and command.
-// That form has no skip path: an empty told command, a command read error, a merge base read error and a tree scope read error are each the gate's returned error.
-// With a checked Publish failure record present it runs the failing tests before that command and, for a `publish_verify` failure, the derived command's packages, or `./...` on a fallback, under `tmux` after it.
+// That form has no skip path: an empty told command, a command read error, a round read error, a merge base read error and a tree scope read error are each the gate's returned error.
+// With a checked Publish failure record present it runs the failing tests before that command and the failing tier's package pass after it.
 // An impact-scoped pass lets through a break only the whole module shows;
 // Merge-In's whole run catches it for every diff touching production code.
 //

@@ -382,12 +382,14 @@ func TestResolveGateSpec_UnknownNameListsSixValues(t *testing.T) {
 }
 
 func TestResolveGateSpec_VerifyRequiresAbsoluteEnvRoots(t *testing.T) {
-	for _, field := range []string{"VerifyCommand", "WorktreeRoot", "VerifyDir"} {
+	for _, field := range []string{"VerifyCommand", "Round", "WorktreeRoot", "VerifyDir"} {
 		t.Run(field, func(t *testing.T) {
 			env := newTestEnv(t)
 			switch field {
 			case "VerifyCommand":
 				env.VerifyCommand = nil
+			case "Round":
+				env.Round = nil
 			case "WorktreeRoot":
 				env.WorktreeRoot = "relative/worktree"
 			case "VerifyDir":

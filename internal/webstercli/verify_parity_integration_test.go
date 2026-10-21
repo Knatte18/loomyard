@@ -80,7 +80,9 @@ func TestGateParity_VerifyGate(t *testing.T) {
 
 			burlerFx := prepare()
 			geom := burlerFx.CLI.geom
-			burler := gateVerdict(loomshed.NewVerifyGate(geom.WorktreeRoot, geom.VerifyDir, "Webster-Burler gate", func() (string, error) { return tc.command, nil }, nil, nil, nil)())
+			// The fixture records no pass, so the gate runs the told command and the round seam renders and looks up nothing.
+			round := func() (loomshed.RoundGate, error) { return loomshed.RoundGate{}, nil }
+			burler := gateVerdict(loomshed.NewVerifyGate(geom.WorktreeRoot, geom.VerifyDir, "Webster-Burler gate", func() (string, error) { return tc.command, nil }, nil, nil, nil, round)())
 
 			websterFx := prepare()
 			wgeom := websterFx.CLI.geom

@@ -1,6 +1,6 @@
 //go:build integration
 
-// derive_integration_test.go drives Derive and DeriveTargets over a real repository holding a small Go module.
+// derive_integration_test.go drives DeriveTargets over a real repository holding a small Go module.
 
 package impactset
 
@@ -33,16 +33,26 @@ func commitAll(t *testing.T, dir, message string) string {
 	return gitkit.Git(t, dir, "rev-parse", "HEAD")
 }
 
-func derive(t *testing.T, dir, base string) Derivation {
+// deriveTargets returns DeriveTargets of dir from base, failing the test on an error.
+func deriveTargets(t *testing.T, dir, base string) Targets {
 	t.Helper()
-	derivation, err := Derive(dir, base)
+	targets, err := DeriveTargets(context.Background(), dir, base)
 	if err != nil {
-		t.Fatalf("Derive(%q) error = %v; want nil", base, err)
+		t.Fatalf("DeriveTargets(%q) error = %v; want nil", base, err)
 	}
-	return derivation
+	return targets
 }
 
-// TestDerive_OverARepository walks one repository through each fallback and a one-package change.
+// packagesOf joins the impacted packages of every module of targets with spaces.
+func packagesOf(targets Targets) string {
+	var packages []string
+	for _, module := range targets.Modules {
+		packages = append(packages, module.Packages...)
+	}
+	return strings.Join(packages, " ")
+}
+
+// TestDerive_OverARepository walks one repository through each fallback, a one-package change and the working-tree forms.
 // The steps share the repository and run in order, each against the commit the step before left, so the test is parallel as a whole and no step is.
 func TestDerive_OverARepository(t *testing.T) {
 	t.Parallel()
@@ -52,8 +62,8 @@ func TestDerive_OverARepository(t *testing.T) {
 		gitkit.Git(t, dir, "init", "-q")
 		writeRepoFile(t, dir, "a/a.go", "package a\n")
 		base := commitAll(t, dir, "base")
-		if got := derive(t, dir, base); got.Command != "" || got.Fallback != "no go.mod at the worktree root" {
-			t.Errorf("Derive() = %+v; want the no-go.mod fallback", got)
+		if got := deriveTargets(t, dir, base); !got.Whole || got.Fallback != "no go.mod at the worktree root" {
+			t.Errorf("DeriveTargets() = %+v; want the no-go.mod fallback", got)
 		}
 	})
 
@@ -69,8 +79,8 @@ func TestDerive_OverARepository(t *testing.T) {
 	base := commitAll(t, dir, "base")
 
 	t.Run("an empty base falls back", func(t *testing.T) {
-		if got := derive(t, dir, ""); got.Command != "" || got.Fallback != "no base commit to diff from" || got.Base != "" {
-			t.Errorf("Derive() = %+v; want the empty-base fallback with no base", got)
+		if got := deriveTargets(t, dir, ""); !got.Whole || got.Fallback != "no base commit to diff from" || got.Base != "" {
+			t.Errorf("DeriveTargets() = %+v; want the empty-base fallback with no base", got)
 		}
 	})
 
@@ -79,27 +89,26 @@ func TestDerive_OverARepository(t *testing.T) {
 		writeRepoFile(t, dir, "side.txt", "side\n")
 		side := commitAll(t, dir, "side")
 		gitkit.Git(t, dir, "checkout", "-q", branch)
-		got := derive(t, dir, side)
-		if got.Command != "" || got.Fallback == "" || got.Base != "" {
-			t.Errorf("Derive() = %+v; want a not-an-ancestor fallback with no base", got)
+		got := deriveTargets(t, dir, side)
+		if !got.Whole || got.Fallback == "" || got.Base != "" {
+			t.Errorf("DeriveTargets() = %+v; want a not-an-ancestor fallback with no base", got)
 		}
 	})
 
 	writeRepoFile(t, dir, "a/a.go", "package a\n\nfunc F() {}\n")
 	commitAll(t, dir, "change a")
-	t.Run("a one-package change derives that package's command", func(t *testing.T) {
-		got := derive(t, dir, base)
-		want := gateCommand("./a ./b", "lyx gate test --tags integration ./g -- -run '^(TestGuard)$'")
-		if got.Command != want || got.Fallback != "" || got.Base != base || strings.Join(got.Packages, " ") != "./a ./b" {
-			t.Errorf("Derive() = %+v; want command %q over packages ./a ./b on base %s", got, want, base)
+	t.Run("a one-package change derives that package's set and the outside guard", func(t *testing.T) {
+		got := deriveTargets(t, dir, base)
+		if got.Whole || got.Base != base || packagesOf(got) != "./a ./b" || !reflect.DeepEqual(got.Guards, map[string][]string{"g": {"TestGuard"}}) {
+			t.Errorf("DeriveTargets() = %+v; want packages ./a ./b on base %s and the guard of g", got, base)
 		}
 	})
 
 	writeRepoFile(t, dir, "go.mod", "module example.com/m\n\ngo 1.26\n\n// changed\n")
 	commitAll(t, dir, "change go.mod")
 	t.Run("a go.mod change falls back", func(t *testing.T) {
-		if got := derive(t, dir, base); got.Command != "" || got.Fallback != "go.mod changed" || got.Base != base {
-			t.Errorf("Derive() = %+v; want the go.mod fallback on base %s", got, base)
+		if got := deriveTargets(t, dir, base); !got.Whole || got.Fallback != "go.mod changed" {
+			t.Errorf("DeriveTargets() = %+v; want the go.mod fallback", got)
 		}
 	})
 
@@ -109,9 +118,9 @@ func TestDerive_OverARepository(t *testing.T) {
 	}
 	commitAll(t, dir, "delete c")
 	t.Run("a deleted file whose directory is no longer a package falls back", func(t *testing.T) {
-		got := derive(t, dir, afterGoMod)
-		if got.Command != "" || got.Fallback != "c/c.go is neither a Markdown file nor under a Go package directory" {
-			t.Errorf("Derive() = %+v; want the deleted-package fallback", got)
+		got := deriveTargets(t, dir, afterGoMod)
+		if !got.Whole || got.Fallback != "c/c.go is neither a Markdown file nor under a Go package directory" {
+			t.Errorf("DeriveTargets() = %+v; want the deleted-package fallback", got)
 		}
 	})
 
@@ -119,18 +128,7 @@ func TestDerive_OverARepository(t *testing.T) {
 	head := commitAll(t, dir, "ignore text files")
 	targetsOf := func(t *testing.T) Targets {
 		t.Helper()
-		targets, err := DeriveTargets(context.Background(), dir, head)
-		if err != nil {
-			t.Fatalf("DeriveTargets(%q) error = %v; want nil", head, err)
-		}
-		return targets
-	}
-	packagesOf := func(targets Targets) string {
-		var packages []string
-		for _, module := range targets.Modules {
-			packages = append(packages, module.Packages...)
-		}
-		return strings.Join(packages, " ")
+		return deriveTargets(t, dir, head)
 	}
 	remove := func(t *testing.T, names ...string) {
 		t.Helper()

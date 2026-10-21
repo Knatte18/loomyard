@@ -1,4 +1,4 @@
-// targets.go declares DeriveTargets and its pure core: the impacted packages of the working tree as a target set, where Derive spells a command.
+// targets.go declares DeriveTargets and its pure core: the impacted packages of the working tree as a target set.
 
 package impactset
 
