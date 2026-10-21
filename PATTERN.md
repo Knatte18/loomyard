@@ -73,7 +73,7 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-creel-store` — Writing the creel journal or reaching a pane: only `internal/creelengine`, a pane only via its `Delivery` seam. (test) — [background](pattern/PATTERN-creel-store.md)
 - `PATTERN-stencil-ownership` — Reading a prompt or spec: at call time via `internal/stencilstore` from a told directory, never embedded. — [background](pattern/PATTERN-stencil-ownership.md)
 - `PATTERN-producer-pointer-rule` — Writing an instruction file: it points at another producer's format contract, never restating it.
-- `PATTERN-friction-capture` — Halting a loom run or refusing in webster: Go writes a friction note, reflected by the run's Friction-Reflect row rather than at the stop, and archived only once a reflection covers it. (test) — [background](pattern/PATTERN-friction-capture.md)
+- `PATTERN-friction-capture` — Halting a loom run or refusing in webster: Go writes a note, reflected at the run's end, archived once covered. (test) — [background](pattern/PATTERN-friction-capture.md)
 - `PATTERN-completion-signal` — Finding a run unfinished in `internal/shuttleengine`: consult `allOutputFilesExist` first. (test) — [background](pattern/PATTERN-completion-signal.md)
 - `PATTERN-shuttle-provider-seam` — Referencing a provider: its specifics live only under `internal/shuttleengine/<engine>`. (test) — [background](pattern/PATTERN-shuttle-provider-seam.md)
 - `PATTERN-model-choice-mapping` — Mapping a resolved model-spec onto a spawn: only `shuttleengine.NewModelChoice` reads its fields. (test) — [background](pattern/PATTERN-model-choice-mapping.md)
