@@ -400,7 +400,7 @@ func replayWeft(rec *Mutations, l *lyxcwd.Location, worktree, upstream string, e
 	if err != nil {
 		return ReplayOutcome{}, err
 	}
-	startTip, ahead, err := replayAhead(repo, upstreamSHA)
+	_, ahead, err := replayAhead(repo, upstreamSHA)
 	if err != nil || len(ahead) == 0 {
 		return ReplayOutcome{}, err
 	}
@@ -422,6 +422,10 @@ func replayWeft(rec *Mutations, l *lyxcwd.Location, worktree, upstream string, e
 		kept = append(kept, sha)
 	}
 
+	// The set-aside commits are tagged before the branch moves, so a later stop never leaves one reachable only through the reflog.
+	if err := tagSetAside(rec, repo, outcome.SetAside); err != nil {
+		return outcome, err
+	}
 	req := replayRequest(worktree, ownedWarpCheckout(worktree), touched)
 	dropped, err := cherryPickOnto(rec, req, repo, upstreamSHA, kept)
 	if err != nil {
@@ -432,9 +436,6 @@ func replayWeft(rec *Mutations, l *lyxcwd.Location, worktree, upstream string, e
 		if !slices.Contains(dropped, sha) {
 			outcome.Replayed = append(outcome.Replayed, sha)
 		}
-	}
-	if err := tagSetAsideOrRestore(rec, repo, outcome.SetAside, startTip); err != nil {
-		return outcome, err
 	}
 	return outcome, nil
 }
@@ -753,20 +754,31 @@ func replayBolt(rec *Mutations, l *lyxcwd.Location, boardDir, upstream string, e
 		steps = append(steps, boardStep{sha: sha})
 	}
 
+	// The commits classification set aside are tagged before the branch moves, so a later stop never leaves one reachable only through the reflog.
+	if err := tagSetAside(rec, repo, outcome.SetAside); err != nil {
+		return outcome, err
+	}
 	req := replayRequest(boardDir, ownedBoardWorktree(), touched)
 	dropped, err := cherryPickOnto(rec, req, repo, upstreamSHA, picks)
 	if err != nil {
 		return replayStop(outcome, err)
 	}
+	// Past the pick the branch sits on upstream, so every failure from here puts the starting tip back.
+	restoreOnFailure := func(cause error) (ReplayOutcome, error) {
+		if err := repo.ResetKeep(start); err != nil {
+			return outcome, errors.Join(cause, fmt.Errorf("restore %s after a failed board replay: %w", start, err))
+		}
+		return outcome, cause
+	}
 	outcome.Dropped = append(outcome.Dropped, dropped...)
 	outcome.Dropped = append(outcome.Dropped, seed...)
 	afterPicks, err := repo.CurrentSHA()
 	if err != nil {
-		return outcome, err
+		return restoreOnFailure(err)
 	}
 	baseline, err := repo.WorktreeChangedFiles()
 	if err != nil {
-		return outcome, err
+		return restoreOnFailure(err)
 	}
 	for _, step := range steps {
 		if !step.byEntry {
@@ -777,22 +789,19 @@ func replayBolt(rec *Mutations, l *lyxcwd.Location, boardDir, upstream string, e
 		}
 		replay, err := InstalledBoardReplay()
 		if err != nil {
-			return outcome, err
+			return restoreOnFailure(err)
 		}
-		if err := replayBoardCommit(replay, repo, boardDir, mergeBase, baseline, step, &outcome); err != nil {
-			return outcome, err
+		if err := replayBoardCommit(rec, replay, repo, boardDir, mergeBase, baseline, step, &outcome); err != nil {
+			return restoreOnFailure(err)
 		}
 	}
 
-	if err := tagSetAsideOrRestore(rec, repo, outcome.SetAside, start); err != nil {
-		return outcome, err
-	}
 	if len(seed) > 0 {
 		rec.Append(KindCommitsDropped, boardDir, strings.Join(seed, " "))
 	}
 	endTip, err := repo.CurrentSHA()
 	if err != nil {
-		return outcome, err
+		return restoreOnFailure(err)
 	}
 	if endTip != afterPicks {
 		rec.Append(KindRepoAdvanced, boardDir, endTip)
@@ -803,8 +812,9 @@ func replayBolt(rec *Mutations, l *lyxcwd.Location, boardDir, upstream string, e
 // replayBoardCommit re-applies one board-only commit by entry onto the board checked out at upstream, and records what it did in outcome.
 // A commit the replay reports empty writes nothing, and is dropped unless it lost a value or met a refusal.
 // A commit that lost a value or met a refusal is committed for what was kept, and its original is set aside.
+// The original is tagged as soon as the replay reports it, before anything is committed.
 // baseline is the board's uncommitted files before the replay, which are never staged.
-func replayBoardCommit(replay BoardReplay, repo *gitrepo.Repo, boardDir, mergeBase string, baseline []string, step boardStep, outcome *ReplayOutcome) error {
+func replayBoardCommit(rec *Mutations, replay BoardReplay, repo *gitrepo.Repo, boardDir, mergeBase string, baseline []string, step boardStep, outcome *ReplayOutcome) error {
 	request := BoardReplayRequest{BoardDir: boardDir}
 	var err error
 	if request.BaseBoardJSON, err = blobAt(repo, mergeBase, boardFileName); err != nil {
@@ -839,6 +849,20 @@ func replayBoardCommit(replay BoardReplay, repo *gitrepo.Repo, boardDir, mergeBa
 	}
 	outcome.Lost = append(outcome.Lost, result.Lost...)
 	outcome.Refused = append(outcome.Refused, result.Refused...)
+	var aside *SetAsideCommit
+	switch {
+	case len(result.Lost) > 0:
+		aside = &SetAsideCommit{Commit: step.sha, Slug: result.Lost[0].Entry}
+	case len(result.Refused) > 0:
+		aside = &SetAsideCommit{Commit: step.sha, Slug: result.Refused[0].Entry}
+	}
+	if aside != nil {
+		tag, err := setAsideTag(rec, repo, aside.Slug, aside.Commit)
+		if err != nil {
+			return err
+		}
+		aside.Tag = tag
+	}
 	if !result.Empty {
 		changed, err := repo.WorktreeChangedFiles()
 		if err != nil {
@@ -851,10 +875,8 @@ func replayBoardCommit(replay BoardReplay, repo *gitrepo.Repo, boardDir, mergeBa
 		outcome.Replayed = append(outcome.Replayed, step.sha)
 	}
 	switch {
-	case len(result.Lost) > 0:
-		outcome.SetAside = append(outcome.SetAside, SetAsideCommit{Commit: step.sha, Slug: result.Lost[0].Entry})
-	case len(result.Refused) > 0:
-		outcome.SetAside = append(outcome.SetAside, SetAsideCommit{Commit: step.sha, Slug: result.Refused[0].Entry})
+	case aside != nil:
+		outcome.SetAside = append(outcome.SetAside, *aside)
 	case result.Empty:
 		outcome.Dropped = append(outcome.Dropped, step.sha)
 	}

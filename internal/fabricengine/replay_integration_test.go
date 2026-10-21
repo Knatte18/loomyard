@@ -231,6 +231,47 @@ func TestRecordsReplay(t *testing.T) {
 			}
 		})
 
+		t.Run("A set-aside tag already at another commit stops the replay with the branch still on its starting tip", func(t *testing.T) {
+			t.Parallel()
+			f := newRecordsFixture(t)
+			weft, branch := f.primeWeft()
+			status := gitkit.CommitFile(t, weft, "_lyx/shed/neve/status.json", statusJSON("Run-Shed"), "neve status")
+			tip := gitkit.CommitFile(t, weft, "notes/keep.md", "keep\n", "keep")
+			f.originCommit(branch, "notes/up.md", "up\n", "upstream work")
+			gitkit.Git(t, weft, "fetch")
+			tag := "set-aside/neve/" + status[:12]
+			gitkit.Git(t, weft, "tag", tag, tip)
+
+			_, err := fabricengine.ReplayWeftForTest(f.hub.Location, weft, map[string]string{"neve": "done"})
+			if err == nil || !strings.Contains(err.Error(), tag) {
+				t.Fatalf("ReplayWeftForTest error = %v, want the conflicting tag %s named", err, tag)
+			}
+			if got := gitkit.RevParse(t, weft, "HEAD"); got != tip {
+				t.Errorf("HEAD = %s, want the starting tip %s", got, tip)
+			}
+		})
+
+		t.Run("A reset that is no dirty refusal stops without ErrReplayDirty and names the git failure", func(t *testing.T) {
+			t.Parallel()
+			f := newRecordsFixture(t)
+			weft, branch := f.primeWeft()
+			tip := gitkit.CommitFile(t, weft, "notes/local.md", "local\n", "local work")
+			f.originCommit(branch, "notes/up.md", "up\n", "upstream work")
+			gitkit.Git(t, weft, "fetch")
+			lock := strings.TrimSpace(gitkit.Git(t, weft, "rev-parse", "--path-format=absolute", "--git-path", "index.lock"))
+			if err := os.WriteFile(lock, nil, 0o644); err != nil {
+				t.Fatalf("hold %s: %v", lock, err)
+			}
+
+			_, err := fabricengine.ReplayWeftForTest(f.hub.Location, weft, nil)
+			if err == nil || errors.Is(err, fabricengine.ErrReplayDirty) || !strings.Contains(err.Error(), "index.lock") {
+				t.Fatalf("ReplayWeftForTest error = %v, want a git failure naming index.lock and not ErrReplayDirty", err)
+			}
+			if got := gitkit.RevParse(t, weft, "HEAD"); got != tip {
+				t.Errorf("HEAD = %s, want the starting tip %s", got, tip)
+			}
+		})
+
 		t.Run("A run's commits are set aside under tags when the entry is done on origin and the rest replays", func(t *testing.T) {
 			t.Parallel()
 			f := newRecordsFixture(t)
@@ -553,6 +594,34 @@ func TestRecordsReplay(t *testing.T) {
 				t.Errorf("HEAD = %s, want the original tip %s", got, tip)
 			}
 			requireClean(t, board)
+		})
+
+		t.Run("A failed by-entry apply restores the starting tip and keeps every classified set-aside commit tagged", func(t *testing.T) {
+			t.Parallel()
+			f := newRecordsFixture(t)
+			board := f.hub.BoardDir()
+			branch := gitkit.CurrentBranch(t, board)
+			// The merge base's entry has a mistyped title, which the entry replay cannot parse but classification never reads.
+			boardOf := func(neveTitle, otherTitle string) string {
+				return `{"version":1,"entries":[{"slug":"neve","title":"` + neveTitle + `"},{"slug":"other","title":` + otherTitle + `}]}`
+			}
+			gitkit.CommitFile(t, board, "board.json", boardOf("n", "5"), "base board")
+			gitkit.Git(t, board, "push", "origin", branch)
+			neve := gitkit.CommitFile(t, board, "board.json", boardOf("n2", "5"), "retitle neve")
+			tip := gitkit.CommitFile(t, board, "board.json", boardOf("n2", "6"), "retitle other")
+			f.originCommit(branch, "notes/up.md", "up\n", "upstream work")
+			gitkit.Git(t, board, "fetch")
+
+			outcome, err := fabricengine.ReplayBoltForTest(f.hub.Location, board, map[string]string{"neve": "done"})
+			if err == nil {
+				t.Fatalf("ReplayBoltForTest = %+v, nil; want the by-entry apply error", outcome)
+			}
+			if got := gitkit.RevParse(t, board, "HEAD"); got != tip {
+				t.Errorf("HEAD = %s, want the starting tip %s", got, tip)
+			}
+			if got := gitkit.RevParse(t, board, "set-aside/neve/"+neve[:12]+"^{commit}"); got != neve {
+				t.Errorf("set-aside tag names %s, want %s", got, neve)
+			}
 		})
 
 		t.Run("An ended entry's local Bolt and prime-weft commits are set aside and the rest replays", func(t *testing.T) {
