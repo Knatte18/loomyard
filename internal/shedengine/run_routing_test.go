@@ -870,10 +870,9 @@ func TestRun_StuckAttributionIgnoresOtherProducersEntries(t *testing.T) {
 }
 
 func TestRun_BlockPathArithmetic(t *testing.T) {
-	// After a budget-exhausted block, the producer's episode Stuck count is budget+1. A
-	// resumed run whose budget was raised by exactly one blocks again immediately. A
-	// resumed run whose budget was raised above the current count proceeds. This pins the
-	// escape-hatch arithmetic an operator's bug report would otherwise write.
+	// A budget-exhausted block marks its Stuck entry budget_capped, so a resume grants exactly one more budget.
+	// That is budget+1 further calls, then blocked again, whether or not the budget was raised.
+	// A raised budget adds its extra bounces to that grant.
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	shed.MaxBounces = 2
 
@@ -896,9 +895,8 @@ func TestRun_BlockPathArithmetic(t *testing.T) {
 	}
 	callsAfterRun1 := a.calls
 
-	// Part 2: raise the budget by exactly one and resume. The episode count already equals
-	// the new budget, so the very next call blocks again immediately -- no bounce.
-	shed.MaxBounces++
+	// Part 2: resume with the budget unchanged.
+	// The capped entry resets the count, so the run gets budget+1 further calls before it blocks again.
 	result, err = shed.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run 2 (...) = _, %v; want nil error", err)
@@ -906,14 +904,12 @@ func TestRun_BlockPathArithmetic(t *testing.T) {
 	if result.Outcome != RunBlocked {
 		t.Errorf("Run 2 Result.Outcome = %q; want %q", result.Outcome, RunBlocked)
 	}
-	if a.calls != callsAfterRun1+1 {
-		t.Errorf("a.calls after Run 2 = %d; want %d -- a budget raised by exactly one blocks again immediately, with no bounce", a.calls, callsAfterRun1+1)
+	if want := callsAfterRun1 + shed.MaxBounces + 1; a.calls != want {
+		t.Errorf("a.calls after Run 2 = %d; want %d -- a resume grants one more budget", a.calls, want)
 	}
 	callsAfterRun2 := a.calls
 
-	// Part 3: raise the budget above the current episode count and resume. The run must
-	// proceed past the immediate-block point: at least one further bounce happens before
-	// (or instead of) another immediate block.
+	// Part 3: raise the budget and resume. The grant is the raised budget plus the blocking call.
 	shed.MaxBounces += 5
 	result, err = shed.Run(context.Background())
 	if err != nil {
@@ -922,8 +918,8 @@ func TestRun_BlockPathArithmetic(t *testing.T) {
 	if result.Outcome != RunBlocked {
 		t.Errorf("Run 3 Result.Outcome = %q; want %q", result.Outcome, RunBlocked)
 	}
-	if a.calls <= callsAfterRun2+1 {
-		t.Errorf("a.calls after Run 3 = %d; want more than %d -- a budget raised above the current count must proceed past an immediate block", a.calls, callsAfterRun2+1)
+	if want := callsAfterRun2 + shed.MaxBounces + 1; a.calls != want {
+		t.Errorf("a.calls after Run 3 = %d; want %d -- a raised budget is granted in full on resume", a.calls, want)
 	}
 }
 

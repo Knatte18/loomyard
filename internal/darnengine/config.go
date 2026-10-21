@@ -86,6 +86,9 @@ type Config struct {
 	ReviewMaxBounces int `yaml:"review_max_bounces"`
 	// ReviewHardMaxBounces is the round number at or past which the Darn-Review perch never continues a round; it is at least 1 and not below ReviewMaxBounces, and settable per run.
 	ReviewHardMaxBounces int `yaml:"review_hard_max_bounces"`
+	// ReviewAmendMaxBounces is the review rounds an amendment generation gets after a settled Darn-Review subject changed, clamped to ReviewMaxBounces; 0 settles every amendment approved with no review round.
+	// It is settable per run through the task's run_settings.
+	ReviewAmendMaxBounces int `yaml:"review_amend_max_bounces"`
 	// ReviewerModel and FixerModel are the Darn-Review perch's per-round reviewer and fixer model lists;
 	// an empty key takes loom.yaml's shared reviewer_model or fixer_model.
 	ReviewerModel burlerengine.ModelSpecList `yaml:"darn_reviewer_model"`
@@ -188,7 +191,7 @@ func ValidateLocalValues(document []byte) error {
 // It validates the writer key's model-spec grammar at load time and leaves verify, verify_attempts and review_max_bounces to their readers.
 // darn_reviewer_model and darn_fixer_model, when set, are refused as an empty list, a value that is neither a model-spec nor a list of them, or an entry that is no model-spec.
 // darn_reviewer_fan and darn_fixer_fan are refused as an empty list, a value that is neither a fan name nor a list of them, or an entry naming a fan lenses.yaml does not resolve.
-// review_max_bounces is refused below 0, and review_hard_max_bounces, default 4, below 1 and below review_max_bounces;
+// review_max_bounces and review_amend_max_bounces are refused below 0, and review_hard_max_bounces, default 4, below 1 and below review_max_bounces;
 // each refusal names the command that fixes it for the layer the value comes from.
 // It returns tree_scope keyed by trimmed tree path and refuses a malformed or repeated tree key wrapping ErrTreeScopeKey, a tree_scope_verify with no tree wrapping ErrTreeScopeWithoutTrees, and a tree_scope_verify without {targets}.
 func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
@@ -244,7 +247,7 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		return Config{}, err
 	}
 
-	if err := reviewbudget.CheckResolved(dirs, spec, reviewbudget.Values{RunSoft: cfg.ReviewMaxBounces, RunHard: cfg.ReviewHardMaxBounces}); err != nil {
+	if err := reviewbudget.CheckResolved(dirs, spec, reviewbudget.Values{RunSoft: cfg.ReviewMaxBounces, RunHard: cfg.ReviewHardMaxBounces, RunAmend: cfg.ReviewAmendMaxBounces}); err != nil {
 		return Config{}, err
 	}
 

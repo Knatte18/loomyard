@@ -1,6 +1,6 @@
 //go:build integration
 
-// headsha_integration_test.go proves Fabric.HeadSHA tracks the task worktree's HEAD over a real pair.
+// headsha_integration_test.go proves Fabric.HeadSHA and Fabric.RecordsHeadSHA track their checkout's HEAD over a real pair.
 
 package fabricengine_test
 
@@ -13,7 +13,7 @@ import (
 )
 
 // TestFabricHeadSHA_TracksWorktreeHead asserts HeadSHA equals git rev-parse HEAD of the task worktree
-// before and after a new commit.
+// before and after a new commit, and RecordsHeadSHA does the same for the weft checkout.
 func TestFabricHeadSHA_TracksWorktreeHead(t *testing.T) {
 	t.Parallel()
 
@@ -43,5 +43,24 @@ func TestFabricHeadSHA_TracksWorktreeHead(t *testing.T) {
 	}
 	if after == before {
 		t.Errorf("HeadSHA did not change after a new commit: %q", after)
+	}
+
+	weftDir := h.PrimeRecords()
+	weftBefore, err := f.RecordsHeadSHA()
+	if err != nil {
+		t.Fatalf("RecordsHeadSHA (before): %v", err)
+	}
+	if want := gitkit.RevParse(t, weftDir, "HEAD"); weftBefore != want {
+		t.Errorf("RecordsHeadSHA before commit = %q; want %q", weftBefore, want)
+	}
+
+	newWeftSHA := gitkit.CommitFile(t, weftDir, "weftheadsha.txt", "x", "weft headsha commit")
+
+	weftAfter, err := f.RecordsHeadSHA()
+	if err != nil {
+		t.Fatalf("RecordsHeadSHA (after): %v", err)
+	}
+	if weftAfter != newWeftSHA {
+		t.Errorf("RecordsHeadSHA after commit = %q; want %q", weftAfter, newWeftSHA)
 	}
 }

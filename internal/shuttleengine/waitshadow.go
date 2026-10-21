@@ -1,5 +1,6 @@
 // waitshadow.go logs the session state beside the wait loop's own classification, in shadow mode:
 // the loop never branches on it, and a failure to read it changes nothing.
+// The fold's states also reach the caller on Result.SessionStates, as a record the loop never branches on.
 
 package shuttleengine
 
@@ -48,8 +49,10 @@ type sessionShadow struct {
 	facts     SessionFacts
 	factsRead bool
 
-	logged          SessionState
-	hasLogged       bool
+	logged    SessionState
+	hasLogged bool
+	// states is every state logged, in order, which Result.SessionStates reports.
+	states          []SessionState
 	disagreement    shadowPair
 	hasDisagreement bool
 	// unavailableLogged is true once a missing capability or an unreadable events file was logged.
@@ -157,6 +160,7 @@ func (run *Run) logSessionState(outcome Outcome, refreshFacts bool) {
 	loop := run.loopClassification(outcome)
 	if !shadow.hasLogged || state.Name != shadow.logged.Name || state.Cause != shadow.logged.Cause {
 		shadow.logged, shadow.hasLogged = state, true
+		shadow.states = append(shadow.states, state)
 		logger.Info("shuttle: session state", "strandGUID", run.state.StrandGUID, "state", string(state.Name), "cause", state.Cause, "since", state.Since.Format(time.RFC3339), "loop", loop)
 	}
 

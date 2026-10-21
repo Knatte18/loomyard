@@ -136,7 +136,7 @@ func TestClassifyHalt(t *testing.T) {
 		{
 			name:     "BlockedBudgetExhaustedWithWayForward",
 			state:    shedengine.StateBlocked,
-			reason:   shedengine.ReasonBounceBudgetExhausted + ` for Plan-Write; way forward: "lyx shed goto --to Plan-Write" gives row "Plan-Write" a fresh budget`,
+			reason:   shedengine.ReasonBounceBudgetExhausted + ` for Plan-Write; way forward: run "lyx loom resume" in the task worktree: the resume grants the row one more budget`,
 			wantKind: AnomalyBudgetExhausted,
 			wantOK:   true,
 		},

@@ -31,7 +31,7 @@ func TestCheckResolved(t *testing.T) {
 
 	perWorktree := configengine.Spec{
 		Name:       "loom",
-		Template:   []byte("review_max_bounces: 1\nreview_hard_max_bounces: 3\nplan_max_bounces: ~\nplan_hard_max_bounces: 0\n"),
+		Template:   []byte("review_max_bounces: 1\nreview_hard_max_bounces: 3\nreview_amend_max_bounces: 1\nplan_max_bounces: ~\nplan_hard_max_bounces: 0\n"),
 		Categories: Categories([]string{"plan"}),
 	}
 	hubWide := configengine.Spec{
@@ -99,6 +99,17 @@ func TestCheckResolved(t *testing.T) {
 			wantParts: []string{
 				`loom config key "plan_max_bounces": must not be negative, got -2; set it to 0 for no review round, to a positive integer, or to null to take review_max_bounces`,
 				route(worktreeRoute, "plan_max_bounces"),
+				resumeTail,
+			},
+		},
+		{
+			name:   "negative amendment allowance from the local layer names the local route",
+			spec:   perWorktree,
+			layers: map[configengine.Layer]string{configengine.LayerLocal: "review_amend_max_bounces: -1\n"},
+			values: Values{RunSoft: 1, RunHard: 3, RunAmend: -1, Perches: plan},
+			wantParts: []string{
+				`loom config key "review_amend_max_bounces": must not be negative, got -1; set it to 0 to settle every amendment with no review round, or to a positive integer`,
+				route(localRoute, RunAmendKey),
 				resumeTail,
 			},
 		},
@@ -222,6 +233,10 @@ func TestCheckLocal(t *testing.T) {
 		{name: "null run-wide hard cap", set: map[string]any{"review_hard_max_bounces": nil}, perches: perches, want: `key "review_hard_max_bounces": must be an integer`},
 		{name: "null perch hard cap", set: map[string]any{"plan_hard_max_bounces": nil}, perches: perches, want: `key "plan_hard_max_bounces": must be an integer`},
 		{name: "string value", set: map[string]any{"plan_max_bounces": "2"}, perches: perches, want: `key "plan_max_bounces": must be an integer`},
+		{name: "amendment allowance of zero is accepted", set: map[string]any{"review_amend_max_bounces": 0}, perches: perches},
+		{name: "negative amendment allowance", set: map[string]any{"review_amend_max_bounces": -1}, perches: perches, want: `key "review_amend_max_bounces": must be at least 0, got -1; ` + upsert},
+		{name: "null amendment allowance", set: map[string]any{"review_amend_max_bounces": nil}, perches: perches, want: `key "review_amend_max_bounces": must be an integer`},
+		{name: "string amendment allowance", set: map[string]any{"review_amend_max_bounces": "1"}, perches: perches, want: `key "review_amend_max_bounces": must be an integer`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

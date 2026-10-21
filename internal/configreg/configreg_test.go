@@ -72,7 +72,7 @@ func TestModules_SeedOnlyAndHubWideFlags(t *testing.T) {
 func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 	t.Parallel()
 	wantLocalKeys := map[string][]string{
-		"darn":    {"darn_fixer_model", "darn_reviewer_model", "driver_kind", "review_hard_max_bounces", "review_max_bounces", "tackler", "tackler_max_spawns", "tackler_timeout_min", "verify_attempts", "writer", "writer_timeout_min"},
+		"darn":    {"darn_fixer_model", "darn_reviewer_model", "driver_kind", "review_amend_max_bounces", "review_hard_max_bounces", "review_max_bounces", "tackler", "tackler_max_spawns", "tackler_timeout_min", "verify_attempts", "writer", "writer_timeout_min"},
 		"landing": {"conflict", "conflict_timeout_min", "describe", "describe_timeout_min"},
 	}
 	wantLocalDenied := map[string][]string{

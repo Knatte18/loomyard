@@ -5,6 +5,7 @@
 package shedverbs
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -49,6 +50,54 @@ func TestPauseCmd_SetsPauseRequested(t *testing.T) {
 	}
 	if !st.PauseRequested {
 		t.Error("PauseRequested = false; want true after pause")
+	}
+	if st.PauseRequestedBy != "" {
+		t.Errorf("PauseRequestedBy = %q; want none without --by", st.PauseRequestedBy)
+	}
+
+	_, code = execEnvelope(t, pauseCmd(pauseTexts(), spec), []string{"--by", "operator"})
+	if code != 0 {
+		t.Fatalf("exit code with --by = %d; want 0", code)
+	}
+	st, _, err = state.ReadJSONNoMkdir[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
+	if err != nil {
+		t.Fatalf("re-read status after --by: %v", err)
+	}
+	if !st.PauseRequested || st.PauseRequestedBy != "operator" {
+		t.Errorf("PauseRequested, PauseRequestedBy = %v, %q; want true, operator", st.PauseRequested, st.PauseRequestedBy)
+	}
+
+	_, code = execEnvelope(t, pauseCmd(pauseTexts(), spec), nil)
+	if code != 0 {
+		t.Fatalf("exit code with a repeat bare pause = %d; want 0", code)
+	}
+	st, _, err = state.ReadJSONNoMkdir[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
+	if err != nil {
+		t.Fatalf("re-read status after a repeat bare pause: %v", err)
+	}
+	if st.PauseRequestedBy != "operator" {
+		t.Errorf("PauseRequestedBy = %q after a repeat bare pause; want the earlier request's operator", st.PauseRequestedBy)
+	}
+
+	// A bare --by under a refusing BarePause hook writes nothing: the hook still refuses first.
+	refusing := newTestPaths(t)
+	seedStatus(t, refusing, "Only")
+	before, err := os.ReadFile(refusing.StatusPath)
+	if err != nil {
+		t.Fatalf("read seeded status: %v", err)
+	}
+	refusingSpec := &Spec{
+		StatusPath:         refusing.StatusPath,
+		StatusLockPath:     refusing.StatusLockPath,
+		PauseAbsentMessage: "no status file",
+		Hooks:              Hooks{BarePause: func(shedengine.Status) error { return errors.New("bare pause refused") }},
+	}
+	env, code = execEnvelope(t, pauseCmd(pauseTexts(), refusingSpec), []string{"--by", "operator"})
+	if code != 1 || env["error"] != "bare pause refused" {
+		t.Errorf("exit code, error = %d, %v; want 1, the hook's refusal", code, env["error"])
+	}
+	if after, _ := os.ReadFile(refusing.StatusPath); !bytes.Equal(before, after) {
+		t.Errorf("status file changed under a refused bare --by: %s -> %s", before, after)
 	}
 }
 
@@ -103,6 +152,8 @@ func TestPauseCmd_Conditions(t *testing.T) {
 		wantContradiction = "shedverbs: pause --clear cannot be combined with --before or --after; way forward: run pause --clear alone, then pause --before or --after"
 		wantUnknown       = "shedverbs: pause target Nope names no producer; way forward: re-run pause with --before or --after naming one of: One, Two"
 		wantBareRefusal   = "bare pause refused"
+		wantShedRefusal   = "pause --by does not take shed, the label of lyx's own automatic steps; way forward: re-run pause with your own label, such as --by operator"
+		pausedReason      = "pause requested by operator"
 	)
 	tests := []struct {
 		name string
@@ -110,12 +161,20 @@ func TestPauseCmd_Conditions(t *testing.T) {
 		// seedBefore, seedAfter and seedRequested are the conditions and bare request recorded before the verb runs.
 		seedBefore, seedAfter string
 		seedRequested         bool
+		// seedBeforeBy and seedAfterBy are the condition labels recorded before the verb runs.
+		seedBeforeBy, seedAfterBy string
+		// seedPaused records the status as paused with pausedReason before the verb runs.
+		seedPaused bool
 		// barePause is the spec's BarePause hook, nil for a spec that sets none.
 		barePause             func(shedengine.Status) error
 		wantError             string
 		wantEnvelope          map[string]any
 		wantBefore, wantAfter string
 		wantRequested         bool
+		// wantBeforeBy and wantAfterBy are the persisted condition labels.
+		wantBeforeBy, wantAfterBy string
+		// wantReason is the persisted pause_reason.
+		wantReason string
 	}{
 		{name: "set before", args: []string{"--before", "Two"},
 			wantEnvelope: map[string]any{"before": "Two", "after": ""}, wantBefore: "Two"},
@@ -137,19 +196,45 @@ func TestPauseCmd_Conditions(t *testing.T) {
 		{name: "a condition under a refusing hook is recorded", args: []string{"--after", "One"},
 			barePause:    func(shedengine.Status) error { return errors.New(wantBareRefusal) },
 			wantEnvelope: map[string]any{"before": "", "after": "One"}, wantAfter: "One"},
+		{name: "before with a label stores it", args: []string{"--before", "Two", "--by", "orch"},
+			wantEnvelope: map[string]any{"before": "Two", "after": ""}, wantBefore: "Two", wantBeforeBy: "orch"},
+		{name: "after with a label stores it", args: []string{"--after", "One", "--by", "orch"},
+			wantEnvelope: map[string]any{"before": "", "after": "One"}, wantAfter: "One", wantAfterBy: "orch"},
+		{name: "a replacing condition without a label drops the recorded label", args: []string{"--before", "Two"},
+			seedBefore: "One", seedBeforeBy: "operator",
+			wantEnvelope: map[string]any{"before": "Two", "after": "", "replaced_before": "One"}, wantBefore: "Two"},
+		{name: "clear drops both condition labels", args: []string{"--clear", "--by", "orch"},
+			seedBefore: "One", seedAfter: "Two", seedBeforeBy: "operator", seedAfterBy: "orch",
+			wantEnvelope: map[string]any{"before": "", "after": "", "removed_before": "One", "removed_after": "Two"}},
+		{name: "by shed is refused and writes nothing", args: []string{"--before", "Two", "--by", "shed"},
+			seedAfter: "One", seedAfterBy: "operator", wantError: wantShedRefusal, wantAfter: "One", wantAfterBy: "operator"},
+		{name: "a condition over a paused status keeps its reason", args: []string{"--before", "Two"},
+			seedPaused:   true,
+			wantEnvelope: map[string]any{"before": "Two", "after": ""}, wantBefore: "Two", wantReason: pausedReason},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			paths := newTestPaths(t)
-			if err := state.WriteJSON(paths.StatusPath, paths.StatusLockPath, shedengine.Status{
+			seeded := shedengine.Status{
 				CurrentProducer: "One",
 				State:           shedengine.StateRunning,
 				PauseBefore:     tt.seedBefore,
 				PauseAfter:      tt.seedAfter,
+				PauseBeforeBy:   tt.seedBeforeBy,
+				PauseAfterBy:    tt.seedAfterBy,
 				PauseRequested:  tt.seedRequested,
 				History:         []shedengine.HistoryEntry{},
-			}); err != nil {
+			}
+			if tt.seedPaused {
+				seeded.State = shedengine.StatePaused
+				seeded.PauseReason = pausedReason
+			}
+			if err := state.WriteJSON(paths.StatusPath, paths.StatusLockPath, seeded); err != nil {
 				t.Fatalf("seed status: %v", err)
+			}
+			seededBytes, err := os.ReadFile(paths.StatusPath)
+			if err != nil {
+				t.Fatalf("read seeded status: %v", err)
 			}
 			spec := &Spec{
 				StatusPath:         paths.StatusPath,
@@ -163,6 +248,9 @@ func TestPauseCmd_Conditions(t *testing.T) {
 			if tt.wantError != "" {
 				if code != 1 || env["error"] != tt.wantError {
 					t.Errorf("exit code, error = %d, %v; want 1, %q", code, env["error"], tt.wantError)
+				}
+				if after, _ := os.ReadFile(paths.StatusPath); !bytes.Equal(seededBytes, after) {
+					t.Errorf("status file changed on a refusal: %s -> %s", seededBytes, after)
 				}
 			} else {
 				if code != 0 {
@@ -183,6 +271,9 @@ func TestPauseCmd_Conditions(t *testing.T) {
 			}
 			if got.PauseBefore != tt.wantBefore || got.PauseAfter != tt.wantAfter || got.PauseRequested != tt.wantRequested {
 				t.Errorf("persisted PauseBefore, PauseAfter, PauseRequested = %q, %q, %v; want %q, %q, %v", got.PauseBefore, got.PauseAfter, got.PauseRequested, tt.wantBefore, tt.wantAfter, tt.wantRequested)
+			}
+			if got.PauseBeforeBy != tt.wantBeforeBy || got.PauseAfterBy != tt.wantAfterBy || got.PauseReason != tt.wantReason {
+				t.Errorf("persisted PauseBeforeBy, PauseAfterBy, PauseReason = %q, %q, %q; want %q, %q, %q", got.PauseBeforeBy, got.PauseAfterBy, got.PauseReason, tt.wantBeforeBy, tt.wantAfterBy, tt.wantReason)
 			}
 		})
 	}

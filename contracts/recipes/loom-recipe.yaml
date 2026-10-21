@@ -125,6 +125,7 @@ producers:
     on_done: Plan-Write
     config:
       run_subdir: discussion
+      subject: document
       role_prefix: discussion
       reviewer_fan_setting: loom.discussion_reviewer_fan
       auto_accept_setting: loom.discussion_auto_accept
@@ -224,6 +225,7 @@ producers:
     on_done: Webster
     config:
       run_subdir: plan
+      subject: document
       role_prefix: plan
       reviewer_fan_setting: loom.plan_reviewer_fan
       auto_accept_setting: loom.plan_auto_accept
@@ -355,6 +357,7 @@ producers:
     on_done: Describe
     config:
       run_subdir: webster
+      subject: code
       role_prefix: webster
       reviewer_fan_setting: loom.webster_reviewer_fan
       auto_accept_setting: loom.webster_auto_accept
@@ -494,6 +497,7 @@ producers:
     on_done: Publish
     config:
       run_subdir: merge
+      subject: merge
       role_prefix: merge
       reviewer_fan_setting: loom.merge_reviewer_fan
       auto_accept_setting: loom.merge_auto_accept

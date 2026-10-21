@@ -75,7 +75,7 @@
 //     The escalation brief and the parent notice are read by the parent, not by a spawned role, and carry no directive.
 //     Escalation: a CONTINUE or CIRCLING round escalates to the run's parent instead of halting for a human, for one of three causes.
 //     Soft-cap rule: the soft cap is reached when the BouncerConfig.Bounces seam reports count >= budget, the comparison Shed applies.
-//     The rule's window opens on the soft cap by that count or on the hard cap by the round number, whichever comes first, so a round past a goto that reset the count is still settled by the rule.
+//     The rule's window opens on the soft cap by that count or on the hard cap by the round number, whichever comes first, so a round past a new generation that reset the count is still settled by the rule.
 //     A round in the window with no decision file is settled in five steps:
 //     a review that does not parse, or a ledger that cannot be read, escalates with cause budget;
 //     a ledger with no design-wrong entry (open, BLOCKING or MEDIUM, and not tagged `mechanical` by the judge, so a missing or unknown tag counts) records an automatic accept;
@@ -116,7 +116,27 @@
 //     The seam only writes the segment's `## Open risks` entry: it approves nothing and skips no seam,
 //     and a failure is returned as the settle's own error with a way forward, so neither Approve nor Commit runs.
 //     A nil seam leaves every path as before.
-//     The exemption covers only the Bouncer's Stuck; each further round past the budget needs its own decision, and `lyx loom goto` grants a fresh budget.
+//     Settle records: a Bouncer told a BouncerConfig.Subject seam keeps two records in its run directory, written through internal/state and carried across an archive of the directory.
+//     The generation record is written at every seed, generation 1 included, when the directory holds none, and a judge spawn writes the live subject, its base and the spawn time into it.
+//     The settle record is written on every approved settle before the carry-over, Approve and Commit, with Settled false, and marked settled once Commit returned;
+//     the skip seam's approval writes a generation record when none exists and then a round-0 record.
+//     A Subject seam that is nil or answers no subject writes no record.
+//     Re-entry over a settled verdict then has four cases:
+//     a live settle record over an unchanged subject re-settles with no spawn, re-running the carry-over (except for a round-0 record), Approve and Commit and keeping the settle time;
+//     a live record over a changed subject, and a generation record whose judge subject differs from the live one, start a new generation;
+//     a generation record whose judge subject equals the live one settles the verdict as a harvest;
+//     and no record at all clears and re-seeds.
+//     A record that is not live settles on the round-by-round path and never clears.
+//     A new generation archives the run directory, the records travelling along, and writes the generation record with the next number, then seeds.
+//     For every segment but one with BouncerConfig.FullGeneration it is an amendment under the BouncerConfig.AmendAllowance:
+//     the record carries the Amendment mark, the base (the settle record's, or the judge base after the third case) and the path of the PR-Gate reject's review file when BouncerConfig.RejectReview reports a reject later than the settle or judge time,
+//     and AmendmentNote renders from it the note the rubric's optional `amendment` marker is filled with, which scopes the seed, the reviewers and the judge to the change:
+//     for a document the artifacts' change since the base commit, for code the stored settle-record.patch against the working-tree diff at the current merge base.
+//     An amendment spends the allowance clamped to the Bounces seam's budget, and its hard cap is the allowance plus one clamped to HardCap;
+//     an allowance of 0 settles it without a review.
+//     A full generation carries the number alone and keeps the perch's own budget and hard cap.
+//     The generation's seed Stuck is marked GenerationStart, which restarts the row's bounce count, and a seed that failed after the archive is repeated by the next Call's seed.
+//     The exemption covers only the Bouncer's Stuck; each further round past the budget needs its own decision, and the count restarts only with a new generation.
 //     Every other path -- the seed call, the re-bounce, the clear itself, every degraded path -- reports an empty Path,
 //     with the re-bounce and degraded paths carrying their cause on Reason.
 //     The legacy words APPROVED and BLOCKING are read as CONVERGED and CONTINUE only for a verdict already on disk at Call entry (the clear, the replay and the review row's may-advance check).
@@ -269,7 +289,7 @@
 // A Burler row's probe is one-stranded, because a row drives one half, a reviewer or a fixer, each declaring its own single output file.
 // BurlerHalfRunner.ProbeReview and ProbeFix report the half as live, done or gone, and Call acts on it.
 // A live half is resumed through ResumeReview or ResumeFix, and the result is mapped through the outcome switch a spawned attempt uses.
-// A died or timeout result there falls through to a fresh attempt 1, since the resumed half is not counted as an attempt.
+// A died or timeout result there, and a resumed review that fails with the fork-count sentinel, fall through to a fresh attempt 1, since the resumed half is not counted as an attempt.
 // A half that is done or gone is nothing live, so nothing is removed and it falls through to attempt 1.
 // A fall-through spawn archives the half's outputs first, so a half is never spawned a second time beside a live one.
 // A probe error and a resume error wrapping burlerengine.ErrHalfNotStopped are returned without archiving and without spawning, since a half that may still be live may be writing the round's files.
@@ -305,7 +325,8 @@
 //
 // The review row resolves the round from the highest complete round, and hands on BudgetExempt without spawning in two cases:
 // the highest complete round has no recorded verdict, and the next round's review already carries an acceptance record, so a restart with the fixer pending resumes at the fix row.
-// Otherwise it probes for a live reviewer before archiving anything, resumes one it finds, and spawns at most two attempts, the second only after a died or timed-out first.
+// Otherwise it probes for a live reviewer before archiving anything, resumes one it finds, and spawns at most two attempts, the second only after a died or timed-out first, or after a first whose chair spawned a fork count other than the one requested (burlerengine.ErrClusterForksMissing).
+// A fork-count mismatch on the second attempt is a hard failure naming both attempts' errors, the chair's strand and its session states, so the halt note says how the chair ended; any other fork violation is a hard failure at once.
 // A row told BurlerHalfDeps.Fans picks the round's reviewer and fixer fans from the per-round lists, entry N for round N and the last entry for every later round;
 // a nil Fans runs the profile's own cluster fan and records no names.
 // After the probe finds no live reviewer, and before the first attempt, `recordRoundFans` writes `fan`, `fix_fan` and `fans_recorded: true` to the round's usage record, an empty name for a solo or single round included.

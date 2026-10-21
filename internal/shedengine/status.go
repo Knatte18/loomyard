@@ -105,6 +105,13 @@ type HistoryEntry struct {
 	// RerouteCapped is true on the Stuck entry of a reroute-cap halt, which resets the row's reroute count.
 	// A status file written before the field existed decodes as false.
 	RerouteCapped bool `json:"reroute_capped,omitempty"`
+	// BudgetCapped is true on the Stuck entry of a bounce-budget-exhausted halt.
+	// A resume of that halt grants one more budget, and a goto onto it grants none.
+	// A status file written before the field existed decodes as false.
+	BudgetCapped bool `json:"budget_capped,omitempty"`
+	// GenerationStart is true on a Stuck entry that started a new review generation, which restarts the row's bounce count at that entry.
+	// A status file written before the field existed decodes as false.
+	GenerationStart bool `json:"generation_start,omitempty"`
 	// By is the caller label of the goto or resume that wrote this entry, empty on every other entry.
 	// A status file written before the field existed decodes as empty.
 	By string `json:"by,omitempty"`
@@ -113,9 +120,10 @@ type HistoryEntry struct {
 // Status is the whole status file.
 //
 // Field ownership is split four ways.
-// CurrentProducer, State, Error, Activity, and History are Shed-owned and rewritten on every persist.
+// CurrentProducer, State, PauseReason, Error, Activity, and History are Shed-owned and rewritten on every persist.
 // PauseRequested is shared write-to-clear, set true only by an outside actor and written false only by Shed, exactly once, in the persist that records StatePaused.
 // PauseBefore and PauseAfter are outside-set and cleared by Shed together, only in the persist that records StatePaused for a fired condition and in Goto's persist.
+// PauseRequestedBy, PauseBeforeBy and PauseAfterBy are outside-set beside the request they accompany and cleared in the same write as it.
 // Product is external-writer-owned and only ever carried through.
 type Status struct {
 	CurrentProducer string `json:"current_producer"`
@@ -131,12 +139,24 @@ type Status struct {
 	// A status file written before the field existed decodes as empty.
 	PendingBy      string `json:"pending_by,omitempty"`
 	PauseRequested bool   `json:"pause_requested"`
+	// PauseRequestedBy is the caller label of the outside actor that set PauseRequested, cleared in the write that consumes the request.
+	// A status file written before the field existed decodes as empty.
+	PauseRequestedBy string `json:"pause_requested_by,omitempty"`
 	// PauseBefore names the row the run pauses before running, empty when none is recorded.
 	PauseBefore string `json:"pause_before,omitempty"`
+	// PauseBeforeBy is the caller label of the outside actor that recorded PauseBefore, cleared with the conditions.
+	// A status file written before the field existed decodes as empty.
+	PauseBeforeBy string `json:"pause_before_by,omitempty"`
 	// PauseAfter names the row the run pauses after it returns a routed running outcome, empty when none is recorded.
-	PauseAfter string         `json:"pause_after,omitempty"`
-	Activity   Activity       `json:"activity"`
-	History    []HistoryEntry `json:"history"`
+	PauseAfter string `json:"pause_after,omitempty"`
+	// PauseAfterBy is the caller label of the outside actor that recorded PauseAfter, cleared with the conditions.
+	// A status file written before the field existed decodes as empty.
+	PauseAfterBy string `json:"pause_after_by,omitempty"`
+	// PauseReason is why the run is paused, set by every write that records StatePaused and empty on every other write.
+	// A status file written before the field existed decodes as empty.
+	PauseReason string         `json:"pause_reason,omitempty"`
+	Activity    Activity       `json:"activity"`
+	History     []HistoryEntry `json:"history"`
 	// Product is an opaque product-owned payload Shed round-trips verbatim and never inspects,
 	// validates, or interprets. It carries no compatibility claim for loom's own schema.
 	Product json.RawMessage `json:"product,omitempty"`

@@ -45,11 +45,16 @@
 // "role_prefix" leads their sessions' roles, as <prefix>-bouncer-seed, <prefix>-bouncer-judge, <prefix>-burler-review and <prefix>-burler-fix, so reed's strand, window and bar names tell the segments apart;
 // a value agentname.ValidateRole rejects is refused when the row is built, before any spawn.
 //
+// The Bouncer also takes the optional key "subject", "document", "code" or "merge", which selects the Env seams that tell it what its segment judges:
+// "document" selects Env.DocumentSubject and Env.RecordHead, "code" Env.CodeSubject and Env.MergeInOnly, and "merge" Env.MergeSubject and a full generation over a changed subject.
+// A named seam the Env does not carry, and a value outside the three, are refused when the row is built; an absent key tells no subject.
+// BurlerReview renders the amendment note of its run directory into the rubric's amendment marker.
+//
 // # Segment settings and row settings
 //
 // A Constructor is handed its row's RowIdentity, the row's name and its recipe segment: value.
 // Env.Segments holds one SegmentSettings per review segment, keyed by that segment value, so a segment's Bouncer, BurlerReview and BurlerFix rows share one entry.
-// A segment carries the values a segment's rows resolve alike: the reviewer and fixer round models, the model keys they came from, the Bouncer's seed and judge pair and the hard bounce cap.
+// A segment carries the values a segment's rows resolve alike: the reviewer and fixer round models, the model keys they came from, the Bouncer's seed and judge pair, the hard bounce cap and the amendment allowance.
 // Each of the three entries refuses a row with no segment, and a segment with no Env.Segments entry, naming the entry, the row and the segment.
 //
 // A value that is not shared by a whole segment is a setting the row names in its Config.

@@ -561,6 +561,12 @@
 // It is read-only and writes nothing;
 // the caller supplies the anchor-relative file set, because the config registry imports this package.
 //
+// **Code identity reads.** Three read-only methods (taskpatch.go) give a code segment's identity what `Diff`'s changed paths cannot, and mutate nothing.
+// `ReadTaskPatch(base, skip)` returns a `TaskPatch`: the warp working tree's change against the told merge base, tracked files and uncommitted edits included, plus every untracked non-ignored file as a new-file diff, minus the untracked paths `skip` names and those under a `skip` entry ending in `/`.
+// It carries the HEAD it read, the full diff bytes, their SHA-256 and git's stable patch-id of the zero-context form, which a rebase that only moves context leaves unchanged.
+// `MergeInOnly(since, parentTip)` reports whether every first-parent commit from HEAD back to `since` is a Merge-In: a merge commit whose second parent is an ancestor of `parentTip`, or a commit that is itself such an ancestor, as a fast-forward Merge-In leaves it.
+// `RecordsHeadSHA` returns the commit the weft checkout's HEAD stands at.
+//
 // `Add` also drops the parent's shed run records from a pair it forks (forkrecords.go).
 // A weft branch forked from its parent would otherwise carry every committed run directory, including one for the child's own slug, and the child's `Seed-Child` would refuse a disagreeing seed.
 // The fork is `worktree add --no-checkout`, followed by a write-out of the index without the `shedrun.RunsRootRel()` tree, so no run record ever reaches the new worktree's disk and nothing is deleted (an index-only removal after a full checkout would leave the files `shedrun` reads).

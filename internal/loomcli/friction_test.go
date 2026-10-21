@@ -1,5 +1,5 @@
 // friction_test.go covers the Tier 2 friction wiring this batch's runCmd/startCmd call sites own:
-// the once-per-task clear-and-create split ensureFrictionDirAfterSeed implements for the shared bootstrap, run's own unconditional ensure, and the reflection call reflectFriction implements (the done path reflects inside the Friction-Reflect row; halt reflection is covered by halt_test.go).
+// the once-per-task clear-and-create split ensureFrictionDirAfterSeed implements for the shared bootstrap, run's own unconditional ensure, and the reflection call reflectFriction implements (the reflection runs only inside the Friction-Reflect row; a halt's note without a reflection is covered by halt_test.go).
 // Every test here is untagged Tier 1: it spawns no subprocess, drives no real git operation, builds no real hub fixture, and contains no time.Sleep at or above one second.
 
 package loomcli
@@ -134,65 +134,18 @@ func TestReflectFriction_DepsValidationFailureReportsFailed(t *testing.T) {
 		runDeps:     websterengine.RunDeps{Geom: websterengine.Geometry{StencilsDir: "stencils"}},
 	}
 
-	got := c.reflectFriction(false)
+	got := c.reflectFriction()
 
 	if got != frictionengine.StatusFailed {
-		t.Errorf("c.reflectFriction(false) = %q; want %q", got, frictionengine.StatusFailed)
+		t.Errorf("c.reflectFriction() = %q; want %q", got, frictionengine.StatusFailed)
 	}
 	if got == "filed" {
-		t.Error("c.reflectFriction(false) = \"filed\"; that status must never exist")
+		t.Error("c.reflectFriction() = \"filed\"; that status must never exist")
 	}
 	// The lock is not leaked: once a reflection returns, a later one against the same task must be able
-	// to take it. Without the release, the first halt of a task would permanently suppress every later
-	// reflection in it.
-	if got := c.reflectFriction(false); got != frictionengine.StatusFailed {
-		t.Errorf("second c.reflectFriction(false) = %q; want %q -- the first call must have released the reflection lock, not held it for the process's life", got, frictionengine.StatusFailed)
-	}
-}
-
-// TestReflectFriction_SkipsWhenAnotherDriverHoldsTheReflectionLock is the regression guard for the
-// blocked path's second-driver window.
-//
-// shedengine.Run releases the run lock on return, and the blocked-path reflection fires after that
-// return -- so for the whole of the reflection agent's life (friction_timeout_min, thirty minutes in
-// the shipped template) the run lock reads as free and a second "lyx loom start" spawns a second driver.
-// That second driver is a legitimate resume of a halted run, but its own reflection would archive
-// the friction directory out from under the first one's live agent while both held the same
-// reflection-report.md as a declared output.
-//
-// The lock is held here by a separate acquisition standing in for that other driver, and the
-// assertion is that this call skips rather than waits: the other reflection already covers these
-// notes, and blocking would hold a driver open for another agent's whole deadline.
-func TestReflectFriction_SkipsWhenAnotherDriverHoldsTheReflectionLock(t *testing.T) {
-	t.Parallel()
-
-	hub := t.TempDir()
-	loc := &lyxcwd.Location{HubPath: hub, WorktreeName: "pair", AnchorRel: "."}
-
-	lockPath := loomengine.LoomFrictionLock(loc)
-	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(lockPath), err)
-	}
-	held, acquired, err := lock.TryAcquireWriteLock(lockPath)
-	if err != nil {
-		t.Fatalf("TryAcquireWriteLock(%q) = %v; want nil", lockPath, err)
-	}
-	if !acquired {
-		t.Fatalf("TryAcquireWriteLock(%q) did not acquire a fresh lock", lockPath)
-	}
-	t.Cleanup(func() { _ = held.Release() })
-
-	// Deliberately a relative friction directory, which frictionengine.Reflect's own validateDeps
-	// rejects: reaching Reflect at all would report StatusFailed, so StatusSkipped can only mean the
-	// lock check returned before it.
-	c := &loomCLI{
-		location:    loc,
-		frictionDir: "relative-friction-dir",
-		runDeps:     websterengine.RunDeps{Geom: websterengine.Geometry{StencilsDir: "stencils"}},
-	}
-
-	if got := c.reflectFriction(false); got != frictionengine.StatusSkipped {
-		t.Errorf("c.reflectFriction(false) with the reflection lock already held = %q; want %q -- a second driver must not reflect over the same notes", got, frictionengine.StatusSkipped)
+	// to take it, or the call would wait on the first one's lock for the process's life.
+	if got := c.reflectFriction(); got != frictionengine.StatusFailed {
+		t.Errorf("second c.reflectFriction() = %q; want %q -- the first call must have released the reflection lock, not held it for the process's life", got, frictionengine.StatusFailed)
 	}
 }
 
