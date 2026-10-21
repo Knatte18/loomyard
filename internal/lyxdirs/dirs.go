@@ -24,3 +24,6 @@ const HibernateDirName = "hibernate"
 
 // CreelDirName is the directory under the hub's board-level DotLyxDirName that holds creel's journal and the daemon lock.
 const CreelDirName = "creel"
+
+// FailedPushDirName is the directory under the hub's board-level DotLyxDirName that holds one failed-push record per repository side and branch.
+const FailedPushDirName = "failed-push"
