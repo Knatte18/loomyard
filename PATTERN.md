@@ -8,7 +8,7 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-told-geometry` — Writing an engine: handed its absolute paths, it derives none and never imports `internal/lyxcwd`. — [background](pattern/PATTERN-told-geometry.md)
 - `PATTERN-lyxdirs-single-declarer` — Naming `_lyx` or `.lyx` in a path: only `internal/lyxdirs` declares them, bar one variable block atop a `tools/` script.
 - `PATTERN-lyx-temp-root` — Creating a temp file or dir: under `internal/lyxtemp`'s run dir, never `os.TempDir()`. (test) — [background](pattern/PATTERN-lyx-temp-root.md)
-- `PATTERN-durable-vs-ephemeral-state` — Adding a file: tracked under `_lyx`, never-tracked under `.lyx`, same subpath. — [background](pattern/PATTERN-durable-vs-ephemeral-state.md)
+- `PATTERN-durable-vs-ephemeral-state` — Adding a file: tracked under `_lyx`, never-tracked under `.lyx`, same subpath; nothing a run needs lives only under `.lyx`. — [background](pattern/PATTERN-durable-vs-ephemeral-state.md)
 - `PATTERN-hub-containment` — Linking hub-level containers or writing the hub workspace file: from the hub only, never into a worktree. — [background](pattern/PATTERN-hub-containment.md)
 - `PATTERN-hub-wide-config` — A hub-level config module: `HubWide` in `configreg`, its tracked file on the board only, its machine override never-tracked beside it. — [background](pattern/PATTERN-hub-wide-config.md)
 - `PATTERN-hub-suffix` — Touching hub naming: `-LYXHUB` is the sole hub container suffix; no code recognises retired `-HUB`. (test) — [background](pattern/PATTERN-hub-suffix.md)
@@ -29,7 +29,7 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-fabric-git` — Running git on warp or weft: only `internal/fabricengine`, in-process, never raw git. — [background](pattern/PATTERN-fabric-git.md)
 - `PATTERN-fabric-destruction-chokepoint` — Destroying anything in fabric: only `internal/fabricengine/destroy.go`. — [background](pattern/PATTERN-fabric-destruction-chokepoint.md)
 - `PATTERN-fabric-write-containment` — Writing `_launchers` or the workspace file in `fabricengine`: via a hub `os.Root`, never raw `os` or `fslink`.
-- `PATTERN-push-both-sides` — Pushing run records from Go: the pair's code branch goes along. — [background](pattern/PATTERN-push-both-sides.md)
+- `PATTERN-push-both-sides` — Pushing run records from Go: the pair's code branch goes along, and a per-transition status push goes through fabric's detached push. — [background](pattern/PATTERN-push-both-sides.md)
 - `PATTERN-mutation-record` — Adding a mutating fabric verb: it fills a `*Mutations` record; its result embeds `MutationRecord`. — [background](pattern/PATTERN-mutation-record.md)
 - `PATTERN-pair-teardown` — Tearing down a pair: only via `internal/pairteardown`. (test) — [background](pattern/PATTERN-pair-teardown.md)
 - `PATTERN-batten-bookend` — Creating or destroying a task worktree: its producer never runs inside it. — [background](pattern/PATTERN-batten-bookend.md)
