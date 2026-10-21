@@ -720,6 +720,7 @@ func TestGateTest_Scenario(t *testing.T) {
 				configengine.MachineFile(h.BoardDir(), "gate"),
 				"lyx config gate --layer machine",
 				"by removing",
+				"take the step it names, then re-run the same command",
 				"a session that is not the prime takes none of these steps; it reports status: FAILED and the orch runs them",
 			},
 		},

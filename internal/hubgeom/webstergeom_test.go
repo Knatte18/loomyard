@@ -133,6 +133,13 @@ func TestWebsterGeometry(t *testing.T) {
 			if err := os.MkdirAll(filepath.Dir(machineConfig), 0o755); err != nil {
 				t.Fatal(err)
 			}
+			if err := os.WriteFile(machineConfig, []byte("go_parallel: 0\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			wantNamed := "load " + gateConfig + " and " + machineConfig
+			if _, err := got.GateSlots.Limits(); err == nil || !strings.Contains(err.Error(), wantNamed) {
+				t.Errorf("GateSlots.Limits() over a machine go_parallel: 0 = %v; want an error holding %q", err, wantNamed)
+			}
 			if err := os.WriteFile(machineConfig, []byte("slots: 1\ngo_parallel: 8\n"), 0o644); err != nil {
 				t.Fatal(err)
 			}
