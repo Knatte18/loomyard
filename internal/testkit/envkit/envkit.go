@@ -56,6 +56,7 @@ var nilLegal = map[string]bool{
 	"Landing.MarkTaskDone":              true,
 	"Landing.ConfigChanges":             true,
 	"Landing.Notify":                    true,
+	"Landing.Reconcile":                 true,
 	"Landing.VerifyCommand":             true,
 	"Landing.PublishVerifySkip":         true,
 	"Landing.VerifyWaitMark":            true,

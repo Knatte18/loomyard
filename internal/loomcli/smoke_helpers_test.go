@@ -44,6 +44,10 @@ func runLoomCLINoFatal(exe, dir string, timeout time.Duration, args ...string) (
 	return lyxbin.Run(exe, dir, timeout, args...)
 }
 
+// skipBoardPush keeps a verb's detached board sync from pushing,
+// which would otherwise outlive the test and race TempDir's removal of the bare remote.
+var skipBoardPush = []string{"BOARD_SKIP_PUSH=1"}
+
 // runLoomCLIWithEnvNoFatal is runLoomCLINoFatal with extraEnv appended to the inherited environment of the subprocess alone,
 // so a parallel test can set a variable such as FABRIC_SKIP_PUSH for one invocation without t.Setenv.
 func runLoomCLIWithEnvNoFatal(exe, dir string, extraEnv []string, timeout time.Duration, args ...string) (stdout string, exitCode int, err error) {
