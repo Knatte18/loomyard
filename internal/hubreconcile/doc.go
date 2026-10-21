@@ -1,5 +1,5 @@
 // Package hubreconcile reconciles a hub's config once after a binary change, under a hub lock, and commits everything it wrote.
-// Its one entry point is Ensure; a start verb calls it before loading any module config.
+// Its one entry point is Ensure; a start verb calls it, through EnsureOrWarn, before loading any module config.
 //
 // The package is told the hub's geometry and derives none (PATTERN-told-geometry), so it never imports internal/lyxcwd.
 //
@@ -68,6 +68,9 @@
 // *WorktreeError names the worktree, the file and the cause of a reconcile or commit failure, and ends with the way forward:
 // `lyx config <module> --layer default` from the prime worktree for a board file, `lyx config <module>` for a worktree file, and only the file and the re-run for the board marker.
 // *LockTimeoutError names the lock.
+// EnsureOrWarn is Ensure for the stamp-gated reads, the start verbs and the Preflight row: a failure logs one Warn naming the error and the way forward, and the caller goes on with the config as it was.
+// The failing step's files are restored and no stamp is written, so the next start verb retries; steps that committed before the failure keep their commits.
+// The pair call and the clone's walk keep Ensure and its error.
 //
 // # Accepted gaps
 //

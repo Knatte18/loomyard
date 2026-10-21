@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/logger"
 )
 
 // DefaultLockWait bounds how long Ensure waits for the hub lock when Options.LockWait is zero.
@@ -48,6 +49,17 @@ type Options struct {
 // A lock not acquired within the wait returns *LockTimeoutError; a reconcile or commit failure returns *WorktreeError.
 func Ensure(geom Geometry, opts Options) error {
 	return ensure(geom, opts, walkHooks{})
+}
+
+// reconcileWayForward is the way forward a failed reconcile's warning names.
+const reconcileWayForward = "fix the cause the error names, then run a start verb to retry the reconcile: `lyx loom resume` in the task worktree, or `lyx batten run` or `lyx orch start` from the prime"
+
+// EnsureOrWarn is Ensure for a caller that reads a hub's config and goes on when the reconcile fails.
+// A failure logs one warning naming the error and the way forward and returns nothing, leaving the stamp stale so the next start verb retries the walk.
+func EnsureOrWarn(geom Geometry, opts Options) {
+	if err := Ensure(geom, opts); err != nil {
+		logger.Warn("hubreconcile: hub config reconcile failed, going on with the config as it is", "error", err, "way_forward", reconcileWayForward)
+	}
 }
 
 // LockTimeoutError reports that another lyx command held the hub lock for the whole wait.

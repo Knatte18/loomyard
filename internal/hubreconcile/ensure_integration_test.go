@@ -983,6 +983,72 @@ func TestEnsure_HeldLockTimesOutWithoutStamping(t *testing.T) {
 	}
 }
 
+// The logger's output is process-global, so this test does not call t.Parallel.
+func TestEnsureOrWarn_WarnsWithTheWayForward(t *testing.T) {
+	const wayForwardText = "start verb to retry the reconcile"
+
+	tests := []struct {
+		name string
+		// setup breaks the hub and returns the options of the call, the file or lock the Warn must name, and the repair that fixes the cause; nil repair skips the second call.
+		setup func(t *testing.T, h *hubforge.Hub, geom hubreconcile.Geometry) (opts hubreconcile.Options, wantNamed string, repair func())
+	}{
+		{
+			name: "broken config is warned about, then reconciled once fixed",
+			setup: func(t *testing.T, h *hubforge.Hub, geom hubreconcile.Geometry) (hubreconcile.Options, string, func()) {
+				gitkit.CommitFile(t, h.PairRecordsSibling("pair-a"), configengine.ConfigFileRel("loom"), "a: [unclosed\n", "fixture: broken loom.yaml")
+				return hubreconcile.Options{}, configengine.ConfigFile(h.PairCodeWorktree("pair-a"), "loom"), func() { commitTemplate(t, h.PairRecordsSibling("pair-a"), "loom") }
+			},
+		},
+		{
+			name: "held lock is warned about",
+			setup: func(t *testing.T, h *hubforge.Hub, geom hubreconcile.Geometry) (hubreconcile.Options, string, func()) {
+				if err := os.MkdirAll(filepath.Dir(geom.LockPath()), 0o755); err != nil {
+					t.Fatalf("mkdir lock dir: %v", err)
+				}
+				held, err := lock.AcquireWriteLock(geom.LockPath())
+				if err != nil {
+					t.Fatalf("hold lock: %v", err)
+				}
+				t.Cleanup(func() { _ = held.Release() })
+				return hubreconcile.Options{LockWait: 50 * time.Millisecond}, geom.LockPath(), nil
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logs := logcapture.Capture(t)
+			h := newStaleHub(t, "pair-a")
+			geom := geometryOf(h)
+			opts, wantNamed, repair := tt.setup(t, h, geom)
+
+			hubreconcile.EnsureOrWarn(geom, opts)
+
+			for _, want := range []string{wantNamed, wayForwardText} {
+				if !strings.Contains(logs.String(), want) {
+					t.Errorf("EnsureOrWarn log lacks %q:\n%s", want, logs.String())
+				}
+			}
+			if _, found := stampKey(t, geom); found {
+				t.Errorf("stamp written after a failed reconcile")
+			}
+			if repair == nil {
+				return
+			}
+
+			repair()
+			logs.Reset()
+			hubreconcile.EnsureOrWarn(geom, opts)
+
+			if strings.Contains(logs.String(), wayForwardText) {
+				t.Errorf("EnsureOrWarn warned after the repair:\n%s", logs.String())
+			}
+			if _, found := stampKey(t, geom); !found {
+				t.Errorf("stamp absent after the repaired reconcile")
+			}
+		})
+	}
+}
+
 func TestEnsure_ConcurrentCallsLandOneCommitPerBranch(t *testing.T) {
 	t.Parallel()
 
