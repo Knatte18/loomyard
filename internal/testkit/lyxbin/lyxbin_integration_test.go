@@ -212,7 +212,7 @@ func TestRun_KillsTheGroupOnTimeout(t *testing.T) {
 	t.Cleanup(func() { cancel(nil) })
 	go cancelOnceFileExists(ctx, cancel, pidFile, 2*time.Minute)
 
-	out, code, err := runUntilDone(ctx, self, t.TempDir())
+	out, code, err := runUntilDone(ctx, self, t.TempDir(), nil)
 
 	if !errors.Is(err, ErrTimeout) || code != -1 {
 		t.Fatalf("runUntilDone = (%q, %d, %v); want ErrTimeout and exit code -1", out, code, err)
