@@ -27,6 +27,7 @@ func TestPayloadUse_MatchesDeclaredKeys(t *testing.T) {
 		{name: "get", path: []string{"get"}, declared: lookupPayload, wantMatch: true},
 		{name: "remove", path: []string{"remove"}, declared: lookupPayload, wantMatch: true},
 		{name: "promote", path: []string{"promote"}, declared: lookupPayload, wantMatch: true},
+		{name: "rename", path: []string{"rename"}, declared: renamePayload, wantMatch: true},
 		{name: "set-status", path: []string{"set-status"}, declared: setStatusPayload, wantMatch: true},
 		{name: "set-deps", path: []string{"set-deps"}, declared: setDepsPayload, wantMatch: true},
 		{name: "upsert", path: []string{"upsert"}, declared: upsertPayload, wantMatch: true},

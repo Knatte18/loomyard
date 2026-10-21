@@ -2,7 +2,7 @@
 //
 // Command() returns the root "board" command over one store, board.json, whose entries carry a kind and labels.
 // The verbs upsert, upsert-batch, set-status, remove, get, list, list-full, merge and set-deps come from storeVerbs.
-// promote, prune, find, labels, profiles and retire-legacy, plus the rerender and sync maintenance verbs, are built in Command itself.
+// promote, rename, prune, find, labels, profiles and retire-legacy, plus the rerender and sync maintenance verbs, are built in Command itself.
 // The intake group (list, import, close) comes from intakeCommand in intake.go.
 // list and find take --text to print the compact listing from text.go instead of JSON.
 // Configuration resolution happens once in a PersistentPreRunE.
@@ -149,6 +149,48 @@ Example:
 				return outputError(out, err.Error())
 			}
 			return outputSuccessWithTask(out, task, "")
+		}),
+	}
+
+	renameCmd := &cobra.Command{
+		Use:         "rename {slug|id, to}",
+		Short:       "change an entry's slug in one write, keeping every other field and rewriting depends_on",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `Change an entry's slug in one atomic write. The entry keeps its id, position, body, kind, labels,
+priority, issues, dates, status and every other field, and every other entry's depends_on names the
+new slug in place of the old one. No entry's revised date changes.
+Refused, with nothing written, for an absent entry, an entry held by a run, and a target that is
+empty, too long or already an entry's slug.
+Body and brief text is never rewritten: "mentions" lists the entries whose body or brief still name
+the old slug as a whole word, the renamed entry included, and is [] when none does.
+
+Fields:
+  "slug" string  — current slug (mutually exclusive with "id")
+  "id"   integer — numeric entry ID (mutually exclusive with "slug")
+  "to"   string  — the new slug (required)
+
+Output:
+  {"ok":true,"task":{...},"mentions":["other-entry"]}
+
+Example:
+  lyx board rename '{"slug":"old-name","to":"new-name"}'` + slugLimitNote(),
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			if len(args) == 0 {
+				return outputError(out, "json payload required")
+			}
+			selector, m, err := resolveLookup([]byte(args[0]), renamePayload)
+			if err != nil {
+				return outputError(out, err.Error())
+			}
+			to, ok := m["to"].(string)
+			if !ok {
+				return outputError(out, "to must be a string")
+			}
+			result, err := b.Rename(selector, to)
+			if err != nil {
+				return outputError(out, err.Error())
+			}
+			return output.Ok(out, map[string]any{"task": result.Task, "mentions": result.Mentions})
 		}),
 	}
 
@@ -310,6 +352,7 @@ Example:
 		labelsCmd,
 		profilesCmd,
 		promoteCmd,
+		renameCmd,
 		pruneCmd,
 		findCmd,
 		retireLegacyCmd,
@@ -338,6 +381,9 @@ func slugLimitNote() string {
 
 // lookupPayload is the payload of get, remove and promote.
 var lookupPayload = payloadKeys{exclusive: [][2]string{{"slug", "id"}}}
+
+// renamePayload is the payload of rename.
+var renamePayload = payloadKeys{required: []string{"to"}, exclusive: [][2]string{{"slug", "id"}}}
 
 // setStatusPayload is the payload of set-status, and merge's set_status object.
 var setStatusPayload = payloadKeys{required: []string{"status"}, exclusive: [][2]string{{"slug", "id"}}}
