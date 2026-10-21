@@ -85,7 +85,7 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-shell-mechanics-seam` — Building a pane-shell command string: only via `internal/shell`, which imports only stdlib.
 - `PATTERN-pane-text-injection` — Typing text into an agent pane: only reed's guarded paste-submit. — [background](pattern/PATTERN-pane-text-injection.md)
 - `PATTERN-guarded-interrupt` — Sending an agent pane the interrupt key: only shuttle's two pane guards. — [background](pattern/PATTERN-guarded-interrupt.md)
-- `PATTERN-pane-binary-resolution` — Creating a pane in reed: resolve `lyx` via `panebin.go` only. (test) — [background](pattern/PATTERN-pane-binary-resolution.md)
+- `PATTERN-pane-binary-resolution` — Creating a strand pane or window in reed: resolve `lyx` via `panebin.go` only. (test) — [background](pattern/PATTERN-pane-binary-resolution.md)
 - `PATTERN-role-skills-typed` — Loading a spawned session's skill: its spawner names it on the launch spec, lyx delivers it on the launch line or typed; no stencil asks for one. (test)
 - `PATTERN-parent-directive` — Writing a spawned role's top-level stencil: it renders the parent directive. (test) — [background](pattern/PATTERN-parent-directive.md)
 - `PATTERN-edit-directive` — Writing a spawned role's opening stencil: it renders `internal/editdirective`'s directive. (test) — [background](pattern/PATTERN-edit-directive.md)
