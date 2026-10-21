@@ -124,7 +124,11 @@ func stepRename(t *testing.T, f *cliFixture) {
 		t.Errorf("rename: after.depends_on = %s, want [\"renamed\"]", deps)
 	}
 
-	result = runJSON(t, 0, "rename", `{"slug":"renamed","to":"again"}`)
+	renamed := runJSON(t, 0, "get", `{"slug":"renamed"}`)["task"].(map[string]any)
+	result = runJSON(t, 0, "rename", `{"id":`+formatNumber(renamed["id"].(float64))+`,"to":"again"}`)
+	if task := result["task"].(map[string]any); task["slug"] != "again" {
+		t.Errorf("rename by id: task = %v, want slug again", task)
+	}
 	if mentions, _ := json.Marshal(result["mentions"]); string(mentions) != `[]` {
 		t.Errorf("rename with no mention: mentions = %s, want []", mentions)
 	}
