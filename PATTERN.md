@@ -11,7 +11,7 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-durable-vs-ephemeral-state` — Adding a file: tracked under `_lyx`, never-tracked under `.lyx`, same subpath. — [background](pattern/PATTERN-durable-vs-ephemeral-state.md)
 - `PATTERN-hub-containment` — Linking hub-level containers or writing the hub workspace file: from the hub only. — [background](pattern/PATTERN-hub-containment.md)
 - `PATTERN-hub-wide-config` — A hub-level config module: `HubWide` in `configreg`, its file on the board only, its machine override beside it. — [background](pattern/PATTERN-hub-wide-config.md)
-- `PATTERN-sparse-hub-base` — Writing a hub's base file (a hub-wide module's hub file or a per-worktree repo default, not seed-only): only the units the hub tuned, never a template fill; only `hubreconcile`'s one-time walk strip drops a unit the template holds, bar `lenses`' template-equal entries.
+- `PATTERN-sparse-hub-base` — Writing a hub's base file: only the units the hub tuned, never a template fill. — [background](pattern/PATTERN-sparse-hub-base.md)
 - `PATTERN-hub-suffix` — Touching hub naming: `-LYXHUB` is the sole hub container suffix; no code recognises retired `-HUB`. (test) — [background](pattern/PATTERN-hub-suffix.md)
 
 ## CLI
@@ -47,7 +47,7 @@ Structural invariants, one line per entry: when it applies and what it requires.
 
 - `PATTERN-shed-producer-seam` — Importing into `internal/shedengine`: only stdlib, `state` and `lock`; its status and lock paths are caller-supplied.
 - `PATTERN-shed-recipe-registry` — Adding a producer: one `map[string]Constructor` in `internal/shedrecipe` behind `Lookup`, bar `Implementer`'s; no `init()`/`Register`/`lyxcwd`.
-- `PATTERN-recipe-setting-lookup` — Giving a recipe row a value: a plain one is `module.key` via `Env.Setting`, an executable one `module.key` via the owner's told lookup over the template and board default layer, a review segment's one a `SegmentSettings` field; never its own `Env` field.
+- `PATTERN-recipe-setting-lookup` — Giving a recipe row a value: looked up by key, never its own `Env` field. — [background](pattern/PATTERN-recipe-setting-lookup.md)
 - `PATTERN-command-row` — Adding a side-action row to a recipe: a `Command` row over its config keys, its command read from the template and board default layer only, never a new engine.
 - `PATTERN-shed-verb-set` — Adding a run, step, status, pause or goto verb: generic bodies only in `internal/shedverbs`. (test) — [background](pattern/PATTERN-shed-verb-set.md)
 - `PATTERN-shed-driver` — Driving a shed run in Go, deciding its stops or spawning a tackler: only `internal/sheddriver`. (test) — [background](pattern/PATTERN-shed-driver.md)
