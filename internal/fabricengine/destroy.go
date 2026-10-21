@@ -1788,6 +1788,15 @@ func dropSeedCommits(rec *Mutations, req pathRequest, repo *gitrepo.Repo, upstre
 	return nil
 }
 
+// restoreReplayTip puts repo's branch back on tip with `reset --keep` after a replay failed past its pick, so a failure never leaves the branch on upstream.
+// A reset git refuses, as over a file the failed replay already wrote, is returned.
+func restoreReplayTip(repo *gitrepo.Repo, tip string) error {
+	if err := repo.ResetKeep(tip); err != nil {
+		return fmt.Errorf("restore %s after a failed board replay: %w", tip, err)
+	}
+	return nil
+}
+
 // cherryPickOnto is the executor for replaying local commits onto a records branch's moved upstream:
 // it runs the pipeline against req, resets repo to onto keeping uncommitted changes, then cherry-picks commits, oldest first.
 // A commit that changes no path, and one whose change onto already carries, is dropped and returned in dropped.
