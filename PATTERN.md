@@ -4,14 +4,14 @@ Structural invariants, one line per entry: when it applies and what it requires.
 
 ## Paths and geometry
 
-- `PATTERN-cwd-resolution` — Resolving a cwd or worktree root: only `internal/lyxcwd`; nothing else calls `os.Getwd` or `git rev-parse`. — [background](pattern/PATTERN-cwd-resolution.md)
+- `PATTERN-cwd-resolution` — Resolving a cwd or worktree root: only `internal/lyxcwd`. — [background](pattern/PATTERN-cwd-resolution.md)
 - `PATTERN-told-geometry` — Writing an engine: handed its absolute paths, it derives none and never imports `internal/lyxcwd`. — [background](pattern/PATTERN-told-geometry.md)
 - `PATTERN-lyxdirs-single-declarer` — Naming `_lyx` or `.lyx` in a path: only `internal/lyxdirs` declares them, bar one variable block atop a `tools/` script.
 - `PATTERN-lyx-temp-root` — Creating a temp file or dir: under `internal/lyxtemp`'s run dir, never `os.TempDir()`. (test) — [background](pattern/PATTERN-lyx-temp-root.md)
 - `PATTERN-durable-vs-ephemeral-state` — Adding a file: tracked under `_lyx`, never-tracked under `.lyx`, same subpath. — [background](pattern/PATTERN-durable-vs-ephemeral-state.md)
 - `PATTERN-hub-containment` — Linking hub-level containers or writing the hub workspace file: from the hub only. — [background](pattern/PATTERN-hub-containment.md)
 - `PATTERN-hub-wide-config` — A hub-level config module: `HubWide` in `configreg`, its file on the board only, its machine override beside it. — [background](pattern/PATTERN-hub-wide-config.md)
-- `PATTERN-sparse-hub-base` — Writing a hub's base file: only the units the hub tuned, never a template fill. — [background](pattern/PATTERN-sparse-hub-base.md)
+- `PATTERN-sparse-hub-base` — Writing a hub's base file: only the units the hub tuned. — [background](pattern/PATTERN-sparse-hub-base.md)
 - `PATTERN-hub-suffix` — Touching hub naming: `-LYXHUB` is the sole hub container suffix. (test) — [background](pattern/PATTERN-hub-suffix.md)
 
 ## CLI
@@ -19,7 +19,7 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-cli-cobra` — Adding a CLI module: a cobra subtree under one root in `cmd/lyx/main.go`. (test) — [background](pattern/PATTERN-cli-cobra.md)
 - `PATTERN-cliwire-sole-wiring` — Wiring a standalone-capable CLI: `internal/cliwire` alone resolves target dir, repo root and state. (test) — [background](pattern/PATTERN-cliwire-sole-wiring.md)
 - `PATTERN-config-strictness` — Loading config: a caller adopts exactly one of strict `Load` or `LoadOrTemplate`, bar `runprofile`. — [background](pattern/PATTERN-config-strictness.md)
-- `PATTERN-config-layers` — Resolving a module's config: only `configengine` reads, stacks and locates layer files, machine layer included. — [background](pattern/PATTERN-config-layers.md)
+- `PATTERN-config-layers` — Resolving a module's config: only `configengine` reads, stacks and locates layer files. — [background](pattern/PATTERN-config-layers.md)
 - `PATTERN-binary-change-reconcile` — Reconciling a hub's config after a binary change: only via `hubreconcile.Ensure`, owner of the build stamp and hub lock.
 - `PATTERN-refusal-way-forward` — Adding a webster, shed or loom refusal: its message names the way forward; a test reaches it. — [background](pattern/PATTERN-refusal-way-forward.md)
 - `PATTERN-no-denied-recovery` — Naming a step in a refusal, stencil or spec: never a command the agents' settings deny. (test) — [background](pattern/PATTERN-no-denied-recovery.md)
@@ -67,7 +67,7 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-gate-slot` — Running a gate build or test: only in a `-p`-capped, `-trimpath` hub slot of `internal/gateslot`.
 - `PATTERN-trimpath-safe-root` — Locating the module root in code a gate run builds: never from a `runtime.Caller` path alone, which `-trimpath` makes module-relative.
 - `PATTERN-batcher-registry` — Choosing webster's execution unit: the batch the active `batcher.yaml` profile derives via `internal/batcher`. — [background](pattern/PATTERN-batcher-registry.md)
-- `PATTERN-review-round` — Review and fix round: review accepted on disk before any edit, each finding fixed or disputed, end on a verdict. — [background](pattern/PATTERN-review-round.md)
+- `PATTERN-review-round` — Review and fix round: review accepted on disk before any edit, each finding fixed or disputed. — [background](pattern/PATTERN-review-round.md)
 - `PATTERN-sole-parsers` — Parsing plan, discussion, summary, recipe or halt note: only its sole parser. (test) — [background](pattern/PATTERN-sole-parsers.md)
 
 ## Agents and prompts
@@ -76,7 +76,7 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-creel-store` — Writing the creel journal or reaching a pane: only `internal/creelengine`, a pane only via its `Delivery` seam. (test) — [background](pattern/PATTERN-creel-store.md)
 - `PATTERN-stencil-ownership` — Reading a prompt or spec: at call time via `internal/stencilstore` from a told directory, never embedded. — [background](pattern/PATTERN-stencil-ownership.md)
 - `PATTERN-producer-pointer-rule` — Writing an instruction file: it points at another producer's format contract, never restating it.
-- `PATTERN-friction-capture` — Halting a loom run or refusing in webster: Go writes a note, reflected at the run's end, archived once covered. (test) — [background](pattern/PATTERN-friction-capture.md)
+- `PATTERN-friction-capture` — Halting a loom run or refusing in webster: Go writes a note, archived only once reflected. (test) — [background](pattern/PATTERN-friction-capture.md)
 - `PATTERN-completion-signal` — Finding a run unfinished in `internal/shuttleengine`: consult `allOutputFilesExist` first. (test) — [background](pattern/PATTERN-completion-signal.md)
 - `PATTERN-shuttle-provider-seam` — Referencing a provider: its specifics live only under `internal/shuttleengine/<engine>`. (test) — [background](pattern/PATTERN-shuttle-provider-seam.md)
 - `PATTERN-model-choice-mapping` — Mapping a resolved model-spec onto a spawn: only `shuttleengine.NewModelChoice` reads its fields. (test) — [background](pattern/PATTERN-model-choice-mapping.md)
@@ -114,8 +114,8 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-test-economy` — Writing a test: it pins public-surface behavior no test covers yet, else it extends one. — [background](pattern/PATTERN-test-economy.md)
 - `PATTERN-test-speed` — Writing a test: lowest fitting tier, injected clocks, `t.Parallel` by default. (test) — [background](pattern/PATTERN-test-speed.md)
 - `PATTERN-test-isolation` — Testing a package: git spawners use `gitkit.HermeticGitEnv()`; tagged packages run through `tmuxkit.Main`. (test) — [background](pattern/PATTERN-test-isolation.md)
-- `PATTERN-testkit` — Sharing test support across packages: one kit under `internal/testkit/<kit>/`, imported only from tests, never duplicated. (test) — [background](pattern/PATTERN-testkit.md)
-- `PATTERN-hubforge-fixtures` — A hub fixture no fake can test: `hubforge` via `fabriccli.CloneAndWire`, never hand-assembled or wrapped. — [background](pattern/PATTERN-hubforge-fixtures.md)
+- `PATTERN-testkit` — Sharing test support across packages: one kit under `internal/testkit/<kit>/`, imported only from tests. (test) — [background](pattern/PATTERN-testkit.md)
+- `PATTERN-hubforge-fixtures` — A hub fixture no fake can test: `hubforge` via `fabriccli.CloneAndWire`, never hand-assembled. — [background](pattern/PATTERN-hubforge-fixtures.md)
 
 ## Docs
 
