@@ -1176,10 +1176,10 @@ func stepBoardPathResolution(t *testing.T, f *cliFixture) {
 
 	t.Run("intake_resolves_the_hub_repository_through_its_binding_then_origin", func(t *testing.T) {
 		// The fixture hub records no binding and its repository has no origin remote,
-		// so the refusal comes from HubRepoURL and names the binding file.
+		// so the refusal comes from HubRepoURL and names the missing origin remote.
 		exitCode, stdout := runCLI(t, "intake", "list")
-		if exitCode != 1 || !strings.Contains(stdout, fabricengine.WarpBindingFileName) {
-			t.Errorf("intake list exit %d, stdout %s; want exit 1 naming %s", exitCode, stdout, fabricengine.WarpBindingFileName)
+		if exitCode != 1 || !strings.Contains(stdout, "no usable origin remote") {
+			t.Errorf("intake list exit %d, stdout %s; want exit 1 naming the missing origin remote", exitCode, stdout)
 		}
 	})
 }
