@@ -75,19 +75,31 @@ func (o ReconcileOptions) sleep() {
 
 // EndedTeardown asks the teardown seam to remove the local pair of an entry origin has ended.
 // Force marks the case where the pair's uncommitted work is snapshotted and removed instead of refusing the removal.
+// EarlierSnapshot is set when the weft repository already holds a snapshot tag of the slug, which an earlier force-case run left.
 type EndedTeardown struct {
-	Slug  string
-	Force bool
+	Slug            string
+	Force           bool
+	EarlierSnapshot bool
 }
 
+// What a busy teardown was waiting on, as TeardownReport.BusyOn names it.
+const (
+	// BusyOnDriver means the pair's driver is still running.
+	BusyOnDriver = "driver"
+	// BusyOnLock means the teardown lock, the weft write lock or a detached push holds the pair.
+	BusyOnLock = "lock"
+)
+
 // TeardownReport is what the teardown seam reports about one removal: the tags it kept work under, the reasons it kept anything, whether it was busy and the error it stopped on.
+// BusyOn names what a busy removal waits on, BusyOnDriver or BusyOnLock.
 // It embeds MutationRecord, filled from the removal's own record.
 type TeardownReport struct {
 	MutationRecord
-	Tags  []string
-	Kept  []string
-	Busy  bool
-	Error error
+	Tags   []string
+	Kept   []string
+	Busy   bool
+	BusyOn string
+	Error  error
 }
 
 // OriginSeams carries what a reconcile reaches only by injection, since fabricengine knows neither a run's driver nor a parent lock nor pair teardown.
@@ -177,11 +189,20 @@ const (
 
 // EntryOutcome is the verdict on one judged entry.
 // Busy marks an ended entry whose driver or branch is busy, so its pair is not yet removed, and WayForward then names what lets the next run remove it.
+// An ended entry also carries How origin ended it, "done" or "removed", and Local when this machine holds a part of its pair.
+// Removed is set once the teardown removed that pair, with the Tags it kept work under and the reasons it Kept anything.
+// Error is the message of a teardown that failed for any reason but being busy, leaving the pair for a later `lyx cleanup --apply`.
 type EntryOutcome struct {
 	Slug       string
 	State      EntryState
 	Busy       bool
 	WayForward string
+	How        string
+	Local      bool
+	Removed    bool
+	Tags       []string
+	Kept       []string
+	Error      string
 }
 
 // OriginReport is what one reconcile did: the verdict on every judged branch and entry, and whether origin could be reached at all.
@@ -227,9 +248,12 @@ func (r OriginReport) Summary() string {
 	var ended []string
 	for _, entry := range r.Entries {
 		switch {
-		case entry.State == EntryEnded && entry.Busy:
+		case entry.State != EntryEnded || !entry.Local:
+		case entry.Busy:
 			lines = append(lines, fmt.Sprintf("ended, not yet removed: %s: %s", entry.Slug, entry.WayForward))
-		case entry.State == EntryEnded:
+		case entry.Error != "":
+			lines = append(lines, fmt.Sprintf("ended, not yet removed: %s: %s; a later `lyx cleanup --apply` retries the removal", entry.Slug, entry.Error))
+		default:
 			ended = append(ended, entry.Slug)
 		}
 	}
@@ -587,15 +611,17 @@ func samePath(porcelain, built string) bool {
 
 // ReconcileOrigin judges this machine's local branches against origin and returns the verdict on each, and on each entry whose pair has a batten run record.
 // It runs one ls-remote per repository and fetches only the heads origin moved.
+// It reads the ended set, and tears down through the seam the local pair of each run origin has ended, before any branch moves; a judge-only scope reports those teardowns and runs none.
 // A judge-only scope stops there.
-// Any other scope then reads the ended set and moves each branch behind origin: a fast-forward of its checkout, or a replay of a records branch's local commits.
+// Any other scope then moves each branch behind origin: a fast-forward of its checkout, or a replay of a records branch's local commits.
 // A branch a live pair, a held lock or a dirty path keeps from moving is reported as such and left where it was, and no branch is ever reset, rebased or pushed.
+// A moving scope also clears the failed-push record of each branch that is no longer local.
 // A transport failure that outlasts the retry bound is the report's Unreachable, with nothing judged against origin and nothing moved, and a nil error.
 // Any other failure of ls-remote, or a failed fetch after both ls-remote calls answered, is returned as the error, with nothing judged or moved.
-// seams is what the moves reach by injection.
+// seams is what the moves and the teardowns reach by injection.
 func ReconcileOrigin(l *lyxcwd.Location, scope ReconcileScope, seams OriginSeams, opts ReconcileOptions) (res OriginReport, err error) {
 	rec := NewMutations(l.HubPath)
-	defer func() { res.Mutations = rec.Snapshot() }()
+	defer func() { res.Mutations.Extend(rec.Snapshot()) }()
 
 	targets, pairs, warpDir, recordsDir, err := originTargets(l, scope)
 	if err != nil {
@@ -649,18 +675,32 @@ func ReconcileOrigin(l *lyxcwd.Location, scope ReconcileScope, seams OriginSeams
 	if err != nil {
 		return res, err
 	}
+	runs, err := recordedRuns(l, scope)
+	if err != nil {
+		return res, err
+	}
+	ended, err := readOriginEnded(l, targets, res.Branches, runs)
+	if err != nil {
+		return res, err
+	}
+	if err := reconcileEnded(l, scope, seams, onlyRuns(ended, runs), &res); err != nil {
+		return res, err
+	}
+	endedEntries := res.Entries
+	res.Entries = nil
+
 	if !scope.JudgeOnly {
-		ended, err := readOriginEnded(l, targets, res.Branches, recorded)
-		if err != nil {
+		mover := &originMover{rec: rec, l: l, scope: scope, seams: seams, ended: ended, targets: targets, outcomes: res.Branches, live: map[string]bool{}, ownedByEnded: endedLocalSlugs(endedEntries, scope.Run)}
+		if err := mover.moveAll(pairs); err != nil {
 			return res, err
 		}
-		mover := &originMover{rec: rec, l: l, scope: scope, seams: seams, ended: ended, targets: targets, outcomes: res.Branches, live: map[string]bool{}}
-		if err := mover.moveAll(pairs); err != nil {
+		res.Branches = withoutRemovedPairs(res.Branches, endedEntries)
+		if err := clearStalePushFailures(l.HubPath); err != nil {
 			return res, err
 		}
 	}
 
-	res.Entries = classifyEntries(scope, recorded, res.Branches)
+	res.Entries = mergeEndedEntries(classifyEntries(scope, recorded, res.Branches), endedEntries)
 	return res, nil
 }
 

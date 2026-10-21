@@ -254,6 +254,8 @@ type originMover struct {
 	targets  []originTarget
 	outcomes []BranchOutcome
 	live     map[string]bool
+	// ownedByEnded holds the slugs of pairs the ended-entries step already judged, whose branches no move touches.
+	ownedByEnded map[string]bool
 }
 
 // moveAll moves every judged branch that is behind origin: Bolt first, then the prime's branches, the prime's records before its code, then each pair's.
@@ -358,6 +360,9 @@ func (m *originMover) move(i int, busy string) error {
 	if m.scope.Run != "" && target.side != failedPushSideBolt && target.slug != m.scope.Run {
 		return nil
 	}
+	if m.ownedByEnded[target.slug] {
+		return nil
+	}
 
 	if busy != "" {
 		outcome.State = BranchBusy
@@ -432,11 +437,7 @@ func recordedPairs(l *lyxcwd.Location, pairs []string) ([]string, error) {
 	if len(pairs) == 0 {
 		return nil, nil
 	}
-	primeName, err := PrimeName(l)
-	if err != nil {
-		return nil, err
-	}
-	prime, err := lyxcwd.ResolveWorktree(filepath.Join(l.HubPath, primeName))
+	prime, err := resolvePrime(l)
 	if err != nil {
 		return nil, err
 	}
@@ -457,7 +458,7 @@ func recordedPairs(l *lyxcwd.Location, pairs []string) ([]string, error) {
 // The candidates are the pairs with a batten run record and the runs a local commit origin lacks touches, on Bolt or on a weft needing a replay.
 // A run this machine's own landing has reached is dropped from the set, so no replay sets aside what this machine is landing.
 // A hub with no Bolt branch to read, or one origin no longer has, has an empty set.
-func readOriginEnded(l *lyxcwd.Location, targets []originTarget, outcomes []BranchOutcome, recorded []string) (EndedSet, error) {
+func readOriginEnded(l *lyxcwd.Location, targets []originTarget, outcomes []BranchOutcome, runs []string) (EndedSet, error) {
 	boltIndex := slices.IndexFunc(targets, func(target originTarget) bool { return target.side == failedPushSideBolt })
 	if boltIndex < 0 || outcomes[boltIndex].OriginHead == "" {
 		return nil, nil
@@ -467,7 +468,7 @@ func readOriginEnded(l *lyxcwd.Location, targets []originTarget, outcomes []Bran
 
 	candidates := map[string]bool{}
 	created := map[string]string{}
-	for _, slug := range recorded {
+	for _, slug := range runs {
 		candidates[slug] = true
 	}
 	for i, target := range targets {
