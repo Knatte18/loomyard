@@ -399,6 +399,66 @@ func assertGotoRefused(t *testing.T, shed *Shed, target string) error {
 	return err
 }
 
+// TestGoto_Guard pins that a told guard refuses or, when it cannot decide, refuses too, each leaving the file unchanged.
+// An admitting guard lets the goto move the run, and the guard is never asked about a target Shed's own checks refused.
+func TestGoto_Guard(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		current   string
+		target    string
+		refusal   string
+		guardErr  error
+		wantErr   string
+		wantCalls int
+	}{
+		{name: "refusal", current: "B", target: "A", refusal: "the review is settled", wantErr: `goto target "A" refused: the review is settled`, wantCalls: 1},
+		{name: "guard error", current: "B", target: "A", guardErr: errors.New("seam unreadable"), wantErr: "could not be checked: seam unreadable; way forward: re-run goto", wantCalls: 1},
+		{name: "admitting guard moves the run", current: "B", target: "A", wantCalls: 1},
+		{name: "target past the current row never reaches the guard", current: "A", target: "B", refusal: "never asked", wantErr: "lies past the run's current row"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			shed, _, _ := gotoShed(t)
+			seed := commonSeed(tt.current)
+			seed.State = StateBlocked
+			seedStatus(t, shed.StatusPath, shed.StatusLockPath, seed)
+			before := readStatus(t, shed.StatusPath, shed.StatusLockPath)
+
+			calls := 0
+			req := gotoRequest(shed, tt.target)
+			req.Guard = func(target string) (string, error) {
+				calls++
+				if target != tt.target {
+					t.Errorf("guard target = %q; want %q", target, tt.target)
+				}
+				return tt.refusal, tt.guardErr
+			}
+			got, err := Goto(req)
+			if calls != tt.wantCalls {
+				t.Errorf("guard called %d times; want %d", calls, tt.wantCalls)
+			}
+			after := readStatus(t, shed.StatusPath, shed.StatusLockPath)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Goto error = %v; want it to contain %q", err, tt.wantErr)
+				}
+				if !reflect.DeepEqual(before, after) {
+					t.Errorf("status file changed on a refusal: %+v -> %+v", before, after)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Goto = _, %v; want nil error", err)
+			}
+			if got.CurrentProducer != tt.target || after.CurrentProducer != tt.target || after.State != StatePaused {
+				t.Errorf("CurrentProducer, persisted State = %q, %q; want %q, paused", got.CurrentProducer, after.State, tt.target)
+			}
+		})
+	}
+}
+
 func TestGoto_AwaitingRefusesFinalizeAndAdmitsEarlierRow(t *testing.T) {
 	shed := tailShed(t, "PR-Gate", StateAwaiting, nil)
 
@@ -502,6 +562,7 @@ func TestRelaunch(t *testing.T) {
 		target        string
 		admitErr      error
 		admitInEffect bool
+		guard         GotoGuard
 		wantErr       string
 		wantBusy      bool
 		wantAdmits    int
@@ -513,6 +574,16 @@ func TestRelaunch(t *testing.T) {
 		{name: "running run", seed: seedWith(StateRunning, "B"), target: "A", wantErr: "another loop owns this run; way forward:"},
 		{name: "target past the current row", seed: seedWith(StateBlocked, "A"), target: "B", wantErr: "lies past the run's current row"},
 		{name: "admit error returned verbatim", seed: seedWith(StateBlocked, "B"), target: "A", admitErr: errAdmit, wantErr: errAdmit.Error(), wantAdmits: 1},
+		{
+			name: "guard refusal returned before Admit", seed: seedWith(StateBlocked, "B"), target: "A",
+			guard:   func(string) (string, error) { return "the review is settled", nil },
+			wantErr: `goto target "A" refused: the review is settled`,
+		},
+		{
+			name: "guard error refuses before Admit", seed: seedWith(StateBlocked, "B"), target: "A",
+			guard:   func(string) (string, error) { return "", errors.New("seam unreadable") },
+			wantErr: "could not be checked: seam unreadable; way forward: re-run goto",
+		},
 		{
 			name: "backward target keeps the pause conditions", seed: seedWith(StateBlocked, "B"), target: "A", wantAdmits: 1,
 			check: func(t *testing.T, got Status) {
@@ -575,6 +646,7 @@ func TestRelaunch(t *testing.T) {
 				Producers:               shed.Producers,
 				MissingStatusWayForward: "way forward: told clause",
 				Target:                  tt.target,
+				Guard:                   tt.guard,
 				Admit:                   func(Status) (bool, error) { admits++; return tt.admitInEffect, tt.admitErr },
 			})
 			if admits != tt.wantAdmits {

@@ -69,9 +69,12 @@
 // A target is admitted when it sits at or before the reference row in the producer list;
 // an awaiting run admits only rows strictly before it, since moving onto or past a hand-off would bypass it.
 // Every refusal leaves the status file unchanged.
+// Shed knows no review state, so the recipe owner tells a GotoGuard on GotoRequest.Guard and RelaunchRequest.Guard;
+// it runs after those checks and before the write, and a refusal it returns, or an error that stops it deciding, refuses the goto.
+// A nil guard admits every target, and Shed never consults it for a target its own checks already refused.
 //
 // Relaunch is the status write a driver's re-launch performs, beside Goto.
-// Under the run lock and one hold of the status lock it refuses a missing file, a done run and a running run, checks a non-empty Target with CheckGotoTarget, then calls the caller's Admit, and writes only if every one passed.
+// Under the run lock and one hold of the status lock it refuses a missing file, a done run and a running run, checks a non-empty Target with CheckGotoTarget and then the told guard, then calls the caller's Admit, and writes only if every one passed.
 // Its goto differs from Goto's in keeping pause_requested, pause_before and pause_after, so a human's pause survives the re-launch; without a Target, or when Admit reports the target already in effect, it writes the status unchanged.
 // The checks run before Admit so a refused target never lets Admit write its side effect.
 //

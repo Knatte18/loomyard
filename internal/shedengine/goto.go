@@ -14,6 +14,28 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
+// GotoGuard decides whether a recipe admits a goto onto target beyond Shed's own checks.
+// A non-empty refusal refuses the target and carries the recipe's own way forward; a non-nil err means the guard could not decide, which refuses too.
+// The guard only decides: it moves no run and writes no file.
+type GotoGuard func(target string) (refusal string, err error)
+
+// checkGuard runs guard for target and returns the refusal Goto and Relaunch return when it refuses or cannot decide.
+// A nil guard admits every target.
+// runID is the addressed run-id the way-forward text names.
+func checkGuard(guard GotoGuard, target, runID string) error {
+	if guard == nil {
+		return nil
+	}
+	refusal, err := guard(target)
+	if err != nil {
+		return fmt.Errorf("shedengine: goto target %q could not be checked: %w; way forward: re-run goto as %s", target, err, gotoCommand(runID, target))
+	}
+	if refusal != "" {
+		return fmt.Errorf("shedengine: goto target %q refused: %s", target, refusal)
+	}
+	return nil
+}
+
 // GotoRequest is everything Goto needs.
 // All three paths are told.
 // Producers needs only Name, Segment, OnDone and OnStuck, so a Routing.Producers projection works.
@@ -31,11 +53,15 @@ type GotoRequest struct {
 	PauseWayForward string
 	// By is the caller label recorded on the goto entry; empty records none.
 	By string
+	// Guard is the recipe's told check of a target, run after Shed's own checks and before anything is written.
+	// Nil admits every target.
+	Guard GotoGuard
 }
 
 // Goto moves a halted run onto the Target row and leaves it paused.
 // It writes paused, never running: the next step resumes through the ordinary resume write, whereas running with the lock free would read as a crashed driver.
 // The appended history entry carries the OutcomeGoto outcome, which leaves every row's spent bounce budget as it was.
+// The told GotoRequest.Guard runs after CheckGotoTarget and before the write, under the run lock, so every refusal leaves the status file unchanged.
 // It calls no CommitStatus and sets no transient mark;
 // the next step's persist commits the file, as pause's write is.
 func Goto(req GotoRequest) (Status, error) {
@@ -80,6 +106,9 @@ func Goto(req GotoRequest) (Status, error) {
 		return Status{}, fmt.Errorf("shedengine: goto moves only a halted run, and this run is running; way forward: %q then %s leaves the run paused at its next producer boundary, then re-run goto", pauseCommandFor(req.PauseWayForward, req.RunID, st.CurrentProducer), runVerb("step", req.RunID))
 	}
 	if err := CheckGotoTarget(req.Producers, st, req.Target, req.RunID); err != nil {
+		return Status{}, err
+	}
+	if err := checkGuard(req.Guard, req.Target, req.RunID); err != nil {
 		return Status{}, err
 	}
 
@@ -150,10 +179,13 @@ type RelaunchRequest struct {
 	// An error it returns is returned unchanged from Relaunch and nothing is written.
 	// inEffect true reports that the run already stands where Target would move it, so the re-launch performs no goto and writes the status unchanged.
 	Admit func(cur Status) (inEffect bool, err error)
+	// Guard is the recipe's told check of a non-empty Target, run after Shed's own checks and before Admit.
+	// Nil admits every target.
+	Guard GotoGuard
 }
 
 // Relaunch is the status-file mutation behind a driver's re-launch of a halted run.
-// Under the run lock and one hold of the status lock, it refuses a missing file, an invalid state, a done run and a running run, checks a non-empty Target with CheckGotoTarget, then calls Admit.
+// Under the run lock and one hold of the status lock, it refuses a missing file, an invalid state, a done run and a running run, checks a non-empty Target with CheckGotoTarget and then the told Guard, then calls Admit.
 // Only after Admit passes does it write: with a Target, it moves the run as Goto does, except that pause_requested, pause_before and pause_after stay as they stand; without one, the status is written unchanged.
 // The checks run before Admit so a refused target never lets Admit write its side effect.
 // When Admit reports the target already in effect, no goto is performed and the status is written unchanged, so the history gains no entry.
@@ -192,6 +224,9 @@ func Relaunch(req RelaunchRequest) (Status, error) {
 		}
 		if req.Target != "" {
 			if err := CheckGotoTarget(req.Producers, cur, req.Target, req.RunID); err != nil {
+				return Status{}, err
+			}
+			if err := checkGuard(req.Guard, req.Target, req.RunID); err != nil {
 				return Status{}, err
 			}
 		}
