@@ -1,4 +1,4 @@
-// mergein.go implements the Merge-In producer: under the parent lock it brings the local parent branch level with its upstream, merges that tip into the task worktree, verifies the merged tree and writes the merge record the merge review and the guarded landing rows read.
+// mergein.go implements the Merge-In producer: under the parent lock it brings the local parent branch level with its upstream, merges that tip into the task worktree, runs the `landing` gate over the merged tree and writes the merge record the merge review and the guarded landing rows read.
 
 package landingshed
 
@@ -113,7 +113,7 @@ func NewMergeIn(deps Deps) (*MergeIn, error) {
 //
 // It takes the parent lock before it touches the parent and keeps it on every way out: a later row or the loop's exit frees it.
 // A paused wait and an unreadable lock record are Stuck with Halt, so the run stops at this row.
-// A parent branch that is ahead of or diverged from its upstream, a parent pair that cannot be fast-forwarded and a failed plan verify are Stuck for a human;
+// A parent branch that is ahead of or diverged from its upstream, a parent pair that cannot be fast-forwarded and a failed `landing` gate are Stuck for a human;
 // a failed record write and every infrastructure fault are errors.
 func (m *MergeIn) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, mergeInName); err != nil {

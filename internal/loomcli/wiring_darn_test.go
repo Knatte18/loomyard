@@ -1,4 +1,4 @@
-// wiring_darn_test.go covers the wiring a darn run adds to wire: the darn seams, the verify source and attempts, the Darn-Review model and fan lists and their keys, the early refusal of an empty verify command, the routing per recipe, the rename of retired darn rows when a verb arms, and the Darn-Write row's status and failure-record seams.
+// wiring_darn_test.go covers the wiring a darn run adds to wire: the darn seams, the verify source and attempts, the Darn-Review model and fan lists and their keys, the early refusals of a malformed or absent darn.yaml, the routing per recipe, the rename of retired darn rows when a verb arms, and the Darn-Write row's status and failure-record seams.
 // Every test is Tier 1: wire resolves no cwd and spawns no process over a hand-built hub.
 
 package loomcli
@@ -25,16 +25,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
-// seedDarnHubConfig writes the hub-wide darn.yaml into hub's board directory with verify and verifyAttempts substituted into the template.
-// Each old, new pair of replacements is applied after them.
-func seedDarnHubConfig(t *testing.T, hub, verify, verifyAttempts string, replacements ...string) {
+// wantDarnLandingCall is the landing call gateConfigWithTwoTiers renders over the whole tree.
+const wantDarnLandingCall = "lyx gate test --wait --tier 0 --tier 1 --all"
+
+// seedDarnHubConfig writes the hub-wide darn.yaml into hub's board directory with verifyAttempts substituted into the template.
+// Each old, new pair of replacements is applied after it.
+func seedDarnHubConfig(t *testing.T, hub, verifyAttempts string, replacements ...string) {
 	t.Helper()
 	configDir := filepath.Join(fabricengine.BoardDir(hub), "_lyx", "config")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
 	}
-	contents := strings.Replace(darnengine.ConfigTemplate(), `verify: ""`, "verify: "+verify, 1)
-	contents = strings.Replace(contents, "verify_attempts: 3", "verify_attempts: "+verifyAttempts, 1)
+	contents := strings.Replace(darnengine.ConfigTemplate(), "verify_attempts: 3", "verify_attempts: "+verifyAttempts, 1)
 	contents = strings.NewReplacer(replacements...).Replace(contents)
 	if err := os.WriteFile(filepath.Join(configDir, "darn.yaml"), []byte(contents), 0o644); err != nil {
 		t.Fatalf("WriteFile darn.yaml = %v; want nil", err)
@@ -49,7 +51,8 @@ func TestWire_DarnRecipe(t *testing.T) {
 	t.Run("a darn seed fills the darn seams, the verify source and the attempts", func(t *testing.T) {
 		t.Parallel()
 		loc := hubLocation(t, "pair", ".")
-		seedDarnHubConfig(t, loc.HubPath, `"go test ./..."`, "5")
+		seedDarnHubConfig(t, loc.HubPath, "5")
+		writeHubGateConfig(t, loc.HubPath, gateConfigWithTwoTiers())
 		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeDarn}
 		if err := c.wire(loc, loc.AnchorPath()); err != nil {
 			t.Fatalf("wire() = %v; want nil", err)
@@ -82,8 +85,8 @@ func TestWire_DarnRecipe(t *testing.T) {
 		if segment := c.env.Segments["Darn-Review"]; segment.MaxBounces != 1 || segment.HardMaxBounces != 4 || c.darnCfg == nil {
 			t.Errorf("Segments[Darn-Review] = %+v, c.darnCfg nil = %v; want the template's budget 1 and hard cap 4 and the loaded config", segment, c.darnCfg == nil)
 		}
-		if command, err := c.env.VerifyCommand(); err != nil || command != "go test ./..." {
-			t.Errorf("c.env.VerifyCommand() = %q, %v; want %q, nil", command, err, "go test ./...")
+		if command, err := c.env.VerifyCommand(); err != nil || command != wantDarnLandingCall {
+			t.Errorf("c.env.VerifyCommand() = %q, %v; want the landing call %q, nil", command, err, wantDarnLandingCall)
 		}
 		if got := c.verifySource().failedWayForward; !strings.Contains(got, `"lyx loom goto --to Darn-Write"`) {
 			t.Errorf("verifySource().failedWayForward = %q; want it to route back to the Darn-Write row", got)
@@ -96,20 +99,21 @@ func TestWire_DarnRecipe(t *testing.T) {
 	t.Run("with tree scope on the verify gate's told command stays the hub's whole verify", func(t *testing.T) {
 		t.Parallel()
 		loc := hubLocation(t, "pair", ".")
-		seedDarnHubConfig(t, loc.HubPath, `"go test ./..."`, "3", "tree_scope: {}", `tree_scope: {"docs": ""}`, `tree_scope_verify: ""`, `tree_scope_verify: "run {targets}"`)
+		seedDarnHubConfig(t, loc.HubPath, "3", "tree_scope: {}", `tree_scope: {"docs": ""}`, `tree_scope_verify: ""`, `tree_scope_verify: "lyx gate test --wait --tier 1 {targets}"`)
+		writeHubGateConfig(t, loc.HubPath, gateConfigWithTwoTiers())
 		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeDarn}
 		if err := c.wire(loc, loc.AnchorPath()); err != nil {
 			t.Fatalf("wire() = %v; want nil", err)
 		}
-		if command, err := c.env.VerifyCommand(); err != nil || command != "go test ./..." {
-			t.Errorf("c.env.VerifyCommand() = %q, %v; want %q, nil", command, err, "go test ./...")
+		if command, err := c.env.VerifyCommand(); err != nil || command != wantDarnLandingCall {
+			t.Errorf("c.env.VerifyCommand() = %q, %v; want the landing call %q, nil", command, err, wantDarnLandingCall)
 		}
 	})
 
 	t.Run("a local darn override sets the run's budget and hard cap", func(t *testing.T) {
 		t.Parallel()
 		loc := hubLocation(t, "pair", ".")
-		seedDarnHubConfig(t, loc.HubPath, `"go test ./..."`, "3")
+		seedDarnHubConfig(t, loc.HubPath, "3")
 		localPath := configengine.LocalFile(loc.AnchorPath(), "darn")
 		if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
 			t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(localPath), err)
@@ -159,7 +163,7 @@ func TestWire_DarnRecipe(t *testing.T) {
 		t.Run("darn.yaml's model and fan keys reach the Darn-Review rows under "+tt.name, func(t *testing.T) {
 			t.Parallel()
 			loc := hubLocation(t, "pair", ".")
-			seedDarnHubConfig(t, loc.HubPath, `"go test ./..."`, "3", tt.replacements...)
+			seedDarnHubConfig(t, loc.HubPath, "3", tt.replacements...)
 			c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeDarn}
 			if err := c.wire(loc, loc.AnchorPath()); err != nil {
 				t.Fatalf("wire() = %v; want nil", err)
@@ -208,7 +212,7 @@ func TestWire_DarnRecipe(t *testing.T) {
 	t.Run("a darn.yaml model the registry does not define is refused naming the key and darn.yaml", func(t *testing.T) {
 		t.Parallel()
 		loc := hubLocation(t, "pair", ".")
-		seedDarnHubConfig(t, loc.HubPath, `"go test ./..."`, "3", "darn_reviewer_model: sonnet[high]", "darn_reviewer_model: ghost")
+		seedDarnHubConfig(t, loc.HubPath, "3", "darn_reviewer_model: sonnet[high]", "darn_reviewer_model: ghost")
 		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeDarn}
 		err := c.wire(loc, loc.AnchorPath())
 		if err == nil {
@@ -258,26 +262,10 @@ func TestWire_DarnRecipe(t *testing.T) {
 		}
 	})
 
-	t.Run("an empty verify command is refused early with its way forward", func(t *testing.T) {
-		t.Parallel()
-		loc := hubLocation(t, "pair", ".")
-		seedDarnHubConfig(t, loc.HubPath, `""`, "3")
-		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeDarn}
-		err := c.wire(loc, loc.AnchorPath())
-		if err == nil {
-			t.Fatal("wire() of a darn seed with an empty verify = nil; want a refusal")
-		}
-		for _, want := range []string{`"verify" is empty`, `lyx config darn --set verify=<command>`, `lyx loom resume`} {
-			if !strings.Contains(err.Error(), want) {
-				t.Errorf("wire() error = %q; want it to contain %q", err.Error(), want)
-			}
-		}
-	})
-
 	t.Run("a malformed tree key names the editor way forward in place of the hub config one", func(t *testing.T) {
 		t.Parallel()
 		loc := hubLocation(t, "pair", ".")
-		seedDarnHubConfig(t, loc.HubPath, `"go test ./..."`, "3", "tree_scope: {}", `tree_scope: {"./tools": ""}`)
+		seedDarnHubConfig(t, loc.HubPath, "3", "tree_scope: {}", `tree_scope: {"./tools": ""}`)
 		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeDarn}
 		err := c.wire(loc, loc.AnchorPath())
 		if err == nil {

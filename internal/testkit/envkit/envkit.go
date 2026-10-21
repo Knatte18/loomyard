@@ -58,7 +58,7 @@ var nilLegal = map[string]bool{
 	"Landing.ConfigChanges":             true,
 	"Landing.Notify":                    true,
 	"Landing.VerifyCommand":             true,
-	"Landing.PublishVerifySkip":         true,
+	"Landing.PublishSkip":               true,
 	"Landing.VerifyWaitMark":            true,
 	"Landing.GateSlots":                 true,
 	"Landing.FailingTests":              true,
@@ -168,6 +168,9 @@ func LandingDeps(dir string) landingshed.Deps {
 		ApprovalPath:      filepath.Join(dir, "approval.json"),
 		RejectionPath:     filepath.Join(dir, "rejection.json"),
 		TaskHead:          func() (string, error) { return "head", nil },
+		PublishCommand:    func() (string, error) { return "lyx gate test --wait --tier 2 --all", nil },
+		BaseCommand:       func() (string, error) { return "lyx gate test --wait --tier 0 --all", nil },
+		GateTiers:         fixedGateTiers,
 		Lock: landingshed.ParentLockDeps{
 			Store:          &parentlock.Store{Dir: filepath.Join(dir, "parent-lock")},
 			Owner:          func() (parentlock.Owner, error) { return parentlock.Owner{Slug: "fixture", RunID: "fixture"}, nil },
@@ -229,21 +232,26 @@ func TemplateSetting(module, key string) (any, error) {
 	return value, nil
 }
 
+// fixedGateLists are the gate lists the kit's seams answer from, so a resolved gate builds without a hub's gate.yaml.
+var fixedGateLists = map[string][]int{"round": {0, 1}, "landing": {0, 1}, "publish": {2}}
+
+// fixedGateTiers answers a named gate's tier list from fixedGateLists, and errors naming a gate the kit holds no list for.
+func fixedGateTiers(gate string) ([]int, error) {
+	list, ok := fixedGateLists[gate]
+	if !ok {
+		return nil, fmt.Errorf("envkit: no fixed list for gate %q", gate)
+	}
+	return list, nil
+}
+
 // fixedRoundGate is a loomshed.RoundGate over fixed gate lists, so a resolved verify gate builds without a hub's gate.yaml.
 func fixedRoundGate() loomshed.RoundGate {
-	gates := map[string][]int{"round": {0, 1}, "landing": {0, 1}, "publish": {2}}
 	return loomshed.RoundGate{
-		Tiers: gates["round"],
+		Tiers: fixedGateLists["round"],
 		Render: func(scope ...string) string {
 			return strings.Join(append([]string{"lyx", "gate", "test", "--wait", "--tier", "0", "--tier", "1"}, scope...), " ")
 		},
-		GateTiers: func(gate string) ([]int, error) {
-			list, ok := gates[gate]
-			if !ok {
-				return nil, fmt.Errorf("envkit: no fixed list for gate %q", gate)
-			}
-			return list, nil
-		},
+		GateTiers: fixedGateTiers,
 	}
 }
 

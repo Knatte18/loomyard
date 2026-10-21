@@ -688,8 +688,8 @@ func TestDispatchHubWideBoard(t *testing.T) {
 	const unresolved = "readme: ${env:LYX_CONFIGCLI_TEST_UNSET}\ndesign_prefix: d-\ntypes:\n  bug: a defect\nlabels:\n  old: kept\n"
 	const listShaped = "types:\n  bug: a defect\nlabels:\n  - old\n"
 
-	// darnTreeVerify is the tree-scoped command the darn rows seed and save; it holds the {targets} marker the loader requires.
-	const darnTreeVerify = "lyx gate test --tags integration --guards {targets}"
+	// darnTreeVerify is the tree-scoped command the darn rows seed and save; it is one waiting gate call holding the {targets} marker the loader requires.
+	const darnTreeVerify = "lyx gate test --wait --tier 1 {targets}"
 	darnSeeded := darnWithTreeScope("\n  tools: ./tools/...", darnTreeVerify)
 
 	rows := []struct {

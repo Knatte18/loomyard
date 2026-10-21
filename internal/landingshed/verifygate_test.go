@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -103,12 +104,32 @@ func newGateFixture(t *testing.T, command string, closureErr error) *gateFixture
 			f.closureCalls++
 			return command, closureErr
 		},
+		tiers:  fixedGateTiers,
 		paths:  f.paths,
 		dirty:  f.fake.dirty,
 		verify: f.fake.verify,
 		now:    func() time.Time { return gateMarkStart },
 	}
 	return f
+}
+
+// The calls the fixtures render for the gates, standing in for what the hub's gate config renders.
+const (
+	gateLandingCall = "lyx gate test --wait --tier 0 --tier 1 --all"
+	gatePublishCall = "lyx gate test --wait --tier 2 --all"
+	gateBaseCall    = "lyx gate test --wait --tier 0 --all"
+)
+
+// fixedGateTierLists are the tier lists fixedGateTiers answers, one gate's highest tier differing from its first.
+var fixedGateTierLists = map[string][]int{"landing": {0, 1}, "publish": {2}, "final": {0}}
+
+// fixedGateTiers is the tier lookup the fixtures tell their gate.
+func fixedGateTiers(gate string) ([]int, error) {
+	list, ok := fixedGateTierLists[gate]
+	if !ok {
+		return nil, fmt.Errorf("no fixed tier list for gate %q", gate)
+	}
+	return slices.Clone(list), nil
 }
 
 // gateMarkStart is the fixed instant the fixture's gate stamps on its wait mark.
@@ -136,12 +157,12 @@ func TestVerifyGate_WaitMark(t *testing.T) {
 	}{
 		{name: "pass", result: verifytree.Result{Status: verifytree.StatusPassed}},
 		{name: "skip", result: verifytree.Result{Status: verifytree.StatusSkipped}},
-		{name: "failure", result: verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}, wantReason: "verify failed"},
+		{name: "failure", result: verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}, wantReason: "landing gate failed"},
 		{name: "timeout", result: verifytree.Result{Status: verifytree.StatusFailed, ExitCode: -1, TimedOut: true}, wantReason: "did not finish"},
 		{name: "dirty", result: verifytree.Result{Status: verifytree.StatusDirty, Dirty: []string{"a.txt"}}, wantReason: "a.txt"},
 		{name: "error", verifyErr: errors.New("exec failed"), wantErr: "exec failed"},
 		{name: "cancel", verifyErr: context.Canceled, wantErr: "context canceled"},
-		{name: "failing callback changes no verdict", result: verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}, markErr: errors.New("reed gone"), wantReason: "verify failed"},
+		{name: "failing callback changes no verdict", result: verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}, markErr: errors.New("reed gone"), wantReason: "landing gate failed"},
 		{name: "nil callback", result: verifytree.Result{Status: verifytree.StatusPassed}, noCallback: true},
 	}
 	for _, tc := range cases {
@@ -208,7 +229,7 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 			name: "failed", command: "false", site: "Publish",
 			result: verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 3, Log: failedLog},
 			wantReasonExact: func(logPath string) string {
-				return `verify failed after merging parent branch "main" (exit code 3); output: ` + logPath +
+				return `landing gate failed after merging parent branch "main" (exit code 3); output: ` + logPath +
 					`; fix forward on the task branch, then resume`
 			},
 		},
@@ -227,7 +248,7 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 			name: "timed out", command: "true", site: "Publish",
 			result: verifytree.Result{Status: verifytree.StatusFailed, ExitCode: -1, TimedOut: true, Detail: "the verify command did not finish within 1h0m0s and was killed", Log: failedLog},
 			wantReasonExact: func(logPath string) string {
-				return `verify did not finish within 1h0m0s after merging parent branch "main"; output: ` + logPath +
+				return `landing gate did not finish within 1h0m0s after merging parent branch "main"; output: ` + logPath +
 					`; fix the hanging test on the task branch, then resume`
 			},
 		},

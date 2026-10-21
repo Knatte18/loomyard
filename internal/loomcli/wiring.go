@@ -702,7 +702,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// RunScratchDir is the directory the step envelope reports as scratch_dir.
 		RunScratchDir: shedrun.ScratchDir(location, c.runID),
 		VerifyDir:     verifytree.Dir(anchorPath),
-		VerifyCommand: planVerifySource(location).command,
+		VerifyCommand: planVerifySource(location).baseCommand,
 		Round:         roundGateSource(fabricengine.ConfigDirs(location)),
 		GateSlots:     hubgeom.GateSlots(location),
 		// VerifyMergeBase is nil for a standalone run, which records no parent branch.

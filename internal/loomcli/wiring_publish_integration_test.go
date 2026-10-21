@@ -87,9 +87,13 @@ func TestWire_Real_PublishRejectedPushNamesRemoteTip(t *testing.T) {
 		parentLockDeps(location, shedrun.SelfRunID, "", ""),
 		time.Time{},
 	)
-	// The pair has no run status file to commit and no plan to read a verify command from.
+	// The pair has no run status file to commit, and the tierless hub declares no tier0, where a gate call read from its config is refused.
+	// The empty publish list is the path of a hub with no publish gate, so both readers answer "".
+	emptyCall := func() (string, error) { return "", nil }
 	deps.CommitStatus = nil
 	deps.VerifyCommand = nil
+	deps.PublishCommand = emptyCall
+	deps.BaseCommand = emptyCall
 	c.env.Landing = deps
 
 	// The parent moved locally and was never pushed, so Merge-In runs with the push told skipped and reads the local tip alone.

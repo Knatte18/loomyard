@@ -73,6 +73,19 @@ func TestLoadConfig_TemplateDefaults(t *testing.T) {
 	if cfg.ParentLockIdleReleaseMin != 10 {
 		t.Errorf("cfg.ParentLockIdleReleaseMin = %d; want 10", cfg.ParentLockIdleReleaseMin)
 	}
+	if strings.Contains(ConfigTemplate(), "publish_verify") {
+		t.Error("ConfigTemplate() holds publish_verify; want the retired key gone from the template")
+	}
+
+	retiredDir := t.TempDir()
+	seedLandingConfig(t, retiredDir, ConfigTemplate()+"publish_verify: go test -tags tmux ./...\n")
+	retired, err := LoadConfig(configengine.Dirs{Board: retiredDir}, "landing")
+	if err != nil {
+		t.Fatalf("LoadConfig() over a file holding the retired publish_verify = _, %v; want nil error", err)
+	}
+	if retired.Conflict != cfg.Conflict {
+		t.Errorf("retired-key file cfg.Conflict = %q; want %q", retired.Conflict, cfg.Conflict)
+	}
 }
 
 // TestConfig_IdleRelease verifies the idle bound is the configured minutes, and that a value below 1 reads as the default.
@@ -139,6 +152,7 @@ func TestMigrateConfig(t *testing.T) {
 		{"EmptyValueDroppedWithoutEntry", "squash: true\nco_authored_by: \"  \"\n", nil, 1},
 		{"NonScalarValueDroppedWithoutEntry", "co_authored_by: [a, b]\n", nil, 1},
 		{"NoRetiredKeyUnchanged", "engine_trailers:\n  claude: \"Co-Authored-By: Kept <k@x>\"\n", map[string]string{"claude": "Co-Authored-By: Kept <k@x>"}, 0},
+		{"RetiredPublishVerifyLeftToReconcilesPrune", "publish_verify: go test -tags tmux ./...\n", nil, 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -306,8 +320,6 @@ func TestLoadConfig_OptionalStringKeys(t *testing.T) {
 		{"trailer_text set", withoutKeys + "trailer_text: |\n  Created using Loomyard\n  Second line\n", "Created using Loomyard\nSecond line\n", func(c Config) string { return c.TrailerText }},
 		{"trailer_text absent", withoutKeys, "", func(c Config) string { return c.TrailerText }},
 		{"engine_trailers empty names no engine", withoutKeys + "engine_trailers: {}\n", "map[]", func(c Config) string { return fmt.Sprint(c.EngineTrailers) }},
-		{"publish_verify set", withoutKeys + "publish_verify: go test -tags tmux ./...\n", "go test -tags tmux ./...", func(c Config) string { return c.PublishVerify }},
-		{"publish_verify absent", withoutKeys, "", func(c Config) string { return c.PublishVerify }},
 		{"deploy set", withoutKeys + "deploy: ./update-plugins.sh\n", "./update-plugins.sh", func(c Config) string { return c.Deploy }},
 		{"deploy absent", withoutKeys, "", func(c Config) string { return c.Deploy }},
 	}

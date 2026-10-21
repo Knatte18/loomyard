@@ -57,19 +57,19 @@ func seedLoomConfig(t *testing.T, anchorPath string) {
 	}
 }
 
-// hubPublishVerify is the publish_verify value the hub's landing.yaml carries in hubLocation, so a wired config reading a pair's copy instead differs from it.
-const hubPublishVerify = "go test -tags tmux ./..."
+// hubDeploy is the deploy value the hub's landing.yaml carries in hubLocation, so a wired config reading a pair's copy instead differs from it.
+const hubDeploy = "./deploy-hub.sh"
 
-// seedLandingConfig creates <baseDir>/_lyx/config/landing.yaml with the embedded template's contents, its publish_verify set to publishVerify.
+// seedLandingConfig creates <baseDir>/_lyx/config/landing.yaml with the embedded template's contents, its deploy set to deploy.
 // landingshed.LoadConfig is strict (an absent file is an error), so wire() fails on every existing test in this file without the hub's seed.
-func seedLandingConfig(t *testing.T, baseDir, publishVerify string) {
+func seedLandingConfig(t *testing.T, baseDir, deploy string) {
 	t.Helper()
 	configDir := filepath.Join(baseDir, "_lyx", "config")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
 	}
 	cfgPath := filepath.Join(configDir, "landing.yaml")
-	contents := strings.Replace(landingshed.ConfigTemplate(), `publish_verify: ""`, fmt.Sprintf("publish_verify: %q", publishVerify), 1)
+	contents := strings.Replace(landingshed.ConfigTemplate(), `deploy: ""`, fmt.Sprintf("deploy: %q", deploy), 1)
 	if err := os.WriteFile(cfgPath, []byte(contents), 0o644); err != nil {
 		t.Fatalf("WriteFile(%q) = %v; want nil", cfgPath, err)
 	}
@@ -133,7 +133,7 @@ parent_review_wait_min: 60
 }
 
 // hubLocation returns a *lyxcwd.Location standing in for a real hub location, with its anchor path
-// seeded on disk with loom.yaml and a pair landing.yaml that blanks publish_verify, and its hub seeded with loom's repo default and the hub-wide landing.yaml at the board dir and both loom stencils.
+// seeded on disk with loom.yaml and a pair landing.yaml that blanks deploy, and its hub seeded with loom's repo default and the hub-wide landing.yaml at the board dir and both loom stencils.
 func hubLocation(t *testing.T, worktreeName, anchorRel string) *lyxcwd.Location {
 	t.Helper()
 	hub := t.TempDir()
@@ -144,7 +144,7 @@ func hubLocation(t *testing.T, worktreeName, anchorRel string) *lyxcwd.Location 
 	}
 	seedLoomConfig(t, loc.AnchorPath())
 	seedLoomConfig(t, fabricengine.BoardDir(hub))
-	seedLandingConfig(t, fabricengine.BoardDir(hub), hubPublishVerify)
+	seedLandingConfig(t, fabricengine.BoardDir(hub), hubDeploy)
 	seedLandingConfig(t, loc.AnchorPath(), "")
 	// stencilstore.Read hard-errors on a missing file, so the stencils the Spec closures read are seeded into the hub's stencils directory.
 	stencilkit.SeedInto(t, fabricengine.StencilsDir(hub))
@@ -327,10 +327,10 @@ func TestWire_DefaultConfig(t *testing.T) {
 		}
 	})
 
-	// landing is hub-wide: the pair's own landing.yaml, which blanks publish_verify, never reaches the wired config.
+	// landing is hub-wide: the pair's own landing.yaml, which blanks deploy, never reaches the wired config.
 	t.Run("a pair landing.yaml does not reach the wired config", func(t *testing.T) {
-		if c.landingCfg.PublishVerify != hubPublishVerify {
-			t.Errorf("c.landingCfg.PublishVerify = %q; want the hub file's %q", c.landingCfg.PublishVerify, hubPublishVerify)
+		if c.landingCfg.Deploy != hubDeploy {
+			t.Errorf("c.landingCfg.Deploy = %q; want the hub file's %q", c.landingCfg.Deploy, hubDeploy)
 		}
 	})
 
@@ -1099,7 +1099,7 @@ func TestWire_LanguageSkills(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			loc := hubLocation(t, "pair", ".")
-			seedDarnHubConfig(t, loc.HubPath, `"go test ./..."`, "5")
+			seedDarnHubConfig(t, loc.HubPath, "5")
 			languagePath := configengine.ConfigFile(fabricengine.BoardDir(loc.HubPath), "language")
 			if err := os.WriteFile(languagePath, []byte(tt.content), 0o644); err != nil {
 				t.Fatalf("WriteFile(%q) = %v; want nil", languagePath, err)

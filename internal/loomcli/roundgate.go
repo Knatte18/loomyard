@@ -1,4 +1,4 @@
-// roundgate.go builds the told sources of the hub's gate lists that loom's and darn's wiring hand the verify gate and the Publish failure note.
+// roundgate.go builds the told sources of the hub's gate lists that loom's and darn's wiring hand the verify gate, the landing producers and the Publish failure note.
 
 package loomcli
 
@@ -29,6 +29,18 @@ func roundGateSource(dirs configengine.Dirs) func() (loomshed.RoundGate, error) 
 			},
 			GateTiers: cfg.TierList,
 		}, nil
+	}
+}
+
+// gateCallSource returns a reader of the call of the named gate over the whole tree, rendered from the config loaded over dirs at each call.
+// A config or gate-list refusal is returned with its own way forward, and an empty `publish` list renders "".
+func gateCallSource(dirs configengine.Dirs, gate string) func() (string, error) {
+	return func() (string, error) {
+		cfg, err := gateslot.LoadConfig(dirs)
+		if err != nil {
+			return "", err
+		}
+		return cfg.GateCall(gate, "--all")
 	}
 }
 

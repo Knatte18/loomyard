@@ -3,10 +3,10 @@
 // Publish checks the configured require_pr_to_base list (see LoadConfig) against the task's own
 // parent branch.
 // When the parent is absent from that list, Publish is a no-op: Done immediately, no push, no GitHub call.
-// When the parent is present, Publish runs the repo's `publish_verify`, pushes the task branch, and opens the pull request, or refreshes an open one's title and body, from the change description (the file the Describe row writes, one source shared with the landing commit), then returns Done.
+// When the parent is present, Publish runs the hub's `landing` and `publish` gates, pushes the task branch, and opens the pull request, or refreshes an open one's title and body, from the change description (the file the Describe row writes, one source shared with the landing commit), then returns Done.
 // Every landing row's pull-request lookup takes the newest pull request created at or after the run's start, `Deps.RunStart`, whatever its state, and a zero start keeps the unbounded lookup.
 // When the lookup finds none of the run's own but an open pull request from before the run started, Publish creates nothing, since GitHub allows one open pull request per head and base, and is Stuck with a way forward: close that pull request on GitHub, then resume the run with `lyx loom start`.
-// The merge-in and the plan's verify are Merge-In's, which runs ahead of Publish in a recipe's order.
+// The merge-in is Merge-In's, which runs ahead of Publish in a recipe's order and ran the `landing` gate over the merged tree.
 // The PR-Gate producer in this package then owns approval, rejection and the wait for the reviewer;
 // PRGate.Call documents its decision table.
 //
@@ -25,7 +25,7 @@
 // A moved parent is a Stuck with Reroute set, which takes the row's on_reroute edge to Merge-In and spends no bounce budget.
 // A paused lock wait and an unreadable lock record are Stuck with Halt, so the run stops at the row.
 // Each constructor refuses a nil Deps.Lock.Store, a nil Deps.Lock.Owner and a nil Deps.ReadParentTips, and a row built without its guard, as a struct-literal test builds it, takes no lock and reads no tips.
-// Publish, for a parent in require_pr_to_base, takes the lock and tests the parent before `publish_verify` and the push; a parent outside the list stays a no-op that touches neither git nor GitHub.
+// Publish, for a parent in require_pr_to_base, takes the lock and tests the parent before its gates and the push; a parent outside the list stays a no-op that touches neither git nor GitHub.
 // PR-Gate does the same before it queries the pull request, so the orch never decides on a pull request whose base moved, and its matching-rejection Stuck releases the lock before returning:
 // the edge to PR-Rework (darn: Darn-Write) leaves the Merge-In-to-Finalize window, and the reworked run takes the lock again at Merge-In.
 // Finalize takes the lock and tests the parent after parsing the change description and committing the status file, before its catch-up merge-in.
@@ -49,11 +49,13 @@
 // A parent branch behind its upstream is fast-forwarded in its own pair under the lock, which moves it to the upstream tip and touches no local commit;
 // one that is ahead of or diverged from its upstream, and a parent pair that is missing, dirty, mid-merge or no longer a fast-forward of its upstream, are Stuck with a way forward, since Merge-In never pushes or rewrites the parent.
 // A paused lock wait and an unreadable lock record are Stuck with Halt, so the run stops at the row.
-// It then clears a parked merge-in, merges the parent tip into the task worktree through internal/mergeresolve, and verifies the merged tree.
+// It then clears a parked merge-in, merges the parent tip into the task worktree through internal/mergeresolve, and runs the `landing` gate over the merged tree.
 // The task worktree must be clean at three points: before the merge-in (after the status commit), after the merge-in, and after the verify.
 // A dirty tree at any of them is Stuck naming the paths, so nothing uncommitted is merged over or reviewed;
 // a verify that dirties the tree is a non-hermetic test and halts rather than ships.
-// The told verify command runs through internal/verifytree, unless its verified-tree record already names the tree and the command.
+// The told landing call, the `landing` gate's `lyx gate test` call rendered from the hub's gate config at each run, runs through internal/verifytree, unless its verified-tree record already names the tree and the command.
+// Its base command is the told Deps.BaseCommand, so a landing-list pass keeps the entry a `final`-list pass wrote, and a tree Webster's gate passed is skipped when the two lists render the same call.
+// A refusal of the gate config or of the `landing` list is the producer's returned error, carrying the refusal's way forward.
 // A verify that does not finish within the verify timeout is killed and halts the run Stuck with the log path.
 // While the verify runs, the told Deps.VerifyWaitMark callback marks the run's driver strand on screen as `verify <producer>`, and clears the mark on every way out of the verify.
 // The mark is display only: a failing or absent callback changes no Stuck reason, error or verify outcome.
@@ -64,18 +66,19 @@
 // An up-to-date merge records an empty overlap, and a failed record write is an error, never Stuck.
 // The lock is kept on every way out of the row: a later landing row or the loop's exit frees it.
 //
-// When landing.yaml's `publish_verify` is non-empty, Publish runs that shell command in the task worktree through the same verify function, at site `Publish`, before it pushes, and the tree must be clean after it.
+// Publish runs the `landing` call, then the `publish` call, in the task worktree through the same verify function, at site `Publish`, before it pushes, and the tree must be clean after them.
 // A dirty tree is Stuck naming the paths, before anything is pushed.
-// It carries a repo's extra test tier, which the plan's `## verify:` leaves out so every round and every gate does not pay for it.
-// The plan's verify command is the site's base command, so the pass keeps the plan-verify entry of the record.
-// A failure is Stuck with the exit code and the log path, naming `publish_verify`, and a dirty tree is Stuck as for Merge-In's verify.
-// An empty or absent value runs nothing and logs nothing, and Finalize never runs it.
-// The key is the same trust class as the plan's `## verify:`: it runs any shell command in the task worktree.
-// It runs only where Publish does, so a landing into a parent outside require_pr_to_base runs no such tier and only Finalize's plan verify gates it.
-// A recipe may tell Publish a skip seam, Deps.PublishVerifySkip, read at each Publish after the parent lock is held and only when `publish_verify` is set.
-// A seam answering true takes the path of an unset `publish_verify`: nothing runs and the Publish failure record is removed before the push.
-// A seam error is Publish's returned error, with nothing verified or pushed, and false runs `publish_verify` as usual.
-// A darn run tells the seam so a diff wholly under its configured non-production trees lands with no `tmux`-tier run and with only the tree-scoped command at Merge-In, the hub's whole statement of what such a diff needs; a loom run tells none, so its `publish_verify` runs whenever it is set.
+// The `publish` gate carries the hub's extra test tiers, which the `landing` and `final` gates leave out so every round and every gate does not pay for them.
+// Both calls name the told base command as the site's base command, so neither pass prunes the entry the next review round diffs from.
+// The landing call skips on the tree Merge-In verified.
+// A failure is Stuck with the exit code and the log path, naming the `landing` or `publish` gate, and a dirty tree is Stuck as for Merge-In's verify.
+// An empty `publish` list renders an empty call, which runs nothing and logs nothing, and Finalize never runs the `publish` gate.
+// It runs only where Publish does, so a landing into a parent outside require_pr_to_base runs no such tier and only Finalize's landing call gates it.
+// A recipe may tell Publish a skip seam, Deps.PublishSkip, read at each Publish after the parent lock is held.
+// A seam answering true skips the `publish` gate and takes the path of an empty `publish` list: the Publish failure record is removed before the push.
+// A seam error is Publish's returned error, with nothing verified or pushed, and false runs the `publish` gate as usual.
+// A darn run tells the seam so a diff wholly under its configured non-production trees lands with no `publish` tiers and with only the tree-scoped command at Merge-In, Finalize and Publish, the hub's whole statement of what such a diff needs; a loom run tells none, so its `publish` gate runs whenever its list is not empty.
+// landing.yaml's retired `publish_verify` key loads and is dropped, and `lyx config reconcile` prunes it.
 //
 // Landing.yaml's `deploy` is read only by batten's Land row, from the board dir like the rest of landing config and never from a pair.
 // It runs in the prime only for a parent branch in `require_pr_to_base` when the row runs, so it executes code PR-Gate reviewed.
@@ -85,14 +88,15 @@
 // A landing change is an operator or hub-orch `lyx config landing` run from the prime, committed in `_board` and effective for every pair at once.
 //
 // Merge-In and Publish persist their verify failure; Finalize neither writes nor removes the record.
-// When Merge-In's plan verify or Publish's `publish_verify` fails with a non-zero exit, the row writes the verifytree Publish failure record with the failing kind, the row that ran the verify, the failing tests the told Deps.FailingTests parses from the log, HEAD, the told Deps.VerifyFailureTarget row, the write time in whole-second UTC, and the merge-in commit.
+// When a `landing` or `publish` call fails with a non-zero exit, Merge-In or Publish writes the verifytree Publish failure record with the failing gate as its kind, the failing tier, the row that ran the verify, the failing tests the told Deps.FailingTests parses from the log, HEAD, the told Deps.VerifyFailureTarget row, the write time in whole-second UTC, and the merge-in commit.
+// The tier is the last failing tier the log's `lyx gate test` summary lines name; a log without one, such as a refusal before the first tier, takes the highest tier of the gate's list, read through the told Deps.GateTiers.
 // The merge-in commit is HEAD after a merge-in that was not already up to date and empty otherwise; Publish reads it from Merge-In's merge record.
 // A dirty tree, a timeout and a shell that could not start write no record, and a write failure is logged and never changes the Stuck verdict.
 // The Stuck reason of a failed verify ends with the way-forward clause the recipe tells in Deps.VerifyFailedWayForward only when the record was written; otherwise, and when none is told, it asks to fix forward on the task branch.
 // When the failed verify's log holds the CPU watchdog's line that `lyx gate test` prints after it quits a busy test binary, the reason names the window and says the goroutine stacks are in the log, before that clause.
 // A watchdog quit of a healthy package has no code fix: the way forward is raising `busy_quit_sec` through `lyx config gate` from the prime, then resuming.
 // An unreadable log or one without the line leaves the reason unchanged, and the checks run no flake rerun.
-// Merge-In removes the record once its plan verify passes, and Publish removes it once its `publish_verify` passes, or at once when none is set or the skip seam answers true.
+// Merge-In removes the record once its landing call passes, and Publish removes it once its landing and publish calls pass, or at once when the publish list is empty or the skip seam answers true.
 //
 // The push that follows is never retried when the remote rejects it, because the remote task branch moved and a repeat would be rejected again.
 // Publish reads the remote task branch's tip and the commits on it that the local branch lacks through Deps.RemoteOnlyCommits, and stops Stuck with a reason stating that the merge-in already ran, the tip, the commit count, and the way forward:

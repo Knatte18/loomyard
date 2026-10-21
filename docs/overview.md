@@ -543,7 +543,7 @@ User-facing modules each get one `lyx <module>` namespace:
   `Merge-In` merges the parent into the task, verifies the merged tree and writes the merge record, and the perch reviews how the task's code interacts with what the parent gained.
   `Publish`, `PR-Gate` and `Finalize` reroute to `Merge-In` when the parent moved since.
   `Webster` reroutes to `Plan-Burler-Review` when begin-batch left a new plan conflict.
-  `Publish` pushes the task branch after the repo's `publish_verify`, and returns Done once the PR is open, refreshing its title and body from the description.
+  `Publish` pushes the task branch after the hub's `landing` and `publish` gates, and returns Done once the PR is open, refreshing its title and body from the description.
   `Describe` writes the change description at `_lyx/landing/summary.md`, the single source for the PR title and body and for the landing commit, whose message ends in the trailer block Go appends: `landing.yaml`'s `trailer_text`, then the `engine_trailers` text of each engine that ran a session in the task, each copied verbatim and each switchable off by an empty value.
   `PR-Gate` returns Done on a valid approval (matching the branch's current HEAD), and `Finalize` closes the open PR with a comment naming the landing commit, tolerates an already-landed parent, and marks the board task `done` after the parent merge.
   Every run transition before that writes the board task's status as `<state> · <producer>` (for example `awaiting · PR-Gate`), so the board README shows where each run stands; a failed board write only warns.

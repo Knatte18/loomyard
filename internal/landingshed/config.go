@@ -44,9 +44,6 @@ type Config struct {
 	// EngineTrailers maps an engine name to the trailer text the landing commit carries when that engine ran a session in the task.
 	// An engine left out, or mapped to empty text, adds nothing.
 	EngineTrailers map[string]string `yaml:"engine_trailers"`
-	// PublishVerify is the shell command Publish runs in the task worktree after the plan's verify passes.
-	// Empty runs nothing; Finalize never runs it.
-	PublishVerify string `yaml:"publish_verify"`
 	// Deploy is the shell command batten's Land row runs in the prime after a landing into the prime's branch.
 	// Empty runs nothing.
 	Deploy string `yaml:"deploy"`
@@ -109,10 +106,13 @@ func ConfigSpec() configengine.Spec {
 			"describe_timeout_min": configengine.CategoryNone,
 			"trailer_text":         configengine.CategoryCrossPair,
 			engineTrailersKey:      configengine.CategoryCrossPair,
-			"publish_verify":       configengine.CategoryExecutable,
 			"deploy":               configengine.CategoryExecutable,
 			// The idle bound decides when one pair's parent lock frees for the next pair waiting on it.
 			"parent_lock_idle_release_min": configengine.CategoryCrossPair,
+		},
+		// publish_verify moved to the hub's publish gate; a file still holding it loads and reconcile prunes it.
+		RetiredKeys: map[string]configengine.Category{
+			"publish_verify": configengine.CategoryExecutable,
 		},
 	}
 }

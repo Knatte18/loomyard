@@ -1,4 +1,4 @@
-// config_test.go — untagged Tier-1 unit tests for darnengine.LoadConfig and darnengine.VerifyCommand.
+// config_test.go — untagged Tier-1 unit tests for darnengine.LoadConfig and darnengine.TreeScopedCommand.
 //
 // Seeds a bare t.TempDir() with just a _lyx/config/darn.yaml file (no real hub, no SeedConfig, no git spawn).
 
@@ -34,7 +34,7 @@ func seedDarnConfig(t *testing.T, baseDir, contents string) {
 // templateConfig returns the Config the embedded template loads as, changed by mutate.
 func templateConfig(mutate func(*Config)) Config {
 	cfg := Config{
-		Writer: "opus[medium]", WriterTimeoutMin: 180, Verify: "", VerifyAttempts: 3, ReviewMaxBounces: 1, ReviewHardMaxBounces: 4, ReviewAmendMaxBounces: 1,
+		Writer: "opus[medium]", WriterTimeoutMin: 180, VerifyAttempts: 3, ReviewMaxBounces: 1, ReviewHardMaxBounces: 4, ReviewAmendMaxBounces: 1,
 		ReviewerModel: burlerengine.ModelSpecList{"sonnet[high]"}, FixerModel: burlerengine.ModelSpecList{""},
 		ReviewerFan: lenses.FanList{""}, FixerFan: lenses.FanList{""},
 		TreeScope: map[string]string{},
@@ -70,20 +70,45 @@ func TestLoadConfig(t *testing.T) {
 		},
 		{
 			name: "a trailing slash on a tree key is trimmed", seed: true,
-			contents: withTreeScope("\n  tools/: ./tools/...", "lyx gate test {targets}"),
+			contents: withTreeScope("\n  tools/: ./tools/...", "lyx gate test --wait --tier 1 {targets}"),
 			want: templateConfig(func(c *Config) {
-				c.TreeScope, c.TreeScopeVerify = map[string]string{"tools": "./tools/..."}, "lyx gate test {targets}"
+				c.TreeScope, c.TreeScopeVerify = map[string]string{"tools": "./tools/..."}, "lyx gate test --wait --tier 1 {targets}"
 			}),
 		},
 		{
 			name: "tree_scope_verify with no tree", seed: true,
-			contents: withTreeScope(" {}", "lyx gate test {targets}"),
+			contents: withTreeScope(" {}", "lyx gate test --wait --tier 1 {targets}"),
 			wantErr:  noTreeCommands, wantIs: ErrTreeScopeWithoutTrees,
 		},
 		{
 			name: "tree_scope_verify without targets", seed: true,
-			contents: withTreeScope("\n  tools: ./tools/...", "lyx gate test"),
-			wantErr:  []string{"lyx config darn --set tree_scope_verify=<command holding {targets}>"},
+			contents: withTreeScope("\n  tools: ./tools/...", "lyx gate test --wait --tier 1"),
+			wantErr:  []string{"lyx config darn --set tree_scope_verify=<one lyx gate test --wait call holding {targets}>"},
+		},
+		{
+			name: "tree_scope_verify of two calls joined by &&", seed: true,
+			contents: withTreeScope("\n  tools: ./tools/...", "lyx gate test --wait --tier 1 {targets} && lyx gate test --wait --tier 2 {targets}"),
+			wantErr:  []string{`"tree_scope_verify" is not exactly one lyx gate test call`, "lyx config darn --set tree_scope_verify=<one lyx gate test --wait call holding {targets}>"},
+		},
+		{
+			name: "tree_scope_verify without --wait", seed: true,
+			contents: withTreeScope("\n  tools: ./tools/...", "lyx gate test --tier 1 {targets}"),
+			wantErr:  []string{`"tree_scope_verify" is not exactly one lyx gate test call`},
+		},
+		{
+			name: "tree_scope_verify piped into another command", seed: true,
+			contents: withTreeScope("\n  tools: ./tools/...", "lyx gate test --wait --tier 1 {targets} | tee out"),
+			wantErr:  []string{`"tree_scope_verify" is not exactly one lyx gate test call`},
+		},
+		{
+			name: "tree_scope_verify that is not a gate call", seed: true,
+			contents: withTreeScope("\n  tools: ./tools/...", "go test --wait {targets}"),
+			wantErr:  []string{`"tree_scope_verify" is not exactly one lyx gate test call`},
+		},
+		{
+			name: "a retired verify key still loads", seed: true,
+			contents: ConfigTemplate() + "verify: go test ./...\n",
+			want:     templateConfig(func(*Config) {}),
 		},
 		{
 			name: "tree keys written twice", seed: true,
@@ -419,60 +444,11 @@ func writeLocalDarnConfig(t *testing.T, anchor, contents string) string {
 	return localPath
 }
 
-// TestVerifyCommand covers the verify value as written, and the missing-file and empty-value answers, each an error that names the way forward.
-func TestVerifyCommand(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		contents string
-		seed     bool
-		want     string
-		wantErr  bool
-		// wantEditor pins that the error names the editor way forward in place of the --set verify= one.
-		wantEditor bool
-	}{
-		{name: "value as written", seed: true, contents: strings.Replace(ConfigTemplate(), `verify: ""`, "verify: go test ./...", 1), want: "go test ./..."},
-		{name: "malformed tree key", seed: true, contents: withTreeScope("\n  ./tools: x", ""), wantErr: true, wantEditor: true},
-		{name: "empty value", seed: true, contents: ConfigTemplate(), wantErr: true},
-		{name: "missing file", wantErr: true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			baseDir := t.TempDir()
-			if tt.seed {
-				seedDarnConfig(t, baseDir, tt.contents)
-			}
-			got, err := VerifyCommand(configengine.Dirs{Board: baseDir})
-			if tt.wantEditor {
-				if err == nil || !strings.Contains(err.Error(), "lyx config darn's editor") || !strings.Contains(err.Error(), "then re-run the lyx command that refused") || strings.Contains(err.Error(), "--set verify=") {
-					t.Fatalf("VerifyCommand() = %q, %v; want the editor way forward and no --set verify=", got, err)
-				}
-				return
-			}
-			if tt.wantErr {
-				if err == nil || !strings.Contains(err.Error(), verifyWayForward) {
-					t.Fatalf("VerifyCommand() = %q, %v; want an error naming %q", got, err, verifyWayForward)
-				}
-				if got != "" {
-					t.Errorf("VerifyCommand() = %q alongside the error; want empty", got)
-				}
-				return
-			}
-			if err != nil || got != tt.want {
-				t.Errorf("VerifyCommand() = %q, %v; want %q, nil", got, err, tt.want)
-			}
-		})
-	}
-}
-
-// TestTreeScopedCommand covers tree scope being off, a path lying in a tree by equality or prefix and never by a shared name prefix, a path under nested trees touching each, the touched trees' targets deduplicated in tree-path order, and a diff with a production path.
+// TestTreeScopedCommand covers tree scope being off, a path lying in a tree by equality or prefix and never by a shared name prefix, a path under nested trees touching each, the touched trees' targets deduplicated in tree-path order, a diff with a production path, and a scoped diff with no target answering an empty command.
 func TestTreeScopedCommand(t *testing.T) {
 	t.Parallel()
 
-	const command = "lyx gate test --tags integration --guards {targets}"
+	const command = "lyx gate test --wait --tier 1 {targets}"
 	trees := map[string]string{"docs": "", "tools": "./tools/...", "scripts": "./tools/...", "cmd/x": "./cmd/x"}
 	tests := []struct {
 		name       string
@@ -483,15 +459,15 @@ func TestTreeScopedCommand(t *testing.T) {
 		wantScoped bool
 	}{
 		{name: "tree scope off with an empty tree_scope_verify", verify: "", paths: []string{"docs/a.md"}},
-		{name: "a docs and a tools path", verify: command, paths: []string{"docs/a.md", "tools/x/y.go"}, want: "lyx gate test --tags integration --guards ./tools/...", wantScoped: true},
-		{name: "two trees sharing one target yield it once", verify: command, paths: []string{"scripts/a.sh", "tools/b.go"}, want: "lyx gate test --tags integration --guards ./tools/...", wantScoped: true},
-		{name: "targets come in tree-path order", verify: command, paths: []string{"tools/b.go", "cmd/x/main.go"}, want: "lyx gate test --tags integration --guards ./cmd/x ./tools/...", wantScoped: true},
-		{name: "a path under nested trees touches both", verify: command, trees: map[string]string{"docs": "./docs-tests", "docs/api": "./api"}, paths: []string{"docs/api/a.md"}, want: "lyx gate test --tags integration --guards ./docs-tests ./api", wantScoped: true},
+		{name: "a docs and a tools path", verify: command, paths: []string{"docs/a.md", "tools/x/y.go"}, want: "lyx gate test --wait --tier 1 ./tools/...", wantScoped: true},
+		{name: "two trees sharing one target yield it once", verify: command, paths: []string{"scripts/a.sh", "tools/b.go"}, want: "lyx gate test --wait --tier 1 ./tools/...", wantScoped: true},
+		{name: "targets come in tree-path order", verify: command, paths: []string{"tools/b.go", "cmd/x/main.go"}, want: "lyx gate test --wait --tier 1 ./cmd/x ./tools/...", wantScoped: true},
+		{name: "a path under nested trees touches both", verify: command, trees: map[string]string{"docs": "./docs-tests", "docs/api": "./api"}, paths: []string{"docs/api/a.md"}, want: "lyx gate test --wait --tier 1 ./docs-tests ./api", wantScoped: true},
 		{name: "a tree does not claim a path sharing only its name prefix", verify: command, paths: []string{"toolsx/a.go"}},
-		{name: "a path equal to a tree path lies in it", verify: command, paths: []string{"tools"}, want: "lyx gate test --tags integration --guards ./tools/...", wantScoped: true},
-		{name: "a non-ASCII path lies in its tree", verify: command, paths: []string{"docs/ä.md"}, want: "lyx gate test --tags integration --guards ", wantScoped: true},
+		{name: "a path equal to a tree path lies in it", verify: command, paths: []string{"tools"}, want: "lyx gate test --wait --tier 1 ./tools/...", wantScoped: true},
+		{name: "a non-ASCII path lies in its tree", verify: command, paths: []string{"docs/ä.md"}, want: "", wantScoped: true},
 		{name: "one production path makes the diff not tree-scoped", verify: command, paths: []string{"docs/a.md", "internal/x/x.go"}},
-		{name: "an empty path list yields the command with an empty targets", verify: command, want: "lyx gate test --tags integration --guards ", wantScoped: true},
+		{name: "an empty path list is scoped with an empty command", verify: command, want: "", wantScoped: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
