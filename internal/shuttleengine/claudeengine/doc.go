@@ -193,7 +193,8 @@
 // The Bash denies below are not declared here: they render the rows of `internal/shellguard`'s table as PreToolUse(Bash) hooks, every row in table order after the Claude rows.
 // The python row denies a Bash command that runs `python`, `python3` or `python3.<minor>` in command position, in every run mode;
 // `shuttle.yaml`'s `deny_python` switches it off for a Python target repo.
-// The command-shaped rows read the command as the shell would, so python in quoted text, a heredoc body or another payload field such as the description does not trip a row.
+// The command-shaped rows read the command as the shell would, so a command word in quoted text, a heredoc body or another payload field such as the description does not trip a row.
+// For every such row, a command substitution inside a double-quoted string, a command after a `<` before a quote or a backslash, and any line after a heredoc operator's line are not read and pass.
 // It is a guardrail, not a barrier: its hook greps the payload, so python behind `bash -c`, `eval`, a launcher or a command substitution inside a double-quoted string passes, and a separator inside a quote the scan misreads is falsely denied.
 //
 // The raw go row keeps a session from reaching the hub's gate slots around `lyx gate test`, and every run installs it, the orch included.
@@ -214,7 +215,7 @@
 //
 // The redirect-write row denies a Bash `>`, `>>`, `>|` or `&>` redirect whose target, optionally quoted, names a project file, and every run installs it, the orch included, with no config key.
 // It allows a target under `.scratch/` by its relative path, under `/tmp/` or `/dev/`, one starting with a variable, and a file-descriptor duplication such as `2>&1`.
-// The steer points at the edit directive's rule and names `.scratch/` as the one place to redirect into.
+// The steer points at the edit directive's rule and names `.scratch/` as the place to redirect into.
 // It is a guardrail, not a barrier: its hook sees static text only, so `tee`, `cp`, `dd`, a write behind `bash -c` or a script, a redirect after a heredoc operator's line, a target behind a variable and an absolute path into `.scratch/` pass,
 // and an untracked file outside the scratch places, or a `>` comparison inside `[[ ]]` or `$(( ))`, is falsely denied.
 //

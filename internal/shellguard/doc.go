@@ -11,7 +11,7 @@
 // unquoted text, a single-quoted string, a double-quoted string, and at most one heredoc operator with the rest of its line.
 // It matches its command word only in command position reached that way, so text inside quotes, a heredoc body or another payload field does not trip it, bar the quotes the scan misreads.
 // Nothing after a heredoc operator's line is read, so the write-then-run shape, a heredoc that writes a script followed by a line that runs it, leaves the later lines unguarded.
-// A command substitution inside a double-quoted string, a < before a quote or a backslash, and <<< are not read as command position either, so a command behind them passes.
+// A command substitution inside a double-quoted string and a < before a quote or a backslash, as in <"f" or <<<"f", are not read as command position either, so a command behind them passes.
 // Every row is a guardrail over static text and not a barrier; each pattern's comment states what it lets through and what it falsely denies.
 //
 // Its imports are the standard library and the two packages that own the environment-variable names the raw go row's pattern names.
