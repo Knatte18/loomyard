@@ -16,7 +16,9 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strconv"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -71,6 +73,8 @@ type PRReworkDeps struct {
 	ClearRejection func() error
 	// ArchiveWebster moves webster's durable run record into dest, so the next webster run starts fresh.
 	ArchiveWebster func(dest string) error
+	// KeepReviewRecords carries the review records of the archived run directory into the recreated one, so a review segment re-entered after the round compares against what it settled.
+	KeepReviewRecords func(archived, recreated string) error
 	// Commit commits the round: the plan directory, the rework directory, the reviews root and webster's directory.
 	Commit func() error
 }
@@ -218,6 +222,7 @@ func (p *prRework) checkSeams() error {
 		{"ReadRejection", p.deps.ReadRejection == nil},
 		{"ClearRejection", p.deps.ClearRejection == nil},
 		{"ArchiveWebster", p.deps.ArchiveWebster == nil},
+		{"KeepReviewRecords", p.deps.KeepReviewRecords == nil},
 		{"Commit", p.deps.Commit == nil},
 		{"ReviewsDir", p.deps.ReviewsDir == ""},
 	}
@@ -347,6 +352,42 @@ func LatestArchivedWebsterDir(reworkDir string) string {
 	return latestPriorChild(reworkDir, reworkPriorWebster)
 }
 
+// LatestRejectReview returns the findings file of the newest round under reworkDir whose record carries a rejection time, with that time.
+// A round whose record or findings file is absent, or whose record has no rejection time, is skipped; no such round reads as not found.
+// A rejection time that does not parse is an error.
+func LatestRejectReview(reworkDir string) (findingsPath string, rejectedAt time.Time, found bool, err error) {
+	nums, err := roundNumbers(reworkDir)
+	if err != nil {
+		return "", time.Time{}, false, fmt.Errorf("loomshed: %w", err)
+	}
+	slices.SortFunc(nums, func(a, b int) int { return b - a })
+	for _, n := range nums {
+		roundDir := filepath.Join(reworkDir, reworkRoundPrefix+strconv.Itoa(n))
+		findings := filepath.Join(roundDir, reworkFindingsFile)
+		if _, err := os.Stat(findings); errors.Is(err, fs.ErrNotExist) {
+			continue
+		} else if err != nil {
+			return "", time.Time{}, false, fmt.Errorf("loomshed: stat %s: %w", findings, err)
+		}
+		rec, err := readRoundRecord(filepath.Join(roundDir, reworkRecordFile))
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return "", time.Time{}, false, fmt.Errorf("loomshed: %w", err)
+		}
+		if rec.RejectedAt == "" {
+			continue
+		}
+		at, err := time.Parse(time.RFC3339, rec.RejectedAt)
+		if err != nil {
+			return "", time.Time{}, false, fmt.Errorf("loomshed: round %d rejected_at %q: %w", n, rec.RejectedAt, err)
+		}
+		return findings, at, true, nil
+	}
+	return "", time.Time{}, false, nil
+}
+
 // latestPriorChild joins child onto the highest round's prior-generation directory under reworkDir.
 func latestPriorChild(reworkDir, child string) string {
 	nums, err := roundNumbers(reworkDir)
@@ -453,11 +494,27 @@ func holdsEntry(dir string) bool {
 	return err == nil && len(entries) > 0
 }
 
-// recreateReviewRunDirs recreates the archived review run directories empty, so a segment's first write finds its directory.
+// recreateReviewRunDirs recreates the archived review run directories, so a segment's first write finds its directory.
+// It then hands each one the latest archive holds to KeepReviewRecords, so the records the next re-entry compares against survive the archive.
+// It runs on every Call that reaches it, so a re-step after a failed carry carries again.
 func (p *prRework) recreateReviewRunDirs() error {
+	archivedRoot := LatestArchivedReviewsDir(p.deps.ReworkDir)
 	for _, sub := range p.deps.ReviewRunSubdirs {
-		if err := os.MkdirAll(filepath.Join(p.deps.ReviewsDir, sub), 0o755); err != nil {
+		recreated := filepath.Join(p.deps.ReviewsDir, sub)
+		if err := os.MkdirAll(recreated, 0o755); err != nil {
 			return fmt.Errorf("loomshed: %s: recreate review run directory %s: %w", p.name, sub, err)
+		}
+		if archivedRoot == "" {
+			continue
+		}
+		archived := filepath.Join(archivedRoot, sub)
+		if _, err := os.Stat(archived); errors.Is(err, fs.ErrNotExist) {
+			continue
+		} else if err != nil {
+			return fmt.Errorf("loomshed: %s: stat archived review run directory %s: %w", p.name, sub, err)
+		}
+		if err := p.deps.KeepReviewRecords(archived, recreated); err != nil {
+			return fmt.Errorf("loomshed: %s: keep review records of %s: %w", p.name, sub, err)
 		}
 	}
 	return nil

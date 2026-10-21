@@ -44,6 +44,9 @@ type ShedPaths struct {
 	// RerouteCapWayForward is copied onto the constructed shedengine.Shed.
 	// See shedengine.Shed.RerouteCapWayForward's own field doc.
 	RerouteCapWayForward string
+	// BudgetWayForward is copied onto the constructed shedengine.Shed.
+	// See shedengine.Shed.BudgetWayForward's own field doc.
+	BudgetWayForward string
 }
 
 // NewShed parses recipe, builds it against env, and returns a *shedengine.Shed carrying the built
@@ -96,5 +99,6 @@ func NewShedFrom(recipe Recipe, env shedrecipe.Env, paths ShedPaths) (*shedengin
 		MissingStatusWayForward: paths.MissingStatusWayForward,
 		PauseWayForward:         paths.PauseWayForward,
 		RerouteCapWayForward:    paths.RerouteCapWayForward,
+		BudgetWayForward:        paths.BudgetWayForward,
 	}, nil
 }

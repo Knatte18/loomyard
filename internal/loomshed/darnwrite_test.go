@@ -75,6 +75,28 @@ func TestDarnWrite_Call(t *testing.T) {
 			wantTold:   DarnTold{RejectionFindings: "the reviewer's findings"},
 		},
 		{
+			name: "rejection is recorded with its findings before it is cleared",
+			mutate: func(f *darnFixture) {
+				f.deps.ReadRejection = rejection
+				f.deps.RecordRejection = func(r PendingRejection) error { f.events = append(f.events, "record:"+r.Findings); return nil }
+			},
+			session:    true,
+			wantResult: shedengine.Done,
+			wantEvents: "session,commit,record:the reviewer's findings,clear",
+			wantTold:   DarnTold{RejectionFindings: "the reviewer's findings"},
+		},
+		{
+			name: "record failure is an error and keeps the rejection",
+			mutate: func(f *darnFixture) {
+				f.deps.ReadRejection = rejection
+				f.deps.RecordRejection = func(PendingRejection) error { return errors.New("record unwritable") }
+			},
+			session:    true,
+			wantErr:    "record unwritable",
+			wantEvents: "session,commit",
+			wantTold:   DarnTold{RejectionFindings: "the reviewer's findings"},
+		},
+		{
 			name: "prior work names the halt reason and the failure record",
 			mutate: func(f *darnFixture) {
 				f.deps.LatestOutcome = func() (DarnOutcome, bool, error) {

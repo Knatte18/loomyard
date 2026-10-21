@@ -13,6 +13,8 @@ const (
 	RunSoftKey = "review_max_bounces"
 	// RunHardKey is the run-wide hard cap key.
 	RunHardKey = "review_hard_max_bounces"
+	// RunAmendKey is the run-wide amendment allowance key: the review rounds an amendment generation gets.
+	RunAmendKey = "review_amend_max_bounces"
 )
 
 // SoftKey returns the key of perch's own bounce budget.
@@ -25,12 +27,13 @@ func HardKey(perch string) string { return perch + "_hard_max_bounces" }
 func AutoAcceptKey(perch string) string { return perch + "_auto_accept" }
 
 // Categories returns the category of every key of the family for perches.
-// The budget and hard-cap keys are CategoryNone and the auto-accept keys CategoryGuard.
-// With no perches it returns the two run-wide keys alone.
+// The budget, hard-cap and amendment allowance keys are CategoryNone and the auto-accept keys CategoryGuard.
+// With no perches it returns the three run-wide keys alone.
 func Categories(perches []string) map[string]configengine.Category {
 	categories := map[string]configengine.Category{
-		RunSoftKey: configengine.CategoryNone,
-		RunHardKey: configengine.CategoryNone,
+		RunSoftKey:  configengine.CategoryNone,
+		RunHardKey:  configengine.CategoryNone,
+		RunAmendKey: configengine.CategoryNone,
 	}
 	for _, perch := range perches {
 		categories[SoftKey(perch)] = configengine.CategoryNone
@@ -65,9 +68,11 @@ func Resolve(perch string, runSoft, runHard int, ownSoft *int, ownHard int) Caps
 
 // Values holds the budget keys of one loaded config.
 // PerchSoft and PerchHard are keyed by perch name; a nil PerchSoft entry takes RunSoft and a PerchHard entry of 0 takes RunHard.
+// RunAmend is the amendment allowance, 0 meaning no review round for an amendment.
 type Values struct {
 	RunSoft   int
 	RunHard   int
+	RunAmend  int
 	Perches   []string
 	PerchSoft map[string]*int
 	PerchHard map[string]int
@@ -112,6 +117,9 @@ func CheckResolved(dirs configengine.Dirs, spec configengine.Spec, values Values
 			return refuse(SoftKey(perch), fmt.Sprintf("must not be negative, got %d; set it to 0 for no review round, to a positive integer, or to null to take %s", *own, RunSoftKey))
 		}
 	}
+	if values.RunAmend < 0 {
+		return refuse(RunAmendKey, fmt.Sprintf("must not be negative, got %d; set it to 0 to settle every amendment with no review round, or to a positive integer", values.RunAmend))
+	}
 	if values.RunHard < 1 {
 		return refuse(RunHardKey, fmt.Sprintf("must be at least 1, got %d", values.RunHard))
 	}
@@ -154,7 +162,7 @@ func CheckLocal(set map[string]any, perches []string) error {
 		min     int
 		nilable bool
 	}
-	bounds := []bound{{RunSoftKey, 0, false}, {RunHardKey, 1, false}}
+	bounds := []bound{{RunSoftKey, 0, false}, {RunHardKey, 1, false}, {RunAmendKey, 0, false}}
 	for _, perch := range perches {
 		bounds = append(bounds, bound{SoftKey(perch), 0, true}, bound{HardKey(perch), 0, false})
 	}

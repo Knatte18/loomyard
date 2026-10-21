@@ -458,7 +458,7 @@ func seededStatusSpec(t *testing.T, hooks Hooks) *Spec {
 	}
 }
 
-// TestStatusCmd_FoundEnvelope_GenericCore asserts the found envelope carries history_length,
+// TestStatusCmd_FoundEnvelope_GenericCore asserts the found envelope carries pause_reason, history_length,
 // interrupt_policy and trace_dir from the generic core, with an empty policy for a nil hook.
 func TestStatusCmd_FoundEnvelope_GenericCore(t *testing.T) {
 	tests := []struct {
@@ -472,9 +472,19 @@ func TestStatusCmd_FoundEnvelope_GenericCore(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			spec := seededStatusSpec(t, Hooks{InterruptPolicyFor: tt.hook})
+			const wantPauseReason = "pause requested by operator"
+			if err := state.UpdateJSON(spec.StatusPath, spec.StatusLockPath, func(cur shedengine.Status, found bool) (shedengine.Status, error) {
+				cur.PauseReason = wantPauseReason
+				return cur, nil
+			}); err != nil {
+				t.Fatalf("record pause reason: %v", err)
+			}
 			env, code := execEnvelope(t, statusCmd(statusTexts(), spec), nil)
 			if code != 0 {
 				t.Fatalf("exit code = %d; want 0", code)
+			}
+			if env["pause_reason"] != wantPauseReason {
+				t.Errorf("pause_reason = %v; want %q", env["pause_reason"], wantPauseReason)
 			}
 			if env["history_length"] != float64(2) {
 				t.Errorf("history_length = %v; want 2", env["history_length"])

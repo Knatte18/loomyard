@@ -2,6 +2,7 @@
 //
 // The run, step, status, pause and goto bodies are the shared `internal/shedverbs` verbs, mounted here with loom's own text.
 // Friction-Reflect, the last row, runs the Tier 2 friction reflection under run and under step alike, before the run records done.
+// A `blocked` or `failed` halt, and an interrupted stop, write their Go halt note and spawn no reflection, so no stop holds the driver lock for a friction session and `lyx loom resume` never waits on one; the note waits for the run's Friction-Reflect row, which reflects every note in the friction directory.
 // `lyx start` is the same start verb mounted a second time at the root, resolving the full engine stack exactly as `lyx loom start` does.
 //
 // # Start
@@ -146,10 +147,11 @@
 // An applied `resume` whose stop key is unchanged is refused, since the run stopped at the same place again.
 //
 // The printed envelope carries `verdict`, `reason`, `question`, `goto`, `verbs`, `cause`, `attempt`, `attempt_dir` and `verdict_path`, and for a `resume` the `relaunch` line.
-// A `resume` the verb finds unsound reads `hand-on` with cause `precondition`: no circling decision pending at an escalation, no goto target at a `blocked` stop, or a goto target the run's current row does not admit.
+// A `resume` the verb finds unsound reads `hand-on` with cause `precondition`: no circling decision pending at an escalation, no goto target at a `blocked` stop, a goto target the run's current row does not admit, or a goto target the told goto guard refuses.
 // The verb moves no run itself;
 // `lyx shed step <run-id> --until-stop --arbiter-attempt <N>` performs the verdict's goto under the run and status locks, once per attempt;
 // a run already paused at the verdict's goto target with only goto entries since the spawn, the last naming that target, is admitted with no second goto.
+// A guard refusal inside that re-launch refuses the attempt, and the driver hands back with the refusal text.
 // A pair's session end ends a live arbiter strand with the pair's other strands.
 //
 // The Go driver reaches the arbiter through its arbiter seam, which calls this same path in-process, so eligibility, `arbiter_max_spawns`, the attempts, the applied mark and the deadlines are shared;
@@ -200,6 +202,7 @@
 // A re-run for a stop key an attempt already judged spawns nothing: it returns that attempt's verdict or waits on its live tackler, unless a hand-back record for the key closed it.
 // An applied `resume` whose stop key is unchanged goes to the arbiter.
 // The driver consumes a `resume` through the shed's re-launch, which refuses under the status lock unless the run is still where the tackler found it or already stands paused at the verdict's goto target after only goto entries, and marks the attempt applied in the same hold.
+// A guard refusal inside that re-launch refuses the attempt, and the driver hands back with the refusal text.
 //
 // Tampering is the spawn snapshot of the worktree and a fresh one differing, read only after the stop key proved unchanged:
 // a tackler that changed the code worktree hands back with cause `tampered`, and a run an orch moved meanwhile discards the verdict and acts on the fresh state instead.
@@ -237,4 +240,18 @@
 //
 // The landing wiring reads the run's start from the pair's seed and fails on a seed it cannot decode.
 // `lyx loom approve` and `lyx loom reject` look up the pull request created at or after that start and refuse when the seed cannot be read.
+//
+// # Review subjects
+//
+// The wiring tells each Bouncer row what its segment judges, so a re-entry over an unchanged subject settles without a review and a changed one reviews only the change under `review_amend_max_bounces`.
+// A recipe row names its subject by its `subject` key: Discussion-Bouncer and Plan-Bouncer `document`, Webster-Bouncer and darn's Darn-Bouncer `code`, Merge-Bouncer `merge`.
+// A document subject hashes the row's artifact paths in order: the decision record through its identity text, a plan directory as its overview's identity text and its top-level card files, and an absent path as absent.
+// Its Base is the commit the run records' checkout stands at.
+// A code subject is the task worktree's change against the merge base with the recorded parent branch, leaving out the run's own state directories and the harness's own files while untracked.
+// A run with no recorded parent branch tells no code subject, so its code segments write no records.
+// A change confined to the harness's own files reads as an unchanged subject; the verify tiers at Publish, darn's Merge-In and loom's Merge-Review bound it.
+// A merge subject hashes the merge record's merged tip and merge commit.
+//
+// A loom run tells each Bouncer the findings file and time of the latest PR-Gate reject its rework directory kept.
+// A darn run's Darn-Write row writes them into `reject-review.md` in the landing directory before it clears the pending rejection, and its Commit seam commits that file.
 package loomcli

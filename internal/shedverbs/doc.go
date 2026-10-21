@@ -9,6 +9,11 @@
 //
 // pause with no flag requests a pause at the next producer boundary, unless the spec's BarePause hook refuses it, which loom's does.
 // --before <producer> and --after <producer> record a stop condition the engine fires at that producer, and --clear removes both; none of the three touches the bare request, and --clear refuses beside the other two.
+// --by <label> stores a free-text caller label beside the request it accompanies: pause_requested_by for a bare pause, pause_before_by with --before and pause_after_by with --after, each replaced with its condition and --clear dropping both condition labels.
+// The label gates nothing, and the engine records it in the paused run's pause_reason;
+// --by shed is refused before any write, since shed is the label of lyx's own automatic steps.
+// status's generic core is eleven keys, and pause_reason is the status file's value; the human view prints it as a "why" line for a paused run with a non-empty reason.
+// Spec.GotoGuard is the recipe's told check of a goto target, which every goto passes on; nil admits every target.
 //
 // step prints a short envelope by default.
 // Before printing, it writes the full envelope to its per-invocation record under Spec.StepsDir, and the short envelope names that record's path as "envelope_path".

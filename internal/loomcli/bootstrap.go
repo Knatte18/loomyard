@@ -97,10 +97,8 @@ const (
 // halted comes last because it is the weakest of the three signals — it says only that the machine
 // is no longer running, which is also true of a status file a wedged driver never touched. It exists
 // because the run lock alone stopped being able to tell "wedged spawn" from "finished, still
-// working": shedengine.Run releases the lock on return, and after a blocked halt `lyx loom run`
-// then spends up to friction_timeout_min in the Tier 2 reflection step with the lock free and the
-// process very much alive. Without this signal a fast halt plus any friction note is reported as a wedged spawn and
-// the bootstrap refuses — see dispositionForHandshake.
+// working": shedengine.Run releases the lock on return, and the process can stay alive a moment for its post-run work with the lock free.
+// Without this signal a fast halt on a resume of a halted run is reported as a wedged spawn and the bootstrap refuses — see dispositionForHandshake.
 //
 // lockHeld, alive, halted, and wait are all injected seams so a test can drive this whole poll with
 // no real process, no real lock, no real status file, and no wall-clock sleep, which the Test Tier
@@ -145,13 +143,10 @@ const (
 // milliseconds, well inside the first poll interval. Refusing there tells the operator the bootstrap
 // broke when in fact their task halted, and withholds the success envelope that is the bootstrap's entire job.
 //
-// awaitRunLockHalted proceeds for exactly the same reason, and covers the case Tier 2 introduced:
-// the driver halted just as fast, but did NOT exit, because after a blocked halt `lyx loom run` runs
-// the friction reflection after shedengine.Run has already returned and released the lock. That step spawns a
-// real agent bounded by friction_timeout_min -- thirty minutes in the shipped template -- against a
-// handshake budget of thirty seconds, so the child is alive, the lock is free, and the machine is
-// done. Before this arm existed that combination landed on the refusal below, which turned every
-// fast halt carrying a friction note into a reported bootstrap failure:
+// awaitRunLockHalted proceeds for exactly the same reason: the driver halted just as fast, but has not exited yet,
+// so the child is alive, the lock is free, and the machine is no longer running.
+// The arm also fires on the first poll of every resume of a halted run, whose status file still reads halted before the new driver rewrites it.
+// Refusing there would turn a fast halt into a reported bootstrap failure:
 // precisely the outcome the paragraph above exists to prevent, reintroduced through a different door.
 //
 // Only awaitRunLockDeadline is a genuine refusal: the child is still alive after the whole attempt

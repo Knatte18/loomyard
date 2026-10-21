@@ -1335,6 +1335,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 		RunID:                   slug,
 		MissingStatusWayForward: fmt.Sprintf("way forward: \"lyx batten run %s\" creates the lifecycle's status file", slug),
 		PauseWayForward:         fmt.Sprintf("lyx batten pause %s", slug),
+		BudgetWayForward:        fmt.Sprintf("run \"lyx batten run %s\": the resume grants the row one more budget", slug),
 	}
 	return nil
 }

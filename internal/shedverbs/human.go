@@ -35,6 +35,7 @@ var writerIsTerminal = func(w io.Writer) bool {
 // a segment, and omitted when routing carries no producers; "now", then "last" when non-empty, then
 // "wait" when non-empty and the state is blocked, failed or awaiting; and "next" naming the
 // main-line steps still ahead, omitted when none remain.
+// A paused run with a recorded reason prints a "why" line after "last".
 // A non-empty waiting note prints "waiting <note>" in the header in place of the state.
 func RenderStatusHuman(label, runID string, st shedengine.Status, routing shedengine.Routing, waiting string) string {
 	var b strings.Builder
@@ -68,11 +69,14 @@ func RenderStatusHuman(label, runID string, st shedengine.Status, routing sheden
 	return b.String()
 }
 
-// writeActivityTail writes the "last" line when non-empty and the "wait" line when non-empty and
-// the state is one that halts the run.
+// writeActivityTail writes the "last" line when non-empty, the "why" line when the run is paused with a recorded reason,
+// and the "wait" line when non-empty and the state is one that halts the run.
 func writeActivityTail(b *strings.Builder, st shedengine.Status) {
 	if st.Activity.Last != "" {
 		fmt.Fprintf(b, "last %s\n", st.Activity.Last)
+	}
+	if st.State == shedengine.StatePaused && st.PauseReason != "" {
+		fmt.Fprintf(b, "why  %s\n", st.PauseReason)
 	}
 	switch st.State {
 	case shedengine.StateBlocked, shedengine.StateFailed, shedengine.StateAwaiting:

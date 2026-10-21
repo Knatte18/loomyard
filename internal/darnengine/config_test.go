@@ -34,7 +34,7 @@ func seedDarnConfig(t *testing.T, baseDir, contents string) {
 // templateConfig returns the Config the embedded template loads as, changed by mutate.
 func templateConfig(mutate func(*Config)) Config {
 	cfg := Config{
-		Writer: "opus[medium]", WriterTimeoutMin: 180, Verify: "", VerifyAttempts: 3, ReviewMaxBounces: 1, ReviewHardMaxBounces: 4,
+		Writer: "opus[medium]", WriterTimeoutMin: 180, Verify: "", VerifyAttempts: 3, ReviewMaxBounces: 1, ReviewHardMaxBounces: 4, ReviewAmendMaxBounces: 1,
 		ReviewerModel: burlerengine.ModelSpecList{"sonnet[high]"}, FixerModel: burlerengine.ModelSpecList{""},
 		ReviewerFan: lenses.FanList{""}, FixerFan: lenses.FanList{""},
 		TreeScope: map[string]string{},

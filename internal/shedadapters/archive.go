@@ -50,14 +50,12 @@ func archiveStaleOutputs(files []string, now func() time.Time) error {
 	return nil
 }
 
-// archiveRunDir renames runDir to a timestamped sibling beside it and recreates runDir as an empty
-// directory. now resolves the archive stamp, mirroring archiveStaleOutputs's own clock use; the
-// caller is responsible for defaulting a nil now to time.Now.
-// Unlike archiveStaleOutputs, a directory has no extension to preserve, so the candidate closure
-// appends nothing after the collision suffix.
-// The recreate is not optional: ResolveRound hard-errors when the run directory is absent, so a
-// caller that skipped the recreate would turn its very next call into a hard error rather than a
-// seed.
+// archiveRunDir renames runDir to a timestamped sibling beside it and recreates runDir as an empty directory.
+// It then carries the settle record, its patch and the generation record into the recreated directory, so the Bouncer's own generation archive keeps them.
+// now resolves the archive stamp; the caller is responsible for defaulting a nil now to time.Now.
+// A directory has no extension to preserve, so the candidate closure appends nothing after the collision suffix.
+// The recreate is not optional: ResolveRound hard-errors when the run directory is absent,
+// so a caller that skipped the recreate would turn its very next call into a hard error rather than a seed.
 func archiveRunDir(runDir string, now func() time.Time) error {
 	dir := filepath.Dir(runDir)
 	base := filepath.Base(runDir)
@@ -76,6 +74,9 @@ func archiveRunDir(runDir string, now func() time.Time) error {
 
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		return fmt.Errorf("shedadapters: recreate run dir %s: %w", runDir, err)
+	}
+	if err := CarryRecords(target, runDir); err != nil {
+		return fmt.Errorf("shedadapters: carry the records of run dir %s: %w", runDir, err)
 	}
 	return nil
 }

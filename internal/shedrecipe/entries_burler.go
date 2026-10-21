@@ -87,7 +87,11 @@ func burlerReviewEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedPro
 		return nil, err
 	}
 
-	notes := shedadapters.RubricNotes{VerifyTiers: env.VerifyTiers}
+	runDir, err := burlerRunDir("BurlerReview", runSubdir, env)
+	if err != nil {
+		return nil, err
+	}
+	notes := shedadapters.RubricNotes{VerifyTiers: env.VerifyTiers, Amendment: shedadapters.AmendmentNote(runDir)}
 	if env.PublishFailure != nil {
 		notes.PublishFailure = env.PublishFailure()
 	}
@@ -120,10 +124,6 @@ func burlerReviewEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedPro
 		profile.ClusterFan, profile.FixFan = "", ""
 	}
 
-	runDir, err := burlerRunDir("BurlerReview", runSubdir, env)
-	if err != nil {
-		return nil, err
-	}
 	opts := burlerengine.RunOpts{Timeout: burlerRowTimeout(timeoutS, env), ReviewKey: segment.ReviewKey}
 	producer, err := shedadapters.NewBurlerReviewProducer(row.Name, shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: segment.Models, Fans: fans}, profile, opts, runDir, env.Now)
 	if err != nil {

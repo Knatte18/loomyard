@@ -156,7 +156,7 @@ func TestGotoCmd_RefusesHeldRunLock(t *testing.T) {
 	}
 }
 
-// TestGotoCmd_PassesToldWayForwardTexts asserts the verb hands the spec's run-id, missing-status clause and pause command to the engine, seen in a refusal.
+// TestGotoCmd_PassesToldWayForwardTexts asserts the verb hands the spec's run-id, missing-status clause, pause command and goto guard to the engine, seen in a refusal.
 func TestGotoCmd_PassesToldWayForwardTexts(t *testing.T) {
 	paths := newTestPaths(t)
 	spec := gotoSpec(paths)
@@ -178,6 +178,33 @@ func TestGotoCmd_PassesToldWayForwardTexts(t *testing.T) {
 	}
 	if msg, _ := env["error"].(string); !strings.Contains(msg, `"lyx batten pause run-1"`) || !strings.Contains(msg, `"lyx shed step run-1"`) {
 		t.Errorf("message = %q; want the running refusal to name the spec's told pause command and run-id", msg)
+	}
+
+	// A told GotoGuard reaches the request: it sees the target, and its refusal leaves the file unchanged.
+	paths = newTestPaths(t)
+	seedBlocked(t, paths, "B")
+	before, err := os.ReadFile(paths.StatusPath)
+	if err != nil {
+		t.Fatalf("read seeded status: %v", err)
+	}
+	var guardTarget string
+	spec = gotoSpec(paths)
+	spec.GotoGuard = func(target string) (string, error) {
+		guardTarget = target
+		return "guard refuses; way forward: told guard clause", nil
+	}
+	env, code = execEnvelope(t, gotoCmd(gotoTexts(), spec), []string{"--to", "A"})
+	if code == 0 {
+		t.Fatalf("exit code = 0 under a refusing guard; want a refusal (env %v)", env)
+	}
+	if guardTarget != "A" {
+		t.Errorf("guard target = %q; want A", guardTarget)
+	}
+	if msg, _ := env["error"].(string); !strings.Contains(msg, "guard refuses; way forward: told guard clause") {
+		t.Errorf("message = %q; want the guard's refusal", msg)
+	}
+	if after, _ := os.ReadFile(paths.StatusPath); !bytes.Equal(before, after) {
+		t.Errorf("status file changed on a guard refusal: %s -> %s", before, after)
 	}
 }
 

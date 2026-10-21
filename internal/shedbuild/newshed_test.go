@@ -16,7 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 )
 
-// TestNewShed_FieldCompleteAssembly asserts NewShed returns a *shedengine.Shed whose Producers length matches the parsed recipe's own row count, whose StatusPath, LockPath, StatusLockPath, MaxBounces, CommitStatus, RunID and MissingStatusWayForward fields are copied verbatim from the passed ShedPaths, and whose Transient classifier is wired.
+// TestNewShed_FieldCompleteAssembly asserts NewShed returns a *shedengine.Shed whose Producers length matches the parsed recipe's own row count, whose StatusPath, LockPath, StatusLockPath, MaxBounces, CommitStatus, RunID, MissingStatusWayForward, RerouteCapWayForward and BudgetWayForward fields are copied verbatim from the passed ShedPaths, and whose Transient classifier is wired.
 func TestNewShed_FieldCompleteAssembly(t *testing.T) {
 	t.Parallel()
 
@@ -55,6 +55,7 @@ producers:
 
 		MissingStatusWayForward: "way forward: told clause",
 		RerouteCapWayForward:    "way forward: reroute clause",
+		BudgetWayForward:        "budget clause",
 	}
 
 	shed, err := NewShed([]byte(recipeYAML), env, paths)
@@ -77,8 +78,8 @@ producers:
 	if shed.MaxBounces != paths.MaxBounces {
 		t.Errorf("shed.MaxBounces = %d; want %d", shed.MaxBounces, paths.MaxBounces)
 	}
-	if shed.RunID != paths.RunID || shed.MissingStatusWayForward != paths.MissingStatusWayForward || shed.RerouteCapWayForward != paths.RerouteCapWayForward {
-		t.Errorf("shed.RunID, MissingStatusWayForward, RerouteCapWayForward = %q, %q, %q; want the told values", shed.RunID, shed.MissingStatusWayForward, shed.RerouteCapWayForward)
+	if shed.RunID != paths.RunID || shed.MissingStatusWayForward != paths.MissingStatusWayForward || shed.RerouteCapWayForward != paths.RerouteCapWayForward || shed.BudgetWayForward != paths.BudgetWayForward {
+		t.Errorf("shed.RunID, MissingStatusWayForward, RerouteCapWayForward, BudgetWayForward = %q, %q, %q, %q; want the told values", shed.RunID, shed.MissingStatusWayForward, shed.RerouteCapWayForward, shed.BudgetWayForward)
 	}
 
 	// The assembled Shed classifies a never-ready agent start as agent-start and a plain error as not transient.
@@ -118,7 +119,7 @@ producers:
 			t.Errorf("NewShedFrom() producer %d = %q -> %q; want %q -> %q, as NewShed", i, from.Producers[i].Name, from.Producers[i].OnDone, shed.Producers[i].Name, shed.Producers[i].OnDone)
 		}
 	}
-	if from.StatusPath != shed.StatusPath || from.LockPath != shed.LockPath || from.StatusLockPath != shed.StatusLockPath || from.MaxBounces != shed.MaxBounces || from.RunID != shed.RunID || from.MissingStatusWayForward != shed.MissingStatusWayForward || from.RerouteCapWayForward != shed.RerouteCapWayForward {
+	if from.StatusPath != shed.StatusPath || from.LockPath != shed.LockPath || from.StatusLockPath != shed.StatusLockPath || from.MaxBounces != shed.MaxBounces || from.RunID != shed.RunID || from.MissingStatusWayForward != shed.MissingStatusWayForward || from.RerouteCapWayForward != shed.RerouteCapWayForward || from.BudgetWayForward != shed.BudgetWayForward {
 		t.Errorf("NewShedFrom() paths fields differ from NewShed's for the same paths")
 	}
 }

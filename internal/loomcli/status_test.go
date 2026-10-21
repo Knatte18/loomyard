@@ -23,7 +23,7 @@ import (
 
 // TestStatusCmd_EnvelopeKeySet drives statusCmd()'s RunE in-process against a hand-populated
 // receiver whose shedPaths point at a seeded status file under t.TempDir(), and asserts the emitted
-// envelope's top-level key set equals exactly the nine payload keys plus "ok" -- in both directions,
+// envelope's top-level key set equals exactly the payload keys plus "ok" -- in both directions,
 // so the interrupt_policy addition can neither quietly rename an existing key nor let a later
 // removal go unnoticed. It also tables interrupt_policy's own value across the three shapes
 // InterruptPolicyFor returns: "handback" for NameWebster, "reinvoke" for another named row, and the
@@ -89,7 +89,7 @@ func TestStatusCmd_EnvelopeKeySet(t *testing.T) {
 
 			wantKeys := map[string]bool{
 				"ok": true, "current_producer": true, "state": true, "error": true,
-				"pause_requested": true, "activity": true, "history_length": true,
+				"pause_reason": true, "pause_requested": true, "activity": true, "history_length": true,
 				"slug": true, "parent": true, "interrupt_policy": true, "trace_dir": true,
 				"run_id": true, "progress": true, "last_step": true,
 			}

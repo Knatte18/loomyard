@@ -61,6 +61,8 @@ type TacklerDeps struct {
 	Recipe string
 	// GotoRoutedFrom is whether a resume may name the row the halting history entry was routed from as well as the current row.
 	GotoRoutedFrom bool
+	// GotoGuard is the recipe's told check of a goto target, run on a verdict's goto after the producer checks; nil admits every target.
+	GotoGuard shedengine.GotoGuard
 	// Prompt holds the prompt inputs that do not vary per attempt; StencilsDir is where the tackler stencil is read from.
 	Prompt      TacklerPromptInput
 	StencilsDir string
@@ -389,7 +391,7 @@ func (c *TacklerCall) gotoRows() []string {
 }
 
 // resumePrecondition returns what stops a resume from being sound at the call's stop, or empty when nothing does.
-// A goto may name only the rows gotoRows lists.
+// A goto may name only the rows gotoRows lists, and the told GotoGuard may refuse one of them; its refusal or error text is the answer.
 func (c *TacklerCall) resumePrecondition(verdict TacklerVerdict) string {
 	if verdict.Goto == "" {
 		if c.status.State == shedengine.StateBlocked {
@@ -407,6 +409,13 @@ func (c *TacklerCall) resumePrecondition(verdict TacklerVerdict) string {
 	}
 	if err := shedengine.CheckGotoTarget(c.deps.Producers, c.status, verdict.Goto, c.in.RunID); err != nil {
 		return err.Error()
+	}
+	if c.deps.GotoGuard != nil {
+		refusal, err := c.deps.GotoGuard(verdict.Goto)
+		if err != nil {
+			return err.Error()
+		}
+		return refusal
 	}
 	return ""
 }

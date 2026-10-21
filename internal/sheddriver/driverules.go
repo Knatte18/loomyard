@@ -1,12 +1,13 @@
 // driverules.go holds the shed driver's closed rule table as pure functions:
 // the stop it acts on, parsed from the loop's envelope or built from a status, the disk facts the loop reads before deciding, and the one decision the table returns.
-// No branch reads a row or recipe name or the reason text; each reads the envelope's fields, its kind, its transient class and the facts.
+// No branch reads a row or recipe name; each reads the envelope's fields, its kind, its transient class and the facts, and the budget-exhausted row alone reads the prefix of the reason or error text.
 
 package sheddriver
 
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -94,9 +95,14 @@ func parseDriveStop(envelope []byte) (Stop, error) {
 }
 
 // stopFromStatus builds the stop the driver acts on from a status alone.
-// It has FromStatus set, no kind and no reason; a failed status reads as an error stop.
+// It has FromStatus set and no kind, and a paused status carries its pause_reason as the stop's reason; a failed status reads as an error stop.
 func stopFromStatus(st shedengine.Status) Stop {
+	reason := ""
+	if st.State == shedengine.StatePaused {
+		reason = st.PauseReason
+	}
 	return Stop{
+		Reason:          reason,
 		OK:              st.State != shedengine.StateFailed,
 		State:           string(st.State),
 		Transient:       st.Transient,
@@ -156,7 +162,7 @@ const (
 
 // driveDecision is the table's answer for one stop.
 // Rule is the rule text the stop report quotes.
-// FrictionNote asks for a friction note on a paused stop that carries no reason.
+// FrictionNote asks for a friction note on a paused stop that carries no reason, from the envelope or the status.
 type driveDecision struct {
 	Action       driveAction
 	Rule         string
@@ -201,7 +207,9 @@ func decideDrive(stop Stop, facts driveFacts) driveDecision {
 	case stop.Kind == shedverbs.KindOwnership || (!stop.OK && stop.Kind == ""):
 		return driveDecision{Action: driveActionHandBack, Rule: "an ownership error, or an error with no kind: hand back"}
 	case state == string(shedengine.StatePaused):
-		return driveDecision{Action: driveActionHandBack, Rule: "the run is paused: hold and hand back", FrictionNote: !stop.FromStatus && stop.Reason == ""}
+		return driveDecision{Action: driveActionHandBack, Rule: "the run is paused: hold and hand back", FrictionNote: stop.Reason == ""}
+	case budgetExhausted(stop):
+		return driveDecision{Action: driveActionHandBack, Rule: "a bounce-budget-exhausted halt: only the parent's resume lifts it"}
 	case state == string(shedengine.StateAwaiting) && facts.EscalationPending:
 		return driveDecision{Action: driveActionArbiter, Rule: "an awaiting review escalation: the arbiter decides"}
 	case state == string(shedengine.StateAwaiting) && stop.ParentNotice != "":
@@ -230,6 +238,15 @@ func decideDrive(stop Stop, facts driveFacts) driveDecision {
 		return driveDecision{Action: driveActionTackler, Rule: "no rule settles the stop: the tackler decides"}
 	}
 	return driveDecision{Action: driveActionHandBack, Rule: "no rule names the stop: hand back"}
+}
+
+// budgetExhausted reports whether stop is a blocked stop whose reason, or whose error for a stop built from a status, starts with shedengine.ReasonBounceBudgetExhausted.
+// Only the parent's resume lifts such a halt, so the table hands it back and never resumes it.
+func budgetExhausted(stop Stop) bool {
+	if stop.Key().State != string(shedengine.StateBlocked) {
+		return false
+	}
+	return strings.HasPrefix(stop.Reason, shedengine.ReasonBounceBudgetExhausted) || strings.HasPrefix(stop.Error, shedengine.ReasonBounceBudgetExhausted)
 }
 
 // isTacklerKind reports whether kind is an error kind the tackler judges when no earlier rule settled it.

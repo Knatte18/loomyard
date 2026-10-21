@@ -142,6 +142,7 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error)
 	settlePath := shedrun.SettleRecords(location, c.runID)
 	reportRand := newDriverReportRand()
 	readStatus := circlingStatusReader(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
+	gotoGuard := c.settledGuard()
 	verifyPaths := verifytree.NewPaths(location.WorktreePath(), verifytree.Dir(location.AnchorPath()))
 	pauseGeometry := func() (pauserecord.Geometry, error) { return hubgeom.PauseGeometry(location) }
 
@@ -178,6 +179,7 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error)
 		},
 		Recipe:         tacklerRecipe,
 		GotoRoutedFrom: true,
+		GotoGuard:      gotoGuard,
 		Prompt: sheddriver.TacklerPromptInput{
 			Slug:      seedSlug(location.WorktreeName),
 			Worktree:  location.WorktreePath(),
@@ -250,6 +252,7 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error)
 				Producers:               c.routing.Producers,
 				RunID:                   runID,
 				MissingStatusWayForward: c.shedPaths.MissingStatusWayForward,
+				Guard:                   gotoGuard,
 			})
 		},
 		OpenAttempts: func(key sheddriver.StopKey) (string, string, bool, error) {

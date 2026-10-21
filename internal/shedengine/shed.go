@@ -60,6 +60,10 @@ type Shed struct {
 	// It is told;
 	// the empty string falls back to the run verb that resumes the row.
 	RerouteCapWayForward string
+	// BudgetWayForward is the trailing "way forward:" clause of a bounce-budget-exhausted halt.
+	// It is told;
+	// the empty string falls back to the run verb that resumes the row and grants it one more budget.
+	BudgetWayForward string
 	// ResumedBy is the caller label of the process stepping this run, recorded when the step resumes a halted run.
 	// It is told and for reports only; the empty string records none.
 	ResumedBy string

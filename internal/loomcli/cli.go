@@ -380,7 +380,7 @@ Example:
 
 Without --watch, it reads the status file once and emits a single JSON
 envelope carrying the current producer, state, error text, pause flag,
-composed activity, history length, the task's slug/parent, and the
+"pause_reason" (why a paused run is paused), composed activity, history length, the task's slug/parent, and the
 interrupt policy for the current producer. While a pause covers the run,
 the envelope also carries "paused_since" (when the pause began, RFC 3339)
 and "paused_by" (the pause's scope); a run no pause covers carries neither.
@@ -415,6 +415,11 @@ producer boundary. It does not kill anything.
 the row it routed to. Either replaces a recorded one. --clear removes both
 conditions, and refuses beside --before or --after.
 
+--by <label> records a free-text caller label, such as operator or the orch's
+strand name, beside the condition it accompanies. The label is recorded in
+the paused run's pause_reason; shed is reserved for lyx's own automatic steps
+and refused.
+
 A bare pause, with no flag, refuses for a loom run: it no longer stops
 anything. The refusal names the two ways forward: "lyx pause <slug>" stops
 the run's agents now, and "--after <current_producer>" halts the run at its
@@ -436,10 +441,15 @@ Example:
 	Goto: shedverbs.VerbText{
 		Use:      "goto [<run-id>]",
 		Audience: clihelp.AudienceOperator,
-		Short:    "move a halted run onto a named row, paused, with a fresh segment budget",
+		Short:    "move a halted run onto a named row, paused, keeping its settled reviews and spent budget",
 		Long: `goto moves a halted run onto the row named by --to and leaves it paused.
-It records a "goto" history entry that resets that row's segment bounce
-budget. It refuses while a driver holds the run lock and on a done run, and
+It keeps the segment's settled verdicts and spent bounce budget,
+and resets only what the target row needs to run:
+the error, the transient mark, a pending resume label and the pause conditions.
+It records a "goto" history entry and itself as the run's pause reason.
+It is refused onto a review or fix row of a review segment whose verdict has settled.
+A bounce-budget-exhausted halt is lifted only by "lyx loom resume", never by goto.
+It refuses while a driver holds the run lock and on a done run, and
 never re-opens a finished run. goto moves a halted run only back, to a row at or before its current row (strictly before when the run is awaiting), and refuses a running run.
 
 An optional run-id positional addresses a run other than this worktree's

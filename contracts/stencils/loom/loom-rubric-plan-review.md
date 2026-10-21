@@ -136,6 +136,12 @@ The directive binds writing a finding's `fix`, not a Bouncer row's focus file.
 A finding whose proposed glyph stands for a comment or a line it cites names the function or method whose body encloses that line, confirmed with `lyx quarry resolve` that the line lies inside the glyph's span, never the member after or near it.
 When no member span holds the line, as for a free-standing comment between declarations, it names the file's self glyph.
 
+## Amendment
+
+{{.amendment}}
+
+When the note above is not `none`, this round reviews an amendment: review only the change it names, and report nothing about the settled remainder.
+
 ## Finding class
 
 Every finding carries one class: `design`, `scope`, `decision` or `consistency`.

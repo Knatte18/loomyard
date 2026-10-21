@@ -29,6 +29,37 @@ func scriptedStuckShed(t *testing.T, maxBounces int, exempt []bool) (shed *Shed,
 	return shed, statusPath, statusLockPath
 }
 
+// TestStep_GenerationStartSkipsBudgetComparison pins that a Stuck carrying GenerationStart bounces over a spent episode,
+// and its entry carries the mark and no budget_capped.
+func TestStep_GenerationStartSkipsBudgetComparison(t *testing.T) {
+	t.Parallel()
+	shed, statusPath, _, statusLockPath := newTestShed(t)
+	shed.Producers = []ProducerDef{{
+		Name:       "Wait",
+		OnStuck:    "Wait",
+		MaxBounces: 1,
+		Producer: &funcProducer{fn: func(ctx context.Context) (Outcome, OutputPointer, error) {
+			return Stuck, OutputPointer{GenerationStart: true}, nil
+		}},
+	}}
+	seed := commonSeed("Wait")
+	seed.History = stuckHistory("Wait", "Wait", "Wait")
+	seedStatus(t, statusPath, statusLockPath, seed)
+
+	res, err := shed.Step(context.Background())
+	if err != nil {
+		t.Fatalf("Step = _, %v; want nil", err)
+	}
+	if res.State != StateRunning || res.Next != "Wait" {
+		t.Errorf("Step State/Next = %q/%q; want a bounce, running/Wait", res.State, res.Next)
+	}
+	got := readStatus(t, statusPath, statusLockPath)
+	last := got.History[len(got.History)-1]
+	if !last.GenerationStart || last.BudgetCapped {
+		t.Errorf("last entry = %+v; want generation_start and no budget_capped", last)
+	}
+}
+
 func TestStep_ExemptStuckRoutesAndPersistsFlag(t *testing.T) {
 	shed, statusPath, statusLockPath := scriptedStuckShed(t, 1, []bool{true})
 

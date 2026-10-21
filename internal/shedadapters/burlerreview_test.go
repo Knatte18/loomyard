@@ -7,6 +7,7 @@ package shedadapters
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -582,6 +583,14 @@ func TestBurlerReviewProducer_Call_FailureExits(t *testing.T) {
 	died := burlerengine.ReviewResult{Outcome: shuttleengine.OutcomeDied}
 	timeout := burlerengine.ReviewResult{Outcome: shuttleengine.OutcomeTimeout}
 	notStarted := burlerengine.ReviewResult{Outcome: shuttleengine.OutcomeDied, NotStarted: true}
+	mismatchErr := func(spawned int) error {
+		return fmt.Errorf("burler: %w (requested 2, spawned %d)", burlerengine.ErrClusterForksMissing, spawned)
+	}
+	// chairEnded is a done chair whose fork audit failed, as the review half returns it, with the strand and states a halt note must name.
+	chairEnded := func(strand string, states ...shuttleengine.SessionState) burlerengine.ReviewResult {
+		return burlerengine.ReviewResult{Outcome: shuttleengine.OutcomeDone, Review: burlerengine.Half{StrandGUID: strand}, SessionStates: states}
+	}
+	interrupted := shuttleengine.SessionState{Name: shuttleengine.SessionIdleStalled, Cause: "interrupt"}
 
 	tests := []struct {
 		name         string
@@ -589,11 +598,32 @@ func TestBurlerReviewProducer_Call_FailureExits(t *testing.T) {
 		errs         []error
 		duringReview func(t *testing.T, runDir string, i int)
 		wantErr      string
-		wantErrIs    error
-		wantCalls    int
+		// wantErrAll are further substrings the error must hold.
+		wantErrAll []string
+		wantErrIs  error
+		wantCalls  int
+		// wantRetry marks a row whose second attempt is a retry of round 1 under the token 1b, with the first attempt's review archived.
+		wantRetry    bool
 		wantArchived int
 	}{
-		{name: "died then done is retried", results: []burlerengine.ReviewResult{died, reviewDone("d")}, wantCalls: 2},
+		{name: "died then done is retried", results: []burlerengine.ReviewResult{died, reviewDone("d")}, wantCalls: 2, wantRetry: true},
+		{name: "a fork-count mismatch then done is retried", results: []burlerengine.ReviewResult{chairEnded("strand-a"), reviewDone("d")}, errs: []error{mismatchErr(1), nil}, wantCalls: 2, wantRetry: true},
+		{name: "a no-audit mismatch then done is retried", results: []burlerengine.ReviewResult{chairEnded("strand-a"), reviewDone("d")}, errs: []error{fmt.Errorf("burler: %w (requested 2, spawned 0)", burlerengine.ErrClusterForksMissing), nil}, wantCalls: 2, wantRetry: true},
+		{
+			name:    "a fork-count mismatch on both attempts names both counts, the strand and the states",
+			results: []burlerengine.ReviewResult{chairEnded("strand-a"), chairEnded("strand-b", shuttleengine.SessionState{Name: shuttleengine.SessionBusy, Cause: "turn"}, interrupted)},
+			errs:    []error{mismatchErr(1), mismatchErr(3)},
+			wantErr: "two failed attempts", wantErrAll: []string{"requested 2, spawned 1", "requested 2, spawned 3", `"strand-b"`, "busy/turn, idle-stalled/interrupt"},
+			wantErrIs: burlerengine.ErrClusterForksMissing, wantCalls: 2, wantArchived: 2,
+		},
+		{
+			name:    "a fork-count mismatch then a died attempt names the mismatch and the death",
+			results: []burlerengine.ReviewResult{chairEnded("strand-a", interrupted), died},
+			errs:    []error{mismatchErr(1), nil},
+			wantErr: "two failed attempts", wantErrAll: []string{"requested 2, spawned 1", "outcome died", "idle-stalled/interrupt"},
+			wantCalls: 2, wantArchived: 2,
+		},
+		{name: "a different fork violation is not retried", results: []burlerengine.ReviewResult{chairEnded("strand-a")}, errs: []error{errors.New("burler: a fork wrote a file")}, wantErr: "a fork wrote a file", wantCalls: 1, wantArchived: 1},
 		// Each attempt leaves a review file: the first is archived before the second, the second on the failure exit.
 		{name: "two died/timeout outcomes in a row", results: []burlerengine.ReviewResult{died, timeout}, wantErr: "two consecutive died/timeout outcomes", wantCalls: 2, wantArchived: 2},
 		{name: "two not-started deaths wrap ErrNotStarted", results: []burlerengine.ReviewResult{notStarted, notStarted}, wantErr: "two consecutive", wantErrIs: shuttleengine.ErrNotStarted, wantCalls: 2, wantArchived: 2},
@@ -635,6 +665,11 @@ func TestBurlerReviewProducer_Call_FailureExits(t *testing.T) {
 			if tt.wantErr != "" && !strings.Contains(err.Error(), tt.wantErr) {
 				t.Errorf("Call() error = %q; want it to contain %q", err, tt.wantErr)
 			}
+			for _, want := range tt.wantErrAll {
+				if err == nil || !strings.Contains(err.Error(), want) {
+					t.Errorf("Call() error = %v; want it to contain %q", err, want)
+				}
+			}
 			if tt.wantErrIs != nil && !errors.Is(err, tt.wantErrIs) {
 				t.Errorf("Call() error = %v; want it to wrap %v", err, tt.wantErrIs)
 			}
@@ -647,7 +682,7 @@ func TestBurlerReviewProducer_Call_FailureExits(t *testing.T) {
 			if wantErr {
 				requireArchived(t, runDir, "round-1-review.md", tt.wantArchived)
 			}
-			if tt.name == "died then done is retried" {
+			if tt.wantRetry {
 				if runner.GotReviewOpts[0].Round != "1" || runner.GotReviewOpts[1].Round != "1b" {
 					t.Errorf("round tokens = %q, %q; want 1 then 1b", runner.GotReviewOpts[0].Round, runner.GotReviewOpts[1].Round)
 				}
@@ -741,6 +776,7 @@ func TestBurlerReviewProducer_Call_ProbeAndResume(t *testing.T) {
 			wantAttempts: &two, wantSpans: []shedengine.GateSpan{{Gate: "review", Kind: shedengine.GateSpanKindGate, Start: "2026-08-16T15:00:00Z", End: "2026-08-16T15:00:01Z"}},
 		},
 		{name: "a resumed death falls through to a fresh attempt", probe: []burlerengine.LiveHalf{live}, resume: burlerengine.ReviewResult{Outcome: shuttleengine.OutcomeDied}, wantResumes: 1, wantReviews: 1, wantArchived: 1, wantRecorded: "spawned"},
+		{name: "a resumed review that fails with the fork-count sentinel falls through to a fresh attempt", probe: []burlerengine.LiveHalf{live}, resumeErr: fmt.Errorf("burler: %w (requested 2, spawned 1)", burlerengine.ErrClusterForksMissing), wantResumes: 1, wantReviews: 1, wantArchived: 1, wantRecorded: "spawned"},
 		{name: "a resumed unrecognized outcome archives the round", probe: []burlerengine.LiveHalf{live}, resume: burlerengine.ReviewResult{Outcome: "weird"}, wantErr: "unrecognized outcome", wantResumes: 1, wantArchived: 1},
 		{name: "a probe error returns bare", probeErr: errors.New("reed unreadable"), wantErr: "probe the reviewer"},
 		{name: "an unstoppable reviewer returns bare", probe: []burlerengine.LiveHalf{live}, resumeErr: burlerengine.ErrHalfNotStopped, wantErrIs: burlerengine.ErrHalfNotStopped, wantResumes: 1},

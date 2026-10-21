@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -47,6 +48,8 @@ func TestConsumeArbiterAttempt(t *testing.T) {
 		mutate func(st *shedengine.Status)
 		// spawn changes the attempt record before it is written.
 		spawn func(a *loomengine.ArbiterAttempt)
+		// guard is the base request's goto guard.
+		guard shedengine.GotoGuard
 		// attemptArg drives loomConsumeAttempt with this argument instead of consumeArbiterAttempt.
 		attemptArg  string
 		wantErr     string
@@ -89,6 +92,11 @@ func TestConsumeArbiterAttempt(t *testing.T) {
 			name: "pause after a row", envelope: &resumeEnvelope,
 			mutate:  func(st *shedengine.Status) { st.PauseAfter = "Plan-Write" },
 			wantErr: "paused since the arbiter spawned",
+		},
+		{
+			name: "a refusing guard refuses the goto", envelope: &gotoPlanWriteEnvelope,
+			guard:   func(string) (string, error) { return "the Plan-Review verdict is settled", nil },
+			wantErr: "the Plan-Review verdict is settled",
 		},
 		{name: "resume without a target", envelope: &resumeEnvelope, wantProduce: "Plan-Bouncer"},
 		{
@@ -191,7 +199,11 @@ func TestConsumeArbiterAttempt(t *testing.T) {
 				}
 			}
 			producers := []shedengine.ProducerDef{{Name: "Plan-Write"}, {Name: "Plan-Bouncer"}, {Name: "Publish"}}
-			request := shedengine.RelaunchRequest{StatusPath: statusPath, LockPath: runLock, StatusLockPath: statusLock, Producers: producers, RunID: "self"}
+			request := shedengine.RelaunchRequest{StatusPath: statusPath, LockPath: runLock, StatusLockPath: statusLock, Producers: producers, RunID: "self", Guard: tt.guard}
+			before, _, readErr := state.ReadJSON[shedengine.Status](statusPath, statusLock)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
 
 			var err error
 			if tt.attemptArg != "" {
@@ -210,11 +222,15 @@ func TestConsumeArbiterAttempt(t *testing.T) {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("consume error = %v; want it to contain %q", err, tt.wantErr)
 				}
-				if tt.attemptArg == "" && !strings.Contains(err.Error(), loomengine.ArbiterVerdictPath(attemptDir)) {
+				// A guard's refusal comes from Shed with the guard's own way forward, not the attempt's.
+				if tt.attemptArg == "" && tt.guard == nil && !strings.Contains(err.Error(), loomengine.ArbiterVerdictPath(attemptDir)) {
 					t.Errorf("consume error = %v; want it to name the verdict path", err)
 				}
 				if applied, _ := loomengine.ArbiterApplied(attemptDir); applied != tt.applied {
 					t.Errorf("applied mark = %v after a refusal; want %v, as before the call", applied, tt.applied)
+				}
+				if after, _, _ := state.ReadJSON[shedengine.Status](statusPath, statusLock); !reflect.DeepEqual(after, before) {
+					t.Errorf("status after a refusal = %+v; want it unchanged from %+v", after, before)
 				}
 				return
 			}

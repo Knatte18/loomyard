@@ -100,6 +100,8 @@ type tacklerFixture struct {
 	reportPath     string
 	gotoRoutedFrom bool
 	noSnapshot     bool
+	// gotoGuard is the told goto guard the deps carry, nil for none.
+	gotoGuard shedengine.GotoGuard
 }
 
 const tacklerTestRun = "operator-surface"
@@ -155,6 +157,7 @@ func (f *tacklerFixture) deps() TacklerDeps {
 		PausedWithin:   func(_, _ time.Time) (time.Duration, error) { return f.paused, nil },
 		Recipe:         "test: a recipe for the tackler tests",
 		GotoRoutedFrom: f.gotoRoutedFrom,
+		GotoGuard:      f.gotoGuard,
 		Prompt: TacklerPromptInput{
 			Slug:      "operator-surface-task",
 			Worktree:  f.root,
@@ -522,12 +525,25 @@ func TestTacklerCall_VerdictOutcomes(t *testing.T) {
 		state     shedengine.State
 		// noRoutedFrom leaves GotoRoutedFrom false, so a goto may name only the current row.
 		noRoutedFrom bool
-		wantVerdict  string
-		wantCause    string
-		wantGoto     string
-		wantBrief    bool
+		// guard is the told goto guard, nil for none; wantReason is the text the rejected verdict's reason must contain.
+		guard       shedengine.GotoGuard
+		wantVerdict string
+		wantCause   string
+		wantReason  string
+		wantGoto    string
+		wantBrief   bool
 	}{
 		{name: "resume at an error stop", verdict: tacklerResumeVerdict, wantVerdict: TacklerVerdictResume},
+		{
+			name: "resume with a goto a refusing guard rejects", verdict: "verdict: resume\nreason: r\ngoto: Plan-Bouncer\n",
+			guard:       func(string) (string, error) { return "a settled review would re-run", nil },
+			wantVerdict: TacklerVerdictHandBack, wantCause: CausePrecondition, wantReason: "a settled review would re-run",
+		},
+		{
+			name: "resume with a goto an erroring guard rejects", verdict: "verdict: resume\nreason: r\ngoto: Plan-Bouncer\n",
+			guard:       func(string) (string, error) { return "", errors.New("the settle record is unreadable") },
+			wantVerdict: TacklerVerdictHandBack, wantCause: CausePrecondition, wantReason: "the settle record is unreadable",
+		},
 		{
 			name: "resume with a goto to the current row", verdict: "verdict: resume\nreason: r\ngoto: Plan-Bouncer\n",
 			wantVerdict: TacklerVerdictResume, wantGoto: "Plan-Bouncer",
@@ -583,6 +599,7 @@ func TestTacklerCall_VerdictOutcomes(t *testing.T) {
 			t.Parallel()
 			f := newTacklerFixture(t)
 			f.gotoRoutedFrom = !tt.noRoutedFrom
+			f.gotoGuard = tt.guard
 			if tt.state != "" {
 				f.status.State = tt.state
 			}
@@ -601,6 +618,9 @@ func TestTacklerCall_VerdictOutcomes(t *testing.T) {
 			}
 			if envelope.Verdict != tt.wantVerdict || envelope.Cause != tt.wantCause || envelope.Goto != tt.wantGoto {
 				t.Errorf("envelope verdict, cause, goto = %q, %q, %q; want %q, %q, %q", envelope.Verdict, envelope.Cause, envelope.Goto, tt.wantVerdict, tt.wantCause, tt.wantGoto)
+			}
+			if !strings.Contains(envelope.Reason, tt.wantReason) {
+				t.Errorf("envelope reason = %q; want it to contain %q", envelope.Reason, tt.wantReason)
 			}
 			wantBriefPath := ""
 			if tt.wantBrief {

@@ -12,7 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-// noNote is what the optional publish_failure, webster_record and merge_review markers render as when their note is blank.
+// noNote is what the optional publish_failure, webster_record, merge_review and amendment markers render as when their note is blank.
 const noNote = "none"
 
 // RubricNotes are the optional notes a rubric's markers are filled from.
@@ -27,6 +27,8 @@ type RubricNotes struct {
 	// VerifyTiers fills the verify_tiers marker, only the Plan-Review rubric carrying it.
 	// The marker's value is the entries as bullets, or `none` for an empty list; ReadRubric never parses it.
 	VerifyTiers []string
+	// Amendment fills the amendment marker, the note that scopes an amendment generation's review to the change since its base.
+	Amendment string
 }
 
 // ReadRubric reads the rubric stencil name from stencilsDir, strips its stamp banner, fills it as its own template with specsDir, stencilsDir and notes, and returns the filled result.
@@ -62,6 +64,7 @@ func ReadRubric(stencilsDir, name, specsDir string, notes RubricNotes) (string, 
 		"webster_record":  noteOrNone(notes.WebsterRecord),
 		"merge_review":    noteOrNone(notes.MergeReview),
 		"verify_tiers":    languageconfig.VerifyTiersValue(notes.VerifyTiers),
+		"amendment":       noteOrNone(notes.Amendment),
 	})
 	if err != nil {
 		return "", fmt.Errorf("shedadapters: read rubric %q: %w", name, err)

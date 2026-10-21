@@ -1346,3 +1346,176 @@ func TestBouncerEntry_BlockingEscalatesAndColorSegment(t *testing.T) {
 		})
 	}
 }
+
+// subjectSeamCounts counts the calls each subject seam of an Env received, and the artifact paths the document seam was told.
+type subjectSeamCounts struct {
+	document, code, merge, recordHead int
+	documentPaths                     []string
+}
+
+// withSubjectSeams fills env's subject seams with fakes answering the subject build(hash) for the current value of *hash, and returns what they were called with.
+func withSubjectSeams(env *Env, hash *string) *subjectSeamCounts {
+	counts := &subjectSeamCounts{}
+	env.DocumentSubject = func(paths []string) (shedadapters.Subject, bool, error) {
+		counts.document++
+		counts.documentPaths = paths
+		return shedadapters.Subject{Kind: shedadapters.SubjectDocument, Hash: *hash}, true, nil
+	}
+	env.CodeSubject = func() (shedadapters.Subject, bool, error) {
+		counts.code++
+		return shedadapters.Subject{Kind: shedadapters.SubjectCode, MergeBase: "merge-base", Head: "head", FullHash: *hash, PatchID: "patch-id"}, true, nil
+	}
+	env.MergeSubject = func() (shedadapters.Subject, bool, error) {
+		counts.merge++
+		return shedadapters.Subject{Kind: shedadapters.SubjectMerge, Hash: *hash}, true, nil
+	}
+	env.MergeInOnly = func(string) (bool, error) { return false, nil }
+	env.RecordHead = func() (string, error) { counts.recordHead++; return "record-head", nil }
+	return counts
+}
+
+// TestBouncerEntry_Subject covers the optional subject key and the amendment allowance:
+// each value reaches the Bouncer with the seams it selects, so a settled verdict is re-settled over an unchanged subject without a spawn.
+// A changed subject starts an amendment under the segment's allowance or, for merge, a full generation.
+// A named seam the Env does not carry and an unknown value are construction errors, and an absent key keeps no record.
+func TestBouncerEntry_Subject(t *testing.T) {
+	t.Parallel()
+
+	const artifact = "artifact.md"
+	tests := []struct {
+		name string
+		kind string
+		// amendMax is the segment's AmendMaxBounces.
+		amendMax int
+		// wantSeed is whether the call over a changed subject spawns the seed.
+		wantSeed bool
+		// wantCalls reads the seam counters this kind's row must have driven.
+		wantCalls func(counts *subjectSeamCounts) bool
+	}{
+		{"Document_AllowanceZeroSettlesWithoutReview", "document", 0, false, func(c *subjectSeamCounts) bool {
+			return c.document > 0 && c.recordHead > 0 && c.code == 0 && c.merge == 0
+		}},
+		{"Code_AllowanceReachesTheAmendment", "code", 2, true, func(c *subjectSeamCounts) bool { return c.code > 0 && c.document == 0 && c.merge == 0 }},
+		{"Merge_FullGenerationIgnoresTheAllowance", "merge", 0, true, func(c *subjectSeamCounts) bool { return c.merge > 0 && c.document == 0 && c.code == 0 }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			env := newTestEnv(t)
+			hash := "hash-1"
+			counts := withSubjectSeams(&env, &hash)
+			env.Segments[testReviewSegment] = SegmentSettings{AmendMaxBounces: tt.amendMax}
+			writeStencil(t, env.StencilsDir, "bouncer-template-judge", "judge template, no markers\n")
+			writeStencil(t, env.StencilsDir, "bouncer-template-seed", "{{.rubric}}\n")
+			cfg := minimalBouncerConfig(t, env)
+			cfg["artifact_paths"] = []string{artifact}
+			cfg["subject"] = tt.kind
+			layoutBouncerRound1Report(t, env)
+
+			call := func(shuttle *shedfake.Shuttle) (shedengine.Outcome, error) {
+				callEnv := env
+				callEnv.Shuttle = shuttle
+				producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, callEnv)
+				if err != nil {
+					t.Fatalf("bouncerEntry() error = %v; want nil", err)
+				}
+				outcome, _, err := producer.Call(context.Background())
+				return outcome, err
+			}
+
+			if outcome, err := call(judgeSeamShuttle()); err != nil || outcome != shedengine.Done {
+				t.Fatalf("settling Call() = %q, %v; want %q, nil", outcome, err, shedengine.Done)
+			}
+			if !tt.wantCalls(counts) {
+				t.Errorf("subject seam calls after the settle = %+v; want the %s seams alone", *counts, tt.kind)
+			}
+			if tt.kind == "document" && !reflect.DeepEqual(counts.documentPaths, []string{filepath.Join(env.AnchorPath, artifact)}) {
+				t.Errorf("document seam told paths %v; want the row's resolved artifact path", counts.documentPaths)
+			}
+
+			unchanged := &shedfake.Shuttle{RunFn: func(shuttleengine.Spec) (shuttleengine.Result, error) {
+				return shuttleengine.Result{}, fmt.Errorf("the row ran over an unchanged subject")
+			}}
+			if outcome, err := call(unchanged); err != nil || outcome != shedengine.Done || len(unchanged.Specs) != 0 {
+				t.Errorf("re-entry Call() = %q, %v with %d spawns; want %q, nil and none", outcome, err, len(unchanged.Specs), shedengine.Done)
+			}
+
+			hash = "hash-2"
+			changed := &shedfake.Shuttle{}
+			// A seed over the fake shuttle writes nothing, so a spawning Call stops; only a settle without a review is Done.
+			wantOutcome := shedengine.Done
+			if tt.wantSeed {
+				wantOutcome = shedengine.Stuck
+			}
+			if outcome, err := call(changed); err != nil || outcome != wantOutcome || (len(changed.Specs) > 0) != tt.wantSeed {
+				t.Errorf("Call() over a changed subject = %q, %v with %d spawns; want %q, nil and a seed spawn = %v", outcome, err, len(changed.Specs), wantOutcome, tt.wantSeed)
+			}
+		})
+	}
+
+	t.Run("MissingNamedSeamIsConstructionError", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			kind   string
+			remove func(env *Env)
+			want   string
+		}{
+			{"document", func(env *Env) { env.DocumentSubject = nil }, "DocumentSubject"},
+			{"document", func(env *Env) { env.RecordHead = nil }, "RecordHead"},
+			{"code", func(env *Env) { env.CodeSubject = nil }, "CodeSubject"},
+			{"code", func(env *Env) { env.MergeInOnly = nil }, "MergeInOnly"},
+			{"merge", func(env *Env) { env.MergeSubject = nil }, "MergeSubject"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.want, func(t *testing.T) {
+				t.Parallel()
+				env := newTestEnv(t)
+				hash := "hash-1"
+				withSubjectSeams(&env, &hash)
+				tt.remove(&env)
+				cfg := minimalBouncerConfig(t, env)
+				cfg["subject"] = tt.kind
+
+				_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
+				assertErrContains(t, err, tt.want)
+			})
+		}
+	})
+
+	t.Run("UnknownValueIsRefusedNamingTheLegalOnes", func(t *testing.T) {
+		t.Parallel()
+		env := newTestEnv(t)
+		cfg := minimalBouncerConfig(t, env)
+		cfg["subject"] = "diff"
+
+		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
+		for _, want := range []string{"subject", "diff", "document", "code", "merge"} {
+			assertErrContains(t, err, want)
+		}
+	})
+
+	t.Run("AbsentKeyKeepsNoRecord", func(t *testing.T) {
+		t.Parallel()
+		env := newTestEnv(t)
+		hash := "hash-1"
+		counts := withSubjectSeams(&env, &hash)
+		env.Shuttle = judgeSeamShuttle()
+		writeStencil(t, env.StencilsDir, "bouncer-template-judge", "judge template, no markers\n")
+		cfg := minimalBouncerConfig(t, env)
+		layoutBouncerRound1Report(t, env)
+
+		producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
+		if err != nil {
+			t.Fatalf("bouncerEntry() error = %v; want nil", err)
+		}
+		if outcome, _, err := producer.Call(context.Background()); err != nil || outcome != shedengine.Done {
+			t.Fatalf("Call() = %q, %v; want %q, nil", outcome, err, shedengine.Done)
+		}
+		if counts.document != 0 || counts.code != 0 || counts.merge != 0 || counts.recordHead != 0 {
+			t.Errorf("subject seam calls = %+v; want none for a row naming no subject", *counts)
+		}
+		if _, err := os.Stat(filepath.Join(env.RunRoot, "review-segment", "settle-record.json")); !os.IsNotExist(err) {
+			t.Errorf("os.Stat(settle-record.json) error = %v; want not-exist for a row naming no subject", err)
+		}
+	})
+}

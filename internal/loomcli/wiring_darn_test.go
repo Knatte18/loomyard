@@ -63,6 +63,10 @@ func TestWire_DarnRecipe(t *testing.T) {
 				}
 			}
 		}
+		// envkit.NilSeams skips these two through nilLegal, so direct checks pin that wireDarn tells them.
+		if c.env.RejectReview == nil || c.env.Darn.RecordRejection == nil {
+			t.Errorf("RejectReview nil = %v, Darn.RecordRejection nil = %v after wire() of a darn seed; want both told", c.env.RejectReview == nil, c.env.Darn.RecordRejection == nil)
+		}
 		if c.env.VerifyMergeBase == nil {
 			t.Error("c.env.VerifyMergeBase is nil after wire() of a darn seed; want the merge base reader")
 		}
@@ -169,7 +173,8 @@ func TestWire_DarnRecipe(t *testing.T) {
 				MaxBounces:     1,
 				MaxBouncesKey:  "review_max_bounces",
 				HardMaxBounces: 4, HardMaxBouncesKey: "review_hard_max_bounces",
-				ConfigFile: "darn.yaml",
+				AmendMaxBounces: 1,
+				ConfigFile:      "darn.yaml",
 			}
 			if got := c.env.Segments["Darn-Review"]; !reflect.DeepEqual(got, wantSegment) {
 				t.Errorf("Segments[Darn-Review] = %+v; want %+v", got, wantSegment)

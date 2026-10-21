@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
@@ -139,7 +140,7 @@ func (p *BurlerReviewProducer) roundProfile(round int, fan string) burlerengine.
 }
 
 // Call runs one review: resolve the round to review from disk and hand control on without spawning when the round is already reviewed or still unjudged.
-// Otherwise it builds the round's profile, runs at most two attempts (a second only on a died/timeout first attempt), and maps the outcome onto shedengine's contract.
+// Otherwise it builds the round's profile, runs at most two attempts (a second only on a died/timeout first attempt, or one whose chair spawned the wrong fork count), and maps the outcome onto shedengine's contract.
 //
 // The round to review is the highest complete round's successor only when that round carries a parsing Bouncer verdict and ledger.
 // Otherwise this call hands the review of the round still owed a verdict straight on, BudgetExempt, spawning nothing, so the fix row passes it to the Bouncer.
@@ -222,6 +223,7 @@ func (p *BurlerReviewProducer) Call(ctx context.Context) (shedengine.Outcome, sh
 
 	var priorResult burlerengine.ReviewResult
 	var priorToken string
+	var priorErr error
 	for attempt := 1; attempt <= 2; attempt++ {
 		if attempt == 2 {
 			if cerr := cancelErr(ctx, p.name, burlerReviewEngineLabel); cerr != nil {
@@ -250,6 +252,14 @@ func (p *BurlerReviewProducer) Call(ctx context.Context) (shedengine.Outcome, sh
 		if errors.Is(runErr, burlerengine.ErrHalfNotStopped) {
 			return p.unstoppedExit(ctx, fmt.Errorf("shedadapters: %s (%s): round %d attempt %s: review: %w", p.name, burlerReviewEngineLabel, round, attemptToken, runErr))
 		}
+		if errors.Is(runErr, burlerengine.ErrClusterForksMissing) {
+			if attempt == 1 {
+				logger.Warn("shedadapters: burler review attempt's chair spawned the wrong fork count, retrying", "producer", p.name, "engine", burlerReviewEngineLabel, "round", round, "attempt", attemptToken, "error", runErr, "strand", result.Review.StrandGUID)
+				priorResult, priorErr = result, runErr
+				continue
+			}
+			return failureExit(forkMismatchError(p.name, round, priorResult, result, priorErr, runErr))
+		}
 		if runErr != nil {
 			return failureExit(fmt.Errorf("shedadapters: %s (%s): round %d attempt %s: review: %w", p.name, burlerReviewEngineLabel, round, attemptToken, runErr))
 		}
@@ -264,6 +274,13 @@ func (p *BurlerReviewProducer) Call(ctx context.Context) (shedengine.Outcome, sh
 				priorResult, priorToken = result, attemptToken
 				continue
 			}
+			if priorErr != nil {
+				failed := forkMismatchError(p.name, round, priorResult, result, priorErr, nil)
+				if result.NotStarted {
+					failed = fmt.Errorf("%w: %w", failed, shuttleengine.ErrNotStarted)
+				}
+				return failureExit(failed)
+			}
 			twice := fmt.Errorf("shedadapters: %s (%s): round %d: two consecutive died/timeout outcomes (attempt %s outcome %s %s; attempt %s outcome %s %s)", p.name, burlerReviewEngineLabel, round, priorToken, priorResult.Outcome, describeHalf("review", priorResult.Review), attemptToken, result.Outcome, describeHalf("review", result.Review))
 			if result.NotStarted {
 				twice = fmt.Errorf("%w: %w", twice, shuttleengine.ErrNotStarted)
@@ -277,6 +294,36 @@ func (p *BurlerReviewProducer) Call(ctx context.Context) (shedengine.Outcome, sh
 
 	// Unreachable: every path through the loop above returns.
 	return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): round %d: attempt loop exited without a verdict", p.name, burlerReviewEngineLabel, round)
+}
+
+// forkMismatchError builds the failure of a round whose second attempt failed after a first that failed on the fork count, or whose second attempt failed on the fork count after a died or timed-out first.
+// It names each attempt by its error, or by its outcome when it has none, with the chair's strand and the session states the chair passed through, so the halt note says how the chair ended.
+// The result wraps secondErr when it is set.
+func forkMismatchError(name string, round int, first, second burlerengine.ReviewResult, firstErr, secondErr error) error {
+	describeAttempt := func(attempt int, result burlerengine.ReviewResult, err error) string {
+		what := fmt.Sprintf("outcome %s", result.Outcome)
+		if err != nil {
+			what = err.Error()
+		}
+		return fmt.Sprintf("attempt %d: %s (chair strand %q, session states: %s)", attempt, what, result.Review.StrandGUID, describeSessionStates(result.SessionStates))
+	}
+	message := fmt.Sprintf("shedadapters: %s (%s): round %d: two failed attempts, one on the chair's fork count (%s; %s)", name, burlerReviewEngineLabel, round, describeAttempt(1, first, firstErr), describeAttempt(2, second, secondErr))
+	if secondErr != nil {
+		return fmt.Errorf("%s: %w", message, secondErr)
+	}
+	return errors.New(message)
+}
+
+// describeSessionStates renders states as name/cause pairs in order, or as none read when there are none.
+func describeSessionStates(states []shuttleengine.SessionState) string {
+	if len(states) == 0 {
+		return "none read"
+	}
+	parts := make([]string, len(states))
+	for i, state := range states {
+		parts[i] = string(state.Name) + "/" + state.Cause
+	}
+	return strings.Join(parts, ", ")
 }
 
 // handOn returns the routine Stuck that hands the review at path on without spawning anything, BudgetExempt.
@@ -343,7 +390,7 @@ func reviewHalfUsage(model shuttleengine.ModelChoice, half burlerengine.Half) ha
 // probeLiveReview asks the runner what became of a previous session's reviewer for this round and resumes it when it is still live.
 //
 // It reports handled=false whenever the caller should proceed to its ordinary archive-then-spawn path:
-// the reviewer is not live, or the resumed reviewer had already died or timed out, which falls through to a fresh attempt 1.
+// the reviewer is not live, or the resumed reviewer had already died or timed out or failed on the fork count, which falls through to a fresh attempt 1.
 // Every other case reports handled=true along with the three values Call must return.
 // A live reviewer is resumed through ResumeReview and mapped like a spawned one.
 //
@@ -365,6 +412,10 @@ func (p *BurlerReviewProducer) probeLiveReview(ctx context.Context, round int, p
 
 	result, err := p.runner.ResumeReview(profile, opts, live)
 	if err != nil {
+		if errors.Is(err, burlerengine.ErrClusterForksMissing) {
+			logger.Warn("shedadapters: resumed burler reviewer's chair spawned the wrong fork count; respawning", "producer", p.name, "engine", burlerReviewEngineLabel, "round", round, "error", err)
+			return "", shedengine.OutputPointer{}, nil, false
+		}
 		wrapped := fmt.Errorf("shedadapters: %s (%s): round %d: resume: %w", p.name, burlerReviewEngineLabel, round, err)
 		if errors.Is(err, burlerengine.ErrHalfNotStopped) {
 			outcome, ptr, exitErr := p.unstoppedExit(ctx, wrapped)

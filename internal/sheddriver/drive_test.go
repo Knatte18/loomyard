@@ -114,6 +114,15 @@ func TestGoDriver_Settle(t *testing.T) {
 		return driveEnvelopeJSON(t, map[string]any{"ok": false, "kind": "unseeded", "error": "no seed"},
 			map[string]any{"state": "failed", "current_producer": "Build", "history_length": 2})
 	}
+	budgetHalt := func(t *testing.T) []byte {
+		return driveEnvelopeJSON(t, map[string]any{"ok": true, "state": "blocked", "reason": shedengine.ReasonBounceBudgetExhausted + " for Build; way forward: the parent resumes"},
+			map[string]any{"state": "blocked", "current_producer": "Build", "history_length": 2})
+	}
+	const guardRefusal = `goto target "Plan" refused: a settled review would re-run`
+	guardRefusedStep := func(t *testing.T) []byte {
+		return driveEnvelopeJSON(t, map[string]any{"ok": false, "kind": "producer", "error": guardRefusal, "arbiter_attempt": "1"},
+			map[string]any{"state": "failed", "current_producer": "Build", "history_length": 2})
+	}
 	blockedLater := func(t *testing.T) []byte {
 		return driveEnvelopeJSON(t, map[string]any{"ok": true, "state": "blocked"}, map[string]any{"state": "blocked", "current_producer": "Build", "history_length": 3})
 	}
@@ -218,6 +227,27 @@ func TestGoDriver_Settle(t *testing.T) {
 		{
 			name: "paused with an empty reason writes the friction note and parks", steps: []func(*testing.T) []byte{paused("")},
 			wantCalls: []string{"step", "note"}, wantActions: []string{shedrun.SettleHandBack}, wantReports: 1, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
+			wantReportHas: map[int][]string{1: {"paused with no recorded reason"}},
+		},
+		{
+			name: "a budget halt hands back with no tackler, arbiter or hand-over call", steps: []func(*testing.T) []byte{budgetHalt}, buildChanged: true, escalation: true,
+			wantCalls: []string{"step"}, wantActions: []string{shedrun.SettleHandBack}, wantReports: 1, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
+			wantReportHas: map[int][]string{1: {"only the parent's resume lifts it"}},
+		},
+		{
+			name:  "a tackler resume the consume refuses with a guard refusal on an unmoved run hands back quoting it",
+			steps: []func(*testing.T) []byte{transientFailure}, tacklerReturns: tacklerOutcome(TacklerVerdictResume, 1), consumeErr: errors.New(guardRefusal),
+			wantCalls:   []string{"step", "tackler", "snapshot", "snapshot", "consume:tackler/1"},
+			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerTackler, shedrun.SettlerParent},
+			wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack, wantReportHas: map[int][]string{2: {guardRefusal}},
+		},
+		{
+			name:  "a step that refused the arbiter's attempt with a guard refusal hands back quoting its error",
+			steps: []func(*testing.T) []byte{transientFailure, guardRefusedStep}, tacklerReturns: tacklerOutcome(TacklerVerdictEscalate, 1), arbiterReturns: arbiterOutcome("resume", 1),
+			wantCalls:    []string{"step", "tackler", "snapshot", "snapshot", "arbiter:tackler/1/case-brief.md", "step:1"},
+			wantActions:  []string{shedrun.SettleSpawn, shedrun.SettleSpawn, shedrun.SettleRestep, shedrun.SettleHandBack},
+			wantSettlers: []string{shedrun.SettlerTackler, shedrun.SettlerArbiter, shedrun.SettlerArbiter, shedrun.SettlerParent},
+			wantReports:  3, wantParked: true, wantHandBack: true, wantExit: ExitHandBack, wantReportHas: map[int][]string{3: {guardRefusal}},
 		},
 		{
 			name: "paused with a reason writes no note", steps: []func(*testing.T) []byte{paused("pause requested")},

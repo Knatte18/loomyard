@@ -52,6 +52,8 @@ type arbiterDeps struct {
 	MarkerPath string
 	// Producers is the run's producer list, for goto checks.
 	Producers []shedengine.ProducerDef
+	// GotoGuard is the recipe's told check of a verdict's goto target; nil admits every target.
+	GotoGuard shedengine.GotoGuard
 	// Stop holds the reads that decide whether the stop is eligible.
 	Stop arbiterstop.Readers
 	// PendingCirclingDecision reports, at a Bouncer row, whether a circling decision is recorded and unsettled; false elsewhere.
@@ -371,6 +373,15 @@ func (c *arbiterCall) resumePrecondition(verdict loomengine.ArbiterVerdict) stri
 		if err := shedengine.CheckGotoTarget(c.deps.Producers, c.status, verdict.Goto, c.in.RunID); err != nil {
 			return err.Error()
 		}
+		if c.deps.GotoGuard != nil {
+			refusal, err := c.deps.GotoGuard(verdict.Goto)
+			if err != nil {
+				return fmt.Sprintf("the goto target %q could not be checked: %v", verdict.Goto, err)
+			}
+			if refusal != "" {
+				return fmt.Sprintf("the goto target %q is refused: %s", verdict.Goto, refusal)
+			}
+		}
 	}
 	return ""
 }
@@ -463,6 +474,7 @@ func (c *loomCLI) arbiterDepsFor() (arbiterDeps, error) {
 		AttemptDir:  func(number int) string { return shedrun.ArbiterAttemptDir(location, c.runID, number) },
 		MarkerPath:  shedrun.ArbiterMarker(location, c.runID),
 		Producers:   c.routing.Producers,
+		GotoGuard:   c.settledGuard(),
 		StencilsDir: c.runDeps.Geom.StencilsDir,
 		Stop:        arbiterstop.NewReaders(location),
 		PendingCirclingDecision: func(producer string) (bool, error) {

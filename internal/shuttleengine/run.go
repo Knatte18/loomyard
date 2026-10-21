@@ -285,6 +285,10 @@ type Result struct {
 	// Usage is the session's token reading, forks included.
 	// It is known only for an OutcomeDone run on an engine implementing UsageReader that could read the session.
 	Usage SessionUsage
+	// SessionStates is the states the wait's session fold recorded for the run, in order, one per change of state or cause.
+	// It is nil when the wait read none, as an engine that cannot parse session signals gives.
+	// It is a report only: no classification reads it.
+	SessionStates []SessionState
 }
 
 // EndedShell is one background shell that was still outstanding when a run ended.

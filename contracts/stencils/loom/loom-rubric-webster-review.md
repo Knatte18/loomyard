@@ -100,6 +100,12 @@ Do not flag any of the following as a finding:
 
   A redundancy finding is raised only by naming the existing test that covers the behavior, so it cannot block on a vague suspicion.
 
+## Amendment
+
+{{.amendment}}
+
+When the note above is not `none`, this round reviews an amendment: review only the change it names, and report nothing about the settled remainder.
+
 ## Finding class
 
 Every finding carries one class: `design`, `scope`, `decision` or `consistency`.

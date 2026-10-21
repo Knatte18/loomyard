@@ -82,6 +82,7 @@ producers:
     on_done: Describe
     config:
       run_subdir: darn
+      subject: code
       role_prefix: darn
       reviewer_fan_setting: darn.darn_reviewer_fan
       # The subject under review is the committed diff, which artifact_paths cannot name; the key is

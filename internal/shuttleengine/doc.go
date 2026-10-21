@@ -439,6 +439,7 @@
 // At every liveness tick it re-reads the markers of the newest turn start and turn end folded so far, since the transcript can mark them after the tick that folded them.
 // Each tick, and once more just before a classified outcome is finalized, it logs every state change at Info as `shuttle: session state` with the loop's classification: running, waiting, held, done or died.
 // The session state is a shadow reading the loop never acts on.
+// The fold's states also reach the caller on Result.SessionStates, in order, as a record the loop never branches on.
 // It logs `shuttle: session state disagrees` at Warn once per disagreement, again only after either side changed, when the pair is outside the fixed mapping, and the line carries `stands=loop`:
 // waiting and running read busy, held reads idle-stalled, idle-fresh or asking, done reads idle-done, died reads dead.
 // Two pairings are expected and log nothing: a gate wait with every output present beside idle-done, and done beside busy on background work.

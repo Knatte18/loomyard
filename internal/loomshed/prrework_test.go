@@ -13,6 +13,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -49,6 +50,8 @@ type reworkFixture struct {
 	innerErr     error
 	archiveCalls []string
 	archiveErr   error
+	keepCalls    [][2]string
+	keepErr      error
 	coverage     string
 	told         []ReworkTold
 
@@ -210,6 +213,15 @@ func (f *reworkFixture) deps() PRReworkDeps {
 			f.writeFile(dest, "state.json", "{}")
 			return nil
 		},
+		KeepReviewRecords: func(archived, recreated string) error {
+			f.keepCalls = append(f.keepCalls, [2]string{archived, recreated})
+			if f.keepErr != nil {
+				err := f.keepErr
+				f.keepErr = nil
+				return err
+			}
+			return nil
+		},
 		Commit: func() error {
 			if f.commitErr != nil {
 				err := f.commitErr
@@ -320,6 +332,13 @@ func TestPRRework_FirstRoundMovesGenerationZero(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(f.reviewsDir, "discussion", "report.md")); err != nil {
 		t.Errorf("discussion review was moved: %v", err)
 	}
+	wantKeep := [][2]string{
+		{filepath.Join(prior, "reviews", "plan"), filepath.Join(f.reviewsDir, "plan")},
+		{filepath.Join(prior, "reviews", "webster"), filepath.Join(f.reviewsDir, "webster")},
+	}
+	if !reflect.DeepEqual(f.keepCalls, wantKeep) {
+		t.Errorf("KeepReviewRecords calls = %v; want %v", f.keepCalls, wantKeep)
+	}
 	if f.commits != 1 || f.cleared != 1 || f.pending != nil {
 		t.Errorf("commits=%d cleared=%d pending=%v; want 1, 1, nil", f.commits, f.cleared, f.pending)
 	}
@@ -337,6 +356,20 @@ func TestPRRework_FirstRoundMovesGenerationZero(t *testing.T) {
 	}
 	if len(f.told) != 1 || f.told[0].FirstCard != 2 || f.told[0].PriorPlanDir != filepath.Join(prior, "plan") {
 		t.Errorf("session told %+v; want FirstCard 2 and PriorPlanDir %s", f.told, filepath.Join(prior, "plan"))
+	}
+
+	// A failed carry names the subdirectory, and the re-step, with the archive already done, carries again.
+	g := newReworkFixture(t)
+	g.writeFile(g.reviewsDir, "plan/report.md", "plan review\n")
+	g.onInner = g.newGeneration(2, reworkNewCard)
+	g.keepErr = errors.New("disk is full")
+	if _, err := g.call(); err == nil || !strings.Contains(err.Error(), "plan") || !strings.Contains(err.Error(), "disk is full") {
+		t.Fatalf("Call with a failing KeepReviewRecords err = %v; want it naming plan and the cause", err)
+	}
+	g.mustDone()
+	wantRetry := [2]string{filepath.Join(g.reworkDir, "round-1", "prior-generation", "reviews", "plan"), filepath.Join(g.reviewsDir, "plan")}
+	if len(g.keepCalls) != 2 || g.keepCalls[1] != wantRetry {
+		t.Errorf("KeepReviewRecords calls = %v; want the failed call, then a retry with %v", g.keepCalls, wantRetry)
 	}
 }
 
@@ -706,5 +739,66 @@ func TestPRRework_NilSeamIsNamedError(t *testing.T) {
 	_, _, err := p.Call(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "ReadCommitted") {
 		t.Fatalf("err = %v; want a named missing-seam error", err)
+	}
+
+	deps := f.deps()
+	deps.KeepReviewRecords = nil
+	_, _, err = NewPRRework("PR-Rework", f.session, deps).Call(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "KeepReviewRecords") {
+		t.Fatalf("err = %v; want a missing KeepReviewRecords seam error", err)
+	}
+}
+
+func TestLatestRejectReview(t *testing.T) {
+	t.Parallel()
+	const older, newer = "2026-09-30T10:00:00Z", "2026-10-01T11:30:00Z"
+	tests := []struct {
+		name      string
+		records   map[int]string
+		wantRound int
+		wantAt    string
+		wantErr   bool
+	}{
+		{"NoRound", nil, 0, "", false},
+		{"OneRound", map[int]string{1: older}, 1, older, false},
+		{"NewerRoundWins", map[int]string{1: older, 2: newer}, 2, newer, false},
+		{"NewerRoundWithoutRejectedAtIsSkipped", map[int]string{1: older, 2: ""}, 1, older, false},
+		{"BadTime", map[int]string{1: "yesterday"}, 0, "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			reworkDir := t.TempDir()
+			for n, at := range tt.records {
+				dir := filepath.Join(reworkDir, fmt.Sprintf("round-%d", n))
+				if err := os.MkdirAll(dir, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, "findings.md"), []byte("findings\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				data, _ := json.Marshal(roundRecord{PRNumber: 7, HeadSHA: reworkTestHead, RejectedAt: at, FirstCard: 2})
+				if err := os.WriteFile(filepath.Join(dir, "record.json"), data, 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			gotPath, gotAt, found, err := LatestRejectReview(reworkDir)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("LatestRejectReview() err = %v; wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr {
+				return
+			}
+			if found != (tt.wantRound != 0) {
+				t.Fatalf("LatestRejectReview() found = %v; want %v", found, tt.wantRound != 0)
+			}
+			if !found {
+				return
+			}
+			wantPath := filepath.Join(reworkDir, fmt.Sprintf("round-%d", tt.wantRound), "findings.md")
+			if gotPath != wantPath || gotAt.UTC().Format(time.RFC3339) != tt.wantAt {
+				t.Errorf("LatestRejectReview() = %s, %s; want %s, %s", gotPath, gotAt.UTC().Format(time.RFC3339), wantPath, tt.wantAt)
+			}
+		})
 	}
 }

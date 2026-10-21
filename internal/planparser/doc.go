@@ -112,6 +112,9 @@
 // OverviewWithoutCardIndex returns the overview's bytes with the Card Index section cut out, bounded exactly as ParsePlan reads the index lines.
 // A caller that compares overviews across plan edits hashes that form, so a change confined to the Card Index is told apart from a change anywhere else without the caller parsing the overview.
 //
+// IdentityText returns the overview's bytes without the frontmatter's `approved:` line, the one line SetApproved writes.
+// A caller that decides whether a plan overview changed since it was reviewed hashes that form, so an approval alone never counts as a change.
+//
 // # Checks outside both entry points
 //
 // CheckFirstCard, CheckCardFabricReference, CheckFabricVocabularyName and CheckEditTestFile sit outside ValidateFormat and Validate.

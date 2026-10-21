@@ -315,34 +315,36 @@ func TestLoomAfterStep_UnwritableFrictionDirectory_StillReturnsAStatus(t *testin
 func TestLoomPostRun_HaltNotes(t *testing.T) {
 	t.Parallel()
 
-	t.Run("Blocked", func(t *testing.T) {
+	t.Run("BlockedWritesTheNoteAndSpawnsNoReflection", func(t *testing.T) {
 		t.Parallel()
 
-		f := newHaltFixture(t)
-		res := shedengine.Result{Outcome: shedengine.RunBlocked, HaltedProducer: loomshed.NameWebster, Reason: shedengine.ReasonBounceBudgetExhausted + ": Plan-Write", History: make([]shedengine.HistoryEntry, 2)}
-
-		if got := f.c.loomPostRun(context.Background(), res, nil)["friction"]; got != frictionengine.StatusReflected {
-			t.Fatalf("friction = %v; want %q", got, frictionengine.StatusReflected)
+		tests := []struct {
+			name   string
+			reason string
+			// wantAnomaly is the anomaly kind the note carries; empty skips the check.
+			wantAnomaly loomengine.AnomalyKind
+		}{
+			{"BudgetExhausted", shedengine.ReasonBounceBudgetExhausted + ": Plan-Write", ""},
+			{"Escalation", "stuck", loomengine.AnomalyEscalation},
 		}
-		if len(f.shuttle.Specs) != 1 {
-			t.Errorf("reflection shuttle ran %d times; want 1", len(f.shuttle.Specs))
-		}
-	})
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
 
-	t.Run("EscalationSkipsReflectionButWritesTheNote", func(t *testing.T) {
-		t.Parallel()
+				f := newHaltFixture(t)
+				res := shedengine.Result{Outcome: shedengine.RunBlocked, HaltedProducer: loomshed.NameWebster, Reason: tt.reason, History: make([]shedengine.HistoryEntry, 2)}
 
-		f := newHaltFixture(t)
-		res := shedengine.Result{Outcome: shedengine.RunBlocked, HaltedProducer: loomshed.NameWebster, Reason: "stuck", History: make([]shedengine.HistoryEntry, 2)}
-
-		if got := f.c.loomPostRun(context.Background(), res, nil)["friction"]; got != frictionengine.StatusSkipped {
-			t.Fatalf("friction = %v; want %q", got, frictionengine.StatusSkipped)
-		}
-		if len(f.shuttle.Specs) != 0 {
-			t.Errorf("reflection shuttle ran %d times; want 0", len(f.shuttle.Specs))
-		}
-		if note := readNote(t, filepath.Join(f.frictionDir, "loom-halt.md")); !strings.Contains(note, "anomaly: "+string(loomengine.AnomalyEscalation)) {
-			t.Errorf("loom-halt.md = %q; want it to carry the escalation anomaly", note)
+				if got := f.c.loomPostRun(context.Background(), res, nil)["friction"]; got != frictionengine.StatusSkipped {
+					t.Fatalf("friction = %v; want %q", got, frictionengine.StatusSkipped)
+				}
+				if len(f.shuttle.Specs) != 0 {
+					t.Errorf("reflection shuttle ran %d times; want 0", len(f.shuttle.Specs))
+				}
+				note := readNote(t, filepath.Join(f.frictionDir, "loom-halt.md"))
+				if tt.wantAnomaly != "" && !strings.Contains(note, "anomaly: "+string(tt.wantAnomaly)) {
+					t.Errorf("loom-halt.md = %q; want it to carry the %s anomaly", note, tt.wantAnomaly)
+				}
+			})
 		}
 	})
 
@@ -391,12 +393,13 @@ func TestLoomPostRun_HaltNotes(t *testing.T) {
 		f := newHaltFixture(t)
 		f.seedStatus(t, loomshed.NameWebster, shedengine.StateFailed, "producer exploded")
 
-		if got := f.c.loomPostRun(context.Background(), shedengine.Result{}, errors.New("producer exploded"))["friction"]; got != frictionengine.StatusReflected {
-			t.Fatalf("friction = %v; want %q", got, frictionengine.StatusReflected)
+		if got := f.c.loomPostRun(context.Background(), shedengine.Result{}, errors.New("producer exploded"))["friction"]; got != frictionengine.StatusSkipped {
+			t.Fatalf("friction = %v; want %q", got, frictionengine.StatusSkipped)
 		}
-		if len(f.shuttle.Specs) != 1 {
-			t.Errorf("reflection shuttle ran %d times; want 1", len(f.shuttle.Specs))
+		if len(f.shuttle.Specs) != 0 {
+			t.Errorf("reflection shuttle ran %d times; want 0", len(f.shuttle.Specs))
 		}
+		readNote(t, filepath.Join(f.frictionDir, "loom-halt.md"))
 	})
 
 	t.Run("OtherRunErrorSkips", func(t *testing.T) {
@@ -510,7 +513,8 @@ func TestStep_EscalationHaltSkipsReflectionAndKeepsBothNotes(t *testing.T) {
 	}
 }
 
-func TestStep_ProducerErrorReflectsOnTheErrorEnvelope(t *testing.T) {
+// TestStep_ProducerErrorWritesTheHaltNoteAndNoReflection drives step with a producer that returns an error: the error envelope reports friction skipped, the halt note is on disk and no reflection ran.
+func TestStep_ProducerErrorWritesTheHaltNoteAndNoReflection(t *testing.T) {
 	t.Parallel()
 
 	f := newHaltFixture(t)
@@ -523,14 +527,38 @@ func TestStep_ProducerErrorReflectsOnTheErrorEnvelope(t *testing.T) {
 	if code == 0 || envelope["ok"] != false {
 		t.Fatalf("exit = %d, envelope = %v; want an error envelope", code, envelope)
 	}
-	if envelope["friction"] != frictionengine.StatusReflected {
-		t.Errorf("envelope friction = %v; want %q", envelope["friction"], frictionengine.StatusReflected)
+	if envelope["friction"] != frictionengine.StatusSkipped {
+		t.Errorf("envelope friction = %v; want %q", envelope["friction"], frictionengine.StatusSkipped)
 	}
-	if len(f.shuttle.Specs) != 1 {
-		t.Fatalf("reflection shuttle ran %d times; want 1", len(f.shuttle.Specs))
+	if len(f.shuttle.Specs) != 0 {
+		t.Errorf("reflection shuttle ran %d times; want 0", len(f.shuttle.Specs))
 	}
-	if prompt := f.shuttle.Specs[0].Prompt; !strings.Contains(prompt, "loom-halt.md") {
-		t.Errorf("reflection prompt does not name %q: %q", "loom-halt.md", prompt)
+	if note := readNote(t, filepath.Join(f.frictionDir, "loom-halt.md")); !strings.Contains(note, "producer exploded") {
+		t.Errorf("loom-halt.md = %q; want it to carry the producer error", note)
+	}
+}
+
+// TestLoomAfterInterrupt_WritesTheHaltNoteAndNoReflection asserts the interrupt hook writes the `loom-halt` note with the cause as reason, reports skipped and runs the reflection shuttle zero times.
+func TestLoomAfterInterrupt_WritesTheHaltNoteAndNoReflection(t *testing.T) {
+	t.Parallel()
+
+	f := newHaltFixture(t)
+	f.c.runID = "self"
+	f.seedStatus(t, "Plan-Write", shedengine.StateRunning, "")
+
+	got := f.c.specFor("step").Hooks.AfterInterrupt(t.Context(), "Plan-Write", "watchdog", "/logs/child.log")
+
+	if got != frictionengine.StatusSkipped {
+		t.Errorf("AfterInterrupt() = %q; want %q", got, frictionengine.StatusSkipped)
+	}
+	if len(f.shuttle.Specs) != 0 {
+		t.Errorf("reflection shuttle ran %d times; want 0", len(f.shuttle.Specs))
+	}
+	note := readNote(t, filepath.Join(f.frictionDir, "loom-halt.md"))
+	for _, want := range []string{"loom halted failed at Plan-Write", "state: failed", "watchdog", "trace_file: /logs/child.log"} {
+		if !strings.Contains(note, want) {
+			t.Errorf("halt note %q does not contain %q", note, want)
+		}
 	}
 }
 

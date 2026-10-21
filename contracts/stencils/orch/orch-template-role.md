@@ -61,7 +61,8 @@ Its stop report then carries the arbiter's verdict path and question: read the v
   At or past it, or at a `hard-cap` escalation, the way forward is `lyx loom circling accept <slug>` to take the work as it stands, or raising the hard cap by the command the refusal names for the layer its value comes from.
   Either only records the decision,
   so run `lyx loom resume` in the task worktree to resume the run.
-- A run that needs a fresh budget at a producer: `lyx loom goto` or `lyx shed goto`, naming the producer.
+- A run halted on an exhausted bounce budget at a producer: run `lyx loom resume` in the task worktree, which grants the row one more budget.
+  A goto keeps the spent budget and grants none; use `lyx loom goto` or `lyx shed goto`, naming the producer, to move a run back.
   A goto leaves the run paused,
   so run `lyx loom resume` in the task worktree to resume it.
 - A Merge-In or Publish blocked on a verify that exited non-zero: batten retries the first such failure of a run itself, so a notice for one means the second failure.

@@ -1,7 +1,6 @@
-// halt.go holds loom's halt friction: the Go-authored note a `blocked` or `failed` halt leaves, and the two hooks that write it and reflect, loomAfterStep under step and loomPostRun under run.
+// halt.go holds loom's halt friction: the Go-authored note a `blocked` or `failed` halt leaves, and the hooks that write it, loomAfterStep under step and loomPostRun under run.
 //
-// A halt has one path: the halt note, then the reflection, which files only the lyx problems behind the halt.
-// An escalation halt writes its note and skips the reflection.
+// A halt writes its note and spawns no reflection: the note waits for the run's Friction-Reflect row, which reflects every note in the friction directory.
 
 package loomcli
 
@@ -90,13 +89,10 @@ func writeHaltNote(frictionDir string, n haltNote) error {
 	return nil
 }
 
-// reflectHalt writes n as a halt note and runs the non-waiting reflection, returning the envelope's "friction" status.
+// reflectHalt writes n as a halt note and returns the envelope's "friction" status, always skipped.
+// It spawns no reflection, so no stop holds the driver lock for a friction session:
+// the note stays on disk unarchived until the run's Friction-Reflect row reflects it.
 // A note write failure only logs.
-// A held reflection lock skips the reflection, as reflectFriction(false) does.
-// An `escalation-to-human` halt writes its note and skips the reflection: the producer's own session holds the open question,
-// so a second session reflecting on it finds only a process signal.
-// Only that kind skips,
-// and the skipped reflection is the only thing lost: the note stays on disk unarchived until a later reflection covers it.
 func (c *loomCLI) reflectHalt(n haltNote) string {
 	if c.frictionDir == "" {
 		return frictionengine.StatusSkipped
@@ -108,11 +104,7 @@ func (c *loomCLI) reflectHalt(n haltNote) string {
 	if err := writeHaltNote(c.frictionDir, n); err != nil {
 		logger.Warn("loom: could not write the halt note", "dir", c.frictionDir, "error", err)
 	}
-	if kind, ok := loomengine.ClassifyHalt(n.State, n.Reason); ok && kind == loomengine.AnomalyEscalation {
-		logger.Info("loom: reflection skipped for an escalation halt", "producer", n.Producer)
-		return frictionengine.StatusSkipped
-	}
-	return c.reflectFriction(false)
+	return frictionengine.StatusSkipped
 }
 
 // parentDirtyPathsFromFabric returns the tracked uncommitted paths of the parent pair the pair's origin record names.
@@ -153,7 +145,7 @@ func (c *loomCLI) failedHalt(err error) (haltNote, bool) {
 }
 
 // loomAfterStep is loom's AfterStep hook and returns the envelope's "friction" key.
-// A `failed` halt behind stepErr and a `blocked` result each write a halt note and reflect.
+// A `failed` halt behind stepErr and a `blocked` result each write a halt note and report skipped, leaving the reflection to the Friction-Reflect row.
 // `done` reports what the Friction-Reflect row recorded, or skipped when the row did not run in this process.
 // Every other state, awaiting and paused included, writes nothing and reports skipped.
 // Every step that returns, with or without an error, vouches for what it left on disk: a step error records the handoff voucher from the status file before the halt check, except a busy refusal, whose driver vouches on its own exit.

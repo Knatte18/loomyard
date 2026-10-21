@@ -74,7 +74,7 @@ func DetectCrashResume(entry EntryObservation) bool {
 // blocked with shedengine.ReasonBounceBudgetExhausted, blocked with anything else, or failed.
 // shedengine persists StateBlocked from exactly two arms, so "blocked and not budget-exhausted" is exactly the
 // escalation arm whatever reason its producer supplied.
-// The one text the partition still matches is the budget prefix, matched with strings.HasPrefix because the persisted reason carries the exhausted row and a goto way forward after it:
+// The one text the partition still matches is the budget prefix, matched with strings.HasPrefix because the persisted reason carries the exhausted row and the told resume way forward after it:
 // a producer reason starting with it would read as budget exhaustion, and no shipped producer returns one.
 // Any other state reports no kind.
 func ClassifyHalt(state shedengine.State, reason string) (AnomalyKind, bool) {

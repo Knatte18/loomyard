@@ -82,6 +82,7 @@ var intentionallyNil = map[string]string{
 	"Rework.ReadRejection":        "loom-only seam, batten has no rework segment",
 	"Rework.ClearRejection":       "loom-only seam, batten has no rework segment",
 	"Rework.ArchiveWebster":       "loom-only seam, batten has no rework segment",
+	"Rework.KeepReviewRecords":    "loom-only seam, batten has no rework segment",
 	"Rework.Commit":               "loom-only seam, batten has no rework segment",
 	"DarnTable":                   "darn-only seam, batten has no darn segment",
 	"Darn.ReadRejection":          "darn-only seam, batten has no darn segment",

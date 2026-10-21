@@ -63,6 +63,29 @@ func SetApproved(planDir string) error {
 	return nil
 }
 
+// IdentityText returns overview, a 00-overview.md's bytes, without the frontmatter's `approved:` line, the one line SetApproved writes.
+// Two overviews that differ only in that line, including an overview SetApproved inserted it into, return equal bytes, so an approval never changes an overview's identity.
+// Every other byte stays, so an edit anywhere else changes the text.
+// An overview with no frontmatter block, or an unterminated one, is returned unchanged.
+// It is a pure function of overview.
+func IdentityText(overview []byte) []byte {
+	text := string(overview)
+	_, body, found, err := splitFrontmatter(text)
+	if err != nil || !found {
+		return overview
+	}
+	prefix := text[:len(text)-len(body)]
+
+	lines := strings.Split(prefix, "\n")
+	kept := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if !strings.HasPrefix(line, approvedLinePrefix) {
+			kept = append(kept, line)
+		}
+	}
+	return []byte(strings.Join(kept, "\n") + body)
+}
+
 // setApprovedLine rewrites block's approved: line to "approved: true", inserting that line at the
 // end of the block when none is present. It reports whether it made any change, so SetApproved can
 // treat an already-approved overview as a no-op that never rewrites the file.

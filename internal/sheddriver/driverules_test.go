@@ -27,6 +27,8 @@ func TestDecideDrive(t *testing.T) {
 	awaitingStop := func(notice string) Stop {
 		return Stop{OK: true, State: "awaiting", LoopState: "awaiting", ParentNotice: notice}
 	}
+	budgetHaltReason := shedengine.ReasonBounceBudgetExhausted + " for Plan-Write; way forward: lyx shed resume"
+	budgetHaltStop := Stop{OK: true, State: "blocked", LoopState: "blocked", Reason: budgetHaltReason, CurrentProducer: "Plan-Write", HistoryLength: 3}
 	restepRecord := func(key StopKey) SettleRecord {
 		return SettleRecord{StopKey: key, Action: shedrun.SettleRestep}
 	}
@@ -46,7 +48,13 @@ func TestDecideDrive(t *testing.T) {
 		{name: "error with no kind", stop: errorStop("", ""), want: driveActionHandBack},
 		{name: "step paused with an empty reason carries a friction note", stop: Stop{OK: true, State: "paused", LoopState: "paused"}, want: driveActionHandBack, wantFrictionNote: true},
 		{name: "step paused with a reason carries none", stop: Stop{OK: true, State: "paused", LoopState: "paused", Reason: "pause requested"}, want: driveActionHandBack},
-		{name: "status-derived paused stop carries none", stop: stopFromStatus(shedengine.Status{State: shedengine.StatePaused}), want: driveActionHandBack},
+		{name: "status-derived paused stop with a pause reason carries none", stop: stopFromStatus(shedengine.Status{State: shedengine.StatePaused, PauseReason: "pause requested by operator"}), want: driveActionHandBack},
+		{name: "status-derived paused stop without a pause reason carries a friction note", stop: stopFromStatus(shedengine.Status{State: shedengine.StatePaused}), want: driveActionHandBack, wantFrictionNote: true},
+		{name: "budget halt from the envelope hands back", stop: budgetHaltStop, want: driveActionHandBack},
+		{name: "budget halt from the status hands back", stop: stopFromStatus(shedengine.Status{State: shedengine.StateBlocked, Error: budgetHaltReason}), want: driveActionHandBack},
+		{name: "budget halt on a changed build still hands back", stop: budgetHaltStop, facts: driveFacts{BuildChanged: true}, want: driveActionHandBack},
+		{name: "budget halt after a tackler resume returned still hands back", stop: budgetHaltStop, facts: driveFacts{ResumeReturned: true}, want: driveActionHandBack},
+		{name: "budget halt matching a verify record still hands back", stop: budgetHaltStop, facts: driveFacts{VerifyMatches: true, VerifyTarget: "Webster"}, want: driveActionHandBack},
 		{name: "awaiting with a pending escalation", stop: awaitingStop("a notice"), facts: driveFacts{EscalationPending: true}, want: driveActionArbiter},
 		{name: "awaiting with a parent notice", stop: awaitingStop("a notice"), want: driveActionRelayHandBack},
 		{name: "awaiting with nothing to relay", stop: awaitingStop(""), want: driveActionHandBack},

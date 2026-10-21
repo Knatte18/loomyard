@@ -336,6 +336,7 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 		})
 		spec.Hooks.AfterInterrupt = c.loomAfterInterrupt
 		spec.Hooks.ConsumeAttempt = c.loomConsumeAttempt
+		spec.GotoGuard = c.settledGuard()
 	}
 	spec.Routing = c.routing
 
@@ -437,7 +438,7 @@ func (c *loomCLI) noteCrashResumeAtEntry(verb string) {
 // RunDone never reflects here: the Friction-Reflect row already did, under the run lock and before
 // done persisted, so the key reports c.rowFrictionStatus, or frictionengine.StatusSkipped when the
 // row did not run in this process (the engine's done short-circuit on an already-done status file).
-// RunBlocked, and a non-nil runErr behind a `failed` status (failedHalt), each write a halt note and reflect here, after Run has returned, without waiting on a held reflection lock;
+// RunBlocked, and a non-nil runErr behind a `failed` status (failedHalt), each write a halt note here and report skipped, leaving the reflection to the Friction-Reflect row;
 // any other runErr reports skipped.
 // The key is returned unconditionally so it is never silently dropped from a RunPaused envelope,
 // and `run` merges it onto its error envelope as onto its success envelope.
