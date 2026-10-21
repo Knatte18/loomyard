@@ -95,6 +95,9 @@ const (
 	// KindCommitsDropped records dropSeedCommits' reset of the board checkout past its seed commits, recorded only after HEAD observably moved.
 	// Its Target is the board checkout and its Detail is the dropped commits' SHAs, space-separated.
 	KindCommitsDropped Kind = "commits_dropped"
+	// KindTagCreated records setAsideTag's write of a local set-aside tag, recorded only after the tag exists.
+	// Its Target is the repository root and its Detail is the tag name.
+	KindTagCreated Kind = "tag_created"
 )
 
 // Mutation is one flat entry in a Mutations record, naming one primitive that observably changed

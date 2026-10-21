@@ -1060,6 +1060,26 @@
 //   - `resolveArchiveTip` resolves `FETCH_HEAD^{commit}`, revision syntax over git's fetch output.
 //   - websterengine's `--disambiguate` and `<commit>:<path>` probes are git's own disambiguation.
 //
+// # The records replay
+//
+// A records branch that both this machine and origin moved is brought level by replaying the local commits origin lacks onto origin's tip, never by a merge or a rebase.
+// `replayWeft` does it for a weft worktree and `replayBolt` for the board, both under their caller's locks, and both report a `ReplayOutcome`.
+//
+// **Weft.** Local commits are cherry-picked onto upstream oldest first through `cherryPickOnto`, which lives in `destroy.go` beside the seed-commit drop.
+// A commit that becomes empty is dropped.
+// A conflict returns `ErrReplayConflict` naming the paths, with the starting tip restored.
+// A tracked change on a path the commits touch returns `ErrReplayDirty`, with nothing changed.
+//
+// **Bolt.** A commit touching only `board.json`, `README.md` and design files is re-applied by entry through the installed `BoardReplay`, so an entry only one side changed never conflicts and no entry change stops the replay.
+// A change that lost a value to origin or met a board refusal is committed for what was kept, and its original is set aside.
+// Seed commits are dropped, and any other commit is cherry-picked as on a weft.
+//
+// **The ended set.** `readEndedSet` reads which runs origin has ended: an entry `done` on origin's Bolt tip, or one that tip's history held and the tip pruned.
+// A created stamp keeps a reused slug from matching a pruned entry.
+// A replay sets aside, under a local `set-aside/<slug>/<sha>` tag, each local commit whose every path belongs to an ended run, since replaying it would resurrect the run.
+// The prefix is one no archive reader matches, so a set-aside commit shows as no run.
+// `finalizeEntered` exempts a run this machine's own landing has reached past the parent-side merge of Finalize, read from the pair's loom status, the local parent branch and the prime's batten status, and treats an unreadable state as reached.
+//
 // # The merge surface
 //
 // **The two verbs, and why there are two.** `MergeIn(source)` (merge.go) merges `source` into the

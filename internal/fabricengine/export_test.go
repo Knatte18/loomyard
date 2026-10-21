@@ -698,3 +698,27 @@ func SetHubWorkspaceBeforeLockHookForTest(t *testing.T, hook func()) {
 	hubWorkspaceBeforeLockHook = hook
 	t.Cleanup(func() { hubWorkspaceBeforeLockHook = nil })
 }
+
+// ReplayWeftForTest re-exports replayWeft over worktree's configured upstream as last fetched, with a throwaway recorder.
+func ReplayWeftForTest(l *lyxcwd.Location, worktree string, ended map[string]string) (ReplayOutcome, error) {
+	upstream, err := gitrepo.New(worktree).UpstreamSHA()
+	if err != nil {
+		return ReplayOutcome{}, err
+	}
+	return replayWeft(NewMutations(l.HubPath), l, worktree, upstream, EndedSet(ended))
+}
+
+// ReplayBoltForTest re-exports replayBolt over boardDir's configured upstream as last fetched, with a throwaway recorder.
+func ReplayBoltForTest(l *lyxcwd.Location, boardDir string, ended map[string]string) (ReplayOutcome, error) {
+	upstream, err := gitrepo.New(boardDir).UpstreamSHA()
+	if err != nil {
+		return ReplayOutcome{}, err
+	}
+	return replayBolt(NewMutations(l.HubPath), l, boardDir, upstream, EndedSet(ended))
+}
+
+// ReadEndedSetForTest re-exports readEndedSet with its result as a plain map.
+func ReadEndedSetForTest(recordsRoot, boltRef string, slugs []string, localCreated map[string]string) (map[string]string, error) {
+	ended, err := readEndedSet(recordsRoot, boltRef, slugs, localCreated)
+	return map[string]string(ended), err
+}
