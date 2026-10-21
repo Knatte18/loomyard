@@ -82,7 +82,7 @@ func TestRename_KeepsEntryRewritesDependentsAndReportsMentions(t *testing.T) {
 	if result.From != "old" {
 		t.Errorf("Rename().From = %q; want %q", result.From, "old")
 	}
-	if wantMentions := []string{"new", "prose", "exact", "starts", "ends"};!slices.Equal(result.Mentions, wantMentions) {
+	if wantMentions := []string{"new", "prose", "exact", "starts", "ends"}; !slices.Equal(result.Mentions, wantMentions) {
 		t.Errorf("Rename().Mentions = %v; want %v", result.Mentions, wantMentions)
 	}
 
