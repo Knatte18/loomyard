@@ -43,7 +43,6 @@ import (
 // nilLegal holds the dotted paths NilSeams skips: seams whose nil is a documented default rather than a missing wiring.
 var nilLegal = map[string]bool{
 	"Now":                               true,
-	"GateSlots":                         true,
 	"VerifyMergeBase":                   true,
 	"VerifyTreeScope":                   true,
 	"DiscussionHistory":                 true,
@@ -60,7 +59,6 @@ var nilLegal = map[string]bool{
 	"Landing.VerifyCommand":             true,
 	"Landing.PublishSkip":               true,
 	"Landing.VerifyWaitMark":            true,
-	"Landing.GateSlots":                 true,
 	"Landing.FailingTests":              true,
 	"Landing.Registry":                  true,
 	"Landing.Config.EngineTrailers":     true,

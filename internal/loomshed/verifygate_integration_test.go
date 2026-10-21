@@ -61,7 +61,7 @@ func TestVerifyGate_Scenario(t *testing.T) {
 	}
 	runGateWith := func(t *testing.T, round func() (RoundGate, error)) (shuttleengine.GateResult, error) {
 		t.Helper()
-		return NewVerifyGate(worktree, verifyDir, "Webster-Burler gate", func() (string, error) { return told, nil }, nil, nil, nil, round)()
+		return NewVerifyGate(worktree, verifyDir, "Webster-Burler gate", func() (string, error) { return told, nil }, nil, nil, round)()
 	}
 	runGate := func(t *testing.T) (passed bool, findings string) {
 		t.Helper()
@@ -113,7 +113,7 @@ func TestVerifyGate_Scenario(t *testing.T) {
 	if !t.Run("passes without running on a verified tree", func(t *testing.T) {
 		setVerifyCommand(t, "true")
 		paths := verifytree.NewPaths(worktree, verifyDir)
-		if res, err := verifytree.Verify(context.Background(), paths, verifytree.Site{Label: "Webster-Burler gate"}, "true", verifytree.Timeout, nil); err != nil || res.Status != verifytree.StatusPassed {
+		if res, err := verifytree.Verify(context.Background(), paths, verifytree.Site{Label: "Webster-Burler gate"}, "true"); err != nil || res.Status != verifytree.StatusPassed {
 			t.Fatalf("seed Verify = %+v, %v; want a pass", res, err)
 		}
 		logsBefore := verifyLogs(t, verifyDir)
@@ -226,7 +226,7 @@ func (f roundGateFixture) round() (RoundGate, error) {
 // runGate runs the round form of the gate once, told the fixture's command and the given merge base reader, which may be nil.
 func (f roundGateFixture) runGate(t *testing.T, mergeBase func() (string, error)) (passed bool, findings string) {
 	t.Helper()
-	got, err := NewVerifyGate(f.worktree, f.verifyDir, "Webster-Burler gate", func() (string, error) { return f.planCommand, nil }, mergeBase, nil, nil, f.round)()
+	got, err := NewVerifyGate(f.worktree, f.verifyDir, "Webster-Burler gate", func() (string, error) { return f.planCommand, nil }, mergeBase, nil, f.round)()
 	if err != nil {
 		t.Fatalf("gate() error = %v; want nil", err)
 	}
@@ -235,7 +235,7 @@ func (f roundGateFixture) runGate(t *testing.T, mergeBase func() (string, error)
 
 // diffGate runs the darn form of the gate once, told the given command source, merge base reader and tree scope reader.
 func (f roundGateFixture) diffGate(command, mergeBase func() (string, error), treeScope func() (string, bool, error)) (shuttleengine.GateResult, error) {
-	return NewVerifyGate(f.worktree, f.verifyDir, "Darn-Write gate", command, mergeBase, treeScope, nil, f.round)()
+	return NewVerifyGate(f.worktree, f.verifyDir, "Darn-Write gate", command, mergeBase, treeScope, f.round)()
 }
 
 func (f roundGateFixture) planRanCount(t *testing.T) int {
@@ -539,7 +539,7 @@ func TestVerifyGate_RoundScenario(t *testing.T) {
 			{"RoundError", toldCommand, baseOf(planPass.Commit), notScoped, func() (RoundGate, error) { return RoundGate{}, errors.New("gate.yaml unreadable") }, "gate.yaml unreadable"},
 		}
 		for _, tt := range tests {
-			got, err := NewVerifyGate(f.worktree, f.verifyDir, "Darn-Write gate", tt.command, tt.mergeBase, tt.treeScope, nil, tt.round)()
+			got, err := NewVerifyGate(f.worktree, f.verifyDir, "Darn-Write gate", tt.command, tt.mergeBase, tt.treeScope, tt.round)()
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("%s: gate() error = %v; want it to contain %q", tt.name, err, tt.want)
 			}

@@ -13,7 +13,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
-	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -102,9 +101,6 @@ type Env struct {
 	// It answers the tree-scoped command and true for a diff wholly under the configured trees, and false otherwise.
 	// Set, it alone selects the gate's darn form and requires VerifyMergeBase; nil, which a loom run leaves, keeps the round form.
 	VerifyTreeScope func() (string, bool, error)
-	// GateSlots is the hub gate-slot pool every Go-side verify a row runs acquires from, read by the gate resolver's "verify" gate.
-	// Nil where no hub is wired, which runs the verify unslotted.
-	GateSlots *gateslot.Pool
 	// PublishFailure returns the Publish failure note the Webster-Review rubric renders, read by the BurlerReview and Bouncer entries each time a segment builds its producers.
 	// Nil renders `none`.
 	PublishFailure func() string

@@ -167,9 +167,9 @@ func TestRenderVerifyGateFindings(t *testing.T) {
 		t.Errorf("findings without a hint should say no card touched a failing package:\n%s", got)
 	}
 
-	timedOut := renderVerifyGateFindings(VerifyGateReport{Attempt: 1, Cap: 3, TimedOut: "1h0m0s", LogPath: "/scratch/verify.log", LogTail: "hung in TestSlow"}, fixPromptPath)
+	timedOut := renderVerifyGateFindings(VerifyGateReport{Attempt: 1, Cap: 3, TimedOut: "gate tier2 exceeded timeout_min 30m0s and was killed", LogPath: "/scratch/verify.log", LogTail: "hung in TestSlow"}, fixPromptPath)
 	assertOpensWithWayForward(timedOut)
-	for _, want := range []string{"attempt 1 of 3", "did not finish within 1h0m0s and was killed", "not re-run", "/scratch/verify.log", "hung in TestSlow"} {
+	for _, want := range []string{"attempt 1 of 3", "timed out: gate tier2 exceeded timeout_min 30m0s and was killed", "not re-run", "/scratch/verify.log", "hung in TestSlow"} {
 		if !strings.Contains(timedOut, want) {
 			t.Errorf("timed-out findings missing %q:\n%s", want, timedOut)
 		}

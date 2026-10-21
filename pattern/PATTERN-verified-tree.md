@@ -2,8 +2,7 @@
 
 Every verify site runs the call rendered from a gate of the hub's `gate.yaml` through `verifytree.Verify`: the `final` gate's at the webster gate and `lyx webster verify`, the `round` gate's at the Webster-Burler-Fix and Darn round gates, the `landing` gate's at Merge-In, Finalize and Publish, and the `publish` gate's at Publish.
 
-- `Verify` takes a gate slot from the pool it is handed after the dirty and skip checks and before it spawns, so no site gains a second runner; a nil pool runs unslotted.
-  The running marker reads `waiting` until the slot is held and `running` after, and the verify timeout counts only from the moment the slot is held.
+- `Verify` takes no gate slot and applies no timeout: its command is `lyx gate test --wait` calls, which take their own slots and bound themselves.
 - No site verifies a dirty tree: `Verify` refuses one with its paths before running anything.
 - Records are per command, each entry with its tree and its commit; a skip requires an entry of the same command naming HEAD's tree.
 - The record is written only by `Verify`, and only after a pass; no prompt names its path.

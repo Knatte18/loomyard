@@ -63,7 +63,7 @@ func (c *websterCLI) runVerify(cmd *cobra.Command) int {
 	}
 
 	paths := verifytree.NewPaths(c.geom.WorktreeRoot, c.geom.VerifyDir)
-	res, err := verifytree.Verify(cmd.Context(), paths, verifytree.Site{Label: verifyVerbSite}, command, verifytree.Timeout, c.geom.GateSlots)
+	res, err := verifytree.Verify(cmd.Context(), paths, verifytree.Site{Label: verifyVerbSite}, command)
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("webster: verify: %v", err))
 	}

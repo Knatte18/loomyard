@@ -162,7 +162,6 @@ func landingDeps(
 		PublishSkip:            verify.publishSkip,
 		FailingTests:           failingTestsOf,
 		VerifyDir:              verifytree.Dir(l.AnchorPath()),
-		GateSlots:              hubgeom.GateSlots(l),
 		VerifyWaitMark:         verifyWaitMark,
 		Shuttle:                runner,
 		EnginesRun:             runner.EnginesRun,

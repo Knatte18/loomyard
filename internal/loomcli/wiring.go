@@ -704,7 +704,6 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		VerifyDir:     verifytree.Dir(anchorPath),
 		VerifyCommand: planVerifySource(location).baseCommand,
 		Round:         roundGateSource(fabricengine.ConfigDirs(location)),
-		GateSlots:     hubgeom.GateSlots(location),
 		// VerifyMergeBase is nil for a standalone run, which records no parent branch.
 		VerifyMergeBase: verifyMergeBase,
 		PublishFailure: func() string {

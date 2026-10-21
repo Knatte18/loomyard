@@ -158,7 +158,7 @@ func TestVerifyGate_WaitMark(t *testing.T) {
 		{name: "pass", result: verifytree.Result{Status: verifytree.StatusPassed}},
 		{name: "skip", result: verifytree.Result{Status: verifytree.StatusSkipped}},
 		{name: "failure", result: verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}, wantReason: "landing gate failed"},
-		{name: "timeout", result: verifytree.Result{Status: verifytree.StatusFailed, ExitCode: -1, TimedOut: true}, wantReason: "did not finish"},
+		{name: "timeout", result: verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1, TimedOut: true}, wantReason: "timed out"},
 		{name: "dirty", result: verifytree.Result{Status: verifytree.StatusDirty, Dirty: []string{"a.txt"}}, wantReason: "a.txt"},
 		{name: "error", verifyErr: errors.New("exec failed"), wantErr: "exec failed"},
 		{name: "cancel", verifyErr: context.Canceled, wantErr: "context canceled"},
@@ -246,10 +246,12 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 		},
 		{
 			name: "timed out", command: "true", site: "Publish",
-			result: verifytree.Result{Status: verifytree.StatusFailed, ExitCode: -1, TimedOut: true, Detail: "the verify command did not finish within 1h0m0s and was killed", Log: failedLog},
+			result: verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1, TimedOut: true, Detail: "gate tier2 exceeded timeout_min 30m0s and was killed", Log: failedLog},
 			wantReasonExact: func(logPath string) string {
-				return `landing gate did not finish within 1h0m0s after merging parent branch "main"; output: ` + logPath +
-					`; fix the hanging test on the task branch, then resume`
+				return `landing gate timed out after merging parent branch "main": gate tier2 exceeded timeout_min 30m0s and was killed; output: ` + logPath +
+					`; fix the hanging test on the task branch, or, for a tier that is slow but healthy, rewrite the tier whole from the prime with ` +
+					"`lyx config gate --set 'tiers.tier<N>={...}'`" +
+					`, carrying every key of the tier and the raised timeout_min, since a dotted key under the tier writes an entry the loader refuses; then resume`
 			},
 		},
 		{

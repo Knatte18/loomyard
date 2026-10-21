@@ -6,19 +6,17 @@
 // LatestPass returns the entry of one command, which a caller uses as a diff base.
 // A record in an older format, or a malformed one, reads as no record.
 // The record is written only by Verify and only after a pass, so a crash before that write leaves a mismatch and the next call runs again.
-// A command that outlives the timeout is killed and returns a failed result with TimedOut set and no record;
-// a caller's own cancel is a returned error and no record.
+// A caller's own cancel is a returned error and no record.
 // While a command runs, Verify keeps a running marker that loom status reads through ReadMarker.
 //
-// Given a gate-slot pool, Verify takes a slot after the dirty and skip checks and before it spawns.
-// The marker is written in the waiting state with its wait start, then rewritten as running with a fresh start time once the slot is held, and the timeout counts only from that moment.
-// The command runs with the lease's environment, so GOFLAGS carries the slot's `-p` cap and `-trimpath` and a nested gate run inherits the held slot, and the slot is released whatever the outcome.
-// A cancelled wait is a returned error with no record.
-// A nil pool runs unslotted with the parent's environment, the form of a standalone run and of a unit test.
-// Either way the command's environment drops the strand-name variable (agentname.StrandNameEnv), so a test that drives `lyx fabric` never meets the sandboxed-role guard.
+// Verify takes no gate slot and applies no timeout: every command it runs is one `lyx gate test --wait` call, or such calls joined by `&&`, which take their own slots and are bounded by the gate's pre-tier ceiling and the tiers' timeouts.
+// A failed command whose log holds the gate's tier timeout line (gateslot.FindTierTimeout) is read as timed out:
+// the result is a failed one with the command's own exit code, TimedOut set and the tier and its timeout in Detail.
+// The marker is written as running from the start, and a waiting gate shows through the gate's own wait record.
+// A marker an older binary wrote in the waiting state, or without a state, stays readable.
+// The command's environment drops the strand-name variable (agentname.StrandNameEnv), so a test that drives `lyx fabric` never meets the sandboxed-role guard.
 // Bound: a test is code the fork writes, which could clear the variable itself.
-// A verify command never sees gateslot.PrebuiltLyxEnv, slotted or not: Verify strips an inherited value, so the command's own `go test` builds lyx once per test binary.
-// A marker written before it had a state reads as running.
+// A verify command never sees gateslot.PrebuiltLyxEnv: Verify strips an inherited value, so the command's own `go test` builds lyx once per test binary.
 //
 // Each run that spawns its command writes its own log, `verify-<n>.log` in the verify directory with n one above the highest existing number, and names it on Result.Log, so a later verify never overwrites an earlier run's evidence.
 // After each such run the directory keeps the newest verifyLogKeep logs plus the one the Publish failure record names, and removes the rest.

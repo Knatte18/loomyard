@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentlock"
@@ -238,9 +237,6 @@ type Deps struct {
 	// Every plan-verify site of the worktree shares it, so a pass at one site lets the next skip.
 	// Told, never derived, per the Told-Geometry Invariant.
 	VerifyDir string
-	// GateSlots is the told hub gate-slot pool both producers' verifies acquire from: Publish's landing and publish calls, and Finalize's landing call.
-	// Nil runs every verify unslotted.
-	GateSlots *gateslot.Pool
 
 	// Shuttle is the session-runner seam, told exactly the way every existing session-driving
 	// constructor in this tree takes its own. The resolver's constructor rejects a nil value for

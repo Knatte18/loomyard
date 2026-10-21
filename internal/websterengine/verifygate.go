@@ -214,7 +214,7 @@ func NewVerifyGate(geom Geometry, attempts int, batches []batcher.Batch, parentB
 			return geom.git().CommitLog(geom.WorktreeRoot, base, head)
 		},
 		verify: func(site verifytree.Site, command string) (verifytree.Result, error) {
-			return verifytree.Verify(context.Background(), paths, site, command, verifytree.Timeout, geom.GateSlots)
+			return verifytree.Verify(context.Background(), paths, site, command)
 		},
 		readLog: func(path string) (string, error) {
 			data, err := os.ReadFile(path)
@@ -323,7 +323,7 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixP
 		if err != nil {
 			return shuttleengine.GateResult{}, err
 		}
-		return fail(VerifyGateReport{TimedOut: verifytree.Timeout.String(), LogPath: res.Log, LogTail: logTail(output)})
+		return fail(VerifyGateReport{TimedOut: res.Detail, LogPath: res.Log, LogTail: logTail(output)})
 	}
 
 	// failHung fails the gate for res, a failed verify whose output classifyHang read as a hang: a hang is not flakiness,
@@ -464,7 +464,7 @@ func verifyGateStuckReason(reportsDir string, gate *shuttleengine.GateOutcome, r
 	case len(report.Dirty) > 0:
 		what = "uncommitted paths " + strings.Join(report.Dirty, ", ")
 	case report.TimedOut != "":
-		what = fmt.Sprintf("the verify command did not finish within %s, was killed and was not re-run, see %s", report.TimedOut, report.LogPath)
+		what = fmt.Sprintf("the verify command timed out (%s) and was not re-run, see %s", report.TimedOut, report.LogPath)
 	}
 	return fmt.Sprintf("verify gate failed after %d attempt(s) of %d: %s", report.Attempt, report.Cap, what)
 }

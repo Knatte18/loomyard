@@ -196,7 +196,8 @@ func TestVerifyGate_FlakyFailurePassesOnRerunWithNote(t *testing.T) {
 func TestVerifyGate_HungVerifyFailsAtOnceWithoutRerun(t *testing.T) {
 	t.Parallel()
 
-	timedOut := verifytree.Result{Status: verifytree.StatusFailed, ExitCode: -1, TimedOut: true}
+	const tierDetail = "gate tier2 exceeded timeout_min 30m0s and was killed"
+	timedOut := verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1, TimedOut: true, Detail: tierDetail}
 	exit := func(code int, detail string) verifytree.Result {
 		return verifytree.Result{Status: verifytree.StatusFailed, ExitCode: code, Detail: detail}
 	}
@@ -256,10 +257,10 @@ func TestVerifyGate_HungVerifyFailsAtOnceWithoutRerun(t *testing.T) {
 				t.Errorf("report log path = %q; want %q", report.LogPath, tt.wantLog)
 			}
 			if tt.wantTimedOut {
-				if report.TimedOut != verifytree.Timeout.String() || !strings.Contains(report.LogTail, "hung in TestSlow") || len(report.Failures) != 0 || report.Hang != "" {
+				if report.TimedOut != tierDetail || !strings.Contains(report.LogTail, "hung in TestSlow") || len(report.Failures) != 0 || report.Hang != "" {
 					t.Errorf("report = %+v; want the timeout and the log tail, with no failures and no hang", report)
 				}
-				for _, want := range []string{"did not finish within 1h0m0s and was killed", "not re-run", tt.wantLog, "hung in TestSlow"} {
+				for _, want := range []string{"timed out: " + tierDetail, "not re-run", tt.wantLog, "hung in TestSlow"} {
 					if !strings.Contains(res.Findings, want) {
 						t.Errorf("findings = %q; want %q in it", res.Findings, want)
 					}
@@ -531,8 +532,8 @@ func TestVerifyGateStuckReason_HungReportNamesTheHang(t *testing.T) {
 	}{
 		{
 			name:   "a timed-out report names the timeout, that nothing was re-run and the log",
-			report: VerifyGateReport{Attempt: 2, Cap: 2, TimedOut: "1h0m0s", LogPath: log},
-			want:   "verify gate failed after 2 attempt(s) of 2: the verify command did not finish within 1h0m0s, was killed and was not re-run, see " + log,
+			report: VerifyGateReport{Attempt: 2, Cap: 2, TimedOut: "gate tier2 exceeded timeout_min 30m0s and was killed", LogPath: log},
+			want:   "verify gate failed after 2 attempt(s) of 2: the verify command timed out (gate tier2 exceeded timeout_min 30m0s and was killed) and was not re-run, see " + log,
 		},
 		{
 			name:   "a SIGQUIT report names the hang, the stacks and the log",

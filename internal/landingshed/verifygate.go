@@ -123,7 +123,7 @@ func newVerifyGate(deps Deps) verifyGate {
 		dirty:            verifytree.DirtyPaths,
 		now:              time.Now,
 		verify: func(ctx context.Context, p verifytree.Paths, site verifytree.Site, command string) (verifytree.Result, error) {
-			return verifytree.Verify(ctx, p, site, command, verifytree.Timeout, deps.GateSlots)
+			return verifytree.Verify(ctx, p, site, command)
 		},
 	}
 }
@@ -282,7 +282,7 @@ func (g verifyGate) verdict(result verifytree.Result, what, producer, parentBran
 		return dirtyReason("when the "+what+" was about to run", result.Dirty), nil
 	case verifytree.StatusFailed:
 		if result.TimedOut {
-			return fmt.Sprintf("%s did not finish within %s after merging parent branch %q; output: %s; fix the hanging test on the task branch, then resume", what, verifytree.Timeout, parentBranch, result.Log), nil
+			return fmt.Sprintf("%s timed out after merging parent branch %q: %s; output: %s; fix the hanging test on the task branch, or, for a tier that is slow but healthy, rewrite the tier whole from the prime with `lyx config gate --set 'tiers.tier<N>={...}'`, carrying every key of the tier and the raised timeout_min, since a dotted key under the tier writes an entry the loader refuses; then resume", what, parentBranch, result.Detail, result.Log), nil
 		}
 		if result.ExitCode < 0 {
 			return fmt.Sprintf("%s could not start after merging parent branch %q: %s; output: %s", what, parentBranch, result.Detail, result.Log), nil
