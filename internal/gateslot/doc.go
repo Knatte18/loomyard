@@ -62,10 +62,19 @@
 // Config.GateCall renders the one `lyx gate test --wait --tier <n>...` call a site runs, in the list's order and followed by the scope words, and "" for an empty `publish` list.
 // Config.TiersValue renders the tier lines and the Go-read gate lists a prompt takes, or `none` when no tier is declared.
 //
-// # Watchdog line
+// # Watchdog and timeout lines
 //
 // The line the gate test's CPU watchdog prints after a quit is rendered by WatchdogLine and found by FindWatchdogQuit.
 // BusyQuitWayForward is the way forward after one.
+// The line the gate prints when a tier outlives its `timeout_min` is rendered by TierTimeoutLine and found by FindTierTimeout;
+// it names the tier, the timeout and the whole-tier `lyx config gate --set` rewrite that raises it.
+//
+// # Run log
+//
+// RunLogDir is `<gateDir>/runs`, under the board's never-tracked `.lyx` inside a hub and under the worktree's own outside one, so the records outlive the worktree.
+// WriteRunRecord writes one RunRecord per tier run as `<stamp>-tier<N>-<pid>.json` with the run's full output beside it as a `.log`, and prunes files older than 14 days first.
+// The record is a domain log that no run reads to proceed.
+// TierSummaryLine renders the one stderr line the gate prints after each tier run, and FailedTier finds the last failing one in a log, so a site that keeps the gate's output can name the failing tier.
 //
 // # Wait records
 //
