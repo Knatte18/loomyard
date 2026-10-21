@@ -633,7 +633,7 @@ Pass --apply to write the reconciled files to disk atomically;
 a file is rewritten when the reconcile adds, removes or drops anything.
 A module that retires keys or floors a value first migrates its present file: the dry-run lists
 each rewrite under the module's "migrated" key, and --apply writes the migrated
-file even when the reconcile adds and removes nothing.
+file even when the reconcile adds, removes and drops nothing.
 Hub-wide modules (fabric, board) are reported, not reconciled here: a leftover
 per-worktree copy is "retired" when the hub file holds everything it holds
 (--apply deletes it), or "divergent" when it holds an entry the hub file lacks
