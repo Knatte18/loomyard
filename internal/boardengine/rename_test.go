@@ -15,10 +15,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 )
 
-// newRenameBoard returns a board whose clock reads *now, holding other, old, waiter, prose and near in that store order.
+// newRenameBoard returns a board whose clock reads *now, holding other, old, waiter, prose, exact, starts, ends and near in that store order.
 // old carries every field a rename must keep, a kept unknown key included, and mentions its own slug;
 // waiter is a run-held task depending on other and old;
-// prose mentions old as a whole slug, and near holds it only inside longer words.
+// prose, exact, starts and ends mention old as a whole slug mid-text, as the whole text, at its start and at its end,
+// and near holds it only beside a hyphen, underscore, letter or digit.
 func newRenameBoard(t *testing.T, now *time.Time) (*boardengine.Board, string) {
 	t.Helper()
 	boardPath := t.TempDir()
@@ -31,7 +32,10 @@ func newRenameBoard(t *testing.T, now *time.Time) (*boardengine.Board, string) {
 			"run_settings": map[string]any{"darn": map[string]any{"review_max_bounces": 1}}, "profile": "light"},
 		{"slug": "waiter", "title": "Waiter", "kind": boardengine.KindTask, "labels": bugLabels, "depends_on": []string{"other", "old"}},
 		{"slug": "prose", "title": "Prose", "labels": bugLabels, "body": "Picks up after old lands."},
-		{"slug": "near", "title": "Near", "labels": bugLabels, "brief": "old-thing, bold and old_x are other words"},
+		{"slug": "exact", "title": "Exact", "labels": bugLabels, "body": "old"},
+		{"slug": "starts", "title": "Starts", "labels": bugLabels, "body": "old comes first"},
+		{"slug": "ends", "title": "Ends", "labels": bugLabels, "brief": "comes after old"},
+		{"slug": "near", "title": "Near", "labels": bugLabels, "brief": "old-thing, bold, old_x, old2 and 2old are other words"},
 	}
 	for _, fields := range entries {
 		if _, err := b.UpsertTask(fields); err != nil {
@@ -78,7 +82,7 @@ func TestRename_KeepsEntryRewritesDependentsAndReportsMentions(t *testing.T) {
 	if result.From != "old" {
 		t.Errorf("Rename().From = %q; want %q", result.From, "old")
 	}
-	if wantMentions := []string{"new", "prose"}; !slices.Equal(result.Mentions, wantMentions) {
+	if wantMentions := []string{"new", "prose", "exact", "starts", "ends"};!slices.Equal(result.Mentions, wantMentions) {
 		t.Errorf("Rename().Mentions = %v; want %v", result.Mentions, wantMentions)
 	}
 
@@ -90,7 +94,7 @@ func TestRename_KeepsEntryRewritesDependentsAndReportsMentions(t *testing.T) {
 	for _, task := range full {
 		slugs = append(slugs, task.Slug)
 	}
-	if wantSlugs := []string{"other", "new", "waiter", "prose", "near"}; !slices.Equal(slugs, wantSlugs) {
+	if wantSlugs := []string{"other", "new", "waiter", "prose", "exact", "starts", "ends", "near"}; !slices.Equal(slugs, wantSlugs) {
 		t.Errorf("store order after rename = %v; want %v", slugs, wantSlugs)
 	}
 	if !reflect.DeepEqual(full[1], want) {
