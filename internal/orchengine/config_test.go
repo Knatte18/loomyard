@@ -43,11 +43,11 @@ func TestLoadConfig_TemplateResolvesWithNoFile(t *testing.T) {
 	if cfg.Mode() != orchengine.CycleCompact {
 		t.Errorf("Mode() = %q, want compact", cfg.Mode())
 	}
-	if got := cfg.Threshold(); got != 400000 {
-		t.Errorf("Threshold() = %d, want 400000", got)
+	if got := cfg.Threshold(); got != 200000 {
+		t.Errorf("Threshold() = %d, want 200000", got)
 	}
-	if got := cfg.SoftThreshold(); got != 300000 {
-		t.Errorf("SoftThreshold() = %d, want 300000", got)
+	if got := cfg.SoftThreshold(); got != 150000 {
+		t.Errorf("SoftThreshold() = %d, want 150000", got)
 	}
 	if got := cfg.SoftIdle(); got != 300*time.Second {
 		t.Errorf("SoftIdle() = %v, want 300s", got)
@@ -206,11 +206,11 @@ func TestLoadConfig_PermissionMode(t *testing.T) {
 func TestConfig_AccessorsFloorNonPositive(t *testing.T) {
 	for _, v := range []int{0, -1} {
 		cfg := orchengine.Config{ThresholdTokens: v, SoftThresholdTokens: v, SoftIdleS: v, IdleGraceS: v, HandoffTimeoutS: v, PollIntervalMS: v}
-		if got := cfg.Threshold(); got != 400000 {
-			t.Errorf("Threshold() with %d = %d, want 400000", v, got)
+		if got := cfg.Threshold(); got != 200000 {
+			t.Errorf("Threshold() with %d = %d, want 200000", v, got)
 		}
-		if got := cfg.SoftThreshold(); got != 300000 {
-			t.Errorf("SoftThreshold() with %d = %d, want 300000", v, got)
+		if got := cfg.SoftThreshold(); got != 150000 {
+			t.Errorf("SoftThreshold() with %d = %d, want 150000", v, got)
 		}
 		if got := cfg.SoftIdle(); got != 300*time.Second {
 			t.Errorf("SoftIdle() with %d = %v, want 300s", v, got)

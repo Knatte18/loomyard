@@ -12,6 +12,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // ErrNoWarpBinding matches, under errors.Is, the refusal of a weft that records no warp binding when none was supplied: resolveEffectiveWarpURL's and CloneHub's one-argument form's.
@@ -47,6 +50,21 @@ func readWarpBinding(boardDir string) (warpURL string, found bool) {
 		return "", false
 	}
 	return trimmed, true
+}
+
+// HubRepoURL returns the URL of the repository the hub at l works on:
+// the warp binding recorded at the hub's board dir, else the origin remote of l's warp worktree.
+// The binding wins when both exist, since it is the hub's recorded pairing.
+// It returns an error naming both sources when neither yields a URL.
+func HubRepoURL(l *lyxcwd.Location) (string, error) {
+	if recorded, found := readWarpBinding(BoardDir(l.HubPath)); found {
+		return recorded, nil
+	}
+	origin, err := gitrepo.New(l.WorktreePath()).RemoteURL("origin")
+	if err != nil {
+		return "", fmt.Errorf("the hub records no %s warp binding and its warp worktree has no usable origin remote: %w", WarpBindingFileName, err)
+	}
+	return origin, nil
 }
 
 // writeWarpBinding writes warpURL plus a trailing newline to <boardDir>/.lyx-warp, replacing any

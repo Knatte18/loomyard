@@ -11,11 +11,10 @@
 // internal/lyxcwd -- claiming membership here would be false, so this package gets no
 // seam_enforcement_test.go import allowlist.
 //
-// Before preflight.Check the row asks hubreconcile.Ensure to reconcile a hub whose build stamp is stale, as a safety net for a run whose start verb predates the binary change or that reaches the row without one, such as a `goto` re-entry.
+// Before preflight.Check the row asks hubreconcile.EnsureOrWarn to reconcile a hub whose build stamp is stale, as a safety net for a run whose start verb predates the binary change or that reaches the row without one, such as a `goto` re-entry.
 // The reconcile precedes the check so the config it commits leaves the tree clean for the worktree-clean check; a hub with a fresh stamp pays one file read.
-// A failure returns Stuck, with a reason that names the worktree, the file and the cause and ends with a way forward naming `lyx loom resume`;
-// a hub reconcile lock still held when the wait runs out returns Stuck with its own reason.
-// A failure in any pair of the hub stops the row, so no run in the hub starts or resumes until the named file is fixed.
+// A failure, a hub reconcile lock still held when the wait runs out included, is logged at Warn with its way forward and the row goes on to the check, no longer Stuck.
+// The config is left as it was and the stamp stays stale, so the next start verb or Preflight row retries the reconcile.
 //
 // It declares its own unexported entryErr/cancelErr helpers (ctx.go) for the same
 // deliberate-duplication reason internal/loomshed/doc.go and internal/landingshed/ctx.go already

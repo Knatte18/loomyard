@@ -21,6 +21,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battencli"
 	"github.com/Knatte18/loomyard/internal/boardcli"
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/burlercli"
 	"github.com/Knatte18/loomyard/internal/cleanupcli"
 	"github.com/Knatte18/loomyard/internal/clihelp"
@@ -126,6 +127,10 @@ Shortcuts, declared in internal/shortcutcli's embedded file, are listed under th
 				logger.Arm()
 				// The pause gate holds this process's network git and GitHub calls while a pause covers it.
 				tendercli.InstallNetworkGate(cmd.Context(), pauseSlugOverride(cmd))
+				// A push origin refuses reaches the prime orch as creel mail from FABRIC, whichever process pushed.
+				orchcli.InstallPushNotifier(cmd.Context())
+				// A records replay, in the detached push child as in Bolt's pull-first, merges the board by entry through boardengine.
+				fabricengine.InstallBoardReplay(boardengine.FabricReplay{})
 			}
 			// Seeding must never block a command from running, regardless of its outcome.
 			seedStencils(cmd)

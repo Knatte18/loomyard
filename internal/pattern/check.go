@@ -24,7 +24,7 @@ const (
 	HeadroomBytes = MaxOverviewBytes * 95 / 100
 
 	// MaxEntryLineChars caps one entry line's length in characters.
-	MaxEntryLineChars = 320
+	MaxEntryLineChars = 360
 
 	// entryBulletPrefix opens every entry line.
 	entryBulletPrefix = "- "

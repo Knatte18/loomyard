@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/runprofile"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -687,6 +688,7 @@ func TestDispatchHubWideBoard(t *testing.T) {
 	const invalid = "readme: [a]\ndesign_prefix: d-\ntypes:\n  bug: a defect\nlabels:\n  old: kept\n"
 	const unresolved = "readme: ${env:LYX_CONFIGCLI_TEST_UNSET}\ndesign_prefix: d-\ntypes:\n  bug: a defect\nlabels:\n  old: kept\n"
 	const listShaped = "types:\n  bug: a defect\nlabels:\n  - old\n"
+	loomRival := configengine.SparseBaseHeader + "review_max_bounces: 3\n"
 
 	// darnTreeVerify is the tree-scoped command the darn rows seed and save; it is one waiting gate call holding the {targets} marker the loader requires.
 	const darnTreeVerify = "lyx gate test --wait --tier 1 {targets}"
@@ -697,7 +699,11 @@ func TestDispatchHubWideBoard(t *testing.T) {
 		// module is the module the row seeds, dispatches and reads the board file and staging copy of; empty means board.
 		module string
 		// seed is the board dir file's starting bytes; empty means seeded.
-		seed      string
+		seed string
+		// absent leaves the board dir file unwritten before the dispatch.
+		absent bool
+		// layer is the --layer value the row dispatches with.
+		layer     string
 		printOnly bool
 		setFlags  []string
 		editor    func(fx hubFixture) configengine.EditorFunc
@@ -897,6 +903,84 @@ func TestDispatchHubWideBoard(t *testing.T) {
 			},
 		},
 		{
+			// The editor appends to the bytes the staging copy started from, so the board file proves what the editor was shown.
+			name:   "editor edit of an absent loom default shows the sparse header and commits the header with the added unit",
+			module: "loom",
+			absent: true,
+			layer:  "default",
+			editor: func(fx hubFixture) configengine.EditorFunc {
+				return func(path string) error {
+					shown, err := os.ReadFile(path)
+					if err != nil {
+						return err
+					}
+					return os.WriteFile(path, append(shown, "review_max_bounces: 2\n"...), 0o644)
+				}
+			},
+			wantCommits: 1,
+			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
+				if want := configengine.SparseBaseHeader + "review_max_bounces: 2\n"; hubFile != want {
+					t.Errorf("hub file = %q; want %q", hubFile, want)
+				}
+			},
+		},
+		{
+			name:   "editor save of the unchanged header commits a key-less base that prints as the header",
+			module: "loom",
+			absent: true,
+			layer:  "default",
+			editor: func(fx hubFixture) configengine.EditorFunc {
+				return func(path string) error { return nil }
+			},
+			wantCommits: 1,
+			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
+				if hubFile != configengine.SparseBaseHeader {
+					t.Errorf("hub file = %q; want the header alone %q", hubFile, configengine.SparseBaseHeader)
+				}
+				var printed bytes.Buffer
+				code := dispatch(fx.layout, &printed, []string{"loom"}, makeNeverCalledEditor(t), (&fakeSyncTracker{}).syncFunc(), (&fakeHubCommit{}).commitFunc(), true, nil, "default", nil, true)
+				if code != 0 || printed.String() != configengine.SparseBaseHeader {
+					t.Errorf("print --layer default = %d, %q; want 0, %q", code, printed.String(), configengine.SparseBaseHeader)
+				}
+			},
+		},
+		{
+			name:   "editor edit of an absent seed-only profiles file still shows the template",
+			module: "profiles",
+			absent: true,
+			editor: func(fx hubFixture) configengine.EditorFunc {
+				return func(path string) error { return nil }
+			},
+			wantCommits: 1,
+			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
+				if hubFile != runprofile.ConfigTemplate() {
+					t.Errorf("hub file = %q; want the profiles template", hubFile)
+				}
+			},
+		},
+		{
+			name:   "absent loom default created by another writer while the editor is open is refused and keeps their bytes",
+			module: "loom",
+			absent: true,
+			layer:  "default",
+			editor: func(fx hubFixture) configengine.EditorFunc {
+				return func(path string) error {
+					if err := os.WriteFile(configengine.ConfigFile(fx.board, "loom"), []byte(loomRival), 0o644); err != nil {
+						return err
+					}
+					return os.WriteFile(path, []byte(configengine.SparseBaseHeader+"review_max_bounces: 2\n"), 0o644)
+				}
+			},
+			wantCode:    1,
+			wantCommits: 1,
+			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
+				if hubFile != loomRival {
+					t.Errorf("hub file = %q; want the other writer's bytes %q", hubFile, loomRival)
+				}
+				assertJSONErrContains(t, out, "changed while the editor was open")
+			},
+		},
+		{
 			name:   "darn editor save emptying tree_scope while tree_scope_verify stays set is refused with the clear-first way forward",
 			module: "darn",
 			seed:   darnSeeded,
@@ -989,7 +1073,9 @@ func TestDispatchHubWideBoard(t *testing.T) {
 			if row.seed != "" {
 				seed = row.seed
 			}
-			seedModuleConfig(t, fx.board, module, seed)
+			if !row.absent {
+				seedModuleConfig(t, fx.board, module, seed)
+			}
 			edit := makeNeverCalledEditor(t)
 			if row.editor != nil {
 				edit = row.editor(fx)
@@ -998,7 +1084,7 @@ func TestDispatchHubWideBoard(t *testing.T) {
 			sync := &fakeSyncTracker{}
 			var out bytes.Buffer
 
-			code := dispatch(fx.layout, &out, []string{module}, edit, sync.syncFunc(), commit.commitFunc(), row.printOnly, row.setFlags, "", row.guard, true)
+			code := dispatch(fx.layout, &out, []string{module}, edit, sync.syncFunc(), commit.commitFunc(), row.printOnly, row.setFlags, row.layer, row.guard, true)
 
 			if code != row.wantCode {
 				t.Errorf("dispatch = %d; want %d; output: %q", code, row.wantCode, out.String())

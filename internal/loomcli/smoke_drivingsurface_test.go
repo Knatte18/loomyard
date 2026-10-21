@@ -82,7 +82,7 @@ func TestSmokeStatusStrandAcrossDriverSeeds(t *testing.T) {
 
 	requireNoStatusStrandAfter := func(t *testing.T, loc *lyxcwd.Location, worktree, verb string, args ...string) {
 		t.Helper()
-		out, _, err := runLoomCLINoFatal(exe, worktree, verbSmokeTimeout, args...)
+		out, _, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, verbSmokeTimeout, args...)
 		if err != nil {
 			t.Fatalf("lyx %s: %v; output: %s", verb, err, out)
 		}
@@ -119,7 +119,7 @@ func TestSmokeStatusStrandAcrossDriverSeeds(t *testing.T) {
 				t.Fatalf("add status strand: %v", err)
 			}
 
-			out, _, err := runLoomCLINoFatal(exe, worktree, verbSmokeTimeout, "loom", "step")
+			out, _, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, verbSmokeTimeout, "loom", "step")
 			if err != nil {
 				t.Fatalf("lyx loom step: %v; output: %s", err, out)
 			}
@@ -146,7 +146,7 @@ func TestSmokeStatusStrandAcrossDriverSeeds(t *testing.T) {
 			current := "=" + eng.SessionName() + ":"
 			before := windowID(t, eng, current)
 
-			out, exit, err := runLoomCLINoFatal(exe, worktree, verbSmokeTimeout, "loom", "resume")
+			out, exit, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, verbSmokeTimeout, "loom", "resume")
 			if err != nil || exit != 0 {
 				t.Fatalf("lyx loom resume: exit %d, err %v; output: %s", exit, err, out)
 			}
@@ -192,7 +192,7 @@ func TestSmokeStatusStrandAcrossDriverSeeds(t *testing.T) {
 			// A second run in a reused pair starts over a session whose viewer turned follow off.
 			setFollow(t, eng, "off")
 
-			out, _, err := runLoomCLINoFatal(exe, worktree, verbSmokeTimeout, "loom", "start", "--no-attach")
+			out, _, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, verbSmokeTimeout, "loom", "start", "--no-attach")
 			if err != nil {
 				t.Fatalf("lyx loom start --no-attach: %v; output: %s", err, out)
 			}

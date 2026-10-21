@@ -87,7 +87,7 @@ func TestLoadConfig(t *testing.T) {
 		MasterTimeoutMin:   480,
 		RecoveryTimeoutMin: 60,
 		VerifyGateAttempts: 3,
-		KickstartPack:      true,
+		KickstartPack:      false,
 
 		KickstartPackPerCard: true,
 	}
@@ -98,7 +98,7 @@ func TestLoadConfig(t *testing.T) {
 		MasterTimeoutMin:   480,
 		RecoveryTimeoutMin: 60,
 		VerifyGateAttempts: 3,
-		KickstartPack:      true,
+		KickstartPack:      false,
 
 		KickstartPackPerCard: true,
 	}

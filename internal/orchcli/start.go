@@ -18,8 +18,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
@@ -246,6 +248,32 @@ func startFields(action, strand, promptSource, hint, warning string) map[string]
 	return fields
 }
 
+// reconcileHub runs the hub-scope origin reconcile from the prime, with the teardown, live-pair and parent-lock seams pairteardown builds and zero options.
+func reconcileHub(location *lyxcwd.Location) (fabricengine.OriginReport, error) {
+	teardown, err := pairteardown.New(location)
+	if err != nil {
+		return fabricengine.OriginReport{}, err
+	}
+	return fabricengine.ReconcileOrigin(location, fabricengine.ReconcileScope{}, teardown.OriginSeams(pairteardown.HubSeamOptions(location)), fabricengine.ReconcileOptions{})
+}
+
+// reconcileNote renders the line a fresh launch's prompt gains: the report's summary and the outstanding failed pushes with their branches.
+// It is empty when the reconcile moved, stopped and ended nothing and no push is outstanding.
+func reconcileNote(report fabricengine.OriginReport, failedPushes []map[string]any) string {
+	var parts []string
+	if summary := report.Summary(); summary != "" {
+		parts = append(parts, "origin reconcile at start: "+summary)
+	}
+	if len(failedPushes) > 0 {
+		branches := make([]string, 0, len(failedPushes))
+		for _, row := range failedPushes {
+			branches = append(branches, fmt.Sprintf("%v", row["branch"]))
+		}
+		parts = append(parts, fmt.Sprintf("%d failed push(es) outstanding: %s", len(failedPushes), strings.Join(branches, ", ")))
+	}
+	return strings.Join(parts, "\n")
+}
+
 // startCmd builds the `start` subcommand.
 func (c *orchCLI) startCmd() *cobra.Command {
 	var noAttach bool
@@ -256,8 +284,14 @@ func (c *orchCLI) startCmd() *cobra.Command {
 		Use:         "start",
 		Short:       "launch the orchestrator session and its watcher",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `start first ensures the runs strand, the overview of the batten runs in
-flight, in the session's overview window; a failure there only warns. start is
+		Long: `start first reconciles the hub's branches against origin, once it holds the
+start lock and before it touches any strand, and never refuses on the result: a
+stop, an unreachable origin or a reconcile error is reported for the orch to act
+on. The envelope gains "reconcile" (the report), "failed_pushes" (the outstanding
+failed pushes), "mutations" and "partial", and a fresh launch's prompt gains a line
+summarising the report and the failed pushes. start then ensures the runs strand,
+the overview of the batten runs in flight, in the session's overview window; a
+failure there only warns. start is
 idempotent. With a live orchestrator strand and a live watcher it changes
 nothing and reports them. With a live strand and no watcher it spawns the watcher.
 With a dead or absent strand it removes the corpse, launches a fresh session and
@@ -283,7 +317,17 @@ session.`,
 				return nil
 			}
 			out := cmd.OutOrStdout()
+			var report fabricengine.OriginReport
+			reconciled := false
+			// Once the reconcile has run, a failure still reports what it changed.
 			fail := func(err error) error {
+				if reconciled {
+					clihelp.SetExit(ctx, output.ErrFields(out, err.Error(), map[string]any{
+						"mutations": report.Mutations.Entries(),
+						"partial":   report.Mutations.Len() > 0,
+					}))
+					return nil
+				}
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
@@ -321,6 +365,22 @@ session.`,
 				}
 			}
 			defer releaseLock()
+
+			// The reconcile never refuses the start: the orch is the session that resolves what it reports.
+			report, reconcileErr := c.reconcile()
+			reconciled = true
+			var reconcileWarnings []string
+			if reconcileErr != nil {
+				reconcileWarnings = append(reconcileWarnings, fmt.Sprintf("origin reconcile failed: %v", reconcileErr))
+			}
+			if report.Unreachable {
+				reconcileWarnings = append(reconcileWarnings, "origin was unreachable, so the hub's branches were neither judged against it nor moved")
+			}
+			failedPushes, failedPushesErr := fabricengine.FailedPushFields(c.location.HubPath)
+			if failedPushesErr != nil {
+				failedPushes = []map[string]any{}
+				reconcileWarnings = append(reconcileWarnings, fmt.Sprintf("failed-push records could not be read: %v", failedPushesErr))
+			}
 
 			if err := c.reedUp(); err != nil {
 				return fail(err)
@@ -411,6 +471,9 @@ session.`,
 				if err != nil {
 					return fail(err)
 				}
+				if note := reconcileNote(report, failedPushes); note != "" {
+					prompt += "\n\n" + note
+				}
 				spec := c.orchSpec(prompt, time.Now())
 				spec.ResumeSessionID = resumeSessionID
 				started, err := c.starter.StartSession(spec)
@@ -455,7 +518,11 @@ session.`,
 
 			releaseLock()
 
-			fields := startFields(envAction, guid, promptSource, hint, warning)
+			fields := startFields(envAction, guid, promptSource, hint, joinFailures(append([]string{warning}, reconcileWarnings...)...))
+			fields["reconcile"] = report
+			fields["failed_pushes"] = failedPushes
+			fields["mutations"] = report.Mutations.Entries()
+			fields["partial"] = false
 			if continueFlag {
 				fields["session_id"] = resumeSessionID
 			}

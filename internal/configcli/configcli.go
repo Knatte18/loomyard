@@ -568,6 +568,7 @@ func runReconcile(ctx context.Context, out io.Writer, apply bool, layer string) 
 // reconcileEnvelope builds the reconcile verb's success fields: the aggregate applied flag and one object per result.
 func reconcileEnvelope(apply bool, results []configsync.Result) map[string]any {
 	modules := make([]map[string]any, len(results))
+	baseStripPending := false
 	for i, result := range results {
 		m := map[string]any{
 			"module":  result.Module,
@@ -595,8 +596,12 @@ func reconcileEnvelope(apply bool, results []configsync.Result) map[string]any {
 			m["divergent"] = result.Divergent
 		}
 		// stripped and inherited are exceptional too: only a worktree without the sparse marker has them, and reconcile reports them as pending without stripping.
+		// A default-layer result carries stripped for an unmigrated board as well, where it lists the base units the hub reconcile of a start verb strips.
 		if len(result.Stripped) > 0 {
 			m["stripped"] = result.Stripped
+			if result.Layer == configengine.LayerDefault {
+				baseStripPending = true
+			}
 		}
 		if len(result.Inherited) > 0 {
 			m["inherited"] = result.Inherited
@@ -625,10 +630,14 @@ func reconcileEnvelope(apply bool, results []configsync.Result) map[string]any {
 		}
 		modules[i] = m
 	}
-	return map[string]any{
+	fields := map[string]any{
 		"applied": apply,
 		"modules": modules,
 	}
+	if baseStripPending {
+		fields["base_strip"] = "the board's base files still hold units equal to the template; this command never strips them, and only the hub reconcile of a start verb such as `lyx loom resume` or `lyx batten run` does"
+	}
+	return fields
 }
 
 // Command returns the cobra command for lyx config.

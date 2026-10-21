@@ -119,6 +119,14 @@ type Deps struct {
 	// every-field-populated drift guard is what keeps it filled.
 	CommitStatus func() error
 
+	// Reconcile runs the origin reconcile over the run's own scope and returns its report, which both producers read before they act on the parent.
+	// Merge-In calls it after the status commit and before it takes the parent lock, and Finalize at entry under the parent lock the run already holds.
+	// A reconcile that judges the run ended or stopped is a Stuck, an unreachable origin proceeds, and a returned error is returned from Call.
+	//
+	// Nil means "no reconcile", following CommitStatus's nil-is-absent convention.
+	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
+	Reconcile func() (fabricengine.OriginReport, error)
+
 	// CommitParentRecords commits the parent pair's own run records, which Finalize calls after its catch-up merge-in and before the parent-side merge.
 	// Sibling runs leave their status records uncommitted in the parent pair, and the merge guard refuses any tracked modification there.
 	// A clean subtree is a no-op, and a returned error is Stuck.

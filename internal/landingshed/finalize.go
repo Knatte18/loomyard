@@ -146,6 +146,7 @@ func NewFinalize(deps Deps) (*Finalize, error) {
 //
 // Before its catch-up merge-in, Finalize takes the parent lock and tests that the parent did not move since Merge-In merged it:
 // a moved parent is a reroute Stuck, a paused lock wait or an unreadable lock record is a halting Stuck, and a landing that reaches Done releases the lock.
+// Under that lock it runs the run-scope origin reconcile: a run origin ended or stopped is Stuck, and an unreachable origin proceeds.
 //
 // Finalize is idempotent over an already-landed parent: when the parent already contains the task's
 // changes -- an operator squash-merged the pull request on GitHub, or an earlier Finalize landed and
@@ -195,6 +196,12 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 	// The catch-up merge-in below stays: the local tip is checked equal to the merged tip under the lock,
 	// so it brings no parent code the merge review has not covered, and it still syncs the records side.
 	if outcome, out, err, stop := holdParent(ctx, fz.guard, finalizeName); stop {
+		return outcome, out, err
+	}
+
+	// Step 1b3: judge the run against origin under the lock.
+	// A run whose Finalize already merged into the local parent here is never read as ended, so a Finalize re-entered after its done mark proceeds.
+	if outcome, out, err, stop := reconcileVerdict(ctx, finalizeName, fz.deps.Reconcile); stop {
 		return outcome, out, err
 	}
 
@@ -304,7 +311,8 @@ func (fz *Finalize) markTaskDone() {
 // reaches the remote rather than only this hub's parent worktree, and reports Done.
 // A transient push failure (shedtransient.Class non-empty) is returned as an error, so the driver re-steps once;
 // the re-step's parent-side Merge reports AlreadyUpToDate and goes straight to the push.
-// Any other failed push is Stuck: the merge has already landed locally, so a human pushes (or reconciles a diverged remote) by hand.
+// Any other failed push is Stuck: the merge has already landed locally, so a human pushes (or reconciles a diverged remote) by hand,
+// and a failure recorded as a failed push carries the way forward of its class in the reason instead.
 // Deps.PushSkipped suppresses the push, exactly as it does for the task branch.
 //
 // On its Done return only, a non-empty notice is queued through Deps.Notify, and a failure there is a logged warning that never changes the verdict.
@@ -317,7 +325,12 @@ func (fz *Finalize) pushParent(ctx context.Context, parentHandle parentMerger, n
 		if terr := transientFailure(ctx, finalizeName, "push parent branch", err); terr != nil {
 			return "", shedengine.OutputPointer{}, terr
 		}
-		reason := fmt.Sprintf("parent branch %q was merged locally but its push failed: %v; push it by hand", fz.deps.ParentBranch, err)
+		reason := fmt.Sprintf("parent branch %q was merged locally but its push failed: %v", fz.deps.ParentBranch, err)
+		// A classified failure's text already ends in the way forward of its class, and a plain push is what a hold-back refuses.
+		var failed *fabricengine.PushFailedError
+		if !errors.As(err, &failed) {
+			reason += "; push it by hand"
+		}
 		return fz.stuckOrCancelled(ctx, reason, "error", err)
 	}
 	if !fz.deps.PushSkipped && contains(fz.deps.Config.RequirePRToBase, fz.deps.ParentBranch) {

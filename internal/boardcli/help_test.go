@@ -108,6 +108,11 @@ func TestHelpSchema_LeafCommands(t *testing.T) {
 			mustNotContain: []string{"tier"},
 		},
 		{
+			name:        "rename",
+			args:        []string{"rename"},
+			mustContain: []string{"slug", "id", `"to"`, "depends_on", "mentions", "Example"},
+		},
+		{
 			name:           "find",
 			args:           []string{"find"},
 			mustContain:    []string{"--text", "kind", "slug", "title", "labels", "status"},
@@ -137,7 +142,7 @@ func TestHelpSchema_LeafCommands(t *testing.T) {
 	slugLimit := fmt.Sprintf("A slug is at most %d characters.", boardengine.MaxSlugLength)
 	statesSlugLimit := map[string]bool{
 		"get": true, "upsert": true, "upsert-batch": true, "set-status": true, "remove": true,
-		"merge": true, "promote": true, "set-deps": true, "intake import": true,
+		"merge": true, "promote": true, "rename": true, "set-deps": true, "intake import": true,
 	}
 
 	for _, tt := range tests {

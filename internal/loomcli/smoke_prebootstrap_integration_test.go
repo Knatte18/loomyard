@@ -177,7 +177,7 @@ func TestLoomStatusAndPauseOnNeverBootstrappedPair(t *testing.T) {
 
 // TestLoomResumeReconcilesTheHubConfigBeforeArming asserts only a start verb reconciles a hub whose build has no stamp.
 // Status leaves a retired key in a pair's committed batcher.yaml and writes no stamp.
-// Resume on an unparseable loom.yaml refuses, naming the file and the way forward, and writes no stamp.
+// Resume on an unparseable loom.yaml warns with the way forward, goes on, refuses at the loom config load that meets the same file, and writes no stamp.
 // Resume after the fix removes the key, commits it and writes the stamp, then refuses at reed Up before any server starts: the pair's reed config is bad.
 // The half past the reed config load, which needs a good reed config and a tmux server, is TestLoomResumeReconcilesThenRefusesWithoutLiveDriver.
 func TestLoomResumeReconcilesTheHubConfigBeforeArming(t *testing.T) {
@@ -199,30 +199,27 @@ func TestLoomResumeReconcilesTheHubConfigBeforeArming(t *testing.T) {
 		t.Fatalf("loom status wrote the build stamp; only a start verb reconciles")
 	}
 
-	// The reconcile commit fires a detached push that would outlive the test and race TempDir's removal of the bare remote;
-	// the test asserts the commit, never the push.
-	skipPush := []string{"FABRIC_SKIP_PUSH=1"}
-
 	loom, _ := configreg.Lookup("loom")
 	gitkit.CommitFile(t, recordsDir, configengine.ConfigFileRel("loom"), "a: [unclosed\n", "fixture: broken loom.yaml")
-	out, exit, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipPush, 60*time.Second, "loom", "resume")
+	out, exit, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, 60*time.Second, "loom", "resume")
 	if err != nil {
 		t.Fatalf("loom resume on a broken loom.yaml: %v; output: %s", err, out)
 	}
 	if exit != 1 {
 		t.Errorf("loom resume on a broken loom.yaml exit = %d; want 1; output: %s", exit, out)
 	}
-	for _, want := range []string{configengine.ConfigFile(worktree, "loom"), "lyx config loom", "re-run this command"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("loom resume refusal does not name %q; output: %s", want, out)
-		}
+	// The Warn precedes the loom config load's own refusal of the same broken file, which proves the failed reconcile no longer stopped the verb.
+	warnAt := strings.Index(out, "retry the reconcile")
+	loadAt := strings.LastIndex(out, configengine.ConfigFile(worktree, "loom"))
+	if warnAt < 0 || loadAt < warnAt {
+		t.Errorf("loom resume output has the reconcile Warn at %d and the loom config load's refusal of loom.yaml at %d; want the Warn first, then the refusal; output: %s", warnAt, loadAt, out)
 	}
 	if _, err := os.Stat(hubStampPath(loc)); err == nil {
 		t.Fatalf("loom resume wrote the build stamp after a failed reconcile")
 	}
 	gitkit.CommitFile(t, recordsDir, configengine.ConfigFileRel("loom"), loom.Template(), "fixture: fixed loom.yaml")
 
-	if out, _, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipPush, 60*time.Second, "loom", "resume"); err != nil {
+	if out, _, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, 60*time.Second, "loom", "resume"); err != nil {
 		t.Fatalf("loom resume: %v; output: %s", err, out)
 	}
 
@@ -253,7 +250,7 @@ func TestLoomFailedReedUpRefuses(t *testing.T) {
 
 	requireStartRefusal := func(t *testing.T, loc *lyxcwd.Location, worktree string) {
 		t.Helper()
-		out, exit, err := runLoomCLINoFatal(exe, worktree, verbTimeout, "loom", "start", "--no-attach")
+		out, exit, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipBoardPush, verbTimeout, "loom", "start", "--no-attach")
 		if err != nil {
 			t.Fatalf("lyx loom start --no-attach: %v; output: %s", err, out)
 		}
@@ -279,7 +276,7 @@ func TestLoomFailedReedUpRefuses(t *testing.T) {
 		loc, worktree := newBadReedUpFixture(t, seedGoDriverRun)
 
 		t.Run("step refuses with the bootstrap kind", func(t *testing.T) {
-			out, exit, err := runLoomCLINoFatal(exe, worktree, verbTimeout, "loom", "step")
+			out, exit, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipBoardPush, verbTimeout, "loom", "step")
 			if err != nil {
 				t.Fatalf("lyx loom step: %v; output: %s", err, out)
 			}
@@ -325,7 +322,7 @@ func TestLoomFailedReedUpRefuses(t *testing.T) {
 			t.Fatalf("ReadOrigin: found=%v err=%v", found, err)
 		}
 
-		out, exit, err := runLoomCLINoFatal(exe, worktree, verbTimeout, "loom", "step")
+		out, exit, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipBoardPush, verbTimeout, "loom", "step")
 		if err != nil {
 			t.Fatalf("lyx loom step: %v; output: %s", err, out)
 		}

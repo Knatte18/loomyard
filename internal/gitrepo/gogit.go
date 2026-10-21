@@ -70,6 +70,8 @@ func readGoGit[T any](r *Repo, read func(repo *git.Repository) (T, error)) (T, e
 
 // reindexIfPacksChanged reports whether the pack set differs from snapshot, the fingerprint a failed read began under, reindexing repo's storer first unless another caller already did for this pack set.
 // It returns false, leaving the failed read's error to stand, for a storer that is not filesystem-backed and for a fingerprint it cannot read.
+// The index rebuild is forced under the exclusive lock because go-git rebuilds it unsynchronized on the next read.
+// Readers holding only the shared lock would otherwise race into a half-built index.
 func (r *Repo) reindexIfPacksChanged(repo *git.Repository, snapshot string) bool {
 	storer, ok := repo.Storer.(*filesystem.Storage)
 	if !ok {
@@ -85,6 +87,7 @@ func (r *Repo) reindexIfPacksChanged(repo *git.Repository, snapshot string) bool
 	}
 	if current != r.lastPackFingerprint {
 		storer.Reindex()
+		_ = storer.HasEncodedObject(plumbing.ZeroHash)
 		r.lastPackFingerprint = current
 		r.reindexCount++
 	}

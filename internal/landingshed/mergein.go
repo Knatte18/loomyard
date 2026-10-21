@@ -111,6 +111,7 @@ func NewMergeIn(deps Deps) (*MergeIn, error) {
 
 // Call runs one Merge-In iteration.
 //
+// It runs the run-scope origin reconcile after the status commit and before the lock: a run origin ended or stopped is Stuck, and an unreachable origin proceeds.
 // It takes the parent lock before it touches the parent and keeps it on every way out: a later row or the loop's exit frees it.
 // A paused wait and an unreadable lock record are Stuck with Halt, so the run stops at this row.
 // A parent branch that is ahead of or diverged from its upstream, a parent pair that cannot be fast-forwarded and a failed `landing` gate are Stuck for a human;
@@ -126,6 +127,11 @@ func (m *MergeIn) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 		if err := m.deps.CommitStatus(); err != nil {
 			return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: commit status file: %w", mergeInName, err)
 		}
+	}
+
+	// The run-scope reconcile judges and never moves the parent: the fast-forward below does, under the lock.
+	if outcome, out, err, stop := reconcileVerdict(ctx, mergeInName, m.deps.Reconcile); stop {
+		return outcome, out, err
 	}
 
 	reason, err := m.guard.ensure(ctx, mergeInName)

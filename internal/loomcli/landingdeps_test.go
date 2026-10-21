@@ -412,3 +412,24 @@ func TestLandingAlignmentDeps_Config(t *testing.T) {
 		}
 	})
 }
+
+func TestReportOfRunKeepsOnlyTheRunsOwnEntry(t *testing.T) {
+	t.Parallel()
+	report := fabricengine.OriginReport{
+		Unreachable: true,
+		Branches:    []fabricengine.BranchOutcome{{Branch: "parent"}},
+		Entries: []fabricengine.EntryOutcome{
+			{Slug: "parent", State: fabricengine.EntryStopped},
+			{Slug: "child", State: fabricengine.EntryActive},
+		},
+	}
+
+	got := reportOfRun(report, "child")
+
+	if len(got.Entries) != 1 || got.Entries[0].Slug != "child" {
+		t.Errorf("reportOfRun(report, %q).Entries = %+v; want only the child entry", "child", got.Entries)
+	}
+	if !got.Unreachable || len(got.Branches) != 1 {
+		t.Errorf("reportOfRun(report, %q) = %+v; want the other fields unchanged", "child", got)
+	}
+}

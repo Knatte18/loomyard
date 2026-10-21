@@ -1,5 +1,5 @@
 // Package hubreconcile reconciles a hub's config once after a binary change, under a hub lock, and commits everything it wrote.
-// Its one entry point is Ensure; a start verb calls it before loading any module config.
+// Its one entry point is Ensure; a start verb calls it, through EnsureOrWarn, before loading any module config.
 //
 // The package is told the hub's geometry and derives none (PATTERN-told-geometry), so it never imports internal/lyxcwd.
 //
@@ -7,8 +7,9 @@
 //
 // The build stamp is <BoardDir>/.lyx/config/build-stamp.json and the hub lock <BoardDir>/.lyx/config/reconcile.lock, both in the never-tracked mirror of the hub-wide config dir.
 // The stamp holds a build key, the hex SHA-256 of the binary's VCS revision, its modified flag and the config registry's fingerprint, with the revision and the flag in readable form for the log.
-// A stamp naming the running key makes Ensure return after one file read and one stat per per-worktree module, with no lock and no git; an absent or unreadable stamp counts as stale.
+// A stamp naming the running key makes Ensure return after one file read, one stat per per-worktree module and one for the board marker, with no lock and no git; an absent or unreadable stamp counts as stale.
 // A stamp naming the running key also counts as stale when any per-worktree module's repo default is absent under the board dir, so a default deleted after a walk is reseeded by the next start verb.
+// It counts as stale as well while the board marker `<BoardDir>/_lyx/config/base-sparse` is absent, so a board not yet stripped to sparse base files is walked, and a marker removed by hand with a board commit makes the next start verb's walk strip the base files again.
 // The lock wait defaults to DefaultLockWait and is an Options field; a lock still held when it runs out returns *LockTimeoutError and touches nothing.
 // The holder's own per-worktree commits wait on each pair's write lock as a plain commit does, unbounded.
 //
@@ -18,12 +19,21 @@
 // The walk pulls the board first, reconciles the board's config and commits it on the board under a subject carrying the binary label, seeding every absent per-worktree repo default from the prime or the template, then reconciles the prime's sparse layers, then lists the hub's code worktrees again and reconciles each pair not yet walked.
 // It repeats until a listing finds no new pair, so a pair registered while the walk ran is walked before the stamp is written.
 // The board commit carries the per-worktree repo defaults beside the hub-wide files.
-// Each worktree's applied files are committed in that worktree, and the board is pushed, carrying the board commit and any an earlier run left unpushed.
+// Each worktree's applied files are committed in that worktree, and the board's push goes to the detached `lyx board sync` every board write spawns, which carries the board commit and any an earlier run left unpushed.
+// The walk spawns it and returns at once, so no start verb waits on a push to GitHub, and the build stamp never waits on one either.
+//
+// # The base strip
+//
+// Every non-seed-only base file on the board is sparse over the template.
+// While the board marker is absent, the walk strips each present base file once, of the units equal to the template or to a former template value, and writes a base left with no unit as the header-only file.
+// It writes the marker only when every registered module's base file exists, after the files, and commits files and marker in the one board commit; a pass that leaves a base absent withholds the marker and the next walk strips again.
+// A failed hub-wide step restores the board's files to their prior bytes and removes a marker the pass wrote, while steps that committed before it keep their commits.
+// With the marker present the walk strips no base, so a unit later set equal to the template stays as a pin.
 //
 // # The sparse migration
 //
 // A worktree without the sparse marker `_lyx/config/sparse` still holds today's full config files.
-// Once every per-worktree module's repo default exists, the walk strips each such file of the keys that equal what the layers below it resolve to, so every key the file held resolves unchanged.
+// Once every per-worktree module's repo default exists, the walk strips each such file of the keys that equal what the layers below it resolve to, and of the keys that equal a former template value, so every key the file held resolves unchanged bar a former value, which resolves to the new template.
 // A file left empty is deleted, and the marker is written after the files; the files, deletions and marker go into the worktree's one reconcile commit.
 // The log line of a changed module lists the keys it stripped and the keys it inherited, the repo default's keys the file lacked and whose value differs from the template's, which the operator can pin with `lyx config <module> --set`.
 // A worktree carrying the marker is never stripped, and a pair forked from a migrated worktree inherits the marker.
@@ -44,10 +54,12 @@
 // A mid-merge skip leaves the stamp absent, so the next start verb retries.
 //
 // The hub-wide write is skipped, with nothing written, when the board cannot be brought up to date: the fetch failed, an uncommitted change blocks it, or the board's own commits cannot be replayed onto a moved upstream.
-// That skip leaves the stamp absent as well, and so does a failed board push, on every rerun until a push lands the hub-wide commit.
-// A rerun whose unpushed hub-wide commit sits over a moved upstream meets the divergence skip and repeats its Warn;
-// only a resolved `git pull --rebase` in the board dir, or a board push that lands the commit, clears it.
-// A board with no upstream is never skipped: it is written and committed with no pull, and a failed push of it is logged while the stamp is written, so a board with no reachable remote is not re-walked on every start verb.
+// That skip leaves the stamp absent as well, on every rerun until the board is brought up to date.
+// A hub-wide commit that landed locally writes the stamp whether or not its push has landed: a push origin refuses reaches the orch as a failed-push record, not as an absent stamp.
+// A rerun whose unpushed hub-wide commit sits over a moved upstream is cleared by the board's pull-first replay, which replays the commit onto the moved upstream, so the hub-wide write and the stamp follow.
+// Only a conflict the replay cannot settle, an upstream that changed the same config file, meets the divergence skip and repeats its Warn on every rerun;
+// the Warn names the conflicting paths and the two ways to settle them, and a board push that lands the commit clears it too.
+// A board with no upstream is never skipped: it is written and committed with no pull, and its detached sync fails on its own, so a board with no reachable remote is not re-walked on every start verb.
 //
 // # The pair call
 //
@@ -56,8 +68,12 @@
 //
 // # Errors
 //
-// *WorktreeError names the worktree, the file and the cause of a reconcile or commit failure, and ends with the way forward.
+// *WorktreeError names the worktree, the file and the cause of a reconcile or commit failure, and ends with the way forward:
+// `lyx config <module> --layer default` from the prime worktree for a board file, `lyx config <module>` for a worktree file, and only the file and the re-run for the board marker.
 // *LockTimeoutError names the lock.
+// EnsureOrWarn is Ensure for the stamp-gated reads, the start verbs and the Preflight row: a failure logs one Warn naming the error and the way forward, and the caller goes on with the config as it was.
+// The failing step's files are restored and no stamp is written, so the next start verb retries; steps that committed before the failure keep their commits.
+// The pair call and the clone's walk keep Ensure and its error.
 //
 // # Accepted gaps
 //

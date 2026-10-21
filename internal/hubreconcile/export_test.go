@@ -2,8 +2,21 @@
 
 package hubreconcile
 
+// SetSpawnBoardSyncForTest replaces the detached board sync the hub-wide reconcile spawns and returns a function that reinstates the previous one.
+// The swap is package-global, so a test calling it must not run in parallel.
+func SetSpawnBoardSyncForTest(spawn func(boardPath string) error) (restore func()) {
+	previous := spawnBoardSync
+	spawnBoardSync = spawn
+	return func() { spawnBoardSync = previous }
+}
+
 // EnsureWithHooks runs Ensure's walk with test hooks: afterEnumerate after each worktree listing, and beforeCommit between a worktree's write and its commit.
 // A nil hook is skipped.
 func EnsureWithHooks(geom Geometry, opts Options, afterEnumerate func(), beforeCommit func(worktreePath string)) error {
 	return ensure(geom, opts, walkHooks{afterEnumerate: afterEnumerate, beforeCommit: beforeCommit})
+}
+
+// EnsureFailingAfterHubWideWrite runs Ensure's walk with the board write failing with failure once the hub-wide files and the board marker are written.
+func EnsureFailingAfterHubWideWrite(geom Geometry, opts Options, failure error) error {
+	return ensure(geom, opts, walkHooks{afterHubWideWrite: func() error { return failure }})
 }

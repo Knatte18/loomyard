@@ -24,6 +24,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
@@ -59,9 +61,13 @@ func stampKey(t *testing.T, geom hubreconcile.Geometry) (string, bool) {
 	return s.BuildKey, true
 }
 
-// writeCurrentStamp marks the hub as already reconciled by the test binary's build.
+// writeCurrentStamp marks the hub as already reconciled by the test binary's build: it writes the stamp and, when the board lacks it, commits the board's base-sparse marker, since a stamp is stale on an unmarked board.
 func writeCurrentStamp(t *testing.T, geom hubreconcile.Geometry) {
 	t.Helper()
+
+	if _, err := os.Stat(configengine.BaseSparseMarker(geom.BoardDir)); errors.Is(err, os.ErrNotExist) {
+		gitkit.CommitFile(t, geom.BoardDir, configengine.BaseSparseMarkerRel(), "# the board's base files are sparse\n", "fixture: board marker")
+	}
 
 	data, err := json.Marshal(map[string]string{"build_key": runningKey()})
 	if err != nil {
@@ -85,7 +91,7 @@ func seedRetiredKey(t *testing.T, recordsRoot string) {
 
 	module, _ := configreg.Lookup("batcher")
 	content := strings.Replace(module.Template(), "orientation: 31400", retiredKey+": 52000", 1)
-	content = strings.Replace(content, "budget: 450000", differingBatcherBudget, 1)
+	content = strings.Replace(content, "budget: 200000", differingBatcherBudget, 1)
 	if !strings.Contains(content, retiredKey) || !strings.Contains(content, differingBatcherBudget) {
 		t.Fatalf("batcher template no longer carries the orientation and budget lines the fixture rewrites")
 	}
@@ -95,7 +101,122 @@ func seedRetiredKey(t *testing.T, recordsRoot string) {
 // differingLoomBounces is a loom review budget that differs from the repo default's, so a loom.yaml holding it survives the strip.
 const differingLoomBounces = "review_max_bounces: 99"
 
-// commitPreMigrationFiles commits, in the records worktree at recordsRoot, a full pre-migration per-worktree file set -- each per-worktree module's template, loom's with one key differing from the repo default -- and deletes the sparse marker, so the walk finds an unmigrated worktree with something to strip.
+// replaceOnce returns content with the first old replaced by replacement, failing the test when content holds no old.
+func replaceOnce(t *testing.T, module, content, old, replacement string) string {
+	t.Helper()
+
+	if !strings.Contains(content, old) {
+		t.Fatalf("%s template no longer carries the %q text the fixture rewrites", module, old)
+	}
+	return strings.Replace(content, old, replacement, 1)
+}
+
+// formerUnits sets each top-level scalar unit of template to the given YAML value, keeping its line comment.
+// It fails the test on a unit the template lacks.
+func formerUnits(t *testing.T, module, template string, former map[string]string) string {
+	t.Helper()
+
+	lines := strings.Split(template, "\n")
+	for key, value := range former {
+		found := false
+		for i, line := range lines {
+			if !strings.HasPrefix(line, key+": ") {
+				continue
+			}
+			found = true
+			comment := ""
+			if at := strings.Index(line, "  #"); at >= 0 {
+				comment = line[at:]
+			}
+			lines[i] = key + ": " + value + comment
+		}
+		if !found {
+			t.Fatalf("%s template no longer carries the %s unit the fixture rewrites", module, key)
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// loomFormerUnits are loom's tuned units at their former template values: the lens fans, the models, the driver, the bounce budgets and the auto-accept.
+func loomFormerUnits() map[string]string {
+	former := map[string]string{
+		"webster_reviewer_model": "sonnet[high]",
+		"merge_reviewer_model":   "sonnet[high]",
+		"driver":                 "sonnet[medium]",
+		"discussion_max_bounces": "~",
+		"webster_max_bounces":    "~",
+		"webster_auto_accept":    "false",
+	}
+	for _, unit := range []string{"discussion_lenses", "plan_lenses", "discussion_reviewer_model", "plan_reviewer_model", "webster_fixer_model", "merge_fixer_model"} {
+		former[unit] = `""`
+	}
+	for _, segment := range []string{"discussion", "plan", "webster", "merge"} {
+		former[segment+"_reviewer_fan"] = `""`
+		former[segment+"_fixer_fan"] = `""`
+	}
+	return former
+}
+
+// preMigrationBase returns module's base file as a hub held it before the tuned defaults: its current template with every tuned unit at its former value.
+func preMigrationBase(t *testing.T, module configreg.Module) string {
+	t.Helper()
+
+	template := module.Template()
+	switch module.Name {
+	case "loom":
+		return formerUnits(t, module.Name, template, loomFormerUnits())
+	case "shed":
+		return formerUnits(t, module.Name, template, map[string]string{"driver_kind": "llm"})
+	case "darn":
+		former := formerUnits(t, module.Name, template, map[string]string{"darn_reviewer_model": "sonnet[high]", "darn_fixer_model": `""`, "darn_reviewer_fan": `""`, "darn_fixer_fan": `""`})
+		return replaceOnce(t, module.Name, former, `verify: ""`, "verify: make verify")
+	case "claude":
+		var kept []string
+		found, inRoles := false, false
+		for _, line := range strings.Split(template, "\n") {
+			switch {
+			case strings.HasPrefix(line, "prompt_cache_ttl_roles:"):
+				found, inRoles = true, true
+				kept = append(kept, "prompt_cache_ttl_roles: {driver: 1h, webster: 1h}")
+			case inRoles && strings.HasPrefix(line, " "):
+			default:
+				inRoles = false
+				kept = append(kept, line)
+			}
+		}
+		if !found {
+			t.Fatalf("claude template no longer carries the prompt_cache_ttl_roles map the fixture rewrites")
+		}
+		return strings.Join(kept, "\n")
+	case "orch":
+		return formerUnits(t, module.Name, template, map[string]string{"soft_threshold_tokens": "300000", "threshold_tokens": "400000"})
+	case "webster":
+		return formerUnits(t, module.Name, template, map[string]string{"kickstart_pack": "true"})
+	case "batcher":
+		return replaceOnce(t, module.Name, template, "budget: 200000", "budget: 450000")
+	}
+	return template
+}
+
+// commitPreMigrationBase commits, on the board at boardDir, every non-seed-only module's base file as a hub held it before the tuned defaults, with darn's verify set to the hub's own command, and deletes the board marker, so the walk finds an unmigrated board with something to strip.
+func commitPreMigrationBase(t *testing.T, boardDir string) {
+	t.Helper()
+
+	for _, module := range configreg.Modules() {
+		if module.SeedOnly {
+			continue
+		}
+		path := configengine.ConfigFile(boardDir, module.Name)
+		if err := os.WriteFile(path, []byte(preMigrationBase(t, module)), 0o644); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+	}
+	gitkit.Git(t, boardDir, "rm", "-q", "--ignore-unmatch", "--", filepath.ToSlash(configengine.BaseSparseMarkerRel()))
+	gitkit.Git(t, boardDir, "add", "-A")
+	gitkit.Git(t, boardDir, "commit", "-q", "-m", "fixture: pre-migration board base files")
+}
+
+// commitPreMigrationFiles commits, in the records worktree at recordsRoot, a full pre-migration per-worktree file set -- each per-worktree module's template, loom's with one key differing from the repo default and its former discussion_lenses, shed's with its former driver_kind -- and deletes the sparse marker, so the walk finds an unmigrated worktree with something to strip.
 func commitPreMigrationFiles(t *testing.T, recordsRoot string) {
 	t.Helper()
 
@@ -104,11 +225,15 @@ func commitPreMigrationFiles(t *testing.T, recordsRoot string) {
 			continue
 		}
 		content := module.Template()
-		if module.Name == "loom" {
+		switch module.Name {
+		case "loom":
 			content = strings.Replace(content, "review_max_bounces: 3", differingLoomBounces, 1)
 			if !strings.Contains(content, differingLoomBounces) {
 				t.Fatalf("loom template no longer carries the review_max_bounces line the fixture rewrites")
 			}
+			content = replaceOnce(t, module.Name, content, "discussion_lenses: twill-discussion", `discussion_lenses: ""`)
+		case "shed":
+			content = replaceOnce(t, module.Name, content, "driver_kind: go", "driver_kind: llm")
 		}
 		path := filepath.Join(recordsRoot, configengine.ConfigFileRel(module.Name))
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -237,23 +362,47 @@ func pushBoardFromSecondClone(t *testing.T, board string) string {
 	return branch
 }
 
+// It does not call t.Parallel: it swaps the package-global detached board sync.
 func TestEnsure_StaleBuildReconcilesAndCommitsEveryWorktree(t *testing.T) {
-	t.Parallel()
-
 	for _, tc := range []struct {
-		name            string
-		boardBehind     bool
-		loomDefaultGone bool
+		name string
+		run  staleRun
 	}{
 		{name: "board up to date"},
-		{name: "board behind its upstream", boardBehind: true},
-		{name: "loom default deleted beside a current stamp", loomDefaultGone: true},
+		{name: "board behind its upstream", run: staleRun{boardBehind: true}},
+		{name: "loom default deleted beside a current stamp", run: staleRun{loomDefaultGone: true}},
+		{name: "unmigrated board is stripped once and marked", run: staleRun{unmigratedBoard: true}},
+		{name: "unmigrated board behind its upstream is stripped and marked over the pulled commit", run: staleRun{boardBehind: true, unmigratedBoard: true}},
+		{name: "marker removed beside a current stamp strips the board again", run: staleRun{markerRemoved: true}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			runStaleBuildReconcile(t, tc.boardBehind, tc.loomDefaultGone)
+			runStaleBuildReconcile(t, tc.run)
 		})
 	}
+}
+
+// staleRun selects the hub a stale-build walk starts from and what it checks beyond the common reconcile.
+type staleRun struct {
+	// boardBehind leaves the board behind its upstream by one commit.
+	boardBehind bool
+	// loomDefaultGone deletes loom's committed repo default beside a current stamp.
+	loomDefaultGone bool
+	// unmigratedBoard commits every board base file at its pre-migration values and deletes the board marker before the walk.
+	unmigratedBoard bool
+	// markerRemoved removes the board marker by a board commit after the first walk, while the stamp names the running build, and walks again.
+	markerRemoved bool
+}
+
+// recordBoardSyncs replaces the detached board sync with a recorder of the board directories it was asked to sync, and restores it when the test ends.
+func recordBoardSyncs(t *testing.T) *[]string {
+	t.Helper()
+
+	var spawned []string
+	t.Cleanup(hubreconcile.SetSpawnBoardSyncForTest(func(boardPath string) error {
+		spawned = append(spawned, boardPath)
+		return nil
+	}))
+	return &spawned
 }
 
 // tunedGenericMarker is the text of the tuned generic lens in todaysBurlerYAML.
@@ -269,13 +418,22 @@ fans:
 
 // runStaleBuildReconcile walks a stale hub and asserts every worktree and the board got one reconcile commit, with the board's pulled from upstream when boardBehind.
 // With loomDefaultGone the stamp names the running build but loom's committed repo default is deleted, and the walk reseeds and commits it on the board; batcher's default stays intact so retiredKeyPresent keeps reading it.
-func runStaleBuildReconcile(t *testing.T, boardBehind, loomDefaultGone bool) {
+func runStaleBuildReconcile(t *testing.T, run staleRun) {
 	t.Helper()
+	boardBehind, loomDefaultGone := run.boardBehind, run.loomDefaultGone
 
 	h := newStaleHub(t, "pair-a")
 	geom := geometryOf(h)
 	pair := h.PairCodeWorktree("pair-a")
 	hubforge.SeedFabricConfig(t, h, staleHubWideConfig)
+	var modelsBefore []byte
+	if run.unmigratedBoard {
+		var err error
+		if modelsBefore, err = os.ReadFile(configengine.ConfigFile(h.BoardDir(), "models")); err != nil {
+			t.Fatalf("read the board's models.yaml: %v", err)
+		}
+		commitPreMigrationBase(t, h.BoardDir())
+	}
 	loomDefault := configengine.ConfigFileRel("loom")
 	lensesDefault := configengine.ConfigFileRel("lenses")
 	burlerDefault := configengine.ConfigFileRel("burler")
@@ -307,12 +465,22 @@ func runStaleBuildReconcile(t *testing.T, boardBehind, loomDefaultGone bool) {
 		t.Fatalf("seed the machine file: %v", err)
 	}
 	primeBefore, pairBefore := commitCount(t, h.PrimeRecords()), commitCount(t, h.PairRecordsSibling("pair-a"))
+	spawned := recordBoardSyncs(t)
+	boardBranch := gitkit.CurrentBranch(t, h.BoardDir())
+	originBoardBefore := gitkit.Git(t, gitkit.Git(t, h.BoardDir(), "remote", "get-url", "origin"), "for-each-ref", "refs/heads/"+boardBranch)
 
 	if err := hubreconcile.Ensure(geom, hubreconcile.Options{}); err != nil {
 		t.Fatalf("Ensure: %v", err)
 	}
 	if got, err := os.ReadFile(machineFile); err != nil || string(got) != machineBytes {
 		t.Errorf("machine gate file = %q, %v after Ensure; want it unchanged", got, err)
+	}
+
+	if want := []string{h.BoardDir()}; !slices.Equal(*spawned, want) {
+		t.Errorf("detached board syncs = %v; want one for the board %v after the hub-wide commit", *spawned, want)
+	}
+	if got := gitkit.Git(t, gitkit.Git(t, h.BoardDir(), "remote", "get-url", "origin"), "for-each-ref", "refs/heads/"+boardBranch); got != originBoardBefore {
+		t.Errorf("origin board branch %q -> %q; want no synchronous push", originBoardBefore, got)
 	}
 
 	wantSubject := "lyx: reconcile hub-wide config for build " + fabricengine.BinaryLabel()
@@ -360,11 +528,18 @@ func runStaleBuildReconcile(t *testing.T, boardBehind, loomDefaultGone bool) {
 	if key, found := stampKey(t, geom); !found || key != runningKey() {
 		t.Errorf("stamp = (%q, %v); want the running key", key, found)
 	}
+	if run.unmigratedBoard {
+		assertBoardStrippedOnce(t, h, modelsBefore)
+	}
 
 	// Each worktree is stripped and committed with its marker: loom.yaml keeps only its differing key, or is deleted when the reseeded default equals it.
+	// A former template value the file held, loom's discussion_lenses and shed's driver_kind, is dropped as well.
 	for name, records := range map[string]string{"prime": h.PrimeRecords(), "pair": h.PairRecordsSibling("pair-a")} {
 		if !markerTracked(t, records) {
 			t.Errorf("%s does not track the sparse marker after the walk", name)
+		}
+		if data, err := os.ReadFile(configengine.ConfigFile(records, "shed")); err == nil && strings.Contains(string(data), "driver_kind") {
+			t.Errorf("%s shed.yaml = %q; want the former driver_kind dropped", name, data)
 		}
 		loomFile := configengine.ConfigFile(records, "loom")
 		data, err := os.ReadFile(loomFile)
@@ -379,6 +554,11 @@ func runStaleBuildReconcile(t *testing.T, boardBehind, loomDefaultGone bool) {
 	}
 
 	// A second walk strips nothing: it lands no new commit and leaves every per-worktree file and marker byte-identical.
+	// On an unmigrated board the marker is present by now, so a base unit equal to a former value is a pin the second walk keeps.
+	const pinnedFormerDriver = "driver: sonnet[medium]\n"
+	if run.unmigratedBoard {
+		gitkit.CommitFile(t, h.BoardDir(), loomDefault, pinnedFormerDriver, "fixture: pin a former value")
+	}
 	boardAfter := commitCount(t, h.BoardDir())
 	filesBefore := map[string]map[string]string{"prime": configFilesOf(t, h.PrimeWorktree()), "pair": configFilesOf(t, pair)}
 	if err := os.Remove(geom.StampPath()); err != nil {
@@ -401,6 +581,74 @@ func runStaleBuildReconcile(t *testing.T, boardBehind, loomDefaultGone bool) {
 		if !maps.Equal(before, filesAfter[name]) {
 			t.Errorf("second walk changed the %s config files:\nbefore: %v\nafter: %v", name, before, filesAfter[name])
 		}
+	}
+	if run.unmigratedBoard {
+		if got, err := os.ReadFile(filepath.Join(h.BoardDir(), loomDefault)); err != nil || string(got) != pinnedFormerDriver {
+			t.Errorf("board loom.yaml = %q, %v after the second walk; want the pinned former value kept", got, err)
+		}
+	}
+
+	if run.markerRemoved {
+		// A board commit removes the marker beside a template-equal unit; the stamp still names the running build, yet the next walk strips the unit and marks the board again.
+		gitkit.Git(t, h.BoardDir(), "rm", "-q", "--", filepath.ToSlash(configengine.BaseSparseMarkerRel()))
+		gitkit.CommitFile(t, h.BoardDir(), loomDefault, "review_max_bounces: 3\n", "fixture: a template-equal unit and no marker")
+		if key, found := stampKey(t, geom); !found || key != runningKey() {
+			t.Fatalf("stamp = (%q, %v) before the third walk; want the running key", key, found)
+		}
+		if err := hubreconcile.Ensure(geom, hubreconcile.Options{}); err != nil {
+			t.Fatalf("third Ensure: %v", err)
+		}
+		if got, err := os.ReadFile(filepath.Join(h.BoardDir(), loomDefault)); err != nil || string(got) != configengine.SparseBaseHeader {
+			t.Errorf("board loom.yaml = %q, %v after the walk a removed marker triggered; want only the sparse header", got, err)
+		}
+		if !slices.Contains(gitkit.LsFiles(t, h.BoardDir()), filepath.ToSlash(configengine.BaseSparseMarkerRel())) {
+			t.Errorf("the board does not track the marker after the walk a removed marker triggered")
+		}
+	}
+}
+
+// assertBoardStrippedOnce checks the board a walk stripped once: every non-seed-only base file other than lenses holds only the sparse header, bar darn's, which keeps the hub's own verify command;
+// the seed-only models.yaml is byte for byte as seeded, the marker is tracked in the walk's board commit, and the board's loom base resolves the template's lens fan and its one webster bounce.
+// lenses.yaml is skipped because the declared key move from burler.yaml gives it the hub's tuned lens.
+func assertBoardStrippedOnce(t *testing.T, h *hubforge.Hub, modelsBefore []byte) {
+	t.Helper()
+
+	for _, module := range configreg.Modules() {
+		if module.SeedOnly || module.Name == "lenses" {
+			continue
+		}
+		got, err := os.ReadFile(configengine.ConfigFile(h.BoardDir(), module.Name))
+		if err != nil {
+			t.Errorf("read the board's %s.yaml: %v", module.Name, err)
+			continue
+		}
+		if module.Name == "darn" {
+			if !strings.Contains(string(got), "verify: make verify") || strings.Contains(string(got), "verify_attempts") {
+				t.Errorf("board darn.yaml = %q; want only the hub's own verify command", got)
+			}
+			continue
+		}
+		if string(got) != configengine.SparseBaseHeader {
+			t.Errorf("board %s.yaml = %q; want only the sparse header", module.Name, got)
+		}
+	}
+	if got, err := os.ReadFile(configengine.ConfigFile(h.BoardDir(), "models")); err != nil || string(got) != string(modelsBefore) {
+		t.Errorf("board models.yaml = %q, %v; want it byte for byte as seeded", got, err)
+	}
+	marker := filepath.ToSlash(configengine.BaseSparseMarkerRel())
+	if !slices.Contains(gitkit.LsFiles(t, h.BoardDir()), marker) {
+		t.Errorf("the board does not track %s after the walk", marker)
+	}
+	if committed := gitkit.Git(t, h.BoardDir(), "log", "-1", "--name-only", "--format="); !strings.Contains(committed, marker) {
+		t.Errorf("the walk's board commit holds %q; want it to carry %s", committed, marker)
+	}
+	// The load stacks the board's base alone: the prime's own loom.yaml holds a review budget past the template's hard cap, which no load of the full stack accepts.
+	cfg, err := loomengine.LoadConfig(configengine.Dirs{Board: h.BoardDir()}, "loom")
+	if err != nil {
+		t.Fatalf("loomengine.LoadConfig over the board's base: %v", err)
+	}
+	if cfg.DiscussionLenses != "twill-discussion" || cfg.WebsterMaxBounces == nil || *cfg.WebsterMaxBounces != 1 {
+		t.Errorf("loom resolves DiscussionLenses %q and WebsterMaxBounces %v; want twill-discussion and 1", cfg.DiscussionLenses, cfg.WebsterMaxBounces)
 	}
 }
 
@@ -456,6 +704,10 @@ func TestEnsure_MidMergePairIsLeftAloneAndRetried(t *testing.T) {
 			if err != nil || string(after) != string(before) {
 				t.Errorf("mid-merge pair file changed (err %v)", err)
 			}
+			pairLoom := configengine.ConfigFile(pair, "loom")
+			if got, err := os.ReadFile(pairLoom); err != nil || !strings.Contains(string(got), `discussion_lenses: ""`) {
+				t.Errorf("mid-merge pair loom.yaml = %q (err %v); want its former discussion_lenses kept after the migrating walk", got, err)
+			}
 			if retiredKeyPresent(t, h.PrimeWorktree()) {
 				t.Errorf("the prime was not reconciled while the pair was mid-merge")
 			}
@@ -473,6 +725,9 @@ func TestEnsure_MidMergePairIsLeftAloneAndRetried(t *testing.T) {
 			}
 			if retiredKeyPresent(t, pair) {
 				t.Errorf("the pair was not reconciled once its merge state cleared")
+			}
+			if got, err := os.ReadFile(pairLoom); err != nil || strings.Contains(string(got), "discussion_lenses") {
+				t.Errorf("pair loom.yaml = %q (err %v); want the former discussion_lenses dropped by the walk that ran with the board marker present", got, err)
 			}
 			if !markerTracked(t, h.PairRecordsSibling("pair-a")) {
 				t.Errorf("the retry did not strip and mark the skipped pair")
@@ -550,6 +805,12 @@ func TestEnsure_FailedWalkNamesTheFileAndLeavesTheTreeAsItWas(t *testing.T) {
 		repair func(t *testing.T, h *hubforge.Hub)
 		// afterRepair, when set, checks the pair after the repaired walk.
 		afterRepair func(t *testing.T, h *hubforge.Hub)
+		// unmigratedBoard pins that the failed walk leaves the board's config files at their prior bytes and its marker unwritten.
+		unmigratedBoard bool
+		// wantInMessage is text the error message must hold; empty skips the check.
+		wantInMessage string
+		// ensure runs the walk; nil runs Ensure.
+		ensure func(geom hubreconcile.Geometry) error
 	}{
 		{
 			name: "a declared key move is undone with the failed walk and committed by the repaired one",
@@ -617,6 +878,33 @@ func TestEnsure_FailedWalkNamesTheFileAndLeavesTheTreeAsItWas(t *testing.T) {
 				hubforge.SeedFabricConfig(t, h, m.Template())
 			},
 		},
+		{
+			name: "unparseable hub-wide config on an unmigrated board names the default-layer command",
+			breakConfig: func(t *testing.T, h *hubforge.Hub) (string, string, string) {
+				commitPreMigrationBase(t, h.BoardDir())
+				hubforge.SeedFabricConfig(t, h, "a: [unclosed\n")
+				return h.BoardDir(), h.BoardDir(), configengine.ConfigFile(h.BoardDir(), "fabric")
+			},
+			module:          "fabric",
+			unmigratedBoard: true,
+			wantInMessage:   "lyx config fabric --layer default",
+			repair: func(t *testing.T, h *hubforge.Hub) {
+				m, _ := configreg.Lookup("fabric")
+				hubforge.SeedFabricConfig(t, h, m.Template())
+			},
+		},
+		{
+			name: "a failure after the hub-wide files and the marker were written restores the files and removes the marker",
+			breakConfig: func(t *testing.T, h *hubforge.Hub) (string, string, string) {
+				commitPreMigrationBase(t, h.BoardDir())
+				return h.BoardDir(), h.BoardDir(), h.BoardDir()
+			},
+			unmigratedBoard: true,
+			ensure: func(geom hubreconcile.Geometry) error {
+				return hubreconcile.EnsureFailingAfterHubWideWrite(geom, hubreconcile.Options{}, errors.New("fixture: failure after the hub-wide write"))
+			},
+			repair: func(t *testing.T, h *hubforge.Hub) {},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -626,8 +914,14 @@ func TestEnsure_FailedWalkNamesTheFileAndLeavesTheTreeAsItWas(t *testing.T) {
 			geom := geometryOf(h)
 			worktree, repo, file := tc.breakConfig(t, h)
 			statusBefore := gitkit.GitStatusPorcelain(t, repo)
+			boardFilesBefore := configFilesOf(t, h.BoardDir())
 
-			err := hubreconcile.Ensure(geom, hubreconcile.Options{})
+			var err error
+			if tc.ensure != nil {
+				err = tc.ensure(geom)
+			} else {
+				err = hubreconcile.Ensure(geom, hubreconcile.Options{})
+			}
 
 			var worktreeErr *hubreconcile.WorktreeError
 			if !errors.As(err, &worktreeErr) {
@@ -645,6 +939,17 @@ func TestEnsure_FailedWalkNamesTheFileAndLeavesTheTreeAsItWas(t *testing.T) {
 				}
 				if !strings.Contains(err.Error(), "lyx config "+tc.module) {
 					t.Errorf("message %q does not name lyx config %s", err.Error(), tc.module)
+				}
+			}
+			if tc.wantInMessage != "" && !strings.Contains(err.Error(), tc.wantInMessage) {
+				t.Errorf("message %q does not hold %q", err.Error(), tc.wantInMessage)
+			}
+			if tc.unmigratedBoard {
+				if boardFilesAfter := configFilesOf(t, h.BoardDir()); !maps.Equal(boardFilesBefore, boardFilesAfter) {
+					t.Errorf("the failed walk changed the board's config files:\nbefore: %v\nafter: %v", boardFilesBefore, boardFilesAfter)
+				}
+				if _, statErr := os.Stat(configengine.BaseSparseMarker(h.BoardDir())); !os.IsNotExist(statErr) {
+					t.Errorf("the failed walk left the board marker behind (stat err = %v)", statErr)
 				}
 			}
 			if _, statErr := os.Stat(file); statErr != nil {
@@ -697,6 +1002,72 @@ func TestEnsure_HeldLockTimesOutWithoutStamping(t *testing.T) {
 	}
 	if _, found := stampKey(t, geom); found {
 		t.Errorf("stamp written without the lock")
+	}
+}
+
+// The logger's output is process-global, so this test does not call t.Parallel.
+func TestEnsureOrWarn_WarnsWithTheWayForward(t *testing.T) {
+	const wayForwardText = "start verb to retry the reconcile"
+
+	tests := []struct {
+		name string
+		// setup breaks the hub and returns the options of the call, the file or lock the Warn must name, and the repair that fixes the cause; nil repair skips the second call.
+		setup func(t *testing.T, h *hubforge.Hub, geom hubreconcile.Geometry) (opts hubreconcile.Options, wantNamed string, repair func())
+	}{
+		{
+			name: "broken config is warned about, then reconciled once fixed",
+			setup: func(t *testing.T, h *hubforge.Hub, geom hubreconcile.Geometry) (hubreconcile.Options, string, func()) {
+				gitkit.CommitFile(t, h.PairRecordsSibling("pair-a"), configengine.ConfigFileRel("loom"), "a: [unclosed\n", "fixture: broken loom.yaml")
+				return hubreconcile.Options{}, configengine.ConfigFile(h.PairCodeWorktree("pair-a"), "loom"), func() { commitTemplate(t, h.PairRecordsSibling("pair-a"), "loom") }
+			},
+		},
+		{
+			name: "held lock is warned about",
+			setup: func(t *testing.T, h *hubforge.Hub, geom hubreconcile.Geometry) (hubreconcile.Options, string, func()) {
+				if err := os.MkdirAll(filepath.Dir(geom.LockPath()), 0o755); err != nil {
+					t.Fatalf("mkdir lock dir: %v", err)
+				}
+				held, err := lock.AcquireWriteLock(geom.LockPath())
+				if err != nil {
+					t.Fatalf("hold lock: %v", err)
+				}
+				t.Cleanup(func() { _ = held.Release() })
+				return hubreconcile.Options{LockWait: 50 * time.Millisecond}, geom.LockPath(), nil
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logs := logcapture.Capture(t)
+			h := newStaleHub(t, "pair-a")
+			geom := geometryOf(h)
+			opts, wantNamed, repair := tt.setup(t, h, geom)
+
+			hubreconcile.EnsureOrWarn(geom, opts)
+
+			for _, want := range []string{wantNamed, wayForwardText} {
+				if !strings.Contains(logs.String(), want) {
+					t.Errorf("EnsureOrWarn log lacks %q:\n%s", want, logs.String())
+				}
+			}
+			if _, found := stampKey(t, geom); found {
+				t.Errorf("stamp written after a failed reconcile")
+			}
+			if repair == nil {
+				return
+			}
+
+			repair()
+			logs.Reset()
+			hubreconcile.EnsureOrWarn(geom, opts)
+
+			if strings.Contains(logs.String(), wayForwardText) {
+				t.Errorf("EnsureOrWarn warned after the repair:\n%s", logs.String())
+			}
+			if _, found := stampKey(t, geom); !found {
+				t.Errorf("stamp absent after the repaired reconcile")
+			}
+		})
 	}
 }
 
@@ -825,15 +1196,14 @@ func TestEnsure_UnreachableBoardRemoteSkipsHubWideConfigAndLeavesStampAbsent(t *
 	}
 }
 
-// The logger's output is process-global, so this test does not call t.Parallel.
+// The detached board sync is package-global, so this test does not call t.Parallel.
 func TestEnsure_BoardWithNoRemoteCommitsHubWideConfigAndWritesStamp(t *testing.T) {
-	logs := logcapture.Capture(t)
-
 	h := hubforge.NewHub(t, ".")
 	geom := geometryOf(h)
 	hubforge.SeedFabricConfig(t, h, staleHubWideConfig)
 	gitkit.Git(t, h.BoardDir(), "remote", "remove", "origin")
 	before := commitCount(t, h.BoardDir())
+	spawned := recordBoardSyncs(t)
 
 	if err := hubreconcile.Ensure(geom, hubreconcile.Options{}); err != nil {
 		t.Fatalf("Ensure: %v", err)
@@ -843,17 +1213,31 @@ func TestEnsure_BoardWithNoRemoteCommitsHubWideConfigAndWritesStamp(t *testing.T
 		t.Errorf("board commits %d -> %d; want the hub-wide commit landed locally", before, got)
 	}
 	assertClean(t, h.BoardDir())
-	if !strings.Contains(logs.String(), "board push failed for a board with no upstream") {
-		t.Errorf("log lacks the no-upstream push Warn:\n%s", logs.String())
+	if want := []string{h.BoardDir()}; !slices.Equal(*spawned, want) {
+		t.Errorf("detached board syncs = %v; want %v", *spawned, want)
 	}
 	if key, found := stampKey(t, geom); !found || key != runningKey() {
-		t.Errorf("stamp = %q (found %v); want the running key, since a board with no upstream can never be pushed", key, found)
+		t.Errorf("stamp = %q (found %v); want the running key, since the walk never waits on the board's push", key, found)
 	}
 }
 
-// The logger's output is process-global, so this test does not call t.Parallel.
-func TestEnsure_UnpushedHubWideCommitOverMovedUpstreamLeavesStampAbsent(t *testing.T) {
-	logs := logcapture.Capture(t)
+// unpushedHubWide is a hub whose board holds a hub-wide config commit origin has not taken, since the detached board sync is recorded and never run.
+// origin is the records remote, hubWidePath the config file the commit changed and before the board's commit count ahead of that commit.
+// The build stamp is absent, so the next Ensure walks the hub again.
+type unpushedHubWide struct {
+	hub         *hubforge.Hub
+	geom        hubreconcile.Geometry
+	board       string
+	branch      string
+	origin      string
+	hubWidePath string
+	before      int
+}
+
+// arrangeUnpushedHubWide builds an unpushedHubWide, after two Ensure runs, each of which stamps the build and asks for the board's detached sync.
+// The rerun, with nothing new to commit, still asks for it, so an earlier unpushed commit is pushed too; the stamp is removed after each run.
+func arrangeUnpushedHubWide(t *testing.T) *unpushedHubWide {
+	t.Helper()
 
 	h := hubforge.NewHub(t, ".")
 	geom := geometryOf(h)
@@ -862,11 +1246,8 @@ func TestEnsure_UnpushedHubWideCommitOverMovedUpstreamLeavesStampAbsent(t *testi
 	branch := gitkit.CurrentBranch(t, board)
 	gitkit.Git(t, board, "push", "-u", "origin", branch)
 	origin := gitkit.Git(t, board, "remote", "get-url", "origin")
-	rejectPushes := filepath.Join(origin, "hooks", "pre-receive")
-	if err := os.WriteFile(rejectPushes, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
-		t.Fatalf("write pre-receive hook: %v", err)
-	}
 	before := commitCount(t, board)
+	spawned := recordBoardSyncs(t)
 
 	if err := hubreconcile.Ensure(geom, hubreconcile.Options{}); err != nil {
 		t.Fatalf("first Ensure: %v", err)
@@ -874,42 +1255,84 @@ func TestEnsure_UnpushedHubWideCommitOverMovedUpstreamLeavesStampAbsent(t *testi
 	if got := commitCount(t, board); got != before+1 {
 		t.Fatalf("board commits %d -> %d; want the hub-wide commit landed locally", before, got)
 	}
-	if _, found := stampKey(t, geom); found {
-		t.Fatalf("stamp written although the hub-wide commit was not pushed")
+	if key, found := stampKey(t, geom); !found || key != runningKey() {
+		t.Fatalf("stamp = %q (found %v); want the running key although the hub-wide commit was not pushed", key, found)
+	}
+	changed := strings.Fields(gitkit.Git(t, board, "show", "--name-only", "--format=", "HEAD"))
+	if len(changed) != 1 {
+		t.Fatalf("the hub-wide commit changed %v; want one config file", changed)
+	}
+	if err := os.Remove(geom.StampPath()); err != nil {
+		t.Fatalf("remove the stamp: %v", err)
 	}
 
-	// A rerun with nothing new to commit still pushes the earlier commit, so a push still rejected keeps the stamp absent.
 	if err := hubreconcile.Ensure(geom, hubreconcile.Options{}); err != nil {
 		t.Fatalf("rerun Ensure: %v", err)
 	}
 	if got := commitCount(t, board); got != before+1 {
 		t.Fatalf("rerun changed the board commits: %d -> %d; want no new commit", before+1, got)
 	}
-	if _, found := stampKey(t, geom); found {
-		t.Fatalf("stamp written on a rerun although the hub-wide commit is still unpushed")
+	if want := []string{board, board}; !slices.Equal(*spawned, want) {
+		t.Fatalf("detached board syncs = %v; want one per run, the rerun's carrying the earlier commit", *spawned)
+	}
+	if err := os.Remove(geom.StampPath()); err != nil {
+		t.Fatalf("remove the stamp: %v", err)
 	}
 
-	if err := os.Remove(rejectPushes); err != nil {
-		t.Fatalf("remove pre-receive hook: %v", err)
-	}
+	return &unpushedHubWide{hub: h, geom: geom, board: board, branch: branch, origin: origin, hubWidePath: changed[0], before: before}
+}
+
+// moveUpstream commits rel on origin's board branch from a second clone.
+func (u *unpushedHubWide) moveUpstream(t *testing.T, rel, content string) {
+	t.Helper()
+
 	clone := filepath.Join(t.TempDir(), "second")
-	gitkit.Git(t, filepath.Dir(clone), "clone", "--branch", branch, origin, clone)
-	gitkit.CommitFile(t, clone, "moved-upstream.txt", "moved\n", "fixture: upstream moves")
-	gitkit.Git(t, clone, "push", "origin", branch)
+	gitkit.Git(t, filepath.Dir(clone), "clone", "--branch", u.branch, u.origin, clone)
+	gitkit.CommitFile(t, clone, rel, content, "fixture: upstream moves")
+	gitkit.Git(t, clone, "push", "origin", u.branch)
+}
 
-	if err := hubreconcile.Ensure(geom, hubreconcile.Options{}); err != nil {
-		t.Fatalf("second Ensure: %v", err)
-	}
+// The logger's output is process-global, so this test does not call t.Parallel.
+func TestEnsure_UnpushedHubWideCommitOverMovedUpstreamLeavesStampAbsent(t *testing.T) {
+	boardkit.InstallReplay(t)
 
-	if got := commitCount(t, board); got != before+1 {
-		t.Errorf("second Ensure changed the board commits: %d -> %d; want no new commit", before+1, got)
-	}
-	if !strings.Contains(logs.String(), "git pull --rebase") {
-		t.Errorf("log lacks the divergence Warn naming git pull --rebase:\n%s", logs.String())
-	}
-	if _, found := stampKey(t, geom); found {
-		t.Errorf("stamp written although the hub-wide commit is still unpushed")
-	}
+	t.Run("an upstream moved on other paths is replayed under the commit and the stamp is written", func(t *testing.T) {
+		u := arrangeUnpushedHubWide(t)
+		u.moveUpstream(t, "moved-upstream.txt", "moved\n")
+
+		if err := hubreconcile.Ensure(u.geom, hubreconcile.Options{}); err != nil {
+			t.Fatalf("second Ensure: %v", err)
+		}
+
+		if got := commitCount(t, u.board); got != u.before+2 {
+			t.Errorf("second Ensure left %d board commits, want the replayed hub-wide commit over the moved upstream (%d)", got, u.before+2)
+		}
+		if key, found := stampKey(t, u.geom); !found || key != runningKey() {
+			t.Errorf("stamp = %q (found %v); want the running key once the hub-wide commit is replayed", key, found)
+		}
+	})
+
+	t.Run("an upstream that changed the same config file skips with the stamp absent", func(t *testing.T) {
+		logs := logcapture.Capture(t)
+		u := arrangeUnpushedHubWide(t)
+		u.moveUpstream(t, u.hubWidePath, "branch_prefix: \"upstream\"\n")
+
+		if err := hubreconcile.Ensure(u.geom, hubreconcile.Options{}); err != nil {
+			t.Fatalf("second Ensure: %v", err)
+		}
+
+		if got := commitCount(t, u.board); got != u.before+1 {
+			t.Errorf("second Ensure changed the board commits: %d -> %d; want no new commit", u.before+1, got)
+		}
+		for _, want := range []string{u.hubWidePath, "lyx board sync"} {
+			if !strings.Contains(logs.String(), want) {
+				t.Errorf("log lacks the divergence Warn naming %q:\n%s", want, logs.String())
+			}
+		}
+		if _, found := stampKey(t, u.geom); found {
+			t.Errorf("stamp written although the hub-wide commit is still unpushed")
+		}
+	})
 }
 
 func TestEnsure_PairCallReconcilesDespiteAFreshStamp(t *testing.T) {
@@ -926,6 +1349,9 @@ func TestEnsure_PairCallReconcilesDespiteAFreshStamp(t *testing.T) {
 
 	if retiredKeyPresent(t, pair) {
 		t.Errorf("the pair still carries %s", retiredKey)
+	}
+	if got, err := os.ReadFile(configengine.ConfigFile(pair, "loom")); err != nil || strings.Contains(string(got), "discussion_lenses") {
+		t.Errorf("pair loom.yaml = %q (err %v); want the former discussion_lenses dropped on a board holding the marker", got, err)
 	}
 	assertClean(t, h.PairRecordsSibling("pair-a"))
 	if !retiredKeyPresent(t, h.PrimeWorktree()) {

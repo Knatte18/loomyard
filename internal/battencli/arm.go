@@ -302,9 +302,7 @@ func (c *battenCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec,
 	// run reconciles the hub's config after a binary change before the run is seeded and before the Worktree-Create row forks the pair from the prime.
 	if verb == "run" {
 		if geometry, inHub := hubgeom.ReconcileGeometry(location); inHub {
-			if err := hubreconcile.Ensure(geometry, hubreconcile.Options{}); err != nil {
-				return shedverbs.Spec{}, err
-			}
+			hubreconcile.EnsureOrWarn(geometry, hubreconcile.Options{})
 		}
 	}
 
@@ -570,6 +568,7 @@ func (c *battenCLI) pausedExtras() map[string]any {
 
 // battenPreRun implements the PreRun hook for batten's spec: run's whole existing pre-flight, in today's order: checkRunStatus, then seeding a fresh status when absent.
 // Each step's error becomes a returned error the generic body reports on the error envelope exactly as run's own inline handling did.
+// A found status file is resumed only after the run-scope origin reconcile (reconcileResume) lets it; a fresh start runs no reconcile.
 //
 // This seed-when-absent behaviour is batten's alone and must not leak into the generic body:
 // loom refuses in exactly the situation batten seeds here, because only "lyx loom start" may seed loom's own status file.
@@ -582,7 +581,7 @@ func (c *battenCLI) battenPreRun(ctx context.Context) error {
 		return err
 	}
 	if found {
-		return nil
+		return c.reconcileResume()
 	}
 
 	// An absent status file is a fresh start: shedengine.Shed.Run refuses to walk from a status

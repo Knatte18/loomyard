@@ -13,12 +13,13 @@
 //
 // # Layer operations
 //
-// Six operations work on raw unexpanded YAML bytes for the layer stack, each taking openMaps and, where it reads units, a wholeEntries flag:
+// These operations work on raw unexpanded YAML bytes for the layer stack, each taking openMaps and, where it reads units, a wholeEntries flag, bar [DropTemplateEqualNames], which takes the per-name maps alone:
 //
 //   - [Merge] lays an upper layer over a lower one key by key; no layer deletes a key from the one below.
 //   - [Strip] removes from an upper layer every unit equal to the lower layer's, and reports the removed paths.
 //   - [SetSparse] writes only the set keys into a sparse layer, never scaffolding from the template.
 //   - [Prune] removes from a sparse layer every unit the template does not know, and adds nothing.
+//   - [DropTemplateEqualNames] removes from a sparse layer every per-name entry whose value equals the template's, and reports the removed P.<name> paths; it adds nothing and leaves an untouched layer byte for byte.
 //   - [LeafPaths] lists the sorted dotted paths of every unit of a document.
 //   - [AnnotateLeaves] writes a note as the line comment of the unit at a path.
 //
@@ -53,7 +54,7 @@
 //
 // # Per-name maps
 //
-// Reconcile, Prune, SetValues and SetSparse each take a perNameMaps argument before the open maps: dotted key paths whose template value is a mapping of names, each name one unit carried whole, such as a lens's prose or a fan's list.
+// Reconcile, Prune, DropTemplateEqualNames, SetValues and SetSparse each take a perNameMaps argument before the open maps, DropTemplateEqualNames taking no open maps: dotted key paths whose template value is a mapping of names, each name one unit carried whole, such as a lens's prose or a fan's list.
 // An empty argument keeps every other behaviour byte for byte.
 // For a declared path P:
 //

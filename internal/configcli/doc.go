@@ -16,7 +16,7 @@
 // It passes the default layer's write guard below, never commits and runs no fabric sync, refuses a key the machine layer closes before writing anything, checks that the stack still loads over the prime's worktree and puts the file back when it does not.
 // It is refused on a per-worktree module, with `--layer local` as the way forward, and on a hub-wide module with no machine key, with `lyx config <module>` from the prime as the way forward; both refusals touch no file.
 // `--layer local` writes `configengine.LocalFile` of the anchor, never commits and runs no fabric sync, and refuses a key the local layer closes (`configengine.ValidateLocal`), leaving the file as it was.
-// Under a board the base layer is the repo default and stays full, so a write to any layer above it is sparse: `--set` writes only the keys set through `yamlengine.SetSparse`, and an editor edit scaffolds an absent file empty.
+// Under a board every file layer of a module that is not seed-only is sparse, the repo default included: `--set` on any layer writes only the keys set through `yamlengine.SetSparse`, and an editor edit of an absent base scaffolds `configengine.SparseBaseHeader` while an absent layer above it is scaffolded empty.
 // `--print --layer <name>` prints that layer's file verbatim; `--print` of all modules prints each module's own file.
 // `lyx config menu` marks each module with the layers that hold a file, as `loom (default, local)` or `gate (default, machine)`, or `(template)` when none does.
 // `lyx config <module> --resolved` prints the merged result through `configengine.Provenance`, each unit's line comment naming the layer it came from: `template`, `default`, `worktree`, `machine` or `local`.
@@ -76,8 +76,10 @@
 // A module that retires keys or floors a value declares a migration, which reconcile runs over its present file first;
 // the dry run lists each rewrite under the module's `migrated` key, and applying writes the migrated file, even when the reconcile itself adds, removes and drops nothing.
 // With no `--layer` it reconciles the worktree's own and local files.
-// `lyx config reconcile --layer default` reconciles every file under `<BoardDir>/_lyx/config/` instead, the hub-wide modules' files and each per-worktree module's repo default, through the call the hub reconcile after a binary change makes:
-// renamed keys are migrated, keys the template lacks are pruned, an absent repo default is seeded from the prime, and each entry carries the `seed` it started from.
+// `lyx config reconcile --layer default` reconciles every file under `<BoardDir>/_lyx/config/` instead, the hub-wide modules' files and each per-worktree module's repo default:
+// renamed keys are migrated, keys the template lacks are pruned, an absent file is seeded sparse, and each entry carries the `seed` it started from.
+// It never fills a base, and its dry run and apply list the one-time base strip under `stripped` as pending, which only the hub reconcile of a start verb performs;
+// the envelope then carries a top-level `base_strip` field saying so, and `--apply` writes no board marker.
 // `--apply` with it passes the default-layer write guard above, then under the board write lock runs a dry run, so a file that fails to parse or migrate leaves every file unwritten, then writes, commits the written files in `_board` and pushes.
 // A write that fails part-way is undone by restoring the board dir's config files.
 // A write that is made but not committed, or committed but not pushed, is reported as an error naming the files left for the next board sync.

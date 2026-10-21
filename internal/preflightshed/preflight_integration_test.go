@@ -164,8 +164,8 @@ func TestPreflight_StaleStampReconcilesBeforeTheCleanCheck(t *testing.T) {
 	}
 }
 
-// TestPreflight_ReconcileFailureStopsTheRowWithItsWayForward verifies an unparseable config in another pair, and a held hub lock, each stop the row Stuck with a reason naming the verb that re-enters the run, and leave no stamp.
-func TestPreflight_ReconcileFailureStopsTheRowWithItsWayForward(t *testing.T) {
+// TestPreflight_ReconcileFailureWarnsAndGoesOnToTheCheck verifies an unparseable config in another pair, and a held hub lock, each let the row reach the check and settle Done on an otherwise clean hub, and leave no stamp.
+func TestPreflight_ReconcileFailureWarnsAndGoesOnToTheCheck(t *testing.T) {
 	t.Parallel()
 
 	t.Run("unparseable config in another pair", func(t *testing.T) {
@@ -177,13 +177,8 @@ func TestPreflight_ReconcileFailureStopsTheRowWithItsWayForward(t *testing.T) {
 		gitkit.CommitFile(t, h.PairRecordsSibling("pair-b"), configengine.ConfigFileRel("loom"), "a: [unclosed\n", "fixture: broken loom.yaml")
 		p := NewPreflight("Preflight", h.PairCodeWorktree("pair-a"))
 
-		ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
+		shedfake.RequireOutcome(t, p, shedengine.Done)
 
-		for _, want := range []string{configengine.ConfigFile(h.PairCodeWorktree("pair-b"), "loom"), `lyx config loom`, `lyx loom resume`} {
-			if !strings.Contains(ptr.Reason, want) {
-				t.Errorf("Reason = %q; want it to contain %q", ptr.Reason, want)
-			}
-		}
 		if _, err := os.Stat(hubStampPath(h)); err == nil {
 			t.Errorf("stamp written after a failed reconcile")
 		}
@@ -204,11 +199,8 @@ func TestPreflight_ReconcileFailureStopsTheRowWithItsWayForward(t *testing.T) {
 		defer func() { _ = held.Release() }()
 		p := newPreflightWith("Preflight", h.PrimeWorktree(), hubreconcile.Options{LockWait: 50 * time.Millisecond})
 
-		ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
+		shedfake.RequireOutcome(t, p, shedengine.Done)
 
-		if !strings.Contains(ptr.Reason, `lyx loom resume`) {
-			t.Errorf("Reason = %q; want it to name lyx loom resume", ptr.Reason)
-		}
 		if _, err := os.Stat(hubStampPath(h)); err == nil {
 			t.Errorf("stamp written without the lock")
 		}

@@ -21,6 +21,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
@@ -110,6 +112,14 @@ type RemoveResult struct {
 	LocalMarkBranch string `json:"local_mark_branch,omitempty"`
 	// DroppedRecordsTip is the tip of the sibling branch whose records a local pair's remove discarded; empty when no sibling branch survived.
 	DroppedRecordsTip string `json:"dropped_records_tip,omitempty"`
+	// SetAsideTag names the local set-aside/<slug>/<tip> tag a local removal put on the weft tip in place of an archive tag; empty when none was put.
+	SetAsideTag string `json:"set_aside_tag,omitempty"`
+	// WorkspaceSkipped is true when a local removal found the hub workspace lock held and left the workspace file stale.
+	WorkspaceSkipped bool `json:"workspace_skipped,omitempty"`
+	// SnapshotTag names the snapshot tag that kept the pair's uncommitted paths before a forced local removal; empty when none was taken.
+	SnapshotTag string `json:"snapshot_tag,omitempty"`
+	// SnapshotPaths lists the paths the snapshot tag holds.
+	SnapshotPaths []string `json:"snapshot_paths,omitempty"`
 }
 
 // Remove removes a paired warp and weft git worktree with all associated artifacts.
@@ -151,6 +161,21 @@ type RemoveResult struct {
 // After a successful teardown, and before it returns, Remove disables auto gc in both hub stores and runs a best-effort foreground `git gc --auto` in each;
 // a failure there is logged and never fails the Remove, and a refused or failed Remove runs none of it.
 func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (res RemoveResult, err error) {
+	return t.removePair(l, slug, force, remote, false)
+}
+
+// RemoveLocal removes a paired warp and weft git worktree the way Remove does, without any origin step and without waiting on another writer.
+// It makes the same refusals as Remove, with force answering dirtiness only.
+// A held teardown lock or weft write lock returns an error wrapping ErrPairBusy with nothing changed.
+// It commits the sibling's pending records, then puts a local set-aside/<slug>/<sha> tag on the weft tip, reported in SetAsideTag, in place of Remove's pushed archive tag.
+// It runs no ls-remote, respawns no push after a failure, skips the store housekeeping and regenerates the hub workspace file by one attempt at its lock, reporting WorkspaceSkipped when the lock is held.
+// The commits the pushed archive tag would have carried are kept under the local tag, and the removal's branch deletions keep their gates.
+func (t *Topology) RemoveLocal(l *lyxcwd.Location, slug string, force bool) (res RemoveResult, err error) {
+	return t.removePair(l, slug, force, false, true)
+}
+
+// removePair is Remove's body, with localMode switching off every origin step and every wait on another writer; see RemoveLocal for the mode's contract.
+func (t *Topology) removePair(l *lyxcwd.Location, slug string, force, remote, localMode bool) (res RemoveResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
 
@@ -170,20 +195,31 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (
 	steps := []string{}
 
 	// Registered before the teardown lock, so it runs after the lock's release on every exit past the refusals.
-	defer regenerateAfterVerb(rec, l, "remove")
+	if localMode {
+		defer func() { res.WorkspaceSkipped = regenerateHubWorkspaceNow(rec, l) }()
+	} else {
+		defer regenerateAfterVerb(rec, l, "remove")
+	}
 
 	// The pair's detached pushes hold this lock shared, so no push runs against a worktree this call deletes.
 	// A failure after this point that leaves a worktree behind respawns the pair's push once the lock is released, since a child may have exited on the held lock.
-	releaseTeardown, err := t.lockPairTeardown(rec, l, slug)
+	// A local removal respawns nothing: the surviving worktree's commits stay local for the next reconcile.
+	releaseTeardown, err := t.lockPairTeardown(rec, l, slug, localMode)
 	if err != nil {
 		return RemoveResult{}, err
 	}
 	defer func() {
 		releaseTeardown()
-		if err != nil && (pathPresent(target) || pathPresent(RecordsWorktreePath(l, slug))) {
+		if err != nil && !localMode && (pathPresent(target) || pathPresent(RecordsWorktreePath(l, slug))) {
 			respawnPairPush(l, slug, pair.localMark != "")
 		}
 	}()
+
+	if removeAfterLockHook != nil {
+		if err := removeAfterLockHook(); err != nil {
+			return RemoveResult{}, err
+		}
+	}
 
 	// Read the recorded parent now: the record lives in the weft worktree the teardown deletes. A
 	// missing or unreadable record leaves parentBranch empty, which asks the gate for the stricter
@@ -195,7 +231,7 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (
 
 	local := pair.localMark != ""
 	droppedRecordsTip := ""
-	archiveTag, archiveSkippedReason := "", ""
+	archiveTag, archiveSkippedReason, setAsideTagName := "", "", ""
 	if local {
 		// A local pair's records are disposable: nothing is committed or archived, and the sibling branch's tip is only reported.
 		if pair.siblingBranch {
@@ -210,7 +246,7 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (
 		}
 	} else {
 		// Commit the sibling's pending records so the archive tag covers them; force answers dirtiness only, so it never skips this step either.
-		committed, err := commitPendingRecords(rec, l, slug, warpBranch)
+		committed, err := commitPendingRecords(rec, l, slug, warpBranch, localMode)
 		if err != nil {
 			return RemoveResult{}, err
 		}
@@ -218,14 +254,22 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (
 			steps = append(steps, RemoveStepRecordCommit)
 		}
 
-		// Archive the weft tip after every refusal and before the first teardown mutation: a failed archive leaves the worktrees, launchers and both branches untouched, so a plain re-run retries it.
-		// force answers dirtiness only, so it never skips this step.
-		archiveTag, archiveSkippedReason, err = archiveWeftTip(rec, l, slug, weftBranch)
-		if err != nil {
-			return RemoveResult{}, err
-		}
-		if archiveTag != "" {
-			steps = append(steps, RemoveStepArchive)
+		if localMode {
+			// The weft tip is kept under a local tag, since no origin step may run; the tag covers what the pushed archive tag would have.
+			setAsideTagName, err = setAsideWeftTip(rec, l, slug, weftBranch, pair.siblingBranch)
+			if err != nil {
+				return RemoveResult{}, err
+			}
+		} else {
+			// Archive the weft tip after every refusal and before the first teardown mutation: a failed archive leaves the worktrees, launchers and both branches untouched, so a plain re-run retries it.
+			// force answers dirtiness only, so it never skips this step.
+			archiveTag, archiveSkippedReason, err = archiveWeftTip(rec, l, slug, weftBranch)
+			if err != nil {
+				return RemoveResult{}, err
+			}
+			if archiveTag != "" {
+				steps = append(steps, RemoveStepArchive)
+			}
 		}
 	}
 
@@ -280,7 +324,8 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (
 		if remote {
 			teardown.remoteSkippedReason = "the pair is local-only: nothing of it is on origin, so --remote has nothing to do"
 		}
-	} else {
+	} else if !localMode || pair.siblingWorktree || pair.siblingBranch {
+		// A sibling with neither worktree nor branch could only be found on origin, which a local removal never asks, so it counts as already gone there.
 		teardown, siblingSteps, err = t.removeSibling(rec, l, slug, weftBranch, pair, force, remote)
 	}
 	if err != nil {
@@ -305,9 +350,20 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (
 		}
 	}
 
+	for _, side := range []struct{ repo, branch string }{{failedPushSideCode, warpBranch}, {failedPushSideRecords, weftBranch}} {
+		if err := ClearPushFailure(l.HubPath, side.repo, side.branch); err != nil {
+			logger.Warn("fabricengine: failed-push record of a removed pair not cleared", "slug", slug, "side", side.repo, "error", err)
+		}
+	}
+
 	// Both worktrees are gone: reclaim the stores' unreferenced objects while lyx is already doing slow work.
-	// A refused or failed Remove returned above and runs no housekeeping.
-	housekeepStores(l, slug, t.inFlight)
+	// A refused or failed Remove returned above and runs no housekeeping, and a local removal runs none either.
+	if !localMode {
+		if housekeepHook != nil {
+			housekeepHook(slug)
+		}
+		housekeepStores(l, slug, t.inFlight)
+	}
 
 	strayPath := ""
 	if pair.strayPath {
@@ -333,7 +389,40 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (
 		Local:                      local,
 		LocalMarkBranch:            pair.localMark,
 		DroppedRecordsTip:          droppedRecordsTip,
+		SetAsideTag:                setAsideTagName,
 	}, nil
+}
+
+// housekeepHook, nil in production, runs with the slug just before a Remove's store housekeeping, so a test observes whether the housekeeping ran.
+var housekeepHook func(slug string)
+
+// setAsideWeftTip puts a local set-aside tag on the tip of the pair's weft branch and returns its name.
+// A pair with no local weft branch has nothing to keep and returns an empty name.
+func setAsideWeftTip(rec *Mutations, l *lyxcwd.Location, slug, weftBranch string, hasBranch bool) (string, error) {
+	if !hasBranch {
+		return "", nil
+	}
+	weftRoot, err := RecordsRepoRoot(l)
+	if err != nil {
+		return "", fmt.Errorf("resolve weft repo root: %w", err)
+	}
+	repo := gitrepo.New(weftRoot)
+	tip, err := repo.RefSHA("refs/heads/" + weftBranch)
+	if err != nil {
+		return "", fmt.Errorf("read the sibling branch tip: %w", err)
+	}
+	return setAsideTag(rec, repo, slug, tip)
+}
+
+// regenerateHubWorkspaceNow regenerates the hub workspace file with one attempt at its lock and reports whether the lock was held.
+// A held lock leaves the file stale for the next regenerating verb, with a warning naming the repair; any other failure is logged the same way and reports false.
+func regenerateHubWorkspaceNow(rec *Mutations, l *lyxcwd.Location) (skipped bool) {
+	_, err := regenerateHubWorkspace(rec, l, 0)
+	if err == nil {
+		return false
+	}
+	logger.Warn(`fabricengine: hub workspace regeneration skipped; run "lyx fabric reconcile" once the cause is fixed`, "verb", "remove", "error", err)
+	return errors.Is(err, errHubWorkspaceLockHeld)
 }
 
 // removeLocalWeft tears down a local pair's sibling without touching origin: its worktree goes through removeGitWorktree with dirtyRecordsDisposable, so uncommitted records are discarded, then its local branch is deleted and stale worktree registrations are pruned.
@@ -706,7 +795,8 @@ func (t *Topology) RemoveRefusal(l *lyxcwd.Location, slug string, force bool) er
 // It stages exactly the scoped pathspec `lyx fabric sync` uses, through CommitRecordsPaths, with the fixed DefaultCommitMessage plus a Warp-SHA trailer naming the task worktree's HEAD, and pushes nothing.
 // An absent sibling or an empty pathspec commits nothing; KindCommitCreated is recorded only when a commit landed, and committed reports it.
 // The trailer names the task worktree's HEAD while it is present, else the local task branch's tip, else the last Warp-SHA trailer recorded on the sibling branch; with none of those the commit carries no trailer.
-func commitPendingRecords(rec *Mutations, l *lyxcwd.Location, slug, warpBranch string) (committed bool, err error) {
+// With try set the weft write lock is taken by one attempt and a held lock returns an error wrapping ErrPairBusy with nothing committed; otherwise the commit waits for the lock.
+func commitPendingRecords(rec *Mutations, l *lyxcwd.Location, slug, warpBranch string, try bool) (committed bool, err error) {
 	weftTarget := RecordsWorktreePath(l, slug)
 	if _, statErr := os.Stat(weftTarget); os.IsNotExist(statErr) {
 		return false, nil
@@ -736,11 +826,35 @@ func commitPendingRecords(rec *Mutations, l *lyxcwd.Location, slug, warpBranch s
 	if warpSHA != "" {
 		msg = appendWarpSHATrailer(msg, warpSHA)
 	}
-	_, committed, err = CommitRecordsPaths(rec, weftTarget, l.AnchorRel, present, msg, SyncOptions{})
+	if try {
+		committed, err = commitRecordsPathsTry(rec, weftTarget, l.AnchorRel, present, msg)
+	} else {
+		_, committed, err = CommitRecordsPaths(rec, weftTarget, l.AnchorRel, present, msg, SyncOptions{})
+	}
 	if err != nil {
 		return false, fmt.Errorf("commit the pair's pending records: %w", err)
 	}
 	return committed, nil
+}
+
+// commitRecordsPathsTry commits relPaths in the weft worktree at weftPath under one try-acquire of the weft write lock.
+// A held lock returns an error wrapping ErrPairBusy and commits nothing.
+func commitRecordsPathsTry(rec *Mutations, weftPath, anchorRel string, relPaths []string, msg string) (committed bool, err error) {
+	lockDir, err := ensureWeftLockDirAt(weftPath)
+	if err != nil {
+		return false, err
+	}
+	held, acquired, err := lock.TryAcquireWriteLock(filepath.Join(lockDir, weftWriteLockFile))
+	if err != nil {
+		return false, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
+	}
+	if !acquired {
+		return false, fmt.Errorf("the weft write lock of %s is held by another writer: %w", weftPath, ErrPairBusy)
+	}
+	defer func() { _ = held.Release() }()
+
+	_, committed, err = commitRecordsPathsHeld(rec, weftPath, anchorRel, relPaths, msg, SyncOptions{})
+	return committed, err
 }
 
 // recordTrailerSHA picks the Warp-SHA a record commit names: the task worktree's HEAD while that worktree is a present directory, else the local task branch's tip, else the last Warp-SHA trailer on the sibling branch at weftTarget.

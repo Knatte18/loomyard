@@ -212,7 +212,7 @@ func TestRun_KillsTheGroupOnTimeout(t *testing.T) {
 	t.Cleanup(func() { cancel(nil) })
 	go cancelOnceFileExists(ctx, cancel, pidFile, 2*time.Minute)
 
-	out, code, err := runUntilDone(ctx, self, t.TempDir())
+	out, code, err := runUntilDone(ctx, self, t.TempDir(), nil)
 
 	if !errors.Is(err, ErrTimeout) || code != -1 {
 		t.Fatalf("runUntilDone = (%q, %d, %v); want ErrTimeout and exit code -1", out, code, err)
@@ -252,5 +252,11 @@ func TestRun_PassesTheEnvironment(t *testing.T) {
 
 	if err != nil || code != 0 || out != "from-the-test" {
 		t.Errorf("Run = (%q, %d, %v); want the variable's value, exit code 0 and no error", out, code, err)
+	}
+
+	out, code, err = RunWithEnv(self, t.TempDir(), []string{helperEchoEnv + "=from-extra-env"}, 30*time.Second)
+
+	if err != nil || code != 0 || out != "from-extra-env" {
+		t.Errorf("RunWithEnv = (%q, %d, %v); want the extraEnv value, exit code 0 and no error", out, code, err)
 	}
 }

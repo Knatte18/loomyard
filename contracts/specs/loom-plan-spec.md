@@ -18,7 +18,7 @@ The smallest change that:
 1. **Compiles/builds on its own** — `go build ./...` succeeds immediately after the card's commit.
    No broken syntax, no reference to a symbol that doesn't yet exist.
 2. **Is independently committable** — a meaningful, revertible git commit on its own.
-3. **Carries the coverage for any new behavior it introduces**; the card's own targets include the test that covers it (`PATTERN-test-economy`).
+3. **Carries the coverage for any new behavior it introduces**; the card's own targets include the test that covers it.
    Pure refactors/renames may rely on existing tests instead.
    A stencil's static prose is not behavior a test covers; a stencil card carries a test only when it changes a marker, a value Go fills, reads or names, a fragment Go chooses, or a rule a scan across stencils checks.
 

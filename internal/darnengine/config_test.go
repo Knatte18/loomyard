@@ -35,8 +35,8 @@ func seedDarnConfig(t *testing.T, baseDir, contents string) {
 func templateConfig(mutate func(*Config)) Config {
 	cfg := Config{
 		Writer: "opus[medium]", WriterTimeoutMin: 180, VerifyAttempts: 3, ReviewMaxBounces: 1, ReviewHardMaxBounces: 4, ReviewAmendMaxBounces: 1,
-		ReviewerModel: burlerengine.ModelSpecList{"sonnet[high]"}, FixerModel: burlerengine.ModelSpecList{""},
-		ReviewerFan: lenses.FanList{""}, FixerFan: lenses.FanList{""},
+		ReviewerModel: burlerengine.ModelSpecList{"sonnet[medium]"}, FixerModel: burlerengine.ModelSpecList{"sonnet[medium]"},
+		ReviewerFan: lenses.FanList{"review-code", ""}, FixerFan: lenses.FanList{"fix-code"},
 		TreeScope: map[string]string{},
 	}
 	mutate(&cfg)
@@ -126,52 +126,52 @@ func TestLoadConfig(t *testing.T) {
 		},
 		{
 			name: "per-round model lists", seed: true,
-			contents: strings.NewReplacer("darn_reviewer_model: sonnet[high]", "darn_reviewer_model:\n  - opus[high]\n  - sonnet[medium]", "darn_fixer_model: \"\"", "darn_fixer_model: sonnet[low]").Replace(ConfigTemplate()),
+			contents: strings.NewReplacer("darn_reviewer_model: sonnet[medium]", "darn_reviewer_model:\n  - opus[high]\n  - sonnet[medium]", "darn_fixer_model: sonnet[medium]", "darn_fixer_model: sonnet[low]").Replace(ConfigTemplate()),
 			want: templateConfig(func(c *Config) {
 				c.ReviewerModel, c.FixerModel = burlerengine.ModelSpecList{"opus[high]", "sonnet[medium]"}, burlerengine.ModelSpecList{"sonnet[low]"}
 			}),
 		},
 		{
 			name: "empty model list reads as unset", seed: true,
-			contents: strings.Replace(ConfigTemplate(), "darn_reviewer_model: sonnet[high]", "darn_reviewer_model: []", 1),
+			contents: strings.Replace(ConfigTemplate(), "darn_reviewer_model: sonnet[medium]", "darn_reviewer_model: []", 1),
 			want:     templateConfig(func(c *Config) { c.ReviewerModel = burlerengine.ModelSpecList{} }),
 		},
 		{
 			name: "model entry that is no model-spec", seed: true,
-			contents: strings.Replace(ConfigTemplate(), "darn_fixer_model: \"\"", "darn_fixer_model:\n  - sonnet[low]\n  - \"opus[effort\"", 1),
+			contents: strings.Replace(ConfigTemplate(), "darn_fixer_model: sonnet[medium]", "darn_fixer_model:\n  - sonnet[low]\n  - \"opus[effort\"", 1),
 			wantErr:  []string{`darn config key "darn_fixer_model" entry 2`, "set the key to a model-spec"},
 		},
 		{
 			name: "model value of the wrong shape", seed: true,
-			contents: strings.Replace(ConfigTemplate(), "darn_reviewer_model: sonnet[high]", "darn_reviewer_model:\n  model: opus", 1),
+			contents: strings.Replace(ConfigTemplate(), "darn_reviewer_model: sonnet[medium]", "darn_reviewer_model:\n  model: opus", 1),
 			wantErr:  []string{`darn config key "darn_reviewer_model"`, "neither a model-spec nor a list of model-specs"},
 		},
 		{
 			name: "per-round fan lists", seed: true,
-			contents: strings.NewReplacer("darn_reviewer_fan: \"\"", "darn_reviewer_fan:\n  - review-code\n  - \"\"", "darn_fixer_fan: \"\"", "darn_fixer_fan: fix-code").Replace(ConfigTemplate()),
+			contents: strings.NewReplacer(`darn_reviewer_fan: ["review-code", ""]`, "darn_reviewer_fan:\n  - \"\"\n  - review-code", "darn_fixer_fan: fix-code", "darn_fixer_fan:\n  - fix-code\n  - \"\"").Replace(ConfigTemplate()),
 			want: templateConfig(func(c *Config) {
-				c.ReviewerFan, c.FixerFan = lenses.FanList{"review-code", ""}, lenses.FanList{"fix-code"}
+				c.ReviewerFan, c.FixerFan = lenses.FanList{"", "review-code"}, lenses.FanList{"fix-code", ""}
 			}),
 		},
 		{
 			name: "a fan only the board's lenses.yaml defines", seed: true,
-			contents:   strings.Replace(ConfigTemplate(), "darn_reviewer_fan: \"\"", "darn_reviewer_fan: board-fan", 1),
+			contents:   strings.Replace(ConfigTemplate(), `darn_reviewer_fan: ["review-code", ""]`, "darn_reviewer_fan: board-fan", 1),
 			lensesYAML: "fans:\n  board-fan: [goal-scope]\n",
 			want:       templateConfig(func(c *Config) { c.ReviewerFan = lenses.FanList{"board-fan"} }),
 		},
 		{
 			name: "undefined fan", seed: true,
-			contents: strings.Replace(ConfigTemplate(), "darn_fixer_fan: \"\"", "darn_fixer_fan:\n  - \"\"\n  - nosuchfan", 1),
+			contents: strings.Replace(ConfigTemplate(), "darn_fixer_fan: fix-code", "darn_fixer_fan:\n  - \"\"\n  - nosuchfan", 1),
 			wantErr:  []string{`darn config key "darn_fixer_fan" entry 2`, `"nosuchfan"`, "define the fan in lenses.yaml", `set the entry to ""`},
 		},
 		{
 			name: "empty fan list", seed: true,
-			contents: strings.Replace(ConfigTemplate(), "darn_reviewer_fan: \"\"", "darn_reviewer_fan: []", 1),
+			contents: strings.Replace(ConfigTemplate(), `darn_reviewer_fan: ["review-code", ""]`, "darn_reviewer_fan: []", 1),
 			wantErr:  []string{`darn config key "darn_reviewer_fan"`, "the list is empty", `write ""`},
 		},
 		{
 			name: "fan value of the wrong shape", seed: true,
-			contents: strings.Replace(ConfigTemplate(), "darn_reviewer_fan: \"\"", "darn_reviewer_fan:\n  model: opus", 1),
+			contents: strings.Replace(ConfigTemplate(), `darn_reviewer_fan: ["review-code", ""]`, "darn_reviewer_fan:\n  model: opus", 1),
 			wantErr:  []string{`darn config key "darn_reviewer_fan"`, "neither a fan name nor a list of fan names"},
 		},
 		{

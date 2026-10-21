@@ -341,13 +341,14 @@ func TestConfigOverRealHub(t *testing.T) {
 			t.Fatalf("read the board loom.yaml: %v", err)
 		}
 		// webster_fan holds a value under the old name alone, and merge_fan sits beside the new name it was renamed to.
+		// The hub base is sparse, so the new name is planted for merge_fan to sit beside.
 		var planted []string
 		for _, line := range strings.Split(strings.TrimRight(string(current), "\n"), "\n") {
-			if !strings.HasPrefix(line, "webster_reviewer_fan:") {
+			if !strings.HasPrefix(line, "webster_reviewer_fan:") && !strings.HasPrefix(line, "merge_reviewer_fan:") {
 				planted = append(planted, line)
 			}
 		}
-		planted = append(planted, "webster_fan: review-code", "merge_fan: stale-fan")
+		planted = append(planted, "webster_fan: review-code", "merge_reviewer_fan: review-code", "merge_fan: stale-fan")
 		before := []byte(strings.Join(planted, "\n") + "\n")
 		if err := os.WriteFile(loomFile, before, 0o644); err != nil {
 			t.Fatalf("plant old keys in the board loom.yaml: %v", err)
@@ -469,7 +470,7 @@ func TestConfigOverRealHub(t *testing.T) {
 		if err != nil {
 			t.Fatalf("git show in _board: %v", err)
 		}
-		wantShow := "config: reconcile the board dir's files\n" + strings.ReplaceAll(configengine.ConfigFileRel("loom"), "\\", "/")
+		wantShow := "config: reconcile the board dir's files\n" + strings.ReplaceAll(configengine.ConfigFileRel("lenses"), "\\", "/") + "\n" + strings.ReplaceAll(configengine.ConfigFileRel("loom"), "\\", "/")
 		if strings.TrimSpace(string(showOut)) != wantShow {
 			t.Errorf("HEAD in _board = %q; want %q", showOut, wantShow)
 		}
@@ -489,6 +490,44 @@ func TestConfigOverRealHub(t *testing.T) {
 		}
 		if kept, err := os.ReadFile(machineFile); err != nil || string(kept) != machineBytes {
 			t.Errorf("machine gate file = %q, %v after the apply; want it unchanged", kept, err)
+		}
+	})
+
+	t.Run("reconcile --layer default lists an unmigrated base's strip as pending and never performs it", func(t *testing.T) {
+		t.Setenv(agentname.StrandNameEnv, "")
+		loomTemplate, ok := configreg.Template("loom")
+		if !ok {
+			t.Fatal("configreg has no loom template")
+		}
+		loomFile := configengine.ConfigFile(boardDir, "loom")
+		full := []byte(loomTemplate())
+		if err := os.WriteFile(loomFile, full, 0o644); err != nil {
+			t.Fatalf("write the current template whole into the board loom.yaml: %v", err)
+		}
+		marker := configengine.BaseSparseMarker(boardDir)
+		if err := os.Remove(marker); err != nil && !os.IsNotExist(err) {
+			t.Fatalf("remove the board marker: %v", err)
+		}
+
+		code, result := runReconcileCLI(t, primeWorktreePath, "--layer", "default")
+		if code != 0 {
+			t.Fatalf("reconcile --layer default = %d; want 0; result: %v", code, result)
+		}
+		if stripped := reconcileModule(t, result, "loom")["stripped"]; stripped == nil {
+			t.Errorf("dry-run loom entry lists no stripped keys; want the template-equal keys; result: %v", result)
+		}
+		if _, ok := result["base_strip"].(string); !ok {
+			t.Errorf("dry-run envelope lacks base_strip; got %v", result)
+		}
+
+		if code, result = runReconcileCLI(t, primeWorktreePath, "--layer", "default", "--apply"); code != 0 {
+			t.Fatalf("reconcile --layer default --apply = %d; want 0; result: %v", code, result)
+		}
+		if after, err := os.ReadFile(loomFile); err != nil || !bytes.Equal(after, full) {
+			t.Errorf("board loom.yaml = %q, %v after the apply; want the units left in place", after, err)
+		}
+		if _, err := os.Stat(marker); !os.IsNotExist(err) {
+			t.Errorf("board marker stat err = %v after the apply; want it absent", err)
 		}
 	})
 }

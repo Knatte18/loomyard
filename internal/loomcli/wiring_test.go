@@ -625,7 +625,7 @@ func TestWire_DiscussionTableEvaluatesToExpectedShape(t *testing.T) {
 	}
 
 	// discussion_advisors and discussion_lenses decide which seats the wired table holds and whether its lead may fork:
-	// the template keeps the lead alone, each configured advisor adds a seat named by its entry, and a lens key authorizes the lead's forks and no advisor's.
+	// the template's lens fan authorizes the lead's forks and no advisor's, each configured advisor adds a seat named by its entry, and an empty lens key keeps the lead from forking.
 	const advisorEntries = `[{name: critic, model: "sonnet[low]"}, {name: skeptic, model: "opus[high]"}]`
 	keyTests := []struct {
 		name      string
@@ -633,10 +633,10 @@ func TestWire_DiscussionTableEvaluatesToExpectedShape(t *testing.T) {
 		wantSeats []string
 		wantForks bool
 	}{
-		{"TemplateKeepsTheLeadAlone", nil, []string{""}, false},
-		{"AdvisorsAddASeatEach", map[string]string{"discussion_advisors": advisorEntries}, []string{"", "critic", "skeptic"}, false},
-		{"LensKeyAuthorizesTheLeadsForks", map[string]string{"discussion_lenses": "twill-discussion"}, []string{""}, true},
-		{"AdvisorsWithLensesForkFromTheLeadOnly", map[string]string{"discussion_advisors": advisorEntries, "discussion_lenses": "twill-discussion"}, []string{"", "critic", "skeptic"}, true},
+		{"TemplateLensFanAuthorizesTheLeadsForks", nil, []string{""}, true},
+		{"AdvisorsAddASeatEachAndTheLeadAloneForks", map[string]string{"discussion_advisors": advisorEntries}, []string{"", "critic", "skeptic"}, true},
+		{"EmptyLensKeyKeepsTheLeadFromForking", map[string]string{"discussion_lenses": `""`}, []string{""}, false},
+		{"AdvisorsWithoutLensesNeverFork", map[string]string{"discussion_advisors": advisorEntries, "discussion_lenses": `""`}, []string{"", "critic", "skeptic"}, false},
 	}
 	for _, tt := range keyTests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -871,8 +871,8 @@ func seedLoomConfigWithKeys(t *testing.T, anchorPath string, values map[string]s
 }
 
 // TestWire_ReviewKeysReachTheEnv verifies the loom.yaml keys that tune a review round reach the Env:
-// plan_reviewer_model lands in the Plan-Review segment's models alone, and Discussion-Review keeps the run-wide models.
-// Webster-Review and Merge-Review take the template's webster_reviewer_model and merge_reviewer_model (one sonnet entry of effort high each) with the run-wide fix models.
+// plan_reviewer_model lands in the Plan-Review segment's models alone, and Discussion-Review takes the template's per-round discussion_reviewer_model with the run-wide fix models.
+// Webster-Review and Merge-Review take the template's own reviewer and fixer models (one sonnet entry of effort medium each).
 // plan_judge, seed and webster_seed land in each segment's Bouncer pair, Merge-Review taking Webster-Review's.
 // The per-perch budget and hard cap keys land in each segment's MaxBounces and HardMaxBounces, and every segment's entry is pinned whole.
 func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
@@ -922,11 +922,11 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	}
 	for _, segment := range []string{"Webster-Review", "Merge-Review"} {
 		webster := c.env.Segments[segment].Models
-		if len(webster.Review) != 1 || webster.Review[0].Model != "sonnet" || webster.Review[0].Effort != "high" {
-			t.Errorf("Segments[%q].Models.Review = %+v; want one sonnet entry of effort high", segment, webster.Review)
+		if len(webster.Review) != 1 || webster.Review[0].Model != "sonnet" || webster.Review[0].Effort != "medium" {
+			t.Errorf("Segments[%q].Models.Review = %+v; want one sonnet entry of effort medium", segment, webster.Review)
 		}
-		if !reflect.DeepEqual(webster.Fix, shared.Fix) {
-			t.Errorf("Segments[%q].Models.Fix = %+v; want the run-wide %+v", segment, webster.Fix, shared.Fix)
+		if len(webster.Fix) != 1 || webster.Fix[0].Model != "sonnet" || webster.Fix[0].Effort != "medium" {
+			t.Errorf("Segments[%q].Models.Fix = %+v; want one sonnet entry of effort medium", segment, webster.Fix)
 		}
 	}
 	if c.env.WebsterRecord == nil {
@@ -940,9 +940,9 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	loomKey := func(key string) shuttleengine.ModelKey { return shuttleengine.ModelKey{Module: "loom", Key: key} }
 	wantSegments := map[string]shedrecipe.SegmentSettings{
 		"Discussion-Review": {
-			Models: c.env.Segments["Discussion-Review"].Models, ReviewKey: loomKey("reviewer_model"), FixKey: loomKey("fixer_model"),
+			Models: c.env.Segments["Discussion-Review"].Models, ReviewKey: loomKey("discussion_reviewer_model"), FixKey: loomKey("fixer_model"),
 			Bouncer:    wantBouncerModels["Discussion-Review"],
-			MaxBounces: c.cfg.ReviewMaxBounces, MaxBouncesKey: "review_max_bounces",
+			MaxBounces: 2, MaxBouncesKey: "discussion_max_bounces",
 			HardMaxBounces: 4, HardMaxBouncesKey: "review_hard_max_bounces", AmendMaxBounces: 1, ConfigFile: "loom.yaml",
 		},
 		"Plan-Review": {
@@ -952,13 +952,13 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 			HardMaxBounces: 5, HardMaxBouncesKey: "plan_hard_max_bounces", AmendMaxBounces: 1, ConfigFile: "loom.yaml",
 		},
 		"Webster-Review": {
-			Models: c.env.Segments["Webster-Review"].Models, ReviewKey: loomKey("webster_reviewer_model"), FixKey: loomKey("fixer_model"),
+			Models: c.env.Segments["Webster-Review"].Models, ReviewKey: loomKey("webster_reviewer_model"), FixKey: loomKey("webster_fixer_model"),
 			Bouncer:    wantBouncerModels["Webster-Review"],
 			MaxBounces: 1, MaxBouncesKey: "webster_max_bounces",
 			HardMaxBounces: 4, HardMaxBouncesKey: "review_hard_max_bounces", AmendMaxBounces: 1, ConfigFile: "loom.yaml",
 		},
 		"Merge-Review": {
-			Models: c.env.Segments["Merge-Review"].Models, ReviewKey: loomKey("merge_reviewer_model"), FixKey: loomKey("fixer_model"),
+			Models: c.env.Segments["Merge-Review"].Models, ReviewKey: loomKey("merge_reviewer_model"), FixKey: loomKey("merge_fixer_model"),
 			Bouncer:    wantBouncerModels["Merge-Review"],
 			MaxBounces: 0, MaxBouncesKey: "merge_max_bounces",
 			HardMaxBounces: 4, HardMaxBouncesKey: "review_hard_max_bounces", AmendMaxBounces: 1, ConfigFile: "loom.yaml",

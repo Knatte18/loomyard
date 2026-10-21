@@ -22,6 +22,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -97,6 +98,8 @@ type SyncOptions struct {
 	// push proceed regardless. See Fabric.Commit's doc comment.
 	SkipGit  bool
 	SkipPush bool // Skip push operations if true; affects push only.
+	// BackoffSleep sleeps one delay of the backoff a push waits out before it records a branch gone from origin or an unreachable origin; nil sleeps for the delay.
+	BackoffSleep func(time.Duration)
 }
 
 // EnvSyncOptions reads the FABRIC_SKIP_GIT and FABRIC_SKIP_PUSH environment variables and returns the
