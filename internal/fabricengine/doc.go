@@ -565,7 +565,7 @@
 // `ReadTaskPatch(base, skip)` returns a `TaskPatch`: the warp working tree's change against the told merge base, tracked files and uncommitted edits included, plus every untracked non-ignored file as a new-file diff, minus the untracked paths `skip` names and those under a `skip` entry ending in `/`.
 // It carries the HEAD it read, the full diff bytes, their SHA-256 and git's stable patch-id of the zero-context form, which a rebase that only moves context leaves unchanged.
 // `MergeInOnly(since, parentTip)` reports whether every first-parent commit from HEAD back to `since` is a Merge-In: a merge commit whose second parent is an ancestor of `parentTip`, or a commit that is itself such an ancestor, as a fast-forward Merge-In leaves it.
-// `WeftHeadSHA` returns the commit the weft checkout's HEAD stands at.
+// `RecordsHeadSHA` returns the commit the weft checkout's HEAD stands at.
 //
 // `Add` also drops the parent's shed run records from a pair it forks (forkrecords.go).
 // A weft branch forked from its parent would otherwise carry every committed run directory, including one for the child's own slug, and the child's `Seed-Child` would refuse a disagreeing seed.

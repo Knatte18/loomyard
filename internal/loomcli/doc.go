@@ -237,4 +237,18 @@
 //
 // The landing wiring reads the run's start from the pair's seed and fails on a seed it cannot decode.
 // `lyx loom approve` and `lyx loom reject` look up the pull request created at or after that start and refuse when the seed cannot be read.
+//
+// # Review subjects
+//
+// The wiring tells each Bouncer row what its segment judges, so a re-entry over an unchanged subject settles without a review and a changed one reviews only the change under `review_amend_max_bounces`.
+// A recipe row names its subject by its `subject` key: Discussion-Bouncer and Plan-Bouncer `document`, Webster-Bouncer and darn's Darn-Bouncer `code`, Merge-Bouncer `merge`.
+// A document subject hashes the row's artifact paths in order: the decision record through its identity text, a plan directory as its overview's identity text and its top-level card files, and an absent path as absent.
+// Its Base is the commit the run records' checkout stands at.
+// A code subject is the task worktree's change against the merge base with the recorded parent branch, leaving out the run's own state directories and the harness's own files while untracked.
+// A run with no recorded parent branch tells no code subject, so its code segments write no records.
+// A change confined to the harness's own files reads as an unchanged subject; the verify tiers at Publish, darn's Merge-In and loom's Merge-Review bound it.
+// A merge subject hashes the merge record's merged tip and merge commit.
+//
+// A loom run tells each Bouncer the findings file and time of the latest PR-Gate reject its rework directory kept.
+// A darn run's Darn-Write row writes them into `reject-review.md` in the landing directory before it clears the pending rejection, and its Commit seam commits that file.
 package loomcli

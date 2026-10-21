@@ -855,6 +855,17 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		},
 		// CarryOver files each review segment's still-open findings in the decision record and commits that record alone, so no other dirty file rides along.
 		CarryOver: func(entry discussionparser.CarryOver) error { return writeCarryOver(location, entry) },
+		// The subject seams tell each Bouncer row what its segment judges, so a re-entry over an unchanged subject settles without a review.
+		// Each reads on demand and opens nothing at wire time.
+		DocumentSubject: documentSubjectWithHead(location, recordHead(location)),
+		CodeSubject:     func() (shedadapters.Subject, bool, error) { return codeSubject(location, c.runID) },
+		MergeSubject:    func() (shedadapters.Subject, bool, error) { return mergeSubject(location) },
+		MergeInOnly:     parentMergeInOnly(location),
+		RecordHead:      recordHead(location),
+		// RejectReview is the findings file of the latest PR-Gate reject that PR-Rework kept in its rework directory.
+		RejectReview: func() (string, time.Time, bool, error) {
+			return loomshed.LatestRejectReview(loomengine.LoomReworkDir(location))
+		},
 		// SkipPlanReview lets Plan-Bouncer approve an exempt rework generation without a judge; it reads committed state on demand and opens nothing at wire time.
 		SkipPlanReview: func() (bool, error) { return loomshed.PlanReviewSkippable(reworkDeps) },
 		// SkipMergeReview answers from the merge record alone, so an absent or unreadable record reviews the whole merge-in diff.
@@ -1029,6 +1040,7 @@ func loomSegmentSettings(cfg loomengine.Config, review loomengine.ReviewSettings
 			MaxBouncesKey:     caps.SoftKey,
 			HardMaxBounces:    caps.Hard,
 			HardMaxBouncesKey: caps.HardKey,
+			AmendMaxBounces:   cfg.ReviewAmendMaxBounces,
 			ConfigFile:        "loom.yaml",
 		}
 	}

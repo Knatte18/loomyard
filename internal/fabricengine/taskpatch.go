@@ -142,8 +142,8 @@ func (f *Fabric) MergeInOnly(since, parentTip string) (bool, error) {
 	return false, nil
 }
 
-// WeftHeadSHA returns the commit the weft checkout's HEAD stands at.
+// RecordsHeadSHA returns the commit the weft checkout's HEAD stands at.
 // It is a thin, read-only delegation to gitrepo.Repo.CurrentSHA on f.records, so a caller reads the weft side without naming it.
-func (f *Fabric) WeftHeadSHA() (string, error) {
+func (f *Fabric) RecordsHeadSHA() (string, error) {
 	return f.records.CurrentSHA()
 }

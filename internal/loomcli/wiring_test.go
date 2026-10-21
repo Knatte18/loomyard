@@ -946,29 +946,33 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 			Models: c.env.Segments["Discussion-Review"].Models, ReviewKey: loomKey("reviewer_model"), FixKey: loomKey("fixer_model"),
 			Bouncer:    wantBouncerModels["Discussion-Review"],
 			MaxBounces: c.cfg.ReviewMaxBounces, MaxBouncesKey: "review_max_bounces",
-			HardMaxBounces: 4, HardMaxBouncesKey: "review_hard_max_bounces", ConfigFile: "loom.yaml",
+			HardMaxBounces: 4, HardMaxBouncesKey: "review_hard_max_bounces", AmendMaxBounces: 1, ConfigFile: "loom.yaml",
 		},
 		"Plan-Review": {
 			Models: plan, ReviewKey: loomKey("plan_reviewer_model"), FixKey: loomKey("fixer_model"),
 			Bouncer:    wantBouncerModels["Plan-Review"],
 			MaxBounces: 2, MaxBouncesKey: "plan_max_bounces",
-			HardMaxBounces: 5, HardMaxBouncesKey: "plan_hard_max_bounces", ConfigFile: "loom.yaml",
+			HardMaxBounces: 5, HardMaxBouncesKey: "plan_hard_max_bounces", AmendMaxBounces: 1, ConfigFile: "loom.yaml",
 		},
 		"Webster-Review": {
 			Models: c.env.Segments["Webster-Review"].Models, ReviewKey: loomKey("webster_reviewer_model"), FixKey: loomKey("fixer_model"),
 			Bouncer:    wantBouncerModels["Webster-Review"],
 			MaxBounces: 1, MaxBouncesKey: "webster_max_bounces",
-			HardMaxBounces: 4, HardMaxBouncesKey: "review_hard_max_bounces", ConfigFile: "loom.yaml",
+			HardMaxBounces: 4, HardMaxBouncesKey: "review_hard_max_bounces", AmendMaxBounces: 1, ConfigFile: "loom.yaml",
 		},
 		"Merge-Review": {
 			Models: c.env.Segments["Merge-Review"].Models, ReviewKey: loomKey("merge_reviewer_model"), FixKey: loomKey("fixer_model"),
 			Bouncer:    wantBouncerModels["Merge-Review"],
 			MaxBounces: 0, MaxBouncesKey: "merge_max_bounces",
-			HardMaxBounces: 4, HardMaxBouncesKey: "review_hard_max_bounces", ConfigFile: "loom.yaml",
+			HardMaxBounces: 4, HardMaxBouncesKey: "review_hard_max_bounces", AmendMaxBounces: 1, ConfigFile: "loom.yaml",
 		},
 	}
 	if !reflect.DeepEqual(c.env.Segments, wantSegments) {
 		t.Errorf("Segments = %+v; want %+v", c.env.Segments, wantSegments)
+	}
+	// envkit.NilSeams skips RejectReview through nilLegal, so a direct check pins that wire tells it.
+	if c.env.RejectReview == nil {
+		t.Error("c.env.RejectReview = nil; want the rework directory's reject reader")
 	}
 
 	// Per-round fan lists reach each segment's Bouncer and review row, and the fixer fan lists the review rows alone.
