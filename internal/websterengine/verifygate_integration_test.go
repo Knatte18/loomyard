@@ -30,7 +30,6 @@ type verifyGateRepo struct {
 // verifyGateConfig returns the gate.yaml a scratch worktree holds: a `final` list over tier0, which runs a shell stand-in that writes sentinel.
 func verifyGateConfig(sentinel string) string {
 	return `slots: 1
-go_parallel: 1
 scoper: none
 tiers:
   tier0:

@@ -58,9 +58,8 @@ func (s *gateScenario) restart(t *testing.T, verify string) (*runFixture, string
 		t.Fatalf("write the exclude file: %v", err)
 	}
 	config, err := yaml.Marshal(map[string]any{
-		"slots":       1,
-		"go_parallel": 1,
-		"scoper":      "none",
+		"slots":  1,
+		"scoper": "none",
 		"tiers": map[string]any{
 			"tier0": map[string]any{"about": "verify stand-in", "command": verify, "timeout_min": 1, "counter": "go-json"},
 		},

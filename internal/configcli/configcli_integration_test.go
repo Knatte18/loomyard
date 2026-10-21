@@ -358,7 +358,7 @@ func TestConfigOverRealHub(t *testing.T) {
 		}
 
 		// A reconcile never reads or writes a machine file, so its bytes stay as seeded through the apply below.
-		const machineBytes = "slots: 1\ngo_parallel: 8\n"
+		const machineBytes = "slots: 1\ntier_parallel:\n  tier0: 8\n"
 		machineFile := configengine.MachineFile(boardDir, "gate")
 		if err := os.MkdirAll(filepath.Dir(machineFile), 0o755); err != nil {
 			t.Fatalf("create the board's .lyx config dir: %v", err)

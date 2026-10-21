@@ -142,9 +142,12 @@ func TestVerifyGate_Scenario(t *testing.T) {
 // roundGateConfig is the gate.yaml the round scenario's worktree holds: tier0 untagged, tier1 integration and the guard tier, tier2 tmux.
 // Each tier runs a real `go test -json` over its targets.
 const roundGateConfig = `slots: 1
-go_parallel: 2
 scoper: go
 guard_tier: 1
+tier_parallel:
+  tier0: 2
+  tier1: 2
+  tier2: 2
 tiers:
   tier0:
     about: untagged tests

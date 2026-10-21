@@ -39,9 +39,8 @@ type verifyFixture struct {
 func verifyGateConfig(t *testing.T, command string, finalTier int) []byte {
 	t.Helper()
 	data, err := yaml.Marshal(map[string]any{
-		"slots":       1,
-		"go_parallel": 1,
-		"scoper":      "none",
+		"slots":  1,
+		"scoper": "none",
 		"tiers": map[string]any{
 			"tier0": map[string]any{"about": "shell stand-in", "command": command, "timeout_min": 1, "counter": "go-json"},
 		},
