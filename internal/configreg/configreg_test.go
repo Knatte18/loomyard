@@ -4,6 +4,7 @@ package configreg
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -109,8 +110,48 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 			if m.HubWide && len(m.LocalDenied) != 0 || !m.HubWide && len(m.LocalKeys) != 0 {
 				t.Errorf("%s LocalKeys = %v, LocalDenied = %v; want only the list of its own kind", m.Name, m.LocalKeys, m.LocalDenied)
 			}
+			if refusal := machineKeyRefusal(m); refusal != "" {
+				t.Error(refusal)
+			}
+			wantMachineKeys := []string{}
+			if m.Name == "gate" {
+				wantMachineKeys = []string{"go_parallel", "slots"}
+			}
+			if got := configengine.MachineKeys(spec); !slices.Equal(got, wantMachineKeys) {
+				t.Errorf("%s MachineKeys = %v; want %v, so no stray machine file is read by a registered loader", m.Name, got, wantMachineKeys)
+			}
 		})
 	}
+
+	t.Run("a per-worktree module with a machine key is refused", func(t *testing.T) {
+		t.Parallel()
+		synthetic := Module{
+			Name: "synthetic",
+			Spec: func() configengine.Spec {
+				return configengine.Spec{
+					Name:       "synthetic",
+					Categories: map[string]configengine.Category{"limit": configengine.CategoryMachine},
+				}
+			},
+		}
+		if machineKeyRefusal(synthetic) == "" {
+			t.Error("machineKeyRefusal(per-worktree module with a machine key) = \"\"; want a refusal")
+		}
+		synthetic.HubWide = true
+		if refusal := machineKeyRefusal(synthetic); refusal != "" {
+			t.Errorf("machineKeyRefusal(hub-wide module with a machine key) = %q; want none", refusal)
+		}
+	})
+}
+
+// machineKeyRefusal returns the message refusing a per-worktree module that classifies a key CategoryMachine, and "" for any other module.
+// Only a hub-wide module reads a machine file, so such a key would be a value no loader reads.
+func machineKeyRefusal(m Module) string {
+	machineKeys := configengine.MachineKeys(m.Spec())
+	if m.HubWide || len(machineKeys) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("module %q is per-worktree but classifies %v as machine keys; only a hub-wide module reads a machine file", m.Name, machineKeys)
 }
 
 // coveredByEntry reports whether a Categories entry equals path or is an ancestor of it.

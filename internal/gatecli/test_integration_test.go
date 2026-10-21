@@ -657,16 +657,17 @@ func TestGateTest_Scenario(t *testing.T) {
 	refusals := []struct {
 		name string
 		// args defaults to `test ./pkg`.
-		args      []string
-		setup     func(t *testing.T) (restore func())
-		env       []string
-		wantError string
+		args  []string
+		setup func(t *testing.T) (restore func())
+		env   []string
+		// wantError lists text the refusal must hold.
+		wantError []string
 	}{
 		{
 			name:      "a missing package directory refuses before the slot and the prebuild",
 			args:      []string{"test", "--tags", "integration", "./nope"},
 			setup:     func(t *testing.T) func() { return func() {} },
-			wantError: "./nope",
+			wantError: []string{"./nope"},
 		},
 		{
 			name: "an absent gate.yaml names lyx fabric reconcile",
@@ -681,7 +682,7 @@ func TestGateTest_Scenario(t *testing.T) {
 					}
 				}
 			},
-			wantError: `way forward: run "lyx fabric reconcile", then re-run the same command; a session lyx refuses the verb from reports status: FAILED and the orch runs it`,
+			wantError: []string{`way forward: run "lyx fabric reconcile", then re-run the same command; a session lyx refuses the verb from reports status: FAILED and the orch runs it`},
 		},
 		{
 			name: "a gate.yaml value below 1 names lyx config gate",
@@ -696,7 +697,31 @@ func TestGateTest_Scenario(t *testing.T) {
 					}
 				}
 			},
-			wantError: `fix the file with "lyx config gate" from the prime`,
+			wantError: []string{`fix it with "lyx config gate" from the prime`},
+		},
+		{
+			name: "a machine go_parallel below 1 names both files and both ways forward",
+			setup: func(t *testing.T) func() {
+				machinePath := configengine.MachineFile(h.BoardDir(), "gate")
+				if err := os.MkdirAll(filepath.Dir(machinePath), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(machinePath, []byte("go_parallel: 0\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				return func() {
+					if err := os.Remove(machinePath); err != nil {
+						t.Fatal(err)
+					}
+				}
+			},
+			wantError: []string{
+				configengine.ConfigFile(h.BoardDir(), "gate"),
+				configengine.MachineFile(h.BoardDir(), "gate"),
+				"lyx config gate --layer machine",
+				"by removing",
+				"a session that is not the prime takes none of these steps; it reports status: FAILED and the orch runs them",
+			},
 		},
 		{
 			name: "a slot directory that cannot be created is a re-run refusal",
@@ -720,13 +745,13 @@ func TestGateTest_Scenario(t *testing.T) {
 					}
 				}
 			},
-			wantError: "cannot acquire a gate slot",
+			wantError: []string{"cannot acquire a gate slot"},
 		},
 		{
 			name:      "a go binary that cannot start names putting go on PATH",
 			setup:     func(t *testing.T) func() { return func() {} },
 			env:       []string{helperGoEnv + "=" + filepath.Join(t.TempDir(), "absent-go")},
-			wantError: "put go on PATH",
+			wantError: []string{"put go on PATH"},
 		},
 	}
 	for _, tc := range refusals {
@@ -747,8 +772,13 @@ func TestGateTest_Scenario(t *testing.T) {
 			if err := json.Unmarshal(g.stdout.Bytes(), &envelope); err != nil {
 				t.Fatalf("stdout %q is not a JSON envelope: %v", g.stdout.String(), err)
 			}
-			if code != 1 || envelope.OK || !strings.Contains(envelope.Error, tc.wantError) {
-				t.Errorf("gate = exit %d, %+v; want exit 1, ok false and an error holding %q", code, envelope, tc.wantError)
+			if code != 1 || envelope.OK {
+				t.Errorf("gate = exit %d, %+v; want exit 1 and ok false", code, envelope)
+			}
+			for _, want := range tc.wantError {
+				if !strings.Contains(envelope.Error, want) {
+					t.Errorf("gate error = %q; want it to hold %q", envelope.Error, want)
+				}
 			}
 			if _, err := os.Stat(g.record); err == nil {
 				t.Error("the stand-in ran although the gate refused")

@@ -7,6 +7,7 @@
 package hubgeom
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -125,6 +126,27 @@ func TestWebsterGeometry(t *testing.T) {
 			wantLimits := gateslot.Limits{Slots: 3, GoParallel: 5, BusyQuit: 9 * time.Second}
 			if limits, err := got.GateSlots.Limits(); err != nil || limits != wantLimits {
 				t.Errorf("GateSlots.Limits() = (%+v, %v); want the board dir's gate.yaml as %+v", limits, err, wantLimits)
+			}
+
+			// The fixture anchor has no _lyx/, so this also pins that the machine layer loads from such an anchor.
+			machineConfig := configengine.MachineFile(boardDir, "gate")
+			if err := os.MkdirAll(filepath.Dir(machineConfig), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(machineConfig, []byte("slots: 1\ngo_parallel: 8\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			wantLimits = gateslot.Limits{Slots: 1, GoParallel: 8, BusyQuit: 9 * time.Second}
+			if limits, err := got.GateSlots.Limits(); err != nil || limits != wantLimits {
+				t.Errorf("GateSlots.Limits() with a machine override = (%+v, %v); want %+v", limits, err, wantLimits)
+			}
+			lease, err := got.GateSlots.Acquire(context.Background(), gateslot.Holder{Worktree: worktreeName, Site: "webstergeom_test"})
+			if err != nil {
+				t.Fatalf("GateSlots.Acquire() = %v; want a lease", err)
+			}
+			t.Cleanup(func() { _ = lease.Release() })
+			if env := strings.Join(lease.Env(nil), "\n"); !strings.Contains(env, "-p=8") {
+				t.Errorf("lease.Env(nil) = %q; want GOFLAGS carrying -p=8", env)
 			}
 		})
 	}
