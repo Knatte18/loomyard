@@ -1,11 +1,9 @@
 // Command deploy is the only route by which lyx and the loomyard plugins are installed.
 //
-// Production is the default and is what update-plugins.sh / update-plugins.cmd run: it puts the
-// checked-out, committed code into production in one step. It refuses a dirty working tree or a
-// HEAD that is not pushed to origin/main, mirrors every installed loomyard plugin's git-tracked
-// files into the Claude Code plugin cache, builds lyx into the Go bin dir (`go env GOBIN`, else
-// GOPATH/bin), and then moves the `prod` branch forward to the deployed commit. Nothing reaches
-// production except through this step.
+// Production is the default and is what update-plugins.sh / update-plugins.cmd run: it puts the checked-out, committed code into production in one step.
+// It refuses a dirty working tree or a HEAD that is not pushed to origin/main, mirrors every installed loomyard plugin's git-tracked files into the Claude Code plugin cache, and builds lyx into the Go bin dir (`go env GOBIN`, else GOPATH/bin).
+// Nothing reaches production except through this step.
+// No pointer on origin records the deployed commit: each machine deploys on its own, so a shared one could not say what any one machine runs.
 //
 // -dev (deploy-dev / deploy-dev.cmd) builds the working tree as-is into <repoRoot>/.dev-bin (see
 // tools/internal/devbin) for internal tests, and touches nothing else.
@@ -17,6 +15,7 @@
 package main
 
 import (
+	"debug/buildinfo"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -46,7 +45,6 @@ func run(dev bool) error {
 		return err
 	}
 
-	var head string
 	if !dev {
 		porcelain, err := gitOut(root, "status", "--porcelain")
 		if err != nil {
@@ -55,7 +53,7 @@ func run(dev bool) error {
 		if err := dirtyError(porcelain); err != nil {
 			return err
 		}
-		if head, err = prodGate(root); err != nil {
+		if err := pushedGate(root); err != nil {
 			return err
 		}
 		if err := syncPlugins(root); err != nil {
@@ -100,18 +98,12 @@ func run(dev bool) error {
 	if dev {
 		return nil
 	}
-	// The prod pointer moves only after everything above succeeded, so it never names a commit
-	// that did not actually reach production.
-	if _, err := gitOut(root, "push", "origin", head+":refs/heads/"+prodBranch); err != nil {
-		return fmt.Errorf("deployed, but moving %s to %s failed: %w", prodBranch, head, err)
-	}
-	fmt.Printf("Moved %s -> %s\n", prodBranch, head)
 
 	pathDirs := filepath.SplitList(os.Getenv("PATH"))
 	if !onPath(pathDirs, destDir) {
 		fmt.Printf("  WARNING: %s is not on PATH - add it so 'lyx' resolves globally.\n", destDir)
 	}
-	for _, other := range otherBinaries(pathDirs, destDir, name, fileExists) {
+	for _, other := range otherLyxBinaries(pathDirs, destDir, name, lyxMainPackage) {
 		fmt.Printf("  WARNING: another %s on PATH: %s - remove it; production lyx lives only in %s.\n", name, other, destDir)
 	}
 	return nil
@@ -133,46 +125,27 @@ func dirtyError(porcelain string) error {
 	return fmt.Errorf("working tree is dirty; commit or stash before deploying to production:\n%s", porcelain)
 }
 
-// workBranch is where all work lands; prodBranch is the pointer a production deploy moves to the
-// commit it deployed, so `git log -1 prod` always names what is in production.
-const (
-	workBranch = "main"
-	prodBranch = "prod"
-)
+// workBranch is where all work lands, and the only branch production deploys from.
+const workBranch = "main"
 
-// prodGate fetches origin and returns HEAD's full SHA when HEAD may go to production: it must be
-// pushed work (on origin's workBranch), and prodBranch, when it exists, must be its ancestor, so
-// production history only ever moves forward.
-func prodGate(root string) (string, error) {
+// lyxMainPackage is the main package path lyx's Go build info carries, which tells a copy of lyx on PATH from a foreign program of the same name.
+const lyxMainPackage = "github.com/Knatte18/loomyard/cmd/lyx"
+
+// pushedGate fetches origin and refuses a HEAD that is not on origin's workBranch, so production only ever runs pushed work.
+func pushedGate(root string) error {
 	if _, err := gitOut(root, "fetch", "--quiet", "origin"); err != nil {
-		return "", fmt.Errorf("git fetch origin: %w", err)
+		return fmt.Errorf("git fetch origin: %w", err)
 	}
 	head, err := gitOut(root, "rev-parse", "HEAD")
 	if err != nil {
-		return "", fmt.Errorf("git rev-parse HEAD: %w", err)
+		return fmt.Errorf("git rev-parse HEAD: %w", err)
 	}
-	onWork := isAncestor(root, head, "origin/"+workBranch)
-	_, prodErr := gitOut(root, "rev-parse", "--verify", "--quiet", "origin/"+prodBranch)
-	prodExists := prodErr == nil
-	prodBehind := prodExists && isAncestor(root, "origin/"+prodBranch, head)
-	return head, prodAdvanceError(head, onWork, prodExists, prodBehind)
-}
-
-// prodAdvanceError is prodGate's decision, separated from the git calls that feed it.
-func prodAdvanceError(head string, onWork, prodExists, prodBehind bool) error {
-	if !onWork {
+	isAncestor := exec.Command("git", "merge-base", "--is-ancestor", head, "origin/"+workBranch)
+	isAncestor.Dir = root
+	if isAncestor.Run() != nil {
 		return fmt.Errorf("HEAD %s is not on origin/%s; push it to %s before deploying to production", head, workBranch, workBranch)
 	}
-	if prodExists && !prodBehind {
-		return fmt.Errorf("origin/%s is not an ancestor of HEAD %s; production only moves forward -- revert on %s and deploy that instead", prodBranch, head, workBranch)
-	}
 	return nil
-}
-
-func isAncestor(root, ancestor, descendant string) bool {
-	cmd := exec.Command("git", "merge-base", "--is-ancestor", ancestor, descendant)
-	cmd.Dir = root
-	return cmd.Run() == nil
 }
 
 // resolveDest picks the install directory: .dev-bin for dev, the Go bin dir for production.
@@ -314,27 +287,38 @@ func copyEntry(src, dst string) error {
 	return out.Close()
 }
 
-// otherBinaries returns every name on PATH outside destDir, in PATH order: a copy that shadows or
-// is shadowed by the production binary is a stale install waiting to be run by mistake.
-func otherBinaries(pathDirs []string, destDir, name string, exists func(string) bool) []string {
+// otherLyxBinaries returns every file called name on PATH outside destDir whose Go build info names mainPackage, in PATH order:
+// a copy that shadows or is shadowed by the production binary is a stale install waiting to be run by mistake.
+// A foreign program of the same name is skipped,
+// and a file reached through a linked directory is reported once, under the first PATH entry that reaches it, or not at all when it is the production binary itself.
+func otherLyxBinaries(pathDirs []string, destDir, name, mainPackage string) []string {
 	var found []string
-	seen := map[string]bool{normDir(destDir): true}
+	seenDirs := map[string]bool{normDir(destDir): true}
+	seenFiles := map[string]bool{}
+	if resolved, err := filepath.EvalSymlinks(filepath.Join(destDir, name)); err == nil {
+		seenFiles[normDir(resolved)] = true
+	}
 	for _, d := range pathDirs {
 		key := normDir(d)
-		if d == "" || seen[key] {
+		if d == "" || seenDirs[key] {
 			continue
 		}
-		seen[key] = true
-		if p := filepath.Join(d, name); exists(p) {
+		seenDirs[key] = true
+		p := filepath.Join(d, name)
+		info, err := os.Stat(p)
+		if err != nil || info.IsDir() {
+			continue
+		}
+		resolved, err := filepath.EvalSymlinks(p)
+		if err != nil || seenFiles[normDir(resolved)] {
+			continue
+		}
+		seenFiles[normDir(resolved)] = true
+		if bi, err := buildinfo.ReadFile(p); err == nil && bi.Path == mainPackage {
 			found = append(found, p)
 		}
 	}
 	return found
-}
-
-func fileExists(p string) bool {
-	info, err := os.Stat(p)
-	return err == nil && !info.IsDir()
 }
 
 func dirExists(p string) bool {
@@ -361,7 +345,7 @@ func gitOut(root string, args ...string) (string, error) {
 	return strings.TrimSpace(string(out)), err
 }
 
-// normDir folds case and trailing separators so PATH entries compare the way the OS resolves them.
+// normDir folds case and trailing separators so PATH entries, and the files in them, compare the way the OS resolves them.
 func normDir(dir string) string {
 	return strings.ToLower(strings.TrimRight(dir, `\/`))
 }

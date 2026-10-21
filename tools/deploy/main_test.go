@@ -2,8 +2,8 @@
 // parse, the plugin mirror, and the stray-binary report — plus -dev's destination and a
 // source-level guard that the -ldflags -X path in run() still names a variable that actually exists
 // at internal/buildinfo.
-// Tests spawn no git, go build, or go env; the mirror test works in t.TempDir, so goBinDir() and
-// the git-driven listing in syncPlugins are intentionally left uncovered here.
+// Tests spawn no git, go build, or go env;
+// the mirror and stray-binary tests work in t.TempDir, so goBinDir(), the pushed-to-main gate and the git-driven listing in syncPlugins are intentionally left uncovered here.
 
 package main
 
@@ -14,9 +14,11 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/tools/internal/devbin"
 )
 
@@ -45,28 +47,6 @@ func TestDirtyError_RefusesAnyChange(t *testing.T) {
 	for _, porcelain := range []string{" M tools/deploy/main.go", "?? new.go"} {
 		if err := dirtyError(porcelain); err == nil {
 			t.Errorf("dirtyError(%q) = nil; want a refusal", porcelain)
-		}
-	}
-}
-
-// TestProdAdvanceError_OnlyPushedForwardMoves verifies production accepts only pushed work that
-// moves prod forward (or creates it), and refuses unpushed HEADs and anything rewinding prod.
-func TestProdAdvanceError_OnlyPushedForwardMoves(t *testing.T) {
-	cases := []struct {
-		name                           string
-		onWork, prodExists, prodBehind bool
-		wantErr                        bool
-	}{
-		{"first deploy creates prod", true, false, false, false},
-		{"prod moves forward", true, true, true, false},
-		{"prod already at HEAD", true, true, true, false},
-		{"HEAD not pushed", false, true, true, true},
-		{"prod ahead of or diverged from HEAD", true, true, false, true},
-	}
-	for _, c := range cases {
-		err := prodAdvanceError("abc", c.onWork, c.prodExists, c.prodBehind)
-		if (err != nil) != c.wantErr {
-			t.Errorf("%s: prodAdvanceError = %v; want error %v", c.name, err, c.wantErr)
 		}
 	}
 }
@@ -134,20 +114,63 @@ func TestMirrorFiles_ReplacesTargetWithExactlyTheListedFiles(t *testing.T) {
 	}
 }
 
-// TestOtherBinaries_ReportsEveryCopyOutsideTheDestDir verifies a second lyx on PATH is reported
-// whether it sits before or after the production dir, and the production dir itself never is.
-func TestOtherBinaries_ReportsEveryCopyOutsideTheDestDir(t *testing.T) {
-	present := map[string]bool{
-		filepath.Join("/a", "lyx"):      true,
-		filepath.Join("/go/bin", "lyx"): true,
-		filepath.Join("/c", "lyx"):      true,
+// TestOtherLyxBinaries_ReportsEachLyxCopyOutsideTheDestDirOnce verifies a second lyx on PATH is reported whether it sits before or after the production dir, while the production binary, a foreign program of the same name and a second PATH entry reaching an already seen file through a directory link never are.
+// The test binary stands in for lyx, recognised by its own main package path.
+func TestOtherLyxBinaries_ReportsEachLyxCopyOutsideTheDestDirOnce(t *testing.T) {
+	t.Parallel()
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatalf("os.Executable() error: %v", err)
 	}
-	exists := func(p string) bool { return present[p] }
+	selfInfo, ok := debug.ReadBuildInfo()
+	if !ok {
+		t.Fatal("debug.ReadBuildInfo() reports no build info for the test binary")
+	}
+	content, err := os.ReadFile(self)
+	if err != nil {
+		t.Fatalf("read test binary: %v", err)
+	}
 
-	got := otherBinaries([]string{"/a", "/go/bin", "/b", "/c", "/go/bin/"}, "/go/bin", "lyx", exists)
-	want := []string{filepath.Join("/a", "lyx"), filepath.Join("/c", "lyx")}
-	if strings.Join(got, "|") != strings.Join(want, "|") {
-		t.Errorf("otherBinaries = %v; want %v", got, want)
+	name := binaryName()
+	base := t.TempDir()
+	dir := func(rel string) string { return filepath.Join(base, rel) }
+	write := func(rel string, data []byte) {
+		if err := os.MkdirAll(dir(rel), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir(rel), name), data, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	link := func(rel, target string) {
+		if err := fslink.CreateDirLink(dir(rel), dir(target)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("go/bin", content)
+	write("a", content)
+	write("c", content)
+	write("foreign", []byte("#!/bin/sh\necho LyX document processor\n"))
+	link("alias-a", "a")
+	link("alias-dest", "go/bin")
+	pathDirs := []string{dir("a"), dir("alias-dest"), dir("go/bin"), dir("foreign"), dir("alias-a"), "", dir("b"), dir("c"), dir("go/bin") + "/"}
+
+	tests := []struct {
+		name        string
+		mainPackage string
+		want        []string
+	}{
+		{"LyxCopies", selfInfo.Path, []string{filepath.Join(dir("a"), name), filepath.Join(dir("c"), name)}},
+		{"OtherMainPackage", "example.com/other/cmd/lyx", nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := otherLyxBinaries(pathDirs, dir("go/bin"), name, tt.mainPackage)
+			if strings.Join(got, "|") != strings.Join(tt.want, "|") {
+				t.Errorf("otherLyxBinaries(%q) = %v; want %v", tt.mainPackage, got, tt.want)
+			}
+		})
 	}
 }
 
