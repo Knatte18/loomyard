@@ -17,7 +17,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // originRemote is the remote every reconcile call reads.
@@ -145,7 +144,7 @@ func (s BranchState) stops() bool {
 // Paths are the conflicting or dirty paths, and Commits those a rewind dropped or a replay stopped on.
 // BusyLock names the held lock of a busy branch, and PushLockHeld is set when it was the push lock, which a parked push holds.
 // WayForward is the one line every reader of a stop takes, the repair step alone, with no re-entry verb.
-// Moved is set by a moving reconcile once it brought the branch level with origin.
+// Moved is set by a moving reconcile once it brought the branch up to origin's head, State then reading level, or ahead when replayed commits sit on it.
 type BranchOutcome struct {
 	Branch       string
 	Repo         string
@@ -587,7 +586,10 @@ func samePath(porcelain, built string) bool {
 }
 
 // ReconcileOrigin judges this machine's local branches against origin and returns the verdict on each, and on each entry whose pair has a batten run record.
-// It runs one ls-remote per repository, fetches only the heads origin moved, and judges only: it moves no branch, which the moving reconcile adds on top of this verdict.
+// It runs one ls-remote per repository and fetches only the heads origin moved.
+// A judge-only scope stops there.
+// Any other scope then reads the ended set and moves each branch behind origin: a fast-forward of its checkout, or a replay of a records branch's local commits.
+// A branch a live pair, a held lock or a dirty path keeps from moving is reported as such and left where it was, and no branch is ever reset, rebased or pushed.
 // A transport failure that outlasts the retry bound is the report's Unreachable, with nothing judged against origin and nothing moved, and a nil error.
 // Any other failure of ls-remote, or a failed fetch after both ls-remote calls answered, is returned as the error, with nothing judged or moved.
 // seams is what the moves reach by injection.
@@ -643,41 +645,60 @@ func ReconcileOrigin(l *lyxcwd.Location, scope ReconcileScope, seams OriginSeams
 		res.Branches = append(res.Branches, outcome)
 	}
 
-	res.Entries, err = classifyEntries(l, pairs, res.Branches)
-	return res, err
+	recorded, err := recordedPairs(l, pairs)
+	if err != nil {
+		return res, err
+	}
+	if !scope.JudgeOnly {
+		ended, err := readOriginEnded(l, targets, res.Branches, recorded)
+		if err != nil {
+			return res, err
+		}
+		mover := &originMover{rec: rec, l: l, scope: scope, seams: seams, ended: ended, targets: targets, outcomes: res.Branches, live: map[string]bool{}}
+		if err := mover.moveAll(pairs); err != nil {
+			return res, err
+		}
+	}
+
+	res.Entries = classifyEntries(scope, recorded, res.Branches)
+	return res, nil
 }
 
-// classifyEntries returns the verdict on each pair that has a batten run record at the prime, from the verdicts on its branches.
-// A pair with no such record is never classified; only its branches are judged.
-func classifyEntries(l *lyxcwd.Location, pairs []string, branches []BranchOutcome) ([]EntryOutcome, error) {
-	if len(pairs) == 0 {
-		return nil, nil
-	}
-	primeName, err := PrimeName(l)
-	if err != nil {
-		return nil, err
-	}
-	prime, err := lyxcwd.ResolveWorktree(filepath.Join(l.HubPath, primeName))
-	if err != nil {
-		return nil, err
+// classifyEntries returns the verdict on each of the recorded pairs, from the verdicts on its branches.
+// A stop on Bolt or on the prime's records branch stops every entry, a busy one excepted.
+// A busy records branch of the run scope's own pair stops nothing, since the run's own driver holds it.
+// A stopped entry carries the way forward of the branch that stopped it.
+func classifyEntries(scope ReconcileScope, recorded []string, branches []BranchOutcome) []EntryOutcome {
+	d3Stop := false
+	d3WayForward := ""
+	for _, branch := range branches {
+		shared := branch.Repo == failedPushSideBolt || (branch.Repo == failedPushSideRecords && branch.Prime)
+		if shared && branch.State.stops() && branch.State != BranchBusy && !d3Stop {
+			d3Stop = true
+			d3WayForward = branch.WayForward
+		}
 	}
 
 	var entries []EntryOutcome
-	for _, slug := range pairs {
-		_, found, err := readRunStatusRows(shedrun.StatusFile(prime, slug))
-		if err != nil {
-			return nil, err
-		}
-		if !found {
-			continue
-		}
-		facts := entryFacts{}
+	for _, slug := range recorded {
+		facts := entryFacts{D3Stop: d3Stop}
+		wayForward := ""
 		for _, branch := range branches {
-			if branch.Slug == slug {
-				facts.Branches = append(facts.Branches, branch.State)
+			if branch.Slug != slug || (scope.Run == slug && branch.Repo == failedPushSideRecords && branch.State == BranchBusy) {
+				continue
+			}
+			facts.Branches = append(facts.Branches, branch.State)
+			if wayForward == "" && branch.State.stops() {
+				wayForward = branch.WayForward
 			}
 		}
-		entries = append(entries, EntryOutcome{Slug: slug, State: classifyEntry(facts)})
+		state := classifyEntry(facts)
+		if state != EntryStopped {
+			wayForward = ""
+		} else if wayForward == "" {
+			wayForward = d3WayForward
+		}
+		entries = append(entries, EntryOutcome{Slug: slug, State: state, WayForward: wayForward})
 	}
-	return entries, nil
+	return entries
 }

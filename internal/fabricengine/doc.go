@@ -63,6 +63,17 @@
 // The states a move adds, dirty, busy and live, and the stops themselves, carry a `WayForward` line, the repair step alone; each caller appends its own re-entry.
 // `classifyEntry` turns the verdicts on an entry's branches into active, ended or stopped.
 //
+// Any scope but judge-only then moves, in this order: it reads the ended set from origin's fetched Bolt tip and its history before any replay, drops each run this machine's own landing has reached, and passes the rest to every replay.
+// Bolt moves first, then the prime's records branch, the prime's code branch and each pair's, a pair's records before its code.
+// A checked-out branch moves only by `ffWorktree`, a fast-forward that stops as dirty, naming the paths, when a tracked change sits on a path it touches.
+// A records branch moves under its write lock and then its push lock, each by one try-acquire through `reconcileRecordsBranch`, which fast-forwards or replays and reads a held lock as busy.
+// A code branch is never rebased, so one both sides moved stays diverged.
+// The prime's branches move only under the prime lock, taken by `tryPrimeLock` with no wait, and only while `OriginSeams.PrimeParentLockFree` finds no live owner; otherwise they are busy.
+// A pair `OriginSeams.LivePair` reports live is judged and left where it was, reading live once origin moved past it; the run scope never asks about its own pair.
+// The run scope judges its parent branch and never moves it.
+// A stop on Bolt or on the prime's records branch stops every entry; a busy branch of either stops none, nor does a busy records branch of the run scope's own pair.
+// A seam left nil reads as no live pair and a free parent lock.
+//
 // fabric enforces one uniform branch-naming scheme, with no exceptions: a warp branch `<branch>` is
 // always paired with weft branch `<branch>-weft`, including the primary worktree (warp `main` ↔
 // weft `main-weft`).

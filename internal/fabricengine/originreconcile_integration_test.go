@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 )
 
 // The text a stopped dirty, gone or busy branch's line is followed by in a printed summary.
@@ -142,7 +143,9 @@ func writeStatus(t *testing.T, hub *originHub, slug, producer string) {
 // TestReconcileOrigin_Judge covers the origin reconcile's judgment, its network calls and its entry classification.
 // It runs without t.Parallel because it sets the process-global origin call hook.
 func TestReconcileOrigin_Judge(t *testing.T) {
-	t.Run("An origin that moved a records branch, Bolt and the prime's code branch reads fast_forward for each, fetching only moved heads", func(t *testing.T) {
+	boardkit.InstallReplay(t)
+
+	t.Run("A judge-only reconcile of an origin that moved a records branch, Bolt and the prime's code branch reads fast_forward for each, fetching only moved heads", func(t *testing.T) {
 		hub := newOriginHub(t)
 		warpOther := otherMachine(t, hub.CodeBare, hub.primeBranch)
 		warpHead := gitkit.CommitFile(t, warpOther, "moved.txt", "moved", "origin moved code")
@@ -156,7 +159,7 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 
 		var calls callLog
 		t.Cleanup(fabricengine.SetOriginCallHookForTest(calls.record))
-		report := reconcile(t, hub, fabricengine.ReconcileScope{}, fabricengine.ReconcileOptions{})
+		report := reconcile(t, hub, fabricengine.ReconcileScope{JudgeOnly: true}, fabricengine.ReconcileOptions{})
 
 		code := requireState(t, report, "code", hub.primeBranch, fabricengine.BranchFastForward)
 		records := requireState(t, report, "records", hub.primeRecords, fabricengine.BranchFastForward)
@@ -184,15 +187,14 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 		if len(fetches) != 2 {
 			t.Fatalf("fetch calls = %v; want one per repository", fetches)
 		}
-		wantRefspec := func(branch string) string { return "+refs/heads/" + branch + ":refs/remotes/origin/" + branch }
-		fetchedByRepo := [][]string{fetches[0][2:], fetches[1][2:]}
+		fetchedByRepo := [][]string{fetches[0][4:], fetches[1][4:]}
 		slices.SortFunc(fetchedByRepo, func(a, b []string) int { return len(a) - len(b) })
-		wantCode := []string{wantRefspec(hub.primeBranch)}
-		recordsBranches := []string{"main", hub.primeRecords}
-		slices.Sort(recordsBranches)
-		wantRecords := []string{wantRefspec(recordsBranches[0]), wantRefspec(recordsBranches[1])}
+		wantCode := []string{warpHead}
+		wantRecords := []string{recordsHead, boltHead}
+		slices.Sort(wantRecords)
+		slices.Sort(fetchedByRepo[1])
 		if !slices.Equal(fetchedByRepo[0], wantCode) || !slices.Equal(fetchedByRepo[1], wantRecords) {
-			t.Errorf("fetched refspecs = %v; want %v and %v, the moved heads only", fetchedByRepo, wantCode, wantRecords)
+			t.Errorf("fetched heads = %v; want %v and %v, the moved heads only", fetchedByRepo, wantCode, wantRecords)
 		}
 	})
 
