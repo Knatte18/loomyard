@@ -152,6 +152,7 @@ func TestWire_DarnRecipe(t *testing.T) {
 			},
 			wantReviewKey:       loomKey("reviewer_model"),
 			wantFixKey:          darnKey("darn_fixer_model"),
+			wantReview:          "opus medium",
 			wantFix:             "sonnet low",
 			wantFixerFanSetting: "fix-code",
 		},
