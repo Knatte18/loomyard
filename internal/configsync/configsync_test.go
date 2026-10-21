@@ -925,6 +925,13 @@ func TestReconcileHubWideAt_StripsAnUnmigratedBaseOnce(t *testing.T) {
 			options:    HubWideOptions{Apply: true, StripBase: true},
 			wantMarker: false,
 		},
+		{
+			name:       "a key move carrying the former roles map into an absent base leaves the created base header-only",
+			overrides:  map[string]string{"shuttle": "claude_prompt_cache_ttl_roles:\n  driver: 1h\n  webster: 1h\n"},
+			withheld:   []string{"claude"},
+			options:    HubWideOptions{Apply: true, StripBase: true, SeedDefaults: true},
+			wantMarker: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -981,8 +988,13 @@ func TestReconcileHubWideAt_StripsAnUnmigratedBaseOnce(t *testing.T) {
 				}
 			}
 			for _, module := range tt.withheld {
-				if _, err := os.Stat(configengine.ConfigFile(boardDir, module)); !os.IsNotExist(err) {
-					t.Errorf("%s.yaml written although the pass leaves an absent per-worktree base absent (stat err = %v)", module, err)
+				created := tt.options.SeedDefaults && tt.options.Apply
+				got, err := os.ReadFile(configengine.ConfigFile(boardDir, module))
+				switch {
+				case !created && !os.IsNotExist(err):
+					t.Errorf("%s.yaml written although the pass leaves an absent per-worktree base absent (read err = %v)", module, err)
+				case created && (err != nil || string(got) != configengine.SparseBaseHeader):
+					t.Errorf("%s.yaml = %q (read err = %v); want the created base to hold only the sparse header", module, got, err)
 				}
 			}
 			for module, keys := range tt.wantStripped {
@@ -1571,6 +1583,7 @@ func TestReconcile_MovesKeysAcrossModules(t *testing.T) {
 	claudeModule, _ := configreg.Lookup("claude")
 	const templateBinary = "${env:LYX_SHUTTLE_CLAUDE:-}"
 	const tunedGeneric = "Tuned for the hub."
+	const formerRoles = "prompt_cache_ttl_roles:\n  driver: 1h\n  webster: 1h\n"
 	burlerToday := lensesFixture(t, func(cfg *lenses.Config) {
 		delete(cfg.Lenses, "security")
 		delete(cfg.Fans, "full")
@@ -1595,6 +1608,9 @@ func TestReconcile_MovesKeysAcrossModules(t *testing.T) {
 		call   string
 		dryRun bool
 		repeat bool
+		// boardMarker writes the board's base-sparse marker before the run, and primeMarked the prime's sparse marker; their files keys name module files only.
+		boardMarker bool
+		primeMarked bool
 		// contains and excludes map a file key to substrings its content must and must not hold after the run.
 		contains map[string][]string
 		excludes map[string][]string
@@ -1613,20 +1629,53 @@ func TestReconcile_MovesKeysAcrossModules(t *testing.T) {
 		checkLoadRefuses string
 	}{
 		{
-			name:     "a repo default moves into a created full claude.yaml",
+			name:     "a repo default moves into a created claude.yaml holding only the moved unit and leaves its emptied source as the header-only base",
 			files:    map[string]string{"board:shuttle": "claude: /x\n"},
 			call:     "board",
-			contains: map[string][]string{"board:claude": {"binary: /x", "deny_agent_tool"}},
-			excludes: map[string][]string{"board:shuttle": {"claude: /x"}},
+			contains: map[string][]string{"board:claude": {"binary: /x"}, "board:shuttle": {configengine.SparseBaseHeader}},
+			excludes: map[string][]string{"board:claude": {"deny_agent_tool"}, "board:shuttle": {"claude: /x"}},
 			moved:    []string{"shuttle.claude -> claude.binary"},
 		},
 		{
-			name:     "a board default seeded from the prime's shuttle.yaml carries the moved value",
-			files:    map[string]string{"prime:shuttle": "claude: /x\n"},
+			name:     "a board default seeded from the prime's shuttle.yaml carries the moved value and the prime's non-template units",
+			files:    map[string]string{"prime:shuttle": "claude: /x\n", "prime:claude": "deny_agent_tool: false\nprompt_cache_ttl: 5m\n"},
 			call:     "board",
-			contains: map[string][]string{"board:claude": {"binary: /x"}, "prime:shuttle": {"claude: /x"}},
-			excludes: map[string][]string{"board:shuttle": {"claude: /x"}},
+			contains: map[string][]string{"board:claude": {"binary: /x", "deny_agent_tool: false"}, "prime:shuttle": {"claude: /x"}},
+			excludes: map[string][]string{"board:claude": {"prompt_cache_ttl"}, "board:shuttle": {"claude: /x"}},
 			moved:    []string{"shuttle.claude -> claude.binary"},
+		},
+		{
+			name:     "a board target seeded from an unmarked prime drops a former template value",
+			files:    map[string]string{"board:shuttle": "claude: /x\n", "prime:claude": formerRoles},
+			call:     "board",
+			contains: map[string][]string{"board:claude": {"binary: /x"}},
+			excludes: map[string][]string{"board:claude": {"prompt_cache_ttl_roles"}},
+			moved:    []string{"shuttle.claude -> claude.binary"},
+		},
+		{
+			name:        "a board target seeded from a marked prime keeps a former template value as tuned",
+			files:       map[string]string{"board:shuttle": "claude: /x\n", "prime:claude": formerRoles},
+			primeMarked: true,
+			call:        "board",
+			contains:    map[string][]string{"board:claude": {"binary: /x", "prompt_cache_ttl_roles"}},
+			moved:       []string{"shuttle.claude -> claude.binary"},
+		},
+		{
+			name:        "a board base target holding the template default is overwritten while the board is unmarked",
+			files:       map[string]string{"board:shuttle": "claude: /x\n", "board:claude": "binary: " + templateBinary + "\n"},
+			call:        "board",
+			contains:    map[string][]string{"board:claude": {"binary: /x"}},
+			moved:       []string{"shuttle.claude -> claude.binary"},
+			overwritten: []string{"shuttle.claude: /x replaced claude.binary's template default " + templateBinary},
+		},
+		{
+			name:        "a board base target holding the template default keeps it as a pin once the board is marked",
+			files:       map[string]string{"board:shuttle": "claude: /x\n", "board:claude": "binary: " + templateBinary + "\n"},
+			boardMarker: true,
+			call:        "board",
+			contains:    map[string][]string{"board:claude": {templateBinary}},
+			excludes:    map[string][]string{"board:claude": {"/x"}},
+			kept:        []string{"shuttle.claude: /x dropped, claude.binary: " + templateBinary + " kept"},
 		},
 		{
 			name:     "a worktree layer in a hub moves into a created sparse claude.yaml",
@@ -1769,6 +1818,16 @@ func TestReconcile_MovesKeysAcrossModules(t *testing.T) {
 				}
 				if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 					t.Fatalf("write %s: %v", key, err)
+				}
+			}
+			if tt.boardMarker {
+				if err := WriteBaseSparseMarker(dirs["board"]); err != nil {
+					t.Fatalf("WriteBaseSparseMarker: %v", err)
+				}
+			}
+			if tt.primeMarked {
+				if err := os.WriteFile(configengine.SparseMarker(dirs["prime"]), []byte("# sparse\n"), 0o644); err != nil {
+					t.Fatalf("write the prime's sparse marker: %v", err)
 				}
 			}
 			run := func() []Result {
