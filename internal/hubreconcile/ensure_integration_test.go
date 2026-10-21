@@ -169,7 +169,7 @@ func preMigrationBase(t *testing.T, module configreg.Module) string {
 		return formerUnits(t, module.Name, template, map[string]string{"driver_kind": "llm"})
 	case "darn":
 		former := formerUnits(t, module.Name, template, map[string]string{"darn_reviewer_model": "sonnet[high]", "darn_fixer_model": `""`, "darn_reviewer_fan": `""`, "darn_fixer_fan": `""`})
-		return replaceOnce(t, module.Name, former, `verify: ""`, "verify: make verify")
+		return replaceOnce(t, module.Name, former, "verify_attempts: 3 ", "verify_attempts: 5 ")
 	case "claude":
 		var kept []string
 		found, inRoles := false, false
@@ -214,6 +214,24 @@ func commitPreMigrationBase(t *testing.T, boardDir string) {
 	gitkit.Git(t, boardDir, "rm", "-q", "--ignore-unmatch", "--", filepath.ToSlash(configengine.BaseSparseMarkerRel()))
 	gitkit.Git(t, boardDir, "add", "-A")
 	gitkit.Git(t, boardDir, "commit", "-q", "-m", "fixture: pre-migration board base files")
+}
+
+// commitRetiredKeys appends to the board's darn, gate and landing base files the key each module retired, and commits them.
+func commitRetiredKeys(t *testing.T, boardDir string) {
+	t.Helper()
+
+	for module, line := range map[string]string{"darn": "verify: make verify\n", "gate": "go_parallel: 8\n", "landing": "publish_verify: x\n"} {
+		path := configengine.ConfigFile(boardDir, module)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		if err := os.WriteFile(path, append(data, line...), 0o644); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+	}
+	gitkit.Git(t, boardDir, "add", "-A")
+	gitkit.Git(t, boardDir, "commit", "-q", "-m", "fixture: retired keys in the board base files")
 }
 
 // commitPreMigrationFiles commits, in the records worktree at recordsRoot, a full pre-migration per-worktree file set -- each per-worktree module's template, loom's with one key differing from the repo default and its former discussion_lenses, shed's with its former driver_kind -- and deletes the sparse marker, so the walk finds an unmigrated worktree with something to strip.
@@ -373,6 +391,7 @@ func TestEnsure_StaleBuildReconcilesAndCommitsEveryWorktree(t *testing.T) {
 		{name: "loom default deleted beside a current stamp", run: staleRun{loomDefaultGone: true}},
 		{name: "unmigrated board is stripped once and marked", run: staleRun{unmigratedBoard: true}},
 		{name: "unmigrated board behind its upstream is stripped and marked over the pulled commit", run: staleRun{boardBehind: true, unmigratedBoard: true}},
+		{name: "unmigrated board holding retired keys is stripped of them and of its template-equal units", run: staleRun{unmigratedBoard: true, retiredKeys: true}},
 		{name: "marker removed beside a current stamp strips the board again", run: staleRun{markerRemoved: true}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -389,6 +408,8 @@ type staleRun struct {
 	loomDefaultGone bool
 	// unmigratedBoard commits every board base file at its pre-migration values and deletes the board marker before the walk.
 	unmigratedBoard bool
+	// retiredKeys, with unmigratedBoard, sets in the board's darn, gate and landing base files a key the module retired, each beside template-equal units.
+	retiredKeys bool
 	// markerRemoved removes the board marker by a board commit after the first walk, while the stamp names the running build, and walks again.
 	markerRemoved bool
 }
@@ -433,6 +454,9 @@ func runStaleBuildReconcile(t *testing.T, run staleRun) {
 			t.Fatalf("read the board's models.yaml: %v", err)
 		}
 		commitPreMigrationBase(t, h.BoardDir())
+		if run.retiredKeys {
+			commitRetiredKeys(t, h.BoardDir())
+		}
 	}
 	loomDefault := configengine.ConfigFileRel("loom")
 	lensesDefault := configengine.ConfigFileRel("lenses")
@@ -607,7 +631,7 @@ func runStaleBuildReconcile(t *testing.T, run staleRun) {
 	}
 }
 
-// assertBoardStrippedOnce checks the board a walk stripped once: every non-seed-only base file other than lenses holds only the sparse header, bar darn's, which keeps the hub's own verify command;
+// assertBoardStrippedOnce checks the board a walk stripped once: every non-seed-only base file other than lenses holds only the sparse header, bar darn's, which keeps the hub's tuned verify_attempts;
 // the seed-only models.yaml is byte for byte as seeded, the marker is tracked in the walk's board commit, and the board's loom base resolves the template's lens fan and its one webster bounce.
 // lenses.yaml is skipped because the declared key move from burler.yaml gives it the hub's tuned lens.
 func assertBoardStrippedOnce(t *testing.T, h *hubforge.Hub, modelsBefore []byte) {
@@ -623,8 +647,8 @@ func assertBoardStrippedOnce(t *testing.T, h *hubforge.Hub, modelsBefore []byte)
 			continue
 		}
 		if module.Name == "darn" {
-			if !strings.Contains(string(got), "verify: make verify") || strings.Contains(string(got), "verify_attempts") {
-				t.Errorf("board darn.yaml = %q; want only the hub's own verify command", got)
+			if !strings.Contains(string(got), "verify_attempts: 5") || strings.Contains(string(got), "make verify") || strings.Count(string(got), ":") != 1 {
+				t.Errorf("board darn.yaml = %q; want only the hub's tuned verify_attempts", got)
 			}
 			continue
 		}

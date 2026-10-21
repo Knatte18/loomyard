@@ -72,8 +72,8 @@ func ConfigPerNameMaps() []string {
 // `cli_wait_sec` and `go_parallel` are retired, so a hub or machine file that still sets one loads and reconcile prunes it.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
-		Name:     "gate",
-		Template: []byte(ConfigTemplate()),
+		Name:        "gate",
+		Template:    []byte(ConfigTemplate()),
 		OpenMaps:    ConfigOpenMaps(),
 		PerNameMaps: ConfigPerNameMaps(),
 		HubWide:     true,
