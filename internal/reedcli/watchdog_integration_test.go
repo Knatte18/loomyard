@@ -340,11 +340,11 @@ func TestWatchdogDaemon(t *testing.T) {
 		noWatch := func(string, ...string) (<-chan fswatch.Event, func() error, error) {
 			return make(chan fswatch.Event), func() error { return nil }, nil
 		}
-		// This loop's idle window spans the tests' own wait budget:
+		// This loop's idle window is twice the tests' own wait budget, so it spans the Up call plus that wait:
 		// DownThenUpDoesNotKillDaemon's down-then-up gap can pass the production window under a loaded package run,
 		// and no subtest of this loop depends on its idle exit.
 		timing := compressedWatchdogTiming()
-		timing.IdleCycles = int(watchdogTestWait / watchdogTestCycle)
+		timing.IdleCycles = int(2 * watchdogTestWait / watchdogTestCycle)
 		go func() {
 			loopDone <- runWatchdogLoop(loopCtx, h.Path, tmuxPath, eng1.ShellPath(), timing, noWatch, reedengine.ListSessions, nil)
 		}()
