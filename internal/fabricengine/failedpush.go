@@ -30,6 +30,8 @@ const (
 	PushFailureAuth PushFailureClass = "auth"
 	// PushFailureGone means origin no longer has the branch.
 	PushFailureGone PushFailureClass = "gone"
+	// PushFailureOther means the push failed for a reason no other class names, so the record carries git's own error.
+	PushFailureOther PushFailureClass = "other"
 	// PushFailureDeferred means the push was held back, not refused, and is retried by the next push of the branch.
 	PushFailureDeferred PushFailureClass = "deferred"
 )

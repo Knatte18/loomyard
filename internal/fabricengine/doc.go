@@ -866,6 +866,8 @@
 // A replay that stops on a conflict, or a second rejection, is a `not_fast_forward` failure carrying the conflicting paths and the local commits.
 // A code-side rejection is retried only through the stale-tracking-ref retry of `pushRebaseFreeRetryingOnce`, and otherwise fails as `not_fast_forward` at once.
 // An auth refusal (`gitrepo.ErrPushAuthRefused`) is class `auth` at once, and a transport failure of the push call, or an exhausted push retry, is class `transport`.
+// Any other failure of the push call is class `other`, so no refused push is left to a log line.
+// A records retry that stops before it pushes keeps the rejection as the class and joins the retry's error into the record.
 //
 // A failure `pushClassified` records returns a `*PushFailedError` holding the `FailedPush` record and the push's own error, which `Unwrap` returns, so `errors.Is` against `gitrepo.ErrPushRejected` or `gitrepo.ErrPushAuthRefused` still holds.
 // Its text is the push's error followed by `; way forward: ` and `FailedPushWayForward` of the record, so a caller that appends a way forward of its own does so only when `HasUnclassifiedFailure` reports a failure without one.

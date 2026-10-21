@@ -328,6 +328,22 @@ func TestPushFailureClasses(t *testing.T) {
 		})
 	})
 
+	t.Run("APushFailingForNoNamedReasonWritesAnOtherRecordAndMails", func(t *testing.T) {
+		f, fake := newFailureFixture(t)
+		weft := f.hub.PrimeRecords()
+		gitkit.CommitFile(t, weft, "local.txt", "local\n", "local")
+		gitkit.Git(t, weft, "remote", "set-url", "origin", filepath.Join(t.TempDir(), "no-such-repository"))
+
+		if _, err := fabricengine.CoalescePushRequest(fabricengine.PushSpawn{WeftPath: weft}, opts); err != nil {
+			t.Fatalf("CoalescePushRequest() error = %v; want nil", err)
+		}
+
+		requireOneFailedPush(t, f.hub.Location.HubPath, "records", fabricengine.PushFailureOther)
+		if len(fake.lines) != 1 {
+			t.Errorf("mails = %q; want one", fake.lines)
+		}
+	})
+
 	t.Run("AParkedPushOfABranchGoneOnOriginDoesNotRecreateIt", func(t *testing.T) {
 		t.Run("AnEntryNotEndedWritesAGoneRecordAfterTheBackoff", func(t *testing.T) {
 			p := newPairFixture(t, "gonepair")

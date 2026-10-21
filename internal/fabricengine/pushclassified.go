@@ -88,7 +88,7 @@ type pushJob struct {
 // A records rejection runs retryRecords once, which replays the local commits onto origin's and pushes again;
 // a deferral it reports writes a deferred record and returns nil, leaving the commits to the next push of the branch.
 // A code-side rejection is retried only when the rejection came from a stale remote-tracking ref.
-// Every other failure that matches a class is recorded and returned as a *PushFailedError holding the push's own error, and one that matches none is returned unchanged.
+// Every other failure is recorded and returned as a *PushFailedError holding the push's own error, under the "other" class when it matches none.
 // A push that lands removes the record of its side and branch.
 func pushClassified(rec *Mutations, hubPath, side, path string, opts SyncOptions, retryRecords func() (deferred bool, err error)) error {
 	job := &pushJob{rec: rec, hubPath: hubPath, side: side, path: path, opts: opts, repo: gitrepo.New(path)}
@@ -133,10 +133,13 @@ func pushClassified(rec *Mutations, hubPath, side, path string, opts SyncOptions
 		if failed, classified := job.classifyFailure(retryErr); classified {
 			return failed
 		}
-		// A retry that stopped before it pushed leaves the rejection as the failure.
+		// A retry that stopped before it pushed leaves the rejection as the failure, with the retry's own error joined so the record names it.
+		pushErr = errors.Join(pushErr, retryErr)
 	}
-	failed, _ := job.classifyFailure(pushErr)
-	return failed
+	if failed, classified := job.classifyFailure(pushErr); classified {
+		return failed
+	}
+	return job.fail(PushFailureOther, pushErr, nil, nil, "")
 }
 
 // push runs the side's rebase-free push; a code side keeps the stale-remote-tracking-ref retry.
@@ -213,7 +216,7 @@ func (j *pushJob) deferral() error {
 }
 
 // classifyFailure records the failure of a push that was run and returns it as a *PushFailedError.
-// An error that matches no class is returned unchanged and unrecorded, with classified false.
+// An error that matches no named class is returned unchanged and unrecorded, with classified false.
 func (j *pushJob) classifyFailure(err error) (failed error, classified bool) {
 	var conflict *replayConflict
 	var refusal *destructiveRefusal
