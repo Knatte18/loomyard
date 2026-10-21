@@ -305,6 +305,22 @@ func holdsSlot(pool *Pool, number int) bool {
 func TestAcquireSlots(t *testing.T) {
 	t.Parallel()
 
+	t.Run("a count of 1 takes one slot as Acquire does", func(t *testing.T) {
+		t.Parallel()
+		pool := newPool(t, fixedLimits(3))
+		lease, err := pool.AcquireSlots(shortContext(t), Holder{Site: "site", Tier: "tier0"}, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = lease.Release() })
+		if got := len(lease.slots); got != 1 {
+			t.Errorf("AcquireSlots(1) holds %d slots; want 1", got)
+		}
+		if holders, err := pool.Holders(); err != nil || len(holders) != 1 {
+			t.Errorf("Holders() = (%v, %v); want the one holder", holders, err)
+		}
+	})
+
 	t.Run("two slots on a free pool are slots 1 and 2 and their records name the tier", func(t *testing.T) {
 		t.Parallel()
 		pool := newPool(t, fixedLimits(3))
