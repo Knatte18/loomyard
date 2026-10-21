@@ -12,7 +12,6 @@ package reedcli
 import (
 	"bytes"
 	"context"
-	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -337,9 +336,9 @@ func TestWatchdogDaemon(t *testing.T) {
 		scenario.Cleanup(func() { _, _ = eng1.Down() })
 		eng2 = bootWatchdogEngine(t, pair)
 		scenario.Cleanup(func() { _, _ = eng2.Down() })
-		// The watch never opens, so this loop sees no stop and keeps the idle-cycle rule that covers a down followed by an up.
+		// The watch opens but never delivers, so this loop neither wakes on nor reads the signal file, sees no stop and keeps the idle-cycle rule that covers a down followed by an up.
 		noWatch := func(string, ...string) (<-chan fswatch.Event, func() error, error) {
-			return nil, nil, errors.New("watch disabled for the shared discovery loop")
+			return make(chan fswatch.Event), func() error { return nil }, nil
 		}
 		go func() {
 			loopDone <- runWatchdogLoop(loopCtx, h.Path, tmuxPath, eng1.ShellPath(), compressedWatchdogTiming(), noWatch, reedengine.ListSessions, nil)

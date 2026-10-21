@@ -53,7 +53,7 @@ const watchdogHubDiscoveryCeiling = 60 * time.Second
 // watchdogHubIdleCycles is how many consecutive idle discovery cycles (see sessionsAreIdle) the
 // daemon tolerates before exiting.
 //
-// Three cycles covers a `down` followed by an `up` for a daemon whose watch failed to open and so never sees the stop,
+// Three cycles covers a `down` followed by an `up` whose boot touch replaced the stop before the daemon read it,
 // and a transient list-sessions error, which sessionsAreIdle counts as idle.
 const watchdogHubIdleCycles = 3
 
@@ -417,7 +417,8 @@ func dispatchReap(wg *sync.WaitGroup, done chan<- string, hub, tmuxPath, shellPa
 // The wait between cycles starts at timing.DiscoveryCycle, doubles up to timing.DiscoveryCeiling across cycles that find the session set unchanged, and returns to the base when the set changes (discoveryWake).
 // The loop also waits on the hub-level discover signal file, opened through open: a consumed signal runs a cycle at once, never sooner than the base after the previous one.
 // A signal file holding reedengine.DiscoverStopMarker is a stop request, whose cycle runs no sooner than timing.StopFloor after the previous one.
-// When open fails the loop logs that once at Warn and keeps its backed-off cadence with no event wake, and never sees a stop.
+// When open fails, or the event channel closes, the loop logs that once at Warn and keeps its backed-off cadence with no event wake,
+// and each timer wake first consumes the signal file itself, so a stop request is still seen, on the cycle that wake runs.
 //
 // shellPath sits immediately after tmuxPath because the two are told together and travel together —
 // both are told-not-derived values the reap pass needs. An empty shellPath is logged once at Warn,
@@ -491,9 +492,11 @@ func runWatchdogLoop(ctx context.Context, hub, tmuxPath, shellPath string, timin
 	signalDir := fabricengine.HubScratchDir(hub)
 	signalPath := filepath.Join(signalDir, reedengine.DiscoverSignalFileName)
 	// A failed open leaves events nil, a channel that never delivers.
+	// unwatched is whether no watch delivers the signal's events, so each timer wake reads the file itself.
 	events, closeWatch, err := open(signalDir, reedengine.DiscoverSignalFileName)
+	unwatched := err != nil
 	if err != nil {
-		logger.Warn("reed: watchdog could not watch the discover signal file, keeping its backed-off cadence", "hub", hub, "err", err)
+		logger.Warn("reed: watchdog could not watch the discover signal file, reading it on its backed-off cadence instead", "hub", hub, "err", err)
 	} else {
 		defer closeWatch()
 	}
@@ -510,9 +513,19 @@ func runWatchdogLoop(ctx context.Context, hub, tmuxPath, shellPath string, timin
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-timer.C:
+			if unwatched {
+				consumed, stop, err := consumeDiscoverSignal(signalPath)
+				if err != nil {
+					logger.Warn("reed: watchdog could not consume the discover signal", "hub", hub, "err", err)
+				} else if consumed {
+					wake.onSignal(time.Now(), stop)
+				}
+			}
 		case _, ok := <-events:
 			if !ok {
 				events = nil
+				unwatched = true
+				logger.Warn("reed: watchdog's discover signal watch closed, reading the file on its backed-off cadence instead", "hub", hub)
 				continue
 			}
 			consumed, stop, err := consumeDiscoverSignal(signalPath)
@@ -854,7 +867,11 @@ Example:
 			if respawn == nil {
 				respawn = reedengine.SpawnWatchdog
 			}
-			err = runWatchdogLoop(cmd.Context(), hubPath, tmuxPath, shellPath, timing, reedengine.OpenFileWatch, list, exeWatch(exeStat))
+			openWatch := c.watchdogOpenWatch
+			if openWatch == nil {
+				openWatch = reedengine.OpenFileWatch
+			}
+			err = runWatchdogLoop(cmd.Context(), hubPath, tmuxPath, shellPath, timing, openWatch, list, exeWatch(exeStat))
 			if errors.Is(err, errWatchdogBinaryReplaced) {
 				// The successor's lock race is lost while this process still holds the lock, so release it first;
 				// the deferred release that follows is a no-op on an unlocked flock.
