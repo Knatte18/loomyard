@@ -279,6 +279,8 @@ func TestIntakeList_ExcludesPullRequestsRecordedAndClosedAcrossPages(t *testing.
 		{"ListFailure", fullInbox, true, false, nil, []string{"list"}, 1, "", false},
 		{"BoardLoadFailure", fullInbox, false, true, nil, []string{"list"}, 1, "", false},
 		{"RepositoryUnresolved", fullInbox, false, false, errors.New("no hub repository"), []string{"list"}, 1, "", false},
+		{"RepositoryUnresolvedImport", fullInbox, false, false, errors.New("no hub repository"), []string{"import", `{"issue":1,"slug":"x"}`}, 1, "", false},
+		{"RepositoryUnresolvedClose", fullInbox, false, false, errors.New("no hub repository"), []string{"close", `{"issue":1,"reason":"Noise."}`}, 1, "", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -294,6 +296,7 @@ func TestIntakeList_ExcludesPullRequestsRecordedAndClosedAcrossPages(t *testing.
 					t.Fatalf("corrupt board.json: %v", err)
 				}
 			}
+			boardBefore := readBoard(t, path)
 
 			cmd := intakeCommand(func() *boardengine.Board { return b }, func() (*hubissues.Repo, error) {
 				if tt.repoErr != nil {
@@ -321,6 +324,14 @@ func TestIntakeList_ExcludesPullRequestsRecordedAndClosedAcrossPages(t *testing.
 				}
 				if _, present := envelope["issues"]; present {
 					t.Errorf("issues = %v, want no issues key", envelope["issues"])
+				}
+				if tt.repoErr != nil {
+					if got := inbox.mutations(); len(got) != 0 {
+						t.Errorf("GitHub mutations = %v, want none", got)
+					}
+					if readBoard(t, path) != boardBefore {
+						t.Error("board.json changed on an unresolved repository")
+					}
 				}
 				return
 			}
