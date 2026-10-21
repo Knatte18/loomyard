@@ -1640,7 +1640,7 @@ func TestValidate_CommitSubjectMismatch(t *testing.T) {
 	})
 }
 
-// TestValidate_VerifyNestedModule covers verify-nested-module: a go command in a card's Verify: value or the overview's verify chain must not name a package of a nested module other than the one it runs in.
+// TestValidate_VerifyNestedModule covers verify-nested-module: a go command in a card's Verify: value must not name a package of a nested module other than the one it runs in; the overview's verify chain is never read.
 func TestValidate_VerifyNestedModule(t *testing.T) {
 	t.Parallel()
 
@@ -1667,12 +1667,11 @@ func TestValidate_VerifyNestedModule(t *testing.T) {
 		want     []string
 	}{
 		{name: "card verify from the root fires", cards: []planparser.Card{withVerify("go test ./nested/pkg")}, want: []string{"1-a"}},
-		{name: "overview line from the root fires with no card", overview: "go test ./nested/pkg", want: []string{""}},
+		{name: "overview chain is not read", overview: "go test ./nested/pkg"},
 		{name: "go -C into the module is silent", cards: []planparser.Card{withVerify("go -C nested test ./pkg")}},
 		{name: "cd into the module is silent", cards: []planparser.Card{withVerify("cd nested && go test ./pkg")}},
 		{name: "-C resolves against the cd", cards: []planparser.Card{withVerify("cd nested && go -C .. test ./nested/pkg")}, want: []string{"1-a"}},
 		{name: "-C into a second module is silent", cards: []planparser.Card{withVerify("cd nested && go -C ../other test ./pkg")}},
-		{name: "cd carries across overview lines", overview: "cd nested\ngo test ./pkg"},
 		{name: "-C= spelling sets the command directory", cards: []planparser.Card{withVerify("go -C=nested test ../other/pkg")}, want: []string{"1-a"}},
 		{name: "semicolon separates commands", cards: []planparser.Card{withVerify("cd nested; go test ../other/pkg")}, want: []string{"1-a"}},
 		{name: "newline separates commands", cards: []planparser.Card{withVerify("cd nested\ngo test ../other/pkg")}, want: []string{"1-a"}},
@@ -1717,7 +1716,7 @@ func TestValidate_VerifyNestedModule(t *testing.T) {
 	}
 }
 
-// TestValidate_VerifyPackageMissing covers verify-package-missing: a relative package argument of a go test, build or vet or a lyx gate test command in a card's Verify: value or the overview's verify chain must name a directory on disk or one the plan creates by then.
+// TestValidate_VerifyPackageMissing covers verify-package-missing: a relative package argument of a go test, build or vet or a lyx gate test command in a card's Verify: value must name a directory on disk or one the plan creates by then; the overview's verify chain is never read.
 // The test sits in the external package for its card helpers, so it is named by its file rather than a handle.
 func TestValidate_VerifyPackageMissing(t *testing.T) {
 	t.Parallel()
@@ -1751,8 +1750,7 @@ func TestValidate_VerifyPackageMissing(t *testing.T) {
 		wantDetail string
 	}{
 		{name: "external test package names its package as the replacement", cards: []planparser.Card{withVerify(1, "lyx gate test ./internal/x_test")}, want: []finding{{"1-a", "./internal/x_test"}}, wantDetail: "pass ./internal/x"},
-		{name: "overview chain with a missing directory", overview: "go test ./nope", want: []finding{{"", "./nope"}}},
-		{name: "overview chain escaping the root", overview: "go test ../outside", want: []finding{{"", "../outside"}}},
+		{name: "overview chain is not read", overview: "go test ./nope\ngo test ../outside"},
 		{name: "go build", cards: []planparser.Card{withVerify(1, "go build ./nope")}, want: []finding{{"1-a", "./nope"}}},
 		{name: "go vet", cards: []planparser.Card{withVerify(1, "go vet ./nope")}, want: []finding{{"1-a", "./nope"}}},
 		{name: "go -C resolves against the module", cards: []planparser.Card{withVerify(1, "go -C m test ./absent")}, want: []finding{{"1-a", "./absent"}}},
@@ -1862,8 +1860,8 @@ func TestValidate_VerifyModuleWide(t *testing.T) {
 			for _, f := range planparser.ValidateFormat(plan, t.TempDir()) {
 				if f.Check == "verify-module-wide" {
 					got = append(got, f.Card)
-					if !strings.Contains(f.Detail, "run in the foreground under the gate rule in your system prompt") || strings.Contains(f.Detail, "background") {
-						t.Errorf("verify-module-wide detail = %q; want the foreground route under the gate rule and no background", f.Detail)
+					if !strings.Contains(f.Detail, "`lyx gate test --wait --tier <n> --card <id>`") || !strings.Contains(f.Detail, "run in the foreground under the gate rule in your system prompt") || strings.Contains(f.Detail, "background") {
+						t.Errorf("verify-module-wide detail = %q; want the --card gate call run in the foreground under the gate rule and no background", f.Detail)
 					}
 				}
 			}

@@ -131,6 +131,8 @@ type Env struct {
 	PatternRecordPath string
 	// RenameTools is the hub's language.yaml rename_tools list, read by the plan gates' rename-tool-missing check.
 	RenameTools []string
+	// RefuseRaw is the hub's gate.yaml refuse_raw list, read by the plan gates' verify-raw-command check; empty refuses nothing.
+	RefuseRaw []string
 	// SupportLogPath is the told support log path, read by the gate resolver's "discussion" gate.
 	SupportLogPath string
 	// RelevantPath is the told relevant list path.

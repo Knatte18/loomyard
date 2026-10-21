@@ -539,11 +539,13 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		return err
 	}
 	languageSkills := language.Skills
-	// An absent gate.yaml renders the gate_tiers marker as none; any other load error already names the way forward.
+	// An absent gate.yaml renders the gate_tiers marker as none and refuses no raw command; any other load error already names the way forward.
 	gateTiers := "none"
+	var refuseRaw []string
 	gateCfg, err := gateslot.LoadConfig(fabricengine.ConfigDirs(location))
 	if err == nil {
 		gateTiers = gateCfg.TiersValue()
+		refuseRaw = gateCfg.RefuseRaw
 	} else if !errors.Is(err, gateslot.ErrConfigAbsent) {
 		return err
 	}
@@ -722,6 +724,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		},
 		GateTiers:          gateTiers,
 		RenameTools:        language.RenameTools,
+		RefuseRaw:          refuseRaw,
 		StatusPath:         statusPath,
 		StatusLockPath:     statusLockPath,
 		DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),

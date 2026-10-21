@@ -170,10 +170,10 @@ func resolveParentReviewClosure(entry string, attempts int, env Env) (gate, fina
 	return gate, final, parentreview.NewExpiryProbe(pr), nil
 }
 
-// planContextOf builds the plan gates' PlanContext from env: the hub's rename tools, and the decision record on a loom run.
+// planContextOf builds the plan gates' PlanContext from env: the hub's rename tools and refused raw commands, and the decision record on a loom run.
 // A darn run has no PatternRecordPath, so its plan is not compared with a record.
 func planContextOf(env Env) loomshed.PlanContext {
-	return loomshed.PlanContext{RenameTools: env.RenameTools, DecisionRecordPath: env.PatternRecordPath}
+	return loomshed.PlanContext{RenameTools: env.RenameTools, RefuseRaw: env.RefuseRaw, DecisionRecordPath: env.PatternRecordPath}
 }
 
 // resolvePlainGateClosure resolves the five validator names that carry no Final closure.

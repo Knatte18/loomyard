@@ -439,11 +439,11 @@ The rows below stay in one fixed order regardless of which entry point runs them
     A `Rename` group's own `Pairs.Old` entries are checked instead of its `Refs`, and its `Pairs.New` side is never checked.
     `Custom` stays exempt on its own targets — and from the `prosa-symbol-target` rule above, restated in group terms: a `Custom` group's own targets are exempt from both rules — and from nothing else, since every other group and every card-generic check still binds it.
 29. `commit-subject-mismatch` — a present `Commit:` value that does not start with the card's own `N: ` prefix. Card-generic.
-30. `verify-nested-module` — a `go` command in a card's `**Verify:**` value or the overview's `## verify:` section whose relative package argument lies in a nested module other than the one the command runs in, so the go tool cannot resolve it from there.
+30. `verify-nested-module` — a `go` command in a card's `**Verify:**` value whose relative package argument lies in a nested module other than the one the command runs in, so the go tool cannot resolve it from there.
     It joins a backslash-newline continuation into one line, then splits a chain at `&&`, `||`, `;`, `|` and a newline, reading `||` as one separator and a separator inside a quoted span as text.
     It follows a literal `cd <dir>` and a `go -C <dir>`, and ends the scan of a chain at a `cd` or `-C` to an absolute path or out of the worktree root, or at a `cd` in a pipeline stage or after `||`, which may not have run.
     A field after the subcommand that opens with `-` is a flag, taking the next field when the flag takes a value; a package argument is `.`, `..` or a field opening with `./` or `../`, with a trailing `/...` dropped.
-    A nested module is a directory below the root holding a `go.mod`, on disk or created by a card's `Create` (or the New side of a `Rename`) at or below the card, minus those a `Delete` or a `Rename` Old side removes; the overview's line is judged against the whole plan.
+    A nested module is a directory below the root holding a `go.mod`, on disk or created by a card's `Create` (or the New side of a `Rename`) at or below the card, minus those a `Delete` or a `Rename` Old side removes; the overview's `## verify:` section is never read, since no gate runs it.
     So `./...` from the root, which the go tool limits to the root module, is silent.
     One finding per command, attributed to the card, or empty for the overview; its way forward is to run the command as `go -C <module>` with module-relative package paths.
     Runs under any `language:`, since it reads `go` commands rather than glyphs; reported by both plan gates, `lyx loom validate-plan` and dispatch through `ValidateFormat`.
@@ -497,8 +497,8 @@ The rows below stay in one fixed order regardless of which entry point runs them
 38. `verify-module-wide` — a raw Go test, build or vet command in a card's `**Verify:**` value whose package argument holds `...` or equals `all`, or a raw Go test command whose `-tags` value names `tmux` or `llm`.
     An agent's settings deny such a command, so it can never run under a fork.
     It splits a chain as `verify-nested-module` does, at `&&`, `||`, `;`, `|` and a newline after joining line continuations, skips a `go -C <dir>` and a leading environment assignment, and stops reading a command at `--` or `-args`; a flag that takes a value takes the next field.
-    One finding per command, attributed to the card; the overview's `## verify:` section is never read, since Go runs it itself.
-    Its way forward is `lyx gate test [-C <module>] [--tags <tags>] <packages>` over the card's own packages, run in the foreground under the gate rule in the agent's system prompt.
+    One finding per command, attributed to the card; the overview's `## verify:` section is never read.
+    Its way forward is `lyx gate test --wait --tier <n> --card <id>` over the card's own scope, run in the foreground under the gate rule in the agent's system prompt.
     Runs under any `language:` and is reported by both plan gates, `lyx loom validate-plan` and dispatch through `ValidateFormat`.
     It only refuses: it misses a command built from a variable or behind `bash -c`.
 39. `pattern-entry-line-cap` — a card that prescribes a verbatim `PATTERN.md` entry line over the cap: a line inside a fenced code block of the card file that opens with ``- `PATTERN-`` and exceeds `pattern.MaxEntryLineChars` runes.
@@ -520,10 +520,11 @@ The rows below stay in one fixed order regardless of which entry point runs them
     One blocking finding per name, attributed to the card naming the member, naming `PATTERN-fabric-vocabulary` and the rule broken; its way forward is to rename the member.
     Runs under any `language:`, and the plan index appends it to its format, rework and dispatch validation, so both plan gates, `lyx loom validate-plan`'s default and `--rework` modes and webster dispatch report it; dispatch drops a finding against a completed card, and `--require-approved` and webster's own `validate` verb do not run it.
     It only refuses: it misses a name spelled only in prose, such as a test row or subtest name, or built at implementation time, which the verify gate still catches, and it may refuse a host-geometry helper declared in a `_test.go` file under `internal/`, which the scan admits.
-42. `verify-package-missing` — a relative package argument (`.`, `..`, `./…` or `../…`, a trailing `/...` removed, not a `.go` file) of a raw Go test, build or vet command or a `lyx gate test` command in a card's `**Verify:**` value or the overview's `## verify:` section that names no directory.
-    A directory counts when it is on disk under the worktree root, or equals or is an ancestor of a directory a card creates: a card's value reads the targets of non-`Delete` groups of that card and the earlier ones, a `Rename` pair's `New` side included, and the overview's reads the whole plan's; an external `_test` unit counts as its package's directory.
+42. `verify-package-missing` — a relative package argument (`.`, `..`, `./…` or `../…`, a trailing `/...` removed, not a `.go` file) of a raw Go test, build or vet command or a `lyx gate test` command in a card's `**Verify:**` value that names no directory.
+    A directory counts when it is on disk under the worktree root, or equals or is an ancestor of a directory a card creates: a card's value reads the targets of non-`Delete` groups of that card and the earlier ones, a `Rename` pair's `New` side included; an external `_test` unit counts as its package's directory.
     It splits a chain as `verify-nested-module` does and follows a literal `cd <dir>` and a `go -C <dir>`, `lyx gate test -C <dir>` or `--dir <dir>` the same way; `--tags` skips its value for `lyx gate test`, and reading stops at `--`.
-    A card's value is skipped when that card or an earlier one holds a `Move` group, and the overview's when any card does, since a `Move`'s destination lives in `Intent` prose.
+    A card's value is skipped when that card or an earlier one holds a `Move` group, since a `Move`'s destination lives in `Intent` prose.
+    The overview's `## verify:` section is never read.
     One finding per argument, with the argument as its ref.
     When the argument ends in `_test` and its `_test`-less spelling is a directory, the detail names that spelling as the replacement.
     Its way forward is to correct the Verify line.
@@ -537,6 +538,18 @@ The rows below stay in one fixed order regardless of which entry point runs them
     Skipped under `language: none`, whose plan forgoes every glyph check and has neither a self glyph to read nor a member glyph or handle to name.
     It reads plan text only, so it fires whether or not the file exists, and only refuses.
     The plan index appends it to its format and rework validation, so both plan gates and `lyx loom validate-plan`'s default and `--rework` modes report it; format validation skips a done card, rework skips none because a rework generation is a fresh plan whose prior cards are archived, and dispatch, `--require-approved` and webster's own `validate` verb do not run it.
+44. `verify-raw-command` — a card's `**Verify:**` line holding a command the hub's `refuse_raw` list names, read in command position over each command of the line, past a leading `env`, `exec`, `xargs`, `sudo` or `time` launcher.
+    Go re-runs a `**Verify:**` line outside any agent hook, so the shell guard cannot refuse it there.
+    One blocking finding per command, attributed to the card; its way forward is a `lyx gate test --wait` call with a tier list and a scope form.
+    `loomshed.ValidatePlan` and `loomshed.ValidateReworkPlan` append it from the hub's `gate.yaml` list outside both planparser entry points; an absent `gate.yaml` or an empty list reports nothing.
+    A done card is not read, since its file is frozen, and the rework gate reads the fresh generation's cards.
+    It reads static text only: a test hidden behind a script in the line passes.
+45. `verify-gate-no-wait` — a `lyx gate test` call in a card's `**Verify:**` line without `--wait`.
+    A call without it exits 75 on a busy slot instead of waiting for one, which fails a verify line no agent can re-run.
+    It is appended and scoped as `verify-raw-command` is; one blocking finding per call, and its way forward is to add `--wait`.
+46. `plan-verify-retired` (informational) — an overview carrying a `## verify:` section.
+    No gate runs it; the parser keeps accepting the section, so an in-flight plan still parses.
+    It is appended as `verify-raw-command` is and never blocks.
 
 One further check, `rework-first-card`, is outside both entry points and has no row above.
 Only the rework gate runs it: `planglyph.ValidateRework` runs it after the format-only set, and it reports a `first_card:` that differs from the card number Go told the rework session to start at.
