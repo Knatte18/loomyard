@@ -241,6 +241,8 @@ func (f *Fabric) warpUpstreamSHA() (string, error) {
 // A replay that stops on a conflict, or an uncommitted change that blocks the move, never stalls the warp side.
 // The warp fetch/reconcile runs regardless, and Pull then returns a *WeftStopError naming the weft branch, the paths and the way forward, beside the warp result.
 // A weft whose origin cannot be reached is warned past and leaves PullResult.WeftPulled false.
+// A weft infrastructure failure that is neither a stop nor an unreachable origin, such as an unreadable hub location, a failed weft write lock or a replay that failed for another reason, returns at once, before the warp arm runs:
+// warp is reset against the weft's correspondence, which such a failure leaves unknown.
 // A warp-side failure reports the accumulated result rather than unwinding the weft pull (weft-first-ordering / report-not-rollback), joined with a weft stop when both happened.
 // The warp arm judges a local commit as unpushed only when no value of the remote-tracking ref's reflog reaches it.
 // It refuses a task pair's branch that origin rewound, with ErrWarpRewound, before any reset.
