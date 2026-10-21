@@ -44,7 +44,7 @@ func (d configDirs) layersHolding(module configreg.Module) string {
 // Without a terminal it refuses first, before printing the list or reading a choice.
 func menu(dirs configDirs, in io.Reader, out io.Writer, edit configengine.EditorFunc, sync syncFunc, commit hubCommitFunc, terminal bool) int {
 	if !terminal {
-		return output.Err(out, noTerminalRefusal(""))
+		return output.Err(out, noTerminalRefusal("", ""))
 	}
 	modules := configreg.Modules()
 

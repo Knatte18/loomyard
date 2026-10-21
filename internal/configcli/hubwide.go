@@ -33,7 +33,7 @@ type configDirs struct {
 	worktree string
 	board    string
 
-	// layer is the --layer value: empty, or one of the three layer names.
+	// layer is the --layer value: empty, or one of the four layer names.
 	// Empty selects the module's own default, the worktree file of a per-worktree module and the hub file of a hub-wide one.
 	layer string
 
@@ -82,9 +82,9 @@ func dirsOf(l *lyxcwd.Location) configDirs {
 }
 
 // layerNames are the values --layer takes.
-var layerNames = []configengine.Layer{configengine.LayerDefault, configengine.LayerWorktree, configengine.LayerLocal}
+var layerNames = []configengine.Layer{configengine.LayerDefault, configengine.LayerWorktree, configengine.LayerMachine, configengine.LayerLocal}
 
-// validLayer reports whether layer is empty or one of the three layer names.
+// validLayer reports whether layer is empty or one of the four layer names.
 func validLayer(layer string) bool {
 	return layer == "" || slices.Contains(layerNames, configengine.Layer(layer))
 }
@@ -96,6 +96,7 @@ func (d configDirs) engineDirs() configengine.Dirs {
 
 // selectedLayer returns the layer a verb addresses for module.
 // An empty --layer selects the module's own default, and --layer worktree on a hub-wide module is refused with the ways forward.
+// --layer machine is refused on a per-worktree module and on a hub-wide module that classifies no machine key.
 func (d configDirs) selectedLayer(module configreg.Module) (configengine.Layer, error) {
 	switch {
 	case d.layer == "" && module.HubWide:
@@ -104,6 +105,10 @@ func (d configDirs) selectedLayer(module configreg.Module) (configengine.Layer, 
 		return configengine.LayerWorktree, nil
 	case d.layer == string(configengine.LayerWorktree) && module.HubWide:
 		return "", fmt.Errorf("%s is a hub-wide module and has no worktree file; way forward: --layer default from the hub's prime worktree, or --layer local", module.Name)
+	case d.layer == string(configengine.LayerMachine) && !module.HubWide:
+		return "", fmt.Errorf("%s is a per-worktree module and has no machine file; way forward: --layer local", module.Name)
+	case d.layer == string(configengine.LayerMachine) && len(configengine.MachineKeys(module.Spec())) == 0:
+		return "", fmt.Errorf("%s has no machine key; way forward: \"lyx config %s\" from the hub's prime worktree", module.Name, module.Name)
 	}
 	return configengine.Layer(d.layer), nil
 }

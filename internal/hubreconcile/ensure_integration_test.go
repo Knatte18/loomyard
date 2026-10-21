@@ -297,10 +297,22 @@ func runStaleBuildReconcile(t *testing.T, boardBehind, loomDefaultGone bool) {
 		pushBoardFromSecondClone(t, h.BoardDir())
 		movedUpstream = "moved-upstream.txt"
 	}
+	// The machine file sits under the board dir's never-tracked .lyx, which no reconcile reads or writes.
+	const machineBytes = "slots: 1\ngo_parallel: 8\n"
+	machineFile := configengine.MachineFile(h.BoardDir(), "gate")
+	if err := os.MkdirAll(filepath.Dir(machineFile), 0o755); err != nil {
+		t.Fatalf("create the board's .lyx config dir: %v", err)
+	}
+	if err := os.WriteFile(machineFile, []byte(machineBytes), 0o644); err != nil {
+		t.Fatalf("seed the machine file: %v", err)
+	}
 	primeBefore, pairBefore := commitCount(t, h.PrimeRecords()), commitCount(t, h.PairRecordsSibling("pair-a"))
 
 	if err := hubreconcile.Ensure(geom, hubreconcile.Options{}); err != nil {
 		t.Fatalf("Ensure: %v", err)
+	}
+	if got, err := os.ReadFile(machineFile); err != nil || string(got) != machineBytes {
+		t.Errorf("machine gate file = %q, %v after Ensure; want it unchanged", got, err)
 	}
 
 	wantSubject := "lyx: reconcile hub-wide config for build " + fabricengine.BinaryLabel()
