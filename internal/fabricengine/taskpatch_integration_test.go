@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 )
@@ -79,7 +80,46 @@ func readTaskPatch(t *testing.T, fx taskPatchFixture, base string, skip []string
 	return patch
 }
 
-// TestFabric_ReadTaskPatch covers which changes the patch holds, how skip exempts untracked paths, and what its hashes follow.
+// readPatchAroundScratchWrite edits lib.txt, wires the warp root `.scratch` and reads the patch before and after a file is written under it.
+// With linked, `.scratch` is a link into a directory outside the warp excluded as `/.scratch`;
+// otherwise it is a real directory excluded as `/.scratch/`.
+func readPatchAroundScratchWrite(t *testing.T, fx taskPatchFixture, linked bool) (before, after fabricengine.TaskPatch) {
+	t.Helper()
+
+	writeTaskPatchFile(t, fx.warpDir, "lib.txt", strings.Replace(fx.baseFile, "line 15\n", "line 15 changed\n", 1))
+	root := filepath.Join(fx.warpDir, ".scratch")
+	exclude := "/.scratch/\n"
+	if linked {
+		target := filepath.Join(t.TempDir(), "scratch")
+		if err := os.Mkdir(target, 0o755); err != nil {
+			t.Fatalf("Mkdir %s: %v", target, err)
+		}
+		if err := fslink.CreateDirLink(root, target); err != nil {
+			t.Fatalf("CreateDirLink(%s) error = %v", root, err)
+		}
+		exclude = "/.scratch\n"
+	} else if err := os.Mkdir(root, 0o755); err != nil {
+		t.Fatalf("Mkdir %s: %v", root, err)
+	}
+	excludePath := filepath.Join(fx.warpDir, ".git", "info", "exclude")
+	file, err := os.OpenFile(excludePath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o644)
+	if err != nil {
+		t.Fatalf("open %s: %v", excludePath, err)
+	}
+	if _, err := file.WriteString(exclude); err != nil {
+		t.Fatalf("write %s: %v", excludePath, err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("close %s: %v", excludePath, err)
+	}
+
+	before = readTaskPatch(t, fx, fx.baseSHA, nil)
+	writeTaskPatchFile(t, root, scratchNoteName, "scratch content\n")
+	after = readTaskPatch(t, fx, fx.baseSHA, nil)
+	return before, after
+}
+
+// TestFabric_ReadTaskPatch covers which changes the patch holds, how skip exempts untracked paths, what its hashes follow, and that a root `.scratch` never enters it.
 func TestFabric_ReadTaskPatch(t *testing.T) {
 	t.Parallel()
 
@@ -191,6 +231,25 @@ func TestFabric_ReadTaskPatch(t *testing.T) {
 		afterWeft := readTaskPatch(t, fx, fx.baseSHA, nil)
 		if afterWeft.FullHash != withUntracked.FullHash {
 			t.Errorf("a weft-side change moved FullHash from %q to %q; want it equal", withUntracked.FullHash, afterWeft.FullHash)
+		}
+	})
+
+	t.Run("RootScratchStaysOutOfThePatch", func(t *testing.T) {
+		t.Parallel()
+
+		linkedBefore, linkedAfter := readPatchAroundScratchWrite(t, newTaskPatchFixture(t), true)
+		if !bytes.Equal(linkedAfter.Full, linkedBefore.Full) || linkedAfter.FullHash != linkedBefore.FullHash || linkedAfter.PatchID != linkedBefore.PatchID {
+			t.Errorf("a file under the linked .scratch changed the patch:\nbefore (%s) %s\nafter (%s) %s", linkedBefore.FullHash, linkedBefore.Full, linkedAfter.FullHash, linkedAfter.Full)
+		}
+
+		if bytes.Contains(linkedAfter.Full, []byte(".scratch")) {
+			t.Errorf("linked .scratch appears in the patch:\n%s", linkedAfter.Full)
+		}
+
+		_, realAfter := readPatchAroundScratchWrite(t, newTaskPatchFixture(t), false)
+		if linkedAfter.FullHash != realAfter.FullHash || linkedAfter.PatchID != realAfter.PatchID {
+			t.Errorf("linked .scratch gave FullHash %q, PatchID %q; real .scratch gave %q, %q; want equal",
+				linkedAfter.FullHash, linkedAfter.PatchID, realAfter.FullHash, realAfter.PatchID)
 		}
 	})
 

@@ -5,6 +5,7 @@
 // Unwire is per-worktree and never touches the repo-wide `weft:main` records (`.lyx-anchor`,
 // `<BoardDir>/_lyx/config/fabric.yaml`) — those are per-repo facts a later `lyx fabric reconcile`
 // re-wire still needs.
+// An applied Unwire removes every fabric junction on disk but the root scratch link, which stays with its `/.scratch` exclude line.
 // It is distinct from Reconcile: Reconcile converges wiring toward the repo-wide pathspec (may add,
 // re-point, or remove junctions), while an applied Unwire always removes every fabric junction present on disk
 // and reverses their warp `.git/info/exclude` entries — nothing more. It never deletes weft-side
@@ -52,6 +53,7 @@ type UnwireVerbResult struct {
 // A dry run still takes the exclude-file lock, creating the info directory and the lock file when they are absent.
 // The junction name-set is enumerated from a full on-disk scan, removing every fabric-owned
 // junction present on disk, including stale ones absent from the repo-wide pathspec.
+// The root scratch link is the exception: it and its `/.scratch` exclude stay.
 // Ownership is decided by where a link resolves (see scanOnDiskJunctionNames): a hand-authored
 // symlink checked into the warp repo beside the junctions is never claimed or removed.
 // It never deletes weft-side content: every weft-side directory, including `.lyx`, is left intact.
@@ -73,6 +75,7 @@ func Unwire(cwd string, apply bool) (res UnwireVerbResult, err error) {
 	if err != nil {
 		return UnwireVerbResult{}, err
 	}
+	names = withoutRootScratchLink(l, names)
 
 	var junctionsRemoved []string
 	var excludeChanged bool

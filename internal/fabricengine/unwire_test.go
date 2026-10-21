@@ -27,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
@@ -36,8 +37,9 @@ import (
 // Unwire removes every fabric junction present on disk for the worktree, including a junction
 // (`_extra`) absent from the repo-wide pathspec that a config-driven name-set would have left
 // behind.
+// It also leaves the root scratch link and its exclude line in place.
 //
-//testtiming:keep Unwire removing every on-disk fabric junction including one absent from the pathspec; coverage of its blocks by other tests does not show an assertion of this
+//testtiming:keep Unwire removing every on-disk fabric junction including one absent from the pathspec while the root scratch link stays; coverage of its blocks by other tests does not show an assertion of this
 func TestUnwire_RemovesOnDiskJunctionsIncludingStale(t *testing.T) {
 	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
 	t.Setenv("FABRIC_SKIP_PUSH", "1")
@@ -113,6 +115,15 @@ func TestUnwire_RemovesOnDiskJunctionsIncludingStale(t *testing.T) {
 		if _, statErr := os.Lstat(link); !os.IsNotExist(statErr) {
 			t.Errorf("junction %s still exists after Unwire (stat err: %v)", link, statErr)
 		}
+	}
+
+	scratchRoot := filepath.Join(warpLayout.WorktreePath(), ".scratch")
+	wantScratchTarget := filepath.Join(fabricengine.RecordsWorktreePath(warpLayout, slug), warpLayout.AnchorRel, lyxdirs.DotLyxDirName, "scratch")
+	if raw, rawErr := fslink.RawTarget(scratchRoot); rawErr != nil || filepath.Clean(raw) != wantScratchTarget {
+		t.Errorf("root .scratch after Unwire: RawTarget = %q, err %v; want a link to %q", raw, rawErr, wantScratchTarget)
+	}
+	if lines := gitkit.ExcludeLines(t, warpLayout.WorktreePath()); !containsLine(lines, "/.scratch") {
+		t.Errorf("warp .git/info/exclude lost %q after Unwire: %v", "/.scratch", lines)
 	}
 }
 

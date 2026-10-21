@@ -55,9 +55,9 @@ func resetDotLyxJunction(t *testing.T, l *lyxcwd.Location, slug string) string {
 
 // TestDotLyxJunction_LifecycleWiresSeedsBothExcludesAndUnwires covers (a): wiring creates the .lyx
 // junction pointing at <weft>/<AnchorRel>/.lyx, seeds ".lyx" into the warp's .git/info/exclude AND
-// ".lyx/" into the weft's, seeds "/.scratch/" into the warp's, and unwiring removes the junction and the warp .lyx entry but keeps the scratch line.
+// ".lyx/" into the weft's, seeds "/.scratch" into the warp's, and unwiring removes the junction and the warp .lyx entry but keeps the scratch line.
 //
-//testtiming:keep wiring creating the .lyx junction to the weft, seeding the warp and weft excludes and the warp scratch line, and unwiring removing them but the scratch line; coverage of its blocks by other tests does not show an assertion of this
+//testtiming:keep wiring creating the .lyx junction to the weft, seeding the warp and weft excludes and the warp "/.scratch" line, and unwiring removing them but the scratch line; coverage of its blocks by other tests does not show an assertion of this
 func TestDotLyxJunction_LifecycleWiresSeedsBothExcludesAndUnwires(t *testing.T) {
 	t.Parallel()
 
@@ -109,8 +109,8 @@ func TestDotLyxJunction_LifecycleWiresSeedsBothExcludesAndUnwires(t *testing.T) 
 		t.Fatalf("warp .git/info/exclude does not contain %q after WireJunctions: %v", warpPattern, lines)
 	}
 
-	if lines := gitkit.ExcludeLines(t, fabricengine.WorktreePath(l, slug)); !containsLine(lines, "/.scratch/") {
-		t.Fatalf("warp .git/info/exclude does not contain %q after WireJunctions: %v", "/.scratch/", lines)
+	if lines := gitkit.ExcludeLines(t, fabricengine.WorktreePath(l, slug)); !containsLine(lines, "/.scratch") {
+		t.Fatalf("warp .git/info/exclude does not contain %q after WireJunctions: %v", "/.scratch", lines)
 	}
 
 	weftPath := fabricengine.RecordsWorktreePath(l, slug)
@@ -131,8 +131,8 @@ func TestDotLyxJunction_LifecycleWiresSeedsBothExcludesAndUnwires(t *testing.T) 
 	if lines := gitkit.ExcludeLines(t, fabricengine.WorktreePath(l, slug)); containsLine(lines, lyxdirs.DotLyxDirName) {
 		t.Errorf("warp .git/info/exclude still contains %q after UnwireJunctions: %v", lyxdirs.DotLyxDirName, lines)
 	}
-	if lines := gitkit.ExcludeLines(t, fabricengine.WorktreePath(l, slug)); !containsLine(lines, "/.scratch/") {
-		t.Errorf("warp .git/info/exclude lost %q after UnwireJunctions: %v", "/.scratch/", lines)
+	if lines := gitkit.ExcludeLines(t, fabricengine.WorktreePath(l, slug)); !containsLine(lines, "/.scratch") {
+		t.Errorf("warp .git/info/exclude lost %q after UnwireJunctions: %v", "/.scratch", lines)
 	}
 }
 

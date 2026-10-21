@@ -34,6 +34,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // findReconcilePair returns the ReconcilePairResult for weftPath, failing the
@@ -137,8 +138,7 @@ func TestReconcile_AddsMissingRemovesStaleNoOpsCorrect(t *testing.T) {
 // match the repo-wide pathspec produces a true no-op: ReconcileActionAlreadyHealthy with an empty
 // Detail, not a spurious ReconcileActionStaleRemoved from an empty stale set.
 func TestReconcile_CorrectJunctionsAreNoOp(t *testing.T) {
-	t.Parallel()
-
+	// Serial: the logger capture below replaces process-global logger output.
 	const slug = "stale-removal-correct-noop"
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
@@ -162,6 +162,7 @@ func TestReconcile_CorrectJunctionsAreNoOp(t *testing.T) {
 		t.Fatalf("widen repo-wide pathspec: %v", err)
 	}
 
+	logs := logcapture.Capture(t)
 	result, err := topology.Reconcile(l)
 	if err != nil {
 		t.Fatalf("Reconcile: %v", err)
@@ -173,6 +174,20 @@ func TestReconcile_CorrectJunctionsAreNoOp(t *testing.T) {
 	}
 	if pair.Detail != "" {
 		t.Errorf("Detail = %q; want empty for a true no-op", pair.Detail)
+	}
+
+	root, target := scratchPaths(l, slug)
+	if got, want := describeEntry(t, root), "link:"+target; got != want {
+		t.Errorf("root .scratch = %q; want %q", got, want)
+	}
+	if lines := gitkit.ExcludeLines(t, fabricengine.WorktreePath(l, slug)); !containsLine(lines, "/.scratch") {
+		t.Errorf("exclude lines = %v; want /.scratch kept", lines)
+	}
+	if hasMutation(result.Mutations, fabricengine.KindLinkRemoved, scratchHubRelative(t, l, root), "") {
+		t.Errorf("record %+v holds link_removed at the root .scratch", result.Mutations.Entries())
+	}
+	if strings.Contains(logs.String(), "stale-junction removal refused") {
+		t.Errorf("logs %q hold a refused stale-junction removal; the sweep must never claim the scratch link", logs.String())
 	}
 }
 

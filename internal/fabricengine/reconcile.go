@@ -401,13 +401,19 @@ func (t *Topology) repairPairWiring(rec *Mutations, warpLayout *lyxcwd.Location,
 		names, namesErr := RepoWiredNames(warpLayout)
 		if namesErr != nil {
 			pr.Error = fmt.Sprintf("re-point junction: load fabric config: %v", namesErr)
-		} else if wireErr := WireJunctionsWith(rec, warpLayout, slug, names); wireErr != nil {
+		} else if wireErr := wireJunctionSet(rec, warpLayout, slug, names); wireErr != nil {
 			pr.Error = fmt.Sprintf("re-point junction: %v", wireErr)
 		} else {
 			appendPrDetail(pr, junctionRepointedDetail(warpLayout))
 		}
 	} else if setAction {
 		pr.Action = ReconcileActionAlreadyHealthy
+	}
+
+	// The scratch step runs on the healthy and the re-wired branch alike and never touches Action or Error:
+	// scratch is agent convenience and must not downgrade a verdict about the pair.
+	if detail := wireScratchLink(rec, warpLayout, slug).detail(); detail != "" {
+		appendPrDetail(pr, detail)
 	}
 
 	if restoreLaunchers(rec, warpLayout, slug, warpBranch, pr) && setAction && pr.Action == ReconcileActionAlreadyHealthy {
@@ -801,6 +807,7 @@ func appendPrDetail(pr *ReconcilePairResult, text string) {
 // applyStaleRemoval converges warpLayout's on-disk junctions to the repo-wide pathspec
 // by removing any junction present on disk but absent from RepoWiredNames. Fail-closed:
 // if repo-wide fabric.yaml cannot be loaded or the on-disk scan fails, nothing is removed.
+// The root scratch link is excepted: it is never a stale junction, so the sweep neither removes it nor strips its exclude line.
 // rec is the calling verb's own recorder, threaded through to removeWarpJunction.
 func applyStaleRemoval(rec *Mutations, warpLayout *lyxcwd.Location, slug string, pr *ReconcilePairResult) {
 	desired, err := RepoWiredNames(warpLayout)
@@ -814,6 +821,7 @@ func applyStaleRemoval(rec *Mutations, warpLayout *lyxcwd.Location, slug string,
 		appendPrDetail(pr, fmt.Sprintf("stale-removal skipped: cannot scan on-disk junctions: %v", err))
 		return
 	}
+	onDisk = withoutRootScratchLink(warpLayout, onDisk)
 
 	desiredSet := make(map[string]bool, len(desired))
 	for _, name := range desired {

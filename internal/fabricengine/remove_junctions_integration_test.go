@@ -147,6 +147,14 @@ func TestRemove_SweepsAnchoredLinksOnSubpathHub(t *testing.T) {
 	if result.LinksRemoved != 2 {
 		t.Errorf("LinksRemoved = %d; want 2 (_lyx, .lyx at the anchored directory)", result.LinksRemoved)
 	}
+
+	// The root scratch link is no anchored junction, so it is unlinked separately and ahead of the warp worktree removal.
+	root, _ := scratchPaths(l, slug)
+	unlinked := mutationIndexes(result.Mutations, fabricengine.KindLinkRemoved, scratchHubRelative(t, l, root))
+	warpRemoved := mutationIndexes(result.Mutations, fabricengine.KindWorktreeRemoved, scratchHubRelative(t, l, fabricengine.WorktreePath(l, slug)))
+	if len(unlinked) != 1 || len(warpRemoved) != 1 || unlinked[0] > warpRemoved[0] {
+		t.Errorf("record %+v; want one link_removed at the root .scratch ahead of the warp worktree_removed", result.Mutations.Entries())
+	}
 }
 
 // TestRemove_FailedWeftTeardownIsReported locks the weft worktree so `git worktree remove --force`

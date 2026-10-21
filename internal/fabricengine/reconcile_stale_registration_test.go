@@ -100,9 +100,12 @@ func TestReconcile_MissingWeftRepoIsDiagnosedByName(t *testing.T) {
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 
+	root, target := scratchPaths(l, l.WorktreeName)
+	removeRootLink(t, root)
 	if err := os.RemoveAll(h.PrimeRecords()); err != nil {
 		t.Fatalf("remove weft prime: %v", err)
 	}
+	removeTarget(t, target)
 
 	topology := h.Topology
 	result, err := topology.Reconcile(l)
@@ -122,6 +125,12 @@ func TestReconcile_MissingWeftRepoIsDiagnosedByName(t *testing.T) {
 	}
 	if pr.Action != fabricengine.ReconcileActionUnmanagedReported {
 		t.Errorf("Reconcile() pair action = %q; want %q (report, never a corrective attempt against a missing repo)", pr.Action, fabricengine.ReconcileActionUnmanagedReported)
+	}
+	if got := describeEntry(t, root); got != "absent" {
+		t.Errorf("root .scratch = %q; want no link for a pair whose weft is missing", got)
+	}
+	if got := describeEntry(t, target); got != "absent" {
+		t.Errorf("scratch target = %q; want none created for a pair whose weft is missing", got)
 	}
 }
 
@@ -492,6 +501,8 @@ func TestReconcile_RecreatedWeftIsWiredInTheSamePass(t *testing.T) {
 		t.Fatalf("RecordsRepoRoot: %v", err)
 	}
 	weftPath := fabricengine.RecordsWorktreePath(l, slug)
+	root, target := scratchPaths(l, slug)
+	removeRootLink(t, root)
 	gitkit.MustRun(t, weftRepoRoot, "git", "worktree", "remove", "--force", weftPath)
 
 	result, err := topology.Reconcile(l)
@@ -501,6 +512,12 @@ func TestReconcile_RecreatedWeftIsWiredInTheSamePass(t *testing.T) {
 	pair := findReconcilePair(t, result.Pairs, weftPath)
 	if pair.Error != "" {
 		t.Fatalf("Error = %q; want empty", pair.Error)
+	}
+	if got, want := describeEntry(t, root), "link:"+target; got != want {
+		t.Errorf("root .scratch = %q; want %q after the pass that recreated the weft", got, want)
+	}
+	if got := describeEntry(t, target); got != "dir" {
+		t.Errorf("scratch target = %q; want the directory present", got)
 	}
 	if pair.Action != fabricengine.ReconcileActionWeftRecreated {
 		t.Errorf("Action = %q; want %q — the repair must not relabel what happened",

@@ -28,6 +28,24 @@ func SetGCAutoThresholdForTest(t *testing.T, threshold int) {
 	t.Cleanup(func() { gcAutoThreshold = previous })
 }
 
+// SetScratchBeforeLinkHookForTest sets scratchBeforeLinkHook until the test ends.
+// It changes process-global state, so the calling test must not be parallel.
+func SetScratchBeforeLinkHookForTest(t *testing.T, hook func()) {
+	t.Helper()
+
+	scratchBeforeLinkHook = hook
+	t.Cleanup(func() { scratchBeforeLinkHook = nil })
+}
+
+// SetScratchPathTrackedForTest swaps scratchPathTracked for fn until the test ends.
+// It changes process-global state, so the calling test must not be parallel.
+func SetScratchPathTrackedForTest(t *testing.T, fn func(worktreeDir, relPath string) (bool, error)) {
+	t.Helper()
+
+	scratchPathTracked = fn
+	t.Cleanup(func() { scratchPathTracked = PathTracked })
+}
+
 // NewPairedFromPathsForTest re-exports newPaired for fabric_test.go's untagged unit test of the
 // newPaired constructor itself, its one remaining consumer: it hands newPaired two empty directories
 // and asserts the warp and weft fields come back non-nil.
