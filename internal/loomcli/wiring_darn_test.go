@@ -140,21 +140,23 @@ func TestWire_DarnRecipe(t *testing.T) {
 		wantFixerFanSetting string
 	}{
 		{
-			name:          "the template's empty fans and models",
-			wantReviewKey: darnKey("darn_reviewer_model"), wantFixKey: loomKey("fixer_model"),
-			wantReview: "sonnet high",
+			name:          "the template's fans and models",
+			wantReviewKey: darnKey("darn_reviewer_model"), wantFixKey: darnKey("darn_fixer_model"),
+			wantReview:          "sonnet medium",
+			wantFix:             "sonnet medium",
+			wantFixerFanSetting: "fix-code",
 		},
 		{
 			name: "set fans and models",
 			replacements: []string{
-				`darn_reviewer_fan: ""`, "darn_reviewer_fan:\n  - review-code\n  - \"\"", `darn_fixer_fan: ""`, "darn_fixer_fan: fix-code",
-				"darn_reviewer_model: sonnet[high]", `darn_reviewer_model: ""`, `darn_fixer_model: ""`, "darn_fixer_model: sonnet[low]",
+				`darn_reviewer_fan: ["review-code", ""]`, "darn_reviewer_fan:\n  - \"\"\n  - review-code", "darn_fixer_fan: fix-code", "darn_fixer_fan: fix-plan",
+				"darn_reviewer_model: sonnet[medium]", `darn_reviewer_model: ""`, "darn_fixer_model: sonnet[medium]", "darn_fixer_model: sonnet[low]",
 			},
 			wantReviewKey:       loomKey("reviewer_model"),
 			wantFixKey:          darnKey("darn_fixer_model"),
 			wantReview:          "opus medium",
 			wantFix:             "sonnet low",
-			wantFixerFanSetting: "fix-code",
+			wantFixerFanSetting: "fix-plan",
 		},
 	} {
 		t.Run("darn.yaml's model and fan keys reach the Darn-Review rows under "+tt.name, func(t *testing.T) {
@@ -209,7 +211,7 @@ func TestWire_DarnRecipe(t *testing.T) {
 	t.Run("a darn.yaml model the registry does not define is refused naming the key and darn.yaml", func(t *testing.T) {
 		t.Parallel()
 		loc := hubLocation(t, "pair", ".")
-		seedDarnHubConfig(t, loc.HubPath, `"go test ./..."`, "3", "darn_reviewer_model: sonnet[high]", "darn_reviewer_model: ghost")
+		seedDarnHubConfig(t, loc.HubPath, `"go test ./..."`, "3", "darn_reviewer_model: sonnet[medium]", "darn_reviewer_model: ghost")
 		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeDarn}
 		err := c.wire(loc, loc.AnchorPath())
 		if err == nil {
