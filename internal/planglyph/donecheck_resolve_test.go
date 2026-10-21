@@ -42,6 +42,18 @@ func TestDoneChecks_Verdicts(t *testing.T) {
 			group: planparser.TargetGroup{Type: planparser.CardTypeCreate, Refs: []string{"plan:sub#Foo"}},
 		},
 		{
+			// A root .scratch/ draft is transient: its card may remove it once read.
+			name:  "Create scratch draft removed",
+			files: map[string]string{"sub/a.go": "package sub\n"},
+			group: planparser.TargetGroup{Type: planparser.CardTypeCreate, Refs: []string{".scratch/draft.md#"}},
+		},
+		{
+			name:       "Create nested scratch file missing",
+			files:      map[string]string{"sub/a.go": "package sub\n"},
+			group:      planparser.TargetGroup{Type: planparser.CardTypeCreate, Refs: []string{"sub/.scratch/draft.md#"}},
+			wantChecks: []string{"create-not-done"},
+		},
+		{
 			name:  "Delete symbol gone",
 			files: map[string]string{"sub/a.go": "package sub\n"},
 			group: planparser.TargetGroup{Type: planparser.CardTypeDelete, Refs: []string{"sub#Foo"}},
