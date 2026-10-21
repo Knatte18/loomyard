@@ -102,8 +102,30 @@ func TestLoadConfig(t *testing.T) {
 		wantInvalid bool
 		// wantContains lists text a failure must hold, for the paths and keys a row does not pin whole.
 		wantContains func(hub, machine string) []string
-		wantAbsent   bool
+		// wantMissing lists text a failure must not hold.
+		wantMissing func(hub, machine string) []string
+		wantAbsent  bool
+		// local is the anchor's local override file contents; "" leaves it absent.
+		local string
+		// anchorWithoutLyx tells an anchor with no _lyx/, so the load never stacks the local file.
+		anchorWithoutLyx bool
+		// wantLocalClause requires the failure to name the local file for removal, ahead of the role clause.
+		wantLocalClause bool
 	}{
+		{
+			name: "a local file the load refuses is named for removal ahead of the role clause", hub: "slots: 2\ngo_parallel: 4\n", machine: "go_parallel: 0\n", local: "slots: 9\n",
+			wantInvalid: true, wantLocalClause: true,
+		},
+		{
+			name: "a local file under an anchor with no _lyx is left out of the way forward", hub: "slots: 2\ngo_parallel: 4\n", machine: "go_parallel: 0\n", local: "slots: 9\n", anchorWithoutLyx: true,
+			wantContains: func(hub, machine string) []string { return []string{`gate config key "go_parallel": 0`} },
+			wantMissing:  func(hub, machine string) []string { return []string{"remove", "takes no gate key"} },
+		},
+		{
+			name: "a comment-only local file is left out of the way forward", hub: "slots: 2\ngo_parallel: 4\n", machine: "go_parallel: 0\n", local: "# nothing set\n",
+			wantContains: func(hub, machine string) []string { return []string{`gate config key "go_parallel": 0`} },
+			wantMissing:  func(hub, machine string) []string { return []string{"takes no gate key"} },
+		},
 		{
 			name: "a machine go_parallel beats the hub's", hub: "slots: 2\ngo_parallel: 4\n", machine: "go_parallel: 8\n",
 			want: Config{Slots: 2, GoParallel: 8, BusyQuitSec: 120},
@@ -139,12 +161,24 @@ func TestLoadConfig(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			board, anchor := seedGateConfig(t, tc.hub), seedGateConfig(t, "")
+			if tc.anchorWithoutLyx {
+				anchor = t.TempDir()
+			}
 			machinePath := configengine.MachineFile(board, "gate")
 			if err := os.MkdirAll(filepath.Dir(machinePath), 0o755); err != nil {
 				t.Fatal(err)
 			}
 			if err := os.WriteFile(machinePath, []byte(tc.machine), 0o644); err != nil {
 				t.Fatal(err)
+			}
+			localPath := configengine.LocalFile(anchor, "gate")
+			if tc.local != "" {
+				if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(localPath, []byte(tc.local), 0o644); err != nil {
+					t.Fatal(err)
+				}
 			}
 			dirs := configengine.Dirs{Anchor: anchor, Board: board}
 			if tc.boardOnly {
@@ -158,7 +192,7 @@ func TestLoadConfig(t *testing.T) {
 				if !errors.Is(err, ErrConfigAbsent) {
 					t.Fatalf("LoadConfig() error = %v; want ErrConfigAbsent", err)
 				}
-			case tc.wantErr != nil || tc.wantContains != nil:
+			case tc.wantErr != nil || tc.wantContains != nil || tc.wantLocalClause:
 				if err == nil {
 					t.Fatalf("LoadConfig() = %+v, nil; want an error", got)
 				}
@@ -171,6 +205,16 @@ func TestLoadConfig(t *testing.T) {
 							t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
 						}
 					}
+				}
+				if tc.wantMissing != nil {
+					for _, unwanted := range tc.wantMissing(hubPath, machinePath) {
+						if strings.Contains(err.Error(), unwanted) {
+							t.Errorf("LoadConfig() error = %q; want it without %q", err.Error(), unwanted)
+						}
+					}
+				}
+				if clause := "; remove " + localPath + ", which takes no gate key" + roleClause; tc.wantLocalClause && !strings.Contains(err.Error(), clause) {
+					t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), clause)
 				}
 				if tc.wantInvalid && !errors.Is(err, configengine.ErrInvalid) {
 					t.Errorf("LoadConfig() error = %v; want ErrInvalid", err)

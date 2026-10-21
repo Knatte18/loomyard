@@ -11,6 +11,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
 // Config is the resolved gate config of the hub file and this machine's override.
@@ -72,7 +73,7 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	local := ""
 	if localFile, applies := configengine.LayerFile(dirs, spec, configengine.LayerLocal); applies {
 		if _, err := configengine.FindBaseDir(dirs.Anchor); err == nil {
-			if _, err := os.Stat(localFile); err == nil {
+			if holdsUnits(localFile, spec) {
 				local = localFile
 			}
 		}
@@ -86,6 +87,17 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 		return Config{}, withConfigWayForward(err, files, local)
 	}
 	return cfg, nil
+}
+
+// holdsUnits reports whether the layer file at path is readable and holds at least one config unit.
+// An empty or comment-only file is one the load drops, so removing it fixes nothing.
+func holdsUnits(path string, spec configengine.Spec) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	units, err := yamlengine.LeafPaths(data, spec.OpenMaps, spec.WholeEntries)
+	return err != nil || len(units) > 0
 }
 
 // withConfigWayForward appends to err the way forward for a gate config that is present but unusable.
