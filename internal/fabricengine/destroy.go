@@ -1788,6 +1788,109 @@ func dropSeedCommits(rec *Mutations, req pathRequest, repo *gitrepo.Repo, upstre
 	return nil
 }
 
+// restoreReplayTip puts repo's branch back on tip with `reset --keep` after a replay failed past its pick, so a failure never leaves the branch on upstream.
+// A reset git refuses, as over a file the failed replay already wrote, is returned with the tag that holds tip.
+func restoreReplayTip(rec *Mutations, repo *gitrepo.Repo, tip string) error {
+	if err := resetKeepOrTag(rec, repo, tip); err != nil {
+		return fmt.Errorf("restore %s after a failed board replay: %w", tip, err)
+	}
+	return nil
+}
+
+// resetKeepOrTag resets repo to tip with `reset --keep`.
+// When git refuses the reset, tip is tagged so the commits a replay moved the branch off stay reachable,
+// and the returned error names the tag and the `git reset --keep` that restores it.
+func resetKeepOrTag(rec *Mutations, repo *gitrepo.Repo, tip string) error {
+	resetErr := repo.ResetKeep(tip)
+	if resetErr == nil {
+		return nil
+	}
+	tag, tagErr := setAsideTag(rec, repo, "restore-failed", tip)
+	if tagErr != nil {
+		return errors.Join(resetErr, tagErr)
+	}
+	return fmt.Errorf("%w; the starting tip is tagged %s, restore it with `git reset --keep %s`", resetErr, tag, tag)
+}
+
+// cherryPickOnto is the executor for replaying local commits onto a records branch's moved upstream:
+// it runs the pipeline against req, resets repo to onto keeping uncommitted changes, then cherry-picks commits, oldest first.
+// A commit that changes no path, and one whose change onto already carries, is dropped and returned in dropped.
+// A refusal of the dirtiness check, and a reset git refuses over a local change, return ErrReplayDirty with nothing changed.
+// A conflicting pick aborts the cherry-pick, restores the tip the call started from and returns ErrReplayConflict wrapped with the conflicting paths, so the repo is never left mid-replay.
+// It appends KindRepoAdvanced, with the new tip as the detail, once HEAD observably moved, and nothing on a refusal or a failure.
+func cherryPickOnto(rec *Mutations, req pathRequest, repo *gitrepo.Repo, onto string, commits []string) (dropped []string, err error) {
+	if err := checkPathRequest(req); err != nil {
+		var refusal *destructiveRefusal
+		if errors.As(err, &refusal) && refusal.Check == CheckDirtiness {
+			return nil, fmt.Errorf("%w: %s", ErrReplayDirty, refusal.Reason)
+		}
+		return nil, err
+	}
+	startTip, err := repo.CurrentSHA()
+	if err != nil {
+		return nil, err
+	}
+	// An onto the repository lacks is no dirty stop, so it is told apart before the reset, whose refusal is then the dirty one.
+	if _, err := repo.ResolveSHA(onto + "^{commit}"); err != nil {
+		return nil, fmt.Errorf("resolve %s to replay onto: %w", onto, err)
+	}
+	if err := repo.ResetKeep(onto); err != nil {
+		if gitrepo.IsLocalChangeRefusal(err) {
+			return nil, fmt.Errorf("%w: %w", ErrReplayDirty, err)
+		}
+		return nil, fmt.Errorf("reset to %s to replay onto it: %w", onto, err)
+	}
+	resetBack := func(abortPick bool) error {
+		var abortErr error
+		if abortPick {
+			abortErr = repo.CherryPickAbort()
+		}
+		if err := errors.Join(abortErr, resetKeepOrTag(rec, repo, startTip)); err != nil {
+			return fmt.Errorf("restore %s after a failed replay: %w", startTip, err)
+		}
+		return nil
+	}
+	for _, commit := range commits {
+		detail, err := repo.CommitDetail(commit)
+		if err != nil {
+			return nil, errors.Join(err, resetBack(false))
+		}
+		if len(detail.Paths) == 0 {
+			dropped = append(dropped, commit)
+			continue
+		}
+		before, err := repo.CurrentSHA()
+		if err != nil {
+			return nil, errors.Join(err, resetBack(false))
+		}
+		if pickErr := repo.CherryPick(commit); pickErr != nil {
+			conflicting, listErr := repo.ConflictedFiles()
+			if restoreErr := resetBack(true); restoreErr != nil {
+				return nil, errors.Join(pickErr, restoreErr)
+			}
+			if listErr != nil {
+				conflicting = nil
+			}
+			return nil, &replayConflict{commit: commit, paths: conflicting, cause: pickErr}
+		}
+		after, err := repo.CurrentSHA()
+		if err != nil {
+			return nil, errors.Join(err, resetBack(false))
+		}
+		if after == before {
+			dropped = append(dropped, commit)
+		}
+	}
+	endTip, err := repo.CurrentSHA()
+	if err != nil {
+		return nil, errors.Join(err, resetBack(false))
+	}
+	if endTip != startTip {
+		rec.Append(KindRepoAdvanced, req.target, endTip)
+	}
+	return dropped, nil
+}
+
 // ResetHard resets the warp checkout's HEAD, index, and working tree to sha, discarding any local
 // commits or uncommitted changes past that point.
 // It is the gated executor for the ResetHard primitive: there is exactly one correct check

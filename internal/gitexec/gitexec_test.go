@@ -375,6 +375,21 @@ func TestRun_RemoteBounds(t *testing.T) {
 		return
 	}
 
+	if !t.Run("RunWithin bounds a remote command by its own deadline, not the package's", func(t *testing.T) {
+		own := deadline / 4
+		_, err := gitexec.RunWithin([]string{"-c", "protocol.ext.allow=always", "ls-remote", "ext::" + hang}, repoDir, own)
+
+		var gitErr *gitexec.GitError
+		if !errors.As(err, &gitErr) || gitErr.Timeout != own {
+			t.Fatalf("RunWithin error = %v; want a *GitError with Timeout %v", err, own)
+		}
+		if !gitexec.IsTransportFailure(err) {
+			t.Errorf("IsTransportFailure(%v) = false; want true for a timed-out remote command", err)
+		}
+	}) {
+		return
+	}
+
 	if !t.Run("a remote command gets the low-speed environment", func(t *testing.T) {
 		_, err := gitexec.Run([]string{"-c", "protocol.ext.allow=always", "ls-remote", "ext::" + printEnv}, repoDir)
 		var gitErr *gitexec.GitError

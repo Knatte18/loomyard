@@ -43,6 +43,7 @@ func (e runGoneError) Error() string {
 
 // Watch runs the daemon's sequence for the request whose daemon is the running process, and returns the request as it ended.
 // It acts only for a non-terminal request carrying the process's own pid and start time; with no request, a terminal one or another daemon's it returns at once and writes nothing.
+// After the wake it reconciles the hub with origin before it lifts its own pause entry, and a stop on a branch every pair shares keeps that entry live.
 // A request cancelled meanwhile ends the sequence quietly, since the cancel lifts the owned pause entry.
 // The daemon sends no key and no text of its own: every interrupt and resume line is tender's.
 func Watch(deps Deps) (Request, error) {
@@ -120,15 +121,26 @@ func Watch(deps Deps) (Request, error) {
 	if r, ok, err = advance(deps, PhaseResuming, ""); err != nil || !ok {
 		return r, err
 	}
-	lifted, err := liftOwned(deps, r)
+	lift, detail, err := reconcileAtWake(deps, r)
 	if err != nil {
 		return fail(deps, r, nil, err.Error())
+	}
+	outcome := "its pause stays live."
+	if lift {
+		lifted, err := liftOwned(deps, r)
+		if err != nil {
+			return fail(deps, r, nil, err.Error())
+		}
+		outcome = wakeOutcome(lifted)
 	}
 	r, err = finish(deps, r, PhaseDone, "")
 	if err != nil {
 		return r, err
 	}
-	return r, deps.Notify("[lyx hibernate] The machine woke from hibernation; " + wakeOutcome(lifted))
+	if detail != "" {
+		outcome += " " + detail
+	}
+	return r, deps.Notify("[lyx hibernate] The machine woke from hibernation; " + outcome)
 }
 
 // wakeOutcome says what became of the request's pause entry, as the tail of the wake notice.

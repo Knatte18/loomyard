@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/tenderengine"
@@ -281,6 +282,8 @@ func statusCmd() *cobra.Command {
 		Long: `status prints the live pause entries, the network operations in flight and the
 parent locks held, then every live session in the hub with its state, cause and
 whether an entry covers it, and the lyx processes running a replaced binary.
+failed_pushes lists every push origin refused that this machine still holds a
+record of, each with its way forward.
 It changes nothing. Any caller may run it.
 
 Example:
@@ -312,7 +315,11 @@ Example:
 			if err != nil {
 				return fail(err)
 			}
-			clihelp.SetExit(ctx, output.Ok(out, map[string]any{"status": report}))
+			failedPushes, err := fabricengine.FailedPushFields(location.HubPath)
+			if err != nil {
+				return fail(err)
+			}
+			clihelp.SetExit(ctx, output.Ok(out, map[string]any{"status": report, "failed_pushes": failedPushes}))
 			return nil
 		},
 	}

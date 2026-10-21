@@ -44,6 +44,13 @@ type Request struct {
 	RefuseWhenBusy bool
 	// Landed says the caller knows the pair's work landed, so its board entry is marked done after the removal.
 	Landed bool
+	// Local removes the pair with no origin step and no board write.
+	// A busy teardown or records write lock surfaces as fabricengine.ErrPairBusy.
+	Local bool
+	// Snapshot, in local mode, keeps the pair's task and records worktrees' uncommitted paths under a local snapshot tag before the removal.
+	Snapshot bool
+	// AfterSnapshot runs once the snapshot step succeeded and before the removal; its error stops the removal with the snapshot tag kept.
+	AfterSnapshot func() error
 }
 
 // SessionResult reports EndSession's outcome.
@@ -84,6 +91,8 @@ type Teardown struct {
 	refusal    func(slug string, force bool) error
 	endSession func(slug string, gone bool) (ended bool, abandoned string, err error)
 	remove     func(req Request) (fabricengine.RemoveResult, error)
+	// snapshot keeps the pair's uncommitted paths under a local snapshot tag, recording into rec; the tag is empty when nothing was uncommitted.
+	snapshot func(rec *fabricengine.Mutations, slug string) (tag string, paths []string, err error)
 	// archive copies the pair's trace and verify logs into the hub's log archive; it never fails the teardown.
 	archive func(slug string)
 	sleep   func(ctx context.Context, d time.Duration) error
@@ -135,7 +144,17 @@ func New(prime *lyxcwd.Location) (*Teardown, error) {
 		if err != nil {
 			return fabricengine.RemoveResult{}, err
 		}
+		if req.Local {
+			return top.RemoveLocal(prime, req.Slug, req.Force)
+		}
 		return top.Remove(prime, req.Slug, req.Force, req.Remote)
+	}
+	t.snapshot = func(rec *fabricengine.Mutations, slug string) (string, []string, error) {
+		top, err := t.topology()
+		if err != nil {
+			return "", nil, err
+		}
+		return top.SnapshotUncommitted(rec, prime, slug)
 	}
 	return t, nil
 }
@@ -194,9 +213,23 @@ func (t *Teardown) EndSession(ctx context.Context, req Request) (SessionResult, 
 // a task worktree already gone is not landed, and its claim falls to the batten-state rule.
 // A failed read of that answer leaves the board alone.
 // A failed removal returns its result and error with the board untouched, and the settle only warns on a failure.
+//
+// With req.Local the removal has no origin step and the board is never read or written.
+// With req.Local and req.Snapshot the pair's uncommitted paths are first kept under a local snapshot tag, then req.AfterSnapshot runs, then the pair is removed.
+// A refused snapshot or a failed AfterSnapshot returns its error with nothing removed, and a refused snapshot never runs AfterSnapshot.
+// The returned result carries the snapshot's tag, paths and mutation record on every return after the snapshot step.
 func (t *Teardown) RemovePair(req Request) (fabricengine.RemoveResult, error) {
-	landed, landedKnown := req.Landed, true
-	if !landed {
+	var snap snapshotOutcome
+	if req.Local && req.Snapshot {
+		var err error
+		snap, err = t.takeSnapshot(req)
+		if err != nil {
+			return snap.applyTo(fabricengine.RemoveResult{}), err
+		}
+	}
+
+	landed, landedKnown := req.Landed, !req.Local
+	if !landed && !req.Local {
 		gone, err := t.gone(req.Slug)
 		switch {
 		case err != nil:
@@ -213,6 +246,7 @@ func (t *Teardown) RemovePair(req Request) (fabricengine.RemoveResult, error) {
 
 	t.archive(req.Slug)
 	res, err := t.remove(req)
+	res = snap.applyTo(res)
 	if err != nil {
 		return res, err
 	}
@@ -220,6 +254,46 @@ func (t *Teardown) RemovePair(req Request) (fabricengine.RemoveResult, error) {
 		t.settleBoardClaim(req.Slug, landed)
 	}
 	return res, nil
+}
+
+// snapshotOutcome is what the snapshot step of a local removal produced.
+type snapshotOutcome struct {
+	tag   string
+	paths []string
+	rec   fabricengine.Mutations
+}
+
+// applyTo puts the snapshot's tag, paths and mutation record on res, the record ahead of the removal's own.
+func (s snapshotOutcome) applyTo(res fabricengine.RemoveResult) fabricengine.RemoveResult {
+	if s.tag == "" && s.rec.Len() == 0 {
+		return res
+	}
+	res.SnapshotTag = s.tag
+	res.SnapshotPaths = s.paths
+	merged := s.rec.Snapshot()
+	merged.Extend(res.Mutations)
+	res.Mutations = merged
+	return res
+}
+
+// takeSnapshot keeps the pair's uncommitted paths under a local snapshot tag, then runs req.AfterSnapshot.
+// Whatever the snapshot recorded is returned with an error too, so the caller reports it.
+func (t *Teardown) takeSnapshot(req Request) (snapshotOutcome, error) {
+	rec := fabricengine.NewMutations(t.prime.HubPath)
+	tag, paths, err := t.snapshot(rec, req.Slug)
+	out := snapshotOutcome{tag: tag, paths: paths, rec: rec.Snapshot()}
+	if err != nil {
+		return out, err
+	}
+	if tag != "" {
+		logger.Info("pairteardown: uncommitted paths kept before the local removal", "slug", req.Slug, "tag", tag, "paths", paths)
+	}
+	if req.AfterSnapshot != nil {
+		if err := req.AfterSnapshot(); err != nil {
+			return out, err
+		}
+	}
+	return out, nil
 }
 
 // Run is EndSession then RemovePair; a failed EndSession never reaches RemovePair.
