@@ -550,9 +550,9 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 		{
 			name:         "landing absent with a prime copy is seeded from the prime",
 			module:       "landing",
-			primeFile:    "publish_verify: go test -tags tmux ./...\n",
+			primeFile:    "deploy: make deploy-prime\n",
 			wantSeed:     SeedPrime,
-			wantContains: []string{"go test -tags tmux ./...", "require_pr_to_base:"},
+			wantContains: []string{"make deploy-prime", "require_pr_to_base:"},
 		},
 		{
 			name:         "landing absent and no prime copy starts from the template",
