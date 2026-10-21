@@ -38,10 +38,8 @@ func TestPrebuildLyx(t *testing.T) {
 		return root
 	}
 
-	template, err := gateslot.TemplateConfig()
-	if err != nil {
-		t.Fatal(err)
-	}
+	const heldSlot = gateslot.InheritEnv + "=/held/slot.lock"
+	const parallel = 7
 
 	rows := []struct {
 		name          string
@@ -56,9 +54,9 @@ func TestPrebuildLyx(t *testing.T) {
 		{name: "a tagged run without cmd/lyx builds nothing and strips the inherited value", tags: "integration"},
 		{name: "a tagged run builds cmd/lyx and exports it", tags: "integration", mainSource: "package main\n\nfunc main() {}\n", wantBuilt: true},
 		{
-			name: "a tagged run outside a hub caps its build at the gate template's -p", tags: "integration", mainSource: "package main\n\nfunc main() {}\n", standInGo: true, wantBuilt: true,
+			name: "a tagged run caps its build at the -p it is handed and inherits the held slot", tags: "integration", mainSource: "package main\n\nfunc main() {}\n", standInGo: true, wantBuilt: true,
 			wantBuildArgs: func(root, bin string) []string {
-				return []string{"build", "-C", root, "-p", strconv.Itoa(template.GoParallel), "-o", bin, "./cmd/lyx"}
+				return []string{"build", "-C", root, "-p", strconv.Itoa(parallel), "-o", bin, "./cmd/lyx"}
 			},
 		},
 		{name: "a tagged run whose cmd/lyx does not build returns the build output", tags: "integration", mainSource: "package main\n\nfunc main() { undefinedCall() }\n", wantError: "undefinedCall"},
@@ -68,7 +66,7 @@ func TestPrebuildLyx(t *testing.T) {
 			t.Parallel()
 
 			root := module(t, row.mainSource)
-			goBinary, base := "go", append(os.Environ(), inherited)
+			goBinary, base := "go", append(os.Environ(), inherited, heldSlot)
 			record := filepath.Join(t.TempDir(), "go-args")
 			if row.standInGo {
 				testBinary, err := os.Executable()
@@ -77,7 +75,7 @@ func TestPrebuildLyx(t *testing.T) {
 				}
 				goBinary, base = testBinary, append(base, standInGoRecordEnv+"="+record)
 			}
-			env, cleanup, err := prebuildLyx(goBinary, row.tags, root, base)
+			env, cleanup, err := prebuildLyx(goBinary, row.tags, root, base, parallel)
 			if row.wantError != "" {
 				if err == nil || !strings.Contains(err.Error(), row.wantError) {
 					t.Fatalf("err = %v; want an error holding %q", err, row.wantError)
@@ -88,6 +86,9 @@ func TestPrebuildLyx(t *testing.T) {
 				t.Fatal(err)
 			}
 
+			if !slices.Contains(env, heldSlot) {
+				t.Errorf("env lacks %q; want the held slot inherited unchanged, no slot of the prebuild's own", heldSlot)
+			}
 			var exported []string
 			for _, entry := range env {
 				if value, ok := strings.CutPrefix(entry, gateslot.PrebuiltLyxEnv+"="); ok {

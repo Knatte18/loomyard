@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/cardverify"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -207,7 +208,7 @@ type RecordDeps struct {
 	// nil (standalone mode) accepts no merge commit between the report's head_sha and HEAD.
 	ParentBranch ParentBranchFunc
 	// VerifyTimeout bounds each card verify command the policy-warning evidence re-run executes;
-	// zero means DefaultCardVerifyTimeout.
+	// zero means cardverify.DefaultTimeout.
 	VerifyTimeout time.Duration
 }
 
@@ -485,7 +486,8 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	// a policy warning is only safe to carry once the work is evidenced.
 	// A FAILED report takes its policy findings as warnings with no re-run.
 	if report.Status == ReportStatusOK && (len(policy) > 0 || len(bs.AuditWarnings) > 0) {
-		if failures := rerunCardVerifies(batch.Cards, deps.Geom.WorktreeRoot, deps.VerifyTimeout, deps.Geom.GateSlots, deps.Geom.GateWaitDir); len(failures) > 0 {
+		runner := cardverify.Runner{Worktree: deps.Geom.WorktreeRoot, Slots: deps.Geom.GateSlots, WaitDir: deps.Geom.GateWaitDir, Timeout: deps.VerifyTimeout}
+		if failures := rerunCardVerifies(batch.Cards, runner); len(failures) > 0 {
 			var earlier []string
 			for _, w := range bs.AuditWarnings {
 				earlier = append(earlier, auditWarningText(w))

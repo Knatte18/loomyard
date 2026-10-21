@@ -30,10 +30,10 @@ var operatorDeniedForms = [][]string{
 	{"rm", "-rf"},
 }
 
-// shellGuardForms returns the command forms of every shell guard row, in table order.
+// shellGuardForms returns the command forms of every shell guard row, in table order, with the refuse-raw row over loomyard's own refuse_raw value.
 func shellGuardForms() [][]string {
 	var forms [][]string
-	for _, row := range shellguard.Rows("") {
+	for _, row := range shellguard.Rows("", []string{"go test"}) {
 		forms = append(forms, row.Forms...)
 	}
 	return forms

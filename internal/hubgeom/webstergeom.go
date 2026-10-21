@@ -24,6 +24,7 @@ import (
 // RepoRoot is l.WorktreePath(), the directory holding PATTERN.md.
 // ParentName is what ResolveParent returns; an unresolvable parent logs a warning and leaves it empty, as reedGeometry does.
 // DecisionRecordPath is the location's decision record, where the task's declared PATTERN changes are read from.
+// GateConfig loads the hub's gate config over the hub's config dirs at each call.
 func WebsterGeometry(l *lyxcwd.Location) websterengine.Geometry {
 	anchorPath := l.AnchorPath()
 	return websterengine.Geometry{
@@ -40,6 +41,7 @@ func WebsterGeometry(l *lyxcwd.Location) websterengine.Geometry {
 		VerifyDir:          verifytree.Dir(anchorPath),
 		GateSlots:          GateSlots(l),
 		GateWaitDir:        gateslot.WaitDir(anchorPath),
+		GateConfig:         func() (gateslot.Config, error) { return gateslot.LoadConfig(fabricengine.ConfigDirs(l)) },
 		ParentName:         parentNameOrEmpty(l, "webster prompts"),
 		DecisionRecordPath: loomengine.DiscussionDecisionRecord(l),
 	}

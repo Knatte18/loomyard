@@ -60,7 +60,7 @@ type loomCLI struct {
 	shedPaths shedbuild.ShedPaths
 	// languageSkills are the hub's language skills wire loaded from language.yaml, told to the darn writer, the Webster master and the merge conflict session.
 	languageSkills []string
-	// language is the whole language.yaml wire loaded, whose verify tiers the plan and rubric sites render.
+	// language is the whole language.yaml wire loaded, whose rename tools the Webster prompts render.
 	language languageconfig.Language
 	// runDeps is the assembled websterengine.RunDeps, embedded verbatim as env.WebsterDeps. It is
 	// also kept here directly so a test can inspect it without unwrapping env.

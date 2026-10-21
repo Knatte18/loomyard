@@ -1,4 +1,4 @@
-// publish.go implements the Publish producer: when the task's parent branch requires a pull request, it runs the repo's publish_verify, pushes the task branch, and opens or refreshes the pull request (title and body included) against that parent, then returns Done because the PR-Gate producer that follows owns the review wait.
+// publish.go implements the Publish producer: when the task's parent branch requires a pull request, it runs the hub's landing and publish gates, pushes the task branch, and opens or refreshes the pull request (title and body included) against that parent, then returns Done because the PR-Gate producer that follows owns the review wait.
 // It reports only what the shedengine.ShedProducer seam can carry: a verdict, an output pointer whose Reason the engine persists, and an error.
 //
 // Only the externally visible branch is pushed: the pull request is an artifact of the repository
@@ -112,24 +112,28 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 		return outcome, out, err
 	}
 
-	// Step 4: run the repo's publish_verify, when set, before anything leaves the worktree.
-	// The merge-in and the plan's verify ran at Merge-In, so a failure record written here names the merge commit from the merge record.
+	// Step 4: run the hub's landing and publish gates before anything leaves the worktree.
+	// The merge-in and the landing call ran at Merge-In, so the landing call here skips on a verified tree,
+	// and a failure record written here names the merge commit from the merge record.
 	// A verify that dirties the tree is a non-hermetic test and halts rather than ships.
-	// A told skip seam answering true takes the path of an unset publish_verify.
-	publishVerify := p.deps.Config.PublishVerify
-	if publishVerify != "" && p.deps.PublishVerifySkip != nil {
-		skip, err := p.deps.PublishVerifySkip()
-		if err != nil {
-			return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: publish_verify skip: %w", publishName, err)
-		}
-		if skip {
-			publishVerify = ""
+	// A told skip seam answering true takes the path of an empty publish list.
+	skipPublish := false
+	if p.deps.PublishSkip != nil {
+		var err error
+		if skipPublish, err = p.deps.PublishSkip(); err != nil {
+			return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: publish skip: %w", publishName, err)
 		}
 	}
 	p.takeMergeCommitFromRecord()
-	reason, err := p.gate.checkPublishVerify(ctx, publishName, p.deps.ParentBranch, publishVerify)
+	reason, err := p.gate.check(ctx, publishName, p.deps.ParentBranch)
 	if outcome, out, err, stop := p.gateStop(ctx, reason, err); stop {
 		return outcome, out, err
+	}
+	if !skipPublish {
+		reason, err = p.gate.checkPublishVerify(ctx, publishName, p.deps.ParentBranch)
+		if outcome, out, err, stop := p.gateStop(ctx, reason, err); stop {
+			return outcome, out, err
+		}
 	}
 	reason, err = p.gate.clean(publishName, "after the verify")
 	if outcome, out, err, stop := p.gateStop(ctx, reason, err); stop {
@@ -255,7 +259,7 @@ func (p *Publish) pushRejectedReason() string {
 // takeMergeCommitFromRecord hands the failure recorder the merge commit of Merge-In's merge record, empty when there is none.
 // An unreadable record is logged and leaves it empty.
 func (p *Publish) takeMergeCommitFromRecord() {
-	if p.gate.recorder == nil || p.deps.Config.PublishVerify == "" {
+	if p.gate.recorder == nil || (p.gate.command == nil && p.gate.publishCommand == nil) {
 		return
 	}
 	p.gate.recorder.mergeCommit = ""

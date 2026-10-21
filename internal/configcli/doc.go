@@ -47,7 +47,10 @@
 // The bound: the guard stops a caller with no terminal, such as an agent's shell; a caller with a terminal and an editor that exits at once is covered by the empty-result abort above.
 //
 // `--set key=value` (repeatable) writes values through `configengine.Set` with no editor and syncs once.
+// A worktree-layer write with no board, a worktree that is no hub's, runs no fabric sync and answers `edited _lyx/config/<module>.yaml`.
+// In such a worktree an empty `--layer` on a hub-wide module selects the worktree layer, so `lyx config gate` writes that worktree's own `gate.yaml`; inside a hub it keeps selecting the hub file.
 // A key under one of the module's declared open maps (`configreg.Module.OpenMaps`) adds or rewrites one entry with a scalar value, as in `lyx config board --set labels.quarry="glyphs and the quarry index"`.
+// A value whose first non-blank character is `{` or `[` writes the entry as a YAML flow mapping or list instead, replacing it whole, as in `lyx config gate --set 'tiers.tier0={command: "go test -json {targets} {args}", timeout_min: 60, counter: go-json}'`.
 // It refuses when the map holds a list,
 // and removing an entry stays an editor edit.
 // A key that is itself a declared open map holding a scalar or a list, such as loom's model keys `reviewer_model`, `fixer_model` and each segment's `*_reviewer_model` and `*_fixer_model`, and each perch's fan keys `*_reviewer_fan` and `*_fixer_fan` in loom plus `darn_reviewer_fan` and `darn_fixer_fan` in darn, takes either shape:

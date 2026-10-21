@@ -1,4 +1,4 @@
-// verifygate.go implements NewVerifyGate, the must-pass gate on Merriam's strand that holds a webster run's done until the plan's verify command passes on the committed tree.
+// verifygate.go implements NewVerifyGate, the must-pass gate on Merriam's strand that holds a webster run's done until the hub's `final` gate passes on the committed tree.
 // A failure goes back to Merriam's live session as findings, and Merriam fixes it through one fixer fork.
 
 package websterengine
@@ -17,7 +17,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
@@ -137,7 +136,7 @@ func AppendVerifyGateFixCommits(websterDir string, commits []CommitLogEntry) err
 type verifyGateSeams struct {
 	// outcome returns the outcome outcome.yaml names.
 	outcome func() (string, error)
-	// verifyCommand returns the plan's `## verify:` command, empty when the plan has none.
+	// verifyCommand returns the hub's `final` gate call over the whole tree, or the gate config's refusal.
 	verifyCommand func() (string, error)
 	// dirty returns the worktree's dirty paths.
 	dirty func() ([]string, error)
@@ -177,8 +176,8 @@ type verifyGateSeams struct {
 // it passes without verifying when outcome.yaml names an outcome other than done;
 // it fails with the dirty paths when the tree is not clean;
 // once a pre-fix head is recorded, it fails `Terminal` when a commit above it is neither a non-merge commit nor a clean parent merge, and otherwise records those commits in the notes;
-// it passes with a warning when the plan has no `## verify:` section;
-// otherwise it runs verifytree.Verify, reruns once on a failure, and passes a flaky failure whose rerun passed.
+// it renders the hub's `final` gate call over the whole tree from the told gate config, and returns the config's refusal, which names `lyx config gate`, as its error;
+// otherwise it runs that call through verifytree.Verify, reruns it once on a failure, and passes a flaky failure whose rerun passed.
 // A run that timed out or hung, as classifyHang reads its log and exit code, is not re-run: it fails at once.
 // A failure that survives returns findings, and the first failure of any kind records HEAD as the pre-fix head.
 // Every failed evaluation writes the verify-gate report.
@@ -195,11 +194,11 @@ func NewVerifyGate(geom Geometry, attempts int, batches []batcher.Batch, parentB
 			return o.Outcome, nil
 		},
 		verifyCommand: func() (string, error) {
-			plan, err := planparser.ParsePlan(geom.PlanDir)
+			cfg, err := geom.GateConfig()
 			if err != nil {
 				return "", err
 			}
-			return plan.Verify, nil
+			return cfg.GateCall("final", "--all")
 		},
 		dirty: func() ([]string, error) { return geom.git().DirtyPaths(geom.WorktreeRoot) },
 		head:  func() (string, error) { return geom.git().HeadSHA(geom.WorktreeRoot) },
@@ -215,7 +214,7 @@ func NewVerifyGate(geom Geometry, attempts int, batches []batcher.Batch, parentB
 			return geom.git().CommitLog(geom.WorktreeRoot, base, head)
 		},
 		verify: func(site verifytree.Site, command string) (verifytree.Result, error) {
-			return verifytree.Verify(context.Background(), paths, site, command, verifytree.Timeout, geom.GateSlots)
+			return verifytree.Verify(context.Background(), paths, site, command)
 		},
 		readLog: func(path string) (string, error) {
 			data, err := os.ReadFile(path)
@@ -324,7 +323,7 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixP
 		if err != nil {
 			return shuttleengine.GateResult{}, err
 		}
-		return fail(VerifyGateReport{TimedOut: verifytree.Timeout.String(), LogPath: res.Log, LogTail: logTail(output)})
+		return fail(VerifyGateReport{TimedOut: res.Detail, LogPath: res.Log, LogTail: logTail(output)})
 	}
 
 	// failHung fails the gate for res, a failed verify whose output classifyHang read as a hang: a hang is not flakiness,
@@ -379,11 +378,7 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixP
 
 		command, err := s.verifyCommand()
 		if err != nil {
-			return shuttleengine.GateResult{}, fmt.Errorf("websterengine: verify gate: read the plan: %w", err)
-		}
-		if command == "" {
-			logger.Warn("websterengine: verify gate found no verify section in the plan")
-			return pass()
+			return shuttleengine.GateResult{}, fmt.Errorf("websterengine: verify gate: %w", err)
 		}
 
 		site := verifytree.Site{Label: verifyGateSite, Attempt: attempt}
@@ -469,7 +464,7 @@ func verifyGateStuckReason(reportsDir string, gate *shuttleengine.GateOutcome, r
 	case len(report.Dirty) > 0:
 		what = "uncommitted paths " + strings.Join(report.Dirty, ", ")
 	case report.TimedOut != "":
-		what = fmt.Sprintf("the verify command did not finish within %s, was killed and was not re-run, see %s", report.TimedOut, report.LogPath)
+		what = fmt.Sprintf("the verify command timed out (%s) and was not re-run, see %s", report.TimedOut, report.LogPath)
 	}
 	return fmt.Sprintf("verify gate failed after %d attempt(s) of %d: %s", report.Attempt, report.Cap, what)
 }

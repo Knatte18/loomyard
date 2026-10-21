@@ -21,9 +21,31 @@ func TestLeafInvariant_AllowlistOnly(t *testing.T) {
 	scankit.AssertImportAllowlist(t, "internal/shellguard", allowedImports...)
 }
 
-// TestCheckTexts plants each forbidden character in a row's steer and notice and asserts checkTexts refuses it naming the row.
+// TestCheckTexts plants each forbidden character in a row's steer and notice and asserts checkTexts refuses it naming the row;
+// it also asserts the shipped refuse-raw row, rendered over a sample list, passes checkTexts and names the gate verb, its tier and card scopes, the foreground phrase and the no-free-slot re-run.
 func TestCheckTexts(t *testing.T) {
 	t.Parallel()
+	t.Run("ShippedRefuseRawRow", func(t *testing.T) {
+		t.Parallel()
+		found := false
+		for _, row := range Rows("with a long timeout", []string{"go test", "dotnet test"}) {
+			if err := checkTexts([]Row{row}); err != nil {
+				t.Errorf("checkTexts(%q row) = %v; want nil", row.Name, err)
+			}
+			if row.Name != "refuse-raw" {
+				continue
+			}
+			found = true
+			for _, want := range []string{"lyx gate test", "--tier", "--card", "with a long timeout", "no gate slot is free"} {
+				if !strings.Contains(row.Steer, want) || !strings.Contains(row.Notice, want) {
+					t.Errorf("refuse-raw steer %q and notice %q: want both to name %q", row.Steer, row.Notice, want)
+				}
+			}
+		}
+		if !found {
+			t.Error("Rows() with a non-empty refuse list has no refuse-raw row")
+		}
+	})
 	tests := []struct {
 		name   string
 		steer  string

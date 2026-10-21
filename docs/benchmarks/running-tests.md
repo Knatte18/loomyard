@@ -8,27 +8,29 @@ For the recorded numbers themselves, see that file — this one is the "how", no
 
 The suite is split into four tiers, and which tier a test belongs to is decided by one rule: **a test earns an opt-in build tag for touching a real substrate, never merely for being slow.**
 "Substrate" means one of a fixed set of categories a hermetic, in-process unit test cannot fake: real `git` subprocess spawning, real filesystem junction/symlink creation, real `tmux` sessions, and real cross-compilation.
-A test that is merely slow — a big table-driven case, a large in-memory fixture — stays untagged in Tier 1.
+A test that is merely slow — a big table-driven case, a large in-memory fixture — stays untagged in `tier0`.
 
-- **Tier 1 — the default offline loop** (`go test ./...`): pure-unit and static-guard tests only.
+The hub declares its tiers in `gate.yaml`, numbered `tier0` through `tier3`, and `lyx gate test --tier <n>` runs one over a scope lyx computes or `--all`.
+
+- **`tier0` — the default offline loop** (`lyx gate test --tier 0`): pure-unit and static-guard tests only.
   No `git init` / `git worktree add` / fixture-tree copies anywhere in an untagged test — that is the tier's **premise** (a cheap, expected-to-fail `git rev-parse` on an error path, e.g. via `hubgeometry.Resolve`, is still allowed and does not violate it).
   Machine- enforced by `cmd/lyx/tierpurity_test.go` (`TestTierPurity_UntaggedTestsSpawnNothing`).
   Fast again: measured median ~29 s on Windows (Cortex XDR), ~1 s on Linux.
   This is what you run constantly and what must stay fast.
-- **Tier 2 — the opt-in integration loop** (`go test -tags integration ./...`): Tier 1 **plus** the gated tests that spawn one of the substrate categories above — real `git` (worktrees, commits, pushes, junctions), real filesystem junctions/symlinks, real cross-compilation, or real external-binary spawn; a test that drives real `tmux` sessions belongs to Tier 3 instead.
+- **`tier1` — the opt-in integration loop** (`lyx gate test --tier 1`): `tier0` **plus** the gated tests that spawn one of the substrate categories above — real `git` (worktrees, commits, pushes, junctions), real filesystem junctions/symlinks, real cross-compilation, or real external-binary spawn; a test that drives real `tmux` sessions belongs to `tier2` instead.
   It is slow **by design** — it does far more work.
   Measured median ~128 s on Windows (Cortex XDR), ~5 s on Linux.
   Numbers across machines and operating systems: [test-suite-timing.md](test-suite-timing.md#all-environments).
   Every git-spawning test package runs under the **Hermetic Git Test Environment Invariant** (`PATTERN.md`): a `TestMain` wires in `gitkit.HermeticGitEnv()` before any test spawns git, which is what keeps this tier's git processes from inheriting the operator's global `~/.gitconfig` (and the `fsmonitor--daemon`/auto-`maintenance` spawns that config can trigger) — see [fixture-copy.md](fixture-copy.md) for the measured before/after.
 
-> **Tier 2 is not a regression of Tier 1.** The heavy git work used to run inside the default loop and made it slow (~82 s historically); the two-tier split moved that work behind `-tags integration`. Same work, now off the default path. When reading a timing table, compare _down_ a column (is this package fast in the loop I run?), never _across_ (Tier 1 vs Tier 2 are not comparable — Tier 2 is the superset).
+> **`tier1` is not a regression of `tier0`.** The heavy git work used to run inside the default loop and made it slow (~82 s historically); the two-tier split moved that work behind `-tags integration`. Same work, now off the default path. When reading a timing table, compare _down_ a column (is this package fast in the loop I run?), never _across_ (`tier0` vs `tier1` are not comparable — `tier1` is the superset).
 
 Two further opt-in tags exist alongside `integration`, each gating a distinct kind of live substrate rather than widening `integration` itself:
 
-- **Tier 3 — `tmux`** (`go test -tags tmux ./...`): tests that start a real tmux server and drive real panes.
+- **`tier2` — `tmux`** (`lyx gate test --tier 2`): tests that start a real tmux server and drive real panes.
   It needs `tmux` on `$PATH` and spends no tokens.
   A test that only probes `tmux has-session` stays in `integration`.
-- **Tier 4 — `llm`** (`go vet -tags llm ./...` to compile; `go test -tags llm -run <Test> <package>` by hand to run): tests that spawn a real `claude` session.
+- **`tier3` — `llm`** (`go vet -tags llm ./...` to compile; `lyx gate test --tier 3 <package> -- -run <Test>` by hand to run): tests that spawn a real `claude` session.
   It needs a logged-in `claude` and costs tokens, wall-clock and RAM.
   No gate ever runs `llm`; the plan verify and the card gates only compile it.
 
@@ -39,25 +41,22 @@ The rules behind the tiers live in `PATTERN-test-speed` in `PATTERN.md`, which t
 ## Commands
 
 ```sh
-# Tier 1 — default / offline loop. No build tag. (Premise: no `git init` /
+# tier0 — default / offline loop. No build tag. (Premise: no `git init` /
 # `git worktree add` / fixture-tree copies — see test-suite-timing.md.)
-go test ./... -count=1
+lyx gate test --tier 0 --all
 
-# Tier 2 — gated integration loop. Real worktrees, commits, pushes, junctions.
-go test -tags integration ./... -count=1
+# tier1 — gated integration loop. Real worktrees, commits, pushes, junctions.
+lyx gate test --tier 1 --all
 
-# Tier 3 — real tmux servers, no tokens.
-go test -tags tmux ./... -count=1
+# tier2 — real tmux servers, no tokens.
+lyx gate test --tier 2 --all
 
-# Tier 4 — real LLM sessions: compile only; run one test by hand, never in a gate.
+# tier3 — real LLM sessions: compile only; run one test by hand, never in a gate.
 go vet -tags llm ./...
-go test -tags llm -run <TestName> ./internal/<package> -count=1
+lyx gate test --tier 3 ./internal/<package> -- -run <TestName>
 
-# Per-test timing, structured (parse Elapsed from the JSON stream).
-go test ./... -count=1 -json
-
-# One package, verbose, with per-test seconds.
-go test ./internal/fabricengine -count=1 -v
+# One package of a tier, verbose, with per-test seconds.
+lyx gate test --tier 0 ./internal/fabricengine -- -v
 ```
 
 `-count=1` disables the test cache so every run is honest;
@@ -104,7 +103,7 @@ Any other run rewrites only the sections of the packages it measured and leaves 
 A run whose `-tags` differ from the report's header refuses and writes nothing.
 
 `go run ./cmd/testtiming -resources` measures what each package costs instead of how long it takes: wall time, CPU, peak memory, processes started, processes left behind and the git processes it ran, split into fixture setup and code under test.
-It runs one package at a time inside one gate slot, so it needs no `lyx gate test` wrapper.
+It runs one package at a time inside one gate slot, so it needs no `lyx gate test` wrapper; every `cmd/testtiming` mode holds one slot for its whole run in a hub.
 The committed report is [test-suite-weight.md](test-suite-weight.md), regenerated by three commands, one per measured tier:
 
 ```sh
@@ -150,9 +149,9 @@ No code change was made to `internal/logger` as part of this migration — the d
 
 If the suite feels slow locally, the highest-leverage levers, in order:
 
-1. **Rely on the test cache** — drop `-count=1` for iterative runs;
-   only changed packages re-run, so a no-op `go test ./...` returns in ~1 s.
-2. **Scope to the package you're editing** — `go test ./internal/fabricengine` beats the whole repo.
+1. **Rely on the test cache** — a tier's command keeps the cache warm;
+   only changed packages re-run, so a no-op tier run returns in ~1 s.
+2. **Scope to the package you're editing** — `lyx gate test --tier 0 ./internal/fabricengine` beats the whole repo.
 3. **Stay in the offline tier.**
-   Tier 1 (`go test ./...`) spawns no `git init` / `git worktree add` / fixture-tree copies repo-wide (see [test-suite-timing.md](test-suite-timing.md#levers-that-moved-the-numbers)).
-   Only reach for `-tags integration` when you are changing fabric / hubgeometry / board / ide git behaviour — and budget ~128 s (~2 min) for that tier.
+   `tier0` spawns no `git init` / `git worktree add` / fixture-tree copies repo-wide (see [test-suite-timing.md](test-suite-timing.md#levers-that-moved-the-numbers)).
+   Only reach for `tier1` when you are changing fabric / hubgeometry / board / ide git behaviour — and budget ~128 s (~2 min) for that tier.

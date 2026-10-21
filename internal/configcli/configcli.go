@@ -159,6 +159,14 @@ func editOne(dirs configDirs, out io.Writer, module string, edit configengine.Ed
 		return output.Err(out, err.Error())
 	}
 
+	// A worktree with no board is no hub's, so there is nothing to sync.
+	if dirs.board == "" {
+		return output.Ok(out, map[string]any{
+			"module":  module,
+			"message": fmt.Sprintf("edited _lyx/config/%s.yaml", module),
+		})
+	}
+
 	// Edit succeeded; now call sync and capture its output.
 	var buf bytes.Buffer
 	exitCode := sync(&buf)
@@ -232,14 +240,21 @@ func setModule(dirs configDirs, out io.Writer, module string, pairs []yamlengine
 	}
 
 	// Set succeeded; now call sync and capture its output, exactly as editOne does.
+	// A worktree with no board is no hub's, so there is nothing to sync.
 	var buf bytes.Buffer
-	exitCode := sync(&buf)
+	exitCode := 0
+	message := fmt.Sprintf("edited and synced _lyx/config/%s.yaml", module)
+	if dirs.board == "" {
+		message = fmt.Sprintf("edited _lyx/config/%s.yaml", module)
+	} else {
+		exitCode = sync(&buf)
+	}
 	if exitCode == 0 {
 		// Sync succeeded; emit a JSON envelope. "preserved" is only included
 		// when non-empty so a clean write's envelope carries no such field.
 		fields := map[string]any{
 			"module":  module,
-			"message": fmt.Sprintf("edited and synced _lyx/config/%s.yaml", module),
+			"message": message,
 		}
 		if len(preserved) > 0 {
 			fields["preserved"] = preserved

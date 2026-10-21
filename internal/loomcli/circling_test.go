@@ -221,7 +221,7 @@ func TestPerchHardCap(t *testing.T) {
 			name: "the darn template cap",
 			row:  loomshed.NameDarnBouncer,
 			seed: func(t *testing.T, loc *lyxcwd.Location) {
-				seedDarnHubConfig(t, loc.HubPath, `"go test ./..."`, "3")
+				seedDarnHubConfig(t, loc.HubPath, "3")
 			},
 			wantHard:  4,
 			wantRaise: []string{"lyx config darn --set review_hard_max_bounces=<n>"},
@@ -230,7 +230,7 @@ func TestPerchHardCap(t *testing.T) {
 			name: "a local darn cap",
 			row:  loomshed.NameDarnBouncer,
 			seed: func(t *testing.T, loc *lyxcwd.Location) {
-				seedDarnHubConfig(t, loc.HubPath, `"go test ./..."`, "3")
+				seedDarnHubConfig(t, loc.HubPath, "3")
 				localPath := configengine.LocalFile(loc.AnchorPath(), "darn")
 				if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
 					t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(localPath), err)
@@ -246,7 +246,7 @@ func TestPerchHardCap(t *testing.T) {
 			name: "a darn.yaml holding a malformed tree key",
 			row:  loomshed.NameDarnBouncer,
 			seed: func(t *testing.T, loc *lyxcwd.Location) {
-				seedDarnHubConfig(t, loc.HubPath, `"go test ./..."`, "3", "tree_scope: {}", `tree_scope: {"./tools": ""}`)
+				seedDarnHubConfig(t, loc.HubPath, "3", "tree_scope: {}", `tree_scope: {"./tools": ""}`)
 			},
 			wantErr: []string{"./tools", "lyx config darn's editor"},
 		},

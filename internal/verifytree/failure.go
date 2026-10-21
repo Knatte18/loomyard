@@ -10,13 +10,17 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// FailureKind names which Publish verify failed.
+// FailureKind names which Publish verify failed: the gate a record's tier belongs to, or a retired spelling of one.
 type FailureKind string
 
 const (
-	// FailureKindPlanVerify means the plan's `## verify:` command failed.
+	// FailureKindLanding means a tier of the `landing` gate failed.
+	FailureKindLanding FailureKind = "landing"
+	// FailureKindPublish means a tier of the `publish` gate failed.
+	FailureKindPublish FailureKind = "publish"
+	// FailureKindPlanVerify is the retired spelling of a `landing` failure: the plan's `## verify:` command failed.
 	FailureKindPlanVerify FailureKind = "plan_verify"
-	// FailureKindPublishVerify means landing config's `publish_verify` command failed.
+	// FailureKindPublishVerify is the retired spelling of a `publish` failure: landing config's `publish_verify` command failed.
 	FailureKindPublishVerify FailureKind = "publish_verify"
 )
 
@@ -32,6 +36,8 @@ type FailedTest struct {
 type PublishFailure struct {
 	// Kind names the failing verify.
 	Kind FailureKind `yaml:"kind"`
+	// Tier is the number of the failing tier of Kind's gate; it is always written, since tier 0 is a real tier, and a record of a retired Kind carries none.
+	Tier int `yaml:"tier"`
 	// Row is the producer row whose verify failed, empty for a record written before the field existed.
 	Row string `yaml:"row,omitempty"`
 	// Tests are the failing tests the verify's log names.

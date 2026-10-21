@@ -24,9 +24,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifyrun"
 )
 
-// Timeout is the production bound on one verify command.
-const Timeout = 60 * time.Minute
-
 const (
 	dirName    = "verify"
 	recordName = "verified-tree.yaml"
@@ -96,10 +93,10 @@ type Result struct {
 	ExitCode int
 	// Tree is HEAD's tree SHA, empty for a dirty result.
 	Tree string
-	// TimedOut is set when the verify command outlived the timeout and was killed;
-	// the status is then StatusFailed with ExitCode -1.
+	// TimedOut is set when the failed command's log holds a gate tier timeout line;
+	// the status is then StatusFailed with the command's own exit code.
 	TimedOut bool
-	// Detail carries the cause of a shell that could not start, or names the timeout of a timed-out run.
+	// Detail carries the cause of a shell that could not start, or names the tier and timeout of a timed-out run.
 	Detail string
 	// Log is this run's own verify log, empty for a dirty or skipped result.
 	Log string
@@ -289,16 +286,13 @@ func parsePorcelainZ(out string) []string {
 // Otherwise the marker is written, the command runs with its output in a fresh `verify-<n>.log` in p.Dir that the result names, the marker is removed whatever happened, and an exit 0 returns StatusPassed.
 // Once the log is written, whatever the exit, every log beyond the newest verifyLogKeep is pruned except the one the Publish failure record names;
 // a prune failure is logged and leaves the result unchanged.
-// A non-nil slots pool gates the run: the marker is first written in the waiting state, a slot is acquired under ctx, and the marker is rewritten as running with a fresh start time before the timeout begins to count.
-// The command then runs with the lease's environment and the slot is released whatever the outcome.
-// A nil slots runs unslotted with the parent's environment.
+// The command is one `lyx gate test --wait` call, or such calls joined by `&&`, which take their own slots and bound themselves, so Verify takes no slot and applies no timeout.
 // The pass writes the record only when HEAD still names the tree and commit the run started on, so a commit that lands mid-run costs the next call a re-run rather than recording a tree the command did not run on.
 // The write replaces the entry of command and drops every other command's entry naming a different tree, except site.BaseCommand's.
 // A non-zero exit is StatusFailed with the exit code, and a shell that could not start is StatusFailed with exit code -1 and the cause in Detail.
-// A command still running after timeout is killed and returns StatusFailed with exit code -1, TimedOut set and the timeout in Detail;
-// no record is written.
+// A failed command whose log holds a tier timeout line is also marked TimedOut, with the tier and its timeout in Detail and the command's own exit code.
 // A cancelled ctx is a returned error and writes no record.
-func Verify(ctx context.Context, p Paths, site Site, command string, timeout time.Duration, slots *gateslot.Pool) (Result, error) {
+func Verify(ctx context.Context, p Paths, site Site, command string) (Result, error) {
 	dirty, err := DirtyPaths(p.Worktree)
 	if err != nil {
 		return Result{}, err
@@ -323,10 +317,6 @@ func Verify(ctx context.Context, p Paths, site Site, command string, timeout tim
 		return Result{}, fmt.Errorf("verifytree: create verify directory: %w", err)
 	}
 	marker := Marker{Site: site.Label, Attempt: site.Attempt, Command: command, Started: time.Now(), PID: os.Getpid(), State: MarkerStateRunning}
-	if slots != nil {
-		marker.State = MarkerStateWaiting
-		marker.WaitStarted = marker.Started
-	}
 	if err := writeMarker(p.Marker, marker); err != nil {
 		return Result{}, err
 	}
@@ -335,23 +325,6 @@ func Verify(ctx context.Context, p Paths, site Site, command string, timeout tim
 	// The verify command runs without the strand name, so a test driving `lyx fabric` never meets a role guard that reads it.
 	// It never inherits the prebuilt-lyx variable either: its own go test builds lyx once per test binary.
 	env := slices.DeleteFunc(gateslot.StripPrebuilt(os.Environ()), func(entry string) bool { return strings.HasPrefix(entry, agentname.StrandNameEnv+"=") })
-	if slots != nil {
-		lease, err := slots.Acquire(ctx, gateslot.Holder{Worktree: p.Worktree, Site: site.Label})
-		if err != nil {
-			return Result{}, fmt.Errorf("verifytree: wait for gate slot: %w", err)
-		}
-		defer func() {
-			if err := lease.Release(); err != nil {
-				logger.Warn("verifytree: release gate slot", "worktree", p.Worktree, "cause", err)
-			}
-		}()
-		env = lease.Env(env)
-		marker.State = MarkerStateRunning
-		marker.Started = time.Now()
-		if err := writeMarker(p.Marker, marker); err != nil {
-			return Result{}, err
-		}
-	}
 
 	logPath, err := nextLogPath(p.Dir)
 	if err != nil {
@@ -368,21 +341,17 @@ func Verify(ctx context.Context, p Paths, site Site, command string, timeout tim
 		}
 	}()
 
-	runCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	code, runErr := verifyrun.Run(runCtx, command, p.Worktree, env, logFile)
+	code, runErr := verifyrun.Run(ctx, command, p.Worktree, env, logFile)
 	if runErr != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return Result{}, fmt.Errorf("verifytree: verify cancelled: %w", ctxErr)
 		}
-		if runCtx.Err() != nil {
-			detail := fmt.Sprintf("the verify command did not finish within %s and was killed", timeout)
-			return Result{Status: StatusFailed, ExitCode: -1, Tree: tree, TimedOut: true, Detail: detail, Log: logPath}, nil
-		}
 		return Result{Status: StatusFailed, ExitCode: -1, Tree: tree, Detail: runErr.Error(), Log: logPath}, nil
 	}
 	if code != 0 {
-		return Result{Status: StatusFailed, ExitCode: code, Tree: tree, Log: logPath}, nil
+		failed := Result{Status: StatusFailed, ExitCode: code, Tree: tree, Log: logPath}
+		failed.TimedOut, failed.Detail = tierTimeoutDetail(logPath)
+		return failed, nil
 	}
 
 	// A commit that landed mid-run means the command read a tree that was not the recorded one, so the pass is not recorded.
@@ -403,6 +372,29 @@ func Verify(ctx context.Context, p Paths, site Site, command string, timeout tim
 		return Result{}, err
 	}
 	return Result{Status: StatusPassed, Tree: tree, Log: logPath}, nil
+}
+
+// tierTimeoutDetail reports whether the log at logPath holds a gate tier timeout line, and names the tier and its timeout when it does.
+func tierTimeoutDetail(logPath string) (bool, string) {
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		return false, ""
+	}
+	tier, ok := gateslot.FindTierTimeout(string(data))
+	if !ok {
+		return false, ""
+	}
+	detail := fmt.Sprintf("gate %s outlived its timeout_min and was killed", tier)
+	for _, line := range strings.Split(string(data), "\n") {
+		_, after, found := strings.Cut(line, tier+" exceeded timeout_min ")
+		if !found {
+			continue
+		}
+		timeout, _, _ := strings.Cut(after, ";")
+		detail = fmt.Sprintf("gate %s exceeded timeout_min %s and was killed", tier, strings.TrimSpace(timeout))
+		break
+	}
+	return true, detail
 }
 
 // headTree returns HEAD's tree SHA in worktree.

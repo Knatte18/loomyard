@@ -31,8 +31,9 @@ type crossModuleCommand struct {
 	Module string
 }
 
-// checkVerifyNestedModule implements verify-nested-module: a `go` command in a card's Verify value, or in the overview's verify chain, must not name a package of a nested module other than the one it runs in.
-// A card's value is judged against the nested modules as the plan stands once that card has run, and the overview's against the whole plan.
+// checkVerifyNestedModule implements verify-nested-module: a `go` command in a card's Verify value must not name a package of a nested module other than the one it runs in.
+// A card's value is judged against the nested modules as the plan stands once that card has run.
+// The overview's `## verify:` section is not read, since no gate runs it.
 func checkVerifyNestedModule(plan *Plan, worktreeRoot string) []ValidationError {
 	var findings []ValidationError
 
@@ -53,29 +54,12 @@ func checkVerifyNestedModule(plan *Plan, worktreeRoot string) []ValidationError 
 		}
 	}
 
-	if plan.Verify != "" {
-		highest := 0
-		for _, c := range plan.Cards {
-			highest = max(highest, c.Number)
-		}
-		modules := NestedModules(plan, highest, worktreeRoot)
-		for _, cmd := range crossModuleCommands(plan.Verify, modules) {
-			findings = append(findings, ValidationError{
-				Check: "verify-nested-module",
-				Detail: fmt.Sprintf(
-					"the overview's `## verify:` section: `%s` names a package of the nested module %s from outside it; run it as `go -C %s` with module-relative package paths",
-					cmd.Command, cmd.Module, cmd.Module,
-				),
-			})
-		}
-	}
-
 	return findings
 }
 
 // checkVerifyModuleWide implements verify-module-wide: a `go test`, `go build` or `go vet` in a card's Verify value must not name a module-wide package pattern (one holding `...`, or `all`), and a `go test` must not select the `tmux` or `llm` tier.
-// An agent's settings deny such a command, so it can never run under a fork; the way forward is `lyx gate test`, run in the foreground under the gate rule in the agent's system prompt.
-// The overview's verify chain is not read, since Go runs it itself.
+// An agent's settings deny such a command, so it can never run under a fork; the way forward is a `lyx gate test` call over the card's scope, run in the foreground under the gate rule in the agent's system prompt.
+// The overview's verify chain is not read.
 // Like the deny, it matches static shapes only: a command built from a variable or behind `bash -c` passes.
 func checkVerifyModuleWide(plan *Plan) []ValidationError {
 	var findings []ValidationError
@@ -86,7 +70,7 @@ func checkVerifyModuleWide(plan *Plan) []ValidationError {
 				Check: "verify-module-wide",
 				Card:  cardID(c),
 				Detail: fmt.Sprintf(
-					"card %d Verify: `%s` is module-wide or runs the tmux or llm tier, which no fork may run raw; use `lyx gate test [-C <module>] [--tags <tags>] <packages>` over the card's own packages, run in the foreground under the gate rule in your system prompt",
+					"card %d Verify: `%s` is module-wide or runs the tmux or llm tier, which no fork may run raw; use `lyx gate test --wait --tier <n> --card <id>` over the card's own scope, run in the foreground under the gate rule in your system prompt",
 					c.Number, cmd,
 				),
 			})
@@ -279,6 +263,22 @@ func isEnvAssignment(field string) bool {
 	return !slices.ContainsFunc([]rune(name), func(r rune) bool {
 		return !(r == '_' || r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' || r >= '0' && r <= '9')
 	})
+}
+
+// VerifyCommands splits a card's Verify value into its commands at `&&`, `||`, `;`, `|` and a newline, as the verify checks do.
+// Each command is returned with its leading environment assignments removed and its fields joined by single spaces; an empty command is dropped.
+func VerifyCommands(value string) []string {
+	var commands []string
+	for _, segment := range splitChain(value) {
+		fields := strings.Fields(segment.Text)
+		for len(fields) > 0 && isEnvAssignment(fields[0]) {
+			fields = fields[1:]
+		}
+		if len(fields) > 0 {
+			commands = append(commands, strings.Join(fields, " "))
+		}
+	}
+	return commands
 }
 
 // chainSegment is one command of a shell chain.

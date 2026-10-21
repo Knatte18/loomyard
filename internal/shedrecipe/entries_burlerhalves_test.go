@@ -174,14 +174,14 @@ func TestBurlerReviewEntry_RubricStencil(t *testing.T) {
 		}
 	})
 
-	t.Run("FillsTheVerifyTiers", func(t *testing.T) {
+	t.Run("FillsTheGateTiers", func(t *testing.T) {
 		env := newTestEnv(t)
-		env.VerifyTiers = []string{"build first", "vet second"}
-		writeStencil(t, env.StencilsDir, "round-rubric", "Tiers:\n{{.verify_tiers}}\n")
+		env.GateTiers = "- tier1: build first\n- gate card: [1]"
+		writeStencil(t, env.StencilsDir, "round-rubric", "Tiers:\n{{.gate_tiers}}\n")
 
 		profile, _ := captureReview(t, "review-row", stencilCfg, env)
-		if profile.Rubric != "Tiers:\n- build first\n- vet second\n" {
-			t.Errorf("profile.Rubric = %q; want the env's verify tiers filled into the marker as bullets", profile.Rubric)
+		if profile.Rubric != "Tiers:\n- tier1: build first\n- gate card: [1]\n" {
+			t.Errorf("profile.Rubric = %q; want the env's gate tier lines filled into the marker", profile.Rubric)
 		}
 	})
 

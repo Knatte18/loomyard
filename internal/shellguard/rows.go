@@ -182,6 +182,23 @@ const rawGoCommandPattern = `(` + goSubcommandPattern + `(test|build|vet)[[:spac
 	`|(` + commandFieldPattern + `(` + shellUnitPattern + `*([^A-Za-z0-9_"\\'<]|\\[^"]))?` + lyxEnvNamesPattern + `)` +
 	`|(` + commandFieldPattern + shellUnitPattern + `*` + doubleQuotedOpenPattern + `[$]\{?` + lyxEnvNamesPattern + `)`
 
+// refuseRawPattern returns the grep -E pattern the refuse-raw deny matches against the raw PreToolUse payload JSON.
+// It matches any listed prefix in command position, its words joined by whitespace runs and the last followed by a word end, so go testing is no go test.
+// Each word's . is escaped; the gate config loader admits only letters, digits, . _ and - in a word, so no other metacharacter reaches the pattern.
+// It sees static text only, so it is a guardrail and not a barrier:
+// it lets through a run behind a script or bash -c, a flag between the prefix's words such as go -C dir test, and an assignment prefix such as GOFLAGS=x go test.
+func refuseRawPattern(prefixes []string) string {
+	alternatives := make([]string, len(prefixes))
+	for i, prefix := range prefixes {
+		words := strings.Fields(prefix)
+		for j, word := range words {
+			words[j] = strings.ReplaceAll(word, ".", `\.`)
+		}
+		alternatives[i] = strings.Join(words, `[[:space:]]+`)
+	}
+	return commandPositionPattern + `(` + strings.Join(alternatives, "|") + `)([^A-Za-z0-9_./-]|$)`
+}
+
 // forbiddenSteerChars are characters that would corrupt steer text in JSON or shell quoting layers (checked at init).
 const forbiddenSteerChars = `'"\`
 
@@ -189,9 +206,38 @@ const forbiddenSteerChars = `'"\`
 const forbiddenNoticeChars = forbiddenSteerChars + "\n\r"
 
 // Rows returns a fresh slice of the shell guard rows in table order.
-// foreground is the engine's phrase for running a long command in the foreground, which the raw go row's steer and notice carry.
-func Rows(foreground string) []Row {
-	rawGoSteer := "raw module-wide, tmux-tier and llm-tier go runs are refused here. Gate rule: run lyx gate test in the foreground " + foreground + ", never in the background, for example lyx gate test ./internal/x, and use its --tags flag for a tag. When it answers that no gate slot is free yet, run the same command again in a turn that does nothing else, so the prompt cache stays warm between calls. Run every other check in the foreground too, and never cd into the directory you already work in. The slot, strand and prebuilt-binary environment variables belong to lyx, and a command setting or reading any of them is refused"
+// foreground is the engine's phrase for running a long command in the foreground, which the raw go and refuse-raw rows' steers and notices carry.
+// refuseRaw lists the command prefixes the hub refuses to run raw; a non-empty list adds the refuse-raw row after the raw go row, and an empty one adds none.
+func Rows(foreground string, refuseRaw []string) []Row {
+	rawGoSteer := "raw module-wide, tmux-tier and llm-tier go runs are refused here. Gate rule: run lyx gate test in the foreground " + foreground + ", never in the background, for example lyx gate test ./internal/x, and use its --tier flag for a tier. When it answers that no gate slot is free yet, run the same command again in a turn that does nothing else, so the prompt cache stays warm between calls. Run every other check in the foreground too, and never cd into the directory you already work in. The slot, strand and prebuilt-binary environment variables belong to lyx, and a command setting or reading any of them is refused"
+	rows := rowsBeforeRefuseRaw(rawGoSteer)
+	if len(refuseRaw) > 0 {
+		rows = append(rows, refuseRawRow(foreground, refuseRaw))
+	}
+	return append(rows, rowsAfterRawGo()...)
+}
+
+// refuseRawRow returns the refuse-raw row over the listed prefixes.
+func refuseRawRow(foreground string, refuseRaw []string) Row {
+	forms := make([][]string, len(refuseRaw))
+	for i, prefix := range refuseRaw {
+		forms[i] = strings.Fields(prefix)
+	}
+	steer := "a raw " + strings.Join(refuseRaw, " or ") + " run is refused here. Gate rule: run lyx gate test in the foreground " + foreground + ", never in the background, with --tier to name the tiers or --card to name a card, for example lyx gate test ./internal/x. When it answers that no gate slot is free yet, run the same command again in a turn that does nothing else, so the prompt cache stays warm between calls"
+	return Row{
+		// Installed for every run, the orch included, when the hub's gate config lists a prefix.
+		// A guardrail, not a barrier: refuseRawPattern states what it lets through.
+		Name:     "refuse-raw",
+		Patterns: []string{refuseRawPattern(refuseRaw)},
+		Steer:    steer,
+		Notice:   steer + ".",
+		Switch:   SwitchNone,
+		Forms:    forms,
+	}
+}
+
+// rowsBeforeRefuseRaw returns the python and raw go rows, the rows that precede the refuse-raw row.
+func rowsBeforeRefuseRaw(rawGoSteer string) []Row {
 	return []Row{
 		{
 			// A guardrail, not a barrier.
@@ -213,6 +259,12 @@ func Rows(foreground string) []Row {
 			Notice:   rawGoSteer + ".",
 			Switch:   SwitchNone,
 		},
+	}
+}
+
+// rowsAfterRawGo returns the rows that follow the raw go and refuse-raw rows.
+func rowsAfterRawGo() []Row {
+	return []Row{
 		{
 			// Installed for every run, the orch included, with no config key.
 			// A guardrail, not a barrier: inPlaceEditCommandPattern states what it lets through and what it falsely denies.
@@ -278,7 +330,7 @@ func checkTexts(rows []Row) error {
 
 // init panics if any shipped row's text holds a forbidden character (checked at package load).
 func init() {
-	if err := checkTexts(Rows("")); err != nil {
+	if err := checkTexts(Rows("", []string{"go test"})); err != nil {
 		panic(err.Error())
 	}
 }

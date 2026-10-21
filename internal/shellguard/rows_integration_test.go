@@ -57,8 +57,16 @@ func TestRows_PatternsDenyAndAllow(t *testing.T) {
 	t.Parallel()
 
 	rows := map[string]Row{}
-	for _, row := range Rows("with a long timeout") {
+	for _, row := range Rows("with a long timeout", []string{"go test", "dotnet test"}) {
 		rows[row.Name] = row
+	}
+	if steer := rows["raw-go"].Steer; !strings.Contains(steer, "--tier") || strings.Contains(steer, "--tags") {
+		t.Errorf("raw-go steer = %q; want it to name --tier and not --tags", steer)
+	}
+	for _, row := range Rows("with a long timeout", nil) {
+		if row.Name == "refuse-raw" {
+			t.Errorf("Rows() with an empty refuse list renders a %q row; want none", row.Name)
+		}
 	}
 	tests := []struct {
 		row     string
@@ -102,6 +110,16 @@ func TestRows_PatternsDenyAndAllow(t *testing.T) {
 		{"raw-go", "grep_for_the_slot_variable_in_double_quotes", `grep -rn "LYX_GATE_SLOT" internal`, false},
 		{"raw-go", "single_quoted_strand_variable", "echo '$LYX_STRAND_NAME'", false},
 		{"raw-go", "heredoc_body_naming_the_prebuilt_binary_variable", "cat <<EOF\nLYX_PREBUILT_LYX=/x\nEOF", false},
+
+		{"refuse-raw", "go_test_package", "go test ./internal/x", true},
+		{"refuse-raw", "go_test_after_a_separator", "cd x && go test ./...", true},
+		{"refuse-raw", "go_test_after_env", "env go test ./x", true},
+		{"refuse-raw", "second_listed_prefix", "dotnet test X.sln", true},
+		{"refuse-raw", "gate_route", "lyx gate test --tier 0", false},
+		{"refuse-raw", "prefix_in_single_quotes", "grep -rn 'go test' internal", false},
+		{"refuse-raw", "flag_between_the_words", "go -C dir test ./x", false},
+		{"refuse-raw", "assignment_prefix", "GOFLAGS=x go test ./x", false},
+		{"refuse-raw", "longer_word", "go testing", false},
 
 		{"python", "python3_with_flag", "python3 -c 'print(1)'", true},
 		{"python", "after_and_separator", "cd x && python script.py", true},

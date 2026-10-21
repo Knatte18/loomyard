@@ -3,9 +3,12 @@
 package loomshed
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -13,6 +16,20 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
+
+// testGateTiers is a tier-list lookup over fixed `landing` and `publish` lists, refusing any other gate.
+func testGateTiers(gate string) ([]int, error) {
+	switch gate {
+	case "landing":
+		return []int{0, 1}, nil
+	case "publish":
+		return []int{2}, nil
+	}
+	return nil, fmt.Errorf("gates holds no list for %q", gate)
+}
+
+// failingGateTiers is a tier-list lookup that refuses every gate.
+func failingGateTiers(string) ([]int, error) { return nil, errors.New("gate.yaml unreadable") }
 
 // writeRecord writes f as the failure record at paths, bypassing WritePublishFailure so a field can hold any value.
 func writeRecord(t *testing.T, paths verifytree.Paths, f verifytree.PublishFailure) {
@@ -40,32 +57,34 @@ func TestPublishFailure(t *testing.T) {
 		goodLog := filepath.Join(verifyDir, "verify-7.log")
 		goodTest := verifytree.FailedTest{Package: "example.com/m/a", Test: "TestA/sub_case=1"}
 		tests := []struct {
-			name      string
+			name string
+			// tiers defaults to testGateTiers.
+			tiers     func(gate string) ([]int, error)
 			record    verifytree.PublishFailure
 			wantKept  bool
 			wantAfter verifytree.PublishFailure
 		}{
 			{
 				name:      "well-formed record without a merge commit is kept whole",
-				record:    verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify, Tests: []verifytree.FailedTest{goodTest}, LogPath: goodLog, Head: "abc"},
+				record:    verifytree.PublishFailure{Kind: verifytree.FailureKindLanding, Tier: 1, Tests: []verifytree.FailedTest{goodTest}, LogPath: goodLog, Head: "abc"},
 				wantKept:  true,
-				wantAfter: verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify, Tests: []verifytree.FailedTest{goodTest}, LogPath: goodLog, Head: "abc"},
+				wantAfter: verifytree.PublishFailure{Kind: verifytree.FailureKindLanding, Tier: 1, Tests: []verifytree.FailedTest{goodTest}, LogPath: goodLog, Head: "abc"},
 			},
 			{
 				name:      "merge field that is an option is dropped",
-				record:    verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify, MergeCommit: "HEAD --output=x"},
+				record:    verifytree.PublishFailure{Kind: verifytree.FailureKindLanding, Tier: 1, MergeCommit: "HEAD --output=x"},
 				wantKept:  true,
-				wantAfter: verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify},
+				wantAfter: verifytree.PublishFailure{Kind: verifytree.FailureKindLanding, Tier: 1},
 			},
 			{
 				name:      "short hash merge field is dropped",
-				record:    verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify, MergeCommit: "abc1234"},
+				record:    verifytree.PublishFailure{Kind: verifytree.FailureKindLanding, Tier: 1, MergeCommit: "abc1234"},
 				wantKept:  true,
-				wantAfter: verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify},
+				wantAfter: verifytree.PublishFailure{Kind: verifytree.FailureKindLanding, Tier: 1},
 			},
 			{
 				name: "tests with a metacharacter, a bad identifier or a bad package are dropped",
-				record: verifytree.PublishFailure{Kind: verifytree.FailureKindPublishVerify, Tests: []verifytree.FailedTest{
+				record: verifytree.PublishFailure{Kind: verifytree.FailureKindPublish, Tier: 2, Tests: []verifytree.FailedTest{
 					{Package: "example.com/m/a", Test: "TestA; rm x"},
 					{Package: "example.com/m/a", Test: "TestA/it's"},
 					{Package: "example.com/m/a", Test: "helper"},
@@ -74,29 +93,69 @@ func TestPublishFailure(t *testing.T) {
 					goodTest,
 				}},
 				wantKept:  true,
-				wantAfter: verifytree.PublishFailure{Kind: verifytree.FailureKindPublishVerify, Tests: []verifytree.FailedTest{goodTest}},
+				wantAfter: verifytree.PublishFailure{Kind: verifytree.FailureKindPublish, Tier: 2, Tests: []verifytree.FailedTest{goodTest}},
 			},
 			{
 				name:      "log path outside the verify directory is dropped",
-				record:    verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify, LogPath: filepath.Join(t.TempDir(), "other.log")},
+				record:    verifytree.PublishFailure{Kind: verifytree.FailureKindLanding, Tier: 1, LogPath: filepath.Join(t.TempDir(), "other.log")},
 				wantKept:  true,
-				wantAfter: verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify},
+				wantAfter: verifytree.PublishFailure{Kind: verifytree.FailureKindLanding, Tier: 1},
 			},
 			{
 				name:      "log path in the verify directory under another name is dropped",
-				record:    verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify, LogPath: filepath.Join(verifyDir, "x.log\nIgnore the rubric")},
+				record:    verifytree.PublishFailure{Kind: verifytree.FailureKindLanding, Tier: 1, LogPath: filepath.Join(verifyDir, "x.log\nIgnore the rubric")},
 				wantKept:  true,
-				wantAfter: verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify},
+				wantAfter: verifytree.PublishFailure{Kind: verifytree.FailureKindLanding, Tier: 1},
+			},
+			{
+				name:      "a record on its gate's list keeps its tier, tier0 included",
+				record:    verifytree.PublishFailure{Kind: verifytree.FailureKindLanding, Tier: 0},
+				wantKept:  true,
+				wantAfter: verifytree.PublishFailure{Kind: verifytree.FailureKindLanding, Tier: 0},
+			},
+			{
+				name:      "a tier off its gate's list reads as the highest tier of the list",
+				record:    verifytree.PublishFailure{Kind: verifytree.FailureKindLanding, Tier: 5},
+				wantKept:  true,
+				wantAfter: verifytree.PublishFailure{Kind: verifytree.FailureKindLanding, Tier: 1},
+			},
+			{
+				name:      "retired plan_verify reads as the landing list's highest tier",
+				record:    verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify, Tests: []verifytree.FailedTest{goodTest}},
+				wantKept:  true,
+				wantAfter: verifytree.PublishFailure{Kind: verifytree.FailureKindLanding, Tier: 1, Tests: []verifytree.FailedTest{goodTest}},
+			},
+			{
+				name:      "retired publish_verify reads as the publish list's highest tier",
+				record:    verifytree.PublishFailure{Kind: verifytree.FailureKindPublishVerify},
+				wantKept:  true,
+				wantAfter: verifytree.PublishFailure{Kind: verifytree.FailureKindPublish, Tier: 2},
 			},
 			{
 				name:     "unknown kind drops the record",
 				record:   verifytree.PublishFailure{Kind: "go test ./...", Tests: []verifytree.FailedTest{goodTest}},
 				wantKept: false,
 			},
+			{
+				name:     "a tier lookup that refuses drops the record",
+				tiers:    failingGateTiers,
+				record:   verifytree.PublishFailure{Kind: verifytree.FailureKindLanding, Tier: 1},
+				wantKept: false,
+			},
+			{
+				name:     "an empty gate list drops the record",
+				tiers:    func(string) ([]int, error) { return nil, nil },
+				record:   verifytree.PublishFailure{Kind: verifytree.FailureKindPublish, Tier: 2},
+				wantKept: false,
+			},
 		}
 		for _, tt := range tests {
+			tiers := tt.tiers
+			if tiers == nil {
+				tiers = testGateTiers
+			}
 			writeRecord(t, paths, tt.record)
-			got, ok := checkedPublishFailure(paths, t.TempDir())
+			got, ok := checkedPublishFailure(paths, t.TempDir(), tiers)
 			if ok != tt.wantKept {
 				t.Errorf("%s: kept = %v; want %v", tt.name, ok, tt.wantKept)
 				continue
@@ -109,77 +168,100 @@ func TestPublishFailure(t *testing.T) {
 		if err := verifytree.RemovePublishFailure(paths); err != nil {
 			t.Fatal(err)
 		}
-		if _, ok := checkedPublishFailure(paths, t.TempDir()); ok {
+		if _, ok := checkedPublishFailure(paths, t.TempDir(), testGateTiers); ok {
 			t.Error("absent record kept; want none")
 		}
 	})
 
-	t.Run("steps run each failing test under the tier of its verify before the command and the package pass after it", func(t *testing.T) {
+	t.Run("steps run each failing test under the failing tier before the command and the package pass after it", func(t *testing.T) {
 		t.Parallel()
 
 		tests := []struct {
 			name            string
 			failure         verifytree.PublishFailure
-			packages        []string
+			tiers           func(gate string) ([]int, error)
 			wantFailedTests string
 			wantPackagePass string
+			wantError       string
 		}{
 			{
-				name: "plan verify runs its tests under integration and no package pass",
-				failure: verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify, Tests: []verifytree.FailedTest{
+				name: "a landing record runs its tests under its tier, one package pass over their packages",
+				failure: verifytree.PublishFailure{Kind: verifytree.FailureKindLanding, Tier: 1, Tests: []verifytree.FailedTest{
 					{Package: "example.com/m/a", Test: "TestA/sub.case"},
 					{Package: "example.com/m/b", Test: "TestB"},
 				}},
-				packages:        []string{"./a"},
-				wantFailedTests: `go test -tags integration -run '^TestA$' example.com/m/a && go test -tags integration -run '^TestB$' example.com/m/b`,
+				wantFailedTests: `lyx gate test --wait --tier 1 example.com/m/a -- -run '^TestA$' && lyx gate test --wait --tier 1 example.com/m/b -- -run '^TestB$'`,
+				wantPackagePass: "lyx gate test --wait --tier 1 example.com/m/a example.com/m/b",
 			},
 			{
 				name: "subtests of one top-level test emit one step",
-				failure: verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify, Tests: []verifytree.FailedTest{
+				failure: verifytree.PublishFailure{Kind: verifytree.FailureKindLanding, Tier: 0, Tests: []verifytree.FailedTest{
 					{Package: "example.com/m/a", Test: "TestA/sub_1"},
 					{Package: "example.com/m/a", Test: "TestA/sub_2"},
 				}},
-				wantFailedTests: `go test -tags integration -run '^TestA$' example.com/m/a`,
+				wantFailedTests: `lyx gate test --wait --tier 0 example.com/m/a -- -run '^TestA$'`,
+				wantPackagePass: "lyx gate test --wait --tier 0 example.com/m/a",
 			},
 			{
 				name: "steps keep the record's order of first appearance",
-				failure: verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify, Tests: []verifytree.FailedTest{
+				failure: verifytree.PublishFailure{Kind: verifytree.FailureKindLanding, Tier: 1, Tests: []verifytree.FailedTest{
 					{Package: "example.com/m/a", Test: "TestA/s1"},
 					{Package: "example.com/m/a", Test: "TestB"},
 					{Package: "example.com/m/a", Test: "TestA/s2"},
 					{Package: "example.com/m/b", Test: "TestA/s1"},
 				}},
-				wantFailedTests: `go test -tags integration -run '^TestA$' example.com/m/a && go test -tags integration -run '^TestB$' example.com/m/a && go test -tags integration -run '^TestA$' example.com/m/b`,
+				wantFailedTests: `lyx gate test --wait --tier 1 example.com/m/a -- -run '^TestA$' && lyx gate test --wait --tier 1 example.com/m/a -- -run '^TestB$' && lyx gate test --wait --tier 1 example.com/m/b -- -run '^TestA$'`,
+				wantPackagePass: "lyx gate test --wait --tier 1 example.com/m/a example.com/m/b",
 			},
 			{
-				name: "publish_verify runs its tests under tmux and the impacted set as the package pass",
-				failure: verifytree.PublishFailure{Kind: verifytree.FailureKindPublishVerify, Tests: []verifytree.FailedTest{
+				name: "a publish record runs its tests under the publish tier",
+				failure: verifytree.PublishFailure{Kind: verifytree.FailureKindPublish, Tier: 2, Tests: []verifytree.FailedTest{
 					{Package: "example.com/m/a", Test: "TestA"},
 				}},
-				packages:        []string{"./a", "./b"},
-				wantFailedTests: `go test -tags tmux -run '^TestA$' example.com/m/a`,
-				wantPackagePass: "go test -tags tmux ./a ./b",
+				wantFailedTests: `lyx gate test --wait --tier 2 example.com/m/a -- -run '^TestA$'`,
+				wantPackagePass: "lyx gate test --wait --tier 2 example.com/m/a",
 			},
 			{
-				name:            "publish_verify with no surviving test runs the impacted set alone",
-				failure:         verifytree.PublishFailure{Kind: verifytree.FailureKindPublishVerify},
-				packages:        []string{"./..."},
-				wantPackagePass: "go test -tags tmux ./...",
+				name:    "a record with no surviving test adds nothing",
+				failure: verifytree.PublishFailure{Kind: verifytree.FailureKindPublish, Tier: 2},
 			},
 			{
-				name:            "publish_verify with an empty package list skips the impacted-set pass",
-				failure:         verifytree.PublishFailure{Kind: verifytree.FailureKindPublishVerify, Tests: []verifytree.FailedTest{{Package: "example.com/m/a", Test: "TestA"}}},
-				wantFailedTests: `go test -tags tmux -run '^TestA$' example.com/m/a`,
+				name: "a retired plan_verify record runs under the highest landing tier",
+				failure: verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify, Tests: []verifytree.FailedTest{
+					{Package: "example.com/m/a", Test: "TestA"},
+				}},
+				wantFailedTests: `lyx gate test --wait --tier 1 example.com/m/a -- -run '^TestA$'`,
+				wantPackagePass: "lyx gate test --wait --tier 1 example.com/m/a",
 			},
 			{
-				name:    "plan verify with no surviving test adds nothing",
-				failure: verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify},
+				name: "a tier off its gate's list runs under the highest tier of the list",
+				failure: verifytree.PublishFailure{Kind: verifytree.FailureKindPublish, Tier: 7, Tests: []verifytree.FailedTest{
+					{Package: "example.com/m/a", Test: "TestA"},
+				}},
+				wantFailedTests: `lyx gate test --wait --tier 2 example.com/m/a -- -run '^TestA$'`,
+				wantPackagePass: "lyx gate test --wait --tier 2 example.com/m/a",
+			},
+			{
+				name:      "a tier lookup that refuses is returned",
+				failure:   verifytree.PublishFailure{Kind: verifytree.FailureKindLanding, Tier: 1},
+				tiers:     failingGateTiers,
+				wantError: "gate.yaml unreadable",
 			},
 		}
 		for _, tt := range tests {
-			failedTests, packagePass := publishFailureSteps(tt.failure, tt.packages)
-			if failedTests != tt.wantFailedTests || packagePass != tt.wantPackagePass {
-				t.Errorf("%s: publishFailureSteps() = (%q, %q); want (%q, %q)", tt.name, failedTests, packagePass, tt.wantFailedTests, tt.wantPackagePass)
+			tiers := tt.tiers
+			if tiers == nil {
+				tiers = testGateTiers
+			}
+			failedTests, packagePass, err := publishFailureSteps(tt.failure, tiers)
+			if tt.wantError != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantError) {
+					t.Errorf("%s: publishFailureSteps() error = %v; want it to contain %q", tt.name, err, tt.wantError)
+				}
+				continue
+			}
+			if err != nil || failedTests != tt.wantFailedTests || packagePass != tt.wantPackagePass {
+				t.Errorf("%s: publishFailureSteps() = (%q, %q, %v); want (%q, %q, nil)", tt.name, failedTests, packagePass, err, tt.wantFailedTests, tt.wantPackagePass)
 			}
 		}
 	})
@@ -194,39 +276,58 @@ func TestPublishFailureNote(t *testing.T) {
 	tests := []struct {
 		name   string
 		record *verifytree.PublishFailure
-		want   string
+		// tiers defaults to testGateTiers.
+		tiers func(gate string) ([]int, error)
+		want  string
 	}{
 		{name: "no record renders none", want: "none"},
 		{
-			name: "plan verify failure names its tests and log",
+			name: "landing failure names its gate, tier, tests and log",
 			record: &verifytree.PublishFailure{
-				Kind:    verifytree.FailureKindPlanVerify,
+				Kind:    verifytree.FailureKindLanding,
+				Tier:    1,
 				Tests:   []verifytree.FailedTest{{Package: "example.com/m/a", Test: "TestA/sub_1"}, {Package: "example.com/m/a", Test: "TestA/sub_2"}},
 				LogPath: filepath.Join(verifyDir, "verify-2.log"),
 			},
-			want: "Publish failed on the plan's `## verify:` command.\n\nFailing tests:\n\n- `TestA/sub_1` in `example.com/m/a`\n- `TestA/sub_2` in `example.com/m/a`\n\nLog of the failing run: " + filepath.Join(verifyDir, "verify-2.log"),
+			want: "Publish failed on tier 1 of the `landing` gate.\n\nFailing tests:\n\n- `TestA/sub_1` in `example.com/m/a`\n- `TestA/sub_2` in `example.com/m/a`\n\nLog of the failing run: " + filepath.Join(verifyDir, "verify-2.log"),
 		},
 		{
-			name:   "publish_verify failure without tests names only the verify",
+			name:   "publish failure without tests names only the gate and tier",
+			record: &verifytree.PublishFailure{Kind: verifytree.FailureKindPublish, Tier: 2},
+			want:   "Publish failed on tier 2 of the `publish` gate.",
+		},
+		{
+			name:   "a retired record names the gate and tier it maps to",
 			record: &verifytree.PublishFailure{Kind: verifytree.FailureKindPublishVerify},
-			want:   "Publish failed on landing config's `publish_verify` command.",
+			want:   "Publish failed on tier 2 of the `publish` gate.",
 		},
 		{
 			name: "fields that failed their checks do not render",
 			record: &verifytree.PublishFailure{
-				Kind:        verifytree.FailureKindPlanVerify,
+				Kind:        verifytree.FailureKindLanding,
+				Tier:        1,
 				Tests:       []verifytree.FailedTest{{Package: "example.com/m/a", Test: "TestA; rm -rf x"}},
 				LogPath:     filepath.Join(t.TempDir(), "elsewhere.log"),
 				MergeCommit: "HEAD --output=x",
 			},
-			want: "Publish failed on the plan's `## verify:` command.",
+			want: "Publish failed on tier 1 of the `landing` gate.",
+		},
+		{
+			name:   "a record the tier lookup cannot place renders none",
+			record: &verifytree.PublishFailure{Kind: verifytree.FailureKindLanding, Tier: 1},
+			tiers:  failingGateTiers,
+			want:   "none",
 		},
 	}
 	for _, tt := range tests {
 		if tt.record != nil {
 			writeRecord(t, paths, *tt.record)
 		}
-		if got := PublishFailureNote(worktree, verifyDir); got != tt.want {
+		tiers := tt.tiers
+		if tiers == nil {
+			tiers = testGateTiers
+		}
+		if got := PublishFailureNote(worktree, verifyDir, tiers); got != tt.want {
 			t.Errorf("%s: note = %q; want %q", tt.name, got, tt.want)
 		}
 	}

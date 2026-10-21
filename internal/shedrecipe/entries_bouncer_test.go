@@ -76,9 +76,9 @@ func TestBouncerEntry_HappyPath(t *testing.T) {
 	// so the note is read off the seed prompt through a rubric that carries the marker.
 	const note = "Webster has begun these batches."
 	env.WebsterRecord = func() string { return note }
-	env.VerifyTiers = []string{"build first", "vet second"}
+	env.GateTiers = "- tier1: build first\n- gate card: [1]"
 	writeStencil(t, env.StencilsDir, "bouncer-template-seed", "{{.rubric}}\n")
-	writeStencil(t, env.StencilsDir, "bouncer-rubric", "Record: {{.webster_record}}\nTiers:\n{{.verify_tiers}}\n")
+	writeStencil(t, env.StencilsDir, "bouncer-rubric", "Record: {{.webster_record}}\nTiers:\n{{.gate_tiers}}\n")
 	producer, err = bouncerEntry(reviewRow("review-bounce"), cfg, env)
 	if err != nil {
 		t.Fatalf("bouncerEntry() error = %v; want nil", err)
@@ -90,8 +90,8 @@ func TestBouncerEntry_HappyPath(t *testing.T) {
 	if len(fake.Specs) != 1 || !strings.Contains(fake.Specs[0].Prompt, "Record: "+note) {
 		t.Errorf("seed specs = %+v; want one whose prompt carries the env's webster record note", fake.Specs)
 	}
-	if len(fake.Specs) != 1 || !strings.Contains(fake.Specs[0].Prompt, "- build first\n- vet second") {
-		t.Errorf("seed specs = %+v; want one whose prompt carries the env's verify tier bullets", fake.Specs)
+	if len(fake.Specs) != 1 || !strings.Contains(fake.Specs[0].Prompt, env.GateTiers) {
+		t.Errorf("seed specs = %+v; want one whose prompt carries the env's gate tier lines", fake.Specs)
 	}
 }
 

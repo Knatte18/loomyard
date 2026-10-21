@@ -87,9 +87,13 @@ func TestWire_Real_PublishRejectedPushNamesRemoteTip(t *testing.T) {
 		parentLockDeps(location, shedrun.SelfRunID, "", ""),
 		time.Time{},
 	)
-	// The pair has no run status file to commit and no plan to read a verify command from.
+	// The pair has no run status file to commit, and the tierless hub declares no tier0, where a gate call read from its config is refused.
+	// The empty publish list is the path of a hub with no publish gate, so both readers answer "".
+	emptyCall := func() (string, error) { return "", nil }
 	deps.CommitStatus = nil
 	deps.VerifyCommand = nil
+	deps.PublishCommand = emptyCall
+	deps.BaseCommand = emptyCall
 	// The remote task branch holds a commit the local one lacks on purpose, which the reconcile would fast-forward away.
 	deps.Reconcile = nil
 	c.env.Landing = deps

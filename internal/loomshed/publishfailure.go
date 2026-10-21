@@ -1,4 +1,4 @@
-// publishfailure.go turns the Publish failure record into the extra steps the Webster-Burler-Fix round gate runs to confirm a fix.
+// publishfailure.go turns the Publish failure record into the extra steps the verify gate runs to confirm a fix.
 // The record sits in the pair's own ignored directory, so every field is shape-checked before it reaches a command line.
 // It also renders webster's run record as the Plan-Review rubric's note.
 
@@ -7,6 +7,7 @@ package loomshed
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -25,13 +26,45 @@ var (
 	failedTestPackage = regexp.MustCompile(`^[\p{L}\p{N}][\p{L}\p{N}_.~-]*(/[\p{L}\p{N}_.~-]+)*$`)
 )
 
+// failingGate resolves the gate and the failing tier a record names, reading the gate's tier list through tiers.
+// A record of a retired kind maps onto the `landing` or `publish` gate with the highest tier of that gate's list, and so does a record whose tier is not on its gate's list.
+// It is an error when tiers fails, when the gate's list is empty, and for a kind outside the closed set.
+func failingGate(failure verifytree.PublishFailure, tiers func(gate string) ([]int, error)) (verifytree.FailureKind, int, error) {
+	var kind verifytree.FailureKind
+	retired := false
+	switch failure.Kind {
+	case verifytree.FailureKindLanding:
+		kind = verifytree.FailureKindLanding
+	case verifytree.FailureKindPublish:
+		kind = verifytree.FailureKindPublish
+	case verifytree.FailureKindPlanVerify:
+		kind, retired = verifytree.FailureKindLanding, true
+	case verifytree.FailureKindPublishVerify:
+		kind, retired = verifytree.FailureKindPublish, true
+	default:
+		return "", 0, fmt.Errorf("loomshed: publish failure record has the unknown kind %q", failure.Kind)
+	}
+	list, err := tiers(string(kind))
+	if err != nil {
+		return "", 0, fmt.Errorf("loomshed: read the %s gate's tiers: %w", kind, err)
+	}
+	if len(list) == 0 {
+		return "", 0, fmt.Errorf("loomshed: the %s gate lists no tier", kind)
+	}
+	if !retired && slices.Contains(list, failure.Tier) {
+		return kind, failure.Tier, nil
+	}
+	return kind, slices.Max(list), nil
+}
+
 // checkedPublishFailure reads the Publish failure record at paths and returns it with every field that fails its shape check dropped, each drop logged.
-// It returns false when there is no record, when it cannot be read, or when its kind is not one of the closed set.
+// It returns false when there is no record, when it cannot be read, when its kind is not one of the closed set, or when tiers cannot give the gate's list.
+// The returned record names the gate and tier failingGate resolves, so a record of a retired kind comes back as a `landing` or `publish` record.
 //
 // The merge-in commit is kept only as a full hex object name that resolves, through worktreeRoot's git objects, to a commit with two or more parents.
 // A failing test is kept only when its path is a top-level Test identifier followed by optional subtest segments of safe characters and its package is an import path that starts with a letter or digit, so it never reads as a flag.
 // The log path is kept only when it names a verify log directly inside the verify directory.
-func checkedPublishFailure(paths verifytree.Paths, worktreeRoot string) (verifytree.PublishFailure, bool) {
+func checkedPublishFailure(paths verifytree.Paths, worktreeRoot string, tiers func(gate string) ([]int, error)) (verifytree.PublishFailure, bool) {
 	failure, ok, err := verifytree.ReadPublishFailure(paths)
 	if err != nil {
 		logger.Warn("loomshed: publish failure record unreadable, round gate ignores it", "path", paths.PublishFailure, "cause", err)
@@ -40,10 +73,12 @@ func checkedPublishFailure(paths verifytree.Paths, worktreeRoot string) (verifyt
 	if !ok {
 		return verifytree.PublishFailure{}, false
 	}
-	if failure.Kind != verifytree.FailureKindPlanVerify && failure.Kind != verifytree.FailureKindPublishVerify {
-		logger.Warn("loomshed: publish failure record has an unknown kind, round gate ignores it", "kind", failure.Kind)
+	kind, tier, err := failingGate(failure, tiers)
+	if err != nil {
+		logger.Warn("loomshed: publish failure record's gate and tier unresolved, round gate ignores it", "kind", failure.Kind, "cause", err)
 		return verifytree.PublishFailure{}, false
 	}
+	failure.Kind, failure.Tier = kind, tier
 
 	if failure.MergeCommit != "" && !isMergeCommit(worktreeRoot, failure.MergeCommit) {
 		logger.Warn("loomshed: publish failure record's merge commit dropped", "mergeCommit", failure.MergeCommit)
@@ -77,47 +112,48 @@ func isMergeCommit(worktreeRoot, sha string) bool {
 }
 
 // publishFailureSteps builds the gate's extra steps from a checked record: failedTests, run before the gate's own command, and packagePass, run after it, each joined by ` && ` or "" when there are none.
-// failedTests runs each failing top-level test by name in its package under the failing verify's tier: `integration` for the plan verify, `tmux` for `publish_verify`.
+// failedTests is one `lyx gate test --wait --tier <failing tier> <package> -- -run '^<Test>$'` per failing top-level test, its package an explicit target.
 // The subtests of one top-level test collapse into one step, since a whole test re-runs and a subtest filter can miss a failure the test's setup caused; steps keep the record's order of first appearance.
-// For `publish_verify`, packagePass runs the `tmux` tier over packages, the impacted set; with no packages it is "".
+// packagePass is one `lyx gate test --wait --tier <failing tier>` over the packages of the failing tests; with no failing test it is "".
+// The failing tier is the one failingGate resolves through tiers, and an error from it is returned.
 // Nothing from the record is run as shell text: every argument is a checked identifier, and the `-run` name is quoted.
-func publishFailureSteps(failure verifytree.PublishFailure, packages []string) (failedTests, packagePass string) {
-	tag := "integration"
-	if failure.Kind == verifytree.FailureKindPublishVerify {
-		tag = "tmux"
+func publishFailureSteps(failure verifytree.PublishFailure, tiers func(gate string) ([]int, error)) (failedTests, packagePass string, err error) {
+	_, tier, err := failingGate(failure, tiers)
+	if err != nil {
+		return "", "", err
 	}
-	var steps []string
+	var steps, packages []string
 	seen := map[string]bool{}
+	seenPackage := map[string]bool{}
 	for _, test := range failure.Tests {
 		pattern := anchoredRunPattern(test.Test)
 		key := test.Package + " " + pattern
-		if seen[key] {
-			continue
+		if !seen[key] {
+			seen[key] = true
+			steps = append(steps, fmt.Sprintf("lyx gate test --wait --tier %d %s -- -run '%s'", tier, test.Package, pattern))
 		}
-		seen[key] = true
-		steps = append(steps, fmt.Sprintf("go test -tags %s -run '%s' %s", tag, pattern, test.Package))
+		if !seenPackage[test.Package] {
+			seenPackage[test.Package] = true
+			packages = append(packages, test.Package)
+		}
 	}
-	if failure.Kind == verifytree.FailureKindPublishVerify && len(packages) > 0 {
-		packagePass = "go test -tags tmux " + strings.Join(packages, " ")
+	if len(packages) > 0 {
+		packagePass = fmt.Sprintf("lyx gate test --wait --tier %d %s", tier, strings.Join(packages, " "))
 	}
-	return strings.Join(steps, " && "), packagePass
+	return strings.Join(steps, " && "), packagePass, nil
 }
 
 // PublishFailureNote renders the checked Publish failure record of the verify directory as markdown for the Webster-Review rubric, or `none` when there is no record.
-// The note names the failing verify, the failing tests, the log path, and the merge-in commit with the command that reads what it brought in.
+// The note names the failing gate and tier, the failing tests, the log path, and the merge-in commit with the command that reads what it brought in.
 // A field that failed its shape check is absent, so no free text from the record reaches the prompt.
-func PublishFailureNote(worktreeRoot, verifyDir string) string {
-	failure, ok := checkedPublishFailure(verifytree.NewPaths(worktreeRoot, verifyDir), worktreeRoot)
+// tiers reads a gate's tier list; a record it cannot place on a gate renders `none`.
+func PublishFailureNote(worktreeRoot, verifyDir string, tiers func(gate string) ([]int, error)) string {
+	failure, ok := checkedPublishFailure(verifytree.NewPaths(worktreeRoot, verifyDir), worktreeRoot, tiers)
 	if !ok {
 		return "none"
 	}
 	var b strings.Builder
-	switch failure.Kind {
-	case verifytree.FailureKindPlanVerify:
-		b.WriteString("Publish failed on the plan's `## verify:` command.\n")
-	case verifytree.FailureKindPublishVerify:
-		b.WriteString("Publish failed on landing config's `publish_verify` command.\n")
-	}
+	fmt.Fprintf(&b, "Publish failed on tier %d of the `%s` gate.\n", failure.Tier, failure.Kind)
 	if len(failure.Tests) > 0 {
 		b.WriteString("\nFailing tests:\n\n")
 		for _, test := range failure.Tests {

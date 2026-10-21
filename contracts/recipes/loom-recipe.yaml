@@ -588,7 +588,7 @@ producers:
         language-skills: true
 
   # Publish pushes the task branch and opens or refreshes the pull request, after the push-time
-  # publish_verify. A moved parent reroutes it to Merge-In.
+  # landing and publish gates. A moved parent reroutes it to Merge-In.
   - name: Publish
     engine: Publish
     on_reroute: Merge-In

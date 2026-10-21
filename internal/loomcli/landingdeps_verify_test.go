@@ -1,11 +1,15 @@
-// landingdeps_verify_test.go covers the three verify fields landingDeps tells landingshed:
-// the VerifyCommand closure reads the plan at call time, and VerifyDir is the shared verify directory.
+// landingdeps_verify_test.go covers the verify fields landingDeps tells landingshed:
+// the gate-call closures render from the hub's gate.yaml at call time, and VerifyDir is the shared verify directory.
 // It only writes files under t.TempDir(), so it stays Tier 1.
 
 package loomcli
 
 import (
+	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -15,36 +19,40 @@ import (
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
-	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-const verifySectionBody = "```\ngo build ./...\ngo test ./...\n```"
+// gateConfigWithTwoTiers returns the gate config template with tier0 and tier1 declared, the landing gate listing both and the publish gate listing tier1.
+func gateConfigWithTwoTiers() string {
+	const tiers = `tiers:
+  tier0: {command: "go test -json {targets} {args}", all_targets: ./..., timeout_min: 60, counter: go-json}
+  tier1: {command: "go test -json -tags integration {targets} {args}", all_targets: ./..., timeout_min: 60, counter: go-json}`
+	return strings.NewReplacer("tiers: {}", tiers, "  landing: [0]", "  landing: [0, 1]", "  publish: []", "  publish: [1]").Replace(gateslot.ConfigTemplate())
+}
 
-func writeVerifyPlan(t *testing.T, planDir string, sections ...plankit.Section) {
+// writeHubGateConfig writes contents as the hub-wide gate.yaml in hub's board directory.
+func writeHubGateConfig(t *testing.T, hub, contents string) {
 	t.Helper()
-	plankit.Write(t, planDir, plankit.Plan{
-		Approved: true,
-		Framing:  "Framing paragraph.",
-		Sections: sections,
-		Cards: []plankit.Card{{
-			Number:  1,
-			Slug:    "only",
-			Summary: "the only card",
-			Groups:  []plankit.Group{{Label: "Edit", Targets: []string{"internal/x#Y"}}},
-			Intent:  "placeholder card.",
-		}},
-	})
+	configDir := filepath.Join(fabricengine.BoardDir(hub), "_lyx", "config")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "gate.yaml"), []byte(contents), 0o644); err != nil {
+		t.Fatalf("WriteFile gate.yaml = %v; want nil", err)
+	}
 }
 
 func TestLandingDeps_VerifyCommandReadsPlanAtCallTime(t *testing.T) {
 	t.Parallel()
 
 	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+	// The hub's board directory exists from the start, as in a real hub, so the config dirs the sources read name it before the gate.yaml does.
+	if err := os.MkdirAll(fabricengine.BoardDir(loc.HubPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	deps := landingDeps(loc, shedrun.RecipeLoom, websterengine.Geometry{StencilsDir: "/stencils"}, "task/foo",
 		"https://example.com/origin.git", "main", true, func() error { return nil },
 		modelspec.Registry{"claude/sonnet-5": {}}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, nil, planVerifySource(loc), parentLockDeps(loc, shedrun.SelfRunID, "", ""), time.Time{})
@@ -57,32 +65,39 @@ func TestLandingDeps_VerifyCommandReadsPlanAtCallTime(t *testing.T) {
 		t.Errorf("VerifyFailureTarget = %q, want Webster-Burler-Review", deps.VerifyFailureTarget)
 	}
 
-	if _, err := deps.VerifyCommand(); err == nil {
-		t.Fatal("VerifyCommand before any plan exists: want an error, got nil")
+	readers := map[string]func() (string, error){"VerifyCommand": deps.VerifyCommand, "PublishCommand": deps.PublishCommand, "BaseCommand": deps.BaseCommand}
+	for name, read := range readers {
+		if _, err := read(); !errors.Is(err, gateslot.ErrConfigAbsent) {
+			t.Errorf("%s before any gate.yaml exists = %v; want an error wrapping gateslot.ErrConfigAbsent", name, err)
+		}
 	}
 
-	planDir := planparser.PlanDir(loc.AnchorPath())
-	writeVerifyPlan(t, planDir, plankit.Section{Heading: "verify:", Body: verifySectionBody})
-	got, err := deps.VerifyCommand()
-	if err != nil {
-		t.Fatalf("VerifyCommand after plan written: %v", err)
+	writeHubGateConfig(t, loc.HubPath, gateConfigWithTwoTiers())
+	for name, want := range map[string]string{
+		"VerifyCommand":  "lyx gate test --wait --tier 0 --tier 1 --all",
+		"PublishCommand": "lyx gate test --wait --tier 1 --all",
+		"BaseCommand":    "lyx gate test --wait --tier 0 --all",
+	} {
+		if got, err := readers[name](); err != nil || got != want {
+			t.Errorf("%s = (%q, %v), want (%q, nil)", name, got, err, want)
+		}
 	}
-	if want := "go build ./... && go test ./..."; got != want {
-		t.Errorf("VerifyCommand = %q, want %q", got, want)
+	if got, err := deps.GateTiers("landing"); err != nil || !slices.Equal(got, []int{0, 1}) {
+		t.Errorf("GateTiers(landing) = (%v, %v), want ([0 1], nil)", got, err)
 	}
 
-	writeVerifyPlan(t, planDir)
-	got, err = deps.VerifyCommand()
-	if err != nil || got != "" {
-		t.Errorf("VerifyCommand with no verify section = (%q, %v), want (\"\", nil)", got, err)
+	// An edit between two calls is seen: the publish list empties, and the landing list names a tier the hub does not declare.
+	edited := strings.NewReplacer("  publish: [1]", "  publish: []", "  landing: [0, 1]", "  landing: [0, 7]").Replace(gateConfigWithTwoTiers())
+	writeHubGateConfig(t, loc.HubPath, edited)
+	if got, err := deps.PublishCommand(); err != nil || got != "" {
+		t.Errorf("PublishCommand with an empty publish list = (%q, %v), want (\"\", nil)", got, err)
+	}
+	if got, err := deps.VerifyCommand(); err == nil || !strings.Contains(err.Error(), "lyx config gate") {
+		t.Errorf("VerifyCommand over a dangling landing list = (%q, %v), want an error naming lyx config gate", got, err)
 	}
 
 	if want := verifytree.Dir(loc.AnchorPath()); deps.VerifyDir != want {
 		t.Errorf("VerifyDir = %q, want %q", deps.VerifyDir, want)
-	}
-
-	if want := gateslot.Dir(fabricengine.BoardDir(loc.HubPath)); deps.GateSlots == nil || deps.GateSlots.Dir != want {
-		t.Errorf("GateSlots = %+v, want a pool over %q", deps.GateSlots, want)
 	}
 
 	log := "--- FAIL: TestA (0.00s)\n    --- FAIL: TestA/sub (0.00s)\nFAIL\nFAIL\texample.com/m/a\t0.01s\n"

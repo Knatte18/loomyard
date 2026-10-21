@@ -1,4 +1,4 @@
-// verifypackage.go holds verify-package-missing, the plan check that refuses an author-written Verify or `## verify:` command whose relative package argument names no directory.
+// verifypackage.go holds verify-package-missing, the plan check that refuses an author-written card Verify command whose relative package argument names no directory.
 // It reads the same shell-chain shapes as verifymodule.go's checks, for `go test`, `go build`, `go vet` and `lyx gate test`.
 
 package planparser
@@ -23,21 +23,15 @@ type missingPackageArg struct {
 	Hint string
 }
 
-// checkVerifyPackageMissing implements verify-package-missing: a relative package argument of a `go test`, `go build`, `go vet` or `lyx gate test` command in a card's Verify value, or in the overview's verify chain, must name a directory.
-// A card's value is judged against the directories on disk plus those the plan creates through that card, and the overview's against the whole plan's.
-// A card's Verify is skipped when that card or an earlier one holds a Move group, and the overview chain when any card does, since a Move's destination lives in Intent prose.
+// checkVerifyPackageMissing implements verify-package-missing: a relative package argument of a `go test`, `go build`, `go vet` or `lyx gate test` command in a card's Verify value must name a directory.
+// A card's value is judged against the directories on disk plus those the plan creates through that card.
+// A card's Verify is skipped when that card or an earlier one holds a Move group, since a Move's destination lives in Intent prose.
+// The overview's `## verify:` section is not read, since no gate runs it.
 // It reads static spellings only: an argument behind a variable or inside `bash -c` passes.
 func checkVerifyPackageMissing(plan *Plan, worktreeRoot string) []ValidationError {
 	var findings []ValidationError
 
-	highest := 0
-	anyMove := false
 	moveSeen := false
-	for _, c := range plan.Cards {
-		highest = max(highest, c.Number)
-		anyMove = anyMove || holdsMoveGroup(c)
-	}
-
 	for _, c := range plan.Cards {
 		moveSeen = moveSeen || holdsMoveGroup(c)
 		if c.Verify == "" || moveSeen {
@@ -51,19 +45,6 @@ func checkVerifyPackageMissing(plan *Plan, worktreeRoot string) []ValidationErro
 				Detail: fmt.Sprintf(
 					"card %d Verify: `%s` names %s, which is no directory on disk and none that card %d or an earlier card creates; correct the Verify line%s",
 					c.Number, missing.Command, missing.Arg, c.Number, missingPackageHint(missing),
-				),
-			})
-		}
-	}
-
-	if plan.Verify != "" && !anyMove {
-		for _, missing := range missingPackageArgs(plan.Verify, worktreeRoot, createdDirs(plan, highest)) {
-			findings = append(findings, ValidationError{
-				Check: "verify-package-missing",
-				Ref:   missing.Arg,
-				Detail: fmt.Sprintf(
-					"the overview's `## verify:` section: `%s` names %s, which is no directory on disk and none the plan creates; correct the Verify line%s",
-					missing.Command, missing.Arg, missingPackageHint(missing),
 				),
 			})
 		}

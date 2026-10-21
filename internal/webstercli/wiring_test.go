@@ -38,6 +38,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/cliwire"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -46,6 +47,21 @@ import (
 	"github.com/Knatte18/loomyard/internal/standalonestate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
+
+// seedHubGateConfig writes the hub-wide gate.yaml into hubPath's board directory: the shipped template with tier0 declared, so every gate lists it.
+// hubgeom.WebsterGeometry's GateConfig reads it there.
+func seedHubGateConfig(t *testing.T, hubPath string) {
+	t.Helper()
+	configDir := filepath.Join(fabricengine.BoardDir(hubPath), "_lyx", "config")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
+	}
+	contents := strings.Replace(gateslot.ConfigTemplate(), "tiers: {}", `tiers:
+  tier0: {command: "go test -json {targets} {args}", all_targets: ./..., timeout_min: 60, counter: go-json}`, 1)
+	if err := os.WriteFile(filepath.Join(configDir, "gate.yaml"), []byte(contents), 0o644); err != nil {
+		t.Fatalf("WriteFile(gate.yaml) = %v; want nil", err)
+	}
+}
 
 // hubLocation returns a *lyxcwd.Location standing in for a real hub's prime.
 // Its only filesystem preparation is the worktree's .git directory -- see the file header for why wire's hub branch tolerates the rest being absent.
@@ -210,6 +226,9 @@ func TestWire_StandaloneMode(t *testing.T) {
 
 	if c.geom.WorktreeRoot != target {
 		t.Errorf("geom.WorktreeRoot = %q; want the target %q", c.geom.WorktreeRoot, target)
+	}
+	if c.gateTiers != "none" {
+		t.Errorf("c.gateTiers = %q; want none for a target with no gate.yaml", c.gateTiers)
 	}
 	if c.geom.AnchorRoot != stateDir {
 		t.Errorf("geom.AnchorRoot = %q; want the derived state directory %q", c.geom.AnchorRoot, stateDir)
@@ -694,21 +713,32 @@ func TestWireHub_LanguageSkills(t *testing.T) {
 		name         string
 		fileContents string
 		wantSkills   []string
-		wantTiers    []string
 		wantRename   []string
 		wantRefusal  bool
+		// noGate leaves the hub without a gate.yaml; wantGateRefusal writes one wire cannot load.
+		noGate          bool
+		wantGateRefusal bool
 	}{
 		{
-			name:         "ListedSkillsTiersAndRenameToolsReachRunBeginAndRecoverDeps",
-			fileContents: "skills:\n  - scribe:golang-comments\n  - scribe:golang-testing\nverify_tiers:\n  - run the unit tier\n  - compile the tmux tier\nrename_tools:\n  - rename Go symbols with gopls rename\n",
+			name:         "ListedSkillsAndRenameToolsReachRunBeginAndRecoverDepsAndGateTiersRenderFromGateYaml",
+			fileContents: "skills:\n  - scribe:golang-comments\n  - scribe:golang-testing\nverify_tiers:\n  - a retired key still set\nrename_tools:\n  - rename Go symbols with gopls rename\n",
 			wantSkills:   []string{"scribe:golang-comments", "scribe:golang-testing"},
-			wantTiers:    []string{"run the unit tier", "compile the tmux tier"},
 			wantRename:   []string{"rename Go symbols with gopls rename"},
 		},
 		{
 			name:         "EntryWithLeadingSpaceIsRefused",
 			fileContents: "skills:\n  - \" scribe:golang-comments\"\n",
 			wantRefusal:  true,
+		},
+		{
+			name:            "UnloadableGateYamlRefusesNamingLyxConfigGate",
+			fileContents:    "skills: []\n",
+			wantGateRefusal: true,
+		},
+		{
+			name:         "NoGateYamlWiresAndRendersNone",
+			fileContents: "skills: []\n",
+			noGate:       true,
 		},
 	}
 
@@ -723,10 +753,33 @@ func TestWireHub_LanguageSkills(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(configDir, "language.yaml"), []byte(tt.fileContents), 0o644); err != nil {
 				t.Fatalf("WriteFile(language.yaml) = %v; want nil", err)
 			}
+			switch {
+			case tt.wantGateRefusal:
+				if err := os.WriteFile(filepath.Join(configDir, "gate.yaml"), []byte("tiers: [\n"), 0o644); err != nil {
+					t.Fatalf("WriteFile(gate.yaml) = %v; want nil", err)
+				}
+			case !tt.noGate:
+				seedHubGateConfig(t, hub)
+			}
 
 			c := &websterCLI{}
 			err := c.wire(loc, preflight.ModeHub, "", "", "", "")
 
+			if tt.wantGateRefusal {
+				if err == nil || !strings.Contains(err.Error(), "lyx config gate") {
+					t.Fatalf("wire() = %v; want a refusal naming lyx config gate", err)
+				}
+				return
+			}
+			if tt.noGate {
+				if err != nil {
+					t.Fatalf("wire() = %v; want nil when the hub has no gate.yaml", err)
+				}
+				if c.gateTiers != "none" {
+					t.Errorf("c.gateTiers = %q; want none", c.gateTiers)
+				}
+				return
+			}
 			if tt.wantRefusal {
 				var refusal configLoadRefusal
 				if !errors.As(err, &refusal) {
@@ -755,26 +808,37 @@ func TestWireHub_LanguageSkills(t *testing.T) {
 			if got := c.runDeps().LanguageSkills; !slices.Equal(got, tt.wantSkills) {
 				t.Errorf("runDeps().LanguageSkills = %v; want %v", got, tt.wantSkills)
 			}
-			if got := c.recoverDeps(nil, nil, nil).LanguageSkills; !slices.Equal(got, tt.wantSkills) {
-				t.Errorf("recoverDeps().LanguageSkills = %v; want %v", got, tt.wantSkills)
+			begin, err := c.beginDeps(nil, nil, nil)
+			if err != nil {
+				t.Fatalf("beginDeps() = %v; want nil", err)
 			}
-			if !slices.Equal(c.verifyTiers, tt.wantTiers) {
-				t.Errorf("c.verifyTiers = %v; want %v", c.verifyTiers, tt.wantTiers)
+			recovered, err := c.recoverDeps(nil, nil, nil)
+			if err != nil {
+				t.Fatalf("recoverDeps() = %v; want nil", err)
 			}
-			if got := c.beginDeps(nil, nil, nil).VerifyTiers; !slices.Equal(got, tt.wantTiers) {
-				t.Errorf("beginDeps().VerifyTiers = %v; want %v", got, tt.wantTiers)
+			if !slices.Equal(recovered.LanguageSkills, tt.wantSkills) {
+				t.Errorf("recoverDeps().LanguageSkills = %v; want %v", recovered.LanguageSkills, tt.wantSkills)
 			}
-			if got := c.recoverDeps(nil, nil, nil).VerifyTiers; !slices.Equal(got, tt.wantTiers) {
-				t.Errorf("recoverDeps().VerifyTiers = %v; want %v", got, tt.wantTiers)
+			if !strings.HasPrefix(c.gateTiers, "- tier0:") {
+				t.Errorf("c.gateTiers = %q; want the seeded gate.yaml's tier lines", c.gateTiers)
+			}
+			if begin.GateTiers != c.gateTiers {
+				t.Errorf("beginDeps().GateTiers = %q; want %q", begin.GateTiers, c.gateTiers)
+			}
+			if recovered.GateTiers != c.gateTiers {
+				t.Errorf("recoverDeps().GateTiers = %q; want %q", recovered.GateTiers, c.gateTiers)
 			}
 			if !slices.Equal(c.renameTools, tt.wantRename) {
 				t.Errorf("c.renameTools = %v; want %v", c.renameTools, tt.wantRename)
 			}
-			if got := c.beginDeps(nil, nil, nil).RenameTools; !slices.Equal(got, tt.wantRename) {
-				t.Errorf("beginDeps().RenameTools = %v; want %v", got, tt.wantRename)
+			if !slices.Equal(begin.RenameTools, tt.wantRename) {
+				t.Errorf("beginDeps().RenameTools = %v; want %v", begin.RenameTools, tt.wantRename)
 			}
-			if got := c.recoverDeps(nil, nil, nil).RenameTools; !slices.Equal(got, tt.wantRename) {
-				t.Errorf("recoverDeps().RenameTools = %v; want %v", got, tt.wantRename)
+			if !slices.Equal(recovered.RenameTools, tt.wantRename) {
+				t.Errorf("recoverDeps().RenameTools = %v; want %v", recovered.RenameTools, tt.wantRename)
+			}
+			if _, err := begin.Gate.TierList("batch"); err != nil {
+				t.Errorf("beginDeps().Gate.TierList(batch) = %v; want the seeded gate config", err)
 			}
 		})
 	}

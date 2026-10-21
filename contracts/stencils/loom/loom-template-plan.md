@@ -2,7 +2,7 @@
      top-level stencils package (stencils/stencils.go), seeded to <hub>/_board/_lyx/stencils/loom/
      and read from there at call time by internal/seatengine, which fills it from the lead's value map that loomengine.PlanTable builds (plan.go),
      then hands it to shuttle as the plan agent's entire instruction set.
-     verify_tiers is a required marker filled by loomengine.PlanTable; an empty tier list renders it as none.
+     gate_tiers is a required marker filled by loomengine.PlanTable from the hub's gate.yaml; a hub declaring no tier renders it as none.
      Every marker below is a top-level {{.X}} substitution;
      stencil.FillOptional requires the three original ones non-empty and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go). pattern_directive and friction_directive are the two optional markers: each is filled via stencil.FillOptional and renders as nothing when its own tier is inactive (PATTERN for pattern_directive, Tier 2 for friction_directive).
      parent_directive is a third optional marker, rendered by internal/parentdirective.
@@ -149,7 +149,7 @@ A handle referenced but never declared, or two `Create:` bullets declaring the s
 
 Always write `approved: false` — you never self-approve;
 `Plan-Bouncer`'s approved settle writes it to `true`.
-Body: a short task-framing paragraph, then an ordered **Card Index** (`N — <card-slug> — <one-line intent>`), then the optional plan-level sections `## Shared Decisions`, `## Rename mechanic` (required when any card is type `Rename`), `## verify:`.
+Body: a short task-framing paragraph, then an ordered **Card Index** (`N — <card-slug> — <one-line intent>`), then the optional plan-level sections `## Shared Decisions`, `## Rename mechanic` (required when any card is type `Rename`).
 When the decision record has a `## PATTERN changes` section, copy its bullets into the overview's `## PATTERN changes` section, one per entry, without the added-after-Discussion suffix; the plan gate refuses a mismatch.
 A symbol `Rename` needs the hub's `rename_tools` in `language.yaml`; the plan gate refuses one when the list is empty.
 
@@ -197,18 +197,12 @@ A field with no content is omitted entirely — never write a `none` sentinel on
 An entry appearing in both a card's own target list and its own `Uses:` is a contradiction: is it being changed, or only read?
 That is the `card-field-overlap` finding — see `{{.specs_dir}}/loom/loom-plan-spec.md`'s own Card fields section for the full grammar and the complete validation-check set.
 
-Every `Verify:`/`verify:` value — a card's optional `**Verify:**` and the plan-level `## verify:` section — is one or more runnable shell commands, never prose;
-the plan-level `## verify:` is the single integration check run once at the end of the whole plan.
-A per-card `**Verify:**` is exceptional rather than routine, written only for what a package-scoped automatic test run cannot catch on its own — the plan-level `## verify:` section is the single integration check for the whole plan.
-A card's `**Verify:**` is package-scoped: a module-wide pattern (`./...`, `all`) or a `tmux` or `llm` tag run is refused by `verify-module-wide`, and `lyx gate test [-C <module>] [--tags <tags>] <packages>`, run in the foreground under the gate rule in your system prompt, is the route for a wider or tagged run.
-The plan-level `## verify:` section must cover every package any card targets, running each package's tests including its hermetic build-tagged tests, either by naming each package or by a pattern that covers them.
-`verify-nested-module` in `{{.specs_dir}}/loom/loom-plan-spec.md` names the form the gate refuses for a nested module's packages.
-The section runs the hub's verify tiers, in the order and form this list gives:
-{{.verify_tiers}}
-With `none`, the section builds the code and then runs the tests of every package a card targets.
-You may leave a tier the list calls compiled rather than run unrun in the section.
-Plan-Review flags a targeted package the section leaves unrun.
-See `{{.specs_dir}}/loom/loom-plan-spec.md`'s verify model section for the tier definitions themselves — this file does not restate them.
+The gates run the hub's tier lists over scopes lyx computes, so the plan carries no plan-level verify section and asks for none.
+The hub's tiers and gate lists follow:
+{{.gate_tiers}}
+A card's `**Verify:**` is the optional escape hatch for what no gate expresses, written only for what the gates cannot catch on their own.
+A `**Verify:**` line that tests is one `lyx gate test --wait` call with a tier list and a scope form, never a raw test command or a target list.
+See `{{.specs_dir}}/loom/loom-plan-spec.md`'s verify model section for the gates and scope forms themselves — this file does not restate them.
 
 ### `## Rename mechanic` — reproduce verbatim when any card is type `Rename`
 

@@ -36,7 +36,7 @@ func readSummaryFile(t *testing.T, dir string) string {
 	return string(b)
 }
 
-const triageSectionHead = "\n\n## Integration suite triage\n\nThe plan-level `## verify:` suite failed, but webster's triage did not attribute the failure to this run.\n"
+const triageSectionHead = "\n\n## Integration suite triage\n\nThe `final` gate failed, but webster's triage did not attribute the failure to this run.\n"
 
 const fixCommitsSectionHead = "\n\n## Verify gate fix commits\n\nThe verify-fix fork's commits above the pre-fix head, and the PATTERN departures their messages declare.\n\n"
 

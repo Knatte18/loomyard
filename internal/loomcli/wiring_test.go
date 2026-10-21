@@ -20,10 +20,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
-	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -57,19 +55,19 @@ func seedLoomConfig(t *testing.T, anchorPath string) {
 	}
 }
 
-// hubPublishVerify is the publish_verify value the hub's landing.yaml carries in hubLocation, so a wired config reading a pair's copy instead differs from it.
-const hubPublishVerify = "go test -tags tmux ./..."
+// hubDeploy is the deploy value the hub's landing.yaml carries in hubLocation, so a wired config reading a pair's copy instead differs from it.
+const hubDeploy = "./deploy-hub.sh"
 
-// seedLandingConfig creates <baseDir>/_lyx/config/landing.yaml with the embedded template's contents, its publish_verify set to publishVerify.
+// seedLandingConfig creates <baseDir>/_lyx/config/landing.yaml with the embedded template's contents, its deploy set to deploy.
 // landingshed.LoadConfig is strict (an absent file is an error), so wire() fails on every existing test in this file without the hub's seed.
-func seedLandingConfig(t *testing.T, baseDir, publishVerify string) {
+func seedLandingConfig(t *testing.T, baseDir, deploy string) {
 	t.Helper()
 	configDir := filepath.Join(baseDir, "_lyx", "config")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
 	}
 	cfgPath := filepath.Join(configDir, "landing.yaml")
-	contents := strings.Replace(landingshed.ConfigTemplate(), `publish_verify: ""`, fmt.Sprintf("publish_verify: %q", publishVerify), 1)
+	contents := strings.Replace(landingshed.ConfigTemplate(), `deploy: ""`, fmt.Sprintf("deploy: %q", deploy), 1)
 	if err := os.WriteFile(cfgPath, []byte(contents), 0o644); err != nil {
 		t.Fatalf("WriteFile(%q) = %v; want nil", cfgPath, err)
 	}
@@ -133,7 +131,7 @@ parent_review_wait_min: 60
 }
 
 // hubLocation returns a *lyxcwd.Location standing in for a real hub location, with its anchor path
-// seeded on disk with loom.yaml and a pair landing.yaml that blanks publish_verify, and its hub seeded with loom's repo default and the hub-wide landing.yaml at the board dir and both loom stencils.
+// seeded on disk with loom.yaml and a pair landing.yaml that blanks deploy, and its hub seeded with loom's repo default and the hub-wide landing.yaml at the board dir and both loom stencils.
 func hubLocation(t *testing.T, worktreeName, anchorRel string) *lyxcwd.Location {
 	t.Helper()
 	hub := t.TempDir()
@@ -144,7 +142,7 @@ func hubLocation(t *testing.T, worktreeName, anchorRel string) *lyxcwd.Location 
 	}
 	seedLoomConfig(t, loc.AnchorPath())
 	seedLoomConfig(t, fabricengine.BoardDir(hub))
-	seedLandingConfig(t, fabricengine.BoardDir(hub), hubPublishVerify)
+	seedLandingConfig(t, fabricengine.BoardDir(hub), hubDeploy)
 	seedLandingConfig(t, loc.AnchorPath(), "")
 	// stencilstore.Read hard-errors on a missing file, so the stencils the Spec closures read are seeded into the hub's stencils directory.
 	stencilkit.SeedInto(t, fabricengine.StencilsDir(hub))
@@ -222,13 +220,6 @@ func TestWire_DefaultConfig(t *testing.T) {
 		}
 	})
 
-	t.Run("gate pool is the hub's slot directory", func(t *testing.T) {
-		want := gateslot.Dir(fabricengine.BoardDir(loc.HubPath))
-		if c.env.GateSlots == nil || c.env.GateSlots.Dir != want {
-			t.Errorf("c.env.GateSlots = %+v; want a pool over %q", c.env.GateSlots, want)
-		}
-	})
-
 	// The run-lock path differs from the status-lock path, the pair shedengine.Shed rejects outright when equal.
 	t.Run("run lock differs from the status lock", func(t *testing.T) {
 		if c.shedPaths.LockPath == c.shedPaths.StatusLockPath {
@@ -277,7 +268,13 @@ func TestWire_DefaultConfig(t *testing.T) {
 		}
 
 		// The same value must also be embedded verbatim in c.env.WebsterDeps.
-		if c.env.WebsterDeps.Geom != deps.Geom {
+		// A func field cannot be compared, so the gate config readers are checked for presence and cleared from the copies compared.
+		envGeom, runGeom := c.env.WebsterDeps.Geom, deps.Geom
+		if envGeom.GateConfig == nil || runGeom.GateConfig == nil {
+			t.Error("a webster geometry carries no GateConfig reader; want hubgeom.WebsterGeometry's")
+		}
+		envGeom.GateConfig, runGeom.GateConfig = nil, nil
+		if !reflect.DeepEqual(envGeom, runGeom) {
 			t.Error("c.env.WebsterDeps is not the same value stored in c.runDeps")
 		}
 	})
@@ -321,10 +318,10 @@ func TestWire_DefaultConfig(t *testing.T) {
 		}
 	})
 
-	// landing is hub-wide: the pair's own landing.yaml, which blanks publish_verify, never reaches the wired config.
+	// landing is hub-wide: the pair's own landing.yaml, which blanks deploy, never reaches the wired config.
 	t.Run("a pair landing.yaml does not reach the wired config", func(t *testing.T) {
-		if c.landingCfg.PublishVerify != hubPublishVerify {
-			t.Errorf("c.landingCfg.PublishVerify = %q; want the hub file's %q", c.landingCfg.PublishVerify, hubPublishVerify)
+		if c.landingCfg.Deploy != hubDeploy {
+			t.Errorf("c.landingCfg.Deploy = %q; want the hub file's %q", c.landingCfg.Deploy, hubDeploy)
 		}
 	})
 
@@ -1062,19 +1059,35 @@ func TestWire_LanguageSkills(t *testing.T) {
 	tests := []struct {
 		name    string
 		content string
-		// wantErr is the text the wire error must contain beside wantKey; empty means wire succeeds with wantSkills and wantTiers.
+		// gate is the hub's gate.yaml: empty for none, "two" for two declared tiers, "unloadable" for a file wire cannot load.
+		gate string
+		// wantErr is the text the wire error must contain beside wantKey; empty means wire succeeds with wantSkills and wantGateTiers.
 		wantErr    string
 		wantKey    string
 		wantSkills []string
-		wantTiers  []string
-		wantTools  []string
+		// wantGateTiers is the text the gate_tiers value must start with, and the whole value when it is none.
+		wantGateTiers string
+		wantTools     []string
 	}{
 		{
-			name:       "a listed language reaches the Webster deps and the darn writer after its own",
-			content:    "skills:\n  - scribe:golang-comments\n  - scribe:golang-testing\nverify_tiers:\n  - build first\n  - vet second\nrename_tools:\n  - gopls rename\n",
-			wantSkills: []string{"scribe:golang-comments", "scribe:golang-testing"},
-			wantTiers:  []string{"build first", "vet second"},
-			wantTools:  []string{"gopls rename"},
+			name:          "a listed language reaches the Webster deps and the darn writer after its own, and a retired verify_tiers still loads",
+			content:       "skills:\n  - scribe:golang-comments\n  - scribe:golang-testing\nverify_tiers:\n  - build first\n  - vet second\nrename_tools:\n  - gopls rename\n",
+			gate:          "two",
+			wantSkills:    []string{"scribe:golang-comments", "scribe:golang-testing"},
+			wantGateTiers: "- tier0:",
+			wantTools:     []string{"gopls rename"},
+		},
+		{
+			name:          "no gate.yaml wires and renders the gate tiers as none",
+			content:       "skills: []\n",
+			wantSkills:    []string{},
+			wantGateTiers: "none",
+		},
+		{
+			name:    "an unloadable gate.yaml halts wire naming lyx config gate",
+			content: "skills: []\n",
+			gate:    "unloadable",
+			wantErr: "lyx config gate",
 		},
 		{
 			name:    "an empty skills entry halts wire naming skills and the way forward",
@@ -1083,20 +1096,26 @@ func TestWire_LanguageSkills(t *testing.T) {
 			wantKey: "skills",
 		},
 		{
-			name:    "an empty verify_tiers entry halts wire naming verify_tiers and the way forward",
-			content: "skills:\n  - scribe:golang-comments\nverify_tiers: [\"\"]\n",
+			name:    "an empty rename_tools entry halts wire naming rename_tools and the way forward",
+			content: "skills:\n  - scribe:golang-comments\nrename_tools: [\"\"]\n",
 			wantErr: "lyx config language",
-			wantKey: "verify_tiers",
+			wantKey: "rename_tools",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			loc := hubLocation(t, "pair", ".")
-			seedDarnHubConfig(t, loc.HubPath, `"go test ./..."`, "5")
+			seedDarnHubConfig(t, loc.HubPath, "5")
 			languagePath := configengine.ConfigFile(fabricengine.BoardDir(loc.HubPath), "language")
 			if err := os.WriteFile(languagePath, []byte(tt.content), 0o644); err != nil {
 				t.Fatalf("WriteFile(%q) = %v; want nil", languagePath, err)
+			}
+			switch tt.gate {
+			case "two":
+				writeHubGateConfig(t, loc.HubPath, gateConfigWithTwoTiers())
+			case "unloadable":
+				writeHubGateConfig(t, loc.HubPath, "tiers: [\n")
 			}
 			c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeDarn}
 
@@ -1111,11 +1130,8 @@ func TestWire_LanguageSkills(t *testing.T) {
 			if err != nil {
 				t.Fatalf("wire() = %v; want nil", err)
 			}
-			if !slices.Equal(c.language.VerifyTiers, tt.wantTiers) {
-				t.Errorf("language.VerifyTiers = %q; want %q", c.language.VerifyTiers, tt.wantTiers)
-			}
-			if !slices.Equal(c.env.VerifyTiers, tt.wantTiers) {
-				t.Errorf("env.VerifyTiers = %q; want %q", c.env.VerifyTiers, tt.wantTiers)
+			if !strings.HasPrefix(c.env.GateTiers, tt.wantGateTiers) || (tt.wantGateTiers == "none" && c.env.GateTiers != "none") {
+				t.Errorf("env.GateTiers = %q; want it to start with %q", c.env.GateTiers, tt.wantGateTiers)
 			}
 			if !slices.Equal(c.env.RenameTools, tt.wantTools) {
 				t.Errorf("env.RenameTools = %q; want %q", c.env.RenameTools, tt.wantTools)
@@ -1135,8 +1151,8 @@ func TestWire_LanguageSkills(t *testing.T) {
 			if err != nil {
 				t.Fatalf("PlanTable() = %v; want nil", err)
 			}
-			if got, want := planTable.Values["verify_tiers"], languageconfig.VerifyTiersValue(tt.wantTiers); got != want {
-				t.Errorf("plan table verify_tiers = %q; want %q", got, want)
+			if got := planTable.Values["gate_tiers"]; got != c.env.GateTiers {
+				t.Errorf("plan table gate_tiers = %q; want %q", got, c.env.GateTiers)
 			}
 		})
 	}

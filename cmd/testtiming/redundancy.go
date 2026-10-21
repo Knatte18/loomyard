@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -349,70 +350,72 @@ func runRedundancy(tags, pkgFlag, outPath string) error {
 			return fmt.Errorf("keep directive: %w", err)
 		}
 	}
-	env, cleanupLyx, err := prebuildLyx("go", tags, layout.dir, os.Environ())
-	if err != nil {
-		return err
-	}
-	defer cleanupLyx()
-	pkgs, err := runPackageTimings(tags, patterns, env)
-	if err != nil {
-		return err
-	}
-
-	tmp, err := lyxtemp.MkdirTemp("testtiming-redundancy-")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(tmp)
-
-	coverpkg := make([]string, 0, len(layout.dirs))
-	for p := range layout.dirs {
-		coverpkg = append(coverpkg, p)
-	}
-	sort.Strings(coverpkg)
-
-	var reports []pkgReport
-	var measured []measuredPackage
-	failed := 0
-	for _, importPath := range targets {
-		timing := pkgs[importPath]
-		if timing == nil || timing.noTests || (timing.tests == 0 && timing.action != "fail") {
-			measured = append(measured, measuredPackage{pkg: shortPkg(importPath), noTests: true})
-			continue
-		}
-		report := pkgReport{pkg: shortPkg(importPath), tests: timing.tests, wall: timing.elapsed, serial: timing.serial}
-		// A package whose own run failed is still measured.
-		// Each failing test is listed under "no coverage" as failed.
-		fmt.Fprintf(os.Stderr, "redundancy: %s (%d tests)\n", report.pkg, timing.tests)
-		report.verdicts, err = measurePackage(layout, tags, importPath, strings.Join(coverpkg, ","), tmp, keeps[importPath], env)
+	return withGateSlot(layout.dir, "testtiming -redundancy", func(slotEnv []string, parallel int) error {
+		env, cleanupLyx, err := prebuildLyx("go", tags, layout.dir, slotEnv, parallel)
 		if err != nil {
-			report.err = err.Error()
-		}
-		if report.err != "" {
-			failed++
-		}
-		reports = append(reports, report)
-		measured = append(measured, measuredPackage{pkg: report.pkg, section: renderPackage(report), failed: report.err != ""})
-	}
-	sort.Slice(reports, func(i, j int) bool { return reports[i].pkg < reports[j].pkg })
-
-	text := renderReport(tags, reports)
-	if splicing {
-		if text, err = spliceReport(string(existing), tags, measured); err != nil {
 			return err
 		}
-	}
-	if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
-		return err
-	}
-	if err := os.WriteFile(outPath, []byte(text), 0o644); err != nil {
-		return err
-	}
-	fmt.Fprintf(os.Stderr, "redundancy: wrote %s (%d packages measured)\n", outPath, len(reports))
-	if failed > 0 {
-		return fmt.Errorf("%d package(s) reported an error — see the report", failed)
-	}
-	return nil
+		defer cleanupLyx()
+		pkgs, err := runPackageTimings(tags, patterns, env)
+		if err != nil {
+			return err
+		}
+
+		tmp, err := lyxtemp.MkdirTemp("testtiming-redundancy-")
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(tmp)
+
+		coverpkg := make([]string, 0, len(layout.dirs))
+		for p := range layout.dirs {
+			coverpkg = append(coverpkg, p)
+		}
+		sort.Strings(coverpkg)
+
+		var reports []pkgReport
+		var measured []measuredPackage
+		failed := 0
+		for _, importPath := range targets {
+			timing := pkgs[importPath]
+			if timing == nil || timing.noTests || (timing.tests == 0 && timing.action != "fail") {
+				measured = append(measured, measuredPackage{pkg: shortPkg(importPath), noTests: true})
+				continue
+			}
+			report := pkgReport{pkg: shortPkg(importPath), tests: timing.tests, wall: timing.elapsed, serial: timing.serial}
+			// A package whose own run failed is still measured.
+			// Each failing test is listed under "no coverage" as failed.
+			fmt.Fprintf(os.Stderr, "redundancy: %s (%d tests)\n", report.pkg, timing.tests)
+			report.verdicts, err = measurePackage(layout, tags, importPath, strings.Join(coverpkg, ","), tmp, keeps[importPath], env)
+			if err != nil {
+				report.err = err.Error()
+			}
+			if report.err != "" {
+				failed++
+			}
+			reports = append(reports, report)
+			measured = append(measured, measuredPackage{pkg: report.pkg, section: renderPackage(report), failed: report.err != ""})
+		}
+		sort.Slice(reports, func(i, j int) bool { return reports[i].pkg < reports[j].pkg })
+
+		text := renderReport(tags, reports)
+		if splicing {
+			if text, err = spliceReport(string(existing), tags, measured); err != nil {
+				return err
+			}
+		}
+		if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(outPath, []byte(text), 0o644); err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "redundancy: wrote %s (%d packages measured)\n", outPath, len(reports))
+		if failed > 0 {
+			return fmt.Errorf("%d package(s) reported an error — see the report", failed)
+		}
+		return nil
+	})
 }
 
 // measurePackage builds the package's coverage binary, runs each top-level test alone and classifies the runs.
@@ -430,7 +433,7 @@ func measurePackage(layout moduleLayout, tags, importPath, coverpkg, tmp string,
 	if tags != "" {
 		args = append(args, "-tags", tags)
 	}
-	if _, err := goOutput([]string{"CGO_ENABLED=1"}, args, importPath); err != nil {
+	if _, err := goOutput(append(slices.Clone(env), "CGO_ENABLED=1"), args, importPath); err != nil {
 		return nil, fmt.Errorf("coverage binary: %w", err)
 	}
 	defer os.Remove(bin)

@@ -108,6 +108,7 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktree), WorktreeName: filepath.Base(worktree), AnchorRel: "backend"}
 	seedValidPlanDir(t, planparser.PlanDir(layout.AnchorPath()))
 	seedHubStencils(t, layout.HubPath)
+	seedHubGateConfig(t, layout.HubPath)
 	// begin-batch/record-batch/recover-batch read HEAD at layout.AnchorPath() (RunDeps.WorktreeRoot,
 	// unchanged by this batch), which requires a literal .git at that path -- link the anchored
 	// directory back onto worktree's real .git so it shares the same live ref/commit history rather
@@ -983,8 +984,8 @@ func TestRebaselineCmd_EditedCardOfFailedBatchThenRecover(t *testing.T) {
 	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &out, []string{"1", "--wait", "1ns"}); code != 0 {
 		t.Fatalf("recover-batch 1 = %d; want 0, output: %s", code, out.String())
 	}
-	if !strings.Contains(prompt, "./internal/edited") {
-		t.Errorf("recovery prompt lacks the edited card's gate package ./internal/edited; got %q", prompt)
+	if want := "  - `lyx gate test --wait --tier 0 --card 1-only`\n"; !strings.Contains(prompt, want) {
+		t.Errorf("recovery prompt lacks the edited card's gate call %q; got %q", want, prompt)
 	}
 
 	// The recovery strand is now in flight: a further edit of its card is accepted and reported as amended.

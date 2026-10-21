@@ -91,7 +91,7 @@ func TestTwillStencils_HostNeutral(t *testing.T) {
 }
 
 // TestHubGenericStencils_NameNoGoTiers asserts the plan, Plan-Review and implementer prompts spell no Go verify-tier command,
-// so a hub whose verify_tiers list is empty gets none; a hub with a list gets its tiers through the verify_tiers marker.
+// so a hub declaring no tier gets none; a hub with tiers gets them through the gate_tiers marker.
 //
 //lyx:guard
 func TestHubGenericStencils_NameNoGoTiers(t *testing.T) {
@@ -105,7 +105,7 @@ func TestHubGenericStencils_NameNoGoTiers(t *testing.T) {
 		}
 		for _, phrase := range banned {
 			if strings.Contains(string(text), phrase) {
-				t.Errorf("stencil %q contains the Go tier command %q; a hub's tiers arrive through the verify_tiers marker", name, phrase)
+				t.Errorf("stencil %q contains the Go tier command %q; a hub's tiers arrive through the gate_tiers marker", name, phrase)
 			}
 		}
 	}

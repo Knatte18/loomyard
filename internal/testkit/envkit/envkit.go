@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -42,7 +43,6 @@ import (
 // nilLegal holds the dotted paths NilSeams skips: seams whose nil is a documented default rather than a missing wiring.
 var nilLegal = map[string]bool{
 	"Now":                               true,
-	"GateSlots":                         true,
 	"VerifyMergeBase":                   true,
 	"VerifyTreeScope":                   true,
 	"DiscussionHistory":                 true,
@@ -58,9 +58,8 @@ var nilLegal = map[string]bool{
 	"Landing.Notify":                    true,
 	"Landing.Reconcile":                 true,
 	"Landing.VerifyCommand":             true,
-	"Landing.PublishVerifySkip":         true,
+	"Landing.PublishSkip":               true,
 	"Landing.VerifyWaitMark":            true,
-	"Landing.GateSlots":                 true,
 	"Landing.FailingTests":              true,
 	"Landing.Registry":                  true,
 	"Landing.Config.EngineTrailers":     true,
@@ -77,6 +76,7 @@ var nilLegal = map[string]bool{
 	"WebsterDeps.InstructionFiles":      true,
 	"WebsterDeps.Geom.Git":              true,
 	"WebsterDeps.Geom.GateSlots":        true,
+	"WebsterDeps.Geom.GateConfig":       true,
 	"InnerRun.Sleep":                    true,
 	"InnerRun.ReviewWait":               true,
 	"InnerRun.Now":                      true,
@@ -167,6 +167,9 @@ func LandingDeps(dir string) landingshed.Deps {
 		ApprovalPath:      filepath.Join(dir, "approval.json"),
 		RejectionPath:     filepath.Join(dir, "rejection.json"),
 		TaskHead:          func() (string, error) { return "head", nil },
+		PublishCommand:    func() (string, error) { return "lyx gate test --wait --tier 2 --all", nil },
+		BaseCommand:       func() (string, error) { return "lyx gate test --wait --tier 0 --all", nil },
+		GateTiers:         fixedGateTiers,
 		Lock: landingshed.ParentLockDeps{
 			Store:          &parentlock.Store{Dir: filepath.Join(dir, "parent-lock")},
 			Owner:          func() (parentlock.Owner, error) { return parentlock.Owner{Slug: "fixture", RunID: "fixture"}, nil },
@@ -228,6 +231,29 @@ func TemplateSetting(module, key string) (any, error) {
 	return value, nil
 }
 
+// fixedGateLists are the gate lists the kit's seams answer from, so a resolved gate builds without a hub's gate.yaml.
+var fixedGateLists = map[string][]int{"round": {0, 1}, "landing": {0, 1}, "publish": {2}}
+
+// fixedGateTiers answers a named gate's tier list from fixedGateLists, and errors naming a gate the kit holds no list for.
+func fixedGateTiers(gate string) ([]int, error) {
+	list, ok := fixedGateLists[gate]
+	if !ok {
+		return nil, fmt.Errorf("envkit: no fixed list for gate %q", gate)
+	}
+	return list, nil
+}
+
+// fixedRoundGate is a loomshed.RoundGate over fixed gate lists, so a resolved verify gate builds without a hub's gate.yaml.
+func fixedRoundGate() loomshed.RoundGate {
+	return loomshed.RoundGate{
+		Tiers: fixedGateLists["round"],
+		Render: func(scope ...string) string {
+			return strings.Join(append([]string{"lyx", "gate", "test", "--wait", "--tier", "0", "--tier", "1"}, scope...), " ")
+		},
+		GateTiers: fixedGateTiers,
+	}
+}
+
 // FullEnv returns a `shedrecipe.Env` with every path field an absolute path under one `t.TempDir()` and every seam any registered engine requires filled.
 // A seam added to the registry's requirements must be filled here, which NilSeams(FullEnv(t)) catches.
 func FullEnv(t testing.TB) shedrecipe.Env {
@@ -240,6 +266,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		WorktreeRoot:       mustMkdir(t, filepath.Join(dir, "worktree")),
 		VerifyDir:          mustMkdir(t, filepath.Join(dir, "verify")),
 		VerifyCommand:      func() (string, error) { return "go test ./...", nil },
+		Round:              func() (loomshed.RoundGate, error) { return fixedRoundGate(), nil },
 		StatusPath:         filepath.Join(dir, "status.json"),
 		StatusLockPath:     filepath.Join(dir, "status.json.lock"),
 		StencilsDir:        mustMkdir(t, filepath.Join(dir, "stencils")),
@@ -248,6 +275,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		RunScratchDir:      mustMkdir(t, filepath.Join(dir, "run-scratch")),
 		DecisionRecordPath: filepath.Join(dir, "decision-record.md"),
 		PatternRecordPath:  filepath.Join(dir, "decision-record.md"),
+		RefuseRaw:          []string{"go test"},
 		SupportLogPath:     filepath.Join(dir, "support-log.md"),
 		RelevantPath:       filepath.Join(dir, "relevant.md"),
 		DescriptionPath:    filepath.Join(dir, "description.md"),

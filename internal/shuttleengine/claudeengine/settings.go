@@ -9,8 +9,8 @@
 // denying AskUserQuestion in autonomous runs (where there is no operator present to answer it),
 // and recording — never denying — a live AskUserQuestion call in interactive runs so the run loop holds it like any turn end without output.
 // The Bash tool's default stdin is set by the env file Prepare writes (see command.go), not by a hook.
-// The Bash denies render the rows of internal/shellguard's table, which installs the machine sleep, raw go, in-place edit and computed-path rm denies for every run and the python deny unless the run's config switches it off.
-// buildDenyNotice, built from the same standingDenies table so the two cannot drift, is the one-line system-prompt notice announcing each installed deny to the session.
+// The Bash denies render the rows of internal/shellguard's table, which installs the machine sleep, raw go, in-place edit and computed-path rm denies for every run, the refuse-raw deny when the run's config lists a prefix, and the python deny unless the run's config switches it off.
+// buildDenyNotice, built from the same standingDeniesFor list so the two cannot drift, is the one-line system-prompt notice announcing each installed deny to the session.
 // Every document also sets `promptSuggestionEnabled` to false for shuttle-launched sessions: a plain capture carries no styling,
 // so a greyed suggestion in an empty input box would read as a draft and IdleSession would never pass.
 // The styled read is what lets a hand-added session's suggestion read as empty.
@@ -131,7 +131,7 @@ type denyInputs struct {
 }
 
 // standingDeny is one PreToolUse deny lyx installs, with the system-prompt sentence announcing it.
-// buildSettings and buildDenyNotice both iterate standingDenies, so the hooks and their announcement cannot drift.
+// buildSettings and buildDenyNotice both iterate standingDeniesFor, so the hooks and their announcement cannot drift.
 type standingDeny struct {
 	// matcher is the tool name the PreToolUse entry matches.
 	matcher string
@@ -185,10 +185,12 @@ func claudeDenies() []standingDeny {
 	}
 }
 
-// standingDenies lists lyx's denies in the order their PreToolUse entries appear:
-// the Claude denies, then every shell guard row.
-// An interactive run's AskUserQuestion hook only records, never denies, so it stays outside the table.
-var standingDenies = append(claudeDenies(), shellGuardDenies()...)
+// standingDeniesFor lists lyx's denies in the order their PreToolUse entries appear:
+// the Claude denies, then every shell guard row, the refuse-raw row among them when refuseRaw is non-empty.
+// An interactive run's AskUserQuestion hook only records, never denies, so it stays outside the list.
+func standingDeniesFor(refuseRaw []string) []standingDeny {
+	return append(claudeDenies(), shellGuardDenies(refuseRaw)...)
+}
 
 // bashForegroundPhrase is Claude's phrase for running a long command in the foreground, which the raw go row's steer and notice carry.
 var bashForegroundPhrase = "with the Bash tool timeout set to " + bashMaxTimeoutMS
@@ -205,10 +207,10 @@ func shellGuardInstalled(sw shellguard.Switch, in denyInputs) bool {
 	return known && installed(in)
 }
 
-// shellGuardDenies renders every shellguard row as a standing deny, in table order.
-func shellGuardDenies() []standingDeny {
+// shellGuardDenies renders every shellguard row for the told refuse list as a standing deny, in table order.
+func shellGuardDenies(refuseRaw []string) []standingDeny {
 	var denies []standingDeny
-	for _, row := range shellguard.Rows(bashForegroundPhrase) {
+	for _, row := range shellguard.Rows(bashForegroundPhrase, refuseRaw) {
 		denies = append(denies, renderShellGuard(row))
 	}
 	return denies
@@ -242,7 +244,7 @@ func renderShellGuard(row shellguard.Row) standingDeny {
 func buildDenyNotice(interactive bool, cfg shuttleengine.Config, claude Config, forkSubagents, allowAgentTool bool) string {
 	in := denyInputs{interactive: interactive, cfg: cfg, claude: claude, forkSubagents: forkSubagents, allowAgentTool: allowAgentTool}
 	var sentences []string
-	for _, deny := range standingDenies {
+	for _, deny := range standingDeniesFor(cfg.RefuseRaw) {
 		if deny.notice != "" && deny.installed(in) {
 			sentences = append(sentences, deny.notice)
 		}
@@ -262,7 +264,8 @@ func recordingCommand(hookEventName, quotedEventsPath string) string {
 
 // buildSettings marshals settings.json: a Stop hook and the other recording hooks appending their events to eventsPathPosix, and PreToolUse guardrails per cfg, claude and interactive.
 // eventsPathPosix must be a git-bash POSIX path (from shuttleengine.PosixPath); it's embedded via shQuote to escape any apostrophes.
-// Agent-tool and AskUserQuestion denies are controlled by claude and the python deny by cfg; forkSubagents narrows the Agent deny to non-fork subagent types and adds a webster-verb guard,
+// The denies are the entries of standingDeniesFor(cfg.RefuseRaw).
+// Agent-tool and AskUserQuestion denies are controlled by claude, the python deny by cfg and the refuse-raw deny by cfg.RefuseRaw; forkSubagents narrows the Agent deny to non-fork subagent types and adds a webster-verb guard,
 // and allowAgentTool drops the Agent deny entirely while leaving the webster-verb guard keyed on forkSubagents alone.
 // Every SessionStart source is recorded exactly once.
 // A non-empty contextAfterCompaction splits the SessionStart hook in two: one entry records every source but compaction, and the compaction entry records the event and then runs that command verbatim, so its standard output reaches the session's context.
@@ -300,7 +303,7 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 	}
 
 	in := denyInputs{interactive: interactive, cfg: cfg, claude: claude, forkSubagents: forkSubagents, allowAgentTool: allowAgentTool}
-	for _, deny := range standingDenies {
+	for _, deny := range standingDeniesFor(cfg.RefuseRaw) {
 		if deny.installed(in) {
 			doc.Hooks.PreToolUse = append(doc.Hooks.PreToolUse, hookEntry{
 				Matcher: deny.matcher,
@@ -331,12 +334,13 @@ const noticeTextForbiddenChars = steerTextForbiddenChars + "\n\r"
 
 // init panics if any steer constant contains a forbidden character (checked at package load).
 func init() {
-	for _, row := range shellguard.Rows(bashForegroundPhrase) {
+	sampleRefuseRaw := []string{"go test"}
+	for _, row := range shellguard.Rows(bashForegroundPhrase, sampleRefuseRaw) {
 		if _, known := shellSwitchInstalled[row.Switch]; !known {
 			panic(fmt.Sprintf("claudeengine: shellguard row %q hangs on switch %q, which shellGuardInstalled does not know, so the row would stay uninstalled", row.Name, row.Switch))
 		}
 	}
-	for _, deny := range standingDenies {
+	for _, deny := range standingDeniesFor(sampleRefuseRaw) {
 		if strings.ContainsAny(deny.steer, steerTextForbiddenChars) {
 			panic(fmt.Sprintf("claudeengine: steer text contains a forbidden character (one of %q), which would break the JSON payload or the echo hook command: %q", steerTextForbiddenChars, deny.steer))
 		}

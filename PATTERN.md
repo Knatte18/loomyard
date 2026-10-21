@@ -11,7 +11,7 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-durable-vs-ephemeral-state` — Adding a file: tracked under `_lyx`, never-tracked under `.lyx`, same subpath. — [background](pattern/PATTERN-durable-vs-ephemeral-state.md)
 - `PATTERN-hub-containment` — Linking hub-level containers or writing the hub workspace file: from the hub only. — [background](pattern/PATTERN-hub-containment.md)
 - `PATTERN-hub-wide-config` — A hub-level config module: `HubWide` in `configreg`, its file on the board only. — [background](pattern/PATTERN-hub-wide-config.md)
-- `PATTERN-sparse-hub-base` — Writing a hub's base file (a hub-wide module's hub file or a per-worktree repo default, not seed-only): only the units the hub tuned, never a template fill; only `hubreconcile`'s one-time walk strip drops a unit the template holds, bar `lenses`' template-equal entries. — [background](pattern/PATTERN-sparse-hub-base.md)
+- `PATTERN-sparse-hub-base` — Writing a hub's base file: only the units the hub tuned, never a template fill; only `hubreconcile`'s one-time walk strip drops a unit the template holds. — [background](pattern/PATTERN-sparse-hub-base.md)
 - `PATTERN-hub-suffix` — Touching hub naming: `-LYXHUB` is the sole hub container suffix. (test) — [background](pattern/PATTERN-hub-suffix.md)
 
 ## CLI
@@ -30,7 +30,7 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-fabric-git` — Running git on warp or weft: only `internal/fabricengine`, in-process, never raw git. — [background](pattern/PATTERN-fabric-git.md)
 - `PATTERN-fabric-destruction-chokepoint` — Destroying anything in fabric: only `internal/fabricengine/destroy.go`. — [background](pattern/PATTERN-fabric-destruction-chokepoint.md)
 - `PATTERN-fabric-write-containment` — Writing `_launchers` or the workspace file in `fabricengine`: via a hub `os.Root`, never raw `os` or `fslink`.
-- `PATTERN-push-both-sides` — Pushing run records from Go: the pair's code branch goes along, and a status push is detached. — [background](pattern/PATTERN-push-both-sides.md)
+- `PATTERN-push-both-sides` — Pushing run records from Go: the code branch goes along. — [background](pattern/PATTERN-push-both-sides.md)
 - `PATTERN-push-failure-visible` — A push refused after its retry: a failed-push record and a creel notice. (test)
 - `PATTERN-mutation-record` — Adding a mutating fabric verb: it fills a `*Mutations` record; its result embeds `MutationRecord`. — [background](pattern/PATTERN-mutation-record.md)
 - `PATTERN-pair-teardown` — Tearing down a pair: only via `internal/pairteardown`. (test) — [background](pattern/PATTERN-pair-teardown.md)
@@ -49,7 +49,7 @@ Structural invariants, one line per entry: when it applies and what it requires.
 
 - `PATTERN-shed-producer-seam` — Importing into `internal/shedengine`: only stdlib, `state` and `lock`; its status and lock paths are caller-supplied.
 - `PATTERN-shed-recipe-registry` — Adding a producer: one `map[string]Constructor` in `internal/shedrecipe` behind `Lookup`, bar `Implementer`'s; no `init()`/`Register`/`lyxcwd`.
-- `PATTERN-recipe-setting-lookup` — Giving a recipe row a value: looked up by key, never its own `Env` field. — [background](pattern/PATTERN-recipe-setting-lookup.md)
+- `PATTERN-recipe-setting-lookup` — Giving a recipe row a value: never its own `Env` field. — [background](pattern/PATTERN-recipe-setting-lookup.md)
 - `PATTERN-command-row` — Adding a side-action row to a recipe: a `Command` row over its config keys, its command read from the template and board default layer only, never a new engine.
 - `PATTERN-shed-verb-set` — Adding a run, step, status, pause or goto verb: generic bodies only in `internal/shedverbs`. (test) — [background](pattern/PATTERN-shed-verb-set.md)
 - `PATTERN-shed-driver` — Driving a shed run in Go, deciding its stops or spawning a tackler: only `internal/sheddriver`. (test) — [background](pattern/PATTERN-shed-driver.md)
@@ -64,7 +64,7 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-glyph-conversion-chokepoint` — Converting glyphs and paths: only via `glyph`. — [background](pattern/PATTERN-glyph-conversion-chokepoint.md)
 - `PATTERN-gate-self-check-parity` — Adding a mechanical gate: its closure and CLI self-check call one package function. — [background](pattern/PATTERN-gate-self-check-parity.md)
 - `PATTERN-verified-tree` — Running a verify command: only via `verifytree.Verify`. (test) — [background](pattern/PATTERN-verified-tree.md)
-- `PATTERN-gate-slot` — Running a gate build or test: only in a `-p`-capped, `-trimpath` hub slot of `internal/gateslot`.
+- `PATTERN-gate-slot` — Running a gate build or test: only in held `internal/gateslot` slots. — [background](pattern/PATTERN-gate-slot.md)
 - `PATTERN-trimpath-safe-root` — Locating the module root in code a gate run builds: never from a `runtime.Caller` path alone, which `-trimpath` makes module-relative.
 - `PATTERN-batcher-registry` — Choosing webster's execution unit: the batch the active `batcher.yaml` profile derives. — [background](pattern/PATTERN-batcher-registry.md)
 - `PATTERN-review-round` — Review and fix round: review accepted on disk before any edit, each finding fixed or disputed, end on a verdict. — [background](pattern/PATTERN-review-round.md)
@@ -111,6 +111,7 @@ Structural invariants, one line per entry: when it applies and what it requires.
 
 ## Testing
 
+- `PATTERN-test-tiers` — Running a hub's tests: only through `lyx gate test`'s tiers. — [background](pattern/PATTERN-test-tiers.md)
 - `PATTERN-test-economy` — Writing a test: it pins public-surface behavior no test covers yet, else it extends one. — [background](pattern/PATTERN-test-economy.md)
 - `PATTERN-test-speed` — Writing a test: lowest fitting tier, injected clocks, `t.Parallel` by default. (test) — [background](pattern/PATTERN-test-speed.md)
 - `PATTERN-test-isolation` — Testing a package: git spawners use `gitkit.HermeticGitEnv()`. (test) — [background](pattern/PATTERN-test-isolation.md)

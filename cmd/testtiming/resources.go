@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -73,58 +74,69 @@ func runResources(tags, pkgFlag string) error {
 	if err != nil {
 		return fmt.Errorf("read the working directory: %w", err)
 	}
-	lyxEnv, cleanupLyx, err := prebuildLyx("go", tags, cwd, os.Environ())
-	if err != nil {
-		return err
-	}
-	defer cleanupLyx()
-	env, parallel, release, err := takeGateSlot(context.Background(), cwd, lyxEnv)
+	return withGateSlot(cwd, "testtiming -resources", func(slotEnv []string, parallel int) error {
+		env, cleanupLyx, err := prebuildLyx("go", tags, cwd, slotEnv, parallel)
+		if err != nil {
+			return err
+		}
+		defer cleanupLyx()
+
+		tier := "Tier 1 (offline)"
+		if tags != "" {
+			tier = "Tags: " + tags
+		}
+
+		loadBefore := readLoadAverage()
+		rows := make([]resourceRow, 0, len(packages))
+		for _, importPath := range packages {
+			row, err := measurePackageResources(tags, importPath, env, parallel)
+			if err != nil {
+				return err
+			}
+			rows = append(rows, row)
+		}
+		loadAfter := readLoadAverage()
+
+		fmt.Print(renderResources(tier, rows, loadBefore, loadAfter, systemdScopeUsable()))
+		fmt.Print("\n", renderCensus(rows))
+
+		var failed []string
+		for _, row := range rows {
+			if row.failed {
+				failed = append(failed, shortPkg(row.pkg))
+			}
+		}
+		if len(failed) > 0 {
+			return fmt.Errorf("go test reported failures in %d package(s): %s", len(failed), strings.Join(failed, ", "))
+		}
+		return nil
+	})
+}
+
+// withGateSlot runs mode inside one gate slot held under site for as long as mode runs, and releases it when mode returns.
+// mode gets the process environment as gateslot.HolderEnv sets it for the held slot, and the `-p` value to run under: the pool's tier0 parallel, or the CPU count where the hub declares no tier0.
+// Outside every hub no slot is held, mode gets the environment with `-trimpath` alone, and the `-p` value is the CPU count.
+// Every mode appends the environment to each go command it runs, so a gate run inside inherits the slot.
+func withGateSlot(cwd, site string, mode func(env []string, parallel int) error) error {
+	lease, tier0Parallel, release, err := takeGateSlot(context.Background(), cwd, site)
 	if err != nil {
 		return err
 	}
 	defer release()
 
-	tier := "Tier 1 (offline)"
-	if tags != "" {
-		tier = "Tags: " + tags
+	parallel := tier0Parallel
+	if parallel < 1 {
+		parallel = runtime.NumCPU()
 	}
-
-	loadBefore := readLoadAverage()
-	rows := make([]resourceRow, 0, len(packages))
-	for _, importPath := range packages {
-		row, err := measurePackageResources(tags, importPath, env, parallel)
-		if err != nil {
-			return err
-		}
-		rows = append(rows, row)
-	}
-	loadAfter := readLoadAverage()
-
-	fmt.Print(renderResources(tier, rows, loadBefore, loadAfter, systemdScopeUsable()))
-	fmt.Print("\n", renderCensus(rows))
-
-	var failed []string
-	for _, row := range rows {
-		if row.failed {
-			failed = append(failed, shortPkg(row.pkg))
-		}
-	}
-	if len(failed) > 0 {
-		return fmt.Errorf("go test reported failures in %d package(s): %s", len(failed), strings.Join(failed, ", "))
-	}
-	return nil
+	return mode(gateslot.HolderEnv(os.Environ(), lease, tier0Parallel), parallel)
 }
 
-// takeGateSlot returns the environment and -p cap one measured run uses: baseEnv, plus the slot's variables inside a hub.
-// Inside a hub it holds one slot of the hub's pool until release and writes no wait record; outside a hub it returns the template's cap with no slot.
-func takeGateSlot(ctx context.Context, cwd string, baseEnv []string) (env []string, parallel int, release func(), err error) {
+// takeGateSlot holds one slot of the hub's pool under site, without a wait record, and returns the lease, the pool's tier0 parallel and the release.
+// Outside a hub it holds no slot and returns a nil lease, a tier0 parallel of 0 and a release that does nothing.
+func takeGateSlot(ctx context.Context, cwd, site string) (lease *gateslot.Lease, tier0Parallel int, release func(), err error) {
 	location, err := lyxcwd.ResolveWorktree(cwd)
 	if errors.Is(err, lyxcwd.ErrNotAGitRepo) || (err == nil && !preflight.BoardLyxPresent(location)) {
-		template, err := gateslot.TemplateConfig()
-		if err != nil {
-			return nil, 0, nil, fmt.Errorf("read the gate template: %w", err)
-		}
-		return baseEnv, template.GoParallel, func() {}, nil
+		return nil, 0, func() {}, nil
 	}
 	if err != nil {
 		return nil, 0, nil, fmt.Errorf("resolve the worktree of %s: %w", cwd, err)
@@ -137,7 +149,7 @@ func takeGateSlot(ctx context.Context, cwd string, baseEnv []string) (env []stri
 	}
 	waitCtx, cancel := context.WithTimeout(ctx, shuttleengine.DefaultAwaitCap)
 	defer cancel()
-	lease, err := pool.Acquire(waitCtx, gateslot.Holder{Worktree: location.WorktreePath(), Site: "testtiming -resources"})
+	lease, err = pool.Acquire(waitCtx, gateslot.Holder{Worktree: location.WorktreePath(), Site: site})
 	if err != nil {
 		return nil, 0, nil, fmt.Errorf("acquire a gate slot: %w", err)
 	}
@@ -146,7 +158,7 @@ func takeGateSlot(ctx context.Context, cwd string, baseEnv []string) (env []stri
 			fmt.Fprintln(os.Stderr, "testtiming: release the gate slot:", err)
 		}
 	}
-	return lease.Env(baseEnv), limits.GoParallel, release, nil
+	return lease, limits.Tier0Parallel, release, nil
 }
 
 // measurePackageResources runs `go test` over importPath with leftoverMarkerEnv set in the child's environment and returns what the run cost.

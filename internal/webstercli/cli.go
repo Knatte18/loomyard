@@ -118,9 +118,9 @@ type websterCLI struct {
 	// wireHub loads them once per process from the hub's language.yaml; wireStandalone leaves them empty.
 	languageSkills []string
 
-	// verifyTiers are the hub's verify tiers the fork and recovery prompts render.
-	// wireHub loads them once per process from the hub's language.yaml; wireStandalone leaves them empty.
-	verifyTiers []string
+	// gateTiers are the hub's rendered tier and gate-list lines the fork and recovery prompts take.
+	// wireHub and wireStandalone load them once per process from gate.yaml; an absent file renders none.
+	gateTiers string
 
 	// renameTools are the hub's structure-aware rename tools the fork and recovery prompts render.
 	// wireHub loads them once per process from the hub's language.yaml; wireStandalone leaves them empty.

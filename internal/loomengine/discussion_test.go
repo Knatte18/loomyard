@@ -88,7 +88,7 @@ func TestProducerSpecs_SkillsAndParentDirective(t *testing.T) {
 		"discussion-autonomous":  func(parent string) ([]string, string, error) { return leadOf(false, parent) },
 		"plan": func(parent string) ([]string, string, error) {
 			return leadOfTable(func(stencilsDir string) (seatengine.Table, error) {
-				return PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), cfg, reg, nil)
+				return PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), cfg, reg, "none")
 			}, parent)
 		},
 		"rework": func(parent string) ([]string, string, error) {

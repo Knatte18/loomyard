@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -20,6 +21,7 @@ func TestMain(m *testing.M) {
 	if record := os.Getenv(standInGoRecordEnv); record != "" {
 		os.Exit(runStandInGo(record, os.Args[1:]))
 	}
+	gitkit.HermeticGitEnv()
 	os.Exit(tmuxkit.Main(m))
 }
 

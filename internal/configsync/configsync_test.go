@@ -584,9 +584,9 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 		{
 			name:         "landing absent with a prime copy is seeded from the prime",
 			module:       "landing",
-			primeFile:    "publish_verify: go test -tags tmux ./...\n",
+			primeFile:    "deploy: make deploy-prime\n",
 			wantSeed:     SeedPrime,
-			wantContains: []string{"go test -tags tmux ./..."},
+			wantContains: []string{"make deploy-prime"},
 			wantAbsent:   []string{"require_pr_to_base:"},
 		},
 		{
@@ -852,7 +852,7 @@ func TestReconcileHubWideAt_StripsAnUnmigratedBaseOnce(t *testing.T) {
 	const modelsTuned = "zephyr:\n  engine: claude\n  model: claude-zephyr-1\n"
 	const formerRoles = "prompt_cache_ttl_roles:\n  driver: 1h\n  webster: 1h\n"
 	loomFormer := strings.Replace(loomTemplate, "discussion_lenses: twill-discussion", `discussion_lenses: ""`, 1)
-	darnTuned := strings.Replace(darnTemplate, `verify: ""`, "verify: make check", 1)
+	darnTuned := strings.Replace(darnTemplate, "writer_timeout_min: 180", "writer_timeout_min: 77", 1)
 	if loomFormer == loomTemplate || darnTuned == darnTemplate {
 		t.Fatal("the loom or darn template no longer holds the line this test rewrites")
 	}
@@ -877,7 +877,7 @@ func TestReconcileHubWideAt_StripsAnUnmigratedBaseOnce(t *testing.T) {
 			name:         "unmigrated board is stripped to header-only bases, keeps a tuned unit and gets the marker",
 			overrides:    map[string]string{"loom": loomFormer, "darn": darnTuned, "models": modelsTuned},
 			options:      HubWideOptions{Apply: true, StripBase: true, SeedDefaults: true},
-			wantKept:     map[string][]string{"darn": {"verify: make check"}},
+			wantKept:     map[string][]string{"darn": {"writer_timeout_min: 77"}},
 			wantStripped: map[string][]string{"loom": {"discussion_lenses", "review_max_bounces"}, "darn": {"verify_attempts"}},
 			wantMarker:   true,
 		},

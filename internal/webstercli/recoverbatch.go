@@ -55,7 +55,12 @@ func recoveryNotDoneMessage(batchName string, batchNumber int, status string, re
 }
 
 // recoverDeps builds the websterengine.RecoverDeps for this CLI's current wiring over the loaded plan, execution batches and run state.
-func (c *websterCLI) recoverDeps(plan *planparser.Plan, batches []batcher.Batch, st *websterengine.State) websterengine.RecoverDeps {
+// It refuses, before the caller mutates anything, a gate config whose `card` or `batch` list the prompt cannot render.
+func (c *websterCLI) recoverDeps(plan *planparser.Plan, batches []batcher.Batch, st *websterengine.State) (websterengine.RecoverDeps, error) {
+	gate, err := c.loadGateConfig()
+	if err != nil {
+		return websterengine.RecoverDeps{}, err
+	}
 	return websterengine.RecoverDeps{
 		Starter:        c.starter,
 		Plan:           plan,
@@ -72,9 +77,10 @@ func (c *websterCLI) recoverDeps(plan *planparser.Plan, batches []batcher.Batch,
 		FrictionDir:    c.frictionDir,
 		ParentBranch:   c.parentBranch,
 		LanguageSkills: c.languageSkills,
-		VerifyTiers:    c.verifyTiers,
+		GateTiers:      c.gateTiers,
 		RenameTools:    c.renameTools,
-	}
+		Gate:           gate,
+	}, nil
 }
 
 // recoverBatchCmd builds the `recover-batch <nn>` subcommand.
@@ -191,7 +197,11 @@ Example:
 				}
 			}
 
-			deps := c.recoverDeps(plan, batches, st)
+			deps, err := c.recoverDeps(plan, batches, st)
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
 
 			bs, spawned, err := websterengine.RecoverSpawnOrAttach(deps, batchNumber, recoverRealClock{})
 			if err != nil {

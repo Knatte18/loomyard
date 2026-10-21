@@ -15,8 +15,8 @@ const moduleName = "language"
 // skillsKey is the key holding the skills every code role loads.
 const skillsKey = "skills"
 
-// verifyTiersKey is the key holding the hub's verify-tier rules.
-const verifyTiersKey = "verify_tiers"
+// retiredVerifyTiersKey is the retired key that held the hub's verify-tier rules, which gate.yaml's tiers replace.
+const retiredVerifyTiersKey = "verify_tiers"
 
 // renameToolsKey is the key holding the hub's structure-aware rename tools.
 const renameToolsKey = "rename_tools"
@@ -30,7 +30,6 @@ var ErrUnusable = errors.New("language config unusable")
 // config mirrors language.yaml's keys as raw nodes, so Load can check their YAML shape.
 type config struct {
 	Skills      yaml.Node `yaml:"skills"`
-	VerifyTiers yaml.Node `yaml:"verify_tiers"`
 	RenameTools yaml.Node `yaml:"rename_tools"`
 }
 
@@ -39,8 +38,6 @@ type config struct {
 type Language struct {
 	// Skills are the skills every code role loads after its own.
 	Skills []string
-	// VerifyTiers are the hub's verify-tier rules, one entry per rule.
-	VerifyTiers []string
 	// RenameTools are the hub's structure-aware rename tools, one rule per language naming the tool and how to run it.
 	RenameTools []string
 }
@@ -54,8 +51,10 @@ func ConfigSpec() configengine.Spec {
 		HubWide:  true,
 		Categories: map[string]configengine.Category{
 			skillsKey:      configengine.CategoryGuard,
-			verifyTiersKey: configengine.CategoryGuard,
 			renameToolsKey: configengine.CategoryGuard,
+		},
+		RetiredKeys: map[string]configengine.Category{
+			retiredVerifyTiersKey: configengine.CategoryGuard,
 		},
 	}
 }
@@ -67,7 +66,7 @@ func ConfigSpec() configengine.Spec {
 // Any other failure, such as an unreadable file, is returned unwrapped.
 func Load(dirs configengine.Dirs) (Language, error) {
 	if dirs.Board == "" {
-		return Language{Skills: []string{}, VerifyTiers: []string{}, RenameTools: []string{}}, nil
+		return Language{Skills: []string{}, RenameTools: []string{}}, nil
 	}
 	resolved, err := configengine.LoadOrTemplate(dirs, ConfigSpec())
 	if err != nil {
@@ -85,26 +84,17 @@ func Load(dirs configengine.Dirs) (Language, error) {
 	if err != nil {
 		return Language{}, err
 	}
-	tiers, err := stringList(verifyTiersKey, cfg.VerifyTiers)
-	if err != nil {
-		return Language{}, err
-	}
 	tools, err := stringList(renameToolsKey, cfg.RenameTools)
 	if err != nil {
 		return Language{}, err
 	}
 	// An entry renders as one bullet line, so a line break would split it.
-	for _, bulleted := range []struct {
-		key     string
-		entries []string
-	}{{verifyTiersKey, tiers}, {renameToolsKey, tools}} {
-		for _, entry := range bulleted.entries {
-			if strings.ContainsAny(entry, "\r\n") {
-				return Language{}, unusable(bulleted.key, fmt.Sprintf("entry %q holds a line break", entry))
-			}
+	for _, entry := range tools {
+		if strings.ContainsAny(entry, "\r\n") {
+			return Language{}, unusable(renameToolsKey, fmt.Sprintf("entry %q holds a line break", entry))
 		}
 	}
-	return Language{Skills: skills, VerifyTiers: tiers, RenameTools: tools}, nil
+	return Language{Skills: skills, RenameTools: tools}, nil
 }
 
 // stringList returns node's entries in order when it is a list of non-empty strings without surrounding whitespace.
@@ -129,15 +119,15 @@ func stringList(key string, node yaml.Node) ([]string, error) {
 	return list, nil
 }
 
-// VerifyTiersValue renders tiers as the value every verify_tiers and rename_tools marker takes:
+// BulletListValue renders entries as the value every rename_tools marker takes:
 // each entry verbatim and in order as a "- " bullet line, or "none" for an empty list.
-func VerifyTiersValue(tiers []string) string {
-	if len(tiers) == 0 {
+func BulletListValue(entries []string) string {
+	if len(entries) == 0 {
 		return "none"
 	}
-	lines := make([]string, len(tiers))
-	for i, tier := range tiers {
-		lines[i] = "- " + tier
+	lines := make([]string, len(entries))
+	for i, entry := range entries {
+		lines[i] = "- " + entry
 	}
 	return strings.Join(lines, "\n")
 }

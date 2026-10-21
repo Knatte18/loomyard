@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/landingshed"
@@ -30,10 +31,14 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	seed := func(t *testing.T, treeScope, treeScopeVerify string) {
 		t.Helper()
-		seedDarnHubConfig(t, hub.Path, `"run all"`, "3", "tree_scope: {}", treeScope, `tree_scope_verify: ""`, treeScopeVerify)
+		seedDarnHubConfig(t, hub.Path, "3", "tree_scope: {}", treeScope, `tree_scope_verify: ""`, treeScopeVerify)
 	}
 	const trees = `tree_scope: {"docs": "", "tools": "./tools/..."}`
-	const scopedVerify = `tree_scope_verify: "run {targets}"`
+	const scopedVerify = `tree_scope_verify: "lyx gate test --wait --tier 1 {targets}"`
+	// The hub declares tier0 and lists it as the landing gate, so the non-scoped rows render the landing call over the whole tree.
+	const landingCall = "lyx gate test --wait --tier 0 --all"
+	writeHubGateConfig(t, hub.Path, strings.Replace(gateslot.ConfigTemplate(), "tiers: {}", `tiers:
+  tier0: {command: "go test -json {targets} {args}", all_targets: ./..., timeout_min: 60, counter: go-json}`, 1))
 	seed(t, trees, scopedVerify)
 
 	prime := hub.PrimeWorktree()
@@ -80,9 +85,9 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 		if err != nil || command != wantCommand {
 			t.Errorf("VerifyCommand() = %q, %v; want %q, nil", command, err, wantCommand)
 		}
-		skip, err := deps.PublishVerifySkip()
+		skip, err := deps.PublishSkip()
 		if err != nil || skip != wantSkip {
-			t.Errorf("PublishVerifySkip() = %v, %v; want %v, nil", skip, err, wantSkip)
+			t.Errorf("PublishSkip() = %v, %v; want %v, nil", skip, err, wantSkip)
 		}
 	}
 	assertAnswer := func(t *testing.T, seam func() (string, bool, error), wantCommand string, wantScoped bool) {
@@ -111,9 +116,9 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 	seam := locate(t, slug)
 	deps := landing(t, slug)
 
-	if !t.Run("a pair with no commit of its own is tree-scoped over no targets", func(t *testing.T) {
-		assertAnswer(t, seam, "run ", true)
-		assertLanding(t, deps, "run ", true)
+	if !t.Run("a pair with no commit of its own is tree-scoped over no targets and runs nothing", func(t *testing.T) {
+		assertAnswer(t, seam, "", true)
+		assertLanding(t, deps, "", true)
 	}) {
 		return
 	}
@@ -121,8 +126,8 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 	if !t.Run("a diff wholly under the trees is tree-scoped over the touched trees' targets", func(t *testing.T) {
 		gitkit.CommitFile(t, worktree, "docs/ä.md", "docs\n", "docs change")
 		gitkit.CommitFile(t, worktree, "tools/a.go", "package tools\n", "tools change")
-		assertAnswer(t, seam, "run ./tools/...", true)
-		assertLanding(t, deps, "run ./tools/...", true)
+		assertAnswer(t, seam, "lyx gate test --wait --tier 1 ./tools/...", true)
+		assertLanding(t, deps, "lyx gate test --wait --tier 1 ./tools/...", true)
 	}) {
 		return
 	}
@@ -130,8 +135,8 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 	if !t.Run("a merge that brings in only the parent's production change keeps the diff tree-scoped", func(t *testing.T) {
 		gitkit.CommitFile(t, prime, "internal/p.go", "package internal\n", "parent production change")
 		gitkit.Git(t, worktree, "merge", "--no-edit", gitkit.CurrentBranch(t, prime))
-		assertAnswer(t, seam, "run ./tools/...", true)
-		assertLanding(t, deps, "run ./tools/...", true)
+		assertAnswer(t, seam, "lyx gate test --wait --tier 1 ./tools/...", true)
+		assertLanding(t, deps, "lyx gate test --wait --tier 1 ./tools/...", true)
 	}) {
 		return
 	}
@@ -145,7 +150,7 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 		gitkit.Git(t, worktree, "add", "--", "internal/r.go")
 		gitkit.Git(t, worktree, "commit", "--no-edit")
 		assertAnswer(t, seam, "", false)
-		assertLanding(t, deps, "run all", false)
+		assertLanding(t, deps, landingCall, false)
 	}) {
 		return
 	}
@@ -161,7 +166,7 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 		gitkit.Git(t, freshWorktree, "mv", "internal/x.go", "tools/x.go")
 		gitkit.Git(t, freshWorktree, "commit", "-m", "move the file into tools")
 		assertAnswer(t, locate(t, freshSlug), "", false)
-		assertLanding(t, landing(t, freshSlug), "run all", false)
+		assertLanding(t, landing(t, freshSlug), landingCall, false)
 	}) {
 		return
 	}
@@ -171,8 +176,8 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 		assertRefusal(t, seam, "./tools", "lyx config darn's editor")
 		wantRefusal := []string{"./tools", "lyx config darn's editor", "then re-run the lyx command that refused"}
 		_, commandErr := deps.VerifyCommand()
-		_, skipErr := deps.PublishVerifySkip()
-		for name, err := range map[string]error{"VerifyCommand()": commandErr, "PublishVerifySkip()": skipErr} {
+		_, skipErr := deps.PublishSkip()
+		for name, err := range map[string]error{"VerifyCommand()": commandErr, "PublishSkip()": skipErr} {
 			if err == nil {
 				t.Errorf("%s error = nil; want a refusal", name)
 				continue
@@ -187,13 +192,13 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 		return
 	}
 
-	if !t.Run("a darn.yaml that does not unmarshal is refused with the verify way forward", func(t *testing.T) {
+	if !t.Run("a darn.yaml that does not unmarshal is refused with the hub config way forward", func(t *testing.T) {
 		seed(t, trees, scopedVerify)
 		path := filepath.Join(fabricengine.BoardDir(hub.Path), "_lyx", "config", "darn.yaml")
-		if err := os.WriteFile(path, []byte("verify: [\n"), 0o644); err != nil {
+		if err := os.WriteFile(path, []byte("writer: [\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		assertRefusal(t, seam, "lyx config darn --set verify=", `then "lyx loom resume"`)
+		assertRefusal(t, seam, hubConfigWayForward)
 	}) {
 		return
 	}
@@ -201,6 +206,6 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 	t.Run("an emptied tree_scope_verify turns tree scope off", func(t *testing.T) {
 		seed(t, trees, `tree_scope_verify: ""`)
 		assertAnswer(t, seam, "", false)
-		assertLanding(t, deps, "run all", false)
+		assertLanding(t, deps, landingCall, false)
 	})
 }

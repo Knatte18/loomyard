@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentlock"
@@ -187,15 +186,29 @@ type Deps struct {
 	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
 	Notify func(line string) error
 
-	// VerifyCommand returns the verify command line the post-merge verify gate runs in the task worktree.
+	// VerifyCommand returns the call of the hub's `landing` gate, which Merge-In, Finalize and Publish run in the task worktree after a merge-in.
+	// A darn run with a tree-scoped diff returns the tree-scoped command in its place.
 	// The clean-tree checks around the merge-in run whether or not a command is wired.
 	// It is read each time the gate runs rather than once at construction,
 	// because the caller builds Deps before the command's source exists on a fresh run.
+	// A refusal of the gate config is the returned error, carrying its own way forward.
 	//
 	// Nil means "no verify wiring", following CommitStatus's nil-is-absent convention:
 	// the gate never runs and nothing is logged.
-	// An empty returned string means the source carries no verify command, which skips the gate with a warning.
+	// An empty returned string means the source carries no landing command, which skips the gate with a warning.
 	VerifyCommand func() (string, error)
+	// PublishCommand returns the call of the hub's `publish` gate, which Publish runs after the landing call; an empty `publish` list returns "" and runs nothing.
+	// It is read at each Publish.
+	// Nil means "no publish gate", following CommitStatus's nil-is-absent convention.
+	PublishCommand func() (string, error)
+	// BaseCommand returns the command whose verified-tree entry every landing and publish pass keeps, so a pass never prunes the entry the next review round diffs from.
+	// It is read at each gate call.
+	// Nil, or an empty answer, names none.
+	BaseCommand func() (string, error)
+	// GateTiers returns the tier numbers the named gate runs, in order.
+	// A failing call whose log names no failing tier records the highest tier of its gate, read through it.
+	// Told, and required wherever a failure record is written: a nil lookup would panic on a failing log with no tier summary line.
+	GateTiers func(gate string) ([]int, error)
 	// VerifyFailedWayForward is the whole way-forward clause a failed-verify Stuck reason ends with when the failure record was written.
 	// The recipe that drives the run tells it, since the route back to a fix depends on the recipe's graph.
 	// Empty asks to fix forward on the task branch instead.
@@ -204,13 +217,13 @@ type Deps struct {
 	// VerifyFailureTarget is the row the recipe routes a failed Publish verify back to, written into the failure record's target.
 	// Empty writes no target.
 	VerifyFailureTarget string
-	// PublishVerifySkip reports whether Publish skips `publish_verify` for this call, so a diff the recipe verifies by its own narrower command lands without the extra tier.
-	// Publish calls it after taking the parent lock when `publish_verify` is set: true takes the path of an unset `publish_verify`, which removes the Publish failure record before the push;
-	// an error is Publish's returned error, with nothing verified or pushed; false runs `publish_verify`.
+	// PublishSkip reports whether Publish skips the `publish` gate for this call, so a diff the recipe verifies by its own narrower command lands without the extra tier.
+	// Publish calls it after taking the parent lock: true takes the path of an empty `publish` list, which removes the Publish failure record before the push;
+	// an error is Publish's returned error, with nothing verified or pushed; false runs the `publish` gate.
 	// It is read at each Publish, so a diff that gains a path between two Publish calls is classified anew.
 	//
-	// Nil means "never skip", loom's value: `publish_verify` runs whenever it is set.
-	PublishVerifySkip func() (bool, error)
+	// Nil means "never skip", loom's value: the `publish` gate runs whenever its list is not empty.
+	PublishSkip func() (bool, error)
 	// VerifyWaitMark sets or clears the pane mark of the run's driver strand around the post-merge verify,
 	// so the wait shows on screen.
 	// The gate clears the mark before each verify, sets it with the label `verify <producer>` and the verify's start time immediately before the verify runs,
@@ -232,9 +245,6 @@ type Deps struct {
 	// Every plan-verify site of the worktree shares it, so a pass at one site lets the next skip.
 	// Told, never derived, per the Told-Geometry Invariant.
 	VerifyDir string
-	// GateSlots is the told hub gate-slot pool both producers' verifies acquire from: Publish's plan verify and `publish_verify`, and Finalize's plan verify.
-	// Nil runs every verify unslotted.
-	GateSlots *gateslot.Pool
 
 	// Shuttle is the session-runner seam, told exactly the way every existing session-driving
 	// constructor in this tree takes its own. The resolver's constructor rejects a nil value for

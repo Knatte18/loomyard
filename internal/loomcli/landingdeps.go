@@ -156,12 +156,14 @@ func landingDeps(
 			return err
 		},
 		VerifyCommand:          verify.command,
+		PublishCommand:         verify.publishCommand,
+		BaseCommand:            verify.baseCommand,
+		GateTiers:              verify.gateTiers,
 		VerifyFailedWayForward: verify.failedWayForward,
 		VerifyFailureTarget:    verify.failureTarget,
-		PublishVerifySkip:      verify.publishSkip,
+		PublishSkip:            verify.publishSkip,
 		FailingTests:           failingTestsOf,
 		VerifyDir:              verifytree.Dir(l.AnchorPath()),
-		GateSlots:              hubgeom.GateSlots(l),
 		VerifyWaitMark:         verifyWaitMark,
 		Shuttle:                runner,
 		EnginesRun:             runner.EnginesRun,
@@ -313,34 +315,36 @@ func loopLockOwner(l *lyxcwd.Location, runID string) func() (parentlock.Owner, e
 	}
 }
 
-// verifySource pairs the verify-command reader and the failed-verify way-forward clause one recipe tells its verify gate and landing producers.
+// verifySource pairs the readers of the gate calls and the failed-verify way-forward clause one recipe tells its verify gate and landing producers.
 type verifySource struct {
-	// command returns the verify command line, read each time it is called.
+	// command returns the call the landing sites run, read each time it is called.
 	command func() (string, error)
+	// publishCommand returns the call of the `publish` gate, "" for an empty list.
+	publishCommand func() (string, error)
+	// baseCommand returns the call whose verified-tree entry every landing and publish pass keeps, and the round gate's told command.
+	baseCommand func() (string, error)
+	// gateTiers lists the tier numbers of a named gate, read from the hub's gate config at each call.
+	gateTiers func(gate string) ([]int, error)
 	// failedWayForward is the clause a recorded failed-verify Stuck reason ends with.
 	failedWayForward string
 	// failureTarget is the row the recipe routes a failed Publish verify back to.
 	failureTarget string
-	// publishSkip answers whether Publish skips landing config's `publish_verify` for this call, read at each Publish.
+	// publishSkip answers whether Publish skips the `publish` gate for this call, read at each Publish.
 	// Nil for loom's source, which never skips.
 	publishSkip func() (bool, error)
 }
 
-// planVerifySource returns loom's verify source: the plan's `## verify:` command, and the Webster-Burler-Review route back to a fix.
-// command reads the plan each time it is called, never at construction:
-// landingDeps runs at bootstrap, before the plan exists on a fresh run,
-// so a value captured there would be empty and the gate would silently skip.
-// A read or parse error is returned, not mapped to an empty command;
-// only a parsed plan with no "## verify:" section yields "".
+// planVerifySource returns loom's verify source: the hub's `landing`, `publish` and `final` gate calls, and the Webster-Burler-Review route back to a fix.
+// Each reader loads the hub's gate config over the pair's config dirs each time it is called, never at construction:
+// landingDeps runs at bootstrap, so a gate.yaml edit between two steps must take effect.
+// A config or gate-list refusal is returned with its own way forward, not mapped to an empty command.
 func planVerifySource(l *lyxcwd.Location) verifySource {
+	dirs := fabricengine.ConfigDirs(l)
 	return verifySource{
-		command: func() (string, error) {
-			plan, err := planparser.ParsePlan(planparser.PlanDir(l.AnchorPath()))
-			if err != nil {
-				return "", fmt.Errorf("loom: read plan verify command: %w", err)
-			}
-			return plan.Verify, nil
-		},
+		command:          gateCallSource(dirs, "landing"),
+		publishCommand:   gateCallSource(dirs, "publish"),
+		baseCommand:      gateCallSource(dirs, "final"),
+		gateTiers:        gateTiersLookup(dirs),
 		failedWayForward: `run "lyx loom goto --to Webster-Burler-Review", then "lyx loom resume", in the task worktree; the Webster-Review round reads the Publish failure record and its gate runs the failing tests`,
 		failureTarget:    loomshed.NameWebsterBurlerReview,
 	}

@@ -53,7 +53,7 @@ func AppendIntegrationTriage(websterDir string, flaky []string) error {
 		return nil
 	}
 	var b strings.Builder
-	b.WriteString("\n\n## Integration suite triage\n\nThe plan-level `## verify:` suite failed, but webster's triage did not attribute the failure to this run.\n")
+	b.WriteString("\n\n## Integration suite triage\n\nThe `final` gate failed, but webster's triage did not attribute the failure to this run.\n")
 	writeTriageList(&b, "Flaky (passed on rerun)", flaky)
 	return appendToSummary(websterDir, "integration triage", b.String())
 }

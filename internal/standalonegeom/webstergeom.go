@@ -5,6 +5,8 @@
 package standalonegeom
 
 import (
+	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -29,6 +31,9 @@ import (
 //
 // VerifyDir is verifytree.Dir(stateDir), so the verified-tree record sits beside webster's other never-tracked state.
 //
+// GateConfig loads the gate config over the target worktree's own directory at each call, the file the gate verb reads outside every hub;
+// a worktree with none is refused naming `lyx config gate`.
+//
 // WorktreeRoot is target, never stateDir: it is the fork-audit workdir and the {{.worktree_root}}
 // token's value in standalone, since target is the git repository an implementer's work happens
 // in.
@@ -45,5 +50,8 @@ func WebsterGeometry(target, stateDir string) websterengine.Geometry {
 		StencilsDir:  StencilsDir(stateDir),
 		SpecsDir:     SpecsDir(stateDir),
 		VerifyDir:    verifytree.Dir(stateDir),
+		GateConfig: func() (gateslot.Config, error) {
+			return gateslot.LoadConfig(configengine.Dirs{Anchor: target})
+		},
 	}
 }

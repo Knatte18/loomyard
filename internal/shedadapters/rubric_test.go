@@ -47,23 +47,23 @@ func TestReadRubric(t *testing.T) {
 		mergeReview string
 		// amendment is the note ReadRubric fills the amendment marker from.
 		amendment string
-		// verifyTiers is the list ReadRubric fills the verify_tiers marker from.
-		verifyTiers []string
-		want        string
-		wantErr     string
+		// gateTiers is the text ReadRubric fills the gate_tiers marker from.
+		gateTiers string
+		want      string
+		wantErr   string
 	}{
 		{
-			name:        "renders the verify tiers as bullets, verbatim and in order",
-			rubric:      "bouncer-rubric-test",
-			body:        "# Rubric\n\nTiers:\n{{.verify_tiers}}\n",
-			specsDir:    "/abs/specs",
-			verifyTiers: []string{"build first", "then {{.x}}"},
-			want:        "# Rubric\n\nTiers:\n- build first\n- then {{.x}}\n",
+			name:      "renders the gate tiers verbatim",
+			rubric:    "bouncer-rubric-test",
+			body:      "# Rubric\n\nTiers:\n{{.gate_tiers}}\n",
+			specsDir:  "/abs/specs",
+			gateTiers: "- tier1: unit tests of {{.x}}\n- gate card: [1]",
+			want:      "# Rubric\n\nTiers:\n- tier1: unit tests of {{.x}}\n- gate card: [1]\n",
 		},
 		{
-			name:     "no verify tiers render none",
+			name:     "no gate tiers render none",
 			rubric:   "bouncer-rubric-test",
-			body:     "# Rubric\n\nTiers:\n{{.verify_tiers}}\n",
+			body:     "# Rubric\n\nTiers:\n{{.gate_tiers}}\n",
 			specsDir: "/abs/specs",
 			want:     "# Rubric\n\nTiers:\nnone\n",
 		},
@@ -184,7 +184,7 @@ func TestReadRubric(t *testing.T) {
 				writeStampedRubric(t, dir, tt.rubric, tt.body)
 			}
 
-			got, err := ReadRubric(dir, tt.rubric, tt.specsDir, RubricNotes{PublishFailure: tt.publishFailure, WebsterRecord: tt.websterRecord, MergeReview: tt.mergeReview, Amendment: tt.amendment, VerifyTiers: tt.verifyTiers})
+			got, err := ReadRubric(dir, tt.rubric, tt.specsDir, RubricNotes{PublishFailure: tt.publishFailure, WebsterRecord: tt.websterRecord, MergeReview: tt.mergeReview, Amendment: tt.amendment, GateTiers: tt.gateTiers})
 			if tt.wantErr != "" {
 				if err == nil {
 					t.Fatalf("ReadRubric() = nil error; want one containing %q", tt.wantErr)

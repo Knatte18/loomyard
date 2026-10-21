@@ -147,7 +147,7 @@ func SetValues(template, existing []byte, pairs []KV, perNameMaps []string, open
 			continue
 		}
 		if open, name, ok := splitOpenMapKey(pair.Key, openMaps); ok {
-			if err := setOpenMapEntry(&templateNode, open, name, pair.Value); err != nil {
+			if err := setOpenMapEntry(&templateNode, open, name, pair); err != nil {
 				return SetResult{}, err
 			}
 			continue
@@ -216,12 +216,44 @@ func splitOpenMapKey(key string, openMaps []string) (open, name string, ok bool)
 	return "", "", false
 }
 
-// setOpenMapEntry sets name to the scalar value in the open map at path open, appending the key when absent.
+// openMapEntryNode returns the node pair.Value spells for an entry of an open map:
+// a value whose first non-blank character is { is a YAML flow mapping, one whose first non-blank character is [ is a YAML flow list, and any other value is a string scalar.
+// The parsed node keeps its own scalar tags.
+// A braced or bracketed value that does not parse as one node of its kind, or carries text after its closing bracket, is an error naming the key and the quoting rule.
+func openMapEntryNode(pair KV) (*yaml.Node, error) {
+	trimmed := strings.TrimSpace(pair.Value)
+	var kind yaml.Kind
+	var closing string
+	switch {
+	case strings.HasPrefix(trimmed, "{"):
+		kind, closing = yaml.MappingNode, "}"
+	case strings.HasPrefix(trimmed, "["):
+		kind, closing = yaml.SequenceNode, "]"
+	default:
+		return stringNode(pair.Value), nil
+	}
+	refusal := fmt.Errorf("value for %s is not one YAML flow mapping or list, got %q: inside it, double-quote a string that holds a brace, comma or bracket", pair.Key, pair.Value)
+	var parsed yaml.Node
+	if err := yaml.Unmarshal([]byte(trimmed), &parsed); err != nil || len(parsed.Content) != 1 || parsed.Content[0].Kind != kind || !strings.HasSuffix(trimmed, closing) {
+		return nil, refusal
+	}
+	entry := parsed.Content[0]
+	if kind == yaml.MappingNode {
+		entry.Style = 0
+	}
+	return entry, nil
+}
+
+// setOpenMapEntry sets pair's name under the open map at path open to the entry pair.Value spells, appending the key when absent.
 // A null value becomes an empty mapping first;
 // a list or other shape is an error, never converted.
 // The mapping is given block style,
 // so an empty {} template value is written as a block.
-func setOpenMapEntry(root *yaml.Node, open, name, value string) error {
+func setOpenMapEntry(root *yaml.Node, open, name string, pair KV) error {
+	entry, err := openMapEntryNode(pair)
+	if err != nil {
+		return err
+	}
 	mapping := findValueNode(root, open)
 	if mapping == nil {
 		return fmt.Errorf("open map %s is not in the template", open)
@@ -235,11 +267,11 @@ func setOpenMapEntry(root *yaml.Node, open, name, value string) error {
 	mapping.Style = 0
 	for i := 0; i+1 < len(mapping.Content); i += 2 {
 		if mapping.Content[i].Value == name {
-			mapping.Content[i+1] = stringNode(value)
+			mapping.Content[i+1] = entry
 			return nil
 		}
 	}
-	mapping.Content = append(mapping.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: name}, stringNode(value))
+	mapping.Content = append(mapping.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: name}, entry)
 	return nil
 }
 

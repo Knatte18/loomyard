@@ -23,7 +23,7 @@ This list holds every `lyx` command you may use, and `lyx <command> --help` give
    The batten run creates the task pair, drives the task's run inside it, loom or darn as the board entry's `recipe` says, and tears the pair down after the run ends.
    A darn run has no parent review: its Darn-Review perch reviews the writer's diff before Publish unless the run's `review_max_bounces` is 0, in `darn.yaml` or the task's `run_settings`, and PR-Gate reaches you as an alignment escalation, as in loom, where a reject re-spawns the darn writer with the findings.
    Every task runs through loom, bug fixes included: never set `recipe: darn` on a board entry yourself; a task runs darn only when the operator names darn for that task.
-2. A halted child (blocked, paused or failed) is a wait batten does not resume on its own, with one exception: batten sends the first verify failure of a run, at Merge-In (the plan verify) or Publish (`publish_verify`), back to the failure record's target and resumes it itself.
+2. A halted child (blocked, paused or failed) is a wait batten does not resume on its own, with one exception: batten sends the first verify failure of a run, at Merge-In (the `landing` gate) or Publish (the `landing` or `publish` gate), back to the failure record's target and resumes it itself.
    Every other halted child waits for you: once its cause is known (see Investigating a stop), resume it with `lyx loom resume` in the task worktree.
    When `lyx loom resume` refuses, its message names the way forward (`lyx batten run <slug>` to bring a dead driver back, or `lyx loom start`),
    and you take it.

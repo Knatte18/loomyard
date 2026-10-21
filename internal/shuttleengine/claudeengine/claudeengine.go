@@ -8,6 +8,7 @@ package claudeengine
 
 import (
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -102,12 +104,19 @@ func validateSessionID(id string) error {
 // Prepare writes prompt.md, settings.json and the Bash env file bash-env.sh into runDir and returns the Launch command strings.
 // The launch line carries a pointer to prompt.md rather than the prompt, so a prompt of any size launches.
 // A spec that names skills carries the skill-load message on the launch line instead and returns the pointer as Launch.PromptLine, for shuttle to send after the skills load.
-// It loads claude.yaml, then validates spec.Effort, spec.Model, spec.PermissionMode, spec.ResumeSessionID and the prompt-cache TTL config before writing any artifacts.
+// It loads claude.yaml and the hub's gate config, whose refuse_raw list the run's shell guard installs and whose failure to load refuses the spawn, then validates spec.Effort, spec.Model, spec.PermissionMode, spec.ResumeSessionID and the prompt-cache TTL config before writing any artifacts.
 func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
 	claude, err := loadConfigOrRefuse(c.dirs)
 	if err != nil {
 		return shuttleengine.Launch{}, err
 	}
+
+	// The refuse list lives in the hub's gate config; an absent file means the hub refuses nothing, and any other load failure refuses the spawn.
+	gate, err := gateslot.LoadConfig(c.dirs)
+	if err != nil && !errors.Is(err, gateslot.ErrConfigAbsent) {
+		return shuttleengine.Launch{}, fmt.Errorf("claudeengine: %w", err)
+	}
+	cfg.RefuseRaw = gate.RefuseRaw
 
 	// Reject unrealizable effort before any artifact is written (claude ignores bad efforts at launch).
 	if err := validateEffort(spec.Effort); err != nil {

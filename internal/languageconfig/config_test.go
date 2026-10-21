@@ -32,7 +32,6 @@ func TestLoad_ResolvesSkills(t *testing.T) {
 		seed            func(t *testing.T, board, anchor string)
 		noBoard         bool
 		want            []string
-		wantTiers       []string
 		wantRenameTools []string
 	}{
 		{
@@ -42,13 +41,11 @@ func TestLoad_ResolvesSkills(t *testing.T) {
 				writeFile(t, configengine.ConfigFile(anchor, "language"), "skills:\n  - scribe:a\n")
 			},
 			want:            []string{},
-			wantTiers:       []string{},
 			wantRenameTools: []string{},
 		},
 		{
 			name:            "board dir without _lyx",
 			want:            []string{},
-			wantTiers:       []string{},
 			wantRenameTools: []string{},
 		},
 		{
@@ -57,7 +54,6 @@ func TestLoad_ResolvesSkills(t *testing.T) {
 				writeFile(t, configengine.ConfigFile(board, "language"), languageconfig.ConfigTemplate())
 			},
 			want:            []string{},
-			wantTiers:       []string{},
 			wantRenameTools: []string{},
 		},
 		{
@@ -66,17 +62,23 @@ func TestLoad_ResolvesSkills(t *testing.T) {
 				writeFile(t, configengine.ConfigFile(board, "language"), "skills:\n  - scribe:a\n  - scribe:b\n  - scribe:a\n")
 			},
 			want:            []string{"scribe:a", "scribe:b", "scribe:a"},
-			wantTiers:       []string{},
 			wantRenameTools: []string{},
 		},
 		{
-			name: "board file listing all three keys keeps each in file order",
+			name: "board file listing both keys keeps each in file order",
 			seed: func(t *testing.T, board, _ string) {
-				writeFile(t, configengine.ConfigFile(board, "language"), "skills:\n  - scribe:a\nverify_tiers:\n  - build first\n  - vet second\nrename_tools:\n  - rename b\n  - rename a\n")
+				writeFile(t, configengine.ConfigFile(board, "language"), "skills:\n  - scribe:a\nrename_tools:\n  - rename b\n  - rename a\n")
 			},
 			want:            []string{"scribe:a"},
-			wantTiers:       []string{"build first", "vet second"},
 			wantRenameTools: []string{"rename b", "rename a"},
+		},
+		{
+			name: "board file still setting the retired verify_tiers loads without it",
+			seed: func(t *testing.T, board, _ string) {
+				writeFile(t, configengine.ConfigFile(board, "language"), "skills:\n  - scribe:a\nverify_tiers:\n  - build first\n  - [not, a, string]\nrename_tools:\n  - rename b\n")
+			},
+			want:            []string{"scribe:a"},
+			wantRenameTools: []string{"rename b"},
 		},
 	}
 	for _, tt := range tests {
@@ -97,9 +99,6 @@ func TestLoad_ResolvesSkills(t *testing.T) {
 			}
 			if got.Skills == nil || !slices.Equal(got.Skills, tt.want) {
 				t.Errorf("Load skills = %#v, want non-nil %q", got.Skills, tt.want)
-			}
-			if got.VerifyTiers == nil || !slices.Equal(got.VerifyTiers, tt.wantTiers) {
-				t.Errorf("Load verify tiers = %#v, want non-nil %q", got.VerifyTiers, tt.wantTiers)
 			}
 			if got.RenameTools == nil || !slices.Equal(got.RenameTools, tt.wantRenameTools) {
 				t.Errorf("Load rename tools = %#v, want non-nil %q", got.RenameTools, tt.wantRenameTools)
@@ -124,13 +123,6 @@ func TestLoad_InvalidFailsNamingKey(t *testing.T) {
 		{"trailing whitespace", boardFile(`skills: ["scribe:a "]` + "\n"), "skills", true},
 		{"scalar value", boardFile("skills: scribe:a\n"), "skills", true},
 		{"unparseable yaml", boardFile("skills: [\n"), "", true},
-		{"verify_tiers scalar value", boardFile("verify_tiers: build\n"), "verify_tiers", true},
-		{"verify_tiers non-string entry", boardFile("verify_tiers: [1]\n"), "verify_tiers", true},
-		{"verify_tiers empty entry", boardFile(`verify_tiers: [""]` + "\n"), "verify_tiers", true},
-		{"verify_tiers leading whitespace", boardFile(`verify_tiers: [" build"]` + "\n"), "verify_tiers", true},
-		{"verify_tiers trailing whitespace", boardFile(`verify_tiers: ["build "]` + "\n"), "verify_tiers", true},
-		{"verify_tiers entry holding a newline", boardFile(`verify_tiers: ["a\nb"]` + "\n"), "verify_tiers", true},
-		{"verify_tiers entry holding a carriage return", boardFile(`verify_tiers: ["a\rb"]` + "\n"), "verify_tiers", true},
 		{"rename_tools scalar value", boardFile("rename_tools: gopls\n"), "rename_tools", true},
 		{"rename_tools empty entry", boardFile(`rename_tools: [""]` + "\n"), "rename_tools", true},
 		{"rename_tools entry with a line break", boardFile(`rename_tools: ["a\nb"]` + "\n"), "rename_tools", true},
@@ -205,7 +197,7 @@ func TestLoad_InvalidFailsNamingKey(t *testing.T) {
 				t.Errorf("error %q lacks the key %q", err, tt.key)
 			}
 			if tt.key == "" {
-				for _, key := range []string{"skills", "verify_tiers", "rename_tools"} {
+				for _, key := range []string{"skills", "rename_tools"} {
 					if strings.Contains(err.Error(), key) {
 						t.Errorf("error %q names %q, want no key", err, key)
 					}
@@ -215,12 +207,12 @@ func TestLoad_InvalidFailsNamingKey(t *testing.T) {
 	}
 }
 
-func TestVerifyTiersValue(t *testing.T) {
+func TestBulletListValue(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name  string
-		tiers []string
-		want  string
+		name    string
+		entries []string
+		want    string
 	}{
 		{"nil list", nil, "none"},
 		{"empty list", []string{}, "none"},
@@ -230,8 +222,8 @@ func TestVerifyTiersValue(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := languageconfig.VerifyTiersValue(tt.tiers); got != tt.want {
-				t.Errorf("VerifyTiersValue(%q) = %q, want %q", tt.tiers, got, tt.want)
+			if got := languageconfig.BulletListValue(tt.entries); got != tt.want {
+				t.Errorf("BulletListValue(%q) = %q, want %q", tt.entries, got, tt.want)
 			}
 		})
 	}

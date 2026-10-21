@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -112,6 +113,7 @@ func newMergeInFixture(t *testing.T) *mergeInFixture {
 	}
 	fx.gate.fake.onVerify = func() { fx.events = append(fx.events, "verify") }
 	fx.gate.gate.failureTarget = "Told-Row"
+	fx.gate.gate.baseCommand = func() (string, error) { return gateBaseCall, nil }
 	fx.gate.gate.recorder = &failureRecorder{head: deps.TaskHead}
 	fx.m = &MergeIn{
 		deps:         deps,
@@ -450,15 +452,17 @@ func TestMergeIn_PlanVerifyFailureRecord(t *testing.T) {
 
 		outcome, ptr := fx.call(t)
 
-		if outcome != shedengine.Stuck || !strings.Contains(ptr.Reason, "verify failed after merging parent branch") {
-			t.Fatalf("Call() = %q, %+v; want Stuck for the failed verify", outcome, ptr)
+		if outcome != shedengine.Stuck || !strings.Contains(ptr.Reason, "landing gate failed after merging parent branch") {
+			t.Fatalf("Call() = %q, %+v; want Stuck for the failed landing gate", outcome, ptr)
 		}
 		failure, found, err := verifytree.ReadPublishFailure(fx.gate.paths)
 		if err != nil || !found {
 			t.Fatalf("ReadPublishFailure() = %v, %v; want a record", found, err)
 		}
-		if failure.Row != "Merge-In" || failure.Target != "Told-Row" || failure.MergeCommit != "m1" || failure.Kind != verifytree.FailureKindPlanVerify {
-			t.Errorf("failure record = %+v; want row Merge-In, target Told-Row, merge commit m1, kind plan verify", failure)
+		// The log names no failing tier, so the record takes the highest tier of the landing list.
+		wantTier := slices.Max(fixedGateTierLists["landing"])
+		if failure.Row != "Merge-In" || failure.Target != "Told-Row" || failure.MergeCommit != "m1" || failure.Kind != verifytree.FailureKindLanding || failure.Tier != wantTier {
+			t.Errorf("failure record = %+v; want row Merge-In, target Told-Row, merge commit m1, kind landing, tier %d", failure, wantTier)
 		}
 		if _, found, _ := ReadMergeRecord(fx.m.deps.MergeRecordPath); found {
 			t.Error("a merge record was written after a failed verify")
@@ -496,8 +500,8 @@ func TestMergeIn_VerifyGate(t *testing.T) {
 			if outcome != shedengine.Done {
 				t.Fatalf("status %q: Call() = %q, %+v; want Done", status, outcome, ptr)
 			}
-			if fx.gate.fake.verifyCalls != 1 || fx.gate.fake.site.Label != "Merge-In" {
-				t.Errorf("status %q: verify calls=%d site=%+v; want 1 call at site Merge-In", status, fx.gate.fake.verifyCalls, fx.gate.fake.site)
+			if wantSite := (verifytree.Site{Label: "Merge-In", BaseCommand: gateBaseCall}); fx.gate.fake.verifyCalls != 1 || fx.gate.fake.site != wantSite {
+				t.Errorf("status %q: verify calls=%d site=%+v; want 1 call at site %+v", status, fx.gate.fake.verifyCalls, fx.gate.fake.site, wantSite)
 			}
 			if fx.gate.fake.dirtyCalls != 3 {
 				t.Errorf("status %q: clean-tree checks = %d; want 3", status, fx.gate.fake.dirtyCalls)

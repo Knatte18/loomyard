@@ -32,7 +32,7 @@ type VerifyGateReport struct {
 	Cap int `yaml:"cap"`
 	// Dirty lists the paths of a clean-tree failure, which runs no verify and so has no Failures or LogPath.
 	Dirty []string `yaml:"dirty,omitempty"`
-	// TimedOut is the verify timeout as a duration string when the verify outlived it and was killed, and empty otherwise.
+	// TimedOut names the gate tier and the timeout it outlived, as verifytree.Result.Detail words them, and is empty when no tier timed out.
 	// Such a failure has no Failures and carries LogTail instead.
 	TimedOut string `yaml:"timed_out,omitempty"`
 	// LogTail is the bounded tail of the verify log of a timed-out or hung run.
@@ -169,7 +169,7 @@ func renderVerifyGateFindings(r VerifyGateReport, fixPromptPath string) string {
 	}
 
 	if r.TimedOut != "" {
-		fmt.Fprintf(&b, "The verify command did not finish within %s and was killed; the step was not re-run.\n", r.TimedOut)
+		fmt.Fprintf(&b, "The verify command timed out: %s; the step was not re-run.\n", r.TimedOut)
 		writeLogLocation(&b, r)
 		return b.String()
 	}

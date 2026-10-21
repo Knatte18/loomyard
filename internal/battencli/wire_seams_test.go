@@ -34,6 +34,7 @@ import (
 // batten wires only its own producers, so every loom seam of shedrecipe.Env stays nil here.
 var intentionallyNil = map[string]string{
 	"VerifyCommand":               "loom-only seam, batten runs no verify gate",
+	"Round":                       "loom-only seam, batten runs no verify gate",
 	"Shuttle":                     "loom-only seam, batten drives no agent itself",
 	"Burler":                      "loom-only seam, batten runs no review round",
 	"Seats":                       "loom-only seam, batten runs no seat table",
@@ -47,6 +48,9 @@ var intentionallyNil = map[string]string{
 	"WebsterDeps.Geom.Index":      "loom-only seam, batten runs no webster",
 	"PlanIndex":                   "loom-only seam, batten has no plan segment",
 	"CommitWebster":               "loom-only seam, batten runs no webster",
+	"Landing.PublishCommand":      "loom-only seam, batten lands no branch",
+	"Landing.BaseCommand":         "loom-only seam, batten lands no branch",
+	"Landing.GateTiers":           "loom-only seam, batten lands no branch",
 	"Landing.PushBranch":          "loom-only seam, batten lands no branch",
 	"Landing.RemoteOnlyCommits":   "loom-only seam, batten lands no branch",
 	"Landing.OpenFabric":          "loom-only seam, batten lands no branch",

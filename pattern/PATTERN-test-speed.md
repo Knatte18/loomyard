@@ -1,17 +1,19 @@
 # PATTERN-test-speed
 
-Tests stay fast: Tier 1 is offline and spawns nothing, no test waits out a production duration, and tests run in parallel.
+Tests stay fast: `tier0` is offline and spawns nothing, no test waits out a production duration, and tests run in parallel.
 
 ## Four tiers
 
+The hub declares its tiers in `gate.yaml`, numbered `tier0` through `tier3`, and `lyx gate test --tier <n>` runs one.
+
 | Tier | Tag | Needs | Costs |
 |---|---|---|---|
-| 1 | none | nothing: offline, no spawn | seconds, runs on every `go test ./...` |
-| 2 | `integration` | git, a built `lyx`, subprocesses; no tmux server and no LLM, which `tmuxkit.Main` checks at the end of the package | tens of seconds, runs once per batch and in the plan's full verify |
-| 3 | `tmux` | a real tmux server, no LLM | slower, runs at Publish through landing config's `publish_verify`, at the round gate while a Publish failure record is present, and by hand |
-| 4 | `llm` | a real LLM session | billed, compiled by every gate and run by hand only |
+| `tier0` | none | nothing: offline, no spawn | seconds, runs on every card gate |
+| `tier1` | `integration` | git, a built `lyx`, subprocesses; no tmux server and no LLM, which `tmuxkit.Main` checks at the end of the package | tens of seconds, runs once per batch and in the final gate |
+| `tier2` | `tmux` | a real tmux server, no LLM | slower, runs in the `publish` gate, at the round gate while a Publish failure record is present, and by hand |
+| `tier3` | `llm` | a real LLM session | billed, compiled by every gate and run by hand only |
 
-- Tags do not nest: `-tags integration` runs no `tmux` or `llm` file, so a run names every tag it wants.
+- Tags do not nest: `-tags integration` runs no `tmux` or `llm` file, so a tier's command names every tag it wants.
 - A test needing two substrates takes the higher tier.
 - Each tag compiles on its own: `go vet -tags tmux ./...` and `go vet -tags llm ./...` each pass.
 - A helper file used by files of two tiers and spawning something carries the disjunction of their tags (`//go:build tmux || llm`); a helper that spawns nothing goes untagged; a helper only one tier uses lives in that tier's file.
@@ -19,14 +21,16 @@ Tests stay fast: Tier 1 is offline and spawns nothing, no test waits out a produ
 
 ### Gate per tier
 
+A gate is a named list of tiers in `gate.yaml`, and a site runs its gate's list through `lyx gate test`; no site spells a test command.
+
 | Gate | Runs |
 |---|---|
-| Card gate | tier 1 of the card's own packages through `lyx gate test`, then the comment lint and the headroom lint |
-| Batch gate | `lyx gate test --tags integration` once per batch over the batch's packages, each failing on a tmux server socket its end-of-package check finds |
-| Webster-Burler-Fix round gate | the headroom lint when told a merge base, then the comment lint, then the impacted-set command, or the plan's verify wherever the impacted set cannot narrow; the `tmux` and `llm` tiers are compiled by its `go vet` steps and run only as below |
-| Webster-Burler-Fix round gate, while a Publish failure record is present | the failing tests the record names before the round command, and for a `publish_verify` failure an impacted-set `tmux` pass after it, to confirm the fix |
-| Webster's gate, Publish, Finalize | the plan's `## verify:` in full: build, vet under each tag, then the `integration` tier alone, which runs every untagged test too |
-| Publish, after the plan verify | landing config's `publish_verify`, where the repo sets it: the `tmux` tier |
+| `card` | the tiers the `card` list names over the card's own packages through `lyx gate test --card`, then the comment lint and the headroom lint |
+| `batch` | the `batch` list once per batch over the batch's packages, each failing on a tmux server socket its end-of-package check finds |
+| `round` | the Webster-Burler-Fix round gate: the headroom lint when told a merge base, then the comment lint, then the `round` list over the impacted set, which runs whole wherever the impacted set cannot narrow |
+| `round`, while a Publish failure record is present | the failing tests the record names before the round list, and for a `publish` failure an impacted-set `tmux` pass after it, to confirm the fix |
+| `final`, `landing` | webster's gate, Merge-In and Finalize: the `final` and `landing` lists over the whole tree |
+| `publish` | Publish after the `landing` gate, where the repo's list is not empty: the `tmux` tier |
 | By hand | the `llm` tier |
 
 ### No gate runs `llm`
@@ -36,8 +40,9 @@ Running it is the operator's call, because an `llm` run is billed, nondeterminis
 
 ### Every gate run takes a slot
 
-Every gate build or test run takes a slot of the hub's gate-slot pool, so the hub never runs more at once than its configured count.
-An agent runs a module-wide or `tmux`-tier test only through `lyx gate test`, which takes the slot, and never as a raw `go` run.
+Every gate build or test run holds slots of the hub's gate-slot pool, so the hub never runs more at once than its configured count.
+A tier run takes the slots its tier asks for, and the non-tier holders `internal/gateslot`'s doc lists each hold one.
+An agent runs a module-wide or `tmux`-tier test only through `lyx gate test`, and never as a raw `go` run.
 A tagged gate run builds `lyx` once and hands it to every package through the `LYX_PREBUILT_LYX` variable, which `lyxbin` returns instead of building.
 A tagged hub run exports a path named by the binary's content, and `lyx gate test` strips the trace id from `go test`'s environment, since Go keys a cached test result on every variable a test reads.
 Bound: a forged value misleads only an ungated raw run, since `lyx gate test` sets or strips the variable itself.

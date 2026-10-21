@@ -1,4 +1,4 @@
-// darnwiring.go holds the wiring only a darn run needs: the whole verify command and tree scope reader the darn recipe tells its verify gate, the verify source its landing producers read, the Darn-Write row's seams, the writer's and Describe's Spec sources, and the rename of retired darn rows in a run's status file.
+// darnwiring.go holds the wiring only a darn run needs: the tree scope reader the darn recipe tells its verify gate, the verify source its landing producers read, the Darn-Write row's seams, the writer's and Describe's Spec sources, and the rename of retired darn rows in a run's status file.
 // A loom run leaves all of it unwired, but shares the merge base reader `pairMergeBase` builds.
 
 package loomcli
@@ -45,13 +45,16 @@ func reworkRowFor(recipe string) string {
 	return loomshed.NamePRRework
 }
 
-// darnVerifySource returns the darn recipe's verify source: the verify command, and the Darn-Write route back to a fix.
+// darnVerifySource returns the darn recipe's verify source: the hub's `landing` and `publish` gate calls, and the Darn-Write route back to a fix.
 // command resolves at each call, never at construction, so an edit between steps is seen:
-// the tree-scoped command when the task diff is wholly under the hub's configured trees, else darn.yaml's verify;
-// a missing file, an empty value and a malformed tree key are errors naming the way forward.
-// publishSkip answers at each call whether the diff is tree-scoped, so Publish skips `publish_verify` for it.
+// the tree-scoped command when the task diff is wholly under the hub's configured trees, else the `landing` call;
+// a gate config refusal and a malformed tree key are errors naming the way forward.
+// baseCommand is the `landing` call, since darn has no webster gate, and stays the base command of a tree-scoped site.
+// publishSkip answers at each call whether the diff is tree-scoped, so Publish skips the `publish` gate for it.
 func darnVerifySource(l *lyxcwd.Location) verifySource {
+	dirs := fabricengine.ConfigDirs(l)
 	treeScope := darnTreeScope(l)
+	landing := gateCallSource(dirs, "landing")
 	return verifySource{
 		command: func() (string, error) {
 			command, scoped, err := treeScope()
@@ -61,8 +64,11 @@ func darnVerifySource(l *lyxcwd.Location) verifySource {
 			if scoped {
 				return command, nil
 			}
-			return darnengine.VerifyCommand(fabricengine.ConfigDirs(l))
+			return landing()
 		},
+		publishCommand: gateCallSource(dirs, "publish"),
+		baseCommand:    landing,
+		gateTiers:      gateTiersLookup(dirs),
 		publishSkip: func() (bool, error) {
 			_, scoped, err := treeScope()
 			return scoped, err
@@ -90,17 +96,18 @@ func pairMergeBase(l *lyxcwd.Location) func() (string, error) {
 
 // darnTreeScope returns the darn recipe's tree scope reader: the tree-scoped command and true for a task diff wholly under the hub's configured trees, and ("", false, nil) otherwise.
 // Each call reads the hub-wide darn.yaml afresh, so an edit between steps is seen, and reads the diff from the pair's merge base to HEAD with a rename counted at both its paths.
-// A load error is returned as is, since the verify command read it starts with already names the way forward, the editor one for a malformed tree key.
+// A load error is returned with its way forward: the editor one for a malformed tree key, the hub reconcile one otherwise.
+// A scoped diff whose trees contribute no target answers an empty command.
 func darnTreeScope(l *lyxcwd.Location) func() (string, bool, error) {
 	mergeBase := pairMergeBase(l)
 	return func() (string, bool, error) {
 		dirs := fabricengine.ConfigDirs(l)
-		if _, err := darnengine.VerifyCommand(dirs); err != nil {
-			return "", false, err
-		}
 		cfg, err := darnengine.LoadConfig(dirs, "darn")
 		if err != nil {
-			return "", false, err
+			if errors.Is(err, darnengine.ErrTreeScopeKey) {
+				return "", false, darnengine.WithEditorWayForward(err)
+			}
+			return "", false, fmt.Errorf("%w; %s", err, hubConfigWayForward)
 		}
 		if strings.TrimSpace(cfg.TreeScopeVerify) == "" {
 			return "", false, nil
@@ -249,7 +256,7 @@ func wireDarnReview(env *shedrecipe.Env, cfg darnengine.Config, shared burlereng
 }
 
 // wireDarn fills the Env fields a darn run reads beyond the ones wire fills for every recipe, and replaces the loom DescribeTable with the darn one, which reads the decision record but no run record.
-// It loads the hub-wide darn.yaml strictly and reads its verify command once, so start, run, step and resume refuse an absent or empty command before any row builds.
+// It loads the hub-wide darn.yaml strictly, so start, run, step and resume refuse an absent or malformed file before any row builds.
 // A malformed tree_scope key is refused with the editor way forward instead of the hub reconcile one, since --set cannot remove a key the hub file holds.
 func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, frictionDir string, landingCfg landingshed.Config, registry modelspec.Registry, shared burlerengine.RoundModels, bouncer shedadapters.BouncerModels) error {
 	dirs := fabricengine.ConfigDirs(location)
@@ -260,13 +267,11 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 		}
 		return fmt.Errorf("%w; %s", err, hubConfigWayForward)
 	}
-	if _, err := darnengine.VerifyCommand(dirs); err != nil {
-		return err
-	}
 
-	// The gate's told command is the hub's whole verify, which stays its site's base command;
+	// The gate's told command is the hub's `landing` call, which stays its site's base command since darn has no webster gate;
 	// the tree-scoped command reaches the gate through VerifyTreeScope, never through this source.
-	c.env.VerifyCommand = func() (string, error) { return darnengine.VerifyCommand(dirs) }
+	c.env.VerifyCommand = darnVerifySource(location).baseCommand
+	c.env.Round = roundGateSource(dirs)
 	c.env.VerifyMergeBase = pairMergeBase(location)
 	c.env.VerifyTreeScope = darnTreeScope(location)
 	c.env.DarnVerifyAttempts = cfg.VerifyAttempts

@@ -656,6 +656,16 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	// No second re-baseline: the one above already ran immediately after the rewriting call, ahead
 	// of both refusals, and persisted itself.
 
+	// The fixer's gate call renders before the first archive, so a hub whose `round` list the config lacks refuses with nothing changed.
+	gateConfig, err := deps.Geom.GateConfig()
+	if err != nil {
+		return RunResult{}, err
+	}
+	verifyFixGate, err := gateConfig.GateCall("round")
+	if err != nil {
+		return RunResult{}, err
+	}
+
 	if _, err := archiveStaleOutcome(deps.Geom.WebsterDir, time.Now); err != nil {
 		return RunResult{}, err
 	}
@@ -684,7 +694,7 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	// The fixer fork's prompt is Go-rendered and Go-written up front for the same reason as a batch fork's:
 	// Merriam may write nothing but its two contract files.
 	verifyFixNotePath := friction.NotePath(deps.FrictionDir, "webster-verify-fix")
-	verifyFixPrompt, err := RenderVerifyFixPrompt(verifyGateReportPath, deps.Geom.WorktreeRoot, deps.Geom.PlanDir, deps.Geom.StencilsDir, outcomePath, summaryPath, verifyFixNotePath)
+	verifyFixPrompt, err := RenderVerifyFixPrompt(verifyGateReportPath, deps.Geom.WorktreeRoot, deps.Geom.PlanDir, deps.Geom.StencilsDir, outcomePath, summaryPath, verifyFixNotePath, verifyFixGate)
 	if err != nil {
 		return RunResult{}, err
 	}

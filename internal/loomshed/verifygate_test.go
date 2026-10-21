@@ -37,8 +37,8 @@ func TestVerifyFailureFindings(t *testing.T) {
 		},
 		{
 			name:    "a timeout names the timeout instead of an exit code",
-			result:  verifytree.Result{Status: verifytree.StatusFailed, ExitCode: -1, TimedOut: true, Detail: "the verify command did not finish within 1h0m0s and was killed"},
-			want:    []string{"The verify command did not finish within 1h0m0s and was killed."},
+			result:  verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1, TimedOut: true, Detail: "gate tier2 exceeded timeout_min 30m0s and was killed"},
+			want:    []string{"The verify command timed out: gate tier2 exceeded timeout_min 30m0s and was killed."},
 			wantNot: []string{"exit code", "could not start"},
 		},
 		{

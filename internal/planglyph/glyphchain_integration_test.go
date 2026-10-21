@@ -564,7 +564,7 @@ func TestGlyphChain_CallerCoverageTyped(t *testing.T) {
 
 			pool := &gateslot.Pool{
 				Dir:    t.TempDir(),
-				Limits: func() (gateslot.Limits, error) { return gateslot.Limits{Slots: 1, GoParallel: 1}, nil },
+				Limits: func() (gateslot.Limits, error) { return gateslot.Limits{Slots: 1, Tier0Parallel: 1}, nil },
 				Poll:   5 * time.Millisecond,
 			}
 			held, err := pool.Acquire(context.Background(), gateslot.Holder{Worktree: root, Site: "test holder"})
@@ -621,4 +621,22 @@ func TestGlyphChain_CallerCoverageTyped(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("loadEnv keeps -mod=readonly and appends the pool's tier0 parallel through HolderEnv", func(t *testing.T) {
+		t.Parallel()
+		pool := &gateslot.Pool{
+			Dir:    t.TempDir(),
+			Limits: func() (gateslot.Limits, error) { return gateslot.Limits{Slots: 1, Tier0Parallel: 3}, nil },
+		}
+		env, err := goListLoader{timeout: time.Minute, slots: pool}.loadEnv(nil)
+		if err != nil {
+			t.Fatalf("loadEnv(nil) returned error: %v", err)
+		}
+		if want := "GOFLAGS=-mod=readonly -p=3 -trimpath"; !slices.Contains(env, want) {
+			t.Errorf("loadEnv(nil) holds no %q; want -mod=readonly ahead of the appended flags", want)
+		}
+		if !slices.Contains(env, "GOPROXY=off") {
+			t.Error("loadEnv(nil) holds no GOPROXY=off; want the load offline")
+		}
+	})
 }

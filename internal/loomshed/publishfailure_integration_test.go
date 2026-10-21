@@ -37,8 +37,8 @@ func TestCheckedPublishFailure_MergeCommit(t *testing.T) {
 	}
 	for _, tt := range tests {
 		paths := verifytree.NewPaths(worktree, t.TempDir())
-		writeRecord(t, paths, verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify, MergeCommit: tt.sha})
-		got, ok := checkedPublishFailure(paths, worktree)
+		writeRecord(t, paths, verifytree.PublishFailure{Kind: verifytree.FailureKindLanding, Tier: 1, MergeCommit: tt.sha})
+		got, ok := checkedPublishFailure(paths, worktree, testGateTiers)
 		if !ok || got.MergeCommit != tt.want {
 			t.Errorf("%s: merge commit = %q, kept = %v; want %q", tt.name, got.MergeCommit, ok, tt.want)
 		}

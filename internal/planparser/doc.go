@@ -133,6 +133,8 @@
 // verify-nested-module, verify-module-wide and verify-package-missing read a shell chain through one splitter.
 // It joins a backslash-newline continuation into one line, then splits at `&&`, `||`, `;`, `|` and a newline, reading `||` as one separator and a separator inside a single- or double-quoted span as text.
 // A segment carries the separator that preceded it, so verify-nested-module follows a `cd` only after a sequencing separator and ends its scan at a `cd` in a pipeline stage or after `||`.
+// VerifyCommands exports the same split for the plan gate's verify-raw-command and verify-gate-no-wait context checks, which loomshed appends outside this package's entry points.
+// The three read card Verify values only; the overview's `## verify:` section is still parsed but no check reads it, and the plan gate's plan-verify-retired finding reports it.
 //
 // # The language: key and the glyph alphabet
 //

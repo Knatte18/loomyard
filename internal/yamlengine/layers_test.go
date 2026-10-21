@@ -117,6 +117,8 @@ func TestSetSparse(t *testing.T) {
 		{name: "string tag quotes a number-like value", pairs: []KV{{Key: "name", Value: "81"}}, want: "name: \"81\"\n"},
 		{name: "open-map entry", pairs: []KV{{Key: "labels.bug", Value: "desc"}}, want: "labels:\n    bug: desc\n"},
 		{name: "open-map entry beside another", existing: "labels:\n    a: x\n", pairs: []KV{{Key: "labels.bug", Value: "desc"}}, want: "labels:\n    a: x\n    bug: desc\n"},
+		{name: "open-map flow mapping entry keeps its scalar tags", pairs: []KV{{Key: "labels.t0", Value: "{timeout_min: 60, counter: go-json}"}}, want: "labels:\n    t0:\n        timeout_min: 60\n        counter: go-json\n"},
+		{name: "open-map unterminated flow mapping is refused", pairs: []KV{{Key: "labels.t0", Value: "{a: 1"}}, wantErr: true, wantErrText: []string{"labels.t0", "double-quote"}},
 		{name: "list value", pairs: []KV{{Key: "list", Value: "[x, y]"}}, want: "list: [x, y]\n"},
 		{name: "empty list value", pairs: []KV{{Key: "list", Value: "[]"}}, want: "list: []\n"},
 		{name: "unknown key is reported and nothing written", pairs: []KV{{Key: "name", Value: "x"}, {Key: "nope", Value: "1"}}, wantUnknown: []string{"nope"}},

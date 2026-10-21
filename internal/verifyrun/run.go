@@ -44,15 +44,16 @@ func Run(ctx context.Context, command, dir string, env []string, out io.Writer) 
 // cmd expands %NAME% even inside double quotes, so no quoting makes such a value one literal argument.
 var ErrPercentUnderCmd = errors.New("verifyrun: cmd expands % inside quotes; a value holding % cannot be passed as one literal argument")
 
-// shellFor returns the shell and its command flag that Run uses on goos: sh -c everywhere but Windows, which gets cmd /C.
-func shellFor(goos string) (name, flag string) {
+// ShellFor returns the shell and its command flag that Run uses on goos: sh -c everywhere but Windows, which gets cmd /C.
+// A caller that spawns a command itself starts the same shell this way.
+func ShellFor(goos string) (name, flag string) {
 	if goos == "windows" {
 		return "cmd", "/C"
 	}
 	return "sh", "-c"
 }
 
-// QuoteArg quotes value as one literal argument for the shell shellFor(goos) names,
+// QuoteArg quotes value as one literal argument for the shell ShellFor(goos) names,
 // so a caller can splice it into a command Run executes.
 // For sh it wraps the value in single quotes, writing each embedded single quote as '\”.
 // For cmd it wraps the value in double quotes, doubling each embedded double quote;
@@ -69,7 +70,7 @@ func QuoteArg(goos, value string) (string, error) {
 
 // run is Run with the wait delay as a parameter, so a test can shorten the wait for a lingering pipe holder.
 func run(ctx context.Context, command, dir string, env []string, out io.Writer, delay time.Duration) (int, error) {
-	shellName, flag := shellFor(runtime.GOOS)
+	shellName, flag := ShellFor(runtime.GOOS)
 
 	cmd := exec.CommandContext(ctx, shellName, flag, command)
 	cmd.Dir = dir
