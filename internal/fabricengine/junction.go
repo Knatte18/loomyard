@@ -86,6 +86,7 @@ func WarpJunctionsHere(l *lyxcwd.Location, names []string) []WarpJunction {
 // WireJunctionsWith creates directory junctions and seeds git-exclude entries for the given slug over
 // the caller-supplied wired name-set, recording every junction it creates or re-points into rec.
 // The caller must supply the filtered name-set (not loaded by this function).
+// After the junction set it runs the scratch step, which never fails wiring and reports a leave or failure through logger.Warn.
 // Idempotent.
 // Enforces the warp-pristine invariant: returns an error if the warp contains a real directory
 // predating weft.
