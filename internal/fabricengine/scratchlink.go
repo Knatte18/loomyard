@@ -126,6 +126,10 @@ func wireScratchLink(rec *Mutations, l *lyxcwd.Location, slug string) scratchOut
 
 	excludePath, err := seedScratchLinkExclude(rec, warp)
 	if err != nil {
+		// Resolving the exclude path itself can fail, which leaves it empty; the warp worktree is then the location named.
+		if excludePath == "" {
+			excludePath = warp
+		}
 		return scratchOutcome{left: fmt.Sprintf("scratch exclude not written at %s: %v; clear what blocks writing the exclude file, %s", excludePath, err, scratchReconcileHint)}
 	}
 
