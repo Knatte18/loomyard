@@ -618,7 +618,7 @@ func DeleteTaskBranchAtTipForTest(l *lyxcwd.Location, warpBranch, parentBranch, 
 // CommitPendingRecordsForTest re-exports commitPendingRecords for package fabricengine_test integration tests that drive a sibling location Remove would refuse or tear down before the commit is observable on its own.
 // It passes a throwaway NewMutations("") recorder, since its callers assert nothing about the record.
 func CommitPendingRecordsForTest(l *lyxcwd.Location, slug, warpBranch string) (committed bool, err error) {
-	return commitPendingRecords(NewMutations(""), l, slug, warpBranch)
+	return commitPendingRecords(NewMutations(""), l, slug, warpBranch, false)
 }
 
 // CleanupRemoteWarpWithHookForTest runs CleanupRemoteWarp with afterEnumerate called between enumeration and the first deletion,
@@ -652,6 +652,22 @@ func SetTeardownHooksForTest(t *testing.T, heldByPush, afterRemoveTeardown func(
 		detachedPushHeldHook = nil
 		removeAfterTeardownHook = nil
 	})
+}
+
+// SetHousekeepHookForTest sets the hook that runs just before a Remove's store housekeeping and returns the function that restores the previous one.
+// It changes process-global state, so the calling test must not be parallel.
+func SetHousekeepHookForTest(hook func(slug string)) (restore func()) {
+	previous := housekeepHook
+	housekeepHook = hook
+	return func() { housekeepHook = previous }
+}
+
+// SetRemoveAfterLockHookForTest sets the hook that runs inside a removal right after it takes the teardown lock, whose error fails the removal, and returns the function that restores the previous one.
+// It changes process-global state, so the calling test must not be parallel.
+func SetRemoveAfterLockHookForTest(hook func() error) (restore func()) {
+	previous := removeAfterLockHook
+	removeAfterLockHook = hook
+	return func() { removeAfterLockHook = previous }
 }
 
 // DropSeedCommitsForTest re-exports dropSeedCommits for package fabricengine_test integration tests that drive the board seed-commit drop's gate directly.

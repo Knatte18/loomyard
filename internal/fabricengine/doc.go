@@ -1101,6 +1101,18 @@
 // The prefix is one no archive reader matches, so a set-aside commit shows as no run.
 // `finalizeEntered` exempts a run this machine's own landing has reached past the parent-side merge of Finalize, read from the pair's loom status, the local parent branch and the prime's batten status, and treats an unreadable state as reached.
 //
+// # The local removal mode
+//
+// `RemoveLocal` removes a pair the way `Remove` does, after the same refusals, without an origin step and without waiting on another writer.
+// It try-acquires the pair's teardown lock and the weft write lock, and a held one returns an error wrapping `ErrPairBusy` with nothing changed.
+// It commits the sibling's pending records, then puts a local `set-aside/<slug>/<sha>` tag on the weft tip, reported as `SetAsideTag`, where `Remove` pushes an archive tag.
+// It asks origin for nothing, respawns no push after a failure so the surviving worktree's commits stay local, skips the store housekeeping, and regenerates the hub workspace file by one attempt at its lock, reporting `WorkspaceSkipped` when the lock is held.
+// Both modes clear the failed-push records of the pair's code and records branches once the pair is removed.
+//
+// `SnapshotUncommitted` serves the force case: under one try-acquire of the weft write lock it keeps the task worktree's uncommitted paths, under `warp/`, and the weft worktree's uncommitted paths outside the record pathspec, under `weft/`, untracked ones included, in one parentless commit under an annotated `set-aside/<slug>/<sha>` tag.
+// The commit is built from loose blobs and `git mktree`, so no branch moves and neither worktree's index is touched; with nothing uncommitted it writes nothing.
+// `SnapshotTagged` reports whether such an annotated tag of a slug exists, which tells a later run that an earlier one took the snapshot.
+//
 // # The merge surface
 //
 // **The two verbs, and why there are two.** `MergeIn(source)` (merge.go) merges `source` into the
