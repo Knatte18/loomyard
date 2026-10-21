@@ -44,8 +44,12 @@ const (
 	KindRemoteBranchUpdated Kind = "remote_branch_updated"
 	// KindWorktreeReset records resetHardTo's `reset --hard`.
 	KindWorktreeReset Kind = "worktree_reset"
-	// KindDirCreated records createExclusiveDir's directory mint.
+	// KindDirCreated records a directory-creation success site, createExclusiveDir's mint among them.
+	// It is recorded only for a directory that was absent beforehand.
 	KindDirCreated Kind = "dir_created"
+	// KindPathRenamed records a rename that moved a directory tree into place.
+	// Its Target is the destination and its Detail is the hub-relative source path.
+	KindPathRenamed Kind = "path_renamed"
 	// KindWorktreeCreated records createGitWorktree's `git worktree add`.
 	KindWorktreeCreated Kind = "worktree_created"
 	// KindBranchCreated records a verb success site that created a branch.

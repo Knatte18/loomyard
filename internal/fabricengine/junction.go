@@ -4,6 +4,7 @@
 // atomically, keyed by the current worktree's slug.
 // It is idempotent, guarding against re-entry and enforcing the warp-pristine invariant by refusing
 // to wire when the warp contains a pre-existing real directory predating weft.
+// Wiring ends with the scratch step (scratchlink.go), which links the root `.scratch` into the weft-side `.lyx`.
 
 package fabricengine
 
@@ -14,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
@@ -84,12 +86,28 @@ func WarpJunctionsHere(l *lyxcwd.Location, names []string) []WarpJunction {
 // WireJunctionsWith creates directory junctions and seeds git-exclude entries for the given slug over
 // the caller-supplied wired name-set, recording every junction it creates or re-points into rec.
 // The caller must supply the filtered name-set (not loaded by this function).
+// After the junction set it runs the scratch step, which never fails wiring and reports a leave or failure through logger.Warn.
 // Idempotent.
 // Enforces the warp-pristine invariant: returns an error if the warp contains a real directory
 // predating weft.
 // This is the form every production caller uses; WireJunctions below is a thin nil-recorder
 // delegation kept only for the roughly fifty existing test call sites that have no recorder to pass.
 func WireJunctionsWith(rec *Mutations, l *lyxcwd.Location, slug string, names []string) error {
+	if err := wireJunctionSet(rec, l, slug, names); err != nil {
+		return err
+	}
+
+	// The scratch step never fails wiring.
+	// Its leave or failure report goes to the log, since the wiring verbs' results carry no detail field.
+	if outcome := wireScratchLink(rec, l, slug); outcome.left != "" {
+		logger.Warn("fabric: scratch link not wired", "slug", slug, "left", outcome.left)
+	}
+	return nil
+}
+
+// wireJunctionSet creates the warp junctions for names, seeds the weft-side exclude and appends the junction names to the warp git-exclude.
+// It records every change into rec.
+func wireJunctionSet(rec *Mutations, l *lyxcwd.Location, slug string, names []string) error {
 	// Create or verify warp junctions
 	if err := seedLyxJunction(rec, l, slug, names); err != nil {
 		return err
@@ -112,11 +130,7 @@ func WireJunctionsWith(rec *Mutations, l *lyxcwd.Location, slug string, names []
 	}
 
 	// Append junction names to git-exclude
-	if err := seedGitExclude(rec, l, slug, names); err != nil {
-		return err
-	}
-
-	return seedScratchExclude(rec, WorktreePath(l, slug))
+	return seedGitExclude(rec, l, slug, names)
 }
 
 // WireJunctions is WireJunctionsWith's nil-recorder delegation, kept only because roughly fifty
@@ -389,9 +403,10 @@ type UnwireResult struct {
 
 // UnwireJunctions reverses WireJunctions for the current worktree, keyed by slug, over the same
 // caller-supplied names: it removes every warp junction in WarpJunctions(l, slug, names) and their
-// shared .git/info/exclude entries, undoing exactly what WireJunctions seeded — nothing more (the
+// shared .git/info/exclude entries, undoing what WireJunctions seeded for those names — nothing more (the
 // worktree pairing and weft content are untouched; see Remove for the larger paired-teardown
 // operation).
+// The root scratch link and its `/.scratch` exclude stay.
 // Like WireJunctions, it loads no config itself.
 //
 // The junctions are unwired before the exclude entries, mirroring WireJunctions' creation order in

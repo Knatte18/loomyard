@@ -15,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loggerconfig"
@@ -92,8 +93,25 @@ func TestCleanupVerb_RefusesOutsideThePrimeThenListsAndThenRemovesEverySeededLef
 	writeAged(t, keptHandoff, "note", 0)
 	writeAged(t, oldHandoff, "note", 0)
 
-	// scratch: an old child of the prime's .scratch directory.
-	scratchChild := filepath.Join(h.PrimeWorktree(), scratchDirName, "old-thing")
+	// scratch: an old child of the prime's .scratch directory, which fabric wires as a link into the pair's records.
+	scratchRoot := filepath.Join(h.PrimeWorktree(), scratchDirName)
+	assertScratchLink := func(t *testing.T, step, wantTarget string) string {
+		t.Helper()
+		isLink, err := fslink.IsLink(scratchRoot)
+		if err != nil || !isLink {
+			t.Fatalf("%s: %s is not a link: isLink=%v err=%v", step, scratchRoot, isLink, err)
+		}
+		rawTarget, err := fslink.RawTarget(scratchRoot)
+		if err != nil {
+			t.Fatalf("%s: RawTarget(%s): %v", step, scratchRoot, err)
+		}
+		if wantTarget != "" && rawTarget != wantTarget {
+			t.Errorf("%s: %s points at %q, want it unchanged at %q", step, scratchRoot, rawTarget, wantTarget)
+		}
+		return rawTarget
+	}
+	scratchTarget := assertScratchLink(t, "before the run", "")
+	scratchChild := filepath.Join(scratchRoot, "old-thing")
 	writeAged(t, filepath.Join(scratchChild, "file.txt"), "x", 30*24*time.Hour)
 	oldScratch := time.Now().Add(-30 * 24 * time.Hour)
 	if err := os.Chtimes(scratchChild, oldScratch, oldScratch); err != nil {
@@ -165,6 +183,7 @@ func TestCleanupVerb_RefusesOutsideThePrimeThenListsAndThenRemovesEverySeededLef
 	if !exists(keptHandoff) {
 		t.Errorf("--apply removed the handoff the state names")
 	}
+	assertScratchLink(t, "after --apply", scratchTarget)
 	if _, found, err := board.GetTask(taskSlug); err != nil || found {
 		t.Errorf("--apply left the done board entry: found=%v err=%v", found, err)
 	}

@@ -34,6 +34,7 @@ var manifestObservableKind = map[fabricengine.Kind]bool{
 	fabricengine.KindWorktreeRemoved: true,
 	fabricengine.KindWorktreeCreated: true,
 	fabricengine.KindDirCreated:      true,
+	fabricengine.KindPathRenamed:     true,
 	fabricengine.KindLinkRemoved:     true,
 	fabricengine.KindLinkCreated:     true,
 
@@ -323,6 +324,12 @@ func entryCovers(e fabricengine.Mutation, c Change) bool {
 	}
 
 	if pathAtOrBelowRoot(c.Path, e.Target) {
+		return true
+	}
+
+	// A rename's source subtree is gone from its old path.
+	// A change at or below the Detail, the hub-relative source, is the rename's own doing.
+	if e.Kind == fabricengine.KindPathRenamed && pathAtOrBelowRoot(c.Path, e.Detail) {
 		return true
 	}
 

@@ -269,7 +269,7 @@
 //
 // Not every fabricengine.Kind is judged the same way in the commission direction. manifestObservableKind
 // splits the vocabulary into manifest-observable kinds (path_removed, worktree_removed,
-// worktree_created, dir_created, link_removed, link_created -- a real filesystem change
+// worktree_created, dir_created, path_renamed, link_removed, link_created -- a real filesystem change
 // CaptureManifest would see) and git-state kinds (branch_created, branch_deleted, branch_pushed,
 // commit_created, worktree_reset, worktree_switched, push_spawned, repo_advanced -- git-internal
 // state CaptureManifest's filesystem walk never fully captures, branch existence being the sharpest
@@ -282,7 +282,9 @@
 //
 // The coverage rule a record entry's Target extends over, in both directions, is wider than "this
 // exact path": entryCovers admits segment-wise subtree containment (pathAtOrBelowRoot) plus two
-// widenings. A worktree-rooted kind (worktreeRootedKind: worktree_created, worktree_removed,
+// widenings.
+// A path_renamed entry additionally covers a change at or below its Detail, the renamed source.
+// A worktree-rooted kind (worktreeRootedKind: worktree_created, worktree_removed,
 // worktree_reset, worktree_switched, repo_advanced) additionally covers the derived
 // <prime>/.git/worktrees/<name> admin registration -- the stale bookkeeping entry `git worktree
 // prune` clears, which a worktree's own creation or destruction can plausibly touch without a
