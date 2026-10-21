@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
@@ -82,6 +83,18 @@ func TestHibernateVerbs_WireTheHub(t *testing.T) {
 	}
 	if _, err := os.Stat(requestPath); !os.IsNotExist(err) {
 		t.Errorf("watch with no request wrote a request file: stat err = %v", err)
+	}
+
+	location, err := lyxcwd.Resolve(prime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deps, err := hubDeps(location)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deps.Reconcile == nil || deps.ExemptNetwork == nil {
+		t.Errorf("hubDeps left a wake seam unfilled: Reconcile nil %v, ExemptNetwork nil %v", deps.Reconcile == nil, deps.ExemptNetwork == nil)
 	}
 
 	root := &cobra.Command{Use: "lyx"}
