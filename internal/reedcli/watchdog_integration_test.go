@@ -341,10 +341,11 @@ func TestWatchdogDaemon(t *testing.T) {
 		noWatch := func(string, ...string) (<-chan fswatch.Event, func() error, error) {
 			return nil, nil, errors.New("watch disabled for the shared discovery loop")
 		}
-		// This loop's idle window is widened to fifteen cycles, three seconds:
-		// DownThenUpDoesNotKillDaemon's down-then-up gap can pass the production three-cycle window under a loaded package run.
+		// This loop's idle window spans the tests' own wait budget:
+		// DownThenUpDoesNotKillDaemon's down-then-up gap can pass the production window under a loaded package run,
+		// and no subtest of this loop depends on its idle exit.
 		timing := compressedWatchdogTiming()
-		timing.IdleCycles = 15
+		timing.IdleCycles = int(watchdogTestWait / watchdogTestCycle)
 		go func() {
 			loopDone <- runWatchdogLoop(loopCtx, h.Path, tmuxPath, eng1.ShellPath(), timing, noWatch, reedengine.ListSessions, nil)
 		}()
@@ -373,7 +374,7 @@ func TestWatchdogDaemon(t *testing.T) {
 		return
 	}
 
-	// DownThenUpDoesNotKillDaemon drives a down immediately followed by an up against the daemon's one live worktree and asserts the daemon itself never exits and rediscovers the re-upped session — watchdogHubIdleCycles exists precisely to cover this gap.
+	// DownThenUpDoesNotKillDaemon drives a down immediately followed by an up against the daemon's one live worktree and asserts the daemon itself never exits and rediscovers the re-upped session — the loop's idle-cycle window exists precisely to cover this gap.
 	if !t.Run("DownThenUpDoesNotKillDaemon", func(t *testing.T) {
 		if _, err := eng2.Down(); err != nil {
 			t.Fatalf("eng2.Down(): %v", err)
