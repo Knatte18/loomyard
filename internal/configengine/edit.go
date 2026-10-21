@@ -107,7 +107,7 @@ func scaffoldIfMissing(path, configDir, template string) (scaffolded bool, err e
 // The base layer is scaffolded from the template when absent; a layer above it is sparse, so an absent file is scaffolded empty.
 // On abort, removes any scaffolded file and returns ErrAborted.
 // Validation is syntactic only;
-// known keys are not enforced, except that a saved local override must pass [ValidateLocal], and a refused one is put back to its previous bytes, or removed when the call created it.
+// known keys are not enforced, except that a saved local override must pass [ValidateLocal] and a saved machine override [ValidateMachine], and a refused one is put back to its previous bytes, or removed when the call created it.
 func Edit(dirs Dirs, spec Spec, layer Layer, edit EditorFunc) error {
 	path, owner, err := layerPath(dirs, spec, layer)
 	if err != nil {
@@ -120,7 +120,7 @@ func Edit(dirs Dirs, spec Spec, layer Layer, edit EditorFunc) error {
 	if layer == BaseLayer(dirs, spec) {
 		return EditPath(path, string(spec.Template), edit)
 	}
-	if layer != LayerLocal {
+	if layer != LayerLocal && layer != LayerMachine {
 		return EditPath(path, "", edit)
 	}
 
@@ -135,7 +135,7 @@ func Edit(dirs Dirs, spec Spec, layer Layer, edit EditorFunc) error {
 	if err != nil {
 		return fmt.Errorf("read config file after edit: %w", err)
 	}
-	if err := ValidateLocal(spec, saved); err != nil {
+	if err := validateOverride(spec, layer, saved); err != nil {
 		if readErr != nil {
 			_ = os.Remove(path)
 		} else {

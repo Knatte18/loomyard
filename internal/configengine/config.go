@@ -157,30 +157,31 @@ func load(dirs Dirs, spec Spec, fallbackOnAbsent bool) ([]byte, error) {
 	}
 
 	// A worktree without _lyx/ beside a told board dir has no worktree or local layer; the board dir's base is not uninitialised for it.
-	layerDirs := dirs
+	// The machine layer is judged on the told dirs, so it survives.
+	anchorLayers := true
 	if dirs.Board != "" && dirs.Anchor != "" {
 		if _, err := FindBaseDir(dirs.Anchor); err != nil {
 			if !errors.Is(err, ErrNotInitialized) {
 				return nil, err
 			}
-			layerDirs.Anchor = ""
+			anchorLayers = false
 		}
 	}
 
-	stack, err := StackLayers(layerDirs, spec)
+	stack, err := stackLayers(dirs, spec, anchorLayers)
 	if err != nil {
 		return nil, err
 	}
 
 	hasBase := false
 	for _, layer := range stack.Layers {
-		if layer.Layer == BaseLayer(layerDirs, spec) {
+		if layer.Layer == BaseLayer(dirs, spec) {
 			hasBase = true
 		}
 	}
 	if !hasBase {
 		if !fallbackOnAbsent {
-			return nil, missingBaseError(layerDirs, spec)
+			return nil, missingBaseError(dirs, spec)
 		}
 		if degradeReason == "" {
 			degradeReason = "absent config file"
@@ -241,7 +242,7 @@ var warnedUnknownKeys sync.Map
 // warnUnknownKeys logs one warning for each default- or worktree-layer file holding units the template lacks, retired keys aside, naming the reconcile that removes them.
 // No loader reads such a unit, so a key the template renamed silently loses its value until the file is reconciled.
 // A file and key list already warned in this process is not warned again, so a loader in a poll loop warns once.
-// The local layer is skipped, since it refuses a unit the template lacks.
+// The machine and local layers are skipped, since each refuses a unit the template lacks.
 // A spec with WholeEntries is skipped, since each of its top-level keys is a unit of its own.
 func warnUnknownKeys(layers []LayerDoc, spec Spec) error {
 	if spec.WholeEntries {

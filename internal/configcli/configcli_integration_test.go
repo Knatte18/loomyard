@@ -141,14 +141,16 @@ func TestConfigOverRealHub(t *testing.T) {
 	primeWorktreePath := h.PrimeWorktree()
 
 	guardRows := []struct {
-		name     string
-		module   string
+		name   string
+		module string
+		// layer is the --layer value; empty writes the module's own file.
+		layer    string
 		set      string
 		cwd      string
 		strand   string
 		wantCode int
 		wantErr  string
-		// wantWritten is the text the hub file gains on an allowed write.
+		// wantWritten is the text the checked file gains on an allowed write.
 		wantWritten string
 	}{
 		{name: "task pair is refused naming the prime", module: "board", set: "labels.guard=desc", cwd: codeWorktreePath, wantCode: 1, wantErr: "prime worktree"},
@@ -156,36 +158,71 @@ func TestConfigOverRealHub(t *testing.T) {
 		{name: "task pair is refused setting landing's deploy", module: "landing", set: "deploy=./update-plugins.sh", cwd: codeWorktreePath, wantCode: 1, wantErr: "prime worktree"},
 		{name: "prime under a slug-bearing strand name is refused", module: "board", set: "labels.guard=desc", cwd: primeWorktreePath, strand: "ly:" + slug + ":webster", wantCode: 1, wantErr: "task session"},
 		{name: "prime under the hub orch's slug-free name is allowed", module: "board", set: "labels.guard=desc", cwd: primeWorktreePath, strand: "ly:orch", wantWritten: "guard: desc"},
+		{name: "task pair is refused writing a machine file naming the prime", module: "gate", layer: "machine", set: "go_parallel=8", cwd: codeWorktreePath, wantCode: 1, wantErr: "prime worktree"},
 	}
 	for _, row := range guardRows {
 		t.Run("hub-wide write guard: "+row.name, func(t *testing.T) {
 			t.Setenv(agentname.StrandNameEnv, row.strand)
-			hubFile := configengine.ConfigFile(boardDir, row.module)
-			before, err := os.ReadFile(hubFile)
-			if err != nil {
-				t.Fatalf("read hub %s.yaml: %v", row.module, err)
+			checkedFile := configengine.ConfigFile(boardDir, row.module)
+			args := []string{row.module, "--set", row.set}
+			if row.layer != "" {
+				args = append(args, "--layer", row.layer)
 			}
+			if row.layer == string(configengine.LayerMachine) {
+				checkedFile = configengine.MachineFile(boardDir, row.module)
+			}
+			// A machine file is absent until a write makes it, and reads as empty bytes until then.
+			readChecked := func() []byte {
+				data, err := os.ReadFile(checkedFile)
+				if err != nil && !(row.layer != "" && os.IsNotExist(err)) {
+					t.Fatalf("read %s: %v", checkedFile, err)
+				}
+				return data
+			}
+			before := readChecked()
 
 			var out bytes.Buffer
-			if code := RunCLIIn(row.cwd, &out, []string{row.module, "--set", row.set}); code != row.wantCode {
-				t.Fatalf("lyx config %s --set %s = %d; want %d; output: %s", row.module, row.set, code, row.wantCode, out.String())
+			if code := RunCLIIn(row.cwd, &out, args); code != row.wantCode {
+				t.Fatalf("lyx config %s = %d; want %d; output: %s", strings.Join(args, " "), code, row.wantCode, out.String())
 			}
-			after, err := os.ReadFile(hubFile)
-			if err != nil {
-				t.Fatalf("read hub %s.yaml: %v", row.module, err)
-			}
+			after := readChecked()
 			if row.wantCode != 0 {
 				assertJSONErrContains(t, out.String(), row.wantErr)
 				if !bytes.Equal(before, after) {
-					t.Errorf("hub %s.yaml changed on a refused write; got %q", row.module, after)
+					t.Errorf("%s changed on a refused write; got %q", checkedFile, after)
 				}
 				return
 			}
 			if !strings.Contains(string(after), row.wantWritten) {
-				t.Errorf("hub %s.yaml lacks the allowed write %q; got %q", row.module, row.wantWritten, after)
+				t.Errorf("%s lacks the allowed write %q; got %q", checkedFile, row.wantWritten, after)
 			}
 		})
 	}
+
+	t.Run("machine layer write from the prime writes the machine file and leaves _board untouched", func(t *testing.T) {
+		t.Setenv(agentname.StrandNameEnv, "")
+		headBefore := boardHead(t, boardDir)
+
+		var out bytes.Buffer
+		if code := RunCLIIn(primeWorktreePath, &out, []string{"gate", "--layer", "machine", "--set", "go_parallel=8"}); code != 0 {
+			t.Fatalf("lyx config gate --layer machine --set go_parallel=8 = %d; want 0; output: %s", code, out.String())
+		}
+		if data, err := os.ReadFile(configengine.MachineFile(boardDir, "gate")); err != nil || string(data) != "go_parallel: 8\n" {
+			t.Errorf("machine gate file = %q, %v; want go_parallel: 8", data, err)
+		}
+		if head := boardHead(t, boardDir); head != headBefore {
+			t.Errorf("_board HEAD = %s after a machine write; want %s", head, headBefore)
+		}
+		status := exec.Command("git", "status", "--porcelain")
+		status.Dir = boardDir
+		statusOut, err := status.Output()
+		if err != nil {
+			t.Fatalf("git status in _board: %v", err)
+		}
+		if strings.TrimSpace(string(statusOut)) != "" {
+			t.Errorf("_board status = %q after a machine write; want it empty", statusOut)
+		}
+	})
 
 	t.Run("hub-wide write guard: the menu from a task pair is refused naming the prime", func(t *testing.T) {
 		t.Setenv(agentname.StrandNameEnv, "")
@@ -321,6 +358,16 @@ func TestConfigOverRealHub(t *testing.T) {
 			t.Fatalf("plant a template-equal fan in the board lenses.yaml: %v", err)
 		}
 
+		// A reconcile never reads or writes a machine file, so its bytes stay as seeded through the apply below.
+		const machineBytes = "slots: 1\ngo_parallel: 8\n"
+		machineFile := configengine.MachineFile(boardDir, "gate")
+		if err := os.MkdirAll(filepath.Dir(machineFile), 0o755); err != nil {
+			t.Fatalf("create the board's .lyx config dir: %v", err)
+		}
+		if err := os.WriteFile(machineFile, []byte(machineBytes), 0o644); err != nil {
+			t.Fatalf("seed the machine file: %v", err)
+		}
+
 		code, result := runReconcileCLI(t, primeWorktreePath, "--layer", "default")
 		if code != 0 {
 			t.Fatalf("reconcile --layer default = %d; want 0; result: %v", code, result)
@@ -440,6 +487,9 @@ func TestConfigOverRealHub(t *testing.T) {
 		}
 		if kept, err := os.ReadFile(rulesFile); err != nil || string(kept) != rulesContent {
 			t.Errorf("rules file = %q, %v after the apply; want it unchanged", kept, err)
+		}
+		if kept, err := os.ReadFile(machineFile); err != nil || string(kept) != machineBytes {
+			t.Errorf("machine gate file = %q, %v after the apply; want it unchanged", kept, err)
 		}
 	})
 }

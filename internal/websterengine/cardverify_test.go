@@ -81,7 +81,7 @@ func TestRerunCardVerifies_Slotted(t *testing.T) {
 				cfg, err := gateslot.LoadConfig(configengine.Dirs{Board: unusableBoard})
 				return cfg.Limits(), err
 			},
-			wantFailure: "card 07-slotted verify " + requireCap + ` could not acquire a gate slot: read gate limits: gate config key "slots": 0; want at least 1; fix it with "lyx config gate" from the prime`,
+			wantFailure: "card 07-slotted verify " + requireCap + ` could not acquire a gate slot: read gate limits: gate config key "slots": 0; want at least 1; fix it with "lyx config gate" from the prime; a session that is not the prime takes none of these steps; it reports status: FAILED and the orch runs them`,
 		},
 	}
 	for _, tc := range tests {

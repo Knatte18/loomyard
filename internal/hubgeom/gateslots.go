@@ -11,16 +11,21 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// GateSlots returns the gate-slot pool of l's hub: its slot directory is the board dir's, and its limits are read strictly from the board dir's gate.yaml at every acquire.
-// A gate.yaml that cannot be loaded surfaces at acquire as an error naming the file.
+// GateSlots returns the gate-slot pool of l's hub: its slot directory is the board dir's, and its limits are read strictly from the board dir's gate.yaml and this machine's override at every acquire.
+// A gate config that cannot be loaded surfaces at acquire as an error naming each file in the stack.
 func GateSlots(l *lyxcwd.Location) *gateslot.Pool {
 	boardDir := fabricengine.BoardDir(l.HubPath)
 	return &gateslot.Pool{
 		Dir: gateslot.Dir(boardDir),
 		Limits: func() (gateslot.Limits, error) {
-			cfg, err := gateslot.LoadConfig(fabricengine.ConfigDirs(l))
+			dirs := fabricengine.ConfigDirs(l)
+			cfg, err := gateslot.LoadConfig(dirs)
 			if err != nil {
-				return gateslot.Limits{}, fmt.Errorf("load %s: %w", configengine.ConfigFile(boardDir, "gate"), err)
+				named := configengine.ConfigFile(boardDir, "gate")
+				for _, file := range gateslot.ConfigFiles(dirs)[1:] {
+					named += " and " + file
+				}
+				return gateslot.Limits{}, fmt.Errorf("load %s: %w", named, err)
 			}
 			return cfg.Limits(), nil
 		},

@@ -8,19 +8,22 @@
 //
 // # Layers
 //
-// A module's config resolves through layers: the embedded template, the repo default under the board dir, the worktree's own file and an untracked local override under `.lyx`.
-// `--layer default|worktree|local` selects the file a verb addresses; no flag selects the module's own file, the worktree file of a per-worktree module and the hub file of a hub-wide one.
+// A module's config resolves through layers: the embedded template, the repo default under the board dir, the worktree's own file, an untracked machine override under the board dir's `.lyx` and an untracked local override under the worktree's `.lyx`.
+// `--layer default|worktree|machine|local` selects the file a verb addresses; no flag selects the module's own file, the worktree file of a per-worktree module and the hub file of a hub-wide one.
 // `--layer default` writes `<BoardDir>/_lyx/config/<module>.yaml` of any module through the board write path above, guard, lock, strict validation and commit included.
 // `--layer worktree` writes the worktree file and syncs fabric; the hub-wide module has none, so it is refused with `--layer default` from the prime and `--layer local` as the ways forward.
+// `--layer machine` addresses `configengine.MachineFile` of the board dir for a hub-wide module with `machine` keys (`configengine.MachineKeys`), a never-tracked file that bounds a resource every worktree of the hub on this machine shares.
+// It passes the default layer's write guard below, never commits and runs no fabric sync, refuses a key the machine layer closes before writing anything, checks that the stack still loads over the prime's worktree and puts the file back when it does not.
+// It is refused on a per-worktree module, with `--layer local` as the way forward, and on a hub-wide module with no machine key, with `lyx config <module>` from the prime as the way forward; both refusals touch no file.
 // `--layer local` writes `configengine.LocalFile` of the anchor, never commits and runs no fabric sync, and refuses a key the local layer closes (`configengine.ValidateLocal`), leaving the file as it was.
 // Under a board the base layer is the repo default and stays full, so a write to any layer above it is sparse: `--set` writes only the keys set through `yamlengine.SetSparse`, and an editor edit scaffolds an absent file empty.
 // `--print --layer <name>` prints that layer's file verbatim; `--print` of all modules prints each module's own file.
-// `lyx config menu` marks each module with the layers that hold a file, as `loom (default, local)`, or `(template)` when none does.
-// `lyx config <module> --resolved` prints the merged result through `configengine.Provenance`, each unit's line comment naming the layer it came from: `template`, `default`, `worktree` or `local`.
+// `lyx config menu` marks each module with the layers that hold a file, as `loom (default, local)` or `gate (default, machine)`, or `(template)` when none does.
+// `lyx config <module> --resolved` prints the merged result through `configengine.Provenance`, each unit's line comment naming the layer it came from: `template`, `default`, `worktree`, `machine` or `local`.
 // It is read-only, refused beside `--print`, `--set` or `--layer` and without a module, and errors on an absent base layer as the module's loader does.
 //
-// A write to the default layer, by `--set`, by an editor edit or through the menu, is refused from any worktree that is not the hub's prime and from a session whose `LYX_STRAND_NAME` parses as a name carrying a slug, wherever its worktree resolves.
-// The refusal names the way forward, the operator or the hub orch running the write from the prime, and leaves the board file unchanged with no editor opened.
+// A write to the default or the machine layer, by `--set`, by an editor edit or through the menu, is refused from any worktree that is not the hub's prime and from a session whose `LYX_STRAND_NAME` parses as a name carrying a slug, wherever its worktree resolves.
+// The refusal names the way forward, the operator or the hub orch running the write from the prime, and leaves the file unchanged with no editor opened.
 // The hub orch's slug-free name and an unset name pass; a print, a worktree write and a local write never consult the guard.
 // The bound: it guards a mistaken write, not a determined agent, so a direct file write to the board dir's config, an environment cleared without naming the variable, and an unset hidden behind a script still pass.
 //
@@ -76,6 +79,7 @@
 // A write that fails part-way is undone by restoring the board dir's config files.
 // A write that is made but not committed, or committed but not pushed, is reported as an error naming the files left for the next board sync.
 // A dry run is never guarded.
+// A reconcile never reads or writes a machine file.
 // Any other `--layer` value is refused, and so is any reconcile whose worktree is the board dir itself, which would strip the hub's files as a sparse worktree layer;
 // both refusals name the way forward.
 package configcli
