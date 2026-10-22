@@ -1787,6 +1787,41 @@ func TestReconcile_FailureNamesItsFile(t *testing.T) {
 	}
 }
 
+// TestPrimeSeedError pins that the extra "delete the selector line" step is added only to an invalid-config failure of a module that has an overlay selector.
+func TestPrimeSeedError(t *testing.T) {
+	t.Parallel()
+	invalid := configengine.MarkInvalid(errors.New("names no shipped layer"))
+	tests := []struct {
+		name      string
+		module    string
+		err       error
+		wantExtra bool
+	}{
+		{"InvalidWithSelector", "lenses", invalid, true},
+		{"InvalidWithoutSelector", "batcher", invalid, false},
+		{"OtherFailureWithSelector", "lenses", errors.New("disk full"), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			module, ok := configreg.Lookup(tt.module)
+			if !ok {
+				t.Fatalf("Lookup(%q) found no module", tt.module)
+			}
+			got := primeSeedError(module, t.TempDir(), tt.err)
+			if !tt.wantExtra {
+				if got != tt.err {
+					t.Errorf("primeSeedError() = %v; want the error unchanged", got)
+				}
+				return
+			}
+			if !errors.Is(got, configengine.ErrInvalid) || !strings.Contains(got.Error(), "also delete the lens_set line from") {
+				t.Errorf("primeSeedError() = %v; want an invalid error holding the delete step", got)
+			}
+		})
+	}
+}
+
 // TestReconcile_MovesKeysAcrossModules pins the declared shuttle-to-claude and burler-to-lenses key moves at every reconcile entry point: where the value lands at each layer, what a collision keeps or overwrites, and that a dry run writes nothing and a second pass moves nothing.
 func TestReconcile_MovesKeysAcrossModules(t *testing.T) {
 	t.Parallel()

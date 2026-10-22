@@ -291,9 +291,9 @@ func templateUnderBase(m configreg.Module, dirs configengine.Dirs) ([]byte, erro
 
 // primeSeedError names the prime's copy of m in a seed failure its selector caused, and adds the step the refusal's way forward lacks:
 // a prime worktree file holding a selector the base does not hold is refused at load, so its line must go too.
-// It returns err unchanged for any other failure.
+// It returns err unchanged for any other failure, and for a module with no overlay selector.
 func primeSeedError(m configreg.Module, primeBaseDir string, err error) error {
-	if !errors.Is(err, configengine.ErrInvalid) {
+	if m.Spec().Overlay.Selector == "" || !errors.Is(err, configengine.ErrInvalid) {
 		return err
 	}
 	primePath := configengine.ConfigFile(primeBaseDir, m.Name)
