@@ -100,7 +100,7 @@ func OwnerReader(machine func() (string, error), parentOf func(hubPath, slug str
 // OriginSeams returns the seams the origin reconcile reaches by injection.
 // LivePair is the negation of the quiet rule's probe, except that a slug a live hub pause entry covers reads not live.
 // OwnerOf is the owner reader over the options' Machine and ParentOf, and nil when Machine is nil.
-// Teardown removes an ended entry's pair in local mode with a zero quiet wait, refusing a busy driver, and reports a busy driver or a busy lock as the report's busy flag.
+// Teardown removes an ended entry's pair in local mode under the ended verdict, which skips the driver checks, refusing a driver lock or run lock still held after the owned processes are ended, and reports a busy driver or a busy lock as the report's busy flag.
 // The force case, a pair with a wake-written pause entry or an earlier snapshot tag, instead ends the driver, snapshots the pair's uncommitted paths and, once they are kept, lifts the wake hold.
 func (t *Teardown) OriginSeams(opts SeamOptions) fabricengine.OriginSeams {
 	var ownerOf fabricengine.OwnerReader
@@ -147,7 +147,7 @@ func (t *Teardown) teardownEnded(opts SeamOptions, ended fabricengine.EndedTeard
 		}
 	}
 
-	request := Request{Slug: ended.Slug, Local: true, RefuseWhenBusy: true}
+	request := Request{Slug: ended.Slug, Local: true, RefuseWhenBusy: true, Verdict: fabricengine.EntryEnded}
 	if wakeHeld || ended.EarlierSnapshot {
 		request.RefuseWhenBusy = false
 		request.Force = true

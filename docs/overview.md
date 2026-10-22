@@ -235,7 +235,7 @@ github.com/Knatte18/loomyard/
 ├── internal/shortcutcli/         the top-level operator shortcuts (`lyx a`, `lyx attach`, `lyx prime`, `lyx pause`, `lyx p`, `lyx resume`, `lyx r`) from one embedded file
 ├── internal/idecli/              the ide CLI command
 ├── internal/ideengine/           the ide domain kernel
-├── internal/pairteardown/        the one sequence that ends a pair: quiet wait, refusal probe, reed session end, then fabric removal
+├── internal/pairteardown/        the one sequence that ends a pair: quiet wait or the skip's run-lock wait, refusal probe, owned-process end, loop and reed session end, then fabric removal
 ├── internal/reedcli/             the reed CLI command
 ├── internal/reedengine/          the reed domain kernel (overlay + strand bookkeeping)
 ├── internal/reedengine/render/   pure display-vocabulary leaf (Anchor, Display, ValidateDisplay)

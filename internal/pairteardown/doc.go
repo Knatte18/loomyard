@@ -8,8 +8,18 @@
 //
 // EndSession runs six steps in order and stops at the first failure:
 //
-//  1. Quiet wait.
+//  1. Quiet wait, or the skip.
 //     It polls until the pair's driver is quiet, bounded by Request.QuietWait.
+//     With the task worktree present the wait is skipped, and no driver check is made, for a pair with nothing left to do.
+//     That is read, in this order and stopping at the first that holds, as an ended or owned_elsewhere Request.Verdict, a live pause entry covering the slug, a local board entry that reads done, and a Finalize Done in the task worktree's status history with no live registered batten, since batten still runs Land and deploy after Finalize Done.
+//     A read error is returned with nothing ended.
+//     A skipped pair instead waits for its run lock first, before the refusal probe and the owned-process end, bounded by runLockWait, so a step doing local work under a pause finishes before its loop is ended.
+//     A holder still there at the bound is the newest unfinished step's pid, or else the slug's registered driver, or unknown.
+//     It passes, and the owned-process end and the loop end reach it, when a live waiting marker of the slug names the holder's own pid, a holder waiting at the network gate,
+//     or when a pause covers the slug and no parent lock record names it, a step waiting on its interrupted agent; the paused pass applies to a known and an unknown holder alike.
+//     Any other holder is an ErrDriverBusy refusal with nothing ended.
+//     Under a pause with a parent lock record naming the slug, the refusal names resuming the run so the step finishes its merge: `lyx tender resume` with no slug, lifting every live entry of the hub, when a hub entry covers the slug, and `lyx tender resume <slug>` when slug entries alone do.
+//     Unpaused it names `lyx tender pause <slug>` and then running the removal again, with no pause step when a parent lock record names the slug, since a pause would turn the next attempt into the paused refusal.
 //  2. Refusal probe.
 //     Topology.RemoveRefusal answers whether Remove would refuse, with nothing touched.
 //     A refusal is returned unchanged, so a refused removal leaves the session and its strands live and ends no registered process.
@@ -29,6 +39,7 @@
 //  5. Run-lock wait.
 //     It waits, for at most runLockWait, for the run lock to be released, so the session ends only after the in-flight step is dead.
 //     A spent bound names the pid of the run's newest unfinished step as the holder, or an unknown holder.
+//     A skipped pair has already waited once before the owned-process end, and this wait repeats after the loop end.
 //  6. Session end.
 //     With the task worktree present it is Engine.Down, which also tears down the hub's tmux server after the last session.
 //     With the task worktree gone it is reedengine.EndSessionByName, so no path under the gone worktree is recreated.
@@ -61,7 +72,7 @@
 //
 // Request.Local removes the pair through Topology.RemoveLocal: no origin step, and no board read or write, so the claim settlement is skipped whole.
 // A busy teardown lock or records write lock surfaces from RemovePair as fabricengine.ErrPairBusy.
-// A local-mode caller passes RefuseWhenBusy with a zero QuietWait, so a busy driver is ErrDriverBusy at once with nothing ended.
+// A local-mode caller passes RefuseWhenBusy with a zero QuietWait, so a busy driver is ErrDriverBusy at once with nothing ended, unless its Verdict skips the driver checks.
 //
 // Request.Snapshot, the force case, keeps the pair's task and records worktrees' uncommitted paths under a local snapshot tag before the removal.
 // RemovePair takes it first, after EndSession ended the driver and before the teardown lock is tried, logs its tag and paths, sets them on the result's SnapshotTag and SnapshotPaths, and puts its record ahead of the removal's.
@@ -77,7 +88,7 @@
 // `Teardown.OriginSeams` builds the seams the origin reconcile takes by injection, so every call site's CLI package reads a live pair and removes an ended entry's pair the same way.
 // `LivePair` is the negation of the quiet rule's probe, except that a slug a live hub pause entry covers reads not live, its driver being interrupted.
 // `SeamOptions.HubPaused` is asked at each `LivePair` call, so a pause lifted while the reconcile waited at the network gate reads lifted and the resumed driver reads live.
-// `Teardown` runs the local mode with a zero quiet wait and RefuseWhenBusy, and a busy driver or a held lock comes back as the report's busy flag, never as an error, with nothing removed.
+// `Teardown` runs the local mode with RefuseWhenBusy under the ended verdict, which skips the driver checks, and a driver lock or run lock still held after the owned processes are ended comes back as the report's busy flag, never as an error, with nothing removed.
 // The force case, a live wake-written pair pause entry (`SeamOptions.WakeHeld`) or an earlier snapshot tag, passes Force and Snapshot and no RefuseWhenBusy, so a busy driver is ended;
 // `SeamOptions.LiftWakeHold` runs as AfterSnapshot, lifting the hold only once the snapshot is kept.
 // `OwnerReader` builds the owner seam, `OwnerOf`, beside the live-pair, parent-lock and teardown seams: it reads the machine's name, parses a `board.json` with `boardengine.ParseOwners`, takes the slug's effective owner with a parent resolver and reports whether another machine owns it.
@@ -89,6 +100,7 @@
 //
 // A pair is quiet when its run lock and its loop lock are free and its driver strand is absent, dead, retiring or parked.
 // A held loop lock reads as busy, and the refusal names the live loop and the way forward of pausing the run or retrying once it stops.
+// The refusal for a busy driver names the slug's live owned processes by role and pid, and its way forward is retrying once the driver has written its report, or `lyx tender pause <slug>` and then the removal again, which the skip lets through.
 // A pair whose task worktree is gone is quiet by exception: neither the run lock nor reed's strand table can be probed there, and the session is ended by exact name with no wait.
 // "Gone" means the task worktree path is not a registered linked worktree.
 //

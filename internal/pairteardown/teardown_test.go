@@ -57,6 +57,23 @@ type fakeSubstrates struct {
 	// driverPID is the pid of the registered driver, when driverFound.
 	driverPID   int
 	driverFound bool
+
+	// paused and hubEntry are the pause readings; pausedErr fails the read.
+	paused    bool
+	hubEntry  bool
+	pausedErr error
+	// awaitOrPassErr is what the pre-end run-lock wait answers; awaitSeen is what it was last called with.
+	awaitOrPassErr error
+	awaitSeen      awaitCall
+	// owned and ownedErr are the slug's live owned processes a busy refusal names.
+	owned    []runproc.Record
+	ownedErr error
+}
+
+// awaitCall is one call of the pre-end run-lock wait.
+type awaitCall struct {
+	paused, hubEntry bool
+	retry            string
 }
 
 func (f *fakeSubstrates) teardown() *Teardown {
@@ -74,7 +91,14 @@ func (f *fakeSubstrates) teardown() *Teardown {
 		},
 		battenAlive: func(string) (bool, error) { return f.battenAlive, nil },
 		driverPID:   func(string) (int, bool) { return f.driverPID, f.driverFound },
-		gone:        func(string) (bool, error) { return false, nil },
+		paused:      func(string) (bool, bool, error) { return f.paused, f.hubEntry, f.pausedErr },
+		awaitOrPass: func(_ context.Context, _ string, paused, hubEntry bool, retry string) error {
+			f.calls = append(f.calls, "awaitOrPass")
+			f.awaitSeen = awaitCall{paused: paused, hubEntry: hubEntry, retry: retry}
+			return f.awaitOrPassErr
+		},
+		ownedProcesses: func(string) ([]runproc.Record, error) { return f.owned, f.ownedErr },
+		gone:           func(string) (bool, error) { return false, nil },
 		quiet: func(string) (quietState, error) {
 			f.calls = append(f.calls, "quiet")
 			st := f.quiets[0]
@@ -165,7 +189,10 @@ func TestTeardown_CallSequence(t *testing.T) {
 	refusal := errors.New("worktree has uncommitted changes")
 	text := func(s string) *string { return &s }
 	runClaim := text(boardengine.RunStatus("running", "Webster-Burler"))
-	const sessionEnd = "quiet,refusal,endOwned,driverLock,kill,seize,await,end,release(ended=true)"
+	// reads are the skip readings an unpaused, unended pair with no done entry and no landed run makes before its quiet wait.
+	const reads = "readClaim,landed,"
+	const sessionEnd = reads + "quiet,refusal,endOwned,driverLock,kill,seize,await,end,release(ended=true)"
+	const skippedEnd = "awaitOrPass,refusal,endOwned,driverLock,kill,seize,await,end,release(ended=true)"
 	survivors := []runproc.Ended{{PID: 4242, Role: runproc.RoleLoop}}
 	tests := []struct {
 		name string
@@ -199,6 +226,14 @@ func TestTeardown_CallSequence(t *testing.T) {
 		driverPID      int
 		driverFound    bool
 		battenAlive    bool
+		// paused, hubEntry and pausedErr script the pause reading; awaitOrPassErr scripts the pre-end run-lock wait; owned scripts the processes a busy refusal names.
+		paused         bool
+		hubEntry       bool
+		pausedErr      error
+		awaitOrPassErr error
+		owned          []runproc.Record
+		// wantAwait, when set, is what the pre-end run-lock wait must have been called with.
+		wantAwait *awaitCall
 		// wantEnded and wantSurvivors are the EndedProcesses and Survivors of the returned session result.
 		wantEnded     []runproc.Ended
 		wantSurvivors []runproc.Ended
@@ -223,15 +258,16 @@ func TestTeardown_CallSequence(t *testing.T) {
 			quiets:          []quietState{busy},
 			request:         Request{Slug: "slug", QuietWait: 3 * time.Second, RefuseWhenBusy: true},
 			wantErrIs:       ErrDriverBusy,
-			wantErrContains: []string{"tst:slug:driver", "lyx reed attach", "lyx reed down"},
-			wantCalls:       "quiet,quiet,quiet,quiet",
+			owned:           []runproc.Record{{PID: 4100, Role: runproc.RoleDriver}, {PID: 4101, Role: runproc.RolePush}},
+			wantErrContains: []string{"tst:slug:driver", "lyx reed attach", "lyx tender pause slug", "4100 (driver)", "4101 (push)"},
+			wantCalls:       reads + "quiet,quiet,quiet,quiet",
 			wantSleeps:      3,
 		},
 		{
 			name:        "DriverTurningRetiringProceedsAfterCountedSleeps",
 			quiets:      []quietState{busy, busy, {quiet: true}},
 			request:     Request{Slug: "slug", QuietWait: time.Minute, RefuseWhenBusy: true},
-			wantCalls:   "quiet,quiet,quiet,refusal,endOwned,driverLock,kill,seize,await,end,release(ended=true)",
+			wantCalls:   reads + "quiet,quiet,quiet,refusal,endOwned,driverLock,kill,seize,await,end,release(ended=true)",
 			wantSleeps:  2,
 			wantSession: &SessionResult{Ended: true, DriverWasLive: false},
 		},
@@ -248,7 +284,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			refusalErr: refusal,
 			request:    Request{Slug: "slug"},
 			wantErrIs:  refusal,
-			wantCalls:  "quiet,refusal",
+			wantCalls:  reads + "quiet,refusal",
 		},
 		{
 			name:         "SessionEndErrorNeverRemoves",
@@ -257,7 +293,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			endErr:       errors.New("tmux down"),
 			request:      Request{Slug: "slug"},
 			wantAnyError: true,
-			wantCalls:    "quiet,refusal,endOwned,driverLock,kill,seize,await,end,release(ended=false)",
+			wantCalls:    reads + "quiet,refusal,endOwned,driverLock,kill,seize,await,end,release(ended=false)",
 		},
 		{
 			name:      "CallsQuietProbeLoopKillEndAndRemoveInOrderThenReadsTheClaim",
@@ -267,13 +303,14 @@ func TestTeardown_CallSequence(t *testing.T) {
 			wantCalls: sessionEnd + ",landed,archive,remove,readClaim",
 		},
 		{
-			name:       "DoneEntryIsKept",
-			run:        true,
-			quiets:     []quietState{{quiet: true}},
-			request:    Request{Slug: "slug"},
-			claim:      text("done"),
-			claimFound: true,
-			wantCalls:  sessionEnd + ",landed,archive,remove,readClaim",
+			name:        "DoneEntryIsKeptAndSkipsTheDriverChecksWhateverBattenReads",
+			run:         true,
+			quiets:      []quietState{{quiet: true}},
+			request:     Request{Slug: "slug"},
+			claim:       text("done"),
+			claimFound:  true,
+			battenAlive: true,
+			wantCalls:   "readClaim," + skippedEnd + ",landed,archive,remove,readClaim",
 		},
 		{
 			name:       "EntryWithoutTheRunFormIsKept",
@@ -299,6 +336,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			quiets:      []quietState{{quiet: true}},
 			request:     Request{Slug: "slug"},
 			childLanded: true,
+			battenAlive: true,
 			claim:       runClaim,
 			claimFound:  true,
 			wantCalls:   sessionEnd + ",landed,archive,remove,readClaim,write=done",
@@ -379,12 +417,21 @@ func TestTeardown_CallSequence(t *testing.T) {
 			wantCalls:    sessionEnd + ",landed,archive,remove,readClaim,battenRun",
 		},
 		{
-			name:         "ClaimReadFailureWritesNothing",
+			name:         "ClaimReadFailureAfterTheRemovalWritesNothing",
+			run:          true,
+			quiets:       []quietState{{quiet: true}},
+			request:      Request{Slug: "slug", Verdict: fabricengine.EntryEnded},
+			claimReadErr: errors.New("board unreadable"),
+			wantCalls:    skippedEnd + ",landed,archive,remove,readClaim",
+		},
+		{
+			name:         "ClaimReadFailureInTheSkipReadingIsReturnedWithNothingEnded",
 			run:          true,
 			quiets:       []quietState{{quiet: true}},
 			request:      Request{Slug: "slug"},
 			claimReadErr: errors.New("board unreadable"),
-			wantCalls:    sessionEnd + ",landed,archive,remove,readClaim",
+			wantAnyError: true,
+			wantCalls:    "readClaim",
 		},
 		{
 			name:        "GoneTaskWorktreeOverAnUnseededRunClearsWithoutReadingLanded",
@@ -414,7 +461,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			request:         Request{Slug: "slug", RefuseWhenBusy: true},
 			wantErrIs:       ErrDriverBusy,
 			wantErrContains: []string{"the loop is live", "lyx shed pause slug --after <current_producer>"},
-			wantCalls:       "quiet",
+			wantCalls:       reads + "quiet",
 		},
 		{
 			name:         "LoopLockSeizeFailureNeverEndsTheSession",
@@ -422,7 +469,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			seizeErr:     errors.New("the loop lock is still held"),
 			request:      Request{Slug: "slug"},
 			wantAnyError: true,
-			wantCalls:    "quiet,refusal,endOwned,driverLock,kill,seize",
+			wantCalls:    reads + "quiet,refusal,endOwned,driverLock,kill,seize",
 		},
 		{
 			name:         "RunLockHeldPastTheBoundNeverEndsTheSessionAndRestoresThePidFile",
@@ -430,7 +477,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			awaitErr:     errors.New("the run lock is still held by pid 42"),
 			request:      Request{Slug: "slug"},
 			wantAnyError: true,
-			wantCalls:    "quiet,refusal,endOwned,driverLock,kill,seize,await,release(ended=false)",
+			wantCalls:    reads + "quiet,refusal,endOwned,driverLock,kill,seize,await,release(ended=false)",
 		},
 		{
 			name:        "GonePairSkipsQuietWaitAndEndsByName",
@@ -448,7 +495,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			request:         Request{Slug: "slug", RefuseWhenBusy: true},
 			wantErrIs:       ErrDriverBusy,
 			wantErrContains: []string{"4242", runproc.RoleLoop, "retry the removal"},
-			wantCalls:       "quiet,refusal,endOwned",
+			wantCalls:       reads + "quiet,refusal,endOwned",
 			wantSession:     &SessionResult{},
 			wantEnded:       []runproc.Ended{{PID: 4100, Role: runproc.RolePush}},
 			wantSurvivors:   survivors,
@@ -468,7 +515,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			endOwnedErr:  errors.New("record directory unreadable"),
 			request:      Request{Slug: "slug"},
 			wantAnyError: true,
-			wantCalls:    "quiet,refusal,endOwned",
+			wantCalls:    reads + "quiet,refusal,endOwned",
 		},
 		{
 			name:        "EndedProcessesAreCarriedOnTheSessionResult",
@@ -486,7 +533,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			request:         Request{Slug: "slug", RefuseWhenBusy: true},
 			wantErrIs:       ErrDriverBusy,
 			wantErrContains: []string{"lyx tender status"},
-			wantCalls:       "quiet,refusal,endOwned,driverLock",
+			wantCalls:       reads + "quiet,refusal,endOwned,driverLock",
 		},
 		{
 			name:            "DriverLockStillHeldOnWindowsNamesTaskkillWithTheRecordedDriverPid",
@@ -498,7 +545,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			request:         Request{Slug: "slug", RefuseWhenBusy: true},
 			wantErrIs:       ErrDriverBusy,
 			wantErrContains: []string{"taskkill /PID 777 /T /F"},
-			wantCalls:       "quiet,refusal,endOwned,driverLock",
+			wantCalls:       reads + "quiet,refusal,endOwned,driverLock",
 		},
 		{
 			name:            "DriverLockStillHeldOnWindowsWithNoDriverRecordNamesTheLockPath",
@@ -508,7 +555,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			request:         Request{Slug: "slug", RefuseWhenBusy: true},
 			wantErrIs:       ErrDriverBusy,
 			wantErrContains: []string{"Task Manager", "driver.lock"},
-			wantCalls:       "quiet,refusal,endOwned,driverLock",
+			wantCalls:       reads + "quiet,refusal,endOwned,driverLock",
 		},
 		{
 			name:           "DriverLockStillHeldWithoutRefuseWhenBusyGoesOnAndReportsDriverWasLive",
@@ -563,7 +610,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			quiets:    []quietState{busy},
 			request:   Request{Slug: "slug", Local: true, RefuseWhenBusy: true},
 			wantErrIs: ErrDriverBusy,
-			wantCalls: "quiet",
+			wantCalls: reads + "quiet",
 		},
 		{
 			name:       "LocalRemoveBusySurfacesWithTheBoardUntouched",
@@ -583,7 +630,78 @@ func TestTeardown_CallSequence(t *testing.T) {
 			refusalErr: refusal,
 			request:    Request{Slug: "slug", Local: true, Snapshot: true, Force: true},
 			wantErrIs:  refusal,
-			wantCalls:  "quiet,refusal",
+			wantCalls:  reads + "quiet,refusal",
+		},
+		{
+			name:      "EndedVerdictSkipsTheQuietWaitAndWaitsForTheRunLockFirst",
+			quiets:    []quietState{busy},
+			request:   Request{Slug: "slug", Verdict: fabricengine.EntryEnded, RefuseWhenBusy: true},
+			wantCalls: skippedEnd,
+			wantAwait: &awaitCall{retry: "the removal"},
+		},
+		{
+			name:      "OwnedElsewhereVerdictSkipsTheQuietWait",
+			quiets:    []quietState{busy},
+			request:   Request{Slug: "slug", Verdict: fabricengine.EntryOwnedElsewhere, RefuseWhenBusy: true},
+			wantCalls: skippedEnd,
+			wantAwait: &awaitCall{retry: "the removal"},
+		},
+		{
+			name:      "SlugPauseSkipsTheQuietWaitAndPassesNoHubEntry",
+			quiets:    []quietState{busy},
+			paused:    true,
+			request:   Request{Slug: "slug", RefuseWhenBusy: true},
+			wantCalls: skippedEnd,
+			wantAwait: &awaitCall{paused: true, retry: "the removal"},
+		},
+		{
+			name:      "HubPauseSkipsTheQuietWaitAndPassesTheHubEntry",
+			quiets:    []quietState{busy},
+			paused:    true,
+			hubEntry:  true,
+			request:   Request{Slug: "slug", RefuseWhenBusy: true},
+			wantCalls: skippedEnd,
+			wantAwait: &awaitCall{paused: true, hubEntry: true, retry: "the removal"},
+		},
+		{
+			name:        "FinalizeDoneWithNoLiveBattenSkipsTheQuietWait",
+			quiets:      []quietState{busy},
+			childLanded: true,
+			request:     Request{Slug: "slug", RefuseWhenBusy: true},
+			wantCalls:   "readClaim,landed," + skippedEnd,
+		},
+		{
+			name:           "RunLockRefusalFromTheWaitIsReturnedWithNothingEnded",
+			quiets:         []quietState{busy},
+			awaitOrPassErr: fmt.Errorf("%w: the run lock is held", ErrDriverBusy),
+			request:        Request{Slug: "slug", Verdict: fabricengine.EntryEnded, RefuseWhenBusy: true},
+			wantErrIs:      ErrDriverBusy,
+			wantCalls:      "awaitOrPass",
+		},
+		{
+			name:       "RefusalProbeInTheSkippedOrderEndsNoOwnedProcess",
+			quiets:     []quietState{busy},
+			refusalErr: refusal,
+			request:    Request{Slug: "slug", Verdict: fabricengine.EntryEnded},
+			wantErrIs:  refusal,
+			wantCalls:  "awaitOrPass,refusal",
+		},
+		{
+			name:         "SkipReadingErrorIsReturnedWithNothingEnded",
+			quiets:       []quietState{busy},
+			pausedErr:    errors.New("pause record unreadable"),
+			request:      Request{Slug: "slug", RefuseWhenBusy: true},
+			wantAnyError: true,
+			wantCalls:    "",
+		},
+		{
+			name:        "GoneTaskWorktreeMakesNoSkipReading",
+			quiets:      []quietState{busy},
+			gone:        true,
+			pausedErr:   errors.New("pause record unreadable"),
+			request:     Request{Slug: "slug", Verdict: fabricengine.EntryEnded, RefuseWhenBusy: true},
+			wantCalls:   "refusal,endOwned,end",
+			wantSawGone: true,
 		},
 	}
 	for _, tt := range tests {
@@ -596,6 +714,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 				claim: tt.claim, claimFound: tt.claimFound, claimReadErr: tt.claimReadErr, snapshotErr: tt.snapshotErr,
 				endedProcs: tt.endedProcs, endOwnedErr: tt.endOwnedErr, driverLockHeld: tt.driverLockHeld,
 				driverPID: tt.driverPID, driverFound: tt.driverFound, battenAlive: tt.battenAlive,
+				paused: tt.paused, hubEntry: tt.hubEntry, pausedErr: tt.pausedErr, awaitOrPassErr: tt.awaitOrPassErr, owned: tt.owned,
 			}
 			td := f.teardown()
 			if tt.goos != "" {
@@ -664,6 +783,9 @@ func TestTeardown_CallSequence(t *testing.T) {
 				if !slices.Equal(session.Survivors, tt.wantSurvivors) {
 					t.Errorf("Survivors = %v, want %v", session.Survivors, tt.wantSurvivors)
 				}
+			}
+			if tt.wantAwait != nil && f.awaitSeen != *tt.wantAwait {
+				t.Errorf("awaitOrPass called with %+v, want %+v", f.awaitSeen, *tt.wantAwait)
 			}
 			if sawGone != tt.wantSawGone {
 				t.Errorf("session end told the task worktree is gone = %v, want %v", sawGone, tt.wantSawGone)
