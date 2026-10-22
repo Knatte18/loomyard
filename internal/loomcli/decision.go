@@ -515,10 +515,8 @@ section. It re-runs the discussion check over the record, restores the record
 when the check flags it, and commits the record. It resumes nothing and
 changes neither the support log nor the plan.
 
-After the commit it sends each live agent of the run, bar the tackler, the
-arbiter and the caller, one creel line naming the new entry. The envelope
-lists them under "notified", and a failed notice under "notice_errors"
-without failing the verb.
+After the commit it notifies the run's other live agents; the envelope
+lists "notified" and "notice_errors".
 
 --by is parent, operator or arbiter; arbiter is the run's own arbiter strand's
 label, refused from any other caller. --title, --decision and --rationale are
