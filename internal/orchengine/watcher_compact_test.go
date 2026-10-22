@@ -31,12 +31,11 @@ func (e *watchEnv) compactFocus() string {
 	return focus
 }
 
-// finishNote writes the pending note and answers the request with `written <path>`, then ticks once: the note gate passes and the next step is sent.
+// finishNote writes the pending note and ends a turn, which ticks: the note gate passes and the next step is sent.
 func (e *watchEnv) finishNote() {
 	e.t.Helper()
-	path := e.writeHandoff()
-	e.reply("written " + path)
-	e.tick()
+	e.writeHandoff()
+	e.endTurn("note")
 }
 
 // reachCompacting makes one over-threshold turn end and ticks until `/compact` is sent, through the note gate.
@@ -121,15 +120,12 @@ func TestCompact_RenderFailureAfterNoteChangesNothing(t *testing.T) {
 	if err := os.WriteFile(stencilstore.Path(e.stDir, compactStencilName), []byte("one\ntwo\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	path := e.writeHandoff()
-	e.reply("written " + path)
+	e.writeHandoff()
+	e.s.events = append(e.s.events, stop("note"))
 	e.tickErr()
 	e.assertCompactCalls(0)
 	if st := e.state(); st.Phase != PhaseHandoffRequested || st.LastHandoff != "" {
 		t.Errorf("state = %+v, want the note phase kept and no LastHandoff", st)
-	}
-	if len(e.c.mailbox) != 1 {
-		t.Errorf("mailbox = %+v, want the reply left unread", e.c.mailbox)
 	}
 }
 

@@ -173,14 +173,17 @@
 // The watcher saves State before every side effect, so a restarted watcher resumes from it.
 //
 //   - handoff-requested: the note request is posted as creel mail to the orch strand, naming a new timestamped file under handoffs/ and the template the note follows.
-//     Creel assigns the mail's id when it is journaled, so the body tells the orch to reply to the id the `[creel]` line carrying it opens with, and the watcher saves the id the post answers in State.RequestID.
-//     The orch answers with `lyx creel post --reply <id> "written <path>"` once the note is written, or, to a soft request only, `lyx creel post --reply <id> defer`.
+//     The watcher saves the id the post answers in State.RequestID, which a soft request's `defer` reply names.
+//     The orch posts no reply to a note request: the gate passes at a tick where the newest session event read since the phase began is a turn end and the requested note file exists and is not empty,
+//     and the move to clearing, or to compacting in compact mode, runs in the same tick, so the first `/clear` or `/compact` is sent in it.
+//     A restarted watcher re-reads the phase's events from State.PhaseEventsOffset, so it finds a turn end read before the restart.
+//     A turn end with the note missing or empty keeps the phase waiting until a later turn end finds the note written or the timeout ends the phase.
+//     Bound: a note the orch extends in a later turn is cycled on the version present at the first qualifying turn end.
 //     Each tick reads the watcher's own mailbox without waiting, through readReplies, which runs before the client acknowledges the read, so a failed save leaves the reply unread for the next watcher.
 //     Only a reply from the orch strand whose reply_to is State.RequestID counts; every other message, a reply to an earlier request included, is logged and dropped.
-//     A `written` body naming the requested note, resolved against the prime, with the file existing and non-empty, ends the phase, and the move to clearing, or to compacting in compact mode, is persisted inside the handler.
-//     A reply naming another path, carrying other text, or arriving with a missing or empty file is logged and leaves the phase waiting until the handoff timeout.
+//     A `written` body is logged and dropped, since the note gate reads the note itself.
 //     A `defer` body declines a soft cycle whose note is still unwritten: the watcher records the read time in State.LastDeferral and returns to idle with the abort reason `deferred`.
-//     In a hard or requested cycle, or once the note is written, `defer` is logged and ignored.
+//     In a hard or requested cycle, or once the note is written, `defer` is logged and ignored, so a `defer` read in the tick of a passing gate is ignored.
 //     A restarted watcher whose post was persisted with no id looks it up in creel's journal, and posts the stencil matching State.CycleTrigger again only when creel journaled none.
 //     A requested cycle's phase times out at the earlier of the phase entry and the request time plus the handoff timeout, not counting the time a hub pause held the watcher (bounded by `pauserecord.Retention`), and a session that asks a question during the note aborts it.
 //   - clearing: the resume prompt is rendered first, so a stencil failure aborts before anything is cleared.
@@ -190,7 +193,7 @@
 //   - idle: every return, completed or aborted, persists the events position read through and releases the creel hold.
 //
 // Compact mode runs the same note phase and, once the gate passes, starts compacting instead of clearing.
-// The guarantee holds through every restart: nothing before the note is written and named in a reply to the pending request can reach `/clear`, and LastHandoff moves only when a cycle passes that gate.
+// The guarantee holds through every restart: nothing before the named note exists, non-empty, at a turn end of the note phase can reach `/clear` or `/compact`, and LastHandoff moves only when a cycle passes that gate.
 //
 // Restart rules: a non-idle phase's pending step is read from State.Pending.
 // A step with an id has its outcome read from creel, and a restarted watcher posts or injects nothing again.
@@ -202,7 +205,7 @@
 //
 // The persisted phases are idle, handoff-requested and compacting.
 // A trigger first enters handoff-requested exactly as in clear mode: the session writes a note under handoffs/, and the same gate applies.
-// When the gate passes, the watcher renders the focus stencil first, so a stencil failure changes nothing and leaves the reply unread.
+// When the gate passes, the watcher renders the focus stencil first, so a stencil failure fails the tick, changes nothing and leaves the gate to the next tick.
 // It then moves LastHandoff to the note, persists compacting, and injects `/compact` with the focus as its argument.
 // A later fresh `start` therefore resumes from the newest note in either mode.
 // The focus tells the summary to keep runs in flight, open parent-review forks, operator requests and decisions pending, and work half done.

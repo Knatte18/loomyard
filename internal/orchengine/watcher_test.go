@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -1018,7 +1017,7 @@ func TestWatcher_NoteRequestRendersTemplateFileBeforeTyping(t *testing.T) {
 			t.Fatalf("note template file not rendered before the request: %v", err)
 		}
 		body := e.c.posts[0].Body
-		for _, want := range []string{e.paths.NoteTemplatePath, e.state().PendingHandoff, "lyx creel post --reply", `"written ` + e.state().PendingHandoff + `"`, "[creel]"} {
+		for _, want := range []string{e.paths.NoteTemplatePath, e.state().PendingHandoff} {
 			if !strings.Contains(body, want) {
 				t.Errorf("note request %q must name %q", body, want)
 			}
@@ -1031,10 +1030,13 @@ func TestWatcher_NoteRequestRendersTemplateFileBeforeTyping(t *testing.T) {
 		e := newSoftEnv(t)
 		e.injectSoft(stop("a"))
 		body := e.c.posts[0].Body
-		for _, want := range []string{e.paths.NoteTemplatePath, e.state().PendingHandoff, `"written ` + e.state().PendingHandoff + `"`, "lyx creel post --reply <id> defer"} {
+		for _, want := range []string{e.paths.NoteTemplatePath, e.state().PendingHandoff} {
 			if !strings.Contains(body, want) {
 				t.Errorf("soft note request %q must name %q", body, want)
 			}
+		}
+		if !strings.Contains(body, "defer") {
+			t.Errorf("a soft request %q must offer to defer", body)
 		}
 	})
 }
@@ -1999,16 +2001,11 @@ func TestWatcher_SoftDeferAmongOtherTextDoesNotDefer(t *testing.T) {
 func TestWatcher_SoftDeferWithHandoffWrittenProceedsToClearing(t *testing.T) {
 	e := newSoftEnv(t)
 	e.injectSoft(stop("a"))
-	path := e.writeHandoff()
+	e.writeHandoff()
 	e.reply("defer")
-	e.tick()
-	if st := e.state(); st.Phase != PhaseHandoffRequested || !st.LastDeferral.IsZero() {
-		t.Fatalf("state = %+v, want a defer ignored once the note is written", st)
-	}
-	e.reply("written " + path)
-	e.tick()
+	e.endTurn("note")
 	if st := e.state(); st.Phase != PhaseClearing || !st.LastDeferral.IsZero() {
-		t.Fatalf("state = %+v", st)
+		t.Fatalf("state = %+v, want a defer ignored once the note is written and the phase moved on", st)
 	}
 }
 
@@ -2357,41 +2354,54 @@ func TestWatcher_RestartMidColorStepTypesItOnceWhenIdle(t *testing.T) {
 	}
 }
 
+// TestWatcher_NoteReplyGate pins the note gate: it passes at a tick where the newest event read since the phase began is a turn end and the requested note exists and is not empty, whatever the orch replied.
 func TestWatcher_NoteReplyGate(t *testing.T) {
 	t.Parallel()
 
+	// eventWithoutTurnEnd is an event of a kind that ends no turn, such as a turn start.
+	eventWithoutTurnEnd := shuttleengine.Event{Kind: shuttleengine.EventWaiting + 1, Message: "turn start"}
 	tests := []struct {
 		name string
-		// arrange leaves the reply, and the note, in the state the row gates.
+		// arrange leaves the note, the events and the mailbox in the state the row gates.
 		arrange func(e *watchEnv, path string)
+		// wantPhase is the phase after the row's last tick.
+		wantPhase Phase
 	}{
-		{"a note written with no reply posted", func(e *watchEnv, path string) { e.writeHandoff() }},
-		{"a reply naming another path", func(e *watchEnv, path string) {
+		{"ANoteWrittenWithNoTurnEndReadKeepsThePhase", func(e *watchEnv, path string) {
 			e.writeHandoff()
-			e.reply("written /somewhere/else.md")
-		}},
-		{"a reply carrying other text", func(e *watchEnv, path string) {
-			e.writeHandoff()
-			e.reply("done with " + path)
-		}},
-		{"a reply with no note file", func(e *watchEnv, path string) { e.reply("written " + path) }},
-		{"a reply with an empty note file", func(e *watchEnv, path string) {
+			e.tick()
+		}, PhaseHandoffRequested},
+		{"ATurnEndWithAnEmptyNoteKeepsThePhase", func(e *watchEnv, path string) {
 			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 				e.t.Fatal(err)
 			}
 			if err := os.WriteFile(path, nil, 0o644); err != nil {
 				e.t.Fatal(err)
 			}
+			e.endTurn("note")
+		}, PhaseHandoffRequested},
+		{"ATurnEndWithNoNoteKeepsThePhase", func(e *watchEnv, path string) { e.endTurn("note") }, PhaseHandoffRequested},
+		{"ATurnStartReadAfterTheTurnEndKeepsThePhase", func(e *watchEnv, path string) {
+			e.endTurn("note")
+			e.writeHandoff()
+			e.s.events = append(e.s.events, eventWithoutTurnEnd)
+			e.tick()
+		}, PhaseHandoffRequested},
+		{"AWrittenReplyWithTheNoteWrittenAndNoTurnEndKeepsThePhaseAndIsRead", func(e *watchEnv, path string) {
+			e.writeHandoff()
 			e.reply("written " + path)
-		}},
-		{"a reply to an earlier request id", func(e *watchEnv, path string) {
+			e.tick()
+			if len(e.c.mailbox) != 0 {
+				e.t.Errorf("mailbox = %+v, want the reply read", e.c.mailbox)
+			}
+		}, PhaseHandoffRequested},
+		{"ANoteWrittenThenATurnEndMovesOnToClearing", func(e *watchEnv, path string) { e.finishNote() }, PhaseClearing},
+		{"ATurnEndReadWhileTheNoteWasMissingPassesAtANewWatchersFirstTick", func(e *watchEnv, path string) {
+			e.endTurn("note")
 			e.writeHandoff()
-			e.c.mailbox = append(e.c.mailbox, CreelMessage{ID: 50, From: fakeOrchStrandName, ReplyTo: e.state().RequestID - 1, Body: "written " + path})
-		}},
-		{"a reply from another sender", func(e *watchEnv, path string) {
-			e.writeHandoff()
-			e.c.mailbox = append(e.c.mailbox, CreelMessage{ID: 51, From: "tst:task:driver", ReplyTo: e.state().RequestID, Body: "written " + path})
-		}},
+			e.w = e.newWatcher()
+			e.tick()
+		}, PhaseClearing},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -2399,72 +2409,15 @@ func TestWatcher_NoteReplyGate(t *testing.T) {
 			e := newWatchEnv(t)
 			e.injectHandoff()
 			tt.arrange(e, e.state().PendingHandoff)
-			e.tick()
-			if st := e.state(); st.Phase != PhaseHandoffRequested || e.s.count("clear") != 0 {
-				t.Fatalf("phase = %s calls = %v, want the gate closed", st.Phase, e.s.calls)
+			st := e.state()
+			if st.Phase != tt.wantPhase {
+				t.Fatalf("phase = %s, want %s; calls = %v", st.Phase, tt.wantPhase, e.s.calls)
 			}
-			if len(e.c.mailbox) != 0 {
-				t.Errorf("mailbox = %+v, want every message read", e.c.mailbox)
+			if clears := e.s.count("clear"); (tt.wantPhase == PhaseClearing) != (clears == 1) {
+				t.Errorf("clear calls = %d, want one exactly when the gate passed", clears)
 			}
 		})
 	}
-
-	t.Run("a reply that passes the gate moves on to clearing", func(t *testing.T) {
-		t.Parallel()
-		e := newWatchEnv(t)
-		e.injectHandoff()
-		e.finishNote()
-		if st := e.state(); st.Phase != PhaseClearing || e.s.count("clear") != 1 {
-			t.Fatalf("phase = %s calls = %v", st.Phase, e.s.calls)
-		}
-	})
-
-	t.Run("a reply naming the note relative to the prime root moves on to clearing", func(t *testing.T) {
-		t.Parallel()
-		e := newWatchEnv(t)
-		e.injectHandoff()
-		path := e.writeHandoff()
-		rel, err := filepath.Rel(e.paths.PrimeRoot, path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		e.reply("written " + rel)
-		e.tick()
-		if st := e.state(); st.Phase != PhaseClearing || e.s.count("clear") != 1 {
-			t.Fatalf("phase = %s calls = %v", st.Phase, e.s.calls)
-		}
-	})
-
-	t.Run("a save that fails after the reply is read leaves it unread, and a new watcher gates on it", func(t *testing.T) {
-		t.Parallel()
-		if runtime.GOOS == "windows" || os.Geteuid() == 0 {
-			t.Skip("a read-only directory stops no write here, so a failing save cannot be arranged")
-		}
-		e := newWatchEnv(t)
-		e.injectHandoff()
-		path := e.writeHandoff()
-		e.reply("written " + path)
-		// The directory turns unwritable as the handler is handed the reply, so its save fails.
-		e.c.onReadMailbox = func() {
-			if err := os.Chmod(e.paths.Dir, 0o500); err != nil {
-				t.Error(err)
-			}
-		}
-		t.Cleanup(func() { _ = os.Chmod(e.paths.Dir, 0o755) })
-		e.tickErr()
-		if len(e.c.mailbox) != 1 {
-			t.Fatalf("mailbox = %+v, want the reply left unread", e.c.mailbox)
-		}
-		if err := os.Chmod(e.paths.Dir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		e.c.onReadMailbox = nil
-		e.w = e.newWatcher()
-		e.tick()
-		if st := e.state(); st.Phase != PhaseClearing {
-			t.Fatalf("phase = %s, want the new watcher to gate on the unread reply", st.Phase)
-		}
-	})
 }
 
 func TestWatcher_StepOutcomes(t *testing.T) {
@@ -2744,28 +2697,24 @@ func TestWatcher_CreelFailuresHoldTheCycle(t *testing.T) {
 	})
 
 	t.Run("a read acknowledgement that fails after the handler moved the phase keeps the phase and acts on the reply once", func(t *testing.T) {
-		e := newWatchEnv(t)
-		e.injectHandoff()
-		path := e.writeHandoff()
-		e.reply("written " + path)
+		e := newSoftEnv(t)
+		e.injectSoft(stop("a"))
+		e.reply("defer")
 		e.c.failNext("acknowledge", errBoom)
 		e.tick()
 		st := e.state()
-		if st.Phase != PhaseClearing || st.Stuck != errBoom.Error() || !st.StuckByCreel {
+		if st.Phase != PhaseIdle || st.LastAbortReason != "deferred" || st.Stuck != errBoom.Error() || !st.StuckByCreel {
 			t.Fatalf("state = %+v, want the phase the handler moved to kept with the failure shown", st)
 		}
+		deferredAt := st.LastDeferral
+		e.clock.advance(time.Second)
 		e.tick()
 		e.tick()
-		clears := 0
-		for _, inject := range e.c.injects {
-			if inject.Step.Command == commandClear {
-				clears++
-			}
+		st = e.state()
+		if st.Phase != PhaseIdle || !st.LastDeferral.Equal(deferredAt) {
+			t.Errorf("state = %+v, want the deferral recorded once at %s", st, deferredAt)
 		}
-		if clears != 1 {
-			t.Errorf("injects = %+v, want the clear injected once", e.c.injects)
-		}
-		if st := e.state(); st.Stuck != "" || st.StuckByCreel {
+		if st.Stuck != "" || st.StuckByCreel {
 			t.Errorf("state = %+v, want the failure cleared once the read was acknowledged", st)
 		}
 	})
@@ -2803,8 +2752,8 @@ func TestWatcher_CreelFailuresHoldTheCycle(t *testing.T) {
 	t.Run("an inject creel journaled but answered with an error is adopted on the next tick", func(t *testing.T) {
 		e := newWatchEnv(t)
 		e.injectHandoff()
-		path := e.writeHandoff()
-		e.reply("written " + path)
+		e.writeHandoff()
+		e.s.events = append(e.s.events, stop("note"))
 		e.c.journalFails = []error{errBoom}
 		e.tick()
 		st := e.state()

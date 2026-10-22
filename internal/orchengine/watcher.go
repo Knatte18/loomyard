@@ -1,5 +1,5 @@
 // watcher.go — the watcher's decision core: one poll of the persisted cycle, whose mode (State.CycleMode) picks between two machines.
-// Both modes start with the note gate: idle, then handoff-requested, which posts the note request as creel mail and waits for the orch's reply.
+// Both modes start with the note gate: idle, then handoff-requested, which posts the note request as creel mail and waits for a turn end with the note written.
 // Clear mode then runs clearing and resuming;
 // compact mode then runs compacting, which injects `/compact` with a focus text.
 // Neither clears or compacts before the note gate passed.
@@ -18,7 +18,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -44,9 +43,9 @@ const (
 	commandLoadSkills    = "load-skills"
 )
 
-// The two answers the orch gives the note request, as the bodies of its reply.
+// The two bodies of a reply to the note request the watcher recognises.
 const (
-	// replyWritten is followed by the note path once the note is written.
+	// replyWritten opens a reply the watcher only recognises to ignore: the note gate reads the note itself.
 	replyWritten = "written"
 	// replyDefer declines a soft cycle.
 	replyDefer = "defer"
@@ -515,9 +514,8 @@ func (w *Watcher) readMailbox(st State) (State, error) {
 
 // readReplies is the read handler of the watcher's mailbox: it runs before the client acknowledges the read, so a failure leaves the messages unread.
 // Only a reply from the orch strand whose reply_to is the pending note request counts; every other message is logged and dropped.
-// A `written <path>` body naming the requested note, written and non-empty, moves the phase on to clearing or compacting and persists the move;
-// any other body is logged and leaves the phase waiting.
 // A `defer` body declines a soft cycle whose note is still unwritten, and is ignored in any other cycle.
+// A body starting with `written` is logged and dropped, since the note gate reads the note itself; every other body is logged and dropped.
 func (w *Watcher) readReplies(messages []CreelMessage) error {
 	st, err := LoadState(w.paths)
 	if err != nil {
@@ -557,41 +555,13 @@ func (w *Watcher) readReplies(messages []CreelMessage) error {
 			st.LastDeferral = now
 			return w.toIdle(st, "deferred")
 		}
-		path, isWritten := strings.CutPrefix(body, replyWritten)
-		if !isWritten || (path != "" && strings.TrimSpace(path) == path) {
-			logger.Info("orch: reply left unanswered, it is neither `written <path>` nor `defer`", "messageID", message.ID)
+		if strings.HasPrefix(body, replyWritten) {
+			logger.Info("orch: a written reply is ignored, the note gate reads the note itself", "messageID", message.ID)
 			continue
 		}
-		path = strings.TrimSpace(path)
-		if !w.isRequestedNote(path, st) {
-			logger.Info("orch: reply left unanswered, it names another path", "messageID", message.ID, "path", path, "requested", st.PendingHandoff)
-			continue
-		}
-		written, err := handoffWritten(st.PendingHandoff)
-		if err != nil {
-			return err
-		}
-		if !written {
-			logger.Info("orch: reply left unanswered, the note is missing or empty", "messageID", message.ID, "path", st.PendingHandoff)
-			continue
-		}
-		if st.CycleMode == CycleCompact {
-			return w.startCompacting(st, now)
-		}
-		return w.startClearing(st, now)
+		logger.Info("orch: reply dropped, only `defer` is acted on", "messageID", message.ID)
 	}
 	return nil
-}
-
-// isRequestedNote reports whether path, resolved against the prime when relative, is the note the pending request asked for.
-func (w *Watcher) isRequestedNote(path string, st State) bool {
-	if path == "" {
-		return false
-	}
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(w.paths.PrimeRoot, path)
-	}
-	return filepath.Clean(path) == filepath.Clean(st.PendingHandoff)
 }
 
 // sendStep persists the step as State.Pending with no id, then posts it as mail (mail true, body as the mail body) or injects it into the orch strand, and saves the id creel answers.
@@ -1099,7 +1069,15 @@ func (w *Watcher) renderHandoffRequest(trigger, handoffPath string) (string, err
 	return RenderHandoffInstruction(w.stencilsDir, handoffPath, w.paths.NoteTemplatePath)
 }
 
-// tickHandoff waits for the orch's reply to the note request, which readReplies handles, and times the phase out.
+// notePassed reports whether the note gate passes: the newest session event read since the phase began is a turn end, and the requested note file exists and is not empty.
+func (w *Watcher) notePassed(st State) (bool, error) {
+	if w.newest == nil || !isTurnEnd(*w.newest) {
+		return false, nil
+	}
+	return handoffWritten(st.PendingHandoff)
+}
+
+// tickHandoff passes the note gate once the orch has ended a turn with the requested note written, and times the phase out.
 // A request not yet posted, because a restart came before the post was persisted, is posted again.
 func (w *Watcher) tickHandoff(st State, now time.Time) error {
 	if w.seen.ask {
@@ -1112,6 +1090,31 @@ func (w *Watcher) tickHandoff(st State, now time.Time) error {
 	}
 	if w.unpausedSince(started, now) >= w.cfg.HandoffTimeout() {
 		return w.toIdle(st, "handoff timed out")
+	}
+	passed, err := w.notePassed(st)
+	if err != nil {
+		return err
+	}
+	if passed {
+		// The new phase's first tick runs in this call, as it did when the reply handler made the move before the phase switch.
+		start := w.startClearing
+		if st.CycleMode == CycleCompact {
+			start = w.startCompacting
+		}
+		if err := start(st, now); err != nil {
+			return err
+		}
+		w.newest = nil
+		if st, err = LoadState(w.paths); err != nil {
+			return err
+		}
+		switch st.Phase {
+		case PhaseClearing:
+			return w.tickClearing(st, now)
+		case PhaseCompacting:
+			return w.tickCompacting(st, now)
+		}
+		return nil
 	}
 	if st.Pending != nil || st.RequestID != 0 {
 		return nil
