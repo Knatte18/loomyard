@@ -8,15 +8,18 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/parentlock"
@@ -121,6 +124,19 @@ func HubDeps(location *lyxcwd.Location, strand string) (tenderengine.Deps, []str
 			return pauserecord.ListNetOps(geometry.RecordPath, parentlock.ProcessAlive)
 		},
 		Locks: locks.List,
+		Owners: func() ([]tenderengine.PairOwner, error) {
+			here, err := machinename.Name()
+			if err != nil {
+				return nil, err
+			}
+			owners, err := boardengine.ReadOwners(fabricengine.BoardDir(location.HubPath))
+			if err != nil {
+				return nil, err
+			}
+			return pairOwners(owners, slugs, here, func(slug string) (string, error) {
+				return fabricengine.ParentSlug(location, slug)
+			})
+		},
 		OrchWatcherLive: func() bool {
 			if prime == nil {
 				return false
@@ -136,6 +152,38 @@ func HubDeps(location *lyxcwd.Location, strand string) (tenderengine.Deps, []str
 		Sleep:  time.Sleep,
 	}
 	return deps, slugs, nil
+}
+
+// pairOwners lists each local pair of slugs with the owner it reads as, then each run-held board entry owned by a machine other than here that has no local pair.
+// parentOf names the slug of a pair's parent pair, or "" for the prime; its error is returned.
+func pairOwners(owners boardengine.Owners, slugs []string, here string, parentOf func(slug string) (string, error)) ([]tenderengine.PairOwner, error) {
+	listed := []tenderengine.PairOwner{}
+	local := make(map[string]bool, len(slugs))
+	for _, slug := range slugs {
+		local[slug] = true
+		owner, err := owners.Effective(slug, parentOf)
+		if err != nil {
+			return nil, fmt.Errorf("owner of %s: %w", slug, err)
+		}
+		listed = append(listed, tenderengine.PairOwner{Slug: slug, Owner: owner, Local: true, OwnedHere: !boardengine.OwnedElsewhere(owner, here)})
+	}
+	var remote []string
+	for slug, entry := range owners.Entries {
+		if entry.RunHeld && !local[slug] {
+			remote = append(remote, slug)
+		}
+	}
+	slices.Sort(remote)
+	for _, slug := range remote {
+		owner, err := owners.Effective(slug, parentOf)
+		if err != nil {
+			return nil, fmt.Errorf("owner of %s: %w", slug, err)
+		}
+		if boardengine.OwnedElsewhere(owner, here) {
+			listed = append(listed, tenderengine.PairOwner{Slug: slug, Owner: owner})
+		}
+	}
+	return listed, nil
 }
 
 // ownerPauseGrace is how long the running turns of a run owned by another machine get to finish before the Esc.
